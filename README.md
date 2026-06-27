@@ -197,6 +197,27 @@ systemctl --user restart openclaw-gateway
 openclaw channels status        # expect: dm:allowlist, allow:+972526269826
 ```
 
+## Custom features (agent behaviour)
+
+The assistant's persona and instructions live in
+`~/.openclaw/workspace/AGENTS.md` on the server (loaded at session startup).
+Add custom behaviours by editing that file, then
+`systemctl --user restart openclaw-gateway` to reload.
+
+### Rephrase & Send
+
+Lets the owner send a rough draft + a recipient; the assistant rewrites it
+nicely (tone tailored to the recipient, same language, meaning preserved) and
+**sends it directly** to that person on WhatsApp, then reports back what it sent.
+
+- Always active — inferred from context; keywords like `נסח ל…` / `rephrase for …`
+  make it explicit. Needs BOTH a clear recipient and a draft.
+- **Safety guard:** auto-sends only when the recipient resolves to exactly one
+  contact. If the recipient is missing/ambiguous, it returns the polished text
+  and asks instead of sending (wrong-recipient sends are not reversible).
+- Defined in the `## Feature: Rephrase & Send` section of `AGENTS.md`
+  (backup at `AGENTS.md.bak`). Tune wording or tighten/loosen the guard there.
+
 ## Maintenance notes
 
 - The droplet may report **"system restart required"** after kernel updates.
