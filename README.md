@@ -118,8 +118,6 @@ apt-get update && apt-get upgrade -y
 
 - The assistant runs on the linked WhatsApp account. With `selfChatMode` on, you
   test it by messaging **yourself** ("Note to Self") — Claude replies in that chat.
-- `dmPolicy` is `pairing`: unknown senders get a pairing code that the owner
-  approves before they can chat with the assistant.
 - Re-link if the session drops (e.g. logged out from the phone):
 
   ```bash
@@ -129,6 +127,43 @@ apt-get update && apt-get upgrade -y
   A QR code renders live in the terminal — open WhatsApp → Settings →
   Linked Devices → Link a device, and scan it. Make the terminal window large /
   font small so the QR is not wrapped, or it will not scan.
+
+## Who can chat with the assistant (cost control)
+
+`dmPolicy` controls who can DM the assistant. Each new conversation calls the
+Anthropic API, so this is the main lever for controlling spend.
+
+| Policy | Behaviour |
+|---|---|
+| `allowlist` | **Current setting.** Only numbers in `allowFrom` can chat; everyone else is dropped (no API usage). |
+| `pairing` | Unknown senders get a pairing code the owner approves, then they can chat. |
+| `open` | Anyone can chat (requires `allowFrom` to include `"*"`). |
+| `disabled` | Ignore all DMs. |
+
+Currently restricted to a single number (`+972526269826`). Toggle scripts live
+in `/root` on the server — run them after `ssh root@...`:
+
+```bash
+# Restrict to just the owner (default), or pass other numbers explicitly
+./openclaw-dm-restrict.sh                      # allowlist = +972526269826
+./openclaw-dm-restrict.sh +972526269826 +1555... # allowlist = these numbers
+
+# Add one more allowed number (keeps the restriction on)
+./openclaw-dm-allow.sh +1555...
+
+# Re-open to everyone via pairing approval (others can then incur API usage)
+./openclaw-dm-open.sh
+```
+
+Each script applies the config and restarts the gateway. To do it by hand:
+
+```bash
+A=channels.whatsapp.accounts.default
+openclaw config set $A.dmPolicy allowlist
+openclaw config set $A.allowFrom '["+972526269826"]'
+systemctl --user restart openclaw-gateway
+openclaw channels status        # expect: dm:allowlist, allow:+972526269826
+```
 
 ## Maintenance notes
 
