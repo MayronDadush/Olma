@@ -114,6 +114,38 @@ curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && apt-get install -y 
 apt-get update && apt-get upgrade -y
 ```
 
+## Model & provider auth
+
+The assistant replies using **`anthropic/claude-sonnet-4-6`** (fast and
+cost-effective). The Anthropic API key is stored as auth profile
+`anthropic:manual` in `~/.openclaw/agents/main/agent/openclaw-agent.sqlite`.
+
+```bash
+openclaw models status            # shows default model + auth profiles
+openclaw models list --all | grep claude   # available Claude model ids
+```
+
+Change the default model (e.g. to Opus for higher quality, costs more):
+
+```bash
+openclaw models set anthropic/claude-opus-4-8
+systemctl --user restart openclaw-gateway
+```
+
+Re-paste / rotate the Anthropic API key:
+
+```bash
+printf '%s' 'sk-ant-...' | openclaw models auth paste-api-key --provider anthropic
+systemctl --user restart openclaw-gateway
+```
+
+> **Gotcha (fixed):** the non-interactive `openclaw onboard` run did **not**
+> persist the API key and left the default model as `openai/gpt-5.5`. The symptom
+> was WhatsApp showing "typing" but never replying, with
+> `ProviderAuthError: No API key found for provider "openai"` in the logs. Fix is
+> the two commands above (paste key + set model). Verify with:
+> `openclaw agent --agent main -m "Reply with exactly: pong"`.
+
 ## WhatsApp
 
 - The assistant runs on the linked WhatsApp account. With `selfChatMode` on, you
