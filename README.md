@@ -152,6 +152,16 @@ printf '%s' 'sk-ant-...' | openclaw models auth paste-api-key --provider anthrop
 systemctl --user restart openclaw-gateway
 ```
 
+> **Gotcha (fixed):** `tools.profile = "coding"` removes the `message` tool,
+> which blocks outbound WhatsApp sends (Rephrase & Send, relay). The correct
+> profile for a WhatsApp assistant is `messaging`:
+> ```bash
+> openclaw config set tools.profile messaging
+> systemctl --user restart openclaw-gateway
+> ```
+> Symptom: agent opens a session for the target number but replies back to sender
+> saying "I don't have the recipient's number" instead of sending.
+
 > **Gotcha (fixed):** the non-interactive `openclaw onboard` run did **not**
 > persist the API key and left the default model as `openai/gpt-5.5`. The symptom
 > was WhatsApp showing "typing" but never replying, with
