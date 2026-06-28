@@ -220,6 +220,17 @@ nicely (tone tailored to the recipient, same language, meaning preserved) and
   and asks instead of sending (wrong-recipient sends are not reversible).
 - Defined in `AGENTS.md`.
 
+> **Required for outbound messaging:** by default the agent can only reply within
+> existing conversations (`tools.sessions.visibility` defaults to `spawned`). To let
+> it **start new chats / send to arbitrary numbers** (needed by both features below),
+> it is set to `all`:
+> ```bash
+> openclaw config set tools.sessions.visibility all
+> systemctl --user restart openclaw-gateway
+> ```
+> Symptom when this is missing: the bot says it "can't open new WhatsApp
+> conversations" and hands you the text to send manually.
+
 ### Conversation Mediator (relay)
 
 The owner can ask the assistant to relay messages back-and-forth with another
