@@ -167,42 +167,45 @@ Anthropic API, so this is the main lever for controlling spend.
 
 | Policy | Behaviour |
 |---|---|
-| `allowlist` | **Current setting.** Only numbers in `allowFrom` can chat; everyone else is dropped (no API usage). |
+| `open` | **Current setting.** Anyone can chat; the assistant gives brief, friendly replies. |
 | `pairing` | Unknown senders get a pairing code the owner approves, then they can chat. |
-| `open` | Anyone can chat (requires `allowFrom` to include `"*"`). |
+| `allowlist` | Only numbers in `allowFrom` can chat; everyone else is dropped (no API usage). |
 | `disabled` | Ignore all DMs. |
 
-Currently restricted to a single number (`+972526269826`). Toggle scripts live
-in `/root` on the server — run them after `ssh root@...`:
+**Current setup:** `dmPolicy: open`, `allowFrom: ["*"]` — anyone who has the number can message.
+The assistant doesn't invent facts or expose the owner's private data to outsiders, and uses the
+**Conversation Mediator** feature for curated chats between the owner and others.
+
+Toggle scripts live in `/root` on the server (run after `ssh root@...`):
 
 ```bash
-# Restrict to just the owner (default), or pass other numbers explicitly
-./openclaw-dm-restrict.sh                      # allowlist = +972526269826
-./openclaw-dm-restrict.sh +972526269826 +1555... # allowlist = these numbers
+# Switch to allowlist (only owner can chat, no API usage from others)
+./openclaw-dm-restrict.sh
 
-# Add one more allowed number (keeps the restriction on)
-./openclaw-dm-allow.sh +1555...
-
-# Re-open to everyone via pairing approval (others can then incur API usage)
+# Switch back to open (anyone can chat, brief replies)
 ./openclaw-dm-open.sh
+
+# Switch to pairing (unknown senders request approval)
+# (manually: openclaw config set channels.whatsapp.accounts.default.dmPolicy pairing)
 ```
 
 Each script applies the config and restarts the gateway. To do it by hand:
 
 ```bash
 A=channels.whatsapp.accounts.default
-openclaw config set $A.dmPolicy allowlist
-openclaw config set $A.allowFrom '["+972526269826"]'
+openclaw config set $A.dmPolicy open
+openclaw config set $A.allowFrom '["*"]'
 systemctl --user restart openclaw-gateway
-openclaw channels status        # expect: dm:allowlist, allow:+972526269826
+openclaw channels status        # expect: dm:open, allow:*
 ```
 
 ## Custom features (agent behaviour)
 
-The assistant's persona and instructions live in
-`~/.openclaw/workspace/AGENTS.md` on the server (loaded at session startup).
-Add custom behaviours by editing that file, then
-`systemctl --user restart openclaw-gateway` to reload.
+The assistant's persona and instructions live in `~/.openclaw/workspace/AGENTS.md`
+on the server (loaded at session startup). Related state files:
+- **`AGENTS.md`** — feature definitions and rules (restart gateway to reload)
+- **`IDENTITY.md`** — who the owner/assistant are (phone numbers, policy)
+- **`RELAYS.md`** — active conversation mediations (read-only, synced live)
 
 ### Rephrase & Send
 
@@ -215,8 +218,25 @@ nicely (tone tailored to the recipient, same language, meaning preserved) and
 - **Safety guard:** auto-sends only when the recipient resolves to exactly one
   contact. If the recipient is missing/ambiguous, it returns the polished text
   and asks instead of sending (wrong-recipient sends are not reversible).
-- Defined in the `## Feature: Rephrase & Send` section of `AGENTS.md`
-  (backup at `AGENTS.md.bak`). Tune wording or tighten/loosen the guard there.
+- Defined in `AGENTS.md`.
+
+### Conversation Mediator (relay)
+
+The owner can ask the assistant to relay messages back-and-forth with another
+person, rewriting each side to be **nice, light, short, friendly** (same language,
+original meaning preserved). The assistant sits between them and:
+
+1. When the owner starts a relay ("תתווך ביני לבין דני"), the assistant finds the
+   contact and records it in `RELAYS.md` as active.
+2. Each message from the partner is rewritten and forwarded to the owner (prefixed
+   with who it's from).
+3. Each message from the owner (to that partner) is rewritten and forwarded.
+4. When the owner says "stop relay", it's marked ended in `RELAYS.md`.
+
+- Outsiders who are NOT in an active relay get brief replies, no relay behavior.
+- The owner always sees what was sent on their behalf (for transparency and
+  correction if needed).
+- Defined in `AGENTS.md` under `## Feature: Conversation Mediator`.
 
 ## Maintenance notes
 
