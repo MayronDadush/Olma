@@ -114,22 +114,35 @@ curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && apt-get install -y 
 apt-get update && apt-get upgrade -y
 ```
 
-## Model & provider auth
+## Model & provider auth (cost control)
 
-The assistant replies using **`anthropic/claude-sonnet-4-6`** (fast and
-cost-effective). The Anthropic API key is stored as auth profile
-`anthropic:manual` in `~/.openclaw/agents/main/agent/openclaw-agent.sqlite`.
+Cost strategy: cheap model by default, stronger as fallback, most-expensive blocked.
+
+| Role | Model |
+|---|---|
+| Default | **`anthropic/claude-haiku-4-5`** (cheap, fast — handles the bulk) |
+| Fallback | `anthropic/claude-sonnet-4-6` (used if Haiku fails) |
+| Blocked | Opus — not configured; **admin-only**, enable on request |
+
+> OpenClaw has **no native complexity-based routing**, so the cost levers are the
+> default model and which models are configured/fallback. The agent uses the
+> default for every message; Sonnet only kicks in on failure. For higher mediation
+> quality you can either raise the default to Sonnet, or (future) run a dedicated
+> Sonnet "mediator" agent via `openclaw agents add`.
+
+The Anthropic API key is stored as auth profile `anthropic:manual` in
+`~/.openclaw/agents/main/agent/openclaw-agent.sqlite`.
 
 ```bash
-openclaw models status            # shows default model + auth profiles
-openclaw models list --all | grep claude   # available Claude model ids
+openclaw models status                       # default + fallbacks + auth
+openclaw models set anthropic/claude-haiku-4-5     # change default
+openclaw models fallbacks list               # show fallbacks
+systemctl --user restart openclaw-gateway
 ```
 
-Change the default model (e.g. to Opus for higher quality, costs more):
-
+Admin-only: enable Opus when explicitly needed:
 ```bash
-openclaw models set anthropic/claude-opus-4-8
-systemctl --user restart openclaw-gateway
+openclaw models set anthropic/claude-opus-4-8 && systemctl --user restart openclaw-gateway
 ```
 
 Re-paste / rotate the Anthropic API key:
@@ -235,19 +248,34 @@ nicely (tone tailored to the recipient, same language, meaning preserved) and
 
 The owner can ask the assistant to relay messages back-and-forth with another
 person, rewriting each side to be **nice, light, short, friendly** (same language,
-original meaning preserved). The assistant sits between them and:
+original meaning preserved). Relayed messages are shown as attributed quotes
+(`💬 *מדני:* > ...`). Three modes (set per relay, tracked in `RELAYS.md`):
 
-1. When the owner starts a relay ("תתווך ביני לבין דני"), the assistant finds the
-   contact and records it in `RELAYS.md` as active.
-2. Each message from the partner is rewritten and forwarded to the owner (prefixed
-   with who it's from).
-3. Each message from the owner (to that partner) is rewritten and forwarded.
-4. When the owner says "stop relay", it's marked ended in `RELAYS.md`.
+1. **General** (default) — efficiency: coordinate meetings, settle logistics, finish tasks.
+2. **Couples / relationship** — convey feeling and need, soften blame, never take sides.
+3. **Work / team** — buffer manager↔employees: answer simple questions, forward only decisions.
 
-- Outsiders who are NOT in an active relay get brief replies, no relay behavior.
-- The owner always sees what was sent on their behalf (for transparency and
-  correction if needed).
-- Defined in `AGENTS.md` under `## Feature: Conversation Mediator`.
+Defined in `AGENTS.md` under `## Feature: Conversation Mediator` and
+`## Conversation Mediator — modes & formatting`.
+
+## Identity, admin & privacy
+
+`IDENTITY.md` is the authority file for who can do what:
+
+- **Admin:** Miron (`+972526269826`) is the ONLY person who can change settings,
+  models, features, or access private memory. The bot refuses admin/config
+  requests from anyone else (identity = the WhatsApp sender number, not a text claim).
+- **Privacy:** every user's chat is confidential; the bot never shares one user's
+  messages with another, except what a user explicitly relays via the mediator.
+  Sessions are isolated per sender by OpenClaw. (Note: the server admin has root
+  access to stored sessions/logs — confidentiality is between end users.)
+- **Tone:** respectful, can be light/funny, always bridges people positively.
+
+## Calendar access (planned)
+
+Read-only Google Calendar for the owner — requires Google OAuth with the
+`calendar.readonly` scope (read-only enforced at the token level). Setup is
+interactive (owner authorizes in a browser). Not yet wired up.
 
 ## Maintenance notes
 
