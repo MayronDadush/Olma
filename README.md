@@ -260,16 +260,34 @@ Defined in `AGENTS.md` under `## Feature: Conversation Mediator` and
 
 ## Identity, admin & privacy
 
+The bot's name is **Olma** (אולמה). It presents itself as a general assistant
+for everyone — it does NOT reveal who owns it or act as anyone's named personal
+assistant in conversations with outsiders.
+
 `IDENTITY.md` is the authority file for who can do what:
 
-- **Admin:** Miron (`+972526269826`) is the ONLY person who can change settings,
-  models, features, or access private memory. The bot refuses admin/config
-  requests from anyone else (identity = the WhatsApp sender number, not a text claim).
+- **Admin:** only the registered admin number can change settings, models,
+  features, or access private memory. The bot refuses admin/config requests from
+  anyone else (identity = the WhatsApp sender number, not a text claim).
+  Never expose the admin number to other users.
 - **Privacy:** every user's chat is confidential; the bot never shares one user's
   messages with another, except what a user explicitly relays via the mediator.
   Sessions are isolated per sender by OpenClaw. (Note: the server admin has root
   access to stored sessions/logs — confidentiality is between end users.)
 - **Tone:** respectful, can be light/funny, always bridges people positively.
+
+## Contact memory & consent
+
+`CONTACTS.md` is the bot's contact book — maintained automatically.
+
+- **Name collection:** on first contact with a new user, Olma asks their name
+  and saves it. It greets known contacts by name.
+- **Contact resolution:** when relaying/sending by name, Olma looks up
+  `CONTACTS.md`. If multiple contacts share a first name it asks for last name;
+  if still ambiguous it asks for the phone number.
+- **Relay consent:** before forwarding any message to someone for the very first
+  time, Olma sends them an opt-in message and waits for explicit consent before
+  relaying anything. Declined = relay aborted, sender notified.
 
 ## Calendar access (planned)
 
