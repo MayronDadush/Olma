@@ -249,3 +249,120 @@ test('quota override and issue transitions work through forms', async () => {
   const i = await db.pool.query(`SELECT status FROM issues WHERE id = $1`, [issue.data.issue.id]);
   assert.equal(i.rows[0].status, 'fixed');
 });
+
+test('user deletion: two steps, shows the blast radius, then removes everything', async () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const os = require('node:os');
+  const tasks = require('../src/domain/tasks');
+
+  // a throwaway gateway config + workspace, so the test never touches the real ones
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-del-'));
+  const cfgPath = path.join(tmp, 'openclaw.json');
+  const workspace = path.join(tmp, 'ws-doomed');
+  fs.mkdirSync(workspace);
+  fs.writeFileSync(path.join(workspace, '.olma-identity'), 'olma_tok_' + '7'.repeat(32));
+
+  const doomed = await makeUser(db.pool, '+972619000009', { firstName: 'Doomed' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-doomed', workspace_path = $2 WHERE id = $1`, [doomed.id, workspace]);
+  await withTx(db.pool, (c) => tasks.addTask(c, doomed.id, { title: 'משימה שתימחק' }));
+  fs.writeFileSync(cfgPath, JSON.stringify({
+    agents: { list: [{ id: 'intake' }, { id: 'u-doomed' }] },
+    bindings: [
+      { agentId: 'u-doomed', match: { peer: { kind: 'direct', id: '+972619000009' } } },
+      { agentId: 'intake', match: { peer: { kind: 'direct', id: '*' } } },
+    ],
+    channels: { whatsapp: { accounts: { default: { allowFrom: ['+972619000009', '+972611000001'] } } } },
+  }, null, 2));
+
+  const srv = createDashboard({ pool: db.pool, adminUser: 'admin', adminPass: 'test-password-123', configPath: cfgPath });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const b2 = `http://127.0.0.1:${srv.address().port}`;
+
+  // step 1: the plain page offers deletion but does not do it
+  const plain = await (await fetch(b2 + `/user?id=${doomed.id}`, { headers: { Authorization: AUTH } })).text();
+  assert.match(plain, /מחיקת משתמש/);
+  assert.ok(!plain.includes('כן, מחק לצמיתות'), 'no destructive button before confirming');
+
+  // step 2: the confirm view states exactly what will be lost
+  const confirmRes = await fetch(b2 + `/user?id=${doomed.id}&confirm=delete`, { headers: { Authorization: AUTH } });
+  const confirm = await confirmRes.text();
+  assert.match(confirm, /כן, מחק לצמיתות/);
+  assert.match(confirm, /1 משימות/, 'blast radius counted, not guessed');
+  const csrf = /csrf=([0-9a-f]+)/.exec(confirmRes.headers.get('set-cookie'))[1];
+
+  // a forged POST is still refused — deletion is not exempt from CSRF
+  const forged = await fetch(b2 + '/users/delete', {
+    method: 'POST', headers: { Authorization: AUTH, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `phone=${encodeURIComponent('+972619000009')}&csrf=nope`,
+  });
+  assert.equal(forged.status, 403);
+  assert.equal((await db.pool.query(`SELECT count(*)::int n FROM users WHERE id = $1`, [doomed.id])).rows[0].n, 1);
+
+  const done = await fetch(b2 + '/users/delete', {
+    method: 'POST', redirect: 'manual',
+    headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `phone=${encodeURIComponent('+972619000009')}&csrf=${csrf}`,
+  });
+  assert.equal(done.status, 303);
+
+  assert.equal((await db.pool.query(`SELECT count(*)::int n FROM users WHERE id = $1`, [doomed.id])).rows[0].n, 0);
+  assert.equal((await db.pool.query(`SELECT count(*)::int n FROM tasks WHERE owner_id = $1`, [doomed.id])).rows[0].n, 0);
+  assert.equal(fs.existsSync(workspace), false, 'workspace directory removed');
+
+  const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  assert.deepEqual(cfg.agents.list.map((a) => a.id), ['intake']);
+  assert.equal(cfg.bindings.length, 1, 'their binding is gone');
+  assert.equal(cfg.bindings[0].match.peer.id, '*', 'the intake catch-all survives — they can re-onboard');
+  assert.deepEqual(cfg.channels.whatsapp.accounts.default.allowFrom, ['+972611000001'],
+    'only their number was removed from allowFrom');
+
+  srv.close();
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+test('conversation view: shows the last turns, marks voice notes, hides tool traffic', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const os = require('node:os');
+  const sessions = require('../src/channels/sessions');
+
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-conv-'));
+  const dir = path.join(base, 'agents', 'u-conv', 'sessions');
+  fs.mkdirSync(dir, { recursive: true });
+  const sessionFile = path.join(dir, 'live.jsonl');
+  fs.writeFileSync(path.join(dir, 'sessions.json'), JSON.stringify({
+    'agent:u-conv:whatsapp:direct:+972600000001': { sessionId: 'old', sessionFile: path.join(dir, 'old.jsonl'), lastInteractionAt: 1000 },
+    'agent:u-conv:whatsapp:direct:+972600000002': { sessionId: 'live', sessionFile, lastInteractionAt: 9000 },
+  }));
+  fs.writeFileSync(path.join(dir, 'old.jsonl'), JSON.stringify(
+    { type: 'message', timestamp: '2026-08-16T10:00:00Z', message: { role: 'user', content: 'שיחה ישנה' } }) + '\n');
+
+  const lines = [
+    { type: 'message', timestamp: '2026-08-16T12:00:00Z', message: { role: 'user', content: 'היי' } },
+    // reasoning-only + tool traffic: must not surface (tool results carry tokens)
+    { type: 'message', timestamp: '2026-08-16T12:00:01Z', message: { role: 'assistant', content: [{ type: 'thinking', thinking: 'סוד' }] } },
+    { type: 'toolResult', timestamp: '2026-08-16T12:00:02Z', content: 'olma_tok_' + 'a'.repeat(32) },
+    { type: 'message', timestamp: '2026-08-16T12:00:03Z', message: { role: 'assistant', content: [{ type: 'text', text: 'שלום מירון' }] } },
+    { type: 'message', timestamp: '2026-08-16T12:00:04Z', message: { role: 'user', content: 'מה משימות חידרופות שלי?', MediaType: 'audio/ogg; codecs=opus' } },
+    { type: 'message', timestamp: '2026-08-16T12:00:05Z', message: { role: 'user', content: "This is a brand-new user's first real conversation with you. Send the following…" } },
+  ];
+  fs.writeFileSync(sessionFile, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+
+  const msgs = sessions.readRecentMessages('u-conv', 10, base);
+  assert.equal(msgs.length, 4, 'reasoning-only turns and tool results are excluded');
+  assert.ok(!JSON.stringify(msgs).includes('olma_tok_'), 'identity tokens never reach the dashboard');
+  assert.ok(!JSON.stringify(msgs).includes('סוד'), 'model reasoning is not shown');
+  assert.deepEqual(msgs.map((m) => m.role), ['user', 'assistant', 'user', 'user']);
+  assert.equal(msgs[0].text, 'היי', 'oldest first');
+  assert.equal(msgs[2].isVoice, true, 'voice note flagged');
+  assert.equal(msgs[2].text, 'מה משימות חידרופות שלי?', 'shows the transcript Olma actually received');
+  assert.match(msgs[3].text, /הודעה יזומה/, 'system instruction is labelled, not dumped');
+
+  // picks the most recently active session, not just any file
+  assert.ok(!msgs.some((m) => m.text === 'שיחה ישנה'));
+  // an agent with no sessions at all is empty, never an exception
+  assert.deepEqual(sessions.readRecentMessages('u-nope', 10, base), []);
+  fs.rmSync(base, { recursive: true, force: true });
+});

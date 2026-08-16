@@ -77,4 +77,68 @@ function indexPath(agentId, base = HOME()) {
   return path.join(base, 'agents', agentId, 'sessions', 'sessions.json');
 }
 
-module.exports = { listSessions, listSessionsForAgent, indexPath, parseKey };
+// ---- reading an actual conversation ----------------------------------------
+//
+// The last N turns of what a person and Olma actually said, for the dashboard's
+// "is this working?" view. Read from the gateway's own transcript rather than
+// mirrored into our DB on write: a copy can silently drift from what the user
+// really saw, and the whole point of this view is to answer "what actually
+// happened" — a second, possibly-wrong record would defeat it.
+//
+// Only the visible message text is returned. Model reasoning, tool calls and
+// their results are deliberately dropped: they are the noisy majority of the
+// file, and tool results routinely contain the identity token.
+function textOf(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content.filter((p) => p && p.type === 'text' && p.text).map((p) => p.text).join(' ');
+}
+
+// The gateway wraps proactive turns in a long instruction block. Showing it
+// verbatim would bury the conversation in prompt text, so it is labelled.
+function isSystemInstruction(text) {
+  return /^This is a brand-new user|^You are being asked to|^Send the following message EXACTLY/.test(text.trim());
+}
+
+function readRecentMessages(agentId, limit = 10, base = HOME()) {
+  const dir = path.join(base, 'agents', agentId, 'sessions');
+  let sessionFile;
+  try {
+    const idx = JSON.parse(fs.readFileSync(path.join(dir, 'sessions.json'), 'utf8'));
+    // most recently active session for this agent — the live conversation
+    const best = Object.values(idx)
+      .filter((v) => v && v.sessionFile)
+      .sort((a, b) => Number(b.lastInteractionAt || b.updatedAt || 0) - Number(a.lastInteractionAt || a.updatedAt || 0))[0];
+    sessionFile = best && best.sessionFile;
+  } catch { return []; }
+  if (!sessionFile) return [];
+
+  let lines;
+  try { lines = fs.readFileSync(sessionFile, 'utf8').trim().split('\n'); } catch { return []; }
+
+  const out = [];
+  // Walk backwards — a long conversation's transcript is mostly tool traffic,
+  // and we only ever want the tail.
+  for (let i = lines.length - 1; i >= 0 && out.length < limit; i--) {
+    let o;
+    try { o = JSON.parse(lines[i]); } catch { continue; }
+    if (o.type !== 'message' || !o.message) continue;
+    const role = o.message.role;
+    if (role !== 'user' && role !== 'assistant') continue;
+    const text = textOf(o.message.content).trim();
+    if (!text) continue; // pure tool-call or reasoning turn
+    out.push({
+      role,
+      text: isSystemInstruction(text) ? '(הודעה יזומה של המערכת)' : text,
+      at: o.timestamp || null,
+      // a voice note carries its media path; the text is whatever the
+      // transcriber made of it, which is exactly what we want to eyeball
+      isVoice: Boolean(o.message.MediaType && /audio/.test(o.message.MediaType)),
+    });
+  }
+  return out.reverse();
+}
+
+module.exports = {
+  listSessions, listSessionsForAgent, indexPath, parseKey, readRecentMessages,
+};

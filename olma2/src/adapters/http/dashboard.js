@@ -12,6 +12,8 @@ const flagsDomain = require('../../domain/flags');
 const issuesDomain = require('../../domain/issues');
 const { withTx } = require('../../db/pool');
 const { assessJobs, isStale } = require('../../jobs/expectations');
+const { deprovisionUser, previewDeletion } = require('../../intake/deprovision');
+const sessionIndex = require('../../channels/sessions');
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -286,7 +288,64 @@ async function renderWaitlist(client) {
 
 // Per-user drill-down: their tasks (projects with subtasks indented),
 // reminders, and what Olma has learned — the "is it actually working?" view.
-async function renderUserPage(client, userId) {
+// The last few turns as the person actually saw them — the fastest way to
+// answer "did that land?" without SSH. Voice notes show the transcript, which
+// is the thing most worth eyeballing: a garbled transcript looks exactly like
+// "Olma ignored me" from the user's side.
+function renderConversation(u) {
+  if (!u.agent_id) return '';
+  let msgs = [];
+  let error = null;
+  try { msgs = sessionIndex.readRecentMessages(u.agent_id, 10); } catch (e) { error = e.message; }
+  const body = error
+    ? `<p class="dim">לא הצלחתי לקרוא את השיחה: ${esc(error)}</p>`
+    : !msgs.length
+      ? '<p class="dim">אין עדיין שיחה.</p>'
+      : `<div class="chat">${msgs.map((m) => `
+          <div class="msg ${m.role === 'user' ? 'them' : 'olma'}">
+            <div class="who">${m.role === 'user' ? esc([u.first_name, u.last_name].filter(Boolean).join(' ') || u.phone) : 'אולמה'}
+              ${m.isVoice ? '<span class="pill">🎤 תמלול</span>' : ''}
+              <span class="dim small">${m.at ? String(m.at).slice(11, 16) : ''}</span></div>
+            <div class="txt">${esc(m.text).replace(/\n/g, '<br>')}</div>
+          </div>`).join('')}</div>`;
+  return `<section><h3>10 ההודעות האחרונות</h3>
+    <p class="hint">נקרא ישירות מהשיחה החיה — לא עותק. הודעות קוליות מסומנות 🎤 ומוצג התמלול שאולמה קיבלה בפועל.</p>
+    ${body}</section>`;
+}
+
+// Deleting an account is irreversible and cascades widely, so it is two steps:
+// the first click only reveals exactly what would be destroyed, and the second
+// button carries the phone number so a stale tab can never delete the wrong
+// person after the row order shifts.
+async function renderDeletePanel(client, u, confirming, csrf) {
+  const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.phone;
+  if (!confirming) {
+    return `<section><h3>מחיקת משתמש</h3>
+      <p class="hint">מוחק את החשבון לגמרי: משימות, קשרים, זיכרון והסוכן האישי.
+         אחרי המחיקה, אם ${esc(name)} ישלח הודעה לאולמה הוא יתחיל תהליך הרשמה מאפס.</p>
+      <a class="btn-danger" href="/user?id=${u.id}&confirm=delete">מחק את ${esc(name)}…</a>
+    </section>`;
+  }
+  const preview = await previewDeletion(client, u.phone);
+  const c = preview.ok ? preview.data.counts : {};
+  return `<section class="danger"><h3>למחוק את ${esc(name)}?</h3>
+    <p class="hint">הפעולה לא הפיכה. יימחקו:</p>
+    <ul class="dim">
+      <li>${c.tasks ?? 0} משימות</li>
+      <li>${c.connections ?? 0} חברויות (ומה שתלוי בהן אצל הצד השני)</li>
+      <li>${c.shares ?? 0} שיתופי משימות · ${c.meetings ?? 0} השתתפויות בפגישות</li>
+      <li>${c.outbox ?? 0} הודעות בתור, והזיכרון שאולמה צברה עליו</li>
+    </ul>
+    <form method="POST" action="/users/delete" class="inline">
+      <input type="hidden" name="csrf" value="${csrf}">
+      <input type="hidden" name="phone" value="${esc(u.phone)}">
+      <button class="danger">כן, מחק לצמיתות</button>
+    </form>
+    <a class="btn-quiet" href="/user?id=${u.id}">ביטול</a>
+  </section>`;
+}
+
+async function renderUserPage(client, userId, { confirmDelete = false, csrf = '' } = {}) {
   const { rows: users } = await client.query(
     `SELECT u.*, e.plan FROM users u LEFT JOIN entitlements e ON e.user_id = u.id WHERE u.id = $1`, [userId]);
   const u = users[0];
@@ -321,6 +380,7 @@ async function renderUserPage(client, userId) {
         <div class="stat"><div class="num">${prefs.length}</div><div class="lbl">דברים שאולמה למדה</div></div>
       </div>
     </section>
+    ${renderConversation(u)}
     <section><h3>משימות פתוחות</h3><p class="hint">כולל פרויקטים ותתי-משימות (↳), תזכורות ממתינות מסומנות ⏰.</p>
       ${open.length ? `<table><tr><th>משימה</th><th>יעד</th><th>תזכורות</th><th>נוצרה</th></tr>${open.map(taskRow).join('')}</table>` : '<p class="dim">אין משימות פתוחות.</p>'}
     </section>
@@ -331,7 +391,8 @@ async function renderUserPage(client, userId) {
       ${prefs.length ? `<table><tr><th>נושא</th><th>מה נשמר</th><th>מתי</th></tr>
         ${prefs.map((p) => `<tr><td class="mono small">${esc(p.key)}</td><td>${esc(p.value)}</td><td class="dim small nowrap">${ago(p.learned_at)}</td></tr>`).join('')}</table>`
       : '<p class="dim">עדיין כלום — זה מתמלא ככל שהם מתכתבים.</p>'}
-    </section>`;
+    </section>
+    ${await renderDeletePanel(client, u, confirmDelete, csrf)}`;
 }
 
 async function renderAudit(client) {
@@ -409,12 +470,29 @@ const STYLE = `<style>
   button{cursor:pointer;font-size:12.5px;padding:5px 12px;background:var(--accent);
          color:var(--bg);border:0;border-radius:6px;font-weight:600;font-family:inherit}
   button:hover{filter:brightness(1.1)}
+  button.danger{background:var(--bad);color:#fff}
+  section.danger{border-color:var(--bad)}
+  section.danger ul{margin:6px 0 14px;padding-inline-start:20px;font-size:13px}
+  .btn-danger,.btn-quiet{display:inline-block;font-size:12.5px;padding:6px 12px;
+    border-radius:6px;text-decoration:none;font-weight:600}
+  .btn-danger{color:var(--bad);border:1px solid var(--bad)}
+  .btn-danger:hover{background:var(--bad-dim)}
+  .btn-quiet{color:var(--muted);margin-inline-start:8px}
+  .btn-quiet:hover{color:var(--text)}
+  .chat{display:flex;flex-direction:column;gap:8px}
+  .msg{max-width:78%;padding:8px 11px;border-radius:10px;font-size:13.5px;line-height:1.5}
+  .msg .who{font-size:11px;color:var(--muted);margin-bottom:3px;display:flex;gap:6px;align-items:center}
+  .msg.them{align-self:flex-start;background:var(--surface-2)}
+  .msg.olma{align-self:flex-end;background:var(--accent-dim)}
+  .msg .txt{white-space:pre-wrap;overflow-wrap:anywhere}
   .help{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
         border-radius:50%;background:var(--surface-2);color:var(--muted);font-size:10px;cursor:help}
   @media(max-width:640px){main,header{padding-inline:16px} .cols{gap:12px}}
 </style>`;
 
-function createDashboard({ pool, adminUser, adminPass }) {
+// configPath is injectable so tests can exercise deletion against a temp
+// openclaw.json instead of the live gateway's.
+function createDashboard({ pool, adminUser, adminPass, configPath }) {
   const server = http.createServer(async (req, res) => {
     try {
       // Unauthenticated liveness/readiness probe — no data, just whether the
@@ -460,6 +538,13 @@ function createDashboard({ pool, adminUser, adminPass }) {
           } else if (url.pathname === '/users/quota') {
             const override = body.override === '' ? null : parseInt(body.override, 10);
             await client.query(`UPDATE users SET quota_override_daily = $2 WHERE id = $1`, [Number(body.id), override]);
+          } else if (url.pathname === '/users/delete') {
+            // Keyed by phone, not row id: the confirmation page the operator
+            // read was about a specific person, and the phone is what the
+            // gateway config and workspace are keyed on anyway.
+            if (/^\+\d{7,15}$/.test(body.phone || '')) {
+              await deprovisionUser(client, body.phone, { configPath });
+            }
           }
         });
         res.writeHead(303, { Location: '/' });
@@ -475,7 +560,9 @@ function createDashboard({ pool, adminUser, adminPass }) {
         const hb = await client.query(`SELECT job_name, last_run_at, note FROM job_heartbeats`);
         healthy = assessJobs(hb.rows).ok;
         if (url.pathname === '/user') {
-          const page = await renderUserPage(client, parseInt(url.searchParams.get('id'), 10) || 0);
+          const page = await renderUserPage(client, parseInt(url.searchParams.get('id'), 10) || 0, {
+            confirmDelete: url.searchParams.get('confirm') === 'delete', csrf,
+          });
           sectionsHtml = page || '<section><h3>משתמש לא נמצא</h3><p class="hint"><a href="/">חזרה</a></p></section>';
         } else {
           for (const s of SECTIONS) {

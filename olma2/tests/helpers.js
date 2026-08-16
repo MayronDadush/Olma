@@ -32,7 +32,15 @@ async function freshDb() {
     await pool.end();
     const admin2 = new Client({ connectionString: ADMIN_URL });
     await admin2.connect();
-    await admin2.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+    try {
+      await admin2.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+    } catch (e) {
+      // WITH (FORCE) has to terminate any backend still attached, which needs
+      // pg_signal_backend. Failing to clean up a throwaway database must never
+      // turn a passing suite red — a leftover olma2_t_* database is inert, and
+      // the next run's CREATE uses a fresh random name anyway.
+      console.warn(`[test] could not drop ${name}: ${e.message}`);
+    }
     await admin2.end();
   };
   return { pool, teardown, url };

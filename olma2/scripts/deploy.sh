@@ -19,5 +19,8 @@ ssh -i "$HOME/.ssh/id_ed25519" "$SERVER" "
   set -a; [ -f .env ] && . ./.env; set +a
   npm install --no-audit --no-fund --loglevel=error
   node src/db/migrate.js
-  node --test 'tests/*.test.js'
+  # The droplet has ONE core. Node's default is unlimited file concurrency,
+  # which on this box means 11 test processes plus 11 Postgres databases
+  # thrashing each other into timeouts that look like real failures.
+  node --test --test-concurrency=2 'tests/*.test.js'
 "
