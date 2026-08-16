@@ -1,0 +1,15 @@
+{
+  "name": "olma2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Olma 2.0 — service layer, domain model, brokerd daemon, dashboards",
+  "main": "src/index.js",
+  "scripts": {
+    "migrate": "node src/db/migrate.js",
+    "test": "node --test 'tests/*.test.js'"
+  },
+  "engines": { "node": ">=24" },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

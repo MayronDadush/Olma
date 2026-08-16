@@ -1,0 +1,29 @@
+'use strict';
+// Feature flags + admin-tunable numbers, changeable from the dashboard without
+// a deploy. Quota limits live here (with defaults) precisely because the exact
+// numbers were deliberately left open — flipping them must not need code.
+const { ok } = require('./results');
+
+const DEFAULTS = {
+  registration_open: true,
+  quota_daily_free: 50,      // generous placeholders; admin-tunable, not final
+  quota_hourly_paid: 50,
+  intake_hourly_cap: 30,     // intake circuit breaker: max new-stranger sessions/hour
+};
+
+async function getFlag(client, key) {
+  const { rows } = await client.query(`SELECT value FROM feature_flags WHERE key = $1`, [key]);
+  if (rows[0]) return rows[0].value;
+  return key in DEFAULTS ? DEFAULTS[key] : null;
+}
+
+async function setFlag(client, key, value) {
+  await client.query(
+    `INSERT INTO feature_flags (key, value, updated_at) VALUES ($1, $2, now())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [key, JSON.stringify(value)]
+  );
+  return ok({ key, value });
+}
+
+module.exports = { getFlag, setFlag, DEFAULTS };
