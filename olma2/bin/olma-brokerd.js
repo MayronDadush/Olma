@@ -10,6 +10,7 @@ const checkin = require('../src/jobs/checkin');
 const sweeps = require('../src/jobs/sweeps');
 const intake = require('../src/jobs/intake');
 const configGuard = require('../src/jobs/config-guard');
+const unanswered = require('../src/jobs/unanswered');
 const { DEFAULT_PATH: OPENCLAW_CONFIG } = require('../src/intake/openclaw-config');
 
 const SOCK = process.env.OLMA_SOCK || '/opt/olma2/run/brokerd.sock';
@@ -72,9 +73,15 @@ async function main() {
       digests: await sweeps.sweepDigests(c),
       unblocks: await sweeps.sweepUnblocks(c),
     }))), 60_000));
-    // checkin ladder — hourly
+    // checkin ladder — every 5 minutes, because day one has a 15-minute step
+    // and an hourly tick would land it anywhere up to an hour late. Cheap: one
+    // query plus a filter, and idempotency keys make re-runs no-ops.
     timers.push(setInterval(() => beat('checkin_ladder', () =>
-      withTx(pool, (c) => checkin.run(c))), 3600_000));
+      withTx(pool, (c) => checkin.run(c))), 300_000));
+
+    // repair pass for messages the gateway dropped — see jobs/unanswered.js
+    timers.push(setInterval(() => beat('unanswered_sweep', () =>
+      withTx(pool, (c) => unanswered.sweepUnanswered(c))), 60_000));
 
     // intake pipeline — inert until an 'intake' agent exists in openclaw.json.
     // 5s, and it costs a small file read: discovery reads the gateway's own

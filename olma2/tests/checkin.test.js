@@ -110,3 +110,47 @@ test('checkin cadence: fast for new users, slower once settled, backs off when i
   assert.equal(h(requiredGapMs(0, 2)), 24 * 7, 'two misses → weekly');
   assert.equal(h(requiredGapMs(30, 2)), 24 * 7, 'weekly regardless of age');
 });
+
+test('day one ladder: 15m / 2h / 5h, and steps expire instead of piling up', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const { onboardingStepDue } = checkin;
+  const MIN = 60_000, H = 3600_000;
+
+  assert.equal(onboardingStepDue(5 * MIN, 0), null, 'nothing in the first minutes');
+  assert.equal(onboardingStepDue(16 * MIN, 0).slot, '15m');
+  assert.equal(onboardingStepDue(2.5 * H, 0).slot, '2h');
+  assert.equal(onboardingStepDue(6 * H, 0).slot, '5h');
+  // only the latest due step, so a gap in the sweep never replays old ones
+  assert.equal(onboardingStepDue(23 * H, 0).slot, '5h');
+  assert.equal(onboardingStepDue(25 * H, 0), null, 'day one is over');
+  // present, not deaf: someone who ignored the first two is left alone
+  assert.equal(onboardingStepDue(6 * H, 2), null);
+  assert.equal(onboardingStepDue(6 * H, 1).slot, '5h');
+});
+
+test('day one ladder enqueues one step at a time, each with its own expiry', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const fresh = await makeUser(db.pool, '+972615000042', { firstName: 'Chen' });
+  const t0 = Date.now() - 20 * 60_000; // onboarded 20 minutes ago
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = to_timestamp($2/1000.0) WHERE id = $1`,
+    [fresh.id, t0]);
+
+  const out = await withTx(db.pool, (c) => checkin.run(c, Date.now()));
+  const mine = out.filter((r) => r.userId === fresh.id);
+  assert.equal(mine.length, 1);
+  assert.equal(mine[0].rung, 'onboarding_15m');
+
+  const { rows } = await db.pool.query(
+    `SELECT idempotency_key, expires_at, urgency FROM outbox WHERE user_id = $1`, [fresh.id]);
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].idempotency_key, /^onboarding:\d+:15m$/);
+  // expires when the 2h step comes due, so an overnight signup wakes to ONE
+  // message rather than the whole ladder at once
+  assert.ok(new Date(rows[0].expires_at).getTime() - t0 <= 2 * 3600_000 + 1000);
+
+  // re-running the sweep does not enqueue the same step twice
+  await withTx(db.pool, (c) => checkin.run(c, Date.now()));
+  const again = await db.pool.query(`SELECT count(*)::int n FROM outbox WHERE user_id = $1`, [fresh.id]);
+  assert.equal(again.rows[0].n, 1);
+});

@@ -151,3 +151,49 @@ test('welcome replays what they wrote to the silent greeter instead of ignoring 
   assert.match(s, /ANSWER IT PROPERLY/, 'substantive first messages get handled, not re-requested');
   assert.match(s, /Never ask them to repeat/);
 });
+
+test('unanswered repair: only for messages provably never answered', async () => {
+  const unanswered = require('../src/jobs/unanswered');
+  const now = Date.now();
+  const ago = (min) => new Date(now - min * 60_000).toISOString();
+  const u = await makeUser(db.pool, '+972617000021', { firstName: 'Tal' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = now() - interval '2 days' WHERE id = $1`, [u.id]);
+
+  const sweep = (msgs) => withTx(db.pool, (c) =>
+    unanswered.sweepUnanswered(c, { readMessages: () => msgs, now }));
+
+  // too fresh — the gateway's own recovery (75s) gets first chance
+  assert.deepEqual((await sweep([{ role: 'user', text: 'היי', at: ago(1) }])).repaired, []);
+  // answered — the transcript ends with Olma
+  assert.deepEqual((await sweep([
+    { role: 'user', text: 'היי', at: ago(10) },
+    { role: 'assistant', text: 'שלום', at: ago(9) },
+  ])).repaired, []);
+  // stale — a check-in is the right tool for this, not a fake live reply
+  assert.deepEqual((await sweep([{ role: 'user', text: 'היי', at: ago(90) }])).repaired, []);
+
+  // genuinely dropped
+  const hit = await sweep([
+    { role: 'assistant', text: 'שלום', at: ago(12) },
+    { role: 'user', text: 'יש לי משימה', at: ago(8) },
+  ]);
+  assert.deepEqual(hit.repaired, [u.id]);
+
+  const { rows } = await db.pool.query(
+    `SELECT idempotency_key, urgency, expires_at, payload FROM outbox
+     WHERE user_id = $1 AND payload->>'rung' = 'unanswered_repair'`, [u.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].urgency, 'urgent');
+  assert.ok(rows[0].expires_at, 'expires rather than arriving hours late');
+  // the agent decides — we detect a candidate, it has the conversation
+  assert.match(rows[0].payload.checkinInstruction, /NO_REPLY/);
+  assert.match(rows[0].payload.checkinInstruction, /Do not apologise/);
+
+  // same dropped message seen again → no second nudge
+  const repeat = await sweep([
+    { role: 'assistant', text: 'שלום', at: ago(12) },
+    { role: 'user', text: 'יש לי משימה', at: ago(8) },
+  ]);
+  assert.deepEqual(repeat.repaired, []);
+});

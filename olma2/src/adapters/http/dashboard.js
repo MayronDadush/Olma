@@ -81,6 +81,7 @@ const JOB_LABELS = {
   intake_template_sync: 'עדכון הודעת קליטה',
   config_guard: 'שומר אבטחה',
   checkin_ladder: 'פנייה יזומה למשתמשים',
+  unanswered_sweep: 'תיקון הודעות שלא נענו',
   usage_sweep: 'חישוב עלויות',
   metrics_sweep: 'חישוב סטטיסטיקות',
   retention_sweep: 'ניקוי נתונים ישנים',

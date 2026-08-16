@@ -13,7 +13,45 @@ const meetings = require('../domain/meetings');
 const { enqueue } = require('../outbox/enqueue');
 
 const HOUR_MS = 3600_000;
+const MIN_MS = 60_000;
 const WEEK_MS = 7 * 24 * HOUR_MS;
+
+// ---- day one ----------------------------------------------------------------
+//
+// The first day is not a cadence problem, it is a first-impression problem: a
+// new user has to feel a product that is thinking about them, not a tool that
+// waits to be used. So day one is an explicit ladder rather than an idle timer.
+//
+// `expiresAt` is what keeps it from turning into a pile-up. Every step expires
+// when the next one comes due, so someone who signs up at 23:00 — whose steps
+// are all held by their quiet hours — wakes up to ONE message, the latest step
+// still live, instead of three at once.
+const ONBOARDING_STEPS = [
+  {
+    slot: '15m', afterMs: 15 * MIN_MS, expiresAfterMs: 2 * HOUR_MS,
+    instruction: 'They joined ~15 minutes ago. Do not ask them for anything yet — SHOW them something. Look at what they already gave you and do one concretely useful thing with it: offer a reminder on a task that clearly has a time, point out something due soon, or group what they dumped. One short message, one offer, easy to say yes to. If they gave you nothing at all, ask only for their name — nothing else.',
+  },
+  {
+    slot: '2h', afterMs: 2 * HOUR_MS, expiresAfterMs: 5 * HOUR_MS,
+    instruction: 'They joined a couple of hours ago. Pick the single most useful thing you can still learn about them — how to reach them, when they want to be contacted, or who a person they mentioned is — and ask exactly ONE question about it. Warm, short, no list of questions.',
+  },
+  {
+    slot: '5h', afterMs: 5 * HOUR_MS, expiresAfterMs: 12 * HOUR_MS,
+    instruction: 'Their first day. Briefly reflect back what you are now holding for them (counts, not a recital of every item), and invite whatever else is on their mind — including as a voice note. Two lines, no pressure.',
+  },
+];
+
+// Which day-one step is due, if any. Steps 1 and 2 fire regardless — that is
+// the point of the ladder. Step 3 is skipped for someone who answered neither:
+// being present is good, being deaf is not.
+function onboardingStepDue(ageMs, misses) {
+  if (ageMs >= 24 * HOUR_MS) return null;
+  const due = ONBOARDING_STEPS.filter((s) => ageMs >= s.afterMs);
+  const step = due[due.length - 1];
+  if (!step) return null;
+  if (step.slot === '5h' && misses >= 2) return null;
+  return step;
+}
 
 // How long someone may go quiet before Olma reaches out, by age of account.
 // A new user has nothing invested yet and every unanswered day is a user who
@@ -53,8 +91,13 @@ async function eligibleUsers(client, now) {
   );
   return rows.filter((u) => {
     if (u.checkin_misses >= 4) return false; // gave up until they come back
-    const ageDays = (now - new Date(u.onboarded_at).getTime()) / (24 * HOUR_MS);
-    const gap = requiredGapMs(ageDays, u.checkin_misses);
+    const ageMs = now - new Date(u.onboarded_at).getTime();
+    // Day one runs on its own ladder, not on idleness: a new user who wrote
+    // ten minutes ago is exactly who we want to reach, and an idle gate would
+    // rule them out.
+    u.onboardingStep = onboardingStepDue(ageMs, u.checkin_misses);
+    if (u.onboardingStep) return true;
+    const gap = requiredGapMs(ageMs / (24 * HOUR_MS), u.checkin_misses);
     const idleFor = now - new Date(u.last_activity).getTime();
     if (idleFor < gap) return false;
     if (u.last_checkin_at && now - new Date(u.last_checkin_at).getTime() < gap) return false;
@@ -112,13 +155,24 @@ async function run(client, now = Date.now()) {
   const users = await eligibleUsers(client, now);
   const results = [];
   for (const u of users) {
-    const { rung, instruction } = await pickRung(client, u.id);
-    const day = new Date(now).toISOString().slice(0, 10);
+    // A day-one step outranks the ladder: on the first day the goal is to make
+    // the product feel present, not to react to a backlog.
+    const step = u.onboardingStep;
+    let rung, instruction, key, expiresAt = null;
+    if (step) {
+      rung = `onboarding_${step.slot}`;
+      instruction = step.instruction;
+      key = `onboarding:${u.id}:${step.slot}`;
+      expiresAt = new Date(new Date(u.onboarded_at).getTime() + step.expiresAfterMs).toISOString();
+    } else {
+      ({ rung, instruction } = await pickRung(client, u.id));
+      key = `checkin:${u.id}:${new Date(now).toISOString().slice(0, 10)}`;
+    }
     const res = await enqueue(client, {
       userId: u.id, kind: 'checkin',
       payload: { checkinInstruction: instruction, rung },
-      urgency: 'normal',
-      idempotencyKey: `checkin:${u.id}:${day}`,
+      urgency: 'normal', expiresAt,
+      idempotencyKey: key,
     });
     if (res.data.enqueued) {
       await client.query(
@@ -131,4 +185,7 @@ async function run(client, now = Date.now()) {
   return results;
 }
 
-module.exports = { run, eligibleUsers, pickRung, requiredGapMs, idleHoursFor };
+module.exports = {
+  run, eligibleUsers, pickRung, requiredGapMs, idleHoursFor,
+  onboardingStepDue, ONBOARDING_STEPS,
+};
