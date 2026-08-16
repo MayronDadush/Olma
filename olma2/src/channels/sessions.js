@@ -100,17 +100,26 @@ function isSystemInstruction(text) {
   return /^This is a brand-new user|^You are being asked to|^Send the following message EXACTLY/.test(text.trim());
 }
 
-function readRecentMessages(agentId, limit = 10, base = HOME()) {
+// peer === null → the agent's most recently active session (the dashboard's
+// "show me this person's conversation"). peer set → that specific peer's
+// session, which is how we recover what a stranger said to the shared intake
+// agent before they had an agent of their own.
+function sessionFileFor(agentId, base, peer) {
   const dir = path.join(base, 'agents', agentId, 'sessions');
-  let sessionFile;
-  try {
-    const idx = JSON.parse(fs.readFileSync(path.join(dir, 'sessions.json'), 'utf8'));
-    // most recently active session for this agent — the live conversation
-    const best = Object.values(idx)
-      .filter((v) => v && v.sessionFile)
-      .sort((a, b) => Number(b.lastInteractionAt || b.updatedAt || 0) - Number(a.lastInteractionAt || a.updatedAt || 0))[0];
-    sessionFile = best && best.sessionFile;
-  } catch { return []; }
+  let idx;
+  try { idx = JSON.parse(fs.readFileSync(path.join(dir, 'sessions.json'), 'utf8')); } catch { return null; }
+  const entries = Object.entries(idx).filter(([, v]) => v && v.sessionFile);
+  const matching = peer
+    ? entries.filter(([key]) => { const p = parseKey(key); return p && p.peer === peer; })
+    : entries;
+  const best = matching
+    .map(([, v]) => v)
+    .sort((a, b) => Number(b.lastInteractionAt || b.updatedAt || 0) - Number(a.lastInteractionAt || a.updatedAt || 0))[0];
+  return best ? best.sessionFile : null;
+}
+
+function readRecentMessages(agentId, limit = 10, base = HOME(), peer = null) {
+  const sessionFile = sessionFileFor(agentId, base, peer);
   if (!sessionFile) return [];
 
   let lines;
@@ -139,6 +148,17 @@ function readRecentMessages(agentId, limit = 10, base = HOME()) {
   return out.reverse();
 }
 
+// Everything a stranger said to the intake greeter, joined into one blob.
+// This is what makes the greeter's silence safe: nothing the person typed
+// while we were setting them up is lost — their own agent gets it and
+// answers it, so their first reply is a real reply, not a canned hello.
+function readPeerUserText(agentId, peer, { limit = 6, maxChars = 600, base = HOME() } = {}) {
+  const msgs = readRecentMessages(agentId, limit, base, peer);
+  const text = msgs.filter((m) => m.role === 'user').map((m) => m.text).join('\n').trim();
+  return text ? text.slice(0, maxChars) : null;
+}
+
 module.exports = {
-  listSessions, listSessionsForAgent, indexPath, parseKey, readRecentMessages,
+  listSessions, listSessionsForAgent, indexPath, parseKey,
+  readRecentMessages, readPeerUserText,
 };

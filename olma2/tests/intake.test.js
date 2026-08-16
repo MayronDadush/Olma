@@ -267,8 +267,11 @@ test('intake workspace sync: open/closed variants, idempotent writes', () => {
   const text = fs.readFileSync(path.join(base2, 'workspaces', 'intake', 'AGENTS.md'), 'utf8');
   // the greeter must NOT introduce Olma — their own agent does that seconds
   // later, and saying it twice is exactly the duplicate-intro users reported
-  assert.match(text, /do NOT say who you are/);
-  assert.match(text, /holding line/);
+  // While registration is open the greeter must stay completely silent: the
+  // user's own agent answers their first message (replayed to it) seconds
+  // later, and a second voice in the chat is what made messages get lost.
+  assert.match(text, /NO_REPLY/);
+  assert.ok(!/אולמה|personal assistant ready/.test(text), 'no self-introduction to duplicate');
   assert.equal(syncIntakeWorkspace(true, base2).changed, false); // no rewrite when unchanged
   const w2 = syncIntakeWorkspace(false, base2);
   assert.equal(w2.changed, true);

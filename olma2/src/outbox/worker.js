@@ -82,9 +82,14 @@ async function drainOnce(pool, deliver, now = new Date()) {
         }
         outcomes.delivered++;
       } else {
+        // 5s, 15s, 45s, 2m15s, 6m45s. The first retry has to be seconds, not
+        // minutes: the most common failure by far is a welcome racing the
+        // gateway's config reload — a transient measured in seconds. A flat
+        // 2-minute first backoff turned a 3-second setup into the 2-minute
+        // wait new users actually experienced.
         await client.query(
           `UPDATE outbox SET attempts = attempts + 1, last_error = $2,
-                  release_after = now() + (interval '2 minutes' * (attempts + 1))
+                  release_after = now() + (interval '5 seconds' * power(3, attempts))
            WHERE id = $1`,
           [row.id, String(result.error || 'delivery failed').slice(0, 500)]
         );

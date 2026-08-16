@@ -39,6 +39,12 @@ function defaultListIntakeSessions() {
     .map((s) => ({ phone: s.peer, key: s.key, ageMs: s.ageMs }));
 }
 
+// What this person typed to the (silent) greeter while we set them up.
+// Their own agent answers it, so the greeter never has to.
+function readIntakeFirstMessage(phone) {
+  try { return sessions.readPeerUserText(INTAKE_AGENT_ID, phone); } catch { return null; }
+}
+
 function intakeConfigured(configPath) {
   try {
     const cfg = occ.loadConfig(configPath);
@@ -147,4 +153,7 @@ async function sweepReopen(client) {
   return { notified };
 }
 
-module.exports = { sweepIntakeSessions, sweepReopen, intakeConfigured, INTAKE_AGENT_ID, defaultListIntakeSessions };
+module.exports = {
+  sweepIntakeSessions, sweepReopen, intakeConfigured, INTAKE_AGENT_ID,
+  defaultListIntakeSessions, readIntakeFirstMessage,
+};

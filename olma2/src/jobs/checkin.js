@@ -12,12 +12,37 @@
 const meetings = require('../domain/meetings');
 const { enqueue } = require('../outbox/enqueue');
 
-const IDLE_MS = 24 * 3600_000;
-const WEEK_MS = 7 * 24 * 3600_000;
+const HOUR_MS = 3600_000;
+const WEEK_MS = 7 * 24 * HOUR_MS;
+
+// How long someone may go quiet before Olma reaches out, by age of account.
+// A new user has nothing invested yet and every unanswered day is a user who
+// never comes back; someone three weeks in has a working habit and does not
+// need chasing. So the cadence starts fast and relaxes on its own.
+const AGE_TIERS = [
+  { withinDays: 3, idleHours: 5 },
+  { withinDays: 7, idleHours: 10 },
+  { withinDays: 21, idleHours: 18 },
+];
+const SETTLED_IDLE_HOURS = 24;
+
+function idleHoursFor(ageDays) {
+  const tier = AGE_TIERS.find((t) => ageDays < t.withinDays);
+  return tier ? tier.idleHours : SETTLED_IDLE_HOURS;
+}
+
+// ...and the tier is only the starting point: what they DO with the messages
+// decides the rest. Every unanswered check-in doubles the wait, so a person
+// who engages stays on the fast cadence and a person who ignores us backs off
+// within a day or two instead of being nagged on a fixed timer.
+function requiredGapMs(ageDays, misses) {
+  if (misses >= 2) return WEEK_MS;
+  return idleHoursFor(ageDays) * HOUR_MS * (misses === 1 ? 2 : 1);
+}
 
 async function eligibleUsers(client, now) {
   const { rows } = await client.query(
-    `SELECT u.id, u.first_name, u.checkin_misses, u.last_checkin_at,
+    `SELECT u.id, u.first_name, u.checkin_misses, u.last_checkin_at, u.onboarded_at,
             GREATEST(coalesce(u.onboarded_at, u.created_at),
                      coalesce((SELECT max(a.created_at) FROM audit_log a WHERE a.actor_id = u.id), u.created_at)
             ) AS last_activity
@@ -28,13 +53,11 @@ async function eligibleUsers(client, now) {
   );
   return rows.filter((u) => {
     if (u.checkin_misses >= 4) return false; // gave up until they come back
+    const ageDays = (now - new Date(u.onboarded_at).getTime()) / (24 * HOUR_MS);
+    const gap = requiredGapMs(ageDays, u.checkin_misses);
     const idleFor = now - new Date(u.last_activity).getTime();
-    if (idleFor < IDLE_MS) return false;
-    if (u.last_checkin_at) {
-      const sinceCheckin = now - new Date(u.last_checkin_at).getTime();
-      const required = u.checkin_misses >= 2 ? WEEK_MS : IDLE_MS;
-      if (sinceCheckin < required) return false;
-    }
+    if (idleFor < gap) return false;
+    if (u.last_checkin_at && now - new Date(u.last_checkin_at).getTime() < gap) return false;
     return true;
   });
 }
@@ -108,4 +131,4 @@ async function run(client, now = Date.now()) {
   return results;
 }
 
-module.exports = { run, eligibleUsers, pickRung };
+module.exports = { run, eligibleUsers, pickRung, requiredGapMs, idleHoursFor };

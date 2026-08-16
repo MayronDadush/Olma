@@ -22,18 +22,15 @@ function intakeAgentsMd(registrationOpen) {
     '',
   ];
   const open = [
-    'Setup takes a few seconds, and the real introduction comes right after',
-    'this from their own assistant. So this message is a holding line, NOT an',
-    'introduction: do NOT say who you are, do NOT say what Olma does, do NOT',
-    'greet them by name, do NOT ask questions. Saying it here only means they',
-    'read the same introduction twice, seconds apart.',
+    'Say NOTHING. Reply with exactly: NO_REPLY',
     '',
-    'Write ONE short line — under 10 words — that acknowledges their message',
-    'and says it is being set up right now. Hebrew example (match their',
-    'language, vary the wording): "רגע אחד, מכינה לך הכל 🙂".',
+    'Why: setup finishes in a few seconds, and their own assistant then',
+    'answers their message directly — including whatever they just wrote,',
+    'which is handed over to it. Anything you say here would be a second',
+    'voice arriving seconds before the real one: the user reads two openings,',
+    'and two overlapping replies in one chat is what makes messages get lost.',
     '',
-    'If they write AGAIN before setup finishes: one more short line, same',
-    'rules, different words.',
+    'This holds however many times they write. Always exactly: NO_REPLY',
   ];
   const closed = [
     'Say: you are Olma, and right now new sign-ups are paused. Their message',

@@ -84,8 +84,18 @@ async function main() {
     // one sweep worth running eagerly. When it provisions someone, drain the
     // outbox at once rather than letting their welcome sit for up to 30s.
     timers.push(setInterval(() => beat('intake_sweep', async () => {
-      const res = await withTx(pool, (c) => intake.sweepIntakeSessions(c, { configPath: OPENCLAW_CONFIG }));
-      if (res && res.provisioned && res.provisioned.length) await drain();
+      const res = await withTx(pool, (c) => intake.sweepIntakeSessions(c, {
+        configPath: OPENCLAW_CONFIG, readFirstMessage: intake.readIntakeFirstMessage,
+      }));
+      // Provisioning wrote the binding; the gateway applies it on its own
+      // file-watch tick, measured at 2-4s. Draining instantly means the very
+      // first delivery attempt races that reload and fails — which is exactly
+      // what pushed new users into a retry backoff. Wait for the reload, then
+      // send; the retry ladder above covers us if it is slower than usual.
+      if (res && res.provisioned && res.provisioned.length) {
+        const t = setTimeout(() => { drain().catch(() => {}); }, 5_000);
+        if (t.unref) t.unref();
+      }
       return res;
     }), 5_000));
     timers.push(setInterval(() => beat('reopen_sweep', () =>

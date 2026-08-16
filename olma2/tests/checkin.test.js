@@ -90,3 +90,23 @@ test('idempotent per day; backoff excludes after 4 misses; recent activity exclu
   assert.ok(!ids.includes(Number(gaveUp.id)), 'backed-off user skipped');
   assert.ok(!ids.includes(Number(active.id)), 'recently active user skipped');
 });
+
+test('checkin cadence: fast for new users, slower once settled, backs off when ignored', () => {
+  const { requiredGapMs } = require('../src/jobs/checkin');
+  const h = (ms) => ms / 3600_000;
+
+  // A brand-new user is the one most likely to drift away, so Olma reaches out
+  // within hours; three weeks in, a daily rhythm is enough.
+  assert.equal(h(requiredGapMs(0, 0)), 5, 'day 0');
+  assert.equal(h(requiredGapMs(2.9, 0)), 5, 'still inside the first 3 days');
+  assert.equal(h(requiredGapMs(3, 0)), 10, 'first week');
+  assert.equal(h(requiredGapMs(10, 0)), 18, 'first three weeks');
+  assert.equal(h(requiredGapMs(30, 0)), 24, 'settled');
+
+  // Engagement, not the calendar, decides the rest: one ignored check-in
+  // doubles the wait, two drops to weekly. A responsive new user keeps the
+  // fast cadence; a silent one is left alone within a day.
+  assert.equal(h(requiredGapMs(0, 1)), 10, 'one miss doubles');
+  assert.equal(h(requiredGapMs(0, 2)), 24 * 7, 'two misses → weekly');
+  assert.equal(h(requiredGapMs(30, 2)), 24 * 7, 'weekly regardless of age');
+});
