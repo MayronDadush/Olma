@@ -19,19 +19,27 @@
 //     if (!number || <= 0) return max(5min, warnMs * 3)
 //     return max(warnMs, floor(raw))
 //
-// 75s, not lower: local whisper transcription takes ~37s of wall time with no
-// progress events, and aborting a legitimate voice-note run would trade one
-// bug for a worse one. If transcription moves to an API this can drop to ~30s.
+// 75s was sized around local whisper transcription (~37s wall time, no
+// progress events) — aborting a legitimate voice-note run would trade one
+// bug for a worse one. Voice-note transcription moved to ElevenLabs Scribe
+// v2 on 2026-08-18 (see CLAUDE.md) — measured live at ~4s, and the
+// ElevenLabs model entry now carries its own 15s timeoutSeconds, so a hang
+// fails over to the local whisper.cpp fallback quickly instead of idling for
+// the previous 60s default. Worst-case legitimate run is now bounded by that
+// fallback path: ~15s (ElevenLabs timeout) + ~37s (local whisper real run)
+// ≈ 52s, so 65s keeps ~13s of margin above it — down from 75s, but still
+// short of the naive "measured latency dropped 9x so shrink 9x" move, since
+// the fallback path didn't get any faster, only the common path did.
 //
 // This does NOT fix the underlying lane bug — it caps the damage from 13
-// minutes to about a minute.
+// minutes down further still.
 //
 // Usage: node scripts/set-recovery-thresholds.js [--apply]
 'use strict';
 const occ = require('../src/intake/openclaw-config');
 
-const WARN_MS = 30_000;
-const ABORT_MS = 75_000;
+const WARN_MS = 25_000;
+const ABORT_MS = 65_000;
 const APPLY = process.argv.includes('--apply');
 
 const cfg = occ.loadConfig();

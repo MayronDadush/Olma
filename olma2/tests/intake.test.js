@@ -348,3 +348,32 @@ test('CLI failures surface as thrown errors, never as "no new users"', async () 
     listSessions: async () => { throw new Error('openclaw sessions list timed out'); },
   })));
 });
+
+test('agent doctrine: act-first outranks curiosity, and one question is a hard cap', () => {
+  const fs = require('node:fs');
+  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
+
+  // A real user ("קצת חופר") got four rounds of questions before anything was
+  // saved. These are the specific instructions that exist to prevent that.
+  assert.match(tpl, /Act first, ask second/);
+  assert.match(tpl, /Never more than ONE question in a message/);
+  assert.match(tpl, /State assumptions instead of asking to confirm them/);
+  assert.match(tpl, /give the\s+outcome/, 'an outcome request gets an outcome, not prerequisites');
+
+  // The connection reflex must not fire on someone mentioned once in passing
+  assert.match(tpl, /NOT for someone mentioned once in passing/);
+
+  // Gender was stored correctly and then ignored on the next line
+  assert.match(tpl, /Then actually use it, in every message from then on/);
+
+  // The token must be read alone — batching it caused a failed call every turn
+  assert.match(tpl, /as a tool call ON ITS OWN/);
+  assert.match(tpl, /Not in the same batch as `turn_start`/);
+});
+
+test('intake greeter is told not to interrogate either', () => {
+  const { intakeAgentsMd } = require('../src/intake/intake-workspace');
+  const open = intakeAgentsMd(true);
+  assert.match(open, /Never interrogate/);
+  assert.match(open, /At most ONE question/);
+});

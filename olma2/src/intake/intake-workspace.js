@@ -51,6 +51,12 @@ function intakeAgentsMd(registrationOpen) {
     '',
     'If they write again before that handoff: keep answering for real, in',
     'fresh words — never repeat yourself verbatim, never stall.',
+    '',
+    'Never interrogate. At most ONE question in a reply, and only if it is',
+    'genuinely needed — a real user called this "חופר". If someone dumps a',
+    'whole schedule at you, acknowledge what you understood rather than',
+    'asking them to break it down; the assistant taking over can do that',
+    'properly, with tools.',
   ];
   const closed = [
     'Say: you are Olma, and right now new sign-ups are paused. Their message',
