@@ -11,6 +11,7 @@ const audit = require('../domain/audit');
 const { ok, err } = require('../domain/results');
 const occ = require('./openclaw-config');
 const { timezoneForPhone } = require('../domain/phone-timezone');
+const { resolveLocale } = require('../domain/language');
 
 const TEMPLATE_PATH = path.join(__dirname, 'agents-template.md');
 
@@ -81,13 +82,21 @@ async function provisionUser(client, {
   if (user && user.status === 'active' && user.agent_id) {
     return err('conflict', 'already provisioned', { userId: user.id });
   }
+  // Their language is whatever they actually wrote in, falling back to the
+  // dialling code only when the text carries no signal at all (see
+  // domain/language.js). Resolved here because this is the first and only
+  // moment we hold both their words and their number together.
+  const resolvedLocale = locale
+    ? { locale, source: 'explicit' }
+    : resolveLocale({ text: firstMessage, phone });
+
   if (!user) {
     // A NULL timezone is not neutral: the delivery gate and the digest sweep
     // both fall back to UTC, which for an Israeli number runs the quiet-hours
     // window three hours late. Guess from the dialling code and leave
     // timezone_confirmed = false so the agent still confirms it.
     const created = await usersDomain.createUser(client, {
-      phone, firstName, invitedByConnectionId, locale,
+      phone, firstName, invitedByConnectionId, locale: resolvedLocale.locale,
       timezone: timezone || timezoneForPhone(phone),
     });
     if (!created.ok) return created;
@@ -106,13 +115,17 @@ async function provisionUser(client, {
     }
   }
 
+  // A row created at invite/waitlist time carries the schema's default locale,
+  // not an observed one — overwrite it now that we have actually seen them
+  // write. Their own words are the only real evidence of their language.
   const agentId = `u-${user.id}`;
   const paths = defaultPaths(agentId);
   const { rows } = await client.query(
     `UPDATE users SET status = 'active', agent_id = $2, workspace_path = $3,
-            first_name = COALESCE(first_name, $4), onboarded_at = COALESCE(onboarded_at, now())
+            first_name = COALESCE(first_name, $4), onboarded_at = COALESCE(onboarded_at, now()),
+            locale = $5
      WHERE id = $1 RETURNING *`,
-    [user.id, agentId, paths.workspace, firstName || null]
+    [user.id, agentId, paths.workspace, firstName || null, resolvedLocale.locale]
   );
   user = rows[0];
 
@@ -146,7 +159,10 @@ async function provisionUser(client, {
       `forced gateway restart ${restarted ? 'ok' : 'FAILED'}`);
   }
 
-  await audit.record(client, user.id, 'user.provisioned.workspace', { agentId, agentAdded, bindingAdded, restarted });
+  await audit.record(client, user.id, 'user.provisioned.workspace', {
+    agentId, agentAdded, bindingAdded, restarted,
+    locale: resolvedLocale.locale, localeSource: resolvedLocale.source,
+  });
   return ok({ user, agentId, workspace: paths.workspace });
 }
 

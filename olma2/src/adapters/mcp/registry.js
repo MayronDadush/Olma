@@ -93,7 +93,7 @@ const TOOLS = [
       // real activity resets the checkin backoff
       await client.query(`UPDATE users SET checkin_misses = 0 WHERE id = $1 AND checkin_misses > 0`, [user.id]);
       const counted = await quota.countMessage(client, user.id);
-      if (!counted.data.blocked) return ok({ directive: 'proceed' });
+      if (!counted.data.blocked) return ok({ directive: 'proceed', locale: user.locale });
       const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);
       if (!shouldNotice) return ok({ directive: 'silent', reason: 'blocked_already_notified' });
       const view = await digest.assemble(client, user.id, 'block_view');
@@ -116,6 +116,9 @@ const TOOLS = [
   tool('set_my_timezone', 'Set IANA timezone. confirmed=true only when the user explicitly confirmed it.',
     { timezone: S('string', 'IANA name, e.g. Asia/Jerusalem'), confirmed: S('boolean', 'User explicitly confirmed') }, ['timezone'],
     (client, user, a) => users.setTimezone(client, user.id, a.timezone, a.confirmed)),
+  tool('set_my_language', 'Change the language you speak and store their data in. ONLY on their explicit request ("talk to me in English") — never because one message happened to be in another language.',
+    { locale: S('string', 'ISO code, e.g. he, en, ar, ru') }, ['locale'],
+    (client, user, a) => users.setLocale(client, user.id, a.locale)),
 
   // ---------------------------------------------------------------- digest
   tool('get_my_digest', 'Assemble the current picture. scope: summary (counts) | full (every open task) | today (due/overdue today).',

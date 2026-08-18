@@ -88,6 +88,32 @@ test('provisionUser: with nothing extracted, USER.md carries no pending-note sec
   assert.ok(!/הצטרפו דרך הזמנה/.test(userMd));
 });
 
+test('provisionUser: locale comes from what they actually wrote, not the dialling code', async () => {
+  // An Israeli number whose owner opened in English gets English — the rule
+  // is "the language of the first message", and the prefix is only a fallback.
+  const en = await withTx(db.pool, (c) => provisionUser(c, {
+    phone: '+972601000091', configPath, firstMessage: 'hi, can you help me organise my week?',
+  }));
+  assert.equal(en.data.user.locale, 'en');
+
+  const he = await withTx(db.pool, (c) => provisionUser(c, {
+    phone: '+972601000092', configPath, firstMessage: 'היי, אני צריך עזרה',
+  }));
+  assert.equal(he.data.user.locale, 'he');
+
+  // Nothing readable in the message → fall back to the dialling code
+  const guessed = await withTx(db.pool, (c) => provisionUser(c, {
+    phone: '+33601000093', configPath, firstMessage: '👍',
+  }));
+  assert.equal(guessed.data.user.locale, 'fr');
+
+  // ...and the audit records HOW we decided, so a guess is distinguishable
+  const { rows } = await db.pool.query(
+    `SELECT a.detail FROM audit_log a JOIN users u ON u.id = a.actor_id
+     WHERE u.phone = '+33601000093' AND a.event = 'user.provisioned.workspace'`);
+  assert.equal(rows[0].detail.localeSource, 'phone_prefix');
+});
+
 test('provisionUser: firstMessage and invitedInfo both land in USER.md, wrapped as data', async () => {
   const res = await withTx(db.pool, (c) => provisionUser(c, {
     phone: '+972601000098', configPath,

@@ -84,6 +84,20 @@ async function setName(client, userId, firstName, lastName) {
   return ok({ user: rows[0] });
 }
 
+// Their language, changed ONLY on their own explicit request — an observed
+// language is set once at provisioning (domain/language.js) and never
+// silently revised afterwards, because a single English word in a Hebrew
+// sentence must not flip the whole relationship.
+async function setLocale(client, userId, locale) {
+  const code = String(locale || '').trim().toLowerCase().slice(0, 8);
+  if (!/^[a-z]{2}(-[a-z]{2,8})?$/.test(code)) {
+    return err('invalid', `unknown language code: ${locale}`);
+  }
+  await client.query(`UPDATE users SET locale = $2 WHERE id = $1`, [userId, code]);
+  await audit.record(client, userId, 'user.locale_set', { locale: code });
+  return ok({ locale: code });
+}
+
 async function setTimezone(client, userId, timezone, confirmed) {
   try {
     new Intl.DateTimeFormat('en', { timeZone: timezone });
@@ -100,5 +114,5 @@ async function setTimezone(client, userId, timezone, confirmed) {
 
 module.exports = {
   newIdentityToken, resolveByToken, getByPhone, getById,
-  createUser, primaryChannel, sessionKeyFor, setName, setTimezone,
+  createUser, primaryChannel, sessionKeyFor, setName, setTimezone, setLocale,
 };
