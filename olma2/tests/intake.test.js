@@ -356,7 +356,11 @@ test('agent doctrine: act-first outranks curiosity, and one question is a hard c
   // A real user ("קצת חופר") got four rounds of questions before anything was
   // saved. These are the specific instructions that exist to prevent that.
   assert.match(tpl, /Act first, ask second/);
-  assert.match(tpl, /Never more than ONE question in a message/);
+  assert.match(tpl, /one question — not one message with a numbered/,
+    'a numbered list of sub-questions in one bubble is still an interrogation');
+  assert.match(tpl, /guess it, save it, and let a\s+single correction fix it later/);
+  assert.match(tpl, /the one actually\s+blocking what they asked for/,
+    'when several things are unclear, ask about the important one, not all of them');
   assert.match(tpl, /State assumptions instead of asking to confirm them/);
   assert.match(tpl, /give the\s+outcome/, 'an outcome request gets an outcome, not prerequisites');
 
@@ -376,4 +380,5 @@ test('intake greeter is told not to interrogate either', () => {
   const open = intakeAgentsMd(true);
   assert.match(open, /Never interrogate/);
   assert.match(open, /At most ONE question/);
+  assert.match(open, /not one message holding a numbered list/);
 });

@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>אולמה — איך זה עובד</title>
+<style>
+:root{
+  --bg:#fbfaf7; --panel:#ffffff; --line:#eae6dd;
+  --fg:#241f1a; --dim:#6b6459; --dim2:#9a9285;
+  --accent:#1fae5c; --accent-soft:#e6f7ec;
+  --warm:#f4ede1; --warm-line:#e9dfc9;
+  --new:#2e7de0; --new-soft:#e8f1fd;
+  --r:18px;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Assistant,Rubik,Heebo,Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#17140f; --panel:#211d17; --line:#332c22;
+    --fg:#f1ece1; --dim:#b8ae9d; --dim2:#87806f;
+    --accent:#34d17a; --accent-soft:#1c3324;
+    --warm:#2a2419; --warm-line:#3a3122;
+    --new:#5b9dff; --new-soft:#182640;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--fg); font-family:var(--sans);
+  font-size:17px; line-height:1.7; -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{font-family:var(--sans); letter-spacing:-.3px}
+img,svg{display:block}
+
+/* -------------------------------------------------- top nav */
+.top{
+  position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:10px;
+  padding:14px 22px; background:color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter:blur(10px); border-bottom:1px solid var(--line);
+  overflow-x:auto; white-space:nowrap;
+}
+.top .brand{font-weight:800; font-size:17px; margin-left:14px; flex-shrink:0}
+.top .brand span{color:var(--accent)}
+.top a{
+  color:var(--dim); text-decoration:none; font-size:14.5px; font-weight:600;
+  padding:7px 13px; border-radius:999px; flex-shrink:0;
+}
+.top a:hover{background:var(--warm); color:var(--fg)}
+
+/* -------------------------------------------------- layout */
+main{max-width:840px; margin:0 auto; padding:0 20px 90px}
+.hero{padding:56px 4px 34px; text-align:center}
+.hero .logo{
+  width:64px; height:64px; margin:0 auto 18px; border-radius:20px;
+  background:var(--accent); display:flex; align-items:center; justify-content:center;
+  font-size:30px; box-shadow:0 10px 30px -10px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.hero h1{font-size:38px; margin:0 0 10px}
+.hero p{font-size:19px; color:var(--dim); max-width:56ch; margin:0 auto; line-height:1.65}
+
+section{margin:64px 0}
+.eyebrow{
+  display:inline-flex; align-items:center; gap:8px; font-size:13.5px; font-weight:700;
+  color:var(--accent); background:var(--accent-soft); padding:5px 14px; border-radius:999px;
+  margin-bottom:14px;
+}
+h2.title{font-size:27px; margin:0 0 8px}
+.lede{color:var(--dim); font-size:16.5px; margin:0 0 30px; max-width:60ch}
+
+/* -------------------------------------------------- timeline */
+.tl{position:relative; padding-inline-start:52px}
+.tl:before{
+  content:""; position:absolute; inset-inline-start:23px; top:6px; bottom:6px; width:3px;
+  background:linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 25%, transparent));
+  border-radius:3px;
+}
+.step{position:relative; margin-bottom:26px}
+.step:last-child{margin-bottom:0}
+.step .num{
+  position:absolute; inset-inline-start:-52px; top:0; width:48px; height:48px;
+  border-radius:50%; background:var(--panel); border:3px solid var(--accent);
+  display:flex; align-items:center; justify-content:center; font-size:21px;
+}
+.step .card{
+  background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  padding:16px 20px;
+}
+.step h3{margin:0 0 5px; font-size:18px}
+.step p{margin:0; color:var(--dim); font-size:15.5px}
+
+/* -------------------------------------------------- capability grid */
+.grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(230px,1fr)); gap:14px}
+.cap{
+  background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  padding:22px 20px;
+}
+.cap .ic{font-size:30px; margin-bottom:12px}
+.cap h3{margin:0 0 6px; font-size:17px}
+.cap p{margin:0; color:var(--dim); font-size:15px}
+
+/* -------------------------------------------------- fix list */
+.fixes{display:flex; flex-direction:column; gap:12px}
+.fix{
+  display:flex; gap:16px; align-items:flex-start; background:var(--panel);
+  border:1px solid var(--line); border-radius:var(--r); padding:16px 20px;
+}
+.fix .ic{
+  flex-shrink:0; width:44px; height:44px; border-radius:12px; background:var(--new-soft);
+  display:flex; align-items:center; justify-content:center; font-size:21px;
+}
+.fix h3{margin:0 0 4px; font-size:16.5px}
+.fix p{margin:0; color:var(--dim); font-size:15px}
+.fix .before{color:var(--dim2); text-decoration:line-through; display:block; font-size:14px; margin-bottom:3px}
+
+/* -------------------------------------------------- next-up */
+.next{
+  background:var(--warm); border:1px solid var(--warm-line); border-radius:var(--r);
+  padding:22px 24px;
+}
+.next ul{margin:0; padding-inline-start:22px; color:var(--dim); font-size:15.5px}
+.next li{margin-bottom:10px}
+.next li:last-child{margin-bottom:0}
+.next b{color:var(--fg)}
+
+/* -------------------------------------------------- footer */
+footer{
+  text-align:center; color:var(--dim2); font-size:13.5px; padding-top:40px;
+  border-top:1px solid var(--line); margin-top:70px;
+}
+
+@media (max-width:600px){
+  .hero h1{font-size:30px}
+  .hero p{font-size:17px}
+  h2.title{font-size:23px}
+  .tl{padding-inline-start:44px}
+  .step .num{inset-inline-start:-44px; width:40px; height:40px; font-size:17px}
+}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <span class="brand">אולמ<span>ה</span></span>
+  <a href="#regular">הודעה רגילה</a>
+  <a href="#join">מצטרפים חדשים</a>
+  <a href="#capabilities">מה היא יודעת לעשות</a>
+  <a href="#fixes">מה תוקן היום</a>
+  <a href="#next">מה בדרך</a>
+</div>
+
+<main>
+
+  <div class="hero">
+    <div class="logo">💬</div>
+    <h1>אולמה</h1>
+    <p>העוזרת האישית שלכם בוואטסאפ. זוכרת בשבילכם משימות, מזכירה דברים חשובים,
+      ועוזרת לתאם עם אנשים — הכל דרך שיחה רגילה, כמו עם חבר.</p>
+  </div>
+
+  <section id="regular">
+    <span class="eyebrow">🟢 השימוש היומיומי</span>
+    <h2 class="title">מה קורה כשכותבים לה הודעה</h2>
+    <p class="lede">חמישה צעדים, כולם קורים תוך שניות ספורות.</p>
+    <div class="tl">
+      <div class="step">
+        <div class="num">💬</div>
+        <div class="card">
+          <h3>אתם כותבים</h3>
+          <p>הודעת טקסט רגילה, או הקלטה קולית — אולמה מבינה את שתיהן באותה מידה.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">🔑</div>
+        <div class="card">
+          <h3>היא מזהה אתכם</h3>
+          <p>לכל אחד יש "אולמה" פרטית משלו. היא רואה רק את המידע שלכם — לעולם לא של אף אחד אחר.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">🚦</div>
+        <div class="card">
+          <h3>בדיקה קטנה ברקע</h3>
+          <p>היא מוודאת שהכל תקין ושלא הצפתם אותה בהודעות ברצף — כדי שהמערכת תישאר יציבה לכולם.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">🧠</div>
+        <div class="card">
+          <h3>היא פועלת</h3>
+          <p>שומרת משימה, קובעת תזכורת, עונה על שאלה, מסדרת רשימה — מה שביקשתם.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">✅</div>
+        <div class="card">
+          <h3>מקבלים תשובה</h3>
+          <p>באותה שיחה בוואטסאפ, תוך שניות.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="join">
+    <span class="eyebrow">👋 הצטרפות</span>
+    <h2 class="title">מה קורה כשמישהו כותב לה בפעם הראשונה</h2>
+    <p class="lede">כל התהליך רץ אוטומטית תוך פחות מ-10 שניות.</p>
+    <div class="tl">
+      <div class="step">
+        <div class="num">📱</div>
+        <div class="card">
+          <h3>מספר לא מוכר כותב</h3>
+          <p>אדם שאף פעם לא דיבר עם אולמה שולח לה הודעה ראשונה.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">🤫</div>
+        <div class="card">
+          <h3>שקט קצר, ברקע</h3>
+          <p>אולמה לא עונה מיד — כי ברקע היא כבר בונה לו חשבון אישי משלו.
+            שתיקה קצרה עדיפה על שתי הודעות פתיחה שונות שמבלבלות.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">⚙️</div>
+        <div class="card">
+          <h3>נפתח חשבון אישי</h3>
+          <p>תוך שניות יש לו "אולמה" משלו — נפרדת ומאובטחת מכל משתמש אחר.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">💌</div>
+        <div class="card">
+          <h3>הודעת פתיחה חמה</h3>
+          <p>מוזמן לספר על עצמו כמו שהיה מספר לעוזר אישי חדש. מה שהוא כבר כתב קודם
+            לא הולך לאיבוד — היא עונה לו עליו.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">🗣️</div>
+        <div class="card">
+          <h3>שיחה אמיתית מתחילה</h3>
+          <p>הוא מספר על משימות, אנשים חשובים, מתי נוח שיפנו אליו — ואולמה מסדרת הכל.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="capabilities">
+    <span class="eyebrow">🧩 היכולות</span>
+    <h2 class="title">מה אולמה יודעת לעשות</h2>
+    <p class="lede">שש יכולות עיקריות, כולן זמינות היום.</p>
+    <div class="grid">
+      <div class="cap"><div class="ic">📋</div><h3>משימות</h3>
+        <p>אפשר לזרוק עליה הכל בהודעה אחת ארוכה, גם בהקלטה קולית — היא מסדרת לפי קטגוריות.</p></div>
+      <div class="cap"><div class="ic">⏰</div><h3>תזכורות</h3>
+        <p>חד-פעמיות, יומיות, שבועיות, או בימים ספציפיים (למשל שני וחמישי).</p></div>
+      <div class="cap"><div class="ic">📰</div><h3>סיכום יומי</h3>
+        <p>הודעת סיכום בשעה שבוחרים בעצמכם, עם מה שפתוח ומה דחוף.</p></div>
+      <div class="cap"><div class="ic">🤝</div><h3>חברים</h3>
+        <p>מתחברים לאנשים קרובים בהסכמה הדדית, כדי לתאם ולשתף איתם.</p></div>
+      <div class="cap"><div class="ic">📅</div><h3>פגישות</h3>
+        <p>מתאמת זמן שמתאים לשני הצדדים באמת — לא מנחשת בשם אף אחד.</p></div>
+      <div class="cap"><div class="ic">🔗</div><h3>שיתוף משימות</h3>
+        <p>אפשר לשתף רשימה (כמו קניות) עם מישהו, ולעדכן אותה יחד.</p></div>
+    </div>
+  </section>
+
+  <section id="fixes">
+    <span class="eyebrow">🛠️ עודכן היום — 18.08</span>
+    <h2 class="title">מה תיקנו היום</h2>
+    <p class="lede">כמה בעיות אמיתיות שהתגלו ותוקנו באותו יום.</p>
+    <div class="fixes">
+      <div class="fix">
+        <div class="ic">🧯</div>
+        <div>
+          <h3>הודעה שנתקעת מתוקנת מהר יותר</h3>
+          <span class="before">לפני: אפשר היה להמתין דקות ארוכות</span>
+          <p>עכשיו אולמה שמה לב לבד ומתקנת תוך כדקה וחצי.</p>
+        </div>
+      </div>
+      <div class="fix">
+        <div class="ic">🔁</div>
+        <div>
+          <h3>תזכורות חוזרות באמת חוזרות</h3>
+          <span class="before">לפני: חלק מהתזכורות נעצרו אחרי פעם אחת, בלי שאף אחד ידע</span>
+          <p>כולל תזכורות תרופות יומיות — עכשיו כולן חוזרות בדיוק כמו שביקשתם.</p>
+        </div>
+      </div>
+      <div class="fix">
+        <div class="ic">🌍</div>
+        <div>
+          <h3>שעון אזור נכון לכל משתמש</h3>
+          <span class="before">לפני: הודעות הגיעו עד שלוש שעות באיחור</span>
+          <p>עכשיו כל הודעה מגיעה בדיוק בשעה הנכונה, לפי השעון המקומי שלכם.</p>
+        </div>
+      </div>
+      <div class="fix">
+        <div class="ic">📬</div>
+        <div>
+          <h3>משתמש שלא קיבל כלום — תוקן</h3>
+          <span class="before">לפני: בעיה טכנית מנעה ממנו לקבל הודעות בכלל</span>
+          <p>נמצאה ותוקנה, וההודעה שהמתינה נשלחה אליו סוף סוף.</p>
+        </div>
+      </div>
+      <div class="fix">
+        <div class="ic">🗓️</div>
+        <div>
+          <h3>בחירת שעת הסיכום היומי</h3>
+          <span class="before">לפני: אי אפשר היה לבחור בכלל</span>
+          <p>עכשיו כל אחד יכול לבקש מאולמה לקבוע לו שעה משלו לסיכום היומי.</p>
+        </div>
+      </div>
+      <div class="fix">
+        <div class="ic">🧹</div>
+        <div>
+          <h3>זיכרון שמתקפל לבד</h3>
+          <span class="before">לפני: הפתקים היומיים פשוט נערמו</span>
+          <p>פעם בשבוע אולמה מסכמת לעצמה מה חשוב לזכור לטווח ארוך.</p>
+        </div>
+      </div>
+      <div class="fix">
+        <div class="ic">🔌</div>
+        <div>
+          <h3>הגרסה הישנה כובתה סופית</h3>
+          <span class="before">לפני: הגרסה הישנה עדיין שלחה הודעות כפולות</span>
+          <p>עכשיו הכל עובר רק דרך הגרסה החדשה — בלי כפילויות.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="next">
+    <span class="eyebrow">🚧 עדיין בדרך</span>
+    <h2 class="title">מה עוד חסר</h2>
+    <div class="next">
+      <ul>
+        <li><b>יומן גוגל ו-Monday</b> — היו זמינים בגרסה הקודמת, עדיין לא הועברו לגרסה החדשה.</li>
+        <li><b>צפייה בארכיון</b> — משימות שהושלמו נשמרות, אבל עדיין אין מסך לצפות בהן.</li>
+        <li><b>גיבוי מחוץ לשרת</b> — הגיבוי היומי כרגע נשמר על אותו שרת שהוא מגבה.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>עודכן לאחרונה — 18 באוגוסט 2026</footer>
+
+</main>
+</body>
+</html>

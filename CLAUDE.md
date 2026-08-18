@@ -86,6 +86,43 @@ watchdog reads the gateway's own log, then calls `sessions.abort`
 (RPC scope `operator.write` — no device upgrade needed) on that ONE key.
 `jobs/unanswered.js` remains the slower backstop for messages dropped entirely.
 
+### Voice-note transcription moved to ElevenLabs Scribe v2 (2026-08-18)
+
+Was local `whisper.cpp` only (`/root/whisper-transcribe.sh`, ggml-small-q5_0,
+~37s wall time — the number the 75s watchdog floor above was sized around).
+Now `tools.media.audio.models` in `openclaw.json` is
+`[{ provider: "elevenlabs", model: "scribe_v2", language: "he" }, { type:
+"cli", command: "/root/whisper-transcribe.sh", ... }]` — ElevenLabs first,
+the old local script kept as an automatic fallback (OpenClaw tries entries in
+order, moves on on failure/timeout — no code change needed for the fallback
+to work). `ELEVENLABS_API_KEY` lives in
+`/root/.config/systemd/user/openclaw-gateway.service` as a plain
+`Environment=` line (0600, root-only — same trust model as `openclaw.json`
+itself; OpenClaw's own docs say "set it in the environment", there's no
+`models.providers.elevenlabs.apiKey` field for the audio-STT path the way
+there is for TTS). Verified live 2026-08-18: a real voice note went from
+receipt to transcript in the log in ~4s (vs the ~37s local baseline) with a
+clean Hebrew transcript — no explicit provider tag in the log line since
+`--verbose` isn't on, but the timing alone rules out the local CLI path
+(300s timeout, ~37s typical).
+
+**Gotcha hit during setup**: the first key pasted in returned `401
+missing_permissions` on `/v1/speech-to-text` — it was a scoped ElevenLabs key
+without the `speech_to_text` permission checked, not an invalid/expired key.
+Fixable from the ElevenLabs dashboard (Settings → API Keys → edit
+permissions) without rotating the key.
+
+**Recovery thresholds lowered to match (2026-08-18)**: `stuckSessionWarnMs`
+30s→25s, `stuckSessionAbortMs` 75s→65s
+(`olma2/scripts/set-recovery-thresholds.js --apply`, then gateway restart).
+Not a naive "latency dropped 9x so shrink 9x" move — the ElevenLabs model
+entry got its own `timeoutSeconds: 15` (down from the 60s provider default)
+so a hang fails over to the local whisper.cpp fallback quickly, but that
+fallback path itself is unchanged (~37s). Worst-case *legitimate* run is now
+bounded by ElevenLabs-timeout + local-whisper-run ≈ 15s + 37s ≈ 52s, so 65s
+keeps ~13s of margin above that — the thing this floor has to stay above is
+the slowest real fallback, not the fast common case.
+
 ### Onboarding has no "welcome" step any more (redesigned 2026-08-17)
 
 Retired the whole `kind: 'welcome'` outbox mechanism. The intake greeter
