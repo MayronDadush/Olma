@@ -139,20 +139,6 @@ test('night hold: row waits, then releases when the window opens', async () => {
   assert.equal(out.delivered, 1);
 });
 
-test('welcome goes out at once — never held, never deferred to a window', async () => {
-  await flushOutbox();
-  await withTx(db.pool, (c) => enqueue(c, {
-    userId: user.id, kind: 'welcome', urgency: 'urgent', payload: { text: 'x' }, idempotencyKey: 'wstab',
-  }));
-  const rec = recorder();
-  // 3am in the user's timezone: a welcome is the reply to a message they just
-  // sent, so it is exempt from the quiet-hours window like reminders/digests
-  const out = await drainOnce(db.pool, rec.deliver, new Date('2026-08-16T03:00:00Z'));
-  assert.equal(out.delivered, 1);
-  assert.equal(out.held, 0);
-  assert.equal(rec.sent.length, 1);
-});
-
 test('reminder sweep: due → urgent outbox row + repeat spawns next occurrence', async () => {
   const tasks = require('../src/domain/tasks');
   const reminders = require('../src/domain/reminders');
@@ -209,4 +195,39 @@ test('unblock sweep: consolidates held + stale, clears the block', async () => {
   assert.equal(p.expired.length, 1); // the 16:00 pickup — listed as עבר זמנה, not live
   const u = await db.pool.query(`SELECT quota_blocked_until FROM users WHERE id = $1`, [other.id]);
   assert.equal(u.rows[0].quota_blocked_until, null);
+});
+
+test('retry backoff starts in seconds and is capped, so an outage cannot bury a message', async () => {
+  await flushOutbox();
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { text: 'x' },
+    idempotencyKey: 'reminder:backoff',
+  }));
+  const failing = async () => ({ ok: false, error: 'billing' });
+  const state = async () => {
+    const { rows } = await db.pool.query(
+      `SELECT attempts, extract(epoch from (release_after - now())) AS secs
+       FROM outbox WHERE idempotency_key = 'reminder:backoff'`);
+    return { attempts: rows[0].attempts, secs: Number(rows[0].secs) };
+  };
+
+  // first retry in seconds — a welcome racing the config reload must not wait minutes
+  await drainOnce(db.pool, failing, new Date('2026-08-16T12:00:00Z'));
+  let g = await state();
+  assert.equal(g.attempts, 1);
+  assert.ok(g.secs > 0 && g.secs <= 6, `first retry ~5s, got ${g.secs}`);
+
+  // ...and it never grows past the cap, however long the outage lasts
+  await db.pool.query(
+    `UPDATE outbox SET attempts = 20, release_after = NULL WHERE idempotency_key = 'reminder:backoff'`);
+  await drainOnce(db.pool, failing, new Date('2026-08-16T12:00:00Z'));
+  g = await state();
+  assert.ok(g.secs <= 601, `capped at 10 minutes, got ${g.secs}`);
+
+  // and it still delivers once the outage ends
+  const rec = recorder();
+  await db.pool.query(
+    `UPDATE outbox SET release_after = NULL WHERE idempotency_key = 'reminder:backoff'`);
+  const out = await drainOnce(db.pool, rec.deliver, new Date('2026-08-16T12:00:00Z'));
+  assert.equal(out.delivered, 1);
 });

@@ -73,23 +73,25 @@ async function drainOnce(pool, deliver, now = new Date()) {
         await client.query(
           `UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE id = $1`, [row.id]
         );
-        if (row.kind === 'welcome') {
-          // the delivered welcome IS the onboarding moment — checkin and
-          // digest eligibility both key off this
-          await client.query(
-            `UPDATE users SET onboarded_at = now() WHERE id = $1 AND onboarded_at IS NULL`, [row.user_id]
-          );
-        }
         outcomes.delivered++;
       } else {
-        // 5s, 15s, 45s, 2m15s, 6m45s. The first retry has to be seconds, not
-        // minutes: the most common failure by far is a welcome racing the
-        // gateway's config reload — a transient measured in seconds. A flat
-        // 2-minute first backoff turned a 3-second setup into the 2-minute
-        // wait new users actually experienced.
+        // 5s, 15s, 45s, 2m15s, then capped at 10 minutes. The first retry has
+        // to be seconds: the most common failure is a welcome racing the
+        // gateway's config reload, a transient measured in seconds — a flat
+        // 2-minute first backoff was what turned a 3-second setup into the
+        // 2-minute wait new users actually experienced.
+        //
+        // The cap matters for the opposite case, an outage rather than a race:
+        // when the Anthropic account ran out of credit every send failed for
+        // as long as it took to notice. Uncapped tripling would have pushed a
+        // waiting user's welcome days out, so it would still be unsent long
+        // after the account was topped up. Capped, everything queued goes out
+        // within ten minutes of service returning.
         await client.query(
           `UPDATE outbox SET attempts = attempts + 1, last_error = $2,
-                  release_after = now() + (interval '5 seconds' * power(3, attempts))
+                  release_after = now() + least(
+                    interval '10 minutes',
+                    interval '5 seconds' * power(3, attempts))
            WHERE id = $1`,
           [row.id, String(result.error || 'delivery failed').slice(0, 500)]
         );

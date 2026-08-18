@@ -68,9 +68,8 @@ function decide(facts) {
     }
   }
 
-  // reminder/digest: the user picked those times. welcome: they literally
-  // just wrote to us — they're awake and waiting.
-  const userChoseThisTime = row.kind === 'reminder' || row.kind === 'digest' || row.kind === 'welcome';
+  // reminder/digest: the user picked those times.
+  const userChoseThisTime = row.kind === 'reminder' || row.kind === 'digest';
   if (!userChoseThisTime && !withinWindow(window, tz, now)) {
     return {
       action: 'hold', holdReason: 'night',

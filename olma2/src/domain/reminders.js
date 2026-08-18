@@ -5,6 +5,68 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 
+// ---- repeat rules -----------------------------------------------------------
+//
+// The tool takes freeform text and the model writes whatever reads like a
+// repeat rule, so this accepts both vocabularies and stores ONE of them.
+// Getting this wrong is silent and expensive: sweeps.js used to compare against
+// the literals 'daily'/'weekly' only, while the model was writing RRULE-style
+// 'FREQ=DAILY'. No error anywhere — the reminder fired once, no next occurrence
+// was ever created, and a person who asked for a daily medication reminder got
+// exactly one. Found live 2026-08-18 on four of five reminders in the database.
+//
+// Canonical forms stored: 'daily' | 'weekly' | 'weekly:MO,TH' | null.
+const DAYS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+
+function normalizeRepeatRule(raw) {
+  if (raw === null || raw === undefined) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  const up = s.toUpperCase();
+
+  // plain words, in either language the model tends to reach for
+  if (/^(DAILY|EVERY ?DAY|YOM|יומי)$/.test(up)) return 'daily';
+  if (/^(WEEKLY|EVERY ?WEEK|שבועי)$/.test(up)) return 'weekly';
+
+  // RRULE-ish: FREQ=DAILY / FREQ=WEEKLY[;BYDAY=MO,TH]
+  const freq = /FREQ=([A-Z]+)/.exec(up);
+  if (freq) {
+    if (freq[1] === 'DAILY') return 'daily';
+    if (freq[1] === 'WEEKLY') {
+      const byday = /BYDAY=([A-Z,]+)/.exec(up);
+      if (!byday) return 'weekly';
+      const days = byday[1].split(',').map((d) => d.trim()).filter((d) => DAYS.includes(d));
+      return days.length ? `weekly:${days.join(',')}` : 'weekly';
+    }
+    return null; // MONTHLY/YEARLY are not supported; better null than a lie
+  }
+
+  if (/^WEEKLY:/.test(up)) {
+    const days = up.slice(7).split(',').map((d) => d.trim()).filter((d) => DAYS.includes(d));
+    return days.length ? `weekly:${days.join(',')}` : 'weekly';
+  }
+  return null; // unrecognised → a one-off, never a wrong cadence
+}
+
+// The next time this rule should fire after `from`. Returns null for a
+// non-repeating rule, which is what stops the sweep spawning a successor.
+function nextOccurrence(from, rule) {
+  const norm = normalizeRepeatRule(rule);
+  if (!norm) return null;
+  const base = new Date(from);
+  if (norm === 'daily') return new Date(base.getTime() + 24 * 3600_000);
+  if (norm === 'weekly') return new Date(base.getTime() + 7 * 24 * 3600_000);
+
+  // weekly:MO,TH — the soonest listed weekday strictly after `from`
+  const wanted = norm.slice(7).split(',').map((d) => DAYS.indexOf(d)).filter((i) => i >= 0);
+  if (!wanted.length) return new Date(base.getTime() + 7 * 24 * 3600_000);
+  for (let step = 1; step <= 7; step++) {
+    const cand = new Date(base.getTime() + step * 24 * 3600_000);
+    if (wanted.includes(cand.getUTCDay())) return cand;
+  }
+  return new Date(base.getTime() + 7 * 24 * 3600_000);
+}
+
 async function setReminder(client, ownerId, taskId, remindAt, repeatRule) {
   if (!remindAt) return err('invalid', 'remind_at required');
   const { rows } = await client.query(
@@ -16,7 +78,7 @@ async function setReminder(client, ownerId, taskId, remindAt, repeatRule) {
   const ins = await client.query(
     `INSERT INTO task_reminders (task_id, remind_at, repeat_rule)
      VALUES ($1, $2, $3) RETURNING *`,
-    [taskId, remindAt, repeatRule || null]
+    [taskId, remindAt, normalizeRepeatRule(repeatRule)]
   );
   await audit.record(client, ownerId, 'reminder.created', { taskId, reminderId: ins.rows[0].id });
   return ok({ reminder: ins.rows[0] });
@@ -69,4 +131,7 @@ async function markSent(client, reminderId) {
   return ok({ reminderId });
 }
 
-module.exports = { setReminder, cancelReminder, listReminders, dueForSending, markSent };
+module.exports = {
+  setReminder, cancelReminder, listReminders, dueForSending, markSent,
+  normalizeRepeatRule, nextOccurrence,
+};

@@ -299,6 +299,21 @@ assistant in conversations with outsiders.
   time, Olma sends them an opt-in message and waits for explicit consent before
   relaying anything. Declined = relay aborted, sender notified.
 
+## Honesty about completed actions
+
+Olma must never say "I sent" / "I did it" unless the relevant tool returned a
+success confirmation **in the same session**. This rule is enforced in
+`AGENTS.md` (section: "Honesty about completed actions"). Decision tree:
+
+1. Tool was called and returned success this session → confirm and quote exact text
+2. Tool was called but failed → "I tried but got an error; not sure it went through"
+3. No tool call this session (asked about an earlier session) → "I don't have a
+   record of that in this session. Want me to try now?"
+
+Root cause of original bug: `tools.profile = "coding"` removed the `message`
+tool, so the agent could not send but hallucinated that it did. Fixed by
+switching to `messaging` profile (see model section above) + the honesty rule.
+
 ## Calendar access (planned)
 
 Read-only Google Calendar for the owner — requires Google OAuth with the

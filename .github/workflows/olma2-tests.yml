@@ -1,0 +1,36 @@
+name: olma2 tests
+
+# The decided CI: every push runs the full suite against a real Postgres.
+# Deploy stays manual (scripts/deploy.sh) — too early for a full pipeline.
+on:
+  push:
+    paths: ['olma2/**', '.github/workflows/olma2-tests.yml']
+  pull_request:
+    paths: ['olma2/**']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: olma
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: olma2_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      OLMA_TEST_ADMIN_URL: postgres://olma:ci-password@127.0.0.1:5432/olma2_test
+      OLMA_DB_URL: postgres://olma:ci-password@127.0.0.1:5432/olma2_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --no-audit --no-fund
+        working-directory: olma2
+      - run: node --test 'tests/*.test.js'
+        working-directory: olma2

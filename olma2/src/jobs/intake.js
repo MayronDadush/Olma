@@ -2,15 +2,21 @@
 // The intake pipeline sweeps, run inside brokerd.
 //
 // Discovery: unknown phones that landed on the intake agent (they already got
-// an instant contextual reply from it — a tool-less agent that can only talk).
-// For each: registration open, or invited-by-a-friend → provision and queue
-// the personalized welcome immediately. Closed and uninvited → waitlist (the
+// a real, in-voice reply from it — a tool-less agent that answers for real,
+// see intake/intake-workspace.js). For each: registration open, or
+// invited-by-a-friend → provision. Closed and uninvited → waitlist (the
 // intake agent's standing instructions already told them; we only remember the
 // promise to ping back).
 //
 // No gateway restart is involved any more — provisioning writes the agent and
 // the binding in ONE config save, and that combination hot-applies. See
 // intake/openclaw-config.js for why, and what the earlier probe got wrong.
+//
+// No separate welcome message either (2026-08-17 redesign): whatever the
+// person already said to the intake agent is extracted and handed straight
+// into their personal workspace by provisionUser — there is nothing left for
+// this sweep to enqueue once provisioning succeeds. The conversation the
+// person is already in just continues, silently more capable.
 //
 // Reopen: registration_open flipped back on → keep the promise, through the
 // outbox (respectfully timed), exactly once per waitlisted phone.
@@ -20,7 +26,7 @@ const flags = require('../domain/flags');
 const audit = require('../domain/audit');
 const { enqueue } = require('../outbox/enqueue');
 const { provisionUser } = require('../intake/provision');
-const { welcomeText, reopenMessage } = require('../intake/messages');
+const { reopenMessage } = require('../intake/messages');
 const occ = require('../intake/openclaw-config');
 const sessions = require('../channels/sessions');
 
@@ -39,8 +45,8 @@ function defaultListIntakeSessions() {
     .map((s) => ({ phone: s.peer, key: s.key, ageMs: s.ageMs }));
 }
 
-// What this person typed to the (silent) greeter while we set them up.
-// Their own agent answers it, so the greeter never has to.
+// What this person typed to the greeter while we set them up — folded into
+// their personal workspace by provisionUser (see intake/provision.js).
 function readIntakeFirstMessage(phone) {
   try { return sessions.readPeerUserText(INTAKE_AGENT_ID, phone); } catch { return null; }
 }
@@ -97,8 +103,22 @@ async function sweepIntakeSessions(client, deps) {
       continue;
     }
 
+    // Extracted before provisioning so seedWorkspace can write it straight
+    // into USER.md — facts only (readPeerUserText caps + condenses), never
+    // the raw transcript.
+    const firstMessage = deps.readFirstMessage ? await deps.readFirstMessage(phone) : null;
+    const inviter = invited
+      ? (await client.query(`SELECT first_name, last_name, phone FROM users WHERE id = $1`, [invited.requester_id])).rows[0]
+      : null;
+    const invitedInfo = invited ? {
+      connectionId: Number(invited.id),
+      inviterName: [inviter.first_name, inviter.last_name].filter(Boolean).join(' ') || inviter.phone,
+      reason: invited.invite_reason || null,
+    } : null;
+
     const prov = await provisionUser(client, {
       phone, invitedByConnectionId: invited ? invited.id : null, configPath: deps.configPath,
+      firstMessage, invitedInfo,
     });
     if (!prov.ok) { out.skipped++; continue; }
     const user = prov.data.user;
@@ -106,25 +126,6 @@ async function sweepIntakeSessions(client, deps) {
     if (invited) {
       await connectionsDomain.attachProvisionedTarget(client, invited.id, user.id);
     }
-    const firstMessage = deps.readFirstMessage ? await deps.readFirstMessage(phone) : null;
-    const inviter = invited
-      ? (await client.query(`SELECT first_name, last_name, phone FROM users WHERE id = $1`, [invited.requester_id])).rows[0]
-      : null;
-    await enqueue(client, {
-      // No releaseAfter: the binding written a line above is already live, so
-      // the very next drain can deliver — and the caller kicks one immediately.
-      userId: user.id, kind: 'welcome', urgency: 'urgent',
-      payload: {
-        text: welcomeText({ firstName: user.first_name, phone }),
-        firstMessage,
-        invited: invited ? {
-          connectionId: Number(invited.id),
-          inviterName: [inviter.first_name, inviter.last_name].filter(Boolean).join(' ') || inviter.phone,
-          reason: invited.invite_reason || null,
-        } : null,
-      },
-      idempotencyKey: `welcome:${user.id}`,
-    });
     out.provisioned.push(phone);
   }
   return out;

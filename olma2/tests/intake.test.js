@@ -81,7 +81,29 @@ test('provisionUser: workspace sealed, token file 0600, config updated, idempote
   assert.equal(again.error.code, 'conflict');
 });
 
-test('intake sweep: open registration provisions and queues the welcome for immediate delivery', async () => {
+test('provisionUser: with nothing extracted, USER.md carries no pending-note sections', async () => {
+  const res = await withTx(db.pool, (c) => provisionUser(c, { phone: '+972601000097', configPath }));
+  const userMd = fs.readFileSync(path.join(res.data.workspace, 'USER.md'), 'utf8');
+  assert.ok(!/מה שכבר שיתפו/.test(userMd));
+  assert.ok(!/הצטרפו דרך הזמנה/.test(userMd));
+});
+
+test('provisionUser: firstMessage and invitedInfo both land in USER.md, wrapped as data', async () => {
+  const res = await withTx(db.pool, (c) => provisionUser(c, {
+    phone: '+972601000098', configPath,
+    firstMessage: 'יש לי משימה — ללכת לעבודה מחר',
+    invitedInfo: { connectionId: 42, inviterName: 'Dana', reason: 'לתאם ארוחה' },
+  }));
+  const userMd = fs.readFileSync(path.join(res.data.workspace, 'USER.md'), 'utf8');
+  assert.match(userMd, /מה שכבר שיתפו לפני שהמערכת האישית הייתה מוכנה/);
+  assert.match(userMd, /<<<יש לי משימה — ללכת לעבודה מחר>>>/, 'wrapped as untrusted data, not a bare instruction');
+  assert.match(userMd, /הצטרפו דרך הזמנה/);
+  assert.match(userMd, /Dana/);
+  assert.match(userMd, /לתאם ארוחה/);
+  assert.match(userMd, /connection_id=42/);
+});
+
+test('intake sweep: open registration provisions immediately — no separate welcome message', async () => {
   const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
     configPath,
     listSessions: async () => [{ phone: '+972601000002', key: 'agent:intake:whatsapp:direct:+972601000002' }],
@@ -89,17 +111,21 @@ test('intake sweep: open registration provisions and queues the welcome for imme
   }));
   assert.deepEqual(out.provisioned, ['+972601000002']);
 
-  const { rows } = await db.pool.query(
-    `SELECT o.*, u.phone FROM outbox o JOIN users u ON u.id = o.user_id WHERE o.kind = 'welcome' AND u.phone = '+972601000002'`);
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].urgency, 'urgent');
-  // The binding is live the moment provisioning saved the config, so nothing
-  // is waiting for — a release_after here would be pure added latency.
-  assert.equal(rows[0].release_after, null, 'welcome is deliverable on the next drain');
-  assert.match(rows[0].payload.text, /להכיר/);
-  assert.equal(rows[0].payload.firstMessage, 'היי מה זה הדבר הזה?');
+  // No outbox row at all — the 2026-08-17 redesign retired the dedicated
+  // 'welcome' kind. The conversation the person already had with the
+  // (now-talkative) greeter just continues in their own agent.
+  const { rows: outboxRows } = await db.pool.query(
+    `SELECT o.* FROM outbox o JOIN users u ON u.id = o.user_id WHERE u.phone = '+972601000002'`);
+  assert.equal(outboxRows.length, 0, 'nothing enqueued at provisioning time');
 
-  // second sweep: already active → skipped, no duplicate welcome
+  const { rows: userRows } = await db.pool.query(
+    `SELECT workspace_path, onboarded_at FROM users WHERE phone = '+972601000002'`);
+  assert.ok(userRows[0].onboarded_at, 'onboarded_at is set at provisioning, not on a later delivery');
+  const userMd = fs.readFileSync(path.join(userRows[0].workspace_path, 'USER.md'), 'utf8');
+  assert.match(userMd, /מה שכבר שיתפו לפני שהמערכת האישית הייתה מוכנה/);
+  assert.match(userMd, /היי מה זה הדבר הזה\?/, 'their own words reach their personal workspace');
+
+  // second sweep: already active → skipped, workspace untouched
   const again = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
     configPath,
     listSessions: async () => [{ phone: '+972601000002', key: 'x' }],
@@ -127,14 +153,16 @@ test('intake sweep: closed registration waitlists organic strangers, still admit
 
   const wl = await db.pool.query(`SELECT * FROM waitlist WHERE phone = '+972601000004'`);
   assert.equal(wl.rows.length, 1);
-  // invited stranger's connection moved forward and welcome carries the inviter context
+  // invited stranger's connection moved forward and USER.md carries the inviter context
   const conn = await db.pool.query(`SELECT status, target_id FROM connections WHERE target_phone = '+972601000005'`);
   assert.equal(conn.rows[0].status, 'pending_target');
   assert.ok(conn.rows[0].target_id);
-  const w = await db.pool.query(
-    `SELECT o.payload FROM outbox o JOIN users u ON u.id = o.user_id WHERE o.kind = 'welcome' AND u.phone = '+972601000005'`);
-  assert.equal(w.rows[0].payload.invited.inviterName, 'Miron D');
-  assert.match(w.rows[0].payload.invited.reason, /לתאם/);
+  const { rows: wsRows } = await db.pool.query(
+    `SELECT workspace_path FROM users WHERE phone = '+972601000005'`);
+  const userMd = fs.readFileSync(path.join(wsRows[0].workspace_path, 'USER.md'), 'utf8');
+  assert.match(userMd, /הצטרפו דרך הזמנה/);
+  assert.match(userMd, /Miron D/);
+  assert.match(userMd, /לתאם/);
 
   await withTx(db.pool, (c) => flags.setFlag(c, 'registration_open', true));
 });
@@ -265,13 +293,18 @@ test('intake workspace sync: open/closed variants, idempotent writes', () => {
   const w1 = syncIntakeWorkspace(true, base2);
   assert.equal(w1.changed, true);
   const text = fs.readFileSync(path.join(base2, 'workspaces', 'intake', 'AGENTS.md'), 'utf8');
-  // the greeter must NOT introduce Olma — their own agent does that seconds
-  // later, and saying it twice is exactly the duplicate-intro users reported
-  // While registration is open the greeter must stay completely silent: the
-  // user's own agent answers their first message (replayed to it) seconds
-  // later, and a second voice in the chat is what made messages get lost.
-  assert.match(text, /NO_REPLY/);
-  assert.ok(!/אולמה|personal assistant ready/.test(text), 'no self-introduction to duplicate');
+  // 2026-08-17 redesign: the greeter answers for real (product knowledge,
+  // Olma's voice) — silence turned out to feel worse than a good generic
+  // reply, and there is no separate personal welcome any more for a second
+  // voice to clash with.
+  assert.match(text, /Answer for real/);
+  assert.match(text, /Olma/);
+  assert.ok(!/NO_REPLY/.test(text), 'no longer told to stay silent');
+  // Not testing for the ABSENCE of "later welcome" phrasing here — the
+  // instruction legitimately quotes that exact phrase to prohibit it
+  // ('never say "X"'), which makes a simple negative regex self-defeating.
+  // The positive assertions above are what actually distinguish this from
+  // the old NO_REPLY design.
   assert.equal(syncIntakeWorkspace(true, base2).changed, false); // no rewrite when unchanged
   const w2 = syncIntakeWorkspace(false, base2);
   assert.equal(w2.changed, true);

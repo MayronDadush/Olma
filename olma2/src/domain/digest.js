@@ -11,6 +11,7 @@
 //                  (deliberate FOMO), full detail for anything involving
 //                  another person (never block human-to-human coordination)
 const { ok, err } = require('./results');
+const audit = require('./audit');
 
 const SCOPES = ['summary', 'full', 'today', 'block_view'];
 
@@ -73,4 +74,75 @@ async function assemble(client, userId, scope) {
   return ok({ ...base, tasks });
 }
 
-module.exports = { assemble, SCOPES };
+
+// ---- preferences ------------------------------------------------------------
+//
+// The scheduled digest already worked — sweeps.js matches each user's local
+// HH:MM against users.digest_times — but nothing could SET it. The column was
+// reachable only by hand-written SQL, so in practice no user could choose when
+// (or whether) they get a digest. Added 2026-08-18, ported in spirit from v1's
+// set_digest_preferences.
+//
+// 'block_view' is deliberately not selectable: it is the quota-block notice
+// assembled by turn_start, not a scope a person can ask for.
+const USER_SCOPES = ['summary', 'full', 'today'];
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+// Each digest is a model turn, so this is a real cost ceiling, not tidiness.
+const MAX_TIMES = 4;
+
+async function setPreferences(client, userId, times, scope) {
+  let digestTimes;                       // undefined = leave alone
+  if (times !== undefined && times !== null) {
+    if (!Array.isArray(times)) return err('invalid', 'times must be an array of "HH:MM" strings');
+    const cleaned = [...new Set(times.map((t) => String(t).trim()).filter(Boolean))];
+    for (const t of cleaned) {
+      if (!HHMM.test(t)) return err('invalid', `not a valid 24h time: ${t}`, { expected: 'HH:MM' });
+    }
+    if (cleaned.length > MAX_TIMES) {
+      return err('invalid', `at most ${MAX_TIMES} digest times`, { got: cleaned.length });
+    }
+    cleaned.sort();
+    // an empty array is how the user turns the digest off
+    digestTimes = cleaned.length ? cleaned.join(',') : null;
+  }
+
+  let digestScope;
+  if (scope !== undefined && scope !== null && String(scope).trim() !== '') {
+    const sc = String(scope).trim();
+    if (!USER_SCOPES.includes(sc)) {
+      return err('invalid', `scope must be one of ${USER_SCOPES.join('|')}`, { got: sc });
+    }
+    digestScope = sc;
+  }
+
+  if (digestTimes === undefined && digestScope === undefined) {
+    return err('invalid', 'nothing to change — pass times and/or scope');
+  }
+
+  // $2 says whether times was supplied at all, which is what separates
+  // "leave it alone" from "turn it off" — both of which arrive here as a
+  // null-ish $3.
+  const { rows } = await client.query(
+    `UPDATE users
+        SET digest_times = CASE WHEN $2::boolean THEN $3::text ELSE digest_times END,
+            digest_scope = COALESCE($4::text, digest_scope)
+      WHERE id = $1
+      RETURNING digest_times, digest_scope, timezone`,
+    [userId, digestTimes !== undefined, digestTimes ?? null, digestScope ?? null]
+  );
+  const u = rows[0];
+  await audit.record(client, userId, 'digest.preferences_set', {
+    digestTimes: u.digest_times, digestScope: u.digest_scope,
+  });
+  return ok({
+    digestTimes: u.digest_times,
+    digestScope: u.digest_scope,
+    enabled: Boolean(u.digest_times),
+    // The sweep resolves these against the user's own zone; surfacing it lets
+    // the agent say "20:00 your time" instead of hoping.
+    timezone: u.timezone,
+  });
+}
+
+module.exports = { assemble, setPreferences, SCOPES, USER_SCOPES, MAX_TIMES };

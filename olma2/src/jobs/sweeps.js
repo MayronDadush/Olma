@@ -23,12 +23,15 @@ async function sweepReminders(client, nowIso) {
     });
     if (res.data.enqueued) {
       await reminders.markSent(client, r.reminder_id);
-      // simple repeat support: daily / weekly spawn the next occurrence
-      if (r.repeat_rule === 'daily' || r.repeat_rule === 'weekly') {
-        const next = new Date(new Date(r.remind_at).getTime() + (r.repeat_rule === 'daily' ? 1 : 7) * 24 * 3600_000);
+      // Spawn the next occurrence. The rule vocabulary lives in one place —
+      // this used to compare against the literals 'daily'/'weekly' while the
+      // model was storing 'FREQ=DAILY', so every repeating reminder silently
+      // fired exactly once. See reminders.normalizeRepeatRule.
+      const next = reminders.nextOccurrence(r.remind_at, r.repeat_rule);
+      if (next) {
         await client.query(
           `INSERT INTO task_reminders (task_id, remind_at, repeat_rule) VALUES ($1, $2, $3)`,
-          [r.task_id, next, r.repeat_rule]
+          [r.task_id, next, reminders.normalizeRepeatRule(r.repeat_rule)]
         );
       }
       out.push(r.reminder_id);

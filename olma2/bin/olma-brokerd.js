@@ -11,6 +11,8 @@ const sweeps = require('../src/jobs/sweeps');
 const intake = require('../src/jobs/intake');
 const configGuard = require('../src/jobs/config-guard');
 const unanswered = require('../src/jobs/unanswered');
+const laneWatchdog = require('../src/jobs/lane-watchdog');
+const memoryConsolidation = require('../src/jobs/memory-consolidation');
 const { DEFAULT_PATH: OPENCLAW_CONFIG } = require('../src/intake/openclaw-config');
 
 const SOCK = process.env.OLMA_SOCK || '/opt/olma2/run/brokerd.sock';
@@ -83,28 +85,24 @@ async function main() {
     timers.push(setInterval(() => beat('unanswered_sweep', () =>
       withTx(pool, (c) => unanswered.sweepUnanswered(c))), 60_000));
 
+    // Free lanes the gateway has classified stuck and then declined to free.
+    // 30s, because this is the difference between a person waiting ~90s and a
+    // person waiting until unanswered_sweep notices minutes later.
+    const { abortSessionLane } = require('../src/channels/openclaw');
+    timers.push(setInterval(() => beat('lane_watchdog', () =>
+      withTx(pool, (c) => laneWatchdog.sweepLaneWatchdog(c, { abort: abortSessionLane }))), 30_000));
+
     // intake pipeline — inert until an 'intake' agent exists in openclaw.json.
     // 5s, and it costs a small file read: discovery reads the gateway's own
     // session index off disk instead of spawning `openclaw sessions list`
     // (2.9s of CPU per call, previously every 15s — see channels/sessions.js).
-    // A new user's wait for their welcome starts ticking here, so this is the
-    // one sweep worth running eagerly. When it provisions someone, drain the
-    // outbox at once rather than letting their welcome sit for up to 30s.
-    timers.push(setInterval(() => beat('intake_sweep', async () => {
-      const res = await withTx(pool, (c) => intake.sweepIntakeSessions(c, {
+    // Provisioning is the whole job now — no welcome message follows it (see
+    // intake/provision.js), so there is nothing left to drain eagerly; the
+    // regular 30s outbox_worker tick is enough.
+    timers.push(setInterval(() => beat('intake_sweep', () =>
+      withTx(pool, (c) => intake.sweepIntakeSessions(c, {
         configPath: OPENCLAW_CONFIG, readFirstMessage: intake.readIntakeFirstMessage,
-      }));
-      // Provisioning wrote the binding; the gateway applies it on its own
-      // file-watch tick, measured at 2-4s. Draining instantly means the very
-      // first delivery attempt races that reload and fails — which is exactly
-      // what pushed new users into a retry backoff. Wait for the reload, then
-      // send; the retry ladder above covers us if it is slower than usual.
-      if (res && res.provisioned && res.provisioned.length) {
-        const t = setTimeout(() => { drain().catch(() => {}); }, 5_000);
-        if (t.unref) t.unref();
-      }
-      return res;
-    }), 5_000));
+      }))), 5_000));
     timers.push(setInterval(() => beat('reopen_sweep', () =>
       withTx(pool, (c) => intake.sweepReopen(c))), 60_000));
     // keep the intake greeter's open/closed text in sync with the flag
@@ -118,6 +116,15 @@ async function main() {
     // identity-hardening watchdog — every 10 minutes
     timers.push(setInterval(() => beat('config_guard', () =>
       withTx(pool, (c) => configGuard.run(c, { configPath: OPENCLAW_CONFIG }))), 600_000));
+
+    // Weekly per user, but ticked hourly: "the small hours" is only meaningful
+    // in each person's own timezone, so the job decides who is due rather than
+    // the interval deciding for it.
+    const { runSilentAgentTurn } = require('../src/channels/openclaw');
+    timers.push(setInterval(() => beat('memory_consolidation', () =>
+      withTx(pool, (c) => memoryConsolidation.sweepMemoryConsolidation(c, {
+        runAgent: runSilentAgentTurn,
+      }))), 3600_000));
 
     // cost attribution + product analytics — hourly; retention — daily
     const usage = require('../src/jobs/usage');

@@ -123,10 +123,13 @@ test('connection approval notifies the requester and hints the grants step', asy
 
 test('every proactive instruction forbids sending tools — one message, one delivery', () => {
   const { instructionFor } = require('../src/channels/openclaw');
-  // Live incident: the welcome said "Send the following message", so the agent
-  // both said it (auto-delivered by --deliver) and called a send tool. The
-  // user got it twice, 2.6s apart, with two different WhatsApp message ids.
-  const kinds = ['welcome', 'checkin', 'reminder', 'digest', 'unblock_summary',
+  // Live incident: an instruction once said "Send the following message", so
+  // the agent both said it (auto-delivered by --deliver) and called a send
+  // tool. The user got it twice, 2.6s apart, with two different WhatsApp
+  // message ids. There is no 'welcome' kind any more (2026-08-17 redesign —
+  // no separate welcome message, see intake/provision.js) so it is not in
+  // this list; every kind that still exists must carry the preamble.
+  const kinds = ['checkin', 'reminder', 'digest', 'unblock_summary',
     'connection_intro', 'registration_reopened'];
   for (const kind of kinds) {
     const s = instructionFor({ kind, payload: { text: 'X', tasks: [], slot: 'y' } });
@@ -138,18 +141,6 @@ test('every proactive instruction forbids sending tools — one message, one del
   const custom = instructionFor({ kind: 'checkin', payload: { instruction: 'Ask about the meeting.' } });
   assert.match(custom, /^DELIVERY:/);
   assert.match(custom, /Ask about the meeting\./);
-});
-
-test('welcome replays what they wrote to the silent greeter instead of ignoring it', () => {
-  const { instructionFor } = require('../src/channels/openclaw');
-  const s = instructionFor({
-    kind: 'welcome',
-    payload: { text: 'WELCOME TEXT', firstMessage: 'יש לי משימה\nללכת לעבודה מחר' },
-  });
-  assert.match(s, /ללכת לעבודה מחר/, 'their actual words reach their own agent');
-  assert.match(s, /<<</, 'wrapped as untrusted data, not instructions');
-  assert.match(s, /ANSWER IT PROPERLY/, 'substantive first messages get handled, not re-requested');
-  assert.match(s, /Never ask them to repeat/);
 });
 
 test('unanswered repair: only for messages provably never answered', async () => {

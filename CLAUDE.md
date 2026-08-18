@@ -7,23 +7,102 @@ the actual code lives on the server (`/opt/olma/`, `/opt/olma-dashboard/`),
 not in this git repo. If this file and the server disagree, the server wins —
 update this file, don't trust it blindly for anything you're about to act on.
 
-## ⚠️ Two systems coexist on the box (since 2026-08-16)
+## ⚠️ v2 IS the live system (cutover done — verified 2026-08-17)
 
-Everything below "Multi-user architecture" describes **v1**, the system users
-are LIVE on today. **Olma 2.0** is fully built and running alongside it,
-NOT yet serving users (cutover = Phase G, pending):
+**Olma 2.0 now serves users.** Everything below "Multi-user architecture"
+describes **v1**, which is retired-in-place: its code still sits in
+`/opt/olma/broker/` but nothing routes to it. Verified on the box:
 
-- **Source of truth: `olma2/` in THIS repo** (unlike v1). ~5.3k lines, 83
-  tests. `olma2/README.md` is its map. Deploy+test: `bash olma2/scripts/deploy.sh`
-  (rsync → `/opt/olma2/` → migrations → full suite on the server).
+- `openclaw.json` `mcp.servers` has exactly ONE entry, `/opt/olma2/bin/olma-mcp.js`.
+  v1's `olma-mcp.js` is not registered, so **every v1-only tool is dead** —
+  Google Calendar and Monday included (see the integrations gap below).
+- `agents.list` = `main, intake, u-3, u-7`; the `intake` agent exists, so the
+  v2 intake sweeps are live, not inert. (Stale `u-1/u-2/u-4…u-9` directories
+  under `/root/.openclaw/agents/` are leftovers from testing, not config.)
+- The v1 dashboard is **down** (nothing on :4173, no systemd unit). Caddy
+  serves `olmachat.duckdns.org → 127.0.0.1:8788`, i.e. the **v2** dashboard.
+
+- **Source of truth: `olma2/` in THIS repo** (unlike v1). ~4.9k lines src+bin,
+  116 tests. `olma2/README.md` is its map. Deploy+test:
+  `bash olma2/scripts/deploy.sh` (rsync → `/opt/olma2/` → migrations → full
+  suite on the server).
 - Postgres 16 local (`olma2` + `olma2_test` DBs), creds in `/opt/olma2/.env`
   (0600). Daily `pg_dump` 02:15 → `/root/backups/`, 14-day retention.
+  **The dump lands on the same droplet it backs up — no off-box copy yet.**
 - Services: `olma2-brokerd` (unix-socket daemon: pg pool, flood counters,
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
-- v2 intake sweeps are **inert** until an `intake` agent exists in
-  openclaw.json (`scripts/install-intake.js` — cutover-only, needs
-  `dmPolicy:"open"` + one gateway restart for the catch-all binding).
+
+### Known gap: integrations were left behind by the cutover
+
+v1 had per-user Google Calendar + Monday (`/opt/olma/broker/google-oauth.js`,
+`crypto-store.js`, tools in v1's `olma-mcp.js`). v2 has an `integrations`
+table but no credential columns, no `oauth_states`, no tools, and no
+`/oauth/google/callback` route — and since the public host now points at the
+v2 dashboard, the callback Google redirects to **404s**. One real connection
+exists in the v1 SQLite DB (user `+972526269826`: calendar `read_write` +
+Monday `read_only`). Porting it back is a restore, not a migration task; the
+v1 tokens stay decryptable if v2 reuses `/opt/olma/.enc-key`.
+
+### Repeating reminders were silently one-shot (fixed 2026-08-18)
+
+`sweeps.js` compared `repeat_rule` against the literals `'daily'`/`'weekly'`
+while the agent, handed a freeform field, stored RRULE-style `'FREQ=DAILY'`.
+Nothing errored — the reminder fired once and no successor row was written.
+Four of five live reminders were affected, including daily medication ones.
+One vocabulary now lives in `domain/reminders.normalizeRepeatRule` /
+`nextOccurrence` (canonical: `daily` | `weekly` | `weekly:MO,TH` | NULL),
+normalised on write; migration 005 canonicalised the stored values and revived
+the dropped occurrences.
+
+### users.timezone must never be NULL
+
+Nothing set it until 2026-08-18, so every row was NULL — and NULL falls back to
+UTC in BOTH the outbox delivery gate and the digest sweep. For an Israeli user
+that ran the 09:00-20:00 quiet-hours window at 12:00-23:00 local and fired every
+digest three hours late. `domain/phone-timezone.js` (ported from v1) infers it
+from the dialling code at provisioning, stored with `timezone_confirmed = false`
+so the agent still confirms.
+
+### Proactive delivery needs --to as well (fixed 2026-08-18)
+
+`makeDeliverer` passes `--agent` + `--session-key` + `--channel` + `--to`. The
+session key alone is not enough for a user who has never written to their OWN
+agent (their first message went to intake): there is no session to derive a
+target from, so `--deliver` fails with `Delivering to WhatsApp requires target`
+and the welcome — the very message that would create the session — can never
+land. Observed live: user 8 sat at 26 failed attempts, `onboarded_at` NULL,
+receiving nothing from v2 at all. `--agent` keeps the turn on their own agent,
+so the v1 lesson about `--to` hitting the default agent does not apply.
+
+### Wedged session lanes (the live bug v2 works around)
+
+`jobs/lane-watchdog.js` (added 2026-08-17) frees a lane the gateway itself
+declared stuck and then refused to free. Root cause is in the gateway:
+`isActiveRunProgressStale()` returns false whenever `lastProgressAgeMs` is
+undefined, so recovery returns `keep_lane` forever and lowering
+`diagnostics.stuckSessionAbortMs` (already 75s here) never helps. The
+watchdog reads the gateway's own log, then calls `sessions.abort`
+(RPC scope `operator.write` — no device upgrade needed) on that ONE key.
+`jobs/unanswered.js` remains the slower backstop for messages dropped entirely.
+
+### Onboarding has no "welcome" step any more (redesigned 2026-08-17)
+
+Retired the whole `kind: 'welcome'` outbox mechanism. The intake greeter
+(`intake/intake-workspace.js`) went silent (`NO_REPLY`) earlier the same day
+to stop a real duplicate-message incident (two voices — a generic intake
+reply and a scripted personal welcome — landed as two separate WhatsApp
+messages); going silent fixed the duplicate but felt worse than either. The
+actual redesign: the greeter answers for real, in Olma's voice, with genuine
+product knowledge and no tools — never a placeholder, never "wait a bit,
+the real me is coming." There is no second, separate welcome moment left for
+it to clash with. When `provisionUser` (`intake/provision.js`) activates the
+person's own agent, `onboarded_at` is set right there (not on a message
+delivery), and whatever they already told the greeter — extracted facts
+only, never the raw transcript — is written straight into their new
+workspace's `USER.md`. `agents-template.md` tells the personal agent to fold
+that in on its first real turn and then remove it; the conversation the
+person is already having simply continues, silently more capable.
 - **`bindings` hot-apply — but only when bundled with another hot change.**
   (Corrected 2026-08-16 from the gateway source + live evidence, after an
   earlier probe over-generalised and cost every new user 2-4 minutes.)

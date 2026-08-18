@@ -29,30 +29,6 @@ function introMessage({ inviterName, inviterPhone, reason, phone }) {
   ].join('\n');
 }
 
-// The full welcome — the "tell me about yourself" opening (design sheet 08).
-function welcomeText({ firstName, phone }) {
-  if (isHebrewPhone(phone)) {
-    const greeting = firstName ? `היי ${firstName}, אני אולמה` : 'היי, אני אולמה';
-    return [
-      `${greeting} — העוזרת האישית שלך.`,
-      ``,
-      `הכי טוב להתחיל בלהכיר: ספר/י לי עליך כמו שהיית מספר/ת לעוזר אישי חדש שנכנס לחיים שלך — מי את/ה, מה חשוב לך, מתי נוח לך שאפנה אליך, ובין השאר גם מה יש לך על הראש עכשיו (משימות, פרויקטים, דברים שאסור לשכוח).`,
-      ``,
-      `בלי סדר, בלי לחשוב על זה יותר מדי — הודעה אחת ארוכה, גם הקלטה קולית עובדת 🎤`,
-      `אני אסדר הכל.`,
-    ].join('\n');
-  }
-  const greeting = firstName ? `Hi ${firstName}, I'm Olma` : "Hi, I'm Olma";
-  return [
-    `${greeting} — your personal assistant.`,
-    ``,
-    `The best way to start: tell me about yourself, the way you'd brief a new personal assistant stepping into your life — who you are, what matters to you, when it suits you to hear from me, and along the way whatever is on your plate right now (tasks, projects, things you must not forget).`,
-    ``,
-    `No order needed, no overthinking — one long message works, so does a voice note 🎤`,
-    `I'll organise everything.`,
-  ].join('\n');
-}
-
 // The reopen notice for waitlisted strangers — the promise we made kept.
 function reopenMessage(phone) {
   if (isHebrewPhone(phone)) {
@@ -61,4 +37,4 @@ function reopenMessage(phone) {
   return "Hi! Olma here — you reached out while new sign-ups were paused. There's room now! If you're still interested, just reply here and we'll get started 🙂";
 }
 
-module.exports = { introMessage, welcomeText, reopenMessage, isHebrewPhone };
+module.exports = { introMessage, reopenMessage, isHebrewPhone };

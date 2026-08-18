@@ -1,9 +1,17 @@
 'use strict';
-// The intake agent's workspace: a deliberately tool-less agent whose ONLY job
-// is the instant first reply to unknown numbers. It never identifies anyone
-// and never calls tools — identity starts only after provisioning, in the
-// person's own isolated agent. brokerd keeps the open/closed variant in sync
-// with the registration_open flag (the agent has no way to check it itself).
+// The intake agent's workspace: a tool-less agent that gives the instant
+// FIRST reply to unknown numbers. It never identifies anyone and never calls
+// tools — identity starts only after provisioning, in the person's own
+// isolated agent. brokerd keeps the open/closed variant in sync with the
+// registration_open flag (the agent has no way to check it itself).
+//
+// It answers for real (not a placeholder) — see the 2026-08-17 redesign: two
+// separate "voices" (a generic reply now, a scripted personal welcome later)
+// is what caused a real duplicate-message incident. There is no later
+// welcome any more: whatever this agent and the person exchange is read back
+// (as extracted facts, not the raw transcript) into their personal agent's
+// workspace once provisioning finishes, and the SAME conversation just
+// continues — silently more capable, never re-introduced.
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -22,15 +30,25 @@ function intakeAgentsMd(registrationOpen) {
     '',
   ];
   const open = [
-    'Say NOTHING. Reply with exactly: NO_REPLY',
+    'Answer for real, in your own words, every time — never a fixed script',
+    'and never "one moment please". You are Olma, a personal assistant that',
+    'lives in WhatsApp. In ONE short reply: say who you are, and name',
+    'concretely one or two things you actually help with — tasks and',
+    'reminders, a daily plan at a time they choose, connecting with people',
+    'close to them, coordinating and sharing with them. Then invite them to',
+    'just tell you whatever is on their mind — tasks, plans, anything — one',
+    'message or a voice note, no particular order needed.',
     '',
-    'Why: setup finishes in a few seconds, and their own assistant then',
-    'answers their message directly — including whatever they just wrote,',
-    'which is handed over to it. Anything you say here would be a second',
-    'voice arriving seconds before the real one: the user reads two openings,',
-    'and two overlapping replies in one chat is what makes messages get lost.',
+    'You have no tools yet and no memory of anything said before this reply —',
+    'never claim to remember, save, or promise something specific. Nothing',
+    'they tell you here is lost: it reaches their own, fully capable self',
+    'within seconds, picked up from exactly where this left off. Never say',
+    '"the real me will be ready soon" or anything implying a second,',
+    'separate introduction is coming — there isn\'t one; this conversation',
+    'simply continues.',
     '',
-    'This holds however many times they write. Always exactly: NO_REPLY',
+    'If they write again before that handoff: keep answering for real, in',
+    'fresh words — never repeat yourself verbatim, never stall.',
   ];
   const closed = [
     'Say: you are Olma, and right now new sign-ups are paused. Their message',

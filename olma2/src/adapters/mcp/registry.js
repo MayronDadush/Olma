@@ -121,6 +121,10 @@ const TOOLS = [
   tool('get_my_digest', 'Assemble the current picture. scope: summary (counts) | full (every open task) | today (due/overdue today).',
     { scope: S('string', 'summary | full | today') }, [],
     (client, user, a) => digest.assemble(client, user.id, a.scope || user.digest_scope || 'summary')),
+  tool('set_digest_preferences', 'Set when the user gets their daily digest, and how much detail. times are LOCAL "HH:MM" (max 4); an empty array turns the digest off. Ask them, never guess.',
+    { times: S('array', 'Local times, e.g. ["09:00","20:00"]. [] turns it off.', { items: { type: 'string' } }),
+      scope: S('string', 'summary | full | today') }, [],
+    (client, user, a) => digest.setPreferences(client, user.id, a.times, a.scope)),
 
   // ---------------------------------------------------------------- tasks
   tool('list_my_tasks', 'List your open tasks (status=done for completed).',
@@ -153,7 +157,7 @@ const TOOLS = [
   // ---------------------------------------------------------------- reminders
   tool('set_task_reminder', 'Attach a reminder to a task. Several per task allowed.',
     { task_id: S('number', 'Task id'), remind_at: S('string', 'ISO datetime'),
-      repeat_rule: S('string', 'Optional repeat rule') }, ['task_id', 'remind_at'],
+      repeat_rule: S('string', 'Optional repeat: "daily", "weekly", or "weekly:MO,TH" for specific days. Anything else is stored as a one-off.') }, ['task_id', 'remind_at'],
     (client, user, a) => reminders.setReminder(client, user.id, a.task_id, a.remind_at, a.repeat_rule)),
   tool('cancel_reminder', 'Cancel a pending reminder.',
     { reminder_id: S('number', 'Reminder id') }, ['reminder_id'],
