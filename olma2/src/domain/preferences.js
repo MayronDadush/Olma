@@ -37,8 +37,14 @@ async function list(client, userId) {
 }
 
 // Availability for the delivery gate. Stored as "HH:MM-HH:MM" in the user's
-// own timezone under key 'availability'. Global 9-20 is only the fallback.
-const DEFAULT_WINDOW = { start: '09:00', end: '20:00' };
+// own timezone under key 'availability'.
+//
+// 08:00-21:00 is ONLY a fallback for someone who has not told us their hours
+// yet — quiet hours run from 21:00 until 08:00. It is a starting point, not
+// an answer: the agent is expected to learn each person's real hours in
+// conversation and store them here (see agents-template.md), because a
+// shift worker and a parent of a toddler do not share a schedule.
+const DEFAULT_WINDOW = { start: '08:00', end: '21:00' };
 
 async function availabilityWindow(client, userId) {
   const { rows } = await client.query(

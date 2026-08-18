@@ -1,0 +1,18 @@
+-- When this person last wrote to Olma.
+--
+-- Quiet hours exist so Olma never wakes someone. They were never meant to
+-- silence her mid-conversation: someone who messaged two minutes ago is
+-- demonstrably awake and waiting, and holding a reply until morning because
+-- the clock says 21:30 is the opposite of respectful.
+--
+-- Written by turn_start (the one call every inbound message already makes),
+-- read by the delivery gate. Kept on users rather than derived from the
+-- gateway's session files so the delivery path stays a pure DB read.
+--
+-- Deliberately NOT backfilled. NULL means "we have no evidence they are
+-- awake", which costs nothing — the gate simply falls back to normal quiet
+-- hours, exactly as it behaves today. Inventing a value from audit_log would
+-- be guessing at conversation activity from a table that records actions, and
+-- a wrong guess here means messaging someone at night. The column fills
+-- itself the next time each person writes.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_inbound_at TIMESTAMPTZ;

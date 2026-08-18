@@ -40,8 +40,39 @@ test('gate: night holds until the personal window opens; user-chosen times bypas
   assert.equal(held.holdReason, 'night');
   // 03:00 → 09:00 local = six hours away
   assert.equal(Math.round((held.releaseAfter - threeAmUTC) / 3600_000), 6);
-  assert.equal(decide({ ...night, row: row({ kind: 'reminder' }) }).action, 'deliver'); // user picked 03:00
+  // A reminder was set FOR a moment by the person themselves — 03:00 is when
+  // they asked to be reminded, so quiet hours must never move it.
+  assert.equal(decide({ ...night, row: row({ kind: 'reminder' }) }).action, 'deliver');
   assert.equal(decide({ ...night, row: row({ kind: 'digest' }) }).action, 'deliver');
+});
+
+test('gate: someone who just wrote is awake — quiet hours do not silence a live conversation', () => {
+  const night = { ...baseFacts, now: threeAmUTC };
+  // 3am, well outside any window, but they messaged two minutes ago
+  const justWrote = new Date(threeAmUTC.getTime() - 2 * 60_000).toISOString();
+  assert.equal(decide({ ...night, row: row(), lastInboundAt: justWrote }).action, 'deliver');
+
+  // ...the grace is 15 minutes, not "any time today"
+  const longAgo = new Date(threeAmUTC.getTime() - 40 * 60_000).toISOString();
+  assert.equal(decide({ ...night, row: row(), lastInboundAt: longAgo }).holdReason, 'night');
+
+  // never written → no evidence they are awake → normal quiet hours
+  assert.equal(decide({ ...night, row: row(), lastInboundAt: null }).holdReason, 'night');
+
+  // the grace opens the window; it does not waive the daily budget
+  const busy = { ...night, sentToday: 4, lastInboundAt: justWrote };
+  assert.equal(decide({ ...busy, row: row() }).holdReason, 'budget');
+});
+
+test('gate: default quiet hours run 21:00 to 08:00', () => {
+  const { DEFAULT_WINDOW } = require('../src/domain/preferences');
+  const tz = 'UTC';
+  const at = (h) => new Date(`2026-08-16T${String(h).padStart(2, '0')}:30:00Z`);
+  assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(9)), true);
+  assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(20)), true, '20:30 is still awake time');
+  assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(21)), false, 'quiet from 21:00');
+  assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(7)), false, 'still quiet at 07:30');
+  assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(8)), true, 'awake from 08:00');
 });
 
 test('gate: personal window beats the default one', () => {

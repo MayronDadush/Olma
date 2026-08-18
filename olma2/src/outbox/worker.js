@@ -18,7 +18,7 @@ async function drainOnce(pool, deliver, now = new Date()) {
   // LOCKED below (a lock taken here would be released at this tx's commit
   // anyway, and only mislead readers into thinking it protects something).
   const { rows: candidates } = await pool.query(
-    `SELECT o.*, u.timezone, u.agent_id, u.quota_blocked_until, u.first_name
+    `SELECT o.*, u.timezone, u.agent_id, u.quota_blocked_until, u.first_name, u.last_inbound_at
      FROM outbox o JOIN users u ON u.id = o.user_id
      WHERE o.sent_at IS NULL AND (o.release_after IS NULL OR o.release_after <= $1)
        AND (o.hold_reason IS NULL OR o.hold_reason <> 'budget')
@@ -49,6 +49,7 @@ async function drainOnce(pool, deliver, now = new Date()) {
         row, plan, blocked,
         blockedUntil: row.quota_blocked_until,
         window: win.data.window, tz: row.timezone,
+        lastInboundAt: row.last_inbound_at,
         sentToday: sentRows[0].n, budget, now,
       });
 

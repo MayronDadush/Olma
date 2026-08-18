@@ -90,8 +90,13 @@ const TOOLS = [
       if (ctx.flood && ctx.flood.isFlooding(user.id)) {
         return ok({ directive: 'silent', reason: 'flood' });
       }
-      // real activity resets the checkin backoff
-      await client.query(`UPDATE users SET checkin_misses = 0 WHERE id = $1 AND checkin_misses > 0`, [user.id]);
+      // Real activity resets the checkin backoff, and records that they are
+      // awake right now — the delivery gate uses this to allow a reply during
+      // quiet hours while a conversation is actually happening.
+      await client.query(
+        `UPDATE users SET last_inbound_at = now(),
+                checkin_misses = CASE WHEN checkin_misses > 0 THEN 0 ELSE checkin_misses END
+         WHERE id = $1`, [user.id]);
       const counted = await quota.countMessage(client, user.id);
       if (!counted.data.blocked) return ok({ directive: 'proceed', locale: user.locale });
       const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);

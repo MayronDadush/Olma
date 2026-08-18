@@ -6,7 +6,8 @@
 //
 // Policy (each rule traces to an explicit design decision):
 //   blocked user     → hold, except paid-plan reminders and the unblock summary
-//   outside personal availability window → hold until window opens
+//   outside personal availability window → hold until window opens, UNLESS
+//                      they wrote to us in the last 15 minutes (see below)
 //                      (reminders + digest bypass: the user chose those times)
 //   over daily proactive budget → normal severity folds into next digest,
 //                      urgent bypasses (user-requested reminders, live meetings)
@@ -51,7 +52,12 @@ function msUntilWindowOpen(window, tz, date = new Date()) {
 
 // ---- the decision -----------------------------------------------------------
 
-// facts: { row, plan, blocked, window, tz, sentToday, budget, now }
+// Quiet hours are about not waking someone, not about refusing to answer
+// someone who is right there. Within this long after their own message, they
+// are demonstrably awake and mid-conversation, so the window does not apply.
+const CONVERSATION_GRACE_MS = 15 * 60_000;
+
+// facts: { row, plan, blocked, window, tz, sentToday, budget, now, lastInboundAt }
 // returns { action: 'deliver' | 'hold' | 'expire', holdReason?, releaseAfter? }
 function decide(facts) {
   const { row, plan, blocked, window, tz, sentToday, budget } = facts;
@@ -70,7 +76,9 @@ function decide(facts) {
 
   // reminder/digest: the user picked those times.
   const userChoseThisTime = row.kind === 'reminder' || row.kind === 'digest';
-  if (!userChoseThisTime && !withinWindow(window, tz, now)) {
+  const lastInbound = facts.lastInboundAt ? new Date(facts.lastInboundAt).getTime() : 0;
+  const midConversation = lastInbound > 0 && (now.getTime() - lastInbound) < CONVERSATION_GRACE_MS;
+  if (!userChoseThisTime && !midConversation && !withinWindow(window, tz, now)) {
     return {
       action: 'hold', holdReason: 'night',
       releaseAfter: new Date(now.getTime() + msUntilWindowOpen(window, tz, now)),
@@ -86,4 +94,7 @@ function decide(facts) {
   return { action: 'deliver' };
 }
 
-module.exports = { decide, withinWindow, msUntilWindowOpen, minutesInTz, parseHHMM };
+module.exports = {
+  decide, withinWindow, msUntilWindowOpen, minutesInTz, parseHHMM,
+  CONVERSATION_GRACE_MS,
+};

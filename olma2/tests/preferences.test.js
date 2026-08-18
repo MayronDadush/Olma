@@ -44,7 +44,11 @@ test('availabilityWindow: stated beats default, garbage falls back safely', asyn
   await withClient(async (c) => {
     const def = await prefs.availabilityWindow(c, user.id);
     assert.equal(def.data.source, 'default');
-    assert.deepEqual(def.data.window, { start: '09:00', end: '20:00' });
+    // Assert against the exported constant, not a copy of its value — the
+    // default is a product decision that has already moved once (09:00-20:00
+    // → 08:00-21:00) and duplicating it here just means a second place to
+    // forget. What matters is that an unstated window IS the default one.
+    assert.deepEqual(def.data.window, prefs.DEFAULT_WINDOW);
 
     await prefs.remember(c, user.id, 'availability', '10:30-23:00');
     const stated = await prefs.availabilityWindow(c, user.id);
