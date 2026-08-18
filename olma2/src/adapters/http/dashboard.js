@@ -64,7 +64,8 @@ const SECTIONS = [
   { id: 'issues', title: 'תקלות ובקשות', hint: 'דברים שאולמה או המשתמשים דיווחו עליהם ומחכים לטיפול.', render: renderIssues },
   { id: 'cost', title: 'עלות', hint: 'כמה עולה השימוש במודל — לפי יום ולפי משתמש. הערכה, לא חשבונית.', render: renderCost },
   { id: 'metrics', title: 'שימוש במוצר', hint: 'מה באמת קורה במוצר: כמה אנשים פעילים, כמה נוצר, מה הצליח.', render: renderMetrics },
-  { id: 'outbox', title: 'הודעות יוצאות', hint: 'הודעות שאולמה יוזמת. "ממתין" = מחכה לשעה מתאימה אצל המשתמש.', render: renderOutbox },
+  { id: 'planned', title: 'מה מתוכנן להישלח', hint: 'כל מה שאולמה מתכננת לשלוח, ומתי — בשעון המקומי של כל משתמש. התוכן עצמו נכתב ברגע השליחה, לא מראש, ולכן כאן מופיע הנושא ולא הנוסח.', render: renderPlanned },
+  { id: 'outbox', title: 'הודעות יוצאות', hint: 'סיכום מספרי של ההודעות היזומות בשבוע האחרון.', render: renderOutbox },
   { id: 'flags', title: 'הגדרות מערכת', hint: 'שינוי כאן חל מיד, בלי עדכון גרסה. כל הגדרה מוסברת בשורה שלה.', render: renderFlags },
   { id: 'waitlist', title: 'רשימת המתנה', hint: 'אנשים שפנו כשההרשמה הייתה סגורה. יקבלו הודעה כשתיפתח.', render: renderWaitlist },
   { id: 'audit', title: 'יומן פעילות', hint: 'הפעולות האחרונות במערכת, לפי סדר.', render: renderAudit },
@@ -82,6 +83,8 @@ const JOB_LABELS = {
   config_guard: 'שומר אבטחה',
   checkin_ladder: 'פנייה יזומה למשתמשים',
   unanswered_sweep: 'תיקון הודעות שלא נענו',
+  lane_watchdog: 'שחרור שיחות תקועות',
+  memory_consolidation: 'סיכום זיכרון שבועי',
   usage_sweep: 'חישוב עלויות',
   metrics_sweep: 'חישוב סטטיסטיקות',
   retention_sweep: 'ניקוי נתונים ישנים',
@@ -263,6 +266,163 @@ const OUTBOX_STATE = {
   settling: 'ממתינות לייצוב המערכת',
 };
 
+// Plain-Hebrew name per outbox kind. The dashboard should never make anyone
+// learn an internal identifier to understand what Olma is about to say.
+const KIND_LABELS = {
+  checkin: 'פנייה יזומה',
+  reminder: 'תזכורת',
+  digest: 'סיכום יומי',
+  unblock_summary: 'סיכום אחרי מכסה',
+  registration_reopened: 'ההרשמה נפתחה',
+  connection_intro: 'הצגה למוזמן',
+  connection_request: 'בקשת חברות',
+  connection_response: 'תשובה לבקשת חברות',
+  share_offer: 'הצעת שיתוף משימה',
+  share_response: 'תשובה להצעת שיתוף',
+  meeting_invite: 'תיאום פגישה',
+  meeting_slot_proposed: 'הצעת מועד לפגישה',
+  meeting_confirmed: 'פגישה אושרה',
+  meeting_slot_declined: 'מועד נדחה',
+  meeting_opt_out: 'יציאה מפגישה',
+  meeting_no_match: 'לא נמצא מועד',
+  meeting_cancelled: 'פגישה בוטלה',
+};
+
+// Why a proactive message was chosen — the checkin ladder's rung.
+const RUNG_LABELS = {
+  onboarding_15m: 'היכרות · 15 דקות',
+  onboarding_2h: 'היכרות · שעתיים',
+  onboarding_5h: 'היכרות · 5 שעות',
+  stuck_meeting: 'פגישה שממתינה לו',
+  deadline_risk: 'דדליין מתקרב',
+  overload: 'עומס משימות',
+  silence: 'שקט ממושך',
+  unanswered_repair: 'תיקון הודעה שלא נענתה',
+};
+
+function userLink(u) {
+  const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.phone;
+  return `<a href="/user?id=${u.user_id || u.id}">${esc(name)}</a>`;
+}
+
+// What a queued row is ABOUT. The payload holds an instruction for the agent,
+// never the finished text (the v1 stale-digest rule), so this is deliberately
+// a subject line and not a preview — claiming otherwise would be a lie the
+// moment the agent words it differently.
+function plannedSubject(row) {
+  const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
+  if (row.kind === 'reminder' && p.title) return esc(p.title);
+  if (row.kind === 'checkin' && p.rung) return RUNG_LABELS[p.rung] || esc(p.rung);
+  if (p.title) return esc(String(p.title).slice(0, 60));
+  return '<span class="dim">—</span>';
+}
+
+async function renderPlanned(client) {
+  // 1. Already queued: minutes away, or held by the delivery gate.
+  const { rows: queued } = await client.query(
+    `SELECT o.id, o.kind, o.urgency, o.hold_reason, o.attempts, o.payload, o.expires_at,
+            o.user_id, u.first_name, u.last_name, u.phone,
+            to_char(o.release_after AT TIME ZONE COALESCE(u.timezone, 'UTC'), 'DD/MM HH24:MI') AS local_release
+     FROM outbox o JOIN users u ON u.id = o.user_id
+     WHERE o.sent_at IS NULL
+     ORDER BY COALESCE(o.release_after, o.created_at) LIMIT 40`);
+
+  // 2. Scheduled ahead: the reminders people actually asked for. These have
+  //    no outbox row yet — the sweep creates one when they come due, which is
+  //    why a queue-only view would look almost empty and mean almost nothing.
+  const { rows: reminders } = await client.query(
+    `SELECT r.id, r.repeat_rule, t.title, u.id AS user_id, u.first_name, u.last_name, u.phone,
+            to_char(r.remind_at AT TIME ZONE COALESCE(u.timezone, 'UTC'), 'DD/MM HH24:MI') AS local_time,
+            r.remind_at < now() AS overdue
+     FROM task_reminders r
+     JOIN tasks t ON t.id = r.task_id
+     JOIN users u ON u.id = t.owner_id
+     WHERE r.sent_at IS NULL AND r.cancelled_at IS NULL
+     ORDER BY r.remind_at LIMIT 40`);
+
+  // 3. Standing: the daily digest each person chose, in their own local time.
+  const { rows: digests } = await client.query(
+    `SELECT id, first_name, last_name, phone, digest_times, digest_scope, timezone
+     FROM users
+     WHERE status = 'active' AND digest_times IS NOT NULL AND digest_times <> ''
+     ORDER BY id`);
+
+  const queuedHtml = queued.length ? `<table>
+      <tr><th>למי</th><th>סוג</th><th>בנושא</th><th>מתי</th><th>מצב</th></tr>
+      ${queued.map((r) => `<tr${r.attempts > 0 ? ' class="bad"' : ''}>
+        <td>${userLink(r)}</td>
+        <td>${KIND_LABELS[r.kind] || esc(r.kind)}</td>
+        <td class="small">${plannedSubject(r)}</td>
+        <td class="nowrap small">${r.local_release ? esc(r.local_release) : '<span class="dim">מיד</span>'}</td>
+        <td class="small">${r.hold_reason ? (OUTBOX_STATE[r.hold_reason] || esc(r.hold_reason))
+          : (r.attempts > 0 ? `נסיון ${r.attempts}` : '<span class="dim">בדרך</span>')}</td>
+      </tr>`).join('')}</table>`
+    : '<p class="dim">אין כרגע הודעה בתור.</p>';
+
+  const remindersHtml = reminders.length ? `<table>
+      <tr><th>למי</th><th>על מה</th><th>מתי</th><th>חוזר</th></tr>
+      ${reminders.map((r) => `<tr>
+        <td>${userLink(r)}</td>
+        <td class="small">${esc(r.title)}</td>
+        <td class="nowrap small">${esc(r.local_time)}${r.overdue ? ' <span class="pill">באיחור</span>' : ''}</td>
+        <td class="dim small">${r.repeat_rule ? esc(r.repeat_rule) : '—'}</td>
+      </tr>`).join('')}</table>`
+    : '<p class="dim">אין תזכורות מתוזמנות.</p>';
+
+  const digestHtml = digests.length ? `<table>
+      <tr><th>למי</th><th>שעות</th><th>היקף</th><th>אזור זמן</th></tr>
+      ${digests.map((u) => `<tr>
+        <td>${userLink(u)}</td>
+        <td class="mono small">${esc(u.digest_times)}</td>
+        <td class="small">${esc(u.digest_scope || 'summary')}</td>
+        <td class="dim small">${esc(u.timezone || 'UTC')}</td>
+      </tr>`).join('')}</table>`
+    : '<p class="dim">אף אחד לא הגדיר סיכום יומי.</p>';
+
+  return `<h4>בתור עכשיו — דקות מכאן</h4>${queuedHtml}
+    <h4>תזכורות מתוזמנות — נכנסות לתור כשיגיע זמנן</h4>${remindersHtml}
+    <h4>סיכום יומי קבוע</h4>${digestHtml}
+    <p class="hint">השעות הן בשעון המקומי של כל משתמש. הן עשויות לזוז: הודעה
+      שנופלת בשעות השקט שלו תמתין לבוקר, ומי שכבר קיבל מספיק הודעות היום —
+      שלו תצטרף לסיכום הבא.</p>`;
+}
+
+// The same question narrowed to one person: what is Olma about to say to
+// THEM. Same honesty as the global view — subjects, not drafts.
+async function renderPlannedForUser(client, u) {
+  const { rows: queued } = await client.query(
+    `SELECT o.kind, o.hold_reason, o.attempts, o.payload,
+            to_char(o.release_after AT TIME ZONE COALESCE($2, 'UTC'), 'DD/MM HH24:MI') AS local_release
+     FROM outbox o WHERE o.user_id = $1 AND o.sent_at IS NULL
+     ORDER BY COALESCE(o.release_after, o.created_at) LIMIT 15`, [u.id, u.timezone]);
+  const { rows: reminders } = await client.query(
+    `SELECT t.title, r.repeat_rule,
+            to_char(r.remind_at AT TIME ZONE COALESCE($2, 'UTC'), 'DD/MM HH24:MI') AS local_time
+     FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+     WHERE t.owner_id = $1 AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+     ORDER BY r.remind_at LIMIT 15`, [u.id, u.timezone]);
+
+  if (!queued.length && !reminders.length && !u.digest_times) {
+    return `<section><h3>מה מתוכנן להישלח אליו</h3>
+      <p class="dim">אין כרגע שום דבר מתוכנן.</p></section>`;
+  }
+  return `<section><h3>מה מתוכנן להישלח אליו</h3>
+    <p class="hint">בשעון המקומי שלו (${esc(u.timezone || 'UTC')}). הנוסח נכתב ברגע השליחה — כאן הנושא בלבד.</p>
+    ${queued.length ? `<h4>בתור</h4><table><tr><th>סוג</th><th>בנושא</th><th>מתי</th><th>מצב</th></tr>
+      ${queued.map((r) => `<tr${r.attempts > 0 ? ' class="bad"' : ''}>
+        <td>${KIND_LABELS[r.kind] || esc(r.kind)}</td>
+        <td class="small">${plannedSubject(r)}</td>
+        <td class="nowrap small">${r.local_release ? esc(r.local_release) : '<span class="dim">מיד</span>'}</td>
+        <td class="small">${r.hold_reason ? (OUTBOX_STATE[r.hold_reason] || esc(r.hold_reason)) : '<span class="dim">בדרך</span>'}</td>
+      </tr>`).join('')}</table>` : ''}
+    ${reminders.length ? `<h4>תזכורות מתוזמנות</h4><table><tr><th>על מה</th><th>מתי</th><th>חוזר</th></tr>
+      ${reminders.map((r) => `<tr><td class="small">${esc(r.title)}</td>
+        <td class="nowrap small">${esc(r.local_time)}</td>
+        <td class="dim small">${r.repeat_rule ? esc(r.repeat_rule) : '—'}</td></tr>`).join('')}</table>` : ''}
+    ${u.digest_times ? `<h4>סיכום יומי</h4><p class="small">כל יום ב-<span class="mono">${esc(u.digest_times)}</span></p>` : ''}
+  </section>`;
+}
+
 async function renderOutbox(client) {
   const { rows } = await client.query(
     `SELECT coalesce(hold_reason, CASE WHEN sent_at IS NULL THEN 'ready' ELSE 'sent' END) AS state, count(*) AS n
@@ -381,6 +541,7 @@ async function renderUserPage(client, userId, { confirmDelete = false, csrf = ''
         <div class="stat"><div class="num">${prefs.length}</div><div class="lbl">דברים שאולמה למדה</div></div>
       </div>
     </section>
+    ${await renderPlannedForUser(client, u)}
     ${renderConversation(u)}
     <section><h3>משימות פתוחות</h3><p class="hint">כולל פרויקטים ותתי-משימות (↳), תזכורות ממתינות מסומנות ⏰.</p>
       ${open.length ? `<table><tr><th>משימה</th><th>יעד</th><th>תזכורות</th><th>נוצרה</th></tr>${open.map(taskRow).join('')}</table>` : '<p class="dim">אין משימות פתוחות.</p>'}

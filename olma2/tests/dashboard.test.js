@@ -366,3 +366,38 @@ test('conversation view: shows the last turns, marks voice notes, hides tool tra
   assert.deepEqual(sessions.readRecentMessages('u-nope', 10, base), []);
   fs.rmSync(base, { recursive: true, force: true });
 });
+
+test('planned messages: queued rows, future reminders and standing digests, in local time', async () => {
+  const tasks = require('../src/domain/tasks');
+  const reminders = require('../src/domain/reminders');
+  const { enqueue } = require('../src/outbox/enqueue');
+
+  const p = await makeUser(db.pool, '+972618000055', { firstName: 'Noam', timezone: 'Asia/Jerusalem' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, digest_times = '08:00' WHERE id = $1`, [p.id]);
+
+  await withTx(db.pool, async (c) => {
+    // queued now, plus a held one — both must appear, with their reason
+    await enqueue(c, { userId: p.id, kind: 'checkin', payload: { rung: 'deadline_risk' }, idempotencyKey: 'pl-1' });
+    // a real future reminder: this has NO outbox row yet, which is exactly why
+    // a queue-only view would be misleading
+    const t = (await tasks.addTask(c, p.id, { title: 'לקחת את הרכב לטסט' })).data.task;
+    await reminders.setReminder(c, p.id, t.id, new Date(Date.now() + 36 * 3600_000).toISOString(), 'weekly');
+  });
+
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.match(html, /מה מתוכנן להישלח/);
+  assert.match(html, /דדליין מתקרב/, 'a checkin shows WHY it was chosen, not its internal rung id');
+  assert.match(html, /לקחת את הרכב לטסט/, 'a scheduled reminder appears before it is ever queued');
+  assert.match(html, /weekly/);
+  assert.match(html, /08:00/, 'the standing daily digest is listed too');
+  // The payload holds an instruction, never the finished text — the page must
+  // not imply it is showing a draft.
+  assert.match(html, /התוכן עצמו נכתב ברגע השליחה/);
+
+  // ...and the same, narrowed to one person, on their own page
+  const userHtml = await (await fetch(base + `/user?id=${p.id}`, { headers: { Authorization: AUTH } })).text();
+  assert.match(userHtml, /מה מתוכנן להישלח אליו/);
+  assert.match(userHtml, /לקחת את הרכב לטסט/);
+  assert.match(userHtml, /Asia\/Jerusalem/, 'states whose clock these times are in');
+});
