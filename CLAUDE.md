@@ -207,6 +207,51 @@ person is already having simply continues, silently more capable.
   the workspace `.olma-identity` file remains the only auth root; brokerd's
   `config_guard` job watches the config invariants that protect it.
 
+### The live dashboard is v2's (`olma2/src/adapters/http/dashboard.js`)
+
+The `## Dashboard` section further down describes **v1's**, which is dead —
+its "5 edits with a positional param on `renderPage(...)`" recipe does not
+apply here and following it wastes a session. This is the one that serves
+https://olmachat.duckdns.org.
+
+Same house style — zero deps, Basic auth, server-rendered HTML + form POSTs,
+no JS — but structured differently:
+
+- **Sections are a named array, not positional args.** `const SECTIONS = [{ id,
+  title, hint, render }]`, rendered in order by the `GET /` handler. Adding one
+  is a single entry plus its `render*(client, csrf)` function; the `hint` is
+  required by convention, because this is a tool someone reads daily and an
+  unlabelled table is a puzzle. Current order: health, users, issues, cost,
+  metrics, planned, outbox, flags, waitlist, audit.
+- **`/user?id=N` is a separate page**, not a section — the per-person
+  drill-down (tasks, conversation, what is planned for them, preferences,
+  facts, delete panel). `renderUserPage` builds it; sections are skipped
+  entirely for that path.
+- **Routing is `url.pathname`**, the opposite of v1's exact-`req.url` rule.
+  Only `/health` (unauthenticated) still matches `req.url` exactly, and the
+  Google OAuth callback matches on its own parsed pathname before auth.
+- Every POST is CSRF-checked against a cookie, runs inside one `withTx`, and
+  redirects 303. A per-user form carries a `back` field — validate it through
+  `safeBack()`, never trust it, or the admin becomes an open redirect.
+- **Admin edits go through the domain functions**, never raw SQL, so an
+  operator's change is validated and audited exactly like the agent's own
+  (`preferences.remember/forget`, `facts.rememberFact/forgetFact`). On top of
+  the domain's own audit row, each writes an `admin.*` event so the trail shows
+  where the change came from.
+- **After any preference/fact edit, call `refreshUserCard(pool, userId)` —
+  after the transaction commits, never inside it.** USER.md is what the agent
+  reads every turn; skipping this puts the card out of sync with the DB, which
+  is the exact bug fixed on 2026-08-19.
+- **Cancelling a queued message is an UPDATE, never a DELETE**
+  (`sent_at = now(), hold_reason = 'cancelled_by_admin'`). The row carries the
+  `idempotency_key` that stops the sweep which produced it from producing it
+  again — delete it and the message comes back on the next tick. Cancelled rows
+  are excluded from the daily-budget count in `outbox/worker.js`, since nothing
+  was ever delivered.
+- Times shown and accepted per user are in **that person's** timezone; the
+  conversion happens in Postgres (`AT TIME ZONE`) in both directions, so there
+  is no offset arithmetic here to break at a DST boundary.
+
 ## Server
 
 `ssh root@157.230.210.233` (key `~/.ssh/id_ed25519`). Ubuntu 24.04, Node 24,
@@ -431,7 +476,12 @@ configured. Now live in every workspace:
 - Deliberately no embedding key / no `active-memory` plugin — `memory_search`/`memory_get` use free keyword (FTS5/BM25) search, on-demand only, to keep steady-state cost near zero.
 - **Contact/phone-number facts never belong in memory files** — that's what `connections` + `set_contact_label` are for (structured + tool-backed, not prose the model might mis-recall).
 
-## Dashboard (`/opt/olma-dashboard/server.js`, ~715 lines)
+## Dashboard — v1, DEAD (`/opt/olma-dashboard/server.js`, ~715 lines)
+
+**Nothing routes here.** Kept only to explain v1 code you may still read on the
+box. The live dashboard is v2's — see "The live dashboard is v2's" above, whose
+structure is different in almost every particular (named sections, not
+positional args; `url.pathname`, not exact `req.url`).
 
 Zero deps, `node:sqlite`, HTTP Basic auth, server-rendered HTML + form POSTs
 (no JS, no `/api/*` fragments). Sections in page order: pending pairing →
