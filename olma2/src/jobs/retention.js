@@ -3,6 +3,7 @@
 // age out; permanent (consent/privacy) rows never do. Sent outbox rows and
 // stale session snapshots age out too. Days tunable via flag, no deploy.
 const flags = require('../domain/flags');
+const cardStore = require('../domain/card-store');
 
 async function sweepRetention(client) {
   const days = Number(await flags.getFlag(client, 'audit_retention_days') ?? 180);
@@ -19,7 +20,16 @@ async function sweepRetention(client) {
   const snapshots = await client.query(
     `DELETE FROM usage_session_snapshots WHERE updated_at < now() - interval '30 days'`
   );
-  return { auditPurged: audit.rowCount, outboxPurged: outbox.rowCount, snapshotsPurged: snapshots.rowCount };
+  // Rendered schedule cards: files, not rows. Once the message that carried one
+  // is delivered the file is dead weight, so they age out in hours rather than
+  // days. Folded in here rather than given a timer of its own — a second
+  // near-identical sweeper is how the v1 cron jobs got hard to reason about.
+  const cardHours = Number(await flags.getFlag(client, 'card_retention_hours') ?? cardStore.DEFAULT_MAX_AGE_HOURS);
+  const cardsPurged = await cardStore.purgeOldCards(client, cardHours);
+  return {
+    auditPurged: audit.rowCount, outboxPurged: outbox.rowCount,
+    snapshotsPurged: snapshots.rowCount, cardsPurged,
+  };
 }
 
 module.exports = { sweepRetention };

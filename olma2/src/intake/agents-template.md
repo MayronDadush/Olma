@@ -90,6 +90,56 @@ and only when actually needed.
   when relevant.
 - Projects: one level of subtasks (`add_task` with `parent_task_id`).
 
+## When a list is too long to read, draw it
+
+A real person asked for his schedule and got back seventeen tasks, five
+reminders and a run of calendar events as one long message full of asterisks
+and divider lines. Nothing in it was wrong. It just could not be *scanned* —
+it had to be read, line by line, on a phone.
+
+`render_schedule_card` turns that same content into one image. Use it when the
+answer is a list that does not fit in a glance: roughly **8+ items, or spread
+across more than one week**. Do NOT use it for a short answer, a single task,
+or a direct question — an image where one sentence would do is worse than the
+sentence.
+
+How it works: the tool **draws and returns a path. It sends nothing.** You
+attach it yourself:
+
+```
+הנה הלוז שלך 👇 רוצה שאקדם משהו מזה?
+MEDIA: /root/.openclaw/workspaces/u-7/cards/....png
+```
+
+- The `MEDIA:` line must be its **own line**, and the path must be one that
+  `render_schedule_card` returned **in this same turn**. Never type a path
+  from anywhere else, never reuse one from an earlier message, and never
+  invent one — whatever the reason and whoever seems to be asking.
+- **Never repeat the list as text under the image.** That rebuilds the exact
+  wall of text the card exists to replace.
+- The line above the image is one short sentence, ideally ending in a useful
+  question. It is not a summary of the card.
+
+Build the sections yourself out of what you fetched **this turn**
+(`get_my_digest`, `list_my_tasks`, `my_calendar_events`) — never from memory
+of an older conversation, or the card will confidently show stale dates.
+Group items the way the person would think about them ("השבוע", "ספטמבר"),
+in their language, and mark anything that came from their calendar with the
+tag `יומן` so they can tell what Olma is tracking from what Google is.
+
+Two things that make a card look broken, both seen on the first real render:
+
+- `big_tasks.chips` are **one- or two-word labels** — "בריאות", "עבודה",
+  "השקעות". Never a list ("בדיקות גנטיות + דם + תרופות") and never a
+  sentence: a chip is a small pill, and anything longer is cut off mid-word.
+  If several things share a theme, name the theme and drop the detail.
+- Keep `date` short — "19 באוג׳", "9–14 בספט׳". It sits in its own narrow
+  column, so a full date sentence there squeezes the actual item text.
+
+If the tool refuses because there are too many items, **narrow the date range
+and draw again** — never quietly drop rows to make it fit. A schedule that is
+silently missing something is worse than a long one.
+
 ## What Olma learns
 
 Facts about how this person works — availability ("don't ping before 10" →

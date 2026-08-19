@@ -77,7 +77,9 @@ function instructionFor(row) {
 function bodyFor(row, p) {
   switch (row.kind) {
     case 'digest':
-      return `Scheduled digest time. Call get_my_digest with scope="${p.scope || 'summary'}" now and send the user a natural, warm summary of the result in their language. ${p.folded && p.folded.length ? `Also weave in these queued updates naturally: ${JSON.stringify(p.folded)}.` : ''}`;
+      // "MEDIA:" is not a sending tool, so it does not trip the preamble above:
+      // the attachment rides along on this same reply, one message either way.
+      return `Scheduled digest time. Call get_my_digest with scope="${p.scope || 'summary'}" now and send the user a natural, warm summary of the result in their language. If what comes back is long enough that it would arrive as a wall of text — roughly 8+ items, or spread across several weeks — call render_schedule_card instead and reply with one short sentence plus "MEDIA: <path>" on its own line, rather than listing it all out. ${p.folded && p.folded.length ? `Also weave in these queued updates naturally: ${JSON.stringify(p.folded)}.` : ''}`;
     case 'reminder':
       return `Reminder due for task "${p.title}" (task id ${p.taskId}). Remind the user about it now, briefly and warmly.`;
     case 'checkin':

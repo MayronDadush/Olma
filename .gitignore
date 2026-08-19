@@ -1,0 +1,8 @@
+# Installed locally when running olma2's tests off-server; the server installs
+# its own from package-lock.json during deploy. @resvg/resvg-js pulls a
+# platform-specific native binary, so a committed tree would be wrong for the
+# droplet anyway.
+node_modules/
+
+# Local env / secrets — the real ones live in /opt/olma2/.env (0600) on the box.
+.env

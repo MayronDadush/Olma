@@ -16,9 +16,12 @@ describes **v1**, which is retired-in-place: its code still sits in
 - `openclaw.json` `mcp.servers` has exactly ONE entry, `/opt/olma2/bin/olma-mcp.js`.
   v1's `olma-mcp.js` is not registered, so **every v1-only tool is dead** —
   Google Calendar and Monday included (see the integrations gap below).
-- `agents.list` = `main, intake, u-3, u-7`; the `intake` agent exists, so the
-  v2 intake sweeps are live, not inert. (Stale `u-1/u-2/u-4…u-9` directories
-  under `/root/.openclaw/agents/` are leftovers from testing, not config.)
+- `agents.list` = `main, intake, u-3, u-8, u-9, u-10, u-11` (checked
+  2026-08-19 — the earlier `u-7` here was stale); the `intake` agent exists,
+  so the v2 intake sweeps are live, not inert. Each user's DB
+  `workspace_path` matches the gateway's configured workspace for their agent
+  exactly (`/root/.openclaw/workspaces/u-<id>`) — the schedule-card feature
+  below depends on that holding.
 - The v1 dashboard is **down** (nothing on :4173, no systemd unit). Caddy
   serves `olmachat.duckdns.org → 127.0.0.1:8788`, i.e. the **v2** dashboard.
 
@@ -122,6 +125,48 @@ fallback path itself is unchanged (~37s). Worst-case *legitimate* run is now
 bounded by ElevenLabs-timeout + local-whisper-run ≈ 15s + 37s ≈ 52s, so 65s
 keeps ~13s of margin above that — the thing this floor has to stay above is
 the slowest real fallback, not the fast common case.
+
+### Long schedules go out as an image, not a wall of text (2026-08-19)
+
+A real "תמונת מצב" reply ran to 17 tasks + 5 reminders + calendar events in one
+WhatsApp message. `render_schedule_card` (registry.js) draws that as a PNG
+instead. What makes it work, all verified against the gateway source and live:
+
+- **Delivery is the `MEDIA:` marker, not a tool.** A line `MEDIA: <path>` in the
+  agent's FINAL reply is parsed out by the gateway (`MEDIA_TOKEN_RE`,
+  `payloads-*.js`) and attached to that same message. `extractMediaDirectives`
+  defaults ON for the final reply (only the intermediate streaming-block path
+  disables it). So it rides the existing `--deliver` turn — **no new outbox
+  kind, no second send**, and no conflict with `DELIVERY_PREAMBLE`'s
+  never-call-a-sending-tool rule. The tool returns a path; it sends nothing.
+- **The workspace IS the security boundary.** Outbound media is only read from
+  the agent's `localRoots`, which always include its own workspace
+  (`resolveAgentScopedOutboundMediaAccess`); `assertLocalMediaAllowed` throws
+  `path-not-allowed` for anything else, after `realpath` (so symlinks don't
+  escape). Cards therefore go to `<users.workspace_path>/cards/<uuid>.png`,
+  built from the DB row and never from tool args. A prompt-injected
+  `MEDIA: /etc/shadow` sends nothing. `hostMediaRead` is NOT set in
+  `openclaw.json` — turning it on would dissolve this guarantee.
+- **Renderer: `@resvg/resvg-js`** (first dependency besides `pg`), with Heebo
+  vendored in `olma2/assets/fonts/` and `loadSystemFonts:false` — the droplet
+  has no Hebrew font, and pinning the files keeps output deterministic.
+  Chose it over headless Chrome after measuring both on the same SVG: pixel
+  output differs by 1.8% (glyph antialiasing only), but Chrome costs ~1.2s of
+  launch and ~200MB against 998MB free on a 1-vCPU box.
+- **Two gotchas the code comments guard**: every `<text>` must open with RLM
+  (U+200F) or a line starting with a digit renders with the number flung to
+  the wrong end; and resvg **cannot draw colour emoji from a font** — icons are
+  twemoji PNGs inlined as data URIs, addressed by a closed semantic vocabulary
+  (`birthday`, `travel`…) so a bad name falls back to `generic` instead of
+  drawing nothing. `scripts/calibrate-card-metrics.js` measures the text-width
+  coefficients via `getBBox()`; rerun it if the font or weights change.
+- Render cost on the live box: 57ms (3 items) → 156ms (24). Synchronous, so it
+  blocks brokerd's event loop — that is what `LIMITS.totalItems` is protecting.
+- Files age out inside the existing `jobs/retention.js` sweep (24h, flag
+  `card_retention_hours`), not a new cron.
+- **`agents-template.md` changes reach existing users only via
+  `scripts/resync-agent-templates.js --apply`** — AGENTS.md is written once at
+  provisioning. Run it after any doctrine edit.
 
 ### Onboarding has no "welcome" step any more (redesigned 2026-08-17)
 

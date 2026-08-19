@@ -15,7 +15,12 @@ const meetings = require('../../domain/meetings');
 const issues = require('../../domain/issues');
 const digest = require('../../domain/digest');
 const quota = require('../../domain/quota');
+const scheduleCard = require('../../domain/schedule-card');
+const cardStore = require('../../domain/card-store');
 const { ok, err } = require('../../domain/results');
+const { scrubTokens } = require('./render');
+
+const { ICON_NAMES } = scheduleCard;
 
 const { enqueue } = require('../../outbox/enqueue');
 
@@ -133,6 +138,42 @@ const TOOLS = [
     { times: S('array', 'Local times, e.g. ["09:00","20:00"]. [] turns it off.', { items: { type: 'string' } }),
       scope: S('string', 'summary | full | today') }, [],
     (client, user, a) => digest.setPreferences(client, user.id, a.times, a.scope)),
+
+  // ---------------------------------------------------------------- cards
+  // Draws a schedule the person can take in at a glance instead of reading.
+  // This tool does NOT send anything — it returns a file path, and the agent
+  // attaches it by putting `MEDIA: <path>` on its own line in the reply. That
+  // distinction is what keeps it clear of the double-send rule in
+  // channels/openclaw.js: the reply is still the one and only delivery.
+  tool('render_schedule_card',
+    'Draw a schedule/overview as an image, for when a list is too long to scan as text (roughly 8+ items, or spread over several weeks). Returns a file path — it sends nothing. Attach it by putting "MEDIA: <path>" on its own line in your reply, with one short sentence above it; never also repeat the list as text. Compose sections yourself from data you fetched THIS turn (get_my_digest, list_my_tasks, my_calendar_events). Group items the way a person would think about them ("this week", "September"), in their language.',
+    {
+      title: S('string', 'Card heading, e.g. "תמונת מצב". Keep it short.'),
+      subtitle: S('string', 'Optional line under the title, e.g. the date range.'),
+      stats: S('array', 'Optional headline counts: [{icon, text}], max 4.', { items: { type: 'object' } }),
+      sections: S('array', 'Required. [{title, items:[{date, text, icon, tag}]}]. date is a short label like "19 באוג׳"; tag is an optional source badge like "יומן". icon must be one of: ' + [...ICON_NAMES].sort().join(', ') + '.', { items: { type: 'object' } }),
+      big_tasks: S('object', 'Optional footer group for themes with no specific date: {title, chips:[{icon, text}]}. Each chip text is a ONE- OR TWO-WORD label ("בריאות", "עבודה") — never a list of items and never a sentence. Anything longer is cut off mid-word and reads as broken.'),
+      footer_note: S('string', 'Optional small line at the bottom.'),
+    },
+    ['sections'],
+    async (client, user, a) => {
+      // Defence in depth: this text is baked into pixels, where no later layer
+      // can redact it. scrubTokens is the same guard the text path gets.
+      const clean = JSON.parse(scrubTokens(JSON.stringify({
+        title: a.title, subtitle: a.subtitle, stats: a.stats,
+        sections: a.sections, big_tasks: a.big_tasks, footer_note: a.footer_note,
+      })));
+      const rendered = scheduleCard.renderPng(clean);
+      if (!rendered.ok) return rendered;
+      const saved = cardStore.saveCard(user, rendered.data.png);
+      if (!saved.ok) return saved;
+      return ok({
+        path: saved.data.path,
+        width: rendered.data.width,
+        height: rendered.data.height,
+        next_step: 'Reply with one short sentence, then "MEDIA: ' + saved.data.path + '" on its own line. Do not repeat the items as text.',
+      });
+    }),
 
   // ---------------------------------------------------------------- tasks
   tool('list_my_tasks', 'List your open tasks (status=done for completed).',
