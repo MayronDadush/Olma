@@ -347,11 +347,18 @@ test('conversation view: shows the last turns, marks voice notes, hides tool tra
     { type: 'message', timestamp: '2026-08-16T12:00:03Z', message: { role: 'assistant', content: [{ type: 'text', text: 'שלום מירון' }] } },
     { type: 'message', timestamp: '2026-08-16T12:00:04Z', message: { role: 'user', content: 'מה משימות חידרופות שלי?', MediaType: 'audio/ogg; codecs=opus' } },
     { type: 'message', timestamp: '2026-08-16T12:00:05Z', message: { role: 'user', content: "This is a brand-new user's first real conversation with you. Send the following…" } },
+    // A crashed model call: the gateway writes an assistant turn whose whole
+    // content is this marker. Counting it as a reply is what blinded the
+    // dropped-message repair during the 2026-08-20 credit outage.
+    { type: 'message', timestamp: '2026-08-16T12:00:06Z', message: { role: 'assistant', content: [{ type: 'text', text: '[assistant turn failed before producing content]' }] } },
   ];
   fs.writeFileSync(sessionFile, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
 
   const msgs = sessions.readRecentMessages('u-conv', 10, base);
-  assert.equal(msgs.length, 4, 'reasoning-only turns and tool results are excluded');
+  assert.equal(msgs.length, 4, 'reasoning-only turns, tool results and crashed turns are excluded');
+  assert.ok(!JSON.stringify(msgs).includes('failed before producing'),
+    'a crashed turn is not an answer — the repair sweep must still see the user waiting');
+  assert.equal(msgs[msgs.length - 1].role, 'user', 'the transcript still ends on the unanswered user');
   assert.ok(!JSON.stringify(msgs).includes('olma_tok_'), 'identity tokens never reach the dashboard');
   assert.ok(!JSON.stringify(msgs).includes('סוד'), 'model reasoning is not shown');
   assert.deepEqual(msgs.map((m) => m.role), ['user', 'assistant', 'user', 'user']);

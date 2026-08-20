@@ -85,6 +85,12 @@ function indexPath(agentId, base = HOME()) {
 // really saw, and the whole point of this view is to answer "what actually
 // happened" — a second, possibly-wrong record would defeat it.
 //
+// Written by the gateway in place of a reply when the model call itself fails
+// (billing, provider outage, an aborted lane). Matched exactly, not loosely:
+// it is a fixed string in the gateway, and a substring match here would let a
+// user quoting it erase their own turn from every reader below.
+const FAILED_TURN_MARKER = '[assistant turn failed before producing content]';
+
 // Only the visible message text is returned. Model reasoning, tool calls and
 // their results are deliberately dropped: they are the noisy majority of the
 // file, and tool results routinely contain the identity token.
@@ -136,6 +142,15 @@ function readRecentMessages(agentId, limit = 10, base = HOME(), peer = null) {
     if (role !== 'user' && role !== 'assistant') continue;
     const text = textOf(o.message.content).trim();
     if (!text) continue; // pure tool-call or reasoning turn
+    // A crashed turn is not an answer. When the model call fails outright the
+    // gateway still writes an assistant message, whose entire content is this
+    // one fixed marker — so to anything reading history back, a dead turn is
+    // indistinguishable from a reply. That blinded the one safety net built
+    // for exactly this: jobs/unanswered.js saw an "assistant" turn after the
+    // user's message and skipped the repair. Observed live 2026-08-20, when
+    // the Anthropic account ran out of credit mid-conversation and a user's
+    // message got no reply and no repair either.
+    if (role === 'assistant' && text === FAILED_TURN_MARKER) continue;
     out.push({
       role,
       text: isSystemInstruction(text) ? '(הודעה יזומה של המערכת)' : text,
