@@ -33,6 +33,19 @@ describes **v1**, which is retired-in-place: its code still sits in
   with `--restart`, so `olma2-brokerd`/`olma2-dashboard` restart automatically
   once the remote suite passes). A manual local run of `deploy.sh` still
   leaves restart to you unless you also pass `--restart`.
+  **`--restart` also carries a rollback safeguard** (added 2026-08-20): before
+  the new code is synced, the currently-deployed release (code + its own
+  `node_modules`) is snapshotted whole to `/opt/olma2-previous` (one snapshot,
+  not a history). After restart, `deploy.sh` waits 5s and checks both services
+  are actually `active` AND the dashboard's own `/health` (DB + job-heartbeat
+  sanity, `adapters/http/dashboard.js`) returns 200 — "tests passed in CI"
+  never proves the live process came up. If that check fails, it restores
+  `/opt/olma2-previous` over `/opt/olma2` and restarts again, then the CI run
+  still exits non-zero on purpose (a silently self-healed run hides the
+  problem). **This rolls back CODE only — never DB migrations.** A migration
+  that already ran stays applied even after a code rollback, so keep
+  migrations additive/backward-compatible rather than relying on this to
+  undo one.
 - Postgres 16 local (`olma2` + `olma2_test` DBs), creds in `/opt/olma2/.env`
   (0600). Daily `pg_dump` 02:15 → `/root/backups/`, 14-day retention.
   **The dump lands on the same droplet it backs up — no off-box copy yet.**
