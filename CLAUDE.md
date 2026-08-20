@@ -148,10 +148,46 @@ put ALL of v2 — 7 users, every background sweep, both silent agents — at
 2026-06-27 and mostly predates v2. The pilot is worth finishing as
 infrastructure for scale, not as this month's savings.
 
-**Next step:** register Qwen3 + DeepSeek in `models.providers.openrouter`,
-restart the gateway, then compare against Haiku with `scripts/model-pilot.js`
-on `u-3` only — judging Hebrew grammatical gender, tone, and above all whether
-tool calls (meetings, contacts, reminders) stay correct.
+**RESULT (2026-08-20): Qwen3-235B was tried live on `u-3` and rolled back the
+same evening.** `scripts/set-agent-model.js` pins ONE agent (registering the
+model with its provider, allowlisting it, and setting
+`agents.list[].model.primary` — all three are required) and `--reset` undoes
+it. Everyone else stayed on Haiku throughout. What the pilot found, in
+severity order:
+
+1. **It leaked its own reasoning into WhatsApp.** A real reply to Miron began
+   with two English paragraphs of planning ("Now I have the user's tasks…
+   Let me list them by category… I should present them in a clear way")
+   before the Hebrew answer. The model emits reasoning as ordinary assistant
+   text rather than on a separate channel, so `--deliver` sends it. On its
+   own this is disqualifying for a user-facing product.
+2. **It invented a biographical fact.** Asked "what do you know about me", it
+   answered "וגר בירושלים" — read off the `Timezone: Asia/Jerusalem` line in
+   USER.md and restated a technical field as where the person lives.
+3. **Hebrew gender agreement breaks mid-sentence** — "את שותף", "את קרוב",
+   feminine pronoun against masculine verb, for a male user. The same defect
+   `agents-template.md` already documents for Haiku, but worse and in reverse.
+4. **It hallucinates the identity token on the FIRST tool call, every time**
+   (2/2 runs). D-018's self-healing catches it — the shim rejects a malformed
+   token and the agent re-reads `.olma-identity` — so it costs a wasted round
+   trip per turn rather than a failure. Haiku reads the file first instead.
+5. **Wrong question answered.** "מה המשימות שלי להיום?" produced four data
+   calls and then a calendar-reconnection pitch; Haiku called `get_my_digest`
+   once and answered.
+
+Where it was fine: a simple "add a task" produced tool arguments byte-identical
+to Haiku's, and the task-list formatting was good. The failures are not about
+capability, they are about restraint and Hebrew agreement.
+
+**Also learned, the obvious way:** `model-pilot.js` skips `--deliver` but still
+runs the REAL tools against the REAL database — comparing two models on an
+"add a task" prompt left two live tasks in Miron's list (deleted, audited as
+`admin.task.deleted`). Comparisons should use read-only prompts.
+
+**Worth retrying** with `deepseek-v3.2` or `glm-4.6`, but only after
+confirming the provider separates reasoning from reply content — finding #1
+sinks any model that does not, no matter how cheap. `kimi-k2.6` is the only
+OpenRouter model in the bundled catalog needing no registration at all.
 
 ### Voice-note transcription moved to ElevenLabs Scribe v2 (2026-08-18)
 

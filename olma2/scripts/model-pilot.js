@@ -13,6 +13,13 @@
 // conversation. --model is a per-call override the openclaw CLI already
 // supports; this script just wraps it with a safe, disposable session.
 //
+// WARNING — "no --deliver" is not "no side effects". The turn runs the REAL
+// tool set against the REAL database: an add_task prompt really does add a
+// task, to a real person's real list. Learned the obvious way — comparing two
+// models on "תוסיף לי משימה: לקנות חלב" left two identical live tasks behind.
+// Prefer read-only prompts for comparisons; if a mutating one is genuinely
+// what you need to test, clean up afterwards and record why.
+//
 // Usage:
 //   node scripts/model-pilot.js --agent u-3 --message "..." [--model openrouter/qwen/qwen3-235b-a22b-2507]
 //   (omit --model to run the current default, for a baseline)
