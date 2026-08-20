@@ -45,6 +45,7 @@ async function migrate(client) {
 module.exports = { migrate, listMigrations };
 
 if (require.main === module) {
+  require('./types');
   const { Client } = require('pg');
   const url = process.env.OLMA_DB_URL;
   if (!url) { console.error('OLMA_DB_URL is required'); process.exit(1); }

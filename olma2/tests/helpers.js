@@ -2,6 +2,7 @@
 // Each test file gets its own throwaway database, built by running the real
 // migrations — the same runner production uses. No hand-applied ALTERs in
 // tests, ever (the v1 wound this design exists to close).
+require('../src/db/types'); // tests must see production's int8 typing
 const { Client, Pool } = require('pg');
 const crypto = require('node:crypto');
 const { migrate } = require('../src/db/migrate');
