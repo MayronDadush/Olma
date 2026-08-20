@@ -129,6 +129,49 @@ test('provisionUser: firstMessage and invitedInfo both land in USER.md, wrapped 
   assert.match(userMd, /connection_id=42/);
 });
 
+test('provisionUser: a name every existing owner agrees on prefills first_name, unconfirmed', async () => {
+  const contacts = require('../src/domain/contacts');
+  const a = await makeUser(db.pool, '+972601000200', { firstName: 'Owner A' });
+  const b = await makeUser(db.pool, '+972601000201', { firstName: 'Owner B' });
+  const newcomerPhone = '+972601000202';
+  await withTx(db.pool, (c) => contacts.saveContact(c, a.id, { name: 'דנה כהן', phone: newcomerPhone, source: 'user_stated' }));
+  await withTx(db.pool, (c) => contacts.saveContact(c, b.id, { name: 'דנה כהן', phone: newcomerPhone, source: 'contact_card' }));
+
+  const res = await withTx(db.pool, (c) => provisionUser(c, { phone: newcomerPhone, configPath }));
+  assert.ok(res.ok);
+  assert.equal(res.data.user.first_name, 'דנה כהן');
+  assert.equal(res.data.user.name_confirmed, false, 'a prefilled name is a guess, not a stated fact');
+
+  const { rows } = await db.pool.query(
+    `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'user.name_prefilled_from_contacts'`,
+    [res.data.user.id]);
+  assert.equal(rows.length, 1, 'the source stays in the audit trail, never in anything user-facing');
+  assert.equal(rows[0].detail.savedByCount, 2);
+});
+
+test('provisionUser: disagreeing names across address books prefill nothing', async () => {
+  const contacts = require('../src/domain/contacts');
+  const a = await makeUser(db.pool, '+972601000210', { firstName: 'Owner C' });
+  const b = await makeUser(db.pool, '+972601000211', { firstName: 'Owner D' });
+  const phone = '+972601000212';
+  await withTx(db.pool, (c) => contacts.saveContact(c, a.id, { name: 'דנה', phone, source: 'user_stated' }));
+  await withTx(db.pool, (c) => contacts.saveContact(c, b.id, { name: 'עודד', phone, source: 'user_stated' }));
+
+  const res = await withTx(db.pool, (c) => provisionUser(c, { phone, configPath }));
+  assert.ok(res.ok);
+  assert.equal(res.data.user.first_name, null, 'two different names is not "the same answer" — leave it unset');
+});
+
+test('provisionUser: an explicit firstName always wins over any prefill', async () => {
+  const contacts = require('../src/domain/contacts');
+  const a = await makeUser(db.pool, '+972601000220', { firstName: 'Owner E' });
+  const phone = '+972601000221';
+  await withTx(db.pool, (c) => contacts.saveContact(c, a.id, { name: 'מהספר', phone, source: 'user_stated' }));
+
+  const res = await withTx(db.pool, (c) => provisionUser(c, { phone, firstName: 'מהשיחה', configPath }));
+  assert.equal(res.data.user.first_name, 'מהשיחה');
+});
+
 test('intake sweep: open registration provisions immediately — no separate welcome message', async () => {
   const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
     configPath,

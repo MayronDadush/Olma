@@ -82,6 +82,30 @@ async function provisionUser(client, {
   if (user && user.status === 'active' && user.agent_id) {
     return err('conflict', 'already provisioned', { userId: user.id });
   }
+
+  // Someone's address book may already know this person's name — a bulk
+  // import (domain/google-contacts.js, vcard.js) or a shared contact card can
+  // easily reach a phone number before that person ever writes to Olma
+  // themselves. When every existing row for this number agrees on a name
+  // (a stray "— עבודה"/"— בית" suffix on a secondary number doesn't count —
+  // stripped before comparing), that name opens the conversation as a
+  // confirmable GUESS, never a stated fact: name_confirmed stays FALSE (its
+  // ordinary default), so the agent still asks rather than assuming, and it
+  // never says WHOSE address book the name came from — that stays in the
+  // audit trail only, never in anything the agent says out loud.
+  let prefillAudit = null;
+  if (!firstName && !(user && user.first_name)) {
+    const contacts = require('../domain/contacts');
+    const hits = await contacts.namesForPhone(client, phone);
+    if (hits.length) {
+      const bases = hits.map((h) => h.displayName.split(' — ')[0].trim());
+      const agreed = new Set(bases.map((b) => b.toLowerCase())).size === 1 ? bases[0] : null;
+      if (agreed) {
+        firstName = agreed;
+        prefillAudit = { savedByCount: hits.length };
+      }
+    }
+  }
   // Their language is whatever they actually wrote in, falling back to the
   // dialling code only when the text carries no signal at all (see
   // domain/language.js). Resolved here because this is the first and only
@@ -128,6 +152,10 @@ async function provisionUser(client, {
     [user.id, agentId, paths.workspace, firstName || null, resolvedLocale.locale]
   );
   user = rows[0];
+
+  if (prefillAudit && user.first_name === firstName) {
+    await audit.record(client, user.id, 'user.name_prefilled_from_contacts', prefillAudit);
+  }
 
   seedWorkspace(paths.workspace, {
     firstName: user.first_name, identityToken: user.identity_token, firstMessage, invitedInfo,

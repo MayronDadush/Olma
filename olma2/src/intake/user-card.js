@@ -35,7 +35,11 @@ const CARD_TOOLS = new Set([
   // The address book is on the card as a count, because the whole point of
   // saving a contact is that nobody is ever asked for that number again — and
   // the agent only knows the book is worth checking if the card says so.
-  'save_contact', 'forget_contact',
+  // The two bulk-import tools move that same count, often by a lot — the
+  // Google OAuth callback that actually connects the sync has nothing to
+  // refresh (see the dashboard route: connecting alone changes no card
+  // field), only the import running here does.
+  'save_contact', 'forget_contact', 'import_google_contacts', 'import_contacts_file',
 ]);
 
 // How many facts the card carries. This text is injected on every single turn,

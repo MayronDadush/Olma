@@ -10,7 +10,8 @@
 // calendar, at what level, and when they took it back. That trail should
 // outlive a routine cleanup window.
 const PERMANENT_PREFIXES = ['share.', 'connection.', 'grant.', 'user.provisioned', 'user.blocked',
-  'calendar.connected', 'calendar.disconnected', 'calendar.access_changed'];
+  'calendar.connected', 'calendar.disconnected', 'calendar.access_changed',
+  'contacts.connected', 'contacts.reconnected', 'contacts.disconnected'];
 
 function retentionClassFor(event) {
   return PERMANENT_PREFIXES.some((p) => event.startsWith(p)) ? 'permanent' : 'routine';

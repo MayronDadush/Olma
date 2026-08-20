@@ -29,6 +29,14 @@ const SCOPES = {
   read_write: `https://www.googleapis.com/auth/calendar.events ${EMAIL_SCOPE}`,
 };
 
+// Contacts is its own sensitive scope, deliberately NOT a member of SCOPES
+// above: start_calendar_connection validates access against SCOPES[access],
+// and adding a 'contacts' key there would let that call request it too, only
+// to explode later on oauth_states.requested_access's CHECK (read_only |
+// read_write). Contacts has exactly one shape — read-only, always — so it
+// gets its own constant and its own consent-URL builder instead.
+const CONTACTS_SCOPE = 'https://www.googleapis.com/auth/contacts.readonly';
+
 const STATE_TTL_MS = 15 * 60 * 1000;
 
 // Total outbound HTTP budget for one tool call, covering a token refresh AND
@@ -104,6 +112,22 @@ function consentUrl(state, access) {
     scope: SCOPES[access],
     access_type: 'offline', // we need a refresh token to keep working
     prompt: 'consent',      // force a fresh refresh_token even on re-consent
+    include_granted_scopes: 'false',
+    state,
+  });
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+}
+
+// Same shape as consentUrl, for the one-scope contacts grant.
+function contactsConsentUrl(state) {
+  const c = clientConfig();
+  const params = new URLSearchParams({
+    client_id: c.client_id,
+    redirect_uri: redirectUri(),
+    response_type: 'code',
+    scope: `${CONTACTS_SCOPE} ${EMAIL_SCOPE}`,
+    access_type: 'offline',
+    prompt: 'consent',
     include_granted_scopes: 'false',
     state,
   });
@@ -225,8 +249,33 @@ async function calendarFetch(token, path, { budget = createBudget(), fetchImpl, 
   return body;
 }
 
+// Same 401→GoogleError('unauthorized') contract as calendarFetch, so
+// withAccessToken's one-retry-on-401 logic works unchanged against People API
+// calls too — only the base URL differs.
+async function peopleFetch(token, path, { budget = createBudget(), fetchImpl, ...init } = {}) {
+  const doFetch = fetchImpl || globalThis.fetch;
+  let res;
+  try {
+    res = await doFetch(`https://people.googleapis.com/v1${path}`, {
+      ...init,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init.headers) },
+      signal: budget.signal(),
+    });
+  } catch (e) {
+    if (e instanceof GoogleError) throw e;
+    throw new GoogleError('timeout', 'the contacts service did not answer in time');
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (res.status === 401) throw new GoogleError('unauthorized', 'the contacts service rejected our access');
+    const msg = (body.error && body.error.message) || `People API returned ${res.status}`;
+    throw new GoogleError('http', String(msg).slice(0, 200));
+  }
+  return body;
+}
+
 module.exports = {
-  SCOPES, STATE_TTL_MS, REDIRECT_PATH, TOTAL_HTTP_BUDGET_MS, GoogleError,
-  isConfigured, clientConfig, redirectUri, newState, consentUrl,
-  exchangeCode, refreshAccessToken, revoke, whoAmI, calendarFetch, createBudget,
+  SCOPES, CONTACTS_SCOPE, STATE_TTL_MS, REDIRECT_PATH, TOTAL_HTTP_BUDGET_MS, GoogleError,
+  isConfigured, clientConfig, redirectUri, newState, consentUrl, contactsConsentUrl,
+  exchangeCode, refreshAccessToken, revoke, whoAmI, calendarFetch, peopleFetch, createBudget,
 };
