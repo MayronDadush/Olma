@@ -119,6 +119,15 @@ test('connection approval notifies the requester and hints the grants step', asy
   const resp = await outboxFor(miron.id, 'connection_response');
   assert.equal(resp.length, 1);
   assert.equal(resp[0].payload.decision, 'approve');
+  // The requester's own reason rides back with the approval, so their agent
+  // resumes the errand instead of stranding it. Live incident: "approved!"
+  // arrived bare, the original meeting request sat forgotten, and the user
+  // had to repeat what they wanted.
+  assert.equal(resp[0].payload.reason, 'לתאם דברים');
+  const { instructionFor } = require('../src/channels/openclaw');
+  const text = instructionFor({ kind: 'connection_response', payload: resp[0].payload });
+  assert.ok(text.includes('<<<לתאם דברים>>>'), 'the reason must reach the agent, wrapped as data');
+  assert.match(text, /without waiting to be asked again/);
 });
 
 test('every proactive instruction forbids sending tools — one message, one delivery', () => {

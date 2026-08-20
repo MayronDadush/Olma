@@ -137,7 +137,15 @@ function bodyFor(row, p) {
     case 'share_response':
       return `${p.byName} ${p.decision === 'accept' ? 'accepted' : 'declined'} the user's share offer. Tell the user briefly.`;
     case 'connection_response':
-      return `${p.byName} ${p.decision === 'approve' ? 'approved the connection! Tell the user, then ask which features to enable for it (sharing / meetings) and call grant_connection_feature per their answer.' : 'declined the connection request. Tell the user gently, without pushing.'}`;
+      // The reason is what the connection was FOR. Without it, this landed as
+      // a bare "approved!" and the agent asked about feature toggles while the
+      // user's actual goal — the meeting they asked to arrange — sat forgotten
+      // until they repeated it, annoyed, in so many words ("לא הבנתי מה הוא
+      // אישר בדיוק"). An approval is a green light for the original errand,
+      // not an event in itself.
+      return `${p.byName} ${p.decision === 'approve'
+        ? `approved the connection!${p.reason ? ` It was requested for a purpose — YOUR user's own words at the time: <<<${p.reason}>>>.` : ''} Tell the user, and in the SAME message continue that original purpose: if it needs a feature (scheduling → meetings, sharing tasks → sharing), confirm enabling it in one short question — or fold it in naturally ("מפעיל תיאום פגישות וממשיך?") — call grant_connection_feature, and then actually do the thing (e.g. start_meeting_coordination) without waiting to be asked again. The user already said what they want once; making them repeat it is the failure mode this message exists to prevent.`
+        : 'declined the connection request. Tell the user gently, without pushing.'}`;
     // The consent screen finished in a browser tab; without this the person
     // gets a success page and then silence from the assistant they were
     // actually talking to.

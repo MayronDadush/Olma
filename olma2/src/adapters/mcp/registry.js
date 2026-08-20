@@ -346,6 +346,11 @@ const TOOLS = [
       if (res.ok) {
         await fanout(client, [Number(res.data.connection.requester_id)], 'connection_response', {
           connectionId: Number(a.connection_id), byName: actorName(user), decision: a.decision,
+          // What the requester asked the connection FOR — their own words,
+          // coming back to their own agent so an approval resumes the errand
+          // instead of stranding it (observed live: the user had to repeat
+          // their request after "approved!" arrived without this).
+          reason: res.data.connection.invite_reason || null,
         }, { key: `cresp:${a.connection_id}` });
         if (a.decision === 'approve') {
           res.data.hint = 'Connected! Now ask your user which features to enable for this connection (sharing / meetings) and call grant_connection_feature accordingly.';
