@@ -28,7 +28,11 @@ describes **v1**, which is retired-in-place: its code still sits in
 - **Source of truth: `olma2/` in THIS repo** (unlike v1). ~4.9k lines src+bin,
   116 tests. `olma2/README.md` is its map. Deploy+test:
   `bash olma2/scripts/deploy.sh` (rsync → `/opt/olma2/` → migrations → full
-  suite on the server).
+  suite on the server). **CI auto-deploys on every merge to `main`**
+  (`.github/workflows/olma2-tests.yml`, `deploy` job — runs the same script
+  with `--restart`, so `olma2-brokerd`/`olma2-dashboard` restart automatically
+  once the remote suite passes). A manual local run of `deploy.sh` still
+  leaves restart to you unless you also pass `--restart`.
 - Postgres 16 local (`olma2` + `olma2_test` DBs), creds in `/opt/olma2/.env`
   (0600). Daily `pg_dump` 02:15 → `/root/backups/`, 14-day retention.
   **The dump lands on the same droplet it backs up — no off-box copy yet.**
