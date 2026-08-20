@@ -26,6 +26,12 @@ const CARD_TOOLS = new Set([
   // A fact stated outright mid-conversation shows up in the card immediately,
   // the same turn — it should not have to wait for the extraction job to run.
   'remember_fact', 'forget_fact',
+  // Calendar and connection state live on the card too (see renderCard), so
+  // the calls that change them refresh it. Connecting a calendar happens in
+  // the OAuth callback (an HTTP route, not a tool) — the dashboard calls
+  // refreshUserCard there itself.
+  'disconnect_calendar',
+  'respond_to_connection_request', 'revoke_connection', 'set_contact_label',
 ]);
 
 // How many facts the card carries. This text is injected on every single turn,
@@ -33,7 +39,7 @@ const CARD_TOOLS = new Set([
 // topFacts is what makes a fixed, small K survivable.
 const CARD_FACT_LIMIT = 10;
 
-function renderCard(user, prefs, facts = []) {
+function renderCard(user, prefs, facts = [], extras = {}) {
   const lines = ['# User', ''];
   lines.push(`First name: ${user.first_name || 'unknown'}`);
   if (user.last_name) lines.push(`Last name: ${user.last_name}`);
@@ -42,6 +48,20 @@ function renderCard(user, prefs, facts = []) {
   lines.push(user.digest_times
     ? `Daily digest: ${user.digest_times} (${user.digest_scope || 'summary'})`
     : 'Daily digest: not set up — offer it once their list has real content');
+  // State the agent otherwise burns a tool call to discover — or worse,
+  // forgets exists. Both failure modes were observed live: calendar_status
+  // called on every confirmation, and an agent asking a user for the phone
+  // number of a friend it had approved one minute earlier.
+  if (extras.calendar !== undefined) {
+    lines.push(extras.calendar
+      ? `Calendar: connected (${extras.calendar})`
+      : 'Calendar: not connected');
+  }
+  if (extras.connections !== undefined) {
+    lines.push(extras.connections > 0
+      ? `Connections: ${extras.connections} active — resolve people by name via list_my_connections before ever asking for a phone number`
+      : 'Connections: none yet');
+  }
   if (prefs.length) {
     lines.push('', 'Learned preferences:');
     for (const p of prefs) lines.push(`- ${p.key}: ${p.value}`);
@@ -68,13 +88,25 @@ async function refreshUserCard(pool, userId) {
       `SELECT key, value FROM user_preferences WHERE user_id = $1 ORDER BY key`, [userId]
     );
     const facts = await require('../domain/facts').topFacts(pool, userId, CARD_FACT_LIMIT);
+    const { rows: cal } = await pool.query(
+      `SELECT access_level FROM integrations
+       WHERE user_id = $1 AND provider = 'google_calendar' AND status = 'connected'`, [userId]
+    );
+    const { rows: conn } = await pool.query(
+      `SELECT count(*)::int AS n FROM connections
+       WHERE status = 'active' AND (requester_id = $1 OR target_id = $1)`, [userId]
+    );
+    const extras = {
+      calendar: cal[0] ? cal[0].access_level : false,
+      connections: conn[0].n,
+    };
     let tail = '';
     try {
       const current = fs.readFileSync(file, 'utf8');
       const cut = current.indexOf('\n## ');
       if (cut >= 0) tail = current.slice(cut + 1);
     } catch { /* no card yet — render fresh */ }
-    fs.writeFileSync(file, renderCard(user, prefs, facts) + (tail ? '\n' + tail : ''));
+    fs.writeFileSync(file, renderCard(user, prefs, facts, extras) + (tail ? '\n' + tail : ''));
     return true;
   } catch (e) {
     console.error(`[user-card] refresh failed for user ${userId}: ${e.message}`);

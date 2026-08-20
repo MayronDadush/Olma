@@ -221,8 +221,11 @@ async function listMine(client, userId) {
 
 // For the checkin priority ladder: the meeting this user is holding up, if any.
 async function pendingMeetingFor(client, userId) {
+  // constraints ride along so the nudge that chases this person can check the
+  // proposed slot against what they already said ("לא בבקרים") instead of
+  // asking them to re-litigate their own words.
   const { rows } = await client.query(
-    `SELECT m.id, m.title, m.proposed_slot, m.initiator_id
+    `SELECT m.id, m.title, m.proposed_slot, m.initiator_id, p.constraints
      FROM meetings m JOIN meeting_participants p ON p.meeting_id = m.id
      WHERE p.user_id = $1 AND p.state = 'awaiting' AND m.status = 'negotiating'
        AND m.proposed_slot IS NOT NULL

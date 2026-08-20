@@ -446,7 +446,7 @@ const TOOLS = [
     { meeting_id: S('number', 'Meeting id'), constraint: S('string', 'The constraint, verbatim') },
     ['meeting_id', 'constraint'],
     (client, user, a) => meetings.recordConstraint(client, user.id, a.meeting_id, a.constraint)),
-  tool('propose_meeting_slot', 'Propose a slot: date+time+medium (location/phone/video) as ONE package. Proposing means your user agrees to it. Every part of the slot must come from what YOUR user actually said — if they gave only a time ("פנויה ב-13"), the DAY is not yours to fill in from conversation context: say the full slot back in one short line and get their yes first. A real meeting was confirmed on the wrong day exactly this way.',
+  tool('propose_meeting_slot', 'Propose a slot: date+time+medium (location/phone/video) as ONE package. Proposing means your user agrees to it. Every part of the slot must come from what YOUR user actually said — if they gave only a time ("פנויה ב-13"), the DAY is not yours to fill in from conversation context: say the full slot back in one short line and get their yes first. A real meeting was confirmed on the wrong day exactly this way. If their calendar is connected, check my_calendar_events for that day before sending — proposing a slot the user is already busy in wastes everyone\'s round.',
     { meeting_id: S('number', 'Meeting id'), slot_description: S('string', 'e.g. "Tuesday 17:00 at the office"') },
     ['meeting_id', 'slot_description'],
     async (client, user, a) => {

@@ -1263,6 +1263,11 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
           res.end(oauthResultPage(title, body));
         };
         if (result.ok) {
+          // The card carries calendar state, and connecting happens HERE — an
+          // HTTP route, not a tool — so brokerd's per-tool refresh never sees
+          // it. After the commit, same rule as every card write.
+          const { refreshUserCard } = require('../../intake/user-card');
+          await refreshUserCard(pool, result.data.userId);
           return page(200, 'היומן חובר ✅', result.data.accessLevel === 'read_write'
             ? 'אולמה יכולה לראות את היומן שלך וגם להוסיף ולערוך אירועים. אפשר לחזור לוואטסאפ.'
             : 'אולמה יכולה לראות את היומן שלך בלבד — היא לא תוכל לשנות בו דבר. אפשר לחזור לוואטסאפ.');

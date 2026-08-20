@@ -136,3 +136,40 @@ test('renderCard: every card-refreshing tool is a real registry tool', async () 
   const text = renderCard({ first_name: null }, []);
   assert.match(text, /First name: unknown/);
 });
+
+// ---- state the agent used to burn tool calls to discover --------------------
+
+test('the card names calendar and connection state', async () => {
+  await db.pool.query(
+    `INSERT INTO integrations (user_id, provider, status, access_level)
+     VALUES ($1, 'google_calendar', 'connected', 'read_write')
+     ON CONFLICT (user_id, provider) DO UPDATE SET status = 'connected', access_level = 'read_write'`,
+    [user.id]
+  );
+  await refreshUserCard(db.pool, user.id);
+  let card = fs.readFileSync(cardPath(), 'utf8');
+  assert.match(card, /Calendar: connected \(read_write\)/);
+  assert.match(card, /Connections: none yet/);
+
+  // disconnect → the card says so on the next refresh
+  await db.pool.query(
+    `UPDATE integrations SET status = 'disconnected' WHERE user_id = $1`, [user.id]
+  );
+  await refreshUserCard(db.pool, user.id);
+  card = fs.readFileSync(cardPath(), 'utf8');
+  assert.match(card, /Calendar: not connected/);
+});
+
+test('an active connection shows as a count and points at the list', async () => {
+  const friend = await makeUser(db.pool, '+972509100004', { firstName: 'חבר' });
+  const connections = require('../src/domain/connections');
+  await db.pool.connect().then(async (c) => {
+    try {
+      const req = await connections.requestConnection(c, user.id, friend.phone, {});
+      await connections.respondToConnection(c, friend.id, req.data.connection.id, 'approve');
+    } finally { c.release(); }
+  });
+  await refreshUserCard(db.pool, user.id);
+  const card = fs.readFileSync(cardPath(), 'utf8');
+  assert.match(card, /Connections: 1 active — resolve people by name via list_my_connections/);
+});

@@ -154,3 +154,25 @@ test('day one ladder enqueues one step at a time, each with its own expiry', asy
   const again = await db.pool.query(`SELECT count(*)::int n FROM outbox WHERE user_id = $1`, [fresh.id]);
   assert.equal(again.rows[0].n, 1);
 });
+
+test('a stuck-meeting nudge carries the user\'s own recorded constraints', async () => {
+  const meetings = require('../src/domain/meetings');
+  const connections = require('../src/domain/connections');
+  const grants = require('../src/domain/grants');
+  const checkin = require('../src/jobs/checkin');
+  const other = await makeUser(db.pool, '+972641000021', { firstName: 'Rina' });
+  const me = await makeUser(db.pool, '+972641000022', { firstName: 'Gadi' });
+  const c = await db.pool.connect();
+  try {
+    const req = await connections.requestConnection(c, other.id, me.phone, {});
+    const conn = (await connections.respondToConnection(c, me.id, req.data.connection.id, 'approve')).data.connection;
+    await grants.grantFeature(c, other.id, conn.id, 'meetings');
+    await grants.grantFeature(c, me.id, conn.id, 'meetings');
+    const m = (await meetings.startMeeting(c, other.id, 'ריצה', [me.id])).data.meeting;
+    await meetings.recordConstraint(c, me.id, m.id, 'לא בבקרים');
+    await meetings.proposeSlot(c, other.id, m.id, 'שלישי 07:00 בפארק');
+    const { instruction, rung } = await checkin.pickRung(c, me.id);
+    assert.equal(rung, 'stuck_meeting');
+    assert.ok(instruction.includes('<<<לא בבקרים>>>'), 'the nudge must carry their own constraint');
+  } finally { c.release(); }
+});
