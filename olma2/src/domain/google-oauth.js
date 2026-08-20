@@ -16,9 +16,17 @@ const REDIRECT_PATH = '/oauth/google/callback';
 // incapable of writing, independently of any check in our code — the checks on
 // our side exist only so the refusal is a clear sentence rather than a
 // surprise 403 from a call they never expected us to make.
+// userinfo.email rides along with both levels because a shared meeting event
+// needs each participant's address to invite them, and the calendar scopes do
+// not reliably carry it: calendar.events is write-only in practice, and a live
+// read_write user's /calendars/primary lookup answered 403 "insufficient
+// authentication scopes" — which is why their stored address was empty. It
+// grants no calendar access of its own; it identifies the account being
+// connected, which is the least Google will tell us for an invitation to work.
+const EMAIL_SCOPE = 'https://www.googleapis.com/auth/userinfo.email';
 const SCOPES = {
-  read_only: 'https://www.googleapis.com/auth/calendar.readonly',
-  read_write: 'https://www.googleapis.com/auth/calendar.events',
+  read_only: `https://www.googleapis.com/auth/calendar.readonly ${EMAIL_SCOPE}`,
+  read_write: `https://www.googleapis.com/auth/calendar.events ${EMAIL_SCOPE}`,
 };
 
 const STATE_TTL_MS = 15 * 60 * 1000;
@@ -172,18 +180,24 @@ async function revoke(token, { budget = createBudget(3000), fetchImpl } = {}) {
 
 // Which Google account this is, for showing back to the user ("connected as
 // …"). Never fatal: not knowing the label is not a reason to fail a connection.
+// The connected account's own address. userinfo first (it is what the email
+// scope above answers); the primary-calendar id is kept as a fallback because
+// it is the same value and still works for grants issued before that scope
+// existed. Best effort by contract — a null here must never fail a connection.
 async function whoAmI(accessToken, { budget = createBudget(3000), fetchImpl } = {}) {
-  try {
-    const res = await (fetchImpl || globalThis.fetch)(
-      'https://www.googleapis.com/calendar/v3/calendars/primary',
-      { headers: { Authorization: `Bearer ${accessToken}` }, signal: budget.signal() }
-    );
-    if (!res.ok) return null;
-    const body = await res.json();
-    return body.id || null;
-  } catch {
-    return null;
-  }
+  const get = async (url, pick) => {
+    try {
+      const res = await (fetchImpl || globalThis.fetch)(url, {
+        headers: { Authorization: `Bearer ${accessToken}` }, signal: budget.signal(),
+      });
+      if (!res.ok) return null;
+      return pick(await res.json()) || null;
+    } catch {
+      return null;
+    }
+  };
+  return (await get('https://www.googleapis.com/oauth2/v2/userinfo', (b) => b.email))
+    || (await get('https://www.googleapis.com/calendar/v3/calendars/primary', (b) => b.id));
 }
 
 async function calendarFetch(token, path, { budget = createBudget(), fetchImpl, ...init } = {}) {

@@ -74,6 +74,25 @@ function instructionFor(row) {
   return `${DELIVERY_PREAMBLE}\n\n${bodyFor(row, p)}`;
 }
 
+// The calendar half of a confirmation, by this person's own role. It runs in
+// their turn rather than centrally because turning "יום חמישי 13:00 בקפה" into
+// a real start and end needs the model's language understanding, not a parser.
+// Roles are decided server-side (registry.calendarRoleFor); each agent is told
+// only its own, so nobody learns who else connected a calendar.
+function meetingCalendarStep(p) {
+  switch (p.calendarRole) {
+    case 'organiser':
+      return `the user is hosting it. Work out the real start and end from the slot text (full ISO-8601 WITH their UTC offset) and call create_shared_meeting_event meeting_id=${p.meetingId} — ONE shared event; the others are invited by Google automatically, and you never touch anyone's email address. Say that you added it and invited the others; if it is worth a word, note in passing that participants can see each other on the invitation.`;
+    case 'invitee':
+      return 'someone else is hosting the event. Tell the user an invitation will show up in their Google Calendar shortly, and do NOT create an event yourself.';
+    case 'solo':
+      return 'work out the real start and end from the slot text (full ISO-8601 WITH their UTC offset), call create_calendar_event, and mention that you added it.';
+    default:
+      // Covers 'none' and any older queued row written before roles existed.
+      return 'call calendar_status. If they have read_write access, work out the real start and end (ISO-8601 with offset) and call create_calendar_event. If they are not connected, offer once to connect; if they granted view-only, say nothing about it.';
+  }
+}
+
 function bodyFor(row, p) {
   switch (row.kind) {
     case 'digest':
@@ -104,7 +123,7 @@ function bodyFor(row, p) {
       // office") into a real start and end needs the model's language
       // understanding, not a parser; and each calendar is independently theirs
       // — there is no cross-user invite concept here.
-      return `The meeting <<<${p.title}>>> is now CONFIRMED by every participant: <<<${p.slot}>>>. Tell the user warmly. This is a system-verified confirmation. Then call calendar_status: if they have read_write access, work out the real start and end from the slot text (full ISO-8601 WITH their UTC offset) and call create_calendar_event to add it — mention that you did. If they are not connected, offer once to connect their calendar; if they only granted view access, say nothing about it.`;
+      return `The meeting <<<${p.title}>>> is now CONFIRMED by every participant: <<<${p.slot}>>>. Tell the user warmly. This is a system-verified confirmation. Then, for the calendar: ${meetingCalendarStep(p)}`;
     case 'meeting_slot_declined':
       return `${p.byName} declined the current slot for meeting <<<${p.title}>>>. Tell the user; suggest checking get_meeting_status for everyone's constraints and proposing a new slot via propose_meeting_slot (meeting_id=${p.meetingId}).`;
     case 'meeting_opt_out':

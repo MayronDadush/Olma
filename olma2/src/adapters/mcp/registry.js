@@ -56,6 +56,48 @@ async function activeParticipantsExcept(client, meetingId, exceptUserId) {
   return rows.map((r) => Number(r.user_id));
 }
 
+// A confirmed meeting becomes ONE shared calendar event when two or more
+// participants have a calendar connected: the organiser's agent creates it and
+// Google invites the rest. Each person's payload carries only their own role,
+// so nobody's agent is told who else is connected.
+//
+// The confirming user is handled separately on purpose: they get no outbox row
+// (they are mid-turn, and the tool result is their notification), so without a
+// hint on that result the one person guaranteed to be present would be the one
+// person never told to put it on their calendar. Observed live on meeting 1 —
+// the accepter held the only connected calendar and was never prompted.
+async function meetingCalendarFanout(client, meetingId, recipients, basePayload, key) {
+  const roles = await calendar.meetingCalendarRoles(client, meetingId);
+  for (const uid of recipients) {
+    await enqueue(client, {
+      userId: uid, kind: 'meeting_confirmed', urgency: 'urgent',
+      payload: { ...basePayload, calendarRole: calendarRoleFor(roles, uid) },
+      idempotencyKey: `${key}:${uid}`,
+    });
+  }
+  return roles;
+}
+
+function calendarRoleFor(roles, userId) {
+  if (!roles.shared) return roles.connectedIds.includes(Number(userId)) ? 'solo' : 'none';
+  if (roles.organiserId === Number(userId)) return 'organiser';
+  return roles.connectedIds.includes(Number(userId)) ? 'invitee' : 'none';
+}
+
+// What to tell the confirming user's own agent, in their own turn.
+function calendarHintFor(role, meetingId) {
+  switch (role) {
+    case 'organiser':
+      return `Everyone is agreed. Work out the real start and end from the confirmed slot (full ISO-8601 WITH the user's UTC offset) and call create_shared_meeting_event meeting_id=${meetingId} — one shared event; the other participants get a Google invitation automatically. Tell the user you added it and that the others were invited. Their email addresses are visible to each other on the invitation, which is how calendar invitations work — mention it in passing, do not ask permission.`;
+    case 'invitee':
+      return 'Someone else is hosting the calendar event — tell the user an invitation will arrive in their Google Calendar shortly. Do not create an event yourself.';
+    case 'solo':
+      return `Work out the real start and end from the confirmed slot (full ISO-8601 WITH their UTC offset) and call create_calendar_event to add it to their own calendar, then mention that you did.`;
+    default:
+      return 'They have no calendar connected — offer once to connect it so meetings land there automatically, and drop it if they are not interested.';
+  }
+}
+
 async function meetingBrief(client, meetingId) {
   const { rows } = await client.query(
     `SELECT title, initiator_id, proposed_slot, confirmed_slot FROM meetings WHERE id = $1`, [meetingId]
@@ -256,6 +298,15 @@ const TOOLS = [
     (client, user, a) => calendar.createEvent(client, user.id, {
       title: a.title, start: a.start, end: a.end, description: a.description,
     })),
+  tool('create_shared_meeting_event', 'For a CONFIRMED meeting only: create the single shared calendar event and let Google invite the other participants. Call this instead of create_calendar_event when you were told the user is hosting. Times MUST include a UTC offset. You never handle anyone\'s email address — the system resolves them.',
+    { meeting_id: S('number', 'The confirmed meeting id'),
+      start: S('string', 'ISO-8601 with offset, e.g. 2026-08-20T13:00:00+03:00'),
+      end: S('string', 'ISO-8601 with offset'),
+      location: S('string', 'Optional place, e.g. the cafe named in the slot') },
+    ['meeting_id', 'start', 'end'],
+    (client, user, a) => calendar.createSharedMeetingEvent(client, user.id, {
+      meetingId: a.meeting_id, start: a.start, end: a.end, location: a.location,
+    })),
   tool('update_calendar_event', 'Change an event in the user\'s own calendar. Needs read_write access. Times MUST include a UTC offset.',
     { event_id: S('string', 'Event id from my_calendar_events'),
       title: S('string', 'New title'), start: S('string', 'New start, ISO-8601 with offset'),
@@ -414,10 +465,11 @@ const TOOLS = [
       const brief = await meetingBrief(client, a.meeting_id);
       const others = await activeParticipantsExcept(client, a.meeting_id, user.id);
       if (res.data.meetingStatus === 'confirmed') {
-        await fanout(client, others, 'meeting_confirmed', {
+        const roles = await meetingCalendarFanout(client, a.meeting_id, others, {
           meetingId: Number(a.meeting_id), title: brief.title || 'meeting',
           slot: res.data.slot || brief.confirmed_slot, byName: actorName(user),
-        }, { key: `mconf:${a.meeting_id}` });
+        }, `mconf:${a.meeting_id}`);
+        res.data.hint = calendarHintFor(calendarRoleFor(roles, user.id), Number(a.meeting_id));
       } else if (res.data.proposedSlot) {
         // decline carried a counter → everyone else hears the NEW slot
         await fanout(client, others, 'meeting_slot_proposed', {
@@ -443,10 +495,10 @@ const TOOLS = [
       }, { key: `mexit:${a.meeting_id}:${user.id}` });
       if (res.data.meetingStatus === 'confirmed') {
         // the exit completed the gate for everyone left
-        await fanout(client, await activeParticipantsExcept(client, a.meeting_id, user.id),
-          'meeting_confirmed', {
+        await meetingCalendarFanout(client, a.meeting_id,
+          await activeParticipantsExcept(client, a.meeting_id, user.id), {
             meetingId: Number(a.meeting_id), title: brief.title || 'meeting', slot: brief.proposed_slot,
-          }, { key: `mconf:${a.meeting_id}` });
+          }, `mconf:${a.meeting_id}`);
       }
       return res;
     }),

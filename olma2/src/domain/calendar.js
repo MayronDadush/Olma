@@ -353,7 +353,7 @@ async function listEvents(client, userId, daysAhead, opts = {}) {
   });
 }
 
-async function createEvent(client, userId, { title, start, end, description }, opts = {}) {
+async function createEvent(client, userId, { title, start, end, description, location, attendees }, opts = {}) {
   if (!title) return err('invalid', 'title is required');
   if (!OFFSET_RE.test(String(start))) return badTime('start', start);
   if (!OFFSET_RE.test(String(end))) return badTime('end', end);
@@ -371,15 +371,24 @@ async function createEvent(client, userId, { title, start, end, description }, o
     if (refusal) return refusal;
     let body;
     try {
-      body = await google.calendarFetch(token, '/calendars/primary/events', {
+      // sendUpdates=all is what actually mails the invitation. Without it
+      // Google records the attendees and tells nobody, which looks identical
+      // in our logs and silently fails the entire point of a shared event.
+      const query = attendees && attendees.length ? '?sendUpdates=all' : '';
+      body = await google.calendarFetch(token, `/calendars/primary/events${query}`, {
         ...o,
         method: 'POST',
         body: JSON.stringify({
           id: eventId,
           summary: title,
           description: description || undefined,
+          location: location || undefined,
           start: { dateTime: start },
           end: { dateTime: end },
+          // Only ever set by createSharedMeetingEvent, from addresses this
+          // module resolved itself — never from anything the agent typed.
+          attendees: attendees && attendees.length
+            ? attendees.map((email) => ({ email })) : undefined,
         }),
       });
     } catch (e) {
@@ -425,9 +434,129 @@ async function updateEvent(client, userId, { eventId, title, start, end }, opts 
   });
 }
 
+// ---- shared meeting events -------------------------------------------------
+//
+// A confirmed meeting between people used to become N unrelated events, one
+// per calendar, drifting apart the moment anyone edited theirs. It is now ONE
+// event owned by an organiser, with the others as Google attendees, so a
+// change reaches everybody the way calendar invitations normally do.
+//
+// The addresses never pass through the agent. They are resolved here, from
+// each person's own stored connection, for exactly the reason listEvents
+// already projects attendee lists away: another person's email has no business
+// in a model's context. The agent supplies only what needs language
+// understanding — the real start and end behind "יום חמישי 13:00 בקפה".
+
+// The account's own address. Google's primary calendar id IS the account
+// email, so the existing calendar scope already carries it — no extra consent,
+// no reconnect. Stored at connect time; backfilled here when that call failed
+// (it is best-effort with a 3s budget, and it did fail for a live user).
+async function accountEmail(client, userId, opts = {}) {
+  const row = await loadIntegration(client, userId);
+  if (!row || row.status !== 'connected') return null;
+  if (row.account_label) return row.account_label;
+  return withAccessToken(client, userId, opts, async (token, _access, o) => {
+    const email = await google.whoAmI(token, o);
+    if (!email) return null;
+    await client.query(
+      `UPDATE integrations SET account_label = $3 WHERE user_id = $1 AND provider = $2`,
+      [userId, PROVIDER, email]
+    );
+    return email;
+  }).then((r) => (typeof r === 'string' ? r : null), () => null);
+}
+
+// Who, among a confirmed meeting's active participants, can host the event.
+// Read-only participants are still invited — an invitation arrives by mail and
+// needs no write access on their side — but they cannot be the organiser.
+async function meetingCalendarRoles(client, meetingId) {
+  const { rows } = await client.query(
+    `SELECT mp.user_id, m.initiator_id, i.access_level,
+            (i.status = 'connected') AS connected
+       FROM meeting_participants mp
+       JOIN meetings m ON m.id = mp.meeting_id
+       LEFT JOIN integrations i ON i.user_id = mp.user_id AND i.provider = $2
+      WHERE mp.meeting_id = $1 AND mp.state <> 'opted_out'`,
+    [meetingId, PROVIDER]
+  );
+  const connected = rows.filter((r) => r.connected);
+  const writers = connected.filter((r) => r.access_level === 'read_write');
+  const initiatorId = rows[0] ? Number(rows[0].initiator_id) : null;
+  // The initiator hosts when they can; otherwise the first writer does, so a
+  // meeting is not left without an organiser just because whoever started it
+  // never connected a calendar.
+  const organiser = writers.find((r) => Number(r.user_id) === initiatorId) || writers[0] || null;
+  return {
+    organiserId: organiser ? Number(organiser.user_id) : null,
+    // Shared only makes sense with someone to share WITH.
+    shared: Boolean(organiser) && connected.length >= 2,
+    connectedIds: connected.map((r) => Number(r.user_id)),
+    participantIds: rows.map((r) => Number(r.user_id)),
+  };
+}
+
+// Called by the organiser's own agent once it has worked out real times.
+async function createSharedMeetingEvent(client, userId, { meetingId, start, end, location }, opts = {}) {
+  const { rows } = await client.query(
+    `SELECT m.id, m.title, m.status, m.confirmed_slot
+       FROM meetings m
+       JOIN meeting_participants mp ON mp.meeting_id = m.id AND mp.user_id = $2
+      WHERE m.id = $1 AND mp.state <> 'opted_out'`,
+    [meetingId, userId]
+  );
+  const meeting = rows[0];
+  // Not a participant and "no such meeting" are deliberately the same answer.
+  if (!meeting) return err('not_found', 'no such meeting');
+  if (meeting.status !== 'confirmed') {
+    return err('conflict', 'the meeting is not confirmed yet — only a confirmed meeting goes on a calendar',
+      { reason: 'not_confirmed' });
+  }
+
+  const roles = await meetingCalendarRoles(client, meetingId);
+  if (roles.organiserId !== Number(userId)) {
+    return err('forbidden',
+      'someone else is hosting this meeting\'s calendar event — the user will get an invitation by email, nothing to do here',
+      { reason: 'not_organiser' });
+  }
+
+  // Someone who connected before the email scope existed cannot be invited:
+  // their grant simply does not carry an address, and only a reconnect adds
+  // one. The event is still created for everyone else — a missing invitation
+  // is worth saying out loud, not worth cancelling the whole thing over.
+  const attendees = [];
+  let uninvitable = 0;
+  for (const id of roles.connectedIds) {
+    if (id === Number(userId)) continue; // the organiser is implicit
+    const email = await accountEmail(client, id, opts);
+    if (email) attendees.push(email);
+    else uninvitable++;
+  }
+
+  const res = await createEvent(client, userId, {
+    title: meeting.title || 'פגישה',
+    start, end, location,
+    description: meeting.confirmed_slot || undefined,
+    attendees,
+  }, opts);
+  if (!res.ok) return res;
+
+  await audit.record(client, userId, 'calendar.meeting_event_created', {
+    meetingId: Number(meetingId), attendees: attendees.length, uninvitable,
+  });
+  // Counts only — the addresses stay out of the agent's context.
+  return ok({
+    ...res.data, invited: attendees.length, meetingId: Number(meetingId),
+    ...(uninvitable ? {
+      notInvited: uninvitable,
+      note: 'someone connected their calendar before invitations were supported, so they were not invited — tell the user that person may need to reconnect their calendar',
+    } : {}),
+  });
+}
+
 module.exports = {
   PROVIDER, MAX_EVENTS,
   beginConnection, completeOAuth, getStatus, disconnect,
   listEvents, createEvent, updateEvent,
   usableAccessToken,
+  accountEmail, meetingCalendarRoles, createSharedMeetingEvent,
 };

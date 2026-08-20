@@ -62,6 +62,9 @@ const tokenOk = (over = {}) => ({
   },
 });
 const primaryCal = { body: { id: 'someone@example.com' } };
+// whoAmI asks userinfo first (that is what the email scope answers) and only
+// falls back to the primary-calendar id, so both are stubbed together.
+const userInfo = { body: { email: 'someone@example.com' } };
 
 // Drive one consent flow to completion and return the result.
 async function connect(userId, { access = 'read_write', routes, code = 'auth-code' } = {}) {
@@ -71,6 +74,7 @@ async function connect(userId, { access = 'read_write', routes, code = 'auth-cod
   const fetchImpl = fakeFetch(routes || {
     'oauth2.googleapis.com/token': tokenOk(),
     'calendars/primary': primaryCal,
+    'oauth2/v2/userinfo': userInfo,
     // A reconnect (this user already had a row) revokes the superseded
     // token — stubbed here so tests that don't care about that call still
     // pass; the tests that DO care pass their own `routes` and assert on it.
@@ -137,8 +141,15 @@ test('render scrubs Google credentials as well as Olma identity tokens', () => {
 test('the access level the user picked is what goes to Google', async () => {
   const ro = await withTx(db.pool, (c) => calendar.beginConnection(c, user.id, 'read_only'));
   const rw = await withTx(db.pool, (c) => calendar.beginConnection(c, user.id, 'read_write'));
-  assert.match(new URL(ro.data.url).searchParams.get('scope'), /calendar\.readonly$/);
-  assert.match(new URL(rw.data.url).searchParams.get('scope'), /calendar\.events$/);
+  // The calendar half is what the user chose; userinfo.email rides along with
+  // both so a shared meeting event can invite them (it grants no calendar access).
+  assert.match(new URL(ro.data.url).searchParams.get('scope'), /calendar\.readonly\b/);
+  assert.match(new URL(rw.data.url).searchParams.get('scope'), /calendar\.events\b/);
+  assert.doesNotMatch(new URL(ro.data.url).searchParams.get('scope'), /calendar\.events/,
+    'view-only must never carry a write scope');
+  for (const u of [ro, rw]) {
+    assert.match(new URL(u.data.url).searchParams.get('scope'), /userinfo\.email/);
+  }
   assert.equal(new URL(rw.data.url).searchParams.get('redirect_uri'),
     'https://olmachat.example/oauth/google/callback');
 
@@ -188,7 +199,7 @@ test('an expired consent link is refused without calling Google', async () => {
 test('two callbacks racing on one state: exactly one wins', async () => {
   const begun = await withTx(db.pool, (c) => calendar.beginConnection(c, user.id, 'read_write'));
   const state = new URL(begun.data.url).searchParams.get('state');
-  const routes = { 'oauth2.googleapis.com/token': tokenOk(), 'calendars/primary': primaryCal };
+  const routes = { 'oauth2.googleapis.com/token': tokenOk(), 'calendars/primary': primaryCal, 'oauth2/v2/userinfo': userInfo };
   const both = await Promise.all([
     withTx(db.pool, (c) => calendar.completeOAuth(c, { state, code: 'a' }, { fetchImpl: fakeFetch(routes) })),
     withTx(db.pool, (c) => calendar.completeOAuth(c, { state, code: 'b' }, { fetchImpl: fakeFetch(routes) })),
@@ -218,6 +229,7 @@ test('when Google narrows the grant, we store what they gave, not what we asked'
       // …they ticked view-only on the consent screen
       'oauth2.googleapis.com/token': tokenOk({ scope: 'https://www.googleapis.com/auth/calendar.readonly' }),
       'calendars/primary': primaryCal,
+    'oauth2/v2/userinfo': userInfo,
     },
   });
   assert.equal(done.data.accessLevel, 'read_only');
@@ -240,6 +252,7 @@ test('narrowing to read_only without a fresh refresh token is refused', async ()
         scope: 'https://www.googleapis.com/auth/calendar.readonly',
       }),
       'calendars/primary': primaryCal,
+    'oauth2/v2/userinfo': userInfo,
     },
   });
   assert.equal(res.done.ok, false);
@@ -258,6 +271,7 @@ test('the user can change access level later without disconnecting first', async
     routes: {
       'oauth2.googleapis.com/token': tokenOk({ access_token: 'ya29.upgraded' }),
       'calendars/primary': primaryCal,
+    'oauth2/v2/userinfo': userInfo,
       'oauth2.googleapis.com/revoke': (url, init) => {
         revokeCalls.push(new URLSearchParams(init.body).get('token'));
         return { body: {} };
@@ -296,6 +310,7 @@ test('downgrading access also revokes the old (more capable) token at Google', a
         access_token: 'ya29.narrowed', scope: 'https://www.googleapis.com/auth/calendar.readonly',
       }),
       'calendars/primary': primaryCal,
+    'oauth2/v2/userinfo': userInfo,
       'oauth2.googleapis.com/revoke': (url, init) => {
         revokeCalls.push(new URLSearchParams(init.body).get('token'));
         return { body: {} };
@@ -316,6 +331,7 @@ test('view-only access refuses to create or change events', async () => {
     routes: {
       'oauth2.googleapis.com/token': tokenOk({ scope: 'https://www.googleapis.com/auth/calendar.readonly' }),
       'calendars/primary': primaryCal,
+    'oauth2/v2/userinfo': userInfo,
     },
   });
   const fetchImpl = fakeFetch({});
@@ -478,7 +494,7 @@ test('a real consent completes end-to-end through the HTTP callback', async () =
 
   const httpServer = createDashboard({
     pool: db.pool, adminUser: 'admin', adminPass: 'test-password-123',
-    googleOpts: { fetchImpl: fakeFetch({ 'oauth2.googleapis.com/token': tokenOk(), 'calendars/primary': primaryCal }) },
+    googleOpts: { fetchImpl: fakeFetch({ 'oauth2.googleapis.com/token': tokenOk(), 'calendars/primary': primaryCal, 'oauth2/v2/userinfo': userInfo }) },
   });
   await new Promise((r) => httpServer.listen(0, '127.0.0.1', r));
   const url = `http://127.0.0.1:${httpServer.address().port}`;
@@ -501,4 +517,141 @@ test('a cancelled consent shows a calm page, not an error', async () => {
   const res = await fetch(`${base}/oauth/google/callback?state=${encodeURIComponent(state)}&error=access_denied`);
   assert.equal(res.status, 200);
   assert.match(await res.text(), /לא חובר/);
+});
+
+// ---- shared meeting events --------------------------------------------------
+// A confirmed meeting becomes ONE event with the others as Google attendees.
+// What these assert is the part that used to go wrong: N duplicate events, and
+// other people's email addresses reaching the agent's context.
+
+const meetings = require('../src/domain/meetings');
+const connections = require('../src/domain/connections');
+const grants = require('../src/domain/grants');
+
+// Two connected users with a confirmed meeting between them. The connection +
+// mutual 'meetings' grant is what startMeeting gates on, so the fixture has to
+// build it exactly as the real flow does.
+async function confirmedMeetingFixture(phoneA, phoneB, { bAccess = 'read_write', connectB = true } = {}) {
+  const a = await makeUser(db.pool, phoneA, { firstName: 'Alef' });
+  const b = await makeUser(db.pool, phoneB, { firstName: 'Bet' });
+  await connect(a.id);
+  if (connectB) await connect(b.id, { access: bAccess });
+  await withTx(db.pool, async (c) => {
+    const req = await connections.requestConnection(c, a.id, b.phone, {});
+    const conn = (await connections.respondToConnection(c, b.id, req.data.connection.id, 'approve')).data.connection;
+    await grants.grantFeature(c, a.id, conn.id, 'meetings');
+    await grants.grantFeature(c, b.id, conn.id, 'meetings');
+  });
+  const m = await withTx(db.pool, async (c) => {
+    const started = await meetings.startMeeting(c, a.id, 'קפה', [b.id]);
+    assert.ok(started.ok, `fixture startMeeting failed: ${JSON.stringify(started.error)}`);
+    const id = Number(started.data.meeting.id);
+    await meetings.proposeSlot(c, a.id, id, 'יום חמישי 13:00 בקפה');
+    await meetings.respondToSlot(c, b.id, id, true);
+    return id;
+  });
+  const status = await db.pool.query(`SELECT status FROM meetings WHERE id = $1`, [m]);
+  assert.equal(status.rows[0].status, 'confirmed', 'fixture must reach confirmed');
+  return { a, b, meetingId: m };
+}
+
+test('roles: the initiator hosts, the other is invited', async () => {
+  const { a, b, meetingId } = await confirmedMeetingFixture('+972632000001', '+972632000002');
+  const roles = await withTx(db.pool, (c) => calendar.meetingCalendarRoles(c, meetingId));
+  assert.equal(roles.shared, true);
+  assert.equal(roles.organiserId, Number(a.id));
+  assert.ok(roles.connectedIds.includes(Number(b.id)));
+});
+
+test('one connected participant is not a shared event', async () => {
+  const { meetingId } = await confirmedMeetingFixture('+972632000003', '+972632000004', { connectB: false });
+  const roles = await withTx(db.pool, (c) => calendar.meetingCalendarRoles(c, meetingId));
+  assert.equal(roles.shared, false, 'nobody to share with');
+});
+
+test('a view-only participant is invited but never hosts', async () => {
+  const { a, meetingId } = await confirmedMeetingFixture('+972632000005', '+972632000006', { bAccess: 'read_only' });
+  const roles = await withTx(db.pool, (c) => calendar.meetingCalendarRoles(c, meetingId));
+  assert.equal(roles.organiserId, Number(a.id), 'read_only cannot host');
+  assert.equal(roles.shared, true, 'but they still get an invitation');
+});
+
+test('the shared event carries attendees, asks Google to mail them, and leaks no address', async () => {
+  const { a, b, meetingId } = await confirmedMeetingFixture('+972632000007', '+972632000008');
+  // Give each side a distinguishable address, as the connect flow would.
+  await db.pool.query(`UPDATE integrations SET account_label = 'alef@example.com' WHERE user_id = $1`, [a.id]);
+  await db.pool.query(`UPDATE integrations SET account_label = 'bet@example.com' WHERE user_id = $1`, [b.id]);
+
+  let posted = null;
+  const fetchImpl = fakeFetch({
+    'calendars/primary/events': (url, init) => {
+      posted = { url: String(url), body: JSON.parse(init.body) };
+      return { body: { id: 'evt-1', summary: 'קפה', start: { dateTime: '2026-08-20T13:00:00+03:00' } } };
+    },
+  });
+
+  const res = await withTx(db.pool, (c) => calendar.createSharedMeetingEvent(c, a.id, {
+    meetingId, start: '2026-08-20T13:00:00+03:00', end: '2026-08-20T14:00:00+03:00', location: 'הקפה',
+  }, { fetchImpl }));
+
+  assert.equal(res.ok, true, res.ok ? '' : JSON.stringify(res.error));
+  assert.deepEqual(posted.body.attendees, [{ email: 'bet@example.com' }], 'the other side is an attendee');
+  assert.match(posted.url, /sendUpdates=all/, 'without this Google invites nobody');
+  assert.equal(posted.body.location, 'הקפה');
+  // The result goes verbatim into the agent's context: counts, never addresses.
+  assert.equal(res.data.invited, 1);
+  assert.doesNotMatch(JSON.stringify(res.data), /@example\.com/, 'no email may reach the model');
+});
+
+test('only the host may create the shared event', async () => {
+  const { b, meetingId } = await confirmedMeetingFixture('+972632000009', '+972632000010');
+  const fetchImpl = fakeFetch({}); // any outbound call here is a bug
+  const res = await withTx(db.pool, (c) => calendar.createSharedMeetingEvent(c, b.id, {
+    meetingId, start: '2026-08-20T13:00:00+03:00', end: '2026-08-20T14:00:00+03:00',
+  }, { fetchImpl }));
+  assert.equal(res.ok, false);
+  assert.equal(res.error.reason, 'not_organiser');
+  assert.equal(fetchImpl.calls.length, 0, 'a refusal must not reach Google');
+});
+
+test('an unconfirmed meeting never reaches a calendar', async () => {
+  const a = await makeUser(db.pool, '+972632000011', { firstName: 'Alef' });
+  const b = await makeUser(db.pool, '+972632000012', { firstName: 'Bet' });
+  await connect(a.id);
+  const meetingId = await withTx(db.pool, async (c) => {
+    const req = await connections.requestConnection(c, a.id, b.phone, {});
+    const conn = (await connections.respondToConnection(c, b.id, req.data.connection.id, 'approve')).data.connection;
+    await grants.grantFeature(c, a.id, conn.id, 'meetings');
+    await grants.grantFeature(c, b.id, conn.id, 'meetings');
+    const started = await meetings.startMeeting(c, a.id, 'עוד לא סגור', [b.id]);
+    return Number(started.data.meeting.id);
+  });
+  const fetchImpl = fakeFetch({});
+  const res = await withTx(db.pool, (c) => calendar.createSharedMeetingEvent(c, a.id, {
+    meetingId, start: '2026-08-20T13:00:00+03:00', end: '2026-08-20T14:00:00+03:00',
+  }, { fetchImpl }));
+  assert.equal(res.ok, false);
+  assert.equal(res.error.reason, 'not_confirmed');
+});
+
+test('a stranger to the meeting gets "no such meeting", not a hint that it exists', async () => {
+  const { meetingId } = await confirmedMeetingFixture('+972632000013', '+972632000014');
+  const outsider = await makeUser(db.pool, '+972632000015', { firstName: 'Zar' });
+  await connect(outsider.id);
+  const res = await withTx(db.pool, (c) => calendar.createSharedMeetingEvent(c, outsider.id, {
+    meetingId, start: '2026-08-20T13:00:00+03:00', end: '2026-08-20T14:00:00+03:00',
+  }, { fetchImpl: fakeFetch({}) }));
+  assert.equal(res.ok, false);
+  assert.equal(res.error.code, 'not_found');
+});
+
+test('a missing account_label is backfilled from Google rather than asked for', async () => {
+  const u = await makeUser(db.pool, '+972632000016', { firstName: 'Gim' });
+  await connect(u.id);
+  await db.pool.query(`UPDATE integrations SET account_label = NULL WHERE user_id = $1`, [u.id]);
+  const fetchImpl = fakeFetch({ 'calendars/primary': { body: { id: 'gim@example.com' } } });
+  const email = await withTx(db.pool, (c) => calendar.accountEmail(c, u.id, { fetchImpl }));
+  assert.equal(email, 'gim@example.com');
+  const row = await integrationRow(u.id);
+  assert.equal(row.account_label, 'gim@example.com', 'and stored, so it is fetched once');
 });
