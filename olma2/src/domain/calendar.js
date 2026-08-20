@@ -121,9 +121,17 @@ async function completeOAuth(client, { state, code, error }, opts = {}) {
   // Google honours. access_type=offline + prompt=consent means Google issues
   // one; if it somehow did not, failing is the only safe answer.
   if (!tokens.refresh_token) {
-    const narrowing = prior && prior.access_level === 'read_write' && accessLevel === 'read_only';
-    if (narrowing) {
-      await audit.record(client, userId, 'calendar.auth_failed', { reason: 'narrowing_without_refresh_token' });
+    // Any CHANGE of level, in either direction, needs its own refresh token.
+    // Narrowing would leave a read_write refresh token behind a read_only
+    // label; widening leaves a read_only one behind a read_write label, and
+    // every write silently starts failing an hour later when the first
+    // refreshed access token comes back without the events scope.
+    const changing = prior && prior.access_level !== accessLevel;
+    if (changing) {
+      await audit.record(client, userId, 'calendar.auth_failed', {
+        reason: 'level_change_without_refresh_token',
+        from: prior.access_level, to: accessLevel,
+      });
       return err('invalid', 'could not complete the connection', { reason: 'exchange_failed', userId });
     }
   }

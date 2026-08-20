@@ -24,8 +24,13 @@ const skippedLine = (key) =>
 const recoveredLine = (key) =>
   `stuck session recovery outcome: status=aborted action=abort_embedded_run sessionKey=${key}`;
 
+const LOG_TIME = '2026-08-16T17:58:55.000+00:00';
+// The sweep only acts on observations that are still fresh (MAX_EVENT_AGE_MS),
+// so every sweep test pins `now` to just after the lines it feeds in.
+const NOW = Date.parse(LOG_TIME) + 30_000;
+
 const asJsonLog = (lines) =>
-  lines.map((m) => JSON.stringify({ message: m, time: '2026-08-16T17:58:55.000+00:00' })).join('\n');
+  lines.map((m) => JSON.stringify({ message: m, time: LOG_TIME })).join('\n');
 
 // ---- parsing / decision (pure, no DB) --------------------------------------
 
@@ -83,6 +88,7 @@ test('lane watchdog: aborts the wedged lane, once, and records who it was for', 
 
   const calls = [];
   const deps = {
+    now: NOW,
     readLog: () => asJsonLog([stuckLine(KEY, 148, 3), skippedLine(KEY)]),
     abort: (a) => { calls.push(a); return { ok: true }; },
   };
@@ -111,6 +117,7 @@ test('lane watchdog: a failed abort is still recorded', async (t) => {
   await makeUser(pool, '+972526269826');
 
   const res = await withTx(pool, (c) => wd.sweepLaneWatchdog(c, {
+    now: NOW,
     readLog: () => asJsonLog([stuckLine(KEY, 200, 2), skippedLine(KEY)]),
     abort: () => ({ ok: false, error: 'gateway unreachable' }),
   }));
@@ -138,6 +145,7 @@ test('lane watchdog: repeated wedging stops the watchdog and files an issue', as
 
   let called = false;
   const res = await withTx(pool, (c) => wd.sweepLaneWatchdog(c, {
+    now: NOW,
     readLog: () => asJsonLog([stuckLine(KEY, 300, 4), skippedLine(KEY)]),
     abort: () => { called = true; return { ok: true }; },
   }));
@@ -163,4 +171,20 @@ test('lane watchdog: quiet log is a cheap no-op', async (t) => {
 
 test('lane watchdog: a missing log file does not throw', () => {
   assert.equal(wd.readTail('/nonexistent/openclaw-2026-01-01.log'), '');
+});
+
+test('lane watchdog: a stuck line from hours ago is not acted on now', async (t) => {
+  const { pool, teardown } = await freshDb();
+  t.after(teardown);
+  await makeUser(pool, '+972526269826');
+
+  // The tail still holds this morning's incident; the lane itself may well be
+  // carrying a live reply by now. Aborting on that evidence kills a healthy run.
+  const res = await withTx(pool, (c) => wd.sweepLaneWatchdog(c, {
+    now: Date.parse(LOG_TIME) + wd.MAX_EVENT_AGE_MS + 60_000,
+    readLog: () => asJsonLog([stuckLine(KEY, 148, 3), skippedLine(KEY)]),
+    abort: () => { throw new Error('must not abort on a stale observation'); },
+  }));
+  assert.equal(res.wedged, 0);
+  assert.deepEqual(res.aborted, []);
 });

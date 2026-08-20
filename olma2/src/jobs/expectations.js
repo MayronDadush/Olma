@@ -18,6 +18,7 @@ const JOB_INTERVAL_SECONDS = {
   config_guard: 600,
   checkin_ladder: 300,
   memory_consolidation: 3600,
+  fact_extraction: 600,
   usage_sweep: 3600,
   metrics_sweep: 3600,
   retention_sweep: 86400,

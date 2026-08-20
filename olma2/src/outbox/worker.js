@@ -22,7 +22,12 @@ async function drainOnce(pool, deliver, now = new Date()) {
             u.digest_times
      FROM outbox o JOIN users u ON u.id = o.user_id
      WHERE o.sent_at IS NULL AND (o.release_after IS NULL OR o.release_after <= $1)
-       AND (o.hold_reason IS NULL OR o.hold_reason <> 'budget')
+       -- A budget hold with no release time is waiting for the next digest to
+       -- carry it (collectHeld), so it must not be retried on a clock. One
+       -- WITH a release time is the no-digest case: the gate scheduled it for
+       -- the next day, and skipping it here is what left those rows unsent
+       -- forever despite the release time the gate had set.
+       AND (o.hold_reason IS DISTINCT FROM 'budget' OR o.release_after IS NOT NULL)
      ORDER BY o.created_at LIMIT 50`,
     [now]
   );

@@ -40,11 +40,19 @@ function lastTurn(msgs) {
   return null;
 }
 
-// deps.readMessages(agentId) → [{role, text, at}] so tests never touch disk.
+// deps.readMessages(agentId, peer) → [{role, text, at}] so tests never touch disk.
+//
+// The peer is not optional. Silent housekeeping turns (fact extraction, memory
+// consolidation) open sessions of their own on the same agent, and a peer-less
+// read returns whichever session was last active — which is one of those, whose
+// last text-bearing message is the JOB's own instruction, in the `user` role.
+// That reads exactly like an unanswered message and would send the person a
+// "repair" reply to a conversation that was never broken.
 async function sweepUnanswered(client, { readMessages, now = Date.now() } = {}) {
-  const read = readMessages || ((agentId) => sessions.readRecentMessages(agentId, 6));
+  const read = readMessages
+    || ((agentId, peer) => sessions.readRecentMessages(agentId, 6, undefined, peer));
   const { rows } = await client.query(
-    `SELECT id, agent_id FROM users
+    `SELECT id, agent_id, phone FROM users
      WHERE status = 'active' AND agent_id IS NOT NULL AND onboarded_at IS NOT NULL
        AND quota_blocked_until IS NULL`
   );
@@ -52,7 +60,7 @@ async function sweepUnanswered(client, { readMessages, now = Date.now() } = {}) 
   const repaired = [];
   for (const u of rows) {
     let msgs;
-    try { msgs = read(u.agent_id); } catch { continue; } // unreadable transcript is not this job's problem
+    try { msgs = read(u.agent_id, u.phone); } catch { continue; } // unreadable transcript is not this job's problem
     const last = lastTurn(msgs || []);
     if (!last || last.role !== 'user' || !last.at) continue;
 

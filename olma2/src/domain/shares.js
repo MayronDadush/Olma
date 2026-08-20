@@ -123,7 +123,10 @@ async function completeSharedTask(client, editorId, taskId) {
 
 async function addSubtaskToShared(client, editorId, parentTaskId, title) {
   const share = await editorShareCovering(client, editorId, parentTaskId);
-  if (!share || share.task_id !== parentTaskId) {
+  // String(): task ids come back from Postgres as strings (BIGINT), while the
+  // tool argument is a JSON number — a strict !== between the two is always
+  // true, which refused every legitimate call.
+  if (!share || String(share.task_id) !== String(parentTaskId)) {
     return err('forbidden', 'no editor share on this project');
   }
   const res = await tasksDomain.addTask(client, share.owner_id, {

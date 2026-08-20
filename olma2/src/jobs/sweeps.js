@@ -58,13 +58,25 @@ async function sweepDigests(client, now = new Date()) {
     });
     if (!slot) continue;
     const day = now.toISOString().slice(0, 10);
-    const folded = await collectHeld(client, u.id, ['budget']);
+    // Enqueue FIRST, fold second. collectHeld marks the rows it returns as
+    // sent, so collecting before the insert threw them away whenever the
+    // insert lost to its own idempotency key (the ±2min tolerance means this
+    // sweep visits the same slot on two or three consecutive ticks): the held
+    // messages were stamped delivered and rode along with nothing.
     const res = await enqueue(client, {
       userId: u.id, kind: 'digest',
-      payload: { scope: u.digest_scope || 'summary', folded: folded.map((f) => ({ kind: f.kind, payload: f.payload })) },
+      payload: { scope: u.digest_scope || 'summary', folded: [] },
       idempotencyKey: `digest:${u.id}:${day}:${slot}`,
     });
-    if (res.data.enqueued) out.push({ userId: u.id, slot, folded: folded.length });
+    if (!res.data.enqueued) continue;
+    const folded = await collectHeld(client, u.id, ['budget']);
+    if (folded.length) {
+      await client.query(
+        `UPDATE outbox SET payload = jsonb_set(payload, '{folded}', $2::jsonb) WHERE id = $1`,
+        [res.data.outboxId, JSON.stringify(folded.map((f) => ({ kind: f.kind, payload: f.payload })))]
+      );
+    }
+    out.push({ userId: u.id, slot, folded: folded.length });
   }
   return out;
 }

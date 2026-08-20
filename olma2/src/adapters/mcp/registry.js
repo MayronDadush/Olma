@@ -436,7 +436,7 @@ const TOOLS = [
     async (client, user, a) => {
       const res = await shares.respondToShare(client, user.id, a.share_id, a.decision);
       if (res.ok) {
-        await fanout(client, [Number(res.data.share.owner_id)].filter((id) => id !== user.id),
+        await fanout(client, [Number(res.data.share.owner_id)].filter((id) => id !== Number(user.id)),
           'share_response', {
             shareId: Number(a.share_id), byName: actorName(user), decision: a.decision,
           }, { urgency: 'normal', key: `sresp:${a.share_id}` });
@@ -518,7 +518,7 @@ const TOOLS = [
           slot: res.data.proposedSlot, byName: actorName(user),
         });
       } else if (!a.accept) {
-        await fanout(client, [Number(brief.initiator_id)].filter((id) => id !== user.id),
+        await fanout(client, [Number(brief.initiator_id)].filter((id) => id !== Number(user.id)),
           'meeting_slot_declined', {
             meetingId: Number(a.meeting_id), title: brief.title || 'meeting', byName: actorName(user),
           });

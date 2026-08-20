@@ -94,6 +94,7 @@ const JOB_LABELS = {
   unanswered_sweep: 'תיקון הודעות שלא נענו',
   lane_watchdog: 'שחרור שיחות תקועות',
   memory_consolidation: 'סיכום זיכרון שבועי',
+  fact_extraction: 'קריאת שיחות ולמידה על משתמשים',
   usage_sweep: 'חישוב עלויות',
   metrics_sweep: 'חישוב סטטיסטיקות',
   retention_sweep: 'ניקוי נתונים ישנים',
@@ -644,7 +645,12 @@ function renderConversation(u) {
   if (!u.agent_id) return '';
   let msgs = [];
   let error = null;
-  try { msgs = sessionIndex.readRecentMessages(u.agent_id, 10); } catch (e) { error = e.message; }
+  // Pinned to THEIR phone: silent housekeeping turns (fact extraction, memory
+  // consolidation) open sessions of their own on the same agent, and a
+  // peer-less read returns whichever session was last active — so this panel
+  // would show a job's prompt instead of the conversation it promises.
+  try { msgs = sessionIndex.readRecentMessages(u.agent_id, 10, undefined, u.phone); }
+  catch (e) { error = e.message; }
   const body = error
     ? `<p class="dim">לא הצלחתי לקרוא את השיחה: ${esc(error)}</p>`
     : !msgs.length
@@ -1368,8 +1374,14 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
           } else if (url.pathname === '/issues/status') {
             await issuesDomain.setStatus(client, Number(body.id), body.status);
           } else if (url.pathname === '/users/quota') {
-            const override = body.override === '' ? null : parseInt(body.override, 10);
-            await client.query(`UPDATE users SET quota_override_daily = $2 WHERE id = $1`, [Number(body.id), override]);
+            // A non-numeric override would reach Postgres as NaN and abort the
+            // whole transaction with a 500 — an operator typo must simply not
+            // change anything.
+            const parsed = parseInt(body.override, 10);
+            const override = body.override === '' ? null : parsed;
+            if (override === null || Number.isFinite(override)) {
+              await client.query(`UPDATE users SET quota_override_daily = $2 WHERE id = $1`, [Number(body.id), override]);
+            }
           } else if (url.pathname === '/users/delete') {
             // Keyed by phone, not row id: the confirmation page the operator
             // read was about a specific person, and the phone is what the

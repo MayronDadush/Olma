@@ -54,6 +54,15 @@ const DEFAULT_MIN_AGE_MS = 90_000;
 // a different problem and repeated aborts would only hide it.
 const COOLDOWN_MS = 10 * 60_000;
 
+// How recent a log observation has to be to still describe the lane as it is
+// NOW. The tail we read can span hours on a quiet box, and the log keeps every
+// line: without this, one lane that wedged and was freed this morning stays
+// "wedged" for the rest of the day, and every time the cooldown lapses the
+// watchdog aborts it again — on a lane that by then may be carrying a live
+// reply. Lines with no timestamp (plain journald text) are exempt; there is
+// nothing to judge them by.
+const MAX_EVENT_AGE_MS = 15 * 60_000;
+
 // Beyond this many aborts in an hour something systemic is wrong. Stop acting
 // and file an issue instead — a watchdog that silently papers over a melting
 // system is worse than one that stops and says so.
@@ -153,8 +162,13 @@ function parseEvents(raw) {
 // A lane is only worth acting on when someone is actually waiting behind it.
 // queueDepth 0 means nothing is queued: the lane may be untidy, but no message
 // is being withheld from anyone, and aborting would be pure risk for no gain.
-function pickWedged(events, minAgeMs = DEFAULT_MIN_AGE_MS) {
-  return events.filter((e) => e.queueDepth > 0 && e.ageMs >= minAgeMs);
+function pickWedged(events, minAgeMs = DEFAULT_MIN_AGE_MS, now = null) {
+  return events.filter((e) => {
+    if (!(e.queueDepth > 0 && e.ageMs >= minAgeMs)) return false;
+    if (now == null || !e.at) return true;
+    const seenAt = Date.parse(e.at);
+    return Number.isNaN(seenAt) || now - seenAt <= MAX_EVENT_AGE_MS;
+  });
 }
 
 // ---- the sweep --------------------------------------------------------------
@@ -188,7 +202,7 @@ async function sweepLaneWatchdog(client, deps = {}) {
   const read = deps.readLog || (() => readTail(todayLogPath(now)));
   const minAge = Number(await flags.getFlag(client, 'lane_watchdog_min_age_ms') ?? DEFAULT_MIN_AGE_MS);
 
-  const wedged = pickWedged(parseEvents(read()), minAge);
+  const wedged = pickWedged(parseEvents(read()), minAge, now);
   if (wedged.length === 0) return { wedged: 0, aborted: [] };
 
   const hourly = await recentAbortCount(client, '1 hour');
@@ -234,5 +248,5 @@ async function sweepLaneWatchdog(client, deps = {}) {
 
 module.exports = {
   sweepLaneWatchdog, parseEvents, pickWedged, todayLogPath, readTail,
-  DEFAULT_MIN_AGE_MS, COOLDOWN_MS, HOURLY_CAP,
+  DEFAULT_MIN_AGE_MS, COOLDOWN_MS, HOURLY_CAP, MAX_EVENT_AGE_MS,
 };
