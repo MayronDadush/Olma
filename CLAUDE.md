@@ -168,6 +168,42 @@ instead. What makes it work, all verified against the gateway source and live:
   `scripts/resync-agent-templates.js --apply`** — AGENTS.md is written once at
   provisioning. Run it after any doctrine edit.
 
+### Check-ins were counting messages that never arrived (fixed 2026-08-20)
+
+Existing users had gone nearly silent on proactive outreach — traced to two
+compounding bugs in `jobs/checkin.js`. **(1)** `checkin_misses` incremented on
+every enqueued onboarding step, including ones that landed inside quiet hours,
+expired unsent, and were never delivered — an evening joiner could rack up two
+ghost misses before midnight, tripping the ladder down to weekly cadence on
+day one with zero real ignores. Day-one onboarding steps no longer increment
+misses at all; a new `isDeafOnDayOne(client, userId, onboardedAt)` (≥2
+delivered onboarding messages + no inbound since onboarding) gates the 5h step
+directly instead. **(2)** Once a check-in did land, it was a generic "מה
+קורה?" — content nobody had reason to answer. Added a `discovery` rung
+(`discoveryGaps()`) that checks what's actually missing for *this* person —
+no `digest_times` with open tasks, a facts card under 3 active entries, no
+calendar connection, zero active connections — and offers to close the
+highest-value gap, rotating topics (never the same one twice in a row via the
+prior outbox row's `payload->>'topic'`) and falling back to plain silence only
+when there is genuinely nothing to offer. Three stuck users' inflated
+`checkin_misses` were reset via audited admin SQL after deploy.
+
+### A Google consent with no calendar scope was stored as "connected" (fixed 2026-08-20)
+
+Google's OAuth consent screen shows the calendar permission as its own
+checkbox, separate from the base email/profile grant — a user can press
+"Continue" without ticking it, and the token exchange still succeeds with only
+`userinfo.email`/`openid` granted. `calendar.completeOAuth` used to accept
+that token and store a "connected, read_only" row that 403'd on every real
+call (live: user 8, 2026-08-20 — she saw a success page and then nothing
+worked). Now a consent granting neither `calendar.events` nor
+`calendar.readonly` is refused outright: the useless token is revoked at
+Google, any PRIOR working connection is left untouched, and the person gets a
+`calendar_scope_missing` outbox message telling them exactly which box to
+tick, plus a callback page that explains instead of showing false success.
+See `domain/calendar.js` (`completeOAuth`), `channels/openclaw.js` (payload
+case), `adapters/http/dashboard.js` (callback page + outbox label).
+
 ### Onboarding has no "welcome" step any more (redesigned 2026-08-17)
 
 Retired the whole `kind: 'welcome'` outbox mechanism. The intake greeter
