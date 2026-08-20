@@ -33,6 +33,19 @@ describes **v1**, which is retired-in-place: its code still sits in
   with `--restart`, so `olma2-brokerd`/`olma2-dashboard` restart automatically
   once the remote suite passes). A manual local run of `deploy.sh` still
   leaves restart to you unless you also pass `--restart`.
+  **`--restart` also carries a rollback safeguard** (added 2026-08-20): before
+  the new code is synced, the currently-deployed release (code + its own
+  `node_modules`) is snapshotted whole to `/opt/olma2-previous` (one snapshot,
+  not a history). After restart, `deploy.sh` waits 5s and checks both services
+  are actually `active` AND the dashboard's own `/health` (DB + job-heartbeat
+  sanity, `adapters/http/dashboard.js`) returns 200 — "tests passed in CI"
+  never proves the live process came up. If that check fails, it restores
+  `/opt/olma2-previous` over `/opt/olma2` and restarts again, then the CI run
+  still exits non-zero on purpose (a silently self-healed run hides the
+  problem). **This rolls back CODE only — never DB migrations.** A migration
+  that already ran stays applied even after a code rollback, so keep
+  migrations additive/backward-compatible rather than relying on this to
+  undo one.
 - Postgres 16 local (`olma2` + `olma2_test` DBs), creds in `/opt/olma2/.env`
   (0600). Daily `pg_dump` 02:15 → `/root/backups/`, 14-day retention.
   **The dump lands on the same droplet it backs up — no off-box copy yet.**
@@ -92,6 +105,66 @@ undefined, so recovery returns `keep_lane` forever and lowering
 watchdog reads the gateway's own log, then calls `sessions.abort`
 (RPC scope `operator.write` — no device upgrade needed) on that ONE key.
 `jobs/unanswered.js` remains the slower backstop for messages dropped entirely.
+
+### Model provider pilot: OpenRouter (in progress 2026-08-20)
+
+Every agent turn runs on `anthropic/claude-haiku-4-5` ($1.00/$5.00 per Mtok)
+with `claude-sonnet-4-6` as fallback. The Anthropic account ran dry mid-day
+2026-08-20 and every turn failed until it was topped up (see "a crashed turn
+is not an answer"), which is what prompted looking at cheaper open-weight
+models routed through OpenRouter.
+
+**Done:**
+- OpenRouter API key installed via OpenClaw's own credential CLI:
+  `openclaw models auth paste-api-key --provider openrouter`. It lands in the
+  agent's **encrypted sqlite auth store**
+  (`~/.openclaw/agents/main/agent/openclaw-agent.sqlite`), NOT in a plaintext
+  `Environment=` line the way `ELEVENLABS_API_KEY` did — a better trust model
+  than the ElevenLabs precedent, and the one to copy for future providers.
+  `openclaw models auth list` now shows `anthropic:manual` + `openrouter:manual`.
+- `scripts/model-pilot.js` — runs a real agent turn (real workspace, USER.md,
+  all ~59 MCP tools) on a **disposable session key and without `--deliver`**,
+  so a comparison can never reach WhatsApp or contaminate a real session.
+- `scripts/register-openrouter-models.js` — adds candidate models to the
+  `agents.defaults.models` allowlist. Dry-run by default; does NOT touch
+  `agents.defaults.model`, so registering never moves a live user onto an
+  unproven model.
+- Live config backed up: `/root/.openclaw/openclaw.json.pre-openrouter`.
+
+**The blocker, and it is a real gateway constraint, not a config slip:**
+`openclaw models list --all --provider openrouter` returns exactly THREE
+entries — `moonshotai/kimi-k2.5`, `moonshotai/kimi-k2.6`, `openrouter/auto`.
+The bundled provider catalog does not carry Qwen3/DeepSeek/GLM, so
+`--model openrouter/qwen/qwen3-235b-a22b-2507` fails with *"Model override
+... is not allowed for agent u-3"* even with a valid key. Registering an
+arbitrary OpenRouter model needs BOTH:
+1. `agents.defaults.models["openrouter/<id>"] = {}` (the allowlist), and
+2. a matching entry in `models.providers.openrouter.models[]`
+   (`{ id, name }`) — the gateway says so itself in its own error text.
+`models.providers` is currently `{}` and `models scan` only covers FREE
+models, so there is no CLI path for step 2; it is a direct `openclaw.json`
+edit through `src/intake/openclaw-config.js`.
+
+**Prices checked live on OpenRouter 2026-08-20**, per Mtok in/out, vs Haiku's
+$1.00/$5.00: `qwen3-235b-a22b-2507` $0.09/$0.55 (~11x/9x cheaper) ·
+`deepseek-v3.2` $0.209/$0.310 (~5x/16x) · `llama-4-maverick` $0.20/$0.696 ·
+`gpt-oss-120b` $0.03/$0.17 (cheapest, but Anglocentric — weakest Hebrew bet) ·
+`glm-4.6` $0.43/$1.75 · `kimi-k2.6` $0.549/$2.313 (~1.8x/2.2x — the only one
+usable **today** without a config edit). All advertise tools + JSON-schema
+structured output, which is the hard requirement: an Olma turn is mostly tool
+selection, and a model that calls tools unreliably is worthless here at any
+price.
+
+**Cost reality check before anyone over-invests:** the gateway's own counters
+put ALL of v2 — 7 users, every background sweep, both silent agents — at
+**~$1.81 total lifetime**. The $15.78 on the Anthropic key is cumulative since
+2026-06-27 and mostly predates v2. The pilot is worth finishing as
+infrastructure for scale, not as this month's savings.
+
+**Next step:** register Qwen3 + DeepSeek in `models.providers.openrouter`,
+restart the gateway, then compare against Haiku with `scripts/model-pilot.js`
+on `u-3` only — judging Hebrew grammatical gender, tone, and above all whether
+tool calls (meetings, contacts, reminders) stay correct.
 
 ### Voice-note transcription moved to ElevenLabs Scribe v2 (2026-08-18)
 
