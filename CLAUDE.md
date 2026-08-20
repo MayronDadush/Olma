@@ -184,10 +184,47 @@ runs the REAL tools against the REAL database — comparing two models on an
 "add a task" prompt left two live tasks in Miron's list (deleted, audited as
 `admin.task.deleted`). Comparisons should use read-only prompts.
 
-**Worth retrying** with `deepseek-v3.2` or `glm-4.6`, but only after
-confirming the provider separates reasoning from reply content — finding #1
-sinks any model that does not, no matter how cheap. `kimi-k2.6` is the only
-OpenRouter model in the bundled catalog needing no registration at all.
+**`deepseek-v3.2` was tried next (2026-08-20, same evening) and ALSO rolled
+back** — a different, and in one way more dangerous, failure. On the identity
+question it did what Qwen could not: correctly read `Timezone: Asia/Jerusalem`
+as a timezone, not a place to live, and its usage payload carries a genuine
+separate `reasoningTokens` field (309 on that turn) — confirming reasoning
+does NOT leak into reply text the way it did on Qwen. Hebrew and gender
+agreement were clean throughout, and it read `.olma-identity` correctly on
+the first tool call both runs (no D-018 self-heal needed).
+
+But asked "מה המשימות שלי להיום?", it rendered a schedule card
+(`render_schedule_card`, twice — the first attempt exceeded the 8-section
+cap and it silently redid it) and then, instead of the sanctioned `MEDIA:
+<path>` reply line, called the platform's raw `message` send tool directly:
+
+    CALL: message {action:"send", target:"webchat", ...}
+    RESULT: {"status":"error","error":"Unknown target \"webchat\" for WhatsApp"}
+
+That is the exact anti-pattern `DELIVERY_PREAMBLE` in channels/openclaw.js
+exists to prevent — a model calling a sending tool instead of relying on
+`--deliver` to carry its reply. It only failed to double-send because it
+guessed a target ("webchat") that does not exist on a WhatsApp-routed
+session; a luckier guess reaches the exact live incident that preamble was
+written to stop. It also never recovered afterward: the final reply text
+("...הנה כל מה שפתוח אצלך 👇...") promised an image via emoji with no `MEDIA:`
+line attached, so the card it had already successfully rendered would have
+reached nobody — a real person gets a dangling reference to a picture that
+never arrives.
+
+So two different open-weight models, two different disqualifying failures on
+the exact same rollback afternoon: Qwen leaks reasoning as text; DeepSeek
+attempts unsanctioned tool-based delivery and silently drops a rendered
+attachment when that fails. Read-only Hebrew Q&A is not sufficient signal by
+itself — any further pilot candidate needs a schedule-card-triggering prompt
+in the test battery specifically, since that is where DeepSeek broke.
+
+**Worth retrying** with `glm-4.6`, but the test battery now has to check THREE
+things, not one: no leaked reasoning text, correct Hebrew agreement, AND no
+raw send-tool calls — verified specifically on a prompt that forces
+`render_schedule_card` and its `MEDIA:` follow-up, since that is exactly where
+the second failure hid. `kimi-k2.6` is the only OpenRouter model in the
+bundled catalog needing no registration at all.
 
 ### Voice-note transcription moved to ElevenLabs Scribe v2 (2026-08-18)
 
