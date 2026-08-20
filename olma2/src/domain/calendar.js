@@ -86,6 +86,27 @@ async function completeOAuth(client, { state, code, error }, opts = {}) {
   // their decision is how a row ends up labelled read_write for a token that
   // cannot write (or, worse, the reverse).
   const granted = String(tokens.scope || '');
+
+  // Google's consent screen shows a CHECKBOX per sensitive scope, unticked by
+  // default for some accounts — a person can press "Continue" and grant only
+  // email/openid, and the token exchange still succeeds. Accepting that token
+  // stores a "connected" calendar that 403s on every real call (happened live:
+  // user 8, 2026-08-20). Refuse it, revoke the useless grant, and tell the
+  // person exactly what to tick — an existing working connection, if any,
+  // stays untouched.
+  if (!granted.includes('calendar.events') && !granted.includes('calendar.readonly')) {
+    await audit.record(client, userId, 'calendar.auth_incomplete', {
+      reason: 'no_calendar_scope', granted: granted.slice(0, 200),
+    });
+    const secret = tokens.refresh_token || tokens.access_token;
+    if (secret) await google.revoke(secret, opts);
+    await enqueue(client, {
+      userId, kind: 'calendar_scope_missing', urgency: 'urgent',
+      payload: { requestedAccess: st.requested_access },
+    });
+    return err('forbidden', 'calendar permission was not granted', { reason: 'no_calendar_scope', userId });
+  }
+
   const accessLevel = granted.includes('calendar.events') ? 'read_write' : 'read_only';
 
   // Loaded up front, before the upsert overwrites it: this is also how the

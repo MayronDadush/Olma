@@ -152,6 +152,12 @@ function bodyFor(row, p) {
     // actually talking to.
     case 'calendar_connected':
       return `The user just finished connecting their Google Calendar${p.account ? ` (${p.account})` : ''}, with ${p.accessLevel === 'read_write' ? 'permission to view AND add/edit events' : 'view-only permission'}. Confirm it warmly in one short line, and say concretely what you can now do for them with it.`;
+    case 'calendar_scope_missing':
+      // Google's consent screen shows a checkbox per permission; pressing
+      // "Continue" without ticking the calendar one yields a token with no
+      // calendar access at all. The connection was refused server-side — the
+      // person now needs a fresh link and to know exactly what to tick.
+      return `The user just tried to connect their Google Calendar, but on Google's permission screen the calendar checkbox was left unticked — so Google granted no calendar access and the connection could not be completed. Tell them briefly what happened (no blame, it's an easy miss — Google leaves that box unchecked), call start_calendar_connection (${p.requestedAccess === 'read_write' ? 'read_write' : 'read_only'}, same as they chose before) to get a fresh link, and tell them: on Google's screen, tick the checkbox next to the calendar permission before pressing Continue.`;
     case 'calendar_needs_reauth':
       return `The user's Google Calendar connection stopped working — Google no longer accepts it (usually because access was revoked in their Google account, or a password changed). Tell them briefly, without alarm or technical detail, and offer to reconnect; on a yes, ask view-only vs edit access and call start_calendar_connection.`;
     default:

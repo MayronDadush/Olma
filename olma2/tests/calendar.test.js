@@ -238,6 +238,55 @@ test('when Google narrows the grant, we store what they gave, not what we asked'
   assert.match(row.scopes, /calendar\.readonly/);
 });
 
+test('a consent with NO calendar scope at all is refused, revoked, and explained', async () => {
+  // Google's consent screen has a checkbox per sensitive scope; pressing
+  // Continue without ticking the calendar one grants only email/openid and the
+  // token exchange still succeeds. Happened live (user 8, 2026-08-20): the row
+  // was stored "connected read_only" and every calendar call 403'd.
+  const u = await makeUser(db.pool, '+972631000020', { firstName: 'Gali' });
+  const { done, fetchImpl } = await connect(u.id, {
+    access: 'read_only',
+    routes: {
+      'oauth2.googleapis.com/token': tokenOk({
+        scope: 'https://www.googleapis.com/auth/userinfo.email openid',
+      }),
+      'oauth2.googleapis.com/revoke': { body: {} },
+    },
+  });
+  assert.equal(done.ok, false);
+  assert.equal(done.error.reason, 'no_calendar_scope');
+  assert.equal(await integrationRow(u.id), undefined, 'a calendar-less token must never be stored');
+  assert.ok(fetchImpl.calls.some((c) => c.url.includes('/revoke')),
+    'the useless grant should be revoked at Google, not left dangling');
+
+  const outbox = await db.pool.query(
+    `SELECT kind, payload FROM outbox WHERE user_id = $1 AND kind = 'calendar_scope_missing'`, [u.id]);
+  assert.equal(outbox.rows.length, 1, 'the person must be told what to tick, not left with browser-tab silence');
+  assert.equal(outbox.rows[0].payload.requestedAccess, 'read_only');
+
+  const aud = await db.pool.query(
+    `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'calendar.auth_incomplete'`, [u.id]);
+  assert.equal(aud.rows.length, 1);
+
+  // An existing WORKING connection must survive a botched re-consent.
+  await connect(u.id, { access: 'read_only', routes: {
+    'oauth2.googleapis.com/token': tokenOk({ scope: 'https://www.googleapis.com/auth/calendar.readonly' }),
+    'calendars/primary': primaryCal,
+    'oauth2/v2/userinfo': userInfo,
+  } });
+  const retry = await connect(u.id, {
+    access: 'read_only',
+    routes: {
+      'oauth2.googleapis.com/token': tokenOk({ scope: 'openid' }),
+      'oauth2.googleapis.com/revoke': { body: {} },
+    },
+  });
+  assert.equal(retry.done.ok, false);
+  const row = await integrationRow(u.id);
+  assert.equal(row.status, 'connected', 'the prior working connection must be left untouched');
+  assert.match(row.scopes, /calendar\.readonly/);
+});
+
 test('narrowing to read_only without a fresh refresh token is refused', async () => {
   const u = await makeUser(db.pool, '+972631000003', { firstName: 'Gal' });
   await connect(u.id, { access: 'read_write' }); // now holds a read_write refresh token

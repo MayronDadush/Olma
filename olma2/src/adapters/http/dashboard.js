@@ -306,6 +306,7 @@ const KIND_LABELS = {
   meeting_no_match: 'לא נמצא מועד',
   meeting_cancelled: 'פגישה בוטלה',
   calendar_connected: 'יומן חובר',
+  calendar_scope_missing: 'חיבור יומן בלי הרשאה — צריך שוב',
   calendar_needs_reauth: 'צריך לחבר יומן מחדש',
 };
 
@@ -1274,6 +1275,7 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         }
         const reason = result.error && result.error.reason;
         if (reason === 'declined') return page(200, 'לא חובר', 'ביטלת את החיבור. אפשר לנסות שוב מתי שתרצה.');
+        if (reason === 'no_calendar_scope') return page(200, 'חסרה הרשאת יומן', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה ליומן, אז גוגל לא נתנה גישה ליומן. אולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של היומן לפני שלוחצים המשך.');
         if (reason === 'bad_state') return page(400, 'הקישור פג', 'קישורי חיבור תקפים ל-15 דקות ולשימוש אחד. בקשי מאולמה קישור חדש.');
         return page(400, 'משהו השתבש', 'החיבור לא הושלם. בקשי מאולמה קישור חדש.');
       }
