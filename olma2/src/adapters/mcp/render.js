@@ -3,11 +3,19 @@
 // adapter returns the same structures as JSON to dashboards; this adapter's
 // whole job is the text envelope plus defense-in-depth scrubbing.
 
-const TOKEN_RE = /olma_tok_[0-9a-f]{32}/g;
+// Olma's own identity tokens, plus Google's two credential shapes (`ya29.…`
+// access tokens and `1//…` refresh tokens). The calendar code is written not
+// to put either in a message, but this is the layer that has to hold if some
+// future error path forgets.
+const TOKEN_RES = [
+  /olma_tok_[0-9a-f]{32}/g,
+  /ya29\.[\w.\-]+/g,
+  /1\/\/[\w\-]{10,}/g,
+];
 
-// No identity token may ever appear in tool output, whatever field it hid in.
+// No credential may ever appear in tool output, whatever field it hid in.
 function scrubTokens(text) {
-  return text.replace(TOKEN_RE, '[REDACTED]');
+  return TOKEN_RES.reduce((s, re) => s.replace(re, '[REDACTED]'), text);
 }
 
 function renderResult(result) {

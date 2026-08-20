@@ -401,3 +401,374 @@ test('planned messages: queued rows, future reminders and standing digests, in l
   assert.match(userHtml, /לקחת את הרכב לטסט/);
   assert.match(userHtml, /Asia\/Jerusalem/, 'states whose clock these times are in');
 });
+
+// ---- admin editing: plans, preferences, facts --------------------------------
+
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+const { enqueue } = require('../src/outbox/enqueue');
+const { drainOnce } = require('../src/outbox/worker');
+const factsDomain = require('../src/domain/facts');
+
+// One CSRF cookie, reused: the pair is what the server checks, and issuing a
+// fresh one per call would hide a bug where the cookie is not actually rotated.
+async function adminPost(pathname, fields) {
+  const page = await fetch(base + '/', { headers: { Authorization: AUTH } });
+  const csrf = /csrf=([0-9a-f]+)/.exec(page.headers.get('set-cookie'))[1];
+  return fetch(base + pathname, {
+    method: 'POST', redirect: 'manual',
+    headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ ...fields, csrf }).toString(),
+  });
+}
+
+test('cancelling a planned message does not delete it — so the sweep cannot recreate it', async () => {
+  const u = await makeUser(db.pool, '+972611000900', { firstName: 'Noa' });
+  await db.pool.query(`UPDATE users SET timezone = 'Asia/Jerusalem' WHERE id = $1`, [u.id]);
+  // exactly what a sweep produces: a row carrying its idempotency key
+  const first = await withTx(db.pool, (c) => enqueue(c, {
+    userId: u.id, kind: 'checkin', payload: { rung: 'silence' }, idempotencyKey: `sweep:${u.id}:day1`,
+  }));
+  assert.equal(first.data.enqueued, true);
+
+  const res = await adminPost('/outbox/cancel', { id: first.data.outboxId, back: `/user?id=${u.id}` });
+  assert.equal(res.status, 303);
+  assert.equal(res.headers.get('location'), `/user?id=${u.id}`);
+
+  const { rows } = await db.pool.query(`SELECT sent_at, hold_reason FROM outbox WHERE id = $1`, [first.data.outboxId]);
+  assert.ok(rows[0].sent_at, 'cancelling marks it handled');
+  assert.equal(rows[0].hold_reason, 'cancelled_by_admin');
+
+  // the sweep runs again with the same key — and must not produce a second one
+  const again = await withTx(db.pool, (c) => enqueue(c, {
+    userId: u.id, kind: 'checkin', payload: { rung: 'silence' }, idempotencyKey: `sweep:${u.id}:day1`,
+  }));
+  assert.equal(again.data.enqueued, false, 'the surviving row is what blocks the duplicate');
+  const { rows: all } = await db.pool.query(
+    `SELECT count(*)::int AS n FROM outbox WHERE user_id = $1`, [u.id]);
+  assert.equal(all[0].n, 1);
+
+  // and it is shown as cancelled rather than quietly disappearing
+  const html = await (await fetch(base + `/user?id=${u.id}`, { headers: { Authorization: AUTH } })).text();
+  assert.match(html, /בוטלו ע"י מנהל/);
+});
+
+test('a cancelled message does not burn the daily budget', async () => {
+  const u = await makeUser(db.pool, '+972611000901', { firstName: 'Ronit', timezone: 'UTC' });
+  const day = '2026-08-16T12:00:00Z';
+  // three genuinely delivered messages, plus one the operator cancelled
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, sent_at) VALUES
+       ($1,'checkin','{}','normal',$2), ($1,'checkin','{}','normal',$2), ($1,'checkin','{}','normal',$2)`,
+    [u.id, day]);
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, sent_at, hold_reason)
+     VALUES ($1,'checkin','{}','normal',$2,'cancelled_by_admin')`, [u.id, day]);
+
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: u.id, kind: 'connection_request', payload: {}, idempotencyKey: 'budget-cancel-1',
+  }));
+  // Assert on THIS row, not on the drain's totals — other tests in this file
+  // leave rows of their own in the queue, and a global count would make this
+  // test pass or fail for reasons that have nothing to do with the budget.
+  await drainOnce(db.pool, async () => ({ ok: true }), new Date(day));
+  const { rows } = await db.pool.query(
+    `SELECT sent_at, hold_reason FROM outbox WHERE idempotency_key = 'budget-cancel-1'`);
+  assert.equal(rows[0].hold_reason, null,
+    'three delivered + one cancelled is three against a budget of four');
+  assert.ok(rows[0].sent_at, 'so the fourth genuine message still goes out');
+});
+
+test('an operator can queue a proactive message, and it shows up as planned', async () => {
+  const u = await makeUser(db.pool, '+972611000902', { firstName: 'Tal' });
+  await db.pool.query(`UPDATE users SET timezone = 'Asia/Jerusalem' WHERE id = $1`, [u.id]);
+  const res = await adminPost('/outbox/new', {
+    user_id: u.id, instruction: 'שאלי אותו איך הלך הראיון אתמול',
+    urgency: 'normal', release_after: '2026-09-01T09:30', back: `/user?id=${u.id}`,
+  });
+  assert.equal(res.status, 303);
+
+  const { rows } = await db.pool.query(
+    `SELECT kind, urgency, payload, idempotency_key,
+            to_char(release_after AT TIME ZONE 'Asia/Jerusalem', 'YYYY-MM-DD"T"HH24:MI') AS local
+     FROM outbox WHERE user_id = $1`, [u.id]);
+  assert.equal(rows[0].kind, 'checkin');
+  assert.equal(rows[0].urgency, 'normal');
+  assert.equal(rows[0].payload.rung, 'admin');
+  assert.equal(rows[0].payload.checkinInstruction, 'שאלי אותו איך הלך הראיון אתמול');
+  assert.equal(rows[0].idempotency_key, null, 'a one-off has nothing to deduplicate against');
+  assert.equal(rows[0].local, '2026-09-01T09:30', 'the time entered is the time in HIS zone');
+
+  const html = await (await fetch(base + `/user?id=${u.id}`, { headers: { Authorization: AUTH } })).text();
+  assert.match(html, /שאלי אותו איך הלך הראיון אתמול/, 'what the operator wrote is shown back to them');
+
+  // an empty instruction queues nothing rather than an empty message
+  await adminPost('/outbox/new', { user_id: u.id, instruction: '   ', back: `/user?id=${u.id}` });
+  const { rows: after } = await db.pool.query(`SELECT count(*)::int AS n FROM outbox WHERE user_id = $1`, [u.id]);
+  assert.equal(after[0].n, 1);
+});
+
+test('rescheduling moves the time in the person\'s zone and unsticks a budget hold', async () => {
+  const u = await makeUser(db.pool, '+972611000903', { firstName: 'Gil' });
+  await db.pool.query(`UPDATE users SET timezone = 'Asia/Jerusalem' WHERE id = $1`, [u.id]);
+  const q = await withTx(db.pool, (c) => enqueue(c, {
+    userId: u.id, kind: 'checkin', payload: { rung: 'silence' }, idempotencyKey: 'resched-1',
+  }));
+  await db.pool.query(`UPDATE outbox SET hold_reason = 'budget' WHERE id = $1`, [q.data.outboxId]);
+
+  await adminPost('/outbox/reschedule', {
+    id: q.data.outboxId, release_after: '2026-09-02T08:15', expires_at: '2026-09-03T08:15',
+    back: `/user?id=${u.id}`,
+  });
+  const { rows } = await db.pool.query(
+    `SELECT hold_reason,
+            to_char(release_after AT TIME ZONE 'Asia/Jerusalem', 'YYYY-MM-DD"T"HH24:MI') AS rel,
+            to_char(expires_at   AT TIME ZONE 'Asia/Jerusalem', 'YYYY-MM-DD"T"HH24:MI') AS exp
+     FROM outbox WHERE id = $1`, [q.data.outboxId]);
+  assert.equal(rows[0].rel, '2026-09-02T08:15');
+  assert.equal(rows[0].exp, '2026-09-03T08:15');
+  assert.equal(rows[0].hold_reason, null, 'a budget-held row is skipped forever unless the hold is cleared');
+
+  // garbage in the time field must not blank a schedule by accident
+  await adminPost('/outbox/reschedule', { id: q.data.outboxId, release_after: 'tomorrow-ish', back: `/user?id=${u.id}` });
+  const { rows: after } = await db.pool.query(`SELECT release_after FROM outbox WHERE id = $1`, [q.data.outboxId]);
+  assert.equal(after[0].release_after, null, 'unparseable input clears rather than storing nonsense');
+});
+
+test('editing preferences and facts rewrites USER.md, not just the database', async () => {
+  const u = await makeUser(db.pool, '+972611000904', { firstName: 'Yael' });
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'olma-dash-'));
+  await db.pool.query(`UPDATE users SET workspace_path = $2 WHERE id = $1`, [u.id, ws]);
+  const card = () => fs.readFileSync(path.join(ws, 'USER.md'), 'utf8');
+  const back = `/user?id=${u.id}`;
+
+  try {
+    await adminPost('/prefs/set', { user_id: u.id, key: 'tone', value: 'קצר ולעניין', back });
+    assert.match(card(), /- tone: קצר ולעניין/, 'USER.md is what the agent reads every turn');
+
+    await adminPost('/facts/add', {
+      user_id: u.id, category: 'work', fact: 'עובדת במשמרות באיכילוב', importance: '3', back,
+    });
+    assert.match(card(), /- \[work\] עובדת במשמרות באיכילוב/);
+
+    const listed = await factsDomain.listFacts(db.pool, u.id);
+    assert.equal(listed.data.facts[0].source, 'admin', 'an operator decided this; the person did not say it');
+
+    // deleting a fact is a soft delete, and the card follows immediately
+    await adminPost('/facts/delete', { user_id: u.id, id: listed.data.facts[0].id, back });
+    assert.doesNotMatch(card(), /עובדת במשמרות/);
+    const { rows } = await db.pool.query(
+      `SELECT active FROM user_facts WHERE id = $1`, [listed.data.facts[0].id]);
+    assert.equal(rows[0].active, false, 'kept as history, just not used');
+
+    await adminPost('/prefs/delete', { user_id: u.id, key: 'tone', back });
+    assert.doesNotMatch(card(), /tone/);
+
+    // a rejected edit changes nothing — no bad category slips into the card
+    await adminPost('/facts/add', { user_id: u.id, category: 'gossip', fact: 'לא אמור להישמר', back });
+    assert.doesNotMatch(card(), /לא אמור להישמר/);
+    const audits = await db.pool.query(
+      `SELECT event FROM audit_log WHERE actor_id = $1 AND event LIKE 'admin.%' ORDER BY id`, [u.id]);
+    assert.deepEqual(audits.rows.map((r) => r.event),
+      ['admin.preference.set', 'admin.fact.added', 'admin.fact.deleted', 'admin.preference.deleted']);
+  } finally {
+    fs.rmSync(ws, { recursive: true, force: true });
+  }
+});
+
+test('the back field cannot be turned into an open redirect', async () => {
+  const u = await makeUser(db.pool, '+972611000905', { firstName: 'Adi' });
+  const res = await adminPost('/prefs/set', {
+    user_id: u.id, key: 'tone', value: 'x', back: 'https://evil.example/steal',
+  });
+  assert.equal(res.headers.get('location'), '/');
+});
+
+// ---- the brain section -------------------------------------------------------
+
+test('the brain shows who is waiting on a human, and what Olma has learned', async () => {
+  const connections = require('../src/domain/connections');
+  const asker = await makeUser(db.pool, '+972611001000', { firstName: 'Shira' });
+  const target = await makeUser(db.pool, '+972611001001', { firstName: 'Eitan' });
+
+  await withTx(db.pool, async (c) => {
+    // the exact shape of the incident this half of the screen exists for: a
+    // connection request delivered, then never answered
+    const req = await connections.requestConnection(c, asker.id, target.phone, {
+      reason: 'רוצה לתאם איתך פגישה',
+    });
+    assert.equal(req.data.connection.status, 'pending_target');
+    await c.query(`UPDATE connections SET invited_at = now() - interval '3 days' WHERE id = $1`,
+      [req.data.connection.id]);
+
+    await factsDomain.rememberFact(c, asker.id, {
+      category: 'work', fact: 'מנהלת צוות של שישה אנשים', importance: 2,
+    });
+  });
+
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.match(html, /מה אולמה יודעת ועל מה היא מחכה/);
+  assert.match(html, /ממתין לתשובה של אדם/);
+  assert.match(html, /בקשת חברות/);
+  assert.match(html, /Shira/, 'the person waiting is named and linked');
+  assert.match(html, /Eitan/, 'so is the person who owes an answer');
+  assert.match(html, /רוצה לתאם איתך פגישה/, 'and what it was about');
+  assert.match(html, /מנהלת צוות של שישה אנשים/, 'recently learned facts are listed');
+  // three days unanswered is well past the day threshold, so the row is flagged
+  const waitingBlock = html.slice(html.indexOf('ממתין לתשובה של אדם'), html.indexOf('מה נלמד לאחרונה'));
+  assert.match(waitingBlock, /class="bad"/, 'a wait older than a day reads as a problem');
+});
+
+test('the brain covers more than one kind of waiting, and marks unread conversations', async () => {
+  const u = await makeUser(db.pool, '+972611001002', { firstName: 'Dror' });
+  const other = await makeUser(db.pool, '+972611001003', { firstName: 'Maya' });
+  // Seeded directly: this asserts the UNION renders every waiting shape, not
+  // the meeting state machine, which meetings.test.js already covers.
+  const { rows: m } = await db.pool.query(
+    `INSERT INTO meetings (initiator_id, title, status) VALUES ($1, 'קפה בעיר', 'negotiating')
+     RETURNING id`, [u.id]);
+  await db.pool.query(
+    `INSERT INTO meeting_participants (meeting_id, user_id, state) VALUES ($1, $2, 'awaiting')`,
+    [m[0].id, other.id]);
+  // Dror wrote 40 minutes ago and nothing has read it yet
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, last_inbound_at = now() - interval '40 minutes',
+            last_fact_extraction_at = NULL WHERE id = $1`, [u.id]);
+
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.match(html, /תשובה על מועד פגישה/);
+  assert.match(html, /קפה בעיר/);
+  assert.match(html, /שיחה ממתינה לקריאה/, 'an unread finished conversation is visible');
+  assert.match(html, /אף פעם/, 'someone never read yet says so plainly');
+});
+
+// ---- outcomes: the three metrics ---------------------------------------------
+
+// The <tr> for one person INSIDE one section. Scoping matters: every name also
+// appears in the users section higher up the page, so an unscoped search finds
+// that row instead and asserts nothing about the metric under test.
+function sectionOf(html, id) {
+  const start = html.indexOf(`<section id="${id}"`);
+  assert.ok(start > 0, `section ${id} not rendered`);
+  const next = html.indexOf('<section id="', start + 1);
+  return html.slice(start, next === -1 ? html.length : next);
+}
+
+function rowFor(html, name, { section = 'outcomes', under = null } = {}) {
+  let scope = sectionOf(html, section);
+  if (under) {
+    // One section can hold several tables — narrow to the one under this
+    // heading, or the same name matches whichever table happens to come first.
+    const h = scope.indexOf(under);
+    assert.ok(h > 0, `heading ${under} not found in #${section}`);
+    const nextH = scope.indexOf('<h4', h + 1);
+    scope = scope.slice(h, nextH === -1 ? scope.length : nextH);
+  }
+  const idx = scope.indexOf(`>${name}</a>`);
+  assert.ok(idx > 0, `${name} not rendered under ${under || section}`);
+  const start = scope.lastIndexOf('<tr', idx);
+  return scope.slice(start, scope.indexOf('</tr>', idx));
+}
+
+test('turn_start records each inbound message, so the north star has a numerator', async () => {
+  const { createBrokerServer } = require('../src/brokerd/server');
+  const u = await makeUser(db.pool, '+972611002000', { firstName: 'Inbal' });
+  const { dispatch } = createBrokerServer({ pool: db.pool });
+  const res = await dispatch({
+    method: 'tool_call',
+    params: { name: 'turn_start', args: { identity_token: u.identity_token } },
+  });
+  assert.equal(res.ok, true);
+  const { rows } = await db.pool.query(
+    `SELECT retention_class FROM audit_log WHERE actor_id = $1 AND event = 'message.received'`, [u.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].retention_class, 'routine', 'operational volume, pruned like the rest');
+});
+
+test('response rate counts a reply within a day, and ignores what predates measurement', async () => {
+  const u = await makeUser(db.pool, '+972611002001', { firstName: 'Ophir' });
+  const send = (sentAt, hold = null) => db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, sent_at, hold_reason)
+     VALUES ($1,'checkin','{}','normal',$2,$3)`, [u.id, sentAt, hold]);
+  const heard = (at) => db.pool.query(
+    `INSERT INTO audit_log (actor_id, event, retention_class, created_at)
+     VALUES ($1,'message.received','routine',$2)`, [u.id, at]);
+
+  // measurement opened three days ago
+  await heard('2026-08-17T09:00:00Z');
+  // before that: sent and never answerable — must not be counted at all
+  await send('2026-08-15T09:00:00Z');
+  // after: one answered within the day, one left in silence
+  await send('2026-08-18T09:00:00Z');
+  await heard('2026-08-18T15:00:00Z');
+  await send('2026-08-19T09:00:00Z');
+
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const row = rowFor(html, 'Ophir', { under: '<h4>א · ענו להודעות' });
+  assert.match(row, />2<\/td>/, 'two sends counted — the pre-measurement one is excluded');
+  assert.match(row, />1<\/td>/, 'one of them was answered');
+  assert.match(row, />50%<\/td>/);
+  assert.match(html, /לפני כן לא נשמר תיעוד/, 'the page says why the older ones are missing');
+});
+
+test('task closure reports "too early" rather than a hollow zero', async () => {
+  const tasks = require('../src/domain/tasks');
+  const u = await makeUser(db.pool, '+972611002002', { firstName: 'Noam' });
+  await withTx(db.pool, (c) => tasks.addTask(c, u.id, { title: 'משימה טרייה' }));
+
+  let html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.match(html, /זה לא אפס — זה מוקדם מדי/,
+    'a task created today cannot have failed a two-week window');
+
+  // age one task past the window, closed in time; and one past it, never closed
+  await db.pool.query(
+    `INSERT INTO tasks (owner_id, title, status, created_at, completed_at)
+     VALUES ($1,'נסגרה בזמן','done', now() - interval '30 days', now() - interval '25 days'),
+            ($1,'נשארה פתוחה','open', now() - interval '30 days', NULL)`, [u.id]);
+  html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.match(html, /נסגרו תוך 14 יום/);
+  assert.match(html, /50%/);
+  assert.doesNotMatch(html, /זה מוקדם מדי/, 'once a cohort exists the real number is shown');
+});
+
+test('habit shows volume, active days, and flags a week of silence', async () => {
+  const u = await makeUser(db.pool, '+972611002003', { firstName: 'Rivka' });
+  await db.pool.query(
+    `INSERT INTO quota_counters (user_id, window_kind, window_start, count)
+     VALUES ($1,'day', date_trunc('day', now()), 4),
+            ($1,'day', date_trunc('day', now() - interval '2 days'), 3)`, [u.id]);
+  await db.pool.query(`UPDATE users SET last_inbound_at = now() WHERE id = $1`, [u.id]);
+
+  const quiet = await makeUser(db.pool, '+972611002004', { firstName: 'Amit' });
+  await db.pool.query(
+    `UPDATE users SET last_inbound_at = now() - interval '9 days' WHERE id = $1`, [quiet.id]);
+
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const active = rowFor(html, 'Rivka', { under: '<h4>ד · הרגל</h4>' });
+  assert.match(active, />7<\/td>/, 'four plus three messages this week');
+  assert.match(active, />2 \/ 7<\/td>/, 'across two days');
+  assert.doesNotMatch(active, /class="bad"/);
+  assert.match(rowFor(html, 'Amit', { under: '<h4>ד · הרגל</h4>' }), /class="bad"/, 'nine days of silence is flagged');
+});
+
+test('the rollup counts proactive sends and replies, floored at measurement start', async () => {
+  const u = await makeUser(db.pool, '+972611002005', { firstName: 'Lior' });
+  await db.pool.query(
+    `INSERT INTO audit_log (actor_id, event, retention_class, created_at)
+     VALUES ($1,'message.received','routine','2026-08-18T06:00:00Z'),
+            ($1,'message.received','routine','2026-08-18T12:00:00Z')`, [u.id]);
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, sent_at)
+     VALUES ($1,'checkin','{}','normal','2026-08-18T10:00:00Z')`, [u.id]);
+
+  await withTx(db.pool, (c) => metrics.rollupDay(c, '2026-08-18'));
+  const { rows } = await db.pool.query(
+    `SELECT metric, value FROM product_metrics_daily
+      WHERE date = '2026-08-18' AND metric IN ('proactive_sent','proactive_answered')
+      ORDER BY metric`);
+  const byName = Object.fromEntries(rows.map((r) => [r.metric, Number(r.value)]));
+  assert.ok(byName.proactive_sent >= 1);
+  assert.equal(byName.proactive_answered, byName.proactive_sent,
+    'the 12:00 reply answers the 10:00 send');
+});

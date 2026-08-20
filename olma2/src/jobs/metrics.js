@@ -28,6 +28,28 @@ const METRIC_QUERIES = {
                     WHERE created_at::date = $1::date AND event = 'issue.reported'`,
   users_provisioned: `SELECT count(*) FROM audit_log
                       WHERE created_at::date = $1::date AND event = 'user.provisioned'`,
+  // The north-star metric, as two counts rather than a percentage: a rate with
+  // a zero denominator is not a number, and the screen needs to be able to say
+  // "3 of 12" instead of a confident-looking 25%.
+  //
+  // Both halves are floored at the moment instrumentation began (the first
+  // message.received row). Proactive messages sent before that have no
+  // possible numerator — counting them would report every one of them as
+  // ignored, which is a lie about users rather than a gap in our data. Until
+  // that first row exists, min() is NULL and both counts are honestly zero.
+  proactive_sent: `SELECT count(*) FROM outbox o
+                   WHERE o.sent_at::date = $1::date AND o.hold_reason IS NULL
+                     AND o.sent_at > (SELECT min(created_at) FROM audit_log
+                                       WHERE event = 'message.received')`,
+  proactive_answered: `SELECT count(*) FROM outbox o
+                       WHERE o.sent_at::date = $1::date AND o.hold_reason IS NULL
+                         AND o.sent_at > (SELECT min(created_at) FROM audit_log
+                                           WHERE event = 'message.received')
+                         AND EXISTS (SELECT 1 FROM audit_log a
+                                      WHERE a.actor_id = o.user_id
+                                        AND a.event = 'message.received'
+                                        AND a.created_at > o.sent_at
+                                        AND a.created_at <= o.sent_at + interval '24 hours')`,
   messages_counted: `SELECT coalesce(sum(count), 0) FROM quota_counters
                      WHERE window_kind = 'day' AND window_start::date = $1::date`,
 };

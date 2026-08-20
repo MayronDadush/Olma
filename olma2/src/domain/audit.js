@@ -5,7 +5,12 @@
 
 // Events whose rows are kept forever (consent/privacy trail). Everything else
 // is 'routine' and gets cleaned after a few months by a retention job.
-const PERMANENT_PREFIXES = ['share.', 'connection.', 'grant.', 'user.provisioned', 'user.blocked'];
+// 'calendar.connected'/'calendar.disconnected' are here because they are
+// consent records: when someone granted an outside service access to their
+// calendar, at what level, and when they took it back. That trail should
+// outlive a routine cleanup window.
+const PERMANENT_PREFIXES = ['share.', 'connection.', 'grant.', 'user.provisioned', 'user.blocked',
+  'calendar.connected', 'calendar.disconnected', 'calendar.access_changed'];
 
 function retentionClassFor(event) {
   return PERMANENT_PREFIXES.some((p) => event.startsWith(p)) ? 'permanent' : 'routine';

@@ -18,7 +18,8 @@ async function drainOnce(pool, deliver, now = new Date()) {
   // LOCKED below (a lock taken here would be released at this tx's commit
   // anyway, and only mislead readers into thinking it protects something).
   const { rows: candidates } = await pool.query(
-    `SELECT o.*, u.timezone, u.agent_id, u.quota_blocked_until, u.first_name, u.last_inbound_at
+    `SELECT o.*, u.timezone, u.agent_id, u.quota_blocked_until, u.first_name, u.last_inbound_at,
+            u.digest_times
      FROM outbox o JOIN users u ON u.id = o.user_id
      WHERE o.sent_at IS NULL AND (o.release_after IS NULL OR o.release_after <= $1)
        AND (o.hold_reason IS NULL OR o.hold_reason <> 'budget')
@@ -38,10 +39,23 @@ async function drainOnce(pool, deliver, now = new Date()) {
       const blocked = await quota.isBlocked(client, row.user_id, now.toISOString());
       const win = await preferences.availabilityWindow(client, row.user_id);
       const budget = Number(await flagsDomain.getFlag(client, 'proactive_daily_budget') ?? 4);
+      // Count only what the budget actually governs. Urgent rows and the two
+      // user-chosen kinds are exempt in decide() — counting them here let a day
+      // with three reminders exhaust a budget those reminders ignored, and then
+      // every ordinary message for the rest of that day was held. That is how a
+      // real connection request went unseen: five sends, none of them subject to
+      // the budget, ate all four slots. Keep this list in sync with decide().
+      //
+      // 'cancelled_by_admin' rows carry sent_at too — that is how cancelling
+      // stops the sweep re-creating them — but nothing was ever delivered, so
+      // counting them would let cancelling a message burn the same budget as
+      // sending it.
       const { rows: sentRows } = await client.query(
         `SELECT count(*)::int AS n FROM outbox
          WHERE user_id = $1 AND sent_at IS NOT NULL AND sent_at::date = $2::date
-           AND hold_reason IS DISTINCT FROM 'expired'`,
+           AND (hold_reason IS NULL OR hold_reason NOT IN ('expired', 'cancelled_by_admin'))
+           AND urgency <> 'urgent'
+           AND kind NOT IN ('reminder', 'digest')`,
         [row.user_id, now]
       );
 
@@ -50,6 +64,7 @@ async function drainOnce(pool, deliver, now = new Date()) {
         blockedUntil: row.quota_blocked_until,
         window: win.data.window, tz: row.timezone,
         lastInboundAt: row.last_inbound_at,
+        hasDigest: Boolean(row.digest_times),
         sentToday: sentRows[0].n, budget, now,
       });
 

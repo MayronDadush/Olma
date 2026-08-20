@@ -126,6 +126,20 @@ async function main() {
         runAgent: runSilentAgentTurn,
       }))), 3600_000));
 
+    // Deep memory: read a finished conversation and write down what it taught
+    // us. Ticked every 10 minutes rather than on the chapter boundary itself —
+    // there is no event for "they stopped replying", so the job asks who has
+    // been quiet for half an hour. Cheap when there is nothing to do: the
+    // common tick is one indexed query plus a file read per candidate, and
+    // only a user with genuinely unread messages costs a model turn.
+    const factExtraction = require('../src/jobs/fact-extraction');
+    const { refreshUserCard } = require('../src/intake/user-card');
+    timers.push(setInterval(() => beat('fact_extraction', () =>
+      withTx(pool, (c) => factExtraction.sweepFactExtraction(c, {
+        runAgent: runSilentAgentTurn,
+        refreshCard: (userId) => refreshUserCard(pool, userId),
+      }))), 600_000));
+
     // cost attribution + product analytics — hourly; retention — daily
     const usage = require('../src/jobs/usage');
     const metrics = require('../src/jobs/metrics');

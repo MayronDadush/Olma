@@ -10,6 +10,11 @@ const http = require('node:http');
 const crypto = require('node:crypto');
 const flagsDomain = require('../../domain/flags');
 const issuesDomain = require('../../domain/issues');
+const prefsDomain = require('../../domain/preferences');
+const factsDomain = require('../../domain/facts');
+const auditDomain = require('../../domain/audit');
+const { enqueue } = require('../../outbox/enqueue');
+const { refreshUserCard } = require('../../intake/user-card');
 const { withTx } = require('../../db/pool');
 const { assessJobs, isStale } = require('../../jobs/expectations');
 const { deprovisionUser, previewDeletion } = require('../../intake/deprovision');
@@ -63,8 +68,10 @@ const SECTIONS = [
   { id: 'users', title: 'משתמשים', hint: 'כל מי שרשום. אפשר לקבוע לכל אחד מכסת הודעות יומית משלו.', render: renderUsers },
   { id: 'issues', title: 'תקלות ובקשות', hint: 'דברים שאולמה או המשתמשים דיווחו עליהם ומחכים לטיפול.', render: renderIssues },
   { id: 'cost', title: 'עלות', hint: 'כמה עולה השימוש במודל — לפי יום ולפי משתמש. הערכה, לא חשבונית.', render: renderCost },
+  { id: 'outcomes', title: 'האם זה עובד', hint: 'שלושת המדדים שנבחרו כדי לענות על השאלה הזו: ענו לנו? נסגרו משימות? נוצר הרגל? כל מספר עם המכנה שלו.', render: renderOutcomes },
   { id: 'metrics', title: 'שימוש במוצר', hint: 'מה באמת קורה במוצר: כמה אנשים פעילים, כמה נוצר, מה הצליח.', render: renderMetrics },
   { id: 'planned', title: 'מה מתוכנן להישלח', hint: 'כל מה שאולמה מתכננת לשלוח, ומתי — בשעון המקומי של כל משתמש. התוכן עצמו נכתב ברגע השליחה, לא מראש, ולכן כאן מופיע הנושא ולא הנוסח.', render: renderPlanned },
+  { id: 'brain', title: 'מה אולמה יודעת ועל מה היא מחכה', hint: 'שני צדדים של אותו דבר: מה המערכת למדה על האנשים, ומה תקוע אצלה כי אדם עדיין לא ענה.', render: renderBrain },
   { id: 'outbox', title: 'הודעות יוצאות', hint: 'סיכום מספרי של ההודעות היזומות בשבוע האחרון.', render: renderOutbox },
   { id: 'flags', title: 'הגדרות מערכת', hint: 'שינוי כאן חל מיד, בלי עדכון גרסה. כל הגדרה מוסברת בשורה שלה.', render: renderFlags },
   { id: 'waitlist', title: 'רשימת המתנה', hint: 'אנשים שפנו כשההרשמה הייתה סגורה. יקבלו הודעה כשתיפתח.', render: renderWaitlist },
@@ -264,7 +271,15 @@ const OUTBOX_STATE = {
   night: 'ממתינות לשעה מתאימה', blocked: 'ממתינות (המשתמש במכסה)',
   budget: 'יצטרפו לסיכום הבא', expired: 'פג תוקפן',
   settling: 'ממתינות לייצוב המערכת',
+  cancelled_by_admin: 'בוטל ע"י מנהל',
 };
+
+// Cancelling is a WRITE, never a DELETE. The row carries the idempotency_key
+// that stops the sweep which created it from creating it again — delete the
+// row and the next tick simply re-queues the same message. So a cancellation
+// marks it as already handled (sent_at set, reason recorded) and it stays
+// visible as cancelled rather than vanishing.
+const CANCELLED_BY_ADMIN = 'cancelled_by_admin';
 
 // Plain-Hebrew name per outbox kind. The dashboard should never make anyone
 // learn an internal identifier to understand what Olma is about to say.
@@ -286,6 +301,8 @@ const KIND_LABELS = {
   meeting_opt_out: 'יציאה מפגישה',
   meeting_no_match: 'לא נמצא מועד',
   meeting_cancelled: 'פגישה בוטלה',
+  calendar_connected: 'יומן חובר',
+  calendar_needs_reauth: 'צריך לחבר יומן מחדש',
 };
 
 // Why a proactive message was chosen — the checkin ladder's rung.
@@ -298,6 +315,7 @@ const RUNG_LABELS = {
   overload: 'עומס משימות',
   silence: 'שקט ממושך',
   unanswered_repair: 'תיקון הודעה שלא נענתה',
+  admin: 'נכתב ידנית מלוח הבקרה',
 };
 
 function userLink(u) {
@@ -312,6 +330,11 @@ function userLink(u) {
 function plannedSubject(row) {
   const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
   if (row.kind === 'reminder' && p.title) return esc(p.title);
+  // An operator-written message is the one case where the payload IS worth
+  // showing: a person typed it minutes ago and wants to check what they typed.
+  // Everything else is an instruction the agent will reword, so showing it
+  // would promise wording we cannot keep.
+  if (p.rung === 'admin' && p.checkinInstruction) return esc(String(p.checkinInstruction).slice(0, 90));
   if (row.kind === 'checkin' && p.rung) return RUNG_LABELS[p.rung] || esc(p.rung);
   if (p.title) return esc(String(p.title).slice(0, 60));
   return '<span class="dim">—</span>';
@@ -389,12 +412,23 @@ async function renderPlanned(client) {
 
 // The same question narrowed to one person: what is Olma about to say to
 // THEM. Same honesty as the global view — subjects, not drafts.
-async function renderPlannedForUser(client, u) {
+async function renderPlannedForUser(client, u, csrf = '') {
+  const back = `/user?id=${u.id}`;
+  // Times are read out and written back in the PERSON's timezone, not the
+  // operator's: "09:00" on this page has to mean the same 09:00 the message
+  // will actually arrive at. The conversion is left to Postgres in both
+  // directions (AT TIME ZONE), so there is no hand-rolled offset arithmetic to
+  // get wrong around DST.
   const { rows: queued } = await client.query(
-    `SELECT o.kind, o.hold_reason, o.attempts, o.payload,
-            to_char(o.release_after AT TIME ZONE COALESCE($2, 'UTC'), 'DD/MM HH24:MI') AS local_release
+    `SELECT o.id, o.kind, o.hold_reason, o.attempts, o.payload,
+            to_char(o.release_after AT TIME ZONE COALESCE($2, 'UTC'), 'DD/MM HH24:MI') AS local_release,
+            to_char(o.release_after AT TIME ZONE COALESCE($2, 'UTC'), 'YYYY-MM-DD"T"HH24:MI') AS release_input,
+            to_char(o.expires_at   AT TIME ZONE COALESCE($2, 'UTC'), 'YYYY-MM-DD"T"HH24:MI') AS expires_input
      FROM outbox o WHERE o.user_id = $1 AND o.sent_at IS NULL
      ORDER BY COALESCE(o.release_after, o.created_at) LIMIT 15`, [u.id, u.timezone]);
+  const { rows: cancelled } = await client.query(
+    `SELECT id, kind, payload, sent_at FROM outbox
+      WHERE user_id = $1 AND hold_reason = $2 ORDER BY id DESC LIMIT 5`, [u.id, CANCELLED_BY_ADMIN]);
   const { rows: reminders } = await client.query(
     `SELECT t.title, r.repeat_rule,
             to_char(r.remind_at AT TIME ZONE COALESCE($2, 'UTC'), 'DD/MM HH24:MI') AS local_time
@@ -402,25 +436,127 @@ async function renderPlannedForUser(client, u) {
      WHERE t.owner_id = $1 AND r.sent_at IS NULL AND r.cancelled_at IS NULL
      ORDER BY r.remind_at LIMIT 15`, [u.id, u.timezone]);
 
-  if (!queued.length && !reminders.length && !u.digest_times) {
-    return `<section><h3>מה מתוכנן להישלח אליו</h3>
-      <p class="dim">אין כרגע שום דבר מתוכנן.</p></section>`;
-  }
+  const hidden = `<input type="hidden" name="csrf" value="${csrf}">
+      <input type="hidden" name="back" value="${back}">`;
+
+  const queuedHtml = queued.length ? `<h4>בתור</h4>
+    <table><tr><th>סוג</th><th>בנושא</th><th>מתי (שעון שלו)</th><th>פג תוקף</th><th>מצב</th><th></th></tr>
+    ${queued.map((r) => `<tr${r.attempts > 0 ? ' class="bad"' : ''}>
+      <td>${KIND_LABELS[r.kind] || esc(r.kind)}</td>
+      <td class="small">${plannedSubject(r)}</td>
+      <td colspan="2"><form method="post" action="/outbox/reschedule" class="inline">${hidden}
+        <input type="hidden" name="id" value="${r.id}">
+        <input type="datetime-local" name="release_after" value="${esc(r.release_input || '')}"
+               title="ריק = לשלוח בהזדמנות הקרובה">
+        <input type="datetime-local" name="expires_at" value="${esc(r.expires_input || '')}"
+               title="אחרי המועד הזה ההודעה כבר לא תישלח. ריק = בלי תפוגה.">
+        <button>שמור מועד</button></form></td>
+      <td class="small">${r.hold_reason ? (OUTBOX_STATE[r.hold_reason] || esc(r.hold_reason)) : '<span class="dim">בדרך</span>'}</td>
+      <td><form method="post" action="/outbox/cancel" class="inline">${hidden}
+        <input type="hidden" name="id" value="${r.id}">
+        <button class="danger">בטל</button></form></td>
+    </tr>`).join('')}</table>` : '';
+
+  const cancelledHtml = cancelled.length ? `<h4>בוטלו ע"י מנהל</h4>
+    <table><tr><th>סוג</th><th>בנושא</th><th>מתי בוטל</th></tr>
+    ${cancelled.map((r) => `<tr><td class="dim">${KIND_LABELS[r.kind] || esc(r.kind)}</td>
+      <td class="small dim">${plannedSubject(r)}</td>
+      <td class="dim small nowrap">${ago(r.sent_at)}</td></tr>`).join('')}</table>
+    <p class="hint">שורה שבוטלה נשארת במקומה בכוונה — היא זו שמונעת מהתהליך שיצר אותה
+      ליצור אותה שוב. היא לא נשלחה ואינה נספרת במכסת ההודעות היומית שלו.</p>` : '';
+
+  const composeHtml = `<h4>לכתוב הודעה יזומה</h4>
+    <form method="post" action="/outbox/new">${hidden}
+      <input type="hidden" name="user_id" value="${u.id}">
+      <p><textarea name="instruction" rows="2" style="width:100%"
+         placeholder="מה אולמה צריכה לעשות — למשל: שאלי אותו איך הלך הראיון אתמול"></textarea></p>
+      <p class="small">
+        <label>דחיפות
+          <select name="urgency">
+            <option value="normal">רגילה — מכבדת את המכסה היומית</option>
+            <option value="urgent">דחופה — עוקפת מכסה, לא עוקפת שעות שקט</option>
+          </select></label>
+        <label>מתי <input type="datetime-local" name="release_after" title="ריק = בהקדם"></label>
+        <button>הוסף לתור</button>
+      </p>
+      <p class="hint">זו הנחיה לאולמה, לא טקסט שיישלח כלשונו — היא תנסח בעצמה, בשפה שלו.
+        ההודעה עוברת את אותו שער כיבוד כמו כל הודעה יזומה: אם השעה אצלו שעת שקט
+        היא תמתין לבוקר, ואם הוא כבר קיבל מספיק היום היא תצטרף לסיכום הבא.</p>
+    </form>`;
+
   return `<section><h3>מה מתוכנן להישלח אליו</h3>
     <p class="hint">בשעון המקומי שלו (${esc(u.timezone || 'UTC')}). הנוסח נכתב ברגע השליחה — כאן הנושא בלבד.</p>
-    ${queued.length ? `<h4>בתור</h4><table><tr><th>סוג</th><th>בנושא</th><th>מתי</th><th>מצב</th></tr>
-      ${queued.map((r) => `<tr${r.attempts > 0 ? ' class="bad"' : ''}>
-        <td>${KIND_LABELS[r.kind] || esc(r.kind)}</td>
-        <td class="small">${plannedSubject(r)}</td>
-        <td class="nowrap small">${r.local_release ? esc(r.local_release) : '<span class="dim">מיד</span>'}</td>
-        <td class="small">${r.hold_reason ? (OUTBOX_STATE[r.hold_reason] || esc(r.hold_reason)) : '<span class="dim">בדרך</span>'}</td>
-      </tr>`).join('')}</table>` : ''}
+    ${queued.length ? queuedHtml : '<p class="dim">אין כרגע הודעה בתור.</p>'}
     ${reminders.length ? `<h4>תזכורות מתוזמנות</h4><table><tr><th>על מה</th><th>מתי</th><th>חוזר</th></tr>
       ${reminders.map((r) => `<tr><td class="small">${esc(r.title)}</td>
         <td class="nowrap small">${esc(r.local_time)}</td>
         <td class="dim small">${r.repeat_rule ? esc(r.repeat_rule) : '—'}</td></tr>`).join('')}</table>` : ''}
     ${u.digest_times ? `<h4>סיכום יומי</h4><p class="small">כל יום ב-<span class="mono">${esc(u.digest_times)}</span></p>` : ''}
+    ${cancelledHtml}
+    ${composeHtml}
   </section>`;
+}
+
+// ---- what Olma learned, editable ---------------------------------------------
+// Preferences and facts are two different things and are shown as two tables,
+// because confusing them is the most likely operator mistake: a preference
+// steers how Olma behaves, a fact is something true about the person.
+
+function renderPrefsForUser(prefs, u, csrf) {
+  const hidden = `<input type="hidden" name="csrf" value="${csrf}">
+    <input type="hidden" name="back" value="/user?id=${u.id}">
+    <input type="hidden" name="user_id" value="${u.id}">`;
+  return `<section><h3>העדפות — איך לעבוד איתו</h3>
+    <p class="hint">איך אולמה מתנהגת מולו: שעות, אורך תשובות, טון. שמירה על מפתח קיים דורסת אותו.</p>
+    ${prefs.length ? `<table><tr><th>מפתח</th><th>ערך</th><th>נלמד</th><th></th></tr>
+      ${prefs.map((p) => `<tr>
+        <td class="mono small">${esc(p.key)}</td>
+        <td><form method="post" action="/prefs/set" class="inline">${hidden}
+          <input type="hidden" name="key" value="${esc(p.key)}">
+          <input name="value" value="${esc(p.value)}" size="34"><button>שמור</button></form></td>
+        <td class="dim small nowrap">${ago(p.learned_at)}</td>
+        <td><form method="post" action="/prefs/delete" class="inline">${hidden}
+          <input type="hidden" name="key" value="${esc(p.key)}">
+          <button class="danger">מחק</button></form></td>
+      </tr>`).join('')}</table>` : '<p class="dim">עדיין לא נלמדו העדפות.</p>'}
+    <form method="post" action="/prefs/set" class="inline">${hidden}
+      <input name="key" placeholder="מפתח (אנגלית, למשל availability)" size="26">
+      <input name="value" placeholder="ערך" size="30">
+      <button>הוסף העדפה</button>
+    </form></section>`;
+}
+
+function renderFactsForUser(facts, u, csrf) {
+  const hidden = `<input type="hidden" name="csrf" value="${csrf}">
+    <input type="hidden" name="back" value="/user?id=${u.id}">
+    <input type="hidden" name="user_id" value="${u.id}">`;
+  const IMPORTANCE = { 1: 'רגילה', 2: 'חשובה', 3: 'ליבה' };
+  const SOURCE = { conversation: 'מהשיחה', user_stated: 'נאמר במפורש', admin: 'הוזן ידנית' };
+  return `<section><h3>עובדות — מה אולמה יודעת עליו</h3>
+    <p class="hint">מי הוא ומה קורה בחייו. העשר החשובות ביותר נמצאות מול הסוכן בכל תור.
+      מחיקה כאן מפסיקה להשתמש בעובדה — ההיסטוריה נשמרת.</p>
+    ${facts.length ? `<table><tr><th>קטגוריה</th><th>העובדה</th><th>חשיבות</th><th>מקור</th><th>נלמד</th><th></th></tr>
+      ${facts.map((f) => `<tr>
+        <td class="mono small">${esc(f.category)}</td>
+        <td class="small">${esc(f.fact)}</td>
+        <td class="small">${IMPORTANCE[f.importance] || f.importance}</td>
+        <td class="dim small">${SOURCE[f.source] || esc(f.source || '')}</td>
+        <td class="dim small nowrap">${ago(f.learned_at)}</td>
+        <td><form method="post" action="/facts/delete" class="inline">${hidden}
+          <input type="hidden" name="id" value="${f.id}">
+          <button class="danger">מחק</button></form></td>
+      </tr>`).join('')}</table>` : '<p class="dim">עדיין לא נשמרו עובדות.</p>'}
+    <form method="post" action="/facts/add">${hidden}
+      <p><input name="fact" placeholder="עובדה אחת, במשפט קצר" style="width:60%">
+      <select name="category">
+        ${factsDomain.KNOWN_FACT_CATEGORIES.map((c) => `<option value="${c}">${c}</option>`).join('')}
+      </select>
+      <select name="importance">
+        <option value="1">רגילה</option><option value="2">חשובה</option><option value="3">ליבה</option>
+      </select>
+      <label class="small">פג תוקף <input type="date" name="expires_at" title="ריק = תמידית"></label>
+      <button>הוסף עובדה</button></p>
+    </form></section>`;
 }
 
 async function renderOutbox(client) {
@@ -520,6 +656,9 @@ async function renderUserPage(client, userId, { confirmDelete = false, csrf = ''
      ORDER BY t.status = 'done', coalesce(t.parent_id, t.id), t.parent_id NULLS FIRST, t.id`, [userId]);
   const { rows: prefs } = await client.query(
     `SELECT key, value, learned_at FROM user_preferences WHERE user_id = $1 ORDER BY key`, [userId]);
+  // Through the domain function, so the operator sees exactly what the agent
+  // sees: active only, expired filtered out, same ordering.
+  const factRows = (await factsDomain.listFacts(client, userId)).data.facts;
 
   const open = tasks.filter((t) => t.status === 'open');
   const done = tasks.filter((t) => t.status === 'done').slice(0, 15);
@@ -538,10 +677,11 @@ async function renderUserPage(client, userId, { confirmDelete = false, csrf = ''
       <div class="stats">
         <div class="stat"><div class="num">${open.length}</div><div class="lbl">משימות פתוחות</div></div>
         <div class="stat"><div class="num">${tasks.filter((t) => t.status === 'done').length}</div><div class="lbl">הושלמו</div></div>
-        <div class="stat"><div class="num">${prefs.length}</div><div class="lbl">דברים שאולמה למדה</div></div>
+        <div class="stat"><div class="num">${prefs.length}</div><div class="lbl">העדפות</div></div>
+        <div class="stat"><div class="num">${factRows.length}</div><div class="lbl">עובדות</div></div>
       </div>
     </section>
-    ${await renderPlannedForUser(client, u)}
+    ${await renderPlannedForUser(client, u, csrf)}
     ${renderConversation(u)}
     <section><h3>משימות פתוחות</h3><p class="hint">כולל פרויקטים ותתי-משימות (↳), תזכורות ממתינות מסומנות ⏰.</p>
       ${open.length ? `<table><tr><th>משימה</th><th>יעד</th><th>תזכורות</th><th>נוצרה</th></tr>${open.map(taskRow).join('')}</table>` : '<p class="dim">אין משימות פתוחות.</p>'}
@@ -549,11 +689,8 @@ async function renderUserPage(client, userId, { confirmDelete = false, csrf = ''
     <section><h3>הושלמו לאחרונה</h3>
       ${done.length ? `<table><tr><th>משימה</th><th></th><th></th><th>נוצרה</th></tr>${done.map(taskRow).join('')}</table>` : '<p class="dim">עדיין לא הושלמו משימות.</p>'}
     </section>
-    <section><h3>מה אולמה למדה עליו</h3><p class="hint">העדפות ועובדות שנשמרו מהשיחות — לא כולל את תוכן השיחות עצמן.</p>
-      ${prefs.length ? `<table><tr><th>נושא</th><th>מה נשמר</th><th>מתי</th></tr>
-        ${prefs.map((p) => `<tr><td class="mono small">${esc(p.key)}</td><td>${esc(p.value)}</td><td class="dim small nowrap">${ago(p.learned_at)}</td></tr>`).join('')}</table>`
-      : '<p class="dim">עדיין כלום — זה מתמלא ככל שהם מתכתבים.</p>'}
-    </section>
+    ${renderPrefsForUser(prefs, u, csrf)}
+    ${renderFactsForUser(factRows, u, csrf)}
     ${await renderDeletePanel(client, u, confirmDelete, csrf)}`;
 }
 
@@ -566,6 +703,374 @@ async function renderAudit(client) {
     ${rows.map((r) => `<tr><td>${esc(String(r.created_at).slice(5, 16))}</td>
       <td>${esc(r.first_name || r.phone || 'system')}</td><td>${esc(r.event)}</td>
       <td class="dim">${esc(JSON.stringify(r.detail || {}).slice(0, 90))}</td></tr>`).join('')}</table>`;
+}
+
+// ---- does it actually work --------------------------------------------------
+// The three metrics D-005 chose, which nobody had built — "a decision without
+// measurement is an opinion". Deliberately separate from the usage section
+// below it: that one counts what happened, this one asks whether it worked.
+//
+// Every number here states its denominator. A rate on its own invites reading
+// "0%" as failure when the truth is "nothing has been measured yet", and those
+// two need to look different at a glance.
+const HABIT_DAYS = 7;
+const CLOSURE_WINDOW_DAYS = 14;
+
+async function renderOutcomes(client) {
+  // A — did people answer what Olma sent them, within a day.
+  const { rows: since } = await client.query(
+    `SELECT min(created_at) AS started FROM audit_log WHERE event = 'message.received'`);
+  const measuringSince = since[0].started;
+
+  const { rows: agg } = await client.query(
+    `SELECT coalesce(sum(value) FILTER (WHERE metric = 'proactive_sent'), 0)     AS sent,
+            coalesce(sum(value) FILTER (WHERE metric = 'proactive_answered'), 0) AS answered
+       FROM product_metrics_daily WHERE date > CURRENT_DATE - $1::int`, [HABIT_DAYS + 1]);
+
+  const { rows: perUserA } = await client.query(
+    `SELECT u.id, coalesce(u.first_name, u.phone) AS who,
+            count(o.*) AS sent,
+            count(o.*) FILTER (WHERE EXISTS (
+              SELECT 1 FROM audit_log a
+               WHERE a.actor_id = o.user_id AND a.event = 'message.received'
+                 AND a.created_at > o.sent_at
+                 AND a.created_at <= o.sent_at + interval '24 hours')) AS answered
+       FROM users u
+       LEFT JOIN outbox o ON o.user_id = u.id AND o.hold_reason IS NULL
+            AND o.sent_at IS NOT NULL
+            AND o.sent_at > coalesce($1::timestamptz, now())
+      WHERE u.status = 'active'
+      GROUP BY u.id, who ORDER BY u.id`, [measuringSince]);
+
+  // B — of the tasks old enough to judge, how many were closed in time. A task
+  // created yesterday cannot fail a two-week window yet, so it is not in the
+  // cohort at all; including it would drag the number down for no reason.
+  const { rows: closure } = await client.query(
+    `SELECT count(*) AS cohort,
+            count(*) FILTER (WHERE completed_at IS NOT NULL
+                               AND completed_at <= created_at + ($1::int * interval '1 day')) AS closed
+       FROM tasks WHERE archived_at IS NULL AND created_at < now() - ($1::int * interval '1 day')`,
+    [CLOSURE_WINDOW_DAYS]);
+
+  // D — habit. Inbound volume per person from the quota ledger, which has been
+  // counting since long before any of this.
+  const { rows: habit } = await client.query(
+    `SELECT u.id, coalesce(u.first_name, u.phone) AS who, u.last_inbound_at,
+            coalesce(sum(q.count), 0) AS msgs,
+            count(q.*) FILTER (WHERE q.count > 0) AS active_days
+       FROM users u
+       LEFT JOIN quota_counters q ON q.user_id = u.id AND q.window_kind = 'day'
+            AND q.window_start > now() - ($1::int * interval '1 day')
+      WHERE u.status = 'active'
+      GROUP BY u.id, who, u.last_inbound_at ORDER BY u.id`, [HABIT_DAYS]);
+
+  const pct = (n, d) => (Number(d) > 0 ? `${Math.round((Number(n) / Number(d)) * 100)}%` : '—');
+  const ofTotal = (n, d) => `<span class="dim small">${fmt(n)} מתוך ${fmt(d)}</span>`;
+
+  const aHtml = !measuringSince
+    ? `<p class="dim">המדידה טרם התחילה — היא נפתחת ברגע שמישהו כותב לאולמה מעכשיו.</p>`
+    : `<div class="stats">
+        <div class="stat"><div class="num">${pct(agg[0].answered, agg[0].sent)}</div>
+          <div class="lbl">ענו תוך יממה · ${HABIT_DAYS} ימים</div></div>
+      </div>
+      <table><tr><th>משתמש</th><th>נשלחו</th><th>נענו</th><th>שיעור</th></tr>
+      ${perUserA.map((r) => `<tr>
+        <td><a href="/user?id=${r.id}">${esc(r.who)}</a></td>
+        <td class="num">${fmt(r.sent)}</td>
+        <td class="num">${fmt(r.answered)}</td>
+        <td class="num">${pct(r.answered, r.sent)}</td></tr>`).join('')}</table>
+      <p class="hint">"נענו" = האדם כתב לאולמה בתוך 24 שעות מרגע שההודעה יצאה. נספרות רק
+        הודעות שנשלחו מאז ${esc(String(measuringSince).slice(0, 16))} — לפני כן לא נשמר תיעוד
+        של הודעות נכנסות, ולספור אותן היה מציג כל אחת מהן כאילו התעלמו ממנה.</p>`;
+
+  const bHtml = Number(closure[0].cohort) === 0
+    ? `<p class="dim">אף משימה עדיין לא בת ${CLOSURE_WINDOW_DAYS} יום, אז אין מה למדוד.
+        זה לא אפס — זה מוקדם מדי.</p>`
+    : `<div class="stats">
+        <div class="stat"><div class="num">${pct(closure[0].closed, closure[0].cohort)}</div>
+          <div class="lbl">נסגרו תוך ${CLOSURE_WINDOW_DAYS} יום</div></div>
+      </div><p class="small">${ofTotal(closure[0].closed, closure[0].cohort)} מהמשימות שכבר
+        עברו את החלון.</p>`;
+
+  const dHtml = `<table>
+      <tr><th>משתמש</th><th>הודעות · ${HABIT_DAYS} ימים</th><th>ימים פעילים</th><th>כתב לאחרונה</th></tr>
+      ${habit.map((r) => `<tr${!r.last_inbound_at || Date.now() - new Date(r.last_inbound_at).getTime() > 7 * 86400_000 ? ' class="bad"' : ''}>
+        <td><a href="/user?id=${r.id}">${esc(r.who)}</a></td>
+        <td class="num">${fmt(r.msgs)}</td>
+        <td class="num">${r.active_days} / ${HABIT_DAYS}</td>
+        <td class="dim small nowrap">${r.last_inbound_at ? ago(r.last_inbound_at) : 'מעולם'}</td>
+      </tr>`).join('')}</table>
+      <p class="hint">מתוך מונה המכסה, שסופר הודעות נכנסות מזמן. שורה אדומה = שבוע בלי מילה.
+        אי אפשר עדיין להפריד "פנה מיוזמתו" מ"ענה להודעה שנשלחה אליו".</p>`;
+
+  return `<h4>א · ענו להודעות שאולמה שלחה</h4>${aHtml}
+    <h4>ב · משימות שנסגרו בזמן</h4>${bHtml}
+    <h4>ד · הרגל</h4>${dHtml}`;
+}
+
+// ---- the brain --------------------------------------------------------------
+// Two halves of one question: what has Olma actually learned about these
+// people, and what is she stuck waiting on.
+//
+// The waiting half exists because of a real incident (2026-08-19). A connection
+// request sat in the outbox, was never delivered, and nobody answered it — and
+// there was no screen anywhere that would have shown a person waiting, because
+// the queue view only shows what is queued. Once a message has gone out, the
+// system's half is done and the wait becomes invisible. Every row below is a
+// place where a human owes an answer.
+const WAITING_LABEL = {
+  connection_pending: 'בקשת חברות',
+  connection_invited: 'הזמנה לאדם שאינו רשום',
+  meeting_awaiting: 'תשובה על מועד פגישה',
+  share_pending: 'הצעת שיתוף משימה',
+};
+
+// Old enough that a person has almost certainly forgotten, rather than being
+// mid-thought. Colours the row; does not act on it.
+const WAITING_STALE_MS = 24 * 3600_000;
+
+async function renderBrain(client) {
+  const { rows: waiting } = await client.query(
+    `SELECT 'connection_pending' AS kind, c.id AS ref, c.requester_id AS asker_id,
+            coalesce(ru.first_name, ru.phone) AS asker,
+            coalesce(tu.first_name, c.target_phone) AS blocked_on,
+            c.invited_at AS since, c.invite_reason AS detail
+       FROM connections c
+       JOIN users ru ON ru.id = c.requester_id
+       LEFT JOIN users tu ON tu.id = c.target_id
+      WHERE c.status = 'pending_target'
+     UNION ALL
+     SELECT 'connection_invited', c.id, c.requester_id,
+            coalesce(ru.first_name, ru.phone), c.target_phone, c.invited_at, c.invite_reason
+       FROM connections c JOIN users ru ON ru.id = c.requester_id
+      WHERE c.status = 'invited'
+     UNION ALL
+     SELECT 'meeting_awaiting', m.id, m.initiator_id,
+            coalesce(iu.first_name, iu.phone), coalesce(pu.first_name, pu.phone),
+            m.updated_at, m.title
+       FROM meeting_participants mp
+       JOIN meetings m ON m.id = mp.meeting_id
+       JOIN users iu ON iu.id = m.initiator_id
+       JOIN users pu ON pu.id = mp.user_id
+      WHERE mp.state = 'awaiting' AND m.status = 'negotiating'
+     UNION ALL
+     SELECT 'share_pending', s.id, s.owner_id,
+            coalesce(ou.first_name, ou.phone), coalesce(vu.first_name, vu.phone),
+            s.created_at, t.title
+       FROM shares s
+       JOIN users ou ON ou.id = s.owner_id
+       JOIN users vu ON vu.id = s.viewer_id
+       JOIN tasks t ON t.id = s.task_id
+      WHERE s.status = 'pending_viewer'
+      ORDER BY since`);
+
+  const { rows: recent } = await client.query(
+    `SELECT f.category, f.fact, f.importance, f.source, f.learned_at,
+            f.user_id, coalesce(u.first_name, u.phone) AS who
+       FROM user_facts f JOIN users u ON u.id = f.user_id
+      WHERE f.active AND (f.expires_at IS NULL OR f.expires_at > now())
+      ORDER BY f.learned_at DESC LIMIT 12`);
+
+  const { rows: perUser } = await client.query(
+    `SELECT u.id, coalesce(u.first_name, u.phone) AS who,
+            u.last_fact_extraction_at, u.last_inbound_at,
+            (SELECT count(*)::int FROM user_facts f
+              WHERE f.user_id = u.id AND f.active
+                AND (f.expires_at IS NULL OR f.expires_at > now())) AS facts,
+            (SELECT count(*)::int FROM user_preferences p WHERE p.user_id = u.id) AS prefs
+       FROM users u WHERE u.status = 'active' ORDER BY u.id`);
+
+  // Whether someone is due comes from the job's own constant, not a second copy
+  // of "30 minutes" living here — two numbers that must agree is one too many.
+  const { CHAPTER_GAP_MS } = require('../../jobs/fact-extraction');
+  const isDue = (u) => {
+    if (!u.last_inbound_at) return false;
+    const inbound = new Date(u.last_inbound_at).getTime();
+    const mark = u.last_fact_extraction_at ? new Date(u.last_fact_extraction_at).getTime() : 0;
+    return inbound > mark && Date.now() - inbound > CHAPTER_GAP_MS;
+  };
+
+  const IMPORTANCE = { 1: '', 2: '· חשובה', 3: '· ליבה' };
+  const SOURCE = { conversation: 'מהשיחה', user_stated: 'נאמר במפורש', admin: 'הוזן ידנית' };
+
+  const waitingHtml = waiting.length ? `<table>
+      <tr><th>מה</th><th>מי מחכה</th><th>למי</th><th>על מה</th><th>כמה זמן</th></tr>
+      ${waiting.map((r) => {
+        const age = Date.now() - new Date(r.since).getTime();
+        return `<tr${age > WAITING_STALE_MS ? ' class="bad"' : ''}>
+          <td class="small">${WAITING_LABEL[r.kind] || esc(r.kind)}</td>
+          <td><a href="/user?id=${r.asker_id}">${esc(r.asker)}</a></td>
+          <td class="small">${esc(r.blocked_on || '—')}</td>
+          <td class="dim small">${r.detail ? esc(String(r.detail).slice(0, 50)) : '—'}</td>
+          <td class="nowrap small">${ago(r.since)}</td></tr>`;
+      }).join('')}</table>
+      <p class="hint">אלה מצבים שבהם המערכת עשתה את שלה ואדם עדיין לא ענה. הם אינם מופיעים
+        ב"מה מתוכנן להישלח" — שם רואים רק מה שעדיין בתור. שורה אדומה = ממתינה יותר מיממה.</p>`
+    : '<p class="dim">אף אחד לא ממתין לתשובה. זה המצב הבריא.</p>';
+
+  const recentHtml = recent.length ? `<table>
+      <tr><th>מתי</th><th>על מי</th><th>קטגוריה</th><th>מה נלמד</th><th>מקור</th></tr>
+      ${recent.map((f) => `<tr>
+        <td class="dim small nowrap">${ago(f.learned_at)}</td>
+        <td><a href="/user?id=${f.user_id}">${esc(f.who)}</a></td>
+        <td class="mono small">${esc(f.category)} <span class="dim">${IMPORTANCE[f.importance] || ''}</span></td>
+        <td class="small">${esc(f.fact)}</td>
+        <td class="dim small">${SOURCE[f.source] || esc(f.source || '')}</td>
+      </tr>`).join('')}</table>`
+    : '<p class="dim">עדיין לא נלמדו עובדות. הן נצברות מרגע שאנשים מתכתבים.</p>';
+
+  const perUserHtml = `<table>
+      <tr><th>משתמש</th><th>עובדות</th><th>העדפות</th><th>נקרא לאחרונה</th></tr>
+      ${perUser.map((u) => `<tr>
+        <td><a href="/user?id=${u.id}">${esc(u.who)}</a></td>
+        <td class="num">${u.facts}</td>
+        <td class="num">${u.prefs}</td>
+        <td class="dim small nowrap">${u.last_fact_extraction_at ? ago(u.last_fact_extraction_at) : 'אף פעם'}${
+          isDue(u) ? ' <span class="pill">שיחה ממתינה לקריאה</span>' : ''}</td>
+      </tr>`).join('')}</table>
+      <p class="hint">"נקרא לאחרונה" הוא מתי המערכת קראה את השיחה שלהם וחילצה ממנה עובדות.
+        "שיחה ממתינה לקריאה" = הם כתבו משהו שטרם נקרא, והפרק שלהם כבר נסגר.</p>`;
+
+  const totals = perUser.reduce((a, u) => ({ facts: a.facts + u.facts, prefs: a.prefs + u.prefs }), { facts: 0, prefs: 0 });
+  return `<div class="stats">
+      <div class="stat"><div class="num">${waiting.length}</div><div class="lbl">ממתינים לתשובה</div></div>
+      <div class="stat"><div class="num">${totals.facts}</div><div class="lbl">עובדות</div></div>
+      <div class="stat"><div class="num">${totals.prefs}</div><div class="lbl">העדפות</div></div>
+    </div>
+    <h4>ממתין לתשובה של אדם</h4>${waitingHtml}
+    <h4>מה נלמד לאחרונה</h4>${recentHtml}
+    <h4>הזיכרון לפי משתמש</h4>${perUserHtml}`;
+}
+
+// ---- admin edits ------------------------------------------------------------
+
+// Only ever back to a user page this dashboard itself renders. `back` arrives
+// inside a form body, so without this check any admin action could be turned
+// into an open redirect by anyone who can get the operator to submit a form.
+function safeBack(value) {
+  return /^\/user\?id=\d+$/.test(value || '') ? value : '/';
+}
+
+const LOCAL_DT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const localDt = (v) => (LOCAL_DT.test(v || '') ? v : null);
+
+// Every per-user admin edit lives here. Returns the id of the user whose
+// USER.md now needs rewriting, or null when the edit cannot have changed it.
+//
+// Writes go through the domain functions wherever one exists rather than
+// straight SQL, so an operator's change is validated exactly like the agent's
+// and lands in the same audit trail. The extra admin.* row on top records who
+// the change came from, which the domain call alone would not show.
+async function handleUserEdit(client, pathname, body) {
+  const id = Number(body.id) || 0;
+
+  if (pathname === '/outbox/cancel') {
+    // Never DELETE. The row carries the idempotency_key that stops the sweep
+    // which produced it from producing it again; removing the row would simply
+    // bring the message back on the next tick. Marking it handled is what
+    // actually cancels it.
+    const { rows } = await client.query(
+      `UPDATE outbox SET sent_at = now(), hold_reason = $2
+        WHERE id = $1 AND sent_at IS NULL RETURNING user_id, kind`,
+      [id, CANCELLED_BY_ADMIN]);
+    if (rows[0]) {
+      await auditDomain.record(client, rows[0].user_id, 'admin.outbox.cancelled',
+        { outboxId: id, kind: rows[0].kind });
+    }
+    return null;
+  }
+
+  if (pathname === '/outbox/reschedule') {
+    const release = localDt(body.release_after);
+    const expires = localDt(body.expires_at);
+    // The operator typed a wall-clock time in the PERSON's timezone. Postgres
+    // does the conversion in both directions, so there is no offset arithmetic
+    // here to get wrong when the clocks change.
+    const { rows } = await client.query(
+      `UPDATE outbox o SET
+          release_after = ($2::timestamp AT TIME ZONE COALESCE(u.timezone, 'UTC')),
+          expires_at    = ($3::timestamp AT TIME ZONE COALESCE(u.timezone, 'UTC')),
+          -- clearing the hold puts it back in front of the gate: a row held for
+          -- budget is skipped forever otherwise, so rescheduling it would look
+          -- like it worked and change nothing.
+          hold_reason = NULL
+        FROM users u
+        WHERE o.id = $1 AND o.user_id = u.id AND o.sent_at IS NULL
+        RETURNING o.user_id`,
+      [id, release, expires]);
+    if (rows[0]) {
+      await auditDomain.record(client, rows[0].user_id, 'admin.outbox.rescheduled',
+        { outboxId: id, releaseAfter: release, expiresAt: expires });
+    }
+    return null;
+  }
+
+  if (pathname === '/outbox/new') {
+    const userId = Number(body.user_id) || 0;
+    const instruction = String(body.instruction || '').trim().slice(0, 500);
+    if (!userId || !instruction) return null;
+    const release = localDt(body.release_after);
+    const { rows: tz } = await client.query(
+      `SELECT COALESCE(timezone, 'UTC') AS tz FROM users WHERE id = $1`, [userId]);
+    if (!tz[0]) return null;
+    const { rows: when } = await client.query(
+      `SELECT ($1::timestamp AT TIME ZONE $2) AS at`, [release, tz[0].tz]);
+    // No idempotencyKey: this is a one-off an operator wrote, not a sweep's
+    // output, so there is nothing for a key to deduplicate against — and a
+    // fixed one would silently swallow the second message they meant to send.
+    await enqueue(client, {
+      userId, kind: 'checkin',
+      payload: { checkinInstruction: instruction, rung: 'admin' },
+      urgency: body.urgency === 'urgent' ? 'urgent' : 'normal',
+      releaseAfter: when[0].at,
+    });
+    await auditDomain.record(client, userId, 'admin.outbox.queued',
+      { urgency: body.urgency === 'urgent' ? 'urgent' : 'normal', releaseAfter: release });
+    return null;
+  }
+
+  const userId = Number(body.user_id) || 0;
+  if (!userId) return null;
+
+  if (pathname === '/prefs/set') {
+    const res = await prefsDomain.remember(client, userId, String(body.key || '').trim(), body.value);
+    if (!res.ok) return null;
+    await auditDomain.record(client, userId, 'admin.preference.set', { key: res.data.key });
+    return userId;
+  }
+
+  if (pathname === '/prefs/delete') {
+    const res = await prefsDomain.forget(client, userId, String(body.key || '').trim());
+    if (!res.ok) return null;
+    await auditDomain.record(client, userId, 'admin.preference.deleted', { key: res.data.key });
+    return userId;
+  }
+
+  if (pathname === '/facts/add') {
+    const res = await factsDomain.rememberFact(client, userId, {
+      category: body.category,
+      fact: body.fact,
+      importance: Number(body.importance) || 1,
+      expiresAt: DATE_ONLY.test(body.expires_at || '') ? `${body.expires_at}T00:00:00Z` : null,
+      // Not 'user_stated': the person did not say this, an operator decided it.
+      source: 'admin',
+    });
+    if (!res.ok) return null;
+    await auditDomain.record(client, userId, 'admin.fact.added',
+      { factId: Number(res.data.fact.id), category: res.data.fact.category });
+    return userId;
+  }
+
+  if (pathname === '/facts/delete') {
+    // Soft delete through the domain, so a correction stays on the record.
+    const res = await factsDomain.forgetFact(client, userId, id);
+    if (!res.ok) return null;
+    await auditDomain.record(client, userId, 'admin.fact.deleted', { factId: id });
+    return userId;
+  }
+
+  return null;
 }
 
 // ---- page + server ----------------------------------------------------------
@@ -652,11 +1157,65 @@ const STYLE = `<style>
   @media(max-width:640px){main,header{padding-inline:16px} .cols{gap:12px}}
 </style>`;
 
+// The page Google sends the user's browser back to. Deliberately plain: they
+// are standing in a browser they only opened to approve something, and the
+// real conversation continues in WhatsApp.
+function oauthResultPage(title, body) {
+  return `<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>אולמה</title>
+<style>body{font-family:system-ui,-apple-system,sans-serif;background:#12151a;color:#e6eaf0;
+display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:24px}
+.card{background:#1a1f27;padding:28px 32px;border-radius:12px;max-width:420px}
+h1{font-size:18px;margin:0 0 8px;font-weight:600}p{color:#8b95a5;font-size:14px;margin:0;line-height:1.6}</style>
+</head><body><div class="card"><h1>${esc(title)}</h1><p>${esc(body)}</p></div></body></html>`;
+}
+
 // configPath is injectable so tests can exercise deletion against a temp
-// openclaw.json instead of the live gateway's.
-function createDashboard({ pool, adminUser, adminPass, configPath }) {
+// openclaw.json instead of the live gateway's. calendarDomain/googleOpts are
+// injectable so the OAuth flow can be tested without network access — and are
+// required lazily, so a box with no /opt/olma still starts a dashboard.
+function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomain, googleOpts }) {
+  const calendar = () => calendarDomain || require('../../domain/calendar');
   const server = http.createServer(async (req, res) => {
     try {
+      // ---- public routes, ahead of Basic Auth ----------------------------
+      // Google redirects the USER's browser here, so this cannot sit behind
+      // the admin password. It is safe to expose because it grants nothing on
+      // its own: it acts only on a `state` we minted — random, single-use,
+      // 15-minute TTL, bound to one user and one access level — and that state
+      // is redeemed BEFORE any call to Google, so an invalid one costs a
+      // static 400 and no outbound request.
+      //
+      // Exact pathname compare, never a prefix: req.url is attacker-supplied.
+      // (/health above compares the raw string only because it never carries a
+      // query; this route always does.)
+      const parsed = new URL(req.url, 'http://x');
+      if (req.method === 'GET' && parsed.pathname === '/oauth/google/callback') {
+        const q = parsed.searchParams;
+        let result;
+        try {
+          result = await withTx(pool, (client) => calendar().completeOAuth(client, {
+            state: q.get('state'), code: q.get('code'), error: q.get('error'),
+          }, googleOpts || {}));
+        } catch (e) {
+          console.error('[oauth] callback failed:', e);
+          result = { ok: false, error: { code: 'internal' } };
+        }
+        const page = (code, title, body) => {
+          res.writeHead(code, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+          res.end(oauthResultPage(title, body));
+        };
+        if (result.ok) {
+          return page(200, 'היומן חובר ✅', result.data.accessLevel === 'read_write'
+            ? 'אולמה יכולה לראות את היומן שלך וגם להוסיף ולערוך אירועים. אפשר לחזור לוואטסאפ.'
+            : 'אולמה יכולה לראות את היומן שלך בלבד — היא לא תוכל לשנות בו דבר. אפשר לחזור לוואטסאפ.');
+        }
+        const reason = result.error && result.error.reason;
+        if (reason === 'declined') return page(200, 'לא חובר', 'ביטלת את החיבור. אפשר לנסות שוב מתי שתרצה.');
+        if (reason === 'bad_state') return page(400, 'הקישור פג', 'קישורי חיבור תקפים ל-15 דקות ולשימוש אחד. בקשי מאולמה קישור חדש.');
+        return page(400, 'משהו השתבש', 'החיבור לא הושלם. בקשי מאולמה קישור חדש.');
+      }
+
       // Unauthenticated liveness/readiness probe — no data, just whether the
       // process is up and the DB answers. Safe to expose to a monitor.
       if (req.url === '/health') {
@@ -683,6 +1242,7 @@ function createDashboard({ pool, adminUser, adminPass, configPath }) {
         if (!cookieCsrf || body.csrf !== cookieCsrf) {
           res.writeHead(403); return res.end('csrf');
         }
+        let cardUserId = null;
         await withTx(pool, async (client) => {
           if (url.pathname === '/flags' && EDITABLE_FLAGS.includes(body.key)) {
             // Coerce by declared type — a stray character must never turn a
@@ -707,9 +1267,16 @@ function createDashboard({ pool, adminUser, adminPass, configPath }) {
             if (/^\+\d{7,15}$/.test(body.phone || '')) {
               await deprovisionUser(client, body.phone, { configPath });
             }
+          } else if (url.pathname.startsWith('/outbox/') || url.pathname.startsWith('/prefs/')
+                     || url.pathname.startsWith('/facts/')) {
+            cardUserId = await handleUserEdit(client, url.pathname, body);
           }
         });
-        res.writeHead(303, { Location: '/' });
+        // The card is rewritten only after the transaction committed — the same
+        // rule brokerd follows. A file write inside the transaction would leave
+        // USER.md describing a state the database rolled back.
+        if (cardUserId) await refreshUserCard(pool, cardUserId);
+        res.writeHead(303, { Location: safeBack(body.back) });
         return res.end();
       }
 

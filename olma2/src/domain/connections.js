@@ -26,6 +26,18 @@ async function requestConnection(client, requesterId, targetPhone, { reason, mes
   const requester = await usersDomain.getById(client, requesterId);
   if (requester.phone === targetPhone) return err('invalid', 'cannot connect to yourself');
 
+  // The name is the whole content of the intro the other person gets. Without
+  // one it falls back to the raw phone number, and a real recipient got exactly
+  // that: "+972502205854 sent a connection request" — telling him nothing about
+  // who was asking or why he should say yes. A first name is required; the last
+  // name is asked for but not enforced, because most people here have never
+  // given one and a hard gate would block them from connecting at all.
+  if (!requester.first_name) {
+    return err('invalid', 'we need your name before asking someone to connect', {
+      reason: 'requester_name_missing',
+    });
+  }
+
   const target = await usersDomain.getByPhone(client, targetPhone);
   if (target) {
     const existing = await activeConnectionBetween(client, requesterId, target.id);

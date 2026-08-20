@@ -50,6 +50,14 @@ function msUntilWindowOpen(window, tz, date = new Date()) {
   return deltaMin * 60_000;
 }
 
+// Start of the next UTC day — the moment the daily send budget resets, since
+// the count is taken over sent_at::date.
+function nextUtcMidnight(date) {
+  const d = new Date(date);
+  d.setUTCHours(24, 0, 0, 0);
+  return d;
+}
+
 // ---- the decision -----------------------------------------------------------
 
 // Quiet hours are about not waking someone, not about refusing to answer
@@ -86,15 +94,24 @@ function decide(facts) {
   }
 
   if (row.urgency !== 'urgent' && !userChoseThisTime && sentToday >= budget) {
-    // No release_after: a budget-held row is picked up by the next digest,
-    // not retried on a clock.
-    return { action: 'hold', holdReason: 'budget', releaseAfter: null };
+    // A budget-held row is picked up by the next digest rather than retried on
+    // a clock — but sweepDigests only visits users who HAVE digest_times, so
+    // for everyone else that pickup never comes and the row sits unsent
+    // forever. That is not theoretical: a connection request to a user with no
+    // digest was orphaned this way and the person never learned anyone had
+    // asked. Those users get the next day instead, where the budget has reset
+    // and the night rule below then lands it at a humane hour. Never "now" —
+    // the budget is still spent, and a same-day retry would just spin.
+    return {
+      action: 'hold', holdReason: 'budget',
+      releaseAfter: facts.hasDigest ? null : nextUtcMidnight(now),
+    };
   }
 
   return { action: 'deliver' };
 }
 
 module.exports = {
-  decide, withinWindow, msUntilWindowOpen, minutesInTz, parseHHMM,
+  decide, withinWindow, msUntilWindowOpen, minutesInTz, parseHHMM, nextUtcMidnight,
   CONVERSATION_GRACE_MS,
 };

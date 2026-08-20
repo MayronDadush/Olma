@@ -52,6 +52,24 @@ test('unknown phone → invited state, reason stored for the intro message', asy
   });
 });
 
+test('a nameless requester is refused, with something the agent can act on', async () => {
+  // The name is the entire content of the intro the other side reads. Skipping
+  // it is not a cosmetic miss: one real recipient got "+972502205854 sent a
+  // connection request" and had no idea who was asking or why to say yes.
+  const nameless = await makeUser(db.pool, '+972521000009', { firstName: null });
+  await withClient(async (c) => {
+    const req = await connections.requestConnection(c, nameless.id, kapish.phone, { reason: 'test' });
+    assert.equal(req.ok, false);
+    assert.equal(req.error.reason, 'requester_name_missing');
+
+    // ...and once they say who they are, the same request goes through.
+    const named = await require('../src/domain/users').setName(c, nameless.id, 'Rut', 'Cohen');
+    assert.equal(named.ok, true);
+    const retry = await connections.requestConnection(c, nameless.id, kapish.phone, { reason: 'test' });
+    assert.equal(retry.ok, true);
+  });
+});
+
 test('duplicate live request rejected; self-connection rejected', async () => {
   await withClient(async (c) => {
     const dup = await connections.requestConnection(c, miron.id, kapish.phone, {});

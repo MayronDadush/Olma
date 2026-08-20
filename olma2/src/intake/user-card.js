@@ -1,0 +1,85 @@
+'use strict';
+// USER.md rendered from the DB — the identity card the gateway injects into
+// the agent's context every turn.
+//
+// Design rule this file exists to enforce (decided 2026-08-19): anything the
+// system knows about a person is written into their card BY THE SYSTEM, as a
+// side effect of the tool call that learned it — never left for the agent to
+// remember to write. Before this file, USER.md was written once at
+// provisioning and then never again; verified live: every active user's card
+// still said "First name: unknown" while the users row knew their name, so
+// every turn opened by telling the agent it didn't know the person.
+//
+// Contract with provisioning: everything BEFORE the first "## " heading is
+// the renderer's; everything FROM the first "## " on is preserved verbatim.
+// That protects the pending-intake sections seedWorkspace appends (which the
+// agent processes on its first real turn and then removes) from being wiped
+// by a re-render that lands in between.
+const fs = require('node:fs');
+const path = require('node:path');
+
+// Tool names whose success makes the card stale. Kept here, next to the
+// renderer, so adding a card field and adding its trigger are one edit.
+const CARD_TOOLS = new Set([
+  'set_my_name', 'set_my_timezone', 'set_my_language',
+  'set_digest_preferences', 'remember_preference', 'forget_preference',
+  // A fact stated outright mid-conversation shows up in the card immediately,
+  // the same turn — it should not have to wait for the extraction job to run.
+  'remember_fact', 'forget_fact',
+]);
+
+// How many facts the card carries. This text is injected on every single turn,
+// so the cut is a running cost, not a display choice; importance ordering in
+// topFacts is what makes a fixed, small K survivable.
+const CARD_FACT_LIMIT = 10;
+
+function renderCard(user, prefs, facts = []) {
+  const lines = ['# User', ''];
+  lines.push(`First name: ${user.first_name || 'unknown'}`);
+  if (user.last_name) lines.push(`Last name: ${user.last_name}`);
+  lines.push(`Language: ${user.locale || 'he'}`);
+  lines.push(`Timezone: ${user.timezone || 'unknown'}${user.timezone_confirmed ? '' : ' (unconfirmed — confirm when natural)'}`);
+  lines.push(user.digest_times
+    ? `Daily digest: ${user.digest_times} (${user.digest_scope || 'summary'})`
+    : 'Daily digest: not set up — offer it once their list has real content');
+  if (prefs.length) {
+    lines.push('', 'Learned preferences:');
+    for (const p of prefs) lines.push(`- ${p.key}: ${p.value}`);
+  }
+  if (facts.length) {
+    lines.push('', 'What you know about them:');
+    for (const f of facts) lines.push(`- [${f.category}] ${f.fact}`);
+  }
+  return lines.join('\n') + '\n';
+}
+
+// Re-render one user's card. Best-effort by design: this runs AFTER the tool
+// call's transaction committed, so it must never throw back into the tool
+// path — a card that lags one call behind is annoying, a failed tool call
+// because of a file write is a real bug.
+async function refreshUserCard(pool, userId) {
+  try {
+    const { rows: users } = await pool.query(`SELECT * FROM users WHERE id = $1`, [userId]);
+    const user = users[0];
+    if (!user || !user.workspace_path) return false;
+    const file = path.join(user.workspace_path, 'USER.md');
+    if (!fs.existsSync(user.workspace_path)) return false; // test users, foreign box
+    const { rows: prefs } = await pool.query(
+      `SELECT key, value FROM user_preferences WHERE user_id = $1 ORDER BY key`, [userId]
+    );
+    const facts = await require('../domain/facts').topFacts(pool, userId, CARD_FACT_LIMIT);
+    let tail = '';
+    try {
+      const current = fs.readFileSync(file, 'utf8');
+      const cut = current.indexOf('\n## ');
+      if (cut >= 0) tail = current.slice(cut + 1);
+    } catch { /* no card yet — render fresh */ }
+    fs.writeFileSync(file, renderCard(user, prefs, facts) + (tail ? '\n' + tail : ''));
+    return true;
+  } catch (e) {
+    console.error(`[user-card] refresh failed for user ${userId}: ${e.message}`);
+    return false;
+  }
+}
+
+module.exports = { refreshUserCard, renderCard, CARD_TOOLS };

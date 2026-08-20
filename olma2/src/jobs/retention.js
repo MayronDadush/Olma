@@ -20,6 +20,12 @@ async function sweepRetention(client) {
   const snapshots = await client.query(
     `DELETE FROM usage_session_snapshots WHERE updated_at < now() - interval '30 days'`
   );
+  // Consent flows people started and abandoned. Kept a day past expiry so a
+  // replay still reads as "already used" rather than "never existed" while
+  // anyone might still be looking at it.
+  const states = await client.query(
+    `DELETE FROM oauth_states WHERE expires_at < now() - interval '1 day'`
+  );
   // Rendered schedule cards: files, not rows. Once the message that carried one
   // is delivered the file is dead weight, so they age out in hours rather than
   // days. Folded in here rather than given a timer of its own — a second
@@ -28,7 +34,8 @@ async function sweepRetention(client) {
   const cardsPurged = await cardStore.purgeOldCards(client, cardHours);
   return {
     auditPurged: audit.rowCount, outboxPurged: outbox.rowCount,
-    snapshotsPurged: snapshots.rowCount, cardsPurged,
+    snapshotsPurged: snapshots.rowCount, oauthStatesPurged: states.rowCount,
+    cardsPurged,
   };
 }
 

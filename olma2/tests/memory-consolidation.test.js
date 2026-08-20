@@ -72,6 +72,16 @@ test('a consolidated user is not due again for a week', async (t) => {
   const first = await withTx(pool, (c) => mem.sweepMemoryConsolidation(c, deps));
   assert.equal(first.consolidated.length, 1);
 
+  // The audit row is stamped by the database clock while this test drives a
+  // simulated one, so the two must be lined up by hand. Without this, the "a
+  // week later" step below measures the distance from REAL today instead of
+  // from QUIET — which is why this test started failing on its own the moment
+  // the calendar caught up, having nothing to do with the code it covers.
+  await pool.query(
+    `UPDATE audit_log SET created_at = to_timestamp($1 / 1000.0) WHERE event = 'memory.consolidated'`,
+    [QUIET]
+  );
+
   const again = await withTx(pool, (c) => mem.sweepMemoryConsolidation(c, deps));
   assert.equal(again.considered, 0, 'the audit row is the schedule');
 

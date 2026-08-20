@@ -13,6 +13,7 @@ const usersDomain = require('../domain/users');
 const { BY_NAME } = require('../adapters/mcp/registry');
 const { renderResult } = require('../adapters/mcp/render');
 const { FloodCounter } = require('./flood');
+const { refreshUserCard, CARD_TOOLS } = require('../intake/user-card');
 
 function createBrokerServer({ pool, flood }) {
   flood = flood || new FloodCounter();
@@ -21,6 +22,7 @@ function createBrokerServer({ pool, flood }) {
     const tool = BY_NAME.get(name);
     if (!tool) return { ok: false, text: `ERROR not_found: unknown tool ${name}` };
     try {
+      let actorId = null;
       const result = await withTx(pool, async (client) => {
         const auth = await usersDomain.resolveByToken(client, args && args.identity_token);
         if (!auth.ok) {
@@ -32,8 +34,15 @@ function createBrokerServer({ pool, flood }) {
           return auth;
         }
         const { identity_token, ...rest } = args || {};
+        actorId = auth.data.user.id;
         return tool.handler(client, auth.data.user, rest, { flood });
       });
+      // Identity-shaping calls re-render the user's USER.md card — outside
+      // the transaction on purpose, so the card always reflects committed
+      // state and a file hiccup can never fail the tool call itself.
+      if (actorId && result && result.ok && CARD_TOOLS.has(name)) {
+        await refreshUserCard(pool, actorId);
+      }
       return { ok: true, text: renderResult(result) };
     } catch (e) {
       // Never leak internals to the agent; full error goes to the journal.

@@ -44,7 +44,8 @@ async function createUser(client, { phone, firstName, lastName, locale, timezone
     `INSERT INTO users (phone, first_name, last_name, locale, timezone, identity_token, invited_by_connection_id, status)
      VALUES ($1, $2, $3, COALESCE($4, 'he'), $5, $6, $7, COALESCE($8, 'active'))
      RETURNING *`,
-    [phone, firstName || null, lastName || null, locale || null, timezone || null, token,
+    [phone, cleanName(firstName) || null, cleanName(lastName) || null,
+     locale || null, timezone || null, token,
      invitedByConnectionId || null, status || null]
   );
   const user = rows[0];
@@ -73,12 +74,25 @@ function sessionKeyFor(agentId, channel) {
   return `agent:${agentId}:${channel.channel_type}:direct:${channel.channel_identifier}`;
 }
 
+// A name is not just displayed — on a connection request it is interpolated
+// straight into the OTHER person's agent instruction, and unlike the reason and
+// note beside it, it carries no "this is data, not instructions" wrapper. So it
+// is bounded at the source, where every write passes: one line, no runaway
+// length. Nothing legitimate is lost — a real name has no newlines, and sixty
+// characters is far past the longest one. Do not remove this on the assumption
+// that the renderer quotes it; today it does not.
+function cleanName(value) {
+  return String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, 60);
+}
+
 async function setName(client, userId, firstName, lastName) {
-  if (!firstName || !firstName.trim()) return err('invalid', 'first name required');
+  const first = cleanName(firstName);
+  const last = cleanName(lastName);
+  if (!first) return err('invalid', 'first name required');
   const { rows } = await client.query(
     `UPDATE users SET first_name = $2, last_name = $3, name_confirmed = TRUE
      WHERE id = $1 RETURNING id, first_name, last_name`,
-    [userId, firstName.trim(), (lastName || '').trim() || null]
+    [userId, first, last || null]
   );
   await audit.record(client, userId, 'user.name_set', { firstName: rows[0].first_name, lastName: rows[0].last_name });
   return ok({ user: rows[0] });

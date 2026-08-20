@@ -83,11 +83,24 @@ test('gate: personal window beats the default one', () => {
 });
 
 test('gate: over budget folds normal, urgent passes', () => {
-  const busy = { ...baseFacts, sentToday: 4 };
+  const busy = { ...baseFacts, sentToday: 4, hasDigest: true };
   const held = decide({ ...busy, row: row() });
   assert.equal(held.holdReason, 'budget');
   assert.equal(held.releaseAfter, null); // waits for the next digest, not a clock
   assert.equal(decide({ ...busy, row: row({ urgency: 'urgent' }) }).action, 'deliver');
+});
+
+test('gate: a budget hold on someone with no digest is never orphaned', () => {
+  // sweepDigests only visits users who HAVE digest_times, so for everyone else
+  // "it rides along with the next digest" is a promise nothing keeps and the
+  // row sits unsent forever. That happened for real: a connection request the
+  // recipient never saw, so he never approved and no meeting could be made.
+  const busy = { ...baseFacts, sentToday: 4, hasDigest: false };
+  const held = decide({ ...busy, row: row() });
+  assert.equal(held.holdReason, 'budget');
+  assert.ok(held.releaseAfter, 'a row with no digest to ride must carry a release time');
+  assert.equal(held.releaseAfter.toISOString(), '2026-08-17T00:00:00.000Z',
+    'next UTC midnight — the moment the daily budget resets');
 });
 
 test('gate: expired rows never deliver live', () => {
@@ -168,6 +181,56 @@ test('night hold: row waits, then releases when the window opens', async () => {
   assert.equal(rec.sent.length, 0);
   out = await drainOnce(db.pool, rec.deliver, new Date('2026-08-16T09:30:00Z'));
   assert.equal(out.delivered, 1);
+});
+
+// Regression, from a real incident: a connection request was held for budget
+// and never seen, so the recipient never approved and no meeting was possible.
+// Five messages had gone out that day, and not one of them was subject to the
+// budget it exhausted.
+const BUDGET_DAY = '2026-08-16T12:00:00Z';
+async function alreadySentThatDay(rows) {
+  const values = rows.map((r, i) => `($1,'${r.kind}','{}','${r.urgency}',$2)`).join(', ');
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, sent_at) VALUES ${values}`,
+    [user.id, BUDGET_DAY]
+  );
+}
+
+test('worker: sends that are exempt from the budget do not consume it', async () => {
+  await flushOutbox();
+  await alreadySentThatDay([
+    { kind: 'reminder', urgency: 'urgent' },      // user chose this moment
+    { kind: 'reminder', urgency: 'urgent' },
+    { kind: 'reminder', urgency: 'urgent' },
+    { kind: 'digest', urgency: 'normal' },        // user chose this slot
+    { kind: 'meeting_invite', urgency: 'urgent' }, // live negotiation, bypasses
+  ]);
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'connection_request', payload: {}, idempotencyKey: 'budget-exempt-1',
+  }));
+  const rec = recorder();
+  const out = await drainOnce(db.pool, rec.deliver, new Date(BUDGET_DAY));
+  assert.equal(out.delivered, 1, 'five exempt sends must not exhaust a budget of four');
+  assert.deepEqual(rec.sent, ['connection_request']);
+});
+
+test('worker: ordinary sends still count, and the hold is still scheduled', async () => {
+  await flushOutbox();
+  await alreadySentThatDay([
+    { kind: 'checkin', urgency: 'normal' }, { kind: 'checkin', urgency: 'normal' },
+    { kind: 'checkin', urgency: 'normal' }, { kind: 'checkin', urgency: 'normal' },
+  ]);
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'connection_request', payload: {}, idempotencyKey: 'budget-count-1',
+  }));
+  const rec = recorder();
+  const out = await drainOnce(db.pool, rec.deliver, new Date(BUDGET_DAY));
+  assert.equal(out.held, 1, 'the budget must still bite for messages it governs');
+  const { rows } = await db.pool.query(
+    `SELECT hold_reason, release_after FROM outbox WHERE idempotency_key = 'budget-count-1'`
+  );
+  assert.equal(rows[0].hold_reason, 'budget');
+  assert.ok(rows[0].release_after, 'this user has no digest, so the row must carry a release time');
 });
 
 test('reminder sweep: due → urgent outbox row + repeat spawns next occurrence', async () => {
