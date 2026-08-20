@@ -131,3 +131,31 @@ test('unknown tool yields a clean error', async () => {
   const r = await callTool('summon_demons', { identity_token: alice.identity_token });
   assert.match(r, /^ERROR not_found/);
 });
+
+// ---- identity self-healing --------------------------------------------------
+// The shim repairs a MALFORMED token (truncated / placeholder / missing) with
+// the one that already succeeded on this connection — and never "corrects" a
+// well-formed token, which would be an identity swap waiting to happen if
+// shims were ever shared between sessions.
+
+test('a truncated token heals to the session\'s proven identity', async () => {
+  // seed: one honest call proves alice on this connection (earlier tests did
+  // too, but this test must not depend on their ordering)
+  const seed = await callTool('list_my_tasks', { identity_token: alice.identity_token });
+  assert.match(seed, /^OK/);
+
+  const truncated = await callTool('list_my_tasks', { identity_token: alice.identity_token.slice(0, 20) });
+  assert.match(truncated, /^OK/, 'a truncated token must be repaired, not failed');
+
+  const missing = await callTool('list_my_tasks', {});
+  assert.match(missing, /^OK/, 'a missing token must be repaired too');
+
+  const placeholder = await callTool('list_my_tasks', { identity_token: '<from .olma-identity>' });
+  assert.match(placeholder, /^OK/, 'a placeholder must be repaired too');
+});
+
+test('a well-formed wrong token still fails — no identity swap on typos', async () => {
+  const wrong = await callTool('list_my_tasks', { identity_token: 'olma_tok_' + 'f'.repeat(32) });
+  assert.match(wrong, /^ERROR forbidden/);
+  assert.match(wrong, /\.olma-identity/, 'the failure must name the recovery');
+});

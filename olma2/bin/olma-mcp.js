@@ -11,6 +11,26 @@ const { toolDefinitions } = require('../src/adapters/mcp/registry');
 const SOCK = process.env.OLMA_SOCK || '/opt/olma2/run/brokerd.sock';
 const CALL_TIMEOUT_MS = 30_000;
 
+// ---- identity self-healing --------------------------------------------------
+// Recurring "unknown identity token" failures are the model typing a guessed
+// or truncated token instead of the file contents — observed three times in
+// one live conversation despite explicit doctrine against it. Doctrine failed;
+// per the design rule (D-007), correctness must not depend on model
+// discipline, so the shim repairs what it can mechanically.
+//
+// The repair is deliberately narrow: a MALFORMED token (truncated, empty, a
+// placeholder — anything that is not olma_tok_ + 32 hex) is replaced with the
+// token that already succeeded on this stdio connection. A malformed string
+// carries no identity claim, so the swap can only restore access this
+// connection has already proven. A WELL-FORMED but unknown token is passed
+// through and allowed to fail: the gateway runs one shim per session today,
+// but nothing here may bet on that staying true — auto-"correcting" a
+// well-formed token would turn one user's typo into another user's identity
+// the day shims are ever shared. The failure text itself now tells the model
+// the one recovery that works (re-read the file), which covers that rare case.
+const TOKEN_RE = /^olma_tok_[0-9a-f]{32}$/;
+let knownGoodToken = null;
+
 // ---- brokerd client (single socket, sequential-friendly, id-mapped) --------
 let sockConn = null;
 let nextId = 1;
@@ -91,11 +111,19 @@ rl.on('line', async (line) => {
     } else if (method === 'tools/list') {
       reply(id, { tools: toolDefinitions() });
     } else if (method === 'tools/call') {
-      const { name, arguments: args } = params || {};
+      const { name, arguments: rawArgs } = params || {};
+      const args = { ...(rawArgs || {}) };
+      // Malformed token + a proven one on hand → repair before the round trip.
+      if (knownGoodToken && !TOKEN_RE.test(String(args.identity_token || ''))) {
+        args.identity_token = knownGoodToken;
+      }
       let text;
       try {
-        const res = await brokerCall(name, args || {});
+        const res = await brokerCall(name, args);
         text = res.text || (res.ok ? 'OK' : 'ERROR internal: empty broker reply');
+        if (text.startsWith('OK') && TOKEN_RE.test(String(args.identity_token || ''))) {
+          knownGoodToken = args.identity_token;
+        }
       } catch (e) {
         text = `ERROR unavailable: assistant backend not reachable (${e.message})`;
       }

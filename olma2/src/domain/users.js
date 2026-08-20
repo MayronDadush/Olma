@@ -12,11 +12,19 @@ function newIdentityToken() {
 }
 
 async function resolveByToken(client, identityToken) {
-  if (!identityToken || typeof identityToken !== 'string') return err('forbidden', 'missing identity token');
+  // The wording of these two messages is load-bearing twice over: the MCP shim
+  // matches on it to self-heal with the session's proven token, and the tail
+  // tells the model the one recovery that actually works — re-reading the file
+  // — instead of leaving it to invent another guess.
+  // Careful: no token-prefix literal in here — everything on this path flows
+  // through scrubTokens-guarded output, and the e2e suite asserts the prefix
+  // never appears in any reply, error text included.
+  const recovery = ' — read the file .olma-identity in your workspace and retry with its exact contents (exactly 41 characters), never from memory';
+  if (!identityToken || typeof identityToken !== 'string') return err('forbidden', 'missing identity token' + recovery);
   const { rows } = await client.query(
     `SELECT * FROM users WHERE identity_token = $1`, [identityToken]
   );
-  if (!rows[0]) return err('forbidden', 'unknown identity token');
+  if (!rows[0]) return err('forbidden', 'unknown identity token' + recovery);
   if (rows[0].status === 'blocked') return err('forbidden', 'user is blocked');
   return ok({ user: rows[0] });
 }
