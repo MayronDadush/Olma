@@ -73,7 +73,10 @@ test('ladder rungs: deadline_risk, overload, plain silence', async () => {
   const byId = Object.fromEntries(results.map((r) => [Number(r.userId), r.rung]));
   assert.equal(byId[Number(risky.id)], 'deadline_risk');
   assert.equal(byId[Number(overloaded.id)], 'overload');
-  assert.equal(byId[Number(quiet.id)], 'silence');
+  // A quiet user with open gaps (no digest, no calendar, an empty fact card)
+  // now gets the discovery rung, not a generic "מה קורה?" — plain silence is
+  // reserved for someone with nothing left to set up (covered further down).
+  assert.equal(byId[Number(quiet.id)], 'discovery');
 });
 
 test('idempotent per day; backoff excludes after 4 misses; recent activity excludes', async () => {
@@ -123,9 +126,11 @@ test('day one ladder: 15m / 2h / 5h, and steps expire instead of piling up', asy
   // only the latest due step, so a gap in the sweep never replays old ones
   assert.equal(onboardingStepDue(23 * H, 0).slot, '5h');
   assert.equal(onboardingStepDue(25 * H, 0), null, 'day one is over');
-  // present, not deaf: someone who ignored the first two is left alone
-  assert.equal(onboardingStepDue(6 * H, 2), null);
-  assert.equal(onboardingStepDue(6 * H, 1).slot, '5h');
+  // present, not deaf: deafness now means DELIVERED-and-ignored (a boolean
+  // the caller derives from the outbox), never a counter that ghost-expired
+  // messages inflated.
+  assert.equal(onboardingStepDue(6 * H, true), null);
+  assert.equal(onboardingStepDue(6 * H, false).slot, '5h');
 });
 
 test('day one ladder enqueues one step at a time, each with its own expiry', async () => {
@@ -174,5 +179,69 @@ test('a stuck-meeting nudge carries the user\'s own recorded constraints', async
     const { instruction, rung } = await checkin.pickRung(c, me.id);
     assert.equal(rung, 'stuck_meeting');
     assert.ok(instruction.includes('<<<לא בבקרים>>>'), 'the nudge must carry their own constraint');
+  } finally { c.release(); }
+});
+
+// ---- the fixes for "Olma went quiet on new users" ---------------------------
+
+test('day-one steps never count as misses; regular checkins still do', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const fresh = await makeUser(db.pool, '+972641000031', { firstName: 'Noa' });
+  const c = await db.pool.connect();
+  try {
+    await c.query(
+      `UPDATE users SET onboarded_at = now() - interval '20 minutes' WHERE id = $1`, [fresh.id]);
+    await checkin.run(c);
+    let { rows } = await c.query(`SELECT checkin_misses FROM users WHERE id = $1`, [fresh.id]);
+    assert.equal(rows[0].checkin_misses, 0, 'an onboarding step is not evidence of being ignored');
+
+    // past day one, idle → a regular checkin fires and DOES count
+    await c.query(
+      `UPDATE users SET onboarded_at = now() - interval '3 days',
+              created_at = now() - interval '3 days', last_checkin_at = NULL WHERE id = $1`,
+      [fresh.id]);
+    await c.query(
+      `UPDATE audit_log SET created_at = now() - interval '3 days' WHERE actor_id = $1`, [fresh.id]);
+    await checkin.run(c);
+    ({ rows } = await c.query(`SELECT checkin_misses FROM users WHERE id = $1`, [fresh.id]));
+    assert.equal(rows[0].checkin_misses, 1, 'a real unanswered checkin still counts');
+  } finally { c.release(); }
+});
+
+test('discovery outranks generic silence, is gap-driven, and rotates topics', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const u = await makeUser(db.pool, '+972641000032', { firstName: 'Omer' });
+  const c = await db.pool.connect();
+  try {
+    // no digest + 2 open tasks → the digest gap leads
+    await c.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, 'א'), ($1, 'ב')`, [u.id]);
+    let pick = await checkin.pickRung(c, u.id);
+    assert.equal(pick.rung, 'discovery');
+    assert.equal(pick.topic, 'digest');
+    assert.match(pick.instruction, /set_digest_preferences/);
+
+    // pretend that topic was just used → next pick rotates to another gap
+    await c.query(
+      `INSERT INTO outbox (user_id, kind, payload) VALUES ($1, 'checkin', '{"rung":"discovery","topic":"digest"}')`,
+      [u.id]);
+    pick = await checkin.pickRung(c, u.id);
+    assert.equal(pick.rung, 'discovery');
+    assert.notEqual(pick.topic, 'digest', 'the same pitch must not run twice in a row');
+
+    // close every gap → plain silence returns
+    await c.query(`UPDATE users SET digest_times = '09:00' WHERE id = $1`, [u.id]);
+    await c.query(
+      `INSERT INTO integrations (user_id, provider, status, access_level)
+       VALUES ($1, 'google_calendar', 'connected', 'read_only')`, [u.id]);
+    await c.query(
+      `INSERT INTO user_facts (user_id, category, fact)
+       VALUES ($1, 'context', 'אחת'), ($1, 'work', 'שתיים'), ($1, 'plans', 'שלוש')`,
+      [u.id]);
+    const friend = await makeUser(db.pool, '+972641000033', { firstName: 'Dana' });
+    const connections = require('../src/domain/connections');
+    const req = await connections.requestConnection(c, u.id, friend.phone, {});
+    await connections.respondToConnection(c, friend.id, req.data.connection.id, 'approve');
+    pick = await checkin.pickRung(c, u.id);
+    assert.equal(pick.rung, 'silence', 'no gaps left → nothing to pitch');
   } finally { c.release(); }
 });

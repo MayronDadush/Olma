@@ -44,13 +44,38 @@ const ONBOARDING_STEPS = [
 // Which day-one step is due, if any. Steps 1 and 2 fire regardless — that is
 // the point of the ladder. Step 3 is skipped for someone who answered neither:
 // being present is good, being deaf is not.
-function onboardingStepDue(ageMs, misses) {
+//
+// `deaf` means DELIVERED-and-ignored, and the caller computes it from the
+// outbox — never from checkin_misses. The counter once stood in for it, and
+// it silently killed the ladder: an evening joiner's steps were held by quiet
+// hours, expired unseen, and still counted as "the user ignored us" — two
+// ghost misses by midnight, weekly cadence by morning, full stop soon after.
+// Punishing people for messages they never received is how the product went
+// quiet on exactly the users it most needed to win over.
+function onboardingStepDue(ageMs, deaf) {
   if (ageMs >= 24 * HOUR_MS) return null;
   const due = ONBOARDING_STEPS.filter((s) => ageMs >= s.afterMs);
   const step = due[due.length - 1];
   if (!step) return null;
-  if (step.slot === '5h' && misses >= 2) return null;
+  if (step.slot === '5h' && deaf) return null;
   return step;
+}
+
+// Delivered at least two day-one messages and heard nothing back — only then
+// is silence evidence about the person rather than about our own delivery.
+async function isDeafOnDayOne(client, userId, onboardedAt) {
+  const { rows } = await client.query(
+    `SELECT count(*)::int AS delivered FROM outbox
+     WHERE user_id = $1 AND kind = 'checkin' AND payload->>'rung' LIKE 'onboarding%'
+       AND sent_at IS NOT NULL AND (hold_reason IS NULL OR hold_reason NOT IN ('expired', 'cancelled_by_admin'))`,
+    [userId]
+  );
+  if (rows[0].delivered < 2) return false;
+  const { rows: heard } = await client.query(
+    `SELECT last_inbound_at FROM users WHERE id = $1`, [userId]
+  );
+  const last = heard[0].last_inbound_at;
+  return !last || new Date(last) <= new Date(onboardedAt);
 }
 
 // How long someone may go quiet before Olma reaches out, by age of account.
@@ -95,7 +120,9 @@ async function eligibleUsers(client, now) {
     // Day one runs on its own ladder, not on idleness: a new user who wrote
     // ten minutes ago is exactly who we want to reach, and an idle gate would
     // rule them out.
-    u.onboardingStep = onboardingStepDue(ageMs, u.checkin_misses);
+    // deaf=false here: this filter is synchronous, and the deafness check
+    // costs an outbox query — run() applies it to the one step that needs it.
+    u.onboardingStep = onboardingStepDue(ageMs, false);
     if (u.onboardingStep) return true;
     const gap = requiredGapMs(ageMs / (24 * HOUR_MS), u.checkin_misses);
     const idleFor = now - new Date(u.last_activity).getTime();
@@ -148,10 +175,78 @@ async function pickRung(client, userId) {
     };
   }
 
+  // Discovery — the relationship-building rung. A quiet user used to get a
+  // generic "מה קורה?", which earns exactly the silence it gets. This looks at
+  // what is actually MISSING for this person — no digest, no calendar, a
+  // near-empty fact card, no connections — and spends the check-in on the one
+  // gap most worth closing. Gap-driven, so it can never pitch something the
+  // user already has; topic-rotated, so two nudges in a row never repeat.
+  const gaps = await discoveryGaps(client, userId);
+  if (gaps.length) {
+    const { rows: prev } = await client.query(
+      `SELECT payload->>'topic' AS topic FROM outbox
+       WHERE user_id = $1 AND kind = 'checkin' AND payload->>'rung' = 'discovery'
+       ORDER BY id DESC LIMIT 1`,
+      [userId]
+    );
+    const lastTopic = prev[0] ? prev[0].topic : null;
+    const rotated = gaps.filter((g) => g.topic !== lastTopic);
+    const pick = (rotated.length ? rotated : gaps)[0];
+    return {
+      rung: 'discovery', topic: pick.topic,
+      instruction: `${pick.instruction} One short warm message; if the conversation shows they already declined this once, do NOT re-offer — send a brief friendly check-in instead. Never more than one ask.`,
+    };
+  }
+
   return {
     rung: 'silence',
     instruction: 'Gentle check-in after a quiet day+: ask briefly how things are going and whether anything new should go on the list. Keep it to a couple of lines, warm, no pressure.',
   };
+}
+
+// What this specific person is missing, most valuable first. Each entry only
+// appears while its gap is real — set up a digest and that pitch disappears
+// on its own, which is what keeps discovery from ever feeling like marketing.
+async function discoveryGaps(client, userId) {
+  const gaps = [];
+  const { rows: u } = await client.query(
+    `SELECT digest_times FROM users WHERE id = $1`, [userId]);
+  const { rows: openTasks } = await client.query(
+    `SELECT count(*)::int AS n FROM tasks
+     WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL`, [userId]);
+  if (!u[0].digest_times && openTasks[0].n >= 2) {
+    gaps.push({
+      topic: 'digest',
+      instruction: `They have ${openTasks[0].n} open tasks and no daily digest set up. Offer it concretely — a short morning picture of their day at a time they pick ("רוצה שאשלח לך כל בוקר תמונת מצב קצרה?") — and on a yes call set_digest_preferences.`,
+    });
+  }
+  const { rows: facts } = await client.query(
+    `SELECT count(*)::int AS n FROM user_facts WHERE user_id = $1 AND active = true`, [userId]);
+  if (facts[0].n < 3) {
+    gaps.push({
+      topic: 'curiosity',
+      instruction: 'You still know very little about this person (their USER.md card is nearly empty). Pick ONE question from the curiosity ladder in your doctrine — a recurring person in their tasks, when it suits them to hear from you, or what they are working toward — and ask it warmly. Whatever you learn goes to remember_fact / remember_preference.',
+    });
+  }
+  const { rows: cal } = await client.query(
+    `SELECT 1 FROM integrations
+     WHERE user_id = $1 AND provider = 'google_calendar' AND status = 'connected'`, [userId]);
+  if (!cal[0]) {
+    gaps.push({
+      topic: 'calendar',
+      instruction: 'Their Google Calendar is not connected. Offer it once, with the concrete benefit: meetings they agree to land in the calendar by themselves, and Olma can warn about clashes before they commit to a time.',
+    });
+  }
+  const { rows: conn } = await client.query(
+    `SELECT count(*)::int AS n FROM connections
+     WHERE status = 'active' AND (requester_id = $1 OR target_id = $1)`, [userId]);
+  if (conn[0].n === 0) {
+    gaps.push({
+      topic: 'connections',
+      instruction: 'They have no connections yet. Mention, lightly, that Olma can connect them with family or friends who also use it — coordinating meetings and sharing lists together — and that one phone number is all it takes to invite someone. No pressure, one line.',
+    });
+  }
+  return gaps;
 }
 
 // One run of the ladder. Enqueues at most one outbox row per eligible user.
@@ -162,25 +257,32 @@ async function run(client, now = Date.now()) {
     // A day-one step outranks the ladder: on the first day the goal is to make
     // the product feel present, not to react to a backlog.
     const step = u.onboardingStep;
-    let rung, instruction, key, expiresAt = null;
+    let rung, instruction, topic = null, key, expiresAt = null;
     if (step) {
+      if (step.slot === '5h' && await isDeafOnDayOne(client, u.id, u.onboarded_at)) continue;
       rung = `onboarding_${step.slot}`;
       instruction = step.instruction;
       key = `onboarding:${u.id}:${step.slot}`;
       expiresAt = new Date(new Date(u.onboarded_at).getTime() + step.expiresAfterMs).toISOString();
     } else {
-      ({ rung, instruction } = await pickRung(client, u.id));
+      ({ rung, instruction, topic } = await pickRung(client, u.id));
       key = `checkin:${u.id}:${new Date(now).toISOString().slice(0, 10)}`;
     }
     const res = await enqueue(client, {
       userId: u.id, kind: 'checkin',
-      payload: { checkinInstruction: instruction, rung },
+      payload: { checkinInstruction: instruction, rung, ...(topic ? { topic } : {}) },
       urgency: 'normal', expiresAt,
       idempotencyKey: key,
     });
     if (res.data.enqueued) {
+      // Day-one steps do NOT count as misses: they are deliberately built to
+      // not require an answer ("show them something"), and several never even
+      // reach the person (quiet-hours expiry). Only the regular cadence — a
+      // message that asked and got nothing — is evidence of being ignored.
       await client.query(
-        `UPDATE users SET last_checkin_at = now(), checkin_misses = checkin_misses + 1 WHERE id = $1`,
+        step
+          ? `UPDATE users SET last_checkin_at = now() WHERE id = $1`
+          : `UPDATE users SET last_checkin_at = now(), checkin_misses = checkin_misses + 1 WHERE id = $1`,
         [u.id]
       );
       results.push({ userId: u.id, rung });
