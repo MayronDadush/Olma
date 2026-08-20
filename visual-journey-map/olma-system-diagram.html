@@ -1,0 +1,544 @@
+<title>אולמה מבפנים</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@500;700&family=Assistant:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+:root{
+  /* neutrals: cool, slightly indigo-biased paper — chosen to sit under a palette
+     whose whole subject is night, quiet hours and holding back */
+  --paper:#f2f3f7;
+  --surface:#ffffff;
+  --surface-2:#e9ebf2;
+  --ink:#171b26;
+  --ink-2:#4e5568;
+  --ink-3:#7c8496;
+  --line:#d7dae4;
+  --line-strong:#9aa2b4;
+
+  /* semantic — colour IS the information in these figures */
+  --dec:#4353c4;        --dec-soft:#e7eaff;   /* החלטה */
+  --ok:#0d7f72;         --ok-soft:#dff3ef;    /* יוצא לדרך */
+  --hold:#a06a08;       --hold-soft:#fbeed5;  /* מוחזק */
+  --stop:#a8423a;       --stop-soft:#fae5e2;  /* נעצר */
+  --new:#6b4bb0;        --new-soft:#efe9fb;   /* משתמש חדש */
+
+  --sans:"Assistant",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --disp:"Frank Ruhl Libre",Georgia,serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#12141b;
+    --surface:#1b1f2a;
+    --surface-2:#232836;
+    --ink:#eef0f6;
+    --ink-2:#b3bbcc;
+    --ink-3:#828b9f;
+    --line:#2e3444;
+    --line-strong:#5d6577;
+
+    --dec:#8f9bf0;        --dec-soft:#232a4d;
+    --ok:#3fc4b0;         --ok-soft:#12332f;
+    --hold:#e0a641;       --hold-soft:#3a2d13;
+    --stop:#e8807a;       --stop-soft:#3a1f1d;
+    --new:#a992e8;        --new-soft:#271f3d;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#12141b;
+  --surface:#1b1f2a;
+  --surface-2:#232836;
+  --ink:#eef0f6;
+  --ink-2:#b3bbcc;
+  --ink-3:#828b9f;
+  --line:#2e3444;
+  --line-strong:#5d6577;
+
+  --dec:#8f9bf0;        --dec-soft:#232a4d;
+  --ok:#3fc4b0;         --ok-soft:#12332f;
+  --hold:#e0a641;       --hold-soft:#3a2d13;
+  --stop:#e8807a;       --stop-soft:#3a1f1d;
+  --new:#a992e8;        --new-soft:#271f3d;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--sans); font-size:17px; line-height:1.75;
+  direction:rtl; text-align:right;
+  -webkit-font-smoothing:antialiased;
+}
+main{max-width:900px; margin:0 auto; padding:0 20px 96px}
+
+/* ---------------------------------------------------------------- header */
+header{
+  padding:64px 20px 40px; max-width:900px; margin:0 auto;
+  border-bottom:1px solid var(--line);
+}
+.kicker{
+  font-family:var(--mono); direction:ltr; text-align:right;
+  font-size:11.5px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--ink-3); margin:0 0 14px;
+}
+h1{
+  font-family:var(--disp); font-weight:700; font-size:clamp(34px,6vw,52px);
+  line-height:1.15; letter-spacing:-.01em; margin:0 0 16px; text-wrap:balance;
+}
+.lede{font-size:19px; color:var(--ink-2); margin:0; max-width:62ch; line-height:1.7}
+.lede strong{color:var(--ink); font-weight:600}
+
+/* ---------------------------------------------------------------- sections */
+section{margin:56px 0 0}
+h2{
+  font-family:var(--disp); font-weight:700; font-size:26px;
+  margin:0 0 6px; letter-spacing:-.005em;
+}
+.sub{color:var(--ink-2); font-size:16px; margin:0 0 26px; max-width:60ch}
+.num{
+  display:inline-block; font-family:var(--mono); direction:ltr;
+  font-size:12px; font-weight:500; color:var(--dec);
+  background:var(--dec-soft); border-radius:5px;
+  padding:2px 8px; margin-bottom:12px; letter-spacing:.06em;
+}
+
+/* ---------------------------------------------------------------- figures */
+figure{margin:0}
+.frame{
+  background:var(--surface); border:1px solid var(--line);
+  border-radius:14px; padding:14px 10px;
+  overflow-x:auto; overflow-y:hidden;
+}
+.frame svg{display:block; width:100%; min-width:620px; height:auto}
+figcaption{
+  margin-top:14px; font-size:15px; color:var(--ink-2);
+  line-height:1.65; max-width:64ch;
+}
+figcaption b{color:var(--ink); font-weight:600}
+code{
+  font-family:var(--mono); direction:ltr; unicode-bidi:embed;
+  font-size:.86em; background:var(--surface-2);
+  padding:1px 5px; border-radius:4px; color:var(--ink-2);
+}
+
+/* ---------------------------------------------------------------- svg type */
+svg text{font-family:var(--sans)}
+.t{font-size:15.5px; font-weight:600; fill:var(--ink); direction:rtl}
+.s{font-size:12px; font-weight:400; fill:var(--ink-2); direction:rtl}
+.m{font-family:var(--mono); font-size:10.5px; fill:var(--ink-3); direction:ltr}
+.e{font-size:12.5px; font-weight:600; fill:var(--ink-2); direction:rtl}
+.note{font-size:11.5px; fill:var(--ink-3); direction:rtl}
+
+.box{fill:var(--surface); stroke:var(--line-strong); stroke-width:1.5}
+.dec{fill:var(--dec-soft); stroke:var(--dec); stroke-width:1.5}
+.stop{fill:var(--stop-soft); stroke:var(--stop); stroke-width:1.5}
+.hold{fill:var(--hold-soft); stroke:var(--hold); stroke-width:1.5}
+.win{fill:var(--ok-soft); stroke:var(--ok); stroke-width:2}
+.fresh{fill:var(--new-soft); stroke:var(--new); stroke-width:1.5}
+
+.ln{stroke:var(--line-strong); stroke-width:1.6; fill:none}
+.ln-stop{stroke:var(--stop); stroke-width:1.6; fill:none}
+.ln-hold{stroke:var(--hold); stroke-width:1.6; fill:none}
+.ln-new{stroke:var(--new); stroke-width:1.6; fill:none; stroke-dasharray:5 4}
+
+/* ---------------------------------------------------------------- legend */
+.legend{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+  gap:12px; margin-top:8px;
+}
+.lg{
+  display:flex; gap:11px; align-items:flex-start;
+  background:var(--surface); border:1px solid var(--line);
+  border-radius:11px; padding:13px 15px;
+}
+.sw{flex:0 0 auto; width:15px; height:15px; border-radius:4px; margin-top:5px; border:1.5px solid}
+.lg h3{margin:0; font-size:15px; font-weight:600}
+.lg p{margin:1px 0 0; font-size:13.5px; color:var(--ink-2); line-height:1.55}
+
+/* ---------------------------------------------------------------- glossary */
+.gloss{border-top:1px solid var(--line); margin-top:8px}
+.row{
+  display:grid; grid-template-columns:190px 1fr; gap:20px;
+  padding:16px 2px; border-bottom:1px solid var(--line); align-items:baseline;
+}
+.row dt{font-weight:600; font-size:16px}
+.row dt span{
+  display:block; font-family:var(--mono); direction:ltr; text-align:right;
+  font-size:11.5px; font-weight:400; color:var(--ink-3); margin-top:2px;
+}
+.row dd{margin:0; color:var(--ink-2); font-size:15.5px; line-height:1.65}
+@media (max-width:620px){
+  .row{grid-template-columns:1fr; gap:4px}
+  .row dt span{text-align:right}
+}
+
+footer{
+  margin-top:56px; padding-top:22px; border-top:1px solid var(--line);
+  font-size:13.5px; color:var(--ink-3); line-height:1.7;
+}
+footer code{background:none; padding:0}
+</style>
+
+<header>
+  <p class="kicker">Olma 2.0 · system flow</p>
+  <h1>אולמה מבפנים</h1>
+  <p class="lede">אולמה היא עוזרת אישית שחיה בתוך וואטסאפ. שלושת התרשימים כאן הם
+  <strong>כל המערכת</strong> — איך מישהו חדש נכנס, מה עובר על כל הודעה שנשלחת אליה,
+  ומתי היא מרשה לעצמה לכתוב ראשונה. כל הסתעפות כאן היא הסתעפות שקיימת בקוד,
+  לא פישוט.</p>
+</header>
+
+<main>
+
+<!-- ============================================================ FIGURE 1 -->
+<section>
+  <span class="num">01</span>
+  <h2>איך מישהו נהיה משתמש</h2>
+  <p class="sub">אין טופס הרשמה ואין קישור. מספר לא מוכר פשוט כותב, ומקבל תשובה
+  אמיתית עוד לפני שיש לו חשבון בכלל.</p>
+
+  <figure>
+  <div class="frame">
+  <svg viewBox="0 0 860 610" role="img" aria-label="תרשים: מספר לא מוכר כותב, סוכן קבלה עונה מיד, ואם ההרשמה פתוחה או שחבר הזמין אותו נפתח לו חשבון תוך שנייה; אחרת הוא נכנס לרשימת המתנה.">
+    <defs>
+      <marker id="f1a" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+        <path d="M0,1.2 L9,5 L0,8.8 Z" fill="var(--line-strong)"/></marker>
+      <marker id="f1h" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+        <path d="M0,1.2 L9,5 L0,8.8 Z" fill="var(--hold)"/></marker>
+    </defs>
+
+    <!-- spine -->
+    <path class="ln" d="M620,88 L620,128" marker-end="url(#f1a)"/>
+    <path class="ln" d="M620,196 L620,268" marker-end="url(#f1a)"/>
+    <path class="ln" d="M620,332 L620,378" marker-end="url(#f1a)"/>
+    <path class="ln" d="M620,446 L620,494" marker-end="url(#f1a)"/>
+    <!-- exit -->
+    <path class="ln-hold" d="M460,300 L394,300" marker-end="url(#f1h)"/>
+    <path class="ln-hold" d="M230,328 L230,378" marker-end="url(#f1h)"/>
+
+    <rect class="box" x="470" y="24" width="300" height="64" rx="11"/>
+    <text class="t" x="620" y="51" text-anchor="middle">מספר לא מוכר כותב</text>
+    <text class="m" x="620" y="70" text-anchor="middle">whatsapp · direct</text>
+
+    <rect class="fresh" x="470" y="132" width="300" height="64" rx="11"/>
+    <text class="t" x="620" y="159" text-anchor="middle">סוכן קבלה עונה מיד</text>
+    <text class="s" x="620" y="179" text-anchor="middle">בעברית, לעניין — בלי כלים ובלי גישה לנתונים</text>
+
+    <text class="e" x="632" y="228" text-anchor="start">המערכת סורקת מספרים חדשים</text>
+    <text class="e" x="632" y="246" text-anchor="start">כל 5 שניות</text>
+
+    <rect class="dec" x="460" y="272" width="320" height="56" rx="28"/>
+    <text class="t" x="620" y="298" text-anchor="middle">ההרשמה פתוחה? או שחבר הזמין?</text>
+    <text class="m" x="620" y="315" text-anchor="middle">registration_open · connections</text>
+
+    <text class="e" x="427" y="292" text-anchor="middle">לא</text>
+    <text class="e" x="634" y="358" text-anchor="start">כן</text>
+
+    <rect class="hold" x="70" y="272" width="320" height="56" rx="11"/>
+    <text class="t" x="230" y="299" text-anchor="middle">נכנס לרשימת המתנה</text>
+    <text class="s" x="230" y="317" text-anchor="middle">אף אחד לא נופל בין הכיסאות</text>
+
+    <rect class="hold" x="70" y="378" width="320" height="68" rx="11"/>
+    <text class="t" x="230" y="405" text-anchor="middle">כשנפתחת ההרשמה — הודעה אחת</text>
+    <text class="s" x="230" y="425" text-anchor="middle">בדיוק פעם אחת, ובשעה סבירה אצלו</text>
+
+    <rect class="box" x="460" y="378" width="320" height="68" rx="11"/>
+    <text class="t" x="620" y="405" text-anchor="middle">נפתח חשבון תוך שנייה אחת</text>
+    <text class="s" x="620" y="425" text-anchor="middle">חשבון · טוקן זהות · תיקייה פרטית · סוכן משלו</text>
+
+    <rect class="win" x="460" y="494" width="320" height="72" rx="11"/>
+    <text class="t" x="620" y="522" text-anchor="middle">אותה שיחה ממשיכה — עכשיו עם כלים</text>
+    <text class="s" x="620" y="542" text-anchor="middle">בלי "ברוך הבא", בלי לספר הכל מהתחלה</text>
+  </svg>
+  </div>
+  <figcaption>אין רגע "הצטרפת". <b>הסוכן הקדמי עונה באמת</b> — לא "רגע, תכף אני איתך" —
+  ומה שהאדם כבר סיפר עובר לתיקייה האישית שלו, כך שהסוכן החדש כבר מכיר אותו.
+  לכן אין הודעת פתיחה נפרדת: פעם היו שתי הודעות, וזה הרגיש כמו שני אנשים שונים.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ FIGURE 2 -->
+<section>
+  <span class="num">02</span>
+  <h2>מה עובר על כל הודעה נכנסת</h2>
+  <p class="sub">מהרגע שההודעה נוחתת ועד שהתשובה חוזרת. שלוש נקודות בדרך יכולות
+  לעצור אותה — כולן בכוונה.</p>
+
+  <figure>
+  <div class="frame">
+  <svg viewBox="0 0 860 1110" role="img" aria-label="תרשים: הודעה נכנסת מנותבת לסוכן האישי, עוברת תמלול אם היא קולית, ואז בדיקת הצפה, בדיקת מכסה, זיהוי טוקן, טרנזקציה במסד הנתונים, ולבסוף תשובה — טקסט או תמונה.">
+    <defs>
+      <marker id="f2a" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+        <path d="M0,1.2 L9,5 L0,8.8 Z" fill="var(--line-strong)"/></marker>
+      <marker id="f2s" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+        <path d="M0,1.2 L9,5 L0,8.8 Z" fill="var(--stop)"/></marker>
+      <marker id="f2n" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+        <path d="M0,1.2 L9,5 L0,8.8 Z" fill="var(--new)"/></marker>
+    </defs>
+
+    <!-- spine -->
+    <path class="ln" d="M620,88 L620,132" marker-end="url(#f2a)"/>
+    <path class="ln" d="M620,196 L620,244" marker-end="url(#f2a)"/>
+    <path class="ln" d="M620,300 L620,368" marker-end="url(#f2a)"/>
+    <path class="ln" d="M620,432 L620,478" marker-end="url(#f2a)"/>
+    <path class="ln" d="M620,534 L620,584" marker-end="url(#f2a)"/>
+    <path class="ln" d="M620,640 L620,690" marker-end="url(#f2a)"/>
+    <path class="ln" d="M620,746 L620,792" marker-end="url(#f2a)"/>
+    <path class="ln" d="M620,856 L620,902" marker-end="url(#f2a)"/>
+    <path class="ln" d="M620,958 L620,1008" marker-end="url(#f2a)"/>
+    <!-- side refs and exits -->
+    <path class="ln-new" d="M470,164 L394,164" marker-end="url(#f2n)"/>
+    <path class="ln" d="M460,272 L394,272" marker-end="url(#f2a)"/>
+    <path class="ln" d="M230,300 L230,350 L606,350" marker-end="url(#f2a)"/>
+    <path class="ln-stop" d="M460,506 L394,506" marker-end="url(#f2s)"/>
+    <path class="ln-stop" d="M460,612 L394,612" marker-end="url(#f2s)"/>
+    <path class="ln-stop" d="M460,718 L394,718" marker-end="url(#f2s)"/>
+    <path class="ln" d="M460,930 L394,930" marker-end="url(#f2a)"/>
+    <path class="ln" d="M230,958 L230,992 L606,992" marker-end="url(#f2a)"/>
+
+    <rect class="box" x="470" y="24" width="300" height="64" rx="11"/>
+    <text class="t" x="620" y="51" text-anchor="middle">הודעה מגיעה בוואטסאפ</text>
+    <text class="m" x="620" y="70" text-anchor="middle">openclaw gateway</text>
+
+    <rect class="box" x="470" y="132" width="300" height="64" rx="11"/>
+    <text class="t" x="620" y="159" text-anchor="middle">הסוכן האישי שלך</text>
+    <text class="s" x="620" y="179" text-anchor="middle">אחד לכל אדם — לא מדבר עם אף אחד אחר</text>
+
+    <rect class="fresh" x="70" y="132" width="324" height="64" rx="11"/>
+    <text class="t" x="232" y="159" text-anchor="middle">מספר לא מוכר? חוזרים לתרשים 01</text>
+    <text class="s" x="232" y="179" text-anchor="middle">אין לו עדיין סוכן משלו</text>
+
+    <rect class="dec" x="460" y="244" width="320" height="56" rx="28"/>
+    <text class="t" x="620" y="278" text-anchor="middle">זו הקלטה קולית?</text>
+    <text class="e" x="427" y="264" text-anchor="middle">כן</text>
+    <text class="e" x="634" y="326" text-anchor="start">לא</text>
+
+    <rect class="box" x="70" y="244" width="324" height="56" rx="11"/>
+    <text class="t" x="232" y="271" text-anchor="middle">מתומללת תוך 4 שניות</text>
+    <text class="s" x="232" y="289" text-anchor="middle">ואם השירות נופל — תמלול מקומי מגבה</text>
+
+    <rect class="box" x="470" y="368" width="300" height="64" rx="11"/>
+    <text class="t" x="620" y="395" text-anchor="middle">הבדיקה הראשונה, תמיד</text>
+    <text class="m" x="620" y="414" text-anchor="middle">turn_start</text>
+
+    <rect class="dec" x="460" y="478" width="320" height="56" rx="28"/>
+    <text class="t" x="620" y="504" text-anchor="middle">יותר מ-20 הודעות בדקה?</text>
+    <text class="m" x="620" y="521" text-anchor="middle">flood counter</text>
+    <text class="e" x="427" y="498" text-anchor="middle">כן</text>
+    <text class="e" x="634" y="564" text-anchor="start">לא</text>
+
+    <rect class="stop" x="70" y="478" width="324" height="56" rx="11"/>
+    <text class="t" x="232" y="505" text-anchor="middle">שתיקה מוחלטת</text>
+    <text class="s" x="232" y="523" text-anchor="middle">לא עונים בכלל, לא מסבירים</text>
+
+    <rect class="dec" x="460" y="584" width="320" height="56" rx="28"/>
+    <text class="t" x="620" y="610" text-anchor="middle">נגמרה המכסה היומית?</text>
+    <text class="m" x="620" y="627" text-anchor="middle">quota</text>
+    <text class="e" x="427" y="604" text-anchor="middle">כן</text>
+    <text class="e" x="634" y="670" text-anchor="start">לא</text>
+
+    <rect class="stop" x="70" y="584" width="324" height="56" rx="11"/>
+    <text class="t" x="232" y="611" text-anchor="middle">הודעת חסימה — פעם אחת</text>
+    <text class="s" x="232" y="629" text-anchor="middle">עם תמונת המצב, ואז שקט עד המחר</text>
+
+    <rect class="dec" x="460" y="690" width="320" height="56" rx="28"/>
+    <text class="t" x="620" y="716" text-anchor="middle">הטוקן הזה מזוהה?</text>
+    <text class="m" x="620" y="733" text-anchor="middle">identity_token</text>
+    <text class="e" x="427" y="710" text-anchor="middle">לא</text>
+    <text class="e" x="634" y="776" text-anchor="start">כן</text>
+
+    <rect class="stop" x="70" y="690" width="324" height="56" rx="11"/>
+    <text class="t" x="232" y="717" text-anchor="middle">נרשם ביומן, ונעצר</text>
+    <text class="s" x="232" y="735" text-anchor="middle">אין דרך לבקש מידע של מישהו אחר</text>
+
+    <rect class="box" x="470" y="792" width="300" height="64" rx="11"/>
+    <text class="t" x="620" y="819" text-anchor="middle">פעולה אחת על הנתונים</text>
+    <text class="s" x="620" y="839" text-anchor="middle">או שהכל נשמר, או ששום דבר לא</text>
+
+    <rect class="dec" x="460" y="902" width="320" height="56" rx="28"/>
+    <text class="t" x="620" y="936" text-anchor="middle">יש הרבה מה להראות?</text>
+    <text class="e" x="427" y="922" text-anchor="middle">כן</text>
+    <text class="e" x="634" y="976" text-anchor="start">לא</text>
+
+    <rect class="box" x="70" y="902" width="324" height="56" rx="11"/>
+    <text class="t" x="232" y="929" text-anchor="middle">מציירת תמונה במקום קיר טקסט</text>
+    <text class="s" x="232" y="947" text-anchor="middle">לוח זמנים שאפשר לקלוט במבט</text>
+
+    <rect class="win" x="470" y="1008" width="300" height="64" rx="11"/>
+    <text class="t" x="620" y="1035" text-anchor="middle">התשובה חוזרת בוואטסאפ</text>
+    <text class="s" x="620" y="1055" text-anchor="middle">באותה שיחה, בלי הודעה נפרדת</text>
+  </svg>
+  </div>
+  <figcaption>שלוש העצירות אינן שגיאות — הן ההגנות. <b>ההצפה</b> מונעת מלולאה
+  אוטומטית לשרוף תקציב, <b>המכסה</b> שומרת על עלות צפויה, ו<b>הזיהוי</b> הוא כל
+  מנגנון האבטחה: אין שום כלי שמקבל "תראה לי את המשימות של מספר כזה־וכזה" — כל כלי
+  מקבל רק את הטוקן של הפונה עצמו, ומכאן והלאה אין מה לזייף.
+  ברקע רצות שתי בדיקות נוספות שלא בתרשים: אם השיחה נתקעת היא משתחררת לבד תוך
+  כחצי דקה, ואחרי כחצי שעה של שקט אולמה מזקקת לעצמה מה למדה עליכם.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ FIGURE 3 -->
+<section>
+  <span class="num">03</span>
+  <h2>מתי אולמה מרשה לעצמה לכתוב ראשונה</h2>
+  <p class="sub">כל הודעה יזומה — תזכורת, סיכום יומי, עדכון מחבר — עוברת דרך שער אחד.
+  ארבע שאלות, לפי הסדר. הראשונה שעונים עליה "כן" עוצרת.</p>
+
+  <figure>
+  <div class="frame">
+  <svg viewBox="0 0 860 830" role="img" aria-label="תרשים מסננת: הודעה יוצאת נבדקת ברצף — פג הזמן, המשתמש חסום, שעת שקט, עבר התקציב היומי — וכל תשובה חיובית עוצרת או מעכבת אותה; רק מי שעובר את כל הארבע נשלח.">
+    <defs>
+      <marker id="f3a" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+        <path d="M0,1.2 L9,5 L0,8.8 Z" fill="var(--line-strong)"/></marker>
+      <marker id="f3s" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+        <path d="M0,1.2 L9,5 L0,8.8 Z" fill="var(--stop)"/></marker>
+      <marker id="f3h" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+        <path d="M0,1.2 L9,5 L0,8.8 Z" fill="var(--hold)"/></marker>
+    </defs>
+
+    <path class="ln" d="M620,92 L620,144" marker-end="url(#f3a)"/>
+    <path class="ln" d="M620,208 L620,264" marker-end="url(#f3a)"/>
+    <path class="ln" d="M620,320 L620,370" marker-end="url(#f3a)"/>
+    <path class="ln" d="M620,426 L620,476" marker-end="url(#f3a)"/>
+    <path class="ln" d="M620,532 L620,596" marker-end="url(#f3a)"/>
+    <path class="ln" d="M620,652 L620,706" marker-end="url(#f3a)"/>
+
+    <path class="ln-stop" d="M460,292 L394,292" marker-end="url(#f3s)"/>
+    <path class="ln-hold" d="M460,398 L394,398" marker-end="url(#f3h)"/>
+    <path class="ln-hold" d="M460,504 L394,504" marker-end="url(#f3h)"/>
+    <path class="ln-hold" d="M460,624 L394,624" marker-end="url(#f3h)"/>
+
+    <rect class="box" x="460" y="24" width="320" height="68" rx="11"/>
+    <text class="t" x="620" y="52" text-anchor="middle">אולמה רוצה לומר משהו</text>
+    <text class="s" x="620" y="72" text-anchor="middle">תזכורת · סיכום יומי · שלום מה קורה · עדכון מחבר</text>
+
+    <rect class="box" x="460" y="144" width="320" height="64" rx="11"/>
+    <text class="t" x="620" y="171" text-anchor="middle">נכנסת לתור היוצא</text>
+    <text class="s" x="620" y="191" text-anchor="middle">עם חתימה ייחודית — לעולם לא נשלחת פעמיים</text>
+
+    <text class="e" x="634" y="240" text-anchor="start">התור נבדק כל 30 שניות</text>
+
+    <rect class="dec" x="460" y="264" width="320" height="56" rx="28"/>
+    <text class="t" x="620" y="298" text-anchor="middle">עבר הזמן שלה?</text>
+    <text class="e" x="427" y="284" text-anchor="middle">כן</text>
+    <text class="e" x="634" y="350" text-anchor="start">לא</text>
+
+    <rect class="stop" x="70" y="264" width="324" height="56" rx="11"/>
+    <text class="t" x="232" y="291" text-anchor="middle">לא נשלחת בכלל</text>
+    <text class="s" x="232" y="309" text-anchor="middle">תזכורת של אתמול היא לא חדשות</text>
+
+    <rect class="dec" x="460" y="370" width="320" height="56" rx="28"/>
+    <text class="t" x="620" y="404" text-anchor="middle">המשתמש חסום כרגע?</text>
+    <text class="e" x="427" y="390" text-anchor="middle">כן</text>
+    <text class="e" x="634" y="456" text-anchor="start">לא</text>
+
+    <rect class="hold" x="70" y="370" width="324" height="56" rx="11"/>
+    <text class="t" x="232" y="397" text-anchor="middle">מחכה עד שהחסימה נגמרת</text>
+    <text class="s" x="232" y="415" text-anchor="middle">תזכורת בתוכנית בתשלום עוברת בכל זאת</text>
+
+    <rect class="dec" x="460" y="476" width="320" height="56" rx="28"/>
+    <text class="t" x="620" y="510" text-anchor="middle">זו שעת שקט אצלו?</text>
+    <text class="e" x="427" y="496" text-anchor="middle">כן</text>
+    <text class="e" x="634" y="566" text-anchor="start">לא</text>
+
+    <rect class="hold" x="70" y="476" width="324" height="56" rx="11"/>
+    <text class="t" x="232" y="503" text-anchor="middle">מחכה עד הבוקר</text>
+    <text class="s" x="232" y="521" text-anchor="middle">לפי השעון שלו, לא לפי שלנו</text>
+
+    <text class="note" x="232" y="552" text-anchor="middle">חוץ מתזכורת או סיכום שהוא עצמו קבע לשעה הזו —</text>
+    <text class="note" x="232" y="569" text-anchor="middle">ואם הוא כתב ב-15 הדקות האחרונות, הוא ער וזו שיחה.</text>
+
+    <rect class="dec" x="460" y="596" width="320" height="56" rx="28"/>
+    <text class="t" x="620" y="630" text-anchor="middle">עבר התקציב היומי?</text>
+    <text class="e" x="427" y="616" text-anchor="middle">כן</text>
+    <text class="e" x="634" y="686" text-anchor="start">לא</text>
+
+    <rect class="hold" x="70" y="596" width="324" height="56" rx="11"/>
+    <text class="t" x="232" y="623" text-anchor="middle">מתקפלת לתוך הסיכום הבא</text>
+    <text class="s" x="232" y="641" text-anchor="middle">הודעה אחת במקום חמש</text>
+
+    <rect class="win" x="460" y="706" width="320" height="76" rx="11"/>
+    <text class="t" x="620" y="734" text-anchor="middle">נשלחת — ומנוסחת עכשיו</text>
+    <text class="s" x="620" y="754" text-anchor="middle">הסוכן שלו כותב אותה ברגע השליחה,</text>
+    <text class="s" x="620" y="771" text-anchor="middle">אף פעם לא טקסט ששמור מראש</text>
+  </svg>
+  </div>
+  <figcaption>השורה האחרונה היא הכלל הכי חשוב כאן. פעם נשמר טקסט מוכן מראש בתור,
+  ועד שהגיע זמנו רשימת המשימות כבר השתנתה — <b>אולמה הכריזה בבוקר על מטלות שכבר
+  נעשו אתמול</b>. מאז התור מחזיק רק כוונה, והניסוח נעשה ברגע השליחה, על הנתונים
+  של אותו רגע. ואם השליחה נכשלת מנסים שוב — אחרי 5 שניות, 15, 45, ועד תקרה של
+  10 דקות, כדי שתקלה בצד שלנו לא תדחוף הודעה של מישהו לעוד יומיים.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================================================ LEGEND -->
+<section>
+  <h2>מה אומר כל צבע</h2>
+  <p class="sub">הצבעים בתרשימים עקביים, אז אפשר לקרוא אותם בלי לחזור לכאן.</p>
+  <div class="legend">
+    <div class="lg">
+      <span class="sw" style="background:var(--dec-soft); border-color:var(--dec)"></span>
+      <div><h3>החלטה</h3><p>שאלה שהמערכת שואלת, ויש לה שתי תשובות אפשריות.</p></div>
+    </div>
+    <div class="lg">
+      <span class="sw" style="background:var(--ok-soft); border-color:var(--ok)"></span>
+      <div><h3>יוצא לדרך</h3><p>הסוף הטוב — ההודעה באמת מגיעה לאדם.</p></div>
+    </div>
+    <div class="lg">
+      <span class="sw" style="background:var(--hold-soft); border-color:var(--hold)"></span>
+      <div><h3>מוחזק</h3><p>לא בוטל — נדחה לרגע מתאים יותר, ויקרה.</p></div>
+    </div>
+    <div class="lg">
+      <span class="sw" style="background:var(--stop-soft); border-color:var(--stop)"></span>
+      <div><h3>נעצר</h3><p>הדרך נגמרת כאן, בכוונה תחילה.</p></div>
+    </div>
+    <div class="lg">
+      <span class="sw" style="background:var(--new-soft); border-color:var(--new)"></span>
+      <div><h3>לפני שיש חשבון</h3><p>השלב שבו עדיין אין למי שכותב סוכן משלו.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ GLOSSARY -->
+<section>
+  <h2>חמשת הרכיבים, בשפה רגילה</h2>
+  <p class="sub">כל מה שמופיע בתרשימים הוא אחד מאלה.</p>
+  <dl class="gloss">
+    <div class="row">
+      <dt>הגייטוויי<span>openclaw gateway</span></dt>
+      <dd>המחובר לוואטסאפ. מקבל כל הודעה נכנסת ומעביר אותה לסוכן הנכון לפי מספר
+      הטלפון, ושולח החוצה את מה שהסוכן כתב.</dd>
+    </div>
+    <div class="row">
+      <dt>הסוכן האישי<span>agent u-&lt;id&gt;</span></dt>
+      <dd>אולמה של אדם אחד. יש לו תיקייה משלו, זיכרון משלו וטוקן זהות משלו,
+      והוא לא יכול לקרוא את הנתונים של אף אחד אחר — לא כי הוא מנומס, אלא כי
+      אין לו דרך לבקש אותם.</dd>
+    </div>
+    <div class="row">
+      <dt>המוח המשותף<span>brokerd</span></dt>
+      <dd>תהליך אחד שרץ תמיד. הוא מחזיק את החיבור למסד הנתונים, מריץ את כל
+      הבדיקות התקופתיות, ומבצע כל פעולה שסוכן מבקש — אחרי שהוא מוודא מי מבקש.</dd>
+    </div>
+    <div class="row">
+      <dt>התור היוצא<span>outbox</span></dt>
+      <dd>טבלה של דברים שאולמה רוצה לומר. שום דבר לא נשלח מיוזמתה בלי לעבור
+      דרכה, וזו הסיבה שאפשר לשמור על כלל אחד לגבי מתי מותר להפריע.</dd>
+    </div>
+    <div class="row">
+      <dt>מסד הנתונים<span>Postgres</span></dt>
+      <dd>המשימות, התזכורות, ההעדפות, החברויות. כל שינוי נעשה כפעולה אחת
+      שלמה — אין מצב ביניים שבו חצי מהדבר נשמר.</dd>
+    </div>
+  </dl>
+</section>
+
+<footer>
+  התרשימים מתארים את <code>olma2/</code> — הגרסה החיה. כל מספר כאן (5 שניות,
+  30 שניות, 20 הודעות בדקה, 15 דקות, תקרה של 10 דקות) נלקח מהקוד עצמו,
+  לא מהתיעוד.
+</footer>
+
+</main>
