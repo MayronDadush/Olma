@@ -1,7 +1,8 @@
 name: olma2 tests
 
 # The decided CI: every push runs the full suite against a real Postgres.
-# Deploy stays manual (scripts/deploy.sh) — too early for a full pipeline.
+# On a merge to main, the deploy job below runs scripts/deploy.sh against
+# the live server and restarts the services — see CLAUDE.md "Deploy+test".
 on:
   push:
     paths: ['olma2/**', '.github/workflows/olma2-tests.yml']
@@ -34,3 +35,21 @@ jobs:
         working-directory: olma2
       - run: node --test 'tests/*.test.js'
         working-directory: olma2
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up deploy SSH key
+        run: |
+          install -m 600 /dev/null /tmp/deploy_key
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > /tmp/deploy_key
+          mkdir -p ~/.ssh
+          ssh-keyscan -H 157.230.210.233 >> ~/.ssh/known_hosts
+      - name: Deploy and restart
+        run: SSH_KEY=/tmp/deploy_key bash olma2/scripts/deploy.sh --restart
+      - name: Clean up deploy key
+        if: always()
+        run: rm -f /tmp/deploy_key
