@@ -847,3 +847,56 @@ test('the corrections row states each number with its denominator, per person', 
   assert.doesNotMatch(sectionOf(html, 'outcomes'), /אין מה לתקן/,
     'once something was learned the empty-state line is gone');
 });
+
+// ---- the address book -------------------------------------------------------
+// Operator-only view over every user's saved contacts, grouped by phone. The
+// thing worth asserting is that grouping: one number, every name given to it,
+// and whether that number is already a user of ours.
+
+test('the address book groups a number under every name given to it, and flags our own users', async () => {
+  const contacts = require('../src/domain/contacts');
+  const owner1 = await makeUser(db.pool, '+972611000090', { firstName: 'Owner One' });
+  const owner2 = await makeUser(db.pool, '+972611000091', { firstName: 'Owner Two' });
+  // A number two different people saved under two different names — and that
+  // number belongs to a THIRD person who is themselves a user here.
+  const alsoAUser = await makeUser(db.pool, '+972611000092', { firstName: 'Rivka' });
+  await withTx(db.pool, (c) => contacts.saveContact(c, owner1.id, {
+    name: 'אמא', phone: alsoAUser.phone, source: 'user_stated' }));
+  await withTx(db.pool, (c) => contacts.saveContact(c, owner2.id, {
+    name: 'רבקה כהן', phone: alsoAUser.phone, source: 'contact_card' }));
+  // ...and a number nobody here owns.
+  await withTx(db.pool, (c) => contacts.saveContact(c, owner1.id, {
+    name: 'מוסך', phone: '+972611000093', source: 'user_stated' }));
+
+  const html = await (await fetch(base + '/contacts', { headers: { Authorization: AUTH } })).text();
+  assert.match(html, /אמא/);
+  assert.match(html, /רבקה כהן/, 'both names for the same number appear together');
+  assert.match(html, /Owner One/, 'the operator can see who saved it');
+  assert.match(html, /Owner Two/);
+  assert.match(html, new RegExp(`/user\\?id=${alsoAUser.id}`), 'a contact who is also a user links to them');
+  assert.match(html, /מוסך/);
+
+  // The summary section on the main page counts the same data.
+  const home = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.match(home, /ספר הכתובות/);
+  assert.match(home, /מוכרים ליותר ממשתמש אחד/);
+});
+
+test('the address book searches by name and by digits, and can show only our users', async () => {
+  const byName = await (await fetch(base + '/contacts?q=' + encodeURIComponent('מוסך'),
+    { headers: { Authorization: AUTH } })).text();
+  assert.match(byName, /מוסך/);
+  assert.ok(!byName.includes('רבקה כהן'), 'a search excludes what it does not match');
+
+  const byDigits = await (await fetch(base + '/contacts?q=1000092', { headers: { Authorization: AUTH } })).text();
+  assert.match(byDigits, /רבקה כהן/, 'a partial number finds the person');
+
+  const onlyOurs = await (await fetch(base + '/contacts?only=olma', { headers: { Authorization: AUTH } })).text();
+  assert.match(onlyOurs, /רבקה כהן/);
+  assert.ok(!onlyOurs.includes('מוסך'), 'a contact who is not a user is filtered out');
+});
+
+test('the address book is behind the admin password like the rest of the dashboard', async () => {
+  const res = await fetch(base + '/contacts');
+  assert.equal(res.status, 401, 'one user\'s private contacts must never be public');
+});
