@@ -160,6 +160,19 @@ function bodyFor(row, p) {
       return `The user just tried to connect their Google Calendar, but on Google's permission screen the calendar checkbox was left unticked — so Google granted no calendar access and the connection could not be completed. Tell them briefly what happened (no blame, it's an easy miss — Google leaves that box unchecked), call start_calendar_connection (${p.requestedAccess === 'read_write' ? 'read_write' : 'read_only'}, same as they chose before) to get a fresh link, and tell them: on Google's screen, tick the checkbox next to the calendar permission before pressing Continue.`;
     case 'calendar_needs_reauth':
       return `The user's Google Calendar connection stopped working — Google no longer accepts it (usually because access was revoked in their Google account, or a password changed). Tell them briefly, without alarm or technical detail, and offer to reconnect; on a yes, ask view-only vs edit access and call start_calendar_connection.`;
+    case 'contacts_connected':
+      // Mirrors calendar_connected: the consent finished in a browser tab, so
+      // without this the person gets a success page and then silence. Unlike
+      // calendar, connecting alone did nothing yet — the import itself has to
+      // happen in THIS turn.
+      return `The user just connected their Google contacts${p.account ? ` (${p.account})` : ''}. Call import_google_contacts NOW, then tell them in one short line how many were imported/updated and how many were skipped (skipped means the number could not be read — never guess at those). Importing is private — it messaged nobody and created no connections; mention that only if they ask.`;
+    case 'contacts_scope_missing':
+      // Same checkbox trap as calendar_scope_missing (D-024) — pressing
+      // Continue without ticking the contacts permission still completes the
+      // token exchange, with no contacts access granted.
+      return `The user just tried to connect their Google contacts, but on Google's permission screen the contacts checkbox was left unticked — so nothing was granted and the connection could not be completed. Tell them briefly what happened (no blame — Google leaves that box unchecked by default), call start_contacts_connection for a fresh link, and tell them: on Google's screen, tick the checkbox next to the contacts permission before pressing Continue.`;
+    case 'contacts_needs_reauth':
+      return `The user's Google contacts sync stopped working — Google no longer accepts it. Tell them briefly, without alarm, and offer to reconnect via start_contacts_connection if they want syncing to continue (their already-imported contacts are unaffected either way).`;
     default:
       return `System update for the user: ${JSON.stringify(p)}. Deliver it naturally in their language.`;
   }

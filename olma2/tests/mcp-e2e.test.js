@@ -82,6 +82,9 @@ test('MCP handshake and tool listing', async () => {
   assert.ok(names.includes('turn_start'));
   assert.ok(names.includes('add_tasks_bulk'));
   assert.ok(names.includes('start_meeting_coordination'));
+  assert.ok(names.includes('start_contacts_connection'));
+  assert.ok(names.includes('import_google_contacts'));
+  assert.ok(names.includes('import_contacts_file'));
   for (const t of list.tools) {
     assert.ok(t.inputSchema.required.includes('identity_token'), `${t.name} must require identity_token`);
   }

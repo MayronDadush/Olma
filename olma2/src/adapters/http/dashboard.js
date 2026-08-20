@@ -354,6 +354,9 @@ const KIND_LABELS = {
   calendar_connected: 'יומן חובר',
   calendar_scope_missing: 'חיבור יומן בלי הרשאה — צריך שוב',
   calendar_needs_reauth: 'צריך לחבר יומן מחדש',
+  contacts_connected: 'אנשי קשר חוברו',
+  contacts_scope_missing: 'חיבור אנשי קשר בלי הרשאה — צריך שוב',
+  contacts_needs_reauth: 'צריך לחבר אנשי קשר מחדש',
 };
 
 // Why a proactive message was chosen — the checkin ladder's rung.
@@ -710,6 +713,15 @@ async function renderUserPage(client, userId, { confirmDelete = false, csrf = ''
   // Through the domain function, so the operator sees exactly what the agent
   // sees: active only, expired filtered out, same ordering.
   const factRows = (await factsDomain.listFacts(client, userId)).data.facts;
+  // Operator-only, never shown to any agent or user: whose address books
+  // already carry this phone number, and under what name. The reverse of
+  // domain/contacts.js#namesForPhone's provisioning use — there it prefills a
+  // brand-new user's own name; here it just tells the person reading the
+  // dashboard "this number is known to others as X" for context.
+  const { rows: knownAs } = await client.query(
+    `SELECT uc.display_name, uc.user_id AS owner_id, o.first_name, o.last_name
+     FROM user_contacts uc JOIN users o ON o.id = uc.user_id
+     WHERE uc.phone = $1 ORDER BY uc.user_id`, [u.phone]);
 
   const open = tasks.filter((t) => t.status === 'open');
   const done = tasks.filter((t) => t.status === 'done').slice(0, 15);
@@ -725,6 +737,9 @@ async function renderUserPage(client, userId, { confirmDelete = false, csrf = ''
     <section>
       <h3>${esc(name)}</h3>
       <p class="hint">${esc(u.phone)} · ${PLAN_LABEL[u.plan] || '—'} · הצטרף ${ago(u.created_at)}</p>
+      ${knownAs.length ? `<p class="hint">מוכר/ת אצל אחרים בתור: ${knownAs.map((k) =>
+        `${esc(k.display_name)} (<a href="/user?id=${k.owner_id}">${esc([k.first_name, k.last_name].filter(Boolean).join(' ') || `משתמש ${k.owner_id}`)}</a>)`
+      ).join(', ')}</p>` : ''}
       <div class="stats">
         <div class="stat"><div class="num">${open.length}</div><div class="lbl">משימות פתוחות</div></div>
         <div class="stat"><div class="num">${tasks.filter((t) => t.status === 'done').length}</div><div class="lbl">הושלמו</div></div>
@@ -1278,8 +1293,9 @@ h1{font-size:18px;margin:0 0 8px;font-weight:600}p{color:#8b95a5;font-size:14px;
 // openclaw.json instead of the live gateway's. calendarDomain/googleOpts are
 // injectable so the OAuth flow can be tested without network access — and are
 // required lazily, so a box with no /opt/olma still starts a dashboard.
-function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomain, googleOpts }) {
+function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomain, googleContactsDomain, googleOpts }) {
   const calendar = () => calendarDomain || require('../../domain/calendar');
+  const googleContacts = () => googleContactsDomain || require('../../domain/google-contacts');
   const server = http.createServer(async (req, res) => {
     try {
       // ---- public routes, ahead of Basic Auth ----------------------------
@@ -1296,10 +1312,25 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
       const parsed = new URL(req.url, 'http://x');
       if (req.method === 'GET' && parsed.pathname === '/oauth/google/callback') {
         const q = parsed.searchParams;
+        const state = q.get('state');
+        // A plain read, before either domain redeems anything: which provider
+        // this state was minted for decides which module's completeOAuth gets
+        // to burn it. Redemption itself stays atomic and provider-filtered
+        // inside each completeOAuth, so a missing/unknown state just falls
+        // through to calendar's existing bad_state answer — this peek only
+        // ever narrows which module is asked, never grants anything.
+        let provider = 'google_calendar';
+        if (state) {
+          try {
+            const { rows } = await pool.query(`SELECT provider FROM oauth_states WHERE state = $1`, [state]);
+            if (rows[0]) provider = rows[0].provider;
+          } catch { /* fall through to calendar's own bad_state answer */ }
+        }
+        const isContacts = provider === 'google_contacts';
         let result;
         try {
-          result = await withTx(pool, (client) => calendar().completeOAuth(client, {
-            state: q.get('state'), code: q.get('code'), error: q.get('error'),
+          result = await withTx(pool, (client) => (isContacts ? googleContacts() : calendar()).completeOAuth(client, {
+            state, code: q.get('code'), error: q.get('error'),
           }, googleOpts || {}));
         } catch (e) {
           console.error('[oauth] callback failed:', e);
@@ -1310,6 +1341,13 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
           res.end(oauthResultPage(title, body));
         };
         if (result.ok) {
+          if (isContacts) {
+            // Unlike calendar, connecting contacts changes nothing on the
+            // card by itself — the address-book COUNT only moves once the
+            // import tool actually runs (see contacts_connected below), so
+            // there is no refreshUserCard call here.
+            return page(200, 'אנשי הקשר חוברו ✅', 'אולמה תייבא אותם עכשיו ותעדכן אותך בוואטסאפ כמה נשמרו. אפשר לחזור לשם.');
+          }
           // The card carries calendar state, and connecting happens HERE — an
           // HTTP route, not a tool — so brokerd's per-tool refresh never sees
           // it. After the commit, same rule as every card write.
@@ -1322,6 +1360,7 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         const reason = result.error && result.error.reason;
         if (reason === 'declined') return page(200, 'לא חובר', 'ביטלת את החיבור. אפשר לנסות שוב מתי שתרצה.');
         if (reason === 'no_calendar_scope') return page(200, 'חסרה הרשאת יומן', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה ליומן, אז גוגל לא נתנה גישה ליומן. אולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של היומן לפני שלוחצים המשך.');
+        if (reason === 'no_contacts_scope') return page(200, 'חסרה הרשאת אנשי קשר', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה לאנשי קשר, אז גוגל לא נתנה גישה. אולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של אנשי הקשר לפני שלוחצים המשך.');
         if (reason === 'bad_state') return page(400, 'הקישור פג', 'קישורי חיבור תקפים ל-15 דקות ולשימוש אחד. בקשי מאולמה קישור חדש.');
         return page(400, 'משהו השתבש', 'החיבור לא הושלם. בקשי מאולמה קישור חדש.');
       }
