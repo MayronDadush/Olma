@@ -441,7 +441,7 @@ const TOOLS = [
     { meeting_id: S('number', 'Meeting id'), constraint: S('string', 'The constraint, verbatim') },
     ['meeting_id', 'constraint'],
     (client, user, a) => meetings.recordConstraint(client, user.id, a.meeting_id, a.constraint)),
-  tool('propose_meeting_slot', 'Propose a slot: date+time+medium (location/phone/video) as ONE package. Proposing means your user agrees to it.',
+  tool('propose_meeting_slot', 'Propose a slot: date+time+medium (location/phone/video) as ONE package. Proposing means your user agrees to it. Every part of the slot must come from what YOUR user actually said — if they gave only a time ("פנויה ב-13"), the DAY is not yours to fill in from conversation context: say the full slot back in one short line and get their yes first. A real meeting was confirmed on the wrong day exactly this way.',
     { meeting_id: S('number', 'Meeting id'), slot_description: S('string', 'e.g. "Tuesday 17:00 at the office"') },
     ['meeting_id', 'slot_description'],
     async (client, user, a) => {
@@ -456,7 +456,7 @@ const TOOLS = [
       }
       return res;
     }),
-  tool('respond_to_meeting_slot', 'Accept or decline the current proposed slot. Declining may carry counter_proposal in the same call.',
+  tool('respond_to_meeting_slot', 'Accept or decline the current proposed slot. Declining may carry counter_proposal in the same call. accept=true only after the user saw the EXACT slot text — day included — and agreed to it; if the slot differs from what your user was discussing (a different day, a different place), point that out instead of accepting.',
     { meeting_id: S('number', 'Meeting id'), accept: S('boolean', 'true = user agrees to the exact slot'),
       counter_proposal: S('string', 'Optional new slot when declining') }, ['meeting_id', 'accept'],
     async (client, user, a) => {
