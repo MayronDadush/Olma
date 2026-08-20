@@ -40,6 +40,19 @@ test('keys are validated — no markdown smuggling into structure', async () => 
   });
 });
 
+test('remember audits whether it overwrote a different value — the corrections metric depends on it', async () => {
+  await withClient(async (c) => {
+    await prefs.remember(c, user.id, 'digest.style', 'long');
+    await prefs.remember(c, user.id, 'digest.style', 'long');  // idempotent re-save, not a correction
+    await prefs.remember(c, user.id, 'digest.style', 'short'); // a real change of mind
+    const { rows } = await c.query(
+      `SELECT detail FROM audit_log
+        WHERE actor_id = $1 AND event = 'preference.remembered' AND detail->>'key' = 'digest.style'
+        ORDER BY id`, [user.id]);
+    assert.deepEqual(rows.map((r) => r.detail.overwrote), [false, false, true]);
+  });
+});
+
 test('availabilityWindow: stated beats default, garbage falls back safely', async () => {
   await withClient(async (c) => {
     const def = await prefs.availabilityWindow(c, user.id);

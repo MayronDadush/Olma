@@ -772,3 +772,71 @@ test('the rollup counts proactive sends and replies, floored at measurement star
   assert.equal(byName.proactive_answered, byName.proactive_sent,
     'the 12:00 reply answers the 10:00 send');
 });
+
+test('the rollup tells a correction from ordinary forgetting, and counts admin fixes', async () => {
+  const u = await makeUser(db.pool, '+972611002006', { firstName: 'Gila' });
+  const seed = (event, detail, at) => db.pool.query(
+    `INSERT INTO audit_log (actor_id, event, detail, retention_class, created_at)
+     VALUES ($1, $2, $3, 'routine', $4)`, [u.id, event, JSON.stringify(detail), at]);
+
+  // fact 101: corrected two days after being saved → a correction
+  await seed('fact.remembered', { factId: 101 }, '2026-08-10T10:00:00Z');
+  await seed('fact.forgotten', { factId: 101 }, '2026-08-12T10:00:00Z');
+  // fact 102: forgotten six weeks later → life moved on, NOT a correction
+  await seed('fact.remembered', { factId: 102 }, '2026-07-01T10:00:00Z');
+  await seed('fact.forgotten', { factId: 102 }, '2026-08-12T11:00:00Z');
+  // preference overwritten with a different value the same week → a correction
+  await seed('preference.remembered', { key: 'tone' }, '2026-08-09T10:00:00Z');
+  await seed('preference.remembered', { key: 'tone', overwrote: true }, '2026-08-12T12:00:00Z');
+  // idempotent re-save of the same value → not one
+  await seed('preference.remembered', { key: 'lang' }, '2026-08-09T11:00:00Z');
+  await seed('preference.remembered', { key: 'lang', overwrote: false }, '2026-08-12T13:00:00Z');
+  // rows that predate the 'overwrote' flag fall back to pair-detection alone
+  await seed('preference.remembered', { key: 'legacy' }, '2026-08-08T10:00:00Z');
+  await seed('preference.remembered', { key: 'legacy' }, '2026-08-12T14:00:00Z');
+  // an operator stepping in is a correction whatever it touched
+  await seed('admin.outbox.cancelled', { outboxId: 9 }, '2026-08-12T15:00:00Z');
+  await seed('admin.fact.deleted', { factId: 101 }, '2026-08-12T16:00:00Z');
+  await seed('admin.meeting.slot_corrected', { meetingId: 3 }, '2026-08-12T17:00:00Z');
+
+  await withTx(db.pool, (c) => metrics.rollupDay(c, '2026-08-12'));
+  const { rows } = await db.pool.query(
+    `SELECT metric, value FROM product_metrics_daily WHERE date = '2026-08-12'`);
+  const m = Object.fromEntries(rows.map((r) => [r.metric, Number(r.value)]));
+  assert.equal(m.facts_corrected, 1, 'the six-week-old forget is not a correction');
+  assert.equal(m.preferences_corrected, 2, 'the flagged overwrite and the legacy pair; not the re-save');
+  assert.equal(m.admin_corrections, 3);
+  assert.equal(m.facts_remembered, 0, 'nothing was remembered ON the 12th');
+  assert.equal(m.preferences_remembered, 3, 'the denominator counts every write that day');
+
+  await withTx(db.pool, (c) => metrics.rollupDay(c, '2026-08-10'));
+  const denom = await db.pool.query(
+    `SELECT value FROM product_metrics_daily WHERE date = '2026-08-10' AND metric = 'facts_remembered'`);
+  assert.equal(Number(denom.rows[0].value), 1);
+});
+
+test('the corrections row states each number with its denominator, per person', async () => {
+  const facts = require('../src/domain/facts');
+  const prefsD = require('../src/domain/preferences');
+  const u = await makeUser(db.pool, '+972611002007', { firstName: 'Tamar' });
+  await withTx(db.pool, async (c) => {
+    const kept = await facts.rememberFact(c, u.id, { category: 'work', fact: 'עובדת בבנק' });
+    assert.equal(kept.ok, true);
+    const wrong = await facts.rememberFact(c, u.id, { category: 'family', fact: 'בת בשם נגה' });
+    await facts.forgetFact(c, u.id, wrong.data.fact.id); // corrected on the spot
+    await prefsD.remember(c, u.id, 'tone', 'ארוך');
+    await prefsD.remember(c, u.id, 'tone', 'קצר');       // changed her mind
+  });
+  await db.pool.query(
+    `INSERT INTO audit_log (actor_id, event, retention_class)
+     VALUES ($1, 'admin.outbox.cancelled', 'routine')`, [u.id]);
+
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const row = rowFor(html, 'Tamar', { under: '<h4>ג · תיקונים</h4>' });
+  assert.equal((row.match(/1 מתוך 2/g) || []).length, 2,
+    'one of two facts AND one of two preference writes were corrected — both with denominators');
+  assert.match(row, /<td class="num">1<\/td>/, 'the admin fix is counted for her');
+  assert.match(html, /תיקון הוא תיקון/, 'the section explains itself in plain Hebrew');
+  assert.doesNotMatch(sectionOf(html, 'outcomes'), /אין מה לתקן/,
+    'once something was learned the empty-state line is gone');
+});

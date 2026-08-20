@@ -17,6 +17,7 @@ const { enqueue } = require('../../outbox/enqueue');
 const { refreshUserCard } = require('../../intake/user-card');
 const { withTx } = require('../../db/pool');
 const { assessJobs, isStale } = require('../../jobs/expectations');
+const { correctionSql } = require('../../jobs/metrics');
 const { deprovisionUser, previewDeletion } = require('../../intake/deprovision');
 const sessionIndex = require('../../channels/sessions');
 
@@ -68,7 +69,7 @@ const SECTIONS = [
   { id: 'users', title: 'משתמשים', hint: 'כל מי שרשום. אפשר לקבוע לכל אחד מכסת הודעות יומית משלו.', render: renderUsers },
   { id: 'issues', title: 'תקלות ובקשות', hint: 'דברים שאולמה או המשתמשים דיווחו עליהם ומחכים לטיפול.', render: renderIssues },
   { id: 'cost', title: 'עלות', hint: 'כמה עולה השימוש במודל — לפי יום ולפי משתמש. הערכה, לא חשבונית.', render: renderCost },
-  { id: 'outcomes', title: 'האם זה עובד', hint: 'שלושת המדדים שנבחרו כדי לענות על השאלה הזו: ענו לנו? נסגרו משימות? נוצר הרגל? כל מספר עם המכנה שלו.', render: renderOutcomes },
+  { id: 'outcomes', title: 'האם זה עובד', hint: 'המדדים שנבחרו כדי לענות על השאלה הזו: ענו לנו? נסגרו משימות? נאלצו לתקן אותנו? נוצר הרגל? כל מספר עם המכנה שלו.', render: renderOutcomes },
   { id: 'metrics', title: 'שימוש במוצר', hint: 'מה באמת קורה במוצר: כמה אנשים פעילים, כמה נוצר, מה הצליח.', render: renderMetrics },
   { id: 'planned', title: 'מה מתוכנן להישלח', hint: 'כל מה שאולמה מתכננת לשלוח, ומתי — בשעון המקומי של כל משתמש. התוכן עצמו נכתב ברגע השליחה, לא מראש, ולכן כאן מופיע הנושא ולא הנוסח.', render: renderPlanned },
   { id: 'brain', title: 'מה אולמה יודעת ועל מה היא מחכה', hint: 'שני צדדים של אותו דבר: מה המערכת למדה על האנשים, ומה תקוע אצלה כי אדם עדיין לא ענה.', render: renderBrain },
@@ -149,6 +150,9 @@ const METRIC_LABELS = {
   shares_accepted: 'שיתופים שהתקבלו', connections_requested: 'בקשות חברות',
   connections_approved: 'חברויות שאושרו', issues_reported: 'תקלות שדווחו',
   users_provisioned: 'משתמשים חדשים',
+  facts_remembered: 'עובדות שנשמרו', facts_corrected: 'עובדות שתוקנו',
+  preferences_remembered: 'העדפות שנשמרו', preferences_corrected: 'העדפות שתוקנו',
+  admin_corrections: 'תיקוני מנהל',
 };
 const METRIC_ORDER = Object.keys(METRIC_LABELS);
 
@@ -706,9 +710,11 @@ async function renderAudit(client) {
 }
 
 // ---- does it actually work --------------------------------------------------
-// The three metrics D-005 chose, which nobody had built — "a decision without
-// measurement is an opinion". Deliberately separate from the usage section
-// below it: that one counts what happened, this one asks whether it worked.
+// The metrics D-005 chose, which nobody had built — "a decision without
+// measurement is an opinion". א/ב/ד came first; ג (C-003, the correction rate)
+// was added 2026-08-20 after two real incidents proved the need for it.
+// Deliberately separate from the usage section below it: that one counts what
+// happened, this one asks whether it worked.
 //
 // Every number here states its denominator. A rate on its own invites reading
 // "0%" as failure when the truth is "nothing has been measured yet", and those
@@ -752,6 +758,32 @@ async function renderOutcomes(client) {
        FROM tasks WHERE archived_at IS NULL AND created_at < now() - ($1::int * interval '1 day')`,
     [CLOSURE_WINDOW_DAYS]);
 
+  // C — corrections (מדד C). How often what Olma remembered had to be fixed.
+  // Two real incidents made this a metric: a user correcting a fact that had
+  // been saved about them, and a meeting confirmed on the wrong day that the
+  // admin repaired by hand. What counts as a correction is defined ONCE, in
+  // jobs/metrics.js (correctionSql) — the daily rollup and this live table
+  // share the fragments, so they cannot drift apart.
+  const { rows: corrAgg } = await client.query(
+    `SELECT coalesce(sum(value) FILTER (WHERE metric = 'facts_corrected'), 0)        AS facts_fixed,
+            coalesce(sum(value) FILTER (WHERE metric = 'preferences_corrected'), 0)  AS prefs_fixed,
+            coalesce(sum(value) FILTER (WHERE metric = 'facts_remembered'), 0)       AS facts_written,
+            coalesce(sum(value) FILTER (WHERE metric = 'preferences_remembered'), 0) AS prefs_written,
+            coalesce(sum(value) FILTER (WHERE metric = 'admin_corrections'), 0)      AS admin_fixed
+       FROM product_metrics_daily WHERE date > CURRENT_DATE - $1::int`, [HABIT_DAYS + 1]);
+
+  const { rows: perUserC } = await client.query(
+    `SELECT u.id, coalesce(u.first_name, u.phone) AS who,
+            count(*) FILTER (WHERE a.event = 'fact.remembered')       AS facts_written,
+            count(*) FILTER (WHERE ${correctionSql.fact('a')})        AS facts_fixed,
+            count(*) FILTER (WHERE a.event = 'preference.remembered') AS prefs_written,
+            count(*) FILTER (WHERE ${correctionSql.preference('a')})  AS prefs_fixed,
+            count(*) FILTER (WHERE ${correctionSql.admin('a')})       AS admin_fixed
+       FROM users u
+       LEFT JOIN audit_log a ON a.actor_id = u.id
+      WHERE u.status = 'active'
+      GROUP BY u.id, who ORDER BY u.id`);
+
   // D — habit. Inbound volume per person from the quota ledger, which has been
   // counting since long before any of this.
   const { rows: habit } = await client.query(
@@ -792,6 +824,30 @@ async function renderOutcomes(client) {
       </div><p class="small">${ofTotal(closure[0].closed, closure[0].cohort)} מהמשימות שכבר
         עברו את החלון.</p>`;
 
+  const cFixed = Number(corrAgg[0].facts_fixed) + Number(corrAgg[0].prefs_fixed);
+  const cWritten = Number(corrAgg[0].facts_written) + Number(corrAgg[0].prefs_written);
+  const nothingLearnedYet = perUserC.every((r) =>
+    Number(r.facts_written) + Number(r.prefs_written) + Number(r.admin_fixed) === 0);
+
+  const cHtml = nothingLearnedYet
+    ? `<p class="dim">עדיין לא נשמרו עובדות או העדפות — אין מה לתקן, אז אין מה למדוד.</p>`
+    : `<div class="stats">
+        <div class="stat"><div class="num">${pct(cFixed, cWritten)}</div>
+          <div class="lbl">תוקן מתוך מה שנשמר · ${HABIT_DAYS} ימים</div></div>
+        <div class="stat"><div class="num">${fmt(corrAgg[0].admin_fixed)}</div>
+          <div class="lbl">תיקוני מנהל · ${HABIT_DAYS} ימים</div></div>
+      </div>
+      <table><tr><th>משתמש</th><th>עובדות שתוקנו</th><th>העדפות שתוקנו</th><th>תיקוני מנהל</th></tr>
+      ${perUserC.map((r) => `<tr>
+        <td><a href="/user?id=${r.id}">${esc(r.who)}</a></td>
+        <td class="num">${ofTotal(r.facts_fixed, r.facts_written)}</td>
+        <td class="num">${ofTotal(r.prefs_fixed, r.prefs_written)}</td>
+        <td class="num">${fmt(r.admin_fixed)}</td></tr>`).join('')}</table>
+      <p class="hint">תיקון = עובדה שנמחקה תוך שבוע מהרגע שנשמרה, או העדפה שנדרסה בערך אחר
+        תוך שבוע — סימן ששמענו לא נכון. גם תיקון של מנהל מהדשבורד (עובדה, מועד פגישה,
+        הודעה שבוטלה) נספר — תיקון הוא תיקון. המכנה: כמה בכלל נשמרו. המספרים למעלה
+        מסוכמים פעם בשעה; הטבלה מחושבת ברגע הצפייה, על כל התקופה.</p>`;
+
   const dHtml = `<table>
       <tr><th>משתמש</th><th>הודעות · ${HABIT_DAYS} ימים</th><th>ימים פעילים</th><th>כתב לאחרונה</th></tr>
       ${habit.map((r) => `<tr${!r.last_inbound_at || Date.now() - new Date(r.last_inbound_at).getTime() > 7 * 86400_000 ? ' class="bad"' : ''}>
@@ -805,6 +861,7 @@ async function renderOutcomes(client) {
 
   return `<h4>א · ענו להודעות שאולמה שלחה</h4>${aHtml}
     <h4>ב · משימות שנסגרו בזמן</h4>${bHtml}
+    <h4>ג · תיקונים</h4>${cHtml}
     <h4>ד · הרגל</h4>${dHtml}`;
 }
 

@@ -10,12 +10,21 @@ const KEY_RE = /^[a-z0-9_.-]{1,64}$/;
 async function remember(client, userId, key, value) {
   if (!KEY_RE.test(key || '')) return err('invalid', 'key must be short lowercase [a-z0-9_.-]');
   if (!value || !String(value).trim()) return err('invalid', 'value required');
+  const text = String(value).trim();
+  // 'overwrote' in the audit detail = this write replaced a DIFFERENT existing
+  // value. The corrections metric (jobs/metrics.js) needs it to tell "the
+  // person changed what we knew" apart from an agent idempotently re-saving
+  // the same thing — both look identical as bare preference.remembered events.
+  const { rows: prev } = await client.query(
+    `SELECT value FROM user_preferences WHERE user_id = $1 AND key = $2`, [userId, key]
+  );
+  const overwrote = prev.length > 0 && prev[0].value !== text;
   await client.query(
     `INSERT INTO user_preferences (user_id, key, value) VALUES ($1, $2, $3)
      ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value, learned_at = now()`,
-    [userId, key, String(value).trim()]
+    [userId, key, text]
   );
-  await audit.record(client, userId, 'preference.remembered', { key });
+  await audit.record(client, userId, 'preference.remembered', { key, overwrote });
   return ok({ key });
 }
 
