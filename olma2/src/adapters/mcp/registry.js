@@ -200,7 +200,7 @@ const TOOLS = [
   // distinction is what keeps it clear of the double-send rule in
   // channels/openclaw.js: the reply is still the one and only delivery.
   tool('render_schedule_card',
-    'Draw a schedule/overview as an image, for when a list is too long to scan as text (roughly 8+ items, or spread over several weeks). Returns a file path — it sends nothing. Attach it by putting "MEDIA: <path>" on its own line in your reply, with one short sentence above it; never also repeat the list as text. Compose sections yourself from data you fetched THIS turn (get_my_digest, list_my_tasks, my_calendar_events). Group items the way a person would think about them ("this week", "September"), in their language.',
+    'Draw a schedule/overview as an image, for when a list is too long to scan as text (roughly 5+ items, or spread over several weeks). Returns a file path — it sends nothing. Attach it by putting "MEDIA: <path>" on its own line in your reply, with one short sentence above it; never also repeat the list as text. Compose sections yourself from data you fetched THIS turn (get_my_digest, list_my_tasks, my_calendar_events). Group items the way a person would think about them ("this week", "September"), in their language.',
     {
       title: S('string', 'Card heading, e.g. "תמונת מצב". Keep it short.'),
       subtitle: S('string', 'Optional line under the title, e.g. the date range.'),

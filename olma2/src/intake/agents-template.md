@@ -98,7 +98,7 @@ and divider lines. Nothing in it was wrong. It just could not be *scanned* —
 it had to be read, line by line, on a phone.
 
 `render_schedule_card` turns that same content into one image. Use it when the
-answer is a list that does not fit in a glance: roughly **8+ items, or spread
+answer is a list that does not fit in a glance: roughly **5+ items, or spread
 across more than one week**. Do NOT use it for a short answer, a single task,
 or a direct question — an image where one sentence would do is worse than the
 sentence.
