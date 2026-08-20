@@ -20,6 +20,7 @@ const { assessJobs, isStale } = require('../../jobs/expectations');
 const { correctionSql } = require('../../jobs/metrics');
 const { deprovisionUser, previewDeletion } = require('../../intake/deprovision');
 const sessionIndex = require('../../channels/sessions');
+const infraCost = require('../infra-cost');
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -68,7 +69,7 @@ const SECTIONS = [
   { id: 'health', title: 'מצב המערכת', hint: 'האם כל התהליכים הפנימיים רצים כשורה. אדום = משהו תקוע וצריך טיפול.', render: renderHeartbeats },
   { id: 'users', title: 'משתמשים', hint: 'כל מי שרשום. אפשר לקבוע לכל אחד מכסת הודעות יומית משלו.', render: renderUsers },
   { id: 'issues', title: 'תקלות ובקשות', hint: 'דברים שאולמה או המשתמשים דיווחו עליהם ומחכים לטיפול.', render: renderIssues },
-  { id: 'cost', title: 'עלות', hint: 'כמה עולה השימוש במודל — לפי יום ולפי משתמש. הערכה, לא חשבונית.', render: renderCost },
+  { id: 'cost', title: 'עלות', hint: 'כמה עולה להריץ את אולמה בפועל (שרת, Anthropic, ElevenLabs) וכמה עולה השימוש במודל לפי יום ולפי משתמש. הערכה, לא חשבונית.', render: renderCost },
   { id: 'outcomes', title: 'האם זה עובד', hint: 'המדדים שנבחרו כדי לענות על השאלה הזו: ענו לנו? נסגרו משימות? נאלצו לתקן אותנו? נוצר הרגל? כל מספר עם המכנה שלו.', render: renderOutcomes },
   { id: 'metrics', title: 'שימוש במוצר', hint: 'מה באמת קורה במוצר: כמה אנשים פעילים, כמה נוצר, מה הצליח.', render: renderMetrics },
   { id: 'planned', title: 'מה מתוכנן להישלח', hint: 'כל מה שאולמה מתכננת לשלוח, ומתי — בשעון המקומי של כל משתמש. התוכן עצמו נכתב ברגע השליחה, לא מראש, ולכן כאן מופיע הנושא ולא הנוסח.', render: renderPlanned },
@@ -118,6 +119,48 @@ async function renderHeartbeats(client) {
   return banner + `<table><tr><th>תהליך</th><th>רץ לאחרונה</th><th>שגיאה</th></tr>${tr}</table>`;
 }
 
+// One line per external service, or a dim explanatory note when it can't be read.
+function renderInfraRow(label, state, fmtRow) {
+  if (!state.configured) return `<tr><td>${esc(label)}</td><td class="dim" colspan="2">לא מוגדר בסביבה</td></tr>`;
+  if (state.error === 'missing_permission') {
+    return `<tr><td>${esc(label)}</td><td class="dim" colspan="2">למפתח אין הרשאה לקרוא נתוני חיוב</td></tr>`;
+  }
+  if (state.error) return `<tr><td>${esc(label)}</td><td class="dim" colspan="2">שגיאה בשליפת נתונים (${esc(state.error)})</td></tr>`;
+  return fmtRow(state);
+}
+
+async function renderInfraCosts() {
+  const { anthropic, digitalocean, elevenlabs, subscription } = await infraCost.getInfraCosts();
+
+  const okAmount = (s, field) => (s.configured && !s.error ? Number(s[field] || 0) : 0);
+  const sinceTotal = okAmount(anthropic, 'sinceTotal') + okAmount(digitalocean, 'paid')
+    + okAmount(elevenlabs, 'sinceTotal') + okAmount(subscription, 'sinceTotal');
+  const monthTotal = okAmount(anthropic, 'monthTotal') + okAmount(digitalocean, 'accrued')
+    + okAmount(elevenlabs, 'monthTotal') + okAmount(subscription, 'monthTotal');
+
+  const rows = [
+    renderInfraRow('Anthropic (הבוט עצמו)', anthropic, (s) =>
+      `<tr><td>Anthropic (הבוט עצמו)</td><td>$${s.sinceTotal.toFixed(2)} מתחילת הפרויקט</td><td>$${s.monthTotal.toFixed(2)} החודש</td></tr>`),
+    renderInfraRow('DigitalOcean (השרת)', digitalocean, (s) => {
+      const creditNote = s.credit ? `<div class="dim small">זיכוי פעיל: -$${Math.abs(s.credit).toFixed(2)} (${esc(s.creditNote || '')})</div>` : '';
+      return `<tr><td>DigitalOcean (השרת)</td><td>$${s.paid.toFixed(2)} שולם בפועל</td><td>$${s.accrued.toFixed(2)} נצבר החודש${creditNote}</td></tr>`;
+    }),
+    renderInfraRow('ElevenLabs (תמלול קול)', elevenlabs, (s) =>
+      `<tr><td>ElevenLabs (תמלול קול)</td><td>$${s.sinceTotal.toFixed(2)} מאז שהופעל</td><td>$${s.monthTotal.toFixed(2)} החודש (${esc(s.tier || '—')})</td></tr>`),
+    renderInfraRow('מנוי Claude (אישי)', subscription, (s) =>
+      `<tr><td>מנוי Claude (אישי)</td><td>$${s.sinceTotal.toFixed(2)} (${s.count} חיובים)</td><td>$${s.monthTotal.toFixed(2)} החודש</td></tr>`),
+  ].join('');
+
+  return `<h4>עלויות תשתית — כל מה שהפרויקט עולה בפועל</h4>
+    <div class="stats">
+      <div class="stat"><div class="num">$${sinceTotal.toFixed(2)}</div><div class="lbl">סה״כ מתחילת הפרויקט (27/06/2026)</div></div>
+      <div class="stat"><div class="num">$${monthTotal.toFixed(2)}</div><div class="lbl">החודש</div></div>
+    </div>
+    <table><tr><th>שירות</th><th>מתחילת הפרויקט</th><th>החודש</th></tr>${rows}</table>
+    <p class="dim small">שרת + Anthropic (מפתח הבוט בלבד) + ElevenLabs + מנוי Claude האישי ($20 קבוע, חויב ב-27 לחודש).
+    שימוש Claude Code שלך מעבר לבוט מכוסה במנוי הזה ואינו חיוב נפרד — לא נכלל כאן כדי לא לספור פעמיים.</p>`;
+}
+
 async function renderCost(client) {
   const days = await client.query(
     `SELECT date, sum(total_tokens) AS tokens, sum(cost_usd) AS cost
@@ -127,10 +170,13 @@ async function renderCost(client) {
      FROM usage_ledger l JOIN users u ON u.id = l.user_id
      WHERE l.date >= date_trunc('month', CURRENT_DATE)
      GROUP BY u.id ORDER BY cost DESC LIMIT 10`);
-  if (!days.rows.length) return '<p class="dim">עדיין אין נתוני עלות — החישוב רץ כל שעה.</p>';
+
+  const infraHtml = await renderInfraCosts();
+
+  if (!days.rows.length) return infraHtml + '<p class="dim">עדיין אין נתוני עלות למשתמשים — החישוב רץ כל שעה.</p>';
   const monthTotal = top.rows.reduce((s, r) => s + Number(r.cost), 0);
   const todayRow = days.rows[0];
-  return `<div class="stats">
+  return infraHtml + `<h4>עלות מודל לפי משתמש</h4><div class="stats">
       <div class="stat"><div class="num">$${monthTotal.toFixed(2)}</div><div class="lbl">סה״כ החודש</div></div>
       <div class="stat"><div class="num">$${Number(todayRow.cost).toFixed(2)}</div><div class="lbl">היום</div></div>
       <div class="stat"><div class="num">${top.rows.length}</div><div class="lbl">משתמשים פעילים החודש</div></div>

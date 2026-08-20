@@ -32,6 +32,10 @@ const CARD_TOOLS = new Set([
   // refreshUserCard there itself.
   'disconnect_calendar',
   'respond_to_connection_request', 'revoke_connection', 'set_contact_label',
+  // The address book is on the card as a count, because the whole point of
+  // saving a contact is that nobody is ever asked for that number again — and
+  // the agent only knows the book is worth checking if the card says so.
+  'save_contact', 'forget_contact',
 ]);
 
 // How many facts the card carries. This text is injected on every single turn,
@@ -61,6 +65,9 @@ function renderCard(user, prefs, facts = [], extras = {}) {
     lines.push(extras.connections > 0
       ? `Connections: ${extras.connections} active — resolve people by name via list_my_connections before ever asking for a phone number`
       : 'Connections: none yet');
+  }
+  if (extras.contacts) {
+    lines.push(`Address book: ${extras.contacts} saved — look a person up with list_my_contacts instead of asking for their number`);
   }
   if (prefs.length) {
     lines.push('', 'Learned preferences:');
@@ -96,9 +103,13 @@ async function refreshUserCard(pool, userId) {
       `SELECT count(*)::int AS n FROM connections
        WHERE status = 'active' AND (requester_id = $1 OR target_id = $1)`, [userId]
     );
+    const { rows: book } = await pool.query(
+      `SELECT count(*)::int AS n FROM user_contacts WHERE user_id = $1`, [userId]
+    );
     const extras = {
       calendar: cal[0] ? cal[0].access_level : false,
       connections: conn[0].n,
+      contacts: book[0].n,
     };
     let tail = '';
     try {

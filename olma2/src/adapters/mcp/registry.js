@@ -19,6 +19,7 @@ const calendar = require('../../domain/calendar');
 const scheduleCard = require('../../domain/schedule-card');
 const cardStore = require('../../domain/card-store');
 const facts = require('../../domain/facts');
+const contacts = require('../../domain/contacts');
 const audit = require('../../domain/audit');
 const { ok, err } = require('../../domain/results');
 const { scrubTokens } = require('./render');
@@ -323,12 +324,47 @@ const TOOLS = [
     ['category', 'source', 'title'],
     (client, user, a) => issues.reportIssue(client, user.id, a)),
 
+  // ------------------------------------------------------------------ contacts
+  // A shared WhatsApp contact card is visible to you for exactly ONE turn: the
+  // gateway persists it into history as the bare placeholder `<contact>` with
+  // the name and number stripped out. Save it the moment it arrives or it is
+  // gone — see migration 009 for the live incident that proved this.
+  tool('save_contact', 'Save someone to the user\'s address book. Call this IMMEDIATELY when a contact card is shared — its name and number are visible to you only during this turn and are erased from the conversation afterwards. Also use it when someone dictates a number. Saving is silent bookkeeping, not a connection: it messages nobody and grants nothing.',
+    { name: S('string', 'Their name as shown on the card'),
+      phone: S('string', 'Their number, any format'),
+      source: S('string', 'contact_card (shared as a card) | user_stated (typed or dictated)'),
+      note: S('string', 'Optional short note about who they are') },
+    ['name', 'phone'],
+    (client, user, a) => contacts.saveContact(client, user.id, a)),
+  tool('list_my_contacts', 'The user\'s saved contacts, optionally filtered by a name or number fragment. Check here BEFORE asking anyone for a phone number.',
+    { query: S('string', 'Optional name or digits to filter by') }, [],
+    (client, user, a) => contacts.listContacts(client, user.id, { query: a.query })),
+  tool('forget_contact', 'Remove someone from the address book. Ask the user first.',
+    { contact_id: S('number', 'Contact id') }, ['contact_id'],
+    (client, user, a) => contacts.forgetContact(client, user.id, a.contact_id)),
+
   // ---------------------------------------------------------------- connections
-  tool('request_connection', 'Ask to connect with another person by phone. reason is REQUIRED for someone not yet on Olma — it is shown verbatim in the intro message they get ("wants to coordinate a meeting with you").',
-    { phone: S('string', 'E.164 phone'), reason: S('string', 'Why — shown to them'),
-      message: S('string', 'Optional personal message') }, ['phone'],
+  tool('request_connection', 'Ask to connect with another person. Give EITHER contact_name (a person already in the address book — check list_my_contacts first, and never ask for a number you were already sent) OR phone, in any format they wrote it. reason is REQUIRED for someone not yet on Olma — it is shown verbatim in the intro message they get ("wants to coordinate a meeting with you").',
+    { phone: S('string', 'Their number, any format — "054-261-3404" and "+972 54-261-3404" both work'),
+      contact_name: S('string', 'Name of a saved contact, instead of a phone'),
+      reason: S('string', 'Why — shown to them'),
+      message: S('string', 'Optional personal message') }, [],
     async (client, user, a) => {
-      const res = await connections.requestConnection(client, user.id, a.phone, { reason: a.reason, message: a.message });
+      // Resolving the number here rather than in the model's head is the whole
+      // point: a contact card the person already shared IS the phone number,
+      // and asking them to read it back out loud is the failure this replaces.
+      let phone = null;
+      if (a.contact_name) {
+        const hit = await contacts.resolveContact(client, user.id, a.contact_name);
+        if (!hit.ok) return hit;
+        phone = hit.data.contact.phone;
+      } else if (a.phone) {
+        phone = contacts.normalisePhone(a.phone, user.phone);
+        if (!phone) return err('invalid', 'that does not read as a phone number — ask them to share the contact card, or for the full number', { reason: 'bad_phone' });
+      } else {
+        return err('invalid', 'give either contact_name or phone', { reason: 'missing_target' });
+      }
+      const res = await connections.requestConnection(client, user.id, phone, { reason: a.reason, message: a.message });
       if (!res.ok) return res;
       // The other side hears about it immediately, whichever side of the
       // known/stranger split they're on — through the outbox, never directly.
