@@ -245,3 +245,118 @@ test('discovery outranks generic silence, is gap-driven, and rotates topics', as
     assert.equal(pick.rung, 'silence', 'no gaps left → nothing to pitch');
   } finally { c.release(); }
 });
+
+// ---- the stalled-goal rung --------------------------------------------------
+//
+// The failure it closes: a man told Olma he needed to sell three of his
+// vehicles. No date was attached to it, because that is how people say things
+// like that — so deadline_risk (due within 24h) and overload (overdue rows)
+// were both structurally blind to it, and the check-in brain went off to pitch
+// him a daily digest instead. A big thing someone said out loud has to outrank
+// anything Olma wants to set up for them.
+
+// A goal, exactly as one arrives: no due date, no reminder, optional parts.
+async function goal(c, userId, title, { daysOld = 5, parts = [] } = {}) {
+  const { rows } = await c.query(
+    `INSERT INTO tasks (owner_id, title, created_at)
+     VALUES ($1, $2, now() - make_interval(days => $3)) RETURNING id`,
+    [userId, title, daysOld]);
+  const id = rows[0].id;
+  for (const p of parts) {
+    await c.query(
+      `INSERT INTO tasks (owner_id, title, parent_id, status, created_at)
+       VALUES ($1, $2, $3, $4, now() - make_interval(days => $5))`,
+      [userId, p.title, id, p.status || 'open', daysOld]);
+  }
+  return id;
+}
+
+test('a split goal that has not moved outranks every product pitch', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const u = await makeUser(db.pool, '+972641000041', { firstName: 'Chaim' });
+  const c = await db.pool.connect();
+  try {
+    const id = await goal(c, u.id, 'למכור 3 מהרכבים', {
+      daysOld: 5,
+      parts: [{ title: 'רכב 1' }, { title: 'רכב 2' }, { title: 'רכב 3' }],
+    });
+    const pick = await checkin.pickRung(c, u.id);
+    assert.equal(pick.rung, 'stalled_goal');
+    assert.equal(pick.topic, `goal:${id}`);
+    assert.ok(pick.instruction.includes('<<<למכור 3 מהרכבים>>>'), 'their own words, quoted as data');
+    assert.match(pick.instruction, /3 open parts/);
+    assert.match(pick.instruction, new RegExp(`task id ${id}`));
+    assert.match(pick.instruction, /5 days ago/);
+    // and it explicitly forbids the empty version of this message
+    assert.match(pick.instruction, /any progress/);
+  } finally { c.release(); }
+});
+
+test('what does NOT count as stalled: too new, being handled, or already moving', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const c = await db.pool.connect();
+  try {
+    const fresh = await makeUser(db.pool, '+972641000042');
+    await goal(c, fresh.id, 'נמכור מתישהו', { daysOld: 1 });
+    assert.notEqual((await checkin.pickRung(c, fresh.id)).rung, 'stalled_goal',
+      'said yesterday — nudging that is nagging, not help');
+
+    // an errand gets a week before anyone asks about it; a split project 3 days
+    const errand = await makeUser(db.pool, '+972641000043');
+    await goal(c, errand.id, 'לקנות מסנן', { daysOld: 4 });
+    assert.notEqual((await checkin.pickRung(c, errand.id)).rung, 'stalled_goal');
+    const older = await makeUser(db.pool, '+972641000044');
+    await goal(c, older.id, 'לסדר את המוסך', { daysOld: 9 });
+    assert.equal((await checkin.pickRung(c, older.id)).rung, 'stalled_goal');
+
+    // a reminder already exists → the goal is being handled, say nothing
+    const handled = await makeUser(db.pool, '+972641000045');
+    const hid = await goal(c, handled.id, 'למכור את הטויוטה', { daysOld: 10 });
+    await c.query(
+      `INSERT INTO task_reminders (task_id, remind_at) VALUES ($1, now() + interval '2 days')`, [hid]);
+    assert.notEqual((await checkin.pickRung(c, handled.id)).rung, 'stalled_goal');
+
+    // one part already done → it is moving, leave them alone
+    const moving = await makeUser(db.pool, '+972641000046');
+    await goal(c, moving.id, 'למכור 2 רכבים', {
+      daysOld: 8, parts: [{ title: 'רכב 1', status: 'done' }, { title: 'רכב 2' }],
+    });
+    assert.notEqual((await checkin.pickRung(c, moving.id)).rung, 'stalled_goal');
+
+    // a due date means another rung owns it
+    const dated = await makeUser(db.pool, '+972641000047');
+    const did = await goal(c, dated.id, 'להגיש דוח', { daysOld: 10 });
+    await c.query(`UPDATE tasks SET due_at = now() + interval '30 days' WHERE id = $1`, [did]);
+    assert.notEqual((await checkin.pickRung(c, dated.id)).rung, 'stalled_goal');
+  } finally { c.release(); }
+});
+
+test('a goal is raised at most once a fortnight, then rotates or steps aside', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const u = await makeUser(db.pool, '+972641000048', { firstName: 'Chaim' });
+  const c = await db.pool.connect();
+  try {
+    const first = await goal(c, u.id, 'למכור 3 מהרכבים', { daysOld: 20, parts: [{ title: 'רכב 1' }] });
+    const second = await goal(c, u.id, 'לסיים את הרישוי', { daysOld: 15 });
+    assert.equal((await checkin.pickRung(c, u.id)).topic, `goal:${first}`);
+
+    await c.query(
+      `INSERT INTO outbox (user_id, kind, payload)
+       VALUES ($1, 'checkin', $2::jsonb)`,
+      [u.id, JSON.stringify({ rung: 'stalled_goal', topic: `goal:${first}` })]);
+    assert.equal((await checkin.pickRung(c, u.id)).topic, `goal:${second}`,
+      'the same goal must not be raised twice running');
+
+    await c.query(
+      `INSERT INTO outbox (user_id, kind, payload)
+       VALUES ($1, 'checkin', $2::jsonb)`,
+      [u.id, JSON.stringify({ rung: 'stalled_goal', topic: `goal:${second}` })]);
+    assert.notEqual((await checkin.pickRung(c, u.id)).rung, 'stalled_goal',
+      'nothing left to raise this fortnight — do not repeat, fall through');
+
+    // ...and an old nudge stops holding it back once the fortnight is up
+    await c.query(
+      `UPDATE outbox SET created_at = now() - interval '20 days' WHERE user_id = $1`, [u.id]);
+    assert.equal((await checkin.pickRung(c, u.id)).topic, `goal:${first}`);
+  } finally { c.release(); }
+});

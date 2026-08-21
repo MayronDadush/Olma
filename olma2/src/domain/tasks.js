@@ -8,15 +8,23 @@ const audit = require('./audit');
 
 const MAX_BULK = 60;
 
+// One place that decides whether a parent is usable, so add_task and the bulk
+// split path can never disagree about what "one level of nesting" means.
+async function checkParent(client, ownerId, parentId) {
+  const { rows } = await client.query(
+    `SELECT id, parent_id FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
+    [parentId, ownerId]
+  );
+  if (!rows[0]) return err('not_found', 'parent task not found');
+  if (rows[0].parent_id) return err('invalid', 'only one level of nesting');
+  return ok({ parent: rows[0] });
+}
+
 async function addTask(client, ownerId, { title, category, dueAt, parentId, source }) {
   if (!title || !title.trim()) return err('invalid', 'title required');
   if (parentId) {
-    const { rows } = await client.query(
-      `SELECT id, parent_id FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
-      [parentId, ownerId]
-    );
-    if (!rows[0]) return err('not_found', 'parent task not found');
-    if (rows[0].parent_id) return err('invalid', 'only one level of nesting');
+    const check = await checkParent(client, ownerId, parentId);
+    if (!check.ok) return check;
   }
   const { rows } = await client.query(
     `INSERT INTO tasks (owner_id, title, category, due_at, parent_id, source)
@@ -29,20 +37,35 @@ async function addTask(client, ownerId, { title, category, dueAt, parentId, sour
 
 // The brain-dump path: all-or-nothing, one call. Also everyday bulk entry —
 // deliberately NOT an onboarding-only feature.
-async function addTasksBulk(client, ownerId, items) {
+//
+// `parentId` makes this the SPLIT path as well: one goal into its parts in a
+// single call. Without it, breaking "I need to sell three of my cars" into the
+// three separate sales it actually is meant three sequential add_task calls —
+// the very loop the doctrine forbids for a dump — so in practice a big goal
+// got saved as one undoable line, or not at all. Splitting has to be cheaper
+// than not splitting.
+async function addTasksBulk(client, ownerId, items, { parentId, source } = {}) {
   if (!Array.isArray(items) || items.length === 0) return err('invalid', 'items required');
   if (items.length > MAX_BULK) return err('invalid', `max ${MAX_BULK} items per call`);
+  if (parentId) {
+    const check = await checkParent(client, ownerId, parentId);
+    if (!check.ok) return check;
+  }
+  const rowSource = source || (parentId ? 'breakdown' : 'brain_dump');
   const created = [];
   for (const item of items) {
     if (!item || !item.title || !item.title.trim()) return err('invalid', 'every item needs a title');
     const { rows } = await client.query(
-      `INSERT INTO tasks (owner_id, title, category, due_at, source)
-       VALUES ($1, $2, $3, $4, 'brain_dump') RETURNING *`,
-      [ownerId, item.title.trim(), item.category || null, item.dueAt || null]
+      `INSERT INTO tasks (owner_id, title, category, due_at, parent_id, source)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [ownerId, item.title.trim(), item.category || null, item.dueAt || null,
+        parentId || null, rowSource]
     );
     created.push(rows[0]);
   }
-  await audit.record(client, ownerId, 'task.bulk_created', { count: created.length });
+  await audit.record(client, ownerId, 'task.bulk_created', {
+    count: created.length, parentId: parentId || null,
+  });
   return ok({ tasks: created });
 }
 

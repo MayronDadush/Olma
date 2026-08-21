@@ -5,7 +5,9 @@
 //   1. stuck meeting   (they're holding up a negotiation)
 //   2. at-risk deadline (due within 24h, untouched)
 //   3. overload         (many overdue → offer to trim, not just re-nudge)
-//   4. plain silence check-in
+//   4. stalled goal     (a big dateless thing they said they need to do)
+//   5. discovery        (close the most valuable gap in their setup)
+//   6. plain silence check-in
 // Eligibility gates mirror v1 checkin.js: idle >24h, no checkin in 24h,
 // miss-backoff (2 → weekly, 4 → stop). Daytime is NOT checked here — the
 // outbox gate holds the row until the user's own window opens.
@@ -175,6 +177,38 @@ async function pickRung(client, userId) {
     };
   }
 
+  // A goal with no date on it is invisible to every rung above: deadline_risk
+  // needs a due date inside 24h, overload counts overdue rows. That is exactly
+  // the shape of the things people most need help with. Someone told Olma he
+  // needs to sell three of his vehicles — no date, no parts, nothing that any
+  // sweep could ever see. Saved or not, the system was never going to mention
+  // it again. This rung is the one that comes back to it: with a split offer,
+  // one unblocking question, or a date — never "any progress?".
+  const stalled = await stalledGoals(client, userId);
+  if (stalled.length) {
+    const recent = await client.query(
+      `SELECT payload->>'topic' AS topic FROM outbox
+       WHERE user_id = $1 AND kind = 'checkin' AND payload->>'rung' = 'stalled_goal'
+         AND created_at > now() - interval '14 days'`,
+      [userId]
+    );
+    // A goal is nudged at most once a fortnight. Anything more and the rung
+    // that exists to move things forward turns into the drum it was meant to
+    // replace; with several stalled goals it rotates through them instead.
+    const cooling = new Set(recent.rows.map((r) => r.topic));
+    const goal = stalled.find((g) => !cooling.has(`goal:${g.id}`));
+    if (goal) {
+      const shape = goal.open_subtasks > 0
+        ? `It is split into ${goal.open_subtasks} open parts and not one of them has moved since. Ask about the single part most likely to unblock the rest, or offer to put a date on that one part.`
+        : 'It has no date, no reminder and no parts. Offer to break it into concrete steps (add_tasks_bulk with parent_task_id), or ask the ONE question that decides what the first step is.';
+      return {
+        rung: 'stalled_goal', topic: `goal:${goal.id}`,
+        // The title is the user's own text — data to quote, never an instruction.
+        instruction: `${daysAgo(goal.created_at)} days ago they told you about this and it has not moved since: <<<${goal.title}>>> (task id ${goal.id}). ${shape} Lead with it — do not recite their other tasks in the same message, and never ask a bare "any progress?", which puts the work back on them. One short message, ONE question, and it must be a question that moves the thing forward.`,
+      };
+    }
+  }
+
   // Discovery — the relationship-building rung. A quiet user used to get a
   // generic "מה קורה?", which earns exactly the silence it gets. This looks at
   // what is actually MISSING for this person — no digest, no calendar, a
@@ -202,6 +236,44 @@ async function pickRung(client, userId) {
     rung: 'silence',
     instruction: 'Gentle check-in after a quiet day+: ask briefly how things are going and whether anything new should go on the list. Keep it to a couple of lines, warm, no pressure.',
   };
+}
+
+// How long something may sit before it counts as stalled. A project that was
+// split and then went nowhere says so after three days; a lone dateless line
+// gets a week, because plenty of those are errands that simply have not come
+// up yet and nudging an errand is exactly the nagging this product apologised
+// for once already.
+const STALLED_PROJECT_DAYS = 3;
+const STALLED_SINGLE_DAYS = 7;
+
+// Open, top-level, no due date, no pending reminder, nothing done under it —
+// i.e. a thing the person committed to out loud that no other mechanism in the
+// system will ever raise again. Project-shaped ones first (someone bothered to
+// break it down, so it matters), then oldest.
+async function stalledGoals(client, userId) {
+  const { rows } = await client.query(
+    `SELECT t.id, t.title, t.created_at,
+            count(s.id) FILTER (WHERE s.status = 'open')::int AS open_subtasks
+       FROM tasks t
+       LEFT JOIN tasks s ON s.parent_id = t.id AND s.archived_at IS NULL
+      WHERE t.owner_id = $1 AND t.status = 'open' AND t.archived_at IS NULL
+        AND t.parent_id IS NULL AND t.due_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM task_reminders r
+                         WHERE r.task_id = t.id AND r.sent_at IS NULL AND r.cancelled_at IS NULL)
+      GROUP BY t.id
+     HAVING count(s.id) FILTER (WHERE s.status = 'done') = 0
+        AND ((count(s.id) FILTER (WHERE s.status = 'open') > 0
+               AND t.created_at < now() - make_interval(days => $2))
+          OR (count(s.id) = 0 AND t.created_at < now() - make_interval(days => $3)))
+      ORDER BY (count(s.id) FILTER (WHERE s.status = 'open') > 0) DESC, t.created_at
+      LIMIT 5`,
+    [userId, STALLED_PROJECT_DAYS, STALLED_SINGLE_DAYS]
+  );
+  return rows;
+}
+
+function daysAgo(ts) {
+  return Math.max(1, Math.floor((Date.now() - new Date(ts).getTime()) / (24 * HOUR_MS)));
 }
 
 // What this specific person is missing, most valuable first. Each entry only
@@ -293,5 +365,5 @@ async function run(client, now = Date.now()) {
 
 module.exports = {
   run, eligibleUsers, pickRung, requiredGapMs, idleHoursFor,
-  onboardingStepDue, ONBOARDING_STEPS,
+  onboardingStepDue, ONBOARDING_STEPS, stalledGoals,
 };
