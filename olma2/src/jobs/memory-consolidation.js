@@ -104,10 +104,24 @@ async function sweepMemoryConsolidation(client, deps = {}) {
   const due = await dueUsers(client, now);
 
   const out = { considered: due.length, consolidated: [], skipped: 0, failed: [] };
-  for (const u of due.slice(0, MAX_PER_TICK)) {
+  for (const u of due) {
+    // The cap bounds MODEL TURNS, not candidates: slicing the list first let a
+    // user with nothing to fold hold a slot every tick while someone with a
+    // real week of notes was never reached (the same starvation the fact
+    // extraction sweep documents).
+    if (out.consolidated.length + out.failed.length >= MAX_PER_TICK) break;
     if (!hasNotes(u.workspace_path, now)) { out.skipped++; continue; }
 
-    const res = await deps.runAgent({ agentId: u.agent_id, message: PAYLOAD, timeoutMs: TURN_TIMEOUT_MS });
+    const res = await deps.runAgent({
+      agentId: u.agent_id,
+      message: PAYLOAD,
+      // A key of its own, per run. Without one the gateway files every silent
+      // turn into the agent's default session, so each week's turn re-sends
+      // all the previous ones as context — and that session, being the most
+      // recently active, is what a peer-less transcript read would pick up.
+      sessionKey: `agent:${u.agent_id}:memory-${now}`,
+      timeoutMs: TURN_TIMEOUT_MS,
+    });
     if (res && res.ok) {
       // The audit row IS the schedule — it is what makes the next run due in a
       // week, so it must be written even though nothing user-visible happened.

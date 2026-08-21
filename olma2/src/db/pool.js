@@ -2,6 +2,7 @@
 // Single pool per process. In brokerd this is THE pool (the whole reason the
 // daemon exists — managed Postgres tiers allow ~22 connections; a fresh
 // connection per agent turn would exhaust that instantly).
+require('./types'); // registers the int8 parser before any query runs
 const { Pool } = require('pg');
 
 function createPool(url) {

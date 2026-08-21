@@ -141,8 +141,15 @@ async function sweepReopen(client) {
   );
   let notified = 0;
   for (const { phone } of rows) {
-    const user = await usersDomain.getByPhone(client, phone)
-      || (await usersDomain.createUser(client, { phone, status: 'pending' })).data.user;
+    let user = await usersDomain.getByPhone(client, phone);
+    if (!user) {
+      // A failed create returns a result with no `data` at all — reaching
+      // straight through it threw a TypeError that killed the sweep for every
+      // remaining waitlisted person.
+      const created = await usersDomain.createUser(client, { phone, status: 'pending' });
+      if (!created.ok) continue;
+      user = created.data.user;
+    }
     await enqueue(client, {
       userId: user.id, kind: 'registration_reopened',
       payload: { text: reopenMessage(phone) },
