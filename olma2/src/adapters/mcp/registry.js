@@ -319,7 +319,7 @@ const TOOLS = [
     })),
 
   // ---------------------------------------------------------------- issues
-  tool('report_issue', 'Log a bug / edge case / feature request / friction to the issue tracker. Ask the user before logging anything they said as user_reported.',
+  tool('report_issue', 'Log a bug / edge case / feature request / friction to the issue tracker. A capability the user asked for and Olma does not have (searching the web, buying something, a phone call) is a feature_request with source agent_detected — your own observation of a limit you just hit, so log it without asking and never turn it into a question; a gap nobody logged is a gap nobody knows anyone wanted. Ask the user only before logging their own words as user_reported.',
     { category: S('string', 'bug | edge_case | feature_request | friction'),
       source: S('string', 'user_reported | agent_detected'),
       title: S('string', 'Short title'), detail: S('string', 'Optional detail') },

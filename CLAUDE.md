@@ -316,6 +316,34 @@ had backed off to weekly, or given up at 4, would otherwise swallow the
 message). Matching is on trailing phone digits, and an ambiguous fragment
 refuses with the candidates rather than picking one.
 
+### "I can't do that" was the whole answer (fixed 2026-08-21)
+
+A user asked Olma to look a few things up online and buy them. She has no web
+access and no way to purchase — 65 tools, none of them search, browse or pay —
+so the answer was correct and useless: his errand went down with the refusal,
+including the details he had already typed. He ended the exchange worse off
+than before it, still needing the thing and now also told no.
+
+`agents-template.md` replaced the three-line "offer to log it" section with
+**When it is something Olma cannot do**. It names the boundary explicitly
+(no internet search, no links, no prices, no stock, no orders, no payment, no
+phone calls, no email) so the model stops improvising around an unnamed limit,
+then requires three moves in ONE message: say it plainly once → **save the
+request as a task in their own words, carrying the detail they already gave,
+plus a reminder if it is time-shaped** → log the gap as `feature_request` /
+`agent_detected`. That source matters: it is the agent's own observation, so it
+needs no permission and must not become a question — previously the demand
+signal was gated behind the user agreeing to file it, so most of it was never
+captured. `report_issue`'s tool description carries the same rule at the call
+site.
+
+The load-bearing half is the **hallucination guard**. A request to look
+something up is where a model is most likely to answer from training data as
+though it had looked: a price, a stock level, a link, "מצאתי לך". Those all
+assert a lookup that never happened, and for a purchase the remembered version
+is stale by construction. Knowledge that does not go stale is allowed when it
+is plainly the agent's own rather than a lookup; a price never qualifies.
+
 ### Deploying doctrine no longer needs a second command (2026-08-21)
 
 `agents-template.md` is written into a workspace once, at provisioning, so every

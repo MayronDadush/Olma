@@ -425,3 +425,39 @@ test('intake greeter is told not to interrogate either', () => {
   assert.match(open, /At most ONE question/);
   assert.match(open, /not one message holding a numbered list/);
 });
+
+// A user asked Olma to look things up online and buy them. She can do neither,
+// and the refusal took his errand down with it — details included. These are
+// the instructions that turn a hard boundary into something he keeps.
+test('agent doctrine: a capability Olma lacks still leaves the user holding something', () => {
+  const fs = require('node:fs');
+  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
+
+  assert.match(tpl, /Never end on "I can't\."/);
+  // the boundary is named, so the model stops improvising around it
+  assert.match(tpl, /cannot search the internet/);
+  assert.match(tpl, /place an order, or pay for\s+anything/);
+  // ...and the request survives as a task carrying what they already said
+  assert.match(tpl, /save it as a task in their own words, carrying every detail they\s+already gave you/);
+  assert.match(tpl, /If it is time-shaped, offer a reminder/);
+  assert.match(tpl, /They asked for something\s+and they leave with something/);
+  // the demand signal is logged without spending a turn asking permission
+  assert.match(tpl, /source `agent_detected`/);
+  assert.match(tpl, /must never become a question/);
+  // the hallucination guard — the real hazard when someone asks you to look
+  assert.match(tpl, /never fake the part you cannot do/);
+  assert.match(tpl, /mean you looked, and you did not look/);
+  assert.match(tpl, /a price is never that/);
+
+  // and the same tool still guards the other case, where the words are theirs
+  assert.match(tpl, /ask before logging anything as `user_reported`/);
+});
+
+test('the report_issue tool carries the same rule at the call site', () => {
+  const { TOOLS } = require('../src/adapters/mcp/registry');
+  const t = TOOLS.find((x) => x.name === 'report_issue');
+  assert.ok(t, 'report_issue exists');
+  assert.match(t.description, /agent_detected/);
+  assert.match(t.description, /never turn it into a question/,
+    'a capability gap is the agent\'s own observation, not a question for the user');
+});
