@@ -5,12 +5,13 @@
 #   SSH_KEY env var overrides the key path (defaults to ~/.ssh/id_ed25519) —
 #   lets CI point at a temp key file instead of a dev machine's own key.
 #   --restart additionally restarts olma2-brokerd/olma2-dashboard once the
-#   remote test suite passes; omitted by default so local runs keep the
-#   existing manual-restart workflow. With --restart, a failed post-restart
-#   health check automatically rolls the CODE back to the previous release
-#   (see roll_back below) — this does NOT undo DB migrations; keep them
-#   additive/backward-compatible, since a migration that already ran stays
-#   applied even after a code rollback.
+#   remote test suite passes, then pushes the deployed agents-template.md into
+#   every existing user's workspace (see resync_templates below); omitted by
+#   default so local runs keep the existing manual-restart workflow. With
+#   --restart, a failed post-restart health check automatically rolls the CODE
+#   back to the previous release (see roll_back below) — this does NOT undo DB
+#   migrations; keep them additive/backward-compatible, since a migration that
+#   already ran stays applied even after a code rollback.
 set -euo pipefail
 
 RESTART=0
@@ -61,6 +62,30 @@ health_ok() {
   '
 }
 
+# AGENTS.md is written into a workspace once, at provisioning, so every
+# doctrine change reaches NEW users only — the people already using Olma keep
+# whatever text existed on the day they joined. That made every doctrine fix
+# depend on somebody remembering a second manual command, and a step that is
+# only ever remembered is a step that is eventually forgotten. It is part of
+# the deploy now.
+#
+# Safe to run every time: the script compares content and skips workspaces
+# already current, and it rewrites AGENTS.md only — never USER.md or MEMORY.md,
+# which hold real accumulated content about the person.
+#
+# It derives what to write from the template in the CURRENTLY DEPLOYED tree, so
+# calling it after a rollback puts the OLD doctrine back just as readily — which
+# is why roll_back calls it too. The invariant is: what the workspaces say
+# matches the code that is actually running.
+resync_templates() {
+  $SSH "$SERVER" "
+    set -euo pipefail
+    cd $DEST
+    set -a; [ -f .env ] && . ./.env; set +a
+    node scripts/resync-agent-templates.js --apply
+  "
+}
+
 roll_back() {
   if ! $SSH "$SERVER" "[ -d $BACKUP ]"; then
     echo "No previous release snapshot to roll back to — manual intervention required." >&2
@@ -73,6 +98,9 @@ roll_back() {
   else
     echo "ROLLBACK ITSELF IS UNHEALTHY — manual intervention required immediately." >&2
   fi
+  # Best-effort, and loud when it fails: leaving the new doctrine in workspaces
+  # while the old code runs is exactly the mismatch this function exists to undo.
+  resync_templates >&2 || echo "WARNING: workspaces still carry the ROLLED-BACK release's AGENTS.md — run scripts/resync-agent-templates.js --apply by hand." >&2
 }
 
 if [ "$RESTART" = "1" ]; then
@@ -84,4 +112,15 @@ if [ "$RESTART" = "1" ]; then
     echo "Deploy failed (auto-rolled-back where possible) — this run stays red on purpose; go fix the code." >&2
     exit 1
   fi
+  # Only once the release is live AND healthy: a workspace must never be given
+  # doctrine from a release that is about to be rolled back out from under it.
+  # A failure here does NOT roll anything back — the service is up and fine —
+  # but it does fail the run, because doctrine that silently reaches nobody is
+  # the exact failure this step was added to end.
+  if ! resync_templates; then
+    echo "Deployed and healthy, but the AGENTS.md resync FAILED — existing users are still on the previous doctrine. Run scripts/resync-agent-templates.js --apply on the server." >&2
+    exit 1
+  fi
+else
+  echo "Note: no --restart, so nothing was restarted and AGENTS.md was NOT resynced — existing users keep their current doctrine until you do both." >&2
 fi

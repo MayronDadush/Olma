@@ -42,8 +42,10 @@ describes **v1**, which is retired-in-place: its code still sits in
   never proves the live process came up. If that check fails, it restores
   `/opt/olma2-previous` over `/opt/olma2` and restarts again, then the CI run
   still exits non-zero on purpose (a silently self-healed run hides the
-  problem). **This rolls back CODE only — never DB migrations.** A migration
-  that already ran stays applied even after a code rollback, so keep
+  problem). Once healthy, `--restart` also resyncs `agents-template.md` into
+  every existing user's workspace — see "Deploying doctrine no longer needs a
+  second command". **This rolls back CODE only — never DB migrations.** A
+  migration that already ran stays applied even after a code rollback, so keep
   migrations additive/backward-compatible rather than relying on this to
   undo one.
 - Postgres 16 local (`olma2` + `olma2_test` DBs), creds in `/opt/olma2/.env`
@@ -298,8 +300,37 @@ Doctrine side: `agents-template.md` gained "A goal they mention IS a task"
 (save it that turn → split it if it has obvious parts → ONE follow-up, a date
 or the single unblocking question → everything else across later days), and the
 curiosity ladder now ranks an open goal above the digest/calendar pitches.
-**That file reaches existing users only via
-`scripts/resync-agent-templates.js --apply`.**
+
+**Going back for the person it already happened to** is a separate job from
+stopping it recurring, and the code fixes above do only the second.
+`scripts/repair-missed-goal.js --phone <n> --note "<the goal>" [--apply]`
+(logic in `domain/repair.js`, dry-run by default, same-day idempotent) does the
+first, in two moves and inventing nothing: it clears
+`users.last_fact_extraction_at` so the next read-back tick re-reads their recent
+conversation and saves the goal in THEIR words, and enqueues ONE `checkin` row
+whose instruction opens with it. The row carries `release_after = now + 15min`
+so the read-back can land first, and the delivery gate then holds it until that
+person's own availability window opens — so running the repair at midnight
+reaches them when they wake up. It also resets `checkin_misses` (a ladder that
+had backed off to weekly, or given up at 4, would otherwise swallow the
+message). Matching is on trailing phone digits, and an ambiguous fragment
+refuses with the candidates rather than picking one.
+
+### Deploying doctrine no longer needs a second command (2026-08-21)
+
+`agents-template.md` is written into a workspace once, at provisioning, so every
+doctrine change used to reach NEW users only unless someone remembered
+`scripts/resync-agent-templates.js --apply` afterwards — and a step that is only
+ever remembered is eventually forgotten. `deploy.sh --restart` now runs it
+itself, **after** the post-restart health check passes (never before: a
+workspace must not be handed doctrine from a release that is about to be rolled
+back out from under it). `roll_back()` runs it too — the script derives what to
+write from the template in the currently-deployed tree, so calling it after a
+restore puts the OLD doctrine back, keeping one invariant: what the workspaces
+say matches the code that is actually running. A resync failure fails the run
+but does NOT roll back — the service is up and healthy, and doctrine that
+silently reached nobody is the exact failure this step ends. A local deploy
+without `--restart` still resyncs nothing and now says so on stderr.
 
 ### A Google consent with no calendar scope was stored as "connected" (fixed 2026-08-20)
 
