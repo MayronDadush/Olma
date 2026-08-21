@@ -69,6 +69,49 @@ test('addTasksBulk is all-or-nothing inside a transaction', async () => {
   });
 });
 
+// Splitting a goal into its parts has to be ONE call. When it was three
+// sequential add_task calls, big goals in practice got saved as a single
+// undoable line — "sell 3 of my cars" — that nothing could ever complete
+// halfway.
+test('addTasksBulk saves a whole split under one parent, in one call', async () => {
+  await withClient(async (c) => {
+    const goal = (await tasks.addTask(c, alice.id, { title: 'למכור 3 רכבים' })).data.task;
+    const parts = await tasks.addTasksBulk(c, alice.id,
+      [{ title: 'רכב 1' }, { title: 'רכב 2' }, { title: 'רכב 3' }],
+      { parentId: goal.id });
+    assert.equal(parts.ok, true);
+    assert.equal(parts.data.tasks.length, 3);
+    assert.ok(parts.data.tasks.every((t) => Number(t.parent_id) === Number(goal.id)));
+    assert.ok(parts.data.tasks.every((t) => t.source === 'breakdown'));
+
+    const overview = await tasks.projectOverview(c, alice.id, goal.id);
+    assert.equal(overview.data.subtasks.length, 3);
+
+    // each part completes on its own — the reason to split in the first place
+    const one = await tasks.completeTask(c, alice.id, parts.data.tasks[0].id);
+    assert.equal(one.ok, true);
+    const still = await tasks.projectOverview(c, alice.id, goal.id);
+    assert.equal(still.data.project.status, 'open');
+  });
+});
+
+test('a bulk split obeys the same parent rules as add_task', async () => {
+  await withClient(async (c) => {
+    const parent = (await tasks.addTask(c, alice.id, { title: 'goal' })).data.task;
+    const sub = (await tasks.addTask(c, alice.id, { title: 'part', parentId: parent.id })).data.task;
+
+    const deep = await tasks.addTasksBulk(c, alice.id, [{ title: 'deeper' }], { parentId: sub.id });
+    assert.equal(deep.ok, false);
+    assert.equal(deep.error.code, 'invalid'); // one level only
+
+    const foreign = await tasks.addTasksBulk(c, bob.id, [{ title: 'sneak' }], { parentId: parent.id });
+    assert.equal(foreign.ok, false);
+    assert.equal(foreign.error.code, 'not_found');
+    const bobs = await tasks.listTasks(c, bob.id, {});
+    assert.equal(bobs.data.tasks.filter((t) => t.title === 'sneak').length, 0);
+  });
+});
+
 test('completing a task auto-cancels its pending reminders', async () => {
   await withClient(async (c) => {
     const t = (await tasks.addTask(c, alice.id, { title: 'with reminders' })).data.task;

@@ -239,11 +239,12 @@ const TOOLS = [
     (client, user, a) => tasks.addTask(client, user.id, {
       title: a.title, category: a.category, dueAt: a.due_at, parentId: a.parent_task_id,
     })),
-  tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task.',
-    { items: S('array', 'Array of {title, category?, due_at?}', { items: { type: 'object' } }) }, ['items'],
+  tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task. Also the way to SPLIT a goal into its parts: pass parent_task_id and the parts become subtasks of it in the same single call.',
+    { items: S('array', 'Array of {title, category?, due_at?}', { items: { type: 'object' } }),
+      parent_task_id: S('number', 'Optional: save every item as a subtask of this project (one level)') }, ['items'],
     (client, user, a) => tasks.addTasksBulk(client, user.id, (a.items || []).map((i) => ({
       title: i.title, category: i.category, dueAt: i.due_at,
-    })))),
+    })), { parentId: a.parent_task_id })),
   tool('complete_task', 'Mark a task done. Pending reminders on it are cancelled automatically.',
     { task_id: S('number', 'Task id') }, ['task_id'],
     (client, user, a) => tasks.completeTask(client, user.id, a.task_id)),

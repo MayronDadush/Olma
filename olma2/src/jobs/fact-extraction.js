@@ -1,10 +1,20 @@
 'use strict';
-// Reads a finished conversation and writes down what it taught us.
+// Reads a finished conversation and writes down what it taught us: facts about
+// the person, and things they said they need to DO.
 //
 // This is the engine behind migration 008. The old memory layer asked the
 // agent to remember to write a file mid-conversation, and it never did — so
 // the design rule here is the one USER.md proved: the SYSTEM extracts, as a
 // scheduled side effect, and the person's card is refreshed for them.
+//
+// Commitments were added for exactly the same reason, after exactly the same
+// failure. A man mentioned he needed to sell three of his vehicles; the agent
+// was busy answering and never saved it, and this job — the one net under a
+// missed turn — was explicitly told that tasks are not facts and to drop them.
+// So the single most important sentence he said that week was read back by the
+// system and deliberately discarded. A stated commitment is now captured here
+// on the same terms as a fact: silently, deduped against what is already on
+// their list, with no date invented and nothing sent to anyone.
 //
 // "After a chapter of conversation" rather than on a clock: a fact is only
 // worth extracting once the exchange that produced it has finished, and a
@@ -28,6 +38,8 @@ const TURN_TIMEOUT_MS = 120_000;
 // user-written text is pasted into a prompt at once.
 const READ_MESSAGES = 40;
 const MAX_TRANSCRIPT_CHARS = 6000;
+// How much of their open list goes into the prompt as the dedupe reference.
+const OPEN_TASKS_IN_PROMPT = 40;
 
 // Text the machine put into the transcript, not the person.
 //
@@ -82,14 +94,17 @@ function renderTranscript(messages) {
   return text.length > MAX_TRANSCRIPT_CHARS ? text.slice(-MAX_TRANSCRIPT_CHARS) : text;
 }
 
-function buildInstruction(transcript, existingFacts) {
+function buildInstruction(transcript, existingFacts, openTasks = []) {
   const known = existingFacts.length
     ? existingFacts.map((f) => `- [${f.category}] ${f.fact}`).join('\n')
     : '(nothing recorded yet)';
+  const list = openTasks.length
+    ? openTasks.map((t) => `- ${t.parent_id ? '  ↳ ' : ''}[${t.id}] ${t.title}`).join('\n')
+    : '(their list is empty)';
   return [
-    `${INSTRUCTION_MARKER} Your whole job this turn is to call remember_fact for what the`,
-    'conversation below taught you about this person. The tool call is the work; the',
-    'words you write are thrown away.',
+    `${INSTRUCTION_MARKER} Your whole job this turn is to record what the conversation`,
+    'below taught you: what you learned ABOUT this person, and what they said they need',
+    'to DO. The tool calls are the work; the words you write are thrown away.',
     '',
     'Nothing here is delivered to anyone. There is no message to suppress and nobody',
     'waiting, so do NOT answer NO_REPLY — that is the convention for staying quiet in a',
@@ -115,26 +130,51 @@ function buildInstruction(transcript, existingFacts) {
     transcript,
     '>>>',
     '',
+    'FIRST — what you learned about them.',
+    '',
     'For each genuinely new, durable thing you learned, call remember_fact with a',
     'category (work, family, people, health, plans, habits, context), the fact as one',
     'short sentence in their own language, and an importance: 1 ordinary, 2 important,',
     '3 core — reserve 3 for what should always be in front of you. Set expires_at on',
     'anything with a shelf life, like a trip or a deadline.',
     '',
-    'Do NOT record:',
-    '- tasks or things to do — those belong in add_task, and are not facts about them;',
+    'Do NOT record as a fact:',
+    '- things they need to do — those are the second job below, not facts about them;',
     '- phone numbers, or who is connected to whom — that lives in the connections',
     '  system, which is structured and tool-backed;',
     '- how they like you to work (tone, hours, message length) — that is',
     '  remember_preference, a different thing;',
     '- passing detail that will not matter in a month.',
     '',
-    'remember_fact is the only tool you may call in this turn.',
+    'SECOND — what they said they need to do.',
+    '',
+    'Read the same conversation again for commitments. A commitment is theirs and',
+    'stated out loud: "אני צריך למכור שלושה מהרכבים", "I have to renew the passport".',
+    'It does not have to be phrased as a request, and it is usually not — that is the',
+    'whole reason this pass exists. It is NOT a wish ("בא לי לטוס לתאילנד"), not a',
+    'maybe, not something you offered and they did not take up, and not something',
+    'somebody else is doing.',
+    '',
+    'Save each one with add_task, in their own words. If they named a count or clear',
+    'parts ("three of my cars"), save the goal itself with add_task and then make ONE',
+    'add_tasks_bulk call with parent_task_id to save the parts under it — numbered',
+    'placeholders are fine when you do not know which is which, so each part can be',
+    'completed on its own later.',
+    '',
+    'Their open list — do not save anything already on it, in any wording:',
+    list,
+    '',
+    'Never invent a date they did not give you, never set a reminder, and never send',
+    'anyone anything. Nothing you do this turn is seen by anybody until they next talk',
+    'to Olma, who will pick it up from there.',
+    '',
+    'remember_fact, add_task and add_tasks_bulk are the only tools you may call in this',
+    'turn.',
     '',
     'A conversation that taught you nothing new is a completely normal outcome. If that',
-    'is the case, call nothing and stop — do not pad the list to look useful. But do not',
-    'reach for that as the easy way out either: if they told you something about',
-    'themselves, record it.',
+    'is the case, call nothing and stop — do not pad either list to look useful. But do',
+    'not reach for that as the easy way out either: if they told you something about',
+    'themselves, or told you about something they have to do, record it.',
   ].join('\n');
 }
 
@@ -185,7 +225,10 @@ async function sweepFactExtraction(client, deps = {}) {
   // Without this the heartbeat cannot tell "working, quiet week" from "running
   // and silently producing nothing", which is the failure this job would have
   // hidden longest.
-  const out = { considered: due.length, extracted: [], recorded: 0, skipped: 0, failed: [] };
+  const out = {
+    considered: due.length, extracted: [], recorded: 0, tasksCaptured: 0,
+    skipped: 0, failed: [],
+  };
 
   // The cap bounds MODEL TURNS, not candidates. Slicing the list first meant a
   // user with nothing to extract still consumed a slot — and since a skip does
@@ -206,7 +249,16 @@ async function sweepFactExtraction(client, deps = {}) {
     }
 
     const known = await facts.topFacts(client, u.id, 20);
-    const message = buildInstruction(renderTranscript(fresh), known);
+    // Their open list goes in for one reason: without it the same commitment is
+    // re-saved every time it comes up in conversation, and a duplicated task is
+    // worse than a missed one — it makes the list look untrustworthy.
+    const { rows: openTasks } = await client.query(
+      `SELECT id, title, parent_id FROM tasks
+        WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL
+        ORDER BY coalesce(parent_id, id), parent_id NULLS FIRST, id LIMIT $2`,
+      [u.id, OPEN_TASKS_IN_PROMPT]
+    );
+    const message = buildInstruction(renderTranscript(fresh), known, openTasks);
     // Everything this agent writes during the turn arrives through the same
     // remember_fact tool a live conversation uses, so the tool cannot tell the
     // two apart — it stamps source='user_stated' either way. The job can:
@@ -217,6 +269,13 @@ async function sweepFactExtraction(client, deps = {}) {
       `SELECT coalesce(max(id), 0)::bigint AS max_id FROM user_facts WHERE user_id = $1`, [u.id]
     );
     const highWater = markRows[0].max_id;
+    // Same trick for tasks: add_task cannot tell this turn from a live one, so
+    // the job stamps the provenance itself rather than asking the model to
+    // label its own output honestly.
+    const { rows: taskMark } = await client.query(
+      `SELECT coalesce(max(id), 0)::bigint AS max_id FROM tasks WHERE owner_id = $1`, [u.id]
+    );
+    const taskHighWater = taskMark[0].max_id;
     // A fresh session per run. Everything this turn needs is in the message, so
     // carrying context forward buys nothing — and without a key of its own the
     // gateway appends every run to one long-lived session, which then re-sends
@@ -236,16 +295,22 @@ async function sweepFactExtraction(client, deps = {}) {
           WHERE user_id = $1 AND id > $2`,
         [u.id, highWater]
       );
+      const { rowCount: captured } = await client.query(
+        `UPDATE tasks SET source = 'extracted' WHERE owner_id = $1 AND id > $2`,
+        [u.id, taskHighWater]
+      );
       // Move the watermark only on success. A failed turn stays due, so the
       // conversation is read again next tick rather than silently lost.
       await client.query(
         `UPDATE users SET last_fact_extraction_at = now() WHERE id = $1`, [u.id]
       );
       await audit.record(client, u.id, 'facts.extracted', {
-        agentId: u.agent_id, messagesRead: fresh.length, factsRecorded: recorded,
+        agentId: u.agent_id, messagesRead: fresh.length,
+        factsRecorded: recorded, tasksCaptured: captured,
       });
       out.extracted.push(u.id);
       out.recorded += recorded;
+      out.tasksCaptured += captured;
       // The card is how any of this reaches the agent, so refreshing it is part
       // of the job, not a nicety. Best-effort: a file write must never fail the
       // sweep for everyone else.
@@ -263,4 +328,5 @@ module.exports = {
   sweepFactExtraction, dueUsers, buildInstruction, renderTranscript, newMessagesSince,
   isMachineText, readPersonMessages,
   CHAPTER_GAP_MS, MAX_PER_TICK, READ_MESSAGES, MAX_TRANSCRIPT_CHARS, INSTRUCTION_MARKER,
+  OPEN_TASKS_IN_PROMPT,
 };

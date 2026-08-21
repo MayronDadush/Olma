@@ -265,6 +265,42 @@ prior outbox row's `payload->>'topic'`) and falling back to plain silence only
 when there is genuinely nothing to offer. Three stuck users' inflated
 `checkin_misses` were reset via audited admin SQL after deploy.
 
+### A goal said out loud left no trace anywhere (fixed 2026-08-21)
+
+A user told Olma he needed to sell three of his vehicles. It was never saved,
+never split, no reminder was offered, and nothing ever came back to it. Three
+separate mechanisms each had a reason to drop it, which is why nobody noticed:
+
+- **The read-back was told to.** `jobs/fact-extraction.js` — the net under a
+  turn the agent was too busy to catch — carried the line *"Do NOT record:
+  tasks or things to do"*, and `remember_fact` was the only tool it could call.
+  It now runs two passes over the same transcript: facts, then **commitments**
+  (`add_task` / `add_tasks_bulk`), with the person's open list pasted in as the
+  dedupe reference and hard rules against inventing a date, setting a reminder,
+  or sending anything. New rows are stamped `source = 'extracted'` by the JOB
+  via a high-water mark — the same trick facts already used, never a parameter
+  the model must set honestly — and show on the user page as a `מהשיחה` pill.
+- **Splitting cost more than not splitting.** `add_tasks_bulk` now takes
+  `parent_task_id`, so a goal becomes a project plus N parts in ONE call.
+  Previously the only path was a loop of `add_task`, which the doctrine
+  explicitly forbids for a dump, so in practice big goals were saved (if at
+  all) as one undoable line.
+- **The proactive ladder was blind to it.** Every rung was deadline-driven:
+  `deadline_risk` needs `due_at` inside 24h, `overload` counts overdue rows —
+  and a goal like this arrives with no date at all. New `stalled_goal` rung
+  (above `discovery`, below `overload`): open, top-level, no due date, no
+  pending reminder, nothing done under it, older than 3 days if it has open
+  parts / 7 days if it is a lone line. **One goal per fortnight per user**,
+  rotating between them, matched on `payload->>'topic' = goal:<id>` — the rung
+  that exists to move something forward must never become the drum it replaced.
+
+Doctrine side: `agents-template.md` gained "A goal they mention IS a task"
+(save it that turn → split it if it has obvious parts → ONE follow-up, a date
+or the single unblocking question → everything else across later days), and the
+curiosity ladder now ranks an open goal above the digest/calendar pitches.
+**That file reaches existing users only via
+`scripts/resync-agent-templates.js --apply`.**
+
 ### A Google consent with no calendar scope was stored as "connected" (fixed 2026-08-20)
 
 Google's OAuth consent screen shows the calendar permission as its own
