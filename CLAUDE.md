@@ -168,6 +168,38 @@ restart the gateway, then compare against Haiku with `scripts/model-pilot.js`
 on `u-3` only — judging Hebrew grammatical gender, tone, and above all whether
 tool calls (meetings, contacts, reminders) stay correct.
 
+### The API bill was 76% cache writes — fixed with a 1h cache + a prompt diet (2026-08-22)
+
+With the ledger finally accurate, the breakdown over every transcript on disk
+came out: cacheWrite $10.53 (76%), cacheRead 13%, output 11%, input 0%. Every
+cold turn re-wrote a ~29.5k-token prefix into a cache that lives 5 minutes —
+and Olma's traffic (a WhatsApp message every 20 minutes, fact-extraction 30
+minutes after a chapter closes) is precisely wrong for a 5-minute cache.
+Three changes, all reversible:
+
+- **`agents.defaults.params.cacheRetention: "long"`** (native OpenClaw knob →
+  `cache_control {type:"ephemeral", ttl:"1h"}`; `scripts/set-cache-retention.js
+  --apply`, `--reset` reverts). Verified live in Anthropic's usage report:
+  writes moved to the `ephemeral_1h` bucket. The stated bet: a 1h write costs
+  2x input vs 1.25x for 5m, and wins only if it prevents ≥ ~40% of re-writes —
+  the dashboard reconciliation line is the judge, and the revert condition is
+  "daily average not down after 48h vs the $1.0-1.4 baseline of Aug 18-21".
+- **`tools.deny`** for gateway tools with no caller by design
+  (`scripts/trim-agent-tools.js`): cron (12.5k schema chars! — v2 schedules in
+  brokerd), message (forbidden by DELIVERY_PREAMBLE; the DeepSeek pilot proved
+  the double-send hazard is real — denying makes doctrine a hard stop),
+  sessions_*, apply_patch. `read`/`write` stay (.olma-identity, USER.md).
+- **Prompt diet**: tool descriptions compressed keeping every doctrine rule
+  (tests pin the rules, reworded to match), `agents-template.md` 30.1k → 19.1k
+  chars with zero rules dropped, identity_token boilerplate shortened (×64).
+
+Measured cold-start result: system prompt 49.9k → 36.7k chars, tool schemas
+35.3k → 18.4k chars, cold cacheWrite ~32.7k → 21.5k tokens (-34%) — and a
+second session minutes later wrote only 7.7k, riding the now-warm 1h cache.
+Pricing followed the switch: `domain/model-pricing.js` cacheWrite is the 1h
+rate (2x input) since transcripts don't carry TTL; `adapters/infra-cost.js`
+prices the report's 5m/1h buckets separately, so history stays exact.
+
 ### Cost reporting was wrong in BOTH directions (fixed 2026-08-22)
 
 Two independent bugs, each of which made the dashboard's cost numbers useless,

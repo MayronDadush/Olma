@@ -57,7 +57,8 @@ test('a call is priced per model, with cache reads far cheaper than fresh input'
     'claude-haiku-4-5-20251001', 1.5);
   assert.equal(p.estimated, false);
   assert.equal(p.model, 'claude-haiku-4-5');
-  assert.ok(Math.abs(p.cost - 0.04948) < 0.0001, `got ${p.cost}`);
+  // 47*1 + 653*5 + 88398*0.1 + 29863*2 (1h-TTL write rate), per Mtok
+  assert.ok(Math.abs(p.cost - 0.07188) < 0.0001, `got ${p.cost}`);
 
   const sonnet = pricing.priceUsage({ input: 1e6 }, 'claude-sonnet-4-6', 1.5);
   assert.equal(sonnet.cost, 3, 'sonnet input is $3/Mtok, not the blended rate');
