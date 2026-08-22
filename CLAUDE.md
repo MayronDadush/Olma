@@ -409,13 +409,18 @@ alongside a counter-proposal for the same reason.
 possibly-dead slot is the bug itself. `sweepStaleMeetings` (in the existing
 minute tick, no new cron) closes what passed: 6h after the start, or after
 `LEGACY_STALE_DAYS = 3` untouched for NULL-start rows. The grace is deliberate
-— closing a meeting early is worse than closing it late. Each close tells the
-INITIATOR once (`meeting_expired`, idempotency key `mexpired:<id>`), because
-they are the only one who can restart it.
+— closing a meeting early is worse than closing it late. The automatic sweep
+tells the INITIATOR once (`meeting_expired`, idempotency key `mexpired:<id>`),
+because they are the only one who can restart it.
 
 `scripts/close-stale-meeting.js --phone <n>` lists someone's open negotiations
-with ages; `--id N --apply` closes one and reuses the same idempotency key, so
-it can never double-message a meeting the sweep already handled.
+with ages; `--id N --apply` closes one — and, unlike the sweep, tells EVERY
+active participant, not just the initiator (`mexpired:<id>:<userId>` each).
+An operator closing a meeting by hand is very often doing it on behalf of the
+person who was AWAITING an answer, not the one who asked — that person
+deserves to know it ended too. `expireOne`'s `UPDATE ... WHERE status =
+'negotiating'` still guarantees only one of {sweep, script} ever succeeds on a
+given meeting, so this can never double-message anyone.
 
 ### "I can't do that" was the whole answer (fixed 2026-08-21)
 
