@@ -5,6 +5,9 @@
 // whole policy unit-testable in milliseconds.
 //
 // Policy (each rule traces to an explicit design decision):
+//   paused user      → drop. They asked Olma to stop initiating; there is no
+//                      kind and no urgency that earns an exception, including
+//                      another user's fan-out landing on them
 //   blocked user     → hold, except paid-plan reminders and the unblock summary
 //   outside personal availability window → hold until window opens, UNLESS
 //                      they wrote to us in the last 15 minutes (see below)
@@ -65,11 +68,24 @@ function nextUtcMidnight(date) {
 // are demonstrably awake and mid-conversation, so the window does not apply.
 const CONVERSATION_GRACE_MS = 15 * 60_000;
 
-// facts: { row, plan, blocked, window, tz, sentToday, budget, now, lastInboundAt }
-// returns { action: 'deliver' | 'hold' | 'expire', holdReason?, releaseAfter? }
+// facts: { row, plan, blocked, paused, window, tz, sentToday, budget, now, lastInboundAt }
+// returns { action: 'deliver' | 'hold' | 'expire' | 'drop', holdReason?, releaseAfter? }
 function decide(facts) {
-  const { row, plan, blocked, window, tz, sentToday, budget } = facts;
+  const { row, plan, blocked, paused, window, tz, sentToday, budget } = facts;
   const now = facts.now || new Date();
+
+  // First, and with no exceptions. This is the whole guarantee behind the pause
+  // feature: sweeps skip paused users so these rows are mostly never created,
+  // but a message can also be enqueued for them by somebody ELSE's action — a
+  // connection request, a meeting slot, a calendar callback — and none of those
+  // paths know or should have to know about this. One chokepoint, checked here.
+  //
+  // 'drop', not 'hold': holding means delivering later, and there is no later.
+  // Not 'expire' either — that means the moment passed and folds the row into a
+  // digest as "עבר זמנה", which would then be delivered.
+  if (paused) {
+    return { action: 'drop', holdReason: 'paused' };
+  }
 
   if (row.expires_at && new Date(row.expires_at) <= now) {
     return { action: 'expire' };

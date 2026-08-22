@@ -267,6 +267,107 @@ prior outbox row's `payload->>'topic'`) and falling back to plain silence only
 when there is genuinely nothing to offer. Three stuck users' inflated
 `checkin_misses` were reset via audited admin SQL after deploy.
 
+### "אני רוצה להפסיק את השירות" was answered with a goodbye and nothing else (fixed 2026-08-22)
+
+```
+21/08 19:47:01  him:  אני רוצה להפסיק את השירות
+21/08 19:47:08  Olma: בטוח? יש משהו שלא עובד כמו שצריך, או פשוט די לך?
+21/08 19:47:16  him:  זהו
+21/08 19:47:21  Olma: בסדר, קפיש. בהצלחה לך! 💙      ← and called NO tool
+22/08 06:21:21  Olma: שלום קפיש 👋 רציתי להציץ...     ← proactive check-in
+```
+
+His daily medication reminder was still armed for that evening too. The
+conversation was handled exactly right — one confirming question, a clear
+answer, a warm goodbye — and then nothing happened, because **there was nothing
+to call**: no tool, no dashboard control, and `users.checkin_enabled` was a dead
+switch (one query read it, nothing on the box ever wrote it, and it only ever
+covered check-ins anyway). The only "stop" that existed anywhere was the
+dashboard's delete button — irreversible, operator-only, and not what he asked
+for. Same shape as the two bugs above it: the agent understood, and the outcome
+had no structured home.
+
+**Pause is reversible and deletes nothing** (`domain/pause.js`, migration 013
+`users.paused_at`). Someone done with a product is not asking to be erased;
+treating "stop messaging me" as "delete my account" would be a second thing
+done to them they never asked for. Tasks, reminders, facts, preferences and
+history all stay.
+
+- **`pause_olma` / `resume_olma`** are the tools that were missing.
+  `agents-template.md` gained **"When they want you to stop"**: one confirming
+  question → on their yes call `pause_olma` THAT TURN, before replying → then
+  say plainly that Olma will not write again, nothing was deleted, and one
+  message brings it back. Never argue, never pitch to retain, never ask twice.
+- **The gate is the chokepoint.** `outbox/gate.js` returns a new terminal
+  action `drop` for a paused user, checked FIRST and with no exceptions —
+  not reminders (the user picked the time, and they have now unpicked it), not
+  urgent, not another user's fan-out. `hold` would mean delivering later and
+  there is no later; `expire` folds into a digest and would then be delivered.
+  The worker stamps `sent_at` with `hold_reason = 'paused'` (UPDATE, never
+  DELETE, so the producing sweep cannot recreate it) and excludes those rows
+  from the daily budget count, so six cancelled messages do not exhaust the
+  budget on return.
+- **Every sweep also skips paused users** (`checkin`, `sweepDigests`,
+  `reminders.dueForSending`, `unanswered`, `fact-extraction`) so the rows are
+  mostly never manufactured. `dueForSending` matters twice: successors are
+  written per send, so an unguarded paused user grows a fresh reminder row
+  every day they are away. `unanswered` is the exception that argues hardest to
+  be one — it exists to finish a conversation the PERSON started — and stays
+  out anyway: "Olma never initiates" is only a promise if it has no clauses.
+- **Reactive replies still work.** Pausing stops Olma initiating, not Olma
+  answering — a person who writes wants something. The card shows `PAUSED` with
+  an explicit instruction never to offer, pitch or schedule while it is set.
+- **Resume re-arms repeating reminders at their own next real time**
+  (`nextOccurrenceAfter` walks the rule forward from its last occurrence), so
+  "18:00 daily" comes back at 18:00, not at whatever hour resume was pressed.
+  A one-off whose moment passed is NOT resurrected. Matching is on
+  `cancelled_at >= paused_at`, `DISTINCT ON (task_id)`, so two pauses cannot
+  bring the same reminder back twice.
+- **The dashboard can resume, never pause.** An operator can bring someone back
+  (they asked, through some channel that is not their agent); there is no admin
+  pause button, because that would be a way to silence a user without their say.
+
+Live: קפיש (user 9) was stopped by hand the moment this was found — reminder
+#32 cancelled ~10h before it would have fired, `checkin_enabled = false`,
+audited as `admin.service_stopped` with `dataDeleted: false` — then migrated
+onto `paused_at` once this shipped.
+
+### Two branches, one migration number (fixed 2026-08-22)
+
+`src/db/migrate.js` derives `version` from `parseInt(filename)`, and
+`schema_migrations.version` is the PRIMARY KEY. Two branches each adding an
+`011-*.sql` — the ordinary way this repo works, since neither sees the other's
+file until they merge — meant the runner applied one, inserted version 11, then
+violated the key on the second. Every test file's `freshDb()` threw inside its
+`before` hook and the suite stopped producing a readable result at all.
+
+The part that cost the most time: **only the `pull_request` build ever sees
+both files.** `actions/checkout` builds a merge commit for `pull_request` and
+checks out the branch head for `push`, so the branch's own push build stayed
+green and passed in 41s while the PR check hung indefinitely on the same
+commit, same runner, same job definition.
+
+The other half is worse and is what actually bit this branch twice. A version
+can be burned by a branch that never merged: production had version 12 applied
+from `012-usage-from-transcripts.sql`, deployed by hand off
+`perf/prompt-cache-costs`, while `main` still ends at 011. A same-named new 012
+would then be filtered out of `pending` as "already applied" — deploy reports
+success, the column is never created, and the code that needs it fails at
+runtime with nothing in the log about a migration.
+
+Both are guarded now:
+- `listMigrations()` refuses two files sharing a version, by name, before any
+  SQL runs.
+- `migrate()` records the FILE each version came from (`schema_migrations.file`,
+  added in-place; pre-existing rows stay NULL and are not checked) and refuses
+  to proceed when a version was applied here from a different file.
+
+`tests/db-types.test.js` covers the tree being collision-free today, the
+duplicate guard firing, and the burned-version guard refusing rather than
+skipping. **Pick a number above every version the target database has seen —
+`SELECT max(version) FROM schema_migrations` on the box, not `ls migrations/`
+on main — and never renumber one that has already been applied anywhere.**
+
 ### The name was in front of us on every turn (fixed 2026-08-22)
 
 A user's card read `First name: unknown` and, two lines below it, `[context]

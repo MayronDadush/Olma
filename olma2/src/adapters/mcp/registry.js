@@ -18,6 +18,7 @@ const quota = require('../../domain/quota');
 const calendar = require('../../domain/calendar');
 const googleContacts = require('../../domain/google-contacts');
 const scheduleCard = require('../../domain/schedule-card');
+const pause = require('../../domain/pause');
 const cardStore = require('../../domain/card-store');
 const facts = require('../../domain/facts');
 const contacts = require('../../domain/contacts');
@@ -232,6 +233,26 @@ const TOOLS = [
     }, ['first_name'],
     (client, user, a) => users.setName(client, user.id, a.first_name, a.last_name,
       { confirmed: a.confirmed === true, source: a.confirmed === true ? 'user_stated' : 'observed' })),
+  // The tools that did not exist when a user asked to stop and Olma, having
+  // nothing to call, simply said goodbye and messaged him again the next
+  // morning. Pausing is reversible and deletes nothing — see domain/pause.js.
+  tool('pause_olma',
+    'Stop Olma from EVER reaching out to them again: check-ins, reminders, digests, '
+    + 'and anything another person\'s action would have sent them. Call this the moment someone '
+    + 'asks to stop, pause, unsubscribe, or says they are done — after ONE short confirming question '
+    + 'and their yes, never on a guess. It deletes NOTHING: their tasks, reminders and history all '
+    + 'stay, and resume_olma puts everything back. You still reply normally if they write to you — '
+    + 'that is them starting a conversation, not Olma starting one. Tell them plainly that you will '
+    + 'not write again and that they can come back any time by sending a message.',
+    { note: S('string', 'What they said, in their own words, if they gave a reason') }, [],
+    (client, user, a) => pause.pauseUser(client, user.id, { note: a.note })),
+  tool('resume_olma',
+    'Turn Olma\'s proactive messages back on for someone who had paused, and re-arm the repeating '
+    + 'reminders the pause took down (each returns at its own next real time, never at a moment that '
+    + 'has already passed). Only on their explicit ask — a paused person writing to you once is not a '
+    + 'request to be messaged again. Afterwards, tell them what came back.',
+    {}, [],
+    (client, user) => pause.resumeUser(client, user.id)),
   tool('set_my_timezone', 'Set IANA timezone. confirmed=true only when the user explicitly confirmed it.',
     { timezone: S('string', 'IANA name, e.g. Asia/Jerusalem'), confirmed: S('boolean', 'User explicitly confirmed') }, ['timezone'],
     (client, user, a) => users.setTimezone(client, user.id, a.timezone, a.confirmed)),

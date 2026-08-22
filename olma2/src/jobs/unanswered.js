@@ -54,7 +54,13 @@ async function sweepUnanswered(client, { readMessages, now = Date.now() } = {}) 
   const { rows } = await client.query(
     `SELECT id, agent_id, phone FROM users
      WHERE status = 'active' AND agent_id IS NOT NULL AND onboarded_at IS NOT NULL
-       AND quota_blocked_until IS NULL`
+       AND quota_blocked_until IS NULL
+       -- Pause has no exceptions, and this is the one that argues hardest for
+       -- being one: the repair exists to finish a conversation the person
+       -- themselves started. It stays out anyway — "Olma never initiates" is
+       -- only a promise if it has no clauses. They can write again, and the
+       -- live path answers a paused user normally.
+       AND paused_at IS NULL`
   );
 
   const repaired = [];

@@ -19,6 +19,7 @@ const { withTx } = require('../../db/pool');
 const { assessJobs, isStale } = require('../../jobs/expectations');
 const { correctionSql } = require('../../jobs/metrics');
 const { deprovisionUser, previewDeletion } = require('../../intake/deprovision');
+const pauseDomain = require('../../domain/pause');
 const sessionIndex = require('../../channels/sessions');
 const infraCost = require('../infra-cost');
 
@@ -292,7 +293,7 @@ const PLAN_LABEL = { free: 'חינם', paid: 'מנוי' };
 async function renderUsers(client, csrf) {
   const { rows } = await client.query(
     `SELECT u.id, u.phone, u.first_name, u.last_name, u.status, u.agent_id,
-            u.quota_blocked_until, u.quota_override_daily, u.onboarded_at, e.plan,
+            u.quota_blocked_until, u.quota_override_daily, u.onboarded_at, u.paused_at, e.plan,
             (SELECT count(*) FROM tasks t WHERE t.owner_id = u.id AND t.status = 'open' AND t.archived_at IS NULL) AS open_tasks
      FROM users u LEFT JOIN entitlements e ON e.user_id = u.id
      ORDER BY u.id LIMIT 200`);
@@ -305,7 +306,8 @@ async function renderUsers(client, csrf) {
     ${rows.map((u) => `<tr>
       <td><a href="/user?id=${u.id}">${esc([u.first_name, u.last_name].filter(Boolean).join(' ') || u.phone)}</a></td>
       <td class="mono dim">${esc(u.phone)}</td>
-      <td>${blocked(u) ? '<span class="pill warn">הגיע למכסה</span>'
+      <td>${u.paused_at ? '<span class="pill warn">ביקש להפסיק</span>'
+        : blocked(u) ? '<span class="pill warn">הגיע למכסה</span>'
         : u.status === 'active' ? '<span class="pill ok">פעיל</span>'
         : `<span class="pill">${STATUS_LABEL[u.status] || esc(u.status)}</span>`}</td>
       <td>${PLAN_LABEL[u.plan] || '—'}</td>
@@ -825,6 +827,25 @@ async function renderDeletePanel(client, u, confirming, csrf) {
   </section>`;
 }
 
+// Shown only when it applies, and above everything else on the page — every
+// number below it (queued messages, reminders, digest) is describing machinery
+// that is currently switched off, and reading them without knowing that is how
+// an operator concludes the system is broken.
+function renderPauseBanner(u, csrf) {
+  if (!u.paused_at) return '';
+  return `<section><h3>ביקש להפסיק</h3>
+    <p class="hint">הפסיק לקבל פניות יזומות ב-${esc(String(u.paused_at).slice(0, 16))}.
+      שום דבר לא נמחק — המשימות, העובדות וההיסטוריה שלו במקום. אולמה עדיין עונה לו אם הוא כותב.</p>
+    <form method="post" action="/users/resume" class="inline">
+      <input type="hidden" name="csrf" value="${csrf}">
+      <input type="hidden" name="user_id" value="${u.id}">
+      <input type="hidden" name="back" value="/user?id=${u.id}">
+      <button>החזר אותו לפעילות</button>
+    </form>
+    <p class="hint">רק אם הוא ביקש לחזור. התזכורות החוזרות שהושהו יחזרו למועד הבא האמיתי שלהן.</p>
+  </section>`;
+}
+
 async function renderUserPage(client, userId, { confirmDelete = false, csrf = '' } = {}) {
   const { rows: users } = await client.query(
     `SELECT u.*, e.plan FROM users u LEFT JOIN entitlements e ON e.user_id = u.id WHERE u.id = $1`, [userId]);
@@ -877,6 +898,7 @@ async function renderUserPage(client, userId, { confirmDelete = false, csrf = ''
         <div class="stat"><div class="num">${factRows.length}</div><div class="lbl">עובדות</div></div>
       </div>
     </section>
+    ${renderPauseBanner(u, csrf)}
     ${await renderPlannedForUser(client, u, csrf)}
     ${renderConversation(u)}
     <section><h3>משימות פתוחות</h3><p class="hint">כולל פרויקטים ותתי-משימות (↳), תזכורות ממתינות מסומנות ⏰.</p>
@@ -1282,6 +1304,20 @@ async function handleUserEdit(client, pathname, body) {
   const userId = Number(body.user_id) || 0;
   if (!userId) return null;
 
+  if (pathname === '/users/resume') {
+    // Deliberately one-way from here: an operator can bring someone BACK (they
+    // asked, through some channel that is not their own agent), but cannot
+    // pause them. Pausing is the person's own decision, made in their own
+    // conversation; an admin button for it would be a way to silence a user
+    // without their say.
+    const res = await pauseDomain.resumeUser(client, userId);
+    if (!res.ok) return null;
+    await auditDomain.record(client, userId, 'admin.user_resumed', {
+      remindersRearmed: res.data.rearmed.length,
+    });
+    return userId;
+  }
+
   if (pathname === '/prefs/set') {
     const res = await prefsDomain.remember(client, userId, String(body.key || '').trim(), body.value);
     if (!res.ok) return null;
@@ -1552,7 +1588,8 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
             if (/^\+\d{7,15}$/.test(body.phone || '')) {
               await deprovisionUser(client, body.phone, { configPath });
             }
-          } else if (url.pathname.startsWith('/outbox/') || url.pathname.startsWith('/prefs/')
+          } else if (url.pathname === '/users/resume'
+                     || url.pathname.startsWith('/outbox/') || url.pathname.startsWith('/prefs/')
                      || url.pathname.startsWith('/facts/')) {
             cardUserId = await handleUserEdit(client, url.pathname, body);
           }

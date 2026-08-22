@@ -180,6 +180,42 @@ test('turn_start drives the block flow: notice once, then silent', async () => {
   assert.match(r, /"directive":"silent"/); // one notice per window, never two
 });
 
+// The tools that did not exist the night a user asked to stop and Olma, with
+// nothing to call, said goodbye and messaged him again in the morning.
+test('pause_olma stops everything and resume_olma puts it back', async () => {
+  const u = await makeUser(db.pool, '+972571000009', { firstName: 'קפיש' });
+
+  const paused = await callTool('pause_olma', {
+    identity_token: u.identity_token, note: 'זהו',
+  });
+  assert.match(paused, /^OK /);
+  let { rows } = await db.pool.query('SELECT paused_at FROM users WHERE id = $1', [u.id]);
+  assert.ok(rows[0].paused_at, 'the goodbye is a tool call, not a sentence');
+
+  // and they can still talk to Olma — pausing stops Olma initiating, not Olma answering
+  const stillWorks = await callTool('turn_start', { identity_token: u.identity_token });
+  assert.match(stillWorks, /"directive":"proceed"/);
+
+  const resumed = await callTool('resume_olma', { identity_token: u.identity_token });
+  assert.match(resumed, /^OK /);
+  ({ rows } = await db.pool.query('SELECT paused_at FROM users WHERE id = $1', [u.id]));
+  assert.equal(rows[0].paused_at, null);
+
+  // resuming twice is refused rather than silently accepted
+  assert.match(await callTool('resume_olma', { identity_token: u.identity_token }),
+    /^ERROR invalid/);
+});
+
+test('one user can never pause another', async () => {
+  const victim = await makeUser(db.pool, '+972571000010', { firstName: 'לא אני' });
+  // there is no user-id parameter to abuse: identity is the token, full stop
+  await callTool('pause_olma', { identity_token: alice.identity_token, user_id: victim.id });
+  const { rows } = await db.pool.query('SELECT paused_at FROM users WHERE id = $1', [victim.id]);
+  assert.equal(rows[0].paused_at, null);
+  // clean up so later tests see alice running
+  await callTool('resume_olma', { identity_token: alice.identity_token });
+});
+
 test('unknown tool yields a clean error', async () => {
   const r = await callTool('summon_demons', { identity_token: alice.identity_token });
   assert.match(r, /^ERROR not_found/);
