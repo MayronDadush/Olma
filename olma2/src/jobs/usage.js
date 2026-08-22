@@ -1,65 +1,122 @@
 'use strict';
-// Per-user cost attribution from OpenClaw's own session usage counters.
-// Sessions report CUMULATIVE totals; we keep a snapshot per session and add
-// only positive deltas (a vanished/reset session simply re-baselines).
+// Per-user cost attribution, read from the gateway's TRANSCRIPTS.
 //
-// Cost prefers the gateway's own per-session estimate, which knows the actual
-// per-model input/output/cache rates. The blended cost_per_mtok_usd flag is
-// the fallback for sessions that don't report one.
-const flags = require('../domain/flags');
+// It used to read sessions.json's `totalTokens` and accumulate deltas, on the
+// belief that the field was a cumulative counter. Migration 010 has the full
+// autopsy; the short version is that it is a context-size gauge, that
+// `estimatedCostUsd` is derived from it, that each call's own cost block comes
+// back all-zero, and that rotated sessions vanish from the index entirely —
+// so a day Anthropic billed at $4.57 landed in our ledger as cents.
+//
+// Transcripts are append-only and every assistant message carries a real
+// usage block. Reading them from a stored byte offset gives an honest
+// high-water mark: the offset only moves forward, so a re-run charges nothing
+// twice, and nothing is lost when a session rotates because the FILE is still
+// there even after the index forgets it.
 const sessions = require('../channels/sessions');
+const pricing = require('../domain/model-pricing');
 
-// Reads the on-disk session index (no process spawn). Throws if it is
-// unreadable, so the usage_sweep heartbeat goes red instead of silently
-// recording zero cost forever.
-function defaultListAllSessions() {
-  return sessions.listSessions();
+// Which calendar day a call belongs to. Anthropic's own Cost page is in UTC
+// and reconciling against it is the point, so this deliberately does not use
+// the user's timezone the way user-facing dates do.
+function utcDate(at) {
+  const d = at ? new Date(at) : new Date();
+  return Number.isNaN(d.getTime()) ? new Date().toISOString().slice(0, 10) : d.toISOString().slice(0, 10);
 }
 
-async function sweepUsage(client, { listSessions } = {}) {
-  const sessions = await (listSessions || defaultListAllSessions)();
-  const costPerMtok = Number(await flags.getFlag(client, 'cost_per_mtok_usd') ?? 1.5);
-  let recorded = 0;
+async function sweepUsage(client, deps = {}) {
+  const listTranscripts = deps.listTranscripts || (() => sessions.listTranscripts());
+  const readUsage = deps.readTranscriptUsage || sessions.readTranscriptUsage;
+  const blended = await pricing.blendedRate(client);
 
-  for (const s of sessions) {
-    const agentId = s.agentId || '';
-    const total = Number(s.totalTokens || 0);
-    if (!s.sessionId || !agentId.startsWith('u-') || !(total > 0)) continue;
+  // agent_id -> user_id, resolved once. An agent with no user row (main,
+  // intake) is real spend with nobody to bill it to, and goes to the system
+  // ledger rather than being dropped the way it used to be.
+  const { rows: userRows } = await client.query(
+    `SELECT id, agent_id FROM users WHERE agent_id IS NOT NULL`);
+  const userByAgent = new Map(userRows.map((r) => [r.agent_id, Number(r.id)]));
 
+  // Accumulate in memory first, then write one row per bucket: a busy
+  // transcript holds hundreds of calls that all land on the same
+  // (owner, date, model) key, and that should be one UPDATE, not hundreds.
+  const buckets = new Map();
+  let calls = 0, filesRead = 0;
+
+  for (const t of listTranscripts()) {
     const prev = (await client.query(
-      `SELECT total_tokens FROM usage_session_snapshots WHERE session_id = $1`, [s.sessionId]
+      `SELECT byte_offset FROM usage_session_snapshots WHERE session_id = $1`, [t.sessionId]
     )).rows[0];
-    const prevTotal = prev ? Number(prev.total_tokens) : 0;
-    const delta = total - prevTotal;
-    // Attribute the same fraction of the session's reported cost as the token
-    // delta represents — the counters are cumulative, so the delta is the only
-    // part that is new since the last sweep.
-    const reported = s.estimatedCostUsd;
+    const fromOffset = prev ? Number(prev.byte_offset) : 0;
+    if (t.size === fromOffset) continue; // nothing appended since last sweep
 
+    const { calls: newCalls, offset } = readUsage(t.file, fromOffset);
     await client.query(
-      `INSERT INTO usage_session_snapshots (session_id, agent_id, model, total_tokens, updated_at)
-       VALUES ($1, $2, $3, $4, now())
-       ON CONFLICT (session_id) DO UPDATE SET total_tokens = $4, model = $3, updated_at = now()`,
-      [s.sessionId, agentId, s.model || '', total]
+      `INSERT INTO usage_session_snapshots (session_id, agent_id, model, byte_offset, transcript_path, updated_at)
+       VALUES ($1, $2, $3, $4, $5, now())
+       ON CONFLICT (session_id) DO UPDATE SET
+         byte_offset = $4, agent_id = $2, model = $3, transcript_path = $5, updated_at = now()`,
+      [t.sessionId, t.agentId, newCalls.length ? newCalls[newCalls.length - 1].model : '', offset, t.file]
     );
-    if (delta <= 0) continue; // new baseline or no growth — nothing to attribute
+    if (!newCalls.length) continue;
+    filesRead++;
 
-    const { rows: userRows } = await client.query(`SELECT id FROM users WHERE agent_id = $1`, [agentId]);
-    if (!userRows[0]) continue;
-    const cost = reported != null && reported > 0 && total > 0
-      ? reported * (delta / total)
-      : (delta / 1e6) * costPerMtok;
-    await client.query(
-      `INSERT INTO usage_ledger (user_id, date, model, total_tokens, cost_usd)
-       VALUES ($1, CURRENT_DATE, $2, $3, $4)
-       ON CONFLICT (user_id, date, model)
-       DO UPDATE SET total_tokens = usage_ledger.total_tokens + $3,
-                     cost_usd = usage_ledger.cost_usd + $4`,
-      [userRows[0].id, s.model || '', delta, cost.toFixed(4)]
-    );
+    const userId = userByAgent.get(t.agentId) ?? null;
+    for (const c of newCalls) {
+      const priced = pricing.priceUsage(c, c.model, blended);
+      const key = `${userId ?? 'agent:' + t.agentId}|${utcDate(c.at)}|${priced.model}`;
+      const b = buckets.get(key) || {
+        userId, agentId: t.agentId, date: utcDate(c.at), model: priced.model,
+        input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, estimated: false,
+      };
+      b.input += c.input; b.output += c.output;
+      b.cacheRead += c.cacheRead; b.cacheWrite += c.cacheWrite;
+      b.cost += priced.cost;
+      b.estimated = b.estimated || priced.estimated;
+      buckets.set(key, b);
+      calls++;
+    }
+  }
+
+  let recorded = 0;
+  for (const b of buckets.values()) {
+    const total = b.input + b.output + b.cacheRead + b.cacheWrite;
+    if (b.userId != null) {
+      await client.query(
+        `INSERT INTO usage_ledger
+           (user_id, date, model, input_tokens, output_tokens, cache_read_tokens,
+            cache_write_tokens, total_tokens, cost_usd, estimated)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT (user_id, date, model) DO UPDATE SET
+           input_tokens = usage_ledger.input_tokens + $4,
+           output_tokens = usage_ledger.output_tokens + $5,
+           cache_read_tokens = usage_ledger.cache_read_tokens + $6,
+           cache_write_tokens = usage_ledger.cache_write_tokens + $7,
+           total_tokens = usage_ledger.total_tokens + $8,
+           cost_usd = usage_ledger.cost_usd + $9,
+           estimated = usage_ledger.estimated OR $10`,
+        [b.userId, b.date, b.model, b.input, b.output, b.cacheRead, b.cacheWrite,
+         total, b.cost.toFixed(4), b.estimated]
+      );
+    } else {
+      await client.query(
+        `INSERT INTO usage_system_ledger
+           (agent_id, date, model, input_tokens, output_tokens, cache_read_tokens,
+            cache_write_tokens, cost_usd, estimated)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         ON CONFLICT (agent_id, date, model) DO UPDATE SET
+           input_tokens = usage_system_ledger.input_tokens + $4,
+           output_tokens = usage_system_ledger.output_tokens + $5,
+           cache_read_tokens = usage_system_ledger.cache_read_tokens + $6,
+           cache_write_tokens = usage_system_ledger.cache_write_tokens + $7,
+           cost_usd = usage_system_ledger.cost_usd + $8,
+           estimated = usage_system_ledger.estimated OR $9`,
+        [b.agentId, b.date, b.model, b.input, b.output, b.cacheRead, b.cacheWrite,
+         b.cost.toFixed(4), b.estimated]
+      );
+    }
     recorded++;
   }
-  return { sessions: sessions.length, recorded };
+  return { filesRead, calls, recorded };
 }
 
-module.exports = { sweepUsage, defaultListAllSessions };
+module.exports = { sweepUsage };

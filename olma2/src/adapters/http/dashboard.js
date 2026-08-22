@@ -165,30 +165,67 @@ async function renderInfraCosts() {
 }
 
 async function renderCost(client) {
+  // Days and month totals span BOTH ledgers: usage_ledger is per user, and
+  // usage_system_ledger holds the agents nobody owns (main, intake) — real
+  // spend that the old sweep dropped on the floor, which is part of why the
+  // attributed figure read low for a month.
   const days = await client.query(
-    `SELECT date, sum(total_tokens) AS tokens, sum(cost_usd) AS cost
-     FROM usage_ledger GROUP BY date ORDER BY date DESC LIMIT 14`);
+    `SELECT date, sum(cost) AS cost, bool_or(est) AS estimated FROM (
+       SELECT date, cost_usd AS cost, estimated AS est FROM usage_ledger
+       UNION ALL
+       SELECT date, cost_usd AS cost, estimated AS est FROM usage_system_ledger
+     ) x GROUP BY date ORDER BY date DESC LIMIT 14`);
   const top = await client.query(
     `SELECT u.first_name, u.phone, sum(l.total_tokens) AS tokens, sum(l.cost_usd) AS cost
      FROM usage_ledger l JOIN users u ON u.id = l.user_id
      WHERE l.date >= date_trunc('month', CURRENT_DATE)
      GROUP BY u.id ORDER BY cost DESC LIMIT 10`);
+  const system = await client.query(
+    `SELECT agent_id, sum(cost_usd) AS cost FROM usage_system_ledger
+     WHERE date >= date_trunc('month', CURRENT_DATE)
+     GROUP BY agent_id ORDER BY cost DESC`);
 
   const infraHtml = await renderInfraCosts();
 
   if (!days.rows.length) return infraHtml + '<p class="dim">עדיין אין נתוני עלות למשתמשים — החישוב רץ כל שעה.</p>';
-  const monthTotal = top.rows.reduce((s, r) => s + Number(r.cost), 0);
+  const usersTotal = top.rows.reduce((s, r) => s + Number(r.cost), 0);
+  const systemTotal = system.rows.reduce((s, r) => s + Number(r.cost), 0);
+  const monthTotal = usersTotal + systemTotal;
   const todayRow = days.rows[0];
+
+  // The reconciliation line. Anthropic's own usage_report is the billing
+  // truth; this table is our attribution of it. They should track closely, and
+  // when they do not that is the signal — a silent gap between the two is
+  // exactly how a gauge-read-as-a-counter went unnoticed for a month, with the
+  // ledger reporting cents against a real $17.77. Shown always, not only when
+  // it breaks, because a check nobody sees passing is a check nobody trusts.
+  let reconcile = '';
+  try {
+    const { anthropic } = await infraCost.getInfraCosts();
+    if (anthropic && anthropic.configured && !anthropic.error) {
+      const billed = Number(anthropic.monthTotal || 0);
+      const diff = billed > 0 ? Math.abs(billed - monthTotal) / billed : 0;
+      const ok = diff <= 0.15;
+      reconcile = `<p class="${ok ? 'dim' : 'warn'} small">${ok ? '✓' : '⚠'} התאמה מול Anthropic:
+        שויך כאן $${monthTotal.toFixed(2)} · חויב בפועל $${billed.toFixed(2)}
+        (פער ${(diff * 100).toFixed(0)}%)${ok ? '' : ' — מישהו צריך להסתכל על זה'}</p>`;
+    }
+  } catch { /* the reconciliation is a nicety; never let it break the page */ }
+
+  const anyEstimated = days.rows.some((r) => r.estimated);
   return infraHtml + `<h4>עלות מודל לפי משתמש</h4><div class="stats">
       <div class="stat"><div class="num">$${monthTotal.toFixed(2)}</div><div class="lbl">סה״כ החודש</div></div>
       <div class="stat"><div class="num">$${Number(todayRow.cost).toFixed(2)}</div><div class="lbl">היום</div></div>
       <div class="stat"><div class="num">${top.rows.length}</div><div class="lbl">משתמשים פעילים החודש</div></div>
     </div>
+    ${reconcile}
     <div class="cols"><div><h4>לפי יום</h4><table><tr><th>תאריך</th><th>עלות</th></tr>
-    ${days.rows.map((r) => `<tr><td class="nowrap">${esc(String(r.date).slice(0, 10))}</td><td>$${Number(r.cost).toFixed(3)}</td></tr>`).join('')}</table></div>
+    ${days.rows.map((r) => `<tr><td class="nowrap">${esc(String(r.date).slice(0, 10))}</td><td>$${Number(r.cost).toFixed(3)}${r.estimated ? ' <span class="dim">≈</span>' : ''}</td></tr>`).join('')}</table></div>
     <div><h4>לפי משתמש (החודש)</h4><table><tr><th>מי</th><th>עלות</th></tr>
-    ${top.rows.map((r) => `<tr><td>${esc(r.first_name || r.phone)}</td><td>$${Number(r.cost).toFixed(3)}</td></tr>`).join('')}</table></div></div>
-    <p class="dim small">הערכה לפי צריכת הטוקנים בפועל. החיוב האמיתי מגיע מ-Anthropic.</p>`;
+    ${top.rows.map((r) => `<tr><td>${esc(r.first_name || r.phone)}</td><td>$${Number(r.cost).toFixed(3)}</td></tr>`).join('')}
+    ${system.rows.map((r) => `<tr><td class="dim">${esc(r.agent_id)} (מערכת)</td><td class="dim">$${Number(r.cost).toFixed(3)}</td></tr>`).join('')}</table></div></div>
+    <p class="dim small">מחושב מהתמלילים עצמם — סכימת הטוקנים בפועל לפי התעריף של כל מודל.
+    ${anyEstimated ? 'שורות עם ≈ כוללות מודל בלי תעריף ידוע, שתומחר בתעריף ממוצע. ' : ''}החיוב האמיתי מגיע מ-Anthropic.</p>`;
 }
 
 const METRIC_LABELS = {
@@ -1400,6 +1437,7 @@ const STYLE = `<style>
   tbody tr:hover,table tr:hover{background:var(--surface-2)}
   a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
   .dim{color:var(--muted)} .small{font-size:12px} .mono{font-family:ui-monospace,SFMono-Regular,monospace}
+  p.warn{color:var(--warn)}
   .nowrap{white-space:nowrap}
   tr.bad td{background:var(--bad-dim)}
   .banner{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px}
