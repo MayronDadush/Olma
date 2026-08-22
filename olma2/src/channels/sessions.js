@@ -163,6 +163,68 @@ function readRecentMessages(agentId, limit = 10, base = HOME(), peer = null) {
   return out.reverse();
 }
 
+// The WhatsApp display name this person's turns arrived under.
+//
+// BACKFILL ONLY — do not reach for this on a live path. The supported way to
+// learn a display name is `turn_start(sender_name)`, where the agent passes on
+// what the gateway put in front of it for free; this function exists because
+// three live users were already nameless by the time that existed, and their
+// display names were sitting unread in the gateway's own trajectory files.
+//
+// It is deliberately the expensive one, and it goes around the session index
+// rather than through it: sessions.json holds only the CURRENT session per key,
+// and the block we need is usually not in that one — only turns the PERSON
+// started carry a Conversation info block, so a workspace whose recent traffic
+// is proactive delivery has none in its newest session at all. The retired
+// session files stay on disk, so this walks the whole directory newest-first
+// (trajectories run to hundreds of KB each) and checks `sender_id` on every
+// hit, because the intake agent's directory holds every stranger who ever
+// wrote in.
+const CONVERSATION_INFO_RE = /Conversation info[^\n]*\n```json\n([\s\S]*?)\n```/;
+
+function displayNameFromPrompt(prompt, peer = null) {
+  const m = CONVERSATION_INFO_RE.exec(String(prompt || ''));
+  if (!m) return null;
+  let info;
+  try { info = JSON.parse(m[1]); } catch { return null; }
+  const digits = (v) => String(v || '').replace(/\D/g, '');
+  // Whose turn this was. The intake agent's directory is shared by every
+  // stranger who ever wrote in, so a name lifted from the wrong session would
+  // be a name attached to the wrong person.
+  if (peer && digits(info.sender_id) !== digits(peer)) return null;
+  const sender = typeof info.sender === 'string' ? info.sender.trim() : '';
+  if (!sender) return null;
+  // With no display name set, the gateway puts the number in this field.
+  if (digits(sender) && digits(sender) === digits(info.sender_id)) return null;
+  return sender;
+}
+
+function readPeerDisplayName(agentId, peer, base = HOME()) {
+  const dir = path.join(base, 'agents', agentId, 'sessions');
+  let files;
+  try {
+    files = fs.readdirSync(dir)
+      .filter((f) => f.endsWith('.trajectory.jsonl'))
+      .map((f) => path.join(dir, f))
+      .map((f) => ({ f, mtime: fs.statSync(f).mtimeMs }))
+      .sort((a, b) => b.mtime - a.mtime)
+      .map((x) => x.f);
+  } catch { return null; }
+
+  for (const trajectory of files) {
+    let lines;
+    try { lines = fs.readFileSync(trajectory, 'utf8').split('\n'); } catch { continue; }
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i].includes('Conversation info')) continue;
+      let o;
+      try { o = JSON.parse(lines[i]); } catch { continue; }
+      const found = displayNameFromPrompt(o.data && o.data.prompt, peer);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 // Everything a stranger said to the intake greeter, joined into one blob.
 // This is what makes the greeter's silence safe: nothing the person typed
 // while we were setting them up is lost — their own agent gets it and
@@ -253,6 +315,6 @@ function readTranscriptUsage(file, fromOffset = 0) {
 
 module.exports = {
   listSessions, listSessionsForAgent, indexPath, parseKey,
-  readRecentMessages, readPeerUserText,
+  readRecentMessages, readPeerUserText, readPeerDisplayName, displayNameFromPrompt,
   listTranscripts, readTranscriptUsage,
 };

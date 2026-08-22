@@ -323,6 +323,169 @@ prior outbox row's `payload->>'topic'`) and falling back to plain silence only
 when there is genuinely nothing to offer. Three stuck users' inflated
 `checkin_misses` were reset via audited admin SQL after deploy.
 
+### "אני רוצה להפסיק את השירות" was answered with a goodbye and nothing else (fixed 2026-08-22)
+
+```
+21/08 19:47:01  him:  אני רוצה להפסיק את השירות
+21/08 19:47:08  Olma: בטוח? יש משהו שלא עובד כמו שצריך, או פשוט די לך?
+21/08 19:47:16  him:  זהו
+21/08 19:47:21  Olma: בסדר, קפיש. בהצלחה לך! 💙      ← and called NO tool
+22/08 06:21:21  Olma: שלום קפיש 👋 רציתי להציץ...     ← proactive check-in
+```
+
+His daily medication reminder was still armed for that evening too. The
+conversation was handled exactly right — one confirming question, a clear
+answer, a warm goodbye — and then nothing happened, because **there was nothing
+to call**: no tool, no dashboard control, and `users.checkin_enabled` was a dead
+switch (one query read it, nothing on the box ever wrote it, and it only ever
+covered check-ins anyway). The only "stop" that existed anywhere was the
+dashboard's delete button — irreversible, operator-only, and not what he asked
+for. Same shape as the two bugs above it: the agent understood, and the outcome
+had no structured home.
+
+**Pause is reversible and deletes nothing** (`domain/pause.js`, migration 013
+`users.paused_at`). Someone done with a product is not asking to be erased;
+treating "stop messaging me" as "delete my account" would be a second thing
+done to them they never asked for. Tasks, reminders, facts, preferences and
+history all stay.
+
+- **`pause_olma` / `resume_olma`** are the tools that were missing.
+  `agents-template.md` gained **"When they want you to stop"**: one confirming
+  question → on their yes call `pause_olma` THAT TURN, before replying → then
+  say plainly that Olma will not write again, nothing was deleted, and one
+  message brings it back. Never argue, never pitch to retain, never ask twice.
+- **The gate is the chokepoint.** `outbox/gate.js` returns a new terminal
+  action `drop` for a paused user, checked FIRST and with no exceptions —
+  not reminders (the user picked the time, and they have now unpicked it), not
+  urgent, not another user's fan-out. `hold` would mean delivering later and
+  there is no later; `expire` folds into a digest and would then be delivered.
+  The worker stamps `sent_at` with `hold_reason = 'paused'` (UPDATE, never
+  DELETE, so the producing sweep cannot recreate it) and excludes those rows
+  from the daily budget count, so six cancelled messages do not exhaust the
+  budget on return.
+- **Every sweep also skips paused users** (`checkin`, `sweepDigests`,
+  `reminders.dueForSending`, `unanswered`, `fact-extraction`) so the rows are
+  mostly never manufactured. `dueForSending` matters twice: successors are
+  written per send, so an unguarded paused user grows a fresh reminder row
+  every day they are away. `unanswered` is the exception that argues hardest to
+  be one — it exists to finish a conversation the PERSON started — and stays
+  out anyway: "Olma never initiates" is only a promise if it has no clauses.
+- **Reactive replies still work.** Pausing stops Olma initiating, not Olma
+  answering — a person who writes wants something. The card shows `PAUSED` with
+  an explicit instruction never to offer, pitch or schedule while it is set.
+- **Resume re-arms repeating reminders at their own next real time**
+  (`nextOccurrenceAfter` walks the rule forward from its last occurrence), so
+  "18:00 daily" comes back at 18:00, not at whatever hour resume was pressed.
+  A one-off whose moment passed is NOT resurrected. Matching is on
+  `cancelled_at >= paused_at`, `DISTINCT ON (task_id)`, so two pauses cannot
+  bring the same reminder back twice.
+- **The dashboard can resume, never pause.** An operator can bring someone back
+  (they asked, through some channel that is not their agent); there is no admin
+  pause button, because that would be a way to silence a user without their say.
+
+Live: קפיש (user 9) was stopped by hand the moment this was found — reminder
+#32 cancelled ~10h before it would have fired, `checkin_enabled = false`,
+audited as `admin.service_stopped` with `dataDeleted: false` — then migrated
+onto `paused_at` once this shipped.
+
+### Two branches, one migration number (fixed 2026-08-22)
+
+`src/db/migrate.js` derives `version` from `parseInt(filename)`, and
+`schema_migrations.version` is the PRIMARY KEY. Two branches each adding an
+`011-*.sql` — the ordinary way this repo works, since neither sees the other's
+file until they merge — meant the runner applied one, inserted version 11, then
+violated the key on the second. Every test file's `freshDb()` threw inside its
+`before` hook and the suite stopped producing a readable result at all.
+
+The part that cost the most time: **only the `pull_request` build ever sees
+both files.** `actions/checkout` builds a merge commit for `pull_request` and
+checks out the branch head for `push`, so the branch's own push build stayed
+green and passed in 41s while the PR check hung indefinitely on the same
+commit, same runner, same job definition.
+
+The other half is worse and is what actually bit this branch twice. A version
+can be burned by a branch that never merged: production had version 12 applied
+from `012-usage-from-transcripts.sql`, deployed by hand off
+`perf/prompt-cache-costs`, while `main` still ends at 011. A same-named new 012
+would then be filtered out of `pending` as "already applied" — deploy reports
+success, the column is never created, and the code that needs it fails at
+runtime with nothing in the log about a migration.
+
+Both are guarded now:
+- `listMigrations()` refuses two files sharing a version, by name, before any
+  SQL runs.
+- `migrate()` records the FILE each version came from (`schema_migrations.file`,
+  added in-place; pre-existing rows stay NULL and are not checked) and refuses
+  to proceed when a version was applied here from a different file.
+
+`tests/db-types.test.js` covers the tree being collision-free today, the
+duplicate guard firing, and the burned-version guard refusing rather than
+skipping. **Pick a number above every version the target database has seen —
+`SELECT max(version) FROM schema_migrations` on the box, not `ls migrations/`
+on main — and never renumber one that has already been applied anywhere.**
+
+### The name was in front of us on every turn (fixed 2026-08-22)
+
+A user's card read `First name: unknown` and, two lines below it, `[context]
+שמו חיים.` — the same file asserting both. `users.first_name` was NULL, so the
+dashboard, the digest and every invitation showed his phone number, and
+`connections.requestConnection` refused outright (it hard-requires a first
+name), while his own agent greeted him as חיים because it read the name off the
+FACT card. Four of eight active users were nameless; three of them had a
+display name the system had watched go past on every turn.
+
+The name arrives with EVERY inbound message. The gateway prepends a
+`Conversation info (untrusted metadata)` block carrying `"sender": "חיים דדוש"`
+— visible to the model, never to brokerd, and written down by nobody. Three
+layers each had their own reason to drop it:
+
+- **Provisioning only knew one source.** `intake/provision.js` prefills a name
+  from `user_contacts` (someone else's address book). Nothing read the display
+  name, and `jobs/intake.js` passes no `firstName` at all, so an organic joiner
+  starts NULL by construction.
+- **The doctrine said ASK, so the agent never SAVED.** `agents-template.md`
+  ranked the name first on the curiosity ladder as *"ask what to call them"*,
+  and `set_my_name`'s own tool description said *"their own request only"* —
+  actively telling the agent not to record a name it could plainly see.
+- **The read-back had nowhere to put it.** `jobs/fact-extraction.js` did learn
+  the name, and its only tools were `remember_fact`/`add_task`, so the name
+  landed in `user_facts` as prose. Exactly the vehicles failure one layer down:
+  the net catches it and files it where nothing looks.
+
+The fix turns on one distinction `setTimezone` already drew in this table:
+**`setName(..., { confirmed })`**. Confirmed = they told us, and it overwrites.
+Unconfirmed = we observed it (display name, a name read back out of a
+transcript) — it fills a blank, refines an earlier guess, is audited as
+`user.name_observed`, and can NEVER overwrite a name the person confirmed
+(guarded in the UPDATE itself, not read-then-write). A guess is worth far more
+than a blank: it is what lets Olma use the name at all, and `name_confirmed =
+false` keeps the agent checking. On top of that:
+
+- `turn_start` takes `sender_name` and captures it only when `first_name` is
+  NULL. It runs on every message, so it cannot join `CARD_TOOLS` — it flags the
+  envelope (`result.cardStale`, honoured in `brokerd/server.js`) on the one turn
+  in a person's life that fills the name in. `render.js` serialises `data` only,
+  so the flag never reaches the model.
+- Untrusted is the right label and the reason this is safe: `cleanName` already
+  bounds a name to one line of 60 chars because it is interpolated unwrapped
+  into another person's agent instruction (`domain/connections.js`). A `sender`
+  that is mostly digits is the gateway echoing the number back — dropped.
+- The extraction job gets a THIRD pass, offered only when there is no name on
+  file, and `set_my_name` in its tool list; the fact pass is told a name belongs
+  in the profile. The card now spells out both the unknown and the unconfirmed
+  case instead of printing a bare `unknown` nobody acted on.
+
+**Going back for the ones it already happened to** is
+`scripts/repair-missing-name.js` (dry-run by default, `--phone` to aim,
+`--name` for a peer who set no display name, `--keep-facts`). It reads the
+display name out of the gateway's own trajectory files
+(`sessions.readPeerDisplayName` — BACKFILL ONLY, hundreds of KB per session,
+newest-first across all of a peer's sessions because only turns the PERSON
+started carry a Conversation info block), writes it unconfirmed, soft-deletes
+the fact the name had been hiding in, and refreshes USER.md. It sends nothing:
+messaging someone to say we had forgotten their name would cost them more than
+the bug did.
+
 ### A goal said out loud left no trace anywhere (fixed 2026-08-21)
 
 A user told Olma he needed to sell three of his vehicles. It was never saved,
@@ -403,13 +566,18 @@ alongside a counter-proposal for the same reason.
 possibly-dead slot is the bug itself. `sweepStaleMeetings` (in the existing
 minute tick, no new cron) closes what passed: 6h after the start, or after
 `LEGACY_STALE_DAYS = 3` untouched for NULL-start rows. The grace is deliberate
-— closing a meeting early is worse than closing it late. Each close tells the
-INITIATOR once (`meeting_expired`, idempotency key `mexpired:<id>`), because
-they are the only one who can restart it.
+— closing a meeting early is worse than closing it late. The automatic sweep
+tells the INITIATOR once (`meeting_expired`, idempotency key `mexpired:<id>`),
+because they are the only one who can restart it.
 
 `scripts/close-stale-meeting.js --phone <n>` lists someone's open negotiations
-with ages; `--id N --apply` closes one and reuses the same idempotency key, so
-it can never double-message a meeting the sweep already handled.
+with ages; `--id N --apply` closes one — and, unlike the sweep, tells EVERY
+active participant, not just the initiator (`mexpired:<id>:<userId>` each).
+An operator closing a meeting by hand is very often doing it on behalf of the
+person who was AWAITING an answer, not the one who asked — that person
+deserves to know it ended too. `expireOne`'s `UPDATE ... WHERE status =
+'negotiating'` still guarantees only one of {sweep, script} ever succeeds on a
+given meeting, so this can never double-message anyone.
 
 ### "I can't do that" was the whole answer (fixed 2026-08-21)
 

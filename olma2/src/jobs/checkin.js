@@ -113,7 +113,7 @@ async function eligibleUsers(client, now) {
             ) AS last_activity
      FROM users u
      WHERE u.status = 'active' AND u.checkin_enabled AND u.onboarded_at IS NOT NULL
-       AND u.quota_blocked_until IS NULL`,
+       AND u.quota_blocked_until IS NULL AND u.paused_at IS NULL`,
     []
   );
   return rows.filter((u) => {

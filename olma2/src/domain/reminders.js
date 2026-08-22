@@ -118,8 +118,14 @@ async function dueForSending(client, now) {
             t.owner_id, t.title, t.due_at
      FROM task_reminders r
      JOIN tasks t ON t.id = r.task_id
+     JOIN users u ON u.id = t.owner_id
      WHERE r.remind_at <= $1 AND r.sent_at IS NULL AND r.cancelled_at IS NULL
        AND t.status = 'open' AND t.archived_at IS NULL
+       -- A paused user's reminders are already cancelled by pauseUser; this is
+       -- the belt to that braces, and it also stops the sweep writing SUCCESSOR
+       -- rows (which happens per send, so an unguarded paused user would grow a
+       -- fresh reminder every day they were away).
+       AND u.paused_at IS NULL
      ORDER BY r.remind_at`,
     [now]
   );

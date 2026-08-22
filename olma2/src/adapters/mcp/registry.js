@@ -18,6 +18,7 @@ const quota = require('../../domain/quota');
 const calendar = require('../../domain/calendar');
 const googleContacts = require('../../domain/google-contacts');
 const scheduleCard = require('../../domain/schedule-card');
+const pause = require('../../domain/pause');
 const cardStore = require('../../domain/card-store');
 const facts = require('../../domain/facts');
 const contacts = require('../../domain/contacts');
@@ -38,6 +39,29 @@ const S = (type, description, extra) => ({ type, description, ...(extra || {}) }
 
 function actorName(user) {
   return [user.first_name, user.last_name].filter(Boolean).join(' ') || user.phone;
+}
+
+// A WhatsApp display name is one free-text field, not a first/last pair, so it
+// splits at the first space and stops there: "חיים דדוש" → חיים + דדוש,
+// "גלי" → גלי. When the peer has set no display name the gateway falls back to
+// putting the number itself in that field, which tells us nothing — a `sender`
+// that is mostly digits is dropped rather than saved as somebody's name.
+async function captureDisplayName(client, user, raw) {
+  const text = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!text) return err('invalid', 'no display name in this turn');
+  if (text.replace(/\D/g, '').length >= 7) return err('invalid', 'that is their phone number');
+  const [first, ...rest] = text.split(' ');
+  return users.setName(client, user.id, first, rest.join(' ') || null,
+    { confirmed: false, source: 'whatsapp_display_name' });
+}
+
+// Marks the caller's USER.md as needing a re-render, for a handler whose tool
+// only sometimes changes something the card shows. It rides the result
+// ENVELOPE, never result.data — render.js serialises data alone, so the model
+// never sees this (see brokerd/server.js for the other half).
+function stale(result, when) {
+  if (when) result.cardStale = true;
+  return result;
 }
 
 async function fanout(client, userIds, kind, payload, { urgency = 'urgent', key } = {}) {
@@ -136,8 +160,8 @@ async function connectedUserByPhone(client, actorId, phone, feature) {
 
 const TOOLS = [
   // ---------------------------------------------------------------- turn gate
-  tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and tells you how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all).',
-    {}, [],
+  tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and tells you how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all). Pass sender_name whenever the turn\'s Conversation info carries one.',
+    { sender_name: S('string', 'The `sender` field from this turn\'s Conversation info, verbatim. Only ever used to fill a name we do not have, always as an unconfirmed guess — never overwrites a name they gave you themselves.') }, [],
     async (client, user, args, ctx) => {
       if (ctx.flood && ctx.flood.isFlooding(user.id)) {
         return ok({ directive: 'silent', reason: 'flood' });
@@ -149,6 +173,24 @@ const TOOLS = [
         `UPDATE users SET last_inbound_at = now(),
                 checkin_misses = CASE WHEN checkin_misses > 0 THEN 0 ELSE checkin_misses END
          WHERE id = $1`, [user.id]);
+      // The WhatsApp display name is in front of the agent on EVERY turn, in the
+      // gateway's "Conversation info (untrusted metadata)" block — and until
+      // this line it was the one thing about a person the system watched go past
+      // and never wrote down. Live proof: a user whose every turn opened with
+      // `"sender": "חיים דדוש"` had first_name NULL for two days, while the
+      // read-back job filed his name in the fact table as prose.
+      //
+      // Untrusted is exactly right and exactly why this is safe: a display name
+      // is self-chosen, so it lands as an unconfirmed guess (the agent still
+      // confirms it) and it is bounded by cleanName to one line of 60 chars,
+      // which is what keeps it harmless where a name is interpolated into
+      // another person's agent instruction (see domain/users.cleanName).
+      // Nothing here can overwrite a name they actually gave us.
+      let namedNow = false;
+      if (!user.first_name && args && typeof args.sender_name === 'string') {
+        const named = await captureDisplayName(client, user, args.sender_name);
+        namedNow = named.ok;
+      }
       const counted = await quota.countMessage(client, user.id);
       // One row per inbound message, purely so the north-star metric can exist.
       // `last_inbound_at` above is overwritten every time, so before this there
@@ -157,11 +199,15 @@ const TOOLS = [
       // Cheap: bounded by the daily quota, classed 'routine', pruned by the
       // retention sweep like every other operational row.
       await audit.record(client, user.id, 'message.received', null);
-      if (!counted.data.blocked) return ok({ directive: 'proceed', locale: user.locale });
+      // USER.md is re-rendered only when something on it moved. turn_start runs
+      // on every single message, so it cannot join CARD_TOOLS wholesale — it
+      // flags the card itself, on the one turn in a person's life that fills in
+      // their name (see brokerd/server.js).
+      if (!counted.data.blocked) return stale(ok({ directive: 'proceed', locale: user.locale }), namedNow);
       const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);
-      if (!shouldNotice) return ok({ directive: 'silent', reason: 'blocked_already_notified' });
+      if (!shouldNotice) return stale(ok({ directive: 'silent', reason: 'blocked_already_notified' }), namedNow);
       const view = await digest.assemble(client, user.id, 'block_view');
-      return ok({ directive: 'send_block_notice', blockView: view.data });
+      return stale(ok({ directive: 'send_block_notice', blockView: view.data }), namedNow);
     }),
 
   // ---------------------------------------------------------------- profile
@@ -174,9 +220,39 @@ const TOOLS = [
         locale: user.locale, plan, digestTimes: user.digest_times, digestScope: user.digest_scope,
       });
     }),
-  tool('set_my_name', 'Set the user\'s first/last name (their own request only).',
-    { first_name: S('string', 'First name'), last_name: S('string', 'Last name (optional)') }, ['first_name'],
-    (client, user, a) => users.setName(client, user.id, a.first_name, a.last_name)),
+  tool('set_my_name',
+    'Save what this person is called. Call it the moment you know, do not wait to be asked: '
+    + 'confirmed=true when they told you themselves ("קוראים לי חיים"), and confirmed=false — the default — '
+    + 'for a name you merely saw, like the WhatsApp display name or one that came up in conversation. '
+    + 'A name never belongs in remember_fact. An unconfirmed guess is still worth saving: it is what lets you '
+    + 'greet them by name and check it in passing, and it never overwrites a name they confirmed.',
+    {
+      first_name: S('string', 'First name'),
+      last_name: S('string', 'Last name (optional)'),
+      confirmed: S('boolean', 'TRUE only when they stated it themselves. Default FALSE.'),
+    }, ['first_name'],
+    (client, user, a) => users.setName(client, user.id, a.first_name, a.last_name,
+      { confirmed: a.confirmed === true, source: a.confirmed === true ? 'user_stated' : 'observed' })),
+  // The tools that did not exist when a user asked to stop and Olma, having
+  // nothing to call, simply said goodbye and messaged him again the next
+  // morning. Pausing is reversible and deletes nothing — see domain/pause.js.
+  tool('pause_olma',
+    'Stop Olma from EVER reaching out to them again: check-ins, reminders, digests, '
+    + 'and anything another person\'s action would have sent them. Call this the moment someone '
+    + 'asks to stop, pause, unsubscribe, or says they are done — after ONE short confirming question '
+    + 'and their yes, never on a guess. It deletes NOTHING: their tasks, reminders and history all '
+    + 'stay, and resume_olma puts everything back. You still reply normally if they write to you — '
+    + 'that is them starting a conversation, not Olma starting one. Tell them plainly that you will '
+    + 'not write again and that they can come back any time by sending a message.',
+    { note: S('string', 'What they said, in their own words, if they gave a reason') }, [],
+    (client, user, a) => pause.pauseUser(client, user.id, { note: a.note })),
+  tool('resume_olma',
+    'Turn Olma\'s proactive messages back on for someone who had paused, and re-arm the repeating '
+    + 'reminders the pause took down (each returns at its own next real time, never at a moment that '
+    + 'has already passed). Only on their explicit ask — a paused person writing to you once is not a '
+    + 'request to be messaged again. Afterwards, tell them what came back.',
+    {}, [],
+    (client, user) => pause.resumeUser(client, user.id)),
   tool('set_my_timezone', 'Set IANA timezone. confirmed=true only when the user explicitly confirmed it.',
     { timezone: S('string', 'IANA name, e.g. Asia/Jerusalem'), confirmed: S('boolean', 'User explicitly confirmed') }, ['timezone'],
     (client, user, a) => users.setTimezone(client, user.id, a.timezone, a.confirmed)),

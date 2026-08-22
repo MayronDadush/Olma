@@ -153,7 +153,12 @@ async function provisionUser(client, {
   );
   user = rows[0];
 
-  if (prefillAudit && user.first_name === firstName) {
+  // Compare against the CLEANED name, not the raw prefill guess — createUser
+  // truncates first_name to 60 chars on insert, so a 61-80 char agreed name
+  // (contacts.js allows up to 80) would otherwise never equal-match here and
+  // the audit record would be silently dropped for exactly the names this
+  // check exists to catch.
+  if (prefillAudit && user.first_name === usersDomain.cleanName(firstName)) {
     await audit.record(client, user.id, 'user.name_prefilled_from_contacts', prefillAudit);
   }
 

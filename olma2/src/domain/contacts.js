@@ -17,6 +17,11 @@ const MAX_NOTE_CHARS = 200;
 // whose source is 'contact_card' or 'user_stated'.
 const KNOWN_SOURCES = ['contact_card', 'user_stated', 'google', 'vcard'];
 const IMPORT_SOURCES = ['google', 'vcard'];
+// The single-contact tool only ever writes a person's own word — never let it
+// claim an import source, or a hand-saved row becomes indistinguishable from
+// a synced one and a later import silently overwrites it (importContacts'
+// upsert guard only protects contact_card/user_stated rows).
+const SAVE_SOURCES = ['contact_card', 'user_stated'];
 const TYPE_LABEL = { work: 'עבודה', home: 'בית', other: 'נוסף' };
 // Longest dialling code first, so 972 wins over 97 and 351 over 35 — the same
 // ordering rule phone-timezone depends on, for the same reason.
@@ -82,7 +87,7 @@ async function saveContact(client, userId, { name, phone, source, note } = {}) {
   if (!e164) {
     return err('invalid', 'could not read that as a phone number', { reason: 'bad_phone' });
   }
-  const src = KNOWN_SOURCES.includes(source) ? source : 'contact_card';
+  const src = SAVE_SOURCES.includes(source) ? source : 'contact_card';
   const cleanNote = note ? String(note).replace(/\s+/g, ' ').trim().slice(0, MAX_NOTE_CHARS) : null;
 
   const { rows } = await client.query(

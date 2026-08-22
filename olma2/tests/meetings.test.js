@@ -296,8 +296,11 @@ test('expireOne closes a single dead negotiation and refuses anything else', asy
 
     const closed = await meetings.expireOne(c, m.id);
     assert.equal(closed.ok, true);
-    assert.equal(Number(closed.data.meeting.initiator_id), Number(a.id),
-      'the initiator is who gets told');
+    assert.equal(Number(closed.data.meeting.initiator_id), Number(a.id));
+    // both sides come back — the one waiting for an answer is very often not
+    // the one who asked the question, and they deserve to be told too.
+    assert.deepEqual(closed.data.participantIds.map(Number).sort(),
+      [Number(a.id), Number(b.id)].sort());
 
     const { rows } = await c.query(`SELECT status FROM meetings WHERE id = $1`, [m.id]);
     assert.equal(rows[0].status, 'expired');
@@ -309,5 +312,27 @@ test('expireOne closes a single dead negotiation and refuses anything else', asy
     const { rows: log } = await c.query(
       `SELECT event FROM audit_log WHERE event = 'admin.meeting.expired' AND actor_id = $1`, [a.id]);
     assert.equal(log.length, 1, 'an operator close is on the record like any other admin edit');
+  });
+});
+
+test('expireOne drops an opted-out participant but keeps everyone still on it', async () => {
+  const { a, b } = await pair('+972571000017', '+972571000018');
+  const c3 = await makeUser(db.pool, '+972571000019', { firstName: 'C' });
+  await withClient(async (cl) => {
+    const connections = require('../src/domain/connections');
+    const grants = require('../src/domain/grants');
+    const req = await connections.requestConnection(cl, a.id, c3.phone, {});
+    const conn = (await connections.respondToConnection(cl, c3.id, req.data.connection.id, 'approve')).data.connection;
+    await grants.grantFeature(cl, a.id, conn.id, 'meetings');
+    await grants.grantFeature(cl, c3.id, conn.id, 'meetings');
+
+    const m = (await meetings.startMeeting(cl, a.id, 'פוקר', [b.id, c3.id])).data.meeting;
+    await meetings.proposeSlot(cl, a.id, m.id, 'יום שישי 20:00', soon());
+    await meetings.optOut(cl, c3.id, m.id);
+
+    const closed = await meetings.expireOne(cl, m.id);
+    assert.deepEqual(closed.data.participantIds.map(Number).sort(),
+      [Number(a.id), Number(b.id)].sort(),
+      'someone who already left on their own does not need to be told it ended');
   });
 });

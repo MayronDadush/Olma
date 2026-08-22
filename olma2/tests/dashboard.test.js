@@ -871,3 +871,42 @@ test('the address book is behind the admin password like the rest of the dashboa
   const res = await fetch(base + '/contacts');
   assert.equal(res.status, 401, 'one user\'s private contacts must never be public');
 });
+
+// ---- someone who asked to stop ---------------------------------------------
+
+test('the user page says they asked to stop, and the button brings them back', async () => {
+  const pause = require('../src/domain/pause');
+  const u = await makeUser(db.pool, '+972611000099', { firstName: 'קפיש' });
+  await withTx(db.pool, (c) => pause.pauseUser(c, u.id, { note: 'זהו' }));
+
+  const page = await (await fetch(`${base}/user?id=${u.id}`, { headers: { Authorization: AUTH } })).text();
+  assert.match(page, /ביקש להפסיק/, 'an operator reading queued-message counts must know they are off');
+  assert.match(page, /שום דבר לא נמחק/);
+  assert.match(page, /\/users\/resume/);
+
+  const csrf = 'test-csrf-resume';
+  const res = await fetch(base + '/users/resume', {
+    method: 'POST', redirect: 'manual',
+    headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `user_id=${u.id}&back=/user?id=${u.id}&csrf=${csrf}`,
+  });
+  assert.equal(res.status, 303);
+  const { rows } = await db.pool.query('SELECT paused_at FROM users WHERE id = $1', [u.id]);
+  assert.equal(rows[0].paused_at, null);
+
+  const { rows: trail } = await db.pool.query(
+    `SELECT event FROM audit_log WHERE actor_id = $1 AND event = 'admin.user_resumed'`, [u.id]);
+  assert.equal(trail.length, 1, 'an operator bringing someone back leaves a trail');
+});
+
+test('the dashboard offers no way to pause someone on their behalf', async () => {
+  const u = await makeUser(db.pool, '+972611000098', { firstName: 'לא אני' });
+  const csrf = 'test-csrf-nopause';
+  await fetch(base + '/users/pause', {
+    method: 'POST', redirect: 'manual',
+    headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `user_id=${u.id}&csrf=${csrf}`,
+  });
+  const { rows } = await db.pool.query('SELECT paused_at FROM users WHERE id = $1', [u.id]);
+  assert.equal(rows[0].paused_at, null, 'pausing is the person\'s own decision, not an admin button');
+});

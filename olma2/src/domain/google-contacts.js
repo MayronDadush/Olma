@@ -254,35 +254,40 @@ function phonesOf(person) {
 }
 
 async function importFromGoogle(client, userId, opts = {}) {
-  return withAccessToken(client, userId, { ...opts, budget: opts.budget || google.createBudget(20000) }, async (token, o) => {
-    const entries = [];
-    let pageToken, pages = 0;
-    do {
-      const params = new URLSearchParams({
-        personFields: 'names,phoneNumbers', pageSize: String(PEOPLE_PAGE_SIZE),
-      });
-      if (pageToken) params.set('pageToken', pageToken);
-      let body;
+  const budget = opts.budget || google.createBudget(20000);
+  const entries = [];
+  let pageToken, pages = 0;
+  // Each page is its own withAccessToken call so a 401 partway through a
+  // large address book only retries the page that failed, not the whole
+  // paginated fetch from scratch (a shared budget still bounds the total
+  // work across pages and retries).
+  do {
+    const params = new URLSearchParams({
+      personFields: 'names,phoneNumbers', pageSize: String(PEOPLE_PAGE_SIZE),
+    });
+    if (pageToken) params.set('pageToken', pageToken);
+    const page = await withAccessToken(client, userId, { ...opts, budget }, async (token, o) => {
       try {
-        body = await google.peopleFetch(token, `/people/me/connections?${params}`, o);
+        return ok(await google.peopleFetch(token, `/people/me/connections?${params}`, o));
       } catch (e) {
         if (e.code === 'unauthorized') throw e;
         return err('conflict', e.message, { reason: e.code || 'http' });
       }
-      for (const person of body.connections || []) {
-        const name = person.names && person.names[0] && person.names[0].displayName;
-        if (!name) continue; // no importContacts entry — nothing to save it under
-        entries.push({ name, phones: phonesOf(person) });
-      }
-      pageToken = body.nextPageToken;
-      pages++;
-    } while (pageToken && pages < MAX_PAGES);
+    });
+    if (!page.ok) return page;
+    for (const person of page.data.connections || []) {
+      const name = person.names && person.names[0] && person.names[0].displayName;
+      if (!name) continue; // no importContacts entry — nothing to save it under
+      entries.push({ name, phones: phonesOf(person) });
+    }
+    pageToken = page.data.nextPageToken;
+    pages++;
+  } while (pageToken && pages < MAX_PAGES);
 
-    const res = await contacts.importContacts(client, userId, entries, 'google');
-    if (!res.ok) return res;
-    const row = await loadIntegration(client, userId);
-    return ok({ ...res.data, account: row ? row.account_label : null });
-  });
+  const res = await contacts.importContacts(client, userId, entries, 'google');
+  if (!res.ok) return res;
+  const row = await loadIntegration(client, userId);
+  return ok({ ...res.data, account: row ? row.account_label : null });
 }
 
 module.exports = {
