@@ -54,6 +54,11 @@ function readInboundVcf(rawPath) {
   if (!/^﻿?\s*BEGIN:VCARD/i.test(text)) {
     return err('invalid', 'that file does not look like a contact card (.vcf)');
   }
+  // Consume it: the shared inbound directory has no per-user ownership check,
+  // so a path that leaked across turns/users (predictable name, echoed back)
+  // must not be readable a second time — same one-turn-visibility guarantee
+  // the gateway already gives WhatsApp contact cards.
+  try { fs.unlinkSync(real); } catch { /* best effort */ }
   return ok({ text });
 }
 
