@@ -4,6 +4,7 @@
 // brokerd's loop — no crontab sprawl, one heartbeat each.
 const { enqueue, collectHeld } = require('../outbox/enqueue');
 const reminders = require('../domain/reminders');
+const meetings = require('../domain/meetings');
 const quota = require('../domain/quota');
 const { minutesInTz, parseHHMM } = require('../outbox/gate');
 
@@ -106,4 +107,25 @@ async function sweepUnblocks(client, nowIso) {
   return out;
 }
 
-module.exports = { sweepReminders, sweepDigests, sweepUnblocks };
+// ---- stale meetings ---------------------------------------------------------
+// Nothing ever closed a negotiation whose moment had passed, so an unanswered
+// proposal stayed open forever and the check-in ladder kept asking about it —
+// a Saturday nudge about Friday's poker game. Closing it is half the fix; the
+// other half is telling the person, once, so a plan that quietly died does not
+// just vanish. Only the initiator hears: they are the one who can restart it.
+async function sweepStaleMeetings(client, nowMs) {
+  const closed = await meetings.expireStaleMeetings(client, nowMs || Date.now());
+  const out = [];
+  for (const m of closed) {
+    const res = await enqueue(client, {
+      userId: Number(m.initiator_id), kind: 'meeting_expired',
+      payload: { meetingId: Number(m.id), title: m.title || 'meeting', slot: m.proposed_slot },
+      urgency: 'normal',
+      idempotencyKey: `mexpired:${m.id}`,
+    });
+    out.push({ meetingId: Number(m.id), notified: res.data.enqueued });
+  }
+  return out;
+}
+
+module.exports = { sweepReminders, sweepDigests, sweepUnblocks, sweepStaleMeetings };

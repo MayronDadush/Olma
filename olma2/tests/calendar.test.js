@@ -595,7 +595,8 @@ async function confirmedMeetingFixture(phoneA, phoneB, { bAccess = 'read_write',
     const started = await meetings.startMeeting(c, a.id, 'קפה', [b.id]);
     assert.ok(started.ok, `fixture startMeeting failed: ${JSON.stringify(started.error)}`);
     const id = Number(started.data.meeting.id);
-    await meetings.proposeSlot(c, a.id, id, 'יום חמישי 13:00 בקפה');
+    await meetings.proposeSlot(c, a.id, id, 'יום חמישי 13:00 בקפה',
+      new Date(Date.now() + 48 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00'));
     await meetings.respondToSlot(c, b.id, id, true);
     return id;
   });

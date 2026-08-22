@@ -307,14 +307,9 @@ function requireWritable(accessLevel) {
 // An event time must carry its own UTC offset (…Z or ±HH:MM). A bare local
 // datetime would be interpreted against whatever timezone Google infers,
 // which is how an event lands three hours off — the same class of bug that
-// NULL users.timezone caused for quiet hours and digests.
-const OFFSET_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
-
-function badTime(label, value) {
-  return err('invalid',
-    `${label} must be a full ISO-8601 datetime WITH a UTC offset, e.g. 2026-08-20T09:00:00+03:00 (got ${String(value).slice(0, 40)})`,
-    { reason: 'missing_offset' });
-}
+// NULL users.timezone caused for quiet hours and digests. The rule itself
+// lives in domain/datetime.js, shared with meeting slots.
+const { OFFSET_RE, badTime } = require('./datetime');
 
 // ---- tools -----------------------------------------------------------------
 

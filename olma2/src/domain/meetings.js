@@ -10,6 +10,17 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const grants = require('./grants');
+const { hasOffset, badTime } = require('./datetime');
+
+// How long a slot stays "live" after its start before the negotiation is
+// closed as expired. Generous on purpose: the thing itself may still be
+// happening, and a meeting confirmed an hour late is fine while a meeting
+// closed an hour early is not.
+const EXPIRE_AFTER_START_MS = 6 * 3600_000;
+// Rows proposed before slots carried a start time (proposed_start_at IS NULL)
+// cannot be dated at all. They stop being nudged about immediately — see
+// pendingMeetingFor — and are closed once they are plainly abandoned.
+const LEGACY_STALE_DAYS = 3;
 
 async function startMeeting(client, initiatorId, title, participantUserIds) {
   if (!Array.isArray(participantUserIds) || participantUserIds.length === 0) {
@@ -66,31 +77,45 @@ async function recordConstraint(client, userId, meetingId, text) {
 
 // Any active participant may propose. Proposing implies agreeing to it:
 // proposer → confirmed_current, everyone else active → awaiting.
-async function proposeSlot(client, userId, meetingId, slotText) {
+//
+// startsAt is the machine half of the slot and is REQUIRED. The text stays
+// the thing people read ("יום שישי 20:00 אצל דני"); the timestamp is what
+// lets anything in the system ask whether the moment has passed. Without it
+// a dead slot looks exactly like a live one — which is how a Saturday
+// check-in asked someone about Friday's poker game.
+async function proposeSlot(client, userId, meetingId, slotText, startsAt) {
   if (!slotText || !slotText.trim()) return err('invalid', 'slot description required');
+  if (!hasOffset(startsAt)) return badTime('starts_at', startsAt);
   const p = await participantRow(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
   if (p.meeting_status !== 'negotiating') return err('invalid', 'meeting is not negotiating');
   if (p.state === 'opted_out') return err('invalid', 'you opted out of this meeting');
+  // A slot already in the past is a mistake at the moment it is made, and the
+  // cheapest place to catch it is before it reaches anyone else's phone.
+  if (new Date(startsAt).getTime() < Date.now()) {
+    return err('invalid', 'that slot is already in the past — propose a future time',
+      { reason: 'slot_in_past' });
+  }
 
   await client.query(
-    `UPDATE meetings SET proposed_slot = $2, updated_at = now() WHERE id = $1`,
-    [meetingId, slotText.trim()]
+    `UPDATE meetings SET proposed_slot = $2, proposed_start_at = $3, updated_at = now() WHERE id = $1`,
+    [meetingId, slotText.trim(), startsAt]
   );
   await client.query(
     `UPDATE meeting_participants SET state = CASE WHEN user_id = $2 THEN 'confirmed_current' ELSE 'awaiting' END
      WHERE meeting_id = $1 AND state <> 'opted_out'`,
     [meetingId, userId]
   );
-  await audit.record(client, userId, 'meeting.slot_proposed', { meetingId, slot: slotText.trim() });
-  return ok({ meetingId, proposedSlot: slotText.trim() });
+  await audit.record(client, userId, 'meeting.slot_proposed',
+    { meetingId, slot: slotText.trim(), startsAt });
+  return ok({ meetingId, proposedSlot: slotText.trim(), startsAt });
 }
 
 // The hard gate. Confirms only when every active participant has
 // confirmed_current. Called from respondToSlot and applyExit only.
 async function tryConfirm(client, meetingId) {
   const { rows } = await client.query(
-    `SELECT m.id, m.proposed_slot,
+    `SELECT m.id, m.proposed_slot, m.proposed_start_at,
             count(*) FILTER (WHERE p.state <> 'opted_out') AS active_count,
             count(*) FILTER (WHERE p.state = 'confirmed_current') AS confirmed_count
      FROM meetings m JOIN meeting_participants p ON p.meeting_id = m.id
@@ -104,13 +129,14 @@ async function tryConfirm(client, meetingId) {
   if (Number(s.active_count) !== Number(s.confirmed_count)) return { confirmed: false };
   await client.query(
     `UPDATE meetings SET status = 'confirmed', confirmed_slot = proposed_slot,
+            confirmed_start_at = proposed_start_at,
             updated_at = now(), closed_at = now() WHERE id = $1`,
     [meetingId]
   );
-  return { confirmed: true, slot: s.proposed_slot };
+  return { confirmed: true, slot: s.proposed_slot, startsAt: s.proposed_start_at };
 }
 
-async function respondToSlot(client, userId, meetingId, accept, counterProposal) {
+async function respondToSlot(client, userId, meetingId, accept, counterProposal, counterStartsAt) {
   const p = await participantRow(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
   if (p.meeting_status !== 'negotiating') return err('invalid', 'meeting is not negotiating');
@@ -137,8 +163,9 @@ async function respondToSlot(client, userId, meetingId, accept, counterProposal)
   );
   await audit.record(client, userId, 'meeting.slot_declined', { meetingId, slot: p.proposed_slot });
   if (counterProposal && counterProposal.trim()) {
-    // Decline + counter in one move — immediately re-proposes.
-    return proposeSlot(client, userId, meetingId, counterProposal);
+    // Decline + counter in one move — immediately re-proposes, and the counter
+    // needs its own start time for the same reason the first proposal did.
+    return proposeSlot(client, userId, meetingId, counterProposal, counterStartsAt);
   }
   return ok({ meetingId, meetingStatus: 'negotiating', yourState: 'declined_current' });
 }
@@ -220,22 +247,95 @@ async function listMine(client, userId) {
 }
 
 // For the checkin priority ladder: the meeting this user is holding up, if any.
+//
+// The time conditions are the fix for a real incident: on Saturday morning a
+// user was asked whether Friday 20:00 worked for poker. The rung had no notion
+// of time at all — proposed_slot IS NOT NULL was the whole test — so a
+// negotiation nobody ever closed kept producing nudges about a moment that had
+// come and gone. And because stuck_meeting is the TOP rung, that dead meeting
+// also shadowed every other check-in the person should have been getting.
+//
+// Two exclusions, both deliberate:
+//   - the slot has started: there is nothing left to agree to.
+//   - the slot has no start time at all (rows proposed before slots carried
+//     one): the system cannot tell whether it has passed, and asking about a
+//     possibly-dead slot is the bug itself. Every new proposal carries one.
 async function pendingMeetingFor(client, userId) {
   // constraints ride along so the nudge that chases this person can check the
   // proposed slot against what they already said ("לא בבקרים") instead of
   // asking them to re-litigate their own words.
   const { rows } = await client.query(
-    `SELECT m.id, m.title, m.proposed_slot, m.initiator_id, p.constraints
+    `SELECT m.id, m.title, m.proposed_slot, m.proposed_start_at, m.initiator_id, p.constraints
      FROM meetings m JOIN meeting_participants p ON p.meeting_id = m.id
      WHERE p.user_id = $1 AND p.state = 'awaiting' AND m.status = 'negotiating'
        AND m.proposed_slot IS NOT NULL
-     ORDER BY m.updated_at LIMIT 1`,
+       AND m.proposed_start_at IS NOT NULL
+       AND m.proposed_start_at > now()
+     ORDER BY m.proposed_start_at LIMIT 1`,
     [userId]
   );
   return ok({ pending: rows[0] || null });
 }
 
+// Close negotiations whose moment has passed. Until this existed nothing ever
+// ended a meeting except confirmation, cancellation, or everyone leaving — so
+// an unanswered proposal stayed 'negotiating' forever, and forever is how long
+// it kept surfacing.
+//
+// Returns the rows it closed so the caller can tell the participants once.
+// 'expired' rather than 'no_match': nobody disagreed, the moment simply passed.
+async function expireStaleMeetings(client, now = Date.now()) {
+  const { rows } = await client.query(
+    `UPDATE meetings SET status = 'expired', updated_at = now(), closed_at = now()
+      WHERE status = 'negotiating'
+        AND (
+          (proposed_start_at IS NOT NULL AND proposed_start_at < $1::timestamptz - make_interval(secs => $2))
+          OR (proposed_start_at IS NULL AND updated_at < $1::timestamptz - make_interval(days => $3))
+        )
+      RETURNING id, title, initiator_id, proposed_slot`,
+    [new Date(now).toISOString(), EXPIRE_AFTER_START_MS / 1000, LEGACY_STALE_DAYS]
+  );
+  for (const m of rows) {
+    await audit.record(client, m.initiator_id, 'meeting.expired',
+      { meetingId: Number(m.id), slot: m.proposed_slot });
+  }
+  return rows;
+}
+
+// Close ONE negotiation by hand. The sweep handles the general case, but a
+// row proposed before slots carried a start time can only be dated by a human
+// reading the slot text — and the person stuck behind it should not have to
+// wait for the abandonment window to run out.
+async function expireOne(client, meetingId) {
+  const { rows } = await client.query(
+    `UPDATE meetings SET status = 'expired', updated_at = now(), closed_at = now()
+      WHERE id = $1 AND status = 'negotiating'
+      RETURNING id, title, initiator_id, proposed_slot`,
+    [meetingId]
+  );
+  if (!rows[0]) return err('not_found', 'no negotiating meeting with that id');
+  await audit.record(client, rows[0].initiator_id, 'admin.meeting.expired',
+    { meetingId: Number(meetingId), slot: rows[0].proposed_slot });
+  return ok({ meeting: rows[0] });
+}
+
+// Every open negotiation a person is part of, for an operator deciding which
+// one is dead. Ages are what make that call, so they come back rendered.
+async function listNegotiating(client, userId) {
+  const { rows } = await client.query(
+    `SELECT m.id, m.title, m.proposed_slot, m.proposed_start_at, m.initiator_id,
+            m.updated_at, p.state AS your_state,
+            EXTRACT(EPOCH FROM (now() - m.updated_at))/86400 AS days_since_update
+     FROM meetings m JOIN meeting_participants p ON p.meeting_id = m.id
+     WHERE p.user_id = $1 AND m.status = 'negotiating'
+     ORDER BY m.updated_at`,
+    [userId]
+  );
+  return ok({ meetings: rows });
+}
+
 module.exports = {
   startMeeting, recordConstraint, proposeSlot, respondToSlot,
   optOut, applyExit, cancelMeeting, getStatus, listMine, pendingMeetingFor, tryConfirm,
+  expireStaleMeetings, expireOne, listNegotiating, EXPIRE_AFTER_START_MS, LEGACY_STALE_DAYS,
 };
