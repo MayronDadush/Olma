@@ -319,15 +319,28 @@ async function expireOne(client, meetingId) {
   return ok({ meeting: rows[0] });
 }
 
-// Every open negotiation a person is part of, for an operator deciding which
-// one is dead. Ages are what make that call, so they come back rendered.
-async function listNegotiating(client, userId) {
+// Every open negotiation, optionally narrowed to one person. Ages are what
+// tell an operator which one is dead, so they come back rendered.
+//
+// userId is optional on purpose. Finding the dead meeting should never require
+// knowing whose it is: needing a phone number first invites guessing at one,
+// and a wrong guess here closes a stranger's meeting and messages them about
+// it. Listing everything open costs nothing — there are never many.
+async function listNegotiating(client, userId = null) {
   const { rows } = await client.query(
     `SELECT m.id, m.title, m.proposed_slot, m.proposed_start_at, m.initiator_id,
-            m.updated_at, p.state AS your_state,
-            EXTRACT(EPOCH FROM (now() - m.updated_at))/86400 AS days_since_update
-     FROM meetings m JOIN meeting_participants p ON p.meeting_id = m.id
-     WHERE p.user_id = $1 AND m.status = 'negotiating'
+            m.updated_at,
+            EXTRACT(EPOCH FROM (now() - m.updated_at))/86400 AS days_since_update,
+            (SELECT string_agg(
+                coalesce(nullif(trim(u.first_name || ' ' || coalesce(u.last_name, '')), ''), u.phone)
+                || ' [' || pp.state || ']', ', ' ORDER BY u.id)
+             FROM meeting_participants pp JOIN users u ON u.id = pp.user_id
+             WHERE pp.meeting_id = m.id) AS participants
+     FROM meetings m
+     WHERE m.status = 'negotiating'
+       AND ($1::bigint IS NULL OR EXISTS (
+             SELECT 1 FROM meeting_participants p
+             WHERE p.meeting_id = m.id AND p.user_id = $1))
      ORDER BY m.updated_at`,
     [userId]
   );

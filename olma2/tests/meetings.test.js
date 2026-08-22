@@ -286,6 +286,13 @@ test('expireOne closes a single dead negotiation and refuses anything else', asy
     const listed = await meetings.listNegotiating(c, b.id);
     assert.equal(listed.data.meetings.length, 1, 'the operator can see what to close');
     assert.equal(listed.data.meetings[0].proposed_start_at, null);
+    assert.match(listed.data.meetings[0].participants, /\[awaiting\]/,
+      'the listing carries who is stuck, so the operator never needs to already know');
+
+    // and with no user at all — finding the dead meeting must not require
+    // already knowing whose phone number it is
+    const everyone = await meetings.listNegotiating(c);
+    assert.ok(everyone.data.meetings.some((x) => Number(x.id) === Number(m.id)));
 
     const closed = await meetings.expireOne(c, m.id);
     assert.equal(closed.ok, true);

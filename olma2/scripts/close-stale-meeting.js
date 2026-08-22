@@ -8,8 +8,14 @@
 // when someone is visibly stuck behind a dead meeting right now.
 //
 // Usage:
-//   node scripts/close-stale-meeting.js --phone 0505404255            # list
-//   node scripts/close-stale-meeting.js --id 4 --apply                # close
+//   node scripts/close-stale-meeting.js                        # list ALL open
+//   node scripts/close-stale-meeting.js --phone 0505404255      # list one person's
+//   node scripts/close-stale-meeting.js --id 4 --apply           # close one
+//
+// --phone narrows the listing; it is never required. Finding the meeting to
+// close should never depend on already knowing whose phone number it is — a
+// wrong guess at a number closes a stranger's meeting and messages them about
+// it, which is exactly the kind of mistake this script exists to avoid.
 //
 // Closing tells the initiator once, through the normal outbox — held by their
 // own quiet hours like any other proactive message.
@@ -27,31 +33,34 @@ const phone = arg('phone');
 const id = arg('id');
 const APPLY = process.argv.includes('--apply');
 
-if (!phone && !id) {
-  console.error('usage: close-stale-meeting.js --phone <number> | --id <meetingId> [--apply]');
-  process.exit(1);
-}
-
 (async () => {
   const pool = createPool();
 
-  if (phone) {
-    const found = await withTx(pool, (c) => repair.findUserByPhoneFragment(c, phone));
-    if (!found.ok) {
-      console.error(`${found.error.code}: ${found.error.message}`);
-      if (found.error.candidates) console.error('  candidates:', found.error.candidates.join(', '));
-      await pool.end();
-      process.exit(1);
+  if (!id) {
+    let userId = null;
+    if (phone) {
+      const found = await withTx(pool, (c) => repair.findUserByPhoneFragment(c, phone));
+      if (!found.ok) {
+        console.error(`${found.error.code}: ${found.error.message}`);
+        if (found.error.candidates) console.error('  candidates:', found.error.candidates.join(', '));
+        await pool.end();
+        process.exit(1);
+      }
+      const u = found.data.user;
+      console.log(`user ${u.id} ${u.phone} (${u.first_name || 'no name'}) — open negotiations:\n`);
+      userId = u.id;
+    } else {
+      console.log('All open negotiations, every user:\n');
     }
-    const u = found.data.user;
-    const list = await withTx(pool, (c) => meetings.listNegotiating(c, u.id));
-    console.log(`user ${u.id} ${u.phone} (${u.first_name || 'no name'}) — open negotiations:\n`);
+
+    const list = await withTx(pool, (c) => meetings.listNegotiating(c, userId));
     if (!list.data.meetings.length) console.log('  (none)');
     for (const m of list.data.meetings) {
-      console.log(`  #${m.id} "${m.title || 'meeting'}"  your state: ${m.your_state}`);
-      console.log(`     slot text : ${m.proposed_slot || '(none proposed)'}`);
-      console.log(`     slot time : ${m.proposed_start_at || 'NULL — proposed before slots carried one'}`);
-      console.log(`     untouched : ${Number(m.days_since_update).toFixed(1)} days\n`);
+      console.log(`  #${m.id} "${m.title || 'meeting'}"`);
+      console.log(`     participants: ${m.participants || '(none?)'}`);
+      console.log(`     slot text   : ${m.proposed_slot || '(none proposed)'}`);
+      console.log(`     slot time   : ${m.proposed_start_at || 'NULL — proposed before slots carried one'}`);
+      console.log(`     untouched   : ${Number(m.days_since_update).toFixed(1)} days\n`);
     }
     console.log('close one with:  --id <n> --apply');
     await pool.end();
