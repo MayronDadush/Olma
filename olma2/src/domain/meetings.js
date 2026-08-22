@@ -314,9 +314,18 @@ async function expireOne(client, meetingId) {
     [meetingId]
   );
   if (!rows[0]) return err('not_found', 'no negotiating meeting with that id');
+  // Everyone still on it, not just the initiator — an operator closing a
+  // meeting by hand is telling someone their pending proposal is gone, and
+  // that someone is very often the person who was AWAITING an answer, not
+  // the one who asked the question. opted_out participants already left on
+  // their own and do not need to be told it ended.
+  const { rows: participants } = await client.query(
+    `SELECT user_id FROM meeting_participants WHERE meeting_id = $1 AND state <> 'opted_out'`,
+    [meetingId]
+  );
   await audit.record(client, rows[0].initiator_id, 'admin.meeting.expired',
     { meetingId: Number(meetingId), slot: rows[0].proposed_slot });
-  return ok({ meeting: rows[0] });
+  return ok({ meeting: rows[0], participantIds: participants.map((p) => Number(p.user_id)) });
 }
 
 // Every open negotiation, optionally narrowed to one person. Ages are what

@@ -17,8 +17,10 @@
 // wrong guess at a number closes a stranger's meeting and messages them about
 // it, which is exactly the kind of mistake this script exists to avoid.
 //
-// Closing tells the initiator once, through the normal outbox — held by their
-// own quiet hours like any other proactive message.
+// Closing tells EVERY participant once — not just the initiator — through the
+// normal outbox, held by each person's own quiet hours like any other
+// proactive message. The person most likely to be waiting on this is often
+// the one who was asked, not the one who asked.
 'use strict';
 const { createPool, withTx } = require('../src/db/pool');
 const meetings = require('../src/domain/meetings');
@@ -78,14 +80,18 @@ const APPLY = process.argv.includes('--apply');
     const closed = await meetings.expireOne(c, Number(id));
     if (!closed.ok) return closed;
     const m = closed.data.meeting;
-    // Same message the sweep sends, same idempotency key — so if the sweep had
-    // already queued one, this cannot produce a second.
-    await enqueue(c, {
-      userId: Number(m.initiator_id), kind: 'meeting_expired',
-      payload: { meetingId: Number(m.id), title: m.title || 'meeting', slot: m.proposed_slot },
-      urgency: 'normal',
-      idempotencyKey: `mexpired:${m.id}`,
-    });
+    // expireOne only succeeds once — the UPDATE is gated on status =
+    // 'negotiating', so if the automatic sweep got here first this call
+    // already returned not_found above and nothing below ever runs. Nothing
+    // can be told about this meeting twice.
+    for (const uid of closed.data.participantIds) {
+      await enqueue(c, {
+        userId: uid, kind: 'meeting_expired',
+        payload: { meetingId: Number(m.id), title: m.title || 'meeting', slot: m.proposed_slot },
+        urgency: 'normal',
+        idempotencyKey: `mexpired:${m.id}:${uid}`,
+      });
+    }
     return closed;
   });
 
@@ -95,6 +101,6 @@ const APPLY = process.argv.includes('--apply');
     process.exit(1);
   }
   console.log(`closed meeting #${res.data.meeting.id} ("${res.data.meeting.title || 'meeting'}") as expired;`);
-  console.log('its initiator will be told once, when their own window is open.');
+  console.log(`${res.data.participantIds.length} participant(s) will be told once, each when their own window is open.`);
   await pool.end();
 })().catch((e) => { console.error(e.message); process.exit(1); });
