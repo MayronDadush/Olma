@@ -21,6 +21,11 @@ const { correctionSql } = require('../../jobs/metrics');
 const { deprovisionUser, previewDeletion } = require('../../intake/deprovision');
 const pauseDomain = require('../../domain/pause');
 const sessionIndex = require('../../channels/sessions');
+// /ready's whole test. brokerd beats immediately on boot and then every 60s,
+// so three intervals is generous enough that an ordinary slow tick under load
+// never fails a deploy, and tight enough that a daemon which died on boot
+// cannot coast on the previous process's beat.
+const BROKERD_BEAT_MAX_AGE_S = 180;
 const infraCost = require('../infra-cost');
 
 // ---- helpers ----------------------------------------------------------------
@@ -1569,8 +1574,44 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         return page(400, 'משהו השתבש', 'החיבור לא הושלם. בקשי מאולמה קישור חדש.');
       }
 
-      // Unauthenticated liveness/readiness probe — no data, just whether the
-      // process is up and the DB answers. Safe to expose to a monitor.
+      // Unauthenticated READINESS probe, for the deploy gate specifically —
+      // "did the release we just restarted come up", nothing more.
+      //
+      // This exists because /health below cannot answer that question. /health
+      // is 503 whenever any sweep is late, and a sweep's lateness is a property
+      // of the PREVIOUS process: five seconds after a restart no job has had
+      // its first tick, so the heartbeat table still describes the old one.
+      // Gating a deploy on it meant that once any slow job fell behind, every
+      // deploy failed its check, rolled back, failed the check again (a
+      // rollback cannot make a sweep on time either) and reported the rollback
+      // itself as broken. Observed 2026-08-22: two consecutive merges to main
+      // rolled back this way, and the change that would have fixed the
+      // underlying staleness was one of the two things it refused to deploy.
+      //
+      // brokerd's own heartbeat is the right signal: it is written once
+      // immediately at startup and then every 60s, so a fresh, correctly armed
+      // daemon has one within seconds, and a daemon that crashed on boot or
+      // never reached its timers does not.
+      if (req.url === '/ready') {
+        try {
+          await pool.query('SELECT 1');
+          const { rows } = await pool.query(
+            `SELECT extract(epoch from now() - last_run_at) AS age
+             FROM job_heartbeats WHERE job_name = 'brokerd'`);
+          const age = rows[0] ? Number(rows[0].age) : null;
+          const ok = age !== null && age < BROKERD_BEAT_MAX_AGE_S;
+          res.writeHead(ok ? 200 : 503, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ ok, brokerdBeatAgeSeconds: age }));
+        } catch (e) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ ok: false, error: 'db unavailable' }));
+        }
+      }
+
+      // Unauthenticated liveness probe for MONITORING — the process, the DB,
+      // and whether every sweep is running on its declared cadence. Deploys
+      // use /ready above; this one is allowed to go red for reasons a redeploy
+      // would not fix, which is the whole point of it.
       if (req.url === '/health') {
         try {
           await pool.query('SELECT 1');

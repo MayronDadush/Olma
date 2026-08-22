@@ -101,6 +101,45 @@ test('/health reports 503 when a job is genuinely stuck', async () => {
   await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'outbox_worker'`);
 });
 
+test('/ready is the deploy gate and a stale sweep must not fail it', async () => {
+  // The deadlock this guards, live on 2026-08-22: deploy.sh gated on /health,
+  // /health is 503 whenever any sweep is behind, and five seconds after a
+  // restart the heartbeat table still describes the process that was just
+  // replaced. One late sweep therefore failed every deploy, rolled it back,
+  // failed the check again, and reported the rollback as broken — including
+  // the deploy carrying the fix for the lateness.
+  await db.pool.query(
+    `INSERT INTO job_heartbeats (job_name, last_run_at, last_ok_at)
+     VALUES ('brokerd', now(), now()), ('retention_sweep', now() - interval '9 days', now() - interval '9 days')
+     ON CONFLICT (job_name) DO UPDATE SET last_run_at = excluded.last_run_at`);
+  assert.equal((await fetch(base + '/health')).status, 503, 'monitoring still says something is wrong');
+  const ready = await fetch(base + '/ready');
+  assert.equal(ready.status, 200, 'but the release itself came up, so the deploy must stand');
+  assert.equal((await ready.json()).ok, true);
+
+  // A brokerd that never wrote a beat is exactly what the gate must catch.
+  await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'brokerd'`);
+  const dead = await fetch(base + '/ready');
+  assert.equal(dead.status, 503);
+  assert.equal((await dead.json()).brokerdBeatAgeSeconds, null);
+
+  // So is one whose beat is older than the process could possibly be.
+  await db.pool.query(
+    `INSERT INTO job_heartbeats (job_name, last_run_at, last_ok_at)
+     VALUES ('brokerd', now() - interval '20 minutes', now() - interval '20 minutes')`);
+  assert.equal((await fetch(base + '/ready')).status, 503);
+
+  await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name IN ('brokerd', 'retention_sweep')`);
+});
+
+test('deploy.sh gates on /ready, never on /health', () => {
+  const sh = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'scripts', 'deploy.sh'), 'utf8');
+  const probes = [...sh.matchAll(/curl[^\n]*8788(\/[a-z]+)/g)].map((m) => m[1]);
+  assert.deepEqual(probes, ['/ready'],
+    'gating the deploy on /health is what deadlocked it — see the test above');
+});
+
 test('stuck outbox rows raise an alarm', async () => {
   const guard = require('../src/jobs/config-guard');
   assert.deepEqual(await withTx(db.pool, (c) => guard.checkStuckOutbox(c)), []);
