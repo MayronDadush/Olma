@@ -336,3 +336,73 @@ test('expireOne drops an opted-out participant but keeps everyone still on it', 
       'someone who already left on their own does not need to be told it ended');
   });
 });
+
+// ---- reasons ---------------------------------------------------------------
+// Two people traded four dead slots for one poker game, each explaining
+// themselves to their own Olma and neither hearing the other: one was "בצילומים
+// ומסיים מאוחר", the other just "לא ביום שני". The reason existed in the row
+// the whole time and simply never travelled.
+
+test('a reason is shareable by default and reaches the other side', async () => {
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'poker', [bob.id])).data.meeting;
+    await meetings.recordConstraint(c, alice.id, m.id, 'בצילומים ומסיים מאוחר — פנוי בשלישי');
+
+    const shared = await meetings.shareableConstraints(c, m.id, alice.id);
+    assert.deepEqual(shared, ['בצילומים ומסיים מאוחר — פנוי בשלישי']);
+
+    // and Bob sees it on the status board, because that is the point
+    const st = await meetings.getStatus(c, bob.id, m.id);
+    const aliceRow = st.data.participants.find((p) => p.user_id === alice.id);
+    assert.deepEqual(aliceRow.constraints, ['בצילומים ומסיים מאוחר — פנוי בשלישי']);
+  });
+});
+
+test('private is honoured on the way OUT, not just on the way in', async () => {
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'private reason', [bob.id])).data.meeting;
+    await meetings.recordConstraint(c, alice.id, m.id, 'not Monday');
+    await meetings.recordConstraint(c, alice.id, m.id, 'therapy that evening', true);
+
+    // Alice still sees everything she said.
+    const mine = await meetings.getStatus(c, alice.id, m.id);
+    assert.deepEqual(mine.data.participants.find((p) => p.user_id === alice.id).constraints,
+      ['not Monday', 'therapy that evening']);
+
+    // Bob sees the scheduling fact and never the reason behind it. A flag the
+    // writer sets and the reader ignores would be worse than no flag at all.
+    const theirs = await meetings.getStatus(c, bob.id, m.id);
+    assert.deepEqual(theirs.data.participants.find((p) => p.user_id === alice.id).constraints,
+      ['not Monday']);
+    assert.deepEqual(await meetings.shareableConstraints(c, m.id, alice.id), ['not Monday']);
+  });
+});
+
+test('constraints written before reasons could travel still read as shareable', async () => {
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'legacy', [bob.id])).data.meeting;
+    // exactly the shape already in production: a bare jsonb array of strings
+    await c.query(
+      `UPDATE meeting_participants SET constraints = $3::jsonb WHERE meeting_id = $1 AND user_id = $2`,
+      [m.id, alice.id, JSON.stringify(['רק שלישי וחמישי'])]);
+    assert.deepEqual(await meetings.shareableConstraints(c, m.id, alice.id), ['רק שלישי וחמישי']);
+    const st = await meetings.getStatus(c, bob.id, m.id);
+    assert.deepEqual(st.data.participants.find((p) => p.user_id === alice.id).constraints,
+      ['רק שלישי וחמישי']);
+  });
+});
+
+test('a reason is bounded — it lands inside another user\'s agent turn', async () => {
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'bounds', [bob.id])).data.meeting;
+    await meetings.recordConstraint(c, alice.id, m.id, 'x'.repeat(500));
+    for (const t of ['one', 'two', 'three', 'four']) {
+      await meetings.recordConstraint(c, alice.id, m.id, t);
+    }
+    const shared = await meetings.shareableConstraints(c, m.id, alice.id);
+    assert.ok(shared.length <= meetings.MAX_SHARED_REASONS, 'capped in count');
+    for (const s of shared) {
+      assert.ok(s.length <= meetings.CONSTRAINT_MAX_CHARS, 'capped in length');
+    }
+  });
+});
