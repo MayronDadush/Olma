@@ -4,6 +4,8 @@ const assert = require('node:assert/strict');
 const { freshDb, makeUser } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const repair = require('../src/domain/repair');
+const sessions = require('../src/channels/sessions');
+const facts = require('../src/domain/facts');
 const { decide } = require('../src/outbox/gate');
 
 let db;
@@ -110,4 +112,88 @@ test('the repair refuses what it cannot do honestly', async () => {
     const { rows } = await c.query(`SELECT count(*)::int AS n FROM outbox WHERE user_id = $1`, [u.id]);
     assert.equal(rows[0].n, 0, 'nothing queued for anyone the repair refused');
   });
+});
+
+// ---- the name we already had ------------------------------------------------
+
+test('the display name is read out of the gateway\'s own conversation info', () => {
+  const info = (sender, senderId) =>
+    'Conversation info (untrusted metadata):\n```json\n'
+    + JSON.stringify({ chat_id: senderId, sender_id: senderId, sender }, null, 2)
+    + '\n```\n\nwhat they actually wrote';
+
+  assert.equal(sessions.displayNameFromPrompt(info('חיים דדוש', '+972505404255')), 'חיים דדוש');
+  assert.equal(sessions.displayNameFromPrompt(info('חיים דדוש', '+972505404255'), '+972505404255'),
+    'חיים דדוש');
+  assert.equal(sessions.displayNameFromPrompt(info('חיים דדוש', '+972500000000'), '+972505404255'),
+    null, 'the intake agent holds every stranger — a name must match whose turn it was');
+  assert.equal(sessions.displayNameFromPrompt(info('+972505404255', '+972505404255')), null,
+    'with no display name set the gateway echoes the number — that is not a name');
+  assert.equal(sessions.displayNameFromPrompt(info('', '+972505404255')), null);
+  assert.equal(sessions.displayNameFromPrompt('a turn with no conversation info at all'), null);
+});
+
+test('the repair writes the known name as a guess and clears the fact it hid in', async () => {
+  const u = await makeUser(db.pool, '+972505404299', { firstName: null });
+  await withTx(db.pool, (c) => facts.rememberFact(c, u.id, {
+    category: 'context', fact: 'שמו חיים.', importance: 2,
+  }));
+  await withTx(db.pool, (c) => facts.rememberFact(c, u.id, {
+    category: 'habits', fact: 'מעוניין בפוליטיקה ישראלית והיסטוריה.', importance: 1,
+  }));
+
+  const preview = await withTx(db.pool, (c) => repair.nameFactCandidates(c, u.id, 'חיים'));
+  assert.equal(preview.length, 1, 'only the fact that is nothing but the name');
+  assert.equal(preview[0].fact, 'שמו חיים.');
+
+  const res = await withTx(db.pool, (c) =>
+    repair.repairMissingName(c, u.id, { name: 'חיים דדוש' }));
+  assert.equal(res.ok, true);
+  assert.equal(res.data.user.first_name, 'חיים');
+  assert.equal(res.data.user.last_name, 'דדוש');
+  assert.equal(res.data.user.name_confirmed, false, 'the agent still has to check');
+  assert.equal(res.data.forgotten.length, 1);
+
+  const left = await withTx(db.pool, (c) => facts.listFacts(c, u.id, {}));
+  assert.equal(left.data.facts.length, 1, 'everything else they told us survives');
+  assert.match(left.data.facts[0].fact, /פוליטיקה/);
+});
+
+test('the repair refuses a phone number and leaves the rest alone', async () => {
+  const u = await makeUser(db.pool, '+972505404211', { firstName: null });
+  await withTx(db.pool, async (c) => {
+    assert.equal((await repair.repairMissingName(c, u.id, { name: '+972505404211' })).ok, false);
+    assert.equal((await repair.repairMissingName(c, u.id, { name: '   ' })).ok, false);
+  });
+  const { rows } = await db.pool.query('SELECT first_name FROM users WHERE id = $1', [u.id]);
+  assert.equal(rows[0].first_name, null);
+});
+
+test('--keep-facts leaves the name fact in place', async () => {
+  const u = await makeUser(db.pool, '+972505404222', { firstName: null });
+  await withTx(db.pool, (c) => facts.rememberFact(c, u.id, {
+    category: 'context', fact: 'שמו יובל.', importance: 2,
+  }));
+  const res = await withTx(db.pool, (c) =>
+    repair.repairMissingName(c, u.id, { name: 'יובל', dropFacts: false }));
+  assert.equal(res.ok, true);
+  assert.equal(res.data.forgotten.length, 0);
+  const left = await withTx(db.pool, (c) => facts.listFacts(c, u.id, {}));
+  assert.equal(left.data.facts.length, 1);
+});
+
+test('only active, provisioned, nameless users are in scope', async () => {
+  const fresh = await freshDb();
+  try {
+    const nameless = await makeUser(fresh.pool, '+972501110001', { firstName: null });
+    await fresh.pool.query(`UPDATE users SET agent_id = 'u-x' WHERE id = $1`, [nameless.id]);
+    await makeUser(fresh.pool, '+972501110002', { firstName: 'כבר יש' });
+    const pending = await makeUser(fresh.pool, '+972501110003', { firstName: null, status: 'pending' });
+    assert.ok(pending.id);
+
+    const rows = await withTx(fresh.pool, (c) => repair.usersMissingName(c));
+    assert.deepEqual(rows.map((r) => String(r.id)), [String(nameless.id)]);
+  } finally {
+    await fresh.teardown();
+  }
 });

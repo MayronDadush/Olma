@@ -22,6 +22,9 @@ const path = require('node:path');
 // renderer, so adding a card field and adding its trigger are one edit.
 const CARD_TOOLS = new Set([
   'set_my_name', 'set_my_timezone', 'set_my_language',
+  // Paused state belongs on the card: a paused person who writes must not be
+  // met with an offer to set up a daily digest.
+  'pause_olma', 'resume_olma',
   'set_digest_preferences', 'remember_preference', 'forget_preference',
   // A fact stated outright mid-conversation shows up in the card immediately,
   // the same turn — it should not have to wait for the extraction job to run.
@@ -49,9 +52,23 @@ const CARD_FACT_LIMIT = 10;
 
 function renderCard(user, prefs, facts = [], extras = {}) {
   const lines = ['# User', ''];
-  lines.push(`First name: ${user.first_name || 'unknown'}`);
+  // The unconfirmed marker matches the timezone line below it, and for the
+  // same reason: a guessed name reads as settled unless the card says
+  // otherwise, and then nobody ever asks. "unknown" is the louder case —
+  // spell out that it is the first thing to fix rather than a field to live
+  // with, which is how it survived on four live cards at once.
+  lines.push(user.first_name
+    ? `First name: ${user.first_name}${user.name_confirmed ? '' : ' (unconfirmed — check it in passing, then set_my_name with confirmed: true)'}`
+    : 'First name: unknown — ask what to call them and save it with set_my_name');
   if (user.last_name) lines.push(`Last name: ${user.last_name}`);
   lines.push(`Language: ${user.locale || 'he'}`);
+  // Top of the card, right under their name, because it changes what every
+  // other line means: none of the settings below are running.
+  if (user.paused_at) {
+    lines.push('PAUSED — they asked Olma to stop reaching out. Answer them normally when '
+      + 'they write, but never offer, pitch or schedule anything. Only if they ask to come '
+      + 'back, call resume_olma.');
+  }
   lines.push(`Timezone: ${user.timezone || 'unknown'}${user.timezone_confirmed ? '' : ' (unconfirmed — confirm when natural)'}`);
   lines.push(user.digest_times
     ? `Daily digest: ${user.digest_times} (${user.digest_scope || 'summary'})`

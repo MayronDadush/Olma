@@ -12,14 +12,14 @@ const { decide } = require('./gate');
 // deliver(user, row) → { ok, error? } — injected; production uses
 // channels/openclaw.js, tests inject a recorder.
 async function drainOnce(pool, deliver, now = new Date()) {
-  const outcomes = { delivered: 0, held: 0, expired: 0, failed: 0 };
+  const outcomes = { delivered: 0, held: 0, expired: 0, dropped: 0, failed: 0 };
 
   // Plain read — the authoritative locking is the per-row FOR UPDATE SKIP
   // LOCKED below (a lock taken here would be released at this tx's commit
   // anyway, and only mislead readers into thinking it protects something).
   const { rows: candidates } = await pool.query(
     `SELECT o.*, u.timezone, u.agent_id, u.quota_blocked_until, u.first_name, u.last_inbound_at,
-            u.digest_times
+            u.digest_times, u.paused_at
      FROM outbox o JOIN users u ON u.id = o.user_id
      WHERE o.sent_at IS NULL AND (o.release_after IS NULL OR o.release_after <= $1)
        -- A budget hold with no release time is waiting for the next digest to
@@ -58,14 +58,14 @@ async function drainOnce(pool, deliver, now = new Date()) {
       const { rows: sentRows } = await client.query(
         `SELECT count(*)::int AS n FROM outbox
          WHERE user_id = $1 AND sent_at IS NOT NULL AND sent_at::date = $2::date
-           AND (hold_reason IS NULL OR hold_reason NOT IN ('expired', 'cancelled_by_admin'))
+           AND (hold_reason IS NULL OR hold_reason NOT IN ('expired', 'cancelled_by_admin', 'paused'))
            AND urgency <> 'urgent'
            AND kind NOT IN ('reminder', 'digest')`,
         [row.user_id, now]
       );
 
       const verdict = decide({
-        row, plan, blocked,
+        row, plan, blocked, paused: Boolean(row.paused_at),
         blockedUntil: row.quota_blocked_until,
         window: win.data.window, tz: row.timezone,
         lastInboundAt: row.last_inbound_at,
@@ -73,6 +73,17 @@ async function drainOnce(pool, deliver, now = new Date()) {
         sentToday: sentRows[0].n, budget, now,
       });
 
+      // Terminal, like 'expired': sent_at is stamped so the sweep that produced
+      // this row cannot produce it again, and hold_reason records that nothing
+      // was actually sent.
+      if (verdict.action === 'drop') {
+        await client.query(
+          `UPDATE outbox SET sent_at = now(), hold_reason = $2 WHERE id = $1`,
+          [row.id, verdict.holdReason]
+        );
+        outcomes.dropped++;
+        return;
+      }
       if (verdict.action === 'expire') {
         await client.query(
           `UPDATE outbox SET sent_at = now(), hold_reason = 'expired' WHERE id = $1`, [row.id]

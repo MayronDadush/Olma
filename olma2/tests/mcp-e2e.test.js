@@ -114,6 +114,56 @@ test('turn_start returns proceed for a healthy user', async () => {
   assert.match(r, /"directive":"proceed"/);
 });
 
+// The failure this covers ran live for two days: the WhatsApp display name was
+// in the model's context on every single turn while users.first_name stayed
+// NULL, so the card, the dashboard and every invitation showed a phone number.
+
+test('turn_start writes down the display name of someone we have no name for', async () => {
+  const nameless = await makeUser(db.pool, '+972571000003', { firstName: null });
+  const r = await callTool('turn_start', {
+    identity_token: nameless.identity_token, sender_name: 'חיים דדוש',
+  });
+  assert.match(r, /"directive":"proceed"/);
+  assert.ok(!r.includes('cardStale'), 'the card flag is plumbing, not something the model reads');
+
+  const { rows } = await db.pool.query(
+    'SELECT first_name, last_name, name_confirmed FROM users WHERE id = $1', [nameless.id]);
+  assert.equal(rows[0].first_name, 'חיים');
+  assert.equal(rows[0].last_name, 'דדוש');
+  assert.equal(rows[0].name_confirmed, false, 'a display name is a lead, not their answer');
+});
+
+test('turn_start never lets a display name overwrite the name someone gave us', async () => {
+  await callTool('set_my_name', { identity_token: alice.identity_token, first_name: 'Alice', confirmed: true });
+  const r = await callTool('turn_start', {
+    identity_token: alice.identity_token, sender_name: '😈 Not Alice',
+  });
+  assert.match(r, /"directive":"proceed"/, 'and the turn carries on regardless');
+  const { rows } = await db.pool.query('SELECT first_name FROM users WHERE id = $1', [alice.id]);
+  assert.equal(rows[0].first_name, 'Alice');
+});
+
+test('turn_start ignores a sender field that is just the number back', async () => {
+  const nameless = await makeUser(db.pool, '+972571000004', { firstName: null });
+  await callTool('turn_start', {
+    identity_token: nameless.identity_token, sender_name: '+972571000004',
+  });
+  const { rows } = await db.pool.query('SELECT first_name FROM users WHERE id = $1', [nameless.id]);
+  assert.equal(rows[0].first_name, null);
+});
+
+test('set_my_name defaults to unconfirmed, so a guess is never mistaken for an answer', async () => {
+  const u = await makeUser(db.pool, '+972571000005', { firstName: null });
+  await callTool('set_my_name', { identity_token: u.identity_token, first_name: 'עמית' });
+  let { rows } = await db.pool.query('SELECT first_name, name_confirmed FROM users WHERE id = $1', [u.id]);
+  assert.equal(rows[0].first_name, 'עמית');
+  assert.equal(rows[0].name_confirmed, false);
+
+  await callTool('set_my_name', { identity_token: u.identity_token, first_name: 'עמית', confirmed: true });
+  ({ rows } = await db.pool.query('SELECT name_confirmed FROM users WHERE id = $1', [u.id]));
+  assert.equal(rows[0].name_confirmed, true);
+});
+
 test('turn_start drives the block flow: notice once, then silent', async () => {
   const flags = require('../src/domain/flags');
   const c = await db.pool.connect();
@@ -128,6 +178,42 @@ test('turn_start drives the block flow: notice once, then silent', async () => {
   assert.match(r, /"openTasks"/); // counts-only personal data present
   r = await callTool('turn_start', { identity_token: bob.identity_token });
   assert.match(r, /"directive":"silent"/); // one notice per window, never two
+});
+
+// The tools that did not exist the night a user asked to stop and Olma, with
+// nothing to call, said goodbye and messaged him again in the morning.
+test('pause_olma stops everything and resume_olma puts it back', async () => {
+  const u = await makeUser(db.pool, '+972571000009', { firstName: 'קפיש' });
+
+  const paused = await callTool('pause_olma', {
+    identity_token: u.identity_token, note: 'זהו',
+  });
+  assert.match(paused, /^OK /);
+  let { rows } = await db.pool.query('SELECT paused_at FROM users WHERE id = $1', [u.id]);
+  assert.ok(rows[0].paused_at, 'the goodbye is a tool call, not a sentence');
+
+  // and they can still talk to Olma — pausing stops Olma initiating, not Olma answering
+  const stillWorks = await callTool('turn_start', { identity_token: u.identity_token });
+  assert.match(stillWorks, /"directive":"proceed"/);
+
+  const resumed = await callTool('resume_olma', { identity_token: u.identity_token });
+  assert.match(resumed, /^OK /);
+  ({ rows } = await db.pool.query('SELECT paused_at FROM users WHERE id = $1', [u.id]));
+  assert.equal(rows[0].paused_at, null);
+
+  // resuming twice is refused rather than silently accepted
+  assert.match(await callTool('resume_olma', { identity_token: u.identity_token }),
+    /^ERROR invalid/);
+});
+
+test('one user can never pause another', async () => {
+  const victim = await makeUser(db.pool, '+972571000010', { firstName: 'לא אני' });
+  // there is no user-id parameter to abuse: identity is the token, full stop
+  await callTool('pause_olma', { identity_token: alice.identity_token, user_id: victim.id });
+  const { rows } = await db.pool.query('SELECT paused_at FROM users WHERE id = $1', [victim.id]);
+  assert.equal(rows[0].paused_at, null);
+  // clean up so later tests see alice running
+  await callTool('resume_olma', { identity_token: alice.identity_token });
 });
 
 test('unknown tool yields a clean error', async () => {
