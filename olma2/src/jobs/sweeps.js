@@ -46,7 +46,8 @@ async function sweepReminders(client, nowIso) {
 async function sweepDigests(client, now = new Date()) {
   const { rows } = await client.query(
     `SELECT id, digest_times, digest_scope, timezone FROM users
-     WHERE status = 'active' AND onboarded_at IS NOT NULL AND digest_times IS NOT NULL`
+     WHERE status = 'active' AND onboarded_at IS NOT NULL AND digest_times IS NOT NULL
+       AND paused_at IS NULL`
   );
   const out = [];
   for (const u of rows) {

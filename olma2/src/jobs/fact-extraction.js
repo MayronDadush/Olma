@@ -212,6 +212,9 @@ async function dueUsers(client, now = Date.now(), minGapHours = 0) {
     `SELECT id, agent_id, phone, first_name, workspace_path, last_inbound_at, last_fact_extraction_at
        FROM users
       WHERE status = 'active' AND agent_id IS NOT NULL AND onboarded_at IS NOT NULL
+        -- Sends nothing, but it spends a model turn reading their conversation
+        -- and writes to their record. Someone who asked us to stop is owed both.
+        AND paused_at IS NULL
         AND last_inbound_at IS NOT NULL
         AND last_inbound_at < $1
         AND last_inbound_at > COALESCE(last_fact_extraction_at, 'epoch'::timestamptz)

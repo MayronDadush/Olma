@@ -416,6 +416,13 @@ test('agent doctrine: act-first outranks curiosity, and one question is a hard c
   // The token must be read alone — batching it caused a failed call every turn
   assert.match(tpl, /as a tool call ON ITS OWN/);
   assert.match(tpl, /Not in the same batch as `turn_start`/);
+  // A goodbye is not a tool call: the doctrine has to name pause_olma, or the
+  // agent does what it did the night this section was written — says something
+  // kind and changes nothing.
+  assert.match(tpl, /## When they want you to stop/);
+  assert.match(tpl, /pause_olma/);
+  assert.match(tpl, /resume_olma/);
+  assert.match(tpl, /deletes nothing/i);
 });
 
 test('intake greeter is told not to interrogate either', () => {
