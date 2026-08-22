@@ -300,13 +300,25 @@ async function discoveryGaps(client, userId) {
       instruction: 'You still know very little about this person (their USER.md card is nearly empty). Pick ONE question from the curiosity ladder in your doctrine — a recurring person in their tasks, when it suits them to hear from you, or what they are working toward — and ask it warmly. Whatever you learn goes to remember_fact / remember_preference.',
     });
   }
+  // Two different people are hiding behind "no working calendar", and the
+  // pitch that suits one insults the other. Someone who never connected wants
+  // to hear what it would do for them; someone whose connection Google
+  // rejected already knows — they set it up, it broke, and being asked "want
+  // to connect your calendar?" reads as Olma having forgotten. That second
+  // case is also the one nothing else catches: markNeedsReauth enqueues ONE
+  // message and then never mentions it again, so an abandoned reconnect is
+  // silent forever. Observed live: user 3 sat needs_reauth for 36 hours
+  // having started a reconnect and not finished it.
   const { rows: cal } = await client.query(
-    `SELECT 1 FROM integrations
-     WHERE user_id = $1 AND provider = 'google_calendar' AND status = 'connected'`, [userId]);
-  if (!cal[0]) {
+    `SELECT status FROM integrations
+     WHERE user_id = $1 AND provider = 'google_calendar'`, [userId]);
+  const calStatus = cal[0] ? cal[0].status : null;
+  if (calStatus !== 'connected') {
     gaps.push({
       topic: 'calendar',
-      instruction: 'Their Google Calendar is not connected. Offer it once, with the concrete benefit: meetings they agree to land in the calendar by themselves, and Olma can warn about clashes before they commit to a time.',
+      instruction: calStatus === 'needs_reauth'
+        ? 'Their Google Calendar WAS connected and Google has stopped accepting it, so it has been doing nothing since. They already know what it is for — do not pitch it. Say plainly that the connection expired and needs redoing, ask whether they want view-only or edit access, and call start_calendar_connection with their answer.'
+        : 'Their Google Calendar is not connected. Offer it once, with the concrete benefit: meetings they agree to land in the calendar by themselves, and Olma can warn about clashes before they commit to a time.',
     });
   }
   const { rows: conn } = await client.query(
