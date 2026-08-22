@@ -137,4 +137,5 @@ async function setTimezone(client, userId, timezone, confirmed) {
 module.exports = {
   newIdentityToken, resolveByToken, getByPhone, getById,
   createUser, primaryChannel, sessionKeyFor, setName, setTimezone, setLocale,
+  cleanName,
 };
