@@ -66,7 +66,7 @@ async function main() {
     const drain = () => beat('outbox_worker', () => drainOnce(pool, deliver));
     timers.push(setInterval(drain, 30_000));
 
-    // One tick for all three minute-sweeps. They were three intervals firing
+    // One tick for the minute-sweeps. They were separate intervals firing
     // on the same second, each taking its own connection and transaction, to
     // do work that is almost always "nothing due" — three times the wake-ups
     // for one tick's worth of results.
@@ -74,6 +74,7 @@ async function main() {
       reminders: await sweeps.sweepReminders(c),
       digests: await sweeps.sweepDigests(c),
       unblocks: await sweeps.sweepUnblocks(c),
+      staleMeetings: await sweeps.sweepStaleMeetings(c),
     }))), 60_000));
     // checkin ladder — every 5 minutes, because day one has a 15-minute step
     // and an hourly tick would land it anywhere up to an hour late. Cheap: one

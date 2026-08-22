@@ -33,7 +33,8 @@ test('ladder rung 1: stuck meeting beats everything else', async () => {
     await grants.grantFeature(c, a.id, conn.id, 'meetings');
     await grants.grantFeature(c, b.id, conn.id, 'meetings');
     const m = (await meetings.startMeeting(c, a.id, 'coffee', [b.id])).data.meeting;
-    await meetings.proposeSlot(c, a.id, m.id, 'Tuesday 17:00, cafe');
+    await meetings.proposeSlot(c, a.id, m.id, 'Tuesday 17:00, cafe',
+      new Date(Date.now() + 48 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00'));
     // b also has an at-risk task — the meeting must still win
     const t = (await tasks.addTask(c, b.id, { title: 'urgent thing', dueAt: new Date(Date.now() + 3600_000).toISOString() })).data.task;
     await c.query(`UPDATE tasks SET created_at = now() - interval '2 days' WHERE id = $1`, [t.id]);
@@ -175,7 +176,8 @@ test('a stuck-meeting nudge carries the user\'s own recorded constraints', async
     await grants.grantFeature(c, me.id, conn.id, 'meetings');
     const m = (await meetings.startMeeting(c, other.id, 'ריצה', [me.id])).data.meeting;
     await meetings.recordConstraint(c, me.id, m.id, 'לא בבקרים');
-    await meetings.proposeSlot(c, other.id, m.id, 'שלישי 07:00 בפארק');
+    await meetings.proposeSlot(c, other.id, m.id, 'שלישי 07:00 בפארק',
+      new Date(Date.now() + 48 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00'));
     const { instruction, rung } = await checkin.pickRung(c, me.id);
     assert.equal(rung, 'stuck_meeting');
     assert.ok(instruction.includes('<<<לא בבקרים>>>'), 'the nudge must carry their own constraint');
@@ -358,5 +360,41 @@ test('a goal is raised at most once a fortnight, then rotates or steps aside', a
     await c.query(
       `UPDATE outbox SET created_at = now() - interval '20 days' WHERE user_id = $1`, [u.id]);
     assert.equal((await checkin.pickRung(c, u.id)).topic, `goal:${first}`);
+  } finally { c.release(); }
+});
+
+// The ladder's top rung is what actually reached the user on Saturday morning.
+// Beyond quoting a dead slot, stuck_meeting outranks everything — so an
+// unclosable negotiation also shadowed every other check-in this person should
+// have been getting. Both halves are asserted here.
+test('a passed meeting neither nudges nor blocks the rest of the ladder', async () => {
+  const connections = require('../src/domain/connections');
+  const grants = require('../src/domain/grants');
+  const meetings = require('../src/domain/meetings');
+  const checkin = require('../src/jobs/checkin');
+
+  const host = await makeUser(db.pool, '+972581000001', { firstName: 'Miron' });
+  const amit = await makeUser(db.pool, '+972581000002', { firstName: 'Amit' });
+  const c = await db.pool.connect();
+  try {
+    const req = await connections.requestConnection(c, host.id, amit.phone, {});
+    const conn = (await connections.respondToConnection(c, amit.id, req.data.connection.id, 'approve')).data.connection;
+    await grants.grantFeature(c, host.id, conn.id, 'meetings');
+    await grants.grantFeature(c, amit.id, conn.id, 'meetings');
+    const m = (await meetings.startMeeting(c, host.id, 'פוקר', [amit.id])).data.meeting;
+    await meetings.proposeSlot(c, host.id, m.id, 'יום שישי 20:00',
+      new Date(Date.now() + 48 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00'));
+
+    assert.equal((await checkin.pickRung(c, amit.id)).rung, 'stuck_meeting',
+      'while the slot is ahead, chasing an unanswered proposal is exactly right');
+
+    // Friday 20:00 came and went with no answer.
+    await c.query(`UPDATE meetings SET proposed_start_at = now() - interval '13 hours' WHERE id = $1`, [m.id]);
+
+    const pick = await checkin.pickRung(c, amit.id);
+    assert.notEqual(pick.rung, 'stuck_meeting',
+      'Saturday: no message about Friday night');
+    assert.ok(['discovery', 'silence', 'stalled_goal', 'deadline_risk', 'overload'].includes(pick.rung),
+      `the ladder moves on to something real, got ${pick.rung}`);
   } finally { c.release(); }
 });

@@ -54,14 +54,17 @@ test('meeting lifecycle fans out at every turn', async () => {
   assert.equal(rows[0].urgency, 'urgent');
 
   // miron proposes → kapish hears the slot, miron does not self-notify
-  await call(miron, 'propose_meeting_slot', { meeting_id: meetingId, slot_description: 'Tuesday 17:00, cafe' });
+  await call(miron, 'propose_meeting_slot', { meeting_id: meetingId, slot_description: 'Tuesday 17:00, cafe',
+    starts_at: new Date(Date.now() + 48 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00') });
   rows = await outboxFor(kapish.id, 'meeting_slot_proposed');
   assert.equal(rows.length, 1);
   assert.equal(rows[0].payload.slot, 'Tuesday 17:00, cafe');
   assert.equal((await outboxFor(miron.id, 'meeting_slot_proposed')).length, 0);
 
   // kapish declines with a counter → miron hears the NEW slot
-  await call(kapish, 'respond_to_meeting_slot', { meeting_id: meetingId, accept: false, counter_proposal: 'Wednesday 18:00, phone' });
+  await call(kapish, 'respond_to_meeting_slot', { meeting_id: meetingId, accept: false,
+    counter_proposal: 'Wednesday 18:00, phone',
+    counter_starts_at: new Date(Date.now() + 72 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00') });
   rows = await outboxFor(miron.id, 'meeting_slot_proposed');
   assert.equal(rows.length, 1);
   assert.equal(rows[0].payload.slot, 'Wednesday 18:00, phone');
@@ -77,7 +80,8 @@ test('meeting lifecycle fans out at every turn', async () => {
 test('plain decline notifies the initiator; cancel notifies participants', async () => {
   const started = await call(miron, 'start_meeting_coordination', { title: 'lunch', phones: [kapish.phone] });
   const meetingId = Number(/"id":"?(\d+)/.exec(started)[1]);
-  await call(miron, 'propose_meeting_slot', { meeting_id: meetingId, slot_description: 'Sunday 12:00' });
+  await call(miron, 'propose_meeting_slot', { meeting_id: meetingId, slot_description: 'Sunday 12:00',
+    starts_at: new Date(Date.now() + 48 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00') });
 
   await call(kapish, 'respond_to_meeting_slot', { meeting_id: meetingId, accept: false });
   const declined = await outboxFor(miron.id, 'meeting_slot_declined');

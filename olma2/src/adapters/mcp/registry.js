@@ -586,11 +586,12 @@ const TOOLS = [
     { meeting_id: S('number', 'Meeting id'), constraint: S('string', 'The constraint, verbatim') },
     ['meeting_id', 'constraint'],
     (client, user, a) => meetings.recordConstraint(client, user.id, a.meeting_id, a.constraint)),
-  tool('propose_meeting_slot', 'Propose a slot: date+time+medium (location/phone/video) as ONE package. Proposing means your user agrees to it. Every part of the slot must come from what YOUR user actually said — if they gave only a time ("פנויה ב-13"), the DAY is not yours to fill in from conversation context: say the full slot back in one short line and get their yes first. A real meeting was confirmed on the wrong day exactly this way. If their calendar is connected, check my_calendar_events for that day before sending — proposing a slot the user is already busy in wastes everyone\'s round.',
-    { meeting_id: S('number', 'Meeting id'), slot_description: S('string', 'e.g. "Tuesday 17:00 at the office"') },
-    ['meeting_id', 'slot_description'],
+  tool('propose_meeting_slot', 'Propose a slot: date+time+medium (location/phone/video) as ONE package. Proposing means your user agrees to it. Every part of the slot must come from what YOUR user actually said — if they gave only a time ("פנויה ב-13"), the DAY is not yours to fill in from conversation context: say the full slot back in one short line and get their yes first. A real meeting was confirmed on the wrong day exactly this way. starts_at is the SAME moment as slot_description, written as a full ISO-8601 datetime WITH the UTC offset — it is what lets the system know the slot has passed, so a dead proposal stops chasing people. A bare local time is refused rather than guessed at, and a slot already in the past is refused outright. If their calendar is connected, check my_calendar_events for that day before sending — proposing a slot the user is already busy in wastes everyone\'s round.',
+    { meeting_id: S('number', 'Meeting id'), slot_description: S('string', 'e.g. "Tuesday 17:00 at the office"'),
+      starts_at: S('string', 'The same moment, ISO-8601 with offset, e.g. 2026-08-25T17:00:00+03:00') },
+    ['meeting_id', 'slot_description', 'starts_at'],
     async (client, user, a) => {
-      const res = await meetings.proposeSlot(client, user.id, a.meeting_id, a.slot_description);
+      const res = await meetings.proposeSlot(client, user.id, a.meeting_id, a.slot_description, a.starts_at);
       if (res.ok) {
         const brief = await meetingBrief(client, a.meeting_id);
         await fanout(client, await activeParticipantsExcept(client, a.meeting_id, user.id),
@@ -601,11 +602,13 @@ const TOOLS = [
       }
       return res;
     }),
-  tool('respond_to_meeting_slot', 'Accept or decline the current proposed slot. Declining may carry counter_proposal in the same call. accept=true only after the user saw the EXACT slot text — day included — and agreed to it; if the slot differs from what your user was discussing (a different day, a different place), point that out instead of accepting.',
+  tool('respond_to_meeting_slot', 'Accept or decline the current proposed slot. Declining may carry counter_proposal in the same call — and then counter_starts_at is required too, same rule as propose_meeting_slot. accept=true only after the user saw the EXACT slot text — day included — and agreed to it; if the slot differs from what your user was discussing (a different day, a different place), point that out instead of accepting.',
     { meeting_id: S('number', 'Meeting id'), accept: S('boolean', 'true = user agrees to the exact slot'),
-      counter_proposal: S('string', 'Optional new slot when declining') }, ['meeting_id', 'accept'],
+      counter_proposal: S('string', 'Optional new slot when declining'),
+      counter_starts_at: S('string', 'Required with counter_proposal: the same moment, ISO-8601 with offset') },
+    ['meeting_id', 'accept'],
     async (client, user, a) => {
-      const res = await meetings.respondToSlot(client, user.id, a.meeting_id, a.accept, a.counter_proposal);
+      const res = await meetings.respondToSlot(client, user.id, a.meeting_id, a.accept, a.counter_proposal, a.counter_starts_at);
       if (!res.ok) return res;
       const brief = await meetingBrief(client, a.meeting_id);
       const others = await activeParticipantsExcept(client, a.meeting_id, user.id);
