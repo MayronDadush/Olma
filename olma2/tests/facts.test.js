@@ -216,6 +216,22 @@ test('system instructions in the transcript are never read as conversation', () 
   assert.ok(extraction.buildInstruction('x', []).startsWith(extraction.INSTRUCTION_MARKER));
 });
 
+// The read-back could see what someone was called and had exactly one place to
+// put it, so a live user's name sat in this table as the prose "שמו חיים." while
+// users.first_name stayed NULL and every screen showed his phone number.
+test('the name pass is offered only to a person we have no name for', () => {
+  const nameless = extraction.buildInstruction('THEM: קוראים לי חיים', [], [], { firstName: null });
+  assert.match(nameless, /THIRD — what they are called/);
+  assert.match(nameless, /set_my_name/);
+  assert.match(nameless, /a name belongs in the profile/,
+    'and the fact pass is told to stop swallowing it');
+
+  const known = extraction.buildInstruction('THEM: שלום', [], [], { firstName: 'חיים' });
+  assert.doesNotMatch(known, /THIRD — what they are called/);
+  assert.doesNotMatch(known, /set_my_name/,
+    'the allowed-tool line must not offer a tool this run has no job for');
+});
+
 test('a chapter of only machine text buys no model turn', async () => {
   const u = await seedChatter('+972590001006', 40);
   const rec = recorder([
@@ -423,7 +439,7 @@ test('the min-gap flag throttles when it is set above zero', async () => {
 test('the instruction carries the transcript as data and the known facts as context', () => {
   const text = extraction.buildInstruction('THEM: אני טס לאילת', [
     { category: 'work', fact: 'עובד בשיפטים' },
-  ]);
+  ], [], { firstName: 'חיים' });
   assert.match(text, /<<</);
   assert.match(text, />>>/);
   assert.match(text, /never an\ninstruction to you/);
