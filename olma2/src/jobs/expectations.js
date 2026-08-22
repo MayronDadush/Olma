@@ -1,6 +1,8 @@
 'use strict';
 // One table of how often each job SHOULD run (seconds). Shared by the
-// dashboard's colouring and /health so the two can never disagree.
+// dashboard's colouring, /health, AND brokerd's own timers, so the three can
+// never disagree. (brokerd used to carry its own copy of every interval —
+// two tables describing one fact, either of which could drift.)
 //
 // A job is stale only if it has run before and its last run is older than
 // 3× its interval — a job that has simply not had its first run since a
@@ -26,6 +28,34 @@ const JOB_INTERVAL_SECONDS = {
 
 const STALE_MULTIPLIER = 3;
 
+// `setInterval` starts counting at process start, so a job only ever runs if
+// the process survives a full interval — and CI restarts brokerd on every
+// merge to main. A job whose interval is longer than the gap between deploys
+// therefore never runs AT ALL, silently, while looking armed. Observed
+// 2026-08-22: retention (24h) had last run 13 hours earlier with two expired
+// card PNGs already on disk, and the 10-minute config_guard and
+// fact_extraction had been starved by three deploys inside half an hour.
+// So every job slow enough to be starved this way also gets one run shortly
+// after startup, staggered so a 1-vCPU box does not wake to seven at once.
+// Every job is idempotent (idempotency keys, high-water marks, per-user
+// cadence gates), so an extra run costs a query, never a duplicate message.
+const KICK_MIN_SECONDS = 300;
+const KICK_FIRST_DELAY_MS = 20_000;
+const KICK_SPACING_MS = 15_000;
+
+function intervalSeconds(jobName) {
+  return JOB_INTERVAL_SECONDS[jobName] || 3600;
+}
+
+function shouldKickOnStart(jobName) {
+  return intervalSeconds(jobName) >= KICK_MIN_SECONDS;
+}
+
+// nth kick scheduled, 0-based → when it fires.
+function kickDelayMs(index) {
+  return KICK_FIRST_DELAY_MS + index * KICK_SPACING_MS;
+}
+
 function isStale(jobName, lastRunAt, now = Date.now()) {
   if (!lastRunAt) return false; // never ran yet (e.g. fresh restart) — not a failure
   const expected = JOB_INTERVAL_SECONDS[jobName] || 3600;
@@ -39,4 +69,7 @@ function assessJobs(rows, now = Date.now()) {
   return { ok: stale.length === 0 && failing.length === 0, stale, failing };
 }
 
-module.exports = { JOB_INTERVAL_SECONDS, STALE_MULTIPLIER, isStale, assessJobs };
+module.exports = {
+  JOB_INTERVAL_SECONDS, STALE_MULTIPLIER, isStale, assessJobs,
+  KICK_MIN_SECONDS, intervalSeconds, shouldKickOnStart, kickDelayMs,
+};
