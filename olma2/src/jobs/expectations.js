@@ -43,6 +43,20 @@ const KICK_MIN_SECONDS = 300;
 const KICK_FIRST_DELAY_MS = 20_000;
 const KICK_SPACING_MS = 15_000;
 
+// The kicks above mean /health legitimately reads 503 for the first couple of
+// minutes of EVERY restart: the heartbeat rows still hold pre-restart times,
+// and the jobs that would refresh them have not been given their turn yet.
+// deploy.sh used to check once, five seconds after `systemctl restart`, and
+// call that 503 a failed deploy — so it rolled back, checked the rollback the
+// same impatient way, got the same 503, and reported the rollback itself as
+// broken. Two green-tested merges (#16, #18) died that way on 2026-08-22
+// without one line of their code being at fault.
+//
+// The headroom on top of the last kick is for the job itself, not the wait
+// before it: fact_extraction and memory_consolidation each spawn silent agent
+// turns, which are seconds-to-minutes of real work, not a query.
+const KICK_HEADROOM_MS = 150_000;
+
 function intervalSeconds(jobName) {
   return JOB_INTERVAL_SECONDS[jobName] || 3600;
 }
@@ -54,6 +68,15 @@ function shouldKickOnStart(jobName) {
 // nth kick scheduled, 0-based → when it fires.
 function kickDelayMs(index) {
   return KICK_FIRST_DELAY_MS + index * KICK_SPACING_MS;
+}
+
+// How long after a restart every kicked job has had a fair chance to run, so
+// a 503 past this point is a real fault rather than a cold start. Derived from
+// the table rather than written down again in bash, because a deploy gate that
+// disagrees with the schedule it is waiting on is the bug being fixed here.
+function warmupBudgetMs() {
+  const kicked = Object.keys(JOB_INTERVAL_SECONDS).filter(shouldKickOnStart);
+  return kickDelayMs(Math.max(0, kicked.length - 1)) + KICK_HEADROOM_MS;
 }
 
 function isStale(jobName, lastRunAt, now = Date.now()) {
@@ -71,5 +94,6 @@ function assessJobs(rows, now = Date.now()) {
 
 module.exports = {
   JOB_INTERVAL_SECONDS, STALE_MULTIPLIER, isStale, assessJobs,
-  KICK_MIN_SECONDS, intervalSeconds, shouldKickOnStart, kickDelayMs,
+  KICK_MIN_SECONDS, KICK_HEADROOM_MS,
+  intervalSeconds, shouldKickOnStart, kickDelayMs, warmupBudgetMs,
 };

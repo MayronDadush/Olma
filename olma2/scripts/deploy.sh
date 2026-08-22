@@ -62,6 +62,55 @@ health_ok() {
   '
 }
 
+# Two very different failures arrive as the same 503, and they deserve
+# opposite amounts of patience:
+#
+#   * the process is DEAD or crash-looping — nothing is going to improve by
+#     waiting, and systemd's own restart counter says so within seconds;
+#   * the sweeps have not ticked YET — /health reads job_heartbeats, whose
+#     rows still carry pre-restart times until brokerd's staggered startup
+#     kicks land (jobs/expectations.js). This is the normal state of a
+#     freshly restarted box for ~2 minutes and it is not a fault.
+#
+# The old gate checked once after `sleep 5`, which is inside that window by
+# construction: it could only ever pass on a box whose slow jobs happened to
+# be fresh already. See warmupBudgetMs() for the incident this comes from.
+WARMUP_MS="$(node -e 'process.stdout.write(String(require("'"$SRC_DIR"'/src/jobs/expectations").warmupBudgetMs()))' 2>/dev/null || echo 260000)"
+WARMUP_S=$(( WARMUP_MS / 1000 ))
+POLL_S=5
+# A manual `systemctl restart` zeroes NRestarts, so anything above zero after
+# ours is systemd catching a process that fell over on its own.
+crash_count() {
+  $SSH "$SERVER" "systemctl show -p NRestarts --value olma2-brokerd olma2-dashboard 2>/dev/null | awk '{s+=\$1} END {print s+0}'" 2>/dev/null || echo 0
+}
+
+wait_for_health() {
+  local deadline=$(( $(date +%s) + WARMUP_S ))
+  while :; do
+    if health_ok; then return 0; fi
+    local crashes; crashes="$(crash_count)"
+    if [ "${crashes:-0}" -gt 0 ] 2>/dev/null; then
+      echo "A service crashed and was restarted by systemd ${crashes}x — not a cold start, not waiting it out." >&2
+      return 1
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "Still unhealthy ${WARMUP_S}s after restart — past the point where every startup kick has run." >&2
+      return 1
+    fi
+    sleep "$POLL_S"
+  done
+}
+
+# On the way out, say what /health actually objected to. The CI log for the
+# two failed deploys said only "error: 503", which named neither the stale job
+# nor the fact that staleness was the complaint at all.
+health_detail() {
+  local body units
+  body="$($SSH "$SERVER" 'curl -sS http://127.0.0.1:8788/health || true' 2>/dev/null | head -c 500)"
+  units="$($SSH "$SERVER" 'systemctl is-active olma2-brokerd olma2-dashboard | paste -sd/ -' 2>/dev/null | head -c 100)"
+  echo "${body:-<no response>} (brokerd/dashboard: ${units:-unknown})"
+}
+
 # AGENTS.md is written into a workspace once, at provisioning, so every
 # doctrine change reaches NEW users only — the people already using Olma keep
 # whatever text existed on the day they joined. That made every doctrine fix
@@ -92,11 +141,15 @@ roll_back() {
     return 1
   fi
   $SSH "$SERVER" "rsync -a --delete $BACKUP/ $DEST/ && systemctl restart olma2-brokerd olma2-dashboard" || true
-  sleep 5
-  if health_ok; then
+  # The rollback restarts the same services, so it faces the same cold-start
+  # window — judging it in five seconds is how a perfectly good rollback got
+  # reported as "ROLLBACK ITSELF IS UNHEALTHY", turning a recoverable deploy
+  # into a page.
+  if wait_for_health; then
     echo "Rolled back to the previous release successfully." >&2
   else
     echo "ROLLBACK ITSELF IS UNHEALTHY — manual intervention required immediately." >&2
+    echo "  /health said: $(health_detail)" >&2
   fi
   # Best-effort, and loud when it fails: leaving the new doctrine in workspaces
   # while the old code runs is exactly the mismatch this function exists to undo.
@@ -105,9 +158,9 @@ roll_back() {
 
 if [ "$RESTART" = "1" ]; then
   $SSH "$SERVER" "systemctl restart olma2-brokerd olma2-dashboard"
-  sleep 5
-  if ! health_ok; then
+  if ! wait_for_health; then
     echo "Post-restart health check FAILED — rolling back to the previous release." >&2
+    echo "  /health said: $(health_detail)" >&2
     roll_back || true
     echo "Deploy failed (auto-rolled-back where possible) — this run stays red on purpose; go fix the code." >&2
     exit 1

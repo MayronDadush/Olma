@@ -683,6 +683,54 @@ assert a lookup that never happened, and for a purchase the remembered version
 is stale by construction. Knowledge that does not go stale is allowed when it
 is plainly the agent's own rather than a lookup; a price never qualifies.
 
+### The deploy cadence and the job schedule were fighting (fixed 2026-08-22)
+
+Two merges to `main` with 390+ green tests each — #16 (`prompt-cache-costs`) and
+#18 (`starved-sweeps`) — rolled themselves back and then reported the rollback
+as broken too, ~10 minutes apart. Neither had a line of faulty code. One clock
+fought another:
+
+- **`setInterval` counts from process start, and CI restarts brokerd on every
+  merge.** A job slower than the gap between deploys therefore never ran *at
+  all*, while looking perfectly armed. Live when found: `retention_sweep` (24h)
+  last ran 13h earlier with two expired card PNGs still on disk, and the
+  10-minute `config_guard` / `fact_extraction` had been starved by three
+  deploys inside half an hour — which is what finally pushed them past the
+  3x staleness line and made `/health` start refusing.
+- **`deploy.sh` then judged that in five seconds.** `systemctl restart`, `sleep
+  5`, one `curl /health` — but `/health` reads `job_heartbeats`, whose rows
+  still hold *pre-restart* times until the sweeps tick again. The gate was
+  inside the cold-start window by construction; it had only ever passed on
+  boxes whose slow jobs happened to be fresh already. On failure it rolled
+  back, checked the rollback the same impatient way, got the same 503, and
+  printed `ROLLBACK ITSELF IS UNHEALTHY — manual intervention required` about a
+  release that was fine. (It was: the box self-healed at 10:35 with no
+  intervention, the moment the 10-minute jobs reached their natural tick.)
+
+Fixes, in the order they matter:
+- Every job with an interval ≥ `KICK_MIN_SECONDS` (300s) also runs **once at
+  startup**, staggered 20s→110s so a 1-vCPU box does not wake to seven at once.
+  Every sweep is already idempotent — idempotency keys, byte-offset high-water
+  marks, per-user cadence gates — so a boot run costs a query, never a
+  duplicate message.
+- **`deploy.sh` polls instead of sampling** (`wait_for_health`), on a budget
+  `warmupBudgetMs()` *derives from the kick schedule* rather than a second
+  number written in bash — the whole bug was two places disagreeing about one
+  cadence. The rollback path polls too, for the same reason it needed to.
+- **A crash still fails fast.** Patience is only owed to a cold start, never to
+  a dead process: `systemctl show -p NRestarts` is zeroed by a manual restart,
+  so anything above zero after ours is systemd catching a process that fell
+  over, and the gate stops immediately instead of waiting out the budget.
+- On failure the log now prints what `/health` actually objected to. The two
+  red runs said only `error: 503` — naming neither the stale job nor the fact
+  that staleness was the complaint.
+
+`brokerd` also stopped carrying its own copy of all fifteen intervals;
+`jobs/expectations.js` is now the one table the daemon, the dashboard, `/health`
+and the deploy gate all read. **A health check that cannot tell "not yet" from
+"never" becomes noise everyone learns to ignore** — and a deploy gate wired to
+one is worse, because it acts on the noise.
+
 ### Deploying doctrine no longer needs a second command (2026-08-21)
 
 `agents-template.md` is written into a workspace once, at provisioning, so every
