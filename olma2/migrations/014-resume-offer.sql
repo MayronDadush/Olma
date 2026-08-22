@@ -1,0 +1,13 @@
+-- Tracks whether a paused person has already been asked, in this pause
+-- period, whether they want Olma back. Without it "ask once" degenerates into
+-- either asking on every message they send while paused (naggy — exactly the
+-- pitch-to-retain pattern pause_olma's doctrine forbids) or never asking at
+-- all (the gap this migration closes: a paused person who writes again gets
+-- answered and then waits, same as before pause existed, for THEM to
+-- remember resume_olma exists).
+--
+-- NULL = not offered since the current pause began. Compared against
+-- paused_at (see turn_start in registry.js) rather than cleared on resume, so
+-- a stale value from an earlier pause cycle naturally reads as "not offered
+-- this time" without a second write.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS resume_offer_sent_at timestamptz;
