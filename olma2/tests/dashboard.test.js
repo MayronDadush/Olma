@@ -4,7 +4,6 @@ const assert = require('node:assert/strict');
 const { freshDb, makeUser } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const { createDashboard } = require('../src/adapters/http/dashboard');
-const usage = require('../src/jobs/usage');
 const metrics = require('../src/jobs/metrics');
 const retention = require('../src/jobs/retention');
 const flags = require('../src/domain/flags');
@@ -24,42 +23,14 @@ after(async () => { server.close(); await db.teardown(); });
 
 // ---- pipeline jobs ----------------------------------------------------------
 
-test('usage sweep: attributes positive deltas per user, ignores resets', async () => {
-  const agentId = (await db.pool.query(`SELECT agent_id FROM users WHERE id = $1`, [user.id])).rows[0].agent_id;
-  const fake = (total) => async () => [
-    { sessionId: 'sess-1', agentId, model: 'claude-haiku-4-5', totalTokens: total },
-    { sessionId: 'sess-x', agentId: 'main', model: 'x', totalTokens: 999999 }, // non user-agent → ignored
-  ];
-  let out = await withTx(db.pool, (c) => usage.sweepUsage(c, { listSessions: fake(10_000) }));
-  assert.equal(out.recorded, 1); // first sight = full total attributed
-  out = await withTx(db.pool, (c) => usage.sweepUsage(c, { listSessions: fake(25_000) }));
-  assert.equal(out.recorded, 1); // +15k delta
-  out = await withTx(db.pool, (c) => usage.sweepUsage(c, { listSessions: fake(5_000) }));
-  assert.equal(out.recorded, 0); // shrink = session reset → re-baseline, no negative charge
-
-  const { rows } = await db.pool.query(
-    `SELECT total_tokens, cost_usd FROM usage_ledger WHERE user_id = $1`, [user.id]);
-  assert.equal(Number(rows[0].total_tokens), 25_000);
-  assert.ok(Number(rows[0].cost_usd) > 0);
-});
-
-test('usage sweep: prefers the gateway\'s own cost estimate over the blended rate', async () => {
-  const agentId = (await db.pool.query(`SELECT agent_id FROM users WHERE id = $1`, [user.id])).rows[0].agent_id;
-  const before = Number((await db.pool.query(
-    `SELECT cost_usd FROM usage_ledger WHERE user_id = $1`, [user.id])).rows[0].cost_usd);
-  // 100k tokens costing $4 — nothing like the blended flag rate, so if the
-  // reported figure were ignored the delta below would be off by ~30x
-  await withTx(db.pool, (c) => usage.sweepUsage(c, {
-    listSessions: async () => [{
-      sessionId: 'sess-cost', agentId, model: 'claude-opus-5',
-      totalTokens: 100_000, estimatedCostUsd: 4,
-    }],
-  }));
-  const after = Number((await db.pool.query(
-    `SELECT cost_usd FROM usage_ledger WHERE user_id = $1 AND model = 'claude-opus-5'`, [user.id])).rows[0].cost_usd);
-  assert.ok(Math.abs(after - 4) < 0.01, `expected ~$4 from the reported estimate, got ${after}`);
-  assert.ok(before >= 0);
-});
+// The two usage-sweep tests that lived here were deleted rather than adapted.
+// They fed fake cumulative counters into the sweep and asserted the delta
+// arithmetic was right — which it was. What they could not catch is that the
+// real field is a context-size GAUGE, not a counter, so the pipeline summed
+// the wrong number and both tests passed anyway for a month while the ledger
+// under-reported real spend by 7x. The replacement suite in tests/usage.test.js
+// drives the sweep off actual transcript files — what production reads — so a
+// wrong assumption about the source now fails instead of being encoded.
 
 test('metrics rollup: audit events become daily snapshot rows', async () => {
   const tasks = require('../src/domain/tasks');

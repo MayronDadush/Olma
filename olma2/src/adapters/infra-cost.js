@@ -75,13 +75,26 @@ async function anthropicBotCost(adminKey) {
       for (const row of bucket.results ?? []) {
         const table = priceFor(row.model);
         if (!table) continue;
+        // Some fields come back as a scalar and some as an object of
+        // sub-buckets; sum either shape.
         const tok = (field) => {
           const v = row[field];
           return typeof v === 'object' && v ? Object.values(v).reduce((a, b) => a + (b || 0), 0) : (v || 0);
         };
+        // Cache writes arrive under `cache_creation`, an object keyed by TTL
+        // ({ephemeral_1h_input_tokens, ephemeral_5m_input_tokens}) — NOT under
+        // `cache_creation_input_tokens`, which this read for a month and which
+        // simply does not exist in the response. Missing it silently zeroed the
+        // single largest line on an Olma turn: the system prompt plus 59 tool
+        // schemas are re-cached constantly. Measured on 2026-08-20 — 2,808,131
+        // cache-write tokens dropped, turning a real $4.57 day into $1.06, and
+        // making the page under-report by ~4x while looking perfectly healthy.
+        // The name is kept alongside as a fallback in case the API ever adds
+        // the flat form.
+        const cacheWrite = tok('cache_creation') || tok('cache_creation_input_tokens');
         const cost = (tok('uncached_input_tokens') * table.in
           + tok('output_tokens') * table.out
-          + tok('cache_creation_input_tokens') * table.cw
+          + cacheWrite * table.cw
           + tok('cache_read_input_tokens') * table.cr) / 1_000_000;
         sinceTotal += cost;
         if (day >= monthStart) monthTotal += cost;
@@ -188,4 +201,6 @@ async function getInfraCosts() {
   return data;
 }
 
-module.exports = { getInfraCosts, PROJECT_START, ELEVENLABS_START };
+// anthropicBotCost is exported for the test that pins the response shape —
+// the field-name bug it covers was invisible to every other kind of check.
+module.exports = { getInfraCosts, anthropicBotCost, PROJECT_START, ELEVENLABS_START };

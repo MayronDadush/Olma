@@ -168,6 +168,62 @@ restart the gateway, then compare against Haiku with `scripts/model-pilot.js`
 on `u-3` only — judging Hebrew grammatical gender, tone, and above all whether
 tool calls (meetings, contacts, reminders) stay correct.
 
+### Cost reporting was wrong in BOTH directions (fixed 2026-08-22)
+
+Two independent bugs, each of which made the dashboard's cost numbers useless,
+found by comparing them against Anthropic's own console after the account ran
+out of credit mid-conversation on 2026-08-20.
+
+**1. Per-user attribution read a gauge as a counter.** `jobs/usage.js` summed
+`totalTokens` out of the gateway's `sessions.json` and accumulated positive
+deltas, on the stated belief the field is cumulative. It is not:
+
+- `totalTokens` is the size of the CURRENT CONTEXT. Every session in the index
+  sits at 26k-38k no matter how long the conversation ran. One real session
+  (u-3, `9b199906`) held 138 model calls and 5,690,328 billable tokens; its
+  gauge read 58,892.
+- `estimatedCostUsd` is derived from that same gauge, and each call's own
+  `usage.cost` block comes back all-zero from the gateway — so it is not a
+  price at all.
+- **Sessions rotate.** That $2.18 session no longer appears in `sessions.json`;
+  the WhatsApp session key now points at a newer sessionId. Its usage did not
+  merely go unpriced, it became invisible, and the delta arithmetic saw a
+  shrink and re-baselined to zero.
+- Agents with no user row (`main`, `intake`, and every retired v1 agent) were
+  skipped outright, so background sweeps and the intake greeter cost nothing
+  on paper.
+
+Rewritten to read the TRANSCRIPTS, which are append-only and carry a real
+`usage` block per assistant message. `usage_session_snapshots.byte_offset` is
+the high-water mark — it only moves forward, so a re-run charges nothing twice,
+and an old transcript is still read after the index forgets it. Prices live in
+`domain/model-pricing.js` (migration 012 has the autopsy). Non-user agents go
+to a new `usage_system_ledger`.
+
+**2. The "source of truth" was itself under-reporting by 4x.**
+`adapters/infra-cost.js` reads Anthropic's org `usage_report/messages`, and
+priced cache writes from `row.cache_creation_input_tokens` — **a field that
+does not exist in the response.** The real one is `cache_creation`, an object
+keyed by TTL (`{ephemeral_1h_input_tokens, ephemeral_5m_input_tokens}`). Since
+an Olma turn re-caches a 40k-char system prompt plus 59 tool schemas
+constantly, this is the single largest line on the bill: 2,808,131 cache-write
+tokens silently priced at zero on 2026-08-20 alone, turning a real $4.57 day
+into $1.06. The page looked perfectly healthy the whole time.
+
+**What makes it stay fixed:** the cost section now renders a reconciliation
+line — attributed-here vs billed-by-Anthropic, with the percentage gap, shown
+always rather than only when it breaks. A silent divergence between the two is
+exactly how both bugs survived a month. Post-fix, days from 2026-08-18 onward
+reconcile at 0.0%; earlier days remain 36-92% short because those transcripts
+have already rotated off disk, which is unrecoverable and now visible instead
+of hidden.
+
+**Sizing, for context:** the real figure is ~$18/month, not the ~$2 the broken
+ledger claimed. 2026-08-20 alone was $4.57, and roughly half of it was ONE
+real WhatsApp conversation (138 model calls: a meeting negotiation, a contact
+save, a calendar reconnect). Model pilots were 5% of that day. There is no
+runaway process — a long tool-using conversation is simply what it costs.
+
 ### Voice-note transcription moved to ElevenLabs Scribe v2 (2026-08-18)
 
 Was local `whisper.cpp` only (`/root/whisper-transcribe.sh`, ggml-small-q5_0,
