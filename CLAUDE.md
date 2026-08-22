@@ -316,6 +316,45 @@ had backed off to weekly, or given up at 4, would otherwise swallow the
 message). Matching is on trailing phone digits, and an ambiguous fragment
 refuses with the candidates rather than picking one.
 
+### A Saturday nudge about Friday's poker game (fixed 2026-08-22)
+
+A user was asked, on Saturday morning, whether "יום שישי בשעה 20:00" worked
+for him. It was the `stuck_meeting` rung — the TOP of the check-in ladder —
+chasing a proposal nobody had answered. Three gaps stacked:
+
+- **A slot had no machine-readable time.** `meetings.proposed_slot` was TEXT
+  only, so *nothing in the system could ask whether the moment had passed.*
+  That is the root; the rest follows from it.
+- **Nothing ever closed a negotiation.** Not `retention.js`, not any sweep;
+  the round cap was removed 2026-08-15 by design. A meeting stayed
+  `negotiating` until confirmed, cancelled, or emptied by opt-outs —
+  otherwise forever.
+- **The nudge query had no time bound at all**: `proposed_slot IS NOT NULL`
+  was the whole test. And since `stuck_meeting` outranks every other rung, one
+  dead meeting also **shadowed every other check-in that person should have
+  been getting**.
+
+Migration 011 adds `proposed_start_at` / `confirmed_start_at` and an `expired`
+status. `propose_meeting_slot` now **requires `starts_at`** — the same moment
+as the text, ISO-8601 with offset — under the identical refuse-don't-guess rule
+calendar events already had (that rule now lives once, in `domain/datetime.js`,
+shared by both). A slot already in the past is refused at proposal time, before
+it reaches anyone's phone. `respond_to_meeting_slot` needs `counter_starts_at`
+alongside a counter-proposal for the same reason.
+
+`pendingMeetingFor` excludes a slot that has started **and** any row whose
+`proposed_start_at` is NULL — legacy rows cannot be dated, and asking about a
+possibly-dead slot is the bug itself. `sweepStaleMeetings` (in the existing
+minute tick, no new cron) closes what passed: 6h after the start, or after
+`LEGACY_STALE_DAYS = 3` untouched for NULL-start rows. The grace is deliberate
+— closing a meeting early is worse than closing it late. Each close tells the
+INITIATOR once (`meeting_expired`, idempotency key `mexpired:<id>`), because
+they are the only one who can restart it.
+
+`scripts/close-stale-meeting.js --phone <n>` lists someone's open negotiations
+with ages; `--id N --apply` closes one and reuses the same idempotency key, so
+it can never double-message a meeting the sweep already handled.
+
 ### "I can't do that" was the whole answer (fixed 2026-08-21)
 
 A user asked Olma to look a few things up online and buy them. She has no web
