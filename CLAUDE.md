@@ -388,6 +388,42 @@ Live: קפיש (user 9) was stopped by hand the moment this was found — remind
 audited as `admin.service_stopped` with `dataDeleted: false` — then migrated
 onto `paused_at` once this shipped.
 
+### Pausing left them relying on their own memory to come back (fixed 2026-08-22)
+
+The pause feature above fixed the incident it was built for, and immediately
+raised the next question: if קפיש writes to Olma again next week, does he get
+answered and then silently wait — same as before pause existed, except now
+HE has to remember `resume_olma` exists rather than Olma ever bringing it up?
+Asked explicitly, and yes, that gap was real.
+
+`turn_start` (`registry.js`) now stamps `resume_offer_sent_at` the first time
+a paused person's message arrives, and returns `offerResume: true` for that
+one turn only. The write is the atomic UPDATE itself —
+`WHERE paused_at IS NOT NULL AND (resume_offer_sent_at IS NULL OR
+resume_offer_sent_at < paused_at)` — so a second concurrent call to the same
+turn cannot double-offer, and comparing against `paused_at` rather than
+clearing the column on resume means a leftover value from an EARLIER pause
+cycle reads as "not offered this time" for free — resume, then pause again,
+and the offer fires once more with no second write anywhere.
+
+Doctrine (`agents-template.md`): answer what they actually asked, in full,
+first — then ONE line asking if they'd like Olma back. Never twice in the
+same pause; that would be the exact pitch-to-retain pattern the stop section
+already forbids. If they say no, or just talk about something else,
+`offerResume` will not fire again until they resume and pause once more.
+
+Caught a pre-existing test-isolation bug while adding coverage: one test in
+`mcp-e2e.test.js` dropped the shared DB's `quota_daily_free` flag to 1 to
+test the block flow, and never restored it — every later test in the file
+sharing that connection was one stray `turn_start` call away from silently
+hitting `blocked` instead of `proceed`. Fixed with a `finally` restoring it
+to the default (50); this is what made the resume-offer tests flake until
+found, since they are the first in the file to call `turn_start` more than
+twice for one user.
+
+Migration 014, verified against production's actual current state (13
+applied, matching the tree) rather than an older dump.
+
 ### Two branches, one migration number (fixed 2026-08-22)
 
 `src/db/migrate.js` derives `version` from `parseInt(filename)`, and

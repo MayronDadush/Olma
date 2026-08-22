@@ -160,7 +160,7 @@ async function connectedUserByPhone(client, actorId, phone, feature) {
 
 const TOOLS = [
   // ---------------------------------------------------------------- turn gate
-  tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and tells you how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all). Pass sender_name whenever the turn\'s Conversation info carries one.',
+  tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and tells you how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all). Pass sender_name whenever the turn\'s Conversation info carries one. If the response carries offerResume: true, this is the first message since they paused — answer what they actually asked, then add ONE line asking if they would like Olma to start reaching out again.',
     { sender_name: S('string', 'The `sender` field from this turn\'s Conversation info, verbatim. Only ever used to fill a name we do not have, always as an unconfirmed guess — never overwrites a name they gave you themselves.') }, [],
     async (client, user, args, ctx) => {
       if (ctx.flood && ctx.flood.isFlooding(user.id)) {
@@ -191,6 +191,29 @@ const TOOLS = [
         const named = await captureDisplayName(client, user, args.sender_name);
         namedNow = named.ok;
       }
+
+      // A paused person who writes gets answered — pausing stops Olma
+      // INITIATING, not answering (see domain/pause.js) — but before this, that
+      // answer was the whole reply. They were then back to relying on their OWN
+      // memory that resume_olma exists, exactly the asymmetry that caused
+      // 'pause' to exist in the first place: Olma has a structured way to know
+      // they are paused, and they do not. So the FIRST message they send after
+      // pausing gets one extra thing: an offer to turn Olma back on.
+      //
+      // Never a second time in the same pause period — asking on every message
+      // while paused is the pitch-to-retain pattern the stop doctrine forbids,
+      // and if they ignored the first offer, an unread reminder they never
+      // asked for is not an improvement. The WHERE clause makes this atomic and
+      // self-limiting: comparing against paused_at, not clearing the column on
+      // resume, means a leftover value from an earlier pause cycle reads as
+      // "not offered this time" for free.
+      const offered = await client.query(
+        `UPDATE users SET resume_offer_sent_at = now()
+          WHERE id = $1 AND paused_at IS NOT NULL
+            AND (resume_offer_sent_at IS NULL OR resume_offer_sent_at < paused_at)
+          RETURNING id`, [user.id]);
+      const offerResume = offered.rowCount > 0;
+
       const counted = await quota.countMessage(client, user.id);
       // One row per inbound message, purely so the north-star metric can exist.
       // `last_inbound_at` above is overwritten every time, so before this there
@@ -203,7 +226,12 @@ const TOOLS = [
       // on every single message, so it cannot join CARD_TOOLS wholesale — it
       // flags the card itself, on the one turn in a person's life that fills in
       // their name (see brokerd/server.js).
-      if (!counted.data.blocked) return stale(ok({ directive: 'proceed', locale: user.locale }), namedNow);
+      if (!counted.data.blocked) {
+        return stale(ok({
+          directive: 'proceed', locale: user.locale,
+          ...(offerResume ? { offerResume: true } : {}),
+        }), namedNow);
+      }
       const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);
       if (!shouldNotice) return stale(ok({ directive: 'silent', reason: 'blocked_already_notified' }), namedNow);
       const view = await digest.assemble(client, user.id, 'block_view');

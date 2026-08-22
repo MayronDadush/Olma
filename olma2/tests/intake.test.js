@@ -423,6 +423,11 @@ test('agent doctrine: act-first outranks curiosity, and one question is a hard c
   assert.match(tpl, /pause_olma/);
   assert.match(tpl, /resume_olma/);
   assert.match(tpl, /deletes nothing/i);
+  // The doctrine that closes the "he'd have had to remember resume_olma
+  // himself" gap: the model is told what turn_start's offerResume field means
+  // and that it fires exactly once per pause.
+  assert.match(tpl, /offerResume/);
+  assert.match(tpl, /will not fire again this pause/);
 });
 
 test('intake greeter is told not to interrogate either', () => {

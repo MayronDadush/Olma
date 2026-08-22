@@ -166,18 +166,26 @@ test('set_my_name defaults to unconfirmed, so a guess is never mistaken for an a
 
 test('turn_start drives the block flow: notice once, then silent', async () => {
   const flags = require('../src/domain/flags');
+  // The flag is shared across every test in this file's one DB — left at 1,
+  // any later test making more than one turn_start call for the same user
+  // silently starts hitting 'blocked' instead of 'proceed'. Restore it in a
+  // finally so a later test failing does not also poison the ones after it.
   const c = await db.pool.connect();
   try { await flags.setFlag(c, 'quota_daily_free', 1); } finally { c.release(); }
-
-  // bob's first message passes, second crosses the limit
-  let r = await callTool('turn_start', { identity_token: bob.identity_token });
-  assert.match(r, /"directive":"proceed"/);
-  r = await callTool('turn_start', { identity_token: bob.identity_token });
-  assert.match(r, /"directive":"send_block_notice"/);
-  assert.match(r, /"blockView"/);
-  assert.match(r, /"openTasks"/); // counts-only personal data present
-  r = await callTool('turn_start', { identity_token: bob.identity_token });
-  assert.match(r, /"directive":"silent"/); // one notice per window, never two
+  try {
+    // bob's first message passes, second crosses the limit
+    let r = await callTool('turn_start', { identity_token: bob.identity_token });
+    assert.match(r, /"directive":"proceed"/);
+    r = await callTool('turn_start', { identity_token: bob.identity_token });
+    assert.match(r, /"directive":"send_block_notice"/);
+    assert.match(r, /"blockView"/);
+    assert.match(r, /"openTasks"/); // counts-only personal data present
+    r = await callTool('turn_start', { identity_token: bob.identity_token });
+    assert.match(r, /"directive":"silent"/); // one notice per window, never two
+  } finally {
+    const c2 = await db.pool.connect();
+    try { await flags.setFlag(c2, 'quota_daily_free', 50); } finally { c2.release(); }
+  }
 });
 
 // The tools that did not exist the night a user asked to stop and Olma, with
@@ -204,6 +212,43 @@ test('pause_olma stops everything and resume_olma puts it back', async () => {
   // resuming twice is refused rather than silently accepted
   assert.match(await callTool('resume_olma', { identity_token: u.identity_token }),
     /^ERROR invalid/);
+});
+
+test('the first message after pausing offers to resume; nothing after that does', async () => {
+  const u = await makeUser(db.pool, '+972571000011', { firstName: 'קפיש' });
+  await callTool('pause_olma', { identity_token: u.identity_token });
+
+  const first = await callTool('turn_start', { identity_token: u.identity_token });
+  assert.match(first, /"offerResume":true/, 'the first turn after pausing must offer, unprompted');
+
+  const second = await callTool('turn_start', { identity_token: u.identity_token });
+  assert.doesNotMatch(second, /offerResume/, 'never twice in the same pause — that is the pitch-to-retain pattern the doctrine forbids');
+
+  const third = await callTool('turn_start', { identity_token: u.identity_token });
+  assert.doesNotMatch(third, /offerResume/);
+});
+
+test('resuming and pausing again offers exactly once more', async () => {
+  const u = await makeUser(db.pool, '+972571000012', { firstName: 'קפיש' });
+  await callTool('pause_olma', { identity_token: u.identity_token });
+  assert.match(await callTool('turn_start', { identity_token: u.identity_token }), /offerResume":true/);
+  assert.doesNotMatch(await callTool('turn_start', { identity_token: u.identity_token }), /offerResume/);
+
+  await callTool('resume_olma', { identity_token: u.identity_token });
+  assert.doesNotMatch(await callTool('turn_start', { identity_token: u.identity_token }), /offerResume/,
+    'not paused — nothing to offer');
+
+  await callTool('pause_olma', { identity_token: u.identity_token });
+  assert.match(await callTool('turn_start', { identity_token: u.identity_token }), /offerResume":true/,
+    'a new pause period is a fresh chance to offer — the old timestamp must not block it');
+  assert.doesNotMatch(await callTool('turn_start', { identity_token: u.identity_token }), /offerResume/);
+});
+
+test('a user who was never paused never sees offerResume', async () => {
+  const u = await makeUser(db.pool, '+972571000013', { firstName: 'לא הושהה' });
+  for (let i = 0; i < 3; i++) {
+    assert.doesNotMatch(await callTool('turn_start', { identity_token: u.identity_token }), /offerResume/);
+  }
 });
 
 test('one user can never pause another', async () => {
