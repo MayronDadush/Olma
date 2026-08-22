@@ -50,10 +50,19 @@ async function isPaused(client, userId) {
 // note: what they actually said, stored on the audit row only. It is their
 // words about our product, so it belongs in the trail an operator reads — not
 // on their card, where it would become something the agent brings up.
-async function pauseUser(client, userId, { note = null, now = new Date() } = {}) {
+// paused_at comes from Postgres `now()`, never from a JS Date, and that is
+// load-bearing rather than stylistic. resumeUser finds what to put back with
+// `cancelled_at >= paused_at`, and cancelReminder stamps cancelled_at with
+// now() — the TRANSACTION timestamp, fixed at BEGIN. A JS `new Date()` taken
+// here is read after BEGIN, so under load it lands a few milliseconds LATER
+// than the cancellations it is supposed to bracket, the filter matches
+// nothing, and resume silently brings nothing back. It failed about one run in
+// thirty, only ever with the whole suite running in parallel. One clock, one
+// transaction timestamp, and the two are now exactly equal.
+async function pauseUser(client, userId, { note = null } = {}) {
   const { rows } = await client.query(
-    `UPDATE users SET paused_at = COALESCE(paused_at, $2) WHERE id = $1
-      RETURNING id, paused_at`, [userId, now]);
+    `UPDATE users SET paused_at = COALESCE(paused_at, now()) WHERE id = $1
+      RETURNING id, paused_at`, [userId]);
   if (!rows[0]) return err('not_found', 'no such user');
 
   // Everything already armed against them. Cancelling rather than leaving them

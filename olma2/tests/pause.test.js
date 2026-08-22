@@ -230,3 +230,23 @@ test('nextOccurrenceAfter walks forward without drifting off the chosen time', (
 
   assert.equal(pause.nextOccurrenceAfter(start, null, notBefore), null, 'a one-off has no next');
 });
+
+// The flake this invariant exists to kill: paused_at used to come from a JS
+// Date read after BEGIN, while cancelReminder stamps cancelled_at with the
+// transaction timestamp. Under parallel load the JS value landed milliseconds
+// later than the cancellations resumeUser brackets with `cancelled_at >=
+// paused_at`, so resume silently re-armed nothing — about one full-suite run
+// in thirty, and never when the file was run on its own.
+test('pause stamps one clock, so resume can always find what it took down', async () => {
+  const { user } = await userWithDailyReminder('+972557049010');
+  await withTx(db.pool, (c) => pause.pauseUser(c, user.id));
+
+  const { rows } = await db.pool.query(
+    `SELECT u.paused_at, r.cancelled_at, (r.cancelled_at >= u.paused_at) AS brackets
+       FROM users u JOIN tasks t ON t.owner_id = u.id JOIN task_reminders r ON r.task_id = t.id
+      WHERE u.id = $1`, [user.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].brackets, true, 'resumeUser filters on exactly this comparison');
+  assert.deepEqual(rows[0].cancelled_at, rows[0].paused_at,
+    'both must be the same transaction timestamp, not two reads of two clocks');
+});

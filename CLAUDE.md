@@ -287,7 +287,7 @@ dashboard's delete button — irreversible, operator-only, and not what he asked
 for. Same shape as the two bugs above it: the agent understood, and the outcome
 had no structured home.
 
-**Pause is reversible and deletes nothing** (`domain/pause.js`, migration 011
+**Pause is reversible and deletes nothing** (`domain/pause.js`, migration 013
 `users.paused_at`). Someone done with a product is not asking to be erased;
 treating "stop messaging me" as "delete my account" would be a second thing
 done to them they never asked for. Tasks, reminders, facts, preferences and
@@ -331,6 +331,42 @@ Live: קפיש (user 9) was stopped by hand the moment this was found — remind
 #32 cancelled ~10h before it would have fired, `checkin_enabled = false`,
 audited as `admin.service_stopped` with `dataDeleted: false` — then migrated
 onto `paused_at` once this shipped.
+
+### Two branches, one migration number (fixed 2026-08-22)
+
+`src/db/migrate.js` derives `version` from `parseInt(filename)`, and
+`schema_migrations.version` is the PRIMARY KEY. Two branches each adding an
+`011-*.sql` — the ordinary way this repo works, since neither sees the other's
+file until they merge — meant the runner applied one, inserted version 11, then
+violated the key on the second. Every test file's `freshDb()` threw inside its
+`before` hook and the suite stopped producing a readable result at all.
+
+The part that cost the most time: **only the `pull_request` build ever sees
+both files.** `actions/checkout` builds a merge commit for `pull_request` and
+checks out the branch head for `push`, so the branch's own push build stayed
+green and passed in 41s while the PR check hung indefinitely on the same
+commit, same runner, same job definition.
+
+The other half is worse and is what actually bit this branch twice. A version
+can be burned by a branch that never merged: production had version 12 applied
+from `012-usage-from-transcripts.sql`, deployed by hand off
+`perf/prompt-cache-costs`, while `main` still ends at 011. A same-named new 012
+would then be filtered out of `pending` as "already applied" — deploy reports
+success, the column is never created, and the code that needs it fails at
+runtime with nothing in the log about a migration.
+
+Both are guarded now:
+- `listMigrations()` refuses two files sharing a version, by name, before any
+  SQL runs.
+- `migrate()` records the FILE each version came from (`schema_migrations.file`,
+  added in-place; pre-existing rows stay NULL and are not checked) and refuses
+  to proceed when a version was applied here from a different file.
+
+`tests/db-types.test.js` covers the tree being collision-free today, the
+duplicate guard firing, and the burned-version guard refusing rather than
+skipping. **Pick a number above every version the target database has seen —
+`SELECT max(version) FROM schema_migrations` on the box, not `ls migrations/`
+on main — and never renumber one that has already been applied anywhere.**
 
 ### The name was in front of us on every turn (fixed 2026-08-22)
 
