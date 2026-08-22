@@ -328,13 +328,21 @@ than before it, still needing the thing and now also told no.
 **When it is something Olma cannot do**. It names the boundary explicitly
 (no internet search, no links, no prices, no stock, no orders, no payment, no
 phone calls, no email) so the model stops improvising around an unnamed limit,
-then requires three moves in ONE message: say it plainly once → **save the
-request as a task in their own words, carrying the detail they already gave,
-plus a reminder if it is time-shaped** → log the gap as `feature_request` /
-`agent_detected`. That source matters: it is the agent's own observation, so it
-needs no permission and must not become a question — previously the demand
-signal was gated behind the user agreeing to file it, so most of it was never
-captured. `report_issue`'s tool description carries the same rule at the call
+then requires three moves in ONE message: say it plainly once → **offer to
+save the request as a task ("רוצה שאשמור לך את זה כמשימה?"), and on a yes save
+it in their own words with the detail they already gave, plus a reminder if it
+is time-shaped** → log the gap as `feature_request` / `agent_detected`.
+
+The offer is deliberate and is the ONE exception to act-first (which the goal
+section now cross-references, so the two save-rules cannot read as
+contradicting each other): everywhere else the person is describing their own
+errand, so Olma guesses and lets them correct; here they asked OLMA to do it
+and the answer was no, so writing it to their list uninvited hands the job
+back to them without asking. Logging the gap stays silent — it is the agent's
+own observation, invisible to them and about the product rather than their
+list, so it needs no permission and must never be asked about. Previously that
+demand signal was gated behind the user agreeing to file it, so most of it was
+never captured. `report_issue`'s tool description carries the same rule at the call
 site.
 
 The load-bearing half is the **hallucination guard**. A request to look

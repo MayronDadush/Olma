@@ -437,13 +437,22 @@ test('agent doctrine: a capability Olma lacks still leaves the user holding some
   // the boundary is named, so the model stops improvising around it
   assert.match(tpl, /cannot search the internet/);
   assert.match(tpl, /place an order, or pay for\s+anything/);
-  // ...and the request survives as a task carrying what they already said
-  assert.match(tpl, /save it as a task in their own words, carrying every detail they\s+already gave you/);
-  assert.match(tpl, /If it is time-shaped, offer a reminder/);
-  assert.match(tpl, /They asked for something\s+and they leave with something/);
+  // ...and the request survives — but as an OFFER, never a silent write to
+  // their list: they asked Olma to do it, so handing the job back is theirs
+  // to accept.
+  assert.match(tpl, /Offer to keep the thing itself — ask, do not save/);
+  assert.match(tpl, /Nothing goes on their\s+list before they answer/);
+  assert.match(tpl, /On a yes, save it with everything they already told you/);
+  assert.match(tpl, /never make them say any of it a second time/);
+  assert.match(tpl, /On a no, or on no answer, drop it/);
+  assert.match(tpl, /if it is\s+time-shaped, offer a reminder/i);
+  // the two save-rules must not read as contradicting each other
+  assert.match(tpl, /the one place you DO\s+ask that/);
   // the demand signal is logged without spending a turn asking permission
   assert.match(tpl, /source `agent_detected`/);
-  assert.match(tpl, /must never become a question/);
+  assert.match(tpl, /must never be asked about/);
+  assert.match(tpl, /it is invisible to them/,
+    'logging the gap is about the product, not their list — so it is not the one to ask about');
   // the hallucination guard — the real hazard when someone asks you to look
   assert.match(tpl, /never fake the part you cannot do/);
   assert.match(tpl, /mean you looked, and you did not look/);
