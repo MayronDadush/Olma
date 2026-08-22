@@ -715,6 +715,21 @@ tick, plus a callback page that explains instead of showing false success.
 See `domain/calendar.js` (`completeOAuth`), `channels/openclaw.js` (payload
 case), `adapters/http/dashboard.js` (callback page + outbox label).
 
+**A connection that breaks LATER had the same silence** (fixed 2026-08-22).
+`markNeedsReauth` enqueues exactly one `calendar_needs_reauth` message and then
+never raises it again, so a reconnect the person starts and abandons is dropped
+forever — user 3's calendar was rejected by Google on 2026-08-20 20:22, he began
+a reconnect 30 minutes later, never finished, and 36 hours of meetings and
+digests ran calendar-less without a word. The `discovery` check-in rung *did*
+qualify him (its gap query asks for `status = 'connected'`, and `needs_reauth`
+is not that) but would have pitched it as a first-timer's feature — "your
+calendar is not connected, here is what it does" — to someone who set it up
+twice and watched it break. `discoveryGaps` in `jobs/checkin.js` now reads the
+status instead of testing for one, and a rejected connection gets its own
+instruction: say plainly that it expired, skip the pitch, ask the access level,
+reconnect. That rung is now the only thing in the system that ever revisits an
+abandoned reconnect.
+
 ### Onboarding has no "welcome" step any more (redesigned 2026-08-17)
 
 Retired the whole `kind: 'welcome'` outbox mechanism. The intake greeter
