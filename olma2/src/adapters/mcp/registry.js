@@ -610,10 +610,11 @@ const TOOLS = [
       }
       return res;
     }),
-  tool('record_meeting_constraint', 'Save a constraint the user stated ("not Fridays") so nobody re-asks about it.',
-    { meeting_id: S('number', 'Meeting id'), constraint: S('string', 'The constraint, verbatim') },
+  tool('record_meeting_constraint', 'Save a constraint the user stated ("not Fridays") so nobody re-asks about it. Record the REASON too when they give one ("בצילומים ומסיים מאוחר, אז לא לפני 21:00") — a bare "not Monday" makes the other side guess, and guessing is what drags a negotiation out. The reason is shared with the other participants unless private=true; set that only when the user asks you to keep it to yourself, and never ask them to justify a day they did not explain.',
+    { meeting_id: S('number', 'Meeting id'), constraint: S('string', 'The constraint, verbatim, including the reason if they gave one'),
+      private: S('boolean', 'true = do not repeat this to the other participants. Default false.') },
     ['meeting_id', 'constraint'],
-    (client, user, a) => meetings.recordConstraint(client, user.id, a.meeting_id, a.constraint)),
+    (client, user, a) => meetings.recordConstraint(client, user.id, a.meeting_id, a.constraint, a.private === true)),
   tool('propose_meeting_slot', 'Propose a slot: date+time+medium (location/phone/video) as ONE package; proposing means your user agrees to it. Every part must come from what YOUR user actually said — if they gave a time without a day, say the full slot back and get their yes first (a real meeting once landed on the wrong day this way). starts_at = the same moment as slot_description, full ISO-8601 WITH UTC offset; bare or past times are refused. If their calendar is connected, check my_calendar_events for that day first.',
     { meeting_id: S('number', 'Meeting id'), slot_description: S('string', 'e.g. "Tuesday 17:00 at the office"'),
       starts_at: S('string', 'The same moment, ISO-8601 with offset, e.g. 2026-08-25T17:00:00+03:00') },
@@ -622,10 +623,14 @@ const TOOLS = [
       const res = await meetings.proposeSlot(client, user.id, a.meeting_id, a.slot_description, a.starts_at);
       if (res.ok) {
         const brief = await meetingBrief(client, a.meeting_id);
+        // The WHY rides along with the ask. It already existed in the row; it
+        // simply never travelled, so the other side was asked to agree to a
+        // day with no idea why that day.
+        const reasons = await meetings.shareableConstraints(client, a.meeting_id, user.id);
         await fanout(client, await activeParticipantsExcept(client, a.meeting_id, user.id),
           'meeting_slot_proposed', {
             meetingId: Number(a.meeting_id), title: brief.title || 'meeting',
-            slot: res.data.proposedSlot, byName: actorName(user),
+            slot: res.data.proposedSlot, byName: actorName(user), reasons,
           });
       }
       return res;
@@ -651,11 +656,13 @@ const TOOLS = [
         await fanout(client, others, 'meeting_slot_proposed', {
           meetingId: Number(a.meeting_id), title: brief.title || 'meeting',
           slot: res.data.proposedSlot, byName: actorName(user),
+          reasons: await meetings.shareableConstraints(client, a.meeting_id, user.id),
         });
       } else if (!a.accept) {
         await fanout(client, [Number(brief.initiator_id)].filter((id) => id !== Number(user.id)),
           'meeting_slot_declined', {
             meetingId: Number(a.meeting_id), title: brief.title || 'meeting', byName: actorName(user),
+            reasons: await meetings.shareableConstraints(client, a.meeting_id, user.id),
           });
       }
       return res;

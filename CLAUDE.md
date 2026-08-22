@@ -647,6 +647,58 @@ deserves to know it ended too. `expireOne`'s `UPDATE ... WHERE status =
 'negotiating'` still guarantees only one of {sweep, script} ever succeeds on a
 given meeting, so this can never double-message anyone.
 
+### Both of them explained why, and neither ever heard it (fixed 2026-08-22)
+
+Meeting #4 ("פוקר", מירון + עמית) burned four slots in one afternoon —
+שני → ראשון → שני → ראשון → שלישי — while BOTH men were explaining
+themselves to their own Olma the whole time. מירון's row held *"בצילומים
+ומסיים מאוחר — פנוי בשני, שלישי וחמישי"*. עמית's held *"לא ביום שני"*, the
+bare fact with the reason stripped off. Neither reason ever crossed.
+
+Three things were wrong, and only the middle one looks like the bug:
+
+- **The reason was never asked for.** `record_meeting_constraint`'s whole
+  description was *"Save a constraint the user stated (\"not Fridays\")"* —
+  availability, not why. So a reason offered in conversation was recorded as
+  a day, or not at all.
+- **It never travelled.** `meeting_slot_proposed` — the message the other
+  person actually receives — carried the slot and nothing else. The reason sat
+  in `meeting_participants.constraints` where the sweep could read it and the
+  recipient could not. `meeting_slot_declined` only *suggested* the agent go
+  look via `get_meeting_status`, and only on a decline.
+- **`get_meeting_status` handed over everything.** It returned every
+  participant's raw constraints to every participant. So the data was already
+  crossing — silently, with no notion of anyone having chosen to share it.
+
+Reasons are now shared **by default**, because a reason given while arranging
+a thing is part of arranging it: `record_meeting_constraint` takes
+`private=true` as an opt-out, and `shareableConstraints` rides along with
+`meeting_slot_proposed` (including counter-proposals) and
+`meeting_slot_declined`. The flag is honoured on the way OUT — `getStatus`
+now shows a participant their own constraints in full and everyone else's
+shareable ones only. **A flag the writer sets and the reader ignores is worse
+than no flag, because it is a promise.**
+
+Constraints are stored as `{ text, private }`; rows written before this are
+plain strings and read as shareable, which is the chosen default. Each is
+capped at 200 chars and at most 3 travel, because this text is written by one
+user and interpolated into another user's agent turn — the same reasoning as
+`cleanName`. It is quoted inside the usual `<<< >>>` fence, and doctrine says
+to reflect it in the user's own language and never as verified fact: *"אמית
+אמר שהוא בצילומים"*, never *"אמית בצילומים"*. Olma never presses for a reason
+— a day ruled out without one is a complete answer.
+
+**Found alongside it, and separate:** the machine time disagreed with the
+text. "יום שני 20:00" was stored as Aug 25 (Tuesday) and "יום שלישי 20:00" as
+Aug 26 (Wednesday), while "יום ראשון" mapped correctly — an off-by-one on
+everything after Sunday. `domain/datetime.js` validates FORMAT only (offset
+present) and `proposeSlot` refuses only a past time, so a well-formed but
+wrong date sails through and the row that expiry, nudges and the calendar all
+read says a different day from the one both people are discussing. Meeting #4's
+row was corrected by hand (`admin.meeting_slot_corrected`, slot text left
+alone, nothing sent); **cross-checking a named weekday against `starts_at` is
+still open.**
+
 ### "I can't do that" was the whole answer (fixed 2026-08-21)
 
 A user asked Olma to look a few things up online and buy them. She has no web

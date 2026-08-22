@@ -59,20 +59,69 @@ async function participantRow(client, meetingId, userId) {
   return rows[0] || null;
 }
 
+// A constraint is stored as { text, private }. Rows written before a reason
+// could travel are plain strings and read as shareable — which is the
+// behaviour asked for: the reason someone gives for a day is part of
+// coordinating the day, not a secret, unless they say it is.
+//
+// The load-bearing half is that `private` is honoured on the way OUT (see
+// getStatus and shareableConstraints). A flag the writer can set and the
+// reader ignores is worse than no flag, because it is a promise.
+const CONSTRAINT_MAX_CHARS = 200;
+const MAX_SHARED_REASONS = 3;
+
+function constraintEntry(raw) {
+  if (typeof raw === 'string') return { text: raw, private: false };
+  if (raw && typeof raw === 'object' && typeof raw.text === 'string') {
+    return { text: raw.text, private: raw.private === true };
+  }
+  return null;
+}
+
+function constraintTexts(list) {
+  return (Array.isArray(list) ? list : []).map(constraintEntry).filter(Boolean).map((c) => c.text);
+}
+
+function shareableTexts(list) {
+  return (Array.isArray(list) ? list : [])
+    .map(constraintEntry).filter((c) => c && !c.private).map((c) => c.text);
+}
+
+// What may be quoted to the OTHER side when this person proposes or declines.
+// Bounded in both directions: this text is written by one user and lands
+// inside another user's agent turn, so it is capped the way a name is
+// (domain/connections.cleanName) rather than trusted to be short.
+async function shareableConstraints(client, meetingId, userId) {
+  const { rows } = await client.query(
+    `SELECT constraints FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`,
+    [meetingId, userId]
+  );
+  if (!rows[0]) return [];
+  return shareableTexts(rows[0].constraints)
+    .slice(-MAX_SHARED_REASONS)
+    .map((t) => t.slice(0, CONSTRAINT_MAX_CHARS));
+}
+
 // Constraints persist so nobody is asked about a day they already ruled out.
-async function recordConstraint(client, userId, meetingId, text) {
+//
+// `isPrivate` is the opt-out, not an opt-in: someone who explains why a day
+// does not work has said something the other side needs in order to stop
+// guessing. It is withheld only when they ask for it to be.
+async function recordConstraint(client, userId, meetingId, text, isPrivate = false) {
   if (!text || !text.trim()) return err('invalid', 'constraint text required');
   const p = await participantRow(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
   if (p.meeting_status !== 'negotiating') return err('invalid', 'meeting is not negotiating');
   if (p.state === 'opted_out') return err('invalid', 'you opted out of this meeting');
+  const entry = { text: text.trim().slice(0, CONSTRAINT_MAX_CHARS), private: isPrivate === true };
   await client.query(
     `UPDATE meeting_participants SET constraints = constraints || $3::jsonb
      WHERE meeting_id = $1 AND user_id = $2`,
-    [meetingId, userId, JSON.stringify([text.trim()])]
+    [meetingId, userId, JSON.stringify([entry])]
   );
-  await audit.record(client, userId, 'meeting.constraint_recorded', { meetingId });
-  return ok({ meetingId });
+  await audit.record(client, userId, 'meeting.constraint_recorded',
+    { meetingId, private: entry.private });
+  return ok({ meetingId, private: entry.private });
 }
 
 // Any active participant may propose. Proposing implies agreeing to it:
@@ -233,7 +282,20 @@ async function getStatus(client, userId, meetingId) {
      WHERE p.meeting_id = $1`,
     [meetingId]
   );
-  return ok({ meeting: m.rows[0], participants: parts.rows });
+  // Everyone's constraints are visible here — that is what makes a counter-
+  // proposal possible without re-interrogating people. But a constraint the
+  // owner marked private is theirs alone: they see their own in full, everyone
+  // else sees only what was shareable. Before this, the flag existed nowhere
+  // and this endpoint handed every word to every participant.
+  const participants = parts.rows.map((row) => ({
+    user_id: row.user_id,
+    state: row.state,
+    first_name: row.first_name,
+    constraints: row.user_id === userId
+      ? constraintTexts(row.constraints)
+      : shareableTexts(row.constraints),
+  }));
+  return ok({ meeting: m.rows[0], participants });
 }
 
 async function listMine(client, userId) {
@@ -274,7 +336,11 @@ async function pendingMeetingFor(client, userId) {
      ORDER BY m.proposed_start_at LIMIT 1`,
     [userId]
   );
-  return ok({ pending: rows[0] || null });
+  // These are the user's OWN constraints, so private ones belong here too —
+  // the nudge is speaking to the person who set them. Flattened to text
+  // because that is what the instruction interpolates.
+  const pending = rows[0] ? { ...rows[0], constraints: constraintTexts(rows[0].constraints) } : null;
+  return ok({ pending });
 }
 
 // Close negotiations whose moment has passed. Until this existed nothing ever
@@ -360,4 +426,6 @@ module.exports = {
   startMeeting, recordConstraint, proposeSlot, respondToSlot,
   optOut, applyExit, cancelMeeting, getStatus, listMine, pendingMeetingFor, tryConfirm,
   expireStaleMeetings, expireOne, listNegotiating, EXPIRE_AFTER_START_MS, LEGACY_STALE_DAYS,
+  shareableConstraints, constraintTexts, shareableTexts,
+  CONSTRAINT_MAX_CHARS, MAX_SHARED_REASONS,
 };
