@@ -401,21 +401,21 @@ test('agent doctrine: act-first outranks curiosity, and one question is a hard c
   assert.match(tpl, /Act first, ask second/);
   assert.match(tpl, /one question — not one message with a numbered/,
     'a numbered list of sub-questions in one bubble is still an interrogation');
-  assert.match(tpl, /guess it, save it, and let a\s+single correction fix it later/);
-  assert.match(tpl, /the one actually\s+blocking what they asked for/,
+  assert.match(tpl, /guess everything you reasonably can/);
+  assert.match(tpl, /actually blocks what they asked for/,
     'when several things are unclear, ask about the important one, not all of them');
-  assert.match(tpl, /State assumptions instead of asking to confirm them/);
+  assert.match(tpl, /State assumptions instead of asking/);
   assert.match(tpl, /give the\s+outcome/, 'an outcome request gets an outcome, not prerequisites');
 
   // The connection reflex must not fire on someone mentioned once in passing
-  assert.match(tpl, /NOT for someone mentioned once in passing/);
+  assert.match(tpl, /NOT for someone mentioned once in\s+passing/);
 
   // Gender was stored correctly and then ignored on the next line
-  assert.match(tpl, /Then actually use it, in every message from then on/);
+  assert.match(tpl, /hold it consistently through every sentence/);
 
   // The token must be read alone — batching it caused a failed call every turn
   assert.match(tpl, /as a tool call ON ITS OWN/);
-  assert.match(tpl, /Not in the same batch as `turn_start`/);
+  assert.match(tpl, /not batched with `turn_start`/);
   // A goodbye is not a tool call: the doctrine has to name pause_olma, or the
   // agent does what it did the night this section was written — says something
   // kind and changes nothing.
@@ -447,31 +447,31 @@ test('agent doctrine: a capability Olma lacks still leaves the user holding some
 
   assert.match(tpl, /Never end on "I can't\."/);
   // the boundary is named, so the model stops improvising around it
-  assert.match(tpl, /cannot search the internet/);
-  assert.match(tpl, /place an order, or pay for\s+anything/);
+  assert.match(tpl, /no web access/);
+  assert.match(tpl, /orders, payment/);
   // ...and the request survives — but as an OFFER, never a silent write to
   // their list: they asked Olma to do it, so handing the job back is theirs
   // to accept.
   assert.match(tpl, /Offer to keep the thing itself — ask, do not save/);
   assert.match(tpl, /Nothing goes on their\s+list before they answer/);
-  assert.match(tpl, /On a yes, save it with everything they already told you/);
-  assert.match(tpl, /never make them say any of it a second time/);
-  assert.match(tpl, /On a no, or on no answer, drop it/);
-  assert.match(tpl, /if it is\s+time-shaped, offer a reminder/i);
+  assert.match(tpl, /save with everything they already told you/);
+  assert.match(tpl, /never make them repeat any of it/);
+  assert.match(tpl, /On a no or no answer: drop it/);
+  assert.match(tpl, /if\s+time-shaped, offer a reminder/i);
   // the two save-rules must not read as contradicting each other
-  assert.match(tpl, /the one place you DO\s+ask that/);
+  assert.match(tpl, /THE\s+deliberate exception to act-first/);
   // the demand signal is logged without spending a turn asking permission
-  assert.match(tpl, /source `agent_detected`/);
-  assert.match(tpl, /must never be asked about/);
-  assert.match(tpl, /it is invisible to them/,
+  assert.match(tpl, /`agent_detected`/);
+  assert.match(tpl, /must never be\s+asked about/);
+  assert.match(tpl, /invisible to\s+them/,
     'logging the gap is about the product, not their list — so it is not the one to ask about');
   // the hallucination guard — the real hazard when someone asks you to look
   assert.match(tpl, /never fake the part you cannot do/);
-  assert.match(tpl, /mean you looked, and you did not look/);
-  assert.match(tpl, /a price is never that/);
+  assert.match(tpl, /you looked, and you did not/);
+  assert.match(tpl, /a price never qualifies/);
 
   // and the same tool still guards the other case, where the words are theirs
-  assert.match(tpl, /ask before logging anything as `user_reported`/);
+  assert.match(tpl, /ask\s+before logging anything as `user_reported`/);
 });
 
 test('the report_issue tool carries the same rule at the call site', () => {
@@ -479,6 +479,9 @@ test('the report_issue tool carries the same rule at the call site', () => {
   const t = TOOLS.find((x) => x.name === 'report_issue');
   assert.ok(t, 'report_issue exists');
   assert.match(t.description, /agent_detected/);
-  assert.match(t.description, /never turn it into a question/,
+  // The description was compressed in the prompt diet (cache writes were 76%
+  // of all cost); the rule survives in shorter words, and this asserts the
+  // rule, not the sentence.
+  assert.match(t.description, /never ask permission/,
     'a capability gap is the agent\'s own observation, not a question for the user');
 });

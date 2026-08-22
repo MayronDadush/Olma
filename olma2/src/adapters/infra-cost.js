@@ -22,10 +22,15 @@ const BOT_API_KEY_ID = 'apikey_01KzQWmjukHb3FV9y9geCo1J';
 const SUBSCRIPTION_USD = 20;
 const SUBSCRIPTION_BILLING_DAY = 27;
 
+// cw5m/cw1h: Anthropic prices cache writes by TTL — 1.25x input for the 5m
+// cache, 2x for the 1h one — and the usage report splits `cache_creation`
+// into exactly those two buckets, so each is priced at its own rate. Olma
+// switched to 1h retention on 2026-08-22; pricing per-bucket keeps both the
+// history before that and any mixed day after it exact.
 const ANTHROPIC_PRICES = {
-  'claude-haiku-4-5': { in: 1.00, out: 5.00, cw: 1.25, cr: 0.10 },
-  'claude-sonnet-4-6': { in: 3.00, out: 15.00, cw: 3.75, cr: 0.30 },
-  'claude-opus-4-8': { in: 15.00, out: 75.00, cw: 18.75, cr: 1.50 },
+  'claude-haiku-4-5': { in: 1.00, out: 5.00, cw5m: 1.25, cw1h: 2.00, cr: 0.10 },
+  'claude-sonnet-4-6': { in: 3.00, out: 15.00, cw5m: 3.75, cw1h: 6.00, cr: 0.30 },
+  'claude-opus-4-8': { in: 15.00, out: 75.00, cw5m: 18.75, cw1h: 30.00, cr: 1.50 },
 };
 
 const CACHE_TTL_MS = 10 * 60_000;
@@ -91,10 +96,16 @@ async function anthropicBotCost(adminKey) {
         // making the page under-report by ~4x while looking perfectly healthy.
         // The name is kept alongside as a fallback in case the API ever adds
         // the flat form.
-        const cacheWrite = tok('cache_creation') || tok('cache_creation_input_tokens');
+        const cc = row.cache_creation && typeof row.cache_creation === 'object'
+          ? row.cache_creation : {};
+        const cw5m = Number(cc.ephemeral_5m_input_tokens) || 0;
+        const cw1h = Number(cc.ephemeral_1h_input_tokens) || 0;
+        // Older responses might only carry the flat field; price it at the 5m
+        // rate, which is what it meant when it existed.
+        const cwFlat = cw5m + cw1h === 0 ? (Number(row.cache_creation_input_tokens) || 0) : 0;
         const cost = (tok('uncached_input_tokens') * table.in
           + tok('output_tokens') * table.out
-          + cacheWrite * table.cw
+          + cw5m * table.cw5m + cw1h * table.cw1h + cwFlat * table.cw5m
           + tok('cache_read_input_tokens') * table.cr) / 1_000_000;
         sinceTotal += cost;
         if (day >= monthStart) monthTotal += cost;

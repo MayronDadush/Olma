@@ -210,6 +210,47 @@ test('day-one steps never count as misses; regular checkins still do', async () 
   } finally { c.release(); }
 });
 
+test('a broken calendar is not pitched like a new one', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const u = await makeUser(db.pool, '+972641000060', { firstName: 'Noam' });
+  const c = await db.pool.connect();
+  try {
+    // close every other gap so the calendar one is what gets picked
+    await c.query(`UPDATE users SET digest_times = '09:00' WHERE id = $1`, [u.id]);
+    await c.query(
+      `INSERT INTO user_facts (user_id, category, fact)
+       VALUES ($1, 'context', 'אחת'), ($1, 'work', 'שתיים'), ($1, 'plans', 'שלוש')`, [u.id]);
+    const friend = await makeUser(db.pool, '+972641000061', { firstName: 'Tal' });
+    const connections = require('../src/domain/connections');
+    const req = await connections.requestConnection(c, u.id, friend.phone, {});
+    await connections.respondToConnection(c, friend.id, req.data.connection.id, 'approve');
+
+    // never connected → the benefit pitch
+    let pick = await checkin.pickRung(c, u.id);
+    assert.equal(pick.topic, 'calendar');
+    assert.match(pick.instruction, /not connected/);
+
+    // connected once, then Google rejected it. They know what a calendar is
+    // for; being asked "want to connect?" reads as Olma having forgotten. And
+    // this is the only thing that ever raises it again — markNeedsReauth
+    // enqueues one message and never follows up (live: user 3 sat like this
+    // for 36 hours after abandoning a reconnect).
+    await c.query(
+      `INSERT INTO integrations (user_id, provider, status, access_level)
+       VALUES ($1, 'google_calendar', 'needs_reauth', 'read_write')`, [u.id]);
+    pick = await checkin.pickRung(c, u.id);
+    assert.equal(pick.topic, 'calendar');
+    assert.match(pick.instruction, /do not pitch it/);
+    assert.match(pick.instruction, /start_calendar_connection/);
+
+    // and a working one is no gap at all
+    await c.query(
+      `UPDATE integrations SET status = 'connected' WHERE user_id = $1`, [u.id]);
+    pick = await checkin.pickRung(c, u.id);
+    assert.notEqual(pick.topic, 'calendar');
+  } finally { c.release(); }
+});
+
 test('discovery outranks generic silence, is gap-driven, and rotates topics', async () => {
   const checkin = require('../src/jobs/checkin');
   const u = await makeUser(db.pool, '+972641000032', { firstName: 'Omer' });

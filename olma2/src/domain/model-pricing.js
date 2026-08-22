@@ -21,8 +21,14 @@ const flags = require('./flags');
 
 const RATES = {
   // provider: anthropic
-  'claude-haiku-4-5':  { input: 1.00, output: 5.00,  cacheWrite: 1.25, cacheRead: 0.10 },
-  'claude-sonnet-4-6': { input: 3.00, output: 15.00, cacheWrite: 3.75, cacheRead: 0.30 },
+  // cacheWrite is the 1h-TTL rate (2x input), not the 5m rate (1.25x):
+  // cacheRetention went "long" on 2026-08-22 (scripts/set-cache-retention.js)
+  // and transcripts do not say which TTL a write used, so the current config's
+  // rate is the honest guess. Rows from before that date were already priced
+  // and stored; only new calls read this table. If retention is ever reset to
+  // short, change these back in the same commit.
+  'claude-haiku-4-5':  { input: 1.00, output: 5.00,  cacheWrite: 2.00, cacheRead: 0.10 },
+  'claude-sonnet-4-6': { input: 3.00, output: 15.00, cacheWrite: 6.00, cacheRead: 0.30 },
   // provider: openrouter (pilot candidates — see CLAUDE.md "Model provider
   // pilot"). No prompt-cache pricing published for these, so cache columns are
   // charged at the input rate: over-charging a rounding error beats silently
