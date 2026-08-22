@@ -40,7 +40,11 @@ function createBrokerServer({ pool, flood }) {
       // Identity-shaping calls re-render the user's USER.md card — outside
       // the transaction on purpose, so the card always reflects committed
       // state and a file hiccup can never fail the tool call itself.
-      if (actorId && result && result.ok && CARD_TOOLS.has(name)) {
+      // Two ways a call can leave the card stale: the tool always changes a
+      // card field (CARD_TOOLS), or the handler decided this particular call
+      // did (result.cardStale — see registry.stale, used by turn_start, which
+      // runs on every message and so must not re-render on every message).
+      if (actorId && result && result.ok && (CARD_TOOLS.has(name) || result.cardStale)) {
         await refreshUserCard(pool, actorId);
       }
       return { ok: true, text: renderResult(result) };

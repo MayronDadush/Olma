@@ -267,6 +267,68 @@ prior outbox row's `payload->>'topic'`) and falling back to plain silence only
 when there is genuinely nothing to offer. Three stuck users' inflated
 `checkin_misses` were reset via audited admin SQL after deploy.
 
+### The name was in front of us on every turn (fixed 2026-08-22)
+
+A user's card read `First name: unknown` and, two lines below it, `[context]
+שמו חיים.` — the same file asserting both. `users.first_name` was NULL, so the
+dashboard, the digest and every invitation showed his phone number, and
+`connections.requestConnection` refused outright (it hard-requires a first
+name), while his own agent greeted him as חיים because it read the name off the
+FACT card. Four of eight active users were nameless; three of them had a
+display name the system had watched go past on every turn.
+
+The name arrives with EVERY inbound message. The gateway prepends a
+`Conversation info (untrusted metadata)` block carrying `"sender": "חיים דדוש"`
+— visible to the model, never to brokerd, and written down by nobody. Three
+layers each had their own reason to drop it:
+
+- **Provisioning only knew one source.** `intake/provision.js` prefills a name
+  from `user_contacts` (someone else's address book). Nothing read the display
+  name, and `jobs/intake.js` passes no `firstName` at all, so an organic joiner
+  starts NULL by construction.
+- **The doctrine said ASK, so the agent never SAVED.** `agents-template.md`
+  ranked the name first on the curiosity ladder as *"ask what to call them"*,
+  and `set_my_name`'s own tool description said *"their own request only"* —
+  actively telling the agent not to record a name it could plainly see.
+- **The read-back had nowhere to put it.** `jobs/fact-extraction.js` did learn
+  the name, and its only tools were `remember_fact`/`add_task`, so the name
+  landed in `user_facts` as prose. Exactly the vehicles failure one layer down:
+  the net catches it and files it where nothing looks.
+
+The fix turns on one distinction `setTimezone` already drew in this table:
+**`setName(..., { confirmed })`**. Confirmed = they told us, and it overwrites.
+Unconfirmed = we observed it (display name, a name read back out of a
+transcript) — it fills a blank, refines an earlier guess, is audited as
+`user.name_observed`, and can NEVER overwrite a name the person confirmed
+(guarded in the UPDATE itself, not read-then-write). A guess is worth far more
+than a blank: it is what lets Olma use the name at all, and `name_confirmed =
+false` keeps the agent checking. On top of that:
+
+- `turn_start` takes `sender_name` and captures it only when `first_name` is
+  NULL. It runs on every message, so it cannot join `CARD_TOOLS` — it flags the
+  envelope (`result.cardStale`, honoured in `brokerd/server.js`) on the one turn
+  in a person's life that fills the name in. `render.js` serialises `data` only,
+  so the flag never reaches the model.
+- Untrusted is the right label and the reason this is safe: `cleanName` already
+  bounds a name to one line of 60 chars because it is interpolated unwrapped
+  into another person's agent instruction (`domain/connections.js`). A `sender`
+  that is mostly digits is the gateway echoing the number back — dropped.
+- The extraction job gets a THIRD pass, offered only when there is no name on
+  file, and `set_my_name` in its tool list; the fact pass is told a name belongs
+  in the profile. The card now spells out both the unknown and the unconfirmed
+  case instead of printing a bare `unknown` nobody acted on.
+
+**Going back for the ones it already happened to** is
+`scripts/repair-missing-name.js` (dry-run by default, `--phone` to aim,
+`--name` for a peer who set no display name, `--keep-facts`). It reads the
+display name out of the gateway's own trajectory files
+(`sessions.readPeerDisplayName` — BACKFILL ONLY, hundreds of KB per session,
+newest-first across all of a peer's sessions because only turns the PERSON
+started carry a Conversation info block), writes it unconfirmed, soft-deletes
+the fact the name had been hiding in, and refreshes USER.md. It sends nothing:
+messaging someone to say we had forgotten their name would cost them more than
+the bug did.
+
 ### A goal said out loud left no trace anywhere (fixed 2026-08-21)
 
 A user told Olma he needed to sell three of his vehicles. It was never saved,

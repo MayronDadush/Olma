@@ -49,7 +49,14 @@ const CARD_FACT_LIMIT = 10;
 
 function renderCard(user, prefs, facts = [], extras = {}) {
   const lines = ['# User', ''];
-  lines.push(`First name: ${user.first_name || 'unknown'}`);
+  // The unconfirmed marker matches the timezone line below it, and for the
+  // same reason: a guessed name reads as settled unless the card says
+  // otherwise, and then nobody ever asks. "unknown" is the louder case —
+  // spell out that it is the first thing to fix rather than a field to live
+  // with, which is how it survived on four live cards at once.
+  lines.push(user.first_name
+    ? `First name: ${user.first_name}${user.name_confirmed ? '' : ' (unconfirmed — check it in passing, then set_my_name with confirmed: true)'}`
+    : 'First name: unknown — ask what to call them and save it with set_my_name');
   if (user.last_name) lines.push(`Last name: ${user.last_name}`);
   lines.push(`Language: ${user.locale || 'he'}`);
   lines.push(`Timezone: ${user.timezone || 'unknown'}${user.timezone_confirmed ? '' : ' (unconfirmed — confirm when natural)'}`);

@@ -90,6 +90,68 @@ test('a name cannot smuggle instructions into someone else\'s agent turn', async
   }
 });
 
+// ---- a name we were told vs a name we merely saw ---------------------------
+// The distinction that did not exist while four live users sat with
+// first_name NULL and their names in the fact table as prose.
+
+test('an observed name fills a blank but never overwrites a confirmed one', async () => {
+  const u = await makeUser(db.pool, '+972508811111', { firstName: null });
+  const client = await db.pool.connect();
+  try {
+    const seen = await users.setName(client, u.id, 'חיים', 'דדוש', { confirmed: false });
+    assert.equal(seen.ok, true);
+    assert.equal(seen.data.user.first_name, 'חיים');
+    assert.equal(seen.data.user.name_confirmed, false, 'a display name is a guess, not an answer');
+
+    // a better guess refines an earlier guess
+    const better = await users.setName(client, u.id, 'Chaim', null, { confirmed: false });
+    assert.equal(better.ok, true);
+    assert.equal(better.data.user.first_name, 'Chaim');
+    assert.equal(better.data.user.last_name, 'דדוש', 'a guess with no surname deletes nothing');
+
+    // they tell us themselves
+    const told = await users.setName(client, u.id, 'חיים');
+    assert.equal(told.ok, true);
+    assert.equal(told.data.user.name_confirmed, true);
+    assert.equal(told.data.user.last_name, null, 'an explicit name is the whole name');
+
+    // and from then on no observation may touch it
+    const later = await users.setName(client, u.id, 'Whatever They Set', null, { confirmed: false });
+    assert.equal(later.ok, false);
+    assert.equal(later.error.reason, 'name_confirmed');
+    const { rows } = await db.pool.query('SELECT first_name FROM users WHERE id = $1', [u.id]);
+    assert.equal(rows[0].first_name, 'חיים');
+  } finally {
+    client.release();
+  }
+});
+
+test('setName tells "no such user" apart from "already confirmed"', async () => {
+  const client = await db.pool.connect();
+  try {
+    const res = await users.setName(client, 999999, 'X', null, { confirmed: false });
+    assert.equal(res.error.code, 'not_found');
+  } finally {
+    client.release();
+  }
+});
+
+test('an observed name is audited as an observation, not as a statement', async () => {
+  const u = await makeUser(db.pool, '+972508811222', { firstName: null });
+  const client = await db.pool.connect();
+  try {
+    await users.setName(client, u.id, 'גלי', null,
+      { confirmed: false, source: 'whatsapp_display_name' });
+  } finally {
+    client.release();
+  }
+  const { rows } = await db.pool.query(
+    `SELECT event, detail FROM audit_log WHERE actor_id = $1 AND event LIKE 'user.name%'`, [u.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].event, 'user.name_observed');
+  assert.equal(rows[0].detail.source, 'whatsapp_display_name');
+});
+
 test('setTimezone validates IANA names', async () => {
   const u = await makeUser(db.pool, '+972505555555');
   const client = await db.pool.connect();

@@ -18,6 +18,8 @@
 // no-op (the idempotency key), so an operator can safely run it twice.
 const { ok, err } = require('./results');
 const audit = require('./audit');
+const usersDomain = require('./users');
+const facts = require('./facts');
 const { enqueue } = require('../outbox/enqueue');
 
 // Long enough that the fact-extraction tick (every 10 minutes) has a chance to
@@ -134,7 +136,78 @@ async function repairMissedGoal(client, userId, { note, now = Date.now() } = {})
   });
 }
 
+// ---- a name we knew and never wrote down -----------------------------------
+// The other half of the fix for "the WhatsApp display name went past on every
+// turn and nobody wrote it down". The code changes capture it from now on and
+// do nothing for the people already on the box with first_name NULL — and by
+// the time they were found, one of them had been greeted by name by an agent
+// that read the name out of his FACT card while every screen, every invitation
+// and connections.requestConnection still saw a person with no name at all.
+//
+// This writes the name we already had, as what it is: a guess
+// (name_confirmed = FALSE), so the agent still checks it in conversation.
+// Nothing is sent to anybody — a repair that messages someone to say we had
+// forgotten their name would cost them more than the bug did.
+
+// A fact whose whole content is the name, which is where the name landed when
+// the extraction job had nowhere else to put it ("שמו חיים."). Deliberately a
+// blunt rule — contains the name, and short enough that it cannot also be
+// carrying something we would be destroying — because the script prints every
+// candidate before it touches one, and forgetFact is a soft delete anyway.
+const NAME_FACT_MAX_CHARS = 40;
+
+async function nameFactCandidates(client, userId, firstName) {
+  const name = String(firstName || '').trim();
+  if (!name) return [];
+  const { rows } = await client.query(
+    `SELECT id, category, fact FROM user_facts
+      WHERE user_id = $1 AND active = true
+        AND fact ILIKE '%' || $2 || '%' AND length(fact) <= $3
+      ORDER BY id`,
+    [userId, name, NAME_FACT_MAX_CHARS]
+  );
+  return rows;
+}
+
+// Everyone this repair applies to: active, provisioned, and still nameless.
+async function usersMissingName(client) {
+  const { rows } = await client.query(
+    `SELECT id, phone, agent_id, workspace_path, status, onboarded_at
+       FROM users
+      WHERE status = 'active' AND agent_id IS NOT NULL AND first_name IS NULL
+      ORDER BY id`
+  );
+  return rows;
+}
+
+async function repairMissingName(client, userId, { name, source = 'whatsapp_display_name', dropFacts = true } = {}) {
+  const text = String(name == null ? '' : name).replace(/\s+/g, ' ').trim();
+  if (!text) return err('invalid', 'no name to write');
+  if (text.replace(/\D/g, '').length >= 7) return err('invalid', 'that is a phone number, not a name');
+  const [first, ...rest] = text.split(' ');
+
+  const named = await usersDomain.setName(client, userId, first, rest.join(' ') || null,
+    { confirmed: false, source });
+  if (!named.ok) return named;
+
+  // Order matters: the name has to be ON the profile before we decide which
+  // facts are now redundant, so a dry run and the real run judge the same text.
+  const forgotten = [];
+  if (dropFacts) {
+    for (const f of await nameFactCandidates(client, userId, named.data.user.first_name)) {
+      const gone = await facts.forgetFact(client, userId, f.id);
+      if (gone.ok) forgotten.push({ id: Number(f.id), fact: f.fact });
+    }
+  }
+  await audit.record(client, userId, 'admin.name_repair', {
+    firstName: named.data.user.first_name, lastName: named.data.user.last_name,
+    source, factsForgotten: forgotten.map((f) => f.id),
+  });
+  return ok({ user: named.data.user, forgotten });
+}
+
 module.exports = {
   findUserByPhoneFragment, previewGoalRepair, repairMissedGoal, buildInstruction,
   EXTRACTION_GRACE_MS,
+  usersMissingName, nameFactCandidates, repairMissingName, NAME_FACT_MAX_CHARS,
 };

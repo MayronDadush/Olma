@@ -21,6 +21,15 @@
 // person who stopped replying half an hour ago has finished. Running mid-
 // conversation would both cost a turn per message and read half a thought.
 //
+// A name was the third thing this job was watching go past. It could see what
+// someone was called and had exactly one place to put it — remember_fact — so a
+// live user's name sat in the fact table as the prose "שמו חיים." while
+// users.first_name stayed NULL and every screen, every card and every
+// invitation fell back to his phone number. The name pass below runs only when
+// there is no name on file, and writes it through set_my_name as an unconfirmed
+// guess: this job never speaks to the person, so it is in no position to
+// confirm anything.
+//
 // The turn runs WITHOUT --deliver — the agent reads, decides, and calls
 // remember_fact; nothing is sent to anyone. The person never sees this happen.
 const audit = require('../domain/audit');
@@ -94,7 +103,7 @@ function renderTranscript(messages) {
   return text.length > MAX_TRANSCRIPT_CHARS ? text.slice(-MAX_TRANSCRIPT_CHARS) : text;
 }
 
-function buildInstruction(transcript, existingFacts, openTasks = []) {
+function buildInstruction(transcript, existingFacts, openTasks = [], profile = {}) {
   const known = existingFacts.length
     ? existingFacts.map((f) => `- [${f.category}] ${f.fact}`).join('\n')
     : '(nothing recorded yet)';
@@ -139,6 +148,8 @@ function buildInstruction(transcript, existingFacts, openTasks = []) {
     'anything with a shelf life, like a trip or a deadline.',
     '',
     'Do NOT record as a fact:',
+    '- what they are called — a name belongs in the profile, and there is a job for it',
+    '  below;',
     '- things they need to do — those are the second job below, not facts about them;',
     '- phone numbers, or who is connected to whom — that lives in the connections',
     '  system, which is structured and tool-backed;',
@@ -168,8 +179,23 @@ function buildInstruction(transcript, existingFacts, openTasks = []) {
     'anyone anything. Nothing you do this turn is seen by anybody until they next talk',
     'to Olma, who will pick it up from there.',
     '',
-    'remember_fact, add_task and add_tasks_bulk are the only tools you may call in this',
-    'turn.',
+    ...(profile.firstName
+      ? []
+      // Only asked when there is a blank to fill, so the usual run does not
+      // spend attention on a question whose answer is already known.
+      : ['THIRD — what they are called.',
+         '',
+         'We have no name for this person. If the conversation shows what they are called —',
+         'they said so, or the name is simply there in how they were addressed — call',
+         'set_my_name with it and leave confirmed alone: it is a guess until they say it',
+         'themselves, and saving it as a guess is what lets Olma greet them by name and',
+         'check it in passing. Do NOT record a name with remember_fact, and do not invent',
+         'one — no name is a perfectly normal outcome here.',
+         '']),
+    profile.firstName
+      ? 'remember_fact, add_task and add_tasks_bulk are the only tools you may call in'
+      : 'remember_fact, add_task, add_tasks_bulk and set_my_name are the only tools you may',
+    profile.firstName ? 'this turn.' : 'call in this turn.',
     '',
     'A conversation that taught you nothing new is a completely normal outcome. If that',
     'is the case, call nothing and stop — do not pad either list to look useful. But do',
@@ -183,7 +209,7 @@ function buildInstruction(transcript, existingFacts, openTasks = []) {
 // anything in it we have not read".
 async function dueUsers(client, now = Date.now(), minGapHours = 0) {
   const { rows } = await client.query(
-    `SELECT id, agent_id, phone, workspace_path, last_inbound_at, last_fact_extraction_at
+    `SELECT id, agent_id, phone, first_name, workspace_path, last_inbound_at, last_fact_extraction_at
        FROM users
       WHERE status = 'active' AND agent_id IS NOT NULL AND onboarded_at IS NOT NULL
         AND last_inbound_at IS NOT NULL
@@ -258,7 +284,8 @@ async function sweepFactExtraction(client, deps = {}) {
         ORDER BY coalesce(parent_id, id), parent_id NULLS FIRST, id LIMIT $2`,
       [u.id, OPEN_TASKS_IN_PROMPT]
     );
-    const message = buildInstruction(renderTranscript(fresh), known, openTasks);
+    const message = buildInstruction(renderTranscript(fresh), known, openTasks,
+      { firstName: u.first_name });
     // Everything this agent writes during the turn arrives through the same
     // remember_fact tool a live conversation uses, so the tool cannot tell the
     // two apart — it stamps source='user_stated' either way. The job can:
