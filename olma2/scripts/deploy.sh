@@ -51,14 +51,21 @@ $SSH "$SERVER" "
 
 # Passes iff both services are actually running (catches an instant crash —
 # syntax error, missing dep, a migration the app itself trips on that the
-# test suite didn't) AND the dashboard's own /health responds — DB
-# reachability plus job-heartbeat sanity, see adapters/http/dashboard.js.
+# test suite didn't) AND the dashboard's /ready responds — DB reachability
+# plus a fresh brokerd heartbeat, see adapters/http/dashboard.js.
 # "tests passed in CI" never proves the live process came up; this does.
+#
+# Deliberately /ready and NOT /health. /health also goes 503 when any sweep is
+# behind its cadence — a fact about the process that was just replaced, which
+# no amount of restarting or rolling back can change within the five seconds
+# this gate allows. Gating on it turned one late sweep into "every deploy
+# fails, rolls back, and reports the rollback as broken too" (2026-08-22, two
+# consecutive merges to main). /health stays as the monitoring endpoint.
 health_ok() {
   $SSH "$SERVER" '
     systemctl is-active --quiet olma2-brokerd &&
     systemctl is-active --quiet olma2-dashboard &&
-    curl -fsS -o /dev/null http://127.0.0.1:8788/health
+    curl -fsS -o /dev/null http://127.0.0.1:8788/ready
   '
 }
 
