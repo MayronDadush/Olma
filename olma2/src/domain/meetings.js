@@ -10,7 +10,7 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const grants = require('./grants');
-const { hasOffset, badTime } = require('./datetime');
+const { hasOffset, badTime, weekdayClash } = require('./datetime');
 
 // How long a slot stays "live" after its start before the negotiation is
 // closed as expired. Generous on purpose: the thing itself may still be
@@ -124,6 +124,23 @@ async function recordConstraint(client, userId, meetingId, text, isPrivate = fal
   return ok({ meetingId, private: entry.private });
 }
 
+// The two ways a well-formed slot is still wrong. Both refuse rather than
+// resolve: a slot already in the past is a mistake at the moment it is made,
+// and a slot whose words and timestamp name different days is a mistake nobody
+// can see until the meeting is missed. Returns null when the slot is fine, or
+// the err() to hand straight back.
+//
+// The weekday is judged in the SPEAKER's timezone — the text is what they
+// said, in their own local terms.
+async function badSlot(client, userId, label, slotText, startsAt) {
+  if (new Date(startsAt).getTime() < Date.now()) {
+    return err('invalid', 'that slot is already in the past — propose a future time',
+      { reason: 'slot_in_past' });
+  }
+  const { rows } = await client.query('SELECT timezone FROM users WHERE id = $1', [userId]);
+  return weekdayClash(label, slotText, startsAt, rows[0] && rows[0].timezone);
+}
+
 // Any active participant may propose. Proposing implies agreeing to it:
 // proposer → confirmed_current, everyone else active → awaiting.
 //
@@ -139,12 +156,8 @@ async function proposeSlot(client, userId, meetingId, slotText, startsAt) {
   if (!p) return err('not_found', 'not a participant of this meeting');
   if (p.meeting_status !== 'negotiating') return err('invalid', 'meeting is not negotiating');
   if (p.state === 'opted_out') return err('invalid', 'you opted out of this meeting');
-  // A slot already in the past is a mistake at the moment it is made, and the
-  // cheapest place to catch it is before it reaches anyone else's phone.
-  if (new Date(startsAt).getTime() < Date.now()) {
-    return err('invalid', 'that slot is already in the past — propose a future time',
-      { reason: 'slot_in_past' });
-  }
+  const bad = await badSlot(client, userId, 'slot_description', slotText, startsAt);
+  if (bad) return bad;
 
   await client.query(
     `UPDATE meetings SET proposed_slot = $2, proposed_start_at = $3, updated_at = now() WHERE id = $1`,
@@ -206,12 +219,22 @@ async function respondToSlot(client, userId, meetingId, accept, counterProposal,
     return ok({ meetingId, meetingStatus: 'negotiating', yourState: 'confirmed_current' });
   }
 
+  // A counter is checked BEFORE the decline is written: a counter refused
+  // halfway through leaves the meeting declined with nothing proposed, and the
+  // person did not ask for that half on its own.
+  const hasCounter = Boolean(counterProposal && counterProposal.trim());
+  if (hasCounter) {
+    if (!hasOffset(counterStartsAt)) return badTime('counter_starts_at', counterStartsAt);
+    const bad = await badSlot(client, userId, 'counter_proposal', counterProposal, counterStartsAt);
+    if (bad) return bad;
+  }
+
   await client.query(
     `UPDATE meeting_participants SET state = 'declined_current' WHERE meeting_id = $1 AND user_id = $2`,
     [meetingId, userId]
   );
   await audit.record(client, userId, 'meeting.slot_declined', { meetingId, slot: p.proposed_slot });
-  if (counterProposal && counterProposal.trim()) {
+  if (hasCounter) {
     // Decline + counter in one move — immediately re-proposes, and the counter
     // needs its own start time for the same reason the first proposal did.
     return proposeSlot(client, userId, meetingId, counterProposal, counterStartsAt);

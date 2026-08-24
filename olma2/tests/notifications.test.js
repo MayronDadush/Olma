@@ -4,7 +4,7 @@
 // (auth → tx → handler → fanout), the way production runs it.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { freshDb, makeUser } = require('./helpers');
+const { freshDb, makeUser, slotStart } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const { createBrokerServer } = require('../src/brokerd/server');
 const connections = require('../src/domain/connections');
@@ -55,7 +55,7 @@ test('meeting lifecycle fans out at every turn', async () => {
 
   // miron proposes → kapish hears the slot, miron does not self-notify
   await call(miron, 'propose_meeting_slot', { meeting_id: meetingId, slot_description: 'Tuesday 17:00, cafe',
-    starts_at: new Date(Date.now() + 48 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00') });
+    starts_at: slotStart('Tuesday 17:00, cafe') });
   rows = await outboxFor(kapish.id, 'meeting_slot_proposed');
   assert.equal(rows.length, 1);
   assert.equal(rows[0].payload.slot, 'Tuesday 17:00, cafe');
@@ -64,7 +64,7 @@ test('meeting lifecycle fans out at every turn', async () => {
   // kapish declines with a counter → miron hears the NEW slot
   await call(kapish, 'respond_to_meeting_slot', { meeting_id: meetingId, accept: false,
     counter_proposal: 'Wednesday 18:00, phone',
-    counter_starts_at: new Date(Date.now() + 72 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00') });
+    counter_starts_at: slotStart('Wednesday 18:00, phone', { hours: 72 }) });
   rows = await outboxFor(miron.id, 'meeting_slot_proposed');
   assert.equal(rows.length, 1);
   assert.equal(rows[0].payload.slot, 'Wednesday 18:00, phone');
@@ -81,7 +81,7 @@ test('plain decline notifies the initiator; cancel notifies participants', async
   const started = await call(miron, 'start_meeting_coordination', { title: 'lunch', phones: [kapish.phone] });
   const meetingId = Number(/"id":"?(\d+)/.exec(started)[1]);
   await call(miron, 'propose_meeting_slot', { meeting_id: meetingId, slot_description: 'Sunday 12:00',
-    starts_at: new Date(Date.now() + 48 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00') });
+    starts_at: slotStart('Sunday 12:00') });
 
   await call(kapish, 'respond_to_meeting_slot', { meeting_id: meetingId, accept: false });
   const declined = await outboxFor(miron.id, 'meeting_slot_declined');
@@ -212,7 +212,7 @@ test('the reason a slot suits someone rides along to the other side', async () =
     meeting_id: meetingId, constraint: 'בצילומים ומסיים מאוחר' });
   await call(miron, 'propose_meeting_slot', {
     meeting_id: meetingId, slot_description: 'יום שלישי 20:00',
-    starts_at: new Date(Date.now() + 48 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00') });
+    starts_at: slotStart('יום שלישי 20:00') });
 
   // this file shares one DB, so filter to THIS meeting rather than trusting order
   const rows = (await outboxFor(kapish.id, 'meeting_slot_proposed'))
@@ -237,7 +237,7 @@ test('a private reason never leaves its own agent', async () => {
     meeting_id: meetingId, constraint: 'בדיקה רפואית', private: true });
   await call(miron, 'propose_meeting_slot', {
     meeting_id: meetingId, slot_description: 'יום שלישי 20:00',
-    starts_at: new Date(Date.now() + 48 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00') });
+    starts_at: slotStart('יום שלישי 20:00') });
 
   const rows = (await outboxFor(kapish.id, 'meeting_slot_proposed'))
     .filter((r) => Number(r.payload.meetingId) === meetingId);

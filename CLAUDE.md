@@ -736,8 +736,29 @@ present) and `proposeSlot` refuses only a past time, so a well-formed but
 wrong date sails through and the row that expiry, nudges and the calendar all
 read says a different day from the one both people are discussing. Meeting #4's
 row was corrected by hand (`admin.meeting_slot_corrected`, slot text left
-alone, nothing sent); **cross-checking a named weekday against `starts_at` is
-still open.**
+alone, nothing sent).
+
+**Closed 2026-08-24.** `domain/datetime.js` now owns the weekday vocabulary
+alongside the offset rule (one file, same reasoning as
+`reminders.normalizeRepeatRule`): `weekdaysInText` reads Hebrew day names —
+including prefixed forms (`בשבת`, `ושני`) and `יום א׳` letters — plus English
+names and abbreviations; `weekdayInZone` says which day the moment falls on
+**in the user's timezone** (falling back to the offset the model itself wrote,
+never silently to UTC); `weekdayClash` refuses the disagreement rather than
+resolving it, since neither half is known to be the right one. Text naming no
+weekday is untouched — the check only fires when there is something to check.
+The reader is deliberately narrow because a false positive REFUSES a real
+proposal: trailing-letter lookaheads keep `שנייה`/`ראשונה` out, and `ל` is not
+an accepted prefix so `לשבת בקפה` stays "to sit at the cafe".
+`meetings.badSlot` applies it to `proposeSlot` **and** validates a
+counter-proposal BEFORE the decline is written — a counter refused halfway
+used to leave the meeting declined with nothing proposed. No migration: this
+is a validation rule, not a column. Tests: `tests/slot-weekday.test.js`
+(vocabulary, timezone edges, the live meeting #4 rows) plus four in
+`tests/meetings.test.js`. `tests/helpers.slotStart(text)` is how meeting tests
+now build a timestamp that agrees with their own slot text — hard-coding
+"Tuesday 17:00" beside `now + 48h` passes or fails depending on the day the
+suite runs.
 
 ### "I can't do that" was the whole answer (fixed 2026-08-21)
 

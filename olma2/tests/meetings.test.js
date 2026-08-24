@@ -1,7 +1,7 @@
 'use strict';
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { freshDb, makeUser } = require('./helpers');
+const { freshDb, makeUser, slotStart } = require('./helpers');
 const connections = require('../src/domain/connections');
 const grants = require('../src/domain/grants');
 const meetings = require('../src/domain/meetings');
@@ -50,13 +50,13 @@ test('confirm requires EVERY active participant on the identical slot', async ()
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, alice.id, 'trio', [bob.id, carol.id])).data.meeting;
 
-    await meetings.proposeSlot(c, alice.id, m.id, 'Tuesday 17:00, video call', soon());
+    await meetings.proposeSlot(c, alice.id, m.id, 'Tuesday 17:00, video call', slotStart('Tuesday 17:00, video call'));
     // alice (proposer) is confirmed_current; bob accepts — still not confirmed
     let r = await meetings.respondToSlot(c, bob.id, m.id, true);
     assert.equal(r.data.meetingStatus, 'negotiating');
 
     // carol declines with a counter → new slot, everyone else resets to awaiting
-    r = await meetings.respondToSlot(c, carol.id, m.id, false, 'Wednesday 18:00, phone', soon(72));
+    r = await meetings.respondToSlot(c, carol.id, m.id, false, 'Wednesday 18:00, phone', slotStart('Wednesday 18:00, phone', { hours: 72 }));
     assert.equal(r.ok, true);
     const st = await meetings.getStatus(c, alice.id, m.id);
     assert.equal(st.data.meeting.proposed_slot, 'Wednesday 18:00, phone');
@@ -78,7 +78,7 @@ test('confirm requires EVERY active participant on the identical slot', async ()
 test('a meeting of one cannot confirm; initiator cannot opt out; opt-out can close no_match', async () => {
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, alice.id, 'duo', [bob.id])).data.meeting;
-    await meetings.proposeSlot(c, alice.id, m.id, 'Sunday 10:00, office', soon());
+    await meetings.proposeSlot(c, alice.id, m.id, 'Sunday 10:00, office', slotStart('Sunday 10:00, office'));
 
     const initiatorExit = await meetings.optOut(c, alice.id, m.id);
     assert.equal(initiatorExit.ok, false); // must cancel instead
@@ -91,7 +91,7 @@ test('a meeting of one cannot confirm; initiator cannot opt out; opt-out can clo
 test('opt-out of a third participant can complete the confirmation gate', async () => {
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, alice.id, 'trio2', [bob.id, carol.id])).data.meeting;
-    await meetings.proposeSlot(c, alice.id, m.id, 'Monday 09:00, zoom', soon());
+    await meetings.proposeSlot(c, alice.id, m.id, 'Monday 09:00, zoom', slotStart('Monday 09:00, zoom'));
     await meetings.respondToSlot(c, bob.id, m.id, true);
     // carol is the lone holdout; her opting out leaves alice+bob who both agreed
     const r = await meetings.optOut(c, carol.id, m.id);
@@ -106,7 +106,7 @@ test('cancel is initiator-only; closed meetings reject all moves', async () => {
     assert.equal(notInitiator.ok, false);
     const cancelled = await meetings.cancelMeeting(c, alice.id, m.id);
     assert.equal(cancelled.ok, true);
-    const late = await meetings.proposeSlot(c, alice.id, m.id, 'whenever', soon());
+    const late = await meetings.proposeSlot(c, alice.id, m.id, 'whenever', slotStart('whenever'));
     assert.equal(late.ok, false);
   });
 });
@@ -123,7 +123,7 @@ test('constraints accumulate; pendingMeetingFor feeds the checkin ladder', async
     // no slot proposed yet → bob is awaiting but NOT nudge-worthy
     let pend = await meetings.pendingMeetingFor(c, bob.id);
     assert.equal(pend.data.pending, null);
-    await meetings.proposeSlot(c, alice.id, m.id, 'Thursday 18:00, cafe', soon());
+    await meetings.proposeSlot(c, alice.id, m.id, 'Thursday 18:00, cafe', slotStart('Thursday 18:00, cafe'));
     pend = await meetings.pendingMeetingFor(c, bob.id);
     assert.equal(pend.data.pending.id, m.id);
   });
@@ -155,11 +155,11 @@ test('non-participant cannot see or touch a meeting', async () => {
 // query tested only `proposed_slot IS NOT NULL`. Since stuck_meeting is the
 // ladder's TOP rung, that dead meeting also shadowed every other check-in.
 
-async function pair(phoneA, phoneB) {
+async function pair(phoneA, phoneB, extra = {}) {
   const connections = require('../src/domain/connections');
   const grants = require('../src/domain/grants');
-  const a = await makeUser(db.pool, phoneA, { firstName: 'A' });
-  const b = await makeUser(db.pool, phoneB, { firstName: 'B' });
+  const a = await makeUser(db.pool, phoneA, { firstName: 'A', ...extra });
+  const b = await makeUser(db.pool, phoneB, { firstName: 'B', ...extra });
   await withClient(async (c) => {
     const req = await connections.requestConnection(c, a.id, b.phone, {});
     const conn = (await connections.respondToConnection(c, b.id, req.data.connection.id, 'approve')).data.connection;
@@ -186,7 +186,7 @@ test('a slot must carry a real time, and it cannot already be in the past', asyn
     assert.equal(past.ok, false, 'caught before it reaches anyone else\'s phone');
     assert.equal(past.error.reason, 'slot_in_past');
 
-    const good = await meetings.proposeSlot(c, a.id, m.id, 'יום שישי 20:00 אצל דני', soon());
+    const good = await meetings.proposeSlot(c, a.id, m.id, 'יום שישי 20:00 אצל דני', slotStart('יום שישי 20:00 אצל דני'));
     assert.equal(good.ok, true);
     const { rows } = await c.query(`SELECT proposed_start_at FROM meetings WHERE id = $1`, [m.id]);
     assert.ok(rows[0].proposed_start_at, 'the machine half is stored alongside the text');
@@ -197,7 +197,7 @@ test('a slot that has passed stops being something to nudge about', async () => 
   const { a, b } = await pair('+972571000003', '+972571000004');
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, a.id, 'פוקר', [b.id])).data.meeting;
-    await meetings.proposeSlot(c, a.id, m.id, 'יום שישי 20:00', soon());
+    await meetings.proposeSlot(c, a.id, m.id, 'יום שישי 20:00', slotStart('יום שישי 20:00'));
 
     assert.equal(Number((await meetings.pendingMeetingFor(c, b.id)).data.pending.id), Number(m.id),
       'while it is still ahead, the nudge is right');
@@ -213,7 +213,7 @@ test('a legacy slot with no start time is never nudged about — it cannot be da
   const { a, b } = await pair('+972571000005', '+972571000006');
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, a.id, 'פוקר', [b.id])).data.meeting;
-    await meetings.proposeSlot(c, a.id, m.id, 'יום שישי 20:00', soon());
+    await meetings.proposeSlot(c, a.id, m.id, 'יום שישי 20:00', slotStart('יום שישי 20:00'));
     // exactly the shape of every row proposed before this migration
     await c.query(`UPDATE meetings SET proposed_start_at = NULL WHERE id = $1`, [m.id]);
 
@@ -228,12 +228,12 @@ test('expireStaleMeetings closes what nothing else ever closed', async () => {
   await withClient(async (c) => {
     // passed its moment, still open
     const dead = (await meetings.startMeeting(c, a.id, 'פוקר', [b.id])).data.meeting;
-    await meetings.proposeSlot(c, a.id, dead.id, 'שישי 20:00', soon());
+    await meetings.proposeSlot(c, a.id, dead.id, 'שישי 20:00', slotStart('שישי 20:00'));
     await c.query(`UPDATE meetings SET proposed_start_at = now() - interval '13 hours' WHERE id = $1`, [dead.id]);
 
     // still ahead — must be left alone
     const live = (await meetings.startMeeting(c, c2.id, 'קפה', [d2.id])).data.meeting;
-    await meetings.proposeSlot(c, c2.id, live.id, 'מחר 10:00', soon());
+    await meetings.proposeSlot(c, c2.id, live.id, 'מחר 10:00', slotStart('מחר 10:00'));
 
     const closed = await meetings.expireStaleMeetings(c);
     const ids = closed.map((m) => Number(m.id));
@@ -253,7 +253,7 @@ test('a slot within the grace window is not closed out from under the people at 
   const { a, b } = await pair('+972571000011', '+972571000012');
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, a.id, 'פוקר', [b.id])).data.meeting;
-    await meetings.proposeSlot(c, a.id, m.id, 'הערב 20:00', soon());
+    await meetings.proposeSlot(c, a.id, m.id, 'הערב 20:00', slotStart('הערב 20:00'));
     // started two hours ago — it may well still be happening
     await c.query(`UPDATE meetings SET proposed_start_at = now() - interval '2 hours' WHERE id = $1`, [m.id]);
     const closed = await meetings.expireStaleMeetings(c);
@@ -266,7 +266,7 @@ test('legacy rows are closed on abandonment rather than left negotiating forever
   const { a, b } = await pair('+972571000013', '+972571000014');
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, a.id, 'פוקר', [b.id])).data.meeting;
-    await meetings.proposeSlot(c, a.id, m.id, 'שישי 20:00', soon());
+    await meetings.proposeSlot(c, a.id, m.id, 'שישי 20:00', slotStart('שישי 20:00'));
     await c.query(
       `UPDATE meetings SET proposed_start_at = NULL, updated_at = now() - interval '5 days' WHERE id = $1`,
       [m.id]);
@@ -279,7 +279,7 @@ test('expireOne closes a single dead negotiation and refuses anything else', asy
   const { a, b } = await pair('+972571000015', '+972571000016');
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, a.id, 'פוקר', [b.id])).data.meeting;
-    await meetings.proposeSlot(c, a.id, m.id, 'יום שישי 20:00', soon());
+    await meetings.proposeSlot(c, a.id, m.id, 'יום שישי 20:00', slotStart('יום שישי 20:00'));
     // the shape of the live row: no start time, so no sweep can date it
     await c.query(`UPDATE meetings SET proposed_start_at = NULL WHERE id = $1`, [m.id]);
 
@@ -327,7 +327,7 @@ test('expireOne drops an opted-out participant but keeps everyone still on it', 
     await grants.grantFeature(cl, c3.id, conn.id, 'meetings');
 
     const m = (await meetings.startMeeting(cl, a.id, 'פוקר', [b.id, c3.id])).data.meeting;
-    await meetings.proposeSlot(cl, a.id, m.id, 'יום שישי 20:00', soon());
+    await meetings.proposeSlot(cl, a.id, m.id, 'יום שישי 20:00', slotStart('יום שישי 20:00'));
     await meetings.optOut(cl, c3.id, m.id);
 
     const closed = await meetings.expireOne(cl, m.id);
@@ -404,5 +404,92 @@ test('a reason is bounded — it lands inside another user\'s agent turn', async
     for (const s of shared) {
       assert.ok(s.length <= meetings.CONSTRAINT_MAX_CHARS, 'capped in length');
     }
+  });
+});
+
+// A slot has two halves — the words a person reads and the moment everything
+// else acts on — and nothing checked that they named the same day. Meeting #4
+// ("פוקר") stored "יום שני 20:00" as a Tuesday while both participants spent
+// the afternoon negotiating about Monday.
+test('a slot whose words and timestamp name different days is refused', async () => {
+  const { a, b } = await pair('+972572000001', '+972572000002');
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, a.id, 'פוקר', [b.id])).data.meeting;
+    const monday = slotStart('יום שני 20:00'); // the next real Monday
+
+    const wrong = await meetings.proposeSlot(c, a.id, m.id, 'יום שלישי 20:00', monday);
+    assert.equal(wrong.ok, false);
+    assert.equal(wrong.error.reason, 'weekday_mismatch');
+    assert.match(wrong.error.message, /Tuesday/);
+    assert.match(wrong.error.message, /Monday/);
+
+    const english = await meetings.proposeSlot(c, a.id, m.id, 'Tuesday 20:00, cafe', monday);
+    assert.equal(english.ok, false, 'English names are checked the same way');
+    assert.equal(english.error.reason, 'weekday_mismatch');
+
+    // Nothing was written on the way to the refusal.
+    const { rows } = await c.query(`SELECT proposed_slot, proposed_start_at FROM meetings WHERE id = $1`, [m.id]);
+    assert.equal(rows[0].proposed_slot, null);
+    assert.equal(rows[0].proposed_start_at, null);
+
+    const right = await meetings.proposeSlot(c, a.id, m.id, 'יום שני 20:00 אצל דני', monday);
+    assert.equal(right.ok, true, 'the two halves agreeing is the whole requirement');
+  });
+});
+
+test('a slot naming no weekday is stored exactly as before', async () => {
+  const { a, b } = await pair('+972572000003', '+972572000004');
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, a.id, 'קפה', [b.id])).data.meeting;
+    for (const text of ['מחר ב-20:00', 'הערב 20:00', 'whenever suits you']) {
+      const res = await meetings.proposeSlot(c, a.id, m.id, text, slotStart(text));
+      assert.equal(res.ok, true, `${text} names no day, so there is nothing to check`);
+    }
+  });
+});
+
+// The counter-proposal path is where the live bug actually did its damage:
+// four slots in one afternoon, each a decline carrying the next one.
+test('a counter-proposal is held to the same rule — and refused before the decline lands', async () => {
+  const { a, b } = await pair('+972572000005', '+972572000006');
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, a.id, 'פוקר', [b.id])).data.meeting;
+    await meetings.proposeSlot(c, a.id, m.id, 'יום שני 20:00', slotStart('יום שני 20:00'));
+
+    const bad = await meetings.respondToSlot(c, b.id, m.id, false,
+      'יום רביעי 20:00', slotStart('יום חמישי 20:00'));
+    assert.equal(bad.ok, false);
+    assert.equal(bad.error.reason, 'weekday_mismatch');
+    assert.match(bad.error.message, /counter_proposal/);
+
+    // The refusal is total: he is not left declined with nothing proposed.
+    const st = await meetings.getStatus(c, b.id, m.id);
+    const states = Object.fromEntries(st.data.participants.map((p) => [p.user_id, p.state]));
+    assert.equal(states[b.id], 'awaiting');
+    assert.equal(st.data.meeting.proposed_slot, 'יום שני 20:00');
+
+    const good = await meetings.respondToSlot(c, b.id, m.id, false,
+      'יום רביעי 20:00', slotStart('יום רביעי 20:00'));
+    assert.equal(good.ok, true);
+    assert.equal((await meetings.getStatus(c, b.id, m.id)).data.meeting.proposed_slot, 'יום רביעי 20:00');
+  });
+});
+
+// The words are the proposer's, so they are judged where the proposer lives —
+// the same reasoning that made a NULL users.timezone a three-hour bug.
+test('the weekday is judged in the proposer own timezone', async () => {
+  const { a, b } = await pair('+972572000007', '+972572000008', { timezone: 'Asia/Jerusalem' });
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, a.id, 'לילה', [b.id])).data.meeting;
+    // Monday 17:00 UTC → still Monday in Israel; +5h is Tuesday 01:00 there.
+    const mondayUtc = new Date(slotStart('יום שני')).getTime();
+    const stillMonday = new Date(mondayUtc).toISOString().replace(/\.\d+Z$/, '+00:00');
+    const alreadyTuesday = new Date(mondayUtc + 5 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00');
+
+    assert.equal((await meetings.proposeSlot(c, a.id, m.id, 'יום שני 20:00', stillMonday)).ok, true);
+    const late = await meetings.proposeSlot(c, a.id, m.id, 'יום שני 23:00', alreadyTuesday);
+    assert.equal(late.ok, false, 'past midnight in Israel it is Tuesday, whatever UTC says');
+    assert.equal(late.error.reason, 'weekday_mismatch');
+    assert.match(late.error.message, /Asia\/Jerusalem/);
   });
 });

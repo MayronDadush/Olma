@@ -60,4 +60,21 @@ async function makeUser(pool, phone, extra = {}) {
   }
 }
 
-module.exports = { freshDb, makeUser };
+// A future timestamp that AGREES with the slot text about the day. Meeting
+// slots are cross-checked (domain/datetime.weekdayClash), so a test that hard-
+// codes "Tuesday 17:00" alongside now+48h passes or fails depending on which
+// day the suite happens to run. Given the text, this lands on the next
+// occurrence of the weekday it names, or simply now+hours when it names none.
+function slotStart(text, { hours = 48, hourUtc = 17 } = {}) {
+  const { weekdaysInText } = require('../src/domain/datetime');
+  const iso = (d) => d.toISOString().replace(/\.\d+Z$/, '+00:00');
+  const base = new Date(Date.now() + hours * 3600_000);
+  const want = weekdaysInText(text);
+  if (want.length === 0) return iso(base);
+  const d = new Date(Date.UTC(
+    base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate(), hourUtc, 0, 0));
+  while (d.getUTCDay() !== want[0]) d.setUTCDate(d.getUTCDate() + 1);
+  return iso(d);
+}
+
+module.exports = { freshDb, makeUser, slotStart };
