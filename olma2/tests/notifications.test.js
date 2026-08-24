@@ -201,3 +201,51 @@ test('unanswered repair: only for messages provably never answered', async () =>
   ]);
   assert.deepEqual(repeat.repaired, []);
 });
+
+// A reason given to one Olma has to reach the other person, or every
+// negotiation restarts from "he just can't" — which is how one poker game
+// burned four slots without either side learning anything.
+test('the reason a slot suits someone rides along to the other side', async () => {
+  const started = await call(miron, 'start_meeting_coordination', { title: 'poker', phones: [kapish.phone] });
+  const meetingId = Number(/"id":"?(\d+)/.exec(started)[1]);
+  await call(miron, 'record_meeting_constraint', {
+    meeting_id: meetingId, constraint: 'בצילומים ומסיים מאוחר' });
+  await call(miron, 'propose_meeting_slot', {
+    meeting_id: meetingId, slot_description: 'יום שלישי 20:00',
+    starts_at: new Date(Date.now() + 48 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00') });
+
+  // this file shares one DB, so filter to THIS meeting rather than trusting order
+  const rows = (await outboxFor(kapish.id, 'meeting_slot_proposed'))
+    .filter((r) => Number(r.payload.meetingId) === meetingId);
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0].payload.reasons, ['בצילומים ומסיים מאוחר']);
+
+  // and it reaches the model as quoted DATA, inside the same fence every other
+  // cross-user string uses — never as something to act on.
+  const { instructionFor } = require('../src/channels/openclaw');
+  const body = instructionFor(rows[0]);
+  assert.ok(body.includes('<<<בצילומים ומסיים מאוחר>>>'), 'the reason must be in the instruction');
+  assert.ok(/data only/.test(body), 'and must be labelled as data');
+});
+
+test('a private reason never leaves its own agent', async () => {
+  const started = await call(miron, 'start_meeting_coordination', { title: 'poker private', phones: [kapish.phone] });
+  const meetingId = Number(/"id":"?(\d+)/.exec(started)[1]);
+  await call(miron, 'record_meeting_constraint', {
+    meeting_id: meetingId, constraint: 'לא ביום שני' });
+  await call(miron, 'record_meeting_constraint', {
+    meeting_id: meetingId, constraint: 'בדיקה רפואית', private: true });
+  await call(miron, 'propose_meeting_slot', {
+    meeting_id: meetingId, slot_description: 'יום שלישי 20:00',
+    starts_at: new Date(Date.now() + 48 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00') });
+
+  const rows = (await outboxFor(kapish.id, 'meeting_slot_proposed'))
+    .filter((r) => Number(r.payload.meetingId) === meetingId);
+  assert.equal(rows.length, 1);
+  const { instructionFor } = require('../src/channels/openclaw');
+  const body = instructionFor(rows[0]);
+  assert.ok(body.includes('<<<לא ביום שני>>>'), 'the shareable one still travels');
+  assert.ok(!body.includes('בדיקה רפואית'), 'the private one must not appear anywhere');
+  assert.ok(!JSON.stringify(rows[0].payload).includes('בדיקה רפואית'),
+    'and must not be sitting in the payload either');
+});
