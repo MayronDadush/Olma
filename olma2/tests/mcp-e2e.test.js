@@ -228,6 +228,33 @@ test('the first message after pausing offers to resume; nothing after that does'
   assert.doesNotMatch(third, /offerResume/);
 });
 
+test('turn_start hands the agent the reminders it never saw go out', async () => {
+  // Reminders ride the raw pipe now (channels/openclaw.js), which never
+  // touches the session, so a bare "סיימתי" would reach an agent with no idea
+  // a reminder just fired. The outbox row is the record; turn_start reads it.
+  const u = await makeUser(db.pool, '+972571000030', { firstName: 'דנה' });
+
+  // an ordinary turn carries nothing — the field must not cost every message
+  assert.doesNotMatch(await callTool('turn_start', { identity_token: u.identity_token }),
+    /recentReminders/);
+
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, urgency, payload, idempotency_key, sent_at)
+     VALUES ($1, 'reminder', 'urgent', '{"taskId":1,"title":"לקחת תרופה"}', 'rrem:1', now() - interval '10 minutes'),
+            ($1, 'reminder', 'urgent', '{"taskId":2,"title":"ישן מדי"}',   'rrem:2', now() - interval '2 days'),
+            ($1, 'reminder', 'urgent', '{"taskId":3,"title":"בוטל"}',      'rrem:3', now() - interval '5 minutes')`,
+    [u.id]);
+  // a cancelled/expired row was never delivered — it must not show up either
+  await db.pool.query(
+    `UPDATE outbox SET hold_reason = 'cancelled_by_admin' WHERE idempotency_key = 'rrem:3'`);
+
+  const r = await callTool('turn_start', { identity_token: u.identity_token });
+  assert.match(r, /recentReminders/);
+  assert.match(r, /לקחת תרופה/, 'the reminder delivered minutes ago is the likely referent');
+  assert.doesNotMatch(r, /ישן מדי/, 'older than a day is stale context, not help');
+  assert.doesNotMatch(r, /בוטל/, 'a cancelled row was never delivered, so it is not context');
+});
+
 test('resuming and pausing again offers exactly once more', async () => {
   const u = await makeUser(db.pool, '+972571000012', { firstName: 'קפיש' });
   await callTool('pause_olma', { identity_token: u.identity_token });

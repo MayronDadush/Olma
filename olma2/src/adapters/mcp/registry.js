@@ -160,7 +160,7 @@ async function connectedUserByPhone(client, actorId, phone, feature) {
 
 const TOOLS = [
   // ---------------------------------------------------------------- turn gate
-  tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and tells you how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all). Pass sender_name whenever the turn\'s Conversation info carries one. If the response carries offerResume: true, this is the first message since they paused — answer what they actually asked, then add ONE line asking if they would like Olma to start reaching out again.',
+  tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and tells you how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all). Pass sender_name whenever the turn\'s Conversation info carries one. If the response carries offerResume: true, this is the first message since they paused — answer what they actually asked, then add ONE line asking if they would like Olma to start reaching out again. recentReminders, when present, lists reminders Olma already delivered in the last day — a bare reply like "סיימתי" or "עשיתי" is probably about the newest one.',
     { sender_name: S('string', 'The `sender` field from this turn\'s Conversation info, verbatim. Only ever used to fill a name we do not have, always as an unconfirmed guess — never overwrites a name they gave you themselves.') }, [],
     async (client, user, args, ctx) => {
       if (ctx.flood && ctx.flood.isFlooding(user.id)) {
@@ -222,6 +222,26 @@ const TOOLS = [
       // Cheap: bounded by the daily quota, classed 'routine', pruned by the
       // retention sweep like every other operational row.
       await audit.record(client, user.id, 'message.received', null);
+      // Reminders now go out on the raw pipe (channels/openclaw.js), which
+      // never touches this person's session history — so a bare reply like
+      // "סיימתי" would otherwise reach an agent that has no idea a reminder
+      // just fired (the exact v1 "improvises incorrect context" incident).
+      // brokerd knows what it sent without needing the session to remember:
+      // the outbox row IS the record. Only the last day, only actually-sent
+      // rows, and the field is omitted entirely when empty — which is nearly
+      // every turn, so this costs nothing in the common case.
+      const { rows: recentRem } = await client.query(
+        `SELECT payload, sent_at FROM outbox
+          WHERE user_id = $1 AND kind = 'reminder' AND hold_reason IS NULL
+            AND sent_at > now() - interval '24 hours'
+          ORDER BY sent_at DESC LIMIT 3`, [user.id]);
+      const recentReminders = recentRem
+        .map((r) => {
+          const p = typeof r.payload === 'string' ? JSON.parse(r.payload) : (r.payload || {});
+          return p.title ? { title: String(p.title).slice(0, 200), sentAt: r.sent_at } : null;
+        })
+        .filter(Boolean);
+
       // USER.md is re-rendered only when something on it moved. turn_start runs
       // on every single message, so it cannot join CARD_TOOLS wholesale — it
       // flags the card itself, on the one turn in a person's life that fills in
@@ -230,6 +250,7 @@ const TOOLS = [
         return stale(ok({
           directive: 'proceed', locale: user.locale,
           ...(offerResume ? { offerResume: true } : {}),
+          ...(recentReminders.length ? { recentReminders } : {}),
         }), namedNow);
       }
       const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);

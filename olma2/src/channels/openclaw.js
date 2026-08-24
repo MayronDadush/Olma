@@ -10,6 +10,7 @@
 // record real success/failure into outbox.attempts — no more fire-and-forget.
 const { spawn } = require('node:child_process');
 const usersDomain = require('../domain/users');
+const proactiveText = require('../domain/proactive-text');
 
 const SEND_TIMEOUT_MS = 120_000;
 
@@ -237,6 +238,28 @@ function makeDeliverer(pool) {
       if (!ch.ok) return { ok: false, error: 'no primary channel' };
       channel = ch.data.channel;
     } finally { client.release(); }
+
+    // Reminders skip the agent turn entirely and go out on the raw pipe.
+    // Their content is deterministic — the person's own words at the person's
+    // own time — and routing them through a model turn made every reminder
+    // cost a cold-cache call AND fail whenever the model did: during the
+    // 2026-08-23 credit outage a daily medication reminder sat undelivered for
+    // 13 hours over an LLM billing error it never needed to touch.
+    //
+    // The raw send does NOT enter this person's session history (verified
+    // live: it logs under the default agent — the old --to lesson), so
+    // turn_start compensates by returning the last day's delivered reminders
+    // from the outbox itself. Same retry contract as every other send: the
+    // result feeds the worker's attempts/backoff, never fire-and-forget.
+    const rawText = proactiveText.rawPipeTextFor(row);
+    if (rawText) {
+      return runOpenclaw([
+        'message', 'send',
+        '--channel', channel.channel_type,
+        '--target', channel.channel_identifier,
+        '--message', rawText,
+      ]);
+    }
 
     // Users without an agent yet (pending: invited strangers, waitlist) are
     // reached through the intake agent's session for their phone.
