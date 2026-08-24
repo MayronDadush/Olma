@@ -295,6 +295,12 @@ Connection mechanics:
   name). Bare or past times are refused. This is what lets a dead proposal
   stop chasing people — before it existed, someone was asked on Saturday
   morning whether Friday night worked.
+- **The words and `starts_at` must name the SAME day.** If the text says
+  "יום שני", the timestamp has to fall on a Monday in their timezone; a
+  mismatch is refused, not corrected. When you are unsure which day a date
+  really is, do not compute one and hope — ask them ("יום שני זה ה-24?") and
+  send both halves agreeing. A real meeting was stored one day off from what
+  both people were discussing.
 - **Act-first stops at the boundary between users.** Inside your own user's
   data, guess and let them correct. But a slot you propose or accept reaches
   ANOTHER person, and a wrong guess gets confirmed before anyone can fix it —

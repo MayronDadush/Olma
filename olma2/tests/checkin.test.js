@@ -1,7 +1,7 @@
 'use strict';
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { freshDb, makeUser } = require('./helpers');
+const { freshDb, makeUser, slotStart } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const checkin = require('../src/jobs/checkin');
 
@@ -34,7 +34,7 @@ test('ladder rung 1: stuck meeting beats everything else', async () => {
     await grants.grantFeature(c, b.id, conn.id, 'meetings');
     const m = (await meetings.startMeeting(c, a.id, 'coffee', [b.id])).data.meeting;
     await meetings.proposeSlot(c, a.id, m.id, 'Tuesday 17:00, cafe',
-      new Date(Date.now() + 48 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00'));
+      slotStart('Tuesday 17:00, cafe'));
     // b also has an at-risk task — the meeting must still win
     const t = (await tasks.addTask(c, b.id, { title: 'urgent thing', dueAt: new Date(Date.now() + 3600_000).toISOString() })).data.task;
     await c.query(`UPDATE tasks SET created_at = now() - interval '2 days' WHERE id = $1`, [t.id]);
@@ -177,7 +177,7 @@ test('a stuck-meeting nudge carries the user\'s own recorded constraints', async
     const m = (await meetings.startMeeting(c, other.id, 'ריצה', [me.id])).data.meeting;
     await meetings.recordConstraint(c, me.id, m.id, 'לא בבקרים');
     await meetings.proposeSlot(c, other.id, m.id, 'שלישי 07:00 בפארק',
-      new Date(Date.now() + 48 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00'));
+      slotStart('שלישי 07:00 בפארק'));
     const { instruction, rung } = await checkin.pickRung(c, me.id);
     assert.equal(rung, 'stuck_meeting');
     assert.ok(instruction.includes('<<<לא בבקרים>>>'), 'the nudge must carry their own constraint');
@@ -424,7 +424,7 @@ test('a passed meeting neither nudges nor blocks the rest of the ladder', async 
     await grants.grantFeature(c, amit.id, conn.id, 'meetings');
     const m = (await meetings.startMeeting(c, host.id, 'פוקר', [amit.id])).data.meeting;
     await meetings.proposeSlot(c, host.id, m.id, 'יום שישי 20:00',
-      new Date(Date.now() + 48 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00'));
+      slotStart('יום שישי 20:00'));
 
     assert.equal((await checkin.pickRung(c, amit.id)).rung, 'stuck_meeting',
       'while the slot is ahead, chasing an unanswered proposal is exactly right');

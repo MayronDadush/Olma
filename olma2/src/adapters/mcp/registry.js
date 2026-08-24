@@ -615,9 +615,9 @@ const TOOLS = [
       private: S('boolean', 'true = do not repeat this to the other participants. Default false.') },
     ['meeting_id', 'constraint'],
     (client, user, a) => meetings.recordConstraint(client, user.id, a.meeting_id, a.constraint, a.private === true)),
-  tool('propose_meeting_slot', 'Propose a slot: date+time+medium (location/phone/video) as ONE package; proposing means your user agrees to it. Every part must come from what YOUR user actually said — if they gave a time without a day, say the full slot back and get their yes first (a real meeting once landed on the wrong day this way). starts_at = the same moment as slot_description, full ISO-8601 WITH UTC offset; bare or past times are refused. If their calendar is connected, check my_calendar_events for that day first.',
+  tool('propose_meeting_slot', 'Propose a slot: date+time+medium (location/phone/video) as ONE package; proposing means your user agrees to it. Every part must come from what YOUR user actually said — if they gave a time without a day, say the full slot back and get their yes first (a real meeting once landed on the wrong day this way). starts_at = the same moment as slot_description, full ISO-8601 WITH UTC offset; bare or past times are refused, and so is a starts_at falling on a different weekday than the one the text names (a real meeting was stored a day off this way) — if the two disagree, ask which day they mean rather than picking one. If their calendar is connected, check my_calendar_events for that day first.',
     { meeting_id: S('number', 'Meeting id'), slot_description: S('string', 'e.g. "Tuesday 17:00 at the office"'),
-      starts_at: S('string', 'The same moment, ISO-8601 with offset, e.g. 2026-08-25T17:00:00+03:00') },
+      starts_at: S('string', 'The same moment — same DAY — as slot_description, ISO-8601 with offset, e.g. 2026-08-25T17:00:00+03:00') },
     ['meeting_id', 'slot_description', 'starts_at'],
     async (client, user, a) => {
       const res = await meetings.proposeSlot(client, user.id, a.meeting_id, a.slot_description, a.starts_at);
@@ -635,10 +635,10 @@ const TOOLS = [
       }
       return res;
     }),
-  tool('respond_to_meeting_slot', 'Accept or decline the proposed slot. Decline may carry counter_proposal (+required counter_starts_at, same rules as propose). accept=true only after the user saw the EXACT slot text, day included, and agreed; if it differs from what they were discussing, point that out instead of accepting.',
+  tool('respond_to_meeting_slot', 'Accept or decline the proposed slot. Decline may carry counter_proposal (+required counter_starts_at, same rules as propose, weekday agreement included — a refused counter leaves the decline unrecorded too, so fix it and call again). accept=true only after the user saw the EXACT slot text, day included, and agreed; if it differs from what they were discussing, point that out instead of accepting.',
     { meeting_id: S('number', 'Meeting id'), accept: S('boolean', 'true = user agrees to the exact slot'),
       counter_proposal: S('string', 'Optional new slot when declining'),
-      counter_starts_at: S('string', 'Required with counter_proposal: the same moment, ISO-8601 with offset') },
+      counter_starts_at: S('string', 'Required with counter_proposal: the same moment — same DAY — ISO-8601 with offset') },
     ['meeting_id', 'accept'],
     async (client, user, a) => {
       const res = await meetings.respondToSlot(client, user.id, a.meeting_id, a.accept, a.counter_proposal, a.counter_starts_at);

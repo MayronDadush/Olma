@@ -19,7 +19,7 @@ fs.writeFileSync(process.env.OLMA_GOOGLE_OAUTH_PATH, JSON.stringify({
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { freshDb, makeUser } = require('./helpers');
+const { freshDb, makeUser, slotStart } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const { createDashboard } = require('../src/adapters/http/dashboard');
 const { scrubTokens } = require('../src/adapters/mcp/render');
@@ -596,7 +596,7 @@ async function confirmedMeetingFixture(phoneA, phoneB, { bAccess = 'read_write',
     assert.ok(started.ok, `fixture startMeeting failed: ${JSON.stringify(started.error)}`);
     const id = Number(started.data.meeting.id);
     await meetings.proposeSlot(c, a.id, id, 'יום חמישי 13:00 בקפה',
-      new Date(Date.now() + 48 * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00'));
+      slotStart('יום חמישי 13:00 בקפה'));
     await meetings.respondToSlot(c, b.id, id, true);
     return id;
   });
