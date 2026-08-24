@@ -325,3 +325,71 @@ test('retry backoff starts in seconds and is capped, so an outage cannot bury a 
   const out = await drainOnce(db.pool, rec.deliver, new Date('2026-08-16T12:00:00Z'));
   assert.equal(out.delivered, 1);
 });
+
+test('a long outage cannot push the backoff past what an interval can hold', async () => {
+  // The gap the test above left: it checked attempts = 20, and the arithmetic
+  // only blows up at 26. least() evaluates BOTH arguments, so the 10-minute cap
+  // never protected the multiplication that produced the value being capped —
+  // at 5s x 3^26 the interval overflowed int64 microseconds and the UPDATE
+  // threw `interval out of range`, leaving the row unable to record even its
+  // own failure. Live on 2026-08-23 after the Anthropic account ran dry.
+  await flushOutbox();
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { text: 'x' },
+    idempotencyKey: 'reminder:overflow',
+  }));
+  const failing = async () => ({ ok: false, error: 'credit balance is too low' });
+
+  for (const attempts of [26, 40, 100]) {
+    await db.pool.query(
+      `UPDATE outbox SET attempts = $1, release_after = NULL WHERE idempotency_key = 'reminder:overflow'`,
+      [attempts]);
+    const out = await drainOnce(db.pool, failing, new Date('2026-08-16T12:00:00Z'));
+    assert.equal(out.failed, 1, `attempts=${attempts} must record a failure, not throw`);
+    assert.ok(!out.errored, `attempts=${attempts} must not error the row`);
+    const { rows } = await db.pool.query(
+      `SELECT attempts, extract(epoch from (release_after - now())) AS secs
+       FROM outbox WHERE idempotency_key = 'reminder:overflow'`);
+    assert.equal(rows[0].attempts, attempts + 1);
+    assert.ok(Number(rows[0].secs) <= 601,
+      `attempts=${attempts} still capped at 10 minutes, got ${rows[0].secs}`);
+  }
+
+  // and the message is still deliverable afterwards — the whole point of a cap
+  await db.pool.query(
+    `UPDATE outbox SET release_after = NULL WHERE idempotency_key = 'reminder:overflow'`);
+  const rec = recorder();
+  const out = await drainOnce(db.pool, rec.deliver, new Date('2026-08-16T12:00:00Z'));
+  assert.equal(out.delivered, 1);
+});
+
+test('one unprocessable row does not take the rest of the queue down with it', async () => {
+  // The outage was not caused by rows failing — rows fail all the time. It was
+  // caused by ONE row aborting the tick, oldest-first, so everything behind it
+  // stopped too. 28 healthy messages sat behind two poisoned ones for a day.
+  await flushOutbox();
+  const ids = [];
+  for (const n of ['poison', 'good1', 'good2']) {
+    const r = await withTx(db.pool, (c) => enqueue(c, {
+      userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { text: n },
+      idempotencyKey: `reminder:isolation:${n}`,
+    }));
+    ids.push({ n, id: r.data ? r.data.id : null });
+  }
+  // the oldest row throws outright, the way the overflowing UPDATE used to
+  const deliver = async (row) => {
+    if (row.payload.text === 'poison') throw new Error('interval out of range');
+    return { ok: true };
+  };
+  const out = await drainOnce(db.pool, deliver, new Date('2026-08-16T12:00:00Z'));
+
+  assert.equal(out.delivered, 2, 'the two healthy messages must still go out');
+  assert.ok(Array.isArray(out.errored) && out.errored.length === 1,
+    'and the bad row must be reported, not silently swallowed');
+  assert.match(out.errored[0].error, /interval out of range/);
+
+  const { rows } = await db.pool.query(
+    `SELECT count(*)::int AS n FROM outbox
+     WHERE idempotency_key LIKE 'reminder:isolation:good%' AND sent_at IS NOT NULL`);
+  assert.equal(rows[0].n, 2);
+});

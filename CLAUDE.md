@@ -647,6 +647,46 @@ deserves to know it ended too. `expireOne`'s `UPDATE ... WHERE status =
 'negotiating'` still guarantees only one of {sweep, script} ever succeeds on a
 given meeting, so this can never double-message anyone.
 
+### A retry cap that overflowed the thing it was capping (fixed 2026-08-24)
+
+The Anthropic account ran dry again on 2026-08-23 (same failure as 2026-08-20).
+Every agent turn started returning *"Your credit balance is too low"*, so every
+delivery failed and `outbox.attempts` climbed all day. That part is external and
+recoverable. What made it an outage was the backoff:
+
+```sql
+release_after = now() + least(interval '10 minutes',
+                              interval '5 seconds' * power(3, attempts))
+```
+
+**`least()` evaluates both arguments.** The cap never protected the
+multiplication that produced the value being capped — it only compared the
+result afterwards. An `interval` holds microseconds in an int64, so at
+`attempts = 26` (5s x 3^26 = 1.3e19us > 9.2e18) the multiplication threw
+`interval out of range`, and the row could no longer record even its own
+failure. The comment above it promised "everything queued goes out within ten
+minutes of service returning"; topping the account back up would in fact have
+changed nothing.
+
+The second half is what turned two bad rows into total silence: `drainOnce` had
+no per-row guard, and it drains `ORDER BY created_at`. So the two oldest
+poisoned rows aborted every tick before the 28 healthy messages behind them were
+reached. `outbox_worker` sat at `ERR interval out of range` for ~13 hours with
+`/health` correctly red the whole time and nobody looking.
+
+- The exponent is capped **before** it is multiplied: `power(3, least(attempts, 6))`.
+- Each row is processed inside its own `try`; anything that escapes is pushed to
+  `outcomes.errored` (ids + message, visible in the heartbeat note) and stepped
+  over. **One row failing is a defect; one row silencing the system is an
+  outage.**
+- The pre-existing backoff test used `attempts = 20`, below the 26 threshold —
+  which is exactly why this survived. The new test walks 26/40/100.
+
+Worth remembering as a shape: `/health` was right, it had been red for half a
+day, and the deploy gate had just been moved off it (see the `/ready` split
+above) for unrelated but correct reasons. Nothing was watching the endpoint that
+was telling the truth.
+
 ### Both of them explained why, and neither ever heard it (fixed 2026-08-22)
 
 Meeting #4 ("פוקר", מירון + עמית) burned four slots in one afternoon —
