@@ -70,6 +70,20 @@ test('kicks are staggered, not a thundering herd on a 1-vCPU box', () => {
     `last kick at ${delays[delays.length - 1]}ms must precede ${shortestKicked}ms`);
 });
 
+test('card refreshes happen after the sweep transaction, never inside it', () => {
+  // refreshUserCard reads on its own pool connection, which cannot see rows a
+  // still-open transaction wrote. Wired inside the tx, every card rendered
+  // WITHOUT the facts/plan the run had just produced — caught live on the
+  // planning pass's first real run: five plans written, zero cards showing
+  // them. The refresh must be sequenced after withTx resolves.
+  assert.doesNotMatch(BROKERD, /sweepFactExtraction\(c, \{\s*refreshCard/,
+    'fact_extraction must not refresh cards from inside its transaction');
+  assert.doesNotMatch(BROKERD, /sweepPlanning\(c, \{\s*refreshCard/,
+    'planning must not refresh cards from inside its transaction');
+  assert.match(BROKERD, /refreshAfter\(out\.extracted/);
+  assert.match(BROKERD, /refreshAfter\(out\.planned/);
+});
+
 test('a kicked job is not immediately stale, and a starved one is', () => {
   const now = Date.parse('2026-08-22T10:00:00Z');
   const minsAgo = (m) => new Date(now - m * 60_000).toISOString();
