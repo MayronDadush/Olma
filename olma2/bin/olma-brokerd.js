@@ -140,8 +140,9 @@ async function main() {
     // only a user with genuinely unread messages costs a model turn.
     const factExtraction = require('../src/jobs/fact-extraction');
     const { refreshUserCard } = require('../src/intake/user-card');
+    // Thinks over a direct model call (adapters/llm.js), not an agent turn —
+    // no runAgent dep; the job's default is the real adapter.
     arm('fact_extraction', () => withTx(pool, (c) => factExtraction.sweepFactExtraction(c, {
-      runAgent: runSilentAgentTurn,
       refreshCard: (userId) => refreshUserCard(pool, userId),
     })));
 
