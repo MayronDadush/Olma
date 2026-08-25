@@ -49,6 +49,15 @@ async function sweepUsage(client, deps = {}) {
     const fromOffset = prev ? Number(prev.byte_offset) : 0;
     if (t.size === fromOffset) continue; // nothing appended since last sweep
 
+    // readUsage is a synchronous read + a JSON.parse per line, and this loop
+    // walks EVERY transcript on disk on a cold run — on the 1-vCPU box that
+    // blocked brokerd's event loop for the better part of a minute. Observed
+    // live 2026-08-25: the post-deploy startup kick ran this exactly when a
+    // user's message arrived, and his turn_start timed out twice (30s each)
+    // against a brokerd that was healthy but deaf. One yield per file caps
+    // the contiguous block at the largest single transcript (~1-3s), which a
+    // 30s socket timeout never notices.
+    await new Promise((resolve) => setImmediate(resolve));
     const { calls: newCalls, offset } = readUsage(t.file, fromOffset);
     await client.query(
       `INSERT INTO usage_session_snapshots (session_id, agent_id, model, byte_offset, transcript_path, updated_at)
