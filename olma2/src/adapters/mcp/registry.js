@@ -160,7 +160,7 @@ async function connectedUserByPhone(client, actorId, phone, feature) {
 
 const TOOLS = [
   // ---------------------------------------------------------------- turn gate
-  tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and tells you how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all). Pass sender_name whenever the turn\'s Conversation info carries one. If the response carries offerResume: true, this is the first message since they paused — answer what they actually asked, then add ONE line asking if they would like Olma to start reaching out again. recentReminders, when present, lists reminders Olma already delivered in the last day — a bare reply like "סיימתי" or "עשיתי" is probably about the newest one.',
+  tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and tells you how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all). Pass sender_name whenever the turn\'s Conversation info carries one. If the response carries offerResume: true, this is the first message since they paused — answer what they actually asked, then add ONE line asking if they would like Olma to start reaching out again. recentReminders, when present, lists reminders Olma already delivered in the last day — a bare reply like "סיימתי" or "עשיתי" is probably about the newest one. planHeadline, when present, is the headline of today\'s overnight plan; the full plan sits in your USER.md — read it and lead with it when they ask about their day or plans.',
     { sender_name: S('string', 'The `sender` field from this turn\'s Conversation info, verbatim. Only ever used to fill a name we do not have, always as an unconfirmed guess — never overwrites a name they gave you themselves.') }, [],
     async (client, user, args, ctx) => {
       if (ctx.flood && ctx.flood.isFlooding(user.id)) {
@@ -242,6 +242,20 @@ const TOOLS = [
         })
         .filter(Boolean);
 
+      // The overnight plan's headline, through the same every-turn channel as
+      // recentReminders — and for the same reason: USER.md is injected on
+      // session START only (contextInjection: continuation-skip), so a plan
+      // built while a session sleeps is invisible to it for the session's
+      // whole remaining life. Observed live on the feature's first evening —
+      // "מה התוכניות שלי להיום" answered from the digest tool while a
+      // fresh plan sat unread in the card. Headline only (~20 tokens); the
+      // full plan is in USER.md, which the agent can read when it matters.
+      // Paused users get none: leaning forward is what they declined.
+      const { rows: planRow } = user.paused_at ? { rows: [] } : await client.query(
+        `SELECT headline FROM user_plans
+          WHERE user_id = $1 AND built_at > now() - interval '26 hours'`, [user.id]);
+      const planHeadline = planRow[0] ? planRow[0].headline : null;
+
       // USER.md is re-rendered only when something on it moved. turn_start runs
       // on every single message, so it cannot join CARD_TOOLS wholesale — it
       // flags the card itself, on the one turn in a person's life that fills in
@@ -251,6 +265,7 @@ const TOOLS = [
           directive: 'proceed', locale: user.locale,
           ...(offerResume ? { offerResume: true } : {}),
           ...(recentReminders.length ? { recentReminders } : {}),
+          ...(planHeadline ? { planHeadline } : {}),
         }), namedNow);
       }
       const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);

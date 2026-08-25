@@ -255,6 +255,37 @@ test('turn_start hands the agent the reminders it never saw go out', async () =>
   assert.doesNotMatch(r, /בוטל/, 'a cancelled row was never delivered, so it is not context');
 });
 
+test('turn_start carries the overnight plan headline — USER.md alone cannot, mid-session', async () => {
+  // contextInjection: continuation-skip means the card is injected on session
+  // START only, so a plan built while a session sleeps is invisible to it for
+  // the session's whole remaining life. Observed live on the feature's first
+  // evening: "מה התוכניות שלי להיום" answered from the digest tool while a
+  // fresh plan sat unread in the card. turn_start is the every-turn channel.
+  const u = await makeUser(db.pool, '+972571000031', { firstName: 'רון' });
+
+  // no plan → no field
+  assert.doesNotMatch(await callTool('turn_start', { identity_token: u.identity_token }),
+    /planHeadline/);
+
+  await db.pool.query(
+    `INSERT INTO user_plans (user_id, headline) VALUES ($1, 'יום עמוס: הדרכון דחוף')`, [u.id]);
+  assert.match(await callTool('turn_start', { identity_token: u.identity_token }),
+    /יום עמוס: הדרכון דחוף/);
+
+  // a stale plan is yesterday presented as today — worse than nothing
+  await db.pool.query(
+    `UPDATE user_plans SET built_at = now() - interval '30 hours' WHERE user_id = $1`, [u.id]);
+  assert.doesNotMatch(await callTool('turn_start', { identity_token: u.identity_token }),
+    /planHeadline/);
+
+  // a paused person's turns must not lean forward
+  await db.pool.query(
+    `UPDATE user_plans SET built_at = now() WHERE user_id = $1`, [u.id]);
+  await callTool('pause_olma', { identity_token: u.identity_token });
+  assert.doesNotMatch(await callTool('turn_start', { identity_token: u.identity_token }),
+    /planHeadline/);
+});
+
 test('resuming and pausing again offers exactly once more', async () => {
   const u = await makeUser(db.pool, '+972571000012', { firstName: 'קפיש' });
   await callTool('pause_olma', { identity_token: u.identity_token });
