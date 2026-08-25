@@ -140,19 +140,37 @@ async function main() {
     // only a user with genuinely unread messages costs a model turn.
     const factExtraction = require('../src/jobs/fact-extraction');
     const { refreshUserCard } = require('../src/intake/user-card');
+    // Both direct-call jobs refresh cards AFTER the sweep's transaction
+    // commits — the dashboard rule ("never inside it"), and here it is not
+    // style: refreshUserCard reads on its OWN pool connection, which cannot
+    // see rows the still-open transaction wrote. Wired inside the tx, every
+    // card rendered without the very facts/plan the run just produced —
+    // caught live on the planning pass's first real run, five plans written,
+    // zero cards showing them. (The agent-turn era dodged this by accident:
+    // the agent's tools committed their own transactions before the refresh.)
+    const refreshAfter = async (userIds) => {
+      for (const id of userIds) {
+        try { await refreshUserCard(pool, id); } catch { /* card lags one run; not fatal */ }
+      }
+    };
+
     // Thinks over a direct model call (adapters/llm.js), not an agent turn —
     // no runAgent dep; the job's default is the real adapter.
-    arm('fact_extraction', () => withTx(pool, (c) => factExtraction.sweepFactExtraction(c, {
-      refreshCard: (userId) => refreshUserCard(pool, userId),
-    })));
+    arm('fact_extraction', async () => {
+      const out = await withTx(pool, (c) => factExtraction.sweepFactExtraction(c, {}));
+      await refreshAfter(out.extracted || []);
+      return out;
+    });
 
     // The planning pass: overnight, per user, writes a forward plan into
     // USER.md via the card refresh. Sends nothing — the plan surfaces the
     // next time Olma would have spoken anyway (digest, checkin, live turn).
     const planning = require('../src/jobs/planning');
-    arm('planning_sweep', () => withTx(pool, (c) => planning.sweepPlanning(c, {
-      refreshCard: (userId) => refreshUserCard(pool, userId),
-    })));
+    arm('planning_sweep', async () => {
+      const out = await withTx(pool, (c) => planning.sweepPlanning(c, {}));
+      await refreshAfter(out.planned || []);
+      return out;
+    });
 
     // cost attribution + product analytics — hourly; retention — daily
     const usage = require('../src/jobs/usage');
