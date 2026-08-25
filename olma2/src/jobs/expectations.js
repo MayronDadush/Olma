@@ -21,6 +21,9 @@ const JOB_INTERVAL_SECONDS = {
   checkin_ladder: 300,
   memory_consolidation: 3600,
   fact_extraction: 600,
+  // Daily per user, but ticked hourly for the same reason memory_consolidation
+  // is: "their own small hours" only means something in each person's zone.
+  planning_sweep: 3600,
   usage_sweep: 3600,
   metrics_sweep: 3600,
   retention_sweep: 86400,

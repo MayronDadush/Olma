@@ -146,6 +146,14 @@ async function main() {
       refreshCard: (userId) => refreshUserCard(pool, userId),
     })));
 
+    // The planning pass: overnight, per user, writes a forward plan into
+    // USER.md via the card refresh. Sends nothing — the plan surfaces the
+    // next time Olma would have spoken anyway (digest, checkin, live turn).
+    const planning = require('../src/jobs/planning');
+    arm('planning_sweep', () => withTx(pool, (c) => planning.sweepPlanning(c, {
+      refreshCard: (userId) => refreshUserCard(pool, userId),
+    })));
+
     // cost attribution + product analytics — hourly; retention — daily
     const usage = require('../src/jobs/usage');
     const metrics = require('../src/jobs/metrics');
