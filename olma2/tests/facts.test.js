@@ -151,7 +151,18 @@ async function seedChatter(phone, minutesAgo) {
   return u;
 }
 
-function recorder(messages) {
+// A model answer in the shape the direct call returns. The default finds
+// nothing — tests that want content pass their own JSON.
+function modelSays(json) {
+  return {
+    ok: true,
+    text: JSON.stringify(json ?? { facts: [], tasks: [], name: null }),
+    model: 'claude-haiku-4-5',
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  };
+}
+
+function recorder(messages, answer) {
   const calls = [];
   const reads = [];
   return {
@@ -159,7 +170,7 @@ function recorder(messages) {
     reads,
     deps: {
       readMessages: (agentId, limit, peer) => { reads.push({ agentId, limit, peer }); return messages; },
-      runAgent: (a) => { calls.push(a); return { ok: true }; },
+      complete: (a) => { calls.push(a); return modelSays(answer); },
     },
   };
 }
@@ -221,15 +232,14 @@ test('system instructions in the transcript are never read as conversation', () 
 // users.first_name stayed NULL and every screen showed his phone number.
 test('the name pass is offered only to a person we have no name for', () => {
   const nameless = extraction.buildInstruction('THEM: קוראים לי חיים', [], [], { firstName: null });
-  assert.match(nameless, /THIRD — what they are called/);
-  assert.match(nameless, /set_my_name/);
-  assert.match(nameless, /a name belongs in the profile/,
+  assert.match(nameless, /NAME — we have no name for this person/);
+  assert.match(nameless, /that goes in "name", never in facts/,
     'and the fact pass is told to stop swallowing it');
 
   const known = extraction.buildInstruction('THEM: שלום', [], [], { firstName: 'חיים' });
-  assert.doesNotMatch(known, /THIRD — what they are called/);
-  assert.doesNotMatch(known, /set_my_name/,
-    'the allowed-tool line must not offer a tool this run has no job for');
+  assert.doesNotMatch(known, /NAME — we have no name/);
+  assert.match(known, /"name" must be null/,
+    'a person we can already name must not be re-guessed');
 });
 
 test('a chapter of only machine text buys no model turn', async () => {
@@ -275,8 +285,8 @@ test('machine text is stripped from a transcript that also has real talk', async
     await c.query(`UPDATE users SET last_fact_extraction_at = now() WHERE id <> $1`, [u.id]);
     await extraction.sweepFactExtraction(c, { ...rec.deps, now: Date.now() });
     assert.equal(rec.calls.length, 1);
-    assert.match(rec.calls[0].message, /אני טס לאילת בחמישי/);
-    assert.doesNotMatch(rec.calls[0].message, /DELIVERY:/);
+    assert.match(rec.calls[0].user, /אני טס לאילת בחמישי/);
+    assert.doesNotMatch(rec.calls[0].user, /DELIVERY:/);
   });
 });
 
@@ -291,11 +301,10 @@ test('a successful run moves the watermark and does not run again', async () => 
 
     const res = await extraction.sweepFactExtraction(c, { ...rec.deps, now: Date.now() });
     assert.deepEqual(res.extracted.map(Number), [Number(u.id)]);
+    // One direct call — no agent, no session. The old sessionKey-per-run
+    // regression (the gateway appending every run to one long-lived session)
+    // is retired by construction: there is no session to append to.
     assert.equal(rec.calls.length, 1);
-    assert.equal(rec.calls[0].agentId, `u-${u.id}`);
-    // Its own session, so the gateway does not append every run to one
-    // long-lived one and re-send all the previous prompts as context.
-    assert.match(rec.calls[0].sessionKey, new RegExp(`^agent:u-${u.id}:facts-\\d+$`));
 
     const { rows } = await c.query(`SELECT last_fact_extraction_at FROM users WHERE id = $1`, [u.id]);
     assert.ok(rows[0].last_fact_extraction_at, 'watermark set');
@@ -313,10 +322,10 @@ test('a successful run moves the watermark and does not run again', async () => 
 });
 
 test('the job labels what it produced, without asking the model to be honest', async () => {
-  // remember_fact is the same tool a live conversation uses, so it stamps
-  // source='user_stated' whoever calls it — including the extraction turn. The
-  // job knows which rows its own turn created and stamps those itself, rather
-  // than adding a parameter the model has to remember to set truthfully.
+  // The model returns a proposal; THIS JOB does the writing, so provenance is
+  // stamped at insert by the server — the model has no way to label its own
+  // output at all, honestly or otherwise. What the person said outright before
+  // this run keeps its own label.
   const u = await seedChatter('+972590005001', 40);
   await withClient(async (c) => {
     await c.query(`UPDATE users SET last_fact_extraction_at = now() WHERE id <> $1`, [u.id]);
@@ -325,17 +334,11 @@ test('the job labels what it produced, without asking the model to be honest', a
       category: 'work', fact: 'עובד באיכילוב', source: 'user_stated',
     });
 
-    const res = await extraction.sweepFactExtraction(c, {
-      now: Date.now(),
-      readMessages: () => saidSomething,
-      // stands in for the agent calling remember_fact during its turn
-      runAgent: async () => {
-        await facts.rememberFact(c, u.id, {
-          category: 'plans', fact: 'טס לאילת בחמישי', source: 'user_stated',
-        });
-        return { ok: true };
-      },
+    const rec = recorder(saidSomething, {
+      facts: [{ category: 'plans', fact: 'טס לאילת בחמישי', importance: 2, expires_at: null }],
+      tasks: [], name: null,
     });
+    const res = await extraction.sweepFactExtraction(c, { ...rec.deps, now: Date.now() });
 
     assert.equal(res.recorded, 1, 'the run reports what actually landed, not just that it ran');
     const { rows } = await c.query(
@@ -345,6 +348,46 @@ test('the job labels what it produced, without asking the model to be honest', a
       { fact: 'טס לאילת בחמישי', source: 'conversation' },
     ]);
     assert.ok(stated.ok);
+    // the direct call has no transcript for the usage sweep to find, so the
+    // job writes its own ledger row — cost that is not written down does not
+    // exist on paper (migration 012's lesson, applied in advance)
+    const { rows: ledger } = await c.query(
+      `SELECT count(*)::int AS n FROM usage_ledger WHERE user_id = $1`, [u.id]);
+    assert.equal(ledger[0].n, 1);
+  });
+});
+
+test('a model answer that validates nowhere writes nothing — the server is the judge', async () => {
+  // Bad category, importance out of range, empty titles, a name for someone
+  // already named: every one is refused by the same domain rules the live
+  // tools enforce, and the run still succeeds with what remained.
+  const u = await seedChatter('+972590005003', 40);
+  await withClient(async (c) => {
+    await c.query(`UPDATE users SET last_fact_extraction_at = now() WHERE id <> $1`, [u.id]);
+    const rec = recorder(saidSomething, {
+      facts: [
+        { category: 'nonsense', fact: 'קטגוריה לא קיימת' },
+        { category: 'plans', fact: 'טס לאילת', importance: 9 },
+        { category: 'plans', fact: '' },
+        { category: 'health', fact: 'מתאמן בבקרים', importance: 1 },
+        // Caught live on the first real call: the person said "בספטמבר", the
+        // model supplied a year from its prior — a date already in the past,
+        // which would expire the fact the moment it landed. Fact kept, guess
+        // dropped.
+        { category: 'plans', fact: 'טס לרומא בספטמבר', importance: 2, expires_at: '2020-09-15' },
+      ],
+      tasks: [{ title: '   ' }, { notitle: true }],
+      name: { first: 'גנוב' },
+    });
+    const res = await extraction.sweepFactExtraction(c, { ...rec.deps, now: Date.now() });
+    assert.equal(res.recorded, 2, 'the valid facts landed');
+    assert.equal(res.tasksCaptured, 0);
+    const { rows } = await c.query(
+      `SELECT fact, expires_at FROM user_facts WHERE user_id = $1 ORDER BY id`, [u.id]);
+    assert.deepEqual(rows.map((r) => r.fact), ['מתאמן בבקרים', 'טס לרומא בספטמבר']);
+    assert.equal(rows[1].expires_at, null, 'a past expiry is the model guessing, not the person saying');
+    const { rows: name } = await c.query(`SELECT first_name FROM users WHERE id = $1`, [u.id]);
+    assert.equal(name[0].first_name, 'X', 'a named person is never re-named by a guess');
   });
 });
 
@@ -352,11 +395,9 @@ test('a run that correctly finds nothing reports zero recorded, not a failure', 
   const u = await seedChatter('+972590005002', 40);
   await withClient(async (c) => {
     await c.query(`UPDATE users SET last_fact_extraction_at = now() WHERE id <> $1`, [u.id]);
-    const res = await extraction.sweepFactExtraction(c, {
-      now: Date.now(),
-      readMessages: () => saidSomething,
-      runAgent: () => ({ ok: true }), // the model judged there was nothing durable
-    });
+    // the model judged there was nothing durable
+    const rec = recorder(saidSomething, { facts: [], tasks: [], name: null });
+    const res = await extraction.sweepFactExtraction(c, { ...rec.deps, now: Date.now() });
     assert.deepEqual(res.extracted.map(Number), [Number(u.id)]);
     assert.equal(res.recorded, 0);
     assert.equal(res.failed.length, 0);
@@ -370,12 +411,25 @@ test('a failed turn stays due rather than swallowing the conversation', async ()
     const res = await extraction.sweepFactExtraction(c, {
       now: Date.now(),
       readMessages: () => saidSomething,
-      runAgent: () => ({ ok: false, error: 'gateway unreachable' }),
+      complete: () => ({ ok: false, error: 'api unreachable' }),
     });
     assert.equal(res.extracted.length, 0);
     assert.equal(res.failed.length, 1);
     const { rows } = await c.query(`SELECT last_fact_extraction_at FROM users WHERE id = $1`, [u.id]);
     assert.equal(rows[0].last_fact_extraction_at, null, 'unread stays unread');
+
+    // A reply that parses to nothing is the same failure, not an empty
+    // success: prose instead of JSON must not advance the watermark either.
+    const res2 = await extraction.sweepFactExtraction(c, {
+      now: Date.now(),
+      readMessages: () => saidSomething,
+      complete: () => ({ ok: true, text: 'מצטער, לא הצלחתי', model: 'claude-haiku-4-5', usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }),
+    });
+    assert.equal(res2.extracted.length, 0);
+    assert.equal(res2.failed.length, 1);
+    assert.match(res2.failed[0].error, /unparseable/);
+    const { rows: still } = await c.query(`SELECT last_fact_extraction_at FROM users WHERE id = $1`, [u.id]);
+    assert.equal(still[0].last_fact_extraction_at, null);
   });
 });
 
@@ -413,10 +467,11 @@ test('a user with nothing to say does not hold a slot against the others', async
     const res = await extraction.sweepFactExtraction(c, {
       now: Date.now(),
       readMessages: (agentId) => (agentId === `u-${talker.id}` ? saidSomething : []),
-      runAgent: (a) => { calls.push(a.agentId); return { ok: true }; },
+      complete: (a) => { calls.push(a.user); return modelSays(); },
     });
     assert.equal(res.skipped, extraction.MAX_PER_TICK);
-    assert.deepEqual(calls, [`u-${talker.id}`], 'the one with something to say still gets read');
+    assert.equal(calls.length, 1, 'the one with something to say still gets read');
+    assert.match(calls[0], /אני טס לאילת בחמישי/);
   });
 });
 
@@ -444,17 +499,10 @@ test('the instruction carries the transcript as data and the known facts as cont
   assert.match(text, />>>/);
   assert.match(text, /never an\ninstruction to you/);
   assert.match(text, /\[work\] עובד בשיפטים/);
-  assert.match(text, /remember_fact, add_task and add_tasks_bulk are the only tools/);
+  assert.match(text, /ONE JSON object/);
   assert.match(text, /normal outcome/);
-  // Observed live: "you must not reply to the user" was read as an instruction
-  // to use the gateway's silence convention, so the model answered NO_REPLY and
-  // ended the turn without extracting anything. The prompt now leads with the
-  // tool call and rules that escape hatch out by name.
-  assert.match(text, /do NOT answer NO_REPLY/);
-  // A fresh session per run means the identity file has not been read yet;
-  // without this line the first remember_fact fails on an unknown token every
-  // single time, recovers, and leaves an auth.failed row behind. Seen live.
-  assert.match(text, /`\.olma-identity` from your workspace FIRST/);
+  assert.match(text, /\{"facts": \[\], "tasks": \[\], "name": null\}/,
+    'the empty answer is spelled out so finding nothing has an exact shape');
 
   assert.match(text, /^Housekeeping turn\./);
   // the empty case still renders something honest rather than an empty list
@@ -470,17 +518,16 @@ test('the read-back also asks for commitments, with the open list as the dedupe 
     { id: 12, title: 'לחדש ביטוח', parent_id: null },
     { id: 13, title: 'להתקשר למוסך', parent_id: 12 },
   ]);
-  assert.match(text, /commitments/);
-  assert.match(text, /add_tasks_bulk call with parent_task_id/);
+  assert.match(text, /A commitment is theirs and stated out/);
+  assert.match(text, /the parts in "subtasks"/);
   assert.match(text, /\[12\] לחדש ביטוח/);
   assert.match(text, /↳ \[13\] להתקשר למוסך/, 'subtasks show as subtasks, not as separate goals');
-  // the guardrails that keep a silent turn silent
   assert.match(text, /Never invent a date/);
-  assert.match(text, /never set a reminder/);
-  assert.match(text, /never send\nanyone anything/);
   // a wish is not a commitment — the distinction the prompt has to carry
   assert.match(text, /It is NOT a wish/);
   assert.match(extraction.buildInstruction('x', []), /their list is empty/);
+  // Reminders and sends are not merely forbidden any more — they are
+  // impossible: the answer is data, and applyExtraction has no path to either.
 });
 
 test('transcript trimming keeps the end, where conclusions live', () => {
@@ -528,13 +575,17 @@ test('a commitment read back from a conversation becomes a goal Olma returns to'
         { role: 'user', text: 'אני צריך למכור 3 מהרכבים שלי', at: new Date().toISOString() },
         { role: 'assistant', text: 'הבנתי', at: new Date().toISOString() },
       ],
-      // stands in for the agent doing the second half of the housekeeping turn
-      runAgent: async (a) => {
-        promptSeen = a.message;
-        const goal = (await tasksDomain.addTask(c, u.id, { title: 'למכור 3 מהרכבים' })).data.task;
-        await tasksDomain.addTasksBulk(c, u.id,
-          [{ title: 'רכב 1' }, { title: 'רכב 2' }, { title: 'רכב 3' }], { parentId: goal.id });
-        return { ok: true };
+      complete: (a) => {
+        promptSeen = a.user;
+        return {
+          ok: true, model: 'claude-haiku-4-5',
+          usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          // and in a code fence, the way models actually answer "only JSON"
+          text: '```json\n' + JSON.stringify({
+            facts: [], name: null,
+            tasks: [{ title: 'למכור 3 מהרכבים', subtasks: ['רכב 1', 'רכב 2', 'רכב 3'] }],
+          }) + '\n```',
+        };
       },
     });
 

@@ -30,10 +30,22 @@
 // guess: this job never speaks to the person, so it is in no position to
 // confirm anything.
 //
-// The turn runs WITHOUT --deliver — the agent reads, decides, and calls
-// remember_fact; nothing is sent to anyone. The person never sees this happen.
+// Since 2026-08-25 this job thinks over a DIRECT model call (adapters/llm.js),
+// not an agent turn. The agent path carried the full interactive stack — 60+
+// tool schemas, AGENTS.md, ~21k cold tokens — to produce a handful of writes,
+// and it rested on two things that had both already failed once: the model
+// calling MCP tools honestly, and the NO_REPLY convention not ending the turn
+// early (it did, on the first live run). Now the model returns one JSON
+// document and THIS JOB does the writing, through the same domain functions
+// the tools call — the model proposes, the server decides. Provenance is
+// stamped at insert (source='conversation' / 'extracted'), which retires the
+// high-water-mark trick the agent path needed. Nothing is sent to anyone, and
+// the person never sees this happen — same as always.
 const audit = require('../domain/audit');
 const facts = require('../domain/facts');
+const tasks = require('../domain/tasks');
+const users = require('../domain/users');
+const llm = require('../adapters/llm');
 const flagsDomain = require('../domain/flags');
 const { readRecentMessages } = require('../channels/sessions');
 
@@ -103,6 +115,10 @@ function renderTranscript(messages) {
   return text.length > MAX_TRANSCRIPT_CHARS ? text.slice(-MAX_TRANSCRIPT_CHARS) : text;
 }
 
+// The extraction brief. Same rules the agent-turn version enforced, now aimed
+// at one JSON answer instead of tool calls — every doctrine line here traces
+// to an incident (dedupe, no invented dates, name-not-a-fact, wish-vs-
+// commitment), so reword freely but drop nothing.
 function buildInstruction(transcript, existingFacts, openTasks = [], profile = {}) {
   const known = existingFacts.length
     ? existingFacts.map((f) => `- [${f.category}] ${f.fact}`).join('\n')
@@ -111,22 +127,18 @@ function buildInstruction(transcript, existingFacts, openTasks = [], profile = {
     ? openTasks.map((t) => `- ${t.parent_id ? '  ↳ ' : ''}[${t.id}] ${t.title}`).join('\n')
     : '(their list is empty)';
   return [
-    `${INSTRUCTION_MARKER} Your whole job this turn is to record what the conversation`,
-    'below taught you: what you learned ABOUT this person, and what they said they need',
-    'to DO. The tool calls are the work; the words you write are thrown away.',
+    `${INSTRUCTION_MARKER} You are the memory of a personal assistant. Read the`,
+    'conversation below and answer with ONE JSON object — nothing else, no prose',
+    'around it — recording what it taught you about this person and what they said',
+    'they need to do. Nothing you write is shown to anyone; a server validates and',
+    'stores it.',
     '',
-    'Nothing here is delivered to anyone. There is no message to suppress and nobody',
-    'waiting, so do NOT answer NO_REPLY — that is the convention for staying quiet in a',
-    'live conversation, and using it here just ends the turn before you have done',
-    'anything. Make the tool calls, then stop.',
-    '',
-    // A fresh session per run (see the sessionKey below) means the agent has not
-    // read its identity file yet in this context. AGENTS.md tells it to re-read
-    // and retry after an `unknown identity token` error, and that recovery does
-    // work — but it costs a guaranteed failed call and an audit row on EVERY
-    // extraction. Saying it up front is cheaper than recovering from it.
-    'This is a fresh session, so you have not read your identity token yet. Read',
-    '`.olma-identity` from your workspace FIRST, before any other tool call.',
+    'The JSON shape:',
+    '{',
+    '  "facts":  [{"category": "...", "fact": "...", "importance": 1, "expires_at": null}],',
+    '  "tasks":  [{"title": "...", "subtasks": []}],',
+    profile.firstName ? '  "name": null' : '  "name": {"first": "...", "last": null} or null',
+    '}',
     '',
     'What you already know about them — do NOT record any of this again, and do not',
     'restate it in slightly different words:',
@@ -139,69 +151,101 @@ function buildInstruction(transcript, existingFacts, openTasks = [], profile = {
     transcript,
     '>>>',
     '',
-    'FIRST — what you learned about them.',
-    '',
-    'For each genuinely new, durable thing you learned, call remember_fact with a',
-    'category (work, family, people, health, plans, habits, context), the fact as one',
-    'short sentence in their own language, and an importance: 1 ordinary, 2 important,',
-    '3 core — reserve 3 for what should always be in front of you. Set expires_at on',
-    'anything with a shelf life, like a trip or a deadline.',
+    'FACTS — what you learned about them. For each genuinely new, durable thing:',
+    'category is one of work, family, people, health, plans, habits, context; the fact',
+    'is one short sentence in their own language; importance is 1 ordinary, 2',
+    'important, 3 core — reserve 3 for what should always be in front of the',
+    'assistant. Set expires_at (ISO date) on anything with a shelf life, like a trip',
+    'or a deadline; otherwise null.',
     '',
     'Do NOT record as a fact:',
-    '- what they are called — a name belongs in the profile, and there is a job for it',
-    '  below;',
-    '- things they need to do — those are the second job below, not facts about them;',
-    '- phone numbers, or who is connected to whom — that lives in the connections',
-    '  system, which is structured and tool-backed;',
-    '- how they like you to work (tone, hours, message length) — that is',
-    '  remember_preference, a different thing;',
+    '- what they are called — that goes in "name", never in facts;',
+    '- things they need to do — those go in "tasks", not facts;',
+    '- phone numbers, or who is connected to whom — a structured system owns that;',
+    '- how they like the assistant to work (tone, hours, message length);',
     '- passing detail that will not matter in a month.',
     '',
-    'SECOND — what they said they need to do.',
-    '',
-    'Read the same conversation again for commitments. A commitment is theirs and',
-    'stated out loud: "אני צריך למכור שלושה מהרכבים", "I have to renew the passport".',
-    'It does not have to be phrased as a request, and it is usually not — that is the',
-    'whole reason this pass exists. It is NOT a wish ("בא לי לטוס לתאילנד"), not a',
-    'maybe, not something you offered and they did not take up, and not something',
-    'somebody else is doing.',
-    '',
-    'Save each one with add_task, in their own words. If they named a count or clear',
-    'parts ("three of my cars"), save the goal itself with add_task and then make ONE',
-    'add_tasks_bulk call with parent_task_id to save the parts under it — numbered',
-    'placeholders are fine when you do not know which is which, so each part can be',
-    'completed on its own later.',
+    'TASKS — what they said they need to do. A commitment is theirs and stated out',
+    'loud: "אני צריך למכור שלושה מהרכבים", "I have to renew the passport". It does not',
+    'have to be phrased as a request, and it is usually not — that is the whole reason',
+    'this pass exists. It is NOT a wish ("בא לי לטוס לתאילנד"), not a maybe, not',
+    'something offered to them that they did not take up, and not something somebody',
+    'else is doing. Title in their own words. If they named a count or clear parts',
+    '("three of my cars"), put the goal in "title" and the parts in "subtasks" —',
+    'numbered placeholders are fine when you do not know which is which.',
     '',
     'Their open list — do not save anything already on it, in any wording:',
     list,
     '',
-    'Never invent a date they did not give you, never set a reminder, and never send',
-    'anyone anything. Nothing you do this turn is seen by anybody until they next talk',
-    'to Olma, who will pick it up from there.',
+    'Never invent a date they did not give you.',
     '',
     ...(profile.firstName
-      ? []
+      ? ['"name" must be null — we already know what they are called.', '']
       // Only asked when there is a blank to fill, so the usual run does not
       // spend attention on a question whose answer is already known.
-      : ['THIRD — what they are called.',
-         '',
-         'We have no name for this person. If the conversation shows what they are called —',
-         'they said so, or the name is simply there in how they were addressed — call',
-         'set_my_name with it and leave confirmed alone: it is a guess until they say it',
-         'themselves, and saving it as a guess is what lets Olma greet them by name and',
-         'check it in passing. Do NOT record a name with remember_fact, and do not invent',
-         'one — no name is a perfectly normal outcome here.',
+      : ['NAME — we have no name for this person. If the conversation shows what they',
+         'are called — they said so, or the name is simply there in how they were',
+         'addressed — put it in "name" as a guess; the assistant will confirm it with',
+         'them in passing. Do not invent one — null is a perfectly normal outcome.',
          '']),
-    profile.firstName
-      ? 'remember_fact, add_task and add_tasks_bulk are the only tools you may call in'
-      : 'remember_fact, add_task, add_tasks_bulk and set_my_name are the only tools you may',
-    profile.firstName ? 'this turn.' : 'call in this turn.',
-    '',
-    'A conversation that taught you nothing new is a completely normal outcome. If that',
-    'is the case, call nothing and stop — do not pad either list to look useful. But do',
-    'not reach for that as the easy way out either: if they told you something about',
-    'themselves, or told you about something they have to do, record it.',
+    'A conversation that taught you nothing new is a completely normal outcome: answer',
+    '{"facts": [], "tasks": [], "name": null} — do not pad either list to look useful.',
+    'But do not reach for that as the easy way out either: if they told you something',
+    'about themselves, or about something they have to do, record it.',
   ].join('\n');
+}
+
+// Model output is a proposal, not a write. Everything is re-validated here and
+// written through the same domain functions the live tools call — which also
+// enforce their own rules (category vocabulary, importance range, one-level
+// nesting, bulk cap) a second time.
+async function applyExtraction(client, user, parsed) {
+  const out = { recorded: 0, tasksCaptured: 0 };
+  const factList = Array.isArray(parsed.facts) ? parsed.facts.slice(0, 20) : [];
+  for (const f of factList) {
+    if (!f || typeof f.fact !== 'string') continue;
+    // Caught on the first live call: "טס לרומא בספטמבר" came back with
+    // expires_at "2025-09-15" — the month the person gave, the YEAR the model
+    // assumed from its training prior. A past expiry would silently expire the
+    // fact the moment it landed. An unparseable or past date is dropped and
+    // the fact kept: the shelf life was the model's guess, the fact was not.
+    let expiresAt = null;
+    if (f.expires_at) {
+      const t = Date.parse(f.expires_at);
+      if (!Number.isNaN(t) && t > Date.now()) expiresAt = f.expires_at;
+    }
+    const res = await facts.rememberFact(client, user.id, {
+      category: f.category, fact: f.fact,
+      importance: f.importance,
+      expiresAt,
+      source: 'conversation',
+    });
+    if (res.ok) out.recorded++;
+  }
+  const taskList = Array.isArray(parsed.tasks) ? parsed.tasks.slice(0, 10) : [];
+  for (const t of taskList) {
+    if (!t || typeof t.title !== 'string' || !t.title.trim()) continue;
+    const created = await tasks.addTask(client, user.id, {
+      title: t.title, source: 'extracted',
+    });
+    if (!created.ok) continue;
+    out.tasksCaptured++;
+    const subs = Array.isArray(t.subtasks) ? t.subtasks.filter((s) => typeof s === 'string' && s.trim()) : [];
+    if (subs.length) {
+      const bulk = await tasks.addTasksBulk(client, user.id,
+        subs.map((title) => ({ title })),
+        { parentId: created.data.task.id, source: 'extracted' });
+      if (bulk.ok) out.tasksCaptured += subs.length;
+    }
+  }
+  // An observed name fills a blank and can never overwrite a confirmed one —
+  // setName's own UPDATE guards that, same as the display-name path.
+  if (!user.first_name && parsed.name && typeof parsed.name.first === 'string' && parsed.name.first.trim()) {
+    await users.setName(client, user.id, parsed.name.first,
+      typeof parsed.name.last === 'string' && parsed.name.last.trim() ? parsed.name.last : null,
+      { confirmed: false, source: 'fact_extraction' });
+  }
+  return out;
 }
 
 // Whose chapter has closed with unread content in it. The two time conditions
@@ -240,12 +284,14 @@ function readPersonMessages(agentId, limit, peer) {
   return readRecentMessages(agentId, limit, undefined, peer);
 }
 
-// deps.runAgent({agentId, message, timeoutMs}) -> {ok, error?}
+// deps.complete({user, timeoutMs}) -> {ok, text, model, usage} | {ok:false, error}
+//   (injected for tests; production uses adapters/llm.js)
 // deps.refreshCard(userId) -> awaited, best-effort
 // deps.readMessages(agentId, limit, peer) -> [{role, text, at}]  (injected for tests)
 async function sweepFactExtraction(client, deps = {}) {
   const now = deps.now || Date.now();
   const readMessages = deps.readMessages || readPersonMessages;
+  const complete = deps.complete || llm.complete;
   const minGapHours = Number(await flagsDomain.getFlag(client, 'fact_extraction_min_gap_hours') ?? 0);
 
   const due = await dueUsers(client, now, minGapHours);
@@ -289,58 +335,32 @@ async function sweepFactExtraction(client, deps = {}) {
     );
     const message = buildInstruction(renderTranscript(fresh), known, openTasks,
       { firstName: u.first_name });
-    // Everything this agent writes during the turn arrives through the same
-    // remember_fact tool a live conversation uses, so the tool cannot tell the
-    // two apart — it stamps source='user_stated' either way. The job can:
-    // anything above this watermark was created by the turn it is about to
-    // run. Stamping it here keeps `source` system-owned rather than asking the
-    // model to label its own output honestly.
-    const { rows: markRows } = await client.query(
-      `SELECT coalesce(max(id), 0)::bigint AS max_id FROM user_facts WHERE user_id = $1`, [u.id]
-    );
-    const highWater = markRows[0].max_id;
-    // Same trick for tasks: add_task cannot tell this turn from a live one, so
-    // the job stamps the provenance itself rather than asking the model to
-    // label its own output honestly.
-    const { rows: taskMark } = await client.query(
-      `SELECT coalesce(max(id), 0)::bigint AS max_id FROM tasks WHERE owner_id = $1`, [u.id]
-    );
-    const taskHighWater = taskMark[0].max_id;
-    // A fresh session per run. Everything this turn needs is in the message, so
-    // carrying context forward buys nothing — and without a key of its own the
-    // gateway appends every run to one long-lived session, which then re-sends
-    // all the previous prompts as context. Runs are bounded by real
-    // conversations, not by the tick, so this does not litter.
-    const res = await deps.runAgent({
-      agentId: u.agent_id,
-      message,
-      sessionKey: `agent:${u.agent_id}:facts-${now}`,
-      timeoutMs: TURN_TIMEOUT_MS,
-    });
 
-    if (res && res.ok) {
-      // Label what this turn produced before anything else reads it.
-      const { rowCount: recorded } = await client.query(
-        `UPDATE user_facts SET source = 'conversation', updated_at = now()
-          WHERE user_id = $1 AND id > $2`,
-        [u.id, highWater]
-      );
-      const { rowCount: captured } = await client.query(
-        `UPDATE tasks SET source = 'extracted' WHERE owner_id = $1 AND id > $2`,
-        [u.id, taskHighWater]
-      );
-      // Move the watermark only on success. A failed turn stays due, so the
+    // One direct call, one JSON answer. No session, no tools, no identity
+    // token — the model cannot write anything; it can only propose.
+    const res = await complete({ user: message, timeoutMs: TURN_TIMEOUT_MS });
+
+    // A reply that is not parseable JSON is a failed run, not an empty one:
+    // the watermark stays put and the same conversation is re-read next tick.
+    const parsed = res.ok ? llm.parseJsonObject(res.text) : null;
+    if (res.ok && parsed) {
+      // Usage is written down HERE because no transcript exists for a direct
+      // call — skip this and the cost vanishes from the dashboard, which is
+      // exactly the class of silence migration 012 was about.
+      try { await llm.recordUsage(client, u.id, res.model, res.usage); } catch { /* never fail the run over bookkeeping */ }
+      const applied = await applyExtraction(client, u, parsed);
+      // Move the watermark only on success. A failed run stays due, so the
       // conversation is read again next tick rather than silently lost.
       await client.query(
         `UPDATE users SET last_fact_extraction_at = now() WHERE id = $1`, [u.id]
       );
       await audit.record(client, u.id, 'facts.extracted', {
         agentId: u.agent_id, messagesRead: fresh.length,
-        factsRecorded: recorded, tasksCaptured: captured,
+        factsRecorded: applied.recorded, tasksCaptured: applied.tasksCaptured,
       });
       out.extracted.push(u.id);
-      out.recorded += recorded;
-      out.tasksCaptured += captured;
+      out.recorded += applied.recorded;
+      out.tasksCaptured += applied.tasksCaptured;
       // The card is how any of this reaches the agent, so refreshing it is part
       // of the job, not a nicety. Best-effort: a file write must never fail the
       // sweep for everyone else.
@@ -348,7 +368,10 @@ async function sweepFactExtraction(client, deps = {}) {
         try { await deps.refreshCard(u.id); } catch { /* card lags one run; not fatal */ }
       }
     } else {
-      out.failed.push({ userId: u.id, error: String((res && res.error) || 'unknown').slice(0, 200) });
+      out.failed.push({
+        userId: u.id,
+        error: String((res && res.error) || (res && res.ok ? 'unparseable model output' : 'unknown')).slice(0, 200),
+      });
     }
   }
   return out;
