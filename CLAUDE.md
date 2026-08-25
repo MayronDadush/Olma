@@ -168,6 +168,38 @@ restart the gateway, then compare against Haiku with `scripts/model-pilot.js`
 on `u-3` only — judging Hebrew grammatical gender, tone, and above all whether
 tool calls (meetings, contacts, reminders) stay correct.
 
+### Background cognition runs on direct API calls, not agent turns (2026-08-25)
+
+`adapters/llm.js` is the substrate: one direct Messages API call (Haiku,
+`ANTHROPIC_API_KEY` in `/opt/olma2/.env`, zero deps), one narrow interface an
+OpenRouter backend could implement later. Three rules it owns:
+
+- **The server is the judge.** The model returns ONE JSON proposal; the JOB
+  validates and writes through the same domain functions the live tools call.
+  First live call proved why: "בספטמבר" came back as `expires_at 2025-09-15` —
+  a year the model assumed, in the past, which would have expired the fact on
+  arrival. Past/unparseable expiries are dropped, the fact kept.
+- **Usage is recorded by the caller** (`llm.recordUsage` → `usage_ledger`):
+  a direct call has no transcript for the usage sweep to find, so unrecorded
+  cost would silently vanish from the dashboard (migration 012's lesson).
+- **An unparseable reply is a failed run, not an empty one** — watermarks stay
+  put and the work is retried next tick.
+
+Consumers so far: **fact-extraction** (rewritten — was a full agent turn with
+60+ tool schemas; measured live at $0.0022/run vs ~$0.045, 20x; the NO_REPLY
+and honest-tool-calling fragilities are gone by construction) and the
+**planning pass** (`jobs/planning.js`, migration 015): daily, in each user's
+05:00-07:00 local (after memory consolidation, before digests), reads open
+tasks + task_reminders + calendar (best-effort) + top facts, and writes
+`user_plans` — **which is NOT a message and never becomes one on its own**.
+It renders into USER.md ("Today's plan … notes for YOU, not a message to
+send", omitted when stale >26h or user paused), so digests, checkins and live
+turns get smarter through channels that already respect quiet hours, budget
+and pause. Paused users are skipped at `dueUsers` — a plan is Olma leaning
+forward, which is what they declined. Live quality check on realistic data:
+correct prioritisation by due date, correct tz conversions, no inventions.
+memory-consolidation stays on the agent path (it edits workspace files).
+
 ### The API bill was 76% cache writes — fixed with a 1h cache + a prompt diet (2026-08-22)
 
 With the ledger finally accurate, the breakdown over every transcript on disk

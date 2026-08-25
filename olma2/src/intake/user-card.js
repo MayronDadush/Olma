@@ -98,6 +98,16 @@ function renderCard(user, prefs, facts = [], extras = {}) {
     lines.push('', 'What you know about them:');
     for (const f of facts) lines.push(`- [${f.category}] ${f.fact}`);
   }
+  // The overnight plan (jobs/planning.js). Briefing notes FOR the agent, never
+  // a message to forward — weave it in when the conversation touches it, lead
+  // the morning digest with it, never recite it unprompted. Rendered only
+  // while fresh: yesterday's plan presented as today's is worse than none.
+  // Paused users get no plan section — leaning forward is what they declined.
+  if (extras.plan && !user.paused_at) {
+    lines.push('', `Today's plan (built overnight — notes for YOU, not a message to send):`);
+    lines.push(`${extras.plan.headline}`);
+    for (const b of extras.plan.bullets) lines.push(`- ${b}`);
+  }
   return lines.join('\n') + '\n';
 }
 
@@ -127,10 +137,18 @@ async function refreshUserCard(pool, userId) {
     const { rows: book } = await pool.query(
       `SELECT count(*)::int AS n FROM user_contacts WHERE user_id = $1`, [userId]
     );
+    const { rows: planRows } = await pool.query(
+      `SELECT headline, bullets, built_at FROM user_plans
+        WHERE user_id = $1 AND built_at > now() - ($2 || ' hours')::interval`,
+      [userId, String(require('../jobs/planning').PLAN_FRESH_HOURS)]
+    );
     const extras = {
       calendar: cal[0] ? cal[0].access_level : false,
       connections: conn[0].n,
       contacts: book[0].n,
+      plan: planRows[0]
+        ? { headline: planRows[0].headline, bullets: planRows[0].bullets || [] }
+        : null,
     };
     let tail = '';
     try {
