@@ -35,6 +35,11 @@ const RATES = {
   // pricing real tokens at zero.
   'qwen/qwen3-235b-a22b-2507': { input: 0.09,   output: 0.55,   cacheWrite: 0.09,   cacheRead: 0.09 },
   'deepseek/deepseek-v3.2':    { input: 0.2088, output: 0.3096, cacheWrite: 0.2088, cacheRead: 0.2088 },
+  // v4 generation, prices checked live on OpenRouter 2026-08-26. flash is a
+  // reasoning model: thinking is billed as output tokens, and the output rate
+  // here prices exactly what OpenRouter reports in completion_tokens.
+  'deepseek/deepseek-v4-flash': { input: 0.0886, output: 0.177, cacheWrite: 0.0886, cacheRead: 0.0886 },
+  'deepseek/deepseek-v4-pro':   { input: 0.87,   output: 1.74,  cacheWrite: 0.87,   cacheRead: 0.87 },
 };
 
 // Transcripts carry dated ids ("claude-haiku-4-5-20251001") and provider

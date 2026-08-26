@@ -338,7 +338,7 @@ async function sweepFactExtraction(client, deps = {}) {
 
     // One direct call, one JSON answer. No session, no tools, no identity
     // token — the model cannot write anything; it can only propose.
-    const res = await complete({ user: message, timeoutMs: TURN_TIMEOUT_MS });
+    const res = await complete({ ...(await llm.backgroundModel(client)), user: message, timeoutMs: TURN_TIMEOUT_MS });
 
     // A reply that is not parseable JSON is a failed run, not an empty one:
     // the watermark stays put and the same conversation is re-read next tick.

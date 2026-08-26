@@ -128,6 +128,23 @@ async function completeOpenRouter({ system, user, model, maxTokens, timeoutMs, a
   }
 }
 
+// Which model background cognition runs on — a feature flag, not code, so the
+// dashboard can switch providers (or revert) without a deploy. The flag value
+// is `{"provider": "openrouter", "model": "deepseek/deepseek-v4-flash"}`;
+// absent or malformed means the Anthropic default. Fails open to the default:
+// a bad flag must degrade to the known-good model, never to a dead job.
+const BACKGROUND_LLM_FLAG = 'background_llm';
+async function backgroundModel(client) {
+  try {
+    const flags = require('../domain/flags');
+    const v = await flags.getFlag(client, BACKGROUND_LLM_FLAG);
+    if (v && typeof v === 'object' && typeof v.model === 'string') {
+      return { provider: v.provider === 'openrouter' ? 'openrouter' : undefined, model: v.model };
+    }
+  } catch { /* fall through to default */ }
+  return {};
+}
+
 // The one lesson of migration 012, applied in advance: usage that is not
 // written down somewhere the dashboard reads is usage that does not exist on
 // paper. Transcript sweeps cannot see a direct call — there is no transcript —
@@ -166,4 +183,4 @@ function parseJsonObject(text) {
   try { return JSON.parse(t.slice(start, end + 1)); } catch { return null; }
 }
 
-module.exports = { complete, recordUsage, parseJsonObject, DEFAULT_MODEL };
+module.exports = { complete, recordUsage, parseJsonObject, backgroundModel, DEFAULT_MODEL, BACKGROUND_LLM_FLAG };

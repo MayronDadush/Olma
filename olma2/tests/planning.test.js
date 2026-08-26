@@ -159,3 +159,20 @@ test('a stale plan is not rendered — yesterday presented as today is worse tha
     assert.equal(rows[0].n, 0);
   });
 });
+
+test('an all-day event renders as "כל היום", never as a 03:00 tz artifact', () => {
+  const brief = planning.buildBrief({
+    user: { timezone: 'Asia/Jerusalem' },
+    tasks: [], reminders: [], facts: [],
+    events: [
+      { title: 'חתונה עדן פוקר', start: '2026-08-26' },
+      { title: 'פגישה', start: '2026-08-26T15:00:00+03:00' },
+    ],
+    now: SIX_AM_IL,
+  });
+  assert.match(brief, /חתונה עדן פוקר — .*\(כל היום\)/);
+  assert.doesNotMatch(brief, /חתונה עדן פוקר — .*03:00/,
+    'a bare date must not be formatted as a moment');
+  assert.match(brief, /פגישה — .*15:00/, 'timed events keep their time');
+  assert.match(brief, /הצעה/, 'the one-voice rule rides the prompt');
+});
