@@ -93,8 +93,15 @@ function buildBrief({ user, tasks, reminders, events, facts, now }) {
   const remLines = reminders.length
     ? reminders.map((r) => `- ${r.title} — ${fmtInTz(r.remind_at, tz)}`).join('\n')
     : '(אין)';
+  // An all-day event's start is a bare date; formatting it as a moment turns
+  // UTC midnight into "03:00" in Israel and the model dutifully plans around a
+  // 3am wedding. Say what it is instead.
+  const fmtEvent = (e) => /^\d{4}-\d{2}-\d{2}$/.test(String(e.start))
+    ? `${new Intl.DateTimeFormat('he-IL', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'numeric' })
+        .format(new Date(`${e.start}T12:00:00Z`))} (כל היום)`
+    : fmtInTz(e.start, tz);
   const eventLines = events.length
-    ? events.map((e) => `- ${e.title} — ${fmtInTz(e.start, tz)}`).join('\n')
+    ? events.map((e) => `- ${e.title} — ${fmtEvent(e)}`).join('\n')
     : '(אין אירועים, או שאין יומן מחובר)';
   const factLines = facts.length
     ? facts.map((f) => `- ${f.fact}`).join('\n')
@@ -111,7 +118,10 @@ function buildBrief({ user, tasks, reminders, events, facts, now }) {
     '}',
     '',
     'The plan is read by the assistant, not by the person — write it as briefing',
-    'notes, not as a message. Ground every line in the data below; invent nothing,',
+    'notes, not as a message. Every bullet is a note about the day, in one',
+    'consistent voice: never address anyone and never use their name (a',
+    'suggestion is "הצעה: ...", not "להציע ל<שם> ..."). Ground every line in',
+    'the data below; invent nothing,',
     'and never invent a date or time. Prefer: what is due or overdue today, a',
     'collision or tight squeeze between calendar and tasks, a goal that has sat',
     'untouched long enough to matter, and ONE concrete suggestion the assistant',
@@ -190,7 +200,7 @@ async function sweepPlanning(client, deps = {}) {
     }
 
     const brief = buildBrief({ user: u, tasks, reminders, events, facts, now });
-    const res = await complete({ user: brief, timeoutMs: CALL_TIMEOUT_MS });
+    const res = await complete({ ...(await llm.backgroundModel(client)), user: brief, timeoutMs: CALL_TIMEOUT_MS });
     const parsed = res.ok ? llm.parseJsonObject(res.text) : null;
     const plan = parsed ? validatePlan(parsed, tasks.map((t) => t.id)) : null;
 

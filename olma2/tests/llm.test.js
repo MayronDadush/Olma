@@ -91,6 +91,22 @@ test('provider openrouter without a key fails closed', async () => {
   }
 });
 
+test('backgroundModel reads the flag and fails open to the Anthropic default', async () => {
+  const fake = (value) => ({ query: async () => ({ rows: value === undefined ? [] : [{ value }] }) });
+  assert.deepEqual(await llm.backgroundModel(fake(undefined)), {}, 'no flag → default');
+  assert.deepEqual(
+    await llm.backgroundModel(fake({ provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' })),
+    { provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' });
+  assert.deepEqual(await llm.backgroundModel(fake('deepseek')), {}, 'malformed flag → default');
+  assert.deepEqual(await llm.backgroundModel(fake({ provider: 'openrouter' })), {}, 'no model → default');
+  const boom = { query: async () => { throw new Error('db down'); } };
+  assert.deepEqual(await llm.backgroundModel(boom), {}, 'a broken flag read must not kill the job');
+  // an unknown provider string must not dial an unintended backend
+  const odd = await llm.backgroundModel(fake({ provider: 'evil', model: 'm' }));
+  assert.equal(odd.provider, undefined);
+  assert.equal(odd.model, 'm');
+});
+
 test('complete maps the wire shape and never throws on API errors', async () => {
   const realFetch = globalThis.fetch;
   try {
