@@ -28,18 +28,26 @@ const ALERT_AT_FLAG = 'credit_alert_at';
 function alertText(sinceIso) {
   const t = sinceIso ? new Date(sinceIso).toISOString().slice(11, 16) + ' UTC' : 'עכשיו';
   return [
-    '⚠️ אולמה: נגמר הקרדיט ב-Anthropic.',
+    '⚠️ אולמה: נגמר הקרדיט אצל ספק המודל.',
     `מאז ${t} אף הודעה לא נשלחת ואף פנייה לא נענית.`,
-    'טעינה: console.anthropic.com → Billing (ושווה להדליק Auto-reload).',
+    'OpenRouter: openrouter.ai/settings/credits · Anthropic: console.anthropic.com → Billing (ושווה Auto-reload).',
     'הכל ממתין בתור ויישלח לבד תוך ~10 דקות מהטעינה.',
   ].join('\n');
 }
 
 // deps.send(phone, text) -> {ok, error?}  (production: raw `message send`)
 async function checkCreditAlert(client, deps = {}) {
+  // Two providers, two phrasings for the same empty wallet:
+  // Anthropic 400 — "Your credit balance is too low ...";
+  // OpenRouter 402 — "Insufficient credits. Add more ...".
+  // Since the 2026-08-26 cutover the credit that runs out is OpenRouter's,
+  // so an alarm matching only Anthropic's wording would sleep through the
+  // exact outage it was built for.
   const { rows } = await client.query(
     `SELECT min(created_at) AS since FROM outbox
-      WHERE sent_at IS NULL AND last_error ILIKE '%credit balance%'`
+      WHERE sent_at IS NULL
+        AND (last_error ILIKE '%credit balance%'
+          OR last_error ILIKE '%insufficient credits%')`
   );
   const since = rows[0] && rows[0].since;
   if (!since) return { alerted: false };
