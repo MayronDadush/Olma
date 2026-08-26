@@ -22,12 +22,18 @@ const DEFAULT_BASE_URL = 'https://api.anthropic.com';
 const DEFAULT_MODEL = 'claude-haiku-4-5';
 const DEFAULT_TIMEOUT_MS = 120_000;
 
-// complete({ system, user, model?, maxTokens?, timeoutMs? })
+// complete({ system, user, model?, maxTokens?, timeoutMs?, provider? })
 //   -> { ok: true, text, model, usage: {input, output, cacheRead, cacheWrite} }
 //    | { ok: false, error }
 // Never throws: background sweeps treat a failed call like a failed turn —
 // log, leave the watermark alone, retry next tick.
-async function complete({ system, user, model, maxTokens, timeoutMs, apiKey, baseUrl } = {}) {
+//
+// provider: 'anthropic' (default) or 'openrouter' — the open-weight door this
+// interface was shaped for. Same inputs, same return, so a caller (or an A/B
+// script) switches models with two fields and zero code.
+async function complete(opts = {}) {
+  if (opts.provider === 'openrouter') return completeOpenRouter(opts);
+  const { system, user, model, maxTokens, timeoutMs, apiKey, baseUrl } = opts;
   const key = apiKey || process.env.ANTHROPIC_API_KEY;
   if (!key) return { ok: false, error: 'no ANTHROPIC_API_KEY configured' };
   const controller = new AbortController();
@@ -67,6 +73,52 @@ async function complete({ system, user, model, maxTokens, timeoutMs, apiKey, bas
         output: Number(u.output_tokens) || 0,
         cacheRead: Number(u.cache_read_input_tokens) || 0,
         cacheWrite: Number(u.cache_creation_input_tokens) || 0,
+      },
+    };
+  } catch (e) {
+    return { ok: false, error: e.name === 'AbortError' ? 'llm timeout' : String(e.message).slice(0, 300) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// OpenRouter speaks the OpenAI chat/completions shape. Same narrow contract
+// out: text + usage (OpenRouter reports no cache split, so cacheRead/Write
+// are zero and input carries the full prompt).
+async function completeOpenRouter({ system, user, model, maxTokens, timeoutMs, apiKey } = {}) {
+  const key = apiKey || process.env.OPENROUTER_API_KEY;
+  if (!key) return { ok: false, error: 'no OPENROUTER_API_KEY configured' };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs || DEFAULT_TIMEOUT_MS);
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens || 2048,
+        messages: [
+          ...(system ? [{ role: 'system', content: String(system) }] : []),
+          { role: 'user', content: String(user) },
+        ],
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || (body && body.error)) {
+      const msg = body && body.error && body.error.message ? body.error.message : `http ${res.status}`;
+      return { ok: false, error: String(msg).slice(0, 300) };
+    }
+    const choice = body.choices && body.choices[0];
+    const u = body.usage || {};
+    return {
+      ok: true,
+      text: (choice && choice.message && choice.message.content) || '',
+      model: body.model || model,
+      usage: {
+        input: Number(u.prompt_tokens) || 0,
+        output: Number(u.completion_tokens) || 0,
+        cacheRead: 0, cacheWrite: 0,
       },
     };
   } catch (e) {
