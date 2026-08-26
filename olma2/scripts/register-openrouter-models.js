@@ -33,7 +33,14 @@ const occ = require('../src/intake/openclaw-config');
 // hard requirement here: Olma's agent turn is mostly tool selection across
 // ~59 MCP tools, and a model that cannot call tools reliably is useless to
 // us no matter how cheap.
+// v4 generation added 2026-08-26 after the background-cognition benchmark
+// (extraction + planning briefs): flash matched Haiku's correctness in Hebrew
+// at $0.0886/$0.177 per Mtok. That benchmark had no tools, so this
+// registration still proves nothing about a 59-tool agent turn — that is
+// what scripts/model-pilot.js is for.
 const MODELS = [
+  'openrouter/deepseek/deepseek-v4-flash',
+  'openrouter/deepseek/deepseek-v4-pro',
   'openrouter/qwen/qwen3-235b-a22b-2507',
   'openrouter/deepseek/deepseek-v3.2',
 ];
@@ -52,6 +59,27 @@ for (const id of MODELS) {
   added.push(id);
 }
 
+// The allowlist alone is NOT enough (verified 2026-08-20, and the gateway's
+// own error text says so): the bundled OpenRouter catalog carries only Kimi,
+// so any other model also needs a matching entry in
+// models.providers.openrouter.models[] or the override is refused with
+// "Model override ... is not allowed". There is no CLI path for this —
+// `models scan` only covers free models — so this script owns it.
+cfg.models = cfg.models || {};
+cfg.models.providers = cfg.models.providers || {};
+cfg.models.providers.openrouter = cfg.models.providers.openrouter || {};
+const provider = cfg.models.providers.openrouter;
+provider.models = provider.models || [];
+const catalogAdded = [];
+for (const id of MODELS) {
+  const bare = id.replace(/^openrouter\//, '');
+  if (provider.models.some((m) => m && m.id === bare)) continue;
+  provider.models.push({ id: bare, name: bare });
+  catalogAdded.push(bare);
+}
+console.log('provider catalog now:', provider.models.map((m) => m.id).join(', '));
+if (catalogAdded.length) console.log('newly catalogued:', catalogAdded.join(', '));
+
 console.log('default model (unchanged):', JSON.stringify(cfg.agents.defaults.model));
 console.log('allowlist now:', Object.keys(cfg.agents.defaults.models).join(', '));
 console.log(added.length ? `\nnewly registered: ${added.join(', ')}` : '\nnothing to add — already registered');
@@ -60,7 +88,7 @@ if (!APPLY) {
   console.log('\ndry run — pass --apply to write');
   process.exit(0);
 }
-if (!added.length) process.exit(0);
+if (!added.length && !catalogAdded.length) process.exit(0);
 
 occ.saveConfig(cfg);
 console.log('\nwritten to', occ.DEFAULT_PATH);
