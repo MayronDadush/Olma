@@ -35,6 +35,62 @@ test('complete without a key fails closed instead of dialing out', async () => {
   }
 });
 
+test('provider openrouter speaks chat/completions and maps back to the same contract', async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    let captured;
+    globalThis.fetch = async (url, init) => {
+      captured = { url, init };
+      return {
+        ok: true, status: 200,
+        json: async () => ({
+          model: 'deepseek/deepseek-v4-flash',
+          choices: [{ message: { content: '```json\n{"facts":[]}\n```' } }],
+          usage: { prompt_tokens: 970, completion_tokens: 2767 },
+        }),
+      };
+    };
+    const res = await llm.complete({
+      provider: 'openrouter', model: 'deepseek/deepseek-v4-flash',
+      system: 'S', user: 'U', apiKey: 'k',
+    });
+    assert.equal(res.ok, true);
+    assert.equal(res.model, 'deepseek/deepseek-v4-flash');
+    // reasoning models bill thinking as completion tokens — they must land in
+    // output so recordUsage prices what was actually paid for
+    assert.deepEqual(res.usage, { input: 970, output: 2767, cacheRead: 0, cacheWrite: 0 });
+    assert.match(res.text, /"facts"/);
+    assert.match(captured.url, /openrouter\.ai/);
+    const sent = JSON.parse(captured.init.body);
+    assert.deepEqual(sent.messages.map((m) => m.role), ['system', 'user']);
+    assert.match(captured.init.headers.authorization, /^Bearer /);
+
+    // OpenRouter reports some upstream failures as 200 + an error body —
+    // trusting res.ok alone would parse an empty choices array as success
+    globalThis.fetch = async () => ({
+      ok: true, status: 200,
+      json: async () => ({ error: { message: 'Provider returned error', code: 502 } }),
+    });
+    const err = await llm.complete({ provider: 'openrouter', model: 'm', user: 'x', apiKey: 'k' });
+    assert.equal(err.ok, false);
+    assert.match(err.error, /Provider returned error/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('provider openrouter without a key fails closed', async () => {
+  const saved = process.env.OPENROUTER_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
+  try {
+    const res = await llm.complete({ provider: 'openrouter', model: 'm', user: 'x' });
+    assert.equal(res.ok, false);
+    assert.match(res.error, /OPENROUTER_API_KEY/);
+  } finally {
+    if (saved !== undefined) process.env.OPENROUTER_API_KEY = saved;
+  }
+});
+
 test('complete maps the wire shape and never throws on API errors', async () => {
   const realFetch = globalThis.fetch;
   try {
