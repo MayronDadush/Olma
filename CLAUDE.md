@@ -108,9 +108,41 @@ watchdog reads the gateway's own log, then calls `sessions.abort`
 (RPC scope `operator.write` — no device upgrade needed) on that ONE key.
 `jobs/unanswered.js` remains the slower backstop for messages dropped entirely.
 
-### Model provider pilot: OpenRouter (in progress 2026-08-20)
+### Model provider pilot: OpenRouter (RESOLVED 2026-08-26 — DeepSeek v4 is the plan of record)
 
-Every agent turn runs on `anthropic/claude-haiku-4-5` ($1.00/$5.00 per Mtok)
+**The cutover happened.** The Anthropic account ran dry a THIRD time
+(08-20, 08-23, 08-26) and the owner decided not to refill — so open-weight
+via OpenRouter went from pilot to production in one day:
+
+- **Background cognition (fact-extraction, planning) runs on
+  `deepseek/deepseek-v4-flash`** ($0.0886/$0.177 per Mtok, ~11x cheaper than
+  Haiku) via the `background_llm` feature flag (`adapters/llm.backgroundModel`,
+  dashboard-editable, fails open to the Anthropic default on malformed value).
+  Verified live: the extraction tick that failed on Anthropic at 12:11
+  succeeded on DeepSeek at 12:20, $0.0001/run in `usage_ledger`.
+- **The registration blocker below is FIXED**: `register-openrouter-models.js`
+  now writes both halves (allowlist + `models.providers.openrouter.models`).
+  v4-flash/-pro are registered and appear in `models list`.
+- **`scripts/set-default-model.js`** (dry-run default) flips
+  `agents.defaults.model` to flash with pro + Haiku fallbacks; `--reset`
+  restores Anthropic. Two clean pilots on u-3 first (model-pilot.js):
+  honest tool sequence (turn_start → calendar → list_my_tasks → add_task)
+  verified against the DB, correct Hebrew gender, ~77s wall for a cold
+  pilot turn (watch `stuckSessionAbortMs=65s` — progress-staleness, not
+  total duration, so streaming should keep lanes alive; verify on the
+  first slow real turn).
+- Benchmarks that justified it (2026-08-26, real briefs, recorded answers):
+  flash matched Haiku's extraction exactly and — unlike Haiku AND v4-pro —
+  did not hallucinate a past-year `expires_at`. Planning on real user-3 data
+  was grounded and correct. DictaLM 3.0 24B (best Hebrew fluency) failed the
+  rule-following half (missed dedupe, missed facts) — kept as the
+  Hebrew-quality candidate for a self-hosted future, HF_TOKEN in
+  `/opt/olma2/.env`.
+
+The original pilot notes below stand as history (prices, the catalog
+blocker, the cost reality check).
+
+Every agent turn ran on `anthropic/claude-haiku-4-5` ($1.00/$5.00 per Mtok)
 with `claude-sonnet-4-6` as fallback. The Anthropic account ran dry mid-day
 2026-08-20 and every turn failed until it was topped up (see "a crashed turn
 is not an answer"), which is what prompted looking at cheaper open-weight
