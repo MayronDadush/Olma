@@ -44,9 +44,25 @@ test('the first credit error raises exactly one alarm per outage — on the raw 
     assert.equal(rec.sent[0].phone, watch.DEFAULT_ALERT_PHONE);
     assert.match(rec.sent[0].text, /נגמר הקרדיט/);
     assert.match(rec.sent[0].text, /Auto-reload/);
+    assert.match(rec.sent[0].text, /openrouter\.ai/, 'the alert names both providers');
 
     // same outage, next tick → silence, not a drum
     assert.equal((await watch.checkCreditAlert(c, rec)).alerted, false);
+    assert.equal(rec.sent.length, 1);
+  });
+});
+
+test("OpenRouter's dry-credit phrasing (402 Insufficient credits) also trips the alarm", async () => {
+  await withClient(async (c) => {
+    await c.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+    await withTx(db.pool, (cc) => enqueue(cc, {
+      userId: user.id, kind: 'checkin', idempotencyKey: 'cw:or',
+    }));
+    await c.query(
+      `UPDATE outbox SET last_error = 'Insufficient credits. Add more using https://openrouter.ai/settings/credits'
+        WHERE idempotency_key = 'cw:or'`);
+    const rec = recorder();
+    assert.equal((await watch.checkCreditAlert(c, rec)).alerted, true);
     assert.equal(rec.sent.length, 1);
   });
 });
