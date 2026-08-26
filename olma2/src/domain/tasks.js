@@ -5,6 +5,7 @@
 // back in here after its own permission check), keeping one write path.
 const { ok, err } = require('./results');
 const audit = require('./audit');
+const { hasOffset, badTime } = require('./datetime');
 
 const MAX_BULK = 60;
 
@@ -22,6 +23,7 @@ async function checkParent(client, ownerId, parentId) {
 
 async function addTask(client, ownerId, { title, category, dueAt, parentId, source }) {
   if (!title || !title.trim()) return err('invalid', 'title required');
+  if (dueAt && !hasOffset(dueAt)) return badTime('due_at', dueAt);
   if (parentId) {
     const check = await checkParent(client, ownerId, parentId);
     if (!check.ok) return check;
@@ -55,6 +57,7 @@ async function addTasksBulk(client, ownerId, items, { parentId, source } = {}) {
   const created = [];
   for (const item of items) {
     if (!item || !item.title || !item.title.trim()) return err('invalid', 'every item needs a title');
+    if (item.dueAt && !hasOffset(item.dueAt)) return badTime(`due_at for "${item.title.trim().slice(0, 40)}"`, item.dueAt);
     const { rows } = await client.query(
       `INSERT INTO tasks (owner_id, title, category, due_at, parent_id, source)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
@@ -106,6 +109,7 @@ async function completeTask(client, ownerId, taskId) {
 
 async function snoozeTask(client, ownerId, taskId, newDueAt) {
   if (!newDueAt) return err('invalid', 'new due date required');
+  if (!hasOffset(newDueAt)) return badTime('new_due_at', newDueAt);
   const { rows } = await client.query(
     `UPDATE tasks SET due_at = $3
      WHERE id = $1 AND owner_id = $2 AND status = 'open' AND archived_at IS NULL

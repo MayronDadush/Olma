@@ -13,7 +13,13 @@ const { err } = require('./results');
 // against whatever timezone the reader happens to assume.
 const OFFSET_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
+// A real Date is already an unambiguous instant — nothing to refuse. The
+// refusal is only for STRINGS, which is the only shape the model (or any
+// caller crossing the tool boundary) can hand in; internal callers computing
+// their own next occurrence (e.g. domain/pause.js re-arming a reminder) pass
+// a Date, never a naive string, and must not be forced through ISO-and-back.
 function hasOffset(value) {
+  if (value instanceof Date) return !Number.isNaN(value.getTime());
   return typeof value === 'string' && OFFSET_RE.test(value.trim());
 }
 

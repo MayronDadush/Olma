@@ -4,6 +4,7 @@
 // query — the original goal of the merge, kept.
 const { ok, err } = require('./results');
 const audit = require('./audit');
+const { hasOffset, badTime } = require('./datetime');
 
 // ---- repeat rules -----------------------------------------------------------
 //
@@ -69,6 +70,7 @@ function nextOccurrence(from, rule) {
 
 async function setReminder(client, ownerId, taskId, remindAt, repeatRule) {
   if (!remindAt) return err('invalid', 'remind_at required');
+  if (!hasOffset(remindAt)) return badTime('remind_at', remindAt);
   const { rows } = await client.query(
     `SELECT id, status FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
     [taskId, ownerId]
