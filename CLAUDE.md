@@ -792,6 +792,48 @@ now build a timestamp that agrees with their own slot text — hard-coding
 "Tuesday 17:00" beside `now + 48h` passes or fails depending on the day the
 suite runs.
 
+### A shift said as "15:00" was stored as 15:00 UTC (fixed 2026-08-26)
+
+A user confirmed her week's shifts in plain Hebrew — "רביעי מ15-22", her own
+local time, obviously — and the tool call wrote `due_at 2026-08-26T15:00:00Z`:
+her local digits re-labelled UTC, three hours late in real terms. The reminder
+was then correctly derived 30 minutes before the WRONG time, and the morning
+digest made the bug visible by reading both numbers back in one line:
+*"משמרת 15:00–22:00 (תזכורת ב-17:30)"* — a reminder arriving 2.5 hours after
+the shift it was for. All five bulk-created shifts had the identical drift.
+
+The root: `due_at`/`remind_at` never got the offset guard calendar events and
+meeting slots already had. The trajectory shows the model writing bare local
+times on EVERY date-carrying call in that conversation — `"2026-08-26T14:30:00"`,
+no offset, no Z — which Postgres then read in the server's timezone (UTC).
+Same class as the NULL `users.timezone` incident: a bare time plus an assumed
+frame, silent by construction.
+
+`add_task` / `add_tasks_bulk` / `snooze_task` / `set_task_reminder` now refuse
+a string without an offset through the same `hasOffset`/`badTime` in
+`domain/datetime.js`, and their tool descriptions say to convert from the
+user's stated local time via their timezone (USER.md carries it). Two edges
+that earned their lines:
+
+- **`hasOffset` accepts a real `Date` instance unchanged** — a Date is already
+  an unambiguous instant. Found by a test failure, not design: `domain/pause.js`'s
+  resume re-arm computes a Date for the next occurrence, and refusing it would
+  have silently stopped re-arming reminders on resume — a worse bug than the
+  one being fixed. Only strings crossing the tool boundary are checked.
+- **A well-formed but WRONG `…T15:00:00Z` still passes.** Format validation
+  cannot tell a correct UTC instant from local digits mislabelled Z. Meetings
+  answered this with `weekdayClash`; tasks have no semantic cross-check yet
+  (titles like "משמרת … 15:00-22:00" often carry the hour, so one is possible)
+  — worth building if the mislabelled-Z form ever shows up in a trajectory.
+
+Going back for the data was separate from stopping the recurrence: the two
+still-future shifts (tasks 41/42 + reminders) were corrected by direct audited
+UPDATE (`admin.task_due_corrected` / `admin.reminder_corrected`, matching the
+meeting-slot precedent); past ones were left alone — their wrong reminders had
+already fired and rewriting history helps nobody. Verified live post-deploy:
+the next reminder fired at 14:30 local, 30 minutes before the real shift, and
+a bare-time `add_task` probe against the live broker came back refused.
+
 ### "I can't do that" was the whole answer (fixed 2026-08-21)
 
 A user asked Olma to look a few things up online and buy them. She has no web
