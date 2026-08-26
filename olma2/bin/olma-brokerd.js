@@ -76,7 +76,20 @@ async function main() {
 
   if (WORKER) {
     const deliver = makeDeliverer(pool);
-    arm('outbox_worker', () => drainOnce(pool, deliver));
+    // The credit-out alarm rides the worker's own tick (no sweeper of its
+    // own) and the raw pipe (no model, no credit needed) — see
+    // jobs/credit-watch.js for why both choices are the point.
+    const creditWatch = require('../src/jobs/credit-watch');
+    const { runOpenclaw } = require('../src/channels/openclaw');
+    const rawSend = (phone, text) => runOpenclaw([
+      'message', 'send', '--channel', 'whatsapp', '--target', phone, '--message', text,
+    ]);
+    arm('outbox_worker', async () => {
+      const out = await drainOnce(pool, deliver);
+      const alert = await withTx(pool, (c) => creditWatch.checkCreditAlert(c, { send: rawSend }))
+        .catch(() => ({ alerted: false }));
+      return alert.alerted ? { ...out, creditAlert: alert.phone } : out;
+    });
 
     // One tick for the minute-sweeps. They were separate intervals firing
     // on the same second, each taking its own connection and transaction, to
