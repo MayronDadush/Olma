@@ -193,6 +193,10 @@ test('unanswered repair: only for messages provably never answered', async () =>
   // the agent decides — we detect a candidate, it has the conversation
   assert.match(rows[0].payload.checkinInstruction, /NO_REPLY/);
   assert.match(rows[0].payload.checkinInstruction, /Do not apologise/);
+  // the blind case fails closed: no history / failed tools → NO_REPLY,
+  // never a message improvised from notes (the 2026-08-27 incident)
+  assert.match(rows[0].payload.checkinInstruction, /CANNOT see their message/);
+  assert.match(rows[0].payload.checkinInstruction, /never turn notes or memory/);
 
   // same dropped message seen again → no second nudge
   const repeat = await sweep([
@@ -200,6 +204,24 @@ test('unanswered repair: only for messages provably never answered', async () =>
     { role: 'user', text: 'יש לי משימה', at: ago(8) },
   ]);
   assert.deepEqual(repeat.repaired, []);
+
+  // a NEWER dropped message inside the cooldown hour → still no second
+  // repair; one user got three "repairs" in eight minutes this way
+  const newer = await sweep([
+    { role: 'assistant', text: 'שלום', at: ago(12) },
+    { role: 'user', text: 'ועוד שאלה', at: ago(5) },
+  ]);
+  assert.deepEqual(newer.repaired, [], 'cooldown holds even for a distinct message');
+
+  // once the hour passes, a genuinely dropped message is repaired again
+  await db.pool.query(
+    `UPDATE outbox SET created_at = created_at - interval '2 hours'
+      WHERE user_id = $1 AND payload->>'rung' = 'unanswered_repair'`, [u.id]);
+  const later = await sweep([
+    { role: 'assistant', text: 'שלום', at: ago(12) },
+    { role: 'user', text: 'ועוד שאלה', at: ago(5) },
+  ]);
+  assert.deepEqual(later.repaired, [u.id], 'cooldown ends, repair resumes');
 });
 
 // A reason given to one Olma has to reach the other person, or every

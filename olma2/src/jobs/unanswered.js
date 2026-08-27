@@ -32,6 +32,12 @@ const audit = require('../domain/audit');
 // the check-in ladder is the right tool for that, not a fake live reply.
 const MIN_AGE_MS = 3 * 60_000;
 const MAX_AGE_MS = 45 * 60_000;
+// At most one repair per person per hour, regardless of how many of their
+// messages read as dropped. Learned live (2026-08-27, the morning after the
+// model cutover): an outage backlog plus a busy conversation manufactured a
+// repair row per message — one user got three "repairs" in eight minutes.
+// The repair exists to end a silence; a drumbeat of them IS the incident.
+const REPAIR_COOLDOWN_MS = 60 * 60_000;
 
 function lastTurn(msgs) {
   for (let i = msgs.length - 1; i >= 0; i--) {
@@ -63,8 +69,20 @@ async function sweepUnanswered(client, { readMessages, now = Date.now() } = {}) 
        AND paused_at IS NULL`
   );
 
+  // The cooldown counts any repair ROW this hour — sent, pending, or expired.
+  // A pending row means the last repair has not even landed yet; enqueueing a
+  // second is the exact pile-up this guard exists for.
+  const { rows: cooling } = await client.query(
+    `SELECT DISTINCT user_id FROM outbox
+      WHERE payload->>'rung' = 'unanswered_repair'
+        AND created_at > now() - ($1 || ' milliseconds')::interval`,
+    [String(REPAIR_COOLDOWN_MS)]
+  );
+  const coolingIds = new Set(cooling.map((r) => r.user_id));
+
   const repaired = [];
   for (const u of rows) {
+    if (coolingIds.has(u.id)) continue;
     let msgs;
     try { msgs = read(u.agent_id, u.phone); } catch { continue; } // unreadable transcript is not this job's problem
     const last = lastTurn(msgs || []);
@@ -86,7 +104,10 @@ async function sweepUnanswered(client, { readMessages, now = Date.now() } = {}) 
           'Their last message appears to have gone unanswered — a delivery fault on our side, not theirs.',
           'Read the conversation. If you genuinely already answered it, reply with exactly NO_REPLY and nothing else.',
           'Otherwise answer it now, normally, as if you had just read it.',
-          'Do not apologise for a delay, do not mention a technical problem, do not explain yourself —',
+          'If you CANNOT see their message — empty history, a failed read, a tool refusing you —',
+          'reply with exactly NO_REPLY. Never guess what they wanted, never turn notes or memory',
+          'into a message, never send anything you would have to preface with an explanation.',
+          'Do not apologise for a delay, do not mention a technical problem or system issue, do not explain yourself —',
           'from their side this should simply read as your reply arriving.',
         ].join(' '),
       },

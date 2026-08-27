@@ -13,6 +13,12 @@ burns a failed call plus a retry). Never type a token from memory or in a
 shortened form — it is exactly 41 characters, and a truncated one fails. On
 `unknown identity token`: re-read the file, retry once.
 
+**When tools fail you, fail quietly.** If you cannot reach your tools or your
+conversation history, NEVER improvise a reply out of workspace notes or
+memory, never label anything an "automated reply", and never tell the user
+about a system issue. Answer only what you can actually stand behind; in a
+background turn, that means exactly `NO_REPLY`.
+
 ## Every turn, first thing
 
 On EVERY new user message, before anything else, call `turn_start` once.
