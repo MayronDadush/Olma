@@ -458,6 +458,32 @@ async function updateEvent(client, userId, { eventId, title, start, end }, opts 
   });
 }
 
+async function deleteEvent(client, userId, { eventId }, opts = {}) {
+  if (!eventId) return err('invalid', 'event_id is required');
+  return withAccessToken(client, userId, opts, async (token, accessLevel, o) => {
+    const refusal = requireWritable(accessLevel);
+    if (refusal) return refusal;
+    try {
+      // sendUpdates=all: if the user organised this event with invitees,
+      // Google mails each of them a cancellation — deleting silently would
+      // leave everyone else planning around a ghost.
+      await google.calendarFetch(token,
+        `/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=all`,
+        { ...o, method: 'DELETE' });
+    } catch (e) {
+      if (e.code === 'unauthorized') throw e;
+      // Already gone (deleted from the phone, or a retry): the calendar is in
+      // the state the user asked for, so this is success, not failure.
+      if (/not found|deleted|410|404/i.test(e.message)) {
+        return ok({ deleted: false, alreadyGone: true, eventId });
+      }
+      return err('conflict', e.message, { reason: e.code || 'http' });
+    }
+    await audit.record(client, userId, 'calendar.event_deleted', { eventId });
+    return ok({ deleted: true, eventId });
+  });
+}
+
 // ---- shared meeting events -------------------------------------------------
 //
 // A confirmed meeting between people used to become N unrelated events, one
@@ -564,6 +590,12 @@ async function createSharedMeetingEvent(client, userId, { meetingId, start, end,
   }, opts);
   if (!res.ok) return res;
 
+  // Remember which event this meeting became and whose calendar hosts it —
+  // cancelling the meeting later has to be able to take the event back off.
+  await client.query(
+    `UPDATE meetings SET calendar_event_id = $2, calendar_organiser_id = $3 WHERE id = $1`,
+    [meetingId, res.data.eventId, userId]
+  );
   await audit.record(client, userId, 'calendar.meeting_event_created', {
     meetingId: Number(meetingId), attendees: attendees.length, uninvitable,
   });
@@ -577,10 +609,37 @@ async function createSharedMeetingEvent(client, userId, { meetingId, start, end,
   });
 }
 
+// Best-effort removal of a cancelled meeting's shared event, acting as the
+// organiser (server-side, with their stored credentials — nothing about their
+// account reaches any agent's context). Never an error: a meeting must stay
+// cancellable when Google is down, so the caller only learns whether the
+// event is gone and tells agents to clean up by hand when it is not.
+async function removeMeetingEvent(client, meetingId, opts = {}) {
+  const { rows } = await client.query(
+    `SELECT calendar_event_id, calendar_organiser_id FROM meetings WHERE id = $1`,
+    [meetingId]
+  );
+  const m = rows[0];
+  if (!m || !m.calendar_event_id || !m.calendar_organiser_id) {
+    return ok({ removed: false, reason: 'no_event' });
+  }
+  let res;
+  try {
+    res = await deleteEvent(client, Number(m.calendar_organiser_id),
+      { eventId: m.calendar_event_id }, opts);
+  } catch {
+    res = null;
+  }
+  if (!res || !res.ok) return ok({ removed: false, reason: 'delete_failed' });
+  await audit.record(client, Number(m.calendar_organiser_id),
+    'calendar.meeting_event_removed', { meetingId: Number(meetingId), eventId: m.calendar_event_id });
+  return ok({ removed: true });
+}
+
 module.exports = {
   PROVIDER, MAX_EVENTS,
   beginConnection, completeOAuth, getStatus, disconnect,
-  listEvents, createEvent, updateEvent,
+  listEvents, createEvent, updateEvent, deleteEvent,
   usableAccessToken,
-  accountEmail, meetingCalendarRoles, createSharedMeetingEvent,
+  accountEmail, meetingCalendarRoles, createSharedMeetingEvent, removeMeetingEvent,
 };

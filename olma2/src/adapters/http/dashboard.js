@@ -395,6 +395,7 @@ const KIND_LABELS = {
   meeting_confirmed: 'פגישה אושרה',
   meeting_slot_declined: 'מועד נדחה',
   meeting_opt_out: 'יציאה מפגישה',
+  meeting_withdrawn: 'ביטול הגעה לפגישה',
   meeting_no_match: 'לא נמצא מועד',
   meeting_cancelled: 'פגישה בוטלה',
   calendar_connected: 'יומן חובר',

@@ -34,9 +34,23 @@ async function startMeeting(client, initiatorId, title, participantUserIds) {
     if (!gate.ok) return { ...gate, error: { ...gate.error, participantId: pid } };
   }
 
+  // A meeting with no name becomes a calendar event called "פגישה" and a
+  // dashboard row nobody can tell apart. The participants' names are always
+  // known, so the fallback is built from them — the initiator can rename any
+  // time with setTitle.
+  let finalTitle = (title || '').trim().slice(0, TITLE_MAX_CHARS);
+  if (!finalTitle) {
+    const { rows: people } = await client.query(
+      `SELECT first_name, phone FROM users WHERE id = ANY($1::bigint[]) ORDER BY id`,
+      [[initiatorId, ...unique]]
+    );
+    const names = people.map((u) => (u.first_name || '').trim() || u.phone);
+    finalTitle = `פגישה — ${names.join(', ')}`.slice(0, TITLE_MAX_CHARS);
+  }
+
   const { rows } = await client.query(
     `INSERT INTO meetings (initiator_id, title) VALUES ($1, $2) RETURNING *`,
-    [initiatorId, title || null]
+    [initiatorId, finalTitle]
   );
   const meeting = rows[0];
   for (const uid of [initiatorId, ...unique]) {
@@ -69,6 +83,9 @@ async function participantRow(client, meetingId, userId) {
 // reader ignores is worse than no flag, because it is a promise.
 const CONSTRAINT_MAX_CHARS = 200;
 const MAX_SHARED_REASONS = 3;
+// A title is one user's text landing in every participant's agent turn and on
+// their calendars — bounded for the same reason a constraint is.
+const TITLE_MAX_CHARS = 120;
 
 function constraintEntry(raw) {
   if (typeof raw === 'string') return { text: raw, private: false };
@@ -280,19 +297,104 @@ async function applyExit(client, userId, meetingId, cause) {
   return ok({ meetingId, meetingStatus: 'negotiating', yourState: 'opted_out' });
 }
 
-async function optOut(client, userId, meetingId) {
+// "I can't come" after everyone agreed. Distinct from a negotiation opt-out
+// (applyExit) and from cancelling: the meeting is STILL ON for the others —
+// one person dropping out of a three-way dinner does not end the dinner.
+// Only when their exit leaves fewer than two people does the whole thing
+// cascade into a cancellation, because a meeting of one is not a meeting.
+async function withdrawConfirmed(client, userId, meetingId, now = Date.now()) {
+  const p = await participantRow(client, meetingId, userId);
+  if (!p) return err('not_found', 'not a participant of this meeting');
+  if (p.initiator_id === userId) {
+    return err('invalid', 'initiator cannot withdraw — cancel the meeting instead (cancel_meeting)');
+  }
+  if (p.state === 'opted_out') return ok({ meetingId, meetingStatus: 'confirmed', yourState: 'opted_out' });
+  const { rows: mrows } = await client.query(`SELECT confirmed_start_at FROM meetings WHERE id = $1`, [meetingId]);
+  if (mrows[0] && mrows[0].confirmed_start_at
+      && new Date(mrows[0].confirmed_start_at).getTime() < now) {
+    return err('invalid', 'that meeting has already started — there is nothing left to withdraw from');
+  }
+
+  await client.query(
+    `UPDATE meeting_participants SET state = 'opted_out' WHERE meeting_id = $1 AND user_id = $2`,
+    [meetingId, userId]
+  );
+  await audit.record(client, userId, 'meeting.withdrew', { meetingId });
+
+  const { rows } = await client.query(
+    `SELECT count(*) FILTER (WHERE state <> 'opted_out') AS active_count
+     FROM meeting_participants WHERE meeting_id = $1`,
+    [meetingId]
+  );
+  if (Number(rows[0].active_count) < 2) {
+    await client.query(
+      `UPDATE meetings SET status = 'cancelled', updated_at = now() WHERE id = $1`,
+      [meetingId]
+    );
+    await audit.record(client, userId, 'meeting.cancelled',
+      { meetingId, reason: 'not_enough_participants' });
+    return ok({ meetingId, meetingStatus: 'cancelled', yourState: 'opted_out', cascadeCancelled: true });
+  }
+  return ok({ meetingId, meetingStatus: 'confirmed', yourState: 'opted_out', withdrew: true });
+}
+
+async function optOut(client, userId, meetingId, now = Date.now()) {
+  const p = await participantRow(client, meetingId, userId);
+  if (!p) return err('not_found', 'not a participant of this meeting');
+  if (p.meeting_status === 'confirmed') return withdrawConfirmed(client, userId, meetingId, now);
   return applyExit(client, userId, meetingId, 'user_choice');
 }
 
-async function cancelMeeting(client, userId, meetingId) {
-  const { rows } = await client.query(
-    `UPDATE meetings SET status = 'cancelled', updated_at = now(), closed_at = now()
-     WHERE id = $1 AND initiator_id = $2 AND status = 'negotiating' RETURNING id`,
+// Cancelling works on a confirmed meeting too — "תבטל את הפגישה" after
+// everyone agreed is the more common ask, not the rarer one (a live request
+// hit the negotiating-only version and got a refusal). A meeting whose start
+// already passed is not cancellable: it happened, or it didn't, but either
+// way there is nothing left to call off.
+async function cancelMeeting(client, userId, meetingId, now = Date.now()) {
+  const { rows: existing } = await client.query(
+    `SELECT status, confirmed_start_at FROM meetings
+     WHERE id = $1 AND initiator_id = $2 AND status IN ('negotiating', 'confirmed')`,
     [meetingId, userId]
   );
-  if (!rows[0]) return err('not_found', 'negotiating meeting you initiated not found');
-  await audit.record(client, userId, 'meeting.cancelled', { meetingId });
-  return ok({ meetingId, meetingStatus: 'cancelled' });
+  const m = existing[0];
+  if (!m) return err('not_found', 'open meeting you initiated not found');
+  if (m.status === 'confirmed' && m.confirmed_start_at
+      && new Date(m.confirmed_start_at).getTime() < now) {
+    return err('invalid', 'that meeting has already started — there is nothing left to cancel');
+  }
+  const wasConfirmed = m.status === 'confirmed';
+  // The status guard repeats inside the UPDATE so a concurrent confirm/cancel
+  // cannot double-apply.
+  const { rows } = await client.query(
+    `UPDATE meetings SET status = 'cancelled', updated_at = now(), closed_at = now()
+     WHERE id = $1 AND initiator_id = $2 AND status = $3 RETURNING id`,
+    [meetingId, userId, m.status]
+  );
+  if (!rows[0]) return err('not_found', 'open meeting you initiated not found');
+  await audit.record(client, userId, 'meeting.cancelled', { meetingId, wasConfirmed });
+  return ok({ meetingId, meetingStatus: 'cancelled', wasConfirmed });
+}
+
+// Rename — initiator only, while the meeting is still alive. The title is
+// what every invite, nudge and calendar event shows, so having no way to fix
+// it is how a meeting stays called "פגישה" forever ("עדכנתי את הפגישה" was
+// once narrated with no tool behind it).
+async function setTitle(client, userId, meetingId, title) {
+  const clean = (title || '').trim().slice(0, TITLE_MAX_CHARS);
+  if (!clean) return err('invalid', 'title required');
+  const { rows } = await client.query(
+    `UPDATE meetings SET title = $3, updated_at = now()
+     WHERE id = $1 AND initiator_id = $2 AND status IN ('negotiating', 'confirmed')
+     RETURNING id, status, calendar_event_id, calendar_organiser_id`,
+    [meetingId, userId, clean]
+  );
+  if (!rows[0]) return err('not_found', 'open meeting you initiated not found');
+  await audit.record(client, userId, 'meeting.title_set', { meetingId });
+  return ok({
+    meetingId, title: clean, meetingStatus: rows[0].status,
+    calendarEventId: rows[0].calendar_event_id || null,
+    calendarOrganiserId: rows[0].calendar_organiser_id ? Number(rows[0].calendar_organiser_id) : null,
+  });
 }
 
 async function getStatus(client, userId, meetingId) {
@@ -447,7 +549,8 @@ async function listNegotiating(client, userId = null) {
 
 module.exports = {
   startMeeting, recordConstraint, proposeSlot, respondToSlot,
-  optOut, applyExit, cancelMeeting, getStatus, listMine, pendingMeetingFor, tryConfirm,
+  optOut, applyExit, withdrawConfirmed, cancelMeeting, setTitle,
+  getStatus, listMine, pendingMeetingFor, tryConfirm,
   expireStaleMeetings, expireOne, listNegotiating, EXPIRE_AFTER_START_MS, LEGACY_STALE_DAYS,
   shareableConstraints, constraintTexts, shareableTexts,
   CONSTRAINT_MAX_CHARS, MAX_SHARED_REASONS,

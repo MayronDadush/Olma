@@ -705,3 +705,81 @@ test('a missing account_label is backfilled from Google rather than asked for', 
   const row = await integrationRow(u.id);
   assert.equal(row.account_label, 'gim@example.com', 'and stored, so it is fetched once');
 });
+
+// ---- cancelling a confirmed meeting's event ---------------------------------
+// The linkage written at creation is what lets a cancellation take the event
+// back off calendars. Removal acts as the organiser, mails invitees the
+// cancellation (sendUpdates=all), and is best-effort: a meeting stays
+// cancellable when Google is not.
+
+test('the shared event is remembered on the meeting and removed on cancellation', async () => {
+  const { a, meetingId } = await confirmedMeetingFixture('+972632000021', '+972632000022');
+  const fetchImpl = fakeFetch({
+    'calendars/primary/events': { body: { id: 'evt-cancel-1', summary: 'קפה' } },
+  });
+  const created = await withTx(db.pool, (c) => calendar.createSharedMeetingEvent(c, a.id, {
+    meetingId, start: '2026-08-20T13:00:00+03:00', end: '2026-08-20T14:00:00+03:00',
+  }, { fetchImpl }));
+  assert.equal(created.ok, true, created.ok ? '' : JSON.stringify(created.error));
+
+  const row = await db.pool.query(
+    `SELECT calendar_event_id, calendar_organiser_id FROM meetings WHERE id = $1`, [meetingId]);
+  assert.equal(row.rows[0].calendar_event_id, 'evt-cancel-1');
+  assert.equal(Number(row.rows[0].calendar_organiser_id), Number(a.id));
+
+  let deleted = null;
+  const delFetch = fakeFetch({
+    'calendars/primary/events/evt-cancel-1': (url, init) => {
+      deleted = { url: String(url), method: init.method };
+      return { status: 204, body: {} };
+    },
+  });
+  const removal = await withTx(db.pool, (c) => calendar.removeMeetingEvent(c, meetingId, { fetchImpl: delFetch }));
+  assert.equal(removal.ok, true);
+  assert.equal(removal.data.removed, true);
+  assert.equal(deleted.method, 'DELETE');
+  assert.match(deleted.url, /sendUpdates=all/, 'invitees must be mailed the cancellation');
+});
+
+test('removal without a stored event, or with Google down, reports rather than errors', async () => {
+  const { a, meetingId } = await confirmedMeetingFixture('+972632000023', '+972632000024');
+  // no createSharedMeetingEvent ran → nothing stored
+  const none = await withTx(db.pool, (c) => calendar.removeMeetingEvent(c, meetingId, { fetchImpl: fakeFetch({}) }));
+  assert.equal(none.data.removed, false);
+  assert.equal(none.data.reason, 'no_event');
+
+  await db.pool.query(
+    `UPDATE meetings SET calendar_event_id = 'evt-gone', calendar_organiser_id = $2 WHERE id = $1`,
+    [meetingId, a.id]);
+  // fakeFetch with no routes throws on any outbound call — "Google down".
+  const failing = await withTx(db.pool, (c) => calendar.removeMeetingEvent(c, meetingId, { fetchImpl: fakeFetch({}) }));
+  assert.equal(failing.ok, true, 'best-effort: a dead Google never blocks the cancellation');
+  assert.equal(failing.data.removed, false);
+  assert.equal(failing.data.reason, 'delete_failed');
+});
+
+test('deleteEvent tolerates already-gone and refuses view-only access', async () => {
+  const u = await makeUser(db.pool, '+972632000025', { firstName: 'Dal' });
+  await connect(u.id);
+  const gone = await withTx(db.pool, (c) => calendar.deleteEvent(c, u.id, { eventId: 'evt-x' }, {
+    fetchImpl: fakeFetch({
+      'calendars/primary/events/evt-x': { status: 404, body: { error: { message: 'Not Found' } } },
+    }),
+  }));
+  assert.equal(gone.ok, true, 'already deleted = the calendar is in the asked-for state');
+  assert.equal(gone.data.alreadyGone, true);
+
+  const ro = await makeUser(db.pool, '+972632000026', { firstName: 'Hey' });
+  // access level is derived from the scope Google actually granted, so a real
+  // read_only connection needs the readonly scope in the fake token too
+  await connect(ro.id, { access: 'read_only', routes: {
+    'oauth2.googleapis.com/token': tokenOk({ scope: 'https://www.googleapis.com/auth/calendar.readonly' }),
+    'calendars/primary': primaryCal,
+    'oauth2/v2/userinfo': userInfo,
+  } });
+  const refused = await withTx(db.pool, (c) => calendar.deleteEvent(c, ro.id, { eventId: 'evt-y' }, {
+    fetchImpl: fakeFetch({}),
+  }));
+  assert.equal(refused.ok, false);
+  assert.equal(refused.error.reason, 'read_only');
+});

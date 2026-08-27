@@ -493,3 +493,115 @@ test('the weekday is judged in the proposer own timezone', async () => {
     assert.match(late.error.message, /Asia\/Jerusalem/);
   });
 });
+
+// ---- cancellation and withdrawal after confirmation -------------------------
+// "תבטל את הפגישה" and "אני לא יכול להגיע" are different things: the first is
+// the initiator calling it off for everyone (and it must work on a CONFIRMED
+// meeting — a live initiator asked exactly that and was refused); the second
+// is one person bowing out while the meeting stays on for the rest.
+
+async function confirmedMeeting(c, initiator, others, slotText = 'Tuesday 17:00, phone') {
+  const m = (await meetings.startMeeting(c, initiator.id, 'סגורה', others.map((u) => u.id))).data.meeting;
+  await meetings.proposeSlot(c, initiator.id, m.id, slotText, slotStart(slotText));
+  for (const u of others) {
+    const r = await meetings.respondToSlot(c, u.id, m.id, true);
+    assert.ok(r.ok, JSON.stringify(r.error || {}));
+  }
+  const st = await c.query(`SELECT status FROM meetings WHERE id = $1`, [m.id]);
+  assert.equal(st.rows[0].status, 'confirmed', 'fixture must reach confirmed');
+  return Number(m.id);
+}
+
+test('the initiator can cancel a CONFIRMED meeting until it starts', async () => {
+  await withClient(async (c) => {
+    const id = await confirmedMeeting(c, alice, [bob]);
+
+    // not the initiator → refused, same answer as "no such meeting"
+    const notMine = await meetings.cancelMeeting(c, bob.id, id);
+    assert.equal(notMine.ok, false);
+
+    const res = await meetings.cancelMeeting(c, alice.id, id);
+    assert.equal(res.ok, true, JSON.stringify(res.error || {}));
+    assert.equal(res.data.meetingStatus, 'cancelled');
+    assert.equal(res.data.wasConfirmed, true, 'the caller must know a calendar may need cleaning');
+
+    // idempotence: a second cancel finds nothing open
+    const again = await meetings.cancelMeeting(c, alice.id, id);
+    assert.equal(again.ok, false);
+  });
+});
+
+test('a meeting that already started cannot be cancelled', async () => {
+  await withClient(async (c) => {
+    const id = await confirmedMeeting(c, alice, [bob]);
+    await c.query(`UPDATE meetings SET confirmed_start_at = now() - interval '2 hours' WHERE id = $1`, [id]);
+    const res = await meetings.cancelMeeting(c, alice.id, id);
+    assert.equal(res.ok, false);
+    assert.match(res.error.message, /already started/);
+    const st = await c.query(`SELECT status FROM meetings WHERE id = $1`, [id]);
+    assert.equal(st.rows[0].status, 'confirmed', 'the row must be untouched');
+  });
+});
+
+test('a participant withdrawing from a confirmed trio leaves the meeting ON', async () => {
+  await withClient(async (c) => {
+    const id = await confirmedMeeting(c, alice, [bob, carol]);
+
+    // the initiator is pointed at cancel_meeting instead
+    const initiatorTry = await meetings.optOut(c, alice.id, id);
+    assert.equal(initiatorTry.ok, false);
+    assert.match(initiatorTry.error.message, /cancel/);
+
+    const res = await meetings.optOut(c, bob.id, id);
+    assert.equal(res.ok, true, JSON.stringify(res.error || {}));
+    assert.equal(res.data.withdrew, true);
+    assert.equal(res.data.meetingStatus, 'confirmed', 'two people remain — still on');
+
+    const st = await meetings.getStatus(c, alice.id, id);
+    const states = Object.fromEntries(st.data.participants.map((p) => [p.user_id, p.state]));
+    assert.equal(states[bob.id], 'opted_out');
+    assert.equal(st.data.meeting.status, 'confirmed');
+  });
+});
+
+test('withdrawing that leaves one person cascades into cancellation', async () => {
+  await withClient(async (c) => {
+    const id = await confirmedMeeting(c, alice, [bob]);
+    const res = await meetings.optOut(c, bob.id, id);
+    assert.equal(res.ok, true);
+    assert.equal(res.data.cascadeCancelled, true);
+    assert.equal(res.data.meetingStatus, 'cancelled');
+    const st = await c.query(`SELECT status FROM meetings WHERE id = $1`, [id]);
+    assert.equal(st.rows[0].status, 'cancelled');
+  });
+});
+
+test('withdrawal after the meeting started is refused', async () => {
+  await withClient(async (c) => {
+    const id = await confirmedMeeting(c, alice, [bob, carol]);
+    await c.query(`UPDATE meetings SET confirmed_start_at = now() - interval '1 hour' WHERE id = $1`, [id]);
+    const res = await meetings.optOut(c, bob.id, id);
+    assert.equal(res.ok, false);
+    assert.match(res.error.message, /already started/);
+  });
+});
+
+// ---- titles -----------------------------------------------------------------
+
+test('an unnamed meeting is named after its people, and the initiator can rename it', async () => {
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, '   ', [bob.id])).data.meeting;
+    assert.match(m.title, /Alice/);
+    assert.match(m.title, /Bob/);
+
+    const renamed = await meetings.setTitle(c, alice.id, m.id, 'שיחה על הפרויקט');
+    assert.equal(renamed.ok, true);
+    assert.equal(renamed.data.title, 'שיחה על הפרויקט');
+
+    const notMine = await meetings.setTitle(c, bob.id, m.id, 'hijack');
+    assert.equal(notMine.ok, false);
+
+    const st = await meetings.getStatus(c, alice.id, m.id);
+    assert.equal(st.data.meeting.title, 'שיחה על הפרויקט');
+  });
+});

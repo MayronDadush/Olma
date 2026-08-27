@@ -152,8 +152,22 @@ function bodyFor(row, p) {
       return `${p.byName} left the meeting <<<${p.title}>>>. Tell the user; the meeting continues with the remaining participants.`;
     case 'meeting_no_match':
       return `The meeting <<<${p.title}>>> closed without agreement — not enough participants remain. Tell the user gently.`;
-    case 'meeting_cancelled':
-      return `${p.byName} cancelled the meeting <<<${p.title}>>>. Tell the user.`;
+    case 'meeting_cancelled': {
+      // calendarCleanup is decided server-side per recipient
+      // (registry.cancelCalendarCleanup): 'auto' = the shared event is gone
+      // and Google mails invitees, 'self' = an event may still sit on THEIR
+      // calendar, 'none'/absent = no calendar involved.
+      const cleanup = p.calendarCleanup === 'auto'
+        ? ' The shared calendar event was already removed — if they ask, the calendar is handled.'
+        : p.calendarCleanup === 'self'
+          ? ' If this meeting was added to their calendar, offer to remove it: find it with my_calendar_events and call delete_calendar_event (with view-only access, just tell them to remove it themselves).'
+          : '';
+      return `${p.byName} cancelled the meeting <<<${p.title}>>>${p.wasConfirmed
+        ? ` — it was already agreed for <<<${p.slot || ''}>>>, and now it is off for everyone`
+        : ''}. Tell the user plainly.${cleanup}`;
+    }
+    case 'meeting_withdrawn':
+      return `${p.byName} can no longer come to the confirmed meeting <<<${p.title}>>>${p.slot ? ` (<<<${p.slot}>>>)` : ''}. The meeting is STILL ON for everyone else — tell the user that ${p.byName} won't be there and that nothing else changes. Do not offer to cancel or reschedule unless the user asks.`;
     // The moment passed with the negotiation still open. Said once, to the
     // person who started it, because a plan that quietly died is worse than
     // one that ended out loud — and they are the only one who can restart it.
