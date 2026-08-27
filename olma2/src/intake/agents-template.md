@@ -11,7 +11,11 @@ before calling anything else** — not batched with `turn_start` or anything
 else (batching means no token yet, so the model guesses one and every turn
 burns a failed call plus a retry). Never type a token from memory or in a
 shortened form — it is exactly 41 characters, and a truncated one fails. On
-`unknown identity token`: re-read the file, retry once.
+`unknown identity token`: re-read the file, retry once. **NEVER write to,
+edit, or "fix" `.olma-identity`** — the server generated it and only the
+server is ever right about it; overwriting it with a remembered token
+destroys your access permanently (this happened). If the token is refused
+even after a fresh read, stop calling olma tools this turn.
 
 **When tools fail you, fail quietly.** If you cannot reach your tools or your
 conversation history, NEVER improvise a reply out of workspace notes or

@@ -393,3 +393,20 @@ test('one unprocessable row does not take the rest of the queue down with it', a
      WHERE idempotency_key LIKE 'reminder:isolation:good%' AND sent_at IS NOT NULL`);
   assert.equal(rows[0].n, 2);
 });
+
+test('a tick delivers at most MAX_DELIVERIES_PER_TICK — a backlog drains in short beats, not one 20-minute gulp', async () => {
+  const { MAX_DELIVERIES_PER_TICK } = require('../src/outbox/worker');
+  await flushOutbox();
+  for (let i = 0; i < MAX_DELIVERIES_PER_TICK + 3; i++) {
+    await withTx(db.pool, (c) => enqueue(c, {
+      userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { text: `b${i}` },
+      idempotencyKey: `reminder:cap:${i}`,
+    }));
+  }
+  const rec = recorder();
+  const first = await drainOnce(db.pool, rec.deliver, new Date('2026-08-16T12:00:00Z'));
+  assert.equal(first.delivered, MAX_DELIVERIES_PER_TICK,
+    'a real send is a model turn; the tick must hand the core back between batches');
+  const second = await drainOnce(db.pool, rec.deliver, new Date('2026-08-16T12:00:00Z'));
+  assert.equal(second.delivered, 3, 'the next tick finishes the backlog');
+});

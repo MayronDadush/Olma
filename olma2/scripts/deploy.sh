@@ -46,7 +46,10 @@ $SSH "$SERVER" "
   # The droplet has ONE core. Node's default is unlimited file concurrency,
   # which on this box means 11 test processes plus 11 Postgres databases
   # thrashing each other into timeouts that look like real failures.
-  node --test --test-concurrency=2 'tests/*.test.js'
+  # nice: the same core is serving live agent turns; the suite yields to them.
+  # (Observed 2026-08-27: an unniced run during a busy drain starved live
+  # turns until the gateway texted users raw error strings.)
+  nice -n 19 node --test --test-concurrency=2 'tests/*.test.js'
 "
 
 # Passes iff both services are actually running (catches an instant crash —

@@ -3,6 +3,9 @@
 // migrations — the same runner production uses. No hand-applied ALTERs in
 // tests, ever (the v1 wound this design exists to close).
 require('../src/db/types'); // tests must see production's int8 typing
+// Never chattr +i inside test fixtures — an immutable file under /tmp
+// survives the teardown's rm -rf and litters the box (see intake/provision).
+process.env.OLMA_IMMUTABLE_IDENTITY = 'off';
 const { Client, Pool } = require('pg');
 const crypto = require('node:crypto');
 const { migrate } = require('../src/db/migrate');
