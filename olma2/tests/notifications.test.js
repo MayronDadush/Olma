@@ -34,11 +34,8 @@ before(async () => {
   kapish = await makeUser(db.pool, '+972621000002', { firstName: 'Kapish' });
   await withTx(db.pool, async (c) => {
     const req = await connections.requestConnection(c, miron.id, kapish.phone, {});
-    const conn = (await connections.respondToConnection(c, kapish.id, req.data.connection.id, 'approve')).data.connection;
-    for (const uid of [miron.id, kapish.id]) {
-      await grants.grantFeature(c, uid, conn.id, 'meetings');
-      await grants.grantFeature(c, uid, conn.id, 'sharing');
-    }
+    // Approval auto-grants every feature for both sides — no manual grants.
+    await connections.respondToConnection(c, kapish.id, req.data.connection.id, 'approve');
   });
 });
 after(async () => { await db.teardown(); });
@@ -110,7 +107,7 @@ test('share offer and response fan out to the right sides', async () => {
   assert.equal(resp[0].payload.decision, 'accept');
 });
 
-test('connection approval notifies the requester and hints the grants step', async () => {
+test('connection approval notifies the requester and enables everything at once', async () => {
   const gali = await makeUser(db.pool, '+972621000003', { firstName: 'Gali' });
   await call(miron, 'request_connection', { phone: gali.phone, reason: 'לתאם דברים' });
   const pending = await outboxFor(gali.id, 'connection_request');
@@ -119,7 +116,14 @@ test('connection approval notifies the requester and hints the grants step', asy
   const approved = await call(gali, 'respond_to_connection_request', {
     connection_id: pending[0].payload.connectionId, decision: 'approve',
   });
-  assert.match(approved, /grant_connection_feature/); // approver's agent gets the next step
+  // No toggle conversation: the approval itself enabled every feature, and
+  // the approver's agent is told to continue rather than ask about features.
+  assert.match(approved, /enabled automatically/);
+  const { rows: granted } = await db.pool.query(
+    `SELECT count(*)::int AS n FROM connection_feature_grants WHERE connection_id = $1`,
+    [pending[0].payload.connectionId]);
+  assert.equal(granted[0].n, grants.KNOWN_CONNECTION_FEATURES.length * 2);
+
   const resp = await outboxFor(miron.id, 'connection_response');
   assert.equal(resp.length, 1);
   assert.equal(resp[0].payload.decision, 'approve');
@@ -132,6 +136,53 @@ test('connection approval notifies the requester and hints the grants step', asy
   const text = instructionFor({ kind: 'connection_response', payload: resp[0].payload });
   assert.ok(text.includes('<<<לתאם דברים>>>'), 'the reason must reach the agent, wrapped as data');
   assert.match(text, /without waiting to be asked again/);
+  // ...and it must not send the agent chasing feature toggles any more
+  assert.match(text, /enabled automatically/);
+  assert.ok(!text.includes('call grant_connection_feature'), 'no toggle step in the approval flow');
+});
+
+test('a relayed message reaches the other side fenced, attributed, deduped', async () => {
+  await call(miron, 'send_message_to_connection', { phone: kapish.phone, message: 'תביא את הקלפים הערב' });
+  const rows = await outboxFor(kapish.id, 'relayed_message');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].payload.fromName, 'Miron');
+  assert.equal(rows[0].payload.text, 'תביא את הקלפים הערב');
+  // urgent = never folds into tomorrow's digest over a budget counter, but
+  // still held by the recipient's own quiet hours (gate policy, tested there).
+  assert.equal(rows[0].urgency, 'urgent');
+
+  const { instructionFor } = require('../src/channels/openclaw');
+  const body = instructionFor(rows[0]);
+  assert.match(body, /^DELIVERY:/);
+  assert.ok(body.includes('<<<תביא את הקלפים הערב>>>'), 'the text travels as fenced data');
+  assert.match(body, /Miron/);
+  assert.match(body, /meeting tools/); // relay never becomes the scheduling path
+
+  // the identical text on the same day is one row — the double-call guard
+  const dup = await call(miron, 'send_message_to_connection', { phone: kapish.phone, message: 'תביא את הקלפים הערב' });
+  assert.match(dup, /already on its way/);
+  assert.equal((await outboxFor(kapish.id, 'relayed_message')).length, 1);
+});
+
+test('the recipient can close the message lane; the sender hears why, actionably', async () => {
+  const { rows: [conn] } = await db.pool.query(
+    `SELECT id FROM connections WHERE status = 'active'
+       AND ((requester_id = $1 AND target_id = $2) OR (requester_id = $2 AND target_id = $1))`,
+    [miron.id, kapish.id]);
+  await call(kapish, 'revoke_connection_feature', { connection_id: Number(conn.id), feature: 'messages' });
+
+  const refused = await call(miron, 'send_message_to_connection', { phone: kapish.phone, message: 'עוד משהו קטן' });
+  assert.match(refused, /not_granted_by_them/);
+  assert.equal((await outboxFor(kapish.id, 'relayed_message')).length, 1); // still just the earlier one
+
+  // meetings/sharing are untouched by closing the messages lane
+  const still = await call(miron, 'start_meeting_coordination', { title: 'walk', phones: [kapish.phone] });
+  assert.match(still, /"id"/);
+
+  // and kapish can reopen it himself
+  await call(kapish, 'grant_connection_feature', { connection_id: Number(conn.id), feature: 'messages' });
+  const again = await call(miron, 'send_message_to_connection', { phone: kapish.phone, message: 'עכשיו זה עובר?' });
+  assert.match(again, /"queued":true/);
 });
 
 test('every proactive instruction forbids sending tools — one message, one delivery', () => {

@@ -97,6 +97,15 @@ async function respondToConnection(client, targetUserId, connectionId, decision)
   await audit.record(client, targetUserId, `connection.${decision === 'approve' ? 'approved' : 'declined'}`, {
     connectionId, requesterId: rows[0].requester_id,
   });
+  if (decision === 'approve') {
+    // Approving the friendship is the consent moment: every feature comes on
+    // for both sides right here, so the original errand ("לתאם איתו פגישה")
+    // can continue in the same breath instead of stalling on a toggle
+    // conversation. Either side can still switch any feature off at will —
+    // see grants.autoGrantAll. Lazy require: grants requires this module.
+    const grants = require('./grants');
+    await grants.autoGrantAll(client, rows[0].id, [Number(rows[0].requester_id), Number(targetUserId)]);
+  }
   return ok({ connection: rows[0] });
 }
 

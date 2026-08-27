@@ -47,8 +47,32 @@ function defaultListIntakeSessions() {
 
 // What this person typed to the greeter while we set them up — folded into
 // their personal workspace by provisionUser (see intake/provision.js).
-function readIntakeFirstMessage(phone) {
-  try { return sessions.readPeerUserText(INTAKE_AGENT_ID, phone); } catch { return null; }
+//
+// This is the ONE place in the system where one person's private words are
+// written into another person's permanent context, so it is the one place
+// that must prove whose words they are. It failed exactly that way: user 13's
+// card carried user 8's intake message ("תזכירי לי לשאול את חיים...") for a
+// week, and on 2026-08-27 his agent read it back to him as if it were his own
+// reminder. The lookup is peer-scoped and reads correctly today, so the
+// mechanism was upstream — a session index that, at that moment, resolved his
+// key to another peer's file. Trusting that mapping is the bug regardless of
+// how it broke.
+//
+// `otherPhones` is every OTHER peer the greeter has spoken to (the sweep
+// already has the list). If any of them produces the identical text, the
+// mapping cannot be trusted for either of them — drop it. A dropped carryover
+// costs one person a warmer first turn; a wrong one hands their private
+// message to a stranger.
+function readIntakeFirstMessage(phone, otherPhones = []) {
+  try {
+    const text = sessions.readPeerUserText(INTAKE_AGENT_ID, phone);
+    if (!text) return null;
+    for (const other of otherPhones) {
+      if (other === phone) continue;
+      if (sessions.readPeerUserText(INTAKE_AGENT_ID, other) === text) return null;
+    }
+    return text;
+  } catch { return null; }
 }
 
 function intakeConfigured(configPath) {
@@ -106,7 +130,9 @@ async function sweepIntakeSessions(client, deps) {
     // Extracted before provisioning so seedWorkspace can write it straight
     // into USER.md — facts only (readPeerUserText caps + condenses), never
     // the raw transcript.
-    const firstMessage = deps.readFirstMessage ? await deps.readFirstMessage(phone) : null;
+    const firstMessage = deps.readFirstMessage
+      ? await deps.readFirstMessage(phone, sessions.map((s) => s.phone))
+      : null;
     const inviter = invited
       ? (await client.query(`SELECT first_name, last_name, phone FROM users WHERE id = $1`, [invited.requester_id])).rows[0]
       : null;
