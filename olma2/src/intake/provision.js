@@ -6,6 +6,7 @@
 // tests run against temp dirs, never the live gateway.
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const usersDomain = require('../domain/users');
 const audit = require('../domain/audit');
 const { ok, err } = require('../domain/results');
@@ -60,8 +61,19 @@ function seedWorkspace(workspace, { firstName, identityToken, firstMessage, invi
     { mode: 0o600 }
   );
   // The root of trust. tools.fs.workspaceOnly makes it unforgeable — an
-  // agent can only ever read its own.
-  fs.writeFileSync(path.join(workspace, '.olma-identity'), identityToken + '\n', { mode: 0o600 });
+  // agent can only ever read its own. chattr +i makes it un-DESTROYABLE:
+  // observed 2026-08-27, an agent whose (truncated, from-memory) token was
+  // refused "repaired" the file with its wrong version via the fs write tool,
+  // permanently breaking its own auth. The fs tools run as root, so file
+  // modes alone stop nothing; the immutable bit stops root too. Best-effort:
+  // a filesystem without chattr just keeps the old behaviour.
+  // Tests opt out (OLMA_IMMUTABLE_IDENTITY=off): an immutable file in a /tmp
+  // fixture survives rm -rf and litters the box with undeletable directories.
+  const lock = process.env.OLMA_IMMUTABLE_IDENTITY !== 'off';
+  const identityPath = path.join(workspace, '.olma-identity');
+  try { execFileSync('chattr', ['-i', identityPath]); } catch { /* fresh file or no chattr */ }
+  fs.writeFileSync(identityPath, identityToken + '\n', { mode: 0o600 });
+  if (lock) { try { execFileSync('chattr', ['+i', identityPath]); } catch { /* fs without chattr support */ } }
   for (const stock of ['BOOTSTRAP.md', 'TOOLS.md']) {
     const p = path.join(workspace, stock);
     if (fs.existsSync(p)) fs.unlinkSync(p);

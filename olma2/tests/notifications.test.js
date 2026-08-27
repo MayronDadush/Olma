@@ -271,3 +271,28 @@ test('a private reason never leaves its own agent', async () => {
   assert.ok(!JSON.stringify(rows[0].payload).includes('בדיקה רפואית'),
     'and must not be sitting in the payload either');
 });
+
+test('a crashed delivery instruction is not "their unanswered message"', async () => {
+  const unanswered = require('../src/jobs/unanswered');
+  const now = Date.now();
+  const ago = (min) => new Date(now - min * 60_000).toISOString();
+  const u = await makeUser(db.pool, '+972617000022', { firstName: 'Gil' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = now() - interval '2 days' WHERE id = $1`, [u.id]);
+  const sweep = (msgs) => withTx(db.pool, (c) =>
+    unanswered.sweepUnanswered(c, { readMessages: () => msgs, now }));
+
+  // a proactive turn crashed AFTER its instruction was written to the session:
+  // last entry is user-role but it is OUR text, not theirs. Repairing it made
+  // the repair self-feeding — a failed repair manufactured the next one.
+  assert.deepEqual((await sweep([
+    { role: 'assistant', text: 'שלום', at: ago(20) },
+    { role: 'user', text: 'DELIVERY: whatever you say in this turn is automatically sent... Their last message appears to have gone unanswered', at: ago(8) },
+  ])).repaired, [], 'an injected instruction must never trigger a repair');
+
+  // but a real person message BEHIND a crashed instruction still counts
+  assert.deepEqual((await sweep([
+    { role: 'user', text: 'יש לי שאלה', at: ago(10) },
+    { role: 'user', text: 'DELIVERY: whatever you say in this turn is automatically sent...', at: ago(4) },
+  ])).repaired, [u.id], 'the person behind the crashed turn is still owed an answer');
+});

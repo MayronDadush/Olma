@@ -333,10 +333,14 @@ test('config guard: catches every identity-critical regression', async () => {
   const v = guard.checkOpenclawConfig(bad);
   assert.equal(v.length, 3);
 
-  // identity file check: tamper with a provisioned user's file
+  // identity file check: tamper with a provisioned user's file. Provisioning
+  // now sets the immutable bit (chattr +i) exactly so an agent cannot do
+  // this — the test, unlike an agent, can lift it first.
   const { rows } = await db.pool.query(
     `SELECT workspace_path FROM users WHERE phone = '+972601000001'`);
-  fs.writeFileSync(path.join(rows[0].workspace_path, '.olma-identity'), 'olma_tok_' + '9'.repeat(32));
+  const idFile = path.join(rows[0].workspace_path, '.olma-identity');
+  try { require('node:child_process').execFileSync('chattr', ['-i', idFile]); } catch { /* fs without chattr */ }
+  fs.writeFileSync(idFile, 'olma_tok_' + '9'.repeat(32));
   const idViolations = await withTx(db.pool, (c) => guard.checkIdentityFiles(c));
   assert.ok(idViolations.some((s) => s.includes('does not match')));
 

@@ -67,6 +67,13 @@ const DELIVERY_PREAMBLE = [
   'Never call a message-sending tool — not for this message, not for any part',
   'of it. "Send X" below always means "say X as your reply", never "call a tool',
   'to send X". Calling one would deliver the message a second time.',
+  // Reasoning models narrate their work as assistant text between tool calls,
+  // and on a --deliver turn EVERY text block is a WhatsApp message — a real
+  // user received "Let me check the file\'s exact bytes a different way."
+  // (2026-08-27). Work silently; speak exactly once.
+  'Produce NO text while you work — no narration, no "let me check", nothing.',
+  'Work only through tool calls, then output exactly one thing: the final',
+  'message, or NO_REPLY. Every fragment of text you emit reaches their phone.',
 ].join(' ');
 
 function instructionFor(row) {
