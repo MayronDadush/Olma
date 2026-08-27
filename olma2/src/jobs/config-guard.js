@@ -49,6 +49,39 @@ async function checkIdentityFiles(client) {
   return violations;
 }
 
+// A carryover section holds one person's own words, quoted into their own
+// card by provisioning. If two cards quote the SAME words, one of them is
+// reading a stranger's message — which is what happened on 2026-08-20 and was
+// only noticed on 2026-08-27, by a human, after the agent read it aloud to the
+// wrong person. Prevention lives in jobs/intake.readIntakeFirstMessage; this
+// is the detector, because a leak that only a person can spot is a leak that
+// runs for a week.
+const CARRYOVER_HEADING = '## מה שכבר שיתפו';
+
+async function checkCarryovers(client) {
+  const { rows } = await client.query(
+    `SELECT id, phone, workspace_path FROM users
+     WHERE status = 'active' AND workspace_path IS NOT NULL`
+  );
+  const seen = new Map(); // carryover text → first user id that quoted it
+  const violations = [];
+  for (const u of rows) {
+    let card;
+    try { card = fs.readFileSync(path.join(u.workspace_path, 'USER.md'), 'utf8'); } catch { continue; }
+    const at = card.indexOf(CARRYOVER_HEADING);
+    if (at < 0) continue;
+    const body = card.slice(at).replace(/\s+/g, ' ').trim();
+    const prior = seen.get(body);
+    if (prior !== undefined) {
+      violations.push(
+        `users ${prior} and ${u.id} carry the SAME intake carryover text — one card is quoting another person's message`);
+    } else {
+      seen.set(body, u.id);
+    }
+  }
+  return violations;
+}
+
 // Idempotent issue filing: one open issue per distinct violation text.
 async function fileViolations(client, violations) {
   let filed = 0;
@@ -87,9 +120,10 @@ async function run(client, { configPath } = {}) {
     violations.push('openclaw.json unreadable: ' + e.message);
   }
   violations = violations.concat(await checkIdentityFiles(client));
+  violations = violations.concat(await checkCarryovers(client));
   violations = violations.concat(await checkStuckOutbox(client));
   const filed = await fileViolations(client, violations);
   return { violations: violations.length, newIssues: filed };
 }
 
-module.exports = { run, checkOpenclawConfig, checkIdentityFiles, checkStuckOutbox, fileViolations };
+module.exports = { run, checkOpenclawConfig, checkIdentityFiles, checkCarryovers, checkStuckOutbox, fileViolations };
