@@ -20,6 +20,7 @@
 //
 // Reopen: registration_open flipped back on → keep the promise, through the
 // outbox (respectfully timed), exactly once per waitlisted phone.
+const { withTx } = require('../db/pool');
 const usersDomain = require('../domain/users');
 const connectionsDomain = require('../domain/connections');
 const flags = require('../domain/flags');
@@ -144,7 +145,7 @@ async function sweepIntakeSessions(client, deps) {
 
     const prov = await provisionUser(client, {
       phone, invitedByConnectionId: invited ? invited.id : null, configPath: deps.configPath,
-      firstMessage, invitedInfo,
+      firstMessage, invitedInfo, registerUndo: deps.registerUndo,
     });
     if (!prov.ok) { out.skipped++; continue; }
     const user = prov.data.user;
@@ -155,6 +156,30 @@ async function sweepIntakeSessions(client, deps) {
     out.provisioned.push(phone);
   }
   return out;
+}
+
+// Owns the transaction, because provisioning's side effects live outside it.
+// The sweep provisions several people in ONE transaction; the DB rolls all of
+// them back together if any later step throws, but a workspace already
+// written to disk and an agent already in openclaw.json do not roll back with
+// it. That is how six orphan agents appeared on the live box on 2026-08-26,
+// each holding a real user's private carryover text, with no audit row to say
+// they existed. Anything the sweep created is undone here on the way out —
+// and this wrapper sits OUTSIDE withTx on purpose, so a failure in COMMIT
+// itself is compensated too, not just a failure inside the callback.
+async function runIntakeSweep(pool, deps) {
+  const undos = [];
+  try {
+    return await withTx(pool, (client) => sweepIntakeSessions(client, {
+      ...deps, registerUndo: (fn) => undos.push(fn),
+    }));
+  } catch (e) {
+    // Reverse order: last thing created is the first thing removed.
+    for (const undo of undos.reverse()) {
+      try { undo(); } catch (inner) { console.error(`[intake] undo failed: ${inner.message}`); }
+    }
+    throw e;
+  }
 }
 
 // ---- registration reopen ----------------------------------------------------
@@ -188,6 +213,6 @@ async function sweepReopen(client) {
 }
 
 module.exports = {
-  sweepIntakeSessions, sweepReopen, intakeConfigured, INTAKE_AGENT_ID,
+  sweepIntakeSessions, runIntakeSweep, sweepReopen, intakeConfigured, INTAKE_AGENT_ID,
   defaultListIntakeSessions, readIntakeFirstMessage,
 };
