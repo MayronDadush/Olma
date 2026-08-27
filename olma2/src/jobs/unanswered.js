@@ -39,8 +39,20 @@ const MAX_AGE_MS = 45 * 60_000;
 // The repair exists to end a silence; a drumbeat of them IS the incident.
 const REPAIR_COOLDOWN_MS = 60 * 60_000;
 
+// A proactive delivery injects its instruction into the session as a
+// `user`-role message (the DELIVERY preamble). When that turn CRASHES, the
+// instruction is the transcript's last entry — role user, recent, and not
+// from the person at all. Counting it as "their unanswered message" made the
+// repair self-feeding: a failed repair manufactured the next repair, ~19
+// rows for one user in a single morning (2026-08-27). The person's own
+// messages never start with the preamble marker.
+function isInjectedInstruction(m) {
+  return m.role === 'user' && /^DELIVERY:/.test(String(m.text || ''));
+}
+
 function lastTurn(msgs) {
   for (let i = msgs.length - 1; i >= 0; i--) {
+    if (isInjectedInstruction(msgs[i])) continue;
     if (msgs[i].role === 'user' || msgs[i].role === 'assistant') return msgs[i];
   }
   return null;

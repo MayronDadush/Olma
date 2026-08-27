@@ -8,7 +8,7 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 
-const KNOWN_CONNECTION_FEATURES = ['sharing', 'meetings'];
+const KNOWN_CONNECTION_FEATURES = ['sharing', 'meetings', 'messages'];
 
 function isKnownFeature(feature) {
   return KNOWN_CONNECTION_FEATURES.includes(feature);
@@ -34,6 +34,27 @@ async function grantFeature(client, userId, connectionId, feature) {
   );
   await audit.record(client, userId, 'grant.granted', { connectionId, feature });
   return ok({ connectionId, feature });
+}
+
+// A connection that just became active starts with EVERY feature enabled on
+// both sides (2026-08-27): approving the friendship IS the consent moment —
+// the old flow asked each person feature-by-feature afterwards, and in
+// practice mostly produced silence and dead connections. Per-side revoke
+// keeps meaning exactly what it meant: either side can switch any feature
+// off at any time, and the gate still checks both sides on every call.
+async function autoGrantAll(client, connectionId, userIds, detail) {
+  for (const uid of userIds) {
+    for (const feature of KNOWN_CONNECTION_FEATURES) {
+      await client.query(
+        `INSERT INTO connection_feature_grants (connection_id, grantor_id, feature)
+         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+        [connectionId, uid, feature]
+      );
+    }
+    await audit.record(client, uid, 'grant.auto_granted', {
+      connectionId, features: KNOWN_CONNECTION_FEATURES, ...(detail || {}),
+    });
+  }
 }
 
 async function revokeFeatureGrant(client, userId, connectionId, feature) {
@@ -88,5 +109,5 @@ async function listGrants(client, userId, connectionId) {
 
 module.exports = {
   KNOWN_CONNECTION_FEATURES, isKnownFeature,
-  grantFeature, revokeFeatureGrant, hasGrant, requireFeatureBetween, listGrants,
+  grantFeature, autoGrantAll, revokeFeatureGrant, hasGrant, requireFeatureBetween, listGrants,
 };

@@ -9,6 +9,13 @@ const quota = require('../domain/quota');
 const flagsDomain = require('../domain/flags');
 const { decide } = require('./gate');
 
+// A delivery is a full model turn — 30-90s of wall time and most of the box's
+// one core. An unbounded tick over a backlog (observed live 2026-08-27: ~20
+// minutes, during which live users' turn_start calls starved and the gateway
+// texted them raw error strings) is worse than a slower drain. Cheap terminal
+// outcomes (expire/drop/hold) stay uncapped — only actual sends count.
+const MAX_DELIVERIES_PER_TICK = 5;
+
 // deliver(user, row) → { ok, error? } — injected; production uses
 // channels/openclaw.js, tests inject a recorder.
 async function drainOnce(pool, deliver, now = new Date()) {
@@ -36,6 +43,7 @@ async function drainOnce(pool, deliver, now = new Date()) {
   );
 
   for (const row of candidates) {
+    if (outcomes.delivered + outcomes.failed >= MAX_DELIVERIES_PER_TICK) break;
     try {
       await withTx(pool, async (client) => {
         // re-lock this row; skip if another tick got it meanwhile
@@ -163,4 +171,4 @@ async function drainOnce(pool, deliver, now = new Date()) {
   return outcomes;
 }
 
-module.exports = { drainOnce };
+module.exports = { drainOnce, MAX_DELIVERIES_PER_TICK };

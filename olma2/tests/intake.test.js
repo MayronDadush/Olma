@@ -333,10 +333,14 @@ test('config guard: catches every identity-critical regression', async () => {
   const v = guard.checkOpenclawConfig(bad);
   assert.equal(v.length, 3);
 
-  // identity file check: tamper with a provisioned user's file
+  // identity file check: tamper with a provisioned user's file. Provisioning
+  // now sets the immutable bit (chattr +i) exactly so an agent cannot do
+  // this — the test, unlike an agent, can lift it first.
   const { rows } = await db.pool.query(
     `SELECT workspace_path FROM users WHERE phone = '+972601000001'`);
-  fs.writeFileSync(path.join(rows[0].workspace_path, '.olma-identity'), 'olma_tok_' + '9'.repeat(32));
+  const idFile = path.join(rows[0].workspace_path, '.olma-identity');
+  try { require('node:child_process').execFileSync('chattr', ['-i', idFile]); } catch { /* fs without chattr */ }
+  fs.writeFileSync(idFile, 'olma_tok_' + '9'.repeat(32));
   const idViolations = await withTx(db.pool, (c) => guard.checkIdentityFiles(c));
   assert.ok(idViolations.some((s) => s.includes('does not match')));
 
@@ -517,4 +521,52 @@ test('the report_issue tool carries the same rule at the call site', () => {
   // rule, not the sentence.
   assert.match(t.description, /never ask permission/,
     'a capability gap is the agent\'s own observation, not a question for the user');
+});
+
+test('a carryover that could belong to someone else is dropped, not written', () => {
+  const intake = require('../src/jobs/intake');
+  const sessions = require('../src/channels/sessions');
+  const real = sessions.readPeerUserText;
+  try {
+    // the index resolves BOTH peers to the same text — exactly the state that
+    // put user 8's intake message into user 13's card for a week
+    sessions.readPeerUserText = () => 'תזכירי לי לשאול את חיים בשעה 21:30 איפה עושים פסח';
+    assert.equal(
+      intake.readIntakeFirstMessage('+972542613404', ['+972542613404', '+972502205854']),
+      null, 'ambiguous provenance must drop the carryover');
+
+    // the ordinary case still works: only this peer has this text
+    sessions.readPeerUserText = (agentId, peer) =>
+      (peer === '+972542613404' ? 'היי' : 'משהו אחר לגמרי');
+    assert.equal(
+      intake.readIntakeFirstMessage('+972542613404', ['+972542613404', '+972502205854']),
+      'היי');
+    // and with no other peers known there is nothing to contradict it
+    assert.equal(intake.readIntakeFirstMessage('+972542613404'), 'היי');
+  } finally {
+    sessions.readPeerUserText = real;
+  }
+});
+
+test('config guard notices two cards quoting the same intake text', async () => {
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-carry-'));
+  const mk = (name, carryover) => {
+    const w = path.join(dir, name);
+    fs.mkdirSync(w, { recursive: true });
+    fs.writeFileSync(path.join(w, 'USER.md'),
+      `# User\n\nFirst name: X\n${carryover ? `\n## מה שכבר שיתפו לפני\n<<<${carryover}>>>\n` : ''}`);
+    return w;
+  };
+  const rows = [
+    { id: 1, phone: '+1', workspace_path: mk('u-1', 'איפה עושים פסח') },
+    { id: 2, phone: '+2', workspace_path: mk('u-2', 'איפה עושים פסח') },
+    { id: 3, phone: '+3', workspace_path: mk('u-3', 'משהו משלו') },
+    { id: 4, phone: '+4', workspace_path: mk('u-4', null) },
+  ];
+  const fake = { query: async () => ({ rows }) };
+  const v = await guard.checkCarryovers(fake);
+  assert.equal(v.length, 1, 'exactly one pair collides');
+  assert.match(v[0], /users 1 and 2/);
+  fs.rmSync(dir, { recursive: true, force: true });
 });

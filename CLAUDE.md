@@ -55,6 +55,40 @@ describes **v1**, which is retired-in-place: its code still sits in
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
 
+### Friendship now enables everything, and friends can pass messages (2026-08-27)
+
+Owner decision, two halves:
+
+- **Approving a connection auto-grants every feature for BOTH sides**
+  (`connections.respondToConnection` → `grants.autoGrantAll`, audited
+  `grant.auto_granted`). The old flow — approve, then each side asked
+  feature-by-feature — mostly produced silence and half-configured pairs.
+  Per-side revoke keeps its exact meaning: `revoke_connection_feature` turns
+  any feature off at any time, the gate (`requireFeatureBetween`) still
+  checks both sides on every call, and `grant_connection_feature` now exists
+  to turn one back ON. Tool descriptions, the `connection_response`
+  instruction and the doctrine were all rewritten to stop asking about
+  toggles and continue the original errand instead.
+  `scripts/backfill-connection-grants.js` (dry-run default) brings
+  pre-existing active connections up to the same rule — run ONCE at rollout,
+  never on a schedule, so a later revoke is never resurrected.
+- **`messages` is a third feature category** (one-line addition to
+  `KNOWN_CONNECTION_FEATURES`, no migration): person-to-person messages
+  relayed through Olma. `send_message_to_connection` (gated like everything
+  else) → `domain/relay.js` → ONE outbox row `kind: 'relayed_message'`,
+  urgency `urgent` — so it never folds into tomorrow's digest over a budget
+  counter, but the recipient's own quiet-hours window, pause and block still
+  hold it, which is precisely the "delivered when they're reachable"
+  promise. The recipient's agent delivers it attributed to the sender,
+  text fenced `<<< >>>` as data (max 1000 chars, refused over-length rather
+  than truncated; identical text same day deduped via the idempotency key).
+  The audit row (`relay.sent`) records that a message crossed, never its
+  content. Doctrine: relay never arranges a meeting — scheduling stays with
+  the meeting tools; a recipient tired of someone's messages gets
+  `revoke_connection_feature feature=messages` offered. A message to a
+  paused user is dropped by the gate like everything else — the sender is
+  not told (pause state must not leak through delivery behaviour).
+
 ### Known gap: integrations were left behind by the cutover
 
 v1 had per-user Google Calendar + Monday (`/opt/olma/broker/google-oauth.js`,
