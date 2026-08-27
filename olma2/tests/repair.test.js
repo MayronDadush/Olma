@@ -135,9 +135,12 @@ test('the display name is read out of the gateway\'s own conversation info', () 
 
 test('the repair writes the known name as a guess and clears the fact it hid in', async () => {
   const u = await makeUser(db.pool, '+972505404299', { firstName: null });
-  await withTx(db.pool, (c) => facts.rememberFact(c, u.id, {
-    category: 'context', fact: 'שמו חיים.', importance: 2,
-  }));
+  // Seeded raw: rememberFact now refuses a bare name statement at the door,
+  // and this row exists precisely to model a LEGACY fact written before that
+  // guard — the kind the repair script was built to clean up.
+  await db.pool.query(
+    `INSERT INTO user_facts (user_id, category, fact, importance) VALUES ($1, 'context', 'שמו חיים.', 2)`,
+    [u.id]);
   await withTx(db.pool, (c) => facts.rememberFact(c, u.id, {
     category: 'habits', fact: 'מעוניין בפוליטיקה ישראלית והיסטוריה.', importance: 1,
   }));
@@ -171,9 +174,10 @@ test('the repair refuses a phone number and leaves the rest alone', async () => 
 
 test('--keep-facts leaves the name fact in place', async () => {
   const u = await makeUser(db.pool, '+972505404222', { firstName: null });
-  await withTx(db.pool, (c) => facts.rememberFact(c, u.id, {
-    category: 'context', fact: 'שמו יובל.', importance: 2,
-  }));
+  // Raw for the same reason as above: a legacy name-fact predating the guard.
+  await db.pool.query(
+    `INSERT INTO user_facts (user_id, category, fact, importance) VALUES ($1, 'context', 'שמו יובל.', 2)`,
+    [u.id]);
   const res = await withTx(db.pool, (c) =>
     repair.repairMissingName(c, u.id, { name: 'יובל', dropFacts: false }));
   assert.equal(res.ok, true);

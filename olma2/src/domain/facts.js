@@ -34,6 +34,35 @@ function cleanFact(value) {
   return String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, MAX_FACT_CHARS);
 }
 
+// Two doctrine rules made structural (2026-08-27), refused at the one door
+// every writer shares — the live tool, the extraction job, the dashboard:
+//
+// - A phone number never belongs in a fact or a preference; contacts and
+//   connections are how people are tracked (structured + tool-backed, not
+//   prose the model might mis-recall). Nine-plus digits allowing the usual
+//   phone separators — a date ("2026-08-26", 8 digits) or an hour range
+//   ("10:00-20:00", broken by the colons) never reaches nine.
+const PHONE_LIKE_RE = /(?:\d[\s\-().]*){9,}/;
+function phoneLike(text) { return PHONE_LIKE_RE.test(String(text || '')); }
+
+// - A fact that IS a bare name statement ("שמו חיים.") is the exact row that
+//   left users nameless on every screen while their own card asserted the
+//   name two lines down — a name belongs in set_my_name, where invitations
+//   and digests can actually use it. Deliberately narrow, same reasoning as
+//   weekdayClash: a false positive here refuses a real fact, so only the
+//   nothing-but-a-name shape is caught. "שמו של הכלב רקסי" (a pet), and any
+//   sentence that carries more than the name, pass untouched.
+const NAME_STATEMENT_RES = [
+  /^(?:שמו|שמה)\s+(?!של\s)\S+(?:\s+\S+)?$/,
+  /^קוראים ל(?:ו|ה|י)\s+\S+(?:\s+\S+)?$/,
+  /^השם של(?:ו|ה|י)\s+\S+(?:\s+\S+)?$/,
+  /^(?:his|her|my|their)\s+name\s+is\s+\S+(?:\s+\S+)?$/i,
+];
+function bareNameStatement(text) {
+  const t = String(text || '').replace(/[.!]+$/, '').trim();
+  return NAME_STATEMENT_RES.some((re) => re.test(t));
+}
+
 function parseExpiry(value) {
   if (value == null || value === '') return { ok: true, value: null };
   const d = new Date(value);
@@ -47,6 +76,12 @@ async function rememberFact(client, userId, { category, fact, importance, expire
   }
   const text = cleanFact(fact);
   if (!text) return err('invalid', 'fact required');
+  if (phoneLike(text)) {
+    return err('invalid', 'a phone number never goes into a fact — save the person with save_contact, and keep the fact about them without the digits');
+  }
+  if (bareNameStatement(text)) {
+    return err('invalid', 'a name is profile, not a fact — call set_my_name instead (an unconfirmed guess is fine); stored as a fact it leaves every screen showing a phone number');
+  }
 
   const imp = Number(importance || 1);
   if (![1, 2, 3].includes(imp)) return err('invalid', 'importance must be 1, 2 or 3');
@@ -122,4 +157,5 @@ async function topFacts(client, userId, k = 10) {
 module.exports = {
   rememberFact, forgetFact, listFacts, topFacts,
   KNOWN_FACT_CATEGORIES, KNOWN_SOURCES, MAX_FACT_CHARS, cleanFact,
+  phoneLike, bareNameStatement,
 };

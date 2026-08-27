@@ -4,6 +4,7 @@
 // free-form key/value the agent maintains about how this person likes to work.
 const { ok, err } = require('./results');
 const audit = require('./audit');
+const { phoneLike } = require('./facts');
 
 const KEY_RE = /^[a-z0-9_.-]{1,64}$/;
 
@@ -11,6 +12,11 @@ async function remember(client, userId, key, value) {
   if (!KEY_RE.test(key || '')) return err('invalid', 'key must be short lowercase [a-z0-9_.-]');
   if (!value || !String(value).trim()) return err('invalid', 'value required');
   const text = String(value).trim();
+  // Same structural rule as facts (see phoneLike there): phone numbers live in
+  // contacts/connections, never in prose a model might mis-recall.
+  if (phoneLike(text)) {
+    return err('invalid', 'a phone number never goes into a preference — save the person with save_contact instead');
+  }
   // 'overwrote' in the audit detail = this write replaced a DIFFERENT existing
   // value. The corrections metric (jobs/metrics.js) needs it to tell "the
   // person changed what we knew" apart from an agent idempotently re-saving
