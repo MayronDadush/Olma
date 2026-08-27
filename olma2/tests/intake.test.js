@@ -53,7 +53,14 @@ test('provisionUser: workspace sealed, token file 0600, config updated, idempote
   assert.equal((fs.statSync(idFile).mode & 0o777), 0o600);
   const state = JSON.parse(fs.readFileSync(path.join(workspace, 'openclaw-workspace-state.json'), 'utf8'));
   assert.ok(state.setupCompletedAt, 'stock onboarding pre-neutralised');
-  assert.match(fs.readFileSync(path.join(workspace, 'AGENTS.md'), 'utf8'), /turn_start/);
+  const agentsMd = fs.readFileSync(path.join(workspace, 'AGENTS.md'), 'utf8');
+  assert.match(agentsMd, /turn_start/);
+  // The token is rendered into the doctrine itself — no placeholder survives,
+  // and the file (which now carries a secret) is locked down like the
+  // identity file it supersedes for everyday reads.
+  assert.ok(agentsMd.includes(user.identity_token), 'AGENTS.md carries this user\'s own token');
+  assert.ok(!agentsMd.includes('{{'), 'no unfilled placeholder');
+  assert.equal((fs.statSync(path.join(workspace, 'AGENTS.md')).mode & 0o777), 0o600);
 
   const cfg = occ.loadConfig(configPath);
   assert.ok(cfg.agents.list.some((a) => a.id === user.agent_id));
@@ -417,9 +424,13 @@ test('agent doctrine: act-first outranks curiosity, and one question is a hard c
   // Gender was stored correctly and then ignored on the next line
   assert.match(tpl, /hold it consistently through every sentence/);
 
-  // The token must be read alone — batching it caused a failed call every turn
-  assert.match(tpl, /as a tool call ON ITS OWN/);
-  assert.match(tpl, /not batched with `turn_start`/);
+  // The token is printed inline — 94 failed turn_start calls in one week were
+  // the model retyping or guessing it no matter how "read the file first" was
+  // phrased. The file remains only as the recovery path.
+  assert.match(tpl, /\{\{IDENTITY_TOKEN\}\}/);
+  assert.match(tpl, /exactly as printed/);
+  assert.match(tpl, /read the file `\.olma-identity`.*retry once/s);
+  assert.match(tpl, /NEVER\s+write to, edit, or "fix" `\.olma-identity`/);
   // A goodbye is not a tool call: the doctrine has to name pause_olma, or the
   // agent does what it did the night this section was written — says something
   // kind and changes nothing.

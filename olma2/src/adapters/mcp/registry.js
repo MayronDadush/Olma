@@ -138,7 +138,7 @@ function tool(name, description, props, required, handler) {
     inputSchema: {
       type: 'object',
       properties: {
-        identity_token: S('string', '.olma-identity contents'),
+        identity_token: S('string', 'your identity token, exactly as printed in AGENTS.md'),
         ...props,
       },
       required: ['identity_token', ...required],
