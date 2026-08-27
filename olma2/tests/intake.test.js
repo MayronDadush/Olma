@@ -53,7 +53,14 @@ test('provisionUser: workspace sealed, token file 0600, config updated, idempote
   assert.equal((fs.statSync(idFile).mode & 0o777), 0o600);
   const state = JSON.parse(fs.readFileSync(path.join(workspace, 'openclaw-workspace-state.json'), 'utf8'));
   assert.ok(state.setupCompletedAt, 'stock onboarding pre-neutralised');
-  assert.match(fs.readFileSync(path.join(workspace, 'AGENTS.md'), 'utf8'), /turn_start/);
+  const agentsMd = fs.readFileSync(path.join(workspace, 'AGENTS.md'), 'utf8');
+  assert.match(agentsMd, /turn_start/);
+  // The token is rendered into the doctrine itself — no placeholder survives,
+  // and the file (which now carries a secret) is locked down like the
+  // identity file it supersedes for everyday reads.
+  assert.ok(agentsMd.includes(user.identity_token), 'AGENTS.md carries this user\'s own token');
+  assert.ok(!agentsMd.includes('{{'), 'no unfilled placeholder');
+  assert.equal((fs.statSync(path.join(workspace, 'AGENTS.md')).mode & 0o777), 0o600);
 
   const cfg = occ.loadConfig(configPath);
   assert.ok(cfg.agents.list.some((a) => a.id === user.agent_id));
@@ -417,9 +424,13 @@ test('agent doctrine: act-first outranks curiosity, and one question is a hard c
   // Gender was stored correctly and then ignored on the next line
   assert.match(tpl, /hold it consistently through every sentence/);
 
-  // The token must be read alone — batching it caused a failed call every turn
-  assert.match(tpl, /as a tool call ON ITS OWN/);
-  assert.match(tpl, /not batched with `turn_start`/);
+  // The token is printed inline — 94 failed turn_start calls in one week were
+  // the model retyping or guessing it no matter how "read the file first" was
+  // phrased. The file remains only as the recovery path.
+  assert.match(tpl, /\{\{IDENTITY_TOKEN\}\}/);
+  assert.match(tpl, /exactly as printed/);
+  assert.match(tpl, /read the file `\.olma-identity`.*retry once/s);
+  assert.match(tpl, /NEVER\s+write to, edit, or "fix" `\.olma-identity`/);
   // A goodbye is not a tool call: the doctrine has to name pause_olma, or the
   // agent does what it did the night this section was written — says something
   // kind and changes nothing.
@@ -513,6 +524,36 @@ test('a carryover that could belong to someone else is dropped, not written', ()
   } finally {
     sessions.readPeerUserText = real;
   }
+});
+
+test('config guard notices an AGENTS.md carrying the wrong identity token', async () => {
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-doctrine-'));
+  const tok = (n) => 'olma_tok_' + String(n).repeat(32);
+  const mk = (name, body) => {
+    const w = path.join(dir, name);
+    fs.mkdirSync(w, { recursive: true });
+    if (body !== null) fs.writeFileSync(path.join(w, 'AGENTS.md'), body);
+    return w;
+  };
+  const rows = [
+    // correct: its own token
+    { id: 1, phone: '+1', identity_token: tok(1), workspace_path: mk('u-1', `x ${tok(1)} y`) },
+    // impersonation: user 2's doctrine holds user 1's token
+    { id: 2, phone: '+2', identity_token: tok(2), workspace_path: mk('u-2', `x ${tok(1)} y`) },
+    // never rendered — every call would fail auth
+    { id: 3, phone: '+3', identity_token: tok(3), workspace_path: mk('u-3', 'x {{IDENTITY_TOKEN}} y') },
+    // still on the pre-token doctrine: fine, it falls back to the file
+    { id: 4, phone: '+4', identity_token: tok(4), workspace_path: mk('u-4', 'read .olma-identity') },
+    // no AGENTS.md at all: not this check's business
+    { id: 5, phone: '+5', identity_token: tok(5), workspace_path: mk('u-5', null) },
+  ];
+  const fake = { query: async () => ({ rows }) };
+  const v = await guard.checkAgentsTokens(fake);
+  assert.equal(v.length, 2);
+  assert.match(v[0], /user 2 .*carries user 1's identity token/);
+  assert.match(v[1], /user 3 .*unrendered/);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('config guard notices two cards quoting the same intake text', async () => {

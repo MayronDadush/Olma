@@ -63,6 +63,43 @@ test('categories and importance are validated in code', async () => {
   });
 });
 
+// Two doctrine lines the template could only ask for, now refused in code at
+// the shared door (live tool, extraction job, dashboard all write through it).
+test('a phone number is refused as a fact — contacts are where people live', async () => {
+  await withClient(async (c) => {
+    for (const bad of ['המספר של אמא 052-626-9826', 'אחיו: +972 52 626 9826', 'להתקשר ל0526269826']) {
+      const res = await facts.rememberFact(c, user.id, { category: 'people', fact: bad });
+      assert.equal(res.ok, false, bad);
+      assert.match(res.error.message, /save_contact/);
+    }
+    // The things that legitimately carry digits still pass: a date is 8, an
+    // hour range is broken by its colons.
+    for (const fine of ['החוזה מסתיים ב-2026-09-15', 'עובד 10:00-20:00 בדרך כלל', 'בת 8 שנים']) {
+      const res = await facts.rememberFact(c, user.id, { category: 'context', fact: fine });
+      assert.equal(res.ok, true, fine);
+    }
+    await c.query(`UPDATE user_facts SET active = false WHERE user_id = $1`, [user.id]);
+  });
+});
+
+test('a bare name statement is refused as a fact — set_my_name is its home', async () => {
+  await withClient(async (c) => {
+    // The live incident row, plus its close shapes
+    for (const bad of ['שמו חיים.', 'שמה דנה כהן', 'קוראים לו יובל', 'his name is David']) {
+      const res = await facts.rememberFact(c, user.id, { category: 'context', fact: bad });
+      assert.equal(res.ok, false, bad);
+      assert.match(res.error.message, /set_my_name/);
+    }
+    // Narrow on purpose: a pet's name, or any sentence carrying more than the
+    // name, is a real fact and passes.
+    for (const fine of ['שמו של הכלב רקסי', 'הבת שלו נועה מתחילה כיתה א בספטמבר', 'שמו חיים והוא עובד בנמל']) {
+      const res = await facts.rememberFact(c, user.id, { category: 'family', fact: fine });
+      assert.equal(res.ok, true, fine);
+    }
+    await c.query(`UPDATE user_facts SET active = false WHERE user_id = $1`, [user.id]);
+  });
+});
+
 test('a fact cannot forge the USER.md section boundary', async () => {
   // refreshUserCard treats the first "\n## " as the start of the preserved
   // intake tail. A fact carrying one would fake that boundary and swallow the
