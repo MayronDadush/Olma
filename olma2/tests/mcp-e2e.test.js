@@ -114,6 +114,33 @@ test('turn_start returns proceed for a healthy user', async () => {
   assert.match(r, /"directive":"proceed"/);
 });
 
+// Observed live 2026-08-27: two connection requests sat 'night'-held until
+// morning while the recipient was actively chatting — the worker never
+// re-reads a held row before its release_after, so the gate's 15-minute
+// mid-conversation grace could not fire. An inbound message now wakes
+// night-held rows for an immediate re-hearing; the gate stays the judge.
+test('an inbound message wakes night-held rows for the gate to re-decide', async () => {
+  const tomorrow = new Date(Date.now() + 10 * 3600_000);
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, hold_reason, release_after)
+     VALUES ($1, 'connection_request', '{}', 'normal', 'night', $2),
+            ($1, 'checkin', '{}', 'normal', 'budget', $2)`,
+    [alice.id, tomorrow]);
+
+  await callTool('turn_start', { identity_token: alice.identity_token });
+
+  const { rows } = await db.pool.query(
+    `SELECT hold_reason, release_after <= now() AS woken FROM outbox
+      WHERE user_id = $1 AND sent_at IS NULL ORDER BY hold_reason`, [alice.id]);
+  const byReason = Object.fromEntries(rows.map((r) => [r.hold_reason, r.woken]));
+  assert.equal(byReason.night, true, 'night hold gets an immediate re-hearing');
+  // A budget hold's budget is still spent — waking it would override the
+  // gate, not re-ask it.
+  assert.equal(byReason.budget, false, 'budget hold keeps its schedule');
+
+  await db.pool.query(`DELETE FROM outbox WHERE user_id = $1 AND sent_at IS NULL`, [alice.id]);
+});
+
 // The failure this covers ran live for two days: the WhatsApp display name was
 // in the model's context on every single turn while users.first_name stayed
 // NULL, so the card, the dashboard and every invitation showed a phone number.
