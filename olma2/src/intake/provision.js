@@ -33,13 +33,31 @@ function defaultPaths(agentId) {
 // welcome message any more, so whatever was already said has to reach the
 // personal agent some other way. USER.md is the natural place — it already
 // survives being seeded only once (never overwritten if it has content), and
+// AGENTS.md carries the identity token INLINE ({{IDENTITY_TOKEN}} in the
+// template). Before 2026-08-27 the doctrine asked the model to read
+// .olma-identity as its own tool call first — and the audit log showed 94
+// "unknown identity token" failures on turn_start in a week, roughly one per
+// conversation opening: the model batched or retyped the token no matter how
+// the instruction was phrased. The gateway hands the shim nothing identifying
+// (no env, cwd is /root, no MCP roots), so the token must stay a parameter —
+// but it can at least arrive in the prompt the model already reads. Same
+// trust boundary as before: the same workspace, behind the same
+// tools.fs.workspaceOnly. The file stays as the recovery path and the root
+// of trust config-guard watches.
+function renderAgentsMd(identityToken) {
+  const rendered = fs.readFileSync(TEMPLATE_PATH, 'utf8').replaceAll('{{IDENTITY_TOKEN}}', identityToken);
+  if (rendered.includes('{{')) throw new Error('agents-template.md has an unfilled placeholder');
+  if (!rendered.includes(identityToken)) throw new Error('agents-template.md lost its {{IDENTITY_TOKEN}} slot');
+  return rendered;
+}
+
 // agents-template.md's doctrine tells the agent to process a pending section
 // here on its first real turn, then remove it. Extracted facts only, never
 // the raw transcript (token cost).
 function seedWorkspace(workspace, { firstName, identityToken, firstMessage, invitedInfo }) {
   fs.mkdirSync(workspace, { recursive: true });
   const now = new Date().toISOString();
-  fs.writeFileSync(path.join(workspace, 'AGENTS.md'), fs.readFileSync(TEMPLATE_PATH, 'utf8'));
+  fs.writeFileSync(path.join(workspace, 'AGENTS.md'), renderAgentsMd(identityToken), { mode: 0o600 });
   fs.writeFileSync(path.join(workspace, 'IDENTITY.md'), 'Olma — personal assistant. Warm, brief, practical.\n');
 
   let userMd = `# User\n\nFirst name: ${firstName || 'unknown'}\n`;
@@ -211,4 +229,4 @@ async function provisionUser(client, {
   return ok({ user, agentId, workspace: paths.workspace });
 }
 
-module.exports = { provisionUser, seedWorkspace, defaultPaths, TEMPLATE_PATH };
+module.exports = { provisionUser, seedWorkspace, renderAgentsMd, defaultPaths, TEMPLATE_PATH };

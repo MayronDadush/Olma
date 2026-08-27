@@ -63,6 +63,14 @@ test('availabilityWindow: stated beats default, garbage falls back safely', asyn
     // forget. What matters is that an unstated window IS the default one.
     assert.deepEqual(def.data.window, prefs.DEFAULT_WINDOW);
 
+    // The doctrine's "NEVER write phone numbers into either" is now code:
+    const phone = await prefs.remember(c, user.id, 'person.maya', 'חברה — 052-626-9826');
+    assert.equal(phone.ok, false);
+    assert.match(phone.error.message, /save_contact/);
+    // ...while values that legitimately carry digits still pass.
+    const okDigits = await prefs.remember(c, user.id, 'person.maya', 'חברה מהעבודה, נפגשות כל יום שלישי');
+    assert.equal(okDigits.ok, true);
+
     await prefs.remember(c, user.id, 'availability', '10:30-23:00');
     const stated = await prefs.availabilityWindow(c, user.id);
     assert.equal(stated.data.source, 'stated');
