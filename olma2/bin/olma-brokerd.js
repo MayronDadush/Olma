@@ -123,9 +123,12 @@ async function main() {
     // Provisioning is the whole job now — no welcome message follows it (see
     // intake/provision.js), so there is nothing left to drain eagerly; the
     // regular 30s outbox_worker tick is enough.
-    arm('intake_sweep', () => withTx(pool, (c) => intake.sweepIntakeSessions(c, {
+    // runIntakeSweep, not withTx directly: provisioning writes a workspace and
+    // a gateway agent entry that no ROLLBACK can take back, so the sweep owns
+    // its own transaction and undoes those on the way out of a failure.
+    arm('intake_sweep', () => intake.runIntakeSweep(pool, {
       configPath: OPENCLAW_CONFIG, readFirstMessage: intake.readIntakeFirstMessage,
-    })));
+    }));
     arm('reopen_sweep', () => withTx(pool, (c) => intake.sweepReopen(c)));
     // keep the intake greeter's open/closed text in sync with the flag
     const { syncIntakeWorkspace } = require('../src/intake/intake-workspace');

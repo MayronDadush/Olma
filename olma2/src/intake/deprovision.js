@@ -13,6 +13,7 @@
 // scratch" needs.
 const fs = require('node:fs');
 const occ = require('./openclaw-config');
+const { removeWorkspaceTree } = require('./provision');
 const { ok, err } = require('../domain/results');
 
 // What would be destroyed — rendered to the operator BEFORE they confirm.
@@ -71,10 +72,13 @@ async function deprovisionUser(client, phone, { configPath, removeWorkspace = tr
     restarted = r.status === 0;
   }
 
+  // Through removeWorkspaceTree, never a bare rmSync: .olma-identity carries
+  // the immutable bit (chattr +i) since 2026-08-27, which stops root too — so
+  // a plain recursive remove throws EPERM and the directory survives while
+  // the caller is told the user was deleted.
   let workspaceRemoved = false;
-  if (removeWorkspace && user.workspace_path && fs.existsSync(user.workspace_path)) {
-    fs.rmSync(user.workspace_path, { recursive: true, force: true });
-    workspaceRemoved = true;
+  if (removeWorkspace && user.workspace_path) {
+    workspaceRemoved = removeWorkspaceTree(user.workspace_path);
   }
 
   return ok({

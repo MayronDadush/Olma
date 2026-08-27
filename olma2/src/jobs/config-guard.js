@@ -135,19 +135,44 @@ async function fileViolations(client, violations) {
 
 // Messages that keep failing delivery are invisible otherwise: the worker
 // retries with backoff forever and nobody hears about it.
+// Every agent in openclaw.json must belong to somebody. The DB→disk direction
+// was checked from the start; this is the reverse, and nothing looked that way
+// until six orphan agents (u-15..u-20) were found by hand on 2026-08-27, two
+// days after a rolled-back sweep left them behind — each with a workspace
+// holding another user's carryover text and an identity token belonging to no
+// one. Only `u-<n>` ids are judged: `main`, `intake` and any future
+// infrastructure agent have no user row by design.
+async function checkOrphanAgents(client, cfg) {
+  const ids = ((cfg.agents && cfg.agents.list) || [])
+    .map((a) => (typeof a === 'string' ? a : a && a.id))
+    .filter((id) => typeof id === 'string' && /^u-\d+$/.test(id));
+  if (!ids.length) return [];
+  const { rows } = await client.query(
+    `SELECT agent_id FROM users WHERE agent_id = ANY($1) AND status = 'active'`, [ids]);
+  const known = new Set(rows.map((r) => r.agent_id));
+  return ids.filter((id) => !known.has(id)).map((id) =>
+    `agent ${id} is in openclaw.json with no active user — orphan of a failed provisioning; its workspace may hold another person's text`);
+}
+
+// The count deliberately does NOT go in the title. fileViolations dedupes on
+// the title, so a count that moves files a brand-new issue every time it
+// changes: nine near-identical "N outbox message(s) stuck" rows piled up over
+// four days of the credit outage, which is how a dashboard stops being read.
 async function checkStuckOutbox(client) {
   const { rows } = await client.query(
     `SELECT count(*)::int AS n FROM outbox
      WHERE sent_at IS NULL AND attempts >= 5 AND created_at < now() - interval '1 hour'`);
   return rows[0].n > 0
-    ? [`${rows[0].n} outbox message(s) stuck after 5+ delivery attempts — proactive messaging is failing`]
+    ? ['outbox messages stuck after 5+ delivery attempts — proactive messaging is failing']
     : [];
 }
 
 async function run(client, { configPath } = {}) {
   let violations = [];
   try {
-    violations = violations.concat(checkOpenclawConfig(occ.loadConfig(configPath)));
+    const cfg = occ.loadConfig(configPath);
+    violations = violations.concat(checkOpenclawConfig(cfg));
+    violations = violations.concat(await checkOrphanAgents(client, cfg));
   } catch (e) {
     violations.push('openclaw.json unreadable: ' + e.message);
   }
@@ -159,4 +184,7 @@ async function run(client, { configPath } = {}) {
   return { violations: violations.length, newIssues: filed };
 }
 
-module.exports = { run, checkOpenclawConfig, checkIdentityFiles, checkAgentsTokens, checkCarryovers, checkStuckOutbox, fileViolations };
+module.exports = {
+  run, checkOpenclawConfig, checkIdentityFiles, checkAgentsTokens,
+  checkCarryovers, checkOrphanAgents, checkStuckOutbox, fileViolations,
+};

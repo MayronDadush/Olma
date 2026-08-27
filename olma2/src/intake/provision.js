@@ -98,6 +98,62 @@ function seedWorkspace(workspace, { firstName, identityToken, firstMessage, invi
   }
 }
 
+// Removing a workspace means clearing the immutable bit first. `chattr +i` is
+// what stops an agent destroying its own .olma-identity (2026-08-27), and it
+// stops root too — so a plain rmSync on a sealed workspace fails with EPERM.
+// Every caller that deletes a workspace goes through here: deprovisioning a
+// user from the dashboard used to hit exactly this and leave the directory
+// behind while reporting success.
+function removeWorkspaceTree(workspace) {
+  if (!workspace || !fs.existsSync(workspace)) return false;
+  try { execFileSync('chattr', ['-i', path.join(workspace, '.olma-identity')]); } catch { /* no chattr / no file */ }
+  fs.rmSync(workspace, { recursive: true, force: true });
+  return true;
+}
+
+// Undo exactly what provisioning added, and nothing else. Best-effort by
+// design: this runs while an error is already propagating, so a failure here
+// must never replace the original error — it is logged and swallowed.
+function undoProvisionSideEffects({
+  agentId, phone, configPath, paths, removeWorkspace, agentAdded, bindingAdded, allowFromAdded,
+}) {
+  const undone = { workspace: false, agentDir: false, agent: false, binding: false, allowFrom: false };
+  try {
+    if (removeWorkspace) undone.workspace = removeWorkspaceTree(paths.workspace);
+    if (fs.existsSync(paths.agentDir)) { fs.rmSync(paths.agentDir, { recursive: true, force: true }); undone.agentDir = true; }
+  } catch (e) {
+    console.error(`[provision] undo ${agentId}: workspace cleanup failed: ${e.message}`);
+  }
+  if (agentAdded || bindingAdded || allowFromAdded) {
+    try {
+      const cfg = occ.loadConfig(configPath);
+      if (agentAdded && cfg.agents && Array.isArray(cfg.agents.list)) {
+        const before = cfg.agents.list.length;
+        cfg.agents.list = cfg.agents.list.filter((a) => a.id !== agentId);
+        undone.agent = cfg.agents.list.length !== before;
+      }
+      if (bindingAdded && Array.isArray(cfg.bindings)) {
+        const before = cfg.bindings.length;
+        cfg.bindings = cfg.bindings.filter(
+          (b) => !(b.agentId === agentId && b.match && b.match.peer && b.match.peer.id === phone));
+        undone.binding = cfg.bindings.length !== before;
+      }
+      const acc = cfg.channels && cfg.channels.whatsapp && cfg.channels.whatsapp.accounts
+        && cfg.channels.whatsapp.accounts.default;
+      if (allowFromAdded && acc && Array.isArray(acc.allowFrom)) {
+        const before = acc.allowFrom.length;
+        acc.allowFrom = acc.allowFrom.filter((p) => p !== phone);
+        undone.allowFrom = acc.allowFrom.length !== before;
+      }
+      occ.saveConfig(cfg, configPath);
+    } catch (e) {
+      console.error(`[provision] undo ${agentId}: config cleanup failed: ${e.message}`);
+    }
+  }
+  console.warn(`[provision] undid side effects for ${agentId}: ${JSON.stringify(undone)}`);
+  return undone;
+}
+
 // Activates a user end-to-end. If a 'pending' row for this phone exists
 // (created at invite/waitlist time), it is upgraded in place. Returns the
 // user row. There is no separate "welcome" step any more (2026-08-17
@@ -106,7 +162,7 @@ function seedWorkspace(workspace, { firstName, identityToken, firstMessage, invi
 // seedWorkspace — the caller has nothing left to schedule.
 async function provisionUser(client, {
   phone, firstName, invitedByConnectionId, configPath, timezone, locale,
-  firstMessage, invitedInfo,
+  firstMessage, invitedInfo, registerUndo,
 }) {
   let user = await usersDomain.getByPhone(client, phone);
   if (user && user.status === 'active' && user.agent_id) {
@@ -192,6 +248,12 @@ async function provisionUser(client, {
     await audit.record(client, user.id, 'user.name_prefilled_from_contacts', prefillAudit);
   }
 
+  // Everything below this line happens OUTSIDE the database's reach: files on
+  // disk and a gateway config the transaction cannot roll back. Whether each
+  // step actually created something is recorded, so registerUndo can put the
+  // world back exactly as it found it and never more (a workspace that
+  // already existed is never deleted by an undo).
+  const workspaceExisted = fs.existsSync(paths.workspace);
   seedWorkspace(paths.workspace, {
     firstName: user.first_name, identityToken: user.identity_token, firstMessage, invitedInfo,
   });
@@ -203,9 +265,22 @@ async function provisionUser(client, {
   // openclaw-config.js for the source references.
   const cfg = occ.loadConfig(configPath);
   const agentAdded = occ.addAgent(cfg, { id: agentId, workspace: paths.workspace, agentDir: paths.agentDir });
-  occ.addAllowFrom(cfg, phone);
+  const allowFromAdded = occ.addAllowFrom(cfg, phone);
   const bindingAdded = occ.addBinding(cfg, { agentId, phone });
   occ.saveConfig(cfg, configPath);
+
+  // The compensating action for a transaction that never commits. Six orphan
+  // agents were found on the live box (2026-08-27) from one such rollback: a
+  // sweep provisioned several people in ONE transaction, a later phone threw
+  // (the gateway CLI was failing during a credit outage), and every earlier
+  // person's DB row vanished while their workspace and agent entry stayed —
+  // invisible, unaudited, and holding another user's carryover text.
+  if (typeof registerUndo === 'function') {
+    registerUndo(() => undoProvisionSideEffects({
+      agentId, phone, configPath, paths,
+      removeWorkspace: !workspaceExisted, agentAdded, bindingAdded, allowFromAdded,
+    }));
+  }
 
   // Narrow but nasty: an agent entry left over from an earlier partial
   // provisioning means agents.list does NOT change, so this write is
@@ -229,4 +304,7 @@ async function provisionUser(client, {
   return ok({ user, agentId, workspace: paths.workspace });
 }
 
-module.exports = { provisionUser, seedWorkspace, renderAgentsMd, defaultPaths, TEMPLATE_PATH };
+module.exports = {
+  provisionUser, seedWorkspace, renderAgentsMd, defaultPaths, TEMPLATE_PATH,
+  removeWorkspaceTree, undoProvisionSideEffects,
+};

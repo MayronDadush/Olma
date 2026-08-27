@@ -8,7 +8,8 @@ const crypto = require('node:crypto');
 const { freshDb, makeUser } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const occ = require('../src/intake/openclaw-config');
-const { provisionUser } = require('../src/intake/provision');
+const provision = require('../src/intake/provision');
+const { provisionUser } = provision;
 const intake = require('../src/jobs/intake');
 const sessionIndex = require('../src/channels/sessions');
 const invites = require('../src/intake/invites');
@@ -327,6 +328,117 @@ test('session index: a corrupt index throws, so discovery can never fail silentl
   fs.writeFileSync(path.join(dir, 'sessions.json'), '{ not json');
   assert.throws(() => sessionIndex.listSessionsForAgent('intake', base), /unreadable/);
   fs.rmSync(base, { recursive: true, force: true });
+});
+
+// The live incident this closes: a sweep provisioned several people in ONE
+// transaction, a later phone threw (the gateway CLI was down in a credit
+// outage), the DB rolled every one of them back — and six workspaces plus six
+// agents.list entries stayed on disk, unaudited, each holding a real user's
+// private carryover text. A ROLLBACK cannot reach a file or a config; the
+// sweep has to put them back itself.
+test('a sweep that throws leaves no workspace and no agent behind', async () => {
+  const cfgBefore = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  const agentsBefore = cfgBefore.agents.list.map((a) => a.id);
+  const wsRoot = path.join(tmp, 'workspaces');
+  const wsBefore = fs.existsSync(wsRoot) ? fs.readdirSync(wsRoot) : [];
+
+  // Two strangers waiting; reading the SECOND one's first message explodes,
+  // exactly as the live CLI did — after the first has been fully provisioned.
+  let seen = 0;
+  let agentsAtThrow = null;
+  await assert.rejects(() => intake.runIntakeSweep(db.pool, {
+    configPath,
+    listSessions: async () => [
+      { phone: '+972601000801', ageMs: 1000 },
+      { phone: '+972601000802', ageMs: 1000 },
+    ],
+    readFirstMessage: async () => {
+      if (++seen === 2) {
+        // Snapshot at the moment of failure: the first person is fully
+        // provisioned by now, so this proves the undo below had real debris
+        // to clear rather than passing on an empty sweep.
+        agentsAtThrow = JSON.parse(fs.readFileSync(configPath, 'utf8')).agents.list.length;
+        throw new Error('openclaw sessions list timed out');
+      }
+      return 'היי';
+    },
+  }), /timed out/);
+  assert.equal(agentsAtThrow, agentsBefore.length + 1,
+    'the first person really was provisioned before the failure');
+
+  // DB rolled back — that part always worked
+  const { rows } = await db.pool.query(
+    `SELECT phone FROM users WHERE phone IN ('+972601000801','+972601000802')`);
+  assert.equal(rows.length, 0, 'no user rows survive the rollback');
+
+  // ...and now neither do the side effects it authorised
+  const cfgAfter = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  assert.deepEqual(cfgAfter.agents.list.map((a) => a.id), agentsBefore,
+    'no orphan agent left in openclaw.json');
+  assert.deepEqual(cfgAfter.bindings.filter(
+    (b) => b.match && b.match.peer && String(b.match.peer.id).startsWith('+9726010008')), [],
+    'no orphan binding left');
+  const wsAfter = fs.existsSync(wsRoot) ? fs.readdirSync(wsRoot) : [];
+  assert.deepEqual(wsAfter, wsBefore, 'no orphan workspace left on disk');
+});
+
+// The undo must be exact: it removes what provisioning added and nothing more.
+test('undo never deletes a workspace that was already there', async () => {
+  const agentId = 'u-424242';
+  const paths = provision.defaultPaths(agentId);
+  fs.mkdirSync(paths.workspace, { recursive: true });
+  fs.writeFileSync(path.join(paths.workspace, 'USER.md'), 'someone else lives here');
+
+  provision.undoProvisionSideEffects({
+    agentId, phone: '+972601000803', configPath, paths,
+    removeWorkspace: false, agentAdded: false, bindingAdded: false, allowFromAdded: false,
+  });
+  assert.ok(fs.existsSync(path.join(paths.workspace, 'USER.md')),
+    'a pre-existing workspace is never removed by an undo');
+  fs.rmSync(paths.workspace, { recursive: true, force: true });
+});
+
+// Six orphan agents (u-15..u-20) sat in the live openclaw.json for two days,
+// each holding another user's carryover text, and nothing in the system was
+// looking in this direction: the guard checked user→file and never
+// config→user.
+test('config guard: an agent with no user is a violation; main/intake are not', async () => {
+  const cfg = baseConfig();
+  cfg.agents = { list: [
+    { id: 'main' }, { id: 'intake' },
+    { id: 'u-999999', workspace: '/nope' },   // no user row → orphan
+  ] };
+  const v = await withTx(db.pool, (c) => guard.checkOrphanAgents(c, cfg));
+  assert.equal(v.length, 1, 'only the u-<n> agent is judged');
+  assert.match(v[0], /u-999999/);
+  assert.match(v[0], /no active user/);
+
+  // a real provisioned user's agent is not flagged
+  const { rows } = await db.pool.query(
+    `SELECT agent_id FROM users WHERE phone = '+972601000001'`);
+  cfg.agents.list.push({ id: rows[0].agent_id });
+  const v2 = await withTx(db.pool, (c) => guard.checkOrphanAgents(c, cfg));
+  assert.equal(v2.length, 1, 'the live agent is clean, the orphan still is not');
+});
+
+// Nine near-identical "N outbox message(s) stuck" issues piled up across four
+// days of the credit outage because the count sat in the title and the title
+// is the dedupe key. A dashboard nobody can read is a dashboard nobody reads.
+test('config guard: the stuck-outbox title is stable whatever the count', async () => {
+  const one = await withTx(db.pool, async (c) => {
+    await c.query(`INSERT INTO outbox (user_id, kind, payload, attempts, created_at)
+                   SELECT id, 'checkin', '{}', 9, now() - interval '2 hours' FROM users LIMIT 1`);
+    return guard.checkStuckOutbox(c);
+  });
+  const two = await withTx(db.pool, async (c) => {
+    await c.query(`INSERT INTO outbox (user_id, kind, payload, attempts, created_at)
+                   SELECT id, 'checkin', '{}', 9, now() - interval '2 hours' FROM users LIMIT 1`);
+    return guard.checkStuckOutbox(c);
+  });
+  assert.equal(one.length, 1);
+  assert.deepEqual(one, two, 'two stuck rows and three must file the SAME issue');
+  assert.ok(!/^\d/.test(one[0]), 'the title does not open with a varying count');
+  await db.pool.query(`DELETE FROM outbox WHERE attempts = 9`);
 });
 
 test('config guard: catches every identity-critical regression', async () => {

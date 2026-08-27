@@ -109,6 +109,48 @@ Same day, related repair: user 14's agent had overwritten its own
 by hand from `users.identity_token` (audited `admin.identity_repaired`);
 when repairing, remember the immutable bit: `chattr -i` → write → `chattr +i`.
 
+### A rollback cannot reach the filesystem (fixed 2026-08-27)
+
+Six agents — `u-15`..`u-20` — sat in the live `openclaw.json` with workspaces
+on disk, no user rows, and no audit trail. Each `USER.md` held a real user's
+private first message (יובל's "yo", חיים's "מה העניינים ירון מה זה?"), pulled
+in by the carryover bug that #44 later closed. Nobody was stranded — every
+peer who ever wrote to intake is an active user — but the debris was
+invisible for two days.
+
+Mechanism: `sweepIntakeSessions` provisions several people inside ONE
+transaction, and `provisionUser`'s side effects are a workspace write plus an
+`openclaw.json` edit. On 2026-08-26 the gateway CLI was failing (third
+Anthropic credit outage), `readIntakeFirstMessage` threw on a later phone,
+the transaction rolled back — and every earlier person's DB row vanished
+while their files and agent entries stayed. **A ROLLBACK cannot reach a file
+or a config; whatever wrote them has to put them back.**
+
+- `provisionUser` takes `registerUndo` and records what it actually created
+  (`workspaceExisted`, `agentAdded`, `bindingAdded`, `allowFromAdded`), so
+  `undoProvisionSideEffects` removes exactly that and never a workspace that
+  was already there.
+- `jobs/intake.runIntakeSweep(pool, deps)` owns the transaction — deliberately
+  OUTSIDE `withTx`, so a failure in COMMIT itself is compensated too, not just
+  one inside the callback. brokerd calls it instead of wrapping the sweep by
+  hand. Undos run in reverse order, best-effort, never masking the real error.
+- `config_guard.checkOrphanAgents` closes the detection half: the guard
+  checked user→file from the start and never config→user. Only `u-<n>` ids
+  are judged; `main`/`intake` have no user row by design.
+- Found in passing and fixed here: `deprovisionUser`'s `fs.rmSync` has been
+  broken since the `chattr +i` change — the immutable bit stops root too, so
+  deleting a user from the dashboard threw EPERM and left the workspace
+  behind. Both paths now go through `provision.removeWorkspaceTree`.
+- Also: `checkStuckOutbox` had the COUNT in its title, and `fileViolations`
+  dedupes on title — so nine near-identical "N outbox message(s) stuck" issues
+  piled up over four days of the outage. Title is now stable.
+
+**The dashboard was right the whole time and nobody read it.** The guard filed
+"user 14: identity file does not match DB token" on 2026-08-26 09:28; it was
+still `new` when the same user's broken token was diagnosed by hand a day
+later. Thirteen open issues, every one already resolved in reality. A
+detection layer nobody looks at is not a detection layer.
+
 ### Known gap: integrations were left behind by the cutover
 
 v1 had per-user Google Calendar + Monday (`/opt/olma/broker/google-oauth.js`,
