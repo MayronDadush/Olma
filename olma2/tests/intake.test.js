@@ -526,6 +526,36 @@ test('a carryover that could belong to someone else is dropped, not written', ()
   }
 });
 
+test('config guard notices an AGENTS.md carrying the wrong identity token', async () => {
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-doctrine-'));
+  const tok = (n) => 'olma_tok_' + String(n).repeat(32);
+  const mk = (name, body) => {
+    const w = path.join(dir, name);
+    fs.mkdirSync(w, { recursive: true });
+    if (body !== null) fs.writeFileSync(path.join(w, 'AGENTS.md'), body);
+    return w;
+  };
+  const rows = [
+    // correct: its own token
+    { id: 1, phone: '+1', identity_token: tok(1), workspace_path: mk('u-1', `x ${tok(1)} y`) },
+    // impersonation: user 2's doctrine holds user 1's token
+    { id: 2, phone: '+2', identity_token: tok(2), workspace_path: mk('u-2', `x ${tok(1)} y`) },
+    // never rendered — every call would fail auth
+    { id: 3, phone: '+3', identity_token: tok(3), workspace_path: mk('u-3', 'x {{IDENTITY_TOKEN}} y') },
+    // still on the pre-token doctrine: fine, it falls back to the file
+    { id: 4, phone: '+4', identity_token: tok(4), workspace_path: mk('u-4', 'read .olma-identity') },
+    // no AGENTS.md at all: not this check's business
+    { id: 5, phone: '+5', identity_token: tok(5), workspace_path: mk('u-5', null) },
+  ];
+  const fake = { query: async () => ({ rows }) };
+  const v = await guard.checkAgentsTokens(fake);
+  assert.equal(v.length, 2);
+  assert.match(v[0], /user 2 .*carries user 1's identity token/);
+  assert.match(v[1], /user 3 .*unrendered/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('config guard notices two cards quoting the same intake text', async () => {
   const os = require('node:os');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-carry-'));

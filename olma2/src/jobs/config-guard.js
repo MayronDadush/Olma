@@ -49,6 +49,38 @@ async function checkIdentityFiles(client) {
   return violations;
 }
 
+// AGENTS.md carries the identity token inline (2026-08-27), so it is now a
+// per-user secret rendered by a template — and a rendering bug could hand one
+// person's agent another person's token, which is total impersonation rather
+// than a leak. Same detector shape as the carryover check below, and the same
+// reasoning: the failure is silent, so a machine has to be the one looking.
+// A workspace still on the pre-token doctrine is NOT a violation — it falls
+// back to reading .olma-identity, which still works.
+async function checkAgentsTokens(client) {
+  const { rows } = await client.query(
+    `SELECT id, phone, workspace_path, identity_token FROM users
+     WHERE status = 'active' AND workspace_path IS NOT NULL`
+  );
+  const byToken = new Map(rows.map((u) => [u.identity_token, Number(u.id)]));
+  const violations = [];
+  for (const u of rows) {
+    let doctrine;
+    try { doctrine = fs.readFileSync(path.join(u.workspace_path, 'AGENTS.md'), 'utf8'); } catch { continue; }
+    if (doctrine.includes('{{IDENTITY_TOKEN}}')) {
+      violations.push(`user ${u.id} (${u.phone}): AGENTS.md has an unrendered {{IDENTITY_TOKEN}} — every tool call will fail auth`);
+      continue;
+    }
+    if (doctrine.includes(u.identity_token)) continue; // correct, and the common case
+    for (const [token, ownerId] of byToken) {
+      if (ownerId !== Number(u.id) && doctrine.includes(token)) {
+        violations.push(`user ${u.id} (${u.phone}): AGENTS.md carries user ${ownerId}'s identity token — that agent can act as them`);
+        break;
+      }
+    }
+  }
+  return violations;
+}
+
 // A carryover section holds one person's own words, quoted into their own
 // card by provisioning. If two cards quote the SAME words, one of them is
 // reading a stranger's message — which is what happened on 2026-08-20 and was
@@ -120,10 +152,11 @@ async function run(client, { configPath } = {}) {
     violations.push('openclaw.json unreadable: ' + e.message);
   }
   violations = violations.concat(await checkIdentityFiles(client));
+  violations = violations.concat(await checkAgentsTokens(client));
   violations = violations.concat(await checkCarryovers(client));
   violations = violations.concat(await checkStuckOutbox(client));
   const filed = await fileViolations(client, violations);
   return { violations: violations.length, newIssues: filed };
 }
 
-module.exports = { run, checkOpenclawConfig, checkIdentityFiles, checkCarryovers, checkStuckOutbox, fileViolations };
+module.exports = { run, checkOpenclawConfig, checkIdentityFiles, checkAgentsTokens, checkCarryovers, checkStuckOutbox, fileViolations };
