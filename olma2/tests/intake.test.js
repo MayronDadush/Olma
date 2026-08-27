@@ -438,6 +438,39 @@ test('intake greeter is told not to interrogate either', () => {
   assert.match(open, /not one message holding a numbered list/);
 });
 
+// Olma is a personal assistant, not a general answering machine — the model
+// underneath could imitate Google or ChatGPT, which is exactly why the
+// doctrine has to say not to. Answers stay short, precise, and grounded in
+// the person's own data; a missing piece is a question, never a fill-in from
+// general knowledge.
+test('agent doctrine: Olma does not impersonate Google or ChatGPT', () => {
+  const fs = require('node:fs');
+  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
+
+  assert.match(tpl, /## Not Google, not ChatGPT/);
+  // the value proposition the rule protects
+  assert.match(tpl, /knowing\s+THIS person, not knowing everything/);
+  // answers come from their data, and a gap is a question — not a guess from
+  // the model's training
+  assert.match(tpl, /grounded in THEIR data/);
+  assert.match(tpl, /never fill the gap from general knowledge/);
+  // essays, documents, explainers are declined as not-her-job — but in the
+  // "cannot do" shape: one plain line, and the errand inside survives
+  assert.match(tpl, /General-topic questions and writing work are out of scope/);
+  assert.match(tpl, /never the refusal alone/);
+  assert.match(tpl, /offer to save THAT as a task/);
+  // the carve-out stays narrow: unblocking their errand, never a lecture
+  assert.match(tpl, /One passing sentence that unblocks their own errand/);
+  assert.match(tpl, /a lecture, a document/);
+
+  // the greeter — where new people test the bot with exactly these questions
+  // — carries the same rule
+  const { intakeAgentsMd } = require('../src/intake/intake-workspace');
+  const open = intakeAgentsMd(true);
+  assert.match(open, /not a search engine and not a general-purpose chatbot/);
+  assert.match(open, /not what Olma is for/);
+});
+
 // A user asked Olma to look things up online and buy them. She can do neither,
 // and the refusal took his errand down with it — details included. These are
 // the instructions that turn a hard boundary into something he keeps.
