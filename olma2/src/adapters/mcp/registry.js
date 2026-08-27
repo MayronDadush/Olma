@@ -111,6 +111,25 @@ function calendarRoleFor(roles, userId) {
   return roles.connectedIds.includes(Number(userId)) ? 'invitee' : 'none';
 }
 
+// What a cancelled CONFIRMED meeting asks of each person's calendar, by their
+// role. 'auto': the shared event is already gone and Google mails invitees a
+// cancellation — nothing to do. 'self': an event may sit on their own
+// calendar (a solo event they created, or a shared one the server failed to
+// remove) — their agent should offer to take it off. 'none': no calendar.
+function cancelCalendarCleanup(roles, removed, userId) {
+  if (!roles) return 'none';
+  const role = calendarRoleFor(roles, userId);
+  if (role === 'none') return 'none';
+  if ((role === 'organiser' || role === 'invitee') && removed) return 'auto';
+  return 'self';
+}
+
+const CANCEL_CLEANUP_HINTS = {
+  auto: 'The shared calendar event was already removed; Google mails the invitees a cancellation, so the calendars are handled.',
+  self: 'If this meeting was added to the user\'s calendar, offer to remove it: find it with my_calendar_events and call delete_calendar_event (needs read_write; with view-only access, just tell them to remove it themselves).',
+  none: '',
+};
+
 // What to tell the confirming user's own agent, in their own turn.
 function calendarHintFor(role, meetingId) {
   switch (role) {
@@ -474,6 +493,9 @@ const TOOLS = [
     (client, user, a) => calendar.updateEvent(client, user.id, {
       eventId: a.event_id, title: a.title, start: a.start, end: a.end,
     })),
+  tool('delete_calendar_event', 'Remove an event from the user\'s own calendar (id from my_calendar_events). Needs read_write. Confirm with the user first — and if the user organised it with invitees, say that deleting also cancels it for them before you delete.',
+    { event_id: S('string', 'Event id from my_calendar_events') }, ['event_id'],
+    (client, user, a) => calendar.deleteEvent(client, user.id, { eventId: a.event_id })),
 
   // ---------------------------------------------------------------- issues
   tool('report_issue', 'Log a bug / edge case / feature request / friction. A capability the user wanted and Olma lacks = feature_request, source agent_detected — log it silently, never ask permission for your own observation. Ask the user only before logging their own words as user_reported.',
@@ -656,7 +678,7 @@ const TOOLS = [
     (client, user, a) => shares.addSubtaskToShared(client, user.id, a.project_task_id, a.title)),
 
   // ---------------------------------------------------------------- meetings
-  tool('start_meeting_coordination', 'Start coordinating a meeting with connected people (phones). The ONLY path for cross-user scheduling. A meeting is confirmed ONLY when the system says so — never announce agreement yourself.',
+  tool('start_meeting_coordination', 'Start coordinating a meeting with connected people (phones). The ONLY path for cross-user scheduling. A meeting is confirmed ONLY when the system says so — never announce agreement yourself. Give it a real title (the topic, in the user\'s words) — it is what everyone\'s invites and calendar event show; left empty it defaults to the participants\' names, and set_meeting_title can rename later.',
     { title: S('string', 'What the meeting is about'),
       phones: S('array', 'Participant phones (E.164)', { items: { type: 'string' } }) }, ['phones'],
     async (client, user, a) => {
@@ -731,12 +753,45 @@ const TOOLS = [
       }
       return res;
     }),
-  tool('opt_out_of_meeting', 'Leave a meeting you were invited to (initiator must cancel instead). Confirm with the user first.',
+  tool('opt_out_of_meeting', 'Leave a meeting — while it is being negotiated, OR "I can\'t come" after it was confirmed (the meeting stays on for the others; the initiator must cancel_meeting instead). This is one person bowing out, NOT a cancellation for everyone — when the user is the initiator, or means "call the whole thing off", that is cancel_meeting. Confirm with the user first.',
     { meeting_id: S('number', 'Meeting id') }, ['meeting_id'],
     async (client, user, a) => {
+      const brief = await meetingBrief(client, a.meeting_id);
       const res = await meetings.optOut(client, user.id, a.meeting_id);
       if (!res.ok) return res;
-      const brief = await meetingBrief(client, a.meeting_id);
+      const others = await activeParticipantsExcept(client, a.meeting_id, user.id);
+      // "I can't come" from a confirmed meeting: everyone still going hears
+      // it, framed as the meeting continuing — one exit is not a cancellation.
+      if (res.data.withdrew) {
+        await fanout(client, others, 'meeting_withdrawn', {
+          meetingId: Number(a.meeting_id), title: brief.title || 'meeting',
+          byName: actorName(user), slot: brief.confirmed_slot,
+        }, { key: `mwithdraw:${a.meeting_id}:${user.id}` });
+        res.data.hint = 'The meeting is still on for the others — say so. If it sits on this user\'s calendar, offer to take it off: their own event goes via delete_calendar_event; a Google invitation they decline from the calendar itself.';
+        return res;
+      }
+      // Their exit left fewer than two people, so the confirmed meeting is
+      // off for everyone — same cleanup as an initiator cancellation.
+      if (res.data.cascadeCancelled) {
+        const roles = await calendar.meetingCalendarRoles(client, a.meeting_id);
+        const removal = await calendar.removeMeetingEvent(client, a.meeting_id);
+        for (const uid of others) {
+          await enqueue(client, {
+            userId: uid, kind: 'meeting_cancelled', urgency: 'urgent',
+            payload: {
+              meetingId: Number(a.meeting_id), title: brief.title || 'meeting',
+              byName: actorName(user), wasConfirmed: true, slot: brief.confirmed_slot,
+              calendarCleanup: cancelCalendarCleanup(roles, removal.data.removed, uid),
+            },
+            idempotencyKey: `mcanc:${a.meeting_id}:${uid}`,
+          });
+        }
+        res.data.hint = `The meeting is cancelled for everyone — with you out, not enough people remain. ${removal.data.removed
+          ? CANCEL_CLEANUP_HINTS.auto
+          : CANCEL_CLEANUP_HINTS.self}`;
+        return res;
+      }
+      // Negotiation-phase exit — unchanged behaviour.
       await fanout(client, [Number(brief.initiator_id)], res.data.meetingStatus === 'no_match' ? 'meeting_no_match' : 'meeting_opt_out', {
         meetingId: Number(a.meeting_id), title: brief.title || 'meeting', byName: actorName(user),
       }, { key: `mexit:${a.meeting_id}:${user.id}` });
@@ -754,16 +809,48 @@ const TOOLS = [
     (client, user, a) => meetings.getStatus(client, user.id, a.meeting_id)),
   tool('list_my_meetings', 'Your recent meetings.', {}, [],
     (client, user) => meetings.listMine(client, user.id)),
-  tool('cancel_meeting', 'Cancel a meeting you initiated. Confirm with the user first.',
+  tool('cancel_meeting', 'Cancel a meeting you initiated, for EVERYONE — negotiating or already confirmed (until it starts). Every participant is told, and a confirmed meeting\'s shared calendar event is removed. This calls the whole thing off: when the user only means THEY cannot come, that is opt_out_of_meeting (the meeting continues without them) — ask which they mean if it is not obvious. Confirm with the user first.',
     { meeting_id: S('number', 'Meeting id') }, ['meeting_id'],
     async (client, user, a) => {
       const brief = await meetingBrief(client, a.meeting_id);
       const others = await activeParticipantsExcept(client, a.meeting_id, user.id);
       const res = await meetings.cancelMeeting(client, user.id, a.meeting_id);
-      if (res.ok) {
-        await fanout(client, others, 'meeting_cancelled', {
-          meetingId: Number(a.meeting_id), title: brief.title || 'meeting', byName: actorName(user),
-        }, { key: `mcanc:${a.meeting_id}` });
+      if (!res.ok) return res;
+      // A confirmed meeting is on calendars; take the shared event off first
+      // (best-effort, server-side) so most people have nothing left to do.
+      let roles = null, removed = false;
+      if (res.data.wasConfirmed) {
+        roles = await calendar.meetingCalendarRoles(client, a.meeting_id);
+        removed = (await calendar.removeMeetingEvent(client, a.meeting_id)).data.removed;
+      }
+      for (const uid of others) {
+        await enqueue(client, {
+          userId: uid, kind: 'meeting_cancelled', urgency: 'urgent',
+          payload: {
+            meetingId: Number(a.meeting_id), title: brief.title || 'meeting',
+            byName: actorName(user), wasConfirmed: Boolean(res.data.wasConfirmed),
+            slot: brief.confirmed_slot || undefined,
+            calendarCleanup: cancelCalendarCleanup(roles, removed, uid),
+          },
+          idempotencyKey: `mcanc:${a.meeting_id}:${uid}`,
+        });
+      }
+      const hint = CANCEL_CLEANUP_HINTS[cancelCalendarCleanup(roles, removed, user.id)];
+      if (hint) res.data.hint = hint;
+      return res;
+    }),
+  tool('set_meeting_title', 'Rename a meeting you initiated — when the user names what it is about ("שיחה על הפרויקט") or wants a different name. The name is what everyone\'s invites and calendars show, so keep it in the user\'s words. Works while negotiating or after confirmation.',
+    { meeting_id: S('number', 'Meeting id'), title: S('string', 'The new name, in the user\'s language') },
+    ['meeting_id', 'title'],
+    async (client, user, a) => {
+      const res = await meetings.setTitle(client, user.id, a.meeting_id, a.title);
+      if (!res.ok) return res;
+      // The calendar copy follows the rename (best-effort, as the organiser,
+      // server-side) so the event does not keep the stale name forever.
+      if (res.data.calendarEventId && res.data.calendarOrganiserId) {
+        const patched = await calendar.updateEvent(client, res.data.calendarOrganiserId,
+          { eventId: res.data.calendarEventId, title: res.data.title }).catch(() => null);
+        res.data.calendarUpdated = Boolean(patched && patched.ok);
       }
       return res;
     }),
