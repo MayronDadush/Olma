@@ -174,6 +174,22 @@ const TOOLS = [
         `UPDATE users SET last_inbound_at = now(),
                 checkin_misses = CASE WHEN checkin_misses > 0 THEN 0 ELSE checkin_misses END
          WHERE id = $1`, [user.id]);
+      // A person writing is awake — give every night-held row an immediate
+      // re-hearing. The gate stays the only judge: inside the 15-minute
+      // conversation grace it delivers; otherwise it simply re-holds until
+      // the window opens, so this can never deliver something the gate would
+      // refuse. Without this nudge the worker never re-reads a held row
+      // before its release_after, so the gate's own mid-conversation rule
+      // could not fire for overnight holds — observed live 2026-08-27: two
+      // connection requests sat 'night'-held for the morning while the
+      // recipient was actively chatting. Only 'night' rows: a budget hold's
+      // budget is still spent, and a blocked user's rows wait for the
+      // unblock summary — waking either would be overriding the gate, not
+      // re-asking it.
+      await client.query(
+        `UPDATE outbox SET release_after = now()
+          WHERE user_id = $1 AND sent_at IS NULL AND hold_reason = 'night'
+            AND release_after > now()`, [user.id]);
       // The WhatsApp display name is in front of the agent on EVERY turn, in the
       // gateway's "Conversation info (untrusted metadata)" block — and until
       // this line it was the one thing about a person the system watched go past

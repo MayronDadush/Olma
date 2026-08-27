@@ -89,6 +89,26 @@ Owner decision, two halves:
   paused user is dropped by the gate like everything else — the sender is
   not told (pause state must not leak through delivery behaviour).
 
+### A night-held message now gets a re-hearing when the person writes (2026-08-27)
+
+The gate always had a 15-minute mid-conversation grace ("someone who just
+wrote is awake"), but the worker never re-reads a held row before its
+`release_after` — so a row held for the night slept until morning even while
+its recipient chatted away. Observed live: two connection requests sat
+'night'-held while the recipient was mid-conversation with Olma. `turn_start`
+now nudges that user's `hold_reason = 'night'` rows to `release_after =
+now()` on every inbound message; the gate stays the only judge (inside the
+grace it delivers, otherwise it simply re-holds until the window). Only
+'night' rows — a budget hold's budget is still spent, and a blocked user's
+rows wait for the unblock summary; waking either would override the gate,
+not re-ask it.
+
+Same day, related repair: user 14's agent had overwritten its own
+`.olma-identity` with a wrong token (the incident that motivated the
+`chattr +i` lock), and the lock then froze the corrupt value in place. Fixed
+by hand from `users.identity_token` (audited `admin.identity_repaired`);
+when repairing, remember the immutable bit: `chattr -i` → write → `chattr +i`.
+
 ### Known gap: integrations were left behind by the cutover
 
 v1 had per-user Google Calendar + Monday (`/opt/olma/broker/google-oauth.js`,
