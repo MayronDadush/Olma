@@ -79,22 +79,30 @@ test('duplicate live request rejected; self-connection rejected', async () => {
   });
 });
 
-test('grants are per-side: my grant enables nothing for the other side', async () => {
+test('approval auto-grants every feature both ways; revoke stays per-side', async () => {
   const conn = await connect(miron, gali);
   await withClient(async (c) => {
-    await grants.grantFeature(c, miron.id, conn.id, 'sharing');
-    // miron granted, gali did not → gate fails with not_granted_by_them for miron...
+    // Friendship IS the consent moment (2026-08-27): everything comes on for
+    // both sides at approval — no toggle conversation.
+    for (const f of grants.KNOWN_CONNECTION_FEATURES) {
+      const gate = await grants.requireFeatureBetween(c, miron.id, gali.id, f);
+      assert.equal(gate.ok, true, `${f} should be enabled by the approval itself`);
+    }
+    // gali switches sharing off on HER side only — everyone's errors stay
+    // distinguishable, and her other features are untouched.
+    const off = await grants.revokeFeatureGrant(c, gali.id, conn.id, 'sharing');
+    assert.equal(off.ok, true);
     const gateMiron = await grants.requireFeatureBetween(c, miron.id, gali.id, 'sharing');
     assert.equal(gateMiron.ok, false);
     assert.equal(gateMiron.error.reason, 'not_granted_by_them');
-    // ...and not_granted_by_you for gali (her own side missing)
     const gateGali = await grants.requireFeatureBetween(c, gali.id, miron.id, 'sharing');
     assert.equal(gateGali.ok, false);
     assert.equal(gateGali.error.reason, 'not_granted_by_you');
+    assert.equal((await grants.requireFeatureBetween(c, miron.id, gali.id, 'meetings')).ok, true);
 
+    // ...and she can turn it back on herself.
     await grants.grantFeature(c, gali.id, conn.id, 'sharing');
-    const gateBoth = await grants.requireFeatureBetween(c, miron.id, gali.id, 'sharing');
-    assert.equal(gateBoth.ok, true);
+    assert.equal((await grants.requireFeatureBetween(c, miron.id, gali.id, 'sharing')).ok, true);
   });
 });
 
@@ -120,11 +128,7 @@ test('revoke cascade: shares revoked, grants deleted, pair meeting closed', asyn
   const conn = await connect(a, b);
 
   const { taskId, shareId, meetingId } = await withTx(db.pool, async (c) => {
-    await grants.grantFeature(c, a.id, conn.id, 'sharing');
-    await grants.grantFeature(c, b.id, conn.id, 'sharing');
-    await grants.grantFeature(c, a.id, conn.id, 'meetings');
-    await grants.grantFeature(c, b.id, conn.id, 'meetings');
-
+    // No manual grants: approval already enabled everything for both sides.
     const t = (await tasksD.addTask(c, a.id, { title: 'shared thing' })).data.task;
     const s = (await sharesD.offerShare(c, a.id, t.id, b.id, 'viewer')).data.share;
     await sharesD.respondToShare(c, b.id, s.id, 'accept');
@@ -136,7 +140,8 @@ test('revoke cascade: shares revoked, grants deleted, pair meeting closed', asyn
   const result = await withTx(db.pool, (c) => connections.revokeConnection(c, a.id, conn.id));
   assert.equal(result.ok, true);
   assert.equal(result.data.sharesRevoked, 1);
-  assert.equal(result.data.grantsDeleted, 4);
+  // every feature × both sides, all auto-granted at approval
+  assert.equal(result.data.grantsDeleted, grants.KNOWN_CONNECTION_FEATURES.length * 2);
 
   await withClient(async (c) => {
     const share = await c.query(`SELECT status FROM shares WHERE id = $1`, [shareId]);
@@ -154,11 +159,8 @@ test('revoke by the NON-initiator side closes the pair meeting as no_match', asy
   const y = await makeUser(db.pool, '+972521000007', { firstName: 'Y' });
   const conn = await connect(x, y);
 
-  const meetingId = await withTx(db.pool, async (c) => {
-    await grants.grantFeature(c, x.id, conn.id, 'meetings');
-    await grants.grantFeature(c, y.id, conn.id, 'meetings');
-    return (await meetingsD.startMeeting(c, x.id, 'walk', [y.id])).data.meeting.id;
-  });
+  const meetingId = await withTx(db.pool, async (c) =>
+    (await meetingsD.startMeeting(c, x.id, 'walk', [y.id])).data.meeting.id);
 
   // y (participant, not initiator) revokes → opt-out path → no_match
   const result = await withTx(db.pool, (c) => connections.revokeConnection(c, y.id, conn.id));
