@@ -58,16 +58,19 @@ test('meeting lifecycle fans out at every turn', async () => {
   assert.equal(rows[0].payload.slot, 'Tuesday 17:00, cafe');
   assert.equal((await outboxFor(miron.id, 'meeting_slot_proposed')).length, 0);
 
-  // kapish declines with a counter → miron hears the NEW slot
+  // kapish declines with a counter → miron hears the NEW slot, with its
+  // machine time riding along for the accept to echo back
+  const wed = slotStart('Wednesday 18:00, phone', { hours: 72 });
   await call(kapish, 'respond_to_meeting_slot', { meeting_id: meetingId, accept: false,
-    counter_proposal: 'Wednesday 18:00, phone',
-    counter_starts_at: slotStart('Wednesday 18:00, phone', { hours: 72 }) });
+    counter_proposal: 'Wednesday 18:00, phone', counter_starts_at: wed });
   rows = await outboxFor(miron.id, 'meeting_slot_proposed');
   assert.equal(rows.length, 1);
   assert.equal(rows[0].payload.slot, 'Wednesday 18:00, phone');
+  assert.equal(rows[0].payload.startsAt, wed);
 
   // miron accepts → gate closes → kapish hears CONFIRMED exactly once
-  const accepted = await call(miron, 'respond_to_meeting_slot', { meeting_id: meetingId, accept: true });
+  const accepted = await call(miron, 'respond_to_meeting_slot',
+    { meeting_id: meetingId, accept: true, accepted_starts_at: wed });
   assert.match(accepted, /"meetingStatus":"confirmed"/);
   rows = await outboxFor(kapish.id, 'meeting_confirmed');
   assert.equal(rows.length, 1);
@@ -88,6 +91,53 @@ test('plain decline notifies the initiator; cancel notifies participants', async
   await call(miron, 'cancel_meeting', { meeting_id: meetingId });
   const cancelled = await outboxFor(kapish.id, 'meeting_cancelled');
   assert.equal(cancelled.length, 1);
+});
+
+// Three proposals crossed within eight seconds in a live meeting, and each
+// participant then received the whole parade of dead slots — "does Saturday
+// work?", "does Sunday 10:30 work?" — minutes after the negotiation had moved
+// on. A queued ask about a replaced slot is cancelled the dashboard way
+// (sent_at stamped, hold_reason 'superseded', never DELETE), and once the
+// meeting confirms, the remaining asks go the same way.
+test('a newer proposal cancels the queued ask about the old slot', async () => {
+  const started = await call(miron, 'start_meeting_coordination', { title: 'race', phones: [kapish.phone] });
+  const meetingId = Number(/"id":"?(\d+)/.exec(started)[1]);
+  const sun = slotStart('Sunday 09:00, phone');
+  await call(miron, 'propose_meeting_slot', {
+    meeting_id: meetingId, slot_description: 'Sunday 09:00, phone', starts_at: sun });
+  const tue = slotStart('Tuesday 10:00, cafe', { hours: 96 });
+  await call(miron, 'propose_meeting_slot', {
+    meeting_id: meetingId, slot_description: 'Tuesday 10:00, cafe', starts_at: tue });
+
+  const rows = (await outboxFor(kapish.id, 'meeting_slot_proposed'))
+    .filter((r) => Number(r.payload.meetingId) === meetingId);
+  assert.equal(rows.length, 2);
+  const bySlot = Object.fromEntries(rows.map((r) => [r.payload.slot, r]));
+  assert.equal(bySlot['Sunday 09:00, phone'].hold_reason, 'superseded');
+  assert.ok(bySlot['Sunday 09:00, phone'].sent_at, 'cancelled, not deleted — the row still tells the story');
+  assert.equal(bySlot['Tuesday 10:00, cafe'].hold_reason, null);
+  assert.equal(bySlot['Tuesday 10:00, cafe'].sent_at, null);
+  assert.equal(bySlot['Tuesday 10:00, cafe'].payload.startsAt, tue);
+
+  // kapish's user said yes to SUNDAY — refused with the current slot, and no
+  // acceptance recorded; a bare accept without the pin is refused too
+  const stale = await call(kapish, 'respond_to_meeting_slot', {
+    meeting_id: meetingId, accept: true, accepted_starts_at: sun });
+  assert.match(stale, /slot_changed/);
+  assert.match(stale, /Tuesday 10:00, cafe/);
+  const missing = await call(kapish, 'respond_to_meeting_slot', { meeting_id: meetingId, accept: true });
+  assert.match(missing, /accepted_starts_at_required/);
+  const st = await db.pool.query(`SELECT status FROM meetings WHERE id = $1`, [meetingId]);
+  assert.equal(st.rows[0].status, 'negotiating');
+
+  // the real yes confirms — and the queued ask about the confirmed slot is
+  // superseded as well: meeting_confirmed is the message everyone hears now
+  const good = await call(kapish, 'respond_to_meeting_slot', {
+    meeting_id: meetingId, accept: true, accepted_starts_at: tue });
+  assert.match(good, /"meetingStatus":"confirmed"/);
+  const after = (await outboxFor(kapish.id, 'meeting_slot_proposed'))
+    .filter((r) => Number(r.payload.meetingId) === meetingId);
+  assert.equal(after.find((r) => r.payload.slot === 'Tuesday 10:00, cafe').hold_reason, 'superseded');
 });
 
 test('share offer and response fan out to the right sides', async () => {

@@ -74,6 +74,23 @@ async function fanout(client, userIds, kind, payload, { urgency = 'urgent', key 
   }
 }
 
+// A queued, not-yet-delivered ask about a meeting state that no longer exists
+// is a wrong question on its way to being asked: when three proposals crossed
+// within eight seconds in a live meeting, each participant then received the
+// whole parade — "does Saturday work?", "does Sunday 10:30 work?" — minutes
+// after every one of those slots was already dead. A newer proposal (or the
+// meeting closing) makes the queued rows moot, so they are cancelled the same
+// way the dashboard cancels a message: UPDATE with a hold_reason, never
+// DELETE, so the row still tells the story and nothing re-creates it.
+async function supersedeQueuedMeetingRows(client, meetingId, kinds) {
+  await client.query(
+    `UPDATE outbox SET sent_at = now(), hold_reason = 'superseded'
+      WHERE sent_at IS NULL AND kind = ANY($2)
+        AND (payload->>'meetingId')::bigint = $1`,
+    [meetingId, kinds]
+  );
+}
+
 async function activeParticipantsExcept(client, meetingId, exceptUserId) {
   const { rows } = await client.query(
     `SELECT user_id FROM meeting_participants
@@ -708,40 +725,52 @@ const TOOLS = [
     async (client, user, a) => {
       const res = await meetings.proposeSlot(client, user.id, a.meeting_id, a.slot_description, a.starts_at);
       if (res.ok) {
+        // This proposal replaces the slot, so any queued ask about the OLD one
+        // is now a wrong question — cancel it before enqueueing the new ones.
+        await supersedeQueuedMeetingRows(client, a.meeting_id, ['meeting_slot_proposed']);
         const brief = await meetingBrief(client, a.meeting_id);
         // The WHY rides along with the ask. It already existed in the row; it
         // simply never travelled, so the other side was asked to agree to a
-        // day with no idea why that day.
+        // day with no idea why that day. startsAt rides along too: it is what
+        // the recipient's agent must echo back as accepted_starts_at, pinning
+        // their yes to THIS slot.
         const reasons = await meetings.shareableConstraints(client, a.meeting_id, user.id);
         await fanout(client, await activeParticipantsExcept(client, a.meeting_id, user.id),
           'meeting_slot_proposed', {
             meetingId: Number(a.meeting_id), title: brief.title || 'meeting',
-            slot: res.data.proposedSlot, byName: actorName(user), reasons,
+            slot: res.data.proposedSlot, startsAt: res.data.startsAt,
+            byName: actorName(user), reasons,
           });
       }
       return res;
     }),
-  tool('respond_to_meeting_slot', 'Accept or decline the proposed slot. Decline may carry counter_proposal (+required counter_starts_at, same rules as propose, weekday agreement included — a refused counter leaves the decline unrecorded too, so fix it and call again). accept=true only after the user saw the EXACT slot text, day included, and agreed; if it differs from what they were discussing, point that out instead of accepting.',
+  tool('respond_to_meeting_slot', 'Accept or decline the proposed slot. accept=true only after the user saw the EXACT slot text, day included, and agreed — and it must carry accepted_starts_at, the startsAt that came with the proposal the user answered, so a yes can never land on a slot that changed while you were asking (that call is refused with the current slot instead; show it to the user). Decline may carry counter_proposal (+required counter_starts_at, same rules as propose, weekday agreement included — a refused counter leaves the decline unrecorded too, so fix it and call again).',
     { meeting_id: S('number', 'Meeting id'), accept: S('boolean', 'true = user agrees to the exact slot'),
+      accepted_starts_at: S('string', 'Required with accept=true: the startsAt of the exact proposal the user said yes to, ISO-8601 with offset, exactly as you received it. Never invent or recompute it — if you do not have it, get_meeting_status and re-confirm with the user first.'),
       counter_proposal: S('string', 'Optional new slot when declining'),
       counter_starts_at: S('string', 'Required with counter_proposal: the same moment — same DAY — ISO-8601 with offset') },
     ['meeting_id', 'accept'],
     async (client, user, a) => {
-      const res = await meetings.respondToSlot(client, user.id, a.meeting_id, a.accept, a.counter_proposal, a.counter_starts_at);
+      const res = await meetings.respondToSlot(client, user.id, a.meeting_id, a.accept, a.counter_proposal, a.counter_starts_at, a.accepted_starts_at);
       if (!res.ok) return res;
       const brief = await meetingBrief(client, a.meeting_id);
       const others = await activeParticipantsExcept(client, a.meeting_id, user.id);
       if (res.data.meetingStatus === 'confirmed') {
+        // The negotiation is over; a queued ask about any slot is moot — the
+        // meeting_confirmed fan-out is what everyone should hear next.
+        await supersedeQueuedMeetingRows(client, a.meeting_id, ['meeting_slot_proposed']);
         const roles = await meetingCalendarFanout(client, a.meeting_id, others, {
           meetingId: Number(a.meeting_id), title: brief.title || 'meeting',
           slot: res.data.slot || brief.confirmed_slot, byName: actorName(user),
         }, `mconf:${a.meeting_id}`);
         res.data.hint = calendarHintFor(calendarRoleFor(roles, user.id), Number(a.meeting_id));
       } else if (res.data.proposedSlot) {
-        // decline carried a counter → everyone else hears the NEW slot
+        // decline carried a counter → everyone else hears the NEW slot, and
+        // queued asks about the old one are cancelled first
+        await supersedeQueuedMeetingRows(client, a.meeting_id, ['meeting_slot_proposed']);
         await fanout(client, others, 'meeting_slot_proposed', {
           meetingId: Number(a.meeting_id), title: brief.title || 'meeting',
-          slot: res.data.proposedSlot, byName: actorName(user),
+          slot: res.data.proposedSlot, startsAt: res.data.startsAt, byName: actorName(user),
           reasons: await meetings.shareableConstraints(client, a.meeting_id, user.id),
         });
       } else if (!a.accept) {
@@ -773,6 +802,7 @@ const TOOLS = [
       // Their exit left fewer than two people, so the confirmed meeting is
       // off for everyone — same cleanup as an initiator cancellation.
       if (res.data.cascadeCancelled) {
+        await supersedeQueuedMeetingRows(client, a.meeting_id, ['meeting_slot_proposed', 'meeting_invite']);
         const roles = await calendar.meetingCalendarRoles(client, a.meeting_id);
         const removal = await calendar.removeMeetingEvent(client, a.meeting_id);
         for (const uid of others) {
@@ -791,7 +821,13 @@ const TOOLS = [
           : CANCEL_CLEANUP_HINTS.self}`;
         return res;
       }
-      // Negotiation-phase exit — unchanged behaviour.
+      // Negotiation-phase exit — unchanged behaviour, except that a meeting
+      // which just closed (no_match) or confirmed has no live questions left.
+      if (res.data.meetingStatus !== 'negotiating') {
+        await supersedeQueuedMeetingRows(client, a.meeting_id,
+          res.data.meetingStatus === 'no_match'
+            ? ['meeting_slot_proposed', 'meeting_invite'] : ['meeting_slot_proposed']);
+      }
       await fanout(client, [Number(brief.initiator_id)], res.data.meetingStatus === 'no_match' ? 'meeting_no_match' : 'meeting_opt_out', {
         meetingId: Number(a.meeting_id), title: brief.title || 'meeting', byName: actorName(user),
       }, { key: `mexit:${a.meeting_id}:${user.id}` });
@@ -816,6 +852,8 @@ const TOOLS = [
       const others = await activeParticipantsExcept(client, a.meeting_id, user.id);
       const res = await meetings.cancelMeeting(client, user.id, a.meeting_id);
       if (!res.ok) return res;
+      // Nothing about this meeting should still be on its way to anyone.
+      await supersedeQueuedMeetingRows(client, a.meeting_id, ['meeting_slot_proposed', 'meeting_invite']);
       // A confirmed meeting is on calendars; take the shared event off first
       // (best-effort, server-side) so most people have nothing left to do.
       let roles = null, removed = false;

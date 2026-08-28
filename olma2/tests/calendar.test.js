@@ -595,9 +595,9 @@ async function confirmedMeetingFixture(phoneA, phoneB, { bAccess = 'read_write',
     const started = await meetings.startMeeting(c, a.id, 'קפה', [b.id]);
     assert.ok(started.ok, `fixture startMeeting failed: ${JSON.stringify(started.error)}`);
     const id = Number(started.data.meeting.id);
-    await meetings.proposeSlot(c, a.id, id, 'יום חמישי 13:00 בקפה',
-      slotStart('יום חמישי 13:00 בקפה'));
-    await meetings.respondToSlot(c, b.id, id, true);
+    const when = slotStart('יום חמישי 13:00 בקפה');
+    await meetings.proposeSlot(c, a.id, id, 'יום חמישי 13:00 בקפה', when);
+    await meetings.respondToSlot(c, b.id, id, true, null, null, when);
     return id;
   });
   const status = await db.pool.query(`SELECT status FROM meetings WHERE id = $1`, [m]);
