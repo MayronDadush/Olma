@@ -189,6 +189,12 @@ async function main() {
       return out;
     });
 
+    // Behavioral evals: nightly scripted conversations against the eval
+    // user, hard checks + a judge model, alerts on the credit-alarm pipe.
+    // Inert until scripts/setup-eval-user.js has been run once on the box.
+    const evals = require('../src/jobs/evals');
+    arm('eval_sweep', () => evals.sweepEvals(pool, { send: rawSend }));
+
     // cost attribution + product analytics — hourly; retention — daily
     const usage = require('../src/jobs/usage');
     const metrics = require('../src/jobs/metrics');

@@ -87,7 +87,8 @@ async function dueUsers(client, now = Date.now()) {
               WHERE a.actor_id = u.id AND a.event = 'memory.consolidated') AS last_run
        FROM users u
       WHERE u.status = 'active' AND u.agent_id IS NOT NULL
-        AND u.workspace_path IS NOT NULL AND u.onboarded_at IS NOT NULL`
+        AND u.workspace_path IS NOT NULL AND u.onboarded_at IS NOT NULL
+        AND NOT u.is_eval`
   );
   return rows.filter((u) => {
     if (!inQuietHours(u.timezone, now)) return false;

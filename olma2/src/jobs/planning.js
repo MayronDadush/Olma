@@ -61,7 +61,7 @@ async function dueUsers(client, now = Date.now()) {
        FROM users u
        LEFT JOIN user_plans p ON p.user_id = u.id
       WHERE u.status = 'active' AND u.agent_id IS NOT NULL
-        AND u.onboarded_at IS NOT NULL AND u.paused_at IS NULL`
+        AND u.onboarded_at IS NOT NULL AND u.paused_at IS NULL AND NOT u.is_eval`
   );
   return rows.filter((u) => {
     if (!inPlanningHours(u.timezone, now)) return false;
