@@ -68,9 +68,11 @@ so ticking all four collapses to "כל היום" — the same sentence said shor
 `canonicalParts` is the one place that decides this and the page only mirrors
 it. Their own Google Calendar
 events overlay the grid (best-effort, their credential only), and options the
-OTHER side already submitted show as tap-to-adopt chips. Migration 019 (018
-was already burned on prod by another branch — `SELECT max(version)` on the
-box, as always), `domain/availability.js`, `adapters/http/picker.js`, tool
+OTHER side already submitted show as tap-to-adopt chips. Migration 020 —
+018 AND 019 were both burned on prod by other branches while this was being
+written, so the number was re-checked with `SELECT max(version)` on the box
+immediately before the merge, not once at the start.
+`domain/availability.js`, `adapters/http/picker.js`, tool
 `send_availability_picker`.
 
 - **The token in the URL is the whole credential** — same trust model as the

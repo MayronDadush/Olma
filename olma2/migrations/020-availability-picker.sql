@@ -1,10 +1,11 @@
 -- The availability picker: a short-lived, token-addressed web page where a
 -- meeting participant taps dates and dayparts instead of typing them.
 --
--- 019, not 018: production's schema_migrations already holds version 18
--- (018-image-jobs-async.sql, deployed from another branch). Same burned-number
--- rule migration 011's collision taught — the number comes from
--- SELECT max(version) on the box, never from ls on this tree.
+-- 020, not 018 or 019: both were burned on production by other branches while
+-- this one was being written (018-image-jobs-async, then 019-behavioral-evals
+-- mid-afternoon the same day). Same rule migration 011's collision taught —
+-- the number comes from SELECT max(version) on the BOX, re-checked right
+-- before the merge, never from ls on this tree.
 
 -- One row per outstanding link. The token in the URL is the whole credential
 -- (same trust model as oauth_states): random, bound to one user and one
