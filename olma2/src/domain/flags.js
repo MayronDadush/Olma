@@ -9,6 +9,10 @@ const DEFAULTS = {
   quota_daily_free: 50,      // generous placeholders; admin-tunable, not final
   quota_hourly_paid: 50,
   intake_hourly_cap: 30,     // intake circuit breaker: max new-stranger sessions/hour
+  // Media generation (domain/media.js): who may, and on which models.
+  media_gen_phones: '+972505404255',
+  media_image_model: 'meta/muse-image',
+  media_video_model: 'bytedance/seedance-2.0-mini',
 };
 
 async function getFlag(client, key) {

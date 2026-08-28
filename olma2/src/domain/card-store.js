@@ -28,10 +28,18 @@ function cardDirFor(user) {
   return path.join(user.workspace_path, CARD_DIR);
 }
 
-// Writes the PNG and returns its absolute path for the agent to put in a
+// Writes the file and returns its absolute path for the agent to put in a
 // MEDIA: line. Random filename: the name is echoed into a model's reply, so it
-// should carry nothing about the user or what is in the card.
-function saveCard(user, png) {
+// should carry nothing about the user or what is in the file. Same directory
+// and same reasoning for every media kind — schedule cards, generated images,
+// generated videos — because the boundary argument above does not care what
+// the bytes are.
+const MEDIA_EXTENSIONS = ['png', 'mp4'];
+
+function saveMedia(user, buf, ext) {
+  if (!MEDIA_EXTENSIONS.includes(ext)) {
+    return err('invalid', `unsupported media extension: ${ext}`);
+  }
   if (!user || !user.workspace_path) {
     return err('conflict', 'no workspace for this user yet — cannot store a card');
   }
@@ -40,9 +48,13 @@ function saveCard(user, png) {
   }
   const dir = cardDirFor(user);
   fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `${crypto.randomUUID()}.png`);
-  fs.writeFileSync(file, png);
-  return ok({ path: file, bytes: png.length });
+  const file = path.join(dir, `${crypto.randomUUID()}.${ext}`);
+  fs.writeFileSync(file, buf);
+  return ok({ path: file, bytes: buf.length });
+}
+
+function saveCard(user, png) {
+  return saveMedia(user, png, 'png');
 }
 
 // Cards are a delivery artefact, not a record: once the message carrying one
@@ -61,7 +73,7 @@ async function purgeOldCards(client, maxAgeHours = DEFAULT_MAX_AGE_HOURS) {
     // rows and for any box that is not the live one — not an error.
     try { entries = fs.readdirSync(dir); } catch { continue; }
     for (const name of entries) {
-      if (!name.endsWith('.png')) continue;
+      if (!MEDIA_EXTENSIONS.some((ext) => name.endsWith('.' + ext))) continue;
       const file = path.join(dir, name);
       try {
         if (fs.statSync(file).mtimeMs < cutoff) { fs.unlinkSync(file); purged++; }
@@ -71,4 +83,4 @@ async function purgeOldCards(client, maxAgeHours = DEFAULT_MAX_AGE_HOURS) {
   return purged;
 }
 
-module.exports = { saveCard, purgeOldCards, cardDirFor, CARD_DIR, DEFAULT_MAX_AGE_HOURS };
+module.exports = { saveCard, saveMedia, purgeOldCards, cardDirFor, CARD_DIR, DEFAULT_MAX_AGE_HOURS };

@@ -55,6 +55,43 @@ describes **v1**, which is retired-in-place: its code still sits in
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
 
+### Image + video generation, access-limited, spend in its own column (2026-08-28)
+
+Owner ask: only the admin and חיים's number (+972505404255) may generate
+images and video through our OpenRouter key, and the spend must be visible
+separately. `domain/media.js` owns all of it; migration 017.
+
+- **The catalog hides media models.** `GET /api/v1/models` returns text
+  models only — `bytedance/seedance-2.0-mini` and `meta/muse-image` are NOT
+  in it, but both exist: `?output_modalities=video` (27 models) /
+  `=image` (50) reveal them, and `/api/v1/videos/models` carries the real
+  per-model constraints (durations 4-15s, 480p/720p, aspect list). An
+  earlier session concluded "no video models on OpenRouter" from the bare
+  catalog — the owner's screenshot of the site proved otherwise.
+- **Images are synchronous** (`POST /api/v1/images`, ~7s measured, $0.01 for
+  muse-image): generate → PNG into the caller's own workspace via
+  `card-store.saveMedia` (same MEDIA:-boundary argument as schedule cards) →
+  the agent attaches it with a `MEDIA:` line on the same reply.
+- **Video is submit-then-sweep** (`POST /api/v1/videos` → 202 + polling_url;
+  ~95s measured for 4s/480p, $0.054): the tool inserts a `media_jobs` row and
+  tells the agent the video will arrive on its own; `sweepMediaJobs` (rides
+  the existing minute tick, no new sweeper) polls, downloads the MP4 into the
+  workspace, and enqueues ONE `media_ready` outbox row (urgent, idempotency
+  `mediajob:<id>`, plus a status-guarded UPDATE so a race cannot double-send).
+  Failures get `media_failed` once; a job pending >30min is declared lost.
+- **The gate is server-side**: `role='admin'` (מירון, user 3 — granted and
+  audited 2026-08-28) or a phone in the `media_gen_phones` flag
+  (comma-separated, dashboard-editable). Every agent SEES the tools (tool
+  listing is global) — the descriptions say never to offer the feature and
+  the refusal happens on the call.
+- **Money**: OpenRouter reports an authoritative `usage.cost` in USD on every
+  generation — recorded as-is into `media_usage_ledger` (one row per user per
+  day, images+videos together), rendered as its own block in the dashboard's
+  cost section, deliberately OUTSIDE `usage_ledger` so the Anthropic
+  reconciliation line stays honest. Models are flags too
+  (`media_image_model`, `media_video_model`) — swapping models is a dashboard
+  edit, not a deploy. FLAG_SPECS gained a `text` type for these.
+
 ### Friendship now enables everything, and friends can pass messages (2026-08-27)
 
 Owner decision, two halves:

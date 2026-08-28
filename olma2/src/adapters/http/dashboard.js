@@ -75,7 +75,7 @@ const SECTIONS = [
   { id: 'health', title: 'מצב המערכת', hint: 'האם כל התהליכים הפנימיים רצים כשורה. אדום = משהו תקוע וצריך טיפול.', render: renderHeartbeats },
   { id: 'users', title: 'משתמשים', hint: 'כל מי שרשום. אפשר לקבוע לכל אחד מכסת הודעות יומית משלו.', render: renderUsers },
   { id: 'issues', title: 'תקלות ובקשות', hint: 'דברים שאולמה או המשתמשים דיווחו עליהם ומחכים לטיפול.', render: renderIssues },
-  { id: 'cost', title: 'עלות', hint: 'כמה עולה להריץ את אולמה בפועל (שרת, Anthropic, ElevenLabs) וכמה עולה השימוש במודל לפי יום ולפי משתמש. הערכה, לא חשבונית.', render: renderCost },
+  { id: 'cost', title: 'עלות', hint: 'כמה עולה להריץ את אולמה בפועל (שרת, Anthropic, ElevenLabs) וכמה עולה השימוש במודל לפי יום ולפי משתמש — כולל עמודה נפרדת ליצירת תמונות ווידאו דרך OpenRouter. הערכה, לא חשבונית.', render: renderCost },
   { id: 'outcomes', title: 'האם זה עובד', hint: 'המדדים שנבחרו כדי לענות על השאלה הזו: ענו לנו? נסגרו משימות? נאלצו לתקן אותנו? נוצר הרגל? כל מספר עם המכנה שלו.', render: renderOutcomes },
   { id: 'metrics', title: 'שימוש במוצר', hint: 'מה באמת קורה במוצר: כמה אנשים פעילים, כמה נוצר, מה הצליח.', render: renderMetrics },
   { id: 'planned', title: 'מה מתוכנן להישלח', hint: 'כל מה שאולמה מתכננת לשלוח, ומתי — בשעון המקומי של כל משתמש. התוכן עצמו נכתב ברגע השליחה, לא מראש, ולכן כאן מופיע הנושא ולא הנוסח.', render: renderPlanned },
@@ -92,7 +92,7 @@ const SECTIONS = [
 const JOB_LABELS = {
   brokerd: 'מנוע ראשי',
   outbox_worker: 'שליחת הודעות',
-  minute_sweeps: 'תזכורות, סיכומים ושחרור ממכסה',
+  minute_sweeps: 'תזכורות, סיכומים, שחרור ממכסה ווידאו בהכנה',
   intake_sweep: 'קליטת משתמשים חדשים',
   reopen_sweep: 'עדכון רשימת המתנה',
   intake_template_sync: 'עדכון הודעת קליטה',
@@ -189,10 +189,36 @@ async function renderCost(client) {
     `SELECT agent_id, sum(cost_usd) AS cost FROM usage_system_ledger
      WHERE date >= date_trunc('month', CURRENT_DATE)
      GROUP BY agent_id ORDER BY cost DESC`);
+  // Image+video generation spend — its own ledger and its own block, exactly
+  // as asked: this money is billed by OpenRouter per generation (their own
+  // usage.cost figure, not token arithmetic), so folding it into the model
+  // table would corrupt the Anthropic reconciliation line below.
+  const media = await client.query(
+    `SELECT u.first_name, u.phone, sum(m.images) AS images, sum(m.videos) AS videos,
+            sum(m.cost_usd) AS cost,
+            sum(m.cost_usd) FILTER (WHERE m.date = CURRENT_DATE) AS cost_today
+     FROM media_usage_ledger m JOIN users u ON u.id = m.user_id
+     WHERE m.date >= date_trunc('month', CURRENT_DATE)
+     GROUP BY u.id ORDER BY cost DESC`);
 
   const infraHtml = await renderInfraCosts();
 
-  if (!days.rows.length) return infraHtml + '<p class="dim">עדיין אין נתוני עלות למשתמשים — החישוב רץ כל שעה.</p>';
+  // Rendered even when empty this month — a cost line that only appears once
+  // money was already spent is a cost line nobody was watching.
+  const mediaMonth = media.rows.reduce((s, r) => s + Number(r.cost), 0);
+  const mediaToday = media.rows.reduce((s, r) => s + Number(r.cost_today || 0), 0);
+  const mediaHtml = `<h4>יצירת תמונות ווידאו (OpenRouter)</h4>
+    <div class="stats">
+      <div class="stat"><div class="num">$${mediaMonth.toFixed(2)}</div><div class="lbl">סה״כ החודש</div></div>
+      <div class="stat"><div class="num">$${mediaToday.toFixed(2)}</div><div class="lbl">היום</div></div>
+    </div>
+    ${media.rows.length
+      ? `<table><tr><th>מי</th><th>תמונות</th><th>סרטונים</th><th>עלות</th></tr>
+         ${media.rows.map((r) => `<tr><td>${esc(r.first_name || r.phone)}</td><td>${Number(r.images)}</td><td>${Number(r.videos)}</td><td>$${Number(r.cost).toFixed(3)}</td></tr>`).join('')}</table>`
+      : '<p class="dim small">לא נוצרו תמונות או סרטונים החודש.</p>'}
+    <p class="dim small">חיוב לפי הדיווח של OpenRouter על כל יצירה — נפרד מעלות המודל של השיחות, ולא נכלל בשורת ההתאמה מול Anthropic.</p>`;
+
+  if (!days.rows.length) return infraHtml + mediaHtml + '<p class="dim">עדיין אין נתוני עלות למשתמשים — החישוב רץ כל שעה.</p>';
   const usersTotal = top.rows.reduce((s, r) => s + Number(r.cost), 0);
   const systemTotal = system.rows.reduce((s, r) => s + Number(r.cost), 0);
   const monthTotal = usersTotal + systemTotal;
@@ -218,7 +244,7 @@ async function renderCost(client) {
   } catch { /* the reconciliation is a nicety; never let it break the page */ }
 
   const anyEstimated = days.rows.some((r) => r.estimated);
-  return infraHtml + `<h4>עלות מודל לפי משתמש</h4><div class="stats">
+  return infraHtml + mediaHtml + `<h4>עלות מודל לפי משתמש</h4><div class="stats">
       <div class="stat"><div class="num">$${monthTotal.toFixed(2)}</div><div class="lbl">סה״כ החודש</div></div>
       <div class="stat"><div class="num">$${Number(todayRow.cost).toFixed(2)}</div><div class="lbl">היום</div></div>
       <div class="stat"><div class="num">${top.rows.length}</div><div class="lbl">משתמשים פעילים החודש</div></div>
@@ -306,6 +332,12 @@ const FLAG_SPECS = [
     help: 'משמש רק לחישוב ההערכה במסך העלות.' },
   { key: 'audit_retention_days', label: 'שמירת יומן פעילות (ימים)', type: 'int',
     help: 'אירועים שגרתיים נמחקים אחרי התקופה הזו. אירועי הרשאות ופרטיות נשמרים תמיד.' },
+  { key: 'media_gen_phones', label: 'יצירת תמונות ווידאו — מספרים מורשים', type: 'text',
+    help: 'מספרי טלפון (E.164, מופרדים בפסיק) שמותר להם לייצר תמונות ווידאו. אדמין מורשה תמיד, בלי קשר לרשימה.' },
+  { key: 'media_image_model', label: 'מודל יצירת תמונות', type: 'text',
+    help: 'מזהה מודל ב-OpenRouter. ריק = ברירת המחדל (meta/muse-image, ~$0.01 לתמונה).' },
+  { key: 'media_video_model', label: 'מודל יצירת וידאו', type: 'text',
+    help: 'מזהה מודל ב-OpenRouter. ריק = ברירת המחדל (bytedance/seedance-2.0-mini, ~$0.05 ל-4 שניות 480p).' },
 ];
 const EDITABLE_FLAGS = FLAG_SPECS.map((f) => f.key);
 
@@ -318,7 +350,9 @@ async function renderFlags(client, csrf) {
            <option value="true" ${val === true ? 'selected' : ''}>פתוח</option>
            <option value="false" ${val === false ? 'selected' : ''}>סגור</option>
          </select>`
-      : `<input name="value" value="${esc(String(val))}" size="7" inputmode="decimal">`;
+      : spec.type === 'text'
+        ? `<input name="value" value="${esc(val == null ? '' : String(val))}" size="28" dir="ltr">`
+        : `<input name="value" value="${esc(String(val))}" size="7" inputmode="decimal">`;
     rows.push(`<tr>
       <td><div>${spec.label}</div><div class="dim small">${spec.help}</div></td>
       <td class="nowrap"><form method="post" action="/flags" class="inline">
@@ -1645,7 +1679,11 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
             const spec = FLAG_SPECS.find((f) => f.key === body.key);
             let val;
             if (spec.type === 'bool') val = body.value === 'true';
-            else {
+            else if (spec.type === 'text') {
+              // Free text (model ids, phone lists) — trimmed and bounded, and
+              // never coerced: an empty value falls back to the code default.
+              val = String(body.value || '').trim().slice(0, 300) || null;
+            } else {
               val = Number(body.value);
               if (!Number.isFinite(val) || val < 0) val = null;
             }
