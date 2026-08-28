@@ -55,6 +55,40 @@ describes **v1**, which is retired-in-place: its code still sits in
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
 
+### Behavioral evals: nightly scripted conversations, judged twice (2026-08-28)
+
+467 unit tests were green the night "אני רוצה להפסיק את השירות" was answered
+with a warm goodbye and no tool call — unit tests check code, not the model's
+judgment. `src/evals/` closes that: every scenario is a real past incident
+(the stop request, the school essay, the UTC shift, the vehicles goal, the
+phone-in-fact, the add_task loop, the invented meeting, the gender slip),
+re-run nightly against a DEDICATED eval user's real agent — real gateway,
+real tools, real DB — on a disposable session with no `--deliver`.
+
+- **Two judging layers.** Hard checks (tool-call order + DB state) are RED
+  and alert Miron's WhatsApp immediately on the credit-alarm raw pipe; the
+  judge model (Kimi k2.6 via OpenRouter — a different family than the agent's
+  DeepSeek, a model must not grade its own relatives) flags text quality as
+  YELLOW, which alerts only on the second consecutive bad night — judge
+  scores wobble, and an alert that fires on wobble teaches the reader to
+  ignore alerts. A harness failure is ERROR and alerts like red — never
+  silently green (the /health lesson). Everything lands in
+  `eval_runs`/`eval_results` (migration 018) and renders as the dashboard's
+  "בדיקות התנהגות" section.
+- **The eval user is structurally sealed off**: `users.is_eval` (ONE row,
+  `+972599999001`), every user-selecting sweep excludes it, and the outbox
+  gate `drop`s its rows (`hold_reason='eval_user'`) — its phone is fake, so a
+  delivery attempt could only fail, climb `attempts`, and trip the
+  stuck-outbox alarm. `resetEvalUser` refuses any row not marked `is_eval` —
+  that check is the only thing between the wipe and a real person's data.
+- **Cadence**: `jobs/evals.js` ticked hourly, runs once in 03:00-06:00 IL
+  (watermark flag `evals_last_run_date`, stamped at START so a crashing suite
+  cannot loop all night — the ERR heartbeat is the signal). Manual runs:
+  `node scripts/run-evals.js [--only id,id] [--no-judge]` — exits non-zero on
+  red/error, the "before a doctrine change" half of the design.
+  **One-time arming on the box: `node scripts/setup-eval-user.js --apply`** —
+  until then the sweep reports `skipped: no eval user`.
+
 ### Image + video generation, access-limited, spend in its own column (2026-08-28)
 
 Owner ask: only the admin and חיים's number (+972505404255) may generate

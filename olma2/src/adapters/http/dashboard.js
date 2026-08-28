@@ -75,6 +75,7 @@ const SECTIONS = [
   { id: 'health', title: 'מצב המערכת', hint: 'האם כל התהליכים הפנימיים רצים כשורה. אדום = משהו תקוע וצריך טיפול.', render: renderHeartbeats },
   { id: 'users', title: 'משתמשים', hint: 'כל מי שרשום. אפשר לקבוע לכל אחד מכסת הודעות יומית משלו.', render: renderUsers },
   { id: 'issues', title: 'תקלות ובקשות', hint: 'דברים שאולמה או המשתמשים דיווחו עליהם ומחכים לטיפול.', render: renderIssues },
+  { id: 'evals', title: 'בדיקות התנהגות', hint: 'כל לילה אולמה עוברת תרחישים שנבנו מתקלות אמת — שיחה מדומה מול משתמש בדיקה, בדיקת כלים ומסד בקוד, ובדיקת ניסוח על ידי מודל שופט. אדום = כלל נשבר; צהוב = השופט הסתייג מהניסוח.', render: renderEvals },
   { id: 'cost', title: 'עלות', hint: 'כמה עולה להריץ את אולמה בפועל (שרת, Anthropic, ElevenLabs) וכמה עולה השימוש במודל לפי יום ולפי משתמש — כולל עמודה נפרדת ליצירת תמונות ווידאו דרך OpenRouter. הערכה, לא חשבונית.', render: renderCost },
   { id: 'outcomes', title: 'האם זה עובד', hint: 'המדדים שנבחרו כדי לענות על השאלה הזו: ענו לנו? נסגרו משימות? נאלצו לתקן אותנו? נוצר הרגל? כל מספר עם המכנה שלו.', render: renderOutcomes },
   { id: 'metrics', title: 'שימוש במוצר', hint: 'מה באמת קורה במוצר: כמה אנשים פעילים, כמה נוצר, מה הצליח.', render: renderMetrics },
@@ -105,6 +106,7 @@ const JOB_LABELS = {
   usage_sweep: 'חישוב עלויות',
   metrics_sweep: 'חישוב סטטיסטיקות',
   retention_sweep: 'ניקוי נתונים ישנים',
+  eval_sweep: 'בדיקות התנהגות ליליות',
 };
 
 async function renderHeartbeats(client) {
@@ -125,6 +127,51 @@ async function renderHeartbeats(client) {
       <td class="dim mono">${err ? esc(String(r.note).slice(0, 90)) : ''}</td></tr>`;
   }).join('');
   return banner + `<table><tr><th>תהליך</th><th>רץ לאחרונה</th><th>שגיאה</th></tr>${tr}</table>`;
+}
+
+// The behavioral eval board: the latest run's verdict per scenario, plus a
+// short run history. Reads only — running happens in jobs/evals.js and
+// scripts/run-evals.js.
+async function renderEvals(client) {
+  const { rows: runs } = await client.query(
+    `SELECT * FROM eval_runs ORDER BY id DESC LIMIT 5`);
+  if (!runs.length) {
+    return `<p class="dim">עוד לא רצה אף בדיקה. ההרצה הלילית נדרכת אחרי scripts/setup-eval-user.js --apply בשרת.</p>`;
+  }
+  const latest = runs[0];
+  const { rows: results } = await client.query(
+    `SELECT * FROM eval_results WHERE run_id = $1 ORDER BY scenario`, [latest.id]);
+
+  const bad = Number(latest.reds) + Number(latest.errors);
+  const banner = !latest.finished_at
+    ? `<div class="banner">⏳ ריצה ${latest.id} עדיין באמצע…</div>`
+    : bad > 0
+      ? `<div class="banner bad">⚠ ריצה אחרונה: ${latest.reds} אדומים, ${latest.errors} שגיאות</div>`
+      : Number(latest.yellows) > 0
+        ? `<div class="banner">🟡 ריצה אחרונה: ${latest.yellows} הסתייגויות ניסוח, אפס כללים שבורים</div>`
+        : `<div class="banner ok">✓ ריצה אחרונה: כל ${latest.greens} התרחישים ירוקים</div>`;
+
+  const ICONS = { green: '🟢', yellow: '🟡', red: '🔴', error: '⚠️' };
+  const tr = results.map((r) => {
+    const hard = (r.hard_failures || []).map((f) => f.name).join('; ');
+    const judge = r.judge && r.judge.problems && r.judge.problems.length
+      ? r.judge.problems.map((p) => p.rule).join('; ')
+      : (r.judge && r.judge.error ? `שופט: ${r.judge.error}` : '');
+    return `<tr class="${r.status === 'red' || r.status === 'error' ? 'bad' : ''}">
+      <td>${ICONS[r.status] || ''} ${esc(r.scenario)}</td>
+      <td class="dim">${esc(hard || judge || '')}</td>
+      <td class="dim">${r.duration_ms ? Math.round(r.duration_ms / 1000) + 's' : ''}</td></tr>`;
+  }).join('');
+
+  const history = runs.map((r) => {
+    const when = ago(r.started_at);
+    return `<span class="dim">#${r.id} (${esc(r.trigger)}, ${when}): 🟢${r.greens} 🟡${r.yellows} 🔴${r.reds} ⚠️${r.errors}</span>`;
+  }).join(' · ');
+
+  return banner
+    + `<table><tr><th>תרחיש</th><th>מה נמצא</th><th>משך</th></tr>${tr}</table>`
+    + `<p>${history}</p>`
+    + (latest.agent_model ? `<p class="dim">מודל שנבדק: ${esc(latest.agent_model)}</p>` : '');
 }
 
 // One line per external service, or a dim explanatory note when it can't be read.

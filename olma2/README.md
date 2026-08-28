@@ -14,6 +14,7 @@ artifact (see CLAUDE.md at repo root for context and server details).
 | `src/adapters/http/` | Admin + user dashboards over the same domain (Phase F) |
 | `src/outbox/` | Respectful-delivery worker (Phase D) |
 | `src/jobs/` | checkin ladder, digest, usage, metrics (Phase D+) |
+| `src/evals/` | nightly behavioral evals: scenario suite + harness (see jobs/evals.js) |
 | `bin/olma-brokerd.js` | Long-lived daemon: pool, flood counters, outbox worker (Phase C) |
 | `bin/olma-mcp.js` | Thin stdio shim → brokerd unix socket (Phase C) |
 | `tests/` | `node --test`; each file builds a throwaway DB via the real migrations |
