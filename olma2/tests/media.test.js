@@ -1,8 +1,10 @@
 'use strict';
-// Media generation (domain/media.js): the access gate, the synchronous image
-// path, the submit-then-sweep video path, and the money — one row per user
-// per day in media_usage_ledger, images and videos together, priced by
-// OpenRouter's own usage.cost figure and never re-derived.
+// Media generation (domain/media.js): the access gate, the submit-then-sweep
+// path BOTH kinds now use (images joined videos on it 2026-08-28, after a
+// real prompt from מירון proved images cannot safely stay synchronous), and
+// the money — one row per user per day in media_usage_ledger, images and
+// videos together, priced by OpenRouter's own usage.cost figure and never
+// re-derived.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -47,7 +49,7 @@ function fakeFetch(routes) {
     calls.push({ url: String(url), opts });
     for (const [suffix, answer] of routes) {
       if (String(url).includes(suffix)) {
-        const a = typeof answer === 'function' ? answer(url, opts) : answer;
+        const a = typeof answer === 'function' ? await answer(url, opts) : answer;
         return {
           ok: a.status ? a.status < 400 : true,
           status: a.status || 200,
@@ -86,82 +88,146 @@ test('the allowlist is a live flag, not a constant', async () => {
   });
 });
 
-test('a refused user spends nothing and no request leaves the box', async () => {
+test('a refused user spends nothing and no job is queued', async () => {
   await withClient(async (c) => {
-    const fetchImpl = fakeFetch([]);
-    const res = await media.generateImage(c, stranger, { prompt: 'a cat' }, { fetchImpl, apiKey: KEY });
-    assert.equal(res.ok, false);
-    assert.equal(res.error.code, 'forbidden');
-    assert.equal(fetchImpl.calls.length, 0);
+    const before_ = await c.query(`SELECT count(*)::int AS n FROM media_jobs WHERE user_id = $1`, [stranger.id]);
+    const img = await media.startImage(c, stranger, { prompt: 'a cat' }, { apiKey: KEY });
+    assert.equal(img.ok, false);
+    assert.equal(img.error.code, 'forbidden');
+    const vid = await media.startVideo(c, stranger, { prompt: 'a cat' }, { apiKey: KEY });
+    assert.equal(vid.ok, false);
+    assert.equal(vid.error.code, 'forbidden');
+    const after_ = await c.query(`SELECT count(*)::int AS n FROM media_jobs WHERE user_id = $1`, [stranger.id]);
+    assert.equal(after_.rows[0].n, before_.rows[0].n);
   });
 });
 
-// ---- images ----------------------------------------------------------------
+// ---- images (submit-then-sweep, same as video — see file header) -----------
+// The image endpoint has no polling URL of its own: one blocking call IS the
+// whole job, so the sweep does it in a single step (runImageJob), unlike
+// video's separate poll-then-download.
 
-test('image: generated, stored in the workspace, and the cost is OpenRouter\'s own number', async () => {
+test('image: submit creates a pending job; the sweep generates, charges, and enqueues delivery ONCE', async () => {
   await withClient(async (c) => {
-    const fetchImpl = fakeFetch([
-      ['/images', { json: { data: [{ b64_json: PNG.toString('base64'), media_type: 'image/png' }], usage: { cost: 0.01 } } }],
-    ]);
-    const res = await media.generateImage(c, haim, { prompt: 'a blue triangle' }, { fetchImpl, apiKey: KEY });
+    const submit = fakeFetch([]); // startImage makes no network call at all
+    const res = await media.startImage(c, haim, { prompt: 'a blue triangle' }, { fetchImpl: submit, apiKey: KEY });
     assert.equal(res.ok, true);
-    assert.ok(res.data.path.startsWith(haim.workspace_path + '/cards/'));
-    assert.ok(res.data.path.endsWith('.png'));
-    assert.ok(fs.existsSync(res.data.path));
-    assert.equal(res.data.cost_usd, 0.01);
-    assert.ok(res.data.next_step.includes('MEDIA: ' + res.data.path));
+    assert.equal(res.data.status, 'pending');
+    assert.ok(res.data.next_step.includes('SENT AUTOMATICALLY'));
+    assert.equal(submit.calls.length, 0);
+    const jobId = res.data.job_id;
 
-    // The default model went out on the wire; the ledger got one image.
-    const sent = JSON.parse(fetchImpl.calls[0].opts.body);
-    assert.equal(sent.model, media.DEFAULT_IMAGE_MODEL);
-    const { rows } = await c.query(
-      `SELECT * FROM media_usage_ledger WHERE user_id = $1`, [haim.id]);
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0].images, 1);
-    assert.equal(rows[0].videos, 0);
-    assert.equal(Number(rows[0].cost_usd), 0.01);
+    const done = fakeFetch([
+      ['/images', { json: { data: [{ b64_json: PNG.toString('base64') }], usage: { cost: 0.01 } } }],
+    ]);
+    const s1 = await media.sweepMediaJobs(c, { fetchImpl: done, apiKey: KEY });
+    assert.deepEqual(s1.completed, [jobId]);
+    // The default model went out on the wire.
+    assert.equal(JSON.parse(done.calls[0].opts.body).model, media.DEFAULT_IMAGE_MODEL);
+
+    const { rows: [job] } = await c.query(`SELECT * FROM media_jobs WHERE id = $1`, [jobId]);
+    assert.equal(job.status, 'completed');
+    assert.ok(job.file_path.startsWith(haim.workspace_path + '/cards/'));
+    assert.ok(job.file_path.endsWith('.png'));
+    assert.ok(fs.existsSync(job.file_path));
+    assert.equal(Number(job.cost_usd), 0.01);
+
+    const { rows: led } = await c.query(`SELECT * FROM media_usage_ledger WHERE user_id = $1`, [haim.id]);
+    assert.equal(led[0].images, 1);
+    assert.equal(led[0].videos, 0);
+
+    const { rows: out } = await c.query(
+      `SELECT * FROM outbox WHERE user_id = $1 AND kind = 'media_ready'`, [haim.id]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].urgency, 'urgent');
+    assert.equal(out[0].payload.kind, 'image');
+    assert.equal(out[0].payload.path, job.file_path);
 
     // The audit row records money and model, never the prompt.
     const { rows: audit } = await c.query(
       `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'media.image_generated'`, [haim.id]);
     assert.equal(audit.length, 1);
     assert.ok(!JSON.stringify(audit[0].detail).includes('triangle'));
+
+    // Second sweep: the job is no longer pending — nothing happens twice.
+    const s2 = await media.sweepMediaJobs(c, { fetchImpl: done, apiKey: KEY });
+    assert.deepEqual(s2.completed, []);
+    const { rows: again } = await c.query(
+      `SELECT count(*)::int AS n FROM outbox WHERE user_id = $1 AND kind = 'media_ready'`, [haim.id]);
+    assert.equal(again[0].n, 1);
+  });
+});
+
+test('image: a request that takes far longer than any MCP call budget still succeeds — the point of moving it to the sweep', async () => {
+  await withClient(async (c) => {
+    const res = await media.startImage(c, admin, { prompt: 'a very detailed scene' }, { apiKey: KEY });
+    assert.equal(res.ok, true);
+    // A slow provider response (deliberately past the old 25-30s tool-call
+    // ceiling this replaced) — the sweep has no such ceiling of its own.
+    const slow = fakeFetch([
+      ['/images', async () => {
+        await new Promise((r) => setTimeout(r, 50));
+        return { json: { data: [{ b64_json: PNG.toString('base64') }], usage: { cost: 0.02 } } };
+      }],
+    ]);
+    const s = await media.sweepMediaJobs(c, { fetchImpl: slow, apiKey: KEY });
+    assert.deepEqual(s.completed, [res.data.job_id]);
   });
 });
 
 test('image: the model flag overrides the default without a deploy', async () => {
   await withClient(async (c) => {
     await flags.setFlag(c, media.IMAGE_MODEL_FLAG, 'openai/gpt-5-image-mini');
+    const res = await media.startImage(c, admin, { prompt: 'a dog' }, { apiKey: KEY });
     const fetchImpl = fakeFetch([
       ['/images', { json: { data: [{ b64_json: PNG.toString('base64') }], usage: { cost: 0.008 } } }],
     ]);
-    const res = await media.generateImage(c, admin, { prompt: 'a dog' }, { fetchImpl, apiKey: KEY });
-    assert.equal(res.ok, true);
+    await media.sweepMediaJobs(c, { fetchImpl, apiKey: KEY });
     assert.equal(JSON.parse(fetchImpl.calls[0].opts.body).model, 'openai/gpt-5-image-mini');
     await flags.setFlag(c, media.IMAGE_MODEL_FLAG, media.DEFAULT_IMAGE_MODEL);
+    // Confirm the row actually completed under that model.
+    const { rows: [job] } = await c.query(`SELECT model, status FROM media_jobs WHERE id = $1`, [res.data.job_id]);
+    assert.equal(job.model, 'openai/gpt-5-image-mini');
+    assert.equal(job.status, 'completed');
   });
 });
 
-test('image: a provider error is a clean refusal, and no money is recorded', async () => {
+test('image: a provider error fails the job once, and no money is recorded', async () => {
   await withClient(async (c) => {
-    const fetchImpl = fakeFetch([
+    const res = await media.startImage(c, admin, { prompt: 'a cat' }, { apiKey: KEY });
+    const before_ = await c.query(`SELECT coalesce(sum(images),0)::int AS n FROM media_usage_ledger`);
+    const fail = fakeFetch([
       ['/images', { status: 402, json: { error: { message: 'Insufficient credits' } } }],
     ]);
-    const before_ = await c.query(`SELECT coalesce(sum(images),0)::int AS n FROM media_usage_ledger`);
-    const res = await media.generateImage(c, admin, { prompt: 'a cat' }, { fetchImpl, apiKey: KEY });
-    assert.equal(res.ok, false);
-    assert.ok(res.error.message.includes('Insufficient credits'));
+    const s = await media.sweepMediaJobs(c, { fetchImpl: fail, apiKey: KEY });
+    assert.deepEqual(s.failed, [res.data.job_id]);
+    const { rows: [job] } = await c.query(`SELECT status, error FROM media_jobs WHERE id = $1`, [res.data.job_id]);
+    assert.equal(job.status, 'failed');
+    assert.ok(job.error.includes('Insufficient credits'));
     const after_ = await c.query(`SELECT coalesce(sum(images),0)::int AS n FROM media_usage_ledger`);
+    assert.equal(after_.rows[0].n, before_.rows[0].n);
+    const { rows: out } = await c.query(
+      `SELECT payload FROM outbox WHERE user_id = $1 AND kind = 'media_failed' ORDER BY id DESC LIMIT 1`, [admin.id]);
+    assert.equal(out[0].payload.kind, 'image');
+  });
+});
+
+test('image: empty and oversized prompts are refused before any job is queued', async () => {
+  await withClient(async (c) => {
+    const before_ = await c.query(`SELECT count(*)::int AS n FROM media_jobs WHERE user_id = $1`, [admin.id]);
+    assert.equal((await media.startImage(c, admin, { prompt: '  ' }, { apiKey: KEY })).ok, false);
+    assert.equal((await media.startImage(c, admin, { prompt: 'x'.repeat(2001) }, { apiKey: KEY })).ok, false);
+    const after_ = await c.query(`SELECT count(*)::int AS n FROM media_jobs WHERE user_id = $1`, [admin.id]);
     assert.equal(after_.rows[0].n, before_.rows[0].n);
   });
 });
 
-test('image: empty and oversized prompts are refused before any request', async () => {
+test('image: a job pending past the age cap is declared lost, not tried forever', async () => {
   await withClient(async (c) => {
-    const fetchImpl = fakeFetch([]);
-    assert.equal((await media.generateImage(c, admin, { prompt: '  ' }, { fetchImpl, apiKey: KEY })).ok, false);
-    assert.equal((await media.generateImage(c, admin, { prompt: 'x'.repeat(2001) }, { fetchImpl, apiKey: KEY })).ok, false);
-    assert.equal(fetchImpl.calls.length, 0);
+    const res = await media.startImage(c, admin, { prompt: 'a slow one' }, { apiKey: KEY });
+    await c.query(`UPDATE media_jobs SET created_at = now() - interval '31 minutes' WHERE id = $1`, [res.data.job_id]);
+    const s = await media.sweepMediaJobs(c, { fetchImpl: fakeFetch([]), apiKey: KEY });
+    assert.deepEqual(s.failed, [res.data.job_id]);
   });
 });
 
@@ -204,8 +270,10 @@ test('video: submit creates a pending job; the sweep downloads, charges, and enq
     const { rows: led } = await c.query(`SELECT * FROM media_usage_ledger WHERE user_id = $1`, [haim.id]);
     assert.equal(led[0].videos, 1);
 
+    // haim also generated an image earlier in this file — scope to video rows
+    // so that unrelated row does not read as a duplicate delivery.
     const { rows: out } = await c.query(
-      `SELECT * FROM outbox WHERE user_id = $1 AND kind = 'media_ready'`, [haim.id]);
+      `SELECT * FROM outbox WHERE user_id = $1 AND kind = 'media_ready' AND payload->>'kind' = 'video'`, [haim.id]);
     assert.equal(out.length, 1);
     assert.equal(out[0].urgency, 'urgent');
     assert.equal(out[0].payload.path, job.file_path);
@@ -214,7 +282,7 @@ test('video: submit creates a pending job; the sweep downloads, charges, and enq
     const s3 = await media.sweepMediaJobs(c, { fetchImpl: done, apiKey: KEY });
     assert.deepEqual(s3.completed, []);
     const { rows: again } = await c.query(
-      `SELECT count(*)::int AS n FROM outbox WHERE user_id = $1 AND kind = 'media_ready'`, [haim.id]);
+      `SELECT count(*)::int AS n FROM outbox WHERE user_id = $1 AND kind = 'media_ready' AND payload->>'kind' = 'video'`, [haim.id]);
     assert.equal(again[0].n, 1);
   });
 });
@@ -235,8 +303,9 @@ test('video: a failed generation tells the user once, and is never charged', asy
 
     const { rows: [job] } = await c.query(`SELECT * FROM media_jobs WHERE id = $1`, [res.data.job_id]);
     assert.equal(job.status, 'failed');
+    // admin also had failed image jobs earlier in this file — scope to video.
     const { rows: out } = await c.query(
-      `SELECT count(*)::int AS n FROM outbox WHERE user_id = $1 AND kind = 'media_failed'`, [admin.id]);
+      `SELECT count(*)::int AS n FROM outbox WHERE user_id = $1 AND kind = 'media_failed' AND payload->>'kind' = 'video'`, [admin.id]);
     assert.equal(out[0].n, 1);
     const { rows: led } = await c.query(
       `SELECT coalesce(sum(videos),0)::int AS n FROM media_usage_ledger WHERE user_id = $1`, [admin.id]);
@@ -265,6 +334,26 @@ test('video: parameters are validated before money moves', async () => {
     assert.equal((await media.startVideo(c, admin, { prompt: 'x', duration_seconds: 4.5 }, deps)).ok, false);
     assert.equal((await media.startVideo(c, admin, { prompt: 'x', aspect_ratio: '2:1' }, deps)).ok, false);
     assert.equal(fetchImpl.calls.length, 0);
+  });
+});
+
+test('either kind counts toward the same per-user pending cap', async () => {
+  await withClient(async (c) => {
+    const fetchImpl = fakeFetch([
+      ['/videos', { status: 202, json: { id: 'job-cap', polling_url: 'https://openrouter.ai/api/v1/videos/job-cap', status: 'pending' } }],
+    ]);
+    const jobs = [];
+    for (let i = 0; i < media.PENDING_JOBS_PER_USER; i++) {
+      const r = await media.startImage(c, admin, { prompt: `x${i}` }, { apiKey: KEY });
+      assert.equal(r.ok, true);
+      jobs.push(r.data.job_id);
+    }
+    const blocked = await media.startVideo(c, admin, { prompt: 'one more' }, { fetchImpl, apiKey: KEY });
+    assert.equal(blocked.ok, false);
+    assert.equal(blocked.error.code, 'conflict');
+    assert.equal(fetchImpl.calls.length, 0);
+    // clean up so later tests in this file see a clear queue for `admin`
+    await c.query(`UPDATE media_jobs SET status = 'cancelled' WHERE id = ANY($1)`, [jobs]);
   });
 });
 
