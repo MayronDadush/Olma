@@ -694,7 +694,7 @@ test('turn_start records each inbound message, so the north star has a numerator
   const { dispatch } = createBrokerServer({ pool: db.pool });
   const res = await dispatch({
     method: 'tool_call',
-    params: { name: 'turn_start', args: { identity_token: u.identity_token } },
+    params: { name: 'turn_start', args: { olma_identity: u.identity_token } },
   });
   assert.equal(res.ok, true);
   const { rows } = await db.pool.query(

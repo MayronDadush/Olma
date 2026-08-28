@@ -86,31 +86,39 @@ test('MCP handshake and tool listing', async () => {
   assert.ok(names.includes('import_google_contacts'));
   assert.ok(names.includes('import_contacts_file'));
   for (const t of list.tools) {
-    assert.ok(t.inputSchema.required.includes('identity_token'), `${t.name} must require identity_token`);
+    assert.ok(t.inputSchema.required.includes('olma_identity'), `${t.name} must require olma_identity`);
+    // The old name must not appear ANYWHERE in a schema. OpenClaw masks
+    // tool-call arguments whose name normalises to token/key/secret/… before
+    // persisting them, and the persisted call is what the model imitates next
+    // turn — which is how a masked value came back as the token and produced
+    // 118 auth failures in one day. One tool left on the old name would keep
+    // manufacturing that precedent for every model that sees it.
+    const schema = JSON.stringify(t.inputSchema);
+    assert.ok(!schema.includes('identity_token'), `${t.name} still mentions identity_token`);
   }
 });
 
 test('tool calls execute end-to-end and are isolated per token', async () => {
-  const added = await callTool('add_task', { identity_token: alice.identity_token, title: 'e2e task' });
+  const added = await callTool('add_task', { olma_identity: alice.identity_token, title: 'e2e task' });
   assert.match(added, /^OK /);
 
-  const aliceList = await callTool('list_my_tasks', { identity_token: alice.identity_token });
+  const aliceList = await callTool('list_my_tasks', { olma_identity: alice.identity_token });
   assert.match(aliceList, /e2e task/);
-  const bobList = await callTool('list_my_tasks', { identity_token: bob.identity_token });
+  const bobList = await callTool('list_my_tasks', { olma_identity: bob.identity_token });
   assert.ok(!bobList.includes('e2e task'), 'bob must not see alice\'s task');
 });
 
 test('bad token rejected; token never echoed back', async () => {
-  const bad = await callTool('list_my_tasks', { identity_token: 'olma_tok_' + '0'.repeat(32) });
+  const bad = await callTool('list_my_tasks', { olma_identity: 'olma_tok_' + '0'.repeat(32) });
   assert.match(bad, /^ERROR forbidden/);
   assert.ok(!bad.includes('olma_tok_'), 'tokens must be scrubbed from output');
 
-  const profile = await callTool('get_my_profile', { identity_token: alice.identity_token });
+  const profile = await callTool('get_my_profile', { olma_identity: alice.identity_token });
   assert.ok(!profile.includes('olma_tok_'), 'no token in any output');
 });
 
 test('turn_start returns proceed for a healthy user', async () => {
-  const r = await callTool('turn_start', { identity_token: alice.identity_token });
+  const r = await callTool('turn_start', { olma_identity: alice.identity_token });
   assert.match(r, /"directive":"proceed"/);
 });
 
@@ -127,7 +135,7 @@ test('an inbound message wakes night-held rows for the gate to re-decide', async
             ($1, 'checkin', '{}', 'normal', 'budget', $2)`,
     [alice.id, tomorrow]);
 
-  await callTool('turn_start', { identity_token: alice.identity_token });
+  await callTool('turn_start', { olma_identity: alice.identity_token });
 
   const { rows } = await db.pool.query(
     `SELECT hold_reason, release_after <= now() AS woken FROM outbox
@@ -148,7 +156,7 @@ test('an inbound message wakes night-held rows for the gate to re-decide', async
 test('turn_start writes down the display name of someone we have no name for', async () => {
   const nameless = await makeUser(db.pool, '+972571000003', { firstName: null });
   const r = await callTool('turn_start', {
-    identity_token: nameless.identity_token, sender_name: 'חיים דדוש',
+    olma_identity: nameless.identity_token, sender_name: 'חיים דדוש',
   });
   assert.match(r, /"directive":"proceed"/);
   assert.ok(!r.includes('cardStale'), 'the card flag is plumbing, not something the model reads');
@@ -161,9 +169,9 @@ test('turn_start writes down the display name of someone we have no name for', a
 });
 
 test('turn_start never lets a display name overwrite the name someone gave us', async () => {
-  await callTool('set_my_name', { identity_token: alice.identity_token, first_name: 'Alice', confirmed: true });
+  await callTool('set_my_name', { olma_identity: alice.identity_token, first_name: 'Alice', confirmed: true });
   const r = await callTool('turn_start', {
-    identity_token: alice.identity_token, sender_name: '😈 Not Alice',
+    olma_identity: alice.identity_token, sender_name: '😈 Not Alice',
   });
   assert.match(r, /"directive":"proceed"/, 'and the turn carries on regardless');
   const { rows } = await db.pool.query('SELECT first_name FROM users WHERE id = $1', [alice.id]);
@@ -173,7 +181,7 @@ test('turn_start never lets a display name overwrite the name someone gave us', 
 test('turn_start ignores a sender field that is just the number back', async () => {
   const nameless = await makeUser(db.pool, '+972571000004', { firstName: null });
   await callTool('turn_start', {
-    identity_token: nameless.identity_token, sender_name: '+972571000004',
+    olma_identity: nameless.identity_token, sender_name: '+972571000004',
   });
   const { rows } = await db.pool.query('SELECT first_name FROM users WHERE id = $1', [nameless.id]);
   assert.equal(rows[0].first_name, null);
@@ -181,12 +189,12 @@ test('turn_start ignores a sender field that is just the number back', async () 
 
 test('set_my_name defaults to unconfirmed, so a guess is never mistaken for an answer', async () => {
   const u = await makeUser(db.pool, '+972571000005', { firstName: null });
-  await callTool('set_my_name', { identity_token: u.identity_token, first_name: 'עמית' });
+  await callTool('set_my_name', { olma_identity: u.identity_token, first_name: 'עמית' });
   let { rows } = await db.pool.query('SELECT first_name, name_confirmed FROM users WHERE id = $1', [u.id]);
   assert.equal(rows[0].first_name, 'עמית');
   assert.equal(rows[0].name_confirmed, false);
 
-  await callTool('set_my_name', { identity_token: u.identity_token, first_name: 'עמית', confirmed: true });
+  await callTool('set_my_name', { olma_identity: u.identity_token, first_name: 'עמית', confirmed: true });
   ({ rows } = await db.pool.query('SELECT name_confirmed FROM users WHERE id = $1', [u.id]));
   assert.equal(rows[0].name_confirmed, true);
 });
@@ -201,13 +209,13 @@ test('turn_start drives the block flow: notice once, then silent', async () => {
   try { await flags.setFlag(c, 'quota_daily_free', 1); } finally { c.release(); }
   try {
     // bob's first message passes, second crosses the limit
-    let r = await callTool('turn_start', { identity_token: bob.identity_token });
+    let r = await callTool('turn_start', { olma_identity: bob.identity_token });
     assert.match(r, /"directive":"proceed"/);
-    r = await callTool('turn_start', { identity_token: bob.identity_token });
+    r = await callTool('turn_start', { olma_identity: bob.identity_token });
     assert.match(r, /"directive":"send_block_notice"/);
     assert.match(r, /"blockView"/);
     assert.match(r, /"openTasks"/); // counts-only personal data present
-    r = await callTool('turn_start', { identity_token: bob.identity_token });
+    r = await callTool('turn_start', { olma_identity: bob.identity_token });
     assert.match(r, /"directive":"silent"/); // one notice per window, never two
   } finally {
     const c2 = await db.pool.connect();
@@ -221,37 +229,37 @@ test('pause_olma stops everything and resume_olma puts it back', async () => {
   const u = await makeUser(db.pool, '+972571000009', { firstName: 'קפיש' });
 
   const paused = await callTool('pause_olma', {
-    identity_token: u.identity_token, note: 'זהו',
+    olma_identity: u.identity_token, note: 'זהו',
   });
   assert.match(paused, /^OK /);
   let { rows } = await db.pool.query('SELECT paused_at FROM users WHERE id = $1', [u.id]);
   assert.ok(rows[0].paused_at, 'the goodbye is a tool call, not a sentence');
 
   // and they can still talk to Olma — pausing stops Olma initiating, not Olma answering
-  const stillWorks = await callTool('turn_start', { identity_token: u.identity_token });
+  const stillWorks = await callTool('turn_start', { olma_identity: u.identity_token });
   assert.match(stillWorks, /"directive":"proceed"/);
 
-  const resumed = await callTool('resume_olma', { identity_token: u.identity_token });
+  const resumed = await callTool('resume_olma', { olma_identity: u.identity_token });
   assert.match(resumed, /^OK /);
   ({ rows } = await db.pool.query('SELECT paused_at FROM users WHERE id = $1', [u.id]));
   assert.equal(rows[0].paused_at, null);
 
   // resuming twice is refused rather than silently accepted
-  assert.match(await callTool('resume_olma', { identity_token: u.identity_token }),
+  assert.match(await callTool('resume_olma', { olma_identity: u.identity_token }),
     /^ERROR invalid/);
 });
 
 test('the first message after pausing offers to resume; nothing after that does', async () => {
   const u = await makeUser(db.pool, '+972571000011', { firstName: 'קפיש' });
-  await callTool('pause_olma', { identity_token: u.identity_token });
+  await callTool('pause_olma', { olma_identity: u.identity_token });
 
-  const first = await callTool('turn_start', { identity_token: u.identity_token });
+  const first = await callTool('turn_start', { olma_identity: u.identity_token });
   assert.match(first, /"offerResume":true/, 'the first turn after pausing must offer, unprompted');
 
-  const second = await callTool('turn_start', { identity_token: u.identity_token });
+  const second = await callTool('turn_start', { olma_identity: u.identity_token });
   assert.doesNotMatch(second, /offerResume/, 'never twice in the same pause — that is the pitch-to-retain pattern the doctrine forbids');
 
-  const third = await callTool('turn_start', { identity_token: u.identity_token });
+  const third = await callTool('turn_start', { olma_identity: u.identity_token });
   assert.doesNotMatch(third, /offerResume/);
 });
 
@@ -262,7 +270,7 @@ test('turn_start hands the agent the reminders it never saw go out', async () =>
   const u = await makeUser(db.pool, '+972571000030', { firstName: 'דנה' });
 
   // an ordinary turn carries nothing — the field must not cost every message
-  assert.doesNotMatch(await callTool('turn_start', { identity_token: u.identity_token }),
+  assert.doesNotMatch(await callTool('turn_start', { olma_identity: u.identity_token }),
     /recentReminders/);
 
   await db.pool.query(
@@ -275,7 +283,7 @@ test('turn_start hands the agent the reminders it never saw go out', async () =>
   await db.pool.query(
     `UPDATE outbox SET hold_reason = 'cancelled_by_admin' WHERE idempotency_key = 'rrem:3'`);
 
-  const r = await callTool('turn_start', { identity_token: u.identity_token });
+  const r = await callTool('turn_start', { olma_identity: u.identity_token });
   assert.match(r, /recentReminders/);
   assert.match(r, /לקחת תרופה/, 'the reminder delivered minutes ago is the likely referent');
   assert.doesNotMatch(r, /ישן מדי/, 'older than a day is stale context, not help');
@@ -291,63 +299,63 @@ test('turn_start carries the overnight plan headline — USER.md alone cannot, m
   const u = await makeUser(db.pool, '+972571000031', { firstName: 'רון' });
 
   // no plan → no field
-  assert.doesNotMatch(await callTool('turn_start', { identity_token: u.identity_token }),
+  assert.doesNotMatch(await callTool('turn_start', { olma_identity: u.identity_token }),
     /planHeadline/);
 
   await db.pool.query(
     `INSERT INTO user_plans (user_id, headline) VALUES ($1, 'יום עמוס: הדרכון דחוף')`, [u.id]);
-  assert.match(await callTool('turn_start', { identity_token: u.identity_token }),
+  assert.match(await callTool('turn_start', { olma_identity: u.identity_token }),
     /יום עמוס: הדרכון דחוף/);
 
   // a stale plan is yesterday presented as today — worse than nothing
   await db.pool.query(
     `UPDATE user_plans SET built_at = now() - interval '30 hours' WHERE user_id = $1`, [u.id]);
-  assert.doesNotMatch(await callTool('turn_start', { identity_token: u.identity_token }),
+  assert.doesNotMatch(await callTool('turn_start', { olma_identity: u.identity_token }),
     /planHeadline/);
 
   // a paused person's turns must not lean forward
   await db.pool.query(
     `UPDATE user_plans SET built_at = now() WHERE user_id = $1`, [u.id]);
-  await callTool('pause_olma', { identity_token: u.identity_token });
-  assert.doesNotMatch(await callTool('turn_start', { identity_token: u.identity_token }),
+  await callTool('pause_olma', { olma_identity: u.identity_token });
+  assert.doesNotMatch(await callTool('turn_start', { olma_identity: u.identity_token }),
     /planHeadline/);
 });
 
 test('resuming and pausing again offers exactly once more', async () => {
   const u = await makeUser(db.pool, '+972571000012', { firstName: 'קפיש' });
-  await callTool('pause_olma', { identity_token: u.identity_token });
-  assert.match(await callTool('turn_start', { identity_token: u.identity_token }), /offerResume":true/);
-  assert.doesNotMatch(await callTool('turn_start', { identity_token: u.identity_token }), /offerResume/);
+  await callTool('pause_olma', { olma_identity: u.identity_token });
+  assert.match(await callTool('turn_start', { olma_identity: u.identity_token }), /offerResume":true/);
+  assert.doesNotMatch(await callTool('turn_start', { olma_identity: u.identity_token }), /offerResume/);
 
-  await callTool('resume_olma', { identity_token: u.identity_token });
-  assert.doesNotMatch(await callTool('turn_start', { identity_token: u.identity_token }), /offerResume/,
+  await callTool('resume_olma', { olma_identity: u.identity_token });
+  assert.doesNotMatch(await callTool('turn_start', { olma_identity: u.identity_token }), /offerResume/,
     'not paused — nothing to offer');
 
-  await callTool('pause_olma', { identity_token: u.identity_token });
-  assert.match(await callTool('turn_start', { identity_token: u.identity_token }), /offerResume":true/,
+  await callTool('pause_olma', { olma_identity: u.identity_token });
+  assert.match(await callTool('turn_start', { olma_identity: u.identity_token }), /offerResume":true/,
     'a new pause period is a fresh chance to offer — the old timestamp must not block it');
-  assert.doesNotMatch(await callTool('turn_start', { identity_token: u.identity_token }), /offerResume/);
+  assert.doesNotMatch(await callTool('turn_start', { olma_identity: u.identity_token }), /offerResume/);
 });
 
 test('a user who was never paused never sees offerResume', async () => {
   const u = await makeUser(db.pool, '+972571000013', { firstName: 'לא הושהה' });
   for (let i = 0; i < 3; i++) {
-    assert.doesNotMatch(await callTool('turn_start', { identity_token: u.identity_token }), /offerResume/);
+    assert.doesNotMatch(await callTool('turn_start', { olma_identity: u.identity_token }), /offerResume/);
   }
 });
 
 test('one user can never pause another', async () => {
   const victim = await makeUser(db.pool, '+972571000010', { firstName: 'לא אני' });
   // there is no user-id parameter to abuse: identity is the token, full stop
-  await callTool('pause_olma', { identity_token: alice.identity_token, user_id: victim.id });
+  await callTool('pause_olma', { olma_identity: alice.identity_token, user_id: victim.id });
   const { rows } = await db.pool.query('SELECT paused_at FROM users WHERE id = $1', [victim.id]);
   assert.equal(rows[0].paused_at, null);
   // clean up so later tests see alice running
-  await callTool('resume_olma', { identity_token: alice.identity_token });
+  await callTool('resume_olma', { olma_identity: alice.identity_token });
 });
 
 test('unknown tool yields a clean error', async () => {
-  const r = await callTool('summon_demons', { identity_token: alice.identity_token });
+  const r = await callTool('summon_demons', { olma_identity: alice.identity_token });
   assert.match(r, /^ERROR not_found/);
 });
 
@@ -360,21 +368,59 @@ test('unknown tool yields a clean error', async () => {
 test('a truncated token heals to the session\'s proven identity', async () => {
   // seed: one honest call proves alice on this connection (earlier tests did
   // too, but this test must not depend on their ordering)
-  const seed = await callTool('list_my_tasks', { identity_token: alice.identity_token });
+  const seed = await callTool('list_my_tasks', { olma_identity: alice.identity_token });
   assert.match(seed, /^OK/);
 
-  const truncated = await callTool('list_my_tasks', { identity_token: alice.identity_token.slice(0, 20) });
+  const truncated = await callTool('list_my_tasks', { olma_identity: alice.identity_token.slice(0, 20) });
   assert.match(truncated, /^OK/, 'a truncated token must be repaired, not failed');
 
   const missing = await callTool('list_my_tasks', {});
   assert.match(missing, /^OK/, 'a missing token must be repaired too');
 
-  const placeholder = await callTool('list_my_tasks', { identity_token: '<from .olma-identity>' });
+  const placeholder = await callTool('list_my_tasks', { olma_identity: '<from .olma-identity>' });
   assert.match(placeholder, /^OK/, 'a placeholder must be repaired too');
 });
 
 test('a well-formed wrong token still fails — no identity swap on typos', async () => {
-  const wrong = await callTool('list_my_tasks', { identity_token: 'olma_tok_' + 'f'.repeat(32) });
+  const wrong = await callTool('list_my_tasks', { olma_identity: 'olma_tok_' + 'f'.repeat(32) });
   assert.match(wrong, /^ERROR forbidden/);
   assert.match(wrong, /\.olma-identity/, 'the failure must name the recovery');
+});
+
+// The rename ships to code first and to workspaces second — deploy.sh resyncs
+// AGENTS.md only after the new release is live and healthy — and a session
+// already under way keeps copying the old name from its own earlier turns for
+// a while regardless. Both names authenticating is what makes that gap
+// invisible to a live user instead of a window where nobody can call anything.
+test('the old parameter name still authenticates, and the new one wins', async () => {
+  const legacy = await callTool('list_my_tasks', { identity_token: bob.identity_token });
+  assert.match(legacy, /^OK/, 'an agent on the pre-rename doctrine must keep working');
+
+  // Both present: the new name is the answer. A model half-migrated within one
+  // session sends both, and the legacy slot is the one carrying the masked
+  // value it copied out of its own transcript — so preferring it would
+  // reintroduce the exact failure the rename removes.
+  const both = await callTool('get_my_profile', {
+    olma_identity: bob.identity_token, identity_token: 'olma_t…beef',
+  });
+  assert.match(both, /^OK/, 'the valid new-name identity must win over a masked legacy one');
+});
+
+test('the identity never reaches a handler under either name', async () => {
+  // A handler that could read the identity out of its own args would be a
+  // second door into auth. add_task echoes its task back, so a leaked
+  // parameter would surface here; the DB is the real check.
+  const { stripIdentity } = require('../src/adapters/mcp/identity-param');
+  assert.deepEqual(
+    stripIdentity({ olma_identity: 'a', identity_token: 'b', title: 'keep me' }),
+    { title: 'keep me' });
+
+  const added = await callTool('add_task', {
+    identity_token: bob.identity_token, title: 'legacy-named call',
+  });
+  assert.match(added, /^OK/);
+  const { rows } = await db.pool.query(
+    `SELECT owner_id FROM tasks WHERE title = 'legacy-named call'`);
+  assert.equal(rows.length, 1, 'the legacy-named call did real work');
+  assert.equal(Number(rows[0].owner_id), Number(bob.id), 'as the right person');
 });

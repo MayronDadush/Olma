@@ -15,7 +15,7 @@ let db, broker, miron, kapish;
 async function call(user, name, args) {
   const res = await broker.dispatch({
     id: 1, method: 'tool_call',
-    params: { name, args: { identity_token: user.identity_token, ...args } },
+    params: { name, args: { olma_identity: user.identity_token, ...args } },
   });
   assert.ok(res.ok, `${name} transport failed`);
   return res.text;
