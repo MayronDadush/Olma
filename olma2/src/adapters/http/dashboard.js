@@ -21,6 +21,7 @@ const { correctionSql } = require('../../jobs/metrics');
 const { deprovisionUser, previewDeletion } = require('../../intake/deprovision');
 const pauseDomain = require('../../domain/pause');
 const sessionIndex = require('../../channels/sessions');
+const picker = require('./picker');
 // /ready's whole test. brokerd beats immediately on boot and then every 60s,
 // so three intervals is generous enough that an ordinary slow tick under load
 // never fails a deploy, and tight enough that a daemon which died on boot
@@ -338,6 +339,8 @@ const FLAG_SPECS = [
     help: 'מזהה מודל ב-OpenRouter. ריק = ברירת המחדל (meta/muse-image, ~$0.01 לתמונה).' },
   { key: 'media_video_model', label: 'מודל יצירת וידאו', type: 'text',
     help: 'מזהה מודל ב-OpenRouter. ריק = ברירת המחדל (bytedance/seedance-2.0-mini, ~$0.05 ל-4 שניות 480p).' },
+  { key: 'public_base_url', label: 'כתובת ציבורית לקישורים', type: 'text',
+    help: 'הבסיס לקישורים שנשלחים למשתמשים (למשל דף סימון הזמינות). בלי / בסוף.' },
 ];
 const EDITABLE_FLAGS = FLAG_SPECS.map((f) => f.key);
 
@@ -1607,6 +1610,15 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         if (reason === 'no_contacts_scope') return page(200, 'חסרה הרשאת אנשי קשר', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה לאנשי קשר, אז גוגל לא נתנה גישה. אולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של אנשי הקשר לפני שלוחצים המשך.');
         if (reason === 'bad_state') return page(400, 'הקישור פג', 'קישורי חיבור תקפים ל-15 דקות ולשימוש אחד. בקשי מאולמה קישור חדש.');
         return page(400, 'משהו השתבש', 'החיבור לא הושלם. בקשי מאולמה קישור חדש.');
+      }
+
+      // The availability picker — public like the OAuth callback and for the
+      // same reason: the person taps it from WhatsApp on their phone, so it
+      // cannot sit behind the admin password. The token in the path is the
+      // whole credential (random, user-bound, time-limited; picker.js).
+      const pick = parsed.pathname.match(picker.TOKEN_RE);
+      if (pick) {
+        return picker.handle(req, res, pool, pick[1], { calendarDomain });
       }
 
       // Unauthenticated READINESS probe, for the deploy gate specifically —
