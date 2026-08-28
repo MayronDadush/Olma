@@ -230,7 +230,11 @@ function buildInstruction(transcript, existingFacts, openTasks = [], profile = {
 // enforce their own rules (category vocabulary, importance range, one-level
 // nesting, bulk cap) a second time.
 async function applyExtraction(client, user, parsed) {
-  const out = { recorded: 0, tasksCaptured: 0 };
+  // `refused` exists because the guards in domain/facts swallow a proposal
+  // silently, and a nightly job that quietly drops facts looks exactly like a
+  // quiet week. If a guard ever starts over-firing — refusing real facts every
+  // night — this counter is the only place that would say so.
+  const out = { recorded: 0, tasksCaptured: 0, refused: {} };
   const factList = Array.isArray(parsed.facts) ? parsed.facts.slice(0, 20) : [];
   for (const f of factList) {
     if (!f || typeof f.fact !== 'string') continue;
@@ -251,6 +255,10 @@ async function applyExtraction(client, user, parsed) {
       source: 'conversation',
     });
     if (res.ok) out.recorded++;
+    else {
+      const why = (res.error && (res.error.reason || res.error.code)) || 'unknown';
+      out.refused[why] = (out.refused[why] || 0) + 1;
+    }
   }
   const taskList = Array.isArray(parsed.tasks) ? parsed.tasks.slice(0, 10) : [];
   for (const t of taskList) {
@@ -334,6 +342,11 @@ async function sweepFactExtraction(client, deps = {}) {
     considered: due.length, extracted: [], recorded: 0, tasksCaptured: 0,
     skipped: 0, failed: [],
   };
+  // By guard reason, across everyone this tick. Attached to `out` at the end
+  // only when non-empty: the heartbeat note is this object JSON-stringified and
+  // truncated at 200 chars, and an always-present empty key spends that budget
+  // saying nothing.
+  const refused = {};
 
   // The cap bounds MODEL TURNS, not candidates. Slicing the list first meant a
   // user with nothing to extract still consumed a slot — and since a skip does
@@ -411,10 +424,14 @@ async function sweepFactExtraction(client, deps = {}) {
       await audit.record(client, u.id, 'facts.extracted', {
         agentId: u.agent_id, messagesRead: fresh.length,
         factsRecorded: applied.recorded, tasksCaptured: applied.tasksCaptured,
+        ...(Object.keys(applied.refused).length ? { factsRefused: applied.refused } : {}),
       });
       out.extracted.push(u.id);
       out.recorded += applied.recorded;
       out.tasksCaptured += applied.tasksCaptured;
+      for (const [why, n] of Object.entries(applied.refused)) {
+        refused[why] = (refused[why] || 0) + n;
+      }
       // The card is how any of this reaches the agent, so refreshing it is part
       // of the job, not a nicety. Best-effort: a file write must never fail the
       // sweep for everyone else.
@@ -428,6 +445,7 @@ async function sweepFactExtraction(client, deps = {}) {
       });
     }
   }
+  if (Object.keys(refused).length) out.refused = refused;
   return out;
 }
 

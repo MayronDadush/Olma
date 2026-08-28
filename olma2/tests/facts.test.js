@@ -655,6 +655,51 @@ test('the read-back is told the two other things that are not facts', () => {
   assert.match(text, /REJECTED without one/, 'the expiry rule the server enforces');
 });
 
+// A guard that silently swallows a proposal is indistinguishable from a quiet
+// week — which is exactly how a guard that starts over-firing would go
+// unnoticed, refusing real facts every night with nothing to show for it.
+test('facts the guards refuse are counted, not silently dropped', async () => {
+  const u = await seedChatter('+972590009001', 40);
+  const rec = recorder(saidSomething, {
+    facts: [
+      { category: 'context', fact: 'היומן שלו מחובר ל-Google Calendar עם גישת read_write', importance: 1 },
+      { category: 'people', fact: 'שם שלו הוא מירון', importance: 1 },
+      { category: 'habits', fact: 'יש לו יום הולדת של עילאי סלומון ביום שבת 29.8', importance: 1 },
+      { category: 'work', fact: 'עובד בהוד השרון', importance: 1 },
+    ],
+    tasks: [], name: null,
+  });
+  await withClient(async (c) => {
+    const res = await extraction.sweepFactExtraction(c, { ...rec.deps, now: Date.now() });
+    assert.deepEqual(Object.keys(res.refused).sort(), ['name', 'needs_expiry', 'system_state']);
+
+    // The per-tick totals cover however many people the tick reached, so the
+    // exact counts are asserted on THIS person's audit row.
+    const { rows } = await c.query(
+      `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'facts.extracted'`, [u.id]);
+    assert.deepEqual(rows[0].detail.factsRefused, { system_state: 1, name: 1, needs_expiry: 1 },
+      'and it reaches the audit row, not just the return value');
+    assert.equal(rows[0].detail.factsRecorded, 1, 'only the durable one lands');
+
+    const { rows: kept } = await c.query(
+      `SELECT fact FROM user_facts WHERE user_id = $1 AND active = true`, [u.id]);
+    assert.deepEqual(kept.map((r) => r.fact), ['עובד בהוד השרון']);
+  });
+});
+
+test('a clean run carries no refused key at all', async () => {
+  await seedChatter('+972590009002', 40);
+  const rec = recorder(saidSomething, {
+    facts: [{ category: 'work', fact: 'עובד במוסך', importance: 1 }], tasks: [], name: null,
+  });
+  await withClient(async (c) => {
+    const res = await extraction.sweepFactExtraction(c, { ...rec.deps, now: Date.now() });
+    // The heartbeat note is this object stringified and cut at 200 chars; an
+    // always-present empty object spends that budget saying nothing.
+    assert.equal('refused' in res, false);
+  });
+});
+
 test('transcript trimming keeps the end, where conclusions live', () => {
   // Long enough to actually exceed the cap — a short-line transcript of the
   // same length does not, and then this would assert nothing.

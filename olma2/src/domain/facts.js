@@ -95,18 +95,18 @@ function parseExpiry(value) {
 
 async function rememberFact(client, userId, { category, fact, importance, expiresAt, source } = {}) {
   if (!KNOWN_FACT_CATEGORIES.includes(category)) {
-    return err('invalid', `category must be one of: ${KNOWN_FACT_CATEGORIES.join(', ')}`);
+    return err('invalid', `category must be one of: ${KNOWN_FACT_CATEGORIES.join(', ')}`, { reason: 'category' });
   }
   const text = cleanFact(fact);
   if (!text) return err('invalid', 'fact required');
   if (phoneLike(text)) {
-    return err('invalid', 'a phone number never goes into a fact — save the person with save_contact, and keep the fact about them without the digits');
+    return err('invalid', 'a phone number never goes into a fact — save the person with save_contact, and keep the fact about them without the digits', { reason: 'phone' });
   }
   if (bareNameStatement(text)) {
-    return err('invalid', 'a name is profile, not a fact — call set_my_name instead (an unconfirmed guess is fine); stored as a fact it leaves every screen showing a phone number');
+    return err('invalid', 'a name is profile, not a fact — call set_my_name instead (an unconfirmed guess is fine); stored as a fact it leaves every screen showing a phone number', { reason: 'name' });
   }
   if (systemState(text)) {
-    return err('invalid', "that is Olma's own state, not something about the person — it is already on their card and in the integrations/connections tables, and a copy here goes stale the moment it changes");
+    return err('invalid', "that is Olma's own state, not something about the person — it is already on their card and in the integrations/connections tables, and a copy here goes stale the moment it changes", { reason: 'system_state' });
   }
 
   const imp = Number(importance || 1);
@@ -121,7 +121,7 @@ async function rememberFact(client, userId, { category, fact, importance, expire
   // datetime.namesAMoment for what counts and, more importantly, what does not
   // — a recurring weekday ("ביום חמישי עובד מהבית") is durable and passes.
   if (!expiry.value && namesAMoment(text)) {
-    return err('invalid', 'this names a specific date or day ("היום", "29.8") — set expires_at to when it stops being true, or, if it is something they need to DO, save it with add_task instead');
+    return err('invalid', 'this names a specific date or day ("היום", "29.8") — set expires_at to when it stops being true, or, if it is something they need to DO, save it with add_task instead', { reason: 'needs_expiry' });
   }
 
   const { rows } = await client.query(

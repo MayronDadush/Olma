@@ -153,6 +153,15 @@ seen. A `user_contacts.birthday` column plus a `yearly` repeat rule
 (`normalizeRepeatRule` has no yearly today) is the version that would cover the
 rest; not built.
 
+**A refused fact is counted, never silently dropped.** The guards swallow a
+proposal, and a nightly job that quietly drops facts looks exactly like a quiet
+week — so `applyExtraction` tallies refusals by reason (`{system_state: 1,
+needs_expiry: 1}`), the tally rides the `facts.extracted` audit row and the job
+heartbeat, and it is attached only when non-empty (the note is JSON cut at 200
+chars). If a guard ever starts over-firing, that counter is the only place that
+would say so. The dashboard's fact form spells the same rules out, because a
+refused admin write redirects with nothing said.
+
 **Going back for the rows already written** is
 `scripts/retire-refused-facts.js` (dry-run by default): it re-checks every
 active fact against the current guards and soft-deletes what they would now
