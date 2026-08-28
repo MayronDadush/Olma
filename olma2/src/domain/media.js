@@ -160,7 +160,10 @@ async function startVideo(client, user, { prompt, duration_seconds, resolution, 
   if (!Number.isInteger(duration) || duration < VIDEO_DURATIONS_S.min || duration > VIDEO_DURATIONS_S.max) {
     return err('invalid', `duration_seconds must be an integer ${VIDEO_DURATIONS_S.min}-${VIDEO_DURATIONS_S.max}`);
   }
-  const reso = resolution || '720p';
+  // Owner ask (2026-08-28): default to the cheapest tier unless the user
+  // actually asked for better — this is spend on a per-generation basis with
+  // no opt-out, so the default should assume nobody asked for it.
+  const reso = resolution || '480p';
   if (!VIDEO_RESOLUTIONS.includes(reso)) {
     return err('invalid', `resolution must be one of: ${VIDEO_RESOLUTIONS.join(', ')}`);
   }

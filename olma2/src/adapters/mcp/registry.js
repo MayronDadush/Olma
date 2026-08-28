@@ -449,16 +449,19 @@ const TOOLS = [
     'Create a short video (4-15 seconds) with an AI video model. LIMITED ACCESS: most users are refused '
     + 'by the server — NEVER offer, mention or suggest this feature on your own; use it only when the user '
     + 'themselves explicitly asks for a video, and if refused, say plainly it is not available for them. '
-    + 'Write the prompt as one rich, specific English description of the scene and motion. This tool only '
-    + 'STARTS the generation: it takes 1-2 minutes and the finished video is sent to the user automatically '
-    + 'as a separate message — tell them it is on its way, and never call this again for the same request.',
+    + 'Write the prompt as one rich, specific English description of the scene and motion. Leave resolution '
+    + 'unset — it defaults to the cheapest tier (480p) — and only pass 720p when the user explicitly asked '
+    + 'for higher quality. This tool only STARTS the generation: it takes 1-2 minutes and the finished video '
+    + 'is sent to the user automatically as a separate message — tell them it is on its way, and never call '
+    + 'this again for the same request.',
     {
       prompt: S('string', 'English description of the video scene and motion (max 2000 chars)'),
       duration_seconds: S('number', 'Length in seconds, integer 4-15. Default 5.'),
+      resolution: S('string', 'One of: ' + media.VIDEO_RESOLUTIONS.join(', ') + '. Default 480p (cheapest) — set 720p ONLY if the user explicitly asked for better quality.'),
       aspect_ratio: S('string', 'One of: ' + media.VIDEO_ASPECTS.join(', ') + '. Default 16:9 (9:16 suits phones).'),
     }, ['prompt'],
     (client, user, a) => media.startVideo(client, user, {
-      prompt: a.prompt, duration_seconds: a.duration_seconds, aspect_ratio: a.aspect_ratio,
+      prompt: a.prompt, duration_seconds: a.duration_seconds, resolution: a.resolution, aspect_ratio: a.aspect_ratio,
     })),
 
   // ---------------------------------------------------------------- tasks
