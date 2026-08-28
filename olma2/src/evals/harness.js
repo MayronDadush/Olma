@@ -53,6 +53,7 @@ async function resetEvalUser(client, userId) {
   await client.query(`DELETE FROM meeting_participants WHERE user_id = $1`, [userId]);
   await client.query(`DELETE FROM meetings WHERE initiator_id = $1`, [userId]);
   await client.query(`DELETE FROM outbox WHERE user_id = $1`, [userId]);
+  await client.query(`DELETE FROM connections WHERE requester_id = $1 OR target_id = $1`, [userId]);
   await client.query(
     `UPDATE users SET paused_at = NULL, resume_offer_sent_at = NULL,
             checkin_misses = 0, last_checkin_at = NULL,
