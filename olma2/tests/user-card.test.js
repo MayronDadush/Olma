@@ -73,7 +73,7 @@ test('brokerd wiring: a successful set_my_name re-renders the card', async () =>
   const { dispatch } = createBrokerServer({ pool: db.pool });
   const res = await dispatch({
     method: 'tool_call',
-    params: { name: 'set_my_name', args: { identity_token: user.identity_token, first_name: 'ירון' } },
+    params: { name: 'set_my_name', args: { olma_identity: user.identity_token, first_name: 'ירון' } },
   });
   assert.equal(res.ok, true);
   const card = fs.readFileSync(cardPath(), 'utf8');
@@ -85,7 +85,7 @@ test('brokerd wiring: a failed call does not touch the card', async () => {
   const { dispatch } = createBrokerServer({ pool: db.pool });
   await dispatch({
     method: 'tool_call',
-    params: { name: 'set_my_name', args: { identity_token: 'olma_tok_' + '0'.repeat(32), first_name: 'פורץ' } },
+    params: { name: 'set_my_name', args: { olma_identity: 'olma_tok_' + '0'.repeat(32), first_name: 'פורץ' } },
   });
   assert.equal(fs.readFileSync(cardPath(), 'utf8'), before);
 });
@@ -115,7 +115,7 @@ test('brokerd wiring: remember_fact renders into the card the same turn', async 
     method: 'tool_call',
     params: {
       name: 'remember_fact',
-      args: { identity_token: user.identity_token, category: 'work', fact: 'עובד במשמרות באיכילוב', importance: 2 },
+      args: { olma_identity: user.identity_token, category: 'work', fact: 'עובד במשמרות באיכילוב', importance: 2 },
     },
   });
   assert.equal(res.ok, true);

@@ -48,7 +48,7 @@ test(`${USERS} users seeded, 300 concurrent calls, zero cross-user leakage`, asy
   for (const call of calls) {
     call.promise = broker.dispatch({
       id: call.userIdx, method: 'tool_call',
-      params: { name: 'list_my_tasks', args: { identity_token: tokenFor(call.userIdx) } },
+      params: { name: 'list_my_tasks', args: { olma_identity: tokenFor(call.userIdx) } },
     });
   }
   const results = await Promise.all(calls.map((c) => c.promise));

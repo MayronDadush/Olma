@@ -1,9 +1,10 @@
 'use strict';
 // Declarative tool registry — the single list both the MCP shim (tools/list)
-// and brokerd (dispatch) read. Every schema requires identity_token; no tool
-// accepts a caller-supplied user id as identity. Handlers get (client, user,
-// args) inside a transaction and return structured results; rendering to
-// text happens in render.js, never here.
+// and brokerd (dispatch) read. Every schema requires the identity parameter
+// (see identity-param.js for its name and why it is not called *_token); no
+// tool accepts a caller-supplied user id as identity. Handlers get (client,
+// user, args) inside a transaction and return structured results; rendering
+// to text happens in render.js, never here.
 const users = require('../../domain/users');
 const tasks = require('../../domain/tasks');
 const reminders = require('../../domain/reminders');
@@ -26,6 +27,7 @@ const contacts = require('../../domain/contacts');
 const audit = require('../../domain/audit');
 const { ok, err } = require('../../domain/results');
 const { scrubTokens } = require('./render');
+const { IDENTITY_PARAM } = require('./identity-param');
 
 const { ICON_NAMES } = scheduleCard;
 
@@ -175,10 +177,10 @@ function tool(name, description, props, required, handler) {
     inputSchema: {
       type: 'object',
       properties: {
-        identity_token: S('string', 'your identity token, exactly as printed in AGENTS.md'),
+        [IDENTITY_PARAM]: S('string', 'your identity string, exactly as printed in AGENTS.md'),
         ...props,
       },
-      required: ['identity_token', ...required],
+      required: [IDENTITY_PARAM, ...required],
     },
     handler,
   };

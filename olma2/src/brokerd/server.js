@@ -12,6 +12,7 @@ const { withTx } = require('../db/pool');
 const usersDomain = require('../domain/users');
 const { BY_NAME } = require('../adapters/mcp/registry');
 const { renderResult } = require('../adapters/mcp/render');
+const { readIdentity, stripIdentity } = require('../adapters/mcp/identity-param');
 const { FloodCounter } = require('./flood');
 const { refreshUserCard, CARD_TOOLS } = require('../intake/user-card');
 
@@ -24,7 +25,7 @@ function createBrokerServer({ pool, flood }) {
     try {
       let actorId = null;
       const result = await withTx(pool, async (client) => {
-        const auth = await usersDomain.resolveByToken(client, args && args.identity_token);
+        const auth = await usersDomain.resolveByToken(client, readIdentity(args));
         if (!auth.ok) {
           // Every auth failure is on the record: a bug or an attempt, and in
           // both cases something the dashboard should surface.
@@ -33,9 +34,8 @@ function createBrokerServer({ pool, flood }) {
           });
           return auth;
         }
-        const { identity_token, ...rest } = args || {};
         actorId = auth.data.user.id;
-        return tool.handler(client, auth.data.user, rest, { flood });
+        return tool.handler(client, auth.data.user, stripIdentity(args), { flood });
       });
       // Identity-shaping calls re-render the user's USER.md card — outside
       // the transaction on purpose, so the card always reflects committed
