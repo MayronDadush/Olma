@@ -10,6 +10,7 @@
 // reads to sound like it has been paying attention.
 const { ok, err } = require('./results');
 const audit = require('./audit');
+const { namesAMoment } = require('./datetime');
 
 // Validated here rather than by a DB CHECK — the same call connection features
 // made, so adding a category stays a one-line change with no migration.
@@ -52,15 +53,37 @@ function phoneLike(text) { return PHONE_LIKE_RE.test(String(text || '')); }
 //   weekdayClash: a false positive here refuses a real fact, so only the
 //   nothing-but-a-name shape is caught. "שמו של הכלב רקסי" (a pet), and any
 //   sentence that carries more than the name, pass untouched.
+//   The copula and the article are both optional in Hebrew, and every variant
+//   is the same sentence: "שם שלו הוא מירון" slipped past the first version of
+//   this guard and landed on a live card that already printed
+//   `First name: מירון` one line above it.
 const NAME_STATEMENT_RES = [
-  /^(?:שמו|שמה)\s+(?!של\s)\S+(?:\s+\S+)?$/,
-  /^קוראים ל(?:ו|ה|י)\s+\S+(?:\s+\S+)?$/,
-  /^השם של(?:ו|ה|י)\s+\S+(?:\s+\S+)?$/,
+  /^(?:שמו|שמה)\s+(?!של\s)(?:הוא\s+|היא\s+)?\S+(?:\s+\S+)?$/,
+  /^ה?שם\s+של(?:ו|ה|י)\s+(?:הוא\s+|היא\s+)?\S+(?:\s+\S+)?$/,
+  /^קוראים\s+ל(?:ו|ה|י)\s+\S+(?:\s+\S+)?$/,
   /^(?:his|her|my|their)\s+name\s+is\s+\S+(?:\s+\S+)?$/i,
 ];
 function bareNameStatement(text) {
   const t = String(text || '').replace(/[.!]+$/, '').trim();
   return NAME_STATEMENT_RES.some((re) => re.test(t));
+}
+
+// - A fact that describes OLMA'S OWN STATE is not biography. "היומן שלו מחובר
+//   כעת ל-Google Calendar עם גישת read_write" sat on a live card while
+//   renderCard printed `Calendar: connected (read_write)` two lines above it:
+//   a duplicate that costs a Top-K slot today, and a CONTRADICTION the day he
+//   disconnects, because nothing invalidates a fact when the state it copied
+//   changes. The card, integrations, connections and preferences are the live
+//   copies; a fact is a frozen one. Narrow by construction — a system noun AND
+//   a connection/configuration verb together, or the access-level literals,
+//   which mean nothing else. "יש לו פגישה ביומן" and "הוא מנותק רגשית" each
+//   carry only one half and pass.
+const SYSTEM_NOUN_RE = /יומן|calendar|דייג['\u05F3\u2019]?סט|digest|סיכום יומי|אולמה|olma/i;
+const SYSTEM_STATE_RE = /מחובר|מחוברת|מחוברים|מנותק|נותק|חיבר|חיברה|מוגדר|הוגדר|connected|disconnected/i;
+const ACCESS_LEVEL_RE = /read_write|read_only/i;
+function systemState(text) {
+  const t = String(text || '');
+  return ACCESS_LEVEL_RE.test(t) || (SYSTEM_NOUN_RE.test(t) && SYSTEM_STATE_RE.test(t));
 }
 
 function parseExpiry(value) {
@@ -82,6 +105,9 @@ async function rememberFact(client, userId, { category, fact, importance, expire
   if (bareNameStatement(text)) {
     return err('invalid', 'a name is profile, not a fact — call set_my_name instead (an unconfirmed guess is fine); stored as a fact it leaves every screen showing a phone number');
   }
+  if (systemState(text)) {
+    return err('invalid', "that is Olma's own state, not something about the person — it is already on their card and in the integrations/connections tables, and a copy here goes stale the moment it changes");
+  }
 
   const imp = Number(importance || 1);
   if (![1, 2, 3].includes(imp)) return err('invalid', 'importance must be 1, 2 or 3');
@@ -91,6 +117,12 @@ async function rememberFact(client, userId, { category, fact, importance, expire
 
   const expiry = parseExpiry(expiresAt);
   if (!expiry.ok) return err('invalid', 'expires_at must be a valid ISO datetime');
+  // A fact anchored to a moment must say when it stops being one. See
+  // datetime.namesAMoment for what counts and, more importantly, what does not
+  // — a recurring weekday ("ביום חמישי עובד מהבית") is durable and passes.
+  if (!expiry.value && namesAMoment(text)) {
+    return err('invalid', 'this names a specific date or day ("היום", "29.8") — set expires_at to when it stops being true, or, if it is something they need to DO, save it with add_task instead');
+  }
 
   const { rows } = await client.query(
     `INSERT INTO user_facts (user_id, category, fact, importance, source, expires_at)
@@ -157,5 +189,5 @@ async function topFacts(client, userId, k = 10) {
 module.exports = {
   rememberFact, forgetFact, listFacts, topFacts,
   KNOWN_FACT_CATEGORIES, KNOWN_SOURCES, MAX_FACT_CHARS, cleanFact,
-  phoneLike, bareNameStatement,
+  phoneLike, bareNameStatement, systemState,
 };

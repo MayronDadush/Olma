@@ -5,7 +5,7 @@
 // test the REAL stack), then marks it:
 //
 //   is_eval = true        → every sweep skips it, the outbox gate drops its
-//                           rows (its phone is fake — see migration 018)
+//                           rows (its phone is fake — see migration 019)
 //   checkin_enabled=false → belt and braces on top of the sweep exclusion
 //   digest_times = NULL   → no digest is ever due
 //   timezone confirmed    → the bare-time scenarios depend on Asia/Jerusalem

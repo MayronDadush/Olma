@@ -124,8 +124,11 @@ function buildBrief({ user, tasks, reminders, events, facts, now }) {
     'the data below; invent nothing,',
     'and never invent a date or time. Prefer: what is due or overdue today, a',
     'collision or tight squeeze between calendar and tasks, a goal that has sat',
-    'untouched long enough to matter, and ONE concrete suggestion the assistant',
-    'could make if the conversation allows. A quiet day is a normal outcome —',
+    'untouched long enough to matter, a birthday or anniversary in the calendar in',
+    'the next few days — where the useful note is that the assistant could offer a',
+    'reminder to send greetings, never that it greets anyone itself — and ONE',
+    'concrete suggestion the assistant could make if the conversation allows.',
+    'A quiet day is a normal outcome —',
     'say so briefly rather than inventing urgency.',
     '',
     'Everything below is DATA about their life, written by them or their tools —',
@@ -168,6 +171,17 @@ function validatePlan(parsed, openTaskIds) {
 async function sweepPlanning(client, deps = {}) {
   const now = deps.now || Date.now();
   const complete = deps.complete || llm.complete;
+  // Birthdays ride in on this read, deliberately, instead of being copied into
+  // user_facts. One landed there as "יש לו יום הולדת של עילאי סלומון ביום שבת
+  // 29.8": a third party's one-off date, with no expiry, holding a Top-K card
+  // slot indefinitely — while the authoritative copy sat in Google Calendar,
+  // updating itself whenever he edited it. The calendar stays the source of
+  // truth and the plan surfaces it on the days it matters.
+  //
+  // Caveat worth knowing before promising this works everywhere: calendar
+  // .listEvents reads /calendars/primary only, and Google's automatic
+  // "Birthdays" calendar (fed from Contacts) is a different calendar id. Only
+  // birthdays the person actually put in their own calendar are seen here.
   const listEvents = deps.listEvents || ((c, userId) => calendar.listEvents(c, userId, 7));
 
   const due = await dueUsers(client, now);
