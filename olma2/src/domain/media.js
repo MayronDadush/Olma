@@ -39,7 +39,15 @@ const DEFAULT_VIDEO_MODEL = 'bytedance/seedance-2.0-mini';
 const DEFAULT_ALLOWED_PHONES = '+972505404255';
 
 const MAX_PROMPT_CHARS = 2000;
-const IMAGE_TIMEOUT_MS = 25_000;   // the MCP shim aborts the call at 30s
+// The MCP shim aborts the whole tool call at 30s (bin/olma-mcp.js
+// CALL_TIMEOUT_MS) — a ceiling this file cannot move without touching every
+// tool. 25s was too tight a margin: מירון's first real request ("horse riding
+// a horse", 2026-08-28) hit it and errored, while replaying the identical
+// prompt moments later took 11.1s — real latency variance on the provider
+// side, not a broken prompt. 27s leaves ~3s for the socket round-trip + two
+// small DB writes, which measured well under 200ms; it narrows the window
+// without touching the 30s ceiling itself.
+const IMAGE_TIMEOUT_MS = 27_000;
 const POLL_TIMEOUT_MS = 15_000;    // sweep-side fetches must not stall the minute tick
 const JOB_MAX_AGE_MIN = 30;        // a job pending this long is declared lost
 const PENDING_JOBS_PER_USER = 3;   // no fire-and-forget queue spam
