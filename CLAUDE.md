@@ -55,6 +55,37 @@ describes **v1**, which is retired-in-place: its code still sits in
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
 
+### The credit alarm compared two clocks (fixed 2026-08-28)
+
+`jobs/credit-watch.js` decides "have I already alerted for THIS outage" by
+comparing `credit_alert_at` against the outage's first error. The first error
+came from Postgres (`min(created_at)`); the stamp was written by Node
+(`new Date().toISOString()`). Two clocks, and two separate failures:
+
+- **A JS Date cannot hold microseconds.** `pg` parses a timestamptz into a
+  millisecond-resolution Date and `toISOString()` drops the rest, so two events
+  a fraction of a millisecond apart compare EQUAL — and `>=` then reads a
+  genuinely new outage as the old one and stays silent. This is why
+  `tests/credit-watch.test.js` failed roughly two runs in three on main:
+  everything in it happens inside a few milliseconds. **A flaky test on the
+  alarm that pages when the model provider runs dry is worse than no test — it
+  trains everyone to shrug at a red suite.**
+- **`now()` is transaction start, not the wall clock**, and this runs inside
+  `withTx` (`bin/olma-brokerd.js`). Under READ COMMITTED a row inserted after
+  our transaction opened is still visible to the SELECT, so `now()` can
+  legitimately predate the outage just read — stamping the flag BEFORE the
+  first error and re-firing the same alarm every tick for the rest of a real
+  outage. Never observed live, and only because outages have so far started
+  between ticks rather than during one.
+
+Both sides now stay in Postgres: `min(created_at)::text` out, `$1::timestamptz`
+back in for the comparison, and the stamp is `clock_timestamp()::text`. Nothing
+passes through a JS Date, and no migration is needed — a legacy JS-written value
+still parses as a timestamptz. The regression test pins the two moments one
+microsecond apart (the same millisecond, which is all the old code could see)
+and asserts the stored stamp is Postgres's own rendering — a space and `+00`,
+never `T...Z`.
+
 ### Behavioral evals: nightly scripted conversations, judged twice (2026-08-28)
 
 467 unit tests were green the night "אני רוצה להפסיק את השירות" was answered
