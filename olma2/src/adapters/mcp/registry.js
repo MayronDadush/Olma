@@ -1,9 +1,10 @@
 'use strict';
 // Declarative tool registry — the single list both the MCP shim (tools/list)
-// and brokerd (dispatch) read. Every schema requires identity_token; no tool
-// accepts a caller-supplied user id as identity. Handlers get (client, user,
-// args) inside a transaction and return structured results; rendering to
-// text happens in render.js, never here.
+// and brokerd (dispatch) read. Every schema requires the identity parameter
+// (see identity-param.js for its name and why it is not called *_token); no
+// tool accepts a caller-supplied user id as identity. Handlers get (client,
+// user, args) inside a transaction and return structured results; rendering
+// to text happens in render.js, never here.
 const users = require('../../domain/users');
 const tasks = require('../../domain/tasks');
 const reminders = require('../../domain/reminders');
@@ -28,6 +29,7 @@ const contacts = require('../../domain/contacts');
 const audit = require('../../domain/audit');
 const { ok, err } = require('../../domain/results');
 const { scrubTokens } = require('./render');
+const { IDENTITY_PARAM } = require('./identity-param');
 
 const { ICON_NAMES } = scheduleCard;
 
@@ -177,10 +179,10 @@ function tool(name, description, props, required, handler) {
     inputSchema: {
       type: 'object',
       properties: {
-        identity_token: S('string', 'your identity token, exactly as printed in AGENTS.md'),
+        [IDENTITY_PARAM]: S('string', 'your identity string, exactly as printed in AGENTS.md'),
         ...props,
       },
-      required: ['identity_token', ...required],
+      required: [IDENTITY_PARAM, ...required],
     },
     handler,
   };
@@ -428,30 +430,39 @@ const TOOLS = [
   // Access-limited (admins + an allowlisted phone) — the server refuses
   // everyone else, so the doctrine for most users is simply: never offer it.
   // The prompt travels to OpenRouter as-is; the file lands in the caller's
-  // own workspace, inside the same MEDIA: boundary as schedule cards.
+  // own workspace, inside the same MEDIA: boundary as schedule cards. Both
+  // tools only START the job — an image model spends a variable, sometimes
+  // large amount of time per prompt (observed 11-30s+ live), well past what
+  // a single tool call can safely wait on, so images are delivered later by
+  // the sweep exactly like videos.
   tool('generate_image',
     'Create an image with an AI image model. LIMITED ACCESS: most users are refused by the server — '
     + 'NEVER offer, mention or suggest this feature on your own; use it only when the user themselves '
     + 'explicitly asks for an image to be created, and if refused, say plainly it is not available for them. '
     + 'Write the prompt as one rich, specific English description of the desired image (subject, style, '
-    + 'lighting, composition) — translate the user\'s request, do not pass their raw words. Returns a file '
-    + 'path and sends nothing: attach it with "MEDIA: <path>" on its own line plus ONE short sentence.',
+    + 'lighting, composition) — translate the user\'s request, do not pass their raw words. This tool only '
+    + 'STARTS the generation: it is usually ready well under a minute and the finished image is sent to '
+    + 'the user automatically as a separate message — tell them it is on its way, and never call this '
+    + 'again for the same request.',
     { prompt: S('string', 'English description of the image to generate (max 2000 chars)') }, ['prompt'],
-    (client, user, a) => media.generateImage(client, user, { prompt: a.prompt })),
+    (client, user, a) => media.startImage(client, user, { prompt: a.prompt })),
   tool('generate_video',
     'Create a short video (4-15 seconds) with an AI video model. LIMITED ACCESS: most users are refused '
     + 'by the server — NEVER offer, mention or suggest this feature on your own; use it only when the user '
     + 'themselves explicitly asks for a video, and if refused, say plainly it is not available for them. '
-    + 'Write the prompt as one rich, specific English description of the scene and motion. This tool only '
-    + 'STARTS the generation: it takes 1-2 minutes and the finished video is sent to the user automatically '
-    + 'as a separate message — tell them it is on its way, and never call this again for the same request.',
+    + 'Write the prompt as one rich, specific English description of the scene and motion. Leave resolution '
+    + 'unset — it defaults to the cheapest tier (480p) — and only pass 720p when the user explicitly asked '
+    + 'for higher quality. This tool only STARTS the generation: it takes 1-2 minutes and the finished video '
+    + 'is sent to the user automatically as a separate message — tell them it is on its way, and never call '
+    + 'this again for the same request.',
     {
       prompt: S('string', 'English description of the video scene and motion (max 2000 chars)'),
       duration_seconds: S('number', 'Length in seconds, integer 4-15. Default 5.'),
+      resolution: S('string', 'One of: ' + media.VIDEO_RESOLUTIONS.join(', ') + '. Default 480p (cheapest) — set 720p ONLY if the user explicitly asked for better quality.'),
       aspect_ratio: S('string', 'One of: ' + media.VIDEO_ASPECTS.join(', ') + '. Default 16:9 (9:16 suits phones).'),
     }, ['prompt'],
     (client, user, a) => media.startVideo(client, user, {
-      prompt: a.prompt, duration_seconds: a.duration_seconds, aspect_ratio: a.aspect_ratio,
+      prompt: a.prompt, duration_seconds: a.duration_seconds, resolution: a.resolution, aspect_ratio: a.aspect_ratio,
     })),
 
   // ---------------------------------------------------------------- tasks
@@ -933,7 +944,7 @@ const TOOLS = [
   // conversation, not from these tools — they exist for the moment someone
   // states something outright ("my daughter starts school in September") and
   // for correcting what was learned wrong.
-  tool('remember_fact', 'Store a durable fact about this person (still matters in a month). NOT a task (add_task), NOT a phone/who-knows-whom (connections), NOT how they like you to work (remember_preference). importance: 1 ordinary / 2 important / 3 core-only-if-always-relevant. Set expires_at for anything with a shelf life.',
+  tool('remember_fact', 'Store a durable fact about this person (still matters in a month). NOT a task (add_task), NOT a phone/who-knows-whom (connections), NOT how they like you to work (remember_preference), NOT Olma\'s own state (calendar/digest/connection status — the card already carries it). A constraint about ONE arrangement ("לא נוח לי בשבת הקרובה") belongs to that meeting via record_meeting_constraint; store it here only if they generalise it ("אני אף פעם לא נפגשת בשבת"), and a standing availability rule is remember_preference key availability. importance: 1 ordinary / 2 important / 3 core-only-if-always-relevant. expires_at is REQUIRED when the fact names a date or a moving day ("היום", "מחר", "29.8") — it is refused without one.',
     { category: S('string', 'work | family | people | health | plans | habits | context'),
       fact: S('string', 'The fact, one short sentence in their language'),
       importance: S('number', '1 ordinary (default) | 2 important | 3 core'),

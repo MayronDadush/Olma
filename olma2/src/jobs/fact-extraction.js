@@ -45,6 +45,7 @@ const audit = require('../domain/audit');
 const facts = require('../domain/facts');
 const tasks = require('../domain/tasks');
 const users = require('../domain/users');
+const meetings = require('../domain/meetings');
 const llm = require('../adapters/llm');
 const flagsDomain = require('../domain/flags');
 const { readRecentMessages } = require('../channels/sessions');
@@ -61,6 +62,11 @@ const READ_MESSAGES = 40;
 const MAX_TRANSCRIPT_CHARS = 6000;
 // How much of their open list goes into the prompt as the dedupe reference.
 const OPEN_TASKS_IN_PROMPT = 40;
+// The meetings whose already-recorded constraints go in as the "do not
+// generalise this" reference, and how far back a closed one still counts —
+// one chapter's worth, since that is the transcript being read.
+const MEETINGS_IN_PROMPT = 5;
+const MEETING_CONSTRAINT_WINDOW_MS = 24 * 3600_000;
 
 // Text the machine put into the transcript, not the person.
 //
@@ -119,13 +125,18 @@ function renderTranscript(messages) {
 // at one JSON answer instead of tool calls — every doctrine line here traces
 // to an incident (dedupe, no invented dates, name-not-a-fact, wish-vs-
 // commitment), so reword freely but drop nothing.
-function buildInstruction(transcript, existingFacts, openTasks = [], profile = {}) {
+function buildInstruction(transcript, existingFacts, openTasks = [], profile = {}, meetingConstraints = []) {
   const known = existingFacts.length
     ? existingFacts.map((f) => `- [${f.category}] ${f.fact}`).join('\n')
     : '(nothing recorded yet)';
   const list = openTasks.length
     ? openTasks.map((t) => `- ${t.parent_id ? '  ↳ ' : ''}[${t.id}] ${t.title}`).join('\n')
     : '(their list is empty)';
+  // Everything they have already said about a meeting they are currently
+  // arranging, quoted back so the model can recognise it in the transcript.
+  const meetingLines = meetingConstraints.length
+    ? meetingConstraints.map((m) => `- "${m.title}": ${m.constraints.join(' | ')}`).join('\n')
+    : '';
   return [
     `${INSTRUCTION_MARKER} You are the memory of a personal assistant. Read the`,
     'conversation below and answer with ONE JSON object — nothing else, no prose',
@@ -156,15 +167,34 @@ function buildInstruction(transcript, existingFacts, openTasks = [], profile = {
     'is one short sentence in their own language; importance is 1 ordinary, 2',
     'important, 3 core — reserve 3 for what should always be in front of the',
     'assistant. Set expires_at (ISO date) on anything with a shelf life, like a trip',
-    'or a deadline; otherwise null.',
+    'or a deadline; otherwise null. A fact that names a date or a moving day ("היום",',
+    '"מחר", "29.8") is REJECTED without one — it would still be sitting in front of',
+    'the assistant months after it stopped being true.',
     '',
     'Do NOT record as a fact:',
     '- what they are called — that goes in "name", never in facts;',
     '- things they need to do — those go in "tasks", not facts;',
     '- phone numbers, or who is connected to whom — a structured system owns that;',
     '- how they like the assistant to work (tone, hours, message length);',
+    '- the assistant\'s own state — whose calendar is connected, whether a digest is set;',
+    // A live card carried "גלי מעדיפה לא להיפגש בשבת" as a permanent habit.
+    // She had said one Saturday did not work for ONE meeting; the constraint
+    // was correctly recorded against that meeting, and this job — reading the
+    // transcript afterwards, with no idea a negotiation was going on — read it
+    // back out of context and generalised it into who she is.
+    '- what suits them for ONE specific arrangement they are currently making. "לא נוח',
+    '  לי בשבת" about a particular meeting is about that meeting, and is already',
+    '  recorded against it. Only an explicit generalisation ("אני אף פעם לא נפגשת',
+    '  בשבת") is a habit;',
     '- passing detail that will not matter in a month.',
     '',
+    ...(meetingLines
+      ? ['They are in the middle of arranging these, and this is what they have already',
+         'said about them — it is ALREADY recorded there. Do not repeat any of it as a',
+         'fact, and do not turn it into a rule about them:',
+         meetingLines,
+         '']
+      : []),
     'TASKS — what they said they need to do. A commitment is theirs and stated out',
     'loud: "אני צריך למכור שלושה מהרכבים", "I have to renew the passport". It does not',
     'have to be phrased as a request, and it is usually not — that is the whole reason',
@@ -200,7 +230,11 @@ function buildInstruction(transcript, existingFacts, openTasks = [], profile = {
 // enforce their own rules (category vocabulary, importance range, one-level
 // nesting, bulk cap) a second time.
 async function applyExtraction(client, user, parsed) {
-  const out = { recorded: 0, tasksCaptured: 0 };
+  // `refused` exists because the guards in domain/facts swallow a proposal
+  // silently, and a nightly job that quietly drops facts looks exactly like a
+  // quiet week. If a guard ever starts over-firing — refusing real facts every
+  // night — this counter is the only place that would say so.
+  const out = { recorded: 0, tasksCaptured: 0, refused: {} };
   const factList = Array.isArray(parsed.facts) ? parsed.facts.slice(0, 20) : [];
   for (const f of factList) {
     if (!f || typeof f.fact !== 'string') continue;
@@ -221,6 +255,10 @@ async function applyExtraction(client, user, parsed) {
       source: 'conversation',
     });
     if (res.ok) out.recorded++;
+    else {
+      const why = (res.error && (res.error.reason || res.error.code)) || 'unknown';
+      out.refused[why] = (out.refused[why] || 0) + 1;
+    }
   }
   const taskList = Array.isArray(parsed.tasks) ? parsed.tasks.slice(0, 10) : [];
   for (const t of taskList) {
@@ -258,7 +296,7 @@ async function dueUsers(client, now = Date.now(), minGapHours = 0) {
       WHERE status = 'active' AND agent_id IS NOT NULL AND onboarded_at IS NOT NULL
         -- Sends nothing, but it spends a model turn reading their conversation
         -- and writes to their record. Someone who asked us to stop is owed both.
-        AND paused_at IS NULL
+        AND paused_at IS NULL AND NOT is_eval
         AND last_inbound_at IS NOT NULL
         AND last_inbound_at < $1
         AND last_inbound_at > COALESCE(last_fact_extraction_at, 'epoch'::timestamptz)
@@ -304,6 +342,11 @@ async function sweepFactExtraction(client, deps = {}) {
     considered: due.length, extracted: [], recorded: 0, tasksCaptured: 0,
     skipped: 0, failed: [],
   };
+  // By guard reason, across everyone this tick. Attached to `out` at the end
+  // only when non-empty: the heartbeat note is this object JSON-stringified and
+  // truncated at 200 chars, and an always-present empty key spends that budget
+  // saying nothing.
+  const refused = {};
 
   // The cap bounds MODEL TURNS, not candidates. Slicing the list first meant a
   // user with nothing to extract still consumed a slot — and since a skip does
@@ -333,8 +376,32 @@ async function sweepFactExtraction(client, deps = {}) {
         ORDER BY coalesce(parent_id, id), parent_id NULLS FIRST, id LIMIT $2`,
       [u.id, OPEN_TASKS_IN_PROMPT]
     );
+    // What they have already said about a meeting they are arranging. This is
+    // the structural half of the "גלי מעדיפה לא להיפגש בשבת" fix: the doctrine
+    // line above asks the model to tell a one-off constraint from a habit, and
+    // this hands it the actual sentences so it does not have to infer that a
+    // negotiation was even happening. Still-open meetings, plus ones that
+    // closed inside this chapter, since the constraint was stated while they
+    // were open. Their OWN constraints, private ones included — nothing here
+    // is sent anywhere; the model is being told what NOT to write down.
+    const { rows: constraintRows } = await client.query(
+      `SELECT m.id, m.title, p.constraints FROM meeting_participants p
+         JOIN meetings m ON m.id = p.meeting_id
+        WHERE p.user_id = $1 AND p.state <> 'opted_out'
+          AND jsonb_array_length(p.constraints) > 0
+          AND (m.status = 'negotiating' OR m.updated_at > now() - ($2 || ' milliseconds')::interval)
+        ORDER BY m.id DESC LIMIT $3`,
+      [u.id, String(MEETING_CONSTRAINT_WINDOW_MS), MEETINGS_IN_PROMPT]
+    );
+    const meetingConstraints = constraintRows
+      .map((r) => ({
+        title: (r.title || 'פגישה').slice(0, 60),
+        constraints: meetings.constraintTexts(r.constraints).slice(0, 5),
+      }))
+      .filter((m) => m.constraints.length);
+
     const message = buildInstruction(renderTranscript(fresh), known, openTasks,
-      { firstName: u.first_name });
+      { firstName: u.first_name }, meetingConstraints);
 
     // One direct call, one JSON answer. No session, no tools, no identity
     // token — the model cannot write anything; it can only propose.
@@ -357,10 +424,14 @@ async function sweepFactExtraction(client, deps = {}) {
       await audit.record(client, u.id, 'facts.extracted', {
         agentId: u.agent_id, messagesRead: fresh.length,
         factsRecorded: applied.recorded, tasksCaptured: applied.tasksCaptured,
+        ...(Object.keys(applied.refused).length ? { factsRefused: applied.refused } : {}),
       });
       out.extracted.push(u.id);
       out.recorded += applied.recorded;
       out.tasksCaptured += applied.tasksCaptured;
+      for (const [why, n] of Object.entries(applied.refused)) {
+        refused[why] = (refused[why] || 0) + n;
+      }
       // The card is how any of this reaches the agent, so refreshing it is part
       // of the job, not a nicety. Best-effort: a file write must never fail the
       // sweep for everyone else.
@@ -374,6 +445,7 @@ async function sweepFactExtraction(client, deps = {}) {
       });
     }
   }
+  if (Object.keys(refused).length) out.refused = refused;
   return out;
 }
 
@@ -381,5 +453,5 @@ module.exports = {
   sweepFactExtraction, dueUsers, buildInstruction, renderTranscript, newMessagesSince,
   isMachineText, readPersonMessages,
   CHAPTER_GAP_MS, MAX_PER_TICK, READ_MESSAGES, MAX_TRANSCRIPT_CHARS, INSTRUCTION_MARKER,
-  OPEN_TASKS_IN_PROMPT,
+  OPEN_TASKS_IN_PROMPT, MEETINGS_IN_PROMPT, MEETING_CONSTRAINT_WINDOW_MS,
 };

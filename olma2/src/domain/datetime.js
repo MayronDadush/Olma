@@ -140,7 +140,75 @@ function weekdayClash(label, text, startsAt, tz) {
     { reason: 'weekday_mismatch', namedWeekdays: named, actualWeekday: actual });
 }
 
+// ---- does this text pin itself to a moment? ---------------------------------
+//
+// user_facts.expires_at is how a fact with a shelf life says so, and nothing
+// ever enforced it. Live cards therefore carried "גלי מתקשרת לחיים לגבי השכרת
+// רכב היום בבוקר" and "יש לו יום הולדת של עילאי סלומון ביום שבת 29.8" with no
+// expiry at all — text guaranteed to be wrong within days, holding a Top-K
+// card slot forever and evicting facts that WERE durable ("עמית הוא חבר
+// שמשחק איתו פוקר" fell off a live card exactly this way).
+//
+// Two shapes are read as "this names a specific moment", both narrow on
+// purpose — a false positive REFUSES a real fact, the same asymmetry the
+// weekday prefixes above are tuned around:
+//
+// - a MOVING reference point ("היום", "מחר", "tonight"): anchored to the day
+//   it was written, so it is wrong by construction the next morning.
+// - an explicit CALENDAR DATE. ISO (2026-09-15) and slash (15/9) forms are
+//   unambiguous. The dotted Hebrew form ("29.8") is only read as a date when
+//   the text also names a weekday or a month, because "3.5 שעות" is the same
+//   shape and is not a date.
+//
+// A weekday ALONE is deliberately NOT a signal here: "ביום חמישי עובד מהבית"
+// and "עובד כל יום ראשון עד חמישי מ-7:30" are recurring, durable and correct
+// as timeless facts. Only the two shapes above move.
+const HE_MOVING_WORDS = ['מחר', 'מחרתיים', 'אתמול', 'שלשום', 'הערב', 'הלילה', 'השבוע'];
+const HE_MOVING_RES = HE_MOVING_WORDS.map((w) =>
+  new RegExp(`(?:^|[^\\u0590-\\u05FF])${HE_PREFIX}?${w}(?!${HE_LETTER})`, 'u'));
+const EN_MOVING_RE = /\b(today|tomorrow|tonight|yesterday|this week|next week)\b/i;
+
+// "היום" is the one that needs care: it is both "today" and "the day", and the
+// two neighbours that give it away are cheap to read. Followed by a ה- or ש-
+// word it is the noun ("היום הראשון שלו בעבודה", "היום שבו התחיל"); preceded
+// by כל / במשך it is a duration ("עובד כל היום"). Both are durable text.
+const HE_TODAY_RE = /^[מלבו]?היום$/u;
+const HE_TODAY_NOUN_PREV_RE = /^(?:כל|במשך|לאורך|באמצע)$/u;
+const HE_TODAY_NOUN_NEXT_RE = /^[הש][֐-׿]/u;
+function namesToday(text) {
+  const words = String(text).split(/[\s,.;:!?()"'׳״’-]+/).filter(Boolean);
+  return words.some((w, i) => HE_TODAY_RE.test(w)
+    && !HE_TODAY_NOUN_PREV_RE.test(words[i - 1] || '')
+    && !HE_TODAY_NOUN_NEXT_RE.test(words[i + 1] || ''));
+}
+
+const ISO_DATE_RE = /(?:^|\D)\d{4}-\d{1,2}-\d{1,2}(?!\d)/;
+const SLASH_DATE_RE = /(?:^|[^\d/])(?:0?[1-9]|[12]\d|3[01])\/(?:0?[1-9]|1[0-2])(?:\/\d{2,4})?(?![\d/])/;
+// The ambiguous one: identical in shape to "3.5 שעות", so it never decides on
+// its own — MONTH_RE or a weekday elsewhere in the sentence is what confirms it.
+const DOTTED_DATE_RE = /(?:^|[^\d.])(?:0?[1-9]|[12]\d|3[01])\.(?:0?[1-9]|1[0-2])(?:\.\d{2,4})?(?![\d.])/;
+const HE_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'מרס', 'אפריל', 'מאי', 'יוני', 'יולי',
+  'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+const HE_MONTH_RE = new RegExp(
+  `(?:^|[^\\u0590-\\u05FF])${HE_PREFIX}?(?:${HE_MONTHS.join('|')})(?!${HE_LETTER})`, 'u');
+// Full names and the conventional three-letter abbreviations only — a trailing
+// [a-z]* would turn "market" into March.
+const EN_MONTH_RE = /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i;
+
+function namesAMoment(text) {
+  const t = typeof text === 'string' ? text : '';
+  if (!t.trim()) return false;
+  if (EN_MOVING_RE.test(t)) return true;
+  if (HE_MOVING_RES.some((re) => re.test(t))) return true;
+  if (namesToday(t)) return true;
+  if (ISO_DATE_RE.test(t) || SLASH_DATE_RE.test(t)) return true;
+  if (DOTTED_DATE_RE.test(t)
+    && (weekdaysInText(t).length > 0 || HE_MONTH_RE.test(t) || EN_MONTH_RE.test(t))) return true;
+  return false;
+}
+
 module.exports = {
   OFFSET_RE, hasOffset, badTime,
   weekdaysInText, weekdayInZone, weekdayClash,
+  namesAMoment,
 };

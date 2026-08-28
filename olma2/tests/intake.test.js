@@ -473,10 +473,25 @@ test('config guard: catches every identity-critical regression', async () => {
 test('auth failures land in the audit log', async () => {
   const { createBrokerServer } = require('../src/brokerd/server');
   const broker = createBrokerServer({ pool: db.pool });
-  await broker.dispatch({ id: 1, method: 'tool_call', params: { name: 'list_my_tasks', args: { identity_token: 'olma_tok_' + '0'.repeat(32) } } });
+  await broker.dispatch({ id: 1, method: 'tool_call', params: { name: 'list_my_tasks', args: { olma_identity: 'olma_tok_' + '0'.repeat(32) } } });
   const { rows } = await db.pool.query(`SELECT detail FROM audit_log WHERE event = 'auth.failed'`);
   assert.ok(rows.length >= 1);
   assert.equal(rows[0].detail.tool, 'list_my_tasks');
+});
+
+// The shim repairs a missing identity from the session's proven one, so this
+// case can only be seen at the broker: no identity under EITHER name is a
+// plain auth failure that names the parameter to use, never a crash.
+test('a call carrying no identity at all fails cleanly and says what to send', async () => {
+  const { createBrokerServer } = require('../src/brokerd/server');
+  const broker = createBrokerServer({ pool: db.pool });
+  const res = await broker.dispatch({
+    id: 1, method: 'tool_call', params: { name: 'list_my_tasks', args: { limit: 5 } },
+  });
+  assert.equal(res.ok, true, 'transport succeeds; the tool result carries the refusal');
+  assert.match(res.text, /^ERROR forbidden/);
+  assert.match(res.text, /olma_identity/, 'the failure names the parameter');
+  assert.match(res.text, /\.olma-identity/, 'and the file to read it from');
 });
 
 test('intake workspace sync: open/closed variants, idempotent writes', () => {

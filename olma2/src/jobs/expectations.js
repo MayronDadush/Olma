@@ -25,6 +25,9 @@ const JOB_INTERVAL_SECONDS = {
   // is: "their own small hours" only means something in each person's zone.
   planning_sweep: 3600,
   usage_sweep: 3600,
+  // Nightly, but ticked hourly like planning: the job itself owns the
+  // small-hours window and the once-per-night watermark.
+  eval_sweep: 3600,
   metrics_sweep: 3600,
   retention_sweep: 86400,
 };

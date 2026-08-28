@@ -7,6 +7,7 @@
 const net = require('node:net');
 const readline = require('node:readline');
 const { toolDefinitions } = require('../src/adapters/mcp/registry');
+const { IDENTITY_PARAM, LEGACY_IDENTITY_PARAM, readIdentity } = require('../src/adapters/mcp/identity-param');
 
 const SOCK = process.env.OLMA_SOCK || '/opt/olma2/run/brokerd.sock';
 const CALL_TIMEOUT_MS = 30_000;
@@ -28,6 +29,10 @@ const CALL_TIMEOUT_MS = 30_000;
 // well-formed token would turn one user's typo into another user's identity
 // the day shims are ever shared. The failure text itself now tells the model
 // the one recovery that works (re-read the file), which covers that rare case.
+//
+// A repair writes the CURRENT parameter name and clears the legacy one, so a
+// model still copying the old name from earlier in its session is nudged
+// forward rather than kept there (brokerd accepts both regardless).
 const TOKEN_RE = /^olma_tok_[0-9a-f]{32}$/;
 let knownGoodToken = null;
 
@@ -113,16 +118,17 @@ rl.on('line', async (line) => {
     } else if (method === 'tools/call') {
       const { name, arguments: rawArgs } = params || {};
       const args = { ...(rawArgs || {}) };
-      // Malformed token + a proven one on hand → repair before the round trip.
-      if (knownGoodToken && !TOKEN_RE.test(String(args.identity_token || ''))) {
-        args.identity_token = knownGoodToken;
+      // Malformed identity + a proven one on hand → repair before the round trip.
+      if (knownGoodToken && !TOKEN_RE.test(String(readIdentity(args) || ''))) {
+        args[IDENTITY_PARAM] = knownGoodToken;
+        delete args[LEGACY_IDENTITY_PARAM];
       }
       let text;
       try {
         const res = await brokerCall(name, args);
         text = res.text || (res.ok ? 'OK' : 'ERROR internal: empty broker reply');
-        if (text.startsWith('OK') && TOKEN_RE.test(String(args.identity_token || ''))) {
-          knownGoodToken = args.identity_token;
+        if (text.startsWith('OK') && TOKEN_RE.test(String(readIdentity(args) || ''))) {
+          knownGoodToken = readIdentity(args);
         }
       } catch (e) {
         text = `ERROR unavailable: assistant backend not reachable (${e.message})`;

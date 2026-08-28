@@ -234,10 +234,14 @@ function bodyFor(row, p) {
     // MEDIA: line attaches it exactly like a schedule card. The prompt is the
     // user's own earlier request, echoed back so the agent can say which video
     // this is — data for context, not an instruction to re-generate.
-    case 'media_ready':
-      return `The ${p.kind || 'video'} the user asked you to create earlier is ready (their request was: <<<${p.prompt || ''}>>>). Deliver it NOW: reply with one short sentence in the user's language ("הנה הסרטון שביקשת" or similar), then "MEDIA: ${p.path}" on its own line. Do not call generate_video again, and do not describe the content beyond that one sentence.`;
-    case 'media_failed':
-      return `The ${p.kind || 'video'} the user asked you to create earlier (their request: <<<${p.prompt || ''}>>>) could not be generated — the provider failed. Tell them briefly and without technical detail that it did not work this time, and offer once to try again (a fresh generate_video call). Do not retry on your own.`;
+    case 'media_ready': {
+      const kind = p.kind === 'image' ? 'image' : 'video';
+      return `The ${kind} the user asked you to create earlier is ready (their request was: <<<${p.prompt || ''}>>>). Deliver it NOW: reply with one short sentence in the user's language (e.g. "הנה ${kind === 'image' ? 'התמונה' : 'הסרטון'} שביקשת"), then "MEDIA: ${p.path}" on its own line. Do not call generate_${kind} again, and do not describe the content beyond that one sentence.`;
+    }
+    case 'media_failed': {
+      const kind = p.kind === 'image' ? 'image' : 'video';
+      return `The ${kind} the user asked you to create earlier (their request: <<<${p.prompt || ''}>>>) could not be generated — the provider failed. Tell them briefly and without technical detail that it did not work this time, and offer once to try again (a fresh generate_${kind} call). Do not retry on your own.`;
+    }
     case 'contacts_needs_reauth':
       return `The user's Google contacts sync stopped working — Google no longer accepts it. Tell them briefly, without alarm, and offer to reconnect via start_contacts_connection if they want syncing to continue (their already-imported contacts are unaffected either way).`;
     default:
