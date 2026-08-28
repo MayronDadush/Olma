@@ -95,6 +95,12 @@ test('a NEW outage re-arms the alarm; a failed send does not consume it', async 
     // the alert target is a flag the dashboard can change without a deploy
     await flagsDomain.setFlag(c, watch.ALERT_PHONE_FLAG, '+972590000000');
     await c.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+    // The "same outage?" guard compares a flag stamped from the APP clock
+    // against a created_at stamped by POSTGRES. Two statements apart those can
+    // land in either order, and under full-suite load this assertion flaked on
+    // exactly that. What the scenario means is "an outage that began after the
+    // last alert" — so say it outright instead of racing two clocks to imply it.
+    await flagsDomain.setFlag(c, watch.ALERT_AT_FLAG, new Date(Date.now() - 60_000).toISOString());
     await withTx(db.pool, (cc) => enqueue(cc, {
       userId: user.id, kind: 'checkin', idempotencyKey: 'cw:3',
     }));

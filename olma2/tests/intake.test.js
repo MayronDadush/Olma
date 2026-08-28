@@ -671,6 +671,43 @@ test('a carryover that could belong to someone else is dropped, not written', ()
   }
 });
 
+// 13 open issues on 2026-08-27, every one of them already resolved. A list
+// that only grows buries the live rows among the dead ones — the same way
+// nobody read the red /health page for 13 hours.
+test('config guard closes what it filed once the condition clears — and nothing else', async () => {
+  const fresh = await freshDb();
+  try {
+    const seed = (title, detail, status = 'new') => fresh.pool.query(
+      `INSERT INTO issues (category, source, title, detail, status)
+       VALUES ('bug', 'agent_detected', $1, $2, $3)`, [title, detail, status]);
+
+    await seed('gone away', 'raised by config-guard');
+    await seed('still true', 'raised by config-guard');
+    await seed('being worked on', 'raised by config-guard', 'triaged');
+    await seed('a person filed this', 'reported in conversation');
+    await seed('already closed', 'raised by config-guard', 'wontfix');
+
+    const client = await fresh.pool.connect();
+    let closed;
+    try { closed = await guard.closeResolved(client, ['still true']); } finally { client.release(); }
+    assert.equal(closed, 2, 'the two open guard rows it no longer reports');
+
+    const { rows } = await fresh.pool.query('SELECT title, status FROM issues ORDER BY title');
+    const status = Object.fromEntries(rows.map((r) => [r.title, r.status]));
+    assert.equal(status['gone away'], 'fixed');
+    assert.equal(status['being worked on'], 'fixed', 'triaged is still open, so still the guard\'s to close');
+    assert.equal(status['still true'], 'new', 'the condition is live — left alone');
+    assert.equal(status['a person filed this'], 'new', 'never touch a row the guard did not file');
+    assert.equal(status['already closed'], 'wontfix', 'a closed row keeps whatever close it was given');
+
+    // ...and a sweep that finds nothing closes everything of its own
+    const c2 = await fresh.pool.connect();
+    try { assert.equal(await guard.closeResolved(c2, []), 1); } finally { c2.release(); }
+  } finally {
+    await fresh.teardown();
+  }
+});
+
 test('config guard notices an AGENTS.md carrying the wrong identity token', async () => {
   const os = require('node:os');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-doctrine-'));
