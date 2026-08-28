@@ -68,17 +68,30 @@ separately. `domain/media.js` owns all of it; migration 017.
   per-model constraints (durations 4-15s, 480p/720p, aspect list). An
   earlier session concluded "no video models on OpenRouter" from the bare
   catalog — the owner's screenshot of the site proved otherwise.
-- **Images are synchronous** (`POST /api/v1/images`, ~7s measured, $0.01 for
-  muse-image): generate → PNG into the caller's own workspace via
-  `card-store.saveMedia` (same MEDIA:-boundary argument as schedule cards) →
-  the agent attaches it with a `MEDIA:` line on the same reply.
-- **Video is submit-then-sweep** (`POST /api/v1/videos` → 202 + polling_url;
-  ~95s measured for 4s/480p, $0.054): the tool inserts a `media_jobs` row and
-  tells the agent the video will arrive on its own; `sweepMediaJobs` (rides
-  the existing minute tick, no new sweeper) polls, downloads the MP4 into the
-  workspace, and enqueues ONE `media_ready` outbox row (urgent, idempotency
-  `mediajob:<id>`, plus a status-guarded UPDATE so a race cannot double-send).
+- **Both kinds are submit-then-sweep — images too, since migration 018
+  (2026-08-28, same day).** The first version made images synchronous inside
+  the tool call ("~7s measured on a plain-triangle prompt, fits the 30s MCP
+  budget"). Wrong, disproven live within the hour: מירון's first REAL prompt
+  ("horse riding a horse") timed out at 25s; raising the margin to 27s just
+  moved the failure — an unbounded direct call for the identical prompt took
+  29.4s. `meta/muse-image` does not render a fixed-size image, it decides how
+  much detail to spend per request (389 image_tokens for the triangle, 3052
+  for the horse prompt, at a measured, consistent ~104 tokens/sec either way)
+  — no fetch timeout under the 30s MCP ceiling can safely absorb every
+  legitimate prompt. `generate_image` now only inserts a `media_jobs` row
+  (kind='image', no provider_job_id/polling_url — OpenRouter's image endpoint
+  has no job id of its own, one blocking call IS the whole job) and tells the
+  agent it's on its way; `sweepMediaJobs` makes that (now unbounded) call
+  itself, since sweeps were never under the 30s ceiling to begin with (video's
+  own download step already ran a 60s fetch from inside one). Video is
+  unchanged: `POST /api/v1/videos` → 202 + polling_url (~95s measured for
+  4s/480p, $0.054); `sweepMediaJobs` (rides the existing minute tick, no new
+  sweeper) polls, downloads the MP4, and both kinds land in the requester's
+  workspace and enqueue ONE `media_ready` outbox row (urgent, idempotency
+  `mediajob:<id>`, status-guarded UPDATE so a race cannot double-send).
   Failures get `media_failed` once; a job pending >30min is declared lost.
+  `media_jobs.kind` CHECK widened to `('image','video')`;
+  `provider_job_id`/`polling_url` made nullable for the image path.
 - **The gate is server-side**: `role='admin'` (מירון, user 3 — granted and
   audited 2026-08-28) or a phone in the `media_gen_phones` flag
   (comma-separated, dashboard-editable). Every agent SEES the tools (tool
