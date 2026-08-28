@@ -97,6 +97,11 @@ separately. `domain/media.js` owns all of it; migration 017.
   (comma-separated, dashboard-editable). Every agent SEES the tools (tool
   listing is global) — the descriptions say never to offer the feature and
   the refusal happens on the call.
+- **Video defaults to 480p, the cheapest tier** (owner ask, 2026-08-28) —
+  `resolution` was not even a tool parameter before this, so the agent had no
+  way to ask for better even if the user wanted it; added as optional, with
+  the tool description telling the model to leave it unset unless the user
+  explicitly asked for higher quality.
 - **Money**: OpenRouter reports an authoritative `usage.cost` in USD on every
   generation — recorded as-is into `media_usage_ledger` (one row per user per
   day, images+videos together), rendered as its own block in the dashboard's
