@@ -129,4 +129,12 @@ async function sweepStaleMeetings(client, nowMs) {
   return out;
 }
 
-module.exports = { sweepReminders, sweepDigests, sweepUnblocks, sweepStaleMeetings };
+// ---- media jobs -------------------------------------------------------------
+// Poll videos OpenRouter is still rendering, download the finished ones into
+// the requester's workspace, and enqueue the delivery. Lives in domain/media
+// (it is mostly domain logic); ticked here so it needs no sweeper of its own.
+async function sweepMediaJobs(client) {
+  return require('../domain/media').sweepMediaJobs(client, {});
+}
+
+module.exports = { sweepReminders, sweepDigests, sweepUnblocks, sweepStaleMeetings, sweepMediaJobs };

@@ -100,6 +100,7 @@ async function main() {
       digests: await sweeps.sweepDigests(c),
       unblocks: await sweeps.sweepUnblocks(c),
       staleMeetings: await sweeps.sweepStaleMeetings(c),
+      mediaJobs: await sweeps.sweepMediaJobs(c),
     })));
     // checkin ladder — every 5 minutes, because day one has a 15-minute step
     // and an hourly tick would land it anywhere up to an hour late. Cheap: one
