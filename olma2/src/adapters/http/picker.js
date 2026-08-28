@@ -4,12 +4,13 @@
 // OAuth callback one route up (random, user-bound, time-limited), except
 // deliberately multi-use until expiry so a person can reopen and update.
 //
-// House rules kept: server-rendered, zero dependencies, one inline stylesheet.
-// The one deliberate departure from the dashboard's no-JS rule is the page's
-// own interactivity (tapping dates, building a list) — vanilla inline JS, no
-// network calls of its own; the ONLY request it ever makes is the form POST
-// back to this same URL. Anything the viewer sees was fetched server-side
-// under their own identity.
+// House rules kept: zero dependencies, one inline stylesheet, one inline
+// script. The deliberate departure from the dashboard's no-JS rule is this
+// page's own interactivity (tapping dates, building a list) — vanilla JS that
+// makes NO network calls of its own; the only request it ever sends is the
+// form POST back to this same URL. Everything the viewer sees was fetched
+// server-side under their own identity, and the server re-validates every
+// submitted option regardless of what the page did.
 const { withTx } = require('../../db/pool');
 const availability = require('../../domain/availability');
 
@@ -18,9 +19,6 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
 ));
 // Embedded JSON must not be able to close its own <script> tag.
 const jsonForScript = (v) => JSON.stringify(v).replace(/</g, '\\u003c');
-
-const HEB_DAY_LETTERS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
-const GRID_WEEKS = 6;
 
 function headers(extra = {}) {
   return {
@@ -53,66 +51,94 @@ function messagePage(title, body) {
 
 // ---- the picker page --------------------------------------------------------
 
+// One colour per daypart, defined ONCE here and referred to everywhere by
+// class name — the option chips, the other side's chips, and the daypart
+// buttons themselves all read from these, so the mapping a person learns from
+// the buttons is the same one they scan their own list with. Colour is always
+// a second cue: every badge carries its Hebrew name too.
 const PAGE_CSS = `${BASE_CSS}
 .card{user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
-h2{font-size:13px;font-weight:600;color:var(--dim);margin:18px 0 8px}
-.others .person{font-size:13px;color:var(--dim);margin:8px 0 4px}
-.chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);
-border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;margin:0 0 6px 6px;cursor:pointer}
-.chip .x{color:var(--dim);font-weight:700;padding:0 2px}
+h2{font-size:13px;font-weight:600;color:var(--dim);margin:20px 0 8px}
+h2:first-of-type{margin-top:14px}
+
+.dp{border-radius:6px;padding:3px 8px;font-size:12px;font-weight:600;white-space:nowrap;display:inline-flex;gap:5px;align-items:baseline}
+.dp i{font-style:normal;font-weight:500;font-size:11px;opacity:.72}
+.dp-morning{background:rgba(230,192,122,.15);color:#e6c07a}
+.dp-noon{background:rgba(232,149,99,.15);color:#e89563}
+.dp-evening{background:rgba(157,141,241,.17);color:#a99bf5}
+.dp-all_day{background:rgba(94,201,160,.15);color:#5ec9a0}
+.dp-hour{background:rgba(107,166,245,.15);color:#6ba6f5}
+
+.chip{display:inline-flex;align-items:center;gap:8px;background:#20262f;
+border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:13px;margin:0 0 6px 6px;cursor:pointer}
+.chip .cdate{font-weight:500}
+.chip .x{color:var(--danger);opacity:.6;font-weight:700;font-size:14px;line-height:1;padding:0 2px}
+.chip:hover .x{opacity:1}
 .chip.adopt{background:transparent}
-.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:6px}
+.chip.adopt .tick{color:var(--dim);font-weight:700;font-size:13px;line-height:1}
+.chip.adopted{border-color:rgba(61,220,132,.5);background:rgba(61,220,132,.08)}
+.chip.adopted .tick{color:var(--ok)}
+.person{font-size:13px;color:var(--dim);margin:10px 0 6px}
+.empty{color:#5c6675;font-size:13px}
+
+.months{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.mchip{border:1px solid var(--line);background:transparent;color:var(--dim);
+border-radius:8px;padding:5px 12px;font-size:13px;cursor:pointer}
+.mchip.sel{background:var(--accent-soft);border-color:var(--accent);color:var(--text);font-weight:600}
+
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
 .dow{font-size:11px;color:var(--dim);text-align:center;padding:2px 0}
 .day{position:relative;aspect-ratio:1;display:flex;align-items:center;justify-content:center;
 border-radius:9px;font-size:13px;cursor:pointer;border:1px solid transparent}
-.day:not(.off):not(.past):hover{border-color:var(--line)}
+.day.blank{cursor:default}
+.day:not(.off):not(.past):not(.blank):hover{border-color:var(--line)}
 .day.past,.day.off{color:#3d4655;cursor:default}
 .day.today{border-color:var(--line)}
 .day.sel{background:var(--accent);color:#0b1420;font-weight:600}
 .day.inrange{background:var(--accent-soft)}
 .day .dot{position:absolute;bottom:4px;right:50%;transform:translateX(50%);
-width:4px;height:4px;border-radius:2px;background:var(--danger)}
-.mon{grid-column:1/-1;font-size:12px;color:var(--dim);padding:8px 2px 0}
-.busyline{font-size:12px;color:var(--dim);margin:8px 0 0;line-height:1.7;min-height:18px}
+width:4px;height:4px;border-radius:2px;background:var(--danger);opacity:.85}
+.day.sel .dot{background:#0b1420;opacity:.5}
+
+.busyline{font-size:12px;color:var(--dim);margin:10px 0 0;line-height:1.7;min-height:20px}
 .busyline b{color:var(--text);font-weight:600}
+
 .parts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.part{border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-size:13px;cursor:pointer;background:transparent;color:var(--text)}
-.part.sel{background:var(--accent);border-color:var(--accent);color:#0b1420;font-weight:600}
+.part{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;
+padding:7px 13px;font-size:13px;cursor:pointer;background:transparent;color:var(--text)}
+.part .swatch{width:8px;height:8px;border-radius:50%;background:currentColor;opacity:.9}
+.part.pm{color:#e6c07a}.part.pn{color:#e89563}.part.pe{color:#a99bf5}
+.part.pa{color:#5ec9a0}.part.ph{color:#6ba6f5}
+.part .txt{color:var(--text)}
+.part.sel{border-color:currentColor;background:rgba(255,255,255,.05);font-weight:600}
+.part.sel .txt{color:currentColor}
 input[type=time]{background:var(--bg);border:1px solid var(--line);color:var(--text);
-border-radius:8px;padding:7px 10px;font-size:14px;margin-top:8px;display:none}
+border-radius:8px;padding:8px 10px;font-size:14px;margin-top:8px;display:none}
 input[type=time].show{display:block}
+
 .btn{width:100%;border:0;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;margin-top:10px}
 .btn.add{background:var(--accent-soft);color:var(--text);border:1px solid var(--line)}
-.btn.send{background:var(--ok);color:#0b1a10}
+.btn.send{background:#34c77b;color:#07160d}
+.btn.send:not(:disabled):hover{background:#3ddc84}
 .btn:disabled{opacity:.45;cursor:default}
+.hint{color:var(--danger);font-size:12.5px;margin-top:7px;min-height:17px;font-weight:500}
 .count{font-size:12px;color:var(--dim);margin-top:10px}
-.mine{min-height:20px;margin-top:6px}`;
+.mine{min-height:22px;margin-top:6px}
+noscript p{margin-top:12px}`;
 
-const HEB_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
-  'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
-
-function renderGrid(today) {
-  // 6 weeks, starting the Sunday of the viewer's current week, dates as data
-  // attributes — all selection logic is client-side. A week that contains the
-  // 1st gets a month caption row above it, so "1" is never an unlabelled
-  // mystery mid-grid.
-  const [y, m, d] = today.split('-').map(Number);
-  const start = new Date(Date.UTC(y, m - 1, d));
-  const gridStart = new Date(start.getTime() - start.getUTCDay() * 86_400_000);
-  let html = `<div class="mon">${HEB_MONTHS[start.getUTCMonth()]}</div>`
-    + HEB_DAY_LETTERS.map((l) => `<div class="dow">${l}</div>`).join('');
-  for (let w = 0; w < GRID_WEEKS; w += 1) {
-    const week = Array.from({ length: 7 }, (_, i) =>
-      new Date(gridStart.getTime() + (w * 7 + i) * 86_400_000));
-    const first = week.find((day) => day.getUTCDate() === 1);
-    if (w > 0 && first) html += `<div class="mon">${HEB_MONTHS[first.getUTCMonth()]}</div>`;
-    for (const day of week) {
-      const iso = day.toISOString().slice(0, 10);
-      const cls = ['day', iso < today ? 'past' : '', iso === today ? 'today' : ''].filter(Boolean).join(' ');
-      html += `<div class="${cls}" data-d="${iso}">${day.getUTCDate()}</div>`;
-    }
+// The daypart vocabulary the page displays, derived from the domain's own
+// PARTS so the times on screen cannot drift from the times the server
+// intersects. `hour` has no fixed window — the badge shows the picked time.
+const mm = (n) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+const PART_KEYS = ['morning', 'noon', 'evening', 'all_day', 'hour'];
+const PART_CLASS = { morning: 'pm', noon: 'pn', evening: 'pe', all_day: 'pa', hour: 'ph' };
+function partsForClient() {
+  const out = {};
+  for (const key of PART_KEYS) {
+    const p = availability.PARTS[key];
+    out[key] = { he: p.he, range: p.from == null ? null : `${mm(p.from)}–${mm(p.to)}` };
   }
-  return html;
+  return out;
 }
 
 const PAGE_JS = `
@@ -120,119 +146,234 @@ const PAGE_JS = `
 const P = window.PICK;
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
-let selStart = null, selEnd = null, part = null, list = P.mine.map((o) => ({...o}));
 
-const PART_HE = { morning:'בוקר', noon:'צהריים', evening:'ערב', all_day:'כל היום', hour:'שעה' };
-const HEB = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
-function dLabel(d){ const [y,m,dd]=d.split('-').map(Number);
-  return 'יום '+HEB[new Date(Date.UTC(y,m-1,dd)).getUTCDay()]+' '+dd+'.'+m; }
-function sLabel(d){ const [,m,dd]=d.split('-').map(Number); return dd+'.'+m; }
-function optLabel(o){
-  const when = o.part==='hour' ? 'בשעה '+o.hour : PART_HE[o.part];
-  return (o.start_date===o.end_date ? dLabel(o.start_date) : sLabel(o.start_date)+'–'+sLabel(o.end_date))+' — '+when;
+const HEB_DAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+const HEB_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+const DOW = ['א','ב','ג','ד','ה','ו','ש'];
+
+let selStart = null, selEnd = null, part = null;
+let list = P.mine.map((o) => ({ ...o }));
+let view = { y: +P.today.slice(0,4), m: +P.today.slice(5,7) };
+
+const pad = (n) => String(n).padStart(2,'0');
+const isoOf = (y,m,d) => y+'-'+pad(m)+'-'+pad(d);
+const utc = (s) => Date.parse(s+'T00:00:00Z');
+const dowOf = (s) => new Date(utc(s)).getUTCDay();
+const dLabel = (s) => { const p = s.split('-').map(Number); return 'יום '+HEB_DAYS[dowOf(s)]+' '+p[2]+'.'+p[1]; };
+const sLabel = (s) => { const p = s.split('-').map(Number); return p[2]+'.'+p[1]; };
+const spanDays = (a,b) => Math.round((utc(b)-utc(a))/86400000)+1;
+const keyOf = (o) => [o.start_date,o.end_date,o.part,o.hour||''].join('|');
+
+// The last pickable day — the same horizon the server enforces, so the grid
+// can never offer a date the submit would refuse.
+const LAST = (() => { const d = new Date(utc(P.today) + P.horizonDays*86400000); return d.toISOString().slice(0,10); })();
+
+// ---- chips ------------------------------------------------------------------
+
+function badge(o){
+  const meta = P.parts[o.part];
+  const b = document.createElement('span');
+  b.className = 'dp dp-'+o.part;
+  b.appendChild(document.createTextNode(o.part === 'hour' ? o.hour : meta.he));
+  if (meta.range) { const i = document.createElement('i'); i.textContent = meta.range; b.appendChild(i); }
+  return b;
+}
+function dateText(o){
+  return o.start_date === o.end_date ? dLabel(o.start_date)
+    : sLabel(o.start_date)+'–'+sLabel(o.end_date);
+}
+function chip(o, kind){
+  const c = document.createElement('span');
+  c.className = 'chip'+(kind === 'adopt' ? ' adopt' : '');
+  const d = document.createElement('span'); d.className = 'cdate'; d.textContent = dateText(o);
+  c.append(d, badge(o));
+  return c;
+}
+
+function paintMine(){
+  const box = $('.mine'); box.innerHTML = '';
+  if (!list.length) {
+    const e = document.createElement('span'); e.className = 'empty';
+    e.textContent = 'עדיין לא סימנת אופציות'; box.appendChild(e);
+  }
+  list.forEach((o, i) => {
+    const c = chip(o, 'mine');
+    const x = document.createElement('span'); x.className = 'x'; x.textContent = '✕';
+    x.title = 'הסרה';
+    c.appendChild(x);
+    c.onclick = () => { list.splice(i,1); paintAll(); };
+    box.appendChild(c);
+  });
+  $('.count').textContent = list.length+' / '+P.max+' אופציות';
+  $('.send').disabled = list.length === 0;
+}
+
+// The other side's options double as buttons: tapping one adopts it, tapping
+// it again takes it back off — so the green ✓ always states the truth about
+// what is in the list below, not merely that a tap happened.
+function paintOthers(){
+  const box = $('.others'); if (!box) return;
+  box.innerHTML = '';
+  const mine = new Set(list.map(keyOf));
+  if (P.others.some((p) => p.options.length)) {
+    const title = document.createElement('h2');
+    title.textContent = 'ההצעות שכבר על השולחן';
+    box.appendChild(title);
+  }
+  for (const person of P.others) {
+    if (!person.options.length) continue;
+    const h = document.createElement('div'); h.className = 'person';
+    h.textContent = person.name+' כבר סימנ/ה — אפשר ללחוץ כדי לאמץ:';
+    box.appendChild(h);
+    const row = document.createElement('div');
+    for (const o of person.options) {
+      const c = chip(o, 'adopt');
+      const adopted = mine.has(keyOf(o));
+      if (adopted) c.classList.add('adopted');
+      const t = document.createElement('span'); t.className = 'tick'; t.textContent = adopted ? '✓' : '+';
+      c.appendChild(t);
+      c.onclick = () => {
+        if (adopted) list = list.filter((x) => keyOf(x) !== keyOf(o));
+        else if (list.length >= P.max) return say('הגעת ל-'+P.max+' אופציות — אפשר להסיר אחת קודם');
+        else list.push({ start_date:o.start_date, end_date:o.end_date, part:o.part, hour:o.hour });
+        say(''); paintAll();
+      };
+      row.appendChild(c);
+    }
+    box.appendChild(row);
+  }
+}
+const paintAll = () => { paintMine(); paintOthers(); };
+const say = (msg) => { $('.hint').textContent = msg ? '✱ '+msg : ''; };
+
+// ---- calendar ---------------------------------------------------------------
+
+function paintMonths(){
+  const box = $('.months'); box.innerHTML = '';
+  let y = +P.today.slice(0,4), m = +P.today.slice(5,7);
+  const endY = +LAST.slice(0,4), endM = +LAST.slice(5,7);
+  while (y < endY || (y === endY && m <= endM)) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'mchip'+(y === view.y && m === view.m ? ' sel' : '');
+    b.textContent = HEB_MONTHS[m-1];
+    const ty = y, tm = m;
+    b.onclick = () => { view = { y:ty, m:tm }; paintMonths(); paintGrid(); };
+    box.appendChild(b);
+    m += 1; if (m > 12) { m = 1; y += 1; }
+  }
 }
 
 function paintGrid(){
-  $$('.day').forEach((el)=>{
-    const d = el.dataset.d;
-    el.classList.toggle('sel', d===selStart || d===selEnd);
-    el.classList.toggle('inrange', !!(selStart&&selEnd&&d>selStart&&d<selEnd));
-  });
-}
-function paintBusy(day){
-  const el = $('.busyline');
-  if(!day){ el.innerHTML=''; return; }
-  const items = P.busy[day]||[];
-  el.innerHTML = '<b>'+dLabel(day)+'</b>'+(items.length? '' : ' — פנוי ביומן');
-  for(const it of items){ const div=document.createElement('div'); div.textContent='• '+it; el.appendChild(div); }
-}
-function paintList(){
-  const box = $('.mine'); box.innerHTML='';
-  list.forEach((o,i)=>{
-    const c=document.createElement('span'); c.className='chip';
-    const t=document.createElement('span'); t.textContent=o.label||optLabel(o);
-    const x=document.createElement('span'); x.className='x'; x.textContent='✕';
-    x.onclick=()=>{ list.splice(i,1); paintList(); };
-    c.append(t,x); box.appendChild(c);
-  });
-  $('.count').textContent = list.length+' / '+P.max+' אופציות';
-  $('.send').disabled = list.length===0;
-  $('.add').disabled = list.length>=P.max;
-}
-function addOption(o){
-  if(list.length>=P.max) return;
-  o.label = optLabel(o);
-  if(list.some((x)=>x.label===o.label)) return;
-  list.push(o); paintList();
+  const box = $('.grid'); box.innerHTML = '';
+  for (const l of DOW) { const d = document.createElement('div'); d.className = 'dow'; d.textContent = l; box.appendChild(d); }
+  const first = isoOf(view.y, view.m, 1);
+  const days = new Date(Date.UTC(view.y, view.m, 0)).getUTCDate();
+  for (let i = 0; i < dowOf(first); i += 1) {
+    const b = document.createElement('div'); b.className = 'day blank'; box.appendChild(b);
+  }
+  for (let d = 1; d <= days; d += 1) {
+    const iso = isoOf(view.y, view.m, d);
+    const el = document.createElement('div');
+    el.className = 'day'+(iso < P.today ? ' past' : '')+(iso > LAST ? ' off' : '')+(iso === P.today ? ' today' : '')
+      +(iso === selStart || iso === selEnd ? ' sel' : '')
+      +(selStart && selEnd && iso > selStart && iso < selEnd ? ' inrange' : '');
+    el.dataset.d = iso;
+    el.textContent = d;
+    if ((P.busy[iso] || []).length) { const dot = document.createElement('span'); dot.className = 'dot'; el.appendChild(dot); }
+    el.onclick = () => pickDay(iso, el);
+    box.appendChild(el);
+  }
 }
 
-$$('.day').forEach((el)=>{ el.onclick=()=>{
-  const d=el.dataset.d;
-  if(el.classList.contains('past')) return;
-  if(!selStart || (selStart&&selEnd)){ selStart=d; selEnd=null; }
-  else if(d<selStart){ selStart=d; }
-  else if(d!==selStart){ selEnd=d; }
-  paintGrid(); paintBusy(selEnd||selStart);
+function pickDay(iso, el){
+  if (el.classList.contains('past') || el.classList.contains('off')) return;
+  if (!selStart || (selStart && selEnd)) { selStart = iso; selEnd = null; }
+  else if (iso < selStart) { selStart = iso; }
+  else if (iso !== selStart) { selEnd = iso; }
+  say(''); paintGrid(); paintBusy();
+}
+
+function paintBusy(){
+  const el = $('.busyline'); el.innerHTML = '';
+  if (!selStart) return;
+  const head = document.createElement('b');
+  head.textContent = selEnd
+    ? sLabel(selStart)+'–'+sLabel(selEnd)+' ('+spanDays(selStart,selEnd)+' ימים)'
+    : dLabel(selStart);
+  el.appendChild(head);
+  if (selEnd) return;                     // a range would list too much
+  const items = P.busy[selStart] || [];
+  if (!items.length) { el.appendChild(document.createTextNode(' — פנוי ביומן')); return; }
+  for (const it of items) { const d = document.createElement('div'); d.textContent = '• '+it; el.appendChild(d); }
+}
+
+// ---- adding -----------------------------------------------------------------
+
+$$('.part').forEach((el) => { el.onclick = () => {
+  part = el.dataset.p;
+  $$('.part').forEach((x) => x.classList.toggle('sel', x === el));
+  $('#hour').classList.toggle('show', part === 'hour');
+  say('');
+  if (part === 'hour') $('#hour').focus();
 };});
-$$('.part').forEach((el)=>{ el.onclick=()=>{
-  part=el.dataset.p;
-  $$('.part').forEach((x)=>x.classList.toggle('sel',x===el));
-  $('#hour').classList.toggle('show', part==='hour');
-};});
-$('.add').onclick=()=>{
-  if(!selStart||!part) return;
-  if(part==='hour' && !$('#hour').value) return;
-  addOption({ start_date:selStart, end_date:selEnd||selStart, part, hour: part==='hour'?$('#hour').value:null });
-  selStart=null; selEnd=null; paintGrid(); paintBusy(null);
+
+$('.add').onclick = () => {
+  if (list.length >= P.max) return say('הגעת ל-'+P.max+' אופציות — אפשר להסיר אחת קודם');
+  if (!selStart) return say('בחרו תאריך בלוח');
+  if (!part) return say('בחרו חלק של היום');
+  if (part === 'hour' && !$('#hour').value) return say('סמנו שעה');
+  const o = { start_date: selStart, end_date: selEnd || selStart, part, hour: part === 'hour' ? $('#hour').value : null };
+  if (list.some((x) => keyOf(x) === keyOf(o))) return say('האופציה הזו כבר ברשימה');
+  list.push(o);
+  selStart = null; selEnd = null;
+  say(''); paintGrid(); paintBusy(); paintAll();
 };
-$$('.adopt').forEach((el)=>{ el.onclick=()=>{
-  addOption(JSON.parse(el.dataset.o));
-};});
-$('#form').onsubmit=()=>{
-  $('#options').value = JSON.stringify(list.map((o)=>({start_date:o.start_date,end_date:o.end_date,part:o.part,hour:o.hour})));
+
+$('#form').onsubmit = () => {
+  $('#options').value = JSON.stringify(list.map((o) => (
+    { start_date:o.start_date, end_date:o.end_date, part:o.part, hour:o.hour })));
   $('.send').disabled = true;
   return true;
 };
-$$('.day').forEach((el)=>{
-  if(P.busy[el.dataset.d] && P.busy[el.dataset.d].length) el.insertAdjacentHTML('beforeend','<span class="dot"></span>');
-});
-paintList(); paintGrid();
+
+paintMonths(); paintGrid(); paintAll();
 `;
 
 function renderPicker(page, busy) {
   const { title, viewerName, today, mine, others } = page;
-  const othersHtml = others.filter((o) => o.options.length).map((o) => `
-    <div class="person">${esc(o.name)} כבר סימנ/ה — אפשר ללחוץ כדי לאמץ:</div>
-    <div>${o.options.map((opt) => `<span class="chip adopt" data-o="${esc(JSON.stringify({
-    start_date: opt.start_date, end_date: opt.end_date, part: opt.part, hour: opt.hour,
-  }))}">${esc(opt.label)}</span>`).join('')}</div>`).join('');
+  const partButtons = PART_KEYS.map((k) => {
+    const p = availability.PARTS[k];
+    return `<button type="button" class="part ${PART_CLASS[k]}" data-p="${k}" aria-label="${esc(p.he)}">`
+      + `<span class="swatch"></span><span class="txt">${esc(p.he)}</span></button>`;
+  }).join('');
 
   return `<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
 <title>מתי נוח לך? — אולמה</title><style>${PAGE_CSS}</style></head><body><div class="card">
 <h1>מתי נוח לך${viewerName ? `, ${esc(viewerName)}` : ''}?</h1>
 <p class="sub">${esc(title)}</p>
-${othersHtml ? `<div class="others"><h2>ההצעות שכבר על השולחן</h2>${othersHtml}</div>` : ''}
+<noscript><p>הדף הזה צריך JavaScript כדי לעבוד. אפשר פשוט לכתוב לאולמה בוואטסאפ מתי נוח לך — זה עובד בדיוק אותו דבר.</p></noscript>
+<div class="others"></div>
 <h2>בחירת תאריך או טווח</h2>
-<div class="grid">${renderGrid(today)}</div>
+<div class="months"></div>
+<div class="grid"></div>
 <div class="busyline"></div>
 <h2>באיזה חלק של היום</h2>
-<div class="parts">
-  <button type="button" class="part" data-p="morning">בוקר</button>
-  <button type="button" class="part" data-p="noon">צהריים</button>
-  <button type="button" class="part" data-p="evening">ערב</button>
-  <button type="button" class="part" data-p="all_day">כל היום</button>
-  <button type="button" class="part" data-p="hour">שעה מסוימת</button>
-</div>
-<input type="time" id="hour">
+<div class="parts">${partButtons}</div>
+<input type="time" id="hour" aria-label="שעה">
 <button type="button" class="btn add">הוספת אופציה +</button>
+<div class="hint" role="status" aria-live="polite"></div>
 <h2>האופציות שלך</h2>
 <div class="mine"></div>
 <div class="count"></div>
 <form id="form" method="POST"><input type="hidden" name="options" id="options">
 <button class="btn send" type="submit">שליחה ✓</button></form>
 </div><script>window.PICK=${jsonForScript({
-    max: availability.MAX_OPTIONS, today, mine, busy,
+    max: availability.MAX_OPTIONS,
+    horizonDays: availability.HORIZON_DAYS,
+    parts: partsForClient(),
+    today, mine, others, busy,
   })};${PAGE_JS}</script></body></html>`;
 }
 
@@ -243,7 +384,7 @@ ${othersHtml ? `<div class="others"><h2>ההצעות שכבר על השולחן<
 async function busyByDate(client, page, calendarDomain) {
   try {
     const cal = calendarDomain || require('../../domain/calendar');
-    const res = await cal.listEvents(client, page.userId, GRID_WEEKS * 7);
+    const res = await cal.listEvents(client, page.userId, availability.HORIZON_DAYS);
     if (!res.ok) return {};
     const out = {};
     const fmtDate = new Intl.DateTimeFormat('en-CA', { timeZone: page.tz });
