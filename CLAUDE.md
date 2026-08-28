@@ -1411,6 +1411,47 @@ positional order identical between the signature and the call site, that's
 the one easy thing to get wrong. Routes match on exact `req.url` string, not
 `url.pathname`, except the Google OAuth callback.
 
+## Exploring this repo: graphify — measured, not assumed (2026-08-28)
+
+A `/graphify` skill is installed at the Claude Code user level
+(`~/.claude/skills/graphify/`, CLI via `uv tool install "graphifyy[sql]"`) —
+it builds a local knowledge graph of `olma2/` (AST-only, no LLM, nothing
+leaves the machine) and answers architecture questions via
+`graphify query "<question>" --graph olma2/graphify-out/graph.json`. Before
+trusting the vendor's claims, this was A/B measured head-to-head in fresh
+contexts, same question, with vs without:
+
+- **Narrow question** (one specific enforcement point): graph cost *more*
+  tokens (+1.6%) — no benefit, and the no-graph answer was more detailed
+  because it read real code instead of graph metadata.
+- **Broad question** (inventory across ~18 files): graph saved **16% fewer
+  tokens, 60% fewer tool calls, 27% faster**. Real, but nowhere near
+  marketing's advertised "49x" — this repo (149 code files) is plausibly too
+  small for that multiple to show up.
+
+**How to use it here:** reach for `graphify query`/`graphify explain` on
+broad "where is X used across the system" or "inventory of every Y" style
+questions; skip it for a narrow lookup where the file is already known —
+plain grep is cheaper there. Treat graph output as a map to target real file
+reads, never as a substitute for reading the actual code the answer depends
+on.
+
+**Three sharp edges:**
+- The graph is a snapshot — it will confidently describe code that no longer
+  exists if not refreshed. Run `graphify update olma2 --force` after
+  meaningful changes (or `graphify extract olma2 --force` +
+  `graphify cluster-only olma2 --no-label` for a full rebuild, needed once
+  after adding `.sql` support).
+- **Each git worktree needs its own `olma2/graphify-out/`** — it does not
+  exist in a fresh worktree/clone; build it locally before relying on it.
+  Keep it out of commits: it is excluded via `.git/info/exclude`, which is
+  **per-clone and not shared**, so a new clone must add that line itself
+  (the directory is ~2.5MB of generated JSON/HTML and belongs in no commit).
+- The bundled `graph.html` visualization loads `vis-network` from `unpkg.com`
+  — a sandboxed file-preview pane with no outbound network access will show
+  it blank with `vis is not defined`; open the file directly in a real
+  browser instead.
+
 ## Testing
 
 All 8 broker tests speak real MCP over stdio to a real `node olma-mcp.js`
