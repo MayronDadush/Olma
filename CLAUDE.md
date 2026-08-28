@@ -73,7 +73,7 @@ real tools, real DB — on a disposable session with no `--deliver`.
   scores wobble, and an alert that fires on wobble teaches the reader to
   ignore alerts. A harness failure is ERROR and alerts like red — never
   silently green (the /health lesson). Everything lands in
-  `eval_runs`/`eval_results` (migration 018) and renders as the dashboard's
+  `eval_runs`/`eval_results` (migration 019 — renumbered after colliding with #55's 018, the two-branches-one-number incident repeating itself on merge day) and renders as the dashboard's
   "בדיקות התנהגות" section.
 - **The eval user is structurally sealed off**: `users.is_eval` (ONE row,
   `+972599999001`), every user-selecting sweep excludes it, and the outbox
