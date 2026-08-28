@@ -8,7 +8,7 @@
 // way reminders.normalizeRepeatRule is for repeat rules.
 const test = require('node:test');
 const assert = require('node:assert');
-const { weekdaysInText, weekdayInZone, weekdayClash } = require('../src/domain/datetime');
+const { weekdaysInText, weekdayInZone, weekdayClash, namesAMoment } = require('../src/domain/datetime');
 
 const IL = 'Asia/Jerusalem';
 
@@ -98,4 +98,31 @@ test('a slot near midnight is judged where the person lives', () => {
   const bad = weekdayClash('slot_description', 'יום שני 23:30', '2026-08-24T21:30:00Z', IL);
   assert.equal(bad.ok, false, 'Monday 23:30 UTC is already Tuesday 00:30 in Israel');
   assert.equal(weekdayClash('slot_description', 'יום שני 23:30', '2026-08-24T20:30:00Z', IL), null);
+});
+
+// ---- namesAMoment -----------------------------------------------------------
+// The other half of the same vocabulary, added for user_facts.expires_at: a
+// fact anchored to a moment has to say when it stops being one. Same asymmetry
+// as the weekday prefixes — a false positive REFUSES a real fact, so the
+// recurring cases below matter more than the catching ones.
+test('a moving reference point or a real date names a moment', () => {
+  for (const t of ['גלי מתקשרת לחיים לגבי השכרת רכב היום בבוקר',
+    'יש לו יום הולדת של עילאי סלומון ביום שבת 29.8',
+    'הוא נוסע מחר לתל אביב', 'טס לרומא ב-15/9',
+    'החוזה מסתיים ב-2026-09-15', 'flying to Rome tomorrow',
+    'הפגישה ב-29.8 באוגוסט']) {
+    assert.equal(namesAMoment(t), true, t);
+  }
+});
+
+test('a recurring day, a duration and a bare number do not', () => {
+  for (const t of ['ביום חמישי עובד מהבית',
+    'עובד במוסך בהוד השרון כל יום ראשון עד חמישי מ-7:30 עד 16:00',
+    'עובד כל היום בחוץ',            // duration, not today
+    'היום הראשון שלו בעבודה היה קשה', // the noun, not today
+    'הריצה שלו לוקחת 3.5 שעות',      // same shape as a dotted date, not one
+    'market research is his field',  // "mar" must not read as March
+    'מתחיל קורס בספטמבר', 'נולד ב-1985', 'גר בהוד השרון', '']) {
+    assert.equal(namesAMoment(t), false, t);
+  }
 });

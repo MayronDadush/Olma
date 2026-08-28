@@ -74,10 +74,17 @@ test('a phone number is refused as a fact — contacts are where people live', a
     }
     // The things that legitimately carry digits still pass: a date is 8, an
     // hour range is broken by its colons.
-    for (const fine of ['החוזה מסתיים ב-2026-09-15', 'עובד 10:00-20:00 בדרך כלל', 'בת 8 שנים']) {
+    for (const fine of ['עובד 10:00-20:00 בדרך כלל', 'בת 8 שנים', 'נולד ב-1985']) {
       const res = await facts.rememberFact(c, user.id, { category: 'context', fact: fine });
       assert.equal(res.ok, true, fine);
     }
+    // Carries a real date, so it passes the phone guard and is then held by
+    // the expiry guard below — which is the correct outcome for a contract
+    // that ends on a day.
+    const dated = await facts.rememberFact(c, user.id, {
+      category: 'context', fact: 'החוזה מסתיים ב-2026-09-15', expiresAt: '2026-09-15T00:00:00Z',
+    });
+    assert.equal(dated.ok, true);
     await c.query(`UPDATE user_facts SET active = false WHERE user_id = $1`, [user.id]);
   });
 });
@@ -85,15 +92,71 @@ test('a phone number is refused as a fact — contacts are where people live', a
 test('a bare name statement is refused as a fact — set_my_name is its home', async () => {
   await withClient(async (c) => {
     // The live incident row, plus its close shapes
-    for (const bad of ['שמו חיים.', 'שמה דנה כהן', 'קוראים לו יובל', 'his name is David']) {
+    for (const bad of ['שמו חיים.', 'שמה דנה כהן', 'קוראים לו יובל', 'his name is David',
+      // The live row that slipped through the first version of this guard and
+      // landed on a card already printing `First name: מירון` one line above.
+      'שם שלו הוא מירון', 'השם שלה דנה', 'שמו הוא חיים']) {
       const res = await facts.rememberFact(c, user.id, { category: 'context', fact: bad });
       assert.equal(res.ok, false, bad);
       assert.match(res.error.message, /set_my_name/);
     }
     // Narrow on purpose: a pet's name, or any sentence carrying more than the
     // name, is a real fact and passes.
-    for (const fine of ['שמו של הכלב רקסי', 'הבת שלו נועה מתחילה כיתה א בספטמבר', 'שמו חיים והוא עובד בנמל']) {
+    for (const fine of ['שמו של הכלב רקסי', 'הבת שלו נועה מתחילה כיתה א בספטמבר', 'שמו חיים והוא עובד בנמל',
+      'שם שלו הוא מירון והוא גר בהוד השרון']) {
       const res = await facts.rememberFact(c, user.id, { category: 'family', fact: fine });
+      assert.equal(res.ok, true, fine);
+    }
+    await c.query(`UPDATE user_facts SET active = false WHERE user_id = $1`, [user.id]);
+  });
+});
+
+test("Olma's own state is not a fact about the person", async () => {
+  await withClient(async (c) => {
+    // The live row. renderCard printed `Calendar: connected (read_write)` two
+    // lines above it; the day he disconnects, the card and the fact disagree
+    // and only one of them updates.
+    for (const bad of ['היומן שלו מחובר כעת ל-Google Calendar עם גישת read_write',
+      'אולמה מחוברת אצלו', 'הדייג׳סט שלו מוגדר ל-08:00']) {
+      const res = await facts.rememberFact(c, user.id, { category: 'context', fact: bad });
+      assert.equal(res.ok, false, bad);
+      assert.match(res.error.message, /own state/);
+    }
+    // One half each — a meeting in a calendar, an emotional distance, a full
+    // diary, a friendship the connections table owns. All real facts.
+    for (const fine of ['יש לו פגישה ביומן ביום רביעי', 'הוא מנותק רגשית מאביו',
+      'היומן שלו מלא בקיץ']) {
+      const res = await facts.rememberFact(c, user.id, { category: 'context', fact: fine });
+      assert.equal(res.ok, true, fine);
+    }
+    await c.query(`UPDATE user_facts SET active = false WHERE user_id = $1`, [user.id]);
+  });
+});
+
+test('a fact anchored to a date or a moving day must say when it expires', async () => {
+  await withClient(async (c) => {
+    // Both live rows: a third party's one-off birthday, and a plan pinned to
+    // "today". Neither had an expiry; both were still on their cards days later.
+    for (const bad of ['יש לו יום הולדת של עילאי סלומון ביום שבת 29.8',
+      'גלי מתקשרת לחיים לגבי השכרת רכב היום בבוקר',
+      'טס לרומא ב-15/9', 'flying to Rome tomorrow']) {
+      const res = await facts.rememberFact(c, user.id, { category: 'plans', fact: bad });
+      assert.equal(res.ok, false, bad);
+      assert.match(res.error.message, /expires_at/);
+      // ...and the same sentence WITH one is fine: the shelf life was the
+      // missing half, not the fact.
+      const withExpiry = await facts.rememberFact(c, user.id, {
+        category: 'plans', fact: bad, expiresAt: '2099-01-01T00:00:00Z',
+      });
+      assert.equal(withExpiry.ok, true, bad);
+    }
+    // Narrow on purpose: a recurring weekday is durable and must not be caught,
+    // or the guard would refuse a whole class of correct facts.
+    for (const fine of ['ביום חמישי עובד מהבית',
+      'עובד במוסך בהוד השרון כל יום ראשון עד חמישי מ-7:30 עד 16:00',
+      'עובד כל היום בחוץ', 'היום הראשון שלו בעבודה היה קשה',
+      'הריצה שלו לוקחת 3.5 שעות']) {
+      const res = await facts.rememberFact(c, user.id, { category: 'work', fact: fine });
       assert.equal(res.ok, true, fine);
     }
     await c.query(`UPDATE user_facts SET active = false WHERE user_id = $1`, [user.id]);
@@ -565,6 +628,76 @@ test('the read-back also asks for commitments, with the open list as the dedupe 
   assert.match(extraction.buildInstruction('x', []), /their list is empty/);
   // Reminders and sends are not merely forbidden any more — they are
   // impossible: the answer is data, and applyExtraction has no path to either.
+});
+
+// The structural half of the "גלי מעדיפה לא להיפגש בשבת" fix. She said one
+// Saturday did not suit her, for ONE meeting; the constraint was correctly
+// recorded against that meeting, and this job then read the sentence back out
+// of context and generalised it into who she is — permanently, with no expiry.
+test('the read-back is shown what a live negotiation already recorded', () => {
+  const text = extraction.buildInstruction('THEM: לא נוח לי בשבת', [], [], { firstName: 'גלי' }, [
+    { title: 'פוקר', constraints: ['לא נוח לי בשבת הקרובה'] },
+  ]);
+  assert.match(text, /ALREADY recorded there/);
+  assert.match(text, /- "פוקר": לא נוח לי בשבת הקרובה/);
+  assert.match(text, /ONE specific arrangement/);
+  assert.match(text, /explicit generalisation/);
+  // The rule rides the prompt even with nothing to quote, but the reference
+  // block does not — an empty "here is what you already said" reads as a claim.
+  const none = extraction.buildInstruction('x', []);
+  assert.match(none, /ONE specific arrangement/);
+  assert.doesNotMatch(none, /ALREADY recorded there/);
+});
+
+test('the read-back is told the two other things that are not facts', () => {
+  const text = extraction.buildInstruction('x', []);
+  assert.match(text, /own state — whose calendar is connected/);
+  assert.match(text, /REJECTED without one/, 'the expiry rule the server enforces');
+});
+
+// A guard that silently swallows a proposal is indistinguishable from a quiet
+// week — which is exactly how a guard that starts over-firing would go
+// unnoticed, refusing real facts every night with nothing to show for it.
+test('facts the guards refuse are counted, not silently dropped', async () => {
+  const u = await seedChatter('+972590009001', 40);
+  const rec = recorder(saidSomething, {
+    facts: [
+      { category: 'context', fact: 'היומן שלו מחובר ל-Google Calendar עם גישת read_write', importance: 1 },
+      { category: 'people', fact: 'שם שלו הוא מירון', importance: 1 },
+      { category: 'habits', fact: 'יש לו יום הולדת של עילאי סלומון ביום שבת 29.8', importance: 1 },
+      { category: 'work', fact: 'עובד בהוד השרון', importance: 1 },
+    ],
+    tasks: [], name: null,
+  });
+  await withClient(async (c) => {
+    const res = await extraction.sweepFactExtraction(c, { ...rec.deps, now: Date.now() });
+    assert.deepEqual(Object.keys(res.refused).sort(), ['name', 'needs_expiry', 'system_state']);
+
+    // The per-tick totals cover however many people the tick reached, so the
+    // exact counts are asserted on THIS person's audit row.
+    const { rows } = await c.query(
+      `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'facts.extracted'`, [u.id]);
+    assert.deepEqual(rows[0].detail.factsRefused, { system_state: 1, name: 1, needs_expiry: 1 },
+      'and it reaches the audit row, not just the return value');
+    assert.equal(rows[0].detail.factsRecorded, 1, 'only the durable one lands');
+
+    const { rows: kept } = await c.query(
+      `SELECT fact FROM user_facts WHERE user_id = $1 AND active = true`, [u.id]);
+    assert.deepEqual(kept.map((r) => r.fact), ['עובד בהוד השרון']);
+  });
+});
+
+test('a clean run carries no refused key at all', async () => {
+  await seedChatter('+972590009002', 40);
+  const rec = recorder(saidSomething, {
+    facts: [{ category: 'work', fact: 'עובד במוסך', importance: 1 }], tasks: [], name: null,
+  });
+  await withClient(async (c) => {
+    const res = await extraction.sweepFactExtraction(c, { ...rec.deps, now: Date.now() });
+    // The heartbeat note is this object stringified and cut at 200 chars; an
+    // always-present empty object spends that budget saying nothing.
+    assert.equal('refused' in res, false);
+  });
 });
 
 test('transcript trimming keeps the end, where conclusions live', () => {
