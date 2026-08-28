@@ -61,16 +61,29 @@ const PAGE_CSS = `${BASE_CSS}
 h2{font-size:13px;font-weight:600;color:var(--dim);margin:20px 0 8px}
 h2:first-of-type{margin-top:14px}
 
+.meeting{display:inline-flex;align-items:center;gap:8px;background:var(--accent-soft);
+border:1px solid #31465f;border-radius:999px;padding:5px 13px 5px 11px;margin-bottom:11px;
+font-size:13px;max-width:100%}
+.meeting .mt{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meeting .mi{font-size:14px;line-height:1;flex:none}
+
 .dp{border-radius:6px;padding:3px 8px;font-size:12px;font-weight:600;white-space:nowrap;display:inline-flex;gap:5px;align-items:baseline}
 .dp i{font-style:normal;font-weight:500;font-size:11px;opacity:.72}
 .dp-morning{background:rgba(230,192,122,.15);color:#e6c07a}
 .dp-noon{background:rgba(232,149,99,.15);color:#e89563}
 .dp-evening{background:rgba(157,141,241,.17);color:#a99bf5}
+.dp-night{background:rgba(143,163,200,.16);color:#8fa3c8}
 .dp-all_day{background:rgba(94,201,160,.15);color:#5ec9a0}
 .dp-hour{background:rgba(107,166,245,.15);color:#6ba6f5}
 
 .chip{display:inline-flex;align-items:center;gap:8px;background:#20262f;
 border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:13px;margin:0 0 6px 6px;cursor:pointer}
+/* The body wraps when an option names several dayparts; the ✕ never does —
+   a remove button that drifts onto its own line stops looking like it
+   belongs to the row above it. */
+.chip .cbody{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.chip .x,.chip .tick{flex:none}
+.mine .chip{display:flex;width:100%;justify-content:space-between;margin-left:0}
 .chip .cdate{font-weight:500}
 .chip .x{color:var(--danger);opacity:.6;font-weight:700;font-size:14px;line-height:1;padding:0 2px}
 .chip:hover .x{opacity:1}
@@ -107,11 +120,16 @@ width:4px;height:4px;border-radius:2px;background:var(--danger);opacity:.85}
 .part{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;
 padding:7px 13px;font-size:13px;cursor:pointer;background:transparent;color:var(--text)}
 .part .swatch{width:8px;height:8px;border-radius:50%;background:currentColor;opacity:.9}
-.part.pm{color:#e6c07a}.part.pn{color:#e89563}.part.pe{color:#a99bf5}
-.part.pa{color:#5ec9a0}.part.ph{color:#6ba6f5}
+.part[data-p=morning]{color:#e6c07a}
+.part[data-p=noon]{color:#e89563}
+.part[data-p=evening]{color:#a99bf5}
+.part[data-p=night]{color:#8fa3c8}
+.part[data-p=all_day]{color:#5ec9a0}
+.part[data-p=hour]{color:#6ba6f5}
 .part .txt{color:var(--text)}
 .part.sel{border-color:currentColor;background:rgba(255,255,255,.05);font-weight:600}
 .part.sel .txt{color:currentColor}
+.partnote{font-size:11.5px;color:var(--dim);margin-top:7px;min-height:15px}
 input[type=time]{background:var(--bg);border:1px solid var(--line);color:var(--text);
 border-radius:8px;padding:8px 10px;font-size:14px;margin-top:8px;display:none}
 input[type=time].show{display:block}
@@ -130,8 +148,7 @@ noscript p{margin-top:12px}`;
 // PARTS so the times on screen cannot drift from the times the server
 // intersects. `hour` has no fixed window — the badge shows the picked time.
 const mm = (n) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
-const PART_KEYS = ['morning', 'noon', 'evening', 'all_day', 'hour'];
-const PART_CLASS = { morning: 'pm', noon: 'pn', evening: 'pe', all_day: 'pa', hour: 'ph' };
+const PART_KEYS = [...availability.SPAN_PARTS, 'all_day', 'hour'];
 function partsForClient() {
   const out = {};
   for (const key of PART_KEYS) {
@@ -151,7 +168,8 @@ const HEB_DAYS = ['ראשון','שני','שלישי','רביעי','חמישי','
 const HEB_MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
 const DOW = ['א','ב','ג','ד','ה','ו','ש'];
 
-let selStart = null, selEnd = null, part = null;
+let selStart = null, selEnd = null;
+let picked = [];                       // ticked dayparts, canonical order
 let list = P.mine.map((o) => ({ ...o }));
 let view = { y: +P.today.slice(0,4), m: +P.today.slice(5,7) };
 
@@ -162,7 +180,17 @@ const dowOf = (s) => new Date(utc(s)).getUTCDay();
 const dLabel = (s) => { const p = s.split('-').map(Number); return 'יום '+HEB_DAYS[dowOf(s)]+' '+p[2]+'.'+p[1]; };
 const sLabel = (s) => { const p = s.split('-').map(Number); return p[2]+'.'+p[1]; };
 const spanDays = (a,b) => Math.round((utc(b)-utc(a))/86400000)+1;
-const keyOf = (o) => [o.start_date,o.end_date,o.part,o.hour||''].join('|');
+const keyOf = (o) => [o.start_date,o.end_date,(o.parts||[]).join(','),o.hour||''].join('|');
+
+// The same rules domain/availability.canonicalParts enforces, run here only so
+// the buttons answer instantly. The server re-derives this from scratch and
+// its answer is the one that gets stored.
+function canonical(sel){
+  if (sel.includes('hour')) return ['hour'];
+  if (sel.includes('all_day')) return ['all_day'];
+  const spans = P.spans.filter((k) => sel.includes(k));
+  return spans.length === P.spans.length ? ['all_day'] : spans;
+}
 
 // The last pickable day — the same horizon the server enforces, so the grid
 // can never offer a date the submit would refuse.
@@ -170,11 +198,11 @@ const LAST = (() => { const d = new Date(utc(P.today) + P.horizonDays*86400000);
 
 // ---- chips ------------------------------------------------------------------
 
-function badge(o){
-  const meta = P.parts[o.part];
+function badge(key, o){
+  const meta = P.parts[key];
   const b = document.createElement('span');
-  b.className = 'dp dp-'+o.part;
-  b.appendChild(document.createTextNode(o.part === 'hour' ? o.hour : meta.he));
+  b.className = 'dp dp-'+key;
+  b.appendChild(document.createTextNode(key === 'hour' ? o.hour : meta.he));
   if (meta.range) { const i = document.createElement('i'); i.textContent = meta.range; b.appendChild(i); }
   return b;
 }
@@ -185,8 +213,11 @@ function dateText(o){
 function chip(o, kind){
   const c = document.createElement('span');
   c.className = 'chip'+(kind === 'adopt' ? ' adopt' : '');
+  const body = document.createElement('span'); body.className = 'cbody';
   const d = document.createElement('span'); d.className = 'cdate'; d.textContent = dateText(o);
-  c.append(d, badge(o));
+  body.appendChild(d);
+  for (const key of o.parts) body.appendChild(badge(key, o));
+  c.appendChild(body);
   return c;
 }
 
@@ -235,7 +266,7 @@ function paintOthers(){
       c.onclick = () => {
         if (adopted) list = list.filter((x) => keyOf(x) !== keyOf(o));
         else if (list.length >= P.max) return say('הגעת ל-'+P.max+' אופציות — אפשר להסיר אחת קודם');
-        else list.push({ start_date:o.start_date, end_date:o.end_date, part:o.part, hour:o.hour });
+        else list.push({ start_date:o.start_date, end_date:o.end_date, parts:o.parts.slice(), hour:o.hour });
         say(''); paintAll();
       };
       row.appendChild(c);
@@ -310,20 +341,45 @@ function paintBusy(){
 
 // ---- adding -----------------------------------------------------------------
 
+// Parts are a multi-choice: several spans of one day can suit a person, and
+// saying so should cost one option, not three. The two statements that are
+// about the WHOLE day — a specific hour, and "all day" — replace a selection
+// rather than joining it, and ticking every span silently becomes "all day",
+// because that is the same sentence said shorter.
+function paintParts(){
+  $$('.part').forEach((x) => {
+    const on = picked.includes(x.dataset.p);
+    x.classList.toggle('sel', on);
+    x.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  const hour = picked[0] === 'hour';
+  $('#hour').classList.toggle('show', hour);
+  $('.partnote').textContent = picked.length > 1
+    ? 'נשמר כאופציה אחת עם ' + picked.length + ' חלקי יום'
+    : (picked[0] === 'all_day' ? 'סימנת את כל חלקי היום' : '');
+}
+
+// Exclusivity has to hold in BOTH directions, and only the second one is
+// obvious: ticking "all day" clearly replaces the spans, but ticking a span
+// while "all day" (or an hour) is on must replace THAT — otherwise the newest
+// tap is the one the page ignores, which is the worst way for a toggle to
+// behave.
 $$('.part').forEach((el) => { el.onclick = () => {
-  part = el.dataset.p;
-  $$('.part').forEach((x) => x.classList.toggle('sel', x === el));
-  $('#hour').classList.toggle('show', part === 'hour');
-  say('');
-  if (part === 'hour') $('#hour').focus();
+  const p = el.dataset.p;
+  if (picked.includes(p)) picked = canonical(picked.filter((x) => x !== p));
+  else if (p === 'hour' || p === 'all_day') picked = [p];
+  else picked = canonical(picked.filter((x) => x !== 'hour' && x !== 'all_day').concat([p]));
+  say(''); paintParts();
+  if (picked[0] === 'hour') $('#hour').focus();
 };});
 
 $('.add').onclick = () => {
   if (list.length >= P.max) return say('הגעת ל-'+P.max+' אופציות — אפשר להסיר אחת קודם');
   if (!selStart) return say('בחרו תאריך בלוח');
-  if (!part) return say('בחרו חלק של היום');
-  if (part === 'hour' && !$('#hour').value) return say('סמנו שעה');
-  const o = { start_date: selStart, end_date: selEnd || selStart, part, hour: part === 'hour' ? $('#hour').value : null };
+  if (!picked.length) return say('בחרו חלק של היום');
+  if (picked[0] === 'hour' && !$('#hour').value) return say('סמנו שעה');
+  const o = { start_date: selStart, end_date: selEnd || selStart, parts: picked.slice(),
+    hour: picked[0] === 'hour' ? $('#hour').value : null };
   if (list.some((x) => keyOf(x) === keyOf(o))) return say('האופציה הזו כבר ברשימה');
   list.push(o);
   selStart = null; selEnd = null;
@@ -332,36 +388,38 @@ $('.add').onclick = () => {
 
 $('#form').onsubmit = () => {
   $('#options').value = JSON.stringify(list.map((o) => (
-    { start_date:o.start_date, end_date:o.end_date, part:o.part, hour:o.hour })));
+    { start_date:o.start_date, end_date:o.end_date, parts:o.parts, hour:o.hour })));
   $('.send').disabled = true;
   return true;
 };
 
-paintMonths(); paintGrid(); paintAll();
+paintMonths(); paintGrid(); paintParts(); paintAll();
 `;
 
 function renderPicker(page, busy) {
   const { title, viewerName, today, mine, others } = page;
   const partButtons = PART_KEYS.map((k) => {
     const p = availability.PARTS[k];
-    return `<button type="button" class="part ${PART_CLASS[k]}" data-p="${k}" aria-label="${esc(p.he)}">`
+    return `<button type="button" class="part" data-p="${k}" aria-pressed="false" aria-label="${esc(p.he)}">`
       + `<span class="swatch"></span><span class="txt">${esc(p.he)}</span></button>`;
   }).join('');
 
   return `<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
 <title>מתי נוח לך? — אולמה</title><style>${PAGE_CSS}</style></head><body><div class="card">
+<div class="meeting"><span class="mi">🗓</span><span class="mt">${esc(title)}</span></div>
 <h1>מתי נוח לך${viewerName ? `, ${esc(viewerName)}` : ''}?</h1>
-<p class="sub">${esc(title)}</p>
+<p class="sub">סמנו כמה אפשרויות שנוח לכם — אולמה תמצא מה מתאים לכולם.</p>
 <noscript><p>הדף הזה צריך JavaScript כדי לעבוד. אפשר פשוט לכתוב לאולמה בוואטסאפ מתי נוח לך — זה עובד בדיוק אותו דבר.</p></noscript>
 <div class="others"></div>
 <h2>בחירת תאריך או טווח</h2>
 <div class="months"></div>
 <div class="grid"></div>
 <div class="busyline"></div>
-<h2>באיזה חלק של היום</h2>
+<h2>באילו חלקים של היום</h2>
 <div class="parts">${partButtons}</div>
 <input type="time" id="hour" aria-label="שעה">
+<div class="partnote"></div>
 <button type="button" class="btn add">הוספת אופציה +</button>
 <div class="hint" role="status" aria-live="polite"></div>
 <h2>האופציות שלך</h2>
@@ -373,6 +431,7 @@ function renderPicker(page, busy) {
     max: availability.MAX_OPTIONS,
     horizonDays: availability.HORIZON_DAYS,
     parts: partsForClient(),
+    spans: availability.SPAN_PARTS,
     today, mine, others, busy,
   })};${PAGE_JS}</script></body></html>`;
 }

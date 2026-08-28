@@ -31,13 +31,23 @@ const MAX_OVERLAP_WINDOWS = 10;
 // Daypart vocabulary, minutes from local midnight. Closed set — the same
 // refuse-don't-guess posture as reminders.normalizeRepeatRule: a part outside
 // this list is refused, never coerced.
+//
+// The four spans tile the day with NO gaps and no overlaps, and `all_day` is
+// exactly their union — that is what makes "tick every part" and "tick כל
+// היום" the same statement, which in turn is what lets canonicalParts
+// collapse one into the other without changing what the person said. Change
+// one boundary and you must change its neighbour.
 const PARTS = {
   morning: { he: 'בוקר', from: 8 * 60, to: 12 * 60 },
-  noon:    { he: 'צהריים', from: 12 * 60, to: 16 * 60 },
+  noon:    { he: 'צהריים', from: 12 * 60, to: 17 * 60 },
   evening: { he: 'ערב', from: 17 * 60, to: 21 * 60 },
-  all_day: { he: 'כל היום', from: 8 * 60, to: 21 * 60 },
+  night:   { he: 'לילה', from: 21 * 60, to: 24 * 60 },
+  all_day: { he: 'כל היום', from: 8 * 60, to: 24 * 60 },
   hour:    { he: 'שעה מסוימת' }, // window filled in from the picked hour
 };
+// Chronological, so a multi-part label always reads in time order however the
+// person tapped it.
+const SPAN_PARTS = ['morning', 'noon', 'evening', 'night'];
 const HOUR_WINDOW_MINUTES = 60;
 
 const HEB_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
@@ -107,25 +117,57 @@ function utcMsOf(dateStr, minutes, tz) {
 
 // ---- option normalization --------------------------------------------------
 
-function windowOf(part, hour) {
-  if (part === 'hour') {
-    const [, h, m] = HOUR_RE.exec(hour);
+// Every clock window one option covers on a single day. Multi-part options
+// carry one window per part; they are unioned by utcWindowsOf like any other.
+function windowsOf(o) {
+  if (o.parts[0] === 'hour') {
+    const [, h, m] = HOUR_RE.exec(o.hour);
     const from = Number(h) * 60 + Number(m);
-    return { from, to: Math.min(from + HOUR_WINDOW_MINUTES, 24 * 60) };
+    return [{ from, to: Math.min(from + HOUR_WINDOW_MINUTES, 24 * 60) }];
   }
-  return { from: PARTS[part].from, to: PARTS[part].to };
+  return o.parts.map((k) => ({ from: PARTS[k].from, to: PARTS[k].to }));
 }
 
 function optionLabel(o) {
-  const when = o.part === 'hour' ? `בשעה ${o.hour}` : `${PARTS[o.part].he} (${mm(windowOf(o.part, o.hour).from)}–${mm(windowOf(o.part, o.hour).to)})`;
+  const when = o.parts[0] === 'hour'
+    ? `בשעה ${o.hour}`
+    : o.parts.map((k) => `${PARTS[k].he} (${mm(PARTS[k].from)}–${mm(PARTS[k].to)})`).join(' + ');
   const days = o.start_date === o.end_date
     ? dayLabel(o.start_date)
     : `${shortDate(o.start_date)}–${shortDate(o.end_date)}`;
   return `${days} — ${when}`;
 }
 
+// The one place that decides what a set of ticked parts MEANS. The page runs
+// the same rules for immediate feedback, but this is the copy that counts:
+// the page is a convenience, and a submission that reached us some other way
+// must come out identical.
+//
+//   * a specific hour, or "all day", is a statement about the whole day —
+//     combining either with anything else is a contradiction, not a wish.
+//   * ticking all four spans IS "all day"; storing it as four parts would
+//     say the same thing in a form nobody reads as well.
+function canonicalParts(raw) {
+  const list = [...new Set(raw.map((p) => String(p)))];
+  if (!list.length) return err('invalid', 'לא נבחר חלק של היום');
+  for (const p of list) if (!PARTS[p]) return err('invalid', 'חלק יום לא מוכר');
+  for (const solo of ['hour', 'all_day']) {
+    if (list.includes(solo)) {
+      if (list.length > 1) {
+        return err('invalid', solo === 'hour'
+          ? 'שעה מסוימת לא משתלבת עם חלקי יום אחרים'
+          : '"כל היום" לא משתלב עם חלקי יום אחרים');
+      }
+      return ok([solo]);
+    }
+  }
+  if (SPAN_PARTS.every((k) => list.includes(k))) return ok(['all_day']);
+  return ok(SPAN_PARTS.filter((k) => list.includes(k)));
+}
+
 // One raw option from the page → the stored shape, or an err with a Hebrew
-// message the page shows as-is.
+// message the page shows as-is. `part` (a single string) is still accepted so
+// a page cached in someone's browser from before multi-select keeps working.
 function normalizeOption(raw, tz, today) {
   if (!raw || typeof raw !== 'object') return err('invalid', 'אופציה לא תקינה');
   const start = String(raw.start_date || '');
@@ -137,14 +179,15 @@ function normalizeOption(raw, tz, today) {
   }
   if (start < today) return err('invalid', `התאריך ${shortDate(start)} כבר עבר`);
   if (daysBetween(today, start) > HORIZON_DAYS) return err('invalid', 'תאריך רחוק מדי קדימה');
-  const part = String(raw.part || '');
-  if (!PARTS[part]) return err('invalid', 'חלק יום לא מוכר');
+  const asked = Array.isArray(raw.parts) ? raw.parts : [raw.part];
+  const parts = canonicalParts(asked.filter((p) => p != null && p !== ''));
+  if (!parts.ok) return parts;
   let hour = null;
-  if (part === 'hour') {
+  if (parts.data[0] === 'hour') {
     hour = String(raw.hour || '');
     if (!HOUR_RE.test(hour)) return err('invalid', 'שעה לא תקינה');
   }
-  const o = { start_date: start, end_date: end, part, hour, tz: tz || FALLBACK_TZ };
+  const o = { start_date: start, end_date: end, parts: parts.data, hour, tz: tz || FALLBACK_TZ };
   o.label = optionLabel(o);
   return ok(o);
 }
@@ -166,9 +209,10 @@ function normalizeOptions(rawList, tz, today = todayInTz(tz)) {
 function utcWindowsOf(options) {
   const windows = [];
   for (const o of options) {
-    const w = windowOf(o.part, o.hour);
-    for (let d = o.start_date; d <= o.end_date; d = addDays(d, 1)) {
-      windows.push([utcMsOf(d, w.from, o.tz), utcMsOf(d, w.to, o.tz)]);
+    for (const w of windowsOf(o)) {
+      for (let d = o.start_date; d <= o.end_date; d = addDays(d, 1)) {
+        windows.push([utcMsOf(d, w.from, o.tz), utcMsOf(d, w.to, o.tz)]);
+      }
     }
   }
   return mergeIntervals(windows);
@@ -210,14 +254,17 @@ function overlapWindows(optionLists) {
     .slice(0, MAX_OVERLAP_WINDOWS);
 }
 
-// A UTC window rendered for one reader, in THEIR timezone.
+// A UTC window rendered for one reader, in THEIR timezone. A window running
+// to midnight formats as 00:00, which reads as ending before it began — the
+// day it belongs to is the one it started on, so say 24:00.
 function windowLabel([fromMs, toMs], tz) {
   let zone = tz || FALLBACK_TZ;
   try { tzOffsetMs(zone, fromMs); } catch { zone = FALLBACK_TZ; }
   const fmtDate = new Intl.DateTimeFormat('en-CA', { timeZone: zone });
   const fmtTime = new Intl.DateTimeFormat('en-GB', { timeZone: zone, hour: '2-digit', minute: '2-digit', hour12: false });
   const d = fmtDate.format(new Date(fromMs));
-  return `${dayLabel(d)} ${fmtTime.format(new Date(fromMs))}–${fmtTime.format(new Date(toMs))}`;
+  const end = fmtTime.format(new Date(toMs));
+  return `${dayLabel(d)} ${fmtTime.format(new Date(fromMs))}–${end === '00:00' ? '24:00' : end}`;
 }
 
 // ---- links -----------------------------------------------------------------
@@ -396,7 +443,8 @@ async function labelsByUser(client, meetingId) {
 }
 
 module.exports = {
-  LINK_TTL_DAYS, MAX_OPTIONS, MAX_RANGE_DAYS, HORIZON_DAYS, PARTS,
-  normalizeOptions, overlapWindows, windowLabel, todayInTz, utcMsOf, dayLabel,
+  LINK_TTL_DAYS, MAX_OPTIONS, MAX_RANGE_DAYS, HORIZON_DAYS, PARTS, SPAN_PARTS,
+  normalizeOptions, canonicalParts, overlapWindows, windowLabel, todayInTz,
+  utcMsOf, dayLabel,
   createLink, loadPage, submit, labelsByUser,
 };

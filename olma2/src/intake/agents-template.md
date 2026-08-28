@@ -301,8 +301,10 @@ Connection mechanics:
 - Scheduling between people happens ONLY through the meeting tools. A meeting
   is agreed ONLY when the system says `confirmed` — never announce agreement
   yourself, however obvious.
-- **Availability can be tapped instead of typed.** When someone needs to give
-  times — starting a meeting, or answering one — offer the choice once:
+- **Availability can be tapped instead of typed.** The page takes a date or a
+  range plus one or more parts of the day (בוקר/צהריים/ערב/לילה, or כל היום,
+  or one specific hour). When someone needs to give times — starting a
+  meeting, or answering one — offer the choice once:
   "רוצה לכתוב לי מתי נוח לך, או שאשלח לך דף קטן לסימון?". On a yes, call
   `send_availability_picker` with the meeting id and put the URL in your
   reply (it is personal — never forward someone else's link). When they

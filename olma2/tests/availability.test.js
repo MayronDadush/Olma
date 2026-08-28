@@ -53,7 +53,7 @@ const plus = (n) => {
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 };
 const opt = (over = {}) => {
-  const o = { start_date: plus(3), part: 'evening', hour: null, ...over };
+  const o = { start_date: plus(3), parts: ['evening'], hour: null, ...over };
   o.end_date = over.end_date || o.start_date;
   return o;
 };
@@ -75,37 +75,77 @@ test('options are validated server-side: count, dates, vocabulary', () => {
   assert.equal(availability.normalizeOptions([], tz).ok, false);
   assert.equal(availability.normalizeOptions(Array.from({ length: 11 }, () => opt()), tz).ok, false);
   assert.equal(availability.normalizeOptions([opt({ start_date: plus(-1), end_date: plus(-1) })], tz).ok, false, 'past date refused');
-  assert.equal(availability.normalizeOptions([opt({ part: 'brunch' })], tz).ok, false, 'unknown daypart refused');
-  assert.equal(availability.normalizeOptions([opt({ part: 'hour' })], tz).ok, false, 'hour part needs an hour');
+  assert.equal(availability.normalizeOptions([opt({ parts: ['brunch'] })], tz).ok, false, 'unknown daypart refused');
+  assert.equal(availability.normalizeOptions([opt({ parts: [] })], tz).ok, false, 'no daypart refused');
+  assert.equal(availability.normalizeOptions([opt({ parts: ['hour'] })], tz).ok, false, 'hour part needs an hour');
   assert.equal(availability.normalizeOptions([opt({ end_date: plus(1) })], tz).ok, false, 'reversed range refused');
   assert.equal(availability.normalizeOptions([opt({ end_date: plus(30) })], tz).ok, false, 'over-long range refused');
 
   const good = availability.normalizeOptions(
-    [opt(), opt({ start_date: plus(5), end_date: plus(7), part: 'hour', hour: '15:30' })], tz);
+    [opt(), opt({ start_date: plus(5), end_date: plus(7), parts: ['hour'], hour: '15:30' })], tz);
   assert.ok(good.ok);
   assert.match(good.data[0].label, /ערב/);
   assert.match(good.data[1].label, /15:30/);
   assert.equal(good.data[1].tz, tz);
+
+  // A page cached from before multi-select still posts a bare `part`.
+  const legacy = availability.normalizeOptions([{ start_date: plus(3), end_date: plus(3), part: 'night' }], tz);
+  assert.ok(legacy.ok);
+  assert.deepEqual(legacy.data[0].parts, ['night']);
+});
+
+test('what a set of ticked dayparts means is decided in ONE place', () => {
+  const tz = 'Asia/Jerusalem';
+  const parts = (list) => {
+    const r = availability.normalizeOptions([opt({ parts: list, hour: '09:00' })], tz);
+    return r.ok ? r.data[0].parts : r.error.message;
+  };
+  // Several spans of one day are one statement, stored in time order however
+  // they were tapped.
+  assert.deepEqual(parts(['evening', 'morning']), ['morning', 'evening']);
+  assert.deepEqual(parts(['night', 'noon', 'noon']), ['noon', 'night'], 'duplicates collapse');
+  // Every span IS "all day" — said shorter, so the label reads the way a
+  // person would say it.
+  assert.deepEqual(parts(['morning', 'noon', 'evening', 'night']), ['all_day']);
+  // The two whole-day statements replace a selection, never join one. The
+  // page enforces this by construction; the server must refuse it anyway,
+  // since the page is a convenience and this is the copy that counts.
+  assert.match(parts(['hour', 'morning']), /לא משתלבת/);
+  assert.match(parts(['all_day', 'morning']), /לא משתלב/);
+
+  const label = availability.normalizeOptions([opt({ parts: ['morning', 'night'] })], tz).data[0].label;
+  assert.match(label, /בוקר \(08:00–12:00\) \+ לילה \(21:00–24:00\)/);
 });
 
 test('overlap is computed on UTC instants, honouring each side\'s timezone', () => {
   const d = plus(4);
+  const at = (parts, hour, tz) => [{ start_date: d, end_date: d, parts, hour: hour || null, tz: tz || 'Asia/Jerusalem' }];
   // Same local evening in the same zone → the full window overlaps.
-  const a = [{ start_date: d, end_date: d, part: 'evening', hour: null, tz: 'Asia/Jerusalem' }];
-  const b = [{ start_date: d, end_date: d, part: 'hour', hour: '18:00', tz: 'Asia/Jerusalem' }];
-  const w = availability.overlapWindows([a, b]);
+  const a = at(['evening']);
+  const w = availability.overlapWindows([a, at(['hour'], '18:00')]);
   assert.equal(w.length, 1);
   assert.equal(w[0][1] - w[0][0], 60 * 60_000, 'the hour inside the evening');
   assert.match(availability.windowLabel(w[0], 'Asia/Jerusalem'), /18:00–19:00/);
 
-  // 20:00 in London IS 22:00 in Jerusalem — outside the Jerusalem evening.
+  // 22:00 in London IS 00:00 in Jerusalem — past the Jerusalem evening.
   // Naive local-minute comparison would call this a match; UTC math must not.
-  const c = [{ start_date: d, end_date: d, part: 'hour', hour: '20:00', tz: 'Europe/London' }];
-  assert.equal(availability.overlapWindows([a, c]).length, 0);
+  assert.equal(availability.overlapWindows([a, at(['hour'], '22:00', 'Europe/London')]).length, 0);
 
   // Disjoint parts → nothing.
-  const m = [{ start_date: d, end_date: d, part: 'morning', hour: null, tz: 'Asia/Jerusalem' }];
-  assert.equal(availability.overlapWindows([a, m]).length, 0);
+  assert.equal(availability.overlapWindows([a, at(['morning'])]).length, 0);
+
+  // A multi-part option contributes EVERY window it names: morning+night
+  // against someone free all day meets twice, in two separate windows.
+  const two = availability.overlapWindows([at(['morning', 'night']), at(['all_day'])]);
+  assert.equal(two.length, 2);
+  assert.match(availability.windowLabel(two[0], 'Asia/Jerusalem'), /08:00–12:00/);
+  assert.match(availability.windowLabel(two[1], 'Asia/Jerusalem'), /21:00–24:00/);
+
+  // The four spans tile the day exactly, so "all day" and "every span" are
+  // the same availability — the collapse in canonicalParts loses nothing.
+  const allDay = availability.overlapWindows([at(['all_day'])]);
+  const everySpan = availability.overlapWindows([at(availability.SPAN_PARTS)]);
+  assert.deepEqual(everySpan, allDay);
 });
 
 // ---- links ------------------------------------------------------------------
@@ -133,7 +173,7 @@ test('first submit notifies exactly the people still missing; the last one hands
   const m = await newMeeting(alice, [bob, carol]);
   const link = (await tx((c) => availability.createLink(c, alice.id, m.id))).data;
 
-  const r1 = await tx((c) => availability.submit(c, tokenOf(link.url), [opt(), opt({ start_date: plus(5), part: 'morning' })]));
+  const r1 = await tx((c) => availability.submit(c, tokenOf(link.url), [opt(), opt({ start_date: plus(5), parts: ['morning'] })]));
   assert.ok(r1.ok);
   assert.equal(r1.data.allSubmitted, false);
 
@@ -146,7 +186,7 @@ test('first submit notifies exactly the people still missing; the last one hands
   assert.ok(payload.options.every((l) => typeof l === 'string'));
 
   // The same options again (double-tap) do not message anyone twice.
-  await tx((c) => availability.submit(c, tokenOf(link.url), [opt(), opt({ start_date: plus(5), part: 'morning' })]));
+  await tx((c) => availability.submit(c, tokenOf(link.url), [opt(), opt({ start_date: plus(5), parts: ['morning'] })]));
   assert.equal((await outboxFor(bob.id, 'availability_shared')).length, 1);
 
   // Bob answers with an overlapping evening; still one person missing.
@@ -158,7 +198,7 @@ test('first submit notifies exactly the people still missing; the last one hands
   // Carol closes the loop → ONE availability_complete, to the initiator only,
   // carrying the computed intersection.
   const carolLink = (await tx((c) => availability.createLink(c, carol.id, m.id))).data;
-  const r3 = await tx((c) => availability.submit(c, tokenOf(carolLink.url), [opt({ part: 'hour', hour: '19:00' })]));
+  const r3 = await tx((c) => availability.submit(c, tokenOf(carolLink.url), [opt({ parts: ['hour'], hour: '19:00' })]));
   assert.equal(r3.data.allSubmitted, true);
   const done = await outboxFor(alice.id, 'availability_complete');
   assert.equal(done.length, 1);
@@ -179,7 +219,7 @@ test('a resubmission recomputes: no overlap left → the initiator is told hones
   const la = (await tx((c) => availability.createLink(c, alice.id, m.id))).data;
   const lb = (await tx((c) => availability.createLink(c, bob.id, m.id))).data;
   await tx((c) => availability.submit(c, tokenOf(la.url), [opt()]));
-  await tx((c) => availability.submit(c, tokenOf(lb.url), [opt({ part: 'morning' })]));
+  await tx((c) => availability.submit(c, tokenOf(lb.url), [opt({ parts: ['morning'] })]));
   const done = (await outboxFor(alice.id, 'availability_complete'))
     .filter((r) => r.payload.meetingId === m.id);
   assert.equal(done.length, 1);
@@ -218,7 +258,7 @@ test('the page is public by token, renders RTL Hebrew, and a submit round-trips'
   const bad = await fetch(`${base}/pick/${token}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ options: JSON.stringify([opt({ part: 'x' })]) }),
+    body: new URLSearchParams({ options: JSON.stringify([opt({ parts: ['x'] })]) }),
   });
   assert.equal(bad.status, 400);
 });

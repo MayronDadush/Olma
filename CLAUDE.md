@@ -60,8 +60,13 @@ describes **v1**, which is retired-in-place: its code still sits in
 The first "ephemeral UI": when someone needs to give meeting availability,
 their agent offers a choice — write it in chat, or get a personal link to a
 small RTL page (dark, mobile-first, zero deps, vanilla inline JS) where they
-tap a date or range on a 6-week grid, pick בוקר/צהריים/ערב/כל היום/שעה
-מסוימת, and build up to 10 options with ✕-removal; their own Google Calendar
+tap a date or range on a month grid, tick one or more of
+בוקר/צהריים/ערב/לילה (or כל היום / שעה מסוימת, each of which replaces a
+selection rather than joining it), and build up to 10 options with
+✕-removal. The four spans tile the day exactly and `all_day` is their union,
+so ticking all four collapses to "כל היום" — the same sentence said shorter;
+`canonicalParts` is the one place that decides this and the page only mirrors
+it. Their own Google Calendar
 events overlay the grid (best-effort, their credential only), and options the
 OTHER side already submitted show as tap-to-adopt chips. Migration 019 (018
 was already burned on prod by another branch — `SELECT max(version)` on the
