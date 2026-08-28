@@ -105,3 +105,37 @@ test('a NEW outage re-arms the alarm; a failed send does not consume it', async 
     assert.equal(rec2.sent[0].phone, '+972590000000');
   });
 });
+
+// The regression this pins is invisible at millisecond resolution, which is
+// exactly why it survived: the alarm used to compare a Postgres timestamp
+// against a JS-stamped one, and a JS Date cannot hold microseconds. Everything
+// in the test above happens inside a few milliseconds, so it failed about two
+// runs in three — a flaky test on the credit alarm, which is the thing that
+// pages when the model provider runs dry.
+test('an outage one microsecond newer than the last alert still re-arms it', async () => {
+  await withClient(async (c) => {
+    await c.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+    await withTx(db.pool, (cc) => enqueue(cc, {
+      userId: user.id, kind: 'checkin', idempotencyKey: 'cw:us',
+    }));
+    // Both sides pinned by hand, one microsecond apart — the same millisecond,
+    // which is all the old comparison could see.
+    const alertedAt = '2026-08-28 12:00:00.000500+00';
+    const outageAt = '2026-08-28 12:00:00.000501+00';
+    await c.query(
+      `UPDATE outbox SET last_error = 'credit balance is too low', created_at = $1::timestamptz
+        WHERE idempotency_key = 'cw:us'`, [outageAt]);
+    await flagsDomain.setFlag(c, watch.ALERT_AT_FLAG, alertedAt);
+
+    const rec = recorder();
+    assert.equal((await watch.checkCreditAlert(c, rec)).alerted, true,
+      'a microsecond newer is a NEW outage, and the alarm has to see it');
+
+    // ...and the stamp it just wrote came from Postgres, not from Node: PG
+    // renders a timestamptz with a space and a +00 offset, never T...Z. Revert
+    // the stamp to a JS Date and this is what notices.
+    const stored = await flagsDomain.getFlag(c, watch.ALERT_AT_FLAG);
+    assert.doesNotMatch(stored, /\dT\d.*Z$/,
+      "the alarm's own clock must be the database's");
+  });
+});
