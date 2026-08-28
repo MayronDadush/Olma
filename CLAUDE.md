@@ -55,6 +55,50 @@ describes **v1**, which is retired-in-place: its code still sits in
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
 
+### Availability is tapped on a page, not typed (2026-08-28)
+
+The first "ephemeral UI": when someone needs to give meeting availability,
+their agent offers a choice — write it in chat, or get a personal link to a
+small RTL page (dark, mobile-first, zero deps, vanilla inline JS) where they
+tap a date or range on a month grid, tick one or more of
+בוקר/צהריים/ערב/לילה (or כל היום / שעה מסוימת, each of which replaces a
+selection rather than joining it), and build up to 10 options with
+✕-removal. The four spans tile the day exactly and `all_day` is their union,
+so ticking all four collapses to "כל היום" — the same sentence said shorter;
+`canonicalParts` is the one place that decides this and the page only mirrors
+it. Their own Google Calendar
+events overlay the grid (best-effort, their credential only), and options the
+OTHER side already submitted show as tap-to-adopt chips. Migration 020 —
+018 AND 019 were both burned on prod by other branches while this was being
+written, so the number was re-checked with `SELECT max(version)` on the box
+immediately before the merge, not once at the start.
+`domain/availability.js`, `adapters/http/picker.js`, tool
+`send_availability_picker`.
+
+- **The token in the URL is the whole credential** — same trust model as the
+  OAuth callback route above it in dashboard.js (random, user-bound, 7-day
+  TTL), except deliberately MULTI-use so the person can reopen and edit.
+  Links are idempotent per (meeting,user), die with the meeting status, and
+  expired rows age out in the retention sweep.
+- **The server is the judge**: the page posts raw form data; dates, the
+  closed daypart vocabulary and labels are validated/built server-side.
+  Overlap is computed in code, zero tokens, in UTC instants — each option
+  carries its owner's timezone and is converted before intersecting (the
+  "משמרת 15:00 stored as Z" incident, one layer up), then labelled back in
+  the READER's timezone.
+- **Notifications ride the outbox** (urgency urgent, hash-idempotent, so the
+  recipient's quiet hours/pause/budget all still hold): a partial submit
+  tells only the participants who have NOT yet answered
+  (`availability_shared`, offering chat or their own picker); the last submit
+  sends the initiator alone the computed intersection
+  (`availability_complete`) — or an honest "no window fits". A submission is
+  availability, never agreement: confirming still happens only through
+  propose/respond_to_meeting_slot, and the doctrine + both instructions say
+  so explicitly. `get_meeting_status` now carries everyone's option labels.
+- `public_base_url` is a flag (dashboard-editable) so links don't hard-code
+  the host. New outbox kinds inherit the DELIVERY_PREAMBLE automatically via
+  `instructionFor` — pinned by tests like every other proactive kind.
+
 ### The credit alarm compared two clocks (fixed 2026-08-28)
 
 `jobs/credit-watch.js` decides "have I already alerted for THIS outage" by

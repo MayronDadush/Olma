@@ -26,6 +26,13 @@ async function sweepRetention(client) {
   const states = await client.query(
     `DELETE FROM oauth_states WHERE expires_at < now() - interval '1 day'`
   );
+  // Availability-picker links, same idea with a longer grace: a week past
+  // expiry the URL in the person's WhatsApp history should say "expired",
+  // not "never existed". The submissions themselves (meeting_availability)
+  // stay with their meeting.
+  const pickerLinks = await client.query(
+    `DELETE FROM picker_links WHERE expires_at < now() - interval '7 days'`
+  );
   // Rendered schedule cards: files, not rows. Once the message that carried one
   // is delivered the file is dead weight, so they age out in hours rather than
   // days. Folded in here rather than given a timer of its own — a second
@@ -35,6 +42,7 @@ async function sweepRetention(client) {
   return {
     auditPurged: audit.rowCount, outboxPurged: outbox.rowCount,
     snapshotsPurged: snapshots.rowCount, oauthStatesPurged: states.rowCount,
+    pickerLinksPurged: pickerLinks.rowCount,
     cardsPurged,
   };
 }

@@ -433,6 +433,11 @@ async function getStatus(client, userId, meetingId) {
   // owner marked private is theirs alone: they see their own in full, everyone
   // else sees only what was shareable. Before this, the flag existed nowhere
   // and this endpoint handed every word to every participant.
+  // Picker submissions ride along so one status tool tells the whole story.
+  // Unlike constraints there is no private variant: an availability option is
+  // an OFFER — sharing it is its purpose (domain/availability.js).
+  const availability = require('./availability');
+  const avail = await availability.labelsByUser(client, meetingId);
   const participants = parts.rows.map((row) => ({
     user_id: row.user_id,
     state: row.state,
@@ -440,6 +445,7 @@ async function getStatus(client, userId, meetingId) {
     constraints: row.user_id === userId
       ? constraintTexts(row.constraints)
       : shareableTexts(row.constraints),
+    availability: avail.get(Number(row.user_id)) || [],
   }));
   return ok({ meeting: m.rows[0], participants });
 }

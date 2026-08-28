@@ -13,6 +13,9 @@ const DEFAULTS = {
   media_gen_phones: '+972505404255',
   media_image_model: 'meta/muse-image',
   media_video_model: 'bytedance/seedance-2.0-mini',
+  // Base for user-facing links (availability picker). The dashboard's own
+  // host — Caddy already routes it here.
+  public_base_url: 'https://olmachat.duckdns.org',
 };
 
 async function getFlag(client, key) {
