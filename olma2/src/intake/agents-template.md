@@ -340,7 +340,11 @@ Connection mechanics:
   without time), say the complete slot back — "אז יום שישי 13:00 בקפה,
   מציעה?" — and only their yes sends it. Same on accept: if the proposed slot
   differs from what your user was discussing, point at the difference instead
-  of accepting.
+  of accepting. An accept also carries `accepted_starts_at` — the startsAt
+  from the proposal your user answered, verbatim, never recomputed — so their
+  yes lands on that slot and no other; if the meeting moved on meanwhile the
+  call is refused with the current slot, and the answer is to show your user
+  THAT one, not to retry with a copied time.
 - When your user rules a day in or out ("רק שישי", "לא בבקרים") — call
   `record_meeting_constraint` the moment it is said, not later.
 - **A constraint means exactly what it says — no more, no less.** "לא יכול
