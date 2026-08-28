@@ -333,7 +333,28 @@ test('video: parameters are validated before money moves', async () => {
     assert.equal((await media.startVideo(c, admin, { prompt: 'x', duration_seconds: 16 }, deps)).ok, false);
     assert.equal((await media.startVideo(c, admin, { prompt: 'x', duration_seconds: 4.5 }, deps)).ok, false);
     assert.equal((await media.startVideo(c, admin, { prompt: 'x', aspect_ratio: '2:1' }, deps)).ok, false);
+    assert.equal((await media.startVideo(c, admin, { prompt: 'x', resolution: '1080p' }, deps)).ok, false);
     assert.equal(fetchImpl.calls.length, 0);
+  });
+});
+
+test('video: defaults to the cheapest resolution unless the user asked for better', async () => {
+  await withClient(async (c) => {
+    const cheap = fakeFetch([
+      ['/videos', { status: 202, json: { id: 'job-480', polling_url: 'https://openrouter.ai/api/v1/videos/job-480', status: 'pending' } }],
+    ]);
+    const r1 = await media.startVideo(c, admin, { prompt: 'x' }, { fetchImpl: cheap, apiKey: KEY });
+    assert.equal(JSON.parse(cheap.calls[0].opts.body).resolution, '480p');
+
+    const better = fakeFetch([
+      ['/videos', { status: 202, json: { id: 'job-720', polling_url: 'https://openrouter.ai/api/v1/videos/job-720', status: 'pending' } }],
+    ]);
+    const r2 = await media.startVideo(c, admin, { prompt: 'x', resolution: '720p' }, { fetchImpl: better, apiKey: KEY });
+    assert.equal(JSON.parse(better.calls[0].opts.body).resolution, '720p');
+
+    // Clear these back out of 'pending' — otherwise they eat into admin's
+    // pending-job budget for the cap test later in this file.
+    await c.query(`UPDATE media_jobs SET status = 'cancelled' WHERE id = ANY($1)`, [[r1.data.job_id, r2.data.job_id]]);
   });
 });
 

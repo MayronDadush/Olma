@@ -73,7 +73,9 @@ real tools, real DB — on a disposable session with no `--deliver`.
   scores wobble, and an alert that fires on wobble teaches the reader to
   ignore alerts. A harness failure is ERROR and alerts like red — never
   silently green (the /health lesson). Everything lands in
-  `eval_runs`/`eval_results` (migration 019) and renders as the dashboard's
+  `eval_runs`/`eval_results` (migration 019 — renumbered after colliding with
+  #55's 018, the two-branches-one-number incident repeating itself on merge
+  day) and renders as the dashboard's
   "בדיקות התנהגות" section.
 - **The eval user is structurally sealed off**: `users.is_eval` (ONE row,
   `+972599999001`), every user-selecting sweep excludes it, and the outbox
@@ -172,10 +174,14 @@ the row stays and only stops being retrieved.
 (`018-behavioral-evals.sql` and `018-image-jobs-async.sql`) — the exact
 collision documented in "Two branches, one migration number", from two PRs
 merged the same day. The duplicate guard did its job and refused, so **every
-`freshDb()` in the suite threw** and no test could run on main at all.
-Production was already correct (18 = image-jobs, 19 = behavioral-evals — the
-file had been renamed on the box and the rename never came back to git), so the
-repo was renamed to match production exactly rather than the other way round.
+`freshDb()` in the suite threw** and no test could run on main at all. The fix
+is the same either way and two branches reached it independently (`328ed04` and
+this one): production was already correct — 18 = image-jobs, 19 =
+behavioral-evals, the file having been renamed on the box without the rename
+coming back to git — so the repo is renamed to match production, never the
+reverse. Worth noting how it was found: not by anyone reading `ls migrations/`,
+but by every single test failing at once the first time somebody ran the suite
+after both merges.
 
 ### Image + video generation, access-limited, spend in its own column (2026-08-28)
 
@@ -219,6 +225,11 @@ separately. `domain/media.js` owns all of it; migration 017.
   (comma-separated, dashboard-editable). Every agent SEES the tools (tool
   listing is global) — the descriptions say never to offer the feature and
   the refusal happens on the call.
+- **Video defaults to 480p, the cheapest tier** (owner ask, 2026-08-28) —
+  `resolution` was not even a tool parameter before this, so the agent had no
+  way to ask for better even if the user wanted it; added as optional, with
+  the tool description telling the model to leave it unset unless the user
+  explicitly asked for higher quality.
 - **Money**: OpenRouter reports an authoritative `usage.cost` in USD on every
   generation — recorded as-is into `media_usage_ledger` (one row per user per
   day, images+videos together), rendered as its own block in the dashboard's
