@@ -1,0 +1,19 @@
+-- 022: a reminder gets up to three attempts instead of exactly one.
+--
+-- dueForSending filtered on `sent_at IS NULL` and the sweep stamped sent_at on
+-- the first enqueue, so a reminder fired once and never again. Someone who was
+-- driving, in a meeting, or simply asleep past the two-hour expiry heard about
+-- it exactly never, and the task stayed open with nothing chasing it. Live:
+-- 45 reminders fired, 3 were followed by a completion.
+--
+-- `attempts` counts how many times this reminder actually went on the wire.
+-- `sent_at` KEEPS its meaning of "this reminder is finished" — it is now
+-- stamped when the ladder runs out rather than on the first send, so the
+-- partial index on (sent_at IS NULL AND cancelled_at IS NULL) still describes
+-- exactly the pending set, and completeTask/cancelReminder still kill a
+-- half-walked ladder with the queries they already have.
+--
+-- Backfill is the default: every existing row, sent or pending, gets 0. A row
+-- already carrying sent_at stays excluded; a pending row simply starts at the
+-- first rung.
+ALTER TABLE task_reminders ADD COLUMN attempts INT NOT NULL DEFAULT 0;

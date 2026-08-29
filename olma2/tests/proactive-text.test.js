@@ -19,6 +19,30 @@ test('a reminder renders deterministically, in the user\'s own words', () => {
   assert.ok(long.length < 250);
 });
 
+// Rungs 2 and 3 ride the same pipe, so if they rendered the same sentence the
+// person would get "⏰ תזכורת: לקחת תרופה" three times — the drum the ladder
+// exists to avoid. Each rung has to say what it is and name the way out.
+test('a follow-up rung does not repeat the first message', () => {
+  const first = renderReminderText({ title: 'לקחת תרופה' });
+  const second = renderReminderText({ title: 'לקחת תרופה', attempt: 2 });
+  const last = renderReminderText({ title: 'לקחת תרופה', attempt: 3, finalAttempt: true });
+
+  assert.notEqual(second, first);
+  assert.notEqual(last, second);
+  for (const t of [first, second, last]) assert.match(t, /לקחת תרופה/);
+
+  // the exits, in the person's own language, on the rungs that have them
+  assert.match(second, /להפסיק להזכיר/);
+  assert.match(last, /האחרונה/);
+  assert.match(last, /לא אזכיר שוב/);
+
+  // Deterministic text cannot know who it is addressing, so it must not guess:
+  // gendered second-person forms are what an eval already exists to catch.
+  for (const t of [second, last]) {
+    assert.doesNotMatch(t, /תוכלי|תוכל |עשית|סיימת|רוצה ש|תגידי|תכתבי/);
+  }
+});
+
 test('only a plain reminder rides the raw pipe — everything conversational stays on the model', () => {
   const rem = { kind: 'reminder', payload: { taskId: 7, title: 'לקחת תרופה' } };
   assert.equal(rawPipeTextFor(rem), '⏰ תזכורת: לקחת תרופה');

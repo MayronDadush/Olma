@@ -22,10 +22,29 @@ test('normalizes the vocabularies the model actually writes', () => {
 });
 
 test('an unrecognised rule becomes a one-off, never a guessed cadence', () => {
-  assert.equal(norm('FREQ=MONTHLY'), null);
+  assert.equal(norm('FREQ=YEARLY'), null);      // no yearly rule exists yet
   assert.equal(norm('every other tuesday'), null);
+  assert.equal(norm('monthly:0'), null);
+  assert.equal(norm('monthly:32'), null);
   assert.equal(norm(''), null);
   assert.equal(norm(null), null);
+});
+
+// "the 16th of every month" and "the last day of every month" are the two
+// shapes people actually ask for, and FREQ=MONTHLY used to return null — so a
+// reminder set that way fired once and was never heard from again.
+test('monthly rules are recognised in the forms the model reaches for', () => {
+  assert.equal(norm('monthly:16'), 'monthly:16');
+  assert.equal(norm('FREQ=MONTHLY;BYMONTHDAY=16'), 'monthly:16');
+  assert.equal(norm('FREQ=MONTHLY'), 'monthly');          // pinned to a day on write
+  assert.equal(norm('חודשי'), 'monthly');
+  assert.equal(norm('כל חודש'), 'monthly');
+  // RRULE spells the last day -1; people spell it several other ways
+  assert.equal(norm('FREQ=MONTHLY;BYMONTHDAY=-1'), 'monthly:last');
+  assert.equal(norm('monthly:last'), 'monthly:last');
+  assert.equal(norm('end of month'), 'monthly:last');
+  assert.equal(norm('סוף חודש'), 'monthly:last');
+  assert.equal(norm('סוף כל חודש'), 'monthly:last');
 });
 
 test('nextOccurrence advances by the right interval', () => {
@@ -67,6 +86,11 @@ test('a daily reminder written as FREQ=DAILY keeps firing', async (t) => {
   assert.equal(new Date(after.rows[0].remind_at).toISOString(), '2026-08-18T16:00:00.000Z');
 });
 
+// This used to assert nothing was left pending at all, which stopped being the
+// invariant when reminders gained an escalation ladder: the ONE row stays
+// pending so it can be followed up (see reminder-escalation.test.js). What it
+// was really protecting — a one-off must not manufacture a second reminder —
+// is unchanged and is what it checks now.
 test('a one-off reminder does not spawn a successor', async (t) => {
   const { pool, teardown } = await freshDb();
   t.after(teardown);
@@ -76,7 +100,9 @@ test('a one-off reminder does not spawn a successor', async (t) => {
     await reminders.setReminder(c, user.id, task.data.task.id, '2026-08-17T16:00:00Z', null);
   });
   await withTx(pool, (c) => sweeps.sweepReminders(c, '2026-08-17T16:01:00Z'));
-  const after = await pool.query(
-    `SELECT 1 FROM task_reminders WHERE sent_at IS NULL AND cancelled_at IS NULL`);
-  assert.equal(after.rows.length, 0);
+  const all = await pool.query(`SELECT remind_at, attempts FROM task_reminders`);
+  assert.equal(all.rows.length, 1, 'no successor row for a one-off');
+  assert.equal(new Date(all.rows[0].remind_at).toISOString(), '2026-08-17T16:00:00.000Z',
+    'and the original moment is not rewritten by the send');
+  assert.equal(all.rows[0].attempts, 1);
 });

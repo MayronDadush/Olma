@@ -87,7 +87,43 @@ async function listTasks(client, ownerId, { status, includeArchived } = {}) {
 // Completing a task auto-cancels its pending reminders — no reminding about
 // something already finished. Returns how many were cancelled so adapters can
 // mention it.
+//
+// EXCEPT when the task carries a live repeating reminder, which makes it a
+// STANDING task: doing the dishes on Monday does not finish "clean the dishes
+// every Monday and Thursday". This used to mark the task done and cancel every
+// pending reminder — and the sweep writes the next occurrence as a pending row
+// the moment it fires, so one "סיימתי" silently ended the recurrence for good.
+// Confirmed live: user 3's task 17 ("לנקות את הכלים", weekly:MO,TH) was
+// completed on 2026-08-27 and has not reminded anyone since.
+//
+// So an occurrence is acknowledged and the recurrence is left armed. Finishing
+// with a standing task for real is two steps and says so: cancel_reminder to
+// stop the cadence, then complete_task.
 async function completeTask(client, ownerId, taskId) {
+  const { rows: standing } = await client.query(
+    `SELECT r.id, r.remind_at, r.repeat_rule
+       FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+      WHERE r.task_id = $1 AND t.owner_id = $2
+        AND t.status = 'open' AND t.archived_at IS NULL
+        AND r.repeat_rule IS NOT NULL
+        AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+      ORDER BY r.remind_at LIMIT 1`,
+    [taskId, ownerId]
+  );
+  if (standing[0]) {
+    const { rows: t } = await client.query(
+      `SELECT * FROM tasks WHERE id = $1 AND owner_id = $2`, [taskId, ownerId]);
+    await audit.record(client, ownerId, 'task.occurrence_completed', {
+      taskId, reminderId: Number(standing[0].id), repeatRule: standing[0].repeat_rule,
+    });
+    return ok({
+      task: t[0],
+      recurring: true,
+      repeatRule: standing[0].repeat_rule,
+      nextRemindAt: standing[0].remind_at,
+      remindersCancelled: 0,
+    });
+  }
   const { rows } = await client.query(
     `UPDATE tasks SET status = 'done', completed_at = now()
      WHERE id = $1 AND owner_id = $2 AND status = 'open' AND archived_at IS NULL
@@ -107,18 +143,59 @@ async function completeTask(client, ownerId, taskId) {
   return ok({ task: rows[0], remindersCancelled: cancelled.rowCount });
 }
 
+// A snooze is the one action here that DESTROYS the thing it is about: the
+// UPDATE overwrites the very due_at the person is pushing away from, so the
+// audit row used to say "moved to Sunday 17:00" with no way to know whether
+// that was two hours later or the fourth postponement of the same errand.
+// Everything else this feature would want is already derivable from columns
+// that exist — completed_at against due_at, task_reminders.sent_at against
+// completed_at — which is why only this function needs to write anything new.
+// The old value is read inside the same statement so a concurrent snooze
+// cannot slip between the read and the write.
 async function snoozeTask(client, ownerId, taskId, newDueAt) {
   if (!newDueAt) return err('invalid', 'new due date required');
   if (!hasOffset(newDueAt)) return badTime('new_due_at', newDueAt);
   const { rows } = await client.query(
-    `UPDATE tasks SET due_at = $3
-     WHERE id = $1 AND owner_id = $2 AND status = 'open' AND archived_at IS NULL
-     RETURNING *`,
+    `WITH prev AS (
+       SELECT id, due_at FROM tasks
+        WHERE id = $1 AND owner_id = $2 AND status = 'open' AND archived_at IS NULL
+        FOR UPDATE
+     )
+     UPDATE tasks t SET due_at = $3 FROM prev
+      WHERE t.id = prev.id
+     RETURNING t.*, prev.due_at AS prev_due_at`,
     [taskId, ownerId, newDueAt]
   );
   if (!rows[0]) return err('not_found', 'open task not found');
-  await audit.record(client, ownerId, 'task.snoozed', { taskId, newDueAt });
-  return ok({ task: rows[0] });
+  const { prev_due_at: fromDueAt, ...task } = rows[0];
+
+  // Context that cannot be reconstructed later: how far the task moved, how
+  // many times it has moved before, and whether a reminder had already fired
+  // — a postponement AFTER being nudged means something different from one
+  // the person made on their own.
+  const { rows: ctx } = await client.query(
+    `SELECT (SELECT count(*)::int FROM task_reminders
+              WHERE task_id = $1 AND sent_at IS NOT NULL) AS reminders_fired,
+            (SELECT count(*)::int FROM audit_log
+              WHERE actor_id = $2 AND event = 'task.snoozed'
+                AND detail->>'taskId' = $1::text) AS prior_snoozes`,
+    [taskId, ownerId]
+  );
+  const { reminders_fired: remindersFired, prior_snoozes: priorSnoozes } = ctx[0];
+
+  await audit.record(client, ownerId, 'task.snoozed', {
+    taskId,
+    newDueAt,
+    // null when the task had no due date at all — snoozing an undated task is
+    // setting a date, not postponing one, and the two must not average together.
+    fromDueAt: fromDueAt ? fromDueAt.toISOString() : null,
+    pushedMinutes: fromDueAt
+      ? Math.round((new Date(newDueAt) - fromDueAt) / 60000)
+      : null,
+    snoozeCount: priorSnoozes + 1,
+    afterReminder: remindersFired > 0,
+  });
+  return ok({ task });
 }
 
 async function archiveTask(client, ownerId, taskId) {
