@@ -22,10 +22,29 @@ test('normalizes the vocabularies the model actually writes', () => {
 });
 
 test('an unrecognised rule becomes a one-off, never a guessed cadence', () => {
-  assert.equal(norm('FREQ=MONTHLY'), null);
+  assert.equal(norm('FREQ=YEARLY'), null);      // no yearly rule exists yet
   assert.equal(norm('every other tuesday'), null);
+  assert.equal(norm('monthly:0'), null);
+  assert.equal(norm('monthly:32'), null);
   assert.equal(norm(''), null);
   assert.equal(norm(null), null);
+});
+
+// "the 16th of every month" and "the last day of every month" are the two
+// shapes people actually ask for, and FREQ=MONTHLY used to return null — so a
+// reminder set that way fired once and was never heard from again.
+test('monthly rules are recognised in the forms the model reaches for', () => {
+  assert.equal(norm('monthly:16'), 'monthly:16');
+  assert.equal(norm('FREQ=MONTHLY;BYMONTHDAY=16'), 'monthly:16');
+  assert.equal(norm('FREQ=MONTHLY'), 'monthly');          // pinned to a day on write
+  assert.equal(norm('חודשי'), 'monthly');
+  assert.equal(norm('כל חודש'), 'monthly');
+  // RRULE spells the last day -1; people spell it several other ways
+  assert.equal(norm('FREQ=MONTHLY;BYMONTHDAY=-1'), 'monthly:last');
+  assert.equal(norm('monthly:last'), 'monthly:last');
+  assert.equal(norm('end of month'), 'monthly:last');
+  assert.equal(norm('סוף חודש'), 'monthly:last');
+  assert.equal(norm('סוף כל חודש'), 'monthly:last');
 });
 
 test('nextOccurrence advances by the right interval', () => {

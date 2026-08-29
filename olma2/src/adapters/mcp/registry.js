@@ -516,7 +516,7 @@ const TOOLS = [
     (client, user, a) => tasks.addTasksBulk(client, user.id, (a.items || []).map((i) => ({
       title: i.title, category: i.category, dueAt: i.due_at,
     })), { parentId: a.parent_task_id })),
-  tool('complete_task', 'Mark a task done. Pending reminders on it are cancelled automatically.',
+  tool('complete_task', 'Mark a task done. Pending reminders on it are cancelled automatically. If the task carries a REPEATING reminder it is a standing one — the reply comes back with recurring:true and nextRemindAt, the task stays open and the cadence stays armed, because doing it once does not finish it. Say when it next comes round. To end a standing task for good: cancel_reminder first, then complete_task.',
     { task_id: S('number', 'Task id') }, ['task_id'],
     (client, user, a) => tasks.completeTask(client, user.id, a.task_id)),
   tool('snooze_task', 'Move a task\'s due date. new_due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00); a bare local time is rejected.',
@@ -532,7 +532,7 @@ const TOOLS = [
   // ---------------------------------------------------------------- reminders
   tool('set_task_reminder', 'Attach a reminder to a task. Several per task allowed. remind_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00); a bare local time is rejected — convert from the user\'s own stated local time using their timezone (USER.md), never write their local digits with a bare Z.',
     { task_id: S('number', 'Task id'), remind_at: S('string', 'ISO-8601 datetime WITH UTC offset'),
-      repeat_rule: S('string', 'Optional repeat: "daily", "weekly", or "weekly:MO,TH" for specific days. Anything else is stored as a one-off.') }, ['task_id', 'remind_at'],
+      repeat_rule: S('string', 'Optional repeat: "daily"; "weekly"; "weekly:MO,TH" for specific weekdays (SU MO TU WE TH FR SA); "monthly:16" for a day of the month; "monthly:last" for the last day of every month, whatever it is. A day past the end of a short month lands on that month\'s last day. Anything unrecognised is stored as a ONE-OFF, so use these exact forms.') }, ['task_id', 'remind_at'],
     (client, user, a) => reminders.setReminder(client, user.id, a.task_id, a.remind_at, a.repeat_rule)),
   tool('cancel_reminder', 'Cancel a pending reminder.',
     { reminder_id: S('number', 'Reminder id') }, ['reminder_id'],

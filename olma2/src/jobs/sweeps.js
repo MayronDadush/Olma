@@ -54,7 +54,9 @@ async function sweepReminders(client, nowIso) {
       // this used to compare against the literals 'daily'/'weekly' while the
       // model was storing 'FREQ=DAILY', so every repeating reminder silently
       // fired exactly once. See reminders.normalizeRepeatRule.
-      const next = reminders.nextOccurrence(r.remind_at, r.repeat_rule);
+      // In THEIR zone: "the 16th" and "08:00" are both local promises, and a
+      // flat interval breaks each of them (see reminders.nextOccurrence).
+      const next = reminders.nextOccurrence(r.remind_at, r.repeat_rule, r.timezone);
       if (next) {
         await client.query(
           `INSERT INTO task_reminders (task_id, remind_at, repeat_rule) VALUES ($1, $2, $3)`,
