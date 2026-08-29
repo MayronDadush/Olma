@@ -195,6 +195,10 @@ test('the per-user cap is a live flag, and unsubscribe frees a slot', async () =
     const freed = await liveUpdates.subscribe(c, dana, { source: 'openrouter_models' });
     assert.equal(freed.ok, true);
     await flags.setFlag(c, liveUpdates.SUBS_CAP_FLAG, 5);
+    // This subscription's job here was proving the cap freed up, not proving
+    // sweep behaviour — cancel it so it doesn't sit due:true (default
+    // next_run_at = now()) and pollute a later test's sweepLiveUpdates call.
+    await liveUpdates.unsubscribe(c, dana.id, freed.data.subscription_id);
   });
 });
 
@@ -212,5 +216,140 @@ test('next_run_at lands on the chosen local hour in the user\'s timezone', async
     // weekly lands either today (if 9:00 is still ahead) or 7 days out — both
     // valid; just assert it parses and is in the future.
     assert.equal(typeof w[0].far, 'boolean');
+  });
+});
+
+// ---- RSS (news_topic / sports_summary) --------------------------------------
+
+const RSS_SAMPLE = (items) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><rss version="2.0"><channel>` +
+  `<title>חדשות</title><link>https://news.google.com/</link>` +
+  items.map((it) => `<item><title>${it.title}</title><link>${it.link || 'https://example.com/a'}</link>` +
+    `<guid isPermaLink="false">g${it.title.length}</guid><pubDate>${it.pubDate}</pubDate>` +
+    `<description>&lt;a href="x"&gt;desc&lt;/a&gt;</description>` +
+    `<source url="https://example.com">${it.source || 'מקור'}</source></item>`).join('') +
+  `</channel></rss>`;
+
+function rssFetch(xml) {
+  return async () => ({ ok: true, text: async () => xml });
+}
+
+test('parseRssItems: reads real-shaped items, decodes entities, tolerates CDATA', () => {
+  const withEntities = RSS_SAMPLE([
+    { title: 'כותרת אחת &amp; שתיים', pubDate: 'Sat, 29 Aug 2026 08:35:49 GMT', source: 'Ynet' },
+  ]);
+  const items = liveUpdates.parseRssItems(withEntities);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].title, 'כותרת אחת & שתיים');
+  assert.equal(items[0].source, 'Ynet');
+  assert.equal(items[0].pubDate, new Date('Sat, 29 Aug 2026 08:35:49 GMT').toISOString());
+
+  const cdata = `<?xml version="1.0"?><rss version="2.0"><channel>` +
+    `<item><title><![CDATA[כותרת עם <תגית>]]></title><link>https://x</link>` +
+    `<pubDate>Sat, 29 Aug 2026 08:35:49 GMT</pubDate><source>מקור</source></item></channel></rss>`;
+  const cItems = liveUpdates.parseRssItems(cdata);
+  assert.equal(cItems.length, 1);
+  assert.equal(cItems[0].title, 'כותרת עם <תגית>');
+});
+
+test('parseRssItems: not-RSS or unparseable input returns null (transient, not empty)', () => {
+  assert.equal(liveUpdates.parseRssItems('<html>not rss</html>'), null);
+  assert.equal(liveUpdates.parseRssItems(''), null);
+  assert.equal(liveUpdates.parseRssItems(null), null);
+  // A well-formed channel with zero items is a valid, successfully parsed
+  // empty feed — [] on purpose, distinct from a parse failure.
+  assert.deepEqual(liveUpdates.parseRssItems(RSS_SAMPLE([])), []);
+});
+
+test('parseRssItems: an item missing a parseable pubDate is dropped, not crashed on', () => {
+  const xml = `<?xml version="1.0"?><rss version="2.0"><channel>` +
+    `<item><title>בלי תאריך</title><link>https://x</link><source>מ</source></item>` +
+    `<item><title>עם תאריך</title><link>https://y</link><pubDate>Sat, 29 Aug 2026 08:35:49 GMT</pubDate><source>מ</source></item>` +
+    `</channel></rss>`;
+  const items = liveUpdates.parseRssItems(xml);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].title, 'עם תאריך');
+});
+
+test('news_topic: requires a topic; first run baselines on the newest pubDate, nothing sent', async () => {
+  await withClient(async (c) => {
+    assert.equal((await liveUpdates.subscribe(c, dana, { source: 'news_topic', params: {} })).ok, false);
+
+    const old1 = 'Thu, 27 Aug 2026 10:00:00 GMT', old2 = 'Fri, 28 Aug 2026 09:00:00 GMT';
+    const baselineFetch = rssFetch(RSS_SAMPLE([
+      { title: 'ידיעה ישנה 1', pubDate: old1 }, { title: 'ידיעה ישנה 2', pubDate: old2 },
+    ]));
+    const sub = await liveUpdates.subscribe(c, dana, { source: 'news_topic', params: { topic: 'בורסה' } });
+    assert.equal(sub.ok, true);
+    assert.equal(sub.data.params.topic, 'בורסה');
+
+    const s1 = await liveUpdates.sweepLiveUpdates(c, { fetchImpl: baselineFetch, complete: okComplete('n/a') });
+    assert.deepEqual(s1.baselined, [sub.data.subscription_id]);
+    const { rows: st } = await c.query(`SELECT last_state FROM live_subscriptions WHERE id = $1`, [sub.data.subscription_id]);
+    assert.equal(st[0].last_state.lastSeen, new Date(old2).toISOString());
+  });
+});
+
+test('news_topic: a headline newer than the watermark becomes ONE summarised message; older ones are ignored', async () => {
+  await withClient(async (c) => {
+    const sub = await liveUpdates.subscribe(c, dana, { source: 'news_topic', params: { topic: 'טכנולוגיה' } },
+      {});
+    const id = sub.data.subscription_id;
+    // Manually plant a watermark, as if a previous run had already happened.
+    await c.query(`UPDATE live_subscriptions SET last_state = $2, next_run_at = now()
+                   WHERE id = $1`, [id, JSON.stringify({ lastSeen: new Date('Fri, 28 Aug 2026 09:00:00 GMT').toISOString() })]);
+
+    let promptedItems = null;
+    const complete = async ({ user }) => { promptedItems = JSON.parse(user); return okComplete('חדשות טריות')(); };
+    const fetchImpl = rssFetch(RSS_SAMPLE([
+      { title: 'ידיעה ישנה — מלפני היום', pubDate: 'Fri, 28 Aug 2026 08:00:00 GMT' }, // older than watermark
+      { title: 'ידיעה טרייה', pubDate: 'Sat, 29 Aug 2026 08:00:00 GMT', source: 'Ynet' }, // newer
+    ]));
+    const s = await liveUpdates.sweepLiveUpdates(c, { fetchImpl, complete });
+    assert.deepEqual(s.sent, [id]);
+    assert.equal(promptedItems.length, 1);
+    assert.equal(promptedItems[0].title, 'ידיעה טרייה');
+
+    const { rows: out } = await c.query(
+      `SELECT payload FROM outbox WHERE user_id = $1 AND kind = 'live_update' AND payload->>'source' = 'news_topic'`, [dana.id]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].payload.summary, 'חדשות טריות');
+  });
+});
+
+test('sports_summary: team is optional and defaults to general sports; empty feed is still a valid baseline', async () => {
+  await withClient(async (c) => {
+    const generic = await liveUpdates.subscribe(c, miron, { source: 'sports_summary', params: {} }, {});
+    assert.equal(generic.ok, true);
+    assert.equal(generic.data.params.team, '');
+
+    const withTeam = await liveUpdates.subscribe(c, dana, { source: 'sports_summary', params: { team: 'מכבי תל אביב' } }, {});
+    assert.equal(withTeam.ok, true);
+    assert.equal(withTeam.data.params.team, 'מכבי תל אביב');
+
+    let seenUrls = [];
+    const s = await liveUpdates.sweepLiveUpdates(c, {
+      fetchImpl: async (url) => { seenUrls.push(String(url)); return { ok: true, text: async () => RSS_SAMPLE([]) }; },
+      complete: okComplete('n/a'),
+    });
+    assert.ok(s.baselined.includes(generic.data.subscription_id) || s.errored.some((e) => e.startsWith(String(generic.data.subscription_id))) === false);
+    assert.ok(seenUrls.some((u) => u.includes(encodeURIComponent('ספורט'))));
+    assert.ok(seenUrls.some((u) => u.includes(encodeURIComponent('מכבי תל אביב'))));
+  });
+});
+
+test('a malformed RSS response is a transient failure, not a crash — the sweep survives and retries', async () => {
+  await withClient(async (c) => {
+    const sub = await liveUpdates.subscribe(c, dana, { source: 'news_topic', params: { topic: 'חלל' } }, {});
+    await c.query(`UPDATE live_subscriptions SET last_state = '{"lastSeen":"2026-08-28T00:00:00.000Z"}',
+                   next_run_at = now() WHERE id = $1`, [sub.data.subscription_id]);
+    const before_ = await c.query(`SELECT last_state, next_run_at FROM live_subscriptions WHERE id = $1`, [sub.data.subscription_id]);
+    const s = await liveUpdates.sweepLiveUpdates(c, {
+      fetchImpl: async () => ({ ok: true, text: async () => '<not>even xml' }),
+      complete: okComplete('n/a'),
+    });
+    assert.equal(s.errored.length, 1);
+    const after_ = await c.query(`SELECT last_state, next_run_at FROM live_subscriptions WHERE id = $1`, [sub.data.subscription_id]);
+    assert.deepEqual(before_.rows[0].last_state, after_.rows[0].last_state);
+    assert.deepEqual(before_.rows[0].next_run_at, after_.rows[0].next_run_at);
   });
 });

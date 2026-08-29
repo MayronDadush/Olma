@@ -474,18 +474,25 @@ const TOOLS = [
   tool('subscribe_live_updates',
     'Subscribe the user to a recurring live update, delivered as its own proactive message at their '
     + 'chosen hour. Available sources: "openrouter_models" (new AI models appearing on OpenRouter, with '
-    + 'a note when something is relevant to Olma itself — only sends when there ARE new models) and '
-    + '"weather" (short 3-day forecast for a city, sent every time). Use when the user asks to be kept '
-    + 'updated about one of these ("עדכן אותי כל בוקר על מזג האוויר"). For anything not in this list, '
-    + 'say plainly it is not available yet and log it with report_issue as a feature request.',
+    + 'a note when something is relevant to Olma itself — only sends when there ARE new models), '
+    + '"weather" (short 3-day forecast for a city, sent every time), "news_topic" (real headlines on a '
+    + 'topic the user names, e.g. "בורסה", "בינה מלאכותית" — only sends when there IS something new), '
+    + 'and "sports_summary" (real sports headlines, optionally for one team/league — leave team empty '
+    + 'for general sports; only sends when there IS something new). Use when the user asks to be kept '
+    + 'updated about one of these ("עדכן אותי כל בוקר על מזג האוויר", "עדכן אותי על ברצלונה", "עדכן אותי '
+    + 'פעם בשבוע על מה שקורה עם X"). For anything not in this list, say plainly it is not available yet '
+    + 'and log it with report_issue as a feature request.',
     {
       source: S('string', 'One of: ' + Object.keys(liveUpdates.SOURCES).join(', ')),
       city: S('string', 'For source=weather: the city name, in any language'),
+      topic: S('string', 'For source=news_topic: the topic, in any language'),
+      team: S('string', 'For source=sports_summary: optional team/league name — leave empty for general sports'),
       cadence: S('string', 'daily (default) or weekly'),
       local_hour: S('number', 'Hour of day in the user\'s own timezone, 0-23. Default 9.'),
     }, ['source'],
     (client, user, a) => liveUpdates.subscribe(client, user, {
-      source: a.source, params: { city: a.city }, cadence: a.cadence, local_hour: a.local_hour,
+      source: a.source, params: { city: a.city, topic: a.topic, team: a.team },
+      cadence: a.cadence, local_hour: a.local_hour,
     })),
   tool('list_my_live_updates', 'The user\'s active live-update subscriptions.', {}, [],
     (client, user) => liveUpdates.listSubscriptions(client, user.id)),
