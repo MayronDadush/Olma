@@ -9,8 +9,40 @@ on:
   pull_request:
     paths: ['olma2/**']
 
+# Two branches picking the same next migration number is the ordinary way
+# this repo works (see the "Two branches, one migration number" incident in
+# CLAUDE.md, and its repeat on 2026-08-29 — three collisions in two days).
+# That is a correctness problem the migrations job below catches. This block
+# is the OTHER half: on `main`, each push triggers a real `deploy.sh
+# --restart` against the one production box, and two of those running at once
+# would race the same `/opt/olma2-previous` rollback snapshot. Grouping by
+# ref and refusing to cancel main's queue makes concurrent merges run their
+# full test+deploy pipelines one at a time, in order, instead of overlapping
+# — exactly the discipline this session followed by hand for three merges
+# in a row before this existed. Every other ref (a PR, a feature-branch
+# push) still cancels its own superseded runs, which is the ordinary CI
+# time-saving default and has no deploy to protect.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
+  # DB-less and dependency-less — migrate.js's collision check needs neither
+  # Postgres nor `npm install`, so this fails in seconds with the one line
+  # that explains it, before the test job spends several minutes running (and
+  # failing) 500+ tests to discover the same thing via every freshDb() in the
+  # suite throwing in its `before` hook.
+  migrations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node olma2/scripts/check-migrations.js
+
   test:
+    needs: migrations
     runs-on: ubuntu-latest
     services:
       postgres:
