@@ -114,6 +114,11 @@ async function checkCarryovers(client) {
   return violations;
 }
 
+// The marker that says "this row is the guard's, and the guard owns its
+// lifecycle" — matched on the way back OUT, so only rows filed here are ever
+// auto-closed. A human-filed or agent-reported issue is never touched.
+const GUARD_DETAIL = 'raised by config-guard';
+
 // Idempotent issue filing: one open issue per distinct violation text.
 async function fileViolations(client, violations) {
   let filed = 0;
@@ -125,12 +130,39 @@ async function fileViolations(client, violations) {
     if (rows[0]) continue;
     await client.query(
       `INSERT INTO issues (category, source, title, detail, status)
-       VALUES ('bug', 'agent_detected', $1, 'raised by config-guard', 'new')`,
-      [title]
+       VALUES ('bug', 'agent_detected', $1, $2, 'new')`,
+      [title, GUARD_DETAIL]
     );
     filed++;
   }
   return filed;
+}
+
+// A watchdog that only ever OPENS rows stops being a watchdog. Every sweep
+// re-derives the full truth from scratch — which is also what makes closing
+// safe to get wrong: a condition closed prematurely is re-filed on the very
+// next tick, so the worst case is a row that flickers, not one that vanishes.
+// A title the guard filed and no longer reports is a condition that has cleared — and leaving it open is worse than never
+// filing it, because it buries the live rows among the dead ones. Found on
+// 2026-08-27: 13 open issues, every single one already resolved (four identity
+// mismatches fixed the day before, nine outbox alarms from a credit outage
+// long since over). That list is the same shape as the /health page nobody
+// read for 13 hours — a signal that cries wolf teaches you to ignore it.
+//
+// Deliberately narrow: only rows this guard filed (detail = GUARD_DETAIL) and
+// only while still open. 'fixed' rather than a delete — the fact that the
+// condition happened at all is history worth keeping, and the dashboard can
+// still show it. ('fixed' is the schema's word; the CHECK on issues.status
+// allows new|triaged|fixed|wontfix and nothing else.)
+async function closeResolved(client, violations) {
+  const titles = violations.map((v) => v.slice(0, 200));
+  const { rowCount } = await client.query(
+    `UPDATE issues SET status = 'fixed', updated_at = now()
+      WHERE detail = $1 AND status IN ('new','triaged')
+        AND NOT (title = ANY($2::text[]))`,
+    [GUARD_DETAIL, titles]
+  );
+  return rowCount;
 }
 
 // Messages that keep failing delivery are invisible otherwise: the worker
@@ -181,10 +213,11 @@ async function run(client, { configPath } = {}) {
   violations = violations.concat(await checkCarryovers(client));
   violations = violations.concat(await checkStuckOutbox(client));
   const filed = await fileViolations(client, violations);
-  return { violations: violations.length, newIssues: filed };
+  const closed = await closeResolved(client, violations);
+  return { violations: violations.length, newIssues: filed, closedIssues: closed };
 }
 
 module.exports = {
   run, checkOpenclawConfig, checkIdentityFiles, checkAgentsTokens,
-  checkCarryovers, checkOrphanAgents, checkStuckOutbox, fileViolations,
+  checkCarryovers, checkOrphanAgents, checkStuckOutbox, fileViolations, closeResolved,
 };
