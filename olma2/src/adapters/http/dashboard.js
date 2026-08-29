@@ -562,9 +562,12 @@ async function renderPlanned(client) {
   //    no outbox row yet — the sweep creates one when they come due, which is
   //    why a queue-only view would look almost empty and mean almost nothing.
   const { rows: reminders } = await client.query(
-    `SELECT r.id, r.repeat_rule, t.title, u.id AS user_id, u.first_name, u.last_name, u.phone,
+    `SELECT r.id, r.repeat_rule, r.attempts, t.title, u.id AS user_id, u.first_name, u.last_name, u.phone,
             to_char(r.remind_at AT TIME ZONE COALESCE(u.timezone, 'UTC'), 'DD/MM HH24:MI') AS local_time,
-            r.remind_at < now() AS overdue
+            -- Overdue means "its moment passed and nothing went out". A row
+            -- mid-escalation HAS gone out and is waiting on its next rung;
+            -- flagging it red would send an operator hunting a working system.
+            r.remind_at < now() AND r.attempts = 0 AS overdue
      FROM task_reminders r
      JOIN tasks t ON t.id = r.task_id
      JOIN users u ON u.id = t.owner_id
@@ -596,7 +599,8 @@ async function renderPlanned(client) {
         <td>${userLink(r)}</td>
         <td class="small">${esc(r.title)}</td>
         <td class="nowrap small">${esc(r.local_time)}${r.overdue ? ' <span class="pill">באיחור</span>' : ''}</td>
-        <td class="dim small">${r.repeat_rule ? esc(r.repeat_rule) : '—'}</td>
+        <td class="dim small">${r.repeat_rule ? esc(r.repeat_rule) : '—'}${
+          r.attempts > 0 ? ` <span class="dim">· נשלחה ${r.attempts}×</span>` : ''}</td>
       </tr>`).join('')}</table>`
     : '<p class="dim">אין תזכורות מתוזמנות.</p>';
 

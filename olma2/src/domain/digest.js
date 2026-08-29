@@ -26,8 +26,12 @@ async function assemble(client, userId, scope) {
     [userId]
   )).rows[0];
   const reminderCount = (await client.query(
+    // attempts = 0: a reminder mid-escalation has already been delivered once
+    // and keeps sent_at NULL until its ladder ends, so counting it here would
+    // overstate what is still waiting to happen.
     `SELECT count(*)::int AS n FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-     WHERE t.owner_id = $1 AND r.sent_at IS NULL AND r.cancelled_at IS NULL`,
+     WHERE t.owner_id = $1 AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+       AND r.attempts = 0`,
     [userId]
   )).rows[0].n;
 

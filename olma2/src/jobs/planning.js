@@ -196,8 +196,14 @@ async function sweepPlanning(client, deps = {}) {
       [u.id, OPEN_TASKS_IN_PROMPT]
     );
     const { rows: reminders } = await client.query(
+      // attempts = 0 is "has not gone out yet". sent_at alone stopped meaning
+      // that when reminders gained an escalation ladder: a row mid-ladder keeps
+      // sent_at NULL for up to a day after its first delivery, and listing it
+      // here would tell the plan a reminder is coming at a time that is
+      // already behind us.
       `SELECT r.remind_at, t.title FROM task_reminders r JOIN tasks t ON t.id = r.task_id
         WHERE t.owner_id = $1 AND r.cancelled_at IS NULL AND r.sent_at IS NULL
+          AND r.attempts = 0
           AND r.remind_at < now() + interval '7 days'
         ORDER BY r.remind_at LIMIT 10`,
       [u.id]
