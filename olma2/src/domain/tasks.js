@@ -107,18 +107,59 @@ async function completeTask(client, ownerId, taskId) {
   return ok({ task: rows[0], remindersCancelled: cancelled.rowCount });
 }
 
+// A snooze is the one action here that DESTROYS the thing it is about: the
+// UPDATE overwrites the very due_at the person is pushing away from, so the
+// audit row used to say "moved to Sunday 17:00" with no way to know whether
+// that was two hours later or the fourth postponement of the same errand.
+// Everything else this feature would want is already derivable from columns
+// that exist — completed_at against due_at, task_reminders.sent_at against
+// completed_at — which is why only this function needs to write anything new.
+// The old value is read inside the same statement so a concurrent snooze
+// cannot slip between the read and the write.
 async function snoozeTask(client, ownerId, taskId, newDueAt) {
   if (!newDueAt) return err('invalid', 'new due date required');
   if (!hasOffset(newDueAt)) return badTime('new_due_at', newDueAt);
   const { rows } = await client.query(
-    `UPDATE tasks SET due_at = $3
-     WHERE id = $1 AND owner_id = $2 AND status = 'open' AND archived_at IS NULL
-     RETURNING *`,
+    `WITH prev AS (
+       SELECT id, due_at FROM tasks
+        WHERE id = $1 AND owner_id = $2 AND status = 'open' AND archived_at IS NULL
+        FOR UPDATE
+     )
+     UPDATE tasks t SET due_at = $3 FROM prev
+      WHERE t.id = prev.id
+     RETURNING t.*, prev.due_at AS prev_due_at`,
     [taskId, ownerId, newDueAt]
   );
   if (!rows[0]) return err('not_found', 'open task not found');
-  await audit.record(client, ownerId, 'task.snoozed', { taskId, newDueAt });
-  return ok({ task: rows[0] });
+  const { prev_due_at: fromDueAt, ...task } = rows[0];
+
+  // Context that cannot be reconstructed later: how far the task moved, how
+  // many times it has moved before, and whether a reminder had already fired
+  // — a postponement AFTER being nudged means something different from one
+  // the person made on their own.
+  const { rows: ctx } = await client.query(
+    `SELECT (SELECT count(*)::int FROM task_reminders
+              WHERE task_id = $1 AND sent_at IS NOT NULL) AS reminders_fired,
+            (SELECT count(*)::int FROM audit_log
+              WHERE actor_id = $2 AND event = 'task.snoozed'
+                AND detail->>'taskId' = $1::text) AS prior_snoozes`,
+    [taskId, ownerId]
+  );
+  const { reminders_fired: remindersFired, prior_snoozes: priorSnoozes } = ctx[0];
+
+  await audit.record(client, ownerId, 'task.snoozed', {
+    taskId,
+    newDueAt,
+    // null when the task had no due date at all — snoozing an undated task is
+    // setting a date, not postponing one, and the two must not average together.
+    fromDueAt: fromDueAt ? fromDueAt.toISOString() : null,
+    pushedMinutes: fromDueAt
+      ? Math.round((new Date(newDueAt) - fromDueAt) / 60000)
+      : null,
+    snoozeCount: priorSnoozes + 1,
+    afterReminder: remindersFired > 0,
+  });
+  return ok({ task });
 }
 
 async function archiveTask(client, ownerId, taskId) {

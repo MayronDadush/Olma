@@ -154,6 +154,92 @@ test('dueForSending returns only pending, open-task reminders', async () => {
   });
 });
 
+// A snooze overwrites due_at, so the audit row is the ONLY surviving record of
+// the moment the person was pushing away from. Without it "moved to Sunday" is
+// unreadable: two hours or the fourth postponement of the same errand look
+// identical, and every later question about how this person actually treats
+// deadlines has no data behind it.
+test('a snooze records what it moved FROM, not only where it moved to', async () => {
+  await withClient(async (c) => {
+    const from = new Date(Date.now() + 3600 * 1000).toISOString().replace('Z', '+00:00');
+    const to = new Date(Date.now() + 3 * 3600 * 1000).toISOString().replace('Z', '+00:00');
+    const t = (await tasks.addTask(c, alice.id, { title: 'snoozable', dueAt: from })).data.task;
+
+    const r = await tasks.snoozeTask(c, alice.id, t.id, to);
+    assert.equal(r.ok, true);
+    assert.equal(new Date(r.data.task.due_at).toISOString(), new Date(to).toISOString());
+    assert.ok(!('prev_due_at' in r.data.task), 'the join column must not leak to callers');
+
+    const { rows } = await c.query(
+      `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'task.snoozed'
+        AND detail->>'taskId' = $2::text ORDER BY id DESC LIMIT 1`, [alice.id, t.id]);
+    const d = rows[0].detail;
+    assert.equal(new Date(d.fromDueAt).toISOString(), new Date(from).toISOString());
+    assert.equal(d.pushedMinutes, 120);
+    assert.equal(d.snoozeCount, 1);
+    assert.equal(d.afterReminder, false, 'nothing had nudged them — this was their own move');
+  });
+});
+
+test('the second snooze knows it is the second, and that a reminder had fired', async () => {
+  await withClient(async (c) => {
+    const t = (await tasks.addTask(c, alice.id, {
+      title: 'twice snoozed',
+      dueAt: new Date(Date.now() + 3600 * 1000).toISOString().replace('Z', '+00:00'),
+    })).data.task;
+    const rem = (await reminders.setReminder(c, alice.id, t.id,
+      new Date(Date.now() + 600 * 1000).toISOString().replace('Z', '+00:00'))).data.reminder;
+    await reminders.markSent(c, rem.id);
+
+    const step = (h) => new Date(Date.now() + h * 3600 * 1000).toISOString().replace('Z', '+00:00');
+    await tasks.snoozeTask(c, alice.id, t.id, step(4));
+    await tasks.snoozeTask(c, alice.id, t.id, step(28));
+
+    const { rows } = await c.query(
+      `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'task.snoozed'
+        AND detail->>'taskId' = $2::text ORDER BY id`, [alice.id, t.id]);
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].detail.snoozeCount, 1);
+    assert.equal(rows[1].detail.snoozeCount, 2);
+    // Both happened after the nudge — the distinction the escalation ladder needs.
+    assert.equal(rows[0].detail.afterReminder, true);
+    assert.equal(rows[1].detail.afterReminder, true);
+    assert.equal(rows[1].detail.pushedMinutes, 24 * 60);
+  });
+});
+
+// Snoozing a task that never had a date is SETTING a date, not postponing one.
+// Recording it as pushedMinutes: 0 would drag every average toward "this person
+// barely postpones" using events that were not postponements at all.
+test('snoozing an undated task records a null delta, not a zero', async () => {
+  await withClient(async (c) => {
+    const t = (await tasks.addTask(c, alice.id, { title: 'no date' })).data.task;
+    const r = await tasks.snoozeTask(c, alice.id, t.id,
+      new Date(Date.now() + 7200 * 1000).toISOString().replace('Z', '+00:00'));
+    assert.equal(r.ok, true);
+    const { rows } = await c.query(
+      `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'task.snoozed'
+        AND detail->>'taskId' = $2::text`, [alice.id, t.id]);
+    assert.equal(rows[0].detail.fromDueAt, null);
+    assert.equal(rows[0].detail.pushedMinutes, null);
+  });
+});
+
+test("a snooze on someone else's task records nothing at all", async () => {
+  await withClient(async (c) => {
+    const t = (await tasks.addTask(c, alice.id, { title: 'alice only' })).data.task;
+    const before = (await c.query(
+      `SELECT count(*)::int AS n FROM audit_log WHERE event = 'task.snoozed'`)).rows[0].n;
+    const r = await tasks.snoozeTask(c, bob.id, t.id,
+      new Date(Date.now() + 7200 * 1000).toISOString().replace('Z', '+00:00'));
+    assert.equal(r.ok, false);
+    assert.equal(r.error.code, 'not_found');
+    const after = (await c.query(
+      `SELECT count(*)::int AS n FROM audit_log WHERE event = 'task.snoozed'`)).rows[0].n;
+    assert.equal(after, before);
+  });
+});
+
 test('audit trail records the lifecycle', async () => {
   await withClient(async (c) => {
     const { rows } = await c.query(
