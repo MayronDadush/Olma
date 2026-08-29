@@ -55,6 +55,139 @@ describes **v1**, which is retired-in-place: its code still sits in
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
 
+### Reminders that come back, and cadences that could not be said (2026-08-29)
+
+Three connected repairs, migration 023. The first two shipped together on
+purpose: the second breaks the first the moment anyone uses it properly.
+
+**A reminder fired exactly once.** `dueForSending` filtered on `sent_at IS
+NULL` and the sweep stamped it on the first enqueue, so someone driving, in a
+meeting, or asleep past the 2h expiry heard about it never. Live evidence: 45
+reminders fired, 3 were followed by a completion. There are three rungs now —
+the moment they chose, `reminder_escalation_gap_hours` (3) after that one
+LANDED, and the next day at the same hour — both numbers dashboard flags, and
+`reminder_escalation_max = 1` restores the old behaviour with no deploy.
+
+- **A rung is only scheduled once the previous one was DELIVERED**, not merely
+  enqueued: the query joins the outbox and requires `sent_at IS NOT NULL AND
+  hold_reason IS NULL`. This is the check-in ladder's bug (below) refusing to
+  repeat itself — that one counted messages which died inside quiet hours as
+  ignores and backed people off to weekly having sent them nothing.
+- **Repeating reminders never escalate.** A repeat rule IS the person's chosen
+  cadence; chasing it too would be two drums on one task, with rung 2 of
+  Monday's reminder colliding with Tuesday's scheduled one.
+- **Only rung 1 is urgent.** That moment is theirs; a follow-up is Olma's own
+  idea and queues behind the daily proactive budget — otherwise three rungs per
+  reminder is a way to spend an unlimited budget by setting enough reminders.
+- **Rung 1 keeps the unsuffixed idempotency key** `reminder:<id>`; later rungs
+  are `reminder:<id>:<n>`. Renaming rung 1 would have let the sweep re-enqueue
+  rows written before this as brand new, and a duplicate reminder is the one
+  outcome worse than a missed one.
+- Ending it needed **no new plumbing**: `complete_task` and `cancel_reminder`
+  already write to the columns the query filters on.
+- Wording lives in `domain/proactive-text.js`, NOT in `channels/openclaw.js`'s
+  `instructionFor` — reminders ride the raw pipe (see below) and there is no
+  model fallback, so an elaborate instruction there is unreachable code. Each
+  rung is deterministic text that says what it is and carries its own way out,
+  written **without grammatical gender**: fixed text cannot know who it is
+  addressing, and in Hebrew a guess is wrong for half its readers.
+- **A ladder that can no longer climb retires.** Found red-teaming: a rung the
+  gate held or expired correctly stops the climb, but the row would then sit
+  pending for ever, reading in `list_my_reminders` as one that never fired.
+  Nothing can be due two days past the original moment, so the sweep closes it.
+
+**And `sent_at IS NULL` stopped meaning "has not gone out"** — it now means
+"the ladder has not finished", and a row sits there up to a day after being
+delivered. Three readers took the old meaning and told somebody: `jobs/planning.js`
+announced a reminder at a time already behind us, `domain/digest.js` overcounted
+what was still waiting, and the dashboard flagged a working reminder `overdue`
+— an operator page raising a healthy system, which is the detection-layer-nobody-
+trusts failure again. All three ask `attempts = 0` now. **Anything new that asks
+"what is still pending" must ask that too.** Found by walking every consumer of
+`task_reminders`, not by a failure; none had a test that could have caught it.
+It also merged separately (#67) because #63 was merged by a concurrent session
+at a head that predated the fix — after any shared-branch merge, check
+`git merge-base --is-ancestor <sha> origin/main` before believing it shipped.
+
+**Monthly cadences did not exist.** `normalizeRepeatRule` returned null for
+`FREQ=MONTHLY` — and null means one-off, so "כל 16 לחודש" fired once, silently.
+Canonical vocabulary is now `daily` | `weekly` | `weekly:MO,TH` | `monthly:16`
+| `monthly:last` | NULL. The arithmetic moved into the person's timezone
+(`datetime.partsInZone` / `instantInZone`, Intl only, no dependency), because
+both halves of the promise are local:
+
+- Adding a month of milliseconds across a DST boundary moves an 08:00 reminder
+  to 07:00. The wall clock is preserved instead; the test pins 08:00 local on
+  both sides of Israel's March switch AND that the stored UTC hour changed.
+- **"The 16th" read off a UTC clock is the 15th** for anyone whose reminder
+  sits before ~02:00 local. Bare `monthly` is pinned to a concrete day at WRITE
+  time in `setReminder` — the only place knowing both the moment and the zone.
+- A day past the end of a short month **clamps rather than skips** (a
+  medication reminder must not vanish because February is short), and the clamp
+  cannot compound because the day comes from the RULE, never from the previous
+  occurrence: Jan 31 → Feb 28 → **Mar 31**, not Mar 28.
+
+**A standing task died the first time you did it.** `completeTask` marked the
+task done and cancelled every pending reminder — including the successor the
+sweep writes the moment the current one fires. One "סיימתי" ended the
+recurrence for good, with no error and nothing in a log; from outside,
+identical to a quiet week. Confirmed live BEFORE touching code: user 3's task
+17 ("לנקות את הכלים", `weekly:MO,TH`) completed 2026-08-27, silent since.
+Doing the dishes on Monday does not finish "clean the dishes every Monday and
+Thursday", so `completeTask` on a task carrying a live repeating reminder now
+returns `recurring: true` with `nextRemindAt`, leaves the task open and the
+cadence armed, and audits `task.occurrence_completed`. Ending one for real is
+two steps and the tool description says so: `cancel_reminder`, then
+`complete_task`. `scripts/repair-killed-recurrences.js` (dry-run default) went
+back for the one this already happened to — **run 2026-08-29, task 17 revived,
+zero remaining**. Its fingerprint is exact rather than a guess: `completeTask`
+writes `completed_at` and `cancelled_at` in ONE transaction, so both carry the
+identical `now()`, and a reminder the person cancelled themselves never
+matches. A moment already passed is walked forward instead of resurrected, and
+the old row keeps its cancellation — that Monday really did go unreminded.
+
+**A snooze destroyed its own evidence.** `snoozeTask` overwrote `due_at` and
+audited only where the task landed, so two hours later and the fourth
+postponement of the same errand were indistinguishable. The old value is read
+in the same statement (a `FOR UPDATE` CTE) and the row carries `fromDueAt`,
+`pushedMinutes`, `snoozeCount`, `afterReminder`. Only this one needed new code:
+completion-vs-due is already `tasks.completed_at` − `due_at`, "did a nudge
+land" is `task_reminders.sent_at` → `completed_at`, and responsiveness is
+`audit_log`'s `message.received` — all verified by query before writing
+anything. An **undated** task records `pushedMinutes: null`, not 0: setting a
+first date is not postponing one, and averaging them would read as "this person
+barely postpones" off events that were never postponements.
+
+### WhatsApp reactions arrive and are thrown away (measured 2026-08-29)
+
+Asked whether a 👍 on a reminder could mean "done". The answer is more
+interesting than yes or no, and is written down here so nobody re-derives it:
+**the gateway does receive inbound WhatsApp reactions.** The channel is not in
+`dist/` at all — it is a separate plugin at
+`/root/.openclaw/extensions/whatsapp/` (Baileys), and
+`send-A9EqsNyz.js:readWhatsAppApprovalReactionEvent` reads `msg.message.reactionMessage`
+for emoji, target message id, actor and chat. That is what makes 👍/👎 approval
+prompts work.
+
+It dies three functions later. A reaction that is not a registered approval
+target falls through to `processDurableInboundMessage` → `normalizeInboundMessage`
+→ `hasInboundUserContent`, which returns true only for text, media, location or
+an interactive response. A reaction is none, so the message is dropped before
+the durable journal, before the `message_received` hook, before everything. The
+documented opt-in `channels.whatsapp.pluginHooks.messageReceived` fires 2000+
+lines downstream of that drop and changes nothing. `reactionNotifications`
+exists for iMessage, Matrix and Telegram; Signal reads inbound reactions too.
+WhatsApp is the one channel built outbound-only plus the approval special case.
+
+Patching `hasInboundUserContent` in a vendored dist bundle would surface them,
+and the recurring-patch problem is solvable (a resync script plus a
+`config_guard` check). **The unsolvable half is correlation**: the reaction
+carries `reaction.key.id`, the id of the message reacted to, and we never
+record it — `outbox` has no message-id column, and delivery goes through
+`openclaw agent --deliver`, which hands none back. So we would know someone
+approved *something* and have to guess it was the last reminder. Guessing which
+task a 👍 closed is worse than having no 👍 at all.
+
 ### Two branches, one migration number — a third time, in one afternoon (fixed 2026-08-29)
 
 Three merges to `main` within about an hour (#62, #63, and a commit pushed
@@ -544,9 +677,12 @@ while the agent, handed a freeform field, stored RRULE-style `'FREQ=DAILY'`.
 Nothing errored — the reminder fired once and no successor row was written.
 Four of five live reminders were affected, including daily medication ones.
 One vocabulary now lives in `domain/reminders.normalizeRepeatRule` /
-`nextOccurrence` (canonical: `daily` | `weekly` | `weekly:MO,TH` | NULL),
-normalised on write; migration 005 canonicalised the stored values and revived
-the dropped occurrences.
+`nextOccurrence`, normalised on write; migration 005 canonicalised the stored
+values and revived the dropped occurrences. **Superseded in part 2026-08-29**
+(see "Reminders that come back" above): the canonical set gained `monthly:16`
+and `monthly:last`, and `nextOccurrence` takes the user's timezone — the
+vocabulary listed here as `daily | weekly | weekly:MO,TH | NULL` is no longer
+the whole of it.
 
 ### users.timezone must never be NULL
 
