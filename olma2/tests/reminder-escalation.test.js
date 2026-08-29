@@ -240,3 +240,39 @@ test('the ladder length is a flag, and 1 restores the old fire-once behaviour', 
   await withTx(pool, (c) => sweeps.sweepReminders(c, PLUS_3H));
   assert.equal((await outboxKeys(pool)).length, 1);
 });
+
+// Three places ask "what reminders are still pending" and show the answer to
+// somebody. `sent_at IS NULL` used to mean "has not gone out"; with a ladder it
+// means "the ladder has not finished", and a row can sit there for a day having
+// already been delivered. Reporting that as upcoming is a lie in each place:
+// the nightly plan names a time that is behind us, the digest overcounts, and
+// the dashboard flags a working reminder as overdue.
+test('a reminder mid-ladder is not reported as one that has yet to fire', async (t) => {
+  const { pool, teardown, user } = await setup('+972505500009');
+  t.after(teardown);
+  const digest = require('../src/domain/digest');
+  const r = await reminderRow(pool);
+
+  const pendingCount = async () => {
+    const c = await pool.connect();
+    try { return (await digest.assemble(c, user.id, 'summary')).data.counts.pendingReminders; }
+    finally { c.release(); }
+  };
+  const planned = async () => (await pool.query(
+    `SELECT count(*)::int AS n FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+      WHERE t.owner_id = $1 AND r.cancelled_at IS NULL AND r.sent_at IS NULL
+        AND r.attempts = 0 AND r.remind_at < now() + interval '7 days'`, [user.id])).rows[0].n;
+  const overdueOnDashboard = async () => (await pool.query(
+    `SELECT count(*)::int AS n FROM task_reminders r
+      WHERE r.id = $1 AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+        AND r.remind_at < now() AND r.attempts = 0`, [r.id])).rows[0].n;
+
+  assert.equal(await pendingCount(), 1, 'before it fires it is genuinely pending');
+
+  await withTx(pool, (c) => sweeps.sweepReminders(c, TICK1));
+  assert.equal((await reminderRow(pool)).sent_at, null, 'still mid-ladder, by design');
+
+  assert.equal(await pendingCount(), 0, 'the digest must not count it again');
+  assert.equal(await planned(), 0, 'the plan must not announce a time already behind us');
+  assert.equal(await overdueOnDashboard(), 0, 'and it is not an operator problem');
+});
