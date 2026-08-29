@@ -112,6 +112,41 @@ const JUDGE_SYSTEM = [
   'verdict הוא "concern" רק אם יש לפחות בעיה אחת עם ציטוט. ציטוט חייב להופיע מילה במילה בתשובת אולמה.',
 ].join('\n');
 
+// The judge is a REASONING model, and its thinking is billed against the same
+// max_tokens as its answer. At 700 the first night's run spent all 700 on
+// reasoning and returned an EMPTY content string — five of nine scenarios
+// recorded as harness errors, including ones whose replies were plainly good.
+// Measured on the exact failing case: 980 output tokens (≈805 reasoning + the
+// JSON). 2500 leaves real headroom; a judgement costs a fraction of a cent.
+//
+// Reasoning stays ON deliberately. Disabling it was measured too and made the
+// judge WORSE, not just cheaper: on the same conversation it invented a
+// violation and cited the USER's own message as the offending quote.
+const JUDGE_MAX_TOKENS = 2500;
+
+// A quote must appear verbatim in something OLMA said. JUDGE_SYSTEM already
+// demands it, and the reasoning-off probe showed exactly why the demand needs
+// an enforcer: it quoted the user's message back as evidence against Olma. A
+// rule the writer states and the reader never checks is worse than no rule.
+// Whitespace is normalised (the model re-wraps), nothing else.
+function normaliseForQuote(s) {
+  return String(s || '').replace(/\s+/g, ' ').trim();
+}
+
+function verifyProblems(problems, turns) {
+  const said = turns.map((t) => normaliseForQuote(t.reply)).join(' \u0000 ');
+  const kept = [];
+  const dropped = [];
+  for (const p of problems) {
+    const q = normaliseForQuote(p && p.quote);
+    // A problem with no quote at all cannot be checked and cannot be acted
+    // on — the rubric requires one, so it is not evidence.
+    if (q && said.includes(q)) kept.push(p);
+    else dropped.push({ rule: (p && p.rule) || '', quote: (p && p.quote) || '' });
+  }
+  return { kept, dropped };
+}
+
 // Judge one scenario's conversation against its rubric. Returns
 // { ok, verdict, problems, usage } — an unparseable reply is ok:false, and the
 // caller treats that as a harness ERROR, never a silent pass (llm.js's rule:
@@ -126,22 +161,64 @@ async function judgeScenario(scenario, turns, deps = {}) {
     model: deps.judgeModel || JUDGE_MODEL,
     system: JUDGE_SYSTEM,
     user: `רובריקה:\n${scenario.rubric}\n\nהשיחה:\n${conversation}`,
-    maxTokens: 700,
+    maxTokens: deps.judgeMaxTokens || JUDGE_MAX_TOKENS,
     timeoutMs: 60_000,
   });
   if (!res.ok) return { ok: false, error: res.error };
+  // Named separately from "unparseable": an empty body from a reasoning model
+  // means the token budget ran out before the answer, and the fix is the cap,
+  // not the prompt. The first version said only "unparseable" and cost a
+  // morning of guessing.
+  if (!String(res.text || '').trim()) {
+    return { ok: false, error: 'judge returned no content — reasoning likely consumed max_tokens' };
+  }
   const parsed = llm.parseJsonObject(res.text);
   if (!parsed || (parsed.verdict !== 'pass' && parsed.verdict !== 'concern')) {
     return { ok: false, error: 'judge reply unparseable' };
   }
-  const problems = Array.isArray(parsed.problems) ? parsed.problems.slice(0, 5) : [];
+  const raw = Array.isArray(parsed.problems) ? parsed.problems.slice(0, 5) : [];
+  const { kept, dropped } = verifyProblems(raw, turns);
   return {
     ok: true,
-    verdict: problems.length ? 'concern' : parsed.verdict,
-    problems,
+    // Only verified problems can make a scenario yellow. Every problem
+    // dropped means the judge failed its own evidence rule.
+    verdict: kept.length ? 'concern' : 'pass',
+    problems: kept,
+    unverified: dropped,
     usage: res.usage,
     model: res.model,
   };
+}
+
+// What the eval user's record looked like when a check failed. The first
+// nightly run recorded `bare-time-shift: a task exists at 15:00 in HER
+// timezone — failed` and nothing else; by morning the next scenario's reset
+// had wiped the evidence, so there was no way to tell "saved nothing" from
+// "saved the wrong hour" without re-running and hoping to reproduce (it did
+// not — the model got it right the second time). A red nobody can diagnose
+// the next morning is the same dead end as an issue list nobody reads.
+// Small and bounded: this rides in the result row.
+async function stateSnapshot(client, userId) {
+  const snap = {};
+  try {
+    const { rows: tasks } = await client.query(
+      `SELECT id, title, due_at,
+              to_char(due_at AT TIME ZONE 'Asia/Jerusalem', 'YYYY-MM-DD HH24:MI') AS local
+         FROM tasks WHERE owner_id = $1 ORDER BY id LIMIT 10`, [userId]);
+    snap.tasks = tasks;
+    const { rows: facts } = await client.query(
+      `SELECT category, fact FROM user_facts WHERE user_id = $1 AND active = true LIMIT 10`, [userId]);
+    snap.facts = facts;
+    const { rows: contacts } = await client.query(
+      `SELECT name, phone FROM user_contacts WHERE user_id = $1 LIMIT 10`, [userId]);
+    snap.contacts = contacts;
+    const { rows: u } = await client.query(
+      `SELECT paused_at IS NOT NULL AS paused FROM users WHERE id = $1`, [userId]);
+    snap.paused = u[0] ? u[0].paused : null;
+  } catch (e) {
+    snap.error = String(e.message).slice(0, 200);
+  }
+  return snap;
 }
 
 // Run ONE scenario end to end: reset → seed → card refresh → turns → hard
@@ -175,8 +252,13 @@ async function runScenario(pool, user, scenario, deps = {}) {
 
     const client = await pool.connect();
     let checks;
-    try { checks = await scenario.hard(client, ctx); } finally { client.release(); }
-    result.hardFailures = checks.filter((c) => !c.pass).map((c) => ({ name: c.name, detail: c.detail }));
+    try {
+      checks = await scenario.hard(client, ctx);
+      result.hardFailures = checks.filter((c) => !c.pass).map((c) => ({ name: c.name, detail: c.detail }));
+      // Only on failure: a green scenario needs no autopsy, and the snapshot
+      // is read on the SAME connection, before the next scenario's reset.
+      if (result.hardFailures.length) result.snapshot = await stateSnapshot(client, user.id);
+    } finally { client.release(); }
 
     if (result.hardFailures.length) {
       result.status = 'red';
@@ -191,6 +273,9 @@ async function runScenario(pool, user, scenario, deps = {}) {
       } else {
         result.status = judged.verdict === 'concern' ? 'yellow' : 'green';
         result.judge = { verdict: judged.verdict, problems: judged.problems };
+        // Kept visible rather than swallowed: a judge that keeps citing
+        // quotes nobody said is itself the finding.
+        if (judged.unverified && judged.unverified.length) result.judge.unverified = judged.unverified;
         if (judged.usage) {
           await withTx(pool, (c) => llm.recordUsage(c, user.id, judged.model || JUDGE_MODEL, judged.usage))
             .catch(() => { /* usage lags one run; the eval result matters more */ });
@@ -209,4 +294,5 @@ module.exports = {
   EVAL_PHONE, JUDGE_MODEL, TURN_TIMEOUT_MS,
   getEvalUser, resetEvalUser, runScenario, judgeScenario,
   makeTurnRunner, toolCallsInSlice, JUDGE_SYSTEM,
+  verifyProblems, stateSnapshot, JUDGE_MAX_TOKENS,
 };

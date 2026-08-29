@@ -80,10 +80,11 @@ async function runEvalSuite(pool, { trigger = 'nightly', deps = {}, scenarios = 
     // Persisted per scenario, not at the end — a crash mid-run leaves what DID
     // run visible instead of a night that looks like it never happened.
     await pool.query(
-      `INSERT INTO eval_results (run_id, scenario, status, hard_failures, judge, reply, duration_ms)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO eval_results (run_id, scenario, status, hard_failures, judge, reply, duration_ms, snapshot)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [runId, r.scenario, r.status, JSON.stringify(r.hardFailures || []),
-        r.judge ? JSON.stringify(r.judge) : null, r.reply, r.durationMs]
+        r.judge ? JSON.stringify(r.judge) : null, r.reply, r.durationMs,
+        r.snapshot ? JSON.stringify(r.snapshot) : null]
     );
   }
 
