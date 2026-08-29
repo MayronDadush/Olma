@@ -17,6 +17,7 @@ const DEFAULTS = {
   // come back, and how long after a DELIVERED rung the next one is due.
   reminder_escalation_max: 3,
   reminder_escalation_gap_hours: 3,
+  live_subscriptions_per_user: 5,   // cap on active live-update subscriptions
   // Base for user-facing links (availability picker). The dashboard's own
   // host — Caddy already routes it here.
   public_base_url: 'https://olmachat.duckdns.org',

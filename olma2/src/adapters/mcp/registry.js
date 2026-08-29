@@ -21,6 +21,7 @@ const calendar = require('../../domain/calendar');
 const googleContacts = require('../../domain/google-contacts');
 const scheduleCard = require('../../domain/schedule-card');
 const media = require('../../domain/media');
+const liveUpdates = require('../../domain/live-updates');
 const pause = require('../../domain/pause');
 const relay = require('../../domain/relay');
 const cardStore = require('../../domain/card-store');
@@ -464,6 +465,33 @@ const TOOLS = [
     (client, user, a) => media.startVideo(client, user, {
       prompt: a.prompt, duration_seconds: a.duration_seconds, resolution: a.resolution, aspect_ratio: a.aspect_ratio,
     })),
+
+  // ------------------------------------------------------- live updates
+  // "עדכן אותי על..." — subscriptions to structured live sources, delivered
+  // proactively on a cadence through the outbox gate. Sources are API-backed
+  // (never web crawling); the sweep diffs in code and summarises with the
+  // cheap background model only when something actually changed.
+  tool('subscribe_live_updates',
+    'Subscribe the user to a recurring live update, delivered as its own proactive message at their '
+    + 'chosen hour. Available sources: "openrouter_models" (new AI models appearing on OpenRouter, with '
+    + 'a note when something is relevant to Olma itself — only sends when there ARE new models) and '
+    + '"weather" (short 3-day forecast for a city, sent every time). Use when the user asks to be kept '
+    + 'updated about one of these ("עדכן אותי כל בוקר על מזג האוויר"). For anything not in this list, '
+    + 'say plainly it is not available yet and log it with report_issue as a feature request.',
+    {
+      source: S('string', 'One of: ' + Object.keys(liveUpdates.SOURCES).join(', ')),
+      city: S('string', 'For source=weather: the city name, in any language'),
+      cadence: S('string', 'daily (default) or weekly'),
+      local_hour: S('number', 'Hour of day in the user\'s own timezone, 0-23. Default 9.'),
+    }, ['source'],
+    (client, user, a) => liveUpdates.subscribe(client, user, {
+      source: a.source, params: { city: a.city }, cadence: a.cadence, local_hour: a.local_hour,
+    })),
+  tool('list_my_live_updates', 'The user\'s active live-update subscriptions.', {}, [],
+    (client, user) => liveUpdates.listSubscriptions(client, user.id)),
+  tool('cancel_live_update', 'Cancel one live-update subscription (get the id from list_my_live_updates).',
+    { subscription_id: S('number', 'Subscription id') }, ['subscription_id'],
+    (client, user, a) => liveUpdates.unsubscribe(client, user.id, a.subscription_id)),
 
   // ---------------------------------------------------------------- tasks
   tool('list_my_tasks', 'List your open tasks (status=done for completed).',
