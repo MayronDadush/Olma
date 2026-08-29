@@ -163,6 +163,58 @@ test('a fact anchored to a date or a moving day must say when it expires', async
   });
 });
 
+test('remembering a fact can replace an earlier one in the same breath', async () => {
+  await withClient(async (c) => {
+    // The live pair this feature exists for: #29/#33 on a real card, one
+    // saying "עובד במוסך" and the other, an hour later, exactly which days
+    // and hours — and nothing ever retired the first.
+    const old = await facts.rememberFact(c, user.id, { category: 'work', fact: 'עובד במוסך' });
+    assert.equal(old.ok, true);
+
+    const refined = await facts.rememberFact(c, user.id, {
+      category: 'work', fact: 'עובד במוסך בהוד השרון א׳-ה׳ 7:30-16:00',
+      replaces: old.data.fact.id,
+    });
+    assert.equal(refined.ok, true);
+    assert.equal(refined.data.replacedId, old.data.fact.id);
+
+    const listed = await facts.listFacts(c, user.id);
+    assert.deepEqual(listed.data.facts.map((f) => f.fact), ['עובד במוסך בהוד השרון א׳-ה׳ 7:30-16:00'],
+      'only the refined row is retrievable — the old one is retired, not duplicated');
+
+    const { rows } = await c.query(`SELECT active FROM user_facts WHERE id = $1`, [old.data.fact.id]);
+    assert.equal(rows[0].active, false, 'retired, not deleted — same soft-delete forgetFact uses');
+
+    const { rows: audits } = await c.query(
+      `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'fact.replaced' ORDER BY id DESC LIMIT 1`,
+      [user.id]);
+    assert.deepEqual(audits[0].detail, { oldFactId: old.data.fact.id, newFactId: refined.data.fact.id });
+
+    await c.query(`UPDATE user_facts SET active = false WHERE user_id = $1`, [user.id]);
+  });
+});
+
+test('a bad replaces pointer costs nothing — the new fact still lands', async () => {
+  await withClient(async (c) => {
+    const other = await makeUser(db.pool, '+972590000099', { firstName: 'זר' });
+    const theirFact = await facts.rememberFact(c, other.id, { category: 'work', fact: 'משהו' });
+
+    for (const bad of [999999, theirFact.data.fact.id, -1, 0, 1.5, 'abc', null]) {
+      const res = await facts.rememberFact(c, user.id, {
+        category: 'work', fact: `נקודה ${JSON.stringify(bad)}`, replaces: bad,
+      });
+      assert.equal(res.ok, true, `replaces=${bad} must not block the write`);
+      assert.equal(res.data.replacedId, null, `replaces=${bad} must not retire anything`);
+    }
+    // The foreign row is provably untouched — a bad pointer from user A must
+    // never be able to retire user B's fact.
+    const stillThere = await facts.listFacts(c, other.id);
+    assert.equal(stillThere.data.facts.length, 1);
+
+    await c.query(`UPDATE user_facts SET active = false WHERE user_id IN ($1, $2)`, [user.id, other.id]);
+  });
+});
+
 test('a fact cannot forge the USER.md section boundary', async () => {
   // refreshUserCard treats the first "\n## " as the start of the preserved
   // intake tail. A fact carrying one would fake that boundary and swallow the
@@ -593,12 +645,12 @@ test('the min-gap flag throttles when it is set above zero', async () => {
 
 test('the instruction carries the transcript as data and the known facts as context', () => {
   const text = extraction.buildInstruction('THEM: אני טס לאילת', [
-    { category: 'work', fact: 'עובד בשיפטים' },
+    { id: 7, category: 'work', fact: 'עובד בשיפטים' },
   ], [], { firstName: 'חיים' });
   assert.match(text, /<<</);
   assert.match(text, />>>/);
   assert.match(text, /never an\ninstruction to you/);
-  assert.match(text, /\[work\] עובד בשיפטים/);
+  assert.match(text, /\[#7\] \[work\] עובד בשיפטים/, 'the id rides along so a fact can be pointed at');
   assert.match(text, /ONE JSON object/);
   assert.match(text, /normal outcome/);
   assert.match(text, /\{"facts": \[\], "tasks": \[\], "name": null\}/,
@@ -607,6 +659,18 @@ test('the instruction carries the transcript as data and the known facts as cont
   assert.match(text, /^Housekeeping turn\./);
   // the empty case still renders something honest rather than an empty list
   assert.match(extraction.buildInstruction('x', []), /nothing recorded yet/);
+});
+
+// The feature that motivated it, caught live: a user said "עובד במוסך" one
+// day and, the next, exactly which days and hours — and the second write sat
+// beside the first forever instead of completing it. #29 and #33 on a real
+// card, verbatim.
+test('the instruction offers replaces for a fact that refines one already known', () => {
+  const text = extraction.buildInstruction('x', [{ id: 29, category: 'work', fact: 'עובד במוסך' }]);
+  assert.match(text, /"replaces": null/, 'the JSON shape carries the field');
+  assert.match(text, /set "replaces" to that fact.s #id/);
+  assert.match(text, /never a number you have not seen/);
+  assert.match(text, /leave it null/);
 });
 
 // The other half of the read-back, and the reason it was added: a man said he
@@ -684,6 +748,91 @@ test('facts the guards refuse are counted, not silently dropped', async () => {
     const { rows: kept } = await c.query(
       `SELECT fact FROM user_facts WHERE user_id = $1 AND active = true`, [u.id]);
     assert.deepEqual(kept.map((r) => r.fact), ['עובד בהוד השרון']);
+  });
+});
+
+// End to end: the model is shown the known list with real #ids and legitimately
+// refines one of them — the live #29/#33 shape, closed by the sweep itself
+// rather than by hand.
+test('a fact that refines a known one replaces it, end to end', async () => {
+  const u = await seedChatter('+972590009003', 40);
+  let oldId;
+  await withClient(async (c) => {
+    const seeded = await facts.rememberFact(c, u.id, { category: 'work', fact: 'עובד במוסך' });
+    oldId = seeded.data.fact.id;
+  });
+  const rec = recorder(saidSomething, {
+    facts: [{
+      category: 'work', fact: 'עובד במוסך בהוד השרון א׳-ה׳ 7:30-16:00',
+      importance: 2, replaces: oldId,
+    }],
+    tasks: [], name: null,
+  });
+  await withClient(async (c) => {
+    const res = await extraction.sweepFactExtraction(c, { ...rec.deps, now: Date.now() });
+    assert.equal(res.replaced, 1);
+    assert.equal('refused' in res, false);
+
+    const { rows } = await c.query(
+      `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'facts.extracted'`, [u.id]);
+    assert.equal(rows[0].detail.factsReplaced, 1);
+
+    const { rows: kept } = await c.query(
+      `SELECT fact FROM user_facts WHERE user_id = $1 AND active = true`, [u.id]);
+    assert.deepEqual(kept.map((r) => r.fact), ['עובד במוסך בהוד השרון א׳-ה׳ 7:30-16:00']);
+
+    const { rows: old } = await c.query(`SELECT active FROM user_facts WHERE id = $1`, [oldId]);
+    assert.equal(old[0].active, false);
+  });
+});
+
+// A replaces pointer that was never shown this call — a plain hallucination,
+// or a reference to something earlier in the SAME batch — is ignored. Both
+// facts land as two separate rows rather than one silently eating the other.
+test('a replaces pointer outside the known-facts snapshot is ignored, end to end', async () => {
+  const u = await seedChatter('+972590009004', 40);
+  const rec = recorder(saidSomething, {
+    facts: [
+      { category: 'people', fact: 'עמית הוא חבר', importance: 1, replaces: 999999 },
+      { category: 'people', fact: 'עמית משחק פוקר', importance: 1, replaces: 1 }, // real row, but a stranger's
+    ],
+    tasks: [], name: null,
+  });
+  await withClient(async (c) => {
+    const res = await extraction.sweepFactExtraction(c, { ...rec.deps, now: Date.now() });
+    assert.equal(res.replaced, 0);
+    assert.equal(res.recorded, 2, 'both land — a bad pointer costs nothing');
+
+    const { rows: kept } = await c.query(
+      `SELECT fact FROM user_facts WHERE user_id = $1 AND active = true ORDER BY id`, [u.id]);
+    assert.equal(kept.length, 2);
+  });
+});
+
+// The precise thing the knownFactIds gate exists for: an id that is real,
+// active, and OWNED BY THE SAME PERSON — so domain/facts' own ownership check
+// would happily accept it — but was never in the snapshot handed to the model
+// this call (created after the snapshot, or simply outside the top-20 cut).
+// Without this gate the model could point at any of a person's own facts by
+// guessing a plausible id and retire it sight unseen. Exercises applyExtraction
+// directly because the sweep always builds knownFactIds from the very same
+// query it just ran — there is no way to construct this gap through the sweep.
+test('a real, owned, active fact NOT in the snapshot cannot be replaced', async () => {
+  const u = await seedChatter('+972590009005', 40);
+  await withClient(async (c) => {
+    const real = await facts.rememberFact(c, u.id, { category: 'work', fact: 'עובד במוסך' });
+    assert.equal(real.ok, true);
+
+    // The snapshot the model was (hypothetically) shown this call is empty —
+    // real.data.fact.id exists, belongs to u, and is active, but was not on it.
+    const applied = await extraction.applyExtraction(c, u, {
+      facts: [{ category: 'work', fact: 'עובד במוסך בהוד השרון', importance: 1, replaces: real.data.fact.id }],
+    }, new Set());
+    assert.equal(applied.recorded, 1);
+    assert.equal(applied.replaced, 0, 'unseen this call, so it must not be touched');
+
+    const { rows } = await c.query(`SELECT active FROM user_facts WHERE id = $1`, [real.data.fact.id]);
+    assert.equal(rows[0].active, true, 'the untouched fact is still there');
   });
 });
 

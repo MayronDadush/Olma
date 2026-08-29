@@ -230,6 +230,25 @@ seen. A `user_contacts.birthday` column plus a `yearly` repeat rule
 (`normalizeRepeatRule` has no yearly today) is the version that would cover the
 rest; not built.
 
+**A refinement now replaces instead of piling on.** Live example: "עובד
+במוסך" (#29, `user_stated`) and, less than an hour later, "עובד במוסך בהוד
+השרון א׳-ה׳ 7:30-16:00" (#33, `conversation`) — the extraction job's own
+dedupe instruction only ever said "do not restate", so a genuinely more
+complete version of the same fact sat beside the original forever instead of
+completing it. `rememberFact` now takes an optional `replaces` (a fact id,
+soft-deleted in the same call as the new row lands, with its own
+`fact.replaced` audit row); the known-facts block the extraction job shows the
+model now carries each fact's `#id`, and the JSON contract gained a `replaces`
+field for exactly this case. **Two independent gates, not one**: `applyExtraction`
+only honours an id from the EXACT snapshot the model was shown this call —
+never one earlier in the same batch, never invented — and `rememberFact`
+re-verifies ownership and `active = true` underneath that regardless. Without
+the first gate, a model could point at any of a person's own facts by
+guessing a plausible id and retire it sight unseen; the test suite proves
+this by deliberately disabling each gate in turn and confirming the specific
+test that catches it. A bad or foreign `replaces` is a silent no-op — it must
+never cost the fact actually being saved.
+
 **A refused fact is counted, never silently dropped.** The guards swallow a
 proposal, and a nightly job that quietly drops facts looks exactly like a quiet
 week — so `applyExtraction` tallies refusals by reason (`{system_state: 1,
@@ -257,6 +276,42 @@ coming back to git — so the repo is renamed to match production, never the
 reverse. Worth noting how it was found: not by anyone reading `ls migrations/`,
 but by every single test failing at once the first time somebody ran the suite
 after both merges.
+
+### Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)
+
+Owner ask: מירון wants WhatsApp updates about new models on OpenRouter (with
+a note when something is relevant to Olma), and more generally a feature
+where a user can ask to be kept updated about live information — built
+SMART: structured sources, not web crawling, minimal tokens. `domain/live-updates.js`,
+migration 021.
+
+- **A subscription = a SOURCE from a code registry + cadence + local hour.**
+  `live_subscriptions` (params, last_state watermark, next_run_at); the
+  hourly `live_updates` job (brokerd, expectations.js) picks due rows —
+  planning-sweep pattern, rows decide who is due. Sources today:
+  `openrouter_models` (three catalog views — the bare list hides media
+  models; diff by model id against `last_state.knownIds`; only sends when
+  new models actually appeared, with an "is any of this interesting for
+  Olma" note) and `weather` (Open-Meteo, free, no key; city geocoded ONCE at
+  subscribe time; sends every cadence). Adding a source is one registry
+  entry — validateParams + fetch + prompt — no migration, no new sweeper.
+- **The token economics are the design**: detection is a structured-API diff
+  in plain code (zero tokens); the ONE background-model call
+  (`llm.backgroundModel` → DeepSeek flash, ~$0.0001, recorded via
+  `llm.recordUsage` into the subscriber's ledger) happens only when there is
+  something to say. First run BASELINES silently — a new subscription must
+  not open with "460 new models".
+- **Failure = retry, never swallow**: a transient fetch/LLM failure leaves
+  `next_run_at` and the watermark alone (hourly tick retries); the outbox
+  idempotency key `liveupd:<subId>:<date>` caps delivery at one per day per
+  subscription regardless. Paused/eval users excluded in the due query.
+- Tools: `subscribe_live_updates` / `list_my_live_updates` /
+  `cancel_live_update` (open to all users, capped by the
+  `live_subscriptions_per_user` flag, default 5; duplicates by
+  (source, params) refused). Delivery is outbox kind `live_update`, normal
+  urgency — quiet hours and budget hold as usual. Future sources the owner
+  floated: sports summaries, topical news — RSS-diffing fits the same
+  registry shape when wanted.
 
 ### Image + video generation, access-limited, spend in its own column (2026-08-28)
 
