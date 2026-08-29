@@ -365,6 +365,12 @@ migration 021.
   `finish_reason: "stop"`, a real coherent summary, $0.00018) and pinned by a
   test that reads the constant back out of the source — small test fixtures
   will never reproduce this, so nothing else could have caught the regression.
+  Confirmed end-to-end post-deploy on מירון's own two live subscriptions
+  (`news_topic`/בינה מלאכותית, `sports_summary`/ביתר ירושלים): both produced
+  real coherent Hebrew summaries and landed on WhatsApp with a non-null
+  `outbox.sent_at` — the first was delivered by the ordinary hourly sweep
+  before any manual check ran, the second was forced due and delivered by the
+  live outbox worker ~35s later, matching its own 30s tick.
 - **Failure = retry, never swallow**: a transient fetch/LLM failure leaves
   `next_run_at` and the watermark alone (hourly tick retries); the outbox
   idempotency key `liveupd:<subId>:<date>` caps delivery at one per day per
