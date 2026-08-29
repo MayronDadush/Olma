@@ -50,13 +50,15 @@ test('confirm requires EVERY active participant on the identical slot', async ()
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, alice.id, 'trio', [bob.id, carol.id])).data.meeting;
 
-    await meetings.proposeSlot(c, alice.id, m.id, 'Tuesday 17:00, video call', slotStart('Tuesday 17:00, video call'));
+    const tue = slotStart('Tuesday 17:00, video call');
+    await meetings.proposeSlot(c, alice.id, m.id, 'Tuesday 17:00, video call', tue);
     // alice (proposer) is confirmed_current; bob accepts — still not confirmed
-    let r = await meetings.respondToSlot(c, bob.id, m.id, true);
+    let r = await meetings.respondToSlot(c, bob.id, m.id, true, null, null, tue);
     assert.equal(r.data.meetingStatus, 'negotiating');
 
     // carol declines with a counter → new slot, everyone else resets to awaiting
-    r = await meetings.respondToSlot(c, carol.id, m.id, false, 'Wednesday 18:00, phone', slotStart('Wednesday 18:00, phone', { hours: 72 }));
+    const wed = slotStart('Wednesday 18:00, phone', { hours: 72 });
+    r = await meetings.respondToSlot(c, carol.id, m.id, false, 'Wednesday 18:00, phone', wed);
     assert.equal(r.ok, true);
     const st = await meetings.getStatus(c, alice.id, m.id);
     assert.equal(st.data.meeting.proposed_slot, 'Wednesday 18:00, phone');
@@ -66,12 +68,58 @@ test('confirm requires EVERY active participant on the identical slot', async ()
     assert.equal(states[bob.id], 'awaiting');
 
     // both remaining accept → NOW it confirms, to the exact slot
-    await meetings.respondToSlot(c, alice.id, m.id, true);
-    r = await meetings.respondToSlot(c, bob.id, m.id, true);
+    await meetings.respondToSlot(c, alice.id, m.id, true, null, null, wed);
+    r = await meetings.respondToSlot(c, bob.id, m.id, true, null, null, wed);
     assert.equal(r.data.meetingStatus, 'confirmed');
     const done = await meetings.getStatus(c, alice.id, m.id);
     assert.equal(done.data.meeting.status, 'confirmed');
     assert.equal(done.data.meeting.confirmed_slot, 'Wednesday 18:00, phone');
+  });
+});
+
+// A "כן" answers the slot the person was SHOWN, not whatever is current. In a
+// live meeting three proposals crossed within eight seconds, and one user's
+// yes to Sunday 9:00 was recorded as accepting Tuesday 10:00 — a slot whose
+// notification reached him two minutes after he had "agreed" to it.
+test('an accept is pinned to the slot the user saw; a stale one is refused clean', async () => {
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'race', [bob.id, carol.id])).data.meeting;
+    const monday = slotStart('יום שני 20:00');
+    await meetings.proposeSlot(c, alice.id, m.id, 'יום שני 20:00', monday);
+    const tuesday = slotStart('יום שלישי 20:00', { hours: 72 });
+    await meetings.proposeSlot(c, alice.id, m.id, 'יום שלישי 20:00', tuesday);
+
+    // bob's user said yes to Monday; the meeting has moved on
+    const stale = await meetings.respondToSlot(c, bob.id, m.id, true, null, null, monday);
+    assert.equal(stale.ok, false);
+    assert.equal(stale.error.reason, 'slot_changed');
+    assert.ok(stale.error.message.includes('יום שלישי 20:00'), 'the refusal shows the current slot');
+
+    // no accepted_starts_at at all is refused too — and neither refusal
+    // may leave an acceptance behind
+    const missing = await meetings.respondToSlot(c, bob.id, m.id, true);
+    assert.equal(missing.ok, false);
+    assert.equal(missing.error.reason, 'accepted_starts_at_required');
+    const st = await meetings.getStatus(c, bob.id, m.id);
+    assert.equal(st.data.participants.find((p) => p.user_id === bob.id).state, 'awaiting');
+
+    // the yes to the slot actually on the table goes through
+    const good = await meetings.respondToSlot(c, bob.id, m.id, true, null, null, tuesday);
+    assert.equal(good.ok, true);
+    assert.equal(good.data.yourState, 'confirmed_current');
+  });
+});
+
+test('accept binding: a legacy row with no machine time still accepts', async () => {
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'legacy', [bob.id])).data.meeting;
+    await meetings.proposeSlot(c, alice.id, m.id, 'שישי 20:00', slotStart('שישי 20:00'));
+    // a row proposed before slots carried a start time cannot be validated —
+    // requiring the parameter there would wedge every such negotiation
+    await c.query(`UPDATE meetings SET proposed_start_at = NULL WHERE id = $1`, [m.id]);
+    const r = await meetings.respondToSlot(c, bob.id, m.id, true);
+    assert.equal(r.ok, true);
+    assert.equal(r.data.meetingStatus, 'confirmed');
   });
 });
 
@@ -91,8 +139,9 @@ test('a meeting of one cannot confirm; initiator cannot opt out; opt-out can clo
 test('opt-out of a third participant can complete the confirmation gate', async () => {
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, alice.id, 'trio2', [bob.id, carol.id])).data.meeting;
-    await meetings.proposeSlot(c, alice.id, m.id, 'Monday 09:00, zoom', slotStart('Monday 09:00, zoom'));
-    await meetings.respondToSlot(c, bob.id, m.id, true);
+    const mon = slotStart('Monday 09:00, zoom');
+    await meetings.proposeSlot(c, alice.id, m.id, 'Monday 09:00, zoom', mon);
+    await meetings.respondToSlot(c, bob.id, m.id, true, null, null, mon);
     // carol is the lone holdout; her opting out leaves alice+bob who both agreed
     const r = await meetings.optOut(c, carol.id, m.id);
     assert.equal(r.data.meetingStatus, 'confirmed');
@@ -502,9 +551,10 @@ test('the weekday is judged in the proposer own timezone', async () => {
 
 async function confirmedMeeting(c, initiator, others, slotText = 'Tuesday 17:00, phone') {
   const m = (await meetings.startMeeting(c, initiator.id, 'סגורה', others.map((u) => u.id))).data.meeting;
-  await meetings.proposeSlot(c, initiator.id, m.id, slotText, slotStart(slotText));
+  const when = slotStart(slotText);
+  await meetings.proposeSlot(c, initiator.id, m.id, slotText, when);
   for (const u of others) {
-    const r = await meetings.respondToSlot(c, u.id, m.id, true);
+    const r = await meetings.respondToSlot(c, u.id, m.id, true, null, null, when);
     assert.ok(r.ok, JSON.stringify(r.error || {}));
   }
   const st = await c.query(`SELECT status FROM meetings WHERE id = $1`, [m.id]);

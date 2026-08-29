@@ -29,7 +29,7 @@ async function drainOnce(pool, deliver, now = new Date()) {
   // anyway, and only mislead readers into thinking it protects something).
   const { rows: candidates } = await pool.query(
     `SELECT o.*, u.timezone, u.agent_id, u.quota_blocked_until, u.first_name, u.last_inbound_at,
-            u.digest_times, u.paused_at
+            u.digest_times, u.paused_at, u.is_eval
      FROM outbox o JOIN users u ON u.id = o.user_id
      WHERE o.sent_at IS NULL AND (o.release_after IS NULL OR o.release_after <= $1)
        -- A budget hold with no release time is waiting for the next digest to
@@ -63,14 +63,14 @@ async function drainOnce(pool, deliver, now = new Date()) {
         // real connection request went unseen: five sends, none of them subject to
         // the budget, ate all four slots. Keep this list in sync with decide().
         //
-        // 'cancelled_by_admin' rows carry sent_at too — that is how cancelling
-        // stops the sweep re-creating them — but nothing was ever delivered, so
-        // counting them would let cancelling a message burn the same budget as
-        // sending it.
+        // 'cancelled_by_admin' and 'superseded' rows carry sent_at too — that
+        // is how cancelling stops the producer re-creating them — but nothing
+        // was ever delivered, so counting them would let cancelling a message
+        // burn the same budget as sending it.
         const { rows: sentRows } = await client.query(
           `SELECT count(*)::int AS n FROM outbox
            WHERE user_id = $1 AND sent_at IS NOT NULL AND sent_at::date = $2::date
-             AND (hold_reason IS NULL OR hold_reason NOT IN ('expired', 'cancelled_by_admin', 'paused'))
+             AND (hold_reason IS NULL OR hold_reason NOT IN ('expired', 'cancelled_by_admin', 'paused', 'superseded'))
              AND urgency <> 'urgent'
              AND kind NOT IN ('reminder', 'digest')`,
           [row.user_id, now]
@@ -78,6 +78,7 @@ async function drainOnce(pool, deliver, now = new Date()) {
 
         const verdict = decide({
           row, plan, blocked, paused: Boolean(row.paused_at),
+          evalUser: Boolean(row.is_eval),
           blockedUntil: row.quota_blocked_until,
           window: win.data.window, tz: row.timezone,
           lastInboundAt: row.last_inbound_at,

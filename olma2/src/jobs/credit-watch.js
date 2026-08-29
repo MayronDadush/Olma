@@ -17,6 +17,27 @@
 // just touched. Alert at most once per outage: `credit_alert_at` is compared
 // against the FIRST error of the current outage, so a new outage re-arms the
 // alarm and a long one does not re-fire it.
+//
+// That comparison has exactly ONE clock, and it is Postgres's. It used to
+// straddle two: the outage's first error came from the database (`min(created_at)`)
+// and the stamp was written by the Node process (`new Date().toISOString()`).
+// Two things went wrong with that, one of them in production:
+//
+// - **Precision.** `pg` parses a timestamptz into a JS Date, which is
+//   millisecond-resolution, and `toISOString()` truncates the microseconds
+//   Postgres actually stored. Two events a fraction of a millisecond apart
+//   compare EQUAL, and `>=` then reads a genuinely new outage as the old one
+//   and stays silent. This is why the test at tests/credit-watch.test.js
+//   failed about two runs in three: everything in it happens inside a few
+//   milliseconds. So both sides stay in Postgres — `::text` out, `::timestamptz`
+//   back in — and never pass through a JS Date.
+// - **`now()` is transaction start, not wall clock**, and this function runs
+//   inside `withTx` (see bin/olma-brokerd.js). Under READ COMMITTED a row
+//   inserted after our transaction opened is still visible to the SELECT — so
+//   `now()` can legitimately predate the outage we just read, stamping the flag
+//   BEFORE the first error and re-firing the same alarm every tick for the rest
+//   of a real outage. `clock_timestamp()` is the wall clock at statement time
+//   and cannot land before a row the previous statement already returned.
 const flagsDomain = require('../domain/flags');
 
 // Where the alarm goes. A flag so the dashboard can change it without a
@@ -43,8 +64,10 @@ async function checkCreditAlert(client, deps = {}) {
   // Since the 2026-08-26 cutover the credit that runs out is OpenRouter's,
   // so an alarm matching only Anthropic's wording would sleep through the
   // exact outage it was built for.
+  // `since` is for the message; `since_exact` is the same moment with its
+  // microseconds intact, and it is the only one the comparison below may use.
   const { rows } = await client.query(
-    `SELECT min(created_at) AS since FROM outbox
+    `SELECT min(created_at) AS since, min(created_at)::text AS since_exact FROM outbox
       WHERE sent_at IS NULL
         AND (last_error ILIKE '%credit balance%'
           OR last_error ILIKE '%insufficient credits%')`
@@ -54,9 +77,15 @@ async function checkCreditAlert(client, deps = {}) {
 
   const lastAlert = await flagsDomain.getFlag(client, ALERT_AT_FLAG);
   // Already alerted for THIS outage — an alert newer than the outage's first
-  // error means this is the same incident, not a new one.
-  if (lastAlert && new Date(lastAlert).getTime() >= new Date(since).getTime()) {
-    return { alerted: false };
+  // error means this is the same incident, not a new one. Compared in Postgres,
+  // at full precision, for the reasons in the header. Costs a round trip, and
+  // only ever during an outage: the healthy tick returned above.
+  if (lastAlert) {
+    const { rows: cmp } = await client.query(
+      `SELECT $1::timestamptz >= $2::timestamptz AS same_outage`,
+      [lastAlert, rows[0].since_exact]
+    );
+    if (cmp[0].same_outage) return { alerted: false };
   }
 
   const phone = (await flagsDomain.getFlag(client, ALERT_PHONE_FLAG)) || DEFAULT_ALERT_PHONE;
@@ -67,7 +96,11 @@ async function checkCreditAlert(client, deps = {}) {
     // that it keeps trying on a channel that needs nothing.
     return { alerted: false, error: String((res && res.error) || 'send failed').slice(0, 200) };
   }
-  await flagsDomain.setFlag(client, ALERT_AT_FLAG, new Date().toISOString());
+  // Postgres's wall clock, rendered by Postgres, with its microseconds — the
+  // other half of keeping one clock. A legacy value written by the old JS path
+  // still parses as a timestamptz, so nothing has to be migrated.
+  const { rows: stamp } = await client.query(`SELECT clock_timestamp()::text AS at`);
+  await flagsDomain.setFlag(client, ALERT_AT_FLAG, stamp[0].at);
   return { alerted: true, phone };
 }
 

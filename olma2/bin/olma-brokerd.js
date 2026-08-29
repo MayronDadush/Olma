@@ -100,6 +100,7 @@ async function main() {
       digests: await sweeps.sweepDigests(c),
       unblocks: await sweeps.sweepUnblocks(c),
       staleMeetings: await sweeps.sweepStaleMeetings(c),
+      mediaJobs: await sweeps.sweepMediaJobs(c),
     })));
     // checkin ladder — every 5 minutes, because day one has a 15-minute step
     // and an hourly tick would land it anywhere up to an hour late. Cheap: one
@@ -187,6 +188,18 @@ async function main() {
       await refreshAfter(out.planned || []);
       return out;
     });
+
+    // Behavioral evals: nightly scripted conversations against the eval
+    // user, hard checks + a judge model, alerts on the credit-alarm pipe.
+    // Inert until scripts/setup-eval-user.js has been run once on the box.
+    const evals = require('../src/jobs/evals');
+    arm('eval_sweep', () => evals.sweepEvals(pool, { send: rawSend }));
+
+    // Live-update subscriptions ("עדכן אותי על...") — hourly tick, the rows
+    // decide who is due. Detection is a structured-API diff (zero tokens);
+    // the one cheap model call happens only when something actually changed.
+    const liveUpdates = require('../src/domain/live-updates');
+    arm('live_updates', () => withTx(pool, (c) => liveUpdates.sweepLiveUpdates(c, {})));
 
     // cost attribution + product analytics — hourly; retention — daily
     const usage = require('../src/jobs/usage');

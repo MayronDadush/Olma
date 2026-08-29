@@ -87,6 +87,14 @@ function decide(facts) {
     return { action: 'drop', holdReason: 'paused' };
   }
 
+  // The eval user's phone number is fake by construction — a delivery attempt
+  // can only fail, climb the retry counter, and trip the stuck-outbox alarm
+  // with noise. Same chokepoint logic as pause: sweeps skip it, but a row can
+  // be enqueued by paths that neither know nor should know about evals.
+  if (facts.evalUser) {
+    return { action: 'drop', holdReason: 'eval_user' };
+  }
+
   if (row.expires_at && new Date(row.expires_at) <= now) {
     return { action: 'expire' };
   }

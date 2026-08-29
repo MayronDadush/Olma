@@ -175,4 +175,10 @@ test('an all-day event renders as "כל היום", never as a 03:00 tz artifact'
     'a bare date must not be formatted as a moment');
   assert.match(brief, /פגישה — .*15:00/, 'timed events keep their time');
   assert.match(brief, /הצעה/, 'the one-voice rule rides the prompt');
+  // Birthdays are read off the calendar on the days they matter instead of
+  // being copied into user_facts, where one sat as an undated, third-party
+  // one-off holding a Top-K card slot indefinitely.
+  assert.match(brief, /birthday or anniversary/);
+  assert.match(brief, /offer a\n?.*reminder to send greetings/,
+    'the plan suggests offering a reminder, never greeting on their behalf');
 });

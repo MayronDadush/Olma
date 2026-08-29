@@ -55,6 +55,319 @@ describes **v1**, which is retired-in-place: its code still sits in
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
 
+### Availability is tapped on a page, not typed (2026-08-28)
+
+The first "ephemeral UI": when someone needs to give meeting availability,
+their agent offers a choice — write it in chat, or get a personal link to a
+small RTL page (dark, mobile-first, zero deps, vanilla inline JS) where they
+tap a date or range on a month grid, tick one or more of
+בוקר/צהריים/ערב/לילה (or כל היום / שעה מסוימת, each of which replaces a
+selection rather than joining it), and build up to 10 options with
+✕-removal. The four spans tile the day exactly and `all_day` is their union,
+so ticking all four collapses to "כל היום" — the same sentence said shorter;
+`canonicalParts` is the one place that decides this and the page only mirrors
+it. Their own Google Calendar
+events overlay the grid (best-effort, their credential only), and options the
+OTHER side already submitted show as tap-to-adopt chips. Migration 020 —
+018 AND 019 were both burned on prod by other branches while this was being
+written, so the number was re-checked with `SELECT max(version)` on the box
+immediately before the merge, not once at the start.
+`domain/availability.js`, `adapters/http/picker.js`, tool
+`send_availability_picker`.
+
+- **The token in the URL is the whole credential** — same trust model as the
+  OAuth callback route above it in dashboard.js (random, user-bound, 7-day
+  TTL), except deliberately MULTI-use so the person can reopen and edit.
+  Links are idempotent per (meeting,user), die with the meeting status, and
+  expired rows age out in the retention sweep.
+- **The server is the judge**: the page posts raw form data; dates, the
+  closed daypart vocabulary and labels are validated/built server-side.
+  Overlap is computed in code, zero tokens, in UTC instants — each option
+  carries its owner's timezone and is converted before intersecting (the
+  "משמרת 15:00 stored as Z" incident, one layer up), then labelled back in
+  the READER's timezone.
+- **Notifications ride the outbox** (urgency urgent, hash-idempotent, so the
+  recipient's quiet hours/pause/budget all still hold): a partial submit
+  tells only the participants who have NOT yet answered
+  (`availability_shared`, offering chat or their own picker); the last submit
+  sends the initiator alone the computed intersection
+  (`availability_complete`) — or an honest "no window fits". A submission is
+  availability, never agreement: confirming still happens only through
+  propose/respond_to_meeting_slot, and the doctrine + both instructions say
+  so explicitly. `get_meeting_status` now carries everyone's option labels.
+- `public_base_url` is a flag (dashboard-editable) so links don't hard-code
+  the host. New outbox kinds inherit the DELIVERY_PREAMBLE automatically via
+  `instructionFor` — pinned by tests like every other proactive kind.
+
+### The credit alarm compared two clocks (fixed 2026-08-28)
+
+`jobs/credit-watch.js` decides "have I already alerted for THIS outage" by
+comparing `credit_alert_at` against the outage's first error. The first error
+came from Postgres (`min(created_at)`); the stamp was written by Node
+(`new Date().toISOString()`). Two clocks, and two separate failures:
+
+- **A JS Date cannot hold microseconds.** `pg` parses a timestamptz into a
+  millisecond-resolution Date and `toISOString()` drops the rest, so two events
+  a fraction of a millisecond apart compare EQUAL — and `>=` then reads a
+  genuinely new outage as the old one and stays silent. This is why
+  `tests/credit-watch.test.js` failed roughly two runs in three on main:
+  everything in it happens inside a few milliseconds. **A flaky test on the
+  alarm that pages when the model provider runs dry is worse than no test — it
+  trains everyone to shrug at a red suite.**
+- **`now()` is transaction start, not the wall clock**, and this runs inside
+  `withTx` (`bin/olma-brokerd.js`). Under READ COMMITTED a row inserted after
+  our transaction opened is still visible to the SELECT, so `now()` can
+  legitimately predate the outage just read — stamping the flag BEFORE the
+  first error and re-firing the same alarm every tick for the rest of a real
+  outage. Never observed live, and only because outages have so far started
+  between ticks rather than during one.
+
+Both sides now stay in Postgres: `min(created_at)::text` out, `$1::timestamptz`
+back in for the comparison, and the stamp is `clock_timestamp()::text`. Nothing
+passes through a JS Date, and no migration is needed — a legacy JS-written value
+still parses as a timestamptz. The regression test pins the two moments one
+microsecond apart (the same millisecond, which is all the old code could see)
+and asserts the stored stamp is Postgres's own rendering — a space and `+00`,
+never `T...Z`.
+
+### Behavioral evals: nightly scripted conversations, judged twice (2026-08-28)
+
+467 unit tests were green the night "אני רוצה להפסיק את השירות" was answered
+with a warm goodbye and no tool call — unit tests check code, not the model's
+judgment. `src/evals/` closes that: every scenario is a real past incident
+(the stop request, the school essay, the UTC shift, the vehicles goal, the
+phone-in-fact, the add_task loop, the invented meeting, the gender slip),
+re-run nightly against a DEDICATED eval user's real agent — real gateway,
+real tools, real DB — on a disposable session with no `--deliver`.
+
+- **Two judging layers.** Hard checks (tool-call order + DB state) are RED
+  and alert Miron's WhatsApp immediately on the credit-alarm raw pipe; the
+  judge model (Kimi k2.6 via OpenRouter — a different family than the agent's
+  DeepSeek, a model must not grade its own relatives) flags text quality as
+  YELLOW, which alerts only on the second consecutive bad night — judge
+  scores wobble, and an alert that fires on wobble teaches the reader to
+  ignore alerts. A harness failure is ERROR and alerts like red — never
+  silently green (the /health lesson). Everything lands in
+  `eval_runs`/`eval_results` (migration 019 — renumbered after colliding with
+  #55's 018, the two-branches-one-number incident repeating itself on merge
+  day) and renders as the dashboard's
+  "בדיקות התנהגות" section.
+- **The eval user is structurally sealed off**: `users.is_eval` (ONE row,
+  `+972599999001`), every user-selecting sweep excludes it, and the outbox
+  gate `drop`s its rows (`hold_reason='eval_user'`) — its phone is fake, so a
+  delivery attempt could only fail, climb `attempts`, and trip the
+  stuck-outbox alarm. `resetEvalUser` refuses any row not marked `is_eval` —
+  that check is the only thing between the wipe and a real person's data.
+- **Cadence**: `jobs/evals.js` ticked hourly, runs once in 03:00-06:00 IL
+  (watermark flag `evals_last_run_date`, stamped at START so a crashing suite
+  cannot loop all night — the ERR heartbeat is the signal). Manual runs:
+  `node scripts/run-evals.js [--only id,id] [--no-judge]` — exits non-zero on
+  red/error, the "before a doctrine change" half of the design.
+  **One-time arming on the box: `node scripts/setup-eval-user.js --apply`** —
+  until then the sweep reports `skipped: no eval user`.
+
+### The fact table admitted everything and ranked by recency (fixed 2026-08-28)
+
+The owner read the dashboard's "מה נלמד לאחרונה" and asked whether that is
+really how the system stores what it knows. It is — `user_facts`, one row per
+fact, Top-10 into USER.md every turn — and the storage was fine. The
+**admission policy** and the **ranking** were not. On user 3's live card, three
+of ten slots held: a third party's undated birthday, "היומן שלו מחובר ל-Google
+Calendar עם גישת read_write" (two lines under the card's own `Calendar:
+connected (read_write)`), and "שם שלו הוא מירון" (under its own `First name:
+מירון`). What they pushed off the bottom — importance is 1 on almost every row,
+so recency decides — was "עמית הוא חבר שמשחק איתו פוקר", i.e. exactly the
+context the poker negotiation needed.
+
+Four guards, all at `facts.rememberFact`, the one door the live tool, the
+extraction job and the dashboard all share:
+
+- **The bare-name guard had a hole.** It matched `שמו X` / `קוראים לו X` /
+  `השם שלו X` and not "שם שלו הוא מירון" — the same sentence with the copula.
+  The copula and the article are both optional now.
+- **Olma's own state is not biography.** A system noun AND a
+  connection/configuration verb together (or a bare `read_write`/`read_only`)
+  is refused. Narrow on purpose: "יש לו פגישה ביומן" and "הוא מנותק רגשית"
+  each carry one half and pass. The card, `integrations` and `connections` are
+  the live copies; a fact is a frozen one that contradicts them the day the
+  state changes.
+- **A fact anchored to a moment must carry `expires_at`**, via
+  `datetime.namesAMoment` — a moving reference point ("היום", "מחר",
+  "tonight") or a real calendar date. ISO and slash forms decide alone; the
+  dotted Hebrew form ("29.8") needs a weekday or a month elsewhere in the
+  sentence, because "3.5 שעות" is the same shape. **A weekday ALONE is
+  deliberately not a signal** — "ביום חמישי עובד מהבית" and "עובד כל יום ראשון
+  עד חמישי" are recurring and correct as timeless facts, and a false positive
+  here REFUSES a real fact.
+- Doctrine for all three now rides `remember_fact`'s description, the
+  extraction brief and `agents-template.md`, so the model stops producing them
+  rather than only being refused.
+
+**A one-meeting constraint became a permanent habit.** "גלי מעדיפה לא להיפגש
+בשבת" was on her card with no expiry. She had said one Saturday did not suit
+her, for ONE meeting; that was recorded correctly against the meeting
+(`meeting_participants.constraints`, scoped, with its own private flag), and
+`jobs/fact-extraction.js` — reading the transcript afterwards with no idea a
+negotiation had been happening — read the sentence back out of context and
+generalised it into who she is. No guard can see this: it reads exactly like a
+real habit. So the job is now *shown* the constraints already recorded against
+any meeting still open (or closed within the last day), quoted, with the
+instruction not to repeat them as facts — the same shape as the open-task list
+it already gets as the commitment dedupe reference. Only an explicit
+generalisation ("אני אף פעם לא נפגשת בשבת") is a habit, and a standing
+availability rule is `remember_preference` under `availability`, which the
+delivery gate actually reads.
+
+**Birthdays stay in the calendar.** The owner's instinct was to harvest them
+into a side list; the cheaper answer is that `jobs/planning.js` already reads
+7 days of calendar every night, so its brief now names a birthday or
+anniversary as worth a note — where the note is *offer a reminder to send
+greetings*, never greet on anyone's behalf. Google Calendar stays the copy that
+updates itself. **Caveat**: `calendar.listEvents` reads `/calendars/primary`
+only, and Google's automatic "Birthdays" calendar (fed from Contacts) is a
+different calendar id — only birthdays the person put in their own calendar are
+seen. A `user_contacts.birthday` column plus a `yearly` repeat rule
+(`normalizeRepeatRule` has no yearly today) is the version that would cover the
+rest; not built.
+
+**A refinement now replaces instead of piling on.** Live example: "עובד
+במוסך" (#29, `user_stated`) and, less than an hour later, "עובד במוסך בהוד
+השרון א׳-ה׳ 7:30-16:00" (#33, `conversation`) — the extraction job's own
+dedupe instruction only ever said "do not restate", so a genuinely more
+complete version of the same fact sat beside the original forever instead of
+completing it. `rememberFact` now takes an optional `replaces` (a fact id,
+soft-deleted in the same call as the new row lands, with its own
+`fact.replaced` audit row); the known-facts block the extraction job shows the
+model now carries each fact's `#id`, and the JSON contract gained a `replaces`
+field for exactly this case. **Two independent gates, not one**: `applyExtraction`
+only honours an id from the EXACT snapshot the model was shown this call —
+never one earlier in the same batch, never invented — and `rememberFact`
+re-verifies ownership and `active = true` underneath that regardless. Without
+the first gate, a model could point at any of a person's own facts by
+guessing a plausible id and retire it sight unseen; the test suite proves
+this by deliberately disabling each gate in turn and confirming the specific
+test that catches it. A bad or foreign `replaces` is a silent no-op — it must
+never cost the fact actually being saved.
+
+**A refused fact is counted, never silently dropped.** The guards swallow a
+proposal, and a nightly job that quietly drops facts looks exactly like a quiet
+week — so `applyExtraction` tallies refusals by reason (`{system_state: 1,
+needs_expiry: 1}`), the tally rides the `facts.extracted` audit row and the job
+heartbeat, and it is attached only when non-empty (the note is JSON cut at 200
+chars). If a guard ever starts over-firing, that counter is the only place that
+would say so. The dashboard's fact form spells the same rules out, because a
+refused admin write redirects with nothing said.
+
+**Going back for the rows already written** is
+`scripts/retire-refused-facts.js` (dry-run by default): it re-checks every
+active fact against the current guards and soft-deletes what they would now
+refuse, `--id N` for the cases no guard can see. Retiring is `forgetFact`, so
+the row stays and only stops being retrieved.
+
+**Found while running the suite:** `main` carried two `018-*.sql` migrations
+(`018-behavioral-evals.sql` and `018-image-jobs-async.sql`) — the exact
+collision documented in "Two branches, one migration number", from two PRs
+merged the same day. The duplicate guard did its job and refused, so **every
+`freshDb()` in the suite threw** and no test could run on main at all. The fix
+is the same either way and two branches reached it independently (`328ed04` and
+this one): production was already correct — 18 = image-jobs, 19 =
+behavioral-evals, the file having been renamed on the box without the rename
+coming back to git — so the repo is renamed to match production, never the
+reverse. Worth noting how it was found: not by anyone reading `ls migrations/`,
+but by every single test failing at once the first time somebody ran the suite
+after both merges.
+
+### Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)
+
+Owner ask: מירון wants WhatsApp updates about new models on OpenRouter (with
+a note when something is relevant to Olma), and more generally a feature
+where a user can ask to be kept updated about live information — built
+SMART: structured sources, not web crawling, minimal tokens. `domain/live-updates.js`,
+migration 021.
+
+- **A subscription = a SOURCE from a code registry + cadence + local hour.**
+  `live_subscriptions` (params, last_state watermark, next_run_at); the
+  hourly `live_updates` job (brokerd, expectations.js) picks due rows —
+  planning-sweep pattern, rows decide who is due. Sources today:
+  `openrouter_models` (three catalog views — the bare list hides media
+  models; diff by model id against `last_state.knownIds`; only sends when
+  new models actually appeared, with an "is any of this interesting for
+  Olma" note) and `weather` (Open-Meteo, free, no key; city geocoded ONCE at
+  subscribe time; sends every cadence). Adding a source is one registry
+  entry — validateParams + fetch + prompt — no migration, no new sweeper.
+- **The token economics are the design**: detection is a structured-API diff
+  in plain code (zero tokens); the ONE background-model call
+  (`llm.backgroundModel` → DeepSeek flash, ~$0.0001, recorded via
+  `llm.recordUsage` into the subscriber's ledger) happens only when there is
+  something to say. First run BASELINES silently — a new subscription must
+  not open with "460 new models".
+- **Failure = retry, never swallow**: a transient fetch/LLM failure leaves
+  `next_run_at` and the watermark alone (hourly tick retries); the outbox
+  idempotency key `liveupd:<subId>:<date>` caps delivery at one per day per
+  subscription regardless. Paused/eval users excluded in the due query.
+- Tools: `subscribe_live_updates` / `list_my_live_updates` /
+  `cancel_live_update` (open to all users, capped by the
+  `live_subscriptions_per_user` flag, default 5; duplicates by
+  (source, params) refused). Delivery is outbox kind `live_update`, normal
+  urgency — quiet hours and budget hold as usual. Future sources the owner
+  floated: sports summaries, topical news — RSS-diffing fits the same
+  registry shape when wanted.
+
+### Image + video generation, access-limited, spend in its own column (2026-08-28)
+
+Owner ask: only the admin and חיים's number (+972505404255) may generate
+images and video through our OpenRouter key, and the spend must be visible
+separately. `domain/media.js` owns all of it; migration 017.
+
+- **The catalog hides media models.** `GET /api/v1/models` returns text
+  models only — `bytedance/seedance-2.0-mini` and `meta/muse-image` are NOT
+  in it, but both exist: `?output_modalities=video` (27 models) /
+  `=image` (50) reveal them, and `/api/v1/videos/models` carries the real
+  per-model constraints (durations 4-15s, 480p/720p, aspect list). An
+  earlier session concluded "no video models on OpenRouter" from the bare
+  catalog — the owner's screenshot of the site proved otherwise.
+- **Both kinds are submit-then-sweep — images too, since migration 018
+  (2026-08-28, same day).** The first version made images synchronous inside
+  the tool call ("~7s measured on a plain-triangle prompt, fits the 30s MCP
+  budget"). Wrong, disproven live within the hour: מירון's first REAL prompt
+  ("horse riding a horse") timed out at 25s; raising the margin to 27s just
+  moved the failure — an unbounded direct call for the identical prompt took
+  29.4s. `meta/muse-image` does not render a fixed-size image, it decides how
+  much detail to spend per request (389 image_tokens for the triangle, 3052
+  for the horse prompt, at a measured, consistent ~104 tokens/sec either way)
+  — no fetch timeout under the 30s MCP ceiling can safely absorb every
+  legitimate prompt. `generate_image` now only inserts a `media_jobs` row
+  (kind='image', no provider_job_id/polling_url — OpenRouter's image endpoint
+  has no job id of its own, one blocking call IS the whole job) and tells the
+  agent it's on its way; `sweepMediaJobs` makes that (now unbounded) call
+  itself, since sweeps were never under the 30s ceiling to begin with (video's
+  own download step already ran a 60s fetch from inside one). Video is
+  unchanged: `POST /api/v1/videos` → 202 + polling_url (~95s measured for
+  4s/480p, $0.054); `sweepMediaJobs` (rides the existing minute tick, no new
+  sweeper) polls, downloads the MP4, and both kinds land in the requester's
+  workspace and enqueue ONE `media_ready` outbox row (urgent, idempotency
+  `mediajob:<id>`, status-guarded UPDATE so a race cannot double-send).
+  Failures get `media_failed` once; a job pending >30min is declared lost.
+  `media_jobs.kind` CHECK widened to `('image','video')`;
+  `provider_job_id`/`polling_url` made nullable for the image path.
+- **The gate is server-side**: `role='admin'` (מירון, user 3 — granted and
+  audited 2026-08-28) or a phone in the `media_gen_phones` flag
+  (comma-separated, dashboard-editable). Every agent SEES the tools (tool
+  listing is global) — the descriptions say never to offer the feature and
+  the refusal happens on the call.
+- **Video defaults to 480p, the cheapest tier** (owner ask, 2026-08-28) —
+  `resolution` was not even a tool parameter before this, so the agent had no
+  way to ask for better even if the user wanted it; added as optional, with
+  the tool description telling the model to leave it unset unless the user
+  explicitly asked for higher quality.
+- **Money**: OpenRouter reports an authoritative `usage.cost` in USD on every
+  generation — recorded as-is into `media_usage_ledger` (one row per user per
+  day, images+videos together), rendered as its own block in the dashboard's
+  cost section, deliberately OUTSIDE `usage_ledger` so the Anthropic
+  reconciliation line stays honest. Models are flags too
+  (`media_image_model`, `media_video_model`) — swapping models is a dashboard
+  edit, not a deploy. FLAG_SPECS gained a `text` type for these.
+
 ### Friendship now enables everything, and friends can pass messages (2026-08-27)
 
 Owner decision, two halves:
@@ -1373,6 +1686,47 @@ yet), a `render*Section()`, a new positional param on `renderPage(...)`, a
 positional order identical between the signature and the call site, that's
 the one easy thing to get wrong. Routes match on exact `req.url` string, not
 `url.pathname`, except the Google OAuth callback.
+
+## Exploring this repo: graphify — measured, not assumed (2026-08-28)
+
+A `/graphify` skill is installed at the Claude Code user level
+(`~/.claude/skills/graphify/`, CLI via `uv tool install "graphifyy[sql]"`) —
+it builds a local knowledge graph of `olma2/` (AST-only, no LLM, nothing
+leaves the machine) and answers architecture questions via
+`graphify query "<question>" --graph olma2/graphify-out/graph.json`. Before
+trusting the vendor's claims, this was A/B measured head-to-head in fresh
+contexts, same question, with vs without:
+
+- **Narrow question** (one specific enforcement point): graph cost *more*
+  tokens (+1.6%) — no benefit, and the no-graph answer was more detailed
+  because it read real code instead of graph metadata.
+- **Broad question** (inventory across ~18 files): graph saved **16% fewer
+  tokens, 60% fewer tool calls, 27% faster**. Real, but nowhere near
+  marketing's advertised "49x" — this repo (149 code files) is plausibly too
+  small for that multiple to show up.
+
+**How to use it here:** reach for `graphify query`/`graphify explain` on
+broad "where is X used across the system" or "inventory of every Y" style
+questions; skip it for a narrow lookup where the file is already known —
+plain grep is cheaper there. Treat graph output as a map to target real file
+reads, never as a substitute for reading the actual code the answer depends
+on.
+
+**Three sharp edges:**
+- The graph is a snapshot — it will confidently describe code that no longer
+  exists if not refreshed. Run `graphify update olma2 --force` after
+  meaningful changes (or `graphify extract olma2 --force` +
+  `graphify cluster-only olma2 --no-label` for a full rebuild, needed once
+  after adding `.sql` support).
+- **Each git worktree needs its own `olma2/graphify-out/`** — it does not
+  exist in a fresh worktree/clone; build it locally before relying on it.
+  Keep it out of commits: it is excluded via `.git/info/exclude`, which is
+  **per-clone and not shared**, so a new clone must add that line itself
+  (the directory is ~2.5MB of generated JSON/HTML and belongs in no commit).
+- The bundled `graph.html` visualization loads `vis-network` from `unpkg.com`
+  — a sandboxed file-preview pane with no outbound network access will show
+  it blank with `vis is not defined`; open the file directly in a real
+  browser instead.
 
 ## Testing
 

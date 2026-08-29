@@ -21,6 +21,7 @@ const { correctionSql } = require('../../jobs/metrics');
 const { deprovisionUser, previewDeletion } = require('../../intake/deprovision');
 const pauseDomain = require('../../domain/pause');
 const sessionIndex = require('../../channels/sessions');
+const picker = require('./picker');
 // /ready's whole test. brokerd beats immediately on boot and then every 60s,
 // so three intervals is generous enough that an ordinary slow tick under load
 // never fails a deploy, and tight enough that a daemon which died on boot
@@ -75,7 +76,8 @@ const SECTIONS = [
   { id: 'health', title: 'מצב המערכת', hint: 'האם כל התהליכים הפנימיים רצים כשורה. אדום = משהו תקוע וצריך טיפול.', render: renderHeartbeats },
   { id: 'users', title: 'משתמשים', hint: 'כל מי שרשום. אפשר לקבוע לכל אחד מכסת הודעות יומית משלו.', render: renderUsers },
   { id: 'issues', title: 'תקלות ובקשות', hint: 'דברים שאולמה או המשתמשים דיווחו עליהם ומחכים לטיפול.', render: renderIssues },
-  { id: 'cost', title: 'עלות', hint: 'כמה עולה להריץ את אולמה בפועל (שרת, Anthropic, ElevenLabs) וכמה עולה השימוש במודל לפי יום ולפי משתמש. הערכה, לא חשבונית.', render: renderCost },
+  { id: 'evals', title: 'בדיקות התנהגות', hint: 'כל לילה אולמה עוברת תרחישים שנבנו מתקלות אמת — שיחה מדומה מול משתמש בדיקה, בדיקת כלים ומסד בקוד, ובדיקת ניסוח על ידי מודל שופט. אדום = כלל נשבר; צהוב = השופט הסתייג מהניסוח.', render: renderEvals },
+  { id: 'cost', title: 'עלות', hint: 'כמה עולה להריץ את אולמה בפועל (שרת, Anthropic, ElevenLabs) וכמה עולה השימוש במודל לפי יום ולפי משתמש — כולל עמודה נפרדת ליצירת תמונות ווידאו דרך OpenRouter. הערכה, לא חשבונית.', render: renderCost },
   { id: 'outcomes', title: 'האם זה עובד', hint: 'המדדים שנבחרו כדי לענות על השאלה הזו: ענו לנו? נסגרו משימות? נאלצו לתקן אותנו? נוצר הרגל? כל מספר עם המכנה שלו.', render: renderOutcomes },
   { id: 'metrics', title: 'שימוש במוצר', hint: 'מה באמת קורה במוצר: כמה אנשים פעילים, כמה נוצר, מה הצליח.', render: renderMetrics },
   { id: 'planned', title: 'מה מתוכנן להישלח', hint: 'כל מה שאולמה מתכננת לשלוח, ומתי — בשעון המקומי של כל משתמש. התוכן עצמו נכתב ברגע השליחה, לא מראש, ולכן כאן מופיע הנושא ולא הנוסח.', render: renderPlanned },
@@ -92,7 +94,7 @@ const SECTIONS = [
 const JOB_LABELS = {
   brokerd: 'מנוע ראשי',
   outbox_worker: 'שליחת הודעות',
-  minute_sweeps: 'תזכורות, סיכומים ושחרור ממכסה',
+  minute_sweeps: 'תזכורות, סיכומים, שחרור ממכסה ווידאו בהכנה',
   intake_sweep: 'קליטת משתמשים חדשים',
   reopen_sweep: 'עדכון רשימת המתנה',
   intake_template_sync: 'עדכון הודעת קליטה',
@@ -102,9 +104,11 @@ const JOB_LABELS = {
   lane_watchdog: 'שחרור שיחות תקועות',
   memory_consolidation: 'סיכום זיכרון שבועי',
   fact_extraction: 'קריאת שיחות ולמידה על משתמשים',
+  live_updates: 'עדכונים חיים למנויים (מודלים, מזג אוויר)',
   usage_sweep: 'חישוב עלויות',
   metrics_sweep: 'חישוב סטטיסטיקות',
   retention_sweep: 'ניקוי נתונים ישנים',
+  eval_sweep: 'בדיקות התנהגות ליליות',
 };
 
 async function renderHeartbeats(client) {
@@ -125,6 +129,51 @@ async function renderHeartbeats(client) {
       <td class="dim mono">${err ? esc(String(r.note).slice(0, 90)) : ''}</td></tr>`;
   }).join('');
   return banner + `<table><tr><th>תהליך</th><th>רץ לאחרונה</th><th>שגיאה</th></tr>${tr}</table>`;
+}
+
+// The behavioral eval board: the latest run's verdict per scenario, plus a
+// short run history. Reads only — running happens in jobs/evals.js and
+// scripts/run-evals.js.
+async function renderEvals(client) {
+  const { rows: runs } = await client.query(
+    `SELECT * FROM eval_runs ORDER BY id DESC LIMIT 5`);
+  if (!runs.length) {
+    return `<p class="dim">עוד לא רצה אף בדיקה. ההרצה הלילית נדרכת אחרי scripts/setup-eval-user.js --apply בשרת.</p>`;
+  }
+  const latest = runs[0];
+  const { rows: results } = await client.query(
+    `SELECT * FROM eval_results WHERE run_id = $1 ORDER BY scenario`, [latest.id]);
+
+  const bad = Number(latest.reds) + Number(latest.errors);
+  const banner = !latest.finished_at
+    ? `<div class="banner">⏳ ריצה ${latest.id} עדיין באמצע…</div>`
+    : bad > 0
+      ? `<div class="banner bad">⚠ ריצה אחרונה: ${latest.reds} אדומים, ${latest.errors} שגיאות</div>`
+      : Number(latest.yellows) > 0
+        ? `<div class="banner">🟡 ריצה אחרונה: ${latest.yellows} הסתייגויות ניסוח, אפס כללים שבורים</div>`
+        : `<div class="banner ok">✓ ריצה אחרונה: כל ${latest.greens} התרחישים ירוקים</div>`;
+
+  const ICONS = { green: '🟢', yellow: '🟡', red: '🔴', error: '⚠️' };
+  const tr = results.map((r) => {
+    const hard = (r.hard_failures || []).map((f) => f.name).join('; ');
+    const judge = r.judge && r.judge.problems && r.judge.problems.length
+      ? r.judge.problems.map((p) => p.rule).join('; ')
+      : (r.judge && r.judge.error ? `שופט: ${r.judge.error}` : '');
+    return `<tr class="${r.status === 'red' || r.status === 'error' ? 'bad' : ''}">
+      <td>${ICONS[r.status] || ''} ${esc(r.scenario)}</td>
+      <td class="dim">${esc(hard || judge || '')}</td>
+      <td class="dim">${r.duration_ms ? Math.round(r.duration_ms / 1000) + 's' : ''}</td></tr>`;
+  }).join('');
+
+  const history = runs.map((r) => {
+    const when = ago(r.started_at);
+    return `<span class="dim">#${r.id} (${esc(r.trigger)}, ${when}): 🟢${r.greens} 🟡${r.yellows} 🔴${r.reds} ⚠️${r.errors}</span>`;
+  }).join(' · ');
+
+  return banner
+    + `<table><tr><th>תרחיש</th><th>מה נמצא</th><th>משך</th></tr>${tr}</table>`
+    + `<p>${history}</p>`
+    + (latest.agent_model ? `<p class="dim">מודל שנבדק: ${esc(latest.agent_model)}</p>` : '');
 }
 
 // One line per external service, or a dim explanatory note when it can't be read.
@@ -189,10 +238,36 @@ async function renderCost(client) {
     `SELECT agent_id, sum(cost_usd) AS cost FROM usage_system_ledger
      WHERE date >= date_trunc('month', CURRENT_DATE)
      GROUP BY agent_id ORDER BY cost DESC`);
+  // Image+video generation spend — its own ledger and its own block, exactly
+  // as asked: this money is billed by OpenRouter per generation (their own
+  // usage.cost figure, not token arithmetic), so folding it into the model
+  // table would corrupt the Anthropic reconciliation line below.
+  const media = await client.query(
+    `SELECT u.first_name, u.phone, sum(m.images) AS images, sum(m.videos) AS videos,
+            sum(m.cost_usd) AS cost,
+            sum(m.cost_usd) FILTER (WHERE m.date = CURRENT_DATE) AS cost_today
+     FROM media_usage_ledger m JOIN users u ON u.id = m.user_id
+     WHERE m.date >= date_trunc('month', CURRENT_DATE)
+     GROUP BY u.id ORDER BY cost DESC`);
 
   const infraHtml = await renderInfraCosts();
 
-  if (!days.rows.length) return infraHtml + '<p class="dim">עדיין אין נתוני עלות למשתמשים — החישוב רץ כל שעה.</p>';
+  // Rendered even when empty this month — a cost line that only appears once
+  // money was already spent is a cost line nobody was watching.
+  const mediaMonth = media.rows.reduce((s, r) => s + Number(r.cost), 0);
+  const mediaToday = media.rows.reduce((s, r) => s + Number(r.cost_today || 0), 0);
+  const mediaHtml = `<h4>יצירת תמונות ווידאו (OpenRouter)</h4>
+    <div class="stats">
+      <div class="stat"><div class="num">$${mediaMonth.toFixed(2)}</div><div class="lbl">סה״כ החודש</div></div>
+      <div class="stat"><div class="num">$${mediaToday.toFixed(2)}</div><div class="lbl">היום</div></div>
+    </div>
+    ${media.rows.length
+      ? `<table><tr><th>מי</th><th>תמונות</th><th>סרטונים</th><th>עלות</th></tr>
+         ${media.rows.map((r) => `<tr><td>${esc(r.first_name || r.phone)}</td><td>${Number(r.images)}</td><td>${Number(r.videos)}</td><td>$${Number(r.cost).toFixed(3)}</td></tr>`).join('')}</table>`
+      : '<p class="dim small">לא נוצרו תמונות או סרטונים החודש.</p>'}
+    <p class="dim small">חיוב לפי הדיווח של OpenRouter על כל יצירה — נפרד מעלות המודל של השיחות, ולא נכלל בשורת ההתאמה מול Anthropic.</p>`;
+
+  if (!days.rows.length) return infraHtml + mediaHtml + '<p class="dim">עדיין אין נתוני עלות למשתמשים — החישוב רץ כל שעה.</p>';
   const usersTotal = top.rows.reduce((s, r) => s + Number(r.cost), 0);
   const systemTotal = system.rows.reduce((s, r) => s + Number(r.cost), 0);
   const monthTotal = usersTotal + systemTotal;
@@ -218,7 +293,7 @@ async function renderCost(client) {
   } catch { /* the reconciliation is a nicety; never let it break the page */ }
 
   const anyEstimated = days.rows.some((r) => r.estimated);
-  return infraHtml + `<h4>עלות מודל לפי משתמש</h4><div class="stats">
+  return infraHtml + mediaHtml + `<h4>עלות מודל לפי משתמש</h4><div class="stats">
       <div class="stat"><div class="num">$${monthTotal.toFixed(2)}</div><div class="lbl">סה״כ החודש</div></div>
       <div class="stat"><div class="num">$${Number(todayRow.cost).toFixed(2)}</div><div class="lbl">היום</div></div>
       <div class="stat"><div class="num">${top.rows.length}</div><div class="lbl">משתמשים פעילים החודש</div></div>
@@ -306,6 +381,16 @@ const FLAG_SPECS = [
     help: 'משמש רק לחישוב ההערכה במסך העלות.' },
   { key: 'audit_retention_days', label: 'שמירת יומן פעילות (ימים)', type: 'int',
     help: 'אירועים שגרתיים נמחקים אחרי התקופה הזו. אירועי הרשאות ופרטיות נשמרים תמיד.' },
+  { key: 'live_subscriptions_per_user', label: 'מקסימום מנויי עדכונים חיים למשתמש', type: 'int',
+    help: 'כמה מנויי "עדכן אותי על..." פעילים מותר למשתמש אחד (מודלים חדשים, מזג אוויר וכו\u05f3).' },
+  { key: 'media_gen_phones', label: 'יצירת תמונות ווידאו — מספרים מורשים', type: 'text',
+    help: 'מספרי טלפון (E.164, מופרדים בפסיק) שמותר להם לייצר תמונות ווידאו. אדמין מורשה תמיד, בלי קשר לרשימה.' },
+  { key: 'media_image_model', label: 'מודל יצירת תמונות', type: 'text',
+    help: 'מזהה מודל ב-OpenRouter. ריק = ברירת המחדל (meta/muse-image, ~$0.01 לתמונה).' },
+  { key: 'media_video_model', label: 'מודל יצירת וידאו', type: 'text',
+    help: 'מזהה מודל ב-OpenRouter. ריק = ברירת המחדל (bytedance/seedance-2.0-mini, ~$0.05 ל-4 שניות 480p).' },
+  { key: 'public_base_url', label: 'כתובת ציבורית לקישורים', type: 'text',
+    help: 'הבסיס לקישורים שנשלחים למשתמשים (למשל דף סימון הזמינות). בלי / בסוף.' },
 ];
 const EDITABLE_FLAGS = FLAG_SPECS.map((f) => f.key);
 
@@ -318,7 +403,9 @@ async function renderFlags(client, csrf) {
            <option value="true" ${val === true ? 'selected' : ''}>פתוח</option>
            <option value="false" ${val === false ? 'selected' : ''}>סגור</option>
          </select>`
-      : `<input name="value" value="${esc(String(val))}" size="7" inputmode="decimal">`;
+      : spec.type === 'text'
+        ? `<input name="value" value="${esc(val == null ? '' : String(val))}" size="28" dir="ltr">`
+        : `<input name="value" value="${esc(String(val))}" size="7" inputmode="decimal">`;
     rows.push(`<tr>
       <td><div>${spec.label}</div><div class="dim small">${spec.help}</div></td>
       <td class="nowrap"><form method="post" action="/flags" class="inline">
@@ -635,7 +722,10 @@ function renderFactsForUser(facts, u, csrf) {
   const SOURCE = { conversation: 'מהשיחה', user_stated: 'נאמר במפורש', admin: 'הוזן ידנית' };
   return `<section><h3>עובדות — מה אולמה יודעת עליו</h3>
     <p class="hint">מי הוא ומה קורה בחייו. העשר החשובות ביותר נמצאות מול הסוכן בכל תור.
-      מחיקה כאן מפסיקה להשתמש בעובדה — ההיסטוריה נשמרת.</p>
+      מחיקה כאן מפסיקה להשתמש בעובדה — ההיסטוריה נשמרת.<br>
+      לא ייקלטו: שם (זה שדה בפרופיל), מספר טלפון (זה איש קשר), מצב של אולמה עצמה
+      (יומן מחובר, דייג׳סט מוגדר — כבר על הכרטיס), ועובדה שנוקבת בתאריך או ב״היום/מחר״
+      בלי תאריך תפוגה.</p>
     ${facts.length ? `<table><tr><th>קטגוריה</th><th>העובדה</th><th>חשיבות</th><th>מקור</th><th>נלמד</th><th></th></tr>
       ${facts.map((f) => `<tr>
         <td class="mono small">${esc(f.category)}</td>
@@ -1575,6 +1665,15 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         return page(400, 'משהו השתבש', 'החיבור לא הושלם. בקשי מאולמה קישור חדש.');
       }
 
+      // The availability picker — public like the OAuth callback and for the
+      // same reason: the person taps it from WhatsApp on their phone, so it
+      // cannot sit behind the admin password. The token in the path is the
+      // whole credential (random, user-bound, time-limited; picker.js).
+      const pick = parsed.pathname.match(picker.TOKEN_RE);
+      if (pick) {
+        return picker.handle(req, res, pool, pick[1], { calendarDomain });
+      }
+
       // Unauthenticated READINESS probe, for the deploy gate specifically —
       // "did the release we just restarted come up", nothing more.
       //
@@ -1645,7 +1744,11 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
             const spec = FLAG_SPECS.find((f) => f.key === body.key);
             let val;
             if (spec.type === 'bool') val = body.value === 'true';
-            else {
+            else if (spec.type === 'text') {
+              // Free text (model ids, phone lists) — trimmed and bounded, and
+              // never coerced: an empty value falls back to the code default.
+              val = String(body.value || '').trim().slice(0, 300) || null;
+            } else {
               val = Number(body.value);
               if (!Number.isFinite(val) || val < 0) val = null;
             }

@@ -78,7 +78,7 @@ async function sweepUnanswered(client, { readMessages, now = Date.now() } = {}) 
        -- themselves started. It stays out anyway — "Olma never initiates" is
        -- only a promise if it has no clauses. They can write again, and the
        -- live path answers a paused user normally.
-       AND paused_at IS NULL`
+       AND paused_at IS NULL AND NOT is_eval`
   );
 
   // The cooldown counts any repair ROW this hour — sent, pending, or expired.

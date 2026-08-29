@@ -19,7 +19,7 @@ async function resolveByToken(client, identityToken) {
   // Careful: no token-prefix literal in here — everything on this path flows
   // through scrubTokens-guarded output, and the e2e suite asserts the prefix
   // never appears in any reply, error text included.
-  const recovery = ' — read the file .olma-identity in your workspace and retry with its exact contents (exactly 41 characters), never from memory';
+  const recovery = ' — read the file .olma-identity in your workspace and retry with its exact contents as olma_identity (exactly 41 characters), never from memory and never a shortened form from an earlier call';
   if (!identityToken || typeof identityToken !== 'string') return err('forbidden', 'missing identity token' + recovery);
   const { rows } = await client.query(
     `SELECT * FROM users WHERE identity_token = $1`, [identityToken]

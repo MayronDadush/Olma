@@ -127,7 +127,7 @@ async function dueForSending(client, now) {
        -- the belt to that braces, and it also stops the sweep writing SUCCESSOR
        -- rows (which happens per send, so an unguarded paused user would grow a
        -- fresh reminder every day they were away).
-       AND u.paused_at IS NULL
+       AND u.paused_at IS NULL AND NOT u.is_eval
      ORDER BY r.remind_at`,
     [now]
   );
