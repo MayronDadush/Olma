@@ -24,6 +24,7 @@ const JOB_INTERVAL_SECONDS = {
   // Daily per user, but ticked hourly for the same reason memory_consolidation
   // is: "their own small hours" only means something in each person's zone.
   planning_sweep: 3600,
+  live_updates: 3600,
   usage_sweep: 3600,
   // Nightly, but ticked hourly like planning: the job itself owns the
   // small-hours window and the once-per-night watermark.
