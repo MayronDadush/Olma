@@ -385,11 +385,23 @@ async function sweepLiveUpdates(client, deps = {}) {
 // One background-model call, usage recorded against the subscriber — the
 // migration-012 rule: a direct call has no transcript for the usage sweep to
 // find, so unrecorded cost silently vanishes from the dashboard.
+//
+// maxTokens is 2000, not the ~200-token answer this needs, because the
+// default background model (deepseek-v4-flash) is a REASONING model: it
+// spends part of the budget "thinking" before writing the JSON answer, and
+// that thinking is billed as completion tokens just like the answer itself.
+// Caught live 2026-08-29 on מירון's first real news_topic run: 15 genuine
+// headlines pushed the model to 676 reasoning tokens against a 700 cap —
+// finish_reason "length", content null, no crash (parseJsonObject correctly
+// treats empty text as a failed run and the sweep retries), but no message
+// ever went out either. Tests never caught it because their fixtures were
+// too small to need real reasoning. Cost is trivial either way (~$0.0003 at
+// full 2000 tokens on flash), so the fix is headroom, not a smarter budget.
 async function summarize(client, sub, src, items, deps) {
   const complete = deps.complete || llm.complete;
   const { system, user } = src.prompt(items, { locale: sub.locale }, sub.params);
   const cfg = await llm.backgroundModel(client);
-  const res = await complete({ system, user, maxTokens: 700, ...cfg });
+  const res = await complete({ system, user, maxTokens: 2000, ...cfg });
   if (!res.ok) return null;
   await llm.recordUsage(client, sub.user_id, res.model, res.usage);
   const parsed = llm.parseJsonObject(res.text);

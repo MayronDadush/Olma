@@ -353,6 +353,18 @@ migration 021.
   `llm.recordUsage` into the subscriber's ledger) happens only when there is
   something to say. First run BASELINES silently — a new subscription must
   not open with "460 new models".
+- **A reasoning model can spend its whole answer budget thinking, and never
+  answer** (fixed 2026-08-29, hours after `news_topic` shipped). `summarize()`
+  called `complete()` with `maxTokens: 700` — fine for the tiny test fixtures,
+  not for מירון's first real run: 15 genuine headlines pushed
+  deepseek-v4-flash to 676 reasoning tokens against the cap —
+  `finish_reason: "length"`, `content: null`, no crash (an empty/unparseable
+  reply is already a failed run — the watermark stays put and the sweep
+  retries), but no message ever went out either, silently, until diagnosed by
+  hand against the live API. `maxTokens` raised to 2000 (verified live:
+  `finish_reason: "stop"`, a real coherent summary, $0.00018) and pinned by a
+  test that reads the constant back out of the source — small test fixtures
+  will never reproduce this, so nothing else could have caught the regression.
 - **Failure = retry, never swallow**: a transient fetch/LLM failure leaves
   `next_run_at` and the watermark alone (hourly tick retries); the outbox
   idempotency key `liveupd:<subId>:<date>` caps delivery at one per day per
