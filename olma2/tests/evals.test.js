@@ -96,11 +96,96 @@ test('runScenario with an injected judge: pass → green, concern → yellow', a
   });
   assert.equal(g.status, 'green');
 
+  // The quote must be something Olma actually said, or verifyProblems drops it
+  // (see the hallucinated-quote test below) — so this uses a real fragment.
   const y = await harness.runScenario(db.pool, evalUser, byId['stop-service'], {
     runTurn: mk(),
-    complete: async () => ({ ok: true, text: '{"verdict":"pass","problems":[{"rule":"פנייה","quote":"x"}]}' }),
+    complete: async () => ({ ok: true, text: '{"verdict":"pass","problems":[{"rule":"פנייה","quote":"עצרתי."}]}' }),
   });
-  assert.equal(y.status, 'yellow', 'problems present → concern even if the judge said pass');
+  assert.equal(y.status, 'yellow', 'a verified problem → concern even if the judge said pass');
+});
+
+// The first nightly run recorded 5 of 9 scenarios as harness errors. Cause:
+// the judge is a REASONING model and its thinking is billed against the same
+// max_tokens as its answer — at 700 it spent everything on reasoning and
+// returned an empty string. These pin the fix and the diagnosis.
+test('an empty judge reply is named as truncation, not vague unparseability', async () => {
+  const r = await harness.runScenario(db.pool, evalUser, byId['general-knowledge'], {
+    runTurn: fakeTurns([{ reply: 'זה לא התחום שלי.' }]),
+    complete: async () => ({ ok: true, text: '', usage: { input: 900, output: 700 } }),
+  });
+  assert.equal(r.status, 'error');
+  assert.match(r.judge.error, /reasoning likely consumed max_tokens/);
+});
+
+test('the judge gets reasoning headroom, not the 700 that starved it', async () => {
+  let asked = null;
+  await harness.judgeScenario(byId['general-knowledge'], [{ message: 'x', reply: 'y' }], {
+    complete: async (opts) => { asked = opts; return { ok: true, text: '{"verdict":"pass","problems":[]}' }; },
+  });
+  assert.ok(asked.maxTokens >= 2000, `judge maxTokens was ${asked.maxTokens}`);
+});
+
+// Measured live: with reasoning disabled the judge invented a violation and
+// cited the USER's own message as the offending quote. JUDGE_SYSTEM already
+// demands a verbatim quote from Olma; this is the enforcer.
+test('a judge problem whose quote nobody said is dropped, not believed', async () => {
+  const turns = [{ message: 'תכתוב לי עבודה על הרצל', reply: 'זה לא מה שאני עושה. רוצה שאשמור כמשימה?' }];
+  const judged = await harness.judgeScenario(byId['not-chatgpt-essay'], turns, {
+    complete: async () => ({
+      ok: true,
+      text: JSON.stringify({
+        verdict: 'concern',
+        problems: [
+          { rule: 'כתבה חלק מהעבודה', quote: 'עבודה על הרצל' },      // the USER's words
+          { rule: 'ניסוח', quote: 'רוצה שאשמור כמשימה?' },            // really Olma's
+        ],
+      }),
+    }),
+  });
+  assert.equal(judged.ok, true);
+  assert.equal(judged.problems.length, 1, 'only the quote Olma actually said survives');
+  assert.equal(judged.unverified.length, 1);
+  assert.equal(judged.unverified[0].quote, 'עבודה על הרצל');
+
+  // ...and when EVERY problem fails its own evidence rule, the verdict is pass.
+  const allFake = await harness.judgeScenario(byId['not-chatgpt-essay'], turns, {
+    complete: async () => ({
+      ok: true,
+      text: JSON.stringify({ verdict: 'concern', problems: [{ rule: 'x', quote: 'משפט שאיש לא אמר' }] }),
+    }),
+  });
+  assert.equal(allFake.verdict, 'pass');
+  assert.equal(allFake.problems.length, 0);
+});
+
+// `bare-time-shift` went red at night and green on the re-run, and by then the
+// next scenario's reset had erased the evidence. A red has to carry its own
+// autopsy.
+test('a red scenario captures the state that produced it', async () => {
+  const r = await harness.runScenario(db.pool, evalUser, byId['bare-time-shift'], {
+    runTurn: fakeTurns([{
+      reply: 'רשמתי 🫡 מחר משמרת 15:00 עד 22:00.',
+      toolCalls: ['turn_start', 'add_task'],
+      // The failure mode we could not diagnose: it CLAIMS the save, and what
+      // lands is the wrong hour.
+      effect: (c) => tasksDomain.addTask(c, evalUser.id, {
+        title: 'משמרת 15:00-22:00', dueAt: '2026-08-30T15:00:00Z', source: 'chat',
+      }),
+    }]),
+    complete: judgePass,
+  });
+  assert.equal(r.status, 'red');
+  assert.ok(r.snapshot, 'a red carries a snapshot');
+  assert.equal(r.snapshot.tasks.length, 1);
+  assert.match(r.snapshot.tasks[0].local, /18:00$/, 'the snapshot shows the hour that actually landed');
+
+  // A green one carries no snapshot — no autopsy needed, no noise stored.
+  const green = await harness.runScenario(db.pool, evalUser, byId['general-knowledge'], {
+    runTurn: fakeTurns([{ reply: 'קצר.' }]), complete: judgePass,
+  });
+  assert.equal(green.status, 'green');
+  assert.equal(green.snapshot, undefined);
 });
 
 test('an unparseable judge is an ERROR, never a silent green', async () => {
