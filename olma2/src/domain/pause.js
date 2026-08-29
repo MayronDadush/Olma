@@ -31,10 +31,10 @@ const reminders = require('./reminders');
 // person happened to press resume.
 const MAX_CATCHUP_STEPS = 800; // ~2 years of daily; a guard, never a limit in practice
 
-function nextOccurrenceAfter(from, rule, notBefore) {
+function nextOccurrenceAfter(from, rule, notBefore, tz) {
   let cursor = new Date(from);
   for (let i = 0; i < MAX_CATCHUP_STEPS; i++) {
-    const next = reminders.nextOccurrence(cursor, rule);
+    const next = reminders.nextOccurrence(cursor, rule, tz);
     if (!next) return null; // one-off: nothing to re-arm
     if (next > notBefore) return next;
     cursor = next;
@@ -109,8 +109,9 @@ async function resumeUser(client, userId, { now = new Date() } = {}) {
   // reminder was cancelled and re-cancelled across two pauses must not come
   // back twice.
   const frozen = (await client.query(
-    `SELECT DISTINCT ON (r.task_id) r.task_id, r.remind_at, r.repeat_rule
+    `SELECT DISTINCT ON (r.task_id) r.task_id, r.remind_at, r.repeat_rule, u.timezone
        FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+       JOIN users u ON u.id = t.owner_id
       WHERE t.owner_id = $1 AND r.cancelled_at >= $2
         AND r.repeat_rule IS NOT NULL
         AND t.status = 'open' AND t.archived_at IS NULL
@@ -118,7 +119,7 @@ async function resumeUser(client, userId, { now = new Date() } = {}) {
 
   const rearmed = [];
   for (const f of frozen) {
-    const next = nextOccurrenceAfter(f.remind_at, f.repeat_rule, now);
+    const next = nextOccurrenceAfter(f.remind_at, f.repeat_rule, now, f.timezone);
     if (!next) continue;
     const res = await reminders.setReminder(client, userId, f.task_id, next, f.repeat_rule);
     if (res.ok) rearmed.push({ taskId: Number(f.task_id), remindAt: next.toISOString() });

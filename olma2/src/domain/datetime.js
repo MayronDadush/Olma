@@ -207,8 +207,65 @@ function namesAMoment(text) {
   return false;
 }
 
+// ---- zoned wall-clock arithmetic --------------------------------------------
+//
+// "The 16th of every month at 08:00" is a promise about a LOCAL calendar and a
+// LOCAL clock, and neither survives being done in UTC. Two ways it breaks:
+// 08:00 Israel on the 16th is 05:00Z on the 16th, but 01:00 Israel on the 16th
+// is 22:00Z on the FIFTEENTH — so UTC arithmetic picks the wrong month day for
+// anyone whose reminder sits in the small hours. And adding a flat 24h or 30
+// days across a DST boundary moves the hour, so an 08:00 reminder becomes
+// 07:00 for half the year.
+//
+// Everything here works in wall-clock parts and converts back once, at the
+// end. No dependency: Intl already knows every zone's rules.
+
+// The local wall-clock parts of an instant, in a zone.
+function partsInZone(tz, date) {
+  const f = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz || 'UTC', hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const p = {};
+  for (const part of f.formatToParts(date)) if (part.type !== 'literal') p[part.type] = part.value;
+  return {
+    y: Number(p.year), m: Number(p.month), d: Number(p.day),
+    // Some ICU builds render midnight as hour 24 under hour12:false.
+    hh: Number(p.hour) % 24, mi: Number(p.minute), ss: Number(p.second),
+  };
+}
+
+// The zone's UTC offset, in ms, at a given instant.
+function zoneOffsetMs(tz, date) {
+  const p = partsInZone(tz, date);
+  return Date.UTC(p.y, p.m - 1, p.d, p.hh, p.mi, p.ss) - (Math.floor(date.getTime() / 1000) * 1000);
+}
+
+// The instant at which a zone's clock reads these wall-clock parts. Two passes:
+// guess using the offset in force at the naive reading, then correct with the
+// offset actually in force at the guess — which is what makes the hour survive
+// a DST boundary instead of sliding by one.
+function instantInZone(tz, { y, m, d, hh, mi, ss }) {
+  const naive = Date.UTC(y, m - 1, d, hh, mi, ss || 0);
+  let guess = new Date(naive - zoneOffsetMs(tz, new Date(naive)));
+  guess = new Date(naive - zoneOffsetMs(tz, guess));
+  return guess;
+}
+
+function daysInMonth(y, m) {
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+// The weekday of a local calendar date. Pure calendar maths on the parts, so
+// no zone is involved once we already know the local Y/M/D.
+function weekdayOfParts({ y, m, d }) {
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
 module.exports = {
   OFFSET_RE, hasOffset, badTime,
   weekdaysInText, weekdayInZone, weekdayClash,
   namesAMoment,
+  partsInZone, zoneOffsetMs, instantInZone, daysInMonth, weekdayOfParts,
 };

@@ -87,7 +87,43 @@ async function listTasks(client, ownerId, { status, includeArchived } = {}) {
 // Completing a task auto-cancels its pending reminders — no reminding about
 // something already finished. Returns how many were cancelled so adapters can
 // mention it.
+//
+// EXCEPT when the task carries a live repeating reminder, which makes it a
+// STANDING task: doing the dishes on Monday does not finish "clean the dishes
+// every Monday and Thursday". This used to mark the task done and cancel every
+// pending reminder — and the sweep writes the next occurrence as a pending row
+// the moment it fires, so one "סיימתי" silently ended the recurrence for good.
+// Confirmed live: user 3's task 17 ("לנקות את הכלים", weekly:MO,TH) was
+// completed on 2026-08-27 and has not reminded anyone since.
+//
+// So an occurrence is acknowledged and the recurrence is left armed. Finishing
+// with a standing task for real is two steps and says so: cancel_reminder to
+// stop the cadence, then complete_task.
 async function completeTask(client, ownerId, taskId) {
+  const { rows: standing } = await client.query(
+    `SELECT r.id, r.remind_at, r.repeat_rule
+       FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+      WHERE r.task_id = $1 AND t.owner_id = $2
+        AND t.status = 'open' AND t.archived_at IS NULL
+        AND r.repeat_rule IS NOT NULL
+        AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+      ORDER BY r.remind_at LIMIT 1`,
+    [taskId, ownerId]
+  );
+  if (standing[0]) {
+    const { rows: t } = await client.query(
+      `SELECT * FROM tasks WHERE id = $1 AND owner_id = $2`, [taskId, ownerId]);
+    await audit.record(client, ownerId, 'task.occurrence_completed', {
+      taskId, reminderId: Number(standing[0].id), repeatRule: standing[0].repeat_rule,
+    });
+    return ok({
+      task: t[0],
+      recurring: true,
+      repeatRule: standing[0].repeat_rule,
+      nextRemindAt: standing[0].remind_at,
+      remindersCancelled: 0,
+    });
+  }
   const { rows } = await client.query(
     `UPDATE tasks SET status = 'done', completed_at = now()
      WHERE id = $1 AND owner_id = $2 AND status = 'open' AND archived_at IS NULL

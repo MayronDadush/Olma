@@ -4,7 +4,8 @@
 // query — the original goal of the merge, kept.
 const { ok, err } = require('./results');
 const audit = require('./audit');
-const { hasOffset, badTime } = require('./datetime');
+const dt = require('./datetime');
+const { hasOffset, badTime } = dt;
 
 // ---- repeat rules -----------------------------------------------------------
 //
@@ -16,7 +17,12 @@ const { hasOffset, badTime } = require('./datetime');
 // was ever created, and a person who asked for a daily medication reminder got
 // exactly one. Found live 2026-08-18 on four of five reminders in the database.
 //
-// Canonical forms stored: 'daily' | 'weekly' | 'weekly:MO,TH' | null.
+// Canonical forms stored:
+//   'daily' | 'weekly' | 'weekly:MO,TH' | 'monthly:16' | 'monthly:last' | null
+//
+// The bare form 'monthly' is accepted on the way IN and resolved to a concrete
+// day by setReminder, which is the only place that knows both the moment and
+// the person's timezone. Nothing should be stored as bare 'monthly'.
 const DAYS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
 
 function normalizeRepeatRule(raw) {
@@ -28,8 +34,13 @@ function normalizeRepeatRule(raw) {
   // plain words, in either language the model tends to reach for
   if (/^(DAILY|EVERY ?DAY|YOM|יומי)$/.test(up)) return 'daily';
   if (/^(WEEKLY|EVERY ?WEEK|שבועי)$/.test(up)) return 'weekly';
+  // "end of every month" is its own rule, not a day number: someone who says
+  // it on the 15th means the 30th, and no day number can express "whatever the
+  // last one happens to be".
+  if (/^(MONTHLY:LAST|LAST ?DAY( OF (THE )?MONTH)?|END ?OF ?MONTH|סוף ?חודש|סוף ?כל ?חודש)$/.test(up)) return 'monthly:last';
+  if (/^(MONTHLY|EVERY ?MONTH|חודשי|כל ?חודש)$/.test(up)) return 'monthly';
 
-  // RRULE-ish: FREQ=DAILY / FREQ=WEEKLY[;BYDAY=MO,TH]
+  // RRULE-ish: FREQ=DAILY / FREQ=WEEKLY[;BYDAY=MO,TH] / FREQ=MONTHLY[;BYMONTHDAY=16]
   const freq = /FREQ=([A-Z]+)/.exec(up);
   if (freq) {
     if (freq[1] === 'DAILY') return 'daily';
@@ -39,48 +50,108 @@ function normalizeRepeatRule(raw) {
       const days = byday[1].split(',').map((d) => d.trim()).filter((d) => DAYS.includes(d));
       return days.length ? `weekly:${days.join(',')}` : 'weekly';
     }
-    return null; // MONTHLY/YEARLY are not supported; better null than a lie
+    if (freq[1] === 'MONTHLY') {
+      const byday = /BYMONTHDAY=(-?\d+)/.exec(up);
+      if (!byday) return 'monthly';
+      const n = Number(byday[1]);
+      if (n === -1) return 'monthly:last';   // RRULE's own way of saying it
+      return n >= 1 && n <= 31 ? `monthly:${n}` : null;
+    }
+    return null; // YEARLY is not supported; better null than a lie
   }
 
   if (/^WEEKLY:/.test(up)) {
     const days = up.slice(7).split(',').map((d) => d.trim()).filter((d) => DAYS.includes(d));
     return days.length ? `weekly:${days.join(',')}` : 'weekly';
   }
+  const monthDay = /^MONTHLY:(\d{1,2})$/.exec(up);
+  if (monthDay) {
+    const n = Number(monthDay[1]);
+    return n >= 1 && n <= 31 ? `monthly:${n}` : null;
+  }
   return null; // unrecognised → a one-off, never a wrong cadence
+}
+
+
+// Bare 'monthly' carries no day. Pin it to the day the reminder itself falls
+// on, read in the person's own zone — and to 'monthly:last' when that IS the
+// last day, so someone who sets it on the 31st keeps landing on month ends
+// rather than on the 31st of the months that happen to have one.
+function resolveMonthlyAnchor(rule, remindAt, tz) {
+  if (rule !== 'monthly') return rule;
+  const at = new Date(remindAt);
+  if (Number.isNaN(at.getTime())) return 'monthly';
+  const p = dt.partsInZone(tz || 'UTC', at);
+  return p.d === dt.daysInMonth(p.y, p.m) ? 'monthly:last' : `monthly:${p.d}`;
 }
 
 // The next time this rule should fire after `from`. Returns null for a
 // non-repeating rule, which is what stops the sweep spawning a successor.
-function nextOccurrence(from, rule) {
+//
+// Everything is computed as WALL-CLOCK time in the person's zone and converted
+// back once. Flat millisecond arithmetic gets two things wrong: adding 24h
+// across a DST boundary moves an 08:00 reminder to 07:00, and "the 16th" read
+// off a UTC clock is the 15th for anyone whose reminder sits before ~02:00
+// local. `tz` defaults to UTC, where both reduce to the old behaviour exactly.
+function nextOccurrence(from, rule, tz = 'UTC') {
   const norm = normalizeRepeatRule(rule);
   if (!norm) return null;
   const base = new Date(from);
-  if (norm === 'daily') return new Date(base.getTime() + 24 * 3600_000);
-  if (norm === 'weekly') return new Date(base.getTime() + 7 * 24 * 3600_000);
+  if (Number.isNaN(base.getTime())) return null;
+  const zone = tz || 'UTC';
+  const p = dt.partsInZone(zone, base);
+  const at = (y, m, d) => dt.instantInZone(zone, { y, m, d, hh: p.hh, mi: p.mi, ss: p.ss });
 
-  // weekly:MO,TH — the soonest listed weekday strictly after `from`
-  const wanted = norm.slice(7).split(',').map((d) => DAYS.indexOf(d)).filter((i) => i >= 0);
-  if (!wanted.length) return new Date(base.getTime() + 7 * 24 * 3600_000);
-  for (let step = 1; step <= 7; step++) {
-    const cand = new Date(base.getTime() + step * 24 * 3600_000);
-    if (wanted.includes(cand.getUTCDay())) return cand;
+  if (norm === 'daily') return at(p.y, p.m, p.d + 1);
+  if (norm === 'weekly') return at(p.y, p.m, p.d + 7);
+
+  if (norm.startsWith('monthly')) {
+    // The day comes from the RULE, never from the previous occurrence, so a
+    // clamp cannot compound: 'monthly:31' is Jan 31 → Feb 28 → Mar 31, not
+    // Mar 28. Clamping rather than skipping is deliberate — a medication
+    // reminder must not vanish for a month because February is short.
+    const spec = norm.slice('monthly'.length + 1);   // '' | 'last' | '16'
+    const day = spec === 'last' ? 'last' : (Number(spec) || p.d);
+    for (let step = 0; step <= 2; step++) {
+      const y = p.y + Math.floor((p.m - 1 + step) / 12);
+      const m = ((p.m - 1 + step) % 12) + 1;
+      const dim = dt.daysInMonth(y, m);
+      const cand = at(y, m, day === 'last' ? dim : Math.min(day, dim));
+      if (cand.getTime() > base.getTime()) return cand;
+    }
+    return null;
   }
-  return new Date(base.getTime() + 7 * 24 * 3600_000);
+
+  // weekly:MO,TH — the soonest listed weekday strictly after `from`, judged on
+  // the LOCAL calendar date rather than the UTC one.
+  const wanted = norm.slice(7).split(',').map((d) => DAYS.indexOf(d)).filter((i) => i >= 0);
+  if (!wanted.length) return at(p.y, p.m, p.d + 7);
+  for (let step = 1; step <= 7; step++) {
+    const cand = { y: p.y, m: p.m, d: p.d + step };
+    if (wanted.includes(dt.weekdayOfParts(cand))) return at(cand.y, cand.m, cand.d);
+  }
+  return at(p.y, p.m, p.d + 7);
 }
 
 async function setReminder(client, ownerId, taskId, remindAt, repeatRule) {
   if (!remindAt) return err('invalid', 'remind_at required');
   if (!hasOffset(remindAt)) return badTime('remind_at', remindAt);
   const { rows } = await client.query(
-    `SELECT id, status FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
+    `SELECT t.id, t.status, u.timezone FROM tasks t JOIN users u ON u.id = t.owner_id
+      WHERE t.id = $1 AND t.owner_id = $2 AND t.archived_at IS NULL`,
     [taskId, ownerId]
   );
   if (!rows[0]) return err('not_found', 'task not found');
   if (rows[0].status !== 'open') return err('invalid', 'cannot set a reminder on a completed task');
+  // "every month" has to be pinned to a day, and this is the only place that
+  // knows both the moment and the zone to read it in. Stored as the concrete
+  // day so the rule can never re-derive itself from a clamped occurrence and
+  // walk backwards month by month.
+  const rule = resolveMonthlyAnchor(normalizeRepeatRule(repeatRule), remindAt, rows[0].timezone);
   const ins = await client.query(
     `INSERT INTO task_reminders (task_id, remind_at, repeat_rule)
      VALUES ($1, $2, $3) RETURNING *`,
-    [taskId, remindAt, normalizeRepeatRule(repeatRule)]
+    [taskId, remindAt, rule]
   );
   await audit.record(client, ownerId, 'reminder.created', { taskId, reminderId: ins.rows[0].id });
   return ok({ reminder: ins.rows[0] });
@@ -144,7 +215,7 @@ async function dueForSending(client, now, opts = {}) {
     ? Number(opts.gapHours) : ESCALATION_GAP_HOURS;
   const { rows } = await client.query(
     `SELECT r.id AS reminder_id, r.task_id, r.remind_at, r.repeat_rule, r.attempts,
-            t.owner_id, t.title, t.due_at
+            t.owner_id, t.title, t.due_at, u.timezone
      FROM task_reminders r
      JOIN tasks t ON t.id = r.task_id
      JOIN users u ON u.id = t.owner_id
@@ -215,6 +286,6 @@ async function markSent(client, reminderId) {
 
 module.exports = {
   setReminder, cancelReminder, listReminders, dueForSending, markSent,
-  normalizeRepeatRule, nextOccurrence,
+  normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor,
   recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS,
 };
