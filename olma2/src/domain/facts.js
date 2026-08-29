@@ -93,7 +93,7 @@ function parseExpiry(value) {
   return { ok: true, value: d.toISOString() };
 }
 
-async function rememberFact(client, userId, { category, fact, importance, expiresAt, source } = {}) {
+async function rememberFact(client, userId, { category, fact, importance, expiresAt, source, replaces } = {}) {
   if (!KNOWN_FACT_CATEGORIES.includes(category)) {
     return err('invalid', `category must be one of: ${KNOWN_FACT_CATEGORIES.join(', ')}`, { reason: 'category' });
   }
@@ -130,7 +130,30 @@ async function rememberFact(client, userId, { category, fact, importance, expire
     [userId, category, text, imp, src, expiry.value]
   );
   await audit.record(client, userId, 'fact.remembered', { factId: Number(rows[0].id), category, importance: imp });
-  return ok({ fact: rows[0] });
+
+  // Optional: this fact supersedes an earlier one, in the same breath rather
+  // than as a separate forget_fact call an agent (or the extraction job) might
+  // never make. Best-effort and silent on a bad pointer — a housekeeping
+  // pointer failing must never cost the fact itself, which is the same
+  // reasoning refreshUserCard's own best-effort follows. Ownership and
+  // `active = true` are re-checked here regardless of what the caller already
+  // believes: a stale, foreign, or already-inactive id is simply a no-op, not
+  // an error.
+  let replacedId = null;
+  const target = Number(replaces);
+  if (Number.isInteger(target) && target > 0 && target !== Number(rows[0].id)) {
+    const { rows: retired } = await client.query(
+      `UPDATE user_facts SET active = false, updated_at = now()
+       WHERE id = $1 AND user_id = $2 AND active = true RETURNING id`,
+      [target, userId]
+    );
+    if (retired[0]) {
+      replacedId = Number(retired[0].id);
+      await audit.record(client, userId, 'fact.replaced',
+        { oldFactId: replacedId, newFactId: Number(rows[0].id) });
+    }
+  }
+  return ok({ fact: rows[0], replacedId });
 }
 
 // Soft delete: the row stays, it just stops being retrieved. Someone correcting

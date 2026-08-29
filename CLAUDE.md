@@ -230,6 +230,25 @@ seen. A `user_contacts.birthday` column plus a `yearly` repeat rule
 (`normalizeRepeatRule` has no yearly today) is the version that would cover the
 rest; not built.
 
+**A refinement now replaces instead of piling on.** Live example: "עובד
+במוסך" (#29, `user_stated`) and, less than an hour later, "עובד במוסך בהוד
+השרון א׳-ה׳ 7:30-16:00" (#33, `conversation`) — the extraction job's own
+dedupe instruction only ever said "do not restate", so a genuinely more
+complete version of the same fact sat beside the original forever instead of
+completing it. `rememberFact` now takes an optional `replaces` (a fact id,
+soft-deleted in the same call as the new row lands, with its own
+`fact.replaced` audit row); the known-facts block the extraction job shows the
+model now carries each fact's `#id`, and the JSON contract gained a `replaces`
+field for exactly this case. **Two independent gates, not one**: `applyExtraction`
+only honours an id from the EXACT snapshot the model was shown this call —
+never one earlier in the same batch, never invented — and `rememberFact`
+re-verifies ownership and `active = true` underneath that regardless. Without
+the first gate, a model could point at any of a person's own facts by
+guessing a plausible id and retire it sight unseen; the test suite proves
+this by deliberately disabling each gate in turn and confirming the specific
+test that catches it. A bad or foreign `replaces` is a silent no-op — it must
+never cost the fact actually being saved.
+
 **A refused fact is counted, never silently dropped.** The guards swallow a
 proposal, and a nightly job that quietly drops facts looks exactly like a quiet
 week — so `applyExtraction` tallies refusals by reason (`{system_state: 1,
