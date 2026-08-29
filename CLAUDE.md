@@ -55,6 +55,46 @@ describes **v1**, which is retired-in-place: its code still sits in
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
 
+### Two branches, one migration number — a third time, in one afternoon (fixed 2026-08-29)
+
+Three merges to `main` within about an hour (#62, #63, and a commit pushed
+into #63 mid-review) each independently burned migration number 21/22/23 —
+the exact incident "Two branches, one migration number" already documents
+twice. Every single occurrence followed the documented rule correctly:
+`SELECT max(version)` on the box, not `ls migrations/` on main. The rule
+still failed, because it is **necessary but not sufficient** — the number is
+only safe relative to what has been **applied**, and two branches in flight
+cannot see each other's still-unmerged files. No amount of discipline closes
+that gap; only the merge itself, or a check that runs at merge time, can.
+
+Two changes, neither of which existed before this:
+
+- **`scripts/check-migrations.js`** — a DB-less, dependency-less wrapper
+  around `migrate.js`'s own `listMigrations()` (already collision-checked,
+  already tested in `db-types.test.js`; this only wraps it for a fast CLI
+  exit code). Wired into CI as its own job, `migrations`, that `test`
+  depends on — so a collision fails in seconds with the one line that
+  explains it, instead of several minutes of 500+ tests all throwing in
+  their `before` hook, which reads like "everything is broken" rather than
+  "one number is duplicated."
+- **`concurrency:` on the whole workflow**, grouped by `github.ref`,
+  `cancel-in-progress` false only on `main`. This is the other half of the
+  same afternoon: three merges to `main` in quick succession each trigger a
+  real `deploy.sh --restart` against the one production box, and two of
+  those running at once would race the same `/opt/olma2-previous` rollback
+  snapshot — nothing before this stopped that. Every other ref (a PR, a
+  feature-branch push) still cancels its own superseded runs, the ordinary
+  CI-time-saving default, since only `main` has a deploy to protect. Before
+  this existed, the discipline was manual: merge one, wait for its
+  `deploy.sh` to finish and verify `/health`, only then merge the next —
+  which is what actually happened three times in a row this session while
+  the fix above was being built.
+
+Neither change touches the collision RULE itself (`listMigrations()`,
+unchanged) — both are about catching a violation earlier and preventing the
+conditions that make one likely, which is a different problem than the rule
+already solves.
+
 ### Availability is tapped on a page, not typed (2026-08-28)
 
 The first "ephemeral UI": when someone needs to give meeting availability,
