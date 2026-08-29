@@ -131,6 +131,19 @@ async function renderHeartbeats(client) {
   return banner + `<table><tr><th>תהליך</th><th>רץ לאחרונה</th><th>שגיאה</th></tr>${tr}</table>`;
 }
 
+// One line of "here is what was actually in the record when it failed".
+function summariseSnapshot(snap) {
+  const bits = [];
+  const tasks = snap.tasks || [];
+  bits.push(tasks.length
+    ? `משימות: ${tasks.map((t) => `"${t.title}"${t.local ? ` @${t.local}` : ' (ללא מועד)'}`).join(', ')}`
+    : 'לא נשמרה אף משימה');
+  if ((snap.facts || []).length) bits.push(`עובדות: ${snap.facts.map((f) => f.fact).join(' | ')}`);
+  if ((snap.contacts || []).length) bits.push(`אנשי קשר: ${snap.contacts.map((c) => c.name).join(', ')}`);
+  if (snap.paused) bits.push('המשתמש מושהה');
+  return bits.join(' · ').slice(0, 400);
+}
+
 // The behavioral eval board: the latest run's verdict per scenario, plus a
 // short run history. Reads only — running happens in jobs/evals.js and
 // scripts/run-evals.js.
@@ -159,9 +172,12 @@ async function renderEvals(client) {
     const judge = r.judge && r.judge.problems && r.judge.problems.length
       ? r.judge.problems.map((p) => p.rule).join('; ')
       : (r.judge && r.judge.error ? `שופט: ${r.judge.error}` : '');
+    // The state that produced a red, captured before the next scenario's
+    // reset wiped it — without this a morning-after red says only "failed".
+    const snap = r.snapshot ? summariseSnapshot(r.snapshot) : '';
     return `<tr class="${r.status === 'red' || r.status === 'error' ? 'bad' : ''}">
       <td>${ICONS[r.status] || ''} ${esc(r.scenario)}</td>
-      <td class="dim">${esc(hard || judge || '')}</td>
+      <td class="dim">${esc(hard || judge || '')}${snap ? `<br><span class="mono">${esc(snap)}</span>` : ''}</td>
       <td class="dim">${r.duration_ms ? Math.round(r.duration_ms / 1000) + 's' : ''}</td></tr>`;
   }).join('');
 

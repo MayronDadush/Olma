@@ -290,11 +290,23 @@ migration 021.
   hourly `live_updates` job (brokerd, expectations.js) picks due rows —
   planning-sweep pattern, rows decide who is due. Sources today:
   `openrouter_models` (three catalog views — the bare list hides media
-  models; diff by model id against `last_state.knownIds`; only sends when
-  new models actually appeared, with an "is any of this interesting for
-  Olma" note) and `weather` (Open-Meteo, free, no key; city geocoded ONCE at
-  subscribe time; sends every cadence). Adding a source is one registry
-  entry — validateParams + fetch + prompt — no migration, no new sweeper.
+  models; diff by model id against `last_state.knownIds`, an EVER-GROWING
+  set — right for a catalog that is mostly append-only; only sends when new
+  models actually appeared, with an "is any of this interesting for Olma"
+  note), `weather` (Open-Meteo, free, no key; city geocoded ONCE at
+  subscribe time; sends every cadence), and `news_topic` / `sports_summary`
+  (2026-08-29 — Google News' own `news.google.com/rss/search?q=...` feed, no
+  key, verified live; RSS is time-ordered and churns constantly, so unlike
+  the catalog the watermark here is just the newest `pubDate` seen —
+  bounded, and correct forever since old items never resurface; team is
+  optional on sports, defaulting to a general "ספורט" query; both only send
+  when something newer than the watermark actually appears). Adding a
+  source is one registry entry — validateParams + fetch + prompt — no
+  migration, no new sweeper. Parses RSS with a ~30-line zero-dependency
+  reader (`parseRssItems`) rather than a new npm package — justified the
+  same way the project's only two deps (`pg`, `@resvg/resvg-js`) were, and
+  narrow on purpose: it only has to survive Google's own well-known feed
+  shape, not arbitrary hostile XML.
 - **The token economics are the design**: detection is a structured-API diff
   in plain code (zero tokens); the ONE background-model call
   (`llm.backgroundModel` → DeepSeek flash, ~$0.0001, recorded via
@@ -309,9 +321,7 @@ migration 021.
   `cancel_live_update` (open to all users, capped by the
   `live_subscriptions_per_user` flag, default 5; duplicates by
   (source, params) refused). Delivery is outbox kind `live_update`, normal
-  urgency — quiet hours and budget hold as usual. Future sources the owner
-  floated: sports summaries, topical news — RSS-diffing fits the same
-  registry shape when wanted.
+  urgency — quiet hours and budget hold as usual.
 
 ### Image + video generation, access-limited, spend in its own column (2026-08-28)
 
