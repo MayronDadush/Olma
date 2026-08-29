@@ -4,6 +4,8 @@
 // a transient failure leaves the watermark alone so the hourly tick retries.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { freshDb, makeUser } = require('./helpers');
 const liveUpdates = require('../src/domain/live-updates');
 const flags = require('../src/domain/flags');
@@ -351,5 +353,51 @@ test('a malformed RSS response is a transient failure, not a crash — the sweep
     const after_ = await c.query(`SELECT last_state, next_run_at FROM live_subscriptions WHERE id = $1`, [sub.data.subscription_id]);
     assert.deepEqual(before_.rows[0].last_state, after_.rows[0].last_state);
     assert.deepEqual(before_.rows[0].next_run_at, after_.rows[0].next_run_at);
+    // This subscription is DELIBERATELY left errored/due (that is the point
+    // of the test) — cancel it so it doesn't stay due:true forever and
+    // pollute a later test's sweepLiveUpdates() error count.
+    await liveUpdates.unsubscribe(c, dana.id, sub.data.subscription_id);
   });
+});
+
+test('a reasoning model that hits its token budget before writing an answer is a transient failure, not a silent swallow', async () => {
+  // Real incident, 2026-08-29: deepseek-v4-flash spent its whole completion
+  // budget "thinking" about 15 real headlines and never wrote the JSON
+  // answer — res.ok true, text empty (finish_reason "length"). Money was
+  // still spent and must still be recorded; the watermark must NOT advance,
+  // or the headlines that caused this are silently lost forever.
+  await withClient(async (c) => {
+    const sub = await liveUpdates.subscribe(c, dana, { source: 'news_topic', params: { topic: 'רובוטיקה' } }, {});
+    await c.query(`UPDATE live_subscriptions SET last_state = '{"lastSeen":"2026-08-28T00:00:00.000Z"}',
+                   next_run_at = now() WHERE id = $1`, [sub.data.subscription_id]);
+    const before_ = await c.query(`SELECT last_state, next_run_at FROM live_subscriptions WHERE id = $1`, [sub.data.subscription_id]);
+    const truncated = async () => ({
+      ok: true, text: '', model: 'deepseek/deepseek-v4-flash',
+      usage: { input: 800, output: 700, cacheRead: 0, cacheWrite: 0 },
+    });
+    const s = await liveUpdates.sweepLiveUpdates(c, {
+      fetchImpl: rssFetch(RSS_SAMPLE([{ title: 'כותרת טרייה', pubDate: 'Sat, 29 Aug 2026 09:00:00 GMT' }])),
+      complete: truncated,
+    });
+    assert.equal(s.errored.length, 1);
+    const after_ = await c.query(`SELECT last_state, next_run_at FROM live_subscriptions WHERE id = $1`, [sub.data.subscription_id]);
+    assert.deepEqual(before_.rows[0].last_state, after_.rows[0].last_state);
+    assert.deepEqual(before_.rows[0].next_run_at, after_.rows[0].next_run_at);
+    // The truncated call still cost real money and must still be recorded.
+    const { rows: led } = await c.query(`SELECT count(*)::int AS n FROM usage_ledger WHERE user_id = $1`, [dana.id]);
+    assert.ok(led[0].n >= 1);
+    // Deliberately left errored/due — clean up so it cannot pollute a later
+    // test's sweepLiveUpdates() error count.
+    await liveUpdates.unsubscribe(c, dana.id, sub.data.subscription_id);
+  });
+});
+
+test('the summarising call carries enough headroom for a reasoning model on a full 15-headline batch', () => {
+  // Not a live-API test (no network in the suite) — a pin on the constant
+  // itself, so a future "optimisation" back toward a small maxTokens cannot
+  // reintroduce the 2026-08-29 incident without a test noticing.
+  const src = fs.readFileSync(path.join(__dirname, '../src/domain/live-updates.js'), 'utf8');
+  const m = src.match(/maxTokens:\s*(\d+)/);
+  assert.ok(m, 'summarize() must set an explicit maxTokens');
+  assert.ok(Number(m[1]) >= 2000, `maxTokens (${m[1]}) is too low for a reasoning model — see the 2026-08-29 incident in the comment above summarize()`);
 });
