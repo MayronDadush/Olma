@@ -23,11 +23,25 @@ function cleanTitle(title) {
   return String(title || '').replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
+// Rungs 2 and 3 of the escalation ladder ride this same raw pipe, for the same
+// reason — a follow-up about medication must not be downstream of a billing
+// account either. What they must NOT be is the same sentence twice: a repeat
+// identical to the first message is the drum this system keeps removing. Each
+// says what it is and carries its own way out.
+//
+// Written without grammatical gender on purpose. Deterministic text cannot
+// know who it is addressing, and in Hebrew a guess is wrong for half the
+// people who read it — so every verb here is an infinitive or first-person.
+const FOLLOW_UP = 'בוצע? אפשר לכתוב לי, או להגיד לי להפסיק להזכיר על זה.';
+const LAST_CALL = 'זו התזכורת האחרונה על זה — לא אזכיר שוב מיוזמתי. אם עדיין רלוונטי, אפשר להגיד לי מתי להזכיר.';
+
 function renderReminderText(payload) {
   const p = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
   const title = cleanTitle(p.title);
   if (!title) return null;
-  return `⏰ תזכורת: ${title}`;
+  const attempt = Number(p.attempt) || 1;
+  if (attempt <= 1) return `⏰ תזכורת: ${title}`;
+  return `⏰ תזכורת חוזרת: ${title}\n${p.finalAttempt ? LAST_CALL : FOLLOW_UP}`;
 }
 
 // The single decision point the deliverer consults: a non-null return means

@@ -114,24 +114,98 @@ async function listReminders(client, ownerId, taskId) {
 // The sweep query the whole design leans on: everything due for sending now,
 // across all users, one indexed scan. Caller (outbox enqueue job) marks
 // sent_at only after the outbox row is durably written.
-async function dueForSending(client, now) {
+// ---- the escalation ladder --------------------------------------------------
+//
+// A reminder used to fire exactly once. Three rungs now: the moment they
+// chose, a few hours later, and the next day at the same hour. Four rules hold
+// it to that and no further.
+//
+// 1. A rung is only scheduled once the PREVIOUS one actually reached them —
+//    delivered, not merely enqueued. This is the check-in bug's lesson: that
+//    ladder counted messages that died inside quiet hours as ignores and backed
+//    off to weekly on people who had never been sent anything. A reminder held
+//    all night and expired must not burn a rung the person never saw.
+// 2. Repeating reminders never escalate. A repeat rule IS the person's own
+//    chosen cadence; chasing it as well would be two drums on one task, and the
+//    successor row already brings it back tomorrow.
+// 3. The ladder dies the moment the task is completed or the reminder is
+//    cancelled — both already write to the columns this query filters on, so
+//    "done" and "stop reminding me" need no new plumbing at all.
+// 4. Only the FIRST rung is urgent. That moment is the user's; a follow-up is
+//    Olma's own idea and queues behind the daily proactive budget like every
+//    other thing Olma decided to say (that split lives in the sweep).
+const ESCALATION_MAX_ATTEMPTS = 3;
+const ESCALATION_GAP_HOURS = 3;
+
+async function dueForSending(client, now, opts = {}) {
+  const maxAttempts = Number.isFinite(Number(opts.maxAttempts)) && Number(opts.maxAttempts) > 0
+    ? Math.floor(Number(opts.maxAttempts)) : ESCALATION_MAX_ATTEMPTS;
+  const gapHours = Number.isFinite(Number(opts.gapHours)) && Number(opts.gapHours) > 0
+    ? Number(opts.gapHours) : ESCALATION_GAP_HOURS;
   const { rows } = await client.query(
-    `SELECT r.id AS reminder_id, r.task_id, r.remind_at, r.repeat_rule,
+    `SELECT r.id AS reminder_id, r.task_id, r.remind_at, r.repeat_rule, r.attempts,
             t.owner_id, t.title, t.due_at
      FROM task_reminders r
      JOIN tasks t ON t.id = r.task_id
      JOIN users u ON u.id = t.owner_id
-     WHERE r.remind_at <= $1 AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+     WHERE r.sent_at IS NULL AND r.cancelled_at IS NULL
        AND t.status = 'open' AND t.archived_at IS NULL
        -- A paused user's reminders are already cancelled by pauseUser; this is
        -- the belt to that braces, and it also stops the sweep writing SUCCESSOR
        -- rows (which happens per send, so an unguarded paused user would grow a
        -- fresh reminder every day they were away).
        AND u.paused_at IS NULL AND NOT u.is_eval
+       AND (
+         -- Rung 1: the moment they picked. Unchanged.
+         (r.attempts = 0 AND r.remind_at <= $1::timestamptz)
+         OR
+         (r.attempts BETWEEN 1 AND $2::int - 1
+          AND r.repeat_rule IS NULL
+          -- The previous rung has to have LANDED. hold_reason IS NULL is what
+          -- separates delivered from dropped/expired/cancelled — a row the gate
+          -- stamped on the way to the bin carries a reason and does not count.
+          AND EXISTS (
+            SELECT 1 FROM outbox o
+             WHERE o.user_id = t.owner_id
+               AND o.idempotency_key = CASE WHEN r.attempts = 1
+                     THEN 'reminder:' || r.id
+                     ELSE 'reminder:' || r.id || ':' || r.attempts END
+               AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL
+               AND o.sent_at <= $1::timestamptz - ($3::double precision * interval '1 hour')
+          )
+          -- Rung 3 is "next day at the hour they chose", not "gap hours after
+          -- rung 2" — computed through their own timezone so the wall-clock
+          -- hour survives a DST boundary instead of drifting by one.
+          AND (r.attempts <> 2
+               OR (r.remind_at AT TIME ZONE COALESCE(u.timezone, 'UTC') + interval '1 day')
+                    AT TIME ZONE COALESCE(u.timezone, 'UTC') <= $1::timestamptz)
+         )
+       )
      ORDER BY r.remind_at`,
-    [now]
+    [now, maxAttempts, gapHours]
   );
   return ok({ due: rows });
+}
+
+// The idempotency key for a rung. Rung 1 deliberately keeps the ORIGINAL
+// unsuffixed key: rows enqueued before this shipped carry it, and a rename
+// would let the sweep re-enqueue them as brand new — a duplicate reminder is
+// the one outcome worse than a missed one.
+function attemptKey(reminderId, attempt) {
+  return attempt === 1 ? `reminder:${reminderId}` : `reminder:${reminderId}:${attempt}`;
+}
+
+// Record that a rung went on the wire. `retire` stamps sent_at, which is what
+// takes the reminder out of the pending set for good.
+async function recordAttempt(client, reminderId, { retire } = {}) {
+  await client.query(
+    `UPDATE task_reminders
+        SET attempts = attempts + 1,
+            sent_at = CASE WHEN $2 THEN now() ELSE sent_at END
+      WHERE id = $1`,
+    [reminderId, Boolean(retire)]
+  );
+  return ok({ reminderId });
 }
 
 async function markSent(client, reminderId) {
@@ -142,4 +216,5 @@ async function markSent(client, reminderId) {
 module.exports = {
   setReminder, cancelReminder, listReminders, dueForSending, markSent,
   normalizeRepeatRule, nextOccurrence,
+  recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS,
 };

@@ -6,24 +6,50 @@ const { enqueue, collectHeld } = require('../outbox/enqueue');
 const reminders = require('../domain/reminders');
 const meetings = require('../domain/meetings');
 const quota = require('../domain/quota');
+const flags = require('../domain/flags');
 const { minutesInTz, parseHHMM } = require('../outbox/gate');
 
 // ---- reminders --------------------------------------------------------------
-// Enqueue each due reminder as urgent (the user picked the time). A reminder
-// expires 2h past its moment: past that it is "עבר זמנה", never a live nag.
+// A reminder gets up to three rungs (domain/reminders.dueForSending owns which
+// are due). A rung expires 2h past ITS OWN moment: past that it is "עבר זמנה",
+// never a live nag.
 async function sweepReminders(client, nowIso) {
   const now = nowIso || new Date().toISOString();
-  const due = await reminders.dueForSending(client, now);
+  const maxAttempts = Number(await flags.getFlag(client, 'reminder_escalation_max'))
+    || reminders.ESCALATION_MAX_ATTEMPTS;
+  const gapHours = Number(await flags.getFlag(client, 'reminder_escalation_gap_hours'))
+    || reminders.ESCALATION_GAP_HOURS;
+  const due = await reminders.dueForSending(client, now, { maxAttempts, gapHours });
   const out = [];
   for (const r of due.data.due) {
+    const attempt = Number(r.attempts) + 1;
+    // A repeating reminder never climbs — its own rule already brings it back,
+    // so it retires on the first send exactly as before.
+    const repeats = Boolean(reminders.normalizeRepeatRule(r.repeat_rule));
+    const finalAttempt = repeats || attempt >= maxAttempts;
     const res = await enqueue(client, {
-      userId: r.owner_id, kind: 'reminder', urgency: 'urgent',
-      payload: { taskId: Number(r.task_id), title: r.title, remindAt: r.remind_at },
-      expiresAt: new Date(new Date(r.remind_at).getTime() + 2 * 3600_000),
-      idempotencyKey: `reminder:${r.reminder_id}`,
+      userId: r.owner_id,
+      kind: 'reminder',
+      // Only the moment THEY chose is urgent enough to skip the daily budget.
+      // A follow-up is Olma's own idea and queues like everything else Olma
+      // decided to say — otherwise three rungs per reminder would be a way to
+      // spend an unlimited proactive budget by setting enough reminders.
+      urgency: attempt === 1 ? 'urgent' : 'normal',
+      payload: {
+        taskId: Number(r.task_id), title: r.title, remindAt: r.remind_at,
+        ...(attempt > 1 ? { attempt, finalAttempt } : {}),
+      },
+      // Rung 1 keeps the original 2h-past-the-moment window. A later rung is
+      // measured from now: remind_at is hours or a day behind and would make
+      // the row expire before it was ever looked at.
+      expiresAt: new Date(
+        (attempt === 1 ? new Date(r.remind_at).getTime() : new Date(now).getTime())
+        + 2 * 3600_000
+      ),
+      idempotencyKey: reminders.attemptKey(r.reminder_id, attempt),
     });
     if (res.data.enqueued) {
-      await reminders.markSent(client, r.reminder_id);
+      await reminders.recordAttempt(client, r.reminder_id, { retire: finalAttempt });
       // Spawn the next occurrence. The rule vocabulary lives in one place —
       // this used to compare against the literals 'daily'/'weekly' while the
       // model was storing 'FREQ=DAILY', so every repeating reminder silently
@@ -38,6 +64,20 @@ async function sweepReminders(client, nowIso) {
       out.push(r.reminder_id);
     }
   }
+
+  // Retire a ladder that can no longer climb. A rung is only scheduled once
+  // the previous one was DELIVERED, so a reminder whose rung the gate held,
+  // dropped or expired correctly stops climbing — and would then sit pending
+  // for ever, showing up in list_my_reminders as though it had never fired.
+  // The last rung is next-day-at-the-original-hour, so nothing can still be
+  // due two days on. Before escalation this could not happen: the row retired
+  // on enqueue, whether or not anything reached anyone.
+  await client.query(
+    `UPDATE task_reminders SET sent_at = now()
+      WHERE sent_at IS NULL AND cancelled_at IS NULL AND attempts > 0
+        AND remind_at < $1::timestamptz - interval '2 days'`,
+    [now]
+  );
   return out;
 }
 

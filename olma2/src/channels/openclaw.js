@@ -122,6 +122,10 @@ function bodyFor(row, p) {
       return `Scheduled digest time. Call get_my_digest with scope="${p.scope || 'summary'}" now${''
         } — and if their calendar is connected (USER.md says), also my_calendar_events for the next day or two: a digest that says "יום עמוס לך מחר" because it actually looked is the whole point of having the calendar connected. Send the user a natural, warm summary of the result in their language. If what comes back is long enough that it would arrive as a wall of text — roughly 5+ items, or spread across several weeks — call render_schedule_card instead and reply with one short sentence plus "MEDIA: <path>" on its own line, rather than listing it all out. ${p.folded && p.folded.length ? `Also weave in these queued updates naturally: ${JSON.stringify(p.folded)}.` : ''}`;
     case 'reminder':
+      // Every rung of the escalation ladder rides the RAW pipe, so this branch
+      // is reached only by a reminder payload carrying its own `instruction`
+      // (see proactive-text.rawPipeTextFor). The follow-up wording lives in
+      // domain/proactive-text.js, where it actually runs.
       return `Reminder due for task "${p.title}" (task id ${p.taskId}). Remind the user about it now, briefly and warmly.`;
     case 'checkin':
       return p.checkinInstruction || 'Check in with the user briefly.';

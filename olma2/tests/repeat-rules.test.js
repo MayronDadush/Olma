@@ -67,6 +67,11 @@ test('a daily reminder written as FREQ=DAILY keeps firing', async (t) => {
   assert.equal(new Date(after.rows[0].remind_at).toISOString(), '2026-08-18T16:00:00.000Z');
 });
 
+// This used to assert nothing was left pending at all, which stopped being the
+// invariant when reminders gained an escalation ladder: the ONE row stays
+// pending so it can be followed up (see reminder-escalation.test.js). What it
+// was really protecting — a one-off must not manufacture a second reminder —
+// is unchanged and is what it checks now.
 test('a one-off reminder does not spawn a successor', async (t) => {
   const { pool, teardown } = await freshDb();
   t.after(teardown);
@@ -76,7 +81,9 @@ test('a one-off reminder does not spawn a successor', async (t) => {
     await reminders.setReminder(c, user.id, task.data.task.id, '2026-08-17T16:00:00Z', null);
   });
   await withTx(pool, (c) => sweeps.sweepReminders(c, '2026-08-17T16:01:00Z'));
-  const after = await pool.query(
-    `SELECT 1 FROM task_reminders WHERE sent_at IS NULL AND cancelled_at IS NULL`);
-  assert.equal(after.rows.length, 0);
+  const all = await pool.query(`SELECT remind_at, attempts FROM task_reminders`);
+  assert.equal(all.rows.length, 1, 'no successor row for a one-off');
+  assert.equal(new Date(all.rows[0].remind_at).toISOString(), '2026-08-17T16:00:00.000Z',
+    'and the original moment is not rewritten by the send');
+  assert.equal(all.rows[0].attempts, 1);
 });

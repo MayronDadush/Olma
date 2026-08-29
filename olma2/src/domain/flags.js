@@ -13,6 +13,10 @@ const DEFAULTS = {
   media_gen_phones: '+972505404255',
   media_image_model: 'meta/muse-image',
   media_video_model: 'bytedance/seedance-2.0-mini',
+  // Reminder escalation (domain/reminders.js): how many times one reminder may
+  // come back, and how long after a DELIVERED rung the next one is due.
+  reminder_escalation_max: 3,
+  reminder_escalation_gap_hours: 3,
   // Base for user-facing links (availability picker). The dashboard's own
   // host — Caddy already routes it here.
   public_base_url: 'https://olmachat.duckdns.org',
