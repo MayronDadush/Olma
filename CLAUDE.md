@@ -277,6 +277,42 @@ reverse. Worth noting how it was found: not by anyone reading `ls migrations/`,
 but by every single test failing at once the first time somebody ran the suite
 after both merges.
 
+### Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)
+
+Owner ask: מירון wants WhatsApp updates about new models on OpenRouter (with
+a note when something is relevant to Olma), and more generally a feature
+where a user can ask to be kept updated about live information — built
+SMART: structured sources, not web crawling, minimal tokens. `domain/live-updates.js`,
+migration 021.
+
+- **A subscription = a SOURCE from a code registry + cadence + local hour.**
+  `live_subscriptions` (params, last_state watermark, next_run_at); the
+  hourly `live_updates` job (brokerd, expectations.js) picks due rows —
+  planning-sweep pattern, rows decide who is due. Sources today:
+  `openrouter_models` (three catalog views — the bare list hides media
+  models; diff by model id against `last_state.knownIds`; only sends when
+  new models actually appeared, with an "is any of this interesting for
+  Olma" note) and `weather` (Open-Meteo, free, no key; city geocoded ONCE at
+  subscribe time; sends every cadence). Adding a source is one registry
+  entry — validateParams + fetch + prompt — no migration, no new sweeper.
+- **The token economics are the design**: detection is a structured-API diff
+  in plain code (zero tokens); the ONE background-model call
+  (`llm.backgroundModel` → DeepSeek flash, ~$0.0001, recorded via
+  `llm.recordUsage` into the subscriber's ledger) happens only when there is
+  something to say. First run BASELINES silently — a new subscription must
+  not open with "460 new models".
+- **Failure = retry, never swallow**: a transient fetch/LLM failure leaves
+  `next_run_at` and the watermark alone (hourly tick retries); the outbox
+  idempotency key `liveupd:<subId>:<date>` caps delivery at one per day per
+  subscription regardless. Paused/eval users excluded in the due query.
+- Tools: `subscribe_live_updates` / `list_my_live_updates` /
+  `cancel_live_update` (open to all users, capped by the
+  `live_subscriptions_per_user` flag, default 5; duplicates by
+  (source, params) refused). Delivery is outbox kind `live_update`, normal
+  urgency — quiet hours and budget hold as usual. Future sources the owner
+  floated: sports summaries, topical news — RSS-diffing fits the same
+  registry shape when wanted.
+
 ### Image + video generation, access-limited, spend in its own column (2026-08-28)
 
 Owner ask: only the admin and חיים's number (+972505404255) may generate

@@ -195,6 +195,12 @@ async function main() {
     const evals = require('../src/jobs/evals');
     arm('eval_sweep', () => evals.sweepEvals(pool, { send: rawSend }));
 
+    // Live-update subscriptions ("עדכן אותי על...") — hourly tick, the rows
+    // decide who is due. Detection is a structured-API diff (zero tokens);
+    // the one cheap model call happens only when something actually changed.
+    const liveUpdates = require('../src/domain/live-updates');
+    arm('live_updates', () => withTx(pool, (c) => liveUpdates.sweepLiveUpdates(c, {})));
+
     // cost attribution + product analytics — hourly; retention — daily
     const usage = require('../src/jobs/usage');
     const metrics = require('../src/jobs/metrics');
