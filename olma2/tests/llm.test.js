@@ -74,6 +74,53 @@ test('provider openrouter speaks chat/completions and maps back to the same cont
     const err = await llm.complete({ provider: 'openrouter', model: 'm', user: 'x', apiKey: 'k' });
     assert.equal(err.ok, false);
     assert.match(err.error, /Provider returned error/);
+
+    // ...and some as 200 with a body that is not JSON at all. Before the
+    // guard this threw "Cannot read properties of null (reading 'choices')" —
+    // the raw TypeError the 2026-08-30 nightly eval run recorded twice.
+    globalThis.fetch = async () => ({
+      ok: true, status: 200,
+      json: async () => { throw new Error('unexpected end of JSON input'); },
+    });
+    const empty = await llm.complete({ provider: 'openrouter', model: 'm', user: 'x', apiKey: 'k' });
+    assert.equal(empty.ok, false);
+    assert.match(empty.error, /empty or unparseable response body/);
+    assert.doesNotMatch(empty.error, /Cannot read properties/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('finishReason surfaces truncation on both providers, normalised to "length"', async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    // A reasoning model that spent its whole budget thinking: 200, choices
+    // present, content null, finish_reason 'length'. The caller must be able
+    // to tell this from a healthy empty answer.
+    globalThis.fetch = async () => ({
+      ok: true, status: 200,
+      json: async () => ({
+        model: 'moonshotai/kimi-k2.6',
+        choices: [{ message: { content: null }, finish_reason: 'length' }],
+        usage: { prompt_tokens: 900, completion_tokens: 2500 },
+      }),
+    });
+    const or = await llm.complete({ provider: 'openrouter', model: 'moonshotai/kimi-k2.6', user: 'x', apiKey: 'k' });
+    assert.equal(or.ok, true);
+    assert.equal(or.text, '');
+    assert.equal(or.finishReason, 'length');
+
+    globalThis.fetch = async () => ({
+      ok: true, status: 200,
+      json: async () => ({
+        model: 'claude-haiku-4-5-20251001',
+        stop_reason: 'max_tokens',
+        content: [{ type: 'text', text: 'נחת' }],
+        usage: { input_tokens: 10, output_tokens: 5 },
+      }),
+    });
+    const an = await llm.complete({ user: 'x', apiKey: 'k' });
+    assert.equal(an.finishReason, 'length', "Anthropic's max_tokens maps to the same value");
   } finally {
     globalThis.fetch = realFetch;
   }

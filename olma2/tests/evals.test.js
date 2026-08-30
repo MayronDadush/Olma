@@ -123,7 +123,65 @@ test('the judge gets reasoning headroom, not the 700 that starved it', async () 
   await harness.judgeScenario(byId['general-knowledge'], [{ message: 'x', reply: 'y' }], {
     complete: async (opts) => { asked = opts; return { ok: true, text: '{"verdict":"pass","problems":[]}' }; },
   });
-  assert.ok(asked.maxTokens >= 2000, `judge maxTokens was ${asked.maxTokens}`);
+  // 2500 was the first fix and the 2026-08-30 night proved it still starves
+  // on real conversations — this floor pins the second raise.
+  assert.ok(asked.maxTokens >= 6000, `judge maxTokens was ${asked.maxTokens}`);
+});
+
+// finishReason turns two guesses into statements: an empty reply and a
+// mid-object cut both get named as max_tokens truncation when the provider
+// itself said 'length'.
+test('a provider-confirmed truncation is named as such, empty or cut', async () => {
+  const turns = [{ message: 'x', reply: 'y' }];
+  const empty = await harness.judgeScenario(byId['general-knowledge'], turns, {
+    complete: async () => ({ ok: true, text: '', finishReason: 'length' }),
+  });
+  assert.equal(empty.ok, false);
+  assert.match(empty.error, /finish_reason=length/);
+
+  const cut = await harness.judgeScenario(byId['general-knowledge'], turns, {
+    complete: async () => ({ ok: true, text: '{"verdict":"concern","problems":[{"ru', finishReason: 'length' }),
+  });
+  assert.equal(cut.ok, false);
+  assert.match(cut.error, /cut mid-object/);
+});
+
+// A judge failure is harness infrastructure wobbling, and an ERROR alerts the
+// operator's WhatsApp at 03:50 — so one transient failure gets one retry.
+// Both attempts failing is still an ERROR (never silently green), and an
+// ok-after-retry carries what the first attempt said, so repeated wobble
+// stays visible in eval_results instead of self-healing into invisibility.
+test('the judge retries once, and a recovered run remembers the first failure', async () => {
+  const turns = [{ message: 'x', reply: 'y' }];
+  let calls = 0;
+  const flaky = async () => {
+    calls++;
+    if (calls === 1) return { ok: false, error: 'empty or unparseable response body (http 200)' };
+    return { ok: true, text: '{"verdict":"pass","problems":[]}' };
+  };
+  const judged = await harness.judgeScenario(byId['general-knowledge'], turns, { complete: flaky });
+  assert.equal(judged.ok, true);
+  assert.equal(calls, 2);
+  assert.match(judged.retriedAfter, /unparseable response body/);
+
+  // Through runScenario: the wobble lands in the stored judge object.
+  const r = await harness.runScenario(db.pool, evalUser, byId['general-knowledge'], {
+    runTurn: fakeTurns([{ reply: 'קצר.' }]),
+    complete: (() => { let n = 0; return async () => (++n === 1
+      ? { ok: false, error: 'llm timeout' }
+      : { ok: true, text: '{"verdict":"pass","problems":[]}' }); })(),
+  });
+  assert.equal(r.status, 'green');
+  assert.match(r.judge.retriedAfter, /llm timeout/);
+
+  // Both attempts dead → ERROR, with the failure named.
+  let dead = 0;
+  const judgedDead = await harness.judgeScenario(byId['general-knowledge'], turns, {
+    complete: async () => { dead++; return { ok: false, error: 'llm timeout' }; },
+  });
+  assert.equal(judgedDead.ok, false);
+  assert.equal(dead, harness.JUDGE_ATTEMPTS);
+  assert.match(judgedDead.error, /llm timeout/);
 });
 
 // Measured live: with reasoning disabled the judge invented a violation and

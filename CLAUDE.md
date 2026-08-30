@@ -339,6 +339,47 @@ real tools, real DB — on a disposable session with no `--deliver`.
   **One-time arming on the box: `node scripts/setup-eval-user.js --apply`** —
   until then the sweep reports `skipped: no eval user`.
 
+### The night the evals cried wolf — and once for real (fixed 2026-08-30)
+
+Two consecutive nightly eval runs woke the owner: run #6 (2 red + 5 error)
+and run #8 (1 red + 4 error). Nine of eighteen judgements across the two
+nights were harness failures, not agent failures — the judge layer was the
+flaky part. Three separate roots, one deploy:
+
+- **`llm.completeOpenRouter` threw a raw TypeError on a 200 with a non-JSON
+  body.** `res.json().catch(() => null)` set `body = null`, the
+  `body && body.error` check passed it, and `body.choices` threw "Cannot read
+  properties of null (reading 'choices')" — recorded verbatim as two
+  scenarios' errors. Now guarded with a named error. The same fix added
+  **`finishReason`** to `complete()`'s contract (both providers, normalised
+  to `'length'`), so truncation is a stated fact, not an inference.
+- **2500 judge tokens still starved Kimi k2.6** — the SECOND raise for the
+  same constant (700 → 2500 → 6000). The night's two "no content" errors were
+  all-reasoning-no-answer, and the previous night's five "unparseable" were
+  almost certainly JSON cut mid-object by the same cap. Worst case ~1.4¢ per
+  judgement at 6000; a judge that answers beats one that saves. The floor is
+  pinned in a test.
+- **The judge retries ONCE before a scenario becomes ERROR** — a judge
+  failure is harness wobble, and an ERROR alerts WhatsApp at 03:50. Both
+  attempts failing is still an ERROR (never silently green), and an
+  ok-after-retry stores `retriedAfter` in the result row so repeated wobble
+  stays diagnosable instead of self-healing into invisibility.
+
+The one REAL red, both nights: **`stop-service` opened its confirmation turn
+with `pause_olma` instead of `turn_start`.** The doctrine created the
+conflict itself — "on EVERY message call `turn_start` first" vs "on their
+yes call `pause_olma` THAT TURN, before you write anything back" — and
+DeepSeek resolved it in pause's favour (the pause itself worked; only the
+order broke, but quota/offerResume/name-capture all hang off turn_start
+running first). `agents-template.md`'s stop section now says the order
+explicitly: turn_start, then pause_olma, then the reply. Templates reach
+existing workspaces via deploy `--restart`'s resync as usual.
+
+The YELLOW that night (phone-number-contact, an unnecessary question) got no
+action on purpose: yellows alert only on the second consecutive night, and
+acting on one night of judge wobble is the alert-fatigue failure the
+two-night rule exists to prevent.
+
 ### The fact table admitted everything and ranked by recency (fixed 2026-08-28)
 
 The owner read the dashboard's "מה נלמד לאחרונה" and asked whether that is
