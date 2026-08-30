@@ -126,14 +126,28 @@ const JUDGE_SYSTEM = [
 // the night of 2026-08-30 proved 2500 STILL starves it on longer
 // conversations (two scenarios: all 2500 spent reasoning, no content), while
 // the night before that recorded five "unparseable" replies that were almost
-// certainly JSON cut mid-object by the same cap. 6000 is deliberately far
-// above every measured failure: at Kimi's $2.3/Mtok output the worst case is
-// ~1.4 cents per judgement, and a judge that answers beats one that saves.
+// certainly JSON cut mid-object by the same cap. And 6000 failed too, on the
+// live stop-service conversation, three attempts out of three.
+//
+// The number finally came from a measurement instead of another guess. Probed
+// against that exact conversation: reasoning_tokens 4568, and the ANSWER it
+// was reasoning towards is 33 characters — `{"verdict":"pass","problems":[]}`.
+// Essentially the whole budget is thinking, its length varies with the
+// conversation, and 6000 leaves under a quarter of it as headroom. 12000 is
+// ~2.5x the measured think, and the ~1.5 cents that costs at Kimi's $2.3/Mtok
+// output buys a judgement that exists.
 //
 // Reasoning stays ON deliberately. Disabling it was measured too and made the
 // judge WORSE, not just cheaper: on the same conversation it invented a
 // violation and cited the USER's own message as the offending quote.
-const JUDGE_MAX_TOKENS = 6000;
+const JUDGE_MAX_TOKENS = 12000;
+
+// What a truncated judge is retried with. Retrying truncation at the SAME cap
+// is the one error class where an identical attempt provably cannot come out
+// differently — it asks the same model the same question with the same budget
+// and hopes it thinks less. That is what shipped first, and the live run paid
+// for three 6000-token thinks to be cut at 6000 three times.
+const JUDGE_TRUNCATION_MAX_TOKENS = 24_000;
 
 // Retries before a judge failure becomes a scenario ERROR. A judge failure is
 // harness infrastructure wobbling, not the agent misbehaving — and an ERROR
@@ -191,13 +205,20 @@ async function judgeScenario(scenario, turns, deps = {}) {
   const sleep = deps.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
   let firstError = null;
   let lastError = 'judge never ran';
+  // Two failure classes, two different retries. Transport wobble (OpenRouter's
+  // whitespace keep-alive padding arriving alone) is fixed by waiting and
+  // asking again — the delay is the whole remedy. Truncation is not wobble at
+  // all: the budget was the cause, so the retry has to raise it or it is just
+  // buying the same failure again.
+  let maxTokens = deps.judgeMaxTokens || JUDGE_MAX_TOKENS;
   for (let i = 0; i < attempts; i++) {
     if (i > 0 && delayMs) await sleep(delayMs);
-    const out = await judgeOnce(scenario, conversation, turns, complete, deps);
+    const out = await judgeOnce(scenario, conversation, turns, complete, { ...deps, judgeMaxTokens: maxTokens });
     if (out.ok) {
       if (firstError) out.retriedAfter = firstError;
       return out;
     }
+    if (out.truncated) maxTokens = Math.max(maxTokens, deps.judgeTruncationMaxTokens || JUDGE_TRUNCATION_MAX_TOKENS);
     lastError = out.error;
     if (firstError === null) firstError = out.error;
   }
@@ -224,6 +245,7 @@ async function judgeOnce(scenario, conversation, turns, complete, deps) {
   if (!String(res.text || '').trim()) {
     return {
       ok: false,
+      truncated,
       error: truncated
         ? 'judge hit max_tokens before emitting any content (finish_reason=length)'
         : 'judge returned no content — reasoning likely consumed max_tokens',
@@ -233,6 +255,7 @@ async function judgeOnce(scenario, conversation, turns, complete, deps) {
   if (!parsed || (parsed.verdict !== 'pass' && parsed.verdict !== 'concern')) {
     return {
       ok: false,
+      truncated,
       error: truncated
         ? 'judge JSON cut mid-object by max_tokens (finish_reason=length)'
         : 'judge reply unparseable',
@@ -370,6 +393,6 @@ module.exports = {
   EVAL_PHONE, JUDGE_MODEL, TURN_TIMEOUT_MS,
   getEvalUser, resetEvalUser, runScenario, judgeScenario,
   makeTurnRunner, toolCallsInSlice, JUDGE_SYSTEM,
-  verifyProblems, stateSnapshot, JUDGE_MAX_TOKENS, JUDGE_ATTEMPTS,
+  verifyProblems, stateSnapshot, JUDGE_MAX_TOKENS, JUDGE_TRUNCATION_MAX_TOKENS, JUDGE_ATTEMPTS,
   JUDGE_RETRY_DELAY_MS,
 };

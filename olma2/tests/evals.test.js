@@ -154,6 +154,44 @@ test('a provider-confirmed truncation is named as such, empty or cut', async () 
   assert.match(cut.error, /cut mid-object/);
 });
 
+// Measured on the live stop-service conversation: reasoning_tokens 4568 for a
+// 33-character answer. The budget is spent almost entirely on thinking, and
+// its size varies per conversation — so a retry at the SAME cap is the one
+// case where an identical attempt cannot come out differently. The first
+// version retried identically and paid for the same 6000-token think to be cut
+// at 6000 three times over.
+test('a truncated judge is retried with a bigger budget, not the same one', async () => {
+  const turns = [{ message: 'x', reply: 'y' }];
+  const asked = [];
+  const judged = await harness.judgeScenario(byId['general-knowledge'], turns, {
+    complete: async ({ maxTokens }) => {
+      asked.push(maxTokens);
+      return asked.length === 1
+        ? { ok: true, text: '{"verdict":"pa', finishReason: 'length' }
+        : { ok: true, text: '{"verdict":"pass","problems":[]}', finishReason: 'stop' };
+    },
+    judgeRetryDelayMs: 0,
+  });
+  assert.equal(judged.ok, true, 'the escalated attempt is what rescues the judgement');
+  assert.equal(asked[0], harness.JUDGE_MAX_TOKENS);
+  assert.ok(asked[1] > asked[0], 'the second attempt must not repeat the budget that just ran out');
+  assert.equal(asked[1], harness.JUDGE_TRUNCATION_MAX_TOKENS);
+
+  // Transport wobble is a different failure with a different remedy: waiting.
+  // Raising the cap there would buy nothing, so the budget stays put.
+  const wobble = [];
+  await harness.judgeScenario(byId['general-knowledge'], turns, {
+    complete: async ({ maxTokens }) => {
+      wobble.push(maxTokens);
+      return wobble.length === 1
+        ? { ok: false, error: 'empty or unparseable response body (http 200)' }
+        : { ok: true, text: '{"verdict":"pass","problems":[]}' };
+    },
+    judgeRetryDelayMs: 0,
+  });
+  assert.deepEqual(wobble, [harness.JUDGE_MAX_TOKENS, harness.JUDGE_MAX_TOKENS]);
+});
+
 // A judge failure is harness infrastructure wobbling, and an ERROR alerts the
 // operator's WhatsApp at 03:50 — so one transient failure gets one retry.
 // Both attempts failing is still an ERROR (never silently green), and an
