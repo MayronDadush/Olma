@@ -22,6 +22,22 @@ const DEFAULT_BASE_URL = 'https://api.anthropic.com';
 const DEFAULT_MODEL = 'claude-haiku-4-5';
 const DEFAULT_TIMEOUT_MS = 120_000;
 
+// Our own timeout, firing after the response headers but before the body
+// finished arriving. Both providers answer a slow request by sending the 200
+// immediately and then dribbling the body, so an abort here surfaces as a
+// `res.json()` failure on a response that looks perfectly healthy — which the
+// `.catch(() => null)` below then reported as "empty or unparseable response
+// body (http 200)", i.e. as the provider's fault rather than our deadline.
+//
+// Measured on the box against the judge's own prompt: OpenRouter pads the wait
+// with whitespace at roughly a byte per 39ms (1287 bytes across a 49.8s call,
+// 319 across a 12.5s one) and the JSON follows intact — leading whitespace has
+// never been the problem, since JSON.parse skips it. Only a body cut off
+// mid-flight is, and that is ours to name honestly.
+function abortedMidBody(timeoutMs) {
+  return { ok: false, error: `llm timeout after ${timeoutMs || DEFAULT_TIMEOUT_MS}ms (headers arrived, body did not)` };
+}
+
 // complete({ system, user, model?, maxTokens?, timeoutMs?, provider? })
 //   -> { ok: true, text, model, usage: {input, output, cacheRead, cacheWrite} }
 //    | { ok: false, error }
@@ -55,6 +71,7 @@ async function complete(opts = {}) {
       }),
     });
     const body = await res.json().catch(() => null);
+    if (!body && controller.signal.aborted) return abortedMidBody(timeoutMs);
     if (!res.ok) {
       const msg = body && body.error && body.error.message ? body.error.message : `http ${res.status}`;
       return { ok: false, error: String(msg).slice(0, 300) };
@@ -109,6 +126,7 @@ async function completeOpenRouter({ system, user, model, maxTokens, timeoutMs, a
       }),
     });
     const body = await res.json().catch(() => null);
+    if (!body && controller.signal.aborted) return abortedMidBody(timeoutMs);
     if (!res.ok || (body && body.error)) {
       const msg = body && body.error && body.error.message ? body.error.message : `http ${res.status}`;
       return { ok: false, error: String(msg).slice(0, 300) };

@@ -91,6 +91,36 @@ test('provider openrouter speaks chat/completions and maps back to the same cont
   }
 });
 
+// Both providers answer a slow request with the 200 first and the body after,
+// so our own deadline lands mid-body and comes back as a json() failure on a
+// healthy-looking response. Reported as "empty response body (http 200)" it
+// reads as the provider's fault — which is exactly how a judge that was timing
+// out at 60s got diagnosed three times as an upstream wobble.
+test('our own timeout is named as ours, not as an empty body from the provider', async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    for (const provider of ['openrouter', 'anthropic']) {
+      globalThis.fetch = async (_url, init) => ({
+        ok: true, status: 200,
+        // The deadline fires while the body is still arriving: by the time
+        // json() gives up, the signal is aborted — the shape undici produces.
+        json: async () => {
+          await new Promise((r) => setTimeout(r, 30));
+          assert.equal(init.signal.aborted, true, 'the test must actually reach the abort');
+          throw new Error('The operation was aborted');
+        },
+      });
+      const res = await llm.complete({ provider, model: 'm', user: 'x', apiKey: 'k', timeoutMs: 5 });
+      assert.equal(res.ok, false);
+      assert.match(res.error, /timeout/, `${provider}: a deadline we set is a timeout`);
+      assert.doesNotMatch(res.error, /empty or unparseable/,
+        `${provider}: must not read as the provider returning nothing`);
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 test('finishReason surfaces truncation on both providers, normalised to "length"', async () => {
   const realFetch = globalThis.fetch;
   try {

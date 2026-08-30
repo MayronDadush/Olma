@@ -168,6 +168,15 @@ const JUDGE_TRUNCATION_MAX_TOKENS = 24_000;
 const JUDGE_ATTEMPTS = 3;
 const JUDGE_RETRY_DELAY_MS = 2000;
 
+// The judge thinks for thousands of tokens before answering, and how long that
+// takes is set by upstream load, not by the cap: the same prompt measured
+// 49.8s at max_tokens 12000 and 12.5s at 24000, minutes apart. Against that,
+// the 60s this used to allow was not a deadline, it was a coin toss — and
+// losing it looked like a provider failure rather than our own timeout (see
+// abortedMidBody in adapters/llm.js). Nobody is waiting on a nightly judgement,
+// so the number that matters is "comfortably above the slow tail", not "fast".
+const JUDGE_TIMEOUT_MS = 180_000;
+
 // A quote must appear verbatim in something OLMA said. JUDGE_SYSTEM already
 // demands it, and the reasoning-off probe showed exactly why the demand needs
 // an enforcer: it quoted the user's message back as evidence against Olma. A
@@ -233,7 +242,7 @@ async function judgeOnce(scenario, conversation, turns, complete, deps) {
     system: JUDGE_SYSTEM,
     user: `רובריקה:\n${scenario.rubric}\n\nהשיחה:\n${conversation}`,
     maxTokens: deps.judgeMaxTokens || JUDGE_MAX_TOKENS,
-    timeoutMs: 60_000,
+    timeoutMs: JUDGE_TIMEOUT_MS,
   });
   if (!res.ok) return { ok: false, error: res.error };
   const truncated = res.finishReason === 'length';
@@ -393,6 +402,7 @@ module.exports = {
   EVAL_PHONE, JUDGE_MODEL, TURN_TIMEOUT_MS,
   getEvalUser, resetEvalUser, runScenario, judgeScenario,
   makeTurnRunner, toolCallsInSlice, JUDGE_SYSTEM,
-  verifyProblems, stateSnapshot, JUDGE_MAX_TOKENS, JUDGE_TRUNCATION_MAX_TOKENS, JUDGE_ATTEMPTS,
+  verifyProblems, stateSnapshot, JUDGE_MAX_TOKENS, JUDGE_TRUNCATION_MAX_TOKENS,
+  JUDGE_ATTEMPTS, JUDGE_TIMEOUT_MS,
   JUDGE_RETRY_DELAY_MS,
 };

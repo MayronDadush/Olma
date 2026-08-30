@@ -31,7 +31,18 @@ async function freshDb() {
   await migrate(setup);
   await setup.end();
 
-  const pool = new Pool({ connectionString: url, max: 6 });
+  // Production's Postgres session runs in Etc/UTC (verified on the box), and
+  // several jobs quietly depend on it: jobs/metrics.js picks its day with
+  // `now.toISOString().slice(0, 10)` in JS, then counts rows with
+  // `created_at::date`, which Postgres resolves in the SESSION's zone. Those
+  // agree only under UTC. On a developer machine whose Postgres inherits a
+  // local zone they disagree for the hours between the two midnights, and the
+  // rollup silently files a day's metrics under the wrong date — which is how
+  // this surfaced: as a test failing after midnight local, on a box in IDT.
+  // Tests inherit the timezone rather than choose one, so pin it to what
+  // production actually runs; a suite green only where the clocks agree is
+  // testing a configuration nobody deploys.
+  const pool = new Pool({ connectionString: url, max: 6, options: '-c timezone=Etc/UTC' });
   const teardown = async () => {
     await pool.end();
     const admin2 = new Client({ connectionString: ADMIN_URL });
@@ -80,4 +91,26 @@ function slotStart(text, { hours = 48, hourUtc = 17 } = {}) {
   return iso(d);
 }
 
-module.exports = { freshDb, makeUser, slotStart };
+// Today, at an hour nobody's quiet hours cover — for tests that drive the
+// outbox worker but are not about the night gate.
+//
+// The sibling of slotStart, one dimension over: that one exists because a test
+// hard-coding a weekday passes or fails depending on the DAY the suite runs,
+// and this one because a test that lets drainOnce default its own `now` passes
+// or fails depending on the HOUR. Test users are created with a NULL timezone,
+// which the gate reads as UTC, and the fallback availability window is
+// 08:00-21:00 — so the suite was green for thirteen hours a day and red for
+// eleven, and CI's own deploy-on-merge run cleared it by fifteen minutes on
+// 2026-08-30. Noon sits mid-window both as UTC and as Israel time, the only
+// two zones test users have.
+//
+// Pass this as drainOnce's third argument. Reach for it only when the night
+// rule is beside the point; a test ABOUT quiet hours should still pick its own
+// hour deliberately.
+function daytime(date = new Date()) {
+  const d = new Date(date);
+  d.setUTCHours(12, 0, 0, 0);
+  return d;
+}
+
+module.exports = { freshDb, makeUser, slotStart, daytime };
