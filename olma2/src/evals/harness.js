@@ -116,13 +116,27 @@ const JUDGE_SYSTEM = [
 // max_tokens as its answer. At 700 the first night's run spent all 700 on
 // reasoning and returned an EMPTY content string — five of nine scenarios
 // recorded as harness errors, including ones whose replies were plainly good.
-// Measured on the exact failing case: 980 output tokens (≈805 reasoning + the
-// JSON). 2500 leaves real headroom; a judgement costs a fraction of a cent.
+// Raised to 2500 after measuring the failing case at 980 output tokens — and
+// the night of 2026-08-30 proved 2500 STILL starves it on longer
+// conversations (two scenarios: all 2500 spent reasoning, no content), while
+// the night before that recorded five "unparseable" replies that were almost
+// certainly JSON cut mid-object by the same cap. 6000 is deliberately far
+// above every measured failure: at Kimi's $2.3/Mtok output the worst case is
+// ~1.4 cents per judgement, and a judge that answers beats one that saves.
 //
 // Reasoning stays ON deliberately. Disabling it was measured too and made the
 // judge WORSE, not just cheaper: on the same conversation it invented a
 // violation and cited the USER's own message as the offending quote.
-const JUDGE_MAX_TOKENS = 2500;
+const JUDGE_MAX_TOKENS = 6000;
+
+// One retry before a judge failure becomes a scenario ERROR. A judge failure
+// is harness infrastructure wobbling (OpenRouter 200-with-empty-body, a
+// one-off truncation), not the agent misbehaving — and an ERROR alerts the
+// operator's WhatsApp at ~03:50. The doctrine "a harness failure is ERROR,
+// never silently green" still holds: both attempts failing IS an error, and
+// an ok-after-retry carries `retriedAfter` in the stored result so repeated
+// wobble stays visible instead of self-healing into invisibility.
+const JUDGE_ATTEMPTS = 2;
 
 // A quote must appear verbatim in something OLMA said. JUDGE_SYSTEM already
 // demands it, and the reasoning-off probe showed exactly why the demand needs
@@ -156,6 +170,23 @@ async function judgeScenario(scenario, turns, deps = {}) {
   const conversation = turns
     .map((t) => `משתמש: ${t.message}\nאולמה: ${t.reply || '(אין תשובה)'}`)
     .join('\n---\n');
+  const attempts = deps.judgeAttempts || JUDGE_ATTEMPTS;
+  let firstError = null;
+  let lastError = 'judge never ran';
+  for (let i = 0; i < attempts; i++) {
+    const out = await judgeOnce(scenario, conversation, turns, complete, deps);
+    if (out.ok) {
+      if (firstError) out.retriedAfter = firstError;
+      return out;
+    }
+    lastError = out.error;
+    if (firstError === null) firstError = out.error;
+  }
+  return { ok: false, error: lastError, attempts };
+}
+
+// A single judge attempt — judgeScenario owns the retry around it.
+async function judgeOnce(scenario, conversation, turns, complete, deps) {
   const res = await complete({
     provider: 'openrouter',
     model: deps.judgeModel || JUDGE_MODEL,
@@ -165,16 +196,28 @@ async function judgeScenario(scenario, turns, deps = {}) {
     timeoutMs: 60_000,
   });
   if (!res.ok) return { ok: false, error: res.error };
+  const truncated = res.finishReason === 'length';
   // Named separately from "unparseable": an empty body from a reasoning model
   // means the token budget ran out before the answer, and the fix is the cap,
   // not the prompt. The first version said only "unparseable" and cost a
-  // morning of guessing.
+  // morning of guessing. finishReason removes the "likely" — when the
+  // provider says 'length', truncation is a fact, not an inference.
   if (!String(res.text || '').trim()) {
-    return { ok: false, error: 'judge returned no content — reasoning likely consumed max_tokens' };
+    return {
+      ok: false,
+      error: truncated
+        ? 'judge hit max_tokens before emitting any content (finish_reason=length)'
+        : 'judge returned no content — reasoning likely consumed max_tokens',
+    };
   }
   const parsed = llm.parseJsonObject(res.text);
   if (!parsed || (parsed.verdict !== 'pass' && parsed.verdict !== 'concern')) {
-    return { ok: false, error: 'judge reply unparseable' };
+    return {
+      ok: false,
+      error: truncated
+        ? 'judge JSON cut mid-object by max_tokens (finish_reason=length)'
+        : 'judge reply unparseable',
+    };
   }
   const raw = Array.isArray(parsed.problems) ? parsed.problems.slice(0, 5) : [];
   const { kept, dropped } = verifyProblems(raw, turns);
@@ -273,6 +316,9 @@ async function runScenario(pool, user, scenario, deps = {}) {
       } else {
         result.status = judged.verdict === 'concern' ? 'yellow' : 'green';
         result.judge = { verdict: judged.verdict, problems: judged.problems };
+        // A first attempt that failed rides along in the result — repeated
+        // wobble must stay diagnosable, not self-heal into invisibility.
+        if (judged.retriedAfter) result.judge.retriedAfter = judged.retriedAfter;
         // Kept visible rather than swallowed: a judge that keeps citing
         // quotes nobody said is itself the finding.
         if (judged.unverified && judged.unverified.length) result.judge.unverified = judged.unverified;
@@ -294,5 +340,5 @@ module.exports = {
   EVAL_PHONE, JUDGE_MODEL, TURN_TIMEOUT_MS,
   getEvalUser, resetEvalUser, runScenario, judgeScenario,
   makeTurnRunner, toolCallsInSlice, JUDGE_SYSTEM,
-  verifyProblems, stateSnapshot, JUDGE_MAX_TOKENS,
+  verifyProblems, stateSnapshot, JUDGE_MAX_TOKENS, JUDGE_ATTEMPTS,
 };

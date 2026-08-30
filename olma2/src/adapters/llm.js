@@ -67,6 +67,10 @@ async function complete(opts = {}) {
     return {
       ok: true,
       text,
+      // Same contract as the OpenRouter path: 'length' when max_tokens cut
+      // the answer (Anthropic says 'max_tokens'; normalised so callers check
+      // one value).
+      finishReason: body.stop_reason === 'max_tokens' ? 'length' : (body.stop_reason || null),
       model: body.model || model || DEFAULT_MODEL,
       usage: {
         input: Number(u.input_tokens) || 0,
@@ -109,11 +113,23 @@ async function completeOpenRouter({ system, user, model, maxTokens, timeoutMs, a
       const msg = body && body.error && body.error.message ? body.error.message : `http ${res.status}`;
       return { ok: false, error: String(msg).slice(0, 300) };
     }
+    // OpenRouter can return HTTP 200 with an empty or non-JSON body on
+    // transient upstream failures. Before this guard, `body.choices` below
+    // threw a raw TypeError — which is what the nightly eval run recorded as
+    // "Cannot read properties of null (reading 'choices')" instead of an
+    // actionable error.
+    if (!body) {
+      return { ok: false, error: `empty or unparseable response body (http ${res.status})` };
+    }
     const choice = body.choices && body.choices[0];
     const u = body.usage || {};
     return {
       ok: true,
       text: (choice && choice.message && choice.message.content) || '',
+      // 'length' here means the answer was cut by max_tokens — for a
+      // reasoning model, often before any content was emitted at all. The
+      // caller needs this to name truncation instead of guessing at it.
+      finishReason: (choice && choice.finish_reason) || null,
       model: body.model || model,
       usage: {
         input: Number(u.prompt_tokens) || 0,
