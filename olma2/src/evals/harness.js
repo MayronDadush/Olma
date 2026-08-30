@@ -313,7 +313,14 @@ async function runScenario(pool, user, scenario, deps = {}) {
       turns.push({ message, reply: t.reply, toolCalls: t.toolCalls || [] });
       result.model = t.model || result.model;
     }
-    const ctx = { userId: user.id, turns, toolCalls: turns.flatMap((t) => t.toolCalls) };
+    // startedAt scopes any check that reads an append-only table: resetEvalUser
+    // clears the user's DATA but deliberately not their audit trail, so
+    // "an audit row exists" would otherwise be satisfiable by an earlier
+    // scenario in the same run.
+    const ctx = {
+      userId: user.id, turns, toolCalls: turns.flatMap((t) => t.toolCalls),
+      startedAt: new Date(started).toISOString(),
+    };
     result.reply = turns.length ? turns[turns.length - 1].reply : null;
 
     const client = await pool.connect();

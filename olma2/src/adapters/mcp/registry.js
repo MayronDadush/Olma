@@ -272,14 +272,22 @@ const TOOLS = [
           RETURNING id`, [user.id]);
       const offerResume = offered.rowCount > 0;
 
-      const counted = await quota.countMessage(client, user.id);
+      // Called SECOND, after some other tool already opened the turn? Then
+      // brokerd's recovery path counted this message and recorded it (see
+      // domain/turn.js), and counting again would charge one message to the
+      // quota twice and double the north-star denominator. The recovery's
+      // verdict stands; this call just reads it back.
+      const alreadyCounted = Boolean(ctx && ctx.turn && ctx.turn.counted);
+      const counted = alreadyCounted ? ctx.turn.quota : await quota.countMessage(client, user.id);
       // One row per inbound message, purely so the north-star metric can exist.
       // `last_inbound_at` above is overwritten every time, so before this there
       // was no way to ask "did they answer the message we sent them" — the
       // response rate had a denominator (outbox.sent_at) and no numerator.
       // Cheap: bounded by the daily quota, classed 'routine', pruned by the
       // retention sweep like every other operational row.
-      await audit.record(client, user.id, 'message.received', null);
+      // Skipped when the recovery path already wrote it: one message, one row,
+      // or the response-rate metric silently counts this person twice.
+      if (!alreadyCounted) await audit.record(client, user.id, 'message.received', null);
       // Reminders now go out on the raw pipe (channels/openclaw.js), which
       // never touches this person's session history — so a bare reply like
       // "סיימתי" would otherwise reach an agent that has no idea a reminder
