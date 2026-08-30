@@ -120,4 +120,46 @@ worth more than the price difference.
 Newest first. One entry per pilot; record the run id so the per-scenario
 detail stays recoverable from `eval_results`.
 
-_(no pilot runs recorded yet — the harness landed 2026-08-30)_
+### Run #10 — 2026-08-30 — `deepseek-v4-pro`, 3 scenarios
+
+`0 green · 1 yellow · 1 red · 1 error`, 360s for three scenarios.
+
+Run to answer one question: **is the `stop-service` red a weak-model
+problem?** v4-pro is the incumbent's own stronger sibling and already the
+first fallback, so it needed no config change and no gateway restart.
+
+**The answer is no, and it is the most useful result so far.** v4-pro fails
+`stop-service` *identically* — `turn opened with pause_olma`, `turn_start`
+skipped entirely on the confirmation turn. Two different models, two
+doctrine versions (the second written specifically to name the ordering),
+same failure.
+
+That rules out the two easy explanations at once. It is not model capability,
+and it is not wording. What is left is the **instruction design**: the stop
+section is a vivid, numbered, three-step plan whose step 2 says to call
+`pause_olma` "THAT TURN, before you write anything back", and it sits far
+from the universal `turn_start` preamble it silently overrides. A specific
+urgent instruction beats a general one, which is a property of models rather
+than of any one model — so **no model swap fixes this**, and the fix has to
+be structural.
+
+Secondary findings, both real:
+
+- **v4-pro is 1.4-3x slower** for no correctness gain here: 70s vs 49s on
+  `stop-service`, and 222s on `hebrew-gender-feminine`. Against
+  `stuckSessionAbortMs = 65s` (progress-staleness, not total duration) that
+  is worth remembering before anyone reaches for it as a default.
+- The judge's truncated-body failure hit again on the **longest** turn of
+  the three (222s), which is more evidence for the load correlation above.
+- `goal-capture` went yellow on formatting only — the judge wanted the
+  three-vehicle split on one line and got three bullets. Cosmetic; one
+  night, so no action (the two-night rule).
+
+**Not yet measured:** the genuinely cheaper candidates
+(`qwen3.7-flash`, `gpt-oss-120b`) need registering in
+`scripts/register-openrouter-models.js` plus a gateway restart, which
+briefly interrupts live users — deliberately deferred to a quiet window
+rather than done mid-evening. Worth knowing before scheduling it: the
+incumbent is already near the cheapest tier, so the prize there is ~$0.02
+per Mtok of output, not a step change. The `stop-service` defect is worth
+more than the price difference.
