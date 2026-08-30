@@ -386,9 +386,9 @@ flaky part. Three separate roots, one deploy:
 - **2500 judge tokens still starved Kimi k2.6** — the SECOND raise for the
   same constant (700 → 2500 → 6000). The night's two "no content" errors were
   all-reasoning-no-answer, and the previous night's five "unparseable" were
-  almost certainly JSON cut mid-object by the same cap. Worst case ~1.4¢ per
-  judgement at 6000; a judge that answers beats one that saves. The floor is
-  pinned in a test.
+  almost certainly JSON cut mid-object by the same cap. **6000 failed too**,
+  and the constant was only settled once it was measured instead of guessed
+  at a fourth time — see "The judge kept failing, three different ways" below.
 - **The judge retries ONCE before a scenario becomes ERROR** — a judge
   failure is harness wobble, and an ERROR alerts WhatsApp at 03:50. Both
   attempts failing is still an ERROR (never silently green), and an
@@ -409,20 +409,108 @@ merely reordered. `deepseek-v4-pro` then failed it identically (run #10),
 so it is neither wording nor capability: a vivid numbered instruction
 outranks a universal preamble sitting far above it, in any model.
 
-**Still open, deliberately RED rather than relaxed.** `turn_start` is not
-ceremonial — it stamps `last_inbound_at` (the delivery gate's
-mid-conversation grace), counts the message toward quota, nudges
-night-held rows, runs the flood check and carries `offerResume`. Weakening
-the check to make the board green would be the exact anti-pattern this
-suite exists to catch. The candidate fix is structural — the server doing
-the per-turn bookkeeping regardless of which tool the model reaches for
-first — which touches the hot path of every tool call, so it is Miron's
-call (asked on WhatsApp 2026-08-30), not a silent refactor.
+**Never relaxed to make the board green.** `turn_start` is not ceremonial —
+it stamps `last_inbound_at` (the delivery gate's mid-conversation grace),
+counts the message toward quota, nudges night-held rows, runs the flood
+check and carries `offerResume`. Weakening the check would have been the
+exact anti-pattern this suite exists to catch. **Closed structurally the
+same day** — see "A turn the model forgot to open" below. `stop-service`
+has been green since.
 
 The YELLOW that night (phone-number-contact, an unnecessary question) got no
 action on purpose: yellows alert only on the second consecutive night, and
 acting on one night of judge wobble is the alert-fatigue failure the
 two-night rule exists to prevent.
+
+### A turn the model forgot to open (fixed 2026-08-30)
+
+Two models and two rewordings failed to make DeepSeek call `turn_start` on a
+stop request, so the server stopped asking. `domain/turn.js` +
+`brokerd/server.js`: if the FIRST tool of a turn is not `turn_start`, the
+server does that bookkeeping itself.
+
+- **A turn is one brokerd connection.** The gateway spawns a fresh MCP shim
+  per turn and the shim holds one socket for its whole life — no new protocol
+  field, no clock heuristic. That mapping is true of the gateway TODAY, and
+  `bin/olma-mcp.js` already refuses to bet on it staying true, so neither does
+  this: a connection that ever serves a second user starts a fresh turn, and
+  the recovery's count is consumed by exactly one `turn_start`. If the process
+  model changes underneath us the failure is "no recovery" — today's behaviour
+  — never someone's message going uncounted.
+- **It repairs STATE and never consumes ADVICE.** `resume_offer_sent_at` is
+  deliberately NOT stamped: that offer fires once per pause, and burning it on
+  a turn where the model never saw it would leave the person waiting for an
+  offer the database believes was delivered. The name is not captured either —
+  that needs `sender_name`, which only the model has.
+- **The skip is audited (`turn.opened_implicitly`, with `firstTool`), never
+  silently compensated for**, and the eval check moved from `turnStartFirst`
+  to `turnWasOpened` for this ONE scenario. A test proves the new check still
+  goes red when the invariant really breaks — a detection layer that can no
+  longer fail is not a detection layer.
+- **Rolled out behind `implicit_turn_start`** (dashboard text flag: empty =
+  off, `all`, or a comma-separated E.164 list). Phase 1 was Miron + the eval
+  user; widened to `all` once the evidence was in. That evidence is what the
+  staged rollout was for: across **51 eval-user turns** the recovery fired
+  **4 times, all `pause_olma`** — every other turn opened normally and the
+  mechanism stayed inert. Miron's healthy path was probed live against the
+  real broker too (`turn_start` first → no recovery, one count).
+
+### The judge kept failing, three different ways (fixed 2026-08-30)
+
+`stop-service` went red, then errored three nights running for three
+unrelated reasons. Worth reading as a set, because each fix revealed the
+next and only the last one was measured first.
+
+- **Truncation, and a retry that bought it again.** The cap had been raised
+  twice by guess (700 → 2500 → 6000) and 6000 failed three attempts out of
+  three. Probed against that exact conversation: `reasoning_tokens` **4568**,
+  for an answer that is **33 characters** — `{"verdict":"pass","problems":[]}`.
+  Essentially the whole budget is thinking. Base is 12000 now, and a
+  `finish_reason=length` failure **escalates to 24000** on retry: retrying
+  truncation at the same cap is the one error class where an identical
+  attempt provably cannot come out differently.
+- **Our own timeout, reported as the provider returning nothing.** The next
+  three attempts failed with `empty or unparseable response body (http 200)`
+  — diagnosed as an upstream wobble, twice. It was the 60s deadline. Both
+  providers send the 200 immediately and the body afterwards, so an abort
+  lands MID-BODY and surfaces as a `res.json()` failure on a response that
+  looks perfectly healthy; `.catch(() => null)` then blamed the provider for
+  a limit we set. Named as ours now, on both providers. Measured: OpenRouter
+  pads the wait with whitespace at ~a byte per 39ms (1287 bytes across a
+  49.8s call, 319 across a 12.5s one) and the JSON follows intact —
+  **leading whitespace was never the problem**, `JSON.parse` skips it; only a
+  body cut off mid-flight is. Latency is set by upstream load, not the cap
+  (49.8s and 12.5s for the same prompt, minutes apart), so 60s was not a
+  deadline but a coin toss. Judge timeout is 180s; nobody waits on a nightly
+  judgement.
+- The shape to remember, and the third time this file has recorded it:
+  **a failure named after the wrong culprit costs a morning.** `finishReason`
+  was added for this reason one change earlier, and the very next bug was the
+  same mistake one layer down.
+
+### The suite was green thirteen hours a day and red eleven (fixed 2026-08-30)
+
+Found by the clock rolling past midnight mid-session, not by anyone looking.
+Three tests fail outside 08:00-21:00 UTC — and CI's own deploy-on-merge run
+had cleared that boundary by **fifteen minutes** on the PR immediately
+before. Two unrelated clocks, both inherited rather than chosen:
+
+- Test users are created with a **NULL timezone**, which the delivery gate
+  reads as UTC, against the fallback availability window of 08:00-21:00. Two
+  tests let `drainOnce` default its own `now`, so they were really testing
+  what hour it was. `tests/helpers.daytime()` joins `slotStart` — that one
+  exists because a hard-coded weekday depends on the DAY the suite runs, this
+  one because an unpinned drain depends on the HOUR. Use it whenever the
+  night rule is beside the point; a test ABOUT quiet hours still picks its
+  own hour deliberately.
+- **`jobs/metrics.js` mixes two notions of "day"**: it picks one as
+  `now.toISOString().slice(0, 10)` (UTC) and then counts rows by
+  `created_at::date`, which Postgres resolves in the SESSION's zone. Those
+  agree only under UTC. Production is `Etc/UTC` (checked on the box), so it
+  is latent there — but a dev box in IDT misfiles a day's metrics for three
+  hours a night. The test pool now pins `Etc/UTC` to match production: a
+  suite green only where the clocks agree is testing a configuration nobody
+  deploys.
 
 ### The fact table admitted everything and ranked by recency (fixed 2026-08-28)
 
