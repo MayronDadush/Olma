@@ -339,6 +339,36 @@ real tools, real DB — on a disposable session with no `--deliver`.
   **One-time arming on the box: `node scripts/setup-eval-user.js --apply`** —
   until then the sweep reports `skipped: no eval user`.
 
+### Comparing a candidate model is now a scored run, not an argument (2026-08-30)
+
+`node scripts/run-evals.js --model <id>` drives all nine behavioral
+scenarios on a candidate instead of the live default — the standing ask is
+to do this periodically and log it in **`olma2/docs/model-experiments.md`**,
+which is the dated results file, not this one. Migration 024.
+
+- **Nothing is routed anywhere.** The override rides one disposable session
+  per scenario on the sealed eval user, never `--deliver`;
+  `agents.defaults.model` is untouched (moving real users stays
+  `scripts/set-default-model.js`). The script also warns when the gateway
+  **reports** a model different from the one asked for — a silent fallback
+  would otherwise record as a passing pilot for a model that never ran.
+- **`trigger='pilot'` is load-bearing, in two places.** It is excluded from
+  `previousStatus`, so a candidate's yellow can never make the next real
+  night a false "second night in a row"; and the dashboard headline picks
+  the newest NON-pilot run, so a candidate's reds cannot read as a
+  production regression. Both are the detection-layer-nobody-trusts failure
+  waiting to happen.
+- **First result (run #10) earned its keep by ruling something out:**
+  `deepseek-v4-pro` fails `stop-service` *identically* to v4-flash —
+  `turn_start` skipped on the confirmation turn. Two models, two doctrine
+  versions, same failure, so it is neither capability nor wording; a
+  specific urgent instruction beating a general preamble is a property of
+  models. **No model swap fixes it.** v4-pro was also 1.4-3x slower for no
+  gain, which matters against `stuckSessionAbortMs = 65s`.
+- Judging order, when reading a pilot: hard checks → judge verdicts → speed
+  and price. The incumbent is already near the cheapest tool-capable tier,
+  so a swap needs a quality or speed argument, not ~$0.02/Mtok.
+
 ### The night the evals cried wolf — and once for real (fixed 2026-08-30)
 
 Two consecutive nightly eval runs woke the owner: run #6 (2 red + 5 error)
@@ -369,11 +399,25 @@ The one REAL red, both nights: **`stop-service` opened its confirmation turn
 with `pause_olma` instead of `turn_start`.** The doctrine created the
 conflict itself — "on EVERY message call `turn_start` first" vs "on their
 yes call `pause_olma` THAT TURN, before you write anything back" — and
-DeepSeek resolved it in pause's favour (the pause itself worked; only the
-order broke, but quota/offerResume/name-capture all hang off turn_start
-running first). `agents-template.md`'s stop section now says the order
-explicitly: turn_start, then pause_olma, then the reply. Templates reach
-existing workspaces via deploy `--restart`'s resync as usual.
+DeepSeek resolved it in pause's favour. `agents-template.md`'s stop section
+was given the order explicitly: turn_start, then pause_olma, then the reply.
+
+**That did NOT fix it, and the transcript is unambiguous** (run #9, after
+the resync reached `u-15`): turn 1 opens `turn_start` correctly, turn 2 has
+exactly ONE tool call, `pause_olma` — `turn_start` is skipped entirely, not
+merely reordered. `deepseek-v4-pro` then failed it identically (run #10),
+so it is neither wording nor capability: a vivid numbered instruction
+outranks a universal preamble sitting far above it, in any model.
+
+**Still open, deliberately RED rather than relaxed.** `turn_start` is not
+ceremonial — it stamps `last_inbound_at` (the delivery gate's
+mid-conversation grace), counts the message toward quota, nudges
+night-held rows, runs the flood check and carries `offerResume`. Weakening
+the check to make the board green would be the exact anti-pattern this
+suite exists to catch. The candidate fix is structural — the server doing
+the per-turn bookkeeping regardless of which tool the model reaches for
+first — which touches the hot path of every tool call, so it is Miron's
+call (asked on WhatsApp 2026-08-30), not a silent refactor.
 
 The YELLOW that night (phone-number-contact, an unnecessary question) got no
 action on purpose: yellows alert only on the second consecutive night, and
