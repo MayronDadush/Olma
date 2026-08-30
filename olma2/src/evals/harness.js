@@ -76,12 +76,18 @@ function toolCallsInSlice(text) {
 // Production turn runner: one per scenario run, stateful so multi-turn
 // scenarios keep one session (one conversation, like the real incident) and
 // each turn reports only its own tool calls.
-function makeTurnRunner({ agentId, sessionKey }) {
+function makeTurnRunner({ agentId, sessionKey, model }, deps = {}) {
+  const run = deps.runOpenclawJson || runOpenclawJson;
   let offset = 0;
   let sessionFile = null;
   return async function runTurn(message) {
-    const json = await runOpenclawJson(
-      ['agent', '--agent', agentId, '--session-key', sessionKey, '--message', message, '--json'],
+    const json = await run(
+      ['agent', '--agent', agentId, '--session-key', sessionKey, '--message', message, '--json',
+        // A per-call override, exactly as scripts/model-pilot.js uses it: it
+        // moves THIS disposable session onto a candidate model and changes
+        // nothing about what real users are routed to. Omitted → the live
+        // default, which is what a nightly baseline must measure.
+        ...(model ? ['--model', model] : [])],
       TURN_TIMEOUT_MS
     );
     const meta = json.result && json.result.meta && json.result.meta.agentMeta;
@@ -129,14 +135,24 @@ const JUDGE_SYSTEM = [
 // violation and cited the USER's own message as the offending quote.
 const JUDGE_MAX_TOKENS = 6000;
 
-// One retry before a judge failure becomes a scenario ERROR. A judge failure
-// is harness infrastructure wobbling (OpenRouter 200-with-empty-body, a
-// one-off truncation), not the agent misbehaving — and an ERROR alerts the
-// operator's WhatsApp at ~03:50. The doctrine "a harness failure is ERROR,
-// never silently green" still holds: both attempts failing IS an error, and
-// an ok-after-retry carries `retriedAfter` in the stored result so repeated
-// wobble stays visible instead of self-healing into invisibility.
-const JUDGE_ATTEMPTS = 2;
+// Retries before a judge failure becomes a scenario ERROR. A judge failure is
+// harness infrastructure wobbling, not the agent misbehaving — and an ERROR
+// alerts the operator's WhatsApp at ~03:50. The doctrine "a harness failure is
+// ERROR, never silently green" still holds: every attempt failing IS an error,
+// and an ok-after-retry carries `retriedAfter` in the stored result so
+// repeated wobble stays visible instead of self-healing into invisibility.
+//
+// Three, not two, and with a pause between them — both numbers measured
+// rather than picked. OpenRouter answers a slow non-streaming request by
+// sending runs of whitespace as keep-alive padding while the model thinks,
+// then the JSON; the failure is that body arriving as padding ONLY, which
+// `res.json()` cannot parse. Probed directly on the box: 12/12 identical
+// calls succeeded in isolation, yet two scenarios failed BOTH attempts during
+// a real suite run — so it is load-correlated, not random, and two
+// back-to-back attempts land inside the same bad moment. The gap is what
+// makes the third attempt a genuinely different sample.
+const JUDGE_ATTEMPTS = 3;
+const JUDGE_RETRY_DELAY_MS = 2000;
 
 // A quote must appear verbatim in something OLMA said. JUDGE_SYSTEM already
 // demands it, and the reasoning-off probe showed exactly why the demand needs
@@ -171,9 +187,12 @@ async function judgeScenario(scenario, turns, deps = {}) {
     .map((t) => `משתמש: ${t.message}\nאולמה: ${t.reply || '(אין תשובה)'}`)
     .join('\n---\n');
   const attempts = deps.judgeAttempts || JUDGE_ATTEMPTS;
+  const delayMs = deps.judgeRetryDelayMs === undefined ? JUDGE_RETRY_DELAY_MS : deps.judgeRetryDelayMs;
+  const sleep = deps.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
   let firstError = null;
   let lastError = 'judge never ran';
   for (let i = 0; i < attempts; i++) {
+    if (i > 0 && delayMs) await sleep(delayMs);
     const out = await judgeOnce(scenario, conversation, turns, complete, deps);
     if (out.ok) {
       if (firstError) out.retriedAfter = firstError;
@@ -282,7 +301,11 @@ async function runScenario(pool, user, scenario, deps = {}) {
     await refreshUserCard(pool, user.id);
 
     const runTurn = deps.runTurn
-      || makeTurnRunner({ agentId: user.agent_id, sessionKey: `agent:${user.agent_id}:eval-${scenario.id}-${Date.now()}` });
+      || makeTurnRunner({
+        agentId: user.agent_id,
+        sessionKey: `agent:${user.agent_id}:eval-${scenario.id}-${Date.now()}`,
+        model: deps.agentModel,
+      });
 
     const turns = [];
     for (const message of scenario.turns) {
@@ -341,4 +364,5 @@ module.exports = {
   getEvalUser, resetEvalUser, runScenario, judgeScenario,
   makeTurnRunner, toolCallsInSlice, JUDGE_SYSTEM,
   verifyProblems, stateSnapshot, JUDGE_MAX_TOKENS, JUDGE_ATTEMPTS,
+  JUDGE_RETRY_DELAY_MS,
 };

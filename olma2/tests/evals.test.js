@@ -159,10 +159,23 @@ test('the judge retries once, and a recovered run remembers the first failure', 
     if (calls === 1) return { ok: false, error: 'empty or unparseable response body (http 200)' };
     return { ok: true, text: '{"verdict":"pass","problems":[]}' };
   };
-  const judged = await harness.judgeScenario(byId['general-knowledge'], turns, { complete: flaky });
+  const judged = await harness.judgeScenario(byId['general-knowledge'], turns,
+    { complete: flaky, judgeRetryDelayMs: 0 });
   assert.equal(judged.ok, true);
   assert.equal(calls, 2);
   assert.match(judged.retriedAfter, /unparseable response body/);
+
+  // The gap between attempts is the point: the truncated-body failure is
+  // load-correlated, so two back-to-back calls sample the same bad moment.
+  const waits = [];
+  await harness.judgeScenario(byId['general-knowledge'], turns, {
+    complete: (() => { let n = 0; return async () => (++n < harness.JUDGE_ATTEMPTS
+      ? { ok: false, error: 'empty or unparseable response body (http 200)' }
+      : { ok: true, text: '{"verdict":"pass","problems":[]}' }); })(),
+    sleep: async (ms) => { waits.push(ms); },
+  });
+  assert.deepEqual(waits, Array(harness.JUDGE_ATTEMPTS - 1).fill(harness.JUDGE_RETRY_DELAY_MS));
+  assert.ok(harness.JUDGE_RETRY_DELAY_MS > 0, 'a retry with no gap re-samples the same moment');
 
   // Through runScenario: the wobble lands in the stored judge object.
   const r = await harness.runScenario(db.pool, evalUser, byId['general-knowledge'], {
@@ -174,10 +187,11 @@ test('the judge retries once, and a recovered run remembers the first failure', 
   assert.equal(r.status, 'green');
   assert.match(r.judge.retriedAfter, /llm timeout/);
 
-  // Both attempts dead → ERROR, with the failure named.
+  // Every attempt dead → ERROR, with the failure named.
   let dead = 0;
   const judgedDead = await harness.judgeScenario(byId['general-knowledge'], turns, {
     complete: async () => { dead++; return { ok: false, error: 'llm timeout' }; },
+    judgeRetryDelayMs: 0,
   });
   assert.equal(judgedDead.ok, false);
   assert.equal(dead, harness.JUDGE_ATTEMPTS);
@@ -259,6 +273,45 @@ test('an unparseable judge is an ERROR, never a silent green', async () => {
     complete: async () => ({ ok: true, text: 'אין לי מושג, אבל נשמע בסדר!' }),
   });
   assert.equal(r.status, 'error');
+});
+
+// The cheaper-model pilot: --model drives the suite on a candidate. Two
+// things must hold — the override reaches the gateway call, and a pilot's
+// results can never be mistaken for production's.
+test('makeTurnRunner passes --model only when a candidate was named', async () => {
+  const calls = [];
+  const fakeRun = async (args) => { calls.push(args); return { result: { meta: {}, payloads: [] } }; };
+  const withModel = harness.makeTurnRunner(
+    { agentId: 'u-15', sessionKey: 'k', model: 'openrouter/qwen/qwen3.7-flash' }, { runOpenclawJson: fakeRun });
+  const baseline = harness.makeTurnRunner({ agentId: 'u-15', sessionKey: 'k' }, { runOpenclawJson: fakeRun });
+  await withModel('שלום');
+  await baseline('שלום');
+  assert.deepEqual(calls[0].slice(-2), ['--model', 'openrouter/qwen/qwen3.7-flash']);
+  assert.ok(!calls[1].includes('--model'), 'a baseline run must measure the LIVE default, never an override');
+  // never --deliver, on either path: a pilot cannot reach WhatsApp
+  assert.ok(!calls.flat().includes('--deliver'));
+});
+
+test('a pilot run is excluded from the two-consecutive-nights rule', async () => {
+  const mkRun = async (trigger) => {
+    const { rows } = await db.pool.query(
+      `INSERT INTO eval_runs (trigger, scenarios) VALUES ($1, 1) RETURNING id`, [trigger]);
+    return Number(rows[0].id);
+  };
+  const record = async (runId, status) => db.pool.query(
+    `INSERT INTO eval_results (run_id, scenario, status, hard_failures)
+     VALUES ($1, 'general-knowledge', $2, '[]'::jsonb)`, [runId, status]);
+
+  const nightly = await mkRun('nightly');
+  await record(nightly, 'green');
+  const pilot = await mkRun(evalsJob.PILOT_TRIGGER);
+  await record(pilot, 'yellow');          // a candidate model wobbled
+  const tonight = await mkRun('nightly');
+
+  const prev = await withTx(db.pool, (c) =>
+    evalsJob.previousStatus(c, 'general-knowledge', tonight));
+  assert.equal(prev, 'green',
+    "the pilot's yellow must not become tonight's 'second night in a row'");
 });
 
 test('a turn that dies mid-scenario is an ERROR result, not a thrown sweep', async () => {

@@ -32,13 +32,26 @@ function inWindow(now) {
   return WINDOW_UTC_HOURS.includes(new Date(now).getUTCHours());
 }
 
+// A run that deliberately drove a CANDIDATE model instead of the live
+// default. Its results describe that model, never production — so it is
+// excluded from the two-consecutive-nights rule and from the dashboard's
+// headline. Both exclusions key on this one label.
+const PILOT_TRIGGER = 'pilot';
+
 // The previous persisted result for a scenario, EXCLUDING the given run —
 // what the two-consecutive-nights rule compares against.
+//
+// Pilot runs are skipped: a candidate model going yellow says nothing about
+// the model users are actually on, and counting it would let an afternoon
+// experiment turn the next real night into a false "second night in a row"
+// alert — the alert-fatigue failure the two-night rule exists to prevent.
 async function previousStatus(client, scenario, beforeRunId) {
   const { rows } = await client.query(
-    `SELECT status FROM eval_results WHERE scenario = $1 AND run_id < $2
-      ORDER BY id DESC LIMIT 1`,
-    [scenario, beforeRunId]
+    `SELECT r.status FROM eval_results r
+       JOIN eval_runs u ON u.id = r.run_id
+      WHERE r.scenario = $1 AND r.run_id < $2 AND u.trigger <> $3
+      ORDER BY r.id DESC LIMIT 1`,
+    [scenario, beforeRunId, PILOT_TRIGGER]
   );
   return rows[0] ? rows[0].status : null;
 }
@@ -140,5 +153,5 @@ async function sweepEvals(pool, deps = {}) {
 
 module.exports = {
   sweepEvals, runEvalSuite, alertText, previousStatus, inWindow,
-  LAST_RUN_FLAG, WINDOW_UTC_HOURS,
+  LAST_RUN_FLAG, WINDOW_UTC_HOURS, PILOT_TRIGGER,
 };
