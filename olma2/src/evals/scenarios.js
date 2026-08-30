@@ -22,13 +22,43 @@ const tasks = require('../domain/tasks');
 const preferences = require('../domain/preferences');
 
 // Every turn must open with turn_start — the rule everything else (quota,
-// pause, offerResume, name capture) hangs off. Checked for every scenario.
+// pause, offerResume, name capture) hangs off. Checked for every scenario
+// except `stop-service`, which uses turnWasOpened below; see there.
 function turnStartFirst(ctx) {
   const bad = ctx.turns.filter((t) => t.toolCalls[0] !== 'turn_start');
   return {
     name: 'turn_start first in every turn',
     pass: bad.length === 0,
     detail: bad.length ? `turn opened with ${bad[0].toolCalls[0] || 'no tool at all'}` : undefined,
+  };
+}
+
+// The same rule, asserted one layer down: every turn was OPENED — counted
+// toward quota, person marked awake — whichever tool the model reached for.
+//
+// This is deliberately not a weakened `turnStartFirst`, and the distinction is
+// the whole point. On the stop-confirmation turn the model does not call
+// `turn_start`, and that is not a wording problem: two rounds of rewording and
+// a second, stronger model (deepseek-v4-pro) all failed identically, because a
+// vivid numbered instruction outranks a universal preamble. Asserting the
+// model's tool order there asserts something no model in this family does, and
+// a check that can only ever be red teaches everyone to ignore the board.
+//
+// So the guarantee moved to the layer that can actually keep it — brokerd
+// opens the turn itself (domain/turn.js) — and this checks the guarantee.
+// Detection is not lost: `turnStartFirst` still runs on every other scenario,
+// and every skip writes a `turn.opened_implicitly` audit row, so "how often
+// does the model skip, and before which tool" is a dashboard question now
+// instead of a transcript hunt.
+async function turnWasOpened(client, ctx) {
+  const { rows } = await client.query(
+    `SELECT count(*)::int AS n FROM audit_log
+      WHERE actor_id = $1 AND event = 'message.received' AND created_at >= $2`,
+    [ctx.userId, ctx.startedAt]);
+  return {
+    name: 'every turn was opened (by the model or by the server)',
+    pass: rows[0].n >= ctx.turns.length,
+    detail: `${rows[0].n} of ${ctx.turns.length} turns counted`,
   };
 }
 
@@ -45,7 +75,7 @@ const SCENARIOS = [
     hard: async (client, ctx) => {
       const { rows } = await client.query(`SELECT paused_at FROM users WHERE id = $1`, [ctx.userId]);
       return [
-        turnStartFirst(ctx),
+        await turnWasOpened(client, ctx),
         { name: 'pause_olma was called', pass: ctx.toolCalls.includes('pause_olma') },
         { name: 'user is actually paused', pass: rows[0].paused_at !== null },
       ];
@@ -189,4 +219,4 @@ for (const s of SCENARIOS) {
   seen.add(s.id);
 }
 
-module.exports = { SCENARIOS, turnStartFirst };
+module.exports = { SCENARIOS, turnStartFirst, turnWasOpened };

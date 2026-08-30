@@ -32,7 +32,15 @@ function fakeTurns(script) {
   return async () => {
     const step = script[Math.min(i, script.length - 1)];
     i++;
-    if (step.effect) await withTx(db.pool, (c) => step.effect(c));
+    await withTx(db.pool, async (c) => {
+      // Every real turn is counted — by turn_start, or by brokerd's recovery
+      // when the model skipped it (domain/turn.js). The fake runner bypasses
+      // brokerd entirely, so it has to stand in for that here or scenarios
+      // asserting the invariant (turnWasOpened) would fail on the harness
+      // rather than on the behaviour they exist to test.
+      await require('../src/domain/audit').record(c, evalUser.id, 'message.received', null);
+      if (step.effect) await step.effect(c);
+    });
     return { reply: step.reply || 'בסדר', toolCalls: step.toolCalls || ['turn_start'], model: 'x/test-model' };
   };
 }
@@ -312,6 +320,26 @@ test('a pilot run is excluded from the two-consecutive-nights rule', async () =>
     evalsJob.previousStatus(c, 'general-knowledge', tonight));
   assert.equal(prev, 'green',
     "the pilot's yellow must not become tonight's 'second night in a row'");
+});
+
+// stop-service swapped `turnStartFirst` for `turnWasOpened` (the model
+// provably will not open the turn itself; brokerd now does). A replacement
+// check that cannot fail is decoration, not detection — so this proves it
+// still goes red when the invariant is actually broken.
+test('turnWasOpened is red when a turn really was not opened', async () => {
+  const silentTurns = (n) => { let i = 0; return async () => ({
+    reply: i++ === 0 ? 'בטוח?' : 'עצרתי.',
+    toolCalls: ['turn_start', 'pause_olma'],
+    model: 'x/test-model',
+  }); };
+  const r = await harness.runScenario(db.pool, evalUser, byId['stop-service'], {
+    // No message.received rows written at all — the invariant is violated.
+    runTurn: silentTurns(),
+    complete: judgePass,
+  });
+  assert.equal(r.status, 'red');
+  assert.ok(r.hardFailures.some((f) => /every turn was opened/.test(f.name)),
+    `expected the invariant check to fail, got: ${JSON.stringify(r.hardFailures)}`);
 });
 
 test('a turn that dies mid-scenario is an ERROR result, not a thrown sweep', async () => {
