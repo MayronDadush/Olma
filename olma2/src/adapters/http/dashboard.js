@@ -21,6 +21,7 @@ const { correctionSql } = require('../../jobs/metrics');
 const { deprovisionUser, previewDeletion } = require('../../intake/deprovision');
 const pauseDomain = require('../../domain/pause');
 const sessionIndex = require('../../channels/sessions');
+const evalsJob = require('../../jobs/evals');
 const picker = require('./picker');
 // /ready's whole test. brokerd beats immediately on boot and then every 60s,
 // so three intervals is generous enough that an ordinary slow tick under load
@@ -149,11 +150,16 @@ function summariseSnapshot(snap) {
 // scripts/run-evals.js.
 async function renderEvals(client) {
   const { rows: runs } = await client.query(
-    `SELECT * FROM eval_runs ORDER BY id DESC LIMIT 5`);
+    `SELECT * FROM eval_runs ORDER BY id DESC LIMIT 8`);
   if (!runs.length) {
     return `<p class="dim">עוד לא רצה אף בדיקה. ההרצה הלילית נדרכת אחרי scripts/setup-eval-user.js --apply בשרת.</p>`;
   }
-  const latest = runs[0];
+  // The headline is the newest run that drove the LIVE model. A pilot run
+  // deliberately drives a candidate, so letting one head this section would
+  // page the operator about a model nobody is using — the same shape as an
+  // "overdue" flag on a healthy reminder. Pilots stay visible in the history
+  // line below, labelled with the model they measured.
+  const latest = runs.find((r) => r.trigger !== evalsJob.PILOT_TRIGGER) || runs[0];
   const { rows: results } = await client.query(
     `SELECT * FROM eval_results WHERE run_id = $1 ORDER BY scenario`, [latest.id]);
 
@@ -183,7 +189,12 @@ async function renderEvals(client) {
 
   const history = runs.map((r) => {
     const when = ago(r.started_at);
-    return `<span class="dim">#${r.id} (${esc(r.trigger)}, ${when}): 🟢${r.greens} 🟡${r.yellows} 🔴${r.reds} ⚠️${r.errors}</span>`;
+    // A pilot is only readable next to the model it measured — without that
+    // its reds look like production regressions in the history line.
+    const tag = r.trigger === evalsJob.PILOT_TRIGGER
+      ? `pilot: ${esc(String(r.agent_model || 'מודל לא ידוע').replace(/^openrouter\//, ''))}`
+      : esc(r.trigger);
+    return `<span class="dim">#${r.id} (${tag}, ${when}): 🟢${r.greens} 🟡${r.yellows} 🔴${r.reds} ⚠️${r.errors}</span>`;
   }).join(' · ');
 
   return banner
