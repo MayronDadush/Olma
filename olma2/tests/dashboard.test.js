@@ -37,11 +37,17 @@ test('metrics rollup: audit events become daily snapshot rows', async () => {
   await withTx(db.pool, (c) => tasks.addTask(c, user.id, { title: 'metric fodder' }));
   const out = await withTx(db.pool, (c) => metrics.sweepMetrics(c));
   assert.ok(out.metricsWritten > 0);
+  // The sweep's day is `now.toISOString().slice(0, 10)` — UTC. CURRENT_DATE is
+  // the SESSION's date, so on a box whose Postgres is not in UTC the two
+  // disagree for the hours between the zones' midnights and this read found
+  // nothing. Asking on the same basis the writer used is the assertion that
+  // was meant; a test must not be right only where the clocks happen to agree.
+  const today = new Date().toISOString().slice(0, 10);
   const { rows } = await db.pool.query(
-    `SELECT value FROM product_metrics_daily WHERE date = CURRENT_DATE AND metric = 'tasks_created'`);
+    `SELECT value FROM product_metrics_daily WHERE date = $1::date AND metric = 'tasks_created'`, [today]);
   assert.ok(Number(rows[0].value) >= 1);
   const dau = await db.pool.query(
-    `SELECT value FROM product_metrics_daily WHERE date = CURRENT_DATE AND metric = 'active_users'`);
+    `SELECT value FROM product_metrics_daily WHERE date = $1::date AND metric = 'active_users'`, [today]);
   assert.ok(Number(dau.rows[0].value) >= 1);
 });
 

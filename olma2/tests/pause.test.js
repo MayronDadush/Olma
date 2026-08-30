@@ -6,7 +6,7 @@
 // because there was nothing to call.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { freshDb, makeUser } = require('./helpers');
+const { freshDb, makeUser, daytime } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const pause = require('../src/domain/pause');
 const reminders = require('../src/domain/reminders');
@@ -133,13 +133,15 @@ test('a dropped message does not spend their daily budget', async () => {
     await withTx(db.pool, (c) => enqueue(c, {
       userId: user.id, kind: 'checkin', payload: { n: i }, idempotencyKey: `b:${i}` }));
   }
-  await drainOnce(db.pool, async () => ({ ok: true }));
+  await drainOnce(db.pool, async () => ({ ok: true }), daytime());
   await withTx(db.pool, (c) => pause.resumeUser(c, user.id));
 
   await withTx(db.pool, (c) => enqueue(c, {
     userId: user.id, kind: 'checkin', payload: { after: true }, idempotencyKey: 'after' }));
   const sent = [];
-  await drainOnce(db.pool, async (row) => { sent.push(row.id); return { ok: true }; });
+  // Pinned to daytime: what is under test is the budget arithmetic, and
+  // letting the drain read the wall clock made it a test of what hour it is.
+  await drainOnce(db.pool, async (row) => { sent.push(row.id); return { ok: true }; }, daytime());
   assert.equal(sent.length, 1, 'six cancelled messages must not exhaust the budget on return');
 });
 
@@ -210,7 +212,7 @@ test('after resume, proactive messages flow again', async () => {
   await withTx(db.pool, (c) => enqueue(c, {
     userId: user.id, kind: 'checkin', payload: {}, idempotencyKey: 'back' }));
   const sent = [];
-  await drainOnce(db.pool, async (row) => { sent.push(row.id); return { ok: true }; });
+  await drainOnce(db.pool, async (row) => { sent.push(row.id); return { ok: true }; }, daytime());
   assert.equal(sent.length, 1);
 });
 
