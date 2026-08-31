@@ -46,7 +46,7 @@ in nine is not a saving; the tool call is the product.
 | | |
 |---|---|
 | Model | `openrouter/deepseek/deepseek-v4-flash` |
-| Price (per Mtok, OpenRouter 2026-08-30) | $0.079 in / $0.157 out |
+| Price (per Mtok, read live off `/api/v1/models` 2026-08-31) | $0.089 in / $0.177 out |
 | Fallbacks | `deepseek-v4-pro` → `anthropic/claude-haiku-4-5` |
 | In production since | 2026-08-26 (see CLAUDE.md, "Model provider pilot") |
 
@@ -70,31 +70,60 @@ different owners, which is the whole point of scoring this way.
   all.
 - **3 ERROR — the judge's transport, not either model.** See below.
 
-## The judge's truncated body (diagnosed 2026-08-30)
+## The judge's failures — and the two things they were NOT (closed 2026-08-31)
 
-Not a model quality problem, and worth writing down because it looks like
-one and cost a night of alerts. OpenRouter answers a slow non-streaming
-request by sending **runs of whitespace as keep-alive padding** while the
-model thinks, then the JSON. The failure is that body arriving as **padding
-only**, which `res.json()` cannot parse — before the fix it surfaced as a
-raw `Cannot read properties of null (reading 'choices')`.
+Kept because the wrong diagnosis was written down here confidently, twice,
+and reading how it was corrected is worth more than the conclusion.
 
-Measured on the box, directly against the API:
+**What was believed:** OpenRouter pads a slow non-streaming request with
+whitespace, and the failure is that body arriving as padding ONLY, which
+`res.json()` cannot parse. Load-correlated, so retry with a gap.
 
-| Probe | Result |
-|---|---|
-| 12 identical calls in isolation (6000 cap, with and without a reasoning cap) | **12/12 ok** |
-| Two scenarios during a real suite run | **failed both attempts each** |
-| `max_tokens: 2000`, long conversation | `finish_reason: length`, 7.5k chars of **reasoning leaked into `content`** |
-| `reasoning: {max_tokens: 1200}` | **ignored** — 2644 reasoning tokens came back anyway |
+**Both halves were wrong.** Measured directly against the API, same prompt:
 
-So it is load-correlated, not random: it does not reproduce on a quiet box
-and does reproduce under a suite. That is why the retry is **3 attempts with
-a 2s gap** rather than two back-to-back — without the gap both attempts
-sample the same bad moment, which is exactly what happened.
+| max_tokens | wall | leading whitespace | parses |
+|---|---|---|---|
+| 12000 | 49.8s | 1287 bytes | ✅ |
+| 24000 | 12.5s | 319 bytes | ✅ |
 
-If it persists, the real fix is streaming (`stream: true`), which removes
-the padding mechanism entirely rather than retrying around it.
+The padding is real (~a byte per 39ms of waiting) and **has never mattered**
+— `JSON.parse` skips leading whitespace. What actually failed was our own
+60s timeout: both providers send the 200 immediately and the body afterwards,
+so an abort lands mid-body and comes back as a `res.json()` failure on a
+response that looks perfectly healthy. `.catch(() => null)` then reported it
+as the provider returning nothing. The "load correlation" was just the fact
+that a busy box makes a slow call slower.
+
+The second failure underneath it was truncation, and the cap had been raised
+three times by guess (700 → 2500 → 6000, all failing). Measured instead:
+`reasoning_tokens` **4568** for an answer that is **33 characters**. The
+budget is essentially all thinking.
+
+Fixed by naming the timeout as ours on both providers, raising the judge
+deadline to 180s (latency is set by upstream load, not the cap — 49.8s and
+12.5s for the same prompt minutes apart, so 60s was a coin toss), a 12000
+base cap, and escalation to 24000 specifically on `finish_reason=length`,
+since that is the one failure class where an identical retry provably cannot
+differ. Streaming is **not** needed; it would have solved a problem that was
+never there.
+
+## Registering a candidate does NOT need a gateway restart (measured 2026-08-31)
+
+`register-openrouter-models.js` told you to restart for months, and this file
+used that to defer the cheap-tier pilot to "a quiet window". Probed straight
+after a write that added two models: the `--model` override was accepted
+immediately, `executionTrace.winnerModel` named the candidate, `fallbackUsed`
+false. Registration applies hot.
+
+This matters beyond one wrong line: the restart is the **only** part of a
+model pilot that touches live users, so believing it was required is what
+confined these experiments to off-hours. They can run any time. Verify rather
+than assume, per model:
+
+```bash
+openclaw agent --agent u-15 --session-key "probe:$(date +%s)" \
+  --message "test" --model <id> --json | grep winnerModel
+```
 
 ## Candidates worth measuring
 
@@ -103,22 +132,82 @@ current default on output. Cheap-and-Anglocentric is the trap to watch:
 Hebrew grammatical gender is a hard requirement here, and
 `gpt-oss-120b` was already set aside once on that basis.
 
-| Model | in / out per Mtok | vs default (out) | note |
+| Model | in / out per Mtok | vs default (out) | status |
 |---|---|---|---|
-| `qwen/qwen3.7-flash` | $0.03 / $0.13 | ~1.2x cheaper | 1M ctx; Qwen3 was the original pilot candidate |
-| `openai/gpt-oss-120b` | $0.037 / $0.17 | ~same | cheapest-ish, weakest Hebrew bet |
-| `deepseek/deepseek-v4-flash-0731` | $0.065 / $0.18 | slightly dearer | pinned build of the incumbent |
-| `qwen/qwen3-30b-a3b-instruct-2507` | $0.048 / $0.193 | dearer out | small MoE |
+| `qwen/qwen3.7-flash` | $0.030 / $0.130 | ~1.4x cheaper | **measured 2026-08-31 — disqualified** |
+| `openai/gpt-oss-120b` | $0.037 / $0.170 | ~same | **measured 2026-08-31 — disqualified** |
+| `openai/gpt-oss-20b` | $0.030 / $0.130 | ~1.4x cheaper | unmeasured; same family as the above |
+| `mistralai/ministral-3b-2512` | $0.100 / $0.100 | ~1.8x cheaper out | unmeasured; dearer input |
+| `qwen/qwen3-30b-a3b-instruct-2507` | $0.048 / $0.193 | dearer out | unmeasured |
+
+**The price argument is now essentially closed.** Read live off
+`/api/v1/models` on 2026-08-31, the entire tool-capable floor sits at roughly
+$0.03 / $0.13 against the incumbent's $0.089 / $0.177. On a system billing
+~$18/month that is hundredths of a cent per Mtok — so a future swap needs a
+**quality or speed** argument. Both candidates measured below lose on both.
 
 **Sizing, before anyone over-invests** (the same caution CLAUDE.md gives):
 all of v2 has cost single-digit dollars in model spend. These experiments
-are infrastructure for scale and for *quality* — the `stop-service` red is
-worth more than the price difference.
+are infrastructure for scale and for *quality*.
 
 ## Results log
 
 Newest first. One entry per pilot; record the run id so the per-scenario
 detail stays recoverable from `eval_results`.
+
+### Runs #17-19 — 2026-08-31 — the cheap tier, and it is not close
+
+The first pilots of genuinely cheaper models. Both lose decisively, on hard
+checks rather than on taste, and they lose in the **same** way.
+
+| Model | G / Y / **R** / E | suite wall | $/Mtok out |
+|---|---|---|---|
+| `deepseek-v4-flash` (incumbent, nightly #16) | 6 / 2 / **1** / 0 | — | $0.177 |
+| `qwen/qwen3.7-flash` (#17) | 2 / 0 / **4** / 3 | 321s | $0.130 |
+| `openai/gpt-oss-120b` (#19) | 2 / 3 / **3** / 1 | 883s | $0.170 |
+
+**The shared failure is tool discipline, and it is the whole product.** Both
+candidates open turns with whatever tool comes to mind — `set_my_name`,
+`list_my_contacts`, `add_tasks_bulk` — where the incumbent opens with
+`turn_start`. That is not a style difference: `turn_start` stamps
+`last_inbound_at`, counts the message toward quota, nudges night-held rows
+and runs the flood check. DeepSeek's tool obedience is precisely what the
+extra $0.04/Mtok is buying.
+
+**`qwen3.7-flash` — disqualified three times over.**
+
+- **It answers with no tool call at all.** Two scenarios recorded `turn opened
+  with no tool at all`, and `stop-service` failed as `1 of 2 turns counted`
+  — meaning a whole turn never reached brokerd. This also marks the boundary
+  of the server-side recovery shipped the day before: it repairs a turn opened
+  with the WRONG tool, and **cannot** repair one with no tools, because
+  nothing server-side ever hears about that turn. That is a limit of the
+  approach, not a defect in it — but it means tool-calling reliability is
+  still a hard model requirement, not something the server can paper over.
+- **It rate-limits on our OpenRouter tier**, reproducibly: 3 scenarios lost to
+  `API rate limit reached`, and a targeted re-run of exactly those three lost
+  2 of 3 again. A model we cannot reliably call is not a candidate at any
+  price, independent of quality.
+- 4 hard reds against the incumbent's 1.
+
+**`gpt-oss-120b` — the Anglocentric assumption is now evidence.** CLAUDE.md
+has carried "weakest Hebrew bet" since 2026-08-20 on no measurement at all.
+It measured true, and worse than expected: the `stop-service` reply degenerated
+into **"בשמת על ההפעלה מחדש של שם שם שם?"** — not awkward Hebrew, broken
+Hebrew. It is also **1.6x slower over the suite** (883s vs 550s) and took
+**285s** on `hebrew-gender-feminine` against the incumbent's 79s, which is
+worth weighing against `stuckSessionAbortMs = 65s`.
+
+**No message sent to Miron.** The standing instruction is to write when
+something interesting might justify a change; the finding here is that no
+change is warranted, and a "tested two, both worse" WhatsApp is the alert
+fatigue this project keeps designing against. It belongs in this file.
+
+**Noted separately, and not a model-choice question:** the incumbent's own
+`bare-time-shift` is **intermittent** — green in run #14, red in the nightly
+#16 hours later, and red on both candidates. That is a live production
+scenario failing occasionally on the model in use, and it alerted overnight.
+It is the next thing worth looking at, ahead of any further model shopping.
 
 ### Run #10 — 2026-08-30 — `deepseek-v4-pro`, 3 scenarios
 
@@ -155,11 +244,8 @@ Secondary findings, both real:
   three-vehicle split on one line and got three bullets. Cosmetic; one
   night, so no action (the two-night rule).
 
-**Not yet measured:** the genuinely cheaper candidates
-(`qwen3.7-flash`, `gpt-oss-120b`) need registering in
-`scripts/register-openrouter-models.js` plus a gateway restart, which
-briefly interrupts live users — deliberately deferred to a quiet window
-rather than done mid-evening. Worth knowing before scheduling it: the
-incumbent is already near the cheapest tier, so the prize there is ~$0.02
-per Mtok of output, not a step change. The `stop-service` defect is worth
-more than the price difference.
+**Measured 2026-08-31 — see runs #17-19 above.** Both were deferred here to
+"a quiet window" on the belief that registering a model needs a gateway
+restart. It does not (see above), so the deferral was unnecessary; and the
+`stop-service` defect this pilot was chasing was closed structurally instead,
+which is what run #10 concluded it would take.

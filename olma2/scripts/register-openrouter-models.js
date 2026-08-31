@@ -38,11 +38,25 @@ const occ = require('../src/intake/openclaw-config');
 // at $0.0886/$0.177 per Mtok. That benchmark had no tools, so this
 // registration still proves nothing about a 59-tool agent turn — that is
 // what scripts/model-pilot.js is for.
+// The cheap tier, added 2026-08-31 with prices read live off /api/v1/models
+// that morning rather than copied forward. Against the incumbent v4-flash
+// ($0.089 / $0.177 per Mtok), the whole tool-capable floor sits at roughly
+// $0.03 / $0.13 — so the money argument is nearly exhausted: a swap here saves
+// hundredths of a cent per Mtok on a system billing ~$18/month. These are
+// registered to be judged on QUALITY and SPEED, which is where an agent turn
+// actually lives (~59 tool schemas, Hebrew, and a 65s stuckSessionAbortMs).
+//   qwen3.7-flash   $0.030 / $0.130, 1M context
+//   gpt-oss-120b    $0.037 / $0.170, 131k context — carried in CLAUDE.md as
+//                   "Anglocentric, weakest Hebrew bet" since 2026-08-20 on no
+//                   evidence at all; registered to settle that rather than
+//                   keep repeating it.
 const MODELS = [
   'openrouter/deepseek/deepseek-v4-flash',
   'openrouter/deepseek/deepseek-v4-pro',
   'openrouter/qwen/qwen3-235b-a22b-2507',
   'openrouter/deepseek/deepseek-v3.2',
+  'openrouter/qwen/qwen3.7-flash',
+  'openrouter/openai/gpt-oss-120b',
 ];
 
 const APPLY = process.argv.includes('--apply');
@@ -92,5 +106,16 @@ if (!added.length && !catalogAdded.length) process.exit(0);
 
 occ.saveConfig(cfg);
 console.log('\nwritten to', occ.DEFAULT_PATH);
-console.log('agents.defaults is not a hot-reload path — restart the gateway:');
-console.log('  systemctl --user restart openclaw-gateway');
+// This used to tell you to restart the gateway. Probed 2026-08-31 immediately
+// after a write that added two models: a --model override on a brand-new entry
+// was accepted straight away, with executionTrace.winnerModel naming the
+// candidate and fallbackUsed false. So registration applies HOT, and the
+// restart this script demanded for months was never needed for it — which
+// matters because a restart is the one part of a model pilot that interrupts
+// live users, and demanding it is what confines the pilot to a quiet window.
+// The bindings rule it was generalised from is narrower than it looked (see
+// CLAUDE.md, "bindings hot-apply — but only when bundled").
+console.log('registration applies hot — verify with a --model override before');
+console.log('assuming a restart is needed:');
+console.log('  openclaw agent --agent u-15 --session-key "probe:$(date +%s)" \\');
+console.log('    --message "test" --model <id> --json | grep winnerModel');
