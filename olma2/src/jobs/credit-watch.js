@@ -104,4 +104,131 @@ async function checkCreditAlert(client, deps = {}) {
   return { alerted: true, phone };
 }
 
-module.exports = { checkCreditAlert, alertText, ALERT_PHONE_FLAG, DEFAULT_ALERT_PHONE, ALERT_AT_FLAG };
+// ---- the warning BEFORE the outage -------------------------------------------
+// checkCreditAlert above fires on failures that have already started — which is
+// the outage, not a warning about one. Every prepaid provider publishes what is
+// LEFT, so the runway is knowable days ahead, and nothing was reading it: the
+// 2026-08-31 cost audit found OpenRouter at $1.75, about four days out, with no
+// mechanism anywhere that would have said so before everything stopped.
+//
+// Three rules keep this from becoming noise nobody reads:
+//
+// - **Tiers, not repetition.** A balance below threshold alerts ONCE, then only
+//   again when it crosses into a genuinely more urgent tier. At most three
+//   messages per depletion, each meaning something new. A daily "still low"
+//   would be fourteen messages that train the reader to swipe them away — the
+//   exact failure the behavioural-evals YELLOW/RED split was built around.
+// - **Days where days are knowable.** $2 left is fine on a service nobody uses
+//   and an outage tomorrow on the one every model call goes through. Only
+//   providers that report their own burn rate get day tiers; the rest fall back
+//   to dollars, which is the weaker signal and is treated as one.
+// - **A service we could not READ is never a service in trouble.** A billing
+//   API being down must not page anyone: no reading, no alert, and the
+//   dashboard already shows the error.
+//
+// Unlike the outage alarm it defers outside waking hours. A prepaid balance
+// cannot be topped up better at 03:00 than at 08:00, and the raw pipe bypasses
+// the outbox gate entirely — so this function has to hold that line itself.
+const BALANCE_TIERS_FLAG = 'balance_alert_tiers';
+const ALERT_HOURS = { from: 8, to: 22 };
+const DEFAULT_TZ = 'Asia/Jerusalem';
+
+// Ascending, so `.find(v < t)` returns the MOST urgent tier crossed: at 4 days
+// left that is 7, not 14. A lower number is a worse situation.
+const DAY_TIERS = [3, 7, 14];
+const USD_TIERS = [2, 5];
+
+const BALANCE_SERVICES = [
+  { key: 'openrouter', label: 'OpenRouter — כל קריאות המודל', topUp: 'openrouter.ai/settings/credits (שווה Auto-reload)' },
+  { key: 'twilio', label: 'Twilio — שיחות טלפון', topUp: 'console.twilio.com' },
+  { key: 'deepgram', label: 'Deepgram — זיהוי דיבור בשיחות', topUp: 'console.deepgram.com' },
+];
+
+function tierFor(s) {
+  if (!s || !s.configured || s.error) return null;
+  if (s.remaining === null || s.remaining === undefined) return null;
+  if (s.daysLeft !== null && s.daysLeft !== undefined) {
+    return DAY_TIERS.find((t) => s.daysLeft < t) ?? null;
+  }
+  return USD_TIERS.find((t) => s.remaining < t) ?? null;
+}
+
+function balanceAlertText(low) {
+  const lines = ['⚠️ אולמה: יתרה נמוכה בשירות בתשלום.', ''];
+  for (const { label, state } of low) {
+    const left = `$${Number(state.remaining).toFixed(2)}`;
+    lines.push(state.daysLeft !== null && state.daysLeft !== undefined
+      ? `• ${label}: ${left} — כ-${Math.floor(state.daysLeft)} ימים בקצב הנוכחי.`
+      : `• ${label}: ${left} נשארו.`);
+  }
+  lines.push('', 'כשיתרה נגמרת — אין תשובות, אין תזכורות, אין דיג׳סטים.');
+  for (const { topUp } of low) lines.push(`טעינה: ${topUp}`);
+  return lines.join('\n');
+}
+
+// deps.send(phone, text) · deps.getInfraCosts() — both injected so a test never
+// touches the network or WhatsApp.
+async function checkBalanceForecast(client, deps = {}) {
+  const getCosts = deps.getInfraCosts || require('../adapters/infra-cost').getInfraCosts;
+  const costs = await getCosts();
+
+  const stored = (await flagsDomain.getFlag(client, BALANCE_TIERS_FLAG)) || {};
+  const next = { ...stored };
+  const low = [];
+  for (const svc of BALANCE_SERVICES) {
+    const state = costs[svc.key];
+    const tier = tierFor(state);
+    if (tier === null) {
+      // Healthy again (or unreadable): forget what we alerted at, so a future
+      // depletion gets the full ladder rather than being silenced by a stale
+      // stamp from the last one.
+      delete next[svc.key];
+      continue;
+    }
+    const last = stored[svc.key];
+    if (last === undefined || last === null || tier < last) {
+      low.push({ ...svc, state, tier });
+      next[svc.key] = tier;
+    } else {
+      next[svc.key] = last;
+    }
+  }
+
+  // Nothing new to say. The recovery bookkeeping above still has to land, or a
+  // service that recovered stays permanently silenced.
+  if (!low.length) {
+    if (JSON.stringify(next) !== JSON.stringify(stored)) {
+      await flagsDomain.setFlag(client, BALANCE_TIERS_FLAG, next);
+    }
+    return { alerted: false };
+  }
+
+  const phone = (await flagsDomain.getFlag(client, ALERT_PHONE_FLAG)) || DEFAULT_ALERT_PHONE;
+  // Their zone, converted in Postgres like every other local-time decision
+  // here, so there is no offset arithmetic to break at a DST boundary.
+  const { rows: hr } = await client.query(
+    `SELECT extract(hour from now() AT TIME ZONE coalesce(
+       (SELECT timezone FROM users WHERE phone = $1), $2))::int AS h`,
+    [phone, DEFAULT_TZ]
+  );
+  const h = hr[0].h;
+  // Deferred, NOT dropped: the tier stays unstamped so the next tick inside
+  // the window says it. Stamping here would swallow the alert entirely.
+  if (h < ALERT_HOURS.from || h >= ALERT_HOURS.to) {
+    return { alerted: false, deferred: low.map((l) => l.key) };
+  }
+
+  const res = await deps.send(phone, balanceAlertText(low));
+  if (!res || !res.ok) {
+    // Same promise as the outage alarm: do not stamp, keep trying.
+    return { alerted: false, error: String((res && res.error) || 'send failed').slice(0, 200) };
+  }
+  await flagsDomain.setFlag(client, BALANCE_TIERS_FLAG, next);
+  return { alerted: true, phone, services: low.map((l) => l.key) };
+}
+
+module.exports = {
+  checkCreditAlert, alertText, ALERT_PHONE_FLAG, DEFAULT_ALERT_PHONE, ALERT_AT_FLAG,
+  checkBalanceForecast, balanceAlertText, tierFor,
+  BALANCE_TIERS_FLAG, BALANCE_SERVICES, DAY_TIERS, USD_TIERS, ALERT_HOURS,
+};

@@ -139,3 +139,124 @@ test('an outage one microsecond newer than the last alert still re-arms it', asy
       "the alarm's own clock must be the database's");
   });
 });
+
+// ---- the runway warning ------------------------------------------------------
+
+// A fixed clock inside the alert window, so these never depend on when the
+// suite happens to run. The hour is read in the alert phone's own timezone, so
+// the test user carries one.
+function costs(over = {}) {
+  return async () => ({
+    openrouter: { configured: true, prepaid: true, remaining: 1.75, daysLeft: 4.2, dailyTotal: 0.42, ...over.openrouter },
+    twilio: { configured: true, prepaid: true, remaining: 18.1, ...over.twilio },
+    deepgram: { configured: true, prepaid: true, remaining: 199.9, ...over.deepgram },
+  });
+}
+
+// The whole ladder runs against a user whose local hour is inside the window;
+// setting the phone's timezone is what makes that deterministic.
+async function armWindow(c, phone) {
+  await flagsDomain.setFlag(c, watch.ALERT_PHONE_FLAG, phone);
+  await flagsDomain.setFlag(c, watch.BALANCE_TIERS_FLAG, {});
+}
+
+// Park a user in whatever zone makes their LOCAL hour the one a test needs, so
+// these never pass or fail depending on when the suite happens to run.
+async function setLocalHour(c, userId, hour) {
+  const { rows } = await c.query(`SELECT extract(hour from now() at time zone 'UTC')::int AS h`);
+  const off = ((hour - rows[0].h) % 24 + 24) % 24;
+  const zone = off === 0 ? 'Etc/GMT+0' : (off <= 12 ? `Etc/GMT-${off}` : `Etc/GMT+${24 - off}`);
+  await c.query(`UPDATE users SET timezone = $2 WHERE id = $1`, [userId, zone]);
+}
+
+test('tierFor: days where the provider reports a burn rate, dollars where it does not', () => {
+  // 4.2 days left is inside the 7-day tier, not the 14 — the MOST urgent tier
+  // crossed is the one that decides, or the ladder would never escalate.
+  assert.equal(watch.tierFor({ configured: true, remaining: 1.75, daysLeft: 4.2 }), 7);
+  assert.equal(watch.tierFor({ configured: true, remaining: 0.8, daysLeft: 2 }), 3);
+  assert.equal(watch.tierFor({ configured: true, remaining: 50, daysLeft: 30 }), null);
+  assert.equal(watch.tierFor({ configured: true, remaining: 3 }), 5, 'no burn rate → dollar tiers');
+  assert.equal(watch.tierFor({ configured: true, remaining: 18.1 }), null);
+  // A service that could not be read is never a service in trouble.
+  assert.equal(watch.tierFor({ configured: true, error: 'http_500', remaining: 0 }), null);
+  assert.equal(watch.tierFor({ configured: true, remaining: null, daysLeft: null }), null);
+  assert.equal(watch.tierFor({ configured: false }), null);
+});
+
+test('the runway alarm climbs tiers and never repeats one', async () => {
+  await withClient(async (c) => {
+    const u = await makeUser(db.pool, '+972594000777', { firstName: 'R' });
+    await armWindow(c, u.phone);
+    const rec = recorder();
+
+    await setLocalHour(c, u.id, 12); // midday, comfortably inside the window
+
+    // First sighting at 4.2 days → tier 7, one message naming the service.
+    const a = await watch.checkBalanceForecast(c, { ...rec, getInfraCosts: costs() });
+    assert.equal(a.alerted, true, `expected an alert, got ${JSON.stringify(a)}`);
+    assert.deepEqual(a.services, ['openrouter']);
+    assert.match(rec.sent[0].text, /OpenRouter/);
+    assert.match(rec.sent[0].text, /4 ימים/);
+
+    // Same tier again → silent. This is the property that stops fourteen
+    // consecutive "still low" messages from training the reader to ignore it.
+    const b = await watch.checkBalanceForecast(c, { ...rec, getInfraCosts: costs() });
+    assert.equal(b.alerted, false);
+    assert.equal(rec.sent.length, 1);
+
+    // Genuinely worse → the 3-day tier speaks once.
+    const worse = costs({ openrouter: { remaining: 0.6, daysLeft: 1.4, dailyTotal: 0.42 } });
+    const d = await watch.checkBalanceForecast(c, { ...rec, getInfraCosts: worse });
+    assert.equal(d.alerted, true);
+    assert.equal(rec.sent.length, 2);
+    assert.match(rec.sent[1].text, /1 ימים|כ-1/);
+
+    // ...and then goes quiet again at that tier.
+    assert.equal((await watch.checkBalanceForecast(c, { ...rec, getInfraCosts: worse })).alerted, false);
+    assert.equal(rec.sent.length, 2);
+
+    // Topped up → the stamp is forgotten, so the NEXT depletion gets the full
+    // ladder instead of being silenced by a stale tier from the last one.
+    const healthy = costs({ openrouter: { remaining: 50, daysLeft: 120, dailyTotal: 0.42 } });
+    assert.equal((await watch.checkBalanceForecast(c, { ...rec, getInfraCosts: healthy })).alerted, false);
+    assert.deepEqual(await flagsDomain.getFlag(c, watch.BALANCE_TIERS_FLAG), {});
+    const again = await watch.checkBalanceForecast(c, { ...rec, getInfraCosts: costs() });
+    assert.equal(again.alerted, true, 'a fresh depletion must alert again after recovery');
+    assert.equal(rec.sent.length, 3);
+  });
+});
+
+test('outside waking hours the alarm defers — it does not stamp the tier and swallow itself', async () => {
+  await withClient(async (c) => {
+    const u = await makeUser(db.pool, '+972594000778', { firstName: 'N' });
+    await armWindow(c, u.phone);
+    await setLocalHour(c, u.id, 3);
+
+    const rec = recorder();
+    const r = await watch.checkBalanceForecast(c, { ...rec, getInfraCosts: costs() });
+    assert.equal(r.alerted, false);
+    assert.deepEqual(r.deferred, ['openrouter']);
+    assert.equal(rec.sent.length, 0, 'nothing sent at 03:00 — a prepaid balance cannot be topped up better then');
+    assert.deepEqual(await flagsDomain.getFlag(c, watch.BALANCE_TIERS_FLAG), {},
+      'the tier must stay unstamped, or the morning tick would think it had already spoken');
+  });
+});
+
+test('a failed send is retried, never stamped away', async () => {
+  await withClient(async (c) => {
+    const u = await makeUser(db.pool, '+972594000779', { firstName: 'F' });
+    await armWindow(c, u.phone);
+    await setLocalHour(c, u.id, 12);
+
+    const failing = recorder(false);
+    const r = await watch.checkBalanceForecast(c, { ...failing, getInfraCosts: costs() });
+    assert.equal(r.alerted, false);
+    assert.ok(r.error);
+    assert.deepEqual(await flagsDomain.getFlag(c, watch.BALANCE_TIERS_FLAG), {});
+
+    // The retry lands.
+    const ok = recorder(true);
+    assert.equal((await watch.checkBalanceForecast(c, { ...ok, getInfraCosts: costs() })).alerted, true);
+    assert.equal(ok.sent.length, 1);
+  });
+});

@@ -266,18 +266,39 @@ function cartesiaCost(apiKey) {
 
 // ---- Claude subscription: hardcoded, no network -------------------------------
 
-function subscriptionCost(now = new Date()) {
-  let count = 0;
+// `overrides` is {"YYYY-MM": usd} for months billed at something other than the
+// standing rate — a one-month Max upgrade, a paused month, a price change. It
+// exists because the flat constant became wrong the first time the plan changed
+// and there is no API anywhere that could have noticed: subscription billing is
+// not exposed by the org endpoints, which cover API keys only. So the number
+// has to come from the one person who sees the receipt, and it must reach the
+// page as an edit rather than a deploy.
+function subscriptionCost(now = new Date(), overrides = {}) {
+  // Each billing month named the way the override map keys it, so a month is
+  // priced by exactly one rule and there is nothing to keep in sync.
+  const rateFor = (d) => {
+    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    const v = Number(overrides[key]);
+    return Number.isFinite(v) ? v : SUBSCRIPTION_USD;
+  };
+
+  let count = 0, sinceTotal = 0;
   const cursor = new Date(PROJECT_START);
   while (cursor <= now) {
     count += 1;
+    sinceTotal += rateFor(cursor);
     cursor.setUTCMonth(cursor.getUTCMonth() + 1);
   }
-  const monthTotal = [...Array(7).keys()].some((i) => {
+  const billedThisWeek = [...Array(7).keys()].some((i) => {
     const d = new Date(now); d.setUTCDate(d.getUTCDate() - i);
     return d.getUTCDate() === SUBSCRIPTION_BILLING_DAY;
-  }) ? SUBSCRIPTION_USD : 0;
-  return { configured: true, count, sinceTotal: count * SUBSCRIPTION_USD, monthTotal };
+  });
+  return {
+    configured: true, count, sinceTotal,
+    monthTotal: billedThisWeek ? rateFor(now) : 0,
+    rate: rateFor(now),
+    overridden: rateFor(now) !== SUBSCRIPTION_USD,
+  };
 }
 
 // ---- entry point ------------------------------------------------------------
@@ -314,5 +335,5 @@ async function getInfraCosts() {
 // the field-name bug it covers was invisible to every other kind of check.
 module.exports = {
   getInfraCosts, anthropicBotCost, openRouterCost, twilioCost, deepgramCost,
-  PROJECT_START, ELEVENLABS_START,
+  subscriptionCost, PROJECT_START, ELEVENLABS_START, SUBSCRIPTION_USD,
 };
