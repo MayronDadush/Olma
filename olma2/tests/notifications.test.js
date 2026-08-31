@@ -265,8 +265,14 @@ test('unanswered repair: only for messages provably never answered', async () =>
   await db.pool.query(
     `UPDATE users SET agent_id = 'u-' || id, onboarded_at = now() - interval '2 days' WHERE id = $1`, [u.id]);
 
+  // readSentEvents is pinned to null (unreadable log) because this test is
+  // about case (a) only. Learned on the box: the CI deploy runs this suite ON
+  // the production server, where the real gateway log EXISTS — and the
+  // "answered" transcript below then reads, correctly, as an assistant reply
+  // with no Sent line for this fake phone, i.e. case (b). Locally the log is
+  // absent and the difference is invisible.
   const sweep = (msgs) => withTx(db.pool, (c) =>
-    unanswered.sweepUnanswered(c, { readMessages: () => msgs, now }));
+    unanswered.sweepUnanswered(c, { readMessages: () => msgs, readSentEvents: () => null, now }));
 
   // too fresh — the gateway's own recovery (75s) gets first chance
   assert.deepEqual((await sweep([{ role: 'user', text: 'היי', at: ago(1) }])).repaired, []);
@@ -380,8 +386,10 @@ test('a crashed delivery instruction is not "their unanswered message"', async (
   const u = await makeUser(db.pool, '+972617000022', { firstName: 'Gil' });
   await db.pool.query(
     `UPDATE users SET agent_id = 'u-' || id, onboarded_at = now() - interval '2 days' WHERE id = $1`, [u.id]);
+  // case-(a) test: pin readSentEvents to null so the box's real gateway log
+  // cannot pull case (b) into it (see the comment in the test above).
   const sweep = (msgs) => withTx(db.pool, (c) =>
-    unanswered.sweepUnanswered(c, { readMessages: () => msgs, now }));
+    unanswered.sweepUnanswered(c, { readMessages: () => msgs, readSentEvents: () => null, now }));
 
   // a proactive turn crashed AFTER its instruction was written to the session:
   // last entry is user-role but it is OUR text, not theirs. Repairing it made
