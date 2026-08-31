@@ -23,6 +23,7 @@ const scheduleCard = require('../../domain/schedule-card');
 const media = require('../../domain/media');
 const liveUpdates = require('../../domain/live-updates');
 const pause = require('../../domain/pause');
+const voice = require('../../domain/voice');
 const relay = require('../../domain/relay');
 const cardStore = require('../../domain/card-store');
 const facts = require('../../domain/facts');
@@ -376,6 +377,18 @@ const TOOLS = [
     + 'not write again and that they can come back any time by sending a message.',
     { note: S('string', 'What they said, in their own words, if they gave a reason') }, [],
     (client, user, a) => pause.pauseUser(client, user.id, { note: a.note })),
+  // The voice bridge (a separate process, loopback port 8792) decides who may
+  // be called — this tool just asks it to dial and relays the answer.
+  tool('call_me_on_the_phone',
+    'Place a REAL phone call from Olma\'s number to this user\'s phone — they answer and talk to '
+    + 'Olma out loud. Call this when they ask Olma to call them or to talk by voice, in ANY phrasing '
+    + '("תתקשרי אליי", "בואי נדבר בטלפון", "אפשר שיחה?") — the intent matters, not the words. Never '
+    + 'offer or mention this feature unless they raise it, and never call on a guess. On ok, say the '
+    + 'phone will ring within a few seconds. If it returns an error, relay it plainly — most often '
+    + 'voice calls are simply not enabled for their number yet. Complex multi-step requests made '
+    + 'during the call continue here in WhatsApp afterwards.',
+    {}, [],
+    (client, user) => voice.requestCall(client, user)),
   tool('resume_olma',
     'Turn Olma\'s proactive messages back on for someone who had paused, and re-arm the repeating '
     + 'reminders the pause took down (each returns at its own next real time, never at a moment that '
