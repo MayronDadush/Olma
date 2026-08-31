@@ -187,3 +187,16 @@ test('trajectory files are skipped — they carry no billable usage', () => {
   assert.deepEqual(found.map((f) => f.sessionId), ['a']);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('openrouter cache reads are priced at the published cache rate, not as fresh input', () => {
+  // The original table charged cacheRead at the input rate on the stated
+  // belief that no cache pricing was published. It is published
+  // (models endpoint, `input_cache_read`), and the difference is ~5x — the
+  // dashboard overstated the live default's spend by 2.2x for five days
+  // before anyone compared it with OpenRouter's own number (2026-08-31).
+  const { RATES } = require('../src/domain/model-pricing');
+  for (const id of ['deepseek/deepseek-v4-flash', 'deepseek/deepseek-v4-pro', 'deepseek/deepseek-v3.2', 'qwen/qwen3-235b-a22b-2507']) {
+    const r = RATES[id];
+    assert.ok(r.cacheRead < r.input, `${id}: cacheRead (${r.cacheRead}) must be cheaper than input (${r.input})`);
+  }
+});

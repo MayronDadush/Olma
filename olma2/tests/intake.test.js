@@ -548,6 +548,13 @@ test('agent doctrine: act-first outranks curiosity, and one question is a hard c
   // The connection reflex must not fire on someone mentioned once in passing
   assert.match(tpl, /NOT for someone mentioned once in\s+passing/);
 
+  // A phone number is not a location (2026-08-31: a US joiner in LA guessed
+  // as New_York, an Israeli number answering from LA held "overnight" at
+  // noon). Mentioning a place updates the zone that turn, no question; an
+  // unconfirmed zone earns one early question.
+  assert.match(tpl, /a\s+phone number is not a location/);
+  assert.match(tpl, /set_my_timezone` THAT TURN, no question needed/);
+
   // Gender was stored correctly and then ignored on the next line
   assert.match(tpl, /consistently through every sentence/);
   // Owner ask 2026-08-31: masculine address is the default, the feminine
@@ -784,4 +791,72 @@ test('config guard notices two cards quoting the same intake text', async () => 
   assert.equal(v.length, 1, 'exactly one pair collides');
   assert.match(v[0], /users 1 and 2/);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// OpenClaw 2026.8.x replaced the agents.list array with a keyed
+// agents.entries object — and a config carrying BOTH has its list silently
+// DELETED by the gateway's own migration, so writing the old shape onto an
+// entries-format config throws the new agent away. Discovered live
+// 2026-08-31 when the box was upgraded underneath a running system: the very
+// next organic joiner would have been greeted and then never provisioned
+// (intakeConfigured read only .list), and a provisioned agent would have
+// vanished on the next gateway load. Every writer/reader goes through the
+// occ helpers now; these pin both formats.
+test('openclaw-config: entries format — add/remove/has work and never resurrect agents.list', () => {
+  const cfg = {
+    agents: { entries: { intake: { workspace: '/x/intake' }, 'u-40': { workspace: '/x/u-40' } } },
+    bindings: [],
+  };
+  assert.equal(occ.usesEntries(cfg), true);
+  assert.equal(occ.hasAgent(cfg, 'intake'), true);
+  assert.deepEqual(occ.listAgentIds(cfg).sort(), ['intake', 'u-40']);
+
+  assert.equal(occ.addAgent(cfg, { id: 'u-41', workspace: '/x/u-41', agentDir: '/x/u-41-agent' }), true);
+  assert.equal(occ.addAgent(cfg, { id: 'u-41', workspace: '/x/u-41', agentDir: '/x/u-41-agent' }), false, 'idempotent');
+  assert.deepEqual(cfg.agents.entries['u-41'], { name: 'u-41', workspace: '/x/u-41', agentDir: '/x/u-41-agent' });
+  assert.equal(cfg.agents.list, undefined, 'the fatal shape: list must never appear beside entries');
+
+  assert.equal(occ.removeAgent(cfg, 'u-41'), true);
+  assert.equal(occ.removeAgent(cfg, 'u-41'), false, 'already gone');
+  assert.equal(occ.hasAgent(cfg, 'u-41'), false);
+});
+
+test('openclaw-config: legacy list format still works unchanged', () => {
+  const cfg = { agents: { list: [{ id: 'intake', workspace: '/x/intake' }] } };
+  assert.equal(occ.usesEntries(cfg), false);
+  assert.equal(occ.addAgent(cfg, { id: 'u-50', workspace: '/w', agentDir: '/a' }), true);
+  assert.ok(cfg.agents.list.some((a) => a.id === 'u-50'));
+  assert.equal(occ.removeAgent(cfg, 'u-50'), true);
+  assert.ok(!cfg.agents.list.some((a) => a.id === 'u-50'));
+});
+
+test('provisionUser lands the agent in entries when the config is entries-format', async () => {
+  const entriesPath = path.join(tmp, 'openclaw-entries.json');
+  fs.writeFileSync(entriesPath, JSON.stringify({
+    agents: { entries: { intake: { workspace: '/x/intake', agentDir: '/x/intake-agent' } } },
+    bindings: [],
+    tools: { fs: { workspaceOnly: true }, alsoAllow: ['read', 'write'] },
+    mcp: { servers: { olma: { command: 'node', args: ['shim.js'] } } },
+    channels: { whatsapp: { accounts: { default: { allowFrom: [] } } } },
+  }, null, 2));
+
+  const res = await withTx(db.pool, (c) => provisionUser(c, { phone: '+972601000777', configPath: entriesPath }));
+  assert.equal(res.ok, true);
+  const cfg = occ.loadConfig(entriesPath);
+  assert.ok(cfg.agents.entries[res.data.user.agent_id], 'agent keyed into entries');
+  assert.equal(cfg.agents.list, undefined, 'no parallel list for the gateway to delete');
+  assert.ok(cfg.bindings.some((b) => b.match.peer.id === '+972601000777'));
+
+  // And intake still recognises itself in the new shape — before this,
+  // intakeConfigured returned false and the sweep skipped every new joiner.
+  assert.equal(intake.intakeConfigured(entriesPath), true);
+});
+
+test('checkOrphanAgents reads the entries roster too', async () => {
+  const rows = await db.pool.query(`SELECT agent_id FROM users WHERE status = 'active' LIMIT 1`);
+  const live = rows.rows[0] ? rows.rows[0].agent_id : 'u-1';
+  const cfg = { agents: { entries: { intake: {}, [live]: {}, 'u-9999': {} } } };
+  const v = await guard.checkOrphanAgents(db.pool, cfg);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /u-9999/);
 });

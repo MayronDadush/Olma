@@ -48,8 +48,8 @@ async function deprovisionUser(client, phone, { configPath, removeWorkspace = tr
   await client.query(`DELETE FROM waitlist WHERE phone = $1`, [phone]);
 
   const cfg = occ.loadConfig(configPath);
-  const before = { agents: (cfg.agents?.list || []).length, bindings: (cfg.bindings || []).length };
-  cfg.agents.list = (cfg.agents.list || []).filter((a) => a.id !== user.agent_id);
+  const before = { bindings: (cfg.bindings || []).length };
+  const agentRemoved = occ.removeAgent(cfg, user.agent_id);
   cfg.bindings = (cfg.bindings || []).filter(
     (b) => !(b.match && b.match.peer && b.match.peer.id === phone)
   );
@@ -60,9 +60,8 @@ async function deprovisionUser(client, phone, { configPath, removeWorkspace = tr
   occ.saveConfig(cfg, configPath);
 
   // Same trap as provisioning, mirrored: if only the binding went away and
-  // agents.list is untouched, the write is bindings-only and the gateway
+  // the agent roster is untouched, the write is bindings-only and the gateway
   // silently ignores it — the phone would keep routing to a deleted agent.
-  const agentRemoved = before.agents !== cfg.agents.list.length;
   const bindingRemoved = before.bindings !== cfg.bindings.length;
   let restarted = false;
   if (bindingRemoved && !agentRemoved) {

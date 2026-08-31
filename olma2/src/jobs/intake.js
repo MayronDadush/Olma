@@ -79,7 +79,7 @@ function readIntakeFirstMessage(phone, otherPhones = []) {
 function intakeConfigured(configPath) {
   try {
     const cfg = occ.loadConfig(configPath);
-    return (cfg.agents && cfg.agents.list || []).some((a) => a.id === INTAKE_AGENT_ID);
+    return occ.hasAgent(cfg, INTAKE_AGENT_ID);
   } catch { return false; }
 }
 

@@ -396,7 +396,10 @@ const TOOLS = [
     + 'request to be messaged again. Afterwards, tell them what came back.',
     {}, [],
     (client, user) => pause.resumeUser(client, user.id)),
-  tool('set_my_timezone', 'Set IANA timezone. confirmed=true only when the user explicitly confirmed it.',
+  tool('set_my_timezone', 'Set IANA timezone. confirmed=true only when the user explicitly confirmed it. '
+    + 'Call this THE TURN someone reveals where they actually are ("אני בלוס אנג\'לס", "I\'m in NYC", '
+    + 'a trip they mention being on) — a phone number only guesses a country, and every reminder, '
+    + 'digest and quiet-hours window runs on this value, so a wrong zone means 3am messages.',
     { timezone: S('string', 'IANA name, e.g. Asia/Jerusalem'), confirmed: S('boolean', 'User explicitly confirmed') }, ['timezone'],
     (client, user, a) => users.setTimezone(client, user.id, a.timezone, a.confirmed)),
   tool('set_my_language', 'Change the language you speak and store their data in. ONLY on their explicit request ("talk to me in English") — never because one message happened to be in another language.',

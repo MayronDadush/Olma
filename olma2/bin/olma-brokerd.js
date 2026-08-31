@@ -214,6 +214,9 @@ async function main() {
     const metrics = require('../src/jobs/metrics');
     const retention = require('../src/jobs/retention');
     arm('usage_sweep', () => withTx(pool, (c) => usage.sweepUsage(c)));
+    // per-call voice cost, from Twilio's own pricing (see jobs/voice-usage.js)
+    const voiceUsage = require('../src/jobs/voice-usage');
+    arm('voice_usage_sweep', () => withTx(pool, (c) => voiceUsage.sweepVoiceUsage(c)));
     arm('metrics_sweep', () => withTx(pool, (c) => metrics.sweepMetrics(c)));
     arm('retention_sweep', () => withTx(pool, (c) => retention.sweepRetention(c)));
     console.log('[brokerd] outbox worker + sweeps armed');

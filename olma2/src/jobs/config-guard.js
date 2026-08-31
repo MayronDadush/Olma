@@ -175,9 +175,7 @@ async function closeResolved(client, violations) {
 // one. Only `u-<n>` ids are judged: `main`, `intake` and any future
 // infrastructure agent have no user row by design.
 async function checkOrphanAgents(client, cfg) {
-  const ids = ((cfg.agents && cfg.agents.list) || [])
-    .map((a) => (typeof a === 'string' ? a : a && a.id))
-    .filter((id) => typeof id === 'string' && /^u-\d+$/.test(id));
+  const ids = occ.listAgentIds(cfg).filter((id) => /^u-\d+$/.test(id));
   if (!ids.length) return [];
   const { rows } = await client.query(
     `SELECT agent_id FROM users WHERE agent_id = ANY($1) AND status = 'active'`, [ids]);
