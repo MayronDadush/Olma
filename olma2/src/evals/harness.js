@@ -292,25 +292,45 @@ async function judgeOnce(scenario, conversation, turns, complete, deps) {
 // not — the model got it right the second time). A red nobody can diagnose
 // the next morning is the same dead end as an issue list nobody reads.
 // Small and bounded: this rides in the result row.
+// Each section is collected independently, and that is the point rather than
+// a style choice. These used to share one try/catch in sequence, so the
+// contacts query naming a column that does not exist (`name`; it is
+// `display_name`) threw and took everything AFTER it with it — contacts and
+// paused were missing from every snapshot ever recorded, and the one scenario
+// that is entirely about contacts lost exactly the evidence it exists to
+// keep. A diagnostic that fails whole is worse than one that fails in part:
+// it turns "here is what the DB looked like" into "error", which is the
+// shape of every failure this suite has had to chase twice.
+const SNAPSHOT_SECTIONS = [
+  ['tasks', `SELECT id, title, due_at,
+                    to_char(due_at AT TIME ZONE 'Asia/Jerusalem', 'YYYY-MM-DD HH24:MI') AS local
+               FROM tasks WHERE owner_id = $1 ORDER BY id LIMIT 10`],
+  ['facts', `SELECT category, fact FROM user_facts
+              WHERE user_id = $1 AND active = true LIMIT 10`],
+  ['contacts', `SELECT display_name, phone FROM user_contacts
+                 WHERE user_id = $1 LIMIT 10`],
+  // task_reminders has no user_id — it hangs off the task. Writing one here
+  // was the first thing this rewrite got wrong, which is the same mistake
+  // the section above exists because of.
+  ['reminders', `SELECT r.id, r.task_id, r.remind_at, r.repeat_rule, r.sent_at,
+                        to_char(r.remind_at AT TIME ZONE 'Asia/Jerusalem', 'YYYY-MM-DD HH24:MI') AS local
+                   FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+                  WHERE t.owner_id = $1 AND r.cancelled_at IS NULL
+                  ORDER BY r.id LIMIT 10`],
+  ['paused', `SELECT paused_at IS NOT NULL AS paused FROM users WHERE id = $1`],
+];
+
 async function stateSnapshot(client, userId) {
   const snap = {};
-  try {
-    const { rows: tasks } = await client.query(
-      `SELECT id, title, due_at,
-              to_char(due_at AT TIME ZONE 'Asia/Jerusalem', 'YYYY-MM-DD HH24:MI') AS local
-         FROM tasks WHERE owner_id = $1 ORDER BY id LIMIT 10`, [userId]);
-    snap.tasks = tasks;
-    const { rows: facts } = await client.query(
-      `SELECT category, fact FROM user_facts WHERE user_id = $1 AND active = true LIMIT 10`, [userId]);
-    snap.facts = facts;
-    const { rows: contacts } = await client.query(
-      `SELECT name, phone FROM user_contacts WHERE user_id = $1 LIMIT 10`, [userId]);
-    snap.contacts = contacts;
-    const { rows: u } = await client.query(
-      `SELECT paused_at IS NOT NULL AS paused FROM users WHERE id = $1`, [userId]);
-    snap.paused = u[0] ? u[0].paused : null;
-  } catch (e) {
-    snap.error = String(e.message).slice(0, 200);
+  for (const [key, sql] of SNAPSHOT_SECTIONS) {
+    try {
+      const { rows } = await client.query(sql, [userId]);
+      snap[key] = key === 'paused' ? Boolean(rows[0] && rows[0].paused) : rows;
+    } catch (e) {
+      // Named per section, so the next schema drift says WHICH part went
+      // missing instead of blanking the whole record.
+      snap[`${key}_error`] = String(e.message).slice(0, 200);
+    }
   }
   return snap;
 }

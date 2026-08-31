@@ -12,6 +12,7 @@ const harness = require('../src/evals/harness');
 const { SCENARIOS } = require('../src/evals/scenarios');
 const evalsJob = require('../src/jobs/evals');
 const tasksDomain = require('../src/domain/tasks');
+const flagsDomain = require('../src/domain/flags');
 const { decide } = require('../src/outbox/gate');
 
 let db, evalUser, realUser;
@@ -486,13 +487,64 @@ test('sweepEvals: window gate, once-per-night watermark, and the alert pipe', as
   const first = await evalsJob.sweepEvals(db.pool, { ...deps });
   assert.ok(first.runId, JSON.stringify(first));
   assert.ok(first.red >= 1, 'the no-tool goodbye is red');
-  assert.equal(first.alerted, true);
-  assert.equal(sent.length, 1);
-  assert.match(sent[0].text, /בדיקת ההתנהגות/);
+
+  // 04:30 is not an hour to tell anyone a scenario went red. The alert is
+  // queued, not sent — nothing reaches the phone yet.
+  assert.equal(first.alerted, false);
+  assert.equal(first.alertQueued, true);
+  assert.equal(sent.length, 0, 'nobody is woken at 04:30 by a red scenario');
 
   // same night, next hourly tick → watermark blocks a second run
   const again = await evalsJob.sweepEvals(db.pool, { ...deps });
   assert.equal(again.skipped, 'already ran tonight');
+  assert.equal(sent.length, 0, 'and the queued alert is still not forced out at night');
+
+  // ...morning. The first tick inside civil hours delivers it, on the same
+  // raw pipe as before — the channel was never the problem, the hour was.
+  const morning = new Date('2026-08-29T06:30:00Z').getTime(); // 09:30 IL
+  const out = await evalsJob.sweepEvals(db.pool, { ...deps, now: morning });
+  assert.equal(out.skipped, 'outside window', 'the suite does not re-run to deliver');
+  assert.equal(out.alerted, true);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].text, /בדיקת ההתנהגות/);
+
+  // Delivered once, and the flag is cleared — a later tick must not repeat it.
+  await evalsJob.sweepEvals(db.pool, { ...deps, now: morning + 3600_000 });
+  assert.equal(sent.length, 1, 'an alert delivered is an alert finished');
+});
+
+// The half that makes this safe to defer: a pipe that fails must NOT consume
+// the alert. Losing it silently would be strictly worse than waking someone.
+test('a failed send leaves the alert pending for the next tick', async () => {
+  const morning = new Date('2026-08-29T06:30:00Z').getTime();
+  await withTx(db.pool, (c) => flagsDomain.setFlag(c, evalsJob.PENDING_ALERT_FLAG,
+    JSON.stringify({ text: 'red', phone: '+972500000000', runId: 1, date: '2026-08-28' })));
+
+  let attempts = 0;
+  const dead = { now: morning, send: () => { attempts++; return { ok: false }; } };
+  const held = await evalsJob.flushPendingAlert(db.pool, dead, morning);
+  assert.equal(held.held, 'send failed');
+  assert.equal(attempts, 1);
+  assert.ok(await withTx(db.pool, (c) => flagsDomain.getFlag(c, evalsJob.PENDING_ALERT_FLAG)),
+    'still pending — a dropped alarm is worse than a late one');
+
+  const sent = [];
+  const ok = await evalsJob.flushPendingAlert(db.pool,
+    { now: morning, send: (p, t) => { sent.push(t); return { ok: true }; } }, morning);
+  assert.equal(ok.alerted, true);
+  // Queued on the 28th, delivered on the 29th: it says so rather than reading
+  // as last night's.
+  assert.match(sent[0], /מהריצה של 2026-08-28/);
+  assert.equal(await withTx(db.pool, (c) => flagsDomain.getFlag(c, evalsJob.PENDING_ALERT_FLAG)) || '', '');
+});
+
+test('alertHoursOpen follows the operator zone, not the server clock', () => {
+  // 06:30 UTC is 09:30 in Israel — open. 01:30 UTC is 04:30 there — not.
+  assert.equal(evalsJob.alertHoursOpen(new Date('2026-08-29T06:30:00Z').getTime()), true);
+  assert.equal(evalsJob.alertHoursOpen(new Date('2026-08-29T01:30:00Z').getTime()), false);
+  // 19:30 UTC is 22:30 in Israel — a red scenario is not worth a late night
+  // either, so it waits for the morning.
+  assert.equal(evalsJob.alertHoursOpen(new Date('2026-08-29T19:30:00Z').getTime()), false);
 });
 
 test('the outbox gate drops an eval user row like it drops a paused one', () => {
