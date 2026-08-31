@@ -986,6 +986,28 @@ restart the gateway, then compare against Haiku with `scripts/model-pilot.js`
 on `u-3` only — judging Hebrew grammatical gender, tone, and above all whether
 tool calls (meetings, contacts, reminders) stay correct.
 
+**Two lines above are now known to be wrong (2026-08-31), left in place as
+history and corrected here:**
+
+- **Registering a model does NOT need a gateway restart.** Probed immediately
+  after a write adding two models: the `--model` override was accepted, the
+  gateway's own `executionTrace.winnerModel` named the candidate and
+  `fallbackUsed` was false. This matters operationally — the restart is the
+  only part of a model pilot that touches live users, so believing it was
+  required is what confined these experiments to off-hours for months.
+- **"`gpt-oss-120b` Anglocentric, weakest Hebrew bet" was a guess, and it
+  measured TRUE but only once someone checked** — its `stop-service` reply
+  degenerated to "בשמת על ההפעלה מחדש של שם שם שם?", and it is 1.6x slower
+  over the suite. `qwen3.7-flash` is worse still: it answers with no tool call
+  at all and rate-limits reproducibly on our tier.
+
+**And the price argument is closed.** Read live 2026-08-31, the whole
+tool-capable floor is ~$0.03/$0.13 against the incumbent's $0.089/$0.177 —
+hundredths of a cent per Mtok on a system billing ~$18/month. A future swap
+needs a quality or speed case. Dated per-run detail lives in
+`olma2/docs/model-experiments.md`, which is the log; this file only carries
+the conclusion.
+
 ### Background cognition runs on direct API calls, not agent turns (2026-08-25)
 
 `adapters/llm.js` is the substrate: one direct Messages API call (Haiku,
