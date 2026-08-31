@@ -55,6 +55,111 @@ describes **v1**, which is retired-in-place: its code still sits in
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
 
+### The gateway was upgraded underneath a running system (2026-08-31)
+
+Someone ran `npm i -g openclaw` on the box at 19:08 UTC, taking the gateway
+from 2026.6.10 to 2026.8.1. It crash-looped for ~35 minutes (restart counter
+hit 16) because the new version demands an agent-identity migration that only
+runs with the writers stopped: **stop the gateway, `openclaw doctor --fix`,
+start** — the error text says exactly this and it worked first try (agent
+sqlite files were backed up to `/root/backups/agent-sqlite-pre-doctor-20260831`
+first; they were not needed). WhatsApp was down for every user the whole
+window, including a brand-new joiner mid-conversation. Found not by an alarm
+but by an outbox row's `last_error` reading ECONNREFUSED — the delivery
+retry/backoff absorbed the outage so well that nothing else noticed.
+
+The upgrade also **rewrote `openclaw.json` into a new format**: the
+`agents.list` array became a keyed `agents.entries` object (same fields, id
+as key). Three consequences, the first one a time bomb:
+
+- **A config carrying BOTH shapes has `agents.list` silently DELETED** by the
+  gateway's own migration ("Removed agents.list because canonical
+  agents.entries is already set"). Our provisioning wrote `agents.list`, so
+  the next joiner's agent would have been thrown away on the next config
+  load, their binding routing to a nonexistent agent. All roster
+  reads/writes now go through `usesEntries`/`listAgentIds`/`hasAgent`/
+  `addAgent`/`removeAgent` in `src/intake/openclaw-config.js` — both formats
+  supported, the format decision in one place.
+- **`intakeConfigured` read only `.list`, so registration was entirely OFF**
+  from the upgrade until the fix deployed: the sweep reported
+  `skipped: no_intake_agent` and every new joiner would have been greeted by
+  intake and never provisioned. This is the quiet half — nothing errors,
+  nothing retries, strangers just never become users.
+- The doctor migration **registered every agent directory on disk into
+  `entries`**, including `u-18`..`u-22`, which have no user row and no
+  binding — old debris directories, now visible to `checkOrphanAgents`
+  (which reads entries too now). Expect it to file them; removing them from
+  entries + disk is operator cleanup, not urgent (nothing routes there).
+
+Worth keeping as a shape: the vendor's auto-migration was correct and still
+broke us, because OUR code was a second writer to the same file with the old
+schema in its head. After any gateway version bump, diff `openclaw.json`
+against what `src/intake/openclaw-config.js` expects before trusting
+provisioning.
+
+### A phone number is not a location (2026-08-31)
+
+A new US joiner (+1516..., Long Island area code) was guessed
+`America/New_York` — she is in Los Angeles. The same afternoon she sent a
+friend request to an Israeli-numbered user who is ALSO in LA: his stored
+`Asia/Jerusalem` read 22:14, so the gate held the request as 'night' until
+his "morning" — while it was noon where he actually sat, mid-conversation
+with Olma. (The turn_start night-nudge would have released it, but the
+gateway was down — the outage above and this incident interleaved.) Both
+timezones were corrected by hand (`admin.timezone_corrected`, unconfirmed on
+purpose so the agent still verifies), and the request delivered at his real
+midday.
+
+The durable fix is doctrine, not code — the inference was never wrong about
+what it claimed (a country), it was read as more than that (a location):
+
+- **Curiosity ladder rung 2** (right after the name): when the card says the
+  timezone is unconfirmed — especially a non-Hebrew conversation or a
+  non-Israeli number, whose country can span four zones — ask early, one
+  line, which city they are in; save with `confirmed: true`.
+- **A mentioned location updates the zone THAT TURN, no question**:
+  `set_my_timezone`'s description now says so ("אני בלוס אנג'לס" is the
+  answer, not a prompt to ask about timezones). Pinned in
+  `tests/intake.test.js` alongside the act-first rules.
+
+### OpenRouter cache reads were priced 5x too high (fixed 2026-08-31)
+
+`model-pricing.js` charged `cacheRead` at the full input rate on the stated
+belief that OpenRouter publishes no cache pricing. It does —
+`/api/v1/models` carries `input_cache_read` per model, ~5x cheaper than
+input — and on a workload that is mostly a warm 30k-token prefix, that
+mispriced the biggest token column: four steady DeepSeek days summed $1.106
+in `usage_ledger` against $0.50 at the provider's own rates, with
+OpenRouter's dashboard agreeing with the lower figure. The dashboard was
+overstating the live model bill 2.2x. All four OpenRouter entries re-checked
+against the live models endpoint; a test now pins `cacheRead < input` for
+each. (`cacheWrite` stays at the input rate — DeepSeek/Qwen bill a cache
+write as a normal input token, there is no separate write price.)
+Rows already priced stay as written — the ledger is append-only and the
+error is conservative (overstated, never hidden spend).
+
+### Voice calls get a per-call ledger (2026-08-31)
+
+Built for the pricing-model question ("כמה עולה לי דקת שיחה?"), which could
+previously only be answered by reading provider balances by hand.
+`voice_usage_ledger` (migration 026), one row per Twilio call sid;
+`jobs/voice-usage.js` re-reads Twilio's recent-calls page hourly and
+upserts. What made it interesting:
+
+- **Twilio prices a call minutes AFTER it ends** — `price` is null at first,
+  then settles. The upsert back-fills; null means "not settled", never $0
+  (the same rule as the cost page's `remaining: null`).
+- **Twilio is the only meter with per-call truth.** Deepgram/Cartesia/LLM
+  publish no per-call figure; the dashboard's "שיחות קול" block multiplies
+  MEASURED minutes by labelled per-minute estimates (Deepgram's measured
+  from a real balance drop: $0.100 over 25.5 min).
+- Measured economics, for the record (2026-08-31, 23 real calls): Twilio
+  ~$0.065/min to 052-numbers (billed in whole rounded-up minutes; one 055
+  call cost 3x), all-in ≈ **$0.10/minute**. Messages by comparison:
+  ≈ **$0.0053/message** all-in on DeepSeek (94 real messages over 4 days,
+  $0.50 total, including planning/extraction/digests). Calls are the only
+  per-user cost that can hurt a subscription price; messages are noise.
+
 ### Reminders that come back, and cadences that could not be said (2026-08-29)
 
 Three connected repairs, migration 023. The first two shipped together on

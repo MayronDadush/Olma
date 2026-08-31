@@ -29,6 +29,9 @@ const JOB_INTERVAL_SECONDS = {
   // ticks, and each tick costs three external billing calls.
   balance_watch: 21600,
   usage_sweep: 3600,
+  // Twilio settles a call's price minutes after it ends; hourly re-reads of
+  // the recent-calls page are how the price back-fills into the ledger.
+  voice_usage_sweep: 3600,
   // Nightly, but ticked hourly like planning: the job itself owns the
   // small-hours window and the once-per-night watermark.
   eval_sweep: 3600,

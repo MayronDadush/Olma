@@ -393,7 +393,33 @@ async function renderCost(client) {
       : '<p class="dim small">לא נוצרו תמונות או סרטונים החודש.</p>'}
     <p class="dim small">חיוב לפי הדיווח של OpenRouter על כל יצירה — נפרד מעלות המודל של השיחות, ולא נכלל בשורת ההתאמה מול Anthropic.</p>`;
 
-  if (!days.rows.length) return infraHtml + mediaHtml + '<p class="dim">עדיין אין נתוני עלות למשתמשים — החישוב רץ כל שעה.</p>';
+  // Voice calls — per-call rows from jobs/voice-usage.js. Twilio's figure is
+  // the provider's own (authoritative once settled; a null price is "not
+  // settled yet" and is summed as 0 with the count shown). STT/TTS/LLM have
+  // no per-call billing API, so their share is an estimate at a fixed rate
+  // per MINUTE, labelled as such: Deepgram measured from a real balance drop
+  // ($0.100 over 25.5 min of calls, 2026-08-31), Cartesia and the LLM from
+  // list prices. Estimates multiply measured minutes — never guessed usage.
+  const EST_STT_PER_MIN = 0.0039, EST_TTS_PER_MIN = 0.027, EST_LLM_PER_MIN = 0.006;
+  const voice = await client.query(
+    `SELECT count(*) AS calls, count(*) FILTER (WHERE twilio_usd IS NULL) AS unsettled,
+            COALESCE(sum(duration_sec), 0) AS seconds, COALESCE(sum(twilio_usd), 0) AS twilio
+     FROM voice_usage_ledger
+     WHERE started_at >= date_trunc('month', CURRENT_DATE) AND duration_sec > 0`);
+  const v = voice.rows[0];
+  const vMinutes = Number(v.seconds) / 60;
+  const vEst = vMinutes * (EST_STT_PER_MIN + EST_TTS_PER_MIN + EST_LLM_PER_MIN);
+  const voiceHtml = `<h4>שיחות קול</h4>
+    <div class="stats">
+      <div class="stat"><div class="num">${Number(v.calls)}</div><div class="lbl">שיחות החודש</div></div>
+      <div class="stat"><div class="num">${vMinutes.toFixed(1)}</div><div class="lbl">דקות</div></div>
+      <div class="stat"><div class="num">${money(Number(v.twilio), 3)}</div><div class="lbl">Twilio (מדוד)</div></div>
+      <div class="stat"><div class="num">≈${money(vEst, 3)}</div><div class="lbl">STT+TTS+מודל (הערכה)</div></div>
+    </div>
+    <p class="dim small">Twilio לפי המחיר שהוא עצמו מדווח לכל שיחה${Number(v.unsettled) ? ` (${Number(v.unsettled)} שיחות עוד לא תומחרו אצלו — יתעדכן)` : ''};
+    ל-Deepgram/Cartesia/מודל אין חיוב פר-שיחה, לכן הערכה לפי דקה מדודה: ‎$${EST_STT_PER_MIN}+$${EST_TTS_PER_MIN}+$${EST_LLM_PER_MIN} לדקה.</p>`;
+
+  if (!days.rows.length) return infraHtml + mediaHtml + voiceHtml + '<p class="dim">עדיין אין נתוני עלות למשתמשים — החישוב רץ כל שעה.</p>';
   const usersTotal = top.rows.reduce((s, r) => s + Number(r.cost), 0);
   const systemTotal = system.rows.reduce((s, r) => s + Number(r.cost), 0);
   const monthTotal = usersTotal + systemTotal;
@@ -419,7 +445,7 @@ async function renderCost(client) {
   } catch { /* the reconciliation is a nicety; never let it break the page */ }
 
   const anyEstimated = days.rows.some((r) => r.estimated);
-  return infraHtml + mediaHtml + `<h4>עלות מודל לפי משתמש</h4><div class="stats">
+  return infraHtml + mediaHtml + voiceHtml + `<h4>עלות מודל לפי משתמש</h4><div class="stats">
       <div class="stat"><div class="num">${money(monthTotal)}</div><div class="lbl">סה״כ החודש</div></div>
       <div class="stat"><div class="num">${money(Number(todayRow.cost))}</div><div class="lbl">היום</div></div>
       <div class="stat"><div class="num">${top.rows.length}</div><div class="lbl">משתמשים פעילים החודש</div></div>

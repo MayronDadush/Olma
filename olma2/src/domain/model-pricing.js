@@ -29,17 +29,22 @@ const RATES = {
   // short, change these back in the same commit.
   'claude-haiku-4-5':  { input: 1.00, output: 5.00,  cacheWrite: 2.00, cacheRead: 0.10 },
   'claude-sonnet-4-6': { input: 3.00, output: 15.00, cacheWrite: 6.00, cacheRead: 0.30 },
-  // provider: openrouter (pilot candidates — see CLAUDE.md "Model provider
-  // pilot"). No prompt-cache pricing published for these, so cache columns are
-  // charged at the input rate: over-charging a rounding error beats silently
-  // pricing real tokens at zero.
-  'qwen/qwen3-235b-a22b-2507': { input: 0.09,   output: 0.55,   cacheWrite: 0.09,   cacheRead: 0.09 },
-  'deepseek/deepseek-v3.2':    { input: 0.2088, output: 0.3096, cacheWrite: 0.2088, cacheRead: 0.2088 },
-  // v4 generation, prices checked live on OpenRouter 2026-08-26. flash is a
-  // reasoning model: thinking is billed as output tokens, and the output rate
-  // here prices exactly what OpenRouter reports in completion_tokens.
-  'deepseek/deepseek-v4-flash': { input: 0.0886, output: 0.177, cacheWrite: 0.0886, cacheRead: 0.0886 },
-  'deepseek/deepseek-v4-pro':   { input: 0.87,   output: 1.74,  cacheWrite: 0.87,   cacheRead: 0.87 },
+  // provider: openrouter. cacheRead rates ARE published — the models endpoint
+  // carries `input_cache_read` per model — and they are ~5x cheaper than
+  // input. The original "no cache pricing published, charge the input rate"
+  // guess overstated the live default's real spend by 2.2x (measured
+  // 2026-08-31: 4 steady days priced $1.106 here against $0.50 by the
+  // provider's own rates, with OpenRouter's dashboard agreeing with the
+  // lower figure). cacheWrite stays at the input rate: DeepSeek/Qwen publish
+  // no separate write price because a cached write IS a normal input token.
+  // All rates re-checked live against /api/v1/models on 2026-08-31.
+  'qwen/qwen3-235b-a22b-2507': { input: 0.0875, output: 0.35,  cacheWrite: 0.0875, cacheRead: 0.0175 },
+  'deepseek/deepseek-v3.2':    { input: 0.269,  output: 0.40,  cacheWrite: 0.269,  cacheRead: 0.1345 },
+  // v4 generation. flash is a reasoning model: thinking is billed as output
+  // tokens, and the output rate here prices exactly what OpenRouter reports
+  // in completion_tokens.
+  'deepseek/deepseek-v4-flash': { input: 0.08092, output: 0.16184, cacheWrite: 0.08092, cacheRead: 0.016184 },
+  'deepseek/deepseek-v4-pro':   { input: 1.0308,  output: 2.0616,  cacheWrite: 1.0308,  cacheRead: 0.0859 },
 };
 
 // Transcripts carry dated ids ("claude-haiku-4-5-20251001") and provider

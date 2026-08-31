@@ -39,13 +39,57 @@ function saveConfig(cfg, path = DEFAULT_PATH) {
   fs.renameSync(tmp, path);
 }
 
-// agents.list — hot-reloads, safe to apply per-provision.
+// OpenClaw 2026.8.x moved the agent roster from the `agents.list` array to a
+// keyed `agents.entries` object (same fields, the id becomes the key). The
+// migration is one-way and UNFORGIVING: if a config carries BOTH, the gateway
+// deletes `agents.list` wholesale ("Removed agents.list because canonical
+// agents.entries is already set" — legacy-config-migrations.runtime.entries),
+// so writing to the array on an entries-format config would silently throw
+// the new agent away and leave their binding routing to nothing. Discovered
+// live 2026-08-31 when the box was upgraded to 2026.8.1 under us. Every
+// reader/writer below goes through these helpers so the format decision
+// lives in exactly one place: entries when the config has entries, the
+// legacy array otherwise.
+function usesEntries(cfg) {
+  return Boolean(cfg.agents && cfg.agents.entries && typeof cfg.agents.entries === 'object'
+    && !Array.isArray(cfg.agents.entries));
+}
+
+function listAgentIds(cfg) {
+  if (usesEntries(cfg)) return Object.keys(cfg.agents.entries);
+  return ((cfg.agents && cfg.agents.list) || []).map((a) => a && a.id).filter(Boolean);
+}
+
+function hasAgent(cfg, id) {
+  return listAgentIds(cfg).includes(id);
+}
+
+// Adding an agent hot-reloads in both formats, safe to apply per-provision.
 function addAgent(cfg, { id, workspace, agentDir }) {
   cfg.agents = cfg.agents || {};
+  if (hasAgent(cfg, id)) return false;
+  if (usesEntries(cfg)) {
+    cfg.agents.entries[id] = { name: id, workspace, agentDir };
+    return true;
+  }
   cfg.agents.list = cfg.agents.list || [];
-  if (cfg.agents.list.some((a) => a.id === id)) return false;
   cfg.agents.list.push({ id, name: id, workspace, agentDir });
   return true;
+}
+
+// Remove an agent from whichever roster format the config uses. Returns
+// whether anything was actually removed, so callers can keep their
+// "did the config change" bookkeeping exact.
+function removeAgent(cfg, id) {
+  if (usesEntries(cfg)) {
+    if (!Object.hasOwn(cfg.agents.entries, id)) return false;
+    delete cfg.agents.entries[id];
+    return true;
+  }
+  if (!cfg.agents || !Array.isArray(cfg.agents.list)) return false;
+  const before = cfg.agents.list.length;
+  cfg.agents.list = cfg.agents.list.filter((a) => a.id !== id);
+  return cfg.agents.list.length !== before;
 }
 
 // bindings — requires a gateway restart to take effect (see header).
@@ -92,5 +136,6 @@ function addAllowFrom(cfg, phone) {
 
 module.exports = {
   DEFAULT_PATH, loadConfig, saveConfig,
-  addAgent, addBinding, addCatchAllBinding, addAllowFrom,
+  addAgent, removeAgent, addBinding, addCatchAllBinding, addAllowFrom,
+  usesEntries, listAgentIds, hasAgent,
 };

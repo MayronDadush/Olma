@@ -127,10 +127,8 @@ function undoProvisionSideEffects({
   if (agentAdded || bindingAdded || allowFromAdded) {
     try {
       const cfg = occ.loadConfig(configPath);
-      if (agentAdded && cfg.agents && Array.isArray(cfg.agents.list)) {
-        const before = cfg.agents.list.length;
-        cfg.agents.list = cfg.agents.list.filter((a) => a.id !== agentId);
-        undone.agent = cfg.agents.list.length !== before;
+      if (agentAdded) {
+        undone.agent = occ.removeAgent(cfg, agentId);
       }
       if (bindingAdded && Array.isArray(cfg.bindings)) {
         const before = cfg.bindings.length;
@@ -293,7 +291,7 @@ async function provisionUser(client, {
     const r = spawnSync('systemctl', ['--user', 'restart', 'openclaw-gateway'],
       { env: { ...process.env, XDG_RUNTIME_DIR: '/run/user/0' } });
     restarted = r.status === 0;
-    console.warn(`[provision] ${agentId}: binding written without an agents.list change; ` +
+    console.warn(`[provision] ${agentId}: binding written without an agent-roster change; ` +
       `forced gateway restart ${restarted ? 'ok' : 'FAILED'}`);
   }
 
