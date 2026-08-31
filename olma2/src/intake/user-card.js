@@ -21,7 +21,7 @@ const path = require('node:path');
 // Tool names whose success makes the card stale. Kept here, next to the
 // renderer, so adding a card field and adding its trigger are one edit.
 const CARD_TOOLS = new Set([
-  'set_my_name', 'set_my_timezone', 'set_my_language',
+  'set_my_name', 'set_my_timezone', 'set_my_language', 'set_assistant_persona',
   // Paused state belongs on the card: a paused person who writes must not be
   // met with an offer to set up a daily digest.
   'pause_olma', 'resume_olma',
@@ -62,6 +62,17 @@ function renderCard(user, prefs, facts = [], extras = {}) {
     : 'First name: unknown — ask what to call them and save it with set_my_name');
   if (user.last_name) lines.push(`Last name: ${user.last_name}`);
   lines.push(`Language: ${user.locale || 'he'}`);
+  // Who the assistant is for THIS user — rendered only off the default.
+  // The default (אולמה, feminine register) is already the doctrine every
+  // agent carries, and repeating it on every turn for every user is cost.
+  if (user.assistant_gender === 'male' || user.assistant_name) {
+    const personaName = user.assistant_name || 'אולמה';
+    lines.push(`Assistant persona: your name with them is "${personaName}"`
+      + (user.assistant_name ? ' — use it, never אולמה' : '')
+      + (user.assistant_gender === 'male'
+        ? '; MASCULINE register — every self-referencing verb and adjective (אני בודק, שמח), no mixing'
+        : ''));
+  }
   // Top of the card, right under their name, because it changes what every
   // other line means: none of the settings below are running.
   if (user.paused_at) {

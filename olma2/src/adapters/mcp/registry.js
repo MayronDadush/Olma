@@ -402,6 +402,14 @@ const TOOLS = [
   tool('set_my_language', 'Change the language you speak and store their data in. ONLY on their explicit request ("talk to me in English") — never because one message happened to be in another language.',
     { locale: S('string', 'ISO code, e.g. he, en, ar, ru') }, ['locale'],
     (client, user, a) => users.setLocale(client, user.id, a.locale)),
+  tool('set_assistant_persona',
+    'Change who Olma IS for this user: gender ("תהיה גבר" / "תחזרי להיות אישה") and/or the name '
+    + 'they call the assistant ("אני רוצה לקרוא לך נועה"; an empty name resets to אולמה). ONLY on '
+    + 'their explicit request — never offer or suggest it. From your very next sentence on, follow '
+    + 'the new persona: gender changes EVERY Hebrew self-reference (אני בודק/בודקת, verbs and '
+    + 'adjectives alike, no mixing), and the name replaces אולמה everywhere — phone calls included.',
+    { gender: S('string', 'female | male'), name: S('string', 'New assistant name; "" resets to the default') }, [],
+    (client, user, a) => users.setAssistantPersona(client, user.id, { gender: a.gender, name: a.name })),
 
   // ---------------------------------------------------------------- digest
   tool('get_my_digest', 'Assemble the current picture. scope: summary (counts) | full (every open task) | today (due/overdue today).',
