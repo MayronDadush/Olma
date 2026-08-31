@@ -130,3 +130,22 @@ test('an unknown model is skipped rather than mispriced — and that is visible'
     globalThis.fetch = realFetch;
   }
 });
+
+test('subscription: a month billed at a different rate is priced at that rate, not the constant', () => {
+  // No API anywhere exposes subscription billing, so a one-month Max upgrade
+  // can only reach the page as an operator-entered override. Before this the
+  // constant made every month $20 and the page was quietly, confidently wrong
+  // about whichever month actually cost more.
+  const now = new Date('2026-08-31T00:00:00Z');
+  const flat = infraCost.subscriptionCost(now);
+  const maxed = infraCost.subscriptionCost(now, { '2026-08': 100 });
+  assert.equal(maxed.sinceTotal - flat.sinceTotal, 100 - infraCost.SUBSCRIPTION_USD,
+    'exactly one month moves, by exactly the difference');
+  assert.equal(maxed.count, flat.count, 'an override changes the price, never the number of charges');
+  assert.equal(maxed.rate, 100);
+  assert.equal(maxed.overridden, true);
+  assert.equal(flat.overridden, false);
+  // A month with no override keeps the standing rate.
+  const other = infraCost.subscriptionCost(new Date('2026-07-28T00:00:00Z'), { '2026-08': 100 });
+  assert.equal(other.rate, infraCost.SUBSCRIPTION_USD);
+});

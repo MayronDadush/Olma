@@ -91,6 +91,14 @@ async function main() {
       return alert.alerted ? { ...out, creditAlert: alert.phone } : out;
     });
 
+    // The runway warning, on the same raw pipe as the outage alarm above it but
+    // NOT on the same beat: this one costs three calls to external billing APIs,
+    // and a balance measured in days does not change between 30-second ticks.
+    // Six-hourly is a warning that reaches you the same morning without ever
+    // being a poll. Tier bookkeeping inside makes repeat ticks silent.
+    arm('balance_watch', () =>
+      withTx(pool, (c) => creditWatch.checkBalanceForecast(c, { send: rawSend })));
+
     // One tick for the minute-sweeps. They were separate intervals firing
     // on the same second, each taking its own connection and transaction, to
     // do work that is almost always "nothing due" — three times the wake-ups

@@ -25,6 +25,9 @@ const JOB_INTERVAL_SECONDS = {
   // is: "their own small hours" only means something in each person's zone.
   planning_sweep: 3600,
   live_updates: 3600,
+  // Prepaid balances, measured in days of runway — nothing changes between
+  // ticks, and each tick costs three external billing calls.
+  balance_watch: 21600,
   usage_sweep: 3600,
   // Nightly, but ticked hourly like planning: the job itself owns the
   // small-hours window and the once-per-night watermark.

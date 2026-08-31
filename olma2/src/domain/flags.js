@@ -18,6 +18,11 @@ const DEFAULTS = {
   reminder_escalation_max: 3,
   reminder_escalation_gap_hours: 3,
   live_subscriptions_per_user: 5,   // cap on active live-update subscriptions
+  // Months the personal Claude subscription was billed at something other than
+  // the standing $20 — a Max upgrade, a paused month. {"YYYY-MM": usd}. No API
+  // exposes subscription billing, so this is the only way the page can be right
+  // about it, and it has to be an edit rather than a deploy.
+  claude_subscription_overrides: {},
   // Base for user-facing links (availability picker). The dashboard's own
   // host — Caddy already routes it here.
   public_base_url: 'https://olmachat.duckdns.org',

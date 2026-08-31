@@ -106,6 +106,7 @@ const JOB_LABELS = {
   memory_consolidation: 'סיכום זיכרון שבועי',
   fact_extraction: 'קריאת שיחות ולמידה על משתמשים',
   live_updates: 'עדכונים חיים למנויים (מודלים, מזג אוויר)',
+  balance_watch: 'מעקב יתרות בשירותים בתשלום',
   usage_sweep: 'חישוב עלויות',
   metrics_sweep: 'חישוב סטטיסטיקות',
   retention_sweep: 'ניקוי נתונים ישנים',
@@ -249,10 +250,18 @@ function prepaidRow(label, purpose, s) {
   return cell(left + rate);
 }
 
-async function renderInfraCosts() {
+async function renderInfraCosts(client) {
   const c = await infraCost.getInfraCosts();
-  const { anthropic, digitalocean, elevenlabs, subscription,
-    openrouter, twilio, deepgram, cartesia } = c;
+  const { anthropic, digitalocean, elevenlabs, openrouter, twilio, deepgram, cartesia } = c;
+
+  // Recomputed here rather than inside getInfraCosts: the overrides live in a
+  // flag, getInfraCosts has no DB client and a 10-minute cache, and a rate the
+  // operator just corrected must show on the very next page load.
+  let subscription = c.subscription;
+  try {
+    const overrides = (await flagsDomain.getFlag(client, 'claude_subscription_overrides')) || {};
+    subscription = infraCost.subscriptionCost(new Date(), overrides);
+  } catch { /* a bad flag value must not cost the whole cost page */ }
 
   const okAmount = (s, field) => (s.configured && !s.error ? Number(s[field] || 0) : 0);
   // OpenRouter joins both totals: since the cutover it is the real model bill,
@@ -283,7 +292,7 @@ async function renderInfraCosts() {
     renderInfraRow('Anthropic', anthropic, (s) =>
       `<tr><td>Anthropic</td><td class="dim small">מפתח הבוט — כמעט לא בשימוש מאז המעבר ל-OpenRouter</td><td>$${s.sinceTotal.toFixed(2)}</td><td>$${s.monthTotal.toFixed(2)}</td></tr>`),
     renderInfraRow('מנוי Claude (אישי)', subscription, (s) =>
-      `<tr><td>מנוי Claude (אישי)</td><td class="dim small">$20 קבוע, מחויב ב-27 לחודש · מכסה גם את Claude Code</td><td>$${s.sinceTotal.toFixed(2)} (${s.count} חיובים)</td><td>$${s.monthTotal.toFixed(2)}</td></tr>`),
+      `<tr><td>מנוי Claude (אישי)</td><td class="dim small">$${s.rate} לחודש, מחויב ב-27 · מכסה גם את Claude Code${s.overridden ? ' · <b>תעריף מיוחד לחודש הזה</b>' : ''}</td><td>$${s.sinceTotal.toFixed(2)} (${s.count} חיובים)</td><td>$${s.monthTotal.toFixed(2)}</td></tr>`),
   ].join('');
 
   const cartesiaRow = cartesia.configured
@@ -341,7 +350,7 @@ async function renderCost(client) {
      WHERE m.date >= date_trunc('month', CURRENT_DATE)
      GROUP BY u.id ORDER BY cost DESC`);
 
-  const infraHtml = await renderInfraCosts();
+  const infraHtml = await renderInfraCosts(client);
 
   // Rendered even when empty this month — a cost line that only appears once
   // money was already spent is a cost line nobody was watching.
@@ -474,6 +483,13 @@ const FLAG_SPECS = [
     help: 'אירועים שגרתיים נמחקים אחרי התקופה הזו. אירועי הרשאות ופרטיות נשמרים תמיד.' },
   { key: 'live_subscriptions_per_user', label: 'מקסימום מנויי עדכונים חיים למשתמש', type: 'int',
     help: 'כמה מנויי "עדכן אותי על..." פעילים מותר למשתמש אחד (מודלים חדשים, מזג אוויר וכו\u05f3).' },
+  { key: 'claude_subscription_overrides', label: 'מנוי Claude — חודשים בתעריף אחר', type: 'json',
+    // Keys are billing months, values are dollars. Anything else is a typo and
+    // must not reach a page that prices money with it.
+    validate: (v) => v && typeof v === 'object' && !Array.isArray(v)
+      && Object.entries(v).every(([k, amt]) =>
+        /^\d{4}-(0[1-9]|1[0-2])$/.test(k) && Number.isFinite(Number(amt)) && Number(amt) >= 0),
+    help: 'JSON של חודשים שחויבו אחרת מ-$20, למשל {"2026-08": 100} לחודש Max. אין שום API שחושף חיוב מנוי, אז זה המקום היחיד שבו הדף יכול לדעת. חודש שלא מופיע כאן מחושב ב-$20.' },
   { key: 'media_gen_phones', label: 'יצירת תמונות ווידאו — מספרים מורשים', type: 'text',
     help: 'מספרי טלפון (E.164, מופרדים בפסיק) שמותר להם לייצר תמונות ווידאו. אדמין מורשה תמיד, בלי קשר לרשימה.' },
   { key: 'media_image_model', label: 'מודל יצירת תמונות', type: 'text',
@@ -500,6 +516,8 @@ async function renderFlags(client, csrf) {
            <option value="true" ${val === true ? 'selected' : ''}>פתוח</option>
            <option value="false" ${val === false ? 'selected' : ''}>סגור</option>
          </select>`
+      : spec.type === 'json'
+      ? `<input name="value" value="${esc(JSON.stringify(val ?? {}))}" size="34">`
       : spec.type === 'text'
         ? `<input name="value" value="${esc(val == null ? '' : String(val))}" size="28" dir="ltr">`
         : `<input name="value" value="${esc(String(val))}" size="7" inputmode="decimal">`;
@@ -1850,6 +1868,15 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
               // Free text (model ids, phone lists) — trimmed and bounded, and
               // never coerced: an empty value falls back to the code default.
               val = String(body.value || '').trim().slice(0, 300) || null;
+            } else if (spec.type === 'json') {
+              // Parsed AND shape-checked before it can land. A flag the page
+              // later reads as an object must never be able to hold a string:
+              // unparseable or wrong-shaped input changes nothing at all,
+              // exactly like the numeric typo rule below.
+              try {
+                const parsed = JSON.parse(String(body.value || '').trim() || '{}');
+                val = (!spec.validate || spec.validate(parsed)) ? parsed : null;
+              } catch { val = null; }
             } else {
               val = Number(body.value);
               if (!Number.isFinite(val) || val < 0) val = null;

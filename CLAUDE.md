@@ -674,6 +674,55 @@ Details worth keeping:
 said so before it stopped — `credit-watch.js` alarms on failures that have
 already started, which is the outage, not the warning.
 
+### The runway warning: an alarm that fires days BEFORE the money runs out (2026-08-31)
+
+`checkBalanceForecast` in `jobs/credit-watch.js`, armed as `balance_watch`
+(6-hourly), on the same raw `openclaw message send` pipe as the outage alarm —
+the one channel that needs no model and no credit. Every prepaid provider
+publishes what is left, so the runway was knowable days ahead and nothing was
+reading it.
+
+- **Tiers, not repetition.** Below-threshold alerts ONCE, then only again on
+  crossing into a more urgent tier (days `[3,7,14]`, dollars `[2,5]`, ascending
+  so `.find(v < t)` returns the *most* urgent tier crossed — at 4 days that is 7,
+  not 14). At most three messages per depletion, each meaning something new. A
+  daily "still low" would be fourteen messages that train the reader to swipe
+  them away — the failure the evals YELLOW/RED split already exists to avoid.
+- **Recovery re-arms it.** A topped-up service has its stored tier deleted, so
+  the *next* depletion gets the full ladder instead of being silenced by a stale
+  stamp. The bookkeeping is written even on ticks that send nothing, or a
+  recovered service stays permanently quiet.
+- **A service that could not be READ is never a service in trouble.** `error`,
+  `remaining: null` or unconfigured → no alert. A billing API being down must
+  not page anyone.
+- **It defers outside 08:00–22:00 local** (the alert phone's own timezone,
+  converted in Postgres). Unlike the outage alarm this is not an emergency — a
+  prepaid balance cannot be topped up better at 03:00 — and the raw pipe bypasses
+  the outbox gate entirely, so this function has to hold that line itself.
+  Deferring leaves the tier **unstamped**: stamping would swallow the alert.
+- A failed send is not stamped either, same promise as the outage alarm.
+
+### The subscription line was a constant, and the plan changed (2026-08-31)
+
+`SUBSCRIPTION_USD = 20` priced every month identically. The owner took a
+one-month Max upgrade and the page had no way to know: **no API exposes
+subscription billing** — the org endpoints cover API keys only, which is why
+this was hardcoded in the first place. So it now takes a
+`claude_subscription_overrides` flag, `{"YYYY-MM": usd}`, dashboard-editable,
+and the row shows the actual rate plus a badge on an overridden month.
+
+This added a **`json` FLAG_SPECS type**, parsed *and* shape-checked by a
+per-spec `validate()` before it can land — unparseable or wrong-shaped input
+changes nothing at all, the same rule the numeric coercion already followed. A
+flag the page later reads as an object must never be able to hold a string.
+`renderInfraCosts` recomputes the subscription from the flag rather than using
+the cached `getInfraCosts()` value, because a rate the operator just corrected
+has to show on the very next load, not ten minutes later.
+
+**Confirmed the same day:** Anthropic API traffic ends on 2026-08-26, the
+cutover date, and is zero after it — the month's $25.63 is entirely pre-cutover,
+not a second bill running alongside OpenRouter.
+
 ### Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)
 
 Owner ask: מירון wants WhatsApp updates about new models on OpenRouter (with
