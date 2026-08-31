@@ -32,8 +32,12 @@ async function fetchRecentCalls(sid, token, doFetch) {
 }
 
 async function sweepVoiceUsage(client, deps = {}) {
-  const sid = deps.sid || process.env.TWILIO_SID;
-  const token = deps.token || process.env.TWILIO_TOKEN;
+  // `in` and not `||`: a deps that SAYS sid (even '') is the test saying
+  // "no credentials", and must never fall through to the real env — the CI
+  // box carries live Twilio keys, and `{sid: ''} || env` sent the suite's
+  // no-credentials test to the actual Twilio API on the first deploy.
+  const sid = 'sid' in deps ? deps.sid : process.env.TWILIO_SID;
+  const token = 'token' in deps ? deps.token : process.env.TWILIO_TOKEN;
   if (!sid || !token) return { skipped: 'twilio not configured' };
 
   const calls = await fetchRecentCalls(sid, token, deps.fetch || fetch);
