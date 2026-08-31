@@ -623,6 +623,57 @@ reverse. Worth noting how it was found: not by anyone reading `ls migrations/`,
 but by every single test failing at once the first time somebody ran the suite
 after both merges.
 
+### The cost page showed four services out of eight (fixed 2026-08-31)
+
+Owner asked for a pass over everything the project actually pays for, laid out
+properly. The audit found the page was describing a system that no longer
+exists: it showed Anthropic, DigitalOcean, ElevenLabs and the personal Claude
+subscription — and **not OpenRouter**, which since the 2026-08-26 cutover *is*
+the model bill (all background cognition, all media generation, the evals
+judge), nor Twilio / Deepgram / Cartesia, which the voice bridge has been
+billing against since 2026-08-31. Half the spend was invisible, and the
+headline read roughly 3x cheaper than the truth.
+
+The layout now splits on the distinction that actually matters, which the old
+single table had no way to express:
+
+- **Prepaid** (OpenRouter, Twilio, Deepgram) — credits bought up front that
+  drain. The number that predicts an outage is what is **LEFT**, and a spend
+  figure alone reads perfectly healthy right until everything stops. This is
+  not hypothetical: Olma has been taken down by an empty balance three times
+  (`jobs/credit-watch.js`), every time discovered from the silence.
+- **Recurring** (DigitalOcean, ElevenLabs, Anthropic, the $20 subscription) —
+  billed after the fact, nothing to run out of, so the trend is what matters.
+
+Details worth keeping:
+- **`daysLeft` is the provider's own arithmetic, not ours.** OpenRouter's
+  `/auth/key` reports `usage_daily` and `/credits` reports what was purchased,
+  so "≈N days at the current rate" needs no bookkeeping of ours to stay true.
+  A dollar threshold cannot tell $2 left on a service nobody uses from an
+  outage tomorrow on the one every model call goes through; days can. Twilio
+  and Deepgram publish no burn rate, so those fall back to a flat $5 floor,
+  labelled as the guess it is.
+- **A failed credits call leaves `remaining` null, never 0.** Defaulting it
+  would render a confident "$0.00 left" for the service the whole system runs
+  on — the alarming shape, manufactured out of missing data. Pinned by a test.
+- **Cartesia is listed with "no billing API" rather than omitted.** Probed
+  2026-08-31: `/subscription`, `/usage`, `/account` all 404. A paid service
+  missing from the page is one the owner cannot see they are paying for, which
+  is the exact failure the whole rework exists to end.
+- Every row carries a **"what it's for"** column. A service name alone does not
+  tell you whether a line can be cancelled, and this page exists to be acted on.
+- **The voice-bridge keys live in `/opt/olma2-voice-bridge/.env` and
+  `twilio.env`, not in `/opt/olma2/.env`** — so the Twilio/Deepgram/Cartesia
+  rows render "לא מוגדר בסביבה" until they are mirrored across (or the
+  dashboard unit is given a second `EnvironmentFile=`; note `twilio.env` uses
+  `export KEY=…`, which systemd's `EnvironmentFile` does *not* parse). The
+  degradation is deliberate and honest — an unreadable service says so.
+
+**Found by the audit, and the reason it mattered that day:** OpenRouter was at
+**$1.77 of $5**, ≈4 days at the then-current burn. Nothing anywhere would have
+said so before it stopped — `credit-watch.js` alarms on failures that have
+already started, which is the outage, not the warning.
+
 ### Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)
 
 Owner ask: מירון wants WhatsApp updates about new models on OpenRouter (with

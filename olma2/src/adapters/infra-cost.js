@@ -1,8 +1,21 @@
 'use strict';
-// Real infrastructure spend for running Olma — the droplet, the bot's own
-// Anthropic usage, and ElevenLabs STT. Each fetcher degrades to
-// {configured:false} when its secret isn't set, and never throws: a billing
-// API being slow or down must not break the admin dashboard.
+// Real infrastructure spend for running Olma — every external service the
+// project actually pays for. Each fetcher degrades to {configured:false} when
+// its secret isn't set, and never throws: a billing API being slow or down
+// must not break the admin dashboard.
+//
+// Two kinds of money, and the distinction is the whole point of the layout:
+//
+// - **Prepaid** (OpenRouter, Twilio, Deepgram): credits bought up front that
+//   drain. The number that predicts an outage is what is LEFT, not what was
+//   spent — a spend figure alone reads healthy right up to the moment
+//   everything stops. Olma has now been taken down by an empty prepaid
+//   balance three times (see jobs/credit-watch.js), every time discovered
+//   from the silence, so these carry `remaining` and, where the provider
+//   reports a burn rate, `daysLeft`.
+// - **Recurring** (DigitalOcean, ElevenLabs, Anthropic, the personal Claude
+//   subscription): billed after the fact. There is nothing to run out of, so
+//   what matters is the trend — spent-since-start and spent-this-month.
 //
 // The Anthropic figure is deliberately scoped to ONE api_key_id (the bot's own
 // key) via usage_report/messages, never the org-wide cost_report endpoint —
@@ -173,6 +186,84 @@ async function elevenLabsCost(apiKey) {
   };
 }
 
+// ---- OpenRouter: the model provider Olma actually runs on ----------------------
+// Since the 2026-08-26 cutover this IS the model bill — every background
+// cognition call (fact extraction, planning, live-update summaries), every
+// image and video generation, the evals judge. The Anthropic row above it is
+// now mostly history, which makes this the single most important line on the
+// page and the one that was missing from it entirely.
+//
+// Both figures come from OpenRouter's own reporting, never token arithmetic:
+// /auth/key carries lifetime + monthly + daily usage for this key, /credits
+// carries what was purchased. daysLeft is those two divided — the provider's
+// own burn rate against the provider's own balance, so it needs no
+// bookkeeping of ours to stay true.
+async function openRouterCost(apiKey) {
+  const headers = { Authorization: `Bearer ${apiKey}` };
+  const [key, credits] = await Promise.all([
+    fetchJson('https://openrouter.ai/api/v1/auth/key', headers),
+    fetchJson('https://openrouter.ai/api/v1/credits', headers),
+  ]);
+  if (!key.ok) return { configured: true, error: `http_${key.status}` };
+  const d = key.body?.data ?? {};
+  const c = credits.ok ? (credits.body?.data ?? {}) : {};
+  const purchased = Number(c.total_credits);
+  const used = Number(c.total_usage ?? d.usage) || 0;
+  // Only a purchased figure we actually read makes a remaining balance
+  // meaningful. Defaulting it to 0 would render a confident "$0.00 left" for
+  // a call that simply failed — the alarming shape, from missing data.
+  const remaining = Number.isFinite(purchased) ? purchased - used : null;
+  const daily = Number(d.usage_daily) || 0;
+  return {
+    configured: true, prepaid: true,
+    sinceTotal: used,
+    monthTotal: Number(d.usage_monthly) || 0,
+    dailyTotal: daily,
+    remaining,
+    daysLeft: remaining !== null && daily > 0 ? remaining / daily : null,
+  };
+}
+
+// ---- Twilio: the phone number the voice bridge calls out on --------------------
+async function twilioCost(sid, token) {
+  const auth = 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64');
+  const { ok, status, body } = await fetchJson(
+    `https://api.twilio.com/2010-04-01/Accounts/${sid}/Balance.json`,
+    { Authorization: auth });
+  if (!ok) return { configured: true, error: `http_${status}` };
+  return {
+    configured: true, prepaid: true,
+    remaining: Number(body?.balance) || 0,
+    currency: body?.currency || 'USD',
+  };
+}
+
+// ---- Deepgram: speech-to-text on live calls -----------------------------------
+// The balance is per project and the key does not name one, so this is two
+// calls: list projects, then read the first one's balances.
+async function deepgramCost(apiKey) {
+  const headers = { Authorization: `Token ${apiKey}` };
+  const projects = await fetchJson('https://api.deepgram.com/v1/projects', headers);
+  if (!projects.ok) return { configured: true, error: `http_${projects.status}` };
+  const id = projects.body?.projects?.[0]?.project_id;
+  if (!id) return { configured: true, error: 'no_project' };
+  const bal = await fetchJson(`https://api.deepgram.com/v1/projects/${id}/balances`, headers);
+  if (!bal.ok) return { configured: true, error: `http_${bal.status}` };
+  const remaining = (bal.body?.balances ?? [])
+    .reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
+  return { configured: true, prepaid: true, remaining };
+}
+
+// ---- Cartesia: text-to-speech on live calls -----------------------------------
+// Probed 2026-08-31: /subscription, /usage and /account all 404 — there is no
+// billing endpoint to read. It is listed anyway, with that said plainly,
+// because a paid service missing from the page is one the owner cannot see
+// they are paying for. Silence here would be the same failure the whole
+// prepaid/recurring split above exists to prevent.
+function cartesiaCost(apiKey) {
+  return { configured: Boolean(apiKey), noBillingApi: true };
+}
+
 // ---- Claude subscription: hardcoded, no network -------------------------------
 
 function subscriptionCost(now = new Date()) {
@@ -194,24 +285,34 @@ function subscriptionCost(now = new Date()) {
 async function getInfraCosts() {
   if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.data;
 
-  const [anthropic, digitalocean, elevenlabs] = await Promise.all([
-    process.env.ANTHROPIC_ADMIN_KEY
-      ? anthropicBotCost(process.env.ANTHROPIC_ADMIN_KEY).catch((e) => ({ configured: true, error: e.message }))
-      : Promise.resolve({ configured: false }),
-    process.env.DO_API_TOKEN
-      ? digitalOceanCost(process.env.DO_API_TOKEN).catch((e) => ({ configured: true, error: e.message }))
-      : Promise.resolve({ configured: false }),
-    process.env.ELEVENLABS_API_KEY
-      ? elevenLabsCost(process.env.ELEVENLABS_API_KEY).catch((e) => ({ configured: true, error: e.message }))
-      : Promise.resolve({ configured: false }),
+  const guarded = (secret, fn) => (secret
+    ? fn().catch((e) => ({ configured: true, error: e.message }))
+    : Promise.resolve({ configured: false }));
+
+  const [anthropic, digitalocean, elevenlabs, openrouter, twilio, deepgram] = await Promise.all([
+    guarded(process.env.ANTHROPIC_ADMIN_KEY, () => anthropicBotCost(process.env.ANTHROPIC_ADMIN_KEY)),
+    guarded(process.env.DO_API_TOKEN, () => digitalOceanCost(process.env.DO_API_TOKEN)),
+    guarded(process.env.ELEVENLABS_API_KEY, () => elevenLabsCost(process.env.ELEVENLABS_API_KEY)),
+    guarded(process.env.OPENROUTER_API_KEY, () => openRouterCost(process.env.OPENROUTER_API_KEY)),
+    guarded(process.env.TWILIO_SID && process.env.TWILIO_TOKEN,
+      () => twilioCost(process.env.TWILIO_SID, process.env.TWILIO_TOKEN)),
+    guarded(process.env.DEEPGRAM_API_KEY, () => deepgramCost(process.env.DEEPGRAM_API_KEY)),
   ]);
   const subscription = subscriptionCost();
+  const cartesia = cartesiaCost(process.env.CARTESIA_API_KEY);
 
-  const data = { anthropic, digitalocean, elevenlabs, subscription, generatedAt: new Date().toISOString() };
+  const data = {
+    anthropic, digitalocean, elevenlabs, subscription,
+    openrouter, twilio, deepgram, cartesia,
+    generatedAt: new Date().toISOString(),
+  };
   cache = { at: Date.now(), data };
   return data;
 }
 
 // anthropicBotCost is exported for the test that pins the response shape —
 // the field-name bug it covers was invisible to every other kind of check.
-module.exports = { getInfraCosts, anthropicBotCost, PROJECT_START, ELEVENLABS_START };
+module.exports = {
+  getInfraCosts, anthropicBotCost, openRouterCost, twilioCost, deepgramCost,
+  PROJECT_START, ELEVENLABS_START,
+};

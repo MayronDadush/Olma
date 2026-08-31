@@ -78,7 +78,7 @@ const SECTIONS = [
   { id: 'users', title: 'משתמשים', hint: 'כל מי שרשום. אפשר לקבוע לכל אחד מכסת הודעות יומית משלו.', render: renderUsers },
   { id: 'issues', title: 'תקלות ובקשות', hint: 'דברים שאולמה או המשתמשים דיווחו עליהם ומחכים לטיפול.', render: renderIssues },
   { id: 'evals', title: 'בדיקות התנהגות', hint: 'כל לילה אולמה עוברת תרחישים שנבנו מתקלות אמת — שיחה מדומה מול משתמש בדיקה, בדיקת כלים ומסד בקוד, ובדיקת ניסוח על ידי מודל שופט. אדום = כלל נשבר; צהוב = השופט הסתייג מהניסוח.', render: renderEvals },
-  { id: 'cost', title: 'עלות', hint: 'כמה עולה להריץ את אולמה בפועל (שרת, Anthropic, ElevenLabs) וכמה עולה השימוש במודל לפי יום ולפי משתמש — כולל עמודה נפרדת ליצירת תמונות ווידאו דרך OpenRouter. הערכה, לא חשבונית.', render: renderCost },
+  { id: 'cost', title: 'עלות', hint: 'כל שירות חיצוני שהפרויקט משלם עליו — מופרד ליתרות מראש (שנגמרות) ולחיוב שוטף (שנצבר) — וכמה עולה השימוש במודל לפי יום ולפי משתמש, כולל עמודה נפרדת ליצירת תמונות ווידאו. הערכה, לא חשבונית.', render: renderCost },
   { id: 'outcomes', title: 'האם זה עובד', hint: 'המדדים שנבחרו כדי לענות על השאלה הזו: ענו לנו? נסגרו משימות? נאלצו לתקן אותנו? נוצר הרגל? כל מספר עם המכנה שלו.', render: renderOutcomes },
   { id: 'metrics', title: 'שימוש במוצר', hint: 'מה באמת קורה במוצר: כמה אנשים פעילים, כמה נוצר, מה הצליח.', render: renderMetrics },
   { id: 'planned', title: 'מה מתוכנן להישלח', hint: 'כל מה שאולמה מתכננת לשלוח, ומתי — בשעון המקומי של כל משתמש. התוכן עצמו נכתב ברגע השליחה, לא מראש, ולכן כאן מופיע הנושא ולא הנוסח.', render: renderPlanned },
@@ -203,46 +203,110 @@ async function renderEvals(client) {
     + (latest.agent_model ? `<p class="dim">מודל שנבדק: ${esc(latest.agent_model)}</p>` : '');
 }
 
-// One line per external service, or a dim explanatory note when it can't be read.
+// One line per recurring service, or a dim explanatory note when it can't be
+// read. colspan spans the purpose column plus both amount columns — a service
+// we cannot price still has to occupy its row, so it stays visible as a thing
+// being paid for rather than vanishing off the page.
 function renderInfraRow(label, state, fmtRow) {
-  if (!state.configured) return `<tr><td>${esc(label)}</td><td class="dim" colspan="2">לא מוגדר בסביבה</td></tr>`;
-  if (state.error === 'missing_permission') {
-    return `<tr><td>${esc(label)}</td><td class="dim" colspan="2">למפתח אין הרשאה לקרוא נתוני חיוב</td></tr>`;
-  }
-  if (state.error) return `<tr><td>${esc(label)}</td><td class="dim" colspan="2">שגיאה בשליפת נתונים (${esc(state.error)})</td></tr>`;
+  const note = (text) => `<tr><td>${esc(label)}</td><td class="dim" colspan="3">${esc(text)}</td></tr>`;
+  if (!state.configured) return note('לא מוגדר בסביבה');
+  if (state.error === 'missing_permission') return note('למפתח אין הרשאה לקרוא נתוני חיוב');
+  if (state.error) return note(`שגיאה בשליפת נתונים (${state.error})`);
   return fmtRow(state);
 }
 
+// A prepaid balance is "low" when it is close to running out in TIME, not in
+// dollars: $2 left is fine on a service nobody uses and an outage tomorrow on
+// the one every model call goes through. Where the provider reports its own
+// burn rate we use days; where it does not, a flat dollar floor is the honest
+// fallback and is labelled as the guess it is.
+const LOW_DAYS = 14;
+const LOW_USD = 5;
+
+function prepaidLow(s) {
+  if (!s.configured || s.error || s.remaining === null || s.remaining === undefined) return false;
+  if (s.daysLeft !== null && s.daysLeft !== undefined) return s.daysLeft < LOW_DAYS;
+  return s.remaining < LOW_USD;
+}
+
+// label · what it is FOR in Olma · how much is left. The purpose column is not
+// decoration: a service name alone does not tell the owner whether a line can
+// be cancelled, and this page exists to be acted on.
+function prepaidRow(label, purpose, s) {
+  const cell = (inner) => `<tr><td>${esc(label)}</td><td class="dim small">${esc(purpose)}</td>${inner}</tr>`;
+  if (!s.configured) return cell('<td class="dim" colspan="2">לא מוגדר בסביבה</td>');
+  if (s.error) return cell(`<td class="dim" colspan="2">שגיאה בשליפה (${esc(s.error)})</td>`);
+  if (s.remaining === null || s.remaining === undefined) {
+    return cell('<td class="dim" colspan="2">לא ניתן לקרוא יתרה</td>');
+  }
+  const low = prepaidLow(s);
+  const left = low
+    ? `<td class="warn">⚠ $${Number(s.remaining).toFixed(2)}</td>`
+    : `<td>$${Number(s.remaining).toFixed(2)}</td>`;
+  const rate = s.daysLeft !== null && s.daysLeft !== undefined
+    ? `<td class="${low ? 'warn' : 'dim'}">≈${Math.floor(s.daysLeft)} ימים בקצב הנוכחי ($${Number(s.dailyTotal).toFixed(2)}/יום)</td>`
+    : '<td class="dim">אין קצב שריפה מדווח</td>';
+  return cell(left + rate);
+}
+
 async function renderInfraCosts() {
-  const { anthropic, digitalocean, elevenlabs, subscription } = await infraCost.getInfraCosts();
+  const c = await infraCost.getInfraCosts();
+  const { anthropic, digitalocean, elevenlabs, subscription,
+    openrouter, twilio, deepgram, cartesia } = c;
 
   const okAmount = (s, field) => (s.configured && !s.error ? Number(s[field] || 0) : 0);
+  // OpenRouter joins both totals: since the cutover it is the real model bill,
+  // and leaving it out of the headline made the project look ~3x cheaper to
+  // run than it is.
   const sinceTotal = okAmount(anthropic, 'sinceTotal') + okAmount(digitalocean, 'paid')
-    + okAmount(elevenlabs, 'sinceTotal') + okAmount(subscription, 'sinceTotal');
+    + okAmount(elevenlabs, 'sinceTotal') + okAmount(subscription, 'sinceTotal')
+    + okAmount(openrouter, 'sinceTotal');
   const monthTotal = okAmount(anthropic, 'monthTotal') + okAmount(digitalocean, 'accrued')
-    + okAmount(elevenlabs, 'monthTotal') + okAmount(subscription, 'monthTotal');
+    + okAmount(elevenlabs, 'monthTotal') + okAmount(subscription, 'monthTotal')
+    + okAmount(openrouter, 'monthTotal');
 
-  const rows = [
-    renderInfraRow('Anthropic (הבוט עצמו)', anthropic, (s) =>
-      `<tr><td>Anthropic (הבוט עצמו)</td><td>$${s.sinceTotal.toFixed(2)} מתחילת הפרויקט</td><td>$${s.monthTotal.toFixed(2)} החודש</td></tr>`),
-    renderInfraRow('DigitalOcean (השרת)', digitalocean, (s) => {
+  const prepaid = [
+    ['OpenRouter', 'כל קריאות המודל: סיכומים, תכנון, זיהוי עובדות, יצירת תמונות ווידאו, שופט הבדיקות', openrouter],
+    ['Twilio', 'מספר הטלפון שאולמה מתקשרת ממנו', twilio],
+    ['Deepgram', 'זיהוי דיבור בשיחות טלפון חיות', deepgram],
+  ];
+  const anyLow = prepaid.some(([, , s]) => prepaidLow(s));
+  const prepaidRows = prepaid.map(([l, p, s]) => prepaidRow(l, p, s)).join('');
+
+  const recurring = [
+    renderInfraRow('DigitalOcean', digitalocean, (s) => {
       const creditNote = s.credit ? `<div class="dim small">זיכוי פעיל: -$${Math.abs(s.credit).toFixed(2)} (${esc(s.creditNote || '')})</div>` : '';
-      return `<tr><td>DigitalOcean (השרת)</td><td>$${s.paid.toFixed(2)} שולם בפועל</td><td>$${s.accrued.toFixed(2)} נצבר החודש${creditNote}</td></tr>`;
+      return `<tr><td>DigitalOcean</td><td class="dim small">השרת שהכל רץ עליו</td><td>$${s.paid.toFixed(2)}</td><td>$${s.accrued.toFixed(2)}${creditNote}</td></tr>`;
     }),
-    renderInfraRow('ElevenLabs (תמלול קול)', elevenlabs, (s) =>
-      `<tr><td>ElevenLabs (תמלול קול)</td><td>$${s.sinceTotal.toFixed(2)} מאז שהופעל</td><td>$${s.monthTotal.toFixed(2)} החודש (${esc(s.tier || '—')})</td></tr>`),
+    renderInfraRow('ElevenLabs', elevenlabs, (s) =>
+      `<tr><td>ElevenLabs</td><td class="dim small">תמלול הודעות קוליות בוואטסאפ</td><td>$${s.sinceTotal.toFixed(2)}</td><td>$${s.monthTotal.toFixed(2)} (${esc(s.tier || '—')})</td></tr>`),
+    renderInfraRow('Anthropic', anthropic, (s) =>
+      `<tr><td>Anthropic</td><td class="dim small">מפתח הבוט — כמעט לא בשימוש מאז המעבר ל-OpenRouter</td><td>$${s.sinceTotal.toFixed(2)}</td><td>$${s.monthTotal.toFixed(2)}</td></tr>`),
     renderInfraRow('מנוי Claude (אישי)', subscription, (s) =>
-      `<tr><td>מנוי Claude (אישי)</td><td>$${s.sinceTotal.toFixed(2)} (${s.count} חיובים)</td><td>$${s.monthTotal.toFixed(2)} החודש</td></tr>`),
+      `<tr><td>מנוי Claude (אישי)</td><td class="dim small">$20 קבוע, מחויב ב-27 לחודש · מכסה גם את Claude Code</td><td>$${s.sinceTotal.toFixed(2)} (${s.count} חיובים)</td><td>$${s.monthTotal.toFixed(2)}</td></tr>`),
   ].join('');
 
-  return `<h4>עלויות תשתית — כל מה שהפרויקט עולה בפועל</h4>
+  const cartesiaRow = cartesia.configured
+    ? `<tr><td>Cartesia</td><td class="dim small">הקול שאולמה מדברת בו בשיחות טלפון</td>
+       <td class="dim" colspan="2">אין API חיוב — צריך לבדוק ידנית ב-play.cartesia.ai</td></tr>`
+    : '';
+
+  const warnBanner = anyLow
+    ? `<p class="warn">⚠ יתרה נמוכה באחד השירותים המסומנים למטה. כשהיא נגמרת — אין תשובות, אין תזכורות, אין דיג׳סטים.</p>`
+    : '';
+
+  return `<h4>עלויות תשתית — כל מה שהפרויקט משלם עליו</h4>
     <div class="stats">
       <div class="stat"><div class="num">$${sinceTotal.toFixed(2)}</div><div class="lbl">סה״כ מתחילת הפרויקט (27/06/2026)</div></div>
       <div class="stat"><div class="num">$${monthTotal.toFixed(2)}</div><div class="lbl">החודש</div></div>
     </div>
-    <table><tr><th>שירות</th><th>מתחילת הפרויקט</th><th>החודש</th></tr>${rows}</table>
-    <p class="dim small">שרת + Anthropic (מפתח הבוט בלבד) + ElevenLabs + מנוי Claude האישי ($20 קבוע, חויב ב-27 לחודש).
-    שימוש Claude Code שלך מעבר לבוט מכוסה במנוי הזה ואינו חיוב נפרד — לא נכלל כאן כדי לא לספור פעמיים.</p>`;
+    ${warnBanner}
+    <h4>יתרה מראש — נגמרת, ואז הכל נעצר</h4>
+    <table><tr><th>שירות</th><th>בשביל מה</th><th>נשאר</th><th>לכמה זמן</th></tr>${prepaidRows}${cartesiaRow}</table>
+    <h4>חיוב שוטף — נצבר, אין מה שייגמר</h4>
+    <table><tr><th>שירות</th><th>בשביל מה</th><th>מתחילת הפרויקט</th><th>החודש</th></tr>${recurring}</table>
+    <p class="dim small">הסכומים למעלה כוללים את מה שנצבר בפועל בחיוב השוטף ואת מה שנשרף מהיתרות מראש — לא את מה שהוטען אליהן ועוד לא נוצל.
+    שימוש Claude Code שלך מעבר לבוט מכוסה במנוי האישי ואינו חיוב נפרד, כדי לא לספור פעמיים.</p>`;
 }
 
 async function renderCost(client) {
@@ -1571,6 +1635,7 @@ const STYLE = `<style>
   a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
   .dim{color:var(--muted)} .small{font-size:12px} .mono{font-family:ui-monospace,SFMono-Regular,monospace}
   p.warn{color:var(--warn)}
+  td.warn{color:var(--warn);font-weight:600}
   .nowrap{white-space:nowrap}
   tr.bad td{background:var(--bad-dim)}
   .banner{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px}
