@@ -790,18 +790,52 @@ matter as much as the detection:
   and two repair voices answering one silence is the duplicate-message
   complaint this whole area started with.
 
-**The root bug is the gateway's, and the fix exists upstream.** The box runs
-OpenClaw 2026.6.10; 2026.8.1's `isActiveRunProgressStale` now falls back to
-`params.ageMs >= staleAbortMs` when `lastProgressAgeMs` is undefined — the
-exact hole `lane-watchdog.js` documents — and the whole recovery path is
-reworked. Upgrade prep done on the box (config + extension backups;
-`@openclaw/whatsapp` has a matching 2026.8.1 with creds safely outside the
-package in `/root/.openclaw/credentials/`). **Before restarting on 2026.8.1,
-`tools.alsoAllow` must gain `"edit"`** — the #47487 deprecation warning in
-every turn's log says `tools.fs` stops implicitly widening the "messaging"
-profile, and losing fs read would break `.olma-identity` for every agent at
-once. The upgrade itself was pending the owner's go-ahead when this was
-written; verify this section against reality before acting on it.
+**The root bug is the gateway's, and the fix exists upstream — so the
+gateway was upgraded the same evening** (owner-approved, 2026-08-31 ~19:30
+UTC): OpenClaw 2026.6.10 → **2026.8.1**, whose `isActiveRunProgressStale`
+falls back to `params.ageMs >= staleAbortMs` when `lastProgressAgeMs` is
+undefined — the exact hole `lane-watchdog.js` documents — and whose recovery
+path is reworked. The new version also runs a **`delivery-recovery`**
+subsystem (durable outbound retry): on its very first boot it flushed a
+pending outbound message that the old version had dropped. What the upgrade
+actually took, recorded because every step surprised:
+
+- `tools.alsoAllow` needed `"edit"` BEFORE the restart (warning #47487:
+  `tools.fs` stops implicitly widening the "messaging" profile — losing fs
+  read would break `.olma-identity` for every agent at once).
+- The old config was **invalid under the new schema**: `tools.media.audio.models`
+  moved to `tools.media.models` (entries tagged `capabilities: ["audio"]`,
+  order preserved — ElevenLabs first, whisper CLI fallback second);
+  `diagnostics.stuckSessionWarnMs/AbortMs` are retired (built-in defaults,
+  recovery rewritten — `scripts/set-recovery-thresholds.js` is now a no-op
+  against this version); root `audio` key retired;
+  `agents.defaults.compaction.customInstructions` is **stripped upstream
+  with no replacement** — the Hebrew-preserve/no-phone-numbers compaction
+  brief is gone as a capability, not just a config line;
+  `agents.ownership = "explicit"` is now required for multi-agent rosters.
+- The WhatsApp plugin would not `plugins update` (no owner metadata — it had
+  been hand-copied); `openclaw plugins install @openclaw/whatsapp@2026.8.1
+  --accept-capabilities` installed it to `~/.openclaw/npm/projects/…`, and
+  the old copy at `~/.openclaw/extensions/whatsapp` now merely shadows it
+  (gateway logs "duplicate plugin id … will be overridden" — the NEW one
+  wins; the old dir can be removed in any quiet moment). Baileys creds live
+  in `~/.openclaw/credentials/` and survived untouched.
+- First boot **refused readiness** ("startup migrations did not complete
+  cleanly") until `systemctl --user stop openclaw-gateway && openclaw doctor
+  --fix && … start` ran the stopped-writer sqlite migration for every agent.
+- The channel then crash-looped on "routing has no explicit owner": 2026.8.1
+  requires a **channel-wide binding** (match on channel+accountId, NO peer).
+  One was added routing to `intake` — the per-peer bindings and the peer
+  wildcard sit in HIGHER routing tiers and still win, so it is the declared
+  owner/fallback, not a behaviour change.
+- Verified after: gateway ready, WhatsApp listening, a real tool-calling
+  turn on the eval user, `--deliver`/`--session-key`/`message send` all
+  intact, zero inbound lost during the ~8min window. `agents.list` still
+  works (soft warning suggests keyed `agents.entries`; our provisioning
+  writes `list` — migrate both together someday, not casually).
+- Rollback path if the new version misbehaves: `npm i -g openclaw@2026.6.10`,
+  restore `/root/.openclaw/openclaw.json.pre-2026.8.1`, restore
+  `/root/whatsapp-ext-2026.6.10.bak` → `extensions/whatsapp`, restart.
 
 ### The writing sounded like a form, and half the users were addressed as "את/ה" (2026-08-31)
 
