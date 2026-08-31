@@ -156,6 +156,37 @@ async function setLocale(client, userId, locale) {
   return ok({ locale: code });
 }
 
+// Who the assistant IS for this person, changed only on their own explicit
+// ask ("תהיה גבר", "אני רוצה לקרוא לך נועה") — nothing observes its way into
+// this. gender flips the Hebrew speech register everywhere the assistant
+// speaks of itself (and picks the phone-call voice); name replaces אולמה.
+// name: '' resets to the default rather than storing an empty string.
+async function setAssistantPersona(client, userId, { gender, name } = {}) {
+  let newGender = null;
+  if (gender !== undefined && gender !== null) {
+    newGender = String(gender).trim().toLowerCase();
+    if (newGender !== 'female' && newGender !== 'male') {
+      return err('invalid', `gender must be "female" or "male", got: ${gender}`);
+    }
+  }
+  const nameGiven = name !== undefined && name !== null;
+  const newName = nameGiven ? String(name).replace(/\s+/g, ' ').trim().slice(0, 40) || null : null;
+  if (!newGender && !nameGiven) return err('invalid', 'nothing to change — pass gender and/or name');
+  const { rows } = await client.query(
+    `UPDATE users
+        SET assistant_gender = COALESCE($2, assistant_gender),
+            assistant_name = CASE WHEN $3 THEN $4 ELSE assistant_name END
+      WHERE id = $1
+      RETURNING assistant_gender, assistant_name`,
+    [userId, newGender, nameGiven, newName]
+  );
+  if (!rows[0]) return err('not_found', 'no such user');
+  await audit.record(client, userId, 'user.assistant_persona_set', {
+    gender: rows[0].assistant_gender, name: rows[0].assistant_name,
+  });
+  return ok({ gender: rows[0].assistant_gender, name: rows[0].assistant_name || 'אולמה' });
+}
+
 async function setTimezone(client, userId, timezone, confirmed) {
   try {
     new Intl.DateTimeFormat('en', { timeZone: timezone });
@@ -173,5 +204,6 @@ async function setTimezone(client, userId, timezone, confirmed) {
 module.exports = {
   newIdentityToken, resolveByToken, getByPhone, getById,
   createUser, primaryChannel, sessionKeyFor, setName, setTimezone, setLocale,
+  setAssistantPersona,
   cleanName,
 };
