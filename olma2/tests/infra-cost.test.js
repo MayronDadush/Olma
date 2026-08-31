@@ -149,3 +149,33 @@ test('subscription: a month billed at a different rate is priced at that rate, n
   const other = infraCost.subscriptionCost(new Date('2026-07-28T00:00:00Z'), { '2026-08': 100 });
   assert.equal(other.rate, infraCost.SUBSCRIPTION_USD);
 });
+
+// Order matters: usdIlsRate caches module-wide, so the no-cache-yet failure
+// case has to run BEFORE anything succeeds and primes the cache.
+test('usdIlsRate: a failed fetch with nothing cached yet degrades honestly', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 500, json: async () => null });
+  try {
+    const out = await infraCost.usdIlsRate();
+    assert.equal(out.configured, true);
+    assert.ok(out.error, 'a first-ever failure with no cache must say so, never fabricate a rate');
+    assert.equal(out.rate, undefined);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('usdIlsRate: reads the ILS rate from open.er-api.com, and never throws on failure', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true, status: 200,
+    json: async () => ({ result: 'success', rates: { ILS: 2.99, EUR: 0.9 } }),
+  });
+  try {
+    const out = await infraCost.usdIlsRate();
+    assert.equal(out.configured, true);
+    assert.ok(Math.abs(out.rate - 2.99) < 0.001);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

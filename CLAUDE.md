@@ -723,6 +723,25 @@ has to show on the very next load, not ten minutes later.
 cutover date, and is zero after it — the month's $25.63 is entirely pre-cutover,
 not a second bill running alongside OpenRouter.
 
+### Every dollar on the cost page now shows in shekels by default (2026-08-31)
+
+Owner ask, same session: he wants to see the price in shekels, as the default
+— not a toggle to click. `infraCost.usdIlsRate()` fetches the ILS rate from
+`open.er-api.com` (free, no key, updates once daily — which is what sets the
+cache TTL at 12h: a rate that changes once a day gains nothing from being
+fetched more often, and the page is read far more often than that).
+
+`dashboard.js`'s `makeMoney(fx)` builds one formatter, closed over by every
+dollar figure on the page — headline stats, both cost tables, the media block,
+the reconciliation line, the per-day/per-user breakdown. Fetched exactly ONCE
+per render and threaded through, not fetched per-row: a partial failure must
+degrade the WHOLE page to USD-only, never leave some rows in shekels and
+others in dollars depending on which call happened to land first. Shekel
+figures keep the SAME decimal precision as their dollar source — a $0.003
+media generation at whole shekels rounds to ₪0 and reads as free, which it
+is not. (The `claude_subscription_overrides` flag from the section above this
+one gets ILS treatment too, same as everything else on the page.)
+
 ### Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)
 
 Owner ask: מירון wants WhatsApp updates about new models on OpenRouter (with
