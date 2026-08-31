@@ -204,6 +204,26 @@ async function renderEvals(client) {
     + (latest.agent_model ? `<p class="dim">מודל שנבדק: ${esc(latest.agent_model)}</p>` : '');
 }
 
+// Every dollar figure on the cost page renders in shekels by default, USD
+// alongside as the secondary number — the owner's ask, and the natural
+// reading for an Israeli-run project where every other figure on the page
+// (quiet hours, digest times) is already local. `money()` is built once per
+// render from a single fetched rate and closed over by every formatter below,
+// so a fetch failure degrades the WHOLE page to USD-only rather than mixing
+// currencies row by row depending on which call happened to succeed.
+function makeMoney(fx) {
+  const rate = fx && fx.configured && !fx.error ? fx.rate : null;
+  return (usd, decimals = 2) => {
+    const n = Number(usd) || 0;
+    const usdStr = `$${n.toFixed(decimals)}`;
+    if (!rate) return usdStr;
+    // Shekel amounts stay at the same precision as their dollar figure — a
+    // $0.003 media generation would round to ₪0 at whole shekels and read as
+    // free, which it is not.
+    return `₪${(n * rate).toFixed(decimals)} <span class="dim small">(${usdStr})</span>`;
+  };
+}
+
 // One line per recurring service, or a dim explanatory note when it can't be
 // read. colspan spans the purpose column plus both amount columns — a service
 // we cannot price still has to occupy its row, so it stays visible as a thing
@@ -233,7 +253,7 @@ function prepaidLow(s) {
 // label · what it is FOR in Olma · how much is left. The purpose column is not
 // decoration: a service name alone does not tell the owner whether a line can
 // be cancelled, and this page exists to be acted on.
-function prepaidRow(label, purpose, s) {
+function prepaidRow(label, purpose, s, money) {
   const cell = (inner) => `<tr><td>${esc(label)}</td><td class="dim small">${esc(purpose)}</td>${inner}</tr>`;
   if (!s.configured) return cell('<td class="dim" colspan="2">לא מוגדר בסביבה</td>');
   if (s.error) return cell(`<td class="dim" colspan="2">שגיאה בשליפה (${esc(s.error)})</td>`);
@@ -242,15 +262,15 @@ function prepaidRow(label, purpose, s) {
   }
   const low = prepaidLow(s);
   const left = low
-    ? `<td class="warn">⚠ $${Number(s.remaining).toFixed(2)}</td>`
-    : `<td>$${Number(s.remaining).toFixed(2)}</td>`;
+    ? `<td class="warn">⚠ ${money(s.remaining)}</td>`
+    : `<td>${money(s.remaining)}</td>`;
   const rate = s.daysLeft !== null && s.daysLeft !== undefined
-    ? `<td class="${low ? 'warn' : 'dim'}">≈${Math.floor(s.daysLeft)} ימים בקצב הנוכחי ($${Number(s.dailyTotal).toFixed(2)}/יום)</td>`
+    ? `<td class="${low ? 'warn' : 'dim'}">≈${Math.floor(s.daysLeft)} ימים בקצב הנוכחי (${money(s.dailyTotal)}/יום)</td>`
     : '<td class="dim">אין קצב שריפה מדווח</td>';
   return cell(left + rate);
 }
 
-async function renderInfraCosts(client) {
+async function renderInfraCosts(client, money) {
   const c = await infraCost.getInfraCosts();
   const { anthropic, digitalocean, elevenlabs, openrouter, twilio, deepgram, cartesia } = c;
 
@@ -280,19 +300,19 @@ async function renderInfraCosts(client) {
     ['Deepgram', 'זיהוי דיבור בשיחות טלפון חיות', deepgram],
   ];
   const anyLow = prepaid.some(([, , s]) => prepaidLow(s));
-  const prepaidRows = prepaid.map(([l, p, s]) => prepaidRow(l, p, s)).join('');
+  const prepaidRows = prepaid.map(([l, p, s]) => prepaidRow(l, p, s, money)).join('');
 
   const recurring = [
     renderInfraRow('DigitalOcean', digitalocean, (s) => {
-      const creditNote = s.credit ? `<div class="dim small">זיכוי פעיל: -$${Math.abs(s.credit).toFixed(2)} (${esc(s.creditNote || '')})</div>` : '';
-      return `<tr><td>DigitalOcean</td><td class="dim small">השרת שהכל רץ עליו</td><td>$${s.paid.toFixed(2)}</td><td>$${s.accrued.toFixed(2)}${creditNote}</td></tr>`;
+      const creditNote = s.credit ? `<div class="dim small">זיכוי פעיל: -${money(Math.abs(s.credit))} (${esc(s.creditNote || '')})</div>` : '';
+      return `<tr><td>DigitalOcean</td><td class="dim small">השרת שהכל רץ עליו</td><td>${money(s.paid)}</td><td>${money(s.accrued)}${creditNote}</td></tr>`;
     }),
     renderInfraRow('ElevenLabs', elevenlabs, (s) =>
-      `<tr><td>ElevenLabs</td><td class="dim small">תמלול הודעות קוליות בוואטסאפ</td><td>$${s.sinceTotal.toFixed(2)}</td><td>$${s.monthTotal.toFixed(2)} (${esc(s.tier || '—')})</td></tr>`),
+      `<tr><td>ElevenLabs</td><td class="dim small">תמלול הודעות קוליות בוואטסאפ</td><td>${money(s.sinceTotal)}</td><td>${money(s.monthTotal)} (${esc(s.tier || '—')})</td></tr>`),
     renderInfraRow('Anthropic', anthropic, (s) =>
-      `<tr><td>Anthropic</td><td class="dim small">מפתח הבוט — כמעט לא בשימוש מאז המעבר ל-OpenRouter</td><td>$${s.sinceTotal.toFixed(2)}</td><td>$${s.monthTotal.toFixed(2)}</td></tr>`),
+      `<tr><td>Anthropic</td><td class="dim small">מפתח הבוט — כמעט לא בשימוש מאז המעבר ל-OpenRouter</td><td>${money(s.sinceTotal)}</td><td>${money(s.monthTotal)}</td></tr>`),
     renderInfraRow('מנוי Claude (אישי)', subscription, (s) =>
-      `<tr><td>מנוי Claude (אישי)</td><td class="dim small">$${s.rate} לחודש, מחויב ב-27 · מכסה גם את Claude Code${s.overridden ? ' · <b>תעריף מיוחד לחודש הזה</b>' : ''}</td><td>$${s.sinceTotal.toFixed(2)} (${s.count} חיובים)</td><td>$${s.monthTotal.toFixed(2)}</td></tr>`),
+      `<tr><td>מנוי Claude (אישי)</td><td class="dim small">${money(s.rate, 0)} לחודש, מחויב ב-27 · מכסה גם את Claude Code${s.overridden ? ' · <b>תעריף מיוחד לחודש הזה</b>' : ''}</td><td>${money(s.sinceTotal)} (${s.count} חיובים)</td><td>${money(s.monthTotal)}</td></tr>`),
   ].join('');
 
   const cartesiaRow = cartesia.configured
@@ -306,8 +326,8 @@ async function renderInfraCosts(client) {
 
   return `<h4>עלויות תשתית — כל מה שהפרויקט משלם עליו</h4>
     <div class="stats">
-      <div class="stat"><div class="num">$${sinceTotal.toFixed(2)}</div><div class="lbl">סה״כ מתחילת הפרויקט (27/06/2026)</div></div>
-      <div class="stat"><div class="num">$${monthTotal.toFixed(2)}</div><div class="lbl">החודש</div></div>
+      <div class="stat"><div class="num">${money(sinceTotal)}</div><div class="lbl">סה״כ מתחילת הפרויקט (27/06/2026)</div></div>
+      <div class="stat"><div class="num">${money(monthTotal)}</div><div class="lbl">החודש</div></div>
     </div>
     ${warnBanner}
     <h4>יתרה מראש — נגמרת, ואז הכל נעצר</h4>
@@ -350,7 +370,13 @@ async function renderCost(client) {
      WHERE m.date >= date_trunc('month', CURRENT_DATE)
      GROUP BY u.id ORDER BY cost DESC`);
 
-  const infraHtml = await renderInfraCosts(client);
+  // Fetched once and closed over by every formatter on the page — a fetch
+  // failure degrades the WHOLE page to USD-only, never a mix of currencies
+  // depending on which call happened to land first.
+  const fx = await infraCost.usdIlsRate().catch(() => ({ configured: false }));
+  const money = makeMoney(fx);
+
+  const infraHtml = await renderInfraCosts(client, money);
 
   // Rendered even when empty this month — a cost line that only appears once
   // money was already spent is a cost line nobody was watching.
@@ -358,12 +384,12 @@ async function renderCost(client) {
   const mediaToday = media.rows.reduce((s, r) => s + Number(r.cost_today || 0), 0);
   const mediaHtml = `<h4>יצירת תמונות ווידאו (OpenRouter)</h4>
     <div class="stats">
-      <div class="stat"><div class="num">$${mediaMonth.toFixed(2)}</div><div class="lbl">סה״כ החודש</div></div>
-      <div class="stat"><div class="num">$${mediaToday.toFixed(2)}</div><div class="lbl">היום</div></div>
+      <div class="stat"><div class="num">${money(mediaMonth)}</div><div class="lbl">סה״כ החודש</div></div>
+      <div class="stat"><div class="num">${money(mediaToday)}</div><div class="lbl">היום</div></div>
     </div>
     ${media.rows.length
       ? `<table><tr><th>מי</th><th>תמונות</th><th>סרטונים</th><th>עלות</th></tr>
-         ${media.rows.map((r) => `<tr><td>${esc(r.first_name || r.phone)}</td><td>${Number(r.images)}</td><td>${Number(r.videos)}</td><td>$${Number(r.cost).toFixed(3)}</td></tr>`).join('')}</table>`
+         ${media.rows.map((r) => `<tr><td>${esc(r.first_name || r.phone)}</td><td>${Number(r.images)}</td><td>${Number(r.videos)}</td><td>${money(Number(r.cost), 3)}</td></tr>`).join('')}</table>`
       : '<p class="dim small">לא נוצרו תמונות או סרטונים החודש.</p>'}
     <p class="dim small">חיוב לפי הדיווח של OpenRouter על כל יצירה — נפרד מעלות המודל של השיחות, ולא נכלל בשורת ההתאמה מול Anthropic.</p>`;
 
@@ -387,25 +413,25 @@ async function renderCost(client) {
       const diff = billed > 0 ? Math.abs(billed - monthTotal) / billed : 0;
       const ok = diff <= 0.15;
       reconcile = `<p class="${ok ? 'dim' : 'warn'} small">${ok ? '✓' : '⚠'} התאמה מול Anthropic:
-        שויך כאן $${monthTotal.toFixed(2)} · חויב בפועל $${billed.toFixed(2)}
+        שויך כאן ${money(monthTotal)} · חויב בפועל ${money(billed)}
         (פער ${(diff * 100).toFixed(0)}%)${ok ? '' : ' — מישהו צריך להסתכל על זה'}</p>`;
     }
   } catch { /* the reconciliation is a nicety; never let it break the page */ }
 
   const anyEstimated = days.rows.some((r) => r.estimated);
   return infraHtml + mediaHtml + `<h4>עלות מודל לפי משתמש</h4><div class="stats">
-      <div class="stat"><div class="num">$${monthTotal.toFixed(2)}</div><div class="lbl">סה״כ החודש</div></div>
-      <div class="stat"><div class="num">$${Number(todayRow.cost).toFixed(2)}</div><div class="lbl">היום</div></div>
+      <div class="stat"><div class="num">${money(monthTotal)}</div><div class="lbl">סה״כ החודש</div></div>
+      <div class="stat"><div class="num">${money(Number(todayRow.cost))}</div><div class="lbl">היום</div></div>
       <div class="stat"><div class="num">${top.rows.length}</div><div class="lbl">משתמשים פעילים החודש</div></div>
     </div>
     ${reconcile}
     <div class="cols"><div><h4>לפי יום</h4><table><tr><th>תאריך</th><th>עלות</th></tr>
-    ${days.rows.map((r) => `<tr><td class="nowrap">${esc(String(r.date).slice(0, 10))}</td><td>$${Number(r.cost).toFixed(3)}${r.estimated ? ' <span class="dim">≈</span>' : ''}</td></tr>`).join('')}</table></div>
+    ${days.rows.map((r) => `<tr><td class="nowrap">${esc(String(r.date).slice(0, 10))}</td><td>${money(Number(r.cost), 3)}${r.estimated ? ' <span class="dim">≈</span>' : ''}</td></tr>`).join('')}</table></div>
     <div><h4>לפי משתמש (החודש)</h4><table><tr><th>מי</th><th>עלות</th></tr>
-    ${top.rows.map((r) => `<tr><td>${esc(r.first_name || r.phone)}</td><td>$${Number(r.cost).toFixed(3)}</td></tr>`).join('')}
-    ${system.rows.map((r) => `<tr><td class="dim">${esc(r.agent_id)} (מערכת)</td><td class="dim">$${Number(r.cost).toFixed(3)}</td></tr>`).join('')}</table></div></div>
+    ${top.rows.map((r) => `<tr><td>${esc(r.first_name || r.phone)}</td><td>${money(Number(r.cost), 3)}</td></tr>`).join('')}
+    ${system.rows.map((r) => `<tr><td class="dim">${esc(r.agent_id)} (מערכת)</td><td class="dim">${money(Number(r.cost), 3)}</td></tr>`).join('')}</table></div></div>
     <p class="dim small">מחושב מהתמלילים עצמם — סכימת הטוקנים בפועל לפי התעריף של כל מודל.
-    ${anyEstimated ? 'שורות עם ≈ כוללות מודל בלי תעריף ידוע, שתומחר בתעריף ממוצע. ' : ''}החיוב האמיתי מגיע מ-Anthropic.</p>`;
+    ${anyEstimated ? 'שורות עם ≈ כוללות מודל בלי תעריף ידוע, שתומחר בתעריף ממוצע. ' : ''}החיוב האמיתי מגיע מ-Anthropic. שער דולר-שקל: ${fx.configured && fx.rate ? `₪${fx.rate.toFixed(3)} ל-$1` : 'לא זמין כרגע'}.</p>`;
 }
 
 const METRIC_LABELS = {

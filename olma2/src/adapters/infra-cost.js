@@ -264,6 +264,29 @@ function cartesiaCost(apiKey) {
   return { configured: Boolean(apiKey), noBillingApi: true };
 }
 
+// ---- USD/ILS: every dollar figure on the page is shown in shekels too ---------
+// Free, no key, no signup — open.er-api.com wraps exchangerate-api.com's free
+// tier and refreshes once a day, which is what sets this cache's TTL: a rate
+// that only changes once every 24h gains nothing from being fetched more
+// often, and the page is read far more often than that.
+const FX_CACHE_MS = 12 * 3600_000;
+let fxCache = null; // { at, rate }
+
+async function usdIlsRate() {
+  if (fxCache && Date.now() - fxCache.at < FX_CACHE_MS) return { configured: true, rate: fxCache.rate };
+  const { ok, status, body } = await fetchJson('https://open.er-api.com/v6/latest/USD');
+  if (!ok || body?.result !== 'success') {
+    // A stale cached rate is still a real rate; only a first-ever failure with
+    // nothing cached yet has to say so honestly.
+    if (fxCache) return { configured: true, rate: fxCache.rate, stale: true };
+    return { configured: true, error: `http_${status}` };
+  }
+  const rate = Number(body?.rates?.ILS);
+  if (!Number.isFinite(rate) || rate <= 0) return { configured: true, error: 'bad_rate' };
+  fxCache = { at: Date.now(), rate };
+  return { configured: true, rate };
+}
+
 // ---- Claude subscription: hardcoded, no network -------------------------------
 
 // `overrides` is {"YYYY-MM": usd} for months billed at something other than the
@@ -335,5 +358,5 @@ async function getInfraCosts() {
 // the field-name bug it covers was invisible to every other kind of check.
 module.exports = {
   getInfraCosts, anthropicBotCost, openRouterCost, twilioCost, deepgramCost,
-  subscriptionCost, PROJECT_START, ELEVENLABS_START, SUBSCRIPTION_USD,
+  subscriptionCost, usdIlsRate, PROJECT_START, ELEVENLABS_START, SUBSCRIPTION_USD,
 };
