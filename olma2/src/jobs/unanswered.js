@@ -17,13 +17,30 @@
 //   (a) the message was never processed  → the transcript's last entry is the
 //       user's. Provable, and repaired here.
 //   (b) the reply WAS generated and then never dispatched → the transcript
-//       looks perfectly healthy. Indistinguishable from a normal turn.
+//       looks perfectly healthy.
 //
-// Only (a) is repaired. Guessing at (b) means telling the agent to say
-// something again that it may well have already said — which is exactly the
-// duplicate-message complaint this whole area started with. Silence you can
-// prove beats a duplicate you cannot.
+// (b) used to be written off here as "indistinguishable from a normal turn".
+// It is not — the gateway logs one line per outbound WhatsApp send,
+//
+//   Sent message <id> -> sha256:<12 hex>
+//
+// where the hash is sha256("<digits>@s.whatsapp.net") of the RECIPIENT
+// (verified live 2026-08-31 against a real send). So "this reply left the
+// box" is checkable per user: a transcript that ends with an assistant reply
+// old enough that its send cannot still be in flight, with no Sent line for
+// that person since the reply was composed, is a reply the person never saw.
+//
+// The incident that forced this: 2026-08-31 18:23-18:36, user 11 sent seven
+// messages and the agent answered every one within seconds — into a session
+// lane that wedged after each run, and the gateway's own recovery freed the
+// lane by aborting the run WITH its undelivered reply still aboard. Six
+// composed replies, one Sent line, thirteen minutes of silence from the
+// person's side. Every transcript read as perfectly healthy, so this sweep
+// (case a), the lane-watchdog (tuned to the gateway REFUSING to free a lane,
+// not freeing it destructively) and /health all stayed green.
+const crypto = require('node:crypto');
 const sessions = require('../channels/sessions');
+const laneLog = require('./lane-watchdog');
 const { enqueue } = require('../outbox/enqueue');
 const audit = require('../domain/audit');
 
@@ -38,6 +55,12 @@ const MAX_AGE_MS = 45 * 60_000;
 // repair row per message — one user got three "repairs" in eight minutes.
 // The repair exists to end a silence; a drumbeat of them IS the incident.
 const REPAIR_COOLDOWN_MS = 60 * 60_000;
+// A Sent line can precede the reply's transcript timestamp by clock skew /
+// write ordering (observed the other way round live: transcript 18:36:15.879,
+// Sent 18:36:16.148). A line up to this much BEFORE the reply still counts as
+// that reply's delivery.
+const SENT_SLACK_MS = 15_000;
+const SENT_LINE = /Sent message \S+ -> sha256:([0-9a-f]{12})/;
 
 // A proactive delivery injects its instruction into the session as a
 // `user`-role message (the DELIVERY preamble). When that turn CRASHES, the
@@ -58,6 +81,65 @@ function lastTurn(msgs) {
   return null;
 }
 
+// ---- case (b): a composed reply that never left the box --------------------
+
+function sentHashFor(phone) {
+  return crypto.createHash('sha256')
+    .update(`${String(phone).replace(/^\+/, '')}@s.whatsapp.net`)
+    .digest('hex').slice(0, 12);
+}
+
+// The gateway's own outbound log — the same per-day file, read the same way,
+// as jobs/lane-watchdog.js. Returns null when nothing could be read at all:
+// "no evidence of a send" and "no evidence at all" must never look alike, or
+// one rotated/missing log file would spray a repair at every user whose agent
+// replied recently. Both today's and yesterday's files are read so a reply
+// composed just before midnight is still judged against its own Sent line.
+function readSentEventsFromLog(now) {
+  const raw = `${laneLog.readTail(laneLog.todayLogPath(now - 24 * 3600_000))}\n${laneLog.readTail(laneLog.todayLogPath(now))}`;
+  if (!raw.trim()) return null;
+  const out = [];
+  for (const line of raw.split('\n')) {
+    if (!line.includes('Sent message')) continue;
+    let msg = line;
+    let at = null;
+    if (line.startsWith('{')) {
+      try {
+        const o = JSON.parse(line);
+        msg = String(o.message || '');
+        at = o.time || null;
+      } catch { continue; }
+    }
+    const m = SENT_LINE.exec(msg);
+    if (!m || !at) continue;
+    const t = Date.parse(at);
+    if (!Number.isNaN(t)) out.push({ at: t, hash: m[1] });
+  }
+  return out;
+}
+
+// An undelivered reply is only repaired when it was a reply to the PERSON —
+// the previous turn is a real user message, not an injected proactive
+// instruction. A lost proactive delivery is the outbox's own row and its own
+// retry ladder; a second voice re-sending it from here would race that.
+function undeliveredReply(msgs, sentEvents, phone, now) {
+  if (!Array.isArray(sentEvents)) return null;
+  const seq = (msgs || []).filter((m) => (m.role === 'user' || m.role === 'assistant') && m.at);
+  const last = seq[seq.length - 1];
+  const prev = seq[seq.length - 2];
+  if (!last || last.role !== 'assistant') return null;
+  if (!prev || prev.role !== 'user' || isInjectedInstruction(prev)) return null;
+
+  const composedAt = Date.parse(last.at);
+  if (Number.isNaN(composedAt)) return null;
+  const age = now - composedAt;
+  if (!(age >= MIN_AGE_MS && age <= MAX_AGE_MS)) return null;
+
+  const hash = sentHashFor(phone);
+  const delivered = sentEvents.some((e) => e.hash === hash && e.at >= composedAt - SENT_SLACK_MS);
+  return delivered ? null : { composedAt: last.at, age };
+}
+
 // deps.readMessages(agentId, peer) → [{role, text, at}] so tests never touch disk.
 //
 // The peer is not optional. Silent housekeeping turns (fact extraction, memory
@@ -66,9 +148,18 @@ function lastTurn(msgs) {
 // last text-bearing message is the JOB's own instruction, in the `user` role.
 // That reads exactly like an unanswered message and would send the person a
 // "repair" reply to a conversation that was never broken.
-async function sweepUnanswered(client, { readMessages, now = Date.now() } = {}) {
+async function sweepUnanswered(client, { readMessages, readSentEvents, now = Date.now() } = {}) {
   const read = readMessages
     || ((agentId, peer) => sessions.readRecentMessages(agentId, 6, undefined, peer));
+  // Read lazily, once for the whole sweep — the log tail does not change per
+  // user, and most ticks never reach a case-(b) candidate at all.
+  let sentEvents;
+  const sent = () => {
+    if (sentEvents === undefined) {
+      sentEvents = readSentEvents ? readSentEvents() : readSentEventsFromLog(now);
+    }
+    return sentEvents;
+  };
   const { rows } = await client.query(
     `SELECT id, agent_id, phone FROM users
      WHERE status = 'active' AND agent_id IS NOT NULL AND onboarded_at IS NOT NULL
@@ -98,39 +189,79 @@ async function sweepUnanswered(client, { readMessages, now = Date.now() } = {}) 
     let msgs;
     try { msgs = read(u.agent_id, u.phone); } catch { continue; } // unreadable transcript is not this job's problem
     const last = lastTurn(msgs || []);
-    if (!last || last.role !== 'user' || !last.at) continue;
 
-    const age = now - Date.parse(last.at);
-    if (!(age >= MIN_AGE_MS && age <= MAX_AGE_MS)) continue;
+    if (last && last.role === 'user' && last.at) {
+      // case (a): the message was never processed at all
+      const age = now - Date.parse(last.at);
+      if (!(age >= MIN_AGE_MS && age <= MAX_AGE_MS)) continue;
 
-    // Keyed on the message's own timestamp: one repair per dropped message,
-    // and a re-run of this sweep is a no-op rather than a second nudge.
+      // Keyed on the message's own timestamp: one repair per dropped message,
+      // and a re-run of this sweep is a no-op rather than a second nudge.
+      const res = await enqueue(client, {
+        userId: u.id, kind: 'checkin', urgency: 'urgent',
+        // Expire rather than deliver hours later behind a quiet-hours hold: an
+        // apology for a message from this morning is worse than none.
+        expiresAt: new Date(now + MAX_AGE_MS).toISOString(),
+        payload: {
+          rung: 'unanswered_repair',
+          checkinInstruction: [
+            'Their last message appears to have gone unanswered — a delivery fault on our side, not theirs.',
+            'Read the conversation. If you genuinely already answered it, reply with exactly NO_REPLY and nothing else.',
+            'Otherwise answer it now, normally, as if you had just read it.',
+            'If you CANNOT see their message — empty history, a failed read, a tool refusing you —',
+            'reply with exactly NO_REPLY. Never guess what they wanted, never turn notes or memory',
+            'into a message, never send anything you would have to preface with an explanation.',
+            'Do not apologise for a delay, do not mention a technical problem or system issue, do not explain yourself —',
+            'from their side this should simply read as your reply arriving.',
+          ].join(' '),
+        },
+        idempotencyKey: `unanswered:${u.id}:${last.at}`,
+      });
+      if (res.data.enqueued) {
+        await audit.record(client, u.id, 'delivery.unanswered_repair', { ageSeconds: Math.round(age / 1000) });
+        repaired.push(u.id);
+      }
+      continue;
+    }
+
+    // case (b): the reply exists in the transcript and its send never happened
+    const lost = undeliveredReply(msgs, sent(), u.phone, now);
+    if (!lost) continue;
+
     const res = await enqueue(client, {
       userId: u.id, kind: 'checkin', urgency: 'urgent',
-      // Expire rather than deliver hours later behind a quiet-hours hold: an
-      // apology for a message from this morning is worse than none.
       expiresAt: new Date(now + MAX_AGE_MS).toISOString(),
       payload: {
+        // Same rung on purpose: the hourly cooldown must cover BOTH repair
+        // kinds together — today's incident would have qualified under both
+        // shapes within minutes of each other, and two voices answering one
+        // silence is the duplicate-message complaint this area started with.
         rung: 'unanswered_repair',
+        repairKind: 'undelivered_reply',
         checkinInstruction: [
-          'Their last message appears to have gone unanswered — a delivery fault on our side, not theirs.',
-          'Read the conversation. If you genuinely already answered it, reply with exactly NO_REPLY and nothing else.',
-          'Otherwise answer it now, normally, as if you had just read it.',
-          'If you CANNOT see their message — empty history, a failed read, a tool refusing you —',
-          'reply with exactly NO_REPLY. Never guess what they wanted, never turn notes or memory',
-          'into a message, never send anything you would have to preface with an explanation.',
-          'Do not apologise for a delay, do not mention a technical problem or system issue, do not explain yourself —',
+          'Your last reply in this conversation was composed but never delivered — the person never saw it.',
+          'A delivery fault on our side, not theirs.',
+          'Read the conversation and send the substance of that answer again, naturally, as your reply now.',
+          'If their later messages changed what a good answer is, answer the newest state rather than repeating the old one.',
+          'If you CANNOT see the conversation — empty history, a failed read, a tool refusing you —',
+          'reply with exactly NO_REPLY. Never guess, never turn notes or memory into a message.',
+          'Do not apologise for a delay, do not mention a technical problem or system issue —',
           'from their side this should simply read as your reply arriving.',
         ].join(' '),
       },
-      idempotencyKey: `unanswered:${u.id}:${last.at}`,
+      idempotencyKey: `undelivered:${u.id}:${lost.composedAt}`,
     });
     if (res.data.enqueued) {
-      await audit.record(client, u.id, 'delivery.unanswered_repair', { ageSeconds: Math.round(age / 1000) });
+      await audit.record(client, u.id, 'delivery.unanswered_repair', {
+        kind: 'undelivered_reply', ageSeconds: Math.round(lost.age / 1000),
+      });
       repaired.push(u.id);
     }
   }
   return { repaired };
 }
 
-module.exports = { sweepUnanswered, MIN_AGE_MS, MAX_AGE_MS };
+module.exports = {
+  sweepUnanswered, sentHashFor, undeliveredReply, readSentEventsFromLog,
+  MIN_AGE_MS, MAX_AGE_MS, SENT_SLACK_MS,
+};

@@ -397,3 +397,89 @@ test('a crashed delivery instruction is not "their unanswered message"', async (
     { role: 'user', text: 'DELIVERY: whatever you say in this turn is automatically sent...', at: ago(4) },
   ])).repaired, [u.id], 'the person behind the crashed turn is still owed an answer');
 });
+
+// 2026-08-31: user 11 sent seven messages, the agent composed seven replies in
+// seconds each — and six of them died with the wedged lane they were composed
+// on. Every transcript ended with a healthy-looking assistant reply, so the
+// case-(a) check above saw nothing to repair for thirteen minutes of silence.
+// The gateway's Sent line (hash of the recipient JID) is what makes the loss
+// provable instead of guessable.
+test('a composed reply that never left the box is repaired; a delivered one never is', async () => {
+  const unanswered = require('../src/jobs/unanswered');
+  const now = Date.now();
+  const ago = (min) => new Date(now - min * 60_000).toISOString();
+  const u = await makeUser(db.pool, '+972617000023', { firstName: 'Noa' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = now() - interval '2 days' WHERE id = $1`, [u.id]);
+  const hash = unanswered.sentHashFor(u.phone);
+  const msgs = [
+    { role: 'user', text: 'יש לי משימות', at: ago(10) },
+    { role: 'assistant', text: 'ספר לי, אני רושמת', at: ago(9) },
+  ];
+  const sweep = (sent, m = msgs) => withTx(db.pool, (c) =>
+    unanswered.sweepUnanswered(c, { readMessages: () => m, readSentEvents: () => sent, now }));
+
+  // the hash is the real recipient-JID derivation, verified live 2026-08-31
+  assert.equal(unanswered.sentHashFor('+972526404855'), '41e6d58ec018');
+
+  // delivered: a Sent line for THIS person at/after composition → healthy turn
+  assert.deepEqual((await sweep([{ at: now - 9 * 60_000 + 500, hash }])).repaired, []);
+  // a reply still fresh enough to be in flight is left to the gateway
+  assert.deepEqual((await sweep([], [
+    { role: 'user', text: 'הי', at: ago(3) },
+    { role: 'assistant', text: 'שלום', at: ago(1) },
+  ])).repaired, []);
+  // someone ELSE's send in the window proves nothing about this person
+  const hit = await sweep([{ at: now - 8 * 60_000, hash: 'deadbeef0000' }]);
+  assert.deepEqual(hit.repaired, [u.id]);
+
+  const { rows } = await db.pool.query(
+    `SELECT payload FROM outbox
+      WHERE user_id = $1 AND payload->>'repairKind' = 'undelivered_reply'`, [u.id]);
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].payload.checkinInstruction, /never delivered/);
+  assert.match(rows[0].payload.checkinInstruction, /NO_REPLY/);
+  assert.match(rows[0].payload.checkinInstruction, /Do not apologise/);
+  // same rung as case (a) so ONE cooldown covers both repair kinds
+  assert.equal(rows[0].payload.rung, 'unanswered_repair');
+
+  // seen again → the idempotency key (composedAt) and the cooldown both hold
+  assert.deepEqual((await sweep([])).repaired, []);
+});
+
+test('an unreadable gateway log never manufactures undelivered-reply repairs', async () => {
+  const unanswered = require('../src/jobs/unanswered');
+  const now = Date.now();
+  const ago = (min) => new Date(now - min * 60_000).toISOString();
+  const u = await makeUser(db.pool, '+972617000024', { firstName: 'Dan' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = now() - interval '2 days' WHERE id = $1`, [u.id]);
+  const msgs = [
+    { role: 'user', text: 'שאלה', at: ago(10) },
+    { role: 'assistant', text: 'תשובה', at: ago(9) },
+  ];
+  // null = the log could not be read AT ALL. "No evidence of a send" and "no
+  // evidence at all" must not look alike — a rotated log file would otherwise
+  // spray a repair at every user whose agent replied recently.
+  const out = await withTx(db.pool, (c) =>
+    unanswered.sweepUnanswered(c, { readMessages: () => msgs, readSentEvents: () => null, now }));
+  assert.deepEqual(out.repaired, []);
+});
+
+test('a lost proactive delivery is not repaired here — its outbox row owns the retry', async () => {
+  const unanswered = require('../src/jobs/unanswered');
+  const now = Date.now();
+  const ago = (min) => new Date(now - min * 60_000).toISOString();
+  const u = await makeUser(db.pool, '+972617000025', { firstName: 'Rina' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = now() - interval '2 days' WHERE id = $1`, [u.id]);
+  // the reply answers an injected DELIVERY instruction, not the person — a
+  // second voice re-sending it from here would race the outbox's own retry
+  const msgs = [
+    { role: 'user', text: 'DELIVERY: whatever you say in this turn is automatically sent...', at: ago(10) },
+    { role: 'assistant', text: 'תזכורת: פגישה מחר', at: ago(9) },
+  ];
+  const out = await withTx(db.pool, (c) =>
+    unanswered.sweepUnanswered(c, { readMessages: () => msgs, readSentEvents: () => [], now }));
+  assert.deepEqual(out.repaired, []);
+});

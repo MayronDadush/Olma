@@ -549,7 +549,17 @@ test('agent doctrine: act-first outranks curiosity, and one question is a hard c
   assert.match(tpl, /NOT for someone mentioned once in\s+passing/);
 
   // Gender was stored correctly and then ignored on the next line
-  assert.match(tpl, /hold it consistently through every sentence/);
+  assert.match(tpl, /consistently through every sentence/);
+  // Owner ask 2026-08-31: masculine address is the default, the feminine
+  // question is asked once and early, and slashed forms never appear — a
+  // live transcript was full of "ספר/י" and "את/ה" and read like a form.
+  assert.match(tpl, /masculine forms by default/);
+  assert.match(tpl, /never slashed forms/);
+  assert.match(tpl, /prefer feminine address/);
+  // Same session: replies read robotic — one block, chained dashes. The
+  // template must carry the paragraph and dash rules, not just "short".
+  assert.match(tpl, /short\s+paragraphs with a blank line/);
+  assert.match(tpl, /over dashes/);
 
   // The token is printed inline — 94 failed turn_start calls in one week were
   // the model retyping or guessing it no matter how "read the file first" was

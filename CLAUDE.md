@@ -742,6 +742,90 @@ media generation at whole shekels rounds to ₪0 and reads as free, which it
 is not. (The `claude_subscription_overrides` flag from the section above this
 one gets ILS treatment too, same as everything else on the page.)
 
+### Six replies composed, one delivered — the wedge that beat every detector (2026-08-31)
+
+Owner report: user 11 "took relatively long to get a reply". The truth was
+worse and live while being diagnosed: between 18:23 and 18:27 UTC he sent
+seven messages; his agent answered every one within 3–15 seconds — and **six
+of those seven replies never reached WhatsApp**. Thirteen minutes of silence
+from his side ("הי", "היי אולמה", "?", "תוכלי לעזור?"), then exactly one
+delivered reply at 18:36.
+
+The mechanism, from the gateway's own log: the session lane wedged after
+every COMPLETED run (`state=processing`, `lastProgress=run:completed`,
+`queueDepth=4`, classification `stale_session_state`), the gateway's stuck-
+session recovery freed it at its 65s threshold via `abort_embedded_run` —
+**and the abort discarded the undelivered reply along with the phantom run**
+(`aborted=true drained=false`). The next queued message then processed in
+seconds and wedged again: an ~90s tax per message, paid seven times, replies
+lost six times. It only happens when messages are queued at run completion —
+the final message, with nothing behind it, delivered normally. Same wedge
+signature appears 2–3x/day on 08-20, 08-27, 08-28, 08-31.
+
+**Why every detection layer stayed green**, each for its own documented
+reason: `unanswered.js` repaired only case (a) — transcript ending with the
+user's message — and these transcripts all ended with a healthy-looking
+assistant reply (its own comment called case (b) "indistinguishable from a
+normal turn"). `lane-watchdog` is tuned to the 2026-08-16 variant where the
+gateway REFUSES to free the lane forever (`keep_lane` + age ≥90s); today it
+freed the lane at 65s every cycle, so age never reached 90. `/health` was
+honestly green — nothing it measures was failing.
+
+**Case (b) is now provable, not guessable.** The gateway logs one line per
+outbound send — `Sent message <id> -> sha256:<12 hex>` — and that hash is
+`sha256("<digits>@s.whatsapp.net")` of the recipient (verified live against
+a real send; pinned in a test). `sweepUnanswered` reads the same per-day log
+file the lane-watchdog already reads (today + yesterday, for the midnight
+edge) and repairs a transcript whose last turn is an assistant reply ≥3min
+old with no Sent line for that person since composition. Three refusals that
+matter as much as the detection:
+- **An unreadable log returns `null`, never `[]`** — "no evidence of a send"
+  and "no evidence at all" must not look alike, or one rotated log file
+  sprays a repair at every user whose agent replied recently.
+- **A reply to an injected DELIVERY instruction is excluded** — a lost
+  proactive message is its outbox row's own retry problem; a second voice
+  re-sending it from here would race that.
+- **Same rung (`unanswered_repair`) as case (a)** so ONE hourly cooldown
+  covers both — this incident qualified under both shapes within minutes,
+  and two repair voices answering one silence is the duplicate-message
+  complaint this whole area started with.
+
+**The root bug is the gateway's, and the fix exists upstream.** The box runs
+OpenClaw 2026.6.10; 2026.8.1's `isActiveRunProgressStale` now falls back to
+`params.ageMs >= staleAbortMs` when `lastProgressAgeMs` is undefined — the
+exact hole `lane-watchdog.js` documents — and the whole recovery path is
+reworked. Upgrade prep done on the box (config + extension backups;
+`@openclaw/whatsapp` has a matching 2026.8.1 with creds safely outside the
+package in `/root/.openclaw/credentials/`). **Before restarting on 2026.8.1,
+`tools.alsoAllow` must gain `"edit"`** — the #47487 deprecation warning in
+every turn's log says `tools.fs` stops implicitly widening the "messaging"
+profile, and losing fs read would break `.olma-identity` for every agent at
+once. The upgrade itself was pending the owner's go-ahead when this was
+written; verify this section against reality before acting on it.
+
+### The writing sounded like a form, and half the users were addressed as "את/ה" (2026-08-31)
+
+Owner feedback, verbatim intent: the texting is robotic, sometimes
+ungrammatical, walls of text, too many dashes — and address should default
+to masculine with an early one-time question about switching to feminine.
+The live transcript that triggered it was full of slashed forms ("ספר/י",
+"תן/תני", "את/ה") — the agent had no stored gender and the old doctrine said
+only "never guess", so it hedged in both genders at once, which reads like a
+government form.
+
+`agents-template.md` ("Language and tone"): masculine forms by default,
+slashed forms named and banned, ONE early natural question about feminine
+address stored via `remember_preference` (`gender_forms`); a stored
+preference, or their own verbs, decide and skip the question. Style: write
+like a person — short paragraphs with blank lines when a message must run
+long, plain connected sentences instead of dash-chains, reread for gender/
+number agreement before sending. The intake greeter (`intake-workspace.js`)
+carries the same masculine-default line, since it speaks before any
+preference can exist. Pinned in `tests/intake.test.js`; the doctrine change
+reaches existing users via the deploy `--restart` resync, and the
+`hebrew-gender-feminine` eval (stored feminine preference held consistently)
+is unaffected — a stored preference still outranks the default.
+
 ### Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)
 
 Owner ask: מירון wants WhatsApp updates about new models on OpenRouter (with
