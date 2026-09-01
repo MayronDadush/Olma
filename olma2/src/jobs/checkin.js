@@ -214,22 +214,27 @@ async function pickRung(client, userId) {
   // what is actually MISSING for this person — no digest, no calendar, a
   // near-empty fact card, no connections — and spends the check-in on the one
   // gap most worth closing. Gap-driven, so it can never pitch something the
-  // user already has; topic-rotated, so two nudges in a row never repeat.
+  // user already has. A topic is offered AT MOST ONCE ever, not just never
+  // twice in a row: with one persistent gap (e.g. calendar) and no other rule,
+  // "differs from the last pick" empties out and falls straight back to that
+  // same gap forever, which is the exact re-pitching this exists to prevent.
+  // Once every current gap has already been offered, this rung has nothing
+  // left to say and falls through to plain silence below.
   const gaps = await discoveryGaps(client, userId);
   if (gaps.length) {
     const { rows: prev } = await client.query(
-      `SELECT payload->>'topic' AS topic FROM outbox
-       WHERE user_id = $1 AND kind = 'checkin' AND payload->>'rung' = 'discovery'
-       ORDER BY id DESC LIMIT 1`,
+      `SELECT DISTINCT payload->>'topic' AS topic FROM outbox
+       WHERE user_id = $1 AND kind = 'checkin' AND payload->>'rung' = 'discovery'`,
       [userId]
     );
-    const lastTopic = prev[0] ? prev[0].topic : null;
-    const rotated = gaps.filter((g) => g.topic !== lastTopic);
-    const pick = (rotated.length ? rotated : gaps)[0];
-    return {
-      rung: 'discovery', topic: pick.topic,
-      instruction: `${pick.instruction} One short warm message; if the conversation shows they already declined this once, do NOT re-offer — send a brief friendly check-in instead. Never more than one ask.`,
-    };
+    const offered = new Set(prev.map((r) => r.topic));
+    const pick = gaps.find((g) => !offered.has(g.topic));
+    if (pick) {
+      return {
+        rung: 'discovery', topic: pick.topic,
+        instruction: `${pick.instruction} One short warm message; if the conversation shows they already declined this once, do NOT re-offer — send a brief friendly check-in instead. Never more than one ask.`,
+      };
+    }
   }
 
   return {
@@ -314,8 +319,14 @@ async function discoveryGaps(client, userId) {
      WHERE user_id = $1 AND provider = 'google_calendar'`, [userId]);
   const calStatus = cal[0] ? cal[0].status : null;
   if (calStatus !== 'connected') {
+    // Two distinct topics, not one: a never-connected pitch that should
+    // never repeat once declined must not also gate off the needs_reauth
+    // recovery, which CLAUDE.md documents as the only mechanism that ever
+    // revisits an abandoned reconnect. Same key both cases would have meant
+    // "already offered not_connected" silently suppressing the LATER, and
+    // very different, needs_reauth recovery message for the same user.
     gaps.push({
-      topic: 'calendar',
+      topic: calStatus === 'needs_reauth' ? 'calendar:needs_reauth' : 'calendar:not_connected',
       instruction: calStatus === 'needs_reauth'
         ? 'Their Google Calendar WAS connected and Google has stopped accepting it, so it has been doing nothing since. They already know what it is for — do not pitch it. Say plainly that the connection expired and needs redoing, ask whether they want view-only or edit access, and call start_calendar_connection with their answer.'
         : 'Their Google Calendar is not connected. Offer it once, with the concrete benefit: meetings they agree to land in the calendar by themselves, and Olma can warn about clashes before they commit to a time.',
