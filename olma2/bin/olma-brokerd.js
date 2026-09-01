@@ -187,6 +187,16 @@ async function main() {
       return out;
     });
 
+    // A finished phone call gets the identical treatment on its own hangup —
+    // see jobs/voice-calls.js. Inert (a directory-not-found no-op) on any box
+    // without the voice bridge installed.
+    const voiceCalls = require('../src/jobs/voice-calls');
+    arm('voice_calls', async () => {
+      const out = await withTx(pool, (c) => voiceCalls.sweepVoiceCalls(c, {}));
+      await refreshAfter(out.processed || []);
+      return out;
+    });
+
     // The planning pass: overnight, per user, writes a forward plan into
     // USER.md via the card refresh. Sends nothing — the plan surfaces the
     // next time Olma would have spoken anyway (digest, checkin, live turn).
