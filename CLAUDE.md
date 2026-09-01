@@ -55,6 +55,42 @@ describes **v1**, which is retired-in-place: its code still sits in
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
 
+### The guard was right within a minute, and unread for eighty (fixed 2026-09-01)
+
+`config_guard` filed the five corrupted-identity issues at 19:08:40 on
+2026-08-31, less than a minute after the upgrade above produced them. They sat
+on the dashboard while those five people's agents failed every tool call they
+made, and were found by a human eighty minutes later. **Detection was never
+the problem** — this file has now recorded the same shape three times (the
+thirteen already-resolved issues nobody read on 2026-08-27; `/health` red for
+thirteen hours during the credit outage). What was missing is escalation.
+
+Most violations describe damage nobody feels today — an orphan agent, a
+duplicated carryover, a setting that would matter if something *else* also
+broke. A dashboard row is the right home for those. Four are different in
+kind, and `BREAKS_USERS` is the whole list: an identity file or an `AGENTS.md`
+whose token is not the DB's, `tools.alsoAllow` missing `read`, and an empty
+`mcp.servers`. While any of those holds, the affected agents cannot complete a
+single tool call and the person on the other end simply gets nothing. Those
+alert on the **raw `openclaw message send` pipe** — the credit alarm's channel,
+no model and no credit — because it works precisely when the system cannot
+answer for itself.
+
+- **Announced once, and re-armed by recovery.** `config_guard_alerted` holds
+  the set already sent. A condition that persists is not repeated; a NEW one
+  still gets through; a condition that CLEARED drops out, so the same break
+  next month alerts again. Same tiering rule as the balance warning.
+- **The two halves of that flag are written under different rules**, which is
+  the part a test caught rather than the design. Dropping a cleared condition
+  is unconditional. Adding a fresh one records that somebody was *told*, so it
+  is written only after the pipe confirms `ok` — a failed send leaves it
+  unstamped and the next tick retries. Stamping first would have made a
+  gateway outage (exactly when this alarm matters most) swallow the alert
+  permanently. The same promise `credit-watch` and the balance forecast make.
+- **A throwing pipe never takes the issue rows with it.** Filing happens
+  first and the send is wrapped — the durable dashboard record must survive a
+  dead gateway, which is the condition being reported.
+
 ### The gateway was upgraded underneath a running system (2026-08-31)
 
 Someone ran `npm i -g openclaw` on the box at 19:08 UTC, taking the gateway

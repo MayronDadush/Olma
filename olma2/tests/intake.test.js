@@ -860,3 +860,74 @@ test('checkOrphanAgents reads the entries roster too', async () => {
   assert.equal(v.length, 1);
   assert.match(v[0], /u-9999/);
 });
+
+// The guard filed five identity mismatches at 19:08:40 on 2026-08-31, under a
+// minute after they appeared, and they sat unread for eighty minutes while
+// five users' agents failed every tool call they made. Detection was never
+// the problem — so the class of violation that BREAKS users now alerts on the
+// raw pipe, once per condition.
+test('config guard alerts on identity breaks, once, and re-arms after recovery', async () => {
+  const sent = [];
+  const deps = { send: async (phone, text) => { sent.push({ phone, text }); return { ok: true }; } };
+  const broken = [
+    'user 12 (+972544686188): identity file does not match DB token',
+    'user 13 (+972542613404): identity file does not match DB token',
+  ];
+  const harmless = ['agent u-99 is in openclaw.json with no active user — orphan of a failed provisioning'];
+
+  await withTx(db.pool, (c) => guard.alertCritical(c, [...broken, ...harmless], deps));
+  assert.equal(sent.length, 1, 'one message for the whole batch, not one per user');
+  assert.match(sent[0].text, /user 12/);
+  assert.match(sent[0].text, /user 13/);
+  assert.ok(!/u-99/.test(sent[0].text), 'an orphan agent breaks nobody today — dashboard only');
+
+  // Same conditions next tick: silent. A watchdog that repeats itself every
+  // ten minutes is a watchdog people mute.
+  await withTx(db.pool, (c) => guard.alertCritical(c, [...broken, ...harmless], deps));
+  assert.equal(sent.length, 1);
+
+  // A NEW break still gets through while the old one is still open.
+  await withTx(db.pool, (c) => guard.alertCritical(c,
+    [...broken, 'user 14 (+972505404255): identity file does not match DB token'], deps));
+  assert.equal(sent.length, 2);
+  assert.match(sent[1].text, /user 14/);
+  assert.ok(!/user 12/.test(sent[1].text), 'only the newly-appeared condition');
+
+  // Everything repaired, then the SAME break returns — it must alert again,
+  // or a recurrence a month later is swallowed by a stale flag.
+  await withTx(db.pool, (c) => guard.alertCritical(c, [], deps));
+  assert.equal(sent.length, 2, 'recovery itself says nothing');
+  await withTx(db.pool, (c) => guard.alertCritical(c, broken, deps));
+  assert.equal(sent.length, 3, 'the ladder re-armed');
+});
+
+test('config guard: only violations that stop tool calls are alert-worthy', () => {
+  const alerts = [
+    'user 12 (+972544686188): identity file does not match DB token',
+    'user 12 (+972544686188): AGENTS.md has an unrendered {{IDENTITY_TOKEN}} — every tool call will fail auth',
+    'user 12 (+972544686188): AGENTS.md carries user 8\'s identity token — that agent can act as them',
+    'tools.alsoAllow lacks "read" — agents cannot read their .olma-identity, all tool auth fails',
+    'mcp.servers is empty — the Olma tool server is not registered',
+  ];
+  const quiet = [
+    'agent u-99 is in openclaw.json with no active user — orphan of a failed provisioning',
+    'users 1 and 2 quote the same intake text',
+    'outbox messages stuck after 5+ delivery attempts — proactive messaging is failing',
+    'tools.fs.workspaceOnly is not true — identity tokens become readable across workspaces',
+  ];
+  for (const v of alerts) assert.equal(guard.breaksUsers(v), true, `should alert: ${v}`);
+  for (const v of quiet) assert.equal(guard.breaksUsers(v), false, `should not alert: ${v}`);
+});
+
+test('a failed alert pipe does not mark the condition as announced', async () => {
+  const deps = { send: async () => ({ ok: false, error: 'gateway down' }) };
+  const broken = ['user 16 (+972524333704): identity file does not match DB token'];
+  const out = await withTx(db.pool, (c) => guard.alertCritical(c, broken, deps));
+  assert.equal(out.alertFailed, true);
+  // Next tick, with a working pipe, it must still go out — the gateway being
+  // down is exactly when identity breaks happen.
+  const sent = [];
+  const ok = { send: async (p, t) => { sent.push(t); return { ok: true }; } };
+  await withTx(db.pool, (c) => guard.alertCritical(c, broken, ok));
+  assert.equal(sent.length, 1);
+});
