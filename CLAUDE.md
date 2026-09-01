@@ -114,6 +114,21 @@ matches the DB in both `.olma-identity` and `AGENTS.md`.
   Every CLI call is bounded by `--timeout`, because `openclaw config set` is
   documented to hang after a successful write.
 
+**And the detector spent its first hour reporting its own fix** (#104). The
+six sessions were archived through the gateway, and the freshly-deployed
+script called all six violations anyway — `already_archived`, six times.
+`archived_at` is a **column** on `session_nodes`, not a field inside
+`entry_json`, and `readAgentIndex` only ever selected the entry, so an
+archived session was indistinguishable from a live one. `config_guard` would
+have filed the same row every tick for ever against a fix that had already
+landed — the detection-layer-nobody-trusts failure for the fourth time in
+this file, arriving one hour after the detector that would suffer it.
+`mapIndexEntry` carries `archivedAt` now (null in the legacy file era, which
+had no archiving: there a session that exists is live by construction) and
+`deliverableInfraSessions` skips it. **Anything new that reads the session
+index and means "live" has to say so** — listing is not the same question.
+Found by running the shipped script against the box rather than by a test.
+
 **A theory that was checked and is wrong, recorded so nobody re-derives it:**
 this looked exactly like the auth-storm-from-transcript-redaction failure
 (the gateway masks token args, the model imitates the mask). It is not —
