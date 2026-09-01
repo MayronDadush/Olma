@@ -88,6 +88,11 @@ async function main() {
       const out = await drainOnce(pool, deliver);
       const alert = await withTx(pool, (c) => creditWatch.checkCreditAlert(c, { send: rawSend }))
         .catch(() => ({ alerted: false }));
+      // A night outage is queued rather than sent at 03:00; this is what
+      // delivers it when morning comes, on the same beat.
+      const flushed = await withTx(pool, (c) => creditWatch.flushPendingCreditAlert(c, { send: rawSend }))
+        .catch(() => null);
+      if (flushed && flushed.alerted) return { ...out, creditAlert: flushed.phone, deferred: true };
       return alert.alerted ? { ...out, creditAlert: alert.phone } : out;
     });
 

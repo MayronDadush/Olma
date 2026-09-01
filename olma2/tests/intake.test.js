@@ -470,6 +470,31 @@ test('config guard: catches every identity-critical regression', async () => {
   assert.equal(run2.newIssues, 0); // same violations → no duplicate issues
 });
 
+// The 2026.8.1 upgrade made a multi-agent roster refuse every agent-less
+// operation unless an ambient owner is named — which is the whole raw pipe:
+// reminders, the credit-out alarm, the runway warning, the eval alert. It
+// fails per-send with a config error, so nothing crashes and the outbox's
+// backoff hides it. On 2026-09-01 that cost a rent reminder that expired
+// undelivered and twelve hours of a mute credit alarm.
+test('config guard: a multi-agent roster with no ambient owner is a violation', () => {
+  const solo = baseConfig(); // one agent — the gateway resolves it on its own
+  assert.deepEqual(guard.checkOpenclawConfig(solo), []);
+
+  const many = baseConfig();
+  many.agents.list.push({ id: 'u-3', workspace: '/x/u-3', agentDir: '/x/u-3-agent' });
+  const v = guard.checkOpenclawConfig(many);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /systemAgent\.agentId is unset/);
+  assert.match(v[0], /set-system-agent/, 'the violation says how to fix it');
+
+  many.agents.defaults = { systemAgent: { agentId: 'main' } };
+  assert.match(guard.checkOpenclawConfig(many)[0], /not in the roster/,
+    'an owner naming an agent that does not exist resolves to nothing — worse than unset, because it looks set');
+
+  many.agents.defaults.systemAgent.agentId = 'intake';
+  assert.deepEqual(guard.checkOpenclawConfig(many), []);
+});
+
 test('auth failures land in the audit log', async () => {
   const { createBrokerServer } = require('../src/brokerd/server');
   const broker = createBrokerServer({ pool: db.pool });
