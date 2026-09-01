@@ -1144,6 +1144,30 @@ fallback IS the path. Two things worth carrying forward:
   alarm. Caught by the test that pins the classification — patterns that
   match on prose have to be anchored to the failure, not the noun.
 
+### Known gap: a reminder whose first rung died on the wire never climbs (2026-09-01)
+
+The rent reminder above is still, hours later, the thing that did not happen —
+and the escalation ladder cannot recover it. `dueForSending`'s rung-2 clause
+requires the previous rung's outbox row to carry `sent_at IS NOT NULL AND
+hold_reason IS NULL`. Row 5873 has `hold_reason = 'expired'`, so the EXISTS
+never matches; `task_reminders#27` sits at `attempts = 1, sent_at NULL` for
+ever, reads in `list_my_reminders` as one that never fired, and the ladder's
+own retirement rule closes it two days later. The person is told nothing at
+any point.
+
+That check is right about the case it was written for — a rung the GATE held
+or dropped (quiet hours, pause, budget) must not be chased, which is the
+check-in ladder's documented bug refusing to repeat itself. What it cannot
+see is **whose fault the non-delivery was**. `expired` covers both "we could
+not reach them inside their own window" and "our pipe was broken for twelve
+hours", and only the second deserves a retry. A fix has to split those —
+plausibly on `last_error` being a delivery/transport failure rather than a
+gate decision — and rung 1 cannot simply be re-enqueued under its own key
+(`reminder:<id>` is already spent on the dead row, which is exactly the
+guard that stops a duplicate reminder, the one outcome worse than a missed
+one). Not built; recorded so the next reminder lost to an outage is
+recognised as this and not re-diagnosed from scratch.
+
 ### Nothing wakes Miron any more (2026-09-01)
 
 Owner ask, plainly: "אתה יכול להפסיק לשלוח הודעות בלילה". The eval alert had
