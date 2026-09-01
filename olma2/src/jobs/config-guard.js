@@ -11,6 +11,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const occ = require('../intake/openclaw-config');
+const infraAgent = require('../domain/infra-agent');
 
 // The invariants, each with why it matters.
 function checkOpenclawConfig(cfg) {
@@ -230,6 +231,32 @@ async function checkStuckOutbox(client) {
     : [];
 }
 
+// `main` has no user, so nothing it ever says is addressed to anybody — and
+// on 2026-09-01 it said it into a real person's WhatsApp. It still held six
+// delivery-capable sessions from the v1 `--to <phone>` era, harmless for as
+// long as nothing ran main; then the gateway upgrade auto-created 36 cron
+// jobs targeting it and it began waking every half hour, emitting the literal
+// string NO_REPLY and its own auth failures to whoever was on the other end.
+//
+// The session is the half worth watching, because it bounds every future
+// thing that wakes main — including whatever the next upgrade invents. See
+// domain/infra-agent.js.
+async function checkInfraAgentSessions(client, deps) {
+  const found = await infraAgent.deliverableInfraSessions(client, deps || {});
+  // One row per (agent, channel), never per session: the count belongs in the
+  // body, not the title, or a person joining files a brand-new issue —
+  // checkStuckOutbox's lesson.
+  const byAgent = new Map();
+  for (const f of found) {
+    const k = `${f.agentId}:${f.channel}`;
+    byAgent.set(k, (byAgent.get(k) || 0) + 1);
+  }
+  return [...byAgent.keys()].map((k) => {
+    const [agentId, channel] = k.split(':');
+    return `agent ${agentId} holds ${channel} sessions addressed to active users — it has no user of its own, so anything that wakes it can deliver to a real person`;
+  });
+}
+
 // Most violations describe damage nobody feels today: an orphan agent, a
 // duplicated carryover, a config setting that WOULD matter if something else
 // also broke. A dashboard row is the right home for those.
@@ -335,6 +362,7 @@ async function run(client, { configPath, ...deps } = {}) {
   violations = violations.concat(await checkAgentsTokens(client));
   violations = violations.concat(await checkCarryovers(client));
   violations = violations.concat(await checkStuckOutbox(client));
+  violations = violations.concat(await checkInfraAgentSessions(client, deps));
   const filed = await fileViolations(client, violations);
   const closed = await closeResolved(client, violations);
   // Filing first, alerting second: the dashboard row is the durable record
@@ -348,6 +376,7 @@ async function run(client, { configPath, ...deps } = {}) {
 
 module.exports = {
   run, checkOpenclawConfig, checkIdentityFiles, checkAgentsTokens,
-  checkCarryovers, checkOrphanAgents, checkStuckOutbox, fileViolations, closeResolved,
+  checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkInfraAgentSessions,
+  fileViolations, closeResolved,
   alertCritical, breaksUsers, ALERTED_FLAG,
 };

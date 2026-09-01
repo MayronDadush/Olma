@@ -55,6 +55,66 @@ describes **v1**, which is retired-in-place: its code still sits in
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
 
+### `main` said NO_REPLY into a real person's WhatsApp (2026-09-01)
+
+Two messages landed in מירון's chat at 11:25 local, in the middle of a normal
+conversation about deleting a task:
+
+```
+Past quiet hours now (08:24 UTC), but no user messages waiting,
+nothing urgent to report.  NO_REPLY
+הטוקן מהקובץ שוב נדחה. אעצור הפעם.  NO_REPLY
+```
+
+Neither came from his agent. Both are in `main`'s transcript verbatim
+(`agents/main/agent/openclaw-agent.sqlite`, `transcript_events`, 08:25:06),
+and the same shape repeats every ~30 minutes all night: 04:57, 05:25, 05:55,
+06:26, 06:55, 07:25, 07:55, 08:25. **Two independent conditions had to hold,
+and neither alone would have been visible:**
+
+- **Something woke `main`.** The 2026.8.1 upgrade auto-created **36 cron
+  jobs** — a `heartbeat` and a `skillCollectionReview` for every agent in the
+  roster, all with `sessionTarget: main`, all enabled. Nobody created them;
+  v2 schedules in brokerd and the gateway `cron` tool is denied to agents
+  precisely so this does not happen.
+- **`main` could deliver to a person.** Six leftover WhatsApp sessions —
+  `agent:main:whatsapp:direct:+9725…` for six real users including מירון —
+  from the v1 era when `--to <phone>` alone ran the turn on the DEFAULT agent.
+  Harmless for as long as nothing ran main.
+
+`main` has no user row and therefore no identity token, so its `turn_start`
+calls improvise one — the transcript shows `"olma_identity":"main"`,
+`"unknown"`, `"olma"` — which is what the four ownerless `auth.failed` rows
+at 08:25 are, and what "הטוקן מהקובץ שוב נדחה" was reporting. **It was never
+מירון's identity that was broken**: u-3's file is locked, and its token
+matches the DB in both `.olma-identity` and `AGENTS.md`.
+
+- **The session is the half worth watching**, and `config_guard`'s
+  `checkInfraAgentSessions` now does: a userless agent holding a *direct*
+  session whose peer is an active user's phone. That bounds every future
+  thing that wakes main, including whatever the next upgrade invents —
+  whereas disabling today's 36 crons only answers today's.
+- **Filed, not alerted.** It is real damage a person sees, but it does not
+  stop a tool call, and `BREAKS_USERS` means exactly that since #97. Widening
+  it would put the alert list back to meaning two things at once.
+- **One row per (agent, channel), never per session** — a per-session title
+  would file a brand-new issue every time somebody joins (`checkStuckOutbox`'s
+  lesson).
+- `scripts/quiet-main-agent.js` reports both halves and, with
+  `--disable-cron`, disables only the gateway-auto payload kinds
+  (`heartbeat`, `skillCollectionReview`); an `agentTurn` job is something a
+  person set up and is never touched. **It does not delete sessions** — being
+  a second writer to the gateway's own store with the old schema in mind is
+  the mistake `agents.list` already cost a night for. Every CLI call is
+  bounded by `--timeout`, because `openclaw config set` is documented to hang
+  after a successful write.
+
+**A theory that was checked and is wrong, recorded so nobody re-derives it:**
+this looked exactly like the auth-storm-from-transcript-redaction failure
+(the gateway masks token args, the model imitates the mask). It is not —
+u-3's transcript carries the full unredacted token. The masking was never
+involved.
+
 ### The lock that worked perfectly, on three files out of sixteen (2026-09-01)
 
 `chattr +i` on `.olma-identity` was added 2026-08-27 and applied **only at
