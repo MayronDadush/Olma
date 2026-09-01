@@ -197,7 +197,92 @@ async function checkStuckOutbox(client) {
     : [];
 }
 
-async function run(client, { configPath } = {}) {
+// Most violations describe damage nobody feels today: an orphan agent, a
+// duplicated carryover, a config setting that WOULD matter if something else
+// also broke. A dashboard row is the right home for those.
+//
+// Three are different in kind — while they hold, the affected agents cannot
+// make a single successful tool call, and the person on the other end simply
+// gets nothing:
+//
+//   - an identity file or an AGENTS.md whose token is not the DB's: every
+//     tool call from that workspace fails auth;
+//   - tools.alsoAllow lacking "read": the same, for everyone at once;
+//   - mcp.servers empty: no Olma tools exist at all.
+//
+// On 2026-08-31 the guard filed five identity mismatches at 19:08:40, less
+// than a minute after they appeared. They sat unread for eighty minutes,
+// while five users' agents failed every call they made. The detection was
+// never the problem — this file has been right and unread twice now
+// (see the closeResolved note above, 2026-08-27). So this class alerts on
+// the same raw pipe as the credit alarm: no model, no agent turn, works
+// precisely when the system cannot answer for itself.
+const BREAKS_USERS = [
+  /identity file does not match DB token/,
+  /AGENTS\.md .*token/i,
+  /alsoAllow lacks "read"/,
+  /mcp\.servers is empty/,
+];
+
+function breaksUsers(violation) {
+  return BREAKS_USERS.some((re) => re.test(violation));
+}
+
+// One flag holds the set we have already alerted about, so a condition that
+// persists across ticks is announced ONCE and a NEW one still gets through —
+// the tiering rule the balance warning already follows. Recovery clears the
+// entry, so the same break happening again next week alerts again.
+const ALERTED_FLAG = 'config_guard_alerted';
+
+async function alertCritical(client, violations, deps) {
+  if (!deps || !deps.send) return null;
+  const flags = require('../domain/flags');
+  const critical = violations.filter(breaksUsers);
+  let known = [];
+  try { known = JSON.parse((await flags.getFlag(client, ALERTED_FLAG)) || '[]'); } catch { known = []; }
+  if (!Array.isArray(known)) known = [];
+
+  // Two halves of the stored set, and they are written under different rules.
+  // Dropping the CLEARED ones is unconditional — a condition that resolved
+  // must leave, or its recurrence next month is silently swallowed. Adding a
+  // fresh one records that somebody was TOLD, so it may only be written once
+  // the pipe confirms it: the same promise the credit alarm and the balance
+  // warning make, and the reason a failed send retries on the next tick
+  // instead of vanishing into a flag that claims it was announced.
+  const stillKnown = known.filter((v) => critical.includes(v));
+  const fresh = critical.filter((v) => !known.includes(v));
+
+  const save = async (set) => {
+    const next = set.slice(0, 50);
+    if (JSON.stringify(next) !== JSON.stringify(known)) {
+      await flags.setFlag(client, ALERTED_FLAG, JSON.stringify(next));
+    }
+  };
+
+  if (!fresh.length) {
+    await save(stillKnown);
+    return null;
+  }
+
+  const phone = (await flags.getFlag(client, 'admin_alert_phone'))
+    || require('./credit-watch').DEFAULT_ALERT_PHONE;
+  const lines = ['🔴 אולמה: משתמשים חסומים ברמת הזהות — כל קריאת כלי שלהם נכשלת.'];
+  for (const v of fresh.slice(0, 6)) lines.push(`• ${v}`);
+  if (fresh.length > 6) lines.push(`ועוד ${fresh.length - 6}.`);
+  lines.push('הפירוט בדשבורד, בקטע התקלות.');
+
+  // A pipe that throws must not take the issue rows down with it — the
+  // dashboard record is the durable half and is already written by now.
+  let sent = null;
+  let error = null;
+  try { sent = await deps.send(phone, lines.join('\n')); } catch (e) { error = e.message; }
+  const ok = Boolean(sent && sent.ok);
+  await save(ok ? stillKnown.concat(fresh) : stillKnown);
+  if (ok) return { alerted: fresh.length, phone };
+  return { alertFailed: true, ...(error ? { alertError: error } : {}) };
+}
+
+async function run(client, { configPath, ...deps } = {}) {
   let violations = [];
   try {
     const cfg = occ.loadConfig(configPath);
@@ -212,10 +297,17 @@ async function run(client, { configPath } = {}) {
   violations = violations.concat(await checkStuckOutbox(client));
   const filed = await fileViolations(client, violations);
   const closed = await closeResolved(client, violations);
-  return { violations: violations.length, newIssues: filed, closedIssues: closed };
+  // Filing first, alerting second: the dashboard row is the durable record
+  // and must exist even if the pipe is down.
+  const alert = await alertCritical(client, violations, deps);
+  return {
+    violations: violations.length, newIssues: filed, closedIssues: closed,
+    ...(alert || {}),
+  };
 }
 
 module.exports = {
   run, checkOpenclawConfig, checkIdentityFiles, checkAgentsTokens,
   checkCarryovers, checkOrphanAgents, checkStuckOutbox, fileViolations, closeResolved,
+  alertCritical, breaksUsers, ALERTED_FLAG,
 };
