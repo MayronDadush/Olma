@@ -555,6 +555,24 @@ test('CLI failures surface as thrown errors, never as "no new users"', async () 
   })));
 });
 
+// 2026-09-01: the gateway's own 30-minute heartbeat polls every agent, and any
+// text an agent writes before NO_REPLY is DELIVERED — u-17 answered a poll with
+// a line about its user's brunch reminder and it landed in a different user's
+// WhatsApp. The gateway's monitor crons cannot be disabled ("system-owned
+// monitor jobs cannot be edited by cron clients"), so the reply itself is the
+// only lever there is.
+test('agent doctrine: a heartbeat poll is answered with NO_REPLY and nothing else', () => {
+  const fs = require('node:fs');
+  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
+
+  assert.match(tpl, /\[OpenClaw heartbeat poll\]/, 'the exact prompt the gateway sends');
+  assert.match(tpl, /nothing before them and\s+nothing after/);
+  // the consequence has to be stated, not just the rule: an instruction whose
+  // reason is invisible is the one a model talks itself out of
+  assert.match(tpl, /DELIVERED as a WhatsApp message/);
+  assert.match(tpl, /a DIFFERENT user's chat/, 'names the cross-user leak, not just noise');
+});
+
 test('agent doctrine: act-first outranks curiosity, and one question is a hard cap', () => {
   const fs = require('node:fs');
   const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
