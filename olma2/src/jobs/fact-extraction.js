@@ -125,7 +125,7 @@ function renderTranscript(messages) {
 // at one JSON answer instead of tool calls — every doctrine line here traces
 // to an incident (dedupe, no invented dates, name-not-a-fact, wish-vs-
 // commitment), so reword freely but drop nothing.
-function buildInstruction(transcript, existingFacts, openTasks = [], profile = {}, meetingConstraints = []) {
+function buildInstruction(transcript, existingFacts, openTasks = [], profile = {}, meetingConstraints = [], opts = {}) {
   const known = existingFacts.length
     ? existingFacts.map((f) => `- [#${f.id}] [${f.category}] ${f.fact}`).join('\n')
     : '(nothing recorded yet)';
@@ -149,6 +149,7 @@ function buildInstruction(transcript, existingFacts, openTasks = [], profile = {
     '  "facts":  [{"category": "...", "fact": "...", "importance": 1, "expires_at": null, "replaces": null}],',
     '  "tasks":  [{"title": "...", "subtasks": []}],',
     profile.firstName ? '  "name": null' : '  "name": {"first": "...", "last": null} or null',
+    ...(opts.includeSummary ? ['  "summary": "..." or null'] : []),
     '}',
     '',
     'What you already know about them, each with its #id — do NOT record any of this',
@@ -232,6 +233,15 @@ function buildInstruction(transcript, existingFacts, openTasks = [], profile = {
     '{"facts": [], "tasks": [], "name": null} — do not pad either list to look useful.',
     'But do not reach for that as the easy way out either: if they told you something',
     'about themselves, or about something they have to do, record it.',
+    ...(opts.includeSummary
+      ? ['',
+         'SUMMARY — this conversation happened over a PHONE CALL, not WhatsApp, so',
+         'nobody else saw it happen. Write "summary" as one short warm WhatsApp message',
+         'recapping it for them in their own language — a couple of sentences, naming',
+         'anything concrete that came out of it (a decision, a date, something you now',
+         'need to do). If it was trivial small talk with nothing worth recapping, set',
+         '"summary" to null — do not manufacture one.']
+      : []),
   ].join('\n');
 }
 
@@ -306,6 +316,48 @@ async function applyExtraction(client, user, parsed, knownFactIds = new Set()) {
       { confirmed: false, source: 'fact_extraction' });
   }
   return out;
+}
+
+// The reference material every extraction call is grounded against: what we
+// already know, what is already on their list, and what they have already
+// said about a meeting in progress. Shared by the WhatsApp sweep below and
+// jobs/voice-calls.js — both hand a finished conversation to the identical
+// buildInstruction/applyExtraction pair, so both need the identical context.
+async function gatherContext(client, userId) {
+  const known = await facts.topFacts(client, userId, 20);
+  // Their open list goes in for one reason: without it the same commitment is
+  // re-saved every time it comes up in conversation, and a duplicated task is
+  // worse than a missed one — it makes the list look untrustworthy.
+  const { rows: openTasks } = await client.query(
+    `SELECT id, title, parent_id FROM tasks
+      WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL
+      ORDER BY coalesce(parent_id, id), parent_id NULLS FIRST, id LIMIT $2`,
+    [userId, OPEN_TASKS_IN_PROMPT]
+  );
+  // What they have already said about a meeting they are arranging. This is
+  // the structural half of the "גלי מעדיפה לא להיפגש בשבת" fix: the doctrine
+  // line above asks the model to tell a one-off constraint from a habit, and
+  // this hands it the actual sentences so it does not have to infer that a
+  // negotiation was even happening. Still-open meetings, plus ones that
+  // closed inside this chapter, since the constraint was stated while they
+  // were open. Their OWN constraints, private ones included — nothing here
+  // is sent anywhere; the model is being told what NOT to write down.
+  const { rows: constraintRows } = await client.query(
+    `SELECT m.id, m.title, p.constraints FROM meeting_participants p
+       JOIN meetings m ON m.id = p.meeting_id
+      WHERE p.user_id = $1 AND p.state <> 'opted_out'
+        AND jsonb_array_length(p.constraints) > 0
+        AND (m.status = 'negotiating' OR m.updated_at > now() - ($2 || ' milliseconds')::interval)
+      ORDER BY m.id DESC LIMIT $3`,
+    [userId, String(MEETING_CONSTRAINT_WINDOW_MS), MEETINGS_IN_PROMPT]
+  );
+  const meetingConstraints = constraintRows
+    .map((r) => ({
+      title: (r.title || 'פגישה').slice(0, 60),
+      constraints: meetings.constraintTexts(r.constraints).slice(0, 5),
+    }))
+    .filter((m) => m.constraints.length);
+  return { known, openTasks, meetingConstraints };
 }
 
 // Whose chapter has closed with unread content in it. The two time conditions
@@ -388,39 +440,7 @@ async function sweepFactExtraction(client, deps = {}) {
       continue;
     }
 
-    const known = await facts.topFacts(client, u.id, 20);
-    // Their open list goes in for one reason: without it the same commitment is
-    // re-saved every time it comes up in conversation, and a duplicated task is
-    // worse than a missed one — it makes the list look untrustworthy.
-    const { rows: openTasks } = await client.query(
-      `SELECT id, title, parent_id FROM tasks
-        WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL
-        ORDER BY coalesce(parent_id, id), parent_id NULLS FIRST, id LIMIT $2`,
-      [u.id, OPEN_TASKS_IN_PROMPT]
-    );
-    // What they have already said about a meeting they are arranging. This is
-    // the structural half of the "גלי מעדיפה לא להיפגש בשבת" fix: the doctrine
-    // line above asks the model to tell a one-off constraint from a habit, and
-    // this hands it the actual sentences so it does not have to infer that a
-    // negotiation was even happening. Still-open meetings, plus ones that
-    // closed inside this chapter, since the constraint was stated while they
-    // were open. Their OWN constraints, private ones included — nothing here
-    // is sent anywhere; the model is being told what NOT to write down.
-    const { rows: constraintRows } = await client.query(
-      `SELECT m.id, m.title, p.constraints FROM meeting_participants p
-         JOIN meetings m ON m.id = p.meeting_id
-        WHERE p.user_id = $1 AND p.state <> 'opted_out'
-          AND jsonb_array_length(p.constraints) > 0
-          AND (m.status = 'negotiating' OR m.updated_at > now() - ($2 || ' milliseconds')::interval)
-        ORDER BY m.id DESC LIMIT $3`,
-      [u.id, String(MEETING_CONSTRAINT_WINDOW_MS), MEETINGS_IN_PROMPT]
-    );
-    const meetingConstraints = constraintRows
-      .map((r) => ({
-        title: (r.title || 'פגישה').slice(0, 60),
-        constraints: meetings.constraintTexts(r.constraints).slice(0, 5),
-      }))
-      .filter((m) => m.constraints.length);
+    const { known, openTasks, meetingConstraints } = await gatherContext(client, u.id);
 
     const message = buildInstruction(renderTranscript(fresh), known, openTasks,
       { firstName: u.first_name }, meetingConstraints);
@@ -475,7 +495,7 @@ async function sweepFactExtraction(client, deps = {}) {
 
 module.exports = {
   sweepFactExtraction, dueUsers, buildInstruction, renderTranscript, newMessagesSince,
-  isMachineText, readPersonMessages, applyExtraction,
+  isMachineText, readPersonMessages, applyExtraction, gatherContext,
   CHAPTER_GAP_MS, MAX_PER_TICK, READ_MESSAGES, MAX_TRANSCRIPT_CHARS, INSTRUCTION_MARKER,
   OPEN_TASKS_IN_PROMPT, MEETINGS_IN_PROMPT, MEETING_CONSTRAINT_WINDOW_MS,
 };
