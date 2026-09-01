@@ -49,6 +49,23 @@ test('cron sessions, unknown peers and intake are all left alone', async () => {
   assert.deepEqual(asked, ['main']);
 });
 
+// Archiving IS the remediation this whole file exists to prompt, so a guard
+// that keeps reporting an archived session is reporting its own fix. Found by
+// running the shipped script against the live box the hour after the six real
+// sessions were archived: it read `already_archived` six times and reported
+// them as violations anyway.
+test('a session that was already archived is the fix, not the fault', async () => {
+  const live = key('main', 'whatsapp', '+972526269826');
+  const archived = { ...key('main', 'whatsapp', '+972502205854'), archivedAt: 1788253235072 };
+
+  const found = await deliverableInfraSessions(db.pool, { list: () => [live, archived] });
+  assert.equal(found.length, 1);
+  assert.equal(found[0].peer, '+972526269826');
+
+  // and with nothing live left, the violation clears rather than sticking
+  assert.deepEqual(await guard.checkInfraAgentSessions(db.pool, { list: () => [archived] }), []);
+});
+
 // An unreadable store is "no evidence", never "no sessions" — a rotated or
 // locked store must not read as a clean bill of health.
 test('an unreadable session store is skipped, not reported as clean', async () => {

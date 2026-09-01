@@ -55,6 +55,13 @@ async function deliverableInfraSessions(client, { list, agents = DELIVERABLE_AGE
     try { entries = readOne(agentId) || []; } catch { continue; }
     for (const e of entries) {
       if (!e || e.chatType !== 'direct') continue;
+      // An archived session is the remediation, not the fault. Reporting one
+      // is how a detector becomes furniture: the six sessions this file was
+      // written for were archived within the hour, and without this the guard
+      // would have filed the same violation every tick for ever, against a
+      // fix that had already landed. Caught by running the shipped script
+      // against the live box and reading `already_archived` six times.
+      if (e.archivedAt) continue;
       if (!PERSON_CHANNELS.has(e.channel)) continue;
       const owner = byPhone.get(e.peer);
       if (!owner) continue;
