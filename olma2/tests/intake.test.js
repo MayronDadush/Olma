@@ -929,12 +929,19 @@ test('config guard alerts on identity breaks, once, and re-arms after recovery',
 test('config guard: only violations that stop tool calls are alert-worthy', () => {
   const alerts = [
     'user 12 (+972544686188): identity file does not match DB token',
+    'user 12 (+972544686188): identity file missing/unreadable at /x/u-12/.olma-identity',
     'user 12 (+972544686188): AGENTS.md has an unrendered {{IDENTITY_TOKEN}} — every tool call will fail auth',
     'user 12 (+972544686188): AGENTS.md carries user 8\'s identity token — that agent can act as them',
     'tools.alsoAllow lacks "read" — agents cannot read their .olma-identity, all tool auth fails',
     'mcp.servers is empty — the Olma tool server is not registered',
   ];
   const quiet = [
+    // The token lives in AGENTS.md since 2026-08-27, so this person's agent is
+    // answering normally and only their recovery path is stale. Eight users
+    // were in exactly this state on 2026-09-01 and the alarm told the owner
+    // that every tool call of theirs was failing. The dashboard row stays.
+    'user 12 (+972544686188): identity file does not match DB token — fallback only, AGENTS.md carries the right token',
+    'user 12 (+972544686188): identity file missing/unreadable at /x/u-12/.olma-identity — fallback only, AGENTS.md carries the right token',
     'agent u-99 is in openclaw.json with no active user — orphan of a failed provisioning',
     'users 1 and 2 quote the same intake text',
     'outbox messages stuck after 5+ delivery attempts — proactive messaging is failing',

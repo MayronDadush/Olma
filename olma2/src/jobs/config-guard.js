@@ -52,14 +52,32 @@ async function checkIdentityFiles(client) {
   const violations = [];
   for (const u of rows) {
     const p = path.join(u.workspace_path, '.olma-identity');
+    let problem = null;
     try {
       const onDisk = fs.readFileSync(p, 'utf8').trim();
-      if (onDisk !== u.identity_token) {
-        violations.push(`user ${u.id} (${u.phone}): identity file does not match DB token`);
-      }
+      if (onDisk !== u.identity_token) problem = 'identity file does not match DB token';
     } catch {
-      violations.push(`user ${u.id} (${u.phone}): identity file missing/unreadable at ${p}`);
+      problem = `identity file missing/unreadable at ${p}`;
     }
+    if (!problem) continue;
+    // Since 2026-08-27 the token is rendered inline into AGENTS.md and the
+    // file is only the FALLBACK. So a stale file is two different
+    // situations wearing one sentence, and they deserve different urgency:
+    // if the doctrine carries the right token the person is working fine and
+    // only their recovery path is broken (file it, wake nobody); if it does
+    // not, every tool call they make fails and that is worth an alarm.
+    // Eight users hit the first case on 2026-09-01 — a test suite that ran on
+    // the box overwrote their files — and the alarm said "כל קריאת כלי שלהם
+    // נכשלת" about eight people whose agents were answering normally. An
+    // alert that overstates is spent the first time it is checked.
+    let doctrineOk = false;
+    try {
+      doctrineOk = fs.readFileSync(path.join(u.workspace_path, 'AGENTS.md'), 'utf8')
+        .includes(u.identity_token);
+    } catch { doctrineOk = false; }
+    violations.push(doctrineOk
+      ? `user ${u.id} (${u.phone}): ${problem} — fallback only, AGENTS.md carries the right token`
+      : `user ${u.id} (${u.phone}): ${problem}`);
   }
   return violations;
 }
@@ -232,9 +250,16 @@ async function checkStuckOutbox(client) {
 // (see the closeResolved note above, 2026-08-27). So this class alerts on
 // the same raw pipe as the credit alarm: no model, no agent turn, works
 // precisely when the system cannot answer for itself.
+// "fallback only" is the negative lookahead's whole job: that variant means
+// the person's agent is working and only their recovery path is stale, which
+// belongs on the dashboard, not on a phone. See checkIdentityFiles.
 const BREAKS_USERS = [
-  /identity file does not match DB token/,
-  /AGENTS\.md .*token/i,
+  /identity file (does not match DB token|missing)(?!.*fallback only)/,
+  // Named exactly, not `AGENTS\.md .*token`: that pattern also matched the
+  // reassuring half of the sentence above ("AGENTS.md carries the right
+  // token") and turned a deliberate non-alert back into an alarm.
+  /AGENTS\.md has an unrendered/,
+  /AGENTS\.md carries user \d+'s identity token/,
   /alsoAllow lacks "read"/,
   /mcp\.servers is empty/,
 ];
