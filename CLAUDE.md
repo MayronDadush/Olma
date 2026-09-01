@@ -935,12 +935,55 @@ actually took, recorded because every step surprised:
   owner/fallback, not a behaviour change.
 - Verified after: gateway ready, WhatsApp listening, a real tool-calling
   turn on the eval user, `--deliver`/`--session-key`/`message send` all
-  intact, zero inbound lost during the ~8min window. `agents.list` still
-  works (soft warning suggests keyed `agents.entries`; our provisioning
-  writes `list` — migrate both together someday, not casually).
+  intact, zero inbound lost during the ~8min window. ("`agents.list` still
+  works" was this session's read and turned out one config-load short of a
+  time bomb — see "The gateway was upgraded underneath a running system"
+  above: the migration deletes `list` when `entries` exists, and
+  provisioning had to learn both formats that same night.)
 - Rollback path if the new version misbehaves: `npm i -g openclaw@2026.6.10`,
   restore `/root/.openclaw/openclaw.json.pre-2026.8.1`, restore
   `/root/whatsapp-ext-2026.6.10.bak` → `extensions/whatsapp`, restart.
+
+**The upgrade's aftershock took WhatsApp down for 28 minutes the same evening
+(19:56–20:24 UTC), and the mechanism is worth remembering.** A routine
+restart (cleaning up the old duplicate whatsapp extension dir) never came
+back: every boot failed verification with `Plugin "perplexity" requires
+capability consent`. Nobody installed perplexity. 2026.8.1's startup
+**plugin auto-repair installs "configured" plugins on its own** — and
+"configured" includes plugins *implied by environment variables* via the
+official web-search install catalog (`OPENROUTER_API_KEY` sits in the
+gateway unit env; perplexity web-search is catalog-installable against it).
+The auto-install then lacked capability consent, verification refused
+readiness, and the crash loop re-ran repair — **deleting the plugin dir
+can never fix it; repair recreates it on the next boot** (observed live:
+quarantined 20:05, recreated by the gateway 20:21). Three sessions chased
+this concurrently, each finding the others' half-done mitigation.
+- The fix that holds: `plugins.entries.perplexity = { enabled: false }` in
+  `openclaw.json`. A disabled plugin is neither repaired nor consent-checked;
+  boot degrades to a harmless "plugin not installed" config warning.
+- The shape: an *upgrade* changed what the gateway does with credentials
+  that were already in the environment. If another surprise plugin ever
+  demands consent at boot, disable it by id in `plugins.entries` first,
+  ask questions after — the alternative (granting consent to something
+  nobody chose) installs real capability.
+
+**And 2026.8.1 deleted every transcript file.** Session state moved into
+per-agent sqlite (`agents/<id>/agent/openclaw-agent.sqlite`): `sessions.json`
+is gone, `sessions/*.jsonl` are gone (the old files parked under
+`session-sqlite-import-archive/` with an `.imported-*` suffix), and with them
+every consumer of `channels/sessions.js` went silently blind at once — intake
+discovery (no new user could be provisioned), usage attribution, fact
+extraction, both unanswered nets (including the case-(b) detector shipped
+hours earlier), and the dashboard's conversation view. `channels/sessions.js`
+now reads BOTH generations behind the same API — sessions.json present →
+files (every test fixture, and any rollback); absent → the agent sqlite,
+read-only (`session_nodes` is the old index, `transcript_events` the old
+transcript lines verbatim, seq-ordered). Cost watermarks switch from bytes to
+event seqs, with an era guard: a byte watermark against a sqlite session
+jumps to "now" instead of re-reading from zero, because re-attributing the
+whole file-era history is the one corruption worse than a one-time gap.
+Verified against the live box read-only before merging: intake discovery,
+u-11's real conversation, all 494 transcripts, and a 34-call usage read.
 
 ### The writing sounded like a form, and half the users were addressed as "את/ה" (2026-08-31)
 
