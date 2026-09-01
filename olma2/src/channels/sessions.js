@@ -74,10 +74,15 @@ function withAgentDb(agentId, base, fn) {
   }
 }
 
-function mapIndexEntry(key, parsed, v) {
+// `archivedAt` is a COLUMN on session_nodes, not a field inside entry_json —
+// so it is passed in rather than read off `v`. The file era had no notion of
+// archiving at all, which is why the legacy branch leaves it null: there, a
+// session that exists is live by construction.
+function mapIndexEntry(key, parsed, v, archivedAt = null) {
   const last = Number(v.lastInteractionAt || v.updatedAt || 0);
   return {
     key, ...parsed,
+    archivedAt: archivedAt ? Number(archivedAt) : null,
     sessionId: v.sessionId,
     model: v.model || '',
     totalTokens: Number(v.totalTokens || 0),
@@ -110,7 +115,7 @@ function readAgentIndex(agentId, base) {
   }
 
   const rows = withAgentDb(agentId, base, (db) =>
-    db.prepare('SELECT session_key, current_session_id, entry_json FROM session_nodes').all());
+    db.prepare('SELECT session_key, current_session_id, entry_json, archived_at FROM session_nodes').all());
   if (!rows) return [];
   const out = [];
   for (const r of rows) {
@@ -121,7 +126,7 @@ function readAgentIndex(agentId, base) {
     // gateway's OWN store is not a transient we can wait out.
     try { v = JSON.parse(r.entry_json); } catch (e) { throw new Error(`session_nodes entry unreadable for ${agentId}: ${e.message}`); }
     if (!v.sessionId) v.sessionId = r.current_session_id;
-    out.push(mapIndexEntry(r.session_key, parsed, v));
+    out.push(mapIndexEntry(r.session_key, parsed, v, r.archived_at));
   }
   return out;
 }

@@ -114,6 +114,60 @@ matches the DB in both `.olma-identity` and `AGENTS.md`.
   Every CLI call is bounded by `--timeout`, because `openclaw config set` is
   documented to hang after a successful write.
 
+**And the detector spent its first hour reporting its own fix** (#104). The
+six sessions were archived through the gateway, and the freshly-deployed
+script called all six violations anyway — `already_archived`, six times.
+`archived_at` is a **column** on `session_nodes`, not a field inside
+`entry_json`, and `readAgentIndex` only ever selected the entry, so an
+archived session was indistinguishable from a live one. `config_guard` would
+have filed the same row every tick for ever against a fix that had already
+landed — the detection-layer-nobody-trusts failure for the fourth time in
+this file, arriving one hour after the detector that would suffer it.
+`mapIndexEntry` carries `archivedAt` now (null in the legacy file era, which
+had no archiving: there a session that exists is live by construction) and
+`deliverableInfraSessions` skips it. **Anything new that reads the session
+index and means "live" has to say so** — listing is not the same question.
+Found by running the shipped script against the box rather than by a test.
+
+**The session was NOT the vehicle, and archiving did not stop the leak.** Two
+hours later, with all six of main's sessions archived, messages were still
+landing in מירון's WhatsApp on the same cadence (09:27, 09:55, 09:56 UTC).
+The real rule is visible to the second in the gateway journal — a cron turn
+that emits **text before `NO_REPLY`** has that text delivered; a bare
+`NO_REPLY` sends nothing:
+
+```
+u-17 09:56:08 "Nothing needs attention…"        →  Sent 09:56:08
+u-19 09:56:50 "הטוקן עדיין נדחה על ידי השרת"     →  Sent 09:56:50
+u-3, u-8, u-20, u-21   bare NO_REPLY            →  (nothing)
+main 09:24:59          bare NO_REPLY            →  (nothing)
+```
+
+That last line is the trap: main's silence on the first post-archive wake was
+read as the archive working, and it was **main having nothing to say**. An
+absence of evidence was scored as evidence, on a sample of one — the same
+mistake as grepping a log file that turned out not to exist (below).
+
+- **The cron wakes every agent, not main** — 16 ran in one three-minute
+  window, each in its own `agent:<id>:main` session, none of them a WhatsApp
+  session. Delivery to מירון is not through a session anybody can archive.
+- **Most of the text was agents complaining their token was rejected**, which
+  is the identity-file damage above arriving as WhatsApp messages. Repairing
+  the eight mismatched files (`repair-identity-files.js --apply`, run
+  2026-09-01: *8 repaired, 3 already correct, 11 now immutable*) removes the
+  bulk of what there is to say.
+- **`u-18`..`u-22` were removed from the roster** — no user row, no binding,
+  five open guard issues (#28–32), and no valid identity file, so they were a
+  permanent source of exactly this text. `agents.entries` edit + workspaces
+  and agent dirs moved to `/root/backups/orphan-agents-20260901/` (moved, not
+  deleted). Hot-reloaded with no restart; **cron jobs fell 36 → 27**.
+- `channels.whatsapp.accounts.default.selfChatMode` is still `true`, which the
+  gateway documents as *"Same-phone setup (bot uses your personal WhatsApp
+  number)"* — a leftover from the original install. The account is linked to
+  Olma's OWN number (`972559347282`, "Olma - אולמה"), so the flag is stale.
+  Not yet changed, and not yet proven to be the routing rule that picks
+  מירון; his number is also the only non-wildcard entry in `allowFrom`.
+
 **A theory that was checked and is wrong, recorded so nobody re-derives it:**
 this looked exactly like the auth-storm-from-transcript-redaction failure
 (the gateway masks token args, the model imitates the mask). It is not —
