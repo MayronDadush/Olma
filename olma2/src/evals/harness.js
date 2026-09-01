@@ -19,6 +19,7 @@
 const fs = require('node:fs');
 const { withTx } = require('../db/pool');
 const { runOpenclawJson } = require('../channels/openclaw');
+const sessionIndex = require('../channels/sessions');
 const { refreshUserCard } = require('../intake/user-card');
 const llm = require('../adapters/llm');
 
@@ -78,7 +79,9 @@ function toolCallsInSlice(text) {
 // each turn reports only its own tool calls.
 function makeTurnRunner({ agentId, sessionKey, model }, deps = {}) {
   const run = deps.runOpenclawJson || runOpenclawJson;
-  let offset = 0;
+  const readEventsSlice = deps.readSessionEventsSlice || sessionIndex.readSessionEventsSlice;
+  let offset = 0;        // bytes into the transcript FILE (gateway ≤ 2026.6.x)
+  let sqliteOffset = 0;  // next unread event seq (gateway ≥ 2026.8.1)
   let sessionFile = null;
   return async function runTurn(message) {
     const json = await run(
@@ -94,12 +97,28 @@ function makeTurnRunner({ agentId, sessionKey, model }, deps = {}) {
     const payload = json.result && json.result.payloads && json.result.payloads[0];
     sessionFile = (meta && meta.sessionFile) || sessionFile;
     let toolCalls = [];
+    let sliced = false;
     if (sessionFile) {
       try {
         const full = fs.readFileSync(sessionFile, 'utf8');
         toolCalls = toolCallsInSlice(full.slice(offset));
         offset = full.length;
-      } catch { /* transcript unreadable — hard checks on DB still stand */ }
+        sliced = true;
+      } catch { /* not a file — fall through to the sqlite store */ }
+    }
+    if (!sliced) {
+      // 2026.8.1 moved transcripts into the agent's sqlite and now reports
+      // the session KEY in meta.sessionFile — there is no file to read. The
+      // same slice comes out of transcript_events instead. Ran red for one
+      // night before this existed: every scenario failed "turn opened with
+      // no tool at all" while the agent was calling tools perfectly well —
+      // run #24, nine false REDs, one 03:50 alarm that shouldn't have fired.
+      const slice = readEventsSlice(agentId, sessionKey, sqliteOffset);
+      if (slice) {
+        toolCalls = toolCallsInSlice(slice.text);
+        sqliteOffset = slice.offset;
+      }
+      // both sources absent → hard checks on DB still stand
     }
     return {
       reply: payload ? payload.text : '',

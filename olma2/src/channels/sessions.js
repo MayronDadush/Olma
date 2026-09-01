@@ -354,6 +354,30 @@ function readPeerDisplayName(agentId, peer, base = HOME()) {
   return null;
 }
 
+// The raw event lines appended to one session KEY since `fromSeq` — sqlite
+// generation only; legacy callers read their transcript file directly. This
+// exists for the eval harness: 2026.8.1's `agent --json` reports the session
+// KEY in `meta.sessionFile` (the transcript is no longer a file), so "the
+// tool calls this turn made" has to come from transcript_events. Returns
+// { text, offset } with offset = the next unread seq, or null when the agent
+// has no sqlite store or the key has no session yet — the caller's signal
+// that there is nothing to read rather than an empty turn.
+function readSessionEventsSlice(agentId, sessionKey, fromSeq = 0, base = HOME()) {
+  return withAgentDb(agentId, base, (db) => {
+    const node = db.prepare(
+      'SELECT current_session_id FROM session_nodes WHERE session_key = ?').get(sessionKey);
+    if (!node) return null;
+    const rows = db.prepare(
+      'SELECT seq, event_json FROM transcript_events WHERE session_id = ? AND seq >= ? ORDER BY seq')
+      .all(node.current_session_id, fromSeq);
+    if (!rows.length) return { text: '', offset: fromSeq };
+    return {
+      text: rows.map((r) => r.event_json).join('\n'),
+      offset: Number(rows[rows.length - 1].seq) + 1,
+    };
+  });
+}
+
 // Everything a stranger said to the intake greeter, joined into one blob.
 // This is what makes the greeter's silence safe: nothing the person typed
 // while we were setting them up is lost — their own agent gets it and
@@ -511,5 +535,5 @@ function readTranscriptUsage(file, fromOffset = 0) {
 module.exports = {
   listSessions, listSessionsForAgent, indexPath, parseKey,
   readRecentMessages, readPeerUserText, readPeerDisplayName, displayNameFromPrompt,
-  listTranscripts, readTranscriptUsage,
+  listTranscripts, readTranscriptUsage, readSessionEventsSlice,
 };

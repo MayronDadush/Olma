@@ -177,6 +177,24 @@ test('a sqlite path for a missing agent loses nothing and moves nothing', () => 
   assert.deepEqual(r, { calls: [], offset: 3 });
 });
 
+// ---- the eval harness's per-turn slice --------------------------------------
+
+test('readSessionEventsSlice hands back events by seq, for the eval harness', () => {
+  // 2026.8.1 reports the session KEY in meta.sessionFile — no file to read.
+  // The harness reads its per-turn slice out of transcript_events instead;
+  // the night before this existed, run #24 scored nine false REDs because
+  // every turn's toolCalls list came back empty.
+  const key = `agent:${AGENT}:whatsapp:direct:${PEER}`;
+  const first = sessions.readSessionEventsSlice(AGENT, key, 0);
+  assert.ok(first.text.includes('"olma__turn_start"'), 'tool calls survive in the slice text');
+  assert.equal(first.offset, 5); // max(seq) + 1 — the next turn starts here
+  // reading from the watermark returns only what is NEW — one turn, its own calls
+  assert.deepEqual(sessions.readSessionEventsSlice(AGENT, key, first.offset), { text: '', offset: 5 });
+  // an unknown key or missing store is null — the caller keeps its own offset
+  assert.equal(sessions.readSessionEventsSlice(AGENT, `agent:${AGENT}:nope`, 0), null);
+  assert.equal(sessions.readSessionEventsSlice('u-gone', key, 0), null);
+});
+
 // ---- display-name backfill --------------------------------------------------
 
 test('readPeerDisplayName also searches the migration archive of trajectory files', () => {
