@@ -1079,6 +1079,31 @@ with `held: "send failed"` in the heartbeat, is what there was to pull on.
   have caught this the evening of the upgrade, and it is now the last line
   the script prints.
 
+**And repairing the pipe immediately produced a false alarm of its own.**
+The first `config_guard` tick after the fix told the owner *"🔴 משתמשים
+חסומים ברמת הזהות — כל קריאת כלי שלהם נכשלת"*, naming EIGHT users — while
+all eight agents were answering normally. `.olma-identity` stopped being the
+credential on 2026-08-27, when the token moved inline into `AGENTS.md`; the
+guard's wording and its `BREAKS_USERS` list both stayed on the old meaning,
+so a stale FILE still read as a blocked user. (The files themselves are real
+damage — a test suite running on the production box overwrote them during a
+failed deploy — but what broke is those users' recovery path, not their
+service.) `checkIdentityFiles` now reads `AGENTS.md` before choosing its
+words: right token → `— fallback only`, filed on the dashboard and nobody
+woken; wrong or missing → unchanged and still alarming, because then the
+fallback IS the path. Two things worth carrying forward:
+
+- **An alert that overstates is spent the first time someone checks it** —
+  the same reason yellows wait for a second night and the runway warning
+  climbs tiers instead of repeating. A backlog of alarms held behind a dead
+  pipe arrives as a burst the moment the pipe returns, which is exactly when
+  their wording gets read most carefully.
+- The narrowing bit the fix on the way in: `/AGENTS\.md .*token/i` also
+  matched the REASSURING half of the new sentence ("AGENTS.md carries the
+  right token") and turned the deliberate non-alert straight back into an
+  alarm. Caught by the test that pins the classification — patterns that
+  match on prose have to be anchored to the failure, not the noun.
+
 ### Nothing wakes Miron any more (2026-09-01)
 
 Owner ask, plainly: "אתה יכול להפסיק לשלוח הודעות בלילה". The eval alert had
