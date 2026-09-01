@@ -339,6 +339,38 @@ test('makeTurnRunner passes --model only when a candidate was named', async () =
   assert.ok(!calls.flat().includes('--deliver'));
 });
 
+// 2026.8.1 moved transcripts into the agent's sqlite and meta.sessionFile now
+// carries the session KEY — not a path. The first nightly run after the
+// upgrade (run #24) scored nine false REDs, "turn opened with no tool at
+// all", while the agent was calling tools correctly; the alarm fired at
+// 03:50 for a harness artifact. This pins the sqlite fallback.
+test('makeTurnRunner reads tool calls from the sqlite store when sessionFile is a session key', async () => {
+  const fakeRun = async () => ({
+    result: {
+      meta: { agentMeta: { sessionFile: 'agent:u-15:eval:not-a-file', provider: 'openrouter', model: 'm' } },
+      payloads: [{ text: 'שלום' }],
+    },
+  });
+  const slices = [];
+  const events = [
+    { text: '{"name":"olma__turn_start"}\n{"name":"olma__list_my_tasks"}', offset: 7 },
+    { text: '{"name":"olma__turn_start"}', offset: 11 },
+  ];
+  const runTurn = harness.makeTurnRunner({ agentId: 'u-15', sessionKey: 'k' }, {
+    runOpenclawJson: fakeRun,
+    readSessionEventsSlice: (agentId, key, fromSeq) => {
+      slices.push([agentId, key, fromSeq]);
+      return events.shift();
+    },
+  });
+  const t1 = await runTurn('היי');
+  assert.deepEqual(t1.toolCalls, ['turn_start', 'list_my_tasks']);
+  const t2 = await runTurn('עוד משהו');
+  assert.deepEqual(t2.toolCalls, ['turn_start'], 'each turn reports only its own calls');
+  // the seq watermark advances turn to turn, same trick as the file offset
+  assert.deepEqual(slices, [['u-15', 'k', 0], ['u-15', 'k', 7]]);
+});
+
 test('a pilot run is excluded from the two-consecutive-nights rule', async () => {
   const mkRun = async (trigger) => {
     const { rows } = await db.pool.query(
