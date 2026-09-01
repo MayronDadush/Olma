@@ -89,11 +89,22 @@ at 08:25 are, and what "הטוקן מהקובץ שוב נדחה" was reporting. 
 מירון's identity that was broken**: u-3's file is locked, and its token
 matches the DB in both `.olma-identity` and `AGENTS.md`.
 
-- **The session is the half worth watching**, and `config_guard`'s
-  `checkInfraAgentSessions` now does: a userless agent holding a *direct*
-  session whose peer is an active user's phone. That bounds every future
-  thing that wakes main, including whatever the next upgrade invents —
-  whereas disabling today's 36 crons only answers today's.
+- **The six sessions were NOT v1 leftovers** — that was this file's first
+  reading and it is wrong, corrected here rather than deleted because the
+  wrong version shipped a detector. Their transcripts settle it: five of the
+  six contain `role: assistant` messages and nothing else, i.e. they are the
+  RAW PIPE's own delivery sessions, created by reminders and alarms because
+  #96 made main the systemAgent. Archiving them achieved nothing durable —
+  two were recreated by ordinary reminders within hours, one to a user who
+  had simply been sent a reminder at 13:00.
+- **Exactly one of the eight carried inbound turns** (four, from מירון), and
+  that is the session the leak actually went through. So `config_guard`'s
+  `checkInfraAgentSessions` tests for an INBOUND USER TURN
+  (`sessions.hasInboundUserTurn`), not for the session's existence. Without
+  that test it files a violation against ordinary operation for every user
+  who receives a reminder — a detector that flags a working system, which is
+  the failure this very section already records twice. `null` (unreadable
+  transcript) is never a violation: "could not read" is not "someone spoke".
 - **Filed, not alerted.** It is real damage a person sees, but it does not
   stop a tool call, and `BREAKS_USERS` means exactly that since #97. Widening
   it would put the alert list back to meaning two things at once.

@@ -253,7 +253,7 @@ async function checkInfraAgentSessions(client, deps) {
   }
   return [...byAgent.keys()].map((k) => {
     const [agentId, channel] = k.split(':');
-    return `agent ${agentId} holds ${channel} sessions addressed to active users — it has no user of its own, so anything that wakes it can deliver to a real person`;
+    return `agent ${agentId} holds ${channel} sessions that active users have talked INTO — it has no user of its own, so anything that wakes it answers a real person in a real conversation`;
   });
 }
 

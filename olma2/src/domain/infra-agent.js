@@ -3,10 +3,20 @@
 // since #96 it is `agents.defaults.systemAgent.agentId`, which is what makes
 // the raw `openclaw message send` pipe resolve at all.
 //
-// On 2026-09-01 it also turned out to hold six live, delivery-capable WhatsApp
-// sessions pointed at real people, left over from the v1 era when `--to
-// <phone>` alone ran a turn on the DEFAULT agent. That was harmless while
-// nothing ever ran main. Then the 2026.8.1 upgrade auto-created 36 cron jobs
+// On 2026-09-01 it also turned out to hold six delivery-capable WhatsApp
+// sessions pointed at real people. The first reading of that — and the commit
+// message that shipped this file — called them v1-era leftovers from when
+// `--to <phone>` alone ran a turn on the DEFAULT agent. **That was wrong.**
+// Reading their transcripts settled it: every message in five of the six is
+// `role: assistant` and nothing else, i.e. they are the raw pipe's own
+// delivery sessions, created by reminders and alarms because #96 made main the
+// systemAgent. Archiving them achieved nothing durable; two were recreated by
+// ordinary reminders within hours.
+//
+// Exactly ONE of the eight carried inbound turns — four of them, from מירון —
+// and that is the session the leak actually went through. Hence the
+// inbound-turn test below: it is not a refinement of the check, it IS the
+// check. Then the 2026.8.1 upgrade auto-created 36 cron jobs
 // (a `heartbeat` and a `skillCollectionReview` per agent in the roster, all
 // with sessionTarget `main`), main started waking every ~30 minutes, and its
 // output — including the literal text `NO_REPLY` and its own auth failures,
@@ -37,11 +47,21 @@ const PERSON_CHANNELS = new Set([
   'whatsapp', 'telegram', 'signal', 'imessage', 'sms', 'discord', 'slack', 'matrix',
 ]);
 
-// Sessions under a userless agent that point at an active user's own phone.
+// Sessions under a userless agent that a PERSON has actually talked into.
 // Matched on the peer, against users.phone, so a session to some stranger who
 // never became a user is not swept up in it.
-async function deliverableInfraSessions(client, { list, agents = DELIVERABLE_AGENTS } = {}) {
+//
+// The inbound-turn test is the whole check, and the first version did not have
+// it. Since #96 the raw `openclaw message send` pipe resolves its owner to
+// `main`, so every reminder creates a `main:whatsapp:direct:<phone>` session —
+// normal, necessary, and recreated within hours of being archived. Flagging
+// those meant filing a violation against ordinary operation for every user who
+// gets a reminder, which is the cry-wolf failure this file's own header warns
+// about. Measured on the live box the two classes do not overlap: of main's
+// eight direct sessions, ONE carried inbound turns and seven carried zero.
+async function deliverableInfraSessions(client, { list, hasInbound, agents = DELIVERABLE_AGENTS } = {}) {
   const readOne = list || sessions.listSessionsForAgent;
+  const spokenIn = hasInbound || sessions.hasInboundUserTurn;
   const { rows } = await client.query(
     `SELECT phone, agent_id, id FROM users WHERE status = 'active' AND phone IS NOT NULL`);
   const byPhone = new Map(rows.map((u) => [u.phone, u]));
@@ -68,6 +88,12 @@ async function deliverableInfraSessions(client, { list, agents = DELIVERABLE_AGE
       // Their own agent being this one would mean the roster says so, which
       // is a different (and legitimate) arrangement than a leftover session.
       if (owner.agent_id === agentId) continue;
+      // Only a session somebody SPOKE into. A read that cannot answer returns
+      // null, and null is not evidence of a conversation — it must not
+      // manufacture a violation out of an unreadable store.
+      let spoken = null;
+      try { spoken = spokenIn(agentId, e.key); } catch { spoken = null; }
+      if (spoken !== true) continue;
       found.push({ agentId, channel: e.channel, peer: e.peer, userId: Number(owner.id), key: e.key });
     }
   }
