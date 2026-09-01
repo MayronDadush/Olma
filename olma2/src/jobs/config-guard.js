@@ -26,6 +26,21 @@ function checkOpenclawConfig(cfg) {
   if (!cfg.mcp || !cfg.mcp.servers || Object.keys(cfg.mcp.servers).length === 0) {
     violations.push('mcp.servers is empty — the Olma tool server is not registered');
   }
+  // The owner of ambient work. With a multi-agent roster and no systemAgent,
+  // the gateway refuses every agent-less operation — which is the whole raw
+  // pipe: reminders, the credit-out alarm, the runway warning, the nightly
+  // eval alert. It fails per-send with a config error, so nothing crashes and
+  // the outbox's own backoff hides it; on 2026-09-01 that cost a rent
+  // reminder that expired undelivered and left the credit alarm mute for
+  // twelve hours. The 2026.8.1 upgrade introduced the requirement and filled
+  // this field in only for rosters that held a single agent.
+  const roster = occ.listAgentIds(cfg);
+  const systemAgent = ((cfg.agents || {}).defaults || {}).systemAgent || {};
+  if (roster.length > 1 && !systemAgent.agentId) {
+    violations.push('agents.defaults.systemAgent.agentId is unset — every raw `message send` refuses, so reminders and the credit alarm cannot go out (fix: scripts/set-system-agent.js --apply)');
+  } else if (systemAgent.agentId && !occ.hasAgent(cfg, systemAgent.agentId)) {
+    violations.push(`agents.defaults.systemAgent.agentId points at "${systemAgent.agentId}", which is not in the roster — ambient sends resolve to nothing`);
+  }
   return violations;
 }
 

@@ -45,6 +45,23 @@ const flagsDomain = require('../domain/flags');
 const ALERT_PHONE_FLAG = 'admin_alert_phone';
 const DEFAULT_ALERT_PHONE = '+972526269826';
 const ALERT_AT_FLAG = 'credit_alert_at';
+// Where a night's outage alarm waits for a civil hour. See deferral note below.
+const PENDING_ALERT_FLAG = 'credit_pending_alert';
+// The waking window both alarms here obey, in the alert phone's OWN zone.
+const ALERT_HOURS = { from: 8, to: 22 };
+const DEFAULT_TZ = 'Asia/Jerusalem';
+
+// Their zone, converted in Postgres like every other local-time decision in
+// this file, so there is no offset arithmetic to break at a DST boundary.
+async function alertHourOpen(client, phone) {
+  const { rows } = await client.query(
+    `SELECT extract(hour from now() AT TIME ZONE coalesce(
+       (SELECT timezone FROM users WHERE phone = $1), $2))::int AS h`,
+    [phone, DEFAULT_TZ]
+  );
+  const h = rows[0].h;
+  return h >= ALERT_HOURS.from && h < ALERT_HOURS.to;
+}
 
 function alertText(sinceIso) {
   const t = sinceIso ? new Date(sinceIso).toISOString().slice(11, 16) + ' UTC' : 'עכשיו';
@@ -53,6 +70,20 @@ function alertText(sinceIso) {
     `מאז ${t} אף הודעה לא נשלחת ואף פנייה לא נענית.`,
     'OpenRouter: openrouter.ai/settings/credits · Anthropic: console.anthropic.com → Billing (ושווה Auto-reload).',
     'הכל ממתין בתור ויישלח לבד תוך ~10 דקות מהטעינה.',
+  ].join('\n');
+}
+
+// The morning version of the same news, when the outage ended on its own
+// overnight. Never the present-tense text: an alarm that says "nothing is
+// being delivered right now" about a system that recovered hours ago is a
+// false alarm, and one false alarm is what teaches someone to ignore the
+// next real one.
+function recoveredText(sinceIso) {
+  const t = sinceIso ? new Date(sinceIso).toISOString().slice(11, 16) + ' UTC' : '';
+  return [
+    'ℹ️ אולמה: בלילה נגמר הקרדיט אצל ספק המודל.',
+    `${t ? `זה התחיל ב-${t} ו` : ''}כרגע הכול עובד שוב — ההודעות שהמתינו יצאו.`,
+    'שווה בכל זאת להציץ ביתרה: openrouter.ai/settings/credits (ושווה Auto-reload).',
   ].join('\n');
 }
 
@@ -89,6 +120,31 @@ async function checkCreditAlert(client, deps = {}) {
   }
 
   const phone = (await flagsDomain.getFlag(client, ALERT_PHONE_FLAG)) || DEFAULT_ALERT_PHONE;
+
+  // Not at 03:00. Asked for by the owner 2026-09-01, after a night of alarms:
+  // "אתה יכול להפסיק לשלוח הודעות בלילה". This one held out longest because it
+  // is the genuine "everything is down" signal — but nothing about it is
+  // actionable at 03:00 that is not equally actionable at 08:00, the money can
+  // only be added by the one person asleep, and since the runway warning
+  // (checkBalanceForecast, below) an empty balance is announced days ahead
+  // rather than first heard of as an outage.
+  //
+  // Deferred is not dropped, and this is the difference from simply returning:
+  // the outage's evidence AGES OUT. Failing rows expire (reminders after two
+  // hours), so by morning `min(created_at)` can be empty and a five-hour night
+  // outage would have gone entirely unreported. The alert is queued with the
+  // moment it started, and the morning flush re-reads reality before speaking
+  // — present tense if it is still broken, past tense if it healed.
+  if (!(await alertHourOpen(client, phone))) {
+    await flagsDomain.setFlag(client, PENDING_ALERT_FLAG, { phone, since: rows[0].since_exact });
+    // Stamped exactly as if it had been sent: the outage is now spoken for,
+    // and the pending row — not this check — owns delivery. Without this the
+    // 30-second beat would re-queue the same outage all night.
+    const { rows: st } = await client.query(`SELECT clock_timestamp()::text AS at`);
+    await flagsDomain.setFlag(client, ALERT_AT_FLAG, st[0].at);
+    return { alerted: false, queued: true, phone };
+  }
+
   const res = await deps.send(phone, alertText(since));
   if (!res || !res.ok) {
     // The send itself failed (gateway down, WhatsApp unlinked). Do NOT stamp
@@ -102,6 +158,35 @@ async function checkCreditAlert(client, deps = {}) {
   const { rows: stamp } = await client.query(`SELECT clock_timestamp()::text AS at`);
   await flagsDomain.setFlag(client, ALERT_AT_FLAG, stamp[0].at);
   return { alerted: true, phone };
+}
+
+// Deliver a night's queued outage alarm once morning comes. Rides the same
+// 30-second beat as the check above, and clears the row only on a CONFIRMED
+// send — a failed pipe leaves it queued and tries again, which is the whole
+// behaviour an alarm has to have. (Learned the hard way the same morning:
+// the raw pipe had been refusing every send since a gateway upgrade, and the
+// eval alert's queue was the only reason anyone found out.)
+async function flushPendingCreditAlert(client, deps = {}) {
+  if (!deps.send) return null;
+  const pending = await flagsDomain.getFlag(client, PENDING_ALERT_FLAG);
+  if (!pending || !pending.phone) return null;
+  const phone = pending.phone;
+  if (!(await alertHourOpen(client, phone))) return { held: 'quiet hours' };
+
+  // Is it still broken? The queued text was written in the middle of the
+  // night and must not be believed now.
+  const { rows } = await client.query(
+    `SELECT count(*)::int AS failing FROM outbox
+      WHERE sent_at IS NULL
+        AND (last_error ILIKE '%credit balance%'
+          OR last_error ILIKE '%insufficient credits%')`
+  );
+  const stillDown = rows[0].failing > 0;
+  const text = stillDown ? alertText(pending.since) : recoveredText(pending.since);
+  const res = await deps.send(phone, text);
+  if (!(res && res.ok)) return { held: 'send failed' };
+  await flagsDomain.setFlag(client, PENDING_ALERT_FLAG, {});
+  return { alerted: true, phone, deferred: true, stillDown };
 }
 
 // ---- the warning BEFORE the outage -------------------------------------------
@@ -126,12 +211,11 @@ async function checkCreditAlert(client, deps = {}) {
 //   API being down must not page anyone: no reading, no alert, and the
 //   dashboard already shows the error.
 //
-// Unlike the outage alarm it defers outside waking hours. A prepaid balance
-// cannot be topped up better at 03:00 than at 08:00, and the raw pipe bypasses
-// the outbox gate entirely — so this function has to hold that line itself.
+// It defers outside waking hours. A prepaid balance cannot be topped up better
+// at 03:00 than at 08:00, and the raw pipe bypasses the outbox gate entirely —
+// so this function has to hold that line itself. (The outage alarm above used
+// to be the exception; since 2026-09-01 it defers too, by queueing.)
 const BALANCE_TIERS_FLAG = 'balance_alert_tiers';
-const ALERT_HOURS = { from: 8, to: 22 };
-const DEFAULT_TZ = 'Asia/Jerusalem';
 
 // Ascending, so `.find(v < t)` returns the MOST urgent tier crossed: at 4 days
 // left that is 7, not 14. A lower number is a worse situation.
@@ -204,17 +288,11 @@ async function checkBalanceForecast(client, deps = {}) {
   }
 
   const phone = (await flagsDomain.getFlag(client, ALERT_PHONE_FLAG)) || DEFAULT_ALERT_PHONE;
-  // Their zone, converted in Postgres like every other local-time decision
-  // here, so there is no offset arithmetic to break at a DST boundary.
-  const { rows: hr } = await client.query(
-    `SELECT extract(hour from now() AT TIME ZONE coalesce(
-       (SELECT timezone FROM users WHERE phone = $1), $2))::int AS h`,
-    [phone, DEFAULT_TZ]
-  );
-  const h = hr[0].h;
   // Deferred, NOT dropped: the tier stays unstamped so the next tick inside
   // the window says it. Stamping here would swallow the alert entirely.
-  if (h < ALERT_HOURS.from || h >= ALERT_HOURS.to) {
+  // (The outage alarm cannot do it this way — its evidence expires — which is
+  // why that one queues instead. Same promise, two mechanisms.)
+  if (!(await alertHourOpen(client, phone))) {
     return { alerted: false, deferred: low.map((l) => l.key) };
   }
 
@@ -228,7 +306,8 @@ async function checkBalanceForecast(client, deps = {}) {
 }
 
 module.exports = {
-  checkCreditAlert, alertText, ALERT_PHONE_FLAG, DEFAULT_ALERT_PHONE, ALERT_AT_FLAG,
+  checkCreditAlert, alertText, recoveredText, ALERT_PHONE_FLAG, DEFAULT_ALERT_PHONE, ALERT_AT_FLAG,
+  flushPendingCreditAlert, PENDING_ALERT_FLAG,
   checkBalanceForecast, balanceAlertText, tierFor,
   BALANCE_TIERS_FLAG, BALANCE_SERVICES, DAY_TIERS, USD_TIERS, ALERT_HOURS,
 };

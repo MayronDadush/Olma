@@ -1038,6 +1038,74 @@ the next nightly) replaced the headline: run #25, 7 green · 2 yellow · 0
 red. `stop-service` green — the implicit-turn_start recovery holds across
 the gateway upgrade.
 
+### The raw pipe had no owner, so reminders and the credit alarm both went mute (fixed 2026-09-01)
+
+The third aftershock of the 2026.8.1 upgrade, and the most expensive, because
+nothing about it looked like a failure. `agents.ownership: "explicit"` came
+with the new roster format — and from that moment every **agent-less** gateway
+operation refused:
+
+> Multiple agents are configured, but this operation has no explicit owner.
+
+That is the whole **raw pipe**: `openclaw message send`, which carries
+reminders (deliberately, since 2026-08-23 — they must not need a model), the
+credit-out alarm, the runway warning and the nightly eval alert. `message send`
+takes no `--agent` flag (checked: `--account`, `--channel`, `--target`,
+`--message`, nothing else) and an inbound per-peer binding does not resolve an
+OUTBOUND send's owner, so for a multi-agent roster exactly one door is left:
+`agents.defaults.systemAgent.agentId`, read by the gateway's own
+`tryResolveAmbientOwnerAgentId`. **The upgrade's migration fills that field in
+automatically only when the roster it converted held exactly one agent** — ours
+held eighteen, so it was left unset. `scripts/set-system-agent.js --apply`
+(`main`, the agent with no user, restoring the pre-upgrade behaviour rather
+than changing it — raw sends always logged there).
+
+What twelve hours of it cost, none of it visible: Miron's 08:00 rent reminder
+climbed to 16 attempts and **expired undelivered**; a second reminder sat at
+12; and the credit alarm — the one channel that still works when the model
+provider is dry — could not have reached anybody. The outbox's retry/backoff
+absorbed all of it exactly the way it absorbed the gateway outage the night
+before. **The only reason it was found at all is that the eval alert QUEUES**
+(#82) rather than firing and forgetting: a pending row that would not clear,
+with `held: "send failed"` in the heartbeat, is what there was to pull on.
+
+- `config_guard` now checks it — a multi-agent roster with no `systemAgent`,
+  or one naming an agent outside the roster, is a violation with the fix
+  command in its text. The guard watched every OTHER config invariant that
+  protects identity and had nothing to say about the one that carries
+  delivery.
+- **Verify the pipe, never the file**: `openclaw message send … --dry-run
+  --json` returns `ok:false` with the real reason. That single command would
+  have caught this the evening of the upgrade, and it is now the last line
+  the script prints.
+
+### Nothing wakes Miron any more (2026-09-01)
+
+Owner ask, plainly: "אתה יכול להפסיק לשלוח הודעות בלילה". The eval alert had
+already been deferred to morning (#82). The **credit-outage alarm** was the
+last thing that could fire at 03:00, and it held out longest because it is the
+genuine "everything is down" signal — but the money can only be added by the
+person asleep, the runway warning now says so days ahead, and it reads the
+same at 08:00.
+
+It **queues** rather than simply returning, and that difference is the whole
+design: the outage's own evidence AGES OUT (failing reminders expire after two
+hours), so a five-hour night outage would leave `min(created_at)` empty by
+morning and be reported by nobody. The queued row keeps the moment it started;
+the morning flush **re-reads reality before speaking** — present tense if it
+is still broken, `recoveredText` if it healed overnight. An alarm saying "אף
+הודעה לא נשלחת" about a working system is a false alarm, and one false alarm
+is what teaches someone to ignore the next real one. Queuing also stamps
+`credit_alert_at`, or the 30-second beat would re-queue the same outage all
+night; the pending row is cleared only on a CONFIRMED send.
+
+Both alarms now share `alertHourOpen` (08:00–22:00 in the alert phone's own
+zone, converted in Postgres). **That made the outage tests hour-dependent** —
+the "green thirteen hours a day" failure, one file lower — so the suite parks
+a user on the alert phone at midday, and the test that borrows the flag puts
+it back: a stray alert number with no user row silently re-opens the night
+window for every test after it.
+
 ### The writing sounded like a form, and half the users were addressed as "את/ה" (2026-08-31)
 
 Owner feedback, verbatim intent: the texting is robotic, sometimes
