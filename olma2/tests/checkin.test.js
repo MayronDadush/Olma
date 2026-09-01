@@ -227,19 +227,22 @@ test('a broken calendar is not pitched like a new one', async () => {
 
     // never connected → the benefit pitch
     let pick = await checkin.pickRung(c, u.id);
-    assert.equal(pick.topic, 'calendar');
+    assert.equal(pick.topic, 'calendar:not_connected');
     assert.match(pick.instruction, /not connected/);
 
     // connected once, then Google rejected it. They know what a calendar is
     // for; being asked "want to connect?" reads as Olma having forgotten. And
     // this is the only thing that ever raises it again — markNeedsReauth
     // enqueues one message and never follows up (live: user 3 sat like this
-    // for 36 hours after abandoning a reconnect).
+    // for 36 hours after abandoning a reconnect). This must fire as its OWN
+    // topic even though not_connected was already offered above — a shared
+    // topic string would have let "already offered" silently swallow the one
+    // recovery path that exists for an abandoned reconnect.
     await c.query(
       `INSERT INTO integrations (user_id, provider, status, access_level)
        VALUES ($1, 'google_calendar', 'needs_reauth', 'read_write')`, [u.id]);
     pick = await checkin.pickRung(c, u.id);
-    assert.equal(pick.topic, 'calendar');
+    assert.equal(pick.topic, 'calendar:needs_reauth');
     assert.match(pick.instruction, /do not pitch it/);
     assert.match(pick.instruction, /start_calendar_connection/);
 
@@ -247,7 +250,51 @@ test('a broken calendar is not pitched like a new one', async () => {
     await c.query(
       `UPDATE integrations SET status = 'connected' WHERE user_id = $1`, [u.id]);
     pick = await checkin.pickRung(c, u.id);
-    assert.notEqual(pick.topic, 'calendar');
+    assert.notEqual(pick.topic, 'calendar:not_connected');
+    assert.notEqual(pick.topic, 'calendar:needs_reauth');
+  } finally { c.release(); }
+});
+
+test('a discovery topic already offered is never offered again, even as the last gap standing', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const u = await makeUser(db.pool, '+972641000062', { firstName: 'Sivan' });
+  const c = await db.pool.connect();
+  try {
+    // close every gap except calendar, so calendar is the ONLY thing left to
+    // pitch — the exact shape that used to re-offer it forever, since
+    // "differs from the last pick" has nothing else to rotate to.
+    await c.query(`UPDATE users SET digest_times = '09:00' WHERE id = $1`, [u.id]);
+    await c.query(
+      `INSERT INTO user_facts (user_id, category, fact)
+       VALUES ($1, 'context', 'אחת'), ($1, 'work', 'שתיים'), ($1, 'plans', 'שלוש')`, [u.id]);
+    const friend = await makeUser(db.pool, '+972641000063', { firstName: 'Roi' });
+    const connections = require('../src/domain/connections');
+    const req = await connections.requestConnection(c, u.id, friend.phone, {});
+    await connections.respondToConnection(c, friend.id, req.data.connection.id, 'approve');
+
+    let pick = await checkin.pickRung(c, u.id);
+    assert.equal(pick.topic, 'calendar:not_connected');
+
+    // mark it as actually sent, the way `run()` would
+    await c.query(
+      `INSERT INTO outbox (user_id, kind, payload)
+       VALUES ($1, 'checkin', '{"rung":"discovery","topic":"calendar:not_connected"}')`,
+      [u.id]);
+
+    // it is still the only real gap, yet it must never be picked again —
+    // falling through to plain silence instead of repeating the same offer
+    pick = await checkin.pickRung(c, u.id);
+    assert.equal(pick.rung, 'silence', 'the one gap left was already offered once, so nothing to pitch');
+
+    // and if their calendar connection later breaks, that is a DIFFERENT
+    // topic and must still fire — the only recovery path for an abandoned
+    // reconnect must survive the not_connected pitch having already run
+    await c.query(
+      `INSERT INTO integrations (user_id, provider, status, access_level)
+       VALUES ($1, 'google_calendar', 'needs_reauth', 'read_write')`, [u.id]);
+    pick = await checkin.pickRung(c, u.id);
+    assert.equal(pick.rung, 'discovery');
+    assert.equal(pick.topic, 'calendar:needs_reauth');
   } finally { c.release(); }
 });
 
