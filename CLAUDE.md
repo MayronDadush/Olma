@@ -55,6 +55,46 @@ describes **v1**, which is retired-in-place: its code still sits in
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
 
+### The lock that worked perfectly, on three files out of sixteen (2026-09-01)
+
+`chattr +i` on `.olma-identity` was added 2026-08-27 and applied **only at
+provisioning** — so it protected workspaces created after that date and nothing
+else. Nobody noticed, because the gap is invisible until something tries to
+write. On 2026-09-01 a test suite running on the box overwrote eight identity
+files, and one `lsattr` settled the whole question:
+
+```
+----i---------e-------  u-3, u-9, u-13     ← locked, untouched
+--------------e-------  u-8, u-10..u-22    ← unlocked, eight overwritten
+```
+
+**Every locked file survived; every file that was overwritten was unlocked.**
+No exceptions in either direction. The protection was never weak — it had
+simply never been backfilled onto the users who existed before it shipped.
+
+`domain/identity-repair.js` + `scripts/repair-identity-files.js` (dry-run by
+default) do two jobs, and the second is the one that stops the recurrence:
+rewrite a file whose token disagrees with `users.identity_token`, and set `+i`
+on **every** active user's file, matching or not. Locking only the broken ones
+protects precisely nobody — the eight that were overwritten matched the DB
+right up until the moment they did not.
+
+- **Scope, per #97**: the token has been inline in `AGENTS.md` since
+  2026-08-27, so `.olma-identity` is the RECOVERY path, not the credential. A
+  stale one blocks nobody while doctrine is intact. This repairs the spare key
+  — which matters exactly when the primary fails, the moment nobody wants to
+  find the fallback was overwritten months ago.
+- **Unlock → write → relock**, in that order: the immutable bit stops root
+  too, so skipping the unlock fails with EPERM on precisely the files that are
+  correctly protected.
+- **The lock is read back with `lsattr` after setting it**, and a failure is
+  counted and named rather than assumed. A report claiming a lock it did not
+  get is worse than one admitting the filesystem cannot do this, because the
+  operator stops looking.
+- **A missing file is reported, never written blind.** Writing a token into a
+  directory that may no longer be that person's workspace is worse than the
+  auth failure it would paper over.
+
 ### The guard was right within a minute, and unread for eighty (fixed 2026-09-01)
 
 `config_guard` filed the five corrupted-identity issues at 19:08:40 on
