@@ -985,6 +985,23 @@ whole file-era history is the one corruption worse than a one-time gap.
 Verified against the live box read-only before merging: intake discovery,
 u-11's real conversation, all 494 transcripts, and a 34-call usage read.
 
+**The one reader that walk missed cried wolf the same night.** The eval
+harness reads its per-turn tool calls from `meta.agentMeta.sessionFile` —
+which 2026.8.1 now fills with the session KEY, not a path. `readFileSync`
+threw, the catch swallowed it, every turn's `toolCalls` came back `[]`, and
+nightly run #24 (2026-09-01 00:09) scored **9/9 RED** — "turn opened with no
+tool at all" on every scenario — waking the owner at 03:50 for a harness
+artifact while the agent was calling tools perfectly. Fixed in #92:
+`sessions.readSessionEventsSlice(agentId, sessionKey, fromSeq)` slices
+`transcript_events` by seq exactly the way the file was sliced by byte
+offset, and `makeTurnRunner` falls back to it when the path isn't readable.
+A false red board must not stand, and must not feed tomorrow's comparison
+either — so after the deploy a MANUAL run (`run-evals.js`, trigger
+`manual`: no alert, but it heads the dashboard and is `previousStatus` for
+the next nightly) replaced the headline: run #25, 7 green · 2 yellow · 0
+red. `stop-service` green — the implicit-turn_start recovery holds across
+the gateway upgrade.
+
 ### The writing sounded like a form, and half the users were addressed as "את/ה" (2026-08-31)
 
 Owner feedback, verbatim intent: the texting is robotic, sometimes
