@@ -45,6 +45,12 @@ const flagsDomain = require('../domain/flags');
 const ALERT_PHONE_FLAG = 'admin_alert_phone';
 const DEFAULT_ALERT_PHONE = '+972526269826';
 const ALERT_AT_FLAG = 'credit_alert_at';
+// Owner ask, 2026-09-01: mute just the credit/budget line (this file's two
+// alarms) while leaving config_guard's BREAKS_USERS alerts and the nightly
+// eval alert untouched — they are a different promise ("your users can't
+// function" / "the agent regressed") and were explicitly kept. Dashboard
+// flag, default unset = off = alerts on, unchanged from before this existed.
+const MUTED_FLAG = 'credit_alerts_muted';
 // Where a night's outage alarm waits for a civil hour. See deferral note below.
 const PENDING_ALERT_FLAG = 'credit_pending_alert';
 // The waking window both alarms here obey, in the alert phone's OWN zone.
@@ -89,6 +95,11 @@ function recoveredText(sinceIso) {
 
 // deps.send(phone, text) -> {ok, error?}  (production: raw `message send`)
 async function checkCreditAlert(client, deps = {}) {
+  // Muted before touching anything else: no query, no queueing, no stamp — a
+  // muted tick must leave zero trace, so un-muting later sees the outage
+  // fresh (whatever is actually failing at that moment) rather than replaying
+  // whatever piled up while silenced.
+  if (await flagsDomain.getFlag(client, MUTED_FLAG)) return { alerted: false, muted: true };
   // Two providers, two phrasings for the same empty wallet:
   // Anthropic 400 — "Your credit balance is too low ...";
   // OpenRouter 402 — "Insufficient credits. Add more ...".
@@ -168,6 +179,10 @@ async function checkCreditAlert(client, deps = {}) {
 // eval alert's queue was the only reason anyone found out.)
 async function flushPendingCreditAlert(client, deps = {}) {
   if (!deps.send) return null;
+  // A row queued right before muting must not still go out — same rule as
+  // checkCreditAlert above, and it leaves the pending row untouched so a
+  // later un-mute flushes it normally instead of losing it outright.
+  if (await flagsDomain.getFlag(client, MUTED_FLAG)) return { muted: true };
   const pending = await flagsDomain.getFlag(client, PENDING_ALERT_FLAG);
   if (!pending || !pending.phone) return null;
   const phone = pending.phone;
@@ -253,6 +268,10 @@ function balanceAlertText(low) {
 // deps.send(phone, text) · deps.getInfraCosts() — both injected so a test never
 // touches the network or WhatsApp.
 async function checkBalanceForecast(client, deps = {}) {
+  // Same mute, same reasoning as checkCreditAlert: skip before reading tier
+  // state at all, so an un-mute later judges the CURRENT balance rather than
+  // replaying whatever crossed a tier while this was silenced.
+  if (await flagsDomain.getFlag(client, MUTED_FLAG)) return { alerted: false, muted: true };
   const getCosts = deps.getInfraCosts || require('../adapters/infra-cost').getInfraCosts;
   const costs = await getCosts();
 
@@ -310,4 +329,5 @@ module.exports = {
   flushPendingCreditAlert, PENDING_ALERT_FLAG,
   checkBalanceForecast, balanceAlertText, tierFor,
   BALANCE_TIERS_FLAG, BALANCE_SERVICES, DAY_TIERS, USD_TIERS, ALERT_HOURS,
+  MUTED_FLAG,
 };

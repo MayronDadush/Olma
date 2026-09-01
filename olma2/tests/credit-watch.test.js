@@ -352,3 +352,80 @@ test('a failed send is retried, never stamped away', async () => {
     assert.equal(ok.sent.length, 1);
   });
 });
+
+// ---- muting just the credit/budget line --------------------------------------
+//
+// Owner ask 2026-09-01: stop sending the credit-outage and balance-runway
+// WhatsApp lines specifically, permanently until reversed via the dashboard
+// flag — while leaving config_guard's BREAKS_USERS alerts and the nightly
+// eval alert untouched, since those are a different promise.
+test('muted: neither alarm sends, and nothing is queued or stamped while muted', async () => {
+  await withClient(async (c) => {
+    await flagsDomain.setFlag(c, watch.MUTED_FLAG, true);
+    try {
+      await c.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+      await flagsDomain.setFlag(c, watch.ALERT_AT_FLAG, '');
+      await withTx(db.pool, (cc) => enqueue(cc, {
+        userId: user.id, kind: 'checkin', idempotencyKey: 'cw:muted',
+      }));
+      await c.query(
+        `UPDATE outbox SET last_error = 'Insufficient credits. Add more.'
+          WHERE idempotency_key = 'cw:muted'`);
+
+      const rec = recorder();
+      const outage = await watch.checkCreditAlert(c, rec);
+      assert.deepEqual(outage, { alerted: false, muted: true });
+      assert.equal(rec.sent.length, 0);
+      // Nothing queued either — an un-mute later must see the outage fresh,
+      // not replay whatever piled up while silenced.
+      assert.deepEqual(await flagsDomain.getFlag(c, watch.PENDING_ALERT_FLAG), {});
+
+      const u = await makeUser(db.pool, '+972594000780', { firstName: 'M' });
+      await armWindow(c, u.phone);
+      await setLocalHour(c, u.id, 12);
+      const balance = await watch.checkBalanceForecast(c, { ...rec, getInfraCosts: costs() });
+      assert.deepEqual(balance, { alerted: false, muted: true });
+      assert.equal(rec.sent.length, 0);
+      assert.deepEqual(await flagsDomain.getFlag(c, watch.BALANCE_TIERS_FLAG), {},
+        'muted must not stamp a tier it never actually announced');
+
+      // A row queued the moment before muting must not go out while muted —
+      // and must stay queued, not get dropped, so a later un-mute still flushes it.
+      await flagsDomain.setFlag(c, watch.PENDING_ALERT_FLAG,
+        { phone: operator.phone, since: '2026-09-01 02:10:00+00' });
+      assert.deepEqual(await watch.flushPendingCreditAlert(c, rec), { muted: true });
+      assert.equal(rec.sent.length, 0);
+      const stillPending = await flagsDomain.getFlag(c, watch.PENDING_ALERT_FLAG);
+      assert.equal(stillPending.phone, operator.phone, 'muting must not drop what was already queued');
+    } finally {
+      await flagsDomain.setFlag(c, watch.MUTED_FLAG, false);
+    }
+  });
+});
+
+test('un-muted: both alarms resume exactly as before, including flushing what queued while muted', async () => {
+  await withClient(async (c) => {
+    assert.equal(await flagsDomain.getFlag(c, watch.MUTED_FLAG), false, 'must not leak muted=true from the prior test');
+
+    await c.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+    await flagsDomain.setFlag(c, watch.ALERT_AT_FLAG, '');
+    await withTx(db.pool, (cc) => enqueue(cc, {
+      userId: user.id, kind: 'checkin', idempotencyKey: 'cw:unmuted',
+    }));
+    await c.query(
+      `UPDATE outbox SET last_error = 'Insufficient credits. Add more.'
+        WHERE idempotency_key = 'cw:unmuted'`);
+    const rec = recorder();
+    assert.equal((await watch.checkCreditAlert(c, rec)).alerted, true);
+    assert.equal(rec.sent.length, 1);
+
+    // The row left queued from the muted test flushes normally now that this
+    // outage is over — re-checked live, so it correctly speaks past tense.
+    await c.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+    await flagsDomain.setFlag(c, watch.PENDING_ALERT_FLAG,
+      { phone: operator.phone, since: '2026-09-01 02:10:00+00' });
+    const flushed = await watch.flushPendingCreditAlert(c, rec);
+    assert.equal(flushed.alerted, true);
+    assert.equal(flushed.stillDown, false);
+  });
+});

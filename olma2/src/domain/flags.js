@@ -26,6 +26,11 @@ const DEFAULTS = {
   // Base for user-facing links (availability picker). The dashboard's own
   // host — Caddy already routes it here.
   public_base_url: 'https://olmachat.duckdns.org',
+  // jobs/credit-watch.js: mute just the credit-outage + balance-runway
+  // WhatsApp lines to the admin phone. Explicit default (not just "falsy
+  // null") so the dashboard's bool dropdown renders "סגור" rather than
+  // showing neither option selected before anyone has touched this flag.
+  credit_alerts_muted: false,
 };
 
 async function getFlag(client, key) {
