@@ -6,31 +6,36 @@
 // cadence all night before that. Two conditions had to hold at once:
 //
 //   1. something WOKE main — the 2026.8.1 upgrade auto-created 36 cron jobs
-//      (a `heartbeat` and a `skillCollectionReview` for every agent in the
-//      roster, all with sessionTarget `main`). Nobody asked for them, and
-//      Olma schedules everything in brokerd; the gateway `cron` tool is
-//      denied to agents for exactly this reason.
+//      (a `heartbeat` and a `skillCollectionReview` per agent in the roster,
+//      all with sessionTarget `main`).
 //   2. main could DELIVER to a person — six leftover WhatsApp sessions from
 //      the v1 era, when `--to <phone>` alone ran the turn on the default
 //      agent.
 //
-// This script reports both and, with --disable-cron, removes the first. It
-// deliberately does NOT delete sessions: dropping rows out of the gateway's
-// own session store is the "second writer with the old schema in its head"
-// mistake that cost a night already (see CLAUDE.md, agents.list). The
-// sessions are reported so a person can decide.
+// ONLY THE SECOND IS ACTIONABLE, and that was established by trying the
+// first. `openclaw cron disable <id>` refuses every one of the 36:
+//
+//     "system-owned monitor jobs cannot be edited by cron clients"
+//
+// They are the gateway's own monitors, not ours to switch off, and a future
+// upgrade can add more of them. So the session is not merely the better
+// lever — it is the only one, which is also why it is the right one: it
+// bounds anything that wakes main, including whatever comes next.
+//
+// Archiving goes through `openclaw sessions archive`, i.e. through the
+// RUNNING GATEWAY, never by writing to its sqlite ourselves. Being a second
+// writer to that store with the old schema in mind is what `agents.list`
+// already cost a night for.
 //
 // Usage:
-//   node scripts/quiet-main-agent.js                 # report only
-//   node scripts/quiet-main-agent.js --disable-cron  # disable main's wakeups
+//   node scripts/quiet-main-agent.js              # report + archive dry-run
+//   node scripts/quiet-main-agent.js --apply      # archive for real
 'use strict';
 const { execFile } = require('node:child_process');
 const { createPool } = require('../src/db/pool');
 const { deliverableInfraSessions } = require('../src/domain/infra-agent');
 
-const DISABLE = process.argv.includes('--disable-cron');
-// Payload kinds the gateway creates for itself. An `agentTurn` job is
-// something a person set up on purpose and is never touched here.
+const APPLY = process.argv.includes('--apply');
 const AUTO_KINDS = new Set(['heartbeat', 'skillCollectionReview']);
 const CLI_TIMEOUT_MS = 30_000;
 
@@ -46,52 +51,38 @@ function openclaw(args) {
   });
 }
 
-async function listCron() {
+async function reportCron() {
   const r = await openclaw(['cron', 'list', '--json', '--timeout', String(CLI_TIMEOUT_MS)]);
-  if (!r.ok) return { error: r.error || r.stderr.trim() };
+  if (!r.ok) return console.log(`cron: could not be read (${r.error || r.stderr.trim()})`);
   let parsed;
-  try { parsed = JSON.parse(r.stdout); } catch { return { error: 'cron list returned unparseable JSON' }; }
+  try { parsed = JSON.parse(r.stdout); } catch { return console.log('cron: unparseable JSON'); }
   const jobs = Array.isArray(parsed) ? parsed : (parsed.jobs || parsed.data || []);
-  return { jobs: Array.isArray(jobs) ? jobs : [] };
+  const auto = jobs.filter((j) => j.sessionTarget === 'main' && j.enabled !== false
+    && AUTO_KINDS.has((j.payload || {}).kind));
+  console.log(`cron: ${auto.length} gateway-owned wakeups target main`);
+  console.log('  (not disableable — the gateway refuses: "system-owned monitor');
+  console.log('   jobs cannot be edited by cron clients". Context only.)');
 }
 
 (async () => {
   const pool = createPool();
+  await reportCron();
 
-  const { jobs, error } = await listCron();
-  if (error) {
-    console.log(`cron: could not be read (${error})`);
-  } else {
-    const targeting = jobs.filter((j) => j.sessionTarget === 'main' && j.enabled !== false);
-    const auto = targeting.filter((j) => AUTO_KINDS.has((j.payload || {}).kind));
-    const other = targeting.filter((j) => !AUTO_KINDS.has((j.payload || {}).kind));
-
-    console.log(`cron: ${jobs.length} automations, ${targeting.length} enabled and targeting main`);
-    for (const j of other) {
-      console.log(`  · leaving alone (not gateway-auto): ${j.name || j.id} [${(j.payload || {}).kind}]`);
-    }
-    console.log(`  ${DISABLE ? '→' : '·'} ${auto.length} auto-created wakeups`
-      + (DISABLE ? '' : ' — pass --disable-cron to disable them'));
-
-    if (DISABLE) {
-      let done = 0; const failed = [];
-      for (const j of auto) {
-        const r = await openclaw(['cron', 'disable', j.id, '--timeout', String(CLI_TIMEOUT_MS)]);
-        if (r.ok) done++;
-        else failed.push(`${j.name || j.id}: ${r.error || r.stderr.trim()}`);
-      }
-      console.log(`     disabled ${done}/${auto.length}`);
-      for (const f of failed) console.log(`     ! ${f}`);
-    }
-  }
-
-  // The half that bounds everything else, reported either way.
   const found = await deliverableInfraSessions(pool, {});
   console.log(`\nsessions: main holds ${found.length} delivery-capable session(s) to active users`);
   for (const f of found) console.log(`  ! ${f.channel}:${f.peer} (user ${f.userId}) — ${f.key}`);
+
   if (found.length) {
-    console.log('  these are not removed here — dropping rows from the gateway session store');
-    console.log('  needs a person deciding, not a script (see the header).');
+    // One call, all keys: the CLI takes several, and archiving them as a set
+    // means a partial failure is visible per key rather than leaving the job
+    // half done across separate invocations.
+    const args = ['sessions', 'archive', ...found.map((f) => f.key),
+      '--agent', 'main', '--json', '--timeout', String(CLI_TIMEOUT_MS)];
+    if (!APPLY) args.push('--dry-run');
+    const r = await openclaw(args);
+    console.log(`\n${APPLY ? 'archiving' : 'dry run'}: ${r.ok ? 'ok' : 'FAILED'}`);
+    console.log((r.stdout || r.stderr || r.error || '').trim().slice(0, 1500));
+    if (!APPLY) console.log('\npass --apply to archive for real');
   }
 
   await pool.end();

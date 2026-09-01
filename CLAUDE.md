@@ -100,14 +100,19 @@ matches the DB in both `.olma-identity` and `AGENTS.md`.
 - **One row per (agent, channel), never per session** — a per-session title
   would file a brand-new issue every time somebody joins (`checkStuckOutbox`'s
   lesson).
-- `scripts/quiet-main-agent.js` reports both halves and, with
-  `--disable-cron`, disables only the gateway-auto payload kinds
-  (`heartbeat`, `skillCollectionReview`); an `agentTurn` job is something a
-  person set up and is never touched. **It does not delete sessions** — being
-  a second writer to the gateway's own store with the old schema in mind is
-  the mistake `agents.list` already cost a night for. Every CLI call is
-  bounded by `--timeout`, because `openclaw config set` is documented to hang
-  after a successful write.
+- **The cron half cannot be switched off at all**, which was established by
+  trying rather than assumed: `openclaw cron disable <id>` refuses all 36 with
+  *"system-owned monitor jobs cannot be edited by cron clients"*. They are the
+  gateway's own monitors, and a future upgrade can add more. So the session is
+  not merely the better lever, it is the ONLY one — which is also why it is the
+  right one.
+- `scripts/quiet-main-agent.js` reports the cron jobs as context and archives
+  the sessions (`--apply`; dry-run otherwise). Archiving goes through
+  `openclaw sessions archive`, i.e. **through the running gateway**, never by
+  writing to its sqlite ourselves — being a second writer to that store with
+  the old schema in mind is the mistake `agents.list` already cost a night for.
+  Every CLI call is bounded by `--timeout`, because `openclaw config set` is
+  documented to hang after a successful write.
 
 **A theory that was checked and is wrong, recorded so nobody re-derives it:**
 this looked exactly like the auth-storm-from-transcript-redaction failure
