@@ -364,6 +364,56 @@ schema in its head. After any gateway version bump, diff `openclaw.json`
 against what `src/intake/openclaw-config.js` expects before trusting
 provisioning.
 
+### Permission to use a model lives in THREE lists, and we wrote two (fixed 2026-09-02)
+
+The same shape as the section above, a month later and in a different key:
+2026.8.1 added **`agents.defaults.modelPolicy.allow`** and seeded it from the
+then-current allowlist, so nothing broke on upgrade day and nobody noticed a
+third gate had appeared. `scripts/register-openrouter-models.js` went on
+writing the two it knew about — `agents.defaults.models` and
+`models.providers.openrouter.models[]` — and every model registered after the
+upgrade was **registered and unusable**.
+
+- **Registered-but-unusable is invisible until something tries an override.**
+  Nothing errors at registration, nothing retries, the config reads
+  correct to anyone checking the two familiar keys. It surfaces only as
+  `Model override ... is not allowed for agent u-15 by
+  agents.defaults.modelPolicy.allow` at the moment a pilot runs — which is
+  how it was found here, and independently how a concurrent session found it
+  from the other end (an eval suite returning `9 error` on a model sitting
+  correctly in both of the other lists, costing that run).
+- Four candidates registered 2026-09-02 17:08 (`gpt-5.6-luna`,
+  `gpt-5.4-mini`, `gpt-5.4-nano`, `gemini-3.8-flash`) were in this state for
+  about four hours.
+- **The script now reconciles the WHOLE allowlist, not just its own `MODELS`
+  array.** Registering is the only thing that puts an id in
+  `agents.defaults.models`, so anything sitting there is already meant to be
+  permitted. Iterating `MODELS` would have walked straight past the four
+  above; reconciling makes the script self-healing for whatever an older copy
+  left behind. It only ever appends to `allow` and never reconciles the other
+  way, so it cannot drop a model out from under a running eval suite.
+- **The absent case is deliberately NOT created.** The gateway's own error
+  text says "remove/empty the list to allow any model" — absent or empty
+  means *no restriction*, and manufacturing the key would silently narrow a
+  permissive gateway down to exactly our ids. Only extend a list that already
+  exists and already restricts.
+- **`config_guard.checkModelPermissions` closes the detection half**: it
+  compares all three lists on every sweep and files the disagreement, worded
+  differently for the live default (every user's next message falls through
+  to a fallback) than for a registered candidate (a `--model` pilot will be
+  refused). `anthropic/*` correctly needs no OpenRouter catalog entry, and an
+  absent or empty `modelPolicy.allow` is silence, not a violation per model —
+  both pinned by tests, because the noise failure documented in that file's
+  own comments is what this guard has to avoid becoming.
+
+The rule, third time this file has recorded a version of it: **after a
+gateway bump, a config key we have always written may no longer be the only
+one that decides.** Diffing the file catches a key that CHANGED shape; it
+does not catch a NEW key that quietly became load-bearing. The only thing
+that catches that is exercising the capability end-to-end — here, one
+`--model` override probe, which the script's own footer already told you to
+run.
+
 ### A phone number is not a location (2026-08-31)
 
 A new US joiner (+1516..., Long Island area code) was guessed
