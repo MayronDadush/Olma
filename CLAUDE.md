@@ -185,6 +185,67 @@ this looked exactly like the auth-storm-from-transcript-redaction failure
 u-3's transcript carries the full unredacted token. The masking was never
 involved.
 
+### The actual reason it kept converging on מירון: `heartbeat.target` defaults to `"owner"` (fixed 2026-09-02)
+
+The doctrine fix above did not hold. Twelve-plus hours later מירון sent a
+screenshot — the same shape continuing: English heartbeat commentary at
+01:55, 05:54, 07:25, 09:55, 10:25 local, plus a **raw DSML tool-call leak**
+at 09:31 exposing his own real identity token. Hash-correlating every
+`Sent message … -> sha256:…` journal line against every agent's own
+`transcript_events` (not just main's) settled it for good: **three different
+agents** produced these sends — `main` (2), **u-17/Sarah** (2), **u-9/קפיש**
+(1) — none of them narrating an auth failure this time, just heartbeat
+commentary ending in `NO_REPLY` that the model wrote a sentence before
+anyway. The two theories the previous section left open were both wrong:
+
+- **Not `selfChatMode`.** The WhatsApp account is on Olma's own number
+  (`972559347282`), confirmed from `credentials/whatsapp/default/creds.json`
+  — never מירון's.
+- **Not `allowFrom` position.** u-17 and u-9 have **no WhatsApp session with
+  מירון's number at all** (checked both agents' `session_nodes` directly),
+  and main's own session to him is the one already archived the day before.
+  The session a heartbeat actually runs in (`agent:<id>:main`) has
+  `delivery:{kind:"none"}` recorded on it in the gateway's own sqlite. None
+  of that stopped the send.
+
+The real mechanism is in the gateway's own source
+(`targets-CwL8pr8V.js`, `resolveHeartbeatDeliveryTarget` /
+`resolveHeartbeatOwnerRoute`), and it is a documented default, not a bug in
+the "unintended code" sense: `agents.defaults.heartbeat.target` is `undefined`
+by default, which resolves to `"owner"`, which reads
+**`commands.ownerAllowFrom`** — the field `bootstrapCommandOwnerFromPairing`
+auto-filled with whoever first approved the WhatsApp pairing. That was
+מירון, back when this was a single-user bot. `commands.ownerAllowFrom` is
+*also* consumed by real command-authorization code (Discord voice, Telegram
+exec-approval) — which is what made it a red herring at first read — but
+`targets-CwL8pr8V.js` is a third, independent consumer, and it is the one
+that matters here: **every one of the 18 agents' heartbeat turns, whenever
+they produce anything other than a clean silent ack, defaults to messaging
+whoever is the gateway's configured command owner — regardless of that
+agent's own user, regardless of session state.** The gateway even ships the
+fix as a string it's supposed to show on first alert:
+*"Set `agents.defaults.heartbeat.target: \"none\"` to keep these internal."*
+Nothing in our config had ever set it.
+
+Fixed by setting exactly that: `agents.defaults.heartbeat.target: "none"` in
+`openclaw.json` (backed up to
+`/root/backups/openclaw.json.pre-heartbeat-target-fix-20260902-085735`
+first). Hot-reloaded on write (`[reload] config hot reload applied
+(agents.defaults.heartbeat)`, 08:57:43 UTC) and the gateway was restarted
+anyway for a clean re-read; came back healthy (`[gateway] ready`,
+`[heartbeat] started`, WhatsApp listening) with no new sends to מירון since.
+This closes the whole class — every agent, every future thing a heartbeat
+might have to say — at the one place all of them funnel through, rather than
+depending on prompt wording the model has already shown it won't reliably
+follow.
+
+**Still open, and NOT what this fix touches:** the 09:31 DSML leak
+(`<｜DSML｜tool_calls>…`) is a distinct bug — u-3's own agent, correctly
+targeting מירון himself, failing to format a real tool call and leaking the
+raw syntax (including his live identity token) as chat text instead. That is
+a tool-calling reliability failure, not a routing one; setting
+`heartbeat.target: "none"` does nothing for it.
+
 ### The lock that worked perfectly, on three files out of sixteen (2026-09-01)
 
 `chattr +i` on `.olma-identity` was added 2026-08-27 and applied **only at
