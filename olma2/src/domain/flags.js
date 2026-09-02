@@ -18,6 +18,13 @@ const DEFAULTS = {
   reminder_escalation_max: 3,
   reminder_escalation_gap_hours: 3,
   live_subscriptions_per_user: 5,   // cap on active live-update subscriptions
+  // Boost mode (domain/boost.js + jobs/boost.js): the demo switch. The STATE
+  // is written by the dashboard and reconciled onto the gateway config by the
+  // job; `{on:false}` is off. The MODEL is separate on purpose — re-pointing
+  // boost at a new candidate must not require re-engaging it, and a model id
+  // living in a flag is what keeps a model swap an edit rather than a deploy.
+  boost_mode: { on: false },
+  boost_model: 'openrouter/openai/gpt-5.6-luna',
   // Months the personal Claude subscription was billed at something other than
   // the standing $20 — a Max upgrade, a paused month. {"YYYY-MM": usd}. No API
   // exposes subscription billing, so this is the only way the page can be right
