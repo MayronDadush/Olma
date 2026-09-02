@@ -812,6 +812,24 @@ before. Two unrelated clocks, both inherited rather than chosen:
   suite green only where the clocks agree is testing a configuration nobody
   deploys.
 
+**And it happened again, in the file that guards the alarm (fixed 2026-09-02).**
+Two `tests/credit-watch.test.js` tests fail on `main` between 21:00 and 05:00
+UTC. `before()` parks an operator on `DEFAULT_ALERT_PHONE` at local hour 12 for
+exactly this reason — but one block flips `admin_alert_phone` to a SECOND
+number, and gave that one no user row. Its own comment said a phone with no row
+"silently re-opens the night window"; it does the opposite — `alertHourOpen`
+falls back to `DEFAULT_TZ` (Asia/Jerusalem), so past 21:00 UTC the alarm queued
+instead of sending. Two things worth carrying:
+
+- **The restore was not in a `finally`**, so the throw left the stray number in
+  the flag and the NEXT test alerted for a phone whose night it also was. One
+  broken hour, two red tests, and the second one looks unrelated to the first.
+  The flag-leak shape this file already records (`quota_daily_free`), except the
+  leak was caused by the failure rather than by forgetting.
+- **A fallback default is not an open door.** The comment was not lazy, it was
+  wrong about which way an unknown phone fails — and a test asserting a SEND
+  must own the hour of every phone it points at, not just the default one.
+
 ### The fact table admitted everything and ranked by recency (fixed 2026-08-28)
 
 The owner read the dashboard's "מה נלמד לאחרונה" and asked whether that is
