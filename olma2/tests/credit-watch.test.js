@@ -7,10 +7,19 @@ const flagsDomain = require('../src/domain/flags');
 const { enqueue } = require('../src/outbox/enqueue');
 const { withTx } = require('../src/db/pool');
 
-let db, user;
+let db, user, operator;
 before(async () => {
   db = await freshDb();
   user = await makeUser(db.pool, '+972594000001', { firstName: 'X' });
+  // The outage alarm defers outside waking hours too now, and asks what hour
+  // it is where the ALERT phone lives. Without a row for that phone the
+  // question falls back to the real current hour and this file would pass by
+  // day and fail by night — the failure CLAUDE.md records under "the suite was
+  // green thirteen hours a day". Parked at midday, five hours clear of either
+  // edge, so a slow suite cannot drift out of the window.
+  operator = await makeUser(db.pool, watch.DEFAULT_ALERT_PHONE, { firstName: 'Op' });
+  const c = await db.pool.connect();
+  try { await setLocalHour(c, operator.id, 12); } finally { c.release(); }
 });
 after(async () => { await db.teardown(); });
 
@@ -103,6 +112,11 @@ test('a NEW outage re-arms the alarm; a failed send does not consume it', async 
     const rec2 = recorder();
     await watch.checkCreditAlert(c, rec2);
     assert.equal(rec2.sent[0].phone, '+972590000000');
+    // Put it back. The alarm now reads the hour where the ALERT PHONE lives,
+    // so a stray number with no user row silently re-opens the night window
+    // for every test after this one — the same shape as the stray
+    // quota_daily_free that made the resume-offer tests flake.
+    await flagsDomain.setFlag(c, watch.ALERT_PHONE_FLAG, '');
   });
 });
 
@@ -137,6 +151,84 @@ test('an outage one microsecond newer than the last alert still re-arms it', asy
     const stored = await flagsDomain.getFlag(c, watch.ALERT_AT_FLAG);
     assert.doesNotMatch(stored, /\dT\d.*Z$/,
       "the alarm's own clock must be the database's");
+  });
+});
+
+// ---- not at three in the morning ---------------------------------------------
+// Owner ask, 2026-09-01: stop the night messages. This alarm held out longest
+// because it is the real "everything is down" signal — but the money can only
+// be added by the person asleep, and it reads the same at 08:00.
+test('a night outage is queued rather than sent, and queued only once', async () => {
+  await withClient(async (c) => {
+    await c.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+    await flagsDomain.setFlag(c, watch.ALERT_AT_FLAG, '');
+    await flagsDomain.setFlag(c, watch.PENDING_ALERT_FLAG, {});
+    await flagsDomain.setFlag(c, watch.ALERT_PHONE_FLAG, operator.phone);
+    await setLocalHour(c, operator.id, 3);
+    try {
+      await withTx(db.pool, (cc) => enqueue(cc, {
+        userId: user.id, kind: 'checkin', idempotencyKey: 'cw:night',
+      }));
+      await c.query(
+        `UPDATE outbox SET last_error = 'Insufficient credits. Add more.'
+          WHERE idempotency_key = 'cw:night'`);
+
+      const rec = recorder();
+      const r = await watch.checkCreditAlert(c, rec);
+      assert.equal(r.alerted, false);
+      assert.equal(r.queued, true);
+      assert.equal(rec.sent.length, 0, 'nothing reaches a phone at 03:00');
+      const pending = await flagsDomain.getFlag(c, watch.PENDING_ALERT_FLAG);
+      assert.equal(pending.phone, operator.phone);
+      assert.ok(pending.since, 'the moment the outage began is kept — the evidence itself expires');
+
+      // The 30-second beat must not re-queue the same outage all night.
+      const again = await watch.checkCreditAlert(c, rec);
+      assert.equal(again.alerted, false);
+      assert.equal(again.queued, undefined);
+
+      // Morning is still the only thing that releases it.
+      assert.deepEqual(await watch.flushPendingCreditAlert(c, rec), { held: 'quiet hours' });
+      assert.equal(rec.sent.length, 0);
+    } finally { await setLocalHour(c, operator.id, 12); }
+  });
+});
+
+test('the morning flush speaks in the tense that is actually true', async () => {
+  await withClient(async (c) => {
+    // Still broken when morning comes → the live alarm text.
+    const rec = recorder();
+    const out = await watch.flushPendingCreditAlert(c, rec);
+    assert.equal(out.alerted, true);
+    assert.equal(out.stillDown, true);
+    assert.match(rec.sent[0].text, /נגמר הקרדיט/);
+    // Delivered → the queue is empty, and a second tick says nothing.
+    assert.equal(await watch.flushPendingCreditAlert(c, rec), null);
+    assert.equal(rec.sent.length, 1);
+
+    // Now the other half: an outage that healed overnight. Saying "אף הודעה
+    // לא נשלחת" about a working system is a false alarm, and one false alarm
+    // is what teaches someone to ignore the next real one.
+    await c.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+    await flagsDomain.setFlag(c, watch.PENDING_ALERT_FLAG,
+      { phone: operator.phone, since: '2026-09-01 02:10:00+00' });
+    const rec2 = recorder();
+    const healed = await watch.flushPendingCreditAlert(c, rec2);
+    assert.equal(healed.alerted, true);
+    assert.equal(healed.stillDown, false);
+    assert.match(rec2.sent[0].text, /בלילה נגמר הקרדיט/);
+    assert.match(rec2.sent[0].text, /עובד שוב/);
+  });
+});
+
+test('a flush whose send fails stays queued', async () => {
+  await withClient(async (c) => {
+    await flagsDomain.setFlag(c, watch.PENDING_ALERT_FLAG,
+      { phone: operator.phone, since: '2026-09-01 02:10:00+00' });
+    assert.deepEqual(await watch.flushPendingCreditAlert(c, recorder(false)), { held: 'send failed' });
+    const still = await flagsDomain.getFlag(c, watch.PENDING_ALERT_FLAG);
+    assert.equal(still.phone, operator.phone, 'a broken pipe must not consume the alarm');
+    await flagsDomain.setFlag(c, watch.PENDING_ALERT_FLAG, {});
   });
 });
 
@@ -258,5 +350,82 @@ test('a failed send is retried, never stamped away', async () => {
     const ok = recorder(true);
     assert.equal((await watch.checkBalanceForecast(c, { ...ok, getInfraCosts: costs() })).alerted, true);
     assert.equal(ok.sent.length, 1);
+  });
+});
+
+// ---- muting just the credit/budget line --------------------------------------
+//
+// Owner ask 2026-09-01: stop sending the credit-outage and balance-runway
+// WhatsApp lines specifically, permanently until reversed via the dashboard
+// flag — while leaving config_guard's BREAKS_USERS alerts and the nightly
+// eval alert untouched, since those are a different promise.
+test('muted: neither alarm sends, and nothing is queued or stamped while muted', async () => {
+  await withClient(async (c) => {
+    await flagsDomain.setFlag(c, watch.MUTED_FLAG, true);
+    try {
+      await c.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+      await flagsDomain.setFlag(c, watch.ALERT_AT_FLAG, '');
+      await withTx(db.pool, (cc) => enqueue(cc, {
+        userId: user.id, kind: 'checkin', idempotencyKey: 'cw:muted',
+      }));
+      await c.query(
+        `UPDATE outbox SET last_error = 'Insufficient credits. Add more.'
+          WHERE idempotency_key = 'cw:muted'`);
+
+      const rec = recorder();
+      const outage = await watch.checkCreditAlert(c, rec);
+      assert.deepEqual(outage, { alerted: false, muted: true });
+      assert.equal(rec.sent.length, 0);
+      // Nothing queued either — an un-mute later must see the outage fresh,
+      // not replay whatever piled up while silenced.
+      assert.deepEqual(await flagsDomain.getFlag(c, watch.PENDING_ALERT_FLAG), {});
+
+      const u = await makeUser(db.pool, '+972594000780', { firstName: 'M' });
+      await armWindow(c, u.phone);
+      await setLocalHour(c, u.id, 12);
+      const balance = await watch.checkBalanceForecast(c, { ...rec, getInfraCosts: costs() });
+      assert.deepEqual(balance, { alerted: false, muted: true });
+      assert.equal(rec.sent.length, 0);
+      assert.deepEqual(await flagsDomain.getFlag(c, watch.BALANCE_TIERS_FLAG), {},
+        'muted must not stamp a tier it never actually announced');
+
+      // A row queued the moment before muting must not go out while muted —
+      // and must stay queued, not get dropped, so a later un-mute still flushes it.
+      await flagsDomain.setFlag(c, watch.PENDING_ALERT_FLAG,
+        { phone: operator.phone, since: '2026-09-01 02:10:00+00' });
+      assert.deepEqual(await watch.flushPendingCreditAlert(c, rec), { muted: true });
+      assert.equal(rec.sent.length, 0);
+      const stillPending = await flagsDomain.getFlag(c, watch.PENDING_ALERT_FLAG);
+      assert.equal(stillPending.phone, operator.phone, 'muting must not drop what was already queued');
+    } finally {
+      await flagsDomain.setFlag(c, watch.MUTED_FLAG, false);
+    }
+  });
+});
+
+test('un-muted: both alarms resume exactly as before, including flushing what queued while muted', async () => {
+  await withClient(async (c) => {
+    assert.equal(await flagsDomain.getFlag(c, watch.MUTED_FLAG), false, 'must not leak muted=true from the prior test');
+
+    await c.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+    await flagsDomain.setFlag(c, watch.ALERT_AT_FLAG, '');
+    await withTx(db.pool, (cc) => enqueue(cc, {
+      userId: user.id, kind: 'checkin', idempotencyKey: 'cw:unmuted',
+    }));
+    await c.query(
+      `UPDATE outbox SET last_error = 'Insufficient credits. Add more.'
+        WHERE idempotency_key = 'cw:unmuted'`);
+    const rec = recorder();
+    assert.equal((await watch.checkCreditAlert(c, rec)).alerted, true);
+    assert.equal(rec.sent.length, 1);
+
+    // The row left queued from the muted test flushes normally now that this
+    // outage is over — re-checked live, so it correctly speaks past tense.
+    await c.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+    await flagsDomain.setFlag(c, watch.PENDING_ALERT_FLAG,
+      { phone: operator.phone, since: '2026-09-01 02:10:00+00' });
+    const flushed = await watch.flushPendingCreditAlert(c, rec);
+    assert.equal(flushed.alerted, true);
+    assert.equal(flushed.stillDown, false);
   });
 });

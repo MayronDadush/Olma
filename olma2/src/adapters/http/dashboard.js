@@ -521,6 +521,8 @@ async function renderIssues(client, csrf) {
 const FLAG_SPECS = [
   { key: 'registration_open', label: 'הרשמת משתמשים חדשים', type: 'bool',
     help: 'כשסגור — מי שפונה מקבל הודעה שההרשמה מושהית ונכנס לרשימת המתנה. מי שהוזמן ע״י חבר קיים ממשיך להיקלט כרגיל.' },
+  { key: 'credit_alerts_muted', label: 'השתקת התראות קרדיט/יתרה', type: 'bool',
+    help: 'כשפתוח (מושתק) — התראת "נגמר הקרדיט" והתראת היתרה היורדת לא נשלחות לאדמין בוואטסאפ. תקלות config_guard קריטיות והתראת בדיקות ההתנהגות הלילית לא מושפעות.' },
   { key: 'quota_daily_free', label: 'מכסת הודעות ליום — משתמש חינם', type: 'int',
     help: 'מעבר לזה אולמה שולחת סיכום אחרון ומפסיקה להגיב עד למחרת.' },
   { key: 'quota_hourly_paid', label: 'מכסת הודעות לשעה — מנוי', type: 'int',

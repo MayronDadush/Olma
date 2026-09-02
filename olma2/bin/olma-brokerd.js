@@ -88,6 +88,11 @@ async function main() {
       const out = await drainOnce(pool, deliver);
       const alert = await withTx(pool, (c) => creditWatch.checkCreditAlert(c, { send: rawSend }))
         .catch(() => ({ alerted: false }));
+      // A night outage is queued rather than sent at 03:00; this is what
+      // delivers it when morning comes, on the same beat.
+      const flushed = await withTx(pool, (c) => creditWatch.flushPendingCreditAlert(c, { send: rawSend }))
+        .catch(() => null);
+      if (flushed && flushed.alerted) return { ...out, creditAlert: flushed.phone, deferred: true };
       return alert.alerted ? { ...out, creditAlert: alert.phone } : out;
     });
 
@@ -148,7 +153,11 @@ async function main() {
       return syncIntakeWorkspace(open);
     });
     // identity-hardening watchdog — every 10 minutes
-    arm('config_guard', () => withTx(pool, (c) => configGuard.run(c, { configPath: OPENCLAW_CONFIG })));
+    // `send` is the raw pipe, same as the credit alarm: the violations that
+    // earn an alert are exactly the ones that stop agents working, so the
+    // alert must not itself need a working agent.
+    arm('config_guard', () => withTx(pool, (c) =>
+      configGuard.run(c, { configPath: OPENCLAW_CONFIG, send: rawSend })));
 
     // Weekly per user, but ticked hourly: "the small hours" is only meaningful
     // in each person's own timezone, so the job decides who is due rather than
@@ -184,6 +193,16 @@ async function main() {
     arm('fact_extraction', async () => {
       const out = await withTx(pool, (c) => factExtraction.sweepFactExtraction(c, {}));
       await refreshAfter(out.extracted || []);
+      return out;
+    });
+
+    // A finished phone call gets the identical treatment on its own hangup —
+    // see jobs/voice-calls.js. Inert (a directory-not-found no-op) on any box
+    // without the voice bridge installed.
+    const voiceCalls = require('../src/jobs/voice-calls');
+    arm('voice_calls', async () => {
+      const out = await withTx(pool, (c) => voiceCalls.sweepVoiceCalls(c, {}));
+      await refreshAfter(out.processed || []);
       return out;
     });
 

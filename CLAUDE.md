@@ -55,6 +55,273 @@ describes **v1**, which is retired-in-place: its code still sits in
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
 
+### `main` said NO_REPLY into a real person's WhatsApp (2026-09-01)
+
+Two messages landed in מירון's chat at 11:25 local, in the middle of a normal
+conversation about deleting a task:
+
+```
+Past quiet hours now (08:24 UTC), but no user messages waiting,
+nothing urgent to report.  NO_REPLY
+הטוקן מהקובץ שוב נדחה. אעצור הפעם.  NO_REPLY
+```
+
+Neither came from his agent. Both are in `main`'s transcript verbatim
+(`agents/main/agent/openclaw-agent.sqlite`, `transcript_events`, 08:25:06),
+and the same shape repeats every ~30 minutes all night: 04:57, 05:25, 05:55,
+06:26, 06:55, 07:25, 07:55, 08:25. **Two independent conditions had to hold,
+and neither alone would have been visible:**
+
+- **Something woke `main`.** The 2026.8.1 upgrade auto-created **36 cron
+  jobs** — a `heartbeat` and a `skillCollectionReview` for every agent in the
+  roster, all with `sessionTarget: main`, all enabled. Nobody created them;
+  v2 schedules in brokerd and the gateway `cron` tool is denied to agents
+  precisely so this does not happen.
+- **`main` could deliver to a person.** Six leftover WhatsApp sessions —
+  `agent:main:whatsapp:direct:+9725…` for six real users including מירון —
+  from the v1 era when `--to <phone>` alone ran the turn on the DEFAULT agent.
+  Harmless for as long as nothing ran main.
+
+`main` has no user row and therefore no identity token, so its `turn_start`
+calls improvise one — the transcript shows `"olma_identity":"main"`,
+`"unknown"`, `"olma"` — which is what the four ownerless `auth.failed` rows
+at 08:25 are, and what "הטוקן מהקובץ שוב נדחה" was reporting. **It was never
+מירון's identity that was broken**: u-3's file is locked, and its token
+matches the DB in both `.olma-identity` and `AGENTS.md`.
+
+- **The six sessions were NOT v1 leftovers** — that was this file's first
+  reading and it is wrong, corrected here rather than deleted because the
+  wrong version shipped a detector. Their transcripts settle it: five of the
+  six contain `role: assistant` messages and nothing else, i.e. they are the
+  RAW PIPE's own delivery sessions, created by reminders and alarms because
+  #96 made main the systemAgent. Archiving them achieved nothing durable —
+  two were recreated by ordinary reminders within hours, one to a user who
+  had simply been sent a reminder at 13:00.
+- **Exactly one of the eight carried inbound turns** (four, from מירון), and
+  that is the session the leak actually went through. So `config_guard`'s
+  `checkInfraAgentSessions` tests for an INBOUND USER TURN
+  (`sessions.hasInboundUserTurn`), not for the session's existence. Without
+  that test it files a violation against ordinary operation for every user
+  who receives a reminder — a detector that flags a working system, which is
+  the failure this very section already records twice. `null` (unreadable
+  transcript) is never a violation: "could not read" is not "someone spoke".
+- **Filed, not alerted.** It is real damage a person sees, but it does not
+  stop a tool call, and `BREAKS_USERS` means exactly that since #97. Widening
+  it would put the alert list back to meaning two things at once.
+- **One row per (agent, channel), never per session** — a per-session title
+  would file a brand-new issue every time somebody joins (`checkStuckOutbox`'s
+  lesson).
+- **The cron half cannot be switched off at all**, which was established by
+  trying rather than assumed: `openclaw cron disable <id>` refuses all 36 with
+  *"system-owned monitor jobs cannot be edited by cron clients"*. They are the
+  gateway's own monitors, and a future upgrade can add more. So the session is
+  not merely the better lever, it is the ONLY one — which is also why it is the
+  right one.
+- `scripts/quiet-main-agent.js` reports the cron jobs as context and archives
+  the sessions (`--apply`; dry-run otherwise). Archiving goes through
+  `openclaw sessions archive`, i.e. **through the running gateway**, never by
+  writing to its sqlite ourselves — being a second writer to that store with
+  the old schema in mind is the mistake `agents.list` already cost a night for.
+  Every CLI call is bounded by `--timeout`, because `openclaw config set` is
+  documented to hang after a successful write.
+
+**And the detector spent its first hour reporting its own fix** (#104). The
+six sessions were archived through the gateway, and the freshly-deployed
+script called all six violations anyway — `already_archived`, six times.
+`archived_at` is a **column** on `session_nodes`, not a field inside
+`entry_json`, and `readAgentIndex` only ever selected the entry, so an
+archived session was indistinguishable from a live one. `config_guard` would
+have filed the same row every tick for ever against a fix that had already
+landed — the detection-layer-nobody-trusts failure for the fourth time in
+this file, arriving one hour after the detector that would suffer it.
+`mapIndexEntry` carries `archivedAt` now (null in the legacy file era, which
+had no archiving: there a session that exists is live by construction) and
+`deliverableInfraSessions` skips it. **Anything new that reads the session
+index and means "live" has to say so** — listing is not the same question.
+Found by running the shipped script against the box rather than by a test.
+
+**The session was NOT the vehicle, and archiving did not stop the leak.** Two
+hours later, with all six of main's sessions archived, messages were still
+landing in מירון's WhatsApp on the same cadence (09:27, 09:55, 09:56 UTC).
+The real rule is visible to the second in the gateway journal — a cron turn
+that emits **text before `NO_REPLY`** has that text delivered; a bare
+`NO_REPLY` sends nothing:
+
+```
+u-17 09:56:08 "Nothing needs attention…"        →  Sent 09:56:08
+u-19 09:56:50 "הטוקן עדיין נדחה על ידי השרת"     →  Sent 09:56:50
+u-3, u-8, u-20, u-21   bare NO_REPLY            →  (nothing)
+main 09:24:59          bare NO_REPLY            →  (nothing)
+```
+
+That last line is the trap: main's silence on the first post-archive wake was
+read as the archive working, and it was **main having nothing to say**. An
+absence of evidence was scored as evidence, on a sample of one — the same
+mistake as grepping a log file that turned out not to exist (below).
+
+- **The cron wakes every agent, not main** — 16 ran in one three-minute
+  window, each in its own `agent:<id>:main` session, none of them a WhatsApp
+  session. Delivery to מירון is not through a session anybody can archive.
+- **Most of the text was agents complaining their token was rejected**, which
+  is the identity-file damage above arriving as WhatsApp messages. Repairing
+  the eight mismatched files (`repair-identity-files.js --apply`, run
+  2026-09-01: *8 repaired, 3 already correct, 11 now immutable*) removes the
+  bulk of what there is to say.
+- **`u-18`..`u-22` were removed from the roster** — no user row, no binding,
+  five open guard issues (#28–32), and no valid identity file, so they were a
+  permanent source of exactly this text. `agents.entries` edit + workspaces
+  and agent dirs moved to `/root/backups/orphan-agents-20260901/` (moved, not
+  deleted). Hot-reloaded with no restart; **cron jobs fell 36 → 27**.
+- `channels.whatsapp.accounts.default.selfChatMode` is still `true`, which the
+  gateway documents as *"Same-phone setup (bot uses your personal WhatsApp
+  number)"* — a leftover from the original install. The account is linked to
+  Olma's OWN number (`972559347282`, "Olma - אולמה"), so the flag is stale.
+  Not yet changed, and not yet proven to be the routing rule that picks
+  מירון; his number is also the only non-wildcard entry in `allowFrom`.
+
+**A theory that was checked and is wrong, recorded so nobody re-derives it:**
+this looked exactly like the auth-storm-from-transcript-redaction failure
+(the gateway masks token args, the model imitates the mask). It is not —
+u-3's transcript carries the full unredacted token. The masking was never
+involved.
+
+### The actual reason it kept converging on מירון: `heartbeat.target` defaults to `"owner"` (fixed 2026-09-02)
+
+The doctrine fix above did not hold. Twelve-plus hours later מירון sent a
+screenshot — the same shape continuing: English heartbeat commentary at
+01:55, 05:54, 07:25, 09:55, 10:25 local, plus a **raw DSML tool-call leak**
+at 09:31 exposing his own real identity token. Hash-correlating every
+`Sent message … -> sha256:…` journal line against every agent's own
+`transcript_events` (not just main's) settled it for good: **three different
+agents** produced these sends — `main` (2), **u-17/Sarah** (2), **u-9/קפיש**
+(1) — none of them narrating an auth failure this time, just heartbeat
+commentary ending in `NO_REPLY` that the model wrote a sentence before
+anyway. The two theories the previous section left open were both wrong:
+
+- **Not `selfChatMode`.** The WhatsApp account is on Olma's own number
+  (`972559347282`), confirmed from `credentials/whatsapp/default/creds.json`
+  — never מירון's.
+- **Not `allowFrom` position.** u-17 and u-9 have **no WhatsApp session with
+  מירון's number at all** (checked both agents' `session_nodes` directly),
+  and main's own session to him is the one already archived the day before.
+  The session a heartbeat actually runs in (`agent:<id>:main`) has
+  `delivery:{kind:"none"}` recorded on it in the gateway's own sqlite. None
+  of that stopped the send.
+
+The real mechanism is in the gateway's own source
+(`targets-CwL8pr8V.js`, `resolveHeartbeatDeliveryTarget` /
+`resolveHeartbeatOwnerRoute`), and it is a documented default, not a bug in
+the "unintended code" sense: `agents.defaults.heartbeat.target` is `undefined`
+by default, which resolves to `"owner"`, which reads
+**`commands.ownerAllowFrom`** — the field `bootstrapCommandOwnerFromPairing`
+auto-filled with whoever first approved the WhatsApp pairing. That was
+מירון, back when this was a single-user bot. `commands.ownerAllowFrom` is
+*also* consumed by real command-authorization code (Discord voice, Telegram
+exec-approval) — which is what made it a red herring at first read — but
+`targets-CwL8pr8V.js` is a third, independent consumer, and it is the one
+that matters here: **every one of the 18 agents' heartbeat turns, whenever
+they produce anything other than a clean silent ack, defaults to messaging
+whoever is the gateway's configured command owner — regardless of that
+agent's own user, regardless of session state.** The gateway even ships the
+fix as a string it's supposed to show on first alert:
+*"Set `agents.defaults.heartbeat.target: \"none\"` to keep these internal."*
+Nothing in our config had ever set it.
+
+Fixed by setting exactly that: `agents.defaults.heartbeat.target: "none"` in
+`openclaw.json` (backed up to
+`/root/backups/openclaw.json.pre-heartbeat-target-fix-20260902-085735`
+first). Hot-reloaded on write (`[reload] config hot reload applied
+(agents.defaults.heartbeat)`, 08:57:43 UTC) and the gateway was restarted
+anyway for a clean re-read; came back healthy (`[gateway] ready`,
+`[heartbeat] started`, WhatsApp listening) with no new sends to מירון since.
+This closes the whole class — every agent, every future thing a heartbeat
+might have to say — at the one place all of them funnel through, rather than
+depending on prompt wording the model has already shown it won't reliably
+follow.
+
+**Still open, and NOT what this fix touches:** the 09:31 DSML leak
+(`<｜DSML｜tool_calls>…`) is a distinct bug — u-3's own agent, correctly
+targeting מירון himself, failing to format a real tool call and leaking the
+raw syntax (including his live identity token) as chat text instead. That is
+a tool-calling reliability failure, not a routing one; setting
+`heartbeat.target: "none"` does nothing for it.
+
+### The lock that worked perfectly, on three files out of sixteen (2026-09-01)
+
+`chattr +i` on `.olma-identity` was added 2026-08-27 and applied **only at
+provisioning** — so it protected workspaces created after that date and nothing
+else. Nobody noticed, because the gap is invisible until something tries to
+write. On 2026-09-01 a test suite running on the box overwrote eight identity
+files, and one `lsattr` settled the whole question:
+
+```
+----i---------e-------  u-3, u-9, u-13     ← locked, untouched
+--------------e-------  u-8, u-10..u-22    ← unlocked, eight overwritten
+```
+
+**Every locked file survived; every file that was overwritten was unlocked.**
+No exceptions in either direction. The protection was never weak — it had
+simply never been backfilled onto the users who existed before it shipped.
+
+`domain/identity-repair.js` + `scripts/repair-identity-files.js` (dry-run by
+default) do two jobs, and the second is the one that stops the recurrence:
+rewrite a file whose token disagrees with `users.identity_token`, and set `+i`
+on **every** active user's file, matching or not. Locking only the broken ones
+protects precisely nobody — the eight that were overwritten matched the DB
+right up until the moment they did not.
+
+- **Scope, per #97**: the token has been inline in `AGENTS.md` since
+  2026-08-27, so `.olma-identity` is the RECOVERY path, not the credential. A
+  stale one blocks nobody while doctrine is intact. This repairs the spare key
+  — which matters exactly when the primary fails, the moment nobody wants to
+  find the fallback was overwritten months ago.
+- **Unlock → write → relock**, in that order: the immutable bit stops root
+  too, so skipping the unlock fails with EPERM on precisely the files that are
+  correctly protected.
+- **The lock is read back with `lsattr` after setting it**, and a failure is
+  counted and named rather than assumed. A report claiming a lock it did not
+  get is worse than one admitting the filesystem cannot do this, because the
+  operator stops looking.
+- **A missing file is reported, never written blind.** Writing a token into a
+  directory that may no longer be that person's workspace is worse than the
+  auth failure it would paper over.
+
+### The guard was right within a minute, and unread for eighty (fixed 2026-09-01)
+
+`config_guard` filed the five corrupted-identity issues at 19:08:40 on
+2026-08-31, less than a minute after the upgrade above produced them. They sat
+on the dashboard while those five people's agents failed every tool call they
+made, and were found by a human eighty minutes later. **Detection was never
+the problem** — this file has now recorded the same shape three times (the
+thirteen already-resolved issues nobody read on 2026-08-27; `/health` red for
+thirteen hours during the credit outage). What was missing is escalation.
+
+Most violations describe damage nobody feels today — an orphan agent, a
+duplicated carryover, a setting that would matter if something *else* also
+broke. A dashboard row is the right home for those. Four are different in
+kind, and `BREAKS_USERS` is the whole list: an identity file or an `AGENTS.md`
+whose token is not the DB's, `tools.alsoAllow` missing `read`, and an empty
+`mcp.servers`. While any of those holds, the affected agents cannot complete a
+single tool call and the person on the other end simply gets nothing. Those
+alert on the **raw `openclaw message send` pipe** — the credit alarm's channel,
+no model and no credit — because it works precisely when the system cannot
+answer for itself.
+
+- **Announced once, and re-armed by recovery.** `config_guard_alerted` holds
+  the set already sent. A condition that persists is not repeated; a NEW one
+  still gets through; a condition that CLEARED drops out, so the same break
+  next month alerts again. Same tiering rule as the balance warning.
+- **The two halves of that flag are written under different rules**, which is
+  the part a test caught rather than the design. Dropping a cleared condition
+  is unconditional. Adding a fresh one records that somebody was *told*, so it
+  is written only after the pipe confirms `ok` — a failed send leaves it
+  unstamped and the next tick retries. Stamping first would have made a
+  gateway outage (exactly when this alarm matters most) swallow the alert
+  permanently. The same promise `credit-watch` and the balance forecast make.
+- **A throwing pipe never takes the issue rows with it.** Filing happens
+  first and the send is wrapped — the durable dashboard record must survive a
+  dead gateway, which is the condition being reported.
+
 ### The gateway was upgraded underneath a running system (2026-08-31)
 
 Someone ran `npm i -g openclaw` on the box at 19:08 UTC, taking the gateway
@@ -1001,6 +1268,123 @@ either — so after the deploy a MANUAL run (`run-evals.js`, trigger
 the next nightly) replaced the headline: run #25, 7 green · 2 yellow · 0
 red. `stop-service` green — the implicit-turn_start recovery holds across
 the gateway upgrade.
+
+### The raw pipe had no owner, so reminders and the credit alarm both went mute (fixed 2026-09-01)
+
+The third aftershock of the 2026.8.1 upgrade, and the most expensive, because
+nothing about it looked like a failure. `agents.ownership: "explicit"` came
+with the new roster format — and from that moment every **agent-less** gateway
+operation refused:
+
+> Multiple agents are configured, but this operation has no explicit owner.
+
+That is the whole **raw pipe**: `openclaw message send`, which carries
+reminders (deliberately, since 2026-08-23 — they must not need a model), the
+credit-out alarm, the runway warning and the nightly eval alert. `message send`
+takes no `--agent` flag (checked: `--account`, `--channel`, `--target`,
+`--message`, nothing else) and an inbound per-peer binding does not resolve an
+OUTBOUND send's owner, so for a multi-agent roster exactly one door is left:
+`agents.defaults.systemAgent.agentId`, read by the gateway's own
+`tryResolveAmbientOwnerAgentId`. **The upgrade's migration fills that field in
+automatically only when the roster it converted held exactly one agent** — ours
+held eighteen, so it was left unset. `scripts/set-system-agent.js --apply`
+(`main`, the agent with no user, restoring the pre-upgrade behaviour rather
+than changing it — raw sends always logged there).
+
+What twelve hours of it cost, none of it visible: Miron's 08:00 rent reminder
+climbed to 16 attempts and **expired undelivered**; a second reminder sat at
+12; and the credit alarm — the one channel that still works when the model
+provider is dry — could not have reached anybody. The outbox's retry/backoff
+absorbed all of it exactly the way it absorbed the gateway outage the night
+before. **The only reason it was found at all is that the eval alert QUEUES**
+(#82) rather than firing and forgetting: a pending row that would not clear,
+with `held: "send failed"` in the heartbeat, is what there was to pull on.
+
+- `config_guard` now checks it — a multi-agent roster with no `systemAgent`,
+  or one naming an agent outside the roster, is a violation with the fix
+  command in its text. The guard watched every OTHER config invariant that
+  protects identity and had nothing to say about the one that carries
+  delivery.
+- **Verify the pipe, never the file**: `openclaw message send … --dry-run
+  --json` returns `ok:false` with the real reason. That single command would
+  have caught this the evening of the upgrade, and it is now the last line
+  the script prints.
+
+**And repairing the pipe immediately produced a false alarm of its own.**
+The first `config_guard` tick after the fix told the owner *"🔴 משתמשים
+חסומים ברמת הזהות — כל קריאת כלי שלהם נכשלת"*, naming EIGHT users — while
+all eight agents were answering normally. `.olma-identity` stopped being the
+credential on 2026-08-27, when the token moved inline into `AGENTS.md`; the
+guard's wording and its `BREAKS_USERS` list both stayed on the old meaning,
+so a stale FILE still read as a blocked user. (The files themselves are real
+damage — a test suite running on the production box overwrote them during a
+failed deploy — but what broke is those users' recovery path, not their
+service.) `checkIdentityFiles` now reads `AGENTS.md` before choosing its
+words: right token → `— fallback only`, filed on the dashboard and nobody
+woken; wrong or missing → unchanged and still alarming, because then the
+fallback IS the path. Two things worth carrying forward:
+
+- **An alert that overstates is spent the first time someone checks it** —
+  the same reason yellows wait for a second night and the runway warning
+  climbs tiers instead of repeating. A backlog of alarms held behind a dead
+  pipe arrives as a burst the moment the pipe returns, which is exactly when
+  their wording gets read most carefully.
+- The narrowing bit the fix on the way in: `/AGENTS\.md .*token/i` also
+  matched the REASSURING half of the new sentence ("AGENTS.md carries the
+  right token") and turned the deliberate non-alert straight back into an
+  alarm. Caught by the test that pins the classification — patterns that
+  match on prose have to be anchored to the failure, not the noun.
+
+### Known gap: a reminder whose first rung died on the wire never climbs (2026-09-01)
+
+The rent reminder above is still, hours later, the thing that did not happen —
+and the escalation ladder cannot recover it. `dueForSending`'s rung-2 clause
+requires the previous rung's outbox row to carry `sent_at IS NOT NULL AND
+hold_reason IS NULL`. Row 5873 has `hold_reason = 'expired'`, so the EXISTS
+never matches; `task_reminders#27` sits at `attempts = 1, sent_at NULL` for
+ever, reads in `list_my_reminders` as one that never fired, and the ladder's
+own retirement rule closes it two days later. The person is told nothing at
+any point.
+
+That check is right about the case it was written for — a rung the GATE held
+or dropped (quiet hours, pause, budget) must not be chased, which is the
+check-in ladder's documented bug refusing to repeat itself. What it cannot
+see is **whose fault the non-delivery was**. `expired` covers both "we could
+not reach them inside their own window" and "our pipe was broken for twelve
+hours", and only the second deserves a retry. A fix has to split those —
+plausibly on `last_error` being a delivery/transport failure rather than a
+gate decision — and rung 1 cannot simply be re-enqueued under its own key
+(`reminder:<id>` is already spent on the dead row, which is exactly the
+guard that stops a duplicate reminder, the one outcome worse than a missed
+one). Not built; recorded so the next reminder lost to an outage is
+recognised as this and not re-diagnosed from scratch.
+
+### Nothing wakes Miron any more (2026-09-01)
+
+Owner ask, plainly: "אתה יכול להפסיק לשלוח הודעות בלילה". The eval alert had
+already been deferred to morning (#82). The **credit-outage alarm** was the
+last thing that could fire at 03:00, and it held out longest because it is the
+genuine "everything is down" signal — but the money can only be added by the
+person asleep, the runway warning now says so days ahead, and it reads the
+same at 08:00.
+
+It **queues** rather than simply returning, and that difference is the whole
+design: the outage's own evidence AGES OUT (failing reminders expire after two
+hours), so a five-hour night outage would leave `min(created_at)` empty by
+morning and be reported by nobody. The queued row keeps the moment it started;
+the morning flush **re-reads reality before speaking** — present tense if it
+is still broken, `recoveredText` if it healed overnight. An alarm saying "אף
+הודעה לא נשלחת" about a working system is a false alarm, and one false alarm
+is what teaches someone to ignore the next real one. Queuing also stamps
+`credit_alert_at`, or the 30-second beat would re-queue the same outage all
+night; the pending row is cleared only on a CONFIRMED send.
+
+Both alarms now share `alertHourOpen` (08:00–22:00 in the alert phone's own
+zone, converted in Postgres). **That made the outage tests hour-dependent** —
+the "green thirteen hours a day" failure, one file lower — so the suite parks
+a user on the alert phone at midday, and the test that borrows the flag puts
+it back: a stray alert number with no user row silently re-opens the night
+window for every test after it.
 
 ### The writing sounded like a form, and half the users were addressed as "את/ה" (2026-08-31)
 
@@ -2266,6 +2650,7 @@ Node's built-in `node:sqlite` (`DatabaseSync`) for any manual DB query.
 - `openclaw cron add` (and other elevated gateway RPCs) can require a **device scope upgrade** approved via `openclaw devices` — this is a real permission gate (up to `admin` role), not a bug. Don't push through it non-interactively; it needs the account owner's explicit approval.
 - **Any outbound send via `child_process` must be a genuinely detached spawn.** `olma-mcp.js` is a fresh process per turn (verified: no `olma-mcp.js` process persists between calls) and the gateway tears it down right after the tool response returns — a plain `execFile(...)` child shares that process group and dies with it before the send completes, even though the call reports success. Always `spawn(cmd, args, {detached:true, stdio:'ignore'}).unref()`, never bare `execFile`, for anything that must survive past the current turn (confirmed root cause of a real notification never arriving, 2026-08-14).
 - **Any `openclaw agent ... --deliver` call needs BOTH `--agent <id>` AND an explicit `--session-key "agent:<id>:whatsapp:direct:<phone>"`.** Neither flag alone is enough — verified the hard way, 2026-08-14: `--agent <id>` alone leaves `--deliver` to guess a channel/target via best-effort inference, which fails outright for an established multi-session user (gateway log: `Delivering to WhatsApp requires target <E.164|...>`, no message ever sent). `--to <phone>` alone *does* deliver, but runs the turn on the DEFAULT agent (`main`), not the person's own isolated agent — the message lands outside their real, continuing WhatsApp session, so when they reply normally (routed via bindings, back to their real per-user agent) that agent has no memory of what they're replying to and improvises incorrect context. Only `--agent <id> --session-key "agent:<id>:whatsapp:direct:<phone>"` together puts the turn in the exact session their real replies continue in — confirmed end-to-end (delivered + correct session). Session-key shape matches `session.dmScope: "per-channel-peer"`; revisit if that config changes. Affects `fanout.js`, `welcome.js`, `checkin.js` — all three fixed 2026-08-14.
+- **`openclaw-gateway` is the ONLY user-level systemd unit here — everything else is plain `systemctl`.** `olma2-brokerd.service`, `olma2-dashboard.service`, and `olma-voice-bridge.service` all live in `/etc/systemd/system/` and are checked/restarted without `--user`, no `XDG_RUNTIME_DIR`/`DBUS_SESSION_BUS_ADDRESS` needed. Confirmed 2026-09-01 after `systemctl --user is-active olma2-brokerd` (and `--user list-units`, even with the bus env vars set correctly for root's real, months-old session) reported it as not found/inactive while it was genuinely healthy — `/root/.config/systemd/user/` holds only `openclaw-gateway.service`. Checking the wrong scope on any of the other three reads as a false "service is down."
 
 ## Multi-user architecture
 

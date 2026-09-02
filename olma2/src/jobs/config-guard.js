@@ -11,6 +11,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const occ = require('../intake/openclaw-config');
+const infraAgent = require('../domain/infra-agent');
 
 // The invariants, each with why it matters.
 function checkOpenclawConfig(cfg) {
@@ -26,6 +27,21 @@ function checkOpenclawConfig(cfg) {
   if (!cfg.mcp || !cfg.mcp.servers || Object.keys(cfg.mcp.servers).length === 0) {
     violations.push('mcp.servers is empty — the Olma tool server is not registered');
   }
+  // The owner of ambient work. With a multi-agent roster and no systemAgent,
+  // the gateway refuses every agent-less operation — which is the whole raw
+  // pipe: reminders, the credit-out alarm, the runway warning, the nightly
+  // eval alert. It fails per-send with a config error, so nothing crashes and
+  // the outbox's own backoff hides it; on 2026-09-01 that cost a rent
+  // reminder that expired undelivered and left the credit alarm mute for
+  // twelve hours. The 2026.8.1 upgrade introduced the requirement and filled
+  // this field in only for rosters that held a single agent.
+  const roster = occ.listAgentIds(cfg);
+  const systemAgent = ((cfg.agents || {}).defaults || {}).systemAgent || {};
+  if (roster.length > 1 && !systemAgent.agentId) {
+    violations.push('agents.defaults.systemAgent.agentId is unset — every raw `message send` refuses, so reminders and the credit alarm cannot go out (fix: scripts/set-system-agent.js --apply)');
+  } else if (systemAgent.agentId && !occ.hasAgent(cfg, systemAgent.agentId)) {
+    violations.push(`agents.defaults.systemAgent.agentId points at "${systemAgent.agentId}", which is not in the roster — ambient sends resolve to nothing`);
+  }
   return violations;
 }
 
@@ -37,14 +53,32 @@ async function checkIdentityFiles(client) {
   const violations = [];
   for (const u of rows) {
     const p = path.join(u.workspace_path, '.olma-identity');
+    let problem = null;
     try {
       const onDisk = fs.readFileSync(p, 'utf8').trim();
-      if (onDisk !== u.identity_token) {
-        violations.push(`user ${u.id} (${u.phone}): identity file does not match DB token`);
-      }
+      if (onDisk !== u.identity_token) problem = 'identity file does not match DB token';
     } catch {
-      violations.push(`user ${u.id} (${u.phone}): identity file missing/unreadable at ${p}`);
+      problem = `identity file missing/unreadable at ${p}`;
     }
+    if (!problem) continue;
+    // Since 2026-08-27 the token is rendered inline into AGENTS.md and the
+    // file is only the FALLBACK. So a stale file is two different
+    // situations wearing one sentence, and they deserve different urgency:
+    // if the doctrine carries the right token the person is working fine and
+    // only their recovery path is broken (file it, wake nobody); if it does
+    // not, every tool call they make fails and that is worth an alarm.
+    // Eight users hit the first case on 2026-09-01 — a test suite that ran on
+    // the box overwrote their files — and the alarm said "כל קריאת כלי שלהם
+    // נכשלת" about eight people whose agents were answering normally. An
+    // alert that overstates is spent the first time it is checked.
+    let doctrineOk = false;
+    try {
+      doctrineOk = fs.readFileSync(path.join(u.workspace_path, 'AGENTS.md'), 'utf8')
+        .includes(u.identity_token);
+    } catch { doctrineOk = false; }
+    violations.push(doctrineOk
+      ? `user ${u.id} (${u.phone}): ${problem} — fallback only, AGENTS.md carries the right token`
+      : `user ${u.id} (${u.phone}): ${problem}`);
   }
   return violations;
 }
@@ -270,7 +304,125 @@ async function checkStuckOutbox(client) {
     : [];
 }
 
-async function run(client, { configPath } = {}) {
+// `main` has no user, so nothing it ever says is addressed to anybody — and
+// on 2026-09-01 it said it into a real person's WhatsApp. It still held six
+// delivery-capable sessions from the v1 `--to <phone>` era, harmless for as
+// long as nothing ran main; then the gateway upgrade auto-created 36 cron
+// jobs targeting it and it began waking every half hour, emitting the literal
+// string NO_REPLY and its own auth failures to whoever was on the other end.
+//
+// The session is the half worth watching, because it bounds every future
+// thing that wakes main — including whatever the next upgrade invents. See
+// domain/infra-agent.js.
+async function checkInfraAgentSessions(client, deps) {
+  const found = await infraAgent.deliverableInfraSessions(client, deps || {});
+  // One row per (agent, channel), never per session: the count belongs in the
+  // body, not the title, or a person joining files a brand-new issue —
+  // checkStuckOutbox's lesson.
+  const byAgent = new Map();
+  for (const f of found) {
+    const k = `${f.agentId}:${f.channel}`;
+    byAgent.set(k, (byAgent.get(k) || 0) + 1);
+  }
+  return [...byAgent.keys()].map((k) => {
+    const [agentId, channel] = k.split(':');
+    return `agent ${agentId} holds ${channel} sessions that active users have talked INTO — it has no user of its own, so anything that wakes it answers a real person in a real conversation`;
+  });
+}
+
+// Most violations describe damage nobody feels today: an orphan agent, a
+// duplicated carryover, a config setting that WOULD matter if something else
+// also broke. A dashboard row is the right home for those.
+//
+// Three are different in kind — while they hold, the affected agents cannot
+// make a single successful tool call, and the person on the other end simply
+// gets nothing:
+//
+//   - an identity file or an AGENTS.md whose token is not the DB's: every
+//     tool call from that workspace fails auth;
+//   - tools.alsoAllow lacking "read": the same, for everyone at once;
+//   - mcp.servers empty: no Olma tools exist at all.
+//
+// On 2026-08-31 the guard filed five identity mismatches at 19:08:40, less
+// than a minute after they appeared. They sat unread for eighty minutes,
+// while five users' agents failed every call they made. The detection was
+// never the problem — this file has been right and unread twice now
+// (see the closeResolved note above, 2026-08-27). So this class alerts on
+// the same raw pipe as the credit alarm: no model, no agent turn, works
+// precisely when the system cannot answer for itself.
+// "fallback only" is the negative lookahead's whole job: that variant means
+// the person's agent is working and only their recovery path is stale, which
+// belongs on the dashboard, not on a phone. See checkIdentityFiles.
+const BREAKS_USERS = [
+  /identity file (does not match DB token|missing)(?!.*fallback only)/,
+  // Named exactly, not `AGENTS\.md .*token`: that pattern also matched the
+  // reassuring half of the sentence above ("AGENTS.md carries the right
+  // token") and turned a deliberate non-alert back into an alarm.
+  /AGENTS\.md has an unrendered/,
+  /AGENTS\.md carries user \d+'s identity token/,
+  /alsoAllow lacks "read"/,
+  /mcp\.servers is empty/,
+];
+
+function breaksUsers(violation) {
+  return BREAKS_USERS.some((re) => re.test(violation));
+}
+
+// One flag holds the set we have already alerted about, so a condition that
+// persists across ticks is announced ONCE and a NEW one still gets through —
+// the tiering rule the balance warning already follows. Recovery clears the
+// entry, so the same break happening again next week alerts again.
+const ALERTED_FLAG = 'config_guard_alerted';
+
+async function alertCritical(client, violations, deps) {
+  if (!deps || !deps.send) return null;
+  const flags = require('../domain/flags');
+  const critical = violations.filter(breaksUsers);
+  let known = [];
+  try { known = JSON.parse((await flags.getFlag(client, ALERTED_FLAG)) || '[]'); } catch { known = []; }
+  if (!Array.isArray(known)) known = [];
+
+  // Two halves of the stored set, and they are written under different rules.
+  // Dropping the CLEARED ones is unconditional — a condition that resolved
+  // must leave, or its recurrence next month is silently swallowed. Adding a
+  // fresh one records that somebody was TOLD, so it may only be written once
+  // the pipe confirms it: the same promise the credit alarm and the balance
+  // warning make, and the reason a failed send retries on the next tick
+  // instead of vanishing into a flag that claims it was announced.
+  const stillKnown = known.filter((v) => critical.includes(v));
+  const fresh = critical.filter((v) => !known.includes(v));
+
+  const save = async (set) => {
+    const next = set.slice(0, 50);
+    if (JSON.stringify(next) !== JSON.stringify(known)) {
+      await flags.setFlag(client, ALERTED_FLAG, JSON.stringify(next));
+    }
+  };
+
+  if (!fresh.length) {
+    await save(stillKnown);
+    return null;
+  }
+
+  const phone = (await flags.getFlag(client, 'admin_alert_phone'))
+    || require('./credit-watch').DEFAULT_ALERT_PHONE;
+  const lines = ['🔴 אולמה: משתמשים חסומים ברמת הזהות — כל קריאת כלי שלהם נכשלת.'];
+  for (const v of fresh.slice(0, 6)) lines.push(`• ${v}`);
+  if (fresh.length > 6) lines.push(`ועוד ${fresh.length - 6}.`);
+  lines.push('הפירוט בדשבורד, בקטע התקלות.');
+
+  // A pipe that throws must not take the issue rows down with it — the
+  // dashboard record is the durable half and is already written by now.
+  let sent = null;
+  let error = null;
+  try { sent = await deps.send(phone, lines.join('\n')); } catch (e) { error = e.message; }
+  const ok = Boolean(sent && sent.ok);
+  await save(ok ? stillKnown.concat(fresh) : stillKnown);
+  if (ok) return { alerted: fresh.length, phone };
+  return { alertFailed: true, ...(error ? { alertError: error } : {}) };
+}
+
+async function run(client, { configPath, ...deps } = {}) {
   let violations = [];
   try {
     const cfg = occ.loadConfig(configPath);
@@ -284,12 +436,21 @@ async function run(client, { configPath } = {}) {
   violations = violations.concat(await checkAgentsTokens(client));
   violations = violations.concat(await checkCarryovers(client));
   violations = violations.concat(await checkStuckOutbox(client));
+  violations = violations.concat(await checkInfraAgentSessions(client, deps));
   const filed = await fileViolations(client, violations);
   const closed = await closeResolved(client, violations);
-  return { violations: violations.length, newIssues: filed, closedIssues: closed };
+  // Filing first, alerting second: the dashboard row is the durable record
+  // and must exist even if the pipe is down.
+  const alert = await alertCritical(client, violations, deps);
+  return {
+    violations: violations.length, newIssues: filed, closedIssues: closed,
+    ...(alert || {}),
+  };
 }
 
 module.exports = {
   run, checkOpenclawConfig, checkModelPermissions, checkIdentityFiles, checkAgentsTokens,
-  checkCarryovers, checkOrphanAgents, checkStuckOutbox, fileViolations, closeResolved,
+  checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkInfraAgentSessions,
+  fileViolations, closeResolved,
+  alertCritical, breaksUsers, ALERTED_FLAG,
 };

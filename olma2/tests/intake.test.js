@@ -545,6 +545,31 @@ test('config guard: the three model lists must agree', () => {
   assert.deepEqual(guard.checkModelPermissions({}), []);
 });
 
+// The 2026.8.1 upgrade made a multi-agent roster refuse every agent-less
+// operation unless an ambient owner is named — which is the whole raw pipe:
+// reminders, the credit-out alarm, the runway warning, the eval alert. It
+// fails per-send with a config error, so nothing crashes and the outbox's
+// backoff hides it. On 2026-09-01 that cost a rent reminder that expired
+// undelivered and twelve hours of a mute credit alarm.
+test('config guard: a multi-agent roster with no ambient owner is a violation', () => {
+  const solo = baseConfig(); // one agent — the gateway resolves it on its own
+  assert.deepEqual(guard.checkOpenclawConfig(solo), []);
+
+  const many = baseConfig();
+  many.agents.list.push({ id: 'u-3', workspace: '/x/u-3', agentDir: '/x/u-3-agent' });
+  const v = guard.checkOpenclawConfig(many);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /systemAgent\.agentId is unset/);
+  assert.match(v[0], /set-system-agent/, 'the violation says how to fix it');
+
+  many.agents.defaults = { systemAgent: { agentId: 'main' } };
+  assert.match(guard.checkOpenclawConfig(many)[0], /not in the roster/,
+    'an owner naming an agent that does not exist resolves to nothing — worse than unset, because it looks set');
+
+  many.agents.defaults.systemAgent.agentId = 'intake';
+  assert.deepEqual(guard.checkOpenclawConfig(many), []);
+});
+
 test('auth failures land in the audit log', async () => {
   const { createBrokerServer } = require('../src/brokerd/server');
   const broker = createBrokerServer({ pool: db.pool });
@@ -603,6 +628,24 @@ test('CLI failures surface as thrown errors, never as "no new users"', async () 
     configPath,
     listSessions: async () => { throw new Error('openclaw sessions list timed out'); },
   })));
+});
+
+// 2026-09-01: the gateway's own 30-minute heartbeat polls every agent, and any
+// text an agent writes before NO_REPLY is DELIVERED — u-17 answered a poll with
+// a line about its user's brunch reminder and it landed in a different user's
+// WhatsApp. The gateway's monitor crons cannot be disabled ("system-owned
+// monitor jobs cannot be edited by cron clients"), so the reply itself is the
+// only lever there is.
+test('agent doctrine: a heartbeat poll is answered with NO_REPLY and nothing else', () => {
+  const fs = require('node:fs');
+  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
+
+  assert.match(tpl, /\[OpenClaw heartbeat poll\]/, 'the exact prompt the gateway sends');
+  assert.match(tpl, /nothing before them and\s+nothing after/);
+  // the consequence has to be stated, not just the rule: an instruction whose
+  // reason is invisible is the one a model talks itself out of
+  assert.match(tpl, /DELIVERED as a WhatsApp message/);
+  assert.match(tpl, /a DIFFERENT user's chat/, 'names the cross-user leak, not just noise');
 });
 
 test('agent doctrine: act-first outranks curiosity, and one question is a hard cap', () => {
@@ -934,4 +977,82 @@ test('checkOrphanAgents reads the entries roster too', async () => {
   const v = await guard.checkOrphanAgents(db.pool, cfg);
   assert.equal(v.length, 1);
   assert.match(v[0], /u-9999/);
+});
+
+// The guard filed five identity mismatches at 19:08:40 on 2026-08-31, under a
+// minute after they appeared, and they sat unread for eighty minutes while
+// five users' agents failed every tool call they made. Detection was never
+// the problem — so the class of violation that BREAKS users now alerts on the
+// raw pipe, once per condition.
+test('config guard alerts on identity breaks, once, and re-arms after recovery', async () => {
+  const sent = [];
+  const deps = { send: async (phone, text) => { sent.push({ phone, text }); return { ok: true }; } };
+  const broken = [
+    'user 12 (+972544686188): identity file does not match DB token',
+    'user 13 (+972542613404): identity file does not match DB token',
+  ];
+  const harmless = ['agent u-99 is in openclaw.json with no active user — orphan of a failed provisioning'];
+
+  await withTx(db.pool, (c) => guard.alertCritical(c, [...broken, ...harmless], deps));
+  assert.equal(sent.length, 1, 'one message for the whole batch, not one per user');
+  assert.match(sent[0].text, /user 12/);
+  assert.match(sent[0].text, /user 13/);
+  assert.ok(!/u-99/.test(sent[0].text), 'an orphan agent breaks nobody today — dashboard only');
+
+  // Same conditions next tick: silent. A watchdog that repeats itself every
+  // ten minutes is a watchdog people mute.
+  await withTx(db.pool, (c) => guard.alertCritical(c, [...broken, ...harmless], deps));
+  assert.equal(sent.length, 1);
+
+  // A NEW break still gets through while the old one is still open.
+  await withTx(db.pool, (c) => guard.alertCritical(c,
+    [...broken, 'user 14 (+972505404255): identity file does not match DB token'], deps));
+  assert.equal(sent.length, 2);
+  assert.match(sent[1].text, /user 14/);
+  assert.ok(!/user 12/.test(sent[1].text), 'only the newly-appeared condition');
+
+  // Everything repaired, then the SAME break returns — it must alert again,
+  // or a recurrence a month later is swallowed by a stale flag.
+  await withTx(db.pool, (c) => guard.alertCritical(c, [], deps));
+  assert.equal(sent.length, 2, 'recovery itself says nothing');
+  await withTx(db.pool, (c) => guard.alertCritical(c, broken, deps));
+  assert.equal(sent.length, 3, 'the ladder re-armed');
+});
+
+test('config guard: only violations that stop tool calls are alert-worthy', () => {
+  const alerts = [
+    'user 12 (+972544686188): identity file does not match DB token',
+    'user 12 (+972544686188): identity file missing/unreadable at /x/u-12/.olma-identity',
+    'user 12 (+972544686188): AGENTS.md has an unrendered {{IDENTITY_TOKEN}} — every tool call will fail auth',
+    'user 12 (+972544686188): AGENTS.md carries user 8\'s identity token — that agent can act as them',
+    'tools.alsoAllow lacks "read" — agents cannot read their .olma-identity, all tool auth fails',
+    'mcp.servers is empty — the Olma tool server is not registered',
+  ];
+  const quiet = [
+    // The token lives in AGENTS.md since 2026-08-27, so this person's agent is
+    // answering normally and only their recovery path is stale. Eight users
+    // were in exactly this state on 2026-09-01 and the alarm told the owner
+    // that every tool call of theirs was failing. The dashboard row stays.
+    'user 12 (+972544686188): identity file does not match DB token — fallback only, AGENTS.md carries the right token',
+    'user 12 (+972544686188): identity file missing/unreadable at /x/u-12/.olma-identity — fallback only, AGENTS.md carries the right token',
+    'agent u-99 is in openclaw.json with no active user — orphan of a failed provisioning',
+    'users 1 and 2 quote the same intake text',
+    'outbox messages stuck after 5+ delivery attempts — proactive messaging is failing',
+    'tools.fs.workspaceOnly is not true — identity tokens become readable across workspaces',
+  ];
+  for (const v of alerts) assert.equal(guard.breaksUsers(v), true, `should alert: ${v}`);
+  for (const v of quiet) assert.equal(guard.breaksUsers(v), false, `should not alert: ${v}`);
+});
+
+test('a failed alert pipe does not mark the condition as announced', async () => {
+  const deps = { send: async () => ({ ok: false, error: 'gateway down' }) };
+  const broken = ['user 16 (+972524333704): identity file does not match DB token'];
+  const out = await withTx(db.pool, (c) => guard.alertCritical(c, broken, deps));
+  assert.equal(out.alertFailed, true);
+  // Next tick, with a working pipe, it must still go out — the gateway being
+  // down is exactly when identity breaks happen.
+  const sent = [];
+  const ok = { send: async (p, t) => { sent.push(t); return { ok: true }; } };
+  await withTx(db.pool, (c) => guard.alertCritical(c, broken, ok));
+  assert.equal(sent.length, 1);
 });

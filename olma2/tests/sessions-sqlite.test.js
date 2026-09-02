@@ -20,6 +20,7 @@ const sessions = require('../src/channels/sessions');
 let HOME_DIR, PREV_HOME;
 const AGENT = 'u-sq';
 const PEER = '+972595990001';
+const ARCHIVED_PEER = '+972595990002';
 const SESSION = 'aaaaaaaa-1111-2222-3333-444444444444';
 
 function agentDir(...parts) { return path.join(HOME_DIR, 'agents', AGENT, ...parts); }
@@ -33,7 +34,10 @@ function seedDb(rows) {
       session_key TEXT NOT NULL PRIMARY KEY,
       current_session_id TEXT NOT NULL,
       entry_json TEXT NOT NULL,
-      updated_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL,
+      -- a COLUMN, not a field inside entry_json: an archived session is
+      -- otherwise indistinguishable from a live one
+      archived_at INTEGER
     );
     CREATE TABLE IF NOT EXISTS transcript_events (
       session_id TEXT NOT NULL,
@@ -44,8 +48,10 @@ function seedDb(rows) {
     );
   `);
   const node = db.prepare(
-    'INSERT OR REPLACE INTO session_nodes (session_key, current_session_id, entry_json, updated_at) VALUES (?,?,?,?)');
-  for (const n of rows.nodes || []) node.run(n.key, n.sessionId, JSON.stringify(n.entry), n.entry.updatedAt || 0);
+    'INSERT OR REPLACE INTO session_nodes (session_key, current_session_id, entry_json, updated_at, archived_at) VALUES (?,?,?,?,?)');
+  for (const n of rows.nodes || []) {
+    node.run(n.key, n.sessionId, JSON.stringify(n.entry), n.entry.updatedAt || 0, n.archivedAt || null);
+  }
   const ev = db.prepare(
     'INSERT OR REPLACE INTO transcript_events (session_id, seq, event_json, created_at) VALUES (?,?,?,?)');
   for (const e of rows.events || []) ev.run(e.sessionId, e.seq, JSON.stringify(e.event), e.at || 0);
@@ -78,6 +84,13 @@ before(() => {
       // the non-peer key shape the live index also carries; parseKey refuses
       // it, and the listing must simply skip it rather than throw
       { key: `agent:${AGENT}:main`, sessionId: 'other-session', entry: { sessionId: 'other-session', updatedAt: 1 } },
+      // archived by an operator — still listed, but carrying the fact
+      {
+        key: `agent:${AGENT}:whatsapp:direct:${ARCHIVED_PEER}`,
+        sessionId: 'archived-session',
+        entry: { sessionId: 'archived-session', updatedAt: now },
+        archivedAt: 1788253235072,
+      },
     ],
     events: [
       { sessionId: SESSION, seq: 0, event: { type: 'session', version: 3, id: SESSION } },
@@ -109,14 +122,24 @@ after(() => {
 
 test('listSessionsForAgent reads session_nodes when sessions.json is gone', () => {
   const list = sessions.listSessionsForAgent(AGENT);
-  assert.equal(list.length, 1); // the un-parseable "main" key is skipped, not fatal
-  const s = list[0];
+  assert.equal(list.length, 2); // the un-parseable "main" key is skipped, not fatal
+  const s = list.find((x) => x.peer === PEER);
   assert.equal(s.channel, 'whatsapp');
   assert.equal(s.chatType, 'direct');
   assert.equal(s.peer, PEER);
   assert.equal(s.sessionId, SESSION);
   assert.equal(s.totalTokens, 35660);
   assert.ok(s.ageMs >= 0, 'ageMs derives from lastInteractionAt');
+});
+
+// An archived session is still a row in the index, so "it is listed" was
+// never the question — whether the caller can TELL is. Without this the
+// infra-agent guard files the same violation for ever against a session an
+// operator already archived, which is how a detector becomes furniture.
+test('an archived session is listed, and says so', () => {
+  const list = sessions.listSessionsForAgent(AGENT);
+  assert.equal(list.find((x) => x.peer === PEER).archivedAt, null);
+  assert.equal(list.find((x) => x.peer === ARCHIVED_PEER).archivedAt, 1788253235072);
 });
 
 test('an agent with neither sessions.json nor a sqlite store lists as empty, not an error', () => {

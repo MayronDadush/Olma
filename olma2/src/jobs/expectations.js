@@ -21,6 +21,10 @@ const JOB_INTERVAL_SECONDS = {
   checkin_ladder: 300,
   memory_consolidation: 3600,
   fact_extraction: 600,
+  // A hangup is a rare, clear event (unlike WhatsApp's idle-gap guess), so a
+  // recap can land soon after — cheap when there is nothing new: one
+  // directory listing.
+  voice_calls: 300,
   // Daily per user, but ticked hourly for the same reason memory_consolidation
   // is: "their own small hours" only means something in each person's zone.
   planning_sweep: 3600,
