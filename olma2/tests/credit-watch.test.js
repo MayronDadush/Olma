@@ -101,22 +101,34 @@ test('a NEW outage re-arms the alarm; a failed send does not consume it', async 
     assert.equal((await watch.checkCreditAlert(c, ok)).alerted, true,
       'the failed attempt must not have consumed the one alarm this outage gets');
 
-    // the alert target is a flag the dashboard can change without a deploy
-    await flagsDomain.setFlag(c, watch.ALERT_PHONE_FLAG, '+972590000000');
-    await c.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
-    await withTx(db.pool, (cc) => enqueue(cc, {
-      userId: user.id, kind: 'checkin', idempotencyKey: 'cw:3',
-    }));
-    await c.query(
-      `UPDATE outbox SET last_error = 'credit balance is too low' WHERE idempotency_key = 'cw:3'`);
-    const rec2 = recorder();
-    await watch.checkCreditAlert(c, rec2);
-    assert.equal(rec2.sent[0].phone, '+972590000000');
-    // Put it back. The alarm now reads the hour where the ALERT PHONE lives,
-    // so a stray number with no user row silently re-opens the night window
-    // for every test after this one — the same shape as the stray
-    // quota_daily_free that made the resume-offer tests flake.
-    await flagsDomain.setFlag(c, watch.ALERT_PHONE_FLAG, '');
+    // The alert target is a flag the dashboard can change without a deploy —
+    // and that number needs a user row parked at midday for exactly the reason
+    // the default one does. A phone with no row does NOT leave the window
+    // open: alertHourOpen falls back to DEFAULT_TZ (Asia/Jerusalem), so this
+    // block queued instead of sending for every run after 21:00 UTC, and the
+    // restore below never ran — leaking the stray number into the next test,
+    // which then failed too. Green by day, red by night, twice over.
+    const alt = '+972590000000';
+    const altUser = await makeUser(db.pool, alt, { firstName: 'Op2' });
+    await setLocalHour(c, altUser.id, 12);
+    try {
+      await flagsDomain.setFlag(c, watch.ALERT_PHONE_FLAG, alt);
+      await c.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+      await withTx(db.pool, (cc) => enqueue(cc, {
+        userId: user.id, kind: 'checkin', idempotencyKey: 'cw:3',
+      }));
+      await c.query(
+        `UPDATE outbox SET last_error = 'credit balance is too low' WHERE idempotency_key = 'cw:3'`);
+      const rec2 = recorder();
+      await watch.checkCreditAlert(c, rec2);
+      assert.equal(rec2.sent[0].phone, alt);
+    } finally {
+      // Put it back, in a finally: a stray alert number outlives a failing
+      // assertion otherwise and re-points every test after this one — the same
+      // shape as the stray quota_daily_free that made the resume-offer tests
+      // flake.
+      await flagsDomain.setFlag(c, watch.ALERT_PHONE_FLAG, '');
+    }
   });
 });
 
