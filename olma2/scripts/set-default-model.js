@@ -13,13 +13,29 @@
 // calendar → list → add_task) verified against the DB, not the reply text.
 //
 // The model must be registered first (scripts/register-openrouter-models.js
-// --apply): BOTH the agents.defaults.models allowlist and the
-// models.providers.openrouter.models catalog entry, or the gateway refuses
-// the override. This script checks both rather than writing a default the
-// gateway will reject at turn time.
+// --apply): the agents.defaults.models allowlist, the
+// models.providers.openrouter.models catalog entry, AND — since gateway
+// 2026.8.1 — agents.defaults.modelPolicy.allow. All THREE, or the gateway
+// refuses the override with "not allowed for agent <id> by
+// agents.defaults.modelPolicy.allow". Registered-in-two-of-three is invisible
+// until something actually tries to use the model, which cost an entire eval
+// suite on 2026-09-02.
 //
-// agents.defaults is not a hot-reload path — restart the gateway after
-// --apply / --reset:  systemctl --user restart openclaw-gateway
+// NO RESTART NEEDED. This header used to say "agents.defaults is not a
+// hot-reload path — restart the gateway", and on 2026.8.1 that is wrong. From
+// the installed gateway's own reload plan
+// (dist/config-reload-plan-BVRn0HTz.js):
+//
+//   { prefix: "agents.defaults.model",       kind: "hot", ... }
+//   { prefix: "agents.defaults.models",      kind: "hot", ... }
+//   { prefix: "agents.defaults.modelPolicy", kind: "hot", ... }
+//   { prefix: "models",                      kind: "hot", ... }
+//
+// Confirmed live 2026-09-02: after a write, the journal prints "config hot
+// reload applied" and the very next turn accepts the new model — no restart.
+// This is not a footnote. The restart is the ONLY part of a model change that
+// touches live users, so believing it was required is what confined every
+// model experiment in this project to off-hours for months.
 'use strict';
 const occ = require('../src/intake/openclaw-config');
 
@@ -66,5 +82,5 @@ if (!APPLY && !RESET) {
 cfg.agents.defaults.model = target;
 occ.saveConfig(cfg);
 console.log('\nwritten to', occ.DEFAULT_PATH);
-console.log('agents.defaults is not a hot-reload path — restart the gateway:');
-console.log('  systemctl --user restart openclaw-gateway');
+console.log('agents.defaults.model is a HOT reload path on 2026.8.1 — no restart.');
+console.log('Verify it landed:  journalctl --user -u openclaw-gateway -n 20 | grep "hot reload"');
