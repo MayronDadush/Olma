@@ -470,6 +470,81 @@ test('config guard: catches every identity-critical regression', async () => {
   assert.equal(run2.newIssues, 0); // same violations → no duplicate issues
 });
 
+// The 2026-09-01 incident, pinned: permission to use a model lives in three
+// lists, and a model missing from any one of them is refused. These are pure
+// config checks, so they need no DB.
+test('config guard: the three model lists must agree', () => {
+  const modelConfig = () => ({
+    agents: {
+      defaults: {
+        model: { primary: 'openrouter/deepseek/deepseek-v4-flash', fallbacks: ['anthropic/claude-haiku-4-5'] },
+        models: {
+          'anthropic/claude-haiku-4-5': {},
+          'openrouter/deepseek/deepseek-v4-flash': {},
+          'openrouter/qwen/qwen3.7-flash': {},
+        },
+        modelPolicy: {
+          allow: ['anthropic/claude-haiku-4-5', 'openrouter/deepseek/deepseek-v4-flash', 'openrouter/qwen/qwen3.7-flash'],
+        },
+      },
+    },
+    models: { providers: { openrouter: { models: [
+      { id: 'deepseek/deepseek-v4-flash' }, { id: 'qwen/qwen3.7-flash' },
+    ] } } },
+  });
+
+  // A config that agrees with itself says nothing. Note anthropic/* is in the
+  // allowlist with no openrouter catalog entry and that is CORRECT — only
+  // openrouter ids need one, and flagging the rest would be pure noise.
+  assert.deepEqual(guard.checkModelPermissions(modelConfig()), []);
+
+  // The exact bug: a candidate registered through the two lists the script
+  // knew about, absent from the third the 2026.8.1 upgrade introduced.
+  const pilotRefused = modelConfig();
+  pilotRefused.agents.defaults.models['openrouter/nousresearch/hermes-4-70b'] = {};
+  pilotRefused.models.providers.openrouter.models.push({ id: 'nousresearch/hermes-4-70b' });
+  const pv = guard.checkModelPermissions(pilotRefused);
+  assert.equal(pv.length, 1);
+  assert.match(pv[0], /hermes-4-70b.*modelPolicy\.allow.*pilot on it will be refused/);
+
+  // The loud case: the LIVE default dropped from a restricting list. Worded
+  // differently on purpose — this one is every user's next message, not a
+  // pilot nobody has run yet.
+  const defaultRefused = modelConfig();
+  defaultRefused.agents.defaults.modelPolicy.allow =
+    defaultRefused.agents.defaults.modelPolicy.allow.filter((m) => !m.includes('v4-flash'));
+  const dv = guard.checkModelPermissions(defaultRefused);
+  assert.ok(dv.some((s) => /default\/fallback model .*v4-flash.*live turns fall through/.test(s)));
+  // ...and it is reported ONCE, as the default, never also as a pilot candidate.
+  assert.equal(dv.filter((s) => s.includes('v4-flash')).length, 1);
+
+  // A registered model the gateway cannot resolve.
+  const noCatalog = modelConfig();
+  noCatalog.models.providers.openrouter.models =
+    noCatalog.models.providers.openrouter.models.filter((m) => !m.id.includes('qwen'));
+  assert.ok(guard.checkModelPermissions(noCatalog)
+    .some((s) => /qwen3\.7-flash.*models\.providers\.openrouter\.models/.test(s)));
+
+  // An absent or EMPTY allow list means no restriction — the gateway's own
+  // error says "remove/empty the list to allow any model". Neither may be read
+  // as "everything is unpermitted", which would file a violation per model.
+  const noPolicy = modelConfig();
+  delete noPolicy.agents.defaults.modelPolicy;
+  assert.deepEqual(guard.checkModelPermissions(noPolicy), []);
+  const emptyPolicy = modelConfig();
+  emptyPolicy.agents.defaults.modelPolicy.allow = [];
+  assert.deepEqual(guard.checkModelPermissions(emptyPolicy), []);
+
+  // A bare-string default (the older shape) is still read.
+  const stringDefault = modelConfig();
+  stringDefault.agents.defaults.model = 'openrouter/deepseek/deepseek-v4-flash';
+  assert.deepEqual(guard.checkModelPermissions(stringDefault), []);
+
+  // And a config with no model section at all is not a violation — the guard
+  // must stay silent on a shape it has nothing to say about.
+  assert.deepEqual(guard.checkModelPermissions({}), []);
+});
+
 test('auth failures land in the audit log', async () => {
   const { createBrokerServer } = require('../src/brokerd/server');
   const broker = createBrokerServer({ pool: db.pool });

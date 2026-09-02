@@ -249,3 +249,66 @@ Secondary findings, both real:
 restart. It does not (see above), so the deferral was unnecessary; and the
 `stop-service` defect this pilot was chasing was closed structurally instead,
 which is what run #10 concluded it would take.
+
+---
+
+## 2026-09-01 — NousResearch Hermes: refused before a run, and the check that should have come first
+
+**No pilot happened, and none can.** All four Hermes models on OpenRouter —
+`hermes-4-70b`, `hermes-4-405b`, `hermes-3-llama-3.1-70b`, `hermes-3-llama-3.1-405b`
+— report `tools: false` and `tool_choice: false` in their own
+`/api/v1/models` `supported_parameters`. The capability is absent, not weak.
+The gateway refuses the override before a turn starts:
+
+> No callable tools remain after resolving explicit tool allowlist
+> (tools.allow: *, read, write, edit); **the selected model does not support
+> tools.**
+
+An Olma turn is mostly tool selection across ~59 MCP tools, so this is
+disqualifying at any price. Prices, recorded only so the question is not
+re-opened hoping the answer moved: 70b $0.13/$0.40 per Mtok, 4-405b
+$1.00/$3.00, 3-405b $1.00/$1.00 — against the incumbent v4-flash's
+$0.089/$0.177. None of them undercuts what we already run even setting tools
+aside. hermes-3 is both older *and* dearer than hermes-4-70b.
+
+**The cheap check that was skipped, and is now the first step for every
+future candidate:** read `supported_parameters` off `/api/v1/models` and
+confirm it contains `tools` BEFORE registering anything. One curl, no key
+needed. Here it would have replaced a registration, two config writes and two
+failed probes. `register-openrouter-models.js` carries the rule in a comment
+at the `MODELS` array.
+
+### The registration script was writing two of three gates
+
+Found by the probe the script's own footer recommends — which is the entire
+reason that footer exists, and the second time it has earned its keep.
+
+The 2026.8.1 gateway upgrade introduced **`agents.defaults.modelPolicy.allow`**
+and seeded it from the then-current allowlist. The script writes
+`agents.defaults.models` and `models.providers.openrouter.models[]`; a model
+absent from this third key is refused at override time:
+
+> Model override "..." is not allowed for agent "u-15" by
+> `agents.defaults.modelPolicy.allow`.
+
+This is the `agents.list` → `agents.entries` incident repeating exactly: the
+vendor's migration moved the goalposts while OUR writer kept the old schema
+in its head, and the failure is silent until something tries to use the
+result. The script now extends `modelPolicy.allow` too.
+
+**It deliberately does NOT create the key when absent.** The gateway's own
+error text says "remove/empty the list to allow any model" — so an absent or
+empty allow list means *no restriction*, and manufacturing one would silently
+narrow a permissive gateway down to exactly our six ids. Only a list that
+already exists and already restricts gets extended.
+
+Live config was restored from `openclaw.json.pre-hermes-20260901`; zero
+Hermes references remain, the default model is untouched, both services are
+`active` and the dashboard `/health` returns 200.
+
+### Unrelated but worth not confusing
+
+The name arrived via `github.com/NousResearch/hermes-agent`, which is **not** a
+model — it is a full agent framework competing with OpenClaw, evaluated
+separately the same day and rejected (no filesystem isolation between
+profiles, which is what Olma's `.olma-identity` auth depends on).

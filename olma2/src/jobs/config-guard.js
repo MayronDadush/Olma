@@ -184,6 +184,79 @@ async function checkOrphanAgents(client, cfg) {
     `agent ${id} is in openclaw.json with no active user — orphan of a failed provisioning; its workspace may hold another person's text`);
 }
 
+// Permission to use a model is spread across THREE independent lists, and a
+// model missing from any one of them is refused — so they only work when they
+// agree. Found 2026-09-01, the expensive way: a pilot registered two models
+// through the two lists the code knew about and the override was still refused,
+// because gateway 2026.8.1 had introduced a third, `agents.defaults.modelPolicy
+// .allow`, and seeded it from the then-current allowlist. Nothing was broken
+// and nothing said so; the config simply disagreed with itself.
+//
+//   agents.defaults.models              — the allowlist (what we intend to permit)
+//   models.providers.openrouter.models  — the catalog (what the gateway can resolve)
+//   agents.defaults.modelPolicy.allow   — a second permit list, 2026.8.1+
+//
+// This is the `agents.list` → `agents.entries` shape a third time: the vendor's
+// own migration moves a key, our writer keeps the old schema in its head, and
+// the failure is silent until something tries to use the result. The general
+// version — diffing every key in openclaw.json against what we expect — was
+// deliberately NOT built. It cannot tell a key that matters from the dozens
+// that do not, and a guard that files an issue per harmless vendor addition is
+// the 13-dead-rows failure documented above, manufactured on purpose.
+//
+// Severity is split because the consequences are not comparable: a DEFAULT
+// model missing from a restricting list means every live turn fails, while a
+// registered-but-unpermitted candidate only means the next pilot is refused.
+function modelIdsOf(defaultModel) {
+  if (typeof defaultModel === 'string') return [defaultModel];
+  if (defaultModel && typeof defaultModel === 'object') {
+    const fb = Array.isArray(defaultModel.fallbacks) ? defaultModel.fallbacks : [];
+    return [defaultModel.primary, ...fb].filter((m) => typeof m === 'string' && m);
+  }
+  return [];
+}
+
+function checkModelPermissions(cfg) {
+  const defaults = (cfg.agents && cfg.agents.defaults) || {};
+  const allowlist = Object.keys(defaults.models || {});
+  const policy = defaults.modelPolicy;
+  // An absent or EMPTY allow list means "no restriction" — the gateway's own
+  // error text says so ("remove/empty the list to allow any model"). Only a
+  // list that actually restricts can be disagreed with.
+  const policyAllow = policy && Array.isArray(policy.allow) && policy.allow.length
+    ? new Set(policy.allow) : null;
+  const catalog = new Set(
+    (((cfg.models || {}).providers || {}).openrouter || {}).models
+      ?.map((m) => m && m.id).filter(Boolean) || []);
+  const inCatalog = (id) => !id.startsWith('openrouter/') || catalog.has(id.replace(/^openrouter\//, ''));
+
+  const violations = [];
+
+  // The live path first. A default or fallback the gateway will refuse is not a
+  // latent problem — it is every user's next message failing, or silently
+  // burning a fallback nobody chose.
+  for (const id of modelIdsOf(defaults.model)) {
+    if (policyAllow && !policyAllow.has(id)) {
+      violations.push(`default/fallback model ${id} is missing from agents.defaults.modelPolicy.allow — the gateway will refuse it and live turns fall through to the next fallback`);
+    }
+    if (!inCatalog(id)) {
+      violations.push(`default/fallback model ${id} has no entry in models.providers.openrouter.models — the gateway cannot resolve it`);
+    }
+  }
+
+  // Then the pilot path: registered candidates that cannot actually be selected.
+  for (const id of allowlist) {
+    if (modelIdsOf(defaults.model).includes(id)) continue; // already reported above, with the louder wording
+    if (policyAllow && !policyAllow.has(id)) {
+      violations.push(`model ${id} is in the allowlist but not in agents.defaults.modelPolicy.allow — a --model pilot on it will be refused`);
+    }
+    if (!inCatalog(id)) {
+      violations.push(`model ${id} is in the allowlist but not in models.providers.openrouter.models — a --model pilot on it will be refused`);
+    }
+  }
+  return violations;
+}
+
 // The count deliberately does NOT go in the title. fileViolations dedupes on
 // the title, so a count that moves files a brand-new issue every time it
 // changes: nine near-identical "N outbox message(s) stuck" rows piled up over
@@ -202,6 +275,7 @@ async function run(client, { configPath } = {}) {
   try {
     const cfg = occ.loadConfig(configPath);
     violations = violations.concat(checkOpenclawConfig(cfg));
+    violations = violations.concat(checkModelPermissions(cfg));
     violations = violations.concat(await checkOrphanAgents(client, cfg));
   } catch (e) {
     violations.push('openclaw.json unreadable: ' + e.message);
@@ -216,6 +290,6 @@ async function run(client, { configPath } = {}) {
 }
 
 module.exports = {
-  run, checkOpenclawConfig, checkIdentityFiles, checkAgentsTokens,
+  run, checkOpenclawConfig, checkModelPermissions, checkIdentityFiles, checkAgentsTokens,
   checkCarryovers, checkOrphanAgents, checkStuckOutbox, fileViolations, closeResolved,
 };
