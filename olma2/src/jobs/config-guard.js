@@ -124,6 +124,50 @@ async function checkAgentsTokens(client) {
 // wrong person. Prevention lives in jobs/intake.readIntakeFirstMessage; this
 // is the detector, because a leak that only a person can spot is a leak that
 // runs for a week.
+// The seal that became the poison (2026-08-31 → 2026-09-02).
+//
+// Provisioning used to write `openclaw-workspace-state.json` into every new
+// workspace to tell the gateway "setup is already done" — that is what kept
+// OpenClaw's stock onboarding kit from hijacking a person's first
+// conversation. Gateway 2026.8.1 moved that state into its own sqlite and
+// reads the file as UNMIGRATED legacy state: assertNoUnmigratedWorkspaceState
+// throws on its mere existence, without reading it, before the turn runs.
+// Fail-closed, by design, and correct — but it turned our seal into a fatal
+// marker in every workspace that had one.
+//
+// It cost 126 real inbound WhatsApp messages over 48 hours (98 to u-8, 28 to
+// u-14, plus intake, so no stranger could be registered either) and NOTHING
+// said so: /health was green, no heartbeat errored, the audit log had no row
+// because turn_start never ran — the absence of the evidence WAS the symptom.
+// It was found by reading the gateway journal by hand.
+//
+// The write is gone (intake/provision.js), so this is the backstop for a file
+// arriving some other way: a doctor run interrupted, a restored backup, a
+// future gateway writing one again.
+const LEGACY_WORKSPACE_STATE = 'openclaw-workspace-state.json';
+
+async function checkLegacyWorkspaceState(client, deps = {}) {
+  const base = deps.openclawHome || process.env.OLMA_OPENCLAW_HOME || '/root/.openclaw';
+  const { rows } = await client.query(
+    `SELECT id, workspace_path FROM users
+     WHERE status = 'active' AND workspace_path IS NOT NULL`
+  );
+  const violations = [];
+  for (const u of rows) {
+    if (fs.existsSync(path.join(u.workspace_path, LEGACY_WORKSPACE_STATE))) {
+      violations.push(
+        `user ${u.id}'s workspace holds ${LEGACY_WORKSPACE_STATE} — the gateway refuses every turn for that agent until it is moved aside`);
+    }
+  }
+  // The greeter has no user row, and it is the one workspace whose failure is
+  // invisible from the user table: strangers simply stop becoming users.
+  if (fs.existsSync(path.join(base, 'workspaces', 'intake', LEGACY_WORKSPACE_STATE))) {
+    violations.push(
+      `the intake workspace holds ${LEGACY_WORKSPACE_STATE} — the greeter refuses every turn, so nobody new can register`);
+  }
+  return violations;
+}
+
 const CARRYOVER_HEADING = '## מה שכבר שיתפו';
 const QUOTED_RE = /<<<([\s\S]*?)>>>/;
 const norm = (s) => String(s).replace(/\s+/g, ' ').trim();
@@ -329,6 +373,9 @@ const BREAKS_USERS = [
   /AGENTS\.md carries user \d+'s identity token/,
   /alsoAllow lacks "read"/,
   /mcp\.servers is empty/,
+  // Same class, arrived 2026-09-02: the agent does not fail a tool call, it
+  // never starts a turn at all. Silent for 48 hours the first time.
+  /holds openclaw-workspace-state\.json/,
 ];
 
 function breaksUsers(violation) {
@@ -400,6 +447,7 @@ async function run(client, { configPath, ...deps } = {}) {
   }
   violations = violations.concat(await checkIdentityFiles(client));
   violations = violations.concat(await checkAgentsTokens(client));
+  violations = violations.concat(await checkLegacyWorkspaceState(client, deps));
   violations = violations.concat(await checkCarryovers(client));
   violations = violations.concat(await checkStuckOutbox(client));
   violations = violations.concat(await checkInfraAgentSessions(client, deps));
@@ -417,6 +465,7 @@ async function run(client, { configPath, ...deps } = {}) {
 module.exports = {
   run, checkOpenclawConfig, checkIdentityFiles, checkAgentsTokens,
   checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkInfraAgentSessions,
+  checkLegacyWorkspaceState, LEGACY_WORKSPACE_STATE,
   fileViolations, closeResolved,
   alertCritical, breaksUsers, ALERTED_FLAG,
 };

@@ -52,8 +52,14 @@ test('provisionUser: workspace sealed, token file 0600, config updated, idempote
   const idFile = path.join(workspace, '.olma-identity');
   assert.equal(fs.readFileSync(idFile, 'utf8').trim(), user.identity_token);
   assert.equal((fs.statSync(idFile).mode & 0o777), 0o600);
-  const state = JSON.parse(fs.readFileSync(path.join(workspace, 'openclaw-workspace-state.json'), 'utf8'));
-  assert.ok(state.setupCompletedAt, 'stock onboarding pre-neutralised');
+  // This used to assert the opposite — that openclaw-workspace-state.json was
+  // written. Gateway 2026.8.1 reads that file as unmigrated legacy state and
+  // refuses every turn for the agent while it exists, so provisioning writing
+  // one is provisioning a dead agent. 126 real inbound messages were lost to
+  // it. The stock kit is neutralised by the real AGENTS.md/USER.md and by the
+  // stock files being deleted, neither of which needs the gateway's help.
+  assert.equal(fs.existsSync(path.join(workspace, 'openclaw-workspace-state.json')), false,
+    'the legacy seal is fatal on 2026.8.1 — it must never be written again');
   const agentsMd = fs.readFileSync(path.join(workspace, 'AGENTS.md'), 'utf8');
   assert.match(agentsMd, /turn_start/);
   // The token is rendered into the doctrine itself — no placeholder survives,
@@ -878,6 +884,41 @@ test('two people who each said hello are not a leak — the greeter session sett
   // A reader that throws must not take the sweep down with it.
   const threw = await guard.checkCarryovers(fake, { readPeerText: () => { throw new Error('sqlite gone'); } });
   assert.equal(threw.length, 1);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The backstop for the outage above: if that file ever appears in a workspace
+// again — a doctor run interrupted, a restored backup, a future gateway
+// writing one — it is not a dashboard row. While it exists the agent never
+// opens a turn at all, which is why it joins the class that alerts.
+test('config guard: a legacy workspace-state file is a BREAKS_USERS violation', async () => {
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-legacy-'));
+  const mk = (name, withState) => {
+    const w = path.join(dir, 'workspaces', name);
+    fs.mkdirSync(w, { recursive: true });
+    if (withState) fs.writeFileSync(path.join(w, 'openclaw-workspace-state.json'), '{"version":1}');
+    return w;
+  };
+  const rows = [
+    { id: 7, workspace_path: mk('u-7', true) },
+    { id: 9, workspace_path: mk('u-9', false) },
+  ];
+  const fake = { query: async () => ({ rows }) };
+
+  const v = await guard.checkLegacyWorkspaceState(fake, { openclawHome: dir });
+  assert.equal(v.length, 1);
+  assert.match(v[0], /user 7's workspace holds openclaw-workspace-state\.json/);
+  assert.equal(guard.breaksUsers(v[0]), true, 'the person gets nothing at all — this one alerts');
+
+  // The greeter has no user row, so nothing in the users table can speak for
+  // it; a broken intake is strangers silently never becoming users.
+  mk('intake', true);
+  const withIntake = await guard.checkLegacyWorkspaceState(fake, { openclawHome: dir });
+  assert.equal(withIntake.length, 2);
+  assert.match(withIntake[1], /intake workspace holds/);
+  assert.equal(guard.breaksUsers(withIntake[1]), true);
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
