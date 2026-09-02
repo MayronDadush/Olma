@@ -836,6 +836,52 @@ test('config guard notices two cards quoting the same intake text', async () => 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// Live 2026-09-02: it fired on users 10 and 13, and the shared text was "היי".
+// Both had typed it themselves. A leak detector that cannot tell a stranger's
+// message from hello files its issues onto the same dashboard as the rows that
+// matter — and this one sat there while a real 48-hour outage was visible two
+// rows below it. Read against what each person actually sent, and the pair
+// resolves itself; the live pair is the fixture.
+test('two people who each said hello are not a leak — the greeter session settles it', async () => {
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-carry2-'));
+  const mk = (name, carryover) => {
+    const w = path.join(dir, name);
+    fs.mkdirSync(w, { recursive: true });
+    fs.writeFileSync(path.join(w, 'USER.md'),
+      `# User\n\nFirst name: X\n\n## מה שכבר שיתפו לפני\n<<<${carryover}>>>\n`);
+    return w;
+  };
+  const rows = [
+    { id: 10, phone: '+10', workspace_path: mk('u-10', 'הי') },
+    { id: 13, phone: '+13', workspace_path: mk('u-13', 'הי') },
+  ];
+  const fake = { query: async () => ({ rows }) };
+
+  // Containment, not equality: the card was written at provisioning and the
+  // greeter session has grown since — here from "הי" to "היי מה נשמע".
+  const said = { '+10': 'היי מה נשמע', '+13': 'הי, אפשר לשמוע עוד?' };
+  assert.deepEqual(await guard.checkCarryovers(fake, { readPeerText: (p) => said[p] }), []);
+
+  // The leak this exists for still lands, and now says WHICH card is wrong.
+  const leak = { '+10': 'היי מה נשמע', '+13': 'משהו אחר לגמרי' };
+  const v = await guard.checkCarryovers(fake, { readPeerText: (p) => leak[p] });
+  assert.equal(v.length, 1);
+  assert.match(v[0], /user 13's card quotes an intake message they never sent/);
+  assert.match(v[0], /user 10's card/);
+
+  // A session nobody can read any more is not innocence — the pair is reported.
+  const gone = await guard.checkCarryovers(fake, { readPeerText: () => null });
+  assert.equal(gone.length, 1);
+  assert.match(gone[0], /users 10 and 13 carry the SAME/);
+
+  // A reader that throws must not take the sweep down with it.
+  const threw = await guard.checkCarryovers(fake, { readPeerText: () => { throw new Error('sqlite gone'); } });
+  assert.equal(threw.length, 1);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // OpenClaw 2026.8.x replaced the agents.list array with a keyed
 // agents.entries object — and a config carrying BOTH has its list silently
 // DELETED by the gateway's own migration, so writing the old shape onto an
