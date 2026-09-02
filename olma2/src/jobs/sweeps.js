@@ -92,6 +92,10 @@ async function sweepDigests(client, now = new Date()) {
      WHERE status = 'active' AND onboarded_at IS NOT NULL AND digest_times IS NOT NULL
        AND paused_at IS NULL AND NOT is_eval`
   );
+  // Read once for the whole sweep, not per user: it is one operator setting,
+  // and a flag that changed mid-loop would give two users different mornings
+  // for no reason anyone could later explain.
+  const cardMinItems = Number(await flags.getFlag(client, 'digest_card_min_items'));
   const out = [];
   for (const u of rows) {
     const localMin = minutesInTz(u.timezone, now);
@@ -109,7 +113,7 @@ async function sweepDigests(client, now = new Date()) {
     // messages were stamped delivered and rode along with nothing.
     const res = await enqueue(client, {
       userId: u.id, kind: 'digest',
-      payload: { scope: u.digest_scope || 'summary', folded: [] },
+      payload: { scope: u.digest_scope || 'summary', cardMinItems, folded: [] },
       idempotencyKey: `digest:${u.id}:${day}:${slot}`,
     });
     if (!res.data.enqueued) continue;
