@@ -12,6 +12,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const occ = require('../intake/openclaw-config');
 const infraAgent = require('../domain/infra-agent');
+const sessions = require('../channels/sessions');
+const { INTAKE_AGENT_ID } = require('./intake');
 
 // The invariants, each with why it matters.
 function checkOpenclawConfig(cfg) {
@@ -123,27 +125,65 @@ async function checkAgentsTokens(client) {
 // is the detector, because a leak that only a person can spot is a leak that
 // runs for a week.
 const CARRYOVER_HEADING = '## מה שכבר שיתפו';
+const QUOTED_RE = /<<<([\s\S]*?)>>>/;
+const norm = (s) => String(s).replace(/\s+/g, ' ').trim();
 
-async function checkCarryovers(client) {
+// Two cards holding identical text is SUSPICION, not proof, and on 2026-09-02
+// this fired on a pair who had each independently typed "היי" to the greeter.
+// A detector that files a leak against two people saying hello is the
+// detection-layer-nobody-trusts failure — and it files it onto the same
+// dashboard as the rows that do matter.
+//
+// The question that settles it is what the person actually sent: does THEIR
+// OWN intake session contain the words their card is quoting? Containment
+// rather than equality, because the greeter's session keeps growing after
+// provisioning — the card holds a prefix of what is there now, never the whole
+// of it. It also names which of the two cards is wrong, instead of reporting a
+// pair and leaving an operator to work out which half to act on.
+//
+// null (no session left to read) is not innocence: an unverifiable pair falls
+// back to reporting the collision, exactly as before.
+function quotesOwnWords(read, phone, quoted, cache) {
+  if (!cache.has(phone)) {
+    let own = null;
+    try { own = read(phone); } catch { own = null; }
+    cache.set(phone, own ? norm(own) : null);
+  }
+  const own = cache.get(phone);
+  return own === null ? null : own.includes(quoted);
+}
+
+async function checkCarryovers(client, deps = {}) {
+  const read = deps.readPeerText || ((phone) => sessions.readPeerUserText(INTAKE_AGENT_ID, phone));
   const { rows } = await client.query(
     `SELECT id, phone, workspace_path FROM users
      WHERE status = 'active' AND workspace_path IS NOT NULL`
   );
-  const seen = new Map(); // carryover text → first user id that quoted it
+  const seen = new Map(); // carryover text → the first user who quoted it
+  const cache = new Map(); // phone → their own intake text, read at most once
   const violations = [];
   for (const u of rows) {
     let card;
     try { card = fs.readFileSync(path.join(u.workspace_path, 'USER.md'), 'utf8'); } catch { continue; }
     const at = card.indexOf(CARRYOVER_HEADING);
     if (at < 0) continue;
-    const body = card.slice(at).replace(/\s+/g, ' ').trim();
+    const section = card.slice(at);
+    const body = norm(section);
     const prior = seen.get(body);
-    if (prior !== undefined) {
-      violations.push(
-        `users ${prior} and ${u.id} carry the SAME intake carryover text — one card is quoting another person's message`);
-    } else {
-      seen.set(body, u.id);
-    }
+    if (prior === undefined) { seen.set(body, u); continue; }
+
+    // Legacy cards carry no <<< >>> fence; with nothing quotable to look up,
+    // the old collision rule is all there is.
+    const m = section.match(QUOTED_RE);
+    const quoted = m ? norm(m[1]) : null;
+    const mine = quoted ? quotesOwnWords(read, u.phone, quoted, cache) : null;
+    const theirs = quoted ? quotesOwnWords(read, prior.phone, quoted, cache) : null;
+    if (mine === true && theirs === true) continue; // both of them really said it
+
+    const suspect = mine === false ? u : (theirs === false ? prior : null);
+    violations.push(suspect
+      ? `user ${suspect.id}'s card quotes an intake message they never sent — the same text is on user ${(suspect === u ? prior : u).id}'s card`
+      : `users ${prior.id} and ${u.id} carry the SAME intake carryover text — one card is quoting another person's message`);
   }
   return violations;
 }
