@@ -152,7 +152,18 @@ async function completeOpenRouter({ system, user, model, maxTokens, timeoutMs, a
       usage: {
         input: Number(u.prompt_tokens) || 0,
         output: Number(u.completion_tokens) || 0,
-        cacheRead: 0, cacheWrite: 0,
+        // Both are published per call and both were being discarded, so a
+        // warm call was billed here as if every token were a fresh read.
+        cacheRead: Number(u.prompt_tokens_details && u.prompt_tokens_details.cached_tokens) || 0,
+        cacheWrite: Number(u.prompt_tokens_details && u.prompt_tokens_details.cache_write_tokens) || 0,
+        // The authoritative figure: OpenRouter returns what it actually
+        // charged, in USD, on every completion — the same field media
+        // generation has recorded as-is since 2026-08-28. Everything our own
+        // rate table can get wrong (a model missing from it, a cache rate
+        // that moved, a new pricing tier) is simply not a question when the
+        // provider states the number. Probed live 2026-09-03:
+        // usage.cost = 0.00000686 on a 29-token call.
+        costUsd: Number.isFinite(Number(u.cost)) ? Number(u.cost) : null,
       },
     };
   } catch (e) {
@@ -185,7 +196,18 @@ async function backgroundModel(client) {
 // so every caller records its own usage here, into the same ledger, priced by
 // the same table. The reconciliation line then keeps both honest.
 async function recordUsage(client, userId, model, usage) {
-  const priced = pricing.priceUsage(usage, model, null);
+  // The provider's own figure wins whenever it gave one. Our table is a
+  // reconstruction and it can be wrong in both directions at once: a model
+  // missing from RATES used to fall to `priceUsage(..., null)`, i.e. a blended
+  // rate of ZERO, so the evals judge (moonshotai/kimi-k2.6) recorded $0.00
+  // against 196k real output tokens — about $0.83 of genuinely spent money
+  // that no page could show. The same gap on the transcript path, where a real
+  // blended rate IS passed, overstated four pilot models by 16x to 54x.
+  // A stated price cannot do either.
+  const stated = Number(usage.costUsd);
+  const priced = Number.isFinite(stated) && stated >= 0
+    ? { cost: stated, estimated: false, model: model || '' }
+    : pricing.priceUsage(usage, model, null);
   const total = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
   await client.query(
     `INSERT INTO usage_ledger
@@ -201,7 +223,7 @@ async function recordUsage(client, userId, model, usage) {
        cost_usd = usage_ledger.cost_usd + $8,
        estimated = usage_ledger.estimated OR $9`,
     [userId, priced.model, usage.input, usage.output, usage.cacheRead,
-      usage.cacheWrite, total, priced.cost.toFixed(4), priced.estimated]
+      usage.cacheWrite, total, priced.cost.toFixed(8), priced.estimated]
   );
 }
 

@@ -200,3 +200,62 @@ test('openrouter cache reads are priced at the published cache rate, not as fres
     assert.ok(r.cacheRead < r.input, `${id}: cacheRead (${r.cacheRead}) must be cheaper than input (${r.input})`);
   }
 });
+
+// Every model that has actually billed us must be IN the table, because being
+// absent from it is not a rounding error — it hands pricing to whatever
+// blended rate the caller happened to pass, and the two callers pass opposite
+// things. recordUsage passes null (→ $0.00, the evals judge's 196k output
+// tokens recorded as free) while the transcript sweep passes a real rate
+// applied equally to cache reads that cost ~5x less (→ four pilot models
+// overstated 16x to 54x). Same gap, opposite directions, both invisible.
+test('every model that has actually run is priced from the table, not guessed', () => {
+  const { RATES, rateFor } = require('../src/domain/model-pricing');
+  // The judge, plus every candidate docs/model-experiments.md has piloted.
+  const RUN = [
+    'moonshotai/kimi-k2.6', 'openai/gpt-5.6-luna', 'openai/gpt-5.4-nano',
+    'openai/gpt-5.4-mini', 'openai/gpt-oss-120b', 'qwen/qwen3.7-flash',
+    'google/gemini-3.8-flash',
+  ];
+  for (const id of RUN) {
+    assert.ok(rateFor(id), `${id} has billed real money and must have a published rate`);
+  }
+  // Sanity on every entry: output is never cheaper than input, and a cache
+  // read is never dearer than a fresh one. A typo that inverts either would
+  // otherwise sit in the table silently mispricing a whole model.
+  for (const [id, r] of Object.entries(RATES)) {
+    assert.ok(r.output >= r.input, `${id}: output (${r.output}) cheaper than input (${r.input})?`);
+    assert.ok(r.cacheRead <= r.input, `${id}: cacheRead (${r.cacheRead}) dearer than input (${r.input})?`);
+  }
+});
+
+// A price the provider STATES cannot be got wrong, so it outranks anything we
+// reconstruct. OpenRouter returns usage.cost on every completion — probed live
+// 2026-09-03 at $0.00000686 for a 29-token call — and it was being discarded.
+test('a stated provider cost outranks the rate table, and is not rounded away', () => {
+  const pricing = require('../src/domain/model-pricing');
+  // What recordUsage now does, in the two orders it can happen.
+  const decide = (usage, model) => {
+    const stated = Number(usage.costUsd);
+    return Number.isFinite(stated) && stated >= 0
+      ? { cost: stated, estimated: false }
+      : pricing.priceUsage(usage, model, null);
+  };
+  const tokens = { input: 1000, output: 1000, cacheRead: 0, cacheWrite: 0 };
+
+  // Stated wins even for a model the table knows — the provider is the truth.
+  const stated = decide({ ...tokens, costUsd: 0.0042 }, 'deepseek/deepseek-v4-flash');
+  assert.equal(stated.cost, 0.0042);
+  assert.equal(stated.estimated, false, 'a stated price is not an estimate');
+
+  // And especially for one it does not: this is the kimi case, which used to
+  // come back as exactly zero.
+  const unknown = decide({ ...tokens, costUsd: 0.83 }, 'some/model-nobody-added');
+  assert.equal(unknown.cost, 0.83);
+  assert.equal(pricing.priceUsage(tokens, 'some/model-nobody-added', null).cost, 0,
+    'without a stated cost that is still $0 — which is exactly why it must be used');
+
+  // The ledger column is numeric(14,8) as of migration 027; the value written
+  // must survive that scale. At the old (10,4) a real call rounded to nothing.
+  assert.equal(Number((0.00000686).toFixed(8)), 0.00000686, 'a real call price survives');
+  assert.equal(Number((0.00000686).toFixed(4)), 0, 'and would have been erased at the old scale');
+});

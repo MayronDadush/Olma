@@ -55,6 +55,91 @@ describes **v1**, which is retired-in-place: its code still sits in
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
 
+### The ledger overstated OpenRouter by 65%, in both directions at once (fixed 2026-09-03)
+
+Building the owner's requested money-by-feature table surfaced that the
+numbers behind it were partly invented: **$16.03 in `usage_ledger` against
+$9.73 OpenRouter's own dashboard.** Three independent faults, each invisible
+alone:
+
+- **A model missing from `model-pricing.js`'s `RATES` was priced by whatever
+  the caller happened to pass as a blended fallback rate — and the two
+  callers pass opposite things.** The transcript sweep passes a real rate, so
+  four pilot models were overstated 16x–54x (`gpt-5.6-luna` $2.538 ledger vs
+  $0.157 real; `gpt-5.4-nano` $1.285 vs $0.035; `gpt-oss-120b` $1.097 vs
+  $0.028; `qwen3.7-flash` $0.998 vs $0.019). `adapters/llm.js`'s `recordUsage`
+  passes `null`, so the evals judge (`kimi-k2.6`) recorded **$0.000 against
+  196k real output tokens** — ~$0.83 of real spend no page could show. A
+  pilot arguing against a model on a number 16x too high is the opposite of
+  what `docs/model-experiments.md` exists to do.
+- **OpenRouter states the price it charged on every completion
+  (`usage.cost`, authoritative USD — the same field media generation has
+  recorded as-is since 2026-08-28) and it was thrown away.** It now wins
+  whenever the provider gives one; the rate table is the fallback only.
+  `0` is a real price and stays distinguishable from "not reported" — a
+  truthiness check would have thrown one away with the other. Also
+  discarded: `prompt_tokens_details.cached_tokens` / `cache_write_tokens` —
+  so a warm prompt was billed as if every token were a fresh read, which
+  matters more here than anywhere else: 53.2M of 54.5M input tokens are
+  cache reads (97.6%).
+- **`cost_usd numeric(10,4)` rounded every write to a hundredth of a cent,**
+  and `recordUsage` does one `INSERT ... ON CONFLICT` per CALL — so anything
+  under $0.00005 was added as exactly zero, forever, no matter how many.
+  Live probe: a real `deepseek-v4-flash` completion costs $0.00000686, three
+  orders of magnitude below what the column could store. Migration 027
+  widens it to `numeric(14,8)` on all four ledgers (`usage_ledger`,
+  `usage_system_ledger`, `media_usage_ledger`, `media_jobs`) — additive and
+  backward-compatible, since `--restart` rolls back CODE only.
+
+Rows already written stay as written — the ledger is append-only, same rule
+as everywhere else in this file. The cost page's reconciliation line is what
+makes the remaining gap visible instead of hidden.
+
+### The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)
+
+The dedup fix below (`ORDER BY id`) stopped the flip-flop, but the single
+surviving row it settled on — users 10 and 13 both holding "היי" — turned
+out to be innocent: both really did say that. Auditing by hand inverted the
+diagnosis: **two real leaks existed and neither could ever have produced a
+duplicate-pair row**, because a leak *overwrites* — a stranger's words land
+on exactly one card, so a detector built to find two cards agreeing has
+nothing to match against. u-11 was carrying u-8's words; u-17 (Sarah) was
+carrying u-14 (חיים)'s.
+
+`config-guard.js`'s `checkCarryoverCollisions` now checks each card against
+its OWN owner's real intake session FIRST (`quotesOwnWords`), independent of
+whether any other card matches it — a leak with no twin is still a leak.
+Only when a card passes that check does it get compared against others for
+the (much rarer) copy-paste-collision case, and a `reported` Set stops the
+same user id from being named twice across both passes. New
+`domain/carryover-repair.js` (`repairCarryovers`, `stripCarryover`,
+`classify`) removes — never rewrites — a carryover section whose text isn't
+the owner's; `classify` uses containment, not equality, since the greeter
+session keeps growing after provisioning, and a legacy section with no
+`<<< >>>` fence is `unverifiable` and left alone rather than guessed at.
+`scripts/repair-carryover-leak.js` (dry-run default) applied it to
+production: 2 repaired, 2 verified as genuinely their own, 7 with no
+carryover, 0 unverifiable. Cards backed up to
+`/root/backups/carryover-leak-20260903/` first. Sarah's real request behind
+the leaked text already existed as task 242 — nothing was lost, only
+mis-attributed on the card.
+
+### One carryover leak filed itself seven times — `config_guard`'s dedup key wasn't deterministic (fixed 2026-09-03)
+
+`checkCarryoverCollisions` queried active users with no `ORDER BY`, then
+built the issue title from `users ${prior} and ${u.id}` — whichever order
+Postgres happened to return that tick. Postgres row order is **not**
+guaranteed without an explicit `ORDER BY`, so the title flipped between
+`"users 10 and 13"` and `"users 13 and 10"` from one sweep to the next.
+`fileViolations` dedupes on title and `closeResolved` closes titles no
+longer reported — so a non-deterministic title isn't merely duplicated, it
+makes the guard **fight itself**: each tick filed one spelling and closed
+the other, nine open/close rows for one still-unresolved condition. Fixed
+with `ORDER BY id` on the query plus sorting the pair before interpolating
+(`[a, b] = [prior, u.id].sort(...)`), so the same condition always produces
+the same title regardless of iteration order. Verified live post-deploy: one
+tick did the final flip, the next reported zero new/closed issues — stable.
+
 ### `main` said NO_REPLY into a real person's WhatsApp (2026-09-01)
 
 Two messages landed in מירון's chat at 11:25 local, in the middle of a normal
@@ -364,6 +449,119 @@ schema in its head. After any gateway version bump, diff `openclaw.json`
 against what `src/intake/openclaw-config.js` expects before trusting
 provisioning.
 
+### Permission to use a model lives in THREE lists, and we wrote two (fixed 2026-09-02)
+
+The same shape as the section above, a month later and in a different key:
+2026.8.1 added **`agents.defaults.modelPolicy.allow`** and seeded it from the
+then-current allowlist, so nothing broke on upgrade day and nobody noticed a
+third gate had appeared. `scripts/register-openrouter-models.js` went on
+writing the two it knew about — `agents.defaults.models` and
+`models.providers.openrouter.models[]` — and every model registered after the
+upgrade was **registered and unusable**.
+
+- **Registered-but-unusable is invisible until something tries an override.**
+  Nothing errors at registration, nothing retries, the config reads
+  correct to anyone checking the two familiar keys. It surfaces only as
+  `Model override ... is not allowed for agent u-15 by
+  agents.defaults.modelPolicy.allow` at the moment a pilot runs — which is
+  how it was found here, and independently how a concurrent session found it
+  from the other end (an eval suite returning `9 error` on a model sitting
+  correctly in both of the other lists, costing that run).
+- Four candidates registered 2026-09-02 17:08 (`gpt-5.6-luna`,
+  `gpt-5.4-mini`, `gpt-5.4-nano`, `gemini-3.8-flash`) were in this state for
+  about four hours.
+- **The script now reconciles the WHOLE allowlist, not just its own `MODELS`
+  array.** Registering is the only thing that puts an id in
+  `agents.defaults.models`, so anything sitting there is already meant to be
+  permitted. Iterating `MODELS` would have walked straight past the four
+  above; reconciling makes the script self-healing for whatever an older copy
+  left behind. It only ever appends to `allow` and never reconciles the other
+  way, so it cannot drop a model out from under a running eval suite.
+- **The absent case is deliberately NOT created.** The gateway's own error
+  text says "remove/empty the list to allow any model" — absent or empty
+  means *no restriction*, and manufacturing the key would silently narrow a
+  permissive gateway down to exactly our ids. Only extend a list that already
+  exists and already restricts.
+- **`config_guard.checkModelPermissions` closes the detection half**: it
+  compares all three lists on every sweep and files the disagreement, worded
+  differently for the live default (every user's next message falls through
+  to a fallback) than for a registered candidate (a `--model` pilot will be
+  refused). `anthropic/*` correctly needs no OpenRouter catalog entry, and an
+  absent or empty `modelPolicy.allow` is silence, not a violation per model —
+  both pinned by tests, because the noise failure documented in that file's
+  own comments is what this guard has to avoid becoming.
+
+The rule, third time this file has recorded a version of it: **after a
+gateway bump, a config key we have always written may no longer be the only
+one that decides.** Diffing the file catches a key that CHANGED shape; it
+does not catch a NEW key that quietly became load-bearing. The only thing
+that catches that is exercising the capability end-to-end — here, one
+`--model` override probe, which the script's own footer already told you to
+run.
+
+### An invalid config is not rejected — it is IGNORED (fixed 2026-09-03)
+
+Found by breaking it: writing a key the per-agent schema does not accept
+(`agents.entries.<id>.tools.toolSearch`, while measuring whether toolSearch
+was worth enabling) left `openclaw.json` **valid JSON and schema-invalid**.
+The gateway logged exactly one line —
+
+```
+[reload] config reload skipped (invalid config):
+agents.entries.u-15.tools: Unrecognized keys: "sessions", "media", "toolSearch"
+```
+
+— and **kept serving the last valid config**. Nothing crashed, no user lost a
+tool call, everything looked healthy. Two consequences, in order of how long
+they would have taken to notice:
+
+- **Every measurement taken after that write was an artifact**, not a result:
+  the config being measured had never been loaded. Recorded in
+  `docs/model-experiments.md` as a method note — after any config write, the
+  next thing to check is that the gateway actually applied it, not that the
+  file says what you meant.
+- **Provisioning writes an agent + binding into that file.** With the config
+  stuck, the next joiner's agent is written and never goes live: they are
+  greeted by intake and their own agent never exists. Silent to them, silent
+  to us, and no error anyone would connect to a person arriving. That is the
+  sibling of the `deprovision`-debris failure two sections up — one gives a
+  new joiner a dead agent from birth, this one never gives them an agent at
+  all — and there is still **no detector for "somebody joined and never became
+  reachable"**, which is the check worth building next. The buildable form of
+  it asks about the PERSON, not the config: `users.onboarded_at` set, no
+  `outbox` row with `sent_at IS NOT NULL AND hold_reason IS NULL`, and a grace
+  window of a few hours (a joiner at 02:00 is quiet-hours-held, not broken).
+  That catches both failures and every future one of the same shape without
+  knowing why — the property `checkOrphanAgents` lacks, because it reasons
+  about the config rather than about whether anything ever reached them. We
+  have a detector for an agent with no user and none for a user with no
+  working agent; the half that was built is the half that costs nobody
+  anything.
+
+`config_guard.checkConfigApplied` closes the detection half by asking the one
+question no other check in that file asks: not *what does the file say* but
+*will the gateway load it*. Three rules it is built on, each of which is a
+rule this repo already learned somewhere else:
+
+- **It is a dashboard row, deliberately NOT in `BREAKS_USERS`.** That list
+  means exactly "their tool calls fail". Nobody who already exists is harmed
+  by a stuck config; putting it in the alert list would make that list mean
+  two things again, which is the thing #97 fixed.
+- **The validator refuses to validate any file but the one the guard read.**
+  `openclaw config validate` has no `--config` flag — it resolves its own
+  target from `$OPENCLAW_HOME` — so it insists on the exact
+  `<home>/.openclaw/openclaw.json` shape and declines otherwise. Reporting
+  another file's verdict as this one's would be confidently wrong.
+- **"Invalid" IS reported as a non-zero exit, so the exit code proves
+  nothing** — the JSON body decides. Trusting the error would turn every
+  genuine detection into a silent decline: the bug this check exists to
+  catch, reproduced inside the check itself. Pinned by a mutation test.
+- **Every path that declines to judge says so in the job heartbeat**
+  (`configValidation: <reason>`) while filing nothing. A thing that could not
+  be read is never a thing in trouble (the credit-watch rule) — but a check
+  that goes quiet is indistinguishable from one that passes, which is the
+  failure this file has now recorded four times.
+
 ### A phone number is not a location (2026-08-31)
 
 A new US joiner (+1516..., Long Island area code) was guessed
@@ -388,6 +586,45 @@ what it claimed (a country), it was read as more than that (a location):
   `set_my_timezone`'s description now says so ("אני בלוס אנג'לס" is the
   answer, not a prompt to ask about timezones). Pinned in
   `tests/intake.test.js` alongside the act-first rules.
+
+**And correcting the zone corrected the SETTING and nothing already written**
+(fixed 2026-09-03). `setTimezone` wrote one column and stopped, so the same
+joiner's first 44 minutes of dated rows stayed converted through a zone that
+was never hers — her brunch reminder went off at 06:00, and a Sep 8 row was
+still three hours early when it was found by hand three days later. Not an
+edge case: measured on the box, **nine of ten active users are carrying a zone
+nobody ever confirmed**, with 11 future-dated rows underneath them. Every one
+is the same failure waiting for its owner to say which city they are in.
+
+`domain/timezone-repair.js` reads each stored instant's wall clock in the OLD
+zone — the time the person actually said — and re-instantiates it in the new
+one, per row, so a DST boundary between two rows is handled by each on its own
+terms instead of by one global offset (pinned with London→Sydney, where the
+same 08:00 shifts 11h in January and 9h in July).
+
+- **The gate is that the OLD zone was a GUESS**, and it cuts both ways. A
+  guess was never right, so the rows are all wrong by a recoverable delta.
+  `confirmed → anything` is somebody who MOVED: their 15:00 Jerusalem meeting
+  is still that instant, and re-labelling it 15:00 Berlin would break a
+  correct row. Travel is not a repair.
+- **Meetings are reported, never moved.** The other side agreed to a specific
+  moment; shifting one participant's copy would silently move a meeting for
+  someone who never heard about it — the exact failure that made confirmation
+  a hard gate. They come back as `meetingsToRecheck` for the person to decide.
+- **`digest_times` and `live_subscriptions.local_hour` need nothing** — both
+  are stored as local wall clocks and resolved against whatever zone the user
+  has at the time, so they are already right the instant the column changes.
+  Repairing them would double-apply the shift.
+- **Future rows only, and reminders at `attempts = 0`.** A past reminder
+  cannot un-fire and already has an outbox row keyed to it; a rung
+  mid-escalation is an interval measured from when the last one LANDED, not a
+  wall clock anyone chose.
+- **No backfill script**, deliberately: the box was checked first, and after
+  the one row fixed by hand there is nothing for it to find. A repair script
+  that can only ever report zero is worse than none.
+- Verified against real production rows before merging with the BEGIN →
+  simulate → ROLLBACK pattern: four users, wall clocks preserved end to end,
+  meeting 7 untouched, zero rows committed.
 
 ### OpenRouter cache reads were priced 5x too high (fixed 2026-08-31)
 
