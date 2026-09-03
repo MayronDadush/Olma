@@ -7,7 +7,11 @@ const flagsDomain = require('../src/domain/flags');
 const { enqueue } = require('../src/outbox/enqueue');
 const { withTx } = require('../src/db/pool');
 
-let db, user, operator;
+// The number the "the dashboard can change the target" assertion points the
+// alert flag at. Named, because a user row has to exist for it — see before().
+const ALT_ALERT_PHONE = '+972590000000';
+
+let db, user, operator, altOperator;
 before(async () => {
   db = await freshDb();
   user = await makeUser(db.pool, '+972594000001', { firstName: 'X' });
@@ -18,8 +22,22 @@ before(async () => {
   // green thirteen hours a day". Parked at midday, five hours clear of either
   // edge, so a slow suite cannot drift out of the window.
   operator = await makeUser(db.pool, watch.DEFAULT_ALERT_PHONE, { firstName: 'Op' });
+  // The SAME reasoning for the number one test below points the flag at. It is
+  // an ordinary phone as far as the alarm is concerned, so with no row behind
+  // it the hour question fell back to DEFAULT_TZ and the real wall clock —
+  // and the note below at that assignment guarded the wrong direction: a
+  // stray number does not re-open the night window, at night it CLOSES one
+  // that the operator's own pinned row was holding open. Live consequence,
+  // 2026-09-02 22:19 UTC: the alarm deferred, the assertion threw before the
+  // line that puts the flag back could run, and the poisoned flag then failed
+  // the NEXT test too. Two reds, 19:00-05:00 UTC daily, on the alarm that
+  // pages when the model provider runs dry.
+  altOperator = await makeUser(db.pool, ALT_ALERT_PHONE, { firstName: 'Op2' });
   const c = await db.pool.connect();
-  try { await setLocalHour(c, operator.id, 12); } finally { c.release(); }
+  try {
+    await setLocalHour(c, operator.id, 12);
+    await setLocalHour(c, altOperator.id, 12);
+  } finally { c.release(); }
 });
 after(async () => { await db.teardown(); });
 
@@ -101,18 +119,9 @@ test('a NEW outage re-arms the alarm; a failed send does not consume it', async 
     assert.equal((await watch.checkCreditAlert(c, ok)).alerted, true,
       'the failed attempt must not have consumed the one alarm this outage gets');
 
-    // The alert target is a flag the dashboard can change without a deploy —
-    // and that number needs a user row parked at midday for exactly the reason
-    // the default one does. A phone with no row does NOT leave the window
-    // open: alertHourOpen falls back to DEFAULT_TZ (Asia/Jerusalem), so this
-    // block queued instead of sending for every run after 21:00 UTC, and the
-    // restore below never ran — leaking the stray number into the next test,
-    // which then failed too. Green by day, red by night, twice over.
-    const alt = '+972590000000';
-    const altUser = await makeUser(db.pool, alt, { firstName: 'Op2' });
-    await setLocalHour(c, altUser.id, 12);
+    // the alert target is a flag the dashboard can change without a deploy
+    await flagsDomain.setFlag(c, watch.ALERT_PHONE_FLAG, ALT_ALERT_PHONE);
     try {
-      await flagsDomain.setFlag(c, watch.ALERT_PHONE_FLAG, alt);
       await c.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
       await withTx(db.pool, (cc) => enqueue(cc, {
         userId: user.id, kind: 'checkin', idempotencyKey: 'cw:3',
@@ -121,12 +130,12 @@ test('a NEW outage re-arms the alarm; a failed send does not consume it', async 
         `UPDATE outbox SET last_error = 'credit balance is too low' WHERE idempotency_key = 'cw:3'`);
       const rec2 = recorder();
       await watch.checkCreditAlert(c, rec2);
-      assert.equal(rec2.sent[0].phone, alt);
+      assert.equal(rec2.sent[0].phone, ALT_ALERT_PHONE);
     } finally {
-      // Put it back, in a finally: a stray alert number outlives a failing
-      // assertion otherwise and re-points every test after this one — the same
-      // shape as the stray quota_daily_free that made the resume-offer tests
-      // flake.
+      // Put it back, in a finally rather than inline: the alarm reads the hour
+      // where the ALERT PHONE lives, so a flag left pointing anywhere else
+      // takes the NEXT test down too. That is not hypothetical — it is how one
+      // failure here became two on 2026-09-02.
       await flagsDomain.setFlag(c, watch.ALERT_PHONE_FLAG, '');
     }
   });

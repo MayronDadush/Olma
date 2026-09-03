@@ -383,6 +383,35 @@ function readSessionEventsSlice(agentId, sessionKey, fromSeq = 0, base = HOME())
   });
 }
 
+// Did a PERSON ever speak into this session, or has it only ever carried
+// outbound sends? Since #96 the raw `openclaw message send` pipe resolves its
+// owner to `main`, so every reminder and every alarm creates a
+// `main:whatsapp:direct:<phone>` session that is pure delivery — an assistant
+// message and nothing else, no model turn, no inbound anything. Those are
+// normal operation and recreated within hours of being archived. A session a
+// person actually TALKED into is a different object entirely, and measured on
+// the live box the two do not overlap even slightly: of main's eight direct
+// sessions, exactly one carried inbound turns (4 of them) and the other seven
+// carried zero.
+//
+// Returns null when there is nothing to read — an unknown key or an
+// unreadable store is "no evidence", never "no user ever spoke".
+function hasInboundUserTurn(agentId, sessionKey, base = HOME()) {
+  return withAgentDb(agentId, base, (db) => {
+    const node = db.prepare(
+      'SELECT current_session_id FROM session_nodes WHERE session_key = ?').get(sessionKey);
+    if (!node) return null;
+    const rows = db.prepare(
+      'SELECT event_json FROM transcript_events WHERE session_id = ?').all(node.current_session_id);
+    for (const r of rows) {
+      let ev;
+      try { ev = JSON.parse(r.event_json); } catch { continue; }
+      if (ev && ev.message && ev.message.role === 'user') return true;
+    }
+    return false;
+  });
+}
+
 // Everything a stranger said to the intake greeter, joined into one blob.
 // This is what makes the greeter's silence safe: nothing the person typed
 // while we were setting them up is lost — their own agent gets it and
@@ -540,5 +569,5 @@ function readTranscriptUsage(file, fromOffset = 0) {
 module.exports = {
   listSessions, listSessionsForAgent, indexPath, parseKey,
   readRecentMessages, readPeerUserText, readPeerDisplayName, displayNameFromPrompt,
-  listTranscripts, readTranscriptUsage, readSessionEventsSlice,
+  listTranscripts, readTranscriptUsage, readSessionEventsSlice, hasInboundUserTurn,
 };
