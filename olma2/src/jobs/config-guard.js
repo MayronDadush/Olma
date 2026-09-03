@@ -127,7 +127,8 @@ const CARRYOVER_HEADING = '## מה שכבר שיתפו';
 async function checkCarryovers(client) {
   const { rows } = await client.query(
     `SELECT id, phone, workspace_path FROM users
-     WHERE status = 'active' AND workspace_path IS NOT NULL`
+     WHERE status = 'active' AND workspace_path IS NOT NULL
+     ORDER BY id`
   );
   const seen = new Map(); // carryover text → first user id that quoted it
   const violations = [];
@@ -139,8 +140,15 @@ async function checkCarryovers(client) {
     const body = card.slice(at).replace(/\s+/g, ' ').trim();
     const prior = seen.get(body);
     if (prior !== undefined) {
+      // The pair is SORTED, for the same reason the count is kept out of
+      // checkStuckOutbox's title below: fileViolations dedupes on the title,
+      // and which of the two the loop reaches first is not a fact about the
+      // problem. Unsorted, "users 10 and 13" and "users 13 and 10" are two
+      // titles for one condition — live on 2026-09-02 that had filed the same
+      // carryover leak SEVEN times, which is how a dashboard stops being read.
+      const [a, b] = [Number(prior), Number(u.id)].sort((x, y) => x - y);
       violations.push(
-        `users ${prior} and ${u.id} carry the SAME intake carryover text — one card is quoting another person's message`);
+        `users ${a} and ${b} carry the SAME intake carryover text — one card is quoting another person's message`);
     } else {
       seen.set(body, u.id);
     }
@@ -253,7 +261,7 @@ async function checkInfraAgentSessions(client, deps) {
   }
   return [...byAgent.keys()].map((k) => {
     const [agentId, channel] = k.split(':');
-    return `agent ${agentId} holds ${channel} sessions addressed to active users — it has no user of its own, so anything that wakes it can deliver to a real person`;
+    return `agent ${agentId} holds ${channel} sessions that active users have talked INTO — it has no user of its own, so anything that wakes it answers a real person in a real conversation`;
   });
 }
 
