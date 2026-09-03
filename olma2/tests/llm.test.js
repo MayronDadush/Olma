@@ -35,6 +35,49 @@ test('complete without a key fails closed instead of dialing out', async () => {
   }
 });
 
+// Three fields OpenRouter publishes on every completion and we were throwing
+// all three away: the price it actually charged, and how much of the prompt
+// was served from cache. Discarding usage.cost left the evals judge priced by
+// a rate table that had no entry for it, i.e. $0.00 against 196k real output
+// tokens; discarding cached_tokens billed a warm prompt as if every token were
+// a fresh read. Shape probed live 2026-09-03 — this fixture is that response.
+test('openrouter usage carries the stated cost and the cache split', async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => ({
+      ok: true, status: 200,
+      json: async () => ({
+        model: 'deepseek/deepseek-v4-flash',
+        choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+        usage: {
+          prompt_tokens: 9, completion_tokens: 20, total_tokens: 29,
+          cost: 0.00000686,
+          prompt_tokens_details: { cached_tokens: 4, cache_write_tokens: 2 },
+        },
+      }),
+    });
+    const res = await llm.complete({
+      provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', user: 'U', apiKey: 'k',
+    });
+    assert.equal(res.usage.costUsd, 0.00000686, 'the price the provider actually charged');
+    assert.equal(res.usage.cacheRead, 4);
+    assert.equal(res.usage.cacheWrite, 2);
+
+    // A cost of genuinely zero is a real price and must stay distinguishable
+    // from "not reported" — 0 is falsy, so a truthiness check here would throw
+    // the one away with the other.
+    globalThis.fetch = async () => ({
+      ok: true, status: 200,
+      json: async () => ({
+        model: 'm', choices: [{ message: { content: 'ok' } }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, cost: 0 },
+      }),
+    });
+    const free = await llm.complete({ provider: 'openrouter', model: 'm', user: 'U', apiKey: 'k' });
+    assert.equal(free.usage.costUsd, 0, 'a free call reports 0, not null');
+  } finally { globalThis.fetch = realFetch; }
+});
+
 test('provider openrouter speaks chat/completions and maps back to the same contract', async () => {
   const realFetch = globalThis.fetch;
   try {
@@ -57,8 +100,12 @@ test('provider openrouter speaks chat/completions and maps back to the same cont
     assert.equal(res.ok, true);
     assert.equal(res.model, 'deepseek/deepseek-v4-flash');
     // reasoning models bill thinking as completion tokens — they must land in
-    // output so recordUsage prices what was actually paid for
-    assert.deepEqual(res.usage, { input: 970, output: 2767, cacheRead: 0, cacheWrite: 0 });
+    // output so recordUsage prices what was actually paid for. costUsd is null
+    // here because this fixture carries no usage.cost: absent must read as
+    // "the provider said nothing", never as "it was free" — the next test
+    // pins the case where it does say something.
+    assert.deepEqual(res.usage,
+      { input: 970, output: 2767, cacheRead: 0, cacheWrite: 0, costUsd: null });
     assert.match(res.text, /"facts"/);
     assert.match(captured.url, /openrouter\.ai/);
     const sent = JSON.parse(captured.init.body);
