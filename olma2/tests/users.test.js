@@ -126,6 +126,58 @@ test('an observed name fills a blank but never overwrites a confirmed one', asyn
   }
 });
 
+test('an emoji is not a name we may guess from', async () => {
+  // Live bug: user 11's WhatsApp display name was a single 🌊, so that is what
+  // the dashboard, their own card and every invitation called them from
+  // 2026-08-31 until a human noticed it on 2026-09-04.
+  const u = await makeUser(db.pool, '+972508811333', { firstName: null });
+  const client = await db.pool.connect();
+  try {
+    const seen = await users.setName(client, u.id, '🌊', null, { confirmed: false });
+    assert.equal(seen.ok, false, 'decoration is not a name');
+    assert.equal(seen.error.code, 'invalid');
+    const { rows } = await db.pool.query('SELECT first_name FROM users WHERE id = $1', [u.id]);
+    assert.equal(rows[0].first_name, null, 'and nothing was written');
+
+    // ...but a real name is still a name when it stands next to one.
+    const beside = await users.setName(client, u.id, 'חיים', '🌊', { confirmed: false });
+    assert.equal(beside.ok, true);
+    assert.equal(beside.data.user.first_name, 'חיים');
+    assert.equal(beside.data.user.last_name, null, 'the letterless half is dropped, not stored');
+  } finally {
+    client.release();
+  }
+});
+
+test('a name they told us themselves is theirs, emoji or not', async () => {
+  // The guard is about GUESSES. Someone who says "call me 🌊" has told us what
+  // they are called, and refusing that would be us overruling them.
+  const u = await makeUser(db.pool, '+972508811444', { firstName: null });
+  const client = await db.pool.connect();
+  try {
+    const told = await users.setName(client, u.id, '🌊', null, { confirmed: true });
+    assert.equal(told.ok, true);
+    assert.equal(told.data.user.first_name, '🌊');
+    assert.equal(told.data.user.name_confirmed, true);
+  } finally {
+    client.release();
+  }
+});
+
+test('letters in any script pass the guard', async () => {
+  const client = await db.pool.connect();
+  try {
+    for (const [i, name] of ['חיים', 'Chaim', 'Ирина', 'محمد', '陳'].entries()) {
+      const u = await makeUser(db.pool, `+97250881150${i}`, { firstName: null });
+      const res = await users.setName(client, u.id, name, null, { confirmed: false });
+      assert.equal(res.ok, true, `${name} is a name`);
+      assert.equal(res.data.user.first_name, name);
+    }
+  } finally {
+    client.release();
+  }
+});
+
 test('setName tells "no such user" apart from "already confirmed"', async () => {
   const client = await db.pool.connect();
   try {
