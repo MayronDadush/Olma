@@ -52,3 +52,55 @@ test('validation: bad category/source/status rejected', async () => {
     assert.equal(badStatus.ok, false);
   });
 });
+
+test('the eval user cannot file into the operator list, and is not an error either', async () => {
+  const evalUser = await makeUser(db.pool, '+972599999901');
+  await db.pool.query('UPDATE users SET is_eval = true WHERE id = $1', [evalUser.id]);
+
+  await withClient(async (c) => {
+    const before = (await issues.listIssues(c, { status: 'new' })).data.issues.length;
+
+    // The nightly school-essay scenario: the agent refuses correctly, and its
+    // doctrine tells it to log the gap. That call must not reach the list.
+    const r = await issues.reportIssue(c, evalUser.id, {
+      category: 'feature_request', source: 'agent_detected',
+      title: 'User requested a 300-word essay on Herzl for school',
+      detail: 'general writing is out of scope',
+    });
+    assert.equal(r.ok, true, 'a dropped call must not fail the scenario under test');
+    assert.equal(r.data.issue, null);
+    assert.equal(r.data.dropped, 'eval_user');
+
+    const after = (await issues.listIssues(c, { status: 'new' })).data.issues;
+    assert.equal(after.length, before, 'nothing was written');
+    assert.equal(after.some((i) => Number(i.reporter_id) === Number(evalUser.id)), false);
+  });
+});
+
+test('a real user filing the very same issue is untouched', async () => {
+  await withClient(async (c) => {
+    // The seal is on WHO reports, never on what the issue says — otherwise a
+    // real person hitting the same gap would be silenced by a keyword.
+    const r = await issues.reportIssue(c, user.id, {
+      category: 'feature_request', source: 'agent_detected',
+      title: 'User requested a 300-word essay on Herzl for school',
+    });
+    assert.equal(r.ok, true);
+    assert.ok(r.data.issue && r.data.issue.id, 'a real report still lands');
+    assert.equal(Number(r.data.issue.reporter_id), Number(user.id));
+  });
+});
+
+test('a malformed call from the eval user is still refused, not swallowed', async () => {
+  const evalUser2 = await makeUser(db.pool, '+972599999902');
+  await db.pool.query('UPDATE users SET is_eval = true WHERE id = $1', [evalUser2.id]);
+  await withClient(async (c) => {
+    // Validation runs before the seal: a bad call from the suite is a defect
+    // in the doctrine under test, and hiding it defeats the point of the suite.
+    const r = await issues.reportIssue(c, evalUser2.id, {
+      category: 'rant', source: 'agent_detected', title: 'x',
+    });
+    assert.equal(r.ok, false);
+    assert.match(r.error.message, /category must be one of/);
+  });
+});
