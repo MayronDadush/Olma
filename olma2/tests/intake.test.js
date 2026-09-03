@@ -52,8 +52,14 @@ test('provisionUser: workspace sealed, token file 0600, config updated, idempote
   const idFile = path.join(workspace, '.olma-identity');
   assert.equal(fs.readFileSync(idFile, 'utf8').trim(), user.identity_token);
   assert.equal((fs.statSync(idFile).mode & 0o777), 0o600);
-  const state = JSON.parse(fs.readFileSync(path.join(workspace, 'openclaw-workspace-state.json'), 'utf8'));
-  assert.ok(state.setupCompletedAt, 'stock onboarding pre-neutralised');
+  // This used to assert the opposite — that openclaw-workspace-state.json was
+  // written. Gateway 2026.8.1 reads that file as unmigrated legacy state and
+  // refuses every turn for the agent while it exists, so provisioning writing
+  // one is provisioning a dead agent. 126 real inbound messages were lost to
+  // it. The stock kit is neutralised by the real AGENTS.md/USER.md and by the
+  // stock files being deleted, neither of which needs the gateway's help.
+  assert.equal(fs.existsSync(path.join(workspace, 'openclaw-workspace-state.json')), false,
+    'the legacy seal is fatal on 2026.8.1 — it must never be written again');
   const agentsMd = fs.readFileSync(path.join(workspace, 'AGENTS.md'), 'utf8');
   assert.match(agentsMd, /turn_start/);
   // The token is rendered into the doctrine itself — no placeholder survives,
@@ -1037,6 +1043,162 @@ test('config guard notices two cards quoting the same intake text', async () => 
   const back = await guard.checkCarryovers(reversed);
   assert.equal(back.length, 1, 'still exactly one pair, whichever way round');
   assert.equal(back[0], v[0], 'the title must be identical in both row orders');
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Live 2026-09-02: it fired on users 10 and 13, and the shared text was "היי".
+// Both had typed it themselves. A leak detector that cannot tell a stranger's
+// message from hello files its issues onto the same dashboard as the rows that
+// matter — and this one sat there while a real 48-hour outage was visible two
+// rows below it. Read against what each person actually sent, and the pair
+// resolves itself; the live pair is the fixture.
+test('two people who each said hello are not a leak — the greeter session settles it', async () => {
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-carry2-'));
+  const mk = (name, carryover) => {
+    const w = path.join(dir, name);
+    fs.mkdirSync(w, { recursive: true });
+    fs.writeFileSync(path.join(w, 'USER.md'),
+      `# User\n\nFirst name: X\n\n## מה שכבר שיתפו לפני\n<<<${carryover}>>>\n`);
+    return w;
+  };
+  const rows = [
+    { id: 10, phone: '+10', workspace_path: mk('u-10', 'הי') },
+    { id: 13, phone: '+13', workspace_path: mk('u-13', 'הי') },
+  ];
+  const fake = { query: async () => ({ rows }) };
+
+  // Containment, not equality: the card was written at provisioning and the
+  // greeter session has grown since — here from "הי" to "היי מה נשמע".
+  const said = { '+10': 'היי מה נשמע', '+13': 'הי, אפשר לשמוע עוד?' };
+  assert.deepEqual(await guard.checkCarryovers(fake, { readPeerText: (p) => said[p] }), []);
+
+  // The leak this exists for still lands, and now says WHICH card is wrong.
+  const leak = { '+10': 'היי מה נשמע', '+13': 'משהו אחר לגמרי' };
+  const v = await guard.checkCarryovers(fake, { readPeerText: (p) => leak[p] });
+  assert.equal(v.length, 1);
+  assert.match(v[0], /user 13's card quotes an intake message they never sent/);
+  assert.match(v[0], /user 10's card/);
+
+  // A session nobody can read any more is not innocence — the pair is reported.
+  const gone = await guard.checkCarryovers(fake, { readPeerText: () => null });
+  assert.equal(gone.length, 1);
+  assert.match(gone[0], /users 10 and 13 carry the SAME/);
+
+  // A reader that throws must not take the sweep down with it.
+  const threw = await guard.checkCarryovers(fake, { readPeerText: () => { throw new Error('sqlite gone'); } });
+  assert.equal(threw.length, 1);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A leak does not need an accomplice, and requiring one is what kept the only
+// two real leaks on the box invisible for weeks. A leak OVERWRITES the victim's
+// carryover, so the stranger's words end up on exactly one card and no pair
+// ever forms. Audited live 2026-09-03 against every active user's own intake
+// session: u-11 quoted a Pesach reminder they never sent, u-17 quoted u-14's
+// message while she had actually asked to book a nail appointment — neither
+// collided with anything, so neither was ever reported, while the ONE pair on
+// the box was two people who had both said hello. The detector was looking
+// exclusively at the innocent case and straight past both guilty ones.
+test('a carryover nobody else shares is still checked against its owner', async () => {
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-carry3-'));
+  const mk = (name, carryover) => {
+    const w = path.join(dir, name);
+    fs.mkdirSync(w, { recursive: true });
+    fs.writeFileSync(path.join(w, 'USER.md'),
+      `# User\n\nFirst name: X\n\n## מה שכבר שיתפו לפני\n<<<${carryover}>>>\n`);
+    return w;
+  };
+  // One card, one carryover, nothing to collide with — the live u-17 shape.
+  const rows = [{ id: 17, phone: '+17', workspace_path: mk('u-17', 'מה העניינים ירון מה זה?') }];
+  const fake = { query: async () => ({ rows }) };
+
+  const v = await guard.checkCarryovers(fake, {
+    readPeerText: () => 'Hi olma I want to book a nail appointment for next week at 12 pm',
+  });
+  assert.equal(v.length, 1, 'a solo leak is still a leak');
+  assert.match(v[0], /user 17's card quotes an intake message they never sent/);
+  assert.match(v[0], /not in their own intake session/,
+    'and it says so plainly, rather than naming a second card that does not exist');
+
+  // The same card, when the words really are theirs, stays silent — otherwise
+  // this check would fire on every ordinary carryover in the system.
+  assert.deepEqual(await guard.checkCarryovers(fake, {
+    readPeerText: () => 'שלום, מה העניינים ירון מה זה? אשמח לעזרה',
+  }), []);
+
+  // Unreadable is not guilty: with no session left there is nothing to
+  // contradict the card, and a solo card has no pair to fall back on either.
+  assert.deepEqual(await guard.checkCarryovers(fake, { readPeerText: () => null }), []);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Going back for the damage already written down. The section is REMOVED, not
+// rewritten with the right words: the real message is days old by the time
+// anyone runs this, and re-injecting it would hand the agent a stale errand as
+// though it had just arrived.
+test('repairCarryovers strips a foreign carryover and leaves an honest one alone', async () => {
+  const os = require('node:os');
+  const repair = require('../src/domain/carryover-repair');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-carry4-'));
+
+  // stripCarryover keeps everything before and after the section
+  const card = '# User\n\nFirst name: X\n\n## מה שכבר שיתפו לפני\n<<<זר>>>\n\n## אחר\nשורה\n';
+  const cut = repair.stripCarryover(card);
+  assert.ok(!cut.includes('מה שכבר שיתפו'), 'the section is gone');
+  assert.ok(!cut.includes('זר'), 'and so is the quoted text');
+  assert.match(cut, /First name: X/, 'the head survives');
+  assert.match(cut, /## אחר\nשורה/, 'and so does the section after it');
+  assert.equal(repair.stripCarryover('# User\n\nFirst name: X\n'), null, 'nothing to cut → null');
+
+  // classify: their own words vs a stranger's vs unreadable
+  const withCarry = (t) => `# User\n\n## מה שכבר שיתפו לפני\n<<<${t}>>>\n`;
+  assert.equal(repair.classify(withCarry('הי'), 'היי מה נשמע').verdict, 'ok');
+  assert.equal(repair.classify(withCarry('זר'), 'משהו אחר').verdict, 'leak');
+  assert.equal(repair.classify(withCarry('זר'), null).verdict, 'unverifiable');
+  assert.equal(repair.classify('# User\n', 'x').verdict, 'clean');
+  // A legacy section with no fence is left alone rather than guessed at —
+  // deleting words we cannot prove are foreign would erase a real message.
+  assert.equal(repair.classify('# User\n\n## מה שכבר שיתפו לפני\nטקסט\n', 'אחר').verdict, 'unverifiable');
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The backstop for the outage above: if that file ever appears in a workspace
+// again — a doctor run interrupted, a restored backup, a future gateway
+// writing one — it is not a dashboard row. While it exists the agent never
+// opens a turn at all, which is why it joins the class that alerts.
+test('config guard: a legacy workspace-state file is a BREAKS_USERS violation', async () => {
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-legacy-'));
+  const mk = (name, withState) => {
+    const w = path.join(dir, 'workspaces', name);
+    fs.mkdirSync(w, { recursive: true });
+    if (withState) fs.writeFileSync(path.join(w, 'openclaw-workspace-state.json'), '{"version":1}');
+    return w;
+  };
+  const rows = [
+    { id: 7, workspace_path: mk('u-7', true) },
+    { id: 9, workspace_path: mk('u-9', false) },
+  ];
+  const fake = { query: async () => ({ rows }) };
+
+  const v = await guard.checkLegacyWorkspaceState(fake, { openclawHome: dir });
+  assert.equal(v.length, 1);
+  assert.match(v[0], /user 7's workspace holds openclaw-workspace-state\.json/);
+  assert.equal(guard.breaksUsers(v[0]), true, 'the person gets nothing at all — this one alerts');
+
+  // The greeter has no user row, so nothing in the users table can speak for
+  // it; a broken intake is strangers silently never becoming users.
+  mk('intake', true);
+  const withIntake = await guard.checkLegacyWorkspaceState(fake, { openclawHome: dir });
+  assert.equal(withIntake.length, 2);
+  assert.match(withIntake[1], /intake workspace holds/);
+  assert.equal(guard.breaksUsers(withIntake[1]), true);
 
   fs.rmSync(dir, { recursive: true, force: true });
 });

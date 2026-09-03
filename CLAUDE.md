@@ -997,6 +997,24 @@ before. Two unrelated clocks, both inherited rather than chosen:
   suite green only where the clocks agree is testing a configuration nobody
   deploys.
 
+**And it happened again, in the file that guards the alarm (fixed 2026-09-02).**
+Two `tests/credit-watch.test.js` tests fail on `main` between 21:00 and 05:00
+UTC. `before()` parks an operator on `DEFAULT_ALERT_PHONE` at local hour 12 for
+exactly this reason — but one block flips `admin_alert_phone` to a SECOND
+number, and gave that one no user row. Its own comment said a phone with no row
+"silently re-opens the night window"; it does the opposite — `alertHourOpen`
+falls back to `DEFAULT_TZ` (Asia/Jerusalem), so past 21:00 UTC the alarm queued
+instead of sending. Two things worth carrying:
+
+- **The restore was not in a `finally`**, so the throw left the stray number in
+  the flag and the NEXT test alerted for a phone whose night it also was. One
+  broken hour, two red tests, and the second one looks unrelated to the first.
+  The flag-leak shape this file already records (`quota_daily_free`), except the
+  leak was caused by the failure rather than by forgetting.
+- **A fallback default is not an open door.** The comment was not lazy, it was
+  wrong about which way an unknown phone fails — and a test asserting a SEND
+  must own the hour of every phone it points at, not just the default one.
+
 ### The fact table admitted everything and ranked by recency (fixed 2026-08-28)
 
 The owner read the dashboard's "מה נלמד לאחרונה" and asked whether that is
@@ -1323,6 +1341,55 @@ actually took, recorded because every step surprised:
 - Rollback path if the new version misbehaves: `npm i -g openclaw@2026.6.10`,
   restore `/root/.openclaw/openclaw.json.pre-2026.8.1`, restore
   `/root/whatsapp-ext-2026.6.10.bak` → `extensions/whatsapp`, restart.
+
+**The third aftershock ran for 48 hours and cost 126 real inbound messages
+(2026-08-31 20:25 → 2026-09-02 21:23).** Our own seal became the poison.
+Provisioning wrote `openclaw-workspace-state.json` into every workspace to
+stop OpenClaw's stock onboarding kit hijacking a person's first conversation.
+2026.8.1 keeps that state in `/root/.openclaw/state/openclaw.sqlite`
+(`workspace_setup_state`) and reads the FILE as unmigrated legacy state:
+`assertNoUnmigratedWorkspaceState` (dist/`workspace-state-store-*.js`) throws
+on its mere existence — deliberately without reading it — before the turn
+runs, every turn, for as long as the file is there. The doctor migration on
+2026-08-31 19:07 copied all 13 workspaces into sqlite and **left the files in
+place**, which is the moment the seal turned fatal.
+
+- **The counted damage: 98 inbound messages for u-8 (גלי), 28 for u-14
+  (חיים)**, plus `intake` — so no stranger could register either. Both users
+  resumed within seconds of the fix and immediately completed tasks. The count
+  is exact: it is every such line in the journal, which begins well before the
+  outage did. **The first grep was over `--since "48 hours ago"` and put the
+  start at 21:56 — its own window edge**, not a fact about the outage. A
+  relative window cannot tell you when something started; it can only tell you
+  it was already running when the window opened.
+- **The very first symptom was 91 minutes earlier and nobody reads it**:
+  `Aug 31 20:25:53 [heartbeat] failed: Legacy workspace setup state...`, one of
+  the gateway's own auto-created heartbeat crons failing. There WAS an early
+  warning, in the journal, ninety minutes before the first person lost a
+  message — it just was not anywhere a person or a detector looks.
+- **Nothing said so, and the reason is worth carrying.** `/health` is green
+  (it measures brokerd), no heartbeat errored, and `audit_log` had no
+  `message.received` row for either user — because that row is written by
+  `turn_start`, and the turn never opened. **The absence of the evidence WAS
+  the symptom**, and it was read as a quiet week. Found by reading the gateway
+  journal by hand; the only durable trace anywhere was one stuck outbox row at
+  22 attempts and a `config_guard` issue nobody had opened.
+- **`openclaw doctor --fix` was needed a SECOND time, two days after the
+  upgrade, for a different migration than the agent-identity one** — and it
+  does not delete the legacy files, so the files must also be moved aside
+  (never deleted: the sqlite rows are already complete and older).
+- **The write is gone** from `intake/provision.js` and
+  `intake/intake-workspace.js`. The kit stays neutralised by the two things
+  that need no cooperation from the gateway: a real `AGENTS.md`/`USER.md`
+  (which its own `reconcileWorkspaceBootstrapCompletionState` reads as already
+  configured) and deleting the stock files outright. `config_guard`'s
+  `checkLegacyWorkspaceState` watches for the file returning, in the
+  `BREAKS_USERS` tier — this is not a dashboard row, the agent never starts a
+  turn at all.
+- **The shape, for the fourth time in this file:** an upgrade did not break
+  our code, it changed the meaning of a file our code writes. After any
+  gateway version bump, diff what WE write into a workspace against what the
+  new version reads there, not only `openclaw.json`.
 
 **The upgrade's aftershock took WhatsApp down for 28 minutes the same evening
 (19:56–20:24 UTC), and the mechanism is worth remembering.** A routine
