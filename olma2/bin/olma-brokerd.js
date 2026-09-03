@@ -156,8 +156,11 @@ async function main() {
     // `send` is the raw pipe, same as the credit alarm: the violations that
     // earn an alert are exactly the ones that stop agents working, so the
     // alert must not itself need a working agent.
+    // `validateConfig` is supplied here and nowhere else: it shells out to the
+    // openclaw CLI, so no test can spawn it by accident.
+    const validateConfig = configGuard.makeConfigValidator();
     arm('config_guard', () => withTx(pool, (c) =>
-      configGuard.run(c, { configPath: OPENCLAW_CONFIG, send: rawSend })));
+      configGuard.run(c, { configPath: OPENCLAW_CONFIG, send: rawSend, validateConfig })));
 
     // Boost mode's reconciler — the ONLY writer of agents.defaults.model.
     // Armed unconditionally: it is what ENDS a boost, so it has to be running

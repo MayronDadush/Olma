@@ -476,6 +476,81 @@ test('config guard: catches every identity-critical regression', async () => {
   assert.equal(run2.newIssues, 0); // same violations → no duplicate issues
 });
 
+// The 2026-09-01 incident, pinned: permission to use a model lives in three
+// lists, and a model missing from any one of them is refused. These are pure
+// config checks, so they need no DB.
+test('config guard: the three model lists must agree', () => {
+  const modelConfig = () => ({
+    agents: {
+      defaults: {
+        model: { primary: 'openrouter/deepseek/deepseek-v4-flash', fallbacks: ['anthropic/claude-haiku-4-5'] },
+        models: {
+          'anthropic/claude-haiku-4-5': {},
+          'openrouter/deepseek/deepseek-v4-flash': {},
+          'openrouter/qwen/qwen3.7-flash': {},
+        },
+        modelPolicy: {
+          allow: ['anthropic/claude-haiku-4-5', 'openrouter/deepseek/deepseek-v4-flash', 'openrouter/qwen/qwen3.7-flash'],
+        },
+      },
+    },
+    models: { providers: { openrouter: { models: [
+      { id: 'deepseek/deepseek-v4-flash' }, { id: 'qwen/qwen3.7-flash' },
+    ] } } },
+  });
+
+  // A config that agrees with itself says nothing. Note anthropic/* is in the
+  // allowlist with no openrouter catalog entry and that is CORRECT — only
+  // openrouter ids need one, and flagging the rest would be pure noise.
+  assert.deepEqual(guard.checkModelPermissions(modelConfig()), []);
+
+  // The exact bug: a candidate registered through the two lists the script
+  // knew about, absent from the third the 2026.8.1 upgrade introduced.
+  const pilotRefused = modelConfig();
+  pilotRefused.agents.defaults.models['openrouter/nousresearch/hermes-4-70b'] = {};
+  pilotRefused.models.providers.openrouter.models.push({ id: 'nousresearch/hermes-4-70b' });
+  const pv = guard.checkModelPermissions(pilotRefused);
+  assert.equal(pv.length, 1);
+  assert.match(pv[0], /hermes-4-70b.*modelPolicy\.allow.*pilot on it will be refused/);
+
+  // The loud case: the LIVE default dropped from a restricting list. Worded
+  // differently on purpose — this one is every user's next message, not a
+  // pilot nobody has run yet.
+  const defaultRefused = modelConfig();
+  defaultRefused.agents.defaults.modelPolicy.allow =
+    defaultRefused.agents.defaults.modelPolicy.allow.filter((m) => !m.includes('v4-flash'));
+  const dv = guard.checkModelPermissions(defaultRefused);
+  assert.ok(dv.some((s) => /default\/fallback model .*v4-flash.*live turns fall through/.test(s)));
+  // ...and it is reported ONCE, as the default, never also as a pilot candidate.
+  assert.equal(dv.filter((s) => s.includes('v4-flash')).length, 1);
+
+  // A registered model the gateway cannot resolve.
+  const noCatalog = modelConfig();
+  noCatalog.models.providers.openrouter.models =
+    noCatalog.models.providers.openrouter.models.filter((m) => !m.id.includes('qwen'));
+  assert.ok(guard.checkModelPermissions(noCatalog)
+    .some((s) => /qwen3\.7-flash.*models\.providers\.openrouter\.models/.test(s)));
+
+  // An absent or EMPTY allow list means no restriction — the gateway's own
+  // error says "remove/empty the list to allow any model". Neither may be read
+  // as "everything is unpermitted", which would file a violation per model.
+  const noPolicy = modelConfig();
+  delete noPolicy.agents.defaults.modelPolicy;
+  assert.deepEqual(guard.checkModelPermissions(noPolicy), []);
+  const emptyPolicy = modelConfig();
+  emptyPolicy.agents.defaults.modelPolicy.allow = [];
+  assert.deepEqual(guard.checkModelPermissions(emptyPolicy), []);
+
+  // A bare-string default (the older shape) is still read.
+  const stringDefault = modelConfig();
+  stringDefault.agents.defaults.model = 'openrouter/deepseek/deepseek-v4-flash';
+  assert.deepEqual(guard.checkModelPermissions(stringDefault), []);
+
+  // And a config with no model section at all is not a violation — the guard
+  // must stay silent on a shape it has nothing to say about.
+  assert.deepEqual(guard.checkModelPermissions({}), []);
+});
+
 // The 2026.8.1 upgrade made a multi-agent roster refuse every agent-less
 // operation unless an ambient owner is named — which is the whole raw pipe:
 // reminders, the credit-out alarm, the runway warning, the eval alert. It
@@ -499,6 +574,122 @@ test('config guard: a multi-agent roster with no ambient owner is a violation', 
 
   many.agents.defaults.systemAgent.agentId = 'intake';
   assert.deepEqual(guard.checkOpenclawConfig(many), []);
+});
+
+// Every other config check reads the FILE. This one asks whether the gateway
+// can load it — a distinction with teeth, because on 2026-09-03 a write of a
+// key the per-agent schema does not accept left openclaw.json valid JSON,
+// schema-invalid, and the gateway serving the LAST VALID config: one log line,
+// then every subsequent config write inert and no new user able to go live.
+test('config guard: a config the gateway cannot load is a violation, and a validator that could not run is not', async () => {
+  const cfgPath = '/root/.openclaw/openclaw.json';
+
+  const bad = await guard.checkConfigApplied({
+    configPath: cfgPath,
+    validateConfig: async () => ({
+      valid: false,
+      issues: [{ path: 'agents.entries.u-15.tools', message: 'Unrecognized key: "toolSearch"' }],
+    }),
+  });
+  assert.equal(bad.violations.length, 1);
+  assert.match(bad.violations[0], /does not validate/);
+  assert.match(bad.violations[0], /agents\.entries\.u-15\.tools/,
+    'the offending path is the only actionable part — a bare "invalid" sends the reader to the same log this replaces');
+  assert.equal(bad.skipped, null);
+  assert.equal(guard.breaksUsers(bad.violations[0]), false,
+    'nobody who already exists loses a tool call — BREAKS_USERS means exactly that and must not come to mean two things');
+
+  // Stable title across sweeps: fileViolations dedupes on the string, and
+  // checkStuckOutbox once piled up nine rows for one unchanged problem because
+  // a COUNT moved every tick. A changed issue path IS a changed problem.
+  const again = await guard.checkConfigApplied({
+    configPath: cfgPath,
+    validateConfig: async () => ({
+      valid: false,
+      issues: [{ path: 'agents.entries.u-15.tools', message: 'Unrecognized key: "toolSearch"' }],
+    }),
+  });
+  assert.equal(again.violations[0], bad.violations[0]);
+
+  const ok = await guard.checkConfigApplied({ configPath: cfgPath, validateConfig: async () => ({ valid: true }) });
+  assert.deepEqual(ok, { violations: [], skipped: null });
+
+  // The three ways it can decline. None files anything — a thing that could not
+  // be read is never a thing in trouble — but each SAYS so, because a check
+  // that goes quiet is indistinguishable from one that passed.
+  const unwired = await guard.checkConfigApplied({ configPath: cfgPath });
+  assert.deepEqual(unwired.violations, []);
+  assert.match(unwired.skipped, /no validator/);
+
+  const threw = await guard.checkConfigApplied({
+    configPath: cfgPath,
+    validateConfig: async () => { throw new Error('spawn ENOENT'); },
+  });
+  assert.deepEqual(threw.violations, []);
+  assert.match(threw.skipped, /ENOENT/);
+
+  const declined = await guard.checkConfigApplied({
+    configPath: cfgPath,
+    validateConfig: async () => ({ valid: null, reason: 'openclaw CLI not on PATH' }),
+  });
+  assert.deepEqual(declined.violations, []);
+  assert.match(declined.skipped, /not on PATH/);
+});
+
+// `openclaw config validate` has no --config flag; it resolves its own target
+// from $OPENCLAW_HOME. So the validator may only speak for the file the guard
+// read if it can prove they are the same file. Validating a DIFFERENT one and
+// reporting the answer as this one's is worse than not looking.
+test('config guard: the validator refuses any path it cannot map to a home, and reads exit code and body separately', async () => {
+  const calls = [];
+  const validate = guard.makeConfigValidator({
+    run: async (home) => {
+      calls.push(home);
+      return { err: null, stdout: JSON.stringify({ valid: true, warnings: [] }), stderr: '' };
+    },
+  });
+
+  assert.deepEqual(await validate('/root/.openclaw/openclaw.json'), { valid: true, issues: [] });
+  assert.deepEqual(calls, ['/root'], 'OPENCLAW_HOME is the grandparent, never the config path itself');
+
+  for (const bad of ['/root/openclaw.json', '/root/.openclaw/other.json', '/etc/config/openclaw.json', undefined]) {
+    const res = await validate(bad);
+    assert.equal(res.valid, null, `refused: ${bad}`);
+    assert.match(res.reason, /not validatable/);
+  }
+  assert.equal(calls.length, 1, 'a refused path never spawns anything');
+
+  // Invalid IS reported as a non-zero exit, so the error alone proves nothing —
+  // the body decides. Reading the exit code instead would turn every genuine
+  // "invalid" into a silent decline, which is the failure this check exists for.
+  const failing = guard.makeConfigValidator({
+    run: async () => ({
+      err: Object.assign(new Error('exit 1'), { code: 1 }),
+      stdout: JSON.stringify({ ok: false, valid: false, issues: [{ path: 'a.b', message: 'Unrecognized key: "x"' }] }),
+      stderr: '',
+    }),
+  });
+  const res = await failing('/root/.openclaw/openclaw.json');
+  assert.equal(res.valid, false);
+  assert.equal(res.issues[0].path, 'a.b');
+
+  // No body = no answer. A missing binary and a timeout are named apart,
+  // because "not installed" and "too slow" call for different operator moves.
+  const missing = guard.makeConfigValidator({
+    run: async () => ({ err: Object.assign(new Error('spawn'), { code: 'ENOENT' }), stdout: '', stderr: '' }),
+  });
+  assert.match((await missing('/root/.openclaw/openclaw.json')).reason, /not on PATH/);
+
+  const slow = guard.makeConfigValidator({
+    run: async () => ({ err: Object.assign(new Error('killed'), { killed: true }), stdout: '', stderr: '' }),
+  });
+  assert.match((await slow('/root/.openclaw/openclaw.json')).reason, /timed out/);
+
+  const garbage = guard.makeConfigValidator({
+    run: async () => ({ err: null, stdout: 'Config valid.\n', stderr: '' }),
+  });
+  assert.match((await garbage('/root/.openclaw/openclaw.json')).reason, /unparseable/,
+    'human-readable output is not a verdict — a future --json regression must decline, not silently pass');
 });
 
 test('auth failures land in the audit log', async () => {
