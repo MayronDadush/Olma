@@ -1230,7 +1230,7 @@ actually took, recorded because every step surprised:
   `/root/whatsapp-ext-2026.6.10.bak` → `extensions/whatsapp`, restart.
 
 **The third aftershock ran for 48 hours and cost 126 real inbound messages
-(2026-08-31 21:56 → 2026-09-02 21:23).** Our own seal became the poison.
+(2026-08-31 20:25 → 2026-09-02 21:23).** Our own seal became the poison.
 Provisioning wrote `openclaw-workspace-state.json` into every workspace to
 stop OpenClaw's stock onboarding kit hijacking a person's first conversation.
 2026.8.1 keeps that state in `/root/.openclaw/state/openclaw.sqlite`
@@ -1243,7 +1243,17 @@ place**, which is the moment the seal turned fatal.
 
 - **The counted damage: 98 inbound messages for u-8 (גלי), 28 for u-14
   (חיים)**, plus `intake` — so no stranger could register either. Both users
-  resumed within seconds of the fix and immediately completed tasks.
+  resumed within seconds of the fix and immediately completed tasks. The count
+  is exact: it is every such line in the journal, which begins well before the
+  outage did. **The first grep was over `--since "48 hours ago"` and put the
+  start at 21:56 — its own window edge**, not a fact about the outage. A
+  relative window cannot tell you when something started; it can only tell you
+  it was already running when the window opened.
+- **The very first symptom was 91 minutes earlier and nobody reads it**:
+  `Aug 31 20:25:53 [heartbeat] failed: Legacy workspace setup state...`, one of
+  the gateway's own auto-created heartbeat crons failing. There WAS an early
+  warning, in the journal, ninety minutes before the first person lost a
+  message — it just was not anywhere a person or a detector looks.
 - **Nothing said so, and the reason is worth carrying.** `/health` is green
   (it measures brokerd), no heartbeat errored, and `audit_log` had no
   `message.received` row for either user — because that row is written by
