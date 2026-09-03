@@ -84,14 +84,12 @@ function syncIntakeWorkspace(registrationOpen, base = process.env.OLMA_OPENCLAW_
   const p = path.join(ws, 'AGENTS.md');
   const current = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null;
   if (current === desired) return { changed: false, workspace: ws };
-  const now = new Date().toISOString();
   fs.writeFileSync(p, desired);
   fs.writeFileSync(path.join(ws, 'IDENTITY.md'), 'Olma intake greeter.\n');
-  fs.writeFileSync(
-    path.join(ws, 'openclaw-workspace-state.json'),
-    JSON.stringify({ version: 1, bootstrapSeededAt: now, setupCompletedAt: now }, null, 2),
-    { mode: 0o600 }
-  );
+  // The legacy setup-state file is deliberately not written — see the note in
+  // intake/provision.js. On this workspace it is worse than on a user's: the
+  // greeter refusing every turn means no stranger can be registered at all,
+  // and nothing downstream reports a person who never became a user.
   return { changed: true, workspace: ws };
 }
 

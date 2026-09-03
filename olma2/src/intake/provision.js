@@ -56,7 +56,6 @@ function renderAgentsMd(identityToken) {
 // the raw transcript (token cost).
 function seedWorkspace(workspace, { firstName, identityToken, firstMessage, invitedInfo }) {
   fs.mkdirSync(workspace, { recursive: true });
-  const now = new Date().toISOString();
   fs.writeFileSync(path.join(workspace, 'AGENTS.md'), renderAgentsMd(identityToken), { mode: 0o600 });
   fs.writeFileSync(path.join(workspace, 'IDENTITY.md'), 'Olma — personal assistant. Warm, brief, practical.\n');
 
@@ -73,11 +72,18 @@ function seedWorkspace(workspace, { firstName, identityToken, firstMessage, invi
   fs.writeFileSync(path.join(workspace, 'USER.md'), userMd);
   fs.writeFileSync(path.join(workspace, 'MEMORY.md'), '# Long-term memory\n\n(Nothing yet.)\n');
   fs.mkdirSync(path.join(workspace, 'memory'), { recursive: true });
-  fs.writeFileSync(
-    path.join(workspace, 'openclaw-workspace-state.json'),
-    JSON.stringify({ version: 1, bootstrapSeededAt: now, setupCompletedAt: now }, null, 2),
-    { mode: 0o600 }
-  );
+  // No `openclaw-workspace-state.json` here any more, and it must never come
+  // back. It used to be the seal that stopped OpenClaw's stock onboarding kit
+  // hijacking a person's first conversation. Gateway 2026.8.1 keeps that state
+  // in its own sqlite and treats the file as UNMIGRATED legacy state: it
+  // throws on the file's mere existence, before the turn runs, for every turn,
+  // until somebody moves it aside with the gateway stopped. Writing it is
+  // therefore writing a fatal marker into the workspace we are creating — 126
+  // real inbound messages were lost to exactly that between 2026-08-31 and
+  // 2026-09-02. The kit is still neutralised, by the two things below that do
+  // not need the gateway's cooperation: a real AGENTS.md/USER.md (which is
+  // what its own reconcile reads as "already configured") and deleting the
+  // stock files outright. config_guard watches for the file returning.
   // The root of trust. tools.fs.workspaceOnly makes it unforgeable — an
   // agent can only ever read its own. chattr +i makes it un-DESTROYABLE:
   // observed 2026-08-27, an agent whose (truncated, from-memory) token was
