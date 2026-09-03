@@ -18,6 +18,10 @@ const JOB_INTERVAL_SECONDS = {
   unanswered_sweep: 60,
   lane_watchdog: 30,
   config_guard: 600,
+  // The demo switch. Once a minute because the two-hour expiry is re-decided
+  // every tick rather than held in a timer — a timer dies with the process and
+  // the promise "it turns itself off" has to survive a restart.
+  boost_reconcile: 60,
   checkin_ladder: 300,
   memory_consolidation: 3600,
   fact_extraction: 600,

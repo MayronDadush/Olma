@@ -9,6 +9,10 @@
 const http = require('node:http');
 const crypto = require('node:crypto');
 const flagsDomain = require('../../domain/flags');
+const occ = require('../../intake/openclaw-config');
+const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG || occ.DEFAULT_PATH;
+const boostDomain = require('../../domain/boost');
+const boostJob = require('../../jobs/boost');
 const issuesDomain = require('../../domain/issues');
 const prefsDomain = require('../../domain/preferences');
 const factsDomain = require('../../domain/facts');
@@ -75,6 +79,7 @@ function ago(ts) {
 
 const SECTIONS = [
   { id: 'health', title: 'מצב המערכת', hint: 'האם כל התהליכים הפנימיים רצים כשורה. אדום = משהו תקוע וצריך טיפול.', render: renderHeartbeats },
+  { id: 'boost', title: 'מצב בוסט', hint: 'מתג להדגמות: מעביר את כל המשתמשים למודל המהיר והחזק ביותר, ומכבה את עצמו אחרי שעתיים. עולה יותר לדקה — לכן הוא לא נשאר דלוק בטעות.', render: renderBoost },
   { id: 'users', title: 'משתמשים', hint: 'כל מי שרשום. אפשר לקבוע לכל אחד מכסת הודעות יומית משלו.', render: renderUsers },
   { id: 'issues', title: 'תקלות ובקשות', hint: 'דברים שאולמה או המשתמשים דיווחו עליהם ומחכים לטיפול.', render: renderIssues },
   { id: 'evals', title: 'בדיקות התנהגות', hint: 'כל לילה אולמה עוברת תרחישים שנבנו מתקלות אמת — שיחה מדומה מול משתמש בדיקה, בדיקת כלים ומסד בקוד, ובדיקת ניסוח על ידי מודל שופט. אדום = כלל נשבר; צהוב = השופט הסתייג מהניסוח.', render: renderEvals },
@@ -566,6 +571,38 @@ const FLAG_SPECS = [
     help: 'הבסיס לקישור החיפוש שאולמה שולחת כשהיא לא יכולה לחפש בעצמה. ריק = גוגל. חייב להתחיל ב-https ולהסתיים בפרמטר השאילתה, למשל https://duckduckgo.com/?q= — ערך לא תקין נופל חזרה לגוגל ולא שובר קישור.' },
 ];
 const EDITABLE_FLAGS = FLAG_SPECS.map((f) => f.key);
+
+// The demo switch. Deliberately its own section at the top rather than a row
+// in "הגדרות מערכת": it is the only setting that costs real money per minute
+// and turns itself off, so it needs to show a countdown, and a flag table has
+// nowhere to put one.
+async function renderBoost(client, csrf) {
+  const state = await flagsDomain.getFlag(client, boostJob.STATE_FLAG);
+  const model = await flagsDomain.getFlag(client, boostJob.MODEL_FLAG);
+  const now = new Date();
+  const on = boostDomain.isEngaged(state) && !boostDomain.expired(state, now);
+  const left = boostDomain.minutesLeft(state, now);
+
+  const button = on
+    ? `<form method="post" action="/boost" class="inline">
+         <input type="hidden" name="csrf" value="${csrf}">
+         <input type="hidden" name="action" value="off">
+         <button>כבה עכשיו</button>
+       </form>`
+    : `<form method="post" action="/boost" class="inline">
+         <input type="hidden" name="csrf" value="${csrf}">
+         <input type="hidden" name="action" value="on">
+         <button>הדלק מצב בוסט</button>
+       </form>`;
+
+  const status = on
+    ? `<div><b>פעיל</b> — נשארו <b>${left}</b> דקות. המודל: <span dir="ltr">${esc(String(state.model || model || ''))}</span>.
+         <div class="dim small">כשהזמן ייגמר המערכת תחזור לבד ל-<span dir="ltr">${esc(String((state.restore && state.restore.model) || ''))}</span>. אין צורך לזכור לכבות.</div></div>`
+    : `<div>כבוי. כל המשתמשים על מודל ברירת המחדל.
+         <div class="dim small">הדלקה מעבירה את <b>כל</b> המשתמשים ל-<span dir="ltr">${esc(String(model || ''))}</span> למשך שעתיים, ואז חוזרת לבד. השינוי חל תוך דקה ובלי הפעלה מחדש — שיחה באמצע לא נקטעת.</div></div>`;
+
+  return `<div class="boost ${on ? 'on' : 'off'}">${status}<div style="margin-top:8px">${button}</div></div>`;
+}
 
 async function renderFlags(client, csrf) {
   const rows = [];
@@ -1936,7 +1973,38 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         }
         let cardUserId = null;
         await withTx(pool, async (client) => {
-          if (url.pathname === '/flags' && EDITABLE_FLAGS.includes(body.key)) {
+          if (url.pathname === '/boost') {
+            // The dashboard writes the FLAG and never the gateway config —
+            // jobs/boost.js is the only writer, so a click cannot leave the
+            // config half-changed and a crash here self-heals on the next tick.
+            const model = await flagsDomain.getFlag(client, boostJob.MODEL_FLAG);
+            if (body.action === 'on') {
+              let live = null;
+              try { live = boostDomain.currentModel(occ.loadConfig(OPENCLAW_CONFIG_PATH)); } catch { live = null; }
+              const r = boostDomain.engageState(live, model, new Date());
+              // A refusal changes nothing at all — same rule as a malformed
+              // flag value. Better an unchanged switch than a boost with no
+              // way back.
+              if (r.ok) {
+                await flagsDomain.setFlag(client, boostJob.STATE_FLAG, r.state);
+                await auditDomain.record(client, null, 'admin.boost_on',
+                  { model, restoreTo: r.state.restore.model, until: r.state.until });
+              } else {
+                await auditDomain.record(client, null, 'admin.boost_refused', { reason: r.error });
+              }
+            } else if (body.action === 'off') {
+              // Off is a flag write too: the reconciler sees an expired state
+              // next tick and restores the captured default properly. Clearing
+              // the state here without putting the config back would strand
+              // everyone on the demo model.
+              const cur = await flagsDomain.getFlag(client, boostJob.STATE_FLAG);
+              if (boostDomain.isEngaged(cur)) {
+                await flagsDomain.setFlag(client, boostJob.STATE_FLAG,
+                  { ...cur, until: new Date(Date.now() - 1000).toISOString() });
+                await auditDomain.record(client, null, 'admin.boost_off', { model: cur.model });
+              }
+            }
+          } else if (url.pathname === '/flags' && EDITABLE_FLAGS.includes(body.key)) {
             // Coerce by declared type — a stray character must never turn a
             // number into a string and silently change live behaviour.
             const spec = FLAG_SPECS.find((f) => f.key === body.key);
