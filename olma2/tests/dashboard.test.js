@@ -233,6 +233,40 @@ test('/ready ignores the gateway entirely', async () => {
   await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'brokerd'`);
 });
 
+// A banner reading "22 running in order" above a table of 23 rows invites the
+// operator to wonder which one is not being counted — on the one page whose
+// whole job is to be believed.
+test('the health banner counts what the health table shows', async () => {
+  const { SECTIONS } = require('../src/adapters/http/dashboard');
+  const section = SECTIONS.find((s) => s.id === 'health');
+  const rowsIn = (html) => html.split('</tr>').length - 1 - 1; // minus the header row
+  const stated = (html) => Number((html.match(/הכל תקין — (\d+)/) || [])[1]);
+
+  await db.pool.query(
+    `INSERT INTO job_heartbeats (job_name, last_run_at, last_ok_at) VALUES ('brokerd', now(), now())
+     ON CONFLICT (job_name) DO UPDATE SET last_run_at = excluded.last_run_at`);
+
+  const live = await withTx(db.pool, (c) =>
+    section.render(c, 'csrf', async () => ({ status: 'live', detail: 'live', port: 18789 })));
+  assert.equal(stated(live), rowsIn(live), 'the gateway is a row, so it is in the count');
+  assert.match(live, /שער התקשורת/);
+
+  // `unknown` is neither a healthy process nor a problem. Counting it as
+  // either overstates what was observed, so it is shown and not tallied.
+  const unknown = await withTx(db.pool, (c) =>
+    section.render(c, 'csrf', async () => ({ status: 'unknown', detail: 'ENOENT', port: null })));
+  assert.equal(stated(unknown), rowsIn(unknown) - 1, 'shown, but not claimed as healthy');
+
+  // Down replaces the green banner entirely, and is counted as a problem.
+  const down = await withTx(db.pool, (c) =>
+    section.render(c, 'csrf', async () => ({ status: 'down', detail: 'ECONNREFUSED', port: 18789 })));
+  assert.ok(!/banner ok/.test(down), 'a dead gateway cannot leave the page green');
+  assert.match(down, /⚠ 1 תהליכים/);
+  assert.match(down, /ECONNREFUSED/);
+
+  await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'brokerd'`);
+});
+
 test('deploy.sh gates on /ready, never on /health', () => {
   const sh = require('node:fs').readFileSync(
     require('node:path').join(__dirname, '..', 'scripts', 'deploy.sh'), 'utf8');

@@ -127,7 +127,10 @@ function publicGateway(gw) {
   return { status: gw.status, detail: gw.detail };
 }
 
-async function renderHeartbeats(client) {
+// `probe` is injectable for the same reason /health's is: this suite runs on
+// the production box and on CI runners, and neither one's real gateway proves
+// anything about the branch under test.
+async function renderHeartbeats(client, _csrf, probe) {
   const { rows } = await client.query(`SELECT * FROM job_heartbeats ORDER BY job_name`);
   const now = Date.now();
   const problems = rows.filter((r) => isStale(r.job_name, r.last_run_at, now) || (r.note && String(r.note).startsWith('ERR')));
@@ -137,7 +140,7 @@ async function renderHeartbeats(client) {
   // watched. It is asked directly, and it leads the table because a dead
   // gateway makes every green row below it beside the point.
   let gw;
-  try { gw = await checkGateway({ configPath: OPENCLAW_CONFIG_PATH }); }
+  try { gw = await (probe || checkGateway)({ configPath: OPENCLAW_CONFIG_PATH }); }
   catch (e) { gw = { status: 'unknown', detail: `probe failed: ${e.message}`, port: null }; }
   const gwBad = gw.status === 'down';
   const gwLabel = { live: 'פעיל', down: 'לא מגיב', unknown: 'לא נבדק' }[gw.status] || gw.status;
@@ -146,9 +149,16 @@ async function renderHeartbeats(client) {
       <td class="dim">${esc(gwLabel)}</td>
       <td class="dim mono">${gwBad ? esc(String(gw.detail || '').slice(0, 90)) : ''}</td></tr>`;
 
+  // The gateway is a row in this table, so it is counted in this sentence too
+  // — a banner saying 22 above a table of 23 invites the operator to wonder
+  // which one is not being counted, on the one page whose whole job is to be
+  // believed. It counts toward the total only when it was actually OBSERVED:
+  // `unknown` is neither a healthy process nor a problem, and claiming it as
+  // either is the same overstatement the three-state rule exists to avoid.
+  const gwCounted = gw.status !== 'unknown' ? 1 : 0;
   const totalProblems = problems.length + (gwBad ? 1 : 0);
   const banner = totalProblems === 0
-    ? `<div class="banner ok">✓ הכל תקין — ${rows.length} תהליכים רצים כסדרם</div>`
+    ? `<div class="banner ok">✓ הכל תקין — ${rows.length + gwCounted} תהליכים רצים כסדרם</div>`
     : `<div class="banner bad">⚠ ${totalProblems} תהליכים דורשים תשומת לב</div>`;
 
   const tr = gwRow + rows.map((r) => {
