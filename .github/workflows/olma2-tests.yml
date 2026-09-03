@@ -34,6 +34,8 @@ jobs:
   # suite throwing in its `before` hook.
   migrations:
     runs-on: ubuntu-latest
+    # Observed 5-20s. See the timeout note on `test` below for why these exist.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -44,6 +46,23 @@ jobs:
   test:
     needs: migrations
     runs-on: ubuntu-latest
+    # Observed 45-90s across recent successful runs, so 10 minutes is ~7-13x
+    # headroom and nothing legitimate will reach it.
+    #
+    # It exists because of what happened on 2026-09-03: `node --test` wedged
+    # mid-suite three times in one evening — a few test files reported, then
+    # total silence, with the Postgres service logging nothing at all (so it
+    # was idle, not the culprit). The same commit passed 707/707 on an earlier
+    # run and 756/756 on a later one, so the code was never the problem.
+    #
+    # GitHub's default is a SIX HOUR job timeout. Without this line a wedge
+    # holds a runner for six hours and, worse, shows as a pending check
+    # forever — which reads as "CI hasn't got to it yet" rather than "this is
+    # dead". Three of those cost about an hour of a session before anyone
+    # thought to compare a run's frozen `updated_at` against its sibling.
+    # Failing at 10 minutes turns an invisible hang into a red check someone
+    # can just re-run.
+    timeout-minutes: 10
     services:
       postgres:
         image: postgres:16
@@ -70,6 +89,15 @@ jobs:
 
   deploy:
     needs: test
+    # Deliberately loose (observed 160-178s), and the asymmetry with `test`
+    # above is the whole point. Killing a verification job costs nothing; the
+    # work is pure and re-running is free. Killing THIS one can interrupt
+    # deploy.sh between the rsync and its own rollback safeguard, leaving the
+    # box in a state no automation is left running to repair. So the tight
+    # timeout goes where it is safe and a generous one goes here — long enough
+    # that only a genuine hang reaches it, short enough that a hung deploy is
+    # not still holding main's serialized queue hours later.
+    timeout-minutes: 30
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
