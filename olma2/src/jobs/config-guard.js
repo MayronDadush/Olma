@@ -201,7 +201,8 @@ async function checkCarryovers(client, deps = {}) {
   const read = deps.readPeerText || ((phone) => sessions.readPeerUserText(INTAKE_AGENT_ID, phone));
   const { rows } = await client.query(
     `SELECT id, phone, workspace_path FROM users
-     WHERE status = 'active' AND workspace_path IS NOT NULL`
+     WHERE status = 'active' AND workspace_path IS NOT NULL
+     ORDER BY id`
   );
   const seen = new Map(); // carryover text → the first user who quoted it
   const cache = new Map(); // phone → their own intake text, read at most once
@@ -225,9 +226,22 @@ async function checkCarryovers(client, deps = {}) {
     if (mine === true && theirs === true) continue; // both of them really said it
 
     const suspect = mine === false ? u : (theirs === false ? prior : null);
-    violations.push(suspect
-      ? `user ${suspect.id}'s card quotes an intake message they never sent — the same text is on user ${(suspect === u ? prior : u).id}'s card`
-      : `users ${prior.id} and ${u.id} carry the SAME intake carryover text — one card is quoting another person's message`);
+    if (suspect) {
+      // Not sorted, deliberately: which card is WRONG is a fact about the
+      // problem, so this title is stable on its own and naming them in that
+      // order is the whole value of it.
+      violations.push(
+        `user ${suspect.id}'s card quotes an intake message they never sent — the same text is on user ${(suspect === u ? prior : u).id}'s card`);
+    } else {
+      // The unverifiable pair, and here the order IS arbitrary — which of the
+      // two the loop reaches first is not a fact about anything.
+      // fileViolations dedupes on the title, so unsorted this is two titles for
+      // one condition: live on 2026-09-02 that filed the same carryover SEVEN
+      // times, each tick filing one spelling and closing the other.
+      const [a, b] = [Number(prior.id), Number(u.id)].sort((x, y) => x - y);
+      violations.push(
+        `users ${a} and ${b} carry the SAME intake carryover text — one card is quoting another person's message`);
+    }
   }
   return violations;
 }
