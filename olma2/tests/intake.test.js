@@ -1024,6 +1024,20 @@ test('config guard notices two cards quoting the same intake text', async () => 
   const v = await guard.checkCarryovers(fake);
   assert.equal(v.length, 1, 'exactly one pair collides');
   assert.match(v[0], /users 1 and 2/);
+
+  // The title must not depend on WHICH of the pair the loop saw first. Row
+  // order out of Postgres is not guaranteed without ORDER BY, so an unsorted
+  // pair yields two different titles for one condition — and fileViolations
+  // dedupes on the title, so each order files its own issue AND closeResolved
+  // then closes the other, every tick, for ever. Live on 2026-09-02 that had
+  // produced seven rows for a single leak, alternating "users 10 and 13" and
+  // "users 13 and 10". Feeding the identical rows backwards is the only thing
+  // that catches it; the forward-order assertion above cannot.
+  const reversed = { query: async () => ({ rows: [...rows].reverse() }) };
+  const back = await guard.checkCarryovers(reversed);
+  assert.equal(back.length, 1, 'still exactly one pair, whichever way round');
+  assert.equal(back[0], v[0], 'the title must be identical in both row orders');
+
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
