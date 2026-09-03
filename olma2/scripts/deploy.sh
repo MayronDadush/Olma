@@ -122,7 +122,11 @@ $SSH "$SERVER" "
   # nice: the same core is serving live agent turns; the suite yields to them.
   # (Observed 2026-08-27: an unniced run during a busy drain starved live
   # turns until the gateway texted users raw error strings.)
-  nice -n 19 node --test --test-concurrency=2 'tests/*.test.js'
+  # Via run-suite.sh so a wedged runner retries instead of hanging the deploy
+  # until the job timeout. Two attempts, not three: a retry here costs the live
+  # box seven more minutes of a shared single core, so the third roll of the
+  # dice is not worth what it takes from users.
+  SUITE_NICE=19 SUITE_CONCURRENCY=2 SUITE_ATTEMPTS=2 SUITE_TIMEOUT=420 bash scripts/run-suite.sh
 "
 
 # Passes iff both services are actually running (catches an instant crash —
