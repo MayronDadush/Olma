@@ -1691,6 +1691,73 @@ still `new` when the same user's broken token was diagnosed by hand a day
 later. Thirteen open issues, every one already resolved in reality. A
 detection layer nobody looks at is not a detection layer.
 
+### A leaked token has a rotation now, and the file order is the design (2026-09-03)
+
+`config_guard` filed *"user 3: a live identity token was sent as message text"*
+(issue #66) — u-3's agent garbled a `render_schedule_card` call on 2026-09-02
+06:31 UTC, emitted DeepSeek's raw tool-call syntax as ordinary reply text
+during a DELIVERY turn, and מירון's own credential went to his WhatsApp.
+`domain/token-leak.js` notices it; nothing could **fix** it, because the only
+remediation for an exposed credential is a different credential and there was
+no way to mint one. Verified independently before building anything: the
+fingerprint the guard stored (`cf5613f8e6e41db0`) is the fingerprint of user
+3's *current* token, so the string in that chat is still the live key to all 77
+tools.
+
+Almost all of the machinery already existed — `resync-agent-templates.js`
+renders `AGENTS.md` per user from `users.identity_token`, and
+`repairIdentityFiles` rewrites `.olma-identity` from the same column — so
+`rotateIdentityToken` (`domain/identity-repair.js`, CLI
+`scripts/rotate-identity-token.js`, dry-run by default) is only the mint and
+the swap.
+
+- **The order of the three writes is the whole design.** The token lives in the
+  DB (the verifier), `AGENTS.md` (the primary, read into context at session
+  start) and `.olma-identity` (the recovery path both the doctrine and
+  `bin/olma-mcp.js` point at). **File first**: while `.olma-identity` is new and
+  the DB is still old, the token already in the model's context keeps working,
+  so nothing fails. Then the DB flips and that in-context token dies — the next
+  call fails once with `unknown identity token`, whose own text tells the model
+  to re-read `.olma-identity`, which is already correct. `AGENTS.md` last, so
+  the next session starts clean instead of paying for the fallback every turn.
+  Any other order has a window where the file and the DB are wrong *at the same
+  time*, and that window is a total auth failure rather than one retried call.
+- **The 2026-08-27 recovery path is what makes mid-conversation rotation safe
+  at all.** It was built for a model typing a truncated token; it turns out to
+  be exactly the mechanism that absorbs a rotation. The live session cannot be
+  spared completely (its context holds the dead token until it rotates), and
+  one extra tool call per turn is the whole cost.
+- **The shim does NOT paper over this, deliberately.** `knownGoodToken` in
+  `bin/olma-mcp.js` substitutes only for a MALFORMED token; a well-formed
+  but rotated-away one is passed through and allowed to fail, which is what
+  triggers the file re-read. That refusal to "correct" a well-formed token —
+  written so one user's typo could never become another user's identity — is
+  what makes the recovery fire instead of silently retrying a dead key.
+- **The verifier is asked, not trusted.** Writing three files is not the same
+  claim as replacing a credential, so the rotation ends by checking that the
+  new token resolves to this user AND that the old one no longer resolves; a
+  failure of either is an error, not a warning.
+- **Nothing logs, audits or returns the token.** A rotation prompted by a leak
+  must not become the next place the credential is written down — the audit row
+  (`admin.identity_token_rotated`) carries fingerprints, which is what
+  `token-leak.js` compares on anyway. Pinned by a test that greps the audit
+  detail for the prefix.
+- **A workspace missing either copy is refused, never created.** Writing a
+  brand-new live credential into a directory that may no longer be that
+  person's workspace is worse than the exposure it would remediate — the same
+  refusal `repairIdentityFiles` makes, with higher stakes.
+- **The issue closes itself.** `token-leak.reconcile` keeps a finding only
+  while its fingerprint is still somebody's live token, so the next
+  `config_guard` tick drops it — nobody has to remember to resolve #66 by
+  hand. Pinned end-to-end by a test rather than left as a claim in the
+  script's output.
+
+**Not run.** Rotating a live credential is visible to the person whose agent
+it is, so it waits for the owner's go-ahead:
+`node scripts/rotate-identity-token.js --user 3 --apply --reason "leaked in chat 2026-09-02"`.
+Dry-run verified against the live box from a staging copy (`/tmp`, deleted
+after): both files present, correct fingerprint, nothing touched.
+
 ### The mailbox, Phase 1: read-only Gmail, and nobody's mail is browsed (2026-09-02)
 
 Owner ask: connect the user's email — Gmail first, then Outlook, then Apple —
