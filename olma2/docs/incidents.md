@@ -19,7 +19,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Gateway, config and upgrades**
 
-- [`main` said NO_REPLY into a real person's WhatsApp (2026-09-01)](#main-said-noreply-into-a-real-persons-whatsapp-2026-09-01)
+- [`main` said NO_REPLY into a real person's WhatsApp (2026-09-01)](#main-said-no_reply-into-a-real-persons-whatsapp-2026-09-01)
 - [The actual reason it kept converging on מירון: `heartbeat.target` defaults to `"owner"` (fixed 2026-09-02)](#the-actual-reason-it-kept-converging-on-מירון-heartbeattarget-defaults-to-owner-fixed-2026-09-02)
 - [The gateway was upgraded underneath a running system (2026-08-31)](#the-gateway-was-upgraded-underneath-a-running-system-2026-08-31)
 - [Permission to use a model lives in THREE lists, and we wrote two (fixed 2026-09-02)](#permission-to-use-a-model-lives-in-three-lists-and-we-wrote-two-fixed-2026-09-02)
@@ -83,7 +83,7 @@ never trust a dated narrative for something you are about to act on.
 - [The fact table admitted everything and ranked by recency (fixed 2026-08-28)](#the-fact-table-admitted-everything-and-ranked-by-recency-fixed-2026-08-28)
 - [The name was in front of us on every turn (fixed 2026-08-22)](#the-name-was-in-front-of-us-on-every-turn-fixed-2026-08-22)
 - [The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)](#the-carryover-detector-checked-the-wrong-half-of-the-pair-so-the-flagged-case-was-innocent-and-the-real-leaks-were-invisible-fixed-2026-09-03)
-- [One carryover leak filed itself seven times — `config_guard`'s dedup key wasn't deterministic (fixed 2026-09-03)](#one-carryover-leak-filed-itself-seven-times--configguards-dedup-key-wasnt-deterministic-fixed-2026-09-03)
+- [One carryover leak filed itself seven times — `config_guard`'s dedup key wasn't deterministic (fixed 2026-09-03)](#one-carryover-leak-filed-itself-seven-times--config_guards-dedup-key-wasnt-deterministic-fixed-2026-09-03)
 
 **Time, timezones and scheduling**
 
@@ -107,6 +107,7 @@ never trust a dated narrative for something you are about to act on.
 
 **CI, migrations and deploying**
 
+- [The rollback was one release deep, on a five-merge day (2026-09-03)](#the-rollback-was-one-release-deep-on-a-five-merge-day-2026-09-03)
 - [Two branches, one migration number — a third time, in one afternoon (fixed 2026-08-29)](#two-branches-one-migration-number--a-third-time-in-one-afternoon-fixed-2026-08-29)
 - [Two branches, one migration number (fixed 2026-08-22)](#two-branches-one-migration-number-fixed-2026-08-22)
 - [The suite was green thirteen hours a day and red eleven (fixed 2026-08-30)](#the-suite-was-green-thirteen-hours-a-day-and-red-eleven-fixed-2026-08-30)
@@ -2979,6 +2980,98 @@ abandoned reconnect.
 
 
 ## CI, migrations and deploying
+
+### The rollback was one release deep, on a five-merge day (2026-09-03)
+
+Owner question, asked plainly after five PRs went to `main` in an evening:
+*if something turns out to be broken, can we get back?* Most of the answer
+already existed and was good — `deploy.sh --restart` snapshots the outgoing
+release to `/opt/olma2-previous`, and restores it automatically when the
+post-restart health check fails. Writing the answer out is what exposed the
+hole: **that snapshot is overwritten by every deploy.** On the day it was
+asked it held the fourth of five merges. It answers "undo the deploy that
+just happened" and nothing else.
+
+The gap is not really about disk. It is about **when you find out**:
+
+- **The automatic path assumes the fault is visible in five seconds.** It
+  fires on a health check taken right after restart. Everything it catches —
+  a syntax error, a missing dep, a crash on boot — is a fault that announces
+  itself immediately.
+- **The faults that actually reach users do not.** A digest that stops
+  drawing a card, a reminder rung that no longer climbs, a sweep that goes
+  quiet: all noticed the next morning, or the next week, by which point
+  several merges have landed on top.
+- **`git revert` can reach back that far, but it demands the diagnosis
+  first** — you have to know WHICH merge to revert before you can type the
+  command. Going back to a release that is known to have worked does not
+  require knowing what broke. That is the whole reason to keep more than one:
+  the fast path should be usable while you are still confused.
+
+What landed:
+
+- **Dated archive, newest 5 kept.** `/opt/olma2-releases/<utc-stamp>/`,
+  stamped from the SERVER's clock because deploys come from both a Mac and a
+  GitHub runner, and an archive sorted by two clocks is worse than none. ISO
+  with `-` for `:`, so lexicographic order IS chronological order and nothing
+  parses a date. A release is 8.4MB; five cost 42MB against 35GB free.
+- **`/opt/olma2-previous` was deliberately not touched.** It is the path the
+  automatic rollback takes at the worst possible moment with nobody watching,
+  so it keeps having no dependency on a stamp being parseable or a directory
+  existing. The archive is a second copy, strictly additive. Rebuilding the
+  hot path on top of the new one would have been the tidier diff and the
+  worse change.
+- **A `RELEASE` marker makes a timestamp an identifiable release** — sha,
+  subject, when, and whether a runner or a laptop pushed it. It is written
+  into the live tree after the rsync and rides into the archive on the NEXT
+  deploy, which is the only way the archived copy can describe itself.
+  Deliberately not rsync-excluded: `--delete` removes it and the deploy
+  rewrites it, so a deploy that dies in between leaves it **missing** rather
+  than stale. Missing reads as "unknown"; stale would send someone back to
+  code other than what they read. base64 over the wire so a commit subject
+  containing quotes or backticks reaches the remote shell as data — verified
+  against a deliberately hostile subject rather than assumed.
+- **`scripts/rollback.sh`**: `--list` shows what there is, `--to <stamp>`
+  only describes, `--to <stamp> --yes` acts. Restarting production onto older
+  code should not be one typo away. It archives what it replaces, so a
+  rollback is not a one-way door; it refuses a target whose sha is already
+  live; and it ends by saying the thing that is easy to forget — **the bad
+  commit is still on `main`, so the next merge deploys it again.**
+- **The migration warning is now specific.** Instead of repeating "this does
+  not undo migrations", it reads `max(version)` from the live DB, compares it
+  against the highest migration the target release actually ships, and names
+  the gap. A general warning is read past; "the database is at 027 and this
+  release knows 026" is checkable.
+
+Two things worth keeping from how it was built:
+
+- **The deleting part got its own file and real tests.**
+  `prune-releases.sh` is the only line in the deploy path that removes
+  anything, it runs unattended on production after every merge, and both its
+  failure modes are silent — delete too much and the archive is empty on the
+  morning it is needed, delete nothing and the disk fills. It is driven by
+  `tests/prune-releases.test.js` against real temp directories, including the
+  empty, missing, at-the-boundary and stray-file cases. Then the suite was
+  **mutation-tested**: reversing the sort failed 3, an off-by-one failed 2. A
+  test that cannot fail is not a test. `keep=0` is refused rather than
+  obeyed, because a deploy variable typoed to zero would create precisely the
+  state this feature exists to prevent.
+- **`bash -n` now runs in CI on all three scripts.** `deploy.sh` and
+  `rollback.sh` are the only files here that no test can execute end-to-end,
+  because running them IS deploying to the one production box. With
+  `set -euo pipefail`, a syntax error kills bash at that line — and in
+  `deploy.sh` that line can fall between the rsync and the rollback
+  safeguard, leaving the box in a state no automation is left running to
+  repair. Parsing without executing is the one check available for free.
+
+Also corrected while here: CLAUDE.md said the post-restart gate checks
+`/health`. It checks `/ready`, and has since 2026-08-22 for a documented
+reason — see "A rollback cannot reach the filesystem" and the `/health`
+comment in `deploy.sh`.
+
+**Still true and not fixed by any of this:** migrations never roll back
+(hence additive-only), anything already delivered stays delivered, and the
+`pg_dump` still lands on the droplet it backs up.
 
 ### Two branches, one migration number — a third time, in one afternoon (fixed 2026-08-29)
 

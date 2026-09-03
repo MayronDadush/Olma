@@ -28,6 +28,16 @@ server (Postgres 16 lives there):
 bash olma2/scripts/deploy.sh
 ```
 
+Every deploy archives the release it replaces to `/opt/olma2-releases/` and
+keeps the newest 5. To go back to one:
+
+```bash
+bash olma2/scripts/rollback.sh --list
+```
+
+`--to <stamp>` then describes the rollback and `--to <stamp> --yes` performs
+it. Code only — a migration that ran stays applied.
+
 Rules: never edit an applied migration — add a new one. Domain functions take a
 pg client as first arg and never accept a caller-supplied user id as identity;
 identity comes only from `users.resolveByToken`.

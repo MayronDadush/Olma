@@ -48,6 +48,16 @@ jobs:
         with:
           node-version: '24'
       - run: node olma2/scripts/check-migrations.js
+      # deploy.sh and rollback.sh are the two files in this repo that no test
+      # can execute end-to-end — running them IS deploying to the one
+      # production box. That makes a syntax error in them uniquely expensive:
+      # `set -euo pipefail` means bash dies at the bad line, and in deploy.sh
+      # the bad line can fall between the rsync and the rollback safeguard,
+      # leaving the box in a state no automation is left running to repair.
+      # `bash -n` parses without executing, which is the whole check that CAN
+      # be run for free. It rides in the `migrations` job because that job is
+      # already the seconds-fast gate that runs before anything expensive.
+      - run: bash -n olma2/scripts/deploy.sh olma2/scripts/rollback.sh olma2/scripts/prune-releases.sh
 
   test:
     needs: migrations
