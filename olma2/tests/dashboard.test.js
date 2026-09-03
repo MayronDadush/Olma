@@ -11,11 +11,21 @@ const flags = require('../src/domain/flags');
 let db, server, base, user;
 const AUTH = 'Basic ' + Buffer.from('admin:test-password-123').toString('base64');
 
+// The gateway's condition, stated rather than inherited. This suite runs on
+// the production box during deploy (where the real gateway is up) and on CI
+// runners (where there is none), so a probe of the real machine would prove
+// nothing about either branch.
+let gatewayState = { status: 'live', detail: 'live', port: 18789 };
+
 before(async () => {
   db = await freshDb();
   user = await makeUser(db.pool, '+972611000001', { firstName: 'Dana' });
   await db.pool.query(`UPDATE users SET agent_id = 'u-' || id WHERE id = $1`, [user.id]);
-  server = createDashboard({ pool: db.pool, adminUser: 'admin', adminPass: 'test-password-123' });
+  server = createDashboard({
+    pool: db.pool, adminUser: 'admin', adminPass: 'test-password-123',
+    gatewayCheck: async () => gatewayState,
+    gatewayCacheMs: 0, // the cache has its own test; everywhere else it would just hide the flip
+  });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
 });
@@ -136,6 +146,91 @@ test('/ready is the deploy gate and a stale sweep must not fail it', async () =>
   assert.equal((await fetch(base + '/ready')).status, 503);
 
   await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name IN ('brokerd', 'retention_sweep')`);
+});
+
+// The gap this closes, 2026-09-03: every sweep had a heartbeat and the
+// GATEWAY had none, so /health answered 200 while the one process every
+// WhatsApp message passes through was refusing connections. Found by a raw
+// `message send` returning ECONNREFUSED against a green board.
+test('/health goes red when the gateway is down, and says which half broke', async () => {
+  gatewayState = { status: 'live', detail: 'live', port: 18789 };
+  const up = await fetch(base + '/health');
+  assert.equal(up.status, 200);
+  assert.equal((await up.json()).gateway.status, 'live');
+
+  gatewayState = { status: 'down', detail: 'ECONNREFUSED', port: 18789 };
+  const down = await fetch(base + '/health');
+  assert.equal(down.status, 503, 'a dead gateway is an outage, whatever the sweeps say');
+  const body = await down.json();
+  assert.equal(body.ok, false);
+  assert.equal(body.gateway.status, 'down');
+  assert.equal(body.gateway.detail, 'ECONNREFUSED');
+  // Both halves stay separately readable — the endpoint exists to say WHICH
+  // thing broke, so a gateway outage must not read as a stuck sweep.
+  assert.deepEqual(body.stale, []);
+  assert.deepEqual(body.failing, []);
+
+  gatewayState = { status: 'live', detail: 'live', port: 18789 };
+});
+
+// "Could not look" and "looked and it was dead" must not wear the same word.
+// A monitoring page that manufactures an outage out of missing information is
+// how its reader learns to ignore it — the same rule as a null session index
+// not being an empty one, and a failed balance call not being $0 remaining.
+test('/health: a gateway it could not check is not a gateway that is down', async () => {
+  gatewayState = { status: 'unknown', detail: 'cannot read gateway config: ENOENT', port: null };
+  const res = await fetch(base + '/health');
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.gateway.status, 'unknown');
+
+  // And a probe that throws outright is the same kind of ignorance, not an
+  // outage — the check breaking must not take the endpoint down with it.
+  const boom = createDashboard({
+    pool: db.pool, adminUser: 'admin', adminPass: 'test-password-123',
+    gatewayCheck: async () => { throw new Error('probe exploded'); },
+    gatewayCacheMs: 0,
+  });
+  await new Promise((r) => boom.listen(0, '127.0.0.1', r));
+  const boomRes = await fetch(`http://127.0.0.1:${boom.address().port}/health`);
+  assert.equal(boomRes.status, 200);
+  assert.equal((await boomRes.json()).gateway.status, 'unknown');
+  boom.close();
+
+  gatewayState = { status: 'live', detail: 'live', port: 18789 };
+});
+
+// /health is unauthenticated, so without this every hit would be amplified
+// one-for-one into the gateway — the process the check exists to protect.
+test('/health caches the gateway probe instead of amplifying traffic into it', async () => {
+  let calls = 0;
+  const cached = createDashboard({
+    pool: db.pool, adminUser: 'admin', adminPass: 'test-password-123',
+    gatewayCheck: async () => { calls += 1; return { status: 'live', detail: 'live', port: 18789 }; },
+  });
+  await new Promise((r) => cached.listen(0, '127.0.0.1', r));
+  const u = `http://127.0.0.1:${cached.address().port}/health`;
+  for (let i = 0; i < 5; i += 1) await fetch(u);
+  assert.equal(calls, 1, 'five probes of the dashboard, one probe of the gateway');
+  cached.close();
+});
+
+// The deploy gate must stay blind to this. A gateway restart overlapping a
+// deploy would otherwise roll back code that had nothing to do with it — and
+// gateway restarts happen, including the one that exposed this whole gap.
+test('/ready ignores the gateway entirely', async () => {
+  await db.pool.query(
+    `INSERT INTO job_heartbeats (job_name, last_run_at, last_ok_at) VALUES ('brokerd', now(), now())
+     ON CONFLICT (job_name) DO UPDATE SET last_run_at = excluded.last_run_at`);
+  gatewayState = { status: 'down', detail: 'ECONNREFUSED', port: 18789 };
+  const ready = await fetch(base + '/ready');
+  assert.equal(ready.status, 200, 'the release came up; the gateway is a separate service');
+  const body = await ready.json();
+  assert.equal(body.ok, true);
+  assert.ok(!('gateway' in body), '/ready must not even report it');
+  gatewayState = { status: 'live', detail: 'live', port: 18789 };
+  await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'brokerd'`);
 });
 
 test('deploy.sh gates on /ready, never on /health', () => {
