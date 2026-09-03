@@ -7,7 +7,13 @@ on:
   push:
     paths: ['olma2/**', '.github/workflows/olma2-tests.yml']
   pull_request:
-    paths: ['olma2/**']
+    # The workflow file is in this list for the same reason it is in `push`
+    # above: a change to CI has to be checked BY CI. Without it a PR touching
+    # only this file gets no `test` check at all — it shows a green tick that
+    # means "nothing ran", which is the same "pending reads as fine" failure
+    # the timeouts below exist to end. Found on the PR that added them, which
+    # was itself unchecked.
+    paths: ['olma2/**', '.github/workflows/olma2-tests.yml']
 
 # Two branches picking the same next migration number is the ordinary way
 # this repo works (see the "Two branches, one migration number" incident in
