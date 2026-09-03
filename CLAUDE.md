@@ -150,6 +150,11 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **`agents-template.md` reaches existing users only via
   `scripts/resync-agent-templates.js`.** `deploy.sh --restart` now runs it
   automatically after the health check passes — a manual local deploy does not.
+- **Olma never claims a lookup it did not perform.** No price, no stock level,
+  no "מצאתי לך", no link to a RESULT — all of it asserts a fetch that never
+  happened. `search_link` is the one exception and only because a link to a
+  *search* claims nothing: the model supplies WORDS, `domain/search-link.js`
+  builds the URL. A model that writes URLs eventually writes a fabricated one.
 
 ### systemd scope
 

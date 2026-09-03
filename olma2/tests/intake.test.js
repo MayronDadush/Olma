@@ -842,6 +842,31 @@ test('intake greeter is told not to interrogate either', () => {
 // doctrine has to say not to. Answers stay short, precise, and grounded in
 // the person's own data; a missing piece is a question, never a fill-in from
 // general knowledge.
+test('agent doctrine: a refusal hands over the search, and never a link of its own', () => {
+  const fs = require('node:fs');
+  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
+
+  // Four moves now, not three — the search sits between saying no and offering
+  // to save the errand, because it is the part the person can act on today.
+  assert.match(tpl, /\*\*Never end on "I can't\."\*\* Four moves/);
+  assert.match(tpl, /\*\*Hand over the search\*\* with `search_link`/);
+  assert.match(tpl, /five people in four days/i, 'the incident that motivated it');
+  // The query is theirs and specific, not a bare topic
+  assert.match(tpl, /עבודה על בן גוריון לכיתה ח/);
+
+  // The distinction that lets this coexist with the hallucination guard. If
+  // this sentence ever goes, the guard has been weakened rather than sharpened.
+  assert.match(tpl, /a link to a RESULT claims you looked; a link to\s+a SEARCH claims nothing/);
+  assert.match(tpl, /Never type a url of your\s+own, ever/);
+  assert.match(tpl, /an invented link is a lie that looks like help/);
+  // And the model still must not narrate what is on the other side.
+  assert.match(tpl, /say nothing about\s+what is on the other side/);
+
+  // The boundary sentence must no longer forbid links outright, or the rule
+  // above contradicts it — but it must still forbid reading, pricing, buying.
+  assert.match(tpl, /you cannot read a page,\s+check a price or a stock level, place an order or pay/);
+});
+
 test('agent doctrine: Olma does not impersonate Google or ChatGPT', () => {
   const fs = require('node:fs');
   const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
@@ -857,7 +882,12 @@ test('agent doctrine: Olma does not impersonate Google or ChatGPT', () => {
   // "cannot do" shape: one plain line, and the errand inside survives
   assert.match(tpl, /General-topic questions and writing work are out of scope/);
   assert.match(tpl, /never the refusal alone/);
-  assert.match(tpl, /offer to save THAT as a task/);
+  assert.match(tpl, /offer to save THAT as a\s+task/);
+  // The refusal has to hand over a search too. This is the section the essay
+  // requests actually land in — five in four days, every one answered with a
+  // polite no — so a search_link rule that lived only in "cannot do" below
+  // would have missed the exact case it was built for.
+  assert.match(tpl, /hand over the search\*\* with `search_link`/);
   // the carve-out stays narrow: unblocking their errand, never a lecture
   assert.match(tpl, /One passing sentence that unblocks their own errand/);
   assert.match(tpl, /a lecture, a document/);
@@ -878,9 +908,11 @@ test('agent doctrine: a capability Olma lacks still leaves the user holding some
   const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
 
   assert.match(tpl, /Never end on "I can't\."/);
-  // the boundary is named, so the model stops improvising around it
+  // the boundary is named, so the model stops improvising around it. It no
+  // longer forbids links outright — a search link is now the second move —
+  // but reading a page, pricing, ordering and paying stay out.
   assert.match(tpl, /no web access/);
-  assert.match(tpl, /orders, payment/);
+  assert.match(tpl, /place an order or pay for anything/);
   // ...and the request survives — but as an OFFER, never a silent write to
   // their list: they asked Olma to do it, so handing the job back is theirs
   // to accept.

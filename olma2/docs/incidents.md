@@ -52,6 +52,7 @@ never trust a dated narrative for something you are about to act on.
 - [Pausing left them relying on their own memory to come back (fixed 2026-08-22)](#pausing-left-them-relying-on-their-own-memory-to-come-back-fixed-2026-08-22)
 - [The writing sounded like a form, and half the users were addressed as "את/ה" (2026-08-31)](#the-writing-sounded-like-a-form-and-half-the-users-were-addressed-as-אתה-2026-08-31)
 - ["I can't do that" was the whole answer (fixed 2026-08-21)](#i-cant-do-that-was-the-whole-answer-fixed-2026-08-21)
+- ["I can't" now hands over the search (2026-09-03)](#i-cant-now-hands-over-the-search-2026-09-03)
 - [A goal said out loud left no trace anywhere (fixed 2026-08-21)](#a-goal-said-out-loud-left-no-trace-anywhere-fixed-2026-08-21)
 
 **Models, evals and background cognition**
@@ -1342,6 +1343,55 @@ though it had looked: a price, a stock level, a link, "מצאתי לך". Those a
 assert a lookup that never happened, and for a purchase the remembered version
 is stale by construction. Knowledge that does not go stale is allowed when it
 is plainly the agent's own rather than a lookup; a price never qualifies.
+
+### "I can't" now hands over the search (2026-09-03)
+
+Owner ask, after the dashboard turned out to be holding **five requests to
+write a school essay in four days** plus two for financial explanations —
+every one answered with a polite no and nothing else. The doctrine already
+stopped a refusal from being the whole reply (say it once, offer to save the
+errand, log the gap); what it could not do was hand back anything the person
+could USE today. `search_link` returns a Google link for words the model
+supplies. `domain/search-link.js`, no migration.
+
+- **A link to a RESULT claims you looked; a link to a SEARCH claims nothing.**
+  That distinction is the entire safety argument and it SHARPENS the
+  hallucination guard rather than weakening it — a price, a stock level, a
+  "מצאתי לך", a link to some page all assert a lookup that never happened,
+  and all stay forbidden. A search URL is the person's own question handed
+  back unanswered. The boundary sentence changed with it: it no longer
+  forbids "links" outright, and still forbids reading a page, pricing,
+  ordering and paying.
+- **The model supplies WORDS; the server builds the URL.** Not a style
+  preference — a rule living only in prose does not hold here, which
+  `turn_start` proved across two models and two rewordings. A model asked to
+  write URLs eventually writes `ynet.co.il/article/12345`, which is the
+  fabricated-lookup failure wearing a different hat. There is no argument
+  that reaches the host, the path or a second parameter; a query containing
+  `://` is refused rather than escaped.
+- **Readable, not percent-encoded, and that was measured.** Encoding a Hebrew
+  query fully gives 179 characters of `%D7%A2%D7%91` that reads as spam in a
+  chat; escaping only the characters that change the URL's shape gives 59.
+  The raw letters are safe because the BROWSER normalises them — verified,
+  not assumed: `curl` sends the bytes verbatim and Google answers HTTP 400,
+  while a real browser handed the identical link rewrote it to `%D7%A2…`
+  before the request left. **Never hand this string to an HTTP client
+  directly.**
+- **Every offer is audited with its query.** Nothing else in the system can
+  answer "what do people keep asking for that we cannot do" — the free-text
+  issue rows tried and sat unread until someone happened to read the table.
+- The engine is the `search_link_base` flag (dashboard-editable, must be
+  `https://…?…=`; anything else falls back to Google rather than producing a
+  link to nowhere). Params before `q=` survive, so `?hl=he&q=` is a config
+  change.
+- **The rule had to land in TWO doctrine sections.** Essay requests are
+  refused by "Not Google, not ChatGPT", not by "When it is something Olma
+  cannot do" — a `search_link` rule written only in the second would have
+  missed the exact case that motivated it. Both are pinned in
+  `tests/intake.test.js`.
+- **Still unverified: whether WhatsApp's linkifier makes a URL containing
+  Hebrew tappable.** One real message settles it; until then the fallback is
+  that the person copies the text.
 
 ### A goal said out loud left no trace anywhere (fixed 2026-08-21)
 
