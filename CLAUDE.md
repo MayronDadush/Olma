@@ -389,6 +389,45 @@ what it claimed (a country), it was read as more than that (a location):
   answer, not a prompt to ask about timezones). Pinned in
   `tests/intake.test.js` alongside the act-first rules.
 
+**And correcting the zone corrected the SETTING and nothing already written**
+(fixed 2026-09-03). `setTimezone` wrote one column and stopped, so the same
+joiner's first 44 minutes of dated rows stayed converted through a zone that
+was never hers — her brunch reminder went off at 06:00, and a Sep 8 row was
+still three hours early when it was found by hand three days later. Not an
+edge case: measured on the box, **nine of ten active users are carrying a zone
+nobody ever confirmed**, with 11 future-dated rows underneath them. Every one
+is the same failure waiting for its owner to say which city they are in.
+
+`domain/timezone-repair.js` reads each stored instant's wall clock in the OLD
+zone — the time the person actually said — and re-instantiates it in the new
+one, per row, so a DST boundary between two rows is handled by each on its own
+terms instead of by one global offset (pinned with London→Sydney, where the
+same 08:00 shifts 11h in January and 9h in July).
+
+- **The gate is that the OLD zone was a GUESS**, and it cuts both ways. A
+  guess was never right, so the rows are all wrong by a recoverable delta.
+  `confirmed → anything` is somebody who MOVED: their 15:00 Jerusalem meeting
+  is still that instant, and re-labelling it 15:00 Berlin would break a
+  correct row. Travel is not a repair.
+- **Meetings are reported, never moved.** The other side agreed to a specific
+  moment; shifting one participant's copy would silently move a meeting for
+  someone who never heard about it — the exact failure that made confirmation
+  a hard gate. They come back as `meetingsToRecheck` for the person to decide.
+- **`digest_times` and `live_subscriptions.local_hour` need nothing** — both
+  are stored as local wall clocks and resolved against whatever zone the user
+  has at the time, so they are already right the instant the column changes.
+  Repairing them would double-apply the shift.
+- **Future rows only, and reminders at `attempts = 0`.** A past reminder
+  cannot un-fire and already has an outbox row keyed to it; a rung
+  mid-escalation is an interval measured from when the last one LANDED, not a
+  wall clock anyone chose.
+- **No backfill script**, deliberately: the box was checked first, and after
+  the one row fixed by hand there is nothing for it to find. A repair script
+  that can only ever report zero is worse than none.
+- Verified against real production rows before merging with the BEGIN →
+  simulate → ROLLBACK pattern: four users, wall clocks preserved end to end,
+  meeting 7 untouched, zero rows committed.
+
 ### OpenRouter cache reads were priced 5x too high (fixed 2026-08-31)
 
 `model-pricing.js` charged `cacheRead` at the full input rate on the stated
