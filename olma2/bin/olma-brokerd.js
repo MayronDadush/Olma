@@ -162,6 +162,14 @@ async function main() {
     arm('config_guard', () => withTx(pool, (c) =>
       configGuard.run(c, { configPath: OPENCLAW_CONFIG, send: rawSend, validateConfig })));
 
+    // Boost mode's reconciler — the ONLY writer of agents.defaults.model.
+    // Armed unconditionally: it is what ENDS a boost, so it has to be running
+    // even when nobody has turned one on. A tick with the switch off is one
+    // flag read and a file read.
+    const boostJob = require('../src/jobs/boost');
+    arm('boost_reconcile', () => withTx(pool, (c) =>
+      boostJob.run(c, { configPath: OPENCLAW_CONFIG })));
+
     // Weekly per user, but ticked hourly: "the small hours" is only meaningful
     // in each person's own timezone, so the job decides who is due rather than
     // the interval deciding for it.
