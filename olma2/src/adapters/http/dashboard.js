@@ -34,6 +34,7 @@ const picker = require('./picker');
 const BROKERD_BEAT_MAX_AGE_S = 180;
 const infraCost = require('../infra-cost');
 const { checkGateway } = require('../gateway-health');
+const { readDeployStamp } = require('../deploy-stamp');
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -146,12 +147,26 @@ async function renderHeartbeats(client) {
       <td class="dim">${esc(gwLabel)}</td>
       <td class="dim mono">${gwBad ? esc(String(gw.detail || '').slice(0, 90)) : ''}</td></tr>`;
 
+  // What release is actually serving. Same reasoning as the gateway row above:
+  // nothing wrote this down, so it could not be seen — and on 2026-09-03 a
+  // merge whose `test` job wedged left main and the box diverged with nothing
+  // anywhere saying so. Displayed, never alarmed on: the box cannot know what
+  // main's HEAD is without reaching GitHub, and a quiet week with no merges is
+  // not a fault. The value is that "is production current?" becomes a glance
+  // instead of grepping deployed source for a string from the diff.
+  const rel = readDeployStamp();
+  const relAge = rel.known && rel.at ? ago(rel.at) : '';
+  const relRow = `<tr>
+      <td>– גרסה שרצה בשרת</td>
+      <td class="dim mono">${rel.known ? esc(rel.sha) : 'לא ידוע'}</td>
+      <td class="dim">${rel.known ? esc(relAge) : 'אין חותמת — פריסה שקדמה למעקב הזה'}</td></tr>`;
+
   const totalProblems = problems.length + (gwBad ? 1 : 0);
   const banner = totalProblems === 0
     ? `<div class="banner ok">✓ הכל תקין — ${rows.length} תהליכים רצים כסדרם</div>`
     : `<div class="banner bad">⚠ ${totalProblems} תהליכים דורשים תשומת לב</div>`;
 
-  const tr = gwRow + rows.map((r) => {
+  const tr = gwRow + relRow + rows.map((r) => {
     const bad = isStale(r.job_name, r.last_run_at, now) || (r.note && String(r.note).startsWith('ERR'));
     const err = r.note && String(r.note).startsWith('ERR');
     return `<tr class="${bad ? 'bad' : ''}">

@@ -25,7 +25,7 @@ const APPLY = process.argv.includes('--apply');
     // Keyed on is_eval, never on the issue text: a real person hitting the
     // same gap files a real request, and matching on "essay" would retire it.
     const { rows } = await pool.query(
-      `SELECT i.id, i.category, i.title, i.created_at::date AS day
+      `SELECT i.id, i.category, i.title, to_char(i.created_at, 'YYYY-MM-DD') AS day
          FROM issues i JOIN users u ON u.id = i.reporter_id
         WHERE u.is_eval = true AND i.status IN ('new', 'triaged')
         ORDER BY i.id`);

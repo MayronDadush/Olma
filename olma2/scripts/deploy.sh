@@ -26,14 +26,23 @@ BACKUP="/opt/olma2-previous"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
 SSH="ssh -i $SSH_KEY"
 
+# The revision being shipped, for the post-health stamp below. Read from the
+# source tree's own git rather than passed in, so a manual local deploy is
+# labelled as accurately as a CI one. "unknown" if this is not a git checkout
+# — an honest placeholder beats a wrong or empty sha.
+DEPLOY_SHA="$(git -C "$SRC_DIR" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
+
 # Snapshot the currently-deployed release (code + its own node_modules) as a
 # complete standalone copy BEFORE the new rsync overwrites anything, so a bad
 # deploy has something real to roll back to. Skipped on the very first deploy
 # (DEST doesn't exist yet). One snapshot is kept, not a history.
 $SSH "$SERVER" "[ -d $DEST ] && rm -rf $BACKUP && cp -a $DEST $BACKUP || true"
 
+# .deployed is excluded because it does not exist in the source tree — without
+# this, --delete removes the stamp on every deploy and it could never survive.
 rsync -az --delete \
   --exclude node_modules --exclude .env --exclude '*.log' --exclude run \
+  --exclude .deployed \
   -e "$SSH" \
   "$SRC_DIR/" "$SERVER:$DEST/"
 
@@ -122,6 +131,17 @@ if [ "$RESTART" = "1" ]; then
     echo "Deploy failed (auto-rolled-back where possible) — this run stays red on purpose; go fix the code." >&2
     exit 1
   fi
+  # Stamp WHAT is now serving, and only here — after the health check passed
+  # and before nothing else can change it. Written after, never before: a
+  # deploy that fails its check is rolled back to $BACKUP, whose snapshot was
+  # taken before the rsync and therefore still carries the PREVIOUS stamp. So
+  # the file always names the release that is genuinely running rather than
+  # the one that was last attempted. Best-effort — a box that cannot write it
+  # reads as "unknown" on the dashboard, which is honest; failing the deploy
+  # over a bookkeeping file would be worse than not having it.
+  $SSH "$SERVER" "printf 'sha=%s\nat=%s\n' '$DEPLOY_SHA' \"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\" > $DEST/.deployed" \
+    || echo "WARNING: deployed fine, but the release stamp could not be written — the dashboard will show the running release as unknown." >&2
+
   # Only once the release is live AND healthy: a workspace must never be given
   # doctrine from a release that is about to be rolled back out from under it.
   # A failure here does NOT roll anything back — the service is up and fine —
