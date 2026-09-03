@@ -187,6 +187,29 @@ test('turn_start ignores a sender field that is just the number back', async () 
   assert.equal(rows[0].first_name, null);
 });
 
+test('turn_start does not save an emoji as somebody\'s name', async () => {
+  // Live: user 11 sat on the dashboard as 🌊 for four days. A display name
+  // that is only decoration tells us as little as the number does.
+  const nameless = await makeUser(db.pool, '+972571000014', { firstName: null });
+  const r = await callTool('turn_start', {
+    olma_identity: nameless.identity_token, sender_name: '🌊',
+  });
+  assert.match(r, /"directive":"proceed"/, 'and the turn carries on regardless');
+  const { rows } = await db.pool.query('SELECT first_name FROM users WHERE id = $1', [nameless.id]);
+  assert.equal(rows[0].first_name, null);
+});
+
+test('turn_start keeps the real name standing next to the emoji', async () => {
+  const nameless = await makeUser(db.pool, '+972571000015', { firstName: null });
+  await callTool('turn_start', {
+    olma_identity: nameless.identity_token, sender_name: '🌊 חיים דדוש 🌊',
+  });
+  const { rows } = await db.pool.query(
+    'SELECT first_name, last_name FROM users WHERE id = $1', [nameless.id]);
+  assert.equal(rows[0].first_name, 'חיים');
+  assert.equal(rows[0].last_name, 'דדוש');
+});
+
 test('set_my_name defaults to unconfirmed, so a guess is never mistaken for an answer', async () => {
   const u = await makeUser(db.pool, '+972571000005', { firstName: null });
   await callTool('set_my_name', { olma_identity: u.identity_token, first_name: 'עמית' });

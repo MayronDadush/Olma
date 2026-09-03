@@ -55,11 +55,18 @@ function actorName(user) {
 // "גלי" → גלי. When the peer has set no display name the gateway falls back to
 // putting the number itself in that field, which tells us nothing — a `sender`
 // that is mostly digits is dropped rather than saved as somebody's name.
+// A display name is also where people put decoration — "חיים 🌊", "🌊 חיים",
+// or nothing but the emoji. Letterless words are dropped BEFORE the split, so
+// the real half survives whichever side it sits on; users.setName refuses what
+// is left if there is no name in it at all (that is the guard, this is only
+// about not throwing away a name standing next to an emoji).
 async function captureDisplayName(client, user, raw) {
   const text = String(raw || '').replace(/\s+/g, ' ').trim();
   if (!text) return err('invalid', 'no display name in this turn');
   if (text.replace(/\D/g, '').length >= 7) return err('invalid', 'that is their phone number');
-  const [first, ...rest] = text.split(' ');
+  const words = text.split(' ').filter((w) => /\p{L}/u.test(w));
+  if (!words.length) return err('invalid', 'that display name has no name in it');
+  const [first, ...rest] = words;
   return users.setName(client, user.id, first, rest.join(' ') || null,
     { confirmed: false, source: 'whatsapp_display_name' });
 }
