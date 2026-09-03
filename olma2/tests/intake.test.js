@@ -570,6 +570,122 @@ test('config guard: a multi-agent roster with no ambient owner is a violation', 
   assert.deepEqual(guard.checkOpenclawConfig(many), []);
 });
 
+// Every other config check reads the FILE. This one asks whether the gateway
+// can load it — a distinction with teeth, because on 2026-09-03 a write of a
+// key the per-agent schema does not accept left openclaw.json valid JSON,
+// schema-invalid, and the gateway serving the LAST VALID config: one log line,
+// then every subsequent config write inert and no new user able to go live.
+test('config guard: a config the gateway cannot load is a violation, and a validator that could not run is not', async () => {
+  const cfgPath = '/root/.openclaw/openclaw.json';
+
+  const bad = await guard.checkConfigApplied({
+    configPath: cfgPath,
+    validateConfig: async () => ({
+      valid: false,
+      issues: [{ path: 'agents.entries.u-15.tools', message: 'Unrecognized key: "toolSearch"' }],
+    }),
+  });
+  assert.equal(bad.violations.length, 1);
+  assert.match(bad.violations[0], /does not validate/);
+  assert.match(bad.violations[0], /agents\.entries\.u-15\.tools/,
+    'the offending path is the only actionable part — a bare "invalid" sends the reader to the same log this replaces');
+  assert.equal(bad.skipped, null);
+  assert.equal(guard.breaksUsers(bad.violations[0]), false,
+    'nobody who already exists loses a tool call — BREAKS_USERS means exactly that and must not come to mean two things');
+
+  // Stable title across sweeps: fileViolations dedupes on the string, and
+  // checkStuckOutbox once piled up nine rows for one unchanged problem because
+  // a COUNT moved every tick. A changed issue path IS a changed problem.
+  const again = await guard.checkConfigApplied({
+    configPath: cfgPath,
+    validateConfig: async () => ({
+      valid: false,
+      issues: [{ path: 'agents.entries.u-15.tools', message: 'Unrecognized key: "toolSearch"' }],
+    }),
+  });
+  assert.equal(again.violations[0], bad.violations[0]);
+
+  const ok = await guard.checkConfigApplied({ configPath: cfgPath, validateConfig: async () => ({ valid: true }) });
+  assert.deepEqual(ok, { violations: [], skipped: null });
+
+  // The three ways it can decline. None files anything — a thing that could not
+  // be read is never a thing in trouble — but each SAYS so, because a check
+  // that goes quiet is indistinguishable from one that passed.
+  const unwired = await guard.checkConfigApplied({ configPath: cfgPath });
+  assert.deepEqual(unwired.violations, []);
+  assert.match(unwired.skipped, /no validator/);
+
+  const threw = await guard.checkConfigApplied({
+    configPath: cfgPath,
+    validateConfig: async () => { throw new Error('spawn ENOENT'); },
+  });
+  assert.deepEqual(threw.violations, []);
+  assert.match(threw.skipped, /ENOENT/);
+
+  const declined = await guard.checkConfigApplied({
+    configPath: cfgPath,
+    validateConfig: async () => ({ valid: null, reason: 'openclaw CLI not on PATH' }),
+  });
+  assert.deepEqual(declined.violations, []);
+  assert.match(declined.skipped, /not on PATH/);
+});
+
+// `openclaw config validate` has no --config flag; it resolves its own target
+// from $OPENCLAW_HOME. So the validator may only speak for the file the guard
+// read if it can prove they are the same file. Validating a DIFFERENT one and
+// reporting the answer as this one's is worse than not looking.
+test('config guard: the validator refuses any path it cannot map to a home, and reads exit code and body separately', async () => {
+  const calls = [];
+  const validate = guard.makeConfigValidator({
+    run: async (home) => {
+      calls.push(home);
+      return { err: null, stdout: JSON.stringify({ valid: true, warnings: [] }), stderr: '' };
+    },
+  });
+
+  assert.deepEqual(await validate('/root/.openclaw/openclaw.json'), { valid: true, issues: [] });
+  assert.deepEqual(calls, ['/root'], 'OPENCLAW_HOME is the grandparent, never the config path itself');
+
+  for (const bad of ['/root/openclaw.json', '/root/.openclaw/other.json', '/etc/config/openclaw.json', undefined]) {
+    const res = await validate(bad);
+    assert.equal(res.valid, null, `refused: ${bad}`);
+    assert.match(res.reason, /not validatable/);
+  }
+  assert.equal(calls.length, 1, 'a refused path never spawns anything');
+
+  // Invalid IS reported as a non-zero exit, so the error alone proves nothing —
+  // the body decides. Reading the exit code instead would turn every genuine
+  // "invalid" into a silent decline, which is the failure this check exists for.
+  const failing = guard.makeConfigValidator({
+    run: async () => ({
+      err: Object.assign(new Error('exit 1'), { code: 1 }),
+      stdout: JSON.stringify({ ok: false, valid: false, issues: [{ path: 'a.b', message: 'Unrecognized key: "x"' }] }),
+      stderr: '',
+    }),
+  });
+  const res = await failing('/root/.openclaw/openclaw.json');
+  assert.equal(res.valid, false);
+  assert.equal(res.issues[0].path, 'a.b');
+
+  // No body = no answer. A missing binary and a timeout are named apart,
+  // because "not installed" and "too slow" call for different operator moves.
+  const missing = guard.makeConfigValidator({
+    run: async () => ({ err: Object.assign(new Error('spawn'), { code: 'ENOENT' }), stdout: '', stderr: '' }),
+  });
+  assert.match((await missing('/root/.openclaw/openclaw.json')).reason, /not on PATH/);
+
+  const slow = guard.makeConfigValidator({
+    run: async () => ({ err: Object.assign(new Error('killed'), { killed: true }), stdout: '', stderr: '' }),
+  });
+  assert.match((await slow('/root/.openclaw/openclaw.json')).reason, /timed out/);
+
+  const garbage = guard.makeConfigValidator({
+    run: async () => ({ err: null, stdout: 'Config valid.\n', stderr: '' }),
+  });
+  assert.match((await garbage('/root/.openclaw/openclaw.json')).reason, /unparseable/,
+    'human-readable output is not a verdict — a future --json regression must decline, not silently pass');
+});
+
 test('auth failures land in the audit log', async () => {
   const { createBrokerServer } = require('../src/brokerd/server');
   const broker = createBrokerServer({ pool: db.pool });
