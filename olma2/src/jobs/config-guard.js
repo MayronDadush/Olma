@@ -343,6 +343,79 @@ async function checkOrphanAgents(client, cfg) {
     `agent ${id} is in openclaw.json with no active user — orphan of a failed provisioning; its workspace may hold another person's text`);
 }
 
+// Permission to use a model is spread across THREE independent lists, and a
+// model missing from any one of them is refused — so they only work when they
+// agree. Found 2026-09-01, the expensive way: a pilot registered two models
+// through the two lists the code knew about and the override was still refused,
+// because gateway 2026.8.1 had introduced a third, `agents.defaults.modelPolicy
+// .allow`, and seeded it from the then-current allowlist. Nothing was broken
+// and nothing said so; the config simply disagreed with itself.
+//
+//   agents.defaults.models              — the allowlist (what we intend to permit)
+//   models.providers.openrouter.models  — the catalog (what the gateway can resolve)
+//   agents.defaults.modelPolicy.allow   — a second permit list, 2026.8.1+
+//
+// This is the `agents.list` → `agents.entries` shape a third time: the vendor's
+// own migration moves a key, our writer keeps the old schema in its head, and
+// the failure is silent until something tries to use the result. The general
+// version — diffing every key in openclaw.json against what we expect — was
+// deliberately NOT built. It cannot tell a key that matters from the dozens
+// that do not, and a guard that files an issue per harmless vendor addition is
+// the 13-dead-rows failure documented above, manufactured on purpose.
+//
+// Severity is split because the consequences are not comparable: a DEFAULT
+// model missing from a restricting list means every live turn fails, while a
+// registered-but-unpermitted candidate only means the next pilot is refused.
+function modelIdsOf(defaultModel) {
+  if (typeof defaultModel === 'string') return [defaultModel];
+  if (defaultModel && typeof defaultModel === 'object') {
+    const fb = Array.isArray(defaultModel.fallbacks) ? defaultModel.fallbacks : [];
+    return [defaultModel.primary, ...fb].filter((m) => typeof m === 'string' && m);
+  }
+  return [];
+}
+
+function checkModelPermissions(cfg) {
+  const defaults = (cfg.agents && cfg.agents.defaults) || {};
+  const allowlist = Object.keys(defaults.models || {});
+  const policy = defaults.modelPolicy;
+  // An absent or EMPTY allow list means "no restriction" — the gateway's own
+  // error text says so ("remove/empty the list to allow any model"). Only a
+  // list that actually restricts can be disagreed with.
+  const policyAllow = policy && Array.isArray(policy.allow) && policy.allow.length
+    ? new Set(policy.allow) : null;
+  const catalog = new Set(
+    (((cfg.models || {}).providers || {}).openrouter || {}).models
+      ?.map((m) => m && m.id).filter(Boolean) || []);
+  const inCatalog = (id) => !id.startsWith('openrouter/') || catalog.has(id.replace(/^openrouter\//, ''));
+
+  const violations = [];
+
+  // The live path first. A default or fallback the gateway will refuse is not a
+  // latent problem — it is every user's next message failing, or silently
+  // burning a fallback nobody chose.
+  for (const id of modelIdsOf(defaults.model)) {
+    if (policyAllow && !policyAllow.has(id)) {
+      violations.push(`default/fallback model ${id} is missing from agents.defaults.modelPolicy.allow — the gateway will refuse it and live turns fall through to the next fallback`);
+    }
+    if (!inCatalog(id)) {
+      violations.push(`default/fallback model ${id} has no entry in models.providers.openrouter.models — the gateway cannot resolve it`);
+    }
+  }
+
+  // Then the pilot path: registered candidates that cannot actually be selected.
+  for (const id of allowlist) {
+    if (modelIdsOf(defaults.model).includes(id)) continue; // already reported above, with the louder wording
+    if (policyAllow && !policyAllow.has(id)) {
+      violations.push(`model ${id} is in the allowlist but not in agents.defaults.modelPolicy.allow — a --model pilot on it will be refused`);
+    }
+    if (!inCatalog(id)) {
+      violations.push(`model ${id} is in the allowlist but not in models.providers.openrouter.models — a --model pilot on it will be refused`);
+    }
+  }
+  return violations;
+}
+
 // The count deliberately does NOT go in the title. fileViolations dedupes on
 // the title, so a count that moves files a brand-new issue every time it
 // changes: nine near-identical "N outbox message(s) stuck" rows piled up over
@@ -354,6 +427,109 @@ async function checkStuckOutbox(client) {
   return rows[0].n > 0
     ? ['outbox messages stuck after 5+ delivery attempts — proactive messaging is failing']
     : [];
+}
+
+// Every check above reads the config FILE. This one asks a different question:
+// will the gateway actually load it? Found 2026-09-03 by writing a key the
+// per-agent schema does not accept (`agents.entries.<id>.tools.toolSearch`):
+//
+//   [reload] config reload skipped (invalid config):
+//   agents.entries.u-15.tools: Unrecognized keys: "sessions", "media", "toolSearch"
+//
+// The gateway logged that once and kept serving the LAST VALID config. Nothing
+// errored, nothing retried, every agent answered normally — and meanwhile the
+// file on disk had stopped being the thing in force. That is the dangerous
+// half: `provision.js` writes a joiner's agent + binding into this same file
+// and depends on the hot reload to make them live (the bundled agents.list +
+// bindings write, which is why there is no restart). While the config is
+// invalid, that write is inert: the new user's agent never exists to the
+// gateway, their binding routes nowhere, and no reader of the file can tell —
+// `occ.loadConfig` parses it perfectly. Same silent shape as `intakeConfigured`
+// reading only `.list`.
+//
+// Deliberately NOT in BREAKS_USERS. That list means exactly "their tool calls
+// fail", and this breaks nobody who already exists — the gateway is still
+// serving a config that works. It is a dashboard row. If it earns a phone
+// later it should get its OWN list with its own meaning, the way a leaked
+// credential does, never a widening of that one.
+// Returns { violations, skipped } rather than a bare array, and that is the
+// point. Every path below that declines to judge — no validator wired, no
+// binary, a path this cannot map, a timeout — files NO violation, which is
+// right: a thing that could not be READ is never a thing in trouble (the
+// credit-watch rule). But a check that goes quiet and looks identical to a
+// check that passed is this project's most-repeated failure, recorded four
+// times over: thirteen resolved issues nobody read, /health red for thirteen
+// hours, the archived-session detector reporting its own fix. So the reason
+// rides the job heartbeat, where an operator can tell "nothing wrong" from
+// "not looking". Raised by a peer session reviewing this design, and correct.
+async function checkConfigApplied({ configPath, validateConfig } = {}) {
+  // Unwired → silent, but SAID. The default is off so no test spawns a
+  // subprocess by accident; bin/olma-brokerd.js supplies the real validator.
+  if (typeof validateConfig !== 'function') return { violations: [], skipped: 'no validator wired' };
+  let res;
+  try {
+    res = await validateConfig(configPath);
+  } catch (e) {
+    return { violations: [], skipped: 'validator failed: ' + String((e && e.message) || e).slice(0, 120) };
+  }
+  // valid === null is the validator declining: no CLI on this box, or a config
+  // path it refuses to map to a home directory. Not a pass, not a failure.
+  if (!res || res.valid === null || res.valid === undefined) {
+    return { violations: [], skipped: (res && res.reason) || 'validator returned nothing' };
+  }
+  if (res.valid !== false) return { violations: [], skipped: null };
+  // The issue paths, not a count: they are stable for a given breakage (so
+  // fileViolations' title dedupe still collapses repeat sweeps) and they are
+  // the only actionable part. checkStuckOutbox's lesson was a COUNT that moved
+  // every tick for one unchanged problem; a changed path IS a changed problem.
+  const issues = Array.isArray(res.issues) ? res.issues : [];
+  const detail = issues.slice(0, 3)
+    .map((i) => `${i && i.path ? i.path : '?'}: ${i && i.message ? i.message : '?'}`)
+    .join('; ')
+    .slice(0, 300);
+  const more = issues.length > 3 ? ` (+${issues.length - 3} more)` : '';
+  return {
+    violations: [`openclaw.json does not validate — the gateway is serving the last valid config, so every config write since is inert and a new user's agent cannot go live${detail ? ` — ${detail}` : ''}${more}`],
+    skipped: null,
+  };
+}
+
+// The real validator. Deliberately built here rather than inlined in brokerd so
+// the path rule is testable, and deliberately NOT the default inside run().
+//
+// `openclaw config validate` resolves its own target from $OPENCLAW_HOME —
+// there is no --config flag — so this can only speak for the file the guard
+// just read if it can prove the two are the same. It insists on the exact
+// <home>/.openclaw/openclaw.json shape and declines otherwise: validating a
+// DIFFERENT file and reporting the answer as if it were this one is worse than
+// not looking, because it would be confidently wrong.
+function makeConfigValidator({ run, timeoutMs = 20000 } = {}) {
+  const exec = run || ((home, ms) => new Promise((resolve) => {
+    const { execFile } = require('node:child_process');
+    execFile('openclaw', ['config', 'validate', '--json'], {
+      env: { ...process.env, OPENCLAW_HOME: home },
+      timeout: ms, maxBuffer: 4 * 1024 * 1024,
+    }, (err, stdout, stderr) => resolve({ err, stdout, stderr }));
+  }));
+  return async function validateConfig(configPath) {
+    if (typeof configPath !== 'string' || path.basename(configPath) !== 'openclaw.json'
+      || path.basename(path.dirname(configPath)) !== '.openclaw') {
+      return { valid: null, reason: `config path not validatable (${configPath || 'unset'})` };
+    }
+    const home = path.dirname(path.dirname(configPath));
+    const { err, stdout, stderr } = await exec(home, timeoutMs);
+    // A non-zero exit is how "invalid" is reported, so the error alone proves
+    // nothing — the JSON body decides. Only an unparseable body is a decline.
+    let body = null;
+    try { body = JSON.parse(String(stdout || '').trim() || 'null'); } catch { body = null; }
+    if (!body || typeof body !== 'object' || typeof body.valid !== 'boolean') {
+      const why = err && err.code === 'ENOENT' ? 'openclaw CLI not on PATH'
+        : err && err.killed ? 'validator timed out'
+          : 'validator output unparseable';
+      return { valid: null, reason: `${why}${stderr ? ': ' + String(stderr).slice(0, 120) : ''}` };
+    }
+    return { valid: body.valid, issues: Array.isArray(body.issues) ? body.issues : [] };
+  };
 }
 
 // `main` has no user, so nothing it ever says is addressed to anybody — and
@@ -573,10 +749,17 @@ async function run(client, { configPath, ...deps } = {}) {
   try {
     const cfg = occ.loadConfig(configPath);
     violations = violations.concat(checkOpenclawConfig(cfg));
+    violations = violations.concat(checkModelPermissions(cfg));
     violations = violations.concat(await checkOrphanAgents(client, cfg));
   } catch (e) {
     violations.push('openclaw.json unreadable: ' + e.message);
   }
+  // Outside the try on purpose: the checks above read the file, this one asks
+  // whether the gateway can LOAD it, and the incident that motivated it had a
+  // file that parsed perfectly (valid JSON, invalid schema). The two overlap
+  // only when the file is corrupt outright, where both statements are true.
+  const applied = await checkConfigApplied({ configPath, ...deps });
+  violations = violations.concat(applied.violations);
   violations = violations.concat(await checkIdentityFiles(client));
   violations = violations.concat(await checkAgentsTokens(client));
   violations = violations.concat(await checkLegacyWorkspaceState(client, deps));
@@ -591,12 +774,17 @@ async function run(client, { configPath, ...deps } = {}) {
   const alert = await alertCritical(client, violations, deps);
   return {
     violations: violations.length, newIssues: filed, closedIssues: closed,
+    // Only when it declined. A key that is always present reads as noise and
+    // stops being looked at; one that appears only when a check went quiet is
+    // the whole reason it is here.
+    ...(applied.skipped ? { configValidation: applied.skipped } : {}),
     ...(alert || {}),
   };
 }
 
 module.exports = {
-  run, checkOpenclawConfig, checkIdentityFiles, checkAgentsTokens,
+  run, checkOpenclawConfig, checkModelPermissions, checkConfigApplied, makeConfigValidator,
+  checkIdentityFiles, checkAgentsTokens,
   checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkInfraAgentSessions,
   checkLegacyWorkspaceState, LEGACY_WORKSPACE_STATE,
   checkLeakedTokens, fileViolations, closeResolved,

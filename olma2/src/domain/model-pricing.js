@@ -45,6 +45,31 @@ const RATES = {
   // in completion_tokens.
   'deepseek/deepseek-v4-flash': { input: 0.08092, output: 0.16184, cacheWrite: 0.08092, cacheRead: 0.016184 },
   'deepseek/deepseek-v4-pro':   { input: 1.0308,  output: 2.0616,  cacheWrite: 1.0308,  cacheRead: 0.0859 },
+
+  // Every model a pilot or the evals judge has actually run on. Absent from
+  // this table they were not merely approximated, they were priced by whatever
+  // the caller happened to pass as a blended rate — and the two callers pass
+  // opposite things, so the SAME gap produced opposite errors. Measured
+  // 2026-09-03 against the rows already in the ledger:
+  //
+  //   openai/gpt-5.6-luna    ledger $2.538  real $0.157   16x over
+  //   openai/gpt-5.4-nano    ledger $1.285  real $0.035   37x over
+  //   openai/gpt-oss-120b    ledger $1.097  real $0.028   39x over
+  //   qwen/qwen3.7-flash     ledger $0.998  real $0.019   54x over
+  //   moonshotai/kimi-k2.6   ledger $0.000  real $0.830   invisible
+  //
+  // A pilot that reads 16x its true price argues against a model on a number
+  // that is not real, which is the opposite of what docs/model-experiments.md
+  // exists to do. Rates read live from /api/v1/models on 2026-09-03, $/Mtok.
+  // Where the endpoint publishes no cache rate the input rate is used, the
+  // same conservative convention as the DeepSeek entries above.
+  'moonshotai/kimi-k2.6':    { input: 0.95,  output: 4.00,  cacheWrite: 0.95,    cacheRead: 0.16 },
+  'openai/gpt-5.6-luna':     { input: 0.20,  output: 1.20,  cacheWrite: 0.25,    cacheRead: 0.02 },
+  'openai/gpt-5.4-nano':     { input: 0.20,  output: 1.25,  cacheWrite: 0.20,    cacheRead: 0.02 },
+  'openai/gpt-5.4-mini':     { input: 0.75,  output: 4.50,  cacheWrite: 0.75,    cacheRead: 0.075 },
+  'openai/gpt-oss-120b':     { input: 0.037, output: 0.17,  cacheWrite: 0.037,   cacheRead: 0.037 },
+  'qwen/qwen3.7-flash':      { input: 0.03,  output: 0.13,  cacheWrite: 0.038,   cacheRead: 0.006 },
+  'google/gemini-3.8-flash': { input: 0.75,  output: 3.75,  cacheWrite: 0.04167, cacheRead: 0.075 },
 };
 
 // Transcripts carry dated ids ("claude-haiku-4-5-20251001") and provider

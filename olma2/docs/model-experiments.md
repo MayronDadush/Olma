@@ -249,3 +249,141 @@ Secondary findings, both real:
 restart. It does not (see above), so the deferral was unnecessary; and the
 `stop-service` defect this pilot was chasing was closed structurally instead,
 which is what run #10 concluded it would take.
+
+---
+
+## 2026-09-01 — NousResearch Hermes: refused before a run, and the check that should have come first
+
+**No pilot happened, and none can.** All four Hermes models on OpenRouter —
+`hermes-4-70b`, `hermes-4-405b`, `hermes-3-llama-3.1-70b`, `hermes-3-llama-3.1-405b`
+— report `tools: false` and `tool_choice: false` in their own
+`/api/v1/models` `supported_parameters`. The capability is absent, not weak.
+The gateway refuses the override before a turn starts:
+
+> No callable tools remain after resolving explicit tool allowlist
+> (tools.allow: *, read, write, edit); **the selected model does not support
+> tools.**
+
+An Olma turn is mostly tool selection across ~59 MCP tools, so this is
+disqualifying at any price. Prices, recorded only so the question is not
+re-opened hoping the answer moved: 70b $0.13/$0.40 per Mtok, 4-405b
+$1.00/$3.00, 3-405b $1.00/$1.00 — against the incumbent v4-flash's
+$0.089/$0.177. None of them undercuts what we already run even setting tools
+aside. hermes-3 is both older *and* dearer than hermes-4-70b.
+
+**The cheap check that was skipped, and is now the first step for every
+future candidate:** read `supported_parameters` off `/api/v1/models` and
+confirm it contains `tools` BEFORE registering anything. One curl, no key
+needed. Here it would have replaced a registration, two config writes and two
+failed probes. `register-openrouter-models.js` carries the rule in a comment
+at the `MODELS` array.
+
+### The registration script was writing two of three gates
+
+Found by the probe the script's own footer recommends — which is the entire
+reason that footer exists, and the second time it has earned its keep.
+
+The 2026.8.1 gateway upgrade introduced **`agents.defaults.modelPolicy.allow`**
+and seeded it from the then-current allowlist. The script writes
+`agents.defaults.models` and `models.providers.openrouter.models[]`; a model
+absent from this third key is refused at override time:
+
+> Model override "..." is not allowed for agent "u-15" by
+> `agents.defaults.modelPolicy.allow`.
+
+This is the `agents.list` → `agents.entries` incident repeating exactly: the
+vendor's migration moved the goalposts while OUR writer kept the old schema
+in its head, and the failure is silent until something tries to use the
+result. The script now extends `modelPolicy.allow` too.
+
+**It deliberately does NOT create the key when absent.** The gateway's own
+error text says "remove/empty the list to allow any model" — so an absent or
+empty allow list means *no restriction*, and manufacturing one would silently
+narrow a permissive gateway down to exactly our six ids. Only a list that
+already exists and already restricts gets extended.
+
+Live config was restored from `openclaw.json.pre-hermes-20260901`; zero
+Hermes references remain, the default model is untouched, both services are
+`active` and the dashboard `/health` returns 200.
+
+### Unrelated but worth not confusing
+
+The name arrived via `github.com/NousResearch/hermes-agent`, which is **not** a
+model — it is a full agent framework competing with OpenClaw, evaluated
+separately the same day and rejected (no filesystem isolation between
+profiles, which is what Olma's `.olma-identity` auth depends on).
+
+## 2026-09-03 — `toolSearch`: measured, and it is worth under a dollar a month
+
+Prompted by a video claiming a competing harness (TrueForge, TrueFoundry,
+MIT) "saves 75% of tokens". Traced before spending anything: their own
+wording is *"with the same model 30%, and switching to an open model up to
+75%"* — and the open-model switch is what Olma did on 2026-08-26. Their
+baseline is Claude Managed Agents, not OpenClaw. So the headline was already
+banked and the residual was ~30% of a ~$18/month bill.
+
+The one transferable idea was deferred tool loading — and **OpenClaw 2026.8.1
+already ships it**, unused: `tools.toolSearch`, `mode: "directory"`, which the
+gateway's own types describe as "keeps a bounded directory plus selected
+schemas visible while deferring the rest behind search/describe/call". Our
+`tools.deny` is the hand-rolled partial version.
+
+**It cannot be scoped to the eval user, and that is a schema fact.**
+`toolSearch` lives in `ToolsConfig`; the per-agent `AgentToolsConfig` accepts
+only `profile / allow / alsoAllow / deny / byProvider / toolsBySender /
+codeMode`. Proven at zero risk with `openclaw config validate` against a
+sandbox `OPENCLAW_HOME` copy:
+
+    tools.toolSearch                      → Config valid
+    agents.entries.u-15.tools.toolSearch  → × Unrecognized key: "toolSearch"
+
+**The measurement that settles it, taken on the live config:**
+
+| | |
+|---|---|
+| prompt per turn (3 cold sessions, u-15) | **32,369** tokens (32369 / 32372 / 32366) |
+| tools shipped every turn | **77**, 48,927 schema chars ≈ **14,000** tokens |
+| tool schemas as a share of the prompt | **~43%** |
+| realistic `directory`-mode ceiling | ~20-28% of prompt tokens |
+
+And the reason that ceiling is not the saving: the prefix is already served
+as **cache reads**, priced far below input. Verified live off
+`/api/v1/models` the same day — `deepseek-v4-flash` $0.0886 input vs $0.0177
+cacheRead (**1/5**); `gpt-5.6-luna` and `gpt-5.4-nano` $0.2000 vs $0.0200 and
+`gemini-3.8-flash` $0.7500 vs $0.0750 (**1/10** each). Observed on the probes:
+`cacheRead` 32k-45k with `input` falling to ~19k by the second turn.
+
+So the honest figure is **$0.30-0.55/month realistic, $0.87/month absolute
+ceiling** — the ceiling being every one of those 14k tokens removed AND
+charged at full input rate, which is not what happens. **Recommendation: do
+not enable it.** Not because it fails, but because the upside is under a
+dollar against a GLOBAL change to every real user's turn, and because
+`turn_start` — the tool the whole turn contract depends on, and literally
+first in the registry — would move behind a search wrapper. If the wrapper
+changes the names in the transcript, the eval hard checks go red on an agent
+that is working perfectly: exactly run #24.
+
+**Note the direction for boost mode:** on a 1/10 cache-read model the cached
+prefix is cheaper still, so switching to luna makes the case for `toolSearch`
+*weaker*, not stronger. This does not need re-asking per candidate model.
+
+### The finding that outlived the experiment
+
+Writing the per-agent block produced this, which is the valuable part:
+
+    [reload] config reload skipped (invalid config):
+    agents.entries.u-15.tools: Unrecognized keys: "sessions", "media", "toolSearch"
+
+**An invalid `openclaw.json` makes the gateway skip EVERY reload, silently**,
+and keep serving the last valid config. Nothing errors, nothing retries.
+Provisioning writes a new user's agent + binding into that same file — so
+while the config is invalid, a joiner's agent never goes live and their
+binding routes nowhere, with no symptom anywhere. Same silent shape as
+`intakeConfigured` reading only `.list`. `openclaw config validate` exits
+non-zero in about a second and is a better detector than anything that only
+reads the file's contents.
+
+Method note, recorded because the numbers looked like a result: measurements
+taken AFTER a rejected write are worthless — the reload never applied, so
+both sides measure the same config and it reads as a confident "no change".
+Always confirm the reload was accepted before believing a before/after.

@@ -6,6 +6,7 @@
 const crypto = require('node:crypto');
 const { ok, err } = require('./results');
 const audit = require('./audit');
+const timezoneRepair = require('./timezone-repair');
 
 function newIdentityToken() {
   return 'olma_tok_' + crypto.randomBytes(16).toString('hex');
@@ -187,18 +188,56 @@ async function setAssistantPersona(client, userId, { gender, name } = {}) {
   return ok({ gender: rows[0].assistant_gender, name: rows[0].assistant_name || 'אולמה' });
 }
 
+// Changing the zone used to change one column and leave every instant already
+// written at the old offset — see domain/timezone-repair.js for what that cost.
+//
+// The repair runs only when we are replacing a zone WE GUESSED. That gate is
+// the whole safety argument, and it cuts both ways:
+//
+//   guessed → anything     the rows were converted through a zone that was
+//                          never right, so they are all wrong by the same
+//                          delta, and the wall clock the person said is
+//                          recoverable exactly.
+//   confirmed → anything   they told us Jerusalem and are now telling us
+//                          Berlin: they MOVED. Their 15:00 Jerusalem meeting
+//                          is still that instant, and re-labelling it 15:00
+//                          Berlin would move a correct row for no reason.
+//
+// So travel is not a repair, and a first correction of a phone-prefix guess is.
 async function setTimezone(client, userId, timezone, confirmed) {
   try {
     new Intl.DateTimeFormat('en', { timeZone: timezone });
   } catch {
     return err('invalid', `unknown timezone: ${timezone}`);
   }
+  // Read the old value under a lock in the same transaction as the write —
+  // UPDATE ... RETURNING would hand back the new one, and this decides whether
+  // a repair runs at all.
+  const { rows: before } = await client.query(
+    `SELECT timezone, timezone_confirmed FROM users WHERE id = $1 FOR UPDATE`, [userId]
+  );
+  if (!before[0]) return err('not_found', 'no such user');
+  const wasGuessed = before[0].timezone_confirmed === false;
+  const oldTz = before[0].timezone;
+
   await client.query(
     `UPDATE users SET timezone = $2, timezone_confirmed = $3 WHERE id = $1`,
     [userId, timezone, Boolean(confirmed)]
   );
   await audit.record(client, userId, 'user.timezone_set', { timezone, confirmed: Boolean(confirmed) });
-  return ok({ timezone, confirmed: Boolean(confirmed) });
+
+  const repair = wasGuessed && oldTz && oldTz !== timezone
+    ? await timezoneRepair.repairAfterZoneChange(client, userId, oldTz, timezone)
+    : { tasks: [], reminders: [], meetings: [], fromTz: oldTz, toTz: timezone };
+
+  return ok({
+    timezone, confirmed: Boolean(confirmed),
+    previousTimezone: oldTz,
+    // Named for what the agent has to DO with them: say what moved, and raise
+    // the meetings it could not move.
+    movedTasks: repair.tasks, movedReminders: repair.reminders,
+    meetingsToRecheck: repair.meetings,
+  });
 }
 
 module.exports = {

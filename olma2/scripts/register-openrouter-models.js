@@ -50,6 +50,27 @@ const occ = require('../src/intake/openclaw-config');
 //                   "Anglocentric, weakest Hebrew bet" since 2026-08-20 on no
 //                   evidence at all; registered to settle that rather than
 //                   keep repeating it.
+// NousResearch Hermes: ASKED AND ANSWERED 2026-09-01 — NOT registered, and the
+// reason is structural rather than a matter of taste, so it should not be
+// re-asked when the name comes round again.
+//
+// All four Hermes models on OpenRouter (hermes-4-70b, hermes-4-405b,
+// hermes-3-llama-3.1-70b/405b) report `tools: false` and `tool_choice: false`
+// in their own /api/v1/models supported_parameters. They cannot call tools at
+// all — not unreliably, not badly: the capability is absent. An Olma turn is
+// mostly tool selection across ~59 MCP tools, so this is disqualifying at any
+// price, and no eval run is possible (the gateway refuses the override before a
+// turn starts: "the selected model does not support tools").
+//
+// Prices, recorded only so nobody re-derives them hoping the answer changed:
+// hermes-4-70b $0.13/$0.40 per Mtok, hermes-4-405b $1.00/$3.00, hermes-3-405b
+// $1.00/$1.00 — against the incumbent v4-flash's $0.089/$0.177. Even setting
+// tools aside, none of them undercuts what we already run.
+//
+// The check worth copying for the NEXT candidate, whoever it is: read
+// `supported_parameters` off /api/v1/models and confirm it contains `tools`
+// BEFORE registering anything. It is one curl, it needs no key, and here it
+// would have replaced a registration, a config write and two failed probes.
 const MODELS = [
   'openrouter/deepseek/deepseek-v4-flash',
   'openrouter/deepseek/deepseek-v4-pro',
@@ -94,6 +115,46 @@ for (const id of MODELS) {
 console.log('provider catalog now:', provider.models.map((m) => m.id).join(', '));
 if (catalogAdded.length) console.log('newly catalogued:', catalogAdded.join(', '));
 
+// THIRD gate, found the hard way on 2026-09-01: the gateway 2026.8.1 upgrade
+// introduced `agents.defaults.modelPolicy.allow` and seeded it from the
+// then-current allowlist. Writing the two keys above is no longer enough — a
+// model absent from modelPolicy.allow is refused at override time with
+// "not allowed for agent ... by agents.defaults.modelPolicy.allow", which is
+// how this was discovered (the probe this script's own footer recommends).
+// Same shape as the agents.list/agents.entries incident: OUR writer had the
+// old schema in its head while the vendor's migration moved the goalposts.
+//
+// The absent case is deliberately NOT created. The gateway's own error text
+// says "remove/empty the list to allow any model" — so an absent or empty
+// allow list means *no restriction*, and manufacturing one here would silently
+// narrow a permissive gateway down to exactly our six ids. Only extend a list
+// that already exists and already restricts.
+const policy = cfg.agents.defaults.modelPolicy;
+const policyAdded = [];
+if (policy && Array.isArray(policy.allow) && policy.allow.length) {
+  // Reconcile the WHOLE allowlist, not just MODELS. Registering is the only
+  // thing that puts a model in `agents.defaults.models`, so anything sitting
+  // there is already meant to be permitted — and a model permitted by one list
+  // and refused by the other is precisely the inconsistency this key caused.
+  // Being narrower than this was a real bug for about a day: four models
+  // registered on 2026-09-02 17:08 by a session running the pre-fix script
+  // (gpt-5.6-luna, gpt-5.4-mini, gpt-5.4-nano, gemini-3.8-flash) landed in the
+  // allowlist and the catalog but not here, so all four were registered and
+  // unusable. Iterating MODELS would have walked straight past them.
+  // Reconciling makes this script self-healing for whatever an older copy left
+  // behind, and leaves config-guard's checkModelPermissions to catch drift
+  // from a cause OUTSIDE this script rather than from the script itself.
+  for (const id of Object.keys(cfg.agents.defaults.models)) {
+    if (policy.allow.includes(id)) continue;
+    policy.allow.push(id);
+    policyAdded.push(id);
+  }
+  console.log('modelPolicy.allow now:', policy.allow.join(', '));
+  if (policyAdded.length) console.log('newly permitted:', policyAdded.join(', '));
+} else {
+  console.log('modelPolicy.allow: absent or empty (gateway permits any model) — left alone');
+}
+
 console.log('default model (unchanged):', JSON.stringify(cfg.agents.defaults.model));
 console.log('allowlist now:', Object.keys(cfg.agents.defaults.models).join(', '));
 console.log(added.length ? `\nnewly registered: ${added.join(', ')}` : '\nnothing to add — already registered');
@@ -102,7 +163,7 @@ if (!APPLY) {
   console.log('\ndry run — pass --apply to write');
   process.exit(0);
 }
-if (!added.length && !catalogAdded.length) process.exit(0);
+if (!added.length && !catalogAdded.length && !policyAdded.length) process.exit(0);
 
 occ.saveConfig(cfg);
 console.log('\nwritten to', occ.DEFAULT_PATH);
