@@ -312,3 +312,78 @@ The name arrived via `github.com/NousResearch/hermes-agent`, which is **not** a
 model — it is a full agent framework competing with OpenClaw, evaluated
 separately the same day and rejected (no filesystem isolation between
 profiles, which is what Olma's `.olma-identity` auth depends on).
+
+## 2026-09-03 — `toolSearch`: measured, and it is worth under a dollar a month
+
+Prompted by a video claiming a competing harness (TrueForge, TrueFoundry,
+MIT) "saves 75% of tokens". Traced before spending anything: their own
+wording is *"with the same model 30%, and switching to an open model up to
+75%"* — and the open-model switch is what Olma did on 2026-08-26. Their
+baseline is Claude Managed Agents, not OpenClaw. So the headline was already
+banked and the residual was ~30% of a ~$18/month bill.
+
+The one transferable idea was deferred tool loading — and **OpenClaw 2026.8.1
+already ships it**, unused: `tools.toolSearch`, `mode: "directory"`, which the
+gateway's own types describe as "keeps a bounded directory plus selected
+schemas visible while deferring the rest behind search/describe/call". Our
+`tools.deny` is the hand-rolled partial version.
+
+**It cannot be scoped to the eval user, and that is a schema fact.**
+`toolSearch` lives in `ToolsConfig`; the per-agent `AgentToolsConfig` accepts
+only `profile / allow / alsoAllow / deny / byProvider / toolsBySender /
+codeMode`. Proven at zero risk with `openclaw config validate` against a
+sandbox `OPENCLAW_HOME` copy:
+
+    tools.toolSearch                      → Config valid
+    agents.entries.u-15.tools.toolSearch  → × Unrecognized key: "toolSearch"
+
+**The measurement that settles it, taken on the live config:**
+
+| | |
+|---|---|
+| prompt per turn (3 cold sessions, u-15) | **32,369** tokens (32369 / 32372 / 32366) |
+| tools shipped every turn | **77**, 48,927 schema chars ≈ **14,000** tokens |
+| tool schemas as a share of the prompt | **~43%** |
+| realistic `directory`-mode ceiling | ~20-28% of prompt tokens |
+
+And the reason that ceiling is not the saving: the prefix is already served
+as **cache reads**, priced far below input. Verified live off
+`/api/v1/models` the same day — `deepseek-v4-flash` $0.0886 input vs $0.0177
+cacheRead (**1/5**); `gpt-5.6-luna` and `gpt-5.4-nano` $0.2000 vs $0.0200 and
+`gemini-3.8-flash` $0.7500 vs $0.0750 (**1/10** each). Observed on the probes:
+`cacheRead` 32k-45k with `input` falling to ~19k by the second turn.
+
+So the honest figure is **$0.30-0.55/month realistic, $0.87/month absolute
+ceiling** — the ceiling being every one of those 14k tokens removed AND
+charged at full input rate, which is not what happens. **Recommendation: do
+not enable it.** Not because it fails, but because the upside is under a
+dollar against a GLOBAL change to every real user's turn, and because
+`turn_start` — the tool the whole turn contract depends on, and literally
+first in the registry — would move behind a search wrapper. If the wrapper
+changes the names in the transcript, the eval hard checks go red on an agent
+that is working perfectly: exactly run #24.
+
+**Note the direction for boost mode:** on a 1/10 cache-read model the cached
+prefix is cheaper still, so switching to luna makes the case for `toolSearch`
+*weaker*, not stronger. This does not need re-asking per candidate model.
+
+### The finding that outlived the experiment
+
+Writing the per-agent block produced this, which is the valuable part:
+
+    [reload] config reload skipped (invalid config):
+    agents.entries.u-15.tools: Unrecognized keys: "sessions", "media", "toolSearch"
+
+**An invalid `openclaw.json` makes the gateway skip EVERY reload, silently**,
+and keep serving the last valid config. Nothing errors, nothing retries.
+Provisioning writes a new user's agent + binding into that same file — so
+while the config is invalid, a joiner's agent never goes live and their
+binding routes nowhere, with no symptom anywhere. Same silent shape as
+`intakeConfigured` reading only `.list`. `openclaw config validate` exits
+non-zero in about a second and is a better detector than anything that only
+reads the file's contents.
+
+Method note, recorded because the numbers looked like a result: measurements
+taken AFTER a rejected write are worthless — the reload never applied, so
+both sides measure the same config and it reads as a confident "no change".
+Always confirm the reload was accepted before believing a before/after.
