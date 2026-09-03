@@ -23,6 +23,13 @@ const DEFAULTS = {
   // flag because it is a taste call about a message people read every day,
   // and taste should not need a deploy. 0 disables the card entirely.
   digest_card_min_items: 3,
+  // Mailbox connection (domain/mail.js): '' = nobody but the admin, 'all' =
+  // everyone, or a comma-separated E.164 list. Default OFF on purpose — the
+  // code half of the feature can merge and auto-deploy while the half that
+  // lives in Google's console (the Gmail scope and its verification tier) is
+  // still open, and a consent link that lands on a Google error screen is a
+  // worse first impression than a feature nobody was offered yet.
+  email_access_phones: '',
   // Months the personal Claude subscription was billed at something other than
   // the standing $20 — a Max upgrade, a paused month. {"YYYY-MM": usd}. No API
   // exposes subscription billing, so this is the only way the page can be right

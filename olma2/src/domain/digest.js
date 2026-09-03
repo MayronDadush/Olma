@@ -44,6 +44,25 @@ async function assemble(client, userId, scope) {
      WHERE m.status = 'negotiating'`,
     [userId]
   )).rows;
+  // Meetings waiting on SOMEBODY ELSE. `pendingMeetings` above asks only
+  // "what do I owe an answer on", so a meeting the user has already confirmed
+  // and is waiting on the other side for was invisible to every digest they
+  // ever got. Sarah (user 17) proposed lunch on Aug 31, confirmed her own
+  // side, was told "I'll let you know when he answers" — and then heard
+  // nothing for three days, from a system that knew the whole time. Being
+  // owed an answer is exactly as much news as owing one.
+  const awaitingOthers = (await client.query(
+    `SELECT m.id, m.title, m.proposed_slot, m.proposed_start_at,
+            array_agg(coalesce(w.first_name, w.phone) ORDER BY w.id) AS waiting_on
+       FROM meetings m
+       JOIN meeting_participants me ON me.meeting_id = m.id AND me.user_id = $1
+       JOIN meeting_participants them ON them.meeting_id = m.id
+        AND them.user_id <> $1 AND them.state = 'awaiting'
+       JOIN users w ON w.id = them.user_id
+      WHERE m.status = 'negotiating' AND me.state <> 'opted_out'
+      GROUP BY m.id, m.title, m.proposed_slot, m.proposed_start_at`,
+    [userId]
+  )).rows;
   const pendingConnections = (await client.query(
     `SELECT c.id, c.invite_reason, u.first_name, u.last_name, u.phone
      FROM connections c JOIN users u ON u.id = c.requester_id
@@ -60,7 +79,7 @@ async function assemble(client, userId, scope) {
   const base = {
     scope,
     counts: { openTasks: counts.open_tasks, dueOrOverdue: counts.due_or_overdue, pendingReminders: reminderCount },
-    crossUser: { pendingMeetings, pendingConnections, pendingShares },
+    crossUser: { pendingMeetings, awaitingOthers, pendingConnections, pendingShares },
   };
 
   if (scope === 'summary' || scope === 'block_view') {

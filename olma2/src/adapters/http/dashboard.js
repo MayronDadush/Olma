@@ -544,6 +544,8 @@ const FLAG_SPECS = [
       && Object.entries(v).every(([k, amt]) =>
         /^\d{4}-(0[1-9]|1[0-2])$/.test(k) && Number.isFinite(Number(amt)) && Number(amt) >= 0),
     help: 'JSON של חודשים שחויבו אחרת מ-$20, למשל {"2026-08": 100} לחודש Max. אין שום API שחושף חיוב מנוי, אז זה המקום היחיד שבו הדף יכול לדעת. חודש שלא מופיע כאן מחושב ב-$20.' },
+  { key: 'email_access_phones', label: 'חיבור תיבת מייל — מי מורשה', type: 'text',
+    help: 'ריק = סגור לכולם חוץ מאדמין; "all" = פתוח לכולם; או מספרי טלפון ב-E.164 מופרדים בפסיק. חוסם רק חיבור חדש — מי שכבר חיבר ממשיך לעבוד. להשאיר סגור עד שהרשאת ה-Gmail מאושרת בקונסולה של גוגל.' },
   { key: 'media_gen_phones', label: 'יצירת תמונות ווידאו — מספרים מורשים', type: 'text',
     help: 'מספרי טלפון (E.164, מופרדים בפסיק) שמותר להם לייצר תמונות ווידאו. אדמין מורשה תמיד, בלי קשר לרשימה.' },
   { key: 'media_image_model', label: 'מודל יצירת תמונות', type: 'text',
@@ -1769,9 +1771,10 @@ h1{font-size:18px;margin:0 0 8px;font-weight:600}p{color:#8b95a5;font-size:14px;
 // openclaw.json instead of the live gateway's. calendarDomain/googleOpts are
 // injectable so the OAuth flow can be tested without network access — and are
 // required lazily, so a box with no /opt/olma still starts a dashboard.
-function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomain, googleContactsDomain, googleOpts }) {
+function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomain, googleContactsDomain, mailDomain, googleOpts }) {
   const calendar = () => calendarDomain || require('../../domain/calendar');
   const googleContacts = () => googleContactsDomain || require('../../domain/google-contacts');
+  const mail = () => mailDomain || require('../../domain/mail');
   const server = http.createServer(async (req, res) => {
     try {
       // ---- public routes, ahead of Basic Auth ----------------------------
@@ -1802,10 +1805,17 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
             if (rows[0]) provider = rows[0].provider;
           } catch { /* fall through to calendar's own bad_state answer */ }
         }
+        // A map rather than a ternary: this is the third Google product to
+        // land on one callback, and a nested ternary is how a route like this
+        // stops being readable. Anything unrecognised still falls through to
+        // calendar's own bad_state answer, exactly as before.
+        const flowFor = { google_contacts: googleContacts, gmail: mail };
+        const flow = flowFor[provider] || calendar;
         const isContacts = provider === 'google_contacts';
+        const isMail = provider === 'gmail';
         let result;
         try {
-          result = await withTx(pool, (client) => (isContacts ? googleContacts() : calendar()).completeOAuth(client, {
+          result = await withTx(pool, (client) => flow().completeOAuth(client, {
             state, code: q.get('code'), error: q.get('error'),
           }, googleOpts || {}));
         } catch (e) {
@@ -1817,6 +1827,15 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
           res.end(oauthResultPage(title, body));
         };
         if (result.ok) {
+          if (isMail) {
+            // The card carries mail state (the agent reads it every turn),
+            // and connecting happens HERE — an HTTP route, not a tool — so
+            // brokerd's per-tool card refresh never sees it. After the
+            // commit, same rule as every card write.
+            const { refreshUserCard } = require('../../intake/user-card');
+            await refreshUserCard(pool, result.data.userId);
+            return page(200, 'תיבת המייל חוברה ✅', 'אולמה יכולה לחפש במיילים שלך כשתבקש — היא לא עוברת עליהם מיוזמתה, ולא יכולה לשלוח, להשיב או למחוק כלום. אפשר לחזור לוואטסאפ.');
+          }
           if (isContacts) {
             // Unlike calendar, connecting contacts changes nothing on the
             // card by itself — the address-book COUNT only moves once the
@@ -1836,6 +1855,7 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         const reason = result.error && result.error.reason;
         if (reason === 'declined') return page(200, 'לא חובר', 'ביטלת את החיבור. אפשר לנסות שוב מתי שתרצה.');
         if (reason === 'no_calendar_scope') return page(200, 'חסרה הרשאת יומן', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה ליומן, אז גוגל לא נתנה גישה ליומן. אולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של היומן לפני שלוחצים המשך.');
+        if (reason === 'no_mail_scope') return page(200, 'חסרה הרשאת מייל', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה למייל, אז גוגל לא נתנה גישה לתיבה. אולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של המייל לפני שלוחצים המשך.');
         if (reason === 'no_contacts_scope') return page(200, 'חסרה הרשאת אנשי קשר', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה לאנשי קשר, אז גוגל לא נתנה גישה. אולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של אנשי הקשר לפני שלוחצים המשך.');
         if (reason === 'bad_state') return page(400, 'הקישור פג', 'קישורי חיבור תקפים ל-15 דקות ולשימוש אחד. בקשי מאולמה קישור חדש.');
         return page(400, 'משהו השתבש', 'החיבור לא הושלם. בקשי מאולמה קישור חדש.');

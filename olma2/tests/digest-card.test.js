@@ -102,3 +102,21 @@ test('the delivery preamble still rides along', async () => {
   assert.match(text, /render_schedule_card/);
   assert.ok(text.length > 200, 'preamble should still be attached');
 });
+
+test('#115\'s "someone owes you an answer" line survives this branch', async () => {
+  // Merge guard, not a feature test. #115 added that sentence to the SAME
+  // template literal this branch rewrites, and it ships with no test of its
+  // own — so a future conflict resolution could drop it and every suite would
+  // stay green. It is pinned here because this branch is what put it at risk.
+  //
+  // Kept for the same reason it was written: being owed an answer is news, and
+  // it is independent of whether the digest goes out as text or as a card.
+  const text = instructionFor({ kind: 'digest', payload: { scope: 'summary', cardMinItems: 3 } });
+  assert.match(text, /crossUser\.awaitingOthers/);
+  // ...and it must come BEFORE the card clause: the card is about how the
+  // digest is rendered, this is about what the digest has to say.
+  assert.ok(
+    text.indexOf('crossUser.awaitingOthers') < text.indexOf('render_schedule_card'),
+    'the awaiting-others line belongs with the content, not after the rendering instruction'
+  );
+});
