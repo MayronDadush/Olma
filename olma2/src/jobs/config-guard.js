@@ -206,6 +206,7 @@ async function checkCarryovers(client, deps = {}) {
   );
   const seen = new Map(); // carryover text → the first user who quoted it
   const cache = new Map(); // phone → their own intake text, read at most once
+  const reported = new Set(); // user ids already named, so a pair cannot re-report one
   const violations = [];
   for (const u of rows) {
     let card;
@@ -214,24 +215,50 @@ async function checkCarryovers(client, deps = {}) {
     if (at < 0) continue;
     const section = card.slice(at);
     const body = norm(section);
-    const prior = seen.get(body);
-    if (prior === undefined) { seen.set(body, u); continue; }
-
     // Legacy cards carry no <<< >>> fence; with nothing quotable to look up,
     // the old collision rule is all there is.
     const m = section.match(QUOTED_RE);
     const quoted = m ? norm(m[1]) : null;
     const mine = quoted ? quotesOwnWords(read, u.phone, quoted, cache) : null;
+    const prior = seen.get(body);
+
+    // A leak does not need an accomplice, and requiring one is what kept the
+    // only two real leaks on the box invisible. Checking a card only once a
+    // SECOND card shows up holding the same words assumes the victim's own
+    // card still quotes the original — and it does not: a leak overwrites,
+    // so the text ends up on exactly one card and the pair never forms.
+    // Audited live 2026-09-03 against every active user's real intake session:
+    // u-11 quoted a reminder about Pesach they never sent (they said "היי"),
+    // u-17 quoted u-14's "מה העניינים ירון מה זה?" while she had actually
+    // asked to book a nail appointment. Neither collided with anything, so
+    // neither was ever reported; the ONLY pair on the box was two people who
+    // had both said hello. The detector was looking exclusively at the case
+    // that was innocent and past the two that were not.
+    if (mine === false) {
+      violations.push(prior
+        ? `user ${u.id}'s card quotes an intake message they never sent — the same text is on user ${prior.id}'s card`
+        : `user ${u.id}'s card quotes an intake message they never sent — it is not in their own intake session`);
+      reported.add(u.id);
+      if (prior === undefined) seen.set(body, u);
+      continue;
+    }
+    if (prior === undefined) { seen.set(body, u); continue; }
+
     const theirs = quoted ? quotesOwnWords(read, prior.phone, quoted, cache) : null;
     if (mine === true && theirs === true) continue; // both of them really said it
 
-    const suspect = mine === false ? u : (theirs === false ? prior : null);
+    // `mine === false` is handled above, so the only card left to accuse is
+    // the earlier one — and only if its own pass has not already named it.
+    const suspect = (theirs === false && !reported.has(prior.id)) ? prior : null;
     if (suspect) {
       // Not sorted, deliberately: which card is WRONG is a fact about the
       // problem, so this title is stable on its own and naming them in that
       // order is the whole value of it.
       violations.push(
-        `user ${suspect.id}'s card quotes an intake message they never sent — the same text is on user ${(suspect === u ? prior : u).id}'s card`);
+        `user ${suspect.id}'s card quotes an intake message they never sent — the same text is on user ${u.id}'s card`);
+      reported.add(suspect.id);
+    } else if (theirs === false) {
+      continue; // already named on its own pass
     } else {
       // The unverifiable pair, and here the order IS arbitrary — which of the
       // two the loop reaches first is not a fact about anything.
