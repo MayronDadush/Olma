@@ -103,13 +103,19 @@ function newState() {
   return crypto.randomBytes(24).toString('base64url');
 }
 
-function consentUrl(state, access) {
+// Every Google consent URL this system builds is identical except for the
+// scope string — so there is ONE builder. The third caller (mail) is what
+// made a shared one worth having: three hand-copied parameter blocks are
+// three places for `access_type: 'offline'` to go missing, and a consent
+// without it yields no refresh token at all — a connection that works
+// perfectly for one hour and then dies.
+function buildConsentUrl(state, scope) {
   const c = clientConfig();
   const params = new URLSearchParams({
     client_id: c.client_id,
     redirect_uri: redirectUri(),
     response_type: 'code',
-    scope: SCOPES[access],
+    scope,
     access_type: 'offline', // we need a refresh token to keep working
     prompt: 'consent',      // force a fresh refresh_token even on re-consent
     include_granted_scopes: 'false',
@@ -118,20 +124,13 @@ function consentUrl(state, access) {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
 
-// Same shape as consentUrl, for the one-scope contacts grant.
+function consentUrl(state, access) {
+  return buildConsentUrl(state, SCOPES[access]);
+}
+
+// The one-scope contacts grant.
 function contactsConsentUrl(state) {
-  const c = clientConfig();
-  const params = new URLSearchParams({
-    client_id: c.client_id,
-    redirect_uri: redirectUri(),
-    response_type: 'code',
-    scope: `${CONTACTS_SCOPE} ${EMAIL_SCOPE}`,
-    access_type: 'offline',
-    prompt: 'consent',
-    include_granted_scopes: 'false',
-    state,
-  });
-  return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+  return buildConsentUrl(state, `${CONTACTS_SCOPE} ${EMAIL_SCOPE}`);
 }
 
 // Google's token endpoint answers errors as {error, error_description}. Only
@@ -276,6 +275,6 @@ async function peopleFetch(token, path, { budget = createBudget(), fetchImpl, ..
 
 module.exports = {
   SCOPES, CONTACTS_SCOPE, STATE_TTL_MS, REDIRECT_PATH, TOTAL_HTTP_BUDGET_MS, GoogleError,
-  isConfigured, clientConfig, redirectUri, newState, consentUrl, contactsConsentUrl,
+  isConfigured, clientConfig, redirectUri, newState, buildConsentUrl, consentUrl, contactsConsentUrl,
   exchangeCode, refreshAccessToken, revoke, whoAmI, calendarFetch, peopleFetch, createBudget,
 };

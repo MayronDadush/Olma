@@ -1804,6 +1804,82 @@ still `new` when the same user's broken token was diagnosed by hand a day
 later. Thirteen open issues, every one already resolved in reality. A
 detection layer nobody looks at is not a detection layer.
 
+### The mailbox, Phase 1: read-only Gmail, and nobody's mail is browsed (2026-09-02)
+
+Owner ask: connect the user's email — Gmail first, then Outlook, then Apple —
+learn what matters, think ahead about what an email will make them do, and
+above all do it **without burning tokens**. The full design is
+`olma2/docs/email-integration-plan.md`; this section is what actually shipped
+and the parts of it that will bite.
+
+**Phase 1 is read-only and has no background job at all.** Olma does not go
+through anyone's mail. It searches when asked (`search_my_email`, the
+provider's own search — we index nothing and mirror nothing) and opens ONE
+message at a time (`read_email`). Triage, the daily brief, drafts and sending
+are later phases, each with its own consent and its own review; there is no
+send tool, and `tests/mail.test.js` fails if one appears without one.
+
+- **It needed no migration.** `integrations` (encrypted credential columns,
+  the `connected|needs_reauth|disconnected` vocabulary, the deprovision
+  cascade) and `oauth_states` already carried everything, exactly as
+  `google_contacts` reused them. The triage ledger arrives with the sweep
+  that writes it — an empty table nobody writes is a table that drifts.
+- **`domain/mail.js` owns policy and persistence; `domain/mail-gmail.js` owns
+  HTTP.** Outlook is a second adapter file and one registry entry. The
+  interface enforces two things by SHAPE rather than by discipline: `search`
+  has no field for a body (the expensive mistake in this feature is a path
+  that quietly pulls full text for a thousand messages), and the sync cursor
+  is opaque above the adapter that minted it.
+- **Email is the first feature where knowing an address puts text into Olma's
+  context.** Everything else needs consent (allowFrom, mutual connections) or
+  is the user's own writing. So: every string is labelled as data, the body is
+  fenced `<<< >>>`, and the fence markers inside a body are **neutralised** —
+  a message containing `>>>` would otherwise close its own fence and have
+  everything after it read as the agent's own context. That is the one place
+  in the system where the attacker picks the text AND knows the wrapper.
+- **The message id is validated (`/^[A-Za-z0-9_=-]{1,256}$/`) before it is
+  interpolated into a URL path.** An unvalidated id there is a
+  request-forgery primitive, not a bad lookup. Pinned by a test that fires
+  `../../users/me/profile` at it and asserts zero outbound calls.
+- **The search QUERY is never audited.** `audit_log` is retained and read by
+  operators; what someone searches their own mail for is exactly what must not
+  accumulate in an admin table. The fact of a search, and the result count,
+  are the auditable events.
+- **Recipient lists are projected away** (`addressedToUser` + a count), the
+  same decision `calendar.listEvents` made about attendees: a To/Cc line is
+  other people's addresses and the whole object goes verbatim into a prompt.
+- **`email_connected` deliberately does NOT tell the agent to go read
+  something**, unlike `calendar_connected` which shows off a real event. Going
+  through the inbox the moment it is connected is precisely the thing the
+  feature promises not to do, and a first impression that breaks the promise
+  it is announcing is worse than a plain confirmation.
+
+**The blocker that is not in the code, and it is the whole risk:** Gmail read
+scopes are Google **restricted** scopes — a tier above every scope Olma uses
+today (calendar and contacts are merely *sensitive*). In "Testing" publishing
+mode refresh tokens expire after **7 days**, which would put every connected
+user into `needs_reauth` weekly forever; in production, restricted scopes need
+verification plus an annual third-party CASA assessment. Nobody has read the
+console yet. So the feature ships behind **`email_access_phones`** (dashboard
+flag, `''` = off, `all`, or an E.164 list; the admin is always through),
+default OFF: CI auto-deploys on merge, and a consent link that lands on a
+Google error screen is a worse first impression than a feature nobody was
+offered. **The gate covers CONNECT only** — someone who falls off the list
+keeps the mailbox they already connected. If the console answer is bad, the
+fallback is IMAP + an app-specific password, which is also the Apple path, and
+nothing above the adapter changes.
+
+**A credential is never typed into WhatsApp.** If that IMAP path is taken, the
+app password is entered on a token-linked HTTPS page (the availability
+picker's trust model). A password pasted into a chat lands in the gateway's
+sqlite, in transcripts, in the fact-extraction sweep's input and in a nightly
+`pg_dump`, and cannot be unsent.
+
+**One eval scenario, `email-not-connected`**, because the risk here is not a
+wrong tool call but an invented answer: "מצאתי מייל מהבנק" about a mailbox
+that was never connected reads exactly like a real one. The injection scenario
+in the plan needs a stubbed provider and waits for the phase that has one.
+
 ### Known gap: integrations were left behind by the cutover
 
 v1 had per-user Google Calendar + Monday (`/opt/olma/broker/google-oauth.js`,
