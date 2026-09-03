@@ -18,6 +18,11 @@ const DEFAULTS = {
   reminder_escalation_max: 3,
   reminder_escalation_gap_hours: 3,
   live_subscriptions_per_user: 5,   // cap on active live-update subscriptions
+  // channels/openclaw.js digest branch: how many items make the morning
+  // picture a wall of text worth drawing instead of listing. The number is a
+  // flag because it is a taste call about a message people read every day,
+  // and taste should not need a deploy. 0 disables the card entirely.
+  digest_card_min_items: 3,
   // Boost mode (domain/boost.js + jobs/boost.js): the demo switch. The STATE
   // is written by the dashboard and reconciled onto the gateway config by the
   // job; `{on:false}` is off. The MODEL is separate on purpose — re-pointing
