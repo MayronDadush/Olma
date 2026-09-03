@@ -206,6 +206,7 @@ async function checkCarryovers(client, deps = {}) {
   );
   const seen = new Map(); // carryover text → the first user who quoted it
   const cache = new Map(); // phone → their own intake text, read at most once
+  const reported = new Set(); // user ids already named, so a pair cannot re-report one
   const violations = [];
   for (const u of rows) {
     let card;
@@ -214,24 +215,50 @@ async function checkCarryovers(client, deps = {}) {
     if (at < 0) continue;
     const section = card.slice(at);
     const body = norm(section);
-    const prior = seen.get(body);
-    if (prior === undefined) { seen.set(body, u); continue; }
-
     // Legacy cards carry no <<< >>> fence; with nothing quotable to look up,
     // the old collision rule is all there is.
     const m = section.match(QUOTED_RE);
     const quoted = m ? norm(m[1]) : null;
     const mine = quoted ? quotesOwnWords(read, u.phone, quoted, cache) : null;
+    const prior = seen.get(body);
+
+    // A leak does not need an accomplice, and requiring one is what kept the
+    // only two real leaks on the box invisible. Checking a card only once a
+    // SECOND card shows up holding the same words assumes the victim's own
+    // card still quotes the original — and it does not: a leak overwrites,
+    // so the text ends up on exactly one card and the pair never forms.
+    // Audited live 2026-09-03 against every active user's real intake session:
+    // u-11 quoted a reminder about Pesach they never sent (they said "היי"),
+    // u-17 quoted u-14's "מה העניינים ירון מה זה?" while she had actually
+    // asked to book a nail appointment. Neither collided with anything, so
+    // neither was ever reported; the ONLY pair on the box was two people who
+    // had both said hello. The detector was looking exclusively at the case
+    // that was innocent and past the two that were not.
+    if (mine === false) {
+      violations.push(prior
+        ? `user ${u.id}'s card quotes an intake message they never sent — the same text is on user ${prior.id}'s card`
+        : `user ${u.id}'s card quotes an intake message they never sent — it is not in their own intake session`);
+      reported.add(u.id);
+      if (prior === undefined) seen.set(body, u);
+      continue;
+    }
+    if (prior === undefined) { seen.set(body, u); continue; }
+
     const theirs = quoted ? quotesOwnWords(read, prior.phone, quoted, cache) : null;
     if (mine === true && theirs === true) continue; // both of them really said it
 
-    const suspect = mine === false ? u : (theirs === false ? prior : null);
+    // `mine === false` is handled above, so the only card left to accuse is
+    // the earlier one — and only if its own pass has not already named it.
+    const suspect = (theirs === false && !reported.has(prior.id)) ? prior : null;
     if (suspect) {
       // Not sorted, deliberately: which card is WRONG is a fact about the
       // problem, so this title is stable on its own and naming them in that
       // order is the whole value of it.
       violations.push(
-        `user ${suspect.id}'s card quotes an intake message they never sent — the same text is on user ${(suspect === u ? prior : u).id}'s card`);
+        `user ${suspect.id}'s card quotes an intake message they never sent — the same text is on user ${u.id}'s card`);
+      reported.add(suspect.id);
+    } else if (theirs === false) {
+      continue; // already named on its own pass
     } else {
       // The unverifiable pair, and here the order IS arbitrary — which of the
       // two the loop reaches first is not a fact about anything.
@@ -355,6 +382,38 @@ async function checkInfraAgentSessions(client, deps) {
   });
 }
 
+// The set of leaks already seen, kept in a flag rather than a table: it is a
+// handful of rows of operational state, it is written by exactly one caller,
+// and `config_guard_alerted` above already establishes the pattern — a
+// migration would buy nothing here.
+const LEAK_FLAG = 'token_leak_seen';
+
+// A live identity token that was sent to somebody as message text.
+//
+// Remembered rather than re-derived, because the scan window bounds cost and
+// must not bound truth: an unrotated credential that scrolls past the window
+// would otherwise vanish from the violations list and closeResolved would
+// close the issue on its own — a detector announcing a fix nobody performed.
+// An entry leaves only when the user's token no longer matches the fingerprint
+// that leaked, which is exactly the moment the exposure ends.
+async function checkLeakedTokens(client, deps) {
+  const flags = require('../domain/flags');
+  const tokenLeak = require('../domain/token-leak');
+
+  let stored = [];
+  try { stored = JSON.parse((await flags.getFlag(client, LEAK_FLAG)) || '[]'); } catch { stored = []; }
+  if (!Array.isArray(stored)) stored = [];
+
+  const { fpByUser } = await tokenLeak.liveTokens(client);
+  const found = await tokenLeak.scanForLeaks(client, deps || {});
+  const next = tokenLeak.reconcile(stored, found, fpByUser);
+
+  if (JSON.stringify(next) !== JSON.stringify(stored)) {
+    await flags.setFlag(client, LEAK_FLAG, JSON.stringify(next.slice(0, 50)));
+  }
+  return next.map(tokenLeak.violationFor);
+}
+
 // Most violations describe damage nobody feels today: an orphan agent, a
 // duplicated carryover, a config setting that WOULD matter if something else
 // also broke. A dashboard row is the right home for those.
@@ -378,6 +437,20 @@ async function checkInfraAgentSessions(client, deps) {
 // "fallback only" is the negative lookahead's whole job: that variant means
 // the person's agent is working and only their recovery path is stale, which
 // belongs on the dashboard, not on a phone. See checkIdentityFiles.
+// A SECOND thing worth a phone, and deliberately its own list rather than a
+// widening of the one above. BREAKS_USERS means exactly "their tool calls
+// fail"; a leaked credential breaks nothing and is still urgent. Merging them
+// would put the alert list back to meaning two things at once — the mistake
+// #97 fixed and this file has warned about twice. Two lists, one meaning each,
+// each with its own headline.
+const LEAKS_CREDENTIAL = [
+  /a live identity token was sent as message text/,
+];
+
+function leaksCredential(violation) {
+  return LEAKS_CREDENTIAL.some((re) => re.test(violation));
+}
+
 const BREAKS_USERS = [
   /identity file (does not match DB token|missing)(?!.*fallback only)/,
   // Named exactly, not `AGENTS\.md .*token`: that pattern also matched the
@@ -402,10 +475,30 @@ function breaksUsers(violation) {
 // entry, so the same break happening again next week alerts again.
 const ALERTED_FLAG = 'config_guard_alerted';
 
+// Each class gets its own headline, because a wrong one is worse than none:
+// announcing a leaked credential under "users are blocked" would send the
+// operator looking for an outage that is not happening.
+const ALERT_CLASSES = [
+  { match: breaksUsers, headline: '🔴 אולמה: משתמשים חסומים ברמת הזהות — כל קריאת כלי שלהם נכשלת.', tail: 'הפירוט בדשבורד, בקטע התקלות.' },
+  {
+    match: leaksCredential,
+    headline: '🔴 אולמה: טוקן זהות חי נשלח כטקסט לצ׳אט אמיתי.',
+    tail: 'הטוקן עדיין תקף — החלפתו היא מה שמסיים את החשיפה. הפירוט בדשבורד, בקטע התקלות.',
+    // Waits for a civil hour. Rotating a token is a deliberate act nobody
+    // performs asleep, and the exposure is days old by the time it is noticed
+    // — so this is not the "everything is down" class above, which still goes
+    // out whenever it happens. Deferring leaves it UNSTAMPED, so the next
+    // 10-minute tick simply retries until the window opens: the same promise
+    // the credit alarm makes, minus the queue it needs because its evidence
+    // ages out. A leaked token's evidence does not — it is remembered.
+    daytimeOnly: true,
+  },
+];
+
 async function alertCritical(client, violations, deps) {
   if (!deps || !deps.send) return null;
   const flags = require('../domain/flags');
-  const critical = violations.filter(breaksUsers);
+  const critical = violations.filter((v) => ALERT_CLASSES.some((c) => c.match(v)));
   let known = [];
   try { known = JSON.parse((await flags.getFlag(client, ALERTED_FLAG)) || '[]'); } catch { known = []; }
   if (!Array.isArray(known)) known = [];
@@ -432,22 +525,47 @@ async function alertCritical(client, violations, deps) {
     return null;
   }
 
+  const creditWatch = require('./credit-watch');
   const phone = (await flags.getFlag(client, 'admin_alert_phone'))
-    || require('./credit-watch').DEFAULT_ALERT_PHONE;
-  const lines = ['🔴 אולמה: משתמשים חסומים ברמת הזהות — כל קריאת כלי שלהם נכשלת.'];
-  for (const v of fresh.slice(0, 6)) lines.push(`• ${v}`);
-  if (fresh.length > 6) lines.push(`ועוד ${fresh.length - 6}.`);
-  lines.push('הפירוט בדשבורד, בקטע התקלות.');
+    || creditWatch.DEFAULT_ALERT_PHONE;
 
-  // A pipe that throws must not take the issue rows down with it — the
-  // dashboard record is the durable half and is already written by now.
-  let sent = null;
+  // One message per class that has something new, so each arrives under a
+  // headline that is true of it. A class with nothing fresh sends nothing.
+  const announced = [];
   let error = null;
-  try { sent = await deps.send(phone, lines.join('\n')); } catch (e) { error = e.message; }
-  const ok = Boolean(sent && sent.ok);
-  await save(ok ? stillKnown.concat(fresh) : stillKnown);
-  if (ok) return { alerted: fresh.length, phone };
-  return { alertFailed: true, ...(error ? { alertError: error } : {}) };
+  let deferred = 0;
+  for (const cls of ALERT_CLASSES) {
+    const mine = fresh.filter(cls.match);
+    if (!mine.length) continue;
+    if (cls.daytimeOnly && !(await creditWatch.alertHourOpen(client, phone))) {
+      deferred += mine.length;
+      continue; // unstamped on purpose — the next tick retries it
+    }
+    const lines = [cls.headline];
+    for (const v of mine.slice(0, 6)) lines.push(`• ${v}`);
+    if (mine.length > 6) lines.push(`ועוד ${mine.length - 6}.`);
+    lines.push(cls.tail);
+    // A pipe that throws must not take the issue rows down with it — the
+    // dashboard record is the durable half and is already written by now.
+    let sent = null;
+    try { sent = await deps.send(phone, lines.join('\n')); } catch (e) { error = e.message; }
+    // Only what the pipe CONFIRMED is recorded as announced; anything else is
+    // left unstamped so the next tick retries it. Stamping first would let one
+    // gateway outage swallow the alert permanently.
+    if (sent && sent.ok) announced.push(...mine);
+  }
+
+  await save(stillKnown.concat(announced));
+  const out = {};
+  if (announced.length) { out.alerted = announced.length; out.phone = phone; }
+  // A deferral is not a failure and must not read as one on the heartbeat —
+  // `alertFailed` is what somebody looks at when the pipe is broken.
+  if (deferred) out.deferredToMorning = deferred;
+  if (!announced.length && !deferred) {
+    out.alertFailed = true;
+    if (error) out.alertError = error;
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 async function run(client, { configPath, ...deps } = {}) {
@@ -465,6 +583,7 @@ async function run(client, { configPath, ...deps } = {}) {
   violations = violations.concat(await checkCarryovers(client));
   violations = violations.concat(await checkStuckOutbox(client));
   violations = violations.concat(await checkInfraAgentSessions(client, deps));
+  violations = violations.concat(await checkLeakedTokens(client, deps));
   const filed = await fileViolations(client, violations);
   const closed = await closeResolved(client, violations);
   // Filing first, alerting second: the dashboard row is the durable record
@@ -480,6 +599,6 @@ module.exports = {
   run, checkOpenclawConfig, checkIdentityFiles, checkAgentsTokens,
   checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkInfraAgentSessions,
   checkLegacyWorkspaceState, LEGACY_WORKSPACE_STATE,
-  fileViolations, closeResolved,
-  alertCritical, breaksUsers, ALERTED_FLAG,
+  checkLeakedTokens, fileViolations, closeResolved,
+  alertCritical, breaksUsers, leaksCredential, ALERTED_FLAG, LEAK_FLAG,
 };

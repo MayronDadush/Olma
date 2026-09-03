@@ -655,3 +655,42 @@ test('an unnamed meeting is named after its people, and the initiator can rename
     assert.equal(st.data.meeting.title, 'שיחה על הפרויקט');
   });
 });
+
+// ---- what the digest can see ------------------------------------------------
+
+// Sarah proposed lunch, confirmed her own side, was told "I'll let you know
+// when he answers" — and heard nothing for three days, because every digest
+// she got asked only "what do I owe an answer on". A meeting waiting on the
+// OTHER person could not appear in it at all. Being owed an answer is exactly
+// as much news as owing one, and the silence reads as nothing happening.
+test('a meeting waiting on the other person shows up in the digest of the one waiting', async () => {
+  const digest = require('../src/domain/digest');
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'Lunch', [bob.id])).data.meeting;
+    const slot = 'Thursday at 14:00';
+    const startsAt = slotStart(slot);
+    await meetings.proposeSlot(c, alice.id, m.id, slot, startsAt);
+
+    const hers = (await digest.assemble(c, alice.id, 'summary')).data.crossUser;
+    assert.ok(!hers.pendingMeetings.some((x) => Number(x.id) === Number(m.id)),
+      'she owes no answer on THIS one — she already proposed it');
+    const waiting = hers.awaitingOthers.find((x) => Number(x.id) === Number(m.id));
+    assert.ok(waiting, 'and yet she is waiting on somebody — that is the news');
+    assert.deepEqual(waiting.waiting_on, ['Bob']);
+    assert.equal(waiting.proposed_slot, slot);
+
+    // Bob's own digest still says the opposite thing: HE owes the answer.
+    const his = (await digest.assemble(c, bob.id, 'summary')).data.crossUser;
+    assert.ok(his.pendingMeetings.some((x) => Number(x.id) === Number(m.id)));
+    assert.ok(!his.awaitingOthers.some((x) => Number(x.id) === Number(m.id)),
+      'nobody is waiting on anybody else here — only on him');
+
+    // once he answers, it stops being news for either of them
+    await meetings.respondToSlot(c, bob.id, m.id, true, null, null, startsAt);
+    for (const who of [alice, bob]) {
+      const cu = (await digest.assemble(c, who.id, 'summary')).data.crossUser;
+      assert.ok(!cu.awaitingOthers.some((x) => Number(x.id) === Number(m.id)));
+      assert.ok(!cu.pendingMeetings.some((x) => Number(x.id) === Number(m.id)));
+    }
+  });
+});

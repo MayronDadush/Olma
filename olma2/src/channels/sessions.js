@@ -566,8 +566,44 @@ function readTranscriptUsage(file, fromOffset = 0) {
   return { calls, offset: start + complete.length };
 }
 
+// Every assistant TEXT block this agent produced since `sinceMs` — the text a
+// channel would actually deliver, and nothing else.
+//
+// The three exclusions are the whole point, and each is measured rather than
+// assumed. Across 14 days of the live box an identity token appears 717 times
+// inside `toolCall` blocks (every authenticated call carries one — ordinary
+// operation), 13 times in `toolResult` text (an agent reading .olma-identity,
+// which goes to the model, never to a person) and once in `thinking` (never
+// delivered either). It appeared in an assistant TEXT block exactly ONCE: the
+// 2026-09-02 DSML leak, where a malformed tool call was delivered verbatim to
+// a real person's WhatsApp. So this reader is the difference between a
+// detector that fires on a working system and one that fires on the incident.
+//
+// sqlite-era only, deliberately: it returns null when the store cannot be
+// opened, and null means "could not tell", never "nothing found" — the same
+// rule readAgentIndex and hasInboundUserTurn follow.
+function scanAssistantTextSince(agentId, sinceMs, base = HOME()) {
+  return withAgentDb(agentId, base, (db) => {
+    const rows = db.prepare(
+      'SELECT session_id, created_at, event_json FROM transcript_events WHERE created_at > ? ORDER BY created_at ASC'
+    ).all(Number(sinceMs) || 0);
+    const out = [];
+    for (const r of rows) {
+      let ev;
+      try { ev = JSON.parse(r.event_json); } catch { continue; }
+      if (ev.type !== 'message' || !ev.message || ev.message.role !== 'assistant') continue;
+      // textOf keeps only `type: 'text'` parts, so thinking and toolCall
+      // blocks never reach the caller.
+      const text = textOf(ev.message.content);
+      if (text) out.push({ sessionId: r.session_id, at: Number(r.created_at), text });
+    }
+    return out;
+  });
+}
+
 module.exports = {
   listSessions, listSessionsForAgent, indexPath, parseKey,
   readRecentMessages, readPeerUserText, readPeerDisplayName, displayNameFromPrompt,
   listTranscripts, readTranscriptUsage, readSessionEventsSlice, hasInboundUserTurn,
+  scanAssistantTextSince,
 };
