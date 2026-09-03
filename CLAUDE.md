@@ -235,9 +235,12 @@ Verified on the box at the cutover, 2026-08-17:
   the new code is synced, the currently-deployed release (code + its own
   `node_modules`) is snapshotted whole to `/opt/olma2-previous` (one snapshot,
   not a history). After restart, `deploy.sh` waits 5s and checks both services
-  are actually `active` AND the dashboard's own `/health` (DB + job-heartbeat
-  sanity, `adapters/http/dashboard.js`) returns 200 — "tests passed in CI"
-  never proves the live process came up. If that check fails, it restores
+  are actually `active` AND the dashboard's own **`/ready`** (DB + brokerd's
+  own heartbeat, `adapters/http/dashboard.js`) returns 200 — "tests passed in
+  CI" never proves the live process came up. **`/ready`, never `/health`**:
+  `/health` goes 503 for things a redeploy cannot fix — a sweep behind its
+  cadence, a dead gateway — and gating on it deadlocked two deploys in a row
+  on 2026-08-22 (`incidents.md`). If that check fails, it restores
   `/opt/olma2-previous` over `/opt/olma2` and restarts again, then the CI run
   still exits non-zero on purpose (a silently self-healed run hides the
   problem). Once healthy, `--restart` also resyncs `agents-template.md` into
@@ -449,22 +452,14 @@ quiet-hours-held, not broken). That catches a dead-from-birth agent, a
 stuck-config agent, and every future failure of the same shape without
 needing to know why.
 
-### A dead gateway reads green on `/health` (2026-09-03)
+### The gateway can only ever be watched from OUTSIDE itself
 
-`/health` measures the DB and the job heartbeats. **Nothing measures the
-gateway** — the process every user's WhatsApp message goes through, in both
-directions. So the page that exists to say "is Olma up" cannot see the one
-component whose death is total: every inbound message dropped, every reply
-undeliverable, and a solid 200 the whole time.
-
-Found by accident, which is the point: a raw `message send` came back
-`ECONNREFUSED` while `/health` was green. That instance was a concurrent
-session's deliberate restart and lasted thirteen seconds, so it cost nothing
-— but nothing about the page would have looked different at hour three. The
-brokerd already knows how to reach the gateway (`runOpenclaw`), and the
-gateway's own port is in the config, so this is one connect check away.
-
-Same shape as the credit outage that ran thirteen hours behind a green board
-and the workspace-seal failure that dropped 126 messages with `/health`
-honestly reporting everything it measures. Detection that cannot see the
-failure is not detection.
+`/health` checks it now (`incidents.md`, "A dead gateway read green"), and
+that is the end of the line for this one: **there is no alert.** Every alarm
+this system has — the credit outage, the runway warning, the eval reds,
+`config_guard`'s `BREAKS_USERS` set — rides the raw `openclaw message send`
+pipe, and that pipe IS the gateway. A gateway that is down cannot report that
+it is down, so a dashboard row and a 503 are genuinely all that is available
+from in here. Anything better has to run somewhere else: an uptime monitor
+hitting `https://olmachat.duckdns.org/health`, or a second channel that does
+not go through OpenClaw at all. Neither exists.

@@ -33,6 +33,7 @@ const picker = require('./picker');
 // cannot coast on the previous process's beat.
 const BROKERD_BEAT_MAX_AGE_S = 180;
 const infraCost = require('../infra-cost');
+const { checkGateway } = require('../gateway-health');
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -78,7 +79,7 @@ function ago(ts) {
 // looked at daily, not a diagnostics dump. Nothing unlabelled, nothing cryptic.
 
 const SECTIONS = [
-  { id: 'health', title: 'מצב המערכת', hint: 'האם כל התהליכים הפנימיים רצים כשורה. אדום = משהו תקוע וצריך טיפול.', render: renderHeartbeats },
+  { id: 'health', title: 'מצב המערכת', hint: 'שער התקשורת (הדרך היחידה שהודעות נכנסות ויוצאות מוואטסאפ) וכל התהליכים הפנימיים. אדום = משהו תקוע וצריך טיפול. "לא נבדק" בשער = לא הצלחנו לקרוא את ההגדרות, לא בהכרח תקלה.', render: renderHeartbeats },
   { id: 'boost', title: 'מצב בוסט', hint: 'מתג להדגמות: מעביר את כל המשתמשים למודל המהיר והחזק ביותר, ומכבה את עצמו אחרי שעתיים. עולה יותר לדקה — לכן הוא לא נשאר דלוק בטעות.', render: renderBoost },
   { id: 'users', title: 'משתמשים', hint: 'כל מי שרשום. אפשר לקבוע לכל אחד מכסת הודעות יומית משלו.', render: renderUsers },
   { id: 'issues', title: 'תקלות ובקשות', hint: 'דברים שאולמה או המשתמשים דיווחו עליהם ומחכים לטיפול.', render: renderIssues },
@@ -118,16 +119,39 @@ const JOB_LABELS = {
   eval_sweep: 'בדיקות התנהגות ליליות',
 };
 
+// /health sits AHEAD of Basic Auth and Caddy publishes it, so what goes in it
+// is public. The status and the reason are the point; the port is an internal
+// detail (loopback-bound, but there is no reason to hand it out) and the
+// dashboard's own section shows it to an operator who is already logged in.
+function publicGateway(gw) {
+  return { status: gw.status, detail: gw.detail };
+}
+
 async function renderHeartbeats(client) {
   const { rows } = await client.query(`SELECT * FROM job_heartbeats ORDER BY job_name`);
   const now = Date.now();
   const problems = rows.filter((r) => isStale(r.job_name, r.last_run_at, now) || (r.note && String(r.note).startsWith('ERR')));
 
-  const banner = problems.length === 0
-    ? `<div class="banner ok">✓ הכל תקין — ${rows.length} תהליכים רצים כסדרם</div>`
-    : `<div class="banner bad">⚠ ${problems.length} תהליכים דורשים תשומת לב</div>`;
+  // The gateway is not a job_heartbeats row — nothing writes one for it, which
+  // is precisely how it stayed off this page while every sweep beside it was
+  // watched. It is asked directly, and it leads the table because a dead
+  // gateway makes every green row below it beside the point.
+  let gw;
+  try { gw = await checkGateway({ configPath: OPENCLAW_CONFIG_PATH }); }
+  catch (e) { gw = { status: 'unknown', detail: `probe failed: ${e.message}`, port: null }; }
+  const gwBad = gw.status === 'down';
+  const gwLabel = { live: 'פעיל', down: 'לא מגיב', unknown: 'לא נבדק' }[gw.status] || gw.status;
+  const gwRow = `<tr class="${gwBad ? 'bad' : ''}">
+      <td>${gwBad ? '⚠' : gw.status === 'live' ? '✓' : '–'} שער התקשורת (WhatsApp)</td>
+      <td class="dim">${esc(gwLabel)}</td>
+      <td class="dim mono">${gwBad ? esc(String(gw.detail || '').slice(0, 90)) : ''}</td></tr>`;
 
-  const tr = rows.map((r) => {
+  const totalProblems = problems.length + (gwBad ? 1 : 0);
+  const banner = totalProblems === 0
+    ? `<div class="banner ok">✓ הכל תקין — ${rows.length} תהליכים רצים כסדרם</div>`
+    : `<div class="banner bad">⚠ ${totalProblems} תהליכים דורשים תשומת לב</div>`;
+
+  const tr = gwRow + rows.map((r) => {
     const bad = isStale(r.job_name, r.last_run_at, now) || (r.note && String(r.note).startsWith('ERR'));
     const err = r.note && String(r.note).startsWith('ERR');
     return `<tr class="${bad ? 'bad' : ''}">
@@ -1810,10 +1834,39 @@ h1{font-size:18px;margin:0 0 8px;font-weight:600}p{color:#8b95a5;font-size:14px;
 // openclaw.json instead of the live gateway's. calendarDomain/googleOpts are
 // injectable so the OAuth flow can be tested without network access — and are
 // required lazily, so a box with no /opt/olma still starts a dashboard.
-function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomain, googleContactsDomain, mailDomain, googleOpts }) {
+function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomain, googleContactsDomain, mailDomain, googleOpts, gatewayCheck, gatewayCacheMs }) {
   const calendar = () => calendarDomain || require('../../domain/calendar');
   const googleContacts = () => googleContactsDomain || require('../../domain/google-contacts');
   const mail = () => mailDomain || require('../../domain/mail');
+
+  // Injectable so a test states the gateway's condition instead of inheriting
+  // whatever is running on the machine — the suite runs ON the production box
+  // (deploy.sh), where the real probe would be green for real, and on CI
+  // runners with no gateway at all, where it would be `unknown`. Neither
+  // proves the branch under test.
+  const probeGateway = gatewayCheck
+    || (() => checkGateway({ configPath: configPath || OPENCLAW_CONFIG_PATH }));
+
+  // /health is unauthenticated, and the gateway probe it now runs is an
+  // outbound request. Without this a flood of /health hits would be amplified
+  // one-for-one into the gateway — the process the check exists to protect.
+  // Five seconds is far shorter than any monitor's interval, so a real
+  // operator or uptime check still sees the current state.
+  let gatewayCache = { at: 0, value: null };
+  const cacheMs = Number.isFinite(gatewayCacheMs) ? gatewayCacheMs : 5000;
+  async function cachedGateway() {
+    const now = Date.now();
+    if (gatewayCache.value && now - gatewayCache.at < cacheMs) return gatewayCache.value;
+    // A probe that THREW must not take the whole endpoint down with it: the
+    // page's job is to report, and "the check itself broke" is `unknown`, not
+    // an outage.
+    let value;
+    try { value = await probeGateway(); }
+    catch (e) { value = { status: 'unknown', detail: `probe failed: ${e.message}`, port: null }; }
+    gatewayCache = { at: now, value };
+    return value;
+  }
+
   const server = http.createServer(async (req, res) => {
     try {
       // ---- public routes, ahead of Basic Auth ----------------------------
@@ -1944,19 +1997,27 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
       }
 
       // Unauthenticated liveness probe for MONITORING — the process, the DB,
-      // and whether every sweep is running on its declared cadence. Deploys
-      // use /ready above; this one is allowed to go red for reasons a redeploy
-      // would not fix, which is the whole point of it.
+      // whether every sweep is running on its declared cadence, and since
+      // 2026-09-03 the GATEWAY. Deploys use /ready above; this one is allowed
+      // to go red for reasons a redeploy would not fix, which is the whole
+      // point of it — and the gateway is exactly such a reason, which is why
+      // it can be added here and could not be added there.
       if (req.url === '/health') {
+        // Probed outside the try: a dead DB and a dead gateway are two
+        // separate facts, and the endpoint that exists to say which thing
+        // broke must not collapse them into one line.
+        const gateway = await cachedGateway();
         try {
           await pool.query('SELECT 1');
           const { rows } = await pool.query(`SELECT job_name, last_run_at, note FROM job_heartbeats`);
           const verdict = assessJobs(rows);
-          res.writeHead(verdict.ok ? 200 : 503, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify(verdict));
+          // `unknown` is deliberately not red — see gateway-health.js.
+          const ok = verdict.ok && gateway.status !== 'down';
+          res.writeHead(ok ? 200 : 503, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ ...verdict, ok, gateway: publicGateway(gateway) }));
         } catch (e) {
           res.writeHead(503, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ ok: false, error: 'db unavailable' }));
+          return res.end(JSON.stringify({ ok: false, error: 'db unavailable', gateway: publicGateway(gateway) }));
         }
       }
       if (!checkBasicAuth(req, adminUser, adminPass)) {

@@ -21,6 +21,7 @@ never trust a dated narrative for something you are about to act on.
 
 - [`main` said NO_REPLY into a real person's WhatsApp (2026-09-01)](#main-said-noreply-into-a-real-persons-whatsapp-2026-09-01)
 - [The actual reason it kept converging on מירון: `heartbeat.target` defaults to `"owner"` (fixed 2026-09-02)](#the-actual-reason-it-kept-converging-on-מירון-heartbeattarget-defaults-to-owner-fixed-2026-09-02)
+- [A dead gateway read green on `/health` (fixed 2026-09-03)](#a-dead-gateway-read-green-on-health-fixed-2026-09-03)
 - [The gateway was upgraded underneath a running system (2026-08-31)](#the-gateway-was-upgraded-underneath-a-running-system-2026-08-31)
 - [Permission to use a model lives in THREE lists, and we wrote two (fixed 2026-09-02)](#permission-to-use-a-model-lives-in-three-lists-and-we-wrote-two-fixed-2026-09-02)
 - [An invalid config is not rejected — it is IGNORED (fixed 2026-09-03)](#an-invalid-config-is-not-rejected--it-is-ignored-fixed-2026-09-03)
@@ -114,6 +115,62 @@ never trust a dated narrative for something you are about to act on.
 - [A rollback cannot reach the filesystem (fixed 2026-08-27)](#a-rollback-cannot-reach-the-filesystem-fixed-2026-08-27)
 
 ## Gateway, config and upgrades
+
+### A dead gateway read green on `/health` (fixed 2026-09-03)
+
+`/health` measured the DB and every sweep's heartbeat — sixteen of them, each
+against its own declared cadence — and did not measure the **gateway**, the
+one process every user's WhatsApp message goes through in both directions. So
+the page that exists to answer "is Olma up" was blind to the only failure that
+is total: every inbound message dropped, every reply undeliverable, and a
+solid 200 the whole time.
+
+Found by accident, which is the point. A raw `message send` came back
+`ECONNREFUSED` against a green board. That instance was a concurrent session's
+deliberate restart and lasted thirteen seconds, so it cost nothing — and
+**nothing about the page would have looked different at hour three.** Same
+shape as the credit outage that ran thirteen hours behind a green board, and
+the workspace-seal failure that dropped 126 real messages while `/health`
+honestly reported everything it measured. Detection that cannot see the
+failure is not detection.
+
+`adapters/gateway-health.js` asks the gateway directly. What decided its
+shape:
+
+- **It reads the BODY, not just the status code.** The gateway serves its own
+  `/health` on its configured port, unauthenticated, answering
+  `{"ok":true,"status":"live"}` — but an *unknown* path on that same port
+  returns the control UI with a 200. Checked on the live box before writing
+  the probe: a bare TCP connect, or a status-code-only check, would call a
+  gateway that had lost its health route perfectly healthy.
+- **Three states, not two.** A config we cannot read is `unknown` and does
+  **not** turn `/health` red. "Could not look" and "looked and it was dead"
+  must not wear the same word — the rule this codebase keeps relearning (a
+  null session index is not an empty one; a failed balance call is not $0
+  remaining). Manufacturing an outage out of missing information is how a
+  monitoring page teaches its reader to ignore it. A probe that *throws* is
+  the same kind of ignorance, and must not take the endpoint down with it.
+- **`/ready` is untouched, deliberately.** Gateway restarts happen — including
+  the one that exposed this — and a restart overlapping a deploy would
+  otherwise roll back code that had nothing to do with it. This is the whole
+  reason the `/ready` / `/health` split exists (see the 2026-08-22 deadlock),
+  and the reason the gateway could be added to one and not the other. A test
+  pins that `/ready` does not even report it.
+- **The probe is cached for 5s and the port is stripped from the response.**
+  `/health` sits ahead of Basic Auth and Caddy publishes it, so without the
+  cache every public hit would be amplified one-for-one into the very process
+  the check exists to protect.
+- **The tests state the gateway's condition rather than inheriting it.** This
+  suite runs on the production box during deploy (real gateway, up) and on CI
+  runners (no gateway at all) — a probe of the real machine would prove
+  nothing about either branch, and would go red on a healthy `main` whenever a
+  deploy overlapped a gateway restart.
+
+**What this does NOT do, and cannot:** there is no alert. Every alarm in this
+system rides the raw `openclaw message send` pipe, and that pipe *is* the
+gateway — a dead gateway cannot report its own death. A 503 and a dashboard
+row are the whole of what is available from inside. Anything better has to run
+somewhere else entirely; see the standing gap in CLAUDE.md.
 
 ### `main` said NO_REPLY into a real person's WhatsApp (2026-09-01)
 
