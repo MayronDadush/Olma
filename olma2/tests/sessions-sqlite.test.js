@@ -232,3 +232,44 @@ test('readPeerDisplayName also searches the migration archive of trajectory file
   assert.equal(sessions.readPeerDisplayName(AGENT, PEER), 'דנה לוי');
   assert.equal(sessions.readPeerDisplayName(AGENT, '+972590000000'), null);
 });
+
+// ---- delivered assistant text, for the token-leak detector ------------------
+
+// The detector's whole precision lives here. On the live box an identity token
+// appears 717 times in `assistant/toolCall`, 13 in `toolResult`, once in
+// `assistant/thinking` — and once in `assistant/text`, which is the incident.
+// Only the last shape is text a channel delivers, so only the last may come
+// back; anything wider would file a violation against ordinary operation 730
+// times a fortnight.
+test('scanAssistantTextSince returns delivered text only, never tool calls or thinking', () => {
+  const TOK = 'olma_tok_' + '9'.repeat(32);
+  const S = 'leak-session';
+  const t = Date.parse('2026-09-02T09:31:00.000Z');
+  seedDb({
+    events: [
+      // an ordinary authenticated call — the token is an argument, not speech
+      { sessionId: S, seq: 0, at: t, event: { type: 'message', message: { role: 'assistant', content: [{ type: 'toolCall', id: 'c1', name: 'olma__turn_start', arguments: { olma_identity: TOK } }] } } },
+      // the model reasoning about it — never delivered
+      { sessionId: S, seq: 1, at: t + 1, event: { type: 'message', message: { role: 'assistant', content: [{ type: 'thinking', thinking: `use ${TOK}` }] } } },
+      // the tool answering — a different role entirely
+      { sessionId: S, seq: 2, at: t + 2, event: { type: 'message', message: { role: 'toolResult', content: [{ type: 'text', text: `identity ${TOK}` }] } } },
+      // and the leak: raw DSML emitted as ordinary reply text
+      { sessionId: S, seq: 3, at: t + 3, event: msg('assistant', `<｜DSML｜tool_calls>{"olma_identity":"${TOK}"}`) },
+      // a user pasting it back is not the agent leaking it
+      { sessionId: S, seq: 4, at: t + 4, event: msg('user', `is ${TOK} mine?`) },
+    ],
+  });
+
+  const out = sessions.scanAssistantTextSince(AGENT, t - 1);
+  const withToken = out.filter((e) => e.text.includes(TOK));
+  assert.equal(withToken.length, 1, 'exactly the delivered reply');
+  assert.equal(withToken[0].sessionId, S);
+  assert.equal(withToken[0].at, t + 3);
+
+  // the `since` bound is honoured, so a scan window really does bound cost
+  assert.deepEqual(sessions.scanAssistantTextSince(AGENT, t + 3), []);
+  // A missing store is null, never [] — "could not read" and "nothing was
+  // said" must not look alike to the caller, or one rotated store reads as a
+  // clean bill of health for every agent behind it.
+  assert.equal(sessions.scanAssistantTextSince('u-nonexistent', 0), null);
+});
