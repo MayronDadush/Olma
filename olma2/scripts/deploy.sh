@@ -12,6 +12,11 @@
 #   back to the previous release (see roll_back below) — this does NOT undo DB
 #   migrations; keep them additive/backward-compatible, since a migration that
 #   already ran stays applied even after a code rollback.
+#
+# Every deploy also archives the outgoing release to /opt/olma2-releases/<utc
+# stamp>/ and keeps the newest 5 (OLMA_RELEASES_KEEP). That archive is for the
+# case the automatic rollback cannot serve — a fault noticed days and several
+# merges later. Use scripts/rollback.sh to list it and to go back to one.
 set -euo pipefail
 
 RESTART=0
@@ -23,6 +28,8 @@ SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SERVER="root@157.230.210.233"
 DEST="/opt/olma2"
 BACKUP="/opt/olma2-previous"
+ARCHIVE="${OLMA_RELEASES_DIR:-/opt/olma2-releases}"
+KEEP="${OLMA_RELEASES_KEEP:-5}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
 SSH="ssh -i $SSH_KEY"
 
@@ -30,12 +37,78 @@ SSH="ssh -i $SSH_KEY"
 # complete standalone copy BEFORE the new rsync overwrites anything, so a bad
 # deploy has something real to roll back to. Skipped on the very first deploy
 # (DEST doesn't exist yet). One snapshot is kept, not a history.
+#
+# This line is deliberately UNCHANGED by the release archive below. It is the
+# path the automatic post-restart rollback takes, at the worst possible moment,
+# with nobody watching — so it stays the simplest thing that works, with no
+# dependency on a stamp being parseable or an archive directory existing.
+# The archive is strictly additive: a second copy, for the case the automatic
+# one cannot serve.
 $SSH "$SERVER" "[ -d $DEST ] && rm -rf $BACKUP && cp -a $DEST $BACKUP || true"
+
+# ...and the same snapshot, kept by date this time.
+#
+# `/opt/olma2-previous` is exactly one release deep and is overwritten by every
+# deploy, so it answers "undo the deploy that just happened" and nothing else.
+# On a day with five merges it holds the fourth — a fault noticed the next
+# morning has no fast way back, and the operator is left doing `git revert`,
+# which first requires knowing WHICH merge to revert. Going back to a release
+# that is known to have worked does not require that diagnosis, which is the
+# whole point: the fast path should work when you do not yet know what broke.
+#
+# Stamped from the SERVER's clock, in UTC, because deploys come from both a Mac
+# and a GitHub runner and a release archive sorted by two different clocks is
+# worse than no archive. ISO-8601 with `-` for `:` (a colon is legal in a
+# Linux path but a menace in every tool that touches one), so lexicographic
+# order IS chronological order — see prune-releases.sh.
+STAMP=$($SSH "$SERVER" "date -u +%Y-%m-%dT%H-%M-%SZ")
+$SSH "$SERVER" "
+  set -euo pipefail
+  if [ -d $DEST ]; then
+    mkdir -p $ARCHIVE
+    dir=$ARCHIVE/$STAMP
+    # Two deploys inside one second is not a thing that happens on a serialized
+    # main queue, but a suffix costs nothing and a silent overwrite of the last
+    # known-good release costs everything.
+    n=1; while [ -e \"\$dir\" ]; do dir=$ARCHIVE/$STAMP-\$n; n=\$((n + 1)); done
+    cp -a $DEST \"\$dir\"
+    echo \"archived the outgoing release to \$dir\"
+  fi
+"
 
 rsync -az --delete \
   --exclude node_modules --exclude .env --exclude '*.log' --exclude run \
   -e "$SSH" \
   "$SRC_DIR/" "$SERVER:$DEST/"
+
+# What that snapshot actually CONTAINS, written into the live tree right after
+# the sync. It rides into the archive on the next deploy, which is the only way
+# a dated directory becomes an identifiable release rather than a timestamp.
+#
+# Deliberately NOT rsync-excluded: --delete removes it and this rewrites it. A
+# marker that survives a failed deploy would describe the wrong code, and a
+# marker that describes the wrong code is worse than none — the reader would
+# roll back to something other than what they read. Missing reads as "unknown",
+# which is honest and which rollback.sh prints as such.
+#
+# base64 so a commit subject containing quotes, backticks or a newline cannot
+# reach the remote shell as anything but data.
+SHA=$(git -C "$SRC_DIR" rev-parse HEAD 2>/dev/null || echo unknown)
+SUBJECT=$(git -C "$SRC_DIR" log -1 --format=%s 2>/dev/null || echo unknown)
+ORIGIN="${GITHUB_RUN_ID:+github-actions run $GITHUB_RUN_ID}"
+MARKER=$(printf 'sha=%s\nsubject=%s\ndeployed_at=%s\norigin=%s\n' \
+  "$SHA" "$SUBJECT" "$STAMP" "${ORIGIN:-local $(whoami)@$(hostname)}" | base64 | tr -d '\n')
+$SSH "$SERVER" "printf %s '$MARKER' | base64 -d > $DEST/RELEASE"
+
+# Prune AFTER the rsync, because the rsync is what puts the current
+# prune-releases.sh on the box — the deploy prunes with the retention logic it
+# is deploying, not with whatever version happened to be there. Never fatal: a
+# full archive is a disk problem, and failing a healthy deploy over one would
+# be the alarm overstating itself. Loud either way, including on success,
+# because a prune that goes quiet is indistinguishable from a prune that never
+# ran.
+$SSH "$SERVER" "bash $DEST/scripts/prune-releases.sh $ARCHIVE $KEEP" \
+  || echo "WARNING: release-archive prune failed — check disk on $ARCHIVE." >&2
 
 $SSH "$SERVER" "
   set -euo pipefail

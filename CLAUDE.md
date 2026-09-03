@@ -250,6 +250,15 @@ Verified on the box at the cutover, 2026-08-17:
   migration that already ran stays applied even after a code rollback, so keep
   migrations additive/backward-compatible rather than relying on this to
   undo one.
+  **Every deploy also archives the outgoing release** to
+  `/opt/olma2-releases/<utc-stamp>/`, newest 5 kept
+  (`scripts/prune-releases.sh`, `OLMA_RELEASES_KEEP`), each carrying a
+  `RELEASE` marker with the sha and subject it holds. That is the path for a
+  fault found days and several merges later, which `/opt/olma2-previous`
+  cannot reach: `bash olma2/scripts/rollback.sh --list`, then `--to <stamp>`
+  (describes only) and `--to <stamp> --yes` (acts). It archives what it
+  replaces, so a rollback is not a one-way door — but **the git history still
+  has the bad commit, so the next merge redeploys it.** Land a revert too.
 - Postgres 16 local (`olma2` + `olma2_test` DBs), creds in `/opt/olma2/.env`
   (0600). Daily `pg_dump` 02:15 → `/root/backups/`, 14-day retention.
   **The dump lands on the same droplet it backs up — no off-box copy yet.**
