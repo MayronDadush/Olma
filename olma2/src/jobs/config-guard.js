@@ -12,6 +12,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const occ = require('../intake/openclaw-config');
 const infraAgent = require('../domain/infra-agent');
+const sessions = require('../channels/sessions');
+const { INTAKE_AGENT_ID } = require('./intake');
 
 // The invariants, each with why it matters.
 function checkOpenclawConfig(cfg) {
@@ -122,35 +124,123 @@ async function checkAgentsTokens(client) {
 // wrong person. Prevention lives in jobs/intake.readIntakeFirstMessage; this
 // is the detector, because a leak that only a person can spot is a leak that
 // runs for a week.
-const CARRYOVER_HEADING = '## מה שכבר שיתפו';
+// The seal that became the poison (2026-08-31 → 2026-09-02).
+//
+// Provisioning used to write `openclaw-workspace-state.json` into every new
+// workspace to tell the gateway "setup is already done" — that is what kept
+// OpenClaw's stock onboarding kit from hijacking a person's first
+// conversation. Gateway 2026.8.1 moved that state into its own sqlite and
+// reads the file as UNMIGRATED legacy state: assertNoUnmigratedWorkspaceState
+// throws on its mere existence, without reading it, before the turn runs.
+// Fail-closed, by design, and correct — but it turned our seal into a fatal
+// marker in every workspace that had one.
+//
+// It cost 126 real inbound WhatsApp messages over 48 hours (98 to u-8, 28 to
+// u-14, plus intake, so no stranger could be registered either) and NOTHING
+// said so: /health was green, no heartbeat errored, the audit log had no row
+// because turn_start never ran — the absence of the evidence WAS the symptom.
+// It was found by reading the gateway journal by hand.
+//
+// The write is gone (intake/provision.js), so this is the backstop for a file
+// arriving some other way: a doctor run interrupted, a restored backup, a
+// future gateway writing one again.
+const LEGACY_WORKSPACE_STATE = 'openclaw-workspace-state.json';
 
-async function checkCarryovers(client) {
+async function checkLegacyWorkspaceState(client, deps = {}) {
+  const base = deps.openclawHome || process.env.OLMA_OPENCLAW_HOME || '/root/.openclaw';
+  const { rows } = await client.query(
+    `SELECT id, workspace_path FROM users
+     WHERE status = 'active' AND workspace_path IS NOT NULL`
+  );
+  const violations = [];
+  for (const u of rows) {
+    if (fs.existsSync(path.join(u.workspace_path, LEGACY_WORKSPACE_STATE))) {
+      violations.push(
+        `user ${u.id}'s workspace holds ${LEGACY_WORKSPACE_STATE} — the gateway refuses every turn for that agent until it is moved aside`);
+    }
+  }
+  // The greeter has no user row, and it is the one workspace whose failure is
+  // invisible from the user table: strangers simply stop becoming users.
+  if (fs.existsSync(path.join(base, 'workspaces', 'intake', LEGACY_WORKSPACE_STATE))) {
+    violations.push(
+      `the intake workspace holds ${LEGACY_WORKSPACE_STATE} — the greeter refuses every turn, so nobody new can register`);
+  }
+  return violations;
+}
+
+const CARRYOVER_HEADING = '## מה שכבר שיתפו';
+const QUOTED_RE = /<<<([\s\S]*?)>>>/;
+const norm = (s) => String(s).replace(/\s+/g, ' ').trim();
+
+// Two cards holding identical text is SUSPICION, not proof, and on 2026-09-02
+// this fired on a pair who had each independently typed "היי" to the greeter.
+// A detector that files a leak against two people saying hello is the
+// detection-layer-nobody-trusts failure — and it files it onto the same
+// dashboard as the rows that do matter.
+//
+// The question that settles it is what the person actually sent: does THEIR
+// OWN intake session contain the words their card is quoting? Containment
+// rather than equality, because the greeter's session keeps growing after
+// provisioning — the card holds a prefix of what is there now, never the whole
+// of it. It also names which of the two cards is wrong, instead of reporting a
+// pair and leaving an operator to work out which half to act on.
+//
+// null (no session left to read) is not innocence: an unverifiable pair falls
+// back to reporting the collision, exactly as before.
+function quotesOwnWords(read, phone, quoted, cache) {
+  if (!cache.has(phone)) {
+    let own = null;
+    try { own = read(phone); } catch { own = null; }
+    cache.set(phone, own ? norm(own) : null);
+  }
+  const own = cache.get(phone);
+  return own === null ? null : own.includes(quoted);
+}
+
+async function checkCarryovers(client, deps = {}) {
+  const read = deps.readPeerText || ((phone) => sessions.readPeerUserText(INTAKE_AGENT_ID, phone));
   const { rows } = await client.query(
     `SELECT id, phone, workspace_path FROM users
      WHERE status = 'active' AND workspace_path IS NOT NULL
      ORDER BY id`
   );
-  const seen = new Map(); // carryover text → first user id that quoted it
+  const seen = new Map(); // carryover text → the first user who quoted it
+  const cache = new Map(); // phone → their own intake text, read at most once
   const violations = [];
   for (const u of rows) {
     let card;
     try { card = fs.readFileSync(path.join(u.workspace_path, 'USER.md'), 'utf8'); } catch { continue; }
     const at = card.indexOf(CARRYOVER_HEADING);
     if (at < 0) continue;
-    const body = card.slice(at).replace(/\s+/g, ' ').trim();
+    const section = card.slice(at);
+    const body = norm(section);
     const prior = seen.get(body);
-    if (prior !== undefined) {
-      // The pair is SORTED, for the same reason the count is kept out of
-      // checkStuckOutbox's title below: fileViolations dedupes on the title,
-      // and which of the two the loop reaches first is not a fact about the
-      // problem. Unsorted, "users 10 and 13" and "users 13 and 10" are two
-      // titles for one condition — live on 2026-09-02 that had filed the same
-      // carryover leak SEVEN times, which is how a dashboard stops being read.
-      const [a, b] = [Number(prior), Number(u.id)].sort((x, y) => x - y);
+    if (prior === undefined) { seen.set(body, u); continue; }
+
+    // Legacy cards carry no <<< >>> fence; with nothing quotable to look up,
+    // the old collision rule is all there is.
+    const m = section.match(QUOTED_RE);
+    const quoted = m ? norm(m[1]) : null;
+    const mine = quoted ? quotesOwnWords(read, u.phone, quoted, cache) : null;
+    const theirs = quoted ? quotesOwnWords(read, prior.phone, quoted, cache) : null;
+    if (mine === true && theirs === true) continue; // both of them really said it
+
+    const suspect = mine === false ? u : (theirs === false ? prior : null);
+    if (suspect) {
+      // Not sorted, deliberately: which card is WRONG is a fact about the
+      // problem, so this title is stable on its own and naming them in that
+      // order is the whole value of it.
+      violations.push(
+        `user ${suspect.id}'s card quotes an intake message they never sent — the same text is on user ${(suspect === u ? prior : u).id}'s card`);
+    } else {
+      // The unverifiable pair, and here the order IS arbitrary — which of the
+      // two the loop reaches first is not a fact about anything.
+      // fileViolations dedupes on the title, so unsorted this is two titles for
+      // one condition: live on 2026-09-02 that filed the same carryover SEVEN
+      // times, each tick filing one spelling and closing the other.
+      const [a, b] = [Number(prior.id), Number(u.id)].sort((x, y) => x - y);
       violations.push(
         `users ${a} and ${b} carry the SAME intake carryover text — one card is quoting another person's message`);
-    } else {
-      seen.set(body, u.id);
     }
   }
   return violations;
@@ -297,6 +387,9 @@ const BREAKS_USERS = [
   /AGENTS\.md carries user \d+'s identity token/,
   /alsoAllow lacks "read"/,
   /mcp\.servers is empty/,
+  // Same class, arrived 2026-09-02: the agent does not fail a tool call, it
+  // never starts a turn at all. Silent for 48 hours the first time.
+  /holds openclaw-workspace-state\.json/,
 ];
 
 function breaksUsers(violation) {
@@ -368,6 +461,7 @@ async function run(client, { configPath, ...deps } = {}) {
   }
   violations = violations.concat(await checkIdentityFiles(client));
   violations = violations.concat(await checkAgentsTokens(client));
+  violations = violations.concat(await checkLegacyWorkspaceState(client, deps));
   violations = violations.concat(await checkCarryovers(client));
   violations = violations.concat(await checkStuckOutbox(client));
   violations = violations.concat(await checkInfraAgentSessions(client, deps));
@@ -385,6 +479,7 @@ async function run(client, { configPath, ...deps } = {}) {
 module.exports = {
   run, checkOpenclawConfig, checkIdentityFiles, checkAgentsTokens,
   checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkInfraAgentSessions,
+  checkLegacyWorkspaceState, LEGACY_WORKSPACE_STATE,
   fileViolations, closeResolved,
   alertCritical, breaksUsers, ALERTED_FLAG,
 };
