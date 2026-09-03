@@ -902,6 +902,81 @@ test('two people who each said hello are not a leak — the greeter session sett
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// A leak does not need an accomplice, and requiring one is what kept the only
+// two real leaks on the box invisible for weeks. A leak OVERWRITES the victim's
+// carryover, so the stranger's words end up on exactly one card and no pair
+// ever forms. Audited live 2026-09-03 against every active user's own intake
+// session: u-11 quoted a Pesach reminder they never sent, u-17 quoted u-14's
+// message while she had actually asked to book a nail appointment — neither
+// collided with anything, so neither was ever reported, while the ONE pair on
+// the box was two people who had both said hello. The detector was looking
+// exclusively at the innocent case and straight past both guilty ones.
+test('a carryover nobody else shares is still checked against its owner', async () => {
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-carry3-'));
+  const mk = (name, carryover) => {
+    const w = path.join(dir, name);
+    fs.mkdirSync(w, { recursive: true });
+    fs.writeFileSync(path.join(w, 'USER.md'),
+      `# User\n\nFirst name: X\n\n## מה שכבר שיתפו לפני\n<<<${carryover}>>>\n`);
+    return w;
+  };
+  // One card, one carryover, nothing to collide with — the live u-17 shape.
+  const rows = [{ id: 17, phone: '+17', workspace_path: mk('u-17', 'מה העניינים ירון מה זה?') }];
+  const fake = { query: async () => ({ rows }) };
+
+  const v = await guard.checkCarryovers(fake, {
+    readPeerText: () => 'Hi olma I want to book a nail appointment for next week at 12 pm',
+  });
+  assert.equal(v.length, 1, 'a solo leak is still a leak');
+  assert.match(v[0], /user 17's card quotes an intake message they never sent/);
+  assert.match(v[0], /not in their own intake session/,
+    'and it says so plainly, rather than naming a second card that does not exist');
+
+  // The same card, when the words really are theirs, stays silent — otherwise
+  // this check would fire on every ordinary carryover in the system.
+  assert.deepEqual(await guard.checkCarryovers(fake, {
+    readPeerText: () => 'שלום, מה העניינים ירון מה זה? אשמח לעזרה',
+  }), []);
+
+  // Unreadable is not guilty: with no session left there is nothing to
+  // contradict the card, and a solo card has no pair to fall back on either.
+  assert.deepEqual(await guard.checkCarryovers(fake, { readPeerText: () => null }), []);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Going back for the damage already written down. The section is REMOVED, not
+// rewritten with the right words: the real message is days old by the time
+// anyone runs this, and re-injecting it would hand the agent a stale errand as
+// though it had just arrived.
+test('repairCarryovers strips a foreign carryover and leaves an honest one alone', async () => {
+  const os = require('node:os');
+  const repair = require('../src/domain/carryover-repair');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-carry4-'));
+
+  // stripCarryover keeps everything before and after the section
+  const card = '# User\n\nFirst name: X\n\n## מה שכבר שיתפו לפני\n<<<זר>>>\n\n## אחר\nשורה\n';
+  const cut = repair.stripCarryover(card);
+  assert.ok(!cut.includes('מה שכבר שיתפו'), 'the section is gone');
+  assert.ok(!cut.includes('זר'), 'and so is the quoted text');
+  assert.match(cut, /First name: X/, 'the head survives');
+  assert.match(cut, /## אחר\nשורה/, 'and so does the section after it');
+  assert.equal(repair.stripCarryover('# User\n\nFirst name: X\n'), null, 'nothing to cut → null');
+
+  // classify: their own words vs a stranger's vs unreadable
+  const withCarry = (t) => `# User\n\n## מה שכבר שיתפו לפני\n<<<${t}>>>\n`;
+  assert.equal(repair.classify(withCarry('הי'), 'היי מה נשמע').verdict, 'ok');
+  assert.equal(repair.classify(withCarry('זר'), 'משהו אחר').verdict, 'leak');
+  assert.equal(repair.classify(withCarry('זר'), null).verdict, 'unverifiable');
+  assert.equal(repair.classify('# User\n', 'x').verdict, 'clean');
+  // A legacy section with no fence is left alone rather than guessed at —
+  // deleting words we cannot prove are foreign would erase a real message.
+  assert.equal(repair.classify('# User\n\n## מה שכבר שיתפו לפני\nטקסט\n', 'אחר').verdict, 'unverifiable');
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // The backstop for the outage above: if that file ever appears in a workspace
 // again — a doctor run interrupted, a restored backup, a future gateway
 // writing one — it is not a dashboard row. While it exists the agent never

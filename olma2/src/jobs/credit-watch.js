@@ -330,4 +330,10 @@ module.exports = {
   checkBalanceForecast, balanceAlertText, tierFor,
   BALANCE_TIERS_FLAG, BALANCE_SERVICES, DAY_TIERS, USD_TIERS, ALERT_HOURS,
   MUTED_FLAG,
+  // config_guard's leaked-credential alert obeys the same window: nothing
+  // about a token is more fixable at 03:00 than at 08:00, and one alarm that
+  // wakes somebody for nothing is what teaches them to ignore the next.
+  // It does NOT obey MUTED_FLAG — that flag mutes the credit and budget
+  // alarms by name, and a leaked credential is neither.
+  alertHourOpen,
 };
