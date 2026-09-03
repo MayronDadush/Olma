@@ -2988,9 +2988,25 @@ supplies. `domain/search-link.js`, no migration.
   cannot do" — a `search_link` rule written only in the second would have
   missed the exact case that motivated it. Both are pinned in
   `tests/intake.test.js`.
-- **Still unverified: whether WhatsApp's linkifier makes a URL containing
-  Hebrew tappable.** One real message settles it; until then the fallback is
-  that the person copies the text.
+- **WhatsApp DOES linkify a URL containing Hebrew — confirmed on a real
+  handset, 2026-09-03.** This was the one thing the design could not settle
+  from a test, and it was the thing everything else rested on: had it come
+  back as plain text, the whole readable form would have had to be traded for
+  179 characters of `%D7`. The check itself is worth copying — the link was
+  built by the DEPLOYED `buildSearchLink` rather than typed by hand (a
+  hand-written string proves nothing about the feature), inside a transaction
+  that was rolled back so the `search_link.offered` audit row never landed
+  and the demand signal stayed honest, and delivery was confirmed against the
+  gateway's own `Sent message … -> sha256:184023327ef0` line rather than the
+  CLI's `ok:true`, which has lied in this project before.
+- **Found by that send, and unrelated to it**: the first attempt failed with
+  `ECONNREFUSED` because a concurrent session restarted the gateway
+  (`NRestarts=0`, `restart drain`, clean 7.9s shutdown — deliberate, not a
+  crash) and the send landed in the ~13-second window before the new process
+  was ready. `/health` returned 200 throughout, because it measures the DB
+  and job heartbeats and **nothing measures the gateway**. A real gateway
+  outage would look exactly this green. Third time this shape appears in this
+  file.
 
 ### Deploying doctrine no longer needs a second command (2026-08-21)
 
