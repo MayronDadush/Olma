@@ -1,0 +1,10 @@
+{
+ "female": {
+  "היי מירון, זאת אוֹלמָה. מה קורה?": "greeting-female.ulaw",
+  "אוֹלמָה.": "name-female.ulaw"
+ },
+ "male": {
+  "היי מירון, זה אוֹלמָה. מה קורה?": "greeting-male.ulaw",
+  "אוֹלמָה.": "name-male.ulaw"
+ }
+}

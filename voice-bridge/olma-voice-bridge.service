@@ -1,0 +1,19 @@
+[Unit]
+# Was a TRANSIENT unit (systemd-run) until 2026-09-02: Restart=no and gone on
+# reboot, so a crash or a droplet restart silently ended voice calls with
+# nothing to notice it. Same command, now persistent and self-restarting.
+Description=Olma voice bridge (Twilio Media Streams <-> Deepgram/Cartesia)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node /opt/olma2-voice-bridge/server.js
+WorkingDirectory=/opt/olma2-voice-bridge
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
