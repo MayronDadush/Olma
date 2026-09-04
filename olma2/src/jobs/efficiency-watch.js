@@ -86,28 +86,37 @@ const METRICS = [
 const BASELINE_DAYS = 7;
 const ALERTED_FLAG = 'efficiency_watch_alerted';
 
-// Money is the only thing here that gets to wake somebody. The other three
-// ratios are the EXPLANATION for a cost move, never evidence that one happened
-// — and this watch's first real alert, 2026-09-04 08:41, is what the difference
-// costs. Input tokens per message had gone 50k → 224k over a week and the cache
-// had fallen 70% → 29%, so it filed two issues and messaged the owner about a
-// regression; `cost_per_message` across those same eight days was $0.0153,
-// $0.0112, $0.0127, $0.0270, $0.0091, $0.0415, $0.0152, $0.0209 — no trend at
-// all, and the spikes in it were model pilots. The proxies were right that the
-// prompt/cache picture changed and wrong that it had cost anything. An alarm
-// that overstates is spent the first time somebody checks it, so a proxy now
-// rides along with a cost crossing and can never carry one alone.
+// Money is the only thing here that gets to send a WhatsApp. Everything still
+// gets DETECTED, filed and reported — the gate is on the interruption, not on
+// the knowledge.
+//
+// This watch's first real alert, 2026-09-04 08:41, is what the distinction
+// costs. Input tokens per message had gone 50k → 224k over a week and the
+// cache had fallen 70% → 29%, so it filed two issues and messaged the owner
+// about a regression; `cost_per_message` across those same eight days was
+// $0.0153, $0.0112, $0.0127, $0.0270, $0.0091, $0.0415, $0.0152, $0.0209 — no
+// trend at all, and the spikes in it were model pilots. An alarm that
+// overstates is spent the first time somebody checks it.
+//
+// But the first version of this rule went too far and would have deleted a
+// real finding. Measured per API CALL rather than per message, the thing that
+// moved was structural and genuine: model calls per inbound message 0.6 → 7.8,
+// cache reads per call flat while fresh tokens grew 2.4x. That is worth
+// knowing, and a rule that can only ever notice a regression once it has become
+// money learns about that class of problem last. So the proxies keep their
+// detection, their dashboard row and their line in the heartbeat, and lose only
+// the right to make somebody's phone buzz.
 //
 // This also subsumes the floor `system_cost_share` would otherwise need: a
 // share doubles when the numerator grows OR when the denominator shrinks, and
-// only the first is a regression. Requiring money to have moved rules out the
-// second without a second rule that has to be kept in step with this one.
+// only the first is a regression. Requiring money to have moved before
+// interrupting rules out the second without a second rule to keep in step.
 const MONEY_KEY = 'cost_per_message';
 
-// Splits crossings into the ones allowed to alert and the ones that are only
-// context. It never DROPS a crossing — `observed` is reported in the heartbeat
-// and attached to the issue — because a check that quietly declines to judge is
-// indistinguishable from one that passed.
+// Splits crossings into the ones that may INTERRUPT and the ones that are only
+// recorded. It never DROPS a crossing — `observed` is reported in the heartbeat
+// and files its issue exactly like the rest — because a check that quietly
+// declines to judge is indistinguishable from one that passed.
 function escalate(crossed) {
   const money = crossed.some((c) => c.key === MONEY_KEY);
   return money ? { alerting: crossed, observed: [] } : { alerting: [], observed: crossed };
@@ -189,24 +198,94 @@ function median(values) {
   return xs[Math.floor((xs.length - 1) / 2)];
 }
 
-// Compares the day under test against the median of the days before it.
-// Returns one entry per metric that crossed, never a boolean — what crossed and
-// by how much is the whole content of the report.
-function crossings(history, day) {
-  const prior = history.filter((d) => d.date !== day.date);
+// ── Spikes and slides are different failures ─────────────────────────────────
+// On 2026-09-04 this watch fired on cache_hit_rate and was RIGHT about the
+// number and wrong about everything after it. The rate had walked
+// 73% → 71% → 46% → 30% → 31% → 21% → 20% across seven days; the report
+// presented the last of those as a same-day event, the brief below asked what
+// changed today, and the model answered with the only shape the question
+// allowed — "a template changed / a new user joined". Neither was true. The
+// real driver was gradual: model calls per inbound message went 0.6 → 7.8 over
+// the same window, while cache reads per call stayed flat. The suggested fix
+// that came back — shorten the system prompt — would have deleted the one
+// region that WAS cached and raised the bill.
+//
+// Note what this is NOT a story about: the spike test was not late. Replayed
+// over the real series it crosses on 09-01, a day before the trend test does
+// (`tests/efficiency-watch.test.js` pins both). The watch was quiet until
+// 09-04 because it did not exist until 09-04. Two things follow, and only the
+// second is about detection at all:
+//
+//   1. The FRAMING was the defect. A slide and a jump need different questions
+//      asked about them, so the entry now carries which one it is and the
+//      day-by-day series travels with it into both the report and the brief.
+//   2. There is still a real blind spot beside it: a ratio that compounds
+//      gently never crosses 2x against a trailing median that is rising with
+//      it. Measured — 12%/day for eight days is a 2.2x total degradation whose
+//      spike ratio peaks at 1.57 and never fires. This second test sees it.
+//
+// So: compare the median of the last few days against the median of the days
+// before THOSE. It needs no day to be extreme. The factor is lower than a
+// spike's deliberately — a shift that persisted for three days earns less
+// surprise per unit than one that arrived at once, but more confidence.
+const TREND_RECENT_DAYS = 3;
+const TREND_FACTOR = 1.5;
+
+// A sustained shift, or null. `series` rides along because the whole point is
+// that the reader (and the model in briefFor) can see it is a slope rather
+// than a jump — that is the half that was actually wrong in September.
+function trendFor(history, m) {
+  const days = history.filter((d) => d[m.key] !== null && Number.isFinite(d[m.key]));
+  // Two windows, each needing enough days to have a median worth the name.
+  if (days.length < TREND_RECENT_DAYS + 2) return null;
+  const recent = days.slice(-TREND_RECENT_DAYS);
+  const prior = days.slice(0, -TREND_RECENT_DAYS);
+  if (prior.length < 2) return null;
+  // The same activity floor the spike test applies, over the window rather
+  // than over one day: three quiet days in a row can produce any slope at all.
+  const activity = median(recent.map((d) => d.messages));
+  if (activity === null || activity < m.minMessages) return null;
+  const now = median(recent.map((d) => d[m.key]));
+  const base = median(prior.map((d) => d[m.key]));
+  if (now === null || base === null || base === 0) return null;
+  const times = m.worse === 'higher' ? now / base : base / now;
+  if (!Number.isFinite(times) || times < (m.trendFactor || TREND_FACTOR)) return null;
+  return {
+    now, baseline: base, times,
+    recentDays: recent.length, priorDays: prior.length,
+    from: days[0].date, to: days[days.length - 1].date,
+    series: days.map((d) => ({ date: d.date, value: d[m.key] })),
+  };
+}
+
+// Compares the day under test against the median of the days before it, and
+// separately asks whether it has been drifting. Returns one entry per metric —
+// never two for the same one, because "it spiked" and "it has been sliding"
+// are one piece of news to the person reading, not two. A spike wins the
+// headline and carries the trend as context; a trend alone is its own entry,
+// and that is the one that arrives days earlier than this watch used to.
+function crossings(history, today) {
+  const prior = history.filter((d) => d.date !== today.date);
   const out = [];
   for (const m of METRICS) {
-    const now = day[m.key];
-    if (now === null) continue;
-    if (day.messages < m.minMessages) continue;
-    const base = median(prior.map((d) => d[m.key]));
-    // No baseline is not a crossing. A system with four days of history has
-    // nothing to be surprised by yet, and inventing a threshold for it would
-    // make the watch's first week pure noise.
-    if (base === null || base === 0) continue;
-    const ratio = m.worse === 'higher' ? now / base : base / now;
-    if (!Number.isFinite(ratio) || ratio < m.factor) continue;
-    out.push({ key: m.key, label: m.label, now, baseline: base, times: ratio, worse: m.worse });
+    const trend = trendFor(history, m);
+    const now = today[m.key];
+    let spike = null;
+    if (now !== null && today.messages >= m.minMessages) {
+      const base = median(prior.map((d) => d[m.key]));
+      // No baseline is not a crossing. A system with four days of history has
+      // nothing to be surprised by yet, and inventing a threshold for it would
+      // make the watch's first week pure noise.
+      if (base !== null && base !== 0) {
+        const ratio = m.worse === 'higher' ? now / base : base / now;
+        if (Number.isFinite(ratio) && ratio >= m.factor) spike = { base, ratio };
+      }
+    }
+    if (spike) {
+      out.push({ key: m.key, label: m.label, now, baseline: spike.base, times: spike.ratio, worse: m.worse, kind: 'spike', trend });
+    } else if (trend) {
+      out.push({ key: m.key, label: m.label, now: trend.now, baseline: trend.baseline, times: trend.times, worse: m.worse, kind: 'trend', trend });
+    }
   }
   return out;
 }
@@ -256,17 +335,50 @@ function fmtValue(key, v) {
 // a query cannot produce: the likeliest cause, and what to shorten. The server
 // stays the judge: this returns text for a human, and no part of it is ever
 // executed, applied, or written anywhere but the report.
-function briefFor(crossed, day, ev, promptChars) {
+function briefFor(crossed, today, ev, promptChars) {
+  const drifting = crossed.filter((c) => c.kind === 'trend' || c.trend);
   return [
-    'You are looking at one day of cost telemetry for a small WhatsApp assistant',
-    `(${day.messages} inbound messages that day, ${ev.users.length} paying users measured).`,
-    'These ratios crossed 2x their own 7-day median:',
-    ...crossed.map((c) => `- ${c.key}: ${fmtValue(c.key, c.now)} vs baseline ${fmtValue(c.key, c.baseline)} (${c.times.toFixed(1)}x)`),
+    'You are looking at cost telemetry for a small WhatsApp assistant',
+    `(${today.messages} inbound messages on the latest day, ${ev.users.length} paying users measured).`,
     '',
-    'Models that day:',
+    // `!== 'trend'`, never `=== 'spike'`: an entry that reaches here without a
+    // kind is a caller this function does not know about, and the one outcome
+    // worse than mislabelling it is dropping it out of the brief in silence.
+    ...(crossed.some((c) => c.kind !== 'trend') ? [
+      'These ratios crossed 2x their own 7-day median IN A SINGLE DAY:',
+      ...crossed.filter((c) => c.kind !== 'trend').map((c) =>
+        `- ${c.key}: ${fmtValue(c.key, c.now)} vs baseline ${fmtValue(c.key, c.baseline)} (${c.times.toFixed(1)}x)`),
+      '',
+    ] : []),
+    ...(crossed.some((c) => c.kind === 'trend') ? [
+      'These ratios did NOT jump on any one day — they have drifted steadily:',
+      ...crossed.filter((c) => c.kind === 'trend').map((c) =>
+        `- ${c.key}: last ${c.trend.recentDays} days median ${fmtValue(c.key, c.now)} vs the ${c.trend.priorDays} days before them ${fmtValue(c.key, c.baseline)} (${c.times.toFixed(1)}x)`),
+      '',
+    ] : []),
+    // The series is the correction for the mistake this watch actually made:
+    // asked "what changed today" about a six-day slope, the model invented a
+    // same-day cause. Shown the slope, it cannot.
+    ...(drifting.length ? [
+      'Day by day, oldest first — read the SHAPE before proposing a cause:',
+      ...drifting.map((c) => `- ${c.key}: ${c.trend.series.map((s) => fmtValue(c.key, s.value)).join(' → ')}`),
+      '',
+      'A metric that moved a little every day is NOT explained by one change on the last day.',
+      'Prefer causes that themselves grow gradually — more work per request, accumulating',
+      'context, a growing prompt, more tools, more retries — over a discrete edit or a new user.',
+      '',
+    ] : []),
+    'Models on the latest day:',
     ...ev.models.map((m) => `- ${m.model}: ${num(m.inTokens)} input tokens, cache hit ${pct(m.cacheRate)}, ${usd(m.cost)}`),
     '',
     promptChars ? `The system prompt each turn injects is ${num(promptChars)} characters.` : '',
+    // Learned the same day: the advice came back "shorten the system prompt to
+    // 1,000 chars" for a cache-hit fall whose cached region WAS the system
+    // prompt. Cutting it would have deleted the only part that was cached and
+    // left the growing uncached part untouched.
+    'Note: a falling cache hit rate can mean the cached part shrank OR that the uncached',
+    'part grew. Those need opposite fixes, and shortening a stable, cacheable system prompt',
+    'makes the second case worse. Say which one the numbers show, or say you cannot tell.',
     '',
     'Answer in Hebrew, at most 4 short lines, no preamble:',
     '1. The single most likely cause, stated as a guess and labelled as one.',
@@ -281,7 +393,12 @@ function reportText(crossed, day, ev, advice) {
     '📈 אולמה — יעילות: משהו חרג מהרגיל',
     `${day.date} · ${day.messages} הודעות נכנסות`,
     '',
-    ...crossed.map((c) => `• ${c.label}: ${fmtValue(c.key, c.now)} (רגיל: ${fmtValue(c.key, c.baseline)}, פי ${c.times.toFixed(1)})`),
+    // A slide and a jump read identically in a single line of numbers, and the
+    // difference is the first thing the reader needs in order to think about
+    // a cause at all. So the line says which one it is.
+    ...crossed.map((c) => (c.kind === 'trend'
+      ? `• ${c.label}: ${fmtValue(c.key, c.now)} (לפני כן: ${fmtValue(c.key, c.baseline)}, פי ${c.times.toFixed(1)}) — במגמה כבר ${c.trend.recentDays + c.trend.priorDays} ימים, לא קפיצה של יום`
+      : `• ${c.label}: ${fmtValue(c.key, c.now)} (רגיל: ${fmtValue(c.key, c.baseline)}, פי ${c.times.toFixed(1)})${c.trend ? ' — וגם במגמה כבר כמה ימים' : ''}`)),
   ];
   if (ev.models.length) {
     lines.push('', 'מודלים:');
@@ -362,21 +479,19 @@ async function run(client, deps = {}) {
     date: day.date,
     messages: day.messages,
     crossed: crossed.length,
-    observed: observed.map((c) => c.key),
+    observed: observed.map((c) => `${c.key}:${c.kind}`),
     ...extra,
     // Reported every tick even when nothing crossed, so the ratios are numbers
     // an operator watches drift rather than news they hear once. A watch that
     // is silent when healthy is indistinguishable from a watch that is broken.
     ratios: Object.fromEntries(METRICS.map((m) => [m.key, sig4(day[m.key])])),
   });
-  if (!alerting.length) {
+  if (!crossed.length) {
     // Recovery re-arms the alert: a condition that cleared drops out, so the
     // same regression next month is news again instead of being swallowed by a
     // stale stamp. Written unconditionally, even on ticks that send nothing.
-    // A proxy crossing alone lands here too, so it never spends the stamp that
-    // belongs to the cost crossing it might be the early warning for.
     await flagsDomain.setFlag(client, ALERTED_FLAG, []);
-    return report({ alerted: 0 });
+    return report({ alerted: 0, filed: 0 });
   }
 
   const ev = await evidence(client, day.date);
@@ -385,11 +500,30 @@ async function run(client, deps = {}) {
   // ratio still being high tomorrow is not new information, and a daily
   // "still expensive" is how somebody learns to swipe these away.
   const already = (await flagsDomain.getFlag(client, ALERTED_FLAG)) || [];
-  const keys = alerting.map((c) => c.key);
-  const fresh = alerting.filter((c) => !already.includes(c.key));
+  // Keyed by metric AND kind, so a ratio that was announced as a slide and
+  // then genuinely jumps is news a second time — the runway warning's
+  // climbs-tiers-instead-of-repeating rule, applied to a second axis.
+  //
+  // Before this change the flag could only ever hold a bare metric key, and a
+  // bare key meant exactly one thing: that metric's SPIKE was announced. So a
+  // legacy entry still silences the spike it recorded, and does not silence a
+  // trend — which is information the owner has never been sent. Without that
+  // asymmetry the upgrade would either re-announce every live condition or
+  // swallow the first trend report of every one of them.
+  const condKey = (c) => `${c.key}:${c.kind}`;
+  const announced = (c) => already.includes(condKey(c))
+    || (c.kind === 'spike' && already.includes(c.key));
+  const keys = crossed.map(condKey);
+  const fresh = crossed.filter((c) => !announced(c));
 
+  // Only asked for on the path that will actually send. A suppressed
+  // condition still files its row with the numbers and the series — the part
+  // that is true — and does not spend a model call inventing a cause for
+  // something nobody is being interrupted about. September's advice was
+  // actively wrong (it proposed shortening the one region that WAS cached),
+  // which is the second reason not to generate it where nobody will read it.
   let advice = null;
-  if (fresh.length && deps.llm !== null) {
+  if (fresh.length && alerting.length && deps.llm !== null) {
     const llm = deps.llm || require('../adapters/llm');
     try {
       const res = await llm.complete({
@@ -424,7 +558,12 @@ async function run(client, deps = {}) {
   for (const c of fresh) {
     // No number in the title: fileViolations-style dedup keys on it, and a
     // ratio in the title would file a new issue every single day.
-    const title = `efficiency: ${c.key} is far above its own recent baseline`;
+    // Deterministic, and distinct per kind: the title IS the dedup key, and a
+    // slide and a jump in the same ratio are two different things to go and
+    // look at. Neither carries a number, for the reason above.
+    const title = c.kind === 'trend'
+      ? `efficiency: ${c.key} has been drifting away from its baseline for days`
+      : `efficiency: ${c.key} is far above its own recent baseline`;
     const { rows } = await client.query(
       `SELECT 1 FROM issues WHERE title = $1 AND status IN ('new','triaged')`, [title]);
     if (rows[0]) continue;
@@ -441,6 +580,12 @@ async function run(client, deps = {}) {
   }
 
   const base = { alerted: alerting.length, newConditions: fresh.length, filed };
+  // Detected, filed, reported — and deliberately not sent. The stamp is NOT
+  // written here: it records what the owner has been TOLD, so leaving it clear
+  // means that when the cost crossing this may have been the early warning for
+  // finally arrives, the message carries the whole picture instead of one line
+  // about money with its explanation already marked as old news.
+  if (!alerting.length) return report({ ...base, notified: false });
   if (!fresh.length) {
     await flagsDomain.setFlag(client, ALERTED_FLAG, keys);
     return report(base);
@@ -469,6 +614,7 @@ async function run(client, deps = {}) {
 }
 
 module.exports = {
-  run, dailyRatios, crossings, escalate, median, evidence, reportText, briefFor,
-  METRICS, BASELINE_DAYS, ALERTED_FLAG, MONEY_KEY, SELF_AGENT_ID,
+  run, dailyRatios, crossings, trendFor, escalate, median, evidence, reportText, briefFor,
+  METRICS, BASELINE_DAYS, TREND_RECENT_DAYS, TREND_FACTOR, ALERTED_FLAG, MONEY_KEY,
+  SELF_AGENT_ID,
 };
