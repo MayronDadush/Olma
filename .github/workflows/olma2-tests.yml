@@ -76,9 +76,12 @@ jobs:
     # forever — which reads as "CI hasn't got to it yet" rather than "this is
     # dead". Three of those cost about an hour of a session before anyone
     # thought to compare a run's frozen `updated_at` against its sibling.
-    # Failing at 10 minutes turns an invisible hang into a red check someone
-    # can just re-run.
-    timeout-minutes: 10
+    #
+    # Since 2026-09-04 `scripts/run-suite.sh` detects the wedge itself and
+    # retries it, so this is no longer the thing that catches it — it is the
+    # backstop for the WRAPPER failing. 15 = the wrapper's own worst case
+    # (3 x SUITE_TIMEOUT below) plus the install, with room to spare.
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16
@@ -100,8 +103,14 @@ jobs:
           node-version: '24'
       - run: npm install --no-audit --no-fund
         working-directory: olma2
-      - run: node --test 'tests/*.test.js'
+      # Not `node --test` directly: the runner wedges roughly 1 run in 8-25 on
+      # these machines, and the wrapper retries a HANG (never a failure — see
+      # scripts/run-suite.sh). 180s is 2-4x the observed 45-90s healthy run.
+      - run: bash scripts/run-suite.sh
         working-directory: olma2
+        env:
+          SUITE_TIMEOUT: '180'
+          SUITE_ATTEMPTS: '3'
 
   deploy:
     needs: test

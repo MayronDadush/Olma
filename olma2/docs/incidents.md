@@ -108,6 +108,7 @@ never trust a dated narrative for something you are about to act on.
 
 **CI, migrations and deploying**
 
+- [The runner and one child stopped talking (2026-09-04)](#the-runner-and-one-child-stopped-talking-2026-09-04)
 - [The rollback was one release deep, on a five-merge day (2026-09-03)](#the-rollback-was-one-release-deep-on-a-five-merge-day-2026-09-03)
 - [Two branches, one migration number — a third time, in one afternoon (fixed 2026-08-29)](#two-branches-one-migration-number--a-third-time-in-one-afternoon-fixed-2026-08-29)
 - [Two branches, one migration number (fixed 2026-08-22)](#two-branches-one-migration-number-fixed-2026-08-22)
@@ -3052,6 +3053,70 @@ abandoned reconnect.
 
 
 ## CI, migrations and deploying
+
+### The runner and one child stopped talking (2026-09-04)
+
+`node --test` in CI would go silent mid-suite: a handful of files reported,
+then nothing at all until the job timeout killed it. It cost most of an
+evening and three re-runs of a single merge before anyone stopped re-rolling
+the dice and looked at it.
+
+The first two theories were both about **us**. A memory claimed it hit the
+`push` run and never the `pull_request` one, which quietly implied the code
+was fine and the event was to blame; a wider sample killed that — it hits
+either, sometimes both on the same commit, and `main` has no `pull_request`
+run to fall back on at all. The second theory was our connection handling: no
+`connectionTimeoutMillis` anywhere, so a saturated pool waits for ever.
+Plausible, and wrong.
+
+What settled it was a throwaway probe workflow that let the suite wedge and
+then **dumped the machine while it was still hung** — `ps`, every
+`pg_stat_activity` row, `pg_blocking_pids`, node's own diagnostic report via
+`--report-on-signal`, and `/proc/<pid>/{syscall,wchan,fd}` for both processes.
+Reproduced four times, the same shape every time:
+
+- Every started file emits **all** of its tests. Then one child stays alive
+  for ever and no further file is ever started.
+- That child holds one connection to Postgres, and Postgres shows the matching
+  session `idle` in `ClientRead` — *the server waiting for the client*. Nothing
+  in flight, `writeQueueSize: 0`, `pg_blocking_pids` empty every time.
+- Both the runner and the child sit in `wchan: ep_poll`, parked in the event
+  loop rather than blocked in a syscall, with an **empty JavaScript stack** in
+  node's report.
+- The child's stdio are socketpairs to the runner, and a preload that writes
+  to fd 2 before any test code runs produced no line at all — although the
+  child had demonstrably run queries. The runner had stopped reading it.
+
+So the runner and one child stop talking to each other and each then waits for
+the other for ever. Not our code, not Postgres. Ruled out by experiment rather
+than by argument: pipe backpressure (the stdio are sockets, and the runner's
+own output goes to a plain file, which cannot block); connection pressure
+(`--test-concurrency=2` wedged on attempt 1); our timeouts (adding
+`connectionTimeoutMillis`/`query_timeout`/`statement_timeout` changed nothing,
+because **nothing is pending in pg at all**); a slow machine (a healthy run is
+30-45s). Roughly 1 run in 8-25, on a 4-core GitHub runner, node 24.19/24.20.
+
+Two things worth keeping from how this went:
+
+- **The file that happens to be running is not the culprit.** `calendar.test.js`
+  was in flight each time, and its `SELECT ... FROM schema_migrations` looked
+  like the hang. It was a witness. Reading the kernel state instead of the log
+  tail is what told the two apart.
+- **A blaming memory is worse than no memory.** The push-vs-`pull_request`
+  claim was written from four consistent observations and read for days as
+  established fact. It has been replaced with the counterexamples in both
+  directions and the rule that actually discriminates (if the branch contains
+  `main`, both runs compile identical bytes, so a pass on either is
+  authoritative).
+
+The fix is not a fix; the bug is upstream. `olma2/scripts/run-suite.sh` wraps
+the suite and retries a **hang**, never a failure — a non-zero exit is
+reported immediately and is final, because a wrapper that re-rolls a genuine
+red is how a flaky-test culture starts. It is loud on purpose: every wedge
+prints a banner, and a run that eventually passes still says which attempt it
+took, so the rate stays visible instead of decaying into background noise.
+`tests/run-suite.test.js` pins that split — the test that matters most is the
+one asserting a failing suite runs exactly once.
 
 ### The rollback was one release deep, on a five-merge day (2026-09-03)
 

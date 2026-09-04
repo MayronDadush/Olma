@@ -365,6 +365,17 @@ Two things the suite learned the hard way:
   or an unpinned `drainOnce` passes or fails depending on when you run it.
   The suite was green thirteen hours a day and red eleven before this.
 
+- **A green from CI may be a retry.** `node --test` wedges roughly 1 run in
+  8-25 on a GitHub runner — the runner and one child stop talking and both
+  park in the event loop for ever (`incidents.md`, "The runner and one child
+  stopped talking"). CI and `deploy.sh` therefore go through
+  `olma2/scripts/run-suite.sh`, which retries a **hang** and never a failure:
+  any non-zero exit is final and is reported as-is. **Do not widen that** — a
+  wrapper that re-rolls a genuine red is how a flaky-test culture starts. It
+  prints a banner on every wedge and names the attempt it passed on; if that
+  count starts climbing, the wedge has changed shape and needs re-diagnosing,
+  not a bigger `SUITE_ATTEMPTS`.
+
 CI (`.github/workflows/olma2-tests.yml`) runs the same suite plus a
 `migrations` collision check, serialized on `main` so two merges cannot race
 the same rollback snapshot.
