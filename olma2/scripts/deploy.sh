@@ -31,7 +31,19 @@ BACKUP="/opt/olma2-previous"
 ARCHIVE="${OLMA_RELEASES_DIR:-/opt/olma2-releases}"
 KEEP="${OLMA_RELEASES_KEEP:-5}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
-SSH="ssh -i $SSH_KEY"
+# Keepalives, because of 2026-09-04: the remote test step is the longest-lived
+# SSH command this script runs (4-6+ minutes), and twice in one evening the
+# connection between a GitHub-hosted runner and this droplet died mid-stream
+# (client_loop: send disconnect: Broken pipe) with no error from either
+# process's own logic — the runner reported it as an infra failure, not a
+# script failure. Worse: the remote side did NOT die with it. A plain `ssh`
+# with no periodic traffic leaves nothing to notice a silently-dropped
+# connection, so the orphaned node/test tree kept running for 9+ minutes,
+# invisible to CI, contending with the live service for the box's one core.
+# ServerAliveInterval sends a probe if 15s pass with no traffic; 6 misses
+# (90s) before giving up is generous enough to ride out a blip without
+# masking a connection that is genuinely gone.
+SSH="ssh -i $SSH_KEY -o ServerAliveInterval=15 -o ServerAliveCountMax=6"
 
 # Snapshot the currently-deployed release (code + its own node_modules) as a
 # complete standalone copy BEFORE the new rsync overwrites anything, so a bad
