@@ -349,8 +349,15 @@ Verified on the box at the cutover, 2026-08-17:
   it is not a one-way door — but **git still has the bad commit and the next
   merge redeploys it.** Land a revert too.
 - Postgres 16 local (`olma2` + `olma2_test` DBs), creds in `/opt/olma2/.env`
-  (0600). Daily `pg_dump` 02:15 → `/root/backups/`, 14-day retention.
-  **The dump lands on the same droplet it backs up — no off-box copy yet.**
+  (0600). Daily `pg_dump` 02:15 Asia/Jerusalem → `/root/backups/`, 14-day
+  retention (root's crontab, not in the repo). **Off-box copy:**
+  `scripts/backup-offbox.sh` (02:40, same crontab) uploads the newest dump to
+  a private DigitalOcean Spaces bucket, verifies the size the bucket reports,
+  prunes copies older than 30 days, and writes `job_heartbeats.backup_offbox`
+  — green on success, `ERR …` on any failure, stale on the health board if it
+  stops running. Config is `SPACES_KEY/SECRET/BUCKET/REGION` in the same
+  `.env`; the dump holds encrypted credentials, so the bucket stays private.
+  Restore drill: download, `gunzip`, `psql olma2_test < file`.
 - Services: `olma2-brokerd` (unix-socket daemon: pg pool, flood counters,
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
