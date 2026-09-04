@@ -251,3 +251,28 @@ test('someone who already has a list is not invited to start one', async () => {
   assert.equal(out.nextStep, undefined,
     'a month-old user who only now confirms their name is not a new user');
 });
+
+test('turn_start stamps first_turn_at exactly when it hands out the opening, equal to last_inbound_at', async () => {
+  // sweeps.sweepNameConfirm (2026-09-04) depends on these being equal at the
+  // moment the opening is sent — its silence test IS this equality holding.
+  const u = await makeUser(db.pool, '+972611003011', { firstName: null });
+  const before = await db.pool.query(`SELECT first_turn_at FROM users WHERE id = $1`, [u.id]);
+  assert.equal(before.rows[0].first_turn_at, null);
+
+  await turnStart(u, { opened: false, counted: false });
+
+  const after = await db.pool.query(
+    `SELECT first_turn_at, last_inbound_at FROM users WHERE id = $1`, [u.id]);
+  assert.notEqual(after.rows[0].first_turn_at, null);
+  assert.deepEqual(after.rows[0].first_turn_at, after.rows[0].last_inbound_at,
+    'both written by the same statement-window inside one transaction');
+});
+
+test('a returning user never gets first_turn_at stamped', async () => {
+  const u = await makeUser(db.pool, '+972611003012', { firstName: 'Vatik' });
+  await db.pool.query(
+    `UPDATE users SET last_inbound_at = now() - interval '5 days' WHERE id = $1`, [u.id]);
+  await turnStart(u, { opened: false, counted: false });
+  const { rows } = await db.pool.query(`SELECT first_turn_at FROM users WHERE id = $1`, [u.id]);
+  assert.equal(rows[0].first_turn_at, null);
+});

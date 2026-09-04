@@ -380,6 +380,17 @@ const TOOLS = [
       const firstTurn = alreadyCounted
         ? Boolean(ctx && ctx.turn && ctx.turn.firstTurn)
         : firstEverTurn;
+      // Stamped once, only here — the one place that actually hands the
+      // model onboarding.sendVerbatim, whether firstTurn came from this call's
+      // own self-join or from an earlier recovery in the same turn (see the
+      // comment above). Anchors the 60-second "did they answer the welcome"
+      // nudge (jobs/sweeps.sweepNameConfirm): neither `last_inbound_at` (moves
+      // on their every message, including this one) nor `onboarded_at` (set at
+      // provisioning, before they have necessarily written a word) names this
+      // moment.
+      if (firstTurn) {
+        await client.query(`UPDATE users SET first_turn_at = now() WHERE id = $1`, [user.id]);
+      }
 
       // The instruction rides in the RESULT, not in AGENTS.md, and that is a
       // budget decision rather than a style one: the doctrine renders to 39249
