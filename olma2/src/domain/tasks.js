@@ -257,6 +257,26 @@ async function archiveTask(client, ownerId, taskId) {
   return ok({ taskId });
 }
 
+// Out of the archive and back onto the list. The archive is the only place a
+// task ever goes when somebody "deletes" one, so this is the other half of a
+// pair that already had one — without it the archive was a one-way door, and
+// a person who tidied away the wrong row had no way back through the screen
+// that showed them it was still there.
+//
+// It does NOT un-complete anything: a finished task restored is a finished
+// task on the list, and deciding otherwise would silently reopen work
+// somebody had already done.
+async function unarchiveTask(client, ownerId, taskId) {
+  const { rows } = await client.query(
+    `UPDATE tasks SET archived_at = NULL
+     WHERE id = $1 AND owner_id = $2 AND archived_at IS NOT NULL RETURNING id`,
+    [taskId, ownerId]
+  );
+  if (!rows[0]) return err('not_found', 'archived task not found');
+  await audit.record(client, ownerId, 'task.unarchived', { taskId });
+  return ok({ taskId });
+}
+
 async function projectOverview(client, ownerId, projectId) {
   const { rows } = await client.query(
     `SELECT * FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
@@ -272,5 +292,5 @@ async function projectOverview(client, ownerId, projectId) {
 
 module.exports = {
   MAX_BULK, addTask, addTasksBulk, editTask, listTasks, completeTask,
-  snoozeTask, archiveTask, projectOverview,
+  snoozeTask, archiveTask, unarchiveTask, projectOverview,
 };

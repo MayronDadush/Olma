@@ -29,6 +29,7 @@ const grants = require('./grants');
 const users = require('./users');
 const pause = require('./pause');
 const audit = require('./audit');
+const taskCalendar = require('./task-calendar');
 const { SOURCE_CAPS } = require('./user-dashboard');
 
 // What a task's origin system can actually hold, for the fields this page can
@@ -123,6 +124,23 @@ const ACTIONS = {
     return tasks.archiveTask(client, userId, p.taskId);
   },
 
+  // The other half of the archive. The page calls the archiving "delete", so
+  // this is the only way back from a tap somebody did not mean — and the
+  // archive screen offers it, which made its absence from here a button that
+  // moved a row on screen and nowhere else.
+  async restoreTask(client, userId, p) {
+    return tasks.unarchiveTask(client, userId, p.taskId);
+  },
+
+  // ---- this task, on their calendar ---------------------------------------
+  // A switch inside one task, about that one task (migration 029). Turning it
+  // on is refused outright when no calendar is connected or the grant is
+  // view-only, rather than stored as a wish nothing can carry out: the sheet
+  // would then show a lit switch and the event would never appear.
+  async setTaskCalendar(client, userId, p) {
+    return taskCalendar.setTaskSync(client, userId, p.taskId, p.on === true);
+  },
+
   // ---- reminders -----------------------------------------------------------
   async setReminder(client, userId, p) {
     const paused = await refuseIfPaused(client, userId);
@@ -134,6 +152,50 @@ const ACTIONS = {
     // Never refused while paused: cancelling is the direction that reduces
     // what Olma will send, and a paused person must always be able to.
     return reminders.cancelReminder(client, userId, p.reminderId);
+  },
+
+  // One switch, two directions, and — the part that matters — never a second
+  // reminder alongside the first. `reminders.setReminder` always INSERTs,
+  // which is right for a tool call ("remind me again an hour before") and
+  // wrong for a control that shows a single on/off state: flipping it twice
+  // would leave two rows and the person would be told twice.
+  //
+  // So this is a replace. Everything still pending on the task is cancelled
+  // first, and only then is the new one written.
+  async setTaskReminder(client, userId, p) {
+    const { rows: pending } = await client.query(
+      `SELECT r.id FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+        WHERE r.task_id = $1 AND t.owner_id = $2
+          AND r.sent_at IS NULL AND r.cancelled_at IS NULL`,
+      [p.taskId, userId]
+    );
+    if (p.on !== true) {
+      // Turning it OFF is allowed while paused, for the same reason cancelling
+      // one is: it can only ever reduce what Olma will send.
+      for (const r of pending) {
+        const res = await reminders.cancelReminder(client, userId, r.id);
+        if (!res.ok) return res;
+      }
+      return ok({ taskId: p.taskId, on: false, cancelled: pending.length });
+    }
+    const paused = await refuseIfPaused(client, userId);
+    if (paused) return paused;
+    // Cancel first, and only once the new one is known to be writable — the
+    // task has to exist and be open, which setReminder checks. Doing it the
+    // other way round can leave a task with no reminder at all after a refusal.
+    const probe = await client.query(
+      `SELECT status FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
+      [p.taskId, userId]
+    );
+    if (!probe.rows[0]) return err('not_found', 'task not found');
+    if (probe.rows[0].status !== 'open') {
+      return err('invalid', 'cannot set a reminder on a completed task');
+    }
+    for (const r of pending) {
+      const res = await reminders.cancelReminder(client, userId, r.id);
+      if (!res.ok) return res;
+    }
+    return reminders.setReminder(client, userId, p.taskId, p.remindAt, p.repeatRule ?? null);
   },
 
   // ---- sharing -------------------------------------------------------------

@@ -1,0 +1,24 @@
+-- One task, one answer: "put THIS on my calendar".
+--
+-- 028 gave the person a single switch for all their dated tasks, which is the
+-- right shape for a sweep and the wrong shape for the task sheet — the switch
+-- there sits inside one task, under that task's title, and a control that
+-- silently turned on every other task's calendar entry would be a promise
+-- nobody made.
+--
+-- Three states on purpose, which is why it is nullable rather than a boolean
+-- with a default:
+--
+--   NULL   follow whatever users.calendar_sync_tasks says. Every existing row
+--          is this, so 028's behaviour is untouched by this migration.
+--   true   this one goes on the calendar even if the global switch is off.
+--   false  this one does not, even if the global switch is on.
+--
+-- A two-state column could not express the last line, and somebody with the
+-- global switch on who turns one task off would have watched it come back on
+-- the next tick.
+--
+-- 029, and the number came from SELECT max(version) FROM schema_migrations on
+-- the box (28, applied 2026-09-04 08:22) — never from ls on this tree, which
+-- cannot see a branch that has not merged yet.
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS calendar_opt_in boolean;

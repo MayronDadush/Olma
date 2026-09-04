@@ -48,7 +48,7 @@ const importSource = (src) => (Object.hasOwn(SOURCE_CAPS, src) ? src : null);
 async function loadUser(client, userId) {
   const { rows } = await client.query(
     `SELECT id, first_name, timezone, timezone_confirmed, locale,
-            paused_at IS NOT NULL AS paused, digest_scope
+            paused_at IS NOT NULL AS paused, digest_scope, calendar_sync_tasks
      FROM users WHERE id = $1 AND status != 'blocked' AND is_eval = false`,
     [userId]
   );
@@ -59,7 +59,7 @@ async function loadUser(client, userId) {
 // four queries rather than one join, because a join across children AND
 // viewers multiplies rows and the de-duplication is more code than the extra
 // round trips are worth.
-async function loadTasks(client, userId, zone) {
+async function loadTasks(client, userId, zone, calendarSyncTasks) {
   // Their own list AND the tasks other people share with them. A shared task
   // is not a copy or a notification — it is the same row, appearing on both
   // lists, which is the whole point of sharing one. Leaving it out would have
@@ -76,6 +76,13 @@ async function loadTasks(client, userId, zone) {
             -- what add_task stores when no time was given
             (t.due_at IS NOT NULL AND
              (t.due_at AT TIME ZONE $2)::time = '00:00') AS all_day,
+            -- the task's own answer to "put this on my calendar", or NULL for
+            -- "whatever the standing switch says" (migration 029)
+            t.calendar_opt_in,
+            -- and whether it is actually there yet: the sweep runs every five
+            -- minutes, so wanting it and having it are two different facts and
+            -- the page has to be able to tell them apart
+            t.calendar_event_id IS NOT NULL AS in_calendar,
             sh.role AS shared_role
      FROM tasks t
      LEFT JOIN shares sh
@@ -98,7 +105,7 @@ async function loadTasks(client, userId, zone) {
   // ladder shipped, and three readers told somebody the wrong thing before
   // that was noticed. `attempts = 0` is the question to ask.
   const { rows: rems } = await client.query(
-    `SELECT r.task_id, r.remind_at, r.repeat_rule
+    `SELECT r.id, r.task_id, r.remind_at, r.repeat_rule
      FROM task_reminders r
      WHERE r.task_id = ANY($1::bigint[])
        AND r.cancelled_at IS NULL AND r.sent_at IS NULL
@@ -148,7 +155,16 @@ async function loadTasks(client, userId, zone) {
       done: t.status === 'done',
       // The archive lists what was finished and when; nothing else reads it.
       completedAt: t.completed_at,
-      reminder: rem ? { at: rem.remind_at, repeat: rem.repeat_rule } : null,
+      // The id travels with it because switching the reminder off cancels one
+      // specific row, and (task, time) is not an identity — a task can carry
+      // more than one pending reminder and the page must not guess which.
+      reminder: rem ? { id: rem.id, at: rem.remind_at, repeat: rem.repeat_rule } : null,
+      // The EFFECTIVE answer, resolved here rather than in the browser: the
+      // page draws one switch and the precedence rule belongs on the side that
+      // enforces it. `inCalendar` is the separate question of whether the
+      // sweep has caught up yet.
+      calendar: t.calendar_opt_in ?? Boolean(calendarSyncTasks),
+      inCalendar: t.in_calendar,
       items: byParent.get(t.id) || [],
       // Who owns this, and therefore who may manage its sharing. `mine` is the
       // question the page actually asks; `owner` carries the id so a task
@@ -222,6 +238,23 @@ async function loadIntegrations(client, userId) {
   }));
 }
 
+// Where Olma can actually reach this person. One WhatsApp row each today, and
+// the schema has always allowed a second identity to join the same user — so
+// this is a LIST, and the page draws its choices from it rather than from a
+// hard-coded pair.
+//
+// The identifier itself never leaves the server. It is a phone number, and the
+// page has no use for one: it needs to know which channels exist and which is
+// the standing one, not how to dial them.
+async function loadChannels(client, userId) {
+  const { rows } = await client.query(
+    `SELECT channel_type, is_primary FROM user_channels
+      WHERE user_id = $1 ORDER BY is_primary DESC, channel_type`,
+    [userId]
+  );
+  return rows.map((r) => ({ type: r.channel_type, primary: r.is_primary }));
+}
+
 // Meetings still being negotiated, with each participant's answer state. What
 // somebody MARKED is availability and nothing more — the page must be able to
 // tell "has not answered" from "answered, nothing suits", so an unanswered
@@ -278,9 +311,10 @@ async function load(client, userId) {
   // pg serialises concurrent queries on a single client anyway — while warning
   // that it will stop doing so in pg@9. Overlapping them buys nothing here and
   // would break on that upgrade.
-  const tasks = await loadTasks(client, userId, zone);
+  const tasks = await loadTasks(client, userId, zone, user.calendar_sync_tasks);
   const friends = await loadFriends(client, userId);
   const integrations = await loadIntegrations(client, userId);
+  const channels = await loadChannels(client, userId);
   const meetings = await loadMeetings(client, userId);
   return ok({
     user: {
@@ -294,7 +328,11 @@ async function load(client, userId) {
       locale: user.locale || 'he',
       paused: user.paused,
       digestScope: user.digest_scope,
+      // The standing switch behind every task's own calendar row. A task that
+      // says nothing follows this one.
+      calendarSyncTasks: user.calendar_sync_tasks,
     },
+    channels,
     tasks: tasks.open,
     archived: tasks.archived,
     friends,

@@ -156,3 +156,141 @@ test('the read model sees what the write model just did', async () => {
   assert.equal(page.ok, true);
   assert.equal(page.data.tasks.some((x) => String(x.id) === String(r.data.task.id)), true);
 });
+
+// ---------------------------------------------------------------------------
+// The switches the sheet draws. Each of these was a control that moved on
+// screen and wrote nothing, which is the failure mode this file exists to
+// catch: a page that looks like it works.
+
+test('the reminder switch replaces rather than accumulates', async () => {
+  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  const first = await act('setTaskReminder', { taskId: t.id, on: true, remindAt: iso(2 * 86400e3) });
+  assert.equal(first.ok, true, first.ok ? '' : JSON.stringify(first.error));
+  const second = await act('setTaskReminder', { taskId: t.id, on: true, remindAt: iso(86400e3) });
+  assert.equal(second.ok, true, second.ok ? '' : JSON.stringify(second.error));
+  const { rows } = await db.pool.query(
+    `SELECT id FROM task_reminders WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL`,
+    [t.id]);
+  assert.equal(rows.length, 1,
+    'flipping one switch twice left two pending reminders, so the person is told twice');
+  assert.equal(String(rows[0].id), String(second.data.reminder.id));
+});
+
+test('turning the reminder off cancels it', async () => {
+  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  assert.equal((await act('setTaskReminder', { taskId: t.id, on: true, remindAt: iso(86400e3) })).ok, true);
+  const off = await act('setTaskReminder', { taskId: t.id, on: false });
+  assert.equal(off.ok, true, off.ok ? '' : JSON.stringify(off.error));
+  assert.equal(off.data.cancelled, 1);
+  const { rows } = await db.pool.query(
+    `SELECT id FROM task_reminders WHERE task_id = $1 AND cancelled_at IS NULL AND sent_at IS NULL`,
+    [t.id]);
+  assert.equal(rows.length, 0);
+});
+
+// Pausing already cancels every pending reminder (domain/pause.js), so there
+// is normally nothing left for this to cancel. What is being pinned is that it
+// is not REFUSED: the switch has to be able to come back down, and the only
+// direction a paused person is ever blocked in is the one that adds a send.
+test('the reminder switch can always be turned off, paused or not', async () => {
+  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  assert.equal((await act('setTaskReminder', { taskId: t.id, on: true, remindAt: iso(86400e3) })).ok, true);
+  assert.equal((await act('pause', {})).ok, true);
+  const off = await act('setTaskReminder', { taskId: t.id, on: false });
+  assert.equal(off.ok, true, 'a paused person could not switch a reminder OFF');
+  assert.equal((await act('resume', {})).ok, true);
+});
+
+test('a repeat rule reaches the row in the vocabulary the sweep reads', async () => {
+  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  const r = await act('setTaskReminder',
+    { taskId: t.id, on: true, remindAt: iso(86400e3), repeatRule: 'weekly' });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  assert.equal(r.data.reminder.repeat_rule, 'weekly',
+    'the sweep compares against canonical rules and would never fire this again');
+});
+
+test('a reminder cannot be set on a paused account, and says why', async () => {
+  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  assert.equal((await act('pause', {})).ok, true);
+  const r = await act('setTaskReminder', { taskId: t.id, on: true, remindAt: iso(86400e3) });
+  assert.equal(r.ok, false);
+  assert.equal(r.error.reason, 'paused');
+  assert.equal((await act('resume', {})).ok, true);
+});
+
+test('the reminder switch refuses a task that is finished or gone', async () => {
+  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  assert.equal((await act('completeTask', { taskId: t.id })).ok, true);
+  const r = await act('setTaskReminder', { taskId: t.id, on: true, remindAt: iso(86400e3) });
+  assert.equal(r.ok, false);
+  const gone = await act('setTaskReminder', { taskId: 9_000_001, on: true, remindAt: iso(86400e3) });
+  assert.equal(gone.ok, false);
+  assert.equal(gone.error.code, 'not_found');
+});
+
+test('restoring brings a task back out of the archive', async () => {
+  const t = await mkTask();
+  assert.equal((await act('archiveTask', { taskId: t.id })).ok, true);
+  let page = await tx((c) => dash.load(c, me.id));
+  assert.equal(page.data.archived.some((x) => String(x.id) === String(t.id)), true);
+  const r = await act('restoreTask', { taskId: t.id });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  page = await tx((c) => dash.load(c, me.id));
+  assert.equal(page.data.tasks.some((x) => String(x.id) === String(t.id)), true,
+    'the archive was a one-way door');
+  assert.equal((await act('restoreTask', { taskId: t.id })).ok, false,
+    'restoring an unarchived task should not silently succeed');
+});
+
+test('the calendar switch refuses when there is no calendar to write to', async () => {
+  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  const r = await act('setTaskCalendar', { taskId: t.id, on: true });
+  assert.equal(r.ok, false, 'a lit switch with nowhere to write is the worst outcome');
+  assert.equal(r.error.reason, 'not_connected');
+  const { rows } = await db.pool.query(`SELECT calendar_opt_in FROM tasks WHERE id = $1`, [t.id]);
+  assert.equal(rows[0].calendar_opt_in, null, 'the wish was stored anyway');
+});
+
+test('turning the calendar switch off is always allowed, and is per task', async () => {
+  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  const r = await act('setTaskCalendar', { taskId: t.id, on: false });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  const { rows } = await db.pool.query(`SELECT calendar_opt_in FROM tasks WHERE id = $1`, [t.id]);
+  assert.equal(rows[0].calendar_opt_in, false);
+  // and the standing switch does not override it
+  await db.pool.query(`UPDATE users SET calendar_sync_tasks = true WHERE id = $1`, [me.id]);
+  const page = await tx((c) => dash.load(c, me.id));
+  const row = page.data.tasks.find((x) => String(x.id) === String(t.id));
+  assert.equal(row.calendar, false,
+    'one task turned off came back on because the standing switch won');
+  await db.pool.query(`UPDATE users SET calendar_sync_tasks = false WHERE id = $1`, [me.id]);
+});
+
+test('a task that says nothing follows the standing switch', async () => {
+  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  await db.pool.query(`UPDATE users SET calendar_sync_tasks = true WHERE id = $1`, [me.id]);
+  let page = await tx((c) => dash.load(c, me.id));
+  assert.equal(page.data.tasks.find((x) => String(x.id) === String(t.id)).calendar, true);
+  await db.pool.query(`UPDATE users SET calendar_sync_tasks = false WHERE id = $1`, [me.id]);
+  page = await tx((c) => dash.load(c, me.id));
+  assert.equal(page.data.tasks.find((x) => String(x.id) === String(t.id)).calendar, false);
+});
+
+test('the page is told which channels actually exist', async () => {
+  const page = await tx((c) => dash.load(c, me.id));
+  assert.equal(Array.isArray(page.data.channels), true);
+  assert.equal(page.data.channels.length >= 1, true, 'a person with no channel cannot be reached');
+  assert.equal(page.data.channels[0].type, 'whatsapp');
+  assert.equal(page.data.channels[0].primary, true);
+  assert.equal(Object.hasOwn(page.data.channels[0], 'channel_identifier'), false,
+    'a phone number in a browser payload is a phone number published');
+});
+
+test('a pending reminder travels with the id needed to cancel it', async () => {
+  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  const set = await act('setTaskReminder', { taskId: t.id, on: true, remindAt: iso(86400e3) });
+  const page = await tx((c) => dash.load(c, me.id));
+  const row = page.data.tasks.find((x) => String(x.id) === String(t.id));
+  assert.equal(String(row.reminder.id), String(set.data.reminder.id));
+});

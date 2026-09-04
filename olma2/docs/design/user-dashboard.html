@@ -2309,7 +2309,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         <button class="chip mini" aria-pressed="false" data-rep="day" data-i18n="rep.day"></button>
         <button class="chip mini" aria-pressed="false" data-rep="week" data-i18n="rep.week"></button>
         <button class="chip mini" aria-pressed="false" data-rep="month" data-i18n="rep.month"></button>
-        <button class="chip mini" aria-pressed="false" data-rep="year" data-i18n="rep.year"></button>
       </div>
     </div></div></div>
     <div class="row no-icon">
@@ -2318,10 +2317,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     </div>
     <div class="fold" id="sRemindFold"><div><div class="foldpad tight">
       <div class="chips" id="sOffset">
-        <button class="chip mini" aria-pressed="true" data-i18n="off.at"></button>
-        <button class="chip mini" aria-pressed="false" data-i18n="off.m10"></button>
-        <button class="chip mini" aria-pressed="false" data-i18n="off.h1"></button>
-        <button class="chip mini" aria-pressed="false" data-i18n="off.d1"></button>
+        <!-- data-remoff, not data-off: #sSharePeople already uses data-off for
+             "take this person off the task", and two attributes with one name
+             is a bug waiting for the day somebody widens a selector. -->
+        <button class="chip mini" aria-pressed="true"  data-remoff="0"    data-i18n="off.at"></button>
+        <button class="chip mini" aria-pressed="false" data-remoff="10"   data-i18n="off.m10"></button>
+        <button class="chip mini" aria-pressed="false" data-remoff="60"   data-i18n="off.h1"></button>
+        <button class="chip mini" aria-pressed="false" data-remoff="1440" data-i18n="off.d1"></button>
       </div>
     </div></div></div>
     <!-- "Add to calendar" is a promise about a specific calendar, and with
@@ -2667,7 +2669,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      that lands nowhere is worse than an obvious gap. */
   var ACT = {
     addTask:"addTask", editTask:"editTask", completeTask:"completeTask",
-    archiveTask:"archiveTask", setReminder:"setReminder", cancelReminder:"cancelReminder",
+    archiveTask:"archiveTask", restoreTask:"restoreTask",
+    setReminder:"setReminder", cancelReminder:"cancelReminder",
+    setTaskReminder:"setTaskReminder", setTaskCalendar:"setTaskCalendar",
     shareTask:"shareTask", revokeShare:"revokeShare",
     grantFeature:"grantFeature", revokeFeature:"revokeFeature",
     setTimezone:"setTimezone", pause:"pause", resume:"resume"
@@ -2702,6 +2706,41 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     return x.d + "T" + time + ":00" + zoneOffset(tz, new Date(x.d + "T" + time + ":00Z"));
   }
 
+  /* A row the server has answered for. Anything that needs a real id — an
+     edit, a reminder, a calendar entry — asks this first, because a page-local
+     id is a number only this browser has ever seen. */
+  function serverKnows(x){
+    return Object.prototype.hasOwnProperty.call(SERVER_IDS, String(x.id));
+  }
+  var adding = {}, dirtyWhileAdding = {}, afterAdd = {};
+  /* Run fn with the task's real id — now if it has one, and otherwise when the
+     add that is already in flight comes back with it. A task that was never
+     sent at all (no name yet, or an offline page) simply never runs it, which
+     is the honest outcome: there is nothing to attach a reminder to. */
+  function whenSaved(x, fn){
+    if(serverKnows(x)) return fn(x.id);
+    var k = String(x.id);
+    if(!adding[k]) return;
+    (afterAdd[k] = afterAdd[k] || []).push(fn);
+  }
+  /* The rules the server stores (domain/reminders.js normalises both
+     vocabularies, and refuses yearly outright — "better null than a lie" — so
+     the sheet does not offer one). */
+  var REPEAT_RULE = {none:null, day:"daily", week:"weekly", month:"monthly"};
+  /* When the reminder actually goes out: the task's own moment, minus the
+     offset the person picked. An all-day task has no hour of its own, so it
+     is reminded about at 09:00 local rather than at midnight — a notification
+     that arrives while somebody is asleep is one they will never see. */
+  function remindIso(x){
+    if(!x || !x.d) return null;
+    var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
+    var time = (x.all || !x.tm) ? "09:00" : x.tm;
+    var at = new Date(x.d + "T" + time + ":00Z").getTime() - (x.remOff || 0) * 60000;
+    var d = new Date(at);
+    var stamp = d.toISOString().slice(0, 16);
+    return stamp + ":00" + zoneOffset(tz, d);
+  }
+
   var API = {
     /* one place to see what a real backend would be asked for */
     log: [],
@@ -2715,15 +2754,18 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
        being briefly out of date. A refusal is surfaced, not swallowed: the
        page reloads its data, so the next paint is the truth rather than the
        optimistic guess. */
-    send: function(action, payload){
-      if(!LIVE || !ACT[action]) return true;
+    send: function(action, payload, onOk){
+      if(!LIVE || !ACT[action]){ if(onOk) onOk(null); return true; }
       fetch("/me/act", {
         method:"POST", credentials:"same-origin",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({action:ACT[action], payload:payload || {}})
       }).then(function(r){ return r.json().catch(function(){ return null; }); })
-        .then(function(body){ if(body && body.ok === false) API.refused(body.error); })
-        .catch(function(){ /* offline: the page keeps what it shows */ });
+        .then(function(body){
+          if(body && body.ok === false){ API.refused(body.error); if(onOk) onOk(null); }
+          else if(onOk) onOk(body && body.data ? body.data : null);
+        })
+        .catch(function(){ if(onOk) onOk(null); /* offline: the page keeps what it shows */ });
       return true;
     },
     refused: function(error){
@@ -2746,17 +2788,59 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     saveTask: function(x){
       API.call(x && x.src ? "saveImportedTask" : "saveTask", x);
       if(!x) return true;
-      var known = Object.prototype.hasOwnProperty.call(SERVER_IDS, String(x.id));
       var payload = {title:L(x.t), category:x.cat || null, dueAt:dueIso(x)};
-      if(known) payload.taskId = x.id;
-      return API.send(known ? "editTask" : "addTask", payload);
+      if(serverKnows(x)){
+        payload.taskId = x.id;
+        return API.send("editTask", payload);
+      }
+      if(adding[String(x.id)]){
+        /* An add is already on the wire for this row. Sending a second one
+           would create a second task — which is exactly what happened before
+           this existed: typing a name and then picking a category is two
+           commits, and the second still had a local id. */
+        dirtyWhileAdding[String(x.id)] = true;
+        return true;
+      }
+      var local = String(x.id);
+      adding[local] = true;
+      return API.send("addTask", payload, function(data){
+        adding[local] = false;
+        var id = data && data.task ? data.task.id : null;
+        if(id == null){ delete afterAdd[local]; delete dirtyWhileAdding[local]; return; }
+        /* Renumber in place. The object is the same one the list and the open
+           sheet are holding, so nothing else has to be told. */
+        x.id = id;
+        SERVER_IDS[String(id)] = true;
+        if(dirtyWhileAdding[local]){ delete dirtyWhileAdding[local]; API.saveTask(x); }
+        var queued = afterAdd[local] || [];
+        delete afterAdd[local];
+        queued.forEach(function(fn){ fn(id); });
+      });
+    },
+    /* The two switches under a task that are not the task: a reminder is a row
+       of ours, a calendar entry is a row at Google. Both need the task's REAL
+       id, which a just-typed row does not have yet — so both go through
+       whenSaved rather than firing into the gap. */
+    setTaskReminder: function(x){
+      whenSaved(x, function(id){
+        var payload = {taskId:id, on:!!x.rem};
+        if(x.rem){
+          payload.remindAt = remindIso(x);
+          payload.repeatRule = REPEAT_RULE[x.rep || "none"] || null;
+          if(!payload.remindAt) return;   /* no date: nothing to remind about */
+        }
+        API.send("setTaskReminder", payload);
+      });
+    },
+    setTaskCalendar: function(x){
+      whenSaved(x, function(id){ API.send("setTaskCalendar", {taskId:id, on:!!x.cal}); });
     },
     /* The page calls it deleting; the system archives. Nothing here has ever
        deleted a task and this is not the place to start — the archive is the
        feature, and it is reachable from the same screen. */
     deleteTask:      function(id){     API.call("deleteTask", {task_id:id}); return API.send("archiveTask", {taskId:id}); },
     completeTask:    function(id){     API.call("completeTask", {task_id:id}); return API.send("completeTask", {taskId:id}); },
-    restoreTask:     function(id){     return API.call("restoreTask", {task_id:id}); },
+    restoreTask:     function(id){     API.call("restoreTask", {task_id:id}); return API.send("restoreTask", {taskId:id}); },
     shareTask:       function(id, who){
       API.call("shareTask", {task_id:id, viewer_ids:who});
       /* The server shares with one person per call; the page thinks in the
@@ -3040,11 +3124,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "cal.taskTag":"משימה","cal.taskSub":"מהרשימה שלך בעולמה","cal.taskRem":"עולמה תזכיר ב־{name}",
       "cal.showIn":"להצגה ביומן",
       "off.at":"בזמן","off.m10":"10 דק׳ לפני","off.h1":"שעה לפני","off.d1":"יום לפני",
-      "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש","rep.year":"כל שנה",
+      "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש",
+      "sheet.repeatNeedsRemind":"החזרה נשמרת על התזכורת — צריך להדליק תזכורת קודם",
 
       "toast.on":"השירות הופעל","toast.off":"השירות כובה",
       "toast.ro":"{name} · עולמה רואה בלבד","toast.rw":"{name} · עולמה רואה וגם משנה",
       "toast.connected":"{name} מחובר","toast.disconnected":"{name} נותק",
+      "toast.chanSoon":"{name} עדיין לא מחובר — עולמה כותבת בוואטסאפ",
       "toast.open":"פותח את השיחה שלך עם עולמה ב־{name}","toast.chanOn":"{name} מחובר · עולמה תענה גם שם",
       "toast.calling":"עולמה מתקשרת אליך עכשיו",
       "toast.done":"המשימה הושלמה","toast.saved":"המשימה נשמרה",
@@ -3259,11 +3345,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "cal.taskTag":"Task","cal.taskSub":"From your Allma list","cal.taskRem":"Allma will remind you on {name}",
       "cal.showIn":"Show in calendar",
       "off.at":"On time","off.m10":"10 min before","off.h1":"1 hour before","off.d1":"1 day before",
-      "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month","rep.year":"Every year",
+      "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month",
+      "sheet.repeatNeedsRemind":"A repeat lives on the reminder — switch one on first",
 
       "toast.on":"Service turned on","toast.off":"Service turned off",
       "toast.ro":"{name} · Allma only sees it","toast.rw":"{name} · Allma sees it and can change it",
       "toast.connected":"{name} connected","toast.disconnected":"{name} disconnected",
+      "toast.chanSoon":"{name} is not connected yet — Allma writes on WhatsApp",
       "toast.open":"Opening your chat with Allma in {name}","toast.chanOn":"{name} connected · Allma answers there too",
       "toast.calling":"Allma is calling you now",
       "toast.done":"Task completed","toast.saved":"Task saved",
@@ -3954,9 +4042,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   function defaultPicker(){
     /* A call is not a place a reminder can wait — this choice is about where
-       WRITING arrives, so it offers the two written channels and nothing
-       else, whether or not the phone tile is switched on. */
-    var live = CHANNELS.filter(function(c){ return !c.call; });
+       WRITING arrives, so it offers the written channels and nothing else,
+       whether or not the phone tile is switched on.
+       On a real account it offers only the channels that EXIST. Today that is
+       WhatsApp and nothing else, so there is no choice to make and the picker
+       does not appear: a segmented control with one live option and one that
+       cannot be reached is a decision presented to somebody who has none. */
+    var live = CHANNELS.filter(function(c){ return !c.call && (!LIVE || c.on); });
+    if(live.length < 2) return "";
     return '<div class="group defrow" data-stage="1b" style="margin-top:12px">' +
       '<div class="row no-icon defhead">' +
       '<div class="row-txt"><div class="row-title">' + esc(t("ch.defH")) + "</div>" +
@@ -4221,6 +4314,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(ch){
       var c = CHANNELS.filter(function(x){ return x.id === ch.dataset.chan; })[0];
       if(c.on){ toast(t("toast.open", {name:c.name})); }
+      /* Switching a channel on is a real identity being linked to this account
+         — a second row in user_channels — and there is no path here that does
+         that. Flipping the tile locally would show somebody a connected
+         iMessage they do not have, and then send every reminder to WhatsApp
+         anyway. */
+      else if(LIVE){ toast(t("toast.chanSoon", {name:c.name})); }
       else { c.on = true; renderTools(); toast(t("toast.chanOn", {name:c.name})); }
       return;
     }
@@ -4652,8 +4751,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     editing.all = $("#sAllDay").getAttribute("aria-checked") === "true";
     var pick = $$("#sCat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     if(pick) editing.cat = pick.dataset.cat;
+    var wasRem = editing.rem, wasOff = editing.remOff, wasRep = editing.rep, wasCal = editing.cal;
     editing.rem = $("#sRemind").getAttribute("aria-checked") === "true";
     editing.cal = $("#sCal").getAttribute("aria-checked") === "true";
+    var off = $$("#sOffset .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
+    editing.remOff = off ? +off.dataset.remoff : 0;
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     editing.rep = chosen ? chosen.dataset.rep : "none";
     syncSheetRows();
@@ -4663,6 +4765,19 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       $("#sDelete").hidden = false;
     }
     API.saveTask(editing);
+    /* The reminder and the calendar entry are separate rows in separate
+       systems, so they are separate calls — and only when they actually
+       changed. Re-sending an unchanged reminder would cancel the row and write
+       an identical one every time somebody touched the title, which is a new
+       id, a new escalation ladder and a lost `attempts` count each time.
+
+       The date and the time are part of a reminder's identity too: moving a
+       task moves what it reminds you about. */
+    var whenKey = String(editing.d) + "|" + String(editing.tm) + "|" + String(editing.all);
+    if(editing.rem !== wasRem || editing.remOff !== wasOff || editing.rep !== wasRep
+       || (editing.rem && whenKey !== lastWhenKey)) API.setTaskReminder(editing);
+    if(editing.cal !== wasCal || (editing.cal && whenKey !== lastWhenKey)) API.setTaskCalendar(editing);
+    lastWhenKey = whenKey;
     renderTasks(); renderStrip(selDay); flashSaved();
   }
   /* Three controls only make sense once a day has been chosen — an all-day
@@ -4711,8 +4826,18 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#sTimeChip").classList.toggle("set", !!editing.tm);
     $("#sCalRow").hidden = !dated;
     $("#sCalSub").textContent = calTargetName();
+    /* No calendar to write to means the switch cannot keep its word, so it is
+       not offered — the row still shows, saying which calendar is missing,
+       because "connect one" is the useful next step and a vanished row says
+       nothing at all. */
+    lockRow($("#sCalRow"), dated && !calTarget(), t("sheet.inCalNone"));
+    /* A repeat is a property of the REMINDER — task_reminders.repeat_rule is
+       the only place the system stores one — so with no reminder there is
+       nothing for "every week" to be attached to. Rather than accept it and
+       drop it, the row says why it is unavailable. */
+    lockRow($("#sRepeatRow"), !editing.rem, t("sheet.repeatNeedsRemind"));
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
-    $("#sRepeatVal").textContent = t("rep." + ({none:"once", day:"day", week:"week", month:"month", year:"year"}[chosen ? chosen.dataset.rep : "none"]));
+    $("#sRepeatVal").textContent = t("rep." + ({none:"once", day:"day", week:"week", month:"month"}[chosen ? chosen.dataset.rep : "none"] || "once"));
     var ck = editing.cat || "none";
     $("#sCatVal").textContent = t("tcat." + ck);
     /* Olma's guess says so until the person overrules it — an automatic
@@ -4968,11 +5093,17 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   /* `preset` is how a new task can arrive with somebody already on it — the
      shared-task button in Contacts is the only caller, and it hands over the
      one field it knows: who this is with. */
+  var lastWhenKey = "";
   function openSheet(id, preset){
     var x = id ? open.filter(function(o){ return o.id === id; })[0] : null;
     isNew = !x;
-    editing = x || {id:++seq, d:"", tm:"", all:false, t:both(""), rem:false, rep:"none", cal:false, cat:"none"};
+    editing = x || {id:++seq, d:"", tm:"", all:false, t:both(""), rem:false, rep:"none",
+                    remOff:0, cal:false, cat:"none"};
     if(!x && preset) Object.keys(preset).forEach(function(k){ editing[k] = preset[k]; });
+    /* What "when" was when this sheet opened. commit() compares against it so
+       a reminder is only rewritten when the moment it points at actually
+       moved — every other keystroke leaves the existing row alone. */
+    lastWhenKey = String(editing.d) + "|" + String(editing.tm) + "|" + String(editing.all);
     pickQ = ""; $("#pickQ").value = ""; $("#pickQClear").hidden = true;
     $("#sAddFold").classList.remove("open");
     $("#sAddRow").setAttribute("aria-expanded", "false");
@@ -4982,6 +5113,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#sDelete").hidden = isNew;
     $("#sCal").setAttribute("aria-checked", editing.cal ? "true" : "false");
     $("#sRemind").setAttribute("aria-checked", editing.rem ? "true" : "false");
+    $$("#sOffset .chip").forEach(function(c){
+      c.setAttribute("aria-pressed", +c.dataset.remoff === (editing.remOff || 0) ? "true" : "false");
+    });
     $("#sRemindFold").classList.toggle("open", editing.rem);
     $("#sRepeatFold").classList.remove("open");
     $("#sRepeatRow").setAttribute("aria-expanded", "false");
@@ -6865,6 +6999,30 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      the page only needs its shape. Anything it does not recognise is still a
      repeat — reading an unknown rule as "none" would quietly tell somebody a
      recurring reminder is a one-off. */
+  /* The offsets the sheet offers, largest first — `nearest below` only works
+     on a descending list. */
+  var OFFSETS = [1440, 60, 10, 0];
+  /* "+03:00" -> 180. The two moments below have to be compared in ONE frame,
+     and the only frame both can be put in is the person's own wall clock. */
+  function offsetMinutes(str){
+    var m = /^([+-])(\d\d):(\d\d)$/.exec(String(str || ""));
+    return m ? (m[1] === "-" ? -1 : 1) * (+m[2] * 60 + +m[3]) : 0;
+  }
+  function remOffOf(x){
+    if(!x.reminder || !x.reminder.at || !x.date) return 0;
+    var at = Date.parse(x.reminder.at);
+    if(!isFinite(at)) return 0;
+    var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
+    /* The stored instant, re-expressed as the wall clock they would read it
+       at; the due moment is already a wall clock. Subtracting an instant from
+       a wall clock is the "15:00 stored as 15:00Z" mistake in miniature. */
+    var atWall = at + offsetMinutes(zoneOffset(tz, new Date(at))) * 60000;
+    var dueWall = Date.parse(x.date + "T" + (x.allDay || !x.time ? "09:00" : x.time) + ":00Z");
+    if(!isFinite(dueWall)) return 0;
+    var mins = Math.round((dueWall - atWall) / 60000);
+    for(var i = 0; i < OFFSETS.length; i++) if(mins >= OFFSETS[i]) return OFFSETS[i];
+    return 0;
+  }
   function repShape(rule){
     if(!rule) return "none";
     if(rule === "daily") return "day";
@@ -6878,9 +7036,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       d:x.date || "", tm:x.time || "", all:!!x.allDay,
       t:x.title,
       rem:!!x.reminder, rep:repShape(x.reminder && x.reminder.repeat),
-      /* Whether a task was copied into a calendar is not something the system
-         records against the task, so it is false rather than guessed. */
-      cal:false,
+      /* Minutes before the task's own moment, recovered from the two the
+         server actually stores. Anything that is not one of the four offered
+         offsets lands on the nearest one below it rather than inventing a
+         fifth chip — the reminder is real either way, and the sheet only has
+         to be able to show it. */
+      remOff:remOffOf(x),
+      /* The task's own answer to "put this on my calendar", resolved server-
+         side against the standing switch (domain/user-dashboard.js). */
+      cal:!!x.calendar,
       cat:(x.category && x.category !== "none") ? x.category : "",
       /* The seed marks categories `catAuto` to show the "Olma chose this"
          styling. A real row cannot say who chose it — tasks.category has no
@@ -6947,6 +7111,22 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       }
     });
   }
+  /* user_channels, as the page names its tiles. A type nobody here draws is
+     simply not shown — a new channel arriving server-side must not be able to
+     break this screen. */
+  var CHAN_OF = {whatsapp:"wa", imessage:"imsg"};
+  function hydrateChannels(list){
+    CHANNELS.forEach(function(c){ if(!c.call) c.on = false; });
+    (list || []).forEach(function(row){
+      var id = CHAN_OF[row.type];
+      var c = CHANNELS.filter(function(x){ return x.id === id; })[0];
+      if(!c) return;
+      c.on = true;
+      /* The primary row IS the default: proactive sends go to it
+         (user_channels.is_primary), so the page must not name a different one. */
+      if(row.primary) defaultChannel = id;
+    });
+  }
   function hydrate(d){
     open = (d.tasks || []).map(liveTask);
     /* Rebuilt from scratch each time: an id that has left the server's answer
@@ -6959,6 +7139,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     });
     FRIENDS = (d.friends || []).map(liveFriend);
     hydrateProviders(d.integrations);
+    hydrateChannels(d.channels);
     /* Three seeded sets are emptied rather than mapped, and each is a
        different kind of not-yet.
 
