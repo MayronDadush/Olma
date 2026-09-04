@@ -33,6 +33,8 @@ const taskCalendar = require('./task-calendar');
 const connections = require('./connections');
 const contacts = require('./contacts');
 const invites = require('../intake/invites');
+const meetings = require('./meetings');
+const meetingFanout = require('./meeting-fanout');
 const { SOURCE_CAPS } = require('./user-dashboard');
 
 // What a task's origin system can actually hold, for the fields this page can
@@ -250,6 +252,35 @@ const ACTIONS = {
 
   async revokeFeature(client, userId, p) {
     return grants.revokeFeatureGrant(client, userId, p.connectionId, p.feature);
+  },
+
+  // ---- meetings ------------------------------------------------------------
+  // Answering a coordination with a tap. The domain call and everything that
+  // follows from it are the SAME ones the chat tool uses (domain/meetings.js +
+  // domain/meeting-fanout.js) — a yes given here and a yes given in a
+  // conversation have to produce the same rows, or the two faces would tell
+  // different people different things about one meeting.
+  //
+  // `acceptedStartAt` is the guard that makes this safe from a screen: it pins
+  // the yes to the exact slot that was on the page when they read it. If the
+  // meeting moved while the tab sat open, the call is refused with the current
+  // slot rather than landing their agreement on a time they never saw.
+  async respondToMeeting(client, userId, p) {
+    const accept = p.accept === true;
+    const res = await meetings.respondToSlot(
+      client, userId, p.meetingId, accept, null, null, accept ? p.acceptedStartAt : null);
+    if (!res.ok) return res;
+    const me = await users.getById(client, userId);
+    return meetingFanout.afterSlotResponse(client, me, p.meetingId, res, { accept });
+  },
+
+  // Leaving is one person bowing out, never a cancellation for everyone — the
+  // page says so in its own words and this is the call that matches them.
+  async leaveMeeting(client, userId, p) {
+    const res = await meetings.optOut(client, userId, p.meetingId);
+    if (!res.ok) return res;
+    const me = await users.getById(client, userId);
+    return meetingFanout.afterOptOut(client, me, p.meetingId, res);
   },
 
   // ---- me ------------------------------------------------------------------

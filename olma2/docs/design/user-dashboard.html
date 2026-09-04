@@ -2675,7 +2675,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     shareTask:"shareTask", revokeShare:"revokeShare",
     grantFeature:"grantFeature", revokeFeature:"revokeFeature",
     setTimezone:"setTimezone", pause:"pause", resume:"resume",
-    inviteContact:"inviteContact"
+    inviteContact:"inviteContact",
+    respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting"
   };
   /* Ids the server has actually seen. It is what decides whether saving a task
      creates one or edits one — the page numbers its own new rows from a local
@@ -2886,6 +2887,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       API.call("inviteContact", {target_phone:String(c.num).replace(/\s/g, "")});
       return API.send("inviteContact", {contactId:c.id});
     },
+    /* Yes or no on a coordination. `acceptedStartAt` is the slot exactly as
+       the page received it, sent straight back: it pins the yes to the moment
+       they actually read, so a proposal that moved while the tab sat open is
+       refused rather than agreed to blind. */
+    respondMeeting:  function(m, accept){
+      API.call("confirmSlot", {meeting_id:m.id, accept:accept});
+      return API.send("respondToMeeting",
+        {meetingId:m.id, accept:accept, acceptedStartAt:accept ? m.startsAt : null});
+    },
     setTimezone:     function(tz){     API.call("setTimezone", {timezone:tz}); return API.send("setTimezone", {timezone:tz}); },
     setPaused:       function(on){     API.call(on ? "pause" : "resume", {}); return API.send(on ? "pause" : "resume", {}); }
   };
@@ -3035,6 +3045,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "sheet.close":"סגירה","mt.open":"תיאומים פעילים","mt.new":"תיאום פגישה חדש",
       "mt.note":"תשובה אומרת אם אתה יכול — לא שקבעתם. הקביעה עצמה היא לחיצה נפרדת, וכל אחד בתיאום יכול לעשות אותה.",
       "mt.empty":"אין תיאום פעיל כרגע.",
+      "mt.emptyLive":"אין תיאום פעיל כרגע. כדי לפתוח תיאום חדש — תבקשו מעולמה בצ׳אט.",
+      "toast.mtNoUnanswer":"אפשר להחליף בין ״אני יכול״ ל״לא מתאים לי״, אבל לא לחזור ללא־תשובה",
       "mt.n0":"אין","mt.n1":"תיאום אחד","mt.nN":"{n} תיאומים",
       "mt.ask":"מתי מתאים לך?","mt.askOne":"אתה יכול להגיע?","mt.settledLbl":"המועד שנקבע",
       "mt.done":"תיאומים שנסגרו",
@@ -3256,6 +3268,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "sheet.close":"Close","mt.open":"Active coordinations","mt.new":"New coordination",
       "mt.note":"An answer says whether you can \u2014 not that it is settled. Settling is a separate tap, and anybody in the coordination can make it.",
       "mt.empty":"Nothing being coordinated right now.",
+      "mt.emptyLive":"Nothing being coordinated right now. To start one, ask Allma in the chat.",
+      "toast.mtNoUnanswer":"You can switch between yes and no, but not back to no answer",
       "mt.n0":"none","mt.n1":"1 coordination","mt.nN":"{n} coordinations",
       "mt.ask":"When suits you?","mt.askOne":"Can you make it?","mt.settledLbl":"The time you settled on",
       "mt.done":"Settled",
@@ -4409,7 +4423,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      `who` is everyone else on the task and `owner` is whoever started it,
      which is not always me — that distinction is the whole reason leaving
      and deleting have to be two different actions. */
-  function friendById(id){ return FRIENDS.filter(function(f){ return f.id === id; })[0]; }
+  /* Everyone the page can name who is NOT a connection of this person: the
+     other participants in a meeting somebody else opened are connected to the
+     ORGANISER, not necessarily to me, and the friends list is the wrong place
+     to keep them — it is a list of my connections and putting a stranger in it
+     would say we are connected. Without this, faceStack read `f.av` off
+     undefined and the meeting sheet threw. */
+  var PEOPLE = {};
+  function friendById(id){
+    return FRIENDS.filter(function(f){ return f.id === id; })[0] || PEOPLE[id] || null;
+  }
   function faceStack(ids, max){
     max = max || 3;
     var shown = ids.slice(0, max), extra = ids.length - shown.length, out = "";
@@ -5583,7 +5606,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var done = MEETS.filter(function(m){ return m.settled; });
     $("#mtList").innerHTML = live.length
       ? live.map(mtCardHTML).join("")
-      : '<div class="group"><div class="empty">' + esc(t("mt.empty")) + "</div></div>";
+      : '<div class="group"><div class="empty">' +
+        esc(t(LIVE ? "mt.emptyLive" : "mt.empty")) + "</div></div>";
     $("#mtCount").textContent = live.length ? pl("mt", live.length) : "";
     $("#mtDoneWrap").hidden = !done.length;
     $("#mtDone").innerHTML = done.map(mtCardHTML).join("");
@@ -5703,7 +5727,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         '<svg><use href="#i-check"/></svg>' + esc(t("mt.iCan")) + "</button>" +
         '<button class="mobtn no" data-a="n" aria-pressed="' + (mineAns === "n") + '">' +
         '<svg><use href="#i-x"/></svg>' + esc(t("mt.iCant")) + "</button>" +
-        '<button class="mobtn settle" data-settle>' + esc(t("mt.pick")) + "</button></div>";
+        /* Settling is somebody deciding between several candidate times. A
+           real meeting confirms itself the moment the last person says yes —
+           there is no decision left to take and no call that takes it — so on
+           a live account the button is not there. */
+        (LIVE ? "" : '<button class="mobtn settle" data-settle>' + esc(t("mt.pick")) + "</button>") +
+        "</div>";
 
     var confirm = "";
     if(mtSettling === o.id){
@@ -5754,10 +5783,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       || '<div class="group"><div class="empty">' + esc(t("mt.stateNoOpts")) + "</div></div>";
 
     /* Adding is capped, and a non-creator gets exactly one proposal — so the
-       row disappears rather than failing on press, and the note says why. */
+       row disappears rather than failing on press, and the note says why.
+
+       On a real account it is hidden outright. The system negotiates one slot
+       at a time and there is no call that adds a second candidate, so the
+       button could only ever add a row this browser could see — offering a
+       time the other people are never shown is worse than not offering it. */
     var full = mtLive(m).length >= MEET_CAP;
     var spent = !mtMine(m) && mtPendingMine(m);
-    $("#mtAddWrap").hidden = !!m.settled || spent;
+    $("#mtAddWrap").hidden = LIVE || !!m.settled || spent;
     $("#mtAddOptLbl").textContent = t(mtMine(m) ? "mt.addOpt" : "mt.proposeOpt");
     $("#mtAddNote").textContent = m.settled ? ""
       : spent ? t("mt.proposeSpent")
@@ -5766,8 +5800,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#mtAddNote").hidden = !$("#mtAddNote").textContent;
 
     /* Two different exits, and they must never read alike: one clears your
-       own calendar, the other tells four people you are not coming. */
-    $("#mtCal").hidden = !m.settled;
+       own calendar, the other tells four people you are not coming.
+       Whether a settled meeting sits on THIS person's calendar is not recorded
+       per participant, so on a real account the control has no state to show
+       and no call to make. Their own agent offers this in chat, where it can
+       actually find the event. */
+    $("#mtCal").hidden = LIVE || !m.settled;
     $("#mtCal").textContent = t(m.inCal ? "mt.calRemove" : "mt.calAdd");
     $("#mtLeave").textContent = t("mt.leave");
     $("#mtLeave").hidden = false;
@@ -5794,11 +5832,23 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
     var ans = e.target.closest("[data-a]");
     if(ans){
-      /* pressing the answer you are already on clears it, which is the third
-         state without a third gesture */
-      var want = ans.dataset.a;
-      mtSetAns(m, 0, o.id, mtAns(m, 0, o.id) === want ? "" : want);
-      API.call("setAvailability", {meeting_id:m.id, option_id:o.id, answer:mtAns(m, 0, o.id) || null});
+      var want = ans.dataset.a, had = mtAns(m, 0, o.id);
+      /* Pressing the answer you are already on clears it — the third state
+         without a third gesture. On a real meeting there is nowhere to put
+         "never mind": the system knows awaiting, yes and no, and there is no
+         call that walks an answer back to awaiting. Rather than clear it on
+         screen and leave the server holding the old one, the press does
+         nothing and says so. */
+      if(had === want){
+        if(LIVE){ toast(t("toast.mtNoUnanswer")); return; }
+        mtSetAns(m, 0, o.id, "");
+        API.call("setAvailability", {meeting_id:m.id, option_id:o.id, answer:null});
+        mtSettling = null; renderMeet(); renderMeets();
+        return;
+      }
+      mtSetAns(m, 0, o.id, want);
+      API.call("setAvailability", {meeting_id:m.id, option_id:o.id, answer:want});
+      API.respondMeeting(m, want === "y");
       mtSettling = null;
       renderMeet(); renderMeets();
       return;
@@ -5852,6 +5902,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(m.left.indexOf(0) < 0) m.left.push(0);
     delete m.ans[0];
     API.call("leaveMeeting", {meeting_id:m.id});
+    API.send("leaveMeeting", {meetingId:m.id});
     MEETS = MEETS.filter(function(x){ return x !== m; });
     mtLeaving = null;
     renderMeets(); renderStrip(selDay);
@@ -6282,7 +6333,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     });
     $("#calRead").hidden = mode !== "cal";
     $("#calMeet").hidden = mode === "cal";
-    $("#mtNew").hidden = mode === "cal";
+    /* Starting a coordination is the multi-option flow — several candidate
+       times, offered at once — and the system has no call for it. Opening one
+       still happens by asking Olma, which does exist and works. Hiding the
+       button and saying where it went is the honest version of "not yet". */
+    $("#mtNew").hidden = mode === "cal" || LIVE;
     $("#calSub").textContent = t(mode === "cal" ? "cal.p" : "cal.pMeet");
     if(mode === "meet") renderMeets();
   }
@@ -6540,9 +6595,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   var SEARCH_AT = 8, friendQ = "";
   /* ── groups ─────────────────────────────────────────────────────────── */
   var GROUP_SEARCH_AT = 4, groupQ = "", grOpen = {};
-  function friendById(id){
-    return FRIENDS.filter(function(f){ return f.id === id; })[0];
-  }
   function grName(g){ return L(g.n).trim() || t("gr.untitled"); }
   function grFaces(g){
     var mem = g.m.map(friendById).filter(Boolean);
@@ -7143,6 +7195,56 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       if(row.primary) defaultChannel = id;
     });
   }
+  /* A real coordination, as this screen draws one.
+
+     The system negotiates ONE slot at a time: somebody proposes it, everybody
+     answers, and the meeting confirms itself when they all say yes. So a live
+     meeting has exactly one option — which is a shape this screen already
+     knows, because it is the "the day and the hour are already decided and the
+     only question is whether you can be there" case it was designed around.
+
+     What it does NOT have here is the rest: several candidate times, adding
+     one, and a settle button. Those are the multi-option model, and it does
+     not exist server-side yet — so those controls are hidden on a real
+     account rather than shown and quietly doing nothing. */
+  function liveMeet(m){
+    var settledOpt = m.status === "confirmed";
+    var day = settledOpt ? m.confirmedDay : m.proposedDay;
+    var time = settledOpt ? m.confirmedTime : m.proposedTime;
+    var opts = [], ans = {};
+    var who = [], left = [];
+    (m.participants || []).forEach(function(p){
+      var pid = String(p.id) === String(MY_ID) ? 0 : p.id;
+      if(pid !== 0){
+        who.push(pid);
+        /* Named here, not looked up in FRIENDS: a co-participant is connected
+           to whoever opened this, not necessarily to me. */
+        PEOPLE[pid] = {id:pid, n:p.name || "", av:seedIndex("u" + p.id), g:"m"};
+      }
+      if(p.left) left.push(pid);
+    });
+    if(day !== null && day !== undefined){
+      opts.push({id:m.id * 1000 + 1, day:day, time:time || ""});
+      (m.participants || []).forEach(function(p){
+        var pid = String(p.id) === String(MY_ID) ? 0 : p.id;
+        if(p.answer) (ans[pid] = ans[pid] || {})[m.id * 1000 + 1] = p.answer;
+      });
+    }
+    return {
+      id:m.id,
+      t:m.title || "",
+      by:m.mine ? 0 : m.initiatorId,
+      who:who, allDay:false, opts:opts, ans:ans, left:left,
+      settled:settledOpt && opts.length ? opts[0].id : null,
+      /* Whether the settled slot sits on THIS person's own calendar is not
+         something we record per participant, so it is not claimed. */
+      inCal:false,
+      /* The exact moment their yes has to be pinned to. Sent straight back to
+         the server so an agreement can never land on a slot that changed while
+         the tab was open. */
+      startsAt:settledOpt ? m.confirmedStartAt : m.proposedStartAt
+    };
+  }
   function liveContact(c){
     return {
       id:c.id, n:c.name || "", num:c.phone || "",
@@ -7179,6 +7281,21 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      claiming to be information. */
   var CAL_EVENT_COLOR = "#5B2FD6", calConnected = false;
   function hydrate(d){
+    /* Who this is, FIRST. Everything below asks "is this me?" — a shared task,
+       a meeting participant — and answers it against MY_ID, so setting it
+       after the mapping would have made every one of those answers "no" on
+       the first paint. */
+    if(d.user){
+      MY_ID = d.user.id;
+      myAvatar = seedIndex("u" + d.user.id);
+      paused = !!d.user.paused;
+      cityConfirmed = !!d.user.timezoneConfirmed;
+      var i = CITIES.map(function(c){ return c.tz; }).indexOf(d.user.timezone);
+      /* An unlisted zone leaves the city alone rather than snapping to the
+         first one in the list — showing Tel Aviv to somebody in Nairobi is
+         worse than showing the zone we already had. */
+      if(i > -1) cityIdx = i;
+    }
     open = (d.tasks || []).map(liveTask);
     /* Rebuilt from scratch each time: an id that has left the server's answer
        has left the server, and treating it as known would turn the next save
@@ -7207,25 +7324,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
        day is the only honest thing: a real person must never be shown a poker
        game that does not exist. */
     EVENTS = {};
-    /* Meetings are deliberately emptied rather than mapped. The grid is built
-       on day OFFSETS and a marks table; the server states real DATES and
-       `meeting_availability` rows written by the picker. Mapping one onto the
-       other is the next piece of work, and until it exists an empty list is
-       the only honest thing to show — a real person must never be shown a
-       coordination that does not exist. */
-    MEETS = [];
+    PEOPLE = {};
+    MEETS = (d.meetings || []).map(liveMeet);
     mtOpen = null;
-    if(d.user){
-      MY_ID = d.user.id;
-      myAvatar = seedIndex("u" + d.user.id);
-      paused = !!d.user.paused;
-      cityConfirmed = !!d.user.timezoneConfirmed;
-      var i = CITIES.map(function(c){ return c.tz; }).indexOf(d.user.timezone);
-      /* An unlisted zone leaves the city alone rather than snapping to the
-         first one in the list — showing Tel Aviv to somebody in Nairobi is
-         worse than showing the zone we already had. */
-      if(i > -1) cityIdx = i;
-    }
     LIVE = true;
     renderAll();
     loadDays();

@@ -294,23 +294,37 @@ async function loadChannels(client, userId) {
 // somebody MARKED is availability and nothing more — the page must be able to
 // tell "has not answered" from "answered, nothing suits", so an unanswered
 // participant is `answered: false` rather than an empty option list.
-async function loadMeetings(client, userId) {
+async function loadMeetings(client, userId, zone) {
   const { rows: meetings } = await client.query(
     `SELECT m.id, m.title, m.initiator_id, m.status,
-            m.proposed_slot, m.proposed_start_at, m.confirmed_start_at
+            m.proposed_slot, m.proposed_start_at, m.confirmed_start_at,
+            m.confirmed_slot,
+            -- The proposed moment as the wall clock THIS person reads it, and
+            -- as a day offset from their today. The page thinks in offsets
+            -- because its grid does; converting here is the same rule every
+            -- other time on this payload follows.
+            to_char(m.proposed_start_at AT TIME ZONE $2, 'HH24:MI') AS proposed_time,
+            ((m.proposed_start_at AT TIME ZONE $2)::date
+              - (now() AT TIME ZONE $2)::date) AS proposed_day,
+            to_char(m.confirmed_start_at AT TIME ZONE $2, 'HH24:MI') AS confirmed_time,
+            ((m.confirmed_start_at AT TIME ZONE $2)::date
+              - (now() AT TIME ZONE $2)::date) AS confirmed_day
      FROM meetings m
      JOIN meeting_participants p ON p.meeting_id = m.id
      WHERE p.user_id = $1 AND p.state != 'opted_out'
        AND m.status IN ('negotiating', 'confirmed')
      ORDER BY m.id DESC`,
-    [userId]
+    [userId, zone]
   );
   if (!meetings.length) return [];
   const ids = meetings.map((m) => m.id);
+  // Everyone, INCLUDING the people who left. They are still shown and counted
+  // in nothing — the group has to be able to see why the tally dropped, and a
+  // silently shorter list reads as somebody never having been asked.
   const { rows: parts } = await client.query(
     `SELECT p.meeting_id, p.user_id, p.state, u.first_name
      FROM meeting_participants p JOIN users u ON u.id = p.user_id
-     WHERE p.meeting_id = ANY($1::bigint[]) AND p.state != 'opted_out'
+     WHERE p.meeting_id = ANY($1::bigint[])
      ORDER BY p.meeting_id, p.user_id`,
     [ids]
   );
@@ -320,17 +334,31 @@ async function loadMeetings(client, userId) {
     byMeeting.get(p.meeting_id).push({
       id: p.user_id,
       name: p.first_name,
-      answered: p.state === 'confirmed_current' || p.state === 'declined_current',
+      // Three values, never two. "Has not answered" must stay distinguishable
+      // from "answered, cannot make it", or the confirm gate reads silence as
+      // a refusal — which is the one mistake this whole screen is built to
+      // avoid making out loud.
+      answer: p.state === 'confirmed_current' ? 'y'
+        : p.state === 'declined_current' ? 'n' : '',
+      left: p.state === 'opted_out',
     });
   }
   return meetings.map((m) => ({
     id: m.id,
     title: m.title,
-    mine: m.initiator_id === userId,
+    mine: String(m.initiator_id) === String(userId),
+    // Named rather than inferred: the page shows "X proposed", and picking the
+    // first participant in the list would eventually name the wrong person.
+    initiatorId: Number(m.initiator_id),
     status: m.status,
     slot: m.proposed_slot,
     proposedStartAt: m.proposed_start_at,
+    proposedTime: m.proposed_time,
+    proposedDay: m.proposed_day === null ? null : Number(m.proposed_day),
+    confirmedSlot: m.confirmed_slot,
     confirmedStartAt: m.confirmed_start_at,
+    confirmedTime: m.confirmed_time,
+    confirmedDay: m.confirmed_day === null ? null : Number(m.confirmed_day),
     participants: byMeeting.get(m.id) || [],
   }));
 }
@@ -351,7 +379,7 @@ async function load(client, userId) {
   const integrations = await loadIntegrations(client, userId);
   const channels = await loadChannels(client, userId);
   const contacts = await loadContacts(client, userId);
-  const meetings = await loadMeetings(client, userId);
+  const meetings = await loadMeetings(client, userId, zone);
   return ok({
     user: {
       id: user.id,
