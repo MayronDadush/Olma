@@ -274,6 +274,14 @@ async function main() {
     arm('voice_usage_sweep', () => withTx(pool, (c) => voiceUsage.sweepVoiceUsage(c)));
     arm('metrics_sweep', () => withTx(pool, (c) => metrics.sweepMetrics(c)));
     arm('retention_sweep', () => withTx(pool, (c) => retention.sweepRetention(c)));
+
+    // Is the box running what `main` says it should be? A merge whose CI run
+    // was cancelled or wedged skips its own deploy, and until now that gap
+    // was completely silent — #140, the fix for exactly that, sat undeployed
+    // for a day for exactly that reason. A dashboard row, never an alarm:
+    // running the previous release breaks nobody's tool calls.
+    const deployDrift = require('../src/jobs/deploy-drift');
+    arm('deploy_drift', () => withTx(pool, (c) => deployDrift.sweepDeployDrift(c)));
     console.log('[brokerd] outbox worker + sweeps armed');
   }
 

@@ -53,6 +53,11 @@ const JOB_INTERVAL_SECONDS = {
   // small-hours window and the once-per-night watermark.
   eval_sweep: 3600,
   metrics_sweep: 3600,
+  // "Is the box running what main says?" — one unauthenticated GitHub compare
+  // call per tick, and the answer only ever changes when somebody merges.
+  // Hourly is also what makes the drift READABLE: a gap reported as "3 hours"
+  // is a story, a gap reported as "12 minutes" is noise on a normal deploy.
+  deploy_drift: 3600,
   retention_sweep: 86400,
 };
 
