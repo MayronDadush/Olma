@@ -20,6 +20,10 @@
 //     published — the same projection calendar.listEvents makes about
 //     attendees and mail makes about recipient lists.
 const { ok, err } = require('./results');
+// `meetingsDomain`, not `meetings`: loadMeetings below binds a local
+// `meetings` for its own rows, and a module-level shadow of that name is a
+// TDZ ReferenceError inside the one function that needs this.
+const meetingsDomain = require('./meetings');
 const mail = require('./mail');
 
 // A task's own category vocabulary is closed server-side (tasks.category is
@@ -339,7 +343,7 @@ async function loadMeetings(client, userId, zone) {
   // in nothing — the group has to be able to see why the tally dropped, and a
   // silently shorter list reads as somebody never having been asked.
   const { rows: parts } = await client.query(
-    `SELECT p.meeting_id, p.user_id, p.state, u.first_name
+    `SELECT p.meeting_id, p.user_id, p.state, p.constraints, u.first_name
      FROM meeting_participants p JOIN users u ON u.id = p.user_id
      WHERE p.meeting_id = ANY($1::bigint[])
      ORDER BY p.meeting_id, p.user_id`,
@@ -348,6 +352,14 @@ async function loadMeetings(client, userId, zone) {
   const byMeeting = new Map();
   for (const p of parts) {
     if (!byMeeting.has(p.meeting_id)) byMeeting.set(p.meeting_id, []);
+    // What this person has actually said about when they can make it. Their
+    // OWN constraints come back whole, including the private ones — they wrote
+    // them; anybody else's are filtered to what they agreed to share, the same
+    // projection meetings.getStatus makes. This page must not be the one place
+    // a private note leaks out of.
+    const said = String(p.user_id) === String(userId)
+      ? meetingsDomain.constraintTexts(p.constraints)
+      : meetingsDomain.shareableTexts(p.constraints);
     byMeeting.get(p.meeting_id).push({
       id: p.user_id,
       name: p.first_name,
@@ -358,6 +370,16 @@ async function loadMeetings(client, userId, zone) {
       answer: p.state === 'confirmed_current' ? 'y'
         : p.state === 'declined_current' ? 'n' : '',
       left: p.state === 'opted_out',
+      // A fourth thing the tri-state cannot hold: answered, and neither yes
+      // nor no. She said "not free until 22:00 — after that I can", and every
+      // field above rendered her identical to somebody who never replied, so
+      // the screen reported silence from a person who had spoken. `said` is
+      // the sentence; `answered` is the bit the page needs to stop drawing
+      // her as waiting. An empty array is "nothing said", never "not read" —
+      // the two are different rows here and must stay different values.
+      said,
+      answered: p.state === 'confirmed_current' || p.state === 'declined_current'
+        || said.length > 0,
     });
   }
   return meetings.map((m) => ({
