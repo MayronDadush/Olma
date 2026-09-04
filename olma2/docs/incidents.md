@@ -108,6 +108,7 @@ never trust a dated narrative for something you are about to act on.
 - [Voice-note transcription moved to ElevenLabs Scribe v2 (2026-08-18)](#voice-note-transcription-moved-to-elevenlabs-scribe-v2-2026-08-18)
 - [Onboarding has no "welcome" step any more (redesigned 2026-08-17)](#onboarding-has-no-welcome-step-any-more-redesigned-2026-08-17)
 - [A Google consent with no calendar scope was stored as "connected" (fixed 2026-08-20)](#a-google-consent-with-no-calendar-scope-was-stored-as-connected-fixed-2026-08-20)
+- [The move to allma.world, and the truncated link that asked for the admin password (2026-09-04)](#the-move-to-allmaworld-and-the-truncated-link-that-asked-for-the-admin-password-2026-09-04)
 
 **CI, migrations and deploying**
 
@@ -3100,6 +3101,75 @@ status instead of testing for one, and a rejected connection gets its own
 instruction: say plainly that it expired, skip the pitch, ask the access level,
 reconnect. That rung is now the only thing in the system that ever revisits an
 abandoned reconnect.
+
+
+### The move to allma.world, and the truncated link that asked for the admin password (2026-09-04)
+
+The system was reachable only at `olmachat.duckdns.org` — a free dynamic-DNS
+hostname doing duty as the public face of a product. A real domain was bought
+and everything a user ever touches moved to it, with one deliberate exception.
+
+**The admin dashboard did not move.** It stays on the duckdns hostname, and
+`allma.world` does not serve it at all — not behind Basic Auth, not on a
+subdomain. So `allma.world` is not a reverse proxy to `:8788`; it is an
+**allowlist** of the four routes `dashboard.js` serves ahead of its auth check
+(`/pick/<token>`, `/oauth/google/callback`, `/health`, `/ready`) plus
+`/voice-bridge*` to the bridge on `:8791`. Everything else 404s in Caddy
+without reaching the app. The cost of that choice is a coupling worth stating:
+a future public route added to `dashboard.js` is invisible on `allma.world`
+until the Caddyfile is told about it. That is the intended direction of the
+failure — a new route being unreachable is recoverable, a new admin route
+being publicly reachable is not.
+
+**The bug found while verifying it.** The first Caddyfile matched the picker
+with `path /pick/*`. That is a prefix, and `picker.TOKEN_RE` is
+`^/pick/([a-f0-9]{48})$` — so a *malformed* token matched Caddy, missed the
+regex in `dashboard.js`, fell through to the Basic Auth check and returned
+**401 with a `WWW-Authenticate` header**. A picker link truncated by a WhatsApp
+client, or mistyped, would have answered a user with the admin password prompt
+on the public domain. Nothing was exposed — there is no credential to guess
+one's way past — but it is the exact shape of thing that turns into a real
+finding later. Fixed by matching the token shape in Caddy itself
+(`path_regexp ^/pick/[a-f0-9]{48}$`), so a bad token 404s and the auth layer
+is never reached from `allma.world`.
+
+**The detector that stopped detecting.** Verifying the Google side needed a
+probe, because the console UI showing a URI is not proof Google accepts it.
+The first probe drove a consent URL and checked for an error page — and
+reported "accepted" for a deliberately bogus domain, because Google 302s
+everything to a sign-in page before validating. Tightening it to look for
+`redirect_uri_mismatch` specifically fixed that, and then broke the control the
+other way: the bogus domain fails with `invalid_request`, not
+`redirect_uri_mismatch`, so it read as "accepted" again. Only a three-way
+classifier — decode `authError`, report the actual code, keep the bogus control
+in every run — was honest. Both versions would have passed the real case at the
+moment it mattered; only the third could show its own failure. This is
+CLAUDE.md's "a detector that can no longer fail is not a detector", met twice
+in ten minutes on a five-line script.
+
+**The mistake that was nearly made, and the thing that made it safe.** Asked to
+register the new redirect URI, the obvious move in the Google console is
+"create an OAuth client". A second client, `Web client 2`, was created with
+`allma.world` as its only URI — and it was the *wrong* fix, because every
+stored `refresh_token` is bound to the **client_id** that issued it. Pointing
+`google-oauth.json` at a new client would have dropped all six live Google
+connections into `invalid_grant` and forced every user to reconnect. The right
+change was one added URI on the existing client, leaving `client_id` and
+`client_secret` untouched. Verified after the swap by refreshing all six
+connections against Google directly, with no DB writes: all six returned a new
+access token while the system advertised the new `allma.world` redirect URI.
+**`redirect_uri` is part of the authorization-code exchange only** (RFC 6749
+§6); the refresh grant never sends it. A domain move costs existing users
+nothing. A client_id move costs them everything.
+
+**What is now spread across four places, none of them in the repo**:
+`/etc/caddy/Caddyfile`, `/opt/olma/google-oauth.json`, and
+`/opt/olma2-voice-bridge/server.js` all name the hostname on the box and are
+outside the rsync'd tree, so `deploy.sh` cannot clobber them and `rollback.sh`
+cannot restore them. The fourth, the `public_base_url` **flag**, is DB state
+and drives `/pick/` links only — the OAuth redirect reads the JSON file, not
+the flag, and confusing the two is how half a migration ships. Verified
+durable across two deploys that landed mid-migration.
 
 
 ## CI, migrations and deploying

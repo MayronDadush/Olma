@@ -154,6 +154,40 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   says so by staying green. That is how the gateway went unwatched for months
   while sixteen sweeps beside it were checked every minute.
 
+### Two hostnames: allma.world is public, duckdns is admin
+
+- **`allma.world` serves an ALLOWLIST, not the dashboard.** Caddy passes
+  exactly four routes to `:8788` — `/pick/<48 hex>`, `/oauth/google/callback`,
+  `/health`, `/ready` — plus `/voice-bridge*` to `:8791`. Everything else 404s
+  in Caddy and never reaches the app. That list is the complete set of routes
+  `dashboard.js` serves ahead of its Basic Auth check; **adding a public route
+  to the app does not make it reachable — the Caddyfile has to say so too.**
+- **The admin dashboard lives ONLY on `olmachat.duckdns.org`.** It is not
+  exposed on `allma.world` at all, not even behind Basic Auth.
+- **Match `/pick/` on the exact token shape, never `/pick/*`.** A prefix match
+  lets a malformed token fall past `picker.TOKEN_RE` into the Basic Auth
+  check, so a truncated WhatsApp link answers a user with the ADMIN password
+  prompt on the public domain (`incidents.md`, "A truncated link asked a user
+  for the admin password").
+- **Three places hold the domain and none of them are in the repo**:
+  `/etc/caddy/Caddyfile`, `/opt/olma/google-oauth.json` (`public_base_url`,
+  which builds the OAuth `redirect_uri`), and `/opt/olma2-voice-bridge/server.js`
+  (the `<Stream>` TwiML URL). The fourth, the `public_base_url` **flag**, is DB
+  state and drives `/pick/` links only — it is NOT the one OAuth reads. A
+  deploy cannot touch any of the four, and a rollback cannot restore them.
+- **`google-oauth.json` is cached at module level** (`clientConfig()`), so
+  editing it does nothing until `olma2-dashboard` restarts.
+- **A redirect URI must be registered at Google BEFORE the file points at it**,
+  and both hostnames stay registered during any move. Verify against Google
+  rather than the console UI: drive a consent URL and check whether it reaches
+  the sign-in page or `redirect_uri_mismatch`, **with a known-bogus domain as a
+  control** — without one the probe reads "accepted" for everything.
+- **Changing the domain never invalidates an existing Google connection.**
+  `redirect_uri` belongs to the authorization-code exchange only; the refresh
+  grant sends `client_id`/`client_secret`/`refresh_token` and no URI. Re-consent
+  is needed only if the **client_id** changes — which is why a second OAuth
+  client is the dangerous mistake here, not a second redirect URI.
+
 ### Editing the dashboard or domain
 
 - **Admin edits go through the domain functions, never raw SQL**, so an
@@ -240,7 +274,9 @@ Verified on the box at the cutover, 2026-08-17:
   exactly (`/root/.openclaw/workspaces/u-<id>`) — the schedule-card feature
   below depends on that holding.
 - The v1 dashboard is **down** (nothing on :4173, no systemd unit). Caddy
-  serves `olmachat.duckdns.org → 127.0.0.1:8788`, i.e. the **v2** dashboard.
+  serves **two** hostnames, both to the **v2** dashboard on `127.0.0.1:8788`,
+  and the split between them is load-bearing — see
+  [Two hostnames](#two-hostnames-allmaworld-is-public-duckdns-is-admin).
 
 - **Source of truth: `olma2/` in THIS repo** (unlike v1) — ~22k lines src+bin,
   823 tests in 69 files as of 2026-09-04. `olma2/README.md` is its map, and
@@ -281,8 +317,8 @@ Verified on the box at the cutover, 2026-08-17:
 
 `olma2/docs/v1-reference.md` describes **v1's** dashboard, which is dead — its
 "5 edits with a positional param on `renderPage(...)`" recipe does not apply
-here and following it wastes a session. This is the one that serves
-https://olmachat.duckdns.org.
+here and following it wastes a session. This is the one that serves both
+https://allma.world and https://olmachat.duckdns.org.
 
 Same house style — zero deps, Basic auth, server-rendered HTML + form POSTs,
 no JS — but structured differently:
@@ -338,7 +374,10 @@ costs a session. What is live:
 | Code (MCP server, brokerd, dashboard) | `/opt/olma2/` |
 | Live DB | Postgres `olma2` (creds in `/opt/olma2/.env`) |
 | Schema | `olma2/migrations/` in-repo — never hand-edited on the box |
-| Dashboard | `127.0.0.1:8788` → https://olmachat.duckdns.org |
+| Dashboard | `127.0.0.1:8788` → https://allma.world (public routes) + https://olmachat.duckdns.org (admin) |
+| Caddy config | `/etc/caddy/Caddyfile` — **not** in the repo, not deployed |
+| Google OAuth client | `/opt/olma/google-oauth.json` — v1 path, still live; **not** in the repo |
+| Voice bridge | `/opt/olma2-voice-bridge/` — **not** in the repo, not deployed |
 | Which release is serving | `/opt/olma2/RELEASE` (sha + subject) |
 | Previous release / dated archive | `/opt/olma2-previous`, `/opt/olma2-releases/` |
 | OpenClaw config | `/root/.openclaw/openclaw.json` |
@@ -532,5 +571,6 @@ this system has — the credit outage, the runway warning, the eval reds,
 pipe, and that pipe IS the gateway. A gateway that is down cannot report that
 it is down, so a dashboard row and a 503 are genuinely all that is available
 from in here. Anything better has to run somewhere else: an uptime monitor
-hitting `https://olmachat.duckdns.org/health`, or a second channel that does
-not go through OpenClaw at all. Neither exists.
+hitting `https://allma.world/health` (public, unauthenticated, and the
+hostname that outlives the duckdns one), or a second channel that does not go
+through OpenClaw at all. Neither exists.
