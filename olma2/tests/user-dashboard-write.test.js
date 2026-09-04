@@ -294,3 +294,55 @@ test('a pending reminder travels with the id needed to cancel it', async () => {
   const row = page.data.tasks.find((x) => String(x.id) === String(t.id));
   assert.equal(String(row.reminder.id), String(set.data.reminder.id));
 });
+
+// ---------------------------------------------------------------------------
+// The address book, and the one button that acts on it.
+
+test('the address book arrives, and drops anyone already connected or asked', async () => {
+  const friend = await makeUser(db.pool, '+972531920011', { firstName: 'Gali' });
+  await db.pool.query(
+    `INSERT INTO user_contacts (user_id, display_name, phone, source)
+     VALUES ($1,'גלי','+972531920011','card'), ($1,'יעל','+972531920012','card'),
+            ($1,'אלון','+972531920013','card')`, [me.id]);
+  await db.pool.query(
+    `INSERT INTO connections (requester_id, target_id, target_phone, status, responded_at)
+     VALUES ($1, $2, '+972531920011', 'active', now())`, [me.id, friend.id]);
+  await db.pool.query(
+    `INSERT INTO connections (requester_id, target_phone, status)
+     VALUES ($1, '+972531920012', 'invited')`, [me.id]);
+
+  const page = await tx((c) => dash.load(c, me.id));
+  const names = page.data.contacts.map((x) => x.name);
+  assert.equal(names.includes('גלי'), false, 'offered to invite somebody already connected');
+  assert.equal(names.includes('יעל'), false, 'offered to ask again somebody still deciding');
+  assert.equal(names.includes('אלון'), true);
+  assert.equal(page.data.contacts.find((x) => x.name === 'אלון').phone, '+972531920013',
+    'their own address book without the numbers is an invite button that cannot work');
+});
+
+test('an invite goes out by contact id, and the other side is actually told', async () => {
+  const c = await db.pool.query(
+    `SELECT id FROM user_contacts WHERE user_id = $1 AND display_name = 'אלון'`, [me.id]);
+  const r = await act('inviteContact', { contactId: c.rows[0].id });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  const { rows } = await db.pool.query(
+    `SELECT o.kind FROM outbox o WHERE o.kind IN ('connection_request','connection_intro')`);
+  assert.equal(rows.length >= 1, true,
+    'the row was written and nobody was ever asked — the request would sit there for ever');
+});
+
+test('a contact that is not theirs cannot be invited', async () => {
+  const other = await makeUser(db.pool, '+972531920014');
+  const c = await db.pool.query(
+    `INSERT INTO user_contacts (user_id, display_name, phone, source)
+     VALUES ($1,'זר','+972531920015','card') RETURNING id`, [other.id]);
+  const r = await act('inviteContact', { contactId: c.rows[0].id });
+  assert.equal(r.ok, false, 'a session could invite anybody at all by guessing an id');
+  assert.equal(r.error.code, 'not_found');
+});
+
+test('a phone number in the payload is ignored', async () => {
+  const r = await act('inviteContact', { contactId: 9_000_003, phone: '+972500000000', targetPhone: '+972500000000' });
+  assert.equal(r.ok, false);
+  assert.equal(r.error.code, 'not_found');
+});

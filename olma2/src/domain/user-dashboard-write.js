@@ -30,6 +30,9 @@ const users = require('./users');
 const pause = require('./pause');
 const audit = require('./audit');
 const taskCalendar = require('./task-calendar');
+const connections = require('./connections');
+const contacts = require('./contacts');
+const invites = require('../intake/invites');
 const { SOURCE_CAPS } = require('./user-dashboard');
 
 // What a task's origin system can actually hold, for the fields this page can
@@ -216,6 +219,31 @@ const ACTIONS = {
   },
 
   // ---- friends -------------------------------------------------------------
+  // Asking somebody to connect. The same call the agent makes, including the
+  // part that is easy to forget: requestConnection writes the row, and
+  // `afterConnectionRequest` is what actually reaches the other person. Without
+  // it the request would sit in the table and nobody would ever be asked.
+  //
+  // The number is resolved from THEIR OWN address book, by contact id, and
+  // never taken from the payload — a page that could post a phone number
+  // straight into requestConnection would be a way to invite anybody at all
+  // from a stolen session, and to find out who is on Olma by watching which
+  // ones come back 'already connected'.
+  async inviteContact(client, userId, p) {
+    const { rows } = await client.query(
+      `SELECT phone FROM user_contacts WHERE id = $1 AND user_id = $2`,
+      [p.contactId, userId]
+    );
+    if (!rows[0]) return err('not_found', 'no such contact');
+    const phone = contacts.normalisePhone(rows[0].phone, null) || rows[0].phone;
+    const res = await connections.requestConnection(client, userId, phone, {});
+    if (!res.ok) return res;
+    const me = await users.getById(client, userId);
+    const notified = await invites.afterConnectionRequest(
+      client, me, res.data.connection, res.data.targetKnown);
+    return ok({ connection: res.data.connection, notified: notified.data.notified });
+  },
+
   async grantFeature(client, userId, p) {
     return grants.grantFeature(client, userId, p.connectionId, p.feature);
   },

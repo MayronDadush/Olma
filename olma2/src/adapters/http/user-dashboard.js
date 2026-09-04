@@ -16,6 +16,7 @@
 //   POST /d/<token>   spend the key, open the session, redirect.
 //   GET  /me          the page itself. Session required.
 //   GET  /me/data     everything on it, as JSON. Session required.
+//   GET  /me/events   their calendar, fetched from Google. Session required.
 //   POST /me/act      one write. Session required.
 //   POST /me/out      sign out.
 //
@@ -27,6 +28,7 @@ const path = require('node:path');
 const { withTx } = require('../../db/pool');
 const auth = require('../../domain/dashboard-auth');
 const dash = require('../../domain/user-dashboard');
+const events = require('../../domain/user-dashboard-events');
 const write = require('../../domain/user-dashboard-write');
 
 const LINK_RE = /^\/d\/([a-f0-9]{64})$/;
@@ -191,7 +193,7 @@ async function currentUser(pool, req) {
 // The mount asks this before handing anything over, so the operator dashboard
 // never has to know the route list — and so a path that is nearly one of ours
 // (`/mesh`, `/me/x`) falls through to Basic Auth instead of being answered here.
-const OWN = new Set(['/me', '/me/data', '/me/act', '/me/out']);
+const OWN = new Set(['/me', '/me/data', '/me/events', '/me/act', '/me/out']);
 function matches(pathname) {
   return OWN.has(pathname) || LINK_RE.test(pathname);
 }
@@ -235,7 +237,8 @@ async function handle(req, res, pool, pathname) {
     return res.end();
   }
 
-  if (pathname !== '/me' && pathname !== '/me/data' && pathname !== '/me/act') {
+  if (pathname !== '/me' && pathname !== '/me/data'
+      && pathname !== '/me/events' && pathname !== '/me/act') {
     // Only reachable if `matches` and this list ever disagree. Say so rather
     // than falling through to a 200 with no body.
     return sendJson(res, 404, { ok: false, error: { code: 'not_found' } });
@@ -269,6 +272,16 @@ async function handle(req, res, pool, pathname) {
     if (req.method !== 'GET') return sendJson(res, 405, { ok: false, error: { code: 'invalid' } }, { Allow: 'GET' });
     const page = await withTx(pool, (c) => dash.load(c, userId));
     return sendJson(res, page.ok ? 200 : 404, page);
+  }
+
+  // Its own route because it is the one thing here that leaves the building.
+  // Every event comes from Google on this request, so a slow or dead calendar
+  // delays the days and nothing else — the list, the friends and the settings
+  // have already been served by /me/data and are on screen.
+  if (pathname === '/me/events') {
+    if (req.method !== 'GET') return sendJson(res, 405, { ok: false, error: { code: 'invalid' } }, { Allow: 'GET' });
+    const days = await withTx(pool, (c) => events.loadEvents(c, userId));
+    return sendJson(res, days.ok ? 200 : 404, days);
   }
 
   // ---- one write ----------------------------------------------------------

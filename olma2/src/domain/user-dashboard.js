@@ -238,6 +238,41 @@ async function loadIntegrations(client, userId) {
   }));
 }
 
+// The person's own address book — the people they might invite, as opposed to
+// the people they are already connected to. `user_contacts` is theirs: rows
+// they shared as contact cards or imported from an account of their own, so
+// the phone number travels here where it deliberately does not for a friend.
+// Showing somebody their own address book is not publishing anybody's number;
+// it is the same list already open in the app next door, and the invite button
+// is unusable without it.
+//
+// Anyone already connected is filtered out here rather than in the browser: it
+// is one join, and it keeps a stale page from offering to invite a person who
+// accepted an hour ago.
+async function loadContacts(client, userId) {
+  const { rows } = await client.query(
+    `SELECT c.id, c.display_name, c.phone, c.source
+       FROM user_contacts c
+      WHERE c.user_id = $1
+        AND NOT EXISTS (
+          SELECT 1 FROM connections k
+           JOIN users u ON u.id = CASE WHEN k.requester_id = $1 THEN k.target_id ELSE k.requester_id END
+           WHERE k.status = 'active' AND (k.requester_id = $1 OR k.target_id = $1)
+             AND u.phone = c.phone)
+        -- and not somebody they have already asked: the button would offer to
+        -- ask again, which sends a second intro to a person still deciding
+        AND NOT EXISTS (
+          SELECT 1 FROM connections k
+           WHERE k.requester_id = $1 AND k.target_phone = c.phone
+             AND k.status IN ('invited', 'pending_target'))
+      ORDER BY c.display_name`,
+    [userId]
+  );
+  return rows.map((r) => ({
+    id: Number(r.id), name: r.display_name, phone: r.phone, source: r.source,
+  }));
+}
+
 // Where Olma can actually reach this person. One WhatsApp row each today, and
 // the schema has always allowed a second identity to join the same user — so
 // this is a LIST, and the page draws its choices from it rather than from a
@@ -315,6 +350,7 @@ async function load(client, userId) {
   const friends = await loadFriends(client, userId);
   const integrations = await loadIntegrations(client, userId);
   const channels = await loadChannels(client, userId);
+  const contacts = await loadContacts(client, userId);
   const meetings = await loadMeetings(client, userId);
   return ok({
     user: {
@@ -333,6 +369,7 @@ async function load(client, userId) {
       calendarSyncTasks: user.calendar_sync_tasks,
     },
     channels,
+    contacts,
     tasks: tasks.open,
     archived: tasks.archived,
     friends,

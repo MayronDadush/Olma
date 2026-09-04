@@ -2674,7 +2674,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     setTaskReminder:"setTaskReminder", setTaskCalendar:"setTaskCalendar",
     shareTask:"shareTask", revokeShare:"revokeShare",
     grantFeature:"grantFeature", revokeFeature:"revokeFeature",
-    setTimezone:"setTimezone", pause:"pause", resume:"resume"
+    setTimezone:"setTimezone", pause:"pause", resume:"resume",
+    inviteContact:"inviteContact"
   };
   /* Ids the server has actually seen. It is what decides whether saving a task
      creates one or edits one — the page numbers its own new rows from a local
@@ -2876,6 +2877,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         {connectionId:f.cid, feature:FEATURE_OF[k] || k});
     },
     setDefaultChannel:   function(ch){ return API.call("setDefaultChannel", {channel:ch}); },
+    /* By contact id, never by number. The server looks the phone up in THEIR
+       address book — a page that could post a number straight into
+       requestConnection would be a way to invite anybody at all from a stolen
+       session, and to learn who is on Olma by watching which ones come back
+       "already connected". */
+    inviteContact:   function(c){
+      API.call("inviteContact", {target_phone:String(c.num).replace(/\s/g, "")});
+      return API.send("inviteContact", {contactId:c.id});
+    },
     setTimezone:     function(tz){     API.call("setTimezone", {timezone:tz}); return API.send("setTimezone", {timezone:tz}); },
     setPaused:       function(on){     API.call(on ? "pause" : "resume", {}); return API.send(on ? "pause" : "resume", {}); }
   };
@@ -6347,10 +6357,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   $("#cnList").addEventListener("click", function(e){
     var b = e.target.closest("[data-inv]");
     if(!b) return;
-    var c = CONTACTS.filter(function(x){ return x.id === b.dataset.inv; })[0];
+    /* Compared as strings: the seed ids are "c1", a real one is the integer
+       primary key of the contact row, and === would quietly stop matching the
+       moment this page met a real address book. */
+    var c = CONTACTS.filter(function(x){ return String(x.id) === b.dataset.inv; })[0];
     if(!c || invited[c.id]) return;
     invited[c.id] = true;
-    API.call("inviteContact", {target_phone:c.num.replace(/\s/g, "")});
+    API.inviteContact(c);
     /* the row stays where it is and changes state in place: a list that
        reorders itself under the finger loses the person's place in it */
     renderContacts();
@@ -6398,7 +6411,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   function agendaFor(i){
     var iso = dayISO(i);
     var evs = (EVENTS[i] || []).map(function(v){
-      return {time:v.t, end:v.e, title:L(v.n), sub:L(v.s), c:v.c};
+      /* `all` travels: an all-day entry heads the day, and the clash check
+         treats it as filling the whole of one. The seed has no all-day rows,
+         which is exactly why this was easy to leave out. */
+      return {time:v.t, end:v.e, allDay:!!v.all, title:L(v.n), sub:L(v.s), c:v.c};
     });
     open.forEach(function(x){
       /* only the tasks the person actually put in the calendar */
@@ -7127,6 +7143,41 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       if(row.primary) defaultChannel = id;
     });
   }
+  function liveContact(c){
+    return {
+      id:c.id, n:c.name || "", num:c.phone || "",
+      /* The system stores nobody's gender — see liveFriend. */
+      g:"m",
+      av:seedIndex("c" + c.id)
+    };
+  }
+  /* Their calendar, on its own request. Called once after the page has its
+     data, and never retried: a screen that silently re-fetches is a screen
+     that can change under somebody's finger, and a day view that redraws
+     itself while being read is worse than one that is a minute old. */
+  function loadDays(){
+    if(!LIVE) return;
+    fetch("/me/events", {credentials:"same-origin", headers:{Accept:"application/json"}})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(body){
+        if(!body || !body.ok || !body.data) return;
+        calConnected = !!body.data.connected;
+        EVENTS = {};
+        Object.keys(body.data.days || {}).forEach(function(k){
+          EVENTS[+k] = (body.data.days[k] || []).map(function(e){
+            return {t:e.at || "", e:e.end || "", all:!!e.allDay,
+                    n:e.title || "", s:e.where || "", c:CAL_EVENT_COLOR};
+          });
+        });
+        renderStrip(selDay); renderMeets();
+      })
+      .catch(function(){ /* offline, or Google is down: the days stay empty */ });
+  }
+  /* One colour for everything that came from their calendar. The seed uses
+     several because it is imitating several calendars; we read `primary` and
+     nothing else, so pretending to distinguish them would be decoration
+     claiming to be information. */
+  var CAL_EVENT_COLOR = "#5B2FD6", calConnected = false;
   function hydrate(d){
     open = (d.tasks || []).map(liveTask);
     /* Rebuilt from scratch each time: an id that has left the server's answer
@@ -7140,25 +7191,22 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     FRIENDS = (d.friends || []).map(liveFriend);
     hydrateProviders(d.integrations);
     hydrateChannels(d.channels);
-    /* Three seeded sets are emptied rather than mapped, and each is a
-       different kind of not-yet.
-
-       EVENTS is the calendar day view. Real events live at Google, not in our
-       database, so /me/data cannot carry them without an outbound call on the
-       request path — the next piece of work here. Until then an empty day is
-       the only honest thing: a real person must never be shown a poker game
-       that does not exist.
-
-       CONTACTS is the address book behind "add a friend". Real ones arrive
-       through the Google Contacts import into `user_contacts`. Empty is also
-       the RIGHT state to land in — it is what routes somebody to connecting an
+    /* The address book behind "add a friend" — their own `user_contacts`,
+       with everyone they are already connected to (or have already asked)
+       filtered out server-side. An empty one is the RIGHT state to land in
+       rather than a failure: it is what routes somebody to connecting an
        account first, which is exactly the flow this screen was designed for.
 
-       `invited` is per-session state about the seeded contacts and means
-       nothing once they are gone. */
-    EVENTS = {};
-    CONTACTS = [];
+       `invited` is per-session state about who has been asked from this
+       screen, and the seeded contacts it referred to are gone. */
+    CONTACTS = (d.contacts || []).map(liveContact);
     invited = {};
+    /* The days are NOT here. Every event is fetched from Google, so they come
+       from /me/events on their own request — see loadDays() below, which fills
+       them in after the page is already on screen. Until it answers, an empty
+       day is the only honest thing: a real person must never be shown a poker
+       game that does not exist. */
+    EVENTS = {};
     /* Meetings are deliberately emptied rather than mapped. The grid is built
        on day OFFSETS and a marks table; the server states real DATES and
        `meeting_availability` rows written by the picker. Mapping one onto the
@@ -7180,6 +7228,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     }
     LIVE = true;
     renderAll();
+    loadDays();
   }
   /* On the seam rather than inside the closure, for the same reason the seam
      exists at all: this is the function that turns a payload into a page, so
