@@ -169,3 +169,99 @@ test('the brief carries numbers and never a word anybody wrote', async () => {
   // here: it sees aggregates and nothing else.
   assert.ok(!/\+972/.test(brief));
 });
+
+// ── the trend test ───────────────────────────────────────────────────────────
+// Fixtures are pure `crossings()` input, so these cost no database at all.
+const day = (date, over) => ({
+  date, messages: 40, cost_per_message: 0.005, input_tokens_per_message: 50_000,
+  cache_hit_rate: 0.7, system_cost_share: 0.1, ...over,
+});
+const seriesOf = (values, key) => values.map((v, i) => day(`d${i}`, { [key]: v }));
+
+test('a ratio that compounds gently is caught, though no single day ever spikes', () => {
+  // 12% a day for eight days: a 2.2x total degradation. Against a trailing
+  // median that climbs with it, the spike ratio peaks at 1.57 and never
+  // reaches 2 — this is the whole class the original test could not see.
+  const hist = seriesOf(Array.from({ length: 8 }, (_, i) => 50_000 * 1.12 ** i), 'input_tokens_per_message');
+  const today = hist[hist.length - 1];
+
+  const spikeOnly = eff.median(hist.slice(0, -1).map((d) => d.input_tokens_per_message));
+  assert.ok(today.input_tokens_per_message / spikeOnly < 2,
+    'fixture is wrong: this day must NOT be a spike, or it proves nothing');
+
+  const crossed = eff.crossings(hist, today);
+  const hit = crossed.find((c) => c.key === 'input_tokens_per_message');
+  assert.ok(hit, 'a 2.2x drift that never spikes must still be caught');
+  assert.equal(hit.kind, 'trend');
+  assert.ok(hit.times >= eff.TREND_FACTOR);
+});
+
+test('replaying the real September slide: the spike test was never the late half', () => {
+  // The actual measured cache_hit_rate, 2026-08-28 .. 09-04. This is pinned
+  // because the comment above makes a falsifiable claim about it — that the
+  // spike test crosses FIRST — and a comment nothing checks drifts into
+  // folklore. If this ever goes red, the comment is what to fix.
+  const real = [0.731, 0.642, 0.709, 0.458, 0.302, 0.311, 0.214, 0.198];
+  const metric = eff.METRICS.find((x) => x.key === 'cache_hit_rate');
+  let firstSpike = null; let firstTrend = null;
+  for (let i = 2; i < real.length; i++) {
+    const hist = seriesOf(real.slice(0, i + 1), 'cache_hit_rate');
+    const today = hist[hist.length - 1];
+    // Asked of each test SEPARATELY. crossings() reports one entry per metric
+    // and a spike takes the headline, so reading `kind` off it can never show
+    // when the trend condition first became true.
+    const base = eff.median(hist.slice(0, -1).map((d) => d.cache_hit_rate));
+    if (firstSpike === null && base / today.cache_hit_rate >= metric.factor) firstSpike = i;
+    if (firstTrend === null && eff.trendFor(hist, metric)) firstTrend = i;
+  }
+  assert.equal(firstSpike, 4, 'the spike test crosses on the 09-01 sample');
+  assert.equal(firstTrend, 5, 'the trend test crosses a day LATER, not earlier');
+});
+
+test('a spike that is also a slide is ONE piece of news, not two', () => {
+  const real = [0.731, 0.642, 0.709, 0.458, 0.302, 0.311, 0.214, 0.198];
+  const hist = seriesOf(real, 'cache_hit_rate');
+  const crossed = eff.crossings(hist, hist[hist.length - 1]);
+  const forMetric = crossed.filter((c) => c.key === 'cache_hit_rate');
+  assert.equal(forMetric.length, 1, 'two entries for one ratio is two alerts about one thing');
+  assert.equal(forMetric[0].kind, 'spike', 'the sharper reading takes the headline');
+  assert.ok(forMetric[0].trend, 'and it still carries the slide as context');
+});
+
+test('three quiet days cannot manufacture a trend', () => {
+  const vals = [0.7, 0.7, 0.7, 0.7, 0.2, 0.15, 0.1];
+  const hist = seriesOf(vals, 'cache_hit_rate').map((d, i) => (i >= 4 ? { ...d, messages: 3 } : d));
+  const today = hist[hist.length - 1];
+  assert.deepEqual(eff.crossings(hist, today).filter((c) => c.key === 'cache_hit_rate'), [],
+    'a slope drawn through three near-empty days is noise, exactly as one quiet day is');
+});
+
+test('a steady week still crosses nothing — the new test adds no false positive', () => {
+  const hist = seriesOf(Array.from({ length: 8 }, () => 0.7), 'cache_hit_rate');
+  assert.deepEqual(eff.crossings(hist, hist[hist.length - 1]), []);
+});
+
+test('trendFor needs two real windows before it will judge anything', () => {
+  const m = eff.METRICS.find((x) => x.key === 'cache_hit_rate');
+  assert.equal(eff.trendFor(seriesOf([0.7, 0.6, 0.2, 0.1], 'cache_hit_rate'), m), null,
+    'four days is not two windows, and inventing a slope from them is week-one noise');
+});
+
+test('the report and the brief both say a slide is a slide', () => {
+  const hist = seriesOf(Array.from({ length: 8 }, (_, i) => 50_000 * 1.12 ** i), 'input_tokens_per_message');
+  const today = hist[hist.length - 1];
+  const crossed = eff.crossings(hist, today);
+  const ev = { models: [], users: [] };
+
+  const text = eff.reportText(crossed, today, ev, null);
+  assert.match(text, /במגמה כבר \d+ ימים/, 'the reader must be told this is a slope, not a jump');
+
+  const brief = eff.briefFor(crossed, today, ev, 40_733);
+  assert.match(brief, /drifted steadily/);
+  assert.match(brief, /read the SHAPE before proposing a cause/);
+  assert.match(brief, /NOT explained by one change on the last day/,
+    'this line is the correction for the wrong same-day cause of 2026-09-04');
+  // The other half of that day's bad advice.
+  assert.match(brief, /shortening a stable, cacheable system prompt/);
+  assert.ok(brief.includes('→'), 'the day-by-day series is what stops a same-day guess');
+});
