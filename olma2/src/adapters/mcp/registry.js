@@ -222,10 +222,18 @@ const TOOLS = [
       // Real activity resets the checkin backoff, and records that they are
       // awake right now — the delivery gate uses this to allow a reply during
       // quiet hours while a conversation is actually happening.
-      await client.query(
-        `UPDATE users SET last_inbound_at = now(),
-                checkin_misses = CASE WHEN checkin_misses > 0 THEN 0 ELSE checkin_misses END
-         WHERE id = $1`, [user.id]);
+      // The self-join reads the row as it was BEFORE this statement, so
+      // "have they ever written to us before" costs no extra round trip — and
+      // on a 1-vCPU box every query here is latency a person is sitting
+      // through. `last_inbound_at` is NULL only until someone's first ever
+      // message, which makes it the cheapest honest first-turn signal we have.
+      const opened = await client.query(
+        `UPDATE users u SET last_inbound_at = now(),
+                checkin_misses = CASE WHEN u.checkin_misses > 0 THEN 0 ELSE u.checkin_misses END
+           FROM users prev
+          WHERE u.id = prev.id AND u.id = $1
+          RETURNING prev.last_inbound_at AS prev_inbound`, [user.id]);
+      const firstEverTurn = opened.rowCount > 0 && opened.rows[0].prev_inbound === null;
       // A person writing is awake — give every night-held row an immediate
       // re-hearing. The gate stays the only judge: inside the 15-minute
       // conversation grace it delivers; otherwise it simply re-holds until
@@ -337,9 +345,40 @@ const TOOLS = [
       // on every single message, so it cannot join CARD_TOOLS wholesale — it
       // flags the card itself, on the one turn in a person's life that fills in
       // their name (see brokerd/server.js).
+      // The one turn in a person's life where there is no conversation to
+      // continue. Until this flag existed, `proceed` was all the agent ever
+      // got, and the doctrine told it there is no welcome moment — so someone
+      // whose first word was "היי" was answered "היי" and never onboarded,
+      // for ever. The greeter-conversation path that doctrine assumes only
+      // fires when the person wrote something worth carrying across; a
+      // one-word opener carries nothing, and that is the common case.
+      //
+      // Whichever entry point opened the turn is the one that saw the NULL:
+      // when a tool beat turn_start to it, brokerd's recovery already
+      // overwrote `last_inbound_at`, so its verdict travels here in ctx rather
+      // than being re-derived from a row that has already moved.
+      const firstTurn = alreadyCounted
+        ? Boolean(ctx && ctx.turn && ctx.turn.firstTurn)
+        : firstEverTurn;
+
+      // The instruction rides in the RESULT, not in AGENTS.md, and that is a
+      // budget decision rather than a style one: the doctrine renders to 39249
+      // of the 39250 chars the gateway will inject, so a paragraph added there
+      // is a paragraph silently deleted from the middle of some other section
+      // on every turn for every user (tests/intake.test.js guards this).
+      // Here it costs ~60 tokens once in a person's lifetime, and it arrives at
+      // the exact moment it applies — which for a cheap model beats a rule
+      // buried in 40k chars it only partly attends to.
       if (!counted.data.blocked) {
         return stale(ok({
           directive: 'proceed', locale: user.locale,
+          ...(firstTurn ? {
+            firstTurn: true,
+            onboarding: 'Their first ever message — nobody has introduced you. '
+              + 'Answer what they actually said, then in one or two short lines say what '
+              + 'you are and ask their name. No feature tour, no menu of options. '
+              + 'If USER.md has a pending intake section, fold that in instead.',
+          } : {}),
           ...(offerResume ? { offerResume: true } : {}),
           ...(recentReminders.length ? { recentReminders } : {}),
           ...(planHeadline ? { planHeadline } : {}),

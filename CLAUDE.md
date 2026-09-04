@@ -226,6 +226,13 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **`agents-template.md` reaches existing users only via
   `scripts/resync-agent-templates.js`.** `deploy.sh --restart` now runs it
   automatically after the health check passes — a manual local deploy does not.
+- **The doctrine is FULL: 39249 of the 39250 chars the gateway will inject.**
+  Over the line nothing is announced — `trimAgentsBootstrapContent` keeps a
+  head and a tail and deletes the middle of whichever section sits at the cut.
+  So a paragraph added there must be paid for by deleting one, and the default
+  answer is to put the instruction in the TOOL RESULT instead, where it costs
+  tokens only on the turns it applies to (`turn_start`'s `onboarding` string,
+  2026-09-04). `tests/intake.test.js` fails before anything is lost.
 - **Olma never claims a lookup it did not perform.** No price, no stock level,
   no "מצאתי לך", no link to a RESULT — all of it asserts a fetch that never
   happened. `search_link` is the one exception and only because a link to a
