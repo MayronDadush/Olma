@@ -924,3 +924,45 @@ test('a commitment read back from a conversation becomes a goal Olma returns to'
     assert.ok(pick.instruction.includes('<<<למכור 3 מהרכבים>>>'));
   });
 });
+
+// ── A fact is written from Olma's side ───────────────────────────────────────
+// Miron's own test account, 2026-09-04: three facts stored and one of them read
+// `מאיה היא אשתי` — "Maya is MY wife" — while the other two were correct third
+// person. Facts are injected into USER.md every turn as things Olma KNOWS, so a
+// first-person one tells the model, in its own context, that it has a wife.
+test('facts: a first-person fact is refused, with the third-person form named', async () => {
+  await withClient(async (c) => {
+    const res = await facts.rememberFact(c, user.id, {
+      category: 'people', fact: 'מאיה היא אשתי',
+    });
+    assert.equal(res.ok, false);
+    assert.equal(res.error.reason, 'first_person');
+    assert.match(res.error.message, /אשתו/, 'the message shows the shape that works');
+
+    // ...and the corrected form goes in.
+    const fixed = await facts.rememberFact(c, user.id, {
+      category: 'people', fact: 'מאיה היא אשתו',
+    });
+    assert.equal(fixed.ok, true);
+  });
+});
+
+test('facts: the first-person guard is words, not the -י suffix', () => {
+  // Rejected: the person's own voice, copied through instead of re-framed.
+  for (const bad of [
+    'מאיה היא אשתי', 'הילדים שלי בגן עירייה', 'אני עובד מהבית בימי חמישי',
+    'יש לי שני ילדים', 'הבוס שלנו קשוח', 'my wife is Maya', 'I work from home',
+    'our kids are in school',
+  ]) {
+    assert.equal(facts.firstPerson(bad), true, `should be refused: ${bad}`);
+  }
+  // Accepted: ordinary third-person facts, including the ones a naive "-י
+  // suffix means first person" rule would have destroyed. These are adjectives.
+  for (const good of [
+    'מאיה היא אשתו', 'יש לו ילדים', 'נוח לו שאכתוב לו בין 9 ל-21',
+    'מצב משפחתי מורכב', 'יש לו רקע רפואי', 'מגיש דיווח שנתי בינואר',
+    'עובד בהייטק', 'גר בתל אביב', 'his wife is Maya',
+  ]) {
+    assert.equal(facts.firstPerson(good), false, `should be kept: ${good}`);
+  }
+});
