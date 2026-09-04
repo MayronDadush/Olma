@@ -272,6 +272,75 @@ test('the health banner counts the gateway, and only when it was observed', asyn
   await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'brokerd'`);
 });
 
+// The release row answers "is production running what I merged?" — and the
+// only way it can be wrong in a costly direction is by reading a check that
+// did not happen as a check that passed. So each state is asserted to render
+// as itself, and 'unchecked' is asserted NOT to look like agreement.
+test('the release row says how far behind main it is, without alarming', async () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { SECTIONS } = require('../src/adapters/http/dashboard');
+  const section = SECTIONS.find((s) => s.id === 'health');
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-drift-'));
+  fs.writeFileSync(path.join(root, 'RELEASE'), [
+    'sha=b5f8370c91079d7a8997f76830492f92e132c6f7',
+    'subject=rollback: the half of the keepalive fix that got left behind (#144)',
+    'deployed_at=2026-09-04T10-20-55Z', '',
+  ].join('\n'));
+  const prev = process.env.OLMA_DEPLOY_ROOT;
+  process.env.OLMA_DEPLOY_ROOT = root;
+
+  const show = async (note) => {
+    await db.pool.query(
+      `INSERT INTO job_heartbeats (job_name, last_run_at, note) VALUES ('deploy_drift', now(), $1)
+       ON CONFLICT (job_name) DO UPDATE SET note = excluded.note`,
+      [note === null ? null : JSON.stringify(note)]);
+    return withTx(db.pool, (c) => section.render(c, 'csrf', async () => ({ status: 'live', detail: 'live', port: 1 })));
+  };
+
+  try {
+    const sync = await show({ state: 'in_sync', local: 'b5f8370c9107', at: new Date().toISOString() });
+    assert.match(sync, /מעודכן מול main/);
+    assert.match(sync, /banner ok/, 'being up to date is not a problem to report');
+
+    const behind = await show({
+      state: 'behind', local: 'b5f8370c9107', by: 3,
+      since: new Date(Date.now() - 4 * 3600_000).toISOString(), at: new Date().toISOString(),
+    });
+    assert.match(behind, /מאחורי main ב־3 קומיטים/);
+    assert.match(behind, /לפני 4 שע׳/, 'the drift is dated from when it started');
+    // Deliberately not a problem count: production is running the PREVIOUS
+    // release, and the previous release worked. `BREAKS_USERS` means their
+    // tool calls fail right now, and nobody's do.
+    assert.match(behind, /banner ok/, 'shown on the row, never counted as a broken process');
+    assert.match(behind, /class="warn"/, 'but visible enough to be noticed');
+
+    const one = await show({ state: 'behind', local: 'b5f8370c9107', by: 1, at: new Date().toISOString() });
+    assert.match(one, /קומיט אחד/, 'not "1 קומיטים"');
+
+    const blind = await show({
+      state: 'unchecked', why: 'ENOTFOUND', local: 'b5f8370c9107',
+      lastKnown: 'in_sync', lastCheckedAt: new Date(Date.now() - 7200_000).toISOString(),
+    });
+    assert.match(blind, /לא ניתן לבדוק/);
+    assert.ok(!/מעודכן מול main/.test(blind), 'an unreachable GitHub must not read as agreement');
+    assert.match(blind, /קודם היה מעודכן/, 'it says how old the last real answer is');
+
+    // Before the job has ever run there is simply no claim to make — an empty
+    // note must not render as either verdict.
+    const quiet = await show(null);
+    assert.ok(!/מעודכן מול main/.test(quiet) && !/מאחורי main/.test(quiet));
+    assert.match(quiet, /b5f8370c9107/, 'the release itself is still shown');
+  } finally {
+    if (prev === undefined) delete process.env.OLMA_DEPLOY_ROOT;
+    else process.env.OLMA_DEPLOY_ROOT = prev;
+    await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'deploy_drift'`);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('deploy.sh gates on /ready, never on /health', () => {
   const sh = require('node:fs').readFileSync(
     require('node:path').join(__dirname, '..', 'scripts', 'deploy.sh'), 'utf8');
