@@ -37,6 +37,54 @@ async function addTask(client, ownerId, { title, category, dueAt, parentId, sour
   return ok({ task: rows[0] });
 }
 
+// Change a task that already exists. Until the dashboard there was no way to
+// do this at all — a wrong title was fixed by completing the row and writing a
+// new one, which loses its reminders and its place under a project — so the
+// page had `set_task_category` marked NO TOOL YET against exactly this gap.
+//
+// Only the three fields a person can see and point at. `source`, `parent_id`,
+// `status` and the archive flag are all changed by their own operations, and
+// letting an edit move them would give one call two meanings: completing a task
+// and renaming it are different events, and the audit trail has to be able to
+// tell them apart.
+//
+// A field is changed only when it is PRESENT. `undefined` means "leave it",
+// `null` means "clear it" — a page that only knows how to send whole objects
+// would otherwise wipe a due date every time somebody fixed a typo.
+async function editTask(client, ownerId, taskId, patch = {}) {
+  const has = (k) => Object.hasOwn(patch, k);
+  const sets = [];
+  const vals = [taskId, ownerId];
+  const changed = {};
+  if (has('title')) {
+    const title = String(patch.title ?? '').trim();
+    if (!title) return err('invalid', 'title cannot be emptied');
+    sets.push(`title = $${vals.push(title)}`);
+    changed.title = true;
+  }
+  if (has('category')) {
+    const category = patch.category == null ? null : String(patch.category).trim() || null;
+    sets.push(`category = $${vals.push(category)}`);
+    changed.category = category;
+  }
+  if (has('dueAt')) {
+    // Same rule as add_task, and for the same incident: a bare local time gets
+    // read in the server's zone and lands hours off (the shift stored as 15:00Z).
+    if (patch.dueAt != null && !hasOffset(patch.dueAt)) return badTime('due_at', patch.dueAt);
+    sets.push(`due_at = $${vals.push(patch.dueAt ?? null)}`);
+    changed.dueAt = patch.dueAt ?? null;
+  }
+  if (sets.length === 0) return err('invalid', 'nothing to change');
+  const { rows } = await client.query(
+    `UPDATE tasks SET ${sets.join(', ')}
+      WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL RETURNING *`,
+    vals
+  );
+  if (!rows[0]) return err('not_found', 'task not found');
+  await audit.record(client, ownerId, 'task.edited', { taskId: rows[0].id, changed });
+  return ok({ task: rows[0] });
+}
+
 // The brain-dump path: all-or-nothing, one call. Also everyday bulk entry —
 // deliberately NOT an onboarding-only feature.
 //
@@ -223,6 +271,6 @@ async function projectOverview(client, ownerId, projectId) {
 }
 
 module.exports = {
-  MAX_BULK, addTask, addTasksBulk, listTasks, completeTask,
+  MAX_BULK, addTask, addTasksBulk, editTask, listTasks, completeTask,
   snoozeTask, archiveTask, projectOverview,
 };
