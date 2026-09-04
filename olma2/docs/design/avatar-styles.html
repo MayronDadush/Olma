@@ -1,0 +1,478 @@
+<title>מעבדת האווטארים</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@600;700&display=swap">
+<style>
+:root{
+  --bg:#F2EDE4; --panel:#FBF8F2; --sep:rgba(59,59,59,.10);
+  --text:#2C2A27; --text-2:#6B6660; --text-3:#9A948C; --accent:#1C7B7E; --accent-soft:rgba(28,123,126,.12);
+}
+:root:not([data-theme="light"]){}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#131211; --panel:#1D1B19; --sep:rgba(255,255,255,.09);
+    --text:#F2EFE9; --text-2:#A8A29A; --text-3:#79736B; --accent:#5CC0B6; --accent-soft:rgba(92,192,182,.16);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131211; --panel:#1D1B19; --sep:rgba(255,255,255,.09);
+  --text:#F2EFE9; --text-2:#A8A29A; --text-3:#79736B; --accent:#5CC0B6; --accent-soft:rgba(92,192,182,.16);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);direction:rtl;
+  font-family:Assistant,"Segoe UI",system-ui,sans-serif;font-size:15px;line-height:1.55;
+  padding:26px 20px 64px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:760px;margin:0 auto}
+h1{font-family:Rubik,Assistant,sans-serif;font-weight:700;font-size:27px;letter-spacing:-.01em;margin:0 0 4px;text-wrap:balance}
+.sub{color:var(--text-2);margin:0 0 22px;max-width:56ch}
+.bar{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 0 12px;margin-bottom:4px}
+.seg{display:flex;gap:6px;background:var(--panel);border:1px solid var(--sep);border-radius:15px;padding:5px;overflow-x:auto}
+.sg{flex:1 0 auto;white-space:nowrap;font:inherit;font-size:13.5px;font-weight:600;color:var(--text-2);
+  background:none;border:0;border-radius:11px;padding:9px 13px;cursor:pointer;
+  transition:background .22s cubic-bezier(.32,.72,0,1),color .22s cubic-bezier(.32,.72,0,1)}
+.sg:hover{color:var(--text)}
+.sg.on{background:var(--accent);color:#fff}
+.sg:focus-visible,.tg:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.togs{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
+.tg{font:inherit;font-size:12.5px;font-weight:700;color:var(--text-2);background:var(--panel);
+  border:1px solid var(--sep);border-radius:999px;padding:6px 13px;cursor:pointer;
+  transition:background .2s,color .2s,border-color .2s}
+.tg.on{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.note{color:var(--text-2);font-size:13.5px;margin:14px 2px 20px;min-height:3em;max-width:60ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:20px 14px}
+.grid.small{grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:16px 10px}
+.cell{display:flex;flex-direction:column;align-items:center;gap:7px;min-width:0}
+.cell span{font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text-3);direction:ltr}
+.grid.small .cell span{display:none}
+.ring{width:100%;aspect-ratio:1;border-radius:50%;overflow:hidden}
+.ring svg{display:block;width:100%;height:100%}
+.ava{--lid:0}
+.ava.line{--lid:.44}
+.ava.night{--lid:.46}
+.avaBody{transform-box:fill-box;transform-origin:50% 88%;animation:avaBreathe 4.6s ease-in-out infinite}
+.avaLids{transform-box:fill-box;transform-origin:top;animation:avaBlink 6.2s infinite;will-change:transform}
+.avaPupils{transform-box:fill-box;transform-origin:center;transition:transform .35s var(--ease)}
+.avaStars{animation:avaTwinkle 3.4s ease-in-out infinite}
+.avaHat{transform-box:fill-box;transform-origin:50% 100%;animation:avaTip 3.2s ease-in-out infinite}
+.avaConf{transform-box:fill-box;animation:avaConfFall 3.1s linear infinite}
+.avatar:active .avaBody,.fav:active .avaBody{animation:avaHop .6s var(--spring)}
+@keyframes avaBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.024)}}
+@keyframes avaBlink{0%,91%,100%{transform:scaleY(var(--lid))}94.5%,96%{transform:scaleY(1)}}
+@keyframes avaTwinkle{0%,100%{opacity:.3}50%{opacity:1}}
+@keyframes avaTip{0%,100%{transform:rotate(-9deg)}50%{transform:rotate(4deg)}}
+@keyframes avaConfFall{0%{transform:translateY(0) rotate(0);opacity:0}10%{opacity:1}85%{opacity:1}100%{transform:translateY(116px) rotate(340deg);opacity:0}}
+@keyframes avaHop{0%{transform:scale(1)}24%{transform:scale(1.12,.88) translateY(3px)}56%{transform:scale(.93,1.09) translateY(-5px)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){
+  .avaBody,.avaLids,.avaStars,.avaHat,.avaConf{animation:none}
+  .avaLids{transform:scaleY(var(--lid))}
+</style>
+<div class="wrap">
+  <h1>מעבדת האווטארים</h1>
+  <p class="sub">אותן חמש־עשרה דמויות, חמש גרסאות. אפשר להחליף ביניהן ולראות בדיוק מה השתנה בכל שלב.</p>
+  <div class="bar">
+    <div class="seg" id="seg"></div>
+    <div class="togs">
+      <button class="tg" data-tog="g">זכר</button>
+      <button class="tg" data-tog="night">לילה</button>
+      <button class="tg" data-tog="bday">יום הולדת</button>
+      <button class="tg" data-tog="small">גודל אמיתי</button>
+    </div>
+  </div>
+  <p class="note" id="note"></p>
+  <div class="grid" id="grid"></div>
+</div>
+<script>
+var PAL = {
+    teal:"#1C7B7E", orange:"#EE9247", slate:"#6E6E6E", night:"#2E3A45",
+    ink:"#3B3B3B",
+    cream:"#F7EFE5", white:"#FBF7F1", peach:"#F3C69E", peachD:"#DDA475",
+    ice:"#A9DDE3", iceD:"#8AC7D0", grey:"#9C9C9C", greyD:"#7F7F7F",
+    tan:"#E9A96A", tanD:"#CE8B4C", moss:"#5AA79B", rose:"#E08A85"
+  };
+  var INK = PAL.ink;
+  /* the "soft" style paints the disc in two tones of one hue rather than one
+     flat colour — a lighter blob clipped to the circle, the way the reference
+     sheet does it. Night gets the same treatment against the navy. */
+  var BG2 = { teal:"#2A9C93", orange:"#F4A863", slate:"#85837C" };
+  var NIGHT2 = "#3B4A57";
+  var INK2 = "#2B2622";
+  function ell(cx,cy,rx,ry,f){ return '<ellipse cx="'+cx+'" cy="'+cy+'" rx="'+rx+'" ry="'+ry+'" fill="'+f+'"/>'; }
+  function ellS(cx,cy,rx,ry,f,sw){ return '<ellipse cx="'+cx+'" cy="'+cy+'" rx="'+rx+'" ry="'+ry+'" fill="'+f+'" stroke="'+INK+'" stroke-width="'+sw+'"/>'; }
+  function circ(cx,cy,r,f){ return '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="'+f+'"/>'; }
+  /* Every corner in the set is softened here rather than at 40 call sites.
+     The radius is clamped to half the shorter edge, so a small triangle (a
+     nose) rounds proportionally instead of collapsing. */
+  function n2(v){ return (Math.round(v * 100) / 100); }
+  function roundPoly(pts, r, f){
+    var n = pts.length, d = "";
+    for(var i = 0; i < n; i++){
+      var p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n];
+      var ax = p0[0] - p1[0], ay = p0[1] - p1[1], bx = p2[0] - p1[0], by = p2[1] - p1[1];
+      var la = Math.hypot(ax, ay) || 1, lb = Math.hypot(bx, by) || 1;
+      var ra = Math.min(r, la / 2), rb = Math.min(r, lb / 2);
+      var sx = p1[0] + ax / la * ra, sy = p1[1] + ay / la * ra;
+      var ex = p1[0] + bx / lb * rb, ey = p1[1] + by / lb * rb;
+      d += (i === 0 ? "M" : "L") + n2(sx) + " " + n2(sy) +
+           "Q" + n2(p1[0]) + " " + n2(p1[1]) + " " + n2(ex) + " " + n2(ey);
+    }
+    return '<path d="' + d + 'Z" fill="' + f + '"/>';
+  }
+  function tri(x1,y1,x2,y2,x3,y3,f,r){ return roundPoly([[x1,y1],[x2,y2],[x3,y3]], r === undefined ? 3.2 : r, f); }
+  function P(d,f){ return '<path d="'+d+'" fill="'+f+'"/>'; }
+  function S(d,c,w){ return '<path d="'+d+'" fill="none" stroke="'+(c||INK)+'" stroke-width="'+(w||2)+'" stroke-linecap="round" stroke-linejoin="round"/>'; }
+  /* shallow on purpose: a deep grin is the other half of "childish" */
+  function smile(cx,cy,w,c){ return S("M"+(cx-w)+" "+cy+" Q"+cx+" "+(cy+w*0.5).toFixed(1)+" "+(cx+w)+" "+cy, c, 1.9); }
+
+  /* Eyes at (39,53) and (61,53): smaller and set wider than a cartoon
+     face, which is most of what separates this from a children's app.
+     The catchlight is a third of the pupil — any smaller and it simply
+     disappears at the 42px the avatar is actually rendered at. It sits
+     INSIDE the pupil group, so it travels with the eye-tracking. */
+  var EYE = {x1:39, x2:61, y:53, rx:3.8, ry:4.5};
+  /* "line" is the illustrated variant: a white eye-white with a small pupil,
+     outlined so it still reads on a white-furred animal, plus a resting
+     half-lid (--lid on .ava.line) for the droll look of the reference. */
+  function rig(lidFill, sclera, variant){
+    if(variant === "line"){
+      /* One lid per eye, and each one sized to stay INSIDE the panda's eye
+         patch (circle r=10.5 at the eye) at every point of the blink. The lid
+         is the same colour as the patch, so any part of it poking outside
+         became part of the patch's silhouette: the old rect was wider than
+         the circle above y≈46 and reached the ear, which is what squared the
+         patches off into a band. 32.6..45.4 x 45.5..60 fits within the circle
+         throughout, so the patch reads as a plain circle whatever the lid does. */
+      return ellS(39,53.4,5.7,6.3,PAL.white,1.3) + ellS(61,53.4,5.7,6.3,PAL.white,1.3) +
+        '<g class="avaPupils">' +
+          ell(39,54.2,2.9,3.4,INK) + ell(61,54.2,2.9,3.4,INK) +
+          circ(40.2,52.8,1.15,PAL.white) + circ(62.2,52.8,1.15,PAL.white) +
+        '</g>' +
+        '<g class="avaLids">' +
+          '<rect x="32.6" y="45.5" width="12.8" height="14.5" fill="'+lidFill+'"/>' +
+          '<rect x="54.6" y="45.5" width="12.8" height="14.5" fill="'+lidFill+'"/>' +
+        '</g>';
+    }
+    if(variant === "soft"){
+      /* one big highlight upper-left on BOTH eyes (one light source) plus a
+         small lower-right one — that gloss is the whole character of the
+         reference set, and it is what actually reads at 42px. */
+      return '<g class="avaPupils">' +
+          ell(39,53,4.6,5.6,INK2) + ell(61,53,4.6,5.6,INK2) +
+          ell(37.5,50.7,2.1,2.5,PAL.white) + ell(59.5,50.7,2.1,2.5,PAL.white) +
+          circ(41,55.8,1.05,PAL.white) + circ(63,55.8,1.05,PAL.white) +
+        '</g>' +
+        '<g class="avaLids"><rect x="29" y="42" width="42" height="17.5" fill="'+lidFill+'"/></g>';
+    }
+    return (sclera ? ell(39,53,5.2,6,PAL.white) + ell(61,53,5.2,6,PAL.white) : "") +
+      '<g class="avaPupils">' +
+        ell(39,53,3.8,4.5,INK) + ell(61,53,3.8,4.5,INK) +
+        circ(40.4,51.4,1.35,PAL.white) + circ(62.4,51.4,1.35,PAL.white) +
+      '</g>' +
+      '<g class="avaLids"><rect x="30" y="43" width="40" height="15.5" fill="'+lidFill+'"/></g>';
+  }
+
+  var ANIMALS = [
+    { id:"cat", bg:"slate", fur:PAL.peach, fur2:PAL.cream, acc:PAL.peachD,
+      ears:function(c){ return tri(25,46,30,14,48,32,c.fur)+tri(75,46,70,14,52,32,c.fur)+tri(30,42,32,24,44,33,c.acc)+tri(70,42,68,24,56,33,c.acc); },
+      marks:function(c){ return ""; },
+      snout:function(c){ return tri(46.8,62,53.2,62,50,65.6,INK)+smile(50,68,5)+S("M22 60 L36 62",PAL.white,1.4)+S("M22 66 L36 65.4",PAL.white,1.4)+S("M78 60 L64 62",PAL.white,1.4)+S("M78 66 L64 65.4",PAL.white,1.4); } },
+
+    { id:"dog", bg:"slate", fur:PAL.tan, fur2:PAL.cream, acc:PAL.tanD,
+      ears:function(c){ return tri(24,50,30,20,46,34,c.acc)+tri(76,50,70,20,54,34,c.acc); },
+      marks:function(c){ return ell(50,70,11,7.5,c.fur2); },
+      snout:function(c){ return ell(50,63,5.2,4.2,INK)+S("M50 66 L50 69",INK,1.8)+smile(50,69,5.5); } },
+
+    { id:"fox", bg:"orange", fur:PAL.grey, fur2:PAL.cream, acc:PAL.greyD,
+      ears:function(c){ return tri(22,44,28,10,46,30,c.fur)+tri(78,44,72,10,54,30,c.fur)+tri(28,40,30,20,42,31,c.acc)+tri(72,40,70,20,58,31,c.acc); },
+      marks:function(c){ return P("M50 44 Q34 50 30 66 Q40 78 50 78 Q60 78 70 66 Q66 50 50 44 Z",c.fur2); },
+      snout:function(c){ return ell(50,64,4.6,3.7,INK)+smile(50,68,5); } },
+
+    { id:"bear", bg:"slate", fur:PAL.ice, fur2:PAL.white, acc:PAL.iceD,
+      ears:function(c){ return circ(26,35,11,c.fur)+circ(74,35,11,c.fur)+circ(26,35,6,c.acc)+circ(74,35,6,c.acc); },
+      marks:function(c){ return ""; },
+      snout:function(c){ return ell(50,63,5,4,INK)+S("M50 66 L50 69",INK,1.8)+smile(50,69,5.5); } },
+
+    { id:"panda", bg:"teal", fur:PAL.white, fur2:PAL.cream, acc:"#4A4A4A",
+      ears:function(c){ return circ(26,34,11,c.acc)+circ(74,34,11,c.acc); },
+      /* round patches, not tilted ovals — a rotated ellipse next to the
+         rectangular eyelid overlay was reading as a slanted rectangle */
+      marks:function(c){ return circ(39,53,10.5,c.acc)+circ(61,53,10.5,c.acc); },
+      lid:"#4A4A4A", sclera:true,
+      snout:function(c){ return ell(50,65,4.8,3.8,c.acc)+smile(50,69,5,c.acc); } },
+
+    { id:"koala", bg:"orange", fur:PAL.grey, fur2:PAL.cream, acc:PAL.greyD,
+      ears:function(c){ return circ(21,48,13,c.fur)+circ(79,48,13,c.fur)+circ(21,48,8.5,c.fur2)+circ(79,48,8.5,c.fur2); },
+      marks:function(c){ return ""; },
+      snout:function(c){ return ell(50,63,6.6,5.6,INK)+smile(50,71,5,INK); } },
+
+    { id:"rabbit", bg:"teal", fur:PAL.cream, fur2:PAL.white, acc:PAL.peach,
+      ears:function(c){ return ell(38,22,7,20,c.fur)+ell(62,22,7,20,c.fur)+ell(38,23,3.4,14,c.acc)+ell(62,23,3.4,14,c.acc); },
+      marks:function(c){ return ""; },
+      snout:function(c){ return tri(47,62,53,62,50,65.2,c.acc)+S("M50 65 L50 68",INK,1.6)+smile(50,68,5); } },
+
+    { id:"mouse", bg:"slate", fur:PAL.ice, fur2:PAL.white, acc:PAL.iceD,
+      ears:function(c){ return circ(23,38,14,c.fur)+circ(77,38,14,c.fur)+circ(23,38,8.5,c.acc)+circ(77,38,8.5,c.acc); },
+      marks:function(c){ return ""; },
+      snout:function(c){ return ell(50,64,3.8,3,INK)+smile(50,68,5)+S("M23 62 L37 64",PAL.white,1.4)+S("M77 62 L63 64",PAL.white,1.4); } },
+
+    { id:"tiger", bg:"teal", fur:PAL.tan, fur2:PAL.cream, acc:PAL.tanD,
+      ears:function(c){ return circ(27,35,10,c.fur)+circ(73,35,10,c.fur)+circ(27,35,5.4,c.acc)+circ(73,35,5.4,c.acc); },
+      marks:function(c){ return S("M33 42 L37 47",c.acc,2.4)+S("M42 38 L44 44",c.acc,2.4)+S("M67 42 L63 47",c.acc,2.4)+S("M58 38 L56 44",c.acc,2.4)+S("M24 60 L31 60",c.acc,2.4)+S("M76 60 L69 60",c.acc,2.4); },
+      snout:function(c){ return tri(46.8,62,53.2,62,50,65.4,INK)+smile(50,68,5); } },
+
+    { id:"monkey", bg:"orange", fur:PAL.tanD, fur2:PAL.peach, acc:PAL.cream,
+      ears:function(c){ return circ(20,55,11,c.fur)+circ(80,55,11,c.fur)+circ(20,55,6,c.fur2)+circ(80,55,6,c.fur2); },
+      marks:function(c){ return ell(50,60,20,19,c.fur2); },
+      snout:function(c){ return ell(50,65,3.4,2.6,INK)+smile(50,69,5); } },
+
+    /* the eye bulges are a lighter moss, not the head colour - drawn in fur they
+       vanished and the frog read as a green human face with a very wide grin */
+    { id:"frog", bg:"slate", fur:PAL.moss, fur2:"#7CBFB2", acc:"#3D7F74", lid:"#7CBFB2",
+      ears:function(c){ return ""; },
+      marks:function(c){ return circ(37,50,13,c.fur2)+circ(63,50,13,c.fur2); },
+      snout:function(c){ return S("M41 70 Q50 74.5 59 70",c.acc,2)+circ(45,65,1.4,c.acc)+circ(55,65,1.4,c.acc); } },
+
+    { id:"penguin", bg:"orange", fur:"#4A5560", fur2:PAL.white, acc:PAL.tan,
+      ears:function(c){ return ""; },
+      marks:function(c){ return P("M50 35 Q30 43 30 60 Q30 79 50 81 Q70 79 70 60 Q70 43 50 35 Z",c.fur2); },
+      snout:function(c){ return P("M42.5 61 Q50 58 57.5 61 Q50 71 42.5 61 Z",c.acc); } },
+
+    { id:"owl", bg:"teal", fur:PAL.grey, fur2:PAL.cream, acc:PAL.tan,
+      ears:function(c){ return tri(25,40,29,17,44,32,c.fur)+tri(75,40,71,17,56,32,c.fur); },
+      marks:function(c){ return circ(40,53,12,c.fur2)+circ(60,53,12,c.fur2); },
+      snout:function(c){ return P("M46.5 60 L53.5 60 L50 66.5 Z",c.acc)+S("M34 72 Q50 78 66 72",c.fur2,2.2); } },
+
+    { id:"pig", bg:"slate", fur:PAL.rose, fur2:"#EFA9A4", acc:"#C46E6A",
+      ears:function(c){ return tri(26,44,32,24,45,34,c.fur)+tri(74,44,68,24,55,34,c.fur); },
+      marks:function(c){ return ""; },
+      snout:function(c){ return ell(50,65,8.6,6.2,c.acc)+ell(46.8,65,1.6,2.3,INK)+ell(53.2,65,1.6,2.3,INK)+S("M39 73 Q50 77 61 73",c.acc,2); } },
+
+    { id:"deer", bg:"slate", fur:PAL.tan, fur2:PAL.cream, acc:PAL.tanD,
+      ears:function(c){ return S("M37 33 L31 15 M31 21 L23 17 M63 33 L69 15 M69 21 L77 17",c.acc,3)+ell(27,44,7,10,c.fur)+ell(73,44,7,10,c.fur); },
+      marks:function(c){ return ell(50,70,10,7,c.fur2)+circ(35,61,1.9,c.fur2)+circ(65,61,1.9,c.fur2); },
+      snout:function(c){ return ell(50,65,4.4,3.4,INK)+smile(50,69,5); } }
+  ];
+
+  /* Masculine and feminine are drawn into the FACE, not hung off it as
+     an accessory — a flower tucked behind an ear was the single most
+     childish thing in the set. Lashes against a pair of level brows;
+     level matters, an angled brow reads as anger on every species. */
+  function genderMark(g,c){
+    if(g === "f"){
+      return S("M33.2 49 L29.8 46.4 M32.4 52.2 L28.6 51.4 M33.2 55.4 L29.8 57.8",INK,1.3) +
+             S("M66.8 49 L70.2 46.4 M67.6 52.2 L71.4 51.4 M66.8 55.4 L70.2 57.8",INK,1.3);
+    }
+    return S("M33.4 44.6 L44.6 44.6 M55.4 44.6 L66.6 44.6",INK,2.1);
+  }
+
+  function birthdayMark(){
+    var conf = "", cols = [PAL.cream, PAL.tan, PAL.moss, PAL.rose, PAL.ice];
+    for(var i = 0; i < 6; i++){
+      conf += '<rect class="avaConf" x="' + (14 + i * 14) + '" y="-8" width="4" height="6" rx="1" fill="' +
+        cols[i % cols.length] + '" style="animation-delay:' + (i * 0.5).toFixed(2) + 's"/>';
+    }
+    return '<g class="avaHat">' +
+      P("M50 5 L62 30 L38 30 Z", PAL.cream) +
+      P("M50 5 L55.6 16.6 L44.4 16.6 Z", PAL.tan) +
+      P("M43 24.4 L57 24.4 L58.6 30 L36.4 30 Z", PAL.tan) +
+      circ(50,4.4,4,PAL.rose) + '</g>' + conf;
+  }
+
+  var AVA_UID = 0;
+  /* the set the product ships: a dark contour, a white eye with a small pupil
+     and a resting half-lid. Callers may override per avatar; the style page does. */
+  var AVATAR_STYLE = "line";
+  /* opt: {g:"m"|"f", night:bool, bday:bool, style:"flat"|"line", shadow:bool}
+     The 45° long shadow is off by default now — it dated the set and ate the
+     night sky. `shadow:true` is kept only so the style page can show it. */
+  function avatarSVG(idx, opt){
+    opt = opt || {};
+    var a = ANIMALS[((idx % ANIMALS.length) + ANIMALS.length) % ANIMALS.length];
+    var night = !!opt.night;
+    var style = opt.style || AVATAR_STYLE;
+    var line = style === "line";
+    var soft = style === "soft";
+    var bg = night ? PAL.night : PAL[a.bg];
+    var shade = opt.shadow
+      ? '<g fill="rgba(0,0,0,' + (night ? ".22" : ".13") + '")">' +
+        '<ellipse cx="50" cy="54" rx="27" ry="25"/>' +
+        '<path d="M30.2 71 L69.8 37 L220 187 L180 221 Z"/></g>'
+      : "";
+    var sky = night
+      ? circ(23,22,10,PAL.cream) + circ(28,18,9.4,bg) +
+        '<g class="avaStars">' + circ(38,14,1.6,PAL.cream) + circ(12,44,1.2,PAL.cream) + circ(30,28,1.1,PAL.cream) + "</g>"
+      : "";
+    /* the contour goes on the SILHOUETTE only — ears and head in one group,
+       so every fill inherits the stroke and the head paints over the ear
+       outlines it overlaps. Features keep their own strokes and are unaffected. */
+    var head = line
+      ? '<g stroke="' + INK + '" stroke-width="1.7" stroke-linejoin="round">' + a.ears(a) + ell(50,57,27,25,a.fur) + "</g>"
+      : a.ears(a) + ell(50,57,27,25,a.fur);
+
+    if(soft){
+      /* The disc is drawn INSIDE the artwork at r=42 instead of being the full
+         square, which is what lets ears, antlers and spikes break past its edge
+         the way they do on the reference sheet. Nothing outside r=50 is drawn,
+         so the container's own circular clip never bites and no CSS changes. */
+      var u = "s" + (++AVA_UID);
+      var bg2 = night ? NIGHT2 : BG2[a.bg];
+      return '<svg viewBox="0 0 100 100" class="ava soft' + (night ? " night" : "") + '" aria-hidden="true" focusable="false">' +
+        '<defs>' +
+          '<clipPath id="d' + u + '"><circle cx="50" cy="52" r="42"/></clipPath>' +
+          '<clipPath id="h' + u + '"><ellipse cx="50" cy="57" rx="27" ry="25"/></clipPath>' +
+        "</defs>" +
+        circ(50,52,42,bg) +
+        /* a diagonal sweep, not a concentric blob: an arc that runs parallel
+           to the rim reads as a printing error, a diagonal reads as chosen. */
+        '<g clip-path="url(#d' + u + ')">' +
+          P("M-4 104 L104 104 L104 52 Q50 90 -4 38 Z", bg2) + (night ? sky : "") + "</g>" +
+        '<g class="avaBody">' +
+          /* shoulders sit under the head and run off the bottom of the disc */
+          P("M27 100 Q29 79 50 79 Q71 79 73 100 Z", a.acc) +
+          head +
+          '<g clip-path="url(#h' + u + ')"><ellipse cx="94" cy="46" rx="30" ry="38" fill="rgba(0,0,0,.06)"/></g>' +
+          a.marks(a) + rig(a.lid || a.fur, a.sclera, "soft") + a.snout(a) +
+          genderMark(opt.g === "f" ? "f" : "m", a) +
+        "</g>" +
+        (opt.bday ? birthdayMark() : "") +
+        "</svg>";
+    }
+
+    return '<svg viewBox="0 0 100 100" class="ava' + (night ? " night" : "") + (line ? " line" : "") + '" aria-hidden="true" focusable="false">' +
+      '<rect width="100" height="100" fill="' + bg + '"/>' + shade + sky +
+      '<g class="avaBody">' +
+        head + a.marks(a) + rig(a.lid || a.fur, a.sclera, line ? "line" : "") + a.snout(a) +
+        genderMark(opt.g === "f" ? "f" : "m", a) +
+      "</g>" +
+      (opt.bday ? birthdayMark() : "") +
+      "</svg>";
+  }
+  function seedIndex(seed){
+    var h = 0, s = String(seed);
+    for(var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return h % ANIMALS.length;
+  }
+
+
+/* ── the earlier passes, kept only here ─────────────────────────────
+   Each is a patch over the live module rather than a second drawing,
+   so a change to the real set still shows up in every column. */
+var MASKS = {
+  cat:      function(c){ return ell(50,66,13,9,c.fur2); },
+  dog:      function(c){ return ell(50,70,11,7.5,c.fur2)+ell(50,39,9,6,c.fur2); },
+  bear:     function(c){ return ell(50,66,13.5,9.5,c.fur2); },
+  koala:    function(c){ return ell(50,66,14,10,c.fur2); },
+  rabbit:   function(c){ return ell(50,67,12,8.5,c.fur2); },
+  mouse:    function(c){ return ell(50,67,12,8,c.fur2); },
+  tiger:    function(c){ return S("M33 42 L37 47",c.acc,2.4)+S("M42 38 L44 44",c.acc,2.4)+S("M67 42 L63 47",c.acc,2.4)+S("M58 38 L56 44",c.acc,2.4)+S("M24 60 L31 60",c.acc,2.4)+S("M76 60 L69 60",c.acc,2.4)+ell(50,66,12,8,c.fur2); },
+  lion:     function(c){ return ell(50,66,13,9,c.fur2); },
+  monkey:   function(c){ return ell(50,60,20,19,c.fur2)+P("M32 44 Q50 34 68 44 Q50 40 32 44 Z",c.fur); },
+  frog:     function(c){ return ell(50,73,14,6.5,PAL.cream); },
+  hedgehog: function(c){ return ell(50,64,20,18,c.fur)+ell(50,70,11,7,c.fur2); },
+  deer:     function(c){ return ell(50,70,13,9,c.fur2)+circ(35,61,2.6,c.fur2)+circ(65,61,2.6,c.fur2); }
+};
+var LIVE_MARKS = {}, LIVE_LID = {};
+ANIMALS.forEach(function(a){ LIVE_MARKS[a.id] = a.marks; LIVE_LID[a.id] = a.lid; });
+
+var liveSmile = smile, liveGender = genderMark, liveRig = rig;
+
+function legacySmile(cx,cy,w,c){
+  return S("M"+(cx-w)+" "+cy+" Q"+cx+" "+(cy+w*0.78).toFixed(1)+" "+(cx+w)+" "+cy, c, 2);
+}
+function legacyGender(g,c){
+  if(g === "f"){
+    var f = "", k;
+    for(k = 0; k < 5; k++){
+      var a = k / 5 * Math.PI * 2;
+      f += circ((26 + Math.cos(a) * 4.4).toFixed(1), (34 + Math.sin(a) * 4.4).toFixed(1), 3.4, PAL.rose);
+    }
+    return f + circ(26,34,2.2,PAL.cream);
+  }
+  return S("M72 30 L74 40",PAL.moss,2.2) + ell(69.5,32.5,3.6,2.2,PAL.moss) + ell(76.5,35,3.6,2.2,PAL.moss);
+}
+/* the catchlight the complaint was about: a third smaller, and it vanishes */
+function legacyRig(lidFill, sclera){
+  return (sclera ? ell(40,53,5.4,6.2,PAL.white) + ell(60,53,5.4,6.2,PAL.white) : "") +
+    '<g class="avaPupils">' +
+      ell(40,53,4.1,4.9,INK) + ell(60,53,4.1,4.9,INK) +
+      circ(41.4,51.4,1.15,PAL.white) + circ(61.4,51.4,1.15,PAL.white) +
+    '</g>' +
+    '<g class="avaLids"><rect x="30" y="43" width="40" height="16" fill="'+lidFill+'"/></g>';
+}
+function useVersion(v){
+  var legacy = (v === "v1");
+  smile = legacy ? legacySmile : liveSmile;
+  genderMark = legacy ? legacyGender : liveGender;
+  rig = legacy ? legacyRig : liveRig;
+  ANIMALS.forEach(function(a){
+    a.marks = legacy && MASKS[a.id] ? MASKS[a.id] : LIVE_MARKS[a.id];
+    a.lid = legacy && a.id === "frog" ? a.fur : LIVE_LID[a.id];
+  });
+}
+var VERSIONS = [
+  { id:"v1", t:"מדבקות לוע + אביזרים", d:"הסט לפני התיקון האחרון: כתם לוע רחב שקורא כמסכה, פרח ועלה כסימני מגדר, נקודה לבנה קטנה בעין, חיוך עמוק — ועם הצל הארוך.", opt:{style:"flat", shadow:true} },
+  { id:"v2", t:"אחרי התיקון, עם צל", d:"בלי מדבקות לוע, גבות ישרות מול ריסים, נקודה לבנה גדולה פי שלושה, חיוך רדוד. הצל הארוך עדיין שם.", opt:{style:"flat", shadow:true} },
+  { id:"v3", t:"בלי צל", d:"אותו סט שטוח, בלי הצל הארוך.", opt:{style:"flat"} },
+  { id:"v4", t:"בהשראת האיור", d:"קו מתאר כהה דק סביב הצללית, לובן־עין עם אישון קטן, ועפעף שנח קצת מושפל. פינות מעוגלות והרעמה של האריה לא אחידה. זו הגרסה שרצה עכשיו בדאשבורד.", opt:{style:"line"} },
+  { id:"v5", t:"רך ומבריק", d:"בהשראת סט האיורים השני: עין כהה עם נצנוץ לבן גדול, עיגול רקע בשני גוונים של אותו צבע, הצללה רכה על צד אחד של הפנים, כתפיים מתחת לראש — והאוזניים והקרניים חורגות מהעיגול במקום להיחתך בו.", opt:{style:"soft"} }
+];
+
+
+var GRID = document.getElementById("grid"), NOTE = document.getElementById("note"),
+    SEG = document.getElementById("seg"), N = ANIMALS.length;
+var state = { v:"v4", g:"m", night:false, bday:false, small:false };
+
+VERSIONS.forEach(function(v){
+  var b = document.createElement("button");
+  b.className = "sg"; b.dataset.v = v.id; b.textContent = v.t;
+  b.addEventListener("click", function(){ state.v = v.id; draw(); });
+  SEG.appendChild(b);
+});
+document.querySelectorAll("[data-tog]").forEach(function(b){
+  b.addEventListener("click", function(){
+    var k = b.dataset.tog;
+    if(k === "g") state.g = state.g === "m" ? "f" : "m"; else state[k] = !state[k];
+    draw();
+  });
+});
+
+function draw(){
+  var v = VERSIONS.filter(function(x){ return x.id === state.v; })[0];
+  useVersion(v.id);
+  NOTE.textContent = v.d;
+  document.querySelectorAll(".sg").forEach(function(b){ b.classList.toggle("on", b.dataset.v === state.v); });
+  document.querySelectorAll("[data-tog]").forEach(function(b){
+    var k = b.dataset.tog;
+    b.classList.toggle("on", k === "g" ? state.g === "f" : !!state[k]);
+    if(k === "g") b.textContent = state.g === "f" ? "נקבה" : "זכר";
+  });
+  GRID.classList.toggle("small", state.small);
+  var html = "";
+  for(var k = 0; k < N; k++){
+    html += '<div class="cell"><div class="ring">' +
+      avatarSVG(k, { g:state.g, night:state.night, bday:state.bday,
+                     style:v.opt.style, shadow:!!v.opt.shadow }) +
+      '</div><span>' + ANIMALS[k].id + '</span></div>';
+  }
+  GRID.innerHTML = html;
+}
+draw();
+
+var praf = 0, pxy = null;
+function track(){
+  if(!pxy) return;
+  document.querySelectorAll(".avaPupils").forEach(function(g){
+    var r = g.ownerSVGElement.getBoundingClientRect();
+    if(!r.width) return;
+    var dx = (pxy.x - (r.left + r.width / 2)) / (r.width / 2),
+        dy = (pxy.y - (r.top + r.height / 2)) / (r.height / 2),
+        m = Math.hypot(dx, dy) || 1, c = Math.min(1, m) / m;
+    g.style.transform = "translate(" + (dx * c * 2.4).toFixed(2) + "px," + (dy * c * 1.9).toFixed(2) + "px)";
+  });
+}
+window.addEventListener("pointermove", function(e){
+  pxy = { x:e.clientX, y:e.clientY };
+  if(praf) return;
+  praf = requestAnimationFrame(function(){ praf = 0; track(); });
+}, { passive:true });
+
+</script>

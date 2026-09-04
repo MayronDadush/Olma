@@ -1,0 +1,164 @@
+'use strict';
+// Answering a coordination with a tap. The point of this file is that it goes
+// through the SAME domain call and the same fan-out as the chat tool: a yes
+// given on the page and a yes given in a conversation have to leave identical
+// rows, or the two faces of the system slowly tell different people different
+// things about one meeting.
+const { test, before, after } = require('node:test');
+const assert = require('node:assert/strict');
+const { freshDb, makeUser } = require('./helpers');
+const { withTx } = require('../src/db/pool');
+const write = require('../src/domain/user-dashboard-write');
+const dash = require('../src/domain/user-dashboard');
+const meetings = require('../src/domain/meetings');
+
+let db, me, gali, ron;
+const tx = (fn) => withTx(db.pool, fn);
+const actAs = (u, action, payload) => tx((c) => write.perform(c, u.id, action, payload));
+
+// Tomorrow at 17:00 Israel time, stated the way the tools require it.
+function tomorrowAt(hh) {
+  const d = new Date(Date.now() + 86400e3);
+  const day = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(d);
+  return `${day}T${hh}:00:00+03:00`;
+}
+
+// A live connection with meetings enabled on BOTH sides — which is what
+// approving a request does in the real flow (respond_to_connection_request
+// grants all three categories for both people).
+async function connect(a, b) {
+  const { rows } = await db.pool.query(
+    `INSERT INTO connections (requester_id, target_id, target_phone, status, responded_at)
+     VALUES ($1, $2, $3, 'active', now()) RETURNING id`, [a.id, b.id, b.phone]);
+  for (const grantor of [a, b]) {
+    for (const feature of ['sharing', 'meetings', 'messages']) {
+      await db.pool.query(
+        `INSERT INTO connection_feature_grants (connection_id, grantor_id, feature)
+         VALUES ($1, $2, $3)`, [rows[0].id, grantor.id, feature]);
+    }
+  }
+}
+
+async function coordination(initiator, others, title) {
+  const res = await tx((c) => meetings.startMeeting(c, initiator.id, title, others.map((u) => u.id)));
+  assert.equal(res.ok, true, res.ok ? '' : JSON.stringify(res.error));
+  return Number(res.data.meeting.id);
+}
+
+before(async () => {
+  db = await freshDb();
+  me = await makeUser(db.pool, '+972531940001', { firstName: 'Miron' });
+  gali = await makeUser(db.pool, '+972531940002', { firstName: 'Gali' });
+  ron = await makeUser(db.pool, '+972531940003', { firstName: 'Ron' });
+  await db.pool.query(`UPDATE users SET timezone = 'Asia/Jerusalem'`);
+  await connect(me, gali);
+  await connect(me, ron);
+  await connect(gali, ron);
+});
+after(async () => { if (db) await db.teardown(); });
+
+test('a coordination reaches the page with a slot, and every answer state', async () => {
+  const id = await coordination(gali, [me, ron], 'קפה');
+  const when = tomorrowAt('17');
+  assert.equal((await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־17:00', when))).ok, true);
+  assert.equal((await tx((c) => meetings.respondToSlot(c, ron.id, id, true, null, null, when))).ok, true);
+
+  const page = await tx((c) => dash.load(c, me.id));
+  const m = page.data.meetings.find((x) => Number(x.id) === id);
+  assert.equal(m.mine, false);
+  assert.equal(Number(m.initiatorId), Number(gali.id));
+  assert.equal(m.proposedDay, 1, 'the slot did not land on tomorrow in their own zone');
+  assert.equal(m.proposedTime, '17:00');
+  const byId = Object.fromEntries(m.participants.map((p) => [String(p.id), p]));
+  assert.equal(byId[String(ron.id)].answer, 'y');
+  assert.equal(byId[String(me.id)].answer, '', 'silence was folded into a refusal');
+  assert.equal(byId[String(gali.id)].answer, 'y', 'proposing is agreeing to it');
+});
+
+test('a yes from the page confirms the meeting and tells everybody else', async () => {
+  const id = await coordination(gali, [me, ron], 'פוקר');
+  const when = tomorrowAt('20');
+  await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־20:00', when));
+  await tx((c) => meetings.respondToSlot(c, ron.id, id, true, null, null, when));
+
+  const r = await actAs(me, 'respondToMeeting', { meetingId: id, accept: true, acceptedStartAt: when });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  assert.equal(r.data.meetingStatus, 'confirmed');
+
+  const { rows } = await db.pool.query(
+    `SELECT user_id FROM outbox WHERE kind = 'meeting_confirmed'
+       AND (payload->>'meetingId')::bigint = $1`, [id]);
+  const told = rows.map((x) => Number(x.user_id)).sort();
+  assert.deepEqual(told, [gali.id, ron.id].map(Number).sort(),
+    'a tap confirmed the meeting and nobody else was told');
+  assert.equal(told.includes(Number(me.id)), false,
+    'the person who tapped was sent a notification about their own tap');
+});
+
+test('a no from the page is a decline, and the initiator hears it', async () => {
+  const id = await coordination(gali, [me, ron], 'ישיבה');
+  const when = tomorrowAt('11');
+  await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־11:00', when));
+
+  const r = await actAs(me, 'respondToMeeting', { meetingId: id, accept: false });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  const { rows } = await db.pool.query(
+    `SELECT user_id FROM outbox WHERE kind = 'meeting_slot_declined'
+       AND (payload->>'meetingId')::bigint = $1`, [id]);
+  assert.deepEqual(rows.map((x) => Number(x.user_id)), [Number(gali.id)]);
+});
+
+test('a yes cannot land on a slot that moved while the page sat open', async () => {
+  const id = await coordination(gali, [me, ron], 'שינוי');
+  const stale = tomorrowAt('12');
+  await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־12:00', stale));
+  const moved = tomorrowAt('15');
+  await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־15:00', moved));
+
+  const r = await actAs(me, 'respondToMeeting', { meetingId: id, accept: true, acceptedStartAt: stale });
+  assert.equal(r.ok, false, 'agreement landed on a time this person never saw');
+  const { rows } = await db.pool.query(
+    `SELECT status FROM meetings WHERE id = $1`, [id]);
+  assert.equal(rows[0].status, 'negotiating');
+});
+
+test('leaving from the page removes them and tells the initiator', async () => {
+  const id = await coordination(gali, [me, ron], 'יציאה');
+  const r = await actAs(me, 'leaveMeeting', { meetingId: id });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  const { rows } = await db.pool.query(
+    `SELECT state FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [id, me.id]);
+  assert.equal(rows[0].state, 'opted_out');
+  const told = await db.pool.query(
+    `SELECT user_id FROM outbox WHERE kind IN ('meeting_opt_out','meeting_no_match')
+       AND (payload->>'meetingId')::bigint = $1`, [id]);
+  assert.equal(told.rows.length >= 1, true, 'somebody left and nobody was told');
+});
+
+test('a meeting somebody left still shows the person, counted in nothing', async () => {
+  const id = await coordination(gali, [me, ron], 'מי נשאר');
+  await actAs(ron, 'leaveMeeting', { meetingId: id });
+  const page = await tx((c) => dash.load(c, me.id));
+  const m = page.data.meetings.find((x) => Number(x.id) === id);
+  const gone = m.participants.find((p) => Number(p.id) === Number(ron.id));
+  assert.equal(Boolean(gone), true, 'the tally dropped and the screen cannot say why');
+  assert.equal(gone.left, true);
+});
+
+test('a meeting this person is not in cannot be answered or left', async () => {
+  const id = await coordination(gali, [ron], 'לא שלי');
+  const when = tomorrowAt('09');
+  await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־9:00', when));
+  const stranger = await makeUser(db.pool, '+972531940009');
+  assert.equal((await actAs(stranger, 'respondToMeeting', { meetingId: id, accept: true, acceptedStartAt: when })).ok, false);
+  assert.equal((await actAs(stranger, 'leaveMeeting', { meetingId: id })).ok, false);
+});
+
+test('a meeting the person left is off their page entirely', async () => {
+  const id = await coordination(gali, [me, ron], 'נעלם');
+  await actAs(me, 'leaveMeeting', { meetingId: id });
+  const page = await tx((c) => dash.load(c, me.id));
+  assert.equal(page.data.meetings.some((x) => Number(x.id) === id), false);
+});

@@ -27,6 +27,7 @@ const pauseDomain = require('../../domain/pause');
 const sessionIndex = require('../../channels/sessions');
 const evalsJob = require('../../jobs/evals');
 const picker = require('./picker');
+const userDashboard = require('./user-dashboard');
 // /ready's whole test. brokerd beats immediately on boot and then every 60s,
 // so three intervals is generous enough that an ordinary slow tick under load
 // never fails a deploy, and tight enough that a daemon which died on boot
@@ -2059,6 +2060,17 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
       const pick = parsed.pathname.match(picker.TOKEN_RE);
       if (pick) {
         return picker.handle(req, res, pool, pick[1], { calendarDomain });
+      }
+
+      // The PERSONAL dashboard — the page a user opens about themselves, as
+      // opposed to everything below this line, which is the operator's page
+      // about everybody. Ahead of Basic Auth for the same reason as the two
+      // routes above it: the person taps it from WhatsApp on their phone and
+      // has no admin password. It carries its own identity model (a one-time
+      // link exchanged for a session cookie; domain/dashboard-auth.js), and
+      // every route inside it refuses without one.
+      if (userDashboard.matches(parsed.pathname)) {
+        return userDashboard.handle(req, res, pool, parsed.pathname);
       }
 
       // Unauthenticated READINESS probe, for the deploy gate specifically —

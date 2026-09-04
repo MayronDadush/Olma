@@ -228,3 +228,72 @@ test('the paused and the eval user are never written to', async () => {
     assert.equal(g.calls.length, 0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// One task, its own answer (migration 029). The switch in the task sheet is
+// about the row somebody is looking at, so it has to be able to disagree with
+// the standing one in both directions.
+
+test('a task opted in reaches the calendar with the standing switch off', async () => {
+  const u = await syncingUser('+972539000101');
+  await db.pool.query(`UPDATE users SET calendar_sync_tasks = FALSE WHERE id = $1`, [u.id]);
+  const t = await withClient((c) => tasksDomain.addTask(c, u.id, { title: 'רופא שיניים', dueAt: SOON }));
+  await db.pool.query(`UPDATE tasks SET calendar_opt_in = TRUE WHERE id = $1`, [t.data.task.id]);
+  const g = fakeGoogle();
+  const out = await withClient((c) => tc.sweepTaskCalendar(c, { ...g, now: '2027-01-01T00:00:00Z' }));
+  assert.equal(out.added.map(String).includes(String(t.data.task.id)), true,
+    'the task said yes and the standing switch answered for it');
+});
+
+test('a task opted out stays off the calendar with the standing switch on', async () => {
+  const u = await syncingUser('+972539000102');
+  const t = await withClient((c) => tasksDomain.addTask(c, u.id, { title: 'לא ליומן', dueAt: SOON }));
+  await db.pool.query(`UPDATE tasks SET calendar_opt_in = FALSE WHERE id = $1`, [t.data.task.id]);
+  const g = fakeGoogle();
+  const out = await withClient((c) => tc.sweepTaskCalendar(c, { ...g, now: '2027-01-01T00:00:00Z' }));
+  assert.equal(out.added.map(String).includes(String(t.data.task.id)), false,
+    'a task turned off individually came back on the next tick');
+});
+
+test('turning one task off removes the event it already had', async () => {
+  const u = await syncingUser('+972539000103');
+  const t = await withClient((c) => tasksDomain.addTask(c, u.id, { title: 'להסיר', dueAt: SOON }));
+  const g = fakeGoogle();
+  await withClient((c) => tc.sweepTaskCalendar(c, { ...g, now: '2027-01-01T00:00:00Z' }));
+  const before = await db.pool.query(`SELECT calendar_event_id FROM tasks WHERE id = $1`, [t.data.task.id]);
+  assert.notEqual(before.rows[0].calendar_event_id, null, 'nothing was synced, so nothing is being removed');
+  const off = await withClient((c) => tc.setTaskSync(c, u.id, t.data.task.id, false, g));
+  assert.equal(off.ok, true, off.ok ? '' : JSON.stringify(off.error));
+  assert.equal(off.data.removed, true);
+  const after = await db.pool.query(`SELECT calendar_event_id FROM tasks WHERE id = $1`, [t.data.task.id]);
+  assert.equal(after.rows[0].calendar_event_id, null);
+});
+
+test('turning one task on is refused without edit access, and stores nothing', async () => {
+  const u = await syncingUser('+972539000104');
+  await db.pool.query(
+    `UPDATE integrations SET access_level = 'read_only' WHERE user_id = $1`, [u.id]);
+  const t = await withClient((c) => tasksDomain.addTask(c, u.id, { title: 'קריאה בלבד', dueAt: SOON }));
+  const r = await withClient((c) => tc.setTaskSync(c, u.id, t.data.task.id, true, fakeGoogle()));
+  assert.equal(r.ok, false);
+  assert.equal(r.error.reason, 'read_only');
+  const { rows } = await db.pool.query(`SELECT calendar_opt_in FROM tasks WHERE id = $1`, [t.data.task.id]);
+  assert.equal(rows[0].calendar_opt_in, null, 'a refusal was stored as a yes');
+});
+
+test('a task with no date has no moment to put on a calendar', async () => {
+  const u = await syncingUser('+972539000105');
+  const t = await withClient((c) => tasksDomain.addTask(c, u.id, { title: 'בלי תאריך' }));
+  const r = await withClient((c) => tc.setTaskSync(c, u.id, t.data.task.id, true, fakeGoogle()));
+  assert.equal(r.ok, false);
+  assert.equal(r.error.code, 'invalid');
+});
+
+test('one person cannot switch another person\'s task', async () => {
+  const mine = await syncingUser('+972539000106');
+  const yours = await syncingUser('+972539000107');
+  const t = await withClient((c) => tasksDomain.addTask(c, yours.id, { title: 'שלהם', dueAt: SOON }));
+  const r = await withClient((c) => tc.setTaskSync(c, mine.id, t.data.task.id, true, fakeGoogle()));
+  assert.equal(r.ok, false);
+  assert.equal(r.error.code, 'not_found');
+});
