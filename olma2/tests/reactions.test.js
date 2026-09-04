@@ -29,7 +29,7 @@ test('reactions: builds a real openclaw argv for a capable channel', () => {
   const done = r.buildReactArgs({
     channel: 'whatsapp', target: '+972500000000', messageId: '3EB0ABCDEF', state: 'done',
   });
-  assert.equal(done[done.length - 1], '✅');
+  assert.equal(done[done.length - 1], '👍');
   assert.ok(r.buildReactArgs({
     channel: 'whatsapp', target: '+9725', messageId: 'x', state: 'done', remove: true,
   }).includes('--remove'));
@@ -97,14 +97,20 @@ test('reactions: the id is bounded before it is ever used', () => {
 
 test('reactions: markFor refuses everything it cannot stand behind', () => {
   const now = Date.UTC(2026, 8, 4, 12, 0, 0);
-  const turn = { messageId: '3EB0ABCD', lastInboundAt: new Date(now - 60_000).toISOString() };
+  // A fresh turn per assertion: markFor stamps what it has handed out, so
+  // reusing one object here would silently be testing the dedup instead.
+  const fresh = () => ({ messageId: '3EB0ABCD', lastInboundAt: new Date(now - 60_000).toISOString() });
+  const turn = fresh();
   const ok = { ok: true };
-  assert.equal(r.markFor('turn_start', ok, turn, now), 'working');
-  assert.equal(r.markFor('complete_task', ok, turn, now), 'done');
-  // "Written down for later" is not "finished" — the distinction the vocabulary
-  // exists for, and the one that would let somebody believe a reminder fired.
-  assert.equal(r.markFor('set_task_reminder', ok, turn, now), 'scheduled');
-  assert.equal(r.markFor('create_calendar_event', ok, turn, now), 'scheduled');
+  assert.equal(r.markFor('turn_start', ok, fresh(), now), 'working');
+  assert.equal(r.markFor('complete_task', ok, fresh(), now), 'done');
+  // ⏰ is armed-and-will-speak-to-you, and ONLY set_task_reminder does that.
+  assert.equal(r.markFor('set_task_reminder', ok, fresh(), now), 'scheduled');
+  // The calendar write is the request in hand, not a thing that will call out
+  // later — Miron's slow calendar turn ends 👍, not ⏰.
+  assert.equal(r.markFor('create_calendar_event', ok, fresh(), now), 'done');
+  assert.equal(r.markFor('add_task', ok, fresh(), now), 'done');
+  assert.equal(r.markFor('add_tasks_bulk', ok, fresh(), now), 'done');
 
   assert.equal(r.markFor('list_my_tasks', ok, turn, now), null, 'reading is not doing');
   // A failed call earns no mark at all rather than ⚠️: Olma explains the
@@ -117,6 +123,27 @@ test('reactions: markFor refuses everything it cannot stand behind', () => {
   assert.equal(r.markFor('complete_task', ok, { ...turn, messageId: null }, now), null);
   assert.equal(r.markFor('complete_task', ok, null, now), null);
   assert.equal(r.markFor('complete_task', ok, { ...turn, lastInboundAt: new Date(now - 3600_000).toISOString() }, now), null);
+});
+
+test('reactions: the same mark twice in one turn is asked for once', () => {
+  const now = Date.UTC(2026, 8, 4, 12, 0, 0);
+  const turn = { messageId: '3A0AEC8B', lastInboundAt: new Date(now - 60_000).toISOString() };
+  const ok = { ok: true };
+
+  // The production shape: a model that calls turn_start twice in one turn.
+  assert.equal(r.markFor('turn_start', ok, turn, now), 'working');
+  assert.equal(r.markFor('turn_start', ok, turn, now), null, 'the repeat buys nothing');
+
+  // ...but a genuine progression on the SAME message still gets through, which
+  // is the whole reason the key carries the state and not just the message.
+  assert.equal(r.markFor('add_task', ok, turn, now), 'done');
+  assert.equal(r.markFor('set_task_reminder', ok, turn, now), 'scheduled');
+  assert.equal(r.markFor('add_task', ok, turn, now), null);
+
+  // A different message in the same connection is a different mark. Without
+  // this the second person to write on a reused connection gets nothing.
+  turn.messageId = '3EB0FFFF';
+  assert.equal(r.markFor('turn_start', ok, turn, now), 'working');
 });
 
 test('reactions: placeMark is detached, unref\'d, and never claims delivery', () => {
@@ -132,10 +159,10 @@ test('reactions: placeMark is detached, unref\'d, and never claims delivery', ()
   assert.deepEqual(calls[0].opts, { detached: true, stdio: 'ignore' },
     'an attached child dies with its parent while reporting success — the MCP-shim rule');
   assert.equal(child.unrefd, true);
-  assert.ok(calls[0].args.includes('✅'));
+  assert.ok(calls[0].args.includes('👍'));
   // `attempted`, never `sent`. There is no exit code to read, so there is no
   // claim to make — and nothing user-visible may depend on the mark landing.
-  assert.deepEqual(out, { attempted: true, state: 'done', emoji: '✅' });
+  assert.deepEqual(out, { attempted: true, state: 'done', emoji: '👍' });
   assert.equal(out.sent, undefined);
 
   // Not applicable is not an attempt, and it must not spawn anything.
@@ -214,17 +241,23 @@ test('reactions: a real turn marks the message 👀 and then upgrades it', async
   });
 
   // Gali's actual case: she wrote "בוצע" and got a question back instead of an
-  // acknowledgement. The completion now marks her own message ✅, which replaces
+  // acknowledgement. Capturing it now marks her own message 👍, which replaces
   // the 👀 in place — one mark, no second notification, nothing to un-send.
   const added = await call('add_task', { title: 'לנצל את הנקודות' }, turn);
   assert.ok(added.ok);
-  assert.equal(marks[marks.length - 1].state, 'scheduled');
+  assert.equal(marks.length, 2, 'the capture earns its own mark');
+  assert.equal(marks[1].state, 'done');
+  assert.equal(marks[1].messageId, '3EB0ACKTEST01',
+    'every mark in a turn goes on the one message that opened it');
+
+  // Completing it in the same turn wants the SAME 👍 on the SAME message, and
+  // the person is already looking at one. This is the repeat measured in
+  // production on the afternoon of 2026-09-04, and it now costs nothing.
   const { rows } = await db.pool.query(
     `SELECT id FROM tasks WHERE owner_id = $1 ORDER BY id DESC LIMIT 1`, [user.id]);
-  await call('complete_task', { task_id: rows[0].id }, turn);
-  assert.equal(marks[marks.length - 1].state, 'done');
-  assert.equal(marks[marks.length - 1].messageId, '3EB0ACKTEST01',
-    'every mark in a turn goes on the one message that opened it');
+  const finished = await call('complete_task', { task_id: rows[0].id }, turn);
+  assert.ok(finished.ok, 'the tool still runs — only the duplicate mark is dropped');
+  assert.equal(marks.length, 2, 'no second identical mark was asked for');
 
   // A turn that never handed over an id gets no marks at all — silently, and
   // without failing anything. This is the majority case on day one.
