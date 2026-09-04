@@ -7341,10 +7341,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          side against the standing switch (domain/user-dashboard.js). */
       cal:!!x.calendar,
       cat:(x.category && x.category !== "none") ? x.category : "",
-      /* The seed marks categories `catAuto` to show the "Olma chose this"
-         styling. A real row cannot say who chose it — tasks.category has no
-         provenance column — so nothing claims one. */
-      catAuto:false,
+      /* Whether Olma chose the category rather than the person. Real, not a
+         seed flourish: `tasks.category_auto` records it, and a task edited by
+         hand clears it, so the "עולמה בחרה" tag only ever appears over a
+         guess somebody is free to overrule. */
+      catAuto:!!x.catAuto,
       /* 0 is this person. Real user ids start at 1, so it cannot collide, and
          the page already treats 0 as "me" everywhere. */
       owner:x.mine ? 0 : x.owner,

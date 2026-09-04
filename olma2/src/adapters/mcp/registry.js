@@ -608,13 +608,13 @@ const TOOLS = [
     { status: S('string', 'open | done (default open)') }, [],
     (client, user, a) => tasks.listTasks(client, user.id, { status: a.status || 'open' })),
   tool('add_task', 'Add one task. Use parent_task_id to add a subtask to a project (one level). If due_at is given it MUST carry a UTC offset (2026-08-20T09:00:00+03:00) — a bare local time is rejected; convert from the user\'s own stated local time using their timezone (USER.md), never write their local digits with a bare Z.',
-    { title: S('string', 'Task title'), category: S('string', 'Optional category'),
+    { title: S('string', 'Task title'), category: S('string', 'Optional category, one of: home | work | family | health | money | errands. Leave it out and it is worked out from the title — only pass it when the person said which one.'),
       due_at: S('string', 'Optional ISO-8601 datetime WITH UTC offset, e.g. 2026-08-20T09:00:00+03:00'), parent_task_id: S('number', 'Optional parent (project) id') }, ['title'],
     (client, user, a) => tasks.addTask(client, user.id, {
       title: a.title, category: a.category, dueAt: a.due_at, parentId: a.parent_task_id,
     })),
   tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task. Also the way to SPLIT a goal into its parts: pass parent_task_id and the parts become subtasks of it in the same single call. Any due_at given MUST carry a UTC offset (2026-08-20T09:00:00+03:00) — convert from the user\'s own stated local time using their timezone (USER.md), never write their local digits with a bare Z.',
-    { items: S('array', 'Array of {title, category?, due_at?} — due_at, if given, ISO-8601 WITH UTC offset', { items: { type: 'object' } }),
+    { items: S('array', 'Array of {title, category?, due_at?} — category, if given, is one of home | work | family | health | money | errands, and is otherwise worked out from the title; due_at, if given, ISO-8601 WITH UTC offset', { items: { type: 'object' } }),
       parent_task_id: S('number', 'Optional: save every item as a subtask of this project (one level)') }, ['items'],
     (client, user, a) => tasks.addTasksBulk(client, user.id, (a.items || []).map((i) => ({
       title: i.title, category: i.category, dueAt: i.due_at,

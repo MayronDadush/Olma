@@ -6,6 +6,7 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const { hasOffset, badTime } = require('./datetime');
+const taskCategory = require('./task-category');
 
 const MAX_BULK = 60;
 
@@ -13,7 +14,7 @@ const MAX_BULK = 60;
 // split path can never disagree about what "one level of nesting" means.
 async function checkParent(client, ownerId, parentId) {
   const { rows } = await client.query(
-    `SELECT id, parent_id FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
+    `SELECT id, parent_id, category FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
     [parentId, ownerId]
   );
   if (!rows[0]) return err('not_found', 'parent task not found');
@@ -21,17 +22,33 @@ async function checkParent(client, ownerId, parentId) {
   return ok({ parent: rows[0] });
 }
 
+// Every task gets a category, and it is decided here rather than asked of the
+// model — see task-category.js for why keywords and not a turn. A subtask
+// inherits its parent's category when its own words say nothing, which is the
+// single highest-value rule in the whole scheme: a shopping list's items are
+// `ירקות`, `פירות`, `קוטג׳` — no stem list will ever place those, and the
+// project they hang under already answers the question.
+function pickCategory({ category, title, parent }) {
+  const decided = taskCategory.decideCategory({ category, title });
+  if (decided.category) return decided;
+  if (parent && parent.category) return { category: parent.category, auto: true };
+  return { category: null, auto: false };
+}
+
 async function addTask(client, ownerId, { title, category, dueAt, parentId, source }) {
   if (!title || !title.trim()) return err('invalid', 'title required');
   if (dueAt && !hasOffset(dueAt)) return badTime('due_at', dueAt);
+  let parent = null;
   if (parentId) {
     const check = await checkParent(client, ownerId, parentId);
     if (!check.ok) return check;
+    parent = check.data.parent;
   }
+  const cat = pickCategory({ category, title, parent });
   const { rows } = await client.query(
-    `INSERT INTO tasks (owner_id, title, category, due_at, parent_id, source)
-     VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'chat')) RETURNING *`,
-    [ownerId, title.trim(), category || null, dueAt || null, parentId || null, source || null]
+    `INSERT INTO tasks (owner_id, title, category, category_auto, due_at, parent_id, source)
+     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'chat')) RETURNING *`,
+    [ownerId, title.trim(), cat.category, cat.auto, dueAt || null, parentId || null, source || null]
   );
   await audit.record(client, ownerId, 'task.created', { taskId: rows[0].id, parentId: parentId || null });
   return ok({ task: rows[0] });
@@ -63,8 +80,15 @@ async function editTask(client, ownerId, taskId, patch = {}) {
     changed.title = true;
   }
   if (has('category')) {
-    const category = patch.category == null ? null : String(patch.category).trim() || null;
+    // An edit is a person pointing at the field, so whatever comes out of it
+    // is theirs: `category_auto` goes false and the guesser stops touching it.
+    // Off-vocabulary text is still folded onto a key rather than refused —
+    // `בריאות` means health, and rejecting it would only teach the caller to
+    // send nothing.
+    const raw = patch.category == null ? null : String(patch.category).trim() || null;
+    const category = raw == null ? null : taskCategory.normaliseCategory(raw);
     sets.push(`category = $${vals.push(category)}`);
+    sets.push('category_auto = false');
     changed.category = category;
   }
   if (has('dueAt')) {
@@ -97,19 +121,22 @@ async function editTask(client, ownerId, taskId, patch = {}) {
 async function addTasksBulk(client, ownerId, items, { parentId, source } = {}) {
   if (!Array.isArray(items) || items.length === 0) return err('invalid', 'items required');
   if (items.length > MAX_BULK) return err('invalid', `max ${MAX_BULK} items per call`);
+  let parent = null;
   if (parentId) {
     const check = await checkParent(client, ownerId, parentId);
     if (!check.ok) return check;
+    parent = check.data.parent;
   }
   const rowSource = source || (parentId ? 'breakdown' : 'brain_dump');
   const created = [];
   for (const item of items) {
     if (!item || !item.title || !item.title.trim()) return err('invalid', 'every item needs a title');
     if (item.dueAt && !hasOffset(item.dueAt)) return badTime(`due_at for "${item.title.trim().slice(0, 40)}"`, item.dueAt);
+    const cat = pickCategory({ category: item.category, title: item.title, parent });
     const { rows } = await client.query(
-      `INSERT INTO tasks (owner_id, title, category, due_at, parent_id, source)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [ownerId, item.title.trim(), item.category || null, item.dueAt || null,
+      `INSERT INTO tasks (owner_id, title, category, category_auto, due_at, parent_id, source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [ownerId, item.title.trim(), cat.category, cat.auto, item.dueAt || null,
         parentId || null, rowSource]
     );
     created.push(rows[0]);

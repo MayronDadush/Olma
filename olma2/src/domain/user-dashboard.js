@@ -83,7 +83,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
   // made "משימות משותפות" a section that only ever showed the ones this person
   // shared OUT, i.e. exactly half the feature, silently.
   const { rows: tasks } = await client.query(
-    `SELECT t.id, t.title, t.category, t.source, t.status, t.parent_id,
+    `SELECT t.id, t.title, t.category, t.category_auto, t.source, t.status, t.parent_id,
             t.archived_at IS NOT NULL AS archived, t.completed_at,
             t.due_at, t.owner_id,
             -- the wall clock the person actually chose, resolved in THEIR zone
@@ -166,6 +166,10 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
       id: t.id,
       title: t.title,
       category: category(t.category),
+      // Whether Olma chose it, so the sheet can say so and the person knows
+      // the field is a guess they are free to correct — the page has carried
+      // that affordance (`עולמה בחרה`) since it was designed.
+      catAuto: Boolean(t.category_auto) && KNOWN_CATEGORIES.includes(t.category),
       date: t.due_date,
       time: t.all_day ? null : t.due_time,
       allDay: t.all_day,
