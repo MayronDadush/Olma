@@ -80,4 +80,68 @@ function resolveLocale({ text, phone, fallback = 'en' } = {}) {
   return { locale: fallback, source: 'default' };
 }
 
-module.exports = { detectLanguage, resolveLocale, SCRIPTS, MIN_LETTERS };
+// ---- noticing that we got it wrong -----------------------------------------
+//
+// resolveLocale runs ONCE, when somebody arrives, and until 2026-09-04 nothing
+// ever revisited it. That day a user wrote four messages in English and got
+// four replies in Hebrew, because his row said `he` and the template says — in
+// as many words — not to switch just because one message came in another
+// language. The template is right about ONE message. Nothing was watching for
+// four.
+//
+// Nothing COULD be, either: there is no messages table, and turn_start records
+// `message.received` with no text. That is deliberate and stays that way, so
+// the signal has to come from the only party that sees the words — the model,
+// reporting a two-letter language code and nothing else. The trade is real and
+// worth naming: we give up determinism (a model that omits the code produces
+// no nudge) to avoid keeping people's messages in Postgres. The failure mode
+// is silence, never a wrong switch.
+//
+// Three in a row, not two. The travel detector settles for two witnesses
+// because a flight is a rare event; a language is a habit, and people quote,
+// paste and code-switch constantly. Three consecutive messages in one language
+// is a person writing in that language.
+const STREAK_TO_ASK = 3;
+// A declined offer buys a long silence. Asking once is helpful; asking again
+// next week is the pattern the stop doctrine forbids everywhere else.
+const ASK_AGAIN_DAYS = 60;
+
+// Whether we can act on a code at all. Same shape users.setLocale accepts, so
+// a code that passes here cannot be rejected downstream.
+function normalizeLocale(code) {
+  const c = String(code == null ? '' : code).trim().toLowerCase().slice(0, 8);
+  return /^[a-z]{2}(-[a-z]{2,8})?$/.test(c) ? c : null;
+}
+
+// The whole decision, with no database in it: given what we stored, what the
+// streak was, and what just arrived, what should the streak become and should
+// Olma ask?
+//
+// A message in their STORED language resets the streak to zero — an
+// interrupted streak is not a streak, and somebody who genuinely mixes two
+// languages must never be nagged about it. That reset is the reason this can
+// be aggressive at three without being wrong.
+function decideStreak({ stored, observed, prevObserved, prevCount, askedAt, now } = {}) {
+  const code = normalizeLocale(observed);
+  const mine = normalizeLocale(stored);
+  if (!code) return { observed: prevObserved || null, count: Number(prevCount) || 0, ask: false };
+  if (mine && code === mine) return { observed: null, count: 0, ask: false };
+
+  const continuing = prevObserved && normalizeLocale(prevObserved) === code;
+  const count = continuing ? (Number(prevCount) || 0) + 1 : 1;
+
+  // `>=`, not `===`. Exact-match reads as the tighter rule and is the buggier
+  // one: if the threshold is crossed during a quiet period — the model omitted
+  // a code, or we had asked recently — the count sails past 3 and an `===`
+  // check never matches again, so the person is never asked at all. What
+  // stops the nagging is askedAt, which the caller stamps the moment this
+  // returns true, and which then holds every later message off by itself.
+  const askedRecently = askedAt
+    && (new Date(now || Date.now()) - new Date(askedAt)) < ASK_AGAIN_DAYS * 86400_000;
+  return { observed: code, count, ask: count >= STREAK_TO_ASK && !askedRecently };
+}
+
+module.exports = {
+  detectLanguage, resolveLocale, SCRIPTS, MIN_LETTERS,
+  decideStreak, normalizeLocale, STREAK_TO_ASK, ASK_AGAIN_DAYS,
+};
