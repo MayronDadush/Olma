@@ -296,6 +296,18 @@ const ACTIONS = {
     return meetingFanout.afterOptOut(client, me, p.meetingId, res);
   },
 
+  // The way back out of the archive. Leaving was one tap and reversing it was
+  // nothing at all, which is a bad trade for an action whose commonest cause
+  // is a mis-tap. `meetings.rejoin` refuses everything it should — a
+  // coordination that closed when you left cannot be reopened by you alone —
+  // and the others are told, because they were told when you went.
+  async rejoinMeeting(client, userId, p) {
+    const res = await meetings.rejoin(client, userId, p.meetingId);
+    if (!res.ok) return res;
+    const me = await users.getById(client, userId);
+    return meetingFanout.afterRejoin(client, me, p.meetingId, res);
+  },
+
   // ---- accounts ------------------------------------------------------------
   // The only provider on this page with a connection behind it. It returns a
   // URL and nothing else: the grant happens on Google's own consent screen,

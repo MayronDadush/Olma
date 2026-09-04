@@ -215,6 +215,12 @@ function bodyFor(row, p) {
         ? ` — it was already agreed for <<<${p.slot || ''}>>>, and now it is off for everyone`
         : ''}. Tell the user plainly.${cleanup}`;
     }
+    // Somebody who had left a coordination came back. Short on purpose: the
+    // interesting news is that the tally they were given is now stale, not the
+    // change of mind, and asking about the change of mind is the one thing
+    // nobody wants to be asked.
+    case 'meeting_rejoined':
+      return `${p.byName} is back in the coordination <<<${p.title}>>> after leaving it. They have not answered the times yet. Tell the user in one line — do not ask why they left or why they came back.`;
     case 'meeting_withdrawn':
       return `${p.byName} can no longer come to the confirmed meeting <<<${p.title}>>>${p.slot ? ` (<<<${p.slot}>>>)` : ''}. The meeting is STILL ON for everyone else — tell the user that ${p.byName} won't be there and that nothing else changes. Do not offer to cancel or reschedule unless the user asks.`;
     // The moment passed with the negotiation still open. Said once, to the

@@ -17,6 +17,7 @@ const issuesDomain = require('../../domain/issues');
 const prefsDomain = require('../../domain/preferences');
 const factsDomain = require('../../domain/facts');
 const auditDomain = require('../../domain/audit');
+const dashboardAuth = require('../../domain/dashboard-auth');
 const { enqueue } = require('../../outbox/enqueue');
 const { refreshUserCard } = require('../../intake/user-card');
 const { withTx } = require('../../db/pool');
@@ -746,7 +747,8 @@ async function renderUsers(client, csrf) {
   const blocked = (u) => u.quota_blocked_until && new Date(u.quota_blocked_until) > new Date();
   return `<table>
     <tr><th>שם</th><th>טלפון</th><th>מצב</th><th>מנוי</th><th>משימות פתוחות</th>
-        <th>מכסת הודעות ליום <span class="help" title="כמה הודעות מותר לו לשלוח ביום. השאר ריק כדי להשתמש בברירת המחדל של המנוי שלו.">?</span></th></tr>
+        <th>מכסת הודעות ליום <span class="help" title="כמה הודעות מותר לו לשלוח ביום. השאר ריק כדי להשתמש בברירת המחדל של המנוי שלו.">?</span></th>
+        <th>העמוד שלו <span class="help" title="פותח את הדאשבורד האישי של המשתמש, בדיוק כמו שהוא רואה אותו. הכניסה נשארת פתוחה 30 יום.">?</span></th></tr>
     ${rows.map((u) => `<tr>
       <td><a href="/user?id=${u.id}">${esc([u.first_name, u.last_name].filter(Boolean).join(' ') || u.phone)}</a></td>
       <td class="mono dim">${esc(u.phone)}</td>
@@ -761,7 +763,30 @@ async function renderUsers(client, csrf) {
         <input name="override" value="${u.quota_override_daily ?? ''}" size="5"
                placeholder="ברירת מחדל" title="מספר הודעות ליום. ריק = לפי המנוי.">
         <button>שמור</button>
-      </form></td></tr>`).join('')}</table>`;
+      </form></td>
+      <td>${u.status === 'active' ? dashboardButton(u.id, csrf, '/') : '<span class="dim">—</span>'}</td>
+      </tr>`).join('')}</table>`;
+}
+
+// Open a person's own dashboard, as they see it.
+//
+// The link a user gets in WhatsApp is single-use and lives 30 minutes, which
+// is right for a message somebody might screenshot and wrong for looking
+// through a dozen accounts for layout bugs — by the time you have pasted it
+// into a browser it has often expired. This mints one and goes straight
+// there, so the thirty minutes is never spent waiting; the SESSION it opens
+// is the normal one and lasts thirty idle days.
+//
+// It is a real sign-in as that person, not a read-only preview, so it is
+// audited under their id like every other admin edit on this page. Offered
+// only for an active user because `createLink` refuses anyone else anyway,
+// and a button that cannot work should not be drawn.
+function dashboardButton(userId, csrf, back) {
+  return `<form method="post" action="/users/dashboard" class="inline">
+    <input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="id" value="${userId}">
+    <input type="hidden" name="back" value="${esc(back)}">
+    <button>פתיחה</button>
+  </form>`;
 }
 
 const OUTBOX_STATE = {
@@ -797,6 +822,7 @@ const KIND_LABELS = {
   meeting_confirmed: 'פגישה אושרה',
   meeting_slot_declined: 'מועד נדחה',
   meeting_opt_out: 'יציאה מפגישה',
+  meeting_rejoined: 'חזרה לתיאום פגישה',
   meeting_withdrawn: 'ביטול הגעה לפגישה',
   meeting_no_match: 'לא נמצא מועד',
   meeting_cancelled: 'פגישה בוטלה',
@@ -1341,6 +1367,9 @@ async function renderUserPage(client, userId, { confirmDelete = false, csrf = ''
     <section>
       <h3>${esc(name)}</h3>
       <p class="hint">${esc(u.phone)} · ${PLAN_LABEL[u.plan] || '—'} · הצטרף ${ago(u.created_at)}</p>
+      ${u.status === 'active'
+        ? `<p>${dashboardButton(u.id, csrf, `/user?id=${u.id}`)} <span class="hint">פותח את העמוד האישי שלו, כמו שהוא רואה אותו.</span></p>`
+        : ''}
       ${knownAs.length ? `<p class="hint">מוכר/ת אצל אחרים בתור: ${knownAs.map((k) =>
         `${esc(k.display_name)} (<a href="/user?id=${k.owner_id}">${esc([k.first_name, k.last_name].filter(Boolean).join(' ') || `משתמש ${k.owner_id}`)}</a>)`
       ).join(', ')}</p>` : ''}
@@ -2144,6 +2173,8 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
           res.writeHead(403); return res.end('csrf');
         }
         let cardUserId = null;
+        // Set only by /users/dashboard, which lands on the public host.
+        let openUrl = null;
         await withTx(pool, async (client) => {
           if (url.pathname === '/boost') {
             // The dashboard writes the FLAG and never the gateway config —
@@ -2218,6 +2249,20 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
             if (/^\+\d{7,15}$/.test(body.phone || '')) {
               await deprovisionUser(client, body.phone, { configPath });
             }
+          } else if (url.pathname === '/users/dashboard') {
+            const uid = Number(body.id);
+            const made = await dashboardAuth.createLinkUrl(client, uid);
+            if (made.ok) {
+              await auditDomain.record(client, uid, 'admin.dashboard_opened', {});
+              // The only redirect on this page that leaves the host, so it is
+              // the only one `safeBack` cannot vet. It is built from the
+              // `public_base_url` FLAG rather than from anything in the
+              // request — but a flag is admin-editable text, and an open
+              // redirect gadget one typo away is not worth the saved line.
+              if (/^https?:\/\/[^\s/]+\/d\/[a-f0-9]{64}$/.test(made.data.url)) {
+                openUrl = made.data.url;
+              }
+            }
           } else if (url.pathname === '/users/resume'
                      || url.pathname.startsWith('/outbox/') || url.pathname.startsWith('/prefs/')
                      || url.pathname.startsWith('/facts/')) {
@@ -2228,7 +2273,7 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         // rule brokerd follows. A file write inside the transaction would leave
         // USER.md describing a state the database rolled back.
         if (cardUserId) await refreshUserCard(pool, cardUserId);
-        res.writeHead(303, { Location: safeBack(body.back) });
+        res.writeHead(303, { Location: openUrl || safeBack(body.back) });
         return res.end();
       }
 

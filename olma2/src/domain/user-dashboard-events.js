@@ -18,10 +18,18 @@ const { ok, err } = require('./results');
 const calendar = require('./calendar');
 const { partsInZone } = require('./datetime');
 
-// Four weeks. The page's own day grid pages a fortnight at a time and its
-// week strip looks a week ahead, so this covers what can be reached without
-// asking again — and Google is asked once rather than per screen.
+// Four weeks forward, two back — exactly what the week strip can be paged to
+// and not a day more, so the arrows stop where the data stops rather than
+// paging into weeks that are empty because nobody fetched them. Google is
+// asked once for the whole span rather than once per screen.
+//
+// The event cap is raised past the agent's twenty for the same reason the
+// window is wider: `calendar.listEvents` bounds itself so a model's context
+// stays small, and this is a page. Twenty events across six weeks would drop
+// most of a normal calendar and the page would have no way to say so.
 const DAYS_AHEAD = 28;
+const DAYS_BACK = 14;
+const MAX_EVENTS = 250;
 
 const iso = (p) => `${p.y}-${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
 const hhmm = (p) => `${String(p.hh).padStart(2, '0')}:${String(p.mi).padStart(2, '0')}`;
@@ -66,7 +74,9 @@ async function loadEvents(client, userId, opts = {}) {
   const zone = rows[0].timezone || 'UTC';
 
   const list = opts.listEvents || calendar.listEvents;
-  const res = await list(client, userId, opts.days || DAYS_AHEAD, opts);
+  const res = await list(client, userId, opts.days || DAYS_AHEAD, {
+    daysBack: DAYS_BACK, maxEvents: MAX_EVENTS, ...opts,
+  });
   if (!res.ok) {
     // Not connected, revoked, or Google unreachable — all of them mean the
     // same thing to the page and none of them is an error worth breaking it
@@ -79,9 +89,10 @@ async function loadEvents(client, userId, opts = {}) {
   const days = {};
   for (const ev of res.data.events || []) {
     const b = bucketOf(ev, zone, todayIso);
-    // Behind us by more than the strip can reach, or unparseable: dropped
-    // rather than bucketed into day 0, where it would read as happening today.
-    if (!b || b.day < 0 || b.day > DAYS_AHEAD) continue;
+    // Outside what the strip can reach in either direction, or unparseable:
+    // dropped rather than bucketed into day 0, where it would read as
+    // happening today. A negative bucket is a real past day, not an error.
+    if (!b || b.day < -DAYS_BACK || b.day > DAYS_AHEAD) continue;
     (days[b.day] = days[b.day] || []).push({
       id: ev.id,
       title: ev.title,
@@ -97,4 +108,4 @@ async function loadEvents(client, userId, opts = {}) {
   return ok({ connected: true, zone, days });
 }
 
-module.exports = { loadEvents, bucketOf, dayGap, DAYS_AHEAD };
+module.exports = { loadEvents, bucketOf, dayGap, DAYS_AHEAD, DAYS_BACK };

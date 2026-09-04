@@ -1381,11 +1381,26 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 /* the week strip never said which month it was in — a date with no month
    is only readable if you already know the answer */
 .stripmonth{
-  display:flex;align-items:baseline;gap:7px;padding:13px 16px 10px;
+  display:flex;align-items:center;gap:7px;padding:9px 8px 8px 8px;
   border-bottom:1px solid var(--sep);
 }
-.stripmonth span:first-child{font-family:'Rubik',sans-serif;font-size:15.5px;font-weight:600;color:var(--text)}
-.stripmonth span:last-child{font-size:13px;font-weight:500;color:var(--text-3);font-variant-numeric:tabular-nums}
+/* Addressed by id, not by position. These were `span:first-child` and
+   `span:last-child` until the paging arrows joined the row — at which point
+   neither span was a first or last child any more and the heading silently
+   lost its type. */
+#stripMonth{font-family:'Rubik',sans-serif;font-size:15.5px;font-weight:600;color:var(--text)}
+#stripYear{font-size:13px;font-weight:500;color:var(--text-3);font-variant-numeric:tabular-nums}
+/* The arrows sit at the two ends and the label floats between them, so the
+   row reads as one control rather than three things that happen to be
+   adjacent. `auto` on both sides of the label does that at any string width. */
+#stripMonth{margin-inline-start:auto}
+#stripYear{margin-inline-end:auto}
+.wkback{
+  font-size:12.5px;font-weight:600;color:var(--accent);
+  padding:5px 10px;border-radius:99px;background:var(--bg-tint);flex:none;
+}
+.wknav[disabled]{opacity:.28}
+.wknav[disabled]:active{background:transparent}
 .daystrip{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;padding:12px 10px}
 .day{
   border-radius:13px;padding:9px 2px 8px;text-align:center;
@@ -2110,7 +2125,18 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     <div id="calRead">
       <div style="--i:2">
         <div class="group">
-          <div class="stripmonth"><span id="stripMonth"></span><span id="stripYear"></span></div>
+          <!-- A week strip that could only ever show the next seven days was
+               a calendar you could not look ahead in. The arrows page a week
+               at a time and stop exactly where the data does: /me/events
+               fetches two weeks back and four forward, so paging past that
+               would show empty days that are empty only because nobody
+               asked Google about them. -->
+          <div class="stripmonth">
+            <button class="calnav wknav" data-wk="-1" id="wkPrev"><svg viewBox="0 0 16 16"><path d="M10 2 4 8l6 6"/></svg></button>
+            <span id="stripMonth"></span><span id="stripYear"></span>
+            <button class="wkback" id="wkToday" hidden data-i18n="cal.thisWeek"></button>
+            <button class="calnav wknav" data-wk="1" id="wkNext"><svg viewBox="0 0 16 16"><path d="M6 2l6 6-6 6"/></svg></button>
+          </div>
           <div class="daystrip" id="daystrip"></div>
         </div>
       </div>
@@ -2130,12 +2156,22 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         <div class="glabel"><span data-i18n="mt.open"></span><span class="hint" id="mtCount"></span></div>
         <div class="stack" id="mtList"></div>
       </div>
-      <!-- Settled ones leave the active list — they are calendar entries now,
-           not questions — but they do not vanish: this is where you come back
-           to put one on your calendar again, or to leave it. -->
-      <div style="--i:3;margin-top:20px" id="mtDoneWrap" hidden>
-        <div class="glabel"><span data-i18n="mt.done"></span></div>
-        <div class="stack" id="mtDone"></div>
+      <!-- The same archive the task list has, for the same reason. Settled
+           ones leave the active list — they are calendar entries now, not
+           questions — and so do the ones you left, which used to vanish
+           outright. Leaving is one tap and its commonest cause is a mis-tap,
+           so it needs a way back; ↺ on a row you left puts you back in and
+           tells the others, because they were told when you went. -->
+      <div class="archive" id="mtArchive" style="--i:3;margin-top:20px" hidden>
+        <button class="arcbtn" id="mtArcBtn" aria-expanded="false">
+          <svg class="chev"><use href="#i-chev"/></svg>
+          <span data-i18n="mt.done"></span>
+          <span id="mtArcCount" style="margin-inline-start:auto;font-weight:500"></span>
+        </button>
+        <div class="fold" id="mtArcFold"><div>
+          <div class="stack" id="mtDone"></div>
+          <p class="arcnote" id="mtArcNote" hidden></p>
+        </div></div>
       </div>
       <p class="note" style="padding:14px 14px 0" data-i18n="mt.note"></p>
     </div>
@@ -2699,6 +2735,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     setAvailability:     "send_availability_picker",  /* the picker's own POST, per option */
     confirmSlot:         "respond_to_meeting_slot",   /* propose_meeting_slot proposes it */
     leaveMeeting:        "leave_meeting",              /* NO TOOL YET — meeting_participants.left_at */
+    rejoinMeeting:       "rejoin_meeting",             /* NO TOOL YET — dashboard only */
     pause:               "pause_olma",
     resume:              "resume_olma"
   };
@@ -2716,6 +2753,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     setTimezone:"setTimezone", pause:"pause", resume:"resume",
     inviteContact:"inviteContact",
     respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting",
+    rejoinMeeting:"rejoinMeeting",
     startGoogle:"startGoogle", stopGoogle:"stopGoogle",
     stopGoogleService:"stopGoogleService"
   };
@@ -3100,7 +3138,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.mtNoUnanswer":"אפשר להחליף בין ״אני יכול״ ל״לא מתאים לי״, אבל לא לחזור ללא־תשובה",
       "mt.n0":"אין","mt.n1":"תיאום אחד","mt.nN":"{n} תיאומים",
       "mt.ask":"מתי מתאים לך?","mt.askOne":"אתה יכול להגיע?","mt.settledLbl":"המועד שנקבע",
-      "mt.done":"תיאומים שנסגרו",
+      "mt.done":"תיאומים שנסגרו ושיצאת מהם","mt.youLeft":"יצאת מהתיאום הזה","mt.rejoin":"חזרה לתיאום",
+      "toast.mtBack":"חזרת ל„{name}” — השאר עודכנו",
       "mt.me":"אתה","mt.waiting":"בהמתנה","mt.gone":"יצא","mt.withList":"עם {list}",
       "mt.part.morning":"בוקר","mt.part.noon":"צהריים","mt.part.evening":"ערב","mt.part.night":"לילה",
       "mt.allFree":"מתאים לכולם","mt.pick":"קביעה",
@@ -3194,7 +3233,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "sheet.allDay":"כל היום","sheet.repeat":"חזרה",
       "sheet.inCal":"להוסיף ליומן","sheet.inCalTo":"נוסף ל־{name} · {account}","sheet.inCalNone":"אין יומן מחובר לכתיבה",
       "cal.allDay":"כל היום",
-      "cal.taskTag":"משימה","cal.taskSub":"מהרשימה שלך בעולמה","cal.taskRem":"עולמה תזכיר ב־{name}",
+      "cal.thisWeek":"השבוע","cal.taskTag":"משימה","cal.taskSub":"מהרשימה שלך בעולמה","cal.taskRem":"עולמה תזכיר ב־{name}",
       "cal.showIn":"להצגה ביומן",
       "off.at":"בזמן","off.m10":"10 דק׳ לפני","off.h1":"שעה לפני","off.d1":"יום לפני",
       "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש",
@@ -3330,7 +3369,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.mtNoUnanswer":"You can switch between yes and no, but not back to no answer",
       "mt.n0":"none","mt.n1":"1 coordination","mt.nN":"{n} coordinations",
       "mt.ask":"When suits you?","mt.askOne":"Can you make it?","mt.settledLbl":"The time you settled on",
-      "mt.done":"Settled",
+      "mt.done":"Settled and left","mt.youLeft":"You left this one","mt.rejoin":"Put me back in",
+      "toast.mtBack":"You're back in \u201c{name}\u201d \u2014 the others were told",
       "mt.me":"You","mt.waiting":"not yet","mt.gone":"left","mt.withList":"With {list}",
       "mt.part.morning":"morning","mt.part.noon":"midday","mt.part.evening":"evening","mt.part.night":"night",
       "mt.allFree":"Fits everyone","mt.pick":"Settle",
@@ -3424,7 +3464,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "sheet.allDay":"All day","sheet.repeat":"Repeat",
       "sheet.inCal":"Add to calendar","sheet.inCalTo":"Goes to {name} · {account}","sheet.inCalNone":"No calendar connected for writing",
       "cal.allDay":"All day",
-      "cal.taskTag":"Task","cal.taskSub":"From your Allma list","cal.taskRem":"Allma will remind you on {name}",
+      "cal.thisWeek":"This week","cal.taskTag":"Task","cal.taskSub":"From your Allma list","cal.taskRem":"Allma will remind you on {name}",
       "cal.showIn":"Show in calendar",
       "off.at":"On time","off.m10":"10 min before","off.h1":"1 hour before","off.d1":"1 day before",
       "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month",
@@ -5656,6 +5696,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      third thing and never folded into "cannot". */
   var MEET_CAP = 4;
   var PARTS = ["morning","noon","evening","night"];
+  /* Coordinations this person left. Its own array rather than a flag on MEETS,
+     because a left one carries only a title and an id — that is all the server
+     sends and all putting yourself back needs. */
+  var MTLEFT = [];
   var MEETS = [
     /* mine, mid-flight: three real options, one objection, one person who
        left, and a fourth option somebody else proposed that only I can see. */
@@ -5821,6 +5865,20 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       '<button class="mtx" data-mtleave="' + m.id + '" aria-label="' + esc(t("mt.leave")) + '">' +
       '<svg><use href="#i-x"/></svg></button></div></div>';
   }
+  /* A coordination you left, reduced to what putting yourself back in needs:
+     a title and an id. Deliberately NOT a card — a card shows the tally, and
+     watching the others answer a coordination you stepped out of is not
+     something to offer. The server takes the same view and sends only these
+     two fields (`meetingsLeft`, domain/user-dashboard.js). */
+  function mtLeftHTML(m){
+    return '<div class="group" style="margin-bottom:10px"><div class="mtrow">' +
+      '<span class="mtcard" style="cursor:default"><span class="mtbody">' +
+      '<span class="mtname">' + esc(L(m.t)) + "</span>" +
+      '<span class="mtstate">' + esc(t("mt.youLeft")) + "</span></span></span>" +
+      '<button class="tundo" data-mtback="' + m.id + '" aria-label="' +
+      esc(t("mt.rejoin")) + '" title="' + esc(t("mt.rejoin")) +
+      '"><svg><use href="#i-undo"/></svg></button></div></div>';
+  }
   function renderMeets(){
     /* Settled coordinations are not "active" any more — they are calendar
        entries, and leaving them here would make the list a permanent archive
@@ -5832,10 +5890,54 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       : '<div class="group"><div class="empty">' +
         esc(t(LIVE ? "mt.emptyLive" : "mt.empty")) + "</div></div>";
     $("#mtCount").textContent = live.length ? pl("mt", live.length) : "";
-    $("#mtDoneWrap").hidden = !done.length;
-    $("#mtDone").innerHTML = done.map(mtCardHTML).join("");
+    /* Settled first, then the ones you left — the same ordering rule the task
+       archive uses (most recently out of the list, first). Capped at the same
+       eight, and it SAYS it is capped rather than quietly truncating, because
+       an archive that silently drops the ninth row is a safety net with a hole
+       nobody can see. */
+    var arc = done.map(function(m){ return {html:mtCardHTML(m)}; })
+      .concat(MTLEFT.map(function(m){ return {html:mtLeftHTML(m)}; }));
+    $("#mtArchive").hidden = !arc.length;
+    $("#mtArcCount").textContent = arc.length;
+    $("#mtDone").innerHTML = arc.slice(0, ARCHIVE_MAX).map(function(x){ return x.html; }).join("");
+    $("#mtArcNote").hidden = arc.length <= ARCHIVE_MAX;
+    $("#mtArcNote").textContent = t("tasks.arcShown", {n:ARCHIVE_MAX, all:arc.length});
+  }
+  $("#mtArcBtn").addEventListener("click", function(){
+    var a = $("#mtArchive"), on = !a.classList.contains("open");
+    a.classList.toggle("open", on);
+    $("#mtArcFold").classList.toggle("open", on);
+    this.setAttribute("aria-expanded", on ? "true" : "false");
+  });
+  /* Putting yourself back is a real call, not a row reappearing in a browser:
+     the others were told you left, so they are told you are back. The server
+     refuses what it should — a coordination that closed when you left cannot
+     be reopened by one person — and the row only leaves the archive once the
+     call has come back ok. */
+  function mtRejoin(id){
+    var i = MTLEFT.findIndex(function(x){ return x.id === id; });
+    if(i < 0) return;
+    var entry = MTLEFT[i];
+    if(!LIVE){
+      MTLEFT.splice(i, 1);
+      renderMeets();
+      toast(t("toast.mtBack", {name:L(entry.t)}));
+      return;
+    }
+    API.call("rejoinMeeting", {meeting_id:id});
+    API.send("rejoinMeeting", {meetingId:id}, function(data){
+      if(!data) return;
+      MTLEFT.splice(MTLEFT.findIndex(function(x){ return x.id === id; }), 1);
+      renderMeets();
+      toast(t("toast.mtBack", {name:L(entry.t)}));
+      /* Back in means back in the active list, with the tally as it stands
+         now — which only the server knows. */
+      API.reload();
+    });
   }
   function mtListClick(e){
+    var back = e.target.closest("[data-mtback]");
+    if(back){ mtRejoin(+back.dataset.mtback); return; }
     /* the two leave controls are checked first: both sit inside the row the
        open handler would otherwise claim */
     var go = e.target.closest("[data-mtleavego]");
@@ -6127,6 +6229,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     API.call("leaveMeeting", {meeting_id:m.id});
     API.send("leaveMeeting", {meetingId:m.id});
     MEETS = MEETS.filter(function(x){ return x !== m; });
+    /* It goes to the archive rather than out of existence. Newest first, the
+       way the task archive orders it. */
+    MTLEFT.unshift({id:m.id, t:m.t});
     mtLeaving = null;
     renderMeets(); renderStrip(selDay);
     toast(t("toast.mtLeft", {name:L(m.t)}));
@@ -6684,6 +6789,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   setInterval(tickClocks, 30000);
 
   /* ───────── calendar ───────── */
+  /* Which seven days the strip is showing, counted in weeks from the one that
+     starts today. The bounds are not a taste decision: they are exactly the
+     window /me/events fetches (domain/user-dashboard-events.js, DAYS_BACK 14
+     / DAYS_AHEAD 28), so the last day the arrows can reach is the last day we
+     actually asked Google about. An arrow that pages into an unfetched week
+     would draw it empty, and empty is the same picture as "nothing on". */
+  var weekOff = 0, WEEK_MIN = -2, WEEK_MAX = 3;
   function dayAt(i){ return new Date(base.getFullYear(), base.getMonth(), base.getDate() + i); }
   function dayISO(i){ return ymd(dayAt(i)); }
   /* Dated tasks stand in the day next to the real events, in time order,
@@ -6698,8 +6810,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       return {time:v.t, end:v.e, allDay:!!v.all, title:L(v.n), sub:L(v.s), c:v.c};
     });
     open.forEach(function(x){
-      /* only the tasks the person actually put in the calendar */
-      if(x.d !== iso || !x.cal) return;
+      /* EVERY dated task stands in its day, whether or not it is also being
+         written out to Google. `x.cal` is an EXPORT switch — "put this in the
+         calendar app on my phone too" — and it was being read here as a
+         DISPLAY switch, which meant somebody with no Google connection saw an
+         empty week while holding six dated tasks. That was Maya, on the day
+         this was found: one flag doing two jobs, and the wrong one won. */
+      if(x.d !== iso) return;
       evs.push({time:x.all ? "" : (x.tm || ""), allDay:x.all, end:"",
                 title:L(x.t) || t("sheet.untitled"),
                 sub:t(x.rem ? "cal.taskRem" : "cal.taskSub", {name:chanName(defaultChannel)}),
@@ -6724,7 +6841,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   function renderStrip(sel){
     selDay = sel;
-    $("#daystrip").innerHTML = [0,1,2,3,4,5,6].map(function(i){
+    var wk0 = weekOff * 7;
+    $("#daystrip").innerHTML = [0,1,2,3,4,5,6].map(function(k){
+      var i = wk0 + k;
       var d = dayAt(i), n = agendaFor(i).length, dots = "";
       for(var k = 0; k < Math.min(n,3); k++) dots += "<i></i>";
       /* The strip always starts on today, but "the first one" is a rule you
@@ -6737,12 +6856,17 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         '<div class="dots">' + dots + "</div></button>";
     }).join("");
     /* the strip can straddle two months, and then it has to say both */
-    var a = dayAt(0), z = dayAt(6);
+    var a = dayAt(wk0), z = dayAt(wk0 + 6);
     $("#stripMonth").textContent = a.getMonth() === z.getMonth()
       ? D.monthsBare[a.getMonth()]
       : D.monthsBare[a.getMonth()] + "–" + D.monthsBare[z.getMonth()];
     $("#stripYear").textContent = a.getFullYear() === z.getFullYear()
       ? a.getFullYear() : a.getFullYear() + "–" + z.getFullYear();
+    /* Disabled rather than hidden: an arrow that disappears at the edge moves
+       the label under the finger that was reaching for it. */
+    $("#wkPrev").disabled = weekOff <= WEEK_MIN;
+    $("#wkNext").disabled = weekOff >= WEEK_MAX;
+    $("#wkToday").hidden = weekOff === 0;
     var d2 = dayAt(sel);
     /* `cal.todayPre` carries its own separator and is a different string from
        the bare `cal.today` on the date chip — they were one key, and the second
@@ -6770,6 +6894,18 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   $("#daystrip").addEventListener("click", function(e){
     var b = e.target.closest(".day");
     if(b) renderStrip(+b.dataset.d);
+  });
+  /* Paging lands on today when today is in the week you paged to, and on the
+     first day otherwise — so stepping forward and back returns you to the day
+     you started on rather than to a Monday you never chose. */
+  function goWeek(w){
+    weekOff = Math.max(WEEK_MIN, Math.min(WEEK_MAX, w));
+    renderStrip(weekOff === 0 ? 0 : weekOff * 7);
+  }
+  $(".stripmonth").addEventListener("click", function(e){
+    if(e.target.closest("#wkToday")) return goWeek(0);
+    var n = e.target.closest("[data-wk]");
+    if(n && !n.disabled) goWeek(weekOff + (+n.dataset.wk));
   });
   $("#agenda").addEventListener("click", function(e){
     /* the small control first — it sits inside the row it acts on */
@@ -7567,6 +7703,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     EVENTS = {};
     PEOPLE = {};
     MEETS = (d.meetings || []).map(liveMeet);
+    MTLEFT = (d.meetingsLeft || []).map(function(m){ return {id:m.id, t:m.title || ""}; });
     mtOpen = null;
     LIVE = true;
     renderAll();
