@@ -30,6 +30,7 @@
   --warn:#B57509;
   --warn-soft:#F8EFDC;
   --ok:#1B9B6B;
+  --ok-soft:#E4F4EE;
   --knob:#FFFFFF;
   --seg-on:#FFFFFF;
   --glass:rgba(255,255,255,.74);
@@ -87,6 +88,7 @@
     --warn:#F0AE3E;
     --warn-soft:#332616;
     --ok:#41CB94;
+    --ok-soft:#12352A;
     --knob:#FFFFFF;
     --seg-on:#383345;
     --glass:rgba(24,23,32,.72);
@@ -123,6 +125,7 @@
   --warn:#F0AE3E;
   --warn-soft:#332616;
   --ok:#41CB94;
+  --ok-soft:#12352A;
   --knob:#FFFFFF;
   --seg-on:#383345;
   --glass:rgba(24,23,32,.72);
@@ -495,6 +498,11 @@ button.row:active{background:var(--bg-tint)}
 .foldpad.tight{padding-top:12px}
 
 .chips{display:flex;flex-wrap:wrap;gap:8px}
+/* Three rows is enough to show there is more; past that a picker stops being
+   part of a form and becomes the page. Shared on purpose — every list that
+   lives inside a sheet reaches this eventually. */
+.cap3{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.chips.cap3{max-height:114px}   /* 3 × 32px person chip + 2 × 8px gap */
 .chip{transition:transform .38s var(--squash),background var(--sw-t) var(--ease-io),color var(--sw-t) var(--ease-io);
   padding:7px 13px;border-radius:999px;font-size:13.5px;font-weight:600;
   background:var(--bg-tint);color:var(--text-2);
@@ -951,7 +959,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   background:var(--accent-soft);color:var(--accent);
 }
 .mochip svg{width:9px;height:9px}
-.mochip.done{background:var(--ok-soft,var(--bg-tint));color:var(--ok)}
+.mochip.done{background:var(--ok-soft);color:var(--ok)}
 .mochip.pend{background:var(--warn-soft);color:var(--warn)}
 .motally{font-size:12.5px;color:var(--text-3);margin-top:1px}
 .motally em{font-style:normal;font-weight:600}
@@ -982,6 +990,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 /* Settling on something not everybody can make asks once, by name. The second
    button is worded differently from the first on purpose, so a fast double
    press cannot carry straight through it. */
+/* Not an error — a fact about your day that whoever proposed this could not
+   see. Warm, not red, and it names the thing so you can judge it. */
+.moclash{
+  display:flex;align-items:center;gap:7px;margin-top:10px;
+  padding:7px 10px;border-radius:11px;
+  background:var(--warn-soft);color:var(--warn);
+  font-size:12.5px;font-weight:600;
+}
+.moclash svg{width:13px;height:13px;flex:none}
 .moconfirm{
   margin:11px -14px -12px;padding:12px 14px;
   background:var(--warn-soft);border-radius:0 0 var(--r-group,16px) var(--r-group,16px);
@@ -1048,9 +1065,41 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   display:inline-block;width:6px;height:6px;border-radius:50%;
   background:var(--accent);margin-inline-start:7px;vertical-align:2px;
 }
-.mtcard .mtstate{font-size:12.5px;color:var(--text-3)}
-.mtcard .mtstate.ready{color:var(--ok);font-weight:600}
+.mtcard .mtstate{
+  display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-3);
+  min-width:0;
+}
+/* The chip answers "does this still need anything" before the sentence after
+   it is read at all — which is the only question a list of these gets asked. */
+.mtpill{
+  flex:none;font-style:normal;font-size:11px;font-weight:700;letter-spacing:.01em;
+  padding:2px 7px;border-radius:999px;background:var(--bg-tint);color:var(--text-3);
+}
+.mtpill.ready{background:var(--ok-soft);color:var(--ok)}
+.mtpill.settled{background:var(--accent-soft);color:var(--accent)}
+.mtpill.waiting{background:var(--warn-soft);color:var(--warn)}
+.mtpill.stuck{background:var(--danger-soft);color:var(--danger)}
 .mtcard .chev{width:15px;height:15px;flex:none;color:var(--text-3)}
+.mtrow{display:flex;align-items:center}
+.mtrow .mtcard{padding-inline-end:10px}
+.mtrow .mtcard{flex:1;min-width:0}
+/* Leaving from the row, where the thought "this should stop appearing"
+   actually happens. Quiet, because it is not what the row is for. */
+.mtx{
+  width:32px;height:32px;flex:none;margin-inline-end:6px;border-radius:50%;
+  display:grid;place-items:center;color:var(--text-3);opacity:.6;
+  position:relative;
+  transition:background .24s var(--ease-io),color .24s var(--ease-io),opacity .24s var(--ease-io);
+}
+.mtx::before{
+  content:"";position:absolute;inset-inline-end:100%;top:9px;bottom:9px;
+  width:1px;background:var(--sep);
+}
+.mtx svg{width:11px;height:11px}
+.mtx:active{background:var(--danger-soft);color:var(--danger)}
+.mtconfirm{padding:13px 14px}
+.mtconfirm p{margin:0 0 10px;font-size:13.5px;color:var(--text-2)}
+.mtconfirm .moact{margin-top:0}
 
 /* ── picking the days ──
    A row of chips taught "pick one" and then behaved like "pick several". A
@@ -1075,11 +1124,22 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   content:"";position:absolute;bottom:4px;width:4px;height:4px;border-radius:50%;
   background:var(--accent);
 }
+.dgc.busy.now::after{inset-inline-end:calc(50% - 7px)}
 .dgc.on.now::after{background:#fff}
-.dgmon{
-  font-size:11.5px;font-weight:650;color:var(--text-3);
-  padding:2px 4px 8px;letter-spacing:.02em;
+.dgmon{display:flex;align-items:center;gap:4px;padding:0 0 6px}
+.dgttl{
+  flex:1;text-align:center;font-size:11.5px;font-weight:650;color:var(--text-3);
+  letter-spacing:.02em;
 }
+.dgmon .calnav[disabled]{opacity:.24;pointer-events:none}
+/* A day that already has something on it. Hollow, under the number, so it
+   cannot be read as the selection — which is a filled circle around it. */
+.dgc.busy::before{
+  content:"";position:absolute;bottom:4px;width:4px;height:4px;border-radius:50%;
+  box-shadow:inset 0 0 0 1.5px var(--text-3);
+}
+.dgc.busy.now::before{inset-inline-start:calc(50% - 7px)}
+.dgc.on.busy::before{box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.9)}
 .dgcount{
   display:flex;align-items:center;gap:6px;padding:11px 4px 2px;
   font-size:12.5px;color:var(--text-3);
@@ -1294,16 +1354,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 }
 .day .dn{font-size:11.5px;font-weight:600;color:var(--text-3)}
 .day .dd{font-family:'Rubik',sans-serif;font-size:17px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
-/* inline-block so the dot can hang off the number itself rather than off the
-   cell — the number stays optically centred either way */
-.day.today .dd{display:inline-block;position:relative;color:var(--accent)}
-.todaydot{
-  position:absolute;top:50%;inset-inline-start:100%;margin-inline-start:3px;
-  transform:translateY(-50%);width:4px;height:4px;border-radius:50%;
-  background:var(--accent);
-}
+.day.today .dd{color:var(--accent)}
+/* "Today" instead of the weekday letter. A dot here sat one line above the
+   dots that count what is IN the day — same shape, two meanings, and the
+   reader has to be told which is which. A word never needs explaining. */
+.day .dn.isnow{color:var(--accent);font-weight:700;font-size:10.5px}
 .day.today[aria-selected="true"] .dd{color:#fff}
-.day.today[aria-selected="true"] .todaydot{background:#fff}
+.day[aria-selected="true"] .dn.isnow{color:#fff}
 .day .dots{display:flex;justify-content:center;gap:3px;margin-top:5px;height:4px}
 .day .dots i{width:4px;height:4px;border-radius:50%;background:var(--text-3);display:block}
 .day[aria-selected="true"]{background:var(--accent);color:#fff}
@@ -1753,12 +1810,33 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
    buttons that used to sit here were most of its height, and they are the
    reason it had to scroll. What is left fits one screen with nothing to
    reach for. */
+.stitlewrap{display:flex;align-items:center;gap:8px;padding:2px 4px 10px}
 .stitle{
-  width:100%;border:0;background:none;font:inherit;font-family:'Rubik',sans-serif;
+  flex:1;min-width:0;border:0;background:none;font:inherit;font-family:'Rubik',sans-serif;
   font-size:20px;font-weight:600;color:var(--text);text-align:center;outline:none;
-  padding:2px 0 10px;
+  padding:0;
 }
 .stitle::placeholder{color:var(--text-3);font-weight:500}
+/* The pencil is a label, not a control — pressing the title is the control,
+   and the title is the whole width of the sheet. It fades out while the field
+   has focus, because by then it has said what it had to say. */
+.stedit{
+  width:22px;height:22px;flex:none;display:grid;place-items:center;color:var(--text-3);
+  transition:opacity .24s var(--ease-io);
+}
+.stedit svg{width:13px;height:13px}
+.stitle:focus ~ .stedit{opacity:0}
+.stitlewrap.creating .stedit{display:none}
+/* On a new task the check is the one thing to press: nothing below this row
+   is worth filling in for a task that has no name yet. */
+.stgo{
+  width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;
+  background:var(--accent);color:#fff;
+  transition:opacity .24s var(--ease-io),transform .3s var(--spring);
+}
+.stgo svg{width:14px;height:14px}
+.stgo:active{transform:scale(.9)}
+.stgo[disabled]{opacity:.32;pointer-events:none}
 .savedline{
   margin-top:14px;text-align:center;font-size:12.5px;font-weight:500;color:var(--text-3);
   transition:color .2s var(--ease);
@@ -1934,7 +2012,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <!-- ══════════════  connections  ══════════════ -->
   <section class="view active" data-view="tools">
     <div class="title" style="--i:0">
-      <h1 data-i18n="tools.h"></h1>
+      <h1 id="toolsH"></h1>
       <p data-i18n="tools.p"></p>
     </div>
     <div class="stack" style="--i:1" id="toolsStack"></div>
@@ -1984,6 +2062,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         <button aria-pressed="true"  data-calmode="cal"  data-i18n="cal.modeRead"></button>
         <button aria-pressed="false" data-calmode="meet" data-i18n="cal.modeMeet"></button>
       </div>
+      <!-- Starting one is the first thing you might want here, so it sits at
+           the top with the control that got you to this mode — not at the far
+           end of however many coordinations you already have. -->
+      <button class="addmini" id="mtNew" hidden><svg><use href="#i-plus"/></svg><span data-i18n="mt.new"></span></button>
     </div>
 
     <div id="calRead">
@@ -2015,13 +2097,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       <div style="--i:3;margin-top:20px" id="mtDoneWrap" hidden>
         <div class="glabel"><span data-i18n="mt.done"></span></div>
         <div class="stack" id="mtDone"></div>
-      </div>
-      <div style="--i:4;margin-top:20px">
-        <div class="group">
-          <button class="addrow" id="mtNew">
-            <span class="plus"><svg><use href="#i-plus"/></svg></span><span data-i18n="mt.new"></span>
-          </button>
-        </div>
       </div>
       <p class="note" style="padding:14px 14px 0" data-i18n="mt.note"></p>
     </div>
@@ -2167,7 +2242,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sTitle">
   <div class="sgrab"><i class="grabber"></i></div>
-  <input class="stitle" id="sTitle" type="text" data-i18n-ph="sheet.taskPh" data-i18n-label="sheet.task" autocomplete="off">
+  <!-- The heading of a sheet is not usually typeable, so it needs to say that
+       it is: a pencil while editing, and on a brand-new task a check, because
+       the title is the one field that has to exist before anything else here
+       means anything. Everything below still saves as you type. -->
+  <div class="stitlewrap">
+    <input class="stitle" id="sTitle" type="text" data-i18n-ph="sheet.taskPh" data-i18n-label="sheet.task" autocomplete="off">
+    <span class="stedit" id="sTitleEdit" aria-hidden="true"><svg><use href="#i-pencil"/></svg></span>
+    <button class="stgo" id="sTitleGo" hidden><svg><use href="#i-check"/></svg></button>
+  </div>
   <!-- Where it came from, said once at the top, so the greyed rows further
        down do not each have to explain themselves. -->
   <div class="srcline" id="sSrc" hidden>
@@ -2241,8 +2324,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         <button class="chip mini" aria-pressed="false" data-i18n="off.d1"></button>
       </div>
     </div></div></div>
+    <!-- "Add to calendar" is a promise about a specific calendar, and with
+         more than one connected the switch alone does not say which. There is
+         no chooser here on purpose: one connected calendar is the writing one,
+         and picking between them is a decision for the connections page, not
+         for the middle of writing a task. -->
     <div class="row no-icon" id="sCalRow" hidden>
-      <div class="row-txt"><div class="row-title" data-i18n="sheet.inCal"></div></div>
+      <div class="row-txt"><div class="row-title" data-i18n="sheet.inCal"></div>
+        <div class="row-sub" id="sCalSub"></div></div>
       <button class="switch" role="switch" aria-checked="false" id="sCal" data-i18n-label="sheet.inCal"></button>
     </div>
   </div>
@@ -2355,8 +2444,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     </div></div>
   </div>
   <div class="sheetbtns">
+    <button class="btn primary" id="mtOptGo" data-i18n="mt.addGo"></button>
     <button class="btn ghost" id="mtOptCancel" data-i18n="sheet.cancel"></button>
-    <button class="btn" id="mtOptGo" data-i18n="mt.addGo"></button>
   </div>
   <div class="scuehold deep"><div class="scue" id="mtOptCue"><i></i></div></div>
 </div>
@@ -2392,7 +2481,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     <input id="mtPickQ" type="search" autocomplete="off" data-i18n-ph="mt.pickSearch" data-i18n-label="mt.pickSearch">
     <button class="sclear" id="mtPickQClear" hidden data-i18n-label="fr.clear">&#10005;</button>
   </div>
-  <div class="group"><div class="foldpad tight"><div class="chips" id="mtPick"></div></div></div>
+  <div class="group"><div class="foldpad tight"><div class="chips cap3" id="mtPick"></div></div></div>
   <div class="glabel" style="margin-top:16px"><span data-i18n="mt.whichDays"></span></div>
   <!-- Writing it is faster than eight taps, and this is the screen where
        Allma already reads dates out of a sentence. What she understood comes
@@ -2426,8 +2515,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     </div></div>
   </div>
   <div class="sheetbtns">
+    <!-- The action you opened the sheet for is the one your thumb should land
+         on; the way out sits under it, not above it. -->
+    <button class="btn primary" id="mtNewGo" data-i18n="mt.start"></button>
     <button class="btn ghost" id="mtNewCancel" data-i18n="sheet.cancel"></button>
-    <button class="btn" id="mtNewGo" data-i18n="mt.start"></button>
   </div>
   <div class="scuehold deep"><div class="scue" id="mtNewCue"><i></i></div></div>
 </div>
@@ -2449,7 +2540,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       <span class="ebicon"><svg><use href="#i-person"/></svg></span>
       <b data-i18n="cn.noneH"></b>
       <p data-i18n="cn.noneP"></p>
-      <button class="btn" id="cnConnect" data-i18n="cn.connect"></button>
+      <button class="btn primary" id="cnConnect" data-i18n="cn.connect"></button>
     </div>
   </div>
   <div class="sheetbtns">
@@ -2758,7 +2849,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "tab.tools":"חיבורים","tab.tasks":"משימות","tab.cal":"יומן","tab.friends":"חברים","tab.me":"פרופיל",
 
       "tools.h":"החיבורים שלך",
-      "tools.p":"חשבון אחד — כל השירותים שלו. כל שירות נפתח ונסגר בנפרד.",
+      "tools.p":"כאן מחברים את עולמה לשירותים שלך, ופותחים או סוגרים כל אחד בנפרד.",
       "tools.accounts":"חשבונות","tools.accountsHint":"התחברות אחת לכל ספק",
       "tools.work":"עבודה",
       "ch.h":"איפה מדברים","ch.hint":"לחיצה פותחת את השיחה",
@@ -2878,8 +2969,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.whenPh":"או תכתוב: ״השבוע הבא״, ״15–22״",
       "mt.understood":"הבנתי: {list}","mt.useIt":"לסמן בלוח",
       "mt.notUnderstood":"לא הצלחתי להבין את זה — סמן בלוח למטה.",
+      "mt.busy":"יש לך משהו ביום הזה","mt.clash":"מתנגש עם {what}","mt.prevWeeks":"שבועיים אחורה","mt.nextWeeks":"שבועיים קדימה",
+      "mt.pill.waiting":"ממתין","mt.pill.ready":"אפשר לסגור",
+      "mt.pill.settled":"נקבע","mt.pill.stuck":"תקוע","mt.pill.empty":"ריק",
+      "mt.leaveAsk":"לצאת מ{name}? התשובות שלך יורדות מהספירה והתיאום יימחק מהרשימה שלך.",
       "mt.stateReady":"מתאים לכולם — {when}",
-      "mt.stateWaiting":"ממתין לתשובה של {n}",
       "mt.stateNone":"עוד אף אחד לא ענה",
       "mt.stateNoOpts":"עוד לא הוצע מועד",
       "mt.settledAs":"נקבע — {when}",
@@ -2900,7 +2994,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.mtSwapped":"{out} הוחלף ב{in}",
       "toast.mtLeft":"יצאת מ{name}","toast.mtWhen":"סומנו {n} ימים",
       "toast.mtCalAdd":"נוסף ליומן שלך","toast.mtCalGone":"הוסר מהיומן שלך",
-      "toast.mtStarted":"נפתח תיאום עם {list}",
+      "toast.mtStarted":"נשלחה בקשה ל{list} — כשיענו זה יופיע כאן",
       "toast.mtConfirmed":"נקבע — {when}. כולם קיבלו הודעה.",
       "tcat.imported":"מפלטפורמות מחוברות",
       "sheet.fromApp":"הגיעה מ־{name}","sheet.noField":"ל־{name} אין את השדה הזה",
@@ -2941,7 +3035,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "cal.today":"היום","cal.tomorrow":"מחר","cal.clear":"ללא תאריך","cal.yesterday":"אתמול",
       "sheet.untitled":"משימה ללא שם",
       "sheet.allDay":"כל היום","sheet.repeat":"חזרה",
-      "sheet.inCal":"להוסיף ליומן",
+      "sheet.inCal":"להוסיף ליומן","sheet.inCalTo":"נוסף ל־{name} · {account}","sheet.inCalNone":"אין יומן מחובר לכתיבה",
       "cal.allDay":"כל היום",
       "cal.taskTag":"משימה","cal.taskSub":"מהרשימה שלך בעולמה","cal.taskRem":"עולמה תזכיר ב־{name}",
       "cal.showIn":"להצגה ביומן",
@@ -2979,7 +3073,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "tab.tools":"Connections","tab.tasks":"Tasks","tab.cal":"Calendar","tab.friends":"Friends","tab.me":"Profile",
 
       "tools.h":"Your connections",
-      "tools.p":"One account, all of its services. Each service opens and closes on its own.",
+      "tools.p":"Connect Allma to your services here, and open or close each one on its own.",
       "tools.accounts":"Accounts","tools.accountsHint":"One sign-in per provider",
       "tools.work":"Work",
       "ch.h":"Where we talk","ch.hint":"Tap to open the chat",
@@ -3094,8 +3188,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.whenPh":"Or write it: \u201cnext week\u201d, \u201c15\u201322\u201d",
       "mt.understood":"Read as: {list}","mt.useIt":"Use these",
       "mt.notUnderstood":"Couldn't read that \u2014 mark it on the grid below.",
+      "mt.busy":"You have something that day","mt.clash":"Clashes with {what}","mt.prevWeeks":"Two weeks back","mt.nextWeeks":"Two weeks forward",
+      "mt.pill.waiting":"Waiting","mt.pill.ready":"Ready",
+      "mt.pill.settled":"Settled","mt.pill.stuck":"Stuck","mt.pill.empty":"Empty",
+      "mt.leaveAsk":"Leave {name}? Your answers stop counting and it goes off your list.",
       "mt.stateReady":"Fits everyone \u2014 {when}",
-      "mt.stateWaiting":"Waiting on {n}",
       "mt.stateNone":"Nobody has answered yet",
       "mt.stateNoOpts":"No time proposed yet",
       "mt.settledAs":"Settled \u2014 {when}",
@@ -3116,7 +3213,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.mtSwapped":"{out} replaced by {in}",
       "toast.mtLeft":"You left {name}","toast.mtWhen":"{n} days marked",
       "toast.mtCalAdd":"Added to your calendar","toast.mtCalGone":"Removed from your calendar",
-      "toast.mtStarted":"Coordination opened with {list}",
+      "toast.mtStarted":"Request sent to {list} — answers show up here",
       "toast.mtConfirmed":"Settled \u2014 {when}. Everyone has been told.",
       "tcat.imported":"From connected platforms",
       "sheet.fromApp":"Came from {name}","sheet.noField":"{name} has no such field",
@@ -3157,7 +3254,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "cal.today":"Today","cal.tomorrow":"Tomorrow","cal.clear":"No date","cal.yesterday":"Yesterday",
       "sheet.untitled":"Untitled task",
       "sheet.allDay":"All day","sheet.repeat":"Repeat",
-      "sheet.inCal":"Add to calendar",
+      "sheet.inCal":"Add to calendar","sheet.inCalTo":"Goes to {name} · {account}","sheet.inCalNone":"No calendar connected for writing",
       "cal.allDay":"All day",
       "cal.taskTag":"Task","cal.taskSub":"From your Allma list","cal.taskRem":"Allma will remind you on {name}",
       "cal.showIn":"Show in calendar",
@@ -3988,7 +4085,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       if(on && !b){
         el.insertAdjacentHTML("beforeend",
           '<u class="defbadge" role="img" aria-label="' + esc(t("ch.defTag")) +
-          '" title="' + esc(t("ch.defTag")) + '"><svg><use href="#i-bell"/></svg></u>');
+          '" title="' + esc(t("ch.defTag")) + '"><svg><use href="#i-check"/></svg></u>');
       } else if(!on && b){
         b.classList.add("out");
         setTimeout(function(){ if(b.parentNode) b.remove(); }, 300);
@@ -4396,11 +4493,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     }
     closeCal();
     $("#scrim").classList.remove("show");
-    $("#sheet").classList.remove("show");
-    $("#citySheet").classList.remove("show");
-    $("#cnSheet").classList.remove("show");
-    $("#mtSheet").classList.remove("show");
-    $("#mtNewSheet").classList.remove("show");
+    /* Every sheet, not a list of them. This used to name six by hand, and the
+       two added last were never added here — so the option picker and the swap
+       picker stayed open under whatever opened next, which is exactly what
+       "the add button stays lit after it worked" looks like from outside. A
+       list you have to remember to extend is a bug with a delay on it. */
+    $$(".sheet").forEach(function(el){ el.classList.remove("show"); });
     activeSheet = null;
   }
   $("#scrim").addEventListener("click", closeSheets);
@@ -4612,6 +4710,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#sTimeVal").textContent = editing.tm || t("sheet.pickTime");
     $("#sTimeChip").classList.toggle("set", !!editing.tm);
     $("#sCalRow").hidden = !dated;
+    $("#sCalSub").textContent = calTargetName();
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     $("#sRepeatVal").textContent = t("rep." + ({none:"once", day:"day", week:"week", month:"month", year:"year"}[chosen ? chosen.dataset.rep : "none"]));
     var ck = editing.cat || "none";
@@ -4624,6 +4723,23 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     });
     syncSheetSource();
   }
+  /* Which calendar "add to calendar" actually writes to. The first connected
+     provider whose calendar service is on and writable — the same one the
+     agent would use — named out loud rather than left to be discovered after
+     the event fails to appear. */
+  function calTarget(){
+    return PROV.filter(function(p){
+      if(!p.connected) return false;
+      return p.svc.some(function(sv){ return sv.k === "cal" && sv.on && sv.mode === "write"; });
+    })[0] || null;
+  }
+  function calTargetName(){
+    var p = calTarget();
+    if(!p) return t("sheet.inCalNone");
+    var sv = p.svc.filter(function(x){ return x.k === "cal"; })[0];
+    return t("sheet.inCalTo", {name:t(sv.sub), account:p.account});
+  }
+
   /* the category chips are built once from the closed set */
   function buildCatChips(){
     $("#sCat").innerHTML = TASKCATS.map(function(c){
@@ -4884,9 +5000,39 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#sShareRow").setAttribute("aria-expanded", "false");
     $("#sSaved").textContent = t("sheet.autosave");
     $("#sSaved").classList.remove("flash");
+    creating = isNew;
+    syncTitleRow();
     showSheet($("#sheet"));
     setTimeout(function(){ if(isNew) $("#sTitle").focus(); }, 380);
   }
+
+  /* `creating` is not `isNew`. `isNew` stops being true the moment the task
+     has a name, because that is when it joins the list — but the CHECK has to
+     survive that, or it would vanish on the first keystroke and never be
+     pressable. So the check belongs to the session, not to the row: it is
+     shown from the moment this sheet was opened to make something, until the
+     person says the name is right.
+
+     It confirms rather than creates, and says so honestly — the task is saved
+     as you type, exactly like every other field here. What the check buys is
+     that the title is visibly the one thing that MAKES a task, and that the
+     rows below it are visibly not waiting on anything. */
+  var creating = false;
+  function syncTitleRow(){
+    var w = $("#sTitle").parentElement;
+    w.classList.toggle("creating", creating);
+    $("#sTitleGo").hidden = !creating;
+    $("#sTitleGo").disabled = !$("#sTitle").value.trim();
+  }
+  $("#sTitle").addEventListener("input", syncTitleRow);
+  $("#sTitleGo").addEventListener("click", function(){
+    if(!$("#sTitle").value.trim()) return;
+    commit();                       /* it may not have been pushed yet */
+    creating = false;
+    syncTitleRow();
+    $("#sTitle").blur();
+    toast(t("toast.saved"));
+  });
 
   $("#sRepeatRow").addEventListener("click", function(){
     var on = !$("#sRepeatFold").classList.contains("open");
@@ -5157,7 +5303,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      ans:{0:{51:"y"}, 8:{51:"y"}},
      left:[], settled:51, inCal:true}
   ];
-  var mtSeq = 100, mtOptSeq = 500, mtOpen = null, mtSettling = null;
+  var mtSeq = 100, mtOptSeq = 500, mtOpen = null, mtSettling = null, mtLeaving = null;
 
   /* "א, ב ו־ג", never "א ו־ב ו־ג". D.and is the conjunction before the LAST
      name only; everything before it is separated by a comma. Same shape in
@@ -5234,29 +5380,56 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   function mtOptLabel(m, o){ return mtDayLabel(o.day) + " · " + mtWhen(m, o); }
 
   /* ── the card, before you open it ── */
+  /* Scanning a list of coordinations is asking one question — which of these
+     still needs something from anybody — and a sentence is the slow way to
+     answer it. The chip carries the category, in its own colour; the line
+     after it carries only what the chip cannot say. */
+  function mtStatus(m){
+    if(m.settled) return "settled";
+    var b = mtBest(m), total = mtActive(m).length;
+    if(!b) return mtLive(m).length ? "waiting" : "empty";
+    var y = mtN(m, b, "y"), wait = total - y - mtN(m, b, "n");
+    return y === total ? "ready" : wait ? "waiting" : "stuck";
+  }
   function mtState(m){
     if(m.settled){
       var s = mtOptById(m, m.settled);
-      return s ? t("mt.settledAs", {when:mtOptLabel(m, s)}) : t("mt.stateNone");
+      return s ? mtOptLabel(m, s) : t("mt.stateNone");
     }
     var b = mtBest(m), total = mtActive(m).length;
     if(!b) return mtLive(m).length ? t("mt.stateNone") : t("mt.stateNoOpts");
     var y = mtN(m, b, "y"), no = mtN(m, b, "n"), wait = total - y - no;
-    if(y === total) return t("mt.stateReady", {when:mtOptLabel(m, b)});
-    if(wait) return t("mt.stateWaiting", {n:wait});
+    if(y === total) return mtOptLabel(m, b);
+    if(wait) return pl("mtW", wait);
     return t("mt.stateBlocked", {n:y, of:total, no:pl("mtN", no)});
   }
   function mtCardHTML(m){
-    var ready = !m.settled && mtBest(m) && mtN(m, mtBest(m), "y") === mtActive(m).length;
+    var st = mtStatus(m);
     var mine = mtLive(m).filter(function(o){ return !mtAns(m, 0, o.id); }).length;
-    return '<div class="group" style="margin-bottom:10px"><button class="mtcard" data-mt="' + m.id + '">' +
+    /* Leaving is offered here, on the row, because the reason to leave is
+       usually "this should stop appearing in my list" — which is a thought you
+       have while looking AT the list, not one that survives two taps into the
+       coordination. It asks first: the one thing worse than a list you cannot
+       clear is a list that clears itself. */
+    if(mtLeaving === m.id){
+      return '<div class="group" style="margin-bottom:10px"><div class="mtconfirm">' +
+        "<p>" + esc(t("mt.leaveAsk", {name:L(m.t)})) + "</p>" +
+        '<div class="moact"><button class="mobtn warn" data-mtleavego="' + m.id + '">' +
+        esc(t("mt.leave")) + "</button>" +
+        '<button class="mobtn" data-mtleaveno>' + esc(t("sheet.cancel")) + "</button></div></div></div>";
+    }
+    return '<div class="group" style="margin-bottom:10px"><div class="mtrow">' +
+      '<button class="mtcard" data-mt="' + m.id + '">' +
       faceStack(m.who) +
       '<span class="mtbody"><span class="mtname">' + esc(L(m.t)) +
       /* An unanswered coordination is the one thing on this page that is
          waiting on YOU, so it says so on the card and not two taps in. */
       (!m.settled && mine ? '<i class="mtdot"></i>' : "") + "</span>" +
-      '<span class="mtstate' + (ready || m.settled ? " ready" : "") + '">' + esc(mtState(m)) + "</span></span>" +
-      '<svg class="chev"><use href="#i-chev"/></svg></button></div>';
+      '<span class="mtstate"><em class="mtpill ' + st + '">' + esc(t("mt.pill." + st)) + "</em>" +
+      esc(mtState(m)) + "</span></span>" +
+      '<svg class="chev"><use href="#i-chev"/></svg></button>' +
+      '<button class="mtx" data-mtleave="' + m.id + '" aria-label="' + esc(t("mt.leave")) + '">' +
+      '<svg><use href="#i-x"/></svg></button></div></div>';
   }
   function renderMeets(){
     /* Settled coordinations are not "active" any more — they are calendar
@@ -5271,14 +5444,19 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#mtDoneWrap").hidden = !done.length;
     $("#mtDone").innerHTML = done.map(mtCardHTML).join("");
   }
-  $("#mtList").addEventListener("click", function(e){
+  function mtListClick(e){
+    /* the two leave controls are checked first: both sit inside the row the
+       open handler would otherwise claim */
+    var go = e.target.closest("[data-mtleavego]");
+    if(go){ var gm = mtById(+go.dataset.mtleavego); if(gm) mtLeave(gm); return; }
+    if(e.target.closest("[data-mtleaveno]")){ mtLeaving = null; renderMeets(); return; }
+    var x = e.target.closest("[data-mtleave]");
+    if(x){ mtLeaving = +x.dataset.mtleave; renderMeets(); return; }
     var b = e.target.closest("[data-mt]");
-    if(b) openMeet(+b.dataset.mt);
-  });
-  $("#mtDone").addEventListener("click", function(e){
-    var b = e.target.closest("[data-mt]");
-    if(b) openMeet(+b.dataset.mt);
-  });
+    if(b){ mtLeaving = null; openMeet(+b.dataset.mt); }
+  }
+  $("#mtList").addEventListener("click", mtListClick);
+  $("#mtDone").addEventListener("click", mtListClick);
 
   /* ── the answer row ──
      Two buttons that say what they do, instead of one target that means a
@@ -5321,6 +5499,32 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       (a === "n" ? no : wait).push(mtName(pid));
     });
     return {no:no, wait:wait, me:me};
+  }
+  /* ── what she already knows about your day ──
+     Somebody else picked these times and cannot see your calendar. Saying "I
+     can" while a thing already sits there is not a decision anybody made — it
+     is one nobody was shown. So the row says it, at the moment of answering,
+     and says WHAT rather than just "you are busy": half the hits are things
+     you would happily move, and you can only tell which by name. */
+  function mtMins(hhmm){
+    var a = String(hhmm || "").split(":");
+    return a.length === 2 ? (+a[0]) * 60 + (+a[1]) : -1;
+  }
+  function mtPartOf(hhmm){
+    var mm = mtMins(hhmm);
+    if(mm < 0) return "";
+    return mm < 720 ? "morning" : mm < 1020 ? "noon" : mm < 1320 ? "evening" : "night";
+  }
+  function mtClash(m, o){
+    var evs = agendaFor(o.day).filter(function(e){ return e.meet !== m.id; });
+    if(!evs.length) return null;
+    /* a whole day collides with anything already in it */
+    if(m.allDay) return evs[0];
+    return evs.filter(function(e){
+      if(e.allDay) return false;                 /* an all-day marker is not an hour */
+      if(o.time && e.time) return Math.abs(mtMins(o.time) - mtMins(e.time)) < 90;
+      return mtPartOf(e.time) === (o.part || mtPartOf(o.time));
+    })[0] || null;
   }
   function mtOptHTML(m, o){
     var total = mtActive(m).length;
@@ -5370,10 +5574,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         "</button>" +
         '<button class="mobtn" data-cancelsettle>' + esc(t("sheet.cancel")) + "</button></div></div>";
     }
+    var clash = settled ? null : mtClash(m, o);
+    var warn = clash
+      ? '<div class="moclash"><svg><use href="#i-clock"/></svg><span>' +
+        esc(t("mt.clash", {what:clash.title + (clash.time ? " · " + clash.time : "")})) +
+        "</span></div>"
+      : "";
     return '<div class="group mopt' + (isBest ? " best" : "") + (settled ? " settled" : "") +
       '" data-opt="' + o.id + '">' + head + bar +
       '<div class="motally">' + mtTallyFor(m, o) + "</div>" +
-      '<div class="mtppl">' + mtFacesFor(m, o) + "</div>" + act + confirm + "</div>";
+      '<div class="mtppl">' + mtFacesFor(m, o) + "</div>" + warn + act + confirm + "</div>";
   }
 
   function renderMeet(){
@@ -5419,8 +5629,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#mtLeave").hidden = false;
     paintCue($("#mtSheet"), $("#mtCue"));
   }
+  function mtById(id){ return MEETS.filter(function(m){ return m.id === id; })[0] || null; }
   function openMeet(id){
-    mtOpen = MEETS.filter(function(m){ return m.id === id; })[0];
+    mtOpen = mtById(id);
     if(!mtOpen) return;
     mtSettling = null;
     renderMeet();
@@ -5489,49 +5700,87 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     renderMeet(); renderStrip(selDay);
     toast(t(mtOpen.inCal ? "toast.mtCalAdd" : "toast.mtCalGone"));
   });
-  $("#mtLeave").addEventListener("click", function(){
-    var m = mtOpen;
-    if(!m) return;
-    /* The answers stop counting; the name does not disappear. The group has
-       to be able to see why the tally dropped, and it stays greyed for them
-       until somebody invites them back. */
+  /* Leaving is one act with two doors — the sheet and the list row — so it is
+     one function. The answers stop counting; the name does not disappear. The
+     group has to be able to see why the tally dropped, and it stays greyed for
+     them until somebody invites them back. */
+  function mtLeave(m){
     if(m.left.indexOf(0) < 0) m.left.push(0);
     delete m.ans[0];
     API.call("leaveMeeting", {meeting_id:m.id});
     MEETS = MEETS.filter(function(x){ return x !== m; });
-    closeSheets();
-    renderMeets();
+    mtLeaving = null;
+    renderMeets(); renderStrip(selDay);
     toast(t("toast.mtLeft", {name:L(m.t)}));
+  }
+  $("#mtLeave").addEventListener("click", function(){
+    if(!mtOpen) return;
+    var m = mtOpen;
+    closeSheets();
+    mtLeave(m);
   });
 
   /* ── proposing one more moment ──
      One date, one time. The same two controls the creation screen uses, which
      is why they are functions rather than markup written twice. */
   var optDay = 1, optPart = "evening", optExact = "";
-  function dayGridHTML(host, sel, multi){
-    /* Three weeks from the Sunday of the week today falls in — not three weeks
-       from today. A grid whose first column is "in four days" is not a
-       calendar, and the only reason to use one is that everybody already knows
-       how to pick several dates in a real one. Days behind us are drawn and
-       inert: dropping them would slide every weekday one column over. */
-    var start = new Date(base); start.setDate(start.getDate() - start.getDay());
+  /* ── the shared day picker ──
+     Two weeks at a time, paged. Three weeks was chosen so nobody would have to
+     page, and it cost the sheet a third of its height for a row most people
+     never reach — a picker that fits above the fold is worth a chevron. The
+     grid always starts on the Sunday of the week today falls in, not on today:
+     a calendar whose first column is "in four days" is not a calendar, and
+     recognising one is the only reason to use a grid at all. Days behind us
+     are drawn and inert, because dropping them would slide every weekday one
+     column over.
+
+     DGPAGE is per host, so the two pickers do not share a position. */
+  var dgPage = {}, dgRedraw = {};
+  function dayGridHTML(host, labelHost, sel, multi){
+    var page = dgPage[host] || 0;
+    var start = new Date(base);
+    start.setDate(start.getDate() - start.getDay() + page * 14);
     var html = "", months = [];
     for(var i = 0; i < 7; i++) html += '<div class="dgh">' + esc(D.days[i]) + "</div>";
-    for(var k = 0; k < 21; k++){
+    for(var k = 0; k < 14; k++){
       var d = new Date(start); d.setDate(d.getDate() + k);
       var off = Math.round((d - base) / 86400000);
       var past = off < 0;
       if(!past && months.indexOf(d.getMonth()) < 0) months.push(d.getMonth());
       var on = multi ? sel.indexOf(off) > -1 : sel === off;
+      /* A day you already have something on is not disqualified — it is a fact
+         you would want before proposing it, and the alternative is finding out
+         from whoever answers. */
+      var busy = !past && agendaFor(off).length > 0;
       html += '<button class="dgc' + (past ? " past" : "") + (on ? " on" : "") +
-        (off === 0 ? " now" : "") + '"' + (past ? " disabled" : "") +
+        (off === 0 ? " now" : "") + (busy ? " busy" : "") + '"' + (past ? " disabled" : "") +
         ' data-day="' + off + '" aria-pressed="' + on + '" aria-label="' +
-        esc(D.full[d.getDay()] + " " + d.getDate() + "/" + (d.getMonth() + 1)) + '">' +
+        esc(D.full[d.getDay()] + " " + d.getDate() + "/" + (d.getMonth() + 1) +
+            (busy ? " · " + t("mt.busy") : "")) + '">' +
         d.getDate() + "</button>";
     }
     $(host).innerHTML = html;
-    return months.map(function(mi){ return D.monthsBare[mi]; }).join(" · ");
+    var lbl = $(labelHost);
+    lbl.dataset.dggrid = host;
+    lbl.innerHTML =
+      '<button class="calnav" data-dgpage="-1"' + (page ? "" : " disabled") +
+      ' aria-label="' + esc(t("mt.prevWeeks")) + '"><svg viewBox="0 0 16 16"><path d="M10 2 4 8l6 6"/></svg></button>' +
+      '<span class="dgttl">' + esc(months.map(function(mi){ return D.monthsBare[mi]; }).join(" · ")) + "</span>" +
+      '<button class="calnav" data-dgpage="1" aria-label="' + esc(t("mt.nextWeeks")) +
+      '"><svg viewBox="0 0 16 16"><path d="M6 2l6 6-6 6"/></svg></button>';
   }
+  /* One pager for both grids: the label element remembers which grid it heads,
+     and each grid registers how to redraw itself. */
+  document.addEventListener("click", function(e){
+    var b = e.target.closest("[data-dgpage]");
+    if(!b || b.disabled) return;
+    var lbl = b.closest("[data-dggrid]");
+    if(!lbl) return;
+    var host = lbl.dataset.dggrid, next = (dgPage[host] || 0) + (+b.dataset.dgpage);
+    if(next < 0) return;                       /* forward only from this week */
+    dgPage[host] = next;
+    if(dgRedraw[host]) dgRedraw[host]();
+  });
   function partChipsHTML(part, exact, prefix){
     return PARTS.map(function(k){
       return '<button class="chip mini" aria-pressed="' + (!exact && part === k) +
@@ -5540,8 +5789,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       '<button class="chip mini" aria-pressed="' + !!exact + '" data-' + prefix + '="exact">' +
       esc(t("mt.exact")) + "</button>";
   }
+  dgRedraw["#mtOptDays"] = function(){ renderOptSheet(); };
+  dgRedraw["#mtDays"]    = function(){ renderMtDays(); };
   function renderOptSheet(){
-    $("#mtOptMon").textContent = dayGridHTML("#mtOptDays", optDay, false);
+    dayGridHTML("#mtOptDays", "#mtOptMon", optDay, false);
     $("#mtOptWhen").hidden = !!(mtOpen && mtOpen.allDay);
     $("#mtOptParts").innerHTML = partChipsHTML(optPart, optExact, "optpart");
     $("#mtOptTime").hidden = !optExact;
@@ -5551,7 +5802,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   $("#mtAddOpt").addEventListener("click", function(){
     if(!mtOpen) return;
-    optDay = 1; optPart = "evening"; optExact = "";
+    optDay = 1; optPart = "evening"; optExact = ""; dgPage["#mtOptDays"] = 0;
     $("#mtOptTitle").textContent = t(mtMine(mtOpen) ? "mt.addOpt" : "mt.proposeOpt");
     renderOptSheet();
     showSheet($("#mtOptSheet"));
@@ -5736,7 +5987,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     return d.getDate() + "/" + (d.getMonth() + 1);
   }
   function renderMtDays(){
-    $("#mtDayMon").textContent = dayGridHTML("#mtDays", mtPickDays, true);
+    dayGridHTML("#mtDays", "#mtDayMon", mtPickDays, true);
     $("#mtDayNote").textContent = pl("mtday", mtPickDays.length) +
       (mtPickDays.length > MEET_CAP ? " · " + t("mt.overCap", {n:MEET_CAP}) : "");
     $("#mtDayNote").classList.toggle("over", mtPickDays.length > MEET_CAP);
@@ -5770,7 +6021,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     paintCue($("#mtNewSheet"), $("#mtNewCue"));
   }
   $("#mtNew").addEventListener("click", function(){
-    mtPickWho = []; mtPickDays = [1, 2, 3]; mtPickQ = "";
+    mtPickWho = []; mtPickDays = [1, 2, 3]; mtPickQ = ""; dgPage["#mtDays"] = 0;
     mtNewPart = "evening"; mtNewExact = ""; mtNewAllDay = false;
     mtPerDay = false; mtDayPart = {};
     $("#mtName").value = "";
@@ -5887,6 +6138,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     });
     $("#calRead").hidden = mode !== "cal";
     $("#calMeet").hidden = mode === "cal";
+    $("#mtNew").hidden = mode === "cal";
     $("#calSub").textContent = t(mode === "cal" ? "cal.p" : "cal.pMeet");
     if(mode === "meet") renderMeets();
   }
@@ -6048,8 +6300,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          have to know. A mark beside the number is one you can see. */
       return '<button class="day' + (i === 0 ? " today" : "") + '" data-d="' + i +
         '" aria-selected="' + (i === sel) + '">' +
-        '<div class="dn">' + D.days[d.getDay()] + '</div>' +
-        '<div class="dd">' + d.getDate() + (i === 0 ? '<i class="todaydot"></i>' : "") + '</div>' +
+        '<div class="dn' + (i === 0 ? " isnow" : "") + '">' +
+        (i === 0 ? esc(t("cal.today")) : D.days[d.getDay()]) + "</div>" +
+        '<div class="dd">' + d.getDate() + "</div>" +
         '<div class="dots">' + dots + "</div></button>";
     }).join("");
     /* the strip can straddle two months, and then it has to say both */
@@ -6429,6 +6682,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(!b) return;
     $$("button", this).forEach(function(x){ x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
     paintAvatars();
+    /* the greeting on the connections page is gendered, so it moves with this */
+    $("#toolsH").textContent = brandTag(myGender());
     $("#bigAvatar").classList.remove("pop"); void $("#bigAvatar").offsetWidth; $("#bigAvatar").classList.add("pop");
     toast(t(b.dataset.g === "f" ? "toast.fem" : "toast.masc"));
   });
@@ -6511,6 +6766,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
        that is a setting one page away. */
     $("#remindSub").textContent = t("sheet.remindSub", {name:chanName(defaultChannel)});
     $("#sSaved").textContent = t("sheet.autosave");
+    /* the first page a person lands on greets them in their own language and
+       gender, rather than repeating the tab they just pressed */
+    $("#toolsH").textContent = brandTag(myGender());
     syncName();
   }
   /* ══════════════════════════════════════════════════════════════
