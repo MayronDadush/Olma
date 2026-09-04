@@ -1008,8 +1008,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .mtopt.top .mtrank{background:var(--accent);color:#fff}
 .mtopt .mtwhen{flex:1;min-width:0}
 .mtopt .mtwhen b{display:block;font-size:15.5px;font-weight:600;letter-spacing:-.01em}
-.mtopt .mtwhen span{display:block;font-size:12.5px;color:var(--text-3);margin-top:1px}
-.mtopt.top .mtwhen span{color:var(--ok)}
+.mtopt .mtwhen > .mttally{display:block;font-size:12.5px;color:var(--text-3);margin-top:1px}
+.mtopt.top .mtwhen > .mttally{color:var(--text-2)}
 .mtopt .mtgo{
   flex:none;padding:6px 13px;border-radius:999px;font-size:13px;font-weight:600;
   background:var(--accent-soft);color:var(--accent);
@@ -1026,6 +1026,125 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .mtcard .mtstate{font-size:12.5px;color:var(--text-3);margin-top:2px}
 .mtcard .mtstate.ready{color:var(--ok);font-weight:600}
 .mtcard .chev{width:15px;height:15px;flex:none;color:var(--text-3)}
+
+/* ── "I can't" ──
+   A mark used to mean one thing, so its absence had to carry two: "no" and
+   "haven't looked". Those are not the same answer and the difference is
+   exactly what decides whether you settle a slot — so a cell now holds three
+   states, and none of them is encoded by colour alone. The cross is the mark;
+   the tint is the reinforcement. */
+.mtcell.nope{background:var(--danger-soft);color:var(--danger)}
+.mtcell.nope::after{
+  content:"\2715";position:absolute;top:3px;inset-inline-start:5px;
+  font-size:8.5px;font-weight:700;line-height:1;opacity:.85;z-index:2;
+}
+/* Somebody else said no. It is a count, not a state, so it sits in the
+   opposite corner from my own answer and never moves. */
+.mtcell .nopip{
+  position:absolute;top:3px;inset-inline-end:4px;z-index:2;
+  min-width:12px;height:12px;padding:0 3px;border-radius:999px;
+  background:var(--danger);color:#fff;
+  font-size:8.5px;font-weight:700;line-height:12px;text-align:center;
+  font-variant-numeric:tabular-nums;font-style:normal;
+}
+.mtcell.mine .nopip{box-shadow:0 0 0 1.5px var(--accent)}
+/* Three taps, and the legend says so once rather than each cell explaining
+   itself. */
+.mtlegend{
+  display:flex;flex-wrap:wrap;gap:4px 14px;padding:0 14px 2px;margin-top:-2px;
+  font-size:11.5px;color:var(--text-3);
+}
+.mtlegend span{display:inline-flex;align-items:center;gap:5px}
+.mtlegend i{width:11px;height:11px;border-radius:4px;flex:none;background:var(--bg-tint)}
+.mtlegend i.y{background:var(--accent)}
+.mtlegend i.n{background:var(--danger-soft);box-shadow:inset 0 0 0 1px var(--danger)}
+
+/* ── the answer, as a bar ──
+   The same object the task list uses for "how many of these are done", asked
+   of people instead of subtasks: a track that fills. What it adds here is a
+   second segment, because a coordination has three answers and a bar with one
+   fill would quietly file "hasn't answered" under "can't". */
+.mtbar{
+  display:flex;height:6px;border-radius:999px;overflow:hidden;
+  background:var(--bg-tint);margin:7px 0 6px;
+}
+.mtbar i{display:block;height:100%;width:var(--w,0%);transition:width .5s var(--ease-io)}
+.mtbar i.y{background:var(--accent)}
+.mtbar i.n{background:var(--danger);opacity:.55}
+.mttally{display:block;font-size:12.5px;color:var(--text-3)}
+.mttally em{font-style:normal;font-weight:600}
+.mttally em.y{color:var(--accent)}
+.mttally em.n{color:var(--danger)}
+/* Who, not how many — the count is the glance and this is the reason you
+   opened it. A ring says the answer; the dot on a "no" means the ring is
+   never the only thing saying it. */
+.mtppl{display:flex;margin-top:7px}
+.mtppl u{
+  display:block;position:relative;width:20px;height:20px;border-radius:50%;flex:none;
+  overflow:visible;text-decoration:none;margin-inline-start:-5px;
+}
+.mtppl u:first-child{margin-inline-start:0}
+.mtppl u > span{
+  display:block;width:100%;height:100%;border-radius:50%;overflow:hidden;
+  background:var(--surface);box-shadow:0 0 0 1.6px var(--surface);
+}
+.mtppl u svg{width:100%;height:100%;display:block}
+.mtppl u.y > span{box-shadow:0 0 0 1.6px var(--accent)}
+.mtppl u.n > span{box-shadow:0 0 0 1.6px var(--danger)}
+.mtppl u.w{opacity:.38}
+.mtppl u.n::after{
+  content:"";position:absolute;bottom:-1px;inset-inline-end:-1px;
+  width:7px;height:7px;border-radius:50%;background:var(--danger);
+  box-shadow:0 0 0 1.4px var(--surface);
+}
+
+/* ── picking the days ──
+   A row of chips taught "pick one" and then behaved like "pick several". A
+   calendar is the one surface where everybody already knows that several is
+   allowed, so the affordance stops needing to be explained. */
+.daygrid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;padding:2px 2px 0}
+.daygrid .dgh{
+  font-size:10.5px;font-weight:650;color:var(--text-3);
+  text-align:center;padding-bottom:3px;
+}
+.dgc{
+  position:relative;aspect-ratio:1;border-radius:11px;background:var(--bg-tint);
+  display:grid;place-items:center;font-size:13.5px;font-weight:600;color:var(--text-2);
+  font-variant-numeric:tabular-nums;
+  transition:background var(--sw-t) var(--ease-io),color var(--sw-t) var(--ease-io),
+             transform .3s var(--squash);
+}
+.dgc:active{transform:scale(.9)}
+.dgc.past{opacity:.26;pointer-events:none;background:transparent}
+.dgc.on{background:var(--accent);color:#fff;font-weight:700}
+.dgc.now::after{
+  content:"";position:absolute;bottom:4px;width:4px;height:4px;border-radius:50%;
+  background:var(--accent);
+}
+.dgc.on.now::after{background:#fff}
+.dgmon{
+  font-size:11.5px;font-weight:650;color:var(--text-3);
+  padding:2px 4px 8px;letter-spacing:.02em;
+}
+.dgcount{
+  display:flex;align-items:center;gap:6px;padding:11px 4px 2px;
+  font-size:12.5px;color:var(--text-3);
+}
+
+/* A group is a shortcut to its members, not a thing you invite. Tapping it
+   selects them individually, which is what makes "poker without Dan" one tap
+   away instead of a fresh start. Half-selected is its own state — anything
+   else would lie about what pressing it again does. */
+.pchip.grp{padding:4px 12px;gap:6px}
+.pchip.grp .gdot{
+  width:20px;height:20px;border-radius:7px;flex:none;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent);font-size:10px;font-weight:700;
+  font-variant-numeric:tabular-nums;
+}
+.pchip.grp[aria-pressed="true"] .gdot{background:rgba(255,255,255,.25);color:#fff}
+.pchip.grp.part{box-shadow:inset 0 0 0 1.5px var(--accent);color:var(--accent)}
+.pchip.grp.part .gdot{background:var(--accent);color:#fff}
+.picknone{padding:10px 4px;font-size:13.5px;color:var(--text-3)}
 
 /* ── imported tasks ──
    The logo is small and monochrome-adjacent on purpose: it is a provenance
@@ -2204,6 +2323,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <div class="group">
     <div class="mtgrid" id="mtGrid"></div>
   </div>
+  <!-- Three states need saying once. Per-cell hints would be four words
+       repeated forty times. -->
+  <div class="mtlegend">
+    <span><i class="y"></i><span data-i18n="mt.canDo"></span></span>
+    <span><i class="n"></i><span data-i18n="mt.cant"></span></span>
+    <span><i></i><span data-i18n="mt.noAnswer"></span></span>
+  </div>
 
   <div class="glabel" style="margin-top:20px"><span data-i18n="mt.best"></span></div>
   <div class="group" id="mtBest"></div>
@@ -2223,9 +2349,21 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     <div class="field"><input id="mtName" type="text" maxlength="40" data-i18n-ph="mt.namePh" data-i18n-label="mt.name" autocomplete="off"></div>
   </div>
   <div class="glabel" style="margin-top:16px"><span data-i18n="mt.withWho"></span><span class="hint" id="mtPickCount"></span></div>
+  <!-- Groups first, then people by how often you actually talk to them. A
+       group is a shortcut: pressing it selects its members individually, so
+       dropping one of them afterwards is a tap rather than a fresh start. -->
+  <div class="searchwrap" id="mtPickSearch" hidden>
+    <svg class="sicon"><use href="#i-search"/></svg>
+    <input id="mtPickQ" type="search" autocomplete="off" data-i18n-ph="mt.pickSearch" data-i18n-label="mt.pickSearch">
+    <button class="sclear" id="mtPickQClear" hidden data-i18n-label="fr.clear">&#10005;</button>
+  </div>
   <div class="group"><div class="foldpad tight"><div class="chips" id="mtPick"></div></div></div>
   <div class="glabel" style="margin-top:16px"><span data-i18n="mt.whichDays"></span></div>
-  <div class="group"><div class="foldpad tight"><div class="chips" id="mtDays"></div></div></div>
+  <div class="group"><div class="foldpad tight">
+    <div class="dgmon" id="mtDayMon"></div>
+    <div class="daygrid" id="mtDays"></div>
+    <div class="dgcount" id="mtDayNote"></div>
+  </div></div>
   <div class="sheetbtns">
     <button class="btn ghost" id="mtNewCancel" data-i18n="sheet.cancel"></button>
     <button class="btn" id="mtNewGo" data-i18n="mt.start"></button>
@@ -2311,6 +2449,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
        MEETS[].marks     →  the availability picker's own rows; the four
                             dayparts are canonicalParts, and all four ticked
                             collapses to all_day server-side, not here
+       MEETS[].no        →  the same rows with the opposite answer. It is a
+                            SEPARATE map, not an absent mark, because "cannot"
+                            and "has not answered" are different rows on the
+                            server too and collapsing them here would make the
+                            confirm gate count silence as a refusal
        CONTACTS          →  the connected contacts integration, read-only —
                             never a table of ours, and never browsed unasked
        mtConfirmed       →  meetings.confirmed_start_at
@@ -2653,6 +2796,18 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.withWho":"עם מי","mt.whichDays":"אילו ימים להציע",
       "mt.start":"פתיחת תיאום","mt.untitled":"פגישה",
       "mtsel.n0":"","mtsel.n1":"נבחר אחד","mtsel.nN":"נבחרו {n}",
+      "mt.cant":"לא יכול","mt.canDo":"יכול","mt.noAnswer":"טרם ענה",
+      "mt.legend":"נגיעה = יכול · נגיעה שנייה = לא יכול · שלישית = מנקה",
+      "mt.cellY":"סימנת שאתה יכול","mt.cellN":"סימנת שאתה לא יכול",
+      "mt.noN":"{n} סימנו שלא",
+      "mtY.n0":"","mtY.n1":"אחד יכול","mtY.nN":"{n} יכולים",
+      "mtN.n0":"","mtN.n1":"אחד לא יכול","mtN.nN":"{n} לא יכולים",
+      "mtW.n0":"","mtW.n1":"אחד טרם ענה","mtW.nN":"{n} טרם ענו",
+      "mt.stateBlocked":"החלון הטוב ביותר — {n} מתוך {of} · {no}",
+      "mtday.n0":"עוד לא נבחרו ימים","mtday.n1":"נבחר יום אחד","mtday.nN":"נבחרו {n} ימים",
+      "mt.groups":"קבוצות","mt.people":"אנשים","mt.pickSearch":"חיפוש חבר או קבוצה",
+      "mt.noMatch":"אין התאמה.","mt.grAll":"כל הקבוצה נבחרה",
+      "toast.mtGroup":"{name} — {n} חברים נוספו",
       "toast.mtStarted":"נפתח תיאום עם {list}",
       "toast.mtConfirmed":"נקבע — {when}",
       "tcat.imported":"מפלטפורמות מחוברות",
@@ -2837,6 +2992,18 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.withWho":"With whom","mt.whichDays":"Which days to offer",
       "mt.start":"Open coordination","mt.untitled":"Meeting",
       "mtsel.n0":"","mtsel.n1":"1 chosen","mtsel.nN":"{n} chosen",
+      "mt.cant":"can't","mt.canDo":"can","mt.noAnswer":"no answer yet",
+      "mt.legend":"Tap = can \u00b7 tap again = can't \u00b7 a third clears it",
+      "mt.cellY":"you marked that you can","mt.cellN":"you marked that you can't",
+      "mt.noN":"{n} marked can't",
+      "mtY.n0":"","mtY.n1":"1 can","mtY.nN":"{n} can",
+      "mtN.n0":"","mtN.n1":"1 can't","mtN.nN":"{n} can't",
+      "mtW.n0":"","mtW.n1":"1 hasn't answered","mtW.nN":"{n} haven't answered",
+      "mt.stateBlocked":"Best window fits {n} of {of} \u00b7 {no}",
+      "mtday.n0":"No days chosen yet","mtday.n1":"1 day chosen","mtday.nN":"{n} days chosen",
+      "mt.groups":"Groups","mt.people":"People","mt.pickSearch":"Search a friend or a group",
+      "mt.noMatch":"Nothing matches.","mt.grAll":"whole group selected",
+      "toast.mtGroup":"{name} \u2014 {n} people added",
       "toast.mtStarted":"Coordination opened with {list}",
       "toast.mtConfirmed":"Settled \u2014 {when}",
       "tcat.imported":"From connected platforms",
@@ -4824,13 +4991,23 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   var PARTS = ["morning","noon","evening","night"];
   var MEETS = [
     {id:1, t:{he:"פוקר",en:"Poker"}, who:[3,7,10], days:[1,2,3], status:"open",
+     /* Seeded so the three answers are all on screen the moment it opens, and
+        so the tie-break is visible: two slots fit the same two people, and the
+        one nobody has objected to is the one ranked first. */
      marks:{
-       0:{},
+       0:{1:["evening"]},
        3:{1:["evening","night"], 2:["night"], 3:["evening"]},
        7:{1:["evening"], 3:["noon","evening"]}
+     },
+     no:{
+       0:{2:["morning"]},
+       3:{3:["noon"]},
+       7:{2:["evening","night"]},
+       10:{1:["evening"]}
      }},
     {id:2, t:{he:"קפה עם גלי",en:"Coffee with Gali"}, who:[1], days:[0,1], status:"open",
-     marks:{0:{0:["morning"]}, 1:{0:["morning","noon"], 1:["noon"]}}}
+     marks:{0:{0:["morning"]}, 1:{0:["morning","noon"], 1:["noon"]}},
+     no:{1:{1:["morning"]}}}
   ];
   var mtSeq = 100, mtOpen = null, mtConfirmed = {};
 
@@ -4844,14 +5021,49 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   function mtParticipants(m){ return [0].concat(m.who); }
   function mtName(pid){ return pid === 0 ? t("mt.me") : (friendById(pid) ? L(friendById(pid).n) : ""); }
+  /* Answering is saying either thing. Before there was a "no" this could only
+     ask whether somebody had marked availability, which quietly made "I looked
+     and none of these work" indistinguishable from never opening it. */
   function mtAnswered(m, pid){
-    var mk = m.marks[pid];
+    return mtHasAny(m.marks, pid) || mtHasAny(m.no, pid);
+  }
+  function mtHasAny(map, pid){
+    var mk = map && map[pid];
     if(!mk) return false;
     for(var k in mk) if(mk[k] && mk[k].length) return true;
     return false;
   }
   function mtMarks(m, pid, day){
     return (m.marks[pid] && m.marks[pid][day]) || [];
+  }
+  function mtNos(m, pid, day){
+    return (m.no && m.no[pid] && m.no[pid][day]) || [];
+  }
+  /* My own answer at one cell, as one of three values. Everything that draws a
+     cell asks this rather than testing two arrays, so the three states can
+     never disagree about which one is showing. */
+  function mtMine(m, day, part){
+    if(mtMarks(m, 0, day).indexOf(part) > -1) return "y";
+    if(mtNos(m, 0, day).indexOf(part) > -1) return "n";
+    return "";
+  }
+  /* Tap cycles: nothing, can, cannot, nothing. Writing through here is what
+     keeps the two maps mutually exclusive — a part can never sit in both. */
+  function mtSetMine(m, day, part, val){
+    function pull(map){
+      var arr = map[0] && map[0][day];
+      if(!arr) return;
+      var i = arr.indexOf(part);
+      if(i > -1) arr.splice(i, 1);
+    }
+    function push(map){
+      if(!map[0]) map[0] = {};
+      (map[0][day] || (map[0][day] = [])).push(part);
+    }
+    if(!m.no) m.no = {};
+    pull(m.marks); pull(m.no);
+    if(val === "y") push(m.marks);
+    else if(val === "n") push(m.no);
   }
   /* How many of us are free at one (day, part). A participant who has not
      answered at all counts as neither free nor busy — they are simply absent
@@ -4861,6 +5073,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   function mtCount(m, day, part){
     return mtParticipants(m).filter(function(pid){
       return mtMarks(m, pid, day).indexOf(part) > -1;
+    }).length;
+  }
+  /* The mirror of mtCount. Kept as its own function rather than a flag, because
+     every place that reads one has to decide what to do with the other and a
+     shared function with a mode makes that decision easy to forget. */
+  function mtNoCount(m, day, part){
+    return mtParticipants(m).filter(function(pid){
+      return mtNos(m, pid, day).indexOf(part) > -1;
     }).length;
   }
   function mtAnsweredCount(m){
@@ -4874,16 +5094,45 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     m.days.forEach(function(day){
       PARTS.forEach(function(part, pi){
         var n = mtCount(m, day, part);
+        /* A slot nobody can make is not an option, however many people said so
+           explicitly. It leaves the list rather than ranking last. */
         if(!n) return;
-        out.push({day:day, part:part, n:n, pi:pi});
+        out.push({day:day, part:part, n:n, no:mtNoCount(m, day, part), pi:pi});
       });
     });
     out.sort(function(a, b){
-      return b.n - a.n || a.day - b.day || a.pi - b.pi;
+      /* Two slots that fit the same number are not equally good if one of them
+         has somebody who has already said no — that one loses. */
+      return b.n - a.n || a.no - b.no || a.day - b.day || a.pi - b.pi;
     });
     return out;
   }
   function mtIsFull(m, o){ return o.n === mtParticipants(m).length; }
+  /* Three numbers, and the ones that are zero are absent rather than written as
+     "0" — a line that says "4 can · 0 can't · 0 haven't answered" makes the
+     reader do the subtraction the sentence exists to save them. */
+  function mtTally(m, o){
+    var total = mtParticipants(m).length;
+    var wait = total - o.n - o.no;
+    var bits = [];
+    if(o.n) bits.push('<em class="y">' + esc(pl("mtY", o.n)) + "</em>");
+    if(o.no) bits.push('<em class="n">' + esc(pl("mtN", o.no)) + "</em>");
+    if(wait > 0) bits.push("<em>" + esc(pl("mtW", wait)) + "</em>");
+    return bits.join(" · ");
+  }
+  /* Everyone, in participant order, with the answer each of them gave. The
+     order is fixed so a face does not move between two options — you are
+     comparing rows, and a list that re-sorts itself per row cannot be compared. */
+  function mtFacesHTML(m, o){
+    return mtParticipants(m).map(function(pid){
+      var f = pid === 0 ? null : friendById(pid);
+      var st = mtMarks(m, pid, o.day).indexOf(o.part) > -1 ? "y"
+             : mtNos(m, pid, o.day).indexOf(o.part) > -1 ? "n" : "w";
+      var label = mtName(pid) + " · " + t(st === "y" ? "mt.canDo" : st === "n" ? "mt.cant" : "mt.noAnswer");
+      return '<u class="' + st + '" title="' + esc(label) + '" aria-label="' + esc(label) + '"><span>' +
+        avatarSVG(pid === 0 ? myAvatar : f.av, {g:pid === 0 ? myGender() : f.g}) + "</span></u>";
+    }).join("");
+  }
   function mtKey(m, o){ return m.id + ":" + o.day + ":" + o.part; }
 
   function mtCardHTML(m){
@@ -4894,6 +5143,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       ? t("mt.confirmedAs", {when:mtWhenLabel(mtConfirmed["m" + m.id])})
       : ready ? t("mt.stateReady", {when:mtWhenLabel(best)})
       : said < total ? t("mt.stateWaiting", {n:total - said})
+      : best && best.no ? t("mt.stateBlocked", {n:best.n, of:total, no:pl("mtN", best.no)})
       : best ? t("mt.statePartial", {n:best.n, of:total})
       : t("mt.stateNone");
     return '<div class="group" style="margin-bottom:10px"><button class="mtcard" data-mt="' + m.id + '">' +
@@ -4905,11 +5155,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   function mtWhenLabel(o){
     return t("mt.when", {day:mtDayLabel(o.day), part:t("mt.part." + o.part)});
   }
+  /* Past the first week "Tuesday" stops naming one day, so from there on the
+     date comes with it. Below a week it would be noise. */
   function mtDayLabel(off){
     var d = new Date(base); d.setDate(d.getDate() + off);
     if(off === 0) return t("cal.today");
     if(off === 1) return t("cal.tomorrow");
-    return t("cal.dayPrefix") + D.full[d.getDay()];
+    var name = t("cal.dayPrefix") + D.full[d.getDay()];
+    return off < 7 ? name : name + " " + d.getDate() + "/" + (d.getMonth() + 1);
   }
   function mtDayShort(off){
     var d = new Date(base); d.setDate(d.getDate() + off);
@@ -4942,16 +5195,25 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     m.days.forEach(function(day){
       html += '<div class="mtd"><b>' + esc(mtDayLabel(day)) + "</b><span>" + esc(mtDayShort(day)) + "</span></div>";
       PARTS.forEach(function(part){
-        var mine = mtMarks(m, 0, day).indexOf(part) > -1;
+        var mine = mtMine(m, day, part);
         var n = mtCount(m, day, part);
-        var others = n - (mine ? 1 : 0);
-        return html += '<button class="mtcell' + (mine ? " mine" : "") +
+        var no = mtNoCount(m, day, part);
+        var noOthers = no - (mine === "n" ? 1 : 0);
+        var others = n - (mine === "y" ? 1 : 0);
+        /* The number in the cell stays the count of people who CAN — that is
+           the thing you scan a grid for. The objections are a pip, because a
+           second number of equal weight in a 42px square is two numbers to
+           read and no way to tell which is which. */
+        var lab = mtWhenLabel({day:day, part:part}) + " · " + t("mt.freeN", {n:n, of:total}) +
+          (no ? " · " + t("mt.noN", {n:no}) : "") +
+          (mine ? " · " + t(mine === "y" ? "mt.cellY" : "mt.cellN") : "");
+        return html += '<button class="mtcell' + (mine === "y" ? " mine" : mine === "n" ? " nope" : "") +
           (n === total ? " full" : "") + '" data-cell="' + day + ":" + part +
-          '" aria-pressed="' + mine + '" aria-label="' +
-          esc(mtWhenLabel({day:day, part:part}) + " · " + t("mt.freeN", {n:n, of:total})) + '">' +
+          '" aria-pressed="' + (mine === "y") + '" aria-label="' + esc(lab) + '">' +
           /* the fill is the OTHERS, so my own tap does not make the cell look
              busier than the group actually is */
           '<i class="fill" style="--h:' + Math.round(others / Math.max(1, total - 1) * 100) + '%"></i>' +
+          (noOthers ? '<i class="nopip">' + noOthers + "</i>" : "") +
           "<b>" + n + "</b></button>";
       });
     });
@@ -4968,10 +5230,19 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var ranked = mtRank(m), conf = mtConfirmed["m" + m.id];
     $("#mtBest").innerHTML = ranked.length ? ranked.slice(0, 3).map(function(o, i){
       var isConf = conf && conf.day === o.day && conf.part === o.part;
+      /* Two segments on one track: what fits and what is blocked. The rest of
+         the track is silence, and silence has to look like neither — the whole
+         point of the bar is that you can see at a glance whether a gap is a
+         refusal or a person who has not looked yet. */
+      var bar = '<span class="mtbar">' +
+        '<i class="y" style="--w:' + (o.n / total * 100).toFixed(1) + '%"></i>' +
+        '<i class="n" style="--w:' + (o.no / total * 100).toFixed(1) + '%"></i></span>';
       return '<div class="mtopt' + (i === 0 ? " top" : "") + (isConf ? " done" : "") + '">' +
         '<span class="mtrank">' + (i + 1) + "</span>" +
-        '<span class="mtwhen"><b>' + esc(mtWhenLabel(o)) + "</b><span>" +
-        esc(mtIsFull(m, o) ? t("mt.allFree") : t("mt.freeN", {n:o.n, of:total})) + "</span></span>" +
+        '<span class="mtwhen"><b>' + esc(mtWhenLabel(o)) + "</b>" + bar +
+        '<span class="mttally">' +
+        (mtIsFull(m, o) ? esc(t("mt.allFree")) : mtTally(m, o)) + "</span>" +
+        '<span class="mtppl">' + mtFacesHTML(m, o) + "</span></span>" +
         '<button class="mtgo" data-pick="' + o.day + ":" + o.part + '">' +
         esc(t(isConf ? "mt.picked" : "mt.pick")) + "</button></div>";
     }).join("")
@@ -4992,11 +5263,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var b = e.target.closest("[data-cell]");
     if(!b || !mtOpen) return;
     var bits = b.dataset.cell.split(":"), day = +bits[0], part = bits[1];
-    if(!mtOpen.marks[0]) mtOpen.marks[0] = {};
-    var arr = mtOpen.marks[0][day] || (mtOpen.marks[0][day] = []);
-    var i = arr.indexOf(part);
-    if(i > -1) arr.splice(i, 1); else arr.push(part);
-    API.call("setAvailability", {meeting_id:mtOpen.id, day:day, parts:arr.slice()});
+    var was = mtMine(mtOpen, day, part);
+    /* nothing → can → cannot → nothing */
+    mtSetMine(mtOpen, day, part, was === "" ? "y" : was === "y" ? "n" : "");
+    /* Both lists go up together. Sending only the availability would leave the
+       server unable to tell a part that was removed from one that was refused,
+       which is the exact distinction this tap exists to make. */
+    API.call("setAvailability", {meeting_id:mtOpen.id, day:day,
+      parts:mtMarks(mtOpen, 0, day).slice(), unavailable:mtNos(mtOpen, 0, day).slice()});
     renderMtGrid();
     renderMeets();
   });
@@ -5015,38 +5289,128 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   });
 
   /* ── starting one ── */
-  var mtPickWho = [], mtPickDays = [];
-  function renderMtNew(){
-    $("#mtPick").innerHTML = FRIENDS.map(function(f){
+  var mtPickWho = [], mtPickDays = [], mtPickQ = "";
+  var MT_SEARCH_AT = 6;
+
+  /* How often you actually talk to somebody. On the server this is messages
+     exchanged plus coordinations shared over the last ninety days; here it is
+     seeded, and named so, because a number invented in a mock and presented as
+     measured is the one thing this file must not do. Somebody with no history
+     is not missing from the list — they fall to the alphabetical tail. */
+  var FREQ = {7:52, 1:44, 10:38, 3:31, 5:27, 2:22, 12:19, 8:15, 6:11, 9:8, 4:6, 11:4, 13:2};
+  function mtFreq(id){ return FREQ[id] || 0; }
+  function mtPeopleOrder(){
+    return FRIENDS.slice().sort(function(a, b){
+      return mtFreq(b.id) - mtFreq(a.id) || L(a.n).localeCompare(L(b.n));
+    });
+  }
+  /* Three states, not two. A group half of whose members are selected cannot
+     claim to be pressed, and cannot claim to be off either — and the middle
+     state is what tells you what the next press will do. */
+  function mtGroupState(g){
+    var on = g.m.filter(function(id){ return mtPickWho.indexOf(id) > -1; }).length;
+    return on === 0 ? "" : on === g.m.length ? "all" : "part";
+  }
+
+  function renderMtPick(){
+    var q = mtPickQ.trim().toLowerCase();
+    function hit(str){ return !q || String(str).toLowerCase().indexOf(q) > -1; }
+    var gs = GROUPS.filter(function(g){ return hit(grName(g)); });
+    var ps = mtPeopleOrder().filter(function(f){ return hit(L(f.n)); });
+    var html = gs.map(function(g){
+      var st = mtGroupState(g);
+      return '<button class="pchip grp' + (st === "part" ? " part" : "") +
+        '" aria-pressed="' + (st === "all") + '" data-mtgr="' + g.id + '">' +
+        '<span class="gdot">' + g.m.length + "</span>" + esc(grName(g)) + "</button>";
+    }).join("") + ps.map(function(f){
       var on = mtPickWho.indexOf(f.id) > -1;
       return '<button class="pchip" aria-pressed="' + on + '" data-mtwho="' + f.id + '">' +
         '<span class="face">' + avatarSVG(f.av, {g:f.g}) + "</span>" + esc(L(f.n)) + "</button>";
     }).join("");
+    $("#mtPick").innerHTML = html || '<div class="picknone">' + esc(t("mt.noMatch")) + "</div>";
     $("#mtPickCount").textContent = mtPickWho.length ? pl("mtsel", mtPickWho.length) : "";
-    var days = "";
-    for(var i = 0; i < 10; i++){
-      var on = mtPickDays.indexOf(i) > -1;
-      days += '<button class="chip mini" aria-pressed="' + on + '" data-mtday="' + i + '">' +
-        esc(mtDayLabel(i)) + "</button>";
+    $("#mtPickSearch").hidden = (GROUPS.length + FRIENDS.length) <= MT_SEARCH_AT;
+    $("#mtPickQClear").hidden = !mtPickQ;
+  }
+
+  /* Three weeks starting on the Sunday of the week today falls in — not three
+     weeks starting today. A grid whose first column is "in four days" is not a
+     calendar, and the whole reason to use one is that everybody already knows
+     how to select several dates in a real one. Days behind us are drawn and
+     inert: removing them would slide every weekday one column over. */
+  function renderMtDays(){
+    var start = new Date(base); start.setDate(start.getDate() - start.getDay());
+    var html = "";
+    for(var i = 0; i < 7; i++) html += '<div class="dgh">' + esc(D.days[i]) + "</div>";
+    var months = [];
+    for(var k = 0; k < 21; k++){
+      var d = new Date(start); d.setDate(d.getDate() + k);
+      var off = Math.round((d - base) / 86400000);
+      var past = off < 0;
+      if(!past && months.indexOf(d.getMonth()) < 0) months.push(d.getMonth());
+      var on = mtPickDays.indexOf(off) > -1;
+      html += '<button class="dgc' + (past ? " past" : "") + (on ? " on" : "") +
+        (off === 0 ? " now" : "") + '"' + (past ? " disabled" : "") +
+        ' data-mtday="' + off + '" aria-pressed="' + on + '" aria-label="' +
+        esc(D.full[d.getDay()] + " " + d.getDate() + "/" + (d.getMonth() + 1)) + '">' +
+        d.getDate() + "</button>";
     }
-    $("#mtDays").innerHTML = days;
+    $("#mtDays").innerHTML = html;
+    $("#mtDayMon").textContent = months.map(function(mi){ return D.monthsBare[mi]; }).join(" · ");
+    /* How many are chosen, said where they are chosen. Without it the only way
+       to know is to count filled squares, which is the thing the old row of
+       chips was already bad at. */
+    $("#mtDayNote").textContent = pl("mtday", mtPickDays.length);
+  }
+
+  function renderMtNew(){
+    renderMtPick();
+    renderMtDays();
     /* Nothing to coordinate with nobody, and nothing to coordinate with no
        days — so the button says why it is not ready instead of failing on press. */
     $("#mtNewGo").disabled = !mtPickWho.length || !mtPickDays.length;
     paintCue($("#mtNewSheet"), $("#mtNewCue"));
   }
   $("#mtNew").addEventListener("click", function(){
-    mtPickWho = []; mtPickDays = [1, 2, 3];
+    mtPickWho = []; mtPickDays = [1, 2, 3]; mtPickQ = "";
     $("#mtName").value = "";
+    $("#mtPickQ").value = "";
     renderMtNew();
     showSheet($("#mtNewSheet"));
   });
   $("#mtPick").addEventListener("click", function(e){
+    var g = e.target.closest("[data-mtgr]");
+    if(g){
+      var grp = GROUPS.filter(function(x){ return x.id === +g.dataset.mtgr; })[0];
+      if(!grp) return;
+      if(mtGroupState(grp) === "all"){
+        grp.m.forEach(function(id){
+          var j = mtPickWho.indexOf(id);
+          if(j > -1) mtPickWho.splice(j, 1);
+        });
+      } else {
+        var added = 0;
+        grp.m.forEach(function(id){
+          if(mtPickWho.indexOf(id) < 0){ mtPickWho.push(id); added++; }
+        });
+        if(added) toast(t("toast.mtGroup", {name:grName(grp), n:added}));
+      }
+      renderMtNew();
+      return;
+    }
     var b = e.target.closest("[data-mtwho]");
     if(!b) return;
     var id = +b.dataset.mtwho, i = mtPickWho.indexOf(id);
     if(i > -1) mtPickWho.splice(i, 1); else mtPickWho.push(id);
     renderMtNew();
+  });
+  $("#mtPickQ").addEventListener("input", function(){
+    mtPickQ = this.value;
+    renderMtPick();
+  });
+  $("#mtPickQClear").addEventListener("click", function(){
+    mtPickQ = ""; $("#mtPickQ").value = ""; $("#mtPickQ").focus();
+    renderMtPick();
   });
   $("#mtDays").addEventListener("click", function(e){
     var b = e.target.closest("[data-mtday]");
@@ -5062,10 +5426,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(!mtPickWho.length || !mtPickDays.length) return;
     var nm = $("#mtName").value.trim();
     var m = {id:++mtSeq, t:both(nm || t("mt.untitled")), who:mtPickWho.slice(),
-             days:mtPickDays.slice(), status:"open", marks:{0:{}}};
+             days:mtPickDays.slice(), status:"open", marks:{0:{}}, no:{0:{}}};
     /* Nobody else has answered yet, and the card says so rather than showing a
        best option computed from one person. */
-    m.who.forEach(function(pid){ m.marks[pid] = {}; });
+    m.who.forEach(function(pid){ m.marks[pid] = {}; m.no[pid] = {}; });
     MEETS.unshift(m);
     /* the stored title, not the raw field — an unnamed coordination has a real
        name in the row, and the server should get the same one the card shows */
