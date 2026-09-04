@@ -79,6 +79,23 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   "is production running what I merged". Re-run the run; if it wedges again,
   deploy the merged SHA yourself with `deploy.sh --restart`, which runs the
   same suite on the box at `--test-concurrency=2` and does not wedge.
+- **The `sha` in `/opt/olma2/RELEASE` is the ONLY unambiguous answer to that
+  question — every other signal is inference about how it got there.** In
+  particular, comparing a unit's `ActiveEnterTimestamp` to the marker's
+  `deployed_at` answers nothing on its own: `deploy.sh` writes the marker
+  (~L113) *before* the on-server suite (~L141) and long before the restart
+  (~L206), so **for up to ~14 minutes of every healthy deploy the marker is
+  newer than both units** — and a deploy that DIED before its restart leaves
+  the identical signature. `pgrep -af "deploy.sh|rsync|run-suite"` on the box
+  is what separates them. The inverse is just as misleading: a manual
+  `systemctl restart` makes a unit newer than the marker with no deploy
+  involved, so the check reads "fine" until something moves the marker again.
+  If you need "did THIS deploy restart it", take a baseline before it starts.
+- **The marker's `origin` field is load-bearing.** `github-actions run <id>`
+  gives you a run to go and read; `local <user>@<host>` means a laptop deploy
+  that left no CI log anywhere, and the only record of it is whatever the
+  person who ran it remembers. Two deploys that look identical in the
+  timestamps are told apart by this field alone.
 
 ### Talking to the gateway
 

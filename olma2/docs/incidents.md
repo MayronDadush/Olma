@@ -113,6 +113,7 @@ never trust a dated narrative for something you are about to act on.
 **CI, migrations and deploying**
 
 - [A test file poisoned every other one (root-caused and fixed 2026-09-04)](#a-test-file-poisoned-every-other-one-root-caused-and-fixed-2026-09-04)
+- [The deploy marker leads the restart, so the timestamps lie both ways (2026-09-04)](#the-deploy-marker-leads-the-restart-so-the-timestamps-lie-both-ways-2026-09-04)
 - [The rollback was one release deep, on a five-merge day (2026-09-03)](#the-rollback-was-one-release-deep-on-a-five-merge-day-2026-09-03)
 - [Two branches, one migration number — a third time, in one afternoon (fixed 2026-08-29)](#two-branches-one-migration-number--a-third-time-in-one-afternoon-fixed-2026-08-29)
 - [Two branches, one migration number (fixed 2026-08-22)](#two-branches-one-migration-number-fixed-2026-08-22)
@@ -3173,6 +3174,51 @@ durable across two deploys that landed mid-migration.
 
 
 ## CI, migrations and deploying
+
+### The deploy marker leads the restart, so the timestamps lie both ways (2026-09-04)
+
+Three sessions were working the same box in one morning, and all three reached
+for the same heuristic to answer "is the running process the code on disk":
+compare a unit's `ActiveEnterTimestamp` to `deployed_at` in
+`/opt/olma2/RELEASE`. Restart newer than marker was read as healthy; marker
+newer than restart was read as a deploy that shipped files and skipped its
+restart.
+
+The heuristic is wrong in both directions, and the box had both failure modes
+simultaneously that morning.
+
+**False positive.** `deploy.sh` writes the RELEASE marker at line 113, right
+after the rsync — then runs the full suite ON THE BOX at line 141, and only
+restarts at line 206. With `SUITE_TIMEOUT=420` and `SUITE_ATTEMPTS=2`, the
+marker can lead the restart by up to fourteen minutes on a completely healthy
+deploy. Observed live: RELEASE read `deployed_at 10:46:04Z` while both units
+sat at `10:44:19Z`, which looks exactly like a deploy that died before
+restarting. It was a deploy still running its tests. A deploy that genuinely
+dies mid-suite leaves the *identical* signature, and no amount of staring at
+the two timestamps separates them — only `pgrep -af "deploy.sh|rsync|run-suite"`
+does.
+
+**False negative.** A manual `systemctl restart olma2-dashboard` — done that
+morning to pick up the edited `google-oauth.json`, which is cached at module
+level — makes a unit newer than the marker with no deploy involved at all. The
+check then reads "fine" for that unit no matter what the next deploy does,
+until something moves the marker again.
+
+So the rule is the one already in CLAUDE.md, stated more strongly: **the `sha`
+in `/opt/olma2/RELEASE` is the only unambiguous answer to what production is
+running.** Everything else is inference about how it got there. If the real
+question is "did THIS deploy restart the service", the honest way to answer it
+is a baseline taken before the deploy starts, not an ordering that is inverted
+for most of the deploy's life.
+
+**And the `origin` field is load-bearing** — which nobody had written down.
+`origin=local kwak@kwaks-MacBook-Pro.local` is what identified dd47406 as a
+laptop deploy rather than a CI one, at a moment when three consecutive merges
+to `main` had failed their `test` job and skipped `deploy` entirely, leaving
+production a commit behind main with nothing announcing it. `github-actions
+run <id>` gives you a run to go and read; a local deploy leaves no run at all,
+and the only record is whatever the person who ran it remembers. Two deploys
+identical in their timestamps are told apart by this field alone.
 
 ### A test file poisoned every other one (root-caused and fixed 2026-09-04)
 
