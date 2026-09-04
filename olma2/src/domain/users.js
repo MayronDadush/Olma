@@ -94,6 +94,22 @@ function cleanName(value) {
   return String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, 60);
 }
 
+// An OBSERVED name also has to look like a name. The digits guard at the
+// display-name call site catches the gateway echoing a phone number back; this
+// catches the other thing a WhatsApp display name routinely is — an emoji, a
+// decoration, a "•". User 11's profile read 🌊 from 2026-08-31 until someone
+// noticed it on the dashboard four days later, and that string was also what
+// their own card, their agent's greeting and any invitation they sent would
+// have called them.
+//
+// A letter in ANY script passes (\p{L}), so Hebrew, Arabic, Cyrillic and Latin
+// names are all fine and only a string with no letter at all is refused. A
+// CONFIRMED name is deliberately not checked: someone who says "call me 🌊"
+// has told us what they are called, and this guard is about guesses.
+function hasLetter(value) {
+  return /\p{L}/u.test(String(value == null ? '' : value));
+}
+
 // `confirmed` is the same distinction setTimezone already draws in this table,
 // and it exists because a name reaches us two very different ways.
 //
@@ -113,9 +129,15 @@ function cleanName(value) {
 // never heard of the person.
 async function setName(client, userId, firstName, lastName, { confirmed = true, source = null } = {}) {
   const first = cleanName(firstName);
-  const last = cleanName(lastName);
+  let last = cleanName(lastName);
   if (!first) return err('invalid', 'first name required');
   const isConfirmed = confirmed !== false;
+  if (!isConfirmed) {
+    if (!hasLetter(first)) return err('invalid', 'that is decoration, not a name');
+    // "חיים 🌊" is a real first name beside an emoji. Refusing the whole
+    // string would lose the name; only the letterless half is dropped.
+    if (last && !hasLetter(last)) last = '';
+  }
   const { rows } = await client.query(
     // The guarded UPDATE, not a read-then-write: two turns can land here at
     // once, and the guard has to be the write itself.

@@ -34,6 +34,7 @@ const picker = require('./picker');
 const BROKERD_BEAT_MAX_AGE_S = 180;
 const infraCost = require('../infra-cost');
 const { checkGateway } = require('../gateway-health');
+const { readReleaseMarker } = require('../release-marker');
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -149,19 +150,39 @@ async function renderHeartbeats(client, _csrf, probe) {
       <td class="dim">${esc(gwLabel)}</td>
       <td class="dim mono">${gwBad ? esc(String(gw.detail || '').slice(0, 90)) : ''}</td></tr>`;
 
-  // The gateway is a row in this table, so it is counted in this sentence too
-  // — a banner saying 22 above a table of 23 invites the operator to wonder
-  // which one is not being counted, on the one page whose whole job is to be
-  // believed. It counts toward the total only when it was actually OBSERVED:
-  // `unknown` is neither a healthy process nor a problem, and claiming it as
-  // either is the same overstatement the three-state rule exists to avoid.
+  // The gateway is a PROCESS in this table, so it is counted in the sentence
+  // above it — a banner saying 22 over a table that lists 23 running things
+  // invites the operator to work out which one is not being counted, on the
+  // one page whose whole job is to be believed. It counts only when it was
+  // actually OBSERVED: `unknown` is neither a healthy process nor a problem,
+  // and claiming it as either is the overstatement the three-state rule
+  // exists to avoid. (The release row below is deliberately NOT counted — it
+  // is a fact about the deployment, not a process that runs.)
   const gwCounted = gw.status !== 'unknown' ? 1 : 0;
+
+  // Which release is actually serving. deploy.sh has written the RELEASE
+  // marker since #126 and rollback.sh reads it, but nothing ever showed it to
+  // a person — so when a merge's `test` job wedged on 2026-09-03 and `deploy`
+  // was silently skipped, "is production running what I just merged?" could
+  // only be answered by grepping deployed source for a string from the diff.
+  //
+  // Shown, never alarmed on: this box cannot know main's HEAD without reaching
+  // GitHub, and a quiet week with no merges is not a fault. The value is that
+  // the question becomes a glance.
+  const rel = readReleaseMarker();
+  const relRow = `<tr>
+      <td>– הגרסה שרצה עכשיו</td>
+      <td class="dim mono">${rel.known ? esc(rel.short) : 'לא ידוע'}</td>
+      <td class="dim">${rel.known
+        ? esc([rel.at ? ago(rel.at) : null, rel.subject].filter(Boolean).join(' · ').slice(0, 110))
+        : 'אין סימון גרסה — פריסה שקדמה למעקב'}</td></tr>`;
+
   const totalProblems = problems.length + (gwBad ? 1 : 0);
   const banner = totalProblems === 0
     ? `<div class="banner ok">✓ הכל תקין — ${rows.length + gwCounted} תהליכים רצים כסדרם</div>`
     : `<div class="banner bad">⚠ ${totalProblems} תהליכים דורשים תשומת לב</div>`;
 
-  const tr = gwRow + rows.map((r) => {
+  const tr = gwRow + relRow + rows.map((r) => {
     const bad = isStale(r.job_name, r.last_run_at, now) || (r.note && String(r.note).startsWith('ERR'));
     const err = r.note && String(r.note).startsWith('ERR');
     return `<tr class="${bad ? 'bad' : ''}">
