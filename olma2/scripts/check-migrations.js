@@ -11,12 +11,18 @@
 // that actually explains it, before spending several minutes running (and
 // failing) 500+ tests to discover the same thing.
 //
-// Usage: node scripts/check-migrations.js
+// Usage: node scripts/check-migrations.js [migrations-dir]
+//
+// CI passes no argument and gets the real tree. The optional directory is for
+// this script's own test, which needs a colliding pair to check the exit code
+// and stream — and must NOT get one by writing into the real migrations/
+// directory, because every concurrently-running test file reads it too (see
+// listMigrations, and incidents.md "A test file poisoned every other one").
 'use strict';
 const { listMigrations } = require('../src/db/migrate');
 
 try {
-  const all = listMigrations();
+  const all = listMigrations(process.argv[2] || undefined);
   console.log(`${all.length} migrations, no duplicate version numbers.`);
 } catch (err) {
   console.error(err.message);
