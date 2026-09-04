@@ -50,6 +50,13 @@ const DEFAULTS = {
   // null") so the dashboard's bool dropdown renders "סגור" rather than
   // showing neither option selected before anyone has touched this flag.
   credit_alerts_muted: false,
+  // jobs/sweeps.sweepFinishedTasks: how long after an appointment ENDS before
+  // it leaves the open list. A flag rather than a constant because the right
+  // number is a judgement about how people use the list, and finding it out
+  // should not need a deploy. Three hours: long enough that a doctor's
+  // appointment at 09:00 is not swept while somebody is still in the waiting
+  // room, short enough that it is gone before they next look.
+  task_auto_archive_grace_hours: 3,
 };
 
 async function getFlag(client, key) {

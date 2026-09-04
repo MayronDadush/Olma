@@ -2358,10 +2358,18 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       <div class="whenvals">
         <button class="vchip" id="sDateRow" data-cal="task" data-quick="1"><span id="sDateVal"></span></button>
         <button class="vchip" id="sTimeChip"><span id="sTimeVal"></span></button>
+        <!-- Where it STOPS. A shift used to be a title with its hours typed
+             into it — `משמרת - ראשון 12:00-19:00` — because there was nowhere
+             else to put them, and nothing could read them there. It only
+             appears once there is a start, because an end with nothing to end
+             is not a time. -->
+        <button class="vchip" id="sEndChip"><span id="sEndVal"></span></button>
         <button class="vchip toggle" id="sAllDay" role="switch" aria-checked="false"
                 data-i18n="sheet.allDay" data-i18n-label="sheet.allDay"></button>
       </div>
       <input id="sTime" type="time" tabindex="-1" aria-hidden="true"
+             style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
+      <input id="sEnd" type="time" tabindex="-1" aria-hidden="true"
              style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
     </div>
     <button class="row no-icon" id="sCatRow" aria-expanded="false">
@@ -2787,6 +2795,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     return x.d + "T" + time + ":00" + zoneOffset(tz, new Date(x.d + "T" + time + ":00Z"));
   }
 
+  /* The far end of the range, in the same shape and the same zone as the
+     start. Null whenever there is no range to state, which is also how a range
+     is REMOVED: editTask reads null as "clear it". */
+  function endIso(x){
+    if(!x || !x.d || x.all || !x.tm || !x.tmEnd) return null;
+    var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
+    return x.d + "T" + x.tmEnd + ":00" + zoneOffset(tz, new Date(x.d + "T" + x.tmEnd + ":00Z"));
+  }
+
   /* A row the server has answered for. Anything that needs a real id — an
      edit, a reminder, a calendar entry — asks this first, because a page-local
      id is a number only this browser has ever seen. */
@@ -2870,7 +2887,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     saveTask: function(x){
       API.call(x && x.src ? "saveImportedTask" : "saveTask", x);
       if(!x) return true;
-      var payload = {title:L(x.t), category:x.cat || null, dueAt:dueIso(x)};
+      var payload = {title:L(x.t), category:x.cat || null,
+                     dueAt:dueIso(x), endsAt:endIso(x)};
       if(serverKnows(x)){
         payload.taskId = x.id;
         return API.send("editTask", payload);
@@ -3090,7 +3108,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "tasks.arcShown":"מוצגות {n} האחרונות מתוך {all}","tasks.restore":"החזרה לרשימה",
       "toast.restored":"„{name}” חזרה לרשימה",
 
-      "sheet.when":"מתי","sheet.pickTime":"בחירת שעה","share.andMore":" ועוד {n}",
+      "sheet.when":"מתי","sheet.pickTime":"בחירת שעה","sheet.pickEnd":"עד","share.andMore":" ועוד {n}",
       "cat.h":"קטגוריה","cat.auto":"עולמה בחרה","cat.byTime":"לפי זמן","cat.byCat":"לפי קטגוריה",
       "tcat.home":"בית","tcat.work":"עבודה","tcat.family":"משפחה","tcat.health":"בריאות",
       "tcat.money":"כספים","tcat.errands":"סידורים","tcat.none":"ללא קטגוריה",
@@ -3324,7 +3342,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "tasks.arcShown":"Showing the last {n} of {all}","tasks.restore":"Put back on the list",
       "toast.restored":"\u201c{name}\u201d is back on your list",
 
-      "sheet.when":"When","sheet.pickTime":"Pick a time","share.andMore":" and {n} more",
+      "sheet.when":"When","sheet.pickTime":"Pick a time","sheet.pickEnd":"until","share.andMore":" and {n} more",
       "cat.h":"Category","cat.auto":"Allma picked this","cat.byTime":"By time","cat.byCat":"By category",
       "tcat.home":"Home","tcat.work":"Work","tcat.family":"Family","tcat.health":"Health",
       "tcat.money":"Money","tcat.errands":"Errands","tcat.none":"No category",
@@ -3957,6 +3975,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
             {t:{he:"סלט חצילים",en:"Aubergine salad"},done:false},{t:{he:"חומוס",en:"Hummus"},done:false},
             {t:{he:"פירות לקינוח",en:"Fruit for dessert"},done:false}]},
     {id:5, d:isoAt(0),  tm:"21:00", all:false, t:{he:"לאסוף חבילה מהשליח",en:"Collect the parcel"}, rem:false, rep:"none", cal:false, cat:"errands", catAuto:true},
+    /* The reason tasks.ends_at exists. This row used to be the only way to say
+       it: a title reading `משמרת - ראשון 12:00-19:00`, with the hours typed
+       where nothing could read them. */
+    {id:14, d:isoAt(2), tm:"12:00", tmEnd:"19:00", all:false, t:{he:"משמרת",en:"Shift"},
+     rem:true, rep:"week", cal:true, cat:"work", catAuto:true},
     {id:4, d:"",        tm:"", all:false, t:{he:"לקבוע תור לרופא שיניים",en:"Book a dentist appointment"}, rem:false, rep:"none", cal:false, cat:"health", catAuto:true},
     /* imported. `src` is the whole difference — everything else is a task. */
     {id:7, d:isoAt(1), tm:"14:00", all:false, src:"monday",
@@ -5009,6 +5032,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      the section it already sits under, the clock alone says everything. */
   function labelFor(x){
     var d = x.d, tm = x.all ? "" : x.tm, b = bucketFor(d);
+    /* A shift is 12:00–19:00, and the hours are the whole content of the row —
+       the title next to it is now just `משמרת`, because they finally have
+       somewhere else to live. Written with an EN DASH and no spaces so the
+       span still fits the chip at the end of a row. */
+    if(tm && !x.all && x.tmEnd) tm = tm + "–" + x.tmEnd;
     if(!d) return tm || null;
     if(x.all && (b === "today" || b === "tomorrow")) return t("cal.allDay");
     if(tm && (b === "today" || b === "tomorrow")) return tm;
@@ -5035,6 +5063,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var title = $("#sTitle").value.trim();
     editing.t = both(title);
     editing.tm = $("#sTime").value;
+    /* An end at or before its start is not a range, and the server refuses the
+       pair outright — so it is dropped here rather than sent and bounced, and
+       the chip goes back to asking. Clearing the start clears the end with it,
+       the same rule editTask applies on the other side. */
+    editing.tmEnd = $("#sEnd").value;
+    if(!editing.tm || (editing.tmEnd && editing.tmEnd <= editing.tm)){
+      editing.tmEnd = ""; $("#sEnd").value = "";
+    }
     editing.all = $("#sAllDay").getAttribute("aria-checked") === "true";
     var pick = $$("#sCat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     if(pick) editing.cat = pick.dataset.cat;
@@ -5104,6 +5140,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     lockRow($("#sListRow"),   !canEdit(editing, "items"),why);
     lockRow($("#sShareRow"),  !canEdit(editing, "who"),  why);
     lockRow($("#sTimeChip"),  !canEdit(editing, "time"), why);
+    lockRow($("#sEndChip"),   !canEdit(editing, "time"), why);
     /* the reminder and the calendar copy are OURS, not theirs — an imported
        task can still be reminded about, so these are never locked */
   }
@@ -5119,6 +5156,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#sTimeChip").hidden = !dated || !!editing.all;
     $("#sTimeVal").textContent = editing.tm || t("sheet.pickTime");
     $("#sTimeChip").classList.toggle("set", !!editing.tm);
+    /* No start, nothing to end. The chip is not merely disabled — it is a
+       question that has not been asked yet, exactly like the clock itself
+       before a date is picked. */
+    $("#sEndChip").hidden = !dated || !!editing.all || !editing.tm;
+    $("#sEndVal").textContent = editing.tmEnd
+      ? "– " + editing.tmEnd : t("sheet.pickEnd");
+    $("#sEndChip").classList.toggle("set", !!editing.tmEnd);
     $("#sCalRow").hidden = !dated;
     $("#sCalSub").textContent = calTargetName();
     /* No calendar to write to means the switch cannot keep its word, so it is
@@ -5405,6 +5449,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#sAddRow").setAttribute("aria-expanded", "false");
     $("#sTitle").value = x ? L(x.t) : "";
     $("#sTime").value = editing.tm || "";
+    $("#sEnd").value = editing.tmEnd || "";
     $("#sDateRow").dataset.val = editing.d || "";
     $("#sDelete").hidden = isNew;
     $("#sCal").setAttribute("aria-checked", editing.cal ? "true" : "false");
@@ -5477,6 +5522,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   $("#sTimeChip").addEventListener("click", function(){
     $("#sTime").focus();
     try{ $("#sTime").showPicker(); }catch(err){}
+  });
+  $("#sEnd").addEventListener("change", commit);
+  $("#sEndChip").addEventListener("click", function(){
+    $("#sEnd").focus();
+    try{ $("#sEnd").showPicker(); }catch(err){}
   });
   $("#sAllDay").addEventListener("click", function(){
     editing.all = this.getAttribute("aria-checked") !== "true";
@@ -6817,7 +6867,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          empty week while holding six dated tasks. That was Maya, on the day
          this was found: one flag doing two jobs, and the wrong one won. */
       if(x.d !== iso) return;
-      evs.push({time:x.all ? "" : (x.tm || ""), allDay:x.all, end:"",
+      evs.push({time:x.all ? "" : (x.tm || ""), allDay:x.all,
+                end:x.all ? "" : (x.tmEnd || ""),
                 title:L(x.t) || t("sheet.untitled"),
                 sub:t(x.rem ? "cal.taskRem" : "cal.taskSub", {name:chanName(defaultChannel)}),
                 c:"var(--accent)", task:x.id});
@@ -7476,6 +7527,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       /* The task's own answer to "put this on my calendar", resolved server-
          side against the standing switch (domain/user-dashboard.js). */
       cal:!!x.calendar,
+      tmEnd:x.endTime || "",
       cat:(x.category && x.category !== "none") ? x.category : "",
       /* Whether Olma chose the category rather than the person. Real, not a
          seed flourish: `tasks.category_auto` records it, and a task edited by

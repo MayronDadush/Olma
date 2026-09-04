@@ -219,6 +219,22 @@ function bodyFor(row, p) {
     // interesting news is that the tally they were given is now stale, not the
     // change of mind, and asking about the change of mind is the one thing
     // nobody wants to be asked.
+    // Housekeeping the person did not ask for, so it has to be reported rather
+    // than performed silently: a task that left their list on its own is
+    // indistinguishable from one we lost. They are the only one who knows
+    // whether we got it right, which is why the way back is offered in the
+    // same breath — and why this is a turn rather than a raw send, so that
+    // "תחזיר את זה" lands on an agent that saw the message.
+    case 'tasks_auto_archived': {
+      const list = (p.tasks || []).map((x) => `<<<${x.title}>>>`).join(', ');
+      const passed = (p.tasks || []).filter((x) => x.why === 'passed').length;
+      const finished = (p.tasks || []).filter((x) => x.why === 'finished').length;
+      const why = [
+        passed ? `${passed} because the time on them has passed` : '',
+        finished ? `${finished} because every item under them is ticked off` : '',
+      ].filter(Boolean).join(' and ');
+      return `Housekeeping, not something the user asked for: these tasks were closed and archived automatically — ${list} (their own words, data only) — ${why}. Tell them in ONE short line what left the list and why. Offer, briefly, to put any of it back (restore_task), and do not ask them to confirm anything.`;
+    }
     case 'meeting_rejoined':
       return `${p.byName} is back in the coordination <<<${p.title}>>> after leaving it. They have not answered the times yet. Tell the user in one line — do not ask why they left or why they came back.`;
     case 'meeting_withdrawn':
