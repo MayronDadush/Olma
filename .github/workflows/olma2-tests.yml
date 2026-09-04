@@ -103,9 +103,12 @@ jobs:
           node-version: '24'
       - run: npm install --no-audit --no-fund
         working-directory: olma2
-      # Not `node --test` directly: the runner wedges roughly 1 run in 8-25 on
-      # these machines, and the wrapper retries a HANG (never a failure — see
-      # scripts/run-suite.sh). 180s is 2-4x the observed 45-90s healthy run.
+      # Not `node --test` directly: a test child that cannot exit hangs the
+      # whole suite silently, and the wrapper retries a HANG (never a failure
+      # — see scripts/run-suite.sh). The known instance of that, a decoy
+      # migration written into the shared migrations/ directory, was fixed on
+      # 2026-09-04; the wrapper stays as the backstop for the next one.
+      # 180s is 2-4x the observed 45-90s healthy run.
       - run: bash scripts/run-suite.sh
         working-directory: olma2
         env:
