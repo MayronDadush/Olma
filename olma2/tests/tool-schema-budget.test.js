@@ -47,7 +47,15 @@ test('the identity parameter is described in a few words, because it is repeated
 // The guidance that left the descriptions has to have landed somewhere the
 // model still sees it: on the result, on the turns it applies to.
 test('turn_start explains its optional fields on the result, not in the description', () => {
-  const src = require('node:fs').readFileSync(require.resolve('../src/adapters/mcp/registry'), 'utf8');
+  // The registry, plus any per-domain tool files a later split moves the
+  // handlers into (src/adapters/mcp/tools/*.js) — the hints must exist
+  // somewhere the registry assembles from, not in one particular file.
+  const fs = require('node:fs'); const path = require('node:path');
+  const dir = path.join(__dirname, '..', 'src', 'adapters', 'mcp');
+  const files = [path.join(dir, 'registry.js')];
+  const toolsDir = path.join(dir, 'tools');
+  if (fs.existsSync(toolsDir)) for (const f of fs.readdirSync(toolsDir)) if (f.endsWith('.js')) files.push(path.join(toolsDir, f));
+  const src = files.map((f) => fs.readFileSync(f, 'utf8')).join('\n');
   for (const field of ['offerResume', 'recentReminders', 'planHeadline', 'languageNudge']) {
     assert.match(src, new RegExp(`hints\\.${field} = `), `a hint is built for ${field}`);
   }
