@@ -185,6 +185,49 @@ automatically, leave per-feature grants at their normal defaults, and let the
 new in-Olma group object carry the coordination powers (it is the natural
 owner of "schedule something for these six people" anyway).
 
+### A group only exists if Olma already knows somebody in it
+
+Being added to a group is not enough to create anything. A group registers —
+agent, workspace, row — only when **at least one member is an existing Olma
+user**. Otherwise she does not react at all: no agent is provisioned, no reply,
+nothing. Without that rule, anyone in the world mints an agent and a workspace
+on our box by adding a number to a group.
+
+### Only a real mention wakes her
+
+A genuine WhatsApp @-mention of her number, or a reply to one of her messages.
+The word "אולמה" in free text does **not** count, so `mentionPatterns` stays
+empty rather than being seeded with her name.
+
+### Groups have quiet hours too
+
+Same shape as a person's, and through the **same gate**: `outbox/gate.js`
+already takes `{ window, tz, lastInboundAt }` and already implements the
+15-minute `CONVERSATION_GRACE_MS` rule. A group reuses it rather than growing a
+second quiet-hours implementation.
+
+- window `09:00`–`21:00`;
+- `tz` = the timezone **most** members are in (every member is a user by the
+  time a group can be spoken to, and `users.timezone` is never NULL);
+- a tag opens the group for 15 minutes exactly like a DM, so an answer to
+  somebody standing right there is never held;
+- the unlock announcement goes out in the group, held to the window like any
+  other proactive message;
+- she may also start group conversations on her own for things the members
+  asked for — a meeting to coordinate, a shared task — never in quiet hours.
+
+**Open:** a member who paused Olma. Pause means "never initiate to me" and has
+no exceptions, but a proactive group message reaches everyone at once, so there
+is no way to honour one member's pause and still speak. Proposed default: a
+paused member holds the group's proactive traffic (answers to a tag are still
+answers, not initiations).
+
+### Cap: 25 members
+
+Above that she says once that the group is too large and stops responding
+there. Bigger groups never realistically unlock, and each tag costs a model
+turn. The number is a dashboard flag, not a constant.
+
 ## Still open
 
 1. Does the in-Olma group object own meetings/coordination directly, or is it
