@@ -65,10 +65,13 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **After a shared-branch merge, verify it actually shipped**:
   `git merge-base --is-ancestor <sha> origin/main`. A concurrent session can
   merge at a head that predates your commit.
-- **A pending CI check is not "not yet" — it may be dead.** `node --test`
-  wedges intermittently and the 10-minute timeout kills it, which GitHub
-  reports as **`cancelled`, not `failure`** — easily misread as "someone
-  stopped it". On a PR, compare the `push` and `pull_request` runs on the same
+- **A pending CI check is not "not yet" — it may be dead**, and a dead one
+  arrives under **either** conclusion. GitHub's 10-minute timeout kills the job
+  as `cancelled` (misread as "someone stopped it"); `run-suite.sh` exhausting
+  its own three retries first exits 1 and reports **`failure`** (run
+  33860683550, 2026-09-04, read as a genuine red until the log was opened).
+  **The wedge banner in the log is the tell, never the conclusion string.**
+  On a PR, compare the `push` and `pull_request` runs on the same
   SHA: if `--is-ancestor` says your branch contains main, both compile
   identical bytes and any difference is the host, so a pass on either is
   authoritative.
