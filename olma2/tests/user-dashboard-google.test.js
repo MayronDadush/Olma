@@ -158,3 +158,26 @@ test('ending the account ends all of Google, because the page draws it as one', 
   assert.deepEqual(await providers(), [],
     'a Google service survived disconnecting the account');
 });
+
+// The page has to know what it may OFFER, not only what is already connected.
+// Gmail is a service on a connected Google account that most people still
+// cannot switch on, and a page that finds that out only on the tap has already
+// drawn a live control for something it cannot deliver.
+test('the read model says whether a mailbox may even be offered', async () => {
+  const dash = require('../src/domain/user-dashboard');
+  const flags = require('../src/domain/flags');
+
+  const shut = await withTx(db.pool, (c) => dash.load(c, me.id));
+  assert.ok(shut.ok, JSON.stringify(shut.error));
+  assert.equal(shut.data.available.mail, false,
+    'an ordinary person was told they could connect a mailbox');
+
+  // The gate reads role and phone off the user row, and the read model does
+  // not select either — so this also pins that it fetches them itself. Without
+  // that, the answer would be "no" for everybody, including the allowlist.
+  await withTx(db.pool, (c) => flags.setFlag(c, 'email_access_phones', 'all'));
+  const open = await withTx(db.pool, (c) => dash.load(c, me.id));
+  assert.equal(open.data.available.mail, true,
+    'the mail allowlist was opened and the page was never told');
+  await withTx(db.pool, (c) => flags.setFlag(c, 'email_access_phones', ''));
+});

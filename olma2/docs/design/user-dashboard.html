@@ -1,3 +1,18 @@
+<meta charset="utf-8">
+<!-- Without this line Safari lays the page out at its 980px fallback width and
+     then scales the result down to fit the phone, which is why the first real
+     screenshot came back with everything shrunk into the middle: .app's 560px
+     max-width sat centred in 980, leaving a third of the screen empty on each
+     side and the type two sizes too small. Nothing in the design was wrong.
+
+     `viewport-fit=cover` is load-bearing too, separately: the six
+     env(safe-area-inset-*) values this stylesheet positions the tab bar and
+     the preview buttons with all resolve to 0 without it, so the bar sat above
+     the home indicator instead of clearing it. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- The page defines both palettes; this is what stops the browser painting
+     its own white behind them for the instant before the CSS lands. -->
+<meta name="color-scheme" content="light dark">
 <title>עולמה שלי</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -437,6 +452,19 @@ button.row:active{background:var(--bg-tint)}
   transition:transform .38s var(--squash),background .34s var(--ease-io),color .34s var(--ease-io);
 }
 .connect:active{transform:scale(.93)}
+/* Not built yet. Greyed and genuinely unreachable — `inert` takes it out of
+   the tab order and out of pointer events in one attribute, so the row cannot
+   be pressed by finger, keyboard or screen reader. A control that answers a
+   tap with "coming soon" is still a control that invited the tap; this one
+   does not invite it. The pill says the same thing in the space the button
+   would have occupied, so the row keeps its shape and its meaning. */
+.soon{opacity:.5}
+.soonpill{
+  flex:none;padding:6px 14px;border-radius:999px;
+  font-size:12.5px;font-weight:600;letter-spacing:.01em;
+  background:var(--bg-tint);color:var(--text-3);
+}
+.chan.soon i{color:var(--text-3)}
 .connect[data-busy="1"]{background:var(--bg-tint);color:var(--text-3)}
 /* Connecting used to end with the row silently swapping itself out. It now
    lands: the button collapses to a circle, draws a tick, and only then
@@ -2967,7 +2995,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "greet.morning":"בוקר טוב,",
       "greet.noon":"צהריים טובים,",
       "greet.evening":"ערב טוב,",
-      "greet.late":"היי,",
+      "greet.late":"לילה טוב,",
       /* The line under her name on the first screen. Hebrew inflects it, so
          there are two; the masculine is the default the whole product uses
          until somebody says otherwise. */
@@ -3178,6 +3206,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.chanSoon":"{name} עדיין לא מחובר — עולמה כותבת בוואטסאפ",
       "toast.provSoon":"החיבור ל{name} עוד לא מוכן — בינתיים רק גוגל",
       "toast.notOpenYet":"זה עוד לא פתוח — יגיע בהמשך",
+      "soon":"בקרוב",
       "toast.provFailed":"לא הצלחתי לפתוח את מסך ההרשאות של גוגל",
       "toast.open":"פותח את השיחה שלך עם עולמה ב־{name}","toast.chanOn":"{name} מחובר · עולמה תענה גם שם",
       "toast.calling":"עולמה מתקשרת אליך עכשיו",
@@ -3407,6 +3436,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.chanSoon":"{name} is not connected yet — Allma writes on WhatsApp",
       "toast.provSoon":"{name} cannot be connected yet — Google only, for now",
       "toast.notOpenYet":"Not open yet — it is coming",
+      "soon":"Soon",
       "toast.provFailed":"Google's permission screen would not open",
       "toast.open":"Opening your chat with Allma in {name}","toast.chanOn":"{name} connected · Allma answers there too",
       "toast.calling":"Allma is calling you now",
@@ -4052,18 +4082,49 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   function svcLabel(s){ return t(s.label || ("svc." + s.k)); }
 
+  /* What actually has something behind it. In design mode this is everything —
+     the whole point of the mockup is to show what the screen becomes once it
+     does. On a live page it is only what the server can really do today, and
+     the rest is greyed rather than left tappable. */
+  var AVAIL = {prov:{}, mail:false};
+  function provReady(id){ return !LIVE || AVAIL.prov[id] === true; }
+  /* The Google services this system has a domain module for. Drive and Keep
+     are drawn because the account has them, not because we can read them —
+     there is no google-drive.js and no google-keep.js — so on a live page they
+     wait with everything else. */
+  var GOOGLE_LIVE_SVC = {cal:true, contacts:true, mail:true};
+  function svcReady(p, sv){
+    if(!LIVE) return true;
+    if(!provReady(p.id)) return false;
+    if(!GOOGLE_LIVE_SVC[sv.k]) return false;
+    /* Gmail exists but is allowlisted on the server
+       (mail.requireMailAccess), so for almost everybody it is a service on a
+       connected account that still cannot be switched on. */
+    return sv.k !== "mail" || AVAIL.mail === true;
+  }
+
   /* ── channels, side by side and first ── */
   function chanGroup(){
     var cells = CHANNELS.map(function(c, i){
+      /* A tile with nothing behind it is greyed and says so, rather than
+         staying live and apologising after the tap. Linking a second identity
+         to an account (a real user_channels row) has no path from here, and
+         neither has asking Olma to ring you — so on a live page both are
+         waiting, and only the channel somebody actually arrived on is open. */
       if(c.call){
-        return '<button class="chan call" data-call="1" data-state="idle" style="--ci:' + i + '">' +
+        var callReady = !LIVE;
+        return '<button class="chan call' + (callReady ? "" : " soon") + '" data-call="1" data-state="idle"' +
+          (callReady ? "" : " inert") + ' style="--ci:' + i + '">' +
           tileFor("call", c.icon) +
-          "<b>" + esc(t("ch.call")) + "</b><i>" + esc(t("ch.callSub")) + "</i></button>";
+          "<b>" + esc(t("ch.call")) + "</b><i>" +
+          esc(callReady ? t("ch.callSub") : t("soon")) + "</i></button>";
       }
-      return '<button class="chan' + (c.on ? " on" : "") + '" data-chan="' + c.id +
-        '" style="--ci:' + i + '">' +
+      var chanReady = c.on || !LIVE;
+      return '<button class="chan' + (c.on ? " on" : "") + (chanReady ? "" : " soon") +
+        '" data-chan="' + c.id + '"' + (chanReady ? "" : " inert") +
+        ' style="--ci:' + i + '">' +
         tileFor(c.tile, c.icon) + "<b>" + esc(c.name) + "</b><i>" +
-        esc(t(c.on ? "ch.open" : "ch.add")) + "</i></button>";
+        esc(c.on ? t("ch.open") : (chanReady ? t("ch.add") : t("soon"))) + "</i></button>";
     }).join("");
     /* no hint line here on purpose: each tile already says what it does, and
        one caption cannot describe both "open the chat" and "have Olma ring you". */
@@ -4203,10 +4264,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   function foldBody(p){
     return '<div class="permgrid">' + p.svc.map(function(sv, i){
-      return '<div class="permtxt"><b>' + esc(svcLabel(sv)) + "</b>" +
+      var ok2 = svcReady(p, sv);
+      return '<div class="permtxt' + (ok2 ? "" : " soon") + '"><b>' + esc(svcLabel(sv)) + "</b>" +
         (sv.sub ? "<span>" + esc(t(sv.sub)) + "</span>" : "") + "</div>" +
-        '<div class="permctl" data-ctl="' + p.id + ":" + i + '">' + ctlFor(p, sv, i) + "</div>" +
-        '<div class="permsw"><button class="switch" role="switch" aria-checked="' + sv.on + '" data-svc="' + p.id + ":" + i +
+        '<div class="permctl" data-ctl="' + p.id + ":" + i + '">' +
+          (ok2 ? ctlFor(p, sv, i) : '<span class="soonpill">' + esc(t("soon")) + "</span>") + "</div>" +
+        '<div class="permsw"' + (ok2 ? "" : ' inert') + '><button class="switch' + (ok2 ? "" : " soon") +
+        '" role="switch" aria-checked="' + sv.on + '" data-svc="' + p.id + ":" + i +
         '" aria-label="' + esc(svcLabel(sv)) + '"></button></div>';
     }).join("") + "</div>" +
       '<button class="linkbtn danger" data-disconnect="' + p.id + '" style="margin-top:14px;display:block">' +
@@ -4214,11 +4278,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   function provRow(p){
     if(!p.connected){
-      return '<div class="rowset" data-rowset="' + p.id + '"><div class="row">' +
+      var ready = provReady(p.id);
+      return '<div class="rowset" data-rowset="' + p.id + '"><div class="row' +
+        (ready ? "" : " soon") + '"' + (ready ? "" : " inert") + ">" +
         tileFor(p.tile, p.icon) +
         '<div class="row-txt"><div class="row-title">' + esc(p.name) + "</div>" +
         '<div class="row-sub">' + esc(t("off." + p.id)) + "</div></div>" +
-        '<button class="connect" data-connect="' + p.id + '">' + esc(t("connect")) + "</button></div></div>";
+        (ready
+          ? '<button class="connect" data-connect="' + p.id + '">' + esc(t("connect")) + "</button>"
+          : '<span class="soonpill">' + esc(t("soon")) + "</span>") +
+        "</div></div>";
     }
     var isOpen = !!expanded[p.id];
     return '<div class="rowset" data-rowset="' + p.id + '">' +
@@ -7453,6 +7522,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          first one in the list — showing Tel Aviv to somebody in Nairobi is
          worse than showing the zone we already had. */
       if(i > -1) cityIdx = i;
+      /* paintStatic re-reads PROFILE on every render, so writing the INPUTS
+         here would be undone by the next redraw — the seed itself has to
+         move. It was the owner's own name, which is exactly why this survived
+         the first real phone: it read perfectly for one person and would have
+         greeted everybody else as מירון דדוש. */
+      PROFILE.first = d.user.firstName || "";
+      PROFILE.last = d.user.lastName || "";
+      if(d.user.assistantName) PROFILE.olma = d.user.assistantName;
     }
     open = (d.tasks || []).map(liveTask);
     /* Rebuilt from scratch each time: an id that has left the server's answer
@@ -7464,6 +7541,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       return {id:x.id, t:x.title, done:whenLabel(x.completedAt)};
     });
     FRIENDS = (d.friends || []).map(liveFriend);
+    /* Google is the only provider with a connection behind it, and Gmail
+       inside it is allowlisted per person, so the server is the only thing
+       that can answer that half. Everything not named here is greyed. */
+    AVAIL.prov = {google:true};
+    AVAIL.mail = !!(d.available && d.available.mail);
     hydrateProviders(d.integrations);
     hydrateChannels(d.channels);
     /* The address book behind "add a friend" — their own `user_contacts`,
