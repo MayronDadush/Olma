@@ -14,9 +14,7 @@
 const { withTx } = require('../../db/pool');
 const availability = require('../../domain/availability');
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
-  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-));
+const { esc } = require('./html');
 // Embedded JSON must not be able to close its own <script> tag.
 const jsonForScript = (v) => JSON.stringify(v).replace(/</g, '\\u003c');
 
