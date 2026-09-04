@@ -60,19 +60,28 @@ async function loadUser(client, userId) {
 // viewers multiplies rows and the de-duplication is more code than the extra
 // round trips are worth.
 async function loadTasks(client, userId, zone) {
+  // Their own list AND the tasks other people share with them. A shared task
+  // is not a copy or a notification — it is the same row, appearing on both
+  // lists, which is the whole point of sharing one. Leaving it out would have
+  // made "משימות משותפות" a section that only ever showed the ones this person
+  // shared OUT, i.e. exactly half the feature, silently.
   const { rows: tasks } = await client.query(
     `SELECT t.id, t.title, t.category, t.source, t.status, t.parent_id,
             t.archived_at IS NOT NULL AS archived, t.completed_at,
-            t.due_at,
+            t.due_at, t.owner_id,
             -- the wall clock the person actually chose, resolved in THEIR zone
             to_char(t.due_at AT TIME ZONE $2, 'YYYY-MM-DD') AS due_date,
             to_char(t.due_at AT TIME ZONE $2, 'HH24:MI')    AS due_time,
             -- a due_at at exactly local midnight is an all-day task: that is
             -- what add_task stores when no time was given
             (t.due_at IS NOT NULL AND
-             (t.due_at AT TIME ZONE $2)::time = '00:00') AS all_day
+             (t.due_at AT TIME ZONE $2)::time = '00:00') AS all_day,
+            sh.role AS shared_role
      FROM tasks t
-     WHERE t.owner_id = $1 AND t.parent_id IS NULL
+     LEFT JOIN shares sh
+            ON sh.task_id = t.id AND sh.viewer_id = $1 AND sh.status = 'active'
+     WHERE t.parent_id IS NULL
+       AND (t.owner_id = $1 OR sh.id IS NOT NULL)
      ORDER BY t.archived_at NULLS FIRST, t.due_at NULLS LAST, t.id`,
     [userId, zone]
   );
@@ -100,7 +109,7 @@ async function loadTasks(client, userId, zone) {
   // the whole set to know when removing the last person makes it private
   // again, and it needs the owner to know whether this viewer may manage it.
   const { rows: shares } = await client.query(
-    `SELECT s.task_id, s.viewer_id, u.first_name
+    `SELECT s.id AS share_id, s.task_id, s.viewer_id, u.first_name
      FROM shares s JOIN users u ON u.id = s.viewer_id
      WHERE s.task_id = ANY($1::bigint[]) AND s.status = 'active'
      ORDER BY s.task_id, s.viewer_id`,
@@ -117,7 +126,11 @@ async function loadTasks(client, userId, zone) {
   const shareByTask = new Map();
   for (const s of shares) {
     if (!shareByTask.has(s.task_id)) shareByTask.set(s.task_id, []);
-    shareByTask.get(s.task_id).push({ id: s.viewer_id, name: s.first_name });
+    // The share id travels with the person, because taking somebody off a
+    // task — or taking yourself off one — revokes a specific share row, and a
+    // page that only knows (task, viewer) would have to be given a second
+    // lookup to do the one thing this list exists for.
+    shareByTask.get(s.task_id).push({ id: s.viewer_id, name: s.first_name, shareId: s.share_id });
   }
 
   const out = { open: [], archived: [] };
@@ -133,12 +146,20 @@ async function loadTasks(client, userId, zone) {
       time: t.all_day ? null : t.due_time,
       allDay: t.all_day,
       done: t.status === 'done',
+      // The archive lists what was finished and when; nothing else reads it.
+      completedAt: t.completed_at,
       reminder: rem ? { at: rem.remind_at, repeat: rem.repeat_rule } : null,
       items: byParent.get(t.id) || [],
-      // `owner` is this viewer's own id when they own it, which is what the
-      // page checks before offering to manage the sharing at all.
-      owner: who.length ? userId : null,
+      // Who owns this, and therefore who may manage its sharing. `mine` is the
+      // question the page actually asks; `owner` carries the id so a task
+      // somebody else shared can be attributed to them by name.
+      mine: String(t.owner_id) === String(userId),
+      owner: who.length || String(t.owner_id) !== String(userId) ? t.owner_id : null,
       who,
+      // Only set on a task somebody shared WITH this person: 'viewer' or
+      // 'editor'. Their own rows carry null, not 'editor' — owning something
+      // is not a role granted to you.
+      sharedRole: t.shared_role || null,
       source: src,
       // Shipped alongside the task rather than looked up by the page, so a
       // capability change on the server takes effect without a redeploy of
@@ -156,7 +177,7 @@ async function loadFriends(client, userId) {
   const { rows } = await client.query(
     `SELECT c.id AS connection_id,
             CASE WHEN c.requester_id = $1 THEN c.target_id ELSE c.requester_id END AS friend_id,
-            u.first_name, u.timezone,
+            u.first_name, u.timezone, c.responded_at,
             COALESCE(
               (SELECT array_agg(g.feature ORDER BY g.feature)
                FROM connection_feature_grants g
@@ -174,6 +195,10 @@ async function loadFriends(client, userId) {
     connectionId: r.connection_id,
     name: r.first_name,
     timezone: r.timezone,
+    // When this became a friendship. The page shows it under the name; it is
+    // the only date in the payload that is about the RELATIONSHIP rather than
+    // about a task, so it is not converted into anyone's wall clock.
+    since: r.responded_at,
     features: r.features,
   }));
 }

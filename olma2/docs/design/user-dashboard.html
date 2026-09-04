@@ -2111,6 +2111,47 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     pause:               "pause_olma",
     resume:              "resume_olma"
   };
+  /* The server's own action names (domain/user-dashboard-write.js). Where a
+     seam has no entry there is genuinely nothing to call yet, and it is left
+     to log rather than given a plausible-looking name — a wired-looking call
+     that lands nowhere is worse than an obvious gap. */
+  var ACT = {
+    addTask:"addTask", editTask:"editTask", completeTask:"completeTask",
+    archiveTask:"archiveTask", setReminder:"setReminder", cancelReminder:"cancelReminder",
+    shareTask:"shareTask", revokeShare:"revokeShare",
+    grantFeature:"grantFeature", revokeFeature:"revokeFeature",
+    setTimezone:"setTimezone", pause:"pause", resume:"resume"
+  };
+  /* Ids the server has actually seen. It is what decides whether saving a task
+     creates one or edits one — the page numbers its own new rows from a local
+     counter, and asking "is this id one of ours" is the only honest test. */
+  var SERVER_IDS = {};
+  /* This person's own user id, once the server has said what it is. Needed for
+     exactly one thing: leaving a shared task means revoking MY share row, and
+     the row is keyed by the real id even though the page calls me 0. */
+  var MY_ID = null;
+
+  /* The offset in force in the person's own zone ON THAT DATE — not today's.
+     A reminder set in summer for a date in autumn is otherwise an hour out,
+     and a bare local time is refused by the server anyway (add_task has
+     required an offset since a shift said as 15:00 was stored as 15:00Z). */
+  function zoneOffset(tz, at){
+    try{
+      var parts = new Intl.DateTimeFormat("en-US", {timeZone:tz, timeZoneName:"longOffset"})
+        .formatToParts(at);
+      var name = parts.filter(function(x){ return x.type === "timeZoneName"; })[0];
+      var m = String(name && name.value || "").match(/GMT([+-])(\d{1,2}):?(\d{2})?/);
+      if(!m) return "+00:00";                       /* bare "GMT" is UTC */
+      return m[1] + String(m[2]).padStart(2,"0") + ":" + (m[3] || "00");
+    }catch(err){ return "+00:00"; }
+  }
+  function dueIso(x){
+    if(!x || !x.d) return null;
+    var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
+    var time = (x.all || !x.tm) ? "00:00" : x.tm;
+    return x.d + "T" + time + ":00" + zoneOffset(tz, new Date(x.d + "T" + time + ":00Z"));
+  }
+
   var API = {
     /* one place to see what a real backend would be asked for */
     log: [],
@@ -2118,17 +2159,91 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       API.log.push({tool:TOOL[name] || name, args:args});
       return true;
     },
-    saveTask:        function(x){      return API.call(x && x.src ? "saveImportedTask" : "saveTask", x); },
-    deleteTask:      function(id){     return API.call("deleteTask", {task_id:id}); },
-    completeTask:    function(id){     return API.call("completeTask", {task_id:id}); },
+    /* Fire-and-forget on purpose. Every one of these follows a change the page
+       has ALREADY made on screen, and the alternative — waiting, then undoing
+       the row under somebody's finger if the server disagreed — is worse than
+       being briefly out of date. A refusal is surfaced, not swallowed: the
+       page reloads its data, so the next paint is the truth rather than the
+       optimistic guess. */
+    send: function(action, payload){
+      if(!LIVE || !ACT[action]) return true;
+      fetch("/me/act", {
+        method:"POST", credentials:"same-origin",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({action:ACT[action], payload:payload || {}})
+      }).then(function(r){ return r.json().catch(function(){ return null; }); })
+        .then(function(body){ if(body && body.ok === false) API.refused(body.error); })
+        .catch(function(){ /* offline: the page keeps what it shows */ });
+      return true;
+    },
+    refused: function(error){
+      /* Two of these the person can act on, so they are said out loud; the
+         rest are ours to fix and saying "invalid" to somebody helps nobody. */
+      if(error && error.reason === "paused")      toast(t("toast.pausedRefusal"));
+      else if(error && error.reason === "no_writeback")
+        toast(t("toast.importedRefusal", {name:(SOURCES[error.source] || {}).name || error.source}));
+      API.reload();
+    },
+    /* One re-read, so what is on screen goes back to being what is stored. */
+    reload: function(){
+      if(!LIVE) return;
+      fetch("/me/data", {credentials:"same-origin", headers:{Accept:"application/json"}})
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(body){ if(body && body.ok && body.data) hydrate(body.data); })
+        .catch(function(){});
+    },
+
+    saveTask: function(x){
+      API.call(x && x.src ? "saveImportedTask" : "saveTask", x);
+      if(!x) return true;
+      var known = Object.prototype.hasOwnProperty.call(SERVER_IDS, String(x.id));
+      var payload = {title:L(x.t), category:x.cat || null, dueAt:dueIso(x)};
+      if(known) payload.taskId = x.id;
+      return API.send(known ? "editTask" : "addTask", payload);
+    },
+    /* The page calls it deleting; the system archives. Nothing here has ever
+       deleted a task and this is not the place to start — the archive is the
+       feature, and it is reachable from the same screen. */
+    deleteTask:      function(id){     API.call("deleteTask", {task_id:id}); return API.send("archiveTask", {taskId:id}); },
+    completeTask:    function(id){     API.call("completeTask", {task_id:id}); return API.send("completeTask", {taskId:id}); },
     restoreTask:     function(id){     return API.call("restoreTask", {task_id:id}); },
-    shareTask:       function(id, who){return API.call("shareTask", {task_id:id, viewer_ids:who}); },
-    unshareTask:     function(id, u){  return API.call("unshareTask", {task_id:id, viewer_id:u}); },
-    leaveTask:       function(id){     return API.call("leaveTask", {task_id:id, viewer_id:0}); },
-    setCategory:     function(id, c){  return API.call("setCategory", {task_id:id, category:c}); },
+    shareTask:       function(id, who){
+      API.call("shareTask", {task_id:id, viewer_ids:who});
+      /* The server shares with one person per call; the page thinks in the
+         whole list. Sending the list one at a time is right rather than
+         convenient — each is its own consented row, and one refusal must not
+         take the others down with it. */
+      (who || []).forEach(function(u){ if(u) API.send("shareTask", {taskId:id, viewerId:u}); });
+      return true;
+    },
+    unshareTask:     function(id, u){
+      API.call("unshareTask", {task_id:id, viewer_id:u});
+      var t2 = open.filter(function(x){ return x.id === id; })[0];
+      var sid = t2 && t2.shareIds ? t2.shareIds[u] : null;
+      return sid ? API.send("revokeShare", {shareId:sid}) : true;
+    },
+    /* Leaving IS revoking your own view — the same row, revoked by the other
+       side of it. */
+    leaveTask:       function(id){
+      API.call("leaveTask", {task_id:id, viewer_id:0});
+      var t2 = open.filter(function(x){ return x.id === id; })[0];
+      var sid = t2 && t2.shareIds && MY_ID ? t2.shareIds[MY_ID] : null;
+      return sid ? API.send("revokeShare", {shareId:sid}) : true;
+    },
+    setCategory:     function(id, c){  API.call("setCategory", {task_id:id, category:c}); return API.send("editTask", {taskId:id, category:c || null}); },
+    /* Connecting an account is an OAuth round trip, not a JSON write — it
+       cannot be one, because the grant happens at Google. */
     setServiceMode:  function(pid,i,m){return API.call("setServiceMode", {provider:pid, service:i, scope:m === "write" ? "read_write" : "read_only"}); },
-    setFriendPermission: function(fid, k, on){ return API.call("setFriendPermission", {user_id:fid, feature:k, granted:on}); },
-    setDefaultChannel:   function(ch){ return API.call("setDefaultChannel", {channel:ch}); }
+    setFriendPermission: function(fid, k, on){
+      API.call("setFriendPermission", {user_id:fid, feature:k, granted:on});
+      var f = FRIENDS.filter(function(x){ return x.id === fid; })[0];
+      if(!f || !f.cid) return true;
+      return API.send(on ? "grantFeature" : "revokeFeature",
+        {connectionId:f.cid, feature:FEATURE_OF[k] || k});
+    },
+    setDefaultChannel:   function(ch){ return API.call("setDefaultChannel", {channel:ch}); },
+    setTimezone:     function(tz){     API.call("setTimezone", {timezone:tz}); return API.send("setTimezone", {timezone:tz}); },
+    setPaused:       function(on){     API.call(on ? "pause" : "resume", {}); return API.send(on ? "pause" : "resume", {}); }
   };
   /* Exposed on purpose, and it is the only global this file creates. The seam
      is the thing the next person has to replace, so it has to be reachable
@@ -2310,6 +2425,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.calOpen":"נפתח ביומן ברירת המחדל של הטלפון",
       "toast.removed":"החיבור הוסר",
       "toast.avatar":"דמות חדשה","toast.paused":"אולמה מושהית","toast.resumed":"אולמה חזרה",
+      "toast.pausedRefusal":"אולמה מושהית — תזכורת לא תישלח עד שתחזיר אותה",
+      "toast.importedRefusal":"את זה משנים ב־{name}",
       "toast.masc":"אולמה תפנה אליך בלשון זכר","toast.fem":"אולמה תפנה אלייך בלשון נקבה",
       "toast.city":"אזור הזמן עודכן ל{tz}",
 
@@ -2478,6 +2595,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.calOpen":"Opening your default calendar",
       "toast.removed":"Connection removed",
       "toast.avatar":"New character","toast.paused":"Olma is paused","toast.resumed":"Olma is back",
+      "toast.pausedRefusal":"Olma is paused — a reminder will not go out until you bring her back",
+      "toast.importedRefusal":"That one is changed in {name}",
       "toast.masc":"Olma will address you in the masculine","toast.fem":"Olma will address you in the feminine",
       "toast.city":"Time zone set to {tz}",
 
@@ -2715,6 +2834,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      night sky. `shadow:true` is kept only so the style page can show it. */
   function avatarSVG(idx, opt){
     opt = opt || {};
+    /* A missing index must not take the whole page down with it. Everything
+       here draws a face for somebody, and one person arriving without one is a
+       gap in a row — the alternative, which happened once, is a throw inside a
+       render and a blank screen. */
+    if(typeof idx !== "number" || !isFinite(idx)) idx = 0;
     var a = ANIMALS[((idx % ANIMALS.length) + ANIMALS.length) % ANIMALS.length];
     var night = !!opt.night;
     var style = opt.style || AVATAR_STYLE;
@@ -4743,6 +4867,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     cityConfirmed = true;
     renderCityRow();
     closeSheets();
+    API.setTimezone(CITIES[cityIdx].tz);
     toast(t("toast.city", {tz:L(CITIES[cityIdx].n)}));
   });
   function tickClocks(){
@@ -5024,6 +5149,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   $("#pauseBtn").addEventListener("click", function(){
     paused = !paused;
     renderPause();
+    API.setPaused(paused);
     toast(t(paused ? "toast.paused" : "toast.resumed"));
   });
 
@@ -5148,6 +5274,190 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     requestAnimationFrame(repositionPill);
   }
   renderAll();
+
+  /* ══════════════════════════════════════════════════════════════
+     LIVE DATA
+     This file is two things at once, on purpose. Opened on its own it is the
+     design: a complete seed dataset, so every state can be looked at without
+     a server. Served from /me it asks that server for the real one and
+     replaces the seed wholesale.
+
+     A failed fetch keeps the seed rather than emptying the page — the design
+     copy has no server to ask, and an empty dashboard reads as "you have
+     nothing", which is a statement about the person rather than about the
+     request. The one thing that must never happen is the middle case: real
+     person, seeded content. So hydration is all-or-nothing per section, and
+     anything it cannot map yet is emptied rather than left as a fixture.
+     ══════════════════════════════════════════════════════════════ */
+  var LIVE = false;
+
+  /* The seed carries every string as {he,en} because a mockup is written in
+     both. Real content is written by a person, in one language, and is not
+     translated — L() already returns a plain string unchanged, so a title
+     needs no wrapping at all. This is only for the few places the page still
+     builds a LABEL out of data (the archive's "when"). */
+  function whenLabel(iso){
+    if(!iso) return "";
+    try{
+      return new Intl.DateTimeFormat(LOCALE === "en" ? "en-GB" : "he-IL",
+        {day:"numeric", month:"long"}).format(new Date(iso));
+    }catch(err){ return ""; }
+  }
+  /* The server states a repeat as the canonical rule (domain/reminders.js);
+     the page only needs its shape. Anything it does not recognise is still a
+     repeat — reading an unknown rule as "none" would quietly tell somebody a
+     recurring reminder is a one-off. */
+  function repShape(rule){
+    if(!rule) return "none";
+    if(rule === "daily") return "day";
+    if(rule.indexOf("weekly") === 0) return "week";
+    if(rule.indexOf("monthly") === 0) return "month";
+    return "week";
+  }
+  function liveTask(x){
+    return {
+      id:x.id,
+      d:x.date || "", tm:x.time || "", all:!!x.allDay,
+      t:x.title,
+      rem:!!x.reminder, rep:repShape(x.reminder && x.reminder.repeat),
+      /* Whether a task was copied into a calendar is not something the system
+         records against the task, so it is false rather than guessed. */
+      cal:false,
+      cat:(x.category && x.category !== "none") ? x.category : "",
+      /* The seed marks categories `catAuto` to show the "Olma chose this"
+         styling. A real row cannot say who chose it — tasks.category has no
+         provenance column — so nothing claims one. */
+      catAuto:false,
+      /* 0 is this person. Real user ids start at 1, so it cannot collide, and
+         the page already treats 0 as "me" everywhere. */
+      owner:x.mine ? 0 : x.owner,
+      who:(x.who || []).map(function(w){ return String(w.id) === String(x.owner) ? 0 : w.id; }),
+      /* viewer id -> share row id, because taking somebody off a task revokes
+         one specific share and nothing else identifies it. */
+      shareIds:(x.who || []).reduce(function(acc, w){ acc[w.id] = w.shareId; return acc; }, {}),
+      items:(x.items || []).map(function(i){ return {t:i.title, done:!!i.done}; }),
+      src:x.source || undefined
+    };
+  }
+  var FEATURE_OF = {tasks:"sharing", meet:"meetings", msg:"messages"};
+  function liveFriend(f){
+    var have = f.features || [];
+    return {
+      id:f.id, cid:f.connectionId, n:f.name || "", tz:f.timezone || "UTC",
+      /* Derived from the id, never stored. The same person is the same animal
+         for ever, on every device, and nothing has to be migrated to say so. */
+      av:seedIndex("u" + f.id),
+      since:f.since ? whenLabel(f.since) : "",
+      /* The system stores nobody's gender — only the ASSISTANT's persona has
+         one. Masculine is the documented default for address, and it is what
+         the agent doctrine falls back to for the same reason. */
+      g:"m",
+      p:{tasks:have.indexOf("sharing") > -1,
+         meet: have.indexOf("meetings") > -1,
+         msg:  have.indexOf("messages") > -1}
+    };
+  }
+  /* Which provider tile each integration row belongs to. The server names a
+     SERVICE (`google_calendar`); the page groups by ACCOUNT (`google`),
+     because that is how a person thinks about having connected Google once. */
+  var PROV_OF = {
+    google_calendar:{prov:"google", svc:"cal"},
+    google_contacts:{prov:"google", svc:"contacts"},
+    gmail:          {prov:"google", svc:"mail"},
+    monday:         {prov:"monday", svc:null}
+  };
+  function hydrateProviders(list){
+    PROV.forEach(function(p){
+      p.connected = false;
+      p.account = "";
+      p.svc.forEach(function(sv){ sv.on = false; });
+    });
+    (list || []).forEach(function(row){
+      var map = PROV_OF[row.provider];
+      if(!map) return;
+      var p = prov(map.prov);
+      if(!p) return;
+      p.connected = p.connected || row.connected;
+      if(row.account) p.account = row.account;
+      /* needs_reauth is connected-but-broken, and the page has to be able to
+         say so rather than showing it as never connected. */
+      if(row.needsReauth) p.needsReauth = true;
+      var sv = map.svc && p.svc.filter(function(x){ return x.k === map.svc; })[0];
+      if(sv){
+        sv.on = row.connected;
+        if(sv.w) sv.mode = row.access === "read_write" ? "write" : "read";
+      }
+    });
+  }
+  function hydrate(d){
+    open = (d.tasks || []).map(liveTask);
+    /* Rebuilt from scratch each time: an id that has left the server's answer
+       has left the server, and treating it as known would turn the next save
+       into an edit of a row that is no longer there. */
+    SERVER_IDS = {};
+    (d.tasks || []).concat(d.archived || []).forEach(function(x){ SERVER_IDS[String(x.id)] = true; });
+    archived = (d.archived || []).map(function(x){
+      return {id:x.id, t:x.title, done:whenLabel(x.completedAt)};
+    });
+    FRIENDS = (d.friends || []).map(liveFriend);
+    hydrateProviders(d.integrations);
+    /* Three seeded sets are emptied rather than mapped, and each is a
+       different kind of not-yet.
+
+       EVENTS is the calendar day view. Real events live at Google, not in our
+       database, so /me/data cannot carry them without an outbound call on the
+       request path — the next piece of work here. Until then an empty day is
+       the only honest thing: a real person must never be shown a poker game
+       that does not exist.
+
+       CONTACTS is the address book behind "add a friend". Real ones arrive
+       through the Google Contacts import into `user_contacts`. Empty is also
+       the RIGHT state to land in — it is what routes somebody to connecting an
+       account first, which is exactly the flow this screen was designed for.
+
+       `invited` is per-session state about the seeded contacts and means
+       nothing once they are gone. */
+    EVENTS = {};
+    CONTACTS = [];
+    invited = {};
+    /* Meetings are deliberately emptied rather than mapped. The grid is built
+       on day OFFSETS and a marks table; the server states real DATES and
+       `meeting_availability` rows written by the picker. Mapping one onto the
+       other is the next piece of work, and until it exists an empty list is
+       the only honest thing to show — a real person must never be shown a
+       coordination that does not exist. */
+    MEETS = [];
+    mtOpen = null;
+    if(d.user){
+      MY_ID = d.user.id;
+      myAvatar = seedIndex("u" + d.user.id);
+      paused = !!d.user.paused;
+      cityConfirmed = !!d.user.timezoneConfirmed;
+      var i = CITIES.map(function(c){ return c.tz; }).indexOf(d.user.timezone);
+      /* An unlisted zone leaves the city alone rather than snapping to the
+         first one in the list — showing Tel Aviv to somebody in Nairobi is
+         worse than showing the zone we already had. */
+      if(i > -1) cityIdx = i;
+    }
+    LIVE = true;
+    renderAll();
+  }
+  /* On the seam rather than inside the closure, for the same reason the seam
+     exists at all: this is the function that turns a payload into a page, so
+     it has to be drivable from outside — to try a shape without a server, and
+     to see what a given payload actually renders as. */
+  API.hydrate = hydrate;
+
+  /* One request, at boot, and nothing retries it. A dashboard that silently
+     reloads itself is a dashboard that can change under somebody's finger. */
+  (function(){
+    if(location.protocol === "file:") return;   /* the design copy */
+    fetch("/me/data", {credentials:"same-origin", headers:{Accept:"application/json"}})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(body){ if(body && body.ok && body.data) hydrate(body.data); })
+      .catch(function(){ /* keep the seed; see the note above */ });
+  })();
+
   /* silent, so the very first placement is not read as a move from x=0 — an
      unseeded prevX would hand the first real tap a direction computed against
      a position the pill was never at */

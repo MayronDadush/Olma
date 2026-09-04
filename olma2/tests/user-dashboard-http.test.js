@@ -180,3 +180,57 @@ test('a nearly-ours path falls through to the operator page, not to us', async (
       `${p} was answered by the personal dashboard`);
   }
 });
+
+test('the payload carries every field the page reads out of it', async () => {
+  // The page and the server are one file apart and there is no type between
+  // them, so this is the contract. Each name here is read by `hydrate()` in
+  // docs/design/user-dashboard.html; renaming one on the server without
+  // renaming it there produces a page that renders with a piece missing and no
+  // error anywhere — the failure this list exists to turn into a red test.
+  const tasks = require('../src/domain/tasks');
+  const shares = require('../src/domain/shares');
+  const connections = require('../src/domain/connections');
+  const friend = await makeUser(db.pool, '+972531930002', { firstName: 'Gali' });
+
+  const mine = await withTx(db.pool, (c) => tasks.addTask(c, me.id, { title: 'קניות' }));
+  const req = await withTx(db.pool, (c) => connections.requestConnection(c, me.id, friend.phone));
+  await withTx(db.pool, (c) =>
+    connections.respondToConnection(c, friend.id, req.data.connection.id, 'approve'));
+  const offer = await withTx(db.pool, (c) =>
+    shares.offerShare(c, me.id, mine.data.task.id, friend.id, 'viewer'));
+  await withTx(db.pool, (c) => shares.respondToShare(c, friend.id, offer.data.share.id, 'accept'));
+  const done = await withTx(db.pool, (c) => tasks.addTask(c, me.id, { title: 'לחדש ביטוח' }));
+  await withTx(db.pool, (c) => tasks.completeTask(c, me.id, done.data.task.id));
+  await withTx(db.pool, (c) => tasks.archiveTask(c, me.id, done.data.task.id));
+
+  const cookie = await signIn();
+  const { data } = await (await get('/me/data', { headers: { cookie } })).json();
+
+  for (const k of ['id', 'firstName', 'timezone', 'timezoneConfirmed', 'paused']) {
+    assert.ok(k in data.user, `user.${k} is gone — the page reads it`);
+  }
+  const shared = data.tasks.find((t) => t.who.length);
+  assert.ok(shared, 'no shared task came back');
+  for (const k of ['id', 'title', 'category', 'date', 'time', 'allDay',
+    'reminder', 'items', 'mine', 'owner', 'who', 'source', 'caps']) {
+    assert.ok(k in shared, `task.${k} is gone — the page reads it`);
+  }
+  assert.ok('shareId' in shared.who[0], 'who[].shareId is gone — removing a person needs it');
+  assert.ok('completedAt' in data.archived[0], 'archived[].completedAt is gone — the "when" is built from it');
+  for (const k of ['id', 'connectionId', 'name', 'timezone', 'since', 'features']) {
+    assert.ok(k in data.friends[0], `friend.${k} is gone — the page reads it`);
+  }
+  for (const k of ['provider', 'connected', 'needsReauth', 'access', 'account']) {
+    assert.ok(k in (data.integrations[0] || { [k]: null }), `integration.${k} is gone`);
+  }
+});
+
+test('the served page really is the one that knows how to hydrate', async () => {
+  // Serving a copy that predates the wiring would produce a page showing seed
+  // fixtures to a real person — the one outcome the hydration comment calls
+  // out as worse than either extreme.
+  const cookie = await signIn();
+  const html = await (await get('/me', { headers: { cookie } })).text();
+  assert.ok(html.includes('/me/data'), 'the served page never asks for any data');
+  assert.ok(html.includes('/me/act'), 'the served page cannot write anything back');
+});

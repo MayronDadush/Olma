@@ -210,3 +210,27 @@ test('an archived task is archived, and is not in the open list', async () => {
   assert.equal(d.archived.some((x) => x.title === 'done and gone'), true);
   assert.equal(d.tasks.some((x) => x.title === 'done and gone'), false);
 });
+
+test('a task somebody shared with me is on my list too, and marked as theirs', async () => {
+  const shares = require('../src/domain/shares');
+  const t = await withTx(db.pool, (c) =>
+    tasks.addTask(c, friend.id, { title: 'לסיים את המצגת' }));
+  assert.equal(t.ok, true, t.ok ? '' : JSON.stringify(t.error));
+  const offer = await withTx(db.pool, (c) =>
+    shares.offerShare(c, friend.id, t.data.task.id, me.id, 'editor'));
+  assert.equal(offer.ok, true, offer.ok ? '' : JSON.stringify(offer.error));
+  await withTx(db.pool, (c) => shares.respondToShare(c, me.id, offer.data.share.id, 'accept'));
+
+  const d = (await load(me.id)).data;
+  const row = d.tasks.find((x) => String(x.id) === String(t.data.task.id));
+  assert.ok(row, 'a task shared with me was missing from my own list entirely');
+  assert.equal(row.mine, false, "somebody else's task was presented as mine");
+  assert.equal(String(row.owner), String(friend.id));
+  assert.equal(row.sharedRole, 'editor');
+
+  // And it is still on THEIR list, as theirs — one row, two lists.
+  const theirs = (await load(friend.id)).data.tasks
+    .find((x) => String(x.id) === String(t.data.task.id));
+  assert.equal(theirs.mine, true);
+  assert.equal(theirs.sharedRole, null, 'owning something is not a role granted to you');
+});
