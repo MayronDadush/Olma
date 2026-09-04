@@ -45,17 +45,30 @@ function pageHtml() {
   return cached.html;
 }
 
-// The same page, told it is speaking to somebody it does not know. The file
-// has no <html> tag of its own — a leading one merges its attributes onto the
-// root element the parser was going to create anyway — so this stamps the flag
-// without the page carrying a second copy of itself for the case.
+// Every page the server hands out is stamped on its root element. The file has
+// no <html> tag of its own — a leading one merges its attributes onto the root
+// element the parser was going to create anyway — so this marks the page
+// without it carrying a second copy of itself for the case.
+//
+// `data-served` is what hides the preview scaffolding: the language pair, the
+// theme moon and the two replay buttons are there so the design can be checked
+// in both languages, both themes and from a stranger's first screen without
+// reloading. They are not product UI. Stamping the root here rather than
+// letting hydrate() do it means they are gone before a single rule is applied,
+// instead of flashing on and then vanishing — and opening the same file from
+// disk leaves the stamp off, which is precisely when those buttons are wanted.
+function servedPageHtml(extra = '') {
+  return '<html data-served="1"' + extra + '>\n' + pageHtml();
+}
+
+// The same page, told it is speaking to somebody it does not know.
 //
 // Deliberately the answer for an EXPIRED link too, not only for a stranger.
 // Both people need the same next step (write to her), the screen says so
 // without claiming to know which of the two you are, and it leaks nothing
 // about whether a number is on file.
 function newPageHtml() {
-  return '<html data-new="1">\n' + pageHtml();
+  return servedPageHtml(' data-new="1"');
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -260,7 +273,7 @@ async function handle(req, res, pool, pathname) {
       return res.end(newPageHtml());
     }
     res.writeHead(200, headers(HTML));
-    return res.end(pageHtml());
+    return res.end(servedPageHtml());
   }
 
   // Past this point everything is JSON, including the refusals — the page is

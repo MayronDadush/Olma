@@ -81,7 +81,7 @@ test('the page needs a session, and the admin password is not one', async () => 
   // Somebody with no session gets the first screen — the two doors into a
   // conversation with her — not an error. It is still a 401: none of their
   // data is in it, and the stamp is the only thing that decides that.
-  assert.match(anonHtml, /<html data-new="1">/,
+  assert.match(anonHtml, /<html data-served="1" data-new="1">/,
     'an anonymous visitor was not handed the first screen');
   assert.ok(anonHtml.includes('w.hint'), 'that is not the dashboard file');
   assert.equal(anon.headers.get('content-type').includes('text/html'), true);
@@ -240,4 +240,27 @@ test('the served page really is the one that knows how to hydrate', async () => 
   const html = await (await get('/me', { headers: { cookie } })).text();
   assert.ok(html.includes('/me/data'), 'the served page never asks for any data');
   assert.ok(html.includes('/me/act'), 'the served page cannot write anything back');
+});
+
+// The file carries preview scaffolding — a language pair, a theme moon, and
+// two buttons that replay the first visit — so the design can be checked in
+// both languages, both themes and from a stranger's screen without reloading.
+// None of it is product UI. The stamp on the root element is what removes it,
+// and it has to be on the markup rather than applied by script: hiding them
+// after hydrate() would show them for as long as the server takes to answer.
+test('a served page is stamped, so the preview scaffolding never reaches anybody', async () => {
+  const cookie = await signIn();
+  const html = await (await get('/me', { headers: { cookie } })).text();
+  assert.match(html, /^<html data-served="1">/,
+    'a served page was not stamped, so the preview buttons are live in production');
+  // The stamp only means anything if the stylesheet still acts on it.
+  assert.ok(html.includes('html[data-served] .langtog'),
+    'nothing in the page hides the preview scaffolding on a served page');
+  for (const id of ['langTog', 'themeTog', 'introTog', 'newTog']) {
+    assert.ok(html.includes('html[data-served] .' + id.replace('Tog', '').toLowerCase() + 'tog'),
+      `${id} is not covered by the rule that hides preview scaffolding`);
+  }
+  // And the one preview affordance with no button to hide asks for itself.
+  assert.ok(html.includes('!document.documentElement.hasAttribute("data-served")'),
+    'the language shortcut is not gated, so a stray L retranslates a real list');
 });

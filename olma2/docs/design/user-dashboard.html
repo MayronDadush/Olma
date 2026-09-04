@@ -581,7 +581,18 @@ button.row:active{background:var(--bg-tint)}
   color:var(--text-2);font-size:10px;line-height:1;display:grid;place-items:center;
 }
 
-/* preview scaffolding — deliberately styled as a tool, not as chrome */
+/* preview scaffolding — deliberately styled as a tool, not as chrome.
+
+   None of it is product UI, so none of it survives being SERVED: the adapter
+   stamps `data-served` on the root element, and these four buttons are gone
+   before a rule below them is applied. Hiding them from script instead would
+   mean showing them for as long as it takes the server to answer, which is a
+   worse lie than not having them. Open this file from disk and the stamp is
+   absent, which is the only situation the buttons were ever for. */
+html[data-served] .langtog,
+html[data-served] .introtog,
+html[data-served] .newtog,
+html[data-served] .themetog{display:none}
 .langtog{
   position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:14px;z-index:40;
   display:flex;padding:3px;border-radius:999px;background:var(--surface);
@@ -7528,10 +7539,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     root.setAttribute("data-theme", dark ? "dark" : "light");
     this.innerHTML = dark ? "&#9788;" : "&#9789;";
   });
-  document.addEventListener("keydown", function(e){
-    if(e.key !== "l" && e.key !== "L" && e.key !== "ל") return;
-    if(e.target && e.target.closest && e.target.closest("input, textarea")) return;
-    setLocale(LOCALE === "he" ? "en" : "he");
-  });
+  /* The four buttons above are hidden by CSS on a served page, which takes
+     their clicks with them. This shortcut has no button to hide, so it is
+     asked separately — otherwise a stray L in somebody's real dashboard
+     silently translates their whole list. */
+  if(!document.documentElement.hasAttribute("data-served")){
+    document.addEventListener("keydown", function(e){
+      if(e.key !== "l" && e.key !== "L" && e.key !== "ל") return;
+      if(e.target && e.target.closest && e.target.closest("input, textarea")) return;
+      setLocale(LOCALE === "he" ? "en" : "he");
+    });
+  }
 })();
 </script>
