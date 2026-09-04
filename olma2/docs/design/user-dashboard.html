@@ -4838,7 +4838,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     /* Every field WE have is checked against what the source can hold. A task
        written here has no source, so nothing is ever locked on it. */
     lockRow($("#sCatRow"),    !canEdit(editing, "cat"),  why);
-    lockRow($("#sRepeatRow"), !canEdit(editing, "rep"),  why);
+    /* Two separate reasons can close the repeat row, and both have to be
+       decided HERE, in the last function that touches it — the earlier of two
+       lockRow calls on one row is simply erased by the later one, which is
+       what silently undid the "needs a reminder" lock. The source's own
+       limitation wins the tooltip when both apply: adding a reminder would not
+       open a row an imported task can never carry a repeat in. */
+    var repNeedsRem = !editing.rem, repNoField = !canEdit(editing, "rep");
+    lockRow($("#sRepeatRow"), repNeedsRem || repNoField,
+            repNoField ? why : t("sheet.repeatNeedsRemind"));
     lockRow($("#sListRow"),   !canEdit(editing, "items"),why);
     lockRow($("#sShareRow"),  !canEdit(editing, "who"),  why);
     lockRow($("#sTimeChip"),  !canEdit(editing, "time"), why);
@@ -4867,8 +4875,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     /* A repeat is a property of the REMINDER — task_reminders.repeat_rule is
        the only place the system stores one — so with no reminder there is
        nothing for "every week" to be attached to. Rather than accept it and
-       drop it, the row says why it is unavailable. */
-    lockRow($("#sRepeatRow"), !editing.rem, t("sheet.repeatNeedsRemind"));
+       drop it, the row says why it is unavailable. That lock is applied in
+       syncSheetSource below, together with the source's own limit on the same
+       row, because two lockRow calls on one row leave only the last. */
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     $("#sRepeatVal").textContent = t("rep." + ({none:"once", day:"day", week:"week", month:"month"}[chosen ? chosen.dataset.rep : "none"] || "once"));
     var ck = editing.cat || "none";
