@@ -6,6 +6,7 @@
 // user, args) inside a transaction and return structured results; rendering
 // to text happens in render.js, never here.
 const users = require('../../domain/users');
+const onboardingDomain = require('../../domain/onboarding');
 const tasks = require('../../domain/tasks');
 const reminders = require('../../domain/reminders');
 const preferences = require('../../domain/preferences');
@@ -374,10 +375,14 @@ const TOOLS = [
           directive: 'proceed', locale: user.locale,
           ...(firstTurn ? {
             firstTurn: true,
-            onboarding: 'Their first ever message — nobody has introduced you. '
-              + 'Answer what they actually said, then in one or two short lines say what '
-              + 'you are and ask their name. No feature tour, no menu of options. '
-              + 'If USER.md has a pending intake section, fold that in instead.',
+            onboarding: {
+              sendVerbatim: onboardingDomain.openingMessage(user.locale),
+              instruction: 'Their first ever message. Open your reply with '
+                + 'sendVerbatim, character for character — do not translate, reword, '
+                + 'shorten, or add to it. If they actually asked for something, answer '
+                + 'it below those lines; otherwise stop there. No feature tour, no menu, '
+                + 'and no follow-up question this turn.',
+            },
           } : {}),
           ...(offerResume ? { offerResume: true } : {}),
           ...(recentReminders.length ? { recentReminders } : {}),

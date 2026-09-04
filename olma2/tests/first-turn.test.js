@@ -14,6 +14,7 @@ const { withTx } = require('../src/db/pool');
 const { createBrokerServer } = require('../src/brokerd/server');
 const turnDomain = require('../src/domain/turn');
 const flagsDomain = require('../src/domain/flags');
+const onboarding = require('../src/domain/onboarding');
 
 let db, broker;
 before(async () => { db = await freshDb(); broker = createBrokerServer({ pool: db.pool }); });
@@ -131,19 +132,48 @@ test('a connection that outlives its turn does not hand the next message a stale
   assert.equal(next.data.firstTurn, undefined, 'the reused connection does not repeat it');
 });
 
-test('the flag arrives with the instruction, not just the fact', async () => {
+test('the flag arrives with the exact opening copy, in their language', async () => {
   // A signal nothing tells the model what to do with is a field nobody reads.
   // It rides in the result rather than in AGENTS.md because the doctrine is at
   // 39249 of its 39250-char budget — see the comment at the return site.
-  const u = await makeUser(db.pool, '+972611003007', { firstName: null });
+  const u = await makeUser(db.pool, '+972611003007', { firstName: null, locale: 'he' });
   const { data } = await turnStart(u, { opened: false, counted: false });
   assert.equal(data.firstTurn, true);
-  assert.match(data.onboarding, /first ever message/i, 'says what is happening');
-  assert.match(data.onboarding, /ask their name/i, 'and what to do about it');
-  assert.match(data.onboarding, /No feature tour/i, 'and what NOT to do');
+  assert.equal(data.onboarding.sendVerbatim, onboarding.OPENING.he,
+    'the owner\'s words, not a paraphrase of them');
+  assert.match(data.onboarding.instruction, /character for character/i,
+    'and an instruction that leaves no room to reword brand copy');
 
   const { data: next } = await turnStart(u, { opened: false, counted: false });
   assert.equal(next.onboarding, undefined, 'and never again');
+});
+
+test('an English speaker gets the English opening', async () => {
+  const u = await makeUser(db.pool, '+15551230007', { firstName: null, locale: 'en' });
+  const { data } = await turnStart(u, { opened: false, counted: false });
+  assert.equal(data.onboarding.sendVerbatim, onboarding.OPENING.en);
+  assert.match(data.onboarding.sendVerbatim, /Allma/, 'the English name is Allma, not Olma');
+});
+
+test('an unknown locale still gets a real message, never an empty one', () => {
+  assert.equal(onboarding.openingMessage('fr'), onboarding.OPENING.en);
+  assert.equal(onboarding.openingMessage(undefined), onboarding.OPENING.en);
+  assert.equal(onboarding.openingMessage(null), onboarding.OPENING.en);
+});
+
+test('the opening copy is exactly what the owner wrote', () => {
+  // Brand copy nobody can silently edit. If this fails, someone changed the
+  // first thing every new person will ever read — which is a decision, not a
+  // refactor, so it should cost a deliberate update to this test.
+  assert.equal(onboarding.OPENING.he.split('\n').length, 4, 'four lines');
+  assert.ok(onboarding.OPENING.he.startsWith('היי, אני אולמה \u{1F44B}'));
+  assert.ok(onboarding.OPENING.he.endsWith('אני אעשה לכם סדר ☺️'));
+  assert.ok(onboarding.OPENING.en.startsWith("Hey! I'm Allma \u{1F44B}"));
+  assert.ok(onboarding.OPENING.en.endsWith('keep you organized ☺️'));
+  // It must not ask anything: the curiosity doctrine owns the name question,
+  // and one reply carries one question at most.
+  assert.doesNotMatch(onboarding.OPENING.he, /\?/, 'the opening asks nothing');
+  assert.doesNotMatch(onboarding.OPENING.en, /\?/, 'the opening asks nothing');
 });
 
 test('the doctrine no longer over-generalises "no welcome moment"', () => {
