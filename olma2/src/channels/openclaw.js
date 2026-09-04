@@ -137,8 +137,16 @@ function bodyFor(row, p) {
       // draw a card on that alone has nothing to put on it. That is why the
       // card clause below orders the list fetched first: the threshold was
       // never the thing stopping most users' mornings from being an image.
+      //
+      // The ending is instructed because it kept being padding. 2026-09-03,
+      // user 8: a correct list of her day closed with "(זו שתי השורות
+      // האחרונות ברשימה שלך, ותו לא — יום פנוי עד הערב)". A morning message
+      // that ends in a line saying nothing teaches her not to read the next
+      // one. The fallback is deliberately to STOP, not to ask something: a
+      // question every single morning is the drum this doctrine forbids
+      // everywhere else, and it would be worse than the filler it replaced.
       return `Scheduled digest time. Call get_my_digest with scope="${p.scope || 'summary'}" now${''
-        } — and if their calendar is connected (USER.md says), also my_calendar_events for the next day or two: a digest that says "יום עמוס לך מחר" because it actually looked is the whole point of having the calendar connected. Send the user a natural, warm summary of the result in their language. If crossUser.awaitingOthers is non-empty, say so in one line — someone they are waiting on has not answered yet; being owed an answer is news, and staying silent about it is how a person ends up believing nothing is happening.${cardClause(p)} ${p.folded && p.folded.length ? `Also weave in these queued updates naturally: ${JSON.stringify(p.folded)}.` : ''}`;
+        } — and if their calendar is connected (USER.md says), also my_calendar_events for the next day or two: a digest that says "יום עמוס לך מחר" because it actually looked is the whole point of having the calendar connected. Send the user a natural, warm summary of the result in their language. If crossUser.awaitingOthers is non-empty, say so in one line — someone they are waiting on has not answered yet; being owed an answer is news, and staying silent about it is how a person ends up believing nothing is happening. End on ONE thing that moves the day: either the single next action out of what you just listed, or one question that fills a real gap you actually have about them — a date, a missing detail on an open task. One of the two, never both, never a list. If neither is honestly there, end on the list itself and stop.${cardClause(p)} ${p.folded && p.folded.length ? `Also weave in these queued updates naturally: ${JSON.stringify(p.folded)}.` : ''}`;
     case 'reminder':
       // Every rung of the escalation ladder rides the RAW pipe, so this branch
       // is reached only by a reminder payload carrying its own `instruction`

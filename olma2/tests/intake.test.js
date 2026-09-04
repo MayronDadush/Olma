@@ -842,6 +842,39 @@ test('intake greeter is told not to interrogate either', () => {
 // doctrine has to say not to. Answers stay short, precise, and grounded in
 // the person's own data; a missing piece is a question, never a fill-in from
 // general knowledge.
+// 2026-09-04 08:43: Miron asked for a calendar entry. Within 21 seconds Olma
+// created task 364, reminder 101, AND the calendar event — three artifacts for
+// one request, and he was told about a reminder he never asked for. The rule
+// against it already existed ("Time-shaped — offer a reminder"), but only in
+// the curiosity ladder, four hundred lines from the section the model is in
+// when it reaches for set_task_reminder. It is now stated where it is used.
+// 2026-09-02 00:27 her time: Gali answered a reminder with "בוצע". Olma called
+// complete_task — correct — and then asked "ניצלת את הנקודות בסוף?", which is
+// the question her "בוצע" had just answered. Then the false-positive repair
+// re-asked it at 00:53. The repair bug is fixed separately; this is the half
+// that was Olma's own judgement.
+test('agent doctrine: a completion is an answer, not an opening for a question', () => {
+  const fs = require('node:fs');
+  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
+  assert.match(tpl, /their "done" ANSWERS too/);
+  assert.match(tpl, /never ask\s+about the thing they just closed/);
+  // It belongs on the reminder ladder, which is the exact path she was on.
+  assert.ok(tpl.indexOf('their "done" ANSWERS too') > tpl.indexOf('A reminder that goes unanswered'));
+});
+
+test('agent doctrine: a reminder is offered, never set unasked', () => {
+  const fs = require('node:fs');
+  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
+  assert.match(tpl, /\*\*Never set one unasked\*\*/);
+  assert.match(tpl, /reason to OFFER one,\s+never to create one/);
+  assert.match(tpl, /One request is one thing done/,
+    'a calendar ask is a calendar entry, not a task plus a reminder as well');
+  // It has to sit in the operative section, not in the curiosity ladder where
+  // the identical rule was already being read past.
+  assert.ok(tpl.indexOf('Never set one unasked') > tpl.indexOf('## Tasks and reminders'));
+  assert.ok(tpl.indexOf('Never set one unasked') < tpl.indexOf('A standing task is not finished'));
+});
+
 test('agent doctrine: a refusal hands over the search, and never a link of its own', () => {
   const fs = require('node:fs');
   const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
