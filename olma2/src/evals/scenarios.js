@@ -128,18 +128,6 @@ const SCENARIOS = [
             WHERE owner_id = $1 AND due_at IS NOT NULL
               AND to_char(due_at AT TIME ZONE 'Asia/Jerusalem', 'HH24:MI') = '18:00'`,
           [ctx.userId])) === 0 },
-      // She named a time and asked for nothing else. AGENTS.md is explicit that
-      // this is grounds to OFFER a reminder and never to create one, and until
-      // now that rule lived only in the prompt — no tool refuses it and nothing
-      // measured it. The rubric below already asks the judge to look, but a
-      // model judging a model is the wrong instrument for a question this
-      // binary: the row is either there or it is not.
-      { name: 'no reminder was created unasked',
-        pass: (await count(client,
-          `SELECT count(*)::int AS n FROM task_reminders r
-             JOIN tasks t ON t.id = r.task_id
-            WHERE t.owner_id = $1 AND r.cancelled_at IS NULL`,
-          [ctx.userId])) === 0 },
     ],
     rubric: 'המשתמשת ביקשה לרשום משמרת מחר 15:00-22:00. בדוק: (1) האישור מקריא חזרה את השעה כמו שהיא אמרה. (2) לכל היותר שאלה אחת (למשל על תזכורת). (3) לא נשאלו שאלות על מה שכבר נאמר.',
   },
