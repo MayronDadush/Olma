@@ -3166,6 +3166,14 @@ mattered:
   *expected* to be silent. Reading `lib/internal/test_runner/runner.js` rather
   than reasoning from the absence would have closed this two evenings earlier.
   (This is the house failure shape — absence of evidence scored as evidence.)
+- **A blaming memory is worse than no memory.** The push-vs-`pull_request`
+  claim was written from four consistent observations and read for days as
+  established fact. It has been replaced with the counterexamples in both
+  directions and the rule that actually discriminates (if the branch contains
+  `main`, both runs compile identical bytes, so a pass on either is
+  authoritative). This entry is the same lesson one level up: the first
+  write-up of this incident was confident, well-evidenced and wrong, and it
+  cost the second evening.
 
 **How it was settled.** Not by argument, and not by more re-runs. Since a
 wedged child prints nothing, the child was made to report on ITSELF: a
