@@ -34,7 +34,11 @@ SERVER="root@157.230.210.233"
 DEST="${OLMA_DEST_DIR:-/opt/olma2}"
 ARCHIVE="${OLMA_RELEASES_DIR:-/opt/olma2-releases}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
-SSH="ssh -i $SSH_KEY"
+# Same keepalive as deploy.sh, for the same reason: this script also runs a
+# restart and a health check over one connection, and a silent stretch through
+# the runner's NAT is dropped at ~4m20s. A rollback dying halfway is strictly
+# worse than a deploy doing it.
+SSH="ssh -i $SSH_KEY -o ServerAliveInterval=30 -o ServerAliveCountMax=20"
 
 MODE=""
 TARGET=""

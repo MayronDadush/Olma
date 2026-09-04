@@ -31,7 +31,19 @@ BACKUP="/opt/olma2-previous"
 ARCHIVE="${OLMA_RELEASES_DIR:-/opt/olma2-releases}"
 KEEP="${OLMA_RELEASES_KEEP:-5}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
-SSH="ssh -i $SSH_KEY"
+# ServerAlive is load-bearing, not hygiene. The remote suite goes SILENT for
+# minutes when node's test runner wedges (scripts/run-suite.sh documents the
+# deadlock), and a silent connection through the runner's NAT is dropped at a
+# fixed ~4m20s — measured twice on 2026-09-04, both deploys dying with
+# `client_loop: send disconnect: Broken pipe` and exit 255 after exactly that
+# gap. run-suite.sh is built to kill and retry a wedge at SUITE_TIMEOUT=420,
+# but it never got the chance: the pipe died first, so the retry logic was
+# unreachable and the deploy failed on a wedge it was designed to survive.
+#
+# 30s x 20 tolerates ten minutes of silence — comfortably past SUITE_TIMEOUT,
+# so the wrapper's own timeout is what fires, which is the design. Raise this
+# if SUITE_TIMEOUT ever goes above ten minutes; the two numbers are a pair.
+SSH="ssh -i $SSH_KEY -o ServerAliveInterval=30 -o ServerAliveCountMax=20"
 
 # Snapshot the currently-deployed release (code + its own node_modules) as a
 # complete standalone copy BEFORE the new rsync overwrites anything, so a bad
