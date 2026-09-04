@@ -390,16 +390,28 @@ Two things the suite learned the hard way:
   or an unpinned `drainOnce` passes or fails depending on when you run it.
   The suite was green thirteen hours a day and red eleven before this.
 
-- **A green from CI may be a retry.** `node --test` wedges roughly 1 run in
-  8-25 on a GitHub runner — the runner and one child stop talking and both
-  park in the event loop for ever (`incidents.md`, "The runner and one child
-  stopped talking"). CI and `deploy.sh` therefore go through
-  `olma2/scripts/run-suite.sh`, which retries a **hang** and never a failure:
+- **A test file must never write into a directory the other test files read.**
+  They are separate processes over one filesystem. A decoy migration dropped
+  into the real `migrations/` for a few milliseconds threw in every *other*
+  file's `before` hook — and hung rather than failed, because a connected pg
+  `Client` left open keeps a child's event loop alive for ever, and a child
+  that cannot exit hangs `node --test` silently. Stage fixtures in
+  `fs.mkdtempSync()`; `tests/shared-fixture-writes.test.js` enforces it
+  (`incidents.md`, "A test file poisoned every other one").
+- **Close every client in a `finally` in `freshDb()`.** That is what turns a
+  failing `before` hook into one red test instead of a six-hour silent CI job.
+
+- **A green from CI may be a retry.** The wedge above is fixed, but
+  `olma2/scripts/run-suite.sh` stays as the backstop for the next child that
+  cannot exit. CI and `deploy.sh` go through it; it retries a **hang** and
+  never a failure:
   any non-zero exit is final and is reported as-is. **Do not widen that** — a
   wrapper that re-rolls a genuine red is how a flaky-test culture starts. It
-  prints a banner on every wedge and names the attempt it passed on; if that
-  count starts climbing, the wedge has changed shape and needs re-diagnosing,
-  not a bigger `SUITE_ATTEMPTS`.
+  prints a banner on every wedge and names the attempt it passed on. **Seeing
+  that banner now means a NEW hang** — diagnose it, do not bank the retry or
+  raise `SUITE_ATTEMPTS`. A wedged child prints nothing, so make it report on
+  itself: `NODE_OPTIONS=--require` a preload with an **unref'd** interval that
+  dumps `process.getActiveResourcesInfo()` to a file.
 
 CI (`.github/workflows/olma2-tests.yml`) runs the same suite plus a
 `migrations` collision check, serialized on `main` so two merges cannot race

@@ -111,7 +111,7 @@ never trust a dated narrative for something you are about to act on.
 
 **CI, migrations and deploying**
 
-- [The runner and one child stopped talking (2026-09-04)](#the-runner-and-one-child-stopped-talking-2026-09-04)
+- [A test file poisoned every other one (root-caused and fixed 2026-09-04)](#a-test-file-poisoned-every-other-one-root-caused-and-fixed-2026-09-04)
 - [The rollback was one release deep, on a five-merge day (2026-09-03)](#the-rollback-was-one-release-deep-on-a-five-merge-day-2026-09-03)
 - [Two branches, one migration number — a third time, in one afternoon (fixed 2026-08-29)](#two-branches-one-migration-number--a-third-time-in-one-afternoon-fixed-2026-08-29)
 - [Two branches, one migration number (fixed 2026-08-22)](#two-branches-one-migration-number-fixed-2026-08-22)
@@ -3104,69 +3104,100 @@ abandoned reconnect.
 
 ## CI, migrations and deploying
 
-### The runner and one child stopped talking (2026-09-04)
+### A test file poisoned every other one (root-caused and fixed 2026-09-04)
 
 `node --test` in CI would go silent mid-suite: a handful of files reported,
-then nothing at all until the job timeout killed it. It cost most of an
-evening and three re-runs of a single merge before anyone stopped re-rolling
-the dice and looked at it.
+then nothing at all until the job timeout killed it. It cost most of two
+evenings, four dead `main` runs — and, because a timeout-killed job reports as
+`cancelled` rather than `failure`, the `deploy` job that `needs: test` was
+silently SKIPPED each time, leaving production five commits behind `main`
+while every page looked healthy.
 
-The first two theories were both about **us**. A memory claimed it hit the
-`push` run and never the `pull_request` one, which quietly implied the code
-was fine and the event was to blame; a wider sample killed that — it hits
-either, sometimes both on the same commit, and `main` has no `pull_request`
-run to fall back on at all. The second theory was our connection handling: no
-`connectionTimeoutMillis` anywhere, so a saturated pool waits for ever.
-Plausible, and wrong.
+**The root cause is ours, and it is small.** `tests/db-types.test.js` and
+`tests/check-migrations.test.js` each exercised the duplicate-version guard by
+writing a real decoy file — `001-decoy-collision.sql` — into the repo's REAL
+`migrations/` directory, then deleting it a few milliseconds later. Test files
+are separate PROCESSES sharing one filesystem. For as long as that decoy sat
+on disk, every *other* test file that happened to call `freshDb()` ran
+`migrate()` → `listMigrations()`, which correctly threw
+`two migrations share version 1`.
 
-What settled it was a throwaway probe workflow that let the suite wedge and
-then **dumped the machine while it was still hung** — `ps`, every
-`pg_stat_activity` row, `pg_blocking_pids`, node's own diagnostic report via
-`--report-on-signal`, and `/proc/<pid>/{syscall,wchan,fd}` for both processes.
-Reproduced four times, the same shape every time:
+That throw should have been one red test. It was a hang instead, because
+`freshDb()` leaked on the way out:
 
-- Every started file emits **all** of its tests. Then one child stays alive
-  for ever and no further file is ever started.
-- That child holds one connection to Postgres, and Postgres shows the matching
-  session `idle` in `ClientRead` — *the server waiting for the client*. Nothing
-  in flight, `writeQueueSize: 0`, `pg_blocking_pids` empty every time.
-- Both the runner and the child sit in `wchan: ep_poll`, parked in the event
-  loop rather than blocked in a syscall, with an **empty JavaScript stack** in
-  node's report.
-- The child's stdio are socketpairs to the runner, and a preload that writes
-  to fd 2 before any test code runs produced no line at all — although the
-  child had demonstrably run queries. The runner had stopped reading it.
+```js
+const setup = new Client({ connectionString: url });
+await setup.connect();
+await migrate(setup);   // throws here
+await setup.end();      // never runs
+```
 
-So the runner and one child stop talking to each other and each then waits for
-the other for ever. Not our code, not Postgres. Ruled out by experiment rather
-than by argument: pipe backpressure (the stdio are sockets, and the runner's
-own output goes to a plain file, which cannot block); connection pressure
-(`--test-concurrency=2` wedged on attempt 1); our timeouts (adding
-`connectionTimeoutMillis`/`query_timeout`/`statement_timeout` changed nothing,
-because **nothing is pending in pg at all**); a slow machine (a healthy run is
-30-45s). Roughly 1 run in 8-25, on a 4-core GitHub runner, node 24.19/24.20.
+A connected pg `Client` is an open TCP handle, so it keeps the child's event
+loop alive for ever. The child never exits; the runner's
+`await SafePromiseAll([once(child, 'exit'), finished(child.stdout)])` never
+settles; nothing is ever printed, because the runner turns child stderr into
+`test:stderr` report entries that are only flushed when the FILE completes.
+Silence, for ever, from a correct error message.
 
-Two things worth keeping from how this went:
+Every recorded symptom follows from that, including the ones that made it look
+upstream: one Postgres session `idle` in `ClientRead` with `pg_blocking_pids`
+empty (a connected client that will never speak again); an empty JavaScript
+stack in `ep_poll` (nothing is running — the process is only being *held*
+open); a wedge at `--test-concurrency=2` (any concurrency ≥ 2 is enough); a
+different victim file each time; and a rate of roughly 1 run in 8-25, which is
+just how often the millisecond-wide window happens to overlap someone's
+`before` hook.
 
-- **The file that happens to be running is not the culprit.** `calendar.test.js`
-  was in flight each time, and its `SELECT ... FROM schema_migrations` looked
-  like the hang. It was a witness. Reading the kernel state instead of the log
-  tail is what told the two apart.
-- **A blaming memory is worse than no memory.** The push-vs-`pull_request`
-  claim was written from four consistent observations and read for days as
-  established fact. It has been replaced with the counterexamples in both
-  directions and the rule that actually discriminates (if the branch contains
-  `main`, both runs compile identical bytes, so a pass on either is
-  authoritative).
+**What was actually wrong with the investigation.** The first diagnosis was
+written up as "the runner and one child stopped talking… not our code, not
+Postgres… the bug is upstream," and it was wrong on the two points that
+mattered:
 
-The fix is not a fix; the bug is upstream. `olma2/scripts/run-suite.sh` wraps
-the suite and retries a **hang**, never a failure — a non-zero exit is
-reported immediately and is final, because a wrapper that re-rolls a genuine
-red is how a flaky-test culture starts. It is loud on purpose: every wedge
-prints a banner, and a run that eventually passes still says which attempt it
-took, so the rate stays visible instead of decaying into background noise.
-`tests/run-suite.test.js` pins that split — the test that matters most is the
-one asserting a failing suite runs exactly once.
+- **The witness was the culprit.** The wedged child's last query was
+  `SELECT version, file FROM schema_migrations` — the third statement inside
+  `migrate()`. That was dismissed as coincidence, on the grounds that the file
+  which happens to be running is not the culprit. It was pointing directly at
+  the failing call. **When the same "irrelevant" detail shows up in all four
+  reproductions, it is not noise.**
+- **A silence was read as evidence.** "A preload that writes to fd 2 produced
+  no line at all" was taken as proof that the runner had stopped reading the
+  child. It proves nothing of the sort: the runner buffers a file's stderr
+  into its report until the file finishes, so a child that never finishes is
+  *expected* to be silent. Reading `lib/internal/test_runner/runner.js` rather
+  than reasoning from the absence would have closed this two evenings earlier.
+  (This is the house failure shape — absence of evidence scored as evidence.)
+
+**How it was settled.** Not by argument, and not by more re-runs. Since a
+wedged child prints nothing, the child was made to report on ITSELF: a
+`NODE_OPTIONS=--require` preload loaded into every test child, with an
+**unref'd** interval that dumps `process.getActiveResourcesInfo()`, in-flight
+queries and outstanding pool checkouts to a file. Unref'd is the whole trick —
+a parked event loop still runs timers, and an unref'd one cannot itself be the
+thing keeping the process alive. It named the culprit on the first
+reproduction: `[migrate-THREW] … two migrations share version 1:
+001-decoy-collision.sql and 001-init.sql`. The earlier "0 wedges in 70 runs,
+not reproducible locally" was an artefact of running local Node 26.7 instead
+of CI's 24.20; on the matching version it reproduced on run 1.
+
+**The fix, in three parts:**
+
+- `listMigrations(dir)` takes an optional directory, and
+  `scripts/check-migrations.js` takes an optional argument. Both tests now
+  stage their collision in `fs.mkdtempSync()` and never touch the shared tree.
+  CI still calls the script with no argument and gets the real one.
+- **`freshDb()` closes every client in a `finally`.** This is the half that
+  matters beyond this bug: it converts *any* future failure in a `before` hook
+  from a six-hour hang with no output into one red test with a message. The
+  error was correct all along and had nowhere to go — the same shape as the
+  stop request and the goal said out loud.
+- `tests/shared-fixture-writes.test.js` refuses any test that writes into the
+  real `migrations/` directory, and — because a guard that can no longer fail
+  is not a guard — a second test asserts the guard still flags the exact code
+  that was there before.
+
+`scripts/run-suite.sh` stays. It retries a hang and never a failure, and it is
+still the right backstop for the next unknown hang; only its header needed
+correcting, since it asserted an upstream bug that does not exist.
 
 ### The rollback was one release deep, on a five-merge day (2026-09-03)
 

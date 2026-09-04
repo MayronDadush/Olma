@@ -1,55 +1,48 @@
 #!/usr/bin/env bash
-# Run the test suite, and survive node's test runner deadlocking on itself.
+# Run the test suite, and survive a hang instead of losing the whole run to it.
 #
-# WHY THIS EXISTS — the wedge, diagnosed 2026-09-04
+# WHY THIS EXISTS
 #
-# `node --test` intermittently stops dead: a few files report, then total
-# silence for as long as you let it run. It cost most of an evening and three
-# re-runs of a single merge before anyone looked at it properly.
+# `node --test` intermittently stopped dead: a few files reported, then total
+# silence for as long as you let it run. Roughly 1 run in 8-25, on a 4-core
+# GitHub runner, node 24.19/24.20. It cost two evenings and four dead `main`
+# runs — and since a timeout-killed job reports as `cancelled`, not `failure`,
+# the `deploy` job that `needs: test` was silently SKIPPED each time.
 #
-# It is NOT our code and NOT Postgres. Reproduced 4 times under a probe
-# workflow that dumped the machine's state while it was still hung:
+# THE CAUSE WAS OURS, and is fixed (2026-09-04). Two tests staged a
+# duplicate-migration collision by writing a decoy .sql into the REAL
+# migrations/ directory for a few milliseconds; test files are separate
+# processes over one filesystem, so any other file calling freshDb() in that
+# window threw in its `before` hook — with a pg Client connected and now never
+# closed, which kept its event loop alive for ever. The child never exited,
+# the runner waited on `once(child, "exit")` for ever, and nothing was ever
+# printed (the runner buffers a file's stderr into its report until the file
+# completes). See docs/incidents.md, "A test file poisoned every other one".
 #
-#   * The runner starts N files. All of them emit EVERY one of their tests.
-#     Then one child stays alive forever and no further file is ever started.
-#   * That child holds one TCP connection to Postgres, and Postgres has the
-#     matching session `idle` in `ClientRead` — the server waiting for the
-#     client to speak. The socket is readable, writable, `writeQueueSize: 0`.
-#     Nothing is in flight and no lock is held anywhere (`pg_blocking_pids`
-#     was empty every time).
-#   * Both the runner and the child sit in `State: S (sleeping)`, `wchan:
-#     ep_poll` — parked in the event loop, not blocked in a syscall. Node's
-#     own diagnostic report shows an EMPTY JavaScript stack in both.
-#   * The child's stdio are socketpairs to the runner, and its output never
-#     arrives: a preload that writes to fd 2 before any test code runs
-#     produced no line at all, though the child had demonstrably run queries.
-#     The runner has simply stopped reading it.
+# An earlier header here blamed an upstream runner bug. It was wrong, and
+# saying so is the point: the evidence it called decisive — a silent child —
+# was the expected behaviour of a child that never finishes.
 #
-# So: the runner and one child stop talking to each other, and both then wait
-# for the other forever. Ruled out along the way, each by experiment rather
-# than by argument:
+# WHAT THIS DOES, AND WHY IT STAYS
 #
-#   * pipe backpressure  — the stdio are sockets, and the runner's own output
-#                          goes to a plain file, which cannot block
-#   * DB/connection pressure — `--test-concurrency=2` wedged on attempt 1
-#   * our timeouts       — connectionTimeoutMillis / query_timeout /
-#                          statement_timeout never fire, because nothing is
-#                          pending in pg at all
-#   * a slow machine     — a healthy run of the same suite is 30-45s
+# The specific bug is gone, but "a test child that cannot exit hangs the whole
+# suite with no output" is a shape, not a one-off, and the next one will look
+# identical from outside. So this stays as the backstop.
 #
-# Rate: roughly 1 run in 8-25, on a 4-core GitHub runner, node 24.19/24.20.
+# It retries only a HANG, and never quietly. A suite that EXITS non-zero is a
+# real failure and is reported immediately — retrying that is how a flaky-test
+# culture starts. It is loud on purpose: every wedge prints a banner, and the
+# summary says how many attempts it took even when it eventually passed,
+# because a workaround that hides its own frequency is how this comes back in
+# six months as somebody else's evening. If you see that banner now, the fix
+# above did not cover your case — go and diagnose it, do not bank the retry.
 #
-# WHAT THIS DOES ABOUT IT
-#
-# Retries, but only a HANG, and never quietly. A suite that EXITS non-zero is
-# a real failure and is reported immediately — retrying that would be how a
-# flaky-test culture starts. A suite that stops producing output and never
-# exits is the upstream bug, and re-running is exactly what a human does.
-#
-# It is loud on purpose. Every wedge prints a banner, and the summary at the
-# end says how many attempts it took even when it eventually passed — because
-# a workaround that hides its own frequency is how this ends up costing
-# another evening in six months when it gets worse.
+# Diagnosing the next one: a wedged child prints nothing, so make it report on
+# ITSELF. NODE_OPTIONS=--require a preload into every child with an UNREF'd
+# interval that appends process.getActiveResourcesInfo() to a file. Unref'd is
+# the trick — a parked event loop still runs timers, and an unref'd timer
+# cannot be what is holding the process open. That named this bug on the first
+# reproduction, after 70 runs of guessing found nothing.
 #
 # Env knobs: SUITE_ATTEMPTS (3), SUITE_TIMEOUT seconds (300), SUITE_CONCURRENCY,
 # SUITE_NICE, and SUITE_CMD to override the command entirely (the tests use it).

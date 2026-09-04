@@ -18,18 +18,33 @@ function testDbName() {
 }
 
 // Creates a fresh DB + pool; returns { pool, teardown }.
+// Every client this opens is closed in a `finally`, and that is not tidiness
+// — it is the difference between a red suite and a dead one. A connected pg
+// Client is an open TCP handle, so it keeps the event loop alive; if anything
+// here throws while one is open, the `before` hook fails AND the test child
+// can never exit. `node --test` then waits on `once(child, 'exit')` for ever,
+// with no output at all (the runner buffers a file's report until the file
+// completes). That is precisely the wedge that cost several evenings and four
+// dead CI runs: the thrown error was correct and had nowhere to go.
+// See incidents.md, "A test file poisoned every other one".
 async function freshDb() {
   const name = testDbName();
   const admin = new Client({ connectionString: ADMIN_URL });
   await admin.connect();
-  await admin.query(`CREATE DATABASE ${name}`);
-  await admin.end();
+  try {
+    await admin.query(`CREATE DATABASE ${name}`);
+  } finally {
+    await admin.end();
+  }
 
   const url = ADMIN_URL.replace(/\/[^/]*$/, '/' + name);
   const setup = new Client({ connectionString: url });
   await setup.connect();
-  await migrate(setup);
-  await setup.end();
+  try {
+    await migrate(setup);
+  } finally {
+    await setup.end();
+  }
 
   // Production's Postgres session runs in Etc/UTC (verified on the box), and
   // several jobs quietly depend on it: jobs/metrics.js picks its day with
