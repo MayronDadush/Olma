@@ -652,7 +652,7 @@ const TOOLS = [
     { task_id: S('number', 'Task id'), remind_at: S('string', 'ISO-8601 datetime WITH UTC offset'),
       repeat_rule: S('string', 'Optional repeat: "daily"; "weekly"; "weekly:MO,TH" for specific weekdays (SU MO TU WE TH FR SA); "monthly:16" for a day of the month; "monthly:last" for the last day of every month, whatever it is. A day past the end of a short month lands on that month\'s last day. Anything unrecognised is stored as a ONE-OFF, so use these exact forms.') }, ['task_id', 'remind_at'],
     (client, user, a) => reminders.setReminder(client, user.id, a.task_id, a.remind_at, a.repeat_rule)),
-  tool('cancel_reminder', 'Cancel a pending reminder.',
+  tool('cancel_reminder', 'Cancel a pending reminder. When the result carries taskStillOpen the task is now live with nothing left to raise it — ASK, in one short line, whether to drop the task as well, because "cancel the reminder" and "cancel the thing" are the same sentence to most people. Ask; never decide it for them. Two exceptions: say nothing without taskStillOpen (the task is done, filed, or still carries another reminder), and say nothing when this cancel is step one of ending a standing task — there complete_task is your own next call and the question is already answered.',
     { reminder_id: S('number', 'Reminder id') }, ['reminder_id'],
     (client, user, a) => reminders.cancelReminder(client, user.id, a.reminder_id)),
   tool('list_my_reminders', 'List pending reminders, optionally for one task.',

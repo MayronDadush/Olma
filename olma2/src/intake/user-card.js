@@ -116,6 +116,16 @@ function renderCard(user, prefs, facts = [], extras = {}) {
   if (facts.length) {
     lines.push('', 'What you know about them:');
     for (const f of facts) lines.push(`- [${f.category}] ${f.fact}`);
+    // The list is the top CARD_FACT_LIMIT, and until this line nothing said
+    // so — ten facts and a full stop read as everything on file, so the model
+    // answered from the card and never reached for the rest. A truncation
+    // nobody announces is the same mistake as a check that goes quiet: the
+    // reader cannot tell "that is all there is" from "that is what fitted".
+    const hidden = Math.max(0, (extras.factsTotal || facts.length) - facts.length);
+    if (hidden) {
+      lines.push(`- (+${hidden} more not shown here — list_my_facts for the rest,`
+        + ' and always before telling them you do not know something)');
+    }
   }
   // The overnight plan (jobs/planning.js). Briefing notes FOR the agent, never
   // a message to forward — weave it in when the conversation touches it, lead
@@ -145,6 +155,15 @@ async function refreshUserCard(pool, userId) {
       `SELECT key, value FROM user_preferences WHERE user_id = $1 ORDER BY key`, [userId]
     );
     const facts = await require('../domain/facts').topFacts(pool, userId, CARD_FACT_LIMIT);
+    // Counted rather than inferred from a limit+1 read: the card states the
+    // number, and a number that is only ever "at least one" is not worth
+    // printing. Same filter as topFacts, or the two disagree and the card
+    // promises facts list_my_facts will not return.
+    const { rows: factCount } = await pool.query(
+      `SELECT count(*)::int AS n FROM user_facts
+        WHERE user_id = $1 AND active = true
+          AND (expires_at IS NULL OR expires_at > now())`, [userId]
+    );
     const { rows: cal } = await pool.query(
       `SELECT access_level FROM integrations
        WHERE user_id = $1 AND provider = 'google_calendar' AND status = 'connected'`, [userId]
@@ -172,6 +191,7 @@ async function refreshUserCard(pool, userId) {
       mail: mailRows[0] ? (mailRows[0].account_label || 'connected') : false,
       connections: conn[0].n,
       contacts: book[0].n,
+      factsTotal: factCount[0].n,
       plan: planRows[0]
         ? { headline: planRows[0].headline, bullets: planRows[0].bullets || [] }
         : null,

@@ -204,18 +204,45 @@ async function attachAutoReminder(client, ownerId, task, timezone, now = new Dat
   return rows[0];
 }
 
+// Cancelling a reminder answers half a question. "בטלי את התזכורת לאיסוף
+// ילדים" and "בטלי את האיסוף" are the same sentence in most people's heads,
+// and the person who said the first one walks away believing the second one
+// happened — which is exactly what one did, then reported the surviving task
+// as a bug. Olma happened to say "the task itself stays" that time; nothing
+// made her, because the result was `{reminderId}` and the sentence came out
+// of the model's memory rather than out of the system.
+//
+// So the result carries the other half. `taskStillOpen` is not a suggestion to
+// delete anything — it is the fact that this person now has a live task with
+// nothing left to raise it, which is the one moment worth one short question.
 async function cancelReminder(client, ownerId, reminderId) {
   const { rows } = await client.query(
     `UPDATE task_reminders r SET cancelled_at = now()
      FROM tasks t
      WHERE r.id = $1 AND r.task_id = t.id AND t.owner_id = $2
        AND r.sent_at IS NULL AND r.cancelled_at IS NULL
-     RETURNING r.id`,
+     RETURNING r.id AS reminder_id, t.id AS task_id, t.title,
+               t.status, t.archived_at`,
     [reminderId, ownerId]
   );
   if (!rows[0]) return err('not_found', 'pending reminder not found');
   await audit.record(client, ownerId, 'reminder.cancelled', { reminderId });
-  return ok({ reminderId });
+  const t = rows[0];
+  // Another pending reminder on the same task means nothing was orphaned —
+  // they trimmed one of several and the task is still going to be raised.
+  const { rows: left } = await client.query(
+    `SELECT count(*)::int AS n FROM task_reminders
+      WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL`,
+    [t.task_id]
+  );
+  const remaining = left[0].n;
+  const orphaned = t.status === 'open' && !t.archived_at && remaining === 0;
+  return ok({
+    reminderId,
+    task: { id: Number(t.task_id), title: t.title, status: t.status },
+    remainingReminders: remaining,
+    ...(orphaned ? { taskStillOpen: true } : {}),
+  });
 }
 
 async function listReminders(client, ownerId, taskId) {
