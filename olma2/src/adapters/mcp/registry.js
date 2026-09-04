@@ -37,6 +37,7 @@ const searchLink = require('../../domain/search-link');
 const contacts = require('../../domain/contacts');
 const reactions = require('../../domain/reactions');
 const audit = require('../../domain/audit');
+const flags = require('../../domain/flags');
 const { ok, err } = require('../../domain/results');
 const { scrubTokens } = require('./render');
 const { IDENTITY_PARAM } = require('./identity-param');
@@ -126,6 +127,7 @@ const TOOLS = [
     {
       sender_name: S('string', 'The `sender` field from this turn\'s Conversation info, verbatim. Only ever used to fill a name we do not have, always as an unconfirmed guess — never overwrites a name they gave you themselves.'),
       message_id: S('string', 'The `message_id` field from this turn\'s Conversation info, verbatim. Lets Olma mark their message as seen and, later in the turn, as done or scheduled. Omit it if the block has none.'),
+      message_kind: S('string', 'Set to "voice" when this turn\'s message arrived as a voice note (you received a transcription of audio), otherwise omit it. Only changes which emoji marks their message while you work — 👂 rather than 👀 — so they can see the recording itself came through.'),
       wrote_in: S('string', 'The language THIS message is written in, as a two-letter code (he, en, ru, ar, fr...). Pass it on every call — it is the only way the system can ever notice that the language it speaks to somebody is the wrong one. The code only: never the message text, never a translation, never a quote from it.'),
     }, [],
     async (client, user, args, ctx) => {
@@ -168,6 +170,19 @@ const TOOLS = [
       if (ctx && ctx.turn) {
         const id = reactions.cleanMessageId(args && args.message_id);
         if (id) { ctx.turn.messageId = id; ctx.turn.lastInboundAt = Date.now(); }
+        // How the message ARRIVED, for the opening mark only: 👂 for a voice
+        // note, 👀 for anything typed. The model is the only thing in this call
+        // that knows — a transcription reaches it, the MediaType never reaches
+        // us — so it travels the same road as sender_name and message_id, and
+        // is trusted exactly as little: anything but the literal 'voice' means
+        // the ordinary mark, which is also what a model that never passes it
+        // gets. The cost of it being wrong is one emoji.
+        ctx.turn.messageKind = (args && args.message_kind) === 'voice' ? 'voice' : 'text';
+        // The operator's emoji choices, read once per turn rather than per tool
+        // call: every turn opens here, and the mark is placed after this
+        // transaction commits, so the value is in hand by the time it is used.
+        ctx.turn.reactionVocab = reactions.vocabulary(
+          await flags.getFlag(client, reactions.VOCAB_FLAG));
       }
       // A person writing is awake — give every night-held row an immediate
       // re-hearing. The gate stays the only judge: inside the 15-minute

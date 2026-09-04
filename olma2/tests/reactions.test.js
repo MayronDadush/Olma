@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const r = require('../src/domain/reactions');
+const { withTx } = require('../src/db/pool');
 
 test('reactions: one emoji per state, and no state shares one', () => {
   const emoji = Object.values(r.REACTION_STATES);
@@ -10,7 +11,7 @@ test('reactions: one emoji per state, and no state shares one', () => {
   // Pinned by name so a future "let us make it livelier" edit has to argue with
   // a test rather than quietly turn the vocabulary into decoration.
   assert.deepEqual(Object.keys(r.REACTION_STATES).sort(),
-    ['done', 'failed', 'needs_input', 'scheduled', 'working']);
+    ['done', 'failed', 'listening', 'needs_input', 'scheduled', 'working']);
 });
 
 test('reactions: builds a real openclaw argv for a capable channel', () => {
@@ -211,6 +212,9 @@ test('reactions: a real turn marks the message 👀 and then upgrades it', async
   assert.equal(marks.length, 1, 'the 👀 must land on the tool call the doctrine already makes first');
   assert.deepEqual(marks[0], {
     channel: 'whatsapp', target: user.phone, messageId: '3EB0ACKTEST01', state: 'working',
+    // Resolved when the turn opened, from the operator's setting or — as here,
+    // with nothing configured — from the built-in table.
+    emoji: '👀',
   });
 
   // Gali's actual case: she wrote "בוצע" and got a question back instead of an
@@ -234,6 +238,27 @@ test('reactions: a real turn marks the message 👀 and then upgrades it', async
   await call('add_task', { title: 'ללא מזהה' }, blind);
   assert.equal(marks.length, before, 'no id, no guess');
 
+  // A voice note earns 👂 on the way in, through the same road message_id
+  // travels — the model says so, because the MediaType never reaches us.
+  const heard = newTurn();
+  await call('turn_start', { message_id: '3EB0ACKVOICE1', message_kind: 'voice' }, heard);
+  assert.equal(marks[marks.length - 1].state, 'listening');
+  assert.equal(marks[marks.length - 1].emoji, '👂');
+
+  // And the operator's own choice reaches the wire. Miron's ask: 👍 for done.
+  await withTx(db.pool, (c) => require('../src/domain/flags')
+    .setFlag(c, 'reaction_emoji', { done: '👍' }));
+  const styled = newTurn();
+  await call('turn_start', { message_id: '3EB0ACKSTYLE1' }, styled);
+  assert.equal(marks[marks.length - 1].emoji, '👀', 'an untouched state keeps its default');
+  const t2 = await call('add_task', { title: 'לבדוק לייק' }, styled);
+  assert.ok(t2.ok);
+  const { rows: r2 } = await db.pool.query(
+    `SELECT id FROM tasks WHERE owner_id = $1 ORDER BY id DESC LIMIT 1`, [user.id]);
+  await call('complete_task', { task_id: r2[0].id }, styled);
+  assert.equal(marks[marks.length - 1].state, 'done');
+  assert.equal(marks[marks.length - 1].emoji, '👍', 'the setting reached the mark');
+
   // And a second person on the same connection never inherits the first one's
   // message id — the reset in newTurn()'s user-change branch, which is the one
   // way this feature could have reached across users.
@@ -244,4 +269,78 @@ test('reactions: a real turn marks the message 👀 and then upgrades it', async
   await broker.dispatch({ id: 2, method: 'tool_call', params: {
     name: 'add_task', args: { identity_token: other.identity_token, title: 'x' } } }, shared);
   assert.equal(marks.length, n, "a new user on the connection starts with no message id, not the last one's");
+});
+
+// ── The vocabulary is the operator's, and a voice note is heard, not seen ─────
+// Miron, 2026-09-04, having watched a 👀 turn into a ⏰ on his own phone: make
+// it a setting, so "done" can be a 👍 instead of a message saying done; and for
+// a recording, an ear rather than eyes.
+const { vocabulary, isUsableEmoji, REACTION_STATES } = r;
+
+test('a voice note is marked 👂 while a typed message is marked 👀', () => {
+  const live = { messageId: 'ABC123', lastInboundAt: Date.now() };
+  assert.equal(r.markFor('turn_start', { ok: true }, live), 'working');
+  assert.equal(
+    r.markFor('turn_start', { ok: true }, { ...live, messageKind: 'voice' }),
+    'listening');
+  assert.equal(REACTION_STATES.listening, '👂');
+});
+
+test('how the message arrived changes only the OPENING mark', () => {
+  const voice = { messageId: 'ABC123', lastInboundAt: Date.now(), messageKind: 'voice' };
+  // What the turn achieved is the same question however the message came in.
+  assert.equal(r.markFor('add_task', { ok: true }, voice), 'scheduled');
+  assert.equal(r.markFor('complete_task', { ok: true }, voice), 'done');
+});
+
+test('anything but the literal "voice" is an ordinary turn', () => {
+  const live = { messageId: 'ABC123', lastInboundAt: Date.now() };
+  for (const kind of [undefined, null, '', 'text', 'VOICE', 'audio', 'video', 1]) {
+    assert.equal(r.markFor('turn_start', { ok: true }, { ...live, messageKind: kind }),
+      'working', `messageKind ${JSON.stringify(kind)} must not be read as voice`);
+  }
+});
+
+test('an operator can swap one state\'s emoji and leave the rest alone', () => {
+  const v = vocabulary({ done: '👍' });
+  assert.equal(v.done, '👍');
+  assert.equal(v.working, '👀', 'the states nobody touched keep their defaults');
+  assert.equal(v.scheduled, '⏰');
+  // The frozen table is what "default" means everywhere else — never mutated.
+  assert.equal(REACTION_STATES.done, '✅');
+});
+
+test('a setting that is not an emoji, or not a state, is ignored', () => {
+  const v = vocabulary({
+    done: 'בוצע',            // a word, not an emoji
+    working: '',              // an emptied box
+    scheduled: '   ',
+    needs_input: 'x'.repeat(50),
+    nonsense_state: '🎉',     // states cannot be invented from a setting
+  });
+  assert.deepEqual(v, { ...REACTION_STATES }, 'every bad value falls back to the default');
+  assert.equal(v.nonsense_state, undefined);
+});
+
+test('a malformed setting object is survivable, not a throw', () => {
+  for (const bad of [null, undefined, 'nonsense', 42, []]) {
+    assert.deepEqual(vocabulary(bad), { ...REACTION_STATES });
+  }
+});
+
+test('isUsableEmoji accepts real marks and refuses text', () => {
+  for (const good of ['👍', '✅', '⚠️', '👂', '🎉']) assert.equal(isUsableEmoji(good), true, good);
+  for (const bad of ['done', 'בוצע', '', '  ', 'a', '<b>', null, 42]) {
+    assert.equal(isUsableEmoji(bad), false, JSON.stringify(bad));
+  }
+});
+
+test('the chosen emoji reaches the command line, and a bad one falls back', () => {
+  const base = { channel: 'whatsapp', target: '+972500000001', messageId: 'ABC', state: 'done' };
+  assert.equal(r.buildReactArgs({ ...base, emoji: '👍' }).at(-1), '👍');
+  // An unusable override must not cost the mark — the default still goes.
+  assert.equal(r.buildReactArgs({ ...base, emoji: 'בוצע' }).at(-1), '✅');
+  assert.equal(r.buildReactArgs({ ...base, emoji: '' }).at(-1), '✅');
+  // An override cannot conjure a state that does not exist.
+  assert.equal(r.buildReactArgs({ ...base, state: 'invented', emoji: '🎉' }), null);
 });

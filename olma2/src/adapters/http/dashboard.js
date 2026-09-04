@@ -17,6 +17,7 @@ const issuesDomain = require('../../domain/issues');
 const prefsDomain = require('../../domain/preferences');
 const factsDomain = require('../../domain/facts');
 const auditDomain = require('../../domain/audit');
+const reactions = require('../../domain/reactions');
 const { enqueue } = require('../../outbox/enqueue');
 const { refreshUserCard } = require('../../intake/user-card');
 const { withTx } = require('../../db/pool');
@@ -670,6 +671,17 @@ const FLAG_SPECS = [
     help: 'כשהסוכן מדלג על turn_start (קורה בבקשת הפסקת שירות), השרת סופר את ההודעה ומעדכן שהמשתמש ער בעצמו. ריק = כבוי; "all" = כל המשתמשים; או רשימת מספרים ב-E.164 מופרדים בפסיק, להרצה מדורגת.' },
   { key: 'public_base_url', label: 'כתובת ציבורית לקישורים', type: 'text',
     help: 'הבסיס לקישורים שנשלחים למשתמשים (למשל דף סימון הזמינות). בלי / בסוף.' },
+  { key: 'reaction_emoji', label: 'אימוג׳ים על הודעות המשתמש', type: 'json',
+    // Only the known states, only something that looks like an emoji. A typo
+    // here would otherwise ride out on every single message.
+    validate: (v) => v && typeof v === 'object' && !Array.isArray(v)
+      && Object.entries(v).every(([k, e]) =>
+        Object.hasOwn(reactions.REACTION_STATES, k) && reactions.isUsableEmoji(e)),
+    help: 'JSON שמחליף אימוג׳י לסטטוס, למשל {"done": "\u{1F44D}"} כדי לסמן משימות שבוצעו בלייק במקום ב-\u2705. '
+      + 'המצבים: working (התחלנו לעבוד, ברירת מחדל \u{1F440}), listening (הודעה קולית, \u{1F442}), '
+      + 'done (\u2705), scheduled (נקבע למועד עתידי, \u23F0), needs_input (\u2753), failed (\u26A0\uFE0F). '
+      + 'אימוג׳י אחד לכל מצב — לא רשימה: כשלכל מצב יש סימן קבוע אפשר לקרוא את המצב במבט אחד. '
+      + 'מפתח לא מוכר או ערך שאינו אימוג׳י פשוט מתעלמים ממנו ונשארת ברירת המחדל.' },
   { key: 'search_link_base', label: 'מנוע החיפוש לקישורים', type: 'text',
     help: 'הבסיס לקישור החיפוש שעולמה שולחת כשהיא לא יכולה לחפש בעצמה. ריק = גוגל. חייב להתחיל ב-https ולהסתיים בפרמטר השאילתה, למשל https://duckduckgo.com/?q= — ערך לא תקין נופל חזרה לגוגל ולא שובר קישור.' },
 ];
