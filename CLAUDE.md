@@ -75,6 +75,22 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   SHA: if `--is-ancestor` says your branch contains main, both compile
   identical bytes and any difference is the host, so a pass on either is
   authoritative.
+- **On a busy `main`, `cancelled` has a second, benign cause besides the
+  timeout above.** The workflow's concurrency group queues runs on `main`
+  (`cancel-in-progress: false`) but holds only ONE pending run — so when
+  merges land faster than deploys finish, a QUEUED run gets displaced and
+  cancelled before it ever starts, not because anything wedged. Nothing is
+  lost: the displacing run's sha is a descendant and `deploy.sh` rsyncs the
+  whole tree. The conclusion string can't tell displacement from a wedge;
+  `git merge-base --is-ancestor <my-sha> <deployed-sha>` (sha from RELEASE)
+  can.
+- **The dashboard now answers "is the box running what `main` says" without a
+  terminal** — `deploy_drift` (`jobs/deploy-drift.js`, added after this class
+  of gap cost real time on 2026-09-04) compares `RELEASE`'s sha to `main` via
+  GitHub's compare API every hour. Deliberately a dashboard row, never an
+  alert: being a few commits behind breaks nobody, and `BREAKS_USERS` stays
+  reserved for "tool calls fail right now". `null` (GitHub unreachable) is
+  kept apart from "in sync" and carries forward when it was last known good.
 - **A wedged `test` on `main` skips `deploy` silently, and main ships
   nothing.** `deploy` is `needs: test`, `main` has no `pull_request` run to
   fall back on, and nothing announces the gap. **`cat /opt/olma2/RELEASE` and
