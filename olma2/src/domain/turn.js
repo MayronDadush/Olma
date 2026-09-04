@@ -37,6 +37,7 @@
 const quota = require('./quota');
 const audit = require('./audit');
 const flags = require('./flags');
+const selfInitiated = require('./self-initiated');
 
 // Rollout control. Absent/empty = off everywhere, so deploying this changes
 // nothing until someone turns it on: a fix for an invisible defect must not
@@ -60,13 +61,32 @@ async function isEnabledFor(client, user) {
 // tell `turn_start` not to count the same message twice if the model gets
 // around to calling it later in the turn.
 async function openTurnImplicitly(client, user, { firstTool } = {}) {
+  // A turn Olma started is not a message from the person, and the recovery
+  // path has to know that as surely as turn_start does — a delivery turn whose
+  // model reached for a tool before turn_start would otherwise write the whole
+  // inbound record here instead, which is the same bug through the other door.
+  // Nothing is recovered and nothing is counted; the caller is told the turn is
+  // open so it is not re-opened, and that this message was not counted so a
+  // later turn_start does not think it was.
+  if (selfInitiated.isActive(user.id)) {
+    await audit.record(client, user.id, 'turn.opened_implicitly',
+      { firstTool: firstTool || null, selfInitiated: true });
+    return { counted: false, quota: null, firstTurn: false };
+  }
   // Identical to turn_start's own statement. A person writing is active, and
   // a check-in ladder that had backed off should reset on real activity —
   // both are true regardless of which tool the model reached for.
-  await client.query(
-    `UPDATE users SET last_inbound_at = now(),
-            checkin_misses = CASE WHEN checkin_misses > 0 THEN 0 ELSE checkin_misses END
-      WHERE id = $1`, [user.id]);
+  // Identical to turn_start's statement, self-join included: whichever of the
+  // two runs FIRST is the only one that can still see a NULL last_inbound_at,
+  // so this path has to capture the first-turn verdict and carry it back — see
+  // the `firstTurn` return below.
+  const opened = await client.query(
+    `UPDATE users u SET last_inbound_at = now(),
+            checkin_misses = CASE WHEN u.checkin_misses > 0 THEN 0 ELSE u.checkin_misses END
+       FROM users prev
+      WHERE u.id = prev.id AND u.id = $1
+      RETURNING prev.last_inbound_at AS prev_inbound`, [user.id]);
+  const firstTurn = opened.rowCount > 0 && opened.rows[0].prev_inbound === null;
 
   // Night-held rows get their re-hearing. The gate stays the only judge: this
   // only makes the worker re-read them, it cannot deliver anything the gate
@@ -91,7 +111,9 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
   // does call `turn_start` later in the same turn it reads this rather than
   // asking the quota a second question — the counter has already moved, so a
   // fresh read would be a different (and wrong) answer.
-  return { counted: true, quota: counted };
+  // `firstTurn` rides along for the same reason `quota` does: this path has
+  // already consumed the evidence, so a later turn_start cannot re-derive it.
+  return { counted: true, quota: counted, firstTurn };
 }
 
 module.exports = { openTurnImplicitly, isEnabledFor, coveredBy, FLAG };

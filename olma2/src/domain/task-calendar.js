@@ -86,27 +86,81 @@ async function setSync(client, userId, on, { removeExisting = false, ...deps } =
   return ok({ on, removed });
 }
 
+// The same decision, for ONE task. This is the switch inside the task sheet,
+// and it is a different question from the one setSync answers: "put this on my
+// calendar" is about a row somebody is looking at, not about a policy for
+// everything they will ever write down.
+//
+// Turning it OFF removes the event immediately, and here that is not the
+// `removeExisting` dilemma setSync agonises over. There, "stop adding new
+// ones" said nothing about the fortnight already on the calendar. Here they
+// are looking at one task with one event, and leaving it there would make the
+// switch a lie about the thing directly above it.
+async function setTaskSync(client, userId, taskId, on, deps = {}) {
+  if (typeof on !== 'boolean') return err('invalid', 'on must be true or false');
+  const { rows } = await client.query(
+    `SELECT id, due_at, calendar_event_id FROM tasks
+      WHERE id = $1 AND owner_id = $2 AND parent_id IS NULL`,
+    [taskId, userId]
+  );
+  const task = rows[0];
+  if (!task) return err('not_found', 'task not found');
+  if (on) {
+    // A task with no date has no moment to put anywhere. The sheet already
+    // hides the row until a day is chosen; this is the same rule, enforced.
+    if (!task.due_at) return err('invalid', 'a task with no date cannot go on a calendar');
+    const status = await calendar.getStatus(client, userId);
+    const s = status.ok ? status.data : null;
+    if (!s || !s.connected) {
+      return err('invalid', 'no calendar is connected', { reason: 'not_connected' });
+    }
+    if (!s.canEdit) {
+      return err('forbidden', 'the calendar was connected view-only', { reason: 'read_only' });
+    }
+  }
+  await client.query(`UPDATE tasks SET calendar_opt_in = $2 WHERE id = $1`, [taskId, on]);
+  let removed = false;
+  if (!on && task.calendar_event_id) {
+    const remove = deps.deleteEvent || calendar.deleteEvent;
+    const res = await remove(client, userId, { eventId: task.calendar_event_id });
+    // Already gone counts: the calendar is in the state they asked for, and a
+    // stored id pointing at nothing would make every later tick try again.
+    if (res.ok || res.error.code === 'not_found') {
+      await client.query(`UPDATE tasks SET calendar_event_id = NULL WHERE id = $1`, [taskId]);
+      removed = true;
+    }
+  }
+  await audit.record(client, userId, 'task_calendar.task_set', { taskId, on, removed });
+  return ok({ taskId, on, removed });
+}
+
 // Everything that is not where it should be: to add, to remove, to redo.
 // One query, so a tick is one round trip before any Google call happens.
+// `sync_wanted` is the one question every branch below asks, and it is
+// answered once, in SQL: the task's own answer when it gave one, the person's
+// standing switch when it did not. Computing it here rather than in three
+// separate WHERE clauses is what stops the add, remove and re-check arms from
+// ever disagreeing about whether a row belongs on somebody's calendar.
 async function pending(client, { limit = MAX_PER_TICK, now = new Date() } = {}) {
   const { rows } = await client.query(
     `SELECT t.id, t.owner_id, t.title, t.due_at, t.calendar_event_id,
-            u.calendar_sync_tasks, t.status, t.archived_at
+            u.calendar_sync_tasks, t.calendar_opt_in, t.status, t.archived_at,
+            COALESCE(t.calendar_opt_in, u.calendar_sync_tasks) AS sync_wanted
        FROM tasks t
        JOIN users u ON u.id = t.owner_id
       WHERE u.status = 'active' AND u.paused_at IS NULL AND NOT u.is_eval
         AND (
           -- to add: they want it, it is dated, still open, still ahead
-          (u.calendar_sync_tasks AND t.calendar_event_id IS NULL
+          (COALESCE(t.calendar_opt_in, u.calendar_sync_tasks) AND t.calendar_event_id IS NULL
              AND t.due_at IS NOT NULL AND t.due_at > $2
              AND t.status = 'open' AND t.archived_at IS NULL)
           -- to remove: it is on the calendar and no longer earns its place
           OR (t.calendar_event_id IS NOT NULL
-             AND (NOT u.calendar_sync_tasks OR t.status <> 'open'
+             AND (NOT COALESCE(t.calendar_opt_in, u.calendar_sync_tasks) OR t.status <> 'open'
                   OR t.archived_at IS NOT NULL OR t.due_at IS NULL))
           -- to re-check: on the calendar and still wanted — the fingerprint
           -- comparison below decides whether it actually moved
-          OR (u.calendar_sync_tasks AND t.calendar_event_id IS NOT NULL
+          OR (COALESCE(t.calendar_opt_in, u.calendar_sync_tasks) AND t.calendar_event_id IS NOT NULL
              AND t.status = 'open' AND t.archived_at IS NULL AND t.due_at IS NOT NULL)
         )
       ORDER BY t.due_at NULLS FIRST
@@ -119,7 +173,11 @@ async function pending(client, { limit = MAX_PER_TICK, now = new Date() } = {}) 
 async function syncOne(client, t, deps = {}) {
   const create = deps.createEvent || calendar.createEvent;
   const remove = deps.deleteEvent || calendar.deleteEvent;
-  const wanted = t.calendar_sync_tasks && t.status === 'open'
+  // `sync_wanted` is what pending() computed; the two fallbacks keep a
+  // hand-built row (a test, a caller with one task in hand) working without
+  // having to know the precedence rule.
+  const wants = t.sync_wanted ?? t.calendar_opt_in ?? t.calendar_sync_tasks;
+  const wanted = wants && t.status === 'open'
     && !t.archived_at && t.due_at;
 
   if (t.calendar_event_id) {
@@ -167,6 +225,6 @@ async function sweepTaskCalendar(client, deps = {}) {
 }
 
 module.exports = {
-  setSync, pending, syncOne, sweepTaskCalendar,
+  setSync, setTaskSync, pending, syncOne, sweepTaskCalendar,
   expectedIdFor, windowFor, MAX_PER_TICK, EVENT_MINUTES,
 };

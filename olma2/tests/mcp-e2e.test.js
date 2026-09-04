@@ -122,6 +122,47 @@ test('turn_start returns proceed for a healthy user', async () => {
   assert.match(r, /"directive":"proceed"/);
 });
 
+// The whole point of `wrote_in`: the server never sees a message, so unless
+// the model reports the language, nothing in the system can ever notice that
+// the one it speaks is wrong. Observed live 2026-09-04 — four English
+// messages, four Hebrew replies, and no record anywhere that it happened.
+test('turn_start notices a sustained language mismatch and asks the agent to ask', async () => {
+  const say = (code) => callTool('turn_start', { olma_identity: alice.identity_token, wrote_in: code });
+  const locale = (await db.pool.query('SELECT locale FROM users WHERE id = $1', [alice.id])).rows[0].locale;
+  const foreign = locale === 'en' ? 'he' : 'en';
+
+  assert.ok(!/languageNudge/.test(await say(foreign)), 'one message is not a signal');
+  assert.ok(!/languageNudge/.test(await say(foreign)), 'two is still a coincidence');
+  const third = await say(foreign);
+  assert.match(third, /"languageNudge"/);
+  assert.match(third, new RegExp(`"theyWriteIn":"${foreign}"`));
+
+  // Noticing is not switching: the nudge asks the agent to ASK. Changing
+  // somebody's language underneath them because a counter reached three is
+  // exactly the silent act the confirm-first rule forbids.
+  const after = (await db.pool.query('SELECT locale FROM users WHERE id = $1', [alice.id])).rows[0].locale;
+  assert.equal(after, locale);
+
+  // And it is a question, not a drumbeat.
+  assert.ok(!/languageNudge/.test(await say(foreign)), 'asked once');
+
+  await db.pool.query(
+    'UPDATE users SET locale_observed = NULL, locale_observed_count = 0, locale_asked_at = NULL WHERE id = $1',
+    [alice.id]);
+});
+
+// A code the server cannot parse must cost nothing — the model is reporting,
+// not measuring, and it is free to report nothing at all.
+test('turn_start survives a wrote_in it cannot make sense of', async () => {
+  for (const bad of ['', 'english', '??', 'x']) {
+    const r = await callTool('turn_start', { olma_identity: alice.identity_token, wrote_in: bad });
+    assert.match(r, /"directive":"proceed"/);
+    assert.ok(!/languageNudge/.test(r));
+  }
+  const { rows } = await db.pool.query('SELECT locale_observed_count FROM users WHERE id = $1', [alice.id]);
+  assert.equal(rows[0].locale_observed_count, 0);
+});
+
 // Observed live 2026-08-27: two connection requests sat 'night'-held until
 // morning while the recipient was actively chatting — the worker never
 // re-reads a held row before its release_after, so the gate's 15-minute

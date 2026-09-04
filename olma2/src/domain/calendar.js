@@ -17,6 +17,7 @@ const crypto = require('node:crypto');
 const cryptoStore = require('./crypto-store');
 const google = require('./google-oauth');
 const { enqueue } = require('../outbox/enqueue');
+const googleFamily = require('./google-family');
 
 const PROVIDER = 'google_calendar';
 const MAX_EVENTS = 20;
@@ -333,12 +334,15 @@ async function disconnect(client, userId, opts = {}) {
   // Revoke at Google, not just locally. Deleting our row while leaving a live
   // refresh token in Google's account settings would make "disconnected" a
   // half-truth — the user asked for access to end, not for us to look away.
+  // EXCEPT when contacts or Gmail still hold the same token (a combined
+  // consent, google-connect.js) — revoking it here would kill those too.
   const secret = (row.refresh_enc && cryptoStore.decrypt(row.refresh_enc))
     || (row.credential_enc && cryptoStore.decrypt(row.credential_enc));
-  const revoked = secret ? await google.revoke(secret, opts) : false;
+  const keepAlive = secret && await googleFamily.hasOtherGoogleConnection(client, userId, PROVIDER);
+  const revoked = (secret && !keepAlive) ? await google.revoke(secret, opts) : false;
 
   await client.query(`DELETE FROM integrations WHERE user_id = $1 AND provider = $2`, [userId, PROVIDER]);
-  await audit.record(client, userId, 'calendar.disconnected', { revokedAtGoogle: revoked });
+  await audit.record(client, userId, 'calendar.disconnected', { revokedAtGoogle: revoked, keptAliveForSibling: Boolean(keepAlive) });
   return ok({ connected: false, revokedAtGoogle: revoked });
 }
 
@@ -654,7 +658,7 @@ async function removeMeetingEvent(client, meetingId, opts = {}) {
 
 module.exports = {
   PROVIDER, MAX_EVENTS,
-  beginConnection, completeOAuth, getStatus, disconnect,
+  beginConnection, completeOAuth, getStatus, disconnect, loadIntegration,
   listEvents, createEvent, updateEvent, deleteEvent, eventIdFor,
   usableAccessToken,
   accountEmail, meetingCalendarRoles, createSharedMeetingEvent, removeMeetingEvent,

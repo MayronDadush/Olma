@@ -183,4 +183,65 @@ async function sweepMediaJobs(client) {
   return require('../domain/media').sweepMediaJobs(client, {});
 }
 
-module.exports = { sweepReminders, sweepDigests, sweepUnblocks, sweepStaleMeetings, sweepMediaJobs };
+// ---- the 60-second name check ------------------------------------------------
+// Miron's own ask, walking his onboarding on 2026-09-04: if someone goes
+// silent right after the opening message, don't wait for the day-one ladder's
+// first rung (15 minutes) — ask about their name within a minute, because
+// that is the one thing that is both cheap to ask and useful the instant it
+// lands (a name confirmed is a name USER.md can trust; the WhatsApp display
+// name is only ever an unconfirmed guess until then).
+//
+// Anchored on `first_turn_at`, not `onboarded_at`: that column is stamped by
+// turn_start in the exact statement that hands the model the opening copy
+// (registry.js), so it is the true "when did we say hello" moment — a person
+// can be provisioned by intake well before they write their first word.
+// `last_inbound_at = first_turn_at` is the silence test: both are written by
+// the SAME transaction inside turn_start (Postgres's `now()` is constant for
+// a whole transaction), so they can only still be equal if no later message
+// has moved `last_inbound_at` on its own. The moment they reply — with a name
+// or with anything else — this stops matching and the nudge never queues.
+//
+// Capped at 10 minutes past first_turn_at for the reason every other rung in
+// this file caps itself: a sweep that was down for a while must not surface a
+// pile of "haven't heard from you in a minute" nudges hours late.
+async function sweepNameConfirm(client, nowIso) {
+  const now = nowIso || new Date().toISOString();
+  const { rows } = await client.query(
+    `SELECT id, first_name, name_confirmed FROM users
+      WHERE first_turn_at IS NOT NULL
+        AND last_inbound_at = first_turn_at
+        AND $1::timestamptz - first_turn_at >= interval '60 seconds'
+        AND $1::timestamptz - first_turn_at < interval '10 minutes'
+        AND (first_name IS NULL OR name_confirmed = false)
+        AND paused_at IS NULL`,
+    [now]);
+  const out = [];
+  for (const u of rows) {
+    // An unconfirmed guess (WhatsApp display name, or one seen in passing)
+    // gets checked by name; nothing yet just gets asked. Either way this is
+    // the ONE thing to ask — no feature tour riding along with it.
+    const instruction = u.first_name
+      ? `They have not replied since your opening message, about a minute ago. `
+        + `You have an unconfirmed guess at their name — "${u.first_name}", most `
+        + `likely from their WhatsApp profile. Ask, in one short warm line: is `
+        + `that their name? And if not, what should you call them? One emoji, `
+        + `nothing else this turn — no feature tour, no second question.`
+      : `They have not replied since your opening message, about a minute ago. `
+        + `You do not have a name for them yet. Ask, in one short warm line, `
+        + `what you should call them. One emoji, nothing else this turn.`;
+    const res = await enqueue(client, {
+      userId: u.id, kind: 'checkin',
+      payload: { checkinInstruction: instruction, rung: 'name_confirm_1m' },
+      urgency: 'normal',
+      expiresAt: new Date(new Date(now).getTime() + 9 * 60_000),
+      idempotencyKey: `name_confirm_1m:${u.id}`,
+    });
+    if (res.data.enqueued) out.push(u.id);
+  }
+  return out;
+}
+
+module.exports = {
+  sweepReminders, sweepDigests, sweepUnblocks, sweepStaleMeetings, sweepMediaJobs,
+  sweepNameConfirm,
+};

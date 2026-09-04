@@ -159,6 +159,13 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **"What is still pending" must ask `attempts = 0`**, not `sent_at IS NULL` —
   since the escalation ladder, a delivered row sits with `sent_at` NULL for up
   to a day.
+- **A turn Olma started is not a message from the person.** `--deliver` reaches
+  the agent on the person's own agent and session key, so nothing in the MCP
+  call distinguishes it from typing — `domain/self-initiated.js` marks it and
+  `turn_start` must honour that mark. Unmarked, it moved `last_inbound_at`
+  (killing `isDeafOnDayOne`), reset `checkin_misses` (killing the check-in
+  backoff), wrote `message.received` (the response-rate numerator counted our
+  own sends as replies) and spent the once-per-life first-turn signal.
 - **The ledgers are append-only.** Rows already written stay as written, even
   when the pricing that produced them was wrong.
 
@@ -231,6 +238,13 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **`agents-template.md` reaches existing users only via
   `scripts/resync-agent-templates.js`.** `deploy.sh --restart` now runs it
   automatically after the health check passes — a manual local deploy does not.
+- **The doctrine is FULL: 39249 of the 39250 chars the gateway will inject.**
+  Over the line nothing is announced — `trimAgentsBootstrapContent` keeps a
+  head and a tail and deletes the middle of whichever section sits at the cut.
+  So a paragraph added there must be paid for by deleting one, and the default
+  answer is to put the instruction in the TOOL RESULT instead, where it costs
+  tokens only on the turns it applies to (`turn_start`'s `onboarding` string,
+  2026-09-04). `tests/intake.test.js` fails before anything is lost.
 - **Olma never claims a lookup it did not perform.** No price, no stock level,
   no "מצאתי לך", no link to a RESULT — all of it asserts a fetch that never
   happened. `search_link` is the one exception and only because a link to a

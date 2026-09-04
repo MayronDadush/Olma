@@ -16,6 +16,7 @@ const { readIdentity, stripIdentity } = require('../adapters/mcp/identity-param'
 const { FloodCounter } = require('./flood');
 const { refreshUserCard, CARD_TOOLS } = require('../intake/user-card');
 const turnDomain = require('../domain/turn');
+const reactions = require('../domain/reactions');
 
 // One of these per turn. The gateway spawns a fresh MCP shim for every agent
 // turn and the shim holds ONE socket to brokerd for its whole life, so a
@@ -31,16 +32,29 @@ const turnDomain = require('../domain/turn');
 // count is consumed exactly once. Both mean that if the process model
 // changes underneath us, the failure is "no recovery" — today's behaviour —
 // rather than a message silently going uncounted for someone else.
-const newTurn = () => ({ userId: null, opened: false, counted: false, quota: null });
+const newTurn = () => ({
+  userId: null, opened: false, counted: false, quota: null,
+  // The inbound message id the acknowledgement marks attach to, and when it
+  // arrived. Per-turn and never persisted: a mark belongs on the message being
+  // handled right now, and a stale id would put one on the wrong message.
+  messageId: null, lastInboundAt: null,
+});
 
-function createBrokerServer({ pool, flood }) {
+function createBrokerServer({ pool, flood, placeMark }) {
   flood = flood || new FloodCounter();
+  // Injectable for the same reason `send` is everywhere else here: the test
+  // that matters for this feature is the one that watches a real turn place a
+  // real mark, and it must do that without spawning anything.
+  placeMark = placeMark || reactions.placeMark;
 
   async function handleToolCall(name, args, turn = newTurn()) {
     const tool = BY_NAME.get(name);
     if (!tool) return { ok: false, text: `ERROR not_found: unknown tool ${name}` };
     try {
       let actorId = null;
+      // Carried out of the transaction for the acknowledgement mark below: the
+      // reaction target is read from OUR row, never from anything the model sent.
+      let actorPhone = null;
       const result = await withTx(pool, async (client) => {
         const auth = await usersDomain.resolveByToken(client, readIdentity(args));
         if (!auth.ok) {
@@ -52,6 +66,7 @@ function createBrokerServer({ pool, flood }) {
           return auth;
         }
         actorId = auth.data.user.id;
+        actorPhone = auth.data.user.phone;
 
         // The first tool of the turn decides whether the turn was opened
         // properly. `turn_start` opens it itself; anything else means the
@@ -66,6 +81,10 @@ function createBrokerServer({ pool, flood }) {
         if (turn.userId !== actorId) {
           turn.userId = actorId;
           turn.opened = false; turn.counted = false; turn.quota = null;
+          // Cleared with the rest, and this one is not bookkeeping: a message id
+          // left over from the previous occupant of this connection would aim a
+          // reaction at somebody else's message from inside this person's chat.
+          turn.messageId = null; turn.lastInboundAt = null;
         }
 
         if (!turn.opened) {
@@ -74,6 +93,10 @@ function createBrokerServer({ pool, flood }) {
             const recovered = await turnDomain.openTurnImplicitly(client, auth.data.user, { firstTool: name });
             turn.counted = recovered.counted;
             turn.quota = recovered.quota;
+            // Only this path still saw a NULL last_inbound_at; it has just
+            // overwritten it, so a turn_start later in the same turn can no
+            // longer tell a first message from a thousandth one.
+            turn.firstTurn = recovered.firstTurn;
           }
         }
 
@@ -82,7 +105,10 @@ function createBrokerServer({ pool, flood }) {
         // here means a connection that outlives its turn cannot make the NEXT
         // turn's turn_start believe its message was already counted — which
         // would be this fix causing the very thing it exists to prevent.
-        if (name === 'turn_start') { turn.counted = false; turn.quota = null; }
+        // `firstTurn` is spent by the same rule and cleared in the same
+        // breath: a connection that outlives its turn must not hand the NEXT
+        // message a leftover "this person is brand new".
+        if (name === 'turn_start') { turn.counted = false; turn.quota = null; turn.firstTurn = false; }
         return out;
       });
       // Identity-shaping calls re-render the user's USER.md card — outside
@@ -94,6 +120,27 @@ function createBrokerServer({ pool, flood }) {
       // runs on every message and so must not re-render on every message).
       if (actorId && result && result.ok && (CARD_TOOLS.has(name) || result.cardStale)) {
         await refreshUserCard(pool, actorId);
+      }
+      // The acknowledgement mark on the person's own message — 👀 as the turn
+      // opens, ⏰ or ✅ as the work lands. Here, and not inside the handlers,
+      // because every tool already passes through this one line: the table of
+      // what earns which mark lives in domain/reactions.js and nothing else has
+      // to know the feature exists.
+      //
+      // Outside the transaction and after the card refresh, for the same reason
+      // that refresh is: this is decoration, and it may never fail a tool call
+      // or hold one open. `placeMark` swallows its own failures and the target
+      // is the user's OWN phone out of our database — never anything the model
+      // supplied — so a wrong id can only mark a different message in the same
+      // person's chat with Olma.
+      const mark = reactions.markFor(name, result, turn);
+      if (mark && actorPhone) {
+        placeMark({
+          channel: 'whatsapp', // the one channel whose reactions we have verified
+          target: actorPhone,
+          messageId: turn.messageId,
+          state: mark,
+        });
       }
       return { ok: true, text: renderResult(result) };
     } catch (e) {

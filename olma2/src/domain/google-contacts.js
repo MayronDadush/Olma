@@ -17,6 +17,7 @@ const cryptoStore = require('./crypto-store');
 const google = require('./google-oauth');
 const { enqueue } = require('../outbox/enqueue');
 const contacts = require('./contacts');
+const googleFamily = require('./google-family');
 
 const PROVIDER = 'google_contacts';
 const PEOPLE_PAGE_SIZE = 1000;
@@ -228,15 +229,19 @@ async function getStatus(client, userId) {
 async function disconnect(client, userId, opts = {}) {
   const row = await loadIntegration(client, userId);
   if (!row) return ok({ connected: false });
+  // Calendar or Gmail may hold the same token from a combined consent
+  // (google-connect.js) — see google-family.js for why revoking here is
+  // skipped while either sibling is still connected.
   const secret = (row.refresh_enc && cryptoStore.decrypt(row.refresh_enc))
     || (row.credential_enc && cryptoStore.decrypt(row.credential_enc));
-  const revoked = secret ? await google.revoke(secret, opts) : false;
+  const keepAlive = secret && await googleFamily.hasOtherGoogleConnection(client, userId, PROVIDER);
+  const revoked = (secret && !keepAlive) ? await google.revoke(secret, opts) : false;
 
   await client.query(`DELETE FROM integrations WHERE user_id = $1 AND provider = $2`, [userId, PROVIDER]);
   // The already-imported address book rows are NOT deleted — disconnecting
   // the live sync is not the same decision as deleting the contacts already
   // saved. If the user wants those gone too, forget_contact is the tool.
-  await audit.record(client, userId, 'contacts.disconnected', { revokedAtGoogle: revoked });
+  await audit.record(client, userId, 'contacts.disconnected', { revokedAtGoogle: revoked, keptAliveForSibling: Boolean(keepAlive) });
   return ok({ connected: false, revokedAtGoogle: revoked });
 }
 
@@ -292,5 +297,5 @@ async function importFromGoogle(client, userId, opts = {}) {
 
 module.exports = {
   PROVIDER,
-  beginConnection, completeOAuth, getStatus, disconnect, importFromGoogle,
+  beginConnection, completeOAuth, getStatus, disconnect, importFromGoogle, loadIntegration,
 };
