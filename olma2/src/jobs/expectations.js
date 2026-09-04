@@ -23,6 +23,11 @@ const JOB_INTERVAL_SECONDS = {
   // the promise "it turns itself off" has to survive a restart.
   boost_reconcile: 60,
   checkin_ladder: 300,
+  // Dated tasks onto the calendar. Five minutes because a task someone just
+  // gave a time to should be on their calendar while they still remember
+  // saying it — and because a tick with nothing pending is one indexed query
+  // and no Google call at all.
+  task_calendar: 300,
   memory_consolidation: 3600,
   fact_extraction: 600,
   // A hangup is a rare, clear event (unlike WhatsApp's idle-gap guess), so a

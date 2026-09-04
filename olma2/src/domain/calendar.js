@@ -383,6 +383,17 @@ async function listEvents(client, userId, daysAhead, opts = {}) {
   });
 }
 
+// Exported because domain/task-calendar.js uses it as a FINGERPRINT, not just
+// as an id: a stored id that no longer equals the id this function derives
+// from a task's current title and due time is proof the task was renamed or
+// moved since it synced. That is what lets a reschedule be noticed without a
+// second column that could fall out of step with this one.
+function eventIdFor(userId, title, start) {
+  // Google's base32hex id alphabet is 0-9a-v, so hex qualifies.
+  return 'olma' + crypto.createHash('sha256')
+    .update(`${userId}|${title}|${start}`).digest('hex').slice(0, 32);
+}
+
 async function createEvent(client, userId, { title, start, end, description, location, attendees }, opts = {}) {
   if (!title) return err('invalid', 'title is required');
   if (!OFFSET_RE.test(String(start))) return badTime('start', start);
@@ -393,8 +404,7 @@ async function createEvent(client, userId, { title, start, end, description, loc
   // shim gives up at 30s while brokerd commits regardless: without this, one
   // slow call plus the agent's retry puts the same meeting on someone's
   // calendar twice. Google's base32hex id alphabet is 0-9a-v, so hex qualifies.
-  const eventId = 'olma' + crypto.createHash('sha256')
-    .update(`${userId}|${title}|${start}`).digest('hex').slice(0, 32);
+  const eventId = eventIdFor(userId, title, start);
 
   return withAccessToken(client, userId, opts, async (token, accessLevel, o) => {
     const refusal = requireWritable(accessLevel);
@@ -645,7 +655,7 @@ async function removeMeetingEvent(client, meetingId, opts = {}) {
 module.exports = {
   PROVIDER, MAX_EVENTS,
   beginConnection, completeOAuth, getStatus, disconnect,
-  listEvents, createEvent, updateEvent, deleteEvent,
+  listEvents, createEvent, updateEvent, deleteEvent, eventIdFor,
   usableAccessToken,
   accountEmail, meetingCalendarRoles, createSharedMeetingEvent, removeMeetingEvent,
 };
