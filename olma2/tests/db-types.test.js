@@ -78,21 +78,30 @@ test('no two migrations share a version number', () => {
   }
 });
 
+// The collision is staged in a throwaway directory, NEVER in the real
+// migrations/ one. This test used to write its decoy there and delete it a
+// moment later, which was the whole cause of the CI wedge: test files are
+// separate processes over one filesystem, so while the decoy existed every
+// other file's freshDb() threw in its `before` hook — and, because a
+// half-open pg Client kept the event loop alive, hung instead of failing.
+// See incidents.md, "A test file poisoned every other one".
 test('a duplicate version is refused by name, before anything is applied', (t) => {
   const fs = require('node:fs');
   const path = require('node:path');
-  const dir = path.join(__dirname, '..', 'migrations');
-  const decoy = path.join(dir, '001-decoy-collision.sql');
-  fs.writeFileSync(decoy, '-- deliberate collision, removed by this test\n');
-  t.after(() => fs.rmSync(decoy, { force: true }));
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-migrations-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, '001-init.sql'), '-- decoy\n');
+  fs.writeFileSync(path.join(dir, '001-decoy-collision.sql'), '-- decoy\n');
 
-  // require() is cached from the test above, so this is the same module the
-  // runner uses — the guard has to live in listMigrations, not in a caller.
-  delete require.cache[require.resolve('../src/db/migrate')];
+  // The guard has to live in listMigrations itself, not in a caller — every
+  // migrate() goes through it.
   const { listMigrations } = require('../src/db/migrate');
-  assert.throws(() => listMigrations(), /two migrations share version 1/);
-  assert.throws(() => listMigrations(), /001-init\.sql/);
-  assert.throws(() => listMigrations(), /001-decoy-collision\.sql/);
+  assert.throws(() => listMigrations(dir), /two migrations share version 1/);
+  assert.throws(() => listMigrations(dir), /001-init\.sql/);
+  assert.throws(() => listMigrations(dir), /001-decoy-collision\.sql/);
+  // and the real tree is untouched by any of it
+  assert.equal(listMigrations().some((m) => /decoy/.test(m.file)), false);
 });
 
 test('a version already applied from a different file is refused, not skipped', async () => {

@@ -22,8 +22,15 @@ const MIGRATIONS_DIR = path.join(__dirname, '..', '..', 'migrations');
 // and only the pull_request merge commit sees both.
 //
 // Fail here instead, by name, before a single statement runs.
-function listMigrations() {
-  const all = fs.readdirSync(MIGRATIONS_DIR)
+//
+// `dir` exists so a test can exercise this guard WITHOUT writing a decoy file
+// into the real migrations/ directory. Two of them used to, and it was the
+// cause of the CI wedge (incidents.md, "A test file poisoned every other
+// one"): test files are separate processes sharing one filesystem, so for as
+// long as the decoy sat on disk, every OTHER file's freshDb() threw here in
+// its `before` hook. Callers in production pass nothing and get the real tree.
+function listMigrations(dir = MIGRATIONS_DIR) {
+  const all = fs.readdirSync(dir)
     .filter((f) => /^\d+-.*\.sql$/.test(f))
     .sort((a, b) => parseInt(a, 10) - parseInt(b, 10))
     .map((file) => ({ version: parseInt(file, 10), file }));
