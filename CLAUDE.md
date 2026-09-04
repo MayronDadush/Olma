@@ -245,6 +245,15 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   answer is to put the instruction in the TOOL RESULT instead, where it costs
   tokens only on the turns it applies to (`turn_start`'s `onboarding` string,
   2026-09-04). `tests/intake.test.js` fails before anything is lost.
+  The health board shows the rendered size against the gateway's ceiling
+  (`doctrineMeter` in `dashboard.js`) — an unreadable config reads as an
+  unknown ceiling, never as the gateway's 20k default.
+- **The tool schemas have a ceiling too: 55k chars of JSON, 700 per
+  description, the identity line under 40** (`tests/tool-schema-budget.test.js`).
+  They are injected on every turn for every user, so guidance about what to
+  do with a RESULT rides the result (`turnHints`, `set_my_timezone`'s `hints`),
+  where it costs tokens only on the turns it applies to — never the
+  description. Adding a tool means paying for it by trimming another.
 - **Olma never claims a lookup it did not perform.** No price, no stock level,
   no "מצאתי לך", no link to a RESULT — all of it asserts a fetch that never
   happened. `search_link` is the one exception and only because a link to a
