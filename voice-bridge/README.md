@@ -58,11 +58,13 @@ dial → placeCall(user) embeds <Parameter name="userId"> in the TwiML
 A stream arriving without a valid, active `userId` is hung up rather than
 served, and there is no default user to fall back to.
 
-> **Known gap, carried over from the box as-is.** `server.js` still defaults
-> `VOICE_ENABLED_PHONES` to a hardcoded number when the env var is missing.
-> That contradicts "fail-closed by construction" in this file's own header: a
-> bridge deployed without the var will happily call that number. Left unchanged
-> in this import so the repo matches what runs; worth closing separately.
+This holds for the allowlist too. `VOICE_ENABLED_PHONES` has **no default**:
+if it is unset or empty the bridge refuses to start, rather than falling back
+to a number baked into the source. It used to have one, for continuity when
+the variable was absent — which meant a bridge that lost its `.env`, or was
+deployed to a new box before the file was copied across, would place real
+calls to that number instead of going quiet. Missing config now means nobody
+is callable, never somebody.
 
 ## What is deliberately not committed
 
