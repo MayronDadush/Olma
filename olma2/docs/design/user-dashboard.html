@@ -233,8 +233,8 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
 /* The name leads and the line under it is the welcome. It is one line and it
    stays one line: a header that reflows to two pushes the clock and the
    status pill around, and those two are the reason anybody looks up here. */
-.brand-hi{font-size:12px;color:var(--text-2);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.brand-name{font-family:'Rubik',sans-serif;font-weight:600;font-size:17px;line-height:1.2}
+.brand-hi{font-size:13px;color:var(--text-2);line-height:1.2}
+.brand-name{font-family:'Rubik',sans-serif;font-weight:600;font-size:17px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .live{
   display:inline-flex;align-items:center;gap:7px;flex:none;
   padding:6px 12px 6px 10px;border-radius:999px;
@@ -288,25 +288,41 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
    marker so every later view change animates normally. */
 html.intro .view.active > *,
 html.intro-settled .view.active > *{animation:none}
-html.intro [data-stage]{transition:opacity .6s var(--ease),transform .6s var(--ease)}
+html.intro [data-stage]{transition:opacity .8s var(--ease),transform .8s var(--ease)}
 html.intro .tabbar{
   opacity:0;transform:translateY(26px);
-  transition:opacity .6s var(--ease),transform .6s var(--ease);
+  transition:opacity .7s var(--ease),transform .7s var(--ease);
   pointer-events:none;
 }
-/* stage 1 — one question, in the middle of the page */
-html.intro-1 main{transform:translateY(var(--introY,0px));transition:transform .7s var(--ease)}
-html.intro-1 .title{opacity:0;transform:translateY(10px);transition:opacity .5s var(--ease),transform .5s var(--ease)}
-html.intro-1 [data-stage="2"],
-html.intro-1 [data-stage="3"],
-html.intro-2 [data-stage="3"]{opacity:0;transform:translateY(20px)}
-/* stage 2 — the question rises to where it belongs, the accounts come up */
-html.intro-2 main{transform:none;transition:transform .7s var(--ease)}
-html.intro-3 main{transform:none}
-html.intro-3 .tabbar{opacity:1;transform:none;pointer-events:auto}
+/* Stage 1 — the three doors, one after another, in reading order. DOM order
+   IS reading order in both directions (the first tile is the rightmost under
+   rtl and the leftmost under ltr), so one index serves both and there is no
+   direction to special-case. A keyframe rather than a transition, because
+   this state is painted on the first frame: there is no earlier state for a
+   transition to run FROM. */
+@keyframes chanIn{from{opacity:0;transform:translateY(18px) scale(.965)}to{opacity:1;transform:none}}
+html.intro-1 .chanrow > .chan{animation:chanIn .72s var(--ease) both;animation-delay:calc(var(--ci,0) * .17s)}
+/* the whole composition sits in the middle of the screen for the first two
+   beats, and moves as one thing when it finally goes home */
+html.intro-1 main,
+html.intro-2 main{transform:translateY(var(--introY,0px));transition:transform .85s var(--ease)}
+html.intro-3 main,
+html.intro-4 main{transform:none;transition:transform .85s var(--ease)}
+/* Stage 2 — the reminders card comes DOWN into the space under the doors. */
+html.intro-1 [data-stage="1b"]{opacity:0;transform:translateY(-18px)}
+/* Stage 3 — the block goes home and the heading arrives from above it. */
+html.intro-1 .title,
+html.intro-2 .title{opacity:0;transform:translateY(-16px)}
+html.intro .title{transition:opacity .8s var(--ease),transform .8s var(--ease)}
+/* Stage 4 — everything else, and the bar. */
+html.intro-1 [data-stage="2"],html.intro-1 [data-stage="3"],
+html.intro-2 [data-stage="2"],html.intro-2 [data-stage="3"],
+html.intro-3 [data-stage="2"],html.intro-3 [data-stage="3"]{opacity:0;transform:translateY(22px)}
+html.intro-4 .tabbar{opacity:1;transform:none;pointer-events:auto}
 @media (prefers-reduced-motion:reduce){
   html.intro main{transform:none;transition:none}
   html.intro [data-stage],html.intro .title{opacity:1;transform:none;transition:none}
+  html.intro .chanrow > .chan{animation:none}
   html.intro .tabbar{opacity:1;transform:none;pointer-events:auto}
 }
 
@@ -595,9 +611,9 @@ html.is-new .introtog{display:none}
    in particular. */
 .whint{margin-top:34px;display:flex;flex-direction:column;align-items:center;gap:7px}
 .whint b{font-size:14.5px;font-weight:600;color:var(--text)}
-.warrow{width:17px;height:17px;color:var(--accent);animation:wbob 1.9s var(--ease-io) infinite}
+.warrow{width:15px;height:15px;color:var(--accent);animation:wbob 3.4s var(--ease-io) infinite}
 .warrow svg{width:100%;height:100%;display:block}
-@keyframes wbob{0%,100%{transform:translateY(-2px);opacity:.4}50%{transform:translateY(5px);opacity:1}}
+@keyframes wbob{0%,100%{transform:translateY(-1px);opacity:.34}50%{transform:translateY(6px);opacity:.92}}
 .wrow{margin-top:13px;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:12px}
 /* these two are anchors, not buttons: without this the name renders in the
    browser's link blue on top of the tile's own colour */
@@ -615,6 +631,12 @@ html.is-new .introtog{display:none}
 .welcome .whint{animation-delay:.27s}
 .welcome .wrow{animation-delay:.33s}
 .welcome .wfoot{animation-delay:.42s}
+.themetog{
+  position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:128px;z-index:80;
+  width:26px;height:26px;border-radius:999px;background:var(--surface);
+  box-shadow:var(--shadow-m);color:var(--text-3);font-size:13px;line-height:1;
+  display:grid;place-items:center;
+}
 .newtog{
   position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:96px;z-index:80;
   width:26px;height:26px;border-radius:999px;background:var(--surface);
@@ -624,6 +646,7 @@ html.is-new .introtog{display:none}
 html.is-new .newtog{color:var(--accent)}
 /* the two preview toggles that stay reachable over the first screen */
 html.is-new .langtog{z-index:80}
+html.is-new .themetog{z-index:80}
 
 .pushhead{display:flex;align-items:center;gap:12px;padding:6px 2px 20px}
 .backbtn{
@@ -1222,15 +1245,20 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .permact.opening{animation:segOpen var(--sw-t) var(--ease-io) backwards}
 .permact.shutting{animation:segShut var(--sw-t) var(--ease-io) forwards}
 .permrow + .permrow{border-top:1px solid var(--sep)}
-/* no column-gap: the separator is drawn on the cells themselves, and a gap
-   would break the line into three pieces */
-.permgrid{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center}
+/* Two things break this line, and both have bitten. No column-gap, because
+   the separator is drawn on the cells themselves and a gap cuts it into three
+   pieces. And no `align-items:center` either, for the same reason one
+   dimension over: centred cells are each as tall as their own content, so
+   their TOPS land at three different heights and the one border reads as
+   three misaligned dashes. The cells stretch and their contents centre
+   instead. */
+.permgrid{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:stretch}
 .permgrid > *{padding:11px 0}
 .permtxt,.permctl{padding-inline-end:12px}
 .permgrid > *:nth-child(n+4){border-top:1px solid var(--sep)}
-.permtxt{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:1px}
+.permtxt{min-width:0;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:1px}
 .permctl{display:flex;justify-content:flex-end;min-height:31px;align-items:center}
-.permsw{display:flex;justify-content:flex-end}
+.permsw{display:flex;justify-content:flex-end;align-items:center}
 /* opens from its own middle, both halves parting at once, and closes back
    into it — the control belongs to the switch that just turned it on */
 @keyframes segOpen{
@@ -1323,6 +1351,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 /* where Olma reaches YOU — a second question from "where do I open her",
    so it gets its own row rather than a fourth state on the tiles */
 .defrow .defhead{padding-bottom:6px}
+/* Title and answer on one line: "Reminders and updates — arrive on WhatsApp"
+   is one thought, and stacking it made a two-line card out of a sentence.
+   It wraps rather than clips, because the next language through here will be
+   longer than both of the two this was checked in. */
+.defrow .defhead .row-txt{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:7px;row-gap:1px}
+.defrow .defhead .row-sub{margin-top:0}
 .defrow .defpick{padding-top:0}
 .defrow .row-sub{color:var(--accent);font-weight:600}
 /* ── the one word that changed ──
@@ -1364,13 +1398,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .defseg button::before{
   content:"";position:absolute;inset:0;border-radius:inherit;background:var(--accent);
   z-index:-1;opacity:0;clip-path:inset(0 50% 0 50% round 999px);
+  transition:opacity var(--sw-t) var(--ease-io),clip-path var(--sw-t) var(--ease-io);
 }
 .defseg button[aria-pressed="true"]::before{opacity:1;clip-path:inset(0 0 0 0 round 999px)}
-@keyframes inkOpen{
-  0%{clip-path:inset(0 50% 0 50% round 999px);opacity:.4}
-  100%{clip-path:inset(0 0 0 0 round 999px);opacity:1}
-}
-.defseg button.picked::before{animation:inkOpen var(--sw-t) var(--ease-io)}
+/* This was a keyframe fired by a `.picked` class the click added. A keyframe
+   plays whenever the browser decides the element is new — coming back to this
+   page replayed the open on BOTH chips before settling onto one, which is
+   exactly the flicker that was reported. A transition cannot do that: with no
+   state change on arrival there is nothing to animate, and the same gesture
+   still plays on the only event that means anything, the tap. */
 /* the card the choice landed on says so, and the badge drops in */
 @keyframes badgeIn{
   0%{opacity:0;transform:translateY(-7px) scale(.6)}
@@ -1460,8 +1496,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .tab[aria-selected="true"]{color:var(--accent)}
 .tab:active{transform:scale(.92)}
 .tab svg{transition:transform .38s var(--squash)}
-@keyframes tabHop{0%{transform:none}34%{transform:translateY(-5px) scale(1.16)}100%{transform:none}}
-.tab.hopping svg{animation:tabHop .5s var(--spring)}
+/* The icon used to hop on tap. It was the same hop for all five, which is the
+   thing that made it read as decoration: a checkbox and a calendar do not
+   celebrate the same way. Left off until each icon has its own move — the
+   check ticking, the calendar turning a page — because one generic bounce is
+   worse than none. The press-scale on .tab already answers the finger. */
 
 /* ─────────────────────────  sheet  ───────────────────────── */
 .scrim{
@@ -1648,8 +1687,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <symbol id="i-cal" viewBox="0 0 20 20"><rect x="2.6" y="4" width="14.8" height="13.4" rx="3.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M2.6 8.2h14.8M6.6 2.4v3M13.4 2.4v3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-person" viewBox="0 0 20 20"><circle cx="10" cy="6.6" r="3.4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.6 17c.7-3.4 3.3-5.2 6.4-5.2s5.7 1.8 6.4 5.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-mail" viewBox="0 0 20 20"><rect x="2.4" y="4.4" width="15.2" height="11.2" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m3.4 6.4 5.4 4.2a2 2 0 0 0 2.4 0l5.4-4.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
-  <symbol id="i-bubble" viewBox="0 0 20 20"><path d="M10 3.2c4.1 0 7.2 2.6 7.2 6s-3.1 6-7.2 6a9 9 0 0 1-2-.2l-3.5 1.6.9-2.7c-1.6-1.1-2.6-2.8-2.6-4.7 0-3.4 3.1-6 7.2-6Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
-  <symbol id="i-wa" viewBox="0 0 20 20"><path d="M10 3a7 7 0 0 0-6 10.6L3.2 17l3.5-.8A7 7 0 1 0 10 3Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M7.4 7.4c-.3.8-.1 1.9.8 2.9s2 1.3 2.8 1.1l.9-1 1.4.9-.3 1c-1.4.7-3.3-.1-4.7-1.5S6.2 7.6 6.9 6.3l1-.3.9 1.4Z" fill="currentColor"/></symbol>
+  <symbol id="i-bubble" viewBox="0 0 20 20"><path d="M10 3.4c4 0 7.1 2.5 7.1 5.9s-3.1 5.9-7.1 5.9a9.4 9.4 0 0 1-1.7-.2c-.9.8-2 1.4-3.2 1.6-.3 0-.5-.3-.3-.5.4-.5.7-1.2.8-1.9C4 13.1 2.9 11.4 2.9 9.3c0-3.4 3.1-5.9 7.1-5.9Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="6.9" cy="9.3" r=".95" fill="currentColor"/><circle cx="10" cy="9.3" r=".95" fill="currentColor"/><circle cx="13.1" cy="9.3" r=".95" fill="currentColor"/></symbol>
+  <symbol id="i-wa" viewBox="0 0 20 20"><path d="M10 3a7 7 0 0 0-6.1 10.5l-.8 3.3 3.4-.8A7 7 0 1 0 10 3Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M7.9 6.6a.85.85 0 0 0-.9.9c.2 2.6 2.3 4.7 4.9 4.9a.85.85 0 0 0 .9-.9v-.7c0-.35-.22-.66-.55-.79l-1.15-.44a.85.85 0 0 0-.94.22l-.36.39a5.9 5.9 0 0 1-1.6-1.6l.39-.36a.85.85 0 0 0 .22-.94l-.44-1.15a.85.85 0 0 0-.79-.55Z" fill="currentColor"/></symbol>
   <symbol id="i-google" viewBox="0 0 20 20"><path d="M18 10.2c0-.6-.05-1.2-.16-1.7H10v3.3h4.5a3.9 3.9 0 0 1-1.7 2.5v2.1h2.8c1.6-1.5 2.4-3.7 2.4-6.2Z" fill="#4285F4"/><path d="M10 18.3c2.3 0 4.2-.75 5.6-2l-2.8-2.1c-.75.5-1.7.8-2.8.8-2.2 0-4-1.45-4.7-3.4H2.4v2.15A8.3 8.3 0 0 0 10 18.3Z" fill="#34A853"/><path d="M5.3 11.6a5 5 0 0 1 0-3.2V6.25H2.4a8.3 8.3 0 0 0 0 7.5L5.3 11.6Z" fill="#FBBC05"/><path d="M10 5c1.25 0 2.36.43 3.24 1.27l2.42-2.42A8.3 8.3 0 0 0 2.4 6.25L5.3 8.4C6 6.45 7.8 5 10 5Z" fill="#EA4335"/></symbol>
   <symbol id="i-ms" viewBox="0 0 20 20"><rect x="2.4" y="2.4" width="6.8" height="6.8" fill="#F25022"/><rect x="10.8" y="2.4" width="6.8" height="6.8" fill="#7FBA00"/><rect x="2.4" y="10.8" width="6.8" height="6.8" fill="#00A4EF"/><rect x="10.8" y="10.8" width="6.8" height="6.8" fill="#FFB900"/></symbol>
   <symbol id="i-apple" viewBox="0 0 20 20"><path d="M13.4 10.5c0-2 1.6-3 1.7-3.05a3.7 3.7 0 0 0-2.9-1.6c-1.25-.12-2.4.72-3 .72-.62 0-1.57-.7-2.6-.68a3.9 3.9 0 0 0-3.3 2c-1.4 2.44-.36 6.05 1 8.03.68.97 1.48 2.06 2.53 2.02 1.02-.04 1.4-.65 2.63-.65 1.22 0 1.57.65 2.64.63 1.09-.02 1.78-.99 2.45-1.96a8.6 8.6 0 0 0 1.1-2.27 3.55 3.55 0 0 1-2.25-3.2Z" fill="currentColor"/><path d="M11.6 4.5c.55-.67.92-1.6.82-2.5-.79.03-1.75.52-2.32 1.19-.51.58-.96 1.53-.84 2.43.88.07 1.79-.45 2.34-1.12Z" fill="currentColor"/></symbol>
@@ -1665,10 +1704,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <symbol id="i-undo" viewBox="0 0 16 16"><path d="M3.4 6.2h6.3a3.6 3.6 0 0 1 0 7.2H6.1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 2.9 2.9 6.2 6 9.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-x" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
   <symbol id="i-search" viewBox="0 0 20 20"><circle cx="8.8" cy="8.8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m13.1 13.1 3.7 3.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
-  <symbol id="i-phone" viewBox="0 0 20 20"><path d="M6.4 2.8 8.2 6.4 6.5 8.2c.7 1.7 2.6 3.6 4.3 4.3l1.8-1.7 3.6 1.8v2.6c0 1.1-.9 1.9-2 1.8C8.2 16.4 3.6 11.8 3 6.4 2.9 5.3 3.7 4.4 4.8 4.4h1.6Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 20 20"><path d="M5.6 3.1h1a1.6 1.6 0 0 1 1.5 1l.75 1.87a1.6 1.6 0 0 1-.4 1.79l-.72.66a9.6 9.6 0 0 0 3.05 3.05l.66-.72a1.6 1.6 0 0 1 1.79-.4l1.87.75a1.6 1.6 0 0 1 1 1.5v1a1.9 1.9 0 0 1-2.06 1.9C9.06 15.98 4.02 10.94 3.7 5.16A1.9 1.9 0 0 1 5.6 3.1Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
   <symbol id="i-note" viewBox="0 0 20 20"><path d="M4.4 2.6h11.2v10.2l-4 4.6H4.4Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.6 12.6h-4v4.8M7.2 6.4h5.6M7.2 9.4h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-folder" viewBox="0 0 20 20"><path d="M2.6 5.6a2 2 0 0 1 2-2h2.9l2 2.4h6a2 2 0 0 1 2 2v6.4a2 2 0 0 1-2 2h-10.9a2 2 0 0 1-2-2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
-  <symbol id="i-arrdown" viewBox="0 0 16 16"><path d="M8 2.4v11.2M3.4 9.4 8 14l4.6-4.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-arrdown" viewBox="0 0 16 16"><path d="M2.9 5.3h10.2L8 12.4Z" fill="currentColor" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/></symbol>
   <!-- The mark. A globe that talks: the meridian and the horizon say עולם,
        the tail makes it something you speak to. Its gradient lives here in
        the sheet's own <defs> rather than inside the symbol — a <use> clone
@@ -1697,8 +1736,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
            screen was not already about them. -->
       <span class="brandmark" aria-hidden="true"><svg><use href="#i-logo"/></svg></span>
       <div class="brand-txt">
+        <div class="brand-hi" data-i18n="greet"></div>
         <div class="brand-name" id="brandName"></div>
-        <div class="brand-hi" id="brandTag"></div>
       </div>
     </button>
     <button class="topclock" id="topClock" data-i18n-label="city.title"></button>
@@ -1917,6 +1956,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 <!-- preview only: the screen a stranger gets. The real page is put into
      this state by the server (data-new) or by ?new=1 on the link. -->
 <button class="newtog" id="newTog" title="preview only: the first screen">&#10022;</button>
+<!-- preview only: the real page has no theme control — it follows the phone,
+     exactly as the language follows what they write to her in. -->
+<button class="themetog" id="themeTog" title="preview only: light / dark">&#9789;</button>
 
 <div class="scrim" id="scrim"></div>
 
@@ -2391,23 +2433,25 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var h = /^lang=/i.test(raw) ? raw.slice(5) : (/^(he|en)$/i.test(raw) ? raw : "");
     /* A person already in the system has a language on file — turn_start
        stamps whatever they have been writing to her in — and that is what the
-       server renders with. A stranger has none, so the browser's own
-       preference is the only signal there is; it is deliberately consulted
-       ONLY there, so the design preview keeps its Hebrew default. */
-    var guess = NEWUSER ? (navigator.language || "") : "";
-    var v = q || h || document.documentElement.getAttribute("data-locale") || guess || "he";
+       server renders with. A stranger has nothing, and the first screen's job
+       is to be readable by anybody who was handed the link, so it falls back
+       to English rather than to the house language. (The browser's own
+       preference was tried here first and dropped on purpose: it would hand a
+       Hebrew phone a Hebrew first screen, which is nicer for that one person
+       and unpredictable for everybody else.) */
+    var v = q || h || document.documentElement.getAttribute("data-locale") ||
+      (NEWUSER ? "en" : "he");
     return v.slice(0,2).toLowerCase() === "en" ? "en" : "he";
   })();
 
   var T = {
     he:{ dir:"rtl",
-      /* The welcome under her name, in the header and on the first screen
-         alike. Hebrew inflects it, so there are two; the masculine is the
-         default the whole product uses until somebody says otherwise. */
+      "greet":"בוקר טוב,",
+      /* The line under her name on the first screen. Hebrew inflects it, so
+         there are two; the masculine is the default the whole product uses
+         until somebody says otherwise. */
       "brand.tagM":"ברוך הבא לעולם שלך","brand.tagF":"ברוכה הבאה לעולם שלך",
-      /* The brand two centimetres to the left already says her name; this
-         chip only ever had one job, which is whether she is running. */
-      "live":"פעילה",
+      "live":"{name} פעילה",
       "tab.tools":"חיבורים","tab.tasks":"משימות","tab.cal":"יומן","tab.friends":"חברים","tab.me":"פרופיל",
 
       "tools.h":"החיבורים שלך",
@@ -2433,7 +2477,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "m.cal":"Outlook Calendar","m.contacts":"זיהוי שמות בשיחה","m.mail":"Outlook Mail",
       "acc.read":"קריאה","acc.write":"כתיבה","acc.readOnly":"קריאה בלבד",
       "acc.writeA11y":"כתיבה — כוללת גם קריאה",
-      "ch.defH":"תזכורות ועדכונים","ch.defSub":"עולמה תפנה אליך ב־{name}","ch.defTag":"ברירת מחדל",
+      "ch.defH":"תזכורות ועדכונים","ch.defSub":"מגיעות ב־{name}","ch.defTag":"ברירת מחדל",
       "toast.default":"תזכורות ועדכונים יגיעו ב־{name}",
       "mo.boards":"לוחות ופריטים","mo.updates":"עדכונים שמשויכים אליך",
       "s.mentions":"אזכורים אישיים","s.dm":"הודעות ישירות · סיכום יומי",
@@ -2537,7 +2581,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "me.pause":"להשהות את עולמה","me.resume":"עולמה מושהית · להפעלה",
       "me.pauseNote":"היא תפסיק לכתוב מיוזמתה. שום דבר לא נמחק, והודעה אחת ממך מחזירה הכול.",
       "me.pausedNote":"עולמה לא תיזום כלום — לא תזכורות, לא סיכומים. היא עדיין תענה כשתכתוב לה.",
-      "live.paused":"מושהית",
+      "live.paused":"{name} מושהית",
       "me.noName":"ללא שם",
 
       "city.title":"איפה אתה נמצא?","city.search":"חיפוש עיר","city.none":"לא נמצאה עיר בשם הזה.",
@@ -2581,10 +2625,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       and:" ו־", monthsBare:["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"]
     },
     en:{ dir:"ltr",
+      "greet":"Good morning,",
       /* English has no gendered address, so both keys are the same sentence
          rather than the caller having to know which languages inflect. */
       "brand.tagM":"Do it all. Do it Allma","brand.tagF":"Do it all. Do it Allma",
-      "live":"On",
+      "live":"{name} is on",
       "tab.tools":"Connections","tab.tasks":"Tasks","tab.cal":"Calendar","tab.friends":"Friends","tab.me":"Profile",
 
       "tools.h":"Your connections",
@@ -2608,7 +2653,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "m.cal":"Outlook Calendar","m.contacts":"Recognise names in conversation","m.mail":"Outlook Mail",
       "acc.read":"Read","acc.write":"Write","acc.readOnly":"Read only",
       "acc.writeA11y":"Write \u2014 includes reading",
-      "ch.defH":"Reminders and updates","ch.defSub":"Allma will reach you on {name}","ch.defTag":"Default",
+      "ch.defH":"Reminders and updates","ch.defSub":"arrive on {name}","ch.defTag":"Default",
       "toast.default":"Reminders and updates will come by {name}",
       "mo.boards":"Boards and items","mo.updates":"Updates assigned to you",
       "s.mentions":"Mentions","s.dm":"Direct messages · daily summary",
@@ -2712,7 +2757,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "me.pause":"Pause Allma","me.resume":"Allma is paused · Resume",
       "me.pauseNote":"She stops writing on her own. Nothing is deleted, and one message from you brings it all back.",
       "me.pausedNote":"Allma starts nothing — no reminders, no summaries. She still answers when you write to her.",
-      "live.paused":"Paused",
+      "live.paused":"{name} is paused",
       "me.noName":"No name",
 
       "city.title":"Where are you?","city.search":"Search for a city","city.none":"No city by that name.",
@@ -3354,12 +3399,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
   /* ── channels, side by side and first ── */
   function chanGroup(){
-    var cells = CHANNELS.map(function(c){
+    var cells = CHANNELS.map(function(c, i){
       if(c.call){
-        return '<button class="chan call" data-call="1" data-state="idle">' + tileFor("call", c.icon) +
+        return '<button class="chan call" data-call="1" data-state="idle" style="--ci:' + i + '">' +
+          tileFor("call", c.icon) +
           "<b>" + esc(t("ch.call")) + "</b><i>" + esc(t("ch.callSub")) + "</i></button>";
       }
-      return '<button class="chan' + (c.on ? " on" : "") + '" data-chan="' + c.id + '">' +
+      return '<button class="chan' + (c.on ? " on" : "") + '" data-chan="' + c.id +
+        '" style="--ci:' + i + '">' +
         tileFor(c.tile, c.icon) + "<b>" + esc(c.name) + "</b><i>" +
         esc(t(c.on ? "ch.open" : "ch.add")) + "</i></button>";
     }).join("");
@@ -3413,7 +3460,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
        WRITING arrives, so it offers the two written channels and nothing
        else, whether or not the phone tile is switched on. */
     var live = CHANNELS.filter(function(c){ return !c.call; });
-    return '<div class="group defrow" style="margin-top:12px">' +
+    return '<div class="group defrow" data-stage="1b" style="margin-top:12px">' +
       '<div class="row no-icon defhead">' +
       '<div class="row-txt"><div class="row-title">' + esc(t("ch.defH")) + "</div>" +
       '<div class="row-sub" id="defSentence">' + defSentenceHTML() + "</div></div>" +
@@ -3665,7 +3712,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       if(df.getAttribute("aria-pressed") === "true") return;
       defaultChannel = df.dataset.def;
       $$("[data-def]").forEach(function(b){ b.setAttribute("aria-pressed", b === df ? "true" : "false"); });
-      df.classList.remove("picked"); void df.offsetWidth; df.classList.add("picked");
       markDefaultCard();
       API.setDefaultChannel(defaultChannel);
       swapWord($("#defWord"), chanName(defaultChannel));
@@ -5255,10 +5301,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   function brandTag(g){ return t(g === "f" ? "brand.tagF" : "brand.tagM"); }
   function syncName(){
     var f = $("#fname").value, l = $("#lname").value;
-    $("#whoName").textContent = (f + " " + l).trim() || t("me.noName");
-    $("#brandName").textContent = olmaName();
-    $("#brandTag").textContent = brandTag(myGender());
-    $("#olmaLive").textContent = t(paused ? "live.paused" : "live");
+    var full = (f + " " + l).trim() || t("me.noName");
+    $("#whoName").textContent = full;
+    $("#brandName").textContent = full;
+    $("#olmaLive").textContent = t(paused ? "live.paused" : "live", {name:olmaName()});
   }
   function hop(el){
     if(!el) return;
@@ -5306,9 +5352,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(!b) return;
     $$("button", this).forEach(function(x){ x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
     paintAvatars();
-    /* the header's welcome line is inflected too — it must not still be
-       addressing them the old way while a toast says it changed */
-    syncName();
     $("#bigAvatar").classList.remove("pop"); void $("#bigAvatar").offsetWidth; $("#bigAvatar").classList.add("pop");
     toast(t(b.dataset.g === "f" ? "toast.fem" : "toast.masc"));
   });
@@ -5346,13 +5389,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       sweepT = setTimeout(function(){ pill.classList.remove("sweep"); }, 640);
     }
   }
-  /* the icon acknowledges the tap on its own, before the page has changed */
-  function hopTab(el){
-    if(!el) return;
-    el.classList.remove("hopping"); void el.offsetWidth; el.classList.add("hopping");
-    setTimeout(function(){ el.classList.remove("hopping"); }, 520);
-  }
-  tabs.forEach(function(x){ x.addEventListener("click", function(){ hopTab(x); }); });
   function selectedTab(){
     return tabs.filter(function(x){ return x.getAttribute("aria-selected") === "true"; })[0] || tabs[0];
   }
@@ -5661,7 +5697,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      for somebody who is just watching, never a wait imposed on somebody who
      already knows what they want.
      ══════════════════════════════════════════════════════════════ */
-  var INTRO_HOLD = 3000, INTRO_STAGES = 3;
+  /* Two seconds, not three: three was long enough that a person who had
+     already read the screen was waiting on it. Four beats now instead of
+     three, so the whole thing is a second shorter than it was AND says more. */
+  var INTRO_HOLD = 2000, INTRO_STAGES = 4;
   var introStage = 0, introT = null, introDone = false;
 
   function introSeen(){
@@ -5702,7 +5741,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     clearTimeout(introT);
     introStage = stage;
     var root = document.documentElement;
-    root.classList.remove("intro-1", "intro-2", "intro-3");
+    root.classList.remove("intro-1", "intro-2", "intro-3", "intro-4");
     if(stage > INTRO_STAGES){ introFinish(); return; }
     root.classList.add("intro", "intro-" + stage);
     if(stage === 1) root.style.setProperty("--introY", introOffset() + "px");
@@ -5714,7 +5753,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     introDone = true;
     clearTimeout(introT);
     var root = document.documentElement;
-    root.classList.remove("intro-1", "intro-2", "intro-3");
+    root.classList.remove("intro-1", "intro-2", "intro-3", "intro-4");
     /* `intro` comes off one frame later so the last transition can finish
        against the same rules it started under — dropping it in the same tick
        restores the stagger animation mid-move and the page jumps. */
@@ -5798,6 +5837,17 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   $$("#langTog span").forEach(function(el, i){ el.classList.toggle("on", (i ? "en" : "he") === LOCALE); });
   $("#langTog").addEventListener("click", function(){ setLocale(LOCALE === "he" ? "en" : "he"); });
+
+  /* preview only: forces one theme, standing in for a phone set that way.
+     Starts on neither — un-stamped is the real default, where the OS decides
+     — and from the first press it alternates, so both are one tap apart. */
+  $("#themeTog").addEventListener("click", function(){
+    var root = document.documentElement, now = root.getAttribute("data-theme");
+    var dark = now ? now === "light"
+      : !(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    root.setAttribute("data-theme", dark ? "dark" : "light");
+    this.innerHTML = dark ? "&#9788;" : "&#9789;";
+  });
   document.addEventListener("keydown", function(e){
     if(e.key !== "l" && e.key !== "L" && e.key !== "ל") return;
     if(e.target && e.target.closest && e.target.closest("input, textarea")) return;
