@@ -5451,7 +5451,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   /* One request, at boot, and nothing retries it. A dashboard that silently
      reloads itself is a dashboard that can change under somebody's finger. */
   (function(){
-    if(location.protocol === "file:") return;   /* the design copy */
+    /* Only from the one path the live page is served at. A protocol check was
+       not enough: published as a design, this file sits on somebody else's
+       https host, where it would fire a pointless cross-origin request and get
+       a 404 for its trouble. Asking "am I the served page" is the actual
+       question. */
+    if(location.pathname !== "/me") return;
     fetch("/me/data", {credentials:"same-origin", headers:{Accept:"application/json"}})
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(body){ if(body && body.ok && body.data) hydrate(body.data); })
