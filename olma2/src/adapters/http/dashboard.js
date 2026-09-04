@@ -28,6 +28,7 @@ const sessionIndex = require('../../channels/sessions');
 const evalsJob = require('../../jobs/evals');
 const picker = require('./picker');
 const userDashboard = require('./user-dashboard');
+const publicPages = require('./public-pages');
 // /ready's whole test. brokerd beats immediately on boot and then every 60s,
 // so three intervals is generous enough that an ordinary slow tick under load
 // never fails a deploy, and tight enough that a daemon which died on boot
@@ -1914,11 +1915,21 @@ h1{font-size:18px;margin:0 0 8px;font-weight:600}p{color:#8b95a5;font-size:14px;
 // openclaw.json instead of the live gateway's. calendarDomain/googleOpts are
 // injectable so the OAuth flow can be tested without network access — and are
 // required lazily, so a box with no /opt/olma still starts a dashboard.
-function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomain, googleContactsDomain, mailDomain, googleConnectDomain, googleOpts, gatewayCheck, gatewayCacheMs }) {
+function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomain, googleContactsDomain, mailDomain, googleConnectDomain, googleOpts, gatewayCheck, gatewayCacheMs, publicHosts }) {
   const calendar = () => calendarDomain || require('../../domain/calendar');
   const googleContacts = () => googleContactsDomain || require('../../domain/google-contacts');
   const mail = () => mailDomain || require('../../domain/mail');
   const googleConnect = () => googleConnectDomain || require('../../domain/google-connect');
+
+  // Which hostnames get the PUBLIC home page at `/` instead of the admin
+  // dashboard. Injectable so the suite can prove both halves without owning
+  // DNS; the default is the real public domain and its www form.
+  const PUBLIC_HOSTS = new Set(publicHosts || ['allma.world', 'www.allma.world']);
+  // Host arrives as "name" or "name:port", and a client controls it. Only ever
+  // used to decide public-page-or-dashboard, and it can only ever REMOVE
+  // access (an unrecognised host falls through to Basic Auth), so a forged
+  // value cannot reach anything the password protects.
+  const hostOf = (req) => String(req.headers.host || '').split(':')[0].toLowerCase();
 
   // Injectable so a test states the gateway's condition instead of inheriting
   // whatever is running on the machine — the suite runs ON the production box
@@ -2131,6 +2142,30 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
           return res.end(JSON.stringify({ ok: false, error: 'db unavailable', gateway: publicGateway(gateway) }));
         }
       }
+      // ---- the two pages a stranger on allma.world is allowed to read ----
+      //
+      // Google's OAuth verification requires a working home page describing
+      // what the app does and a reachable privacy policy on the same domain,
+      // or the "hasn't verified this app" screen never goes away. Both sit
+      // AHEAD of Basic Auth for the same reason /pick/ and the OAuth callback
+      // do: the people who need them are not admins.
+      //
+      // `/` is the load-bearing subtlety. On olmachat.duckdns.org it is the
+      // ADMIN DASHBOARD and must stay behind the password, so the public home
+      // page is served for the PUBLIC hostnames only and every other host
+      // falls straight through to the dashboard exactly as before. Caddy
+      // already refuses to route `/` from allma.world to this process at all
+      // until its allowlist says so — this check is the second lock, so that
+      // a Caddyfile edit alone can never expose the admin root.
+      if (req.method === 'GET' && parsed.pathname === '/privacy') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(publicPages.privacyPage());
+      }
+      if (req.method === 'GET' && parsed.pathname === '/' && PUBLIC_HOSTS.has(hostOf(req))) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(publicPages.homePage());
+      }
+
       if (!checkBasicAuth(req, adminUser, adminPass)) {
         res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="olma2"' });
         return res.end('auth required');
