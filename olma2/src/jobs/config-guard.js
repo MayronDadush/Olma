@@ -12,7 +12,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const occ = require('../intake/openclaw-config');
 const infraAgent = require('../domain/infra-agent');
-const sessions = require('../channels/sessions');
+// The worker-thread facade (channels/sessions-async.js): this guard runs
+// inside brokerd every ten minutes and reads every user's intake session.
+const sessions = require('../channels/sessions-async');
 const { INTAKE_AGENT_ID } = require('./intake');
 
 // Every per-user loop below reads that user's workspace files synchronously,
@@ -280,10 +282,10 @@ const norm = (s) => String(s).replace(/\s+/g, ' ').trim();
 //
 // null (no session left to read) is not innocence: an unverifiable pair falls
 // back to reporting the collision, exactly as before.
-function quotesOwnWords(read, phone, quoted, cache) {
+async function quotesOwnWords(read, phone, quoted, cache) {
   if (!cache.has(phone)) {
     let own = null;
-    try { own = read(phone); } catch { own = null; }
+    try { own = await read(phone); } catch { own = null; }
     cache.set(phone, own ? norm(own) : null);
   }
   const own = cache.get(phone);
@@ -313,7 +315,7 @@ async function checkCarryovers(client, deps = {}) {
     // the old collision rule is all there is.
     const m = section.match(QUOTED_RE);
     const quoted = m ? norm(m[1]) : null;
-    const mine = quoted ? quotesOwnWords(read, u.phone, quoted, cache) : null;
+    const mine = quoted ? await quotesOwnWords(read, u.phone, quoted, cache) : null;
     const prior = seen.get(body);
 
     // A leak does not need an accomplice, and requiring one is what kept the
@@ -338,7 +340,7 @@ async function checkCarryovers(client, deps = {}) {
     }
     if (prior === undefined) { seen.set(body, u); continue; }
 
-    const theirs = quoted ? quotesOwnWords(read, prior.phone, quoted, cache) : null;
+    const theirs = quoted ? await quotesOwnWords(read, prior.phone, quoted, cache) : null;
     if (mine === true && theirs === true) continue; // both of them really said it
 
     // `mine === false` is handled above, so the only card left to accuse is

@@ -359,6 +359,12 @@ Verified on the box at the cutover, 2026-08-17:
   `OLMA_DB_CONNECT_TIMEOUT_MS`; `0` disables). Both sit under the MCP shim's
   30s call timeout so a runaway query fails inside the tool call, by name.
   `migrate.js` and the test helper build their own clients and are exempt.
+- **A sweep inside brokerd reads the gateway's session stores through
+  `channels/sessions-async.js`, never `channels/sessions.js` directly.** Every
+  export of `sessions.js` is synchronous (readFileSync, a read-only sqlite
+  handle) and the daemon answers live users on the same loop; the facade runs
+  the identical functions in a worker thread with a deadline. The dashboard
+  and the eval harness are separate processes and keep calling `sessions.js`.
 
 ## The live dashboard is v2's (`olma2/src/adapters/http/dashboard.js`)
 
