@@ -1,0 +1,948 @@
+<title>הכרעות תיאום הפגישות</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@500;700;800&family=Assistant:wght@400;600&display=swap">
+<style>
+/* ---------------------------------------------------------------------------
+   Tokens. Light lives on bare :root; dark is redefined twice — once for the
+   un-stamped viewer (system preference) and once for an explicit toggle — so
+   all three viewer states resolve. No colour is ever declared only inside a
+   media block.
+   The accent is the dashboard's own #5B2FD6 (hue 256), and the neutrals are
+   biased the same way rather than being flat grey.
+--------------------------------------------------------------------------- */
+:root{
+  --bg:#FBFAFD; --panel:#FFFFFF; --panel-2:#F5F3FA;
+  --ink:#191527; --ink-2:#4B4360; --muted:#7A7290;
+  --line:#E7E3F0; --line-2:#D6D0E6;
+  --accent:#5B2FD6; --accent-2:#3A1A90; --accent-soft:#EFEAFC; --accent-line:#C9B8F6;
+  --flag:#8A5A05; --flag-soft:#FBF2DF; --flag-line:#EBD8A8;
+  --shadow:0 1px 2px rgba(25,21,39,.05), 0 8px 22px -14px rgba(25,21,39,.22);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#100D1A; --panel:#191527; --panel-2:#211B34;
+    --ink:#F2EFFA; --ink-2:#C3BBD8; --muted:#8E85A6;
+    --line:#2C2542; --line-2:#3A3155;
+    --accent:#A38CFF; --accent-2:#C6B7FF; --accent-soft:#241A44; --accent-line:#4A3A80;
+    --flag:#E8C271; --flag-soft:#2E2412; --flag-line:#4E3D1C;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 26px -16px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#100D1A; --panel:#191527; --panel-2:#211B34;
+  --ink:#F2EFFA; --ink-2:#C3BBD8; --muted:#8E85A6;
+  --line:#2C2542; --line-2:#3A3155;
+  --accent:#A38CFF; --accent-2:#C6B7FF; --accent-soft:#241A44; --accent-line:#4A3A80;
+  --flag:#E8C271; --flag-soft:#2E2412; --flag-line:#4E3D1C;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 26px -16px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+html{direction:rtl}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"Assistant",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:16.5px; line-height:1.62; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:760px; margin:0 auto; padding:0 22px 96px}
+h1,h2,h3,h4{font-family:"Heebo",system-ui,sans-serif; text-wrap:balance; margin:0}
+b,strong{font-weight:600}
+
+/* ---- masthead ---------------------------------------------------------- */
+header.top{padding:64px 0 34px}
+.eyebrow{
+  font-family:"Heebo",sans-serif; font-weight:700; font-size:11.5px;
+  letter-spacing:.14em; color:var(--accent); margin:0 0 14px;
+}
+h1{font-weight:800; font-size:clamp(32px,6.4vw,46px); line-height:1.12; letter-spacing:-.015em}
+.lede{margin:16px 0 0; color:var(--ink-2); font-size:17.5px; max-width:60ch}
+.meta{
+  margin-top:24px; padding-top:18px; border-top:1px solid var(--line);
+  display:flex; flex-wrap:wrap; gap:8px 22px;
+  font-size:13px; color:var(--muted);
+}
+.meta span{display:inline-flex; align-items:center; gap:6px}
+.meta i{width:5px;height:5px;border-radius:50%;background:var(--accent);font-style:normal;flex:none}
+
+/* ---- contents ---------------------------------------------------------- */
+nav.toc{
+  background:var(--panel); border:1px solid var(--line); border-radius:16px;
+  padding:18px 20px; margin:0 0 44px; box-shadow:var(--shadow);
+}
+nav.toc h2{font-size:12px; letter-spacing:.12em; font-weight:700; color:var(--muted); margin:0 0 12px}
+nav.toc ol{margin:0; padding:0; list-style:none; display:grid; gap:2px}
+nav.toc li{counter-increment:toc}
+nav.toc a{
+  display:grid; grid-template-columns:26px 1fr; gap:10px; align-items:baseline;
+  padding:5px 4px; border-radius:8px;
+  color:var(--ink); text-decoration:none; font-size:15px;
+}
+nav.toc a::before{
+  content:counter(toc); font-family:"Heebo",sans-serif; font-weight:700;
+  font-size:12.5px; color:var(--accent); font-variant-numeric:tabular-nums;
+}
+nav.toc ol{counter-reset:toc}
+nav.toc a:hover{background:var(--accent-soft)}
+nav.toc a:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+
+/* ---- a point ----------------------------------------------------------- */
+.point{
+  display:grid; grid-template-columns:46px 1fr; gap:0 18px;
+  padding:34px 0; border-top:1px solid var(--line);
+}
+.point:first-of-type{border-top:none}
+.pnum{
+  font-family:"Heebo",sans-serif; font-weight:800; font-size:26px;
+  color:var(--accent-line); line-height:1; padding-top:5px;
+  font-variant-numeric:tabular-nums;
+}
+.pbody{min-width:0}
+.pbody h3{font-size:22px; font-weight:800; letter-spacing:-.01em; line-height:1.28}
+.said{
+  margin:14px 0 0; padding:12px 15px;
+  background:var(--panel-2); border-radius:12px;
+  font-size:15px; color:var(--ink-2);
+}
+.said::before{
+  content:"מה ביקשת"; display:block;
+  font-family:"Heebo",sans-serif; font-weight:700; font-size:10.5px;
+  letter-spacing:.12em; color:var(--muted); margin-bottom:5px;
+}
+.tension{margin:16px 0 0; color:var(--ink-2)}
+.tension b{color:var(--ink)}
+
+/* ---- the options ------------------------------------------------------- */
+.opts{display:grid; gap:10px; margin:20px 0 0}
+.opt{
+  display:grid; grid-template-columns:26px 1fr; gap:12px;
+  background:var(--panel); border:1px solid var(--line); border-radius:14px;
+  padding:14px 15px;
+}
+.opt .ol{
+  font-family:"Heebo",sans-serif; font-weight:700; font-size:12px;
+  width:24px; height:24px; border-radius:50%;
+  display:grid; place-items:center;
+  background:var(--panel-2); color:var(--muted);
+}
+.opt h4{font-size:16px; font-weight:700; margin:2px 0 0; line-height:1.35}
+.opt p{margin:5px 0 0; font-size:14.5px; color:var(--ink-2)}
+.opt .cost{
+  margin-top:7px; font-size:13.5px; color:var(--muted);
+}
+.opt .cost::before{content:"העלות · "; color:var(--muted); font-weight:600}
+.opt.pick{border-color:var(--accent-line); background:var(--accent-soft)}
+.opt.pick .ol{background:var(--accent); color:#fff}
+.opt.pick p{color:var(--ink-2)}
+
+.rec{
+  margin:18px 0 0; padding:16px 17px;
+  border:1px solid var(--accent-line); border-radius:14px;
+  background:linear-gradient(180deg, var(--accent-soft), transparent 140%);
+}
+.rec h5{
+  font-family:"Heebo",sans-serif; font-weight:800; font-size:11.5px;
+  letter-spacing:.13em; color:var(--accent); margin:0 0 8px;
+}
+.rec p{margin:0; font-size:15.5px}
+.rec p + p{margin-top:10px}
+.rec b{color:var(--ink)}
+
+.flag{
+  margin:14px 0 0; padding:13px 15px;
+  border:1px solid var(--flag-line); border-radius:13px;
+  background:var(--flag-soft); color:var(--ink-2); font-size:14.5px;
+}
+.flag h5{
+  font-family:"Heebo",sans-serif; font-weight:800; font-size:10.5px;
+  letter-spacing:.13em; color:var(--flag); margin:0 0 6px;
+}
+.flag p{margin:0}
+
+/* ---- little in-place mockups ------------------------------------------- */
+.mock{
+  margin:18px 0 0; padding:16px;
+  background:var(--panel); border:1px solid var(--line); border-radius:14px;
+  box-shadow:var(--shadow);
+}
+.mock .cap{
+  font-size:12px; color:var(--muted); margin:12px 0 0;
+  padding-top:10px; border-top:1px dashed var(--line);
+}
+.grid14{display:grid; grid-template-columns:repeat(7,1fr); gap:5px; max-width:330px}
+.grid14 .h{
+  font-size:10.5px; color:var(--muted); text-align:center;
+  font-family:"Heebo",sans-serif; font-weight:700; padding-bottom:2px;
+}
+.grid14 .d{
+  aspect-ratio:1; display:grid; place-items:center; border-radius:9px;
+  font-size:13.5px; font-variant-numeric:tabular-nums; color:var(--ink-2);
+  background:var(--panel-2); font-family:"Heebo",sans-serif; font-weight:500;
+}
+.grid14 .d.on{background:var(--accent); color:#fff; font-weight:700}
+.grid14 .d.off{opacity:.34}
+.counter{
+  margin-top:11px; font-size:13px; color:var(--muted);
+  display:flex; align-items:center; gap:7px;
+}
+.counter b{
+  font-family:"Heebo",sans-serif; color:var(--accent); font-variant-numeric:tabular-nums;
+}
+
+.vrow{display:grid; gap:9px}
+.vopt{
+  position:relative; overflow:hidden;
+  border:1px solid var(--line); border-radius:12px;
+  padding:11px 13px; background:var(--panel-2);
+}
+.vfill{
+  position:absolute; inset-block:0; inset-inline-start:0;
+  background:var(--accent-soft); border-inline-end:2px solid var(--accent-line);
+}
+.vtop{position:relative; display:flex; align-items:center; justify-content:space-between; gap:10px}
+.vlabel{font-family:"Heebo",sans-serif; font-weight:700; font-size:14px}
+.vcount{font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums}
+.faces{position:relative; display:flex; margin-top:7px}
+.faces u{
+  width:21px; height:21px; border-radius:50%; text-decoration:none;
+  display:grid; place-items:center; font-size:9.5px; font-weight:700;
+  font-family:"Heebo",sans-serif; color:#fff;
+  border:2px solid var(--panel); margin-inline-start:-6px;
+}
+.faces u:first-child{margin-inline-start:0}
+.faces u.no{background:var(--line-2); color:var(--muted)}
+.pend{
+  border-style:dashed; border-color:var(--accent-line);
+  background:transparent;
+}
+.pendtag{
+  font-size:11px; font-family:"Heebo",sans-serif; font-weight:700;
+  color:var(--accent); background:var(--accent-soft);
+  padding:2px 8px; border-radius:999px;
+}
+.mockbtns{display:flex; gap:7px; margin-top:9px}
+.mb{
+  font-family:"Heebo",sans-serif; font-weight:700; font-size:12.5px;
+  padding:5px 12px; border-radius:999px;
+  background:var(--accent); color:#fff;
+}
+.mb.ghost{background:var(--accent-soft); color:var(--accent)}
+
+/* ---- closing ----------------------------------------------------------- */
+.cross{
+  margin:56px 0 0; padding:26px 24px;
+  background:var(--panel); border:1px solid var(--line); border-radius:18px;
+  box-shadow:var(--shadow);
+}
+.cross h2{font-size:21px; font-weight:800; margin:0 0 4px}
+.cross > p{margin:0 0 18px; color:var(--ink-2); font-size:15.5px}
+.cross ol{margin:0; padding:0; list-style:none; display:grid; gap:16px}
+.cross li{
+  display:grid; grid-template-columns:auto 1fr; gap:12px; align-items:start;
+}
+.cross li > i{
+  font-style:normal; font-family:"Heebo",sans-serif; font-weight:800; font-size:12px;
+  width:23px; height:23px; border-radius:7px; flex:none; margin-top:2px;
+  display:grid; place-items:center; background:var(--accent-soft); color:var(--accent);
+}
+.cross li h4{font-size:16px; font-weight:700; margin:0}
+.cross li p{margin:3px 0 0; color:var(--ink-2); font-size:15px}
+
+.open{margin:34px 0 0}
+.open h2{font-size:21px; font-weight:800; margin:0 0 4px}
+.open > p{margin:0 0 16px; color:var(--ink-2); font-size:15.5px}
+.open ul{margin:0; padding:0; list-style:none; display:grid; gap:9px}
+.open li{
+  border:1px solid var(--flag-line); background:var(--flag-soft);
+  border-radius:12px; padding:12px 15px; font-size:15px; color:var(--ink-2);
+}
+.open li b{color:var(--ink); font-weight:600}
+
+footer{margin-top:56px; padding-top:20px; border-top:1px solid var(--line); color:var(--muted); font-size:13px}
+
+@media (max-width:560px){
+  .point{grid-template-columns:1fr; gap:0}
+  .pnum{padding:0 0 4px}
+  .wrap{padding:0 16px 72px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">עולמה · תיאום פגישות</p>
+  <h1>עשר הכרעות, וההמלצה שלי לכל אחת</h1>
+  <p class="lede">
+    כתבת עשר נקודות על תיאום הפגישות. כל אחת מהן פתוחה בכמה כיוונים, ובחלק
+    מהמקרים הכיוון שנשמע מובן מאליו הוא לא זה שאני הייתי בוחר. כאן כל נקודה
+    עם ההתלבטות עצמה, האפשרויות, וההמלצה — כדי שתוכל להכריע ולא לנחש.
+  </p>
+  <div class="meta">
+    <span><i></i>עשר נקודות</span>
+    <span><i></i>עשרים ושמונה אפשרויות</span>
+    <span><i></i>שום דבר מזה עוד לא נבנה</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <h2>מה יש כאן</h2>
+  <ol>
+    <li><a href="#p1">פגישה שסוכמה — להוסיף ולהסיר מהיומן מחוץ לכרטיס</a></li>
+    <li><a href="#p2">בחירת כמה ימים בבת אחת</a></li>
+    <li><a href="#p3">להזמין קבוצה, לא רק אנשים</a></li>
+    <li><a href="#p4">ארבע אופציות, והחמישית שממתינה</a></li>
+    <li><a href="#p5">אחרי התאריך — השעה</a></li>
+    <li><a href="#p6">״יום שלם״ מול ״מתי שתרצו״</a></li>
+    <li><a href="#p7">טווח תאריכים לחופשה</a></li>
+    <li><a href="#p8">הצבעה שנראית כמו המילוי ההדרגתי במשימות</a></li>
+    <li><a href="#p9">מי סוגר את התיאום, ומה קורה כשלא כולם יכולים</a></li>
+    <li><a href="#p10">לצאת מתיאום</a></li>
+  </ol>
+</nav>
+
+<!-- 1 ---------------------------------------------------------------- -->
+<article class="point" id="p1">
+  <div class="pnum">1</div>
+  <div class="pbody">
+    <h3>פגישה שסוכמה — להוסיף ולהסיר מהיומן מחוץ לכרטיס</h3>
+    <p class="said">
+      אחרי שפגישה מאושרת, שיהיה אפשר להוסיף ולהסיר אותה מהיומן גם בלי להיכנס
+      לכרטיס התיאום.
+    </p>
+    <p class="tension">
+      ההתלבטות היא לא איפה לשים כפתור אלא <b>איך לא לבלבל בין שתי פעולות</b>:
+      ״להסיר מהיומן״ היא פעולה פרטית שלך, ו״לצאת מהתיאום״ (סעיף 10) אומרת
+      לכולם שאתה לא בא. אם שתיהן ייראו אותו דבר, מישהו יבטל השתתפות בטעות
+      כשהוא רק רצה לנקות את היומן.
+    </p>
+    <div class="opts">
+      <div class="opt pick">
+        <span class="ol">א</span>
+        <div>
+          <h4>הפגישה נעשית אירוע יומן רגיל</h4>
+          <p>ברגע שהתיאום נסגר היא יושבת ביומן ככל אירוע אחר, עם אותו תפריט ואותה הסרה.</p>
+          <p class="cost">בלי סימון, אין שום דבר שמזכיר שהיא הגיעה מתיאום.</p>
+        </div>
+      </div>
+      <div class="opt">
+        <span class="ol">ב</span>
+        <div>
+          <h4>רצועת ״סוכם״ בראש היומן</h4>
+          <p>הכרטיס נשאר במצב מכווץ כמה ימים, והכפתור עליו.</p>
+          <p class="cost">עוד משטח לתחזק, והוא נעלם בדיוק בשבוע שאחריו כשנזכרים.</p>
+        </div>
+      </div>
+      <div class="opt">
+        <span class="ol">ג</span>
+        <div>
+          <h4>שניהם</h4>
+          <p>אירוע ביומן ורצועה ל־24 שעות.</p>
+          <p class="cost">שני מקומות לאותה פעולה זה שני מקומות להתבלבל בהם.</p>
+        </div>
+      </div>
+    </div>
+    <div class="rec">
+      <h5>ההמלצה</h5>
+      <p>
+        <b>א׳, עם צ׳יפ קטן ״מתיאום״ על האירוע.</b> המקום שאנשים מחפשים בו פגישה
+        אחרי שהיא סוכמה הוא היומן, לא מסך התיאום — ואירוע רגיל הוא גם מה שמסתנכרן
+        החוצה ל־Google ול־iCloud בלי טיפול מיוחד.
+      </p>
+      <p>
+        הצ׳יפ הוא מה שמונע את הבלבול: הוא מוביל בלחיצה חזרה לתיאום, והכפתור אומר
+        במפורש ״הסר מהיומן שלי״ — לא ״בטל״. מי שרוצה באמת לצאת עושה את זה מהתיאום.
+      </p>
+    </div>
+  </div>
+</article>
+
+<!-- 2 ---------------------------------------------------------------- -->
+<article class="point" id="p2">
+  <div class="pnum">2</div>
+  <div class="pbody">
+    <h3>בחירת כמה ימים בבת אחת</h3>
+    <p class="said">
+      הכפתורים של ״הימים להצעה״ לא עובדים טוב כשצריך לבחור כמה.
+    </p>
+    <p class="tension">
+      הסיבה שזה לא עובד היא שהם <b>נראים כמו סגמנט ומתנהגים כמו צ׳קבוקס</b>.
+      סגמנט מלמד ״בחר אחד״, אז אנשים לוחצים פעם אחת ומפסיקים. ואין שום מקום
+      שאומר כמה כבר נבחרו — אז גם מי שהבין לא יודע איפה הוא עומד.
+    </p>
+    <div class="opts">
+      <div class="opt">
+        <span class="ol">א</span>
+        <div>
+          <h4>צ׳יפים עם וי ומונה</h4>
+          <p>אותם כפתורים, אבל וי מופיע בתוך הנבחר ומתחת יושב ״3 מתוך 4״.</p>
+          <p class="cost">שינוי קטן, אבל צ׳יפ בשורה עדיין לא נראה כמו משהו שבוחרים ממנו כמה.</p>
+        </div>
+      </div>
+      <div class="opt">
+        <span class="ol">ב</span>
+        <div>
+          <h4>גרירה על רצועת שבוע</h4>
+          <p>מסמנים טווח בהחלקה אחת.</p>
+          <p class="cost">מצוין לימים רצופים, גרוע ל״שלישי וגם שישי״ — שזה הרוב.</p>
+        </div>
+      </div>
+      <div class="opt pick">
+        <span class="ol">ג</span>
+        <div>
+          <h4>לוח קטן של שבועיים</h4>
+          <p>לוח תאריכים מוקטן שבוחרים בו בנגיעה, כמו בכל בורר תאריכים.</p>
+          <p class="cost">תופס יותר גובה מהשורה הנוכחית.</p>
+        </div>
+      </div>
+    </div>
+    <div class="mock">
+      <div class="grid14">
+        <div class="h">א</div><div class="h">ב</div><div class="h">ג</div><div class="h">ד</div><div class="h">ה</div><div class="h">ו</div><div class="h">ש</div>
+        <div class="d off">30</div><div class="d off">31</div><div class="d">1</div><div class="d">2</div><div class="d">3</div><div class="d on">4</div><div class="d">5</div>
+        <div class="d">6</div><div class="d on">7</div><div class="d">8</div><div class="d">9</div><div class="d on">10</div><div class="d">11</div><div class="d">12</div>
+      </div>
+      <div class="counter"><b>3 מתוך 4</b> ימים נבחרו</div>
+      <p class="cap">
+        לוח הוא הצורה היחידה שכולם כבר יודעים לבחור בה כמה תאריכים. המונה למטה
+        לוקח את התפקיד השני של סעיף 4 — הוא כבר מראה את התקרה לפני שנתקלים בה.
+      </p>
+    </div>
+    <div class="rec">
+      <h5>ההמלצה</h5>
+      <p>
+        <b>ג׳ עם המונה של א׳.</b> הלוח פותר את ״לא הבנתי שאפשר כמה״ בלי להסביר
+        כלום, והמונה פותר את ״כמה כבר בחרתי״. שניהם ביחד גם מכינים את הקרקע
+        לסעיף 4: כשלוחצים על תאריך חמישי, המונה רוטט והמסך שואל מה להסיר —
+        במקום שהנגיעה פשוט לא תעשה כלום, שזה הכי מבלבל שיש.
+      </p>
+    </div>
+  </div>
+</article>
+
+<!-- 3 ---------------------------------------------------------------- -->
+<article class="point" id="p3">
+  <div class="pnum">3</div>
+  <div class="pbody">
+    <h3>להזמין קבוצה, לא רק אנשים</h3>
+    <p class="said">
+      אפשרות לבחור קבוצת חברים — פוקר, פאדל, האו״ם — ולא רק אנשים בודדים.
+      הכי נפוצים ראשונים, עד שלוש שורות, ומעבר לזה חיפוש.
+    </p>
+    <p class="tension">
+      קבוצות כבר קיימות באנשי הקשר מהסבב הזה. ההתלבטות היא אם קבוצה היא
+      <b>ישות שמזמינים</b> או <b>קיצור דרך לבחירת אנשים</b>. ההבדל מתגלה
+      בדיוק במקרה הנפוץ: ״פוקר בלי דן השבוע״.
+    </p>
+    <div class="opts">
+      <div class="opt pick">
+        <span class="ol">א</span>
+        <div>
+          <h4>רשימה אחת, קבוצות נעוצות למעלה</h4>
+          <p>שדה חיפוש אחד מעל הכול; הקבוצות תמיד ראשונות, אחריהן אנשים לפי תדירות.</p>
+          <p class="cost">בקבוצה עם שם דומה לשם של בן אדם צריך להבדיל ויזואלית.</p>
+        </div>
+      </div>
+      <div class="opt">
+        <span class="ol">ב</span>
+        <div>
+          <h4>שתי לשוניות — קבוצות / אנשים</h4>
+          <p>הפרדה נקייה, אין בלבול בין השניים.</p>
+          <p class="cost">מי שרוצה ״הקבוצה וגם יעל״ עובר לשונית באמצע. זה נפוץ.</p>
+        </div>
+      </div>
+      <div class="opt">
+        <span class="ol">ג</span>
+        <div>
+          <h4>רשימה שטוחה לפי תדירות בלבד</h4>
+          <p>קבוצה היא פשוט עוד שורה, ומדורגת כמו כל אחד אחר.</p>
+          <p class="cost">קבוצות מעטות וחשובות ייקברו מתחת לאנשים שמדברים איתם יותר.</p>
+        </div>
+      </div>
+    </div>
+    <div class="rec">
+      <h5>ההמלצה</h5>
+      <p>
+        <b>א׳, וקבוצה שנבחרה מתפרקת מיד לצ׳יפים של החברים בה.</b> ככה קבוצה היא
+        קיצור דרך ולא קופסה סגורה — בחרת ״פוקר״, קיבלת ארבעה צ׳יפים, הורדת את דן,
+        שלחת. בלי זה כל שינוי קטן מחייב לעזוב את הקבוצה ולבחור ידנית מההתחלה.
+      </p>
+      <p>
+        על ״הכי נפוצים ראשונים״ שווה להיות מדויקים, כי זה סוג הדירוג שמרגיש
+        שבור כשהוא טועה: <b>הודעות שהוחלפו ותיאומים משותפים ב־90 הימים האחרונים</b>,
+        וכשאין היסטוריה — לפי א״ב, אף פעם לא רשימה ריקה. שלוש שורות ואז גלילה
+        וחיפוש, בדיוק כמו הכלל שכבר קבענו לקבוצות באנשי הקשר.
+      </p>
+    </div>
+  </div>
+</article>
+
+<!-- 4 ---------------------------------------------------------------- -->
+<article class="point" id="p4">
+  <div class="pnum">4</div>
+  <div class="pbody">
+    <h3>ארבע אופציות, והחמישית שממתינה</h3>
+    <p class="said">
+      עד ארבע אופציות; כדי להוסיף צריך להוריד. מי שלא יצר את התיאום יכול להוסיף
+      אופציה אחת נוספת — היא מופיעה כממתינה, רק היוצר רואה אותה והוא מחליט.
+    </p>
+    <p class="tension">
+      אלו שתי שאלות נפרדות שנראות כמו אחת. הראשונה היא <b>מה קורה בנגיעה החמישית</b>,
+      והשנייה היא <b>מי רואה הצעה שעוד לא אושרה</b>.
+    </p>
+    <div class="opts">
+      <div class="opt">
+        <span class="ol">א</span>
+        <div>
+          <h4>התקרה נועלת</h4>
+          <p>בארבע, ה״+״ מאפור עם רמז ״הסר אחת כדי להוסיף״.</p>
+          <p class="cost">מסך שלא מגיב הוא המקום שבו אנשים חושבים שמשהו נשבר.</p>
+        </div>
+      </div>
+      <div class="opt pick">
+        <span class="ol">ב</span>
+        <div>
+          <h4>התקרה מחליפה</h4>
+          <p>הנגיעה החמישית שואלת ״מה להסיר?״ ומראה את הארבע. נגיעה שנייה מחליפה.</p>
+          <p class="cost">אין. זה אותו מספר נגיעות, רק בלי מבוי סתום.</p>
+        </div>
+      </div>
+    </div>
+    <div class="mock">
+      <div class="vrow">
+        <div class="vopt"><div class="vtop"><span class="vlabel">שלישי, 8 בספטמבר · ערב</span><span class="vcount">3/5</span></div></div>
+        <div class="vopt pend">
+          <div class="vtop"><span class="vlabel">חמישי, 10 בספטמבר · ערב</span><span class="pendtag">ממתין לאישורך</span></div>
+          <div class="mockbtns"><span class="mb">אישור</span><span class="mb ghost">לא הפעם</span></div>
+        </div>
+      </div>
+      <p class="cap">
+        ככה זה נראה אצל היוצר בלבד. אצל מי שהציע זה נראה אותו דבר, אבל התווית
+        אומרת ״נשלח ליוצר״ ואין כפתורים. אצל כל השאר האופציה הזאת פשוט לא קיימת.
+      </p>
+    </div>
+    <div class="rec">
+      <h5>ההמלצה</h5>
+      <p>
+        <b>ב׳ לתקרה, ורק היוצר רואה את הממתינה — כמו שביקשת.</b> אופציה שעלולה
+        להיעלם היא גרועה יותר מאופציה שמגיעה באיחור: מי שכבר הצביע עליה ואז היא
+        נמחקה מרגיש שההצבעה שלו נזרקה.
+      </p>
+      <p>
+        דבר אחד להוסיף למה שתיארת: <b>מי שהציע חייב לראות שההצעה שלו יצאה.</b>
+        בלי זה הוא מציע שוב. הוא רואה אותה כ״נשלח ליוצר״, בלי אפשרות להצביע עליה,
+        עד שהיא מאושרת. ואם היוצר מאשר כשהרשימה כבר מלאה — נכנס בדיוק אותו מסך
+        החלפה של ב׳.
+      </p>
+    </div>
+  </div>
+</article>
+
+<!-- 5 ---------------------------------------------------------------- -->
+<article class="point" id="p5">
+  <div class="pnum">5</div>
+  <div class="pbody">
+    <h3>אחרי התאריך — השעה</h3>
+    <p class="said">
+      אחרי שבוחרים תאריך, לבחור גם את השעה — בוקר, צהריים, 15:00, כל היום.
+    </p>
+    <p class="tension">
+      ההתלבטות היא <b>כמה פעמים לשאול</b>. אם כל תאריך מקבל שעה משלו, תיאום של
+      ארבעה ימים הוא חמש החלטות במקום שתיים — והרוב המוחלט של התיאומים הם
+      ״ערב כלשהו השבוע״, כלומר שעה אחת לכל הימים.
+    </p>
+    <div class="opts">
+      <div class="opt">
+        <span class="ol">א</span>
+        <div>
+          <h4>שעה לכל יום, תמיד</h4>
+          <p>אחרי בחירת הימים, מסך שני שעובר עליהם אחד־אחד.</p>
+          <p class="cost">מחיר מלא בכל תיאום בשביל מקרה שהוא המיעוט.</p>
+        </div>
+      </div>
+      <div class="opt pick">
+        <span class="ol">ב</span>
+        <div>
+          <h4>פס זמן אחד לכל התיאום</h4>
+          <p>״ערב״ חל על כל הימים שנבחרו. קישור קטן פותח שעה נפרדת לכל יום.</p>
+          <p class="cost">מי שבאמת צריך שונה לכל יום עושה נגיעה אחת נוספת.</p>
+        </div>
+      </div>
+      <div class="opt">
+        <span class="ol">ג</span>
+        <div>
+          <h4>שעה מדויקת בלבד</h4>
+          <p>בלי פסים — כל אופציה היא תאריך ושעה.</p>
+          <p class="cost">מכריח לדעת מראש מה שהתיאום בא לגלות.</p>
+        </div>
+      </div>
+    </div>
+    <div class="rec">
+      <h5>ההמלצה</h5>
+      <p>
+        <b>ב׳ — פס אחד כברירת מחדל, ״שעה שונה לכל יום״ כקישור.</b> ארבעה פסים:
+        בוקר (עד 12), צהריים (12–17), ערב (מ־17), ושעה מדויקת שפותחת שדה.
+        ״כל היום״ לא נמצא ברשימה הזאת בכוונה — הוא הנושא של הסעיף הבא, והוא
+        לא סוג של שעה.
+      </p>
+    </div>
+  </div>
+</article>
+
+<!-- 6 ---------------------------------------------------------------- -->
+<article class="point" id="p6">
+  <div class="pnum">6</div>
+  <div class="pbody">
+    <h3>״יום שלם״ מול ״מתי שתרצו״</h3>
+    <p class="said">
+      להבדיל בין אירוע של יום שלם לבין ״פנוי מתי שתרצו באותו יום״.
+    </p>
+    <p class="tension">
+      זו הנקודה החדה ביותר ברשימה, כי אלו שני דברים שונים לגמרי שהעברית והאנגלית
+      נותנות להם את אותה מילה. אחד הוא <b>תשובה על זמינות</b> — ״לי זה מתאים בכל
+      שעה״. השני הוא <b>תכונה של האירוע</b> — טיול, חתונה, יום שאין בו שעות.
+    </p>
+    <div class="opts">
+      <div class="opt pick">
+        <span class="ol">א</span>
+        <div>
+          <h4>שתי מילים שונות</h4>
+          <p>זמינות: ״מתי שתרצו״. אופי האירוע: ״יום שלם״. באנגלית — Any time מול All day.</p>
+          <p class="cost">צריך להקפיד עליהן בכל מקום, כולל בהודעות שיוצאות.</p>
+        </div>
+      </div>
+      <div class="opt">
+        <span class="ol">ב</span>
+        <div>
+          <h4>אותה מילה, אייקון אחר</h4>
+          <p>שומר על אוצר מילים קטן.</p>
+          <p class="cost">אייקון שמבדיל בין שתי משמעויות של אותה מילה — אף אחד לא מפענח אותו.</p>
+        </div>
+      </div>
+    </div>
+    <div class="rec">
+      <h5>ההמלצה</h5>
+      <p>
+        <b>א׳, ו״יום שלם״ נקבע פעם אחת על ידי היוצר — לא מוצע כתשובה.</b>
+        כשהיוצר מסמן שהתיאום הוא לאירוע של יום שלם, פסי הזמן של סעיף 5 נעלמים
+        לגמרי: אי אפשר להיות גמיש לגבי שעות באירוע שאין בו שעות. כשהוא לא מסומן,
+        ״מתי שתרצו״ הוא פשוט עוד תשובה אפשרית לצד בוקר/צהריים/ערב.
+      </p>
+      <p>
+        התוצאה היא שהמילים לא יכולות להתנגש: ״יום שלם״ מופיע רק במסך של היוצר,
+        ו״מתי שתרצו״ רק במסך של המשיב.
+      </p>
+    </div>
+  </div>
+</article>
+
+<!-- 7 ---------------------------------------------------------------- -->
+<article class="point" id="p7">
+  <div class="pnum">7</div>
+  <div class="pbody">
+    <h3>טווח תאריכים לחופשה</h3>
+    <p class="said">
+      טווחי תאריכים לחופשה — אולי כתיבה חופשית במקום בורר טווח.
+    </p>
+    <p class="tension">
+      זה בדיוק מה שעולמה כבר יודעת לעשות: להבין ״השבוע הבא״ או ״סוף השבוע הראשון
+      של אוקטובר״. אבל <b>ההבנה חייבת לחזור למסך לפני שהיא הופכת לאופציה</b> — טווח
+      של שמונה ימים שנקבע על סמך פענוח שגוי הוא שגיאה שאף אחד לא מגלה עד שמישהו
+      טס.
+    </p>
+    <div class="opts">
+      <div class="opt">
+        <span class="ol">א</span>
+        <div>
+          <h4>טקסט חופשי בלבד</h4>
+          <p>כותבים, עולמה מפענחת, נוצר טווח.</p>
+          <p class="cost">כשהפענוח נכשל אין לאן ליפול.</p>
+        </div>
+      </div>
+      <div class="opt">
+        <span class="ol">ב</span>
+        <div>
+          <h4>בורר טווח בלבד</h4>
+          <p>נגיעה בהתחלה, נגיעה בסוף.</p>
+          <p class="cost">״סוף אוגוסט־תחילת ספטמבר״ הוא הרבה גלילה בשביל משפט אחד.</p>
+        </div>
+      </div>
+      <div class="opt pick">
+        <span class="ol">ג</span>
+        <div>
+          <h4>טקסט חופשי שנפתח לתוך הלוח</h4>
+          <p>כותבים; מה שהובן חוזר כצ׳יפ מסומן על אותו לוח מסעיף 2, וניתן לעריכה.</p>
+          <p class="cost">שני מצבים לבנות במקום אחד.</p>
+        </div>
+      </div>
+    </div>
+    <div class="rec">
+      <h5>ההמלצה</h5>
+      <p>
+        <b>ג׳, כשהטקסט החופשי הוא הדלת הראשית.</b> הכתיבה היא מה שהופך את זה
+        למהיר, והלוח הוא מה שהופך את זה לבטוח. אם עולמה לא הבינה — היא לא מנחשת
+        ולא ממציאה טווח, אלא פותחת את הלוח על החודש הנכון ואומרת שלא הצליחה.
+      </p>
+      <p>
+        זה גם הכלל הכתוב של המערכת: לא טוענים בדיקה שלא נעשתה, ולכל זמן שעובר
+        בין כלים יש אזור זמן מפורש. טווח שמוצג לאישור לפני שהוא נשלח מקיים את
+        שניהם בלי שצריך לזכור אותם.
+      </p>
+    </div>
+  </div>
+</article>
+
+<!-- 8 ---------------------------------------------------------------- -->
+<article class="point" id="p8">
+  <div class="pnum">8</div>
+  <div class="pbody">
+    <h3>הצבעה שנראית כמו המילוי ההדרגתי במשימות</h3>
+    <p class="said">
+      להשתמש בתצוגת המילוי ההדרגתי מרשימת המשימות בשביל ההצבעה על האופציות.
+    </p>
+    <p class="tension">
+      המילוי עונה על ״כמה״ מייד. אבל בתיאום פגישה השאלה האמיתית היא כמעט תמיד
+      <b>מי</b> — ״שלושה מתוך חמישה״ לא עוזר לך להחליט, ״דנה ויואב יכולים, רועי לא״
+      כן. ויש שאלה שלישית שקל לפספס: מי שעוד לא ענה הוא לא מי שאמר ״לא״.
+    </p>
+    <div class="opts">
+      <div class="opt">
+        <span class="ol">א</span>
+        <div>
+          <h4>מילוי בלבד</h4>
+          <p>הפס מתמלא לפי מי שאמר ״כן״ מתוך המוזמנים.</p>
+          <p class="cost">לא עונה על ״מי״, שזו השאלה שבגללה פותחים את התיאום.</p>
+        </div>
+      </div>
+      <div class="opt">
+        <span class="ol">ב</span>
+        <div>
+          <h4>מילוי בשתי רמות — כן ואולי</h4>
+          <p>מקטע כהה ל״כן״, בהיר ל״אולי״.</p>
+          <p class="cost">״אולי״ הוא תשובה שאפשר לא להציע בכלל, וזה מייצר החלטה נוספת לכל אחד.</p>
+        </div>
+      </div>
+      <div class="opt pick">
+        <span class="ol">ג</span>
+        <div>
+          <h4>מילוי ומתחתיו הפרצופים</h4>
+          <p>הפס לסריקה מהירה, שורת הפרצופים לתשובה האמיתית.</p>
+          <p class="cost">גובה. שורה נוספת לכל אופציה.</p>
+        </div>
+      </div>
+    </div>
+    <div class="mock">
+      <div class="vrow">
+        <div class="vopt">
+          <div class="vfill" style="width:80%"></div>
+          <div class="vtop"><span class="vlabel">שלישי, 8 בספטמבר · ערב</span><span class="vcount">4 מתוך 5</span></div>
+          <div class="faces">
+            <u style="background:#5B2FD6">מ</u><u style="background:#2F8F6B">ד</u><u style="background:#B4560A">י</u><u style="background:#8B2FA6">ר</u><u class="no">ע</u>
+          </div>
+        </div>
+        <div class="vopt">
+          <div class="vfill" style="width:40%"></div>
+          <div class="vtop"><span class="vlabel">חמישי, 10 בספטמבר · ערב</span><span class="vcount">2 מתוך 5</span></div>
+          <div class="faces">
+            <u style="background:#5B2FD6">מ</u><u style="background:#B4560A">י</u><u class="no">ד</u><u class="no">ר</u><u class="no">ע</u>
+          </div>
+        </div>
+      </div>
+      <p class="cap">
+        המסלול הריק של הפס הוא ״עוד לא ענו״, לא ״לא יכולים״ — ולכן הפרצופים
+        האפורים הם באותו אפור של מסלול ולא בצבע של דחייה.
+      </p>
+    </div>
+    <div class="rec">
+      <h5>ההמלצה</h5>
+      <p>
+        <b>ג׳.</b> אותו רכיב מילוי בדיוק מרשימת המשימות, כך שהוא כבר מוכר, ומתחתיו
+        הפרצופים. וכלל אחד שחוזר בסעיף 9: <b>״לא ענה״ ו״לא יכול״ הם לא אותו דבר</b>,
+        ואסור שהם ייראו אותו דבר בשום מקום — כי הטעות הנפוצה היא לסגור תיאום על
+        אופציה ששני אנשים עוד לא ראו.
+      </p>
+    </div>
+  </div>
+</article>
+
+<!-- 9 ---------------------------------------------------------------- -->
+<article class="point" id="p9">
+  <div class="pnum">9</div>
+  <div class="pbody">
+    <h3>מי סוגר את התיאום, ומה קורה כשלא כולם יכולים</h3>
+    <p class="said">
+      כל מי שנמצא בתיאום יכול לסגור אותו. אם לא כולם יכולים — הנגיעה הראשונה
+      שואלת ״לא כולם יכולים, בטוח?״, ונגיעה שנייה סוגרת, נועלת את התיאום ומודיעה
+      לכולם.
+    </p>
+    <p class="tension">
+      התיאור שלך נכון. הדבר היחיד שהייתי מוסיף הוא <b>שהאזהרה תדע להגיד את הדבר
+      הנכון</b>: ״יואב לא יכול״ ו״דנה ויואב עוד לא ענו״ הן שתי אזהרות שונות, והשנייה
+      היא זו שקורית יותר.
+    </p>
+    <div class="opts">
+      <div class="opt pick">
+        <span class="ol">א</span>
+        <div>
+          <h4>כל אחד סוגר, באישור דו־שלבי</h4>
+          <p>בדיוק כפי שתיארת, והאישור נוקב בשמות של מי שחסר.</p>
+          <p class="cost">מישהו יכול לסגור מוקדם מדי. האישור הוא מה שמונע את זה.</p>
+        </div>
+      </div>
+      <div class="opt">
+        <span class="ol">ב</span>
+        <div>
+          <h4>רק היוצר סוגר</h4>
+          <p>אין מצב שמישהו סוגר בשמך.</p>
+          <p class="cost">היוצר הוא לא בהכרח מי שראה ראשון שכולם ענו. תיאומים נתקעים על זה.</p>
+        </div>
+      </div>
+      <div class="opt">
+        <span class="ol">ג</span>
+        <div>
+          <h4>סגירה רק כשכולם ענו</h4>
+          <p>בלי הצבעה מלאה הכפתור נעול.</p>
+          <p class="cost">אדם אחד ששכח מקפיא את כולם. זה בדיוק המצב שבו סוגרים בלעדיו.</p>
+        </div>
+      </div>
+    </div>
+    <div class="rec">
+      <h5>ההמלצה</h5>
+      <p>
+        <b>א׳, כמו שביקשת, עם אישור שנוקב בשמות.</b> ״לסגור בכל זאת? רועי לא יכול״
+        מול ״לסגור בכל זאת? דנה ויואב עוד לא ענו״ — אותו מסך, משפט אחר. הכפתור
+        השני כתוב אחרת מהראשון (״סגור בלי דנה ויואב״), כדי שנגיעה כפולה מהירה
+        לא תסגור בטעות.
+      </p>
+      <p>
+        ההודעה שיוצאת אחרי הסגירה הולכת <b>לכל אחד בערוץ ברירת המחדל שלו</b> —
+        זה כבר משהו שהדאשבורד יודע מהסבב הזה, ואין סיבה שההודעה הזאת תהיה
+        היוצא מן הכלל.
+      </p>
+    </div>
+  </div>
+</article>
+
+<!-- 10 --------------------------------------------------------------- -->
+<article class="point" id="p10">
+  <div class="pnum">10</div>
+  <div class="pbody">
+    <h3>לצאת מתיאום</h3>
+    <p class="said">
+      אפשרות לצאת מתיאום. האחרים ממשיכים לראות את השם שלך באפור, ואצלך הוא נעלם —
+      אלא אם מזמינים אותך מחדש.
+    </p>
+    <p class="tension">
+      גם כאן התיאור נכון, ושתי השאלות שנשארות הן <b>מה קורה להצבעות שכבר הצבעת</b>
+      ו<b>מה רואים כשמזמינים מחדש</b>.
+    </p>
+    <div class="opts">
+      <div class="opt pick">
+        <span class="ol">א</span>
+        <div>
+          <h4>השם נשאר, מאופר ומחוק בקו</h4>
+          <p>כמו שביקשת — הקבוצה רואה מי היה ואיננו.</p>
+          <p class="cost">אין. זה בדיוק המידע שהקבוצה צריכה.</p>
+        </div>
+      </div>
+      <div class="opt">
+        <span class="ol">ב</span>
+        <div>
+          <h4>נעלם לגמרי מכולם</h4>
+          <p>נקי יותר.</p>
+          <p class="cost">״למה זה פתאום 3 מתוך 4?״ — נעלם מידע שאי אפשר לשחזר.</p>
+        </div>
+      </div>
+    </div>
+    <div class="rec">
+      <h5>ההמלצה</h5>
+      <p>
+        <b>א׳, כמו שביקשת</b>, ושני דברים לקבע סביבה:
+      </p>
+      <p>
+        <b>ההצבעות שלך נמשכות אבל השם נשאר.</b> המילוי בסעיף 8 יורד ל־3 מתוך 4,
+        השם מופיע מאופר מתחת, ואף אחד לא סוגר פגישה על סמך ״כן״ של מי שיצא.
+      </p>
+      <p>
+        <b>הזמנה מחדש היא הזמנה חדשה.</b> התיאום חוזר להופיע אצלך עם מה שקרה
+        בזמן שלא היית — האופציות שהתווספו, מי הצביע — ולא כאילו מעולם לא יצאת.
+      </p>
+      <p>
+        ובחזרה לסעיף 1: <b>״צא מהתיאום״ ו״הסר מהיומן״ הן שתי פעולות שלעולם לא
+        יופיעו זו לצד זו ולא ייקראו דומה.</b> אחת אומרת לכולם שאתה לא בא, השנייה
+        רק מנקה לך את היומן.
+      </p>
+    </div>
+  </div>
+</article>
+
+<!-- crosscutting ----------------------------------------------------- -->
+<section class="cross">
+  <h2>שלושה דברים שחוזרים בכל העשרה</h2>
+  <p>אלה לא סעיפים בפני עצמם — הם הכללים שגורמים לעשרת הסעיפים להסכים זה עם זה.</p>
+  <ol>
+    <li>
+      <i>א</i>
+      <div>
+        <h4>כל הודעה יוצאת בערוץ ברירת המחדל של מי שמקבל אותה</h4>
+        <p>
+          הזמנה, אופציה שנוספה, סגירה, יציאה — כולן. הדאשבורד כבר יודע את ברירת
+          המחדל של כל אחד מהסבב הזה, וגם שורת התזכורת במשימות כבר קוראת אותה.
+        </p>
+      </div>
+    </li>
+    <li>
+      <i>ב</i>
+      <div>
+        <h4>שתי פעולות שקל לבלבל מקבלות שתי מילים שונות</h4>
+        <p>
+          ״הסר מהיומן״ מול ״צא מהתיאום״ (1 ו־10), ו״יום שלם״ מול ״מתי שתרצו״ (6).
+          בשני המקרים אותה מילה לשתי משמעויות היא באג שמתגלה רק אחרי שמישהו טעה.
+        </p>
+      </div>
+    </li>
+    <li>
+      <i>ג</i>
+      <div>
+        <h4>״לא ענה״ הוא אף פעם לא ״לא יכול״</h4>
+        <p>
+          זה מופיע בשלושה מקומות: המסלול הריק של המילוי (8), הנוסח של האישור
+          הדו־שלבי (9), והשמות המאופרים של מי שיצא (10). אם השלושה לא יסכימו,
+          מישהו יסגור פגישה על סמך שתיקה.
+        </p>
+      </div>
+    </li>
+  </ol>
+</section>
+
+<section class="open">
+  <h2>מה נשאר להכריע</h2>
+  <p>בשמונה מהסעיפים ההמלצה היא מה שביקשת או הרחבה שלו. באלה אני ממש צריך תשובה:</p>
+  <ul>
+    <li>
+      <b>לוח שבועיים במקום שורת הכפתורים (2).</b> זה תופס יותר גובה מהשורה
+      הנוכחית. אם אתה מעדיף לשמור על הגובה — נלך על צ׳יפים עם וי ומונה, וזה יעבוד,
+      פשוט פחות טוב.
+    </li>
+    <li>
+      <b>קבוצה מתפרקת לצ׳יפים מיד (3).</b> זה אומר שאחרי בחירת ״פוקר״ רואים
+      ארבעה שמות ולא שם אחד. יותר נכון פונקציונלית, קצת פחות נקי ויזואלית.
+    </li>
+    <li>
+      <b>״אולי״ כתשובה שלישית (8).</b> המלצתי לוותר עליו — כן/לא/עוד לא ענה זה
+      כבר שלושה מצבים. אם אתה חושב שאנשים ירצו אותו, הוא משנה את המילוי ואת
+      האישור הדו־שלבי גם יחד.
+    </li>
+    <li>
+      <b>סדר הבנייה.</b> אני הייתי בונה 2 → 5 → 8 קודם (בחירת ימים, שעה, הצבעה) —
+      זה השלד שכל השאר נתלה עליו — ואז 3, 4, 9, 10, ולבסוף 1, 6, 7.
+    </li>
+  </ul>
+</section>
+
+<footer>
+  עולמה · תיאום פגישות · 4 בספטמבר 2026 · מסמך התלבטות, לא מפרט. שום דבר מכאן
+  עוד לא נבנה.
+</footer>
+
+</div>
