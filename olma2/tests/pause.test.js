@@ -33,8 +33,18 @@ async function userWithDailyReminder(phone, { remindAt } = {}) {
 // ---- the gate ---------------------------------------------------------------
 
 test('a paused user\'s message is dropped, whatever kind or urgency it carries', () => {
+  // `daytime()`, not `new Date()`. withinWindow is half-open (`now < end`), so
+  // an all-day window written as 00:00-23:59 excludes the final minute of the
+  // day — and this test's last assertion is the one that needs `deliver`. At
+  // 23:59 Asia/Jerusalem it got `hold`/night instead, which is a true answer
+  // about the gate and a false one about pause.
+  //
+  // It cost a real deploy on 2026-09-04: CI ran at 20:59:33 UTC, exactly 23:59
+  // in Jerusalem, `test` went red on main and `deploy` was skipped. One minute
+  // in every 1440 — the same "green thirteen hours a day" shape the suite
+  // already has a rule against, hiding in a window that reads as "always".
   const base = { window: { start: '00:00', end: '23:59' }, tz: 'Asia/Jerusalem',
-                 sentToday: 0, budget: 4, plan: 'free', now: new Date() };
+                 sentToday: 0, budget: 4, plan: 'free', now: daytime() };
   for (const row of [
     { kind: 'checkin', urgency: 'normal' },
     { kind: 'reminder', urgency: 'urgent' },   // the user picked this time — still no
