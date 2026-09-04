@@ -246,6 +246,12 @@ async function main() {
       return out;
     });
 
+    // Dated tasks onto the user's own calendar, for the people who asked for
+    // it. Deliberately not inside add_task: Google must never be in the path
+    // of saving a task (see domain/task-calendar.js).
+    const taskCalendar = require('../src/domain/task-calendar');
+    arm('task_calendar', () => withTx(pool, (c) => taskCalendar.sweepTaskCalendar(c, {})));
+
     // Behavioral evals: nightly scripted conversations against the eval
     // user, hard checks + a judge model, alerts on the credit-alarm pipe.
     // Inert until scripts/setup-eval-user.js has been run once on the box.
