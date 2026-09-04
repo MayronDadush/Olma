@@ -95,35 +95,76 @@ function sentHashFor(phone) {
 // one rotated/missing log file would spray a repair at every user whose agent
 // replied recently. Both today's and yesterday's files are read so a reply
 // composed just before midnight is still judged against its own Sent line.
-function readSentEventsFromLog(now) {
-  const raw = `${laneLog.readTail(laneLog.todayLogPath(now - 24 * 3600_000))}\n${laneLog.readTail(laneLog.todayLogPath(now))}`;
-  if (!raw.trim()) return null;
-  const out = [];
-  for (const line of raw.split('\n')) {
-    if (!line.includes('Sent message')) continue;
-    let msg = line;
-    let at = null;
-    if (line.startsWith('{')) {
-      try {
-        const o = JSON.parse(line);
-        msg = String(o.message || '');
-        at = o.time || null;
-      } catch { continue; }
+//
+// It also reports WHEN it could see, not only what it saw. readTail() takes a
+// fixed 512KB off the end of a file that grows to ~6MB a day, so the read
+// reaches back ~100 minutes on a normal day and far less during a burst or
+// after a gateway restart reopened the file. Without that, "the window opened
+// after the reply was composed" and "the reply was never sent" are the same
+// empty array — this project collapsing could-not-see into did-not-happen
+// once more, and the reason user 8 was sent a delivered answer a second time
+// at 00:53 on 2026-09-02.
+//
+// Pure, and separate from the read so the window arithmetic is testable
+// without a file on disk — the same split lane-watchdog keeps between
+// readTail() and parseEvents().
+//
+// One window PER FILE, never a single span across both. Each tail is 512KB off
+// the end of its own day, so the two do not meet: measured live on 2026-09-04,
+// yesterday's reached 22:00-23:59 and today's 07:19-now, with seven unread
+// hours between them. A lowest-of-both horizon would have called that gap
+// covered — the same could-not-see-scored-as-did-not-happen mistake one level
+// further in.
+//
+// The current file is still being appended to, so its window runs to now
+// rather than to its last line: a quiet ten minutes is not a blind ten
+// minutes. A finished day's file ends where it ends.
+function parseSentEvents(chunks) {
+  const events = [];
+  const windows = [];
+  for (const { raw, openEnded } of chunks) {
+    let from = null;
+    let to = null;
+    for (const line of String(raw || '').split('\n')) {
+      // readTail slices mid-line, so the first line of each tail is usually a
+      // fragment. Every timestamped line dates the window, not only Sent ones.
+      if (!line.startsWith('{')) continue;
+      let o;
+      try { o = JSON.parse(line); } catch { continue; }
+      const t = Date.parse(o.time || '');
+      if (Number.isNaN(t)) continue;
+      if (from === null || t < from) from = t;
+      if (to === null || t > to) to = t;
+      const m = SENT_LINE.exec(String(o.message || ''));
+      if (m) events.push({ at: t, hash: m[1] });
     }
-    const m = SENT_LINE.exec(msg);
-    if (!m || !at) continue;
-    const t = Date.parse(at);
-    if (!Number.isNaN(t)) out.push({ at: t, hash: m[1] });
+    if (from !== null) windows.push({ from, to: openEnded ? Infinity : to });
   }
-  return out;
+  // Read something, but could not date any of it: the window is unknown, which
+  // is not the same as empty.
+  return windows.length ? { events, windows } : null;
+}
+
+// Was the log demonstrably being read at this moment? Not "is it near the
+// window" — inside one contiguous window, or the answer is unknown.
+function covers(sent, at) {
+  return !!sent && Array.isArray(sent.windows)
+    && sent.windows.some((w) => w.from <= at && at <= w.to);
+}
+
+function readSentEventsFromLog(now) {
+  return parseSentEvents([
+    { raw: laneLog.readTail(laneLog.todayLogPath(now - 24 * 3600_000)), openEnded: false },
+    { raw: laneLog.readTail(laneLog.todayLogPath(now)), openEnded: true },
+  ]);
 }
 
 // An undelivered reply is only repaired when it was a reply to the PERSON —
 // the previous turn is a real user message, not an injected proactive
 // instruction. A lost proactive delivery is the outbox's own row and its own
 // retry ladder; a second voice re-sending it from here would race that.
-function undeliveredReply(msgs, sentEvents, phone, now) {
-  if (!Array.isArray(sentEvents)) return null;
+function undeliveredReply(msgs, sent, phone, now) {
+  if (!sent || !Array.isArray(sent.events)) return null;
   const seq = (msgs || []).filter((m) => (m.role === 'user' || m.role === 'assistant') && m.at);
   const last = seq[seq.length - 1];
   const prev = seq[seq.length - 2];
@@ -135,8 +176,17 @@ function undeliveredReply(msgs, sentEvents, phone, now) {
   const age = now - composedAt;
   if (!(age >= MIN_AGE_MS && age <= MAX_AGE_MS)) return null;
 
+  // The window has to have been open when the send would have happened, or its
+  // silence is not evidence. This is the check that was missing on 2026-09-02,
+  // when user 8's delivered reply was declared lost 26 minutes later and sent
+  // to her a second time, at 00:53, inside her quiet hours. Refusing here can
+  // miss a genuine loss — that trade is deliberate: a duplicate of an answer
+  // somebody already read is worse than a late one, and case (a) above still
+  // catches the commoner failure with no log at all.
+  if (!covers(sent, composedAt - SENT_SLACK_MS)) return null;
+
   const hash = sentHashFor(phone);
-  const delivered = sentEvents.some((e) => e.hash === hash && e.at >= composedAt - SENT_SLACK_MS);
+  const delivered = sent.events.some((e) => e.hash === hash && e.at >= composedAt - SENT_SLACK_MS);
   return delivered ? null : { composedAt: last.at, age };
 }
 
@@ -262,6 +312,6 @@ async function sweepUnanswered(client, { readMessages, readSentEvents, now = Dat
 }
 
 module.exports = {
-  sweepUnanswered, sentHashFor, undeliveredReply, readSentEventsFromLog,
+  sweepUnanswered, sentHashFor, undeliveredReply, readSentEventsFromLog, parseSentEvents, covers,
   MIN_AGE_MS, MAX_AGE_MS, SENT_SLACK_MS,
 };
