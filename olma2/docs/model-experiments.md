@@ -387,3 +387,128 @@ Method note, recorded because the numbers looked like a result: measurements
 taken AFTER a rejected write are worthless — the reload never applied, so
 both sides measure the same config and it reads as a confident "no change".
 Always confirm the reload was accepted before believing a before/after.
+
+## Runs #27-#32 — 2026-09-02/03 — the GPT tier, for boost mode
+
+Different question from every pilot above it. Those asked *"should this
+replace the default?"*; this one asked **"what should the demo switch
+switch TO?"** — a model that runs for ten to thirty minutes at a time
+while the product is being shown to investors, where latency and a clean
+board matter and the bill does not. Owner's steer was explicit: test the
+GPT tier, pick one. That is why a 2.5x price finding below is a footnote
+rather than a disqualification.
+
+**The incumbent is not on trial here.** `deepseek-v4-flash` stays the
+default; nothing in this section proposes moving real users. The output is
+the `boost_model` flag's default value, and it is a flag precisely so this
+choice can be revisited without a deploy.
+
+### Two harness failures first, because both are worth a line
+
+- **#27 — `0 green · 9 error`, every scenario identical:** *"Legacy
+  workspace setup state requires migration for
+  `/root/.openclaw/workspaces/u-15`; run `openclaw doctor --fix`."* The
+  eval user's own workspace had been caught by the provisioning trap that
+  PR #110 later closed. Fixed with `doctor --fix`; recorded here because
+  **the eval harness was the thing that surfaced it** — a suite that runs
+  a real agent in a real workspace fails the same way a real user does,
+  which is the entire argument for it existing.
+- **#28 — `0 green · 9 error`:** *"Model override ... is not allowed for
+  agent u-15 by `agents.defaults.modelPolicy.allow`."* This is the
+  three-gate registration problem, diagnosed properly in **"The registration
+  script was writing two of three gates"** above — read that, not this. Noted
+  here only because it is what a pilot looks like from the outside when it
+  hits: nine identical errors, no agent turn ever attempted, and a message
+  that names the missing gate if you read past the first line.
+
+### #29 — `gpt-5.4-nano` — disqualified, 786s
+
+`3 green · 2 yellow · 2 red · 2 error`. Both reds are **hard-check**
+failures, which is the axis that ends a candidacy:
+
+| scenario | what it did |
+|---|---|
+| `not-chatgpt-essay` | **wrote the essay** — 1425 chars on Herzl, when the whole scenario is that Olma is not ChatGPT |
+| `general-knowledge` | **delivered the lecture** — 1002 chars |
+
+Not a tone problem and not a judge opinion: the check is a length bound on
+the reply, and it blew through both. A demo model that answers a general
+knowledge question with a thousand-character essay is worse than the
+incumbent in the exact moment someone is watching. The two errors were the
+judge's own unparseable-reply wobble, and the `stop-service` yellow was
+`רוצה שאני אחזור להיות איתך בקשר?` — a retention pitch the stop doctrine
+forbids. Enough on its own.
+
+### #30 and #31 — `gpt-5.6-luna` — the pick
+
+| run | board | wall |
+|---|---|---|
+| #30 | `8 green · 0 yellow · 0 red · 1 error` | 560s |
+| #31 | **`9 green · 0 yellow · 0 red · 0 error`** | 593s |
+
+Run #31 is **the first perfect board in this project's history**. The
+single error in #30 was `general-knowledge` returning *"judge reply
+unparseable"* — the documented Kimi-k2.6 harness wobble, not the agent;
+the same scenario went green on the rerun with no change to anything.
+
+Run in the same window, for the comparison that matters:
+
+### #32 — `deepseek-v4-flash`, nightly, same night
+
+`6 green · 3 yellow · 0 red · 0 error`, 998s. The three yellows are all
+the incumbent's familiar cosmetic set — `stop-service` not spelling out
+that nothing was deleted, `goal-capture` splitting three vehicles across
+three bullets instead of one line, `phone-number-contact` adding an
+unnecessary offer. **No reds.** The incumbent is not broken; it is
+scruffier.
+
+### What the numbers actually support, and what they do not
+
+**Correctness — strong.** 18 luna scenarios, zero reds, zero yellows,
+against 9 incumbent scenarios with 3 yellows. Both the boundary scenarios
+a demo would embarrass us on (`stranger-meeting-boundary`,
+`not-chatgpt-essay`) were green on luna both times.
+
+**Speed — real but noisier than it looks.** Suite wall time: luna 560s and
+593s against the incumbent's three most recent full runs at 785s, 746s and
+998s — about **1.4x faster** on average. But the tails overlap: luna's
+`stop-service` took **262s** in run #31, the slowest single luna scenario
+recorded, and the incumbent's `goal-capture` took 374s in #32. Median per
+scenario tells the same story with less flattery — 37s (#31) and 67s (#30)
+against 69s. **"Faster on average, not reliably faster on any one turn"**
+is the honest claim, and it is the one the boost-mode PR makes.
+
+**Price — 2.4x, and it does not matter at this duty cycle.** Recomputed
+2026-09-03 **after #118**, which found this file's own ledger-derived
+figures unreliable — luna's rows read 16x their true price, and a pilot
+argued down on a number that is not real is the opposite of what this file
+is for. So the arithmetic here deliberately does not use a ledger `cost_usd`
+at all: it takes the real seven-day **token mix** of production turns
+(`usage_ledger`, 74 rows, 2026-08-27..09-03: 55.4M input, 0.75M output,
+53.5M cache-read) and prices it through `priceUsage()` with the corrected
+table, once per model.
+
+| | 7 days | per hour engaged | 30-min demo | 2h cap |
+|---|---|---|---|---|
+| `deepseek-v4-flash` | $5.47 | — | — | — |
+| `gpt-5.6-luna` | $13.06 | +$0.045 | **+$0.023** | **+$0.090** |
+
+**Two and a bit cents for a demo, nine for a forgotten switch.** This is the
+cheapest line item in the system and is not a reason to choose either way —
+which is why the correction changed nothing about the decision. Worth saying
+plainly: the pre-#118 version of this paragraph claimed $4.36 vs $10.70 and
+$0.038/hour. The ratio survived; the dollars did not. If a future pilot's
+price argument is close enough that 2.4x versus 2.5x would decide it, price
+the token mix rather than reading a cost column.
+
+**Meeting coordination — partially answered, and stated as such.**
+`stranger-meeting-boundary` (refusing to arrange with a non-connection) was
+green on luna in both runs, and earlier tool-argument checks were correct.
+But **there is no end-to-end negotiation scenario in the suite** — nothing
+drives propose → counter → confirm across two users. So the evidence covers
+the boundary and the argument shapes, not a full negotiation. Worth
+building as scenario #10; until then, do not claim more than this.
+
+**Not measured:** anything under concurrent load. Every pilot here is one
+disposable session at a time, and a demo is one conversation at a time, so
+the gap is acceptable for this decision and would not be for a default swap.

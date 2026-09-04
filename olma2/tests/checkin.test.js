@@ -213,6 +213,10 @@ test('day-one steps never count as misses; regular checkins still do', async () 
 test('a broken calendar is not pitched like a new one', async () => {
   const checkin = require('../src/jobs/checkin');
   const u = await makeUser(db.pool, '+972641000060', { firstName: 'Noam' });
+  // These three are about the OTHER gaps, so settle the timezone one — it now
+  // leads the list, and an unconfirmed zone would win every pick here.
+  await db.pool.query(
+    `UPDATE users SET timezone = 'Asia/Jerusalem', timezone_confirmed = TRUE WHERE id = $1`, [u.id]);
   const c = await db.pool.connect();
   try {
     // close every other gap so the calendar one is what gets picked
@@ -258,6 +262,10 @@ test('a broken calendar is not pitched like a new one', async () => {
 test('a discovery topic already offered is never offered again, even as the last gap standing', async () => {
   const checkin = require('../src/jobs/checkin');
   const u = await makeUser(db.pool, '+972641000062', { firstName: 'Sivan' });
+  // These three are about the OTHER gaps, so settle the timezone one — it now
+  // leads the list, and an unconfirmed zone would win every pick here.
+  await db.pool.query(
+    `UPDATE users SET timezone = 'Asia/Jerusalem', timezone_confirmed = TRUE WHERE id = $1`, [u.id]);
   const c = await db.pool.connect();
   try {
     // close every gap except calendar, so calendar is the ONLY thing left to
@@ -298,9 +306,57 @@ test('a discovery topic already offered is never offered again, even as the last
   } finally { c.release(); }
 });
 
+test('the timezone gap leads discovery, and closes itself once they answer', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const u = await makeUser(db.pool, '+972641000071', { firstName: 'Dana' });
+  const c = await db.pool.connect();
+  try {
+    // A guessed zone outranks the digest pitch: offering a 09:00 digest against
+    // a zone nobody confirmed schedules the very bug it looks helpful doing.
+    await c.query(`UPDATE users SET timezone = 'America/New_York' WHERE id = $1`, [u.id]);
+    await c.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, 'א'), ($1, 'ב')`, [u.id]);
+    let pick = await checkin.pickRung(c, u.id);
+    assert.equal(pick.rung, 'discovery');
+    assert.equal(pick.topic, 'timezone');
+    assert.match(pick.instruction, /America\/New_York/, 'it names the guess it wants replaced');
+    assert.match(pick.instruction, /CITY/, 'it asks for a city, not an IANA name');
+    assert.match(pick.instruction, /travel/, 'and it is where they learn to say so when they travel');
+
+    // They answer. The gap is real only while it is real, so it disappears —
+    // and what it hands back is the digest pitch it was standing in front of.
+    const users = require('../src/domain/users');
+    const set = await users.setTimezone(c, u.id, 'Europe/Madrid', true);
+    assert.equal(set.ok, true);
+    pick = await checkin.pickRung(c, u.id);
+    assert.equal(pick.topic, 'digest');
+  } finally {
+    c.release();
+  }
+});
+
+test('a zone we never had at all is asked about too, and says so', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const u = await makeUser(db.pool, '+972641000072', { firstName: 'Tal' });
+  const c = await db.pool.connect();
+  try {
+    // NULL is the worse case, not the absent one: the gate and the digest
+    // sweep both read it as UTC rather than as "unknown" (CLAUDE.md).
+    await c.query(`UPDATE users SET timezone = NULL WHERE id = $1`, [u.id]);
+    const pick = await checkin.pickRung(c, u.id);
+    assert.equal(pick.topic, 'timezone');
+    assert.match(pick.instruction, /UTC/);
+  } finally {
+    c.release();
+  }
+});
+
 test('discovery outranks generic silence, is gap-driven, and rotates topics', async () => {
   const checkin = require('../src/jobs/checkin');
   const u = await makeUser(db.pool, '+972641000032', { firstName: 'Omer' });
+  // These three are about the OTHER gaps, so settle the timezone one — it now
+  // leads the list, and an unconfirmed zone would win every pick here.
+  await db.pool.query(
+    `UPDATE users SET timezone = 'Asia/Jerusalem', timezone_confirmed = TRUE WHERE id = $1`, [u.id]);
   const c = await db.pool.connect();
   try {
     // no digest + 2 open tasks → the digest gap leads

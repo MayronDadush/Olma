@@ -29,6 +29,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { ok, err } = require('./results');
 
 // Best-effort, exactly as provision.js treats it: a filesystem without chattr
 // keeps the old behaviour rather than failing the repair. Reports whether the
@@ -105,4 +106,116 @@ async function repairIdentityFiles(client, { apply = false, run, log } = {}) {
   return { repaired, alreadyOk, missing, locked, lockFailed };
 }
 
-module.exports = { repairIdentityFiles, setImmutable };
+// ---- rotating a token that leaked ------------------------------------------
+// A token that reached a real person's chat (domain/token-leak.js) stays
+// exposed for exactly as long as it keeps working, so the only remediation is
+// a different one. Almost all of that machinery already existed and is
+// reviewed: scripts/resync-agent-templates.js renders AGENTS.md per user from
+// users.identity_token, and repairIdentityFiles above rewrites .olma-identity
+// from the same column. The only missing piece was minting the new value and
+// swapping it in without locking somebody out of their own agent mid-sentence.
+//
+// ORDER IS THE WHOLE DESIGN. The token lives in three places: the DB (the
+// verifier — domain/users.resolveByToken), AGENTS.md (the primary, read into
+// context at session start) and .olma-identity (the recovery path that both
+// the doctrine and bin/olma-mcp.js point at). Writing the FILE first is what
+// makes this safe:
+//
+//   1. .olma-identity ← new   DB and AGENTS.md are both still old, so the
+//                             token already in the model's context keeps
+//                             working. Nothing fails during this window.
+//   2. DB             ← new   the in-context token dies this instant. The
+//                             agent's next call fails once with "unknown
+//                             identity token", whose own text tells it to
+//                             re-read .olma-identity — which step 1 fixed.
+//   3. AGENTS.md      ← new   so the NEXT session starts correct instead of
+//                             paying for that fallback on every turn.
+//
+// Every other order leaves a window where the file and the DB are wrong at the
+// same time, and that window is a total auth failure rather than one retried
+// call. The live session cannot be spared completely — AGENTS.md is read at
+// session start, so its context holds the dead token until the session rotates
+// — but one extra tool call per turn is precisely what the 2026-08-27 recovery
+// path was built to absorb.
+//
+// The new token is never logged, never audited and never returned. A rotation
+// caused by a leak must not become the next place the credential is written
+// down; the audit row carries fingerprints, which is what token-leak.js
+// compares on anyway.
+async function rotateIdentityToken(client, { userId, apply = false, run, log, mint, reason } = {}) {
+  const say = log || (() => {});
+  const users = require('./users');
+  const { fingerprint } = require('./token-leak');
+  const { renderAgentsMd } = require('../intake/provision');
+
+  const { rows } = await client.query(
+    `SELECT id, phone, first_name, status, workspace_path, identity_token
+       FROM users WHERE id = $1`, [userId]);
+  const u = rows[0];
+  if (!u) return err('not_found', `no user ${userId}`);
+  if (u.status !== 'active') return err('invalid', `user ${userId} is ${u.status}, not active`);
+  if (!u.workspace_path) return err('invalid', `user ${userId} has no workspace`);
+  if (!u.identity_token) return err('invalid', `user ${userId} has no token to rotate`);
+
+  const identityPath = path.join(u.workspace_path, '.olma-identity');
+  const agentsPath = path.join(u.workspace_path, 'AGENTS.md');
+
+  // Both files must already be there. A rotation that CREATES either one is
+  // writing a live credential into a directory that may no longer be this
+  // person's workspace — the same refusal repairIdentityFiles makes above,
+  // and the stakes here are higher because the value is brand new.
+  for (const [label, p] of [['.olma-identity', identityPath], ['AGENTS.md', agentsPath]]) {
+    if (!fs.existsSync(p)) return err('invalid', `user ${userId} has no ${label} at ${p} — repair that first`);
+  }
+
+  const oldFp = fingerprint(u.identity_token);
+  say(`  user ${u.id} ${u.first_name || u.phone}: token ${oldFp} → a new one`);
+  say(`    .olma-identity  ${identityPath}`);
+  say(`    AGENTS.md       ${agentsPath}`);
+  if (!apply) return ok({ userId: u.id, oldFingerprint: oldFp, rotated: false });
+
+  const newToken = (mint || users.newIdentityToken)();
+  const newFp = fingerprint(newToken);
+  // Refusing this is cheap and the alternative is silent: a mint that returned
+  // the same value, or a malformed one, would "rotate" nothing while every
+  // report said it had.
+  if (!newFp || newFp === oldFp || !/^olma_tok_[0-9a-f]{32}$/.test(newToken)) {
+    return err('internal', 'minted token is unusable — nothing was changed');
+  }
+
+  // 1. the recovery path, while the old token is still the live one
+  setImmutable(identityPath, false, run);
+  fs.writeFileSync(identityPath, newToken + '\n', { mode: 0o600 });
+  fs.chmodSync(identityPath, 0o600); // writeFileSync's mode applies at creation only
+  const relocked = setImmutable(identityPath, true, run);
+  if (!relocked) say(`    ! could not set the immutable bit on ${identityPath}`);
+
+  // 2. the verifier
+  await client.query(`UPDATE users SET identity_token = $1 WHERE id = $2`, [newToken, u.id]);
+
+  // 3. the primary path
+  fs.writeFileSync(agentsPath, renderAgentsMd(newToken), { mode: 0o600 });
+  fs.chmodSync(agentsPath, 0o600);
+
+  await client.query(
+    `INSERT INTO audit_log (actor_id, event, detail) VALUES ($1, 'admin.identity_token_rotated', $2::jsonb)`,
+    [u.id, JSON.stringify({
+      source: 'domain/identity-repair',
+      reason: reason || 'token rotation',
+      oldFingerprint: oldFp, newFingerprint: newFp, relocked,
+    })]);
+
+  // Writing three files is not the same claim as replacing a credential, and
+  // only one of those is what the issue is about. Ask the verifier.
+  const nowLive = await users.resolveByToken(client, newToken);
+  const oldDead = await users.resolveByToken(client, u.identity_token);
+  const verified = nowLive.ok && Number(nowLive.data.user.id) === Number(u.id) && !oldDead.ok;
+  if (!verified) return err('internal', 'the new token does not resolve, or the old one still does');
+
+  return ok({
+    userId: u.id, oldFingerprint: oldFp, newFingerprint: newFp,
+    rotated: true, relocked, verified,
+  });
+}
+
+module.exports = { repairIdentityFiles, setImmutable, rotateIdentityToken };

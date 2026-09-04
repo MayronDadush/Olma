@@ -18,6 +18,10 @@ const JOB_INTERVAL_SECONDS = {
   unanswered_sweep: 60,
   lane_watchdog: 30,
   config_guard: 600,
+  // The demo switch. Once a minute because the two-hour expiry is re-decided
+  // every tick rather than held in a timer — a timer dies with the process and
+  // the promise "it turns itself off" has to survive a restart.
+  boost_reconcile: 60,
   checkin_ladder: 300,
   memory_consolidation: 3600,
   fact_extraction: 600,
@@ -32,6 +36,10 @@ const JOB_INTERVAL_SECONDS = {
   // Prepaid balances, measured in days of runway — nothing changes between
   // ticks, and each tick costs three external billing calls.
   balance_watch: 21600,
+  // Ratios measured per DAY, so a faster beat cannot produce a new answer —
+  // only a repeated one. Six-hourly means a regression that starts in the
+  // morning is reported the same day without this ever being a poll.
+  efficiency_watch: 21600,
   usage_sweep: 3600,
   // Twilio settles a call's price minutes after it ends; hourly re-reads of
   // the recent-calls page are how the price back-fills into the ledger.

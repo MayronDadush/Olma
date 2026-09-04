@@ -24,6 +24,8 @@ const calendar = require('../domain/calendar');
 const factsDomain = require('../domain/facts');
 const llm = require('../adapters/llm');
 const { minutesInTz } = require('../outbox/gate');
+const travel = require('../domain/travel');
+const { enqueue } = require('../outbox/enqueue');
 
 // After memory consolidation's 03:00-05:00 window, before the earliest real
 // digests — so the plan a person's agent wakes up with is from THIS morning.
@@ -218,6 +220,26 @@ async function sweepPlanning(client, deps = {}) {
         if (ev.ok) events = ev.data.events;
       } catch { /* plan without the calendar */ }
     }
+
+    // Riding the calendar read that already happened. A trip is worth noticing
+    // and nobody has a spare Google call to spend on it: this job is the ONLY
+    // place that reads every connected user's calendar on a schedule, so the
+    // signal is free here and would cost an API call per user anywhere else
+    // (and a second sweeper, which CLAUDE.md forbids for exactly this reason).
+    //
+    // It cannot fail a plan. The plan is the job; the question is a bonus.
+    try {
+      const trip = (deps.detectTrip || travel.detectTrip)(events, u.timezone, new Date(now));
+      if (trip) {
+        await enqueue(client, {
+          userId: u.id, kind: 'travel', urgency: 'normal',
+          // Once per trip, for ever — the insert is ON CONFLICT DO NOTHING, so
+          // twenty nightly runs over a two-week trip ask exactly once.
+          idempotencyKey: `travel:${u.id}:${trip.key}`,
+          payload: { zone: trip.zone, startsAt: trip.startsAt, from: u.timezone, evidence: trip.evidence },
+        });
+      }
+    } catch { /* a missed question never costs somebody their plan */ }
 
     const brief = buildBrief({ user: u, tasks, reminders, events, facts, now });
     const res = await complete({ ...(await llm.backgroundModel(client)), user: brief, timeoutMs: CALL_TIMEOUT_MS });

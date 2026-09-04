@@ -182,3 +182,82 @@ test('an all-day event renders as "כל היום", never as a 03:00 tz artifact'
   assert.match(brief, /offer a\n?.*reminder to send greetings/,
     'the plan suggests offering a reminder, never greeting on their behalf');
 });
+
+// ---- travel: the question that rides the plan's own calendar read ---------
+
+test('a trip on the calendar becomes one question, asked once and never again', async () => {
+  const u = await seedPlannable('+972593000041');
+  await db.pool.query(
+    `INSERT INTO integrations (user_id, provider, status, access_level)
+     VALUES ($1, 'google_calendar', 'connected', 'read_only')`, [u.id]);
+
+  // Two mornings in the same foreign clock — a trip, not a call.
+  const events = [
+    { id: 'a', title: 'standup', start: '2026-09-10T08:00:00Z', end: '2026-09-10T09:00:00Z',
+      timeZone: 'Europe/Berlin', allDay: false, location: null },
+    { id: 'b', title: 'standup', start: '2026-09-11T08:00:00Z', end: '2026-09-11T09:00:00Z',
+      timeZone: 'Europe/Berlin', allDay: false, location: null },
+  ];
+  const deps = {
+    now: SIX_AM_IL,
+    complete: async () => modelPlan({ headline: 'h', bullets: ['a'] }),
+    listEvents: async () => ({ ok: true, data: { events } }),
+  };
+  await withClient(async (c) => {
+    await planning.sweepPlanning(c, deps);
+    const { rows } = await c.query(
+      `SELECT payload, idempotency_key FROM outbox WHERE user_id = $1 AND kind = 'travel'`, [u.id]);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].payload.zone, 'Europe/Berlin');
+    assert.equal(rows[0].payload.from, 'Asia/Jerusalem');
+
+    // Twenty nights of the same trip must not become twenty questions.
+    await c.query(`UPDATE user_plans SET built_at = now() - interval '2 days' WHERE user_id = $1`, [u.id]);
+    await planning.sweepPlanning(c, deps);
+    const again = await c.query(
+      `SELECT count(*)::int AS n FROM outbox WHERE user_id = $1 AND kind = 'travel'`, [u.id]);
+    assert.equal(again.rows[0].n, 1, 'the idempotency key holds across runs');
+  });
+});
+
+test('a calendar with nothing foreign in it asks nothing, and the plan is built either way', async () => {
+  const u = await seedPlannable('+972593000042');
+  await db.pool.query(
+    `INSERT INTO integrations (user_id, provider, status, access_level)
+     VALUES ($1, 'google_calendar', 'connected', 'read_only')`, [u.id]);
+  await withClient(async (c) => {
+    const res = await planning.sweepPlanning(c, {
+      now: SIX_AM_IL,
+      complete: async () => modelPlan({ headline: 'h', bullets: ['a'] }),
+      // One foreign meeting: a video call, and the exact false positive that
+      // would make this feature noise.
+      listEvents: async () => ({ ok: true, data: { events: [
+        { id: 'a', title: 'call', start: '2026-09-10T08:00:00Z', end: '2026-09-10T09:00:00Z',
+          timeZone: 'Europe/Berlin', allDay: false, location: null },
+      ] } }),
+    });
+    assert.ok(res.planned.includes(u.id));
+    const { rows } = await c.query(
+      `SELECT count(*)::int AS n FROM outbox WHERE user_id = $1 AND kind = 'travel'`, [u.id]);
+    assert.equal(rows[0].n, 0);
+  });
+});
+
+test('a detector that throws never costs somebody their plan', async () => {
+  const u = await seedPlannable('+972593000043');
+  await db.pool.query(
+    `INSERT INTO integrations (user_id, provider, status, access_level)
+     VALUES ($1, 'google_calendar', 'connected', 'read_only')`, [u.id]);
+  await withClient(async (c) => {
+    const res = await planning.sweepPlanning(c, {
+      now: SIX_AM_IL,
+      complete: async () => modelPlan({ headline: 'h', bullets: ['a'] }),
+      listEvents: async () => ({ ok: true, data: { events: [] } }),
+      detectTrip: () => { throw new Error('boom'); },
+    });
+    assert.ok(res.planned.includes(u.id), 'the plan is the job; the question is a bonus');
+    const { rows } = await c.query(
+      `SELECT count(*)::int AS n FROM outbox WHERE user_id = $1 AND kind = 'travel'`, [u.id]);
+    assert.equal(rows[0].n, 0);
+  });
+});

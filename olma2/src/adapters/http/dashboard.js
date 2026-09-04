@@ -9,6 +9,10 @@
 const http = require('node:http');
 const crypto = require('node:crypto');
 const flagsDomain = require('../../domain/flags');
+const occ = require('../../intake/openclaw-config');
+const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG || occ.DEFAULT_PATH;
+const boostDomain = require('../../domain/boost');
+const boostJob = require('../../jobs/boost');
 const issuesDomain = require('../../domain/issues');
 const prefsDomain = require('../../domain/preferences');
 const factsDomain = require('../../domain/facts');
@@ -30,6 +34,8 @@ const userDashboard = require('./user-dashboard');
 // cannot coast on the previous process's beat.
 const BROKERD_BEAT_MAX_AGE_S = 180;
 const infraCost = require('../infra-cost');
+const { checkGateway } = require('../gateway-health');
+const { readReleaseMarker } = require('../release-marker');
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -75,7 +81,8 @@ function ago(ts) {
 // looked at daily, not a diagnostics dump. Nothing unlabelled, nothing cryptic.
 
 const SECTIONS = [
-  { id: 'health', title: 'מצב המערכת', hint: 'האם כל התהליכים הפנימיים רצים כשורה. אדום = משהו תקוע וצריך טיפול.', render: renderHeartbeats },
+  { id: 'health', title: 'מצב המערכת', hint: 'שער התקשורת (הדרך היחידה שהודעות נכנסות ויוצאות מוואטסאפ) וכל התהליכים הפנימיים. אדום = משהו תקוע וצריך טיפול. "לא נבדק" בשער = לא הצלחנו לקרוא את ההגדרות, לא בהכרח תקלה.', render: renderHeartbeats },
+  { id: 'boost', title: 'מצב בוסט', hint: 'מתג להדגמות: מעביר את כל המשתמשים למודל המהיר והחזק ביותר, ומכבה את עצמו אחרי שעתיים. עולה יותר לדקה — לכן הוא לא נשאר דלוק בטעות.', render: renderBoost },
   { id: 'users', title: 'משתמשים', hint: 'כל מי שרשום. אפשר לקבוע לכל אחד מכסת הודעות יומית משלו.', render: renderUsers },
   { id: 'issues', title: 'תקלות ובקשות', hint: 'דברים שאולמה או המשתמשים דיווחו עליהם ומחכים לטיפול.', render: renderIssues },
   { id: 'evals', title: 'בדיקות התנהגות', hint: 'כל לילה אולמה עוברת תרחישים שנבנו מתקלות אמת — שיחה מדומה מול משתמש בדיקה, בדיקת כלים ומסד בקוד, ובדיקת ניסוח על ידי מודל שופט. אדום = כלל נשבר; צהוב = השופט הסתייג מהניסוח.', render: renderEvals },
@@ -114,16 +121,69 @@ const JOB_LABELS = {
   eval_sweep: 'בדיקות התנהגות ליליות',
 };
 
-async function renderHeartbeats(client) {
+// /health sits AHEAD of Basic Auth and Caddy publishes it, so what goes in it
+// is public. The status and the reason are the point; the port is an internal
+// detail (loopback-bound, but there is no reason to hand it out) and the
+// dashboard's own section shows it to an operator who is already logged in.
+function publicGateway(gw) {
+  return { status: gw.status, detail: gw.detail };
+}
+
+// `probe` is injectable for the same reason /health's is: this suite runs on
+// the production box and on CI runners, and neither one's real gateway proves
+// anything about the branch under test.
+async function renderHeartbeats(client, _csrf, probe) {
   const { rows } = await client.query(`SELECT * FROM job_heartbeats ORDER BY job_name`);
   const now = Date.now();
   const problems = rows.filter((r) => isStale(r.job_name, r.last_run_at, now) || (r.note && String(r.note).startsWith('ERR')));
 
-  const banner = problems.length === 0
-    ? `<div class="banner ok">✓ הכל תקין — ${rows.length} תהליכים רצים כסדרם</div>`
-    : `<div class="banner bad">⚠ ${problems.length} תהליכים דורשים תשומת לב</div>`;
+  // The gateway is not a job_heartbeats row — nothing writes one for it, which
+  // is precisely how it stayed off this page while every sweep beside it was
+  // watched. It is asked directly, and it leads the table because a dead
+  // gateway makes every green row below it beside the point.
+  let gw;
+  try { gw = await (probe || checkGateway)({ configPath: OPENCLAW_CONFIG_PATH }); }
+  catch (e) { gw = { status: 'unknown', detail: `probe failed: ${e.message}`, port: null }; }
+  const gwBad = gw.status === 'down';
+  const gwLabel = { live: 'פעיל', down: 'לא מגיב', unknown: 'לא נבדק' }[gw.status] || gw.status;
+  const gwRow = `<tr class="${gwBad ? 'bad' : ''}">
+      <td>${gwBad ? '⚠' : gw.status === 'live' ? '✓' : '–'} שער התקשורת (WhatsApp)</td>
+      <td class="dim">${esc(gwLabel)}</td>
+      <td class="dim mono">${gwBad ? esc(String(gw.detail || '').slice(0, 90)) : ''}</td></tr>`;
 
-  const tr = rows.map((r) => {
+  // The gateway is a PROCESS in this table, so it is counted in the sentence
+  // above it — a banner saying 22 over a table that lists 23 running things
+  // invites the operator to work out which one is not being counted, on the
+  // one page whose whole job is to be believed. It counts only when it was
+  // actually OBSERVED: `unknown` is neither a healthy process nor a problem,
+  // and claiming it as either is the overstatement the three-state rule
+  // exists to avoid. (The release row below is deliberately NOT counted — it
+  // is a fact about the deployment, not a process that runs.)
+  const gwCounted = gw.status !== 'unknown' ? 1 : 0;
+
+  // Which release is actually serving. deploy.sh has written the RELEASE
+  // marker since #126 and rollback.sh reads it, but nothing ever showed it to
+  // a person — so when a merge's `test` job wedged on 2026-09-03 and `deploy`
+  // was silently skipped, "is production running what I just merged?" could
+  // only be answered by grepping deployed source for a string from the diff.
+  //
+  // Shown, never alarmed on: this box cannot know main's HEAD without reaching
+  // GitHub, and a quiet week with no merges is not a fault. The value is that
+  // the question becomes a glance.
+  const rel = readReleaseMarker();
+  const relRow = `<tr>
+      <td>– הגרסה שרצה עכשיו</td>
+      <td class="dim mono">${rel.known ? esc(rel.short) : 'לא ידוע'}</td>
+      <td class="dim">${rel.known
+        ? esc([rel.at ? ago(rel.at) : null, rel.subject].filter(Boolean).join(' · ').slice(0, 110))
+        : 'אין סימון גרסה — פריסה שקדמה למעקב'}</td></tr>`;
+
+  const totalProblems = problems.length + (gwBad ? 1 : 0);
+  const banner = totalProblems === 0
+    ? `<div class="banner ok">✓ הכל תקין — ${rows.length + gwCounted} תהליכים רצים כסדרם</div>`
+    : `<div class="banner bad">⚠ ${totalProblems} תהליכים דורשים תשומת לב</div>`;
+
+  const tr = gwRow + relRow + rows.map((r) => {
     const bad = isStale(r.job_name, r.last_run_at, now) || (r.note && String(r.note).startsWith('ERR'));
     const err = r.note && String(r.note).startsWith('ERR');
     return `<tr class="${bad ? 'bad' : ''}">
@@ -553,6 +613,8 @@ const FLAG_SPECS = [
     help: 'מזהה מודל ב-OpenRouter. ריק = ברירת המחדל (meta/muse-image, ~$0.01 לתמונה).' },
   { key: 'media_video_model', label: 'מודל יצירת וידאו', type: 'text',
     help: 'מזהה מודל ב-OpenRouter. ריק = ברירת המחדל (bytedance/seedance-2.0-mini, ~$0.05 ל-4 שניות 480p).' },
+  { key: 'digest_card_min_items', label: 'מתי הסיכום היומי נשלח כתמונה', type: 'int',
+    help: 'מכמה פריטים פתוחים הסיכום של הבוקר נשלח כתמונה מצוירת במקום כטקסט. מתחת למספר הזה — משפט קצר, שתמונה במקומו רק מפריעה. 0 = בלי תמונות בכלל.' },
   { key: 'reminder_escalation_max', label: 'כמה פעמים תזכורת חוזרת', type: 'int',
     help: 'תזכורת שלא נענתה חוזרת עד למספר הזה של פעמים (כולל הראשונה). 1 = כמו פעם, פעם אחת בלבד. חוזרת רק אחרי שהקודמת באמת נמסרה, ורק לתזכורות חד-פעמיות — לתזכורת חוזרת יש כבר קצב משלה.' },
   { key: 'reminder_escalation_gap_hours', label: 'שעות בין תזכורת לחזרה עליה', type: 'num',
@@ -561,8 +623,42 @@ const FLAG_SPECS = [
     help: 'כשהסוכן מדלג על turn_start (קורה בבקשת הפסקת שירות), השרת סופר את ההודעה ומעדכן שהמשתמש ער בעצמו. ריק = כבוי; "all" = כל המשתמשים; או רשימת מספרים ב-E.164 מופרדים בפסיק, להרצה מדורגת.' },
   { key: 'public_base_url', label: 'כתובת ציבורית לקישורים', type: 'text',
     help: 'הבסיס לקישורים שנשלחים למשתמשים (למשל דף סימון הזמינות). בלי / בסוף.' },
+  { key: 'search_link_base', label: 'מנוע החיפוש לקישורים', type: 'text',
+    help: 'הבסיס לקישור החיפוש שאולמה שולחת כשהיא לא יכולה לחפש בעצמה. ריק = גוגל. חייב להתחיל ב-https ולהסתיים בפרמטר השאילתה, למשל https://duckduckgo.com/?q= — ערך לא תקין נופל חזרה לגוגל ולא שובר קישור.' },
 ];
 const EDITABLE_FLAGS = FLAG_SPECS.map((f) => f.key);
+
+// The demo switch. Deliberately its own section at the top rather than a row
+// in "הגדרות מערכת": it is the only setting that costs real money per minute
+// and turns itself off, so it needs to show a countdown, and a flag table has
+// nowhere to put one.
+async function renderBoost(client, csrf) {
+  const state = await flagsDomain.getFlag(client, boostJob.STATE_FLAG);
+  const model = await flagsDomain.getFlag(client, boostJob.MODEL_FLAG);
+  const now = new Date();
+  const on = boostDomain.isEngaged(state) && !boostDomain.expired(state, now);
+  const left = boostDomain.minutesLeft(state, now);
+
+  const button = on
+    ? `<form method="post" action="/boost" class="inline">
+         <input type="hidden" name="csrf" value="${csrf}">
+         <input type="hidden" name="action" value="off">
+         <button>כבה עכשיו</button>
+       </form>`
+    : `<form method="post" action="/boost" class="inline">
+         <input type="hidden" name="csrf" value="${csrf}">
+         <input type="hidden" name="action" value="on">
+         <button>הדלק מצב בוסט</button>
+       </form>`;
+
+  const status = on
+    ? `<div><b>פעיל</b> — נשארו <b>${left}</b> דקות. המודל: <span dir="ltr">${esc(String(state.model || model || ''))}</span>.
+         <div class="dim small">כשהזמן ייגמר המערכת תחזור לבד ל-<span dir="ltr">${esc(String((state.restore && state.restore.model) || ''))}</span>. אין צורך לזכור לכבות.</div></div>`
+    : `<div>כבוי. כל המשתמשים על מודל ברירת המחדל.
+         <div class="dim small">הדלקה מעבירה את <b>כל</b> המשתמשים ל-<span dir="ltr">${esc(String(model || ''))}</span> למשך שעתיים, ואז חוזרת לבד. השינוי חל תוך דקה ובלי הפעלה מחדש — שיחה באמצע לא נקטעת.</div></div>`;
+
+  return `<div class="boost ${on ? 'on' : 'off'}">${status}<div style="margin-top:8px">${button}</div></div>`;
+}
 
 async function renderFlags(client, csrf) {
   const rows = [];
@@ -1770,10 +1866,39 @@ h1{font-size:18px;margin:0 0 8px;font-weight:600}p{color:#8b95a5;font-size:14px;
 // openclaw.json instead of the live gateway's. calendarDomain/googleOpts are
 // injectable so the OAuth flow can be tested without network access — and are
 // required lazily, so a box with no /opt/olma still starts a dashboard.
-function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomain, googleContactsDomain, mailDomain, googleOpts }) {
+function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomain, googleContactsDomain, mailDomain, googleOpts, gatewayCheck, gatewayCacheMs }) {
   const calendar = () => calendarDomain || require('../../domain/calendar');
   const googleContacts = () => googleContactsDomain || require('../../domain/google-contacts');
   const mail = () => mailDomain || require('../../domain/mail');
+
+  // Injectable so a test states the gateway's condition instead of inheriting
+  // whatever is running on the machine — the suite runs ON the production box
+  // (deploy.sh), where the real probe would be green for real, and on CI
+  // runners with no gateway at all, where it would be `unknown`. Neither
+  // proves the branch under test.
+  const probeGateway = gatewayCheck
+    || (() => checkGateway({ configPath: configPath || OPENCLAW_CONFIG_PATH }));
+
+  // /health is unauthenticated, and the gateway probe it now runs is an
+  // outbound request. Without this a flood of /health hits would be amplified
+  // one-for-one into the gateway — the process the check exists to protect.
+  // Five seconds is far shorter than any monitor's interval, so a real
+  // operator or uptime check still sees the current state.
+  let gatewayCache = { at: 0, value: null };
+  const cacheMs = Number.isFinite(gatewayCacheMs) ? gatewayCacheMs : 5000;
+  async function cachedGateway() {
+    const now = Date.now();
+    if (gatewayCache.value && now - gatewayCache.at < cacheMs) return gatewayCache.value;
+    // A probe that THREW must not take the whole endpoint down with it: the
+    // page's job is to report, and "the check itself broke" is `unknown`, not
+    // an outage.
+    let value;
+    try { value = await probeGateway(); }
+    catch (e) { value = { status: 'unknown', detail: `probe failed: ${e.message}`, port: null }; }
+    gatewayCache = { at: now, value };
+    return value;
+  }
+
   const server = http.createServer(async (req, res) => {
     try {
       // ---- public routes, ahead of Basic Auth ----------------------------
@@ -1915,19 +2040,27 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
       }
 
       // Unauthenticated liveness probe for MONITORING — the process, the DB,
-      // and whether every sweep is running on its declared cadence. Deploys
-      // use /ready above; this one is allowed to go red for reasons a redeploy
-      // would not fix, which is the whole point of it.
+      // whether every sweep is running on its declared cadence, and since
+      // 2026-09-03 the GATEWAY. Deploys use /ready above; this one is allowed
+      // to go red for reasons a redeploy would not fix, which is the whole
+      // point of it — and the gateway is exactly such a reason, which is why
+      // it can be added here and could not be added there.
       if (req.url === '/health') {
+        // Probed outside the try: a dead DB and a dead gateway are two
+        // separate facts, and the endpoint that exists to say which thing
+        // broke must not collapse them into one line.
+        const gateway = await cachedGateway();
         try {
           await pool.query('SELECT 1');
           const { rows } = await pool.query(`SELECT job_name, last_run_at, note FROM job_heartbeats`);
           const verdict = assessJobs(rows);
-          res.writeHead(verdict.ok ? 200 : 503, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify(verdict));
+          // `unknown` is deliberately not red — see gateway-health.js.
+          const ok = verdict.ok && gateway.status !== 'down';
+          res.writeHead(ok ? 200 : 503, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ ...verdict, ok, gateway: publicGateway(gateway) }));
         } catch (e) {
           res.writeHead(503, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ ok: false, error: 'db unavailable' }));
+          return res.end(JSON.stringify({ ok: false, error: 'db unavailable', gateway: publicGateway(gateway) }));
         }
       }
       if (!checkBasicAuth(req, adminUser, adminPass)) {
@@ -1944,7 +2077,38 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         }
         let cardUserId = null;
         await withTx(pool, async (client) => {
-          if (url.pathname === '/flags' && EDITABLE_FLAGS.includes(body.key)) {
+          if (url.pathname === '/boost') {
+            // The dashboard writes the FLAG and never the gateway config —
+            // jobs/boost.js is the only writer, so a click cannot leave the
+            // config half-changed and a crash here self-heals on the next tick.
+            const model = await flagsDomain.getFlag(client, boostJob.MODEL_FLAG);
+            if (body.action === 'on') {
+              let live = null;
+              try { live = boostDomain.currentModel(occ.loadConfig(OPENCLAW_CONFIG_PATH)); } catch { live = null; }
+              const r = boostDomain.engageState(live, model, new Date());
+              // A refusal changes nothing at all — same rule as a malformed
+              // flag value. Better an unchanged switch than a boost with no
+              // way back.
+              if (r.ok) {
+                await flagsDomain.setFlag(client, boostJob.STATE_FLAG, r.state);
+                await auditDomain.record(client, null, 'admin.boost_on',
+                  { model, restoreTo: r.state.restore.model, until: r.state.until });
+              } else {
+                await auditDomain.record(client, null, 'admin.boost_refused', { reason: r.error });
+              }
+            } else if (body.action === 'off') {
+              // Off is a flag write too: the reconciler sees an expired state
+              // next tick and restores the captured default properly. Clearing
+              // the state here without putting the config back would strand
+              // everyone on the demo model.
+              const cur = await flagsDomain.getFlag(client, boostJob.STATE_FLAG);
+              if (boostDomain.isEngaged(cur)) {
+                await flagsDomain.setFlag(client, boostJob.STATE_FLAG,
+                  { ...cur, until: new Date(Date.now() - 1000).toISOString() });
+                await auditDomain.record(client, null, 'admin.boost_off', { model: cur.model });
+              }
+            }
+          } else if (url.pathname === '/flags' && EDITABLE_FLAGS.includes(body.key)) {
             // Coerce by declared type — a stray character must never turn a
             // number into a string and silently change live behaviour.
             const spec = FLAG_SPECS.find((f) => f.key === body.key);

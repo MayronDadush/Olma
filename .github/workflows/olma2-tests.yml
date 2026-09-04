@@ -7,7 +7,13 @@ on:
   push:
     paths: ['olma2/**', '.github/workflows/olma2-tests.yml']
   pull_request:
-    paths: ['olma2/**']
+    # The workflow file is in this list for the same reason it is in `push`
+    # above: a change to CI has to be checked BY CI. Without it a PR touching
+    # only this file gets no `test` check at all — it shows a green tick that
+    # means "nothing ran", which is the same "pending reads as fine" failure
+    # the timeouts below exist to end. Found on the PR that added them, which
+    # was itself unchecked.
+    paths: ['olma2/**', '.github/workflows/olma2-tests.yml']
 
 # Two branches picking the same next migration number is the ordinary way
 # this repo works (see the "Two branches, one migration number" incident in
@@ -34,16 +40,45 @@ jobs:
   # suite throwing in its `before` hook.
   migrations:
     runs-on: ubuntu-latest
+    # Observed 5-20s. See the timeout note on `test` below for why these exist.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
       - run: node olma2/scripts/check-migrations.js
+      # deploy.sh and rollback.sh are the two files in this repo that no test
+      # can execute end-to-end — running them IS deploying to the one
+      # production box. That makes a syntax error in them uniquely expensive:
+      # `set -euo pipefail` means bash dies at the bad line, and in deploy.sh
+      # the bad line can fall between the rsync and the rollback safeguard,
+      # leaving the box in a state no automation is left running to repair.
+      # `bash -n` parses without executing, which is the whole check that CAN
+      # be run for free. It rides in the `migrations` job because that job is
+      # already the seconds-fast gate that runs before anything expensive.
+      - run: bash -n olma2/scripts/deploy.sh olma2/scripts/rollback.sh olma2/scripts/prune-releases.sh
 
   test:
     needs: migrations
     runs-on: ubuntu-latest
+    # Observed 45-90s across recent successful runs, so 10 minutes is ~7-13x
+    # headroom and nothing legitimate will reach it.
+    #
+    # It exists because of what happened on 2026-09-03: `node --test` wedged
+    # mid-suite three times in one evening — a few test files reported, then
+    # total silence, with the Postgres service logging nothing at all (so it
+    # was idle, not the culprit). The same commit passed 707/707 on an earlier
+    # run and 756/756 on a later one, so the code was never the problem.
+    #
+    # GitHub's default is a SIX HOUR job timeout. Without this line a wedge
+    # holds a runner for six hours and, worse, shows as a pending check
+    # forever — which reads as "CI hasn't got to it yet" rather than "this is
+    # dead". Three of those cost about an hour of a session before anyone
+    # thought to compare a run's frozen `updated_at` against its sibling.
+    # Failing at 10 minutes turns an invisible hang into a red check someone
+    # can just re-run.
+    timeout-minutes: 10
     services:
       postgres:
         image: postgres:16
@@ -70,6 +105,15 @@ jobs:
 
   deploy:
     needs: test
+    # Deliberately loose (observed 160-178s), and the asymmetry with `test`
+    # above is the whole point. Killing a verification job costs nothing; the
+    # work is pure and re-running is free. Killing THIS one can interrupt
+    # deploy.sh between the rsync and its own rollback safeguard, leaving the
+    # box in a state no automation is left running to repair. So the tight
+    # timeout goes where it is safe and a generous one goes here — long enough
+    # that only a genuine hang reaches it, short enough that a hung deploy is
+    # not still holding main's serialized queue hours later.
+    timeout-minutes: 30
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:

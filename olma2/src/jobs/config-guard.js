@@ -168,6 +168,85 @@ async function checkLegacyWorkspaceState(client, deps = {}) {
   return violations;
 }
 
+// ── The doctrine budget ──────────────────────────────────────────────────────
+// AGENTS.md is injected into every turn, and the gateway will not tell you when
+// it no longer fits. `trimAgentsBootstrapContent` (dist/bootstrap-*.js) keeps a
+// head and a tail and DELETES WHAT IS BETWEEN THEM — so the failure is not a
+// refused turn or a truncated ending, it is a hole in the middle of the
+// instructions, in whichever section happens to sit at the cut. Nothing logs,
+// nothing errors, and the model simply behaves as though a rule it was never
+// shown does not exist.
+//
+// Found 2026-09-04 by measuring rather than by anything failing: every user's
+// rendered AGENTS.md was 41,227 chars against a 40,000 budget, and the 1,227
+// being dropped were the middle of "Other people — consent first, always",
+// including the rule that stops an agent inventing the day of a meeting that
+// reaches somebody else. It had been happening 47 times a day, for all 11
+// users, and the reason no test caught it is structural: the test file's 65
+// pins are what a truncation has to avoid, so it can only ever eat an unpinned
+// section — which is exactly what it ate.
+//
+// This is a dashboard row and deliberately NOT in BREAKS_USERS. Tool calls all
+// succeed; what degrades is judgement, silently. That list means one thing and
+// widening it is the mistake #97 fixed.
+const GATEWAY_DEFAULT_BOOTSTRAP_MAX_CHARS = 2e4;
+// One doctrine bullet runs 300–500 chars and a paragraph 600–900, so this
+// margin says "the next paragraph you add will not fit" while there is still
+// time to shorten something instead of discovering the loss afterwards.
+const BOOTSTRAP_WARN_MARGIN = 750;
+
+// The limit is a CONFIG VALUE, not a constant — ours is 40000, the gateway's
+// own default is 20000 — so it is read rather than assumed. An absent key means
+// the gateway default applies; reading it as "no limit" would make this check
+// pass on precisely the config where the budget is tightest.
+function bootstrapBudget(cfg) {
+  const v = (((cfg || {}).agents || {}).defaults || {}).bootstrapMaxChars;
+  return Number.isFinite(v) && v > 0 ? v : GATEWAY_DEFAULT_BOOTSTRAP_MAX_CHARS;
+}
+
+async function checkBootstrapBudget(client, cfg) {
+  const limit = bootstrapBudget(cfg);
+  const { rows } = await client.query(
+    `SELECT id, workspace_path FROM users
+     WHERE status = 'active' AND workspace_path IS NOT NULL ORDER BY id`
+  );
+  let largest = 0; let over = 0; let near = 0; let read = 0;
+  for (const u of rows) {
+    let size;
+    // A file that could not be read is never a file in trouble — the
+    // credit-watch rule. It is counted as unread and reported as such below,
+    // because a check that goes quiet is indistinguishable from one that
+    // passes, which is the failure this file has now recorded four times.
+    try { size = fs.readFileSync(path.join(u.workspace_path, 'AGENTS.md'), 'utf8').length; }
+    catch { continue; }
+    read++;
+    if (size > largest) largest = size;
+    if (size > limit) over++;
+    else if (size > limit - BOOTSTRAP_WARN_MARGIN) near++;
+  }
+  const violations = [];
+  // No number goes in the text. fileViolations dedupes on the title and
+  // closeResolved closes titles no longer reported, so a size in there would
+  // file a fresh issue and close the old one on the next deploy that moved the
+  // file by a byte — the guard fighting itself, exactly as the non-deterministic
+  // carryover title did. Magnitude belongs in the heartbeat, where it does not
+  // key anything.
+  if (over) {
+    violations.push(
+      "an active user's AGENTS.md is over the gateway's bootstrap budget — the middle of the doctrine is cut out before the model ever sees it, silently (shorten src/intake/agents-template.md, then resync-agent-templates.js)");
+  } else if (near) {
+    violations.push(
+      "an active user's AGENTS.md is nearly at the gateway's bootstrap budget — the next doctrine paragraph will be silently cut (shorten src/intake/agents-template.md)");
+  }
+  return {
+    violations,
+    // Reported every tick, unlike `configValidation`: this one is a measurement
+    // an operator wants to watch drift, not an exception.
+    stats: { limit, largest, over, near, read, users: rows.length },
+    ...(read === 0 && rows.length ? { skipped: 'no AGENTS.md could be read' } : {}),
+  };
+}
+
 const CARRYOVER_HEADING = '## מה שכבר שיתפו';
 const QUOTED_RE = /<<<([\s\S]*?)>>>/;
 const norm = (s) => String(s).replace(/\s+/g, ' ').trim();
@@ -746,11 +825,14 @@ async function alertCritical(client, violations, deps) {
 
 async function run(client, { configPath, ...deps } = {}) {
   let violations = [];
+  let budget = null;
   try {
     const cfg = occ.loadConfig(configPath);
     violations = violations.concat(checkOpenclawConfig(cfg));
     violations = violations.concat(checkModelPermissions(cfg));
     violations = violations.concat(await checkOrphanAgents(client, cfg));
+    budget = await checkBootstrapBudget(client, cfg);
+    violations = violations.concat(budget.violations);
   } catch (e) {
     violations.push('openclaw.json unreadable: ' + e.message);
   }
@@ -778,6 +860,11 @@ async function run(client, { configPath, ...deps } = {}) {
     // stops being looked at; one that appears only when a check went quiet is
     // the whole reason it is here.
     ...(applied.skipped ? { configValidation: applied.skipped } : {}),
+    // Always present when it ran, so the doctrine's headroom is a number an
+    // operator watches shrink rather than a thing they hear about once it is
+    // already gone.
+    ...(budget ? { bootstrap: budget.stats } : {}),
+    ...(budget && budget.skipped ? { bootstrapCheck: budget.skipped } : {}),
     ...(alert || {}),
   };
 }
@@ -787,6 +874,8 @@ module.exports = {
   checkIdentityFiles, checkAgentsTokens,
   checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkInfraAgentSessions,
   checkLegacyWorkspaceState, LEGACY_WORKSPACE_STATE,
+  checkBootstrapBudget, bootstrapBudget,
+  GATEWAY_DEFAULT_BOOTSTRAP_MAX_CHARS, BOOTSTRAP_WARN_MARGIN,
   checkLeakedTokens, fileViolations, closeResolved,
   alertCritical, breaksUsers, leaksCredential, ALERTED_FLAG, LEAK_FLAG,
 };

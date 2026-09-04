@@ -842,6 +842,31 @@ test('intake greeter is told not to interrogate either', () => {
 // doctrine has to say not to. Answers stay short, precise, and grounded in
 // the person's own data; a missing piece is a question, never a fill-in from
 // general knowledge.
+test('agent doctrine: a refusal hands over the search, and never a link of its own', () => {
+  const fs = require('node:fs');
+  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
+
+  // Four moves now, not three — the search sits between saying no and offering
+  // to save the errand, because it is the part the person can act on today.
+  assert.match(tpl, /\*\*Never end on "I can't\."\*\* Four moves/);
+  assert.match(tpl, /\*\*Hand over the search\*\* with `search_link`/);
+  assert.match(tpl, /five people in four days/i, 'the incident that motivated it');
+  // The query is theirs and specific, not a bare topic
+  assert.match(tpl, /עבודה על בן גוריון לכיתה ח/);
+
+  // The distinction that lets this coexist with the hallucination guard. If
+  // this sentence ever goes, the guard has been weakened rather than sharpened.
+  assert.match(tpl, /a link to a RESULT claims you looked; a link to\s+a SEARCH claims nothing/);
+  assert.match(tpl, /Never type a url of your\s+own, ever/);
+  assert.match(tpl, /an invented link is a lie that looks like help/);
+  // And the model still must not narrate what is on the other side.
+  assert.match(tpl, /say nothing about\s+what is on the other side/);
+
+  // The boundary sentence must no longer forbid links outright, or the rule
+  // above contradicts it — but it must still forbid reading, pricing, buying.
+  assert.match(tpl, /you cannot read a page,\s+check a price or a stock level, place an order or pay/);
+});
+
 test('agent doctrine: Olma does not impersonate Google or ChatGPT', () => {
   const fs = require('node:fs');
   const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
@@ -857,7 +882,12 @@ test('agent doctrine: Olma does not impersonate Google or ChatGPT', () => {
   // "cannot do" shape: one plain line, and the errand inside survives
   assert.match(tpl, /General-topic questions and writing work are out of scope/);
   assert.match(tpl, /never the refusal alone/);
-  assert.match(tpl, /offer to save THAT as a task/);
+  assert.match(tpl, /offer to save THAT as a\s+task/);
+  // The refusal has to hand over a search too. This is the section the essay
+  // requests actually land in — five in four days, every one answered with a
+  // polite no — so a search_link rule that lived only in "cannot do" below
+  // would have missed the exact case it was built for.
+  assert.match(tpl, /hand over the search\*\* with `search_link`/);
   // the carve-out stays narrow: unblocking their errand, never a lecture
   assert.match(tpl, /One passing sentence that unblocks their own errand/);
   assert.match(tpl, /a lecture, a document/);
@@ -878,9 +908,11 @@ test('agent doctrine: a capability Olma lacks still leaves the user holding some
   const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
 
   assert.match(tpl, /Never end on "I can't\."/);
-  // the boundary is named, so the model stops improvising around it
+  // the boundary is named, so the model stops improvising around it. It no
+  // longer forbids links outright — a search link is now the second move —
+  // but reading a page, pricing, ordering and paying stay out.
   assert.match(tpl, /no web access/);
-  assert.match(tpl, /orders, payment/);
+  assert.match(tpl, /place an order or pay for anything/);
   // ...and the request survives — but as an OFFER, never a silent write to
   // their list: they asked Olma to do it, so handing the job back is theirs
   // to accept.
@@ -1168,6 +1200,43 @@ test('repairCarryovers strips a foreign carryover and leaves an honest one alone
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// ── The doctrine budget ──────────────────────────────────────────────────────
+// The live half of this is config_guard.checkBootstrapBudget, which measures
+// the real workspaces on the box. This is the CI half, and it is the one that
+// matters most: it fails on the branch that grows the template, before the
+// deploy that would render it into eleven workspaces and start dropping the
+// middle of it on every turn.
+//
+// The number is our deployed `agents.defaults.bootstrapMaxChars`. It is a
+// config value, not a constant — the gateway's own default is 20000 — so the
+// guard reads it from openclaw.json and only this test, which has no config to
+// read, states it. If it is ever lowered on the box, lower it here too; the
+// guard will have been complaining for a while by then.
+const DEPLOYED_BOOTSTRAP_MAX_CHARS = 40000;
+
+test('agent doctrine: AGENTS.md fits the gateway budget, with room for one more paragraph', () => {
+  // Rendered, not raw: the token slot expands, and it is the rendered file the
+  // gateway measures. Chars, never bytes — the gateway slices UTF-16, and
+  // measuring this Hebrew file with `wc -c` overstates the overflow by 2x,
+  // which is how the first attempt at this mis-sized the cut.
+  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
+  const rendered = tpl.replaceAll('{{IDENTITY_TOKEN}}', 'olma_tok_' + 'a'.repeat(32));
+  const headroom = DEPLOYED_BOOTSTRAP_MAX_CHARS - rendered.length;
+  // Over the line the gateway says nothing at all: trimAgentsBootstrapContent
+  // keeps a head and a tail and deletes what is between them, so the damage is
+  // a hole in the middle of whichever section happens to sit at the cut — and
+  // it can only ever be an UNPINNED section, because the pins above are what a
+  // truncation has to route around. On 2026-09-04 that hole was the middle of
+  // "Other people — consent first, always".
+  assert.ok(headroom > 0,
+    `AGENTS.md renders to ${rendered.length} chars, over the ${DEPLOYED_BOOTSTRAP_MAX_CHARS} budget — ` +
+    'the middle of the doctrine will be silently deleted from every turn. Shorten it; do not raise this number ' +
+    'without checking that the gateway config was raised first.');
+  assert.ok(headroom >= guard.BOOTSTRAP_WARN_MARGIN,
+    `AGENTS.md has only ${headroom} chars of headroom (want >= ${guard.BOOTSTRAP_WARN_MARGIN}). ` +
+    'This fails BEFORE anything is lost, which is the whole point — shorten something else in the same change.');
+});
+
 // The backstop for the outage above: if that file ever appears in a workspace
 // again — a doctor run interrupted, a restored backup, a future gateway
 // writing one — it is not a dashboard row. While it exists the agent never
@@ -1199,6 +1268,65 @@ test('config guard: a legacy workspace-state file is a BREAKS_USERS violation', 
   assert.equal(withIntake.length, 2);
   assert.match(withIntake[1], /intake workspace holds/);
   assert.equal(guard.breaksUsers(withIntake[1]), true);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('config guard: an over-budget AGENTS.md is filed, and the limit comes from the config', async () => {
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-budget-'));
+  const mk = (name, size) => {
+    const w = path.join(dir, name);
+    fs.mkdirSync(w, { recursive: true });
+    fs.writeFileSync(path.join(w, 'AGENTS.md'), 'x'.repeat(size));
+    return w;
+  };
+  const rows = [{ id: 7, workspace_path: mk('u-7', 900) }, { id: 9, workspace_path: mk('u-9', 900) }];
+  const fake = { query: async () => ({ rows }) };
+  const cfg = (max) => ({ agents: { defaults: { bootstrapMaxChars: max } } });
+
+  // Comfortably under: nothing to say.
+  const ok = await guard.checkBootstrapBudget(fake, cfg(5000));
+  assert.deepEqual(ok.violations, []);
+  assert.equal(ok.stats.largest, 900);
+  assert.equal(ok.stats.read, 2);
+
+  // Over. The text must carry no number: fileViolations dedupes on the title
+  // and closeResolved closes titles no longer reported, so a size in there
+  // would file a new issue and close the old one every time the file moved by
+  // a byte — the guard fighting itself, which this repo has already paid for
+  // once with a non-deterministic carryover title.
+  const over = await guard.checkBootstrapBudget(fake, cfg(800));
+  assert.equal(over.violations.length, 1);
+  assert.match(over.violations[0], /over the gateway's bootstrap budget/);
+  assert.ok(!/\d/.test(over.violations[0]), 'no number in the title, or the dedup key drifts');
+  assert.equal(over.stats.over, 2);
+  // Real damage, but every tool call still succeeds — so it is a dashboard row.
+  // BREAKS_USERS means exactly "their tool calls fail"; widening it would put
+  // that list back to meaning two things at once.
+  assert.equal(guard.breaksUsers(over.violations[0]), false);
+
+  // Inside the margin: warned while there is still time to shorten something,
+  // and worded differently — "will be cut" is a different instruction from
+  // "is being cut", and an operator acts on them differently.
+  const near = await guard.checkBootstrapBudget(fake, cfg(900 + 100));
+  assert.equal(near.violations.length, 1);
+  assert.match(near.violations[0], /nearly at the gateway's bootstrap budget/);
+  assert.equal(near.stats.near, 2);
+
+  // An absent key is the GATEWAY's default (20000), never "no limit". Reading
+  // it as unlimited would make the check pass on exactly the config where the
+  // budget is tightest.
+  assert.equal(guard.bootstrapBudget({}), guard.GATEWAY_DEFAULT_BOOTSTRAP_MAX_CHARS);
+  assert.equal(guard.bootstrapBudget({ agents: { defaults: { bootstrapMaxChars: 0 } } }),
+    guard.GATEWAY_DEFAULT_BOOTSTRAP_MAX_CHARS, 'a nonsense value is not a licence to skip the check');
+
+  // A file that cannot be read is not a file in trouble — but going quiet is
+  // indistinguishable from passing, so the decline is named on the heartbeat.
+  const missing = { query: async () => ({ rows: [{ id: 11, workspace_path: path.join(dir, 'nope') }] }) };
+  const blind = await guard.checkBootstrapBudget(missing, cfg(800));
+  assert.deepEqual(blind.violations, [], 'could not read is never a violation');
+  assert.equal(blind.skipped, 'no AGENTS.md could be read');
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
