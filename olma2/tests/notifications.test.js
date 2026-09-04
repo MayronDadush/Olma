@@ -424,8 +424,10 @@ test('a composed reply that never left the box is repaired; a delivered one neve
     { role: 'user', text: 'יש לי משימות', at: ago(10) },
     { role: 'assistant', text: 'ספר לי, אני רושמת', at: ago(9) },
   ];
-  const sweep = (sent, m = msgs) => withTx(db.pool, (c) =>
-    unanswered.sweepUnanswered(c, { readMessages: () => m, readSentEvents: () => sent, now }));
+  // An all-covering window, because these cases are about what the log
+  // CONTAINS. Coverage of the window itself gets its own tests.
+  const sweep = (events, m = msgs) => withTx(db.pool, (c) =>
+    unanswered.sweepUnanswered(c, { readMessages: () => m, readSentEvents: () => ({ events, windows: [{ from: 0, to: Infinity }] }), now }));
 
   // the hash is the real recipient-JID derivation, verified live 2026-08-31
   assert.equal(unanswered.sentHashFor('+972526404855'), '41e6d58ec018');
@@ -488,6 +490,85 @@ test('a lost proactive delivery is not repaired here — its outbox row owns the
     { role: 'assistant', text: 'תזכורת: פגישה מחר', at: ago(9) },
   ];
   const out = await withTx(db.pool, (c) =>
-    unanswered.sweepUnanswered(c, { readMessages: () => msgs, readSentEvents: () => [], now }));
+    unanswered.sweepUnanswered(c, { readMessages: () => msgs, readSentEvents: () => ({ events: [], windows: [{ from: 0, to: Infinity }] }), now }));
   assert.deepEqual(out.repaired, []);
+});
+
+// The window arithmetic itself, on the real line shape off the box. Without
+// this the sweep tests all stub readSentEvents, so the window could be hard-wired
+// to the epoch and every one of them would still pass — which is exactly the
+// assumption the 00:53 duplicate was built on.
+test('the log window is dated by every line, and the two files never merge', () => {
+  const unanswered = require('../src/jobs/unanswered');
+  const line = (time, message) => JSON.stringify({
+    0: '{"subsystem":"gateway/channels/whatsapp/outbound"}', 1: message,
+    time, hostname: 'olma', message, traceId: 'x', spanId: 'y', traceFlags: '01',
+  });
+  const at = (iso) => Date.parse(iso);
+  // The real shape measured on the box, 2026-09-04: yesterday's tail ends with
+  // the day, today's starts 512KB before now, and seven hours sit unread
+  // between them.
+  const yesterday = [
+    'runcated fragment from mid-line, readTail sliced it',
+    line('2026-09-03T22:01:00.000+00:00', 'poll cycle complete'),
+    line('2026-09-03T23:59:00.000+00:00', 'Sent message 3EB0AAA1 -> sha256:1bc24860de1e (204ms)'),
+  ].join('\n');
+  const today = [
+    line('2026-09-04T07:19:01.614+00:00', 'poll cycle complete'),
+    line('2026-09-04T08:34:59.068+00:00', 'Sent message 3EB0DEC1 -> sha256:184023327ef0 (763ms)'),
+  ].join('\n');
+
+  const out = unanswered.parseSentEvents([
+    { raw: yesterday, openEnded: false }, { raw: today, openEnded: true }]);
+  assert.deepEqual(out.events.map((e) => e.hash), ['1bc24860de1e', '184023327ef0']);
+  assert.equal(out.windows.length, 2, 'one window per file — never one span across the gap');
+
+  // dated by the plain "poll cycle" line, not the first Sent one: taking the
+  // window from sends alone would blind the sweep to 76 minutes it can see
+  assert.ok(unanswered.covers(out, at('2026-09-04T07:19:01.614+00:00')));
+  // the seven-hour hole between the files is NOT covered — the whole point
+  assert.equal(unanswered.covers(out, at('2026-09-04T03:00:00.000+00:00')), false);
+  assert.equal(unanswered.covers(out, at('2026-09-03T20:00:00.000+00:00')), false);
+  // yesterday's file is finished, so its window stops where it stops
+  assert.ok(unanswered.covers(out, at('2026-09-03T23:00:00.000+00:00')));
+  // today's is still being appended to: a quiet stretch is not a blind one
+  assert.ok(unanswered.covers(out, at('2026-09-04T09:30:00.000+00:00')));
+
+  // nothing readable at all → null, never an empty window
+  assert.equal(unanswered.parseSentEvents([{ raw: '', openEnded: true }]), null);
+  assert.equal(unanswered.parseSentEvents([{ raw: '\n  \n', openEnded: true }]), null);
+  assert.equal(unanswered.parseSentEvents([{ raw: 'not json\nalso not', openEnded: true }]), null,
+    'unparseable is unknown; an undated window must never read as an empty one');
+  assert.equal(unanswered.covers(null, Date.now()), false);
+});
+
+// 2026-09-02, 00:53 local: user 8 answered a reminder with "בוצע", Olma
+// replied, the reply was delivered two seconds later — and 26 minutes on this
+// sweep declared it lost and sent her a second copy, inside her quiet hours.
+// The log tail is a fixed 512KB of a file that grows to megabytes a day, so
+// its window had simply closed behind the moment in question. An empty result
+// from a window that was not open is not evidence of anything.
+test('a log window that does not reach back to the reply proves nothing', async () => {
+  const unanswered = require('../src/jobs/unanswered');
+  const now = Date.now();
+  const ago = (min) => new Date(now - min * 60_000).toISOString();
+  const u = await makeUser(db.pool, '+972617000026', { firstName: 'Gal' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = now() - interval '2 days' WHERE id = $1`, [u.id]);
+  const msgs = [
+    { role: 'user', text: 'בוצע', at: ago(27) },
+    { role: 'assistant', text: 'סבבה, הורדתי מהרשימה', at: ago(26) },
+  ];
+  const sweep = (from) => withTx(db.pool, (c) => unanswered.sweepUnanswered(
+    c, { readMessages: () => msgs, readSentEvents: () => ({ events: [], windows: [{ from, to: Infinity }] }), now }));
+
+  // window opened AFTER the reply was composed → unknown, never "undelivered"
+  assert.deepEqual((await sweep(now - 20 * 60_000)).repaired, []);
+
+  // and the check still goes red for the real case: same empty log, but a
+  // window that was demonstrably open when the send should have happened.
+  // A guard that cannot fail is not a guard. (The stub transcript is returned
+  // for every user in the db, so others from earlier tests ride along —
+  // membership is the claim here, not the exact set.)
+  assert.ok((await sweep(now - 40 * 60_000)).repaired.includes(u.id));
 });
