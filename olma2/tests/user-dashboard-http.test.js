@@ -77,7 +77,14 @@ test('an unknown or malformed link is a dead end, not a 500', async () => {
 test('the page needs a session, and the admin password is not one', async () => {
   const anon = await get('/me');
   assert.equal(anon.status, 401);
-  assert.ok((await anon.text()).includes('קישור'), 'the refusal does not say how to get in');
+  const anonHtml = await anon.text();
+  // Somebody with no session gets the first screen — the two doors into a
+  // conversation with her — not an error. It is still a 401: none of their
+  // data is in it, and the stamp is the only thing that decides that.
+  assert.match(anonHtml, /<html data-new="1">/,
+    'an anonymous visitor was not handed the first screen');
+  assert.ok(anonHtml.includes('w.hint'), 'that is not the dashboard file');
+  assert.equal(anon.headers.get('content-type').includes('text/html'), true);
 
   const admin = await get('/me', {
     headers: { Authorization: 'Basic ' + Buffer.from('admin:test-password-123').toString('base64') },

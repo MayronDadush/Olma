@@ -43,6 +43,19 @@ function pageHtml() {
   return cached.html;
 }
 
+// The same page, told it is speaking to somebody it does not know. The file
+// has no <html> tag of its own — a leading one merges its attributes onto the
+// root element the parser was going to create anyway — so this stamps the flag
+// without the page carrying a second copy of itself for the case.
+//
+// Deliberately the answer for an EXPIRED link too, not only for a stranger.
+// Both people need the same next step (write to her), the screen says so
+// without claiming to know which of the two you are, and it leaks nothing
+// about whether a number is on file.
+function newPageHtml() {
+  return '<html data-new="1">\n' + pageHtml();
+}
+
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
 ));
@@ -92,7 +105,7 @@ function messagePage(res, status, title, body, extra = {}) {
   res.writeHead(status, headers(HTML, extra));
   return res.end(`<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-<title>אולמה</title><style>
+<title>עולמה</title><style>
 :root{color-scheme:light dark}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
 margin:0;min-height:100dvh;display:grid;place-items:center;padding:24px;
@@ -115,7 +128,7 @@ function signInPage(res, token, firstName) {
   res.writeHead(200, headers(HTML));
   return res.end(`<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-<title>אולמה</title><style>
+<title>עולמה</title><style>
 :root{color-scheme:light dark}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
 margin:0;min-height:100dvh;display:grid;place-items:center;padding:24px;
@@ -192,7 +205,7 @@ async function handle(req, res, pool, pathname) {
       const peek = await withTx(pool, (c) => auth.peekLink(c, token));
       if (!peek.ok) {
         return messagePage(res, 410, 'הקישור כבר לא פעיל',
-          'קישורי כניסה תקפים לזמן קצר ולשימוש אחד. אפשר לבקש מאולמה קישור חדש בוואטסאפ.');
+          'קישורי כניסה תקפים לזמן קצר ולשימוש אחד. אפשר לבקש מעולמה קישור חדש בוואטסאפ.');
       }
       return signInPage(res, token, peek.data.firstName);
     }
@@ -200,7 +213,7 @@ async function handle(req, res, pool, pathname) {
       const opened = await withTx(pool, (c) => auth.redeemLink(c, token));
       if (!opened.ok) {
         return messagePage(res, 410, 'הקישור כבר לא פעיל',
-          'ייתכן שכבר נכנסת איתו. אפשר לבקש מאולמה קישור חדש בוואטסאפ.');
+          'ייתכן שכבר נכנסת איתו. אפשר לבקש מעולמה קישור חדש בוואטסאפ.');
       }
       res.writeHead(303, headers(HTML, {
         Location: '/me',
@@ -237,12 +250,11 @@ async function handle(req, res, pool, pathname) {
       return res.end();
     }
     if (!userId) {
-      return messagePage(res, 401, 'צריך קישור כניסה',
-        'הדף הזה נפתח מקישור אישי שאולמה שולחת בוואטסאפ. בקש ממנה אחד.',
-        // A stale cookie that resolves to nobody is cleared on the way out, so
-        // the next visit is a clean "ask for a link" rather than the same
-        // silent failure again.
-        { 'Set-Cookie': auth.clearCookieHeader() });
+      // A stale cookie that resolves to nobody is cleared on the way out, so
+      // the next visit starts clean rather than repeating the same silent
+      // failure. The status stays 401: nothing of theirs is being served.
+      res.writeHead(401, headers(HTML, { 'Set-Cookie': auth.clearCookieHeader() }));
+      return res.end(newPageHtml());
     }
     res.writeHead(200, headers(HTML));
     return res.end(pageHtml());

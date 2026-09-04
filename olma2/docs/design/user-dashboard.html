@@ -1,4 +1,4 @@
-<title>אולמה שלי</title>
+<title>עולמה שלי</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Rubik:wght@500;600;700&display=swap">
@@ -224,9 +224,17 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
   .avaBody,.avaLids,.avaStars,.avaHat,.avaConf{animation:none}
   .avaLids{transform:scaleY(var(--lid))}
 }
+.brandmark{
+  width:38px;height:38px;flex:none;display:block;
+  filter:drop-shadow(0 5px 12px rgba(86,84,224,.26));
+}
+.brandmark svg{width:100%;height:100%;display:block}
 .brand-txt{min-width:0}
-.brand-hi{font-size:13px;color:var(--text-2);line-height:1.2}
-.brand-name{font-family:'Rubik',sans-serif;font-weight:600;font-size:17px;line-height:1.25}
+/* The name leads and the line under it is the welcome. It is one line and it
+   stays one line: a header that reflows to two pushes the clock and the
+   status pill around, and those two are the reason anybody looks up here. */
+.brand-hi{font-size:12px;color:var(--text-2);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand-name{font-family:'Rubik',sans-serif;font-weight:600;font-size:17px;line-height:1.2}
 .live{
   display:inline-flex;align-items:center;gap:7px;flex:none;
   padding:6px 12px 6px 10px;border-radius:999px;
@@ -555,6 +563,67 @@ button.row:active{background:var(--bg-tint)}
   box-shadow:var(--shadow-m);color:var(--text-3);font-size:14px;line-height:1;
   display:grid;place-items:center;
 }
+
+/* ─────────────────  the first screen (a stranger)  ───────────────── */
+/* Somebody the system has never met has nothing of theirs to show — no
+   tasks, no friends, no calendar — so the whole page becomes the one thing
+   it can honestly offer: who she is, and the two doors to her. The app
+   below is taken out of the flow entirely rather than covered, or its
+   tabbar sits on top of this. */
+html.is-new .app,
+html.is-new .tabbar,
+html.is-new .introtog{display:none}
+.welcome{
+  position:fixed;inset:0;z-index:70;overflow-y:auto;
+  display:grid;place-items:center;
+  /* `safe` so a short screen scrolls instead of centring the card half off
+     the top edge, where nothing can reach it */
+  place-items:safe center;
+  padding:calc(env(safe-area-inset-top,0px) + 30px) 22px calc(env(safe-area-inset-bottom,0px) + 30px);
+  background:radial-gradient(125% 68% at 50% -8%, var(--accent-soft) 0%, transparent 62%), var(--bg);
+}
+.wcard{width:100%;max-width:376px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.wmark{width:82px;height:82px;filter:drop-shadow(0 14px 28px rgba(86,84,224,.26))}
+.wmark svg{width:100%;height:100%;display:block}
+.wword{
+  margin-top:21px;font-family:'Rubik',sans-serif;font-weight:700;
+  font-size:42px;line-height:1;letter-spacing:-.02em;color:var(--text);
+}
+.wlede{margin-top:11px;font-size:16px;line-height:1.5;color:var(--text-2);max-width:20em}
+/* The hint and the arrow are one unit: the sentence says what to do, the
+   arrow says where. Splitting them would leave an arrow pointing at nothing
+   in particular. */
+.whint{margin-top:34px;display:flex;flex-direction:column;align-items:center;gap:7px}
+.whint b{font-size:14.5px;font-weight:600;color:var(--text)}
+.warrow{width:17px;height:17px;color:var(--accent);animation:wbob 1.9s var(--ease-io) infinite}
+.warrow svg{width:100%;height:100%;display:block}
+@keyframes wbob{0%,100%{transform:translateY(-2px);opacity:.4}50%{transform:translateY(5px);opacity:1}}
+.wrow{margin-top:13px;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+/* these two are anchors, not buttons: without this the name renders in the
+   browser's link blue on top of the tile's own colour */
+.wrow .chan{padding:18px 8px 16px;color:var(--text);text-decoration:none}
+.wfoot{margin-top:20px;font-size:12px;line-height:1.55;color:var(--text-3);max-width:23em}
+/* Everything arrives in reading order, once. The global reduced-motion rule
+   near the bottom of this sheet flattens all of it to nothing. */
+@keyframes wrise{from{opacity:0;transform:translateY(15px)}to{opacity:1;transform:none}}
+.welcome .wmark,.welcome .wword,
+.welcome .wlede,.welcome .whint,.welcome .wrow,.welcome .wfoot{
+  animation:wrise .6s var(--ease) both;
+}
+.welcome .wword{animation-delay:.09s}
+.welcome .wlede{animation-delay:.16s}
+.welcome .whint{animation-delay:.27s}
+.welcome .wrow{animation-delay:.33s}
+.welcome .wfoot{animation-delay:.42s}
+.newtog{
+  position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:96px;z-index:80;
+  width:26px;height:26px;border-radius:999px;background:var(--surface);
+  box-shadow:var(--shadow-m);color:var(--text-3);font-size:13px;line-height:1;
+  display:grid;place-items:center;
+}
+html.is-new .newtog{color:var(--accent)}
+/* the two preview toggles that stay reachable over the first screen */
+html.is-new .langtog{z-index:80}
 
 .pushhead{display:flex;align-items:center;gap:12px;padding:6px 2px 20px}
 .backbtn{
@@ -1599,16 +1668,37 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <symbol id="i-phone" viewBox="0 0 20 20"><path d="M6.4 2.8 8.2 6.4 6.5 8.2c.7 1.7 2.6 3.6 4.3 4.3l1.8-1.7 3.6 1.8v2.6c0 1.1-.9 1.9-2 1.8C8.2 16.4 3.6 11.8 3 6.4 2.9 5.3 3.7 4.4 4.8 4.4h1.6Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
   <symbol id="i-note" viewBox="0 0 20 20"><path d="M4.4 2.6h11.2v10.2l-4 4.6H4.4Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.6 12.6h-4v4.8M7.2 6.4h5.6M7.2 9.4h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-folder" viewBox="0 0 20 20"><path d="M2.6 5.6a2 2 0 0 1 2-2h2.9l2 2.4h6a2 2 0 0 1 2 2v6.4a2 2 0 0 1-2 2h-10.9a2 2 0 0 1-2-2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+  <symbol id="i-arrdown" viewBox="0 0 16 16"><path d="M8 2.4v11.2M3.4 9.4 8 14l4.6-4.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <!-- The mark. A globe that talks: the meridian and the horizon say עולם,
+       the tail makes it something you speak to. Its gradient lives here in
+       the sheet's own <defs> rather than inside the symbol — a <use> clone
+       resolves url(#…) against THIS document, so one definition serves every
+       copy, but a gradient declared in another file would silently render
+       black. -->
+  <linearGradient id="i-logo-g" x1="18" y1="10" x2="80" y2="86" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#8A88F7"/><stop offset=".55" stop-color="#5654E0"/><stop offset="1" stop-color="#3D3AB8"/>
+  </linearGradient>
+  <clipPath id="i-logo-c"><circle cx="46" cy="44" r="32"/></clipPath>
+  <symbol id="i-logo" viewBox="0 0 96 96">
+    <path d="M46 12a32 32 0 0 1 32 32 32 32 0 0 1-32 32c-3.6 0-7-.6-10.2-1.7l-13.4 6a2.4 2.4 0 0 1-3.3-2.7l2.3-11.2A32 32 0 0 1 46 12Z" fill="url(#i-logo-g)"/>
+    <g clip-path="url(#i-logo-c)" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round">
+      <path d="M14 44h64" opacity=".5"/><ellipse cx="46" cy="44" rx="14.5" ry="32" opacity=".55"/>
+    </g>
+    <circle cx="70" cy="22" r="5.2" fill="#fff" opacity=".9"/>
+  </symbol>
 </defs></svg>
 
 <div class="app">
 
   <header class="topbar">
     <button class="brand" id="brandBtn" data-go="me">
-      <div class="avatar" id="miniAvatar"></div>
+      <!-- The mark, not the person: their own face is the hero of the
+           profile page, and repeating it here said nothing the rest of the
+           screen was not already about them. -->
+      <span class="brandmark" aria-hidden="true"><svg><use href="#i-logo"/></svg></span>
       <div class="brand-txt">
-        <div class="brand-hi" data-i18n="greet"></div>
         <div class="brand-name" id="brandName"></div>
+        <div class="brand-hi" id="brandTag"></div>
       </div>
     </button>
     <button class="topclock" id="topClock" data-i18n-label="city.title"></button>
@@ -1794,6 +1884,27 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <button class="tab" role="tab" aria-selected="false" data-go="me"><svg><use href="#i-user24"/></svg><span data-i18n="tab.me"></span></button>
 </nav>
 
+<!-- ══════════════  the first screen  ══════════════
+     Shown instead of the app to somebody with no account yet. It offers
+     exactly two things, because they are the only two that would work: the
+     doors into a conversation with her. Both are real deep links — they open
+     that app on the thread with her, with nothing typed, which is the point:
+     the first sentence has to be theirs, in their own language, because it is
+     what tells her which language to speak. -->
+<div class="welcome" id="welcome" hidden>
+  <div class="wcard">
+    <div class="wmark" aria-hidden="true"><svg><use href="#i-logo"/></svg></div>
+    <h1 class="wword" id="wWord"></h1>
+    <p class="wlede" id="wTag"></p>
+    <div class="whint">
+      <b data-i18n="w.hint"></b>
+      <span class="warrow" aria-hidden="true"><svg><use href="#i-arrdown"/></svg></span>
+    </div>
+    <div class="wrow" id="wRow"></div>
+    <p class="wfoot" data-i18n="w.foot"></p>
+  </div>
+</div>
+
 <!-- preview scaffolding, not product UI: lets the design be checked in
      both languages and both text directions without reloading. -->
 <div class="calscrim" id="calScrim" hidden></div>
@@ -1803,6 +1914,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 <!-- preview only: replay the first-visit intro, which otherwise happens once
      per tab and would be impossible to look at twice. -->
 <button class="introtog" id="introTog" title="preview only: replay first visit">&#8635;</button>
+<!-- preview only: the screen a stranger gets. The real page is put into
+     this state by the server (data-new) or by ?new=1 on the link. -->
+<button class="newtog" id="newTog" title="preview only: the first screen">&#10022;</button>
 
 <div class="scrim" id="scrim"></div>
 
@@ -2258,16 +2372,42 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      writing to Olma in (users.language, stamped by turn_start).
      Preview only: ?lang=en, #lang=en, or the L key.
      ══════════════════════════════════════════════════════════════ */
+  /* Whether the person opening this is in the system at all. The server
+     stamps data-new when /me is opened without a session; ?new=1 (or #new)
+     is the same screen from a plain link, which is how it gets previewed. */
+  var NEWUSER = (function(){
+    var q = new URLSearchParams(location.search).get("new");
+    var h = (location.hash || "").replace(/^#/, "");
+    return q === "1" || h === "new" ||
+      document.documentElement.getAttribute("data-new") === "1";
+  })();
+
   var LOCALE = (function(){
     var q = new URLSearchParams(location.search).get("lang") || "";
-    var h = (location.hash || "").replace(/^#/, "").replace(/^lang=/, "");
-    var v = q || h || document.documentElement.getAttribute("data-locale") || "he";
+    /* the hash carries either a language or #new — only read it when it is
+       actually saying something about language, or "new" resolves to "ne" and
+       quietly wins the choice below */
+    var raw = (location.hash || "").replace(/^#/, "");
+    var h = /^lang=/i.test(raw) ? raw.slice(5) : (/^(he|en)$/i.test(raw) ? raw : "");
+    /* A person already in the system has a language on file — turn_start
+       stamps whatever they have been writing to her in — and that is what the
+       server renders with. A stranger has none, so the browser's own
+       preference is the only signal there is; it is deliberately consulted
+       ONLY there, so the design preview keeps its Hebrew default. */
+    var guess = NEWUSER ? (navigator.language || "") : "";
+    var v = q || h || document.documentElement.getAttribute("data-locale") || guess || "he";
     return v.slice(0,2).toLowerCase() === "en" ? "en" : "he";
   })();
 
   var T = {
     he:{ dir:"rtl",
-      "greet":"בוקר טוב,", "live":"{name} פעילה",
+      /* The welcome under her name, in the header and on the first screen
+         alike. Hebrew inflects it, so there are two; the masculine is the
+         default the whole product uses until somebody says otherwise. */
+      "brand.tagM":"ברוך הבא לעולם שלך","brand.tagF":"ברוכה הבאה לעולם שלך",
+      /* The brand two centimetres to the left already says her name; this
+         chip only ever had one job, which is whether she is running. */
+      "live":"פעילה",
       "tab.tools":"חיבורים","tab.tasks":"משימות","tab.cal":"יומן","tab.friends":"חברים","tab.me":"פרופיל",
 
       "tools.h":"החיבורים שלך",
@@ -2275,8 +2415,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "tools.accounts":"חשבונות","tools.accountsHint":"התחברות אחת לכל ספק",
       "tools.work":"עבודה",
       "ch.h":"איפה מדברים","ch.hint":"לחיצה פותחת את השיחה",
+      /* the first screen — nothing here may promise anything the app does
+         before she has even been written to once */
+      "w.hint":"כתוב לעולמה בשפה שלך","w.open":"פתיחת שיחה",
+      "w.foot":"אין מה להתקין. השיחה נפתחת ריקה — המשפט הראשון שלך הוא זה שמלמד אותה באיזו שפה לדבר.",
       "ch.open":"פתיחת השיחה","ch.add":"להוספה",
-      "ch.call":"שיחה","ch.callSub":"אולמה תתקשר","ch.calling":"מתקשרת אליך…",
+      "ch.call":"שיחה","ch.callSub":"עולמה תתקשר","ch.calling":"מתקשרת אליך…",
       "ch.callArm":"מתכוננת לשיחה…","ch.callReady":"מוכנה — לחיצה נוספת",
 
       "cat.cal":"יומן","cat.contacts":"אנשי קשר","cat.mail":"מייל","cat.notes":"פתקים","cat.files":"קבצים",
@@ -2289,7 +2433,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "m.cal":"Outlook Calendar","m.contacts":"זיהוי שמות בשיחה","m.mail":"Outlook Mail",
       "acc.read":"קריאה","acc.write":"כתיבה","acc.readOnly":"קריאה בלבד",
       "acc.writeA11y":"כתיבה — כוללת גם קריאה",
-      "ch.defH":"תזכורות ועדכונים","ch.defSub":"אולמה תפנה אליך ב־{name}","ch.defTag":"ברירת מחדל",
+      "ch.defH":"תזכורות ועדכונים","ch.defSub":"עולמה תפנה אליך ב־{name}","ch.defTag":"ברירת מחדל",
       "toast.default":"תזכורות ועדכונים יגיעו ב־{name}",
       "mo.boards":"לוחות ופריטים","mo.updates":"עדכונים שמשויכים אליך",
       "s.mentions":"אזכורים אישיים","s.dm":"הודעות ישירות · סיכום יומי",
@@ -2314,7 +2458,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.restored":"„{name}” חזרה לרשימה",
 
       "sheet.when":"מתי","sheet.pickTime":"בחירת שעה","share.andMore":" ועוד {n}",
-      "cat.h":"קטגוריה","cat.auto":"אולמה בחרה","cat.byTime":"לפי זמן","cat.byCat":"לפי קטגוריה",
+      "cat.h":"קטגוריה","cat.auto":"עולמה בחרה","cat.byTime":"לפי זמן","cat.byCat":"לפי קטגוריה",
       "tcat.home":"בית","tcat.work":"עבודה","tcat.family":"משפחה","tcat.health":"בריאות",
       "tcat.money":"כספים","tcat.errands":"סידורים","tcat.none":"ללא קטגוריה",
       "sheet.addPeople":"הוספת חברים","sheet.notShared":"רק אתה רואה אותה",
@@ -2336,14 +2480,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "cal.open":"פתיחה ביומן של הטלפון","cal.empty":"אין אירועים ביום הזה.",
       "cal.todayPre":"היום · ","cal.dayPrefix":"יום ",
 
-      "fr.h":"חברים באולמה",
+      "fr.h":"חברים בעולמה",
       "fr.p":"לכל חבר מוגדר בנפרד מה מותר לו. שינוי כאן חל מיד, בלי לשאול אותו.",
       "fr.connected":"מחוברים","fr.count":"{n} חברים",
       "fr.search":"חיפוש חבר","fr.clear":"ניקוי","fr.noMatch":"אין חבר בשם „{q}”.",
       "fr.p.n0":"אין הרשאות פעילות","fr.p.n1":"הרשאה אחת פעילה","fr.p.nN":"{n} הרשאות פעילות",
-      "fr.bday":"יום הולדת היום","fr.remove":"הסרת החיבור","fr.invite":"הזמנת חבר לאולמה",
+      "fr.bday":"יום הולדת היום","fr.remove":"הסרת החיבור","fr.invite":"הזמנת חבר לעולמה",
       "cal.modeRead":"היומן","cal.modeMeet":"תיאום פגישה",
-      "cal.pMeet":"מסמנים מתי מתאים, אולמה מוצאת את החלון הטוב ביותר לכולם.",
+      "cal.pMeet":"מסמנים מתי מתאים, עולמה מוצאת את החלון הטוב ביותר לכולם.",
       "sheet.close":"סגירה","mt.open":"תיאומים פעילים","mt.new":"תיאום פגישה חדש",
       "mt.note":"סימון אומר מתי אתה פנוי — לא שקבעתם. הקביעה עצמה היא לחיצה נפרדת.",
       "mt.empty":"אין תיאום פעיל כרגע.",
@@ -2373,27 +2517,27 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "cn.title":"מי מאנשי הקשר שלך?","cn.from":"מתוך אנשי הקשר של {name}",
       "cn.search":"חיפוש באנשי קשר","cn.invite":"הזמנה","cn.sent":"נשלחה",
       "cn.noMatch":"אין איש קשר בשם „{q}”.",
-      "cn.noneH":"אין עדיין אנשי קשר","cn.noneP":"כדי להזמין חברים אולמה צריכה גישה לאנשי הקשר שלך. זה מתחבר פעם אחת, בחיבורים.",
+      "cn.noneH":"אין עדיין אנשי קשר","cn.noneP":"כדי להזמין חברים עולמה צריכה גישה לאנשי הקשר שלך. זה מתחבר פעם אחת, בחיבורים.",
       "cn.connect":"חיבור חשבון",
       "toast.cnConnect":"חבר חשבון עם אנשי קשר וזה יופיע כאן",
       "toast.cnInvited":"נשלחה הזמנה ל{name}",
       "p.tasks":"שיתוף משימות","p.tasksSub":"רואה את הרשימה שלך",
       "p.meet":"תיאום פגישות","p.meetSub":"יכול להציע לך מועדים",
-      "p.msg":"העברת הודעות","p.msgSub":"יכול לשלוח לך דרך אולמה",
+      "p.msg":"העברת הודעות","p.msgSub":"יכול לשלוח לך דרך עולמה",
 
-      "me.since":"חבר באולמה מאז מאי 2026","me.avatar":"החלפת דמות",
+      "me.since":"חבר בעולמה מאז מאי 2026","me.avatar":"החלפת דמות",
       "me.personal":"פרטים אישיים","me.first":"שם פרטי","me.last":"שם משפחה","me.bday":"תאריך לידה",
       "me.where":"מיקום",
       "me.guessed":"נוחש לפי קידומת הטלפון","me.confirmed":"אישרת בעצמך",
-      "me.form":"פנייה","me.formHint":"איך אולמה תדבר אליך",
+      "me.form":"פנייה","me.formHint":"איך עולמה תדבר אליך",
       "me.masc":"לשון זכר","me.fem":"לשון נקבה",
-      "me.formNote":"״שמרתי לך״ מול ״שמרתי לך״ — אולמה תתאים את כל הניסוחים שלה.",
-      "me.setup":"אולמה אצלך","me.calledBy":"קוראים לה",
+      "me.formNote":"״שמרתי לך״ מול ״שמרתי לך״ — עולמה תתאים את כל הניסוחים שלה.",
+      "me.setup":"עולמה אצלך","me.calledBy":"קוראים לה",
       "me.setupNote":"המיקום קובע כל תזכורת, כל שעת שקט וכל סיכום — קידומת טלפון היא מדינה, לא עיר. את השם אפשר להחליף; הוא יופיע בכל הודעה שהיא שולחת.",
-      "me.pause":"להשהות את אולמה","me.resume":"אולמה מושהית · להפעלה",
+      "me.pause":"להשהות את עולמה","me.resume":"עולמה מושהית · להפעלה",
       "me.pauseNote":"היא תפסיק לכתוב מיוזמתה. שום דבר לא נמחק, והודעה אחת ממך מחזירה הכול.",
-      "me.pausedNote":"אולמה לא תיזום כלום — לא תזכורות, לא סיכומים. היא עדיין תענה כשתכתוב לה.",
-      "live.paused":"{name} מושהית",
+      "me.pausedNote":"עולמה לא תיזום כלום — לא תזכורות, לא סיכומים. היא עדיין תענה כשתכתוב לה.",
+      "live.paused":"מושהית",
       "me.noName":"ללא שם",
 
       "city.title":"איפה אתה נמצא?","city.search":"חיפוש עיר","city.none":"לא נמצאה עיר בשם הזה.",
@@ -2401,7 +2545,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "sheet.new":"משימה חדשה","sheet.edit":"עריכת משימה",
       "sheet.task":"משימה","sheet.taskPh":"מה צריך לעשות?",
       "sheet.date":"מועד","sheet.time":"שעה",
-      "sheet.remind":"תזכורת","sheet.remindSub":"אולמה תזכיר בוואטסאפ",
+      "sheet.remind":"תזכורת","sheet.remindSub":"עולמה תזכיר בוואטסאפ",
       "sheet.save":"שמירה","sheet.delete":"מחיקת המשימה","sheet.cancel":"ביטול",
       "sheet.autosave":"נשמר אוטומטית","sheet.saved":"נשמר ✓","sheet.noDate":"ללא תאריך",
       "cal.today":"היום","cal.tomorrow":"מחר","cal.clear":"ללא תאריך","cal.yesterday":"אתמול",
@@ -2409,25 +2553,25 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "sheet.allDay":"כל היום","sheet.repeat":"חזרה",
       "sheet.inCal":"להוסיף ליומן",
       "cal.allDay":"כל היום",
-      "cal.taskTag":"משימה","cal.taskSub":"מהרשימה שלך באולמה","cal.taskRem":"אולמה תזכיר בוואטסאפ",
+      "cal.taskTag":"משימה","cal.taskSub":"מהרשימה שלך בעולמה","cal.taskRem":"עולמה תזכיר בוואטסאפ",
       "cal.showIn":"להצגה ביומן",
       "off.at":"בזמן","off.m10":"10 דק׳ לפני","off.h1":"שעה לפני","off.d1":"יום לפני",
       "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש","rep.year":"כל שנה",
 
       "toast.on":"השירות הופעל","toast.off":"השירות כובה",
-      "toast.ro":"{name} · אולמה רואה בלבד","toast.rw":"{name} · אולמה רואה וגם משנה",
+      "toast.ro":"{name} · עולמה רואה בלבד","toast.rw":"{name} · עולמה רואה וגם משנה",
       "toast.connected":"{name} מחובר","toast.disconnected":"{name} נותק",
-      "toast.open":"פותח את השיחה שלך עם אולמה ב־{name}","toast.chanOn":"{name} מחובר · אולמה תענה גם שם",
-      "toast.calling":"אולמה מתקשרת אליך עכשיו",
+      "toast.open":"פותח את השיחה שלך עם עולמה ב־{name}","toast.chanOn":"{name} מחובר · עולמה תענה גם שם",
+      "toast.calling":"עולמה מתקשרת אליך עכשיו",
       "toast.done":"המשימה הושלמה","toast.saved":"המשימה נשמרה",
       "toast.updated":"המשימה עודכנה","toast.deleted":"המשימה נמחקה",
       "toast.needTitle":"צריך שם למשימה",
       "toast.calOpen":"נפתח ביומן ברירת המחדל של הטלפון",
       "toast.removed":"החיבור הוסר",
-      "toast.avatar":"דמות חדשה","toast.paused":"אולמה מושהית","toast.resumed":"אולמה חזרה",
-      "toast.pausedRefusal":"אולמה מושהית — תזכורת לא תישלח עד שתחזיר אותה",
+      "toast.avatar":"דמות חדשה","toast.paused":"עולמה מושהית","toast.resumed":"עולמה חזרה",
+      "toast.pausedRefusal":"עולמה מושהית — תזכורת לא תישלח עד שתחזיר אותה",
       "toast.importedRefusal":"את זה משנים ב־{name}",
-      "toast.masc":"אולמה תפנה אליך בלשון זכר","toast.fem":"אולמה תפנה אלייך בלשון נקבה",
+      "toast.masc":"עולמה תפנה אליך בלשון זכר","toast.fem":"עולמה תפנה אלייך בלשון נקבה",
       "toast.city":"אזור הזמן עודכן ל{tz}",
 
       days:["א","ב","ג","ד","ה","ו","ש"],
@@ -2437,7 +2581,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       and:" ו־", monthsBare:["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"]
     },
     en:{ dir:"ltr",
-      "greet":"Good morning,", "live":"{name} is on",
+      /* English has no gendered address, so both keys are the same sentence
+         rather than the caller having to know which languages inflect. */
+      "brand.tagM":"Do it all. Do it Allma","brand.tagF":"Do it all. Do it Allma",
+      "live":"On",
       "tab.tools":"Connections","tab.tasks":"Tasks","tab.cal":"Calendar","tab.friends":"Friends","tab.me":"Profile",
 
       "tools.h":"Your connections",
@@ -2445,8 +2592,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "tools.accounts":"Accounts","tools.accountsHint":"One sign-in per provider",
       "tools.work":"Work",
       "ch.h":"Where we talk","ch.hint":"Tap to open the chat",
+      "w.hint":"Write to Allma in your own language","w.open":"Opens a chat",
+      "w.foot":"Nothing to install. The chat opens empty — your first sentence is what tells her which language to speak.",
       "ch.open":"Open chat","ch.add":"Add",
-      "ch.call":"Call","ch.callSub":"Olma rings you","ch.calling":"Calling you…",
+      "ch.call":"Call","ch.callSub":"Allma rings you","ch.calling":"Calling you…",
       "ch.callArm":"Getting ready…","ch.callReady":"Ready — tap again",
 
       "cat.cal":"Calendar","cat.contacts":"Contacts","cat.mail":"Mail","cat.notes":"Notes","cat.files":"Files",
@@ -2459,7 +2608,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "m.cal":"Outlook Calendar","m.contacts":"Recognise names in conversation","m.mail":"Outlook Mail",
       "acc.read":"Read","acc.write":"Write","acc.readOnly":"Read only",
       "acc.writeA11y":"Write \u2014 includes reading",
-      "ch.defH":"Reminders and updates","ch.defSub":"Olma will reach you on {name}","ch.defTag":"Default",
+      "ch.defH":"Reminders and updates","ch.defSub":"Allma will reach you on {name}","ch.defTag":"Default",
       "toast.default":"Reminders and updates will come by {name}",
       "mo.boards":"Boards and items","mo.updates":"Updates assigned to you",
       "s.mentions":"Mentions","s.dm":"Direct messages · daily summary",
@@ -2484,7 +2633,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.restored":"\u201c{name}\u201d is back on your list",
 
       "sheet.when":"When","sheet.pickTime":"Pick a time","share.andMore":" and {n} more",
-      "cat.h":"Category","cat.auto":"Olma picked this","cat.byTime":"By time","cat.byCat":"By category",
+      "cat.h":"Category","cat.auto":"Allma picked this","cat.byTime":"By time","cat.byCat":"By category",
       "tcat.home":"Home","tcat.work":"Work","tcat.family":"Family","tcat.health":"Health",
       "tcat.money":"Money","tcat.errands":"Errands","tcat.none":"No category",
       "sheet.addPeople":"Add people","sheet.notShared":"Only you can see it",
@@ -2506,14 +2655,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "cal.open":"Open in your phone's calendar","cal.empty":"Nothing on this day.",
       "cal.todayPre":"Today · ","cal.dayPrefix":"",
 
-      "fr.h":"Friends on Olma",
+      "fr.h":"Friends on Allma",
       "fr.p":"Every friend gets their own permissions. A change here takes effect at once, without asking them.",
       "fr.connected":"Connected","fr.count":"{n} friends",
       "fr.search":"Search friends","fr.clear":"Clear","fr.noMatch":"No friend matches \u201c{q}\u201d.",
       "fr.p.n0":"No permissions on","fr.p.n1":"1 permission on","fr.p.nN":"{n} permissions on",
-      "fr.bday":"Birthday today","fr.remove":"Remove connection","fr.invite":"Invite a friend to Olma",
+      "fr.bday":"Birthday today","fr.remove":"Remove connection","fr.invite":"Invite a friend to Allma",
       "cal.modeRead":"Calendar","cal.modeMeet":"Coordinate",
-      "cal.pMeet":"Everyone marks when they can. Olma finds the window that fits.",
+      "cal.pMeet":"Everyone marks when they can. Allma finds the window that fits.",
       "sheet.close":"Close","mt.open":"Active coordinations","mt.new":"New coordination",
       "mt.note":"A mark says when you are free — not that it is settled. Settling it is a separate tap.",
       "mt.empty":"Nothing being coordinated right now.",
@@ -2543,27 +2692,27 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "cn.title":"Who from your contacts?","cn.from":"From your {name} contacts",
       "cn.search":"Search contacts","cn.invite":"Invite","cn.sent":"Sent",
       "cn.noMatch":"No contact matches \u201c{q}\u201d.",
-      "cn.noneH":"No contacts yet","cn.noneP":"To invite friends, Olma needs access to your contacts. You connect that once, under Connections.",
+      "cn.noneH":"No contacts yet","cn.noneP":"To invite friends, Allma needs access to your contacts. You connect that once, under Connections.",
       "cn.connect":"Connect an account",
       "toast.cnConnect":"Connect an account with contacts and they will show up here",
       "toast.cnInvited":"Invite sent to {name}",
       "p.tasks":"Task sharing","p.tasksSub":"Can see your list",
       "p.meet":"Meeting scheduling","p.meetSub":"Can propose times to you",
-      "p.msg":"Message relay","p.msgSub":"Can write to you through Olma",
+      "p.msg":"Message relay","p.msgSub":"Can write to you through Allma",
 
-      "me.since":"On Olma since May 2026","me.avatar":"Change character",
+      "me.since":"On Allma since May 2026","me.avatar":"Change character",
       "me.personal":"Personal details","me.first":"First name","me.last":"Last name","me.bday":"Date of birth",
       "me.where":"Location",
       "me.guessed":"Guessed from your phone number","me.confirmed":"Confirmed by you",
       "me.form":"Gender","me.formHint":"Only matters in gendered languages",
       "me.masc":"Male","me.fem":"Female",
-      "me.formNote":"Hebrew inflects almost every verb for gender, so Olma needs to know. English has no gendered address and nothing here changes it.",
-      "me.setup":"Your Olma","me.calledBy":"Called",
+      "me.formNote":"Hebrew inflects almost every verb for gender, so Allma needs to know. English has no gendered address and nothing here changes it.",
+      "me.setup":"Your Allma","me.calledBy":"Called",
       "me.setupNote":"Your location decides every reminder, quiet hour and summary — a dialling code is a country, not a city. The name is yours to change; it appears in every message she sends.",
-      "me.pause":"Pause Olma","me.resume":"Olma is paused · Resume",
+      "me.pause":"Pause Allma","me.resume":"Allma is paused · Resume",
       "me.pauseNote":"She stops writing on her own. Nothing is deleted, and one message from you brings it all back.",
-      "me.pausedNote":"Olma starts nothing — no reminders, no summaries. She still answers when you write to her.",
-      "live.paused":"{name} is paused",
+      "me.pausedNote":"Allma starts nothing — no reminders, no summaries. She still answers when you write to her.",
+      "live.paused":"Paused",
       "me.noName":"No name",
 
       "city.title":"Where are you?","city.search":"Search for a city","city.none":"No city by that name.",
@@ -2571,7 +2720,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "sheet.new":"New task","sheet.edit":"Edit task",
       "sheet.task":"Task","sheet.taskPh":"What needs doing?",
       "sheet.date":"Date","sheet.time":"Time",
-      "sheet.remind":"Reminder","sheet.remindSub":"Olma will remind you on WhatsApp",
+      "sheet.remind":"Reminder","sheet.remindSub":"Allma will remind you on WhatsApp",
       "sheet.save":"Save","sheet.delete":"Delete task","sheet.cancel":"Cancel",
       "sheet.autosave":"Saves as you type","sheet.saved":"Saved ✓","sheet.noDate":"No date",
       "cal.today":"Today","cal.tomorrow":"Tomorrow","cal.clear":"No date","cal.yesterday":"Yesterday",
@@ -2579,25 +2728,25 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "sheet.allDay":"All day","sheet.repeat":"Repeat",
       "sheet.inCal":"Add to calendar",
       "cal.allDay":"All day",
-      "cal.taskTag":"Task","cal.taskSub":"From your Olma list","cal.taskRem":"Olma will remind you on WhatsApp",
+      "cal.taskTag":"Task","cal.taskSub":"From your Allma list","cal.taskRem":"Allma will remind you on WhatsApp",
       "cal.showIn":"Show in calendar",
       "off.at":"On time","off.m10":"10 min before","off.h1":"1 hour before","off.d1":"1 day before",
       "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month","rep.year":"Every year",
 
       "toast.on":"Service turned on","toast.off":"Service turned off",
-      "toast.ro":"{name} · Olma only sees it","toast.rw":"{name} · Olma sees it and can change it",
+      "toast.ro":"{name} · Allma only sees it","toast.rw":"{name} · Allma sees it and can change it",
       "toast.connected":"{name} connected","toast.disconnected":"{name} disconnected",
-      "toast.open":"Opening your chat with Olma in {name}","toast.chanOn":"{name} connected · Olma answers there too",
-      "toast.calling":"Olma is calling you now",
+      "toast.open":"Opening your chat with Allma in {name}","toast.chanOn":"{name} connected · Allma answers there too",
+      "toast.calling":"Allma is calling you now",
       "toast.done":"Task completed","toast.saved":"Task saved",
       "toast.updated":"Task updated","toast.deleted":"Task deleted",
       "toast.needTitle":"Give the task a name",
       "toast.calOpen":"Opening your default calendar",
       "toast.removed":"Connection removed",
-      "toast.avatar":"New character","toast.paused":"Olma is paused","toast.resumed":"Olma is back",
-      "toast.pausedRefusal":"Olma is paused — a reminder will not go out until you bring her back",
+      "toast.avatar":"New character","toast.paused":"Allma is paused","toast.resumed":"Allma is back",
+      "toast.pausedRefusal":"Allma is paused — a reminder will not go out until you bring her back",
       "toast.importedRefusal":"That one is changed in {name}",
-      "toast.masc":"Olma will address you in the masculine","toast.fem":"Olma will address you in the feminine",
+      "toast.masc":"Allma will address you in the masculine","toast.fem":"Allma will address you in the feminine",
       "toast.city":"Time zone set to {tz}",
 
       days:["S","M","T","W","T","F","S"],
@@ -2920,7 +3069,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   /* ══════════════  mock content, both languages  ══════════════ */
   var PROFILE = {
     phone:"+972526269826",
-    first:{he:"מירון",en:"Miron"}, last:{he:"דדוש",en:"Dadush"}, olma:{he:"אולמה",en:"Olma"}
+    first:{he:"מירון",en:"Miron"}, last:{he:"דדוש",en:"Dadush"}, olma:{he:"עולמה",en:"Allma"}
   };
   var myAvatar = seedIndex(PROFILE.phone);
 
@@ -2953,11 +3102,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
           {k:"contacts",sub:"m.contacts",on:true},
           {k:"mail",sub:"m.mail",on:false,w:true,mode:"read"}]},
     {id:"monday", name:"monday.com", tile:"monday", icon:"i-monday", grp:"work",
-     account:"Olma workspace", connected:false,
+     account:"Allma workspace", connected:false,
      svc:[{k:null,label:"mo.boards",on:true,w:true,mode:"read"},
           {k:null,label:"mo.updates",on:true}]},
     {id:"slack", name:"Slack", tile:"slack", icon:"i-slack", grp:"work",
-     account:"Olma workspace", connected:false,
+     account:"Allma workspace", connected:false,
      svc:[{k:null,label:"s.mentions",on:true},{k:null,label:"s.dm",on:false}]}
   ];
   var CATS = [
@@ -3176,7 +3325,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   var EVENTS = {
     0:[{t:"09:30",e:"10:15",n:{he:"סטנד־אפ צוות",en:"Team stand-up"}, s:{he:"Google Meet",en:"Google Meet"}, c:"#5654E0"},
        {t:"13:00",e:"14:00",n:{he:"צילומים באולפן",en:"Studio shoot"}, s:{he:"תל אביב, המלאכה 6",en:"Tel Aviv, HaMelacha 6"}, c:"#E2382C"},
-       {t:"18:30",e:"20:00",n:{he:"פוקר אצל עמית",en:"Poker at Amit's"}, s:{he:"נקבע דרך אולמה",en:"Arranged through Olma"}, c:"#1B9B6B"}],
+       {t:"18:30",e:"20:00",n:{he:"פוקר אצל עמית",en:"Poker at Amit's"}, s:{he:"נקבע דרך עולמה",en:"Arranged through Allma"}, c:"#1B9B6B"}],
     1:[{t:"08:00",e:"08:45",n:{he:"אימון",en:"Workout"}, s:{he:"חדר כושר",en:"Gym"}, c:"#EE7A11"},
        {t:"11:00",e:"12:00",n:{he:"פגישה עם גלי",en:"Meeting with Gali"}, s:{he:"ממתין לאישור שלה",en:"Waiting on her confirmation"}, c:"#5654E0"}],
     2:[{t:"10:00",e:"11:30",n:{he:"מצגת ללקוח",en:"Client presentation"}, s:{he:"Zoom",en:"Zoom"}, c:"#5654E0"}],
@@ -5097,17 +5246,19 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   function paintAvatars(){
     var opt = {g:myGender(), night:isNight(CITIES[cityIdx].tz), bday:myBirthday()};
-    $("#miniAvatar").innerHTML = avatarSVG(myAvatar, opt);
     $("#bigAvatar").innerHTML = avatarSVG(myAvatar, opt);
     trackPupils();
   }
+  /* Whatever she is called here — the name is renameable, and every place
+     that says it has to say the same thing the moment it changes. */
+  function olmaName(){ return $("#oname").value.trim() || L(PROFILE.olma); }
+  function brandTag(g){ return t(g === "f" ? "brand.tagF" : "brand.tagM"); }
   function syncName(){
     var f = $("#fname").value, l = $("#lname").value;
-    var full = (f + " " + l).trim() || t("me.noName");
-    $("#whoName").textContent = full;
-    $("#brandName").textContent = full;
-    $("#olmaLive").textContent = t(paused ? "live.paused" : "live",
-      {name:($("#oname").value.trim() || L(PROFILE.olma))});
+    $("#whoName").textContent = (f + " " + l).trim() || t("me.noName");
+    $("#brandName").textContent = olmaName();
+    $("#brandTag").textContent = brandTag(myGender());
+    $("#olmaLive").textContent = t(paused ? "live.paused" : "live");
   }
   function hop(el){
     if(!el) return;
@@ -5126,11 +5277,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     while(next === myAvatar) next = Math.floor(Math.random() * ANIMALS.length);
     myAvatar = next;
     paintAvatars();
-    [$("#bigAvatar"), $("#miniAvatar")].forEach(function(el){
-      el.classList.remove("pop");
-      void el.offsetWidth;
-      el.classList.add("pop");
-    });
+    var big = $("#bigAvatar");
+    big.classList.remove("pop"); void big.offsetWidth; big.classList.add("pop");
     toast(t("toast.avatar"));
   });
   /* Pause is a state the whole app carries, not a message that flashes once:
@@ -5158,6 +5306,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(!b) return;
     $$("button", this).forEach(function(x){ x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
     paintAvatars();
+    /* the header's welcome line is inflected too — it must not still be
+       addressing them the old way while a toast says it changed */
+    syncName();
     $("#bigAvatar").classList.remove("pop"); void $("#bigAvatar").offsetWidth; $("#bigAvatar").classList.add("pop");
     toast(t(b.dataset.g === "f" ? "toast.fem" : "toast.masc"));
   });
@@ -5245,6 +5396,36 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#sSaved").textContent = t("sheet.autosave");
     syncName();
   }
+  /* ══════════════════════════════════════════════════════════════
+     THE FIRST SCREEN
+     Two tiles and nothing else. They are real links, not the app's own
+     channel buttons: those toast, because inside the app you are already
+     hers — here the whole job is to leave this page and land in the thread.
+     The call button is deliberately not offered. Olma ringing a stranger who
+     has never written to her is not an introduction, it is a cold call.
+     ══════════════════════════════════════════════════════════════ */
+  function renderWelcome(){
+    if(!NEWUSER) return;
+    $("#wWord").textContent = L(PROFILE.olma);
+    /* masculine here, always: a stranger has told us nothing, and the whole
+       product's default until they do is the masculine form */
+    $("#wTag").textContent = brandTag("m");
+    $("#wRow").innerHTML = CHANNELS.filter(function(c){ return !c.call; })
+      .map(function(c){
+        /* target=_blank because a whatsapp:/sms: hand-off from inside a
+           preview frame is otherwise simply swallowed; on the real page it
+           costs nothing. */
+        return '<a class="chan" href="' + esc(c.link) + '" target="_blank" rel="noopener">' +
+          tileFor(c.tile, c.icon) + "<b>" + esc(c.name) + "</b><i>" +
+          esc(t("w.open")) + "</i></a>";
+      }).join("");
+  }
+  function startWelcome(){
+    document.documentElement.classList.add("is-new");
+    $("#welcome").hidden = false;
+    renderWelcome();
+  }
+
   function renderAll(){
     paintStatic();
     buildCatChips();
@@ -5253,6 +5434,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     renderTasks();
     renderStrip(selDay);
     renderFriends();
+    renderWelcome();
     /* the mode is re-applied rather than reset: a language switch must not
        throw somebody out of the coordination they were reading */
     setCalMode($("#calMeet").hidden ? "cal" : "meet");
@@ -5457,6 +5639,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
        a 404 for its trouble. Asking "am I the served page" is the actual
        question. */
     if(location.pathname !== "/me") return;
+    /* A stranger has nothing to fetch and no session to fetch it with — the
+       call could only ever come back 401. */
+    if(NEWUSER) return;
     fetch("/me/data", {credentials:"same-origin", headers:{Accept:"application/json"}})
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(body){ if(body && body.ok && body.data) hydrate(body.data); })
@@ -5585,7 +5770,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(document.fonts && document.fonts.ready) document.fonts.ready.then(begin);
     setTimeout(begin, 2500);
   }
-  startIntro();
+  /* One or the other, never both: the three-stage intro stages the APP, and
+     a stranger is not being shown the app. */
+  if(NEWUSER) startWelcome(); else startIntro();
+  $("#newTog").addEventListener("click", function(){
+    NEWUSER = !NEWUSER;
+    document.documentElement.classList.toggle("is-new", NEWUSER);
+    $("#welcome").hidden = !NEWUSER;
+    if(NEWUSER) renderWelcome();
+  });
   $("#introTog").addEventListener("click", function(){
     try{ sessionStorage.removeItem("olma-intro"); }catch(e){}
     document.documentElement.classList.remove("intro-settled");
