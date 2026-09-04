@@ -8,6 +8,7 @@ const audit = require('./audit');
 const { hasOffset, badTime } = require('./datetime');
 const reminders = require('./reminders');
 const autoReminder = require('./auto-reminder');
+const shopping = require('./shopping-list');
 
 const MAX_BULK = 60;
 
@@ -29,6 +30,16 @@ async function addTask(client, ownerId, { title, category, dueAt, parentId, sour
   if (parentId) {
     const check = await checkParent(client, ownerId, parentId);
     if (!check.ok) return check;
+  }
+  // "לקנות חלב, קוטג׳ וגבינה צהובה" is three things, not one line nobody can
+  // tick off halfway. Recognised in code (domain/shopping-list.js) rather than
+  // by asking the model, because this fires on a large share of what people
+  // dictate and a per-task token cost is the wrong price for a formatting
+  // call. Only ever at the top level: an item added INTO a project was already
+  // split by whoever chose the parent, and re-splitting it would nest twice.
+  if (!parentId) {
+    const list = await shopping.absorb(client, ownerId, { title, dueAt, source });
+    if (list) return list;
   }
   const { rows } = await client.query(
     `INSERT INTO tasks (owner_id, title, category, due_at, parent_id, source)
