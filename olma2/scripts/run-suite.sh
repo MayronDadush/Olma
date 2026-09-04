@@ -63,7 +63,13 @@ NICE="${SUITE_NICE:-}"
 if [ -n "${SUITE_CMD:-}" ]; then
   CMD="$SUITE_CMD"
 else
-  CMD="node --test"
+  # --test-timeout: node's default is 0, i.e. a test or hook that never settles
+  # waits for ever. 60s is >2x the whole suite's healthy runtime, so nothing
+  # legitimate reaches it. Measured caveat, so nobody mistakes this for full
+  # cover: it catches a hook/test that never SETTLES, and does nothing at all
+  # for a file whose tests pass but which leaves a handle open — that one is
+  # caught by the exit watchdog in tests/helpers.js.
+  CMD="node --test --test-timeout=60000"
   [ -n "$CONCURRENCY" ] && CMD="$CMD --test-concurrency=$CONCURRENCY"
   CMD="$CMD 'tests/*.test.js'"
   [ -n "$NICE" ] && CMD="nice -n $NICE $CMD"

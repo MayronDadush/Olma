@@ -3207,6 +3207,34 @@ of CI's 24.20; on the matching version it reproduced on run 1.
 still the right backstop for the next unknown hang; only its header needed
 correcting, since it asserted an upstream bug that does not exist.
 
+**Follow-up, same day — the two doors left open.** The fix above closes the
+route that actually bit us; two others led to the same invisible state, and
+were closed after the owner asked whether the work was actually good:
+
+- **`teardown()`'s `pool.end()` was unbounded.** It only settles once every
+  client is returned, so one `pool.connect()` without a
+  `finally { client.release() }` hangs teardown for ever — the same wedge, one
+  door along. It is now bounded, and on expiry it force-closes the sockets
+  (so the process can still exit), then throws naming the count AND the stack
+  of the checkout that leaked.
+- **An exit watchdog**, unref'd, armed when `helpers.js` loads: if the file's
+  tests have finished and the process is still alive a minute later, it prints
+  what is holding the event loop open and exits non-zero.
+
+The interesting part is the one that did NOT work. `--test-timeout` was the
+obvious backstop — node's default is `0`, meaning no timeout at all — and it
+was assumed to turn any future hang into a red test. Measured, on two fixture
+files, it does not: it correctly kills a hook or test that never **settles**
+(a `before` returning a promise that never resolves fails in ~4s), and it does
+**nothing** for a file whose tests all pass but which leaves one socket open —
+that one still hangs for ever. Our bug was the second kind, so the obvious
+backstop would have been pure false comfort. It is set anyway, at 60s, because
+it costs nothing and closes the first case; the second needed the watchdog.
+
+`tests/helpers-guards.test.js` drives all three as real child processes,
+including the case that must stay clean, because a guard that only ever runs
+when something has already gone wrong is the kind most likely to rot.
+
 ### The rollback was one release deep, on a five-merge day (2026-09-03)
 
 Owner question, asked plainly after five PRs went to `main` in an evening:

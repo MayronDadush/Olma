@@ -398,8 +398,15 @@ Two things the suite learned the hard way:
   that cannot exit hangs `node --test` silently. Stage fixtures in
   `fs.mkdtempSync()`; `tests/shared-fixture-writes.test.js` enforces it
   (`incidents.md`, "A test file poisoned every other one").
-- **Close every client in a `finally` in `freshDb()`.** That is what turns a
-  failing `before` hook into one red test instead of a six-hour silent CI job.
+- **A test child that cannot exit is invisible** — the runner waits on it for
+  ever and never flushes its output, so the suite dies with no message.
+  `freshDb()` therefore closes every client in a `finally`, bounds
+  `pool.end()` (a client checked out and never released now fails by name,
+  with the checkout's stack), and arms an unref'd exit watchdog.
+  **`--test-timeout` does NOT cover this** — measured: it catches a hook or
+  test that never *settles*, and does nothing at all for a file whose tests
+  pass but which leaves a handle open. `tests/helpers-guards.test.js` proves
+  both guards still fire.
 
 - **A green from CI may be a retry.** The wedge above is fixed, but
   `olma2/scripts/run-suite.sh` stays as the backstop for the next child that
