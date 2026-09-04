@@ -107,8 +107,11 @@ while [ "$attempt" -le "$ATTEMPTS" ]; do
   echo "" >&2
   echo "########################################################################" >&2
   echo "# THE WEDGE: no exit after ${TIMEOUT}s (a healthy run is 30-45s)." >&2
-  echo "# node's test runner and one of its children have stopped talking to" >&2
-  echo "# each other; both are parked in the event loop. Not a test failure." >&2
+  echo "# A test child could not exit — something is still holding its event" >&2
+  echo "# loop open, and node --test waits on it for ever, printing nothing." >&2
+  echo "# Look at OUR code first: the known instance of this was a test of" >&2
+  echo "# ours, not a runner bug. docs/incidents.md, \"A test file poisoned" >&2
+  echo "# every other one\", has the diagnosis and how to catch the next one." >&2
   echo "# Attempt $attempt of $ATTEMPTS — killing and retrying." >&2
   echo "########################################################################" >&2
   # The runner will not reap its children once it is in this state, so the

@@ -92,10 +92,14 @@ test('a HANG is retried, announced each time, and still fails at the end', () =>
   assert.match(r.stderr, /Attempt 3 of 3/);
   assert.match(r.stderr, /wedged on all 3 attempts/);
   assert.match(r.stderr, /check whether the wedge has changed\s+shape/);
-  // Whoever reads this in a CI log at midnight should not have to work out
-  // whether their own branch broke something.
-  assert.match(r.stderr, /Not a test failure/);
-  assert.match(r.stderr, /stopped talking/);
+  // Whoever reads this in a CI log at midnight should be pointed at the thing
+  // that is actually most likely wrong. These assertions used to pin the
+  // ORIGINAL diagnosis — "stopped talking", "Not a test failure" — which was
+  // retired on 2026-09-04 when the cause turned out to be a test of ours. A
+  // banner enforced by a test is doctrine: anyone correcting it got a red and
+  // could "fix" that by reverting the correction. Pin the shape, not a theory.
+  assert.match(r.stderr, /could not exit/);
+  assert.match(r.stderr, /Look at OUR code first/);
   assert.match(r.stderr, /a healthy run is 30-45s/);
 });
 
