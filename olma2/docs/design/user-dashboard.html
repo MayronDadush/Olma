@@ -15,10 +15,16 @@
   --text:#141322;
   --text-2:#6C6982;
   --text-3:#A29FB5;
-  --accent:#5654E0;
-  --accent-2:#4340C6;
-  --accent-soft:#EBEAFC;
-  --prog:rgba(86,84,224,.26);
+  /* Hue 241 is the blurple every product ships with — Discord's, Stripe's,
+     half of Material's. It was the one thing on this page that could have
+     been anybody's. Moved to 256: further into violet, deeper, with more
+     chroma, which is also the direction the neutrals were already leaning
+     (#F4F3F8 and #6C6982 are violet-biased greys, not neutral ones). Same
+     colour, said properly. */
+  --accent:#5B2FD6;
+  --accent-2:#4A22B4;
+  --accent-soft:#EEE8FC;
+  --prog:rgba(91,47,214,.26);
   --danger:#DC3A31;
   --danger-soft:#FCEBE9;
   --warn:#B57509;
@@ -72,10 +78,10 @@
     --text:#F4F3FA;
     --text-2:#9D9AB2;
     --text-3:#6E6B83;
-    --accent:#8F8DFF;
-    --accent-2:#A5A3FF;
-    --accent-soft:#232141;
-    --prog:rgba(143,141,255,.34);
+    --accent:#A38CFF;
+    --accent-2:#BBA9FF;
+    --accent-soft:#291D4C;
+    --prog:rgba(163,140,255,.34);
     --danger:#FF6B60;
     --danger-soft:#33191A;
     --warn:#F0AE3E;
@@ -108,10 +114,10 @@
   --text:#F4F3FA;
   --text-2:#9D9AB2;
   --text-3:#6E6B83;
-  --accent:#8F8DFF;
-  --accent-2:#A5A3FF;
-  --accent-soft:#232141;
-  --prog:rgba(143,141,255,.34);
+  --accent:#A38CFF;
+  --accent-2:#BBA9FF;
+  --accent-soft:#291D4C;
+  --prog:rgba(163,140,255,.34);
   --danger:#FF6B60;
   --danger-soft:#33191A;
   --warn:#F0AE3E;
@@ -226,7 +232,7 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
 }
 .brandmark{
   width:38px;height:38px;flex:none;display:block;
-  filter:drop-shadow(0 5px 12px rgba(86,84,224,.26));
+  filter:drop-shadow(0 5px 12px rgba(91,47,214,.28));
 }
 .brandmark svg{width:100%;height:100%;display:block}
 .brand-txt{min-width:0}
@@ -376,6 +382,7 @@ button.row:active{background:var(--bg-tint)}
 .tile.apple{background:#fff;color:#1B1A1F;box-shadow:inset 0 0 0 1px var(--sep-2)}
 .tile.monday{background:#fff;box-shadow:inset 0 0 0 1px var(--sep-2)}
 .tile.slack{background:#fff;box-shadow:inset 0 0 0 1px var(--sep-2)}
+.tile.notion{background:#fff;box-shadow:inset 0 0 0 1px var(--sep-2)}
 .tile.msg{background:linear-gradient(160deg,#5FA8FF,#0B6FE8)}
 .tile.wa{background:linear-gradient(160deg,#4EE07B,#12A94F)}
 .tile.cal{background:linear-gradient(160deg,#FF6E63,#E2382C)}
@@ -504,6 +511,7 @@ button.row:active{background:var(--bg-tint)}
    get the shape of app icons and sit at the very top of the page. */
 .chanrow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .chan{
+  position:relative;
   background:var(--surface);border-radius:16px;box-shadow:var(--shadow-m);
   padding:15px 8px 13px;display:flex;flex-direction:column;align-items:center;gap:9px;
   text-align:center;min-width:0;
@@ -599,7 +607,7 @@ html.is-new .introtog{display:none}
   background:radial-gradient(125% 68% at 50% -8%, var(--accent-soft) 0%, transparent 62%), var(--bg);
 }
 .wcard{width:100%;max-width:376px;display:flex;flex-direction:column;align-items:center;text-align:center}
-.wmark{width:82px;height:82px;filter:drop-shadow(0 14px 28px rgba(86,84,224,.26))}
+.wmark{width:82px;height:82px;filter:drop-shadow(0 14px 28px rgba(91,47,214,.28))}
 .wmark svg{width:100%;height:100%;display:block}
 .wword{
   margin-top:21px;font-family:'Rubik',sans-serif;font-weight:700;
@@ -744,7 +752,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 }
 .ttime.late{color:var(--danger)}
 .tsec + .tsec{margin-top:19px}
-.tsec-add{margin-top:18px}
 .glabel .late{color:var(--danger)}
 /* ── a task shared with people ──
    Faces sit in the sentence, right after the title, not out with the time
@@ -1092,7 +1099,57 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 }
 .glabel .cdot{vertical-align:0;margin-inline-end:6px}
 /* the two ways of reading the list, and nothing else on the row */
-.viewrow{display:flex;justify-content:flex-end;margin:-6px 4px 12px}
+/* `flex-end` put this control on the trailing edge — the LEFT of a Hebrew
+   page, i.e. the far side from where the eye starts and from the heading it
+   belongs to. The row reads from the start edge in both directions now, and
+   the action that belongs with it sits at the other end of the same row
+   instead of at the bottom of the list. */
+.viewrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:-6px 4px 12px}
+.addmini{
+  display:flex;align-items:center;gap:6px;flex:none;
+  padding:6px 12px 6px 8px;border-radius:999px;
+  background:var(--accent);color:#fff;font-weight:600;font-size:13px;
+  box-shadow:var(--shadow-s);
+  transition:transform .22s var(--spring),background .2s ease;
+}
+.addmini:active{transform:scale(.94)}
+/* the second action on a row is the quieter one — same shape, no fill, so
+   the pair reads as one primary and one alternative rather than two rivals */
+.addmini.ghost{background:var(--accent-soft);color:var(--accent);box-shadow:none}
+.viewrow.pair{justify-content:flex-start}
+/* A group is a list you keep, not a relationship anybody agreed to — the
+   faces say who is in it before the name has to. */
+.grfaces{display:flex;flex:none;align-items:center}
+.grfaces .fav{
+  width:30px;height:30px;border-radius:50%;overflow:hidden;flex:none;
+  box-shadow:0 0 0 2px var(--surface);
+}
+.grfaces .fav + .fav{margin-inline-start:-11px}
+.grfaces .more{
+  width:30px;height:30px;border-radius:50%;flex:none;margin-inline-start:-11px;
+  background:var(--bg-tint);color:var(--text-2);box-shadow:0 0 0 2px var(--surface);
+  display:grid;place-items:center;font-size:11px;font-weight:700;
+}
+.grname{
+  width:100%;margin:10px 0 4px;padding:9px 12px;border-radius:11px;
+  background:var(--bg-tint);color:var(--text);font:inherit;font-size:15px;font-weight:600;
+}
+.grname:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.chipcloud{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0 4px}
+.frchip{
+  display:flex;align-items:center;gap:6px;padding:4px 11px 4px 4px;
+  border-radius:999px;background:var(--bg-tint);color:var(--text-2);
+  font-size:13.5px;font-weight:600;
+  transition:background .22s var(--ease-io),color .22s var(--ease-io),transform .2s var(--spring);
+}
+.frchip .fav{width:22px;height:22px;border-radius:50%;overflow:hidden;flex:none}
+.frchip:active{transform:scale(.94)}
+.frchip[aria-pressed="true"]{background:var(--accent);color:#fff}
+/* Past four the list stops being something you take in at a glance, so it
+   becomes something you scroll and search instead. */
+.grscroll{max-height:none;overflow:visible}
+.grscroll.scroll{max-height:296px;overflow-y:auto;border-radius:16px;-webkit-overflow-scrolling:touch}
+.addmini svg{width:13px;height:13px;flex:none}
 .seg.mini{flex:none;padding:2.5px;border-radius:10px;gap:2px}
 .seg.mini button{flex:none;padding:5px 12px;font-size:13px;border-radius:8px}
 @keyframes stackSwap{
@@ -1129,6 +1186,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 }
 .day .dn{font-size:11.5px;font-weight:600;color:var(--text-3)}
 .day .dd{font-family:'Rubik',sans-serif;font-size:17px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
+/* inline-block so the dot can hang off the number itself rather than off the
+   cell — the number stays optically centred either way */
+.day.today .dd{display:inline-block;position:relative;color:var(--accent)}
+.todaydot{
+  position:absolute;top:50%;inset-inline-start:100%;margin-inline-start:3px;
+  transform:translateY(-50%);width:4px;height:4px;border-radius:50%;
+  background:var(--accent);
+}
+.day.today[aria-selected="true"] .dd{color:#fff}
+.day.today[aria-selected="true"] .todaydot{background:#fff}
 .day .dots{display:flex;justify-content:center;gap:3px;margin-top:5px;height:4px}
 .day .dots i{width:4px;height:4px;border-radius:50%;background:var(--text-3);display:block}
 .day[aria-selected="true"]{background:var(--accent);color:#fff}
@@ -1413,12 +1480,19 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   62%{opacity:1;transform:translateY(1px) scale(1.08)}
   100%{opacity:1;transform:none}
 }
+/* A word inside a card whose caption is already a sentence is one word too
+   many. The mark says the same thing in the corner, the way a badge on an app
+   icon does, and the word survives for anybody listening to the page rather
+   than looking at it. The bell is the honest glyph: default means this is
+   where she REACHES you, not where you open her. */
 .defbadge{
-  display:block;margin-top:1px;font-style:normal;text-decoration:none;
-  font-size:10px;font-weight:700;letter-spacing:.03em;
-  padding:2.5px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);
+  position:absolute;top:8px;inset-inline-end:8px;
+  width:19px;height:19px;border-radius:999px;
+  background:var(--accent);color:#fff;
+  display:grid;place-items:center;text-decoration:none;
   animation:badgeIn .52s var(--squash) backwards;
 }
+.defbadge svg{width:10px;height:10px}
 .defbadge.out{animation:badgeIn .28s var(--ease-io) reverse forwards}
 .chan.isdefault{box-shadow:var(--shadow-m),inset 0 0 0 1.5px var(--accent-soft)}
 .chan{transition:transform .28s var(--squash),box-shadow .42s var(--ease-io)}
@@ -1687,12 +1761,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <symbol id="i-cal" viewBox="0 0 20 20"><rect x="2.6" y="4" width="14.8" height="13.4" rx="3.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M2.6 8.2h14.8M6.6 2.4v3M13.4 2.4v3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-person" viewBox="0 0 20 20"><circle cx="10" cy="6.6" r="3.4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.6 17c.7-3.4 3.3-5.2 6.4-5.2s5.7 1.8 6.4 5.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
   <symbol id="i-mail" viewBox="0 0 20 20"><rect x="2.4" y="4.4" width="15.2" height="11.2" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m3.4 6.4 5.4 4.2a2 2 0 0 0 2.4 0l5.4-4.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
-  <symbol id="i-bubble" viewBox="0 0 20 20"><path d="M10 3.4c4 0 7.1 2.5 7.1 5.9s-3.1 5.9-7.1 5.9a9.4 9.4 0 0 1-1.7-.2c-.9.8-2 1.4-3.2 1.6-.3 0-.5-.3-.3-.5.4-.5.7-1.2.8-1.9C4 13.1 2.9 11.4 2.9 9.3c0-3.4 3.1-5.9 7.1-5.9Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="6.9" cy="9.3" r=".95" fill="currentColor"/><circle cx="10" cy="9.3" r=".95" fill="currentColor"/><circle cx="13.1" cy="9.3" r=".95" fill="currentColor"/></symbol>
-  <symbol id="i-wa" viewBox="0 0 20 20"><path d="M10 3a7 7 0 0 0-6.1 10.5l-.8 3.3 3.4-.8A7 7 0 1 0 10 3Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M7.9 6.6a.85.85 0 0 0-.9.9c.2 2.6 2.3 4.7 4.9 4.9a.85.85 0 0 0 .9-.9v-.7c0-.35-.22-.66-.55-.79l-1.15-.44a.85.85 0 0 0-.94.22l-.36.39a5.9 5.9 0 0 1-1.6-1.6l.39-.36a.85.85 0 0 0 .22-.94l-.44-1.15a.85.85 0 0 0-.79-.55Z" fill="currentColor"/></symbol>
+  <symbol id="i-bubble" viewBox="0 0 20 20"><path d="M10 3c4.2 0 7.5 2.7 7.5 6.3 0 3.5-3.3 6.3-7.5 6.3-.7 0-1.4-.08-2.05-.23-1.02.93-2.32 1.55-3.7 1.74-.36.05-.6-.37-.38-.66.55-.73.93-1.6 1.08-2.53C3.5 12.75 2.5 11.13 2.5 9.3 2.5 5.7 5.8 3 10 3Z" fill="currentColor"/></symbol>
+  <symbol id="i-wa" viewBox="0 0 20 20"><path fill-rule="evenodd" clip-rule="evenodd" d="M10 2.6a7.4 7.4 0 0 0-6.42 11.08l-.92 3.35a.42.42 0 0 0 .52.52l3.35-.92A7.4 7.4 0 1 0 10 2.6Zm-2.1 3.9a1 1 0 0 0-1 1.1 6.62 6.62 0 0 0 5.5 5.5 1 1 0 0 0 1.1-1v-.74a.9.9 0 0 0-.58-.84l-1.2-.45a.9.9 0 0 0-1 .25l-.33.37a6.2 6.2 0 0 1-1.58-1.58l.37-.33a.9.9 0 0 0 .25-1l-.45-1.2a.9.9 0 0 0-.84-.58Z" fill="currentColor"/></symbol>
   <symbol id="i-google" viewBox="0 0 20 20"><path d="M18 10.2c0-.6-.05-1.2-.16-1.7H10v3.3h4.5a3.9 3.9 0 0 1-1.7 2.5v2.1h2.8c1.6-1.5 2.4-3.7 2.4-6.2Z" fill="#4285F4"/><path d="M10 18.3c2.3 0 4.2-.75 5.6-2l-2.8-2.1c-.75.5-1.7.8-2.8.8-2.2 0-4-1.45-4.7-3.4H2.4v2.15A8.3 8.3 0 0 0 10 18.3Z" fill="#34A853"/><path d="M5.3 11.6a5 5 0 0 1 0-3.2V6.25H2.4a8.3 8.3 0 0 0 0 7.5L5.3 11.6Z" fill="#FBBC05"/><path d="M10 5c1.25 0 2.36.43 3.24 1.27l2.42-2.42A8.3 8.3 0 0 0 2.4 6.25L5.3 8.4C6 6.45 7.8 5 10 5Z" fill="#EA4335"/></symbol>
   <symbol id="i-ms" viewBox="0 0 20 20"><rect x="2.4" y="2.4" width="6.8" height="6.8" fill="#F25022"/><rect x="10.8" y="2.4" width="6.8" height="6.8" fill="#7FBA00"/><rect x="2.4" y="10.8" width="6.8" height="6.8" fill="#00A4EF"/><rect x="10.8" y="10.8" width="6.8" height="6.8" fill="#FFB900"/></symbol>
   <symbol id="i-apple" viewBox="0 0 20 20"><path d="M13.4 10.5c0-2 1.6-3 1.7-3.05a3.7 3.7 0 0 0-2.9-1.6c-1.25-.12-2.4.72-3 .72-.62 0-1.57-.7-2.6-.68a3.9 3.9 0 0 0-3.3 2c-1.4 2.44-.36 6.05 1 8.03.68.97 1.48 2.06 2.53 2.02 1.02-.04 1.4-.65 2.63-.65 1.22 0 1.57.65 2.64.63 1.09-.02 1.78-.99 2.45-1.96a8.6 8.6 0 0 0 1.1-2.27 3.55 3.55 0 0 1-2.25-3.2Z" fill="currentColor"/><path d="M11.6 4.5c.55-.67.92-1.6.82-2.5-.79.03-1.75.52-2.32 1.19-.51.58-.96 1.53-.84 2.43.88.07 1.79-.45 2.34-1.12Z" fill="currentColor"/></symbol>
   <symbol id="i-monday" viewBox="0 0 20 20"><rect x="2.6" y="6" width="3.4" height="10.4" rx="1.7" fill="#E2445C"/><rect x="8.3" y="3.6" width="3.4" height="12.8" rx="1.7" fill="#FDAB3D"/><rect x="14" y="8.6" width="3.4" height="7.8" rx="1.7" fill="#00C875"/></symbol>
+  <!-- Notion's mark is a letterform in a frame, so it is drawn as one: the
+       glyph carries the brand's own black on white, like every other vendor
+       tile here, rather than being tinted to ours. -->
+  <symbol id="i-notion" viewBox="0 0 20 20"><path d="M4.1 3.6 13 3a1.4 1.4 0 0 1 1 .3l2.2 1.6c.3.2.4.5.4.8v9.5c0 .6-.4 1-1 1.1l-9.9.6a1.4 1.4 0 0 1-1.3-.7L3.6 15a1.4 1.4 0 0 1-.2-.8V4.7c0-.6.3-1 .7-1.1Z" fill="none" stroke="#141322" stroke-width="1.3" stroke-linejoin="round"/><path d="M7.1 7.1v5.6M7.1 7.1l4.4 5.4M11.5 7v5.5" fill="none" stroke="#141322" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-slack" viewBox="0 0 20 20"><rect x="8.6" y="2.2" width="3" height="8" rx="1.5" fill="#36C5F0"/><rect x="2.2" y="8.6" width="8" height="3" rx="1.5" fill="#2EB67D"/><rect x="8.4" y="9.8" width="3" height="8" rx="1.5" fill="#ECB22E"/><rect x="9.8" y="8.4" width="8" height="3" rx="1.5" fill="#E01E5A"/></symbol>
   <symbol id="i-tools" viewBox="0 0 24 24"><path d="M4 7h9M17.5 7H20M4 17h3M11.5 17H20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="15.3" cy="7" r="2.5" fill="none" stroke="currentColor" stroke-width="1.9"/><circle cx="9.3" cy="17" r="2.5" fill="none" stroke="currentColor" stroke-width="1.9"/></symbol>
   <symbol id="i-list" viewBox="0 0 24 24"><path d="M4 6.6 5.7 8.4 9 5M4 16.6l1.7 1.8L9 15M12.5 7h7.5M12.5 17H20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
@@ -1704,7 +1782,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <symbol id="i-undo" viewBox="0 0 16 16"><path d="M3.4 6.2h6.3a3.6 3.6 0 0 1 0 7.2H6.1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 2.9 2.9 6.2 6 9.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-x" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
   <symbol id="i-search" viewBox="0 0 20 20"><circle cx="8.8" cy="8.8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m13.1 13.1 3.7 3.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
-  <symbol id="i-phone" viewBox="0 0 20 20"><path d="M5.6 3.1h1a1.6 1.6 0 0 1 1.5 1l.75 1.87a1.6 1.6 0 0 1-.4 1.79l-.72.66a9.6 9.6 0 0 0 3.05 3.05l.66-.72a1.6 1.6 0 0 1 1.79-.4l1.87.75a1.6 1.6 0 0 1 1 1.5v1a1.9 1.9 0 0 1-2.06 1.9C9.06 15.98 4.02 10.94 3.7 5.16A1.9 1.9 0 0 1 5.6 3.1Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 20 20"><path d="M5.3 3h1.42c.63 0 1.2.4 1.4 1l.78 2.05c.21.57.03 1.2-.44 1.58l-.7.55a8.7 8.7 0 0 0 3.06 3.06l.55-.7c.38-.47 1.01-.65 1.58-.44l2.05.78c.6.2 1 .77 1 1.4v1.42a2.1 2.1 0 0 1-2.28 2.1C8.5 15.3 4.7 11.5 3.2 5.28A2.1 2.1 0 0 1 5.3 3Z" fill="currentColor"/></symbol>
   <symbol id="i-note" viewBox="0 0 20 20"><path d="M4.4 2.6h11.2v10.2l-4 4.6H4.4Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.6 12.6h-4v4.8M7.2 6.4h5.6M7.2 9.4h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-folder" viewBox="0 0 20 20"><path d="M2.6 5.6a2 2 0 0 1 2-2h2.9l2 2.4h6a2 2 0 0 1 2 2v6.4a2 2 0 0 1-2 2h-10.9a2 2 0 0 1-2-2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
   <symbol id="i-arrdown" viewBox="0 0 16 16"><path d="M2.9 5.3h10.2L8 12.4Z" fill="currentColor" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/></symbol>
@@ -1715,7 +1793,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
        copy, but a gradient declared in another file would silently render
        black. -->
   <linearGradient id="i-logo-g" x1="18" y1="10" x2="80" y2="86" gradientUnits="userSpaceOnUse">
-    <stop offset="0" stop-color="#8A88F7"/><stop offset=".55" stop-color="#5654E0"/><stop offset="1" stop-color="#3D3AB8"/>
+    <stop offset="0" stop-color="#9C7BF8"/><stop offset=".55" stop-color="#5B2FD6"/><stop offset="1" stop-color="#3A1A90"/>
   </linearGradient>
   <clipPath id="i-logo-c"><circle cx="46" cy="44" r="32"/></clipPath>
   <symbol id="i-logo" viewBox="0 0 96 96">
@@ -1766,6 +1844,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         <button aria-pressed="true"  data-view-by="time" data-i18n="cat.byTime"></button>
         <button aria-pressed="false" data-view-by="cat"  data-i18n="cat.byCat"></button>
       </div>
+      <button class="addmini" id="addTask"><svg><use href="#i-plus"/></svg><span data-i18n="tasks.new"></span></button>
     </div>
     <div style="--i:2">
       <div class="stack" id="taskStack"></div>
@@ -1839,17 +1918,26 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       <h1 data-i18n="fr.h"></h1>
       <p data-i18n="fr.p"></p>
     </div>
-    <!-- Adding somebody comes BEFORE the list of people already added: this
-         page is where you come to grow that list, and the action you came for
-         should not be below everything you already have. -->
-    <div style="--i:1">
-      <div class="group">
-        <button class="addrow" id="addFriend">
-          <span class="plus"><svg><use href="#i-plus"/></svg></span><span data-i18n="fr.invite"></span>
-        </button>
-      </div>
+    <!-- Adding somebody comes BEFORE the lists: this page is where you come
+         to grow them, and the action you came for should not be below
+         everything you already have. Both actions share one row because they
+         are the same question asked at two sizes — one person, or a set of
+         them you will reach for again. -->
+    <div class="viewrow pair" style="--i:1">
+      <button class="addmini" id="addFriend"><svg><use href="#i-plus"/></svg><span data-i18n="fr.invite"></span></button>
+      <button class="addmini ghost" id="addGroup"><svg><use href="#i-plus"/></svg><span data-i18n="gr.new"></span></button>
     </div>
-    <div style="--i:2;margin-top:24px">
+    <div style="--i:2">
+      <div class="glabel"><span data-i18n="gr.h"></span><span class="hint" data-i18n="gr.hint"></span></div>
+      <div class="searchwrap" id="groupSearch" hidden>
+        <svg class="sicon"><use href="#i-search"/></svg>
+        <input id="groupQ" type="search" autocomplete="off" data-i18n-ph="gr.search" data-i18n-label="gr.search">
+        <button class="sclear" id="groupQClear" hidden data-i18n-label="fr.clear">&#10005;</button>
+      </div>
+      <div class="grscroll" id="groupScroll"><div class="group" id="groupGroup"></div></div>
+      <p class="note" id="groupEmpty" style="padding:0 14px" hidden></p>
+    </div>
+    <div style="--i:3;margin-top:24px">
       <div class="glabel"><span data-i18n="fr.connected"></span><span class="hint" id="friendCount"></span></div>
       <div class="searchwrap" id="friendSearch" hidden>
         <svg class="sicon"><use href="#i-search"/></svg>
@@ -2027,7 +2115,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       </div>
     </div></div></div>
     <div class="row no-icon">
-      <div class="row-txt"><div class="row-title" data-i18n="sheet.remind"></div><div class="row-sub" data-i18n="sheet.remindSub"></div></div>
+      <div class="row-txt"><div class="row-title" data-i18n="sheet.remind"></div><div class="row-sub" id="remindSub"></div></div>
       <button class="switch" role="switch" aria-checked="false" id="sRemind" data-i18n-label="sheet.remind"></button>
     </div>
     <div class="fold" id="sRemindFold"><div><div class="foldpad tight">
@@ -2481,12 +2569,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.default":"תזכורות ועדכונים יגיעו ב־{name}",
       "mo.boards":"לוחות ופריטים","mo.updates":"עדכונים שמשויכים אליך",
       "s.mentions":"אזכורים אישיים","s.dm":"הודעות ישירות · סיכום יומי",
+      "n.pages":"דפים ותתי־דפים","n.dbs":"בסיסי נתונים ומשימות",
 
       "off.google":"יומן, אנשי קשר, Gmail, Drive ו־Keep",
       "off.apple":"iCloud — יומן, אנשי קשר, מייל ופתקים",
       "off.ms":"Outlook — יומן, אנשי קשר ומייל",
       "off.monday":"לוחות ומשימות מהעבודה",
       "off.slack":"אזכורים וסיכומי ערוצים",
+      "off.notion":"דפים, בסיסי נתונים ומשימות",
 
       "svcOn.n0":"מחובר · אין שירותים פעילים","svcOn.n1":"שירות אחד פעיל","svcOn.nN":"{n} שירותים פעילים",
       "connect":"חיבור","connecting":"מתחבר…","disconnect":"ניתוק החשבון",
@@ -2529,7 +2619,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "fr.connected":"מחוברים","fr.count":"{n} חברים",
       "fr.search":"חיפוש חבר","fr.clear":"ניקוי","fr.noMatch":"אין חבר בשם „{q}”.",
       "fr.p.n0":"אין הרשאות פעילות","fr.p.n1":"הרשאה אחת פעילה","fr.p.nN":"{n} הרשאות פעילות",
-      "fr.bday":"יום הולדת היום","fr.remove":"הסרת החיבור","fr.invite":"הזמנת חבר לעולמה",
+      "fr.bday":"יום הולדת היום","fr.remove":"הסרת החיבור","fr.invite":"הזמנת חבר",
+      /* A group is one person's own shortcut, not a shared object — nobody is
+         asked to join one and nobody is told they are in one. The hint says
+         so, because a list of names usually implies the opposite. */
+      "gr.h":"קבוצות","gr.hint":"רשימות שלך · אף אחד לא מתבקש לאשר","gr.new":"קבוצה חדשה",
+      "gr.count.n0":"עדיין ריקה","gr.count.n1":"חבר אחד","gr.count.nN":"{n} חברים",
+      "gr.members":"מי בקבוצה","gr.namePh":"שם הקבוצה","gr.untitled":"קבוצה ללא שם",
+      "gr.search":"חיפוש קבוצה","gr.noMatch":"אין קבוצה בשם „{q}”.",
+      "gr.remove":"מחיקת הקבוצה","gr.empty":"אין עדיין קבוצות. אפשר לפתוח אחת לכל חבורה שאתה מתאם איתה לעיתים קרובות.",
+      "toast.grNew":"קבוצה חדשה · תן לה שם","toast.grGone":"הקבוצה נמחקה",
       "cal.modeRead":"היומן","cal.modeMeet":"תיאום פגישה",
       "cal.pMeet":"מסמנים מתי מתאים, עולמה מוצאת את החלון הטוב ביותר לכולם.",
       "sheet.close":"סגירה","mt.open":"תיאומים פעילים","mt.new":"תיאום פגישה חדש",
@@ -2589,7 +2688,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "sheet.new":"משימה חדשה","sheet.edit":"עריכת משימה",
       "sheet.task":"משימה","sheet.taskPh":"מה צריך לעשות?",
       "sheet.date":"מועד","sheet.time":"שעה",
-      "sheet.remind":"תזכורת","sheet.remindSub":"עולמה תזכיר בוואטסאפ",
+      "sheet.remind":"תזכורת","sheet.remindSub":"עולמה תזכיר ב־{name}",
       "sheet.save":"שמירה","sheet.delete":"מחיקת המשימה","sheet.cancel":"ביטול",
       "sheet.autosave":"נשמר אוטומטית","sheet.saved":"נשמר ✓","sheet.noDate":"ללא תאריך",
       "cal.today":"היום","cal.tomorrow":"מחר","cal.clear":"ללא תאריך","cal.yesterday":"אתמול",
@@ -2597,7 +2696,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "sheet.allDay":"כל היום","sheet.repeat":"חזרה",
       "sheet.inCal":"להוסיף ליומן",
       "cal.allDay":"כל היום",
-      "cal.taskTag":"משימה","cal.taskSub":"מהרשימה שלך בעולמה","cal.taskRem":"עולמה תזכיר בוואטסאפ",
+      "cal.taskTag":"משימה","cal.taskSub":"מהרשימה שלך בעולמה","cal.taskRem":"עולמה תזכיר ב־{name}",
       "cal.showIn":"להצגה ביומן",
       "off.at":"בזמן","off.m10":"10 דק׳ לפני","off.h1":"שעה לפני","off.d1":"יום לפני",
       "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש","rep.year":"כל שנה",
@@ -2657,12 +2756,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.default":"Reminders and updates will come by {name}",
       "mo.boards":"Boards and items","mo.updates":"Updates assigned to you",
       "s.mentions":"Mentions","s.dm":"Direct messages · daily summary",
+      "n.pages":"Pages and sub-pages","n.dbs":"Databases and their items",
 
       "off.google":"Calendar, Contacts, Gmail, Drive and Keep",
       "off.apple":"iCloud — Calendar, Contacts, Mail and Notes",
       "off.ms":"Outlook — Calendar, Contacts and Mail",
       "off.monday":"Boards and work items",
       "off.slack":"Mentions and channel summaries",
+      "off.notion":"Pages, databases and their items",
 
       "svcOn.n0":"Connected · no services on","svcOn.n1":"1 service on","svcOn.nN":"{n} services on",
       "connect":"Connect","connecting":"Connecting…","disconnect":"Disconnect account",
@@ -2705,7 +2806,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "fr.connected":"Connected","fr.count":"{n} friends",
       "fr.search":"Search friends","fr.clear":"Clear","fr.noMatch":"No friend matches \u201c{q}\u201d.",
       "fr.p.n0":"No permissions on","fr.p.n1":"1 permission on","fr.p.nN":"{n} permissions on",
-      "fr.bday":"Birthday today","fr.remove":"Remove connection","fr.invite":"Invite a friend to Allma",
+      "fr.bday":"Birthday today","fr.remove":"Remove connection","fr.invite":"Invite a friend",
+      "gr.h":"Groups","gr.hint":"Your own lists · nobody is asked to approve","gr.new":"New group",
+      "gr.count.n0":"Empty so far","gr.count.n1":"1 person","gr.count.nN":"{n} people",
+      "gr.members":"Who is in it","gr.namePh":"Group name","gr.untitled":"Untitled group",
+      "gr.search":"Search groups","gr.noMatch":"No group matches \u201c{q}\u201d.",
+      "gr.remove":"Delete group","gr.empty":"No groups yet. Open one for any crowd you arrange things with often.",
+      "toast.grNew":"New group · give it a name","toast.grGone":"Group deleted",
       "cal.modeRead":"Calendar","cal.modeMeet":"Coordinate",
       "cal.pMeet":"Everyone marks when they can. Allma finds the window that fits.",
       "sheet.close":"Close","mt.open":"Active coordinations","mt.new":"New coordination",
@@ -2765,7 +2872,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "sheet.new":"New task","sheet.edit":"Edit task",
       "sheet.task":"Task","sheet.taskPh":"What needs doing?",
       "sheet.date":"Date","sheet.time":"Time",
-      "sheet.remind":"Reminder","sheet.remindSub":"Allma will remind you on WhatsApp",
+      "sheet.remind":"Reminder","sheet.remindSub":"Allma will remind you on {name}",
       "sheet.save":"Save","sheet.delete":"Delete task","sheet.cancel":"Cancel",
       "sheet.autosave":"Saves as you type","sheet.saved":"Saved ✓","sheet.noDate":"No date",
       "cal.today":"Today","cal.tomorrow":"Tomorrow","cal.clear":"No date","cal.yesterday":"Yesterday",
@@ -2773,7 +2880,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "sheet.allDay":"All day","sheet.repeat":"Repeat",
       "sheet.inCal":"Add to calendar",
       "cal.allDay":"All day",
-      "cal.taskTag":"Task","cal.taskSub":"From your Allma list","cal.taskRem":"Allma will remind you on WhatsApp",
+      "cal.taskTag":"Task","cal.taskSub":"From your Allma list","cal.taskRem":"Allma will remind you on {name}",
       "cal.showIn":"Show in calendar",
       "off.at":"On time","off.m10":"10 min before","off.h1":"1 hour before","off.d1":"1 day before",
       "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month","rep.year":"Every year",
@@ -3152,7 +3259,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
           {k:null,label:"mo.updates",on:true}]},
     {id:"slack", name:"Slack", tile:"slack", icon:"i-slack", grp:"work",
      account:"Allma workspace", connected:false,
-     svc:[{k:null,label:"s.mentions",on:true},{k:null,label:"s.dm",on:false}]}
+     svc:[{k:null,label:"s.mentions",on:true},{k:null,label:"s.dm",on:false}]},
+    {id:"notion", name:"Notion", tile:"notion", icon:"i-notion", grp:"work",
+     account:"Allma workspace", connected:false,
+     svc:[{k:null,label:"n.pages",on:true,w:true,mode:"read"},
+          {k:null,label:"n.dbs",on:true,w:true,mode:"write"}]}
   ];
   var CATS = [
     {k:"cal", tile:"cal", icon:"i-cal"},
@@ -3266,7 +3377,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      list that anyone can extend stops being scannable at a glance, which is
      the only thing a category is for here. `c` is the key, `k` its colour. */
   var TASKCATS = [
-    {k:"home",    c:"#5654E0"},
+    {k:"home",    c:"#5B2FD6"},
     {k:"work",    c:"#0E7C86"},
     {k:"family",  c:"#C2410C"},
     {k:"health",  c:"#B5179E"},
@@ -3346,6 +3457,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     {id:13,n:{he:"ליאת שמש",en:"Liat Shemesh"},     since:{he:"מאז 2 בספטמבר",en:"since 2 Sep"},  g:"f", tz:"Australia/Sydney", p:{tasks:false,meet:true, msg:true}}
   ];
   FRIENDS.forEach(function(f){ f.av = seedIndex("olma-friend-" + f.id + f.n.en); });
+  /* Groups are a local shortcut over the SAME connections — membership is a
+     list of friend ids and nothing else. There is no group-level permission
+     because there is nothing a group can do that the person in it has not
+     already allowed one-to-one. */
+  var GROUPS = [
+    {id:1, n:{he:"פוקר",en:"Poker"},      m:[3,8,10,12]},
+    {id:2, n:{he:"פאדל",en:"Padel"},      m:[2,6,10]},
+    {id:3, n:{he:"האו״ם",en:"The UN"},    m:[4,9,11,13,5]}
+  ];
+  var grSeq = 100;
   var PKEYS = ["tasks","meet","msg"];
 
   /* The phone book, as it would arrive from a connected contacts service — so
@@ -3368,12 +3489,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   var invited = {};
 
   var EVENTS = {
-    0:[{t:"09:30",e:"10:15",n:{he:"סטנד־אפ צוות",en:"Team stand-up"}, s:{he:"Google Meet",en:"Google Meet"}, c:"#5654E0"},
+    0:[{t:"09:30",e:"10:15",n:{he:"סטנד־אפ צוות",en:"Team stand-up"}, s:{he:"Google Meet",en:"Google Meet"}, c:"#5B2FD6"},
        {t:"13:00",e:"14:00",n:{he:"צילומים באולפן",en:"Studio shoot"}, s:{he:"תל אביב, המלאכה 6",en:"Tel Aviv, HaMelacha 6"}, c:"#E2382C"},
        {t:"18:30",e:"20:00",n:{he:"פוקר אצל עמית",en:"Poker at Amit's"}, s:{he:"נקבע דרך עולמה",en:"Arranged through Allma"}, c:"#1B9B6B"}],
     1:[{t:"08:00",e:"08:45",n:{he:"אימון",en:"Workout"}, s:{he:"חדר כושר",en:"Gym"}, c:"#EE7A11"},
-       {t:"11:00",e:"12:00",n:{he:"פגישה עם גלי",en:"Meeting with Gali"}, s:{he:"ממתין לאישור שלה",en:"Waiting on her confirmation"}, c:"#5654E0"}],
-    2:[{t:"10:00",e:"11:30",n:{he:"מצגת ללקוח",en:"Client presentation"}, s:{he:"Zoom",en:"Zoom"}, c:"#5654E0"}],
+       {t:"11:00",e:"12:00",n:{he:"פגישה עם גלי",en:"Meeting with Gali"}, s:{he:"ממתין לאישור שלה",en:"Waiting on her confirmation"}, c:"#5B2FD6"}],
+    2:[{t:"10:00",e:"11:30",n:{he:"מצגת ללקוח",en:"Client presentation"}, s:{he:"Zoom",en:"Zoom"}, c:"#5B2FD6"}],
     3:[], 4:[{t:"20:00",e:"22:00",n:{he:"ארוחת ערב משפחתית",en:"Family dinner"}, s:{he:"אצל אמא",en:"At Mum's"}, c:"#E2382C"}], 5:[], 6:[]
   };
   /* The strip starts on the real today, because the task list is dated
@@ -3586,7 +3707,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       el.classList.toggle("isdefault", on);
       var b = $(".defbadge", el);
       if(on && !b){
-        el.insertAdjacentHTML("beforeend", '<u class="defbadge">' + esc(t("ch.defTag")) + "</u>");
+        el.insertAdjacentHTML("beforeend",
+          '<u class="defbadge" role="img" aria-label="' + esc(t("ch.defTag")) +
+          '" title="' + esc(t("ch.defTag")) + '"><svg><use href="#i-bell"/></svg></u>');
       } else if(!on && b){
         b.classList.add("out");
         setTimeout(function(){ if(b.parentNode) b.remove(); }, 300);
@@ -3890,8 +4013,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     });
     html += importedSection();
     if(!open.length) html = '<div class="group"><div class="empty">' + esc(t("tasks.empty")) + "</div></div>";
-    html += '<div class="group tsec-add"><button class="addrow" id="addTask">' +
-      '<span class="plus"><svg><use href="#i-plus"/></svg></span><span>' + esc(t("tasks.new")) + "</span></button></div>";
     $("#taskStack").innerHTML = html;
     var rems = open.filter(function(x){ return x.rem; }).length;
     $("#taskCount").textContent = pl("tasks", open.length) + " · " + pl("remc", rems);
@@ -3953,9 +4074,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     }
     var jp = e.target.closest("[data-jump]");
     if(jp){ jumpToCalendar(+jp.dataset.jump); return; }
-    if(e.target.closest("#addTask")){ openSheet(null); return; }
     if(wrap) openSheet(+wrap.dataset.id);
   });
+  /* It lives on the toolbar row now, outside the list it used to end, so it
+     gets its own listener rather than the stack's delegation. */
+  $("#addTask").addEventListener("click", function(){ openSheet(null); });
   $("#taskView").addEventListener("click", function(e){
     var b = e.target.closest("[data-view-by]");
     if(!b || b.getAttribute("aria-pressed") === "true") return;
@@ -5093,7 +5216,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       if(x.d !== iso || !x.cal) return;
       evs.push({time:x.all ? "" : (x.tm || ""), allDay:x.all, end:"",
                 title:L(x.t) || t("sheet.untitled"),
-                sub:t(x.rem ? "cal.taskRem" : "cal.taskSub"), c:"var(--accent)", task:x.id});
+                sub:t(x.rem ? "cal.taskRem" : "cal.taskSub", {name:chanName(defaultChannel)}),
+                c:"var(--accent)", task:x.id});
     });
     /* an all-day entry heads the day, the way every calendar shows it */
     return evs.sort(function(a, b){
@@ -5105,8 +5229,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#daystrip").innerHTML = [0,1,2,3,4,5,6].map(function(i){
       var d = dayAt(i), n = agendaFor(i).length, dots = "";
       for(var k = 0; k < Math.min(n,3); k++) dots += "<i></i>";
-      return '<button class="day" data-d="' + i + '" aria-selected="' + (i === sel) + '">' +
-        '<div class="dn">' + D.days[d.getDay()] + '</div><div class="dd">' + d.getDate() + '</div>' +
+      /* The strip always starts on today, but "the first one" is a rule you
+         have to know. A mark beside the number is one you can see. */
+      return '<button class="day' + (i === 0 ? " today" : "") + '" data-d="' + i +
+        '" aria-selected="' + (i === sel) + '">' +
+        '<div class="dn">' + D.days[d.getDay()] + '</div>' +
+        '<div class="dd">' + d.getDate() + (i === 0 ? '<i class="todaydot"></i>' : "") + '</div>' +
         '<div class="dots">' + dots + "</div></button>";
     }).join("");
     /* the strip can straddle two months, and then it has to say both */
@@ -5173,6 +5301,121 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   /* Search appears only past SEARCH_AT. Below it the whole list is on one
      screen, so a permanent field would be a control that never saves a tap. */
   var SEARCH_AT = 8, friendQ = "";
+  /* ── groups ─────────────────────────────────────────────────────────── */
+  var GROUP_SEARCH_AT = 4, groupQ = "", grOpen = {};
+  function friendById(id){
+    return FRIENDS.filter(function(f){ return f.id === id; })[0];
+  }
+  function grName(g){ return L(g.n).trim() || t("gr.untitled"); }
+  function grFaces(g){
+    var mem = g.m.map(friendById).filter(Boolean);
+    var head = mem.slice(0, 3).map(function(f){
+      return '<span class="fav">' + avatarSVG(f.av, {g:f.g}) + "</span>";
+    }).join("");
+    var rest = mem.length - 3;
+    /* Three faces and a count, never four faces: the fourth is where the
+       stack stops reading as people and starts reading as texture. */
+    return '<span class="grfaces">' + (head || '<span class="more">0</span>') +
+      (rest > 0 ? '<span class="more">+' + rest + "</span>" : "") + "</span>";
+  }
+  function renderGroups(){
+    var show = GROUPS.length > GROUP_SEARCH_AT;
+    $("#groupSearch").hidden = !show;
+    $("#groupScroll").classList.toggle("scroll", show);
+    var q = show ? groupQ.trim().toLowerCase() : "";
+    var list = !q ? GROUPS : GROUPS.filter(function(g){
+      return (g.n.he + " " + g.n.en).toLowerCase().indexOf(q) > -1;
+    });
+    var none = !list.length;
+    $("#groupEmpty").hidden = !none;
+    $("#groupEmpty").textContent = none ? (q ? t("gr.noMatch", {q:groupQ.trim()}) : t("gr.empty")) : "";
+    $("#groupGroup").innerHTML = list.map(function(g){
+      var chips = FRIENDS.map(function(f){
+        var inIt = g.m.indexOf(f.id) > -1;
+        return '<button class="frchip" aria-pressed="' + inIt + '" data-grtog="' + g.id + ":" + f.id + '">' +
+          '<span class="fav">' + avatarSVG(f.av, {g:f.g}) + "</span>" + esc(L(f.n)) + "</button>";
+      }).join("");
+      var open = !!grOpen[g.id];
+      return '<div class="rowset"><button class="row" data-group="' + g.id +
+        '" aria-expanded="' + open + '">' + grFaces(g) +
+        '<div class="row-txt"><div class="row-title">' + esc(grName(g)) + "</div>" +
+        '<div class="row-sub" data-grsub="' + g.id + '">' + esc(pl("gr.count", g.m.length)) + "</div></div>" +
+        '<svg class="chev"><use href="#i-chev"/></svg></button>' +
+        '<div class="fold' + (open ? " open" : "") + '" data-grfold="' + g.id + '"><div><div class="foldpad">' +
+        '<input class="grname" data-grname="' + g.id + '" value="' + esc(L(g.n)) +
+        '" data-i18n-ph="gr.namePh" placeholder="' + esc(t("gr.namePh")) + '" autocomplete="off">' +
+        '<div class="glabel"><span>' + esc(t("gr.members")) + "</span></div>" +
+        '<div class="chipcloud">' + chips + "</div>" +
+        '<button class="linkbtn danger" data-grdel="' + g.id + '" style="margin-top:10px;display:block">' +
+        esc(t("gr.remove")) + "</button></div></div></div></div>";
+    }).join("");
+  }
+  $("#addGroup").addEventListener("click", function(){
+    var g = {id:(++grSeq), n:{he:"",en:""}, m:[]};
+    GROUPS.unshift(g);
+    grOpen[g.id] = true;
+    renderGroups();
+    API.call("createGroup", {group_id:g.id});
+    toast(t("toast.grNew"));
+    var el = $('[data-grname="' + g.id + '"]');
+    if(el) el.focus();
+  });
+  $("#groupQ").addEventListener("input", function(){
+    groupQ = this.value;
+    $("#groupQClear").hidden = !groupQ;
+    renderGroups();
+  });
+  $("#groupQClear").addEventListener("click", function(){
+    groupQ = ""; $("#groupQ").value = ""; this.hidden = true; renderGroups();
+  });
+  $("#groupGroup").addEventListener("input", function(e){
+    var nm = e.target.closest("[data-grname]");
+    if(!nm) return;
+    var g = GROUPS.filter(function(x){ return x.id === +nm.dataset.grname; })[0];
+    if(!g) return;
+    /* One name, written into BOTH locales: a group somebody typed is their
+       word for it, and translating it is not ours to do. */
+    g.n.he = g.n.en = nm.value;
+    var row = nm.closest(".rowset").querySelector(".row-title");
+    if(row) row.textContent = grName(g);
+    API.call("renameGroup", {group_id:g.id, name:nm.value});
+  });
+  $("#groupGroup").addEventListener("click", function(e){
+    var tog = e.target.closest("[data-grtog]");
+    if(tog){
+      var parts = tog.dataset.grtog.split(":"), gid = +parts[0], fid = +parts[1];
+      var g = GROUPS.filter(function(x){ return x.id === gid; })[0];
+      var at = g.m.indexOf(fid), inIt = at === -1;
+      if(inIt) g.m.push(fid); else g.m.splice(at, 1);
+      tog.setAttribute("aria-pressed", inIt ? "true" : "false");
+      $('[data-grsub="' + gid + '"]').textContent = pl("gr.count", g.m.length);
+      var head = $('[data-group="' + gid + '"]');
+      var faces = head && head.querySelector(".grfaces");
+      if(faces) faces.outerHTML = grFaces(g);
+      /* No approval step, on purpose: a group is a list of people who have
+         already connected to you, and being on somebody's list grants nothing
+         that the one-to-one switches have not granted already. */
+      API.call(inIt ? "addToGroup" : "removeFromGroup", {group_id:gid, friend_id:fid});
+      return;
+    }
+    var del = e.target.closest("[data-grdel]");
+    if(del){
+      var did = +del.dataset.grdel;
+      GROUPS = GROUPS.filter(function(x){ return x.id !== did; });
+      delete grOpen[did];
+      renderGroups();
+      API.call("deleteGroup", {group_id:did});
+      toast(t("toast.grGone"));
+      return;
+    }
+    var head2 = e.target.closest("[data-group]");
+    if(!head2) return;
+    var id = +head2.dataset.group, fold = $('[data-grfold="' + id + '"]');
+    grOpen[id] = !fold.classList.contains("open");
+    fold.classList.toggle("open", grOpen[id]);
+    head2.setAttribute("aria-expanded", grOpen[id] ? "true" : "false");
+  });
+
   function renderFriends(){
     var show = FRIENDS.length > SEARCH_AT;
     $("#friendSearch").hidden = !show;
@@ -5429,6 +5672,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#lname").value = L(PROFILE.last);
     $("#oname").value = L(PROFILE.olma);
     $("#friendCount").textContent = t("fr.count", {n:FRIENDS.length});
+    /* Hard-coded WhatsApp here said something the delivery gate does not
+       promise: a reminder goes out on whichever channel is the default, and
+       that is a setting one page away. */
+    $("#remindSub").textContent = t("sheet.remindSub", {name:chanName(defaultChannel)});
     $("#sSaved").textContent = t("sheet.autosave");
     syncName();
   }
@@ -5470,6 +5717,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     renderTasks();
     renderStrip(selDay);
     renderFriends();
+    renderGroups();
     renderWelcome();
     /* the mode is re-applied rather than reset: a language switch must not
        throw somebody out of the coordination they were reading */
