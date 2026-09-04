@@ -848,6 +848,20 @@ test('intake greeter is told not to interrogate either', () => {
 // against it already existed ("Time-shaped — offer a reminder"), but only in
 // the curiosity ladder, four hundred lines from the section the model is in
 // when it reaches for set_task_reminder. It is now stated where it is used.
+// 2026-09-02 00:27 her time: Gali answered a reminder with "בוצע". Olma called
+// complete_task — correct — and then asked "ניצלת את הנקודות בסוף?", which is
+// the question her "בוצע" had just answered. Then the false-positive repair
+// re-asked it at 00:53. The repair bug is fixed separately; this is the half
+// that was Olma's own judgement.
+test('agent doctrine: a completion is an answer, not an opening for a question', () => {
+  const fs = require('node:fs');
+  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
+  assert.match(tpl, /their "done" ANSWERS too/);
+  assert.match(tpl, /never ask\s+about the thing they just closed/);
+  // It belongs on the reminder ladder, which is the exact path she was on.
+  assert.ok(tpl.indexOf('their "done" ANSWERS too') > tpl.indexOf('A reminder that goes unanswered'));
+});
+
 test('agent doctrine: a reminder is offered, never set unasked', () => {
   const fs = require('node:fs');
   const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
