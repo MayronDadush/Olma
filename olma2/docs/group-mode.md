@@ -95,12 +95,36 @@ Unlocked ⇔ every non-left roster member resolves to a `users` row that has
 actually written to Olma privately. "Has DM'd" must be a real predicate over
 inbound, not `onboarded_at` alone — the exact column choice is a follow-up.
 
-Enforcement is the config, not the prompt:
+Enforcement is the config, not the prompt — and all three levers were
+measured against the running gateway on 2026-09-04, because two of them do not
+behave the way the docs read:
 
-- **locked** → a `sendPolicy` deny rule keyed on the group's session-key
-  prefix, so the turn runs, the transcript (and roster) is captured, and
-  nothing is delivered.
-- **unlocked** → the deny rule is removed.
+| Lever | Where it really lives | What it actually did |
+|---|---|---|
+| Admission | `channels.whatsapp.groups` (map keyed by JID) | hot, but **restarts the whatsapp channel** — ~9s with no inbound, measured on the live box |
+| Routing | `bindings[].match.peer.kind = "group"` | as documented |
+| The mute | **top-level `session.sendPolicy`** — *not* `agents.defaults.session.sendPolicy`, where the config-agents example puts it (`resolveSendPolicy` reads `cfg.session?.sendPolicy`) | `deny` suppresses delivery unconditionally; the turn still runs and still writes its transcript |
+
+Two traps found before anything was built on them:
+
+- **A `session.sendPolicy`-only write is silently dropped.** The gateway
+  logged `config change detected; evaluating reload (session.sendPolicy)` and
+  then nothing at all — the same noop-plan early-exit that swallows a
+  bindings-only write. Bundled with an `agents.entries` change it applied in
+  ~4s. **Every lock/unlock must ride along with an agent or binding write in
+  one `saveConfig`.**
+- **The mere presence of `session.sendPolicy` denies any session key the
+  resolver finds ambiguous.** All 46 live session keys on the box, plus every
+  other shape this gateway mints (main, cron, heartbeat, explicit model-run,
+  webchat, newsletter), were run through the gateway's own resolver with and
+  without a group rule. Exactly one key changed: the group's own. The check is
+  worth repeating after a gateway upgrade — `/tmp/sendpolicy-probe2.mjs` on the
+  box is the script.
+
+And one that is **not** a mute, though it looks like one:
+`messages.groupChat.visibleReplies: "message_tool"` falls back to `automatic`
+when the agent has no `message` tool (`messageToolAvailable === false`), so
+taking the tool away to silence an agent does the opposite.
 
 Cost note: while locked, each tag still costs a model turn with no output.
 Bounded by mention gating, but a repeat-tagger is a real cost vector. The

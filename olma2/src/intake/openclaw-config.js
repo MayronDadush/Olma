@@ -134,8 +134,136 @@ function addAllowFrom(cfg, phone) {
   return true;
 }
 
+// ---- group mode (olma2/docs/group-mode.md) ---------------------------------
+// Three levers, each verified against the running gateway on 2026-09-04
+// rather than against the docs, because two of the three do not behave the
+// way the docs read:
+//
+// 1. ADMISSION — `channels.whatsapp.groups` is a MAP keyed by group JID, and
+//    it is an allowlist the moment it is non-empty: adding the first entry
+//    blocks every group that is not in it. Hot-applies, but a channels change
+//    RESTARTS the whatsapp channel (~9s of no inbound, measured), so this is
+//    a per-group registration lever, never a per-message one.
+//
+// 2. ROUTING — a normal binding with `peer.kind: 'group'`.
+//
+// 3. THE MUTE — `session.sendPolicy`, at the TOP LEVEL of the config and not
+//    under `agents.defaults.session` where the config-agents doc's example
+//    puts it (`resolveSendPolicy` reads `params.cfg.session?.sendPolicy`).
+//    `deny` sets `suppressDelivery` unconditionally, so the turn still runs
+//    and still writes its transcript — which is exactly what a locked group
+//    needs: she sees the roster, and cannot speak.
+//
+// The trap under 3, and the reason `muteGroup` never travels alone: a
+// sendPolicy-ONLY write is evaluated and DROPPED — the gateway logged
+// "config change detected; evaluating reload (session.sendPolicy)" and then
+// nothing, the same noop-plan early-exit that swallows a bindings-only write
+// (see the header of this file). Bundled with an `agents.entries` change it
+// applied in ~4s. Every lock/unlock therefore rides along with an agent or
+// binding write in ONE saveConfig, exactly like provisioning.
+//
+// A second trap, probed before building on it: the mere PRESENCE of
+// `session.sendPolicy` makes `resolveSendPolicy` deny any session key whose
+// peer shape it finds ambiguous. Every one of the 46 live session keys on the
+// box, plus every other key shape this gateway mints (main, cron, heartbeat,
+// explicit model-run, webchat, newsletter), was run through the gateway's own
+// resolver with and without a group rule: one key changed, the group's own.
+
+// The prefix a group's sessions share, in the STRIPPED form the resolver also
+// matches (`session.groupScope: "per-group"` → agent:<id>:whatsapp:group:<jid>).
+// Keying on the group rather than on the agent means a group that is later
+// re-provisioned under a different agent id stays muted.
+function groupSessionPrefix(jid) {
+  return `whatsapp:group:${String(jid).toLowerCase()}`;
+}
+
+function sendPolicyRules(cfg) {
+  cfg.session = cfg.session || {};
+  cfg.session.sendPolicy = cfg.session.sendPolicy || { rules: [], default: 'allow' };
+  cfg.session.sendPolicy.rules = cfg.session.sendPolicy.rules || [];
+  // `default` decides every session no rule matched — an absent or misspelt
+  // value resolving to anything but 'allow' would mute the entire system.
+  cfg.session.sendPolicy.default = 'allow';
+  return cfg.session.sendPolicy.rules;
+}
+
+function isGroupMuted(cfg, jid) {
+  const prefix = groupSessionPrefix(jid);
+  const rules = (cfg.session && cfg.session.sendPolicy && cfg.session.sendPolicy.rules) || [];
+  return rules.some((r) => r && r.action === 'deny' && r.match && r.match.keyPrefix === prefix);
+}
+
+// MUST be written in the same saveConfig as an agent/binding change (see above).
+function muteGroup(cfg, jid) {
+  if (isGroupMuted(cfg, jid)) return false;
+  sendPolicyRules(cfg).push({
+    action: 'deny',
+    match: { keyPrefix: groupSessionPrefix(jid) },
+  });
+  return true;
+}
+
+function unmuteGroup(cfg, jid) {
+  if (!cfg.session || !cfg.session.sendPolicy || !Array.isArray(cfg.session.sendPolicy.rules)) return false;
+  const prefix = groupSessionPrefix(jid);
+  const before = cfg.session.sendPolicy.rules.length;
+  cfg.session.sendPolicy.rules = cfg.session.sendPolicy.rules.filter(
+    (r) => !(r && r.action === 'deny' && r.match && r.match.keyPrefix === prefix)
+  );
+  return cfg.session.sendPolicy.rules.length !== before;
+}
+
+// Admission. `requireMention` is the product rule — only a real @-mention or a
+// reply wakes her — and it is set per group rather than through
+// `messages.groupChat.mentionPatterns`, which would ALSO make her name in free
+// text a trigger. The owner asked for a real tag only, so no patterns are ever
+// written.
+function admitGroup(cfg, jid) {
+  cfg.channels = cfg.channels || {};
+  cfg.channels.whatsapp = cfg.channels.whatsapp || {};
+  cfg.channels.whatsapp.groups = cfg.channels.whatsapp.groups || {};
+  if (Object.hasOwn(cfg.channels.whatsapp.groups, jid)) return false;
+  cfg.channels.whatsapp.groups[jid] = { requireMention: true };
+  return true;
+}
+
+function unadmitGroup(cfg, jid) {
+  const groups = cfg.channels && cfg.channels.whatsapp && cfg.channels.whatsapp.groups;
+  if (!groups || !Object.hasOwn(groups, jid)) return false;
+  delete groups[jid];
+  return true;
+}
+
+function isGroupAdmitted(cfg, jid) {
+  const groups = (cfg.channels && cfg.channels.whatsapp && cfg.channels.whatsapp.groups) || {};
+  return Object.hasOwn(groups, jid);
+}
+
+function addGroupBinding(cfg, { agentId, jid, comment }) {
+  cfg.bindings = cfg.bindings || [];
+  if (cfg.bindings.some((b) => b.match && b.match.peer && b.match.peer.kind === 'group' && b.match.peer.id === jid)) {
+    return false;
+  }
+  cfg.bindings.push({
+    type: 'route', agentId, comment: comment || `Olma group (${jid})`,
+    match: { channel: 'whatsapp', accountId: 'default', peer: { kind: 'group', id: jid } },
+  });
+  return true;
+}
+
+function removeGroupBinding(cfg, jid) {
+  if (!Array.isArray(cfg.bindings)) return false;
+  const before = cfg.bindings.length;
+  cfg.bindings = cfg.bindings.filter(
+    (b) => !(b.match && b.match.peer && b.match.peer.kind === 'group' && b.match.peer.id === jid)
+  );
+  return cfg.bindings.length !== before;
+}
+
 module.exports = {
   DEFAULT_PATH, loadConfig, saveConfig,
   addAgent, removeAgent, addBinding, addCatchAllBinding, addAllowFrom,
+  groupSessionPrefix, muteGroup, unmuteGroup, isGroupMuted,
+  admitGroup, unadmitGroup, isGroupAdmitted, addGroupBinding, removeGroupBinding,
   usesEntries, listAgentIds, hasAgent,
 };
