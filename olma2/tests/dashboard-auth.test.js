@@ -169,3 +169,22 @@ test('purge removes what nobody can use, and leaves live rows alone', async () =
   assert.equal((await tx((c) => auth.peekLink(c, liveToken))).ok, true, 'purge ate a live link');
   assert.equal((await tx((c) => auth.resolveSession(c, liveSid))).ok, true, 'purge ate a live session');
 });
+
+test('the tool hands back a real URL on the configured public host', async () => {
+  const r = await tx((c) => auth.createLinkUrl(c, me.id));
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  assert.match(r.data.url, /^https:\/\/[^/]+\/d\/[a-f0-9]{64}$/);
+  // The URL is the only place the raw token ever appears, and it still opens.
+  const token = r.data.url.split('/').pop();
+  assert.equal((await tx((c) => auth.redeemLink(c, token))).ok, true);
+});
+
+test('the dashboard tool is registered, needs nothing but identity, and is not a page', async () => {
+  const { TOOLS } = require('../src/adapters/mcp/registry');
+  const t = TOOLS.find((x) => x.name === 'open_my_dashboard');
+  assert.ok(t, 'the only way to reach the dashboard is not offered to anyone');
+  assert.deepEqual(t.inputSchema.required, ['olma_identity'],
+    'a link to your own dashboard cannot need an argument — there is nothing to choose');
+  // It must never be described as somewhere to send people INSTEAD of answering.
+  assert.match(t.description, /still be done here in chat/);
+});

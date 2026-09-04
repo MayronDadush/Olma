@@ -27,6 +27,7 @@
 //    sign-in. Blocking someone, or pausing them, must not leave a live tab.
 const crypto = require('node:crypto');
 const { ok, err } = require('./results');
+const flags = require('./flags');
 
 // A link is for the person who just asked for it, in the conversation they are
 // already in. Long enough to walk to a laptop, short enough that a forwarded
@@ -179,8 +180,19 @@ function readCookie(header) {
   return m ? m[1] : null;
 }
 
+// The link as a person receives it. Separate from `createLink` because the
+// URL needs a flag read and the domain function does not — the same split
+// availability.js makes, and for the same reason: one place decides what the
+// public host is.
+async function createLinkUrl(client, userId) {
+  const made = await createLink(client, userId);
+  if (!made.ok) return made;
+  const base = String(await flags.getFlag(client, 'public_base_url') || '').replace(/\/$/, '');
+  return ok({ url: `${base}${LINK_PATH}/${made.data.token}`, expiresInMinutes: LINK_TTL_MINUTES });
+}
+
 module.exports = {
-  createLink, peekLink, redeemLink,
+  createLink, createLinkUrl, peekLink, redeemLink,
   resolveSession, endSession, endAllSessions, purgeExpired,
   cookieHeader, clearCookieHeader, readCookie,
   LINK_PATH, COOKIE, LINK_TTL_MINUTES, SESSION_IDLE_DAYS, SESSION_MAX_DAYS,

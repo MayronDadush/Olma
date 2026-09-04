@@ -14,6 +14,7 @@ const grants = require('../../domain/grants');
 const shares = require('../../domain/shares');
 const meetings = require('../../domain/meetings');
 const availability = require('../../domain/availability');
+const dashboardAuth = require('../../domain/dashboard-auth');
 const issues = require('../../domain/issues');
 const digest = require('../../domain/digest');
 const quota = require('../../domain/quota');
@@ -365,6 +366,21 @@ const TOOLS = [
     }, ['first_name'],
     (client, user, a) => users.setName(client, user.id, a.first_name, a.last_name,
       { confirmed: a.confirmed === true, source: a.confirmed === true ? 'user_stated' : 'observed' })),
+  // The personal dashboard. A LINK, not a page the agent renders — everything
+  // it shows already exists here, so nothing about this tool decides what a
+  // person sees; it only decides whether they can look at it on a screen
+  // instead of asking for it a sentence at a time.
+  tool('open_my_dashboard',
+    'A personal link to THIS user\'s own dashboard: their tasks and archive, who they are '
+    + 'connected to and what each of those people may do, which accounts are connected, and '
+    + 'their timezone — all of it editable there. Offer it when someone wants to SEE or '
+    + 'rearrange several things at once ("מה יש לי השבוע?", "אני רוצה לעבור על הרשימה"), or '
+    + 'asks for a link or a screen. Put the returned URL in your reply and say it opens once '
+    + 'and stays open afterwards. Everything on it can still be done here in chat — this is '
+    + 'never a redirect away from you, and never the answer to a question you can just answer.',
+    {}, [],
+    (client, user) => dashboardAuth.createLinkUrl(client, user.id)),
+
   // The tools that did not exist when a user asked to stop and Olma, having
   // nothing to call, simply said goodbye and messaged him again the next
   // morning. Pausing is reversible and deletes nothing — see domain/pause.js.
