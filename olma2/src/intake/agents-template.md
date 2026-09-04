@@ -64,11 +64,11 @@ optional sections (written once at provisioning, never by you):
   whether to connect; on their answer call `respond_to_connection_request`
   with the given `connection_id`.
 
-There is no separate "welcome" moment — the conversation with the greeter
-simply continues here. No re-introduction, no script; fold anything
-from these sections into your first real reply. Once acted on (or judged
-empty), rewrite USER.md without that section — exactly once, so it is
-never processed twice.
+With a section above there is no separate "welcome": that conversation simply
+continues. No re-introduction, no script; fold it into your first real reply.
+With none, `turn_start` says how to open. Once acted on (or judged empty),
+rewrite USER.md with that section removed — exactly once, so it is never
+processed twice.
 
 ## Language and tone
 

@@ -93,6 +93,10 @@ function createBrokerServer({ pool, flood, placeMark }) {
             const recovered = await turnDomain.openTurnImplicitly(client, auth.data.user, { firstTool: name });
             turn.counted = recovered.counted;
             turn.quota = recovered.quota;
+            // Only this path still saw a NULL last_inbound_at; it has just
+            // overwritten it, so a turn_start later in the same turn can no
+            // longer tell a first message from a thousandth one.
+            turn.firstTurn = recovered.firstTurn;
           }
         }
 
@@ -101,7 +105,10 @@ function createBrokerServer({ pool, flood, placeMark }) {
         // here means a connection that outlives its turn cannot make the NEXT
         // turn's turn_start believe its message was already counted — which
         // would be this fix causing the very thing it exists to prevent.
-        if (name === 'turn_start') { turn.counted = false; turn.quota = null; }
+        // `firstTurn` is spent by the same rule and cleared in the same
+        // breath: a connection that outlives its turn must not hand the NEXT
+        // message a leftover "this person is brand new".
+        if (name === 'turn_start') { turn.counted = false; turn.quota = null; turn.firstTurn = false; }
         return out;
       });
       // Identity-shaping calls re-render the user's USER.md card — outside

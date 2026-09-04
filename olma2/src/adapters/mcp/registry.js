@@ -6,6 +6,8 @@
 // user, args) inside a transaction and return structured results; rendering
 // to text happens in render.js, never here.
 const users = require('../../domain/users');
+const onboardingDomain = require('../../domain/onboarding');
+const selfInitiated = require('../../domain/self-initiated');
 const tasks = require('../../domain/tasks');
 const reminders = require('../../domain/reminders');
 const preferences = require('../../domain/preferences');
@@ -133,16 +135,36 @@ const TOOLS = [
       // Real activity resets the checkin backoff, and records that they are
       // awake right now — the delivery gate uses this to allow a reply during
       // quiet hours while a conversation is actually happening.
-      await client.query(
-        `UPDATE users SET last_inbound_at = now(),
-                checkin_misses = CASE WHEN checkin_misses > 0 THEN 0 ELSE checkin_misses END
-         WHERE id = $1`, [user.id]);
+      // The self-join reads the row as it was BEFORE this statement, so
+      // "have they ever written to us before" costs no extra round trip — and
+      // on a 1-vCPU box every query here is latency a person is sitting
+      // through. `last_inbound_at` is NULL only until someone's first ever
+      // message, which makes it the cheapest honest first-turn signal we have.
+      //
+      // ...unless WE started this turn. An outbox delivery reaches the agent
+      // through the same agent and session key as a typed message, so every
+      // statement below would otherwise assert that somebody wrote to us on a
+      // turn where Olma is the one talking. domain/self-initiated.js lists
+      // what that cost; the shortest version is that the day-one ladder spent
+      // this person's welcome on its own check-in, fifteen minutes before they
+      // said anything.
+      const ourTurn = selfInitiated.isActive(user.id);
+      const opened = ourTurn ? { rowCount: 0, rows: [] } : await client.query(
+        `UPDATE users u SET last_inbound_at = now(),
+                checkin_misses = CASE WHEN u.checkin_misses > 0 THEN 0 ELSE u.checkin_misses END
+           FROM users prev
+          WHERE u.id = prev.id AND u.id = $1
+          RETURNING prev.last_inbound_at AS prev_inbound`, [user.id]);
+      const firstEverTurn = opened.rowCount > 0 && opened.rows[0].prev_inbound === null;
       // The inbound message id, kept on the TURN rather than in the database.
       // It is worth nothing after this turn ends — a mark belongs on the
       // message being handled right now — and a column would be one more piece
       // of per-message state to prune. `lastInboundAt` is stamped from the same
       // moment as the UPDATE above, so `markFor`'s liveness check reads the
       // value this turn just wrote instead of a row it would have to re-select.
+      // A self-initiated turn carries no real inbound message, so it never has
+      // a message_id to begin with — `cleanMessageId` reads that as absent and
+      // this stays a no-op, the same way it always has for a bare heartbeat.
       if (ctx && ctx.turn) {
         const id = reactions.cleanMessageId(args && args.message_id);
         if (id) { ctx.turn.messageId = id; ctx.turn.lastInboundAt = Date.now(); }
@@ -159,7 +181,10 @@ const TOOLS = [
       // budget is still spent, and a blocked user's rows wait for the
       // unblock summary — waking either would be overriding the gate, not
       // re-asking it.
-      await client.query(
+      // Skipped on our own turn for the same reason: "they are awake" is a
+      // claim about the person, and a delivery is evidence only that we sent
+      // something.
+      if (!ourTurn) await client.query(
         `UPDATE outbox SET release_after = now()
           WHERE user_id = $1 AND sent_at IS NULL AND hold_reason = 'night'
             AND release_after > now()`, [user.id]);
@@ -226,7 +251,13 @@ const TOOLS = [
       // quota twice and double the north-star denominator. The recovery's
       // verdict stands; this call just reads it back.
       const alreadyCounted = Boolean(ctx && ctx.turn && ctx.turn.counted);
-      const counted = alreadyCounted ? ctx.turn.quota : await quota.countMessage(client, user.id);
+      // Our own turn is not one of their messages, so it neither spends their
+      // daily allowance nor can be blocked by it: the delivery gate already
+      // decided this message goes out, and re-asking the user's quota here
+      // would let a person near their cap silence the check-in we chose to
+      // send. The worker keeps its own daily budget for that (outbox/worker).
+      const counted = ourTurn ? { data: { blocked: false } }
+        : alreadyCounted ? ctx.turn.quota : await quota.countMessage(client, user.id);
       // One row per inbound message, purely so the north-star metric can exist.
       // `last_inbound_at` above is overwritten every time, so before this there
       // was no way to ask "did they answer the message we sent them" — the
@@ -235,7 +266,7 @@ const TOOLS = [
       // retention sweep like every other operational row.
       // Skipped when the recovery path already wrote it: one message, one row,
       // or the response-rate metric silently counts this person twice.
-      if (!alreadyCounted) await audit.record(client, user.id, 'message.received', null);
+      if (!alreadyCounted && !ourTurn) await audit.record(client, user.id, 'message.received', null);
       // Reminders now go out on the raw pipe (channels/openclaw.js), which
       // never touches this person's session history — so a bare reply like
       // "סיימתי" would otherwise reach an agent that has no idea a reminder
@@ -274,9 +305,55 @@ const TOOLS = [
       // on every single message, so it cannot join CARD_TOOLS wholesale — it
       // flags the card itself, on the one turn in a person's life that fills in
       // their name (see brokerd/server.js).
+      // The one turn in a person's life where there is no conversation to
+      // continue. Until this flag existed, `proceed` was all the agent ever
+      // got, and the doctrine told it there is no welcome moment — so someone
+      // whose first word was "היי" was answered "היי" and never onboarded,
+      // for ever. The greeter-conversation path that doctrine assumes only
+      // fires when the person wrote something worth carrying across; a
+      // one-word opener carries nothing, and that is the common case.
+      //
+      // Whichever entry point opened the turn is the one that saw the NULL:
+      // when a tool beat turn_start to it, brokerd's recovery already
+      // overwrote `last_inbound_at`, so its verdict travels here in ctx rather
+      // than being re-derived from a row that has already moved.
+      const firstTurn = alreadyCounted
+        ? Boolean(ctx && ctx.turn && ctx.turn.firstTurn)
+        : firstEverTurn;
+      // Stamped once, only here — the one place that actually hands the
+      // model onboarding.sendVerbatim, whether firstTurn came from this call's
+      // own self-join or from an earlier recovery in the same turn (see the
+      // comment above). Anchors the 60-second "did they answer the welcome"
+      // nudge (jobs/sweeps.sweepNameConfirm): neither `last_inbound_at` (moves
+      // on their every message, including this one) nor `onboarded_at` (set at
+      // provisioning, before they have necessarily written a word) names this
+      // moment.
+      if (firstTurn) {
+        await client.query(`UPDATE users SET first_turn_at = now() WHERE id = $1`, [user.id]);
+      }
+
+      // The instruction rides in the RESULT, not in AGENTS.md, and that is a
+      // budget decision rather than a style one: the doctrine renders to 39249
+      // of the 39250 chars the gateway will inject, so a paragraph added there
+      // is a paragraph silently deleted from the middle of some other section
+      // on every turn for every user (tests/intake.test.js guards this).
+      // Here it costs ~60 tokens once in a person's lifetime, and it arrives at
+      // the exact moment it applies — which for a cheap model beats a rule
+      // buried in 40k chars it only partly attends to.
       if (!counted.data.blocked) {
         return stale(ok({
           directive: 'proceed', locale: user.locale,
+          ...(firstTurn ? {
+            firstTurn: true,
+            onboarding: {
+              sendVerbatim: onboardingDomain.openingMessage(user.locale),
+              instruction: 'Their first ever message. Open your reply with '
+                + 'sendVerbatim, character for character — do not translate, reword, '
+                + 'shorten, or add to it. If they actually asked for something, answer '
+                + 'it below those lines; otherwise stop there. No feature tour, no menu, '
+                + 'and no follow-up question this turn.',
+            },
+          } : {}),
           ...(offerResume ? { offerResume: true } : {}),
           ...(languageNudge ? { languageNudge } : {}),
           ...(recentReminders.length ? { recentReminders } : {}),
@@ -310,8 +387,34 @@ const TOOLS = [
       last_name: S('string', 'Last name (optional)'),
       confirmed: S('boolean', 'TRUE only when they stated it themselves. Default FALSE.'),
     }, ['first_name'],
-    (client, user, a) => users.setName(client, user.id, a.first_name, a.last_name,
-      { confirmed: a.confirmed === true, source: a.confirmed === true ? 'user_stated' : 'observed' })),
+    async (client, user, a) => {
+      const res = await users.setName(client, user.id, a.first_name, a.last_name,
+        { confirmed: a.confirmed === true, source: a.confirmed === true ? 'user_stated' : 'observed' });
+      if (!res.ok || a.confirmed !== true) return res;
+      // The beat the onboarding was missing. Walking a cold start on a real
+      // phone (2026-09-04) ended at "מירון, נעים להכיר ☺️ אני פה לכל מה
+      // שתצטרך" — warm, and a dead end: the person has just introduced
+      // themselves and has no idea what to say next, so they say nothing.
+      // The opening message deliberately asks nothing (one question per reply,
+      // and brand copy is not the place for it), which leaves exactly one
+      // moment to make the ask, and it is this one.
+      //
+      // Conditional on their list actually being empty, so it fires for
+      // someone with nothing yet and never nags a person who has already been
+      // using Olma for a month and only now confirmed their name. Rides in the
+      // result, not in the doctrine, for the budget reason at turn_start's
+      // return: 39249 of 39250 chars are spent.
+      const { rows } = await client.query(
+        `SELECT EXISTS (SELECT 1 FROM tasks WHERE owner_id = $1) AS has_tasks`, [user.id]);
+      if (rows[0].has_tasks) return res;
+      return ok({ ...res.data,
+        nextStep: 'They have just told you their name and their list is still empty. '
+          + 'Greet them by it in one short line, then — in the same reply — invite them '
+          + 'to pour out whatever is on their plate: tasks, things to remember, people to '
+          + 'get back to, as messy and unsorted as they like, by text or voice note. Make '
+          + 'it feel like dumping, not like filling a form: no categories, no examples '
+          + 'list, no questions to answer first. One invitation, warm, and then stop.' });
+    }),
   // The personal dashboard. A LINK, not a page the agent renders — everything
   // it shows already exists here, so nothing about this tool decides what a
   // person sees; it only decides whether they can look at it on a screen
