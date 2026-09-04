@@ -122,9 +122,12 @@ async function connectedUserByPhone(client, actorId, phone, feature) {
 
 const TOOLS = [
   // ---------------------------------------------------------------- turn gate
-  tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and tells you how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all). Pass sender_name whenever the turn\'s Conversation info carries one. If the response carries offerResume: true, this is the first message since they paused — answer what they actually asked, then add ONE line asking if they would like Olma to start reaching out again. recentReminders, when present, lists reminders Olma already delivered in the last day — a bare reply like "סיימתי" or "עשיתי" is probably about the newest one. planHeadline, when present, is the headline of today\'s overnight plan; the full plan sits in your USER.md — read it and lead with it when they ask about their day or plans.',
-    { sender_name: S('string', 'The `sender` field from this turn\'s Conversation info, verbatim. Only ever used to fill a name we do not have, always as an unconfirmed guess — never overwrites a name they gave you themselves.'),
-      message_id: S('string', 'The `message_id` field from this turn\'s Conversation info, verbatim. Lets Olma mark their message as seen and, later in the turn, as done or scheduled. Omit it if the block has none.') }, [],
+  tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and tells you how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all). Pass sender_name whenever the turn\'s Conversation info carries one. If the response carries offerResume: true, this is the first message since they paused — answer what they actually asked, then add ONE line asking if they would like Olma to start reaching out again. recentReminders, when present, lists reminders Olma already delivered in the last day — a bare reply like "סיימתי" or "עשיתי" is probably about the newest one. planHeadline, when present, is the headline of today\'s overnight plan; the full plan sits in your USER.md — read it and lead with it when they ask about their day or plans. If the response carries languageNudge, they have written to you several times running in a language other than the one stored for them: ask ONE short question, IN THE LANGUAGE THEY ARE WRITING IN, whether they would like Olma to switch — then call set_my_language if they say yes. Ask once and drop it if they do not take it up.',
+    {
+      sender_name: S('string', 'The `sender` field from this turn\'s Conversation info, verbatim. Only ever used to fill a name we do not have, always as an unconfirmed guess — never overwrites a name they gave you themselves.'),
+      message_id: S('string', 'The `message_id` field from this turn\'s Conversation info, verbatim. Lets Olma mark their message as seen and, later in the turn, as done or scheduled. Omit it if the block has none.'),
+      wrote_in: S('string', 'The language THIS message is written in, as a two-letter code (he, en, ru, ar, fr...). Pass it on every call — it is the only way the system can ever notice that the language it speaks to somebody is the wrong one. The code only: never the message text, never a translation, never a quote from it.'),
+    }, [],
     async (client, user, args, ctx) => {
       if (ctx.flood && ctx.flood.isFlooding(user.id)) {
         return ok({ directive: 'silent', reason: 'flood' });
@@ -202,6 +205,22 @@ const TOOLS = [
       if (!user.first_name && args && typeof args.sender_name === 'string') {
         const named = await captureDisplayName(client, user, args.sender_name);
         namedNow = named.ok;
+      }
+
+      // Which language they actually wrote in. The model is the only party
+      // that can see the message — the server never does, by design (see
+      // domain/language.js) — so this is a report, not a measurement, and it
+      // is treated as one: a code we cannot parse simply does nothing.
+      //
+      // Deliberately not wrapped in a try/catch that swallows: this is one
+      // UPDATE on the row we already hold, in the transaction that was going
+      // to run anyway, and a failure here is a real failure worth seeing.
+      let languageNudge = null;
+      if (args && args.wrote_in != null) {
+        const noted = await users.noteObservedLanguage(client, user, args.wrote_in);
+        if (noted.ask) {
+          languageNudge = { theyWriteIn: noted.observed, stored: user.locale || null, messages: noted.count };
+        }
       }
 
       // A paused person who writes gets answered — pausing stops Olma
@@ -336,6 +355,7 @@ const TOOLS = [
             },
           } : {}),
           ...(offerResume ? { offerResume: true } : {}),
+          ...(languageNudge ? { languageNudge } : {}),
           ...(recentReminders.length ? { recentReminders } : {}),
           ...(planHeadline ? { planHeadline } : {}),
         }), namedNow);
