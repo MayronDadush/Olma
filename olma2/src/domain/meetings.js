@@ -180,8 +180,14 @@ async function proposeSlot(client, userId, meetingId, slotText, startsAt) {
     `UPDATE meetings SET proposed_slot = $2, proposed_start_at = $3, updated_at = now() WHERE id = $1`,
     [meetingId, slotText.trim(), startsAt]
   );
+  // A new proposal resets the round, and it resets the confirmation ORDER with
+  // it: the people cleared back to 'awaiting' have not confirmed THIS slot, so
+  // a timestamp left over from the last one would make the successor rule name
+  // somebody who agreed to a different evening.
   await client.query(
-    `UPDATE meeting_participants SET state = CASE WHEN user_id = $2 THEN 'confirmed_current' ELSE 'awaiting' END
+    `UPDATE meeting_participants
+        SET state = CASE WHEN user_id = $2 THEN 'confirmed_current' ELSE 'awaiting' END,
+            confirmed_at = CASE WHEN user_id = $2 THEN clock_timestamp() ELSE NULL END
      WHERE meeting_id = $1 AND state <> 'opted_out'`,
     [meetingId, userId]
   );
@@ -245,7 +251,19 @@ async function respondToSlot(client, userId, meetingId, accept, counterProposal,
       }
     }
     await client.query(
-      `UPDATE meeting_participants SET state = 'confirmed_current' WHERE meeting_id = $1 AND user_id = $2`,
+      // clock_timestamp(), not now(): now() is TRANSACTION time, so two people
+      // confirming inside one transaction get byte-identical stamps and the
+      // order silently collapses onto user_id. Rare in production, where each
+      // reply is its own transaction — and a rule that is only usually a total
+      // order is not one.
+      //
+      // coalesce, not a plain stamp: accepting the same slot twice is idempotent and
+      // must not move this person to the back of the queue. A slot change
+      // already cleared the column in proposeSlot, so a genuinely new round
+      // stamps fresh.
+      `UPDATE meeting_participants
+          SET state = 'confirmed_current', confirmed_at = coalesce(confirmed_at, clock_timestamp())
+        WHERE meeting_id = $1 AND user_id = $2`,
       [meetingId, userId]
     );
     await audit.record(client, userId, 'meeting.slot_accepted', { meetingId, slot: p.proposed_slot });
