@@ -5,6 +5,7 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const dt = require('./datetime');
+const { autoReminderAt } = require('./auto-reminder');
 const { hasOffset, badTime } = dt;
 
 // ---- repeat rules -----------------------------------------------------------
@@ -148,13 +149,59 @@ async function setReminder(client, ownerId, taskId, remindAt, repeatRule) {
   // day so the rule can never re-derive itself from a clamped occurrence and
   // walk backwards month by month.
   const rule = resolveMonthlyAnchor(normalizeRepeatRule(repeatRule), remindAt, rows[0].timezone);
+  // An asked-for reminder supersedes the one Olma inferred from the due date.
+  // Without this, "תזכירי לי בשמונה" on a task that already carries an auto
+  // reminder produces two messages about one thing — and the person never
+  // asked for the first, so it is ours to withdraw. Only PENDING auto rows go:
+  // one that already fired is a thing that happened, not a plan to revise.
+  const superseded = await client.query(
+    `UPDATE task_reminders SET cancelled_at = now()
+      WHERE task_id = $1 AND auto AND sent_at IS NULL AND cancelled_at IS NULL
+      RETURNING id`,
+    [taskId]
+  );
   const ins = await client.query(
-    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule)
-     VALUES ($1, $2, $3) RETURNING *`,
+    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, auto)
+     VALUES ($1, $2, $3, false) RETURNING *`,
     [taskId, remindAt, rule]
   );
-  await audit.record(client, ownerId, 'reminder.created', { taskId, reminderId: ins.rows[0].id });
-  return ok({ reminder: ins.rows[0] });
+  await audit.record(client, ownerId, 'reminder.created', {
+    taskId, reminderId: ins.rows[0].id,
+    ...(superseded.rowCount ? { supersededAuto: superseded.rows.map((r) => Number(r.id)) } : {}),
+  });
+  return ok({ reminder: ins.rows[0], supersededAuto: superseded.rowCount });
+}
+
+// The reminder Olma attaches by itself when a task arrives carrying a moment.
+// Separate from setReminder on purpose: this one is allowed to decline (it
+// returns null for "no reminder was warranted"), it never overrides an
+// explicit reminder that is already there, and it is the only writer of
+// `auto = true`. The WHEN lives in domain/auto-reminder.js, which is pure.
+//
+// Returns the created row, or null. Null is a real answer — a task with no due
+// date, a moment already past, one too far out — and callers must treat it as
+// one rather than as a failure worth mentioning to anybody.
+async function attachAutoReminder(client, ownerId, task, timezone, now = new Date()) {
+  const at = autoReminderAt(task.due_at, timezone, now);
+  if (!at) return null;
+  // Never a second reminder on a task that already has a live one, whoever set
+  // it: a person who asked for their own has said what they want, and a repeat
+  // of this call (a retried tool, a re-run sweep) must not stack.
+  const { rows: existing } = await client.query(
+    `SELECT 1 FROM task_reminders
+      WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL LIMIT 1`,
+    [task.id]
+  );
+  if (existing.length) return null;
+  const { rows } = await client.query(
+    `INSERT INTO task_reminders (task_id, remind_at, auto)
+     VALUES ($1, $2, true) RETURNING *`,
+    [task.id, at]
+  );
+  await audit.record(client, ownerId, 'reminder.auto_created', {
+    taskId: Number(task.id), reminderId: Number(rows[0].id), remindAt: at,
+  });
+  return rows[0];
 }
 
 async function cancelReminder(client, ownerId, reminderId) {
@@ -285,7 +332,7 @@ async function markSent(client, reminderId) {
 }
 
 module.exports = {
-  setReminder, cancelReminder, listReminders, dueForSending, markSent,
+  setReminder, attachAutoReminder, cancelReminder, listReminders, dueForSending, markSent,
   normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor,
   recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS,
 };

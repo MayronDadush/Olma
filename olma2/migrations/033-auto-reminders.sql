@@ -1,0 +1,16 @@
+-- A reminder Olma attached by itself, from a due date the person gave, rather
+-- than one they asked for in words.
+--
+-- The flag exists for two decisions that must be able to tell them apart:
+--
+--   1. An EXPLICIT reminder supersedes the guess. Somebody who says "תזכירי לי
+--      בשמונה" about a task that already carries an auto reminder wants one
+--      reminder at eight, not two. domain/reminders.setReminder cancels the
+--      auto row in the same call.
+--   2. Listing. "מה התזכורות שלי" should be able to say which of these the
+--      person set and which Olma inferred, because only the inferred ones are
+--      a reasonable thing to silently drop.
+--
+-- Defaults false, so every reminder already in the table reads as what it in
+-- fact was: something a person asked for.
+ALTER TABLE task_reminders ADD COLUMN IF NOT EXISTS auto boolean NOT NULL DEFAULT false;

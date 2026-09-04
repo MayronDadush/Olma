@@ -6,6 +6,8 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const { hasOffset, badTime } = require('./datetime');
+const reminders = require('./reminders');
+const autoReminder = require('./auto-reminder');
 
 const MAX_BULK = 60;
 
@@ -21,7 +23,7 @@ async function checkParent(client, ownerId, parentId) {
   return ok({ parent: rows[0] });
 }
 
-async function addTask(client, ownerId, { title, category, dueAt, parentId, source }) {
+async function addTask(client, ownerId, { title, category, dueAt, parentId, source, now }) {
   if (!title || !title.trim()) return err('invalid', 'title required');
   if (dueAt && !hasOffset(dueAt)) return badTime('due_at', dueAt);
   if (parentId) {
@@ -34,7 +36,34 @@ async function addTask(client, ownerId, { title, category, dueAt, parentId, sour
     [ownerId, title.trim(), category || null, dueAt || null, parentId || null, source || null]
   );
   await audit.record(client, ownerId, 'task.created', { taskId: rows[0].id, parentId: parentId || null });
-  return ok({ task: rows[0] });
+  const auto = await autoAttach(client, ownerId, [rows[0]], now);
+  return ok({ task: rows[0], ...auto });
+}
+
+// Give every task that arrived with a moment its reminder, and say what
+// happened. Shared by add_task and add_tasks_bulk so the two can never disagree
+// about it — they already did once, which is why this exists: on 2026-09-04 one
+// task in a five-item dump was offered a reminder and another with an equally
+// real due date was not, because it came down to what the model remembered.
+//
+// `reminders` are rows, `autoRemindersSkipped` is the count the per-call cap
+// refused. Reporting the second is not decoration: a cap nobody is told about
+// reads as "everything was covered" (CLAUDE.md, no silent caps), and the model
+// needs it to offer the rest rather than leave them silently unarmed.
+async function autoAttach(client, ownerId, tasks, now) {
+  const timed = tasks.filter((t) => t.due_at);
+  if (!timed.length) return {};
+  const { rows: u } = await client.query(`SELECT timezone FROM users WHERE id = $1`, [ownerId]);
+  const tz = (u[0] && u[0].timezone) || 'UTC';
+  const made = [];
+  let skipped = 0;
+  for (const t of timed) {
+    if (made.length >= autoReminder.BULK_CAP) { skipped++; continue; }
+    const r = await reminders.attachAutoReminder(client, ownerId, t, tz, now);
+    if (r) made.push(r);
+  }
+  if (!made.length && !skipped) return {};
+  return { reminders: made, ...(skipped ? { autoRemindersSkipped: skipped } : {}) };
 }
 
 // Change a task that already exists. Until the dashboard there was no way to
@@ -94,7 +123,7 @@ async function editTask(client, ownerId, taskId, patch = {}) {
 // the very loop the doctrine forbids for a dump — so in practice a big goal
 // got saved as one undoable line, or not at all. Splitting has to be cheaper
 // than not splitting.
-async function addTasksBulk(client, ownerId, items, { parentId, source } = {}) {
+async function addTasksBulk(client, ownerId, items, { parentId, source, now } = {}) {
   if (!Array.isArray(items) || items.length === 0) return err('invalid', 'items required');
   if (items.length > MAX_BULK) return err('invalid', `max ${MAX_BULK} items per call`);
   if (parentId) {
@@ -117,7 +146,8 @@ async function addTasksBulk(client, ownerId, items, { parentId, source } = {}) {
   await audit.record(client, ownerId, 'task.bulk_created', {
     count: created.length, parentId: parentId || null,
   });
-  return ok({ tasks: created });
+  const auto = await autoAttach(client, ownerId, created, now);
+  return ok({ tasks: created, ...auto });
 }
 
 async function listTasks(client, ownerId, { status, includeArchived } = {}) {
