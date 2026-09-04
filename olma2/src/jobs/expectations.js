@@ -36,6 +36,10 @@ const JOB_INTERVAL_SECONDS = {
   // Prepaid balances, measured in days of runway — nothing changes between
   // ticks, and each tick costs three external billing calls.
   balance_watch: 21600,
+  // Ratios measured per DAY, so a faster beat cannot produce a new answer —
+  // only a repeated one. Six-hourly means a regression that starts in the
+  // morning is reported the same day without this ever being a poll.
+  efficiency_watch: 21600,
   usage_sweep: 3600,
   // Twilio settles a call's price minutes after it ends; hourly re-reads of
   // the recent-calls page are how the price back-fills into the ledger.

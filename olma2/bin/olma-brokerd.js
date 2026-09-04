@@ -80,6 +80,7 @@ async function main() {
     // own) and the raw pipe (no model, no credit needed) — see
     // jobs/credit-watch.js for why both choices are the point.
     const creditWatch = require('../src/jobs/credit-watch');
+    const efficiencyWatch = require('../src/jobs/efficiency-watch');
     const { runOpenclaw } = require('../src/channels/openclaw');
     const rawSend = (phone, text) => runOpenclaw([
       'message', 'send', '--channel', 'whatsapp', '--target', phone, '--message', text,
@@ -103,6 +104,24 @@ async function main() {
     // being a poll. Tier bookkeeping inside makes repeat ticks silent.
     arm('balance_watch', () =>
       withTx(pool, (c) => creditWatch.checkBalanceForecast(c, { send: rawSend })));
+
+    // The efficiency watch: cost and token ratios against this system's own
+    // recent normal, reported with the evidence and a recommendation, never
+    // applied. Six-hourly like the runway warning and for the same reason —
+    // the ratios it reads are per-DAY, so a faster beat cannot produce a new
+    // answer, only a repeated one. It borrows credit-watch's own night rule:
+    // nothing here can be acted on at 03:00 and it reads the same at 09:00.
+    arm('efficiency_watch', () => withTx(pool, (c) => efficiencyWatch.run(c, {
+      send: rawSend,
+      alertHourOpen: creditWatch.alertHourOpen,
+      // Measured, not assumed: the brief's one useful lever is "the prompt got
+      // bigger", and the number has to be the CURRENT rendered size, not a
+      // constant somebody updates by hand. Read fresh — six-hourly, one file.
+      promptChars: (() => {
+        try { return require('../src/intake/provision').renderAgentsMd('olma_tok_' + '0'.repeat(32)).length; }
+        catch { return null; }
+      })(),
+    })));
 
     // One tick for the minute-sweeps. They were separate intervals firing
     // on the same second, each taking its own connection and transaction, to
