@@ -191,19 +191,27 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 
 ### Two hostnames: allma.world is public, duckdns is admin
 
-- **`allma.world` serves an ALLOWLIST, not the dashboard.** Caddy passes
-  exactly four routes to `:8788` — `/pick/<48 hex>`, `/oauth/google/callback`,
+- **`allma.world` serves an ALLOWLIST, not the admin dashboard.** Caddy passes
+  a named set of routes to `:8788` — `/pick/<48 hex>`, `/d/<64 hex>`, `/me`,
+  `/me/data`, `/me/events`, `/me/act`, `/me/out`, `/oauth/google/callback`,
   `/health`, `/ready` — plus `/voice-bridge*` to `:8791`. Everything else 404s
-  in Caddy and never reaches the app. That list is the complete set of routes
-  `dashboard.js` serves ahead of its Basic Auth check; **adding a public route
-  to the app does not make it reachable — the Caddyfile has to say so too.**
+  in Caddy and never reaches the app. **Read the Caddyfile for the current
+  set** rather than this line: it said "exactly four" for a day and was wrong
+  the moment the personal dashboard shipped. What does not change is the
+  invariant — the list is exactly the routes the app serves ahead of its Basic
+  Auth check, and **adding a public route to the app does not make it reachable
+  — the Caddyfile has to say so too.** That cost the user dashboard its launch:
+  the code deployed green, `/me` answered on `127.0.0.1:8788`, and every link
+  sent to a person 404'd in Caddy (2026-09-04).
 - **The admin dashboard lives ONLY on `olmachat.duckdns.org`.** It is not
   exposed on `allma.world` at all, not even behind Basic Auth.
 - **Match `/pick/` on the exact token shape, never `/pick/*`.** A prefix match
   lets a malformed token fall past `picker.TOKEN_RE` into the Basic Auth
   check, so a truncated WhatsApp link answers a user with the ADMIN password
   prompt on the public domain (`incidents.md`, "A truncated link asked a user
-  for the admin password").
+  for the admin password"). The dashboard link follows the same rule —
+  `^/d/[a-f0-9]{64}$`, and the five `/me` routes named one by one rather than
+  `/me*` — for exactly that reason.
 - **Three places hold the domain and none of them are in the repo**:
   `/etc/caddy/Caddyfile`, `/opt/olma/google-oauth.json` (`public_base_url`,
   which builds the OAuth `redirect_uri`), and `/opt/olma2-voice-bridge/server.js`
