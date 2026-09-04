@@ -134,7 +134,8 @@ So:
 - the gate message is composed **server-side in brokerd** and sent on the raw
   pipe (`openclaw message send --target <jid>@g.us`), which needs
   `agents.defaults.systemAgent.agentId` set — verify with
-  `--dry-run --json`, never by reading the file;
+  `--dry-run --json`, never by reading the file (it is `"main"` on the box,
+  checked 2026-09-04);
 - mentions are real mentions: the WhatsApp plugin attaches native mention
   metadata for `@+<digits>` tokens that match current participant metadata, and
   we have those numbers from the roster;
