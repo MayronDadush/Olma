@@ -19,8 +19,8 @@ This file is loaded into **every** session, so it holds only what you need
 
 Two companion files are **not** auto-loaded — open them when relevant:
 
-- **`olma2/docs/incidents.md`** — the full narrative of every incident, 65
-  entries grouped by domain behind a linked contents list. Each rule below is
+- **`olma2/docs/incidents.md`** — the full narrative of every incident,
+  grouped by domain behind a linked contents list. Each rule below is
   a compression of one of them. **Read the entry before changing the code it
   describes**: the rule stops you repeating a mistake, the narrative stops you
   arguing with the rule when it looks inconvenient.
@@ -30,9 +30,13 @@ Two companion files are **not** auto-loaded — open them when relevant:
 - `olma2/docs/model-experiments.md` — dated model pilots.
 - `README.md` — the ops runbook (connect, restart, update).
 
-Both companions were split out of this file on 2026-09-03, verbatim. Nothing
-was deleted. When you fix something, **the rule goes here and the story goes
-in `incidents.md`** — that split is what keeps this file readable.
+Both companions were split out of this file on 2026-09-03, verbatim, and more
+has moved across since. **Nothing has ever been deleted** — when a passage
+leaves this file it lands in one of those two. When you fix something, **the
+rule goes here and the story goes in `incidents.md`**; that split is the only
+reason this file is still readable, and it only holds if you keep doing it.
+A long paragraph here is a bug: check whether the rule is already stated
+above, and if it is, the paragraph belongs in `incidents.md`.
 
 > **A comment elsewhere in the repo that cites `CLAUDE.md, "<some section>"`
 > and is not here means `olma2/docs/incidents.md`.** Section titles were
@@ -61,9 +65,39 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **After a shared-branch merge, verify it actually shipped**:
   `git merge-base --is-ancestor <sha> origin/main`. A concurrent session can
   merge at a head that predates your commit.
-- **A pending CI check is not "not yet" — it may be dead.** Compare the `push`
-  and `pull_request` runs on the same SHA; if `--is-ancestor` says your branch
-  contains main, both compile identical bytes and any difference is the host.
+- **A dead CI run arrives under EITHER conclusion, so the conclusion string
+  tells you nothing.** The job timeout reports `cancelled`; `run-suite.sh`
+  exhausting its retries exits 1 and reports `failure`; and on `main` a
+  *queued* run is cancelled outright when a later merge displaces it (the
+  concurrency group holds only one pending run) — that last one is benign, the
+  displacing sha being a descendant and `deploy.sh` rsyncing the whole tree.
+  The wedge banner in the log is the tell, and
+  `git merge-base --is-ancestor <my-sha> <deployed-sha>` settles whether your
+  commit shipped regardless of how the run ended.
+- **On a PR, a pass on either run is authoritative once the branch contains
+  main** (`--is-ancestor origin/main origin/<branch>`) — both then compile
+  identical bytes, so any difference is the host.
+- **A wedged `test` on `main` skips `deploy` silently and main ships nothing**
+  — `deploy` is `needs: test`, and `main` has no `pull_request` run to fall
+  back on. Re-run it; if it wedges again, deploy the merged sha yourself with
+  `deploy.sh --restart` (same suite, on the box, at `--test-concurrency=2`,
+  where it does not wedge). The `deploy_drift` dashboard row
+  (`jobs/deploy-drift.js`) reports this gap hourly — a row and never an alert,
+  since being a few commits behind breaks nobody.
+- **The `sha` in `/opt/olma2/RELEASE` is the ONLY unambiguous answer to "is
+  production running what I merged."** Everything else is inference about how
+  it got there. Timestamps lie in BOTH directions: the marker is written
+  before the on-box suite and long before the restart, so on a healthy deploy
+  it leads both units by up to ~14 minutes — the identical signature to a
+  deploy that died before restarting — while a manual `systemctl restart`
+  inverts it just as misleadingly. `pgrep` separates them only if you **read
+  what it matched**: the obvious patterns also match your own monitoring
+  shell, and a wait-loop built on one never exits. For "did THIS deploy
+  restart it", take a baseline before starting. (`incidents.md`, "The deploy
+  marker leads the restart".)
+- **The marker's `origin` field is load-bearing** — `github-actions run <id>`
+  gives you a run to go and read; `local <user>@<host>` is a laptop deploy
+  that left no CI record anywhere.
 
 ### Talking to the gateway
 
@@ -134,6 +168,44 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   so every path that declines to judge must say so somewhere.
 - **Stamp "we told them" only after the send confirms.** Stamping first makes
   an outage swallow the alert for exactly the outage it exists to report.
+- **`/health` sees the DB, every `job_heartbeats` row, and the gateway — and
+  nothing else.** A component that writes no heartbeat is invisible to it, and
+  says so by staying green. That is how the gateway went unwatched for months
+  while sixteen sweeps beside it were checked every minute.
+
+### Two hostnames: allma.world is public, duckdns is admin
+
+- **`allma.world` serves an ALLOWLIST, not the dashboard.** Caddy passes
+  exactly four routes to `:8788` — `/pick/<48 hex>`, `/oauth/google/callback`,
+  `/health`, `/ready` — plus `/voice-bridge*` to `:8791`. Everything else 404s
+  in Caddy and never reaches the app. That list is the complete set of routes
+  `dashboard.js` serves ahead of its Basic Auth check; **adding a public route
+  to the app does not make it reachable — the Caddyfile has to say so too.**
+- **The admin dashboard lives ONLY on `olmachat.duckdns.org`.** It is not
+  exposed on `allma.world` at all, not even behind Basic Auth.
+- **Match `/pick/` on the exact token shape, never `/pick/*`.** A prefix match
+  lets a malformed token fall past `picker.TOKEN_RE` into the Basic Auth
+  check, so a truncated WhatsApp link answers a user with the ADMIN password
+  prompt on the public domain (`incidents.md`, "A truncated link asked a user
+  for the admin password").
+- **Three places hold the domain and none of them are in the repo**:
+  `/etc/caddy/Caddyfile`, `/opt/olma/google-oauth.json` (`public_base_url`,
+  which builds the OAuth `redirect_uri`), and `/opt/olma2-voice-bridge/server.js`
+  (the `<Stream>` TwiML URL). The fourth, the `public_base_url` **flag**, is DB
+  state and drives `/pick/` links only — it is NOT the one OAuth reads. A
+  deploy cannot touch any of the four, and a rollback cannot restore them.
+- **`google-oauth.json` is cached at module level** (`clientConfig()`), so
+  editing it does nothing until `olma2-dashboard` restarts.
+- **A redirect URI must be registered at Google BEFORE the file points at it**,
+  and both hostnames stay registered during any move. Verify against Google
+  rather than the console UI: drive a consent URL and check whether it reaches
+  the sign-in page or `redirect_uri_mismatch`, **with a known-bogus domain as a
+  control** — without one the probe reads "accepted" for everything.
+- **Changing the domain never invalidates an existing Google connection.**
+  `redirect_uri` belongs to the authorization-code exchange only; the refresh
+  grant sends `client_id`/`client_secret`/`refresh_token` and no URI. Re-consent
+  is needed only if the **client_id** changes — which is why a second OAuth
+  client is the dangerous mistake here, not a second redirect URI.
 
 ### Editing the dashboard or domain
 
@@ -221,44 +293,38 @@ Verified on the box at the cutover, 2026-08-17:
   exactly (`/root/.openclaw/workspaces/u-<id>`) — the schedule-card feature
   below depends on that holding.
 - The v1 dashboard is **down** (nothing on :4173, no systemd unit). Caddy
-  serves `olmachat.duckdns.org → 127.0.0.1:8788`, i.e. the **v2** dashboard.
+  serves **two** hostnames, both to the **v2** dashboard on `127.0.0.1:8788`,
+  and the split between them is load-bearing — see
+  [Two hostnames](#two-hostnames-allmaworld-is-public-duckdns-is-admin).
 
-- **Source of truth: `olma2/` in THIS repo** (unlike v1). ~4.9k lines src+bin,
-  116 tests. `olma2/README.md` is its map. Deploy+test:
-  `bash olma2/scripts/deploy.sh` (rsync → `/opt/olma2/` → migrations → full
-  suite on the server). **CI auto-deploys on every merge to `main`**
-  (`.github/workflows/olma2-tests.yml`, `deploy` job — runs the same script
-  with `--restart`, so `olma2-brokerd`/`olma2-dashboard` restart automatically
-  once the remote suite passes). A manual local run of `deploy.sh` still
-  leaves restart to you unless you also pass `--restart`.
-  **`--restart` also carries a rollback safeguard** (added 2026-08-20): before
-  the new code is synced, the currently-deployed release (code + its own
-  `node_modules`) is snapshotted whole to `/opt/olma2-previous` (one snapshot,
-  not a history). After restart, `deploy.sh` waits 5s and checks both services
-  are actually `active` AND the dashboard's own **`/ready`** (DB + brokerd's
-  own heartbeat, `adapters/http/dashboard.js`) returns 200 — "tests passed in
-  CI" never proves the live process came up. **`/ready`, never `/health`**:
-  `/health` goes 503 for things a redeploy cannot fix — a sweep behind its
-  cadence, a dead gateway — and gating on it deadlocked two deploys in a row
-  on 2026-08-22 (`incidents.md`). If that check fails, it restores
-  `/opt/olma2-previous` over `/opt/olma2` and restarts again, then the CI run
-  still exits non-zero on purpose (a silently self-healed run hides the
-  problem). Once healthy, `--restart` also resyncs `agents-template.md` into
-  every existing user's workspace (`incidents.md`, "Deploying doctrine no
-  longer needs a second command"). **This rolls back CODE only — never DB
-  migrations.** A
-  migration that already ran stays applied even after a code rollback, so keep
-  migrations additive/backward-compatible rather than relying on this to
-  undo one.
-  **Every deploy also archives the outgoing release** to
-  `/opt/olma2-releases/<utc-stamp>/`, newest 5 kept
-  (`scripts/prune-releases.sh`, `OLMA_RELEASES_KEEP`), each carrying a
-  `RELEASE` marker with the sha and subject it holds. That is the path for a
-  fault found days and several merges later, which `/opt/olma2-previous`
-  cannot reach: `bash olma2/scripts/rollback.sh --list`, then `--to <stamp>`
-  (describes only) and `--to <stamp> --yes` (acts). It archives what it
-  replaces, so a rollback is not a one-way door — but **the git history still
-  has the bad commit, so the next merge redeploys it.** Land a revert too.
+- **Source of truth: `olma2/` in THIS repo** (unlike v1) — ~22k lines src+bin,
+  823 tests in 69 files as of 2026-09-04. `olma2/README.md` is its map, and
+  `npm test` is the only count that is true today.
+- **Deploying is `bash olma2/scripts/deploy.sh [--restart]`**: rsync →
+  `/opt/olma2/` → migrations → the full suite **on the server**. CI runs it
+  with `--restart` on every merge to `main`, so **merging is deploying**; a
+  local run without `--restart` leaves the restart to you.
+- **What `--restart` guarantees** (stories in `incidents.md`: the 2026-08-22
+  deadlock, "The rollback was one release deep", "Deploying doctrine no longer
+  needs a second command"):
+  - the outgoing release is snapshotted to `/opt/olma2-previous` (one deep,
+    not a history) **and** archived to `/opt/olma2-releases/<utc-stamp>/`
+    (newest 5, `prune-releases.sh`), each carrying a `RELEASE` marker naming
+    the sha and subject it holds;
+  - after restart it requires both services `active` **and `/ready` 200** —
+    "tests passed in CI" never proves the live process came up. **`/ready`,
+    never `/health`**: `/health` goes 503 for things a redeploy cannot fix (a
+    sweep behind its cadence, a dead gateway) and gating on it deadlocked two
+    deploys in a row;
+  - a failed check restores `/opt/olma2-previous` and restarts, then still
+    exits non-zero on purpose — a silently self-healed run hides the problem;
+  - once healthy it resyncs `agents-template.md` into every user's workspace.
+- **Rollback is CODE only, never migrations** — keep them additive. For a
+  fault found days and several merges later, `/opt/olma2-previous` cannot
+  reach back far enough: `scripts/rollback.sh --list`, `--to <stamp>`
+  (describes), `--to <stamp> --yes` (acts). It archives what it replaces, so
+  it is not a one-way door — but **git still has the bad commit and the next
+  merge redeploys it.** Land a revert too.
 - Postgres 16 local (`olma2` + `olma2_test` DBs), creds in `/opt/olma2/.env`
   (0600). Daily `pg_dump` 02:15 → `/root/backups/`, 14-day retention.
   **The dump lands on the same droplet it backs up — no off-box copy yet.**
@@ -270,8 +336,8 @@ Verified on the box at the cutover, 2026-08-17:
 
 `olma2/docs/v1-reference.md` describes **v1's** dashboard, which is dead — its
 "5 edits with a positional param on `renderPage(...)`" recipe does not apply
-here and following it wastes a session. This is the one that serves
-https://olmachat.duckdns.org.
+here and following it wastes a session. This is the one that serves both
+https://allma.world and https://olmachat.duckdns.org.
 
 Same house style — zero deps, Basic auth, server-rendered HTML + form POSTs,
 no JS — but structured differently:
@@ -280,8 +346,8 @@ no JS — but structured differently:
   title, hint, render }]`, rendered in order by the `GET /` handler. Adding one
   is a single entry plus its `render*(client, csrf)` function; the `hint` is
   required by convention, because this is a tool someone reads daily and an
-  unlabelled table is a puzzle. Current order: health, users, issues, cost,
-  metrics, planned, outbox, flags, waitlist, audit.
+  unlabelled table is a puzzle. **Read the array for what exists** — it was
+  listed here once and was wrong within a fortnight (10 named, 15 live).
 - **`/user?id=N` is a separate page**, not a section — the per-person
   drill-down (tasks, conversation, what is planned for them, preferences,
   facts, delete panel). `renderUserPage` builds it; sections are skipped
@@ -317,24 +383,41 @@ no JS — but structured differently:
 OpenClaw global npm package (`openclaw`). No `sqlite3` CLI on the box — use
 Node's built-in `node:sqlite` (`DatabaseSync`) for any manual DB query.
 
+This table used to list v1's paths — `/opt/olma/broker/`, the SQLite DB,
+`/opt/olma-dashboard/` — as though they were the system. They are **retired**
+(`olma2/docs/v1-reference.md`); nothing routes to them, and acting on them
+costs a session. What is live:
+
 | Component | Path |
 |---|---|
-| Broker (MCP server + scripts) | `/opt/olma/broker/` |
-| Live DB | `/opt/olma/olma.sqlite` |
-| Schema (source of truth for NEW tables; drifted for old ones — see below) | `/opt/olma/schema.sql` |
-| Dashboard | `/opt/olma-dashboard/server.js` → https://olmachat.duckdns.org |
+| Code (MCP server, brokerd, dashboard) | `/opt/olma2/` |
+| Live DB | Postgres `olma2` (creds in `/opt/olma2/.env`) |
+| Schema | `olma2/migrations/` in-repo — never hand-edited on the box |
+| Dashboard | `127.0.0.1:8788` → https://allma.world (public routes) + https://olmachat.duckdns.org (admin) |
+| Caddy config | `/etc/caddy/Caddyfile` — **not** in the repo, not deployed |
+| Google OAuth client | `/opt/olma/google-oauth.json` — v1 path, still live; **not** in the repo |
+| Voice bridge | `/opt/olma2-voice-bridge/` — **not** in the repo, not deployed |
+| Which release is serving | `/opt/olma2/RELEASE` (sha + subject) |
+| Previous release / dated archive | `/opt/olma2-previous`, `/opt/olma2-releases/` |
 | OpenClaw config | `/root/.openclaw/openclaw.json` |
 | Per-user workspaces | `/root/.openclaw/workspaces/u-<id>/` |
 | Legacy/fallback workspace (agent `main`, not DB-tracked) | `/root/.openclaw/workspace/` |
 
-**Standing gotchas:**
-- `openclaw config set` can hang forever after a successful write — never shell out to it. Edit `openclaw.json` directly (read → modify → `JSON.stringify(cfg, null, 2)` → write); the gateway hot-reloads config on file change, but **routing binding changes need `systemctl --user restart openclaw-gateway`** to take effect.
-- `openclaw sessions list` (no flags) only shows the default agent — pass `--all-agents --json` to see per-user agents.
-- `schema.sql` was stale for the original tables (`users`, `tasks`, `roundup_participants`, etc. all have live-only `ALTER TABLE` columns not in the file) — every broker test hand-applies the same ALTERs in its own `setupDb()`. A new column on an EXISTING table needs the same ALTER added to all 8 test files. A brand-new table (like `connections`) can just go straight into `schema.sql` — tests load it from there automatically.
-- `openclaw cron add` (and other elevated gateway RPCs) can require a **device scope upgrade** approved via `openclaw devices` — this is a real permission gate (up to `admin` role), not a bug. Don't push through it non-interactively; it needs the account owner's explicit approval.
-- **Any outbound send via `child_process` must be a genuinely detached spawn.** `olma-mcp.js` is a fresh process per turn (verified: no `olma-mcp.js` process persists between calls) and the gateway tears it down right after the tool response returns — a plain `execFile(...)` child shares that process group and dies with it before the send completes, even though the call reports success. Always `spawn(cmd, args, {detached:true, stdio:'ignore'}).unref()`, never bare `execFile`, for anything that must survive past the current turn (confirmed root cause of a real notification never arriving, 2026-08-14).
-- **Any `openclaw agent ... --deliver` call needs BOTH `--agent <id>` AND an explicit `--session-key "agent:<id>:whatsapp:direct:<phone>"`.** Neither flag alone is enough — verified the hard way, 2026-08-14: `--agent <id>` alone leaves `--deliver` to guess a channel/target via best-effort inference, which fails outright for an established multi-session user (gateway log: `Delivering to WhatsApp requires target <E.164|...>`, no message ever sent). `--to <phone>` alone *does* deliver, but runs the turn on the DEFAULT agent (`main`), not the person's own isolated agent — the message lands outside their real, continuing WhatsApp session, so when they reply normally (routed via bindings, back to their real per-user agent) that agent has no memory of what they're replying to and improvises incorrect context. Only `--agent <id> --session-key "agent:<id>:whatsapp:direct:<phone>"` together puts the turn in the exact session their real replies continue in — confirmed end-to-end (delivered + correct session). Session-key shape matches `session.dmScope: "per-channel-peer"`; revisit if that config changes. Affects `fanout.js`, `welcome.js`, `checkin.js` — all three fixed 2026-08-14.
-- **`openclaw-gateway` is the ONLY user-level systemd unit here — everything else is plain `systemctl`.** `olma2-brokerd.service`, `olma2-dashboard.service`, and `olma-voice-bridge.service` all live in `/etc/systemd/system/` and are checked/restarted without `--user`, no `XDG_RUNTIME_DIR`/`DBUS_SESSION_BUS_ADDRESS` needed. Confirmed 2026-09-01 after `systemctl --user is-active olma2-brokerd` (and `--user list-units`, even with the bus env vars set correctly for root's real, months-old session) reported it as not found/inactive while it was genuinely healthy — `/root/.config/systemd/user/` holds only `openclaw-gateway.service`. Checking the wrong scope on any of the other three reads as a false "service is down."
+**Standing gotchas** (only the ones that are not already rules above):
+- `openclaw sessions list` with no flags shows only the DEFAULT agent — pass
+  `--all-agents --json` to see per-user agents. (And never on a timer.)
+- `openclaw cron add`, and other elevated gateway RPCs, can require a **device
+  scope upgrade** approved via `openclaw devices`. That is a real permission
+  gate (up to `admin` role), not a bug — it needs the account owner's explicit
+  approval, so do not try to push through it non-interactively.
+- The gateway **hot-reloads `openclaw.json` on file change, bindings
+  included**, provided the binding is written in the same `saveConfig` as
+  another hot change. This line used to say every binding change needed
+  `systemctl --user restart openclaw-gateway`; that was measured and is wrong.
+
+The long-form stories for the detached-spawn rule, the `--deliver` flags and
+the systemd scope moved to `incidents.md` on 2026-09-04 — the rules for all
+three are above, under [Rules that break production](#rules-that-break-production).
 
 ## Memory architecture (turned on 2026-08-14)
 
@@ -364,6 +447,36 @@ Two things the suite learned the hard way:
   `helpers.daytime()` and `helpers.slotStart()`; a hard-coded "Tuesday 17:00"
   or an unpinned `drainOnce` passes or fails depending on when you run it.
   The suite was green thirteen hours a day and red eleven before this.
+
+- **A test file must never write into a directory the other test files read.**
+  They are separate processes over one filesystem. A decoy migration dropped
+  into the real `migrations/` for a few milliseconds threw in every *other*
+  file's `before` hook — and hung rather than failed, because a connected pg
+  `Client` left open keeps a child's event loop alive for ever, and a child
+  that cannot exit hangs `node --test` silently. Stage fixtures in
+  `fs.mkdtempSync()`; `tests/shared-fixture-writes.test.js` enforces it
+  (`incidents.md`, "A test file poisoned every other one").
+- **A test child that cannot exit is invisible** — the runner waits on it for
+  ever and never flushes its output, so the suite dies with no message.
+  `freshDb()` therefore closes every client in a `finally`, bounds
+  `pool.end()` (a client checked out and never released now fails by name,
+  with the checkout's stack), and arms an unref'd exit watchdog.
+  **`--test-timeout` does NOT cover this** — measured: it catches a hook or
+  test that never *settles*, and does nothing at all for a file whose tests
+  pass but which leaves a handle open. `tests/helpers-guards.test.js` proves
+  both guards still fire.
+
+- **A green from CI may be a retry.** The wedge above is fixed, but
+  `olma2/scripts/run-suite.sh` stays as the backstop for the next child that
+  cannot exit. CI and `deploy.sh` go through it; it retries a **hang** and
+  never a failure:
+  any non-zero exit is final and is reported as-is. **Do not widen that** — a
+  wrapper that re-rolls a genuine red is how a flaky-test culture starts. It
+  prints a banner on every wedge and names the attempt it passed on. **Seeing
+  that banner now means a NEW hang** — diagnose it, do not bank the retry or
+  raise `SUITE_ATTEMPTS`. A wedged child prints nothing, so make it report on
+  itself: `NODE_OPTIONS=--require` a preload with an **unref'd** interval that
+  dumps `process.getActiveResourcesInfo()` to a file.
 
 CI (`.github/workflows/olma2-tests.yml`) runs the same suite plus a
 `migrations` collision check, serialized on `main` so two merges cannot race
@@ -415,16 +528,18 @@ on.
 
 Real, open, and nobody is working on them.
 
-### Integrations were left behind by the cutover
+### Monday is the only integration the cutover never got back
 
-v1 had per-user Google Calendar + Monday (`/opt/olma/broker/google-oauth.js`,
-`crypto-store.js`, tools in v1's `olma-mcp.js`). v2 has an `integrations`
-table but no credential columns, no `oauth_states`, no tools, and no
-`/oauth/google/callback` route — and since the public host now points at the
-v2 dashboard, the callback Google redirects to **404s**. One real connection
-exists in the v1 SQLite DB (user `+972526269826`: calendar `read_write` +
-Monday `read_only`). Porting it back is a restore, not a migration task; the
-v1 tokens stay decryptable if v2 reuses `/opt/olma/.enc-key`.
+**Corrected 2026-09-04 — this entry used to say all of v1's integrations were
+gone, and had been false since 2026-08-19.** Google is fully ported and live:
+`domain/google-oauth.js`, `calendar.js`, `google-contacts.js`, `mail.js`, the
+`/oauth/google/callback` route, and credential columns on `integrations`
+(`credential_enc`, `refresh_enc`, `expires_at`). Six real connections on the
+box — calendar ×4, contacts, gmail. A gap entry nobody re-checks sends the
+next session to rebuild something that already works.
+
+What is genuinely still missing is **Monday.com** (v1 had it read-only for one
+user). No tools, no domain module, nobody has asked for it since the cutover.
 
 ### A reminder whose first rung died on the wire never climbs (2026-09-01)
 
@@ -461,6 +576,11 @@ quiet-hours-held, not broken). That catches a dead-from-birth agent, a
 stuck-config agent, and every future failure of the same shape without
 needing to know why.
 
+**Not to be confused with `checkin.js`'s `isDeafOnDayOne`**, which greps for
+the same predicate and is the opposite check: it fires only once **two**
+onboarding messages have landed and the person never replied, and its effect
+is to send LESS. Someone who received nothing falls straight through it.
+
 ### The gateway can only ever be watched from OUTSIDE itself
 
 `/health` checks it now (`incidents.md`, "A dead gateway read green"), and
@@ -470,5 +590,6 @@ this system has — the credit outage, the runway warning, the eval reds,
 pipe, and that pipe IS the gateway. A gateway that is down cannot report that
 it is down, so a dashboard row and a 503 are genuinely all that is available
 from in here. Anything better has to run somewhere else: an uptime monitor
-hitting `https://olmachat.duckdns.org/health`, or a second channel that does
-not go through OpenClaw at all. Neither exists.
+hitting `https://allma.world/health` (public, unauthenticated, and the
+hostname that outlives the duckdns one), or a second channel that does not go
+through OpenClaw at all. Neither exists.

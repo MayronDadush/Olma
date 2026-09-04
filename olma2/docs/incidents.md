@@ -21,6 +21,7 @@ never trust a dated narrative for something you are about to act on.
 
 - [`main` said NO_REPLY into a real person's WhatsApp (2026-09-01)](#main-said-no_reply-into-a-real-persons-whatsapp-2026-09-01)
 - [The actual reason it kept converging on מירון: `heartbeat.target` defaults to `"owner"` (fixed 2026-09-02)](#the-actual-reason-it-kept-converging-on-מירון-heartbeattarget-defaults-to-owner-fixed-2026-09-02)
+- [A healthy service read as down, because the scope was wrong (2026-09-01)](#a-healthy-service-read-as-down-because-the-scope-was-wrong-2026-09-01)
 - [A dead gateway read green on `/health` (fixed 2026-09-03)](#a-dead-gateway-read-green-on-health-fixed-2026-09-03)
 - [The gateway was upgraded underneath a running system (2026-08-31)](#the-gateway-was-upgraded-underneath-a-running-system-2026-08-31)
 - [Permission to use a model lives in THREE lists, and we wrote two (fixed 2026-09-02)](#permission-to-use-a-model-lives-in-three-lists-and-we-wrote-two-fixed-2026-09-02)
@@ -37,6 +38,8 @@ never trust a dated narrative for something you are about to act on.
 
 **Delivery, outbox and proactive messages**
 
+- [A notification that reported success and never arrived (2026-08-14)](#a-notification-that-reported-success-and-never-arrived-2026-08-14)
+- [`--deliver` needs the agent AND the session key, not either (2026-08-14)](#--deliver-needs-the-agent-and-the-session-key-not-either-2026-08-14)
 - [Reminders that come back, and cadences that could not be said (2026-08-29)](#reminders-that-come-back-and-cadences-that-could-not-be-said-2026-08-29)
 - [A night-held message now gets a re-hearing when the person writes (2026-08-27)](#a-night-held-message-now-gets-a-re-hearing-when-the-person-writes-2026-08-27)
 - [A retry cap that overflowed the thing it was capping (fixed 2026-08-24)](#a-retry-cap-that-overflowed-the-thing-it-was-capping-fixed-2026-08-24)
@@ -105,9 +108,12 @@ never trust a dated narrative for something you are about to act on.
 - [Voice-note transcription moved to ElevenLabs Scribe v2 (2026-08-18)](#voice-note-transcription-moved-to-elevenlabs-scribe-v2-2026-08-18)
 - [Onboarding has no "welcome" step any more (redesigned 2026-08-17)](#onboarding-has-no-welcome-step-any-more-redesigned-2026-08-17)
 - [A Google consent with no calendar scope was stored as "connected" (fixed 2026-08-20)](#a-google-consent-with-no-calendar-scope-was-stored-as-connected-fixed-2026-08-20)
+- [The move to allma.world, and the truncated link that asked for the admin password (2026-09-04)](#the-move-to-allmaworld-and-the-truncated-link-that-asked-for-the-admin-password-2026-09-04)
 
 **CI, migrations and deploying**
 
+- [A test file poisoned every other one (root-caused and fixed 2026-09-04)](#a-test-file-poisoned-every-other-one-root-caused-and-fixed-2026-09-04)
+- [The deploy marker leads the restart, so the timestamps lie both ways (2026-09-04)](#the-deploy-marker-leads-the-restart-so-the-timestamps-lie-both-ways-2026-09-04)
 - [The rollback was one release deep, on a five-merge day (2026-09-03)](#the-rollback-was-one-release-deep-on-a-five-merge-day-2026-09-03)
 - [Two branches, one migration number — a third time, in one afternoon (fixed 2026-08-29)](#two-branches-one-migration-number--a-third-time-in-one-afternoon-fixed-2026-08-29)
 - [Two branches, one migration number (fixed 2026-08-22)](#two-branches-one-migration-number-fixed-2026-08-22)
@@ -116,6 +122,21 @@ never trust a dated narrative for something you are about to act on.
 - [A rollback cannot reach the filesystem (fixed 2026-08-27)](#a-rollback-cannot-reach-the-filesystem-fixed-2026-08-27)
 
 ## Gateway, config and upgrades
+
+### A healthy service read as down, because the scope was wrong (2026-09-01)
+
+**`openclaw-gateway` is the ONLY user-level systemd unit here — everything
+else is plain `systemctl`.** `olma2-brokerd.service`, `olma2-dashboard.service`
+and `olma-voice-bridge.service` all live in `/etc/systemd/system/` and are
+checked/restarted without `--user`, with no `XDG_RUNTIME_DIR` /
+`DBUS_SESSION_BUS_ADDRESS` needed.
+
+Confirmed after `systemctl --user is-active olma2-brokerd` (and `--user
+list-units`, even with the bus env vars set correctly for root's real,
+months-old session) reported it as not found/inactive while it was genuinely
+healthy — `/root/.config/systemd/user/` holds only `openclaw-gateway.service`.
+Checking the wrong scope on any of the other three reads as a false "service
+is down", which is a diagnosis that sends the next hour in the wrong place.
 
 ### A dead gateway read green on `/health` (fixed 2026-09-03)
 
@@ -949,6 +970,38 @@ answer for itself.
 
 
 ## Delivery, outbox and proactive messages
+
+### A notification that reported success and never arrived (2026-08-14)
+
+**Any outbound send via `child_process` must be a genuinely detached spawn.**
+`olma-mcp.js` is a fresh process per turn (verified: no `olma-mcp.js` process
+persists between calls) and the gateway tears it down right after the tool
+response returns — a plain `execFile(...)` child shares that process group and
+dies with it before the send completes, even though the call reports success.
+Always `spawn(cmd, args, {detached:true, stdio:'ignore'}).unref()`, never bare
+`execFile`, for anything that must survive past the current turn. Confirmed
+root cause of a real notification never arriving.
+
+### `--deliver` needs the agent AND the session key, not either (2026-08-14)
+
+**Any `openclaw agent ... --deliver` call needs BOTH `--agent <id>` AND an
+explicit `--session-key "agent:<id>:whatsapp:direct:<phone>"`.** Neither flag
+alone is enough — verified the hard way:
+
+- `--agent <id>` alone leaves `--deliver` to guess a channel/target via
+  best-effort inference, which fails outright for an established multi-session
+  user (gateway log: `Delivering to WhatsApp requires target <E.164|...>`, no
+  message ever sent).
+- `--to <phone>` alone *does* deliver, but runs the turn on the DEFAULT agent
+  (`main`), not the person's own isolated agent — the message lands outside
+  their real, continuing WhatsApp session, so when they reply normally (routed
+  via bindings, back to their real per-user agent) that agent has no memory of
+  what they are replying to and improvises incorrect context.
+
+Only the two together put the turn in the exact session their real replies
+continue in — confirmed end-to-end (delivered + correct session). Session-key
+shape matches `session.dmScope: "per-channel-peer"`; revisit if that config
+changes. Affected `fanout.js`, `welcome.js`, `checkin.js` — all three fixed.
 
 ### Reminders that come back, and cadences that could not be said (2026-08-29)
 
@@ -3051,7 +3104,268 @@ reconnect. That rung is now the only thing in the system that ever revisits an
 abandoned reconnect.
 
 
+### The move to allma.world, and the truncated link that asked for the admin password (2026-09-04)
+
+The system was reachable only at `olmachat.duckdns.org` — a free dynamic-DNS
+hostname doing duty as the public face of a product. A real domain was bought
+and everything a user ever touches moved to it, with one deliberate exception.
+
+**The admin dashboard did not move.** It stays on the duckdns hostname, and
+`allma.world` does not serve it at all — not behind Basic Auth, not on a
+subdomain. So `allma.world` is not a reverse proxy to `:8788`; it is an
+**allowlist** of the four routes `dashboard.js` serves ahead of its auth check
+(`/pick/<token>`, `/oauth/google/callback`, `/health`, `/ready`) plus
+`/voice-bridge*` to the bridge on `:8791`. Everything else 404s in Caddy
+without reaching the app. The cost of that choice is a coupling worth stating:
+a future public route added to `dashboard.js` is invisible on `allma.world`
+until the Caddyfile is told about it. That is the intended direction of the
+failure — a new route being unreachable is recoverable, a new admin route
+being publicly reachable is not.
+
+**The bug found while verifying it.** The first Caddyfile matched the picker
+with `path /pick/*`. That is a prefix, and `picker.TOKEN_RE` is
+`^/pick/([a-f0-9]{48})$` — so a *malformed* token matched Caddy, missed the
+regex in `dashboard.js`, fell through to the Basic Auth check and returned
+**401 with a `WWW-Authenticate` header**. A picker link truncated by a WhatsApp
+client, or mistyped, would have answered a user with the admin password prompt
+on the public domain. Nothing was exposed — there is no credential to guess
+one's way past — but it is the exact shape of thing that turns into a real
+finding later. Fixed by matching the token shape in Caddy itself
+(`path_regexp ^/pick/[a-f0-9]{48}$`), so a bad token 404s and the auth layer
+is never reached from `allma.world`.
+
+**The detector that stopped detecting.** Verifying the Google side needed a
+probe, because the console UI showing a URI is not proof Google accepts it.
+The first probe drove a consent URL and checked for an error page — and
+reported "accepted" for a deliberately bogus domain, because Google 302s
+everything to a sign-in page before validating. Tightening it to look for
+`redirect_uri_mismatch` specifically fixed that, and then broke the control the
+other way: the bogus domain fails with `invalid_request`, not
+`redirect_uri_mismatch`, so it read as "accepted" again. Only a three-way
+classifier — decode `authError`, report the actual code, keep the bogus control
+in every run — was honest. Both versions would have passed the real case at the
+moment it mattered; only the third could show its own failure. This is
+CLAUDE.md's "a detector that can no longer fail is not a detector", met twice
+in ten minutes on a five-line script.
+
+**The mistake that was nearly made, and the thing that made it safe.** Asked to
+register the new redirect URI, the obvious move in the Google console is
+"create an OAuth client". A second client, `Web client 2`, was created with
+`allma.world` as its only URI — and it was the *wrong* fix, because every
+stored `refresh_token` is bound to the **client_id** that issued it. Pointing
+`google-oauth.json` at a new client would have dropped all six live Google
+connections into `invalid_grant` and forced every user to reconnect. The right
+change was one added URI on the existing client, leaving `client_id` and
+`client_secret` untouched. Verified after the swap by refreshing all six
+connections against Google directly, with no DB writes: all six returned a new
+access token while the system advertised the new `allma.world` redirect URI.
+**`redirect_uri` is part of the authorization-code exchange only** (RFC 6749
+§6); the refresh grant never sends it. A domain move costs existing users
+nothing. A client_id move costs them everything.
+
+**What is now spread across four places, none of them in the repo**:
+`/etc/caddy/Caddyfile`, `/opt/olma/google-oauth.json`, and
+`/opt/olma2-voice-bridge/server.js` all name the hostname on the box and are
+outside the rsync'd tree, so `deploy.sh` cannot clobber them and `rollback.sh`
+cannot restore them. The fourth, the `public_base_url` **flag**, is DB state
+and drives `/pick/` links only — the OAuth redirect reads the JSON file, not
+the flag, and confusing the two is how half a migration ships. Verified
+durable across two deploys that landed mid-migration.
+
+
 ## CI, migrations and deploying
+
+### The deploy marker leads the restart, so the timestamps lie both ways (2026-09-04)
+
+Three sessions were working the same box in one morning, and all three reached
+for the same heuristic to answer "is the running process the code on disk":
+compare a unit's `ActiveEnterTimestamp` to `deployed_at` in
+`/opt/olma2/RELEASE`. Restart newer than marker was read as healthy; marker
+newer than restart was read as a deploy that shipped files and skipped its
+restart.
+
+The heuristic is wrong in both directions, and the box had both failure modes
+simultaneously that morning.
+
+**False positive.** `deploy.sh` writes the RELEASE marker at line 113, right
+after the rsync — then runs the full suite ON THE BOX at line 141, and only
+restarts at line 206. With `SUITE_TIMEOUT=420` and `SUITE_ATTEMPTS=2`, the
+marker can lead the restart by up to fourteen minutes on a completely healthy
+deploy. Observed live: RELEASE read `deployed_at 10:46:04Z` while both units
+sat at `10:44:19Z`, which looks exactly like a deploy that died before
+restarting. It was a deploy still running its tests. A deploy that genuinely
+dies mid-suite leaves the *identical* signature, and no amount of staring at
+the two timestamps separates them — only `pgrep -af "deploy.sh|rsync|run-suite"`
+does — with one caveat learned immediately, by making the mistake: **that
+pattern matches your own monitoring shell.** The wait-loop written to sit out
+one of these deploys was `until ! pgrep -f "deploy.sh|run-suite" >/dev/null;
+do sleep 5; done`, whose own command line contains the pattern — so it matched
+itself, the condition was permanently true, and it became a process that could
+not exit and had to be killed by hand. The same self-match then produced a
+confident "deploy IN FLIGHT" report to another session whose own check, run
+correctly, read clean. A check that cannot distinguish the thing it is looking
+for from itself is not a check.
+
+**False negative.** A manual `systemctl restart olma2-dashboard` — done that
+morning to pick up the edited `google-oauth.json`, which is cached at module
+level — makes a unit newer than the marker with no deploy involved at all. The
+check then reads "fine" for that unit no matter what the next deploy does,
+until something moves the marker again.
+
+So the rule is the one already in CLAUDE.md, stated more strongly: **the `sha`
+in `/opt/olma2/RELEASE` is the only unambiguous answer to what production is
+running.** Everything else is inference about how it got there. If the real
+question is "did THIS deploy restart the service", the honest way to answer it
+is a baseline taken before the deploy starts, not an ordering that is inverted
+for most of the deploy's life.
+
+**And the `origin` field is load-bearing** — which nobody had written down.
+`origin=local kwak@kwaks-MacBook-Pro.local` is what identified dd47406 as a
+laptop deploy rather than a CI one, at a moment when three consecutive merges
+to `main` had failed their `test` job and skipped `deploy` entirely, leaving
+production a commit behind main with nothing announcing it. `github-actions
+run <id>` gives you a run to go and read; a local deploy leaves no run at all,
+and the only record is whatever the person who ran it remembers. Two deploys
+identical in their timestamps are told apart by this field alone.
+
+### A test file poisoned every other one (root-caused and fixed 2026-09-04)
+
+`node --test` in CI would go silent mid-suite: a handful of files reported,
+then nothing at all until the job timeout killed it. It cost most of two
+evenings, four dead `main` runs — and, because a timeout-killed job reports as
+`cancelled` rather than `failure`, the `deploy` job that `needs: test` was
+silently SKIPPED each time, leaving production five commits behind `main`
+while every page looked healthy.
+
+Once `run-suite.sh` existed the same wedge started reporting the *other*
+conclusion — it exhausts its own retries and exits 1, so the job ends as
+`failure` (run 33860683550, read as a genuine red until the log was opened and
+the banner was sitting in it). So neither string is diagnostic: a dead run
+arrives as `cancelled` or `failure` depending only on what killed it, and on a
+busy `main` a queued run is also cancelled outright when a later merge
+displaces it, which is benign. The banner in the log is the tell.
+
+**The root cause is ours, and it is small.** `tests/db-types.test.js` and
+`tests/check-migrations.test.js` each exercised the duplicate-version guard by
+writing a real decoy file — `001-decoy-collision.sql` — into the repo's REAL
+`migrations/` directory, then deleting it a few milliseconds later. Test files
+are separate PROCESSES sharing one filesystem. For as long as that decoy sat
+on disk, every *other* test file that happened to call `freshDb()` ran
+`migrate()` → `listMigrations()`, which correctly threw
+`two migrations share version 1`.
+
+That throw should have been one red test. It was a hang instead, because
+`freshDb()` leaked on the way out:
+
+```js
+const setup = new Client({ connectionString: url });
+await setup.connect();
+await migrate(setup);   // throws here
+await setup.end();      // never runs
+```
+
+A connected pg `Client` is an open TCP handle, so it keeps the child's event
+loop alive for ever. The child never exits; the runner's
+`await SafePromiseAll([once(child, 'exit'), finished(child.stdout)])` never
+settles; nothing is ever printed, because the runner turns child stderr into
+`test:stderr` report entries that are only flushed when the FILE completes.
+Silence, for ever, from a correct error message.
+
+Every recorded symptom follows from that, including the ones that made it look
+upstream: one Postgres session `idle` in `ClientRead` with `pg_blocking_pids`
+empty (a connected client that will never speak again); an empty JavaScript
+stack in `ep_poll` (nothing is running — the process is only being *held*
+open); a wedge at `--test-concurrency=2` (any concurrency ≥ 2 is enough); a
+different victim file each time; and a rate of roughly 1 run in 8-25, which is
+just how often the millisecond-wide window happens to overlap someone's
+`before` hook.
+
+**What was actually wrong with the investigation.** The first diagnosis was
+written up as "the runner and one child stopped talking… not our code, not
+Postgres… the bug is upstream," and it was wrong on the two points that
+mattered:
+
+- **The witness was the culprit.** The wedged child's last query was
+  `SELECT version, file FROM schema_migrations` — the third statement inside
+  `migrate()`. That was dismissed as coincidence, on the grounds that the file
+  which happens to be running is not the culprit. It was pointing directly at
+  the failing call. **When the same "irrelevant" detail shows up in all four
+  reproductions, it is not noise.**
+- **A silence was read as evidence.** "A preload that writes to fd 2 produced
+  no line at all" was taken as proof that the runner had stopped reading the
+  child. It proves nothing of the sort: the runner buffers a file's stderr
+  into its report until the file finishes, so a child that never finishes is
+  *expected* to be silent. Reading `lib/internal/test_runner/runner.js` rather
+  than reasoning from the absence would have closed this two evenings earlier.
+  (This is the house failure shape — absence of evidence scored as evidence.)
+- **A blaming memory is worse than no memory.** The push-vs-`pull_request`
+  claim was written from four consistent observations and read for days as
+  established fact. It has been replaced with the counterexamples in both
+  directions and the rule that actually discriminates (if the branch contains
+  `main`, both runs compile identical bytes, so a pass on either is
+  authoritative). This entry is the same lesson one level up: the first
+  write-up of this incident was confident, well-evidenced and wrong, and it
+  cost the second evening.
+
+**How it was settled.** Not by argument, and not by more re-runs. Since a
+wedged child prints nothing, the child was made to report on ITSELF: a
+`NODE_OPTIONS=--require` preload loaded into every test child, with an
+**unref'd** interval that dumps `process.getActiveResourcesInfo()`, in-flight
+queries and outstanding pool checkouts to a file. Unref'd is the whole trick —
+a parked event loop still runs timers, and an unref'd one cannot itself be the
+thing keeping the process alive. It named the culprit on the first
+reproduction: `[migrate-THREW] … two migrations share version 1:
+001-decoy-collision.sql and 001-init.sql`. The earlier "0 wedges in 70 runs,
+not reproducible locally" was an artefact of running local Node 26.7 instead
+of CI's 24.20; on the matching version it reproduced on run 1.
+
+**The fix, in three parts:**
+
+- `listMigrations(dir)` takes an optional directory, and
+  `scripts/check-migrations.js` takes an optional argument. Both tests now
+  stage their collision in `fs.mkdtempSync()` and never touch the shared tree.
+  CI still calls the script with no argument and gets the real one.
+- **`freshDb()` closes every client in a `finally`.** This is the half that
+  matters beyond this bug: it converts *any* future failure in a `before` hook
+  from a six-hour hang with no output into one red test with a message. The
+  error was correct all along and had nowhere to go — the same shape as the
+  stop request and the goal said out loud.
+- `tests/shared-fixture-writes.test.js` refuses any test that writes into the
+  real `migrations/` directory, and — because a guard that can no longer fail
+  is not a guard — a second test asserts the guard still flags the exact code
+  that was there before.
+
+`scripts/run-suite.sh` stays. It retries a hang and never a failure, and it is
+still the right backstop for the next unknown hang; only its header needed
+correcting, since it asserted an upstream bug that does not exist.
+
+**Follow-up, same day — the two doors left open.** The fix above closes the
+route that actually bit us; two others led to the same invisible state, and
+were closed after the owner asked whether the work was actually good:
+
+- **`teardown()`'s `pool.end()` was unbounded.** It only settles once every
+  client is returned, so one `pool.connect()` without a
+  `finally { client.release() }` hangs teardown for ever — the same wedge, one
+  door along. It is now bounded, and on expiry it force-closes the sockets
+  (so the process can still exit), then throws naming the count AND the stack
+  of the checkout that leaked.
+- **An exit watchdog**, unref'd, armed when `helpers.js` loads: if the file's
+  tests have finished and the process is still alive a minute later, it prints
+  what is holding the event loop open and exits non-zero.
+
+The interesting part is the one that did NOT work. `--test-timeout` was the
+obvious backstop — node's default is `0`, meaning no timeout at all — and it
+was assumed to turn any future hang into a red test. Measured, on two fixture
+files, it does not: it correctly kills a hook or test that never **settles**
+(a `before` returning a promise that never resolves fails in ~4s), and it does
+**nothing** for a file whose tests all pass but which leaves one socket open —
+that one still hangs for ever. Our bug was the second kind, so the obvious
+backstop would have been pure false comfort. It is set anyway, at 60s, because
+it costs nothing and closes the first case; the second needed the watchdog.
+
+`tests/helpers-guards.test.js` drives all three as real child processes,
+including the case that must stay clean, because a guard that only ever runs
+when something has already gone wrong is the kind most likely to rot.
 
 ### The rollback was one release deep, on a five-merge day (2026-09-03)
 

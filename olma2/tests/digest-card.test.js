@@ -120,3 +120,21 @@ test('#115\'s "someone owes you an answer" line survives this branch', async () 
     'the awaiting-others line belongs with the content, not after the rendering instruction'
   );
 });
+
+// 2026-09-03: user 8's digest listed her day correctly and then closed with
+// "(זו שתי השורות האחרונות ברשימה שלך, ותו לא — יום פנוי עד הערב)". A morning
+// message that ends in a line saying nothing is a morning message she learns
+// to skip. Pinned in the same literal as the awaiting-others line above, and
+// for the same reason: it ships with no behaviour of its own to go red.
+test('the digest is told how to END, and the fallback is to stop rather than pad', async () => {
+  const text = instructionFor({ kind: 'digest', payload: { scope: 'summary', cardMinItems: 3 } });
+  assert.match(text, /End on ONE thing that moves the day/);
+  assert.match(text, /never both, never a list/);
+  // The fallback is deliberately silence, not a question. A question every
+  // single morning is the drum the doctrine forbids everywhere else — it
+  // would be worse than the filler it replaced.
+  assert.match(text, /end on the list itself and stop/);
+  // Content before rendering, same ordering rule as the line above it.
+  assert.ok(text.indexOf('End on ONE thing') < text.indexOf('render_schedule_card'),
+    'how to end the digest is about what it says, not about how it is drawn');
+});
