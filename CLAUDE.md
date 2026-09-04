@@ -62,6 +62,15 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   rolls back **code only** — an applied migration stays applied.
 - **`bash olma2/scripts/deploy.sh --restart` is a real production deploy**, and
   CI runs it on every merge to `main`. Merging is deploying.
+- **…but only for paths CI watches — `olma2/**` and the workflow file. Anything
+  else merges with NO checks at all, and no checks looks exactly like green.**
+  A `CLAUDE.md`-only change gets neither `test` nor a deploy; `olma2/docs/
+  incidents.md` matches the filter, so a pure prose edit there runs the full
+  suite AND redeploys production. Both are "docs" — which side of `olma2/` the
+  file sits on decides the blast radius, and nothing in the filename says so.
+  A new top-level directory (`voice-bridge/`) is unchecked until someone
+  notices; give it its own light job rather than adding it here, which would
+  redeploy `olma2` for a change that cannot affect it.
 - **After a shared-branch merge, verify it actually shipped**:
   `git merge-base --is-ancestor <sha> origin/main`. A concurrent session can
   merge at a head that predates your commit.
