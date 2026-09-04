@@ -287,7 +287,32 @@ function daysAgo(ts) {
 async function discoveryGaps(client, userId) {
   const gaps = [];
   const { rows: u } = await client.query(
-    `SELECT digest_times FROM users WHERE id = $1`, [userId]);
+    `SELECT digest_times, timezone, timezone_confirmed FROM users WHERE id = $1`, [userId]);
+  // FIRST, ahead of the digest: an unconfirmed zone poisons every dated thing
+  // underneath it, and a digest offered at "09:00" in the wrong zone just
+  // schedules the bug. Measured on the box 2026-09-03: nine of ten active
+  // users carry a zone nobody ever confirmed, with 11 future-dated rows under
+  // them — see domain/timezone-repair.js for the person this cost.
+  //
+  // Confirming is what makes the repair run: setTimezone only shifts existing
+  // rows when the zone it replaces was a GUESS, so this one answer both fixes
+  // the setting and corrects what was already written against it.
+  //
+  // It carries the travel line because the two are the same conversation and
+  // nobody gets told either one: today a user can say "I am in Barcelona" and
+  // it works — the model maps the city to an IANA zone and setTimezone
+  // validates it through Intl — and no user has ever been told that. A person
+  // who travels and says nothing keeps getting their morning digest and their
+  // reminders on a clock they left behind.
+  if (!u[0].timezone_confirmed) {
+    const guessed = u[0].timezone
+      ? `We are currently guessing ${u[0].timezone}, which came from their phone number and is not a location.`
+      : 'We have no timezone for them at all, so everything falls back to UTC.';
+    gaps.push({
+      topic: 'timezone',
+      instruction: `${guessed} Ask which CITY they are in — never ask for a timezone name, that is our problem not theirs — and call set_my_timezone with the IANA zone for that city and confirmed: true. In the same message, in one short line, tell them to just say so when they travel or move, so their reminders and morning picture follow them instead of staying behind. Do not explain the mechanism.`,
+    });
+  }
   const { rows: openTasks } = await client.query(
     `SELECT count(*)::int AS n FROM tasks
      WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL`, [userId]);
