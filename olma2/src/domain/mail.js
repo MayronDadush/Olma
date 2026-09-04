@@ -29,6 +29,7 @@ const flags = require('./flags');
 const cryptoStore = require('./crypto-store');
 const { enqueue } = require('../outbox/enqueue');
 const gmail = require('./mail-gmail');
+const googleFamily = require('./google-family');
 
 // Adding a provider is one entry here plus its adapter file. The key IS the
 // value written to integrations.provider and oauth_states.provider, so a
@@ -353,13 +354,19 @@ async function disconnect(client, userId, opts = {}) {
   // Revoke at the provider, not just locally. Deleting our row while leaving
   // a live refresh token in their Google account would make "disconnected" a
   // half-truth — they asked for the access to end, not for us to look away.
+  // EXCEPT for gmail specifically when calendar or contacts still hold the
+  // SAME token from a combined consent (google-connect.js) — see
+  // google-family.js. A future non-Google provider (Outlook) never shares
+  // Google's token, so it always revokes normally.
   const secret = (row.refresh_enc && cryptoStore.decrypt(row.refresh_enc))
     || (row.credential_enc && cryptoStore.decrypt(row.credential_enc));
+  const keepAlive = secret && row.provider === 'gmail'
+    && await googleFamily.hasOtherGoogleConnection(client, userId, row.provider);
   let revoked = false;
-  if (secret && adapter) revoked = await adapter.revoke(secret, opts);
+  if (secret && adapter && !keepAlive) revoked = await adapter.revoke(secret, opts);
 
   await client.query(`DELETE FROM integrations WHERE user_id = $1 AND provider = $2`, [userId, row.provider]);
-  await audit.record(client, userId, 'email.disconnected', { provider: row.provider, revokedAtProvider: revoked });
+  await audit.record(client, userId, 'email.disconnected', { provider: row.provider, revokedAtProvider: revoked, keptAliveForSibling: Boolean(keepAlive) });
   return ok({ connected: false, provider: row.provider, revokedAtProvider: revoked });
 }
 
@@ -416,5 +423,5 @@ module.exports = {
   PROVIDERS, PROVIDER_KEYS, UNTRUSTED_NOTE, fence, ACCESS_FLAG,
   beginConnection, completeOAuth, getStatus, disconnect, search, readMessage,
   // exported for tests and for the phases that come next
-  loadAccount, withAccessToken, markNeedsReauth,
+  loadAccount, withAccessToken, markNeedsReauth, requireMailAccess,
 };

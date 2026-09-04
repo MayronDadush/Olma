@@ -312,6 +312,17 @@ function bodyFor(row, p) {
       return `The user just tried to connect their mailbox, but on Google's permission screen the mail checkbox was left unticked — so nothing was granted and the connection could not be completed. Tell them briefly what happened (no blame — Google leaves that box unchecked by default), call start_email_connection for a fresh link, and tell them: on Google's screen, tick the checkbox next to the mail permission before pressing Continue.`;
     case 'email_needs_reauth':
       return `The user's mailbox connection stopped working — the provider no longer accepts it (usually access revoked in their account, or a password change). Tell them briefly, without alarm or technical detail, and offer to reconnect via start_email_connection. Nothing of theirs was lost; only the ability to search their mail is paused.`;
+    // domain/google-connect.js — the combined "calendar+contacts+mail in one
+    // link" flow. Whatever WAS granted already fired its own familiar notice
+    // (calendar_connected etc, handled above) — this one covers only what the
+    // person asked for and then left unticked on Google's screen, same
+    // checkbox trap as calendar_scope_missing but naming every missing piece
+    // at once instead of one tool call per piece.
+    case 'google_connect_incomplete': {
+      const names = { calendar: 'יומן', contacts: 'אנשי קשר', mail: 'מייל' };
+      const missingHe = (p.missing || []).map((k) => names[k] || k).join(', ');
+      return `The user just went through the combined Google connect flow. ${p.connected && p.connected.length ? `These connected fine: ${p.connected.join(', ')}. ` : ''}But on Google's permission screen they left unticked, so nothing was granted for: ${missingHe || p.missing}. Tell them briefly and without blame (Google leaves those boxes unchecked by default) which piece(s) still need connecting, and call start_google_connection again for just those — on Google's screen this time, tick the box(es) for ${missingHe || 'them'} before pressing Continue.`;
+    }
     default:
       return `System update for the user: ${JSON.stringify(p)}. Deliver it naturally in their language.`;
   }
