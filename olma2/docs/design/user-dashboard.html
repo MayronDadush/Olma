@@ -2011,7 +2011,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
            screen was not already about them. -->
       <span class="brandmark" aria-hidden="true"><svg><use href="#i-logo"/></svg></span>
       <div class="brand-txt">
-        <div class="brand-hi" data-i18n="greet"></div>
+        <div class="brand-hi" id="brandHi"></div>
         <div class="brand-name" id="brandName"></div>
       </div>
     </button>
@@ -2687,7 +2687,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     grantFeature:"grantFeature", revokeFeature:"revokeFeature",
     setTimezone:"setTimezone", pause:"pause", resume:"resume",
     inviteContact:"inviteContact",
-    respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting"
+    respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting",
+    startGoogle:"startGoogle", stopGoogle:"stopGoogle",
+    stopGoogleService:"stopGoogleService"
   };
   /* Ids the server has actually seen. It is what decides whether saving a task
      creates one or edits one — the page numbers its own new rows from a local
@@ -2785,6 +2787,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       /* Two of these the person can act on, so they are said out loud; the
          rest are ours to fix and saying "invalid" to somebody helps nobody. */
       if(error && error.reason === "paused")      toast(t("toast.pausedRefusal"));
+      else if(error && error.reason === "not_enabled") toast(t("toast.notOpenYet"));
       else if(error && error.reason === "no_writeback")
         toast(t("toast.importedRefusal", {name:(SOURCES[error.source] || {}).name || error.source}));
       API.reload();
@@ -2955,7 +2958,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
   var T = {
     he:{ dir:"rtl",
-      "greet":"בוקר טוב,",
+      /* Four greetings, not one. A page somebody opens from a WhatsApp
+         message at 17:36 that says "good morning" is the first thing they
+         read, and it is wrong — which is what happened on the first real
+         phone this was opened on. Hebrew has no greeting for late at night
+         (לילה טוב is a goodbye), so that slot is a plain hello rather than a
+         farewell to somebody who just arrived. */
+      "greet.morning":"בוקר טוב,",
+      "greet.noon":"צהריים טובים,",
+      "greet.evening":"ערב טוב,",
+      "greet.late":"היי,",
       /* The line under her name on the first screen. Hebrew inflects it, so
          there are two; the masculine is the default the whole product uses
          until somebody says otherwise. */
@@ -3164,6 +3176,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.ro":"{name} · עולמה רואה בלבד","toast.rw":"{name} · עולמה רואה וגם משנה",
       "toast.connected":"{name} מחובר","toast.disconnected":"{name} נותק",
       "toast.chanSoon":"{name} עדיין לא מחובר — עולמה כותבת בוואטסאפ",
+      "toast.provSoon":"החיבור ל{name} עוד לא מוכן — בינתיים רק גוגל",
+      "toast.notOpenYet":"זה עוד לא פתוח — יגיע בהמשך",
+      "toast.provFailed":"לא הצלחתי לפתוח את מסך ההרשאות של גוגל",
       "toast.open":"פותח את השיחה שלך עם עולמה ב־{name}","toast.chanOn":"{name} מחובר · עולמה תענה גם שם",
       "toast.calling":"עולמה מתקשרת אליך עכשיו",
       "toast.done":"המשימה הושלמה","toast.saved":"המשימה נשמרה",
@@ -3184,7 +3199,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       and:" ו", monthsBare:["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"]
     },
     en:{ dir:"ltr",
-      "greet":"Good morning,",
+      "greet.morning":"Good morning,",
+      "greet.noon":"Good afternoon,",
+      "greet.evening":"Good evening,",
+      "greet.late":"Hi,",
       /* English has no gendered address, so both keys are the same sentence
          rather than the caller having to know which languages inflect. */
       "brand.tagM":"Do it all. Do it Allma","brand.tagF":"Do it all. Do it Allma",
@@ -3387,6 +3405,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.ro":"{name} · Allma only sees it","toast.rw":"{name} · Allma sees it and can change it",
       "toast.connected":"{name} connected","toast.disconnected":"{name} disconnected",
       "toast.chanSoon":"{name} is not connected yet — Allma writes on WhatsApp",
+      "toast.provSoon":"{name} cannot be connected yet — Google only, for now",
+      "toast.notOpenYet":"Not open yet — it is coming",
+      "toast.provFailed":"Google's permission screen would not open",
       "toast.open":"Opening your chat with Allma in {name}","toast.chanOn":"{name} connected · Allma answers there too",
       "toast.calling":"Allma is calling you now",
       "toast.done":"Task completed","toast.saved":"Task saved",
@@ -3711,6 +3732,20 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     catch(e){ return 12; }
   }
   function isNight(tz){ var h = hourIn(tz); return h >= 22 || h < 6; }
+  /* Read in the person's OWN zone, like everything else here — the server
+     runs on UTC and would have greeted an Israeli evening as afternoon. */
+  function greetKey(h){
+    if(h >= 5  && h < 12) return "greet.morning";
+    if(h >= 12 && h < 17) return "greet.noon";
+    if(h >= 17 && h < 22) return "greet.evening";
+    return "greet.late";
+  }
+  function paintGreeting(){
+    var el = $("#brandHi");
+    if(!el) return;
+    var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
+    el.textContent = t(greetKey(hourIn(tz)));
+  }
   function isBirthday(md){
     if(!md) return false;
     var n = new Date();
@@ -4292,13 +4327,45 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       setTimeout(function(){ sw.classList.remove("moving"); }, SW_MS + 40);
       sw.setAttribute("aria-checked", on ? "true" : "false");
       if(sw.dataset.svc){
-        var parts = sw.dataset.svc.split(":"), p = prov(parts[0]);
-        p.svc[+parts[1]].on = on;
+        var parts = sw.dataset.svc.split(":"), p = prov(parts[0]), si = +parts[1];
+        /* Turning a service ON is a grant, and a grant happens at Google — so
+           the switch cannot be the thing that decides it. It leaves for the
+           consent screen and the answer arrives on the way back. Turning one
+           OFF is ours to do, and waits for the server before the row moves;
+           the switch has already flipped under the finger, so a refusal has to
+           put it back. */
+        if(LIVE){
+          if(parts[0] !== "google"){
+            sw.setAttribute("aria-checked", on ? "false" : "true");
+            toast(t("toast.provSoon", {name:p.name}));
+            return;
+          }
+          var key = p.svc[si].k, want = {};
+          if(on){
+            if(key === "cal") want.calendarAccess = "read_write";
+            else if(key === "contacts") want.contacts = true;
+            else if(key === "mail") want.mail = true;
+            API.send("startGoogle", want, function(data){
+              if(data && data.url){ window.location.href = data.url; return; }
+              sw.setAttribute("aria-checked", "false");
+              if(!data) toast(t("toast.provFailed"));
+            });
+            return;
+          }
+          API.send("stopGoogleService", {service:key}, function(data){
+            if(!data){ sw.setAttribute("aria-checked", "true"); return; }
+            p.svc[si].on = false;
+            refreshService(p, si, false);
+            toast(t("toast.off"));
+          });
+          return;
+        }
+        p.svc[si].on = on;
         /* Redrawing straight away would delete the control mid-thought.
            Turning OFF plays the closing half first and redraws after it;
            turning ON redraws now so the opening half has something to run
            on. Either way the movement belongs to the switch that caused it. */
-        refreshService(p, +parts[1], on);
+        refreshService(p, si, on);
         toast(t(on ? "toast.on" : "toast.off"));
       }
       if(sw.dataset.f){
@@ -4317,6 +4384,24 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var md = e.target.closest("[data-mode]");
     if(md){
       var mp = md.dataset.mode.split(":");
+      /* Read-only and read-and-write are two different Google grants, so this
+         is the same round trip as connecting — not a setting we hold. The
+         chip is deliberately NOT moved first: it would be claiming a
+         permission nobody has agreed to yet, and the reload after consent is
+         what moves it. */
+      if(LIVE){
+        var mprov = prov(mp[0]);
+        if(mp[0] !== "google" || mprov.svc[+mp[1]].k !== "cal"){
+          toast(t("toast.provSoon", {name:mprov.name}));
+          return;
+        }
+        API.send("startGoogle", {calendarAccess: mp[2] === "write" ? "read_write" : "read_only"},
+          function(data){
+            if(data && data.url){ window.location.href = data.url; return; }
+            if(!data) toast(t("toast.provFailed"));
+          });
+        return;
+      }
       prov(mp[0]).svc[+mp[1]].mode = mp[2];
       $$("button", md.parentNode).forEach(function(b){ b.setAttribute("aria-pressed", b === md ? "true" : "false"); });
       /* the mark is the sentence now: write means read AND write */
@@ -4373,9 +4458,39 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var cbtn = e.target.closest("[data-connect]");
     if(cbtn){
       if(cbtn.getAttribute("data-busy")) return;
+      var cid = cbtn.dataset.connect;
+      /* Below this line is the DESIGN's connection: a spinner, a tick, and a
+         row that opens as though a grant had happened. On a real page that is
+         not a button that does nothing — it is a button that says it worked,
+         which is the one thing this product does not do. So a live page never
+         reaches it.
+
+         Google goes to Google: the server hands back a consent URL and the
+         browser leaves for it. Nothing is connected when we get there — the
+         scopes are listed on Google's own screen and the tick only ever
+         appears after the callback, on the reload. Everything else has no
+         connection behind it yet and says exactly that. */
+      if(LIVE){
+        if(cid !== "google"){ toast(t("toast.provSoon", {name:prov(cid).name})); return; }
+        cbtn.setAttribute("data-busy", "1");
+        cbtn.textContent = t("connecting");
+        /* Calendar and contacts. NOT Gmail: it is allowlisted on the server
+           (mail.requireMailAccess), and asking for it inside a combined
+           consent fails the whole screen for anybody not on that list — one
+           unavailable extra would take the two working services down with
+           it. The Gmail switch inside the row asks separately, and is told no
+           separately. */
+        API.send("startGoogle", {calendarAccess:"read_write", contacts:true}, function(data){
+          if(data && data.url){ window.location.href = data.url; return; }
+          /* the refusal toast, if there was one, has already been shown */
+          cbtn.removeAttribute("data-busy");
+          cbtn.textContent = t("connect");
+          if(!data) toast(t("toast.provFailed"));
+        });
+        return;
+      }
       cbtn.setAttribute("data-busy", "1");
       cbtn.textContent = t("connecting");
-      var cid = cbtn.dataset.connect;
       /* the tick is the moment it worked; the row only opens after it */
       setTimeout(function(){
         cbtn.classList.add("ok");
@@ -4409,6 +4524,25 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var dbtn = e.target.closest("[data-disconnect]");
     if(dbtn){
       var did = dbtn.dataset.disconnect, dp = prov(did);
+      /* Same rule as connecting, the other way round: the row must not go
+         quiet until the account really is gone. Ending Google ends calendar,
+         contacts and Gmail together, because that is the one account this page
+         draws — so this waits for the server before it redraws anything. */
+      if(LIVE){
+        if(did !== "google"){ toast(t("toast.provSoon", {name:dp.name})); return; }
+        API.send("stopGoogle", {}, function(data){
+          if(!data) return; /* refused, and already said so */
+          $('[data-pfold="' + did + '"]').classList.remove("open");
+          dp.connected = false;
+          dp.account = "";
+          dp.needsReauth = false;
+          dp.svc.forEach(function(sv){ sv.on = false; });
+          delete expanded[did];
+          renderTools();
+          toast(t("toast.disconnected", {name:dp.name}));
+        });
+        return;
+      }
       $('[data-pfold="' + did + '"]').classList.remove("open");
       setTimeout(function(){
         dp.connected = false;
@@ -6474,6 +6608,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       el.textContent = clockIn(el.dataset.ftz);
       el.classList.toggle("asleep", isNight(el.dataset.ftz));
     });
+    /* the greeting rides the same tick: a page left open through 17:00 should
+       not still be saying good afternoon */
+    paintGreeting();
   }
   setInterval(tickClocks, 30000);
 
@@ -6977,6 +7114,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     document.documentElement.setAttribute("dir", D.dir);
     document.documentElement.setAttribute("lang", LOCALE);
     $$("[data-i18n]").forEach(function(el){ el.textContent = t(el.dataset.i18n); });
+    paintGreeting();
     $$("[data-i18n-ph]").forEach(function(el){ el.placeholder = t(el.dataset.i18nPh); });
     $$("[data-i18n-label]").forEach(function(el){ el.setAttribute("aria-label", t(el.dataset.i18nLabel)); });
     $("#fname").value = L(PROFILE.first);
