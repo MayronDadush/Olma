@@ -21,6 +21,7 @@ never trust a dated narrative for something you are about to act on.
 
 - [`main` said NO_REPLY into a real person's WhatsApp (2026-09-01)](#main-said-no_reply-into-a-real-persons-whatsapp-2026-09-01)
 - [The actual reason it kept converging on מירון: `heartbeat.target` defaults to `"owner"` (fixed 2026-09-02)](#the-actual-reason-it-kept-converging-on-מירון-heartbeattarget-defaults-to-owner-fixed-2026-09-02)
+- [A healthy service read as down, because the scope was wrong (2026-09-01)](#a-healthy-service-read-as-down-because-the-scope-was-wrong-2026-09-01)
 - [A dead gateway read green on `/health` (fixed 2026-09-03)](#a-dead-gateway-read-green-on-health-fixed-2026-09-03)
 - [The gateway was upgraded underneath a running system (2026-08-31)](#the-gateway-was-upgraded-underneath-a-running-system-2026-08-31)
 - [Permission to use a model lives in THREE lists, and we wrote two (fixed 2026-09-02)](#permission-to-use-a-model-lives-in-three-lists-and-we-wrote-two-fixed-2026-09-02)
@@ -37,6 +38,8 @@ never trust a dated narrative for something you are about to act on.
 
 **Delivery, outbox and proactive messages**
 
+- [A notification that reported success and never arrived (2026-08-14)](#a-notification-that-reported-success-and-never-arrived-2026-08-14)
+- [`--deliver` needs the agent AND the session key, not either (2026-08-14)](#--deliver-needs-the-agent-and-the-session-key-not-either-2026-08-14)
 - [Reminders that come back, and cadences that could not be said (2026-08-29)](#reminders-that-come-back-and-cadences-that-could-not-be-said-2026-08-29)
 - [A night-held message now gets a re-hearing when the person writes (2026-08-27)](#a-night-held-message-now-gets-a-re-hearing-when-the-person-writes-2026-08-27)
 - [A retry cap that overflowed the thing it was capping (fixed 2026-08-24)](#a-retry-cap-that-overflowed-the-thing-it-was-capping-fixed-2026-08-24)
@@ -117,6 +120,21 @@ never trust a dated narrative for something you are about to act on.
 - [A rollback cannot reach the filesystem (fixed 2026-08-27)](#a-rollback-cannot-reach-the-filesystem-fixed-2026-08-27)
 
 ## Gateway, config and upgrades
+
+### A healthy service read as down, because the scope was wrong (2026-09-01)
+
+**`openclaw-gateway` is the ONLY user-level systemd unit here — everything
+else is plain `systemctl`.** `olma2-brokerd.service`, `olma2-dashboard.service`
+and `olma-voice-bridge.service` all live in `/etc/systemd/system/` and are
+checked/restarted without `--user`, with no `XDG_RUNTIME_DIR` /
+`DBUS_SESSION_BUS_ADDRESS` needed.
+
+Confirmed after `systemctl --user is-active olma2-brokerd` (and `--user
+list-units`, even with the bus env vars set correctly for root's real,
+months-old session) reported it as not found/inactive while it was genuinely
+healthy — `/root/.config/systemd/user/` holds only `openclaw-gateway.service`.
+Checking the wrong scope on any of the other three reads as a false "service
+is down", which is a diagnosis that sends the next hour in the wrong place.
 
 ### A dead gateway read green on `/health` (fixed 2026-09-03)
 
@@ -950,6 +968,38 @@ answer for itself.
 
 
 ## Delivery, outbox and proactive messages
+
+### A notification that reported success and never arrived (2026-08-14)
+
+**Any outbound send via `child_process` must be a genuinely detached spawn.**
+`olma-mcp.js` is a fresh process per turn (verified: no `olma-mcp.js` process
+persists between calls) and the gateway tears it down right after the tool
+response returns — a plain `execFile(...)` child shares that process group and
+dies with it before the send completes, even though the call reports success.
+Always `spawn(cmd, args, {detached:true, stdio:'ignore'}).unref()`, never bare
+`execFile`, for anything that must survive past the current turn. Confirmed
+root cause of a real notification never arriving.
+
+### `--deliver` needs the agent AND the session key, not either (2026-08-14)
+
+**Any `openclaw agent ... --deliver` call needs BOTH `--agent <id>` AND an
+explicit `--session-key "agent:<id>:whatsapp:direct:<phone>"`.** Neither flag
+alone is enough — verified the hard way:
+
+- `--agent <id>` alone leaves `--deliver` to guess a channel/target via
+  best-effort inference, which fails outright for an established multi-session
+  user (gateway log: `Delivering to WhatsApp requires target <E.164|...>`, no
+  message ever sent).
+- `--to <phone>` alone *does* deliver, but runs the turn on the DEFAULT agent
+  (`main`), not the person's own isolated agent — the message lands outside
+  their real, continuing WhatsApp session, so when they reply normally (routed
+  via bindings, back to their real per-user agent) that agent has no memory of
+  what they are replying to and improvises incorrect context.
+
+Only the two together put the turn in the exact session their real replies
+continue in — confirmed end-to-end (delivered + correct session). Session-key
+shape matches `session.dmScope: "per-channel-peer"`; revisit if that config
+changes. Affected `fanout.js`, `welcome.js`, `checkin.js` — all three fixed.
 
 ### Reminders that come back, and cadences that could not be said (2026-08-29)
 
