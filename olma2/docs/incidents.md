@@ -3302,6 +3302,14 @@ evenings, four dead `main` runs — and, because a timeout-killed job reports as
 silently SKIPPED each time, leaving production five commits behind `main`
 while every page looked healthy.
 
+Once `run-suite.sh` existed the same wedge started reporting the *other*
+conclusion — it exhausts its own retries and exits 1, so the job ends as
+`failure` (run 33860683550, read as a genuine red until the log was opened and
+the banner was sitting in it). So neither string is diagnostic: a dead run
+arrives as `cancelled` or `failure` depending only on what killed it, and on a
+busy `main` a queued run is also cancelled outright when a later merge
+displaces it, which is benign. The banner in the log is the tell.
+
 **The root cause is ours, and it is small.** `tests/db-types.test.js` and
 `tests/check-migrations.test.js` each exercised the duplicate-version guard by
 writing a real decoy file — `001-decoy-collision.sql` — into the repo's REAL
