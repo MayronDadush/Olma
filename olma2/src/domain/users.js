@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const timezoneRepair = require('./timezone-repair');
+const language = require('./language');
 
 function newIdentityToken() {
   return 'olma_tok_' + crypto.randomBytes(16).toString('hex');
@@ -168,7 +169,8 @@ async function setName(client, userId, firstName, lastName, { confirmed = true, 
 // Their language, changed ONLY on their own explicit request — an observed
 // language is set once at provisioning (domain/language.js) and never
 // silently revised afterwards, because a single English word in a Hebrew
-// sentence must not flip the whole relationship.
+// sentence must not flip the whole relationship. `noteObservedLanguage` below
+// is how we NOTICE we got it wrong; it still never writes this column.
 async function setLocale(client, userId, locale) {
   const code = String(locale || '').trim().toLowerCase().slice(0, 8);
   if (!/^[a-z]{2}(-[a-z]{2,8})?$/.test(code)) {
@@ -177,6 +179,48 @@ async function setLocale(client, userId, locale) {
   await client.query(`UPDATE users SET locale = $2 WHERE id = $1`, [userId, code]);
   await audit.record(client, userId, 'user.locale_set', { locale: code });
   return ok({ locale: code });
+}
+
+// One message's language, as reported by the only party that can see it.
+//
+// This never changes users.locale. It counts how many messages in a row
+// disagreed with what we store and, at three, hands the agent a nudge to ASK
+// — the same shape as the travel detector, and for the same reason the owner
+// gave when that one was built: confirm in a message, never act silently.
+// Switching somebody's language underneath them because a heuristic fired is
+// exactly the silent act that rule forbids.
+//
+// The CODE crosses this boundary and nothing else. No message text is passed
+// in, stored, or audited — see domain/language.js for why that constraint
+// shapes the whole design.
+async function noteObservedLanguage(client, user, observed, now) {
+  const decided = language.decideStreak({
+    stored: user.locale,
+    observed,
+    prevObserved: user.locale_observed,
+    prevCount: user.locale_observed_count,
+    askedAt: user.locale_asked_at,
+    now,
+  });
+
+  // The ask is stamped in the SAME statement that records the streak. Two
+  // statements would let a crash between them hand the nudge to the agent and
+  // forget that it did, which is how a helpful question becomes one asked on
+  // every message.
+  await client.query(
+    `UPDATE users SET locale_observed = $2, locale_observed_count = $3
+        ${decided.ask ? ', locale_asked_at = now()' : ''}
+      WHERE id = $1`,
+    [user.id, decided.observed, decided.count]);
+
+  // Audited only when it leads somewhere. A row per message would bury the
+  // audit log under the most common event in the system, and "they wrote in
+  // the language we expected" is not a finding.
+  if (decided.ask) {
+    await audit.record(client, user.id, 'user.locale_mismatch_noticed',
+      { observed: decided.observed, stored: user.locale || null, streak: decided.count });
+  }
+  return decided;
 }
 
 // Who the assistant IS for this person, changed only on their own explicit
@@ -265,6 +309,7 @@ async function setTimezone(client, userId, timezone, confirmed) {
 module.exports = {
   newIdentityToken, resolveByToken, getByPhone, getById,
   createUser, primaryChannel, sessionKeyFor, setName, setTimezone, setLocale,
+  noteObservedLanguage,
   setAssistantPersona,
   cleanName,
 };
