@@ -31,6 +31,7 @@ const cardStore = require('../../domain/card-store');
 const facts = require('../../domain/facts');
 const searchLink = require('../../domain/search-link');
 const contacts = require('../../domain/contacts');
+const reactions = require('../../domain/reactions');
 const audit = require('../../domain/audit');
 const { ok, err } = require('../../domain/results');
 const { scrubTokens } = require('./render');
@@ -214,7 +215,8 @@ async function connectedUserByPhone(client, actorId, phone, feature) {
 const TOOLS = [
   // ---------------------------------------------------------------- turn gate
   tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and tells you how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all). Pass sender_name whenever the turn\'s Conversation info carries one. If the response carries offerResume: true, this is the first message since they paused — answer what they actually asked, then add ONE line asking if they would like Olma to start reaching out again. recentReminders, when present, lists reminders Olma already delivered in the last day — a bare reply like "סיימתי" or "עשיתי" is probably about the newest one. planHeadline, when present, is the headline of today\'s overnight plan; the full plan sits in your USER.md — read it and lead with it when they ask about their day or plans.',
-    { sender_name: S('string', 'The `sender` field from this turn\'s Conversation info, verbatim. Only ever used to fill a name we do not have, always as an unconfirmed guess — never overwrites a name they gave you themselves.') }, [],
+    { sender_name: S('string', 'The `sender` field from this turn\'s Conversation info, verbatim. Only ever used to fill a name we do not have, always as an unconfirmed guess — never overwrites a name they gave you themselves.'),
+      message_id: S('string', 'The `message_id` field from this turn\'s Conversation info, verbatim. Lets Olma mark their message as seen and, later in the turn, as done or scheduled. Omit it if the block has none.') }, [],
     async (client, user, args, ctx) => {
       if (ctx.flood && ctx.flood.isFlooding(user.id)) {
         return ok({ directive: 'silent', reason: 'flood' });
@@ -226,6 +228,16 @@ const TOOLS = [
         `UPDATE users SET last_inbound_at = now(),
                 checkin_misses = CASE WHEN checkin_misses > 0 THEN 0 ELSE checkin_misses END
          WHERE id = $1`, [user.id]);
+      // The inbound message id, kept on the TURN rather than in the database.
+      // It is worth nothing after this turn ends — a mark belongs on the
+      // message being handled right now — and a column would be one more piece
+      // of per-message state to prune. `lastInboundAt` is stamped from the same
+      // moment as the UPDATE above, so `markFor`'s liveness check reads the
+      // value this turn just wrote instead of a row it would have to re-select.
+      if (ctx && ctx.turn) {
+        const id = reactions.cleanMessageId(args && args.message_id);
+        if (id) { ctx.turn.messageId = id; ctx.turn.lastInboundAt = Date.now(); }
+      }
       // A person writing is awake — give every night-held row an immediate
       // re-hearing. The gate stays the only judge: inside the 15-minute
       // conversation grace it delivers; otherwise it simply re-holds until
