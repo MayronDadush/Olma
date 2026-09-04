@@ -3196,7 +3196,15 @@ sat at `10:44:19Z`, which looks exactly like a deploy that died before
 restarting. It was a deploy still running its tests. A deploy that genuinely
 dies mid-suite leaves the *identical* signature, and no amount of staring at
 the two timestamps separates them — only `pgrep -af "deploy.sh|rsync|run-suite"`
-does.
+does — with one caveat learned immediately, by making the mistake: **that
+pattern matches your own monitoring shell.** The wait-loop written to sit out
+one of these deploys was `until ! pgrep -f "deploy.sh|run-suite" >/dev/null;
+do sleep 5; done`, whose own command line contains the pattern — so it matched
+itself, the condition was permanently true, and it became a process that could
+not exit and had to be killed by hand. The same self-match then produced a
+confident "deploy IN FLIGHT" report to another session whose own check, run
+correctly, read clean. A check that cannot distinguish the thing it is looking
+for from itself is not a check.
 
 **False negative.** A manual `systemctl restart olma2-dashboard` — done that
 morning to pick up the edited `google-oauth.json`, which is cached at module

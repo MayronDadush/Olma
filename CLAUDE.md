@@ -87,7 +87,10 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   (~L206), so **for up to ~14 minutes of every healthy deploy the marker is
   newer than both units** — and a deploy that DIED before its restart leaves
   the identical signature. `pgrep -af "deploy.sh|rsync|run-suite"` on the box
-  is what separates them. The inverse is just as misleading: a manual
+  is what separates them — but **read what it matched before believing it**:
+  that pattern happily matches your own monitoring shell, and a wait-loop
+  written as `until ! pgrep -f "deploy.sh|run-suite"` matches ITSELF and so
+  never exits. Both mistakes were made while writing this rule. The inverse is just as misleading: a manual
   `systemctl restart` makes a unit newer than the marker with no deploy
   involved, so the check reads "fine" until something moves the marker again.
   If you need "did THIS deploy restart it", take a baseline before it starts.
