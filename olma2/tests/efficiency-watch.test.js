@@ -41,19 +41,35 @@ async function seedDay(back, { messages, inTokens, cacheTokens, cost, systemCost
   }
 }
 
+// The date the sweep should be judging, asked of Postgres rather than of
+// Node's clock, so the two can never disagree about when midnight was.
+async function yesterday() {
+  const { rows } = await pool.query(`SELECT (current_date - 1)::text AS d`);
+  return rows[0].d;
+}
+
 test('a steady week reports its ratios and crosses nothing', async () => {
-  for (let d = 7; d >= 0; d--) {
+  for (let d = 8; d >= 1; d--) {
     await seedDay(d, { messages: 40, inTokens: 2_000_000, cacheTokens: 1_400_000, cost: 0.2 });
   }
+  // The day in progress is deliberately absurd: 10x the tokens and a dead
+  // cache. It is not a small version of a finished day — a morning is nearly
+  // all digests — and judging it against seven complete days measures the hour.
+  await seedDay(0, { messages: 40, inTokens: 20_000_000, cacheTokens: 200_000, cost: 4 });
+
   const out = await eff.run(pool, { llm: null, send: null });
+  assert.equal(out.date, await yesterday(),
+    'the day under test is the last COMPLETE one, never the one still running');
   assert.equal(out.crossed, 0);
   // Reported even when healthy. A watch that is silent when nothing is wrong
   // is indistinguishable from a watch that stopped running — the failure this
   // repo has now recorded four times.
   assert.ok(out.ratios.cost_per_message > 0);
   assert.equal(Math.round(out.ratios.cache_hit_rate * 100), 70);
-  assert.equal(out.ratios.input_tokens_per_message, 50_000);
+  assert.equal(out.ratios.input_tokens_per_message, 50_000,
+    'reading 500,000 here means the partial day was measured');
 });
+
 
 test('the ratio is per message, so a busy day is not an expensive one', () => {
   // The whole reason nothing here is an absolute threshold: this day costs 5x
@@ -96,14 +112,18 @@ test('a real regression is filed, messaged once, and re-armed by recovery', asyn
     alertHourOpen: async () => true,
     promptChars: 39_146,
   };
-  // Today: same traffic, 3.5x the input tokens and a collapsed cache — the
-  // exact shape measured live between 2026-08-28 and 2026-09-03.
-  await pool.query(`DELETE FROM usage_ledger WHERE date = current_date`);
-  await pool.query(`DELETE FROM audit_log WHERE event = 'message.received' AND created_at::date = current_date`);
-  await seedDay(0, { messages: 40, inTokens: 7_000_000, cacheTokens: 1_750_000, cost: 0.9 });
+  // Yesterday: same traffic, 3.5x the input tokens, a collapsed cache AND 4.5x
+  // the cost per message — the exact shape measured live between 2026-08-28 and
+  // 2026-09-03, except that this one actually cost money. That last clause is
+  // the difference between this test and the one below it.
+  await pool.query(`DELETE FROM usage_ledger WHERE date = current_date - 1`);
+  await pool.query(`DELETE FROM audit_log WHERE event = 'message.received' AND created_at::date = current_date - 1`);
+  await seedDay(1, { messages: 40, inTokens: 7_000_000, cacheTokens: 1_750_000, cost: 0.9 });
 
   const out = await eff.run(pool, deps);
   assert.ok(out.crossed >= 2, `expected several crossings, got ${JSON.stringify(out.ratios)}`);
+  assert.equal(out.alerted, out.crossed,
+    'when money moved, the ratios that explain it ride along in the same alert');
   assert.equal(out.notified, true);
   assert.equal(sent.length, 1);
   assert.match(sent[0].text, /יעילות/);
@@ -131,15 +151,70 @@ test('a real regression is filed, messaged once, and re-armed by recovery', asyn
 
   // Recovery drops the stored set, so the same regression next month is news.
   await pool.query(`UPDATE usage_ledger SET input_tokens = 600000, cache_read_tokens = 1400000, cost_usd = 0.2
-                     WHERE date = current_date`);
+                     WHERE date = current_date - 1`);
   const healthy = await eff.run(pool, deps);
   assert.equal(healthy.crossed, 0);
   assert.deepEqual(await flags.getFlag(pool, eff.ALERTED_FLAG), []);
 });
 
+test('escalate: money alerts, the ratios that explain it do not alert alone', () => {
+  const tok = { key: 'input_tokens_per_message' };
+  const cache = { key: 'cache_hit_rate' };
+  const money = { key: eff.MONEY_KEY };
+  assert.deepEqual(eff.escalate([tok, cache]), { alerting: [], observed: [tok, cache] });
+  assert.deepEqual(eff.escalate([tok, money]), { alerting: [tok, money], observed: [] });
+  // Nothing is ever dropped: every crossing comes back out of one side or the
+  // other, because a suppressed crossing that vanishes is a check that went
+  // quiet, which reads exactly like a check that passed.
+  for (const set of [[tok], [money], [tok, cache, money], []]) {
+    const { alerting, observed } = eff.escalate(set);
+    assert.equal(alerting.length + observed.length, set.length);
+  }
+});
+
+test('a proxy that moved without the money is context, not an alarm', async () => {
+  // This is the watch's own first alert, 2026-09-04 08:41, replayed: input
+  // tokens per message 4x and the cache collapsed 70% → 12.5%, while the cost
+  // per message sat exactly on its baseline. Two issues were filed and the
+  // owner was messaged over it, and not one cent had moved.
+  const sent = [];
+  const deps = {
+    llm: null,
+    send: async (phone, text) => { sent.push({ phone, text }); return { ok: true }; },
+    alertHourOpen: async () => true,
+  };
+  await pool.query(`DELETE FROM usage_ledger WHERE date = current_date - 1`);
+  await seedDay(1, { messages: 0, inTokens: 8_000_000, cacheTokens: 1_000_000, cost: 0.2 });
+
+  const { rows: before } = await pool.query(`SELECT count(*)::int AS n FROM issues`);
+  const out = await eff.run(pool, deps);
+  assert.equal(out.crossed, 2, JSON.stringify(out.ratios));
+  assert.equal(out.alerted, 0, 'no cost crossing, so nothing may alert');
+  assert.deepEqual(out.observed.sort(), ['cache_hit_rate', 'input_tokens_per_message'],
+    'and the crossings are still named, in the heartbeat note, rather than swallowed');
+  assert.equal(sent.length, 0);
+  const { rows: after } = await pool.query(`SELECT count(*)::int AS n FROM issues`);
+  assert.equal(after[0].n, before[0].n, 'a filed issue is a claim that something is wrong');
+  // The suppressed condition must not spend the announce stamp either, or the
+  // cost crossing it was the early warning for would arrive already silenced.
+  assert.deepEqual(await flags.getFlag(pool, eff.ALERTED_FLAG), []);
+
+  // Same day, same ratios, money now moved: it alerts. Without this the fix
+  // above is indistinguishable from switching the watch off.
+  await pool.query(`UPDATE usage_ledger SET cost_usd = 0.9 WHERE date = current_date - 1`);
+  const real = await eff.run(pool, deps);
+  assert.equal(real.crossed, 3);
+  assert.equal(real.alerted, 3);
+  assert.equal(real.notified, true);
+  assert.equal(sent.length, 1);
+});
+
 test('a failed pipe leaves the condition unannounced, so the next tick retries', async () => {
-  await pool.query(`DELETE FROM usage_ledger WHERE date = current_date`);
-  await seedDay(0, { messages: 0, inTokens: 7_000_000, cacheTokens: 1_750_000, cost: 0.9 });
+  // The test above ends with the conditions stamped as announced; this one is
+  // about the first announcement, so it starts from an un-announced watch.
+  await flags.setFlag(pool, eff.ALERTED_FLAG, []);
+  await pool.query(`DELETE FROM usage_ledger WHERE date = current_date - 1`);
+  await seedDay(1, { messages: 0, inTokens: 7_000_000, cacheTokens: 1_750_000, cost: 0.9 });
   const deps = { llm: null, send: async () => ({ ok: false, error: 'gateway down' }), alertHourOpen: async () => true };
   const out = await eff.run(pool, deps);
   assert.equal(out.notifyFailed, true);
@@ -151,6 +226,37 @@ test('a failed pipe leaves the condition unannounced, so the next tick retries',
   const night = await eff.run(pool, { ...deps, alertHourOpen: async () => false });
   assert.equal(night.deferredToMorning, true);
   assert.equal(night.notified, false);
+});
+
+// Last, because it rewrites the whole week to make one point that a steady
+// week cannot make: a median over seven identical days is unmovable, so a test
+// built on one proves nothing about what the baseline is allowed to contain.
+test('the partial day is kept out of the baseline, not only out of the verdict', async () => {
+  await pool.query(`DELETE FROM usage_ledger`);
+  await pool.query(`DELETE FROM audit_log WHERE event = 'message.received'`);
+  // A week that is uneven on purpose, newest first: the seven complete days
+  // before the subject run 40k,40k,40k,50k,60k,60k,200k input tokens per
+  // message, so the median is 50k. It is built to break under either mistake.
+  // Add one more SMALLER value — the day in progress, which at 09:00 is the
+  // cheapest thing on the board every single morning — and the middle drops to
+  // 40k. Drop the OLDEST instead, by fetching one row too few, and it drops to
+  // 40k as well. Both turn the subject's honest 1.8x into a 2.25x crossing.
+  const perMsg = [40, 40, 40, 50, 60, 60, 200];
+  for (let i = 0; i < perMsg.length; i++) {
+    await seedDay(i + 2, { messages: 40, inTokens: perMsg[i] * 1000 * 40, cacheTokens: 0, cost: 0.2 });
+  }
+  // The subject: 90k per message. 1.8x the real baseline of 50k — under the
+  // 2x factor, so it must stay quiet. Against a baseline poisoned by the
+  // partial day it is 2.25x, and the owner gets told about nothing.
+  await seedDay(1, { messages: 40, inTokens: 90_000 * 40, cacheTokens: 0, cost: 0.2 });
+  await seedDay(0, { messages: 40, inTokens: 5_000 * 40, cacheTokens: 0, cost: 0.02 });
+
+  const out = await eff.run(pool, { llm: null, send: null });
+  assert.equal(out.date, await yesterday());
+  assert.equal(out.ratios.input_tokens_per_message, 90_000);
+  assert.deepEqual(out.observed, [], JSON.stringify(out));
+  assert.equal(out.crossed, 0,
+    'the day in progress dragged the median down and turned 1.8x into a crossing');
 });
 
 test('the brief carries numbers and never a word anybody wrote', async () => {

@@ -86,6 +86,41 @@ const METRICS = [
 const BASELINE_DAYS = 7;
 const ALERTED_FLAG = 'efficiency_watch_alerted';
 
+// Money is the only thing here that gets to wake somebody. The other three
+// ratios are the EXPLANATION for a cost move, never evidence that one happened
+// — and this watch's first real alert, 2026-09-04 08:41, is what the difference
+// costs. Input tokens per message had gone 50k → 224k over a week and the cache
+// had fallen 70% → 29%, so it filed two issues and messaged the owner about a
+// regression; `cost_per_message` across those same eight days was $0.0153,
+// $0.0112, $0.0127, $0.0270, $0.0091, $0.0415, $0.0152, $0.0209 — no trend at
+// all, and the spikes in it were model pilots. The proxies were right that the
+// prompt/cache picture changed and wrong that it had cost anything. An alarm
+// that overstates is spent the first time somebody checks it, so a proxy now
+// rides along with a cost crossing and can never carry one alone.
+//
+// This also subsumes the floor `system_cost_share` would otherwise need: a
+// share doubles when the numerator grows OR when the denominator shrinks, and
+// only the first is a regression. Requiring money to have moved rules out the
+// second without a second rule that has to be kept in step with this one.
+const MONEY_KEY = 'cost_per_message';
+
+// Splits crossings into the ones allowed to alert and the ones that are only
+// context. It never DROPS a crossing — `observed` is reported in the heartbeat
+// and attached to the issue — because a check that quietly declines to judge is
+// indistinguishable from one that passed.
+function escalate(crossed) {
+  const money = crossed.some((c) => c.key === MONEY_KEY);
+  return money ? { alerting: crossed, observed: [] } : { alerting: [], observed: crossed };
+}
+
+// Four significant digits. The only consumer of `ratios` is a 200-char
+// heartbeat note, and full float precision spends twenty characters proving a
+// ratio is 0.023642541081081082 rather than 0.02364 — characters the note was
+// paying out of the verdict at the end of it.
+function sig4(v) {
+  return v === null || !Number.isFinite(v) ? v : Number(v.toPrecision(4));
+}
+
 // One row per day: the four ratios plus the denominators that produced them,
 // so a later reading can tell "the cost doubled" from "the traffic halved".
 async function dailyRatios(client, days) {
@@ -157,13 +192,13 @@ function median(values) {
 // Compares the day under test against the median of the days before it.
 // Returns one entry per metric that crossed, never a boolean — what crossed and
 // by how much is the whole content of the report.
-function crossings(history, today) {
-  const prior = history.filter((d) => d.date !== today.date);
+function crossings(history, day) {
+  const prior = history.filter((d) => d.date !== day.date);
   const out = [];
   for (const m of METRICS) {
-    const now = today[m.key];
+    const now = day[m.key];
     if (now === null) continue;
-    if (today.messages < m.minMessages) continue;
+    if (day.messages < m.minMessages) continue;
     const base = median(prior.map((d) => d[m.key]));
     // No baseline is not a crossing. A system with four days of history has
     // nothing to be surprised by yet, and inventing a threshold for it would
@@ -221,10 +256,10 @@ function fmtValue(key, v) {
 // a query cannot produce: the likeliest cause, and what to shorten. The server
 // stays the judge: this returns text for a human, and no part of it is ever
 // executed, applied, or written anywhere but the report.
-function briefFor(crossed, today, ev, promptChars) {
+function briefFor(crossed, day, ev, promptChars) {
   return [
     'You are looking at one day of cost telemetry for a small WhatsApp assistant',
-    `(${today.messages} inbound messages that day, ${ev.users.length} paying users measured).`,
+    `(${day.messages} inbound messages that day, ${ev.users.length} paying users measured).`,
     'These ratios crossed 2x their own 7-day median:',
     ...crossed.map((c) => `- ${c.key}: ${fmtValue(c.key, c.now)} vs baseline ${fmtValue(c.key, c.baseline)} (${c.times.toFixed(1)}x)`),
     '',
@@ -241,10 +276,10 @@ function briefFor(crossed, today, ev, promptChars) {
   ].filter(Boolean).join('\n');
 }
 
-function reportText(crossed, today, ev, advice) {
+function reportText(crossed, day, ev, advice) {
   const lines = [
     '📈 אולמה — יעילות: משהו חרג מהרגיל',
-    `${today.date} · ${today.messages} הודעות נכנסות`,
+    `${day.date} · ${day.messages} הודעות נכנסות`,
     '',
     ...crossed.map((c) => `• ${c.label}: ${fmtValue(c.key, c.now)} (רגיל: ${fmtValue(c.key, c.baseline)}, פי ${c.times.toFixed(1)})`),
   ];
@@ -292,7 +327,7 @@ async function recordOwnUsage(client, res) {
 }
 
 // ── The sweep ────────────────────────────────────────────────────────────────
-// deps: { send, llm, promptChars, alertHourOpen, today }
+// deps: { send, llm, promptChars, alertHourOpen }
 //   send          — the raw `openclaw message send` pipe (no model, no credit)
 //   llm           — { complete, backgroundModel } or null to skip the advice
 //   promptChars   — current rendered AGENTS.md size, for the brief
@@ -304,35 +339,54 @@ async function run(client, deps = {}) {
   const phone = deps.adminPhone
     || (await flagsDomain.getFlag(client, creditWatch.ALERT_PHONE_FLAG))
     || creditWatch.DEFAULT_ALERT_PHONE;
-  const history = await dailyRatios(client, BASELINE_DAYS + 1);
-  const today = history[history.length - 1];
-  if (!today) return { checked: 0 };
+  // One row more than the baseline needs, because the last one is thrown away.
+  const history = await dailyRatios(client, BASELINE_DAYS + 2);
+  // The day under test is the last COMPLETE one, never the one in progress. A
+  // partial day is not a small version of a finished day: at 08:41 on
+  // 2026-09-04 this read 306k input tokens per message, when 31 of the day's 37
+  // messages so far were morning digests, and 224k by 11:30 as ordinary traffic
+  // diluted them. Held against seven finished days, that measures the hour
+  // rather than the system — and it is half of why the first alert was false.
+  // The partial day leaves the baseline too, for the same reason.
+  const complete = history.slice(0, -1);
+  const day = complete[complete.length - 1];
+  if (!day) return { checked: 0 };
 
-  const crossed = crossings(history, today);
-  const stats = {
-    date: today.date,
-    messages: today.messages,
+  const crossed = crossings(complete, day);
+  const { alerting, observed } = escalate(crossed);
+  // The verdict BEFORE the numbers: brokerd stores this as a 200-char heartbeat
+  // note, and until now the note ran out mid-ratio and carried no `crossed` and
+  // no `filed` at all — the one question an operator brings to it, did this
+  // alert, was the part being truncated away.
+  const report = (extra) => ({
+    date: day.date,
+    messages: day.messages,
+    crossed: crossed.length,
+    observed: observed.map((c) => c.key),
+    ...extra,
     // Reported every tick even when nothing crossed, so the ratios are numbers
     // an operator watches drift rather than news they hear once. A watch that
     // is silent when healthy is indistinguishable from a watch that is broken.
-    ratios: Object.fromEntries(METRICS.map((m) => [m.key, today[m.key]])),
-  };
-  if (!crossed.length) {
+    ratios: Object.fromEntries(METRICS.map((m) => [m.key, sig4(day[m.key])])),
+  });
+  if (!alerting.length) {
     // Recovery re-arms the alert: a condition that cleared drops out, so the
     // same regression next month is news again instead of being swallowed by a
     // stale stamp. Written unconditionally, even on ticks that send nothing.
+    // A proxy crossing alone lands here too, so it never spends the stamp that
+    // belongs to the cost crossing it might be the early warning for.
     await flagsDomain.setFlag(client, ALERTED_FLAG, []);
-    return { ...stats, crossed: 0 };
+    return report({ alerted: 0 });
   }
 
-  const ev = await evidence(client, today.date);
+  const ev = await evidence(client, day.date);
 
   // Announced once per condition, exactly like the runway warning: the same
   // ratio still being high tomorrow is not new information, and a daily
   // "still expensive" is how somebody learns to swipe these away.
   const already = (await flagsDomain.getFlag(client, ALERTED_FLAG)) || [];
-  const keys = crossed.map((c) => c.key);
-  const fresh = crossed.filter((c) => !already.includes(c.key));
+  const keys = alerting.map((c) => c.key);
+  const fresh = alerting.filter((c) => !already.includes(c.key));
 
   let advice = null;
   if (fresh.length && deps.llm !== null) {
@@ -340,7 +394,7 @@ async function run(client, deps = {}) {
     try {
       const res = await llm.complete({
         ...(await llm.backgroundModel(client)),
-        user: briefFor(fresh, today, ev, deps.promptChars),
+        user: briefFor(fresh, day, ev, deps.promptChars),
         // A reasoning model can spend its whole answer budget thinking and
         // return nothing — the live-updates summariser lost a real run to
         // exactly that at 700. Four short lines need nowhere near this; the
@@ -377,39 +431,44 @@ async function run(client, deps = {}) {
     await client.query(
       `INSERT INTO issues (category, source, title, detail, status)
        VALUES ('bug', 'agent_detected', $1, $2, 'new')`,
-      [title, JSON.stringify({ ...c, date: today.date, evidence: ev, advice }).slice(0, 4000)]);
+      // `observed` travels with the issue: a proxy that crossed on the same day
+      // is the first thing an investigation would want, and it is the only
+      // place a suppressed crossing is written down in full.
+      [title, JSON.stringify({
+        ...c, date: day.date, evidence: ev, advice, observed,
+      }).slice(0, 4000)]);
     filed++;
   }
 
-  const out = { ...stats, crossed: crossed.length, newConditions: fresh.length, filed };
+  const base = { alerted: alerting.length, newConditions: fresh.length, filed };
   if (!fresh.length) {
     await flagsDomain.setFlag(client, ALERTED_FLAG, keys);
-    return out;
+    return report(base);
   }
   if (!phone || !deps.send) {
     await flagsDomain.setFlag(client, ALERTED_FLAG, keys);
-    return { ...out, notified: false, reason: 'no admin pipe' };
+    return report({ ...base, notified: false, reason: 'no admin pipe' });
   }
   // Nothing wakes the owner any more (2026-09-01). This is the least urgent
   // alarm in the system — a ratio cannot be fixed at 03:00 and reads exactly
   // the same at 09:00 — so it simply waits, unstamped, and the next tick
   // inside the window sends it.
   if (deps.alertHourOpen && !(await deps.alertHourOpen(client, phone))) {
-    return { ...out, notified: false, deferredToMorning: true };
+    return report({ ...base, notified: false, deferredToMorning: true });
   }
   let sent = null;
-  try { sent = await deps.send(phone, reportText(fresh, today, ev, advice)); } catch { sent = null; }
+  try { sent = await deps.send(phone, reportText(fresh, day, ev, advice)); } catch { sent = null; }
   // Only a CONFIRMED send marks the condition as announced. A failed pipe
   // leaves it unstamped so the next tick retries — the promise credit-watch,
   // the balance forecast and config_guard all make.
   if (sent && sent.ok) {
     await flagsDomain.setFlag(client, ALERTED_FLAG, keys);
-    return { ...out, notified: true, phone };
+    return report({ ...base, notified: true, phone });
   }
-  return { ...out, notified: false, notifyFailed: true };
+  return report({ ...base, notified: false, notifyFailed: true });
 }
 
 module.exports = {
-  run, dailyRatios, crossings, median, evidence, reportText, briefFor,
-  METRICS, BASELINE_DAYS, ALERTED_FLAG, SELF_AGENT_ID,
+  run, dailyRatios, crossings, escalate, median, evidence, reportText, briefFor,
+  METRICS, BASELINE_DAYS, ALERTED_FLAG, MONEY_KEY, SELF_AGENT_ID,
 };
