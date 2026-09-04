@@ -182,15 +182,31 @@ const LLM_MODEL = process.env.VOICE_LLM_MODEL || 'google/gemini-2.5-flash';
 // Who may be called, as E.164, comma-separated. A config line and a restart,
 // not a code edit — and an EXPLICIT list rather than "every active user",
 // because a phone call is the most intrusive thing Olma can do and the cost
-// per minute is real. The default keeps the historical single user, so a
-// bridge deployed without the var behaves exactly as it did before.
-const VOICE_PHONES = (process.env.VOICE_ENABLED_PHONES || '+972526269826')
+// per minute is real.
+//
+// NO DEFAULT, deliberately. This used to fall back to one hardcoded number so
+// that "a bridge deployed without the var behaves exactly as it did before" —
+// which read as harmless continuity and was the one fail-OPEN in a file whose
+// own header says fail-closed by construction. A bridge that loses its .env,
+// or is deployed to a new box before the file is copied across, would not go
+// quiet: it would place real calls to a number baked into the source. Missing
+// config must mean nobody is callable, never somebody.
+const VOICE_PHONES = String(process.env.VOICE_ENABLED_PHONES || '')
   .split(',').map((s) => s.trim()).filter(Boolean);
 // Two calls at once on a 1-vCPU box is already optimistic; this is the ceiling
 // that stops a third from degrading the two in progress.
 const MAX_CONCURRENT_CALLS = Number(process.env.VOICE_MAX_CONCURRENT || 2);
 const TZ = 'Asia/Jerusalem';
 if (!DG_KEY || !OR_KEY || (TTS === 'cartesia' ? !CART_KEY : !EL_KEY)) { console.error('missing keys'); process.exit(1); }
+// Refuse to start rather than start with an empty allowlist. The boot-time
+// resolve below would exit too, but only after the HTTP server is listening
+// and the pg pool is open — and "started, answers nothing" is a worse state to
+// debug than a process that says why it did not start. Same shape as the key
+// check above, one line up from the pool it would otherwise open.
+if (!VOICE_PHONES.length) {
+  console.error('VOICE_ENABLED_PHONES is unset or empty — refusing to start rather than fall back to a hardcoded number');
+  process.exit(1);
+}
 
 const pool = new Pool({ connectionString: process.env.OLMA_DB_URL || process.env.DATABASE_URL });
 
