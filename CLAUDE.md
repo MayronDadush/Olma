@@ -65,59 +65,39 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **After a shared-branch merge, verify it actually shipped**:
   `git merge-base --is-ancestor <sha> origin/main`. A concurrent session can
   merge at a head that predates your commit.
-- **A pending CI check is not "not yet" — it may be dead**, and a dead one
-  arrives under **either** conclusion. GitHub's 10-minute timeout kills the job
-  as `cancelled` (misread as "someone stopped it"); `run-suite.sh` exhausting
-  its own three retries first exits 1 and reports **`failure`** (run
-  33860683550, 2026-09-04, read as a genuine red until the log was opened).
-  **The wedge banner in the log is the tell, never the conclusion string.**
-  On a PR, compare the `push` and `pull_request` runs on the same
-  SHA: if `--is-ancestor` says your branch contains main, both compile
-  identical bytes and any difference is the host, so a pass on either is
-  authoritative.
-- **On a busy `main`, `cancelled` has a second, benign cause besides the
-  timeout above.** The workflow's concurrency group queues runs on `main`
-  (`cancel-in-progress: false`) but holds only ONE pending run — so when
-  merges land faster than deploys finish, a QUEUED run gets displaced and
-  cancelled before it ever starts, not because anything wedged. Nothing is
-  lost: the displacing run's sha is a descendant and `deploy.sh` rsyncs the
-  whole tree. The conclusion string can't tell displacement from a wedge;
-  `git merge-base --is-ancestor <my-sha> <deployed-sha>` (sha from RELEASE)
-  can.
-- **The dashboard now answers "is the box running what `main` says" without a
-  terminal** — `deploy_drift` (`jobs/deploy-drift.js`, added after this class
-  of gap cost real time on 2026-09-04) compares `RELEASE`'s sha to `main` via
-  GitHub's compare API every hour. Deliberately a dashboard row, never an
-  alert: being a few commits behind breaks nobody, and `BREAKS_USERS` stays
-  reserved for "tool calls fail right now". `null` (GitHub unreachable) is
-  kept apart from "in sync" and carries forward when it was last known good.
-- **A wedged `test` on `main` skips `deploy` silently, and main ships
-  nothing.** `deploy` is `needs: test`, `main` has no `pull_request` run to
-  fall back on, and nothing announces the gap. **`cat /opt/olma2/RELEASE` and
-  compare its `sha` to `origin/main`** — that is the one thing that answers
-  "is production running what I merged". Re-run the run; if it wedges again,
-  deploy the merged SHA yourself with `deploy.sh --restart`, which runs the
-  same suite on the box at `--test-concurrency=2` and does not wedge.
-- **The `sha` in `/opt/olma2/RELEASE` is the ONLY unambiguous answer to that
-  question — every other signal is inference about how it got there.** In
-  particular, comparing a unit's `ActiveEnterTimestamp` to the marker's
-  `deployed_at` answers nothing on its own: `deploy.sh` writes the marker
-  (~L113) *before* the on-server suite (~L141) and long before the restart
-  (~L206), so **for up to ~14 minutes of every healthy deploy the marker is
-  newer than both units** — and a deploy that DIED before its restart leaves
-  the identical signature. `pgrep -af "deploy.sh|rsync|run-suite"` on the box
-  is what separates them — but **read what it matched before believing it**:
-  that pattern happily matches your own monitoring shell, and a wait-loop
-  written as `until ! pgrep -f "deploy.sh|run-suite"` matches ITSELF and so
-  never exits. Both mistakes were made while writing this rule. The inverse is just as misleading: a manual
-  `systemctl restart` makes a unit newer than the marker with no deploy
-  involved, so the check reads "fine" until something moves the marker again.
-  If you need "did THIS deploy restart it", take a baseline before it starts.
-- **The marker's `origin` field is load-bearing.** `github-actions run <id>`
-  gives you a run to go and read; `local <user>@<host>` means a laptop deploy
-  that left no CI log anywhere, and the only record of it is whatever the
-  person who ran it remembers. Two deploys that look identical in the
-  timestamps are told apart by this field alone.
+- **A dead CI run arrives under EITHER conclusion, so the conclusion string
+  tells you nothing.** The job timeout reports `cancelled`; `run-suite.sh`
+  exhausting its retries exits 1 and reports `failure`; and on `main` a
+  *queued* run is cancelled outright when a later merge displaces it (the
+  concurrency group holds only one pending run) — that last one is benign, the
+  displacing sha being a descendant and `deploy.sh` rsyncing the whole tree.
+  The wedge banner in the log is the tell, and
+  `git merge-base --is-ancestor <my-sha> <deployed-sha>` settles whether your
+  commit shipped regardless of how the run ended.
+- **On a PR, a pass on either run is authoritative once the branch contains
+  main** (`--is-ancestor origin/main origin/<branch>`) — both then compile
+  identical bytes, so any difference is the host.
+- **A wedged `test` on `main` skips `deploy` silently and main ships nothing**
+  — `deploy` is `needs: test`, and `main` has no `pull_request` run to fall
+  back on. Re-run it; if it wedges again, deploy the merged sha yourself with
+  `deploy.sh --restart` (same suite, on the box, at `--test-concurrency=2`,
+  where it does not wedge). The `deploy_drift` dashboard row
+  (`jobs/deploy-drift.js`) reports this gap hourly — a row and never an alert,
+  since being a few commits behind breaks nobody.
+- **The `sha` in `/opt/olma2/RELEASE` is the ONLY unambiguous answer to "is
+  production running what I merged."** Everything else is inference about how
+  it got there. Timestamps lie in BOTH directions: the marker is written
+  before the on-box suite and long before the restart, so on a healthy deploy
+  it leads both units by up to ~14 minutes — the identical signature to a
+  deploy that died before restarting — while a manual `systemctl restart`
+  inverts it just as misleadingly. `pgrep` separates them only if you **read
+  what it matched**: the obvious patterns also match your own monitoring
+  shell, and a wait-loop built on one never exits. For "did THIS deploy
+  restart it", take a baseline before starting. (`incidents.md`, "The deploy
+  marker leads the restart".)
+- **The marker's `origin` field is load-bearing** — `github-actions run <id>`
+  gives you a run to go and read; `local <user>@<host>` is a laptop deploy
+  that left no CI record anywhere.
 
 ### Talking to the gateway
 
