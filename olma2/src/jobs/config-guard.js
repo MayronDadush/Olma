@@ -15,6 +15,16 @@ const infraAgent = require('../domain/infra-agent');
 const sessions = require('../channels/sessions');
 const { INTAKE_AGENT_ID } = require('./intake');
 
+// Every per-user loop below reads that user's workspace files synchronously,
+// and this job runs inside brokerd — the process that answers turn_start for
+// live users on the box's one core. Walking every workspace in one contiguous
+// block deafens it for the whole walk; jobs/usage.js learned this on
+// 2026-08-25 (a user's turn timed out twice against a healthy daemon during a
+// cold transcript scan) and yields once per file. Same discipline here: one
+// yield per user caps the block at a single user's files, which is a few
+// milliseconds a 30s socket timeout never notices.
+const yieldToLoop = () => new Promise((resolve) => setImmediate(resolve));
+
 // The invariants, each with why it matters.
 function checkOpenclawConfig(cfg) {
   const violations = [];
@@ -54,6 +64,7 @@ async function checkIdentityFiles(client) {
   );
   const violations = [];
   for (const u of rows) {
+    await yieldToLoop();
     const p = path.join(u.workspace_path, '.olma-identity');
     let problem = null;
     try {
@@ -100,6 +111,7 @@ async function checkAgentsTokens(client) {
   const byToken = new Map(rows.map((u) => [u.identity_token, Number(u.id)]));
   const violations = [];
   for (const u of rows) {
+    await yieldToLoop();
     let doctrine;
     try { doctrine = fs.readFileSync(path.join(u.workspace_path, 'AGENTS.md'), 'utf8'); } catch { continue; }
     if (doctrine.includes('{{IDENTITY_TOKEN}}')) {
@@ -154,6 +166,7 @@ async function checkLegacyWorkspaceState(client, deps = {}) {
   );
   const violations = [];
   for (const u of rows) {
+    await yieldToLoop();
     if (fs.existsSync(path.join(u.workspace_path, LEGACY_WORKSPACE_STATE))) {
       violations.push(
         `user ${u.id}'s workspace holds ${LEGACY_WORKSPACE_STATE} — the gateway refuses every turn for that agent until it is moved aside`);
@@ -212,6 +225,7 @@ async function checkBootstrapBudget(client, cfg) {
   );
   let largest = 0; let over = 0; let near = 0; let read = 0;
   for (const u of rows) {
+    await yieldToLoop();
     let size;
     // A file that could not be read is never a file in trouble — the
     // credit-watch rule. It is counted as unread and reported as such below,
@@ -288,6 +302,7 @@ async function checkCarryovers(client, deps = {}) {
   const reported = new Set(); // user ids already named, so a pair cannot re-report one
   const violations = [];
   for (const u of rows) {
+    await yieldToLoop();
     let card;
     try { card = fs.readFileSync(path.join(u.workspace_path, 'USER.md'), 'utf8'); } catch { continue; }
     const at = card.indexOf(CARRYOVER_HEADING);
