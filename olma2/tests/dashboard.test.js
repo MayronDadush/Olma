@@ -233,6 +233,45 @@ test('/ready ignores the gateway entirely', async () => {
   await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'brokerd'`);
 });
 
+// A banner reading "22 running in order" above a table listing 23 running
+// things invites the operator to work out which one is not being counted — on
+// the one page whose whole job is to be believed.
+//
+// Asserted against the heartbeat count rather than against a raw row count of
+// the rendered HTML: the table also carries rows that are NOT processes (the
+// release marker, added by #129), and a test that counted `</tr>` would have
+// to be rewritten every time one is added — and would quietly demand that the
+// banner count them too, which would be wrong.
+test('the health banner counts the gateway, and only when it was observed', async () => {
+  const { SECTIONS } = require('../src/adapters/http/dashboard');
+  const section = SECTIONS.find((s) => s.id === 'health');
+  const stated = (html) => Number((html.match(/הכל תקין — (\d+)/) || [])[1]);
+  const render = (gw) => withTx(db.pool, (c) => section.render(c, 'csrf', async () => gw));
+
+  await db.pool.query(
+    `INSERT INTO job_heartbeats (job_name, last_run_at, last_ok_at) VALUES ('brokerd', now(), now())
+     ON CONFLICT (job_name) DO UPDATE SET last_run_at = excluded.last_run_at`);
+  const { rows: [{ n }] } = await db.pool.query(`SELECT count(*)::int AS n FROM job_heartbeats`);
+
+  const live = await render({ status: 'live', detail: 'live', port: 18789 });
+  assert.equal(stated(live), n + 1, 'the gateway is a process in the table, so it is in the count');
+  assert.match(live, /שער התקשורת/);
+
+  // `unknown` is neither a healthy process nor a problem. Counting it as
+  // either overstates what was observed, so it is shown and not tallied.
+  const unknown = await render({ status: 'unknown', detail: 'ENOENT', port: null });
+  assert.equal(stated(unknown), n, 'shown, but never claimed as healthy');
+  assert.match(unknown, /שער התקשורת/);
+
+  // Down replaces the green banner entirely, and is counted as a problem.
+  const down = await render({ status: 'down', detail: 'ECONNREFUSED', port: 18789 });
+  assert.ok(!/banner ok/.test(down), 'a dead gateway cannot leave the page green');
+  assert.match(down, /⚠ 1 תהליכים/);
+  assert.match(down, /ECONNREFUSED/);
+
+  await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'brokerd'`);
+});
+
 test('deploy.sh gates on /ready, never on /health', () => {
   const sh = require('node:fs').readFileSync(
     require('node:path').join(__dirname, '..', 'scripts', 'deploy.sh'), 'utf8');
