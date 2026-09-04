@@ -1,0 +1,19 @@
+# Secrets — the bridge reads these at startup and they never belong in git.
+.env
+twilio.env
+
+# Real call transcripts. server.js writes one JSON per call into here
+# (user speech, Olma's replies). User data, never committed.
+transcripts/
+
+# Generated audio. Every file below is reproducible from the scripts in this
+# directory, and none of it is small: regenerate rather than commit.
+#   clips/            <- make-voice-clips.js  (one take per candidate voice)
+#   phrase-candidates/<- make-voice-clips.js  (takes to choose between by ear)
+#   voice-tour.wav    <- make-tour-audio.js
+clips/
+phrase-candidates/
+voice-tour.wav
+
+node_modules/
+*.bak-*
