@@ -20,6 +20,7 @@
 //     published — the same projection calendar.listEvents makes about
 //     attendees and mail makes about recipient lists.
 const { ok, err } = require('./results');
+const mail = require('./mail');
 
 // A task's own category vocabulary is closed server-side (tasks.category is
 // validated as a closed set, not free text), so the page can rely on it —
@@ -42,13 +43,29 @@ const SOURCE_CAPS = {
 // is not a known import is the person's own writing.
 const importSource = (src) => (Object.hasOwn(SOURCE_CAPS, src) ? src : null);
 
+// The gate reads `role` and `phone`, and neither belongs in loadUser's row:
+// that row is the payload's own source, and the whole discipline there is that
+// no phone number can reach a browser from it. Fetching the two fields into a
+// throwaway object keeps them out of anything that gets serialised, and makes
+// it obvious at the call site that this is the only thing they are for.
+//
+// Reading them at all is not optional — requireMailAccess answers "admin, or
+// on the allowlist, or no". Handed a row without the columns it consults, it
+// would answer "no" for everybody and be quietly wrong for exactly the people
+// the allowlist exists for.
+async function mailIdentity(client, userId) {
+  const { rows } = await client.query(
+    `SELECT id, role, phone FROM users WHERE id = $1`, [userId]);
+  return rows[0] || { id: userId };
+}
+
 // `is_eval = false` for the same reason every user-selecting sweep carries it:
 // that row is structurally sealed off, its phone is fake, and a page rendered
 // for it could only ever be a way to look at the test fixtures.
 async function loadUser(client, userId) {
   const { rows } = await client.query(
-    `SELECT id, first_name, timezone, timezone_confirmed, locale,
-            paused_at IS NOT NULL AS paused, digest_scope, calendar_sync_tasks
+    `SELECT id, first_name, last_name, assistant_name, timezone, timezone_confirmed,
+            locale, paused_at IS NOT NULL AS paused, digest_scope, calendar_sync_tasks
      FROM users WHERE id = $1 AND status != 'blocked' AND is_eval = false`,
     [userId]
   );
@@ -377,6 +394,12 @@ async function load(client, userId) {
   const tasks = await loadTasks(client, userId, zone, user.calendar_sync_tasks);
   const friends = await loadFriends(client, userId);
   const integrations = await loadIntegrations(client, userId);
+  // What the page may OFFER, as distinct from what is already connected. Only
+  // one entry so far and it earns its place: connecting a mailbox is behind an
+  // allowlist (mail.requireMailAccess), so for almost everybody Gmail is a
+  // service on a connected account that still cannot be switched on. Without
+  // this the page would draw it as available and find out only on the tap.
+  const mailGate = await mail.requireMailAccess(client, await mailIdentity(client, userId));
   const channels = await loadChannels(client, userId);
   const contacts = await loadContacts(client, userId);
   const meetings = await loadMeetings(client, userId, zone);
@@ -384,6 +407,11 @@ async function load(client, userId) {
     user: {
       id: user.id,
       firstName: user.first_name,
+      // Both halves, and Olma's own name. The page keeps a seeded profile for
+      // the design copy and re-reads it on every render, so a payload that
+      // omits these leaves a real person looking at the fixture's name.
+      lastName: user.last_name,
+      assistantName: user.assistant_name,
       timezone: zone,
       timezoneConfirmed: user.timezone_confirmed,
       // Rendered in whatever language they have been writing in — it is not a
@@ -402,6 +430,7 @@ async function load(client, userId) {
     archived: tasks.archived,
     friends,
     integrations,
+    available: { mail: mailGate.ok },
     meetings,
   });
 }
