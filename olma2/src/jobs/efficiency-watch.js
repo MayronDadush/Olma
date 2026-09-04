@@ -243,7 +243,7 @@ function briefFor(crossed, today, ev, promptChars) {
 
 function reportText(crossed, today, ev, advice) {
   const lines = [
-    '📈 אולמה — יעילות: משהו חרג מהרגיל',
+    '📈 עולמה — יעילות: משהו חרג מהרגיל',
     `${today.date} · ${today.messages} הודעות נכנסות`,
     '',
     ...crossed.map((c) => `• ${c.label}: ${fmtValue(c.key, c.now)} (רגיל: ${fmtValue(c.key, c.baseline)}, פי ${c.times.toFixed(1)})`),

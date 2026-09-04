@@ -78,7 +78,9 @@ function bareNameStatement(text) {
 //   a connection/configuration verb together, or the access-level literals,
 //   which mean nothing else. "יש לו פגישה ביומן" and "הוא מנותק רגשית" each
 //   carry only one half and pass.
-const SYSTEM_NOUN_RE = /יומן|calendar|דייג['\u05F3\u2019]?סט|digest|סיכום יומי|אולמה|olma/i;
+// Both Hebrew spellings on purpose: the name is עולמה, but אולמה was the
+// spelling for months — it is still in old facts, and users type either.
+const SYSTEM_NOUN_RE = /יומן|calendar|דייג['\u05F3\u2019]?סט|digest|סיכום יומי|[אע]ולמה|olma|allma/i;
 const SYSTEM_STATE_RE = /מחובר|מחוברת|מחוברים|מנותק|נותק|חיבר|חיברה|מוגדר|הוגדר|connected|disconnected/i;
 const ACCESS_LEVEL_RE = /read_write|read_only/i;
 function systemState(text) {

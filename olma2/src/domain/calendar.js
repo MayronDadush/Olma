@@ -44,7 +44,7 @@ async function beginConnection(client, userId, access) {
     validForMinutes: google.STATE_TTL_MS / 60000,
     tellTheUser: access === 'read_write'
       ? 'הקישור יבקש הרשאה לצפות וגם להוסיף ולערוך אירועים.'
-      : 'הקישור יבקש הרשאת צפייה בלבד — אולמה לא תוכל לשנות שום דבר ביומן.',
+      : 'הקישור יבקש הרשאת צפייה בלבד — עולמה לא תוכל לשנות שום דבר ביומן.',
   });
 }
 

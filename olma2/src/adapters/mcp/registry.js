@@ -478,10 +478,10 @@ const TOOLS = [
     (client, user, a) => users.setLocale(client, user.id, a.locale)),
   tool('set_assistant_persona',
     'Change who Olma IS for this user: gender ("תהיה גבר" / "תחזרי להיות אישה") and/or the name '
-    + 'they call the assistant ("אני רוצה לקרוא לך נועה"; an empty name resets to אולמה). ONLY on '
+    + 'they call the assistant ("אני רוצה לקרוא לך נועה"; an empty name resets to עולמה). ONLY on '
     + 'their explicit request — never offer or suggest it. From your very next sentence on, follow '
     + 'the new persona: gender changes EVERY Hebrew self-reference (אני בודק/בודקת, verbs and '
-    + 'adjectives alike, no mixing), and the name replaces אולמה everywhere — phone calls included.',
+    + 'adjectives alike, no mixing), and the name replaces עולמה everywhere — phone calls included.',
     { gender: S('string', 'female | male'), name: S('string', 'New assistant name; "" resets to the default') }, [],
     (client, user, a) => users.setAssistantPersona(client, user.id, { gender: a.gender, name: a.name })),
 

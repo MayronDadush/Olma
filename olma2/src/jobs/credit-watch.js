@@ -72,7 +72,7 @@ async function alertHourOpen(client, phone) {
 function alertText(sinceIso) {
   const t = sinceIso ? new Date(sinceIso).toISOString().slice(11, 16) + ' UTC' : 'עכשיו';
   return [
-    '⚠️ אולמה: נגמר הקרדיט אצל ספק המודל.',
+    '⚠️ עולמה: נגמר הקרדיט אצל ספק המודל.',
     `מאז ${t} אף הודעה לא נשלחת ואף פנייה לא נענית.`,
     'OpenRouter: openrouter.ai/settings/credits · Anthropic: console.anthropic.com → Billing (ושווה Auto-reload).',
     'הכל ממתין בתור ויישלח לבד תוך ~10 דקות מהטעינה.',
@@ -87,7 +87,7 @@ function alertText(sinceIso) {
 function recoveredText(sinceIso) {
   const t = sinceIso ? new Date(sinceIso).toISOString().slice(11, 16) + ' UTC' : '';
   return [
-    'ℹ️ אולמה: בלילה נגמר הקרדיט אצל ספק המודל.',
+    'ℹ️ עולמה: בלילה נגמר הקרדיט אצל ספק המודל.',
     `${t ? `זה התחיל ב-${t} ו` : ''}כרגע הכול עובד שוב — ההודעות שהמתינו יצאו.`,
     'שווה בכל זאת להציץ ביתרה: openrouter.ai/settings/credits (ושווה Auto-reload).',
   ].join('\n');
@@ -253,7 +253,7 @@ function tierFor(s) {
 }
 
 function balanceAlertText(low) {
-  const lines = ['⚠️ אולמה: יתרה נמוכה בשירות בתשלום.', ''];
+  const lines = ['⚠️ עולמה: יתרה נמוכה בשירות בתשלום.', ''];
   for (const { label, state } of low) {
     const left = `$${Number(state.remaining).toFixed(2)}`;
     lines.push(state.daysLeft !== null && state.daysLeft !== undefined

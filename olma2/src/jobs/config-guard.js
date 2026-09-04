@@ -734,10 +734,10 @@ const ALERTED_FLAG = 'config_guard_alerted';
 // announcing a leaked credential under "users are blocked" would send the
 // operator looking for an outage that is not happening.
 const ALERT_CLASSES = [
-  { match: breaksUsers, headline: '🔴 אולמה: משתמשים חסומים ברמת הזהות — כל קריאת כלי שלהם נכשלת.', tail: 'הפירוט בדשבורד, בקטע התקלות.' },
+  { match: breaksUsers, headline: '🔴 עולמה: משתמשים חסומים ברמת הזהות — כל קריאת כלי שלהם נכשלת.', tail: 'הפירוט בדשבורד, בקטע התקלות.' },
   {
     match: leaksCredential,
-    headline: '🔴 אולמה: טוקן זהות חי נשלח כטקסט לצ׳אט אמיתי.',
+    headline: '🔴 עולמה: טוקן זהות חי נשלח כטקסט לצ׳אט אמיתי.',
     tail: 'הטוקן עדיין תקף — החלפתו היא מה שמסיים את החשיפה. הפירוט בדשבורד, בקטע התקלות.',
     // Waits for a civil hour. Rotating a token is a deliberate act nobody
     // performs asleep, and the exposure is days old by the time it is noticed

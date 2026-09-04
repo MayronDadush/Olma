@@ -226,7 +226,7 @@ async function noteObservedLanguage(client, user, observed, now) {
 // Who the assistant IS for this person, changed only on their own explicit
 // ask ("תהיה גבר", "אני רוצה לקרוא לך נועה") — nothing observes its way into
 // this. gender flips the Hebrew speech register everywhere the assistant
-// speaks of itself (and picks the phone-call voice); name replaces אולמה.
+// speaks of itself (and picks the phone-call voice); name replaces עולמה.
 // name: '' resets to the default rather than storing an empty string.
 async function setAssistantPersona(client, userId, { gender, name } = {}) {
   let newGender = null;
@@ -251,7 +251,7 @@ async function setAssistantPersona(client, userId, { gender, name } = {}) {
   await audit.record(client, userId, 'user.assistant_persona_set', {
     gender: rows[0].assistant_gender, name: rows[0].assistant_name,
   });
-  return ok({ gender: rows[0].assistant_gender, name: rows[0].assistant_name || 'אולמה' });
+  return ok({ gender: rows[0].assistant_gender, name: rows[0].assistant_name || 'עולמה' });
 }
 
 // Changing the zone used to change one column and leave every instant already

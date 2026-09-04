@@ -79,7 +79,7 @@ async function previousStatus(client, scenario, beforeRunId) {
 }
 
 function alertText(summary) {
-  const lines = ['🧪 אולמה: בדיקת ההתנהגות הלילית מצאה בעיות.'];
+  const lines = ['🧪 עולמה: בדיקת ההתנהגות הלילית מצאה בעיות.'];
   for (const r of summary.alerts) {
     if (r.status === 'red') {
       const why = r.hardFailures.map((f) => f.name).join('; ') || 'hard check failed';

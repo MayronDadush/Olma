@@ -117,7 +117,7 @@ test("Olma's own state is not a fact about the person", async () => {
     // lines above it; the day he disconnects, the card and the fact disagree
     // and only one of them updates.
     for (const bad of ['היומן שלו מחובר כעת ל-Google Calendar עם גישת read_write',
-      'אולמה מחוברת אצלו', 'הדייג׳סט שלו מוגדר ל-08:00']) {
+      'עולמה מחוברת אצלו', 'הדייג׳סט שלו מוגדר ל-08:00']) {
       const res = await facts.rememberFact(c, user.id, { category: 'context', fact: bad });
       assert.equal(res.ok, false, bad);
       assert.match(res.error.message, /own state/);

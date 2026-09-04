@@ -37,7 +37,7 @@ test('gender flips to male, audits, and the card says MASCULINE with no mixing',
   const r = await withClient((c) => users.setAssistantPersona(c, user.id, { gender: 'male' }));
   assert.equal(r.ok, true);
   assert.equal(r.data.gender, 'male');
-  assert.equal(r.data.name, 'אולמה'); // default name reported, not null
+  assert.equal(r.data.name, 'עולמה'); // default name reported, not null
   const u = await row();
   const card = renderCard(u, []);
   assert.match(card, /Assistant persona/);
@@ -55,7 +55,7 @@ test('a rename keeps the gender, and clearing the name restores the default', as
   assert.match(renderCard(u, []), /"נועה"/);
   // '' resets — the caller does not need to know the default name to undo.
   r = await withClient((c) => users.setAssistantPersona(c, user.id, { name: '' }));
-  assert.equal(r.data.name, 'אולמה');
+  assert.equal(r.data.name, 'עולמה');
   u = await row();
   assert.equal(u.assistant_name, null);
 });

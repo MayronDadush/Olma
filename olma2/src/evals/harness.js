@@ -129,12 +129,12 @@ function makeTurnRunner({ agentId, sessionKey, model }, deps = {}) {
 }
 
 const JUDGE_SYSTEM = [
-  'אתה שופט איכות של תשובות עוזרת אישית בוואטסאפ בשם אולמה.',
-  'תקבל שיחה (הודעות המשתמש ותשובות אולמה) ורובריקה לבדיקה.',
+  'אתה שופט איכות של תשובות עוזרת אישית בוואטסאפ בשם עולמה.',
+  'תקבל שיחה (הודעות המשתמש ותשובות עולמה) ורובריקה לבדיקה.',
   'שפוט אך ורק לפי הרובריקה. אל תמציא בעיות שאינן שם, ואל תעלים בעיה שכן.',
   'החזר JSON בלבד, בלי טקסט נוסף, בצורה:',
   '{"verdict":"pass"|"concern","problems":[{"rule":"<הכלל שהופר>","quote":"<ציטוט מדויק מהתשובה>"}]}',
-  'verdict הוא "concern" רק אם יש לפחות בעיה אחת עם ציטוט. ציטוט חייב להופיע מילה במילה בתשובת אולמה.',
+  'verdict הוא "concern" רק אם יש לפחות בעיה אחת עם ציטוט. ציטוט חייב להופיע מילה במילה בתשובת עולמה.',
 ].join('\n');
 
 // The judge is a REASONING model, and its thinking is billed against the same
@@ -226,7 +226,7 @@ function verifyProblems(problems, turns) {
 async function judgeScenario(scenario, turns, deps = {}) {
   const complete = deps.complete || llm.complete;
   const conversation = turns
-    .map((t) => `משתמש: ${t.message}\nאולמה: ${t.reply || '(אין תשובה)'}`)
+    .map((t) => `משתמש: ${t.message}\nעולמה: ${t.reply || '(אין תשובה)'}`)
     .join('\n---\n');
   const attempts = deps.judgeAttempts || JUDGE_ATTEMPTS;
   const delayMs = deps.judgeRetryDelayMs === undefined ? JUDGE_RETRY_DELAY_MS : deps.judgeRetryDelayMs;

@@ -77,14 +77,14 @@ const VOICE_BY_GENDER = {
 // The persona is per USER, so it is per CALL — never a module global. Two
 // people on the line at once may run opposite genders, and a shared global
 // would have each call rewriting the other's voice mid-sentence.
-const DEFAULT_PERSONA = { gender: 'female', name: 'אולמה' };
+const DEFAULT_PERSONA = { gender: 'female', name: 'עולמה' };
 async function loadPersona(userId) {
   const r = await pool.query(
     'SELECT assistant_gender, assistant_name FROM users WHERE id = $1', [userId]);
   if (!r.rows[0]) return { ...DEFAULT_PERSONA };
   return {
     gender: r.rows[0].assistant_gender || 'female',
-    name: r.rows[0].assistant_name || 'אולמה',
+    name: r.rows[0].assistant_name || 'עולמה',
   };
 }
 function personaVoice(persona) { return VOICE_BY_GENDER[persona.gender] || VOICE_BY_GENDER.female; }
@@ -98,7 +98,11 @@ const gFor = (persona) => (f, m) => (persona.gender === 'male' ? m : f);
 // whenever the voice or the model changes — a config line, not a code edit.
 // A custom name is spoken exactly as given.
 const SPOKEN_DEFAULT_NAME = process.env.VOICE_SPOKEN_NAME || 'אוֹל מָה';
-function spokenName(persona) { return persona.name === 'אולמה' ? SPOKEN_DEFAULT_NAME : persona.name; }
+// Either Hebrew spelling counts as "the default name": עולמה is current, אולמה
+// was the spelling for months and may still sit in assistant_name. Both are
+// pronounced identically, so both take the phonetic default above.
+const DEFAULT_NAME_RE = /^[אע]ולמה$/;
+function spokenName(persona) { return DEFAULT_NAME_RE.test(persona.name || '') ? SPOKEN_DEFAULT_NAME : persona.name; }
 function greetingText(user, persona) {
   const g = gFor(persona);
   return `היי${user.first_name ? ' ' + user.first_name : ''}, ${g('זאת', 'זה')} ${spokenName(persona)}. מה קורה?`;
@@ -538,7 +542,7 @@ class Call {
     // 'מירון' used to be hard-coded here — it was the only user. The caller's
     // own name and the assistant's come from the call now, so a second user's
     // name is hinted to the transcriber instead of a stranger's.
-    for (const k of ['אולמה', this.persona.name, this.user.first_name]) if (k) q.append('keyterm', k);
+    for (const k of ['עולמה', 'אולמה', this.persona.name, this.user.first_name]) if (k) q.append('keyterm', k);
     this.dg = new WebSocket(`wss://api.deepgram.com/v1/listen?${q}`, { headers: { Authorization: `Token ${DG_KEY}` } });
     this.dg.on('open', () => log('deepgram open'));
     this.dg.on('error', (e) => log('deepgram error', e.message));

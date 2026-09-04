@@ -34,7 +34,7 @@ function sample(overrides = {}) {
       ] },
     ],
     big_tasks: { title: 'משימות גדולות בתור', chips: [{ icon: 'health', text: 'בריאות' }] },
-    footer_note: 'אולמה · 19 באוג׳',
+    footer_note: 'עולמה · 19 באוג׳',
     ...overrides,
   };
 }

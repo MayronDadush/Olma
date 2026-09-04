@@ -84,13 +84,13 @@ const SECTIONS = [
   { id: 'health', title: 'מצב המערכת', hint: 'שער התקשורת (הדרך היחידה שהודעות נכנסות ויוצאות מוואטסאפ) וכל התהליכים הפנימיים. אדום = משהו תקוע וצריך טיפול. "לא נבדק" בשער = לא הצלחנו לקרוא את ההגדרות, לא בהכרח תקלה.', render: renderHeartbeats },
   { id: 'boost', title: 'מצב בוסט', hint: 'מתג להדגמות: מעביר את כל המשתמשים למודל המהיר והחזק ביותר, ומכבה את עצמו אחרי שעתיים. עולה יותר לדקה — לכן הוא לא נשאר דלוק בטעות.', render: renderBoost },
   { id: 'users', title: 'משתמשים', hint: 'כל מי שרשום. אפשר לקבוע לכל אחד מכסת הודעות יומית משלו.', render: renderUsers },
-  { id: 'issues', title: 'תקלות ובקשות', hint: 'דברים שאולמה או המשתמשים דיווחו עליהם ומחכים לטיפול.', render: renderIssues },
-  { id: 'evals', title: 'בדיקות התנהגות', hint: 'כל לילה אולמה עוברת תרחישים שנבנו מתקלות אמת — שיחה מדומה מול משתמש בדיקה, בדיקת כלים ומסד בקוד, ובדיקת ניסוח על ידי מודל שופט. אדום = כלל נשבר; צהוב = השופט הסתייג מהניסוח.', render: renderEvals },
+  { id: 'issues', title: 'תקלות ובקשות', hint: 'דברים שעולמה או המשתמשים דיווחו עליהם ומחכים לטיפול.', render: renderIssues },
+  { id: 'evals', title: 'בדיקות התנהגות', hint: 'כל לילה עולמה עוברת תרחישים שנבנו מתקלות אמת — שיחה מדומה מול משתמש בדיקה, בדיקת כלים ומסד בקוד, ובדיקת ניסוח על ידי מודל שופט. אדום = כלל נשבר; צהוב = השופט הסתייג מהניסוח.', render: renderEvals },
   { id: 'cost', title: 'עלות', hint: 'כל שירות חיצוני שהפרויקט משלם עליו — מופרד ליתרות מראש (שנגמרות) ולחיוב שוטף (שנצבר) — וכמה עולה השימוש במודל לפי יום ולפי משתמש, כולל עמודה נפרדת ליצירת תמונות ווידאו. הערכה, לא חשבונית.', render: renderCost },
   { id: 'outcomes', title: 'האם זה עובד', hint: 'המדדים שנבחרו כדי לענות על השאלה הזו: ענו לנו? נסגרו משימות? נאלצו לתקן אותנו? נוצר הרגל? כל מספר עם המכנה שלו.', render: renderOutcomes },
   { id: 'metrics', title: 'שימוש במוצר', hint: 'מה באמת קורה במוצר: כמה אנשים פעילים, כמה נוצר, מה הצליח.', render: renderMetrics },
-  { id: 'planned', title: 'מה מתוכנן להישלח', hint: 'כל מה שאולמה מתכננת לשלוח, ומתי — בשעון המקומי של כל משתמש. התוכן עצמו נכתב ברגע השליחה, לא מראש, ולכן כאן מופיע הנושא ולא הנוסח.', render: renderPlanned },
-  { id: 'brain', title: 'מה אולמה יודעת ועל מה היא מחכה', hint: 'שני צדדים של אותו דבר: מה המערכת למדה על האנשים, ומה תקוע אצלה כי אדם עדיין לא ענה.', render: renderBrain },
+  { id: 'planned', title: 'מה מתוכנן להישלח', hint: 'כל מה שעולמה מתכננת לשלוח, ומתי — בשעון המקומי של כל משתמש. התוכן עצמו נכתב ברגע השליחה, לא מראש, ולכן כאן מופיע הנושא ולא הנוסח.', render: renderPlanned },
+  { id: 'brain', title: 'מה עולמה יודעת ועל מה היא מחכה', hint: 'שני צדדים של אותו דבר: מה המערכת למדה על האנשים, ומה תקוע אצלה כי אדם עדיין לא ענה.', render: renderBrain },
   { id: 'outbox', title: 'הודעות יוצאות', hint: 'סיכום מספרי של ההודעות היזומות בשבוע האחרון.', render: renderOutbox },
   { id: 'flags', title: 'הגדרות מערכת', hint: 'שינוי כאן חל מיד, בלי עדכון גרסה. כל הגדרה מוסברת בשורה שלה.', render: renderFlags },
   { id: 'contacts', title: 'ספר הכתובות', hint: 'כל אנשי הקשר שהמשתמשים ייבאו או שמרו, מקובצים לפי מספר טלפון — כל השמות שניתנו לאותו מספר, ומי מהם כבר משתמש אצלנו.', render: renderContactsSection },
@@ -404,7 +404,7 @@ async function renderInfraCosts(client, money) {
 
   const prepaid = [
     ['OpenRouter', 'כל קריאות המודל: סיכומים, תכנון, זיהוי עובדות, יצירת תמונות ווידאו, שופט הבדיקות', openrouter],
-    ['Twilio', 'מספר הטלפון שאולמה מתקשרת ממנו', twilio],
+    ['Twilio', 'מספר הטלפון שעולמה מתקשרת ממנו', twilio],
     ['Deepgram', 'זיהוי דיבור בשיחות טלפון חיות', deepgram],
   ];
   const anyLow = prepaid.some(([, , s]) => prepaidLow(s));
@@ -424,7 +424,7 @@ async function renderInfraCosts(client, money) {
   ].join('');
 
   const cartesiaRow = cartesia.configured
-    ? `<tr><td>Cartesia</td><td class="dim small">הקול שאולמה מדברת בו בשיחות טלפון</td>
+    ? `<tr><td>Cartesia</td><td class="dim small">הקול שעולמה מדברת בו בשיחות טלפון</td>
        <td class="dim" colspan="2">אין API חיוב — צריך לבדוק ידנית ב-play.cartesia.ai</td></tr>`
     : '';
 
@@ -632,11 +632,11 @@ const FLAG_SPECS = [
   { key: 'credit_alerts_muted', label: 'השתקת התראות קרדיט/יתרה', type: 'bool',
     help: 'כשפתוח (מושתק) — התראת "נגמר הקרדיט" והתראת היתרה היורדת לא נשלחות לאדמין בוואטסאפ. תקלות config_guard קריטיות והתראת בדיקות ההתנהגות הלילית לא מושפעות.' },
   { key: 'quota_daily_free', label: 'מכסת הודעות ליום — משתמש חינם', type: 'int',
-    help: 'מעבר לזה אולמה שולחת סיכום אחרון ומפסיקה להגיב עד למחרת.' },
+    help: 'מעבר לזה עולמה שולחת סיכום אחרון ומפסיקה להגיב עד למחרת.' },
   { key: 'quota_hourly_paid', label: 'מכסת הודעות לשעה — מנוי', type: 'int',
     help: 'למנויים המכסה מתחדשת כל שעה במקום כל יום.' },
   { key: 'proactive_daily_budget', label: 'הודעות יזומות ליום', type: 'int',
-    help: 'כמה פעמים ביום אולמה תפנה מיוזמתה. מעבר לזה — דברים לא דחופים מתאגדים לסיכום הבא במקום להישלח בנפרד.' },
+    help: 'כמה פעמים ביום עולמה תפנה מיוזמתה. מעבר לזה — דברים לא דחופים מתאגדים לסיכום הבא במקום להישלח בנפרד.' },
   { key: 'intake_hourly_cap', label: 'תקרת נרשמים חדשים בשעה', type: 'int',
     help: 'הגנה מפני הצפה: אם יותר מזה אנשים לא מוכרים פונים תוך שעה, ההרשמה נסגרת אוטומטית ונפתחת תקלה כאן.' },
   { key: 'cost_per_mtok_usd', label: 'תעריף למיליון טוקנים ($)', type: 'num',
@@ -671,7 +671,7 @@ const FLAG_SPECS = [
   { key: 'public_base_url', label: 'כתובת ציבורית לקישורים', type: 'text',
     help: 'הבסיס לקישורים שנשלחים למשתמשים (למשל דף סימון הזמינות). בלי / בסוף.' },
   { key: 'search_link_base', label: 'מנוע החיפוש לקישורים', type: 'text',
-    help: 'הבסיס לקישור החיפוש שאולמה שולחת כשהיא לא יכולה לחפש בעצמה. ריק = גוגל. חייב להתחיל ב-https ולהסתיים בפרמטר השאילתה, למשל https://duckduckgo.com/?q= — ערך לא תקין נופל חזרה לגוגל ולא שובר קישור.' },
+    help: 'הבסיס לקישור החיפוש שעולמה שולחת כשהיא לא יכולה לחפש בעצמה. ריק = גוגל. חייב להתחיל ב-https ולהסתיים בפרמטר השאילתה, למשל https://duckduckgo.com/?q= — ערך לא תקין נופל חזרה לגוגל ולא שובר קישור.' },
 ];
 const EDITABLE_FLAGS = FLAG_SPECS.map((f) => f.key);
 
@@ -977,7 +977,7 @@ async function renderPlannedForUser(client, u, csrf = '') {
     <form method="post" action="/outbox/new">${hidden}
       <input type="hidden" name="user_id" value="${u.id}">
       <p><textarea name="instruction" rows="2" style="width:100%"
-         placeholder="מה אולמה צריכה לעשות — למשל: שאלי אותו איך הלך הראיון אתמול"></textarea></p>
+         placeholder="מה עולמה צריכה לעשות — למשל: שאלי אותו איך הלך הראיון אתמול"></textarea></p>
       <p class="small">
         <label>דחיפות
           <select name="urgency">
@@ -987,7 +987,7 @@ async function renderPlannedForUser(client, u, csrf = '') {
         <label>מתי <input type="datetime-local" name="release_after" title="ריק = בהקדם"></label>
         <button>הוסף לתור</button>
       </p>
-      <p class="hint">זו הנחיה לאולמה, לא טקסט שיישלח כלשונו — היא תנסח בעצמה, בשפה שלו.
+      <p class="hint">זו הנחיה לעולמה, לא טקסט שיישלח כלשונו — היא תנסח בעצמה, בשפה שלו.
         ההודעה עוברת את אותו שער כיבוד כמו כל הודעה יזומה: אם השעה אצלו שעת שקט
         היא תמתין לבוקר, ואם הוא כבר קיבל מספיק היום היא תצטרף לסיכום הבא.</p>
     </form>`;
@@ -1015,7 +1015,7 @@ function renderPrefsForUser(prefs, u, csrf) {
     <input type="hidden" name="back" value="/user?id=${u.id}">
     <input type="hidden" name="user_id" value="${u.id}">`;
   return `<section><h3>העדפות — איך לעבוד איתו</h3>
-    <p class="hint">איך אולמה מתנהגת מולו: שעות, אורך תשובות, טון. שמירה על מפתח קיים דורסת אותו.</p>
+    <p class="hint">איך עולמה מתנהגת מולו: שעות, אורך תשובות, טון. שמירה על מפתח קיים דורסת אותו.</p>
     ${prefs.length ? `<table><tr><th>מפתח</th><th>ערך</th><th>נלמד</th><th></th></tr>
       ${prefs.map((p) => `<tr>
         <td class="mono small">${esc(p.key)}</td>
@@ -1040,10 +1040,10 @@ function renderFactsForUser(facts, u, csrf) {
     <input type="hidden" name="user_id" value="${u.id}">`;
   const IMPORTANCE = { 1: 'רגילה', 2: 'חשובה', 3: 'ליבה' };
   const SOURCE = { conversation: 'מהשיחה', user_stated: 'נאמר במפורש', admin: 'הוזן ידנית' };
-  return `<section><h3>עובדות — מה אולמה יודעת עליו</h3>
+  return `<section><h3>עובדות — מה עולמה יודעת עליו</h3>
     <p class="hint">מי הוא ומה קורה בחייו. העשר החשובות ביותר נמצאות מול הסוכן בכל תור.
       מחיקה כאן מפסיקה להשתמש בעובדה — ההיסטוריה נשמרת.<br>
-      לא ייקלטו: שם (זה שדה בפרופיל), מספר טלפון (זה איש קשר), מצב של אולמה עצמה
+      לא ייקלטו: שם (זה שדה בפרופיל), מספר טלפון (זה איש קשר), מצב של עולמה עצמה
       (יומן מחובר, דייג׳סט מוגדר — כבר על הכרטיס), ועובדה שנוקבת בתאריך או ב״היום/מחר״
       בלי תאריך תפוגה.</p>
     ${facts.length ? `<table><tr><th>קטגוריה</th><th>העובדה</th><th>חשיבות</th><th>מקור</th><th>נלמד</th><th></th></tr>
@@ -1238,13 +1238,13 @@ function renderConversation(u) {
       ? '<p class="dim">אין עדיין שיחה.</p>'
       : `<div class="chat">${msgs.map((m) => `
           <div class="msg ${m.role === 'user' ? 'them' : 'olma'}">
-            <div class="who">${m.role === 'user' ? esc([u.first_name, u.last_name].filter(Boolean).join(' ') || u.phone) : 'אולמה'}
+            <div class="who">${m.role === 'user' ? esc([u.first_name, u.last_name].filter(Boolean).join(' ') || u.phone) : 'עולמה'}
               ${m.isVoice ? '<span class="pill">🎤 תמלול</span>' : ''}
               <span class="dim small">${m.at ? String(m.at).slice(11, 16) : ''}</span></div>
             <div class="txt">${esc(m.text).replace(/\n/g, '<br>')}</div>
           </div>`).join('')}</div>`;
   return `<section><h3>10 ההודעות האחרונות</h3>
-    <p class="hint">נקרא ישירות מהשיחה החיה — לא עותק. הודעות קוליות מסומנות 🎤 ומוצג התמלול שאולמה קיבלה בפועל.</p>
+    <p class="hint">נקרא ישירות מהשיחה החיה — לא עותק. הודעות קוליות מסומנות 🎤 ומוצג התמלול שעולמה קיבלה בפועל.</p>
     ${body}</section>`;
 }
 
@@ -1257,7 +1257,7 @@ async function renderDeletePanel(client, u, confirming, csrf) {
   if (!confirming) {
     return `<section><h3>מחיקת משתמש</h3>
       <p class="hint">מוחק את החשבון לגמרי: משימות, קשרים, זיכרון והסוכן האישי.
-         אחרי המחיקה, אם ${esc(name)} ישלח הודעה לאולמה הוא יתחיל תהליך הרשמה מאפס.</p>
+         אחרי המחיקה, אם ${esc(name)} ישלח הודעה לעולמה הוא יתחיל תהליך הרשמה מאפס.</p>
       <a class="btn-danger" href="/user?id=${u.id}&confirm=delete">מחק את ${esc(name)}…</a>
     </section>`;
   }
@@ -1269,7 +1269,7 @@ async function renderDeletePanel(client, u, confirming, csrf) {
       <li>${c.tasks ?? 0} משימות</li>
       <li>${c.connections ?? 0} חברויות (ומה שתלוי בהן אצל הצד השני)</li>
       <li>${c.shares ?? 0} שיתופי משימות · ${c.meetings ?? 0} השתתפויות בפגישות</li>
-      <li>${c.outbox ?? 0} הודעות בתור, והזיכרון שאולמה צברה עליו</li>
+      <li>${c.outbox ?? 0} הודעות בתור, והזיכרון שעולמה צברה עליו</li>
     </ul>
     <form method="POST" action="/users/delete" class="inline">
       <input type="hidden" name="csrf" value="${csrf}">
@@ -1288,7 +1288,7 @@ function renderPauseBanner(u, csrf) {
   if (!u.paused_at) return '';
   return `<section><h3>ביקש להפסיק</h3>
     <p class="hint">הפסיק לקבל פניות יזומות ב-${esc(String(u.paused_at).slice(0, 16))}.
-      שום דבר לא נמחק — המשימות, העובדות וההיסטוריה שלו במקום. אולמה עדיין עונה לו אם הוא כותב.</p>
+      שום דבר לא נמחק — המשימות, העובדות וההיסטוריה שלו במקום. עולמה עדיין עונה לו אם הוא כותב.</p>
     <form method="post" action="/users/resume" class="inline">
       <input type="hidden" name="csrf" value="${csrf}">
       <input type="hidden" name="user_id" value="${u.id}">
@@ -1467,7 +1467,7 @@ async function renderOutcomes(client) {
   const ofTotal = (n, d) => `<span class="dim small">${fmt(n)} מתוך ${fmt(d)}</span>`;
 
   const aHtml = !measuringSince
-    ? `<p class="dim">המדידה טרם התחילה — היא נפתחת ברגע שמישהו כותב לאולמה מעכשיו.</p>`
+    ? `<p class="dim">המדידה טרם התחילה — היא נפתחת ברגע שמישהו כותב לעולמה מעכשיו.</p>`
     : `<div class="stats">
         <div class="stat"><div class="num">${pct(agg[0].answered, agg[0].sent)}</div>
           <div class="lbl">ענו תוך יממה · ${HABIT_DAYS} ימים</div></div>
@@ -1478,7 +1478,7 @@ async function renderOutcomes(client) {
         <td class="num">${fmt(r.sent)}</td>
         <td class="num">${fmt(r.answered)}</td>
         <td class="num">${pct(r.answered, r.sent)}</td></tr>`).join('')}</table>
-      <p class="hint">"נענו" = האדם כתב לאולמה בתוך 24 שעות מרגע שההודעה יצאה. נספרות רק
+      <p class="hint">"נענו" = האדם כתב לעולמה בתוך 24 שעות מרגע שההודעה יצאה. נספרות רק
         הודעות שנשלחו מאז ${esc(String(measuringSince).slice(0, 16))} — לפני כן לא נשמר תיעוד
         של הודעות נכנסות, ולספור אותן היה מציג כל אחת מהן כאילו התעלמו ממנה.</p>`;
 
@@ -1526,7 +1526,7 @@ async function renderOutcomes(client) {
       <p class="hint">מתוך מונה המכסה, שסופר הודעות נכנסות מזמן. שורה אדומה = שבוע בלי מילה.
         אי אפשר עדיין להפריד "פנה מיוזמתו" מ"ענה להודעה שנשלחה אליו".</p>`;
 
-  return `<h4>א · ענו להודעות שאולמה שלחה</h4>${aHtml}
+  return `<h4>א · ענו להודעות שעולמה שלחה</h4>${aHtml}
     <h4>ב · משימות שנסגרו בזמן</h4>${bHtml}
     <h4>ג · תיקונים</h4>${cHtml}
     <h4>ד · הרגל</h4>${dHtml}`;
@@ -1902,7 +1902,7 @@ const STYLE = `<style>
 // real conversation continues in WhatsApp.
 function oauthResultPage(title, body) {
   return `<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>אולמה</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>עולמה</title>
 <style>body{font-family:system-ui,-apple-system,sans-serif;background:#12151a;color:#e6eaf0;
 display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:24px}
 .card{background:#1a1f27;padding:28px 32px;border-radius:12px;max-width:420px}
@@ -2025,14 +2025,14 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
             // commit, same rule as every card write.
             const { refreshUserCard } = require('../../intake/user-card');
             await refreshUserCard(pool, result.data.userId);
-            return page(200, 'תיבת המייל חוברה ✅', 'אולמה יכולה לחפש במיילים שלך כשתבקש — היא לא עוברת עליהם מיוזמתה, ולא יכולה לשלוח, להשיב או למחוק כלום. אפשר לחזור לוואטסאפ.');
+            return page(200, 'תיבת המייל חוברה ✅', 'עולמה יכולה לחפש במיילים שלך כשתבקש — היא לא עוברת עליהם מיוזמתה, ולא יכולה לשלוח, להשיב או למחוק כלום. אפשר לחזור לוואטסאפ.');
           }
           if (isContacts) {
             // Unlike calendar, connecting contacts changes nothing on the
             // card by itself — the address-book COUNT only moves once the
             // import tool actually runs (see contacts_connected below), so
             // there is no refreshUserCard call here.
-            return page(200, 'אנשי הקשר חוברו ✅', 'אולמה תייבא אותם עכשיו ותעדכן אותך בוואטסאפ כמה נשמרו. אפשר לחזור לשם.');
+            return page(200, 'אנשי הקשר חוברו ✅', 'עולמה תייבא אותם עכשיו ותעדכן אותך בוואטסאפ כמה נשמרו. אפשר לחזור לשם.');
           }
           // The card carries calendar state, and connecting happens HERE — an
           // HTTP route, not a tool — so brokerd's per-tool refresh never sees
@@ -2040,17 +2040,17 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
           const { refreshUserCard } = require('../../intake/user-card');
           await refreshUserCard(pool, result.data.userId);
           return page(200, 'היומן חובר ✅', result.data.accessLevel === 'read_write'
-            ? 'אולמה יכולה לראות את היומן שלך וגם להוסיף ולערוך אירועים. אפשר לחזור לוואטסאפ.'
-            : 'אולמה יכולה לראות את היומן שלך בלבד — היא לא תוכל לשנות בו דבר. אפשר לחזור לוואטסאפ.');
+            ? 'עולמה יכולה לראות את היומן שלך וגם להוסיף ולערוך אירועים. אפשר לחזור לוואטסאפ.'
+            : 'עולמה יכולה לראות את היומן שלך בלבד — היא לא תוכל לשנות בו דבר. אפשר לחזור לוואטסאפ.');
         }
         const reason = result.error && result.error.reason;
         if (reason === 'declined') return page(200, 'לא חובר', 'ביטלת את החיבור. אפשר לנסות שוב מתי שתרצה.');
-        if (reason === 'no_calendar_scope') return page(200, 'חסרה הרשאת יומן', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה ליומן, אז גוגל לא נתנה גישה ליומן. אולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של היומן לפני שלוחצים המשך.');
-        if (reason === 'no_mail_scope') return page(200, 'חסרה הרשאת מייל', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה למייל, אז גוגל לא נתנה גישה לתיבה. אולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של המייל לפני שלוחצים המשך.');
-        if (reason === 'no_contacts_scope') return page(200, 'חסרה הרשאת אנשי קשר', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה לאנשי קשר, אז גוגל לא נתנה גישה. אולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של אנשי הקשר לפני שלוחצים המשך.');
-        if (reason === 'no_scope_granted') return page(200, 'לא חובר כלום', 'במסך של גוגל לא סומנה אף תיבה, אז שום דבר לא חובר. אולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבות שרוצים לפני שלוחצים המשך.');
-        if (reason === 'bad_state') return page(400, 'הקישור פג', 'קישורי חיבור תקפים ל-15 דקות ולשימוש אחד. בקשי מאולמה קישור חדש.');
-        return page(400, 'משהו השתבש', 'החיבור לא הושלם. בקשי מאולמה קישור חדש.');
+        if (reason === 'no_calendar_scope') return page(200, 'חסרה הרשאת יומן', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה ליומן, אז גוגל לא נתנה גישה ליומן. עולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של היומן לפני שלוחצים המשך.');
+        if (reason === 'no_mail_scope') return page(200, 'חסרה הרשאת מייל', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה למייל, אז גוגל לא נתנה גישה לתיבה. עולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של המייל לפני שלוחצים המשך.');
+        if (reason === 'no_contacts_scope') return page(200, 'חסרה הרשאת אנשי קשר', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה לאנשי קשר, אז גוגל לא נתנה גישה. עולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של אנשי הקשר לפני שלוחצים המשך.');
+        if (reason === 'no_scope_granted') return page(200, 'לא חובר כלום', 'במסך של גוגל לא סומנה אף תיבה, אז שום דבר לא חובר. עולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבות שרוצים לפני שלוחצים המשך.');
+        if (reason === 'bad_state') return page(400, 'הקישור פג', 'קישורי חיבור תקפים ל-15 דקות ולשימוש אחד. בקשי מעולמה קישור חדש.');
+        return page(400, 'משהו השתבש', 'החיבור לא הושלם. בקשי מעולמה קישור חדש.');
       }
 
       // The availability picker — public like the OAuth callback and for the
@@ -2270,10 +2270,10 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
       res.end(`<!doctype html><html lang="he"><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
         <meta name="color-scheme" content="dark light">
-        <title>אולמה — לוח בקרה</title>${STYLE}</head>
+        <title>עולמה — לוח בקרה</title>${STYLE}</head>
         <body><header>
           <div class="brand"><span class="dot ${healthy ? '' : 'bad'}"></span>
-            <h1>אולמה — לוח בקרה</h1>
+            <h1>עולמה — לוח בקרה</h1>
             <span class="dim small">${healthy ? 'כל המערכות תקינות' : 'יש תקלה — ראה מצב המערכת'}</span>
           </div>
           <nav>${SECTIONS.map((s) => `<a href="${url.pathname === '/' ? '' : '/'}#${s.id}">${s.title}</a>`).join('')}</nav>

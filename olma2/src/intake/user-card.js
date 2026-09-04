@@ -63,12 +63,12 @@ function renderCard(user, prefs, facts = [], extras = {}) {
   if (user.last_name) lines.push(`Last name: ${user.last_name}`);
   lines.push(`Language: ${user.locale || 'he'}`);
   // Who the assistant is for THIS user — rendered only off the default.
-  // The default (אולמה, feminine register) is already the doctrine every
+  // The default (עולמה, feminine register) is already the doctrine every
   // agent carries, and repeating it on every turn for every user is cost.
   if (user.assistant_gender === 'male' || user.assistant_name) {
-    const personaName = user.assistant_name || 'אולמה';
+    const personaName = user.assistant_name || 'עולמה';
     lines.push(`Assistant persona: your name with them is "${personaName}"`
-      + (user.assistant_name ? ' — use it, never אולמה' : '')
+      + (user.assistant_name ? ' — use it, never עולמה' : '')
       + (user.assistant_gender === 'male'
         ? '; MASCULINE register — every self-referencing verb and adjective (אני בודק, שמח), no mixing'
         : ''));

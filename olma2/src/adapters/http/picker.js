@@ -45,7 +45,7 @@ p{color:var(--dim);font-size:14px;line-height:1.6;margin:0}`;
 function messagePage(title, body) {
   return `<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-<title>אולמה</title><style>${BASE_CSS}</style></head>
+<title>עולמה</title><style>${BASE_CSS}</style></head>
 <body><div class="card center"><h1>${esc(title)}</h1><p>${esc(body)}</p></div></body></html>`;
 }
 
@@ -406,11 +406,11 @@ function renderPicker(page, busy) {
 
   return `<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-<title>מתי נוח לך? — אולמה</title><style>${PAGE_CSS}</style></head><body><div class="card">
+<title>מתי נוח לך? — עולמה</title><style>${PAGE_CSS}</style></head><body><div class="card">
 <div class="meeting"><span class="mi">🗓</span><span class="mt">${esc(title)}</span></div>
 <h1>מתי נוח לך${viewerName ? `, ${esc(viewerName)}` : ''}?</h1>
-<p class="sub">סמנו כמה אפשרויות שנוח לכם — אולמה תמצא מה מתאים לכולם.</p>
-<noscript><p>הדף הזה צריך JavaScript כדי לעבוד. אפשר פשוט לכתוב לאולמה בוואטסאפ מתי נוח לך — זה עובד בדיוק אותו דבר.</p></noscript>
+<p class="sub">סמנו כמה אפשרויות שנוח לכם — עולמה תמצא מה מתאים לכולם.</p>
+<noscript><p>הדף הזה צריך JavaScript כדי לעבוד. אפשר פשוט לכתוב לעולמה בוואטסאפ מתי נוח לך — זה עובד בדיוק אותו דבר.</p></noscript>
 <div class="others"></div>
 <h2>בחירת תאריך או טווח</h2>
 <div class="months"></div>
@@ -474,14 +474,14 @@ function readForm(req) {
 function deadLinkPage(res, error) {
   if (error.reason === 'expired') {
     res.writeHead(410, headers());
-    return res.end(messagePage('הקישור פג', 'קישורי סימון תקפים לשבוע. אפשר לבקש מאולמה קישור חדש בוואטסאפ.'));
+    return res.end(messagePage('הקישור פג', 'קישורי סימון תקפים לשבוע. אפשר לבקש מעולמה קישור חדש בוואטסאפ.'));
   }
   if (error.reason === 'closed') {
     res.writeHead(410, headers());
-    return res.end(messagePage('התיאום הסתיים', 'הפגישה הזו כבר לא בשלב איסוף זמינות. אם משהו השתנה — אולמה בוואטסאפ.'));
+    return res.end(messagePage('התיאום הסתיים', 'הפגישה הזו כבר לא בשלב איסוף זמינות. אם משהו השתנה — עולמה בוואטסאפ.'));
   }
   res.writeHead(404, headers());
-  return res.end(messagePage('הקישור לא נמצא', 'ייתכן שהקישור שגוי או נמחק. אפשר לבקש מאולמה קישור חדש.'));
+  return res.end(messagePage('הקישור לא נמצא', 'ייתכן שהקישור שגוי או נמחק. אפשר לבקש מעולמה קישור חדש.'));
 }
 
 async function handle(req, res, pool, token, opts = {}) {
@@ -508,7 +508,7 @@ async function handle(req, res, pool, token, opts = {}) {
     res.writeHead(200, headers());
     const saved = result.data.saved === 1 ? 'אופציה אחת נשמרה' : `${result.data.saved} אופציות נשמרו`;
     return res.end(messagePage('נשלח ✓',
-      `${saved}. אולמה תמשיך את התיאום בוואטסאפ — אפשר לסגור את הדף.`));
+      `${saved}. עולמה תמשיך את התיאום בוואטסאפ — אפשר לסגור את הדף.`));
   }
   res.writeHead(405, headers({ Allow: 'GET, POST' }));
   return res.end(messagePage('שגיאה', 'הפעולה לא נתמכת.'));
