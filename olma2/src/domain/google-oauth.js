@@ -274,7 +274,7 @@ async function peopleFetch(token, path, { budget = createBudget(), fetchImpl, ..
 }
 
 module.exports = {
-  SCOPES, CONTACTS_SCOPE, STATE_TTL_MS, REDIRECT_PATH, TOTAL_HTTP_BUDGET_MS, GoogleError,
+  SCOPES, CONTACTS_SCOPE, EMAIL_SCOPE, STATE_TTL_MS, REDIRECT_PATH, TOTAL_HTTP_BUDGET_MS, GoogleError,
   isConfigured, clientConfig, redirectUri, newState, buildConsentUrl, consentUrl, contactsConsentUrl,
   exchangeCode, refreshAccessToken, revoke, whoAmI, calendarFetch, peopleFetch, createBudget,
 };

@@ -27,6 +27,7 @@ const pauseDomain = require('../../domain/pause');
 const sessionIndex = require('../../channels/sessions');
 const evalsJob = require('../../jobs/evals');
 const picker = require('./picker');
+const userDashboard = require('./user-dashboard');
 // /ready's whole test. brokerd beats immediately on boot and then every 60s,
 // so three intervals is generous enough that an ordinary slow tick under load
 // never fails a deploy, and tight enough that a daemon which died on boot
@@ -805,6 +806,7 @@ const KIND_LABELS = {
   contacts_connected: 'אנשי קשר חוברו',
   contacts_scope_missing: 'חיבור אנשי קשר בלי הרשאה — צריך שוב',
   contacts_needs_reauth: 'צריך לחבר אנשי קשר מחדש',
+  google_connect_incomplete: 'חיבור גוגל משולב — חלק לא אושר',
 };
 
 // Why a proactive message was chosen — the checkin ladder's rung.
@@ -1912,10 +1914,11 @@ h1{font-size:18px;margin:0 0 8px;font-weight:600}p{color:#8b95a5;font-size:14px;
 // openclaw.json instead of the live gateway's. calendarDomain/googleOpts are
 // injectable so the OAuth flow can be tested without network access — and are
 // required lazily, so a box with no /opt/olma still starts a dashboard.
-function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomain, googleContactsDomain, mailDomain, googleOpts, gatewayCheck, gatewayCacheMs }) {
+function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomain, googleContactsDomain, mailDomain, googleConnectDomain, googleOpts, gatewayCheck, gatewayCacheMs }) {
   const calendar = () => calendarDomain || require('../../domain/calendar');
   const googleContacts = () => googleContactsDomain || require('../../domain/google-contacts');
   const mail = () => mailDomain || require('../../domain/mail');
+  const googleConnect = () => googleConnectDomain || require('../../domain/google-connect');
 
   // Injectable so a test states the gateway's condition instead of inheriting
   // whatever is running on the machine — the suite runs ON the production box
@@ -1979,10 +1982,11 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         // land on one callback, and a nested ternary is how a route like this
         // stops being readable. Anything unrecognised still falls through to
         // calendar's own bad_state answer, exactly as before.
-        const flowFor = { google_contacts: googleContacts, gmail: mail };
+        const flowFor = { google_contacts: googleContacts, gmail: mail, google_connect: googleConnect };
         const flow = flowFor[provider] || calendar;
         const isContacts = provider === 'google_contacts';
         const isMail = provider === 'gmail';
+        const isConnect = provider === 'google_connect';
         let result;
         try {
           result = await withTx(pool, (client) => flow().completeOAuth(client, {
@@ -1997,6 +2001,23 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
           res.end(oauthResultPage(title, body));
         };
         if (result.ok) {
+          if (isConnect) {
+            // Same card rule as calendar/mail below — connecting calendar or
+            // mail here happens over HTTP, outside any tool call, so
+            // brokerd's per-tool card refresh never sees it.
+            if (result.data.connected.calendar || result.data.connected.mail) {
+              const { refreshUserCard } = require('../../intake/user-card');
+              await refreshUserCard(pool, result.data.userId);
+            }
+            const got = result.data.connectedLabel || [];
+            const missingHe = { calendar: 'יומן', contacts: 'אנשי קשר', mail: 'מייל' };
+            const missed = (result.data.missing || []).map((k) => missingHe[k] || k);
+            const gotLine = got.length ? `חובר: ${got.join(', ')}.` : '';
+            const missLine = missed.length
+              ? ` לא סומן בגוגל ולכן לא חובר: ${missed.join(', ')} — אפשר לבקש קישור חדש ולסמן גם את זה.`
+              : '';
+            return page(200, 'החיבור לגוגל הושלם ✅', `${gotLine}${missLine} אפשר לחזור לוואטסאפ.`.trim());
+          }
           if (isMail) {
             // The card carries mail state (the agent reads it every turn),
             // and connecting happens HERE — an HTTP route, not a tool — so
@@ -2027,6 +2048,7 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         if (reason === 'no_calendar_scope') return page(200, 'חסרה הרשאת יומן', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה ליומן, אז גוגל לא נתנה גישה ליומן. אולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של היומן לפני שלוחצים המשך.');
         if (reason === 'no_mail_scope') return page(200, 'חסרה הרשאת מייל', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה למייל, אז גוגל לא נתנה גישה לתיבה. אולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של המייל לפני שלוחצים המשך.');
         if (reason === 'no_contacts_scope') return page(200, 'חסרה הרשאת אנשי קשר', 'במסך של גוגל לא סומנה תיבת הסימון ליד ההרשאה לאנשי קשר, אז גוגל לא נתנה גישה. אולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבה של אנשי הקשר לפני שלוחצים המשך.');
+        if (reason === 'no_scope_granted') return page(200, 'לא חובר כלום', 'במסך של גוגל לא סומנה אף תיבה, אז שום דבר לא חובר. אולמה תשלח לך קישור חדש בוואטסאפ — הפעם סמני את התיבות שרוצים לפני שלוחצים המשך.');
         if (reason === 'bad_state') return page(400, 'הקישור פג', 'קישורי חיבור תקפים ל-15 דקות ולשימוש אחד. בקשי מאולמה קישור חדש.');
         return page(400, 'משהו השתבש', 'החיבור לא הושלם. בקשי מאולמה קישור חדש.');
       }
@@ -2038,6 +2060,17 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
       const pick = parsed.pathname.match(picker.TOKEN_RE);
       if (pick) {
         return picker.handle(req, res, pool, pick[1], { calendarDomain });
+      }
+
+      // The PERSONAL dashboard — the page a user opens about themselves, as
+      // opposed to everything below this line, which is the operator's page
+      // about everybody. Ahead of Basic Auth for the same reason as the two
+      // routes above it: the person taps it from WhatsApp on their phone and
+      // has no admin password. It carries its own identity model (a one-time
+      // link exchanged for a session cookie; domain/dashboard-auth.js), and
+      // every route inside it refuses without one.
+      if (userDashboard.matches(parsed.pathname)) {
+        return userDashboard.handle(req, res, pool, parsed.pathname);
       }
 
       // Unauthenticated READINESS probe, for the deploy gate specifically —
