@@ -52,8 +52,7 @@ const { enqueue } = require('../../outbox/enqueue');
 const meetingFanout = require('../../domain/meeting-fanout');
 const {
   actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept,
-  meetingCalendarFanout, calendarRoleFor, cancelCalendarCleanup, calendarHintFor,
-  meetingBrief, CANCEL_CLEANUP_HINTS,
+  cancelCalendarCleanup, meetingBrief, CANCEL_CLEANUP_HINTS,
 } = meetingFanout;
 
 const S = (type, description, extra) => ({ type, description, ...(extra || {}) });

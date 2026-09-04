@@ -26,7 +26,6 @@ const calendar = require('../src/domain/calendar');
 const contacts = require('../src/domain/contacts');
 
 let db, user, server, base;
-const AUTH = 'Basic ' + Buffer.from('admin:test-password-123').toString('base64');
 
 function fakeFetch(routes) {
   const calls = [];
