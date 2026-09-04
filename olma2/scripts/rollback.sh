@@ -34,7 +34,14 @@ SERVER="root@157.230.210.233"
 DEST="${OLMA_DEST_DIR:-/opt/olma2}"
 ARCHIVE="${OLMA_RELEASES_DIR:-/opt/olma2-releases}"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
-SSH="ssh -i $SSH_KEY"
+# The same keepalive deploy.sh carries, and the same numbers deliberately —
+# see the reasoning there. This script runs a restart and a health check over
+# one long-lived connection too, and it was left on a bare `ssh` when deploy.sh
+# was fixed. A rollback whose transport dies halfway is strictly worse than a
+# deploy doing it: it is the thing you reach for when production is already
+# wrong, and an orphaned remote process competing for the droplet's one core is
+# the last thing that moment needs.
+SSH="ssh -i $SSH_KEY -o ServerAliveInterval=15 -o ServerAliveCountMax=6"
 
 MODE=""
 TARGET=""
