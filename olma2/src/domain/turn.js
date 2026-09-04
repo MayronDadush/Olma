@@ -37,6 +37,7 @@
 const quota = require('./quota');
 const audit = require('./audit');
 const flags = require('./flags');
+const selfInitiated = require('./self-initiated');
 
 // Rollout control. Absent/empty = off everywhere, so deploying this changes
 // nothing until someone turns it on: a fix for an invisible defect must not
@@ -60,6 +61,18 @@ async function isEnabledFor(client, user) {
 // tell `turn_start` not to count the same message twice if the model gets
 // around to calling it later in the turn.
 async function openTurnImplicitly(client, user, { firstTool } = {}) {
+  // A turn Olma started is not a message from the person, and the recovery
+  // path has to know that as surely as turn_start does — a delivery turn whose
+  // model reached for a tool before turn_start would otherwise write the whole
+  // inbound record here instead, which is the same bug through the other door.
+  // Nothing is recovered and nothing is counted; the caller is told the turn is
+  // open so it is not re-opened, and that this message was not counted so a
+  // later turn_start does not think it was.
+  if (selfInitiated.isActive(user.id)) {
+    await audit.record(client, user.id, 'turn.opened_implicitly',
+      { firstTool: firstTool || null, selfInitiated: true });
+    return { counted: false, quota: null, firstTurn: false };
+  }
   // Identical to turn_start's own statement. A person writing is active, and
   // a check-in ladder that had backed off should reset on real activity —
   // both are true regardless of which tool the model reached for.

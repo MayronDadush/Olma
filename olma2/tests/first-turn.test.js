@@ -166,7 +166,14 @@ test('the opening copy is exactly what the owner wrote', () => {
   // first thing every new person will ever read — which is a decision, not a
   // refactor, so it should cost a deliberate update to this test.
   assert.equal(onboarding.OPENING.he.split('\n').length, 4, 'four lines');
-  assert.ok(onboarding.OPENING.he.startsWith('היי, אני אולמה \u{1F44B}'));
+  assert.equal(onboarding.OPENING.he.split('\n')[1], '',
+    'the greeting stands on its own line — revision 2, read on a real phone');
+  assert.equal(onboarding.OPENING.en.split('\n')[1], '');
+  assert.ok(onboarding.OPENING.he.startsWith('היי, אני עולמה \u{1F44B}'));
+  for (const copy of [onboarding.OPENING.he, onboarding.OPENING.en]) {
+    assert.doesNotMatch(copy, /ברוכים הבאים|Welcome to your world/,
+      'the welcome-to-your-world line was cut in revision 2');
+  }
   assert.ok(onboarding.OPENING.he.endsWith('אני אעשה לכם סדר ☺️'));
   assert.ok(onboarding.OPENING.en.startsWith("Hey! I'm Allma \u{1F44B}"));
   assert.ok(onboarding.OPENING.en.endsWith('keep you organized ☺️'));
@@ -200,4 +207,47 @@ test('the doctrine still fits the gateway budget after this change', () => {
   assert.ok(rendered.length <= 39250,
     `doctrine is ${rendered.length} chars; the onboarding instruction belongs in the `
     + 'turn_start result precisely so it does not land here');
+});
+
+// The beat after the opening (2026-09-04). The cold start read well right up
+// to "מירון, נעים להכיר ☺️ אני פה לכל מה שתצטרך" and then stopped dead: the
+// person has introduced themselves and has no idea what to do next. The
+// opening copy deliberately asks nothing, so this is the only moment left to
+// invite them in — and the tool that knows the moment has arrived is the one
+// that just took their name.
+async function call(user, name, args) {
+  const res = await broker.dispatch(
+    { id: 1, method: 'tool_call',
+      params: { name, args: { olma_identity: user.identity_token, ...args } } },
+    { opened: true, counted: true });
+  assert.equal(res.ok, true, res.text);
+  return JSON.parse(res.text.replace(/^OK /, ''));
+}
+
+test('confirming a name on an empty list invites them to dump everything', async () => {
+  const u = await makeUser(db.pool, '+972611003008', { firstName: null });
+  const out = await call(u, 'set_my_name', { first_name: 'מירון', confirmed: true });
+  assert.equal(out.user.first_name, 'מירון');
+  assert.match(out.nextStep, /invite them/i);
+  assert.match(out.nextStep, /tasks|plate/i);
+  assert.match(out.nextStep, /voice note/i, 'the opening promised voice — this repeats the offer');
+  assert.match(out.nextStep, /no categories|messy|unsorted/i,
+    'dumping, not filling in a form');
+});
+
+test('a name merely observed does not trigger the invitation', async () => {
+  // The WhatsApp display name arrives on every turn as an unconfirmed guess.
+  // Inviting someone to pour their life out because we read their profile is
+  // not the same moment at all.
+  const u = await makeUser(db.pool, '+972611003009', { firstName: null });
+  const out = await call(u, 'set_my_name', { first_name: 'M&M', confirmed: false });
+  assert.equal(out.nextStep, undefined);
+});
+
+test('someone who already has a list is not invited to start one', async () => {
+  const u = await makeUser(db.pool, '+972611003010', { firstName: null });
+  await call(u, 'add_task', { title: 'לשלם שכר דירה' });
+  const out = await call(u, 'set_my_name', { first_name: 'ותיקה', confirmed: true });
+  assert.equal(out.nextStep, undefined,
+    'a month-old user who only now confirms their name is not a new user');
 });

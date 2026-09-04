@@ -154,6 +154,13 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **"What is still pending" must ask `attempts = 0`**, not `sent_at IS NULL` —
   since the escalation ladder, a delivered row sits with `sent_at` NULL for up
   to a day.
+- **A turn Olma started is not a message from the person.** `--deliver` reaches
+  the agent on the person's own agent and session key, so nothing in the MCP
+  call distinguishes it from typing — `domain/self-initiated.js` marks it and
+  `turn_start` must honour that mark. Unmarked, it moved `last_inbound_at`
+  (killing `isDeafOnDayOne`), reset `checkin_misses` (killing the check-in
+  backoff), wrote `message.received` (the response-rate numerator counted our
+  own sends as replies) and spent the once-per-life first-turn signal.
 - **The ledgers are append-only.** Rows already written stay as written, even
   when the pricing that produced them was wrong.
 

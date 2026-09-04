@@ -19,13 +19,16 @@
 // guess. Anything that is not Hebrew gets English: those are the two locales
 // the product actually ships, and a missing translation must fall back to a
 // real message rather than to an empty one.
+// Second revision, 2026-09-04, after reading the first one on a real phone:
+// the "welcome to your world" line went, and the greeting got a blank line
+// under it so the name lands on its own before the two lines of substance.
 const OPENING = {
-  he: 'היי, אני אולמה 👋\n'
-    + 'וברוכים הבאים לעולם שלכם.\n'
+  he: 'היי, אני עולמה 👋\n'
+    + '\n'
     + 'אני כאן כדי לעזור לכם עם משימות, תזכורות ותיאומים מול האנשים שחשובים לכם.\n'
     + 'אפשר לכתוב, להקליט או פשוט לשלוח הכל בבלגן — אני אעשה לכם סדר ☺️',
   en: "Hey! I'm Allma \u{1F44B}\n"
-    + 'Welcome to your world.\n'
+    + '\n'
     + 'I’m here to help you manage tasks, set reminders, and schedule with the '
     + 'people who matter most.\n'
     + 'Text me, send a voice message, or just throw everything at me — '

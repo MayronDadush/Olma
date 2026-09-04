@@ -7,6 +7,7 @@
 // to text happens in render.js, never here.
 const users = require('../../domain/users');
 const onboardingDomain = require('../../domain/onboarding');
+const selfInitiated = require('../../domain/self-initiated');
 const tasks = require('../../domain/tasks');
 const reminders = require('../../domain/reminders');
 const preferences = require('../../domain/preferences');
@@ -228,7 +229,16 @@ const TOOLS = [
       // on a 1-vCPU box every query here is latency a person is sitting
       // through. `last_inbound_at` is NULL only until someone's first ever
       // message, which makes it the cheapest honest first-turn signal we have.
-      const opened = await client.query(
+      //
+      // ...unless WE started this turn. An outbox delivery reaches the agent
+      // through the same agent and session key as a typed message, so every
+      // statement below would otherwise assert that somebody wrote to us on a
+      // turn where Olma is the one talking. domain/self-initiated.js lists
+      // what that cost; the shortest version is that the day-one ladder spent
+      // this person's welcome on its own check-in, fifteen minutes before they
+      // said anything.
+      const ourTurn = selfInitiated.isActive(user.id);
+      const opened = ourTurn ? { rowCount: 0, rows: [] } : await client.query(
         `UPDATE users u SET last_inbound_at = now(),
                 checkin_misses = CASE WHEN u.checkin_misses > 0 THEN 0 ELSE u.checkin_misses END
            FROM users prev
@@ -247,7 +257,10 @@ const TOOLS = [
       // budget is still spent, and a blocked user's rows wait for the
       // unblock summary — waking either would be overriding the gate, not
       // re-asking it.
-      await client.query(
+      // Skipped on our own turn for the same reason: "they are awake" is a
+      // claim about the person, and a delivery is evidence only that we sent
+      // something.
+      if (!ourTurn) await client.query(
         `UPDATE outbox SET release_after = now()
           WHERE user_id = $1 AND sent_at IS NULL AND hold_reason = 'night'
             AND release_after > now()`, [user.id]);
@@ -298,7 +311,13 @@ const TOOLS = [
       // quota twice and double the north-star denominator. The recovery's
       // verdict stands; this call just reads it back.
       const alreadyCounted = Boolean(ctx && ctx.turn && ctx.turn.counted);
-      const counted = alreadyCounted ? ctx.turn.quota : await quota.countMessage(client, user.id);
+      // Our own turn is not one of their messages, so it neither spends their
+      // daily allowance nor can be blocked by it: the delivery gate already
+      // decided this message goes out, and re-asking the user's quota here
+      // would let a person near their cap silence the check-in we chose to
+      // send. The worker keeps its own daily budget for that (outbox/worker).
+      const counted = ourTurn ? { data: { blocked: false } }
+        : alreadyCounted ? ctx.turn.quota : await quota.countMessage(client, user.id);
       // One row per inbound message, purely so the north-star metric can exist.
       // `last_inbound_at` above is overwritten every time, so before this there
       // was no way to ask "did they answer the message we sent them" — the
@@ -307,7 +326,7 @@ const TOOLS = [
       // retention sweep like every other operational row.
       // Skipped when the recovery path already wrote it: one message, one row,
       // or the response-rate metric silently counts this person twice.
-      if (!alreadyCounted) await audit.record(client, user.id, 'message.received', null);
+      if (!alreadyCounted && !ourTurn) await audit.record(client, user.id, 'message.received', null);
       // Reminders now go out on the raw pipe (channels/openclaw.js), which
       // never touches this person's session history — so a bare reply like
       // "סיימתי" would otherwise reach an agent that has no idea a reminder
@@ -416,8 +435,34 @@ const TOOLS = [
       last_name: S('string', 'Last name (optional)'),
       confirmed: S('boolean', 'TRUE only when they stated it themselves. Default FALSE.'),
     }, ['first_name'],
-    (client, user, a) => users.setName(client, user.id, a.first_name, a.last_name,
-      { confirmed: a.confirmed === true, source: a.confirmed === true ? 'user_stated' : 'observed' })),
+    async (client, user, a) => {
+      const res = await users.setName(client, user.id, a.first_name, a.last_name,
+        { confirmed: a.confirmed === true, source: a.confirmed === true ? 'user_stated' : 'observed' });
+      if (!res.ok || a.confirmed !== true) return res;
+      // The beat the onboarding was missing. Walking a cold start on a real
+      // phone (2026-09-04) ended at "מירון, נעים להכיר ☺️ אני פה לכל מה
+      // שתצטרך" — warm, and a dead end: the person has just introduced
+      // themselves and has no idea what to say next, so they say nothing.
+      // The opening message deliberately asks nothing (one question per reply,
+      // and brand copy is not the place for it), which leaves exactly one
+      // moment to make the ask, and it is this one.
+      //
+      // Conditional on their list actually being empty, so it fires for
+      // someone with nothing yet and never nags a person who has already been
+      // using Olma for a month and only now confirmed their name. Rides in the
+      // result, not in the doctrine, for the budget reason at turn_start's
+      // return: 39249 of 39250 chars are spent.
+      const { rows } = await client.query(
+        `SELECT EXISTS (SELECT 1 FROM tasks WHERE owner_id = $1) AS has_tasks`, [user.id]);
+      if (rows[0].has_tasks) return res;
+      return ok({ ...res.data,
+        nextStep: 'They have just told you their name and their list is still empty. '
+          + 'Greet them by it in one short line, then — in the same reply — invite them '
+          + 'to pour out whatever is on their plate: tasks, things to remember, people to '
+          + 'get back to, as messy and unsorted as they like, by text or voice note. Make '
+          + 'it feel like dumping, not like filling a form: no categories, no examples '
+          + 'list, no questions to answer first. One invitation, warm, and then stop.' });
+    }),
   // The tools that did not exist when a user asked to stop and Olma, having
   // nothing to call, simply said goodbye and messaged him again the next
   // morning. Pausing is reversible and deletes nothing — see domain/pause.js.

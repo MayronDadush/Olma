@@ -38,6 +38,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Delivery, outbox and proactive messages**
 
+- [Olma's own check-in counted as the user writing back (fixed 2026-09-04)](#olmas-own-check-in-counted-as-the-user-writing-back-fixed-2026-09-04)
 - [A notification that reported success and never arrived (2026-08-14)](#a-notification-that-reported-success-and-never-arrived-2026-08-14)
 - [`--deliver` needs the agent AND the session key, not either (2026-08-14)](#--deliver-needs-the-agent-and-the-session-key-not-either-2026-08-14)
 - [Reminders that come back, and cadences that could not be said (2026-08-29)](#reminders-that-come-back-and-cadences-that-could-not-be-said-2026-08-29)
@@ -970,6 +971,70 @@ answer for itself.
 
 
 ## Delivery, outbox and proactive messages
+
+### Olma's own check-in counted as the user writing back (fixed 2026-09-04)
+
+**A turn Olma started is not a message from the person.** Found by walking a
+cold start on the owner's own account with `scripts/user-testbed.js`, which is
+the only reason it was ever seen: the symptom that made it visible was an
+onboarding oddity, and the three real costs were all invisible numbers.
+
+What he reported was that his welcome arrived *before* he wrote anything, and
+that his actual first message got an ordinary greeting instead. The trace
+(`scripts/turn-trace.js id:19`) laid it out exactly:
+
+```
+TURN 4  13:11:23Z  "DELIVERY: whatever you say in this turn is automatica…"
+   +4.65s  tool <-  olma__turn_start   OK {"directive":"proceed","firstTurn":true,"onboarding"…
+   +9.49s  reply    "היי, אני אולמה 👋 וברוכים הבאים לעולם שלכם…"
+
+TURN 5  13:11:56Z  "היי"                     ← the human, 33 seconds later
+   +9.23s  tool <-  olma__turn_start   OK {"directive":"proceed","locale":"he"}
+   +14.04s reply    "היי ☺️ M&M, זה השם שלך? איך קוראים לך?"
+```
+
+Turn 4 is the `onboarding_15m` rung of the day-one ladder — Olma talking to
+itself, fifteen minutes after provisioning. It runs as `openclaw agent
+--deliver` **on the person's own agent and their own session key**, which is
+deliberate (see "`--deliver` needs the agent AND the session key"). The
+consequence nobody had drawn: from inside the MCP call there is *nothing* that
+distinguishes it from a message the person typed. `turn_start` ran, saw
+`last_inbound_at IS NULL`, concluded "first ever message", and handed over the
+welcome — to a turn the user had no part in.
+
+The onboarding was the loud part. The quiet parts, all from the same wrong bit:
+
+- **`last_inbound_at` moved on our own send**, so `isDeafOnDayOne` — which asks
+  whether they answered — could never return true. The day-one ladder's one
+  protection against nagging a silent person had been dead since it was
+  written.
+- **`checkin_misses` was reset to 0** by the very check-in it was counting, so
+  "every unanswered check-in doubles the wait" never doubled anything.
+- **`message.received` was recorded**, and that row is the north-star
+  numerator. The response-rate metric had been counting every check-in as its
+  own reply.
+- and the person's daily quota was charged for messages Olma sent them.
+
+Note the shape (`CLAUDE.md`, "Recurring failure shapes"): a flag the writer
+sets and the reader ignores — except here the reader was right and the
+*writer* was lying, in four places at once, for months, with every dashboard
+green.
+
+**The fix is a bit only the code spawning the turn can know**, so that is where
+it is set: `domain/self-initiated.js` marks a user for exactly the lifetime of
+a turn we spawn, and `turn_start` and the `openTurnImplicitly` recovery both
+skip the inbound bookkeeping while it is held. In-process rather than a column,
+because the outbox worker and the tool handlers are the same brokerd process —
+no migration, and a restart (which kills any in-flight delivery anyway) cannot
+leave a stale mark. Depth-counted, because two deliveries for one person can
+overlap and the first to finish must not clear the second's mark; released in a
+`finally`, because a leaked mark would make every later message from that
+person invisible to the record, which is worse than the bug being fixed.
+
+`tests/self-initiated-turns.test.js` covers it, and each behavioural test was
+watched go red with the guard disabled — including the quota one, which passed
+for the wrong reason on its first draft and was rewritten to prove the block
+first.
 
 ### A notification that reported success and never arrived (2026-08-14)
 

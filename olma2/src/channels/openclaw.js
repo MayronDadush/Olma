@@ -10,6 +10,7 @@
 // record real success/failure into outbox.attempts — no more fire-and-forget.
 const { spawn } = require('node:child_process');
 const usersDomain = require('../domain/users');
+const selfInitiated = require('../domain/self-initiated');
 const proactiveText = require('../domain/proactive-text');
 
 const SEND_TIMEOUT_MS = 120_000;
@@ -341,10 +342,17 @@ function abortSessionLane({ agentId, key }) {
 // often keeps re-sending its own past prompts as context — measured on the
 // fact-extraction job's first two runs, 14k chars then 24k, growing every time.
 // A caller that wants a clean room each run passes its own key.
-function runSilentAgentTurn({ agentId, message, sessionKey }) {
+// `userId` is optional and exists only to mark the turn as ours. A silent turn
+// sends nothing, but the agent inside it still calls tools, and a tool call is
+// all it takes for brokerd's recovery to open a turn and write the inbound
+// record (see domain/turn.js). Pass it whenever the caller knows whose agent
+// this is; without it the turn is unmarked, which is the behaviour that was
+// wrong everywhere else.
+function runSilentAgentTurn({ agentId, message, sessionKey, userId }) {
   const args = ['agent', '--agent', agentId, '--message', message];
   if (sessionKey) args.push('--session-key', sessionKey);
-  return runOpenclaw(args);
+  if (userId == null) return runOpenclaw(args);
+  return selfInitiated.around(userId, () => runOpenclaw(args));
 }
 
 // deliver(row) for the outbox worker. Needs a fresh client only for the
@@ -394,14 +402,23 @@ function makeDeliverer(pool) {
     // failed attempts with onboarded_at still NULL, receiving nothing from v2
     // at all. --agent keeps the turn on their own agent, so the v1 lesson
     // about --to running on the default agent does not apply here.
-    return runOpenclaw([
+    // Marked for the turn's whole life: this is Olma talking, not the person.
+    // `turn_start` runs inside it and would otherwise write the inbound record
+    // — moving last_inbound_at, resetting the check-in backoff, and spending
+    // the first-turn signal — for a message nobody sent. See
+    // domain/self-initiated.js for the four things that cost.
+    //
+    // The mark covers exactly the child's lifetime rather than a guessed
+    // window, because the await below IS the turn: no timeout to tune, and
+    // nothing left set after it returns.
+    return selfInitiated.around(row.user_id, () => runOpenclaw([
       'agent', '--agent', agentId,
       '--session-key', sessionKey,
       '--channel', channel.channel_type,
       '--to', channel.channel_identifier,
       '--message', instructionFor(row),
       '--deliver',
-    ]);
+    ]));
   };
 }
 
