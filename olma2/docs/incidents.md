@@ -107,6 +107,7 @@ never trust a dated narrative for something you are about to act on.
 - [Availability is tapped on a page, not typed (2026-08-28)](#availability-is-tapped-on-a-page-not-typed-2026-08-28)
 
 **Features as they shipped**
+- [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
 - [A 👍 is the answer; the sentence after it is a second notification (2026-09-05)](#a--is-the-answer-the-sentence-after-it-is-a-second-notification-2026-09-05)
 
 - [Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)](#live-updates--עדכן-אותי-על-as-infrastructure-2026-08-28)
@@ -3055,6 +3056,30 @@ immediately before the merge, not once at the start.
 
 
 ## Features as they shipped
+
+### The reply's first six seconds were bookkeeping (2026-09-05)
+
+Measured over 357 real replies (transcripts, 2026-09-05): the whole reply took
+20 s at the median and 50 s at the 90th percentile; 63% of it was model time,
+in two calls of ~6.4 s each on a 27k-token prompt; tools took under a second.
+The first call was `turn_start` alone — ~6.5 s in, ~50 tokens out — so every
+person waited a third of every reply for the system to be told they had
+written. The tool schema was never the lever; the extra round trip was.
+
+Phase A (this entry): the gateway's internal hook `message:received`
+(`docs/automation/hooks.md`) fires on every accepted inbound message with the
+session key and message id and nothing we need the text for. A hook in
+`gateway-hooks/olma-turn-open` writes one `turn_open` line to brokerd's
+socket; brokerd resolves the user by agent id, runs the record side that
+`turn_start` and the implicit opener already shared (`domain/turn.openRecord`),
+puts the 👀 (or 👂) on the message immediately, and holds the open in memory
+for ten minutes. The shim connection's first tool call — `turn_start` or any
+other — adopts it: no second count, the marks land on the real id, and a turn
+Olma started is skipped exactly as before. `config_guard` reports the hook
+missing or disabled as a dashboard row. Hooks load at gateway startup, so
+enabling needs one restart. Phase B (the model stops calling `turn_start`,
+hints move to USER.md and the doctrine) and Phase C (the tool leaves the
+schema) are in `~/.claude/plans/olma-no-turn-start.md`.
 
 ### A 👍 is the answer; the sentence after it is a second notification (2026-09-05)
 

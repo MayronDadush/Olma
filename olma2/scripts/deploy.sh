@@ -93,6 +93,12 @@ rsync -az --delete \
   -e "$SSH" \
   "$SRC_DIR/" "$SERVER:$DEST/"
 
+# The gateway's internal hooks live under the OpenClaw state dir, not under
+# /opt/olma2 — gateway-hooks/ is their source of record and this keeps the
+# two identical. Hooks load at gateway STARTUP; a changed handler takes effect
+# on the next gateway restart, which this deploy deliberately does not do.
+rsync -az --delete -e "$SSH" "$SRC_DIR/gateway-hooks/" "$SERVER:/root/.openclaw/hooks/"
+
 # What that snapshot actually CONTAINS, written into the live tree right after
 # the sync. It rides into the archive on the next deploy, which is the only way
 # a dated directory becomes an identifiable release rather than a timestamp.

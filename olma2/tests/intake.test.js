@@ -24,6 +24,7 @@ function baseConfig() {
       list: [{ id: 'intake', workspace: '/x/intake', agentDir: '/x/intake-agent' }],
       defaults: { heartbeat: { every: '0m', target: 'none' } },
     },
+    hooks: { internal: { enabled: true, entries: { 'olma-turn-open': { enabled: true } } } },
     bindings: [],
     tools: { fs: { workspaceOnly: true }, alsoAllow: ['read', 'write'] },
     mcp: { servers: { olma: { command: 'node', args: ['shim.js'] } } },
@@ -626,6 +627,20 @@ test('config guard: a multi-agent roster with no ambient owner is a violation', 
 // them a 33k-token turn answered NO_REPLY. Nothing of ours rides on the
 // gateway's heartbeat (every sweep is a brokerd job), and it is the road one
 // agent's brunch reminder once took into a different user's chat.
+test('config guard: the turn-open hook must be enabled', () => {
+  const cfg = baseConfig();
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
+  delete cfg.hooks;
+  let v = guard.checkOpenclawConfig(cfg);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /olma-turn-open is not enabled/);
+  assert.match(v[0], /enable-turn-open-hook/, 'says how to fix it');
+  cfg.hooks = { internal: { enabled: true, entries: { 'olma-turn-open': { enabled: false } } } };
+  assert.match(guard.checkOpenclawConfig(cfg)[0], /olma-turn-open/);
+  cfg.hooks = { internal: { enabled: false, entries: { 'olma-turn-open': { enabled: true } } } };
+  assert.match(guard.checkOpenclawConfig(cfg)[0], /olma-turn-open/, 'the master switch off is the same failure');
+});
+
 test('config guard: the gateway heartbeat must be explicitly off', () => {
   const cfg = baseConfig();
   assert.deepEqual(guard.checkOpenclawConfig(cfg), []);

@@ -41,6 +41,48 @@ async function isEnabledFor(client, user) {
 // have done to the CONVERSATION. Returns what was recovered so the caller can
 // tell `turn_start` not to count the same message twice if the model gets
 // around to calling it later in the turn.
+// The record side of "a person just wrote to us", shared by every opener:
+// last_inbound_at, the check-in backoff reset, night-held rows re-heard,
+// the quota count, the message.received row. Whichever of the openers runs
+// FIRST is the only one that can still see a NULL last_inbound_at, so the
+// first-turn verdict is captured here and handed back.
+async function openRecord(client, user) {
+  const opened = await client.query(
+    `UPDATE users u SET last_inbound_at = now(),
+            checkin_misses = CASE WHEN u.checkin_misses > 0 THEN 0 ELSE u.checkin_misses END
+       FROM users prev
+      WHERE u.id = prev.id AND u.id = $1
+      RETURNING prev.last_inbound_at AS prev_inbound`, [user.id]);
+  const firstTurn = opened.rowCount > 0 && opened.rows[0].prev_inbound === null;
+
+  // Night-held rows get their re-hearing. The gate stays the only judge: this
+  // only makes the worker re-read them, it cannot deliver anything the gate
+  // would refuse (see the 2026-08-27 entry).
+  await client.query(
+    `UPDATE outbox SET release_after = now()
+      WHERE user_id = $1 AND sent_at IS NULL AND hold_reason = 'night'
+        AND release_after > now()`, [user.id]);
+
+  const counted = await quota.countMessage(client, user.id);
+  await audit.record(client, user.id, 'message.received', null);
+
+  return { counted: true, quota: counted, firstTurn };
+}
+
+// Opened by the gateway's own message:received hook (gateway-hooks/
+// olma-turn-open), BEFORE the model's first call — so the person is counted,
+// marked awake and shown a 👀 while the model is still reading the prompt.
+// A turn Olma started is not a message from the person, here as everywhere.
+async function openFromGateway(client, user, { messageId, kind } = {}) {
+  if (selfInitiated.isActive(user.id)) {
+    await audit.record(client, user.id, 'turn.opened_by_gateway', { selfInitiated: true, messageId: messageId || null });
+    return { counted: false, quota: null, firstTurn: false, skipped: 'self_initiated' };
+  }
+  const rec = await openRecord(client, user);
+  await audit.record(client, user.id, 'turn.opened_by_gateway', { messageId: messageId || null, kind: kind || 'text' });
+  return rec;
+}
+
 async function openTurnImplicitly(client, user, { firstTool } = {}) {
   // A turn Olma started is not a message from the person, and the recovery
   // path has to know that as surely as turn_start does — a delivery turn whose
@@ -61,25 +103,8 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
   // two runs FIRST is the only one that can still see a NULL last_inbound_at,
   // so this path has to capture the first-turn verdict and carry it back — see
   // the `firstTurn` return below.
-  const opened = await client.query(
-    `UPDATE users u SET last_inbound_at = now(),
-            checkin_misses = CASE WHEN u.checkin_misses > 0 THEN 0 ELSE u.checkin_misses END
-       FROM users prev
-      WHERE u.id = prev.id AND u.id = $1
-      RETURNING prev.last_inbound_at AS prev_inbound`, [user.id]);
-  const firstTurn = opened.rowCount > 0 && opened.rows[0].prev_inbound === null;
-
-  // Night-held rows get their re-hearing. The gate stays the only judge: this
-  // only makes the worker re-read them, it cannot deliver anything the gate
-  // would refuse (see the 2026-08-27 entry).
-  await client.query(
-    `UPDATE outbox SET release_after = now()
-      WHERE user_id = $1 AND sent_at IS NULL AND hold_reason = 'night'
-        AND release_after > now()`, [user.id]);
-
-  const counted = await quota.countMessage(client, user.id);
-  await audit.record(client, user.id, 'message.received', null);
-
+  const rec = await openRecord(client, user);
+  const { counted, quota, firstTurn } = { counted: rec.counted, quota: rec.quota, firstTurn: rec.firstTurn };
   // The skip itself is recorded, not just repaired. A defect that is silently
   // compensated for is a defect nobody ever measures — and the whole reason
   // this existed unnoticed is that the only symptom was an absence. This row
@@ -94,7 +119,7 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
   // fresh read would be a different (and wrong) answer.
   // `firstTurn` rides along for the same reason `quota` does: this path has
   // already consumed the evidence, so a later turn_start cannot re-derive it.
-  return { counted: true, quota: counted, firstTurn };
+  return { counted, quota, firstTurn };
 }
 
-module.exports = { openTurnImplicitly, isEnabledFor, coveredBy, FLAG };
+module.exports = { openTurnImplicitly, openFromGateway, openRecord, isEnabledFor, coveredBy, FLAG };

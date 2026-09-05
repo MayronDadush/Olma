@@ -44,12 +44,65 @@ const newTurn = () => ({
   marked: null,
 });
 
-function createBrokerServer({ pool, flood, placeMark }) {
+// A turn the gateway opened for a user BEFORE the model's first tool call
+// (method `turn_open`, sent by gateway-hooks/olma-turn-open on every accepted
+// inbound message). Held here until the shim connection for that user makes
+// its first call and adopts it — no second count, and every mark lands on
+// the real message id. Bounded by age: a pending open the model never
+// followed (a message it answered with no tool at all) is dropped after
+// PENDING_TTL_MS so it cannot be adopted by tomorrow's turn.
+const PENDING_TTL_MS = 10 * 60_000;
+
+function createBrokerServer({ pool, flood, placeMark, now }) {
   flood = flood || new FloodCounter();
+  const clock = typeof now === 'function' ? now : Date.now;
+  const pending = new Map(); // userId → { messageId, kind, lastInboundAt, counted, quota, firstTurn, openedAt }
+  function takePending(userId) {
+    const p = pending.get(userId);
+    if (!p) return null;
+    pending.delete(userId);
+    return clock() - p.openedAt <= PENDING_TTL_MS ? p : null;
+  }
   // Injectable for the same reason `send` is everywhere else here: the test
   // that matters for this feature is the one that watches a real turn place a
   // real mark, and it must do that without spawning anything.
   placeMark = placeMark || reactions.placeMark;
+
+  // The gateway's opener. The agent id is the only identity the hook has, and
+  // it is enough: one agent, one active user (config_guard keeps it so).
+  async function handleTurnOpen(params = {}) {
+    const agentId = String(params.agentId || '').trim();
+    if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
+    const messageId = reactions.cleanMessageId(params.messageId);
+    const kind = params.kind === 'voice' ? 'voice' : 'text';
+    let out = null;
+    let mark = null;
+    await withTx(pool, async (client) => {
+      const { rows } = await client.query(
+        `SELECT id, phone FROM users WHERE agent_id = $1 AND status = 'active'`, [agentId]);
+      const user = rows[0];
+      if (!user) { out = { ok: false, error: 'no active user for agent' }; return; }
+      const rec = await turnDomain.openFromGateway(client, user, { messageId, kind });
+      const state = kind === 'voice' ? 'listening' : 'working';
+      const entry = {
+        messageId, kind, lastInboundAt: clock(), openedAt: clock(),
+        counted: rec.counted, quota: rec.quota, firstTurn: Boolean(rec.firstTurn),
+        marked: new Set(),
+      };
+      if (!rec.skipped && messageId) {
+        // The 👀 (or 👂) goes on now, from here, while the model is still reading
+        // the prompt — the ack the feature promised, given before any model latency.
+        const vocab = reactions.vocabulary(await require('../domain/flags').getFlag(client, reactions.VOCAB_FLAG));
+        mark = { channel: 'whatsapp', target: user.phone, messageId, state, emoji: vocab[state] };
+        entry.marked.add(`${messageId}:${state}`);
+        entry.reactionVocab = vocab;
+      }
+      if (!rec.skipped) pending.set(Number(user.id), entry);
+      out = { ok: true, opened: !rec.skipped, skipped: rec.skipped || null, userId: Number(user.id), counted: rec.counted };
+    });
+    if (mark) placeMark(mark);
+    return out;
+  }
 
   async function handleToolCall(name, args, turn = newTurn()) {
     const tool = BY_NAME.get(name);
@@ -94,7 +147,16 @@ function createBrokerServer({ pool, flood, placeMark }) {
 
         if (!turn.opened) {
           turn.opened = true;
-          if (name !== 'turn_start' && await turnDomain.isEnabledFor(client, auth.data.user)) {
+          // Opened by the gateway already (turn_open): adopt it. The count,
+          // the first-turn verdict and the message id are all in hand, and
+          // the opening mark already went out — nothing here runs twice.
+          const pre = takePending(actorId);
+          if (pre) {
+            turn.counted = pre.counted; turn.quota = pre.quota; turn.firstTurn = pre.firstTurn;
+            turn.messageId = pre.messageId; turn.lastInboundAt = pre.lastInboundAt;
+            turn.messageKind = pre.kind; turn.marked = pre.marked; turn.reactionVocab = pre.reactionVocab;
+            turn.openedByGateway = true;
+          } else if (name !== 'turn_start' && await turnDomain.isEnabledFor(client, auth.data.user)) {
             const recovered = await turnDomain.openTurnImplicitly(client, auth.data.user, { firstTool: name });
             turn.counted = recovered.counted;
             turn.quota = recovered.quota;
@@ -193,6 +255,8 @@ function createBrokerServer({ pool, flood, placeMark }) {
         const { name, args } = msg.params || {};
         return handleToolCall(name, args, turn);
       }
+      case 'turn_open':
+        return handleTurnOpen(msg.params || {});
       default:
         return { ok: false, error: `unknown method ${msg.method}` };
     }
@@ -234,7 +298,7 @@ function createBrokerServer({ pool, flood, placeMark }) {
     }));
   }
 
-  return { server, listen, dispatch, flood };
+  return { server, listen, dispatch, flood, pendingCount: () => pending.size };
 }
 
 module.exports = { createBrokerServer };

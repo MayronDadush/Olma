@@ -172,6 +172,15 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **"What is still pending" must ask `attempts = 0`**, not `sent_at IS NULL` —
   since the escalation ladder, a delivered row sits with `sent_at` NULL for up
   to a day.
+- **The turn opens itself, from the gateway's own hook, before the model's
+  first call.** `gateway-hooks/olma-turn-open` (synced by `deploy.sh` to
+  `/root/.openclaw/hooks/`, enabled by `hooks.internal.entries`, loaded at
+  gateway STARTUP) sends brokerd `turn_open` on every accepted inbound
+  message; brokerd counts the message, wakes the person, puts the 👀 on, and
+  holds the open for the shim connection to adopt on its first tool call —
+  nothing counted twice, every mark on the real message id (`incidents.md`,
+  "The reply's first six seconds were bookkeeping"). `turn_start` still works
+  and is now a no-op on the record when the gateway got there first.
 - **A turn Olma started is not a message from the person.** `--deliver` reaches
   the agent on the person's own agent and session key, so nothing in the MCP
   call distinguishes it from typing — `domain/self-initiated.js` marks it and
