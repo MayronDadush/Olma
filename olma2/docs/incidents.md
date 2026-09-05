@@ -106,6 +106,8 @@ never trust a dated narrative for something you are about to act on.
 - [users.timezone must never be NULL](#userstimezone-must-never-be-null)
 - [Availability is tapped on a page, not typed (2026-08-28)](#availability-is-tapped-on-a-page-not-typed-2026-08-28)
 
+- [Yahav's first evening: the hour she promised and the message that got nothing (2026-09-05)](#yahavs-first-evening-the-hour-she-promised-and-the-message-that-got-nothing-2026-09-05)
+
 **Features as they shipped**
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
 - [A 👍 is the answer; the sentence after it is a second notification (2026-09-05)](#a--is-the-answer-the-sentence-after-it-is-a-second-notification-2026-09-05)
@@ -3053,6 +3055,87 @@ immediately before the merge, not once at the start.
 - `public_base_url` is a flag (dashboard-editable) so links don't hard-code
   the host. New outbox kinds inherit the DELIVERY_PREAMBLE automatically via
   `instructionFor` — pinned by tests like every other proactive kind.
+
+
+### Yahav's first evening: the hour she promised and the message that got nothing (2026-09-05)
+
+A new user, three hours old, two faults nobody would have found by looking at
+a dashboard. Both were discovered by reading his whole first evening back by
+hand — the gateway transcript, his rows in Postgres, and the gateway log for
+the same minutes, cross-read against each other. That afternoon is why
+`jobs/onboarding-review.js` exists.
+
+**The hour she promised.** He wrote "תזכיר לי בבקשה מחר ב19:00, להתקשר למלי".
+`add_task` stored `due_at = 19:00`, `domain/auto-reminder.js` armed its
+reminder an hour before it, and Olma told him: "רשמתי לך לתזכורת מחר ב-19:00".
+The reminder was set for 18:00. Nothing in the data distinguished "the thing
+is at 19:00" from "remind me at 19:00", and the hint on the tool result said
+`say when you will remind them` while offering only the due date and a UTC
+instant to say it from — so the sentence was assembled from whichever was
+nearer to hand.
+
+An hour earlier he had made the identical request about his father, and that
+one came out right: the model happened to follow `add_task` with an explicit
+`set_task_reminder` at 11:30, which superseded the automatic 10:30 row. Same
+sentence shape, same evening, opposite outcome, and the only difference was
+what the model remembered — while the hint actively told it not to make that
+call. So the distinction moved into the call: `add_task` takes `remind_at`
+for the hour THEY named, it replaces the automatic one rather than joining it,
+and the result now states the armed moment in their own zone so a time nobody
+armed is not available to say. Paid for in the tool-schema budget by trimming
+`set_task_reminder`'s description; the schemas were 17 chars under the ceiling.
+
+**The message that got nothing.** At 23:00:29 he asked for that reminder. His
+three tool calls each timed out after 30s against a brokerd that had been
+restarted nine times in his first two hours by a live deploy, the model
+produced no text at all, and the gateway wrote one line:
+
+```
+visible channel turn dispatched with no queued reply payloads:
+  channel=whatsapp messageId=… sessionKey=agent:u-18:… cause=completed
+```
+
+Nothing read that line. He was answered only because the 2h check-in rung
+fired two seconds later and happened to ask about the same person, and he
+replied to it.
+
+Neither existing repair case could have seen it. `jobs/unanswered.js` (a) and
+(b) both read the END of the transcript, and by the time any sweep looked, the
+transcript ended in a delivered reply to a later message. The dropped one sat
+in the middle of the history, where nothing looks.
+
+**The wrong fix, named before it was built.** The first theory was that
+`lane-watchdog.js` missed it by 3.7 seconds: the gateway had logged `lane wait
+exceeded … waitedMs=86325` and `DEFAULT_MIN_AGE_MS` is 90,000. Checking it
+first: there were **zero** `stuck session` lines in the entire day's log (the
+gateway still emits the string — the condition simply never arose), and
+`queueAhead` was 0, which `pickWedged` also requires. Nothing there could have
+fired at any floor. Lowering it would have changed nothing and made a
+legitimately slow run likelier to be aborted. The watchdog has never aborted
+anything, all time; that is a detector with no case yet, not a broken one.
+
+The fix is `unanswered.js` case (c), keyed on the message id the gateway
+named. Its instruction tells the model to look BACK past the healthy exchange
+sitting on top of the silence, and it carries no "but they were sent something
+afterwards" guard — that is exactly what happened here, and treating unrelated
+later traffic as an answer is how the silence went unnoticed.
+
+**Seven other things, all mechanical.** A task the extraction sweep filed 73
+minutes before he answered "לא תודה" to the offer, still open. 👀 left
+standing on four of his seven messages. "רשמתי ✅" written under an ⏰ that had
+already said it. Two greetings, because the `intake` agent answered his first
+message and `u-18` sent the verbatim onboarding four minutes later without
+acknowledging what he had written. `u-18` recycled from a user removed four
+days earlier, whose transcript still sits in the same sqlite file. One fact
+saved from a two-hour conversation, with a ברית, a trip and a Monday
+appointment all unsaved. And the Google Calendar offer queued for 04:58 the
+next morning because the rung is on a clock, while he had handed over three
+dated commitments in two hours.
+
+What went right and is worth keeping: asked for flight prices, Olma refused to
+invent any, said plainly she cannot browse, produced a `search_link` (her
+words, the URL from `domain/search-link.js`) and filed issue #75. That is the
+rule working exactly as written.
 
 
 ## Features as they shipped
