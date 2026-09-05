@@ -29,14 +29,21 @@ functions and `/opt/olma2/.env`.
 ## This directory is NOT the deploy target
 
 The bridge runs from `/opt/olma2-voice-bridge/` and **every path inside
-`server.js` is absolute to that location.** This directory is the source of
-record; deploying is copying it there.
+`server.js` is absolute to that location** (`OLMA_ROOT` overrides the
+`/opt/olma2` half so a checkout can run the tests). This directory is the
+source of record; deploying is `deploy.sh`, which snapshots the running tree
+to `/opt/olma2-voice-bridge-previous`, rsyncs, installs, restarts the unit and
+proves the dial API answers — restoring the snapshot if it does not:
 
 ```bash
-rsync -a --exclude-from=.gitignore ./ root@<box>:/opt/olma2-voice-bridge/
-ssh root@<box> 'cd /opt/olma2-voice-bridge && npm install --omit=dev \
-  && systemctl restart olma-voice-bridge'
+bash voice-bridge/deploy.sh              # deploy this checkout
+bash voice-bridge/deploy.sh --rollback   # put the previous tree back
 ```
+
+CI does the same on every merge to `main` that touches `voice-bridge/`
+(`.github/workflows/voice-bridge.yml`), after `npm run check` and `npm test`
+— the pure half of the bridge (`lib/persona.js`, `lib/env.js`) has tests; the
+call path itself is proven by a real call.
 
 `olma-voice-bridge.service` is the unit, kept here so it is not one more thing
 that exists only on the droplet. It is **system-scope** (`systemctl restart`,

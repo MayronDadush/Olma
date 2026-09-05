@@ -1,0 +1,57 @@
+name: voice-bridge
+
+# Its own light job, on purpose. CLAUDE.md: a new top-level directory is
+# unchecked until someone notices, and adding it to the olma2 workflow's path
+# filter would redeploy olma2 for a change that cannot affect it. Until this
+# file existed, a commit touching only voice-bridge/ triggered no run at all —
+# the same "green tick that means nothing ran" the olma2 workflow was fixed
+# for. Cheap: no database, no browser, a syntax check and the pure tests.
+on:
+  push:
+    paths: ['voice-bridge/**', '.github/workflows/voice-bridge.yml']
+  pull_request:
+    paths: ['voice-bridge/**', '.github/workflows/voice-bridge.yml']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --no-audit --no-fund
+        working-directory: voice-bridge
+      - run: npm run check
+        working-directory: voice-bridge
+      - run: npm test
+        working-directory: voice-bridge
+      - run: bash -n voice-bridge/deploy.sh
+
+  # The bridge's own deploy: rsync to /opt/olma2-voice-bridge, install,
+  # restart its (system-scope) unit, and prove the dial API answers — with the
+  # previous tree kept beside it and restored if the check fails. Serialized
+  # on main like olma2's, and never touching /opt/olma2.
+  deploy:
+    needs: test
+    timeout-minutes: 10
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up deploy SSH key
+        run: |
+          install -m 600 /dev/null /tmp/deploy_key
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > /tmp/deploy_key
+          mkdir -p ~/.ssh
+          ssh-keyscan -H 157.230.210.233 >> ~/.ssh/known_hosts
+      - name: Deploy and restart the bridge
+        run: SSH_KEY=/tmp/deploy_key bash voice-bridge/deploy.sh
+      - name: Clean up deploy key
+        if: always()
+        run: rm -f /tmp/deploy_key

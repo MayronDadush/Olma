@@ -31,7 +31,9 @@ const path = require('node:path');
 const WebSocket = require('ws');
 const { WebSocketServer } = require('ws');
 
-const OLMA = '/opt/olma2';
+// OLMA_ROOT lets a checkout run the bridge's tests without /opt/olma2 on the
+// machine; on the box the default is what it always was.
+const OLMA = process.env.OLMA_ROOT || '/opt/olma2';
 module.paths.unshift(path.join(OLMA, 'node_modules'));
 const { Pool } = require(path.join(OLMA, 'node_modules/pg'));
 const tasks = require(path.join(OLMA, 'src/domain/tasks.js'));
@@ -39,15 +41,9 @@ const calendar = require(path.join(OLMA, 'src/domain/calendar.js'));
 const users = require(path.join(OLMA, 'src/domain/users.js'));
 const { refreshUserCard } = require(path.join(OLMA, 'src/intake/user-card.js'));
 
-// env: our own .env first (Deepgram/Cartesia), then olma2's (DB, OpenRouter)
-for (const f of ['/opt/olma2-voice-bridge/.env', '/opt/olma2-voice-bridge/twilio.env', path.join(OLMA, '.env')]) {
-  try {
-    for (const line of fs.readFileSync(f, 'utf8').split('\n')) {
-      const m = line.match(/^(?:export )?([A-Z_]+)=(.*)$/);
-      if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
-    }
-  } catch {}
-}
+// env: our own .env first (Deepgram/Cartesia), then olma2's (DB, OpenRouter).
+// First file wins, and a value already in the environment is never overwritten.
+require('./lib/env').loadEnvFiles(['/opt/olma2-voice-bridge/.env', '/opt/olma2-voice-bridge/twilio.env', path.join(OLMA, '.env')]);
 
 const DG_KEY = process.env.DEEPGRAM_API_KEY;
 const CART_KEY = process.env.CARTESIA_API_KEY;
@@ -70,14 +66,10 @@ const EL_MODEL = process.env.EL_TTS_MODEL || 'eleven_v3'; // flash/turbo have NO
 // changed mid-call via set_persona, which writes through the same domain
 // function. Cartesia's voice id rides every TTS message, so the very next
 // sentence after a switch already speaks in the new voice.
-const VOICE_BY_GENDER = {
-  female: '2821fd0c-35c7-4adf-9c42-32e394bf85cb', // עדי — Miron's pick, tour #7
-  male: '921f4026-af53-4761-ac56-1c32e44856e8',   // רונן — tour #12
-};
-// The persona is per USER, so it is per CALL — never a module global. Two
-// people on the line at once may run opposite genders, and a shared global
-// would have each call rewriting the other's voice mid-sentence.
-const DEFAULT_PERSONA = { gender: 'female', name: 'אולמה' };
+// The pure half — voices, register switch, spoken name, greeting — is
+// lib/persona.js, where it can be tested without a phone. Only the database
+// read stays here.
+const { DEFAULT_PERSONA, personaVoice, gFor, spokenName, greetingText } = require('./lib/persona');
 async function loadPersona(userId) {
   const r = await pool.query(
     'SELECT assistant_gender, assistant_name FROM users WHERE id = $1', [userId]);
@@ -86,22 +78,6 @@ async function loadPersona(userId) {
     gender: r.rows[0].assistant_gender || 'female',
     name: r.rows[0].assistant_name || 'אולמה',
   };
-}
-function personaVoice(persona) { return VOICE_BY_GENDER[persona.gender] || VOICE_BY_GENDER.female; }
-// gFor(persona)(feminine, masculine) — every gendered word in
-// prompt/greeting/fillers goes through this one switch.
-const gFor = (persona) => (f, m) => (persona.gender === 'male' ? m : f);
-// The default name is SPELLED differently for the ear than for the eye:
-// Miron defined the pronunciation as "אול" + "מה" joined, and the spelling
-// below is what steers the TTS closest to it. It lives in .env because
-// picking it is an EAR decision made against a live engine, re-opened
-// whenever the voice or the model changes — a config line, not a code edit.
-// A custom name is spoken exactly as given.
-const SPOKEN_DEFAULT_NAME = process.env.VOICE_SPOKEN_NAME || 'אוֹל מָה';
-function spokenName(persona) { return persona.name === 'אולמה' ? SPOKEN_DEFAULT_NAME : persona.name; }
-function greetingText(user, persona) {
-  const g = gFor(persona);
-  return `היי${user.first_name ? ' ' + user.first_name : ''}, ${g('זאת', 'זה')} ${spokenName(persona)}. מה קורה?`;
 }
 
 // Pre-rendered greeting for the ElevenLabs path only: the first thing the

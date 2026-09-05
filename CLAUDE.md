@@ -68,9 +68,10 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   incidents.md` matches the filter, so a pure prose edit there runs the full
   suite AND redeploys production. Both are "docs" — which side of `olma2/` the
   file sits on decides the blast radius, and nothing in the filename says so.
-  A new top-level directory (`voice-bridge/`) is unchecked until someone
-  notices; give it its own light job rather than adding it here, which would
-  redeploy `olma2` for a change that cannot affect it.
+  A new top-level directory is unchecked until someone notices; give it its
+  own light job rather than adding it here, which would redeploy `olma2` for
+  a change that cannot affect it — `voice-bridge/` has one
+  (`.github/workflows/voice-bridge.yml`, which also deploys it on `main`).
 - **After a shared-branch merge, verify it actually shipped**:
   `git merge-base --is-ancestor <sha> origin/main`. A concurrent session can
   merge at a head that predates your commit.
@@ -419,7 +420,7 @@ costs a session. What is live:
 | Dashboard | `127.0.0.1:8788` → https://allma.world (public routes) + https://olmachat.duckdns.org (admin) |
 | Caddy config | `/etc/caddy/Caddyfile` — **not** in the repo, not deployed |
 | Google OAuth client | `/opt/olma/google-oauth.json` — v1 path, still live; **not** in the repo |
-| Voice bridge | `/opt/olma2-voice-bridge/` — **not** in the repo, not deployed |
+| Voice bridge | `/opt/olma2-voice-bridge/` — source in `voice-bridge/`, deployed by `voice-bridge/deploy.sh` (its own workflow, never by `olma2/scripts/deploy.sh`) |
 | Which release is serving | `/opt/olma2/RELEASE` (sha + subject) |
 | Previous release / dated archive | `/opt/olma2-previous`, `/opt/olma2-releases/` |
 | OpenClaw config | `/root/.openclaw/openclaw.json` |
