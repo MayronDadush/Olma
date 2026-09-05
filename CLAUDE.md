@@ -129,6 +129,12 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   and invisible until an override is tried.
 - **Never poll `openclaw sessions list` on a timer** — 2.9s of CPU per call on
   a 1-vCPU box, which directly slows every user's reply.
+- **The gateway heartbeat stays OFF: `agents.defaults.heartbeat.every: "0m"`.**
+  `target: "none"` only suppresses delivery; the 30-minute NO_REPLY turn
+  still runs for every agent, and it was 82% of the model bill (2026-09-05,
+  `incidents.md`, "The heartbeat was the bill"). Nothing of ours rides on it.
+  `config_guard` goes red if it comes back; `scripts/disable-heartbeats.js
+  --apply` turns it off again.
 
 ### Delivering a message
 

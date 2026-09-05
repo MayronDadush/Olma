@@ -74,6 +74,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Cost, billing and the money page**
 
+- [The heartbeat was the bill (fixed 2026-09-05)](#the-heartbeat-was-the-bill-fixed-2026-09-05)
 - [The ledger overstated OpenRouter by 65%, in both directions at once (fixed 2026-09-03)](#the-ledger-overstated-openrouter-by-65-in-both-directions-at-once-fixed-2026-09-03)
 - [OpenRouter cache reads were priced 5x too high (fixed 2026-08-31)](#openrouter-cache-reads-were-priced-5x-too-high-fixed-2026-08-31)
 - [The cost page showed four services out of eight (fixed 2026-08-31)](#the-cost-page-showed-four-services-out-of-eight-fixed-2026-08-31)
@@ -2042,6 +2043,36 @@ next and only the last one was measured first.
 
 
 ## Cost, billing and the money page
+
+### The heartbeat was the bill (fixed 2026-09-05)
+
+The audit's "13 calls per inbound message" (the cache-alert misdiagnosis of
+2026-09-04) was computed as *all* model calls over *inbound* messages. Walking
+seven days of every agent's transcript store on 2026-09-05, per turn:
+
+| turn kind | runs | model calls | calls/run | provider-billed |
+|---|---|---|---|---|
+| real inbound message | 436 | 1,072 | 2.5 | $1.57 |
+| `[OpenClaw heartbeat poll]` | 4,944 | 3,051 | 0.6 | $7.15 |
+
+A real message takes two calls — `turn_start`, then the reply — and three
+or four when it saves something. The depth was never the problem. The
+gateway's scheduler was waking all thirteen agents every 30 minutes, and each
+wake was a ~33k-token turn whose only correct answer is `NO_REPLY`: the
+doctrine spends a paragraph saying so, and the 2026-09-01 brunch-reminder leak
+into another user's chat travelled exactly that road. The config carried
+`heartbeat: { target: "none" }`, which reads as "off" and only suppresses
+*delivery* of the answer; the turn still ran. Nothing of ours rides on the
+gateway heartbeat — every sweep is a brokerd job with its own row in
+`job_heartbeats`, a different thing with the same name.
+
+Fix: `agents.defaults.heartbeat.every: "0m"` (the gateway's documented off
+switch, which leaves event-driven wakes alone), `scripts/disable-heartbeats.js
+--apply` to set it, and a `config_guard` rule that goes red — a dashboard
+row, not `BREAKS_USERS` — whenever it is anything else, so an upgrade that
+resets the default shows on the board. The schema-trimming work of the same
+day (#175, #169) was real but is invisible at this scale: the lever was the
+number of turns that should never have started, not the size of each.
 
 ### The ledger overstated OpenRouter by 65%, in both directions at once (fixed 2026-09-03)
 

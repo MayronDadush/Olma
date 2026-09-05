@@ -56,6 +56,19 @@ function checkOpenclawConfig(cfg) {
   } else if (systemAgent.agentId && !occ.hasAgent(cfg, systemAgent.agentId)) {
     violations.push(`agents.defaults.systemAgent.agentId points at "${systemAgent.agentId}", which is not in the roster — ambient sends resolve to nothing`);
   }
+  // The gateway's own heartbeat: every 30 minutes, for every agent on the
+  // roster, a full model turn whose only correct answer is NO_REPLY. Nothing
+  // of ours rides on it — every sweep is a brokerd job — and the doctrine
+  // spends a paragraph telling the model to say nothing. Measured over the
+  // week to 2026-09-05: 3,051 heartbeat calls against 1,072 for real
+  // messages, $7.15 of an $8.72 bill. Unset means the gateway default (30m),
+  // so the rule is "0m, explicitly". A dashboard row, not BREAKS_USERS: a
+  // heartbeat that came back costs money and one leak vector, never a tool
+  // call. (fix: scripts/disable-heartbeats.js --apply)
+  const every = (((cfg.agents || {}).defaults || {}).heartbeat || {}).every;
+  if (every !== '0m') {
+    violations.push(`agents.defaults.heartbeat.every is ${every === undefined ? 'unset (gateway default 30m)' : JSON.stringify(every)} — every agent runs a NO_REPLY model turn on a timer, most of the bill (fix: scripts/disable-heartbeats.js --apply)`);
+  }
   return violations;
 }
 
