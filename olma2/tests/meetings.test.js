@@ -698,8 +698,9 @@ test('a meeting waiting on the other person shows up in the digest of the one wa
 test('somebody who left can walk back in, un-answered', async () => {
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, alice.id, 'rejoinable', [bob.id, carol.id])).data.meeting;
-    await meetings.proposeSlot(c, alice.id, m.id, 'Thursday 18:00', soon());
-    await meetings.respondToSlot(c, bob.id, m.id, true, null, null, soon());
+    const when = slotStart('Thursday 18:00');
+    await meetings.proposeSlot(c, alice.id, m.id, 'Thursday 18:00', when);
+    await meetings.respondToSlot(c, bob.id, m.id, true, null, null, when);
     assert.equal((await meetings.optOut(c, bob.id, m.id)).ok, true);
 
     const back = await meetings.rejoin(c, bob.id, m.id);
@@ -714,7 +715,7 @@ test('somebody who left can walk back in, un-answered', async () => {
 test('rejoining twice is refused rather than silently fine', async () => {
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, alice.id, 'twice', [bob.id, carol.id])).data.meeting;
-    await meetings.proposeSlot(c, alice.id, m.id, 'Friday 18:00', soon());
+    await meetings.proposeSlot(c, alice.id, m.id, 'Friday 18:00', slotStart('Friday 18:00'));
     await meetings.optOut(c, bob.id, m.id);
     assert.equal((await meetings.rejoin(c, bob.id, m.id)).ok, true);
     const again = await meetings.rejoin(c, bob.id, m.id);
@@ -729,7 +730,7 @@ test('a coordination that CLOSED when they left cannot be reopened by them', asy
     // meeting closes for everyone. One person changing their mind afterwards
     // must not resurrect a plan the other was already told was off.
     const m = (await meetings.startMeeting(c, alice.id, 'pair', [bob.id])).data.meeting;
-    await meetings.proposeSlot(c, alice.id, m.id, 'Sunday 18:00', soon());
+    await meetings.proposeSlot(c, alice.id, m.id, 'Sunday 18:00', slotStart('Sunday 18:00'));
     const out = await meetings.optOut(c, bob.id, m.id);
     assert.equal(out.ok, true);
     const back = await meetings.rejoin(c, bob.id, m.id);
