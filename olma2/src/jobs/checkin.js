@@ -9,7 +9,7 @@
 //   5. discovery        (close the most valuable gap in their setup)
 //   6. plain silence check-in
 // Eligibility gates mirror v1 checkin.js: idle >24h, no checkin in 24h,
-// miss-backoff (2 → weekly, 4 → stop). Daytime is NOT checked here — the
+// miss-backoff (1 → three days, 2 → weekly, 3 → stop). Daytime is NOT checked here — the
 // outbox gate holds the row until the user's own window opens.
 const meetings = require('../domain/meetings');
 const { enqueue } = require('../outbox/enqueue');
@@ -135,9 +135,18 @@ function idleHoursFor(ageDays) {
 // decides the rest. Every unanswered check-in doubles the wait, so a person
 // who engages stays on the fast cadence and a person who ignores us backs off
 // within a day or two instead of being nagged on a fixed timer.
+// One ignored check-in is answered with three days of quiet, not a doubled
+// wait: "doubled" meant the very next morning for anyone past their first
+// week, and on 2026-09-05 a user who had answered nothing got four messages
+// on four days (the backoff was also being reset by our own turns — see
+// domain/self-initiated.js — but the schedule alone allowed three). Two
+// misses → weekly; three → stop until they write.
+const MISS_ONE_GAP_MS = 3 * 24 * HOUR_MS;
+const GIVE_UP_MISSES = 3;
 function requiredGapMs(ageDays, misses) {
   if (misses >= 2) return WEEK_MS;
-  return idleHoursFor(ageDays) * HOUR_MS * (misses === 1 ? 2 : 1);
+  if (misses === 1) return Math.max(MISS_ONE_GAP_MS, idleHoursFor(ageDays) * HOUR_MS);
+  return idleHoursFor(ageDays) * HOUR_MS;
 }
 
 async function eligibleUsers(client, now) {
@@ -152,7 +161,7 @@ async function eligibleUsers(client, now) {
     []
   );
   return rows.filter((u) => {
-    if (u.checkin_misses >= 4) return false; // gave up until they come back
+    if (u.checkin_misses >= GIVE_UP_MISSES) return false; // gave up until they come back
     const ageMs = now - new Date(u.onboarded_at).getTime();
     // Day one runs on its own ladder, not on idleness: a new user who wrote
     // ten minutes ago is exactly who we want to reach, and an idle gate would
@@ -170,7 +179,7 @@ async function eligibleUsers(client, now) {
 }
 
 // Highest rung that applies. Returns { rung, instruction }.
-async function pickRung(client, userId) {
+async function pickRung(client, userId, misses = 0) {
   const pending = await meetings.pendingMeetingFor(client, userId);
   if (pending.data.pending) {
     const m = pending.data.pending;
@@ -255,6 +264,17 @@ async function pickRung(client, userId) {
   // same gap forever, which is the exact re-pitching this exists to prevent.
   // Once every current gap has already been offered, this rung has nothing
   // left to say and falls through to plain silence below.
+  // Nobody is asked a question they have already not answered once. A person
+  // who let the last check-in pass gets no discovery pitch and no "anything
+  // new?" — the rungs above still apply, because a meeting waiting on them or
+  // a deadline tomorrow is theirs, not ours. This is the other half of the
+  // cadence: fewer messages, and the ones that go carry no ask.
+  if (misses >= 1) {
+    return {
+      rung: 'silence',
+      instruction: 'They did not answer the last check-in. ONE short line, no question mark anywhere: say you are here when they want you, and that you will stay quiet until they write. Nothing about tasks, nothing to add, no offer. If a real message from them is in the conversation more recently than your last check-in, answer that instead.',
+    };
+  }
   const gaps = await discoveryGaps(client, userId);
   if (gaps.length) {
     const { rows: prev } = await client.query(
@@ -345,7 +365,7 @@ async function discoveryGaps(client, userId) {
       : 'We have no timezone for them at all, so everything falls back to UTC.';
     gaps.push({
       topic: 'timezone',
-      instruction: `${guessed} Ask which CITY they are in — never ask for a timezone name, that is our problem not theirs — and call set_my_timezone with the IANA zone for that city and confirmed: true. In the same message, in one short line, tell them to just say so when they travel or move, so their reminders and morning picture follow them instead of staying behind. Do not explain the mechanism.`,
+      instruction: `${guessed} Ask which CITY they are in — never ask for a timezone name, that is our problem not theirs — and call set_my_timezone with the IANA zone for that city and confirmed: true. Say it in exactly this shape — the second sentence is the travel line, where they learn to just say so when they travel or move — changing only the gender forms to match them: "באיזו עיר אתה נמצא? ככה אדע מתי מתאים לכתוב לך. ואם תיסע או תעבור לעיר אחרת, פשוט תגיד לי." Do not paraphrase it, do not add a second sentence, do not explain the mechanism — a reworded version once came out as "נוסע לשם אחרת", which nobody could read.`,
     });
   }
   const { rows: openTasks } = await client.query(
@@ -425,7 +445,7 @@ async function run(client, now = Date.now()) {
       key = `onboarding:${u.id}:${step.slot}`;
       expiresAt = new Date(new Date(u.onboarded_at).getTime() + step.expiresAfterMs).toISOString();
     } else {
-      ({ rung, instruction, topic } = await pickRung(client, u.id));
+      ({ rung, instruction, topic } = await pickRung(client, u.id, Number(u.checkin_misses) || 0));
       key = `checkin:${u.id}:${new Date(now).toISOString().slice(0, 10)}`;
     }
     const res = await enqueue(client, {
@@ -452,6 +472,6 @@ async function run(client, now = Date.now()) {
 }
 
 module.exports = {
-  run, eligibleUsers, pickRung, requiredGapMs, idleHoursFor,
+  run, eligibleUsers, pickRung, requiredGapMs, idleHoursFor, GIVE_UP_MISSES, MISS_ONE_GAP_MS,
   onboardingStepDue, ONBOARDING_STEPS, DEAF_SILENT_SLOTS, stalledGoals,
 };

@@ -179,6 +179,17 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   (killing `isDeafOnDayOne`), reset `checkin_misses` (killing the check-in
   backoff), wrote `message.received` (the response-rate numerator counted our
   own sends as replies) and spent the once-per-life first-turn signal.
+  **The mark outlives the delivery CLI by a minute** (`self-initiated.js`,
+  `OLMA_SELF_INITIATED_GRACE_MS`): the agent's turn keeps running after
+  `--deliver` returns, and its late `turn_start` was counted as the person
+  writing — five times for one silent user (`incidents.md`, "Four good
+  mornings to a man who had stopped answering").
+- **Nobody is asked a question they have already not answered once.** The
+  check-in ladder after one miss: three days of quiet, then a one-liner with
+  no question mark; two misses → weekly; three → nothing until they write
+  (`jobs/checkin.js`, `requiredGapMs`, `pickRung(…, misses)`). What is
+  THEIRS — a meeting waiting on them, a deadline tomorrow — still outranks
+  the quiet.
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
   The gateway carries it end to end — `reply_to_id` in `Conversation info`, the
   quoted text in a `Reply target of current user message` block — and nothing

@@ -24,7 +24,7 @@ const selfInitiated = require('../src/domain/self-initiated');
 let db, broker;
 before(async () => { db = await freshDb(); broker = createBrokerServer({ pool: db.pool }); });
 after(async () => { await db.teardown(); });
-beforeEach(() => selfInitiated._reset());
+beforeEach(() => { selfInitiated._reset(); selfInitiated._setGraceMs(0); });
 
 async function turnStart(user, turn = { opened: false, counted: false }) {
   const res = await broker.dispatch(
@@ -139,6 +139,26 @@ test('overlapping deliveries do not clear each other\'s mark', async () => {
   });
   assert.equal(inner, true, 'the first to finish must not unmark the second');
   assert.equal(selfInitiated.isActive(u.id), false, 'and the last one does');
+});
+
+// Measured 2026-09-05 on user 13: five inbound records landed 11–30s AFTER our
+// own delivery's sent_at. The CLI had returned, the mark was gone, and the
+// agent's late turn_start counted as the person writing. The mark now
+// outlives the CLI by a grace period.
+test('the mark outlives the delivery by a grace period, so a late turn_start is still ours', async (t) => {
+  selfInitiated._setGraceMs(80);
+  t.after(() => selfInitiated._setGraceMs(0));
+  const u = await makeUser(db.pool, '+972670000031');
+  await selfInitiated.around(u.id, async () => {});
+  assert.equal(selfInitiated.isActive(u.id), true, 'still ours right after the CLI exits');
+  const late = await turnStart(u);
+  assert.equal(late.directive, 'proceed');
+  assert.equal((await stateOf(u.id)).last_inbound_at, null, 'the late turn_start wrote no inbound record');
+  assert.equal(await receivedCount(u.id), 0);
+  await new Promise((r) => setTimeout(r, 120));
+  assert.equal(selfInitiated.isActive(u.id), false, 'and it lets go afterwards');
+  await turnStart(u);
+  assert.equal(await receivedCount(u.id), 1, 'a message after the grace is theirs again');
 });
 
 test('an ordinary message is untouched by any of this', async () => {

@@ -39,6 +39,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [Four good mornings to a man who had stopped answering (fixed 2026-09-05)](#four-good-mornings-to-a-man-who-had-stopped-answering-fixed-2026-09-05)
 - [The reminder that could not climb, because its first rung died on the wire (fixed 2026-09-05)](#the-reminder-that-could-not-climb-because-its-first-rung-died-on-the-wire-fixed-2026-09-05)
 
 - [Olma's own check-in counted as the user writing back (fixed 2026-09-04)](#olmas-own-check-in-counted-as-the-user-writing-back-fixed-2026-09-04)
@@ -1038,6 +1039,41 @@ down; the audit row carries fingerprints, which is what `token-leak.js`
 compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
+
+### Four good mornings to a man who had stopped answering (fixed 2026-09-05)
+
+The owner sent a screenshot: user 13 had received a check-in on Wednesday
+("anything to add?"), Thursday ("anything to add?"), Friday ("just saying
+hi") and Saturday ("which city are you in? …ואם אתה נוסע לשם אחרת"), and had
+answered none of them. Two failures, one screenshot.
+
+**The cadence.** `checkin_misses` stood at 2 after a week of daily sends.
+Walking the audit log: seventeen `message.received` rows in ten days for a
+person whose last real message was much older. Five of them landed 11–30
+seconds after our own delivery's `sent_at` — the `--deliver` CLI had
+returned, the self-initiated mark had been released, and the agent's turn was
+still running; its late `turn_start` was counted as the person writing,
+which reset `checkin_misses` to 0 and moved `last_inbound_at`. Twelve more,
+all on 2026-09-01 at 30–60 minute intervals, were heartbeat polls in which the
+model called `get_my_profile` or `list_my_tasks` — the implicit turn-open
+counted each as a message. (Heartbeats are off since the same day; see "The
+heartbeat was the bill".) And even with an honest counter the schedule itself
+allowed three consecutive days: miss 0 → the age tier's idle hours, miss 1 →
+double, miss 2 → weekly, stop at 4.
+
+**The wording.** The timezone discovery rung's instruction told the model what
+to ask and left the Hebrew to it; the cheap model produced "ואם אתה נוסע לשם
+אחרת", which nobody could read, and sent it as a question to a man who had
+not answered three earlier ones.
+
+Fixes: the self-initiated mark now outlives the CLI by a minute
+(`OLMA_SELF_INITIATED_GRACE_MS`; a real reply inside that minute loses only
+its bookkeeping, and the next one repairs it). The ladder after one miss waits
+three days and sends one line with no question mark and no pitch; two misses
+→ weekly; three → nothing until they write; discovery is never offered to
+someone with a miss on record. The timezone ask carries the exact Hebrew
+sentence, gender forms aside. User 13 was set to three misses by hand so the
+next thing he hears from עולמה is his own reply.
 
 ### The reminder that could not climb, because its first rung died on the wire (fixed 2026-09-05)
 
