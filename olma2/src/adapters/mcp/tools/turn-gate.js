@@ -7,15 +7,27 @@ const {
 // The per-field guidance for turn_start's optional fields. In the RESULT and
 // not in the description: the description is injected on every turn for every
 // user, these fields show up on a handful of turns in a person's life.
-function turnHints({ offerResume, languageNudge, recentReminders, planHeadline }) {
+function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget }) {
   const hints = {};
+  if (replyTarget) {
+    hints.replyTarget = 'They used WhatsApp reply on ONE earlier message, and the '
+      + '"Reply target of current user message" block above holds its text. Answer THAT '
+      + 'message — "סיימתי" on a reply to a rent reminder closes the rent task, not the '
+      + 'newest thing either of you said. If the quoted text no longer matches anything '
+      + 'you can act on, ask about it rather than guessing at the latest topic.';
+  }
   if (offerResume) {
     hints.offerResume = 'First message since they paused: answer what they actually asked, then add '
       + 'ONE line asking if they would like Olma to start reaching out again.';
   }
   if (recentReminders && recentReminders.length) {
+    // "probably the newest one" is a guess, and a quote is not — so when both
+    // are on the same turn this one steps aside rather than arguing with the
+    // hint above. Both fire on exactly the case the reply bug was reported
+    // for: a bare "סיימתי" sent as a reply to yesterday's rent reminder.
     hints.recentReminders = 'Reminders Olma already delivered in the last day — a bare reply like '
-      + '"סיימתי" or "עשיתי" is probably about the newest one.';
+      + '"סיימתי" or "עשיתי" is probably about the newest one'
+      + (replyTarget ? ', UNLESS the quoted message names another: it wins.' : '.');
   }
   if (planHeadline) {
     hints.planHeadline = 'The headline of today\'s overnight plan; the full plan is in your USER.md '
@@ -31,11 +43,12 @@ function turnHints({ offerResume, languageNudge, recentReminders, planHeadline }
 }
 
 module.exports = [
-  tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and returns how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all). Pass sender_name, message_id and wrote_in from the Conversation info whenever present. Any extra field in the result (offerResume, recentReminders, planHeadline, languageNudge) comes with a matching entry in hints saying what to do with it — follow it.',
+  tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and returns how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all). Pass sender_name, message_id, reply_to_id and wrote_in from the Conversation info whenever present. Any extra field in the result comes with a matching entry in hints saying what to do with it — follow it.',
     {
-      sender_name: S('string', 'The `sender` field from this turn\'s Conversation info, verbatim. Fills a name we do not have, as an unconfirmed guess; never overwrites a name they gave you.'),
-      message_id: S('string', 'The `message_id` field from this turn\'s Conversation info, verbatim, so Olma can mark their message as seen and later as done or scheduled. Omit if absent.'),
+      sender_name: S('string', 'The `sender` field from this turn\'s Conversation info, verbatim. Fills a name we lack, as an unconfirmed guess; never overwrites one they gave.'),
+      message_id: S('string', 'From this turn\'s Conversation info, verbatim, so Olma can mark their message seen, then done or scheduled. Omit if absent.'),
       message_kind: S('string', '"voice" when this message arrived as a voice note (you got a transcription); omit otherwise. Only changes the working mark to 👂.'),
+      reply_to_id: S('string', 'From this turn\'s Conversation info, verbatim — there ONLY when they replied to one specific earlier message.'),
       wrote_in: S('string', 'Two-letter code of the language THIS message is written in (he, en, ru, ar…). Pass it on every call — it is how the system notices it speaks the wrong language to someone. The code only: never the text, a translation or a quote.'),
     }, [],
     async (client, user, args, ctx) => {
@@ -66,6 +79,24 @@ module.exports = [
           WHERE u.id = prev.id AND u.id = $1
           RETURNING prev.last_inbound_at AS prev_inbound`, [user.id]);
       const firstEverTurn = opened.rowCount > 0 && opened.rows[0].prev_inbound === null;
+      // Did they use WhatsApp reply on one specific earlier message? The
+      // gateway knows — it puts `reply_to_id` in Conversation info and the
+      // quoted text in a "Reply target of current user message" block — and
+      // nothing server-side ever sees either: like `sender`, they reach the
+      // MODEL and stop there (CLAUDE.md, "OpenClaw per-turn metadata"). So
+      // this rides the same road as sender_name and message_kind, and buys the
+      // same thing: a field the model has to look for is a field it notices.
+      //
+      // We keep no part of it. The id is WhatsApp's, not ours — we never
+      // recorded the ids of our own outbound messages (`--deliver` sends
+      // through the agent and reports none), so it maps to nothing here. Its
+      // whole job is to trigger the hint below, on the turns it applies to.
+      // Measured 2026-09-05 on the eval user, gateway-shaped prompt, both arms
+      // of the same conversation: with the reply block and without it, the
+      // model produced the SAME answer — it acted on the newest topic and the
+      // quoted one identically. The block was there and unread.
+      const replyTarget = typeof (args && args.reply_to_id) === 'string'
+        && args.reply_to_id.trim() !== '';
       // The inbound message id, kept on the TURN rather than in the database.
       // It is worth nothing after this turn ends — a mark belongs on the
       // message being handled right now — and a column would be one more piece
@@ -281,11 +312,12 @@ module.exports = [
           ...(languageNudge ? { languageNudge } : {}),
           ...(recentReminders.length ? { recentReminders } : {}),
           ...(planHeadline ? { planHeadline } : {}),
+          ...(replyTarget ? { replyTarget: true } : {}),
           // What to do with each of those, said only when it is there. This
           // used to be four sentences in the tool description — paid on every
           // turn by every user, for fields that appear on a handful of turns
           // in a person's life. Same budget rule as `onboarding` above.
-          ...turnHints({ offerResume, languageNudge, recentReminders, planHeadline }),
+          ...turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget }),
         }), namedNow);
       }
       const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);
