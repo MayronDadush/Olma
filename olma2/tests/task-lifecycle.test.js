@@ -108,9 +108,13 @@ test('editing one end is checked against the end already stored', async () => {
     const bad = await tasks.editTask(c, ana.id, id, { dueAt: at(40) });
     assert.equal(bad.ok, false);
 
-    const good = await tasks.editTask(c, ana.id, id, { endsAt: at(33) });
+    // One moment, computed once: at() is relative to now, and computing it
+    // twice across a second boundary failed a production deploy on
+    // 2026-09-05 by exactly one second.
+    const end = at(33);
+    const good = await tasks.editTask(c, ana.id, id, { endsAt: end });
     assert.equal(good.ok, true);
-    assert.equal(new Date(good.data.task.ends_at).toISOString(), new Date(at(33)).toISOString());
+    assert.equal(new Date(good.data.task.ends_at).toISOString(), new Date(end).toISOString());
   });
 });
 
