@@ -29,7 +29,9 @@
 // a working system 730 times a fortnight — the cry-wolf failure this repo has
 // now recorded four times.
 const crypto = require('node:crypto');
-const sessions = require('../channels/sessions');
+// The worker-thread facade — this scan runs from config_guard inside brokerd
+// and opens every agent's store (see channels/sessions-async.js).
+const sessions = require('../channels/sessions-async');
 
 // Global flag: `match` needs it to find every token in one block of text.
 const TOKEN_RE = /olma_tok_[0-9a-f]{32}/g;
@@ -90,7 +92,7 @@ async function scanForLeaks(client, { scan, now, windowDays } = {}) {
     // skipped: "could not read" is not "nothing was said". Manufacturing a
     // clean bill of health from an unreadable store is the failure mode this
     // whole area keeps relearning.
-    try { events = read(agentId, since); } catch { continue; }
+    try { events = await read(agentId, since); } catch { continue; }
     if (!Array.isArray(events)) continue;
 
     for (const e of events) {

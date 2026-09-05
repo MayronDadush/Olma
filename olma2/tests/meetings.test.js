@@ -6,12 +6,6 @@ const connections = require('../src/domain/connections');
 const grants = require('../src/domain/grants');
 const meetings = require('../src/domain/meetings');
 
-// Every proposal now carries the machine half of its slot. Tests that only
-// care about negotiation state use a time comfortably in the future, so the
-// slot never expires mid-test.
-const soon = (hours = 48) =>
-  new Date(Date.now() + hours * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00');
-
 let db, alice, bob, carol;
 before(async () => {
   db = await freshDb();
