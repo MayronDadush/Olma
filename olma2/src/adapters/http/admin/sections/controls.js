@@ -54,22 +54,61 @@ const FLAG_SPECS = [
     help: 'כשהסוכן מדלג על turn_start (קורה בבקשת הפסקת שירות), השרת סופר את ההודעה ומעדכן שהמשתמש ער בעצמו. ריק = כבוי; "all" = כל המשתמשים; או רשימת מספרים ב-E.164 מופרדים בפסיק, להרצה מדורגת.' },
   { key: 'public_base_url', label: 'כתובת ציבורית לקישורים', type: 'text',
     help: 'הבסיס לקישורים שנשלחים למשתמשים (למשל דף סימון הזמינות). בלי / בסוף.' },
-  { key: 'reaction_emoji', label: 'אימוג׳ים על הודעות המשתמש', type: 'json',
-    // Only the known states, only something that looks like an emoji. A typo
-    // here would otherwise ride out on every single message.
-    validate: (v) => v && typeof v === 'object' && !Array.isArray(v)
-      && Object.entries(v).every(([k, e]) =>
-        Object.hasOwn(reactions.REACTION_STATES, k) && reactions.isUsableEmoji(e)),
-    help: 'JSON שמחליף אימוג׳י לסטטוס, למשל {"done": "\u{1F44D}"} כדי לסמן משימות שבוצעו בלייק במקום ב-\u2705. '
-      + 'המצבים: working (התחלנו לעבוד, ברירת מחדל \u{1F440}), listening (הודעה קולית, \u{1F442}), '
-      + 'done (\u{1F44D}), scheduled (נקבע למועד עתידי, \u23F0), needs_input (\u2753), failed (\u26A0\uFE0F). '
-      + 'אימוג׳י אחד לכל מצב — לא רשימה: כשלכל מצב יש סימן קבוע אפשר לקרוא את המצב במבט אחד. '
-      + 'מפתח לא מוכר או ערך שאינו אימוג׳י פשוט מתעלמים ממנו ונשארת ברירת המחדל.' },
   { key: 'search_link_base', label: 'מנוע החיפוש לקישורים', type: 'text',
     help: 'הבסיס לקישור החיפוש שעולמה שולחת כשהיא לא יכולה לחפש בעצמה. ריק = גוגל. חייב להתחיל ב-https ולהסתיים בפרמטר השאילתה, למשל https://duckduckgo.com/?q= — ערך לא תקין נופל חזרה לגוגל ולא שובר קישור.' },
 ];
 
 const EDITABLE_FLAGS = FLAG_SPECS.map((f) => f.key);
+
+// The reaction vocabulary is NOT a FLAG_SPECS row. It was a JSON box for a
+// day (2026-09-05) and that is the trap the comment above names: an operator
+// who wants 👍 instead of ✅ should not have to spell {"done": "👍"} by hand.
+// One input per state, blank meaning "the default", written as the one
+// `reaction_emoji` object that domain/reactions.vocabulary() reads.
+const REACTION_STATE_LABELS = [
+  { state: 'working', label: 'התחלנו לעבוד', help: 'מסומן ברגע שההודעה נקלטה והתור התחיל. מוחלף בסימן הסיום.' },
+  { state: 'listening', label: 'הודעה קולית נקלטה', help: 'במקום "התחלנו לעבוד" כשההודעה היא הקלטה — אומר שהאודיו הגיע ותומלל.' },
+  { state: 'done', label: 'בוצע', help: 'מה שביקשו כבר נקלט, בוצע או נכון ממילא.' },
+  { state: 'scheduled', label: 'תזכורת נקבעה', help: 'רק כשעולמה תפנה אליהם בעצמה בהמשך — לא על כל דבר עם תאריך.' },
+  { state: 'needs_input', label: 'צריך תשובה מהם', help: 'התור נגמר בשאלה שרק הם יכולים לענות עליה.' },
+  { state: 'failed', label: 'נכשל', help: 'משהו לא הצליח והם צריכים לדעת.' },
+];
+
+// The body of a POST /reactions, as the flag object to store. Only known
+// states, only values that look like an emoji; anything else is dropped so a
+// typo never rides out on every message. An empty object means "all defaults"
+// and is stored as such rather than deleting the row — the reader treats
+// both the same, and a row that exists is one the audit trail can point at.
+function parseReactionForm(body) {
+  const out = {};
+  for (const { state } of REACTION_STATE_LABELS) {
+    const raw = String((body && body[state]) || '').trim();
+    if (!raw) continue;
+    if (raw === reactions.REACTION_STATES[state]) continue; // the default is not an override
+    if (reactions.isUsableEmoji(raw)) out[state] = raw;
+  }
+  return out;
+}
+
+async function renderReactionEmoji(client, csrf) {
+  const stored = await flagsDomain.getFlag(client, reactions.VOCAB_FLAG);
+  const live = reactions.vocabulary(stored);
+  const rows = REACTION_STATE_LABELS.map(({ state, label, help }) => {
+    const dflt = reactions.REACTION_STATES[state];
+    const cur = live[state];
+    const override = cur !== dflt;
+    return `<tr>
+      <td><div>${label}</div><div class="dim small">${help}</div></td>
+      <td class="nowrap"><span class="emoji-big" title="ברירת מחדל">${dflt}</span></td>
+      <td class="nowrap"><input name="${state}" value="${esc(override ? cur : '')}" size="3" maxlength="8" placeholder="${dflt}" autocomplete="off"> <span class="emoji-big" title="בפועל">${cur}</span></td>
+    </tr>`;
+  }).join('');
+  return `<form method="post" action="/reactions">
+      <input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="back" value="/#flags">
+      <table class="settings"><tr><th>מצב</th><th>ברירת מחדל</th><th>במקום זה</th></tr>${rows}</table>
+      <div style="margin-top:8px"><button>שמור אימוג׳ים</button> <button name="reset" value="1" formnovalidate>חזרה לברירת המחדל</button></div>
+    </form>`;
+}
 
 // The demo switch. Not a ROW in the flags table — it is the only setting that
 // costs real money per minute and turns itself off, so it needs a countdown
@@ -105,6 +144,7 @@ async function renderBoost(client, csrf) {
 
 async function renderFlags(client, csrf) {
   return `<h4>מצב בוסט</h4><p class="hint">${"מתג להדגמות: מעביר את כל המשתמשים למודל המהיר והחזק ביותר, ומכבה את עצמו אחרי שעתיים. עולה יותר לדקה — לכן הוא לא נשאר דלוק בטעות."}</p>${await renderBoost(client, csrf)}`
+    + `<h4>אימוג׳ים על הודעות המשתמש</h4><p class="hint">${'הסימן שעולמה שמה על ההודעה של האדם בכל שלב. אימוג׳י אחד לכל מצב — כשלכל מצב יש סימן קבוע קוראים את המצב במבט אחד. תא ריק = ברירת המחדל; ערך שאינו אימוג׳י פשוט לא נשמר.'}</p>${await renderReactionEmoji(client, csrf)}`
     + `<h4>הגדרות</h4>${await renderFlagsTable(client, csrf)}`;
 }
 
@@ -132,4 +172,4 @@ async function renderFlagsTable(client, csrf) {
   return `<table class="settings"><tr><th>הגדרה</th><th>ערך</th></tr>${rows.join('')}</table>`;
 }
 
-module.exports = { FLAG_SPECS, EDITABLE_FLAGS, renderBoost, renderFlags, renderFlagsTable };
+module.exports = { FLAG_SPECS, EDITABLE_FLAGS, REACTION_STATE_LABELS, parseReactionForm, renderBoost, renderFlags, renderFlagsTable, renderReactionEmoji };

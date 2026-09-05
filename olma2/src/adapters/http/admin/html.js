@@ -78,6 +78,7 @@ const STYLE = `<style>
   .cols{display:flex;gap:24px;flex-wrap:wrap} .cols>div{flex:1;min-width:240px}
   table.settings td:first-child{max-width:520px}
   form.inline{display:inline-flex;gap:6px;align-items:center}
+  .emoji-big{font-size:1.4em;line-height:1}
   input,select{font-size:13px;padding:5px 8px;background:var(--bg);color:var(--text);
                border:1px solid var(--border);border-radius:6px;font-family:inherit}
   input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px}

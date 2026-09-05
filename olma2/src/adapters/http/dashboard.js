@@ -9,7 +9,7 @@
 const { OPENCLAW_CONFIG_PATH } = require('./admin/env');
 const { GROUPS, SECTIONS } = require('./admin/sections/index');
 const { publicGateway, collectAlerts, renderAlerts } = require('./admin/sections/health');
-const { FLAG_SPECS, EDITABLE_FLAGS } = require('./admin/sections/controls');
+const { FLAG_SPECS, EDITABLE_FLAGS, parseReactionForm } = require('./admin/sections/controls');
 const { renderContactsPage } = require('./admin/contacts');
 const { renderUserPage } = require('./admin/user-page');
 const { safeBack, handleUserEdit } = require('./admin/posts');
@@ -22,6 +22,7 @@ const boostDomain = require('../../domain/boost');
 const boostJob = require('../../jobs/boost');
 const issuesDomain = require('../../domain/issues');
 const auditDomain = require('../../domain/audit');
+const reactionsDomain = require('../../domain/reactions');
 const dashboardAuth = require('../../domain/dashboard-auth');
 const { refreshUserCard } = require('../../intake/user-card');
 const { withTx } = require('../../db/pool');
@@ -390,6 +391,14 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
               if (!Number.isFinite(val) || val < 0) val = null;
             }
             if (val !== null) await flagsDomain.setFlag(client, body.key, val);
+          } else if (url.pathname === '/reactions') {
+            // One form for the whole vocabulary: the stored object is REPLACED,
+            // never merged, so clearing a box really does return that state to
+            // its default. "reset" is the same write with nothing in it.
+            const next = body.reset ? {} : parseReactionForm(body);
+            const prev = await flagsDomain.getFlag(client, reactionsDomain.VOCAB_FLAG);
+            await flagsDomain.setFlag(client, reactionsDomain.VOCAB_FLAG, next);
+            await auditDomain.record(client, null, 'admin.reaction_emoji', { from: prev || {}, to: next });
           } else if (url.pathname === '/issues/status') {
             await issuesDomain.setStatus(client, Number(body.id), body.status);
           } else if (url.pathname === '/users/quota') {
