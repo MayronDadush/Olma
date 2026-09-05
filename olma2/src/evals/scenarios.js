@@ -326,7 +326,7 @@ const SCENARIOS = [
           `INSERT INTO connection_feature_grants (connection_id, grantor_id, feature)
            SELECT $1, $2, 'meetings'
             WHERE NOT EXISTS (SELECT 1 FROM connection_feature_grants WHERE connection_id = $1 AND grantor_id = $2 AND feature = 'meetings')`,
-          [connId, grantor.id]);
+          [connId, grantor]);
       }
       const m = await meetings.startMeeting(client, partner.id, 'קפה עם דנה', [userId]);
       // Sunday 18:00 Israel time, at least three days out: in the future and named by weekday.
