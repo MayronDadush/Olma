@@ -171,7 +171,56 @@ function driftLine(rows) {
 // `probe` is injectable for the same reason /health's is: this suite runs on
 // the production box and on CI runners, and neither one's real gateway proves
 // anything about the branch under test.
-async function renderHeartbeats(client, _csrf, probe) {
+// The doctrine (AGENTS.md) against the gateway's injection ceiling. Over the
+// line nothing is announced: the gateway keeps a head and a tail and deletes
+// the middle of some section, on every turn, for every user — and the file
+// has sat one character under the line since 2026-09-04. tests/intake.test.js
+// stops a change that crosses it; this row is what lets a person SEE the
+// margin instead of learning it from a red test. Rendered from the template
+// with a token-shaped placeholder, exactly as efficiency_watch measures it.
+// The ceiling is the GATEWAY'S setting (agents.defaults.bootstrapMaxChars in
+// openclaw.json; the box sets 40,000, the gateway's own default is 20,000).
+// A config that cannot be read gives an UNKNOWN ceiling, never the default:
+// judging 39k chars against 20k would show a red row for a doctrine that
+// fits — "a thing that could not be READ is never a thing in trouble".
+// null when the doctrine itself cannot be measured — a meter that cannot
+// read must not show a number.
+function doctrineMeter(configPath) {
+  try {
+    const { renderAgentsMd } = require('../../intake/provision');
+    const guard = require('../../jobs/config-guard');
+    const chars = renderAgentsMd('olma_tok_' + '0'.repeat(32)).length;
+    let limit = null;
+    try { limit = guard.bootstrapBudget(occ.loadConfig(configPath)); } catch { limit = null; }
+    if (limit === null) return { chars, limit: null, headroom: null, over: false, near: false };
+    const headroom = limit - chars;
+    return {
+      chars, limit, headroom,
+      over: headroom < 0,
+      near: headroom >= 0 && headroom < guard.BOOTSTRAP_WARN_MARGIN,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function doctrineRow(m) {
+  if (!m) return '';
+  const note = m.limit === null ? 'התקרה לא נקראה מהגדרות השער — אין שיפוט'
+    : m.over ? 'מעל התקרה — השער מוחק מהאמצע בשקט, בכל תור'
+      : m.near ? `נשארו ${fmt(m.headroom)} תווים — כל תוספת תיחתך בשקט`
+        : `נשארו ${fmt(m.headroom)} תווים`;
+  const warn = m.over || m.near;
+  return `<tr class="${m.over ? 'bad' : ''}">
+      <td>${m.over ? '⚠' : '–'} הדוקטרינה (AGENTS.md)</td>
+      <td class="${warn ? 'warn' : 'dim'} mono">${fmt(m.chars)} / ${m.limit === null ? '?' : fmt(m.limit)}</td>
+      <td class="${warn ? 'warn' : 'dim'}">${esc(note)}</td></tr>`;
+}
+
+// `ctx.configPath` is the router's injected gateway config (createDashboard's
+// option), so the meter reads the same file the rest of the dashboard does;
+// the module-level path is the fallback for a direct call without one.
+async function renderHeartbeats(client, _csrf, probe, ctx = {}) {
   const { rows } = await client.query(`SELECT * FROM job_heartbeats ORDER BY job_name`);
   const now = Date.now();
   const problems = rows.filter((r) => isStale(r.job_name, r.last_run_at, now) || (r.note && String(r.note).startsWith('ERR')));
@@ -225,12 +274,19 @@ async function renderHeartbeats(client, _csrf, probe) {
         ? esc([rel.at ? ago(rel.at) : null, drift.text, rel.subject].filter(Boolean).join(' · ').slice(0, 140))
         : 'אין סימון גרסה — פריסה שקדמה למעקב'}</td></tr>`;
 
-  const totalProblems = problems.length + (gwBad ? 1 : 0);
+  // Like the release row: a fact about the deployment, not a process, so it
+  // is never counted in the banner — unless it is OVER the line, which is a
+  // live fault in every user's prompt and is counted as one.
+  const doctrine = doctrineMeter(ctx.configPath || OPENCLAW_CONFIG_PATH);
+  const docRow = doctrineRow(doctrine);
+  const docBad = Boolean(doctrine && doctrine.over);
+
+  const totalProblems = problems.length + (gwBad ? 1 : 0) + (docBad ? 1 : 0);
   const banner = totalProblems === 0
     ? `<div class="banner ok">✓ הכל תקין — ${rows.length + gwCounted} תהליכים רצים כסדרם</div>`
     : `<div class="banner bad">⚠ ${totalProblems} תהליכים דורשים תשומת לב</div>`;
 
-  const tr = gwRow + relRow + rows.map((r) => {
+  const tr = gwRow + relRow + docRow + rows.map((r) => {
     const bad = isStale(r.job_name, r.last_run_at, now) || (r.note && String(r.note).startsWith('ERR'));
     const err = r.note && String(r.note).startsWith('ERR');
     return `<tr class="${bad ? 'bad' : ''}">
@@ -2295,7 +2351,7 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         } else {
           for (const s of SECTIONS) {
             sectionsHtml += `<section id="${s.id}"><h3>${s.title}</h3>` +
-              `<p class="hint">${s.hint}</p>${await s.render(client, csrf)}</section>`;
+              `<p class="hint">${s.hint}</p>${await s.render(client, csrf, undefined, { configPath })}</section>`;
           }
         }
       } finally { client.release(); }

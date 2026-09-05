@@ -15,16 +15,7 @@ module.exports = [
   // That is deliberate — see domain/search-link.js — and it is what keeps this
   // on the right side of the never-fake-a-lookup rule.
   tool('search_link',
-    'Turn something Olma cannot look up into a search THEY can open: returns a Google link for the '
-    + 'words you give it. Use it whenever you have just said you cannot do something webby — write an '
-    + 'essay, check a share price, find a product, compare anything — before you offer to save it as a '
-    + 'task. Write the query the way a person would type it, in THEIR language, specific to what they '
-    + 'actually asked ("עבודה על בן גוריון לכיתה ח", not "בן גוריון"). Send the url back as-is, on its '
-    + 'own line, with one short line saying what it searches. '
-    + 'This is a QUESTION handed over, never an answer: it does not mean you looked, so never add what '
-    + 'you think is on the other side — no price, no summary, no "מצאתי לך". Never pass a URL as the '
-    + 'query, and never write any other link yourself; a link to a specific page or product is exactly '
-    + 'the thing you must not invent.',
+    'Return a Google search link for words you supply, when you have just said you cannot look something up yourself (a price, a product, an essay, a comparison) — before offering to save it as a task. Query in THEIR language, specific to the ask ("עבודה על בן גוריון לכיתה ח", not "בן גוריון"). Send the url as-is on its own line with one short line saying what it searches. It is a question handed over, never an answer: never add a price, a summary or "מצאתי לך". Never pass a URL as the query, and never write any other link yourself.',
     { query: S('string', 'The search words, in the user\'s own language') }, ['query'],
     (client, user, a) => searchLink.buildSearchLink(client, user.id, a.query)),
 ];

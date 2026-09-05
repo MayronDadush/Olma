@@ -72,13 +72,7 @@ module.exports = [
   // nothing to call, simply said goodbye and messaged him again the next
   // morning. Pausing is reversible and deletes nothing — see domain/pause.js.
   tool('pause_olma',
-    'Stop Olma from EVER reaching out to them again: check-ins, reminders, digests, '
-    + 'and anything another person\'s action would have sent them. Call this the moment someone '
-    + 'asks to stop, pause, unsubscribe, or says they are done — after ONE short confirming question '
-    + 'and their yes, never on a guess. It deletes NOTHING: their tasks, reminders and history all '
-    + 'stay, and resume_olma puts everything back. You still reply normally if they write to you — '
-    + 'that is them starting a conversation, not Olma starting one. Tell them plainly that you will '
-    + 'not write again and that they can come back any time by sending a message.',
+    'Stop Olma from EVER reaching out again: check-ins, reminders, digests, anything another person would have triggered. Call it when someone asks to stop, pause or unsubscribe — after ONE short confirming question and their yes, never on a guess. Deletes NOTHING; resume_olma puts everything back, and you still answer when they write. Tell them plainly you will not write again and they can come back any time by sending a message.',
     { note: S('string', 'What they said, in their own words, if they gave a reason') }, [],
     (client, user, a) => pause.pauseUser(client, user.id, { note: a.note })),
   // The voice bridge (a separate process, loopback port 8792) decides who may
@@ -100,17 +94,27 @@ module.exports = [
     + 'request to be messaged again. Afterwards, tell them what came back.',
     {}, [],
     (client, user) => pause.resumeUser(client, user.id)),
-  tool('set_my_timezone', 'Set IANA timezone. confirmed=true only when the user explicitly confirmed it. '
-    + 'Call this THE TURN someone reveals where they actually are ("אני בלוס אנג\'לס", "I\'m in NYC", '
-    + 'a trip they mention being on) — a phone number only guesses a country, and every reminder, '
-    + 'digest and quiet-hours window runs on this value, so a wrong zone means 3am messages. '
-    + 'Correcting a zone we had only GUESSED also fixes what was already saved under it: the reply '
-    + 'carries movedTasks and movedReminders. If either is non-empty, say in one line that their '
-    + 'existing times were off and are now corrected — they lived with a wrong hour and deserve to '
-    + 'know it is fixed. meetingsToRecheck is different: those were NOT moved, because the other '
-    + 'person agreed to that exact moment. Name them and ask whether to re-propose.',
+  tool('set_my_timezone', 'Set the IANA timezone — THE TURN someone reveals where they actually are ("אני בניו יורק", a trip they mention). A phone number only guesses a country, and every reminder, digest and quiet-hours window runs on this value, so a wrong zone means 3am messages. confirmed=true only when they explicitly confirmed it. If the result carries hints, follow them: they name times that were corrected and meetings to re-propose.',
     { timezone: S('string', 'IANA name, e.g. Asia/Jerusalem'), confirmed: S('boolean', 'User explicitly confirmed') }, ['timezone'],
-    (client, user, a) => users.setTimezone(client, user.id, a.timezone, a.confirmed)),
+    async (client, user, a) => {
+      const res = await users.setTimezone(client, user.id, a.timezone, a.confirmed);
+      if (!res.ok) return res;
+      // The guidance for the repair, only on the call where something was
+      // actually repaired — it used to be half the tool description, paid on
+      // every turn for a case that happens once per user at most.
+      const d = res.data || {};
+      const hints = {};
+      if ((d.movedTasks && d.movedTasks.length) || (d.movedReminders && d.movedReminders.length)) {
+        hints.moved = 'movedTasks/movedReminders were saved under a zone Olma had only GUESSED and '
+          + 'are now corrected: say in one line that their existing times were off and are fixed — '
+          + 'they lived with a wrong hour and deserve to know.';
+      }
+      if (d.meetingsToRecheck && d.meetingsToRecheck.length) {
+        hints.meetingsToRecheck = 'These were NOT moved: the other person agreed to that exact '
+          + 'moment. Name them and ask whether to re-propose.';
+      }
+      return Object.keys(hints).length ? ok({ ...d, hints }) : res;
+    }),
   tool('set_my_language', 'Change the language you speak and store their data in. ONLY on their explicit request ("talk to me in English") — never because one message happened to be in another language.',
     { locale: S('string', 'ISO code, e.g. he, en, ar, ru') }, ['locale'],
     (client, user, a) => users.setLocale(client, user.id, a.locale)),

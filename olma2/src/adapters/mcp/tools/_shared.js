@@ -103,7 +103,9 @@ function tool(name, description, props, required, handler) {
     inputSchema: {
       type: 'object',
       properties: {
-        [IDENTITY_PARAM]: S('string', 'your identity string, exactly as printed in AGENTS.md'),
+        // Repeated on every one of the 86 schemas, on every turn: each word here
+        // costs 86 times what it looks like.
+        [IDENTITY_PARAM]: S('string', 'your identity string from AGENTS.md'),
         ...props,
       },
       required: [IDENTITY_PARAM, ...required],

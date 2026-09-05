@@ -4,8 +4,34 @@ const {
   users, onboardingDomain, selfInitiated, reminders, digest, quota, pause, reactions, audit, S, ok, captureDisplayName, stale, tool,
 } = require('./_shared');
 
+// The per-field guidance for turn_start's optional fields. In the RESULT and
+// not in the description: the description is injected on every turn for every
+// user, these fields show up on a handful of turns in a person's life.
+function turnHints({ offerResume, languageNudge, recentReminders, planHeadline }) {
+  const hints = {};
+  if (offerResume) {
+    hints.offerResume = 'First message since they paused: answer what they actually asked, then add '
+      + 'ONE line asking if they would like Olma to start reaching out again.';
+  }
+  if (recentReminders && recentReminders.length) {
+    hints.recentReminders = 'Reminders Olma already delivered in the last day — a bare reply like '
+      + '"סיימתי" or "עשיתי" is probably about the newest one.';
+  }
+  if (planHeadline) {
+    hints.planHeadline = 'The headline of today\'s overnight plan; the full plan is in your USER.md '
+      + '— read it and lead with it when they ask about their day or plans.';
+  }
+  if (languageNudge) {
+    hints.languageNudge = 'They have written several messages running in a language other than the '
+      + 'one stored for them: ask ONE short question, IN THE LANGUAGE THEY ARE WRITING IN, whether '
+      + 'they would like Olma to switch — call set_my_language if they say yes. Ask once; if they '
+      + 'do not take it up, drop it.';
+  }
+  return Object.keys(hints).length ? { hints } : {};
+}
+
 module.exports = [
-  tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and tells you how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all). Pass sender_name whenever the turn\'s Conversation info carries one. If the response carries offerResume: true, this is the first message since they paused — answer what they actually asked, then add ONE line asking if they would like Olma to start reaching out again. recentReminders, when present, lists reminders Olma already delivered in the last day — a bare reply like "סיימתי" or "עשיתי" is probably about the newest one. planHeadline, when present, is the headline of today\'s overnight plan; the full plan sits in your USER.md — read it and lead with it when they ask about their day or plans. If the response carries languageNudge, they have written to you several times running in a language other than the one stored for them: ask ONE short question, IN THE LANGUAGE THEY ARE WRITING IN, whether they would like Olma to switch — then call set_my_language if they say yes. Ask once and drop it if they do not take it up.',
+  tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and returns how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all). Pass sender_name, message_id and wrote_in from the Conversation info whenever present. Any extra field in the result (offerResume, recentReminders, planHeadline, languageNudge) comes with a matching entry in hints saying what to do with it — follow it.',
     {
       sender_name: S('string', 'The `sender` field from this turn\'s Conversation info, verbatim. Only ever used to fill a name we do not have, always as an unconfirmed guess — never overwrites a name they gave you themselves.'),
       message_id: S('string', 'The `message_id` field from this turn\'s Conversation info, verbatim. Lets Olma mark their message as seen and, later in the turn, as done or scheduled. Omit it if the block has none.'),
@@ -241,6 +267,11 @@ module.exports = [
           ...(languageNudge ? { languageNudge } : {}),
           ...(recentReminders.length ? { recentReminders } : {}),
           ...(planHeadline ? { planHeadline } : {}),
+          // What to do with each of those, said only when it is there. This
+          // used to be four sentences in the tool description — paid on every
+          // turn by every user, for fields that appear on a handful of turns
+          // in a person's life. Same budget rule as `onboarding` above.
+          ...turnHints({ offerResume, languageNudge, recentReminders, planHeadline }),
         }), namedNow);
       }
       const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);
