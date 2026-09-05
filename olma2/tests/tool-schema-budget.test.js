@@ -56,7 +56,7 @@ test('turn_start explains its optional fields on the result, not in the descript
   const toolsDir = path.join(dir, 'tools');
   if (fs.existsSync(toolsDir)) for (const f of fs.readdirSync(toolsDir)) if (f.endsWith('.js')) files.push(path.join(toolsDir, f));
   const src = files.map((f) => fs.readFileSync(f, 'utf8')).join('\n');
-  for (const field of ['offerResume', 'recentReminders', 'planHeadline', 'languageNudge', 'replyTarget']) {
+  for (const field of ['offerResume', 'recentReminders', 'planHeadline', 'languageNudge', 'replyTarget', 'genderForms']) {
     assert.match(src, new RegExp(`hints\\.${field} = `), `a hint is built for ${field}`);
   }
   const turnStart = toolDefinitions().find((d) => d.name === 'turn_start');

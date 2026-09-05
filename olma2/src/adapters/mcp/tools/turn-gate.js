@@ -7,8 +7,18 @@ const {
 // The per-field guidance for turn_start's optional fields. In the RESULT and
 // not in the description: the description is injected on every turn for every
 // user, these fields show up on a handful of turns in a person's life.
-function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget }) {
+function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms }) {
   const hints = {};
+  if (genderForms === 'feminine') {
+    // The doctrine already says "hold the stored preference"; the nightly
+    // evals kept catching one masculine verb in an otherwise feminine reply
+    // ("בא לך" is fine, "תרצה" is not). A cheap model attends to the result
+    // it just read far better than to a rule 40k chars up, so the reminder
+    // rides here, on exactly the people it applies to, and nowhere else.
+    hints.genderForms = 'They asked to be addressed in FEMININE Hebrew forms. Every verb and '
+      + 'pronoun aimed at them is feminine — תרצי, את יכולה, תוכלי, שלך — never תרצה, אתה, '
+      + 'תוכל. Reread the whole reply before sending; a single masculine form is a failure.';
+  }
   if (replyTarget) {
     hints.replyTarget = 'They used WhatsApp reply on ONE earlier message, and the '
       + '"Reply target of current user message" block above holds its text. Answer THAT '
@@ -254,6 +264,15 @@ module.exports = [
         `SELECT headline FROM user_plans
           WHERE user_id = $1 AND built_at > now() - interval '26 hours'`, [user.id]);
       const planHeadline = planRow[0] ? planRow[0].headline : null;
+      // Stored by remember_preference when they asked to be addressed as a
+      // woman (or said so themselves). Read here, not from the card: the card
+      // is a fact the model may or may not attend to, the result is a
+      // sentence it has just read. Masculine is the doctrine's default and
+      // gets no hint — the hint exists for the register that keeps slipping.
+      const { rows: genderRow } = await client.query(
+        `SELECT value FROM user_preferences WHERE user_id = $1 AND key = 'gender_forms'`, [user.id]);
+      const genderForms = genderRow[0] && /נקבה|feminine|female|woman/i.test(String(genderRow[0].value))
+        ? 'feminine' : null;
 
       // USER.md is re-rendered only when something on it moved. turn_start runs
       // on every single message, so it cannot join CARD_TOOLS wholesale — it
@@ -313,11 +332,12 @@ module.exports = [
           ...(recentReminders.length ? { recentReminders } : {}),
           ...(planHeadline ? { planHeadline } : {}),
           ...(replyTarget ? { replyTarget: true } : {}),
+          ...(genderForms ? { genderForms } : {}),
           // What to do with each of those, said only when it is there. This
           // used to be four sentences in the tool description — paid on every
           // turn by every user, for fields that appear on a handful of turns
           // in a person's life. Same budget rule as `onboarding` above.
-          ...turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget }),
+          ...turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms }),
         }), namedNow);
       }
       const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);
