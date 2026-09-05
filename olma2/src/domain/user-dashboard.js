@@ -112,7 +112,13 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
             ON sh.task_id = t.id AND sh.viewer_id = $1 AND sh.status = 'active'
      WHERE t.parent_id IS NULL
        AND (t.owner_id = $1 OR sh.id IS NOT NULL)
-     ORDER BY t.archived_at NULLS FIRST, t.due_at NULLS LAST, t.id`,
+     -- Open first, then the finished ones newest-first: the archive shows the
+     -- last eight and says how many it is hiding, so "last" has to mean when
+     -- it was finished, not when it had been due. Open rows are all NULL on
+     -- the second key and fall through to their own order, unchanged.
+     ORDER BY (t.archived_at IS NOT NULL OR t.status = 'done'),
+              COALESCE(t.completed_at, t.archived_at) DESC NULLS LAST,
+              t.due_at NULLS LAST, t.id`,
     [userId, zone]
   );
   if (!tasks.length) return { open: [], archived: [] };
@@ -213,7 +219,19 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
       // the HTML.
       caps: src ? SOURCE_CAPS[src] : null,
     };
-    (t.archived ? out.archived : out.open).push(row);
+    // Finished is finished, however it got there. This asked `archived_at`
+    // alone until 2026-09-05, and `complete_task` — the ordinary way a task
+    // ends, from chat — only ever sets `status = 'done'`. So every task
+    // anybody had ever completed by talking to Olma came back in the OPEN
+    // list, ticked, and every control on it was refused: the tick because
+    // completeTask guards on `status = 'open'`, the row's own count because
+    // it was counted as outstanding. Gali reported it as three tasks stuck
+    // in "באיחור" that would not clear; five users held twenty such rows.
+    //
+    // The chat side never saw it — `list_my_tasks` filters on status, which
+    // is exactly why it survived: the two faces disagreed about what "open"
+    // meant, and only one of them was ever looked at.
+    (t.archived || t.status === 'done' ? out.archived : out.open).push(row);
   }
   return out;
 }

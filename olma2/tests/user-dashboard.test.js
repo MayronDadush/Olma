@@ -210,6 +210,75 @@ test('an archived task is archived, and is not in the open list', async () => {
   assert.equal(d.tasks.some((x) => x.title === 'done and gone'), false);
 });
 
+// ---------------------------------------------------------- finished vs open
+//
+// The live bug of 2026-09-05: Gali opened her dashboard and three tasks sat in
+// "באיחור" that she could neither tick nor delete. They were tasks she had
+// already finished — by talking to Olma, which is what `complete_task` is for,
+// and which sets `status = 'done'` and nothing else. This payload split its two
+// lists on `archived_at` alone, so all of them came back as OPEN and ticked,
+// and every control on them was refused by a server that could see they were
+// already done. Five users held twenty such rows.
+
+test('a task finished from chat is in the archive, not sitting open and ticked', async () => {
+  const r = await withTx(db.pool, (c) => tasks.addTask(c, me.id, { title: 'לקחת תרופה' }));
+  // Exactly what complete_task leaves behind: done, never archived.
+  await withTx(db.pool, (c) => tasks.completeTask(c, me.id, r.data.task.id));
+  const { rows } = await db.pool.query(
+    'SELECT status, archived_at FROM tasks WHERE id = $1', [r.data.task.id]);
+  assert.equal(rows[0].status, 'done');
+  assert.equal(rows[0].archived_at, null, 'the premise: completing does not archive');
+
+  const d = (await load(me.id)).data;
+  assert.equal(d.tasks.some((x) => x.id === r.data.task.id), false,
+    'a finished task must not be on the open list');
+  assert.equal(d.archived.some((x) => x.id === r.data.task.id), true);
+});
+
+test('nothing on the open list is already done', async () => {
+  // The property, not the instance — this is the assertion that would have
+  // caught it, whatever route put a done row there.
+  const d = (await load(me.id)).data;
+  assert.deepEqual(d.tasks.filter((x) => x.done).map((x) => x.title), []);
+});
+
+test('the archive is ordered by when things were finished, newest first', async () => {
+  const u = await makeUser(db.pool, '+972541000077', { firstName: 'Ordered' });
+  const made = [];
+  for (const title of ['first', 'second', 'third']) {
+    const r = await withTx(db.pool, (c) => tasks.addTask(c, u.id, { title }));
+    made.push(r.data.task.id);
+  }
+  // Finished out of the order they were created, and out of any due-date order.
+  await db.pool.query(
+    `UPDATE tasks SET status = 'done', completed_at = $2 WHERE id = $1`,
+    [made[0], '2026-09-03T10:00:00Z']);
+  await db.pool.query(
+    `UPDATE tasks SET status = 'done', completed_at = $2 WHERE id = $1`,
+    [made[1], '2026-09-01T10:00:00Z']);
+  await db.pool.query(
+    `UPDATE tasks SET status = 'done', completed_at = $2, archived_at = $2 WHERE id = $1`,
+    [made[2], '2026-09-05T10:00:00Z']);
+
+  const d = (await load(u.id)).data;
+  assert.deepEqual(d.archived.map((x) => x.title), ['third', 'first', 'second'],
+    'the page shows the last eight and says how many it hides — "last" has to mean finished-at');
+});
+
+test('a task finished from chat can still be put back on the list', async () => {
+  // The archive draws a way back on every row in it. Offering one over a task
+  // the server would refuse to restore is the same bug wearing the other shoe.
+  const r = await withTx(db.pool, (c) => tasks.addTask(c, me.id, { title: 'להחזיר מהצאט' }));
+  await withTx(db.pool, (c) => tasks.completeTask(c, me.id, r.data.task.id));
+  const back = await withTx(db.pool, (c) => tasks.unarchiveTask(c, me.id, r.data.task.id));
+  assert.equal(back.ok, true, back.ok ? '' : JSON.stringify(back.error));
+
+  const d = (await load(me.id)).data;
+  const row = d.tasks.find((x) => x.id === r.data.task.id);
+  assert.ok(row, 'back on the open list');
+  assert.equal(row.done, false, 'and open, not back-and-already-ticked');
+});
+
 test('a task somebody shared with me is on my list too, and marked as theirs', async () => {
   const shares = require('../src/domain/shares');
   const t = await withTx(db.pool, (c) =>
