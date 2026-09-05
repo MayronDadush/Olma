@@ -59,6 +59,12 @@ const JOB_INTERVAL_SECONDS = {
   // is a story, a gap reported as "12 minutes" is noise on a normal deploy.
   deploy_drift: 3600,
   retention_sweep: 86400,
+  // Not a brokerd job: root's crontab runs scripts/backup-offbox.sh nightly
+  // after the pg_dump, and the script writes this row itself. Listed here so
+  // the one copy of the database that leaves the droplet is watched by the
+  // same board as every sweep — a backup that quietly stops is a promise
+  // nobody checked. Never kicked on start (nothing arms it in-process).
+  backup_offbox: 86400,
 };
 
 const STALE_MULTIPLIER = 3;

@@ -40,9 +40,7 @@ const { readReleaseMarker } = require('../release-marker');
 
 // ---- helpers ----------------------------------------------------------------
 
-function esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
+const { esc } = require('./html');
 
 function checkBasicAuth(req, user, pass) {
   const h = req.headers.authorization || '';
@@ -121,6 +119,7 @@ const JOB_LABELS = {
   retention_sweep: 'ניקוי נתונים ישנים',
   eval_sweep: 'בדיקות התנהגות ליליות',
   deploy_drift: 'השוואת הגרסה שרצה מול main',
+  backup_offbox: 'גיבוי יומי של מסד הנתונים מחוץ לשרת',
 };
 
 // /health sits AHEAD of Basic Auth and Caddy publishes it, so what goes in it
@@ -172,7 +171,56 @@ function driftLine(rows) {
 // `probe` is injectable for the same reason /health's is: this suite runs on
 // the production box and on CI runners, and neither one's real gateway proves
 // anything about the branch under test.
-async function renderHeartbeats(client, _csrf, probe) {
+// The doctrine (AGENTS.md) against the gateway's injection ceiling. Over the
+// line nothing is announced: the gateway keeps a head and a tail and deletes
+// the middle of some section, on every turn, for every user — and the file
+// has sat one character under the line since 2026-09-04. tests/intake.test.js
+// stops a change that crosses it; this row is what lets a person SEE the
+// margin instead of learning it from a red test. Rendered from the template
+// with a token-shaped placeholder, exactly as efficiency_watch measures it.
+// The ceiling is the GATEWAY'S setting (agents.defaults.bootstrapMaxChars in
+// openclaw.json; the box sets 40,000, the gateway's own default is 20,000).
+// A config that cannot be read gives an UNKNOWN ceiling, never the default:
+// judging 39k chars against 20k would show a red row for a doctrine that
+// fits — "a thing that could not be READ is never a thing in trouble".
+// null when the doctrine itself cannot be measured — a meter that cannot
+// read must not show a number.
+function doctrineMeter(configPath) {
+  try {
+    const { renderAgentsMd } = require('../../intake/provision');
+    const guard = require('../../jobs/config-guard');
+    const chars = renderAgentsMd('olma_tok_' + '0'.repeat(32)).length;
+    let limit = null;
+    try { limit = guard.bootstrapBudget(occ.loadConfig(configPath)); } catch { limit = null; }
+    if (limit === null) return { chars, limit: null, headroom: null, over: false, near: false };
+    const headroom = limit - chars;
+    return {
+      chars, limit, headroom,
+      over: headroom < 0,
+      near: headroom >= 0 && headroom < guard.BOOTSTRAP_WARN_MARGIN,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function doctrineRow(m) {
+  if (!m) return '';
+  const note = m.limit === null ? 'התקרה לא נקראה מהגדרות השער — אין שיפוט'
+    : m.over ? 'מעל התקרה — השער מוחק מהאמצע בשקט, בכל תור'
+      : m.near ? `נשארו ${fmt(m.headroom)} תווים — כל תוספת תיחתך בשקט`
+        : `נשארו ${fmt(m.headroom)} תווים`;
+  const warn = m.over || m.near;
+  return `<tr class="${m.over ? 'bad' : ''}">
+      <td>${m.over ? '⚠' : '–'} הדוקטרינה (AGENTS.md)</td>
+      <td class="${warn ? 'warn' : 'dim'} mono">${fmt(m.chars)} / ${m.limit === null ? '?' : fmt(m.limit)}</td>
+      <td class="${warn ? 'warn' : 'dim'}">${esc(note)}</td></tr>`;
+}
+
+// `ctx.configPath` is the router's injected gateway config (createDashboard's
+// option), so the meter reads the same file the rest of the dashboard does;
+// the module-level path is the fallback for a direct call without one.
+async function renderHeartbeats(client, _csrf, probe, ctx = {}) {
   const { rows } = await client.query(`SELECT * FROM job_heartbeats ORDER BY job_name`);
   const now = Date.now();
   const problems = rows.filter((r) => isStale(r.job_name, r.last_run_at, now) || (r.note && String(r.note).startsWith('ERR')));
@@ -226,12 +274,19 @@ async function renderHeartbeats(client, _csrf, probe) {
         ? esc([rel.at ? ago(rel.at) : null, drift.text, rel.subject].filter(Boolean).join(' · ').slice(0, 140))
         : 'אין סימון גרסה — פריסה שקדמה למעקב'}</td></tr>`;
 
-  const totalProblems = problems.length + (gwBad ? 1 : 0);
+  // Like the release row: a fact about the deployment, not a process, so it
+  // is never counted in the banner — unless it is OVER the line, which is a
+  // live fault in every user's prompt and is counted as one.
+  const doctrine = doctrineMeter(ctx.configPath || OPENCLAW_CONFIG_PATH);
+  const docRow = doctrineRow(doctrine);
+  const docBad = Boolean(doctrine && doctrine.over);
+
+  const totalProblems = problems.length + (gwBad ? 1 : 0) + (docBad ? 1 : 0);
   const banner = totalProblems === 0
     ? `<div class="banner ok">✓ הכל תקין — ${rows.length + gwCounted} תהליכים רצים כסדרם</div>`
     : `<div class="banner bad">⚠ ${totalProblems} תהליכים דורשים תשומת לב</div>`;
 
-  const tr = gwRow + relRow + rows.map((r) => {
+  const tr = gwRow + relRow + docRow + rows.map((r) => {
     const bad = isStale(r.job_name, r.last_run_at, now) || (r.note && String(r.note).startsWith('ERR'));
     const err = r.note && String(r.note).startsWith('ERR');
     return `<tr class="${bad ? 'bad' : ''}">
@@ -1921,6 +1976,44 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
   const mail = () => mailDomain || require('../../domain/mail');
   const googleConnect = () => googleConnectDomain || require('../../domain/google-connect');
 
+  // The table the /oauth/google/callback route dispatches on — see the route
+  // for what each column means. Keyed by the `provider` an oauth_states row
+  // was minted with, so a state minted for one product can never be redeemed
+  // as another. `success(data)` returns [title, body] for the result page.
+  const OAUTH_PROVIDERS = {
+    google_calendar: {
+      flow: calendar,
+      refreshesCard: () => true,
+      success: (d) => ['היומן חובר ✅', d.accessLevel === 'read_write'
+        ? 'אולמה יכולה לראות את היומן שלך וגם להוסיף ולערוך אירועים. אפשר לחזור לוואטסאפ.'
+        : 'אולמה יכולה לראות את היומן שלך בלבד — היא לא תוכל לשנות בו דבר. אפשר לחזור לוואטסאפ.'],
+    },
+    gmail: {
+      flow: mail,
+      refreshesCard: () => true,
+      success: () => ['תיבת המייל חוברה ✅', 'אולמה יכולה לחפש במיילים שלך כשתבקש — היא לא עוברת עליהם מיוזמתה, ולא יכולה לשלוח, להשיב או למחוק כלום. אפשר לחזור לוואטסאפ.'],
+    },
+    google_contacts: {
+      flow: googleContacts,
+      refreshesCard: () => false,
+      success: () => ['אנשי הקשר חוברו ✅', 'אולמה תייבא אותם עכשיו ותעדכן אותך בוואטסאפ כמה נשמרו. אפשר לחזור לשם.'],
+    },
+    google_connect: {
+      flow: googleConnect,
+      refreshesCard: (d) => Boolean(d.connected && (d.connected.calendar || d.connected.mail)),
+      success: (d) => {
+        const got = d.connectedLabel || [];
+        const missingHe = { calendar: 'יומן', contacts: 'אנשי קשר', mail: 'מייל' };
+        const missed = (d.missing || []).map((k) => missingHe[k] || k);
+        const gotLine = got.length ? `חובר: ${got.join(', ')}.` : '';
+        const missLine = missed.length
+          ? ` לא סומן בגוגל ולכן לא חובר: ${missed.join(', ')} — אפשר לבקש קישור חדש ולסמן גם את זה.`
+          : '';
+        return ['החיבור לגוגל הושלם ✅', `${gotLine}${missLine} אפשר לחזור לוואטסאפ.`.trim()];
+      },
+    },
+  };
+
   // Which hostnames get the PUBLIC home page at `/` instead of the admin
   // dashboard. Injectable so the suite can prove both halves without owning
   // DNS; the default is the real public domain and its www form.
@@ -1989,18 +2082,24 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
             if (rows[0]) provider = rows[0].provider;
           } catch { /* fall through to calendar's own bad_state answer */ }
         }
-        // A map rather than a ternary: this is the third Google product to
-        // land on one callback, and a nested ternary is how a route like this
-        // stops being readable. Anything unrecognised still falls through to
-        // calendar's own bad_state answer, exactly as before.
-        const flowFor = { google_contacts: googleContacts, gmail: mail, google_connect: googleConnect };
-        const flow = flowFor[provider] || calendar;
-        const isContacts = provider === 'google_contacts';
-        const isMail = provider === 'gmail';
-        const isConnect = provider === 'google_connect';
+        // One row per Google product that lands on this callback — the
+        // fourth arrived as a fourth boolean flag, which is how a route like
+        // this stops being readable. Anything unrecognised falls through to
+        // the calendar row, exactly as before. Each row says three things:
+        // which domain module redeems the state, whether a success changed
+        // something USER.md carries, and what the person is shown.
+        //
+        // `refreshesCard`: connecting here happens over HTTP, outside any
+        // tool call, so brokerd's per-tool card refresh never sees it — the
+        // card carries calendar and mail state (the agent reads it every
+        // turn), so those refresh after the commit, the same rule as every
+        // card write. Contacts is the deliberate exception: connecting alone
+        // moves nothing on the card; the address-book COUNT only moves once
+        // the import tool actually runs (see contacts_connected below).
+        const p = OAUTH_PROVIDERS[provider] || OAUTH_PROVIDERS.google_calendar;
         let result;
         try {
-          result = await withTx(pool, (client) => flow().completeOAuth(client, {
+          result = await withTx(pool, (client) => p.flow().completeOAuth(client, {
             state, code: q.get('code'), error: q.get('error'),
           }, googleOpts || {}));
         } catch (e) {
@@ -2012,47 +2111,8 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
           res.end(oauthResultPage(title, body));
         };
         if (result.ok) {
-          if (isConnect) {
-            // Same card rule as calendar/mail below — connecting calendar or
-            // mail here happens over HTTP, outside any tool call, so
-            // brokerd's per-tool card refresh never sees it.
-            if (result.data.connected.calendar || result.data.connected.mail) {
-              const { refreshUserCard } = require('../../intake/user-card');
-              await refreshUserCard(pool, result.data.userId);
-            }
-            const got = result.data.connectedLabel || [];
-            const missingHe = { calendar: 'יומן', contacts: 'אנשי קשר', mail: 'מייל' };
-            const missed = (result.data.missing || []).map((k) => missingHe[k] || k);
-            const gotLine = got.length ? `חובר: ${got.join(', ')}.` : '';
-            const missLine = missed.length
-              ? ` לא סומן בגוגל ולכן לא חובר: ${missed.join(', ')} — אפשר לבקש קישור חדש ולסמן גם את זה.`
-              : '';
-            return page(200, 'החיבור לגוגל הושלם ✅', `${gotLine}${missLine} אפשר לחזור לוואטסאפ.`.trim());
-          }
-          if (isMail) {
-            // The card carries mail state (the agent reads it every turn),
-            // and connecting happens HERE — an HTTP route, not a tool — so
-            // brokerd's per-tool card refresh never sees it. After the
-            // commit, same rule as every card write.
-            const { refreshUserCard } = require('../../intake/user-card');
-            await refreshUserCard(pool, result.data.userId);
-            return page(200, 'תיבת המייל חוברה ✅', 'אולמה יכולה לחפש במיילים שלך כשתבקש — היא לא עוברת עליהם מיוזמתה, ולא יכולה לשלוח, להשיב או למחוק כלום. אפשר לחזור לוואטסאפ.');
-          }
-          if (isContacts) {
-            // Unlike calendar, connecting contacts changes nothing on the
-            // card by itself — the address-book COUNT only moves once the
-            // import tool actually runs (see contacts_connected below), so
-            // there is no refreshUserCard call here.
-            return page(200, 'אנשי הקשר חוברו ✅', 'אולמה תייבא אותם עכשיו ותעדכן אותך בוואטסאפ כמה נשמרו. אפשר לחזור לשם.');
-          }
-          // The card carries calendar state, and connecting happens HERE — an
-          // HTTP route, not a tool — so brokerd's per-tool refresh never sees
-          // it. After the commit, same rule as every card write.
-          const { refreshUserCard } = require('../../intake/user-card');
-          await refreshUserCard(pool, result.data.userId);
-          return page(200, 'היומן חובר ✅', result.data.accessLevel === 'read_write'
-            ? 'אולמה יכולה לראות את היומן שלך וגם להוסיף ולערוך אירועים. אפשר לחזור לוואטסאפ.'
-            : 'אולמה יכולה לראות את היומן שלך בלבד — היא לא תוכל לשנות בו דבר. אפשר לחזור לוואטסאפ.');
+          if (p.refreshesCard(result.data)) await refreshUserCard(pool, result.data.userId);
+          return page(200, ...p.success(result.data));
         }
         const reason = result.error && result.error.reason;
         if (reason === 'declined') return page(200, 'לא חובר', 'ביטלת את החיבור. אפשר לנסות שוב מתי שתרצה.');
@@ -2291,7 +2351,7 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         } else {
           for (const s of SECTIONS) {
             sectionsHtml += `<section id="${s.id}"><h3>${s.title}</h3>` +
-              `<p class="hint">${s.hint}</p>${await s.render(client, csrf)}</section>`;
+              `<p class="hint">${s.hint}</p>${await s.render(client, csrf, undefined, { configPath })}</section>`;
           }
         }
       } finally { client.release(); }

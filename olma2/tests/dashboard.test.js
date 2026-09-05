@@ -117,6 +117,67 @@ test('/health reports 503 when a job is genuinely stuck', async () => {
   await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'outbox_worker'`);
 });
 
+// The doctrine has sat one character under the gateway's ceiling since
+// 2026-09-04, guarded only by a test. This is the row that lets a person see
+// the margin — and the number on it must be the SAME measurement the guard
+// takes, or the two will disagree the day it matters.
+test('the health board shows the doctrine against the gateway ceiling, from the same measurement the guard takes', async () => {
+  const { renderAgentsMd } = require('../src/intake/provision');
+  const guard = require('../src/jobs/config-guard');
+  const chars = renderAgentsMd('olma_tok_' + '0'.repeat(32)).length;
+  const fmt = (n) => n.toLocaleString('en-US');
+
+  // No gateway config on this test server: the ceiling is UNKNOWN, the size
+  // still shows, nothing is judged and nothing is counted. (The gateway's own
+  // default is 20,000 and the doctrine is far past it; a meter that fell back
+  // to that default would paint a red row for a file that fits on the box.)
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.ok(html.includes('הדוקטרינה (AGENTS.md)'), 'the row is there');
+  assert.ok(html.includes(`${fmt(chars)} / ?`), 'size shown, ceiling unknown');
+  assert.ok(html.includes('התקרה לא נקראה'), 'and says so');
+  assert.ok(html.includes('הכל תקין'), 'an unreadable ceiling is not a problem');
+
+  // With the box's setting, the row judges: what is left, and the warning
+  // once inside the guard's margin.
+  const tmp = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'olma-dash-doc-'));
+  const cfgPath = require('node:path').join(tmp, 'openclaw.json');
+  const limit = 40_000;
+  require('node:fs').writeFileSync(cfgPath, JSON.stringify({ agents: { defaults: { bootstrapMaxChars: limit } } }));
+  try {
+    const { SECTIONS } = require('../src/adapters/http/dashboard');
+    const section = await withTx(db.pool, (c) =>
+      SECTIONS.find((s) => s.id === 'health').render(c, 'csrf', async () => gatewayState, { configPath: cfgPath }));
+    const headroom = limit - chars;
+    assert.ok(headroom >= 0, 'the template itself fits (intake.test.js owns this guard)');
+    assert.ok(section.includes(`${fmt(chars)} / ${fmt(limit)}`), `shows ${chars} against ${limit}`);
+    assert.ok(section.includes(`נשארו ${fmt(headroom)} תווים`), 'and says how much room is left');
+    if (headroom < guard.BOOTSTRAP_WARN_MARGIN) {
+      assert.ok(section.includes('כל תוספת תיחתך בשקט'), 'under the warn margin it says so');
+    }
+    // Over the line it is a fault in every user's prompt, and counted as one.
+    require('node:fs').writeFileSync(cfgPath, JSON.stringify({ agents: { defaults: { bootstrapMaxChars: chars - 1 } } }));
+    const over = await withTx(db.pool, (c) =>
+      SECTIONS.find((s) => s.id === 'health').render(c, 'csrf', async () => gatewayState, { configPath: cfgPath }));
+    assert.ok(over.includes('מעל התקרה'), 'over is named');
+    assert.ok(over.includes('דורשים תשומת לב'), 'and counted in the banner');
+  } finally {
+    require('node:fs').rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// The off-box backup is a cron script, not a sweep, but its heartbeat sits on
+// the same board — and a row that shows up as a bare `backup_offbox` is a
+// puzzle to the person reading it. The label is the contract with the page.
+test('the off-box backup heartbeat reads in plain Hebrew on the health board', async () => {
+  await db.pool.query(
+    `INSERT INTO job_heartbeats (job_name, last_run_at, last_ok_at, note)
+     VALUES ('backup_offbox', now(), now(), 'uploaded olma2-2026-09-05.sql.gz 4096B; pruned 0 older than 30d')`);
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.ok(html.includes('גיבוי יומי של מסד הנתונים מחוץ לשרת'), 'labelled, not the raw job name');
+  assert.ok(!html.includes('>backup_offbox<'), 'raw job name never shown');
+  await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'backup_offbox'`);
+});
+
 test('/ready is the deploy gate and a stale sweep must not fail it', async () => {
   // The deadlock this guards, live on 2026-08-22: deploy.sh gated on /health,
   // /health is 503 whenever any sweep is behind, and five seconds after a
