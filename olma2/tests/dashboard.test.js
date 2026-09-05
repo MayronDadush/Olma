@@ -127,15 +127,23 @@ test('the health board shows the doctrine against the gateway ceiling, from the 
   const chars = renderAgentsMd('olma_tok_' + '0'.repeat(32)).length;
   const fmt = (n) => n.toLocaleString('en-US');
 
-  // No gateway config on this test server: the ceiling is UNKNOWN, the size
-  // still shows, nothing is judged and nothing is counted. (The gateway's own
-  // default is 20,000 and the doctrine is far past it; a meter that fell back
-  // to that default would paint a red row for a file that fits on the box.)
+  // The row is on the page, whatever this machine's gateway config says.
   const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
   assert.ok(html.includes('הדוקטרינה (AGENTS.md)'), 'the row is there');
-  assert.ok(html.includes(`${fmt(chars)} / ?`), 'size shown, ceiling unknown');
-  assert.ok(html.includes('התקרה לא נקראה'), 'and says so');
-  assert.ok(html.includes('הכל תקין'), 'an unreadable ceiling is not a problem');
+
+  // A config that cannot be read: the ceiling is UNKNOWN, the size still
+  // shows, nothing is judged and nothing is counted. (The gateway's own
+  // default is 20,000 and the doctrine is far past it; a meter that fell back
+  // to that default would paint a red row for a file that fits on the box.)
+  // Injected, never inferred from the machine: on the production box the real
+  // /root/.openclaw/openclaw.json exists and is readable, and the on-box suite
+  // is what caught a version of this test that assumed it would not be.
+  const { SECTIONS } = require('../src/adapters/http/dashboard');
+  const unknown = await withTx(db.pool, (c) =>
+    SECTIONS.find((s) => s.id === 'health').render(c, 'csrf', async () => gatewayState, { configPath: '/nonexistent/openclaw.json' }));
+  assert.ok(unknown.includes(`${fmt(chars)} / ?`), 'size shown, ceiling unknown');
+  assert.ok(unknown.includes('התקרה לא נקראה'), 'and says so');
+  assert.ok(unknown.includes('הכל תקין'), 'an unreadable ceiling is not a problem');
 
   // With the box's setting, the row judges: what is left, and the warning
   // once inside the guard's margin.
@@ -144,7 +152,6 @@ test('the health board shows the doctrine against the gateway ceiling, from the 
   const limit = 40_000;
   require('node:fs').writeFileSync(cfgPath, JSON.stringify({ agents: { defaults: { bootstrapMaxChars: limit } } }));
   try {
-    const { SECTIONS } = require('../src/adapters/http/dashboard');
     const section = await withTx(db.pool, (c) =>
       SECTIONS.find((s) => s.id === 'health').render(c, 'csrf', async () => gatewayState, { configPath: cfgPath }));
     const headroom = limit - chars;
