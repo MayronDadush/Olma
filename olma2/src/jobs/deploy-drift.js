@@ -1,40 +1,15 @@
 'use strict';
-// Is the box running what `main` says it should be?
+// Is the box running what `main` says it should be? "Merged" is not
+// "deployed" here and the gap is silent: a wedged or failed `test` skips
+// `deploy`, and the concurrency group cancels a queued run when a later
+// merge displaces it. This makes the gap visible, and keeps it visible.
 //
-// "Merged" does not mean "deployed" here, and the gap is completely silent.
-// Twice on 2026-09-03/04 a merge's own CI run was cancelled or wedged, its
-// `deploy` job was skipped, and the code sat in main for hours with nothing
-// anywhere saying so. The worst instance was #140 — the fix for deploys that
-// die mid-run — which itself never deployed for exactly that reason, so the
-// cure sat in main while the disease kept happening.
-//
-// Two causes, both outside our control and both quiet:
-//   * a wedged or failed `test` job SKIPS `deploy`
-//   * GitHub's concurrency group keeps ONE pending run per ref, so when
-//     merges arrive faster than deploys finish, the middle ones are cancelled
-//
-// So this does not try to prevent either. It just makes the gap visible, and
-// keeps it visible — "show the gap always, not only when it breaks"
-// (CLAUDE.md, on the cost figures that drifted for a month while every page
-// looked healthy).
-//
-// ---- deliberately NOT an alert ----
-//
-// `BREAKS_USERS` means "their tool calls fail right now" and nothing else.
-// Production being three commits behind main breaks nobody: it is the
-// previous release, and the previous release worked. This is a dashboard row.
-// Widening the alarm set is how an alert list stops being read.
-//
-// ---- and deliberately not a judgement when it cannot judge ----
-//
-// A GitHub that cannot be reached is not a drifted deploy — it is an unknown,
-// reported as one, carrying forward WHEN the last real answer was so nobody
-// reads a stale verdict as a fresh one. `null` (could not check) and
-// "in sync" must never collapse into the same row.
-//
-// The check going quiet is covered for free: this is a job_heartbeats row, so
-// jobs/expectations.js already calls it stale if it stops running, and
-// /health already reports that. No second detector needed for the detector.
+// Rules: a dashboard row and never an alert (BREAKS_USERS means "tool calls
+// fail right now", and the previous release worked); four states that stay
+// four — an unreachable GitHub is `unchecked`, carrying WHEN the last real
+// answer was, never `in_sync`; and going quiet is already covered, because
+// this is a job_heartbeats row. docs/incidents.md, "Merged is not deployed —
+// the drift row (2026-09-04)".
 const { readReleaseMarker } = require('../adapters/release-marker');
 
 // job_heartbeats.note is a 200-char column and this note is READ BACK next

@@ -1,46 +1,19 @@
 'use strict';
-// Reads a finished conversation and writes down what it taught us: facts about
-// the person, and things they said they need to DO.
+// Reads a finished conversation and writes down what it taught us: facts,
+// stated commitments (as tasks), and a name if none is on file.
 //
-// This is the engine behind migration 008. The old memory layer asked the
-// agent to remember to write a file mid-conversation, and it never did — so
-// the design rule here is the one USER.md proved: the SYSTEM extracts, as a
-// scheduled side effect, and the person's card is refreshed for them.
+// Rules: the SYSTEM extracts, as a scheduled side effect — never the agent
+// mid-conversation; a chapter is closed once the person has been quiet for
+// CHAPTER_GAP_MS; it thinks over a DIRECT model call (adapters/llm.js): the
+// model proposes one JSON document and this job writes through the same
+// domain functions the tools use; provenance is stamped at insert; a name is
+// written as an UNCONFIRMED guess (this job never speaks to the person); and
+// nothing is ever sent to anyone.
 //
-// Commitments were added for exactly the same reason, after exactly the same
-// failure. A man mentioned he needed to sell three of his vehicles; the agent
-// was busy answering and never saved it, and this job — the one net under a
-// missed turn — was explicitly told that tasks are not facts and to drop them.
-// So the single most important sentence he said that week was read back by the
-// system and deliberately discarded. A stated commitment is now captured here
-// on the same terms as a fact: silently, deduped against what is already on
-// their list, with no date invented and nothing sent to anyone.
-//
-// "After a chapter of conversation" rather than on a clock: a fact is only
-// worth extracting once the exchange that produced it has finished, and a
-// person who stopped replying half an hour ago has finished. Running mid-
-// conversation would both cost a turn per message and read half a thought.
-//
-// A name was the third thing this job was watching go past. It could see what
-// someone was called and had exactly one place to put it — remember_fact — so a
-// live user's name sat in the fact table as the prose "שמו חיים." while
-// users.first_name stayed NULL and every screen, every card and every
-// invitation fell back to his phone number. The name pass below runs only when
-// there is no name on file, and writes it through set_my_name as an unconfirmed
-// guess: this job never speaks to the person, so it is in no position to
-// confirm anything.
-//
-// Since 2026-08-25 this job thinks over a DIRECT model call (adapters/llm.js),
-// not an agent turn. The agent path carried the full interactive stack — 60+
-// tool schemas, AGENTS.md, ~21k cold tokens — to produce a handful of writes,
-// and it rested on two things that had both already failed once: the model
-// calling MCP tools honestly, and the NO_REPLY convention not ending the turn
-// early (it did, on the first live run). Now the model returns one JSON
-// document and THIS JOB does the writing, through the same domain functions
-// the tools call — the model proposes, the server decides. Provenance is
-// stamped at insert (source='conversation' / 'extracted'), which retires the
-// high-water-mark trick the agent path needed. Nothing is sent to anyone, and
-// the person never sees this happen — same as always.
+// Why each of those: docs/incidents.md, "A goal said out loud left no trace
+// anywhere (fixed 2026-08-21)" — the vehicles a man said he had to sell,
+// discarded as "not a fact" — and docs/model-experiments.md for the move off
+// agent turns (2026-08-25).
 const audit = require('../domain/audit');
 const facts = require('../domain/facts');
 const tasks = require('../domain/tasks');
