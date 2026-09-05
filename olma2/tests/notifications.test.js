@@ -93,13 +93,13 @@ test('plain decline notifies the initiator; cancel notifies participants', async
   assert.equal(cancelled.length, 1);
 });
 
-// Three proposals crossed within eight seconds in a live meeting, and each
-// participant then received the whole parade of dead slots — "does Saturday
-// work?", "does Sunday 10:30 work?" — minutes after the negotiation had moved
-// on. A queued ask about a replaced slot is cancelled the dashboard way
-// (sent_at stamped, hold_reason 'superseded', never DELETE), and once the
-// meeting confirms, the remaining asks go the same way.
-test('a newer proposal cancels the queued ask about the old slot', async () => {
+// Three proposals once crossed within eight seconds and each participant got
+// the whole parade of dead slots. Since options (2026-09-05) a second proposal
+// does not kill the first — both are on the table, so both asks stand — but a
+// yes must still name one of them, and once the meeting confirms every queued
+// ask goes the dashboard way (sent_at stamped, hold_reason 'superseded', never
+// DELETE): meeting_confirmed is the message everyone hears now.
+test('two proposals are two options; a yes names one; confirming supersedes the asks', async () => {
   const started = await call(miron, 'start_meeting_coordination', { title: 'race', phones: [kapish.phone] });
   const meetingId = Number(/"id":"?(\d+)/.exec(started)[1]);
   const sun = slotStart('Sunday 09:00, phone');
@@ -113,31 +113,32 @@ test('a newer proposal cancels the queued ask about the old slot', async () => {
     .filter((r) => Number(r.payload.meetingId) === meetingId);
   assert.equal(rows.length, 2);
   const bySlot = Object.fromEntries(rows.map((r) => [r.payload.slot, r]));
-  assert.equal(bySlot['Sunday 09:00, phone'].hold_reason, 'superseded');
-  assert.ok(bySlot['Sunday 09:00, phone'].sent_at, 'cancelled, not deleted — the row still tells the story');
+  assert.equal(bySlot['Sunday 09:00, phone'].hold_reason, null, 'the first option is still on the table');
   assert.equal(bySlot['Tuesday 10:00, cafe'].hold_reason, null);
-  assert.equal(bySlot['Tuesday 10:00, cafe'].sent_at, null);
   assert.equal(bySlot['Tuesday 10:00, cafe'].payload.startsAt, tue);
 
-  // kapish's user said yes to SUNDAY — refused with the current slot, and no
-  // acceptance recorded; a bare accept without the pin is refused too
+  // a yes to a moment nobody proposed is refused and shown the table; a bare
+  // yes is refused too; neither records anything
+  const never = slotStart('Friday 12:00', { hours: 120 });
   const stale = await call(kapish, 'respond_to_meeting_slot', {
-    meeting_id: meetingId, accept: true, accepted_starts_at: sun });
+    meeting_id: meetingId, accept: true, accepted_starts_at: never });
   assert.match(stale, /slot_changed/);
+  assert.match(stale, /Sunday 09:00, phone/);
   assert.match(stale, /Tuesday 10:00, cafe/);
   const missing = await call(kapish, 'respond_to_meeting_slot', { meeting_id: meetingId, accept: true });
   assert.match(missing, /accepted_starts_at_required/);
-  const st = await db.pool.query(`SELECT status FROM meetings WHERE id = $1`, [meetingId]);
+  let st = await db.pool.query(`SELECT status FROM meetings WHERE id = $1`, [meetingId]);
   assert.equal(st.rows[0].status, 'negotiating');
 
-  // the real yes confirms — and the queued ask about the confirmed slot is
-  // superseded as well: meeting_confirmed is the message everyone hears now
+  // the yes to SUNDAY — the older option — is a real yes to it, and with miron
+  // already on it, Sunday is unanimous: confirmed to Sunday, not to the newest
   const good = await call(kapish, 'respond_to_meeting_slot', {
-    meeting_id: meetingId, accept: true, accepted_starts_at: tue });
+    meeting_id: meetingId, accept: true, accepted_starts_at: sun });
   assert.match(good, /"meetingStatus":"confirmed"/);
+  assert.match(good, /Sunday 09:00, phone/);
   const after = (await outboxFor(kapish.id, 'meeting_slot_proposed'))
     .filter((r) => Number(r.payload.meetingId) === meetingId);
-  assert.equal(after.find((r) => r.payload.slot === 'Tuesday 10:00, cafe').hold_reason, 'superseded');
+  for (const r of after) assert.equal(r.hold_reason, 'superseded', `${r.payload.slot} should be superseded once the meeting confirmed`);
 });
 
 test('share offer and response fan out to the right sides', async () => {

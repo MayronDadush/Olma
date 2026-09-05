@@ -175,7 +175,10 @@ async function proposeSlot(client, userId, meetingId, slotText, startsAt) {
   const res = await options.add(client, userId, meetingId, slotText, startsAt);
   if (!res.ok) return res;
   return ok({
-    meetingId, proposedSlot: res.data.option.slotText, startsAt: res.data.option.startsAt,
+    meetingId, proposedSlot: res.data.option.slotText,
+    // As given, not as stored: the recipient's agent echoes this string back as
+    // accepted_starts_at, and a byte-identical echo is the easy case to get right.
+    startsAt: res.data.duplicate ? res.data.option.startsAt : startsAt,
     optionId: res.data.option.id, pending: res.data.pending, duplicate: Boolean(res.data.duplicate),
     initiatorId: res.data.initiatorId,
   });

@@ -148,9 +148,18 @@ async function afterSlotResponse(client, actor, meetingId, res, { accept } = {})
     }, `mconf:${meetingId}`);
     res.data.hint = calendarHintFor(calendarRoleFor(roles, actor.id), Number(meetingId));
   } else if (res.data.proposedSlot) {
-    // decline carried a counter → everyone else hears the NEW slot, and
-    // queued asks about the old one are cancelled first
-    await supersedeQueuedMeetingRows(client, meetingId, ['meeting_slot_proposed']);
+    // decline carried a counter → everyone else hears the NEW option. The asks
+    // about the others are not cancelled: since options, those are still on
+    // the table (the pending case never reaches here — a counter from a
+    // non-initiator at a full table is a question for the initiator alone).
+    if (res.data.pending) {
+      await fanout(client, [Number(res.data.initiatorId || brief.initiator_id)].filter((id) => id !== Number(actor.id)),
+        'meeting_option_pending', {
+          meetingId: Number(meetingId), title: brief.title || 'meeting', slot: res.data.proposedSlot,
+          startsAt: res.data.startsAt, optionId: res.data.optionId, byName: actorName(actor),
+        }, { key: `mopt-pend:${meetingId}:${res.data.optionId}` });
+      return res;
+    }
     await fanout(client, others, 'meeting_slot_proposed', {
       meetingId: Number(meetingId), title: brief.title || 'meeting',
       slot: res.data.proposedSlot, startsAt: res.data.startsAt, byName: actorName(actor),
@@ -248,7 +257,7 @@ async function afterOptionAdded(client, actor, meetingId, res) {
   if (!res.ok) return res;
   const brief = await meetingBrief(client, meetingId);
   const o = res.data.option || { slotText: res.data.proposedSlot, startsAt: res.data.startsAt, id: res.data.optionId };
-  const base = { meetingId: Number(meetingId), title: brief.title || 'meeting', slot: o.slotText, startsAt: o.startsAt, optionId: o.id, byName: actorName(actor) };
+  const base = { meetingId: Number(meetingId), title: brief.title || 'meeting', slot: o.slotText, startsAt: res.data.startsAt || o.startsAt, optionId: o.id, byName: actorName(actor) };
   if (res.data.duplicate) {
     res.data.hint = 'That moment was already on the table — their yes to it was recorded instead of a second copy.';
     return res;

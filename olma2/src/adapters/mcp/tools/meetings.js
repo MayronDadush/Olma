@@ -34,25 +34,12 @@ module.exports = [
     ['meeting_id', 'slot_description', 'starts_at'],
     async (client, user, a) => {
       const res = await meetings.proposeSlot(client, user.id, a.meeting_id, a.slot_description, a.starts_at);
-      if (res.ok) {
-        // This proposal replaces the slot, so any queued ask about the OLD one
-        // is now a wrong question — cancel it before enqueueing the new ones.
-        await supersedeQueuedMeetingRows(client, a.meeting_id, ['meeting_slot_proposed']);
-        const brief = await meetingBrief(client, a.meeting_id);
-        // The WHY rides along with the ask. It already existed in the row; it
-        // simply never travelled, so the other side was asked to agree to a
-        // day with no idea why that day. startsAt rides along too: it is what
-        // the recipient's agent must echo back as accepted_starts_at, pinning
-        // their yes to THIS slot.
-        const reasons = await meetings.shareableConstraints(client, a.meeting_id, user.id);
-        await fanout(client, await activeParticipantsExcept(client, a.meeting_id, user.id),
-          'meeting_slot_proposed', {
-            meetingId: Number(a.meeting_id), title: brief.title || 'meeting',
-            slot: res.data.proposedSlot, startsAt: res.data.startsAt,
-            byName: actorName(user), reasons,
-          });
-      }
-      return res;
+      // Since options (2026-09-05) a proposal JOINS the table rather than
+      // replacing what was on it, so the queued asks about the other options
+      // stay exactly as valid as they were. afterOptionAdded knows the three
+      // outcomes: on the table (everyone else hears it, with the WHY and the
+      // startsAt to echo back), pending (only the initiator hears), duplicate.
+      return meetingFanout.afterOptionAdded(client, user, a.meeting_id, res);
     }),
   tool('respond_to_meeting_slot', 'Accept or decline the proposed slot. accept=true only after the user saw the EXACT slot text, day included, and agreed — and pass accepted_starts_at, the startsAt that came with the proposal they answered, so a yes cannot land on a slot that changed meanwhile (that call is refused with the current slot: show it to them). A decline may carry counter_proposal plus counter_starts_at (same rules as propose, weekday agreement included; a refused counter leaves the decline unrecorded — fix it and call again).',
     { meeting_id: S('number', 'Meeting id'), accept: S('boolean', 'true = user agrees to the exact slot'),

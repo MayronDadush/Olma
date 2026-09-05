@@ -110,18 +110,27 @@ test('a no from the page is a decline, and the initiator hears it', async () => 
   assert.deepEqual(rows.map((x) => Number(x.user_id)), [Number(gali.id)]);
 });
 
-test('a yes cannot land on a slot that moved while the page sat open', async () => {
+// Since options (2026-09-05) a newer proposal does not replace the one the
+// page showed — both are on the table. A yes carrying the older moment is a
+// real yes to THAT option, and never a yes to the newer one; a yes carrying a
+// moment that is not on the table at all is refused.
+test('a yes from a page that sat open lands on the option it saw, never on the newer one', async () => {
   const id = await coordination(gali, [me, ron], 'שינוי');
-  const stale = tomorrowAt('12');
-  await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־12:00', stale));
-  const moved = tomorrowAt('15');
-  await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־15:00', moved));
+  const seen = tomorrowAt('12');
+  await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־12:00', seen));
+  const newer = tomorrowAt('15');
+  await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־15:00', newer));
 
-  const r = await actAs(me, 'respondToMeeting', { meetingId: id, accept: true, acceptedStartAt: stale });
-  assert.equal(r.ok, false, 'agreement landed on a time this person never saw');
-  const { rows } = await db.pool.query(
-    `SELECT status FROM meetings WHERE id = $1`, [id]);
-  assert.equal(rows[0].status, 'negotiating');
+  const r = await actAs(me, 'respondToMeeting', { meetingId: id, accept: true, acceptedStartAt: seen });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  const st = await tx((c) => meetings.getStatus(c, me.id, id));
+  const opt = (iso) => st.data.options.find((o) => new Date(o.startsAt).getTime() === new Date(iso).getTime());
+  assert.equal(opt(seen).answers[String(me.id)], 'y');
+  assert.equal(opt(newer).answers[String(me.id)], undefined, 'the newer option was never answered by this person');
+  assert.equal(st.data.meeting.status, 'negotiating', 'ron has not answered anything');
+
+  const nowhere = await actAs(me, 'respondToMeeting', { meetingId: id, accept: true, acceptedStartAt: tomorrowAt('18') });
+  assert.equal(nowhere.ok, false, 'a moment that is not on the table is refused');
 });
 
 test('leaving from the page removes them and tells the initiator', async () => {
