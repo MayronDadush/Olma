@@ -266,7 +266,10 @@ async function listReminders(client, ownerId, taskId) {
 // it to that and no further.
 //
 // 1. A rung is only scheduled once the PREVIOUS one actually reached them —
-//    delivered, not merely enqueued. This is the check-in bug's lesson: that
+//    delivered, not merely enqueued — OR died on OUR side of the wire (the
+//    worker tried, failed every time, and the row expired). The second case
+//    is a redo, not a chase: it goes out at once with the plain wording, and
+//    it still spends a rung so a broken pipe cannot loop for ever. This is the check-in bug's lesson: that
 //    ladder counted messages that died inside quiet hours as ignores and backed
 //    off to weekly on people who had never been sent anything. A reminder held
 //    all night and expired must not burn a rung the person never saw.
@@ -289,10 +292,22 @@ async function dueForSending(client, now, opts = {}) {
     ? Number(opts.gapHours) : ESCALATION_GAP_HOURS;
   const { rows } = await client.query(
     `SELECT r.id AS reminder_id, r.task_id, r.remind_at, r.repeat_rule, r.attempts,
-            t.owner_id, t.title, t.due_at, u.timezone
+            t.owner_id, t.title, t.due_at, u.timezone,
+            -- true when the previous rung was OURS to lose: the pipe failed on
+            -- every try and the row expired with nothing delivered.
+            (prev.hold_reason = 'expired' AND prev.attempts > 0 AND prev.last_error IS NOT NULL) AS prev_failed
      FROM task_reminders r
      JOIN tasks t ON t.id = r.task_id
      JOIN users u ON u.id = t.owner_id
+     -- The outbox row of the rung before this one (none for rung 1).
+     LEFT JOIN LATERAL (
+       SELECT o.sent_at, o.hold_reason, o.attempts, o.last_error FROM outbox o
+        WHERE r.attempts >= 1 AND o.user_id = t.owner_id
+          AND o.idempotency_key = CASE WHEN r.attempts = 1
+                THEN 'reminder:' || r.id
+                ELSE 'reminder:' || r.id || ':' || r.attempts END
+        ORDER BY o.id DESC LIMIT 1
+     ) prev ON true
      WHERE r.sent_at IS NULL AND r.cancelled_at IS NULL
        AND t.status = 'open' AND t.archived_at IS NULL
        -- A paused user's reminders are already cancelled by pauseUser; this is
@@ -306,24 +321,27 @@ async function dueForSending(client, now, opts = {}) {
          OR
          (r.attempts BETWEEN 1 AND $2::int - 1
           AND r.repeat_rule IS NULL
-          -- The previous rung has to have LANDED. hold_reason IS NULL is what
-          -- separates delivered from dropped/expired/cancelled — a row the gate
-          -- stamped on the way to the bin carries a reason and does not count.
-          AND EXISTS (
-            SELECT 1 FROM outbox o
-             WHERE o.user_id = t.owner_id
-               AND o.idempotency_key = CASE WHEN r.attempts = 1
-                     THEN 'reminder:' || r.id
-                     ELSE 'reminder:' || r.id || ':' || r.attempts END
-               AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL
-               AND o.sent_at <= $1::timestamptz - ($3::double precision * interval '1 hour')
+          AND (
+            -- The previous rung died on OUR side: the worker tried, every try
+            -- failed (attempts > 0, an error recorded) and the row expired.
+            -- The person got nothing and it was not their doing, so the next
+            -- rung goes now — not after the gap, and not next day. A row the
+            -- GATE held or dropped never gets here: it has no attempts and no
+            -- error, and chasing it is the check-in ladder's documented bug.
+            (prev.hold_reason = 'expired' AND prev.attempts > 0 AND prev.last_error IS NOT NULL)
+            OR
+            -- The previous rung LANDED. hold_reason IS NULL is what separates
+            -- delivered from dropped/expired/cancelled — a row the gate stamped
+            -- on the way to the bin carries a reason and does not count.
+            (prev.sent_at IS NOT NULL AND prev.hold_reason IS NULL
+             AND prev.sent_at <= $1::timestamptz - ($3::double precision * interval '1 hour')
+             -- Rung 3 is "next day at the hour they chose", not "gap hours after
+             -- rung 2" — computed through their own timezone so the wall-clock
+             -- hour survives a DST boundary instead of drifting by one.
+             AND (r.attempts <> 2
+                  OR (r.remind_at AT TIME ZONE COALESCE(u.timezone, 'UTC') + interval '1 day')
+                       AT TIME ZONE COALESCE(u.timezone, 'UTC') <= $1::timestamptz))
           )
-          -- Rung 3 is "next day at the hour they chose", not "gap hours after
-          -- rung 2" — computed through their own timezone so the wall-clock
-          -- hour survives a DST boundary instead of drifting by one.
-          AND (r.attempts <> 2
-               OR (r.remind_at AT TIME ZONE COALESCE(u.timezone, 'UTC') + interval '1 day')
-                    AT TIME ZONE COALESCE(u.timezone, 'UTC') <= $1::timestamptz)
          )
        )
      ORDER BY r.remind_at`,

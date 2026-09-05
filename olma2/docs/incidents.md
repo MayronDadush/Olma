@@ -39,6 +39,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [The reminder that could not climb, because its first rung died on the wire (fixed 2026-09-05)](#the-reminder-that-could-not-climb-because-its-first-rung-died-on-the-wire-fixed-2026-09-05)
 
 - [Olma's own check-in counted as the user writing back (fixed 2026-09-04)](#olmas-own-check-in-counted-as-the-user-writing-back-fixed-2026-09-04)
 - [A reply pointed at one message and Olma answered another (fixed 2026-09-05)](#a-reply-pointed-at-one-message-and-olma-answered-another-fixed-2026-09-05)
@@ -1037,6 +1038,41 @@ down; the audit row carries fingerprints, which is what `token-leak.js`
 compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
+
+### The reminder that could not climb, because its first rung died on the wire (fixed 2026-09-05)
+
+Recorded as a known gap on 2026-09-01: Miron's 08:00 rent reminder went on the
+wire while the raw pipe was refusing every send (the missing
+`systemAgent.agentId` after the gateway upgrade), failed sixteen times, and
+expired with `hold_reason = 'expired'`. The escalation ladder's rung-2 clause
+required the previous rung's row to carry `sent_at IS NOT NULL AND hold_reason
+IS NULL`; an expired row never matched, so `task_reminders#27` sat at
+`attempts = 1` until the two-day retirement rule closed it. The person was
+told nothing at any point.
+
+The clause was right about the case it was written for — a rung the GATE held
+or dropped (quiet hours, pause, budget) must not be chased, which is the
+check-in ladder's documented bug refusing to repeat itself. What it could not
+see was **whose fault the non-delivery was**. The outbox row already says:
+the gate stamps a reason without ever trying, so its rows carry `attempts =
+0` and no `last_error`; a dead pipe leaves `attempts > 0` and the error
+text. Measured on the box over 30 days before the fix: 2 expired reminder
+rows of the gate's shape, 1 of the pipe's (its error was a gateway config
+warning), and 342 check-in rows of the pipe's shape — that last number is a
+separate finding.
+
+Fix (`domain/reminders.dueForSending`, `jobs/sweeps.sweepReminders`): the
+previous rung's outbox row is read once through a lateral join; the next rung
+is due when that row LANDED (as before, after the gap, next-day for rung 3)
+**or** when it died on our side. The second case is a redo, not a chase: it
+goes out on the next tick under the next rung's key (`reminder:<id>:2` — the
+spent key stays spent, which is the guard against a duplicate), with the
+plain "⏰ תזכורת" wording since nothing was delivered to follow up on, and
+with the urgency of the rung it replaces. It still spends a rung, so a pipe
+that stays broken cannot loop; three means three, redo included. Repeating
+reminders are unchanged (they retire on the first enqueue and their successor
+row already exists), so a repeating reminder lost to an outage is still lost
+that day.
 
 ### A reply pointed at one message and Olma answered another (fixed 2026-09-05)
 

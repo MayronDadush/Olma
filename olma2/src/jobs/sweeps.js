@@ -28,6 +28,11 @@ async function sweepReminders(client, nowIso) {
     // so it retires on the first send exactly as before.
     const repeats = Boolean(reminders.normalizeRepeatRule(r.repeat_rule));
     const finalAttempt = repeats || attempt >= maxAttempts;
+    // The previous rung never left our side (dueForSending: expired after failed
+    // delivery attempts). This rung REPLACES it rather than following it up:
+    // the plain reminder text, since nothing was delivered to follow up on,
+    // and the urgency of the rung it stands in for.
+    const redo = Boolean(r.prev_failed);
     const res = await enqueue(client, {
       userId: r.owner_id,
       kind: 'reminder',
@@ -35,10 +40,10 @@ async function sweepReminders(client, nowIso) {
       // A follow-up is Olma's own idea and queues like everything else Olma
       // decided to say — otherwise three rungs per reminder would be a way to
       // spend an unlimited proactive budget by setting enough reminders.
-      urgency: attempt === 1 ? 'urgent' : 'normal',
+      urgency: attempt === 1 || (redo && attempt === 2) ? 'urgent' : 'normal',
       payload: {
         taskId: Number(r.task_id), title: r.title, remindAt: r.remind_at,
-        ...(attempt > 1 ? { attempt, finalAttempt } : {}),
+        ...(redo ? { redo: true } : attempt > 1 ? { attempt, finalAttempt } : {}),
       },
       // Rung 1 keeps the original 2h-past-the-moment window. A later rung is
       // measured from now: remind_at is hours or a day behind and would make
