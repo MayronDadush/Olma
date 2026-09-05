@@ -106,6 +106,44 @@ test('a real delete followed by a restore puts every row back exactly as it was'
   assert.deepEqual(after, before, 'state after restore is identical to state before the delete');
 });
 
+test('a snapshot taken before a migration still restores, and the new column takes its default', async () => {
+  // 2026-09-05, restoring a snapshot taken the day before: migration 031 had
+  // since added `users.locale_observed_count INT NOT NULL DEFAULT 0`. The live
+  // table was read for the column list, so the absent key became an explicit
+  // NULL, which overrode the default and died on the not-null constraint —
+  // and it died on the OWNER's account, mid-restore.
+  const c0 = await db.pool.connect();
+  try { await c0.query('TRUNCATE users CASCADE'); } finally { c0.release(); }
+  const { a } = await seed(db.pool);
+  const obs = await testbed.observeDeletion(db.pool, a.id);
+
+  const c = await db.pool.connect();
+  try {
+    await c.query('BEGIN');
+    await deprovisionUser(c, '+972500000001', { configPath: cfgFile(), removeWorkspace: false });
+    await c.query('COMMIT');
+    // The migration lands AFTER the snapshot was taken. Both shapes: one with a
+    // default (restorable) and one that is merely nullable (also restorable).
+    await c.query(`ALTER TABLE users ADD COLUMN migrated_after_snapshot INT NOT NULL DEFAULT 7`);
+    await c.query(`ALTER TABLE users ADD COLUMN some_nullable_addition TEXT`);
+  } finally { c.release(); }
+
+  await restoreFrom(db.pool, obs);
+
+  const { rows } = await db.pool.query(
+    'SELECT migrated_after_snapshot, some_nullable_addition FROM users WHERE id=$1', [a.id]);
+  assert.equal(rows.length, 1, 'the user came back');
+  assert.equal(rows[0].migrated_after_snapshot, 7,
+    'the column the snapshot never knew about must take its DEFAULT, not an invented NULL');
+  assert.equal(rows[0].some_nullable_addition, null);
+
+  const c2 = await db.pool.connect();
+  try {
+    await c2.query('ALTER TABLE users DROP COLUMN migrated_after_snapshot');
+    await c2.query('ALTER TABLE users DROP COLUMN some_nullable_addition');
+  } finally { c2.release(); }
+});
+
 test('the identity sequence is pushed past a hand-restored id, so the next signup does not collide', async () => {
   const c0 = await db.pool.connect();
   try { await c0.query('TRUNCATE users CASCADE'); } finally { c0.release(); }
