@@ -452,6 +452,48 @@ async function checkOrphanAgents(client, cfg) {
     `agent ${id} is in openclaw.json with no active user — orphan of a failed provisioning; its workspace may hold another person's text`);
 }
 
+// The other half of checkOrphanAgents: a PERSON with no working agent. That
+// half was never built because it costs somebody something to find out — and
+// it is the half that hurts: a joiner whose agent, binding or config write
+// failed silently got "welcome" in their own head and nothing on their phone,
+// and every screen stayed green (the gateway ignores an invalid config, drops
+// a bindings-only write; both have happened). So this asks about the person,
+// not the config: onboarded, a day gone, and not one message ever DELIVERED
+// to them (a delivered outbox row is sent_at set with no hold_reason — the
+// onboarding ladder writes exactly those), nor one ever received from them.
+// That catches a dead-from-birth agent, a stuck config, and every future
+// failure of the same shape without knowing why.
+//
+// Not to be confused with checkin.js's isDeafOnDayOne, which fires only once
+// TWO onboarding messages have LANDED and the person never replied, and whose
+// effect is to send less. Someone who received nothing falls straight through
+// it, which is why this exists.
+//
+// A day of grace, not hours: a 02:00 joiner is quiet-hours-held, not broken,
+// and the onboarding ladder's first rung is paced, not instant. One row per
+// person (the id is the deterministic part; no counts in the title). A
+// dashboard row, not BREAKS_USERS — nobody's tool call is failing, which is
+// exactly the problem.
+const UNREACHABLE_GRACE_HOURS = 24;
+const UNREACHABLE_WINDOW_DAYS = 30;
+async function checkUnreachableJoiners(client, now = new Date()) {
+  const { rows } = await client.query(
+    `SELECT u.id, u.onboarded_at
+       FROM users u
+      WHERE u.status = 'active' AND NOT u.is_eval AND u.paused_at IS NULL
+        AND u.onboarded_at IS NOT NULL
+        AND u.onboarded_at <= $1::timestamptz - ($2::int * interval '1 hour')
+        AND u.onboarded_at >  $1::timestamptz - ($3::int * interval '1 day')
+        AND u.last_inbound_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM outbox o
+           WHERE o.user_id = u.id AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL)
+      ORDER BY u.id`,
+    [now, UNREACHABLE_GRACE_HOURS, UNREACHABLE_WINDOW_DAYS]);
+  return rows.map((r) =>
+    `user ${r.id} joined ${String(r.onboarded_at.toISOString ? r.onboarded_at.toISOString() : r.onboarded_at).slice(0, 10)} and has never been reached — nothing delivered to them and nothing received from them since; their agent, binding or config write probably failed silently`);
+}
+
 // Permission to use a model is spread across THREE independent lists, and a
 // model missing from any one of them is refused — so they only work when they
 // agree. Found 2026-09-01, the expensive way: a pilot registered two models
@@ -877,6 +919,7 @@ async function run(client, { configPath, ...deps } = {}) {
   violations = violations.concat(await checkLegacyWorkspaceState(client, deps));
   violations = violations.concat(await checkCarryovers(client));
   violations = violations.concat(await checkStuckOutbox(client));
+  violations = violations.concat(await checkUnreachableJoiners(client, deps.now));
   violations = violations.concat(await checkInfraAgentSessions(client, deps));
   violations = violations.concat(await checkLeakedTokens(client, deps));
   const filed = await fileViolations(client, violations);
@@ -902,7 +945,8 @@ async function run(client, { configPath, ...deps } = {}) {
 module.exports = {
   run, checkOpenclawConfig, checkModelPermissions, checkConfigApplied, makeConfigValidator,
   checkIdentityFiles, checkAgentsTokens,
-  checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkInfraAgentSessions,
+  checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkUnreachableJoiners, checkInfraAgentSessions,
+  UNREACHABLE_GRACE_HOURS,
   checkLegacyWorkspaceState, LEGACY_WORKSPACE_STATE,
   checkBootstrapBudget, bootstrapBudget,
   GATEWAY_DEFAULT_BOOTSTRAP_MAX_CHARS, BOOTSTRAP_WARN_MARGIN,
