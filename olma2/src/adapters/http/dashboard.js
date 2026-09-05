@@ -40,9 +40,7 @@ const { readReleaseMarker } = require('../release-marker');
 
 // ---- helpers ----------------------------------------------------------------
 
-function esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
+const { esc } = require('./html');
 
 function checkBasicAuth(req, user, pass) {
   const h = req.headers.authorization || '';
@@ -1922,6 +1920,44 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
   const mail = () => mailDomain || require('../../domain/mail');
   const googleConnect = () => googleConnectDomain || require('../../domain/google-connect');
 
+  // The table the /oauth/google/callback route dispatches on — see the route
+  // for what each column means. Keyed by the `provider` an oauth_states row
+  // was minted with, so a state minted for one product can never be redeemed
+  // as another. `success(data)` returns [title, body] for the result page.
+  const OAUTH_PROVIDERS = {
+    google_calendar: {
+      flow: calendar,
+      refreshesCard: () => true,
+      success: (d) => ['היומן חובר ✅', d.accessLevel === 'read_write'
+        ? 'אולמה יכולה לראות את היומן שלך וגם להוסיף ולערוך אירועים. אפשר לחזור לוואטסאפ.'
+        : 'אולמה יכולה לראות את היומן שלך בלבד — היא לא תוכל לשנות בו דבר. אפשר לחזור לוואטסאפ.'],
+    },
+    gmail: {
+      flow: mail,
+      refreshesCard: () => true,
+      success: () => ['תיבת המייל חוברה ✅', 'אולמה יכולה לחפש במיילים שלך כשתבקש — היא לא עוברת עליהם מיוזמתה, ולא יכולה לשלוח, להשיב או למחוק כלום. אפשר לחזור לוואטסאפ.'],
+    },
+    google_contacts: {
+      flow: googleContacts,
+      refreshesCard: () => false,
+      success: () => ['אנשי הקשר חוברו ✅', 'אולמה תייבא אותם עכשיו ותעדכן אותך בוואטסאפ כמה נשמרו. אפשר לחזור לשם.'],
+    },
+    google_connect: {
+      flow: googleConnect,
+      refreshesCard: (d) => Boolean(d.connected && (d.connected.calendar || d.connected.mail)),
+      success: (d) => {
+        const got = d.connectedLabel || [];
+        const missingHe = { calendar: 'יומן', contacts: 'אנשי קשר', mail: 'מייל' };
+        const missed = (d.missing || []).map((k) => missingHe[k] || k);
+        const gotLine = got.length ? `חובר: ${got.join(', ')}.` : '';
+        const missLine = missed.length
+          ? ` לא סומן בגוגל ולכן לא חובר: ${missed.join(', ')} — אפשר לבקש קישור חדש ולסמן גם את זה.`
+          : '';
+        return ['החיבור לגוגל הושלם ✅', `${gotLine}${missLine} אפשר לחזור לוואטסאפ.`.trim()];
+      },
+    },
+  };
+
   // Which hostnames get the PUBLIC home page at `/` instead of the admin
   // dashboard. Injectable so the suite can prove both halves without owning
   // DNS; the default is the real public domain and its www form.
@@ -1990,18 +2026,24 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
             if (rows[0]) provider = rows[0].provider;
           } catch { /* fall through to calendar's own bad_state answer */ }
         }
-        // A map rather than a ternary: this is the third Google product to
-        // land on one callback, and a nested ternary is how a route like this
-        // stops being readable. Anything unrecognised still falls through to
-        // calendar's own bad_state answer, exactly as before.
-        const flowFor = { google_contacts: googleContacts, gmail: mail, google_connect: googleConnect };
-        const flow = flowFor[provider] || calendar;
-        const isContacts = provider === 'google_contacts';
-        const isMail = provider === 'gmail';
-        const isConnect = provider === 'google_connect';
+        // One row per Google product that lands on this callback — the
+        // fourth arrived as a fourth boolean flag, which is how a route like
+        // this stops being readable. Anything unrecognised falls through to
+        // the calendar row, exactly as before. Each row says three things:
+        // which domain module redeems the state, whether a success changed
+        // something USER.md carries, and what the person is shown.
+        //
+        // `refreshesCard`: connecting here happens over HTTP, outside any
+        // tool call, so brokerd's per-tool card refresh never sees it — the
+        // card carries calendar and mail state (the agent reads it every
+        // turn), so those refresh after the commit, the same rule as every
+        // card write. Contacts is the deliberate exception: connecting alone
+        // moves nothing on the card; the address-book COUNT only moves once
+        // the import tool actually runs (see contacts_connected below).
+        const p = OAUTH_PROVIDERS[provider] || OAUTH_PROVIDERS.google_calendar;
         let result;
         try {
-          result = await withTx(pool, (client) => flow().completeOAuth(client, {
+          result = await withTx(pool, (client) => p.flow().completeOAuth(client, {
             state, code: q.get('code'), error: q.get('error'),
           }, googleOpts || {}));
         } catch (e) {
@@ -2013,47 +2055,8 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
           res.end(oauthResultPage(title, body));
         };
         if (result.ok) {
-          if (isConnect) {
-            // Same card rule as calendar/mail below — connecting calendar or
-            // mail here happens over HTTP, outside any tool call, so
-            // brokerd's per-tool card refresh never sees it.
-            if (result.data.connected.calendar || result.data.connected.mail) {
-              const { refreshUserCard } = require('../../intake/user-card');
-              await refreshUserCard(pool, result.data.userId);
-            }
-            const got = result.data.connectedLabel || [];
-            const missingHe = { calendar: 'יומן', contacts: 'אנשי קשר', mail: 'מייל' };
-            const missed = (result.data.missing || []).map((k) => missingHe[k] || k);
-            const gotLine = got.length ? `חובר: ${got.join(', ')}.` : '';
-            const missLine = missed.length
-              ? ` לא סומן בגוגל ולכן לא חובר: ${missed.join(', ')} — אפשר לבקש קישור חדש ולסמן גם את זה.`
-              : '';
-            return page(200, 'החיבור לגוגל הושלם ✅', `${gotLine}${missLine} אפשר לחזור לוואטסאפ.`.trim());
-          }
-          if (isMail) {
-            // The card carries mail state (the agent reads it every turn),
-            // and connecting happens HERE — an HTTP route, not a tool — so
-            // brokerd's per-tool card refresh never sees it. After the
-            // commit, same rule as every card write.
-            const { refreshUserCard } = require('../../intake/user-card');
-            await refreshUserCard(pool, result.data.userId);
-            return page(200, 'תיבת המייל חוברה ✅', 'אולמה יכולה לחפש במיילים שלך כשתבקש — היא לא עוברת עליהם מיוזמתה, ולא יכולה לשלוח, להשיב או למחוק כלום. אפשר לחזור לוואטסאפ.');
-          }
-          if (isContacts) {
-            // Unlike calendar, connecting contacts changes nothing on the
-            // card by itself — the address-book COUNT only moves once the
-            // import tool actually runs (see contacts_connected below), so
-            // there is no refreshUserCard call here.
-            return page(200, 'אנשי הקשר חוברו ✅', 'אולמה תייבא אותם עכשיו ותעדכן אותך בוואטסאפ כמה נשמרו. אפשר לחזור לשם.');
-          }
-          // The card carries calendar state, and connecting happens HERE — an
-          // HTTP route, not a tool — so brokerd's per-tool refresh never sees
-          // it. After the commit, same rule as every card write.
-          const { refreshUserCard } = require('../../intake/user-card');
-          await refreshUserCard(pool, result.data.userId);
-          return page(200, 'היומן חובר ✅', result.data.accessLevel === 'read_write'
-            ? 'אולמה יכולה לראות את היומן שלך וגם להוסיף ולערוך אירועים. אפשר לחזור לוואטסאפ.'
-            : 'אולמה יכולה לראות את היומן שלך בלבד — היא לא תוכל לשנות בו דבר. אפשר לחזור לוואטסאפ.');
+          if (p.refreshesCard(result.data)) await refreshUserCard(pool, result.data.userId);
+          return page(200, ...p.success(result.data));
         }
         const reason = result.error && result.error.reason;
         if (reason === 'declined') return page(200, 'לא חובר', 'ביטלת את החיבור. אפשר לנסות שוב מתי שתרצה.');
