@@ -5,7 +5,7 @@ const {
 } = require('./_shared');
 
 module.exports = [
-  tool('set_task_reminder', 'Attach a reminder to a task, for a moment they ASKED for. A task saved with a due_at already has one, so this is for a different time or a repeat — it cancels the automatic one, so you get what they asked for and not two. Several per task allowed. remind_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00); a bare local time is rejected — convert from the user\'s own stated local time using their timezone (USER.md), never write their local digits with a bare Z.',
+  tool('set_task_reminder', 'Attach a reminder to a task, for a moment they ASKED for. A task saved with a due_at already has one, so this is for a different time or a repeat — it cancels the automatic one, never two. Several per task allowed. remind_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their own local time (USER.md); never bare digits with a Z.',
     { task_id: S('number', 'Task id'), remind_at: S('string', 'ISO-8601 datetime WITH UTC offset'),
       repeat_rule: S('string', 'Optional repeat: "daily"; "weekly"; "weekly:MO,TH" (SU MO TU WE TH FR SA); "monthly:16"; "monthly:last" (the last day, whatever it is; a day past a short month lands on its last day). Anything else is stored as a ONE-OFF, so use these exact forms.') }, ['task_id', 'remind_at'],
     (client, user, a) => reminders.setReminder(client, user.id, a.task_id, a.remind_at, a.repeat_rule)),

@@ -148,6 +148,48 @@ function pickWedged(events, minAgeMs = DEFAULT_MIN_AGE_MS, now = null) {
   });
 }
 
+// A turn that ran to the end and put nothing on the wire. The gateway says so
+// in one line, naming the message it swallowed:
+//
+//   visible channel turn dispatched with no queued reply payloads:
+//     channel=whatsapp messageId=… sessionKey=… cause=completed
+//
+// This is the only unambiguous "this person wrote and got nothing" the box
+// produces, and until 2026-09-05 nothing read it. Yahav's third message that
+// evening — "תזכיר לי מחר ב19:00 להתקשר למלי" — is the whole of its history
+// here: three tool calls timed out against a brokerd that was mid-deploy, the
+// model produced no text, and the line went into the log unread. He was
+// answered only because a check-in rung fired two seconds later and happened
+// to ask about the same person.
+//
+// Its lane was never `stuck` by the gateway's definition (queueAhead=0, one
+// active run ahead of it), so nothing above this line could have seen it —
+// worth stating plainly, because the first fix proposed for that incident was
+// lowering DEFAULT_MIN_AGE_MS, which would have changed nothing and made a
+// legitimately slow run likelier to be aborted.
+//
+// Parsed here, beside the other reader of this file; acted on in
+// jobs/unanswered.js, which owns the repair and its cooldown.
+function parseDroppedTurns(raw) {
+  const out = [];
+  for (const line of String(raw || '').split('\n')) {
+    if (!line.startsWith('{')) continue;   // readTail slices mid-line
+    let o;
+    try { o = JSON.parse(line); } catch { continue; }
+    const msg = String(o.message || '');
+    if (!msg.includes('no queued reply payloads')) continue;
+    const key = FIELD('sessionKey', msg);
+    const messageId = FIELD('messageId', msg);
+    const at = Date.parse(o.time || '');
+    if (!key || key === 'unknown' || !messageId || Number.isNaN(at)) continue;
+    out.push({
+      sessionKey: key, messageId, at,
+      channel: FIELD('channel', msg), cause: FIELD('cause', msg),
+    });
+  }
+  return out;
+}
+
 // ---- the sweep --------------------------------------------------------------
 
 async function recentAbortCount(client, sinceInterval) {
@@ -224,6 +266,6 @@ async function sweepLaneWatchdog(client, deps = {}) {
 }
 
 module.exports = {
-  sweepLaneWatchdog, parseEvents, pickWedged, todayLogPath, readTail,
+  sweepLaneWatchdog, parseEvents, pickWedged, parseDroppedTurns, todayLogPath, readTail,
   DEFAULT_MIN_AGE_MS, COOLDOWN_MS, HOURLY_CAP, MAX_EVENT_AGE_MS,
 };

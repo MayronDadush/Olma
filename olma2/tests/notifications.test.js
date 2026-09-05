@@ -273,7 +273,7 @@ test('unanswered repair: only for messages provably never answered', async () =>
   // with no Sent line for this fake phone, i.e. case (b). Locally the log is
   // absent and the difference is invisible.
   const sweep = (msgs) => withTx(db.pool, (c) =>
-    unanswered.sweepUnanswered(c, { readMessages: () => msgs, readSentEvents: () => null, now }));
+    unanswered.sweepUnanswered(c, { readDroppedTurns: () => new Map(), readMessages: () => msgs, readSentEvents: () => null, now }));
 
   // too fresh — the gateway's own recovery (75s) gets first chance
   assert.deepEqual((await sweep([{ role: 'user', text: 'היי', at: ago(1) }])).repaired, []);
@@ -390,7 +390,7 @@ test('a crashed delivery instruction is not "their unanswered message"', async (
   // case-(a) test: pin readSentEvents to null so the box's real gateway log
   // cannot pull case (b) into it (see the comment in the test above).
   const sweep = (msgs) => withTx(db.pool, (c) =>
-    unanswered.sweepUnanswered(c, { readMessages: () => msgs, readSentEvents: () => null, now }));
+    unanswered.sweepUnanswered(c, { readDroppedTurns: () => new Map(), readMessages: () => msgs, readSentEvents: () => null, now }));
 
   // a proactive turn crashed AFTER its instruction was written to the session:
   // last entry is user-role but it is OUR text, not theirs. Repairing it made
@@ -428,7 +428,7 @@ test('a composed reply that never left the box is repaired; a delivered one neve
   // An all-covering window, because these cases are about what the log
   // CONTAINS. Coverage of the window itself gets its own tests.
   const sweep = (events, m = msgs) => withTx(db.pool, (c) =>
-    unanswered.sweepUnanswered(c, { readMessages: () => m, readSentEvents: () => ({ events, windows: [{ from: 0, to: Infinity }] }), now }));
+    unanswered.sweepUnanswered(c, { readDroppedTurns: () => new Map(), readMessages: () => m, readSentEvents: () => ({ events, windows: [{ from: 0, to: Infinity }] }), now }));
 
   // the hash is the real recipient-JID derivation, verified live 2026-08-31
   assert.equal(unanswered.sentHashFor('+972526404855'), '41e6d58ec018');
@@ -473,7 +473,7 @@ test('an unreadable gateway log never manufactures undelivered-reply repairs', a
   // evidence at all" must not look alike — a rotated log file would otherwise
   // spray a repair at every user whose agent replied recently.
   const out = await withTx(db.pool, (c) =>
-    unanswered.sweepUnanswered(c, { readMessages: () => msgs, readSentEvents: () => null, now }));
+    unanswered.sweepUnanswered(c, { readDroppedTurns: () => new Map(), readMessages: () => msgs, readSentEvents: () => null, now }));
   assert.deepEqual(out.repaired, []);
 });
 
@@ -491,7 +491,7 @@ test('a lost proactive delivery is not repaired here — its outbox row owns the
     { role: 'assistant', text: 'תזכורת: פגישה מחר', at: ago(9) },
   ];
   const out = await withTx(db.pool, (c) =>
-    unanswered.sweepUnanswered(c, { readMessages: () => msgs, readSentEvents: () => ({ events: [], windows: [{ from: 0, to: Infinity }] }), now }));
+    unanswered.sweepUnanswered(c, { readDroppedTurns: () => new Map(), readMessages: () => msgs, readSentEvents: () => ({ events: [], windows: [{ from: 0, to: Infinity }] }), now }));
   assert.deepEqual(out.repaired, []);
 });
 
@@ -572,4 +572,78 @@ test('a log window that does not reach back to the reply proves nothing', async 
   // for every user in the db, so others from earlier tests ride along —
   // membership is the claim here, not the exact set.)
   assert.ok((await sweep(now - 40 * 60_000)).repaired.includes(u.id));
+});
+
+// ---- case (c): the turn ran and produced nothing ---------------------------
+//
+// Yahav, 2026-09-05, 23:00:29. "תזכיר לי בבקשה מחר ב19:00, להתקשר למלי" — three
+// tool calls timed out against a brokerd that was mid-deploy, the model wrote
+// nothing, and the gateway logged one line naming the message it had swallowed.
+// A check-in rung fired two seconds later, he answered THAT, and it was
+// answered normally — so the transcript ended in a delivered reply and both
+// existing cases read the conversation as healthy. The message he actually
+// sent sat in the middle of the history where nothing looks.
+test('a swallowed message is repaired even with a healthy conversation on top of it', async () => {
+  const unanswered = require('../src/jobs/unanswered');
+  const laneLog = require('../src/jobs/lane-watchdog');
+  const now = Date.now();
+  const ago = (min) => new Date(now - min * 60_000).toISOString();
+  const u = await makeUser(db.pool, '+972617000031', { firstName: 'Yahav' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = now() - interval '2 days' WHERE id = $1`, [u.id]);
+
+  const line = (atMs, peer, messageId) => JSON.stringify({
+    time: new Date(atMs).toISOString(),
+    message: 'visible channel turn dispatched with no queued reply payloads: '
+      + `channel=whatsapp messageId=${messageId} sessionKey=agent:u-9:whatsapp:direct:${peer} cause=completed`,
+  });
+
+  // The real parse path, not a hand-built map: the line shape is the thing
+  // under test as much as the repair is.
+  const dropped = (raw) => unanswered.droppedTurnsByPeer([{ raw, openEnded: true }]);
+
+  // The transcript ends the way Yahav's did — his reply to the rung, answered.
+  const healthyTail = [
+    { role: 'user', text: 'דודה שלי מניו יורק הביאה לי מתנה לברית', at: ago(7) },
+    { role: 'assistant', text: 'איזה יופי 🎉 מזל טוב!', at: ago(6) },
+  ];
+  const sweep = (raw) => withTx(db.pool, (c) => unanswered.sweepUnanswered(c, {
+    readMessages: () => healthyTail,
+    readSentEvents: () => null,
+    readDroppedTurns: () => dropped(raw),
+    now,
+  }));
+
+  // too fresh — the gateway's own recovery gets first chance
+  assert.deepEqual((await sweep(line(now - 60_000, u.phone, 'AAA1'))).repaired, []);
+  // too stale — a check-in is the right tool for that, not a fake live reply
+  assert.deepEqual((await sweep(line(now - 90 * 60_000, u.phone, 'AAA2'))).repaired, []);
+  // somebody else's dropped turn is not this person's
+  assert.deepEqual((await sweep(line(now - 8 * 60_000, '+972500009999', 'AAA3'))).repaired, []);
+
+  const hit = await sweep(line(now - 8 * 60_000, u.phone, 'ACDCDB52'));
+  assert.deepEqual(hit.repaired, [u.id], 'the swallowed message is seen even though the tail looks answered');
+
+  const { rows } = await db.pool.query(
+    `SELECT idempotency_key, urgency, payload FROM outbox
+      WHERE user_id = $1 AND payload->>'repairKind' = 'dropped_turn'`, [u.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].urgency, 'urgent');
+  // Keyed on the message the GATEWAY named, so the same log tail read again is
+  // a no-op rather than a second nudge.
+  assert.equal(rows[0].idempotency_key, `dropped:${u.id}:ACDCDB52`);
+  // It must send the model looking BACK, or it finds the answered tail and
+  // concludes everything is fine — which is exactly what happened live.
+  assert.match(rows[0].payload.checkinInstruction, /NOT necessarily the last thing they wrote/);
+  assert.match(rows[0].payload.checkinInstruction, /NO_REPLY/);
+  assert.match(rows[0].payload.checkinInstruction, /Do not apologise/);
+
+  // and the sweep is idempotent over the same tail
+  assert.deepEqual((await sweep(line(now - 8 * 60_000, u.phone, 'ACDCDB52'))).repaired, []);
+
+  // the parser itself, on the line as the box writes it
+  const parsed = laneLog.parseDroppedTurns(line(now, u.phone, 'ZZZ9'));
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].messageId, 'ZZZ9');
+  assert.equal(parsed[0].cause, 'completed');
 });

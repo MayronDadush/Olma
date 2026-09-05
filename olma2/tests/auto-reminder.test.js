@@ -177,3 +177,66 @@ test('the reminder is written in the OWNER\'s zone, not the server\'s', async ()
   // was theirs. Read as UTC it is not day-shaped at all and would arm 06:00Z.
   assert.equal(new Date(res.data.reminders[0].remind_at).toISOString(), '2026-09-06T15:00:00.000Z');
 });
+
+// ---- "remind me at X" is not "the thing is at X" ----------------------------
+//
+// Yahav, 2026-09-05, his first evening. "תזכיר לי בבקשה מחר ב19:00, להתקשר
+// למלי" was saved as due_at 19:00, the reflex armed 18:00, and Olma told him
+// 19:00 — the hour he asked for, the hour nothing was set for. The identical
+// sentence about his father an hour earlier came out right, because that time
+// the model followed up with set_task_reminder by hand. The difference between
+// the two was what the model remembered, so it moved into the call.
+
+test('a reminder hour they named is armed at that hour, not an hour before it', async () => {
+  const u = await freshUser('+972500000110');
+  const res = await withTx(db.pool, (c) => tasks.addTask(c, u.id, {
+    title: 'להתקשר למלי להגיד תודה על המתנה',
+    dueAt: '2026-09-06T19:00:00+03:00',
+    remindAt: '2026-09-06T19:00:00+03:00',
+    now: NOW,
+  }));
+  assert.ok(res.ok);
+  assert.equal(res.data.reminders.length, 1);
+  // 19:00 Jerusalem. The reflex would have said 16:00Z — the 18:00 he was never told about.
+  assert.equal(new Date(res.data.reminders[0].remind_at).toISOString(), '2026-09-06T16:00:00.000Z');
+  assert.equal(res.data.reminders[0].auto, false, 'they asked for it; it is not ours');
+  assert.equal(res.data.remindersAsked, true);
+
+  const live = await withTx(db.pool, (c) => reminders.listReminders(c, u.id, res.data.task.id));
+  assert.equal(live.data.reminders.length, 1, 'one thing, one reminder — the automatic one never ran');
+});
+
+test('the armed moment comes back in THEIR clock, so no other time is available to say', async () => {
+  const u = await freshUser('+972500000111');
+  const auto = await withTx(db.pool, (c) => tasks.addTask(c, u.id, {
+    title: 'פגישה', dueAt: '2026-09-06T19:00:00+03:00', now: NOW,
+  }));
+  // Armed 18:00 local. That is what the result says, and the due hour is not
+  // dressed up as a reminder anywhere on it.
+  assert.deepEqual(auto.data.remindersAt, ['2026-09-06 18:00']);
+
+  const asked = await withTx(db.pool, (c) => tasks.addTask(c, u.id, {
+    title: 'להתקשר למלי', dueAt: '2026-09-06T19:00:00+03:00',
+    remindAt: '2026-09-06T19:00:00+03:00', now: NOW,
+  }));
+  assert.deepEqual(asked.data.remindersAt, ['2026-09-06 19:00']);
+});
+
+test('a bare local remind_at is refused, like every other time', async () => {
+  const u = await freshUser('+972500000112');
+  const res = await withTx(db.pool, (c) => tasks.addTask(c, u.id, {
+    title: 'להתקשר למלי', dueAt: '2026-09-06T19:00:00+03:00',
+    remindAt: '2026-09-06T19:00', now: NOW,
+  }));
+  assert.equal(res.ok, false);
+  assert.match(JSON.stringify(res), /remind_at/);
+});
+
+test('the hint states the armed hour and never asks for a time it did not arm', () => {
+  const { toolDefinitions } = require('../src/adapters/mcp/registry');
+  const add = toolDefinitions().find((d) => d.name === 'add_task');
+  assert.ok(add.inputSchema.properties.remind_at, 'add_task takes the hour they named');
+  // The sentence that produced the wrong answer: it told the model to say a
+  // time and left it to pick one.
+  assert.doesNotMatch(add.description, /never call set_task_reminder for that one/);
+});
