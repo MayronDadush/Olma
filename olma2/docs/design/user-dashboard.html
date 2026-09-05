@@ -181,7 +181,7 @@ h1,h2,h3,p{margin:0}
 .app{
   max-width:560px;
   margin-inline:auto;
-  padding:0 18px 148px;
+  padding:0 18px 156px;
   min-height:100vh;
 }
 
@@ -1726,7 +1726,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .tabbar{
   position:fixed;bottom:18px;inset-inline:0;margin-inline:auto;
   width:max-content;max-width:calc(100% - 24px);
-  display:flex;gap:2px;padding:6px;border-radius:24px;z-index:60;
+  /* ~8% larger than it was first drawn: at 22px icons the bar read as a
+     caption strip rather than as the app's main control. Every number in the
+     bar moves together — icon, label, padding, radius and the pill's inset —
+     because scaling one of them alone is what makes a control look stretched
+     rather than bigger. */
+  display:flex;gap:2px;padding:7px;border-radius:26px;z-index:60;
   background:var(--bar);border:.5px solid var(--glass-line);
   /* Its own lens, not the shared one: LESS blur and MORE saturation than a
      card, which is what makes the bar answer to whatever scrolls under it —
@@ -1740,7 +1745,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
    moved. Stretching it along its direction of travel and letting it settle
    is what makes it read as one liquid thing following your finger. */
 .tabpill{
-  position:absolute;top:6px;height:calc(100% - 12px);border-radius:18px;overflow:hidden;
+  position:absolute;top:7px;height:calc(100% - 14px);border-radius:19px;overflow:hidden;
   background:var(--accent-soft);z-index:0;
   box-shadow:0 2px 10px rgba(0,0,0,.10),var(--rim-soft);
   transform-origin:50% 50%;
@@ -1781,11 +1786,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .tabpill.sweep::after{animation:lensSweep .6s var(--ease-io)}
 .tab{
   position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:3px;
-  padding:8px 14px 7px;border-radius:18px;color:var(--text-3);min-width:62px;
+  padding:9px 15px 8px;border-radius:19px;color:var(--text-3);min-width:67px;
   transition:color .4s var(--ease-io),transform .38s var(--squash);
 }
-.tab svg{width:22px;height:22px}
-.tab span{font-size:10.5px;font-weight:600;letter-spacing:-.01em}
+.tab svg{width:24px;height:24px}
+.tab span{font-size:11.5px;font-weight:600;letter-spacing:-.01em}
 .tab[aria-selected="true"]{color:var(--accent)}
 .tab:active{transform:scale(.92)}
 .tab svg{transition:transform .38s var(--squash)}
@@ -1982,7 +1987,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
 @media (max-width:430px){
   .title h1{font-size:29px}
-  .tab{min-width:0;padding:8px 10px 7px}
+  .tab{min-width:0;padding:9px 11px 8px}
   .field label{width:86px;font-size:15px}
 }
 @media (prefers-reduced-motion:reduce){
@@ -2740,7 +2745,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     setTimezone:         "set_my_timezone",
     inviteContact:       "request_connection",
     startMeeting:        "start_meeting_coordination",
-    setAvailability:     "send_availability_picker",  /* the picker's own POST, per option */
+    setAvailability:     null,                        /* the /pick/ page is retired; this page IS the picker now */
     confirmSlot:         "respond_to_meeting_slot",   /* propose_meeting_slot proposes it */
     leaveMeeting:        "leave_meeting",              /* NO TOOL YET — meeting_participants.left_at */
     rejoinMeeting:       "rejoin_meeting",             /* NO TOOL YET — dashboard only */
@@ -4364,6 +4369,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       '<div class="fold' + (isOpen ? " open" : "") + '" data-pfold="' + p.id + '"><div><div class="foldpad">' +
       foldBody(p) + "</div></div></div></div>";
   }
+  /* monday.com, Slack and Notion are drawn and wired here, and NOTHING routes
+     to any of them — v2's cutover never got Monday back and the other two were
+     never built. A row that says "בקרוב" is still an offer, and five of them
+     under a heading called "עבודה" reads as a section that is nearly ready.
+     So the group is not rendered at all. The rows stay in PROV, the copy stays
+     in both dictionaries and the tiles stay in the sprite: the day one of them
+     has a domain module behind it, this flips to true and the section is back
+     in one line. Do not delete the rows to "clean up" — rebuilding them is the
+     expensive half. */
+  var SHOW_WORK_TOOLS = false;
   function provGroup(grp, labelKey, hintKey, stage){
     var rows = PROV.filter(function(p){ return p.grp === grp; }).map(provRow).join("");
     return '<div' + (stage ? ' data-stage="' + stage + '"' : "") +
@@ -4393,7 +4408,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#toolsStack").innerHTML =
       chanGroup() +
       provGroup("accounts", "tools.accounts", "tools.accountsHint", 2) +
-      provGroup("work", "tools.work", null, 3);
+      (SHOW_WORK_TOOLS ? provGroup("work", "tools.work", null, 3) : "");
     markDefaultCard();
   }
   /* ONE service changed, so exactly one cell is touched. Rebuilding the
