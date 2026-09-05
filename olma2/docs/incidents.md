@@ -3076,6 +3076,20 @@ about relying on the mark having landed. The undo-shaped tools — archive,
 cancel reminder, edit, forget — were added to `TOOL_MARKS` so "delete that"
 earns the same 👍 as "add that".
 
+Miron also noticed the order: his "deleted" text arrived BEFORE the 👍. Measured
+the same day, `openclaw message react --dry-run` takes 15 seconds of wall time
+on the box — every mark is a whole CLI start-up. A short turn therefore has the
+👀 (asked at turn_start) and the 👍 (asked seconds later) alive as two processes,
+and whichever finishes last decides what the person sees; a 👀 landing after
+the 👍 would leave "working" on a finished message for ever. `placeMark` now
+keeps one in-flight child per message and kills an older one that has not
+exited when a newer mark arrives — a 👀 that could not land before the work
+was done was never needed. The real fix is to stop spawning a CLI per mark and
+call the gateway's `message.action` over its WebSocket RPC (milliseconds, and
+an actual ack); the react action's delegated authorization needs conversation
+and account context the CLI resolves internally, so that is a separate piece
+of work, recorded here so it is not re-discovered.
+
 ### Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)
 
 Owner ask: מירון wants WhatsApp updates about new models on OpenRouter (with

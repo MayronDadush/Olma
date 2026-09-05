@@ -179,6 +179,39 @@ test('reactions: placeMark is detached, unref\'d, and never claims delivery', ()
     { attempted: false, reason: 'spawn_failed' });
 });
 
+// Each mark is a 15-second CLI start-up on the box, so a short turn has the
+// 👀 and the 👍 alive at once and the LAST to finish wins. A 👀 that lands
+// after the 👍 leaves "working" on a finished message for ever.
+test('reactions: a newer mark kills an older one still starting up, and replaces one that landed', () => {
+  const spawned = [];
+  const mkChild = () => {
+    const handlers = {};
+    const c = { killed: false, on(ev, fn) { handlers[ev] = fn; }, unref() {}, kill() { c.killed = true; }, emitExit() { handlers.exit && handlers.exit(0); } };
+    return c;
+  };
+  const spawn = (cmd, args) => { const c = mkChild(); spawned.push({ args, child: c }); return c; };
+  const base = { channel: 'whatsapp', target: '+972500000000', messageId: '3EB0RACE0001' };
+
+  // 👀 goes out; before its CLI has even reached the gateway, the work is done.
+  const first = r.placeMark({ ...base, state: 'working' }, { spawn });
+  assert.equal(first.attempted, true);
+  const second = r.placeMark({ ...base, state: 'done' }, { spawn });
+  assert.equal(spawned[0].child.killed, true, 'the 👀 that could not land in time is stopped, not raced');
+  assert.equal(second.superseded, true);
+  assert.ok(spawned[1].args.includes('👍'));
+
+  // A mark that already landed is not touched — the newer one replaces it on the phone.
+  spawned[1].child.emitExit();
+  const third = r.placeMark({ ...base, state: 'scheduled' }, { spawn });
+  assert.equal(spawned[1].child.killed, false, 'an exited child is left alone');
+  assert.equal(third.superseded, undefined);
+
+  // Another message is another life: nothing crosses between them.
+  const other = r.placeMark({ ...base, messageId: '3EB0RACE0002', state: 'working' }, { spawn });
+  assert.equal(other.superseded, undefined);
+  assert.equal(spawned[2].child.killed, false);
+});
+
 test('reactions: every marked tool exists, and the table is the only list', () => {
   const { TOOLS } = require('../src/adapters/mcp/registry');
   const names = new Set(TOOLS.map((t) => t.name));

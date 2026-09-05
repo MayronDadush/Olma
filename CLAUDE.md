@@ -327,6 +327,11 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   a second notification for the same fact (Miron, 2026-09-05: "deleted ✅"
   under a 👍). The mark table is `reactions.TOOL_MARKS`; the undo-shaped
   tools (archive, cancel reminder, edit, forget) earn the same 👍 as a capture.
+- **One in-flight reaction per message.** A mark is a whole `openclaw` CLI
+  start-up (15s wall on the box), so a short turn has the 👀 and the 👍 alive
+  at once and the LAST to finish wins. `placeMark` kills an older child still
+  starting up when a newer mark arrives for the same message; one that
+  already exited is simply replaced on the phone.
 - **Olma never claims a lookup it did not perform.** No price, no stock level,
   no "מצאתי לך", no link to a RESULT — all of it asserts a fetch that never
   happened. `search_link` is the one exception and only because a link to a
