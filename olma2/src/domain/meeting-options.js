@@ -131,7 +131,10 @@ async function add(client, userId, meetingId, slotText, startsAt, { allDay = fal
   // Adding is agreeing — recorded even on a pending one, so that approval
   // does not have to ask the proposer again.
   await client.query(
-    `INSERT INTO meeting_option_answers (option_id, user_id, answer) VALUES ($1, $2, 'y')`, [optionId, userId]);
+    // clock_timestamp(), not now(): now() is TRANSACTION time, and two answers
+    // inside one transaction would tie — the confirmation ORDER (who becomes
+    // the successor) is read off these stamps and must be a total order.
+    `INSERT INTO meeting_option_answers (option_id, user_id, answer, answered_at) VALUES ($1, $2, 'y', clock_timestamp())`, [optionId, userId]);
   await audit.record(client, userId, status === 'pending' ? 'meeting.option_pending' : 'meeting.slot_proposed',
     { meetingId: Number(meetingId), optionId, slot: slotText.trim(), startsAt });
   if (status === 'active') await mirrorCurrent(client, meetingId);
@@ -152,10 +155,10 @@ async function answer(client, userId, meetingId, optionId, value) {
     [optionId, meetingId]);
   if (!rows[0]) return err('not_found', 'no such option on the table', { reason: 'option_not_active' });
   await client.query(
-    `INSERT INTO meeting_option_answers (option_id, user_id, answer) VALUES ($1, $2, $3)
+    `INSERT INTO meeting_option_answers (option_id, user_id, answer, answered_at) VALUES ($1, $2, $3, clock_timestamp())
      ON CONFLICT (option_id, user_id) DO UPDATE SET answer = EXCLUDED.answer,
        -- a repeated yes keeps its place in the order; a changed mind restamps
-       answered_at = CASE WHEN meeting_option_answers.answer = EXCLUDED.answer THEN meeting_option_answers.answered_at ELSE now() END`,
+       answered_at = CASE WHEN meeting_option_answers.answer = EXCLUDED.answer THEN meeting_option_answers.answered_at ELSE clock_timestamp() END`,
     [optionId, userId, value]);
   await audit.record(client, userId, value === 'y' ? 'meeting.slot_accepted' : 'meeting.slot_declined',
     { meetingId: Number(meetingId), optionId: Number(optionId), slot: rows[0].slot_text });
