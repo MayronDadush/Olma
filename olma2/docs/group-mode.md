@@ -417,6 +417,45 @@ pings only when the token is a phone number.** The gateway attaches native
 mention metadata for `@+<digits>` matching a current participant, and WhatsApp
 renders each viewer's own saved name for it. `@דני` arrives as dead text.
 
+## The sweep
+
+`jobs/groups.js`, armed in the registry at 10s and **inert until
+`scripts/install-group-greeter.js` has been run by hand** — with no greeter
+agent it returns immediately, which is what makes it safe to arm before the
+feature is switched on. Nothing about it writes production config on a timer.
+
+One pass, per group session:
+
+1. read the group's transcript (`sessions.readGroupContext`) for the subject,
+   the roster, and whether anything is newer than our watermark;
+2. never seen it → register (which refuses unless a member is already an Olma
+   user), admit it tag-only, and say the introduction;
+3. seen it → reconcile the roster, evaluate the gate, and act on the
+   transition: open → its own agent; no longer open → the agent comes away;
+4. say the one thing that is due — the introduction, a gate notice, or the
+   opening announcement.
+
+Scoped to the greeter plus whichever agents own an open group, never a full
+session scan: `listSessions()` opens every agent's sqlite store, and a
+ten-second sweep doing that is the polling cost this project already paid once
+(`openclaw sessions list`, 2.9s of CPU per call).
+
+**Every uncertain case falls silent.** An unparseable roster entry, an
+unreadable transcript, a member who resolves to nobody — each leaves the group
+exactly where it was. A group that stays quiet when it should have spoken is a
+bug; a group that speaks when somebody has not signed up is the feature
+failing.
+
+Two things the tests caught rather than the design:
+
+- The pass that registers a group must **not** also send the gate notice. The
+  message that woke her there was very likely not a tag (before registration
+  the greeter wakes on anything), and "nice to meet you" followed immediately
+  by "some of you have not signed up" is not how anyone introduces themselves.
+  The nudge belongs to the next time somebody actually asks her for something.
+- Opening and announcing are two moments, so they are two columns. A group that
+  opens at 00:30 really is open; it just does not say so until the morning.
+
 ## Still open
 
 1. Does the in-Olma group object own meetings/coordination directly, or is it

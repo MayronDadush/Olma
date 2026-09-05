@@ -111,6 +111,19 @@ function renderGroupGateNotice({ kind, missing }) {
   ].join('\n');
 }
 
+// Said once, when the last person finally writes and the group opens. Held to
+// the group's quiet hours like any other proactive message — she is starting
+// this conversation, not answering one.
+//
+// DRAFT WORDING: the four messages above are the owner's own sentences; this
+// one is not his yet.
+function renderGroupOpened() {
+  return [
+    'יש! כולם כאן ואפשר להתחיל 🎉',
+    'תתייגו אותי ותגידו מה לתאם — פגישה, משחק, מה שבא — ואני ארוץ לכל אחד בפרטי ואחזור עם מה שמסתדר.',
+  ].join('\n');
+}
+
 // The cap is a flag (`group_max_members`), so the number is passed in rather
 // than written into the sentence — a raised cap must not leave her quoting 25.
 function renderGroupTooLarge(maxMembers) {
@@ -131,5 +144,5 @@ function rawPipeTextFor(row) {
 
 module.exports = {
   renderReminderText, rawPipeTextFor,
-  renderGroupIntro, renderGroupGateNotice, renderGroupTooLarge, mentionTokens, MAX_TAGS, SELF_NUMBER,
+  renderGroupIntro, renderGroupGateNotice, renderGroupTooLarge, renderGroupOpened, mentionTokens, MAX_TAGS, SELF_NUMBER,
 };

@@ -26,6 +26,7 @@ const livenessWatch = require('./liveness-watch');
 const unanswered = require('./unanswered');
 const laneWatchdog = require('./lane-watchdog');
 const memoryConsolidation = require('./memory-consolidation');
+const groupsJob = require('./groups');
 const { DEFAULT_PATH: OPENCLAW_CONFIG } = require('../intake/openclaw-config');
 
 // jobs({ pool }) -> [{ name, run }] in arming order.
@@ -196,6 +197,18 @@ function jobs({ pool }) {
       configPath: OPENCLAW_CONFIG, readFirstMessage: intake.readIntakeFirstMessage,
     }) },
     { name: 'reopen_sweep', run: () => withTx(pool, (c) => intake.sweepReopen(c)) },
+    // Group mode. Inert until `scripts/install-group-greeter.js` has run —
+    // with no greeter agent the sweep returns immediately, which is what makes
+    // it safe to arm before the feature is turned on. Scoped to the greeter
+    // plus whichever agents actually own an open group, never a full session
+    // scan: this box has one core, and a sweep that opens every agent's store
+    // every ten seconds is the polling cost this project already paid once.
+    // Every word it sends is fixed text on the raw pipe — no model, so a group
+    // waiting on somebody to sign up costs nothing at all.
+    { name: 'group_sweep', run: () => groupsJob.runGroupSweep(pool, {
+      configPath: OPENCLAW_CONFIG,
+      send: async (jid, body) => (await rawSend(jid, body)).ok,
+    }) },
     { name: 'intake_template_sync', run: async () => {
       if (!intake.intakeConfigured(OPENCLAW_CONFIG)) return { skipped: true };
       const open = (await flagsDomain.getFlag(pool, 'registration_open')) === true;

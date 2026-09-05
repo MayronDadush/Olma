@@ -45,6 +45,10 @@ CREATE TABLE chat_groups (
   timezone              TEXT NOT NULL DEFAULT 'Asia/Jerusalem',
   registered_by_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
   opened_at             TIMESTAMPTZ,
+  -- The "everyone is here" announcement is held to the group's quiet hours
+  -- like any other proactive message, so opening and announcing are two
+  -- different moments and need two different columns.
+  opened_announced_at   TIMESTAMPTZ,
   -- The gate's `lastInboundAt` for this group: the last time somebody
   -- @-mentioned her here. outbox/gate.js turns it into the same 15-minute
   -- conversation grace a DM gets, so an answer to someone standing right
@@ -53,6 +57,11 @@ CREATE TABLE chat_groups (
   -- Rate limit for the locked-state notice. First tag gets the explanation,
   -- later tags get the nudge that mentions who is missing — and a
   -- repeat-tagger cannot turn her into a spammer in someone else's group.
+  -- The sweep's watermark: the session's own `lastInteractionAt` as of the
+  -- last pass that processed this group. A turn newer than this is a turn we
+  -- have not acted on — which, for a registered group, means a tag, because a
+  -- registered group is mention-gated and nothing else wakes it.
+  last_seen_at          TIMESTAMPTZ,
   last_notice_at        TIMESTAMPTZ,
   notices_sent          INT NOT NULL DEFAULT 0,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
