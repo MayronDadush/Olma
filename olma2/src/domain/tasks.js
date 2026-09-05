@@ -431,10 +431,16 @@ async function archiveTask(client, ownerId, taskId) {
 async function unarchiveTask(client, ownerId, taskId) {
   const { rows } = await client.query(
     `UPDATE tasks SET archived_at = NULL, status = 'open', completed_at = NULL
-     WHERE id = $1 AND owner_id = $2 AND archived_at IS NOT NULL RETURNING id, title`,
+     WHERE id = $1 AND owner_id = $2
+       AND (archived_at IS NOT NULL OR status = 'done') RETURNING id, title`,
     [taskId, ownerId]
   );
-  if (!rows[0]) return err('not_found', 'archived task not found');
+  // `status = 'done'` is in that guard because a completed task is not
+  // necessarily an archived one: `complete_task` from chat sets the status and
+  // nothing else, and those rows now sit in the page's archive (see
+  // user-dashboard.js). Asking only about `archived_at` would have put a way
+  // back on screen and then refused it — the same shape of bug this is fixing.
+  if (!rows[0]) return err('not_found', 'finished task not found');
   await audit.record(client, ownerId, 'task.unarchived', { taskId });
   return ok({ taskId, title: rows[0].title });
 }
