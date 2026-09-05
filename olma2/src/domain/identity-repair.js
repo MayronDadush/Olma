@@ -107,41 +107,20 @@ async function repairIdentityFiles(client, { apply = false, run, log } = {}) {
 }
 
 // ---- rotating a token that leaked ------------------------------------------
-// A token that reached a real person's chat (domain/token-leak.js) stays
-// exposed for exactly as long as it keeps working, so the only remediation is
-// a different one. Almost all of that machinery already existed and is
-// reviewed: scripts/resync-agent-templates.js renders AGENTS.md per user from
-// users.identity_token, and repairIdentityFiles above rewrites .olma-identity
-// from the same column. The only missing piece was minting the new value and
-// swapping it in without locking somebody out of their own agent mid-sentence.
+// A leaked token stays exposed for as long as it works; the only remediation
+// is a different one. ORDER IS THE WHOLE DESIGN — the token lives in three
+// places and they are written in this order and no other:
 //
-// ORDER IS THE WHOLE DESIGN. The token lives in three places: the DB (the
-// verifier — domain/users.resolveByToken), AGENTS.md (the primary, read into
-// context at session start) and .olma-identity (the recovery path that both
-// the doctrine and bin/olma-mcp.js point at). Writing the FILE first is what
-// makes this safe:
+//   1. .olma-identity ← new   DB and AGENTS.md still old: nothing fails
+//   2. DB             ← new   the in-context token dies; the next call fails
+//                             ONCE, and its error text says to re-read the file
+//   3. AGENTS.md      ← new   so the NEXT session starts correct
 //
-//   1. .olma-identity ← new   DB and AGENTS.md are both still old, so the
-//                             token already in the model's context keeps
-//                             working. Nothing fails during this window.
-//   2. DB             ← new   the in-context token dies this instant. The
-//                             agent's next call fails once with "unknown
-//                             identity token", whose own text tells it to
-//                             re-read .olma-identity — which step 1 fixed.
-//   3. AGENTS.md      ← new   so the NEXT session starts correct instead of
-//                             paying for that fallback on every turn.
-//
-// Every other order leaves a window where the file and the DB are wrong at the
-// same time, and that window is a total auth failure rather than one retried
-// call. The live session cannot be spared completely — AGENTS.md is read at
-// session start, so its context holds the dead token until the session rotates
-// — but one extra tool call per turn is precisely what the 2026-08-27 recovery
-// path was built to absorb.
-//
-// The new token is never logged, never audited and never returned. A rotation
-// caused by a leak must not become the next place the credential is written
-// down; the audit row carries fingerprints, which is what token-leak.js
-// compares on anyway.
+// Any other order has a window where file and DB are both wrong — a total
+// auth failure instead of one retried call. The new token is never logged,
+// audited or returned; the audit row carries fingerprints only. Story:
+// docs/incidents.md, "Rotating a token that leaked: the file first, then the
+// DB, then the doctrine (2026-09-03)".
 async function rotateIdentityToken(client, { userId, apply = false, run, log, mint, reason } = {}) {
   const say = log || (() => {});
   const users = require('./users');

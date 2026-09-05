@@ -76,13 +76,43 @@ test('an event outside the window is dropped, never bucketed onto today', async 
   const today = todayInZone('Asia/Jerusalem');
   const res = await tx((c) => events.loadEvents(c, me.id, {
     listEvents: google([
-      { id: 'past', title: 'אתמול', start: `${plusDays(today, -3)}T10:00:00+03:00`, end: null, allDay: false },
+      { id: 'old', title: 'לפני חודש', start: `${plusDays(today, -40)}T10:00:00+03:00`, end: null, allDay: false },
       { id: 'far', title: 'בעוד שנה', start: `${plusDays(today, 400)}T10:00:00+03:00`, end: null, allDay: false },
       { id: 'junk', title: 'שבור', start: 'not-a-date', end: null, allDay: false },
     ]),
   }));
   assert.equal(res.ok, true);
   assert.deepEqual(res.data.days, {}, 'something outside the window was shown as happening today');
+});
+
+// The week strip pages backwards now, so a past day inside the window is a day
+// the page can actually reach — dropping it would draw that week empty, which
+// is the same picture as a week with nothing in it.
+test('a past day inside the window is kept, in a negative bucket', async () => {
+  const today = todayInZone('Asia/Jerusalem');
+  const res = await tx((c) => events.loadEvents(c, me.id, {
+    listEvents: google([
+      { id: 'past', title: 'שלשום', start: `${plusDays(today, -3)}T10:00:00+03:00`, end: null, allDay: false },
+    ]),
+  }));
+  assert.equal(res.ok, true);
+  assert.deepEqual(Object.keys(res.data.days), ['-3']);
+  assert.equal(res.data.days['-3'][0].title, 'שלשום');
+});
+
+// The window is asked for, not just filtered on arrival — a page that pages
+// backwards through days nobody fetched would draw them empty.
+test('the fetch itself reaches back, and asks for more than a model would', async () => {
+  let asked = null;
+  await tx((c) => events.loadEvents(c, me.id, {
+    listEvents: (_c, _u, days, opts) => {
+      asked = { days, back: opts.daysBack, cap: opts.maxEvents };
+      return { ok: true, data: { events: [] } };
+    },
+  }));
+  assert.equal(asked.days, events.DAYS_AHEAD);
+  assert.equal(asked.back, events.DAYS_BACK);
+  assert.ok(asked.cap > 20, 'the agent\'s twenty-event cap bounds a context window, not a page');
 });
 
 test('a day sorts all-day first, then by the clock', async () => {

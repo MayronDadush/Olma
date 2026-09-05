@@ -327,3 +327,35 @@ interactive (owner authorizes in a browser). Not yet wired up.
   (systemd lingering is enabled).
 - Config and credentials are under `~/.openclaw/`. Back them up before major
   changes: `openclaw backup` creates a verified local archive.
+
+## Database backups
+
+Two root crontab lines, both `CRON_TZ=Asia/Jerusalem`:
+
+```
+15 2 * * * sudo -u postgres pg_dump olma2 | gzip > /root/backups/olma2-$(date +\%F).sql.gz && find /root/backups -name "olma2-*.sql.gz" -mtime +14 -delete # olma2-backup
+40 2 * * * bash /opt/olma2/scripts/backup-offbox.sh >> /var/log/olma2-backup-offbox.log 2>&1 # olma2-backup-offbox
+```
+
+The first is the dump (14 days kept on the droplet). The second copies the
+newest dump to a **private** DigitalOcean Spaces bucket, checks the bucket
+reports the same byte count, prunes copies older than 30 days, and writes a
+`backup_offbox` row in `job_heartbeats` — so the admin dashboard and
+`/health` show it like any sweep, red on failure and stale if it stops.
+
+One-time setup on the box: `apt install s3cmd`, then add to `/opt/olma2/.env`:
+
+```
+SPACES_KEY=…
+SPACES_SECRET=…
+SPACES_BUCKET=…
+SPACES_REGION=fra1
+```
+
+Run it once by hand (`bash /opt/olma2/scripts/backup-offbox.sh`) and confirm
+the object in the bucket; that first run creates the heartbeat row.
+
+Restore drill (do it once a quarter): download the object, `gunzip`, then
+`psql olma2_test < olma2-<date>.sql` and spot-check `SELECT count(*) FROM users`.
+The dump contains encrypted integration credentials (see
+`olma2/src/domain/crypto-store.js`), which is why the bucket is private.

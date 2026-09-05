@@ -167,6 +167,21 @@ async function afterSlotResponse(client, actor, meetingId, res, { accept } = {})
 }
 
 // After meetings.optOut succeeded.
+// The others were told this person was out. Not telling them they are back
+// would leave everyone holding a tally that is quietly wrong — and the tally
+// is the entire content of this screen.
+async function afterRejoin(client, actor, meetingId, res) {
+  if (!res.ok) return res;
+  const brief = await meetingBrief(client, meetingId);
+  const others = await activeParticipantsExcept(client, meetingId, actor.id);
+  await fanout(client, others, 'meeting_rejoined', {
+    meetingId: Number(meetingId), title: brief.title || 'meeting',
+    byName: actorName(actor),
+  }, { key: `mrejoin:${meetingId}:${actor.id}` });
+  res.data.hint = 'They are back in and have not answered yet — the others were told.';
+  return res;
+}
+
 async function afterOptOut(client, actor, meetingId, res) {
   const brief = await meetingBrief(client, meetingId);
   const others = await activeParticipantsExcept(client, meetingId, actor.id);
@@ -227,7 +242,7 @@ async function afterOptOut(client, actor, meetingId, res) {
 }
 
 module.exports = {
-  afterSlotResponse, afterOptOut,
+  afterSlotResponse, afterOptOut, afterRejoin,
   actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept,
   meetingCalendarFanout, calendarRoleFor, cancelCalendarCleanup, calendarHintFor,
   meetingBrief, CANCEL_CLEANUP_HINTS,

@@ -156,9 +156,82 @@ test('a meeting this person is not in cannot be answered or left', async () => {
   assert.equal((await actAs(stranger, 'leaveMeeting', { meetingId: id })).ok, false);
 });
 
-test('a meeting the person left is off their page entirely', async () => {
+test('a meeting the person left is off the answerable list', async () => {
   const id = await coordination(gali, [me, ron], 'נעלם');
   await actAs(me, 'leaveMeeting', { meetingId: id });
   const page = await tx((c) => dash.load(c, me.id));
   assert.equal(page.data.meetings.some((x) => Number(x.id) === id), false);
+  // It is in the archive now rather than gone — see the archive block below.
+  // This assertion used to be "off their page entirely", which was the whole
+  // problem: a mis-tap was unrecoverable because nothing survived it.
+});
+
+// ---------------------------------------------------------------- the archive
+//
+// Leaving used to remove a coordination from this payload for good, so the
+// page had nothing to draw a way back from. The archive is that missing half.
+
+test('a coordination you left leaves the active list and lands in the archive', async () => {
+  const id = await coordination(gali, [me, ron], 'ארוחה');
+  assert.equal((await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־19:00', tomorrowAt('19')))).ok, true);
+
+  const before = await tx((c) => dash.load(c, me.id));
+  assert.ok(before.data.meetings.some((x) => Number(x.id) === id));
+  assert.equal(before.data.meetingsLeft.some((x) => x.id === id), false);
+
+  assert.equal((await actAs(me, 'leaveMeeting', { meetingId: id })).ok, true);
+
+  const after = await tx((c) => dash.load(c, me.id));
+  assert.equal(after.data.meetings.some((x) => Number(x.id) === id), false,
+    'it must not still be answerable');
+  const arc = after.data.meetingsLeft.find((x) => x.id === id);
+  assert.ok(arc, 'and it must not have vanished either');
+  assert.equal(arc.title, 'ארוחה');
+  assert.equal(arc.youLeft, true);
+});
+
+test('the archive carries a title and an id, and nothing about the negotiation', async () => {
+  // Watching the others answer a coordination you stepped out of is not a
+  // feature. The archive row is what "put me back in" needs and no more.
+  const id = await coordination(gali, [me, ron], 'סוד');
+  await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־20:00', tomorrowAt('20')));
+  await actAs(me, 'leaveMeeting', { meetingId: id });
+  await tx((c) => meetings.respondToSlot(c, ron.id, id, true, null, null, tomorrowAt('20')));
+
+  const page = await tx((c) => dash.load(c, me.id));
+  const arc = page.data.meetingsLeft.find((x) => x.id === id);
+  assert.deepEqual(Object.keys(arc).sort(), ['id', 'title', 'youLeft']);
+});
+
+test('putting yourself back in is a real rejoin, and the others are told', async () => {
+  const id = await coordination(gali, [me, ron], 'חזרה');
+  await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־21:00', tomorrowAt('21')));
+  await actAs(me, 'leaveMeeting', { meetingId: id });
+
+  const res = await actAs(me, 'rejoinMeeting', { meetingId: id });
+  assert.equal(res.ok, true, res.ok ? '' : JSON.stringify(res.error));
+
+  const page = await tx((c) => dash.load(c, me.id));
+  assert.ok(page.data.meetings.some((x) => Number(x.id) === id), 'back on the active list');
+  assert.equal(page.data.meetingsLeft.some((x) => x.id === id), false, 'and out of the archive');
+
+  // The others were told they left; they are told they are back, or everyone
+  // is holding a tally that is quietly wrong.
+  const { rows } = await db.pool.query(
+    `SELECT user_id FROM outbox WHERE kind = 'meeting_rejoined'
+       AND (payload->>'meetingId')::bigint = $1 ORDER BY user_id`, [id]);
+  assert.deepEqual(rows.map((r) => Number(r.user_id)).sort(), [gali.id, ron.id].sort());
+});
+
+test('the archive never offers a way back into something already closed', async () => {
+  // Two people: one leaving takes it below two, so it closes for both. The row
+  // must not sit in the archive wearing a button the server would refuse.
+  const id = await coordination(gali, [me], 'זוג');
+  await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־22:00', tomorrowAt('22')));
+  await actAs(me, 'leaveMeeting', { meetingId: id });
+
+  const page = await tx((c) => dash.load(c, me.id));
+  assert.equal(page.data.meetingsLeft.some((x) => x.id === id), false);
+  const res = await actAs(me, 'rejoinMeeting', { meetingId: id });
+  assert.equal(res.ok, false);
 });

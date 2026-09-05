@@ -5,6 +5,7 @@
 const { enqueue, collectHeld } = require('../outbox/enqueue');
 const reminders = require('../domain/reminders');
 const meetings = require('../domain/meetings');
+const tasks = require('../domain/tasks');
 const quota = require('../domain/quota');
 const flags = require('../domain/flags');
 const { minutesInTz, parseHHMM } = require('../outbox/gate');
@@ -241,7 +242,101 @@ async function sweepNameConfirm(client, nowIso) {
   return out;
 }
 
+// ---- tasks that are over ------------------------------------------------------
+// Two ways a task stops being a task, neither of which anybody was telling it
+// about.
+//
+// 1. AN APPOINTMENT WHOSE MOMENT PASSED. `תור רופא` at 09:00 is over by noon —
+//    it happened or it didn't, and either way it is not something to do. It sat
+//    in the overdue list for ever, next to `לקבוע תור לרופא`, which genuinely
+//    IS still worth doing late. `tasks.kind` (domain/task-kind.js) is what
+//    finally separates them, and only 'event' is ever swept: a NULL kind is a
+//    row nothing has judged, and it is left alone.
+//
+// 2. A LIST WITH EVERY BOX TICKED. `סופר` sat open in production with six of
+//    six subtasks done. `completeTask` closes a drained project from now on,
+//    but rows finished before that, or by any path that did not go through it,
+//    need somebody to come round.
+//
+// Both end the same way: completed, archived, and SAID OUT LOUD. Something
+// that leaves a person's list on its own without telling them is indis-
+// tinguishable from something we lost, and the person is the only one who
+// knows whether we got it right — so the message names what went and the agent
+// can put any of it back.
+async function sweepFinishedTasks(client, nowIso) {
+  const now = nowIso ? new Date(nowIso) : new Date();
+  const graceHours = Number(await flags.getFlag(client, 'task_auto_archive_grace_hours'));
+  const grace = Number.isFinite(graceHours) && graceHours >= 0 ? graceHours : 3;
+  const cutoff = new Date(now.getTime() - grace * 3600_000).toISOString();
+
+  // A repeating reminder makes a task standing — doing it once does not finish
+  // it, and completeTask refuses to close it for exactly that reason. Sweeping
+  // it would be the same mistake made from the other side.
+  const { rows: expired } = await client.query(
+    `SELECT t.id, t.owner_id, t.title
+       FROM tasks t JOIN users u ON u.id = t.owner_id
+      WHERE t.kind = 'event' AND t.status = 'open' AND t.archived_at IS NULL
+        AND t.due_at IS NOT NULL AND COALESCE(t.ends_at, t.due_at) < $1
+        AND u.status = 'active' AND u.is_eval = false
+        AND NOT EXISTS (SELECT 1 FROM task_reminders r
+                         WHERE r.task_id = t.id AND r.repeat_rule IS NOT NULL
+                           AND r.sent_at IS NULL AND r.cancelled_at IS NULL)
+      ORDER BY t.owner_id, t.id
+      LIMIT 200`,
+    [cutoff]
+  );
+
+  const { rows: drained } = await client.query(
+    `SELECT p.id, p.owner_id, p.title
+       FROM tasks p JOIN users u ON u.id = p.owner_id
+      WHERE p.status = 'open' AND p.archived_at IS NULL AND p.parent_id IS NULL
+        AND u.status = 'active' AND u.is_eval = false
+        AND EXISTS (SELECT 1 FROM tasks c WHERE c.parent_id = p.id AND c.archived_at IS NULL)
+        AND NOT EXISTS (SELECT 1 FROM tasks c
+                         WHERE c.parent_id = p.id AND c.archived_at IS NULL AND c.status <> 'done')
+      ORDER BY p.owner_id, p.id
+      LIMIT 200`
+  );
+
+  // Grouped per person, because one message listing three things is one
+  // interruption and three messages are three.
+  const byUser = new Map();
+  const add = (row, why) => {
+    if (!byUser.has(row.owner_id)) byUser.set(row.owner_id, []);
+    byUser.get(row.owner_id).push({ id: Number(row.id), title: row.title, why });
+  };
+  for (const t of expired) add(t, 'passed');
+  for (const t of drained) add(t, 'finished');
+
+  const out = [];
+  for (const [userId, items] of byUser) {
+    const done = [];
+    for (const item of items) {
+      const res = await tasks.completeTask(client, userId, item.id);
+      // Not an error worth stopping for: a task completed or archived by the
+      // person between the SELECT above and this line is exactly the outcome
+      // we wanted, arrived at without us.
+      if (!res.ok || res.data.recurring) continue;
+      const arch = await tasks.archiveTask(client, userId, item.id);
+      if (!arch.ok) continue;
+      done.push(item);
+    }
+    if (!done.length) continue;
+    const res = await enqueue(client, {
+      userId,
+      kind: 'tasks_auto_archived',
+      // Olma's own housekeeping, not a moment they chose — it queues like
+      // everything else Olma decided to say rather than skipping the budget.
+      urgency: 'normal',
+      payload: { tasks: done },
+      idempotencyKey: `autoarc:${userId}:${done[0].id}`,
+    });
+    if (res.data.enqueued) out.push({ userId, count: done.length });
+  }
+  return { users: out.length, tasks: out.reduce((n, r) => n + r.count, 0) };
+}
+
 module.exports = {
   sweepReminders, sweepDigests, sweepUnblocks, sweepStaleMeetings, sweepMediaJobs,
-  sweepNameConfirm,
+  sweepNameConfirm, sweepFinishedTasks,
 };

@@ -1,39 +1,20 @@
 'use strict';
-// Opening a turn — the bookkeeping that must happen on every inbound message,
-// whether or not the model remembered to ask for it.
+// Opening a turn — the bookkeeping that must happen on every inbound
+// message, whether or not the model remembered to call `turn_start`.
+// Correctness must not depend on model discipline (D-007): brokerd sees
+// every tool call, so a turn that opened without `turn_start` gets its
+// bookkeeping done here.
 //
-// `turn_start` is the tool the doctrine tells the agent to call first on every
-// message, and for most turns it does. But on 2026-08-30 the behavioral evals
-// caught it skipping the call entirely on the stop-confirmation turn: the stop
-// section is a vivid, numbered three-step plan whose step 2 says to call
-// `pause_olma` "THAT TURN, before you write anything back", and it beats a
-// universal preamble sitting far above it. Two rounds of rewording failed, and
-// `deepseek-v4-pro` — the stronger, dearer sibling already configured as the
-// first fallback — failed identically. Two models, two doctrine versions, one
-// failure: a specific urgent instruction outranking a general one is a property
-// of models, not of any one model.
+//   STATE  — recovered: count the message, stamp the person awake, wake
+//            night-held rows, record `message.received`.
+//   ADVICE — never recovered: `offerResume` (stamping it would burn a
+//            once-per-pause offer the model never made), name capture (needs
+//            `sender_name`, which only the model sees), `recentReminders`,
+//            `planHeadline`. A correct database and a less-informed reply is
+//            the honest trade.
 //
-// So this is the project's own rule applied again (D-007, and the
-// identity-token self-healing in bin/olma-mcp.js): **correctness must not
-// depend on model discipline.** brokerd already sees every tool call, and the
-// gateway spawns one MCP shim per turn holding one socket — so the server can
-// notice a turn that opened without `turn_start` and do the bookkeeping itself.
-//
-// What this deliberately does NOT do, and why the split matters:
-//
-//   STATE — recovered here. Counting the message, stamping that the person is
-//   awake, waking night-held rows, recording the north-star `message.received`.
-//   None of it needs the model's cooperation and all of it is wrong to skip.
-//
-//   ADVICE — never recovered. `offerResume` is the sharpest case: stamping
-//   `resume_offer_sent_at` here would burn a once-per-pause offer that the
-//   model never saw and therefore cannot make, which is strictly worse than
-//   not stamping it — the person would be left waiting for an offer the
-//   database believes was already delivered. Name capture needs `sender_name`,
-//   which only the model can see; `recentReminders` and `planHeadline` are
-//   answers to a question nobody asked. A turn that skipped `turn_start` gets
-//   a correct database and a less well-informed reply, which is the honest
-//   trade rather than a silent pretence that nothing was lost.
+// Story: docs/incidents.md, "turn_start skipped on the stop turn, under two
+// models and two rewordings (2026-08-30)".
 const quota = require('./quota');
 const audit = require('./audit');
 const flags = require('./flags');

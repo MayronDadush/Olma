@@ -117,6 +117,74 @@ test('/health reports 503 when a job is genuinely stuck', async () => {
   await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'outbox_worker'`);
 });
 
+// The doctrine has sat one character under the gateway's ceiling since
+// 2026-09-04, guarded only by a test. This is the row that lets a person see
+// the margin — and the number on it must be the SAME measurement the guard
+// takes, or the two will disagree the day it matters.
+test('the health board shows the doctrine against the gateway ceiling, from the same measurement the guard takes', async () => {
+  const { renderAgentsMd } = require('../src/intake/provision');
+  const guard = require('../src/jobs/config-guard');
+  const chars = renderAgentsMd('olma_tok_' + '0'.repeat(32)).length;
+  const fmt = (n) => n.toLocaleString('en-US');
+
+  // The row is on the page, whatever this machine's gateway config says.
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.ok(html.includes('הדוקטרינה (AGENTS.md)'), 'the row is there');
+
+  // A config that cannot be read: the ceiling is UNKNOWN, the size still
+  // shows, nothing is judged and nothing is counted. (The gateway's own
+  // default is 20,000 and the doctrine is far past it; a meter that fell back
+  // to that default would paint a red row for a file that fits on the box.)
+  // Injected, never inferred from the machine: on the production box the real
+  // /root/.openclaw/openclaw.json exists and is readable, and the on-box suite
+  // is what caught a version of this test that assumed it would not be.
+  const { SECTIONS } = require('../src/adapters/http/dashboard');
+  const unknown = await withTx(db.pool, (c) =>
+    SECTIONS.find((s) => s.id === 'health').render(c, 'csrf', async () => gatewayState, { configPath: '/nonexistent/openclaw.json' }));
+  assert.ok(unknown.includes(`${fmt(chars)} / ?`), 'size shown, ceiling unknown');
+  assert.ok(unknown.includes('התקרה לא נקראה'), 'and says so');
+  assert.ok(unknown.includes('הכל תקין'), 'an unreadable ceiling is not a problem');
+
+  // With the box's setting, the row judges: what is left, and the warning
+  // once inside the guard's margin.
+  const tmp = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'olma-dash-doc-'));
+  const cfgPath = require('node:path').join(tmp, 'openclaw.json');
+  const limit = 40_000;
+  require('node:fs').writeFileSync(cfgPath, JSON.stringify({ agents: { defaults: { bootstrapMaxChars: limit } } }));
+  try {
+    const section = await withTx(db.pool, (c) =>
+      SECTIONS.find((s) => s.id === 'health').render(c, 'csrf', async () => gatewayState, { configPath: cfgPath }));
+    const headroom = limit - chars;
+    assert.ok(headroom >= 0, 'the template itself fits (intake.test.js owns this guard)');
+    assert.ok(section.includes(`${fmt(chars)} / ${fmt(limit)}`), `shows ${chars} against ${limit}`);
+    assert.ok(section.includes(`נשארו ${fmt(headroom)} תווים`), 'and says how much room is left');
+    if (headroom < guard.BOOTSTRAP_WARN_MARGIN) {
+      assert.ok(section.includes('כל תוספת תיחתך בשקט'), 'under the warn margin it says so');
+    }
+    // Over the line it is a fault in every user's prompt, and counted as one.
+    require('node:fs').writeFileSync(cfgPath, JSON.stringify({ agents: { defaults: { bootstrapMaxChars: chars - 1 } } }));
+    const over = await withTx(db.pool, (c) =>
+      SECTIONS.find((s) => s.id === 'health').render(c, 'csrf', async () => gatewayState, { configPath: cfgPath }));
+    assert.ok(over.includes('מעל התקרה'), 'over is named');
+    assert.ok(over.includes('דורשים תשומת לב'), 'and counted in the banner');
+  } finally {
+    require('node:fs').rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// The off-box backup is a cron script, not a sweep, but its heartbeat sits on
+// the same board — and a row that shows up as a bare `backup_offbox` is a
+// puzzle to the person reading it. The label is the contract with the page.
+test('the off-box backup heartbeat reads in plain Hebrew on the health board', async () => {
+  await db.pool.query(
+    `INSERT INTO job_heartbeats (job_name, last_run_at, last_ok_at, note)
+     VALUES ('backup_offbox', now(), now(), 'uploaded olma2-2026-09-05.sql.gz 4096B; pruned 0 older than 30d')`);
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.ok(html.includes('גיבוי יומי של מסד הנתונים מחוץ לשרת'), 'labelled, not the raw job name');
+  assert.ok(!html.includes('>backup_offbox<'), 'raw job name never shown');
+  await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'backup_offbox'`);
+});
+
 test('/ready is the deploy gate and a stale sweep must not fail it', async () => {
   // The deadlock this guards, live on 2026-08-22: deploy.sh gated on /health,
   // /health is 503 whenever any sweep is behind, and five seconds after a
@@ -1157,4 +1225,146 @@ test('the dashboard offers no way to pause someone on their behalf', async () =>
   });
   const { rows } = await db.pool.query('SELECT paused_at FROM users WHERE id = $1', [u.id]);
   assert.equal(rows[0].paused_at, null, 'pausing is the person\'s own decision, not an admin button');
+});
+
+// ---------------------------------------------------- opening a person's page
+//
+// The operator's own way in. The link a person gets by WhatsApp is single-use
+// and lives half an hour, which is right for a message and wrong for going
+// through a dozen accounts looking for layout bugs.
+
+test('every active user has a button that opens their own dashboard', async () => {
+  const csrf = 'c-dash-open';
+  const page = await fetch(base + '/', { headers: { Authorization: AUTH, Cookie: `csrf=${csrf}` } })
+    .then((r) => r.text());
+  assert.match(page, /action="\/users\/dashboard"/);
+
+  await withTx(db.pool, (c) => flags.setFlag(c, 'public_base_url', 'https://allma.world'));
+  const res = await fetch(base + '/users/dashboard', {
+    method: 'POST', redirect: 'manual',
+    headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `id=${user.id}&back=/&csrf=${csrf}`,
+  });
+  assert.equal(res.status, 303);
+  // Straight to a live one-time link on the PUBLIC host — the redirect that
+  // makes the thirty-minute TTL a non-issue, because none of it is spent
+  // getting there.
+  assert.match(res.headers.get('location'), /^https:\/\/allma\.world\/d\/[a-f0-9]{64}$/);
+
+  // It is a real sign-in as that person, so it leaves the same trail every
+  // other admin edit on this page leaves.
+  const { rows } = await db.pool.query(
+    `SELECT count(*)::int AS n FROM audit_log WHERE actor_id = $1 AND event = 'admin.dashboard_opened'`,
+    [user.id]);
+  assert.equal(rows[0].n, 1);
+});
+
+test('a bad public_base_url cannot turn the button into an open redirect', async () => {
+  const csrf = 'c-dash-bad';
+  await withTx(db.pool, (c) => flags.setFlag(c, 'public_base_url', 'javascript:alert(1)'));
+  const res = await fetch(base + '/users/dashboard', {
+    method: 'POST', redirect: 'manual',
+    headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `id=${user.id}&back=/&csrf=${csrf}`,
+  });
+  assert.equal(res.status, 303);
+  assert.equal(res.headers.get('location'), '/', 'falls back to the same-origin back target');
+  await withTx(db.pool, (c) => flags.setFlag(c, 'public_base_url', 'https://allma.world'));
+});
+
+// ---- the grouped page ---------------------------------------------------------
+// Fifteen sections top to bottom became six folds with only the first open,
+// an alerts strip inside it, and two merges (outbox into planned, boost into
+// settings). What these pin: nothing fell off the page, only one group opens,
+// the strip is honest on a clean board and names an issue when there is one,
+// a save lands back on its section and only on a real one, and the header
+// dot no longer says "all fine" over a dead gateway.
+test('every section sits inside a group, and exactly one group opens by default — the one with health', async () => {
+  const { SECTIONS } = require('../src/adapters/http/dashboard');
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const groups = [...html.matchAll(/<details class="group" id="g-([a-z]+)"( open)?>/g)];
+  assert.equal(groups.length, 6, 'six groups');
+  const open = groups.filter((g) => g[2]);
+  assert.equal(open.length, 1, 'exactly one starts open');
+  assert.equal(open[0][1], 'now');
+  const nowBlock = html.slice(html.indexOf('id="g-now"'), html.indexOf('id="g-sending"'));
+  assert.ok(nowBlock.includes('<section id="health"'), 'health is in the open group');
+  for (const s of SECTIONS) {
+    assert.ok(html.includes(`<section id="${s.id}"`), `${s.id} is still on the page`);
+  }
+  for (const t of ['עכשיו: מצב המערכת ותקלות', 'הודעות: מה בתור ומה יצא', 'אנשים: משתמשים, המתנות וזיכרון',
+    'מדידה: תוצאות, שימוש ובדיקות', 'עלויות ותשתית', 'הגדרות ויומן פעילות']) {
+    assert.ok(html.includes(`<summary>${t}</summary>`), `group titled ${t}`);
+  }
+});
+
+test('the alerts strip says so on a clean board, and names an open issue when there is one', async () => {
+  const clean = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.ok(clean.includes('אין התראות'), 'clean fixture, no pills');
+  await db.pool.query(
+    `INSERT INTO issues (category, source, title, status) VALUES ('bug', 'user_reported', 'הכפתור לא עובד', 'new')`);
+  try {
+    const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+    assert.ok(!html.includes('אין התראות'));
+    assert.match(html, /<a class="alert alert-warn" href="#issues">• 1 תקלות פתוחות<\/a>/);
+    // The strip's own markup never carries the bare classes the section
+    // slicers key on.
+    const strip = html.slice(html.indexOf('<div class="alerts">'), html.indexOf('</div>', html.indexOf('<div class="alerts">')));
+    assert.ok(!/class="(bad|warn)"/.test(strip));
+  } finally {
+    await db.pool.query(`DELETE FROM issues WHERE title = 'הכפתור לא עובד'`);
+  }
+});
+
+test('the two merged sections are blocks inside the ones that absorbed them', async () => {
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.ok(!html.includes('<section id="outbox"'), 'outbox is no longer a section');
+  assert.ok(!html.includes('<section id="boost"'), 'boost is no longer a section');
+  assert.ok(sectionOf(html, 'planned').includes('<h4>הודעות יוצאות — 7 ימים אחרונים</h4>'));
+  const flags = sectionOf(html, 'flags');
+  assert.ok(flags.includes('<h4>מצב בוסט</h4>'));
+  assert.ok(flags.includes('action="/boost"'), 'the switch still posts to /boost');
+});
+
+test('a save lands back on its own section — and only on a section this page renders', async () => {
+  const page = await fetch(base + '/', { headers: { Authorization: AUTH } });
+  const csrf = /csrf=([a-f0-9]+)/.exec(page.headers.get('set-cookie'))[1];
+  const post = (back) => fetch(base + '/flags', {
+    method: 'POST', redirect: 'manual',
+    headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ csrf, key: 'registration_open', value: 'true', back }).toString(),
+  });
+  assert.equal((await post('/#flags')).headers.get('location'), '/#flags');
+  assert.equal((await post('/#g-controls')).headers.get('location'), '/#g-controls');
+  assert.equal((await post('/#evil')).headers.get('location'), '/', 'an unknown fragment is not followed');
+  assert.equal((await post('https://example.com/')).headers.get('location'), '/', 'never an open redirect');
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.ok(sectionOf(html, 'flags').includes('name="back" value="/#flags"'), 'the flags forms carry it');
+});
+
+test('the header dot goes red for a dead gateway, like /health already did', async () => {
+  gatewayState = { status: 'down', detail: 'ECONNREFUSED', port: 18789 };
+  try {
+    const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+    assert.ok(html.includes('class="dot bad"'), 'the dot');
+    assert.ok(html.includes('יש תקלה'), 'and the words next to it');
+    assert.match(html, /alert alert-bad" href="#health">⚠ שער התקשורת לא מגיב/);
+  } finally {
+    gatewayState = { status: 'live', detail: 'live', port: 18789 };
+  }
+});
+
+test('with nothing wrong the green job rows are a fold; a problem row is never behind a click', async () => {
+  const clean = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.ok(sectionOf(clean, 'health').includes('<details class="sub">'), 'folded when all is well');
+  await db.pool.query(
+    `INSERT INTO job_heartbeats (job_name, last_run_at, note) VALUES ('minute_sweeps', now(), 'ERR boom')`);
+  try {
+    const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+    const health = sectionOf(html, 'health');
+    assert.ok(!health.includes('<details class="sub">'), 'open table when something is wrong');
+    assert.ok(health.includes('ERR boom'));
+  } finally {
+    await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'minute_sweeps'`);
+  }
 });

@@ -346,15 +346,21 @@ async function disconnect(client, userId, opts = {}) {
   return ok({ connected: false, revokedAtGoogle: revoked });
 }
 
+// `daysBack` and `maxEvents` both default to what the agent has always got,
+// because this projection goes verbatim into a model's context and the cap is
+// what bounds that. The dashboard passes both: it draws a page a person pages
+// backwards through, and a page is not a context window.
 async function listEvents(client, userId, daysAhead, opts = {}) {
   const days = Math.min(Math.max(Number(daysAhead) || 7, 1), 60);
+  const back = Math.min(Math.max(Number(opts.daysBack) || 0, 0), 60);
+  const cap = Math.min(Math.max(Number(opts.maxEvents) || MAX_EVENTS, 1), 250);
   return withAccessToken(client, userId, opts, async (token, _access, o) => {
     const params = new URLSearchParams({
-      timeMin: new Date().toISOString(),
+      timeMin: new Date(Date.now() - back * 86400000).toISOString(),
       timeMax: new Date(Date.now() + days * 86400000).toISOString(),
       singleEvents: 'true',
       orderBy: 'startTime',
-      maxResults: String(MAX_EVENTS),
+      maxResults: String(cap),
     });
     let body;
     try {
@@ -363,13 +369,13 @@ async function listEvents(client, userId, daysAhead, opts = {}) {
       if (e.code === 'unauthorized') throw e;
       return err('conflict', e.message, { reason: e.code || 'http' });
     }
-    await audit.record(client, userId, 'calendar.read', { days });
+    await audit.record(client, userId, 'calendar.read', { days, back });
     return ok({
       days,
       // Projected deliberately. Attendee lists are other people's email
       // addresses, and this whole object goes verbatim into the agent's
       // context — there is no reason for that PII to be there.
-      events: (body.items || []).slice(0, MAX_EVENTS).map((e) => ({
+      events: (body.items || []).slice(0, cap).map((e) => ({
         id: e.id,
         title: e.summary || '(ללא כותרת)',
         start: e.start && (e.start.dateTime || e.start.date),

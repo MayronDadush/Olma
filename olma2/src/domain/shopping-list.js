@@ -9,7 +9,7 @@
 // which is a thing to do rarely and only when nearly certain, so every rule
 // below narrows rather than widens — and anything that does not match comes
 // back null and stays the plain task they typed.
-const { ok, err } = require('./results');
+const { ok } = require('./results');
 const audit = require('./audit');
 
 // The verb has to lead. "לקנות חלב, לחם" is a shopping list; "לשאול את דנה על

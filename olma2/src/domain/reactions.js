@@ -30,11 +30,16 @@ const REACTION_STATES = Object.freeze({
   // not merely that a turn opened. "I saw it" and "I heard it" are different
   // claims about different things.
   listening: '👂',
-  done: '✅',
-  // Deliberately distinct from `done`. Olma schedules a great deal — reminders,
-  // digests, meetings — and "I have written this down for a future moment" is a
-  // different promise from "I have finished it". Collapsing the two is how a
-  // person comes to believe a reminder already fired.
+  // 👍, not ✅. It says the thing they asked for is in hand — captured, done, or
+  // already true. Gali's "בוצע" on 2026-09-03 is the case it exists for: Olma
+  // completed the task inside the same second and showed her nothing, so she
+  // wrote again 14 seconds later, and a third time 26 minutes after that.
+  done: '👍',
+  // Narrower than it was, and deliberately. ⏰ now means exactly one thing: a
+  // reminder is armed on this and it will speak to you later. It used to cover
+  // every future-dated write — tasks, calendar events — which made it the mark
+  // for "diarised" in general and left a person unable to tell a row that will
+  // reach out from one that will simply sit there.
   scheduled: '⏰',
   // The turn ended needing something only they can supply. Without this, a
   // blocked turn is indistinguishable from a slow one.
@@ -226,25 +231,34 @@ function placeMark(opts = {}, deps = {}) {
 // through — and because the question "what does Olma react to?" should be
 // answerable by reading eleven lines, not by grepping eighty handlers.
 //
-// `scheduled` is not a lesser `done` (see REACTION_STATES): these tools all end
-// with something written down for a future moment, and telling somebody a thing
-// is finished when it is merely diarised is the failure that distinction exists
-// to prevent. Miron's calendar request on 2026-09-03 — the one that took long
-// enough that he wondered whether it had registered — is exactly this row:
-// 👀 the moment it arrives, ⏰ when the event exists.
+// Only `set_task_reminder` earns ⏰, because only it arms something that will
+// later speak to the person unprompted (see REACTION_STATES). Everything else
+// here ends with the request itself in hand and earns 👍 — the calendar write
+// included. That is Miron's 2026-09-03 request, the one that took long enough
+// that he wondered whether it had registered at all: 👀 the moment it arrives,
+// 👍 when the event exists.
+//
+// A task that also gets a reminder passes through both rows and ends on ⏰. That
+// ordering is the right way round and not an accident of the table: ⏰ is the
+// more specific claim of the two, and it is the one the person acts on.
 const TOOL_MARKS = Object.freeze({
   turn_start: 'working',
   complete_task: 'done',
   complete_shared_task: 'done',
-  add_task: 'scheduled',
-  add_tasks_bulk: 'scheduled',
+  add_task: 'done',
+  add_tasks_bulk: 'done',
+  create_calendar_event: 'done',
   set_task_reminder: 'scheduled',
-  create_calendar_event: 'scheduled',
 });
 
-// The single decision, pure so it can be tested without a socket or a spawn.
-// Returns the mark to place, or null — and null is a real answer that the
-// caller must treat as one, exactly like buildReactArgs.
+// The single decision, kept clear of sockets and spawns so it can be tested
+// directly. Returns the mark to place, or null — and null is a real answer that
+// the caller must treat as one, exactly like buildReactArgs.
+//
+// Not pure: it stamps the turn with what it has already asked for, because
+// deduplicating a repeat needs memory and this is the only place that holds the
+// turn. Kept here rather than in the caller so that every future caller inherits
+// it instead of having to remember it.
 //
 // A FAILED tool call earns no mark at all, rather than ⚠️. The vocabulary has
 // a `failed` state and this deliberately does not reach for it: a tool erroring
@@ -260,8 +274,21 @@ function markFor(toolName, result, turn, now = Date.now()) {
   // A voice note gets 👂 where a typed message gets 👀 — the opening mark only.
   // Every closing mark (done/scheduled) is about what the TURN achieved, which
   // is the same question however the message arrived.
-  if (state === 'working' && turn.messageKind === 'voice') return 'listening';
-  return state;
+  const effective = (state === 'working' && turn.messageKind === 'voice') ? 'listening' : state;
+  // A model that calls `turn_start` twice in one turn asks for the same 👀
+  // twice: 2 of the first 10 marked messages in production did, 22 and 37
+  // seconds apart. WhatsApp SETS a reaction rather than appending one, so the
+  // repeat costs the reader nothing and the box a whole Node CLI start-up —
+  // which is the only reason this is a tidy-up and not a bug fix.
+  //
+  // Keyed on message AND state, never on message alone: 👀 then 👍 on one
+  // message is a progression the person is meant to see, and a coarser key
+  // would swallow the second half of every conversation's only real signal.
+  const seen = turn.marked || (turn.marked = new Set());
+  const stamp = `${turn.messageId}:${effective}`;
+  if (seen.has(stamp)) return null;
+  seen.add(stamp);
+  return effective;
 }
 
 // The flag an operator edits on the dashboard. One JSON object, one place.

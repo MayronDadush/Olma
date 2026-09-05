@@ -556,6 +556,5 @@ module.exports = {
   SOURCES, subscribe, listSubscriptions, unsubscribe, sweepLiveUpdates,
   // exported for tests: the hourly branch is scheduling logic with a wrong
   // answer that looks right (tomorrow morning) if local_hour leaks into it.
-  computeNextRun,
   computeNextRun, SUBS_CAP_FLAG, parseRssItems, googleNewsRssUrl,
 };

@@ -38,6 +38,10 @@ const newTurn = () => ({
   // arrived. Per-turn and never persisted: a mark belongs on the message being
   // handled right now, and a stale id would put one on the wrong message.
   messageId: null, lastInboundAt: null,
+  // What has already been asked for on this turn, so a model that calls
+  // `turn_start` twice does not buy a second identical reaction. Populated
+  // lazily by markFor, which is the only thing that reads it.
+  marked: null,
 });
 
 function createBrokerServer({ pool, flood, placeMark }) {
@@ -85,6 +89,7 @@ function createBrokerServer({ pool, flood, placeMark }) {
           // left over from the previous occupant of this connection would aim a
           // reaction at somebody else's message from inside this person's chat.
           turn.messageId = null; turn.lastInboundAt = null;
+          turn.marked = null;
         }
 
         if (!turn.opened) {

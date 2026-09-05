@@ -298,6 +298,40 @@ async function respondToSlot(client, userId, meetingId, accept, counterProposal,
   return ok({ meetingId, meetingStatus: 'negotiating', yourState: 'declined_current' });
 }
 
+// Leaving was a one-way door, and the door was one tap wide. The dashboard
+// puts a coordination you left into an archive with a way back, and this is
+// what that way back has to be — a real state change the other people are
+// told about, not a row reappearing in one person's browser.
+//
+// Deliberately narrow. It can only undo a `state = 'opted_out'` on a meeting
+// that is STILL going: an exit that cascaded the meeting to `cancelled` or
+// `no_match` closed it for everybody, and one person changing their mind
+// cannot reopen a plan the others have already been told is off. It also
+// cannot resurrect the answer you had given before you left — you come back
+// as `awaiting`, because the last thing you actually said was that you were
+// out, and re-asserting a yes on your behalf is the sort of thing this whole
+// screen exists to avoid.
+async function rejoin(client, userId, meetingId, now = Date.now()) {
+  const p = await participantRow(client, meetingId, userId);
+  if (!p) return err('not_found', 'not a participant of this meeting');
+  if (p.state !== 'opted_out') return err('invalid', 'you are already in this meeting');
+  if (!['negotiating', 'confirmed'].includes(p.meeting_status)) {
+    return err('invalid', 'that coordination is closed — it cannot be rejoined');
+  }
+  const { rows: mrows } = await client.query(
+    `SELECT confirmed_start_at FROM meetings WHERE id = $1`, [meetingId]);
+  const startAt = mrows[0] && mrows[0].confirmed_start_at;
+  if (startAt && new Date(startAt).getTime() < now) {
+    return err('invalid', 'that meeting has already started');
+  }
+  await client.query(
+    `UPDATE meeting_participants SET state = 'awaiting' WHERE meeting_id = $1 AND user_id = $2`,
+    [meetingId, userId]
+  );
+  await audit.record(client, userId, 'meeting.rejoined', { meetingId });
+  return ok({ meetingId, meetingStatus: p.meeting_status, yourState: 'awaiting' });
+}
+
 // Shared exit logic for opt_out AND connection-revoke. Initiator cannot exit
 // their own meeting (must cancel). If exiting leaves fewer than 2 active
 // participants, the meeting closes no_match.
@@ -594,7 +628,7 @@ async function listNegotiating(client, userId = null) {
 
 module.exports = {
   startMeeting, recordConstraint, proposeSlot, respondToSlot,
-  optOut, applyExit, withdrawConfirmed, cancelMeeting, setTitle,
+  optOut, rejoin, applyExit, withdrawConfirmed, cancelMeeting, setTitle,
   getStatus, listMine, pendingMeetingFor, tryConfirm,
   expireStaleMeetings, expireOne, listNegotiating, EXPIRE_AFTER_START_MS, LEGACY_STALE_DAYS,
   shareableConstraints, constraintTexts, shareableTexts,

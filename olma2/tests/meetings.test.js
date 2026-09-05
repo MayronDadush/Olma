@@ -6,12 +6,6 @@ const connections = require('../src/domain/connections');
 const grants = require('../src/domain/grants');
 const meetings = require('../src/domain/meetings');
 
-// Every proposal now carries the machine half of its slot. Tests that only
-// care about negotiation state use a time comfortably in the future, so the
-// slot never expires mid-test.
-const soon = (hours = 48) =>
-  new Date(Date.now() + hours * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00');
-
 let db, alice, bob, carol;
 before(async () => {
   db = await freshDb();
@@ -692,5 +686,74 @@ test('a meeting waiting on the other person shows up in the digest of the one wa
       assert.ok(!cu.awaitingOthers.some((x) => Number(x.id) === Number(m.id)));
       assert.ok(!cu.pendingMeetings.some((x) => Number(x.id) === Number(m.id)));
     }
+  });
+});
+
+// ---------------------------------------------------------------- rejoining
+//
+// Leaving used to be a one-way door with a one-tap handle, which is a bad
+// trade for the action people most often take by accident. Every test here is
+// about the door only opening where it honestly can.
+
+test('somebody who left can walk back in, un-answered', async () => {
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'rejoinable', [bob.id, carol.id])).data.meeting;
+    const when = slotStart('Thursday 18:00');
+    await meetings.proposeSlot(c, alice.id, m.id, 'Thursday 18:00', when);
+    await meetings.respondToSlot(c, bob.id, m.id, true, null, null, when);
+    assert.equal((await meetings.optOut(c, bob.id, m.id)).ok, true);
+
+    const back = await meetings.rejoin(c, bob.id, m.id);
+    assert.equal(back.ok, true);
+    assert.equal(back.data.yourState, 'awaiting',
+      'the last thing they actually said was that they were out — a yes is not restored on their behalf');
+    const st = await meetings.getStatus(c, bob.id, m.id);
+    assert.equal(st.ok, true);
+  });
+});
+
+test('rejoining twice is refused rather than silently fine', async () => {
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'twice', [bob.id, carol.id])).data.meeting;
+    await meetings.proposeSlot(c, alice.id, m.id, 'Friday 18:00', slotStart('Friday 18:00'));
+    await meetings.optOut(c, bob.id, m.id);
+    assert.equal((await meetings.rejoin(c, bob.id, m.id)).ok, true);
+    const again = await meetings.rejoin(c, bob.id, m.id);
+    assert.equal(again.ok, false);
+    assert.equal(again.error.code, 'invalid');
+  });
+});
+
+test('a coordination that CLOSED when they left cannot be reopened by them', async () => {
+  await withClient(async (c) => {
+    // Two people: one leaving takes it below two active participants, so the
+    // meeting closes for everyone. One person changing their mind afterwards
+    // must not resurrect a plan the other was already told was off.
+    const m = (await meetings.startMeeting(c, alice.id, 'pair', [bob.id])).data.meeting;
+    await meetings.proposeSlot(c, alice.id, m.id, 'Sunday 18:00', slotStart('Sunday 18:00'));
+    const out = await meetings.optOut(c, bob.id, m.id);
+    assert.equal(out.ok, true);
+    const back = await meetings.rejoin(c, bob.id, m.id);
+    assert.equal(back.ok, false);
+    assert.match(back.error.message, /closed/);
+  });
+});
+
+test('somebody who never left is told so, not quietly re-added', async () => {
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'still in', [bob.id, carol.id])).data.meeting;
+    const r = await meetings.rejoin(c, carol.id, m.id);
+    assert.equal(r.ok, false);
+    assert.equal(r.error.code, 'invalid');
+  });
+});
+
+test('a stranger cannot rejoin a coordination they were never in', async () => {
+  const eve = await makeUser(db.pool, '+972531000009', { firstName: 'Eve' });
+  await withClient(async (c) => {
+    const m = (await meetings.startMeeting(c, alice.id, 'private', [bob.id, carol.id])).data.meeting;
+    const r = await meetings.rejoin(c, eve.id, m.id);
+    assert.equal(r.ok, false);
+    assert.equal(r.error.code, 'not_found');
   });
 });

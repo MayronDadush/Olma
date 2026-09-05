@@ -215,6 +215,28 @@ function bodyFor(row, p) {
         ? ` — it was already agreed for <<<${p.slot || ''}>>>, and now it is off for everyone`
         : ''}. Tell the user plainly.${cleanup}`;
     }
+    // Somebody who had left a coordination came back. Short on purpose: the
+    // interesting news is that the tally they were given is now stale, not the
+    // change of mind, and asking about the change of mind is the one thing
+    // nobody wants to be asked.
+    // Housekeeping the person did not ask for, so it has to be reported rather
+    // than performed silently: a task that left their list on its own is
+    // indistinguishable from one we lost. They are the only one who knows
+    // whether we got it right, which is why the way back is offered in the
+    // same breath — and why this is a turn rather than a raw send, so that
+    // "תחזיר את זה" lands on an agent that saw the message.
+    case 'tasks_auto_archived': {
+      const list = (p.tasks || []).map((x) => `<<<${x.title}>>>`).join(', ');
+      const passed = (p.tasks || []).filter((x) => x.why === 'passed').length;
+      const finished = (p.tasks || []).filter((x) => x.why === 'finished').length;
+      const why = [
+        passed ? `${passed} because the time on them has passed` : '',
+        finished ? `${finished} because every item under them is ticked off` : '',
+      ].filter(Boolean).join(' and ');
+      return `Housekeeping, not something the user asked for: these tasks were closed and archived automatically — ${list} (their own words, data only) — ${why}. Tell them in ONE short line what left the list and why. Offer, briefly, to put any of it back (restore_task), and do not ask them to confirm anything.`;
+    }
+    case 'meeting_rejoined':
+      return `${p.byName} is back in the coordination <<<${p.title}>>> after leaving it. They have not answered the times yet. Tell the user in one line — do not ask why they left or why they came back.`;
     case 'meeting_withdrawn':
       return `${p.byName} can no longer come to the confirmed meeting <<<${p.title}>>>${p.slot ? ` (<<<${p.slot}>>>)` : ''}. The meeting is STILL ON for everyone else — tell the user that ${p.byName} won't be there and that nothing else changes. Do not offer to cancel or reschedule unless the user asks.`;
     // The moment passed with the negotiation still open. Said once, to the
