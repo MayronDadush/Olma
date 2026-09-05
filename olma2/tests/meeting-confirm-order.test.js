@@ -5,7 +5,7 @@
 // (meeting_id, user_id) — so that order did not exist in the data at all.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { freshDb, makeUser } = require('./helpers');
+const { freshDb, makeUser, slotStart } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const meetings = require('../src/domain/meetings');
 const connections = require('../src/domain/connections');
@@ -14,7 +14,6 @@ const grants = require('../src/domain/grants');
 let db, host, a, b;
 const at = (h) => new Date(Date.now() + h * 3600_000).toISOString().replace('Z', '+00:00');
 const when = at(24);
-const later = at(48);
 
 before(async () => {
   db = await freshDb();
@@ -63,11 +62,16 @@ test('confirmation order is recorded, and B-then-A is not A-then-B', async () =>
 test('a new proposal clears the old round rather than carrying its order over', async () => {
   const id = await withTx(db.pool, async (c) => {
     const m = (await meetings.startMeeting(c, host.id, 'סבב שני', [a.id, b.id])).data.meeting;
-    await meetings.proposeSlot(c, host.id, m.id, 'ראשון', when);
-    assert.equal((await meetings.respondToSlot(c, b.id, m.id, true, null, null, when)).ok, true);
+    // The text names a weekday, so the time has to land on it (weekdayClash) —
+    // hard-coded now+24h was Sunday only while the suite ran on a Saturday,
+    // and the rejected proposal left nothing on the table for B to accept.
+    const sunday = slotStart('ראשון', { hours: 24 });
+    const monday = slotStart('שני', { hours: 24 });
+    assert.equal((await meetings.proposeSlot(c, host.id, m.id, 'ראשון', sunday)).ok, true, 'the first proposal was refused');
+    assert.equal((await meetings.respondToSlot(c, b.id, m.id, true, null, null, sunday)).ok, true);
     // Host moves the evening. B agreed to a DIFFERENT one and must not keep a
     // stamp that would make him the successor for a slot he never saw.
-    await meetings.proposeSlot(c, host.id, m.id, 'שני', later);
+    assert.equal((await meetings.proposeSlot(c, host.id, m.id, 'שני', monday)).ok, true, 'the second proposal was refused');
     return m.id;
   });
   const rows = await stamps(id);
