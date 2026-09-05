@@ -69,6 +69,9 @@ function failAll(w, err) {
 function spawnWorker() {
   const w = new Worker(WORKER_PATH);
   w.pending = new Map(); // id -> { resolve, reject, timer }
+  // Resolves once the thread is up. A call posts its message and starts its
+  // deadline only then — see call() for why.
+  w.online = new Promise((resolve) => w.once('online', resolve));
   w.unref();
   w.on('message', (msg) => {
     const p = w.pending.get(msg.id);
@@ -99,17 +102,29 @@ function call(fn, args) {
   const w = worker;
   const id = nextId++;
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      w.pending.delete(id);
-      reject(new Error(`sessions.${fn} did not return within ${CALL_TIMEOUT_MS}ms; worker replaced`));
-      // Kill THIS worker only if it is still the live one; a later call may
-      // already have spawned its successor.
-      if (worker === w) worker = null;
-      w.terminate().catch(() => {});
-    }, CALL_TIMEOUT_MS);
-    timer.unref();
-    w.pending.set(id, { resolve, reject, timer });
-    w.postMessage({ id, fn, args, home: process.env.OLMA_OPENCLAW_HOME });
+    // In the map from the start (timer not yet armed), so a worker that dies
+    // before it ever comes up still rejects this call through failAll.
+    const entry = { resolve, reject, timer: null };
+    w.pending.set(id, entry);
+    // The deadline measures the READ, not the spawn. On the box's loaded
+    // single core a cold worker can take longer to come up than a read takes
+    // to run, and charging that to the first call replaced a healthy worker
+    // before it had answered anything — and then replaced its replacement
+    // (the on-box suite, 2026-09-05). So the message is posted, and the clock
+    // started, only once the thread reports online.
+    w.online.then(() => {
+      if (!w.pending.has(id)) return; // failed before it came up
+      entry.timer = setTimeout(() => {
+        w.pending.delete(id);
+        reject(new Error(`sessions.${fn} did not return within ${CALL_TIMEOUT_MS}ms; worker replaced`));
+        // Kill THIS worker only if it is still the live one; a later call may
+        // already have spawned its successor.
+        if (worker === w) worker = null;
+        w.terminate().catch(() => {});
+      }, CALL_TIMEOUT_MS);
+      entry.timer.unref();
+      w.postMessage({ id, fn, args, home: process.env.OLMA_OPENCLAW_HOME });
+    });
   });
 }
 
@@ -133,7 +148,11 @@ const FORWARDED = [
 ];
 // `_call` is for the suite only — it is how the deadline test reaches the
 // worker's guarded stall hook. Nothing in src/ calls it.
-const api = { close, CALL_TIMEOUT_MS, IDLE_MS, _call: call };
+// `_call` and `_live` are for the suite only — the deadline test reaches the
+// worker's guarded stall hook through the first, the idle test asks the
+// second whether a worker exists right now (counting the process's handles
+// instead was fragile on a loaded box). Nothing in src/ calls either.
+const api = { close, CALL_TIMEOUT_MS, IDLE_MS, _call: call, _live: () => worker !== null };
 for (const name of FORWARDED) api[name] = (...args) => call(name, args);
 
 module.exports = api;
