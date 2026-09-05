@@ -449,6 +449,49 @@ test('config guard: the stuck-outbox title is stable whatever the count', async 
   await db.pool.query(`DELETE FROM outbox WHERE attempts = 9`);
 });
 
+// The half of checkOrphanAgents that was never built: a person with no
+// working agent. Asked about the PERSON — joined a day ago, nothing ever
+// delivered to them, nothing ever received — so it catches a dead-from-birth
+// agent, a stuck config and the next failure of the same shape alike.
+test('config guard: a joiner nobody has reached in a day is a violation; a reached one is not', async () => {
+  const { withTx: tx } = require('../src/db/pool');
+  const now = new Date('2026-09-05T12:00:00Z');
+  const ago = (h) => new Date(now.getTime() - h * 3600_000).toISOString();
+  const mk = async (phone, onboardedAt) => {
+    const u = await makeUser(db.pool, phone);
+    await db.pool.query('UPDATE users SET onboarded_at = $2, last_inbound_at = NULL WHERE id = $1', [u.id, onboardedAt]);
+    return u;
+  };
+  const fresh = await mk('+972509900001', ago(2));      // inside the grace: not broken yet
+  const dead = await mk('+972509900002', ago(30));      // a day and more, nothing either way
+  const reached = await mk('+972509900003', ago(30));   // the onboarding rung landed
+  const spoke = await mk('+972509900004', ago(30));     // they wrote first
+  const held = await mk('+972509900005', ago(30));      // only a gate-held row: still unreached
+  const old = await mk('+972509900006', ago(24 * 40));  // predates the window
+  await db.pool.query(`INSERT INTO outbox (user_id, kind, payload, sent_at, hold_reason)
+                       VALUES ($1,'checkin','{"rung":"onboarding-1"}', $2, NULL),
+                              ($3,'checkin','{"rung":"onboarding-1"}', $2, 'expired')`, [reached.id, ago(20), held.id]);
+  await db.pool.query('UPDATE users SET last_inbound_at = $2 WHERE id = $1', [spoke.id, ago(10)]);
+  try {
+    const v = await tx(db.pool, (c) => guard.checkUnreachableJoiners(c, now));
+    const ids = v.map((s) => Number(/^user (\d+)/.exec(s)[1]));
+    assert.deepEqual(ids, [dead.id, held.id].sort((a, b) => a - b), v.join('\n'));
+    assert.match(v[0], /has never been reached/);
+    assert.ok(!ids.includes(fresh.id), 'inside the grace');
+    assert.ok(!ids.includes(reached.id), 'a delivered row means they were reached');
+    assert.ok(!ids.includes(spoke.id), 'a person who wrote in has a working path');
+    assert.ok(!ids.includes(old.id), 'outside the window');
+    // Deterministic per person: the same two, in the same words, next tick.
+    assert.deepEqual(await tx(db.pool, (c) => guard.checkUnreachableJoiners(c, now)), v);
+    // Pausing them takes them out — a paused person is not an unreached one.
+    await db.pool.query('UPDATE users SET paused_at = now() WHERE id = $1', [dead.id]);
+    assert.deepEqual((await tx(db.pool, (c) => guard.checkUnreachableJoiners(c, now))).length, 1);
+  } finally {
+    await db.pool.query('DELETE FROM outbox WHERE user_id = ANY($1)', [[reached.id, held.id]]);
+    await db.pool.query('DELETE FROM users WHERE id = ANY($1)', [[fresh, dead, reached, spoke, held, old].map((u) => u.id)]);
+  }
+});
+
 test('config guard: catches every identity-critical regression', async () => {
   const good = baseConfig();
   assert.deepEqual(guard.checkOpenclawConfig(good), []);

@@ -223,6 +223,13 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   so every path that declines to judge must say so somewhere.
 - **Stamp "we told them" only after the send confirms.** Stamping first makes
   an outage swallow the alert for exactly the outage it exists to report.
+- **A joiner nobody has reached is asked about as a PERSON, not a config.**
+  `config_guard.checkUnreachableJoiners`: onboarded a day ago or more,
+  nothing ever delivered to them (a `sent_at` row with no `hold_reason`) and
+  nothing ever received. That catches a dead-from-birth agent, a dropped
+  binding and the next silent failure of the same shape alike. Dashboard row,
+  not `BREAKS_USERS`. It is the opposite of `isDeafOnDayOne`, which needs two
+  onboarding messages to have LANDED and then sends less.
 - **`/health` sees the DB, every `job_heartbeats` row, and the gateway — and
   nothing else.** A component that writes no heartbeat is invisible to it, and
   says so by staying green. That is how the gateway went unwatched for months
@@ -661,22 +668,6 @@ next session to rebuild something that already works.
 
 What is genuinely still missing is **Monday.com** (v1 had it read-only for one
 user). No tools, no domain module, nobody has asked for it since the cutover.
-
-### Nothing detects "somebody joined and never became reachable"
-
-We have a detector for an agent with no user (`checkOrphanAgents`) and none
-for a user with no working agent — the half that was built is the half that
-costs nobody anything. The buildable form asks about the PERSON, not the
-config: `users.onboarded_at` set, no `outbox` row with `sent_at IS NOT NULL
-AND hold_reason IS NULL`, and a few hours' grace (a 02:00 joiner is
-quiet-hours-held, not broken). That catches a dead-from-birth agent, a
-stuck-config agent, and every future failure of the same shape without
-needing to know why.
-
-**Not to be confused with `checkin.js`'s `isDeafOnDayOne`**, which greps for
-the same predicate and is the opposite check: it fires only once **two**
-onboarding messages have landed and the person never replied, and its effect
-is to send LESS. Someone who received nothing falls straight through it.
 
 ### The gateway can only ever be watched from OUTSIDE itself
 
