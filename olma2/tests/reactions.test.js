@@ -235,8 +235,10 @@ test('reactions: a real turn marks the message 👀 and then upgrades it', async
     { id: 1, method: 'tool_call', params: { name, args: { identity_token: user.identity_token, ...args } } }, turn);
 
   const turn = newTurn();
-  await call('turn_start', { message_id: '3EB0ACKTEST01' }, turn);
+  const opened = await call('turn_start', { message_id: '3EB0ACKTEST01' }, turn);
   assert.equal(marks.length, 1, 'the 👀 must land on the tool call the doctrine already makes first');
+  assert.equal(JSON.parse(opened.text.replace(/^OK /, '')).hints?.markPlaced, undefined,
+    'a 👀 is not an answer — only the done mark may stand in for words');
   assert.deepEqual(marks[0], {
     channel: 'whatsapp', target: user.phone, messageId: '3EB0ACKTEST01', state: 'working',
     // Resolved when the turn opened, from the operator's setting or — as here,
@@ -253,6 +255,11 @@ test('reactions: a real turn marks the message 👀 and then upgrades it', async
   assert.equal(marks[1].state, 'done');
   assert.equal(marks[1].messageId, '3EB0ACKTEST01',
     'every mark in a turn goes on the one message that opened it');
+  // And the result says the mark went out, so the model can let it be the
+  // whole answer — Miron's ask: a 👍 is enough, no "deleted ✅" after it.
+  const addedData = JSON.parse(added.text.replace(/^OK /, ''));
+  assert.match(addedData.hints.markPlaced, /NO_REPLY/);
+  assert.match(addedData.hints.markPlaced, /nothing to add/);
 
   // Completing it in the same turn wants the SAME 👍 on the SAME message, and
   // the person is already looking at one. This is the repeat measured in
@@ -268,8 +275,11 @@ test('reactions: a real turn marks the message 👀 and then upgrades it', async
   const blind = newTurn();
   await call('turn_start', {}, blind);
   const before = marks.length;
-  await call('add_task', { title: 'ללא מזהה' }, blind);
+  const blindAdd = await call('add_task', { title: 'ללא מזהה' }, blind);
   assert.equal(marks.length, before, 'no id, no guess');
+  const blindData = JSON.parse(blindAdd.text.replace(/^OK /, ''));
+  assert.equal(blindData.hints && blindData.hints.markPlaced, undefined,
+    'no mark went out, so the model is not told to stay silent');
 
   // A voice note earns 👂 on the way in, through the same road message_id
   // travels — the model says so, because the MediaType never reaches us.

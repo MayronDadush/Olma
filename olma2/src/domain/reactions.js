@@ -248,6 +248,14 @@ const TOOL_MARKS = Object.freeze({
   add_task: 'done',
   add_tasks_bulk: 'done',
   create_calendar_event: 'done',
+  // The undo-shaped asks — "delete that", "stop reminding me", "change it to
+  // Tuesday", "forget that" — are done the moment the tool returns, exactly
+  // like a capture, and the person reads the same 👍. Added 2026-09-05 after
+  // Miron deleted a task by reply and got a 👍 AND a sentence saying so.
+  archive_task: 'done',
+  cancel_reminder: 'done',
+  edit_task: 'done',
+  forget_fact: 'done',
   set_task_reminder: 'scheduled',
 });
 

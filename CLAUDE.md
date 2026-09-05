@@ -321,6 +321,12 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   do with a RESULT rides the result (`turnHints`, `set_my_timezone`'s `hints`),
   where it costs tokens only on the turns it applies to — never the
   description. Adding a tool means paying for it by trimming another.
+- **When brokerd has put a 👍 on their message, the result says so
+  (`hints.markPlaced`) and the model answers `NO_REPLY` unless words add
+  something** — a question, a caveat, an error. A sentence after the mark is
+  a second notification for the same fact (Miron, 2026-09-05: "deleted ✅"
+  under a 👍). The mark table is `reactions.TOOL_MARKS`; the undo-shaped
+  tools (archive, cancel reminder, edit, forget) earn the same 👍 as a capture.
 - **Olma never claims a lookup it did not perform.** No price, no stock level,
   no "מצאתי לך", no link to a RESULT — all of it asserts a fetch that never
   happened. `search_link` is the one exception and only because a link to a
