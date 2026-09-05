@@ -398,6 +398,14 @@ https://allma.world and https://olmachat.duckdns.org.
 Same house style — zero deps, Basic auth, server-rendered HTML + form POSTs,
 no JS — but structured differently:
 
+- **Since 2026-09-05 the page is six collapsible groups** (`GROUPS`, CSS-only
+  `<details>`), only the first open on load, with an alerts strip inside it
+  built from signals the sections already compute (`collectAlerts`, one
+  extra query). Every `SECTIONS` entry names its `group`; a section with an
+  unknown group falls off the page, and the suite checks the two agree. The
+  old outbox and boost sections are blocks inside "מה מתוכנן להישלח" and
+  "הגדרות מערכת". A section form may send `back=/#<id>`; `safeBack` accepts
+  only ids the page renders.
 - **Sections are a named array, not positional args.** `const SECTIONS = [{ id,
   title, hint, render }]`, rendered in order by the `GET /` handler. Adding one
   is a single entry plus its `render*(client, csrf)` function; the `hint` is

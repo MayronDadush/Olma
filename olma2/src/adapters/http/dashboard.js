@@ -79,22 +79,38 @@ function ago(ts) {
 // Each carries a one-line explanation shown under its title: this is a tool
 // looked at daily, not a diagnostics dump. Nothing unlabelled, nothing cryptic.
 
+// The page is six collapsible groups, in this order, and only the first is
+// open when it loads: the board opens as a status page, and everything else
+// is a fold away. Titles deliberately do not repeat a section's own h3.
+// CSS-only (<details>/<summary>): no JS on this page, so the fold is not
+// remembered across a reload — accepted; a POST redirects back to the section
+// it came from (safeBack), and modern browsers open the enclosing group for a
+// #fragment link.
+const GROUPS = [
+  { id: 'now', title: 'עכשיו: מצב המערכת ותקלות', open: true },
+  { id: 'sending', title: 'הודעות: מה בתור ומה יצא' },
+  { id: 'people', title: 'אנשים: משתמשים, המתנות וזיכרון' },
+  { id: 'measure', title: 'מדידה: תוצאות, שימוש ובדיקות' },
+  { id: 'money', title: 'עלויות ותשתית' },
+  { id: 'controls', title: 'הגדרות ויומן פעילות' },
+];
+
+// Every section names its group; a section with an unknown group would
+// silently fall off the page, so the suite checks the two lists agree.
 const SECTIONS = [
-  { id: 'health', title: 'מצב המערכת', hint: 'שער התקשורת (הדרך היחידה שהודעות נכנסות ויוצאות מוואטסאפ) וכל התהליכים הפנימיים. אדום = משהו תקוע וצריך טיפול. "לא נבדק" בשער = לא הצלחנו לקרוא את ההגדרות, לא בהכרח תקלה.', render: renderHeartbeats },
-  { id: 'boost', title: 'מצב בוסט', hint: 'מתג להדגמות: מעביר את כל המשתמשים למודל המהיר והחזק ביותר, ומכבה את עצמו אחרי שעתיים. עולה יותר לדקה — לכן הוא לא נשאר דלוק בטעות.', render: renderBoost },
-  { id: 'users', title: 'משתמשים', hint: 'כל מי שרשום. אפשר לקבוע לכל אחד מכסת הודעות יומית משלו.', render: renderUsers },
-  { id: 'issues', title: 'תקלות ובקשות', hint: 'דברים שאולמה או המשתמשים דיווחו עליהם ומחכים לטיפול.', render: renderIssues },
-  { id: 'evals', title: 'בדיקות התנהגות', hint: 'כל לילה אולמה עוברת תרחישים שנבנו מתקלות אמת — שיחה מדומה מול משתמש בדיקה, בדיקת כלים ומסד בקוד, ובדיקת ניסוח על ידי מודל שופט. אדום = כלל נשבר; צהוב = השופט הסתייג מהניסוח.', render: renderEvals },
-  { id: 'cost', title: 'עלות', hint: 'כל שירות חיצוני שהפרויקט משלם עליו — מופרד ליתרות מראש (שנגמרות) ולחיוב שוטף (שנצבר) — וכמה עולה השימוש במודל לפי יום ולפי משתמש, כולל עמודה נפרדת ליצירת תמונות ווידאו. הערכה, לא חשבונית.', render: renderCost },
-  { id: 'outcomes', title: 'האם זה עובד', hint: 'המדדים שנבחרו כדי לענות על השאלה הזו: ענו לנו? נסגרו משימות? נאלצו לתקן אותנו? נוצר הרגל? כל מספר עם המכנה שלו.', render: renderOutcomes },
-  { id: 'metrics', title: 'שימוש במוצר', hint: 'מה באמת קורה במוצר: כמה אנשים פעילים, כמה נוצר, מה הצליח.', render: renderMetrics },
-  { id: 'planned', title: 'מה מתוכנן להישלח', hint: 'כל מה שאולמה מתכננת לשלוח, ומתי — בשעון המקומי של כל משתמש. התוכן עצמו נכתב ברגע השליחה, לא מראש, ולכן כאן מופיע הנושא ולא הנוסח.', render: renderPlanned },
-  { id: 'brain', title: 'מה אולמה יודעת ועל מה היא מחכה', hint: 'שני צדדים של אותו דבר: מה המערכת למדה על האנשים, ומה תקוע אצלה כי אדם עדיין לא ענה.', render: renderBrain },
-  { id: 'outbox', title: 'הודעות יוצאות', hint: 'סיכום מספרי של ההודעות היזומות בשבוע האחרון.', render: renderOutbox },
-  { id: 'flags', title: 'הגדרות מערכת', hint: 'שינוי כאן חל מיד, בלי עדכון גרסה. כל הגדרה מוסברת בשורה שלה.', render: renderFlags },
-  { id: 'contacts', title: 'ספר הכתובות', hint: 'כל אנשי הקשר שהמשתמשים ייבאו או שמרו, מקובצים לפי מספר טלפון — כל השמות שניתנו לאותו מספר, ומי מהם כבר משתמש אצלנו.', render: renderContactsSection },
-  { id: 'waitlist', title: 'רשימת המתנה', hint: 'אנשים שפנו כשההרשמה הייתה סגורה. יקבלו הודעה כשתיפתח.', render: renderWaitlist },
-  { id: 'audit', title: 'יומן פעילות', hint: 'הפעולות האחרונות במערכת, לפי סדר.', render: renderAudit },
+  { id: 'health', group: 'now', title: 'מצב המערכת', hint: 'שער התקשורת (הדרך היחידה שהודעות נכנסות ויוצאות מוואטסאפ) וכל התהליכים הפנימיים. אדום = משהו תקוע וצריך טיפול. "לא נבדק" בשער = לא הצלחנו לקרוא את ההגדרות, לא בהכרח תקלה.', render: renderHeartbeats },
+  { id: 'users', group: 'people', title: 'משתמשים', hint: 'כל מי שרשום. אפשר לקבוע לכל אחד מכסת הודעות יומית משלו.', render: renderUsers },
+  { id: 'issues', group: 'now', title: 'תקלות ובקשות', hint: 'דברים שאולמה או המשתמשים דיווחו עליהם ומחכים לטיפול.', render: renderIssues },
+  { id: 'evals', group: 'measure', title: 'בדיקות התנהגות', hint: 'כל לילה אולמה עוברת תרחישים שנבנו מתקלות אמת — שיחה מדומה מול משתמש בדיקה, בדיקת כלים ומסד בקוד, ובדיקת ניסוח על ידי מודל שופט. אדום = כלל נשבר; צהוב = השופט הסתייג מהניסוח.', render: renderEvals },
+  { id: 'cost', group: 'money', title: 'עלות', hint: 'כל שירות חיצוני שהפרויקט משלם עליו — מופרד ליתרות מראש (שנגמרות) ולחיוב שוטף (שנצבר) — וכמה עולה השימוש במודל לפי יום ולפי משתמש, כולל עמודה נפרדת ליצירת תמונות ווידאו. הערכה, לא חשבונית.', render: renderCost },
+  { id: 'outcomes', group: 'measure', title: 'האם זה עובד', hint: 'המדדים שנבחרו כדי לענות על השאלה הזו: ענו לנו? נסגרו משימות? נאלצו לתקן אותנו? נוצר הרגל? כל מספר עם המכנה שלו.', render: renderOutcomes },
+  { id: 'metrics', group: 'measure', title: 'שימוש במוצר', hint: 'מה באמת קורה במוצר: כמה אנשים פעילים, כמה נוצר, מה הצליח.', render: renderMetrics },
+  { id: 'planned', group: 'sending', title: 'מה מתוכנן להישלח', hint: 'כל מה שאולמה מתכננת לשלוח, ומתי — בשעון המקומי של כל משתמש. התוכן עצמו נכתב ברגע השליחה, לא מראש, ולכן כאן מופיע הנושא ולא הנוסח.', render: renderPlanned },
+  { id: 'brain', group: 'people', title: 'מה אולמה יודעת ועל מה היא מחכה', hint: 'שני צדדים של אותו דבר: מה המערכת למדה על האנשים, ומה תקוע אצלה כי אדם עדיין לא ענה.', render: renderBrain },
+  { id: 'flags', group: 'controls', title: 'הגדרות מערכת', hint: 'שינוי כאן חל מיד, בלי עדכון גרסה. כל הגדרה מוסברת בשורה שלה.', render: renderFlags },
+  { id: 'contacts', group: 'people', title: 'ספר הכתובות', hint: 'כל אנשי הקשר שהמשתמשים ייבאו או שמרו, מקובצים לפי מספר טלפון — כל השמות שניתנו לאותו מספר, ומי מהם כבר משתמש אצלנו.', render: renderContactsSection },
+  { id: 'waitlist', group: 'people', title: 'רשימת המתנה', hint: 'אנשים שפנו כשההרשמה הייתה סגורה. יקבלו הודעה כשתיפתח.', render: renderWaitlist },
+  { id: 'audit', group: 'controls', title: 'יומן פעילות', hint: 'הפעולות האחרונות במערכת, לפי סדר.', render: renderAudit },
 ];
 
 // Plain-Hebrew name for every internal job — nobody should need to know
@@ -220,6 +236,63 @@ function doctrineRow(m) {
 // `ctx.configPath` is the router's injected gateway config (createDashboard's
 // option), so the meter reads the same file the rest of the dashboard does;
 // the module-level path is the fallback for a direct call without one.
+// ---- the alerts strip -------------------------------------------------------
+// The one thing to read before anything else: every signal the page already
+// computes for its sections, lifted into a row of pills at the top of the
+// open group. Zero new network calls and ONE new query (four scalar
+// subqueries); the gateway state and the heartbeat rows arrive from the
+// router, the prepaid balances come from infra-cost's 10-minute cache. A pill
+// links to the section that explains it.
+//
+// Classes are alert-bad/alert-warn, never the bare `bad`/`warn` the tests
+// slice sections by (tests/dashboard.test.js sectionOf/rowFor).
+async function collectAlerts(client, { hbRows, gateway }) {
+  const out = [];
+  const bad = (text, href) => out.push({ level: 'bad', text, href });
+  const warn = (text, href) => out.push({ level: 'warn', text, href });
+  if (gateway && gateway.status === 'down') bad('שער התקשורת לא מגיב', '#health');
+  const verdict = assessJobs(hbRows);
+  for (const j of verdict.failing) bad(`${JOB_LABELS[j] || j}: נכשל`, '#health');
+  for (const j of verdict.stale) bad(`${JOB_LABELS[j] || j}: תקוע`, '#health');
+  const drift = driftLine(hbRows);
+  if (drift.warn) warn(drift.text, '#health');
+  try {
+    const { rows } = await client.query(
+      `SELECT
+         (SELECT count(*)::int FROM issues WHERE status IN ('new','triaged')) AS open_issues,
+         (SELECT count(*)::int FROM outbox WHERE sent_at IS NULL AND attempts > 0) AS outbox_failing,
+         (SELECT count(*)::int FROM task_reminders
+            WHERE sent_at IS NULL AND cancelled_at IS NULL AND remind_at < now() AND attempts = 0) AS overdue_reminders,
+         (SELECT reds + errors FROM eval_runs
+            WHERE finished_at IS NOT NULL AND trigger <> $1 ORDER BY id DESC LIMIT 1) AS eval_bad`,
+      [evalsJob.PILOT_TRIGGER]);
+    const r = rows[0] || {};
+    if (r.outbox_failing > 0) bad(`${r.outbox_failing} הודעות נכשלות בשליחה`, '#planned');
+    if (r.overdue_reminders > 0) warn(`${r.overdue_reminders} תזכורות שעברו ולא יצאו`, '#planned');
+    if (r.open_issues > 0) warn(`${r.open_issues} תקלות פתוחות`, '#issues');
+    if (r.eval_bad > 0) warn(`${r.eval_bad} בדיקות התנהגות אדומות אמש`, '#evals');
+  } catch (e) {
+    // A query that failed is not a clean board — say so, in the strip itself.
+    warn('לא ניתן לקרוא את מצב ההודעות והתקלות', '#health');
+  }
+  try {
+    const c = await infraCost.getInfraCosts();
+    const labels = { openrouter: 'OpenRouter', twilio: 'Twilio', deepgram: 'Deepgram' };
+    for (const [k, label] of Object.entries(labels)) if (c[k] && prepaidLow(c[k])) bad(`יתרה נמוכה: ${label}`, '#cost');
+  } catch { /* the cost section reports a billing API it cannot read; the strip stays silent about it */ }
+  try {
+    const state = await flagsDomain.getFlag(client, boostJob.STATE_FLAG);
+    if (boostDomain.isEngaged(state) && !boostDomain.expired(state, new Date())) warn('מצב בוסט דלוק — עולה כסף לדקה', '#flags');
+  } catch { /* a malformed flag is the flags section's problem */ }
+  return out;
+}
+
+function renderAlerts(list) {
+  if (!list.length) return '<div class="alerts"><span class="alert alert-ok">✓ אין התראות</span></div>';
+  return `<div class="alerts">${list.map((a) =>
+    `<a class="alert alert-${a.level}" href="${a.href}">${a.level === 'bad' ? '⚠' : '•'} ${esc(a.text)}</a>`).join('')}</div>`;
+}
+
 async function renderHeartbeats(client, _csrf, probe, ctx = {}) {
   const { rows } = await client.query(`SELECT * FROM job_heartbeats ORDER BY job_name`);
   const now = Date.now();
@@ -286,7 +359,7 @@ async function renderHeartbeats(client, _csrf, probe, ctx = {}) {
     ? `<div class="banner ok">✓ הכל תקין — ${rows.length + gwCounted} תהליכים רצים כסדרם</div>`
     : `<div class="banner bad">⚠ ${totalProblems} תהליכים דורשים תשומת לב</div>`;
 
-  const tr = gwRow + relRow + docRow + rows.map((r) => {
+  const jobRows = rows.map((r) => {
     const bad = isStale(r.job_name, r.last_run_at, now) || (r.note && String(r.note).startsWith('ERR'));
     const err = r.note && String(r.note).startsWith('ERR');
     return `<tr class="${bad ? 'bad' : ''}">
@@ -294,7 +367,16 @@ async function renderHeartbeats(client, _csrf, probe, ctx = {}) {
       <td class="dim">${r.last_run_at ? ago(r.last_run_at) : 'טרם רץ'}</td>
       <td class="dim mono">${err ? esc(String(r.note).slice(0, 90)) : ''}</td></tr>`;
   }).join('');
-  return banner + `<table><tr><th>תהליך</th><th>רץ לאחרונה</th><th>שגיאה</th></tr>${tr}</table>`;
+  const table = (body) => `<table><tr><th>תהליך</th><th>רץ לאחרונה</th><th>שגיאה</th></tr>${body}</table>`;
+  // With nothing wrong, the twenty green job rows are a fold below the three
+  // that carry news (gateway, release, doctrine); the banner already said all
+  // of them are fine. With anything wrong, the whole table stays open — a
+  // problem row must never sit behind a click.
+  if (totalProblems === 0) {
+    return banner + table(gwRow + relRow + docRow)
+      + `<details class="sub"><summary class="dim small">כל ${rows.length} התהליכים — הצג</summary>${table(jobRows)}</details>`;
+  }
+  return banner + table(gwRow + relRow + docRow + jobRows);
 }
 
 // One line of "here is what was actually in the record when it failed".
@@ -675,7 +757,7 @@ async function renderIssues(client, csrf) {
       <td class="dim small">${SOURCE_LABEL[i.source] || esc(i.source)}</td>
       <td class="dim small nowrap">${ago(i.created_at)}</td>
       <td class="nowrap"><form method="post" action="/issues/status" class="inline">
-        <input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="id" value="${i.id}">
+        <input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="back" value="/#issues"><input type="hidden" name="id" value="${i.id}">
         <select name="status">${Object.entries(STATUS_ACTION).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
         <button>עדכן</button></form></td></tr>`).join('')}</table>`;
 }
@@ -731,10 +813,10 @@ const FLAG_SPECS = [
 ];
 const EDITABLE_FLAGS = FLAG_SPECS.map((f) => f.key);
 
-// The demo switch. Deliberately its own section at the top rather than a row
-// in "הגדרות מערכת": it is the only setting that costs real money per minute
-// and turns itself off, so it needs to show a countdown, and a flag table has
-// nowhere to put one.
+// The demo switch. Not a ROW in the flags table — it is the only setting that
+// costs real money per minute and turns itself off, so it needs a countdown
+// and a flag row has nowhere to put one — but no longer its own section
+// either: it leads the settings section as its first block (renderFlags).
 async function renderBoost(client, csrf) {
   const state = await flagsDomain.getFlag(client, boostJob.STATE_FLAG);
   const model = await flagsDomain.getFlag(client, boostJob.MODEL_FLAG);
@@ -744,12 +826,12 @@ async function renderBoost(client, csrf) {
 
   const button = on
     ? `<form method="post" action="/boost" class="inline">
-         <input type="hidden" name="csrf" value="${csrf}">
+         <input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="back" value="/#flags">
          <input type="hidden" name="action" value="off">
          <button>כבה עכשיו</button>
        </form>`
     : `<form method="post" action="/boost" class="inline">
-         <input type="hidden" name="csrf" value="${csrf}">
+         <input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="back" value="/#flags">
          <input type="hidden" name="action" value="on">
          <button>הדלק מצב בוסט</button>
        </form>`;
@@ -764,6 +846,11 @@ async function renderBoost(client, csrf) {
 }
 
 async function renderFlags(client, csrf) {
+  return `<h4>מצב בוסט</h4><p class="hint">${"מתג להדגמות: מעביר את כל המשתמשים למודל המהיר והחזק ביותר, ומכבה את עצמו אחרי שעתיים. עולה יותר לדקה — לכן הוא לא נשאר דלוק בטעות."}</p>${await renderBoost(client, csrf)}`
+    + `<h4>הגדרות</h4>${await renderFlagsTable(client, csrf)}`;
+}
+
+async function renderFlagsTable(client, csrf) {
   const rows = [];
   for (const spec of FLAG_SPECS) {
     const val = await flagsDomain.getFlag(client, spec.key);
@@ -780,7 +867,7 @@ async function renderFlags(client, csrf) {
     rows.push(`<tr>
       <td><div>${spec.label}</div><div class="dim small">${spec.help}</div></td>
       <td class="nowrap"><form method="post" action="/flags" class="inline">
-        <input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="key" value="${esc(spec.key)}">
+        <input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="back" value="/#flags"><input type="hidden" name="key" value="${esc(spec.key)}">
         ${field}<button>שמור</button>
       </form></td></tr>`);
   }
@@ -813,7 +900,7 @@ async function renderUsers(client, csrf) {
       <td>${PLAN_LABEL[u.plan] || '—'}</td>
       <td>${u.open_tasks}</td>
       <td><form method="post" action="/users/quota" class="inline">
-        <input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="id" value="${u.id}">
+        <input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="back" value="/#users"><input type="hidden" name="id" value="${u.id}">
         <input name="override" value="${u.quota_override_daily ?? ''}" size="5"
                placeholder="ברירת מחדל" title="מספר הודעות ליום. ריק = לפי המנוי.">
         <button>שמור</button>
@@ -900,7 +987,14 @@ function plannedSubject(row) {
   return '<span class="dim">—</span>';
 }
 
+// The 7-day outbox rollup and the failures table used to be their own section
+// ("הודעות יוצאות"); they are about the same queue this section shows, so they
+// lead it as one block. renderOutbox is unchanged below.
 async function renderPlanned(client) {
+  return `<h4>הודעות יוצאות — 7 ימים אחרונים</h4>${await renderOutbox(client)}${await renderPlannedQueue(client)}`;
+}
+
+async function renderPlannedQueue(client) {
   // 1. Already queued: minutes away, or held by the delivery gate.
   const { rows: queued } = await client.query(
     `SELECT o.id, o.kind, o.urgency, o.hold_reason, o.attempts, o.payload, o.expires_at,
@@ -1728,7 +1822,14 @@ async function renderBrain(client) {
 // inside a form body, so without this check any admin action could be turned
 // into an open redirect by anyone who can get the operator to submit a form.
 function safeBack(value) {
-  return /^\/user\?id=\d+$/.test(value || '') ? value : '/';
+  const v = value || '';
+  if (/^\/user\?id=\d+$/.test(v)) return v;
+  // A save from a section lands back on that section (the page reloads with
+  // only the first group open; a #fragment opens the enclosing group). Only
+  // ids this page actually renders — never an arbitrary fragment.
+  const m = /^\/#([a-z-]+)$/.exec(v);
+  if (m && (SECTIONS.some((x) => x.id === m[1]) || GROUPS.some((g) => 'g-' + g.id === m[1]))) return v;
+  return '/';
 }
 
 const LOCAL_DT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
@@ -1950,7 +2051,23 @@ const STYLE = `<style>
   .msg .txt{white-space:pre-wrap;overflow-wrap:anywhere}
   .help{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
         border-radius:50%;background:var(--surface-2);color:var(--muted);font-size:10px;cursor:help}
-  @media(max-width:640px){main,header{padding-inline:16px} .cols{gap:12px}}
+  details.group{margin:18px 0}
+  details.group>summary{list-style:none;cursor:pointer;user-select:none;display:flex;align-items:center;gap:10px;
+    padding:10px 14px;border-radius:8px;font-size:15px;font-weight:600;color:var(--text)}
+  details.group>summary::-webkit-details-marker{display:none}
+  details.group>summary::before{content:'◂';color:var(--muted);font-size:12px}
+  details.group[open]>summary::before{content:'▾'}
+  details.group>summary:hover{background:var(--surface-2)}
+  details.group>section{margin:10px 0 0}
+  details.sub{margin-top:8px} details.sub>summary{cursor:pointer;padding:6px 0}
+  .alerts{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
+  .alert{display:inline-block;padding:4px 11px;border-radius:20px;font-size:12.5px;text-decoration:none}
+  .alert-ok{background:var(--accent-dim);color:var(--accent)}
+  .alert-warn{background:var(--warn-dim);color:var(--warn)}
+  .alert-bad{background:var(--bad-dim);color:var(--bad);font-weight:600}
+  a.alert:hover{text-decoration:none;filter:brightness(1.15)}
+  @media(max-width:640px){main,header{padding-inline:16px} .cols{gap:12px}
+    details.group>summary{padding:8px 10px;font-size:14px}}
 </style>`;
 
 // The page Google sends the user's browser back to. Deliberately plain: they
@@ -2334,7 +2451,11 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
       let healthy = true;
       try {
         const hb = await client.query(`SELECT job_name, last_run_at, note FROM job_heartbeats`);
-        healthy = assessJobs(hb.rows).ok;
+        // The header dot used to ignore the gateway, so it said "all systems
+        // fine" over a health table showing the gateway down; /health had it
+        // right. One cached probe serves the header, the strip and the section.
+        const gateway = await cachedGateway();
+        healthy = assessJobs(hb.rows).ok && gateway.status !== 'down';
         if (url.pathname === '/user') {
           const page = await renderUserPage(client, parseInt(url.searchParams.get('id'), 10) || 0, {
             confirmDelete: url.searchParams.get('confirm') === 'delete', csrf,
@@ -2349,9 +2470,14 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
             page: Math.max(0, parseInt(url.searchParams.get('page'), 10) || 0),
           });
         } else {
-          for (const s of SECTIONS) {
-            sectionsHtml += `<section id="${s.id}"><h3>${s.title}</h3>` +
-              `<p class="hint">${s.hint}</p>${await s.render(client, csrf, undefined, { configPath })}</section>`;
+          const alerts = renderAlerts(await collectAlerts(client, { hbRows: hb.rows, gateway }));
+          for (const g of GROUPS) {
+            let inner = g.id === 'now' ? alerts : '';
+            for (const s of SECTIONS.filter((x) => x.group === g.id)) {
+              inner += `<section id="${s.id}"><h3>${s.title}</h3>` +
+                `<p class="hint">${s.hint}</p>${await s.render(client, csrf, cachedGateway, { configPath })}</section>`;
+            }
+            sectionsHtml += `<details class="group" id="g-${g.id}"${g.open ? ' open' : ''}><summary>${g.title}</summary>${inner}</details>`;
           }
         }
       } finally { client.release(); }
@@ -2371,7 +2497,7 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
             <h1>אולמה — לוח בקרה</h1>
             <span class="dim small">${healthy ? 'כל המערכות תקינות' : 'יש תקלה — ראה מצב המערכת'}</span>
           </div>
-          <nav>${SECTIONS.map((s) => `<a href="${url.pathname === '/' ? '' : '/'}#${s.id}">${s.title}</a>`).join('')}</nav>
+          <nav>${GROUPS.map((g) => `<a href="${url.pathname === '/' ? '' : '/'}#g-${g.id}">${g.title}</a>`).join('')}</nav>
         </header>
         <main>${sectionsHtml}</main></body></html>`);
     } catch (e) {

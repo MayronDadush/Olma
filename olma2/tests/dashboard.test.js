@@ -1219,3 +1219,100 @@ test('the dashboard offers no way to pause someone on their behalf', async () =>
   const { rows } = await db.pool.query('SELECT paused_at FROM users WHERE id = $1', [u.id]);
   assert.equal(rows[0].paused_at, null, 'pausing is the person\'s own decision, not an admin button');
 });
+
+// ---- the grouped page ---------------------------------------------------------
+// Fifteen sections top to bottom became six folds with only the first open,
+// an alerts strip inside it, and two merges (outbox into planned, boost into
+// settings). What these pin: nothing fell off the page, only one group opens,
+// the strip is honest on a clean board and names an issue when there is one,
+// a save lands back on its section and only on a real one, and the header
+// dot no longer says "all fine" over a dead gateway.
+test('every section sits inside a group, and exactly one group opens by default — the one with health', async () => {
+  const { SECTIONS } = require('../src/adapters/http/dashboard');
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const groups = [...html.matchAll(/<details class="group" id="g-([a-z]+)"( open)?>/g)];
+  assert.equal(groups.length, 6, 'six groups');
+  const open = groups.filter((g) => g[2]);
+  assert.equal(open.length, 1, 'exactly one starts open');
+  assert.equal(open[0][1], 'now');
+  const nowBlock = html.slice(html.indexOf('id="g-now"'), html.indexOf('id="g-sending"'));
+  assert.ok(nowBlock.includes('<section id="health"'), 'health is in the open group');
+  for (const s of SECTIONS) {
+    assert.ok(html.includes(`<section id="${s.id}"`), `${s.id} is still on the page`);
+  }
+  for (const t of ['עכשיו: מצב המערכת ותקלות', 'הודעות: מה בתור ומה יצא', 'אנשים: משתמשים, המתנות וזיכרון',
+    'מדידה: תוצאות, שימוש ובדיקות', 'עלויות ותשתית', 'הגדרות ויומן פעילות']) {
+    assert.ok(html.includes(`<summary>${t}</summary>`), `group titled ${t}`);
+  }
+});
+
+test('the alerts strip says so on a clean board, and names an open issue when there is one', async () => {
+  const clean = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.ok(clean.includes('אין התראות'), 'clean fixture, no pills');
+  await db.pool.query(
+    `INSERT INTO issues (category, source, title, status) VALUES ('bug', 'user_reported', 'הכפתור לא עובד', 'new')`);
+  try {
+    const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+    assert.ok(!html.includes('אין התראות'));
+    assert.match(html, /<a class="alert alert-warn" href="#issues">• 1 תקלות פתוחות<\/a>/);
+    // The strip's own markup never carries the bare classes the section
+    // slicers key on.
+    const strip = html.slice(html.indexOf('<div class="alerts">'), html.indexOf('</div>', html.indexOf('<div class="alerts">')));
+    assert.ok(!/class="(bad|warn)"/.test(strip));
+  } finally {
+    await db.pool.query(`DELETE FROM issues WHERE title = 'הכפתור לא עובד'`);
+  }
+});
+
+test('the two merged sections are blocks inside the ones that absorbed them', async () => {
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.ok(!html.includes('<section id="outbox"'), 'outbox is no longer a section');
+  assert.ok(!html.includes('<section id="boost"'), 'boost is no longer a section');
+  assert.ok(sectionOf(html, 'planned').includes('<h4>הודעות יוצאות — 7 ימים אחרונים</h4>'));
+  const flags = sectionOf(html, 'flags');
+  assert.ok(flags.includes('<h4>מצב בוסט</h4>'));
+  assert.ok(flags.includes('action="/boost"'), 'the switch still posts to /boost');
+});
+
+test('a save lands back on its own section — and only on a section this page renders', async () => {
+  const page = await fetch(base + '/', { headers: { Authorization: AUTH } });
+  const csrf = /csrf=([a-f0-9]+)/.exec(page.headers.get('set-cookie'))[1];
+  const post = (back) => fetch(base + '/flags', {
+    method: 'POST', redirect: 'manual',
+    headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ csrf, key: 'registration_open', value: 'true', back }).toString(),
+  });
+  assert.equal((await post('/#flags')).headers.get('location'), '/#flags');
+  assert.equal((await post('/#g-controls')).headers.get('location'), '/#g-controls');
+  assert.equal((await post('/#evil')).headers.get('location'), '/', 'an unknown fragment is not followed');
+  assert.equal((await post('https://example.com/')).headers.get('location'), '/', 'never an open redirect');
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.ok(sectionOf(html, 'flags').includes('name="back" value="/#flags"'), 'the flags forms carry it');
+});
+
+test('the header dot goes red for a dead gateway, like /health already did', async () => {
+  gatewayState = { status: 'down', detail: 'ECONNREFUSED', port: 18789 };
+  try {
+    const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+    assert.ok(html.includes('class="dot bad"'), 'the dot');
+    assert.ok(html.includes('יש תקלה'), 'and the words next to it');
+    assert.match(html, /alert alert-bad" href="#health">⚠ שער התקשורת לא מגיב/);
+  } finally {
+    gatewayState = { status: 'live', detail: 'live', port: 18789 };
+  }
+});
+
+test('with nothing wrong the green job rows are a fold; a problem row is never behind a click', async () => {
+  const clean = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.ok(sectionOf(clean, 'health').includes('<details class="sub">'), 'folded when all is well');
+  await db.pool.query(
+    `INSERT INTO job_heartbeats (job_name, last_run_at, note) VALUES ('minute_sweeps', now(), 'ERR boom')`);
+  try {
+    const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+    const health = sectionOf(html, 'health');
+    assert.ok(!health.includes('<details class="sub">'), 'open table when something is wrong');
+    assert.ok(health.includes('ERR boom'));
+  } finally {
+    await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'minute_sweeps'`);
+  }
+});
