@@ -15,7 +15,7 @@ module.exports = [
   // That is deliberate — see domain/search-link.js — and it is what keeps this
   // on the right side of the never-fake-a-lookup rule.
   tool('search_link',
-    'Return a Google search link for words you supply, when you have just said you cannot look something up yourself (a price, a product, an essay, a comparison) — before offering to save it as a task. Query in THEIR language, specific to the ask ("עבודה על בן גוריון לכיתה ח", not "בן גוריון"). Send the url as-is on its own line with one short line saying what it searches. It is a question handed over, never an answer: never add a price, a summary or "מצאתי לך". Never pass a URL as the query, and never write any other link yourself.',
+    'Return a Google search link for words you supply, when you have just said you cannot look something up yourself (a price, a product, an essay) — before offering to save it as a task. Query in THEIR language, specific to the ask ("עבודה על בן גוריון לכיתה ח", not "בן גוריון"). Send the url as-is on its own line with one short line saying what it searches. It is a question handed over, never an answer: no price, no summary, no "מצאתי לך". Never pass a URL as the query or write any other link yourself.',
     { query: S('string', 'The search words, in the user\'s own language') }, ['query'],
     (client, user, a) => searchLink.buildSearchLink(client, user.id, a.query)),
 ];

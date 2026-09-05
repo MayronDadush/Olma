@@ -14,11 +14,11 @@ module.exports = [
   // a single tool call can safely wait on, so images are delivered later by
   // the sweep exactly like videos.
   tool('generate_image',
-    'Create an AI image. LIMITED ACCESS: most users are refused — NEVER offer, mention or suggest it yourself; use it only when the user explicitly asks for an image, and if refused say plainly it is not available for them. Prompt: one rich, specific English description (subject, style, lighting, composition), translated from their request rather than their raw words. This only STARTS the job: the image arrives as a separate message, usually within a minute — say it is on its way, and never call again for the same request.',
+    'Create an AI image. LIMITED ACCESS: most users are refused — never offer or mention it; use it only when they explicitly ask, and if refused say plainly it is not available for them. Prompt: one rich, specific English description (subject, style, lighting, composition). This only STARTS the job: the image arrives as a separate message within about a minute — say it is on its way, never call again for the same request.',
     { prompt: S('string', 'English description of the image to generate (max 2000 chars)') }, ['prompt'],
     (client, user, a) => media.startImage(client, user, { prompt: a.prompt })),
   tool('generate_video',
-    'Create a short AI video (4-15 seconds). LIMITED ACCESS: most users are refused — NEVER offer, mention or suggest it yourself; use it only when the user explicitly asks, and if refused say plainly it is not available for them. Prompt: one rich, specific English description of scene and motion. Leave resolution unset unless they asked for higher quality. This only STARTS the job: the video arrives as a separate message in 1-2 minutes — say it is on its way, and never call again for the same request.',
+    'Create a short AI video (4-15 s). LIMITED ACCESS: most users are refused — never offer or mention it; use it only when they explicitly ask, and if refused say plainly it is not available for them. Prompt: one rich, specific English description of scene and motion; leave resolution unset unless they asked for higher quality. This only STARTS the job: the video arrives as a separate message in 1-2 minutes — say it is on its way, never call again.',
     {
       prompt: S('string', 'English description of the video scene and motion (max 2000 chars)'),
       duration_seconds: S('number', 'Length in seconds, integer 4-15. Default 5.'),

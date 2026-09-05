@@ -10,7 +10,7 @@ module.exports = [
   // (never web crawling); the sweep diffs in code and summarises with the
   // cheap background model only when something actually changed.
   tool('subscribe_live_updates',
-    'Subscribe the user to a recurring proactive update from ONE structured source at their chosen hour: weather (every time), news_topic and sports_summary (real headlines, only when new), openrouter_models (new models, only when any), mail_query (their OWN mailbox, hourly, headers only — the only way to watch a mailbox; search_my_email answers a question asked now, never checks whether something arrived). Use it when they ask to be kept updated ("עדכן אותי כל בוקר על מזג האוויר"). Anything not on this list: say it is not available yet and file it with report_issue.',
+    'Subscribe the user to a recurring proactive update from ONE structured source at their chosen hour: weather (every time), news_topic and sports_summary (real headlines, only when new), openrouter_models (new models), mail_query (their OWN mailbox, hourly, headers only — the only way to WATCH a mailbox; search_my_email answers a question asked now). Use it when they ask to be kept updated. Anything else: say it is not available yet and report_issue.',
     {
       source: S('string', 'One of: ' + Object.keys(liveUpdates.SOURCES).join(', ')),
       city: S('string', 'For source=weather: the city name, in any language'),

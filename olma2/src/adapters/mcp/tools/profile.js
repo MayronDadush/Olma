@@ -54,7 +54,7 @@ module.exports = [
   // person sees; it only decides whether they can look at it on a screen
   // instead of asking for it a sentence at a time.
   tool('open_my_dashboard',
-    'A personal link to THIS user\'s own dashboard: tasks and archive, connections and what each may do, connected accounts, timezone — all editable there. Offer it when they want to SEE or rearrange several things at once, or ask for a link or a screen. Put the returned URL in your reply and say it opens once and stays open afterwards. Everything on it can still be done here in chat — never a redirect away from you, and never the answer to a question you can just answer.',
+    'A personal link to THIS user\'s own dashboard: tasks and archive, connections and what each may do, connected accounts, timezone — all editable there. Offer it when they want to SEE or rearrange several things at once, or ask for a link or a screen. Put the URL in your reply; it opens once and stays open. Everything on it can still be done here in chat — never the answer to a question you can just answer.',
     {}, [],
     (client, user) => dashboardAuth.createLinkUrl(client, user.id)),
 
@@ -68,7 +68,7 @@ module.exports = [
   // The voice bridge (a separate process, loopback port 8792) decides who may
   // be called — this tool just asks it to dial and relays the answer.
   tool('call_me_on_the_phone',
-    'Place a REAL phone call from Olma\'s number to this user — they answer and talk to Olma out loud. Call it when they ask to be called or to talk by voice, in any phrasing ("תתקשרי אליי", "אפשר שיחה?") — the intent matters, not the words. Never offer or mention it unless they raise it, and never call on a guess. On ok, say the phone will ring within seconds; on an error, relay it plainly (usually calls are not enabled for their number yet). Multi-step requests made on the call continue here afterwards.',
+    'Place a REAL phone call from Olma\'s number to this user — they answer and talk to Olma out loud. Call it when they ask to be called or to talk by voice, in any phrasing — the intent matters, not the words. Never offer or mention it unless they raise it, never call on a guess. On ok say the phone will ring within seconds; on an error relay it plainly (usually calls are not enabled for their number yet).',
     {}, [],
     (client, user) => voice.requestCall(client, user)),
   tool('resume_olma',
