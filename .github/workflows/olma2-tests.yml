@@ -103,6 +103,12 @@ jobs:
           node-version: '24'
       - run: npm install --no-audit --no-fund
         working-directory: olma2
+      # Seconds, before the minutes the suite costs: an unused require or a
+      # reference to a name that does not exist fails here with a file and a
+      # line, instead of on the one code path that reaches it in production.
+      # The rule set is narrow on purpose — see olma2/eslint.config.js.
+      - run: npm run lint
+        working-directory: olma2
       # Not `node --test` directly: a test child that cannot exit hangs the
       # whole suite silently, and the wrapper retries a HANG (never a failure
       # — see scripts/run-suite.sh). The known instance of that, a decoy

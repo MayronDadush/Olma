@@ -4,7 +4,6 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const crypto = require('node:crypto');
 const { freshDb, makeUser } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const occ = require('../src/intake/openclaw-config');

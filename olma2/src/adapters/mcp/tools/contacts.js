@@ -1,7 +1,7 @@
 'use strict';
 // contacts — one slice of the tool registry (see ../registry.js).
 const {
-  grants, contacts, S, tool,
+  contacts, S, tool,
 } = require('./_shared');
 
 module.exports = [

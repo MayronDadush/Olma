@@ -1,7 +1,7 @@
 'use strict';
 // turn gate — one slice of the tool registry (see ../registry.js).
 const {
-  users, onboardingDomain, selfInitiated, reminders, digest, quota, pause, reactions, audit, S, ok, captureDisplayName, stale, tool,
+  users, onboardingDomain, selfInitiated, digest, quota, reactions, audit, S, ok, captureDisplayName, stale, tool,
 } = require('./_shared');
 
 // The per-field guidance for turn_start's optional fields. In the RESULT and

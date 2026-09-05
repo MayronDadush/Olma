@@ -1,7 +1,7 @@
 'use strict';
 // connections — one slice of the tool registry (see ../registry.js).
 const {
-  connections, grants, shares, meetings, contacts, S, ok, err, actorName, fanout, tool,
+  connections, grants, contacts, S, err, actorName, fanout, tool,
 } = require('./_shared');
 
 module.exports = [

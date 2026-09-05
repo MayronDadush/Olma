@@ -1,7 +1,7 @@
 'use strict';
 // shares — one slice of the tool registry (see ../registry.js).
 const {
-  tasks, shares, S, ok, actorName, fanout, tool, connectedUserByPhone,
+  shares, S, actorName, fanout, tool, connectedUserByPhone,
 } = require('./_shared');
 
 module.exports = [

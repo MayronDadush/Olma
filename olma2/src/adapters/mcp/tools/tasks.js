@@ -1,7 +1,7 @@
 'use strict';
 // tasks — one slice of the tool registry (see ../registry.js).
 const {
-  tasks, reminders, S, tool,
+  tasks, S, tool,
 } = require('./_shared');
 
 module.exports = [

@@ -1,7 +1,7 @@
 'use strict';
 // meetings — one slice of the tool registry (see ../registry.js).
 const {
-  meetings, availability, calendar, relay, meetingFanout, S, ok, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, cancelCalendarCleanup, meetingBrief, CANCEL_CLEANUP_HINTS, stale, tool, connectedUserByPhone,
+  meetings, availability, calendar, meetingFanout, S, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, cancelCalendarCleanup, meetingBrief, CANCEL_CLEANUP_HINTS, tool, connectedUserByPhone,
 } = require('./_shared');
 
 module.exports = [

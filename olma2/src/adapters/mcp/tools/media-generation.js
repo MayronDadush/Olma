@@ -1,7 +1,7 @@
 'use strict';
 // media generation — one slice of the tool registry (see ../registry.js).
 const {
-  users, media, S, tool,
+  media, S, tool,
 } = require('./_shared');
 
 module.exports = [

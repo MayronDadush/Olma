@@ -491,6 +491,7 @@ From `olma2/`:
 
 ```bash
 npm test          # node --test 'tests/*.test.js'
+npm run lint      # eslint, dev-only; CI runs it before the suite
 ```
 
 Real Postgres, one throwaway database per test file (`tests/helpers.freshDb`).

@@ -1,7 +1,7 @@
 'use strict';
 // messages between people — one slice of the tool registry (see ../registry.js).
 const {
-  relay, S, ok, tool, connectedUserByPhone,
+  relay, S, tool, connectedUserByPhone,
 } = require('./_shared');
 
 module.exports = [

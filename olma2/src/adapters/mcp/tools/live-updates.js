@@ -1,7 +1,7 @@
 'use strict';
 // live updates — one slice of the tool registry (see ../registry.js).
 const {
-  mail, liveUpdates, S, tool,
+  liveUpdates, S, tool,
 } = require('./_shared');
 
 module.exports = [

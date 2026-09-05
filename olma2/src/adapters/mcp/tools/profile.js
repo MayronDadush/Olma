@@ -1,7 +1,7 @@
 'use strict';
 // profile — one slice of the tool registry (see ../registry.js).
 const {
-  users, tasks, reminders, dashboardAuth, digest, quota, pause, voice, relay, S, ok, tool,
+  users, dashboardAuth, quota, pause, voice, S, ok, tool,
 } = require('./_shared');
 
 module.exports = [

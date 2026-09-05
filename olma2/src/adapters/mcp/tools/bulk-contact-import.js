@@ -1,7 +1,7 @@
 'use strict';
 // bulk contact import — one slice of the tool registry (see ../registry.js).
 const {
-  googleContacts, contacts, S, ok, tool,
+  googleContacts, contacts, S, tool,
 } = require('./_shared');
 
 module.exports = [

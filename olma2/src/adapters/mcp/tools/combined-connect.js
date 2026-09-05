@@ -1,7 +1,7 @@
 'use strict';
 // combined connect — one slice of the tool registry (see ../registry.js).
 const {
-  calendar, mail, googleConnect, contacts, S, tool,
+  googleConnect, S, tool,
 } = require('./_shared');
 
 module.exports = [

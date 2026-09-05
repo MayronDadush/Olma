@@ -1,7 +1,7 @@
 'use strict';
 // facts — one slice of the tool registry (see ../registry.js).
 const {
-  connections, availability, digest, calendar, facts, S, tool,
+  facts, S, tool,
 } = require('./_shared');
 
 module.exports = [

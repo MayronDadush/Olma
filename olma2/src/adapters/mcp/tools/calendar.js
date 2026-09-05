@@ -1,7 +1,7 @@
 'use strict';
 // calendar — one slice of the tool registry (see ../registry.js).
 const {
-  tasks, calendar, taskCalendar, S, tool,
+  calendar, taskCalendar, S, tool,
 } = require('./_shared');
 
 module.exports = [

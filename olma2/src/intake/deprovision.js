@@ -11,7 +11,6 @@
 // that pairing matters. Once the binding is gone, the intake catch-all picks
 // that phone up again, which is exactly what "let me test onboarding from
 // scratch" needs.
-const fs = require('node:fs');
 const occ = require('./openclaw-config');
 const { removeWorkspaceTree } = require('./provision');
 const { ok, err } = require('../domain/results');

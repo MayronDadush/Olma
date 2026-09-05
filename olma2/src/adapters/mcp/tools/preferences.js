@@ -1,7 +1,7 @@
 'use strict';
 // preferences — one slice of the tool registry (see ../registry.js).
 const {
-  preferences, availability, S, tool,
+  preferences, S, tool,
 } = require('./_shared');
 
 module.exports = [
