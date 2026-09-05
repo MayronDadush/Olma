@@ -1342,6 +1342,46 @@ test('a save lands back on its own section — and only on a section this page r
   assert.ok(sectionOf(html, 'flags').includes('name="back" value="/#flags"'), 'the flags forms carry it');
 });
 
+test('the reaction emoji are edited one box per state, not as JSON, and a typo never lands', async () => {
+  const page = await fetch(base + '/', { headers: { Authorization: AUTH } });
+  const csrf = /csrf=([a-f0-9]+)/.exec(page.headers.get('set-cookie'))[1];
+  const html0 = sectionOf(await page.text(), 'flags');
+  assert.ok(html0.includes('action="/reactions"'), 'the editor is inside the settings section');
+  for (const label of ['התחלנו לעבוד', 'הודעה קולית נקלטה', 'בוצע', 'תזכורת נקבעה', 'צריך תשובה מהם', 'נכשל']) {
+    assert.ok(html0.includes(label), label);
+  }
+  assert.ok(!html0.includes('name="key" value="reaction_emoji"'), 'the raw JSON box is gone');
+  const post = (fields) => fetch(base + '/reactions', {
+    method: 'POST', redirect: 'manual',
+    headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ csrf, back: '/#flags', ...fields }).toString(),
+  });
+  // A real change, the default typed back in, garbage, and an unknown state.
+  const r = await post({ done: '✅', working: '👀', failed: 'abc', needs_input: ' 🙋 ', evil: '💣' });
+  assert.equal(r.status, 303);
+  assert.equal(r.headers.get('location'), '/#flags');
+  const stored = await withTx(db.pool, (c) => flags.getFlag(c, 'reaction_emoji'));
+  assert.deepEqual(stored, { done: '✅', needs_input: '🙋' },
+    'the default is not an override, text is dropped, and no state is invented');
+  const html1 = sectionOf(await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text(), 'flags');
+  assert.ok(html1.includes('name="done" value="✅"'), 'the box shows the override');
+  assert.ok(html1.includes('name="failed" value=""'), 'a state left alone shows an empty box');
+  const audit = await db.pool.query(`SELECT detail FROM audit_log WHERE event = 'admin.reaction_emoji' ORDER BY id DESC LIMIT 1`);
+  assert.deepEqual(audit.rows[0].detail.to, { done: '✅', needs_input: '🙋' }, 'the change is on the trail');
+  // Saving with one box cleared REPLACES the object — it is not a merge.
+  await post({ done: '✅' });
+  assert.deepEqual(await withTx(db.pool, (c) => flags.getFlag(c, 'reaction_emoji')), { done: '✅' });
+  // And the reset button returns everything to the defaults in one click.
+  await post({ done: '✅', reset: '1' });
+  assert.deepEqual(await withTx(db.pool, (c) => flags.getFlag(c, 'reaction_emoji')), {});
+  // A forged CSRF cannot touch it.
+  const forged = await fetch(base + '/reactions', {
+    method: 'POST', headers: { Authorization: AUTH, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'done=💩&csrf=forged',
+  });
+  assert.equal(forged.status, 403);
+});
+
 test('the header dot goes red for a dead gateway, like /health already did', async () => {
   gatewayState = { status: 'down', detail: 'ECONNREFUSED', port: 18789 };
   try {

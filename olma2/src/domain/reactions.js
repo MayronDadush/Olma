@@ -79,8 +79,8 @@ function isReactionCapable(channel) {
 //
 // ── Changing the vocabulary without changing the code ────────────────────────
 // The table above is the DEFAULT, not the whole story: an operator can swap any
-// single state's emoji from the dashboard (flag `reaction_emoji`, one JSON
-// object). Miron asked for 👍 instead of ✅ on `done`, and a taste like that
+// single state's emoji from the dashboard (settings section, one box per
+// state, stored as the `reaction_emoji` flag). Miron asked for 👍 instead of ✅ on `done`, and a taste like that
 // should not need a deploy.
 //
 // This does not reopen what the comment at the top of this file refuses. That
@@ -291,7 +291,7 @@ function markFor(toolName, result, turn, now = Date.now()) {
   return effective;
 }
 
-// The flag an operator edits on the dashboard. One JSON object, one place.
+// The flag the dashboard's emoji editor writes. One JSON object, one place.
 const VOCAB_FLAG = 'reaction_emoji';
 
 module.exports = {
