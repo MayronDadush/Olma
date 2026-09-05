@@ -249,16 +249,15 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   binding and the next silent failure of the same shape alike. Dashboard row,
   not `BREAKS_USERS`. It is the opposite of `isDeafOnDayOne`, which needs two
   onboarding messages to have LANDED and then sends less.
-- **`liveness_watch` is the one alarm with a channel that is not the gateway.**
-  Twilio SMS when the gateway is down, WhatsApp otherwise, the other as
-  fallback; two bad ticks before a word; state in the `liveness_state` flag
-  so a restart mid-outage does not re-alert. Its heartbeat note says
-  `smsConfigured` and `alertFailed` — "nothing wrong" and "could not tell
-  you" must never read alike.
-  **It repairs before it reports**: a gateway down for two ticks is restarted
-  (`intake/gateway-restart.js`, once per half hour) and probed again; the
-  owner hears the outcome — healed over WhatsApp, or "restarted, still down"
-  over SMS. A dead brokerd or box it cannot see; that is the external monitor.
+- **`liveness_watch` repairs before it reports.** Every five minutes: gateway
+  probe and delivery queue; two bad ticks before a word; a gateway down for
+  two ticks is restarted (`intake/gateway-restart.js`, once per half hour) and
+  probed again; the news goes over WhatsApp — healed, stuck deliveries, or
+  recovered — and a message that could not go out is `alertFailed` on the
+  heartbeat. State in the `liveness_state` flag so a restart mid-outage does
+  not re-alert. It speaks over the gateway's own pipe (owner's choice, no
+  SMS), so a gateway that stays dead is repaired from here but reported only
+  by the external monitor.
 - **`/health` sees the DB, every `job_heartbeats` row, and the gateway — and
   nothing else.** A component that writes no heartbeat is invisible to it, and
   says so by staying green. That is how the gateway went unwatched for months
@@ -715,17 +714,14 @@ next session to rebuild something that already works.
 What is genuinely still missing is **Monday.com** (v1 had it read-only for one
 user). No tools, no domain module, nobody has asked for it since the cutover.
 
-### The gateway can only ever be watched from OUTSIDE itself — half closed (2026-09-05)
+### The gateway can only ever be watched from OUTSIDE itself — repaired from inside since 2026-09-05
 
-`/health` checks the gateway, and since 2026-09-05 `liveness_watch`
-(`jobs/liveness-watch.js`, every five minutes inside brokerd) probes it and
-the delivery queue and can say so over a channel that is NOT the gateway:
-Twilio SMS (`channels/twilio-sms.js`, `TWILIO_SID/TOKEN/FROM` in
-`/opt/olma2/.env`), WhatsApp when the pipe is up. Two bad ticks before a
-word, one alert per outage plus a six-hourly reminder, a recovery message.
-
-What is still uncovered, and always will be from in here: a dead brokerd, a
-dead box, a dead network. Those need an uptime monitor hitting
+`/health` checks it, and `liveness_watch` (`jobs/liveness-watch.js`) now
+RESTARTS a gateway that has been down for two five-minute ticks, then says so
+over WhatsApp once the pipe is back. What nothing here can do is report a
+gateway that stays dead, a dead brokerd, a dead box or a dead network — every
+alarm rides the gateway's own pipe (a Twilio SMS channel was built and removed
+the same day at the owner's request). Those need an uptime monitor hitting
 `https://allma.world/health` (public, unauthenticated, the hostname that
-outlives the duckdns one). That still does not exist and needs the owner's
-account at a monitoring service.
+outlives the duckdns one), which needs the owner's account at a monitoring
+service and does not exist yet.

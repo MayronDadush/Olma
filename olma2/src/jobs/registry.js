@@ -232,8 +232,8 @@ function jobs({ pool }) {
     { name: 'metrics_sweep', run: () => withTx(pool, (c) => metrics.sweepMetrics(c)) },
     { name: 'retention_sweep', run: () => withTx(pool, (c) => retention.sweepRetention(c)) },
     // Is everything working, and will the owner hear if not: gateway probe +
-    // delivery queue, two bad ticks before a word, WhatsApp when the pipe is
-    // up and Twilio SMS when the pipe IS the problem (jobs/liveness-watch.js).
+    // delivery queue, two bad ticks before a word, a dead gateway restarted
+    // before anything is said, WhatsApp for the news (jobs/liveness-watch.js).
     { name: 'liveness_watch', run: () => withTx(pool, (c) =>
       livenessWatch.run(c, { configPath: OPENCLAW_CONFIG, send: rawSend })) },
     { name: 'deploy_drift', run: () => withTx(pool, (c) => deployDrift.sweepDeployDrift(c)) },
