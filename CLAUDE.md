@@ -245,6 +245,15 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   answer is to put the instruction in the TOOL RESULT instead, where it costs
   tokens only on the turns it applies to (`turn_start`'s `onboarding` string,
   2026-09-04). `tests/intake.test.js` fails before anything is lost.
+  The health board shows the rendered size against the gateway's ceiling
+  (`doctrineMeter` in `dashboard.js`) — an unreadable config reads as an
+  unknown ceiling, never as the gateway's 20k default.
+- **The tool schemas have a ceiling too: 55k chars of JSON, 700 per
+  description, the identity line under 40** (`tests/tool-schema-budget.test.js`).
+  They are injected on every turn for every user, so guidance about what to
+  do with a RESULT rides the result (`turnHints`, `set_my_timezone`'s `hints`),
+  where it costs tokens only on the turns it applies to — never the
+  description. Adding a tool means paying for it by trimming another.
 - **Olma never claims a lookup it did not perform.** No price, no stock level,
   no "מצאתי לך", no link to a RESULT — all of it asserts a fetch that never
   happened. `search_link` is the one exception and only because a link to a
@@ -323,6 +332,11 @@ Verified on the box at the cutover, 2026-08-17:
 - **Source of truth: `olma2/` in THIS repo** (unlike v1) — ~22k lines src+bin,
   823 tests in 69 files as of 2026-09-04. `olma2/README.md` is its map, and
   `npm test` is the only count that is true today.
+- **Where things are, since 2026-09-05:** agent tools are `src/adapters/mcp/tools/*.js`,
+  one file per domain, and `registry.js` is only their ORDER (the gateway
+  lists tools in it). Jobs are data in `src/jobs/registry.js`; `expectations.js`
+  is the cadence, and `tests/job-registry.test.js` fails if the two lists
+  disagree. `bin/olma-brokerd.js` knows neither by name.
 - **Deploying is `bash olma2/scripts/deploy.sh [--restart]`**: rsync →
   `/opt/olma2/` → migrations → the full suite **on the server**. CI runs it
   with `--restart` on every merge to `main`, so **merging is deploying**; a
@@ -349,11 +363,29 @@ Verified on the box at the cutover, 2026-08-17:
   it is not a one-way door — but **git still has the bad commit and the next
   merge redeploys it.** Land a revert too.
 - Postgres 16 local (`olma2` + `olma2_test` DBs), creds in `/opt/olma2/.env`
-  (0600). Daily `pg_dump` 02:15 → `/root/backups/`, 14-day retention.
-  **The dump lands on the same droplet it backs up — no off-box copy yet.**
+  (0600). Daily `pg_dump` 02:15 Asia/Jerusalem → `/root/backups/`, 14-day
+  retention (root's crontab, not in the repo). **Off-box copy:**
+  `scripts/backup-offbox.sh` (02:40, same crontab) uploads the newest dump to
+  a private DigitalOcean Spaces bucket, verifies the size the bucket reports,
+  prunes copies older than 30 days, and writes `job_heartbeats.backup_offbox`
+  — green on success, `ERR …` on any failure, stale on the health board if it
+  stops running. Config is `SPACES_KEY/SECRET/BUCKET/REGION` in the same
+  `.env`; the dump holds encrypted credentials, so the bucket stays private.
+  Restore drill: download, `gunzip`, `psql olma2_test < file`.
 - Services: `olma2-brokerd` (unix-socket daemon: pg pool, flood counters,
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
+- **Every statement on a `createPool` connection is capped at 20s and a
+  checkout waits at most 10s** (`src/db/pool.js`, `OLMA_DB_STATEMENT_TIMEOUT_MS`,
+  `OLMA_DB_CONNECT_TIMEOUT_MS`; `0` disables). Both sit under the MCP shim's
+  30s call timeout so a runaway query fails inside the tool call, by name.
+  `migrate.js` and the test helper build their own clients and are exempt.
+- **A sweep inside brokerd reads the gateway's session stores through
+  `channels/sessions-async.js`, never `channels/sessions.js` directly.** Every
+  export of `sessions.js` is synchronous (readFileSync, a read-only sqlite
+  handle) and the daemon answers live users on the same loop; the facade runs
+  the identical functions in a worker thread with a deadline. The dashboard
+  and the eval harness are separate processes and keep calling `sessions.js`.
 
 ## The live dashboard is v2's (`olma2/src/adapters/http/dashboard.js`)
 
@@ -459,6 +491,7 @@ From `olma2/`:
 
 ```bash
 npm test          # node --test 'tests/*.test.js'
+npm run lint      # eslint, dev-only; CI runs it before the suite
 ```
 
 Real Postgres, one throwaway database per test file (`tests/helpers.freshDb`).

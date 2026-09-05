@@ -16,7 +16,10 @@
 // and "Six replies composed, one delivered — the wedge that beat every
 // detector (2026-08-31)".
 const crypto = require('node:crypto');
-const sessions = require('../channels/sessions');
+// The worker-thread facade, not sessions.js itself: this sweep runs every
+// minute inside brokerd and reads transcripts, and the main thread must not
+// block on that (see channels/sessions-async.js).
+const sessions = require('../channels/sessions-async');
 const laneLog = require('./lane-watchdog');
 const { enqueue } = require('../outbox/enqueue');
 const audit = require('../domain/audit');
@@ -214,7 +217,7 @@ async function sweepUnanswered(client, { readMessages, readSentEvents, now = Dat
   for (const u of rows) {
     if (coolingIds.has(u.id)) continue;
     let msgs;
-    try { msgs = read(u.agent_id, u.phone); } catch { continue; } // unreadable transcript is not this job's problem
+    try { msgs = await read(u.agent_id, u.phone); } catch { continue; } // unreadable transcript is not this job's problem
     const last = lastTurn(msgs || []);
 
     if (last && last.role === 'user' && last.at) {

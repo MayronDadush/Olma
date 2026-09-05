@@ -79,7 +79,7 @@ test('the snapshot records what Postgres actually cascades, including the other 
 test('a real delete followed by a restore puts every row back exactly as it was', async () => {
   const c0 = await db.pool.connect();
   try { await c0.query('TRUNCATE users CASCADE'); } finally { c0.release(); }
-  const { a, b } = await seed(db.pool);
+  const { a } = await seed(db.pool);
 
   const before = await snapshotState(db.pool);
   const obs = await testbed.observeDeletion(db.pool, a.id);

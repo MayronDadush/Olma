@@ -71,9 +71,7 @@ function newPageHtml() {
   return servedPageHtml(' data-new="1"');
 }
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
-  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-));
+const { esc } = require('./html');
 
 // The page is one inline script and one inline stylesheet, so 'unsafe-inline'
 // is unavoidable and blocking it would only break the page. What this policy is

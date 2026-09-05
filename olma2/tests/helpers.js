@@ -146,6 +146,12 @@ async function freshDb() {
   };
 
   const teardown = async () => {
+    // The session-reader worker thread (channels/sessions-async.js): any test
+    // that ran a sweep on its default readers has spawned one, and an unref'd
+    // worker still keeps a Node process alive (measured — see that file). It
+    // would shed itself after its idle window, but a test child waiting on
+    // that is the silent-hang shape this helper exists to prevent.
+    try { await require('../src/channels/sessions-async').close(); } catch { /* none spawned */ }
     await endPool();
     const admin2 = new Client({ connectionString: ADMIN_URL });
     await admin2.connect();

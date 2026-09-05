@@ -21,7 +21,9 @@ const users = require('../domain/users');
 const meetings = require('../domain/meetings');
 const llm = require('../adapters/llm');
 const flagsDomain = require('../domain/flags');
-const { readRecentMessages } = require('../channels/sessions');
+// Off the main thread (channels/sessions-async.js): this job reads whole
+// transcripts, on the same event loop that answers live users.
+const { readRecentMessages } = require('../channels/sessions-async');
 
 // How long after someone's last message we call the chapter closed.
 const CHAPTER_GAP_MS = 30 * 60_000;
@@ -403,7 +405,7 @@ async function sweepFactExtraction(client, deps = {}) {
   for (const u of due) {
     if (out.extracted.length + out.failed.length >= MAX_PER_TICK) break;
     const since = u.last_fact_extraction_at ? new Date(u.last_fact_extraction_at).getTime() : 0;
-    const fresh = newMessagesSince(readMessages(u.agent_id, READ_MESSAGES, u.phone), since)
+    const fresh = newMessagesSince(await readMessages(u.agent_id, READ_MESSAGES, u.phone), since)
       .filter((m) => !isMachineText(m.text));
 
     // No new words from them means nothing to learn. Skipping here is the whole
