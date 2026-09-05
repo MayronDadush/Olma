@@ -491,6 +491,26 @@ async function restoreRowsInto(client, data) {
   return { inserted, deferredSet, repointed, sequences, plan };
 }
 
+// A snapshot carries the identity token of its day, and a restore puts that
+// token back as LIVE. If the token was rotated between snapshot and restore —
+// which is what a rotation is for: the old one had leaked — the restore
+// quietly re-arms the leaked credential. Found 2026-09-05: user 3 was restored
+// from a 2026-09-04 snapshot taken before that day's rotation, and within the
+// hour config_guard re-filed the 2026-09-02 leak as issue 72, "still works".
+//
+// So a restore ends by minting a fresh token, always. Deciding "was it rotated
+// since?" would be one more thing to get wrong, and a restore is already the
+// moment the open session's context is stale — one failed call that recovers
+// from .olma-identity is the same cost rotateIdentityToken documents. The
+// order (file, DB, AGENTS.md) and the verification are its own.
+async function remintAfterRestore(client, userId, { log, snapshot, run } = {}) {
+  const { rotateIdentityToken } = require('../src/domain/identity-repair');
+  return rotateIdentityToken(client, {
+    userId, apply: true, log, run,
+    reason: `restored from snapshot ${snapshot || '?'} — a snapshot's token may have been rotated away since`,
+  });
+}
+
 async function cmdRehearse(pool, phone, ref) {
   const snap = cmdVerify(phone, ref);
   if (!snap) { console.error('\nnothing to rehearse — take a snapshot first'); process.exitCode = 1; return; }
@@ -780,6 +800,25 @@ async function cmdRestore(pool, phone, ref, apply) {
       console.log('    XDG_RUNTIME_DIR=/run/user/0 systemctl --user restart openclaw-gateway');
     }
 
+    // Never restore a credential. The files are back, so the rotation has its
+    // three places; a snapshot's token could be one that leaked and was
+    // rotated away since (2026-09-05, issue 72).
+    await client.query('BEGIN');
+    let minted;
+    try {
+      minted = await remintAfterRestore(client, data.userId, { log: console.log, snapshot: snap.name });
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    }
+    if (minted.ok) console.log(`identity token re-minted (${minted.data.oldFingerprint} → ${minted.data.newFingerprint}); their open session recovers on its first failed call.`);
+    else {
+      console.error(`! identity token NOT re-minted: ${minted.error.message}`);
+      console.error('  the snapshot\'s token is live. If it was ever rotated, run scripts/rotate-identity-token.js now.');
+      process.exitCode = 1;
+    }
+
     await refreshUserCard(pool, data.userId);
     console.log('USER.md refreshed.');
 
@@ -870,5 +909,5 @@ if (require.main === module) {
 
 module.exports = {
   cascadeClosure, setNullEdges, insertPlan, observeDeletion, configSlice,
-  diffState, restoreRowsInto,
+  diffState, restoreRowsInto, remintAfterRestore,
 };
