@@ -14,6 +14,7 @@ const { renderContactsSection } = require('../contacts');
 const { renderWaitlist, renderAudit } = require('./logs');
 const { renderOutcomes } = require('./outcomes');
 const { renderBrain } = require('./brain');
+const { renderOnboardingReviews } = require('./onboarding');
 
 
 // The page is six collapsible groups, in this order, and only the first is
@@ -37,6 +38,7 @@ const GROUPS = [
 const SECTIONS = [
   { id: 'health', group: 'now', title: 'מצב המערכת', hint: 'שער התקשורת (הדרך היחידה שהודעות נכנסות ויוצאות מוואטסאפ) וכל התהליכים הפנימיים. אדום = משהו תקוע וצריך טיפול. "לא נבדק" בשער = לא הצלחנו לקרוא את ההגדרות, לא בהכרח תקלה.', render: renderHeartbeats },
   { id: 'users', group: 'people', title: 'משתמשים', hint: 'כל מי שרשום. אפשר לקבוע לכל אחד מכסת הודעות יומית משלו.', render: renderUsers },
+  { id: 'onboarding', group: 'now', title: 'איך נראתה ההצטרפות', hint: 'שלוש שעות אחרי ההודעה הראשונה של משתמש חדש, המערכת קוראת את השיחה שלו בחזרה מול מה שבאמת נרשם — ומדווחת פערים. "תקלה מול המשתמש" = נאמר לו משהו לא נכון או שהוא לא קיבל תשובה. פעם אחת לכל אדם.', render: renderOnboardingReviews },
   { id: 'issues', group: 'now', title: 'תקלות ובקשות', hint: 'דברים שעולמה או המשתמשים דיווחו עליהם ומחכים לטיפול.', render: renderIssues },
   { id: 'evals', group: 'measure', title: 'בדיקות התנהגות', hint: 'כל לילה עולמה עוברת תרחישים שנבנו מתקלות אמת — שיחה מדומה מול משתמש בדיקה, בדיקת כלים ומסד בקוד, ובדיקת ניסוח על ידי מודל שופט. אדום = כלל נשבר; צהוב = השופט הסתייג מהניסוח.', render: renderEvals },
   { id: 'cost', group: 'money', title: 'עלות', hint: 'כל שירות חיצוני שהפרויקט משלם עליו — מופרד ליתרות מראש (שנגמרות) ולחיוב שוטף (שנצבר) — וכמה עולה השימוש במודל לפי יום ולפי משתמש, כולל עמודה נפרדת ליצירת תמונות ווידאו. הערכה, לא חשבונית.', render: renderCost },

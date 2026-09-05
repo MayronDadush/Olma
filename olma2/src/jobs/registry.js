@@ -25,6 +25,7 @@ const configGuard = require('./config-guard');
 const livenessWatch = require('./liveness-watch');
 const unanswered = require('./unanswered');
 const laneWatchdog = require('./lane-watchdog');
+const onboardingReview = require('./onboarding-review');
 const memoryConsolidation = require('./memory-consolidation');
 const { DEFAULT_PATH: OPENCLAW_CONFIG } = require('../intake/openclaw-config');
 
@@ -236,6 +237,10 @@ function jobs({ pool }) {
     // before anything is said, WhatsApp for the news (jobs/liveness-watch.js).
     { name: 'liveness_watch', run: () => withTx(pool, (c) =>
       livenessWatch.run(c, { configPath: OPENCLAW_CONFIG, send: rawSend })) },
+    // Reads a new person's first three hours back and files what it finds.
+    // Never speaks to them; the report is for whoever runs the system.
+    { name: 'onboarding_review', run: () => withTx(pool, (c) =>
+      onboardingReview.sweepOnboardingReview(c, {})) },
     { name: 'deploy_drift', run: () => withTx(pool, (c) => deployDrift.sweepDeployDrift(c)) },
   ];
 }

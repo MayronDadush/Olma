@@ -169,13 +169,21 @@ async function collectAlerts(client, { hbRows, gateway }) {
          (SELECT count(*)::int FROM task_reminders
             WHERE sent_at IS NULL AND cancelled_at IS NULL AND remind_at < now() AND attempts = 0) AS overdue_reminders,
          (SELECT reds + errors FROM eval_runs
-            WHERE finished_at IS NOT NULL AND trigger <> $1 ORDER BY id DESC LIMIT 1) AS eval_bad`,
+            WHERE finished_at IS NOT NULL AND trigger <> $1 ORDER BY id DESC LIMIT 1) AS eval_bad,
+         -- A new person was told something untrue, or got no answer at all, in
+         -- their first three hours (jobs/onboarding-review.js). Not
+         -- BREAKS_USERS — nothing is failing right now — but it is the one
+         -- thing on this board with a name and a face behind it, and it goes
+         -- quiet again as soon as it is acknowledged.
+         (SELECT count(*)::int FROM onboarding_reviews
+            WHERE worst = 'bad' AND acknowledged_at IS NULL) AS bad_onboardings`,
       [evalsJob.PILOT_TRIGGER]);
     const r = rows[0] || {};
     if (r.outbox_failing > 0) bad(`${r.outbox_failing} הודעות נכשלות בשליחה`, '#planned');
     if (r.overdue_reminders > 0) warn(`${r.overdue_reminders} תזכורות שעברו ולא יצאו`, '#planned');
     if (r.open_issues > 0) warn(`${r.open_issues} תקלות פתוחות`, '#issues');
     if (r.eval_bad > 0) warn(`${r.eval_bad} בדיקות התנהגות אדומות אמש`, '#evals');
+    if (r.bad_onboardings > 0) bad(`${r.bad_onboardings} משתמשים חדשים שההצטרפות שלהם השתבשה`, '#onboarding');
   } catch (e) {
     // A query that failed is not a clean board — say so, in the strip itself.
     warn('לא ניתן לקרוא את מצב ההודעות והתקלות', '#health');
