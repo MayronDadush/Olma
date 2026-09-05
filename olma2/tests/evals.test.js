@@ -398,7 +398,7 @@ test('a pilot run is excluded from the two-consecutive-nights rule', async () =>
 // check that cannot fail is decoration, not detection — so this proves it
 // still goes red when the invariant is actually broken.
 test('turnWasOpened is red when a turn really was not opened', async () => {
-  const silentTurns = (n) => { let i = 0; return async () => ({
+  const silentTurns = (_n) => { let i = 0; return async () => ({
     reply: i++ === 0 ? 'בטוח?' : 'עצרתי.',
     toolCalls: ['turn_start', 'pause_olma'],
     model: 'x/test-model',

@@ -135,6 +135,7 @@ const JOB_LABELS = {
   retention_sweep: 'ניקוי נתונים ישנים',
   eval_sweep: 'בדיקות התנהגות ליליות',
   deploy_drift: 'השוואת הגרסה שרצה מול main',
+  backup_offbox: 'גיבוי יומי של מסד הנתונים מחוץ לשרת',
 };
 
 // /health sits AHEAD of Basic Auth and Caddy publishes it, so what goes in it

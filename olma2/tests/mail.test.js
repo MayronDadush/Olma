@@ -29,8 +29,7 @@ const gmail = require('../src/domain/mail-gmail');
 const calendar = require('../src/domain/calendar');
 const { renderCard } = require('../src/intake/user-card');
 
-let db, user, other, server, base;
-const AUTH = 'Basic ' + Buffer.from('admin:test-password-123').toString('base64');
+let db, user, other, server;
 
 function fakeFetch(routes) {
   const calls = [];
@@ -90,7 +89,6 @@ const gmailRoutes = (over = {}) => ({
 });
 
 async function connect(u, { routes } = {}) {
-  const userId = u.id;
   const begun = await withTx(db.pool, (c) => mail.beginConnection(c, u, 'gmail'));
   assert.ok(begun.ok, 'beginConnection failed: ' + JSON.stringify(begun.error || {}));
   const state = new URL(begun.data.url).searchParams.get('state');
@@ -120,7 +118,6 @@ before(async () => {
   await withTx(db.pool, (c) => require('../src/domain/flags').setFlag(c, mail.ACCESS_FLAG, 'all'));
   server = createDashboard({ pool: db.pool, adminUser: 'admin', adminPass: 'test-password-123' });
   await new Promise((r) => server.listen(0, r));
-  base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async () => {
   await new Promise((r) => server.close(r));

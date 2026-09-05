@@ -68,9 +68,10 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   incidents.md` matches the filter, so a pure prose edit there runs the full
   suite AND redeploys production. Both are "docs" — which side of `olma2/` the
   file sits on decides the blast radius, and nothing in the filename says so.
-  A new top-level directory (`voice-bridge/`) is unchecked until someone
-  notices; give it its own light job rather than adding it here, which would
-  redeploy `olma2` for a change that cannot affect it.
+  A new top-level directory is unchecked until someone notices; give it its
+  own light job rather than adding it here, which would redeploy `olma2` for
+  a change that cannot affect it — `voice-bridge/` has one
+  (`.github/workflows/voice-bridge.yml`, which also deploys it on `main`).
 - **After a shared-branch merge, verify it actually shipped**:
   `git merge-base --is-ancestor <sha> origin/main`. A concurrent session can
   merge at a head that predates your commit.
@@ -332,6 +333,11 @@ Verified on the box at the cutover, 2026-08-17:
 - **Source of truth: `olma2/` in THIS repo** (unlike v1) — ~22k lines src+bin,
   823 tests in 69 files as of 2026-09-04. `olma2/README.md` is its map, and
   `npm test` is the only count that is true today.
+- **Where things are, since 2026-09-05:** agent tools are `src/adapters/mcp/tools/*.js`,
+  one file per domain, and `registry.js` is only their ORDER (the gateway
+  lists tools in it). Jobs are data in `src/jobs/registry.js`; `expectations.js`
+  is the cadence, and `tests/job-registry.test.js` fails if the two lists
+  disagree. `bin/olma-brokerd.js` knows neither by name.
 - **Deploying is `bash olma2/scripts/deploy.sh [--restart]`**: rsync →
   `/opt/olma2/` → migrations → the full suite **on the server**. CI runs it
   with `--restart` on every merge to `main`, so **merging is deploying**; a
@@ -358,11 +364,29 @@ Verified on the box at the cutover, 2026-08-17:
   it is not a one-way door — but **git still has the bad commit and the next
   merge redeploys it.** Land a revert too.
 - Postgres 16 local (`olma2` + `olma2_test` DBs), creds in `/opt/olma2/.env`
-  (0600). Daily `pg_dump` 02:15 → `/root/backups/`, 14-day retention.
-  **The dump lands on the same droplet it backs up — no off-box copy yet.**
+  (0600). Daily `pg_dump` 02:15 Asia/Jerusalem → `/root/backups/`, 14-day
+  retention (root's crontab, not in the repo). **Off-box copy:**
+  `scripts/backup-offbox.sh` (02:40, same crontab) uploads the newest dump to
+  a private DigitalOcean Spaces bucket, verifies the size the bucket reports,
+  prunes copies older than 30 days, and writes `job_heartbeats.backup_offbox`
+  — green on success, `ERR …` on any failure, stale on the health board if it
+  stops running. Config is `SPACES_KEY/SECRET/BUCKET/REGION` in the same
+  `.env`; the dump holds encrypted credentials, so the bucket stays private.
+  Restore drill: download, `gunzip`, `psql olma2_test < file`.
 - Services: `olma2-brokerd` (unix-socket daemon: pg pool, flood counters,
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
+- **Every statement on a `createPool` connection is capped at 20s and a
+  checkout waits at most 10s** (`src/db/pool.js`, `OLMA_DB_STATEMENT_TIMEOUT_MS`,
+  `OLMA_DB_CONNECT_TIMEOUT_MS`; `0` disables). Both sit under the MCP shim's
+  30s call timeout so a runaway query fails inside the tool call, by name.
+  `migrate.js` and the test helper build their own clients and are exempt.
+- **A sweep inside brokerd reads the gateway's session stores through
+  `channels/sessions-async.js`, never `channels/sessions.js` directly.** Every
+  export of `sessions.js` is synchronous (readFileSync, a read-only sqlite
+  handle) and the daemon answers live users on the same loop; the facade runs
+  the identical functions in a worker thread with a deadline. The dashboard
+  and the eval harness are separate processes and keep calling `sessions.js`.
 
 ## The live dashboard is v2's (`olma2/src/adapters/http/dashboard.js`)
 
@@ -436,7 +460,7 @@ costs a session. What is live:
 | Dashboard | `127.0.0.1:8788` → https://allma.world (public routes) + https://olmachat.duckdns.org (admin) |
 | Caddy config | `/etc/caddy/Caddyfile` — **not** in the repo, not deployed |
 | Google OAuth client | `/opt/olma/google-oauth.json` — v1 path, still live; **not** in the repo |
-| Voice bridge | `/opt/olma2-voice-bridge/` — **not** in the repo, not deployed |
+| Voice bridge | `/opt/olma2-voice-bridge/` — source in `voice-bridge/`, deployed by `voice-bridge/deploy.sh` (its own workflow, never by `olma2/scripts/deploy.sh`) |
 | Which release is serving | `/opt/olma2/RELEASE` (sha + subject) |
 | Previous release / dated archive | `/opt/olma2-previous`, `/opt/olma2-releases/` |
 | OpenClaw config | `/root/.openclaw/openclaw.json` |
@@ -476,6 +500,7 @@ From `olma2/`:
 
 ```bash
 npm test          # node --test 'tests/*.test.js'
+npm run lint      # eslint, dev-only; CI runs it before the suite
 ```
 
 Real Postgres, one throwaway database per test file (`tests/helpers.freshDb`).
