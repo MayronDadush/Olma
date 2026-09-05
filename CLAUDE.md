@@ -195,7 +195,8 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **`allma.world` serves an ALLOWLIST, not the admin dashboard.** Caddy passes
   a named set of routes to `:8788` — `/pick/<48 hex>`, `/d/<64 hex>`, `/me`,
   `/me/data`, `/me/events`, `/me/act`, `/me/out`, `/oauth/google/callback`,
-  `/health`, `/ready` — plus `/voice-bridge*` to `:8791`. Everything else 404s
+  `/health`, `/ready`, and the two stranger-readable pages `/` and `/privacy`
+  — plus `/voice-bridge*` to `:8791`. Everything else 404s
   in Caddy and never reaches the app. **Read the Caddyfile for the current
   set** rather than this line: it said "exactly four" for a day and was wrong
   the moment the personal dashboard shipped. What does not change is the
