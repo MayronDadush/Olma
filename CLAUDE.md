@@ -255,6 +255,10 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   so a restart mid-outage does not re-alert. Its heartbeat note says
   `smsConfigured` and `alertFailed` — "nothing wrong" and "could not tell
   you" must never read alike.
+  **It repairs before it reports**: a gateway down for two ticks is restarted
+  (`intake/gateway-restart.js`, once per half hour) and probed again; the
+  owner hears the outcome — healed over WhatsApp, or "restarted, still down"
+  over SMS. A dead brokerd or box it cannot see; that is the external monitor.
 - **`/health` sees the DB, every `job_heartbeats` row, and the gateway — and
   nothing else.** A component that writes no heartbeat is invisible to it, and
   says so by staying green. That is how the gateway went unwatched for months

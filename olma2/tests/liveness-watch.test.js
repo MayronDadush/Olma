@@ -29,6 +29,8 @@ function deps(over = {}) {
       send: async (to, text) => { log.wa.push({ to, text }); return over.waFails ? { ok: false } : { ok: true }; },
       smsConfigured: over.smsConfigured ?? true,
       now: over.now,
+      settleMs: 0,
+      restartGateway: async () => { log.restarts = (log.restarts || 0) + 1; return over.restartFails ? false : true; },
       ...over.extra,
     },
   };
@@ -56,19 +58,24 @@ test('a dead gateway is reported by SMS — after two ticks, once, then every si
 
   ({ log, d } = deps({ gateway: down, now: t0 + 300_000, waFails: true }));
   note = await tick(d);
+  assert.equal(log.restarts, 1, 'the repair is tried first');
+  assert.equal(note.restarted, true);
   assert.equal(note.alerted, 'sms', 'the gateway is the problem, so the gateway is not the channel');
   assert.equal(log.sms.length, 1);
   assert.match(log.sms[0].text, /שער התקשורת/);
+  assert.match(log.sms[0].text, /הופעל מחדש אוטומטית ועדיין לא עונה/, 'the owner hears what was already tried');
   assert.match(log.sms[0].text, /olmachat/);
 
   ({ log, d } = deps({ gateway: down, now: t0 + 600_000, waFails: true }));
   note = await tick(d);
   assert.equal(note.alerted, undefined, 'still down, already told — silence');
   assert.equal(log.sms.length, 0);
+  assert.equal(log.restarts, undefined, 'no second restart inside the cooldown');
 
   ({ log, d } = deps({ gateway: down, now: t0 + 7 * 3600_000, waFails: true }));
   note = await tick(d);
   assert.equal(note.alerted, 'sms', 'six hours on, one reminder');
+  assert.equal(log.restarts, 1, 'and, the cooldown long over, one more try');
 
   ({ log, d } = deps({ now: t0 + 8 * 3600_000 }));
   note = await tick(d);
@@ -77,6 +84,27 @@ test('a dead gateway is reported by SMS — after two ticks, once, then every si
   assert.equal(note.down, false);
   const state = await withTx(db.pool, (c) => flags.getFlag(c, watch.STATE_FLAG));
   assert.deepEqual(state, {}, 'the outage is over and forgotten');
+});
+
+test('a dead gateway that comes back after the automatic restart is reported as healed, over WhatsApp, once', async () => {
+  const t0 = Date.parse('2026-09-06T12:00:00Z');
+  const down = { status: 'down', detail: 'ECONNREFUSED', port: 1 };
+  let { log, d } = deps({ gateway: down, now: t0 });
+  await tick(d);
+  // second tick: the first probe says down, the restart runs, the re-probe says live
+  let probes = 0;
+  ({ log, d } = deps({ now: t0 + 300_000, extra: { checkGateway: async () => (probes++ === 0 ? down : { status: 'live', detail: 'live', port: 1 }) } }));
+  const note = await tick(d);
+  assert.equal(log.restarts, 1);
+  assert.equal(note.restarted, true);
+  assert.equal(note.restartOk, true);
+  assert.equal(note.gateway, 'live', 'the verdict is the re-probe, not the first probe');
+  assert.equal(note.down, false);
+  assert.equal(note.selfHealed, 'whatsapp', 'the pipe is back, so the pipe carries the news');
+  assert.equal(log.sms.length, 0, 'no SMS was needed');
+  assert.match(log.wa[0].text, /הופעל מחדש אוטומטית/);
+  const state = await withTx(db.pool, (c) => flags.getFlag(c, watch.STATE_FLAG));
+  assert.deepEqual(state, {});
 });
 
 test('a flap — one bad tick, then fine — is never mentioned', async () => {
