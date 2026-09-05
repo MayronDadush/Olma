@@ -31,6 +31,7 @@ never trust a dated narrative for something you are about to act on.
 - [Six replies composed, one delivered — the wedge that beat every detector (2026-08-31)](#six-replies-composed-one-delivered--the-wedge-that-beat-every-detector-2026-08-31)
 
 **Identity, auth and secrets**
+- [A restore put a leaked token back (fixed 2026-09-05)](#a-restore-put-a-leaked-token-back-fixed-2026-09-05)
 
 - [The lock that worked perfectly, on three files out of sixteen (2026-09-01)](#the-lock-that-worked-perfectly-on-three-files-out-of-sixteen-2026-09-01)
 - [A leaked token has a rotation now, and the file order is the design (2026-09-03)](#a-leaked-token-has-a-rotation-now-and-the-file-order-is-the-design-2026-09-03)
@@ -830,6 +831,30 @@ the gateway upgrade.
 
 
 ## Identity, auth and secrets
+
+### A restore put a leaked token back (fixed 2026-09-05)
+
+On 2026-09-05 user 3's account was restored on the live box from a snapshot
+taken the day before (`scripts/user-testbed.js restore`, the fix for which is
+"A snapshot taken before a migration could not be restored", #187). The
+snapshot predated that day's rotation of the token that had leaked into his
+chat on 2026-09-02 (issue 66, "fixed" at 12:22). The restore did exactly what
+it says: it put the snapshot's `users.identity_token` back. Within the hour
+`config_guard`'s leak scan — which remembers the leaked fingerprint until it
+stops resolving, precisely so that a scan window cannot bound the truth —
+found that it resolved again and filed issue 72: "a live identity token was
+sent as message text — still works". The token was rotated again by hand
+(`cf5613f8e6e41db0 → 9e19ed7f5e3745f4`) and the issue closed itself on the
+next tick.
+
+Fix: a restore now ends by minting a fresh token, always
+(`remintAfterRestore` → `rotateIdentityToken`, same order, same
+verification, audited with the snapshot's name as the reason). Deciding
+"was it rotated since?" would be one more thing to get wrong, and a restore
+is already the moment the open session's context is stale — one failed call
+that recovers from `.olma-identity` is the cost the rotation already
+documents. The test reproduces the trap first — restore alone revives the
+leaked token — and then proves the re-mint kills it and rewrites both files.
 
 ### The lock that worked perfectly, on three files out of sixteen (2026-09-01)
 
