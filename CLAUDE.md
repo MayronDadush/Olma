@@ -202,6 +202,14 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `reply-to-older-message` hold both halves open.
 - **The ledgers are append-only.** Rows already written stay as written, even
   when the pricing that produced them was wrong.
+- **A meeting negotiates several options (`domain/meeting-options.js`, up to
+  four; a fifth from a non-initiator waits for the initiator). The single-slot
+  columns `meetings.proposed_slot/proposed_start_at` and
+  `meeting_participants.state` are MIRRORS of the newest active option** —
+  read them if you like, but write only through the options module
+  (`add/answer/approve/reject/swap`), which re-mirrors after every change.
+  A yes must name one of the options on the table; the meeting confirms the
+  moment one option is unanimous among the people still in it.
 - **The assistant is עולמה / Allma; the system is still olma2.** The rename
   (2026-09-04) covers user- and operator-facing text only — repo, `/opt/olma2`,
   the services, the MCP tool prefix and `olma_identity` keep the old name.

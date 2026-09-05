@@ -71,11 +71,12 @@ test('confirm requires EVERY active participant on the identical slot', async ()
   });
 });
 
-// A "כן" answers the slot the person was SHOWN, not whatever is current. In a
-// live meeting three proposals crossed within eight seconds, and one user's
-// yes to Sunday 9:00 was recorded as accepting Tuesday 10:00 — a slot whose
-// notification reached him two minutes after he had "agreed" to it.
-test('an accept is pinned to the slot the user saw; a stale one is refused clean', async () => {
+// A "כן" answers the slot the person was SHOWN, never "whatever is current":
+// three proposals once crossed within eight seconds and a yes to Sunday landed
+// on Tuesday. Since options (2026-09-05) several slots sit on the table at
+// once, so the rule reads: the yes must name one of them. A moment that names
+// none is refused, and the refusal lists what IS on the table.
+test('an accept is pinned to an option on the table; one naming none is refused clean', async () => {
   await withClient(async (c) => {
     const m = (await meetings.startMeeting(c, alice.id, 'race', [bob.id, carol.id])).data.meeting;
     const monday = slotStart('יום שני 20:00');
@@ -83,24 +84,40 @@ test('an accept is pinned to the slot the user saw; a stale one is refused clean
     const tuesday = slotStart('יום שלישי 20:00', { hours: 72 });
     await meetings.proposeSlot(c, alice.id, m.id, 'יום שלישי 20:00', tuesday);
 
-    // bob's user said yes to Monday; the meeting has moved on
-    const stale = await meetings.respondToSlot(c, bob.id, m.id, true, null, null, monday);
+    // a yes to a moment nobody proposed is refused, and shown what there is
+    const never = slotStart('יום רביעי 20:00', { hours: 96 });
+    const stale = await meetings.respondToSlot(c, bob.id, m.id, true, null, null, never);
     assert.equal(stale.ok, false);
     assert.equal(stale.error.reason, 'slot_changed');
-    assert.ok(stale.error.message.includes('יום שלישי 20:00'), 'the refusal shows the current slot');
+    assert.ok(stale.error.message.includes('יום שני 20:00') && stale.error.message.includes('יום שלישי 20:00'),
+      'the refusal lists the options on the table');
 
     // no accepted_starts_at at all is refused too — and neither refusal
     // may leave an acceptance behind
     const missing = await meetings.respondToSlot(c, bob.id, m.id, true);
     assert.equal(missing.ok, false);
     assert.equal(missing.error.reason, 'accepted_starts_at_required');
-    const st = await meetings.getStatus(c, bob.id, m.id);
+    let st = await meetings.getStatus(c, bob.id, m.id);
     assert.equal(st.data.participants.find((p) => p.user_id === bob.id).state, 'awaiting');
+    assert.equal(st.data.options.filter((o) => o.status === 'active').length, 2, 'both moments are on the table');
 
-    // the yes to the slot actually on the table goes through
+    // a yes to the OLDER option is a real yes to it — it did not stop being an option
+    const older = await meetings.respondToSlot(c, bob.id, m.id, true, null, null, monday);
+    assert.equal(older.ok, true);
+    st = await meetings.getStatus(c, bob.id, m.id);
+    const mon = st.data.options.find((o) => new Date(o.startsAt).getTime() === new Date(monday).getTime());
+    assert.equal(mon.answers[String(bob.id)], 'y');
+    assert.equal(st.data.participants.find((p) => p.user_id === bob.id).state, 'awaiting',
+      'the mirrored single-slot state follows the NEWEST option, which bob has not answered');
+
+    // and the yes to the newest goes through the way it always did
     const good = await meetings.respondToSlot(c, bob.id, m.id, true, null, null, tuesday);
     assert.equal(good.ok, true);
     assert.equal(good.data.yourState, 'confirmed_current');
+    // carol's yes to Tuesday makes it unanimous → confirmed to Tuesday, not Monday
+    const done = await meetings.respondToSlot(c, carol.id, m.id, true, null, null, tuesday);
+    assert.equal(done.data.meetingStatus, 'confirmed');
+    assert.equal(done.data.slot, 'יום שלישי 20:00');
   });
 });
 
@@ -111,6 +128,7 @@ test('accept binding: a legacy row with no machine time still accepts', async ()
     // a row proposed before slots carried a start time cannot be validated —
     // requiring the parameter there would wedge every such negotiation
     await c.query(`UPDATE meetings SET proposed_start_at = NULL WHERE id = $1`, [m.id]);
+    await c.query(`UPDATE meeting_options SET starts_at = NULL WHERE meeting_id = $1`, [m.id]);
     const r = await meetings.respondToSlot(c, bob.id, m.id, true);
     assert.equal(r.ok, true);
     assert.equal(r.data.meetingStatus, 'confirmed');
