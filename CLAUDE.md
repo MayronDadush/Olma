@@ -398,6 +398,13 @@ https://allma.world and https://olmachat.duckdns.org.
 Same house style — zero deps, Basic auth, server-rendered HTML + form POSTs,
 no JS — but structured differently:
 
+- **Since 2026-09-05 the file is split:** `dashboard.js` is the router (auth,
+  CSRF, the OAuth callback, the GET/POST handlers, ~490 lines);
+  `admin/sections/*.js` are the section renderers (one file per group of
+  related sections), `admin/sections/index.js` holds `GROUPS` and `SECTIONS`,
+  `admin/user-page.js` and `admin/contacts.js` are the two separate pages,
+  `admin/posts.js` the per-user POST handlers and `safeBack`, `admin/html.js`
+  the shell, `STYLE` and the formatting helpers. Exports are unchanged.
 - **Since 2026-09-05 the page is six collapsible groups** (`GROUPS`, CSS-only
   `<details>`), only the first open on load, with an alerts strip inside it
   built from signals the sections already compute (`collectAlerts`, one
