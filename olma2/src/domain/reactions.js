@@ -210,20 +210,49 @@ function isLive(lastInboundAt, now = Date.now()) {
 //   Therefore no exit code, therefore no claim. This returns `attempted`, never
 //   `sent`. Nothing downstream may read it as "they saw a ✅" — and that is why
 //   no user-visible text anywhere depends on the mark having landed.
+// ── Two marks on one message must never race ─────────────────────────────────
+// Each mark is a whole `openclaw` CLI start-up, measured at 15 seconds of
+// wall time on the box (2026-09-05, `message react --dry-run`). A short turn
+// asks for 👀 at turn_start and 👍 a few seconds later, so two CLIs are alive
+// at once and whichever finishes LAST decides what the person sees — a 👀
+// landing after the 👍 leaves "working" on a message that is done, for ever.
+// Miron saw the shape of it: his "deleted" text arrived before the 👍.
+//
+// So one in-flight mark per message. A newer mark for the same message kills
+// the older child if it has not exited: a 👀 that could not land before the
+// work finished was never needed, and the 👍 goes out sooner. If the older
+// child has already exited, the newer mark simply replaces it on the phone,
+// which is the lifecycle this feature was built on. Killing is best-effort and
+// claim-free, like everything else here.
+const inFlight = new Map(); // messageId → child
+
 function placeMark(opts = {}, deps = {}) {
   const args = buildReactArgs(opts);
   if (!args) return { attempted: false, reason: 'not_applicable' };
   const spawnFn = deps.spawn || spawn;
+  const key = String(opts.messageId);
+  let superseded = false;
+  const prev = inFlight.get(key);
+  if (prev && !prev.exited) {
+    superseded = true;
+    try { if (typeof prev.child.kill === 'function') prev.child.kill(); } catch { /* already gone */ }
+    inFlight.delete(key);
+  }
   try {
     const child = spawnFn('openclaw', args, { detached: true, stdio: 'ignore' });
     // An ENOENT on a box without the CLI arrives as an event, not a throw, and
     // an unhandled 'error' on a child process takes the whole daemon down.
-    if (child && typeof child.on === 'function') child.on('error', () => {});
+    const entry = { child, exited: false };
+    if (child && typeof child.on === 'function') {
+      child.on('error', () => { entry.exited = true; if (inFlight.get(key) === entry) inFlight.delete(key); });
+      child.on('exit', () => { entry.exited = true; if (inFlight.get(key) === entry) inFlight.delete(key); });
+    }
     if (child && typeof child.unref === 'function') child.unref();
+    inFlight.set(key, entry);
   } catch {
     return { attempted: false, reason: 'spawn_failed' };
   }
-  return { attempted: true, state: opts.state, emoji: REACTION_STATES[opts.state] };
+  return { attempted: true, state: opts.state, emoji: REACTION_STATES[opts.state], ...(superseded ? { superseded: true } : {}) };
 }
 
 // Which tools earn which mark. A table rather than calls sprinkled through the
