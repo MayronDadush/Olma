@@ -323,6 +323,11 @@ Verified on the box at the cutover, 2026-08-17:
 - **Source of truth: `olma2/` in THIS repo** (unlike v1) — ~22k lines src+bin,
   823 tests in 69 files as of 2026-09-04. `olma2/README.md` is its map, and
   `npm test` is the only count that is true today.
+- **Where things are, since 2026-09-05:** agent tools are `src/adapters/mcp/tools/*.js`,
+  one file per domain, and `registry.js` is only their ORDER (the gateway
+  lists tools in it). Jobs are data in `src/jobs/registry.js`; `expectations.js`
+  is the cadence, and `tests/job-registry.test.js` fails if the two lists
+  disagree. `bin/olma-brokerd.js` knows neither by name.
 - **Deploying is `bash olma2/scripts/deploy.sh [--restart]`**: rsync →
   `/opt/olma2/` → migrations → the full suite **on the server**. CI runs it
   with `--restart` on every merge to `main`, so **merging is deploying**; a

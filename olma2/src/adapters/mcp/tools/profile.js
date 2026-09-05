@@ -1,0 +1,125 @@
+'use strict';
+// profile — one slice of the tool registry (see ../registry.js).
+const {
+  users, tasks, reminders, dashboardAuth, digest, quota, pause, voice, relay, S, ok, tool,
+} = require('./_shared');
+
+module.exports = [
+  tool('get_my_profile', 'Your own profile: name, timezone, plan, digest settings.', {}, [],
+    async (client, user) => {
+      const plan = await quota.planFor(client, user.id);
+      return ok({
+        firstName: user.first_name, lastName: user.last_name,
+        timezone: user.timezone, timezoneConfirmed: user.timezone_confirmed,
+        locale: user.locale, plan, digestTimes: user.digest_times, digestScope: user.digest_scope,
+      });
+    }),
+  tool('set_my_name',
+    'Save what this person is called. Call it the moment you know, do not wait to be asked: '
+    + 'confirmed=true when they told you themselves ("קוראים לי חיים"), and confirmed=false — the default — '
+    + 'for a name you merely saw, like the WhatsApp display name or one that came up in conversation. '
+    + 'A name never belongs in remember_fact. An unconfirmed guess is still worth saving: it is what lets you '
+    + 'greet them by name and check it in passing, and it never overwrites a name they confirmed.',
+    {
+      first_name: S('string', 'First name'),
+      last_name: S('string', 'Last name (optional)'),
+      confirmed: S('boolean', 'TRUE only when they stated it themselves. Default FALSE.'),
+    }, ['first_name'],
+    async (client, user, a) => {
+      const res = await users.setName(client, user.id, a.first_name, a.last_name,
+        { confirmed: a.confirmed === true, source: a.confirmed === true ? 'user_stated' : 'observed' });
+      if (!res.ok || a.confirmed !== true) return res;
+      // The beat the onboarding was missing. Walking a cold start on a real
+      // phone (2026-09-04) ended at "מירון, נעים להכיר ☺️ אני פה לכל מה
+      // שתצטרך" — warm, and a dead end: the person has just introduced
+      // themselves and has no idea what to say next, so they say nothing.
+      // The opening message deliberately asks nothing (one question per reply,
+      // and brand copy is not the place for it), which leaves exactly one
+      // moment to make the ask, and it is this one.
+      //
+      // Conditional on their list actually being empty, so it fires for
+      // someone with nothing yet and never nags a person who has already been
+      // using Olma for a month and only now confirmed their name. Rides in the
+      // result, not in the doctrine, for the budget reason at turn_start's
+      // return: 39249 of 39250 chars are spent.
+      const { rows } = await client.query(
+        `SELECT EXISTS (SELECT 1 FROM tasks WHERE owner_id = $1) AS has_tasks`, [user.id]);
+      if (rows[0].has_tasks) return res;
+      return ok({ ...res.data,
+        nextStep: 'They have just told you their name and their list is still empty. '
+          + 'Greet them by it in one short line, then — in the same reply — invite them '
+          + 'to pour out whatever is on their plate: tasks, things to remember, people to '
+          + 'get back to, as messy and unsorted as they like, by text or voice note. Make '
+          + 'it feel like dumping, not like filling a form: no categories, no examples '
+          + 'list, no questions to answer first. One invitation, warm, and then stop.' });
+    }),
+  // The personal dashboard. A LINK, not a page the agent renders — everything
+  // it shows already exists here, so nothing about this tool decides what a
+  // person sees; it only decides whether they can look at it on a screen
+  // instead of asking for it a sentence at a time.
+  tool('open_my_dashboard',
+    'A personal link to THIS user\'s own dashboard: their tasks and archive, who they are '
+    + 'connected to and what each of those people may do, which accounts are connected, and '
+    + 'their timezone — all of it editable there. Offer it when someone wants to SEE or '
+    + 'rearrange several things at once ("מה יש לי השבוע?", "אני רוצה לעבור על הרשימה"), or '
+    + 'asks for a link or a screen. Put the returned URL in your reply and say it opens once '
+    + 'and stays open afterwards. Everything on it can still be done here in chat — this is '
+    + 'never a redirect away from you, and never the answer to a question you can just answer.',
+    {}, [],
+    (client, user) => dashboardAuth.createLinkUrl(client, user.id)),
+
+  // The tools that did not exist when a user asked to stop and Olma, having
+  // nothing to call, simply said goodbye and messaged him again the next
+  // morning. Pausing is reversible and deletes nothing — see domain/pause.js.
+  tool('pause_olma',
+    'Stop Olma from EVER reaching out to them again: check-ins, reminders, digests, '
+    + 'and anything another person\'s action would have sent them. Call this the moment someone '
+    + 'asks to stop, pause, unsubscribe, or says they are done — after ONE short confirming question '
+    + 'and their yes, never on a guess. It deletes NOTHING: their tasks, reminders and history all '
+    + 'stay, and resume_olma puts everything back. You still reply normally if they write to you — '
+    + 'that is them starting a conversation, not Olma starting one. Tell them plainly that you will '
+    + 'not write again and that they can come back any time by sending a message.',
+    { note: S('string', 'What they said, in their own words, if they gave a reason') }, [],
+    (client, user, a) => pause.pauseUser(client, user.id, { note: a.note })),
+  // The voice bridge (a separate process, loopback port 8792) decides who may
+  // be called — this tool just asks it to dial and relays the answer.
+  tool('call_me_on_the_phone',
+    'Place a REAL phone call from Olma\'s number to this user\'s phone — they answer and talk to '
+    + 'Olma out loud. Call this when they ask Olma to call them or to talk by voice, in ANY phrasing '
+    + '("תתקשרי אליי", "בואי נדבר בטלפון", "אפשר שיחה?") — the intent matters, not the words. Never '
+    + 'offer or mention this feature unless they raise it, and never call on a guess. On ok, say the '
+    + 'phone will ring within a few seconds. If it returns an error, relay it plainly — most often '
+    + 'voice calls are simply not enabled for their number yet. Complex multi-step requests made '
+    + 'during the call continue here in WhatsApp afterwards.',
+    {}, [],
+    (client, user) => voice.requestCall(client, user)),
+  tool('resume_olma',
+    'Turn Olma\'s proactive messages back on for someone who had paused, and re-arm the repeating '
+    + 'reminders the pause took down (each returns at its own next real time, never at a moment that '
+    + 'has already passed). Only on their explicit ask — a paused person writing to you once is not a '
+    + 'request to be messaged again. Afterwards, tell them what came back.',
+    {}, [],
+    (client, user) => pause.resumeUser(client, user.id)),
+  tool('set_my_timezone', 'Set IANA timezone. confirmed=true only when the user explicitly confirmed it. '
+    + 'Call this THE TURN someone reveals where they actually are ("אני בלוס אנג\'לס", "I\'m in NYC", '
+    + 'a trip they mention being on) — a phone number only guesses a country, and every reminder, '
+    + 'digest and quiet-hours window runs on this value, so a wrong zone means 3am messages. '
+    + 'Correcting a zone we had only GUESSED also fixes what was already saved under it: the reply '
+    + 'carries movedTasks and movedReminders. If either is non-empty, say in one line that their '
+    + 'existing times were off and are now corrected — they lived with a wrong hour and deserve to '
+    + 'know it is fixed. meetingsToRecheck is different: those were NOT moved, because the other '
+    + 'person agreed to that exact moment. Name them and ask whether to re-propose.',
+    { timezone: S('string', 'IANA name, e.g. Asia/Jerusalem'), confirmed: S('boolean', 'User explicitly confirmed') }, ['timezone'],
+    (client, user, a) => users.setTimezone(client, user.id, a.timezone, a.confirmed)),
+  tool('set_my_language', 'Change the language you speak and store their data in. ONLY on their explicit request ("talk to me in English") — never because one message happened to be in another language.',
+    { locale: S('string', 'ISO code, e.g. he, en, ar, ru') }, ['locale'],
+    (client, user, a) => users.setLocale(client, user.id, a.locale)),
+  tool('set_assistant_persona',
+    'Change who Olma IS for this user: gender ("תהיה גבר" / "תחזרי להיות אישה") and/or the name '
+    + 'they call the assistant ("אני רוצה לקרוא לך נועה"; an empty name resets to אולמה). ONLY on '
+    + 'their explicit request — never offer or suggest it. From your very next sentence on, follow '
+    + 'the new persona: gender changes EVERY Hebrew self-reference (אני בודק/בודקת, verbs and '
+    + 'adjectives alike, no mixing), and the name replaces אולמה everywhere — phone calls included.',
+    { gender: S('string', 'female | male'), name: S('string', 'New assistant name; "" resets to the default') }, [],
+    (client, user, a) => users.setAssistantPersona(client, user.id, { gender: a.gender, name: a.name })),
+];
