@@ -20,6 +20,8 @@
 // ctx: { userId, turns: [{ message, reply, toolCalls }], toolCalls (flat) }.
 const tasks = require('../domain/tasks');
 const preferences = require('../domain/preferences');
+const users = require('../domain/users');
+const meetings = require('../domain/meetings');
 
 // Every turn must open with turn_start — the rule everything else (quota,
 // pause, offerResume, name capture) hangs off. Checked for every scenario
@@ -76,6 +78,19 @@ function replyTargetBlock(body, senderLabel = 'עולמה') {
     '```',
     '',
   ].join('\n');
+}
+
+// The next <weekday> (0 = Sunday) at hh:00 Israel time, at least three days
+// out, as ISO-8601 with offset — the shape propose/answer require.
+function nextWeekdayAt(weekday, hh) {
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' });
+  for (let i = 3; i < 11; i++) {
+    const d = new Date(Date.now() + i * 86400_000);
+    const parts = Object.fromEntries(fmt.formatToParts(d).filter((p) => p.type !== 'literal').map((p) => [p.type, p.value]));
+    const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday);
+    if (wd === weekday) return `${parts.year}-${parts.month}-${parts.day}T${String(hh).padStart(2, '0')}:00:00+03:00`;
+  }
+  return null;
 }
 
 async function count(client, sql, params) {
@@ -276,6 +291,61 @@ const SCENARIOS = [
             WHERE owner_id = $1 AND title LIKE '%שיניים%' AND status = 'open'`, [ctx.userId])) === 1 },
     ],
     rubric: 'המשתמשת השיבה "סיימתי" בתגובה (reply) להודעה שמצטטת את הארנונה, בזמן שפתוח לה גם תור לרופא שיניים. בדוק: (1) התשובה מתייחסת לארנונה — לא לרופא השיניים ולא לשתי המשימות יחד. (2) אין שאלה "מה סיימת?" — הציטוט כבר ענה על זה. (3) התשובה קצרה ומאשרת.',
+  },
+  {
+    // Since 2026-09-05 a meeting holds several candidate times. The tool
+    // description says "add", the notification says "joins the table, replaces
+    // nothing" — and a cheap model that has learned "propose = replace" would
+    // quietly throw the first option away. The check is on the ROWS: two
+    // active options afterwards, the first one still standing.
+    id: 'meeting-second-option',
+    title: 'הצעת מועד נוסף מתווספת לשולחן ולא מוחקת את הקודם',
+    seed: async (client, userId) => {
+      // A partner the eval user is connected to, with meetings enabled both
+      // ways, and one coordination between them with one option on the table.
+      // Idempotent across nightly runs: the partner and the connection persist,
+      // the meeting is fresh every run (old ones expire on their own).
+      const PHONE = '+972500000777';
+      let partner = await users.getByPhone(client, PHONE);
+      if (!partner) {
+        const made = await users.createUser(client, { phone: PHONE, firstName: 'דנה', timezone: 'Asia/Jerusalem' });
+        partner = made.data.user;
+      }
+      const { rows: conn } = await client.query(
+        `SELECT id FROM connections WHERE status = 'active'
+           AND ((requester_id = $1 AND target_id = $2) OR (requester_id = $2 AND target_id = $1)) LIMIT 1`, [userId, partner.id]);
+      let connId = conn[0] && conn[0].id;
+      if (!connId) {
+        const { rows } = await client.query(
+          `INSERT INTO connections (requester_id, target_id, target_phone, status, responded_at)
+           VALUES ($1, $2, $3, 'active', now()) RETURNING id`, [userId, partner.id, PHONE]);
+        connId = rows[0].id;
+      }
+      for (const grantor of [userId, partner.id]) {
+        await client.query(
+          `INSERT INTO connection_feature_grants (connection_id, grantor_id, feature)
+           SELECT $1, $2, 'meetings'
+            WHERE NOT EXISTS (SELECT 1 FROM connection_feature_grants WHERE connection_id = $1 AND grantor_id = $2 AND feature = 'meetings')`,
+          [connId, grantor.id]);
+      }
+      const m = await meetings.startMeeting(client, partner.id, 'קפה עם דנה', [userId]);
+      // Sunday 18:00 Israel time, at least three days out: in the future and named by weekday.
+      await meetings.options.add(client, partner.id, m.data.meeting.id, 'יום ראשון 18:00', nextWeekdayAt(0, 18));
+    },
+    turns: ['בפגישה "קפה עם דנה" תציעי בבקשה גם את יום שלישי הקרוב ב-20:00, בנוסף למה שכבר הוצע'],
+    hard: async (client, ctx) => [
+      turnStartFirst(ctx),
+      { name: 'a second option is on the table and the first still stands',
+        pass: (await count(client,
+          `SELECT count(*)::int AS n FROM meeting_options o JOIN meetings m ON m.id = o.meeting_id
+            WHERE m.title = 'קפה עם דנה' AND m.status = 'negotiating' AND o.status = 'active'
+              AND m.created_at > now() - interval '1 hour'`, [])) === 2 },
+      { name: 'nothing was replaced',
+        pass: (await count(client,
+          `SELECT count(*)::int AS n FROM meeting_options o JOIN meetings m ON m.id = o.meeting_id
+            WHERE m.title = 'קפה עם דנה' AND m.created_at > now() - interval '1 hour' AND o.status = 'replaced'`, [])) === 0 },
+    ],
+    rubric: 'המשתמש ביקש להוסיף מועד שני (יום שלישי 20:00) לתיאום שכבר יש בו מועד. בדוק: (1) התשובה מאשרת שהמועד נוסף לצד הקודם, לא במקומו. (2) עולמה לא מכריזה שהפגישה נקבעה. (3) קצר, בלי שאלות מיותרות.',
   },
 ];
 
