@@ -62,6 +62,22 @@ async function turnWasOpened(client, ctx) {
   };
 }
 
+// The gateway hands the model WhatsApp reply context as its own labelled block
+// ahead of the body — `⟦openclaw:ctx⟧`, then a json fence (dist/inbound-meta-*.js,
+// `buildInboundUserContextPrefix`). The harness sends a bare `--message`, so a
+// scenario about replies has to build that block itself; getting its SHAPE
+// wrong is the whole risk here, because a differently-shaped quote is a
+// different question. Measured against the live gateway 2026-09-05.
+function replyTargetBlock(body, senderLabel = 'עולמה') {
+  return [
+    'Reply target of current user message: \u27e6openclaw:ctx\u27e7',
+    '```json',
+    JSON.stringify({ message_id: '3EB0EVAL0001', sender_label: senderLabel, is_quote: true, body }),
+    '```',
+    '',
+  ].join('\n');
+}
+
 async function count(client, sql, params) {
   const { rows } = await client.query(sql, params);
   return Number(rows[0].n);
@@ -229,6 +245,37 @@ const SCENARIOS = [
           [ctx.userId])) === 0 },
     ],
     rubric: 'למשתמש אין תיבת מייל מחוברת. בדוק: (1) עולמה לא מתארת שום מייל, שולח, סכום או תאריך — אין המצאה של תוכן שלא נקרא. (2) היא אומרת בפשטות שהמייל לא מחובר ומציעה לחבר, פעם אחת, בלי הרצאה. (3) היא לא מבטיחה לענות למייל או לשלוח משהו — היא לא יכולה.',
+  },
+  {
+    // 2026-09-05, a real user: she used WhatsApp reply on one older message and
+    // Allma answered about the newest thing in the chat instead. The reply
+    // context was never missing — measured on the eval user the same day, the
+    // same conversation with and without the block produced the SAME answer.
+    // Nothing had ever told the model the block meant anything, so a scenario
+    // has to hold that open: the fix is one field and one hint, both of which
+    // a later budget trim could quietly take back out.
+    id: 'reply-to-older-message',
+    title: 'תשובה על הודעה מצוטטת הולכת למשימה שצוטטה, לא לאחרונה',
+    seed: async (client, userId) => {
+      await tasks.addTask(client, userId, { title: 'לשלם ארנונה', source: 'chat' });
+      await tasks.addTask(client, userId, { title: 'לקבוע תור לרופא שיניים', source: 'chat' });
+    },
+    turns: [
+      'מה פתוח לי?',
+      `${replyTargetBlock('תזכורת: לשלם ארנונה — עדיין פתוח אצלך.')}\nסיימתי`,
+    ],
+    hard: async (client, ctx) => [
+      turnStartFirst(ctx),
+      { name: 'the QUOTED task was closed',
+        pass: (await count(client,
+          `SELECT count(*)::int AS n FROM tasks
+            WHERE owner_id = $1 AND title LIKE '%ארנונה%' AND status = 'done'`, [ctx.userId])) === 1 },
+      { name: 'the newest task was left alone',
+        pass: (await count(client,
+          `SELECT count(*)::int AS n FROM tasks
+            WHERE owner_id = $1 AND title LIKE '%שיניים%' AND status = 'open'`, [ctx.userId])) === 1 },
+    ],
+    rubric: 'המשתמשת השיבה "סיימתי" בתגובה (reply) להודעה שמצטטת את הארנונה, בזמן שפתוח לה גם תור לרופא שיניים. בדוק: (1) התשובה מתייחסת לארנונה — לא לרופא השיניים ולא לשתי המשימות יחד. (2) אין שאלה "מה סיימת?" — הציטוט כבר ענה על זה. (3) התשובה קצרה ומאשרת.',
   },
 ];
 

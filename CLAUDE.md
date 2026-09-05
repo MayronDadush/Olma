@@ -167,6 +167,16 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   (killing `isDeafOnDayOne`), reset `checkin_misses` (killing the check-in
   backoff), wrote `message.received` (the response-rate numerator counted our
   own sends as replies) and spent the once-per-life first-turn signal.
+- **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
+  The gateway carries it end to end — `reply_to_id` in `Conversation info`, the
+  quoted text in a `Reply target of current user message` block — and nothing
+  server-side receives either, so there is no fix available outside the prompt.
+  Measured 2026-09-05: the block alone changes nothing. The same conversation
+  with it and without it produced the same answer, because nothing had told the
+  model it meant anything. `turn_start`'s `reply_to_id` (the model has to look
+  for it) plus `hints.replyTarget` (arrives mid-turn, says to answer the quoted
+  message) is what makes it land; `tests/reply-target.test.js` and eval
+  `reply-to-older-message` hold both halves open.
 - **The ledgers are append-only.** Rows already written stay as written, even
   when the pricing that produced them was wrong.
 - **The assistant is עולמה / Allma; the system is still olma2.** The rename

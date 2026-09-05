@@ -40,6 +40,7 @@ never trust a dated narrative for something you are about to act on.
 **Delivery, outbox and proactive messages**
 
 - [Olma's own check-in counted as the user writing back (fixed 2026-09-04)](#olmas-own-check-in-counted-as-the-user-writing-back-fixed-2026-09-04)
+- [A reply pointed at one message and Olma answered another (fixed 2026-09-05)](#a-reply-pointed-at-one-message-and-olma-answered-another-fixed-2026-09-05)
 - [A notification that reported success and never arrived (2026-08-14)](#a-notification-that-reported-success-and-never-arrived-2026-08-14)
 - [`--deliver` needs the agent AND the session key, not either (2026-08-14)](#--deliver-needs-the-agent-and-the-session-key-not-either-2026-08-14)
 - [Reminders that come back, and cadences that could not be said (2026-08-29)](#reminders-that-come-back-and-cadences-that-could-not-be-said-2026-08-29)
@@ -1010,6 +1011,69 @@ down; the audit row carries fingerprints, which is what `token-leak.js`
 compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
+
+### A reply pointed at one message and Olma answered another (fixed 2026-09-05)
+
+Reported by the owner about a live user, מאיה: she used WhatsApp reply on one
+specific message and Olma answered about something else. His words were that
+this is not new — "לא תמיד שמה לב" — which is the shape that matters here. An
+always-fails bug gets found on day one. This one had been landing on whoever
+happened to quote an older message, silently, for as long as the system has
+been running.
+
+The first guess was that the reply context never reaches us, and it is worth
+writing down that this was wrong, because it is the guess anybody would make.
+The gateway carries it end to end: Baileys' `contextInfo.quotedMessage` becomes
+`msg.quote` in the WhatsApp plugin, survives `resolveVisibleWhatsAppReplyContext`
+(the visibility filter defaults to `all`, so nothing is dropped), and reaches
+the prompt as TWO things — `reply_to_id` inside the `Conversation info` block,
+and the quoted text as its own labelled block, `Reply target of current user
+message:`, with `is_quote` and the body. The plugin even refuses to debounce a
+quote-carrying message into a batch (`allowDebounce: !(… || msg.quote?.id ||
+msg.quote?.body)`), which is precisely the merge that would have destroyed it.
+None of that is configurable-away, and none of it was broken.
+
+**What was broken is that nothing had ever told the model those blocks meant
+anything.** Neither the doctrine nor any tool description mentioned a reply, so
+the block sat in the prompt as one more piece of metadata to skim.
+
+Measured before changing anything, on the eval user, twice through the same
+two-topic conversation (electric bikes, then moving flat) with the context
+blocks assembled exactly as `buildInboundUserContextPrefix` assembles them:
+
+- arm A — `reply_to_id` present, `Reply target` block quoting the FIRST answer,
+  then a bare `כן, בואי נתקדם עם זה`;
+- arm B — the identical conversation with no reply metadata at all.
+
+Both arms answered the same way: they acted on both topics, weighting the
+newest. The reply block changed nothing. That is the measurement the fix rests
+on, and it is also the control the fix needed — without arm B, arm A's wrong
+answer proves nothing about whether the block was even read.
+
+An earlier, sloppier probe had put the same block in as the message BODY, with
+no `Conversation info` ahead of it, and the model handled it perfectly. That
+near-miss is the reason the faithful shape mattered: a probe that does not
+reproduce the real prompt reads as "works fine" for a bug that is live.
+
+The fix is model-side because there is nowhere else for it to be. The reply id
+is WhatsApp's, we have never recorded the ids of our own outbound messages
+(`--deliver` sends through the agent and reports none), and nothing
+server-side ever receives the quoted text — like `sender`, it reaches the MODEL
+and stops there. So: `turn_start` gained an optional `reply_to_id`, listed in
+its description beside `sender_name` and `message_id` so the model has to go
+and look for it, and passing it returns `hints.replyTarget` — mid-turn, before
+the reply is written — saying to go back and answer the quoted message. The
+doctrine paragraph that had said "Pass **two** of its fields" now names the
+third; that numeral was actively arguing against it.
+
+Both halves were paid for rather than added: the tool JSON was 82 chars under
+its 55k ceiling, and three descriptions were trimmed of redundant wording to
+make room; the doctrine had 21 chars of headroom and the new clause was written
+to fit inside them. `tests/reply-target.test.js` holds the field, the hint and
+both mentions open, and eval scenario `reply-to-older-message` is the arm-A
+conversation as a nightly check: two open tasks, `סיימתי` sent as a reply
+quoting the older one, and the hard check is that the QUOTED task closed and
+the newest one did not.
 
 ### Olma's own check-in counted as the user writing back (fixed 2026-09-04)
 
