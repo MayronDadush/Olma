@@ -107,6 +107,7 @@ never trust a dated narrative for something you are about to act on.
 - [Availability is tapped on a page, not typed (2026-08-28)](#availability-is-tapped-on-a-page-not-typed-2026-08-28)
 
 **Features as they shipped**
+- [A 👍 is the answer; the sentence after it is a second notification (2026-09-05)](#a--is-the-answer-the-sentence-after-it-is-a-second-notification-2026-09-05)
 
 - [Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)](#live-updates--עדכן-אותי-על-as-infrastructure-2026-08-28)
 - [Image + video generation, access-limited, spend in its own column (2026-08-28)](#image--video-generation-access-limited-spend-in-its-own-column-2026-08-28)
@@ -3054,6 +3055,26 @@ immediately before the merge, not once at the start.
 
 
 ## Features as they shipped
+
+### A 👍 is the answer; the sentence after it is a second notification (2026-09-05)
+
+Miron replied "תמחוק את המשימה" to a reminder, saw the 👍 land on his own
+message, and then got "מחקתי את 'לשתות מים' ✅ לא אזכיר לך יותר" as well — the
+same fact twice, one of them a notification. The reaction feature exists
+precisely so that a plain instruction costs the person no notification and
+no line in the chat (`domain/reactions.js`, top of file); the reply undid
+that.
+
+The doctrine could not carry the rule (it is full) and did not need to:
+brokerd is the one place that knows whether a done-mark was asked for on
+THIS message. When it was, the tool result gains `hints.markPlaced`, telling
+the model the mark already says "done" and to answer `NO_REPLY` unless it
+has something the mark cannot carry — a question, a caveat, an error, another
+hint. It rides only the turns it applies to, and it says `attempted`, never
+`sent`: the instruction is about not repeating the mark's meaning, not
+about relying on the mark having landed. The undo-shaped tools — archive,
+cancel reminder, edit, forget — were added to `TOOL_MARKS` so "delete that"
+earns the same 👍 as "add that".
 
 ### Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)
 

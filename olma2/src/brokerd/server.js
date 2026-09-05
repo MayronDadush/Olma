@@ -139,8 +139,9 @@ function createBrokerServer({ pool, flood, placeMark }) {
       // supplied — so a wrong id can only mark a different message in the same
       // person's chat with Olma.
       const mark = reactions.markFor(name, result, turn);
+      let placed = null;
       if (mark && actorPhone) {
-        placeMark({
+        placed = placeMark({
           channel: 'whatsapp', // the one channel whose reactions we have verified
           target: actorPhone,
           messageId: turn.messageId,
@@ -151,6 +152,26 @@ function createBrokerServer({ pool, flood, placeMark }) {
           // configurable at all.
           emoji: turn.reactionVocab && turn.reactionVocab[mark],
         });
+      }
+      // Miron, 2026-09-05, having deleted a task by reply: he got the 👍 AND a
+      // sentence saying it was deleted. The mark already says "done"; words
+      // after it are a second notification for the same fact. So when — and
+      // only when — a done-mark was asked for on this message, the result says
+      // so, and the model is told the mark may be the whole answer. It rides
+      // the RESULT rather than the doctrine: it costs tokens only on the turns
+      // it applies to, and it arrives at the exact moment the model decides
+      // what to write (the same budget rule as turn_start's hints).
+      // `attempted`, never `sent` — placeMark makes no delivery claim, and
+      // neither does this: the instruction is about not repeating the mark's
+      // meaning, not about relying on the mark having landed.
+      if (placed && placed.attempted && mark === 'done' && result && result.ok && result.data && typeof result.data === 'object') {
+        result.data.hints = {
+          ...(result.data.hints || {}),
+          markPlaced: 'A 👍 has already been put on their message: it tells them this is done. '
+            + 'If they gave a plain instruction and you have nothing to add — no question worth '
+            + 'asking, no caveat, no error, no other hint here — reply with exactly NO_REPLY and '
+            + 'nothing else. Write only when the words carry something the mark cannot.',
+        };
       }
       return { ok: true, text: renderResult(result) };
     } catch (e) {
