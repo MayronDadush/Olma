@@ -117,6 +117,19 @@ test('/health reports 503 when a job is genuinely stuck', async () => {
   await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'outbox_worker'`);
 });
 
+// The off-box backup is a cron script, not a sweep, but its heartbeat sits on
+// the same board — and a row that shows up as a bare `backup_offbox` is a
+// puzzle to the person reading it. The label is the contract with the page.
+test('the off-box backup heartbeat reads in plain Hebrew on the health board', async () => {
+  await db.pool.query(
+    `INSERT INTO job_heartbeats (job_name, last_run_at, last_ok_at, note)
+     VALUES ('backup_offbox', now(), now(), 'uploaded olma2-2026-09-05.sql.gz 4096B; pruned 0 older than 30d')`);
+  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.ok(html.includes('גיבוי יומי של מסד הנתונים מחוץ לשרת'), 'labelled, not the raw job name');
+  assert.ok(!html.includes('>backup_offbox<'), 'raw job name never shown');
+  await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'backup_offbox'`);
+});
+
 test('/ready is the deploy gate and a stale sweep must not fail it', async () => {
   // The deadlock this guards, live on 2026-08-22: deploy.sh gated on /health,
   // /health is 503 whenever any sweep is behind, and five seconds after a
