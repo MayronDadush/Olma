@@ -252,6 +252,77 @@ Above that she says once that the group is too large and stops responding
 there. Bigger groups never realistically unlock, and each tag costs a model
 turn. The number is a dashboard flag, not a constant.
 
+## The greeter, and why an unknown group needs one
+
+The owner's rule (2026-09-05): **she introduces herself on the first message in
+the group, whoever sends it** — a fixed template, not a model turn: who she is,
+what she does in one line, and that you reach her by tagging her.
+
+Being added to a group produces no event we can act on. The WhatsApp plugin
+does listen to `group-participants.update` and `groups.upsert`, but only to
+invalidate its metadata cache — nothing becomes a turn. And
+`pluginHooks.messageReceived` does not help either: it fires deep inside the
+turn-preparation path, after sender policy, after mention gating, immediately
+before dispatch. It means "a turn is about to run", not "a message arrived".
+
+So the first message in a group has to actually wake something. Three verified
+facts make that affordable:
+
+- `groups["*"]` admits every group, so the map can carry per-group settings
+  without blocking a group we have never seen.
+- an exact JID entry **outranks** the wildcard
+  (`resolveChannelGroupRequireMention`: group entry -> `"*"` entry -> `true`).
+- `sendPolicy` matches `rawKeyPrefix`, so a whole AGENT can be muted, not just
+  one group.
+
+The shape:
+
+```json5
+groups: {
+  "*":     { requireMention: false },  // a group we have never seen: anything wakes her
+  "<jid>": { requireMention: true  },  // a registered group: a real tag only
+}
+bindings: [ { agentId: "ggreet", match: { peer: { kind: "group", id: "*" } } } ]
+session: { sendPolicy: { rules: [ { action: "deny", match: { rawKeyPrefix: "agent:ggreet:" } } ] } }
+```
+
+An unknown group therefore lands on **`ggreet`, an agent that is permanently
+muted at the gateway** and exists for one reason: to make a turn happen so the
+group, its subject and its roster are written to a transcript brokerd can read.
+brokerd then registers the group, sends the canned introduction on the raw pipe,
+and writes the group's own entry (`requireMention: true`), its own agent and its
+own binding — one `saveConfig`, so it hot-applies.
+
+The cost is one cheap model turn per message in an unregistered group, for the
+seconds until that write lands. It is bounded by how fast the sweep runs, and
+`ggreet` should point at the cheapest model on the roster.
+
+**`sendPolicy` cannot express "deny all groups except these".** The resolver
+returns on the first matching deny regardless of an earlier allow, so a blanket
+`chatType: "group"` deny could never be lifted per group. Muting by agent is
+what makes the greeter safe.
+
+## Coordination: the group is a trigger and a status channel, not a new engine
+
+`domain/meetings.js` already holds the whole negotiation — `startMeeting`,
+`proposeSlot`, `respondToSlot`, `tryConfirm`, private vs shareable constraints,
+opt-out, expiry. Group mode adds a trigger (a tag that asks for a meeting), a
+participant set (the group's members), and a status channel (the group itself).
+It does not add a second scheduler.
+
+Owner's decisions on the flow (2026-09-05):
+
+- **Scope: coordination only, for now.** Tagged and asked something unrelated,
+  she says that belongs in the private chat. What people actually ask for in
+  groups goes on the dashboard, and the scope widens from evidence.
+- **The awake window is the existing 15 minutes**, reused from
+  `outbox/gate.js` — whoever tagged her, and whoever wrote after them, is
+  demonstrably awake, so a private message may go out in their quiet hours.
+  **Strictly bounded to an open coordination belonging to that group**: seeing
+  that somebody is awake is never a licence to raise anything else with them.
+- **Every tag in a locked group is answered, but the answer shortens** — the
+  full explanation once, then the missing people's tags and one line.
+
 ## Still open
 
 1. Does the in-Olma group object own meetings/coordination directly, or is it
