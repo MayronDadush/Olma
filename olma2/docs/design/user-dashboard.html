@@ -5878,10 +5878,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   function mtState(m){
     if(m.settled){
       var s = mtOptById(m, m.settled);
-      return s ? mtOptLabel(m, s) : t("mt.stateNone");
+      return s ? mtOptLabel(m, s) : (m.slotText ? t("mt.settledAs", {when:m.slotText}) : t("mt.stateNone"));
     }
     var b = mtBest(m), total = mtActive(m).length;
-    if(!b) return mtLive(m).length ? t("mt.stateNone") : t("mt.stateNoOpts");
+    if(!b) return mtLive(m).length ? t("mt.stateNone") : (m.slotText || t("mt.stateNoOpts"));
     var y = mtN(m, b, "y"), no = mtN(m, b, "n"), wait = total - y - no;
     if(y === total) return mtOptLabel(m, b);
     if(wait) return pl("mtW", wait);
@@ -5921,13 +5921,17 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      something to offer. The server takes the same view and sends only these
      two fields (`meetingsLeft`, domain/user-dashboard.js). */
   function mtLeftHTML(m){
+    /* Two kinds of row share this list: one you left (a way back in) and one
+       that settled and happened (nothing to do — it is over). */
+    var settled = !!m.settled;
     return '<div class="group" style="margin-bottom:10px"><div class="mtrow">' +
       '<span class="mtcard" style="cursor:default"><span class="mtbody">' +
       '<span class="mtname">' + esc(L(m.t)) + "</span>" +
-      '<span class="mtstate">' + esc(t("mt.youLeft")) + "</span></span></span>" +
+      '<span class="mtstate">' + esc(settled ? t("mt.settledAs", {when:m.slot || ""}) : t("mt.youLeft")) + "</span></span></span>" +
+      (settled ? "" :
       '<button class="tundo" data-mtback="' + m.id + '" aria-label="' +
       esc(t("mt.rejoin")) + '" title="' + esc(t("mt.rejoin")) +
-      '"><svg><use href="#i-undo"/></svg></button></div></div>';
+      '"><svg><use href="#i-undo"/></svg></button>') + '</div></div>';
   }
   function renderMeets(){
     /* Settled coordinations are not "active" any more — they are calendar
@@ -7651,7 +7655,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       t:m.title || "",
       by:m.mine ? 0 : m.initiatorId,
       who:who, allDay:false, opts:opts, ans:ans, left:left,
-      settled:settledOpt && opts.length ? opts[0].id : null,
+      /* Settled is settled even when the slot carries no start time (rows from
+         before slots had one): the page must never draw a confirmed meeting as
+         a negotiation with nothing proposed. `slotText` is the human words of
+         the slot for exactly those rows. */
+      settled:settledOpt ? (opts.length ? opts[0].id : "text") : null,
+      slotText:(settledOpt ? m.confirmedSlot : m.slot) || "",
       /* Whether the settled slot sits on THIS person's own calendar is not
          something we record per participant, so it is not claimed. */
       inCal:false,
@@ -7755,7 +7764,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     EVENTS = {};
     PEOPLE = {};
     MEETS = (d.meetings || []).map(liveMeet);
-    MTLEFT = (d.meetingsLeft || []).map(function(m){ return {id:m.id, t:m.title || ""}; });
+    MTLEFT = (d.meetingsLeft || []).map(function(m){ return {id:m.id, t:m.title || "", settled:!!m.settled, slot:m.slot || ""}; });
     mtOpen = null;
     LIVE = true;
     renderAll();

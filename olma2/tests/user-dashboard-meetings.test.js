@@ -190,6 +190,30 @@ test('a coordination you left leaves the active list and lands in the archive', 
   assert.equal(arc.youLeft, true);
 });
 
+// 2026-09-05: a meeting settled on 2026-08-20 — its slot only in words, from
+// before slots carried a start time — sat on a user's ACTIVE list reading "no
+// time proposed yet". Settled and happened is the archive, with the words.
+test('a settled meeting that has happened leaves the active list and lands in the archive, with its slot', async () => {
+  const past = await coordination(gali, [me, ron], 'פוקר');
+  const when = new Date(Date.now() - 2 * 86400_000).toISOString();
+  await db.pool.query(`UPDATE meetings SET status = 'confirmed', confirmed_slot = 'יום שלישי 21:00', confirmed_start_at = $2, updated_at = now() - interval '2 days' WHERE id = $1`, [past, when]);
+  const legacy = await coordination(gali, [me, ron], 'banana');
+  await db.pool.query(`UPDATE meetings SET status = 'confirmed', confirmed_slot = 'שבת 08:30 בבננה', confirmed_start_at = NULL, updated_at = now() - interval '16 days' WHERE id = $1`, [legacy]);
+  const soon = await coordination(gali, [me, ron], 'קפה מחר');
+  await db.pool.query(`UPDATE meetings SET status = 'confirmed', confirmed_slot = 'מחר 17:00', confirmed_start_at = $2 WHERE id = $1`, [soon, tomorrowAt('17')]);
+
+  const page = await tx((c) => dash.load(c, me.id));
+  const active = new Set(page.data.meetings.map((x) => Number(x.id)));
+  assert.equal(active.has(soon), true, 'a settled meeting still ahead stays where it can be seen');
+  assert.equal(active.has(past), false, 'one that happened is not active');
+  assert.equal(active.has(legacy), false, 'one settled long ago in words only is not active either');
+  const arcPast = page.data.meetingsLeft.find((x) => x.id === past);
+  const arcLegacy = page.data.meetingsLeft.find((x) => x.id === legacy);
+  assert.deepEqual(arcPast, { id: past, title: 'פוקר', youLeft: false, settled: true, slot: 'יום שלישי 21:00' });
+  assert.deepEqual(arcLegacy, { id: legacy, title: 'banana', youLeft: false, settled: true, slot: 'שבת 08:30 בבננה' });
+  assert.equal(page.data.meetingsLeft.some((x) => x.id === soon), false);
+});
+
 test('the archive carries a title and an id, and nothing about the negotiation', async () => {
   // Watching the others answer a coordination you stepped out of is not a
   // feature. The archive row is what "put me back in" needs and no more.

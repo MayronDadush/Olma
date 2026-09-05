@@ -342,7 +342,15 @@ async function loadMeetings(client, userId, zone) {
      FROM meetings m
      JOIN meeting_participants p ON p.meeting_id = m.id
      WHERE p.user_id = $1 AND p.state != 'opted_out'
-       AND m.status IN ('negotiating', 'confirmed')
+       AND (m.status = 'negotiating'
+            -- A settled meeting is "active" only until it has happened. One
+            -- from 2026-08-20 sat on a user's list on 2026-09-05 reading "no
+            -- time proposed yet": confirmed, dated only in its slot TEXT (it
+            -- predates start times), and never expiring because expiry covers
+            -- negotiations. Past or text-only settled meetings are archive.
+            OR (m.status = 'confirmed'
+                AND ((m.confirmed_start_at IS NOT NULL AND m.confirmed_start_at > now() - interval '6 hours')
+                     OR (m.confirmed_start_at IS NULL AND m.updated_at > now() - interval '3 days'))))
      ORDER BY m.id DESC`,
     [userId, zone]
   );
@@ -432,7 +440,25 @@ async function loadLeftMeetings(client, userId) {
       LIMIT 20`,
     [userId]
   );
-  return rows.map((m) => ({ id: Number(m.id), title: m.title, youLeft: true }));
+  const left = rows.map((m) => ({ id: Number(m.id), title: m.title, youLeft: true }));
+  // Settled meetings that have happened (or, for the text-only rows that
+  // predate start times, settled a while ago). The mirror image of the
+  // active-list rule in loadMeetings: what leaves there arrives here, so a
+  // coordination never simply vanishes. Title and the words of the slot, no
+  // tally and no way back in — it is over.
+  const { rows: done } = await client.query(
+    `SELECT m.id, m.title, m.confirmed_slot
+       FROM meetings m
+       JOIN meeting_participants p ON p.meeting_id = m.id
+      WHERE p.user_id = $1 AND p.state <> 'opted_out'
+        AND m.status = 'confirmed'
+        AND ((m.confirmed_start_at IS NOT NULL AND m.confirmed_start_at <= now() - interval '6 hours')
+             OR (m.confirmed_start_at IS NULL AND m.updated_at <= now() - interval '3 days'))
+      ORDER BY m.id DESC
+      LIMIT 20`,
+    [userId]
+  );
+  return left.concat(done.map((m) => ({ id: Number(m.id), title: m.title, youLeft: false, settled: true, slot: m.confirmed_slot || '' })));
 }
 
 // The whole page, in one object. A missing or blocked user is `not_found` and
