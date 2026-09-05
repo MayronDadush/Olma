@@ -329,12 +329,30 @@ function insertPlan(tables, edges, pk) {
 async function insertRows(client, tbl, rows, deferredCols, pkCols) {
   if (!rows.length) return 0;
   const meta = await columns(client, tbl);
-  const cols = meta.map((c) => c.col);
   const typeOf = Object.fromEntries(meta.map((c) => [c.col, c.type]));
   const hasIdentity = meta.some((c) => c.identity === 'a' || c.identity === 'd');
   const conflict = pkCols.length ? `(${pkCols.join(',')})` : '';
   let n = 0;
   for (const row of rows) {
+    // Name only the columns the SNAPSHOT actually carries. The live table is
+    // read fresh here, so it also holds every column added by a migration that
+    // ran AFTER the snapshot was taken — and those are absent from `row`.
+    // Naming one anyway sends an explicit NULL, which overrides the DEFAULT the
+    // migration handed every other existing row, and fails outright when the
+    // column is NOT NULL. Omitting it lets Postgres apply that same default,
+    // which is exactly what the migration did to the rows this snapshot is
+    // being restored beside.
+    //
+    // Found 2026-09-05 restoring a 2026-09-04 snapshot: migration 031 added
+    // `users.locale_observed_count INT NOT NULL DEFAULT 0`, and the restore died
+    // on its not-null constraint. `rehearse` caught it against live rows and
+    // rolled back, which is the whole reason that command exists.
+    //
+    // A column added NOT NULL with NO default still fails, and should: that row
+    // genuinely cannot be reconstructed, and a silent zero would be invented data.
+    const cols = meta
+      .map((c) => c.col)
+      .filter((c) => deferredCols.includes(c) || Object.prototype.hasOwnProperty.call(row, c));
     const values = cols.map((c) => (deferredCols.includes(c) ? null : encodeForInsert(row[c], typeOf[c])));
     const ph = cols.map((_, i) => `$${i + 1}`).join(',');
     const sql = `INSERT INTO ${tbl} (${cols.join(',')}) ${hasIdentity ? 'OVERRIDING SYSTEM VALUE ' : ''}`
