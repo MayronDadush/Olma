@@ -12,7 +12,7 @@ artifact (see CLAUDE.md at repo root for context and server details).
 | `src/domain/` | Pure business modules; structured results (`{ok, data}` / `{ok, error}`), no user-facing prose, no message I/O |
 | `src/adapters/mcp/` | Renders domain results as text for the agent (Phase C) |
 | `src/adapters/mcp/tools/` | The 86 agent tools, one file per domain; `../registry.js` is only the ORDER they are listed in |
-| `src/adapters/http/` | Admin + user dashboards over the same domain (Phase F) |
+| `src/adapters/http/` | Admin + user dashboards over the same domain (Phase F); the admin page is `dashboard.js` (router) + `admin/**` (sections, pages, posts, shell) |
 | `src/outbox/` | Respectful-delivery worker (Phase D) |
 | `src/jobs/` | checkin ladder, digest, usage, metrics (Phase D+) |
 | `src/jobs/registry.js` | Every job brokerd arms, as `{ name, run }`; `expectations.js` is the cadence, `tests/job-registry.test.js` holds the two together |

@@ -140,18 +140,20 @@ test('a read that outlives its deadline rejects and the worker is replaced, not 
   // demand without a fixture that could hang the suite itself.
   const key = require.resolve('../src/channels/sessions-async');
   const saved = process.env.OLMA_SESSIONS_READ_TIMEOUT_MS;
-  process.env.OLMA_SESSIONS_READ_TIMEOUT_MS = '200';
+  process.env.OLMA_SESSIONS_READ_TIMEOUT_MS = '300';
   delete require.cache[key];
   const fast = require('../src/channels/sessions-async');
   if (saved === undefined) delete process.env.OLMA_SESSIONS_READ_TIMEOUT_MS; else process.env.OLMA_SESSIONS_READ_TIMEOUT_MS = saved;
   delete require.cache[key];
   try {
-    assert.equal(fast.CALL_TIMEOUT_MS, 200);
+    assert.equal(fast.CALL_TIMEOUT_MS, 300);
     // Sanity: the hook is live in the worker (a short stall completes).
     assert.equal(await fast._call('__stall', [10]), 'stalled');
     const t0 = Date.now();
-    await assert.rejects(fast._call('__stall', [1500]), /did not return within 200ms; worker replaced/);
-    assert.ok(Date.now() - t0 < 1_000, 'gave up on the deadline, not on the stall ending');
+    await assert.rejects(fast._call('__stall', [2500]), /did not return within 300ms; worker replaced/);
+    assert.ok(Date.now() - t0 < 2_000, 'gave up on the deadline, not on the stall ending');
+    // The replacement's cold spawn is not charged to its first read: on a
+    // loaded single core the spawn alone outran the old deadline.
     // The replacement worker answers, and reads the real fixture.
     assert.equal((await fast.listSessionsForAgent(AGENT)).length, 1);
   } finally {
@@ -170,16 +172,16 @@ test('an idle worker sheds itself, and the next call simply starts another', asy
   const brief = require('../src/channels/sessions-async');
   if (saved === undefined) delete process.env.OLMA_SESSIONS_WORKER_IDLE_MS; else process.env.OLMA_SESSIONS_WORKER_IDLE_MS = saved;
   delete require.cache[key];
-  const ports = () => process.getActiveResourcesInfo().filter((r) => r === 'MessagePort').length;
   try {
     assert.equal(brief.IDLE_MS, 150);
-    const before = ports();
+    assert.equal(brief._live(), false, 'nothing spawned until the first call');
     assert.equal((await brief.listSessionsForAgent(AGENT)).length, 1);
-    assert.equal(ports(), before + 1, 'a live worker holds one MessagePort');
+    assert.equal(brief._live(), true, 'a worker exists after a call');
     await new Promise((r) => setTimeout(r, 500));
-    assert.equal(ports(), before, 'gone after the idle window');
+    assert.equal(brief._live(), false, 'gone after the idle window');
     // Respawn is invisible to the caller.
     assert.equal((await brief.listSessionsForAgent(AGENT)).length, 1);
+    assert.equal(brief._live(), true);
   } finally {
     await brief.close();
   }
