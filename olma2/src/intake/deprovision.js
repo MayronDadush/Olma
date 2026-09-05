@@ -39,7 +39,11 @@ async function previewDeletion(client, phone) {
 
 // deps.configPath / deps.removeWorkspace exist so tests never touch the live
 // gateway config or a real workspace.
-async function deprovisionUser(client, phone, { configPath, removeWorkspace = true } = {}) {
+async function deprovisionUser(client, phone, {
+  configPath, removeWorkspace = true,
+  // Same seam as provisionUser: injectable so the suite never spawns systemctl.
+  restartGateway = require('./gateway-restart').restartGateway,
+} = {}) {
   const preview = await previewDeletion(client, phone);
   if (!preview.ok) return preview;
   const { user, counts } = preview.data;
@@ -65,10 +69,8 @@ async function deprovisionUser(client, phone, { configPath, removeWorkspace = tr
   const bindingRemoved = before.bindings !== cfg.bindings.length;
   let restarted = false;
   if (bindingRemoved && !agentRemoved) {
-    const { spawnSync } = require('node:child_process');
-    const r = spawnSync('systemctl', ['--user', 'restart', 'openclaw-gateway'],
-      { env: { ...process.env, XDG_RUNTIME_DIR: '/run/user/0' } });
-    restarted = r.status === 0;
+    // Awaited, never spawnSync — this runs inside brokerd (see provision.js).
+    restarted = await restartGateway();
   }
 
   // Through removeWorkspaceTree, never a bare rmSync: .olma-identity carries

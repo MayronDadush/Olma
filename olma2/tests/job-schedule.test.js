@@ -9,7 +9,11 @@ const {
 } = require('../src/jobs/expectations');
 
 const BROKERD = fs.readFileSync(path.join(__dirname, '..', 'bin', 'olma-brokerd.js'), 'utf8');
-const armedJobs = [...BROKERD.matchAll(/\barm\('([a-z_]+)'/g)].map((m) => m[1]);
+// The jobs are data now (src/jobs/registry.js); the daemon only loops over
+// them. So "what brokerd arms" is the list itself, not a grep of the daemon.
+const REGISTRY = fs.readFileSync(path.join(__dirname, '..', 'src', 'jobs', 'registry.js'), 'utf8');
+const inertPool = { query: () => { throw new Error('no queries while listing jobs'); } };
+const armedJobs = require('../src/jobs/registry').jobs({ pool: inertPool }).map((j) => j.name);
 
 test('every job brokerd arms has a declared interval', () => {
   assert.ok(armedJobs.length >= 12, `expected the full sweep set, found ${armedJobs.length}`);
@@ -76,12 +80,12 @@ test('card refreshes happen after the sweep transaction, never inside it', () =>
   // WITHOUT the facts/plan the run had just produced — caught live on the
   // planning pass's first real run: five plans written, zero cards showing
   // them. The refresh must be sequenced after withTx resolves.
-  assert.doesNotMatch(BROKERD, /sweepFactExtraction\(c, \{\s*refreshCard/,
+  assert.doesNotMatch(REGISTRY, /sweepFactExtraction\(c, \{\s*refreshCard/,
     'fact_extraction must not refresh cards from inside its transaction');
-  assert.doesNotMatch(BROKERD, /sweepPlanning\(c, \{\s*refreshCard/,
+  assert.doesNotMatch(REGISTRY, /sweepPlanning\(c, \{\s*refreshCard/,
     'planning must not refresh cards from inside its transaction');
-  assert.match(BROKERD, /refreshAfter\(out\.extracted/);
-  assert.match(BROKERD, /refreshAfter\(out\.planned/);
+  assert.match(REGISTRY, /refreshAfter\(out\.extracted/);
+  assert.match(REGISTRY, /refreshAfter\(out\.planned/);
 });
 
 test('a kicked job is not immediately stale, and a starved one is', () => {

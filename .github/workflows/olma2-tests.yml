@@ -57,7 +57,7 @@ jobs:
       # `bash -n` parses without executing, which is the whole check that CAN
       # be run for free. It rides in the `migrations` job because that job is
       # already the seconds-fast gate that runs before anything expensive.
-      - run: bash -n olma2/scripts/deploy.sh olma2/scripts/rollback.sh olma2/scripts/prune-releases.sh
+      - run: bash -n olma2/scripts/deploy.sh olma2/scripts/rollback.sh olma2/scripts/prune-releases.sh olma2/scripts/backup-offbox.sh
 
   test:
     needs: migrations

@@ -13,7 +13,11 @@
 // high-water mark: the offset only moves forward, so a re-run charges nothing
 // twice, and nothing is lost when a session rotates because the FILE is still
 // there even after the index forgets it.
-const sessions = require('../channels/sessions');
+// The worker-thread facade: a cold run of this sweep walks every transcript
+// on disk, and the yield-per-file below was the first patch for the main
+// thread going deaf during it (2026-08-25). The reads now happen off the
+// loop entirely; the yield stays as the cheap second guard.
+const sessions = require('../channels/sessions-async');
 const pricing = require('../domain/model-pricing');
 
 // Which calendar day a call belongs to. Anthropic's own Cost page is in UTC
@@ -42,7 +46,7 @@ async function sweepUsage(client, deps = {}) {
   const buckets = new Map();
   let calls = 0, filesRead = 0;
 
-  for (const t of listTranscripts()) {
+  for (const t of await listTranscripts()) {
     const prev = (await client.query(
       `SELECT byte_offset FROM usage_session_snapshots WHERE session_id = $1`, [t.sessionId]
     )).rows[0];
@@ -58,7 +62,7 @@ async function sweepUsage(client, deps = {}) {
     // the contiguous block at the largest single transcript (~1-3s), which a
     // 30s socket timeout never notices.
     await new Promise((resolve) => setImmediate(resolve));
-    const { calls: newCalls, offset } = readUsage(t.file, fromOffset);
+    const { calls: newCalls, offset } = await readUsage(t.file, fromOffset);
     await client.query(
       `INSERT INTO usage_session_snapshots (session_id, agent_id, model, byte_offset, transcript_path, updated_at)
        VALUES ($1, $2, $3, $4, $5, now())
