@@ -264,7 +264,8 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **`agents-template.md` reaches existing users only via
   `scripts/resync-agent-templates.js`.** `deploy.sh --restart` now runs it
   automatically after the health check passes — a manual local deploy does not.
-- **The doctrine is FULL: 39249 of the 39250 chars the gateway will inject.**
+- **The doctrine is FULL: 39,229 of the 39,250 chars the gateway will inject
+  (2026-09-05; it was 39,249 the day before).**
   Over the line nothing is announced — `trimAgentsBootstrapContent` keeps a
   head and a tail and deletes the middle of whichever section sits at the cut.
   So a paragraph added there must be paid for by deleting one, and the default
@@ -356,7 +357,7 @@ Verified on the box at the cutover, 2026-08-17:
   [Two hostnames](#two-hostnames-allmaworld-is-public-duckdns-is-admin).
 
 - **Source of truth: `olma2/` in THIS repo** (unlike v1) — ~22k lines src+bin,
-  823 tests in 69 files as of 2026-09-04. `olma2/README.md` is its map, and
+  1,263 tests in 105 files as of 2026-09-05. `olma2/README.md` is its map, and
   `npm test` is the only count that is true today.
 - **Where things are, since 2026-09-05:** agent tools are `src/adapters/mcp/tools/*.js`,
   one file per domain, and `registry.js` is only their ORDER (the gateway
@@ -436,7 +437,8 @@ no JS — but structured differently:
   extra query). Every `SECTIONS` entry names its `group`; a section with an
   unknown group falls off the page, and the suite checks the two agree. The
   old outbox and boost sections are blocks inside "מה מתוכנן להישלח" and
-  "הגדרות מערכת". A section form may send `back=/#<id>`; `safeBack` accepts
+  "הגדרות מערכת"; the reaction vocabulary (`reaction_emoji`) is edited there
+  too, one box per state via `POST /reactions` — never as a JSON flag row. A section form may send `back=/#<id>`; `safeBack` accepts
   only ids the page renders.
 - **Sections are a named array, not positional args.** `const SECTIONS = [{ id,
   title, hint, render }]`, rendered in order by the `GET /` handler. Adding one
