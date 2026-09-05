@@ -121,7 +121,7 @@ async function beginConnection(client, user, providerId = 'gmail') {
     provider: adapter.provider,
     accessRequested: 'read_only',
     validForMinutes: STATE_TTL_MINUTES,
-    tellTheUser: 'הקישור מבקש הרשאת קריאה בלבד לתיבת המייל. אולמה לא עוברת על המיילים מיוזמתה — היא תחפש רק כשתבקש, ולא יכולה לשלוח או למחוק כלום.',
+    tellTheUser: 'הקישור מבקש הרשאת קריאה בלבד לתיבת המייל. עולמה לא עוברת על המיילים מיוזמתה — היא תחפש רק כשתבקש, ולא יכולה לשלוח או למחוק כלום.',
   });
 }
 

@@ -2,40 +2,17 @@
 // External watchdog for wedged session lanes — the fast half of the fix that
 // jobs/unanswered.js only cushions.
 //
-// THE BUG (OpenClaw, not ours). A run finishes without releasing its session
-// lane; everything the person writes afterwards queues behind it and is never
-// processed. The gateway has its own recovery for exactly this, and it can
-// decline forever:
+// The gateway's own recovery declines for ever when lastProgressAgeMs is
+// undefined (it answers keep_lane every tick, and lowering
+// stuckSessionAbortMs does not help — the staleness test short-circuits
+// first). So: detect from the gateway's own log, the same philosophy as
+// channels/sessions.js, and act with the narrowest RPC it exposes —
+// sessions.abort on that ONE session key. No restart, nobody else
+// disturbed. Separate from checkin.js for the same reason unanswered.js is.
 //
-//   diagnostic-stuck-session-recovery: isActiveRunProgressStale()
-//     if ((params.queueDepth ?? 0) <= 0) return false;
-//     const lastProgressAgeMs = getDiagnosticSessionActivitySnapshot(...).lastProgressAgeMs;
-//     return typeof lastProgressAgeMs === "number" && lastProgressAgeMs >= params.staleAbortMs;
-//
-// When lastProgressAgeMs is undefined the function returns false, so the
-// recovery path returns `action: "keep_lane", reason: "active_reply_work"` —
-// and keeps returning it, every tick, forever. Observed live 2026-08-16 on
-// agent u-3: state=processing, queueDepth=3, three messages unanswered, the
-// gateway logging "keep_lane" every ~10s until it was restarted by hand.
-// Lowering diagnostics.stuckSessionAbortMs to 75s (scripts/set-recovery-
-// thresholds.js) does NOT help: that threshold is never reached because the
-// staleness test short-circuits before it.
-//
-// WHAT THIS DOES. Detection reads the gateway's own log — the same philosophy
-// as channels/sessions.js, which reads its session index off disk rather than
-// paying 2.9s of CPU to ask the CLI. The action is the narrowest one the
-// gateway exposes: sessions.abort on that ONE session key (RPC scope
-// operator.write, verified reachable on the box), which frees the lane so the
-// queued messages actually run. No gateway restart, no other user disturbed.
-//
-// WHY NOT FOLD INTO checkin.js. Same reason unanswered.js is separate: this is
-// repair on a seconds-to-minutes rhythm, check-in is outreach on hours-to-days.
-// See the one-sweeper rule and its documented exception.
-//
-// ORDER OF DEFENCE, once this is live:
-//   ~90s   lane-watchdog aborts the wedged lane → queued messages process
-//   3-45m  unanswered.js answers a message that was dropped entirely
-// The second is now a backstop rather than the primary repair.
+// Order of defence: ~90s this frees the lane; 3-45m unanswered.js answers a
+// message that was dropped outright. docs/incidents.md, "Wedged session
+// lanes (the live bug v2 works around)".
 const fs = require('node:fs');
 const path = require('node:path');
 const audit = require('../domain/audit');

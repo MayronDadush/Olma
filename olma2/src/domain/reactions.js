@@ -22,11 +22,24 @@ const REACTION_STATES = Object.freeze({
   // Received, and the turn is going to take a noticeable moment. Ours regularly
   // do: a cold turn was measured at ~77s, against a 65s stuck-lane threshold.
   working: '👀',
-  done: '✅',
-  // Deliberately distinct from `done`. Olma schedules a great deal — reminders,
-  // digests, meetings — and "I have written this down for a future moment" is a
-  // different promise from "I have finished it". Collapsing the two is how a
-  // person comes to believe a reminder already fired.
+  // The same beat as `working`, for a voice note — Miron's ask on 2026-09-04,
+  // and it earns a row rather than being a second emoji for `working` (which
+  // the rule above refuses) because it carries information 👀 cannot: a voice
+  // note has to be UPLOADED and TRANSCRIBED before anything can read it, and
+  // that is the part most likely to fail silently. 👂 says the audio arrived,
+  // not merely that a turn opened. "I saw it" and "I heard it" are different
+  // claims about different things.
+  listening: '👂',
+  // 👍, not ✅. It says the thing they asked for is in hand — captured, done, or
+  // already true. Gali's "בוצע" on 2026-09-03 is the case it exists for: Olma
+  // completed the task inside the same second and showed her nothing, so she
+  // wrote again 14 seconds later, and a third time 26 minutes after that.
+  done: '👍',
+  // Narrower than it was, and deliberately. ⏰ now means exactly one thing: a
+  // reminder is armed on this and it will speak to you later. It used to cover
+  // every future-dated write — tasks, calendar events — which made it the mark
+  // for "diarised" in general and left a person unable to tell a row that will
+  // reach out from one that will simply sit there.
   scheduled: '⏰',
   // The turn ended needing something only they can supply. Without this, a
   // blocked turn is indistinguishable from a slow one.
@@ -64,11 +77,48 @@ function isReactionCapable(channel) {
 // WhatsApp plugin. So a future channel arrives in the same canonical shape,
 // and adding it is a line in the table above plus a verification, not a port.
 //
+// ── Changing the vocabulary without changing the code ────────────────────────
+// The table above is the DEFAULT, not the whole story: an operator can swap any
+// single state's emoji from the dashboard (settings section, one box per
+// state, stored as the `reaction_emoji` flag). Miron asked for 👍 instead of ✅ on `done`, and a taste like that
+// should not need a deploy.
+//
+// This does not reopen what the comment at the top of this file refuses. That
+// rule is about VARIETY WITHIN one state — 💪 today and 🫡 tomorrow for the same
+// thing, which costs attention and returns nothing. An override is still
+// exactly one emoji per state, held steady, and the whole vocabulary stays
+// learnable in one exchange. What changes is who picks it.
+//
+// Anything that is not a plausible emoji is IGNORED rather than sent: a typo,
+// a pasted sentence, an empty box. The default stands and the feature keeps
+// working — a bad setting must never turn into a failed call on every message.
+const EMOJI_RE = /^[\p{Extended_Pictographic}\p{Emoji_Component}]{1,8}$/u;
+
+function isUsableEmoji(value) {
+  return typeof value === 'string' && EMOJI_RE.test(value.trim());
+}
+
+// The vocabulary in force: defaults with any valid override applied. Returns a
+// plain object, never mutating REACTION_STATES (which is frozen and is what
+// every test and every reader means by "the default").
+function vocabulary(overrides) {
+  const out = { ...REACTION_STATES };
+  if (!overrides || typeof overrides !== 'object') return out;
+  for (const [state, emoji] of Object.entries(overrides)) {
+    if (!Object.hasOwn(REACTION_STATES, state)) continue; // no inventing states
+    if (isUsableEmoji(emoji)) out[state] = String(emoji).trim();
+  }
+  return out;
+}
+
 // Returns an argv array for `openclaw message react`, or null when we should
 // stay silent. Null is a real answer and every caller must treat it as one.
-function buildReactArgs({ channel, target, messageId, state, remove = false } = {}) {
-  const emoji = REACTION_STATES[state];
+// `emoji` overrides the table for this one call; an unusable one falls back to
+// the default rather than refusing, so a bad setting never costs a mark.
+function buildReactArgs({ channel, target, messageId, state, remove = false, emoji: override } = {}) {
+  const emoji = isUsableEmoji(override) ? String(override).trim() : REACTION_STATES[state];
   if (!emoji) return null;
+  if (!REACTION_STATES[state]) return null;
   if (!isReactionCapable(channel)) return null;
   // A reaction is addressed to ONE message. Without an id there is nothing to
   // attach to, and there is no sane fallback — reacting to the wrong message
@@ -160,20 +210,49 @@ function isLive(lastInboundAt, now = Date.now()) {
 //   Therefore no exit code, therefore no claim. This returns `attempted`, never
 //   `sent`. Nothing downstream may read it as "they saw a ✅" — and that is why
 //   no user-visible text anywhere depends on the mark having landed.
+// ── Two marks on one message must never race ─────────────────────────────────
+// Each mark is a whole `openclaw` CLI start-up, measured at 15 seconds of
+// wall time on the box (2026-09-05, `message react --dry-run`). A short turn
+// asks for 👀 at turn_start and 👍 a few seconds later, so two CLIs are alive
+// at once and whichever finishes LAST decides what the person sees — a 👀
+// landing after the 👍 leaves "working" on a message that is done, for ever.
+// Miron saw the shape of it: his "deleted" text arrived before the 👍.
+//
+// So one in-flight mark per message. A newer mark for the same message kills
+// the older child if it has not exited: a 👀 that could not land before the
+// work finished was never needed, and the 👍 goes out sooner. If the older
+// child has already exited, the newer mark simply replaces it on the phone,
+// which is the lifecycle this feature was built on. Killing is best-effort and
+// claim-free, like everything else here.
+const inFlight = new Map(); // messageId → child
+
 function placeMark(opts = {}, deps = {}) {
   const args = buildReactArgs(opts);
   if (!args) return { attempted: false, reason: 'not_applicable' };
   const spawnFn = deps.spawn || spawn;
+  const key = String(opts.messageId);
+  let superseded = false;
+  const prev = inFlight.get(key);
+  if (prev && !prev.exited) {
+    superseded = true;
+    try { if (typeof prev.child.kill === 'function') prev.child.kill(); } catch { /* already gone */ }
+    inFlight.delete(key);
+  }
   try {
     const child = spawnFn('openclaw', args, { detached: true, stdio: 'ignore' });
     // An ENOENT on a box without the CLI arrives as an event, not a throw, and
     // an unhandled 'error' on a child process takes the whole daemon down.
-    if (child && typeof child.on === 'function') child.on('error', () => {});
+    const entry = { child, exited: false };
+    if (child && typeof child.on === 'function') {
+      child.on('error', () => { entry.exited = true; if (inFlight.get(key) === entry) inFlight.delete(key); });
+      child.on('exit', () => { entry.exited = true; if (inFlight.get(key) === entry) inFlight.delete(key); });
+    }
     if (child && typeof child.unref === 'function') child.unref();
+    inFlight.set(key, entry);
   } catch {
     return { attempted: false, reason: 'spawn_failed' };
   }
-  return { attempted: true, state: opts.state, emoji: REACTION_STATES[opts.state] };
+  return { attempted: true, state: opts.state, emoji: REACTION_STATES[opts.state], ...(superseded ? { superseded: true } : {}) };
 }
 
 // Which tools earn which mark. A table rather than calls sprinkled through the
@@ -181,25 +260,42 @@ function placeMark(opts = {}, deps = {}) {
 // through — and because the question "what does Olma react to?" should be
 // answerable by reading eleven lines, not by grepping eighty handlers.
 //
-// `scheduled` is not a lesser `done` (see REACTION_STATES): these tools all end
-// with something written down for a future moment, and telling somebody a thing
-// is finished when it is merely diarised is the failure that distinction exists
-// to prevent. Miron's calendar request on 2026-09-03 — the one that took long
-// enough that he wondered whether it had registered — is exactly this row:
-// 👀 the moment it arrives, ⏰ when the event exists.
+// Only `set_task_reminder` earns ⏰, because only it arms something that will
+// later speak to the person unprompted (see REACTION_STATES). Everything else
+// here ends with the request itself in hand and earns 👍 — the calendar write
+// included. That is Miron's 2026-09-03 request, the one that took long enough
+// that he wondered whether it had registered at all: 👀 the moment it arrives,
+// 👍 when the event exists.
+//
+// A task that also gets a reminder passes through both rows and ends on ⏰. That
+// ordering is the right way round and not an accident of the table: ⏰ is the
+// more specific claim of the two, and it is the one the person acts on.
 const TOOL_MARKS = Object.freeze({
   turn_start: 'working',
   complete_task: 'done',
   complete_shared_task: 'done',
-  add_task: 'scheduled',
-  add_tasks_bulk: 'scheduled',
+  add_task: 'done',
+  add_tasks_bulk: 'done',
+  create_calendar_event: 'done',
+  // The undo-shaped asks — "delete that", "stop reminding me", "change it to
+  // Tuesday", "forget that" — are done the moment the tool returns, exactly
+  // like a capture, and the person reads the same 👍. Added 2026-09-05 after
+  // Miron deleted a task by reply and got a 👍 AND a sentence saying so.
+  archive_task: 'done',
+  cancel_reminder: 'done',
+  edit_task: 'done',
+  forget_fact: 'done',
   set_task_reminder: 'scheduled',
-  create_calendar_event: 'scheduled',
 });
 
-// The single decision, pure so it can be tested without a socket or a spawn.
-// Returns the mark to place, or null — and null is a real answer that the
-// caller must treat as one, exactly like buildReactArgs.
+// The single decision, kept clear of sockets and spawns so it can be tested
+// directly. Returns the mark to place, or null — and null is a real answer that
+// the caller must treat as one, exactly like buildReactArgs.
+//
+// Not pure: it stamps the turn with what it has already asked for, because
+// deduplicating a repeat needs memory and this is the only place that holds the
+// turn. Kept here rather than in the caller so that every future caller inherits
+// it instead of having to remember it.
 //
 // A FAILED tool call earns no mark at all, rather than ⚠️. The vocabulary has
 // a `failed` state and this deliberately does not reach for it: a tool erroring
@@ -212,11 +308,31 @@ function markFor(toolName, result, turn, now = Date.now()) {
   if (!result || !result.ok) return null;
   if (!turn || !turn.messageId) return null;
   if (!isLive(turn.lastInboundAt, now)) return null;
-  return state;
+  // A voice note gets 👂 where a typed message gets 👀 — the opening mark only.
+  // Every closing mark (done/scheduled) is about what the TURN achieved, which
+  // is the same question however the message arrived.
+  const effective = (state === 'working' && turn.messageKind === 'voice') ? 'listening' : state;
+  // A model that calls `turn_start` twice in one turn asks for the same 👀
+  // twice: 2 of the first 10 marked messages in production did, 22 and 37
+  // seconds apart. WhatsApp SETS a reaction rather than appending one, so the
+  // repeat costs the reader nothing and the box a whole Node CLI start-up —
+  // which is the only reason this is a tidy-up and not a bug fix.
+  //
+  // Keyed on message AND state, never on message alone: 👀 then 👍 on one
+  // message is a progression the person is meant to see, and a coarser key
+  // would swallow the second half of every conversation's only real signal.
+  const seen = turn.marked || (turn.marked = new Set());
+  const stamp = `${turn.messageId}:${effective}`;
+  if (seen.has(stamp)) return null;
+  seen.add(stamp);
+  return effective;
 }
 
+// The flag the dashboard's emoji editor writes. One JSON object, one place.
+const VOCAB_FLAG = 'reaction_emoji';
+
 module.exports = {
-  REACTION_STATES, REACTION_CAPABLE, TOOL_MARKS, LIVE_WINDOW_MS,
+  REACTION_STATES, REACTION_CAPABLE, TOOL_MARKS, LIVE_WINDOW_MS, VOCAB_FLAG,
   isReactionCapable, buildReactArgs, outcomeState, placeMark, markFor, isLive,
-  cleanMessageId,
+  cleanMessageId, vocabulary, isUsableEmoji,
 };

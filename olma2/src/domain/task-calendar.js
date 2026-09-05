@@ -31,19 +31,31 @@ const audit = require('./audit');
 const MAX_PER_TICK = 20;
 const EVENT_MINUTES = 30;
 
-// A task carries one instant, not a span. Thirty minutes is a block a person
-// can see and move; an all-day event would claim we know the task is all-day,
-// which we do not — `due_at` cannot tell "the 14th" from "09:00 on the 14th"
-// once it is a timestamptz. Better a modest block that is honest than an
-// all-day banner that asserts something nobody said.
-function windowFor(dueAt) {
+// A real end when the task has one, and thirty minutes when it does not.
+//
+// The fallback is the older half of this and its reasoning still holds: an
+// all-day event would claim we know the task fills a day, which `due_at`
+// cannot tell us — it cannot separate "the 14th" from "09:00 on the 14th" once
+// it is a timestamptz. A modest honest block beats an all-day banner asserting
+// something nobody said.
+//
+// What changed is that a task CAN now say where it stops (`tasks.ends_at`), and
+// when it does, guessing thirty minutes over the top of a stated seven-hour
+// shift is not modesty, it is discarding the answer.
+function windowFor(dueAt, endsAt) {
   const start = new Date(dueAt);
-  const end = new Date(start.getTime() + EVENT_MINUTES * 60_000);
+  const stated = endsAt ? new Date(endsAt) : null;
+  const end = stated && !Number.isNaN(stated.getTime()) && stated > start
+    ? stated
+    : new Date(start.getTime() + EVENT_MINUTES * 60_000);
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
+// The id is keyed on the START only, deliberately: moving the end of a shift
+// must UPDATE the event in the person's calendar, not leave the old one
+// standing and add a second.
 function expectedIdFor(userId, task) {
-  return calendar.eventIdFor(userId, task.title, windowFor(task.due_at).start);
+  return calendar.eventIdFor(userId, task.title, windowFor(task.due_at, task.ends_at).start);
 }
 
 // Turning it ON requires edit access, and says so plainly rather than letting
@@ -143,7 +155,7 @@ async function setTaskSync(client, userId, taskId, on, deps = {}) {
 // ever disagreeing about whether a row belongs on somebody's calendar.
 async function pending(client, { limit = MAX_PER_TICK, now = new Date() } = {}) {
   const { rows } = await client.query(
-    `SELECT t.id, t.owner_id, t.title, t.due_at, t.calendar_event_id,
+    `SELECT t.id, t.owner_id, t.title, t.due_at, t.ends_at, t.calendar_event_id,
             u.calendar_sync_tasks, t.calendar_opt_in, t.status, t.archived_at,
             COALESCE(t.calendar_opt_in, u.calendar_sync_tasks) AS sync_wanted
        FROM tasks t
@@ -195,7 +207,7 @@ async function syncOne(client, t, deps = {}) {
   }
   if (!wanted) return { id: t.id, action: 'skipped' };
 
-  const { start, end } = windowFor(t.due_at);
+  const { start, end } = windowFor(t.due_at, t.ends_at);
   const res = await create(client, t.owner_id, { title: t.title, start, end });
   if (!res.ok) return { id: t.id, action: 'add', ok: false, error: res.error.message };
   await client.query(

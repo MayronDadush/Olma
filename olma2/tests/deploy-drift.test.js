@@ -176,8 +176,10 @@ test('the job is armed on a cadence, so a check that goes quiet reads as stale',
   // Every deploy restarts brokerd, and setInterval counts from process start —
   // an hourly job on a box that redeploys more often than that would never run.
   assert.equal(shouldKickOnStart('deploy_drift'), true);
-  const brokerd = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'bin', 'olma-brokerd.js'), 'utf8');
-  assert.match(brokerd, /arm\('deploy_drift'/);
+  // Armed = listed in the job registry the daemon loops over.
+  const { jobs } = require('../src/jobs/registry');
+  const inertPool = { query: () => { throw new Error('no queries while listing jobs'); } };
+  assert.ok(jobs({ pool: inertPool }).some((j) => j.name === 'deploy_drift'), 'deploy_drift is armed');
 });
 
 test('it compares against main, on this repo', () => {

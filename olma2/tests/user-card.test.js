@@ -173,3 +173,39 @@ test('an active connection shows as a count and points at the list', async () =>
   const card = fs.readFileSync(cardPath(), 'utf8');
   assert.match(card, /Connections: 1 active — resolve people by name via list_my_connections/);
 });
+
+// A card that prints ten facts and stops is indistinguishable from a person
+// with ten facts. The model then answers "I don't know" out of a list it was
+// never told was cut — the same failure as a check that goes quiet.
+test('renderCard: a truncated fact list says how much it is hiding', async () => {
+  const ten = Array.from({ length: 10 }, (_, i) => (
+    { category: 'people', fact: `fact ${i}` }));
+  const cut = renderCard({ first_name: 'דנה' }, [], ten, { factsTotal: 17 });
+  assert.match(cut, /\(\+7 more not shown here — list_my_facts/);
+
+  // ...and stays silent when nothing was cut, so the line means something.
+  const whole = renderCard({ first_name: 'דנה' }, [], ten, { factsTotal: 10 });
+  assert.ok(!/more not shown here/.test(whole), 'announced a truncation that did not happen');
+  // A caller that supplies no total is not evidence of hidden facts.
+  assert.ok(!/more not shown here/.test(renderCard({ first_name: 'דנה' }, [], ten)));
+});
+
+test('refreshUserCard counts the facts it did not print', async () => {
+  const many = await makeUser(db.pool, '+972509100077', { firstName: 'רבת-עובדות' });
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'olma-card-many-'));
+  await db.pool.query(`UPDATE users SET workspace_path = $2 WHERE id = $1`, [many.id, ws]);
+  for (let i = 0; i < 13; i++) {
+    await db.pool.query(
+      `INSERT INTO user_facts (user_id, category, fact, importance)
+       VALUES ($1, 'people', $2, 1)`, [many.id, `עובדה ${i}`]);
+  }
+  // An expired fact is not a hidden fact — it is gone, and counting it would
+  // send the model to list_my_facts for something that is not there.
+  await db.pool.query(
+    `INSERT INTO user_facts (user_id, category, fact, importance, expires_at)
+     VALUES ($1, 'people', 'פג תוקף', 1, now() - interval '1 day')`, [many.id]);
+  await refreshUserCard(db.pool, many.id);
+  const text = fs.readFileSync(path.join(ws, 'USER.md'), 'utf8');
+  assert.match(text, /\(\+3 more not shown here/);
+  fs.rmSync(ws, { recursive: true, force: true });
+});

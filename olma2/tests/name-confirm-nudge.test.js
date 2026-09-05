@@ -40,7 +40,7 @@ const outboxFor = (pool, userId) => pool.query(
 test('fires past 60s of silence, with the WhatsApp guess in the instruction', async () => {
   const u = await makeUser(db.pool, '+972611005001', { firstName: null });
   await openedAgo(db.pool, u.id, 90, { name: 'M&M' });
-  const fired = await sweeps.sweepNameConfirm(db.pool.hasOwnProperty('query') ? db.pool : db.pool);
+  const fired = await sweeps.sweepNameConfirm(db.pool);
   assert.deepEqual(fired, [u.id]);
   const { rows } = await outboxFor(db.pool, u.id);
   assert.equal(rows.length, 1);

@@ -31,14 +31,19 @@ never trust a dated narrative for something you are about to act on.
 - [Six replies composed, one delivered — the wedge that beat every detector (2026-08-31)](#six-replies-composed-one-delivered--the-wedge-that-beat-every-detector-2026-08-31)
 
 **Identity, auth and secrets**
+- [A restore put a leaked token back (fixed 2026-09-05)](#a-restore-put-a-leaked-token-back-fixed-2026-09-05)
 
 - [The lock that worked perfectly, on three files out of sixteen (2026-09-01)](#the-lock-that-worked-perfectly-on-three-files-out-of-sixteen-2026-09-01)
 - [A leaked token has a rotation now, and the file order is the design (2026-09-03)](#a-leaked-token-has-a-rotation-now-and-the-file-order-is-the-design-2026-09-03)
 - [The guard was right within a minute, and unread for eighty (fixed 2026-09-01)](#the-guard-was-right-within-a-minute-and-unread-for-eighty-fixed-2026-09-01)
+- [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [Four good mornings to a man who had stopped answering (fixed 2026-09-05)](#four-good-mornings-to-a-man-who-had-stopped-answering-fixed-2026-09-05)
+- [The reminder that could not climb, because its first rung died on the wire (fixed 2026-09-05)](#the-reminder-that-could-not-climb-because-its-first-rung-died-on-the-wire-fixed-2026-09-05)
 
 - [Olma's own check-in counted as the user writing back (fixed 2026-09-04)](#olmas-own-check-in-counted-as-the-user-writing-back-fixed-2026-09-04)
+- [A reply pointed at one message and Olma answered another (fixed 2026-09-05)](#a-reply-pointed-at-one-message-and-olma-answered-another-fixed-2026-09-05)
 - [A notification that reported success and never arrived (2026-08-14)](#a-notification-that-reported-success-and-never-arrived-2026-08-14)
 - [`--deliver` needs the agent AND the session key, not either (2026-08-14)](#--deliver-needs-the-agent-and-the-session-key-not-either-2026-08-14)
 - [Reminders that come back, and cadences that could not be said (2026-08-29)](#reminders-that-come-back-and-cadences-that-could-not-be-said-2026-08-29)
@@ -59,6 +64,7 @@ never trust a dated narrative for something you are about to act on.
 - ["I can't do that" was the whole answer (fixed 2026-08-21)](#i-cant-do-that-was-the-whole-answer-fixed-2026-08-21)
 - ["I can't" now hands over the search (2026-09-03)](#i-cant-now-hands-over-the-search-2026-09-03)
 - [A goal said out loud left no trace anywhere (fixed 2026-08-21)](#a-goal-said-out-loud-left-no-trace-anywhere-fixed-2026-08-21)
+- [turn_start skipped on the stop turn, under two models and two rewordings (2026-08-30)](#turn_start-skipped-on-the-stop-turn-under-two-models-and-two-rewordings-2026-08-30)
 
 **Models, evals and background cognition**
 
@@ -72,6 +78,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Cost, billing and the money page**
 
+- [The heartbeat was the bill (fixed 2026-09-05)](#the-heartbeat-was-the-bill-fixed-2026-09-05)
 - [The ledger overstated OpenRouter by 65%, in both directions at once (fixed 2026-09-03)](#the-ledger-overstated-openrouter-by-65-in-both-directions-at-once-fixed-2026-09-03)
 - [OpenRouter cache reads were priced 5x too high (fixed 2026-08-31)](#openrouter-cache-reads-were-priced-5x-too-high-fixed-2026-08-31)
 - [The cost page showed four services out of eight (fixed 2026-08-31)](#the-cost-page-showed-four-services-out-of-eight-fixed-2026-08-31)
@@ -100,6 +107,7 @@ never trust a dated narrative for something you are about to act on.
 - [Availability is tapped on a page, not typed (2026-08-28)](#availability-is-tapped-on-a-page-not-typed-2026-08-28)
 
 **Features as they shipped**
+- [A 👍 is the answer; the sentence after it is a second notification (2026-09-05)](#a--is-the-answer-the-sentence-after-it-is-a-second-notification-2026-09-05)
 
 - [Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)](#live-updates--עדכן-אותי-על-as-infrastructure-2026-08-28)
 - [Image + video generation, access-limited, spend in its own column (2026-08-28)](#image--video-generation-access-limited-spend-in-its-own-column-2026-08-28)
@@ -121,6 +129,7 @@ never trust a dated narrative for something you are about to act on.
 - [The suite was green thirteen hours a day and red eleven (fixed 2026-08-30)](#the-suite-was-green-thirteen-hours-a-day-and-red-eleven-fixed-2026-08-30)
 - [Deploying doctrine no longer needs a second command (2026-08-21)](#deploying-doctrine-no-longer-needs-a-second-command-2026-08-21)
 - [A rollback cannot reach the filesystem (fixed 2026-08-27)](#a-rollback-cannot-reach-the-filesystem-fixed-2026-08-27)
+- [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
 
 ## Gateway, config and upgrades
 
@@ -826,6 +835,30 @@ the gateway upgrade.
 
 ## Identity, auth and secrets
 
+### A restore put a leaked token back (fixed 2026-09-05)
+
+On 2026-09-05 user 3's account was restored on the live box from a snapshot
+taken the day before (`scripts/user-testbed.js restore`, the fix for which is
+"A snapshot taken before a migration could not be restored", #187). The
+snapshot predated that day's rotation of the token that had leaked into his
+chat on 2026-09-02 (issue 66, "fixed" at 12:22). The restore did exactly what
+it says: it put the snapshot's `users.identity_token` back. Within the hour
+`config_guard`'s leak scan — which remembers the leaked fingerprint until it
+stops resolving, precisely so that a scan window cannot bound the truth —
+found that it resolved again and filed issue 72: "a live identity token was
+sent as message text — still works". The token was rotated again by hand
+(`cf5613f8e6e41db0 → 9e19ed7f5e3745f4`) and the issue closed itself on the
+next tick.
+
+Fix: a restore now ends by minting a fresh token, always
+(`remintAfterRestore` → `rotateIdentityToken`, same order, same
+verification, audited with the snapshot's name as the reason). Deciding
+"was it rotated since?" would be one more thing to get wrong, and a restore
+is already the moment the open session's context is stale — one failed call
+that recovers from `.olma-identity` is the cost the rotation already
+documents. The test reproduces the trap first — restore alone revives the
+leaked token — and then proves the re-mint kills it and rewrites both files.
+
 ### The lock that worked perfectly, on three files out of sixteen (2026-09-01)
 
 `chattr +i` on `.olma-identity` was added 2026-08-27 and applied **only at
@@ -969,8 +1002,177 @@ answer for itself.
   first and the send is wrapped — the durable dashboard record must survive a
   dead gateway, which is the condition being reported.
 
+### Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)
+
+A token that reached a real person's chat (`domain/token-leak.js`) stays
+exposed for exactly as long as it keeps working, so the only remediation is a
+different one. Almost all of that machinery already existed and was reviewed:
+`scripts/resync-agent-templates.js` renders AGENTS.md per user from
+`users.identity_token`, and `repairIdentityFiles` rewrites `.olma-identity`
+from the same column. The only missing piece was minting the new value and
+swapping it in without locking somebody out of their own agent mid-sentence.
+
+**Order is the whole design.** The token lives in three places: the DB (the
+verifier, `domain/users.resolveByToken`), AGENTS.md (the primary, read into
+context at session start) and `.olma-identity` (the recovery path that both
+the doctrine and `bin/olma-mcp.js` point at). Writing the FILE first is what
+makes this safe:
+
+1. `.olma-identity` ← new. DB and AGENTS.md are both still old, so the token
+   already in the model's context keeps working. Nothing fails during this
+   window.
+2. DB ← new. The in-context token dies this instant. The agent's next call
+   fails once with "unknown identity token", whose own text tells it to
+   re-read `.olma-identity` — which step 1 fixed.
+3. AGENTS.md ← new, so the NEXT session starts correct instead of paying for
+   that fallback on every turn.
+
+Every other order leaves a window where the file and the DB are wrong at the
+same time, and that window is a total auth failure rather than one retried
+call. The live session cannot be spared completely — AGENTS.md is read at
+session start, so its context holds the dead token until the session rotates
+— but one extra tool call per turn is precisely what the 2026-08-27 recovery
+path was built to absorb.
+
+The new token is never logged, never audited and never returned. A rotation
+caused by a leak must not become the next place the credential is written
+down; the audit row carries fingerprints, which is what `token-leak.js`
+compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
+
+### Four good mornings to a man who had stopped answering (fixed 2026-09-05)
+
+The owner sent a screenshot: user 13 had received a check-in on Wednesday
+("anything to add?"), Thursday ("anything to add?"), Friday ("just saying
+hi") and Saturday ("which city are you in? …ואם אתה נוסע לשם אחרת"), and had
+answered none of them. Two failures, one screenshot.
+
+**The cadence.** `checkin_misses` stood at 2 after a week of daily sends.
+Walking the audit log: seventeen `message.received` rows in ten days for a
+person whose last real message was much older. Five of them landed 11–30
+seconds after our own delivery's `sent_at` — the `--deliver` CLI had
+returned, the self-initiated mark had been released, and the agent's turn was
+still running; its late `turn_start` was counted as the person writing,
+which reset `checkin_misses` to 0 and moved `last_inbound_at`. Twelve more,
+all on 2026-09-01 at 30–60 minute intervals, were heartbeat polls in which the
+model called `get_my_profile` or `list_my_tasks` — the implicit turn-open
+counted each as a message. (Heartbeats are off since the same day; see "The
+heartbeat was the bill".) And even with an honest counter the schedule itself
+allowed three consecutive days: miss 0 → the age tier's idle hours, miss 1 →
+double, miss 2 → weekly, stop at 4.
+
+**The wording.** The timezone discovery rung's instruction told the model what
+to ask and left the Hebrew to it; the cheap model produced "ואם אתה נוסע לשם
+אחרת", which nobody could read, and sent it as a question to a man who had
+not answered three earlier ones.
+
+Fixes: the self-initiated mark now outlives the CLI by a minute
+(`OLMA_SELF_INITIATED_GRACE_MS`; a real reply inside that minute loses only
+its bookkeeping, and the next one repairs it). The ladder after one miss waits
+three days and sends one line with no question mark and no pitch; two misses
+→ weekly; three → nothing until they write; discovery is never offered to
+someone with a miss on record. The timezone ask carries the exact Hebrew
+sentence, gender forms aside. User 13 was set to three misses by hand so the
+next thing he hears from עולמה is his own reply.
+
+### The reminder that could not climb, because its first rung died on the wire (fixed 2026-09-05)
+
+Recorded as a known gap on 2026-09-01: Miron's 08:00 rent reminder went on the
+wire while the raw pipe was refusing every send (the missing
+`systemAgent.agentId` after the gateway upgrade), failed sixteen times, and
+expired with `hold_reason = 'expired'`. The escalation ladder's rung-2 clause
+required the previous rung's row to carry `sent_at IS NOT NULL AND hold_reason
+IS NULL`; an expired row never matched, so `task_reminders#27` sat at
+`attempts = 1` until the two-day retirement rule closed it. The person was
+told nothing at any point.
+
+The clause was right about the case it was written for — a rung the GATE held
+or dropped (quiet hours, pause, budget) must not be chased, which is the
+check-in ladder's documented bug refusing to repeat itself. What it could not
+see was **whose fault the non-delivery was**. The outbox row already says:
+the gate stamps a reason without ever trying, so its rows carry `attempts =
+0` and no `last_error`; a dead pipe leaves `attempts > 0` and the error
+text. Measured on the box over 30 days before the fix: 2 expired reminder
+rows of the gate's shape, 1 of the pipe's (its error was a gateway config
+warning), and 342 check-in rows of the pipe's shape — that last number is a
+separate finding.
+
+Fix (`domain/reminders.dueForSending`, `jobs/sweeps.sweepReminders`): the
+previous rung's outbox row is read once through a lateral join; the next rung
+is due when that row LANDED (as before, after the gap, next-day for rung 3)
+**or** when it died on our side. The second case is a redo, not a chase: it
+goes out on the next tick under the next rung's key (`reminder:<id>:2` — the
+spent key stays spent, which is the guard against a duplicate), with the
+plain "⏰ תזכורת" wording since nothing was delivered to follow up on, and
+with the urgency of the rung it replaces. It still spends a rung, so a pipe
+that stays broken cannot loop; three means three, redo included. Repeating
+reminders are unchanged (they retire on the first enqueue and their successor
+row already exists), so a repeating reminder lost to an outage is still lost
+that day.
+
+### A reply pointed at one message and Olma answered another (fixed 2026-09-05)
+
+Reported by the owner about a live user, מאיה: she used WhatsApp reply on one
+specific message and Olma answered about something else. His words were that
+this is not new — "לא תמיד שמה לב" — which is the shape that matters here. An
+always-fails bug gets found on day one. This one had been landing on whoever
+happened to quote an older message, silently, for as long as the system has
+been running.
+
+The first guess was that the reply context never reaches us, and it is worth
+writing down that this was wrong, because it is the guess anybody would make.
+The gateway carries it end to end: Baileys' `contextInfo.quotedMessage` becomes
+`msg.quote` in the WhatsApp plugin, survives `resolveVisibleWhatsAppReplyContext`
+(the visibility filter defaults to `all`, so nothing is dropped), and reaches
+the prompt as TWO things — `reply_to_id` inside the `Conversation info` block,
+and the quoted text as its own labelled block, `Reply target of current user
+message:`, with `is_quote` and the body. The plugin even refuses to debounce a
+quote-carrying message into a batch (`allowDebounce: !(… || msg.quote?.id ||
+msg.quote?.body)`), which is precisely the merge that would have destroyed it.
+None of that is configurable-away, and none of it was broken.
+
+**What was broken is that nothing had ever told the model those blocks meant
+anything.** Neither the doctrine nor any tool description mentioned a reply, so
+the block sat in the prompt as one more piece of metadata to skim.
+
+Measured before changing anything, on the eval user, twice through the same
+two-topic conversation (electric bikes, then moving flat) with the context
+blocks assembled exactly as `buildInboundUserContextPrefix` assembles them:
+
+- arm A — `reply_to_id` present, `Reply target` block quoting the FIRST answer,
+  then a bare `כן, בואי נתקדם עם זה`;
+- arm B — the identical conversation with no reply metadata at all.
+
+Both arms answered the same way: they acted on both topics, weighting the
+newest. The reply block changed nothing. That is the measurement the fix rests
+on, and it is also the control the fix needed — without arm B, arm A's wrong
+answer proves nothing about whether the block was even read.
+
+An earlier, sloppier probe had put the same block in as the message BODY, with
+no `Conversation info` ahead of it, and the model handled it perfectly. That
+near-miss is the reason the faithful shape mattered: a probe that does not
+reproduce the real prompt reads as "works fine" for a bug that is live.
+
+The fix is model-side because there is nowhere else for it to be. The reply id
+is WhatsApp's, we have never recorded the ids of our own outbound messages
+(`--deliver` sends through the agent and reports none), and nothing
+server-side ever receives the quoted text — like `sender`, it reaches the MODEL
+and stops there. So: `turn_start` gained an optional `reply_to_id`, listed in
+its description beside `sender_name` and `message_id` so the model has to go
+and look for it, and passing it returns `hints.replyTarget` — mid-turn, before
+the reply is written — saying to go back and answer the quoted message. The
+doctrine paragraph that had said "Pass **two** of its fields" now names the
+third; that numeral was actively arguing against it.
+
+Both halves were paid for rather than added: the tool JSON was 82 chars under
+its 55k ceiling, and three descriptions were trimmed of redundant wording to
+make room; the doctrine had 21 chars of headroom and the new clause was written
+to fit inside them. `tests/reply-target.test.js` holds the field, the hint and
+both mentions open, and eval scenario `reply-to-older-message` is the arm-A
+conversation as a nightly check: two open tasks, `סיימתי` sent as a reply
+quoting the older one, and the hard check is that the QUOTED task closed and
+the newest one did not.
 
 ### Olma's own check-in counted as the user writing back (fixed 2026-09-04)
 
@@ -1633,6 +1835,40 @@ had backed off to weekly, or given up at 4, would otherwise swallow the
 message). Matching is on trailing phone digits, and an ambiguous fragment
 refuses with the candidates rather than picking one.
 
+### turn_start skipped on the stop turn, under two models and two rewordings (2026-08-30)
+
+`turn_start` is the tool the doctrine tells the agent to call first on every
+message, and for most turns it does. But on 2026-08-30 the behavioral evals
+caught it skipping the call entirely on the stop-confirmation turn: the stop
+section is a vivid, numbered three-step plan whose step 2 says to call
+`pause_olma` "THAT TURN, before you write anything back", and it beats a
+universal preamble sitting far above it. Two rounds of rewording failed, and
+`deepseek-v4-pro` — the stronger, dearer sibling already configured as the
+first fallback — failed identically. Two models, two doctrine versions, one
+failure: a specific urgent instruction outranking a general one is a property
+of models, not of any one model.
+
+So this is the project's own rule applied again (D-007, and the identity-token
+self-healing in `bin/olma-mcp.js`): **correctness must not depend on model
+discipline.** brokerd already sees every tool call, and the gateway spawns one
+MCP shim per turn holding one socket — so the server can notice a turn that
+opened without `turn_start` and do the bookkeeping itself
+(`domain/turn.js`, `openTurnImplicitly`).
+
+What that deliberately does NOT do, and why the split matters:
+
+- **State** is recovered: counting the message, stamping that the person is
+  awake, waking night-held rows, recording the north-star `message.received`.
+  None of it needs the model's cooperation and all of it is wrong to skip.
+- **Advice** is never recovered. `offerResume` is the sharpest case: stamping
+  `resume_offer_sent_at` there would burn a once-per-pause offer that the
+  model never saw and therefore cannot make, which is strictly worse than not
+  stamping it — the person would be left waiting for an offer the database
+  believes was already delivered. Name capture needs `sender_name`, which only
+  the model can see; `recentReminders` and `planHeadline` are answers to a
+  question nobody asked. A turn that skipped `turn_start` gets a correct
+  database and a less well-informed reply, which is the honest trade rather
+  than a silent pretence that nothing was lost.
 
 ## Models, evals and background cognition
 
@@ -1969,6 +2205,36 @@ next and only the last one was measured first.
 
 
 ## Cost, billing and the money page
+
+### The heartbeat was the bill (fixed 2026-09-05)
+
+The audit's "13 calls per inbound message" (the cache-alert misdiagnosis of
+2026-09-04) was computed as *all* model calls over *inbound* messages. Walking
+seven days of every agent's transcript store on 2026-09-05, per turn:
+
+| turn kind | runs | model calls | calls/run | provider-billed |
+|---|---|---|---|---|
+| real inbound message | 436 | 1,072 | 2.5 | $1.57 |
+| `[OpenClaw heartbeat poll]` | 4,944 | 3,051 | 0.6 | $7.15 |
+
+A real message takes two calls — `turn_start`, then the reply — and three
+or four when it saves something. The depth was never the problem. The
+gateway's scheduler was waking all thirteen agents every 30 minutes, and each
+wake was a ~33k-token turn whose only correct answer is `NO_REPLY`: the
+doctrine spends a paragraph saying so, and the 2026-09-01 brunch-reminder leak
+into another user's chat travelled exactly that road. The config carried
+`heartbeat: { target: "none" }`, which reads as "off" and only suppresses
+*delivery* of the answer; the turn still ran. Nothing of ours rides on the
+gateway heartbeat — every sweep is a brokerd job with its own row in
+`job_heartbeats`, a different thing with the same name.
+
+Fix: `agents.defaults.heartbeat.every: "0m"` (the gateway's documented off
+switch, which leaves event-driven wakes alone), `scripts/disable-heartbeats.js
+--apply` to set it, and a `config_guard` rule that goes red — a dashboard
+row, not `BREAKS_USERS` — whenever it is anything else, so an upgrade that
+resets the default shows on the board. The schema-trimming work of the same
+day (#175, #169) was real but is invisible at this scale: the lever was the
+number of turns that should never have started, not the size of each.
 
 ### The ledger overstated OpenRouter by 65%, in both directions at once (fixed 2026-09-03)
 
@@ -2789,6 +3055,40 @@ immediately before the merge, not once at the start.
 
 
 ## Features as they shipped
+
+### A 👍 is the answer; the sentence after it is a second notification (2026-09-05)
+
+Miron replied "תמחוק את המשימה" to a reminder, saw the 👍 land on his own
+message, and then got "מחקתי את 'לשתות מים' ✅ לא אזכיר לך יותר" as well — the
+same fact twice, one of them a notification. The reaction feature exists
+precisely so that a plain instruction costs the person no notification and
+no line in the chat (`domain/reactions.js`, top of file); the reply undid
+that.
+
+The doctrine could not carry the rule (it is full) and did not need to:
+brokerd is the one place that knows whether a done-mark was asked for on
+THIS message. When it was, the tool result gains `hints.markPlaced`, telling
+the model the mark already says "done" and to answer `NO_REPLY` unless it
+has something the mark cannot carry — a question, a caveat, an error, another
+hint. It rides only the turns it applies to, and it says `attempted`, never
+`sent`: the instruction is about not repeating the mark's meaning, not
+about relying on the mark having landed. The undo-shaped tools — archive,
+cancel reminder, edit, forget — were added to `TOOL_MARKS` so "delete that"
+earns the same 👍 as "add that".
+
+Miron also noticed the order: his "deleted" text arrived BEFORE the 👍. Measured
+the same day, `openclaw message react --dry-run` takes 15 seconds of wall time
+on the box — every mark is a whole CLI start-up. A short turn therefore has the
+👀 (asked at turn_start) and the 👍 (asked seconds later) alive as two processes,
+and whichever finishes last decides what the person sees; a 👀 landing after
+the 👍 would leave "working" on a finished message for ever. `placeMark` now
+keeps one in-flight child per message and kills an older one that has not
+exited when a newer mark arrives — a 👀 that could not land before the work
+was done was never needed. The real fix is to stop spawning a CLI per mark and
+call the gateway's `message.action` over its WebSocket RPC (milliseconds, and
+an actual ack); the react action's delegated authorization needs conversation
+and account context the CLI resolves internally, so that is a separate piece
+of work, recorded here so it is not re-discovered.
 
 ### Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)
 
@@ -3699,3 +3999,37 @@ or a config; whatever wrote them has to put them back.**
 still `new` when the same user's broken token was diagnosed by hand a day
 later. Thirteen open issues, every one already resolved in reality. A
 detection layer nobody looks at is not a detection layer.
+
+### Merged is not deployed — the drift row (2026-09-04)
+
+"Merged" does not mean "deployed" here, and the gap is completely silent.
+Twice on 2026-09-03/04 a merge's own CI run was cancelled or wedged, its
+`deploy` job was skipped, and the code sat in main for hours with nothing
+anywhere saying so. The worst instance was #140 — the fix for deploys that die
+mid-run — which itself never deployed for exactly that reason, so the cure sat
+in main while the disease kept happening.
+
+Two causes, both outside our control and both quiet: a wedged or failed
+`test` job SKIPS `deploy`; and GitHub's concurrency group keeps ONE pending
+run per ref, so when merges arrive faster than deploys finish, the middle ones
+are cancelled.
+
+So `jobs/deploy-drift.js` does not try to prevent either. It just makes the
+gap visible, and keeps it visible — "show the gap always, not only when it
+breaks" (the cost figures that drifted for a month while every page looked
+healthy).
+
+**Deliberately not an alert.** `BREAKS_USERS` means "their tool calls fail
+right now" and nothing else. Production being three commits behind main
+breaks nobody: it is the previous release, and the previous release worked.
+This is a dashboard row. Widening the alarm set is how an alert list stops
+being read.
+
+**And deliberately not a judgement when it cannot judge.** A GitHub that
+cannot be reached is not a drifted deploy — it is an unknown, reported as one,
+carrying forward WHEN the last real answer was so nobody reads a stale verdict
+as a fresh one. `null` (could not check) and "in sync" must never collapse
+into the same row. The check going quiet is covered for free: it is a
+`job_heartbeats` row, so `jobs/expectations.js` already calls it stale if it
+stops running, and `/health` already reports that. No second detector needed
+for the detector.

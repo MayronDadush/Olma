@@ -38,6 +38,10 @@ const newTurn = () => ({
   // arrived. Per-turn and never persisted: a mark belongs on the message being
   // handled right now, and a stale id would put one on the wrong message.
   messageId: null, lastInboundAt: null,
+  // What has already been asked for on this turn, so a model that calls
+  // `turn_start` twice does not buy a second identical reaction. Populated
+  // lazily by markFor, which is the only thing that reads it.
+  marked: null,
 });
 
 function createBrokerServer({ pool, flood, placeMark }) {
@@ -85,6 +89,7 @@ function createBrokerServer({ pool, flood, placeMark }) {
           // left over from the previous occupant of this connection would aim a
           // reaction at somebody else's message from inside this person's chat.
           turn.messageId = null; turn.lastInboundAt = null;
+          turn.marked = null;
         }
 
         if (!turn.opened) {
@@ -134,13 +139,39 @@ function createBrokerServer({ pool, flood, placeMark }) {
       // supplied — so a wrong id can only mark a different message in the same
       // person's chat with Olma.
       const mark = reactions.markFor(name, result, turn);
+      let placed = null;
       if (mark && actorPhone) {
-        placeMark({
+        placed = placeMark({
           channel: 'whatsapp', // the one channel whose reactions we have verified
           target: actorPhone,
           messageId: turn.messageId,
           state: mark,
+          // The operator's vocabulary, read once when the turn opened. Absent
+          // (a direct dispatch, a turn that never called turn_start) means the
+          // built-in table, which is the same thing this did before it was
+          // configurable at all.
+          emoji: turn.reactionVocab && turn.reactionVocab[mark],
         });
+      }
+      // Miron, 2026-09-05, having deleted a task by reply: he got the 👍 AND a
+      // sentence saying it was deleted. The mark already says "done"; words
+      // after it are a second notification for the same fact. So when — and
+      // only when — a done-mark was asked for on this message, the result says
+      // so, and the model is told the mark may be the whole answer. It rides
+      // the RESULT rather than the doctrine: it costs tokens only on the turns
+      // it applies to, and it arrives at the exact moment the model decides
+      // what to write (the same budget rule as turn_start's hints).
+      // `attempted`, never `sent` — placeMark makes no delivery claim, and
+      // neither does this: the instruction is about not repeating the mark's
+      // meaning, not about relying on the mark having landed.
+      if (placed && placed.attempted && mark === 'done' && result && result.ok && result.data && typeof result.data === 'object') {
+        result.data.hints = {
+          ...(result.data.hints || {}),
+          markPlaced: 'A 👍 has already been put on their message: it tells them this is done. '
+            + 'If they gave a plain instruction and you have nothing to add — no question worth '
+            + 'asking, no caveat, no error, no other hint here — reply with exactly NO_REPLY and '
+            + 'nothing else. Write only when the words carry something the mark cannot.',
+        };
       }
       return { ok: true, text: renderResult(result) };
     } catch (e) {

@@ -12,8 +12,20 @@ const fs = require('node:fs');
 const path = require('node:path');
 const occ = require('../intake/openclaw-config');
 const infraAgent = require('../domain/infra-agent');
-const sessions = require('../channels/sessions');
+// The worker-thread facade (channels/sessions-async.js): this guard runs
+// inside brokerd every ten minutes and reads every user's intake session.
+const sessions = require('../channels/sessions-async');
 const { INTAKE_AGENT_ID } = require('./intake');
+
+// Every per-user loop below reads that user's workspace files synchronously,
+// and this job runs inside brokerd — the process that answers turn_start for
+// live users on the box's one core. Walking every workspace in one contiguous
+// block deafens it for the whole walk; jobs/usage.js learned this on
+// 2026-08-25 (a user's turn timed out twice against a healthy daemon during a
+// cold transcript scan) and yields once per file. Same discipline here: one
+// yield per user caps the block at a single user's files, which is a few
+// milliseconds a 30s socket timeout never notices.
+const yieldToLoop = () => new Promise((resolve) => setImmediate(resolve));
 
 // The invariants, each with why it matters.
 function checkOpenclawConfig(cfg) {
@@ -44,6 +56,19 @@ function checkOpenclawConfig(cfg) {
   } else if (systemAgent.agentId && !occ.hasAgent(cfg, systemAgent.agentId)) {
     violations.push(`agents.defaults.systemAgent.agentId points at "${systemAgent.agentId}", which is not in the roster — ambient sends resolve to nothing`);
   }
+  // The gateway's own heartbeat: every 30 minutes, for every agent on the
+  // roster, a full model turn whose only correct answer is NO_REPLY. Nothing
+  // of ours rides on it — every sweep is a brokerd job — and the doctrine
+  // spends a paragraph telling the model to say nothing. Measured over the
+  // week to 2026-09-05: 3,051 heartbeat calls against 1,072 for real
+  // messages, $7.15 of an $8.72 bill. Unset means the gateway default (30m),
+  // so the rule is "0m, explicitly". A dashboard row, not BREAKS_USERS: a
+  // heartbeat that came back costs money and one leak vector, never a tool
+  // call. (fix: scripts/disable-heartbeats.js --apply)
+  const every = (((cfg.agents || {}).defaults || {}).heartbeat || {}).every;
+  if (every !== '0m') {
+    violations.push(`agents.defaults.heartbeat.every is ${every === undefined ? 'unset (gateway default 30m)' : JSON.stringify(every)} — every agent runs a NO_REPLY model turn on a timer, most of the bill (fix: scripts/disable-heartbeats.js --apply)`);
+  }
   return violations;
 }
 
@@ -54,6 +79,7 @@ async function checkIdentityFiles(client) {
   );
   const violations = [];
   for (const u of rows) {
+    await yieldToLoop();
     const p = path.join(u.workspace_path, '.olma-identity');
     let problem = null;
     try {
@@ -100,6 +126,7 @@ async function checkAgentsTokens(client) {
   const byToken = new Map(rows.map((u) => [u.identity_token, Number(u.id)]));
   const violations = [];
   for (const u of rows) {
+    await yieldToLoop();
     let doctrine;
     try { doctrine = fs.readFileSync(path.join(u.workspace_path, 'AGENTS.md'), 'utf8'); } catch { continue; }
     if (doctrine.includes('{{IDENTITY_TOKEN}}')) {
@@ -154,6 +181,7 @@ async function checkLegacyWorkspaceState(client, deps = {}) {
   );
   const violations = [];
   for (const u of rows) {
+    await yieldToLoop();
     if (fs.existsSync(path.join(u.workspace_path, LEGACY_WORKSPACE_STATE))) {
       violations.push(
         `user ${u.id}'s workspace holds ${LEGACY_WORKSPACE_STATE} — the gateway refuses every turn for that agent until it is moved aside`);
@@ -212,6 +240,7 @@ async function checkBootstrapBudget(client, cfg) {
   );
   let largest = 0; let over = 0; let near = 0; let read = 0;
   for (const u of rows) {
+    await yieldToLoop();
     let size;
     // A file that could not be read is never a file in trouble — the
     // credit-watch rule. It is counted as unread and reported as such below,
@@ -266,10 +295,10 @@ const norm = (s) => String(s).replace(/\s+/g, ' ').trim();
 //
 // null (no session left to read) is not innocence: an unverifiable pair falls
 // back to reporting the collision, exactly as before.
-function quotesOwnWords(read, phone, quoted, cache) {
+async function quotesOwnWords(read, phone, quoted, cache) {
   if (!cache.has(phone)) {
     let own = null;
-    try { own = read(phone); } catch { own = null; }
+    try { own = await read(phone); } catch { own = null; }
     cache.set(phone, own ? norm(own) : null);
   }
   const own = cache.get(phone);
@@ -288,6 +317,7 @@ async function checkCarryovers(client, deps = {}) {
   const reported = new Set(); // user ids already named, so a pair cannot re-report one
   const violations = [];
   for (const u of rows) {
+    await yieldToLoop();
     let card;
     try { card = fs.readFileSync(path.join(u.workspace_path, 'USER.md'), 'utf8'); } catch { continue; }
     const at = card.indexOf(CARRYOVER_HEADING);
@@ -298,7 +328,7 @@ async function checkCarryovers(client, deps = {}) {
     // the old collision rule is all there is.
     const m = section.match(QUOTED_RE);
     const quoted = m ? norm(m[1]) : null;
-    const mine = quoted ? quotesOwnWords(read, u.phone, quoted, cache) : null;
+    const mine = quoted ? await quotesOwnWords(read, u.phone, quoted, cache) : null;
     const prior = seen.get(body);
 
     // A leak does not need an accomplice, and requiring one is what kept the
@@ -323,7 +353,7 @@ async function checkCarryovers(client, deps = {}) {
     }
     if (prior === undefined) { seen.set(body, u); continue; }
 
-    const theirs = quoted ? quotesOwnWords(read, prior.phone, quoted, cache) : null;
+    const theirs = quoted ? await quotesOwnWords(read, prior.phone, quoted, cache) : null;
     if (mine === true && theirs === true) continue; // both of them really said it
 
     // `mine === false` is handled above, so the only card left to accuse is
@@ -420,6 +450,48 @@ async function checkOrphanAgents(client, cfg) {
   const known = new Set(rows.map((r) => r.agent_id));
   return ids.filter((id) => !known.has(id)).map((id) =>
     `agent ${id} is in openclaw.json with no active user — orphan of a failed provisioning; its workspace may hold another person's text`);
+}
+
+// The other half of checkOrphanAgents: a PERSON with no working agent. That
+// half was never built because it costs somebody something to find out — and
+// it is the half that hurts: a joiner whose agent, binding or config write
+// failed silently got "welcome" in their own head and nothing on their phone,
+// and every screen stayed green (the gateway ignores an invalid config, drops
+// a bindings-only write; both have happened). So this asks about the person,
+// not the config: onboarded, a day gone, and not one message ever DELIVERED
+// to them (a delivered outbox row is sent_at set with no hold_reason — the
+// onboarding ladder writes exactly those), nor one ever received from them.
+// That catches a dead-from-birth agent, a stuck config, and every future
+// failure of the same shape without knowing why.
+//
+// Not to be confused with checkin.js's isDeafOnDayOne, which fires only once
+// TWO onboarding messages have LANDED and the person never replied, and whose
+// effect is to send less. Someone who received nothing falls straight through
+// it, which is why this exists.
+//
+// A day of grace, not hours: a 02:00 joiner is quiet-hours-held, not broken,
+// and the onboarding ladder's first rung is paced, not instant. One row per
+// person (the id is the deterministic part; no counts in the title). A
+// dashboard row, not BREAKS_USERS — nobody's tool call is failing, which is
+// exactly the problem.
+const UNREACHABLE_GRACE_HOURS = 24;
+const UNREACHABLE_WINDOW_DAYS = 30;
+async function checkUnreachableJoiners(client, now = new Date()) {
+  const { rows } = await client.query(
+    `SELECT u.id, u.onboarded_at
+       FROM users u
+      WHERE u.status = 'active' AND NOT u.is_eval AND u.paused_at IS NULL
+        AND u.onboarded_at IS NOT NULL
+        AND u.onboarded_at <= $1::timestamptz - ($2::int * interval '1 hour')
+        AND u.onboarded_at >  $1::timestamptz - ($3::int * interval '1 day')
+        AND u.last_inbound_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM outbox o
+           WHERE o.user_id = u.id AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL)
+      ORDER BY u.id`,
+    [now, UNREACHABLE_GRACE_HOURS, UNREACHABLE_WINDOW_DAYS]);
+  return rows.map((r) =>
+    `user ${r.id} joined ${String(r.onboarded_at.toISOString ? r.onboarded_at.toISOString() : r.onboarded_at).slice(0, 10)} and has never been reached — nothing delivered to them and nothing received from them since; their agent, binding or config write probably failed silently`);
 }
 
 // Permission to use a model is spread across THREE independent lists, and a
@@ -734,10 +806,10 @@ const ALERTED_FLAG = 'config_guard_alerted';
 // announcing a leaked credential under "users are blocked" would send the
 // operator looking for an outage that is not happening.
 const ALERT_CLASSES = [
-  { match: breaksUsers, headline: '🔴 אולמה: משתמשים חסומים ברמת הזהות — כל קריאת כלי שלהם נכשלת.', tail: 'הפירוט בדשבורד, בקטע התקלות.' },
+  { match: breaksUsers, headline: '🔴 עולמה: משתמשים חסומים ברמת הזהות — כל קריאת כלי שלהם נכשלת.', tail: 'הפירוט בדשבורד, בקטע התקלות.' },
   {
     match: leaksCredential,
-    headline: '🔴 אולמה: טוקן זהות חי נשלח כטקסט לצ׳אט אמיתי.',
+    headline: '🔴 עולמה: טוקן זהות חי נשלח כטקסט לצ׳אט אמיתי.',
     tail: 'הטוקן עדיין תקף — החלפתו היא מה שמסיים את החשיפה. הפירוט בדשבורד, בקטע התקלות.',
     // Waits for a civil hour. Rotating a token is a deliberate act nobody
     // performs asleep, and the exposure is days old by the time it is noticed
@@ -847,6 +919,7 @@ async function run(client, { configPath, ...deps } = {}) {
   violations = violations.concat(await checkLegacyWorkspaceState(client, deps));
   violations = violations.concat(await checkCarryovers(client));
   violations = violations.concat(await checkStuckOutbox(client));
+  violations = violations.concat(await checkUnreachableJoiners(client, deps.now));
   violations = violations.concat(await checkInfraAgentSessions(client, deps));
   violations = violations.concat(await checkLeakedTokens(client, deps));
   const filed = await fileViolations(client, violations);
@@ -872,7 +945,8 @@ async function run(client, { configPath, ...deps } = {}) {
 module.exports = {
   run, checkOpenclawConfig, checkModelPermissions, checkConfigApplied, makeConfigValidator,
   checkIdentityFiles, checkAgentsTokens,
-  checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkInfraAgentSessions,
+  checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkUnreachableJoiners, checkInfraAgentSessions,
+  UNREACHABLE_GRACE_HOURS,
   checkLegacyWorkspaceState, LEGACY_WORKSPACE_STATE,
   checkBootstrapBudget, bootstrapBudget,
   GATEWAY_DEFAULT_BOOTSTRAP_MAX_CHARS, BOOTSTRAP_WARN_MARGIN,

@@ -8,7 +8,7 @@ const { freshDb } = require('./helpers');
 const { createDashboard } = require('../src/adapters/http/dashboard');
 const publicPages = require('../src/adapters/http/public-pages');
 
-let db, server, base;
+let db, server;
 const AUTH = 'Basic ' + Buffer.from('admin:test-password-123').toString('base64');
 const PUBLIC = 'allma.world';
 const ADMIN = 'olmachat.duckdns.org';
@@ -17,7 +17,6 @@ before(async () => {
   db = await freshDb();
   server = createDashboard({ pool: db.pool, adminUser: 'admin', adminPass: 'test-password-123' });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async () => { server.close(); await db.teardown(); });
 

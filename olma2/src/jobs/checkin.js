@@ -9,7 +9,7 @@
 //   5. discovery        (close the most valuable gap in their setup)
 //   6. plain silence check-in
 // Eligibility gates mirror v1 checkin.js: idle >24h, no checkin in 24h,
-// miss-backoff (2 → weekly, 4 → stop). Daytime is NOT checked here — the
+// miss-backoff (1 → three days, 2 → weekly, 3 → stop). Daytime is NOT checked here — the
 // outbox gate holds the row until the user's own window opens.
 const meetings = require('../domain/meetings');
 const { enqueue } = require('../outbox/enqueue');
@@ -41,11 +41,46 @@ const ONBOARDING_STEPS = [
     slot: '5h', afterMs: 5 * HOUR_MS, expiresAfterMs: 12 * HOUR_MS,
     instruction: 'Their first day. Briefly reflect back what you are now holding for them (counts, not a recital of every item), and invite whatever else is on their mind — including as a voice note. Two lines, no pressure.',
   },
+  // The two things a new person cannot discover for themselves, offered once
+  // each and in this order (Miron, 2026-09-04). Both are LINKS, which is why
+  // they are late rather than early: a link in the first hour is a demand to
+  // go somewhere else before anything here has proved useful. By eight hours
+  // there is something in their list for a calendar to be about.
+  {
+    slot: '8h', afterMs: 8 * HOUR_MS, expiresAfterMs: 16 * HOUR_MS,
+    // Nothing to offer someone who already connected — and this is the whole
+    // reason a step may decline: it falls through to the ordinary ladder
+    // rather than spending their day-one slot on a solved problem.
+    skipIf: async (client, u) => {
+      const { rows } = await client.query(
+        `SELECT 1 FROM integrations
+          WHERE user_id = $1 AND status = 'connected' AND provider LIKE 'google%' LIMIT 1`,
+        [u.id]);
+      return rows.length > 0;
+    },
+    instruction: 'Offer, once, to connect their Google Calendar, and say in one line what it buys them — you can see what is already on their day, and put things they ask you to schedule straight into it. Then ASK WHICH ACCESS LEVEL they want (view only, or add and edit) and call start_calendar_connection with their answer; never choose for them. Send the link it returns and stop. If they say no or say nothing, drop it and never offer again.',
+  },
+  {
+    slot: '22h', afterMs: 22 * HOUR_MS, expiresAfterMs: 26 * HOUR_MS,
+    skipIf: async (client, u) => {
+      // They already have a link, so a fresh one is noise rather than news.
+      const { rows } = await client.query(
+        `SELECT 1 FROM magic_links WHERE user_id = $1 LIMIT 1`, [u.id]);
+      return rows.length > 0;
+    },
+    instruction: 'Their first day is nearly done. Send them their own dashboard once: call open_my_dashboard and put the URL in your reply. One short line on what it is for — seeing and rearranging several things at once, their tasks, who they are connected to, what is connected. Say it opens once and stays open afterwards, and that everything on it can still be done right here in chat. Do not ask a question after it.',
+  },
 ];
 
-// Which day-one step is due, if any. Steps 1 and 2 fire regardless — that is
-// the point of the ladder. Step 3 is skipped for someone who answered neither:
-// being present is good, being deaf is not.
+// A step may decline to fire. Slots that ask nothing of the person still run
+// for someone who has never answered; these do not, because both of them ask
+// the person to go and DO something, and sending a link to somebody who has
+// said nothing at all is the drum this doctrine forbids everywhere else.
+const DEAF_SILENT_SLOTS = new Set(['5h', '8h', '22h']);
+
+// Which day-one step is due, if any. The first two fire regardless — that is
+// the point of the ladder. Everything from the 5h step on is skipped for
+// someone who answered neither: being present is good, being deaf is not.
 //
 // `deaf` means DELIVERED-and-ignored, and the caller computes it from the
 // outbox — never from checkin_misses. The counter once stood in for it, and
@@ -59,7 +94,7 @@ function onboardingStepDue(ageMs, deaf) {
   const due = ONBOARDING_STEPS.filter((s) => ageMs >= s.afterMs);
   const step = due[due.length - 1];
   if (!step) return null;
-  if (step.slot === '5h' && deaf) return null;
+  if (deaf && DEAF_SILENT_SLOTS.has(step.slot)) return null;
   return step;
 }
 
@@ -100,9 +135,18 @@ function idleHoursFor(ageDays) {
 // decides the rest. Every unanswered check-in doubles the wait, so a person
 // who engages stays on the fast cadence and a person who ignores us backs off
 // within a day or two instead of being nagged on a fixed timer.
+// One ignored check-in is answered with three days of quiet, not a doubled
+// wait: "doubled" meant the very next morning for anyone past their first
+// week, and on 2026-09-05 a user who had answered nothing got four messages
+// on four days (the backoff was also being reset by our own turns — see
+// domain/self-initiated.js — but the schedule alone allowed three). Two
+// misses → weekly; three → stop until they write.
+const MISS_ONE_GAP_MS = 3 * 24 * HOUR_MS;
+const GIVE_UP_MISSES = 3;
 function requiredGapMs(ageDays, misses) {
   if (misses >= 2) return WEEK_MS;
-  return idleHoursFor(ageDays) * HOUR_MS * (misses === 1 ? 2 : 1);
+  if (misses === 1) return Math.max(MISS_ONE_GAP_MS, idleHoursFor(ageDays) * HOUR_MS);
+  return idleHoursFor(ageDays) * HOUR_MS;
 }
 
 async function eligibleUsers(client, now) {
@@ -117,7 +161,7 @@ async function eligibleUsers(client, now) {
     []
   );
   return rows.filter((u) => {
-    if (u.checkin_misses >= 4) return false; // gave up until they come back
+    if (u.checkin_misses >= GIVE_UP_MISSES) return false; // gave up until they come back
     const ageMs = now - new Date(u.onboarded_at).getTime();
     // Day one runs on its own ladder, not on idleness: a new user who wrote
     // ten minutes ago is exactly who we want to reach, and an idle gate would
@@ -135,7 +179,7 @@ async function eligibleUsers(client, now) {
 }
 
 // Highest rung that applies. Returns { rung, instruction }.
-async function pickRung(client, userId) {
+async function pickRung(client, userId, misses = 0) {
   const pending = await meetings.pendingMeetingFor(client, userId);
   if (pending.data.pending) {
     const m = pending.data.pending;
@@ -220,6 +264,17 @@ async function pickRung(client, userId) {
   // same gap forever, which is the exact re-pitching this exists to prevent.
   // Once every current gap has already been offered, this rung has nothing
   // left to say and falls through to plain silence below.
+  // Nobody is asked a question they have already not answered once. A person
+  // who let the last check-in pass gets no discovery pitch and no "anything
+  // new?" — the rungs above still apply, because a meeting waiting on them or
+  // a deadline tomorrow is theirs, not ours. This is the other half of the
+  // cadence: fewer messages, and the ones that go carry no ask.
+  if (misses >= 1) {
+    return {
+      rung: 'silence',
+      instruction: 'They did not answer the last check-in. ONE short line, no question mark anywhere: say you are here when they want you, and that you will stay quiet until they write. Nothing about tasks, nothing to add, no offer. If a real message from them is in the conversation more recently than your last check-in, answer that instead.',
+    };
+  }
   const gaps = await discoveryGaps(client, userId);
   if (gaps.length) {
     const { rows: prev } = await client.query(
@@ -310,7 +365,7 @@ async function discoveryGaps(client, userId) {
       : 'We have no timezone for them at all, so everything falls back to UTC.';
     gaps.push({
       topic: 'timezone',
-      instruction: `${guessed} Ask which CITY they are in — never ask for a timezone name, that is our problem not theirs — and call set_my_timezone with the IANA zone for that city and confirmed: true. In the same message, in one short line, tell them to just say so when they travel or move, so their reminders and morning picture follow them instead of staying behind. Do not explain the mechanism.`,
+      instruction: `${guessed} Ask which CITY they are in — never ask for a timezone name, that is our problem not theirs — and call set_my_timezone with the IANA zone for that city and confirmed: true. Say it in exactly this shape — the second sentence is the travel line, where they learn to just say so when they travel or move — changing only the gender forms to match them: "באיזו עיר אתה נמצא? ככה אדע מתי מתאים לכתוב לך. ואם תיסע או תעבור לעיר אחרת, פשוט תגיד לי." Do not paraphrase it, do not add a second sentence, do not explain the mechanism — a reworded version once came out as "נוסע לשם אחרת", which nobody could read.`,
     });
   }
   const { rows: openTasks } = await client.query(
@@ -376,16 +431,21 @@ async function run(client, now = Date.now()) {
   for (const u of users) {
     // A day-one step outranks the ladder: on the first day the goal is to make
     // the product feel present, not to react to a backlog.
-    const step = u.onboardingStep;
+    let step = u.onboardingStep;
     let rung, instruction, topic = null, key, expiresAt = null;
+    if (step && DEAF_SILENT_SLOTS.has(step.slot)
+        && await isDeafOnDayOne(client, u.id, u.onboarded_at)) continue;
+    // A step whose reason has already been met (calendar connected, dashboard
+    // link already issued) gives its slot back to the ordinary ladder instead
+    // of spending the day's one message on nothing.
+    if (step && step.skipIf && await step.skipIf(client, u)) step = null;
     if (step) {
-      if (step.slot === '5h' && await isDeafOnDayOne(client, u.id, u.onboarded_at)) continue;
       rung = `onboarding_${step.slot}`;
       instruction = step.instruction;
       key = `onboarding:${u.id}:${step.slot}`;
       expiresAt = new Date(new Date(u.onboarded_at).getTime() + step.expiresAfterMs).toISOString();
     } else {
-      ({ rung, instruction, topic } = await pickRung(client, u.id));
+      ({ rung, instruction, topic } = await pickRung(client, u.id, Number(u.checkin_misses) || 0));
       key = `checkin:${u.id}:${new Date(now).toISOString().slice(0, 10)}`;
     }
     const res = await enqueue(client, {
@@ -412,6 +472,6 @@ async function run(client, now = Date.now()) {
 }
 
 module.exports = {
-  run, eligibleUsers, pickRung, requiredGapMs, idleHoursFor,
-  onboardingStepDue, ONBOARDING_STEPS, stalledGoals,
+  run, eligibleUsers, pickRung, requiredGapMs, idleHoursFor, GIVE_UP_MISSES, MISS_ONE_GAP_MS,
+  onboardingStepDue, ONBOARDING_STEPS, DEAF_SILENT_SLOTS, stalledGoals,
 };

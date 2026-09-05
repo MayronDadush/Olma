@@ -68,9 +68,10 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   incidents.md` matches the filter, so a pure prose edit there runs the full
   suite AND redeploys production. Both are "docs" — which side of `olma2/` the
   file sits on decides the blast radius, and nothing in the filename says so.
-  A new top-level directory (`voice-bridge/`) is unchecked until someone
-  notices; give it its own light job rather than adding it here, which would
-  redeploy `olma2` for a change that cannot affect it.
+  A new top-level directory is unchecked until someone notices; give it its
+  own light job rather than adding it here, which would redeploy `olma2` for
+  a change that cannot affect it — `voice-bridge/` has one
+  (`.github/workflows/voice-bridge.yml`, which also deploys it on `main`).
 - **After a shared-branch merge, verify it actually shipped**:
   `git merge-base --is-ancestor <sha> origin/main`. A concurrent session can
   merge at a head that predates your commit.
@@ -128,6 +129,12 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   and invisible until an override is tried.
 - **Never poll `openclaw sessions list` on a timer** — 2.9s of CPU per call on
   a 1-vCPU box, which directly slows every user's reply.
+- **The gateway heartbeat stays OFF: `agents.defaults.heartbeat.every: "0m"`.**
+  `target: "none"` only suppresses delivery; the 30-minute NO_REPLY turn
+  still runs for every agent, and it was 82% of the model bill (2026-09-05,
+  `incidents.md`, "The heartbeat was the bill"). Nothing of ours rides on it.
+  `config_guard` goes red if it comes back; `scripts/disable-heartbeats.js
+  --apply` turns it off again.
 
 ### Delivering a message
 
@@ -147,6 +154,12 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   the `idempotency_key` that stops the sweep re-creating it.
 - **The delivery gate is the chokepoint and a paused user has no exceptions** —
   not reminders, not urgent, not another user's fan-out.
+- **A reminder rung the GATE held is never chased; a rung OUR pipe lost is
+  redone at once.** The discriminator is on the expired outbox row: the gate
+  leaves `attempts = 0` and no `last_error`, a dead pipe leaves both. The
+  redo goes out under the next rung's key with the plain wording, keeps the
+  urgency of the rung it replaces, and still spends a rung so a broken pipe
+  cannot loop (`incidents.md`, "The reminder that could not climb").
 
 ### Data you must not get wrong
 
@@ -166,8 +179,53 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   (killing `isDeafOnDayOne`), reset `checkin_misses` (killing the check-in
   backoff), wrote `message.received` (the response-rate numerator counted our
   own sends as replies) and spent the once-per-life first-turn signal.
+  **The mark outlives the delivery CLI by a minute** (`self-initiated.js`,
+  `OLMA_SELF_INITIATED_GRACE_MS`): the agent's turn keeps running after
+  `--deliver` returns, and its late `turn_start` was counted as the person
+  writing — five times for one silent user (`incidents.md`, "Four good
+  mornings to a man who had stopped answering").
+- **Nobody is asked a question they have already not answered once.** The
+  check-in ladder after one miss: three days of quiet, then a one-liner with
+  no question mark; two misses → weekly; three → nothing until they write
+  (`jobs/checkin.js`, `requiredGapMs`, `pickRung(…, misses)`). What is
+  THEIRS — a meeting waiting on them, a deadline tomorrow — still outranks
+  the quiet.
+- **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
+  The gateway carries it end to end — `reply_to_id` in `Conversation info`, the
+  quoted text in a `Reply target of current user message` block — and nothing
+  server-side receives either, so there is no fix available outside the prompt.
+  Measured 2026-09-05: the block alone changes nothing. The same conversation
+  with it and without it produced the same answer, because nothing had told the
+  model it meant anything. `turn_start`'s `reply_to_id` (the model has to look
+  for it) plus `hints.replyTarget` (arrives mid-turn, says to answer the quoted
+  message) is what makes it land; `tests/reply-target.test.js` and eval
+  `reply-to-older-message` hold both halves open.
 - **The ledgers are append-only.** Rows already written stay as written, even
   when the pricing that produced them was wrong.
+- **A meeting negotiates several options (`domain/meeting-options.js`, up to
+  four; a fifth from a non-initiator waits for the initiator). The single-slot
+  columns `meetings.proposed_slot/proposed_start_at` and
+  `meeting_participants.state` are MIRRORS of the newest active option** —
+  read them if you like, but write only through the options module
+  (`add/answer/approve/reject/swap`), which re-mirrors after every change.
+  A yes must name one of the options on the table; the meeting confirms the
+  moment one option is unanimous among the people still in it.
+- **The assistant is עולמה / Allma; the system is still olma2.** The rename
+  (2026-09-04) covers user- and operator-facing text only — repo, `/opt/olma2`,
+  the services, the MCP tool prefix and `olma_identity` keep the old name.
+  `docs/incidents.md` keeps the old spelling too: it quotes real messages, and
+  correcting them would falsify the record. Two readers must answer to BOTH
+  spellings and say so — `facts.SYSTEM_NOUN_RE` (old facts are still in the
+  table) and the voice bridge's name check and Deepgram keyterms.
+- **A task saved with a `due_at` arms its own reminder** — an hour before a
+  timed one, 08:00 that morning for a day-shaped one (local midnight in THEIR
+  zone is the discriminator). `domain/auto-reminder.js` decides when,
+  `reminders.attachAutoReminder` is the only writer of `auto = true`, and an
+  explicit `set_task_reminder` cancels the pending auto row rather than joining
+  it. This REVERSED "never set one unasked" (2026-09-04, same day it was
+  added): the half that was right — a calendar ask is one thing, not a task and
+  a reminder as well — moved to `create_calendar_event`'s own description,
+  where the model reads it at the moment it would make that mistake.
 
 ### Writing detectors and alarms
 
@@ -184,6 +242,23 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   so every path that declines to judge must say so somewhere.
 - **Stamp "we told them" only after the send confirms.** Stamping first makes
   an outage swallow the alert for exactly the outage it exists to report.
+- **A joiner nobody has reached is asked about as a PERSON, not a config.**
+  `config_guard.checkUnreachableJoiners`: onboarded a day ago or more,
+  nothing ever delivered to them (a `sent_at` row with no `hold_reason`) and
+  nothing ever received. That catches a dead-from-birth agent, a dropped
+  binding and the next silent failure of the same shape alike. Dashboard row,
+  not `BREAKS_USERS`. It is the opposite of `isDeafOnDayOne`, which needs two
+  onboarding messages to have LANDED and then sends less.
+- **`liveness_watch` is the one alarm with a channel that is not the gateway.**
+  Twilio SMS when the gateway is down, WhatsApp otherwise, the other as
+  fallback; two bad ticks before a word; state in the `liveness_state` flag
+  so a restart mid-outage does not re-alert. Its heartbeat note says
+  `smsConfigured` and `alertFailed` — "nothing wrong" and "could not tell
+  you" must never read alike.
+  **It repairs before it reports**: a gateway down for two ticks is restarted
+  (`intake/gateway-restart.js`, once per half hour) and probed again; the
+  owner hears the outcome — healed over WhatsApp, or "restarted, still down"
+  over SMS. A dead brokerd or box it cannot see; that is the external monitor.
 - **`/health` sees the DB, every `job_heartbeats` row, and the gateway — and
   nothing else.** A component that writes no heartbeat is invisible to it, and
   says so by staying green. That is how the gateway went unwatched for months
@@ -191,19 +266,28 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 
 ### Two hostnames: allma.world is public, duckdns is admin
 
-- **`allma.world` serves an ALLOWLIST, not the dashboard.** Caddy passes
-  exactly four routes to `:8788` — `/pick/<48 hex>`, `/oauth/google/callback`,
-  `/health`, `/ready` — plus `/voice-bridge*` to `:8791`. Everything else 404s
-  in Caddy and never reaches the app. That list is the complete set of routes
-  `dashboard.js` serves ahead of its Basic Auth check; **adding a public route
-  to the app does not make it reachable — the Caddyfile has to say so too.**
+- **`allma.world` serves an ALLOWLIST, not the admin dashboard.** Caddy passes
+  a named set of routes to `:8788` — `/pick/<48 hex>`, `/d/<64 hex>`, `/me`,
+  `/me/data`, `/me/events`, `/me/act`, `/me/out`, `/oauth/google/callback`,
+  `/health`, `/ready`, and the two stranger-readable pages `/` and `/privacy`
+  — plus `/voice-bridge*` to `:8791`. Everything else 404s
+  in Caddy and never reaches the app. **Read the Caddyfile for the current
+  set** rather than this line: it said "exactly four" for a day and was wrong
+  the moment the personal dashboard shipped. What does not change is the
+  invariant — the list is exactly the routes the app serves ahead of its Basic
+  Auth check, and **adding a public route to the app does not make it reachable
+  — the Caddyfile has to say so too.** That cost the user dashboard its launch:
+  the code deployed green, `/me` answered on `127.0.0.1:8788`, and every link
+  sent to a person 404'd in Caddy (2026-09-04).
 - **The admin dashboard lives ONLY on `olmachat.duckdns.org`.** It is not
   exposed on `allma.world` at all, not even behind Basic Auth.
 - **Match `/pick/` on the exact token shape, never `/pick/*`.** A prefix match
   lets a malformed token fall past `picker.TOKEN_RE` into the Basic Auth
   check, so a truncated WhatsApp link answers a user with the ADMIN password
   prompt on the public domain (`incidents.md`, "A truncated link asked a user
-  for the admin password").
+  for the admin password"). The dashboard link follows the same rule —
+  `^/d/[a-f0-9]{64}$`, and the five `/me` routes named one by one rather than
+  `/me*` — for exactly that reason.
 - **Three places hold the domain and none of them are in the repo**:
   `/etc/caddy/Caddyfile`, `/opt/olma/google-oauth.json` (`public_base_url`,
   which builds the OAuth `redirect_uri`), and `/opt/olma2-voice-bridge/server.js`
@@ -238,13 +322,34 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **`agents-template.md` reaches existing users only via
   `scripts/resync-agent-templates.js`.** `deploy.sh --restart` now runs it
   automatically after the health check passes — a manual local deploy does not.
-- **The doctrine is FULL: 39249 of the 39250 chars the gateway will inject.**
+- **The doctrine is FULL: 39,229 of the 39,250 chars the gateway will inject
+  (2026-09-05; it was 39,249 the day before).**
   Over the line nothing is announced — `trimAgentsBootstrapContent` keeps a
   head and a tail and deletes the middle of whichever section sits at the cut.
   So a paragraph added there must be paid for by deleting one, and the default
   answer is to put the instruction in the TOOL RESULT instead, where it costs
   tokens only on the turns it applies to (`turn_start`'s `onboarding` string,
   2026-09-04). `tests/intake.test.js` fails before anything is lost.
+  The health board shows the rendered size against the gateway's ceiling
+  (`doctrineMeter` in `dashboard.js`) — an unreadable config reads as an
+  unknown ceiling, never as the gateway's 20k default.
+- **The tool schemas have a ceiling too: 55k chars of JSON, 700 per
+  description, the identity line under 40** (`tests/tool-schema-budget.test.js`).
+  They are injected on every turn for every user, so guidance about what to
+  do with a RESULT rides the result (`turnHints`, `set_my_timezone`'s `hints`),
+  where it costs tokens only on the turns it applies to — never the
+  description. Adding a tool means paying for it by trimming another.
+- **When brokerd has put a 👍 on their message, the result says so
+  (`hints.markPlaced`) and the model answers `NO_REPLY` unless words add
+  something** — a question, a caveat, an error. A sentence after the mark is
+  a second notification for the same fact (Miron, 2026-09-05: "deleted ✅"
+  under a 👍). The mark table is `reactions.TOOL_MARKS`; the undo-shaped
+  tools (archive, cancel reminder, edit, forget) earn the same 👍 as a capture.
+- **One in-flight reaction per message.** A mark is a whole `openclaw` CLI
+  start-up (15s wall on the box), so a short turn has the 👀 and the 👍 alive
+  at once and the LAST to finish wins. `placeMark` kills an older child still
+  starting up when a newer mark arrives for the same message; one that
+  already exited is simply replaced on the phone.
 - **Olma never claims a lookup it did not perform.** No price, no stock level,
   no "מצאתי לך", no link to a RESULT — all of it asserts a fetch that never
   happened. `search_link` is the one exception and only because a link to a
@@ -321,8 +426,13 @@ Verified on the box at the cutover, 2026-08-17:
   [Two hostnames](#two-hostnames-allmaworld-is-public-duckdns-is-admin).
 
 - **Source of truth: `olma2/` in THIS repo** (unlike v1) — ~22k lines src+bin,
-  823 tests in 69 files as of 2026-09-04. `olma2/README.md` is its map, and
+  1,263 tests in 105 files as of 2026-09-05. `olma2/README.md` is its map, and
   `npm test` is the only count that is true today.
+- **Where things are, since 2026-09-05:** agent tools are `src/adapters/mcp/tools/*.js`,
+  one file per domain, and `registry.js` is only their ORDER (the gateway
+  lists tools in it). Jobs are data in `src/jobs/registry.js`; `expectations.js`
+  is the cadence, and `tests/job-registry.test.js` fails if the two lists
+  disagree. `bin/olma-brokerd.js` knows neither by name.
 - **Deploying is `bash olma2/scripts/deploy.sh [--restart]`**: rsync →
   `/opt/olma2/` → migrations → the full suite **on the server**. CI runs it
   with `--restart` on every merge to `main`, so **merging is deploying**; a
@@ -349,11 +459,29 @@ Verified on the box at the cutover, 2026-08-17:
   it is not a one-way door — but **git still has the bad commit and the next
   merge redeploys it.** Land a revert too.
 - Postgres 16 local (`olma2` + `olma2_test` DBs), creds in `/opt/olma2/.env`
-  (0600). Daily `pg_dump` 02:15 → `/root/backups/`, 14-day retention.
-  **The dump lands on the same droplet it backs up — no off-box copy yet.**
+  (0600). Daily `pg_dump` 02:15 Asia/Jerusalem → `/root/backups/`, 14-day
+  retention (root's crontab, not in the repo). **Off-box copy:**
+  `scripts/backup-offbox.sh` (02:40, same crontab) uploads the newest dump to
+  a private DigitalOcean Spaces bucket, verifies the size the bucket reports,
+  prunes copies older than 30 days, and writes `job_heartbeats.backup_offbox`
+  — green on success, `ERR …` on any failure, stale on the health board if it
+  stops running. Config is `SPACES_KEY/SECRET/BUCKET/REGION` in the same
+  `.env`; the dump holds encrypted credentials, so the bucket stays private.
+  Restore drill: download, `gunzip`, `psql olma2_test < file`.
 - Services: `olma2-brokerd` (unix-socket daemon: pg pool, flood counters,
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
+- **Every statement on a `createPool` connection is capped at 20s and a
+  checkout waits at most 10s** (`src/db/pool.js`, `OLMA_DB_STATEMENT_TIMEOUT_MS`,
+  `OLMA_DB_CONNECT_TIMEOUT_MS`; `0` disables). Both sit under the MCP shim's
+  30s call timeout so a runaway query fails inside the tool call, by name.
+  `migrate.js` and the test helper build their own clients and are exempt.
+- **A sweep inside brokerd reads the gateway's session stores through
+  `channels/sessions-async.js`, never `channels/sessions.js` directly.** Every
+  export of `sessions.js` is synchronous (readFileSync, a read-only sqlite
+  handle) and the daemon answers live users on the same loop; the facade runs
+  the identical functions in a worker thread with a deadline. The dashboard
+  and the eval harness are separate processes and keep calling `sessions.js`.
 
 ## The live dashboard is v2's (`olma2/src/adapters/http/dashboard.js`)
 
@@ -365,6 +493,28 @@ https://allma.world and https://olmachat.duckdns.org.
 Same house style — zero deps, Basic auth, server-rendered HTML + form POSTs,
 no JS — but structured differently:
 
+- **Since 2026-09-05 the file is split:** `dashboard.js` is the router (auth,
+  CSRF, the OAuth callback, the GET/POST handlers, ~490 lines);
+  `admin/sections/*.js` are the section renderers (one file per group of
+  related sections), `admin/sections/index.js` holds `GROUPS` and `SECTIONS`,
+  `admin/user-page.js` and `admin/contacts.js` are the two separate pages,
+  `admin/posts.js` the per-user POST handlers and `safeBack`, `admin/html.js`
+  the shell, `STYLE` and the formatting helpers. Exports are unchanged.
+- **Since 2026-09-05 the page is six collapsible groups** (`GROUPS`, CSS-only
+  `<details>`), only the first open on load, with an alerts strip inside it
+  built from signals the sections already compute (`collectAlerts`, one
+  extra query). Every `SECTIONS` entry names its `group`; a section with an
+  unknown group falls off the page, and the suite checks the two agree. The
+  old outbox and boost sections are blocks inside "מה מתוכנן להישלח" and
+  "הגדרות מערכת"; the reaction vocabulary (`reaction_emoji`) is edited there
+  too, one box per state via `POST /reactions` — never as a JSON flag row.
+- **The personal dashboard (`docs/design/user-dashboard.html`, served as-is)
+  creates coordinations and adds, answers, approves and swaps candidate times
+  through `/me/act` actions that call the SAME domain functions as the chat
+  tools** (`user-dashboard-write.js` → `meeting-options.js`). Picks arrive as
+  `{day, part | time}` in the person's own terms and become an instant in
+  their zone in `meeting-option-moment.js`; never convert in the browser. A section form may send `back=/#<id>`; `safeBack` accepts
+  only ids the page renders.
 - **Sections are a named array, not positional args.** `const SECTIONS = [{ id,
   title, hint, render }]`, rendered in order by the `GET /` handler. Adding one
   is a single entry plus its `render*(client, csrf)` function; the `hint` is
@@ -419,7 +569,7 @@ costs a session. What is live:
 | Dashboard | `127.0.0.1:8788` → https://allma.world (public routes) + https://olmachat.duckdns.org (admin) |
 | Caddy config | `/etc/caddy/Caddyfile` — **not** in the repo, not deployed |
 | Google OAuth client | `/opt/olma/google-oauth.json` — v1 path, still live; **not** in the repo |
-| Voice bridge | `/opt/olma2-voice-bridge/` — **not** in the repo, not deployed |
+| Voice bridge | `/opt/olma2-voice-bridge/` — source in `voice-bridge/`, deployed by `voice-bridge/deploy.sh` (its own workflow, never by `olma2/scripts/deploy.sh`) |
 | Which release is serving | `/opt/olma2/RELEASE` (sha + subject) |
 | Previous release / dated archive | `/opt/olma2-previous`, `/opt/olma2-releases/` |
 | OpenClaw config | `/root/.openclaw/openclaw.json` |
@@ -459,6 +609,7 @@ From `olma2/`:
 
 ```bash
 npm test          # node --test 'tests/*.test.js'
+npm run lint      # eslint, dev-only; CI runs it before the suite
 ```
 
 Real Postgres, one throwaway database per test file (`tests/helpers.freshDb`).
@@ -564,55 +715,17 @@ next session to rebuild something that already works.
 What is genuinely still missing is **Monday.com** (v1 had it read-only for one
 user). No tools, no domain module, nobody has asked for it since the cutover.
 
-### A reminder whose first rung died on the wire never climbs (2026-09-01)
+### The gateway can only ever be watched from OUTSIDE itself — half closed (2026-09-05)
 
-The rent reminder above is still, hours later, the thing that did not happen —
-and the escalation ladder cannot recover it. `dueForSending`'s rung-2 clause
-requires the previous rung's outbox row to carry `sent_at IS NOT NULL AND
-hold_reason IS NULL`. Row 5873 has `hold_reason = 'expired'`, so the EXISTS
-never matches; `task_reminders#27` sits at `attempts = 1, sent_at NULL` for
-ever, reads in `list_my_reminders` as one that never fired, and the ladder's
-own retirement rule closes it two days later. The person is told nothing at
-any point.
+`/health` checks the gateway, and since 2026-09-05 `liveness_watch`
+(`jobs/liveness-watch.js`, every five minutes inside brokerd) probes it and
+the delivery queue and can say so over a channel that is NOT the gateway:
+Twilio SMS (`channels/twilio-sms.js`, `TWILIO_SID/TOKEN/FROM` in
+`/opt/olma2/.env`), WhatsApp when the pipe is up. Two bad ticks before a
+word, one alert per outage plus a six-hourly reminder, a recovery message.
 
-That check is right about the case it was written for — a rung the GATE held
-or dropped (quiet hours, pause, budget) must not be chased, which is the
-check-in ladder's documented bug refusing to repeat itself. What it cannot
-see is **whose fault the non-delivery was**. `expired` covers both "we could
-not reach them inside their own window" and "our pipe was broken for twelve
-hours", and only the second deserves a retry. A fix has to split those —
-plausibly on `last_error` being a delivery/transport failure rather than a
-gate decision — and rung 1 cannot simply be re-enqueued under its own key
-(`reminder:<id>` is already spent on the dead row, which is exactly the
-guard that stops a duplicate reminder, the one outcome worse than a missed
-one). Not built; recorded so the next reminder lost to an outage is
-recognised as this and not re-diagnosed from scratch.
-
-### Nothing detects "somebody joined and never became reachable"
-
-We have a detector for an agent with no user (`checkOrphanAgents`) and none
-for a user with no working agent — the half that was built is the half that
-costs nobody anything. The buildable form asks about the PERSON, not the
-config: `users.onboarded_at` set, no `outbox` row with `sent_at IS NOT NULL
-AND hold_reason IS NULL`, and a few hours' grace (a 02:00 joiner is
-quiet-hours-held, not broken). That catches a dead-from-birth agent, a
-stuck-config agent, and every future failure of the same shape without
-needing to know why.
-
-**Not to be confused with `checkin.js`'s `isDeafOnDayOne`**, which greps for
-the same predicate and is the opposite check: it fires only once **two**
-onboarding messages have landed and the person never replied, and its effect
-is to send LESS. Someone who received nothing falls straight through it.
-
-### The gateway can only ever be watched from OUTSIDE itself
-
-`/health` checks it now (`incidents.md`, "A dead gateway read green"), and
-that is the end of the line for this one: **there is no alert.** Every alarm
-this system has — the credit outage, the runway warning, the eval reds,
-`config_guard`'s `BREAKS_USERS` set — rides the raw `openclaw message send`
-pipe, and that pipe IS the gateway. A gateway that is down cannot report that
-it is down, so a dashboard row and a 503 are genuinely all that is available
-from in here. Anything better has to run somewhere else: an uptime monitor
-hitting `https://allma.world/health` (public, unauthenticated, and the
-hostname that outlives the duckdns one), or a second channel that does not go
-through OpenClaw at all. Neither exists.
+What is still uncovered, and always will be from in here: a dead brokerd, a
+dead box, a dead network. Those need an uptime monitor hitting
+`https://allma.world/health` (public, unauthenticated, the hostname that
+outlives the duckdns one). That still does not exist and needs the owner's
+account at a monitoring service.

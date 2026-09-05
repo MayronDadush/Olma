@@ -4,10 +4,10 @@ const assert = require('node:assert/strict');
 const { freshDb, makeUser } = require('./helpers');
 const contacts = require('../src/domain/contacts');
 
-let db, user;
+let db;
 before(async () => {
   db = await freshDb();
-  user = await makeUser(db.pool, '+972526269826', { firstName: 'מירון' });
+  await makeUser(db.pool, '+972526269826', { firstName: 'מירון' });
 });
 after(async () => { await db.teardown(); });
 

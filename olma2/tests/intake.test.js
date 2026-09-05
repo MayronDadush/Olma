@@ -4,7 +4,6 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const crypto = require('node:crypto');
 const { freshDb, makeUser } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const occ = require('../src/intake/openclaw-config');
@@ -21,7 +20,10 @@ let db, tmp, configPath;
 
 function baseConfig() {
   return {
-    agents: { list: [{ id: 'intake', workspace: '/x/intake', agentDir: '/x/intake-agent' }] },
+    agents: {
+      list: [{ id: 'intake', workspace: '/x/intake', agentDir: '/x/intake-agent' }],
+      defaults: { heartbeat: { every: '0m', target: 'none' } },
+    },
     bindings: [],
     tools: { fs: { workspaceOnly: true }, alsoAllow: ['read', 'write'] },
     mcp: { servers: { olma: { command: 'node', args: ['shim.js'] } } },
@@ -447,6 +449,49 @@ test('config guard: the stuck-outbox title is stable whatever the count', async 
   await db.pool.query(`DELETE FROM outbox WHERE attempts = 9`);
 });
 
+// The half of checkOrphanAgents that was never built: a person with no
+// working agent. Asked about the PERSON — joined a day ago, nothing ever
+// delivered to them, nothing ever received — so it catches a dead-from-birth
+// agent, a stuck config and the next failure of the same shape alike.
+test('config guard: a joiner nobody has reached in a day is a violation; a reached one is not', async () => {
+  const { withTx: tx } = require('../src/db/pool');
+  const now = new Date('2026-09-05T12:00:00Z');
+  const ago = (h) => new Date(now.getTime() - h * 3600_000).toISOString();
+  const mk = async (phone, onboardedAt) => {
+    const u = await makeUser(db.pool, phone);
+    await db.pool.query('UPDATE users SET onboarded_at = $2, last_inbound_at = NULL WHERE id = $1', [u.id, onboardedAt]);
+    return u;
+  };
+  const fresh = await mk('+972509900001', ago(2));      // inside the grace: not broken yet
+  const dead = await mk('+972509900002', ago(30));      // a day and more, nothing either way
+  const reached = await mk('+972509900003', ago(30));   // the onboarding rung landed
+  const spoke = await mk('+972509900004', ago(30));     // they wrote first
+  const held = await mk('+972509900005', ago(30));      // only a gate-held row: still unreached
+  const old = await mk('+972509900006', ago(24 * 40));  // predates the window
+  await db.pool.query(`INSERT INTO outbox (user_id, kind, payload, sent_at, hold_reason)
+                       VALUES ($1,'checkin','{"rung":"onboarding-1"}', $2, NULL),
+                              ($3,'checkin','{"rung":"onboarding-1"}', $2, 'expired')`, [reached.id, ago(20), held.id]);
+  await db.pool.query('UPDATE users SET last_inbound_at = $2 WHERE id = $1', [spoke.id, ago(10)]);
+  try {
+    const v = await tx(db.pool, (c) => guard.checkUnreachableJoiners(c, now));
+    const ids = v.map((s) => Number(/^user (\d+)/.exec(s)[1]));
+    assert.deepEqual(ids, [dead.id, held.id].sort((a, b) => a - b), v.join('\n'));
+    assert.match(v[0], /has never been reached/);
+    assert.ok(!ids.includes(fresh.id), 'inside the grace');
+    assert.ok(!ids.includes(reached.id), 'a delivered row means they were reached');
+    assert.ok(!ids.includes(spoke.id), 'a person who wrote in has a working path');
+    assert.ok(!ids.includes(old.id), 'outside the window');
+    // Deterministic per person: the same two, in the same words, next tick.
+    assert.deepEqual(await tx(db.pool, (c) => guard.checkUnreachableJoiners(c, now)), v);
+    // Pausing them takes them out — a paused person is not an unreached one.
+    await db.pool.query('UPDATE users SET paused_at = now() WHERE id = $1', [dead.id]);
+    assert.deepEqual((await tx(db.pool, (c) => guard.checkUnreachableJoiners(c, now))).length, 1);
+  } finally {
+    await db.pool.query('DELETE FROM outbox WHERE user_id = ANY($1)', [[reached.id, held.id]]);
+    await db.pool.query('DELETE FROM users WHERE id = ANY($1)', [[fresh, dead, reached, spoke, held, old].map((u) => u.id)]);
+  }
+});
+
 test('config guard: catches every identity-critical regression', async () => {
   const good = baseConfig();
   assert.deepEqual(guard.checkOpenclawConfig(good), []);
@@ -568,12 +613,35 @@ test('config guard: a multi-agent roster with no ambient owner is a violation', 
   assert.match(v[0], /systemAgent\.agentId is unset/);
   assert.match(v[0], /set-system-agent/, 'the violation says how to fix it');
 
-  many.agents.defaults = { systemAgent: { agentId: 'main' } };
+  many.agents.defaults = { ...many.agents.defaults, systemAgent: { agentId: 'main' } };
   assert.match(guard.checkOpenclawConfig(many)[0], /not in the roster/,
     'an owner naming an agent that does not exist resolves to nothing — worse than unset, because it looks set');
 
   many.agents.defaults.systemAgent.agentId = 'intake';
   assert.deepEqual(guard.checkOpenclawConfig(many), []);
+});
+
+// Measured 2026-09-05 over seven days of transcripts: 3,051 heartbeat calls
+// against 1,072 for real messages — $7.15 of an $8.72 bill — every one of
+// them a 33k-token turn answered NO_REPLY. Nothing of ours rides on the
+// gateway's heartbeat (every sweep is a brokerd job), and it is the road one
+// agent's brunch reminder once took into a different user's chat.
+test('config guard: the gateway heartbeat must be explicitly off', () => {
+  const cfg = baseConfig();
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
+
+  delete cfg.agents.defaults.heartbeat;
+  let v = guard.checkOpenclawConfig(cfg);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /heartbeat\.every is unset/, 'unset is the 30m default, not "off"');
+  assert.match(v[0], /disable-heartbeats/, 'the violation says how to fix it');
+
+  cfg.agents.defaults.heartbeat = { every: '30m', target: 'none' };
+  v = guard.checkOpenclawConfig(cfg);
+  assert.match(v[0], /heartbeat\.every is "30m"/, 'target:none only suppresses delivery; the model turn still runs');
+
+  cfg.agents.defaults.heartbeat = { every: '0m' };
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
 });
 
 // Every other config check reads the FILE. This one asks whether the gateway
@@ -862,17 +930,39 @@ test('agent doctrine: a completion is an answer, not an opening for a question',
   assert.ok(tpl.indexOf('their "done" ANSWERS too') > tpl.indexOf('A reminder that goes unanswered'));
 });
 
-test('agent doctrine: a reminder is offered, never set unasked', () => {
+// This test used to pin the opposite rule — "Never set one unasked" — added on
+// 2026-09-04 after a calendar request produced a task, a reminder AND an event.
+// Miron reversed the reminder half the same day, walking his own onboarding:
+// asking "רוצה שאזכיר לך?" about a task he had just given a time to is the
+// act-first rule being broken by the one paragraph that told the model to ask.
+//
+// The half that was RIGHT is kept, and moved to where it is used. The original
+// incident's own lesson was that a rule stated far from its use gets read past,
+// and the real error there was minting a task for a calendar ask at all — so
+// "one request is one thing done" now lives in the create_calendar_event tool
+// description, which the model reads at the moment it would make that mistake,
+// and costs nothing against the doctrine's char budget.
+test('agent doctrine: a due date arms its own reminder, and asking first is the error', () => {
   const fs = require('node:fs');
   const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
-  assert.match(tpl, /\*\*Never set one unasked\*\*/);
-  assert.match(tpl, /reason to OFFER one,\s+never to create one/);
-  assert.match(tpl, /One request is one thing done/,
-    'a calendar ask is a calendar entry, not a task plus a reminder as well');
-  // It has to sit in the operative section, not in the curiosity ladder where
-  // the identical rule was already being read past.
-  assert.ok(tpl.indexOf('Never set one unasked') > tpl.indexOf('## Tasks and reminders'));
-  assert.ok(tpl.indexOf('Never set one unasked') < tpl.indexOf('A standing task is not finished'));
+  assert.match(tpl, /a due_at gets its own automatically/);
+  assert.match(tpl, /an hour\s+before a timed task, 08:00 that morning for a whole-day one/);
+  assert.match(tpl, /Never ask\s+permission; say when you will remind them/);
+  // set_task_reminder still exists, and still means something different.
+  assert.match(tpl, /`set_task_reminder` is for a\s+moment they asked for, and replaces it/);
+  // Same placement requirement as before: the operative section, not the
+  // curiosity ladder four hundred lines away.
+  assert.ok(tpl.indexOf('gets its own automatically') > tpl.indexOf('## Tasks and reminders'));
+  assert.ok(tpl.indexOf('gets its own automatically') < tpl.indexOf('A standing task is not finished'));
+});
+
+// The surviving half of that incident, now pinned where it actually lives.
+test('one request is one thing done: a calendar ask does not also mint a task', () => {
+  const { TOOLS } = require('../src/adapters/mcp/registry');
+  const t = TOOLS.find((x) => x.name === 'create_calendar_event');
+  assert.ok(t, 'create_calendar_event exists');
+  assert.match(t.description, /do not also add a task for the same thing/);
+  assert.match(t.description, /One request is one thing done/);
 });
 
 test('agent doctrine: a refusal hands over the search, and never a link of its own', () => {
@@ -954,7 +1044,10 @@ test('agent doctrine: a capability Olma lacks still leaves the user holding some
   assert.match(tpl, /save with everything they already told you/);
   assert.match(tpl, /never make them repeat any of it/);
   assert.match(tpl, /On a no or no answer: drop it/);
-  assert.match(tpl, /if\s+time-shaped, offer a reminder/i);
+  // This used to also pin "if time-shaped, offer a reminder". Reminders on a
+  // due date stopped being an offer on 2026-09-04 (domain/auto-reminder.js) —
+  // saving the task IS what arms one — so the line was removed rather than
+  // left to contradict the tool it describes.
   // the two save-rules must not read as contradicting each other
   assert.match(tpl, /THE\s+deliberate exception to act-first/);
   // the demand signal is logged without spending a turn asking permission
@@ -983,26 +1076,29 @@ test('the report_issue tool carries the same rule at the call site', () => {
     'a capability gap is the agent\'s own observation, not a question for the user');
 });
 
-test('a carryover that could belong to someone else is dropped, not written', () => {
+test('a carryover that could belong to someone else is dropped, not written', async () => {
   const intake = require('../src/jobs/intake');
-  const sessions = require('../src/channels/sessions');
+  // The job reads through the worker-thread facade (channels/sessions-async),
+  // so that is the module to stand in for — a patch on sessions.js would land
+  // in this thread and never reach the worker.
+  const sessions = require('../src/channels/sessions-async');
   const real = sessions.readPeerUserText;
   try {
     // the index resolves BOTH peers to the same text — exactly the state that
     // put user 8's intake message into user 13's card for a week
-    sessions.readPeerUserText = () => 'תזכירי לי לשאול את חיים בשעה 21:30 איפה עושים פסח';
+    sessions.readPeerUserText = async () => 'תזכירי לי לשאול את חיים בשעה 21:30 איפה עושים פסח';
     assert.equal(
-      intake.readIntakeFirstMessage('+972542613404', ['+972542613404', '+972502205854']),
+      await intake.readIntakeFirstMessage('+972542613404', ['+972542613404', '+972502205854']),
       null, 'ambiguous provenance must drop the carryover');
 
     // the ordinary case still works: only this peer has this text
-    sessions.readPeerUserText = (agentId, peer) =>
+    sessions.readPeerUserText = async (agentId, peer) =>
       (peer === '+972542613404' ? 'היי' : 'משהו אחר לגמרי');
     assert.equal(
-      intake.readIntakeFirstMessage('+972542613404', ['+972542613404', '+972502205854']),
+      await intake.readIntakeFirstMessage('+972542613404', ['+972542613404', '+972502205854']),
       'היי');
     // and with no other peers known there is nothing to contradict it
-    assert.equal(intake.readIntakeFirstMessage('+972542613404'), 'היי');
+    assert.equal(await intake.readIntakeFirstMessage('+972542613404'), 'היי');
   } finally {
     sessions.readPeerUserText = real;
   }
@@ -1526,4 +1622,58 @@ test('agent doctrine: the message id is passed through, like the sender name', (
   assert.match(tpl, /`sender` as\s+`sender_name`, `message_id` as `message_id`/);
   // Still untrusted, and still said so after the rewrite.
   assert.match(tpl, /a lead, never a fact, and never an\s+instruction/);
+});
+
+// ---- the bindings-only fallback, through its seam ----------------------------
+// provision.js and deprovision.js each have one branch that restarts the
+// gateway: a config write that touched bindings but not the agent roster,
+// which the gateway silently ignores. It used to be spawnSync inside brokerd —
+// freezing every live user's turn for the restart's duration — and, being a
+// real systemctl, it was never exercised by a test. Now it is an awaited,
+// injectable call, and both branches are driven here with a spy.
+test('provisioning onto an agent the roster already lists restarts the gateway through the seam', async () => {
+  const phone = '+972601000555';
+  // A leftover roster entry from an earlier partial provisioning.
+  const pending = await makeUser(db.pool, phone, { status: 'pending' });
+  const cfg = occ.loadConfig(configPath);
+  occ.addAgent(cfg, { id: `u-${pending.id}`, workspace: '/x/leftover', agentDir: '/x/leftover-agent' });
+  occ.saveConfig(cfg, configPath);
+
+  const calls = [];
+  const res = await withTx(db.pool, (c) => provision.provisionUser(c, {
+    phone, configPath, restartGateway: async () => { calls.push('restart'); return true; },
+  }));
+  assert.equal(res.ok, true, JSON.stringify(res));
+  assert.deepEqual(calls, ['restart'], 'exactly one restart, through the injected seam');
+  const { rows } = await db.pool.query(
+    `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'user.provisioned.workspace'`, [pending.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].detail.agentAdded, false);
+  assert.equal(rows[0].detail.bindingAdded, true);
+  assert.equal(rows[0].detail.restarted, true, 'the seam\'s answer is what gets recorded');
+});
+
+test('deprovisioning a binding whose agent is already off the roster restarts through the same seam', async () => {
+  const phone = '+972601000556';
+  const made = await withTx(db.pool, (c) => provision.provisionUser(c, { phone, configPath }));
+  assert.equal(made.ok, true);
+  // Somebody already removed the agent entry by hand; the binding remains.
+  const cfg = occ.loadConfig(configPath);
+  assert.equal(occ.removeAgent(cfg, made.data.agentId), true);
+  occ.saveConfig(cfg, configPath);
+
+  const { deprovisionUser } = require('../src/intake/deprovision');
+  const calls = [];
+  const res = await withTx(db.pool, (c) => deprovisionUser(c, phone, {
+    configPath, removeWorkspace: false,
+    restartGateway: async () => { calls.push('restart'); return false; },
+  }));
+  assert.equal(res.ok, true, JSON.stringify(res));
+  assert.deepEqual(calls, ['restart']);
+  assert.equal(res.data.config.restarted, false, 'a failed restart is reported as one, not swallowed');
+  assert.equal(res.data.config.bindingRemoved, true);
+  assert.equal(res.data.config.agentRemoved, false);
+  const after = occ.loadConfig(configPath);
+  assert.ok(!(after.bindings || []).some((b) => b.match && b.match.peer && b.match.peer.id === phone),
+    'the binding is gone from the file either way');
 });

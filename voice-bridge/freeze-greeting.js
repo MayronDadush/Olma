@@ -58,8 +58,8 @@ async function ttsMulaw(text, voiceId) {
   await pool.end();
   if (!rows[0]) throw new Error(`no user for ${USER_PHONE}`);
   const gender = rows[0].assistant_gender || 'female';
-  const name = rows[0].assistant_name || 'אולמה';
-  const spoken = name === 'אולמה' ? SPOKEN_DEFAULT_NAME : name;
+  const name = rows[0].assistant_name || 'עולמה';
+  const spoken = /^[אע]ולמה$/.test(name) ? SPOKEN_DEFAULT_NAME : name;
   const text = `היי${rows[0].first_name ? ' ' + rows[0].first_name : ''}, ${gender === 'male' ? 'זה' : 'זאת'} ${spoken}. מה קורה?`;
   const voiceId = VOICE_BY_GENDER[gender] || VOICE_BY_GENDER.female;
 

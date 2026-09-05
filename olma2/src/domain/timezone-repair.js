@@ -1,59 +1,20 @@
 'use strict';
-// Correcting a timezone corrected the SETTING and nothing already written.
+// Correcting a timezone must also correct what was written under the wrong
+// one: the wall clock the person actually said, re-instantiated in the new
+// zone, row by row (so a DST boundary is handled per row, never by one
+// global offset).
 //
-// Sarah (user 17) joined on Aug 31 from a +1516 number — a Long Island area
-// code — so provisioning guessed America/New_York. She is in Los Angeles. For
-// her first 44 minutes every dated thing she said was converted through a zone
-// three hours off: she said noon, the model correctly read her stored zone,
-// wrote `-04:00`, and Postgres stored 09:00 her time. Her brunch reminder went
-// off at 06:00. The zone was corrected that evening — and every row already
-// written stayed exactly as wrong as it had been, because `setTimezone` wrote
-// one column and stopped. One of those rows was still in the future three days
-// later and was fixed by hand.
+//   tasks.due_at, task_reminders.remind_at   repaired (future rows, attempts = 0)
+//   meetings.proposed_start_at / confirmed   REPORTED, never moved — the other
+//                                            side agreed to that exact instant
+//   digest_times, live_subscriptions         nothing to do — stored as local
+//                                            wall clocks, resolved per run
+//   past rows, user_facts.expires_at         left alone
 //
-// This is not an edge case. Measured on the live box 2026-09-03: NINE of ten
-// active users are carrying a zone nobody ever confirmed, with 11 future-dated
-// rows underneath them. Every one of those is a Sarah the moment its owner says
-// which city they are in.
-//
-// ---- what is repaired, and what deliberately is not ----
-//
-// The transformation is exact and needs no guessing: read the stored instant's
-// WALL CLOCK in the old zone — that is the time the person actually said — and
-// re-instantiate that same wall clock in the new one. Per row, so a DST
-// boundary between two rows is handled by each on its own terms rather than by
-// one global offset.
-//
-//   tasks.due_at, task_reminders.remind_at   repaired
-//   meetings.proposed_start_at / confirmed   REPORTED, never moved
-//   digest_times, live_subscriptions         nothing to do — self-healing
-//   past rows                                left alone
-//   user_facts.expires_at                    left alone
-//
-// **Meetings are another person's instant.** Both sides agreed to a specific
-// moment; shifting one participant's copy would silently move a meeting for
-// somebody who never heard about it, which is the whole failure that made
-// meetings a hard-gated feature in the first place. They come back as a list so
-// the agent can raise them with the person, who can re-propose. That is the
-// person's call, not ours.
-//
-// **digest_times and live_subscriptions.local_hour are stored as local wall
-// clocks** and resolved against whatever zone the user has AT THE TIME —
-// `sweeps.js` matches HH:MM in their zone, `live-updates.computeNextRun` reads
-// `sub.timezone` fresh every run. So both are already right the instant the
-// column changes; a live subscription pays at most one cycle at the old hour.
-// Nothing to repair, and repairing them would double-apply the shift.
-//
-// **Only rows in the future**, for two reasons. Rewriting history helps nobody
-// — a reminder that already fired at the wrong hour cannot un-fire. And a
-// reminder whose moment has passed already has an outbox row keyed to it;
-// moving `remind_at` underneath a queued delivery changes nothing about when it
-// goes out and only makes the two disagree.
-//
-// **Only reminders at `attempts = 0`.** A reminder mid-escalation has a rung
-// scheduled three hours after the previous one LANDED — a derived gap, not a
-// wall clock the person chose. Shifting it by a zone delta would be applying a
-// timezone correction to an interval.
+// A reminder mid-escalation (attempts > 0) is a derived gap, not a chosen
+// wall clock, and is not shifted. The story — a brunch reminder at 06:00,
+// and nine of ten users on a zone nobody confirmed — is in docs/incidents.md,
+// "A phone number is not a location (2026-08-31)".
 const { partsInZone, instantInZone } = require('./datetime');
 const audit = require('./audit');
 

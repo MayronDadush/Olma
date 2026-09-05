@@ -29,7 +29,11 @@ const { enqueue } = require('../outbox/enqueue');
 const { provisionUser } = require('../intake/provision');
 const { reopenMessage } = require('../intake/messages');
 const occ = require('../intake/openclaw-config');
-const sessions = require('../channels/sessions');
+// The worker-thread facade: this sweep ticks every 5 seconds inside brokerd,
+// and its reads are the most frequent synchronous work the daemon did
+// (see channels/sessions-async.js). Both readers below were already awaited
+// by sweepIntakeSessions, so the switch changes nothing for callers.
+const sessions = require('../channels/sessions-async');
 
 const INTAKE_AGENT_ID = 'intake';
 
@@ -40,8 +44,8 @@ const INTAKE_AGENT_ID = 'intake';
 // see channels/sessions.js). Throws if the file is malformed, so the sweep's
 // heartbeat goes red rather than reporting a convincing "no new users" while
 // discovery is actually broken.
-function defaultListIntakeSessions() {
-  return sessions.listSessionsForAgent(INTAKE_AGENT_ID)
+async function defaultListIntakeSessions() {
+  return (await sessions.listSessionsForAgent(INTAKE_AGENT_ID))
     .filter((s) => s.channel === 'whatsapp' && s.chatType === 'direct')
     .map((s) => ({ phone: s.peer, key: s.key, ageMs: s.ageMs }));
 }
@@ -64,13 +68,13 @@ function defaultListIntakeSessions() {
 // mapping cannot be trusted for either of them — drop it. A dropped carryover
 // costs one person a warmer first turn; a wrong one hands their private
 // message to a stranger.
-function readIntakeFirstMessage(phone, otherPhones = []) {
+async function readIntakeFirstMessage(phone, otherPhones = []) {
   try {
-    const text = sessions.readPeerUserText(INTAKE_AGENT_ID, phone);
+    const text = await sessions.readPeerUserText(INTAKE_AGENT_ID, phone);
     if (!text) return null;
     for (const other of otherPhones) {
       if (other === phone) continue;
-      if (sessions.readPeerUserText(INTAKE_AGENT_ID, other) === text) return null;
+      if (await sessions.readPeerUserText(INTAKE_AGENT_ID, other) === text) return null;
     }
     return text;
   } catch { return null; }

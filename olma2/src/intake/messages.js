@@ -13,7 +13,7 @@ function isHebrewPhone(phone) {
 function introMessage({ inviterName, inviterPhone, reason, phone }) {
   if (isHebrewPhone(phone)) {
     return [
-      `היי! כאן אולמה — עוזרת אישית שעובדת בוואטסאפ.`,
+      `היי! כאן עולמה — עוזרת אישית שעובדת בוואטסאפ.`,
       ``,
       `${inviterName} (${inviterPhone}) ביקש/ה להתחבר אליך דרכי${reason ? ` — ${reason}` : ''}.`,
       ``,
@@ -32,7 +32,7 @@ function introMessage({ inviterName, inviterPhone, reason, phone }) {
 // The reopen notice for waitlisted strangers — the promise we made kept.
 function reopenMessage(phone) {
   if (isHebrewPhone(phone)) {
-    return 'היי! כאן אולמה — פנית אליי כשלא הייתה אפשרות לצרף משתמשים חדשים. עכשיו נפתח מקום! אם עדיין רלוונטי, פשוט תענה/י לי כאן ונתחיל 🙂';
+    return 'היי! כאן עולמה — פנית אליי כשלא הייתה אפשרות לצרף משתמשים חדשים. עכשיו נפתח מקום! אם עדיין רלוונטי, פשוט תענה/י לי כאן ונתחיל 🙂';
   }
   return "Hi! Olma here — you reached out while new sign-ups were paused. There's room now! If you're still interested, just reply here and we'll get started 🙂";
 }

@@ -79,7 +79,7 @@ test('the snapshot records what Postgres actually cascades, including the other 
 test('a real delete followed by a restore puts every row back exactly as it was', async () => {
   const c0 = await db.pool.connect();
   try { await c0.query('TRUNCATE users CASCADE'); } finally { c0.release(); }
-  const { a, b } = await seed(db.pool);
+  const { a } = await seed(db.pool);
 
   const before = await snapshotState(db.pool);
   const obs = await testbed.observeDeletion(db.pool, a.id);
@@ -104,6 +104,98 @@ test('a real delete followed by a restore puts every row back exactly as it was'
 
   const after = await snapshotState(db.pool);
   assert.deepEqual(after, before, 'state after restore is identical to state before the delete');
+});
+
+test('a snapshot taken before a migration still restores, and the new column takes its default', async () => {
+  // 2026-09-05, restoring a snapshot taken the day before: migration 031 had
+  // since added `users.locale_observed_count INT NOT NULL DEFAULT 0`. The live
+  // table was read for the column list, so the absent key became an explicit
+  // NULL, which overrode the default and died on the not-null constraint —
+  // and it died on the OWNER's account, mid-restore.
+  const c0 = await db.pool.connect();
+  try { await c0.query('TRUNCATE users CASCADE'); } finally { c0.release(); }
+  const { a } = await seed(db.pool);
+  const obs = await testbed.observeDeletion(db.pool, a.id);
+
+  const c = await db.pool.connect();
+  try {
+    await c.query('BEGIN');
+    await deprovisionUser(c, '+972500000001', { configPath: cfgFile(), removeWorkspace: false });
+    await c.query('COMMIT');
+    // The migration lands AFTER the snapshot was taken. Both shapes: one with a
+    // default (restorable) and one that is merely nullable (also restorable).
+    await c.query(`ALTER TABLE users ADD COLUMN migrated_after_snapshot INT NOT NULL DEFAULT 7`);
+    await c.query(`ALTER TABLE users ADD COLUMN some_nullable_addition TEXT`);
+  } finally { c.release(); }
+
+  await restoreFrom(db.pool, obs);
+
+  const { rows } = await db.pool.query(
+    'SELECT migrated_after_snapshot, some_nullable_addition FROM users WHERE id=$1', [a.id]);
+  assert.equal(rows.length, 1, 'the user came back');
+  assert.equal(rows[0].migrated_after_snapshot, 7,
+    'the column the snapshot never knew about must take its DEFAULT, not an invented NULL');
+  assert.equal(rows[0].some_nullable_addition, null);
+
+  const c2 = await db.pool.connect();
+  try {
+    await c2.query('ALTER TABLE users DROP COLUMN migrated_after_snapshot');
+    await c2.query('ALTER TABLE users DROP COLUMN some_nullable_addition');
+  } finally { c2.release(); }
+});
+
+// 2026-09-05: user 3 was restored from the previous day's snapshot. That
+// snapshot predated the rotation of a token that had leaked into a real chat,
+// so the restore put the LEAKED token back as live, and config_guard re-filed
+// the leak within the hour. A restore must end with a token nobody has seen.
+test('a restore never revives a token that was rotated away after the snapshot', async () => {
+  const { rotateIdentityToken } = require('../src/domain/identity-repair');
+  const { renderAgentsMd } = require('../src/intake/provision');
+  const { fingerprint } = require('../src/domain/token-leak');
+  const users = require('../src/domain/users');
+  const run = () => '';
+  const c0 = await db.pool.connect();
+  try { await c0.query('TRUNCATE users CASCADE'); } finally { c0.release(); }
+  const { a } = await seed(db.pool);
+  const ws = path.join(tmp, 'ws-a');
+  fs.mkdirSync(ws, { recursive: true });
+  const { rows: [{ identity_token: leaked }] } = await db.pool.query('SELECT identity_token FROM users WHERE id=$1', [a.id]);
+  fs.writeFileSync(path.join(ws, '.olma-identity'), leaked + '\n', { mode: 0o600 });
+  fs.writeFileSync(path.join(ws, 'AGENTS.md'), renderAgentsMd(leaked), { mode: 0o600 });
+
+  const obs = await testbed.observeDeletion(db.pool, a.id); // the snapshot, token included
+  // The leak is found and the token rotated — AFTER the snapshot was taken.
+  const rot = await rotateIdentityToken(db.pool, { userId: a.id, apply: true, run, reason: 'leaked in chat' });
+  assert.equal(rot.ok, true);
+  assert.equal((await users.resolveByToken(db.pool, leaked)).ok, false, 'rotation killed the leaked token');
+
+  const c = await db.pool.connect();
+  try {
+    await c.query('BEGIN');
+    await deprovisionUser(c, '+972500000001', { configPath: cfgFile(), removeWorkspace: false });
+    await c.query('COMMIT');
+  } finally { c.release(); }
+  await restoreFrom(db.pool, obs);
+  // This is the trap, stated so it stays visible: the DB half of a restore
+  // faithfully puts the snapshot's token back, and the snapshot's token is
+  // the leaked one.
+  assert.equal((await users.resolveByToken(db.pool, leaked)).ok, true, 'the restore alone revives the leaked token');
+  // The files came back with the workspace tar in real life; here they were
+  // never removed (removeWorkspace: false), but they still carry whatever the
+  // rotation wrote, which is not what the DB now holds — the exact split a
+  // re-mint has to close.
+  const c2 = await db.pool.connect();
+  let res;
+  try { res = await testbed.remintAfterRestore(c2, a.id, { run, snapshot: 'test' }); } finally { c2.release(); }
+  assert.equal(res.ok, true, res.ok ? '' : res.error.message);
+  assert.equal(res.data.verified, true);
+  assert.equal(res.data.oldFingerprint, fingerprint(leaked), 'it replaced the revived leaked token');
+  assert.equal((await users.resolveByToken(db.pool, leaked)).ok, false, 'the leaked token is dead again');
+  const { rows: [{ identity_token: live }] } = await db.pool.query('SELECT identity_token FROM users WHERE id=$1', [a.id]);
+  assert.equal(fs.readFileSync(path.join(ws, '.olma-identity'), 'utf8').trim(), live, '.olma-identity carries the live token');
+  assert.ok(fs.readFileSync(path.join(ws, 'AGENTS.md'), 'utf8').includes(live), 'AGENTS.md carries the live token');
+  const audit = await db.pool.query(`SELECT detail FROM audit_log WHERE actor_id=$1 AND event='admin.identity_token_rotated' ORDER BY id DESC LIMIT 1`, [a.id]);
+  assert.match(audit.rows[0].detail.reason, /restored from snapshot test/);
 });
 
 test('the identity sequence is pushed past a hand-restored id, so the next signup does not collide', async () => {

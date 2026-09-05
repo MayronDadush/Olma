@@ -329,12 +329,30 @@ function insertPlan(tables, edges, pk) {
 async function insertRows(client, tbl, rows, deferredCols, pkCols) {
   if (!rows.length) return 0;
   const meta = await columns(client, tbl);
-  const cols = meta.map((c) => c.col);
   const typeOf = Object.fromEntries(meta.map((c) => [c.col, c.type]));
   const hasIdentity = meta.some((c) => c.identity === 'a' || c.identity === 'd');
   const conflict = pkCols.length ? `(${pkCols.join(',')})` : '';
   let n = 0;
   for (const row of rows) {
+    // Name only the columns the SNAPSHOT actually carries. The live table is
+    // read fresh here, so it also holds every column added by a migration that
+    // ran AFTER the snapshot was taken — and those are absent from `row`.
+    // Naming one anyway sends an explicit NULL, which overrides the DEFAULT the
+    // migration handed every other existing row, and fails outright when the
+    // column is NOT NULL. Omitting it lets Postgres apply that same default,
+    // which is exactly what the migration did to the rows this snapshot is
+    // being restored beside.
+    //
+    // Found 2026-09-05 restoring a 2026-09-04 snapshot: migration 031 added
+    // `users.locale_observed_count INT NOT NULL DEFAULT 0`, and the restore died
+    // on its not-null constraint. `rehearse` caught it against live rows and
+    // rolled back, which is the whole reason that command exists.
+    //
+    // A column added NOT NULL with NO default still fails, and should: that row
+    // genuinely cannot be reconstructed, and a silent zero would be invented data.
+    const cols = meta
+      .map((c) => c.col)
+      .filter((c) => deferredCols.includes(c) || Object.prototype.hasOwnProperty.call(row, c));
     const values = cols.map((c) => (deferredCols.includes(c) ? null : encodeForInsert(row[c], typeOf[c])));
     const ph = cols.map((_, i) => `$${i + 1}`).join(',');
     const sql = `INSERT INTO ${tbl} (${cols.join(',')}) ${hasIdentity ? 'OVERRIDING SYSTEM VALUE ' : ''}`
@@ -471,6 +489,26 @@ async function restoreRowsInto(client, data) {
   }
   const sequences = await resyncSequences(client, plan.order);
   return { inserted, deferredSet, repointed, sequences, plan };
+}
+
+// A snapshot carries the identity token of its day, and a restore puts that
+// token back as LIVE. If the token was rotated between snapshot and restore —
+// which is what a rotation is for: the old one had leaked — the restore
+// quietly re-arms the leaked credential. Found 2026-09-05: user 3 was restored
+// from a 2026-09-04 snapshot taken before that day's rotation, and within the
+// hour config_guard re-filed the 2026-09-02 leak as issue 72, "still works".
+//
+// So a restore ends by minting a fresh token, always. Deciding "was it rotated
+// since?" would be one more thing to get wrong, and a restore is already the
+// moment the open session's context is stale — one failed call that recovers
+// from .olma-identity is the same cost rotateIdentityToken documents. The
+// order (file, DB, AGENTS.md) and the verification are its own.
+async function remintAfterRestore(client, userId, { log, snapshot, run } = {}) {
+  const { rotateIdentityToken } = require('../src/domain/identity-repair');
+  return rotateIdentityToken(client, {
+    userId, apply: true, log, run,
+    reason: `restored from snapshot ${snapshot || '?'} — a snapshot's token may have been rotated away since`,
+  });
 }
 
 async function cmdRehearse(pool, phone, ref) {
@@ -762,6 +800,25 @@ async function cmdRestore(pool, phone, ref, apply) {
       console.log('    XDG_RUNTIME_DIR=/run/user/0 systemctl --user restart openclaw-gateway');
     }
 
+    // Never restore a credential. The files are back, so the rotation has its
+    // three places; a snapshot's token could be one that leaked and was
+    // rotated away since (2026-09-05, issue 72).
+    await client.query('BEGIN');
+    let minted;
+    try {
+      minted = await remintAfterRestore(client, data.userId, { log: console.log, snapshot: snap.name });
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    }
+    if (minted.ok) console.log(`identity token re-minted (${minted.data.oldFingerprint} → ${minted.data.newFingerprint}); their open session recovers on its first failed call.`);
+    else {
+      console.error(`! identity token NOT re-minted: ${minted.error.message}`);
+      console.error('  the snapshot\'s token is live. If it was ever rotated, run scripts/rotate-identity-token.js now.');
+      process.exitCode = 1;
+    }
+
     await refreshUserCard(pool, data.userId);
     console.log('USER.md refreshed.');
 
@@ -852,5 +909,5 @@ if (require.main === module) {
 
 module.exports = {
   cascadeClosure, setNullEdges, insertPlan, observeDeletion, configSlice,
-  diffState, restoreRowsInto,
+  diffState, restoreRowsInto, remintAfterRestore,
 };

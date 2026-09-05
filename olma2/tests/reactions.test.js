@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const r = require('../src/domain/reactions');
+const { withTx } = require('../src/db/pool');
 
 test('reactions: one emoji per state, and no state shares one', () => {
   const emoji = Object.values(r.REACTION_STATES);
@@ -10,7 +11,7 @@ test('reactions: one emoji per state, and no state shares one', () => {
   // Pinned by name so a future "let us make it livelier" edit has to argue with
   // a test rather than quietly turn the vocabulary into decoration.
   assert.deepEqual(Object.keys(r.REACTION_STATES).sort(),
-    ['done', 'failed', 'needs_input', 'scheduled', 'working']);
+    ['done', 'failed', 'listening', 'needs_input', 'scheduled', 'working']);
 });
 
 test('reactions: builds a real openclaw argv for a capable channel', () => {
@@ -29,7 +30,7 @@ test('reactions: builds a real openclaw argv for a capable channel', () => {
   const done = r.buildReactArgs({
     channel: 'whatsapp', target: '+972500000000', messageId: '3EB0ABCDEF', state: 'done',
   });
-  assert.equal(done[done.length - 1], '✅');
+  assert.equal(done[done.length - 1], '👍');
   assert.ok(r.buildReactArgs({
     channel: 'whatsapp', target: '+9725', messageId: 'x', state: 'done', remove: true,
   }).includes('--remove'));
@@ -97,14 +98,20 @@ test('reactions: the id is bounded before it is ever used', () => {
 
 test('reactions: markFor refuses everything it cannot stand behind', () => {
   const now = Date.UTC(2026, 8, 4, 12, 0, 0);
-  const turn = { messageId: '3EB0ABCD', lastInboundAt: new Date(now - 60_000).toISOString() };
+  // A fresh turn per assertion: markFor stamps what it has handed out, so
+  // reusing one object here would silently be testing the dedup instead.
+  const fresh = () => ({ messageId: '3EB0ABCD', lastInboundAt: new Date(now - 60_000).toISOString() });
+  const turn = fresh();
   const ok = { ok: true };
-  assert.equal(r.markFor('turn_start', ok, turn, now), 'working');
-  assert.equal(r.markFor('complete_task', ok, turn, now), 'done');
-  // "Written down for later" is not "finished" — the distinction the vocabulary
-  // exists for, and the one that would let somebody believe a reminder fired.
-  assert.equal(r.markFor('set_task_reminder', ok, turn, now), 'scheduled');
-  assert.equal(r.markFor('create_calendar_event', ok, turn, now), 'scheduled');
+  assert.equal(r.markFor('turn_start', ok, fresh(), now), 'working');
+  assert.equal(r.markFor('complete_task', ok, fresh(), now), 'done');
+  // ⏰ is armed-and-will-speak-to-you, and ONLY set_task_reminder does that.
+  assert.equal(r.markFor('set_task_reminder', ok, fresh(), now), 'scheduled');
+  // The calendar write is the request in hand, not a thing that will call out
+  // later — Miron's slow calendar turn ends 👍, not ⏰.
+  assert.equal(r.markFor('create_calendar_event', ok, fresh(), now), 'done');
+  assert.equal(r.markFor('add_task', ok, fresh(), now), 'done');
+  assert.equal(r.markFor('add_tasks_bulk', ok, fresh(), now), 'done');
 
   assert.equal(r.markFor('list_my_tasks', ok, turn, now), null, 'reading is not doing');
   // A failed call earns no mark at all rather than ⚠️: Olma explains the
@@ -117,6 +124,27 @@ test('reactions: markFor refuses everything it cannot stand behind', () => {
   assert.equal(r.markFor('complete_task', ok, { ...turn, messageId: null }, now), null);
   assert.equal(r.markFor('complete_task', ok, null, now), null);
   assert.equal(r.markFor('complete_task', ok, { ...turn, lastInboundAt: new Date(now - 3600_000).toISOString() }, now), null);
+});
+
+test('reactions: the same mark twice in one turn is asked for once', () => {
+  const now = Date.UTC(2026, 8, 4, 12, 0, 0);
+  const turn = { messageId: '3A0AEC8B', lastInboundAt: new Date(now - 60_000).toISOString() };
+  const ok = { ok: true };
+
+  // The production shape: a model that calls turn_start twice in one turn.
+  assert.equal(r.markFor('turn_start', ok, turn, now), 'working');
+  assert.equal(r.markFor('turn_start', ok, turn, now), null, 'the repeat buys nothing');
+
+  // ...but a genuine progression on the SAME message still gets through, which
+  // is the whole reason the key carries the state and not just the message.
+  assert.equal(r.markFor('add_task', ok, turn, now), 'done');
+  assert.equal(r.markFor('set_task_reminder', ok, turn, now), 'scheduled');
+  assert.equal(r.markFor('add_task', ok, turn, now), null);
+
+  // A different message in the same connection is a different mark. Without
+  // this the second person to write on a reused connection gets nothing.
+  turn.messageId = '3EB0FFFF';
+  assert.equal(r.markFor('turn_start', ok, turn, now), 'working');
 });
 
 test('reactions: placeMark is detached, unref\'d, and never claims delivery', () => {
@@ -132,10 +160,10 @@ test('reactions: placeMark is detached, unref\'d, and never claims delivery', ()
   assert.deepEqual(calls[0].opts, { detached: true, stdio: 'ignore' },
     'an attached child dies with its parent while reporting success — the MCP-shim rule');
   assert.equal(child.unrefd, true);
-  assert.ok(calls[0].args.includes('✅'));
+  assert.ok(calls[0].args.includes('👍'));
   // `attempted`, never `sent`. There is no exit code to read, so there is no
   // claim to make — and nothing user-visible may depend on the mark landing.
-  assert.deepEqual(out, { attempted: true, state: 'done', emoji: '✅' });
+  assert.deepEqual(out, { attempted: true, state: 'done', emoji: '👍' });
   assert.equal(out.sent, undefined);
 
   // Not applicable is not an attempt, and it must not spawn anything.
@@ -149,6 +177,39 @@ test('reactions: placeMark is detached, unref\'d, and never claims delivery', ()
   assert.deepEqual(
     r.placeMark({ channel: 'whatsapp', target: '+9725', messageId: '3EB0ABCD', state: 'done' }, { spawn: boom }),
     { attempted: false, reason: 'spawn_failed' });
+});
+
+// Each mark is a 15-second CLI start-up on the box, so a short turn has the
+// 👀 and the 👍 alive at once and the LAST to finish wins. A 👀 that lands
+// after the 👍 leaves "working" on a finished message for ever.
+test('reactions: a newer mark kills an older one still starting up, and replaces one that landed', () => {
+  const spawned = [];
+  const mkChild = () => {
+    const handlers = {};
+    const c = { killed: false, on(ev, fn) { handlers[ev] = fn; }, unref() {}, kill() { c.killed = true; }, emitExit() { handlers.exit && handlers.exit(0); } };
+    return c;
+  };
+  const spawn = (cmd, args) => { const c = mkChild(); spawned.push({ args, child: c }); return c; };
+  const base = { channel: 'whatsapp', target: '+972500000000', messageId: '3EB0RACE0001' };
+
+  // 👀 goes out; before its CLI has even reached the gateway, the work is done.
+  const first = r.placeMark({ ...base, state: 'working' }, { spawn });
+  assert.equal(first.attempted, true);
+  const second = r.placeMark({ ...base, state: 'done' }, { spawn });
+  assert.equal(spawned[0].child.killed, true, 'the 👀 that could not land in time is stopped, not raced');
+  assert.equal(second.superseded, true);
+  assert.ok(spawned[1].args.includes('👍'));
+
+  // A mark that already landed is not touched — the newer one replaces it on the phone.
+  spawned[1].child.emitExit();
+  const third = r.placeMark({ ...base, state: 'scheduled' }, { spawn });
+  assert.equal(spawned[1].child.killed, false, 'an exited child is left alone');
+  assert.equal(third.superseded, undefined);
+
+  // Another message is another life: nothing crosses between them.
+  const other = r.placeMark({ ...base, messageId: '3EB0RACE0002', state: 'working' }, { spawn });
+  assert.equal(other.superseded, undefined);
+  assert.equal(spawned[2].child.killed, false);
 });
 
 test('reactions: every marked tool exists, and the table is the only list', () => {
@@ -207,32 +268,72 @@ test('reactions: a real turn marks the message 👀 and then upgrades it', async
     { id: 1, method: 'tool_call', params: { name, args: { identity_token: user.identity_token, ...args } } }, turn);
 
   const turn = newTurn();
-  await call('turn_start', { message_id: '3EB0ACKTEST01' }, turn);
+  const opened = await call('turn_start', { message_id: '3EB0ACKTEST01' }, turn);
   assert.equal(marks.length, 1, 'the 👀 must land on the tool call the doctrine already makes first');
+  assert.equal(JSON.parse(opened.text.replace(/^OK /, '')).hints?.markPlaced, undefined,
+    'a 👀 is not an answer — only the done mark may stand in for words');
   assert.deepEqual(marks[0], {
     channel: 'whatsapp', target: user.phone, messageId: '3EB0ACKTEST01', state: 'working',
+    // Resolved when the turn opened, from the operator's setting or — as here,
+    // with nothing configured — from the built-in table.
+    emoji: '👀',
   });
 
   // Gali's actual case: she wrote "בוצע" and got a question back instead of an
-  // acknowledgement. The completion now marks her own message ✅, which replaces
+  // acknowledgement. Capturing it now marks her own message 👍, which replaces
   // the 👀 in place — one mark, no second notification, nothing to un-send.
   const added = await call('add_task', { title: 'לנצל את הנקודות' }, turn);
   assert.ok(added.ok);
-  assert.equal(marks[marks.length - 1].state, 'scheduled');
+  assert.equal(marks.length, 2, 'the capture earns its own mark');
+  assert.equal(marks[1].state, 'done');
+  assert.equal(marks[1].messageId, '3EB0ACKTEST01',
+    'every mark in a turn goes on the one message that opened it');
+  // And the result says the mark went out, so the model can let it be the
+  // whole answer — Miron's ask: a 👍 is enough, no "deleted ✅" after it.
+  const addedData = JSON.parse(added.text.replace(/^OK /, ''));
+  assert.match(addedData.hints.markPlaced, /NO_REPLY/);
+  assert.match(addedData.hints.markPlaced, /nothing to add/);
+
+  // Completing it in the same turn wants the SAME 👍 on the SAME message, and
+  // the person is already looking at one. This is the repeat measured in
+  // production on the afternoon of 2026-09-04, and it now costs nothing.
   const { rows } = await db.pool.query(
     `SELECT id FROM tasks WHERE owner_id = $1 ORDER BY id DESC LIMIT 1`, [user.id]);
-  await call('complete_task', { task_id: rows[0].id }, turn);
-  assert.equal(marks[marks.length - 1].state, 'done');
-  assert.equal(marks[marks.length - 1].messageId, '3EB0ACKTEST01',
-    'every mark in a turn goes on the one message that opened it');
+  const finished = await call('complete_task', { task_id: rows[0].id }, turn);
+  assert.ok(finished.ok, 'the tool still runs — only the duplicate mark is dropped');
+  assert.equal(marks.length, 2, 'no second identical mark was asked for');
 
   // A turn that never handed over an id gets no marks at all — silently, and
   // without failing anything. This is the majority case on day one.
   const blind = newTurn();
   await call('turn_start', {}, blind);
   const before = marks.length;
-  await call('add_task', { title: 'ללא מזהה' }, blind);
+  const blindAdd = await call('add_task', { title: 'ללא מזהה' }, blind);
   assert.equal(marks.length, before, 'no id, no guess');
+  const blindData = JSON.parse(blindAdd.text.replace(/^OK /, ''));
+  assert.equal(blindData.hints && blindData.hints.markPlaced, undefined,
+    'no mark went out, so the model is not told to stay silent');
+
+  // A voice note earns 👂 on the way in, through the same road message_id
+  // travels — the model says so, because the MediaType never reaches us.
+  const heard = newTurn();
+  await call('turn_start', { message_id: '3EB0ACKVOICE1', message_kind: 'voice' }, heard);
+  assert.equal(marks[marks.length - 1].state, 'listening');
+  assert.equal(marks[marks.length - 1].emoji, '👂');
+
+  // And the operator's own choice reaches the wire. Miron's ask: 👍 for done.
+  await withTx(db.pool, (c) => require('../src/domain/flags')
+    .setFlag(c, 'reaction_emoji', { done: '👍' }));
+  const styled = newTurn();
+  await call('turn_start', { message_id: '3EB0ACKSTYLE1' }, styled);
+  assert.equal(marks[marks.length - 1].emoji, '👀', 'an untouched state keeps its default');
+  const t2 = await call('add_task', { title: 'לבדוק לייק' }, styled);
+  assert.ok(t2.ok);
+  const { rows: r2 } = await db.pool.query(
+    `SELECT id FROM tasks WHERE owner_id = $1 ORDER BY id DESC LIMIT 1`, [user.id]);
+  await call('complete_task', { task_id: r2[0].id }, styled);
+  assert.equal(marks[marks.length - 1].state, 'done');
+  assert.equal(marks[marks.length - 1].emoji, '👍', 'the setting reached the mark');
 
   // And a second person on the same connection never inherits the first one's
   // message id — the reset in newTurn()'s user-change branch, which is the one
@@ -244,4 +345,78 @@ test('reactions: a real turn marks the message 👀 and then upgrades it', async
   await broker.dispatch({ id: 2, method: 'tool_call', params: {
     name: 'add_task', args: { identity_token: other.identity_token, title: 'x' } } }, shared);
   assert.equal(marks.length, n, "a new user on the connection starts with no message id, not the last one's");
+});
+
+// ── The vocabulary is the operator's, and a voice note is heard, not seen ─────
+// Miron, 2026-09-04, having watched a 👀 turn into a ⏰ on his own phone: make
+// it a setting, so "done" can be a 👍 instead of a message saying done; and for
+// a recording, an ear rather than eyes.
+const { vocabulary, isUsableEmoji, REACTION_STATES } = r;
+
+test('a voice note is marked 👂 while a typed message is marked 👀', () => {
+  const live = { messageId: 'ABC123', lastInboundAt: Date.now() };
+  assert.equal(r.markFor('turn_start', { ok: true }, live), 'working');
+  assert.equal(
+    r.markFor('turn_start', { ok: true }, { ...live, messageKind: 'voice' }),
+    'listening');
+  assert.equal(REACTION_STATES.listening, '👂');
+});
+
+test('how the message arrived changes only the OPENING mark', () => {
+  const voice = { messageId: 'ABC123', lastInboundAt: Date.now(), messageKind: 'voice' };
+  // What the turn achieved is the same question however the message came in.
+  assert.equal(r.markFor('set_task_reminder', { ok: true }, voice), 'scheduled');
+  assert.equal(r.markFor('complete_task', { ok: true }, voice), 'done');
+});
+
+test('anything but the literal "voice" is an ordinary turn', () => {
+  const live = { messageId: 'ABC123', lastInboundAt: Date.now() };
+  for (const kind of [undefined, null, '', 'text', 'VOICE', 'audio', 'video', 1]) {
+    assert.equal(r.markFor('turn_start', { ok: true }, { ...live, messageKind: kind }),
+      'working', `messageKind ${JSON.stringify(kind)} must not be read as voice`);
+  }
+});
+
+test('an operator can swap one state\'s emoji and leave the rest alone', () => {
+  const v = vocabulary({ done: '✅' });
+  assert.equal(v.done, '✅');
+  assert.equal(v.working, '👀', 'the states nobody touched keep their defaults');
+  assert.equal(v.scheduled, '⏰');
+  // The frozen table is what "default" means everywhere else — never mutated.
+  assert.equal(REACTION_STATES.done, '👍');
+});
+
+test('a setting that is not an emoji, or not a state, is ignored', () => {
+  const v = vocabulary({
+    done: 'בוצע',            // a word, not an emoji
+    working: '',              // an emptied box
+    scheduled: '   ',
+    needs_input: 'x'.repeat(50),
+    nonsense_state: '🎉',     // states cannot be invented from a setting
+  });
+  assert.deepEqual(v, { ...REACTION_STATES }, 'every bad value falls back to the default');
+  assert.equal(v.nonsense_state, undefined);
+});
+
+test('a malformed setting object is survivable, not a throw', () => {
+  for (const bad of [null, undefined, 'nonsense', 42, []]) {
+    assert.deepEqual(vocabulary(bad), { ...REACTION_STATES });
+  }
+});
+
+test('isUsableEmoji accepts real marks and refuses text', () => {
+  for (const good of ['👍', '✅', '⚠️', '👂', '🎉']) assert.equal(isUsableEmoji(good), true, good);
+  for (const bad of ['done', 'בוצע', '', '  ', 'a', '<b>', null, 42]) {
+    assert.equal(isUsableEmoji(bad), false, JSON.stringify(bad));
+  }
+});
+
+test('the chosen emoji reaches the command line, and a bad one falls back', () => {
+  const base = { channel: 'whatsapp', target: '+972500000001', messageId: 'ABC', state: 'done' };
+  assert.equal(r.buildReactArgs({ ...base, emoji: '✅' }).at(-1), '✅');
+  // An unusable override must not cost the mark — the default still goes.
+  assert.equal(r.buildReactArgs({ ...base, emoji: 'בוצע' }).at(-1), '👍');
+  assert.equal(r.buildReactArgs({ ...base, emoji: '' }).at(-1), '👍');
+  // An override cannot conjure a state that does not exist.
+  assert.equal(r.buildReactArgs({ ...base, state: 'invented', emoji: '🎉' }), null);
 });

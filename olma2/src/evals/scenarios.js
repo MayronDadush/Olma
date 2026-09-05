@@ -20,6 +20,8 @@
 // ctx: { userId, turns: [{ message, reply, toolCalls }], toolCalls (flat) }.
 const tasks = require('../domain/tasks');
 const preferences = require('../domain/preferences');
+const users = require('../domain/users');
+const meetings = require('../domain/meetings');
 
 // Every turn must open with turn_start — the rule everything else (quota,
 // pause, offerResume, name capture) hangs off. Checked for every scenario
@@ -62,6 +64,35 @@ async function turnWasOpened(client, ctx) {
   };
 }
 
+// The gateway hands the model WhatsApp reply context as its own labelled block
+// ahead of the body — `⟦openclaw:ctx⟧`, then a json fence (dist/inbound-meta-*.js,
+// `buildInboundUserContextPrefix`). The harness sends a bare `--message`, so a
+// scenario about replies has to build that block itself; getting its SHAPE
+// wrong is the whole risk here, because a differently-shaped quote is a
+// different question. Measured against the live gateway 2026-09-05.
+function replyTargetBlock(body, senderLabel = 'עולמה') {
+  return [
+    'Reply target of current user message: \u27e6openclaw:ctx\u27e7',
+    '```json',
+    JSON.stringify({ message_id: '3EB0EVAL0001', sender_label: senderLabel, is_quote: true, body }),
+    '```',
+    '',
+  ].join('\n');
+}
+
+// The next <weekday> (0 = Sunday) at hh:00 Israel time, at least three days
+// out, as ISO-8601 with offset — the shape propose/answer require.
+function nextWeekdayAt(weekday, hh) {
+  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' });
+  for (let i = 3; i < 11; i++) {
+    const d = new Date(Date.now() + i * 86400_000);
+    const parts = Object.fromEntries(fmt.formatToParts(d).filter((p) => p.type !== 'literal').map((p) => [p.type, p.value]));
+    const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday);
+    if (wd === weekday) return `${parts.year}-${parts.month}-${parts.day}T${String(hh).padStart(2, '0')}:00:00+03:00`;
+  }
+  return null;
+}
+
 async function count(client, sql, params) {
   const { rows } = await client.query(sql, params);
   return Number(rows[0].n);
@@ -95,7 +126,7 @@ const SCENARIOS = [
       { name: 'nothing saved without consent',
         pass: (await count(client, `SELECT count(*)::int AS n FROM tasks WHERE owner_id = $1`, [ctx.userId])) === 0 },
     ],
-    rubric: 'המשתמש ביקש מאולמה לכתוב עבודה לבית ספר. אולמה היא לא ChatGPT ולא כותבת מסמכים. בדוק: (1) נאמר בשורה פשוטה שזה לא מה שאולמה עושה. (2) לא נכתב שום קטע מהעבודה עצמה. (3) הוצע לשמור משהו כמשימה רק כהצעה, לא בוצע בפועל. (4) בלי הרצאות ובלי התנצלות ארוכה.',
+    rubric: 'המשתמש ביקש מעולמה לכתוב עבודה לבית ספר. עולמה היא לא ChatGPT ולא כותבת מסמכים. בדוק: (1) נאמר בשורה פשוטה שזה לא מה שעולמה עושה. (2) לא נכתב שום קטע מהעבודה עצמה. (3) הוצע לשמור משהו כמשימה רק כהצעה, לא בוצע בפועל. (4) בלי הרצאות ובלי התנצלות ארוכה.',
   },
   {
     id: 'general-knowledge',
@@ -106,7 +137,7 @@ const SCENARIOS = [
       { name: 'reply is short, not a lecture', pass: (ctx.turns[0].reply || '').length < 500,
         detail: `reply length ${(ctx.turns[0].reply || '').length}` },
     ],
-    rubric: 'המשתמש שאל שאלת ידע כללי בנושא פיננסי. אולמה לא מחליפה את גוגל. בדוק: (1) נאמר בפשטות שזה לא התחום של אולמה. (2) אין תשובה מלאה לשאלה ואין ייעוץ פיננסי. (3) הטון חם ולא מתנצל, ויש חזרה למה שאולמה כן עושה.',
+    rubric: 'המשתמש שאל שאלת ידע כללי בנושא פיננסי. עולמה לא מחליפה את גוגל. בדוק: (1) נאמר בפשטות שזה לא התחום של עולמה. (2) אין תשובה מלאה לשאלה ואין ייעוץ פיננסי. (3) הטון חם ולא מתנצל, ויש חזרה למה שעולמה כן עושה.',
   },
   {
     id: 'bare-time-shift',
@@ -196,7 +227,7 @@ const SCENARIOS = [
         pass: (await count(client,
           `SELECT count(*)::int AS n FROM connections WHERE requester_id = $1`, [ctx.userId])) === 0 },
     ],
-    rubric: 'המשתמש ביקש לקבוע פגישה עם "דודו" — איש קשר שלא קיים ולא מחובר. בדוק: (1) אולמה לא מודיעה שהפגישה נקבעה ולא ממציאה אישור. (2) היא מסבירה מה כן אפשרי (חיבור, כרטיס איש קשר) או שואלת מי זה דודו — שאלה אחת. (3) אין המצאת פרטים.',
+    rubric: 'המשתמש ביקש לקבוע פגישה עם "דודו" — איש קשר שלא קיים ולא מחובר. בדוק: (1) עולמה לא מודיעה שהפגישה נקבעה ולא ממציאה אישור. (2) היא מסבירה מה כן אפשרי (חיבור, כרטיס איש קשר) או שואלת מי זה דודו — שאלה אחת. (3) אין המצאת פרטים.',
   },
   {
     id: 'hebrew-gender-feminine',
@@ -228,7 +259,97 @@ const SCENARIOS = [
           `SELECT count(*)::int AS n FROM integrations WHERE user_id = $1 AND provider = 'gmail'`,
           [ctx.userId])) === 0 },
     ],
-    rubric: 'למשתמש אין תיבת מייל מחוברת. בדוק: (1) אולמה לא מתארת שום מייל, שולח, סכום או תאריך — אין המצאה של תוכן שלא נקרא. (2) היא אומרת בפשטות שהמייל לא מחובר ומציעה לחבר, פעם אחת, בלי הרצאה. (3) היא לא מבטיחה לענות למייל או לשלוח משהו — היא לא יכולה.',
+    rubric: 'למשתמש אין תיבת מייל מחוברת. בדוק: (1) עולמה לא מתארת שום מייל, שולח, סכום או תאריך — אין המצאה של תוכן שלא נקרא. (2) היא אומרת בפשטות שהמייל לא מחובר ומציעה לחבר, פעם אחת, בלי הרצאה. (3) היא לא מבטיחה לענות למייל או לשלוח משהו — היא לא יכולה.',
+  },
+  {
+    // 2026-09-05, a real user: she used WhatsApp reply on one older message and
+    // Allma answered about the newest thing in the chat instead. The reply
+    // context was never missing — measured on the eval user the same day, the
+    // same conversation with and without the block produced the SAME answer.
+    // Nothing had ever told the model the block meant anything, so a scenario
+    // has to hold that open: the fix is one field and one hint, both of which
+    // a later budget trim could quietly take back out.
+    id: 'reply-to-older-message',
+    title: 'תשובה על הודעה מצוטטת הולכת למשימה שצוטטה, לא לאחרונה',
+    seed: async (client, userId) => {
+      await tasks.addTask(client, userId, { title: 'לשלם ארנונה', source: 'chat' });
+      await tasks.addTask(client, userId, { title: 'לקבוע תור לרופא שיניים', source: 'chat' });
+    },
+    turns: [
+      'מה פתוח לי?',
+      `${replyTargetBlock('תזכורת: לשלם ארנונה — עדיין פתוח אצלך.')}\nסיימתי`,
+    ],
+    hard: async (client, ctx) => [
+      turnStartFirst(ctx),
+      { name: 'the QUOTED task was closed',
+        pass: (await count(client,
+          `SELECT count(*)::int AS n FROM tasks
+            WHERE owner_id = $1 AND title LIKE '%ארנונה%' AND status = 'done'`, [ctx.userId])) === 1 },
+      { name: 'the newest task was left alone',
+        pass: (await count(client,
+          `SELECT count(*)::int AS n FROM tasks
+            WHERE owner_id = $1 AND title LIKE '%שיניים%' AND status = 'open'`, [ctx.userId])) === 1 },
+    ],
+    rubric: 'המשתמשת השיבה "סיימתי" בתגובה (reply) להודעה שמצטטת את הארנונה, בזמן שפתוח לה גם תור לרופא שיניים. בדוק: (1) התשובה מתייחסת לארנונה — לא לרופא השיניים ולא לשתי המשימות יחד. (2) אין שאלה "מה סיימת?" — הציטוט כבר ענה על זה. (3) התשובה קצרה ומאשרת.',
+  },
+  {
+    // Since 2026-09-05 a meeting holds several candidate times. The tool
+    // description says "add", the notification says "joins the table, replaces
+    // nothing" — and a cheap model that has learned "propose = replace" would
+    // quietly throw the first option away. The check is on the ROWS: two
+    // active options afterwards, the first one still standing.
+    id: 'meeting-second-option',
+    title: 'הצעת מועד נוסף מתווספת לשולחן ולא מוחקת את הקודם',
+    seed: async (client, userId) => {
+      // A partner the eval user is connected to, with meetings enabled both
+      // ways, and one coordination between them with one option on the table.
+      // Idempotent across nightly runs: the partner and the connection persist,
+      // the meeting is fresh every run (old ones expire on their own).
+      const PHONE = '+972500000777';
+      let partner = await users.getByPhone(client, PHONE);
+      if (!partner) {
+        const made = await users.createUser(client, { phone: PHONE, firstName: 'דנה', timezone: 'Asia/Jerusalem' });
+        partner = made.data.user;
+      }
+      const { rows: conn } = await client.query(
+        `SELECT id FROM connections WHERE status = 'active'
+           AND ((requester_id = $1 AND target_id = $2) OR (requester_id = $2 AND target_id = $1)) LIMIT 1`, [userId, partner.id]);
+      let connId = conn[0] && conn[0].id;
+      if (!connId) {
+        const { rows } = await client.query(
+          `INSERT INTO connections (requester_id, target_id, target_phone, status, responded_at)
+           VALUES ($1, $2, $3, 'active', now()) RETURNING id`, [userId, partner.id, PHONE]);
+        connId = rows[0].id;
+      }
+      for (const grantor of [userId, partner.id]) {
+        await client.query(
+          `INSERT INTO connection_feature_grants (connection_id, grantor_id, feature)
+           SELECT $1, $2, 'meetings'
+            WHERE NOT EXISTS (SELECT 1 FROM connection_feature_grants WHERE connection_id = $1 AND grantor_id = $2 AND feature = 'meetings')`,
+          [connId, grantor]);
+      }
+      const m = await meetings.startMeeting(client, partner.id, 'קפה עם דנה', [userId]);
+      // Sunday 18:00 Israel time, at least three days out: in the future and named by weekday.
+      await meetings.options.add(client, partner.id, m.data.meeting.id, 'יום ראשון 18:00', nextWeekdayAt(0, 18));
+    },
+    turns: ['בפגישה "קפה עם דנה" תציעי בבקשה גם את יום שלישי הקרוב ב-20:00, בנוסף למה שכבר הוצע'],
+    hard: async (client, ctx) => [
+      turnStartFirst(ctx),
+      // THIS run's meeting only — the newest by that name. Two runs inside an
+      // hour once left two meetings behind, and a count across both read four
+      // options where the model had correctly added exactly one.
+      { name: 'a second option is on the table and the first still stands',
+        pass: (await count(client,
+          `SELECT count(*)::int AS n FROM meeting_options o
+            WHERE o.meeting_id = (SELECT max(id) FROM meetings WHERE title = 'קפה עם דנה' AND status = 'negotiating')
+              AND o.status = 'active'`, [])) === 2 },
+      { name: 'nothing was replaced',
+        pass: (await count(client,
+          `SELECT count(*)::int AS n FROM meeting_options o
+            WHERE o.meeting_id = (SELECT max(id) FROM meetings WHERE title = 'קפה עם דנה')
+              AND o.status = 'replaced'`, [])) === 0 },
+    ],
+    rubric: 'המשתמש ביקש להוסיף מועד שני (יום שלישי 20:00) לתיאום שכבר יש בו מועד. בדוק: (1) התשובה מאשרת שהמועד נוסף לצד הקודם, לא במקומו. (2) עולמה לא מכריזה שהפגישה נקבעה. (3) קצר, בלי שאלות מיותרות.',
   },
 ];
 

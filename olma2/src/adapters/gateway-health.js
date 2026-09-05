@@ -1,44 +1,14 @@
 'use strict';
-// The one component nothing was watching.
+// The gateway's own /health, probed from outside it — the one component
+// nothing was watching (docs/incidents.md, "A dead gateway read green on
+// `/health` (fixed 2026-09-03)").
 //
-// `/health` measured the DB and every sweep's heartbeat, and answered 200
-// while the gateway — the process every user's WhatsApp message goes through,
-// in both directions — was refusing connections. Found 2026-09-03 by a raw
-// `message send` coming back ECONNREFUSED against a green board. That instance
-// was a concurrent session's deliberate restart and lasted thirteen seconds,
-// so it cost nothing; nothing about the page would have looked different at
-// hour three. Same shape as the credit outage that ran thirteen hours behind a
-// green board, and the workspace-seal failure that dropped 126 real messages
-// while /health honestly reported everything it measured.
-//
-// ---- what this probe does and does not prove ----
-//
-// The gateway serves its OWN `/health` on its configured port, unauthenticated,
-// answering `{"ok":true,"status":"live"}`. That is a real route, checked on the
-// live box: an unknown path returns the control-UI HTML instead, so a 200
-// alone would only prove that some HTTP server answered. The body is read and
-// `ok` must be true.
-//
-// It proves the gateway process is up and serving. It does NOT prove WhatsApp
-// is linked, that the model provider has credit, or that a turn would succeed
-// — those have their own detectors. It catches the total failure, which is the
-// one that was invisible.
-//
-// ---- three states, not two ----
-//
-// A config we cannot read is `unknown`, never `down`. "Could not look" and
-// "looked and it was dead" must not wear the same word — the rule this
-// codebase keeps relearning (a null session index is not an empty one; a
-// failed balance call is not $0 remaining). `unknown` does not turn /health
-// red: manufacturing an outage out of missing information is how a monitoring
-// page trains its reader to ignore it.
-//
-// ---- and it must never gate a deploy ----
-//
-// `scripts/deploy.sh` checks `/ready`, deliberately, and `/ready` does not call
-// this. A gateway restart that overlaps a deploy would otherwise roll back
-// code that had nothing to do with it — and gateway restarts happen, including
-// the one that exposed this gap.
+// Rules: read the BODY and require ok:true (an unknown path answers 200 with
+// the control-UI HTML); it proves the process is up and nothing more (a
+// linked WhatsApp, provider credit, a working turn have their own
+// detectors); three states, not two — a config that cannot be read is
+// `unknown`, never `down`, and `unknown` never turns /health red; and it
+// must never gate a deploy: deploy.sh checks /ready, which does not call it.
 const http = require('node:http');
 const occ = require('../intake/openclaw-config');
 

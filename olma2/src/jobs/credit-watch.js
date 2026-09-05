@@ -1,43 +1,16 @@
 'use strict';
-// The credit-out alarm, on the zero-cost pipe.
+// The credit-out alarm, on the zero-cost pipe: `openclaw message send` needs
+// no model, so "the money ran out" rides the one channel that does not need
+// money. Folded into the outbox_worker beat (one indexed query over rows the
+// worker just touched), alerting at most once per outage.
 //
-// The Anthropic account has now run dry three times in one week (08-20,
-// 08-23, 08-26). Each time, every model turn fails — no replies, no digests,
-// no checkins — and each time the operator found out hours later, from the
-// silence. The system knew within a minute: the outbox rows say "credit
-// balance is too low" on their very first failed attempt.
-//
-// What makes an alarm possible at all is the raw pipe: `openclaw message
-// send` was proven live (2026-08-24, during an outage) to deliver WhatsApp
-// with ZERO model involvement. So the one message that matters — "the money
-// ran out" — rides the one channel that does not need money.
-//
-// Folded into the existing outbox_worker beat rather than a sweeper of its
-// own (the house rule): detection is one indexed query over rows the worker
-// just touched. Alert at most once per outage: `credit_alert_at` is compared
-// against the FIRST error of the current outage, so a new outage re-arms the
-// alarm and a long one does not re-fire it.
-//
-// That comparison has exactly ONE clock, and it is Postgres's. It used to
-// straddle two: the outage's first error came from the database (`min(created_at)`)
-// and the stamp was written by the Node process (`new Date().toISOString()`).
-// Two things went wrong with that, one of them in production:
-//
-// - **Precision.** `pg` parses a timestamptz into a JS Date, which is
-//   millisecond-resolution, and `toISOString()` truncates the microseconds
-//   Postgres actually stored. Two events a fraction of a millisecond apart
-//   compare EQUAL, and `>=` then reads a genuinely new outage as the old one
-//   and stays silent. This is why the test at tests/credit-watch.test.js
-//   failed about two runs in three: everything in it happens inside a few
-//   milliseconds. So both sides stay in Postgres — `::text` out, `::timestamptz`
-//   back in — and never pass through a JS Date.
-// - **`now()` is transaction start, not wall clock**, and this function runs
-//   inside `withTx` (see bin/olma-brokerd.js). Under READ COMMITTED a row
-//   inserted after our transaction opened is still visible to the SELECT — so
-//   `now()` can legitimately predate the outage we just read, stamping the flag
-//   BEFORE the first error and re-firing the same alarm every tick for the rest
-//   of a real outage. `clock_timestamp()` is the wall clock at statement time
-//   and cannot land before a row the previous statement already returned.
+// ONE clock — Postgres's — for "is this a new outage": both sides stay in
+// Postgres (`::text` out, `::timestamptz` back) and the stamp is
+// `clock_timestamp()`, never `now()`. A JS Date truncates microseconds and
+// `now()` is transaction start, and each of those either silenced or
+// re-fired the alarm in production. docs/incidents.md, "The credit alarm
+// compared two clocks (fixed 2026-08-28)"; the three outages in one week
+// that made this exist are under "Model provider pilot: OpenRouter".
 const flagsDomain = require('../domain/flags');
 
 // Where the alarm goes. A flag so the dashboard can change it without a
@@ -72,7 +45,7 @@ async function alertHourOpen(client, phone) {
 function alertText(sinceIso) {
   const t = sinceIso ? new Date(sinceIso).toISOString().slice(11, 16) + ' UTC' : 'עכשיו';
   return [
-    '⚠️ אולמה: נגמר הקרדיט אצל ספק המודל.',
+    '⚠️ עולמה: נגמר הקרדיט אצל ספק המודל.',
     `מאז ${t} אף הודעה לא נשלחת ואף פנייה לא נענית.`,
     'OpenRouter: openrouter.ai/settings/credits · Anthropic: console.anthropic.com → Billing (ושווה Auto-reload).',
     'הכל ממתין בתור ויישלח לבד תוך ~10 דקות מהטעינה.',
@@ -87,7 +60,7 @@ function alertText(sinceIso) {
 function recoveredText(sinceIso) {
   const t = sinceIso ? new Date(sinceIso).toISOString().slice(11, 16) + ' UTC' : '';
   return [
-    'ℹ️ אולמה: בלילה נגמר הקרדיט אצל ספק המודל.',
+    'ℹ️ עולמה: בלילה נגמר הקרדיט אצל ספק המודל.',
     `${t ? `זה התחיל ב-${t} ו` : ''}כרגע הכול עובד שוב — ההודעות שהמתינו יצאו.`,
     'שווה בכל זאת להציץ ביתרה: openrouter.ai/settings/credits (ושווה Auto-reload).',
   ].join('\n');
@@ -253,7 +226,7 @@ function tierFor(s) {
 }
 
 function balanceAlertText(low) {
-  const lines = ['⚠️ אולמה: יתרה נמוכה בשירות בתשלום.', ''];
+  const lines = ['⚠️ עולמה: יתרה נמוכה בשירות בתשלום.', ''];
   for (const { label, state } of low) {
     const left = `$${Number(state.remaining).toFixed(2)}`;
     lines.push(state.daysLeft !== null && state.daysLeft !== undefined

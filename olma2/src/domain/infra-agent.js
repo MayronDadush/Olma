@@ -32,7 +32,9 @@
 // Removing either stops the leak; the delivery half is the real chokepoint,
 // because it bounds every future thing that wakes main, including whatever
 // the next gateway upgrade invents.
-const sessions = require('../channels/sessions');
+// The worker-thread facade — this runs from config_guard inside brokerd
+// (see channels/sessions-async.js). Injected readers may still be sync.
+const sessions = require('../channels/sessions-async');
 
 // Agents with no user row. `intake` belongs here too but is deliberately NOT
 // judged on sessions: talking to peers who are not yet users is its entire
@@ -72,7 +74,7 @@ async function deliverableInfraSessions(client, { list, hasInbound, agents = DEL
     // An unreadable store is "no evidence", never "no sessions" — the same
     // rule readAgentIndex follows one layer down. It throws rather than
     // reporting a clean bill of health for a store nobody could open.
-    try { entries = readOne(agentId) || []; } catch { continue; }
+    try { entries = (await readOne(agentId)) || []; } catch { continue; }
     for (const e of entries) {
       if (!e || e.chatType !== 'direct') continue;
       // An archived session is the remediation, not the fault. Reporting one
@@ -92,7 +94,7 @@ async function deliverableInfraSessions(client, { list, hasInbound, agents = DEL
       // null, and null is not evidence of a conversation — it must not
       // manufacture a violation out of an unreadable store.
       let spoken = null;
-      try { spoken = spokenIn(agentId, e.key); } catch { spoken = null; }
+      try { spoken = await spokenIn(agentId, e.key); } catch { spoken = null; }
       if (spoken !== true) continue;
       found.push({ agentId, channel: e.channel, peer: e.peer, userId: Number(owner.id), key: e.key });
     }

@@ -127,6 +127,67 @@ test('a rung that never reached them does not advance the ladder', async (t) => 
   assert.equal((await reminderRow(pool)).attempts, 1);
 });
 
+// The known gap of 2026-09-01: rung 1 of the rent reminder died on the wire
+// (16 failed attempts, then 'expired'), the ladder read that as "the gate
+// held it" and never climbed, and the person heard nothing at any point. The
+// discriminator is whose fault the non-delivery was: a row the gate held has
+// no attempts and no error; a row our pipe lost has both.
+test('a rung that died on OUR side of the wire is redone at once, plainly, and still spends a rung', async (t) => {
+  const { pool, teardown } = await setup('+972505500012');
+  t.after(teardown);
+  const r = await reminderRow(pool);
+  await withTx(pool, (c) => sweeps.sweepReminders(c, TICK1));
+
+  // The worker tried and failed for two hours, then the row expired.
+  await pool.query(
+    `UPDATE outbox SET sent_at = $2::timestamptz, hold_reason = 'expired',
+            attempts = 16, last_error = 'openclaw exited 1: gateway unreachable'
+      WHERE idempotency_key = $1`, [reminders.attemptKey(r.id, 1), '2026-08-17T18:00:00Z']);
+
+  // Redone on the very next tick — no three-hour gap, it is not a follow-up.
+  await withTx(pool, (c) => sweeps.sweepReminders(c, '2026-08-17T18:01:00Z'));
+  const keys = await outboxKeys(pool);
+  assert.equal(keys.length, 2, 'the person got nothing, so it goes again');
+  assert.equal(keys[1].idempotency_key, `reminder:${r.id}:2`, 'under a fresh key — the spent one stays spent');
+  assert.equal(keys[1].urgency, 'urgent', 'it stands in for the moment THEY chose');
+  const { rows: [row2] } = await pool.query(
+    'SELECT payload FROM outbox WHERE idempotency_key = $1', [`reminder:${r.id}:2`]);
+  assert.equal(row2.payload.redo, true);
+  assert.equal(row2.payload.attempt, undefined, 'plain wording: there is nothing to follow up on');
+  assert.equal((await reminderRow(pool)).attempts, 2, 'a redo still spends a rung, so a dead pipe cannot loop');
+
+  // Delivered this time → the ladder continues as a normal follow-up, and
+  // from a rung-2 position that means next-day-same-hour, with the last-call
+  // wording.
+  await deliver(pool, r.id, 2, '2026-08-17T18:02:00Z');
+  await withTx(pool, (c) => sweeps.sweepReminders(c, '2026-08-17T23:00:00Z'));
+  assert.equal((await outboxKeys(pool)).length, 2, 'a delivered rung 2 waits for tomorrow like any other');
+  await withTx(pool, (c) => sweeps.sweepReminders(c, NEXT_DAY));
+  const all = await outboxKeys(pool);
+  assert.equal(all.length, 3);
+  assert.equal(all[2].urgency, 'normal');
+  const { rows: [row3] } = await pool.query(
+    'SELECT payload FROM outbox WHERE idempotency_key = $1', [`reminder:${r.id}:3`]);
+  assert.equal(row3.payload.attempt, 3);
+  assert.equal(row3.payload.finalAttempt, true);
+  assert.ok((await reminderRow(pool)).sent_at, 'three means three, redo included');
+});
+
+test('a rung the GATE expired is still not chased — no attempts, no error, no redo', async (t) => {
+  const { pool, teardown } = await setup('+972505500013');
+  t.after(teardown);
+  const r = await reminderRow(pool);
+  await withTx(pool, (c) => sweeps.sweepReminders(c, TICK1));
+  // Held all night, expired at dawn: the gate's shape — nothing was ever tried.
+  await pool.query(
+    `UPDATE outbox SET sent_at = $2::timestamptz, hold_reason = 'expired', attempts = 0, last_error = NULL
+      WHERE idempotency_key = $1`, [reminders.attemptKey(r.id, 1), '2026-08-17T18:00:00Z']);
+  await withTx(pool, (c) => sweeps.sweepReminders(c, '2026-08-17T18:01:00Z'));
+  await withTx(pool, (c) => sweeps.sweepReminders(c, NEXT_DAY));
+  assert.equal((await outboxKeys(pool)).length, 1);
+  assert.equal((await reminderRow(pool)).attempts, 1);
+});
+
 test('completing the task ends the ladder mid-climb', async (t) => {
   const { pool, teardown, user, taskId } = await setup('+972505500003');
   t.after(teardown);

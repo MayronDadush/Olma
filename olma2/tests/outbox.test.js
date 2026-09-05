@@ -189,7 +189,7 @@ test('night hold: row waits, then releases when the window opens', async () => {
 // budget it exhausted.
 const BUDGET_DAY = '2026-08-16T12:00:00Z';
 async function alreadySentThatDay(rows) {
-  const values = rows.map((r, i) => `($1,'${r.kind}','{}','${r.urgency}',$2)`).join(', ');
+  const values = rows.map((r) => `($1,'${r.kind}','{}','${r.urgency}',$2)`).join(', ');
   await db.pool.query(
     `INSERT INTO outbox (user_id, kind, payload, urgency, sent_at) VALUES ${values}`,
     [user.id, BUDGET_DAY]

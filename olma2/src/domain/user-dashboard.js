@@ -20,6 +20,11 @@
 //     published — the same projection calendar.listEvents makes about
 //     attendees and mail makes about recipient lists.
 const { ok, err } = require('./results');
+// `meetingsDomain`, not `meetings`: loadMeetings below binds a local
+// `meetings` for its own rows, and a module-level shadow of that name is a
+// TDZ ReferenceError inside the one function that needs this.
+const meetingsDomain = require('./meetings');
+const optionMoment = require('./meeting-option-moment');
 const mail = require('./mail');
 
 // A task's own category vocabulary is closed server-side (tasks.category is
@@ -83,12 +88,13 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
   // made "משימות משותפות" a section that only ever showed the ones this person
   // shared OUT, i.e. exactly half the feature, silently.
   const { rows: tasks } = await client.query(
-    `SELECT t.id, t.title, t.category, t.source, t.status, t.parent_id,
+    `SELECT t.id, t.title, t.category, t.category_auto, t.source, t.status, t.parent_id, t.ends_at,
             t.archived_at IS NOT NULL AS archived, t.completed_at,
             t.due_at, t.owner_id,
             -- the wall clock the person actually chose, resolved in THEIR zone
             to_char(t.due_at AT TIME ZONE $2, 'YYYY-MM-DD') AS due_date,
             to_char(t.due_at AT TIME ZONE $2, 'HH24:MI')    AS due_time,
+            to_char(t.ends_at AT TIME ZONE $2, 'HH24:MI')   AS end_time,
             -- a due_at at exactly local midnight is an all-day task: that is
             -- what add_task stores when no time was given
             (t.due_at IS NOT NULL AND
@@ -166,8 +172,16 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
       id: t.id,
       title: t.title,
       category: category(t.category),
+      // Whether Olma chose it, so the sheet can say so and the person knows
+      // the field is a guess they are free to correct — the page has carried
+      // that affordance (`עולמה בחרה`) since it was designed.
+      catAuto: Boolean(t.category_auto) && KNOWN_CATEGORIES.includes(t.category),
       date: t.due_date,
       time: t.all_day ? null : t.due_time,
+      // The other end of a range, when there is one. A shift is `משמרת`
+      // 12:00–19:00 rather than a title with the hours typed into it, and the
+      // day view can only draw the block if it is told where it stops.
+      endTime: t.all_day ? null : (t.end_time || null),
       allDay: t.all_day,
       done: t.status === 'done',
       // The archive lists what was finished and when; nothing else reads it.
@@ -329,7 +343,15 @@ async function loadMeetings(client, userId, zone) {
      FROM meetings m
      JOIN meeting_participants p ON p.meeting_id = m.id
      WHERE p.user_id = $1 AND p.state != 'opted_out'
-       AND m.status IN ('negotiating', 'confirmed')
+       AND (m.status = 'negotiating'
+            -- A settled meeting is "active" only until it has happened. One
+            -- from 2026-08-20 sat on a user's list on 2026-09-05 reading "no
+            -- time proposed yet": confirmed, dated only in its slot TEXT (it
+            -- predates start times), and never expiring because expiry covers
+            -- negotiations. Past or text-only settled meetings are archive.
+            OR (m.status = 'confirmed'
+                AND ((m.confirmed_start_at IS NOT NULL AND m.confirmed_start_at > now() - interval '6 hours')
+                     OR (m.confirmed_start_at IS NULL AND m.updated_at > now() - interval '3 days'))))
      ORDER BY m.id DESC`,
     [userId, zone]
   );
@@ -339,15 +361,44 @@ async function loadMeetings(client, userId, zone) {
   // in nothing — the group has to be able to see why the tally dropped, and a
   // silently shorter list reads as somebody never having been asked.
   const { rows: parts } = await client.query(
-    `SELECT p.meeting_id, p.user_id, p.state, u.first_name
+    `SELECT p.meeting_id, p.user_id, p.state, p.constraints, u.first_name
      FROM meeting_participants p JOIN users u ON u.id = p.user_id
      WHERE p.meeting_id = ANY($1::bigint[])
      ORDER BY p.meeting_id, p.user_id`,
     [ids]
   );
+  // Every candidate time, in the page's own terms: a day offset from THIS
+  // person's today and a clock time or daypart, with everyone's answers. A
+  // pending one (a fifth from a non-initiator) travels flagged; the page shows
+  // it to the initiator as a decision and to its proposer as a receipt.
+  const { rows: optRows } = await client.query(
+    `SELECT o.id, o.meeting_id, o.slot_text, o.starts_at, o.all_day, o.daypart, o.added_by, o.status,
+            coalesce(json_object_agg(a.user_id, a.answer) FILTER (WHERE a.user_id IS NOT NULL), '{}'::json) AS answers
+       FROM meeting_options o LEFT JOIN meeting_option_answers a ON a.option_id = o.id
+      WHERE o.meeting_id = ANY($1::bigint[]) AND o.status IN ('active', 'pending')
+      GROUP BY o.id ORDER BY o.id`, [ids]);
+  const optionsBy = new Map();
+  for (const o of optRows) {
+    if (!optionsBy.has(o.meeting_id)) optionsBy.set(o.meeting_id, []);
+    const pick = optionMoment.pickFor(zone, o.starts_at);
+    optionsBy.get(o.meeting_id).push({
+      id: Number(o.id), day: pick.day, time: o.all_day || o.daypart ? null : pick.time,
+      part: o.daypart || null, allDay: Boolean(o.all_day), pending: o.status === 'pending',
+      by: o.added_by === null ? null : Number(o.added_by), slot: o.slot_text, startsAt: o.starts_at,
+      answers: o.answers || {},
+    });
+  }
   const byMeeting = new Map();
   for (const p of parts) {
     if (!byMeeting.has(p.meeting_id)) byMeeting.set(p.meeting_id, []);
+    // What this person has actually said about when they can make it. Their
+    // OWN constraints come back whole, including the private ones — they wrote
+    // them; anybody else's are filtered to what they agreed to share, the same
+    // projection meetings.getStatus makes. This page must not be the one place
+    // a private note leaks out of.
+    const said = String(p.user_id) === String(userId)
+      ? meetingsDomain.constraintTexts(p.constraints)
+      : meetingsDomain.shareableTexts(p.constraints);
     byMeeting.get(p.meeting_id).push({
       id: p.user_id,
       name: p.first_name,
@@ -358,6 +409,16 @@ async function loadMeetings(client, userId, zone) {
       answer: p.state === 'confirmed_current' ? 'y'
         : p.state === 'declined_current' ? 'n' : '',
       left: p.state === 'opted_out',
+      // A fourth thing the tri-state cannot hold: answered, and neither yes
+      // nor no. She said "not free until 22:00 — after that I can", and every
+      // field above rendered her identical to somebody who never replied, so
+      // the screen reported silence from a person who had spoken. `said` is
+      // the sentence; `answered` is the bit the page needs to stop drawing
+      // her as waiting. An empty array is "nothing said", never "not read" —
+      // the two are different rows here and must stay different values.
+      said,
+      answered: p.state === 'confirmed_current' || p.state === 'declined_current'
+        || said.length > 0,
     });
   }
   return meetings.map((m) => ({
@@ -377,7 +438,51 @@ async function loadMeetings(client, userId, zone) {
     confirmedTime: m.confirmed_time,
     confirmedDay: m.confirmed_day === null ? null : Number(m.confirmed_day),
     participants: byMeeting.get(m.id) || [],
+    options: optionsBy.get(m.id) || [],
+    maxOptions: meetingsDomain.options.MAX_ACTIVE,
   }));
+}
+
+// Coordinations this person LEFT and could still walk back into. They are the
+// contents of the meetings archive, and they carry almost nothing on purpose:
+// an id and a title is everything "put me back in" needs, and anything more
+// would be a live feed of a negotiation somebody deliberately stepped out of.
+// Watching the others answer after you have left is not a feature.
+//
+// Bounded by what `meetings.rejoin` will actually accept, so the button is
+// never drawn over a refusal: still negotiating or confirmed, and not already
+// started. A coordination that closed when you left is gone from here too.
+async function loadLeftMeetings(client, userId) {
+  const { rows } = await client.query(
+    `SELECT m.id, m.title
+       FROM meetings m
+       JOIN meeting_participants p ON p.meeting_id = m.id
+      WHERE p.user_id = $1 AND p.state = 'opted_out'
+        AND m.status IN ('negotiating', 'confirmed')
+        AND (m.confirmed_start_at IS NULL OR m.confirmed_start_at > now())
+      ORDER BY m.id DESC
+      LIMIT 20`,
+    [userId]
+  );
+  const left = rows.map((m) => ({ id: Number(m.id), title: m.title, youLeft: true }));
+  // Settled meetings that have happened (or, for the text-only rows that
+  // predate start times, settled a while ago). The mirror image of the
+  // active-list rule in loadMeetings: what leaves there arrives here, so a
+  // coordination never simply vanishes. Title and the words of the slot, no
+  // tally and no way back in — it is over.
+  const { rows: done } = await client.query(
+    `SELECT m.id, m.title, m.confirmed_slot
+       FROM meetings m
+       JOIN meeting_participants p ON p.meeting_id = m.id
+      WHERE p.user_id = $1 AND p.state <> 'opted_out'
+        AND m.status = 'confirmed'
+        AND ((m.confirmed_start_at IS NOT NULL AND m.confirmed_start_at <= now() - interval '6 hours')
+             OR (m.confirmed_start_at IS NULL AND m.updated_at <= now() - interval '3 days'))
+      ORDER BY m.id DESC
+      LIMIT 20`,
+    [userId]
+  );
+  return left.concat(done.map((m) => ({ id: Number(m.id), title: m.title, youLeft: false, settled: true, slot: m.confirmed_slot || '' })));
 }
 
 // The whole page, in one object. A missing or blocked user is `not_found` and
@@ -403,6 +508,7 @@ async function load(client, userId) {
   const channels = await loadChannels(client, userId);
   const contacts = await loadContacts(client, userId);
   const meetings = await loadMeetings(client, userId, zone);
+  const meetingsLeft = await loadLeftMeetings(client, userId);
   return ok({
     user: {
       id: user.id,
@@ -432,6 +538,7 @@ async function load(client, userId) {
     integrations,
     available: { mail: mailGate.ok },
     meetings,
+    meetingsLeft,
   });
 }
 

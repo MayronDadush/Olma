@@ -113,7 +113,6 @@ test('a checklist arrives as items, not as separate tasks', async () => {
   const parent = await withTx(db.pool, (c) => tasks.addTask(c, me.id, { title: 'קניות' }));
   const pid = parent.data.task.id;
   for (const title of ['חלה', 'יין']) {
-    // eslint-disable-next-line no-await-in-loop
     await withTx(db.pool, (c) => tasks.addTask(c, me.id, { title, parentId: pid }));
   }
   const d = (await load(me.id)).data;

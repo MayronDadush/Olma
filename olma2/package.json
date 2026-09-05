@@ -6,7 +6,8 @@
   "main": "src/index.js",
   "scripts": {
     "migrate": "node src/db/migrate.js",
-    "test": "node --test --test-timeout=60000 'tests/*.test.js'"
+    "test": "node --test --test-timeout=60000 'tests/*.test.js'",
+    "lint": "eslint src bin scripts tests eslint.config.js"
   },
   "engines": {
     "node": ">=24"
@@ -14,5 +15,10 @@
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.10.0",
+    "globals": "^17.12.0"
   }
 }

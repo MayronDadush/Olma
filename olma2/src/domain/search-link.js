@@ -1,38 +1,15 @@
 'use strict';
-// "I can't do that" is honest and useless. This makes it useful.
+// "I can't do that" is honest and useless. This makes it useful: a Google
+// SEARCH link for words the model supplies.
 //
-// Olma has no web access, so a request to look something up ends in a refusal
-// — and the doctrine already stops that refusal from being the whole reply
-// (say it once, offer to save the errand, log the gap). What it could not do
-// was hand back anything the person could actually USE. Five people asked for
-// help writing a school essay in four days; two asked about finance. Every one
-// of them got a polite no.
-//
-// A search they could have typed themselves is not a lookup. That distinction
-// is the entire safety argument, and it is why this can exist beside the
-// hallucination guard rather than weakening it:
-//
-//   a link to a RESULT   asserts "I looked" — a price, an article, a product.
-//                        Olma did not look. Still forbidden, always.
-//   a link to a SEARCH   asserts nothing at all. It IS the question, handed
-//                        over unanswered, for them to open.
-//
-// ---- why this is a tool and not a sentence in the doctrine ----
-//
-// Because the model must never type a URL. Twice now this system has learned
-// that a rule living only in prose does not hold: DeepSeek skipped `turn_start`
-// under two different models and two rewordings until the SERVER started doing
-// the bookkeeping itself. A model asked to write URLs will eventually write
-// `https://www.ynet.co.il/article/12345` — a link to a page that may not exist,
-// which is exactly the fabricated-lookup failure wearing a different hat.
-//
-// So the model supplies WORDS. The URL is built here, from a base it cannot
-// influence, and the only thing it can put in is the query string. There is no
-// argument that reaches the host, the path, or a second parameter.
-//
-// The audit row carries the query on purpose. Nothing else in this system can
-// answer "what do people keep asking for that we cannot do" — the free-text
-// issue rows tried and sat unread. This is the same signal, structured.
+// The safety argument in one line: a link to a RESULT asserts "I looked"
+// (forbidden, always); a link to a SEARCH asserts nothing — it is the
+// question, handed over. A tool and not a doctrine sentence because the model
+// must never type a URL: it supplies WORDS, the URL is built here from a base
+// it cannot influence, and nothing it passes reaches the host or the path.
+// The audit row carries the query on purpose — the one structured signal of
+// what people keep asking for that we cannot do. Story: docs/incidents.md,
+// "\"I can't do that\" was the whole answer (fixed 2026-08-21)".
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const flags = require('./flags');

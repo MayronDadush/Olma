@@ -39,7 +39,7 @@ async function beginConnection(client, userId) {
   return ok({
     url: google.contactsConsentUrl(state),
     validForMinutes: google.STATE_TTL_MS / 60000,
-    tellTheUser: 'הקישור מבקש הרשאת קריאה בלבד לאנשי הקשר בגוגל. הייבוא פרטי לחלוטין — אף אחד לא מקבל הודעה, ואף אחד לא רואה שהם קשורים לאולמה.',
+    tellTheUser: 'הקישור מבקש הרשאת קריאה בלבד לאנשי הקשר בגוגל. הייבוא פרטי לחלוטין — אף אחד לא מקבל הודעה, ואף אחד לא רואה שהם קשורים לעולמה.',
   });
 }
 

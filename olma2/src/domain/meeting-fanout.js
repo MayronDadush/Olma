@@ -148,9 +148,18 @@ async function afterSlotResponse(client, actor, meetingId, res, { accept } = {})
     }, `mconf:${meetingId}`);
     res.data.hint = calendarHintFor(calendarRoleFor(roles, actor.id), Number(meetingId));
   } else if (res.data.proposedSlot) {
-    // decline carried a counter → everyone else hears the NEW slot, and
-    // queued asks about the old one are cancelled first
-    await supersedeQueuedMeetingRows(client, meetingId, ['meeting_slot_proposed']);
+    // decline carried a counter → everyone else hears the NEW option. The asks
+    // about the others are not cancelled: since options, those are still on
+    // the table (the pending case never reaches here — a counter from a
+    // non-initiator at a full table is a question for the initiator alone).
+    if (res.data.pending) {
+      await fanout(client, [Number(res.data.initiatorId || brief.initiator_id)].filter((id) => id !== Number(actor.id)),
+        'meeting_option_pending', {
+          meetingId: Number(meetingId), title: brief.title || 'meeting', slot: res.data.proposedSlot,
+          startsAt: res.data.startsAt, optionId: res.data.optionId, byName: actorName(actor),
+        }, { key: `mopt-pend:${meetingId}:${res.data.optionId}` });
+      return res;
+    }
     await fanout(client, others, 'meeting_slot_proposed', {
       meetingId: Number(meetingId), title: brief.title || 'meeting',
       slot: res.data.proposedSlot, startsAt: res.data.startsAt, byName: actorName(actor),
@@ -167,6 +176,21 @@ async function afterSlotResponse(client, actor, meetingId, res, { accept } = {})
 }
 
 // After meetings.optOut succeeded.
+// The others were told this person was out. Not telling them they are back
+// would leave everyone holding a tally that is quietly wrong — and the tally
+// is the entire content of this screen.
+async function afterRejoin(client, actor, meetingId, res) {
+  if (!res.ok) return res;
+  const brief = await meetingBrief(client, meetingId);
+  const others = await activeParticipantsExcept(client, meetingId, actor.id);
+  await fanout(client, others, 'meeting_rejoined', {
+    meetingId: Number(meetingId), title: brief.title || 'meeting',
+    byName: actorName(actor),
+  }, { key: `mrejoin:${meetingId}:${actor.id}` });
+  res.data.hint = 'They are back in and have not answered yet — the others were told.';
+  return res;
+}
+
 async function afterOptOut(client, actor, meetingId, res) {
   const brief = await meetingBrief(client, meetingId);
   const others = await activeParticipantsExcept(client, meetingId, actor.id);
@@ -226,8 +250,71 @@ async function afterOptOut(client, actor, meetingId, res) {
   return res;
 }
 
+// After meetings.options.add (or proposeSlot) succeeded. An option on the
+// table is a question for everyone else; a pending one is a question for the
+// initiator alone, and the others hear nothing until it is approved.
+async function afterOptionAdded(client, actor, meetingId, res) {
+  if (!res.ok) return res;
+  const brief = await meetingBrief(client, meetingId);
+  const o = res.data.option || { slotText: res.data.proposedSlot, startsAt: res.data.startsAt, id: res.data.optionId };
+  const base = { meetingId: Number(meetingId), title: brief.title || 'meeting', slot: o.slotText, startsAt: res.data.startsAt || o.startsAt, optionId: o.id, byName: actorName(actor) };
+  if (res.data.duplicate) {
+    res.data.hint = 'That moment was already on the table — their yes to it was recorded instead of a second copy.';
+    return res;
+  }
+  if (res.data.pending) {
+    const initiator = Number(res.data.initiatorId || brief.initiator_id);
+    await fanout(client, [initiator].filter((id) => id !== Number(actor.id)), 'meeting_option_pending', base,
+      { key: `mopt-pend:${meetingId}:${o.id}` });
+    res.data.hint = `The table already holds ${meetings.options.MAX_ACTIVE} options, so this one went to the initiator to approve or turn down — tell the user that, and that nothing else changes until then.`;
+    return res;
+  }
+  const others = await activeParticipantsExcept(client, meetingId, actor.id);
+  await fanout(client, others, 'meeting_slot_proposed', {
+    ...base, reasons: await meetings.shareableConstraints(client, meetingId, actor.id),
+  }, { key: `mopt:${meetingId}:${o.id}` });
+  return res;
+}
+
+// After meetings.options.approve / reject. Approved: everyone else hears the
+// new option exactly as they would any other. Rejected: only its proposer.
+async function afterOptionDecision(client, actor, meetingId, res, { approved } = {}) {
+  if (!res.ok) return res;
+  const brief = await meetingBrief(client, meetingId);
+  if (approved) {
+    const others = await activeParticipantsExcept(client, meetingId, actor.id);
+    await fanout(client, others, 'meeting_slot_proposed', {
+      meetingId: Number(meetingId), title: brief.title || 'meeting', slot: res.data.slot,
+      optionId: res.data.optionId, byName: actorName(actor), approvedFromPending: true,
+    }, { key: `mopt:${meetingId}:${res.data.optionId}` });
+    if (res.data.meetingStatus === 'confirmed') {
+      await supersedeQueuedMeetingRows(client, meetingId, ['meeting_slot_proposed']);
+      const roles = await meetingCalendarFanout(client, meetingId, others, {
+        meetingId: Number(meetingId), title: brief.title || 'meeting',
+        slot: res.data.confirmedSlot, byName: actorName(actor),
+      }, `mconf:${meetingId}`);
+      res.data.hint = calendarHintFor(calendarRoleFor(roles, actor.id), Number(meetingId));
+    }
+    return res;
+  }
+  await fanout(client, [Number(res.data.proposerId)].filter((id) => id !== Number(actor.id)), 'meeting_option_rejected', {
+    meetingId: Number(meetingId), title: brief.title || 'meeting', slot: res.data.slot, byName: actorName(actor),
+  }, { key: `mopt-rej:${meetingId}:${res.data.optionId}` });
+  return res;
+}
+
+// After meetings.startMeeting succeeded: every invited person hears about it.
+async function afterStart(client, actor, res, participantIds, title) {
+  if (!res.ok) return res;
+  await fanout(client, participantIds, 'meeting_invite', {
+    meetingId: Number(res.data.meeting.id), title: title || res.data.meeting.title || 'meeting', byName: actorName(actor),
+  }, { key: `minvite:${res.data.meeting.id}` });
+  return res;
+}
+
 module.exports = {
-  afterSlotResponse, afterOptOut,
+  afterStart, afterOptionAdded, afterOptionDecision,
+  afterSlotResponse, afterOptOut, afterRejoin,
   actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept,
   meetingCalendarFanout, calendarRoleFor, cancelCalendarCleanup, calendarHintFor,
   meetingBrief, CANCEL_CLEANUP_HINTS,

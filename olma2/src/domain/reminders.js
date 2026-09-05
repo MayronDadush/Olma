@@ -5,6 +5,7 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const dt = require('./datetime');
+const { autoReminderAt } = require('./auto-reminder');
 const { hasOffset, badTime } = dt;
 
 // ---- repeat rules -----------------------------------------------------------
@@ -148,27 +149,100 @@ async function setReminder(client, ownerId, taskId, remindAt, repeatRule) {
   // day so the rule can never re-derive itself from a clamped occurrence and
   // walk backwards month by month.
   const rule = resolveMonthlyAnchor(normalizeRepeatRule(repeatRule), remindAt, rows[0].timezone);
+  // An asked-for reminder supersedes the one Olma inferred from the due date.
+  // Without this, "תזכירי לי בשמונה" on a task that already carries an auto
+  // reminder produces two messages about one thing — and the person never
+  // asked for the first, so it is ours to withdraw. Only PENDING auto rows go:
+  // one that already fired is a thing that happened, not a plan to revise.
+  const superseded = await client.query(
+    `UPDATE task_reminders SET cancelled_at = now()
+      WHERE task_id = $1 AND auto AND sent_at IS NULL AND cancelled_at IS NULL
+      RETURNING id`,
+    [taskId]
+  );
   const ins = await client.query(
-    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule)
-     VALUES ($1, $2, $3) RETURNING *`,
+    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, auto)
+     VALUES ($1, $2, $3, false) RETURNING *`,
     [taskId, remindAt, rule]
   );
-  await audit.record(client, ownerId, 'reminder.created', { taskId, reminderId: ins.rows[0].id });
-  return ok({ reminder: ins.rows[0] });
+  await audit.record(client, ownerId, 'reminder.created', {
+    taskId, reminderId: ins.rows[0].id,
+    ...(superseded.rowCount ? { supersededAuto: superseded.rows.map((r) => Number(r.id)) } : {}),
+  });
+  return ok({ reminder: ins.rows[0], supersededAuto: superseded.rowCount });
 }
 
+// The reminder Olma attaches by itself when a task arrives carrying a moment.
+// Separate from setReminder on purpose: this one is allowed to decline (it
+// returns null for "no reminder was warranted"), it never overrides an
+// explicit reminder that is already there, and it is the only writer of
+// `auto = true`. The WHEN lives in domain/auto-reminder.js, which is pure.
+//
+// Returns the created row, or null. Null is a real answer — a task with no due
+// date, a moment already past, one too far out — and callers must treat it as
+// one rather than as a failure worth mentioning to anybody.
+async function attachAutoReminder(client, ownerId, task, timezone, now = new Date()) {
+  const at = autoReminderAt(task.due_at, timezone, now);
+  if (!at) return null;
+  // Never a second reminder on a task that already has a live one, whoever set
+  // it: a person who asked for their own has said what they want, and a repeat
+  // of this call (a retried tool, a re-run sweep) must not stack.
+  const { rows: existing } = await client.query(
+    `SELECT 1 FROM task_reminders
+      WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL LIMIT 1`,
+    [task.id]
+  );
+  if (existing.length) return null;
+  const { rows } = await client.query(
+    `INSERT INTO task_reminders (task_id, remind_at, auto)
+     VALUES ($1, $2, true) RETURNING *`,
+    [task.id, at]
+  );
+  await audit.record(client, ownerId, 'reminder.auto_created', {
+    taskId: Number(task.id), reminderId: Number(rows[0].id), remindAt: at,
+  });
+  return rows[0];
+}
+
+// Cancelling a reminder answers half a question. "בטלי את התזכורת לאיסוף
+// ילדים" and "בטלי את האיסוף" are the same sentence in most people's heads,
+// and the person who said the first one walks away believing the second one
+// happened — which is exactly what one did, then reported the surviving task
+// as a bug. Olma happened to say "the task itself stays" that time; nothing
+// made her, because the result was `{reminderId}` and the sentence came out
+// of the model's memory rather than out of the system.
+//
+// So the result carries the other half. `taskStillOpen` is not a suggestion to
+// delete anything — it is the fact that this person now has a live task with
+// nothing left to raise it, which is the one moment worth one short question.
 async function cancelReminder(client, ownerId, reminderId) {
   const { rows } = await client.query(
     `UPDATE task_reminders r SET cancelled_at = now()
      FROM tasks t
      WHERE r.id = $1 AND r.task_id = t.id AND t.owner_id = $2
        AND r.sent_at IS NULL AND r.cancelled_at IS NULL
-     RETURNING r.id`,
+     RETURNING r.id AS reminder_id, t.id AS task_id, t.title,
+               t.status, t.archived_at`,
     [reminderId, ownerId]
   );
   if (!rows[0]) return err('not_found', 'pending reminder not found');
   await audit.record(client, ownerId, 'reminder.cancelled', { reminderId });
-  return ok({ reminderId });
+  const t = rows[0];
+  // Another pending reminder on the same task means nothing was orphaned —
+  // they trimmed one of several and the task is still going to be raised.
+  const { rows: left } = await client.query(
+    `SELECT count(*)::int AS n FROM task_reminders
+      WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL`,
+    [t.task_id]
+  );
+  const remaining = left[0].n;
+  const orphaned = t.status === 'open' && !t.archived_at && remaining === 0;
+  return ok({
+    reminderId,
+    task: { id: Number(t.task_id), title: t.title, status: t.status },
+    remainingReminders: remaining,
+    ...(orphaned ? { taskStillOpen: true } : {}),
+  });
 }
 
 async function listReminders(client, ownerId, taskId) {
@@ -192,7 +266,10 @@ async function listReminders(client, ownerId, taskId) {
 // it to that and no further.
 //
 // 1. A rung is only scheduled once the PREVIOUS one actually reached them —
-//    delivered, not merely enqueued. This is the check-in bug's lesson: that
+//    delivered, not merely enqueued — OR died on OUR side of the wire (the
+//    worker tried, failed every time, and the row expired). The second case
+//    is a redo, not a chase: it goes out at once with the plain wording, and
+//    it still spends a rung so a broken pipe cannot loop for ever. This is the check-in bug's lesson: that
 //    ladder counted messages that died inside quiet hours as ignores and backed
 //    off to weekly on people who had never been sent anything. A reminder held
 //    all night and expired must not burn a rung the person never saw.
@@ -215,10 +292,22 @@ async function dueForSending(client, now, opts = {}) {
     ? Number(opts.gapHours) : ESCALATION_GAP_HOURS;
   const { rows } = await client.query(
     `SELECT r.id AS reminder_id, r.task_id, r.remind_at, r.repeat_rule, r.attempts,
-            t.owner_id, t.title, t.due_at, u.timezone
+            t.owner_id, t.title, t.due_at, u.timezone,
+            -- true when the previous rung was OURS to lose: the pipe failed on
+            -- every try and the row expired with nothing delivered.
+            (prev.hold_reason = 'expired' AND prev.attempts > 0 AND prev.last_error IS NOT NULL) AS prev_failed
      FROM task_reminders r
      JOIN tasks t ON t.id = r.task_id
      JOIN users u ON u.id = t.owner_id
+     -- The outbox row of the rung before this one (none for rung 1).
+     LEFT JOIN LATERAL (
+       SELECT o.sent_at, o.hold_reason, o.attempts, o.last_error FROM outbox o
+        WHERE r.attempts >= 1 AND o.user_id = t.owner_id
+          AND o.idempotency_key = CASE WHEN r.attempts = 1
+                THEN 'reminder:' || r.id
+                ELSE 'reminder:' || r.id || ':' || r.attempts END
+        ORDER BY o.id DESC LIMIT 1
+     ) prev ON true
      WHERE r.sent_at IS NULL AND r.cancelled_at IS NULL
        AND t.status = 'open' AND t.archived_at IS NULL
        -- A paused user's reminders are already cancelled by pauseUser; this is
@@ -232,24 +321,27 @@ async function dueForSending(client, now, opts = {}) {
          OR
          (r.attempts BETWEEN 1 AND $2::int - 1
           AND r.repeat_rule IS NULL
-          -- The previous rung has to have LANDED. hold_reason IS NULL is what
-          -- separates delivered from dropped/expired/cancelled — a row the gate
-          -- stamped on the way to the bin carries a reason and does not count.
-          AND EXISTS (
-            SELECT 1 FROM outbox o
-             WHERE o.user_id = t.owner_id
-               AND o.idempotency_key = CASE WHEN r.attempts = 1
-                     THEN 'reminder:' || r.id
-                     ELSE 'reminder:' || r.id || ':' || r.attempts END
-               AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL
-               AND o.sent_at <= $1::timestamptz - ($3::double precision * interval '1 hour')
+          AND (
+            -- The previous rung died on OUR side: the worker tried, every try
+            -- failed (attempts > 0, an error recorded) and the row expired.
+            -- The person got nothing and it was not their doing, so the next
+            -- rung goes now — not after the gap, and not next day. A row the
+            -- GATE held or dropped never gets here: it has no attempts and no
+            -- error, and chasing it is the check-in ladder's documented bug.
+            (prev.hold_reason = 'expired' AND prev.attempts > 0 AND prev.last_error IS NOT NULL)
+            OR
+            -- The previous rung LANDED. hold_reason IS NULL is what separates
+            -- delivered from dropped/expired/cancelled — a row the gate stamped
+            -- on the way to the bin carries a reason and does not count.
+            (prev.sent_at IS NOT NULL AND prev.hold_reason IS NULL
+             AND prev.sent_at <= $1::timestamptz - ($3::double precision * interval '1 hour')
+             -- Rung 3 is "next day at the hour they chose", not "gap hours after
+             -- rung 2" — computed through their own timezone so the wall-clock
+             -- hour survives a DST boundary instead of drifting by one.
+             AND (r.attempts <> 2
+                  OR (r.remind_at AT TIME ZONE COALESCE(u.timezone, 'UTC') + interval '1 day')
+                       AT TIME ZONE COALESCE(u.timezone, 'UTC') <= $1::timestamptz))
           )
-          -- Rung 3 is "next day at the hour they chose", not "gap hours after
-          -- rung 2" — computed through their own timezone so the wall-clock
-          -- hour survives a DST boundary instead of drifting by one.
-          AND (r.attempts <> 2
-               OR (r.remind_at AT TIME ZONE COALESCE(u.timezone, 'UTC') + interval '1 day')
-                    AT TIME ZONE COALESCE(u.timezone, 'UTC') <= $1::timestamptz)
          )
        )
      ORDER BY r.remind_at`,
@@ -285,7 +377,7 @@ async function markSent(client, reminderId) {
 }
 
 module.exports = {
-  setReminder, cancelReminder, listReminders, dueForSending, markSent,
+  setReminder, attachAutoReminder, cancelReminder, listReminders, dueForSending, markSent,
   normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor,
   recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS,
 };

@@ -104,7 +104,14 @@ test('an ordinary file still exits cleanly, with both guards armed', async (t) =
       const c = await db.pool.connect();
       try { await c.query('SELECT 1'); } finally { c.release(); }
     });
-  `, { OLMA_TEST_POOL_END_MS: '1000', OLMA_TEST_EXIT_WATCHDOG_MS: '1500' });
+  // Generous on purpose. The watchdog arms BEFORE this file's own teardown
+  // (helpers.js, armExitWatchdog), so its window has to hold a DROP DATABASE
+  // and a pool.end() on whatever host runs it. At 1500ms this test failed on
+  // four GitHub runs on 2026-09-05 alone — always with a TCPSocketWrap still
+  // closing, never with a leak — while passing on the sibling runner and
+  // locally. The negative tests above keep their short windows: they prove
+  // the guard fires; this one only proves an honest file is left alone.
+  `, { OLMA_TEST_POOL_END_MS: '5000', OLMA_TEST_EXIT_WATCHDOG_MS: '10000' });
 
   assert.equal(signal, null);
   assert.equal(code, 0, out);
