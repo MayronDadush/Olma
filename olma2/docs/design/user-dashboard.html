@@ -1381,11 +1381,26 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 /* the week strip never said which month it was in — a date with no month
    is only readable if you already know the answer */
 .stripmonth{
-  display:flex;align-items:baseline;gap:7px;padding:13px 16px 10px;
+  display:flex;align-items:center;gap:7px;padding:9px 8px 8px 8px;
   border-bottom:1px solid var(--sep);
 }
-.stripmonth span:first-child{font-family:'Rubik',sans-serif;font-size:15.5px;font-weight:600;color:var(--text)}
-.stripmonth span:last-child{font-size:13px;font-weight:500;color:var(--text-3);font-variant-numeric:tabular-nums}
+/* Addressed by id, not by position. These were `span:first-child` and
+   `span:last-child` until the paging arrows joined the row — at which point
+   neither span was a first or last child any more and the heading silently
+   lost its type. */
+#stripMonth{font-family:'Rubik',sans-serif;font-size:15.5px;font-weight:600;color:var(--text)}
+#stripYear{font-size:13px;font-weight:500;color:var(--text-3);font-variant-numeric:tabular-nums}
+/* The arrows sit at the two ends and the label floats between them, so the
+   row reads as one control rather than three things that happen to be
+   adjacent. `auto` on both sides of the label does that at any string width. */
+#stripMonth{margin-inline-start:auto}
+#stripYear{margin-inline-end:auto}
+.wkback{
+  font-size:12.5px;font-weight:600;color:var(--accent);
+  padding:5px 10px;border-radius:99px;background:var(--bg-tint);flex:none;
+}
+.wknav[disabled]{opacity:.28}
+.wknav[disabled]:active{background:transparent}
 .daystrip{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;padding:12px 10px}
 .day{
   border-radius:13px;padding:9px 2px 8px;text-align:center;
@@ -2110,7 +2125,18 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     <div id="calRead">
       <div style="--i:2">
         <div class="group">
-          <div class="stripmonth"><span id="stripMonth"></span><span id="stripYear"></span></div>
+          <!-- A week strip that could only ever show the next seven days was
+               a calendar you could not look ahead in. The arrows page a week
+               at a time and stop exactly where the data does: /me/events
+               fetches two weeks back and four forward, so paging past that
+               would show empty days that are empty only because nobody
+               asked Google about them. -->
+          <div class="stripmonth">
+            <button class="calnav wknav" data-wk="-1" id="wkPrev"><svg viewBox="0 0 16 16"><path d="M10 2 4 8l6 6"/></svg></button>
+            <span id="stripMonth"></span><span id="stripYear"></span>
+            <button class="wkback" id="wkToday" hidden data-i18n="cal.thisWeek"></button>
+            <button class="calnav wknav" data-wk="1" id="wkNext"><svg viewBox="0 0 16 16"><path d="M6 2l6 6-6 6"/></svg></button>
+          </div>
           <div class="daystrip" id="daystrip"></div>
         </div>
       </div>
@@ -2130,12 +2156,22 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         <div class="glabel"><span data-i18n="mt.open"></span><span class="hint" id="mtCount"></span></div>
         <div class="stack" id="mtList"></div>
       </div>
-      <!-- Settled ones leave the active list — they are calendar entries now,
-           not questions — but they do not vanish: this is where you come back
-           to put one on your calendar again, or to leave it. -->
-      <div style="--i:3;margin-top:20px" id="mtDoneWrap" hidden>
-        <div class="glabel"><span data-i18n="mt.done"></span></div>
-        <div class="stack" id="mtDone"></div>
+      <!-- The same archive the task list has, for the same reason. Settled
+           ones leave the active list — they are calendar entries now, not
+           questions — and so do the ones you left, which used to vanish
+           outright. Leaving is one tap and its commonest cause is a mis-tap,
+           so it needs a way back; ↺ on a row you left puts you back in and
+           tells the others, because they were told when you went. -->
+      <div class="archive" id="mtArchive" style="--i:3;margin-top:20px" hidden>
+        <button class="arcbtn" id="mtArcBtn" aria-expanded="false">
+          <svg class="chev"><use href="#i-chev"/></svg>
+          <span data-i18n="mt.done"></span>
+          <span id="mtArcCount" style="margin-inline-start:auto;font-weight:500"></span>
+        </button>
+        <div class="fold" id="mtArcFold"><div>
+          <div class="stack" id="mtDone"></div>
+          <p class="arcnote" id="mtArcNote" hidden></p>
+        </div></div>
       </div>
       <p class="note" style="padding:14px 14px 0" data-i18n="mt.note"></p>
     </div>
@@ -2322,10 +2358,18 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       <div class="whenvals">
         <button class="vchip" id="sDateRow" data-cal="task" data-quick="1"><span id="sDateVal"></span></button>
         <button class="vchip" id="sTimeChip"><span id="sTimeVal"></span></button>
+        <!-- Where it STOPS. A shift used to be a title with its hours typed
+             into it — `משמרת - ראשון 12:00-19:00` — because there was nowhere
+             else to put them, and nothing could read them there. It only
+             appears once there is a start, because an end with nothing to end
+             is not a time. -->
+        <button class="vchip" id="sEndChip"><span id="sEndVal"></span></button>
         <button class="vchip toggle" id="sAllDay" role="switch" aria-checked="false"
                 data-i18n="sheet.allDay" data-i18n-label="sheet.allDay"></button>
       </div>
       <input id="sTime" type="time" tabindex="-1" aria-hidden="true"
+             style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
+      <input id="sEnd" type="time" tabindex="-1" aria-hidden="true"
              style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
     </div>
     <button class="row no-icon" id="sCatRow" aria-expanded="false">
@@ -2699,6 +2743,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     setAvailability:     "send_availability_picker",  /* the picker's own POST, per option */
     confirmSlot:         "respond_to_meeting_slot",   /* propose_meeting_slot proposes it */
     leaveMeeting:        "leave_meeting",              /* NO TOOL YET — meeting_participants.left_at */
+    rejoinMeeting:       "rejoin_meeting",             /* NO TOOL YET — dashboard only */
     pause:               "pause_olma",
     resume:              "resume_olma"
   };
@@ -2716,6 +2761,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     setTimezone:"setTimezone", pause:"pause", resume:"resume",
     inviteContact:"inviteContact",
     respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting",
+    rejoinMeeting:"rejoinMeeting",
     startGoogle:"startGoogle", stopGoogle:"stopGoogle",
     stopGoogleService:"stopGoogleService"
   };
@@ -2747,6 +2793,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
     var time = (x.all || !x.tm) ? "00:00" : x.tm;
     return x.d + "T" + time + ":00" + zoneOffset(tz, new Date(x.d + "T" + time + ":00Z"));
+  }
+
+  /* The far end of the range, in the same shape and the same zone as the
+     start. Null whenever there is no range to state, which is also how a range
+     is REMOVED: editTask reads null as "clear it". */
+  function endIso(x){
+    if(!x || !x.d || x.all || !x.tm || !x.tmEnd) return null;
+    var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
+    return x.d + "T" + x.tmEnd + ":00" + zoneOffset(tz, new Date(x.d + "T" + x.tmEnd + ":00Z"));
   }
 
   /* A row the server has answered for. Anything that needs a real id — an
@@ -2832,7 +2887,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     saveTask: function(x){
       API.call(x && x.src ? "saveImportedTask" : "saveTask", x);
       if(!x) return true;
-      var payload = {title:L(x.t), category:x.cat || null, dueAt:dueIso(x)};
+      var payload = {title:L(x.t), category:x.cat || null,
+                     dueAt:dueIso(x), endsAt:endIso(x)};
       if(serverKnows(x)){
         payload.taskId = x.id;
         return API.send("editTask", payload);
@@ -3052,7 +3108,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "tasks.arcShown":"מוצגות {n} האחרונות מתוך {all}","tasks.restore":"החזרה לרשימה",
       "toast.restored":"„{name}” חזרה לרשימה",
 
-      "sheet.when":"מתי","sheet.pickTime":"בחירת שעה","share.andMore":" ועוד {n}",
+      "sheet.when":"מתי","sheet.pickTime":"בחירת שעה","sheet.pickEnd":"עד","share.andMore":" ועוד {n}",
       "cat.h":"קטגוריה","cat.auto":"עולמה בחרה","cat.byTime":"לפי זמן","cat.byCat":"לפי קטגוריה",
       "tcat.home":"בית","tcat.work":"עבודה","tcat.family":"משפחה","tcat.health":"בריאות",
       "tcat.money":"כספים","tcat.errands":"סידורים","tcat.none":"ללא קטגוריה",
@@ -3100,7 +3156,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.mtNoUnanswer":"אפשר להחליף בין ״אני יכול״ ל״לא מתאים לי״, אבל לא לחזור ללא־תשובה",
       "mt.n0":"אין","mt.n1":"תיאום אחד","mt.nN":"{n} תיאומים",
       "mt.ask":"מתי מתאים לך?","mt.askOne":"אתה יכול להגיע?","mt.settledLbl":"המועד שנקבע",
-      "mt.done":"תיאומים שנסגרו",
+      "mt.done":"תיאומים שנסגרו ושיצאת מהם","mt.youLeft":"יצאת מהתיאום הזה","mt.rejoin":"חזרה לתיאום",
+      "toast.mtBack":"חזרת ל„{name}” — השאר עודכנו",
       "mt.me":"אתה","mt.waiting":"בהמתנה","mt.gone":"יצא","mt.withList":"עם {list}",
       "mt.part.morning":"בוקר","mt.part.noon":"צהריים","mt.part.evening":"ערב","mt.part.night":"לילה",
       "mt.allFree":"מתאים לכולם","mt.pick":"קביעה",
@@ -3194,7 +3251,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "sheet.allDay":"כל היום","sheet.repeat":"חזרה",
       "sheet.inCal":"להוסיף ליומן","sheet.inCalTo":"נוסף ל־{name} · {account}","sheet.inCalNone":"אין יומן מחובר לכתיבה",
       "cal.allDay":"כל היום",
-      "cal.taskTag":"משימה","cal.taskSub":"מהרשימה שלך בעולמה","cal.taskRem":"עולמה תזכיר ב־{name}",
+      "cal.thisWeek":"השבוע","cal.taskTag":"משימה","cal.taskSub":"מהרשימה שלך בעולמה","cal.taskRem":"עולמה תזכיר ב־{name}",
       "cal.showIn":"להצגה ביומן",
       "off.at":"בזמן","off.m10":"10 דק׳ לפני","off.h1":"שעה לפני","off.d1":"יום לפני",
       "rep.once":"ללא","rep.day":"כל יום","rep.week":"כל שבוע","rep.month":"כל חודש",
@@ -3285,7 +3342,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "tasks.arcShown":"Showing the last {n} of {all}","tasks.restore":"Put back on the list",
       "toast.restored":"\u201c{name}\u201d is back on your list",
 
-      "sheet.when":"When","sheet.pickTime":"Pick a time","share.andMore":" and {n} more",
+      "sheet.when":"When","sheet.pickTime":"Pick a time","sheet.pickEnd":"until","share.andMore":" and {n} more",
       "cat.h":"Category","cat.auto":"Allma picked this","cat.byTime":"By time","cat.byCat":"By category",
       "tcat.home":"Home","tcat.work":"Work","tcat.family":"Family","tcat.health":"Health",
       "tcat.money":"Money","tcat.errands":"Errands","tcat.none":"No category",
@@ -3330,7 +3387,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.mtNoUnanswer":"You can switch between yes and no, but not back to no answer",
       "mt.n0":"none","mt.n1":"1 coordination","mt.nN":"{n} coordinations",
       "mt.ask":"When suits you?","mt.askOne":"Can you make it?","mt.settledLbl":"The time you settled on",
-      "mt.done":"Settled",
+      "mt.done":"Settled and left","mt.youLeft":"You left this one","mt.rejoin":"Put me back in",
+      "toast.mtBack":"You're back in \u201c{name}\u201d \u2014 the others were told",
       "mt.me":"You","mt.waiting":"not yet","mt.gone":"left","mt.withList":"With {list}",
       "mt.part.morning":"morning","mt.part.noon":"midday","mt.part.evening":"evening","mt.part.night":"night",
       "mt.allFree":"Fits everyone","mt.pick":"Settle",
@@ -3424,7 +3482,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "sheet.allDay":"All day","sheet.repeat":"Repeat",
       "sheet.inCal":"Add to calendar","sheet.inCalTo":"Goes to {name} · {account}","sheet.inCalNone":"No calendar connected for writing",
       "cal.allDay":"All day",
-      "cal.taskTag":"Task","cal.taskSub":"From your Allma list","cal.taskRem":"Allma will remind you on {name}",
+      "cal.thisWeek":"This week","cal.taskTag":"Task","cal.taskSub":"From your Allma list","cal.taskRem":"Allma will remind you on {name}",
       "cal.showIn":"Show in calendar",
       "off.at":"On time","off.m10":"10 min before","off.h1":"1 hour before","off.d1":"1 day before",
       "rep.once":"Never","rep.day":"Every day","rep.week":"Every week","rep.month":"Every month",
@@ -3917,6 +3975,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
             {t:{he:"סלט חצילים",en:"Aubergine salad"},done:false},{t:{he:"חומוס",en:"Hummus"},done:false},
             {t:{he:"פירות לקינוח",en:"Fruit for dessert"},done:false}]},
     {id:5, d:isoAt(0),  tm:"21:00", all:false, t:{he:"לאסוף חבילה מהשליח",en:"Collect the parcel"}, rem:false, rep:"none", cal:false, cat:"errands", catAuto:true},
+    /* The reason tasks.ends_at exists. This row used to be the only way to say
+       it: a title reading `משמרת - ראשון 12:00-19:00`, with the hours typed
+       where nothing could read them. */
+    {id:14, d:isoAt(2), tm:"12:00", tmEnd:"19:00", all:false, t:{he:"משמרת",en:"Shift"},
+     rem:true, rep:"week", cal:true, cat:"work", catAuto:true},
     {id:4, d:"",        tm:"", all:false, t:{he:"לקבוע תור לרופא שיניים",en:"Book a dentist appointment"}, rem:false, rep:"none", cal:false, cat:"health", catAuto:true},
     /* imported. `src` is the whole difference — everything else is a task. */
     {id:7, d:isoAt(1), tm:"14:00", all:false, src:"monday",
@@ -4969,6 +5032,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      the section it already sits under, the clock alone says everything. */
   function labelFor(x){
     var d = x.d, tm = x.all ? "" : x.tm, b = bucketFor(d);
+    /* A shift is 12:00–19:00, and the hours are the whole content of the row —
+       the title next to it is now just `משמרת`, because they finally have
+       somewhere else to live. Written with an EN DASH and no spaces so the
+       span still fits the chip at the end of a row. */
+    if(tm && !x.all && x.tmEnd) tm = tm + "–" + x.tmEnd;
     if(!d) return tm || null;
     if(x.all && (b === "today" || b === "tomorrow")) return t("cal.allDay");
     if(tm && (b === "today" || b === "tomorrow")) return tm;
@@ -4995,6 +5063,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var title = $("#sTitle").value.trim();
     editing.t = both(title);
     editing.tm = $("#sTime").value;
+    /* An end at or before its start is not a range, and the server refuses the
+       pair outright — so it is dropped here rather than sent and bounced, and
+       the chip goes back to asking. Clearing the start clears the end with it,
+       the same rule editTask applies on the other side. */
+    editing.tmEnd = $("#sEnd").value;
+    if(!editing.tm || (editing.tmEnd && editing.tmEnd <= editing.tm)){
+      editing.tmEnd = ""; $("#sEnd").value = "";
+    }
     editing.all = $("#sAllDay").getAttribute("aria-checked") === "true";
     var pick = $$("#sCat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     if(pick) editing.cat = pick.dataset.cat;
@@ -5064,6 +5140,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     lockRow($("#sListRow"),   !canEdit(editing, "items"),why);
     lockRow($("#sShareRow"),  !canEdit(editing, "who"),  why);
     lockRow($("#sTimeChip"),  !canEdit(editing, "time"), why);
+    lockRow($("#sEndChip"),   !canEdit(editing, "time"), why);
     /* the reminder and the calendar copy are OURS, not theirs — an imported
        task can still be reminded about, so these are never locked */
   }
@@ -5079,6 +5156,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#sTimeChip").hidden = !dated || !!editing.all;
     $("#sTimeVal").textContent = editing.tm || t("sheet.pickTime");
     $("#sTimeChip").classList.toggle("set", !!editing.tm);
+    /* No start, nothing to end. The chip is not merely disabled — it is a
+       question that has not been asked yet, exactly like the clock itself
+       before a date is picked. */
+    $("#sEndChip").hidden = !dated || !!editing.all || !editing.tm;
+    $("#sEndVal").textContent = editing.tmEnd
+      ? "– " + editing.tmEnd : t("sheet.pickEnd");
+    $("#sEndChip").classList.toggle("set", !!editing.tmEnd);
     $("#sCalRow").hidden = !dated;
     $("#sCalSub").textContent = calTargetName();
     /* No calendar to write to means the switch cannot keep its word, so it is
@@ -5365,6 +5449,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#sAddRow").setAttribute("aria-expanded", "false");
     $("#sTitle").value = x ? L(x.t) : "";
     $("#sTime").value = editing.tm || "";
+    $("#sEnd").value = editing.tmEnd || "";
     $("#sDateRow").dataset.val = editing.d || "";
     $("#sDelete").hidden = isNew;
     $("#sCal").setAttribute("aria-checked", editing.cal ? "true" : "false");
@@ -5437,6 +5522,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   $("#sTimeChip").addEventListener("click", function(){
     $("#sTime").focus();
     try{ $("#sTime").showPicker(); }catch(err){}
+  });
+  $("#sEnd").addEventListener("change", commit);
+  $("#sEndChip").addEventListener("click", function(){
+    $("#sEnd").focus();
+    try{ $("#sEnd").showPicker(); }catch(err){}
   });
   $("#sAllDay").addEventListener("click", function(){
     editing.all = this.getAttribute("aria-checked") !== "true";
@@ -5656,6 +5746,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      third thing and never folded into "cannot". */
   var MEET_CAP = 4;
   var PARTS = ["morning","noon","evening","night"];
+  /* Coordinations this person left. Its own array rather than a flag on MEETS,
+     because a left one carries only a title and an id — that is all the server
+     sends and all putting yourself back needs. */
+  var MTLEFT = [];
   var MEETS = [
     /* mine, mid-flight: three real options, one objection, one person who
        left, and a fourth option somebody else proposed that only I can see. */
@@ -5821,6 +5915,20 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       '<button class="mtx" data-mtleave="' + m.id + '" aria-label="' + esc(t("mt.leave")) + '">' +
       '<svg><use href="#i-x"/></svg></button></div></div>';
   }
+  /* A coordination you left, reduced to what putting yourself back in needs:
+     a title and an id. Deliberately NOT a card — a card shows the tally, and
+     watching the others answer a coordination you stepped out of is not
+     something to offer. The server takes the same view and sends only these
+     two fields (`meetingsLeft`, domain/user-dashboard.js). */
+  function mtLeftHTML(m){
+    return '<div class="group" style="margin-bottom:10px"><div class="mtrow">' +
+      '<span class="mtcard" style="cursor:default"><span class="mtbody">' +
+      '<span class="mtname">' + esc(L(m.t)) + "</span>" +
+      '<span class="mtstate">' + esc(t("mt.youLeft")) + "</span></span></span>" +
+      '<button class="tundo" data-mtback="' + m.id + '" aria-label="' +
+      esc(t("mt.rejoin")) + '" title="' + esc(t("mt.rejoin")) +
+      '"><svg><use href="#i-undo"/></svg></button></div></div>';
+  }
   function renderMeets(){
     /* Settled coordinations are not "active" any more — they are calendar
        entries, and leaving them here would make the list a permanent archive
@@ -5832,10 +5940,54 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       : '<div class="group"><div class="empty">' +
         esc(t(LIVE ? "mt.emptyLive" : "mt.empty")) + "</div></div>";
     $("#mtCount").textContent = live.length ? pl("mt", live.length) : "";
-    $("#mtDoneWrap").hidden = !done.length;
-    $("#mtDone").innerHTML = done.map(mtCardHTML).join("");
+    /* Settled first, then the ones you left — the same ordering rule the task
+       archive uses (most recently out of the list, first). Capped at the same
+       eight, and it SAYS it is capped rather than quietly truncating, because
+       an archive that silently drops the ninth row is a safety net with a hole
+       nobody can see. */
+    var arc = done.map(function(m){ return {html:mtCardHTML(m)}; })
+      .concat(MTLEFT.map(function(m){ return {html:mtLeftHTML(m)}; }));
+    $("#mtArchive").hidden = !arc.length;
+    $("#mtArcCount").textContent = arc.length;
+    $("#mtDone").innerHTML = arc.slice(0, ARCHIVE_MAX).map(function(x){ return x.html; }).join("");
+    $("#mtArcNote").hidden = arc.length <= ARCHIVE_MAX;
+    $("#mtArcNote").textContent = t("tasks.arcShown", {n:ARCHIVE_MAX, all:arc.length});
+  }
+  $("#mtArcBtn").addEventListener("click", function(){
+    var a = $("#mtArchive"), on = !a.classList.contains("open");
+    a.classList.toggle("open", on);
+    $("#mtArcFold").classList.toggle("open", on);
+    this.setAttribute("aria-expanded", on ? "true" : "false");
+  });
+  /* Putting yourself back is a real call, not a row reappearing in a browser:
+     the others were told you left, so they are told you are back. The server
+     refuses what it should — a coordination that closed when you left cannot
+     be reopened by one person — and the row only leaves the archive once the
+     call has come back ok. */
+  function mtRejoin(id){
+    var i = MTLEFT.findIndex(function(x){ return x.id === id; });
+    if(i < 0) return;
+    var entry = MTLEFT[i];
+    if(!LIVE){
+      MTLEFT.splice(i, 1);
+      renderMeets();
+      toast(t("toast.mtBack", {name:L(entry.t)}));
+      return;
+    }
+    API.call("rejoinMeeting", {meeting_id:id});
+    API.send("rejoinMeeting", {meetingId:id}, function(data){
+      if(!data) return;
+      MTLEFT.splice(MTLEFT.findIndex(function(x){ return x.id === id; }), 1);
+      renderMeets();
+      toast(t("toast.mtBack", {name:L(entry.t)}));
+      /* Back in means back in the active list, with the tally as it stands
+         now — which only the server knows. */
+      API.reload();
+    });
   }
   function mtListClick(e){
+    var back = e.target.closest("[data-mtback]");
+    if(back){ mtRejoin(+back.dataset.mtback); return; }
     /* the two leave controls are checked first: both sit inside the row the
        open handler would otherwise claim */
     var go = e.target.closest("[data-mtleavego]");
@@ -6127,6 +6279,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     API.call("leaveMeeting", {meeting_id:m.id});
     API.send("leaveMeeting", {meetingId:m.id});
     MEETS = MEETS.filter(function(x){ return x !== m; });
+    /* It goes to the archive rather than out of existence. Newest first, the
+       way the task archive orders it. */
+    MTLEFT.unshift({id:m.id, t:m.t});
     mtLeaving = null;
     renderMeets(); renderStrip(selDay);
     toast(t("toast.mtLeft", {name:L(m.t)}));
@@ -6684,6 +6839,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   setInterval(tickClocks, 30000);
 
   /* ───────── calendar ───────── */
+  /* Which seven days the strip is showing, counted in weeks from the one that
+     starts today. The bounds are not a taste decision: they are exactly the
+     window /me/events fetches (domain/user-dashboard-events.js, DAYS_BACK 14
+     / DAYS_AHEAD 28), so the last day the arrows can reach is the last day we
+     actually asked Google about. An arrow that pages into an unfetched week
+     would draw it empty, and empty is the same picture as "nothing on". */
+  var weekOff = 0, WEEK_MIN = -2, WEEK_MAX = 3;
   function dayAt(i){ return new Date(base.getFullYear(), base.getMonth(), base.getDate() + i); }
   function dayISO(i){ return ymd(dayAt(i)); }
   /* Dated tasks stand in the day next to the real events, in time order,
@@ -6698,9 +6860,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       return {time:v.t, end:v.e, allDay:!!v.all, title:L(v.n), sub:L(v.s), c:v.c};
     });
     open.forEach(function(x){
-      /* only the tasks the person actually put in the calendar */
-      if(x.d !== iso || !x.cal) return;
-      evs.push({time:x.all ? "" : (x.tm || ""), allDay:x.all, end:"",
+      /* EVERY dated task stands in its day, whether or not it is also being
+         written out to Google. `x.cal` is an EXPORT switch — "put this in the
+         calendar app on my phone too" — and it was being read here as a
+         DISPLAY switch, which meant somebody with no Google connection saw an
+         empty week while holding six dated tasks. That was Maya, on the day
+         this was found: one flag doing two jobs, and the wrong one won. */
+      if(x.d !== iso) return;
+      evs.push({time:x.all ? "" : (x.tm || ""), allDay:x.all,
+                end:x.all ? "" : (x.tmEnd || ""),
                 title:L(x.t) || t("sheet.untitled"),
                 sub:t(x.rem ? "cal.taskRem" : "cal.taskSub", {name:chanName(defaultChannel)}),
                 c:"var(--accent)", task:x.id});
@@ -6724,7 +6892,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   function renderStrip(sel){
     selDay = sel;
-    $("#daystrip").innerHTML = [0,1,2,3,4,5,6].map(function(i){
+    var wk0 = weekOff * 7;
+    $("#daystrip").innerHTML = [0,1,2,3,4,5,6].map(function(k){
+      var i = wk0 + k;
       var d = dayAt(i), n = agendaFor(i).length, dots = "";
       for(var k = 0; k < Math.min(n,3); k++) dots += "<i></i>";
       /* The strip always starts on today, but "the first one" is a rule you
@@ -6737,12 +6907,17 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         '<div class="dots">' + dots + "</div></button>";
     }).join("");
     /* the strip can straddle two months, and then it has to say both */
-    var a = dayAt(0), z = dayAt(6);
+    var a = dayAt(wk0), z = dayAt(wk0 + 6);
     $("#stripMonth").textContent = a.getMonth() === z.getMonth()
       ? D.monthsBare[a.getMonth()]
       : D.monthsBare[a.getMonth()] + "–" + D.monthsBare[z.getMonth()];
     $("#stripYear").textContent = a.getFullYear() === z.getFullYear()
       ? a.getFullYear() : a.getFullYear() + "–" + z.getFullYear();
+    /* Disabled rather than hidden: an arrow that disappears at the edge moves
+       the label under the finger that was reaching for it. */
+    $("#wkPrev").disabled = weekOff <= WEEK_MIN;
+    $("#wkNext").disabled = weekOff >= WEEK_MAX;
+    $("#wkToday").hidden = weekOff === 0;
     var d2 = dayAt(sel);
     /* `cal.todayPre` carries its own separator and is a different string from
        the bare `cal.today` on the date chip — they were one key, and the second
@@ -6770,6 +6945,18 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   $("#daystrip").addEventListener("click", function(e){
     var b = e.target.closest(".day");
     if(b) renderStrip(+b.dataset.d);
+  });
+  /* Paging lands on today when today is in the week you paged to, and on the
+     first day otherwise — so stepping forward and back returns you to the day
+     you started on rather than to a Monday you never chose. */
+  function goWeek(w){
+    weekOff = Math.max(WEEK_MIN, Math.min(WEEK_MAX, w));
+    renderStrip(weekOff === 0 ? 0 : weekOff * 7);
+  }
+  $(".stripmonth").addEventListener("click", function(e){
+    if(e.target.closest("#wkToday")) return goWeek(0);
+    var n = e.target.closest("[data-wk]");
+    if(n && !n.disabled) goWeek(weekOff + (+n.dataset.wk));
   });
   $("#agenda").addEventListener("click", function(e){
     /* the small control first — it sits inside the row it acts on */
@@ -7340,11 +7527,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       /* The task's own answer to "put this on my calendar", resolved server-
          side against the standing switch (domain/user-dashboard.js). */
       cal:!!x.calendar,
+      tmEnd:x.endTime || "",
       cat:(x.category && x.category !== "none") ? x.category : "",
-      /* The seed marks categories `catAuto` to show the "Olma chose this"
-         styling. A real row cannot say who chose it — tasks.category has no
-         provenance column — so nothing claims one. */
-      catAuto:false,
+      /* Whether Olma chose the category rather than the person. Real, not a
+         seed flourish: `tasks.category_auto` records it, and a task edited by
+         hand clears it, so the "עולמה בחרה" tag only ever appears over a
+         guess somebody is free to overrule. */
+      catAuto:!!x.catAuto,
       /* 0 is this person. Real user ids start at 1, so it cannot collide, and
          the page already treats 0 as "me" everywhere. */
       owner:x.mine ? 0 : x.owner,
@@ -7566,6 +7755,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     EVENTS = {};
     PEOPLE = {};
     MEETS = (d.meetings || []).map(liveMeet);
+    MTLEFT = (d.meetingsLeft || []).map(function(m){ return {id:m.id, t:m.title || ""}; });
     mtOpen = null;
     LIVE = true;
     renderAll();

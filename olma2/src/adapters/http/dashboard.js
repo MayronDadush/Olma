@@ -22,6 +22,7 @@ const boostDomain = require('../../domain/boost');
 const boostJob = require('../../jobs/boost');
 const issuesDomain = require('../../domain/issues');
 const auditDomain = require('../../domain/audit');
+const dashboardAuth = require('../../domain/dashboard-auth');
 const { refreshUserCard } = require('../../intake/user-card');
 const { withTx } = require('../../db/pool');
 const { assessJobs } = require('../../jobs/expectations');
@@ -331,6 +332,8 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
           res.writeHead(403); return res.end('csrf');
         }
         let cardUserId = null;
+        // Set only by /users/dashboard, which lands on the public host.
+        let openUrl = null;
         await withTx(pool, async (client) => {
           if (url.pathname === '/boost') {
             // The dashboard writes the FLAG and never the gateway config —
@@ -405,6 +408,20 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
             if (/^\+\d{7,15}$/.test(body.phone || '')) {
               await deprovisionUser(client, body.phone, { configPath });
             }
+          } else if (url.pathname === '/users/dashboard') {
+            const uid = Number(body.id);
+            const made = await dashboardAuth.createLinkUrl(client, uid);
+            if (made.ok) {
+              await auditDomain.record(client, uid, 'admin.dashboard_opened', {});
+              // The only redirect on this page that leaves the host, so it is
+              // the only one `safeBack` cannot vet. It is built from the
+              // `public_base_url` FLAG rather than from anything in the
+              // request — but a flag is admin-editable text, and an open
+              // redirect gadget one typo away is not worth the saved line.
+              if (/^https?:\/\/[^\s/]+\/d\/[a-f0-9]{64}$/.test(made.data.url)) {
+                openUrl = made.data.url;
+              }
+            }
           } else if (url.pathname === '/users/resume'
                      || url.pathname.startsWith('/outbox/') || url.pathname.startsWith('/prefs/')
                      || url.pathname.startsWith('/facts/')) {
@@ -415,7 +432,7 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         // rule brokerd follows. A file write inside the transaction would leave
         // USER.md describing a state the database rolled back.
         if (cardUserId) await refreshUserCard(pool, cardUserId);
-        res.writeHead(303, { Location: safeBack(body.back) });
+        res.writeHead(303, { Location: openUrl || safeBack(body.back) });
         return res.end();
       }
 

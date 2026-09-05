@@ -166,6 +166,12 @@ function jobs({ pool }) {
       // checkin ladder's own tick (below) is 5 minutes, chosen for its
       // 15-minute floor, and would land this one anywhere up to 6x late.
       nameConfirm: await sweeps.sweepNameConfirm(c),
+      // Cheap (two indexed queries that are almost always empty) and it rides
+      // this tick rather than owning one. It is not urgent — a task whose
+      // moment passed can leave the list a minute later — but the grace window
+      // it enforces is measured in hours, so anything slower would make the
+      // window meaningfully longer than the flag says it is.
+      finishedTasks: await sweeps.sweepFinishedTasks(c),
     })) },
     // checkin ladder — every 5 minutes, because day one has a 15-minute step
     // and an hourly tick would land it anywhere up to an hour late. Cheap: one

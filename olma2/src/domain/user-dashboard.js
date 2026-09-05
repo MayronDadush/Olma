@@ -83,12 +83,13 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
   // made "משימות משותפות" a section that only ever showed the ones this person
   // shared OUT, i.e. exactly half the feature, silently.
   const { rows: tasks } = await client.query(
-    `SELECT t.id, t.title, t.category, t.source, t.status, t.parent_id,
+    `SELECT t.id, t.title, t.category, t.category_auto, t.source, t.status, t.parent_id, t.ends_at,
             t.archived_at IS NOT NULL AS archived, t.completed_at,
             t.due_at, t.owner_id,
             -- the wall clock the person actually chose, resolved in THEIR zone
             to_char(t.due_at AT TIME ZONE $2, 'YYYY-MM-DD') AS due_date,
             to_char(t.due_at AT TIME ZONE $2, 'HH24:MI')    AS due_time,
+            to_char(t.ends_at AT TIME ZONE $2, 'HH24:MI')   AS end_time,
             -- a due_at at exactly local midnight is an all-day task: that is
             -- what add_task stores when no time was given
             (t.due_at IS NOT NULL AND
@@ -166,8 +167,16 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
       id: t.id,
       title: t.title,
       category: category(t.category),
+      // Whether Olma chose it, so the sheet can say so and the person knows
+      // the field is a guess they are free to correct — the page has carried
+      // that affordance (`עולמה בחרה`) since it was designed.
+      catAuto: Boolean(t.category_auto) && KNOWN_CATEGORIES.includes(t.category),
       date: t.due_date,
       time: t.all_day ? null : t.due_time,
+      // The other end of a range, when there is one. A shift is `משמרת`
+      // 12:00–19:00 rather than a title with the hours typed into it, and the
+      // day view can only draw the block if it is told where it stops.
+      endTime: t.all_day ? null : (t.end_time || null),
       allDay: t.all_day,
       done: t.status === 'done',
       // The archive lists what was finished and when; nothing else reads it.
@@ -380,6 +389,30 @@ async function loadMeetings(client, userId, zone) {
   }));
 }
 
+// Coordinations this person LEFT and could still walk back into. They are the
+// contents of the meetings archive, and they carry almost nothing on purpose:
+// an id and a title is everything "put me back in" needs, and anything more
+// would be a live feed of a negotiation somebody deliberately stepped out of.
+// Watching the others answer after you have left is not a feature.
+//
+// Bounded by what `meetings.rejoin` will actually accept, so the button is
+// never drawn over a refusal: still negotiating or confirmed, and not already
+// started. A coordination that closed when you left is gone from here too.
+async function loadLeftMeetings(client, userId) {
+  const { rows } = await client.query(
+    `SELECT m.id, m.title
+       FROM meetings m
+       JOIN meeting_participants p ON p.meeting_id = m.id
+      WHERE p.user_id = $1 AND p.state = 'opted_out'
+        AND m.status IN ('negotiating', 'confirmed')
+        AND (m.confirmed_start_at IS NULL OR m.confirmed_start_at > now())
+      ORDER BY m.id DESC
+      LIMIT 20`,
+    [userId]
+  );
+  return rows.map((m) => ({ id: Number(m.id), title: m.title, youLeft: true }));
+}
+
 // The whole page, in one object. A missing or blocked user is `not_found` and
 // not an empty dashboard: an empty one reads as "you have nothing", which is a
 // statement about them rather than about the link.
@@ -403,6 +436,7 @@ async function load(client, userId) {
   const channels = await loadChannels(client, userId);
   const contacts = await loadContacts(client, userId);
   const meetings = await loadMeetings(client, userId, zone);
+  const meetingsLeft = await loadLeftMeetings(client, userId);
   return ok({
     user: {
       id: user.id,
@@ -432,6 +466,7 @@ async function load(client, userId) {
     integrations,
     available: { mail: mailGate.ok },
     meetings,
+    meetingsLeft,
   });
 }
 

@@ -20,7 +20,8 @@ async function renderUsers(client, csrf) {
   const blocked = (u) => u.quota_blocked_until && new Date(u.quota_blocked_until) > new Date();
   return `<table>
     <tr><th>שם</th><th>טלפון</th><th>מצב</th><th>מנוי</th><th>משימות פתוחות</th>
-        <th>מכסת הודעות ליום <span class="help" title="כמה הודעות מותר לו לשלוח ביום. השאר ריק כדי להשתמש בברירת המחדל של המנוי שלו.">?</span></th></tr>
+        <th>מכסת הודעות ליום <span class="help" title="כמה הודעות מותר לו לשלוח ביום. השאר ריק כדי להשתמש בברירת המחדל של המנוי שלו.">?</span></th>
+        <th>העמוד שלו <span class="help" title="פותח את הדאשבורד האישי של המשתמש, בדיוק כמו שהוא רואה אותו. הכניסה נשארת פתוחה 30 יום.">?</span></th></tr>
     ${rows.map((u) => `<tr>
       <td><a href="/user?id=${u.id}">${esc([u.first_name, u.last_name].filter(Boolean).join(' ') || u.phone)}</a></td>
       <td class="mono dim">${esc(u.phone)}</td>
@@ -35,7 +36,30 @@ async function renderUsers(client, csrf) {
         <input name="override" value="${u.quota_override_daily ?? ''}" size="5"
                placeholder="ברירת מחדל" title="מספר הודעות ליום. ריק = לפי המנוי.">
         <button>שמור</button>
-      </form></td></tr>`).join('')}</table>`;
+      </form></td>
+      <td>${u.status === 'active' ? dashboardButton(u.id, csrf, '/#users') : '<span class="dim">—</span>'}</td>
+      </tr>`).join('')}</table>`;
 }
 
-module.exports = { STATUS_LABEL, PLAN_LABEL, renderUsers };
+// Open a person's own dashboard, as they see it.
+//
+// The link a user gets in WhatsApp is single-use and lives 30 minutes, which
+// is right for a message somebody might screenshot and wrong for looking
+// through a dozen accounts for layout bugs — by the time you have pasted it
+// into a browser it has often expired. This mints one and goes straight
+// there, so the thirty minutes is never spent waiting; the SESSION it opens
+// is the normal one and lasts thirty idle days.
+//
+// It is a real sign-in as that person, not a read-only preview, so it is
+// audited under their id like every other admin edit on this page. Offered
+// only for an active user because `createLink` refuses anyone else anyway,
+// and a button that cannot work should not be drawn.
+function dashboardButton(userId, csrf, back) {
+  return `<form method="post" action="/users/dashboard" class="inline">
+    <input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="id" value="${userId}">
+    <input type="hidden" name="back" value="${esc(back)}">
+    <button>פתיחה</button>
+  </form>`;
+}
+
+module.exports = { STATUS_LABEL, PLAN_LABEL, renderUsers, dashboardButton };

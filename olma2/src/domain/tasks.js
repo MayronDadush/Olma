@@ -6,6 +6,8 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const { hasOffset, badTime } = require('./datetime');
+const taskCategory = require('./task-category');
+const taskKind = require('./task-kind');
 
 const MAX_BULK = 60;
 
@@ -13,7 +15,7 @@ const MAX_BULK = 60;
 // split path can never disagree about what "one level of nesting" means.
 async function checkParent(client, ownerId, parentId) {
   const { rows } = await client.query(
-    `SELECT id, parent_id FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
+    `SELECT id, parent_id, category FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
     [parentId, ownerId]
   );
   if (!rows[0]) return err('not_found', 'parent task not found');
@@ -21,17 +23,54 @@ async function checkParent(client, ownerId, parentId) {
   return ok({ parent: rows[0] });
 }
 
-async function addTask(client, ownerId, { title, category, dueAt, parentId, source }) {
+// An end without a start is not a range, and an end before its start is not a
+// time. Both are refused rather than stored: a half-written range would draw
+// on the day view as a block with no top edge, and the calendar event built
+// from it would be negative-length.
+function checkRange(dueAt, endsAt, label = '') {
+  if (!endsAt) return null;
+  if (!hasOffset(endsAt)) return badTime(`ends_at${label ? ` for ${label}` : ''}`, endsAt);
+  if (!dueAt) return err('invalid', `ends_at${label ? ` for ${label}` : ''} needs a due_at to end`);
+  if (new Date(endsAt).getTime() <= new Date(dueAt).getTime()) {
+    return err('invalid', `ends_at${label ? ` for ${label}` : ''} must be after due_at`);
+  }
+  return null;
+}
+
+function pickCategory({ category, title, parent }) {
+  const decided = taskCategory.decideCategory({ category, title });
+  if (decided.category) return decided;
+  if (parent && parent.category) return { category: parent.category, auto: true };
+  return { category: null, auto: false };
+}
+
+// Every task gets a category, and it is decided here rather than asked of the
+// model — see task-category.js for why keywords and not a turn. A subtask
+// inherits its parent's category when its own words say nothing, which is the
+// single highest-value rule in the whole scheme: a shopping list's items are
+// `ירקות`, `פירות`, `קוטג׳` — no stem list will ever place those, and the
+// project they hang under already answers the question.
+//
+// `kind` is decided the same way and for the same reasons (task-kind.js): it
+// is what lets a passed appointment leave the list while a job that is merely
+// late stays on it.
+async function addTask(client, ownerId, { title, category, dueAt, endsAt, parentId, source }) {
   if (!title || !title.trim()) return err('invalid', 'title required');
   if (dueAt && !hasOffset(dueAt)) return badTime('due_at', dueAt);
+  const range = checkRange(dueAt, endsAt);
+  if (range) return range;
+  let parent = null;
   if (parentId) {
     const check = await checkParent(client, ownerId, parentId);
     if (!check.ok) return check;
+    parent = check.data.parent;
   }
+  const cat = pickCategory({ category, title, parent });
   const { rows } = await client.query(
-    `INSERT INTO tasks (owner_id, title, category, due_at, parent_id, source)
-     VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'chat')) RETURNING *`,
-    [ownerId, title.trim(), category || null, dueAt || null, parentId || null, source || null]
+    `INSERT INTO tasks (owner_id, title, category, category_auto, due_at, ends_at, kind, parent_id, source)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, 'chat')) RETURNING *`,
+    [ownerId, title.trim(), cat.category, cat.auto, dueAt || null, endsAt || null,
+      taskKind.decideKind({ title }), parentId || null, source || null]
   );
   await audit.record(client, ownerId, 'task.created', { taskId: rows[0].id, parentId: parentId || null });
   return ok({ task: rows[0] });
@@ -63,8 +102,15 @@ async function editTask(client, ownerId, taskId, patch = {}) {
     changed.title = true;
   }
   if (has('category')) {
-    const category = patch.category == null ? null : String(patch.category).trim() || null;
+    // An edit is a person pointing at the field, so whatever comes out of it
+    // is theirs: `category_auto` goes false and the guesser stops touching it.
+    // Off-vocabulary text is still folded onto a key rather than refused —
+    // `בריאות` means health, and rejecting it would only teach the caller to
+    // send nothing.
+    const raw = patch.category == null ? null : String(patch.category).trim() || null;
+    const category = raw == null ? null : taskCategory.normaliseCategory(raw);
     sets.push(`category = $${vals.push(category)}`);
+    sets.push('category_auto = false');
     changed.category = category;
   }
   if (has('dueAt')) {
@@ -73,6 +119,30 @@ async function editTask(client, ownerId, taskId, patch = {}) {
     if (patch.dueAt != null && !hasOffset(patch.dueAt)) return badTime('due_at', patch.dueAt);
     sets.push(`due_at = $${vals.push(patch.dueAt ?? null)}`);
     changed.dueAt = patch.dueAt ?? null;
+  }
+  // The two ends of a range are validated against EACH OTHER, so the pair has
+  // to be resolved against what the row already holds — moving only the start
+  // of a 12:00–19:00 shift to 20:00 is exactly as broken as writing the pair
+  // that way in one call, and a check that only looked at the patch would miss
+  // it. Clearing the start clears the end with it: an end alone is not a time.
+  if (has('endsAt') || has('dueAt')) {
+    const { rows: cur } = await client.query(
+      `SELECT due_at, ends_at FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
+      [taskId, ownerId]
+    );
+    if (!cur[0]) return err('not_found', 'task not found');
+    const iso = (v) => (v instanceof Date ? v.toISOString() : v);
+    const nextDue = has('dueAt') ? patch.dueAt ?? null : iso(cur[0].due_at);
+    let nextEnd = has('endsAt') ? patch.endsAt ?? null : iso(cur[0].ends_at);
+    if (nextEnd && !nextDue) nextEnd = null;
+    if (nextEnd) {
+      const bad = checkRange(nextDue, has('endsAt') ? patch.endsAt : nextEnd);
+      if (bad) return bad;
+    }
+    if (has('endsAt') || nextEnd !== iso(cur[0].ends_at)) {
+      sets.push(`ends_at = $${vals.push(nextEnd)}`);
+      changed.endsAt = nextEnd;
+    }
   }
   if (sets.length === 0) return err('invalid', 'nothing to change');
   const { rows } = await client.query(
@@ -97,20 +167,25 @@ async function editTask(client, ownerId, taskId, patch = {}) {
 async function addTasksBulk(client, ownerId, items, { parentId, source } = {}) {
   if (!Array.isArray(items) || items.length === 0) return err('invalid', 'items required');
   if (items.length > MAX_BULK) return err('invalid', `max ${MAX_BULK} items per call`);
+  let parent = null;
   if (parentId) {
     const check = await checkParent(client, ownerId, parentId);
     if (!check.ok) return check;
+    parent = check.data.parent;
   }
   const rowSource = source || (parentId ? 'breakdown' : 'brain_dump');
   const created = [];
   for (const item of items) {
     if (!item || !item.title || !item.title.trim()) return err('invalid', 'every item needs a title');
     if (item.dueAt && !hasOffset(item.dueAt)) return badTime(`due_at for "${item.title.trim().slice(0, 40)}"`, item.dueAt);
+    const bad = checkRange(item.dueAt, item.endsAt, `"${item.title.trim().slice(0, 40)}"`);
+    if (bad) return bad;
+    const cat = pickCategory({ category: item.category, title: item.title, parent });
     const { rows } = await client.query(
-      `INSERT INTO tasks (owner_id, title, category, due_at, parent_id, source)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [ownerId, item.title.trim(), item.category || null, item.dueAt || null,
-        parentId || null, rowSource]
+      `INSERT INTO tasks (owner_id, title, category, category_auto, due_at, ends_at, kind, parent_id, source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [ownerId, item.title.trim(), cat.category, cat.auto, item.dueAt || null,
+        item.endsAt || null, taskKind.decideKind({ title: item.title }), parentId || null, rowSource]
     );
     created.push(rows[0]);
   }
@@ -188,7 +263,47 @@ async function completeTask(client, ownerId, taskId) {
   await audit.record(client, ownerId, 'task.completed', {
     taskId, remindersCancelled: cancelled.rowCount,
   });
-  return ok({ task: rows[0], remindersCancelled: cancelled.rowCount });
+  const parentDone = await completeParentIfDrained(client, ownerId, rows[0].parent_id);
+  return ok({ task: rows[0], remindersCancelled: cancelled.rowCount, ...parentDone });
+}
+
+// Ticking the last item off a list finishes the list.
+//
+// It did not, and the evidence was sitting in production: `סופר` with six
+// subtasks, six of them done, the project itself still open and still on
+// somebody's list. Every individual step had been reported and the thing they
+// were actually doing was never marked as over — so the list kept asking, and
+// the only way to close it was to notice by eye and say so.
+//
+// A project with no children is NOT drained. `0 of 0 done` is arithmetically
+// true and means "nothing has been broken out yet", which is the opposite of
+// finished; without that guard, adding an empty project would complete it on
+// the spot.
+//
+// Returns `{ parentCompleted }` so the caller can say so — the agent in its
+// tool result, the page in its toast. A thing that happened silently is a
+// thing the person finds out about by rereading their own list.
+async function completeParentIfDrained(client, ownerId, parentId) {
+  if (!parentId) return {};
+  const { rows } = await client.query(
+    `UPDATE tasks p SET status = 'done', completed_at = now()
+      WHERE p.id = $1 AND p.owner_id = $2 AND p.status = 'open' AND p.archived_at IS NULL
+        AND EXISTS (SELECT 1 FROM tasks c WHERE c.parent_id = p.id AND c.archived_at IS NULL)
+        AND NOT EXISTS (SELECT 1 FROM tasks c
+                         WHERE c.parent_id = p.id AND c.archived_at IS NULL AND c.status <> 'done')
+      RETURNING id, title`,
+    [parentId, ownerId]
+  );
+  if (!rows[0]) return {};
+  await client.query(
+    `UPDATE task_reminders SET cancelled_at = now()
+      WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL`,
+    [rows[0].id]
+  );
+  await audit.record(client, ownerId, 'task.completed', {
+    taskId: Number(rows[0].id), reason: 'all_subtasks_done',
+  });
+  return { parentCompleted: { id: Number(rows[0].id), title: rows[0].title } };
 }
 
 // A snooze is the one action here that DESTROYS the thing it is about: the
@@ -266,15 +381,21 @@ async function archiveTask(client, ownerId, taskId) {
 // It does NOT un-complete anything: a finished task restored is a finished
 // task on the list, and deciding otherwise would silently reopen work
 // somebody had already done.
+// "Put it back on my list" means back on the list, open. Clearing only
+// `archived_at` returned it already ticked — and both faces of the system
+// promise otherwise: the page's own comment says a restored shopping list must
+// not come back empty, and the sweep that archives a task on its own is only
+// honest if the way back is complete. There is no caller for whom
+// "un-archived but still done" is a state worth having.
 async function unarchiveTask(client, ownerId, taskId) {
   const { rows } = await client.query(
-    `UPDATE tasks SET archived_at = NULL
-     WHERE id = $1 AND owner_id = $2 AND archived_at IS NOT NULL RETURNING id`,
+    `UPDATE tasks SET archived_at = NULL, status = 'open', completed_at = NULL
+     WHERE id = $1 AND owner_id = $2 AND archived_at IS NOT NULL RETURNING id, title`,
     [taskId, ownerId]
   );
   if (!rows[0]) return err('not_found', 'archived task not found');
   await audit.record(client, ownerId, 'task.unarchived', { taskId });
-  return ok({ taskId });
+  return ok({ taskId, title: rows[0].title });
 }
 
 async function projectOverview(client, ownerId, projectId) {
@@ -293,4 +414,5 @@ async function projectOverview(client, ownerId, projectId) {
 module.exports = {
   MAX_BULK, addTask, addTasksBulk, editTask, listTasks, completeTask,
   snoozeTask, archiveTask, unarchiveTask, projectOverview,
+  completeParentIfDrained,
 };

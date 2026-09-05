@@ -38,6 +38,8 @@ const KIND_LABELS = {
   meeting_confirmed: 'פגישה אושרה',
   meeting_slot_declined: 'מועד נדחה',
   meeting_opt_out: 'יציאה מפגישה',
+  tasks_auto_archived: 'משימות שנסגרו מעצמן',
+  meeting_rejoined: 'חזרה לתיאום פגישה',
   meeting_withdrawn: 'ביטול הגעה לפגישה',
   meeting_no_match: 'לא נמצא מועד',
   meeting_cancelled: 'פגישה בוטלה',

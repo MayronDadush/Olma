@@ -3,7 +3,7 @@
 // Moved verbatim out of adapters/http/dashboard.js on 2026-09-05; the router
 // there is what is left of that file.
 const { ago } = require('./html');
-const { PLAN_LABEL } = require('./sections/users');
+const { PLAN_LABEL, dashboardButton } = require('./sections/users');
 const { renderPlannedForUser } = require('./sections/planned');
 const factsDomain = require('../../../domain/facts');
 const { previewDeletion } = require('../../../intake/deprovision');
@@ -195,6 +195,9 @@ async function renderUserPage(client, userId, { confirmDelete = false, csrf = ''
     <section>
       <h3>${esc(name)}</h3>
       <p class="hint">${esc(u.phone)} · ${PLAN_LABEL[u.plan] || '—'} · הצטרף ${ago(u.created_at)}</p>
+      ${u.status === 'active'
+        ? `<p>${dashboardButton(u.id, csrf, `/user?id=${u.id}`)} <span class="hint">פותח את העמוד האישי שלו, כמו שהוא רואה אותו.</span></p>`
+        : ''}
       ${knownAs.length ? `<p class="hint">מוכר/ת אצל אחרים בתור: ${knownAs.map((k) =>
         `${esc(k.display_name)} (<a href="/user?id=${k.owner_id}">${esc([k.first_name, k.last_name].filter(Boolean).join(' ') || `משתמש ${k.owner_id}`)}</a>)`
       ).join(', ')}</p>` : ''}

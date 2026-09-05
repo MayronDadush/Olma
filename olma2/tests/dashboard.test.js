@@ -1227,6 +1227,51 @@ test('the dashboard offers no way to pause someone on their behalf', async () =>
   assert.equal(rows[0].paused_at, null, 'pausing is the person\'s own decision, not an admin button');
 });
 
+// ---------------------------------------------------- opening a person's page
+//
+// The operator's own way in. The link a person gets by WhatsApp is single-use
+// and lives half an hour, which is right for a message and wrong for going
+// through a dozen accounts looking for layout bugs.
+
+test('every active user has a button that opens their own dashboard', async () => {
+  const csrf = 'c-dash-open';
+  const page = await fetch(base + '/', { headers: { Authorization: AUTH, Cookie: `csrf=${csrf}` } })
+    .then((r) => r.text());
+  assert.match(page, /action="\/users\/dashboard"/);
+
+  await withTx(db.pool, (c) => flags.setFlag(c, 'public_base_url', 'https://allma.world'));
+  const res = await fetch(base + '/users/dashboard', {
+    method: 'POST', redirect: 'manual',
+    headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `id=${user.id}&back=/&csrf=${csrf}`,
+  });
+  assert.equal(res.status, 303);
+  // Straight to a live one-time link on the PUBLIC host — the redirect that
+  // makes the thirty-minute TTL a non-issue, because none of it is spent
+  // getting there.
+  assert.match(res.headers.get('location'), /^https:\/\/allma\.world\/d\/[a-f0-9]{64}$/);
+
+  // It is a real sign-in as that person, so it leaves the same trail every
+  // other admin edit on this page leaves.
+  const { rows } = await db.pool.query(
+    `SELECT count(*)::int AS n FROM audit_log WHERE actor_id = $1 AND event = 'admin.dashboard_opened'`,
+    [user.id]);
+  assert.equal(rows[0].n, 1);
+});
+
+test('a bad public_base_url cannot turn the button into an open redirect', async () => {
+  const csrf = 'c-dash-bad';
+  await withTx(db.pool, (c) => flags.setFlag(c, 'public_base_url', 'javascript:alert(1)'));
+  const res = await fetch(base + '/users/dashboard', {
+    method: 'POST', redirect: 'manual',
+    headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `id=${user.id}&back=/&csrf=${csrf}`,
+  });
+  assert.equal(res.status, 303);
+  assert.equal(res.headers.get('location'), '/', 'falls back to the same-origin back target');
+  await withTx(db.pool, (c) => flags.setFlag(c, 'public_base_url', 'https://allma.world'));
+});
+
 // ---- the grouped page ---------------------------------------------------------
 // Fifteen sections top to bottom became six folds with only the first open,
 // an alerts strip inside it, and two merges (outbox into planned, boost into
