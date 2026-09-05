@@ -28,6 +28,13 @@ CREATE TABLE chat_groups (
   external_id           TEXT NOT NULL,               -- group JID (…@g.us)
   subject               TEXT,
   agent_id              TEXT,                        -- g-<id>, NULL until provisioned
+  workspace_path        TEXT,                        -- set with agent_id, by the same write
+  -- The group's own root of trust, the same shape and the same job as
+  -- `users.identity_token`: the MCP shim is handed nothing identifying, so the
+  -- token in the workspace is what tells brokerd which group is calling. A
+  -- group token must never resolve to a user, which is why it is a column here
+  -- rather than a user row wearing a group's name.
+  identity_token        TEXT UNIQUE,
   state                 TEXT NOT NULL DEFAULT 'locked'
                           CHECK (state IN ('locked', 'open', 'too_large', 'retired')),
   -- The timezone the group's quiet hours run in: whichever timezone most

@@ -17,6 +17,12 @@ test('the intro says who she is and how to reach her, and nothing else', () => {
   assert.ok(intro.split('\n').length <= 4, 'a first impression is not a manual');
 });
 
+// "@" on its own teaches nobody anything. The intro tags HER, with the same
+// phone token everything else uses, so it is a tag people can press.
+test('the intro carries a pressable tag of her own number', () => {
+  assert.match(text.renderGroupIntro(), new RegExp(`@\\+${text.SELF_NUMBER}`));
+});
+
 test('a tag is a phone token, so the gateway turns it into a real mention', () => {
   const notice = text.renderGroupGateNotice({
     kind: 'explain', missing: ['+972501111111', '972502222222'],

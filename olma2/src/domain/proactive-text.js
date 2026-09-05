@@ -73,15 +73,31 @@ function mentionTokens(phones) {
   return rest > 0 ? `${shown.join(' ')} ועוד ${rest}` : shown.join(' ');
 }
 
-// The first thing said in a group, on the first message there from anyone.
-const GROUP_INTRO = [
-  'נעים מאוד, אני עולמה 👋',
-  'אני עוזרת לקבוצות לתאם דברים בלי הפינג-פונג: מי פנוי מתי ומי עוד לא ענה.',
-  'כשאתם צריכים אותי - תתייגו אותי @. בלי תיוג אני לא מתערבת מקווה שכולכם מחוברים 🙌',
-].join('\n');
+// Olma's own WhatsApp number, so the intro can tag HER — a tag people can
+// actually press, rather than a bare "@" that teaches nothing. Overridable by
+// env for a second deployment; the literal is the live account (the same
+// number `adapters/http/public-pages.js` puts on the public page).
+//
+// THE HAZARD THIS OPENS, and the guard that closes it: a message tagging her
+// is exactly what wakes her, and her own outbound message tags her. The
+// gateway drops the echo of a recent outbound of its own
+// (`shouldSkipRecentOutboundEcho`, keyed on the message id), but that
+// tracking has a lifetime, and a late echo would arrive as a group message
+// that mentions her — through the mention gate, into a turn, whose reply tags
+// her again. **Her own number must therefore never appear in
+// `groupAllowFrom`**: the sender allowlist is the one check that runs before
+// mention gating, and it is what makes the loop unreachable rather than
+// merely unlikely. `groupAllowFrom` carries the phone numbers of Olma's
+// USERS, and she is not one of them.
+const SELF_NUMBER = process.env.OLMA_WA_NUMBER || '972559347282';
 
+// The first thing said in a group, on the first message there from anyone.
 function renderGroupIntro() {
-  return GROUP_INTRO;
+  return [
+    'נעים מאוד, אני עולמה 👋',
+    'אני עוזרת לקבוצות לתאם דברים בלי הפינג-פונג: מי פנוי מתי ומי עוד לא ענה.',
+    `כשאתם צריכים אותי - תתייגו אותי ${mentionTokens([SELF_NUMBER])}. בלי תיוג אני לא מתערבת מקווה שכולכם מחוברים 🙌`,
+  ].join('\n');
 }
 
 // kind comes from groups.decideNotice: 'explain' the first time, 'nudge' after.
@@ -115,5 +131,5 @@ function rawPipeTextFor(row) {
 
 module.exports = {
   renderReminderText, rawPipeTextFor,
-  renderGroupIntro, renderGroupGateNotice, renderGroupTooLarge, mentionTokens, MAX_TAGS,
+  renderGroupIntro, renderGroupGateNotice, renderGroupTooLarge, mentionTokens, MAX_TAGS, SELF_NUMBER,
 };

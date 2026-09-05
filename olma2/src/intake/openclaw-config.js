@@ -239,6 +239,55 @@ function isGroupAdmitted(cfg, jid) {
   return Object.hasOwn(groups, jid);
 }
 
+// The greeter's catch-all: every group with no exact binding of its own lands
+// on one permanently muted agent. Exact peer bindings outrank a wildcard (the
+// same precedence the direct catch-all relies on), so a group that has been
+// given its own agent stops coming here the moment that binding is written.
+function addGroupWildcardBinding(cfg, { agentId }) {
+  cfg.bindings = cfg.bindings || [];
+  if (cfg.bindings.some((b) => b.match && b.match.peer && b.match.peer.kind === 'group' && b.match.peer.id === '*')) {
+    return false;
+  }
+  cfg.bindings.push({
+    type: 'route', agentId, comment: 'Olma group greeter — every group without its own agent',
+    match: { channel: 'whatsapp', accountId: 'default', peer: { kind: 'group', id: '*' } },
+  });
+  return true;
+}
+
+// Mutes a whole AGENT rather than one group — `rawKeyPrefix` matches the raw
+// session key, which begins `agent:<id>:`. This is what makes the greeter safe:
+// it runs turns for groups nobody has vetted yet, and nothing it says can ever
+// reach anybody.
+function muteAgent(cfg, agentId) {
+  const prefix = `agent:${String(agentId).toLowerCase()}:`;
+  const rules = sendPolicyRules(cfg);
+  if (rules.some((r) => r && r.action === 'deny' && r.match && r.match.rawKeyPrefix === prefix)) return false;
+  rules.push({ action: 'deny', match: { rawKeyPrefix: prefix } });
+  return true;
+}
+
+function isAgentMuted(cfg, agentId) {
+  const prefix = `agent:${String(agentId).toLowerCase()}:`;
+  const rules = (cfg.session && cfg.session.sendPolicy && cfg.session.sendPolicy.rules) || [];
+  return rules.some((r) => r && r.action === 'deny' && r.match && r.match.rawKeyPrefix === prefix);
+}
+
+// `groups["*"]` admits every group — including one we have never seen, which
+// is the whole point: it is what lets a first message anywhere reach the
+// greeter. `requireMention: false` here is the DEFAULT only; a registered
+// group's own entry outranks it (verified in `resolveChannelGroupRequireMention`:
+// exact entry, then "*", then true).
+function admitAllGroups(cfg) {
+  cfg.channels = cfg.channels || {};
+  cfg.channels.whatsapp = cfg.channels.whatsapp || {};
+  cfg.channels.whatsapp.groups = cfg.channels.whatsapp.groups || {};
+  const groups = cfg.channels.whatsapp.groups;
+  if (groups['*'] && groups['*'].requireMention === false) return false;
+  groups['*'] = { ...(groups['*'] || {}), requireMention: false };
+  return true;
+}
+
 function addGroupBinding(cfg, { agentId, jid, comment }) {
   cfg.bindings = cfg.bindings || [];
   if (cfg.bindings.some((b) => b.match && b.match.peer && b.match.peer.kind === 'group' && b.match.peer.id === jid)) {
@@ -264,6 +313,7 @@ module.exports = {
   DEFAULT_PATH, loadConfig, saveConfig,
   addAgent, removeAgent, addBinding, addCatchAllBinding, addAllowFrom,
   groupSessionPrefix, muteGroup, unmuteGroup, isGroupMuted,
+  addGroupWildcardBinding, muteAgent, isAgentMuted, admitAllGroups,
   admitGroup, unadmitGroup, isGroupAdmitted, addGroupBinding, removeGroupBinding,
   usesEntries, listAgentIds, hasAgent,
 };

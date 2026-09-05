@@ -302,6 +302,41 @@ returns on the first matching deny regardless of an earlier allow, so a blanket
 `chatType: "group"` deny could never be lifted per group. Muting by agent is
 what makes the greeter safe.
 
+## The lock is structural: a locked group has no agent
+
+The first design here toggled a per-group `sendPolicy` deny rule on and off.
+That works, but it rests on remembering to bundle every toggle with an
+`agents.entries` change, for ever, or the write is silently dropped. A rule
+that is only true while everybody remembers it is not a lock.
+
+What actually locks a group is that **it has no agent of its own**. With no
+exact binding it falls to the greeter's wildcard, and the greeter is muted
+permanently, by an agent-wide rule written once. So:
+
+| | binding | agent | can speak |
+|---|---|---|---|
+| unknown group | greeter wildcard | `ggreet` | no — muted for ever |
+| registered, locked | greeter wildcard | `ggreet` | no |
+| open | its own, exact | `g-<id>` | yes |
+
+Every lock and unlock is therefore an `agents.entries` change by construction —
+the one key measured to give the reload planner a hot reason — so the config
+write always lands. The per-group deny rule stays as a second belt, added at
+**registration** rather than at lock time, so the invariant is simply "a group
+without its own agent also carries a deny rule": there is no window, not at
+registration and not after a rolled-back opening, where the only thing between
+a room and a stray reply is a binding that happens not to exist yet.
+
+A third measurement made this affordable: **a `channels.whatsapp.*.groups`
+write hot-applies on its own** (2026-09-05, `config hot reload applied
+(…groups)`), at the cost of a ~5s whatsapp channel restart. That is what lets
+registration admit a group by itself, and it is why admission is a
+registration-time lever and never a per-message one.
+
+Re-locking takes the agent and the route away but **never the workspace**. A
+group's memory, its patterns and its card outlive a lock; a group that re-opens
+because somebody finally signed up should not have forgotten itself.
+
 ## Coordination: the group is a trigger and a status channel, not a new engine
 
 `domain/meetings.js` already holds the whole negotiation — `startMeeting`,
