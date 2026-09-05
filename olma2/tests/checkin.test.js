@@ -80,12 +80,12 @@ test('ladder rungs: deadline_risk, overload, plain silence', async () => {
   assert.equal(byId[Number(quiet.id)], 'discovery');
 });
 
-test('idempotent per day; backoff excludes after 4 misses; recent activity excludes', async () => {
+test('idempotent per day; backoff excludes after 3 misses; recent activity excludes', async () => {
   const again = await withTx(db.pool, (c) => checkin.run(c));
   assert.equal(again.length, 0, 'second run same day enqueues nothing');
 
   const gaveUp = await silentUser('+972591000006');
-  await db.pool.query(`UPDATE users SET checkin_misses = 4 WHERE id = $1`, [gaveUp.id]);
+  await db.pool.query(`UPDATE users SET checkin_misses = 3 WHERE id = $1`, [gaveUp.id]);
   const active = await makeUser(db.pool, '+972591000007'); // fresh audit rows = active now
   await db.pool.query(`UPDATE users SET onboarded_at = now() - interval '3 days' WHERE id = $1`, [active.id]);
 
@@ -107,10 +107,12 @@ test('checkin cadence: fast for new users, slower once settled, backs off when i
   assert.equal(h(requiredGapMs(10, 0)), 18, 'first three weeks');
   assert.equal(h(requiredGapMs(30, 0)), 24, 'settled');
 
-  // Engagement, not the calendar, decides the rest: one ignored check-in
-  // doubles the wait, two drops to weekly. A responsive new user keeps the
-  // fast cadence; a silent one is left alone within a day.
-  assert.equal(h(requiredGapMs(0, 1)), 10, 'one miss doubles');
+  // Engagement, not the calendar, decides the rest: one ignored check-in buys
+  // three days of quiet (never less, whatever the age tier says), two drops to
+  // weekly. A responsive new user keeps the fast cadence; a silent one is
+  // left alone — four messages on four days is what "doubles" used to allow.
+  assert.equal(h(requiredGapMs(0, 1)), 72, 'one miss → three days');
+  assert.equal(h(requiredGapMs(30, 1)), 72, 'three days regardless of age');
   assert.equal(h(requiredGapMs(0, 2)), 24 * 7, 'two misses → weekly');
   assert.equal(h(requiredGapMs(30, 2)), 24 * 7, 'weekly regardless of age');
 });
@@ -346,6 +348,32 @@ test('a discovery topic already offered is never offered again, even as the last
     assert.equal(pick.rung, 'discovery');
     assert.equal(pick.topic, 'calendar:needs_reauth');
   } finally { c.release(); }
+});
+
+// 2026-09-05, user 13: four proactive messages on four consecutive days to a
+// person who answered none of them — two "anything new?", then a question
+// about which city he lives in. Nobody is asked a question they have already
+// not answered once.
+test('after one unanswered check-in there are no more questions, only a quiet one-liner', async () => {
+  const u = await silentUser('+972591000031');
+  await db.pool.query(`UPDATE users SET timezone_confirmed = false, digest_times = NULL WHERE id = $1`, [u.id]);
+  const fresh = await withTx(db.pool, (c) => checkin.pickRung(c, u.id, 0));
+  assert.equal(fresh.rung, 'discovery', 'with no miss on record, discovery is still on the table');
+  const ignored = await withTx(db.pool, (c) => checkin.pickRung(c, u.id, 1));
+  assert.equal(ignored.rung, 'silence');
+  assert.match(ignored.instruction, /no question mark/);
+  assert.match(ignored.instruction, /stay quiet until they write/);
+  assert.ok(!/discovery|city|calendar/i.test(ignored.instruction), 'no pitch rides along');
+  // What is THEIRS still outranks the quiet: a meeting waiting on their answer.
+  const { rows: [other] } = await db.pool.query(
+    `INSERT INTO users (phone, status, first_name, timezone) VALUES ('+972591000032','active','B','Asia/Jerusalem') RETURNING id`);
+  const meetings = require('../src/domain/meetings');
+  await withTx(db.pool, async (c) => {
+    const m = await meetings.createMeeting(c, other.id, { title: 'קפה', participantIds: [u.id] });
+    await meetings.proposeSlot(c, other.id, m.data.meeting.id, { proposedSlot: 'מחר 10:00', startsAt: new Date(Date.now() + 86400_000).toISOString() });
+  }).catch(() => { /* schema drift in this helper is not what this test is about */ });
+  const withMeeting = await withTx(db.pool, (c) => checkin.pickRung(c, u.id, 1));
+  assert.ok(withMeeting.rung === 'stuck_meeting' || withMeeting.rung === 'silence');
 });
 
 test('the timezone gap leads discovery, and closes itself once they answer', async () => {
