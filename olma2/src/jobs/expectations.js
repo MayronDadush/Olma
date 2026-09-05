@@ -58,6 +58,9 @@ const JOB_INTERVAL_SECONDS = {
   // Hourly is also what makes the drift READABLE: a gap reported as "3 hours"
   // is a story, a gap reported as "12 minutes" is noise on a normal deploy.
   deploy_drift: 3600,
+  // Five minutes: two bad ticks before a word means an outage is reported
+  // within ten. Faster would alarm on a single probe timeout.
+  liveness_watch: 300,
   retention_sweep: 86400,
   // Not a brokerd job: root's crontab runs scripts/backup-offbox.sh nightly
   // after the pg_dump, and the script writes this row itself. Listed here so

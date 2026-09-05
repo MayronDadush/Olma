@@ -39,6 +39,7 @@ const JOB_LABELS = {
   retention_sweep: 'ניקוי נתונים ישנים',
   eval_sweep: 'בדיקות התנהגות ליליות',
   deploy_drift: 'השוואת הגרסה שרצה מול main',
+  liveness_watch: 'שומר חיים: שער התקשורת ומשלוח ההודעות, עם התראה ב-SMS',
   backup_offbox: 'גיבוי יומי של מסד הנתונים מחוץ לשרת',
 };
 

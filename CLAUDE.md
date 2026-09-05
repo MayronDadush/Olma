@@ -249,6 +249,16 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   binding and the next silent failure of the same shape alike. Dashboard row,
   not `BREAKS_USERS`. It is the opposite of `isDeafOnDayOne`, which needs two
   onboarding messages to have LANDED and then sends less.
+- **`liveness_watch` is the one alarm with a channel that is not the gateway.**
+  Twilio SMS when the gateway is down, WhatsApp otherwise, the other as
+  fallback; two bad ticks before a word; state in the `liveness_state` flag
+  so a restart mid-outage does not re-alert. Its heartbeat note says
+  `smsConfigured` and `alertFailed` — "nothing wrong" and "could not tell
+  you" must never read alike.
+  **It repairs before it reports**: a gateway down for two ticks is restarted
+  (`intake/gateway-restart.js`, once per half hour) and probed again; the
+  owner hears the outcome — healed over WhatsApp, or "restarted, still down"
+  over SMS. A dead brokerd or box it cannot see; that is the external monitor.
 - **`/health` sees the DB, every `job_heartbeats` row, and the gateway — and
   nothing else.** A component that writes no heartbeat is invisible to it, and
   says so by staying green. That is how the gateway went unwatched for months
@@ -705,15 +715,17 @@ next session to rebuild something that already works.
 What is genuinely still missing is **Monday.com** (v1 had it read-only for one
 user). No tools, no domain module, nobody has asked for it since the cutover.
 
-### The gateway can only ever be watched from OUTSIDE itself
+### The gateway can only ever be watched from OUTSIDE itself — half closed (2026-09-05)
 
-`/health` checks it now (`incidents.md`, "A dead gateway read green"), and
-that is the end of the line for this one: **there is no alert.** Every alarm
-this system has — the credit outage, the runway warning, the eval reds,
-`config_guard`'s `BREAKS_USERS` set — rides the raw `openclaw message send`
-pipe, and that pipe IS the gateway. A gateway that is down cannot report that
-it is down, so a dashboard row and a 503 are genuinely all that is available
-from in here. Anything better has to run somewhere else: an uptime monitor
-hitting `https://allma.world/health` (public, unauthenticated, and the
-hostname that outlives the duckdns one), or a second channel that does not go
-through OpenClaw at all. Neither exists.
+`/health` checks the gateway, and since 2026-09-05 `liveness_watch`
+(`jobs/liveness-watch.js`, every five minutes inside brokerd) probes it and
+the delivery queue and can say so over a channel that is NOT the gateway:
+Twilio SMS (`channels/twilio-sms.js`, `TWILIO_SID/TOKEN/FROM` in
+`/opt/olma2/.env`), WhatsApp when the pipe is up. Two bad ticks before a
+word, one alert per outage plus a six-hourly reminder, a recovery message.
+
+What is still uncovered, and always will be from in here: a dead brokerd, a
+dead box, a dead network. Those need an uptime monitor hitting
+`https://allma.world/health` (public, unauthenticated, the hostname that
+outlives the duckdns one). That still does not exist and needs the owner's
+account at a monitoring service.

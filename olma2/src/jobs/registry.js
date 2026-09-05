@@ -22,6 +22,7 @@ const checkin = require('./checkin');
 const sweeps = require('./sweeps');
 const intake = require('./intake');
 const configGuard = require('./config-guard');
+const livenessWatch = require('./liveness-watch');
 const unanswered = require('./unanswered');
 const laneWatchdog = require('./lane-watchdog');
 const memoryConsolidation = require('./memory-consolidation');
@@ -230,6 +231,11 @@ function jobs({ pool }) {
     { name: 'voice_usage_sweep', run: () => withTx(pool, (c) => voiceUsage.sweepVoiceUsage(c)) },
     { name: 'metrics_sweep', run: () => withTx(pool, (c) => metrics.sweepMetrics(c)) },
     { name: 'retention_sweep', run: () => withTx(pool, (c) => retention.sweepRetention(c)) },
+    // Is everything working, and will the owner hear if not: gateway probe +
+    // delivery queue, two bad ticks before a word, WhatsApp when the pipe is
+    // up and Twilio SMS when the pipe IS the problem (jobs/liveness-watch.js).
+    { name: 'liveness_watch', run: () => withTx(pool, (c) =>
+      livenessWatch.run(c, { configPath: OPENCLAW_CONFIG, send: rawSend })) },
     { name: 'deploy_drift', run: () => withTx(pool, (c) => deployDrift.sweepDeployDrift(c)) },
   ];
 }
