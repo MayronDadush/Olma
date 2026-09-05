@@ -390,7 +390,7 @@ function briefFor(crossed, today, ev, promptChars) {
 
 function reportText(crossed, day, ev, advice) {
   const lines = [
-    '📈 אולמה — יעילות: משהו חרג מהרגיל',
+    '📈 עולמה — יעילות: משהו חרג מהרגיל',
     `${day.date} · ${day.messages} הודעות נכנסות`,
     '',
     // A slide and a jump read identically in a single line of numbers, and the

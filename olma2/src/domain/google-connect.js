@@ -80,7 +80,7 @@ async function beginConnection(client, user, { calendarAccess, wantContacts, wan
     url: google.buildConsentUrl(state, [...scopes].join(' ')),
     requested: requestedServices,
     validForMinutes: google.STATE_TTL_MS / 60000,
-    tellTheUser: `הקישור מבקש: ${parts.join(', ')}. במסך של גוגל אפשר לבטל סימון לכל אחד מהם בנפרד — אולמה תחבר בדיוק את מה שסומן.`,
+    tellTheUser: `הקישור מבקש: ${parts.join(', ')}. במסך של גוגל אפשר לבטל סימון לכל אחד מהם בנפרד — עולמה תחבר בדיוק את מה שסומן.`,
   });
 }
 

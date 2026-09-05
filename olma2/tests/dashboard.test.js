@@ -902,7 +902,7 @@ test('the brain shows who is waiting on a human, and what Olma has learned', asy
   });
 
   const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
-  assert.match(html, /מה אולמה יודעת ועל מה היא מחכה/);
+  assert.match(html, /מה עולמה יודעת ועל מה היא מחכה/);
   assert.match(html, /ממתין לתשובה של אדם/);
   assert.match(html, /בקשת חברות/);
   assert.match(html, /Shira/, 'the person waiting is named and linked');

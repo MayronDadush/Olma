@@ -13,7 +13,7 @@ module.exports = [
   // Prefer the single-purpose tools below (start_calendar_connection etc.)
   // when the user asked for only ONE of the three.
   tool('start_google_connection',
-    'Connect several of the user\'s OWN Google services — calendar, contacts, mail — in ONE link and ONE consent screen, instead of separate links for each. ASK FIRST which they want (and, if calendar, view-only or also add/edit — never guess or reuse an earlier answer), then pass exactly those. At least one of calendar_access / contacts / mail is required. Returns one link; Google still shows a checkbox per item so they can decline any single one there too.',
+    'Connect several of the user\'s OWN Google services — calendar, contacts, mail — in ONE link and ONE consent screen. ASK FIRST which they want (and, for calendar, view-only or also add/edit — never guess or reuse an earlier answer), then pass exactly those; at least one is required. Google still shows a checkbox per item, so they can decline any single one there.',
     {
       calendar_access: S('string', 'read_only | read_write, or omit entirely if they do not want calendar connected this time.'),
       contacts: S('boolean', 'true if they also want Google Contacts imported (read-only).'),

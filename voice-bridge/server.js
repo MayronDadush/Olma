@@ -76,7 +76,7 @@ async function loadPersona(userId) {
   if (!r.rows[0]) return { ...DEFAULT_PERSONA };
   return {
     gender: r.rows[0].assistant_gender || 'female',
-    name: r.rows[0].assistant_name || 'אולמה',
+    name: r.rows[0].assistant_name || 'עולמה',
   };
 }
 
@@ -514,7 +514,7 @@ class Call {
     // 'מירון' used to be hard-coded here — it was the only user. The caller's
     // own name and the assistant's come from the call now, so a second user's
     // name is hinted to the transcriber instead of a stranger's.
-    for (const k of ['אולמה', this.persona.name, this.user.first_name]) if (k) q.append('keyterm', k);
+    for (const k of ['עולמה', 'אולמה', this.persona.name, this.user.first_name]) if (k) q.append('keyterm', k);
     this.dg = new WebSocket(`wss://api.deepgram.com/v1/listen?${q}`, { headers: { Authorization: `Token ${DG_KEY}` } });
     this.dg.on('open', () => log('deepgram open'));
     this.dg.on('error', (e) => log('deepgram error', e.message));

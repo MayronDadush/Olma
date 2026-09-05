@@ -40,6 +40,7 @@ const searchLink = require('../../../domain/search-link');
 const contacts = require('../../../domain/contacts');
 const reactions = require('../../../domain/reactions');
 const audit = require('../../../domain/audit');
+const flags = require('../../../domain/flags');
 const { ok, err } = require('../../../domain/results');
 const { scrubTokens } = require('../render');
 const { IDENTITY_PARAM } = require('../identity-param');
@@ -127,5 +128,5 @@ async function connectedUserByPhone(client, actorId, phone, feature) {
 
 
 module.exports = {
-  users, onboardingDomain, selfInitiated, tasks, reminders, preferences, connections, grants, shares, meetings, availability, dashboardAuth, issues, digest, quota, calendar, taskCalendar, googleContacts, mail, googleConnect, scheduleCard, media, liveUpdates, pause, voice, relay, cardStore, facts, searchLink, contacts, reactions, audit, meetingFanout, S, ok, err, scrubTokens, IDENTITY_PARAM, ICON_NAMES, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, meetingCalendarFanout, calendarRoleFor, cancelCalendarCleanup, calendarHintFor, meetingBrief, CANCEL_CLEANUP_HINTS, captureDisplayName, stale, tool, connectedUserByPhone,
+  users, onboardingDomain, selfInitiated, tasks, reminders, preferences, connections, grants, shares, meetings, availability, dashboardAuth, issues, digest, quota, calendar, taskCalendar, googleContacts, mail, googleConnect, scheduleCard, media, liveUpdates, pause, voice, relay, cardStore, facts, searchLink, contacts, reactions, audit, meetingFanout, S, ok, err, scrubTokens, IDENTITY_PARAM, ICON_NAMES, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, meetingCalendarFanout, calendarRoleFor, cancelCalendarCleanup, calendarHintFor, meetingBrief, CANCEL_CLEANUP_HINTS, captureDisplayName, stale, tool, connectedUserByPhone, flags,
 };

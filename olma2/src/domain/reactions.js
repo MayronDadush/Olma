@@ -22,6 +22,14 @@ const REACTION_STATES = Object.freeze({
   // Received, and the turn is going to take a noticeable moment. Ours regularly
   // do: a cold turn was measured at ~77s, against a 65s stuck-lane threshold.
   working: '👀',
+  // The same beat as `working`, for a voice note — Miron's ask on 2026-09-04,
+  // and it earns a row rather than being a second emoji for `working` (which
+  // the rule above refuses) because it carries information 👀 cannot: a voice
+  // note has to be UPLOADED and TRANSCRIBED before anything can read it, and
+  // that is the part most likely to fail silently. 👂 says the audio arrived,
+  // not merely that a turn opened. "I saw it" and "I heard it" are different
+  // claims about different things.
+  listening: '👂',
   // 👍, not ✅. It says the thing they asked for is in hand — captured, done, or
   // already true. Gali's "בוצע" on 2026-09-03 is the case it exists for: Olma
   // completed the task inside the same second and showed her nothing, so she
@@ -69,11 +77,48 @@ function isReactionCapable(channel) {
 // WhatsApp plugin. So a future channel arrives in the same canonical shape,
 // and adding it is a line in the table above plus a verification, not a port.
 //
+// ── Changing the vocabulary without changing the code ────────────────────────
+// The table above is the DEFAULT, not the whole story: an operator can swap any
+// single state's emoji from the dashboard (flag `reaction_emoji`, one JSON
+// object). Miron asked for 👍 instead of ✅ on `done`, and a taste like that
+// should not need a deploy.
+//
+// This does not reopen what the comment at the top of this file refuses. That
+// rule is about VARIETY WITHIN one state — 💪 today and 🫡 tomorrow for the same
+// thing, which costs attention and returns nothing. An override is still
+// exactly one emoji per state, held steady, and the whole vocabulary stays
+// learnable in one exchange. What changes is who picks it.
+//
+// Anything that is not a plausible emoji is IGNORED rather than sent: a typo,
+// a pasted sentence, an empty box. The default stands and the feature keeps
+// working — a bad setting must never turn into a failed call on every message.
+const EMOJI_RE = /^[\p{Extended_Pictographic}\p{Emoji_Component}]{1,8}$/u;
+
+function isUsableEmoji(value) {
+  return typeof value === 'string' && EMOJI_RE.test(value.trim());
+}
+
+// The vocabulary in force: defaults with any valid override applied. Returns a
+// plain object, never mutating REACTION_STATES (which is frozen and is what
+// every test and every reader means by "the default").
+function vocabulary(overrides) {
+  const out = { ...REACTION_STATES };
+  if (!overrides || typeof overrides !== 'object') return out;
+  for (const [state, emoji] of Object.entries(overrides)) {
+    if (!Object.hasOwn(REACTION_STATES, state)) continue; // no inventing states
+    if (isUsableEmoji(emoji)) out[state] = String(emoji).trim();
+  }
+  return out;
+}
+
 // Returns an argv array for `openclaw message react`, or null when we should
 // stay silent. Null is a real answer and every caller must treat it as one.
-function buildReactArgs({ channel, target, messageId, state, remove = false } = {}) {
-  const emoji = REACTION_STATES[state];
+// `emoji` overrides the table for this one call; an unusable one falls back to
+// the default rather than refusing, so a bad setting never costs a mark.
+function buildReactArgs({ channel, target, messageId, state, remove = false, emoji: override } = {}) {
+  const emoji = isUsableEmoji(override) ? String(override).trim() : REACTION_STATES[state];
   if (!emoji) return null;
+  if (!REACTION_STATES[state]) return null;
   if (!isReactionCapable(channel)) return null;
   // A reaction is addressed to ONE message. Without an id there is nothing to
   // attach to, and there is no sane fallback — reacting to the wrong message
@@ -226,6 +271,10 @@ function markFor(toolName, result, turn, now = Date.now()) {
   if (!result || !result.ok) return null;
   if (!turn || !turn.messageId) return null;
   if (!isLive(turn.lastInboundAt, now)) return null;
+  // A voice note gets 👂 where a typed message gets 👀 — the opening mark only.
+  // Every closing mark (done/scheduled) is about what the TURN achieved, which
+  // is the same question however the message arrived.
+  const effective = (state === 'working' && turn.messageKind === 'voice') ? 'listening' : state;
   // A model that calls `turn_start` twice in one turn asks for the same 👀
   // twice: 2 of the first 10 marked messages in production did, 22 and 37
   // seconds apart. WhatsApp SETS a reaction rather than appending one, so the
@@ -236,14 +285,17 @@ function markFor(toolName, result, turn, now = Date.now()) {
   // message is a progression the person is meant to see, and a coarser key
   // would swallow the second half of every conversation's only real signal.
   const seen = turn.marked || (turn.marked = new Set());
-  const stamp = `${turn.messageId}:${state}`;
+  const stamp = `${turn.messageId}:${effective}`;
   if (seen.has(stamp)) return null;
   seen.add(stamp);
-  return state;
+  return effective;
 }
 
+// The flag an operator edits on the dashboard. One JSON object, one place.
+const VOCAB_FLAG = 'reaction_emoji';
+
 module.exports = {
-  REACTION_STATES, REACTION_CAPABLE, TOOL_MARKS, LIVE_WINDOW_MS,
+  REACTION_STATES, REACTION_CAPABLE, TOOL_MARKS, LIVE_WINDOW_MS, VOCAB_FLAG,
   isReactionCapable, buildReactArgs, outcomeState, placeMark, markFor, isLive,
-  cleanMessageId,
+  cleanMessageId, vocabulary, isUsableEmoji,
 };

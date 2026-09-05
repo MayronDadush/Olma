@@ -115,23 +115,65 @@ test('checkin cadence: fast for new users, slower once settled, backs off when i
   assert.equal(h(requiredGapMs(30, 2)), 24 * 7, 'weekly regardless of age');
 });
 
-test('day one ladder: 15m / 2h / 5h, and steps expire instead of piling up', async () => {
+test('day one ladder: 15m / 2h / 5h / 8h / 22h, and steps expire instead of piling up', async () => {
   const checkin = require('../src/jobs/checkin');
-  const { onboardingStepDue } = checkin;
+  const { onboardingStepDue, DEAF_SILENT_SLOTS } = checkin;
   const MIN = 60_000, H = 3600_000;
 
   assert.equal(onboardingStepDue(5 * MIN, 0), null, 'nothing in the first minutes');
   assert.equal(onboardingStepDue(16 * MIN, 0).slot, '15m');
   assert.equal(onboardingStepDue(2.5 * H, 0).slot, '2h');
   assert.equal(onboardingStepDue(6 * H, 0).slot, '5h');
+  // The two link rungs, added 2026-09-04: the calendar offer, then their own
+  // dashboard. Late on purpose — a link in hour one asks them to leave before
+  // anything here has proved useful.
+  assert.equal(onboardingStepDue(9 * H, 0).slot, '8h');
   // only the latest due step, so a gap in the sweep never replays old ones
-  assert.equal(onboardingStepDue(23 * H, 0).slot, '5h');
+  assert.equal(onboardingStepDue(23 * H, 0).slot, '22h');
   assert.equal(onboardingStepDue(25 * H, 0), null, 'day one is over');
   // present, not deaf: deafness now means DELIVERED-and-ignored (a boolean
   // the caller derives from the outbox), never a counter that ghost-expired
   // messages inflated.
   assert.equal(onboardingStepDue(6 * H, true), null);
   assert.equal(onboardingStepDue(6 * H, false).slot, '5h');
+  // Both link rungs ask the person to go and DO something, so neither is sent
+  // to somebody who has never once answered.
+  assert.equal(onboardingStepDue(9 * H, true), null);
+  assert.equal(onboardingStepDue(23 * H, true), null);
+  // ...while the first two fire regardless — that is the point of the ladder.
+  assert.equal(onboardingStepDue(16 * MIN, true).slot, '15m');
+  assert.equal(onboardingStepDue(2.5 * H, true).slot, '2h');
+  assert.deepEqual([...DEAF_SILENT_SLOTS].sort(), ['22h', '5h', '8h']);
+});
+
+// Both link rungs are for something the person does not yet have. A step whose
+// point is already met hands its slot back to the ordinary ladder rather than
+// spending the day's one message saying nothing.
+test('day one: the calendar offer is skipped once Google is connected', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const step = checkin.ONBOARDING_STEPS.find((s) => s.slot === '8h');
+  const u = await makeUser(db.pool, '+972615000088', { firstName: 'Noa' });
+  const client = await db.pool.connect();
+  try {
+    assert.equal(await step.skipIf(client, u), false, 'nothing connected yet');
+    await client.query(
+      `INSERT INTO integrations (user_id, provider, status) VALUES ($1, 'google_calendar', 'connected')`,
+      [u.id]);
+    assert.equal(await step.skipIf(client, u), true);
+  } finally { client.release(); }
+});
+
+test('day one: the dashboard rung is skipped if they already have a link', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const dashboardAuth = require('../src/domain/dashboard-auth');
+  const step = checkin.ONBOARDING_STEPS.find((s) => s.slot === '22h');
+  const u = await makeUser(db.pool, '+972615000089', { firstName: 'Adi' });
+  const client = await db.pool.connect();
+  try {
+    assert.equal(await step.skipIf(client, u), false);
+    await dashboardAuth.createLinkUrl(client, u.id);
+    assert.equal(await step.skipIf(client, u), true, 'a second link is noise, not news');
+  } finally { client.release(); }
 });
 
 test('day one ladder enqueues one step at a time, each with its own expiry', async () => {

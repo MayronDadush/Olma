@@ -169,6 +169,22 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   own sends as replies) and spent the once-per-life first-turn signal.
 - **The ledgers are append-only.** Rows already written stay as written, even
   when the pricing that produced them was wrong.
+- **The assistant is עולמה / Allma; the system is still olma2.** The rename
+  (2026-09-04) covers user- and operator-facing text only — repo, `/opt/olma2`,
+  the services, the MCP tool prefix and `olma_identity` keep the old name.
+  `docs/incidents.md` keeps the old spelling too: it quotes real messages, and
+  correcting them would falsify the record. Two readers must answer to BOTH
+  spellings and say so — `facts.SYSTEM_NOUN_RE` (old facts are still in the
+  table) and the voice bridge's name check and Deepgram keyterms.
+- **A task saved with a `due_at` arms its own reminder** — an hour before a
+  timed one, 08:00 that morning for a day-shaped one (local midnight in THEIR
+  zone is the discriminator). `domain/auto-reminder.js` decides when,
+  `reminders.attachAutoReminder` is the only writer of `auto = true`, and an
+  explicit `set_task_reminder` cancels the pending auto row rather than joining
+  it. This REVERSED "never set one unasked" (2026-09-04, same day it was
+  added): the half that was right — a calendar ask is one thing, not a task and
+  a reminder as well — moved to `create_calendar_event`'s own description,
+  where the model reads it at the moment it would make that mistake.
 
 ### Writing detectors and alarms
 

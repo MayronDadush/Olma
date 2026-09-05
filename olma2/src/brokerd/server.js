@@ -145,6 +145,11 @@ function createBrokerServer({ pool, flood, placeMark }) {
           target: actorPhone,
           messageId: turn.messageId,
           state: mark,
+          // The operator's vocabulary, read once when the turn opened. Absent
+          // (a direct dispatch, a turn that never called turn_start) means the
+          // built-in table, which is the same thing this did before it was
+          // configurable at all.
+          emoji: turn.reactionVocab && turn.reactionVocab[mark],
         });
       }
       return { ok: true, text: renderResult(result) };

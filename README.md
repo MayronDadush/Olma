@@ -270,7 +270,7 @@ Defined in `AGENTS.md` under `## Feature: Conversation Mediator` and
 
 ## Identity, admin & privacy
 
-The bot's name is **Olma** (אולמה). It presents itself as a general assistant
+The bot's name is **Allma** (עולמה) — the system, its repo and its services are still called olma/olma2. It presents itself as a general assistant
 for everyone — it does NOT reveal who owns it or act as anyone's named personal
 assistant in conversations with outsiders.
 

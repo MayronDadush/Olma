@@ -63,6 +63,46 @@ const NAME_STATEMENT_RES = [
   /^קוראים\s+ל(?:ו|ה|י)\s+\S+(?:\s+\S+)?$/,
   /^(?:his|her|my|their)\s+name\s+is\s+\S+(?:\s+\S+)?$/i,
 ];
+// ── A fact is written from Olma's side, about them ───────────────────────────
+// Found on Miron's own test account, 2026-09-04: three facts stored, and one of
+// them read `מאיה היא אשתי` — "Maya is MY wife". The other two were correct
+// third person (`יש לו ילדים`). The model had copied his words through instead
+// of re-framing them, and only sometimes.
+//
+// It matters because a fact is not a transcript. Facts are rendered into
+// USER.md, which is injected on every single turn as things Olma KNOWS — so a
+// first-person one reads back as a statement about Olma herself, and the next
+// turn is being told, in its own context, that it has a wife.
+//
+// Rejecting rather than rewriting: the model is right there and can say it
+// properly, and a guess at whose relative this is would be a worse error than
+// asking. Same shape as every other guard in this file.
+//
+// Precision over recall, deliberately. A false positive REFUSES a true fact;
+// a false negative stores an awkward one. So this lists exact words rather
+// than matching the first-person suffix -י, which is also the ending of
+// ordinary adjectives — `מצב משפחתי מורכב`, `רקע רפואי`, `דיווח שנתי` are all
+// third-person facts that a suffix rule would throw away.
+const HE = '\u05D0-\u05EA';
+const FIRST_PERSON_WORDS = [
+  'שלי', 'שלנו',            // my / our
+  'אני', 'אותי', 'אותנו',   // I / me / us
+  'לי', 'איתי', 'עליי', 'עלי', 'אצלי', 'בשבילי',
+  'אשתי', 'אמי', 'אבי', 'בתי', 'בני', 'אחי', 'אחותי', 'ילדיי',
+];
+// Bounded by anything that is not a Hebrew letter, because \b does not do the
+// right thing at a Hebrew word edge.
+const FIRST_PERSON_HE_RE = new RegExp(
+  `(?:^|[^${HE}])(?:${FIRST_PERSON_WORDS.join('|')})(?:$|[^${HE}])`);
+// English, where \b is honest. `I` only as a standalone capital — otherwise it
+// matches the pronoun inside nothing at all, but "i" lowercase is a typo risk.
+const FIRST_PERSON_EN_RE = /(?:^|[^A-Za-z])(?:my|mine|I|me|us|our)(?:$|[^A-Za-z])/;
+
+function firstPerson(text) {
+  const t = String(text || '');
+  return FIRST_PERSON_HE_RE.test(t) || FIRST_PERSON_EN_RE.test(t);
+}
+
 function bareNameStatement(text) {
   const t = String(text || '').replace(/[.!]+$/, '').trim();
   return NAME_STATEMENT_RES.some((re) => re.test(t));
@@ -78,7 +118,9 @@ function bareNameStatement(text) {
 //   a connection/configuration verb together, or the access-level literals,
 //   which mean nothing else. "יש לו פגישה ביומן" and "הוא מנותק רגשית" each
 //   carry only one half and pass.
-const SYSTEM_NOUN_RE = /יומן|calendar|דייג['\u05F3\u2019]?סט|digest|סיכום יומי|אולמה|olma/i;
+// Both Hebrew spellings on purpose: the name is עולמה, but אולמה was the
+// spelling for months — it is still in old facts, and users type either.
+const SYSTEM_NOUN_RE = /יומן|calendar|דייג['\u05F3\u2019]?סט|digest|סיכום יומי|[אע]ולמה|olma|allma/i;
 const SYSTEM_STATE_RE = /מחובר|מחוברת|מחוברים|מנותק|נותק|חיבר|חיברה|מוגדר|הוגדר|connected|disconnected/i;
 const ACCESS_LEVEL_RE = /read_write|read_only/i;
 function systemState(text) {
@@ -104,6 +146,9 @@ async function rememberFact(client, userId, { category, fact, importance, expire
   }
   if (bareNameStatement(text)) {
     return err('invalid', 'a name is profile, not a fact — call set_my_name instead (an unconfirmed guess is fine); stored as a fact it leaves every screen showing a phone number', { reason: 'name' });
+  }
+  if (firstPerson(text)) {
+    return err('invalid', 'a fact is written from your side, about them — "מאיה היא אשתו", not "אשתי". It is injected into USER.md every turn as something you KNOW, so first person reads as a statement about you. Rewrite it in third person and save it again.', { reason: 'first_person' });
   }
   if (systemState(text)) {
     return err('invalid', "that is Olma's own state, not something about the person — it is already on their card and in the integrations/connections tables, and a copy here goes stale the moment it changes", { reason: 'system_state' });
@@ -210,6 +255,7 @@ async function topFacts(client, userId, k = 10) {
 }
 
 module.exports = {
+  firstPerson,
   rememberFact, forgetFact, listFacts, topFacts,
   KNOWN_FACT_CATEGORIES, KNOWN_SOURCES, MAX_FACT_CHARS, cleanFact,
   phoneLike, bareNameStatement, systemState,

@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const p = require('../lib/persona');
 
 test('the default persona is the feminine אולמה, and its voice is the chosen one', () => {
-  assert.deepEqual(p.DEFAULT_PERSONA, { gender: 'female', name: 'אולמה' });
+  assert.deepEqual(p.DEFAULT_PERSONA, { gender: 'female', name: 'עולמה' });
   assert.equal(p.personaVoice(p.DEFAULT_PERSONA), p.VOICE_BY_GENDER.female);
   assert.equal(p.personaVoice({ gender: 'male' }), p.VOICE_BY_GENDER.male);
   assert.equal(p.personaVoice({ gender: 'other' }), p.VOICE_BY_GENDER.female, 'an unknown gender falls back, never to no voice');
@@ -23,6 +23,7 @@ test('the default name is spoken with its ear-spelling, a custom name exactly as
   delete process.env.VOICE_SPOKEN_NAME;
   try {
     assert.equal(p.spokenName(p.DEFAULT_PERSONA), p.DEFAULT_SPOKEN_NAME);
+    assert.equal(p.spokenName({ gender: 'female', name: 'אולמה' }), p.DEFAULT_SPOKEN_NAME, 'the old spelling is still the default name');
     assert.equal(p.spokenName({ gender: 'female', name: 'נועה' }), 'נועה');
     // The ear-spelling is a config line, read when spoken — not frozen at require.
     process.env.VOICE_SPOKEN_NAME = 'אוּלְמָה';

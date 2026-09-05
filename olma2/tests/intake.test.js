@@ -861,17 +861,39 @@ test('agent doctrine: a completion is an answer, not an opening for a question',
   assert.ok(tpl.indexOf('their "done" ANSWERS too') > tpl.indexOf('A reminder that goes unanswered'));
 });
 
-test('agent doctrine: a reminder is offered, never set unasked', () => {
+// This test used to pin the opposite rule — "Never set one unasked" — added on
+// 2026-09-04 after a calendar request produced a task, a reminder AND an event.
+// Miron reversed the reminder half the same day, walking his own onboarding:
+// asking "רוצה שאזכיר לך?" about a task he had just given a time to is the
+// act-first rule being broken by the one paragraph that told the model to ask.
+//
+// The half that was RIGHT is kept, and moved to where it is used. The original
+// incident's own lesson was that a rule stated far from its use gets read past,
+// and the real error there was minting a task for a calendar ask at all — so
+// "one request is one thing done" now lives in the create_calendar_event tool
+// description, which the model reads at the moment it would make that mistake,
+// and costs nothing against the doctrine's char budget.
+test('agent doctrine: a due date arms its own reminder, and asking first is the error', () => {
   const fs = require('node:fs');
   const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
-  assert.match(tpl, /\*\*Never set one unasked\*\*/);
-  assert.match(tpl, /reason to OFFER one,\s+never to create one/);
-  assert.match(tpl, /One request is one thing done/,
-    'a calendar ask is a calendar entry, not a task plus a reminder as well');
-  // It has to sit in the operative section, not in the curiosity ladder where
-  // the identical rule was already being read past.
-  assert.ok(tpl.indexOf('Never set one unasked') > tpl.indexOf('## Tasks and reminders'));
-  assert.ok(tpl.indexOf('Never set one unasked') < tpl.indexOf('A standing task is not finished'));
+  assert.match(tpl, /a due_at gets its own automatically/);
+  assert.match(tpl, /an hour\s+before a timed task, 08:00 that morning for a whole-day one/);
+  assert.match(tpl, /Never ask\s+permission; say when you will remind them/);
+  // set_task_reminder still exists, and still means something different.
+  assert.match(tpl, /`set_task_reminder` is for a\s+moment they asked for, and replaces it/);
+  // Same placement requirement as before: the operative section, not the
+  // curiosity ladder four hundred lines away.
+  assert.ok(tpl.indexOf('gets its own automatically') > tpl.indexOf('## Tasks and reminders'));
+  assert.ok(tpl.indexOf('gets its own automatically') < tpl.indexOf('A standing task is not finished'));
+});
+
+// The surviving half of that incident, now pinned where it actually lives.
+test('one request is one thing done: a calendar ask does not also mint a task', () => {
+  const { TOOLS } = require('../src/adapters/mcp/registry');
+  const t = TOOLS.find((x) => x.name === 'create_calendar_event');
+  assert.ok(t, 'create_calendar_event exists');
+  assert.match(t.description, /do not also add a task for the same thing/);
+  assert.match(t.description, /One request is one thing done/);
 });
 
 test('agent doctrine: a refusal hands over the search, and never a link of its own', () => {
@@ -953,7 +975,10 @@ test('agent doctrine: a capability Olma lacks still leaves the user holding some
   assert.match(tpl, /save with everything they already told you/);
   assert.match(tpl, /never make them repeat any of it/);
   assert.match(tpl, /On a no or no answer: drop it/);
-  assert.match(tpl, /if\s+time-shaped, offer a reminder/i);
+  // This used to also pin "if time-shaped, offer a reminder". Reminders on a
+  // due date stopped being an offer on 2026-09-04 (domain/auto-reminder.js) —
+  // saving the task IS what arms one — so the line was removed rather than
+  // left to contradict the tool it describes.
   // the two save-rules must not read as contradicting each other
   assert.match(tpl, /THE\s+deliberate exception to act-first/);
   // the demand signal is logged without spending a turn asking permission

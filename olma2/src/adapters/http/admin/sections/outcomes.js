@@ -98,7 +98,7 @@ async function renderOutcomes(client) {
   const ofTotal = (n, d) => `<span class="dim small">${fmt(n)} מתוך ${fmt(d)}</span>`;
 
   const aHtml = !measuringSince
-    ? `<p class="dim">המדידה טרם התחילה — היא נפתחת ברגע שמישהו כותב לאולמה מעכשיו.</p>`
+    ? `<p class="dim">המדידה טרם התחילה — היא נפתחת ברגע שמישהו כותב לעולמה מעכשיו.</p>`
     : `<div class="stats">
         <div class="stat"><div class="num">${pct(agg[0].answered, agg[0].sent)}</div>
           <div class="lbl">ענו תוך יממה · ${HABIT_DAYS} ימים</div></div>
@@ -109,7 +109,7 @@ async function renderOutcomes(client) {
         <td class="num">${fmt(r.sent)}</td>
         <td class="num">${fmt(r.answered)}</td>
         <td class="num">${pct(r.answered, r.sent)}</td></tr>`).join('')}</table>
-      <p class="hint">"נענו" = האדם כתב לאולמה בתוך 24 שעות מרגע שההודעה יצאה. נספרות רק
+      <p class="hint">"נענו" = האדם כתב לעולמה בתוך 24 שעות מרגע שההודעה יצאה. נספרות רק
         הודעות שנשלחו מאז ${esc(String(measuringSince).slice(0, 16))} — לפני כן לא נשמר תיעוד
         של הודעות נכנסות, ולספור אותן היה מציג כל אחת מהן כאילו התעלמו ממנה.</p>`;
 
@@ -157,7 +157,7 @@ async function renderOutcomes(client) {
       <p class="hint">מתוך מונה המכסה, שסופר הודעות נכנסות מזמן. שורה אדומה = שבוע בלי מילה.
         אי אפשר עדיין להפריד "פנה מיוזמתו" מ"ענה להודעה שנשלחה אליו".</p>`;
 
-  return `<h4>א · ענו להודעות שאולמה שלחה</h4>${aHtml}
+  return `<h4>א · ענו להודעות שעולמה שלחה</h4>${aHtml}
     <h4>ב · משימות שנסגרו בזמן</h4>${bHtml}
     <h4>ג · תיקונים</h4>${cHtml}
     <h4>ד · הרגל</h4>${dHtml}`;

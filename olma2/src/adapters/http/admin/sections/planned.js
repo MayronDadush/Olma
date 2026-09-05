@@ -227,7 +227,7 @@ async function renderPlannedForUser(client, u, csrf = '') {
     <form method="post" action="/outbox/new">${hidden}
       <input type="hidden" name="user_id" value="${u.id}">
       <p><textarea name="instruction" rows="2" style="width:100%"
-         placeholder="מה אולמה צריכה לעשות — למשל: שאלי אותו איך הלך הראיון אתמול"></textarea></p>
+         placeholder="מה עולמה צריכה לעשות — למשל: שאלי אותו איך הלך הראיון אתמול"></textarea></p>
       <p class="small">
         <label>דחיפות
           <select name="urgency">
@@ -237,7 +237,7 @@ async function renderPlannedForUser(client, u, csrf = '') {
         <label>מתי <input type="datetime-local" name="release_after" title="ריק = בהקדם"></label>
         <button>הוסף לתור</button>
       </p>
-      <p class="hint">זו הנחיה לאולמה, לא טקסט שיישלח כלשונו — היא תנסח בעצמה, בשפה שלו.
+      <p class="hint">זו הנחיה לעולמה, לא טקסט שיישלח כלשונו — היא תנסח בעצמה, בשפה שלו.
         ההודעה עוברת את אותו שער כיבוד כמו כל הודעה יזומה: אם השעה אצלו שעת שקט
         היא תמתין לבוקר, ואם הוא כבר קיבל מספיק היום היא תצטרף לסיכום הבא.</p>
     </form>`;

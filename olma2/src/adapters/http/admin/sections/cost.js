@@ -99,7 +99,7 @@ async function renderInfraCosts(client, money) {
 
   const prepaid = [
     ['OpenRouter', 'כל קריאות המודל: סיכומים, תכנון, זיהוי עובדות, יצירת תמונות ווידאו, שופט הבדיקות', openrouter],
-    ['Twilio', 'מספר הטלפון שאולמה מתקשרת ממנו', twilio],
+    ['Twilio', 'מספר הטלפון שעולמה מתקשרת ממנו', twilio],
     ['Deepgram', 'זיהוי דיבור בשיחות טלפון חיות', deepgram],
   ];
   const anyLow = prepaid.some(([, , s]) => prepaidLow(s));
@@ -119,7 +119,7 @@ async function renderInfraCosts(client, money) {
   ].join('');
 
   const cartesiaRow = cartesia.configured
-    ? `<tr><td>Cartesia</td><td class="dim small">הקול שאולמה מדברת בו בשיחות טלפון</td>
+    ? `<tr><td>Cartesia</td><td class="dim small">הקול שעולמה מדברת בו בשיחות טלפון</td>
        <td class="dim" colspan="2">אין API חיוב — צריך לבדוק ידנית ב-play.cartesia.ai</td></tr>`
     : '';
 

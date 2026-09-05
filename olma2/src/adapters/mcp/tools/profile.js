@@ -15,11 +15,7 @@ module.exports = [
       });
     }),
   tool('set_my_name',
-    'Save what this person is called. Call it the moment you know, do not wait to be asked: '
-    + 'confirmed=true when they told you themselves ("קוראים לי חיים"), and confirmed=false — the default — '
-    + 'for a name you merely saw, like the WhatsApp display name or one that came up in conversation. '
-    + 'A name never belongs in remember_fact. An unconfirmed guess is still worth saving: it is what lets you '
-    + 'greet them by name and check it in passing, and it never overwrites a name they confirmed.',
+    'Save what this person is called, the moment you know it: confirmed=true when they told you themselves ("קוראים לי חיים"); confirmed=false (the default) for a name you merely saw — the WhatsApp display name, or one that came up in conversation. A name never belongs in remember_fact. An unconfirmed guess is worth saving: it lets you greet them and check it in passing, and it never overwrites a confirmed name.',
     {
       first_name: S('string', 'First name'),
       last_name: S('string', 'Last name (optional)'),
@@ -58,13 +54,7 @@ module.exports = [
   // person sees; it only decides whether they can look at it on a screen
   // instead of asking for it a sentence at a time.
   tool('open_my_dashboard',
-    'A personal link to THIS user\'s own dashboard: their tasks and archive, who they are '
-    + 'connected to and what each of those people may do, which accounts are connected, and '
-    + 'their timezone — all of it editable there. Offer it when someone wants to SEE or '
-    + 'rearrange several things at once ("מה יש לי השבוע?", "אני רוצה לעבור על הרשימה"), or '
-    + 'asks for a link or a screen. Put the returned URL in your reply and say it opens once '
-    + 'and stays open afterwards. Everything on it can still be done here in chat — this is '
-    + 'never a redirect away from you, and never the answer to a question you can just answer.',
+    'A personal link to THIS user\'s own dashboard: tasks and archive, connections and what each may do, connected accounts, timezone — all editable there. Offer it when they want to SEE or rearrange several things at once, or ask for a link or a screen. Put the returned URL in your reply and say it opens once and stays open afterwards. Everything on it can still be done here in chat — never a redirect away from you, and never the answer to a question you can just answer.',
     {}, [],
     (client, user) => dashboardAuth.createLinkUrl(client, user.id)),
 
@@ -78,13 +68,7 @@ module.exports = [
   // The voice bridge (a separate process, loopback port 8792) decides who may
   // be called — this tool just asks it to dial and relays the answer.
   tool('call_me_on_the_phone',
-    'Place a REAL phone call from Olma\'s number to this user\'s phone — they answer and talk to '
-    + 'Olma out loud. Call this when they ask Olma to call them or to talk by voice, in ANY phrasing '
-    + '("תתקשרי אליי", "בואי נדבר בטלפון", "אפשר שיחה?") — the intent matters, not the words. Never '
-    + 'offer or mention this feature unless they raise it, and never call on a guess. On ok, say the '
-    + 'phone will ring within a few seconds. If it returns an error, relay it plainly — most often '
-    + 'voice calls are simply not enabled for their number yet. Complex multi-step requests made '
-    + 'during the call continue here in WhatsApp afterwards.',
+    'Place a REAL phone call from Olma\'s number to this user — they answer and talk to Olma out loud. Call it when they ask to be called or to talk by voice, in any phrasing ("תתקשרי אליי", "אפשר שיחה?") — the intent matters, not the words. Never offer or mention it unless they raise it, and never call on a guess. On ok, say the phone will ring within seconds; on an error, relay it plainly (usually calls are not enabled for their number yet). Multi-step requests made on the call continue here afterwards.',
     {}, [],
     (client, user) => voice.requestCall(client, user)),
   tool('resume_olma',
@@ -120,10 +104,10 @@ module.exports = [
     (client, user, a) => users.setLocale(client, user.id, a.locale)),
   tool('set_assistant_persona',
     'Change who Olma IS for this user: gender ("תהיה גבר" / "תחזרי להיות אישה") and/or the name '
-    + 'they call the assistant ("אני רוצה לקרוא לך נועה"; an empty name resets to אולמה). ONLY on '
+    + 'they call the assistant ("אני רוצה לקרוא לך נועה"; an empty name resets to עולמה). ONLY on '
     + 'their explicit request — never offer or suggest it. From your very next sentence on, follow '
     + 'the new persona: gender changes EVERY Hebrew self-reference (אני בודק/בודקת, verbs and '
-    + 'adjectives alike, no mixing), and the name replaces אולמה everywhere — phone calls included.',
+    + 'adjectives alike, no mixing), and the name replaces עולמה everywhere — phone calls included.',
     { gender: S('string', 'female | male'), name: S('string', 'New assistant name; "" resets to the default') }, [],
     (client, user, a) => users.setAssistantPersona(client, user.id, { gender: a.gender, name: a.name })),
 ];

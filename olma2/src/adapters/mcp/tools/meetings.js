@@ -54,9 +54,9 @@ module.exports = [
       }
       return res;
     }),
-  tool('respond_to_meeting_slot', 'Accept or decline the proposed slot. accept=true only after the user saw the EXACT slot text, day included, and agreed — and it must carry accepted_starts_at, the startsAt that came with the proposal the user answered, so a yes can never land on a slot that changed while you were asking (that call is refused with the current slot instead; show it to the user). Decline may carry counter_proposal (+required counter_starts_at, same rules as propose, weekday agreement included — a refused counter leaves the decline unrecorded too, so fix it and call again).',
+  tool('respond_to_meeting_slot', 'Accept or decline the proposed slot. accept=true only after the user saw the EXACT slot text, day included, and agreed — and pass accepted_starts_at, the startsAt that came with the proposal they answered, so a yes cannot land on a slot that changed meanwhile (that call is refused with the current slot: show it to them). A decline may carry counter_proposal plus counter_starts_at (same rules as propose, weekday agreement included; a refused counter leaves the decline unrecorded — fix it and call again).',
     { meeting_id: S('number', 'Meeting id'), accept: S('boolean', 'true = user agrees to the exact slot'),
-      accepted_starts_at: S('string', 'Required with accept=true: the startsAt of the exact proposal the user said yes to, ISO-8601 with offset, exactly as you received it. Never invent or recompute it — if you do not have it, get_meeting_status and re-confirm with the user first.'),
+      accepted_starts_at: S('string', 'Required with accept=true: the startsAt of the exact proposal they said yes to, ISO-8601 with offset, as received. Never invent or recompute it — if you lack it, get_meeting_status and re-confirm first.'),
       counter_proposal: S('string', 'Optional new slot when declining'),
       counter_starts_at: S('string', 'Required with counter_proposal: the same moment — same DAY — ISO-8601 with offset') },
     ['meeting_id', 'accept'],

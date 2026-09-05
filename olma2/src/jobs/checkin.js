@@ -41,11 +41,46 @@ const ONBOARDING_STEPS = [
     slot: '5h', afterMs: 5 * HOUR_MS, expiresAfterMs: 12 * HOUR_MS,
     instruction: 'Their first day. Briefly reflect back what you are now holding for them (counts, not a recital of every item), and invite whatever else is on their mind — including as a voice note. Two lines, no pressure.',
   },
+  // The two things a new person cannot discover for themselves, offered once
+  // each and in this order (Miron, 2026-09-04). Both are LINKS, which is why
+  // they are late rather than early: a link in the first hour is a demand to
+  // go somewhere else before anything here has proved useful. By eight hours
+  // there is something in their list for a calendar to be about.
+  {
+    slot: '8h', afterMs: 8 * HOUR_MS, expiresAfterMs: 16 * HOUR_MS,
+    // Nothing to offer someone who already connected — and this is the whole
+    // reason a step may decline: it falls through to the ordinary ladder
+    // rather than spending their day-one slot on a solved problem.
+    skipIf: async (client, u) => {
+      const { rows } = await client.query(
+        `SELECT 1 FROM integrations
+          WHERE user_id = $1 AND status = 'connected' AND provider LIKE 'google%' LIMIT 1`,
+        [u.id]);
+      return rows.length > 0;
+    },
+    instruction: 'Offer, once, to connect their Google Calendar, and say in one line what it buys them — you can see what is already on their day, and put things they ask you to schedule straight into it. Then ASK WHICH ACCESS LEVEL they want (view only, or add and edit) and call start_calendar_connection with their answer; never choose for them. Send the link it returns and stop. If they say no or say nothing, drop it and never offer again.',
+  },
+  {
+    slot: '22h', afterMs: 22 * HOUR_MS, expiresAfterMs: 26 * HOUR_MS,
+    skipIf: async (client, u) => {
+      // They already have a link, so a fresh one is noise rather than news.
+      const { rows } = await client.query(
+        `SELECT 1 FROM magic_links WHERE user_id = $1 LIMIT 1`, [u.id]);
+      return rows.length > 0;
+    },
+    instruction: 'Their first day is nearly done. Send them their own dashboard once: call open_my_dashboard and put the URL in your reply. One short line on what it is for — seeing and rearranging several things at once, their tasks, who they are connected to, what is connected. Say it opens once and stays open afterwards, and that everything on it can still be done right here in chat. Do not ask a question after it.',
+  },
 ];
 
-// Which day-one step is due, if any. Steps 1 and 2 fire regardless — that is
-// the point of the ladder. Step 3 is skipped for someone who answered neither:
-// being present is good, being deaf is not.
+// A step may decline to fire. Slots that ask nothing of the person still run
+// for someone who has never answered; these do not, because both of them ask
+// the person to go and DO something, and sending a link to somebody who has
+// said nothing at all is the drum this doctrine forbids everywhere else.
+const DEAF_SILENT_SLOTS = new Set(['5h', '8h', '22h']);
+
+// Which day-one step is due, if any. The first two fire regardless — that is
+// the point of the ladder. Everything from the 5h step on is skipped for
+// someone who answered neither: being present is good, being deaf is not.
 //
 // `deaf` means DELIVERED-and-ignored, and the caller computes it from the
 // outbox — never from checkin_misses. The counter once stood in for it, and
@@ -59,7 +94,7 @@ function onboardingStepDue(ageMs, deaf) {
   const due = ONBOARDING_STEPS.filter((s) => ageMs >= s.afterMs);
   const step = due[due.length - 1];
   if (!step) return null;
-  if (step.slot === '5h' && deaf) return null;
+  if (deaf && DEAF_SILENT_SLOTS.has(step.slot)) return null;
   return step;
 }
 
@@ -376,10 +411,15 @@ async function run(client, now = Date.now()) {
   for (const u of users) {
     // A day-one step outranks the ladder: on the first day the goal is to make
     // the product feel present, not to react to a backlog.
-    const step = u.onboardingStep;
+    let step = u.onboardingStep;
     let rung, instruction, topic = null, key, expiresAt = null;
+    if (step && DEAF_SILENT_SLOTS.has(step.slot)
+        && await isDeafOnDayOne(client, u.id, u.onboarded_at)) continue;
+    // A step whose reason has already been met (calendar connected, dashboard
+    // link already issued) gives its slot back to the ordinary ladder instead
+    // of spending the day's one message on nothing.
+    if (step && step.skipIf && await step.skipIf(client, u)) step = null;
     if (step) {
-      if (step.slot === '5h' && await isDeafOnDayOne(client, u.id, u.onboarded_at)) continue;
       rung = `onboarding_${step.slot}`;
       instruction = step.instruction;
       key = `onboarding:${u.id}:${step.slot}`;
@@ -413,5 +453,5 @@ async function run(client, now = Date.now()) {
 
 module.exports = {
   run, eligibleUsers, pickRung, requiredGapMs, idleHoursFor,
-  onboardingStepDue, ONBOARDING_STEPS, stalledGoals,
+  onboardingStepDue, ONBOARDING_STEPS, DEAF_SILENT_SLOTS, stalledGoals,
 };

@@ -125,7 +125,7 @@ const STYLE = `<style>
 // real conversation continues in WhatsApp.
 function oauthResultPage(title, body) {
   return `<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>אולמה</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>עולמה</title>
 <style>body{font-family:system-ui,-apple-system,sans-serif;background:#12151a;color:#e6eaf0;
 display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:24px}
 .card{background:#1a1f27;padding:28px 32px;border-radius:12px;max-width:420px}

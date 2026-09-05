@@ -15,7 +15,7 @@ function renderPrefsForUser(prefs, u, csrf) {
     <input type="hidden" name="back" value="/user?id=${u.id}">
     <input type="hidden" name="user_id" value="${u.id}">`;
   return `<section><h3>העדפות — איך לעבוד איתו</h3>
-    <p class="hint">איך אולמה מתנהגת מולו: שעות, אורך תשובות, טון. שמירה על מפתח קיים דורסת אותו.</p>
+    <p class="hint">איך עולמה מתנהגת מולו: שעות, אורך תשובות, טון. שמירה על מפתח קיים דורסת אותו.</p>
     ${prefs.length ? `<table><tr><th>מפתח</th><th>ערך</th><th>נלמד</th><th></th></tr>
       ${prefs.map((p) => `<tr>
         <td class="mono small">${esc(p.key)}</td>
@@ -40,10 +40,10 @@ function renderFactsForUser(facts, u, csrf) {
     <input type="hidden" name="user_id" value="${u.id}">`;
   const IMPORTANCE = { 1: 'רגילה', 2: 'חשובה', 3: 'ליבה' };
   const SOURCE = { conversation: 'מהשיחה', user_stated: 'נאמר במפורש', admin: 'הוזן ידנית' };
-  return `<section><h3>עובדות — מה אולמה יודעת עליו</h3>
+  return `<section><h3>עובדות — מה עולמה יודעת עליו</h3>
     <p class="hint">מי הוא ומה קורה בחייו. העשר החשובות ביותר נמצאות מול הסוכן בכל תור.
       מחיקה כאן מפסיקה להשתמש בעובדה — ההיסטוריה נשמרת.<br>
-      לא ייקלטו: שם (זה שדה בפרופיל), מספר טלפון (זה איש קשר), מצב של אולמה עצמה
+      לא ייקלטו: שם (זה שדה בפרופיל), מספר טלפון (זה איש קשר), מצב של עולמה עצמה
       (יומן מחובר, דייג׳סט מוגדר — כבר על הכרטיס), ועובדה שנוקבת בתאריך או ב״היום/מחר״
       בלי תאריך תפוגה.</p>
     ${facts.length ? `<table><tr><th>קטגוריה</th><th>העובדה</th><th>חשיבות</th><th>מקור</th><th>נלמד</th><th></th></tr>
@@ -92,13 +92,13 @@ function renderConversation(u) {
       ? '<p class="dim">אין עדיין שיחה.</p>'
       : `<div class="chat">${msgs.map((m) => `
           <div class="msg ${m.role === 'user' ? 'them' : 'olma'}">
-            <div class="who">${m.role === 'user' ? esc([u.first_name, u.last_name].filter(Boolean).join(' ') || u.phone) : 'אולמה'}
+            <div class="who">${m.role === 'user' ? esc([u.first_name, u.last_name].filter(Boolean).join(' ') || u.phone) : 'עולמה'}
               ${m.isVoice ? '<span class="pill">🎤 תמלול</span>' : ''}
               <span class="dim small">${m.at ? String(m.at).slice(11, 16) : ''}</span></div>
             <div class="txt">${esc(m.text).replace(/\n/g, '<br>')}</div>
           </div>`).join('')}</div>`;
   return `<section><h3>10 ההודעות האחרונות</h3>
-    <p class="hint">נקרא ישירות מהשיחה החיה — לא עותק. הודעות קוליות מסומנות 🎤 ומוצג התמלול שאולמה קיבלה בפועל.</p>
+    <p class="hint">נקרא ישירות מהשיחה החיה — לא עותק. הודעות קוליות מסומנות 🎤 ומוצג התמלול שעולמה קיבלה בפועל.</p>
     ${body}</section>`;
 }
 
@@ -111,7 +111,7 @@ async function renderDeletePanel(client, u, confirming, csrf) {
   if (!confirming) {
     return `<section><h3>מחיקת משתמש</h3>
       <p class="hint">מוחק את החשבון לגמרי: משימות, קשרים, זיכרון והסוכן האישי.
-         אחרי המחיקה, אם ${esc(name)} ישלח הודעה לאולמה הוא יתחיל תהליך הרשמה מאפס.</p>
+         אחרי המחיקה, אם ${esc(name)} ישלח הודעה לעולמה הוא יתחיל תהליך הרשמה מאפס.</p>
       <a class="btn-danger" href="/user?id=${u.id}&confirm=delete">מחק את ${esc(name)}…</a>
     </section>`;
   }
@@ -123,7 +123,7 @@ async function renderDeletePanel(client, u, confirming, csrf) {
       <li>${c.tasks ?? 0} משימות</li>
       <li>${c.connections ?? 0} חברויות (ומה שתלוי בהן אצל הצד השני)</li>
       <li>${c.shares ?? 0} שיתופי משימות · ${c.meetings ?? 0} השתתפויות בפגישות</li>
-      <li>${c.outbox ?? 0} הודעות בתור, והזיכרון שאולמה צברה עליו</li>
+      <li>${c.outbox ?? 0} הודעות בתור, והזיכרון שעולמה צברה עליו</li>
     </ul>
     <form method="POST" action="/users/delete" class="inline">
       <input type="hidden" name="csrf" value="${csrf}">
@@ -142,7 +142,7 @@ function renderPauseBanner(u, csrf) {
   if (!u.paused_at) return '';
   return `<section><h3>ביקש להפסיק</h3>
     <p class="hint">הפסיק לקבל פניות יזומות ב-${esc(String(u.paused_at).slice(0, 16))}.
-      שום דבר לא נמחק — המשימות, העובדות וההיסטוריה שלו במקום. אולמה עדיין עונה לו אם הוא כותב.</p>
+      שום דבר לא נמחק — המשימות, העובדות וההיסטוריה שלו במקום. עולמה עדיין עונה לו אם הוא כותב.</p>
     <form method="post" action="/users/resume" class="inline">
       <input type="hidden" name="csrf" value="${csrf}">
       <input type="hidden" name="user_id" value="${u.id}">

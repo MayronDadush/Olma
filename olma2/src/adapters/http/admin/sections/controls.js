@@ -6,6 +6,7 @@ const flagsDomain = require('../../../../domain/flags');
 const boostDomain = require('../../../../domain/boost');
 const boostJob = require('../../../../jobs/boost');
 const { esc } = require('../../html');
+const reactions = require('../../../../domain/reactions');
 
 // Every setting gets a human label, an explanation, and the right input type.
 // A bare JSON box is a trap: it invites typos into live behaviour.
@@ -15,11 +16,11 @@ const FLAG_SPECS = [
   { key: 'credit_alerts_muted', label: 'השתקת התראות קרדיט/יתרה', type: 'bool',
     help: 'כשפתוח (מושתק) — התראת "נגמר הקרדיט" והתראת היתרה היורדת לא נשלחות לאדמין בוואטסאפ. תקלות config_guard קריטיות והתראת בדיקות ההתנהגות הלילית לא מושפעות.' },
   { key: 'quota_daily_free', label: 'מכסת הודעות ליום — משתמש חינם', type: 'int',
-    help: 'מעבר לזה אולמה שולחת סיכום אחרון ומפסיקה להגיב עד למחרת.' },
+    help: 'מעבר לזה עולמה שולחת סיכום אחרון ומפסיקה להגיב עד למחרת.' },
   { key: 'quota_hourly_paid', label: 'מכסת הודעות לשעה — מנוי', type: 'int',
     help: 'למנויים המכסה מתחדשת כל שעה במקום כל יום.' },
   { key: 'proactive_daily_budget', label: 'הודעות יזומות ליום', type: 'int',
-    help: 'כמה פעמים ביום אולמה תפנה מיוזמתה. מעבר לזה — דברים לא דחופים מתאגדים לסיכום הבא במקום להישלח בנפרד.' },
+    help: 'כמה פעמים ביום עולמה תפנה מיוזמתה. מעבר לזה — דברים לא דחופים מתאגדים לסיכום הבא במקום להישלח בנפרד.' },
   { key: 'intake_hourly_cap', label: 'תקרת נרשמים חדשים בשעה', type: 'int',
     help: 'הגנה מפני הצפה: אם יותר מזה אנשים לא מוכרים פונים תוך שעה, ההרשמה נסגרת אוטומטית ונפתחת תקלה כאן.' },
   { key: 'cost_per_mtok_usd', label: 'תעריף למיליון טוקנים ($)', type: 'num',
@@ -53,8 +54,19 @@ const FLAG_SPECS = [
     help: 'כשהסוכן מדלג על turn_start (קורה בבקשת הפסקת שירות), השרת סופר את ההודעה ומעדכן שהמשתמש ער בעצמו. ריק = כבוי; "all" = כל המשתמשים; או רשימת מספרים ב-E.164 מופרדים בפסיק, להרצה מדורגת.' },
   { key: 'public_base_url', label: 'כתובת ציבורית לקישורים', type: 'text',
     help: 'הבסיס לקישורים שנשלחים למשתמשים (למשל דף סימון הזמינות). בלי / בסוף.' },
+  { key: 'reaction_emoji', label: 'אימוג׳ים על הודעות המשתמש', type: 'json',
+    // Only the known states, only something that looks like an emoji. A typo
+    // here would otherwise ride out on every single message.
+    validate: (v) => v && typeof v === 'object' && !Array.isArray(v)
+      && Object.entries(v).every(([k, e]) =>
+        Object.hasOwn(reactions.REACTION_STATES, k) && reactions.isUsableEmoji(e)),
+    help: 'JSON שמחליף אימוג׳י לסטטוס, למשל {"done": "\u{1F44D}"} כדי לסמן משימות שבוצעו בלייק במקום ב-\u2705. '
+      + 'המצבים: working (התחלנו לעבוד, ברירת מחדל \u{1F440}), listening (הודעה קולית, \u{1F442}), '
+      + 'done (\u{1F44D}), scheduled (נקבע למועד עתידי, \u23F0), needs_input (\u2753), failed (\u26A0\uFE0F). '
+      + 'אימוג׳י אחד לכל מצב — לא רשימה: כשלכל מצב יש סימן קבוע אפשר לקרוא את המצב במבט אחד. '
+      + 'מפתח לא מוכר או ערך שאינו אימוג׳י פשוט מתעלמים ממנו ונשארת ברירת המחדל.' },
   { key: 'search_link_base', label: 'מנוע החיפוש לקישורים', type: 'text',
-    help: 'הבסיס לקישור החיפוש שאולמה שולחת כשהיא לא יכולה לחפש בעצמה. ריק = גוגל. חייב להתחיל ב-https ולהסתיים בפרמטר השאילתה, למשל https://duckduckgo.com/?q= — ערך לא תקין נופל חזרה לגוגל ולא שובר קישור.' },
+    help: 'הבסיס לקישור החיפוש שעולמה שולחת כשהיא לא יכולה לחפש בעצמה. ריק = גוגל. חייב להתחיל ב-https ולהסתיים בפרמטר השאילתה, למשל https://duckduckgo.com/?q= — ערך לא תקין נופל חזרה לגוגל ולא שובר קישור.' },
 ];
 
 const EDITABLE_FLAGS = FLAG_SPECS.map((f) => f.key);

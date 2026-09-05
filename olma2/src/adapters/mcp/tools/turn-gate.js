@@ -1,7 +1,7 @@
 'use strict';
 // turn gate — one slice of the tool registry (see ../registry.js).
 const {
-  users, onboardingDomain, selfInitiated, digest, quota, reactions, audit, S, ok, captureDisplayName, stale, tool,
+  users, onboardingDomain, selfInitiated, digest, quota, reactions, audit, S, ok, captureDisplayName, stale, tool, flags,
 } = require('./_shared');
 
 // The per-field guidance for turn_start's optional fields. In the RESULT and
@@ -33,9 +33,10 @@ function turnHints({ offerResume, languageNudge, recentReminders, planHeadline }
 module.exports = [
   tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and returns how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all). Pass sender_name, message_id and wrote_in from the Conversation info whenever present. Any extra field in the result (offerResume, recentReminders, planHeadline, languageNudge) comes with a matching entry in hints saying what to do with it — follow it.',
     {
-      sender_name: S('string', 'The `sender` field from this turn\'s Conversation info, verbatim. Only ever used to fill a name we do not have, always as an unconfirmed guess — never overwrites a name they gave you themselves.'),
-      message_id: S('string', 'The `message_id` field from this turn\'s Conversation info, verbatim. Lets Olma mark their message as seen and, later in the turn, as done or scheduled. Omit it if the block has none.'),
-      wrote_in: S('string', 'The language THIS message is written in, as a two-letter code (he, en, ru, ar, fr...). Pass it on every call — it is the only way the system can ever notice that the language it speaks to somebody is the wrong one. The code only: never the message text, never a translation, never a quote from it.'),
+      sender_name: S('string', 'The `sender` field from this turn\'s Conversation info, verbatim. Fills a name we do not have, as an unconfirmed guess; never overwrites a name they gave you.'),
+      message_id: S('string', 'The `message_id` field from this turn\'s Conversation info, verbatim, so Olma can mark their message as seen and later as done or scheduled. Omit if absent.'),
+      message_kind: S('string', '"voice" when this message arrived as a voice note (you got a transcription); omit otherwise. Only changes the working mark to 👂.'),
+      wrote_in: S('string', 'Two-letter code of the language THIS message is written in (he, en, ru, ar…). Pass it on every call — it is how the system notices it speaks the wrong language to someone. The code only: never the text, a translation or a quote.'),
     }, [],
     async (client, user, args, ctx) => {
       if (ctx.flood && ctx.flood.isFlooding(user.id)) {
@@ -77,6 +78,19 @@ module.exports = [
       if (ctx && ctx.turn) {
         const id = reactions.cleanMessageId(args && args.message_id);
         if (id) { ctx.turn.messageId = id; ctx.turn.lastInboundAt = Date.now(); }
+        // How the message ARRIVED, for the opening mark only: 👂 for a voice
+        // note, 👀 for anything typed. The model is the only thing in this call
+        // that knows — a transcription reaches it, the MediaType never reaches
+        // us — so it travels the same road as sender_name and message_id, and
+        // is trusted exactly as little: anything but the literal 'voice' means
+        // the ordinary mark, which is also what a model that never passes it
+        // gets. The cost of it being wrong is one emoji.
+        ctx.turn.messageKind = (args && args.message_kind) === 'voice' ? 'voice' : 'text';
+        // The operator's emoji choices, read once per turn rather than per tool
+        // call: every turn opens here, and the mark is placed after this
+        // transaction commits, so the value is in hand by the time it is used.
+        ctx.turn.reactionVocab = reactions.vocabulary(
+          await flags.getFlag(client, reactions.VOCAB_FLAG));
       }
       // A person writing is awake — give every night-held row an immediate
       // re-hearing. The gate stays the only judge: inside the 15-minute

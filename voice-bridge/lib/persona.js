@@ -15,7 +15,11 @@ const VOICE_BY_GENDER = {
 // The persona is per USER, so it is per CALL — never a module global. Two
 // people on the line at once may run opposite genders, and a shared global
 // would have each call rewriting the other's voice mid-sentence.
-const DEFAULT_PERSONA = { gender: 'female', name: 'אולמה' };
+const DEFAULT_PERSONA = { gender: 'female', name: 'עולמה' };
+// Either Hebrew spelling counts as "the default name": עולמה is current, אולמה
+// was the spelling for months and may still sit in assistant_name. Both are
+// pronounced identically, so both take the phonetic default.
+const DEFAULT_NAME_RE = /^[אע]ולמה$/;
 
 function personaVoice(persona) {
   return VOICE_BY_GENDER[persona.gender] || VOICE_BY_GENDER.female;
@@ -35,7 +39,7 @@ const gFor = (persona) => (f, m) => (persona.gender === 'male' ? m : f);
 // A custom name is spoken exactly as given.
 const DEFAULT_SPOKEN_NAME = 'אוֹל מָה';
 function spokenName(persona) {
-  if (persona.name === DEFAULT_PERSONA.name) return process.env.VOICE_SPOKEN_NAME || DEFAULT_SPOKEN_NAME;
+  if (DEFAULT_NAME_RE.test(persona.name || '')) return process.env.VOICE_SPOKEN_NAME || DEFAULT_SPOKEN_NAME;
   return persona.name;
 }
 
@@ -45,6 +49,6 @@ function greetingText(user, persona) {
 }
 
 module.exports = {
-  VOICE_BY_GENDER, DEFAULT_PERSONA, DEFAULT_SPOKEN_NAME,
+  VOICE_BY_GENDER, DEFAULT_PERSONA, DEFAULT_NAME_RE, DEFAULT_SPOKEN_NAME,
   personaVoice, gFor, spokenName, greetingText,
 };

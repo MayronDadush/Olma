@@ -10,13 +10,13 @@ module.exports = [
   // (never web crawling); the sweep diffs in code and summarises with the
   // cheap background model only when something actually changed.
   tool('subscribe_live_updates',
-    'Subscribe the user to a recurring proactive update from ONE structured source, sent at their chosen hour: weather (a short forecast for a city, every time), news_topic and sports_summary (real headlines, only when something is new), openrouter_models (new AI models, only when there are any), mail_query (their OWN mailbox, hourly, headers only — the only way to watch a mailbox; search_my_email is for a question asked right now, never for checking whether something arrived). Use it when they ask to be kept updated ("עדכן אותי כל בוקר על מזג האוויר", "עדכן אותי על ברצלונה"). Anything not on this list: say plainly it is not available yet and file it with report_issue as a feature request.',
+    'Subscribe the user to a recurring proactive update from ONE structured source at their chosen hour: weather (every time), news_topic and sports_summary (real headlines, only when new), openrouter_models (new models, only when any), mail_query (their OWN mailbox, hourly, headers only — the only way to watch a mailbox; search_my_email answers a question asked now, never checks whether something arrived). Use it when they ask to be kept updated ("עדכן אותי כל בוקר על מזג האוויר"). Anything not on this list: say it is not available yet and file it with report_issue.',
     {
       source: S('string', 'One of: ' + Object.keys(liveUpdates.SOURCES).join(', ')),
       city: S('string', 'For source=weather: the city name, in any language'),
       topic: S('string', 'For source=news_topic: the topic, in any language'),
       team: S('string', 'For source=sports_summary: optional team/league name — leave empty for general sports'),
-      mail_query: S('string', 'For source=mail_query: a Gmail search built from what THEY described (from:, subject:, has:attachment work), e.g. "from:amazon.com delivery". Needs their email connected. Say it back to them in words: one that matches nothing fails silently, one that matches everything is a nuisance.'),
+      mail_query: S('string', 'For source=mail_query: a Gmail search built from what THEY described (from:, subject:, has:attachment), e.g. "from:amazon.com delivery". Needs their email connected. Say it back in words: one that matches nothing fails silently, one that matches everything is a nuisance.'),
       cadence: S('string', 'hourly, daily (default) or weekly. hourly is only for mail_query.'),
       local_hour: S('number', 'Hour of day in the user\'s own timezone, 0-23. Default 9.'),
     }, ['source'],

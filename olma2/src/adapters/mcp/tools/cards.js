@@ -17,7 +17,7 @@ module.exports = [
       subtitle: S('string', 'Optional line under the title, e.g. the date range.'),
       stats: S('array', 'Optional headline counts: [{icon, text}], max 4.', { items: { type: 'object' } }),
       sections: S('array', 'Required. [{title, items:[{date, text, icon, tag}]}]. date is a short label like "19 באוג׳"; tag is an optional source badge like "יומן". icon must be one of: ' + [...ICON_NAMES].sort().join(', ') + '.', { items: { type: 'object' } }),
-      big_tasks: S('object', 'Optional footer group for themes with no specific date: {title, chips:[{icon, text}]}. Each chip text is a ONE- OR TWO-WORD label ("בריאות", "עבודה") — never a list of items and never a sentence. Anything longer is cut off mid-word and reads as broken.'),
+      big_tasks: S('object', 'Optional footer group for undated themes: {title, chips:[{icon, text}]}. Each chip text is ONE or TWO words ("בריאות", "עבודה"), never a list or a sentence — longer is cut mid-word.'),
       footer_note: S('string', 'Optional small line at the bottom.'),
     },
     ['sections'],
