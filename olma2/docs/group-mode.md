@@ -323,6 +323,28 @@ Owner's decisions on the flow (2026-09-05):
 - **Every tag in a locked group is answered, but the answer shortens** — the
   full explanation once, then the missing people's tags and one line.
 
+### The coordination flow, decided (owner, 2026-09-05)
+
+- **Somebody stops answering in private: she carries on and reports.** After a
+  reasonable wait she drops them from the round, closes with the rest, and says
+  in the group what happened. Nobody in the room has to adjudicate it.
+  *Open:* what "reasonable" is. `meetings.js` already carries
+  `LEGACY_STALE_DAYS = 3` and `EXPIRE_AFTER_START_MS = 6h`; a group round
+  plainly needs something shorter, and the right number is probably a flag.
+- **What crosses from the group into a private chat: the group's name and what
+  is being coordinated. Nothing else.** Not who else is taking part, not the
+  requester's exact words. So a private DM reads "לתאם פאדל לקבוצה 'פאדל
+  שלישי' — מתי אתה פנוי השבוע?" and stops there. This is the group/private
+  boundary in its narrowest useful form, and it is the line to defend when a
+  later feature wants "just one more field".
+- **A confirmed meeting lands in each person's own world like any other** —
+  the existing calendar path, with a date and a time. Group mode does not
+  invent a second kind of meeting.
+- **Group memory holds patterns of the GROUP only** — "they play padel, usually
+  Tuesday evening, usually four of them". Never a fact about a person. Each
+  person's own Olma separately learns their own patterns and adapts; that is
+  the private brain's job, and the two never merge.
+
 ## Still open
 
 1. Does the in-Olma group object own meetings/coordination directly, or is it
