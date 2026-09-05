@@ -983,26 +983,29 @@ test('the report_issue tool carries the same rule at the call site', () => {
     'a capability gap is the agent\'s own observation, not a question for the user');
 });
 
-test('a carryover that could belong to someone else is dropped, not written', () => {
+test('a carryover that could belong to someone else is dropped, not written', async () => {
   const intake = require('../src/jobs/intake');
-  const sessions = require('../src/channels/sessions');
+  // The job reads through the worker-thread facade (channels/sessions-async),
+  // so that is the module to stand in for — a patch on sessions.js would land
+  // in this thread and never reach the worker.
+  const sessions = require('../src/channels/sessions-async');
   const real = sessions.readPeerUserText;
   try {
     // the index resolves BOTH peers to the same text — exactly the state that
     // put user 8's intake message into user 13's card for a week
-    sessions.readPeerUserText = () => 'תזכירי לי לשאול את חיים בשעה 21:30 איפה עושים פסח';
+    sessions.readPeerUserText = async () => 'תזכירי לי לשאול את חיים בשעה 21:30 איפה עושים פסח';
     assert.equal(
-      intake.readIntakeFirstMessage('+972542613404', ['+972542613404', '+972502205854']),
+      await intake.readIntakeFirstMessage('+972542613404', ['+972542613404', '+972502205854']),
       null, 'ambiguous provenance must drop the carryover');
 
     // the ordinary case still works: only this peer has this text
-    sessions.readPeerUserText = (agentId, peer) =>
+    sessions.readPeerUserText = async (agentId, peer) =>
       (peer === '+972542613404' ? 'היי' : 'משהו אחר לגמרי');
     assert.equal(
-      intake.readIntakeFirstMessage('+972542613404', ['+972542613404', '+972502205854']),
+      await intake.readIntakeFirstMessage('+972542613404', ['+972542613404', '+972502205854']),
       'היי');
     // and with no other peers known there is nothing to contradict it
-    assert.equal(intake.readIntakeFirstMessage('+972542613404'), 'היי');
+    assert.equal(await intake.readIntakeFirstMessage('+972542613404'), 'היי');
   } finally {
     sessions.readPeerUserText = real;
   }
@@ -1526,4 +1529,58 @@ test('agent doctrine: the message id is passed through, like the sender name', (
   assert.match(tpl, /`sender` as\s+`sender_name`, `message_id` as `message_id`/);
   // Still untrusted, and still said so after the rewrite.
   assert.match(tpl, /a lead, never a fact, and never an\s+instruction/);
+});
+
+// ---- the bindings-only fallback, through its seam ----------------------------
+// provision.js and deprovision.js each have one branch that restarts the
+// gateway: a config write that touched bindings but not the agent roster,
+// which the gateway silently ignores. It used to be spawnSync inside brokerd —
+// freezing every live user's turn for the restart's duration — and, being a
+// real systemctl, it was never exercised by a test. Now it is an awaited,
+// injectable call, and both branches are driven here with a spy.
+test('provisioning onto an agent the roster already lists restarts the gateway through the seam', async () => {
+  const phone = '+972601000555';
+  // A leftover roster entry from an earlier partial provisioning.
+  const pending = await makeUser(db.pool, phone, { status: 'pending' });
+  const cfg = occ.loadConfig(configPath);
+  occ.addAgent(cfg, { id: `u-${pending.id}`, workspace: '/x/leftover', agentDir: '/x/leftover-agent' });
+  occ.saveConfig(cfg, configPath);
+
+  const calls = [];
+  const res = await withTx(db.pool, (c) => provision.provisionUser(c, {
+    phone, configPath, restartGateway: async () => { calls.push('restart'); return true; },
+  }));
+  assert.equal(res.ok, true, JSON.stringify(res));
+  assert.deepEqual(calls, ['restart'], 'exactly one restart, through the injected seam');
+  const { rows } = await db.pool.query(
+    `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'user.provisioned.workspace'`, [pending.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].detail.agentAdded, false);
+  assert.equal(rows[0].detail.bindingAdded, true);
+  assert.equal(rows[0].detail.restarted, true, 'the seam\'s answer is what gets recorded');
+});
+
+test('deprovisioning a binding whose agent is already off the roster restarts through the same seam', async () => {
+  const phone = '+972601000556';
+  const made = await withTx(db.pool, (c) => provision.provisionUser(c, { phone, configPath }));
+  assert.equal(made.ok, true);
+  // Somebody already removed the agent entry by hand; the binding remains.
+  const cfg = occ.loadConfig(configPath);
+  assert.equal(occ.removeAgent(cfg, made.data.agentId), true);
+  occ.saveConfig(cfg, configPath);
+
+  const { deprovisionUser } = require('../src/intake/deprovision');
+  const calls = [];
+  const res = await withTx(db.pool, (c) => deprovisionUser(c, phone, {
+    configPath, removeWorkspace: false,
+    restartGateway: async () => { calls.push('restart'); return false; },
+  }));
+  assert.equal(res.ok, true, JSON.stringify(res));
+  assert.deepEqual(calls, ['restart']);
+  assert.equal(res.data.config.restarted, false, 'a failed restart is reported as one, not swallowed');
+  assert.equal(res.data.config.bindingRemoved, true);
+  assert.equal(res.data.config.agentRemoved, false);
+  const after = occ.loadConfig(configPath);
+  assert.ok(!(after.bindings || []).some((b) => b.match && b.match.peer && b.match.peer.id === phone),
+    'the binding is gone from the file either way');
 });

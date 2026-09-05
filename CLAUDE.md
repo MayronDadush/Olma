@@ -361,6 +361,17 @@ Verified on the box at the cutover, 2026-08-17:
 - Services: `olma2-brokerd` (unix-socket daemon: pg pool, flood counters,
   outbox worker + all sweeps, heartbeats in `job_heartbeats`) and
   `olma2-dashboard` (`127.0.0.1:8788`, Basic Auth creds in `/opt/olma2/.env`).
+- **Every statement on a `createPool` connection is capped at 20s and a
+  checkout waits at most 10s** (`src/db/pool.js`, `OLMA_DB_STATEMENT_TIMEOUT_MS`,
+  `OLMA_DB_CONNECT_TIMEOUT_MS`; `0` disables). Both sit under the MCP shim's
+  30s call timeout so a runaway query fails inside the tool call, by name.
+  `migrate.js` and the test helper build their own clients and are exempt.
+- **A sweep inside brokerd reads the gateway's session stores through
+  `channels/sessions-async.js`, never `channels/sessions.js` directly.** Every
+  export of `sessions.js` is synchronous (readFileSync, a read-only sqlite
+  handle) and the daemon answers live users on the same loop; the facade runs
+  the identical functions in a worker thread with a deadline. The dashboard
+  and the eval harness are separate processes and keep calling `sessions.js`.
 
 ## The live dashboard is v2's (`olma2/src/adapters/http/dashboard.js`)
 

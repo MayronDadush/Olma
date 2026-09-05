@@ -167,6 +167,9 @@ function undoProvisionSideEffects({
 async function provisionUser(client, {
   phone, firstName, invitedByConnectionId, configPath, timezone, locale,
   firstMessage, invitedInfo, registerUndo,
+  // The bindings-only fallback below. Injectable so the suite never spawns
+  // systemctl; production takes the default (intake/gateway-restart.js).
+  restartGateway = require('./gateway-restart').restartGateway,
 }) {
   let user = await usersDomain.getByPhone(client, phone);
   if (user && user.status === 'active' && user.agent_id) {
@@ -293,10 +296,9 @@ async function provisionUser(client, {
   // instrument rather than reintroduce scheduling machinery for.
   let restarted = false;
   if (bindingAdded && !agentAdded) {
-    const { spawnSync } = require('node:child_process');
-    const r = spawnSync('systemctl', ['--user', 'restart', 'openclaw-gateway'],
-      { env: { ...process.env, XDG_RUNTIME_DIR: '/run/user/0' } });
-    restarted = r.status === 0;
+    // Awaited, never spawnSync: this runs inside brokerd, and a synchronous
+    // restart froze every live user's turn_start for as long as it took.
+    restarted = await restartGateway();
     console.warn(`[provision] ${agentId}: binding written without an agent-roster change; ` +
       `forced gateway restart ${restarted ? 'ok' : 'FAILED'}`);
   }
