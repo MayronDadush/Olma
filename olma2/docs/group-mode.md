@@ -345,6 +345,43 @@ Owner's decisions on the flow (2026-09-05):
   person's own Olma separately learns their own patterns and adapts; that is
   the private brain's job, and the two never merge.
 
+### Chasing somebody who went quiet, decided (owner, 2026-09-05)
+
+- **The cadence is cut from how far away the meeting is, not from a constant.**
+  Coordinating for tomorrow: a reminder after an hour, dropped after three.
+  Coordinating for next week: a reminder after a day, dropped after two.
+- **A reminder that lands in that person's quiet hours waits for morning, and
+  the clock stops with it.** Somebody asleep has not "failed to answer", and a
+  round must never time out through their night. The one exception is the awake
+  window: if they wrote in the GROUP, she may reach them privately about that
+  group's open coordination — and about nothing else.
+- **"אבדוק ואחזור אלייך" does not stop the clock** — only real availability (or
+  an explicit no) does. But if that reply arrives on what would have been the
+  last nudge, they get one more. Being busy is not the same as ignoring her.
+- **Whether the group hears about it first depends on whether that person is
+  critical to the plan**: four people needed for padel and only four in the
+  room means she tags them in the group before giving up; a nice-to-have gets
+  dropped quietly and reported afterwards with the result.
+
+That last one needs something we do not have: **how many people the thing
+actually needs**. It is a property of the plan, not of the group — "padel,
+four" — and the natural sources are the person who asked ("צריך מינימום כמה?",
+asked once) and the group's own remembered patterns ("usually four of them").
+Not designed yet; recorded so it is not discovered halfway through the
+coordination layer.
+
+### What she says, word for word
+
+The wording is the owner's, approved 2026-09-05, and lives in
+`domain/proactive-text.js` beside the reminder text — deterministic, no model,
+raw pipe. It has to live there rather than in a prompt because a locked group's
+agent is muted at the gateway: there is no model output to use.
+
+One trap that reads correctly in the source and fails in the group: **a tag
+pings only when the token is a phone number.** The gateway attaches native
+mention metadata for `@+<digits>` matching a current participant, and WhatsApp
+renders each viewer's own saved name for it. `@דני` arrives as dead text.
+
 ## Still open
 
 1. Does the in-Olma group object own meetings/coordination directly, or is it

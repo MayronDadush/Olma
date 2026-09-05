@@ -44,6 +44,63 @@ function renderReminderText(payload) {
   return `⏰ תזכורת חוזרת: ${title}\n${p.finalAttempt ? LAST_CALL : FOLLOW_UP}`;
 }
 
+// ---- group mode -------------------------------------------------------------
+// Every word Olma says in a locked group is written here rather than by a
+// model, for the same reason reminders are: the group agent is MUTED at the
+// gateway while the group is locked (a sendPolicy deny rule), so there is no
+// model output to use even if we wanted one. These go out on the raw pipe.
+//
+// The no-grammatical-gender rule above still holds for anything aimed at one
+// person. Group text may use the Hebrew plural, because a group genuinely is
+// plural — what it must never do is guess the gender of a single member.
+//
+// Wording owned by the owner (2026-09-05); these are his sentences, not a
+// paraphrase of them. Change them only when he asks.
+
+// A tag only PINGS when the token is a phone number: the gateway attaches
+// native mention metadata for `@+<digits>` tokens that match a current
+// participant, and WhatsApp then renders each viewer's own saved name for that
+// number. Writing "@דני" would look right in the source and reach the group as
+// dead text nobody is notified by.
+const MAX_TAGS = 8;
+
+function mentionTokens(phones) {
+  const list = (phones || []).map((p) => String(p || '').trim()).filter(Boolean);
+  const shown = list.slice(0, MAX_TAGS).map((phone) => `@${phone.replace(/^\+?/, '+')}`);
+  const rest = list.length - shown.length;
+  // A 25-person group with twenty missing would otherwise produce a wall of
+  // tags. Judgement call, not an owner decision — say the rest as a number.
+  return rest > 0 ? `${shown.join(' ')} ועוד ${rest}` : shown.join(' ');
+}
+
+// The first thing said in a group, on the first message there from anyone.
+const GROUP_INTRO = [
+  'נעים מאוד, אני עולמה 👋',
+  'אני עוזרת לקבוצות לתאם דברים בלי הפינג-פונג: מי פנוי מתי ומי עוד לא ענה.',
+  'כשאתם צריכים אותי - תתייגו אותי @. בלי תיוג אני לא מתערבת מקווה שכולכם מחוברים 🙌',
+].join('\n');
+
+function renderGroupIntro() {
+  return GROUP_INTRO;
+}
+
+// kind comes from groups.decideNotice: 'explain' the first time, 'nudge' after.
+function renderGroupGateNotice({ kind, missing }) {
+  const tags = mentionTokens(missing);
+  if (kind === 'nudge') return `עוד מחכה ל: ${tags}  🧐`;
+  return [
+    'כדי שאוכל לתאם לכם משהו, אני צריכה שכל אחד כאן ישלח לי הודעה - אחרת אין לי דרך לשאול אותו מתי הוא פנוי.',
+    `רק אומרת.. עוד לא שלחו לי: ${tags}`,
+    '״היי״ בפרטי וזהו, אני מתחילה לעבוד ☺️',
+  ].join('\n');
+}
+
+// The cap is a flag (`group_max_members`), so the number is passed in rather
+// than written into the sentence — a raised cap must not leave her quoting 25.
+function renderGroupTooLarge(maxMembers) {
+  return `אני מסתדרת טוב עד ${maxMembers} אנשים, וכאן יש יותר - אז לא אתערב פה. בפרטי אני תמיד זמינה.`;
+}
+
 // The single decision point the deliverer consults: a non-null return means
 // "send this text on the raw pipe, no agent turn". Deliberately narrow —
 // checkins and digests are conversational BY DESIGN (the whole 2026-08-20
@@ -56,4 +113,7 @@ function rawPipeTextFor(row) {
   return renderReminderText(p);
 }
 
-module.exports = { renderReminderText, rawPipeTextFor };
+module.exports = {
+  renderReminderText, rawPipeTextFor,
+  renderGroupIntro, renderGroupGateNotice, renderGroupTooLarge, mentionTokens, MAX_TAGS,
+};
