@@ -20,7 +20,10 @@ let db, tmp, configPath;
 
 function baseConfig() {
   return {
-    agents: { list: [{ id: 'intake', workspace: '/x/intake', agentDir: '/x/intake-agent' }] },
+    agents: {
+      list: [{ id: 'intake', workspace: '/x/intake', agentDir: '/x/intake-agent' }],
+      defaults: { heartbeat: { every: '0m', target: 'none' } },
+    },
     bindings: [],
     tools: { fs: { workspaceOnly: true }, alsoAllow: ['read', 'write'] },
     mcp: { servers: { olma: { command: 'node', args: ['shim.js'] } } },
@@ -567,12 +570,35 @@ test('config guard: a multi-agent roster with no ambient owner is a violation', 
   assert.match(v[0], /systemAgent\.agentId is unset/);
   assert.match(v[0], /set-system-agent/, 'the violation says how to fix it');
 
-  many.agents.defaults = { systemAgent: { agentId: 'main' } };
+  many.agents.defaults = { ...many.agents.defaults, systemAgent: { agentId: 'main' } };
   assert.match(guard.checkOpenclawConfig(many)[0], /not in the roster/,
     'an owner naming an agent that does not exist resolves to nothing — worse than unset, because it looks set');
 
   many.agents.defaults.systemAgent.agentId = 'intake';
   assert.deepEqual(guard.checkOpenclawConfig(many), []);
+});
+
+// Measured 2026-09-05 over seven days of transcripts: 3,051 heartbeat calls
+// against 1,072 for real messages — $7.15 of an $8.72 bill — every one of
+// them a 33k-token turn answered NO_REPLY. Nothing of ours rides on the
+// gateway's heartbeat (every sweep is a brokerd job), and it is the road one
+// agent's brunch reminder once took into a different user's chat.
+test('config guard: the gateway heartbeat must be explicitly off', () => {
+  const cfg = baseConfig();
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
+
+  delete cfg.agents.defaults.heartbeat;
+  let v = guard.checkOpenclawConfig(cfg);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /heartbeat\.every is unset/, 'unset is the 30m default, not "off"');
+  assert.match(v[0], /disable-heartbeats/, 'the violation says how to fix it');
+
+  cfg.agents.defaults.heartbeat = { every: '30m', target: 'none' };
+  v = guard.checkOpenclawConfig(cfg);
+  assert.match(v[0], /heartbeat\.every is "30m"/, 'target:none only suppresses delivery; the model turn still runs');
+
+  cfg.agents.defaults.heartbeat = { every: '0m' };
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
 });
 
 // Every other config check reads the FILE. This one asks whether the gateway
