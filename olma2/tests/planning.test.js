@@ -181,6 +181,13 @@ test('an all-day event renders as "כל היום", never as a 03:00 tz artifact'
   assert.match(brief, /birthday or anniversary/);
   assert.match(brief, /offer a\n?.*reminder to send greetings/,
     'the plan suggests offering a reminder, never greeting on their behalf');
+  // "up to 5" was read as "5": six of the first seven plans built in production
+  // came back with exactly five bullets. The cap has to say out loud that it is
+  // a ceiling, and the suggestion has to be earned rather than expected — a
+  // line true for anyone on any day is the generic filler this fixes.
+  assert.match(brief, /is a CEILING, not a target/);
+  assert.match(brief, /At most ONE line may be a suggestion/);
+  assert.match(brief, /leave it out/);
 });
 
 // ---- travel: the question that rides the plan's own calendar read ---------

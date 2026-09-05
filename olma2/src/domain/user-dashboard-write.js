@@ -35,6 +35,10 @@ const contacts = require('./contacts');
 const invites = require('../intake/invites');
 const meetings = require('./meetings');
 const meetingFanout = require('./meeting-fanout');
+const calendar = require('./calendar');
+const googleContacts = require('./google-contacts');
+const mail = require('./mail');
+const googleConnect = require('./google-connect');
 const { SOURCE_CAPS } = require('./user-dashboard');
 
 // What a task's origin system can actually hold, for the fields this page can
@@ -93,6 +97,15 @@ async function refuseIfPaused(client, userId) {
   }
   return null;
 }
+
+// The three Google services this page draws, by the key it draws them under.
+// Turning one ON is a consent round trip and goes through startGoogle; only
+// the off direction is a plain write, so only that direction is a table.
+const GOOGLE_STOP = {
+  cal: (client, userId) => calendar.disconnect(client, userId),
+  contacts: (client, userId) => googleContacts.disconnect(client, userId),
+  mail: (client, userId) => mail.disconnect(client, userId),
+};
 
 const ACTIONS = {
   // ---- tasks ---------------------------------------------------------------
@@ -281,6 +294,68 @@ const ACTIONS = {
     if (!res.ok) return res;
     const me = await users.getById(client, userId);
     return meetingFanout.afterOptOut(client, me, p.meetingId, res);
+  },
+
+  // ---- accounts ------------------------------------------------------------
+  // The only provider on this page with a connection behind it. It returns a
+  // URL and nothing else: the grant happens on Google's own consent screen,
+  // which lists the exact scopes and is the only place a person can actually
+  // agree to them. Nothing is connected when this resolves — which is why the
+  // page must not draw a tick until the callback has come back.
+  //
+  // Write access, deliberately: read-only is a live choice the agent offers in
+  // chat, but a calendar Olma cannot write to makes the per-task calendar
+  // switch two rows away refuse every time it is touched, and a page whose own
+  // controls contradict each other is worse than one that asks for more.
+  // Google's screen still spells out what is being asked before anything is
+  // granted.
+  //
+  // Not gated on pause. Being paused means Olma does not send; it does not
+  // mean a person cannot manage their own accounts, and this sends nothing.
+  async startGoogle(client, userId, p) {
+    const access = p.calendarAccess;
+    if (access && access !== 'read_only' && access !== 'read_write') {
+      return err('invalid', 'calendarAccess must be read_only or read_write');
+    }
+    const me = await users.getById(client, userId);
+    // ONE consent screen for however many services were asked for — the whole
+    // point of google-connect.js. Three separate round trips would mean three
+    // Google screens for a person who pressed one button, and three refresh
+    // tokens where the family logic expects one.
+    return googleConnect.beginConnection(client, me, {
+      calendarAccess: access || undefined,
+      wantContacts: p.contacts === true,
+      wantMail: p.mail === true,
+    });
+  },
+
+  // Turning one service off. Not the same as ending the account: the other two
+  // keep working, and each disconnect decides for itself whether the shared
+  // refresh token may be revoked at Google.
+  async stopGoogleService(client, userId, p) {
+    const stop = GOOGLE_STOP[p.service];
+    if (!stop) return err('invalid', 'unknown service');
+    return stop(client, userId);
+  },
+
+  // The page draws Google as one account, so ending it ends all of it —
+  // anything less leaves a row the person believes they just removed.
+  //
+  // Order does not matter and the sequence is not conditional: each disconnect
+  // already answers `{connected:false}` for a service that was never on, and
+  // each decides for itself whether the shared refresh token may be revoked at
+  // Google (googleFamily.hasOtherGoogleConnection) — which is the whole reason
+  // these are three calls rather than one DELETE. Doing it by hand here would
+  // mean re-deriving that rule in a second place and getting it wrong the day
+  // a fourth Google service arrives.
+  async stopGoogle(client, userId) {
+    const calRes = await calendar.disconnect(client, userId);
+    if (!calRes.ok) return calRes;
+    const conRes = await googleContacts.disconnect(client, userId);
+    if (!conRes.ok) return conRes;
+    const mailRes = await mail.disconnect(client, userId);
+    if (!mailRes.ok) return mailRes;
+    return ok({ connected: false });
   },
 
   // ---- me ------------------------------------------------------------------

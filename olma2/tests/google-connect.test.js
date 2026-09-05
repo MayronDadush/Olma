@@ -24,10 +24,8 @@ const flags = require('../src/domain/flags');
 const googleConnect = require('../src/domain/google-connect');
 const calendar = require('../src/domain/calendar');
 const googleContacts = require('../src/domain/google-contacts');
-const mail = require('../src/domain/mail');
 
-let db, user, server, base;
-const AUTH = 'Basic ' + Buffer.from('admin:test-password-123').toString('base64');
+let db, user, server;
 
 function fakeFetch(routes) {
   const calls = [];
@@ -85,7 +83,6 @@ before(async () => {
   user = await makeUser(db.pool, '+972631900010', { firstName: 'Noa' });
   server = createDashboard({ pool: db.pool, adminUser: 'admin', adminPass: 'test-password-123' });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async () => { server.close(); await db.teardown(); });
 
@@ -269,7 +266,6 @@ test('disconnecting the LAST sibling finally revokes at Google', async () => {
 
 test('a solo calendar connection (never combined) still revokes exactly as before', async () => {
   const u = await makeUser(db.pool, '+972631900032', { firstName: 'Adi' });
-  const uArg = { id: u.id, role: 'user', phone: u.phone };
   const begun = await withTx(db.pool, (c) => calendar.beginConnection(c, u.id, 'read_write'));
   const state = new URL(begun.data.url).searchParams.get('state');
   const fetchImpl = fakeFetch({

@@ -113,7 +113,6 @@ test('a checklist arrives as items, not as separate tasks', async () => {
   const parent = await withTx(db.pool, (c) => tasks.addTask(c, me.id, { title: 'קניות' }));
   const pid = parent.data.task.id;
   for (const title of ['חלה', 'יין']) {
-    // eslint-disable-next-line no-await-in-loop
     await withTx(db.pool, (c) => tasks.addTask(c, me.id, { title, parentId: pid }));
   }
   const d = (await load(me.id)).data;
@@ -233,4 +232,23 @@ test('a task somebody shared with me is on my list too, and marked as theirs', a
     .find((x) => String(x.id) === String(t.data.task.id));
   assert.equal(theirs.mine, true);
   assert.equal(theirs.sharedRole, null, 'owning something is not a role granted to you');
+});
+
+// The page keeps a seeded profile for the design copy and re-reads it on every
+// render, so anything the payload omits stays as the fixture. The fixture is
+// the owner's own name — which is exactly why this survived the first real
+// phone: it read perfectly for one person, and would have greeted everybody
+// else as him.
+test('the payload carries the whole name, and Olma\'s own', async () => {
+  const u = await makeUser(db.pool, '+972531920077',
+    { firstName: 'שרה', lastName: 'בן־חיים' });
+  await withTx(db.pool, (c) => c.query(
+    `UPDATE users SET assistant_name = 'נועה' WHERE id = $1`, [u.id]));
+  const res = await withTx(db.pool, (c) => dash.load(c, u.id));
+  assert.ok(res.ok, JSON.stringify(res.error));
+  assert.equal(res.data.user.firstName, 'שרה');
+  assert.equal(res.data.user.lastName, 'בן־חיים',
+    'the surname never reaches the page, so the seeded one stays on screen');
+  assert.equal(res.data.user.assistantName, 'נועה',
+    'a renamed Olma is still called עולמה on her own dashboard');
 });
