@@ -335,15 +335,19 @@ const SCENARIOS = [
     turns: ['בפגישה "קפה עם דנה" תציעי בבקשה גם את יום שלישי הקרוב ב-20:00, בנוסף למה שכבר הוצע'],
     hard: async (client, ctx) => [
       turnStartFirst(ctx),
+      // THIS run's meeting only — the newest by that name. Two runs inside an
+      // hour once left two meetings behind, and a count across both read four
+      // options where the model had correctly added exactly one.
       { name: 'a second option is on the table and the first still stands',
         pass: (await count(client,
-          `SELECT count(*)::int AS n FROM meeting_options o JOIN meetings m ON m.id = o.meeting_id
-            WHERE m.title = 'קפה עם דנה' AND m.status = 'negotiating' AND o.status = 'active'
-              AND m.created_at > now() - interval '1 hour'`, [])) === 2 },
+          `SELECT count(*)::int AS n FROM meeting_options o
+            WHERE o.meeting_id = (SELECT max(id) FROM meetings WHERE title = 'קפה עם דנה' AND status = 'negotiating')
+              AND o.status = 'active'`, [])) === 2 },
       { name: 'nothing was replaced',
         pass: (await count(client,
-          `SELECT count(*)::int AS n FROM meeting_options o JOIN meetings m ON m.id = o.meeting_id
-            WHERE m.title = 'קפה עם דנה' AND m.created_at > now() - interval '1 hour' AND o.status = 'replaced'`, [])) === 0 },
+          `SELECT count(*)::int AS n FROM meeting_options o
+            WHERE o.meeting_id = (SELECT max(id) FROM meetings WHERE title = 'קפה עם דנה')
+              AND o.status = 'replaced'`, [])) === 0 },
     ],
     rubric: 'המשתמש ביקש להוסיף מועד שני (יום שלישי 20:00) לתיאום שכבר יש בו מועד. בדוק: (1) התשובה מאשרת שהמועד נוסף לצד הקודם, לא במקומו. (2) עולמה לא מכריזה שהפגישה נקבעה. (3) קצר, בלי שאלות מיותרות.',
   },
