@@ -37,6 +37,8 @@ const KIND_LABELS = {
   meeting_slot_proposed: 'הצעת מועד לפגישה',
   meeting_confirmed: 'פגישה אושרה',
   meeting_slot_declined: 'מועד נדחה',
+  meeting_option_pending: 'מועד חמישי ממתין לאישור',
+  meeting_option_rejected: 'הצעת מועד נדחתה על ידי הפותח',
   meeting_opt_out: 'יציאה מפגישה',
   tasks_auto_archived: 'משימות שנסגרו מעצמן',
   meeting_rejoined: 'חזרה לתיאום פגישה',
