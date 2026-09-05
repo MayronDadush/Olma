@@ -24,6 +24,7 @@ const { ok, err } = require('./results');
 // `meetings` for its own rows, and a module-level shadow of that name is a
 // TDZ ReferenceError inside the one function that needs this.
 const meetingsDomain = require('./meetings');
+const optionMoment = require('./meeting-option-moment');
 const mail = require('./mail');
 
 // A task's own category vocabulary is closed server-side (tasks.category is
@@ -366,6 +367,27 @@ async function loadMeetings(client, userId, zone) {
      ORDER BY p.meeting_id, p.user_id`,
     [ids]
   );
+  // Every candidate time, in the page's own terms: a day offset from THIS
+  // person's today and a clock time or daypart, with everyone's answers. A
+  // pending one (a fifth from a non-initiator) travels flagged; the page shows
+  // it to the initiator as a decision and to its proposer as a receipt.
+  const { rows: optRows } = await client.query(
+    `SELECT o.id, o.meeting_id, o.slot_text, o.starts_at, o.all_day, o.daypart, o.added_by, o.status,
+            coalesce(json_object_agg(a.user_id, a.answer) FILTER (WHERE a.user_id IS NOT NULL), '{}'::json) AS answers
+       FROM meeting_options o LEFT JOIN meeting_option_answers a ON a.option_id = o.id
+      WHERE o.meeting_id = ANY($1::bigint[]) AND o.status IN ('active', 'pending')
+      GROUP BY o.id ORDER BY o.id`, [ids]);
+  const optionsBy = new Map();
+  for (const o of optRows) {
+    if (!optionsBy.has(o.meeting_id)) optionsBy.set(o.meeting_id, []);
+    const pick = optionMoment.pickFor(zone, o.starts_at);
+    optionsBy.get(o.meeting_id).push({
+      id: Number(o.id), day: pick.day, time: o.all_day || o.daypart ? null : pick.time,
+      part: o.daypart || null, allDay: Boolean(o.all_day), pending: o.status === 'pending',
+      by: o.added_by === null ? null : Number(o.added_by), slot: o.slot_text, startsAt: o.starts_at,
+      answers: o.answers || {},
+    });
+  }
   const byMeeting = new Map();
   for (const p of parts) {
     if (!byMeeting.has(p.meeting_id)) byMeeting.set(p.meeting_id, []);
@@ -416,6 +438,8 @@ async function loadMeetings(client, userId, zone) {
     confirmedTime: m.confirmed_time,
     confirmedDay: m.confirmed_day === null ? null : Number(m.confirmed_day),
     participants: byMeeting.get(m.id) || [],
+    options: optionsBy.get(m.id) || [],
+    maxOptions: meetingsDomain.options.MAX_ACTIVE,
   }));
 }
 
