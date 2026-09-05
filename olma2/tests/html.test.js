@@ -20,12 +20,16 @@ test('nullish is empty, everything else is stringified', () => {
   assert.equal(esc(false), 'false');
 });
 
-test('the three pages share this one definition', () => {
+test('every http page shares this one definition — nobody grows a private copy', () => {
   const fs = require('node:fs');
   const path = require('node:path');
-  for (const f of ['dashboard.js', 'user-dashboard.js', 'picker.js']) {
-    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'adapters', 'http', f), 'utf8');
-    assert.match(src, /require\('\.\/html'\)/, `${f} imports it`);
-    assert.doesNotMatch(src, /const esc = |function esc\(/, `${f} no longer defines its own`);
+  const dir = path.join(__dirname, '..', 'src', 'adapters', 'http');
+  const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
+  for (const f of walk(dir).filter((p) => p.endsWith('.js') && !p.endsWith('/html.js'))) {
+    const src = fs.readFileSync(f, 'utf8');
+    assert.doesNotMatch(src, /const esc = |function esc\(/, `${path.relative(dir, f)} must import esc, not define it`);
+  }
+  for (const f of ['user-dashboard.js', 'picker.js']) {
+    assert.match(fs.readFileSync(path.join(dir, f), 'utf8'), /require\('\.\/html'\)/, `${f} imports it`);
   }
 });
