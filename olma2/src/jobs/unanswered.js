@@ -1,43 +1,20 @@
 'use strict';
-// Repair pass for messages the gateway swallowed.
+// Repair pass for messages the gateway swallowed — a person must not sit
+// unanswered because a session lane wedged (an OpenClaw bug, not ours;
+// lane-watchdog.js is the fast half).
 //
-// Observed three times on live users: a session lane is never released after a
-// run, so everything the person writes afterwards queues behind it. The
-// gateway's own watchdog frees it, but only after its abort threshold (we
-// lowered that from 360s to 75s; see scripts/set-recovery-thresholds.js). The
-// bug is inside OpenClaw and not ours to fix — this job limits how long a
-// person can sit unanswered because of it.
+// Two failures produce the same silence, and both are detectable:
+//   (a) never processed — the transcript's last entry is the user's;
+//   (b) composed and never dispatched — the transcript ends with an assistant
+//       reply old enough that its send cannot be in flight, and the gateway
+//       log has no `Sent message <id> -> sha256:<12 hex>` for that person
+//       since (the hash is of the recipient jid; verified live 2026-08-31).
 //
-// NOT folded into checkin.js despite the one-sweeper rule: check-in is outreach
-// on an hours-to-days rhythm, this is repair on a minutes rhythm, and the two
-// would fight over the same tick. Deliberate exception, not an oversight.
-//
-// What it can and cannot see. Two distinct failures produce the same silence:
-//
-//   (a) the message was never processed  → the transcript's last entry is the
-//       user's. Provable, and repaired here.
-//   (b) the reply WAS generated and then never dispatched → the transcript
-//       looks perfectly healthy.
-//
-// (b) used to be written off here as "indistinguishable from a normal turn".
-// It is not — the gateway logs one line per outbound WhatsApp send,
-//
-//   Sent message <id> -> sha256:<12 hex>
-//
-// where the hash is sha256("<digits>@s.whatsapp.net") of the RECIPIENT
-// (verified live 2026-08-31 against a real send). So "this reply left the
-// box" is checkable per user: a transcript that ends with an assistant reply
-// old enough that its send cannot still be in flight, with no Sent line for
-// that person since the reply was composed, is a reply the person never saw.
-//
-// The incident that forced this: 2026-08-31 18:23-18:36, user 11 sent seven
-// messages and the agent answered every one within seconds — into a session
-// lane that wedged after each run, and the gateway's own recovery freed the
-// lane by aborting the run WITH its undelivered reply still aboard. Six
-// composed replies, one Sent line, thirteen minutes of silence from the
-// person's side. Every transcript read as perfectly healthy, so this sweep
-// (case a), the lane-watchdog (tuned to the gateway REFUSING to free a lane,
-// not freeing it destructively) and /health all stayed green.
+// Deliberately NOT folded into checkin.js: repair on a minutes rhythm and
+// outreach on an hours-to-days rhythm would fight over one tick. Stories:
+// docs/incidents.md, "Wedged session lanes (the live bug v2 works around)"
+// and "Six replies composed, one delivered — the wedge that beat every
+// detector (2026-08-31)".
 const crypto = require('node:crypto');
 // The worker-thread facade, not sessions.js itself: this sweep runs every
 // minute inside brokerd and reads transcripts, and the main thread must not

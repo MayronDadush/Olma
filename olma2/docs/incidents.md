@@ -35,6 +35,7 @@ never trust a dated narrative for something you are about to act on.
 - [The lock that worked perfectly, on three files out of sixteen (2026-09-01)](#the-lock-that-worked-perfectly-on-three-files-out-of-sixteen-2026-09-01)
 - [A leaked token has a rotation now, and the file order is the design (2026-09-03)](#a-leaked-token-has-a-rotation-now-and-the-file-order-is-the-design-2026-09-03)
 - [The guard was right within a minute, and unread for eighty (fixed 2026-09-01)](#the-guard-was-right-within-a-minute-and-unread-for-eighty-fixed-2026-09-01)
+- [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
 
@@ -59,6 +60,7 @@ never trust a dated narrative for something you are about to act on.
 - ["I can't do that" was the whole answer (fixed 2026-08-21)](#i-cant-do-that-was-the-whole-answer-fixed-2026-08-21)
 - ["I can't" now hands over the search (2026-09-03)](#i-cant-now-hands-over-the-search-2026-09-03)
 - [A goal said out loud left no trace anywhere (fixed 2026-08-21)](#a-goal-said-out-loud-left-no-trace-anywhere-fixed-2026-08-21)
+- [turn_start skipped on the stop turn, under two models and two rewordings (2026-08-30)](#turn_start-skipped-on-the-stop-turn-under-two-models-and-two-rewordings-2026-08-30)
 
 **Models, evals and background cognition**
 
@@ -121,6 +123,7 @@ never trust a dated narrative for something you are about to act on.
 - [The suite was green thirteen hours a day and red eleven (fixed 2026-08-30)](#the-suite-was-green-thirteen-hours-a-day-and-red-eleven-fixed-2026-08-30)
 - [Deploying doctrine no longer needs a second command (2026-08-21)](#deploying-doctrine-no-longer-needs-a-second-command-2026-08-21)
 - [A rollback cannot reach the filesystem (fixed 2026-08-27)](#a-rollback-cannot-reach-the-filesystem-fixed-2026-08-27)
+- [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
 
 ## Gateway, config and upgrades
 
@@ -969,6 +972,42 @@ answer for itself.
   first and the send is wrapped — the durable dashboard record must survive a
   dead gateway, which is the condition being reported.
 
+### Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)
+
+A token that reached a real person's chat (`domain/token-leak.js`) stays
+exposed for exactly as long as it keeps working, so the only remediation is a
+different one. Almost all of that machinery already existed and was reviewed:
+`scripts/resync-agent-templates.js` renders AGENTS.md per user from
+`users.identity_token`, and `repairIdentityFiles` rewrites `.olma-identity`
+from the same column. The only missing piece was minting the new value and
+swapping it in without locking somebody out of their own agent mid-sentence.
+
+**Order is the whole design.** The token lives in three places: the DB (the
+verifier, `domain/users.resolveByToken`), AGENTS.md (the primary, read into
+context at session start) and `.olma-identity` (the recovery path that both
+the doctrine and `bin/olma-mcp.js` point at). Writing the FILE first is what
+makes this safe:
+
+1. `.olma-identity` ← new. DB and AGENTS.md are both still old, so the token
+   already in the model's context keeps working. Nothing fails during this
+   window.
+2. DB ← new. The in-context token dies this instant. The agent's next call
+   fails once with "unknown identity token", whose own text tells it to
+   re-read `.olma-identity` — which step 1 fixed.
+3. AGENTS.md ← new, so the NEXT session starts correct instead of paying for
+   that fallback on every turn.
+
+Every other order leaves a window where the file and the DB are wrong at the
+same time, and that window is a total auth failure rather than one retried
+call. The live session cannot be spared completely — AGENTS.md is read at
+session start, so its context holds the dead token until the session rotates
+— but one extra tool call per turn is precisely what the 2026-08-27 recovery
+path was built to absorb.
+
+The new token is never logged, never audited and never returned. A rotation
+caused by a leak must not become the next place the credential is written
+down; the audit row carries fingerprints, which is what `token-leak.js`
+compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
 
@@ -1633,6 +1672,40 @@ had backed off to weekly, or given up at 4, would otherwise swallow the
 message). Matching is on trailing phone digits, and an ambiguous fragment
 refuses with the candidates rather than picking one.
 
+### turn_start skipped on the stop turn, under two models and two rewordings (2026-08-30)
+
+`turn_start` is the tool the doctrine tells the agent to call first on every
+message, and for most turns it does. But on 2026-08-30 the behavioral evals
+caught it skipping the call entirely on the stop-confirmation turn: the stop
+section is a vivid, numbered three-step plan whose step 2 says to call
+`pause_olma` "THAT TURN, before you write anything back", and it beats a
+universal preamble sitting far above it. Two rounds of rewording failed, and
+`deepseek-v4-pro` — the stronger, dearer sibling already configured as the
+first fallback — failed identically. Two models, two doctrine versions, one
+failure: a specific urgent instruction outranking a general one is a property
+of models, not of any one model.
+
+So this is the project's own rule applied again (D-007, and the identity-token
+self-healing in `bin/olma-mcp.js`): **correctness must not depend on model
+discipline.** brokerd already sees every tool call, and the gateway spawns one
+MCP shim per turn holding one socket — so the server can notice a turn that
+opened without `turn_start` and do the bookkeeping itself
+(`domain/turn.js`, `openTurnImplicitly`).
+
+What that deliberately does NOT do, and why the split matters:
+
+- **State** is recovered: counting the message, stamping that the person is
+  awake, waking night-held rows, recording the north-star `message.received`.
+  None of it needs the model's cooperation and all of it is wrong to skip.
+- **Advice** is never recovered. `offerResume` is the sharpest case: stamping
+  `resume_offer_sent_at` there would burn a once-per-pause offer that the
+  model never saw and therefore cannot make, which is strictly worse than not
+  stamping it — the person would be left waiting for an offer the database
+  believes was already delivered. Name capture needs `sender_name`, which only
+  the model can see; `recentReminders` and `planHeadline` are answers to a
+  question nobody asked. A turn that skipped `turn_start` gets a correct
+  database and a less well-informed reply, which is the honest trade rather
+  than a silent pretence that nothing was lost.
 
 ## Models, evals and background cognition
 
@@ -3699,3 +3772,37 @@ or a config; whatever wrote them has to put them back.**
 still `new` when the same user's broken token was diagnosed by hand a day
 later. Thirteen open issues, every one already resolved in reality. A
 detection layer nobody looks at is not a detection layer.
+
+### Merged is not deployed — the drift row (2026-09-04)
+
+"Merged" does not mean "deployed" here, and the gap is completely silent.
+Twice on 2026-09-03/04 a merge's own CI run was cancelled or wedged, its
+`deploy` job was skipped, and the code sat in main for hours with nothing
+anywhere saying so. The worst instance was #140 — the fix for deploys that die
+mid-run — which itself never deployed for exactly that reason, so the cure sat
+in main while the disease kept happening.
+
+Two causes, both outside our control and both quiet: a wedged or failed
+`test` job SKIPS `deploy`; and GitHub's concurrency group keeps ONE pending
+run per ref, so when merges arrive faster than deploys finish, the middle ones
+are cancelled.
+
+So `jobs/deploy-drift.js` does not try to prevent either. It just makes the
+gap visible, and keeps it visible — "show the gap always, not only when it
+breaks" (the cost figures that drifted for a month while every page looked
+healthy).
+
+**Deliberately not an alert.** `BREAKS_USERS` means "their tool calls fail
+right now" and nothing else. Production being three commits behind main
+breaks nobody: it is the previous release, and the previous release worked.
+This is a dashboard row. Widening the alarm set is how an alert list stops
+being read.
+
+**And deliberately not a judgement when it cannot judge.** A GitHub that
+cannot be reached is not a drifted deploy — it is an unknown, reported as one,
+carrying forward WHEN the last real answer was so nobody reads a stale verdict
+as a fresh one. `null` (could not check) and "in sync" must never collapse
+into the same row. The check going quiet is covered for free: it is a
+`job_heartbeats` row, so `jobs/expectations.js` already calls it stale if it
+stops running, and `/health` already reports that. No second detector needed
+for the detector.
