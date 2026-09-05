@@ -1,15 +1,14 @@
 'use strict';
-// "Will I hear if something breaks?" — the owner, 2026-09-05. This job is the
-// first alarm in the system with a channel that is not the gateway, so the
-// one thing it must get right is speaking when the gateway is dead, and the
-// one thing it must not do is speak on a single bad probe.
+// "Will I hear if something breaks?" — the owner, 2026-09-05. The job speaks
+// over the gateway's own pipe (the owner chose no second channel), so what it
+// must get right is the repair — restart a dead gateway — and what it must not
+// do is speak on a single bad probe.
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { freshDb } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const flags = require('../src/domain/flags');
 const watch = require('../src/jobs/liveness-watch');
-const twilio = require('../src/channels/twilio-sms');
 
 let db;
 before(async () => { db = await freshDb(); });
@@ -20,14 +19,12 @@ beforeEach(async () => {
 });
 
 function deps(over = {}) {
-  const log = { sms: [], wa: [] };
+  const log = { wa: [] };
   return {
     log,
     d: {
       checkGateway: async () => over.gateway || { status: 'live', detail: 'live', port: 1 },
-      sms: async (to, text) => { log.sms.push({ to, text }); return over.smsFails ? { ok: false, error: 'x' } : { ok: true, sid: 'SM1' }; },
       send: async (to, text) => { log.wa.push({ to, text }); return over.waFails ? { ok: false } : { ok: true }; },
-      smsConfigured: over.smsConfigured ?? true,
       now: over.now,
       settleMs: 0,
       restartGateway: async () => { log.restarts = (log.restarts || 0) + 1; return over.restartFails ? false : true; },
@@ -43,115 +40,92 @@ test('a healthy system says so on the heartbeat and tells nobody', async () => {
   assert.equal(note.gateway, 'live');
   assert.equal(note.down, false);
   assert.equal(note.stuck, 0);
-  assert.deepEqual(log.sms, []);
   assert.deepEqual(log.wa, []);
 });
 
-test('a dead gateway is reported by SMS — after two ticks, once, then every six hours, and recovery is said', async () => {
+test('a dead gateway is restarted on the second tick, not the first, and at most once per half hour', async () => {
   const t0 = Date.parse('2026-09-06T09:00:00Z');
   const down = { status: 'down', detail: 'ECONNREFUSED', port: 18789 };
   let { log, d } = deps({ gateway: down, now: t0, waFails: true });
   let note = await tick(d);
   assert.equal(note.down, true);
   assert.equal(note.ticks, 1);
-  assert.deepEqual(log.sms, [], 'one bad probe is not an outage');
+  assert.equal(log.restarts, undefined, 'one bad probe is not an outage');
 
   ({ log, d } = deps({ gateway: down, now: t0 + 300_000, waFails: true }));
   note = await tick(d);
-  assert.equal(log.restarts, 1, 'the repair is tried first');
+  assert.equal(log.restarts, 1, 'the repair is tried');
   assert.equal(note.restarted, true);
-  assert.equal(note.alerted, 'sms', 'the gateway is the problem, so the gateway is not the channel');
-  assert.equal(log.sms.length, 1);
-  assert.match(log.sms[0].text, /שער התקשורת/);
-  assert.match(log.sms[0].text, /הופעל מחדש אוטומטית ועדיין לא עונה/, 'the owner hears what was already tried');
-  assert.match(log.sms[0].text, /olmachat/);
+  assert.equal(note.alertFailed, true, 'the pipe is the gateway: it cannot be told, and the heartbeat says so');
+  assert.equal(note.alerted, undefined);
 
   ({ log, d } = deps({ gateway: down, now: t0 + 600_000, waFails: true }));
   note = await tick(d);
-  assert.equal(note.alerted, undefined, 'still down, already told — silence');
-  assert.equal(log.sms.length, 0);
   assert.equal(log.restarts, undefined, 'no second restart inside the cooldown');
 
-  ({ log, d } = deps({ gateway: down, now: t0 + 7 * 3600_000, waFails: true }));
+  ({ log, d } = deps({ gateway: down, now: t0 + 40 * 60_000, waFails: true }));
   note = await tick(d);
-  assert.equal(note.alerted, 'sms', 'six hours on, one reminder');
-  assert.equal(log.restarts, 1, 'and, the cooldown long over, one more try');
+  assert.equal(log.restarts, 1, 'cooldown over, one more try');
 
-  ({ log, d } = deps({ now: t0 + 8 * 3600_000 }));
+  ({ log, d } = deps({ now: t0 + 60 * 60_000 }));
   note = await tick(d);
-  assert.equal(note.recovered, 'whatsapp', 'back up: the pipe works again and is the cheaper channel');
-  assert.match(log.wa[0].text, /חזרה לעבוד/);
   assert.equal(note.down, false);
-  const state = await withTx(db.pool, (c) => flags.getFlag(c, watch.STATE_FLAG));
-  assert.deepEqual(state, {}, 'the outage is over and forgotten');
+  assert.equal(note.recovered, undefined, 'nothing had been announced, so nothing is un-announced');
+  assert.deepEqual(log.wa, []);
+  assert.deepEqual(await withTx(db.pool, (c) => flags.getFlag(c, watch.STATE_FLAG)), {});
 });
 
-test('a dead gateway that comes back after the automatic restart is reported as healed, over WhatsApp, once', async () => {
+test('a dead gateway that comes back after the automatic restart is reported as healed, once', async () => {
   const t0 = Date.parse('2026-09-06T12:00:00Z');
   const down = { status: 'down', detail: 'ECONNREFUSED', port: 1 };
   let { log, d } = deps({ gateway: down, now: t0 });
   await tick(d);
-  // second tick: the first probe says down, the restart runs, the re-probe says live
   let probes = 0;
   ({ log, d } = deps({ now: t0 + 300_000, extra: { checkGateway: async () => (probes++ === 0 ? down : { status: 'live', detail: 'live', port: 1 }) } }));
   const note = await tick(d);
   assert.equal(log.restarts, 1);
-  assert.equal(note.restarted, true);
   assert.equal(note.restartOk, true);
   assert.equal(note.gateway, 'live', 'the verdict is the re-probe, not the first probe');
-  assert.equal(note.down, false);
-  assert.equal(note.selfHealed, 'whatsapp', 'the pipe is back, so the pipe carries the news');
-  assert.equal(log.sms.length, 0, 'no SMS was needed');
+  assert.equal(note.selfHealed, 'whatsapp');
   assert.match(log.wa[0].text, /הופעל מחדש אוטומטית/);
-  const state = await withTx(db.pool, (c) => flags.getFlag(c, watch.STATE_FLAG));
-  assert.deepEqual(state, {});
+  assert.deepEqual(await withTx(db.pool, (c) => flags.getFlag(c, watch.STATE_FLAG)), {});
 });
 
 test('a flap — one bad tick, then fine — is never mentioned', async () => {
   const down = { status: 'down', detail: 'timeout', port: 1 };
-  let { d } = deps({ gateway: down });
+  const { d } = deps({ gateway: down });
   await tick(d);
-  let out = deps();
+  const out = deps();
   const note = await tick(out.d);
   assert.equal(note.down, false);
-  assert.equal(note.recovered, undefined, 'nothing was announced, so nothing is un-announced');
-  assert.deepEqual(out.log.sms, []);
   assert.deepEqual(out.log.wa, []);
 });
 
-test('stuck deliveries with a live gateway go out over WhatsApp, with SMS as the fallback', async () => {
+test('stuck deliveries with a live gateway: told after two ticks, once, then every six hours, and recovery is said', async () => {
   const { rows: [u] } = await db.pool.query(`INSERT INTO users (phone, status, first_name) VALUES ('+972500001111','active','A') RETURNING id`);
   await db.pool.query(
     `INSERT INTO outbox (user_id, kind, payload, attempts, created_at) VALUES ($1, 'reminder', '{}', 5, now() - interval '1 hour')`, [u.id]);
   const t0 = Date.parse('2026-09-06T09:00:00Z');
   let { log, d } = deps({ now: t0 });
   await tick(d);
+  assert.deepEqual(log.wa, []);
   ({ log, d } = deps({ now: t0 + 300_000 }));
   let note = await tick(d);
   assert.equal(note.stuck, 1);
   assert.equal(note.alerted, 'whatsapp');
   assert.match(log.wa[0].text, /תקועות/);
-  assert.equal(log.sms.length, 0, 'no SMS spent while the pipe works');
-
-  // the pipe refuses the alert → SMS carries it
-  await withTx(db.pool, (c) => flags.setFlag(c, watch.STATE_FLAG, {}));
-  ({ log, d } = deps({ now: t0, waFails: true }));
-  await tick(d);
-  ({ log, d } = deps({ now: t0 + 300_000, waFails: true }));
+  assert.match(log.wa[0].text, /olmachat/);
+  ({ log, d } = deps({ now: t0 + 600_000 }));
   note = await tick(d);
-  assert.equal(note.alerted, 'sms');
-});
-
-test('without Twilio configured and a dead gateway, the failure to alert is on the heartbeat', async () => {
-  const down = { status: 'down', detail: 'ECONNREFUSED', port: 1 };
-  const t0 = Date.parse('2026-09-06T09:00:00Z');
-  let { d } = deps({ gateway: down, now: t0, waFails: true, smsConfigured: false });
-  await tick(d);
-  ({ d } = deps({ gateway: down, now: t0 + 300_000, waFails: true, smsConfigured: false }));
-  const note = await tick(d);
-  assert.equal(note.smsConfigured, false);
-  assert.equal(note.alertFailed, true, 'not looking and nothing wrong must never read alike');
-  assert.equal(note.alerted, undefined);
+  assert.equal(note.alerted, undefined, 'already told — silence');
+  ({ log, d } = deps({ now: t0 + 7 * 3600_000 }));
+  note = await tick(d);
+  assert.equal(note.alerted, 'whatsapp', 'six hours on, one reminder');
+  await db.pool.query(`DELETE FROM outbox`);
+  ({ log, d } = deps({ now: t0 + 8 * 3600_000 }));
+  note = await tick(d);
+  assert.equal(note.recovered, 'whatsapp');
+  assert.match(log.wa[0].text, /חזרה לעבוד/);
 });
 
 test('a probe that could not judge is reported, not alarmed', async () => {
@@ -160,21 +134,5 @@ test('a probe that could not judge is reported, not alarmed', async () => {
   assert.equal(note.gateway, 'unknown');
   assert.match(note.gatewayDetail, /ENOENT/);
   assert.equal(note.down, false);
-  assert.deepEqual(log.sms, []);
-});
-
-test('the SMS channel refuses to pretend when unconfigured, and never leaks the token', async () => {
-  assert.equal(twilio.configured({}), false);
-  const r = await twilio.send('+972500000000', 'hi', { env: {} });
-  assert.equal(r.ok, false);
-  const calls = [];
-  const fetchImpl = async (url, init) => { calls.push({ url, init }); return { ok: true, status: 201, json: async () => ({ sid: 'SM123' }) }; };
-  const env = { TWILIO_SID: 'ACxxx', TWILIO_TOKEN: 'secret-token', TWILIO_FROM: '+15550001' };
-  const ok = await twilio.send('+972500000000', 'שלום', { env, fetchImpl });
-  assert.deepEqual(ok, { ok: true, sid: 'SM123' });
-  assert.match(calls[0].url, /Accounts\/ACxxx\/Messages\.json$/);
-  assert.match(calls[0].init.body, /To=%2B972500000000/);
-  assert.ok(!calls[0].init.body.includes('secret-token'), 'the token rides the auth header only');
-  const bad = await twilio.send('+972500000000', 'x', { env, fetchImpl: async () => ({ ok: false, status: 401 }) });
-  assert.deepEqual(bad, { ok: false, error: 'twilio http 401' });
+  assert.deepEqual(log.wa, []);
 });
