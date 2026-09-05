@@ -20,9 +20,16 @@ function taskHints(res) {
       + 'list — offer it rather than assume it.';
   }
   if (Array.isArray(d.reminders) && d.reminders.length) {
-    hints.reminders = 'Reminders were armed automatically for the timed items — say when you will remind '
-      + 'them; do not ask permission and do not call set_task_reminder for these unless they want a '
-      + 'different moment or a repeat.';
+    // The times are stated back, in their zone, because the model cannot say a
+    // moment nobody armed if the armed moment is the only one on the result.
+    // Yahav (2026-09-05) was told 19:00 for a reminder set to 18:00 — the due
+    // date was the nearest time to hand and the hint asked for a sentence.
+    const at = Array.isArray(d.remindersAt) && d.remindersAt.length ? ` (${d.remindersAt.join(', ')}, their time)` : '';
+    hints.reminders = d.remindersAsked
+      ? `The reminder is set for the hour they asked for${at} — say that back and nothing else about it.`
+      : `Reminders were armed automatically${at} — say THAT time, not the due time, and do not ask `
+        + 'permission. Only call set_task_reminder if they wanted a different moment or a repeat; if '
+        + 'they said "remind me at X", X was the reminder and belongs in add_task\'s remind_at.';
   }
   if (d.autoRemindersSkipped) {
     hints.autoRemindersSkipped = `${d.autoRemindersSkipped} timed item(s) went past the per-call reminder cap and `
@@ -35,14 +42,15 @@ module.exports = [
   tool('list_my_tasks', 'List your open tasks (status=done for completed).',
     { status: S('string', 'open | done (default open)') }, [],
     (client, user, a) => tasks.listTasks(client, user.id, { status: a.status || 'open' })),
-  tool('add_task', 'Add one task; parent_task_id makes it a subtask (one level). A due_at gets its reminder AUTOMATICALLY (an hour before a timed task, 08:00 for a whole-day one) — never call set_task_reminder for that one, only for a different moment or a repeat. A dictated shopping run is filed as a list. When the reply carries hints, follow them. due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), converted from their own local time (USER.md); never bare digits with a Z.',
+  tool('add_task', 'Add one task; parent_task_id makes it a subtask (one level). due_at is when the THING is, and arms a reminder automatically an hour before (08:00 for a whole-day one). remind_at is for "תזכיר לי ב-19:00": that hour IS the reminder and replaces the automatic one. A dictated shopping run is filed as a list. Follow any hints on the reply. Times MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their own local time (USER.md); never bare digits with a Z.',
     { title: S('string', 'Task title'), category: S('string', 'home|work|family|health|money|errands; omit unless the person named one (worked out from the title).'),
       due_at: S('string', 'Optional ISO-8601 datetime WITH UTC offset, e.g. 2026-08-20T09:00:00+03:00'),
       ends_at: S('string', 'Optional end of a range, same format: a shift is title \'משמרת\', due_at 12:00, ends_at 19:00 — never hours in the title.'),
+      remind_at: S('string', 'The hour THEY named to be reminded, same format. Replaces the automatic one.'),
       parent_task_id: S('number', 'Optional parent (project) id') }, ['title'],
     async (client, user, a) => taskHints(await tasks.addTask(client, user.id, {
       title: a.title, category: a.category, dueAt: a.due_at, endsAt: a.ends_at,
-      parentId: a.parent_task_id,
+      remindAt: a.remind_at, parentId: a.parent_task_id,
     }))),
   tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task. Also the way to SPLIT a goal into its parts: pass parent_task_id and the parts become subtasks in the same call. Timed items get their reminders automatically; when the reply carries hints, follow them. Any due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), converted from their own local time (USER.md); never bare digits with a Z.',
     { items: S('array', 'Array of {title, category?, due_at?, ends_at?}; due_at ISO-8601 WITH UTC offset; category as in add_task.', { items: { type: 'object' } }),
