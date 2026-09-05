@@ -180,6 +180,125 @@ test('a meeting the person left is off the answerable list', async () => {
 // Leaving used to remove a coordination from this payload for good, so the
 // page had nothing to draw a way back from. The archive is that missing half.
 
+// ── Several candidate times, from the page (2026-09-05) ─────────────────────
+// The page picks {day, part | time} in the person's own terms; the server turns
+// each into an instant in their zone and the same option rows the chat tools
+// write. Anyone adds up to four; a participant's fifth waits for the initiator.
+const optionMoment = require('../src/domain/meeting-option-moment');
+
+test('a coordination started from the page carries its options, in the person\'s own zone', async () => {
+  const r = await actAs(me, 'startMeeting', {
+    title: 'פוקר', participantIds: [gali.id, ron.id], allDay: false,
+    options: [{ day: 1, part: 'evening' }, { day: 2, time: '20:30' }],
+  });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  const id = Number(r.data.meeting.id);
+  assert.equal(r.data.options.length, 2);
+  const page = await tx((c) => dash.load(c, gali.id));
+  const m = page.data.meetings.find((x) => Number(x.id) === id);
+  assert.equal(m.maxOptions, 4);
+  assert.equal(m.options.length, 2);
+  const ev = m.options.find((o) => o.part === 'evening');
+  const ex = m.options.find((o) => o.time === '20:30');
+  assert.equal(ev.day, 1, 'tomorrow, as an offset from HER today');
+  assert.equal(ev.time, null, 'a daypart option carries no clock time to the page');
+  assert.equal(ex.day, 2);
+  assert.equal(ex.part, null);
+  assert.equal(ev.pending, false);
+  assert.equal(String(ev.by), String(me.id));
+  assert.equal(ev.answers[String(me.id)], 'y', 'adding is agreeing');
+  assert.equal(ev.answers[String(gali.id)], undefined);
+  // the moment itself is 19:00 Israel time on that day
+  const local = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(ev.startsAt));
+  assert.equal(local, '19:00');
+  // and everyone invited heard about it
+  const { rows } = await db.pool.query(`SELECT user_id FROM outbox WHERE kind = 'meeting_invite' AND (payload->>'meetingId')::bigint = $1 ORDER BY user_id`, [id]);
+  assert.deepEqual(rows.map((x) => Number(x.user_id)), [Number(gali.id), Number(ron.id)].sort((a, b) => a - b));
+});
+
+test('a participant adds options until the table is full; the fifth waits for the initiator, who approves it in place of another', async () => {
+  const r = await actAs(me, 'startMeeting', { title: 'ארבע', participantIds: [gali.id, ron.id], options: [{ day: 1, time: '10:00' }] });
+  const id = Number(r.data.meeting.id);
+  for (const day of [2, 3, 4]) {
+    const a = await actAs(gali, 'addOption', { meetingId: id, day, time: '10:00' });
+    assert.equal(a.ok, true, JSON.stringify(a.error));
+    assert.equal(a.data.pending, false);
+  }
+  const fifth = await actAs(gali, 'addOption', { meetingId: id, day: 5, part: 'noon' });
+  assert.equal(fifth.ok, true);
+  assert.equal(fifth.data.pending, true);
+  let page = await tx((c) => dash.load(c, me.id));
+  let m = page.data.meetings.find((x) => Number(x.id) === id);
+  assert.equal(m.options.filter((o) => !o.pending).length, 4);
+  const pend = m.options.find((o) => o.pending);
+  assert.equal(String(pend.by), String(gali.id));
+  // the initiator's own fifth is a wall, not a pending row
+  const wall = await actAs(me, 'addOption', { meetingId: id, day: 6, time: '10:00' });
+  assert.equal(wall.ok, false);
+  assert.equal(wall.error.reason, 'options_full');
+  // gali cannot approve her own; me must name what it replaces
+  assert.equal((await actAs(gali, 'approveOption', { meetingId: id, optionId: pend.id })).ok, false);
+  assert.equal((await actAs(me, 'approveOption', { meetingId: id, optionId: pend.id })).error.reason, 'replace_required');
+  const out = m.options.find((o) => !o.pending && o.day === 1);
+  const ok = await actAs(me, 'approveOption', { meetingId: id, optionId: pend.id, replaceOptionId: out.id });
+  assert.equal(ok.ok, true, JSON.stringify(ok.error));
+  page = await tx((c) => dash.load(c, ron.id));
+  m = page.data.meetings.find((x) => Number(x.id) === id);
+  assert.equal(m.options.length, 4);
+  assert.equal(m.options.some((o) => o.id === out.id), false);
+  assert.equal(m.options.find((o) => o.id === pend.id).pending, false);
+  assert.equal(m.options.find((o) => o.id === pend.id).part, 'noon', 'the daypart survived the round trip');
+  // ron hears the approved fifth as a proposal, like any other option
+  const { rows } = await db.pool.query(`SELECT kind FROM outbox WHERE user_id = $1 AND (payload->>'meetingId')::bigint = $2 AND (payload->>'optionId')::bigint = $3`, [ron.id, id, pend.id]);
+  assert.deepEqual(rows.map((x) => x.kind), ['meeting_slot_proposed']);
+});
+
+test('answers land on one option each, and the first unanimous option confirms the meeting', async () => {
+  const r = await actAs(gali, 'startMeeting', { title: 'קפה', participantIds: [me.id, ron.id], options: [{ day: 1, part: 'morning' }, { day: 2, part: 'evening' }] });
+  const id = Number(r.data.meeting.id);
+  let m = (await tx((c) => dash.load(c, me.id))).data.meetings.find((x) => Number(x.id) === id);
+  const [a, b] = m.options;
+  assert.equal((await actAs(me, 'answerOption', { meetingId: id, optionId: a.id, answer: 'n' })).ok, true);
+  assert.equal((await actAs(me, 'answerOption', { meetingId: id, optionId: b.id, answer: 'y' })).data.meetingStatus, 'negotiating');
+  const done = await actAs(ron, 'answerOption', { meetingId: id, optionId: b.id, answer: 'y' });
+  assert.equal(done.data.meetingStatus, 'confirmed');
+  m = (await tx((c) => dash.load(c, me.id))).data.meetings.find((x) => Number(x.id) === id);
+  assert.equal(m.status, 'confirmed');
+  assert.equal(new Date(m.confirmedStartAt).getTime(), new Date(b.startsAt).getTime(), 'settled on the option that was unanimous');
+  const { rows } = await db.pool.query(`SELECT user_id FROM outbox WHERE kind = 'meeting_confirmed' AND (payload->>'meetingId')::bigint = $1 ORDER BY user_id`, [id]);
+  assert.equal(rows.length >= 2, true, 'the others were told it is confirmed');
+});
+
+test('the initiator swaps an option; a participant cannot; a rejected fifth tells only its proposer', async () => {
+  const r = await actAs(me, 'startMeeting', { title: 'החלפה', participantIds: [gali.id], options: [{ day: 1, time: '09:00' }, { day: 2, time: '09:00' }, { day: 3, time: '09:00' }, { day: 4, time: '09:00' }] });
+  const id = Number(r.data.meeting.id);
+  let m = (await tx((c) => dash.load(c, me.id))).data.meetings.find((x) => Number(x.id) === id);
+  const victim = m.options.find((o) => o.day === 2);
+  assert.equal((await actAs(gali, 'swapOption', { meetingId: id, replaceOptionId: victim.id, day: 7, time: '09:00' })).ok, false);
+  const sw = await actAs(me, 'swapOption', { meetingId: id, replaceOptionId: victim.id, day: 7, time: '09:00' });
+  assert.equal(sw.ok, true, JSON.stringify(sw.error));
+  m = (await tx((c) => dash.load(c, me.id))).data.meetings.find((x) => Number(x.id) === id);
+  assert.equal(m.options.length, 4);
+  assert.equal(m.options.some((o) => o.day === 2), false);
+  assert.equal(m.options.some((o) => o.day === 7), true);
+  const fifth = await actAs(gali, 'addOption', { meetingId: id, day: 8, time: '09:00' });
+  assert.equal(fifth.data.pending, true);
+  const no = await actAs(me, 'rejectOption', { meetingId: id, optionId: fifth.data.option.id });
+  assert.equal(no.ok, true);
+  const { rows } = await db.pool.query(`SELECT user_id FROM outbox WHERE kind = 'meeting_option_rejected' AND (payload->>'meetingId')::bigint = $1`, [id]);
+  assert.deepEqual(rows.map((x) => Number(x.user_id)), [Number(gali.id)]);
+});
+
+test('a pick the page could not have made is refused, not stored', () => {
+  assert.equal(optionMoment.momentFor('Asia/Jerusalem', { day: -1, time: '10:00' }).ok, false);
+  assert.equal(optionMoment.momentFor('Asia/Jerusalem', { day: 1, time: '25:00' }).ok, false);
+  assert.equal(optionMoment.momentFor('Asia/Jerusalem', { day: 1, part: 'dawn' }).ok, false);
+  const ok = optionMoment.momentFor('Asia/Jerusalem', { day: 0, allDay: true }, new Date('2026-09-05T10:00:00Z'));
+  assert.equal(ok.ok, true);
+  assert.match(ok.data.slotText, /כל היום/);
+  assert.equal(ok.data.startsAt, '2026-09-05T09:00:00+03:00');
+});
+
 test('a coordination you left leaves the active list and lands in the archive', async () => {
   const id = await coordination(gali, [me, ron], 'ארוחה');
   assert.equal((await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־19:00', tomorrowAt('19')))).ok, true);

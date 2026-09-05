@@ -497,7 +497,13 @@ no JS — but structured differently:
   unknown group falls off the page, and the suite checks the two agree. The
   old outbox and boost sections are blocks inside "מה מתוכנן להישלח" and
   "הגדרות מערכת"; the reaction vocabulary (`reaction_emoji`) is edited there
-  too, one box per state via `POST /reactions` — never as a JSON flag row. A section form may send `back=/#<id>`; `safeBack` accepts
+  too, one box per state via `POST /reactions` — never as a JSON flag row.
+- **The personal dashboard (`docs/design/user-dashboard.html`, served as-is)
+  creates coordinations and adds, answers, approves and swaps candidate times
+  through `/me/act` actions that call the SAME domain functions as the chat
+  tools** (`user-dashboard-write.js` → `meeting-options.js`). Picks arrive as
+  `{day, part | time}` in the person's own terms and become an instant in
+  their zone in `meeting-option-moment.js`; never convert in the browser. A section form may send `back=/#<id>`; `safeBack` accepts
   only ids the page renders.
 - **Sections are a named array, not positional args.** `const SECTIONS = [{ id,
   title, hint, render }]`, rendered in order by the `GET /` handler. Adding one

@@ -303,8 +303,17 @@ async function afterOptionDecision(client, actor, meetingId, res, { approved } =
   return res;
 }
 
+// After meetings.startMeeting succeeded: every invited person hears about it.
+async function afterStart(client, actor, res, participantIds, title) {
+  if (!res.ok) return res;
+  await fanout(client, participantIds, 'meeting_invite', {
+    meetingId: Number(res.data.meeting.id), title: title || res.data.meeting.title || 'meeting', byName: actorName(actor),
+  }, { key: `minvite:${res.data.meeting.id}` });
+  return res;
+}
+
 module.exports = {
-  afterOptionAdded, afterOptionDecision,
+  afterStart, afterOptionAdded, afterOptionDecision,
   afterSlotResponse, afterOptOut, afterRejoin,
   actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept,
   meetingCalendarFanout, calendarRoleFor, cancelCalendarCleanup, calendarHintFor,

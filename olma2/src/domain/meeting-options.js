@@ -32,7 +32,7 @@ async function participant(client, meetingId, userId) {
 // initiator, each with its answers as { userId: 'y' | 'n' }.
 async function list(client, meetingId) {
   const { rows } = await client.query(
-    `SELECT o.id, o.slot_text, o.starts_at, o.all_day, o.added_by, o.status, o.created_at,
+    `SELECT o.id, o.slot_text, o.starts_at, o.all_day, o.daypart, o.added_by, o.status, o.created_at,
             coalesce(json_object_agg(a.user_id, a.answer) FILTER (WHERE a.user_id IS NOT NULL), '{}'::json) AS answers
        FROM meeting_options o
        LEFT JOIN meeting_option_answers a ON a.option_id = o.id
@@ -40,7 +40,7 @@ async function list(client, meetingId) {
       GROUP BY o.id
       ORDER BY o.status = 'active' DESC, o.id DESC`, [meetingId]);
   return rows.map((o) => ({
-    id: Number(o.id), slotText: o.slot_text, startsAt: o.starts_at, allDay: o.all_day,
+    id: Number(o.id), slotText: o.slot_text, startsAt: o.starts_at, allDay: o.all_day, daypart: o.daypart || null,
     addedBy: o.added_by === null ? null : Number(o.added_by), status: o.status,
     createdAt: o.created_at, answers: o.answers || {},
   }));
@@ -98,7 +98,7 @@ async function validSlot(client, userId, label, slotText, startsAt) {
 
 // Add a candidate. Returns { option, pending } — `pending` true when it went
 // to the initiator for approval instead of onto the table.
-async function add(client, userId, meetingId, slotText, startsAt, { allDay = false, label = 'slot_description' } = {}) {
+async function add(client, userId, meetingId, slotText, startsAt, { allDay = false, daypart = null, label = 'slot_description' } = {}) {
   const p = await participant(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
   if (p.meeting_status !== 'negotiating') return err('invalid', 'meeting is not negotiating');
@@ -124,9 +124,9 @@ async function add(client, userId, meetingId, slotText, startsAt, { allDay = fal
     status = 'pending';
   }
   const { rows } = await client.query(
-    `INSERT INTO meeting_options (meeting_id, slot_text, starts_at, all_day, added_by, status)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-    [meetingId, slotText.trim(), startsAt, Boolean(allDay), userId, status]);
+    `INSERT INTO meeting_options (meeting_id, slot_text, starts_at, all_day, daypart, added_by, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+    [meetingId, slotText.trim(), startsAt, Boolean(allDay), daypart || null, userId, status]);
   const optionId = Number(rows[0].id);
   // Adding is agreeing — recorded even on a pending one, so that approval
   // does not have to ask the proposer again.
@@ -242,7 +242,7 @@ async function reject(client, userId, meetingId, optionId) {
 }
 
 // Initiator only: take one option off the table and put a new one on.
-async function swap(client, userId, meetingId, replaceOptionId, slotText, startsAt, { allDay = false } = {}) {
+async function swap(client, userId, meetingId, replaceOptionId, slotText, startsAt, { allDay = false, daypart = null } = {}) {
   const p = await participant(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
   if (Number(p.initiator_id) !== Number(userId)) return err('forbidden', 'only the initiator swaps options');
@@ -253,7 +253,7 @@ async function swap(client, userId, meetingId, replaceOptionId, slotText, starts
     `UPDATE meeting_options SET status = 'replaced', decided_at = now()
       WHERE id = $1 AND meeting_id = $2 AND status = 'active' RETURNING slot_text`, [replaceOptionId, meetingId]);
   if (rep.rowCount === 0) return err('not_found', 'the option to replace is not on the table');
-  const added = await add(client, userId, meetingId, slotText, startsAt, { allDay });
+  const added = await add(client, userId, meetingId, slotText, startsAt, { allDay, daypart });
   if (!added.ok) return added;
   await audit.record(client, userId, 'meeting.option_swapped',
     { meetingId: Number(meetingId), out: Number(replaceOptionId), in: added.data.option.id });

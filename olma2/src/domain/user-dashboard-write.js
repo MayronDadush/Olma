@@ -35,6 +35,7 @@ const contacts = require('./contacts');
 const invites = require('../intake/invites');
 const meetings = require('./meetings');
 const meetingFanout = require('./meeting-fanout');
+const optionMoment = require('./meeting-option-moment');
 const calendar = require('./calendar');
 const googleContacts = require('./google-contacts');
 const mail = require('./mail');
@@ -306,6 +307,78 @@ const ACTIONS = {
     if (!res.ok) return res;
     const me = await users.getById(client, userId);
     return meetingFanout.afterRejoin(client, me, p.meetingId, res);
+  },
+
+  // ---- meetings: several candidate times ----------------------------------
+  // The same domain functions the chat tools call (domain/meeting-options.js),
+  // so a time added here and a time proposed in conversation are the same
+  // row and reach the same people. Picks arrive in the page's terms — a day
+  // offset from THIS person's today and a clock time or daypart — and are
+  // turned into an instant in their own zone (meeting-option-moment.js).
+  async startMeeting(client, userId, p) {
+    const ids = [...new Set((Array.isArray(p.participantIds) ? p.participantIds : []).map(Number).filter(Number.isFinite))];
+    const picks = Array.isArray(p.options) ? p.options.slice(0, meetings.options.MAX_ACTIVE) : [];
+    const me = await users.getById(client, userId);
+    const started = await meetings.startMeeting(client, userId, typeof p.title === 'string' ? p.title : '', ids);
+    if (!started.ok) return started;
+    const meetingId = Number(started.data.meeting.id);
+    const added = [];
+    for (const pick of picks) {
+      const mom = optionMoment.momentFor(me.timezone, { ...pick, allDay: p.allDay === true });
+      if (!mom.ok) return mom;
+      const r = await meetings.options.add(client, userId, meetingId, mom.data.slotText, mom.data.startsAt,
+        { allDay: mom.data.allDay, daypart: mom.data.daypart });
+      if (!r.ok) return r;
+      added.push(r.data.option);
+    }
+    await meetingFanout.afterStart(client, me, started, ids, started.data.meeting.title);
+    return ok({ meeting: started.data.meeting, options: added });
+  },
+
+  async addOption(client, userId, p) {
+    const me = await users.getById(client, userId);
+    const mom = optionMoment.momentFor(me.timezone, { day: p.day, part: p.part, time: p.time, allDay: p.allDay === true });
+    if (!mom.ok) return mom;
+    const res = await meetings.options.add(client, userId, p.meetingId, mom.data.slotText, mom.data.startsAt,
+      { allDay: mom.data.allDay, daypart: mom.data.daypart });
+    if (!res.ok) return res;
+    return meetingFanout.afterOptionAdded(client, me, p.meetingId, res);
+  },
+
+  async answerOption(client, userId, p) {
+    const res = await meetings.options.answer(client, userId, p.meetingId, p.optionId, p.answer === 'y' ? 'y' : 'n');
+    if (!res.ok) return res;
+    const me = await users.getById(client, userId);
+    // The confirm fan-out is the one respondToSlot's yes uses; a plain no on
+    // one of several options is not a decline of the meeting and tells nobody.
+    if (res.data.meetingStatus === 'confirmed') {
+      return meetingFanout.afterSlotResponse(client, me, p.meetingId, res, { accept: true });
+    }
+    return res;
+  },
+
+  async approveOption(client, userId, p) {
+    const res = await meetings.options.approve(client, userId, p.meetingId, p.optionId, p.replaceOptionId || null);
+    if (!res.ok) return res;
+    const me = await users.getById(client, userId);
+    return meetingFanout.afterOptionDecision(client, me, p.meetingId, res, { approved: true });
+  },
+
+  async rejectOption(client, userId, p) {
+    const res = await meetings.options.reject(client, userId, p.meetingId, p.optionId);
+    if (!res.ok) return res;
+    const me = await users.getById(client, userId);
+    return meetingFanout.afterOptionDecision(client, me, p.meetingId, res, { approved: false });
+  },
+
+  async swapOption(client, userId, p) {
+    const me = await users.getById(client, userId);
+    const mom = optionMoment.momentFor(me.timezone, { day: p.day, part: p.part, time: p.time, allDay: p.allDay === true });
+    if (!mom.ok) return mom;
+    const res = await meetings.options.swap(client, userId, p.meetingId, p.replaceOptionId, mom.data.slotText, mom.data.startsAt,
+      { allDay: mom.data.allDay, daypart: mom.data.daypart });
+    if (!res.ok) return res;
+    return meetingFanout.afterOptionAdded(client, me, p.meetingId, res);
   },
 
   // ---- accounts ------------------------------------------------------------

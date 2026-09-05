@@ -2762,6 +2762,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     inviteContact:"inviteContact",
     respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting",
     rejoinMeeting:"rejoinMeeting",
+    startMeeting:"startMeeting", addOption:"addOption", answerOption:"answerOption",
+    approveOption:"approveOption", rejectOption:"rejectOption", swapOption:"swapOption",
     startGoogle:"startGoogle", stopGoogle:"stopGoogle",
     stopGoogleService:"stopGoogleService"
   };
@@ -5942,7 +5944,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#mtList").innerHTML = live.length
       ? live.map(mtCardHTML).join("")
       : '<div class="group"><div class="empty">' +
-        esc(t(LIVE ? "mt.emptyLive" : "mt.empty")) + "</div></div>";
+        esc(t("mt.empty")) + "</div></div>";
     $("#mtCount").textContent = live.length ? pl("mt", live.length) : "";
     /* Settled first, then the ones you left — the same ordering rule the task
        archive uses (most recently out of the list, first). Capped at the same
@@ -6170,7 +6172,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
        time the other people are never shown is worse than not offering it. */
     var full = mtLive(m).length >= MEET_CAP;
     var spent = !mtMine(m) && mtPendingMine(m);
-    $("#mtAddWrap").hidden = LIVE || !!m.settled || spent;
+    $("#mtAddWrap").hidden = !!m.settled || spent;
     $("#mtAddOptLbl").textContent = t(mtMine(m) ? "mt.addOpt" : "mt.proposeOpt");
     $("#mtAddNote").textContent = m.settled ? ""
       : spent ? t("mt.proposeSpent")
@@ -6227,20 +6229,32 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       }
       mtSetAns(m, 0, o.id, want);
       API.call("setAvailability", {meeting_id:m.id, option_id:o.id, answer:want});
-      API.respondMeeting(m, want === "y");
+      /* One answer to ONE option — the server confirms the meeting itself the
+         moment an option is unanimous, and the reload shows it. */
+      API.send("answerOption", {meetingId:m.id, optionId:o.id, answer:want}, function(){ API.reload(); });
       mtSettling = null;
       renderMeet(); renderMeets();
       return;
     }
     if(e.target.closest("[data-approve]")){
+      if(LIVE && mtLive(m).length >= MEET_CAP){
+        /* Four already on the table: approving means naming the one it
+           replaces, and the swap sheet is exactly that question. */
+        swapApprove = o; swapNew = o;
+        closeSheets();
+        setTimeout(function(){ renderSwap(); showSheet($("#mtSwapSheet")); }, 260);
+        return;
+      }
       delete o.pending; delete o.by;
       API.call("startMeeting", {meeting_id:m.id, approve_option:o.id});
+      API.send("approveOption", {meetingId:m.id, optionId:o.id}, function(){ API.reload(); });
       renderMeet(); renderMeets();
       toast(t("toast.mtApproved", {when:mtOptLabel(m, o)}));
       return;
     }
     if(e.target.closest("[data-reject]")){
       m.opts = m.opts.filter(function(x){ return x !== o; });
+      API.send("rejectOption", {meetingId:m.id, optionId:o.id}, function(){ API.reload(); });
       renderMeet(); renderMeets();
       toast(t("toast.mtRejected"));
       return;
@@ -6405,7 +6419,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(m.allDay){ /* nothing more to say about a whole day */ }
     else if(optExact) o.time = $("#mtOptTime").value;
     else o.part = optPart;
-    if(!mtMine(m)){ o.pending = true; o.by = 0; }
+    /* On a real account the server decides: a participant's option goes on the
+       table while there is room, and waits for the initiator only as a fifth. */
+    if(!LIVE && !mtMine(m)){ o.pending = true; o.by = 0; }
+    if(LIVE && !mtMine(m) && mtLive(m).length >= MEET_CAP){ o.pending = true; o.by = 0; }
     /* At the cap the question is asked on the way OUT, once there is something
        to swap in. Asking first would mean deleting an option in exchange for a
        replacement that never arrived. */
@@ -6421,6 +6438,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var m = mtOpen;
     m.opts.push(o);
     API.call("startMeeting", {meeting_id:m.id, add_option:{day:o.day, part:o.part || null, time:o.time || null}});
+    API.send("addOption", {meetingId:m.id, day:o.day, part:o.part || null, time:o.time || null, allDay:!!m.allDay},
+      function(){ API.reload(); });
     closeSheets();
     setTimeout(function(){ showSheet($("#mtSheet")); renderMeet(); renderMeets(); }, 260);
     /* the swap path says the whole sentence itself — one action, one toast */
@@ -6429,6 +6448,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
   /* ── at the cap: swap, never a dead button ── */
   var swapNew = null;
+  /* Set when the swap sheet is asking "which one does this APPROVED fifth
+     replace" rather than "which one does this new option replace". */
+  var swapApprove = null;
   function renderSwap(){
     var m = mtOpen;
     if(!m || !swapNew) return;
@@ -6449,6 +6471,24 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     m.opts = m.opts.filter(function(o){ return o.id !== id; });
     mtActive(m).forEach(function(pid){ if(m.ans[pid]) delete m.ans[pid][id]; });
     var added = swapNew; swapNew = null;
+    if(swapApprove){
+      var ap = swapApprove; swapApprove = null;
+      delete ap.pending; delete ap.by;
+      API.send("approveOption", {meetingId:m.id, optionId:ap.id, replaceOptionId:id}, function(){ API.reload(); });
+      closeSheets();
+      setTimeout(function(){ showSheet($("#mtSheet")); renderMeet(); renderMeets(); }, 260);
+      toast(t("toast.mtSwapped", {out:mtOptLabel(m, gone), in:mtOptLabel(m, ap)}));
+      return;
+    }
+    if(LIVE){
+      API.send("swapOption", {meetingId:m.id, replaceOptionId:id, day:added.day, part:added.part || null,
+        time:added.time || null, allDay:!!m.allDay}, function(){ API.reload(); });
+      m.opts.push(added);
+      closeSheets();
+      setTimeout(function(){ showSheet($("#mtSheet")); renderMeet(); renderMeets(); }, 260);
+      toast(t("toast.mtSwapped", {out:mtOptLabel(m, gone), in:mtOptLabel(m, added)}));
+      return;
+    }
     mtAddOption(added, true);
     toast(t("toast.mtSwapped", {out:mtOptLabel(m, gone), in:mtOptLabel(m, added)}));
   });
@@ -6696,11 +6736,22 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       else o.part = mtPerDay ? (mtDayPart[off] || mtNewPart) : mtNewPart;
       return o;
     });
+    var picks = m.opts.map(function(o){ return {day:o.day, part:o.part || null, time:o.time || null}; });
+    if(LIVE){
+      /* The server numbers the meeting and its options; the page waits for the
+         real rows rather than showing a card it would then have to rename. */
+      API.send("startMeeting", {title:nm, participantIds:m.who, allDay:m.allDay, options:picks}, function(data){
+        API.reload();
+        if(data && data.meeting) setTimeout(function(){ openMeet(Number(data.meeting.id)); }, 700);
+      });
+      closeSheets();
+      toast(t("toast.mtStarted", {list:nameList(m.who.map(mtName))}));
+      return;
+    }
     MEETS.unshift(m);
     /* the stored title, not the raw field — an unnamed coordination has a real
        name in the row, and the server should get the same one the card shows */
-    API.call("startMeeting", {topic:L(m.t), participant_ids:m.who, all_day:m.allDay,
-      options:m.opts.map(function(o){ return {day:o.day, part:o.part || null, time:o.time || null}; })});
+    API.call("startMeeting", {topic:L(m.t), participant_ids:m.who, all_day:m.allDay, options:picks});
     closeSheets();
     renderMeets();
     /* straight into it: the person who started this is the first to answer */
@@ -6719,7 +6770,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
        times, offered at once — and the system has no call for it. Opening one
        still happens by asking Olma, which does exist and works. Hiding the
        button and saying where it went is the honest version of "not yet". */
-    $("#mtNew").hidden = mode === "cal" || LIVE;
+    $("#mtNew").hidden = mode === "cal";
     $("#calSub").textContent = t(mode === "cal" ? "cal.p" : "cal.pMeet");
     if(mode === "meet") renderMeets();
   }
@@ -7617,21 +7668,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   /* A real coordination, as this screen draws one.
 
-     The system negotiates ONE slot at a time: somebody proposes it, everybody
-     answers, and the meeting confirms itself when they all say yes. So a live
-     meeting has exactly one option — which is a shape this screen already
-     knows, because it is the "the day and the hour are already decided and the
-     only question is whether you can be there" case it was designed around.
-
-     What it does NOT have here is the rest: several candidate times, adding
-     one, and a settle button. Those are the multi-option model, and it does
-     not exist server-side yet — so those controls are hidden on a real
-     account rather than shown and quietly doing nothing. */
+     Since 2026-09-05 the server negotiates SEVERAL candidate times per meeting
+     (up to four on the table; a fifth from a non-initiator waits for the
+     initiator), each answered on its own — the same model this screen was
+     designed around. `options` arrive in the page's own terms (a day offset
+     from this person's today, a clock time or a daypart, everyone's answers),
+     so they map straight onto `opts` and `ans`. A confirmed meeting is settled
+     on the option whose moment matches; one confirmed before slots carried a
+     start time is settled "in words" (slotText). */
   function liveMeet(m){
     var settledOpt = m.status === "confirmed";
-    var day = settledOpt ? m.confirmedDay : m.proposedDay;
-    var time = settledOpt ? m.confirmedTime : m.proposedTime;
-    var opts = [], ans = {};
     var who = [], left = [];
     (m.participants || []).forEach(function(p){
       var pid = String(p.id) === String(MY_ID) ? 0 : p.id;
@@ -7643,30 +7689,37 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       }
       if(p.left) left.push(pid);
     });
-    if(day !== null && day !== undefined){
-      opts.push({id:m.id * 1000 + 1, day:day, time:time || ""});
-      (m.participants || []).forEach(function(p){
-        var pid = String(p.id) === String(MY_ID) ? 0 : p.id;
-        if(p.answer) (ans[pid] = ans[pid] || {})[m.id * 1000 + 1] = p.answer;
+    var meId = function(id){ return String(id) === String(MY_ID) ? 0 : Number(id); };
+    var opts = [], ans = {}, allDay = false;
+    (m.options || []).forEach(function(o){
+      if(o.day === null || o.day === undefined) return;
+      var opt = {id:o.id, day:o.day, startsAt:o.startsAt, slot:o.slot};
+      if(o.allDay) allDay = true;
+      else if(o.time) opt.time = o.time;
+      else opt.part = o.part || "evening";
+      if(o.pending){ opt.pending = true; opt.by = o.by === null ? null : meId(o.by); }
+      opts.push(opt);
+      Object.keys(o.answers || {}).forEach(function(uid){
+        var pid = meId(uid);
+        (ans[pid] = ans[pid] || {})[o.id] = o.answers[uid];
       });
+    });
+    var settled = null;
+    if(settledOpt){
+      var hit = opts.filter(function(o){ return m.confirmedStartAt && o.startsAt &&
+        new Date(o.startsAt).getTime() === new Date(m.confirmedStartAt).getTime(); })[0];
+      settled = hit ? hit.id : "text";
     }
     return {
       id:m.id,
       t:m.title || "",
       by:m.mine ? 0 : m.initiatorId,
-      who:who, allDay:false, opts:opts, ans:ans, left:left,
-      /* Settled is settled even when the slot carries no start time (rows from
-         before slots had one): the page must never draw a confirmed meeting as
-         a negotiation with nothing proposed. `slotText` is the human words of
-         the slot for exactly those rows. */
-      settled:settledOpt ? (opts.length ? opts[0].id : "text") : null,
+      who:who, allDay:allDay, opts:opts, ans:ans, left:left,
+      settled:settled,
       slotText:(settledOpt ? m.confirmedSlot : m.slot) || "",
       /* Whether the settled slot sits on THIS person's own calendar is not
          something we record per participant, so it is not claimed. */
       inCal:false,
-      /* The exact moment their yes has to be pinned to. Sent straight back to
-         the server so an agreement can never land on a slot that changed while
-         the tab was open. */
       startsAt:settledOpt ? m.confirmedStartAt : m.proposedStartAt
     };
   }
@@ -7763,11 +7816,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
        game that does not exist. */
     EVENTS = {};
     PEOPLE = {};
+    var openId = mtOpen ? mtOpen.id : null;
     MEETS = (d.meetings || []).map(liveMeet);
     MTLEFT = (d.meetingsLeft || []).map(function(m){ return {id:m.id, t:m.title || "", settled:!!m.settled, slot:m.slot || ""}; });
-    mtOpen = null;
+    mtOpen = openId ? (mtById(openId) || null) : null;
     LIVE = true;
     renderAll();
+    if(mtOpen) renderMeet();
     loadDays();
   }
   /* On the seam rather than inside the closure, for the same reason the seam
