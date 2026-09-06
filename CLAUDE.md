@@ -410,8 +410,8 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **`allma.world` serves an ALLOWLIST, not the admin dashboard.** Caddy passes
   a named set of routes to `:8788` — `/pick/<48 hex>`, `/d/<64 hex>`, `/me`,
   `/me/data`, `/me/events`, `/me/act`, `/me/out`, `/oauth/google/callback`,
-  `/health`, `/ready`, and the two stranger-readable pages `/` and `/privacy`
-  — plus `/voice-bridge*` to `:8791`. Everything else 404s
+  `/health`, `/ready`, and the three stranger-readable pages `/`, `/privacy`
+  and `/terms` — plus `/voice-bridge*` to `:8791`. Everything else 404s
   in Caddy and never reaches the app. **Read the Caddyfile for the current
   set** rather than this line: it said "exactly four" for a day and was wrong
   the moment the personal dashboard shipped. What does not change is the
@@ -419,7 +419,9 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   Auth check, and **adding a public route to the app does not make it reachable
   — the Caddyfile has to say so too.** That cost the user dashboard its launch:
   the code deployed green, `/me` answered on `127.0.0.1:8788`, and every link
-  sent to a person 404'd in Caddy (2026-09-04).
+  sent to a person 404'd in Caddy (2026-09-04) — and it cost `/terms` the same
+  way on 2026-09-06: PR #239 deployed green and the page 404'd until the
+  Caddyfile learned about it.
 - **The admin dashboard lives ONLY on `olmachat.duckdns.org`.** It is not
   exposed on `allma.world` at all, not even behind Basic Auth.
 - **Match `/pick/` on the exact token shape, never `/pick/*`.** A prefix match
