@@ -50,6 +50,12 @@ module.exports = [
     linterOptions: { reportUnusedDisableDirectives: 'error' },
   },
   {
+    // The gateway plugin is loaded by OpenClaw's ESM loader, so it is the one
+    // module in the tree written as ESM (gateway-plugin/olma-turn/index.js).
+    files: ['gateway-plugin/**/*.js'],
+    languageOptions: { sourceType: 'module' },
+  },
+  {
     // Generated and vendored output is not ours to lint.
     ignores: ['node_modules/**', 'graphify-out/**', 'assets/**', 'docs/**'],
   },

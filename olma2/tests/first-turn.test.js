@@ -186,27 +186,32 @@ test('the opening copy is exactly what the owner wrote', () => {
 test('the doctrine no longer over-generalises "no welcome moment"', () => {
   // The line that caused this: scoped to the pending-intake case it is right,
   // unscoped it told the agent never to introduce itself to anyone, ever.
-  const fs = require('node:fs');
-  const path = require('node:path');
-  const doctrine = fs.readFileSync(
-    path.join(__dirname, '..', 'src', 'intake', 'agents-template.md'), 'utf8');
+  // Rendered, not raw: since Phase B the template holds two turn doctrines
+  // and a person's file carries exactly one (provision.renderAgentsMd).
+  const { renderAgentsMd } = require('../src/intake/provision');
+  const tok = 'olma_tok_' + 'a'.repeat(32);
+  const doctrine = renderAgentsMd(tok);
   assert.doesNotMatch(doctrine, /There is no separate "welcome" moment/,
     'the unscoped version is what produced "היי" answered with "היי"');
   assert.match(doctrine, /With a section above there is no separate "welcome"/,
     'scoped to the case it was actually written for');
   assert.match(doctrine, /With none, `turn_start` says how to open/,
     'and points at where the other branch is answered');
+  assert.match(renderAgentsMd(tok, { turnContext: true }), /With none, the Turn context says how to open/,
+    'the context-opened variant points at its own opener');
 });
 
 test('the doctrine still fits the gateway budget after this change', () => {
   // tests/intake.test.js owns this guard; asserted here too because THIS change
   // is the one that nearly broke it, and a regression should name its cause.
-  const fs = require('node:fs');
-  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
-  const rendered = tpl.replaceAll('{{IDENTITY_TOKEN}}', 'olma_tok_' + 'a'.repeat(32));
-  assert.ok(rendered.length <= 39250,
-    `doctrine is ${rendered.length} chars; the onboarding instruction belongs in the `
-    + 'turn_start result precisely so it does not land here');
+  const { renderAgentsMd } = require('../src/intake/provision');
+  const tok = 'olma_tok_' + 'a'.repeat(32);
+  for (const turnContext of [false, true]) {
+    const rendered = renderAgentsMd(tok, { turnContext });
+    assert.ok(rendered.length <= 39250,
+      `doctrine (turnContext=${turnContext}) is ${rendered.length} chars; the onboarding instruction belongs in the `
+      + 'turn_start result precisely so it does not land here');
+  }
 });
 
 // The beat after the opening (2026-09-04). The cold start read well right up

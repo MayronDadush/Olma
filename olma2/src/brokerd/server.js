@@ -17,6 +17,8 @@ const { FloodCounter } = require('./flood');
 const { refreshUserCard, CARD_TOOLS } = require('../intake/user-card');
 const turnDomain = require('../domain/turn');
 const reactions = require('../domain/reactions');
+const selfInitiated = require('../domain/self-initiated');
+const { captureDisplayName } = require('../adapters/mcp/tools/_shared');
 
 // One of these per turn. The gateway spawns a fresh MCP shim for every agent
 // turn and the shim holds ONE socket to brokerd for its whole life, so a
@@ -56,12 +58,18 @@ const PENDING_TTL_MS = 10 * 60_000;
 function createBrokerServer({ pool, flood, placeMark, now }) {
   flood = flood || new FloodCounter();
   const clock = typeof now === 'function' ? now : Date.now;
-  const pending = new Map(); // userId → { messageId, kind, lastInboundAt, counted, quota, firstTurn, openedAt }
+  const pending = new Map(); // userId → { messageId, kind, senderName, lastInboundAt, counted, quota, firstTurn, openedAt, contextSent }
   function takePending(userId) {
     const p = pending.get(userId);
     if (!p) return null;
     pending.delete(userId);
     return clock() - p.openedAt <= PENDING_TTL_MS ? p : null;
+  }
+  // Read without adopting: `turn_context` needs the open but must leave it
+  // for the shim connection, which is what puts the 👍 on the right message.
+  function peekPending(userId) {
+    const p = pending.get(userId);
+    return p && clock() - p.openedAt <= PENDING_TTL_MS ? p : null;
   }
   // Injectable for the same reason `send` is everywhere else here: the test
   // that matters for this feature is the one that watches a real turn place a
@@ -86,8 +94,13 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
       const state = kind === 'voice' ? 'listening' : 'working';
       const entry = {
         messageId, kind, lastInboundAt: clock(), openedAt: clock(),
+        // The WhatsApp display name, kept for `turn_context` below: on the
+        // turn_start path the model relays it as sender_name; here the hook
+        // already saw it, so the person whose prompt opens the turn is named
+        // by the same rule (a guess they still confirm, never an overwrite).
+        senderName: typeof params.senderName === 'string' ? params.senderName.slice(0, 80) : null,
         counted: rec.counted, quota: rec.quota, firstTurn: Boolean(rec.firstTurn),
-        marked: new Set(),
+        marked: new Set(), contextSent: false,
       };
       if (!rec.skipped && messageId) {
         // The 👀 (or 👂) goes on now, from here, while the model is still reading
@@ -101,6 +114,59 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
       out = { ok: true, opened: !rec.skipped, skipped: rec.skipped || null, userId: Number(user.id), counted: rec.counted };
     });
     if (mark) placeMark(mark);
+    return out;
+  }
+
+  // Phase B of the same feature: the gateway plugin (gateway-plugin/olma-turn,
+  // `before_prompt_build`) asks for what turn_start would have RETURNED, and
+  // prepends it to the prompt — so for the people turn_context_phones covers
+  // the model reads its opening instead of calling for it, and a reply with no
+  // tool call at all is still a counted, hinted, marked turn.
+  //
+  // Reads the pending open, never adopts it: the shim connection's first tool
+  // call still does that, which is what keeps every mark on the real message.
+  // With no open on file this answers `context: null` and records why — the
+  // doctrine variant then falls back to calling turn_start, so a hook that
+  // misfired costs a tool call, not a count. Never opens a turn itself: the
+  // prompt build runs for cron lanes and deliveries too, and this cannot tell
+  // a person writing from a job running on their agent; the hook can.
+  async function handleTurnContext(params = {}) {
+    const agentId = String(params.agentId || '').trim();
+    if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
+    const replyTarget = params.replyTarget === true;
+    let out = null;
+    let userId = null;
+    let cardStale = false;
+    await withTx(pool, async (client) => {
+      const { rows } = await client.query(
+        `SELECT id, phone, first_name, locale, paused_at FROM users WHERE agent_id = $1 AND status = 'active'`, [agentId]);
+      const user = rows[0];
+      if (!user) { out = { ok: false, error: 'no active user for agent' }; return; }
+      userId = Number(user.id);
+      if (!await turnDomain.contextEnabledFor(client, user)) { out = { ok: true, enabled: false }; return; }
+      const ourTurn = selfInitiated.isActive(user.id);
+      const pre = peekPending(userId);
+      if (!pre && !ourTurn) {
+        await require('../domain/audit').record(client, user.id, 'turn.context_without_open', {
+          trigger: params.trigger || null, messageProvider: params.messageProvider || null,
+        });
+        out = { ok: true, enabled: true, context: null };
+        return;
+      }
+      if (pre && !user.first_name && pre.senderName) {
+        cardStale = (await captureDisplayName(client, user, pre.senderName)).ok;
+      }
+      const data = await turnDomain.advise(client, user, {
+        counted: ourTurn || !pre ? { data: { blocked: false } } : pre.quota,
+        // Spent on the first prompt build for this message: a rebuilt prompt
+        // (model fallback) is the same message, and must not stamp twice.
+        firstTurn: Boolean(pre && pre.firstTurn && !pre.contextSent),
+        ourTurn, replyTarget, languageNudge: null,
+      });
+      if (pre) pre.contextSent = true;
+      out = { ok: true, enabled: true, context: turnDomain.renderContext(data), directive: data.directive };
+    });
+    if (cardStale && userId) await refreshUserCard(pool, userId);
     return out;
   }
 
@@ -257,6 +323,8 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
       }
       case 'turn_open':
         return handleTurnOpen(msg.params || {});
+      case 'turn_context':
+        return handleTurnContext(msg.params || {});
       default:
         return { ok: false, error: `unknown method ${msg.method}` };
     }

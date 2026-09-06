@@ -98,6 +98,10 @@ rsync -az --delete \
 # two identical. Hooks load at gateway STARTUP; a changed handler takes effect
 # on the next gateway restart, which this deploy deliberately does not do.
 rsync -az --delete -e "$SSH" "$SRC_DIR/gateway-hooks/" "$SERVER:/root/.openclaw/hooks/"
+# The gateway PLUGIN (gateway-plugin/olma-turn) needs no copy of its own: it
+# is link-installed from its place in the tree (`openclaw plugins install
+# --link /opt/olma2/gateway-plugin/olma-turn`), so the rsync above already
+# updated it. Same rule as the hooks: plugin code loads at gateway STARTUP.
 
 # What that snapshot actually CONTAINS, written into the live tree right after
 # the sync. It rides into the archive on the next deploy, which is the only way

@@ -1363,8 +1363,12 @@ test('agent doctrine: AGENTS.md fits the gateway budget, with room for one more 
   // gateway measures. Chars, never bytes — the gateway slices UTF-16, and
   // measuring this Hebrew file with `wc -c` overstates the overflow by 2x,
   // which is how the first attempt at this mis-sized the cut.
-  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
-  const rendered = tpl.replaceAll('{{IDENTITY_TOKEN}}', 'olma_tok_' + 'a'.repeat(32));
+  // Both doctrine variants (the tool-opened turn and the Turn-context-opened
+  // one, provision.renderAgentsMd) are measured; a person's file carries one.
+  const { renderAgentsMd } = require('../src/intake/provision');
+  const tok = 'olma_tok_' + 'a'.repeat(32);
+  const variants = [renderAgentsMd(tok), renderAgentsMd(tok, { turnContext: true })];
+  const rendered = variants.reduce((a, b) => (a.length >= b.length ? a : b));
   const headroom = DEPLOYED_BOOTSTRAP_MAX_CHARS - rendered.length;
   // Over the line the gateway says nothing at all: trimAgentsBootstrapContent
   // keeps a head and a tail and deletes what is between them, so the damage is
@@ -1379,6 +1383,28 @@ test('agent doctrine: AGENTS.md fits the gateway budget, with room for one more 
   assert.ok(headroom >= guard.BOOTSTRAP_WARN_MARGIN,
     `AGENTS.md has only ${headroom} chars of headroom (want >= ${guard.BOOTSTRAP_WARN_MARGIN}). ` +
     'This fails BEFORE anything is lost, which is the whole point — shorten something else in the same change.');
+});
+
+test('agent doctrine: the context-opened variant tells the model to read the block, not call the tool — and to fall back when the block is missing', () => {
+  const { renderAgentsMd } = require('../src/intake/provision');
+  const tok = 'olma_tok_' + 'a'.repeat(32);
+  const tool = renderAgentsMd(tok);
+  const ctx = renderAgentsMd(tok, { turnContext: true });
+  assert.match(tool, /before anything else, call `turn_start` once/);
+  assert.doesNotMatch(tool, /Turn context/);
+  assert.doesNotMatch(ctx, /before anything else, call `turn_start` once/);
+  assert.match(ctx, /Do NOT call\n`turn_start` while that block is there/);
+  assert.match(ctx, /Only when a message has NO\n`Turn context` block, call `turn_start` once/);
+  assert.match(ctx, /read the Turn context,\n {3}then `pause_olma`/);
+  assert.match(ctx, /the Turn context tells you\nwith `offerResume: true`/);
+  for (const v of [tool, ctx]) {
+    assert.ok(!v.includes('{{#turn') && !v.includes('{{/turn'), 'no marker survives rendering');
+    assert.match(v, /Follow its directive exactly:/);
+  }
+  // the block the plugin prepends names itself the way the doctrine does
+  const turnDomain = require('../src/domain/turn');
+  assert.match(turnDomain.CONTEXT_HEADER, /^Turn context \(from the system, not the person/);
+  assert.match(turnDomain.renderContext({ directive: 'proceed', locale: 'he' }), /\nOK \{"directive":"proceed","locale":"he"\}$/);
 });
 
 // The backstop for the outage above: if that file ever appears in a workspace

@@ -47,18 +47,18 @@ test('the identity parameter is described in a few words, because it is repeated
 // The guidance that left the descriptions has to have landed somewhere the
 // model still sees it: on the result, on the turns it applies to.
 test('turn_start explains its optional fields on the result, not in the description', () => {
-  // The registry, plus any per-domain tool files a later split moves the
-  // handlers into (src/adapters/mcp/tools/*.js) — the hints must exist
-  // somewhere the registry assembles from, not in one particular file.
-  const fs = require('node:fs'); const path = require('node:path');
-  const dir = path.join(__dirname, '..', 'src', 'adapters', 'mcp');
-  const files = [path.join(dir, 'registry.js')];
-  const toolsDir = path.join(dir, 'tools');
-  if (fs.existsSync(toolsDir)) for (const f of fs.readdirSync(toolsDir)) if (f.endsWith('.js')) files.push(path.join(toolsDir, f));
-  const src = files.map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+  // The hints are built by domain/turn.turnHints — shared since Phase B by
+  // turn_start's result and by the Turn context the gateway plugin prepends
+  // — so it is the function that is asserted on, not a file.
+  const { turnHints } = require('../src/domain/turn');
+  const all = turnHints({
+    offerResume: true, recentReminders: [{ title: 'x' }], planHeadline: 'y',
+    languageNudge: { theyWriteIn: 'en' }, replyTarget: true, genderForms: 'feminine',
+  }).hints;
   for (const field of ['offerResume', 'recentReminders', 'planHeadline', 'languageNudge', 'replyTarget', 'genderForms']) {
-    assert.match(src, new RegExp(`hints\\.${field} = `), `a hint is built for ${field}`);
+    assert.equal(typeof all[field], 'string', `a hint is built for ${field}`);
   }
+  assert.deepEqual(turnHints({}), {}, 'and nothing is said when nothing applies');
   const turnStart = toolDefinitions().find((d) => d.name === 'turn_start');
   assert.match(turnStart.description, /hints/, 'and the description points at hints');
 });
