@@ -228,68 +228,50 @@ test('a resubmission recomputes: no overlap left → the initiator is told hones
 
 // ---- the page over real HTTP ------------------------------------------------
 
-test('the page is public by token, renders RTL Hebrew, and a submit round-trips', async () => {
+// The page itself is RETIRED (adapters/http/picker.js, PICKER_RETIRED), so the
+// only thing left to prove over HTTP is that the door is shut and shut politely
+// — for a token that is perfectly valid, on both methods, with nothing stored.
+// The rendering, the dead-link pages and the submit path are all still in the
+// file and still covered by the domain tests above; they are what comes back if
+// the flag is ever flipped. What must NOT come back quietly is the door.
+test('the retired page answers every valid link with one honest 410, and stores nothing', async () => {
   const m = await newMeeting(alice, [bob]);
   const link = (await tx((c) => availability.createLink(c, alice.id, m.id))).data;
   const token = tokenOf(link.url);
 
   const page = await fetch(`${base}/pick/${token}`);
-  assert.equal(page.status, 200);
-  assert.equal(page.headers.get('cache-control'), 'no-store');
+  assert.equal(page.status, 410, 'a live token is still refused — the gate is ahead of the lookup');
   const html = await page.text();
   assert.match(html, /dir="rtl"/);
-  assert.match(html, /פוקר/);
-  assert.match(html, /Alice/);
-  assert.match(html, /noindex/);
+  assert.match(html, /נסגר/);
+  // The sentence has to leave them somewhere to go, or it is just a wall.
+  assert.match(html, /עמוד/);
+  assert.doesNotMatch(html, /פוקר/, 'a retired page must not still render the meeting');
 
   const post = await fetch(`${base}/pick/${token}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ options: JSON.stringify([opt()]) }),
   });
-  assert.equal(post.status, 200);
-  assert.match(await post.text(), /נשלח/);
+  assert.equal(post.status, 410);
   const { rows } = await db.pool.query(
-    `SELECT options FROM meeting_availability WHERE meeting_id = $1 AND user_id = $2`, [m.id, alice.id]);
-  assert.equal(rows[0].options.length, 1);
-  assert.match(rows[0].options[0].label, /ערב/);
+    `SELECT 1 FROM meeting_availability WHERE meeting_id = $1`, [m.id]);
+  assert.equal(rows.length, 0, 'a submit to the retired page must not reach the table');
 
-  // Garbage in → a Hebrew 400, nothing stored, nobody messaged.
-  const bad = await fetch(`${base}/pick/${token}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ options: JSON.stringify([opt({ parts: ['x'] })]) }),
-  });
-  assert.equal(bad.status, 400);
+  const unknown = await fetch(`${base}/pick/${'a'.repeat(48)}`);
+  assert.equal(unknown.status, 410, 'and it never tells a stranger whether a token exists');
 });
 
-test('dead links each get their own honest page: unknown, expired, closed', async () => {
-  const unknown = await fetch(`${base}/pick/${'a'.repeat(48)}`);
-  assert.equal(unknown.status, 404);
-
-  const m = await newMeeting(alice, [bob]);
-  const link = (await tx((c) => availability.createLink(c, alice.id, m.id))).data;
-  const token = tokenOf(link.url);
-  await db.pool.query(`UPDATE picker_links SET expires_at = now() - interval '1 hour' WHERE token = $1`, [token]);
-  const expired = await fetch(`${base}/pick/${token}`);
-  assert.equal(expired.status, 410);
-  assert.match(await expired.text(), /פג/);
-
-  const m2 = await newMeeting(alice, [bob]);
-  const link2 = (await tx((c) => availability.createLink(c, alice.id, m2.id))).data;
-  await withClient((c) => meetings.cancelMeeting(c, alice.id, m2.id));
-  const closed = await fetch(`${base}/pick/${tokenOf(link2.url)}`);
-  assert.equal(closed.status, 410);
-  assert.match(await closed.text(), /הסתיים/);
-
-  // A POST to a closed meeting is refused the same way — the submit path
-  // re-checks, it does not trust the GET that rendered the form.
-  const post = await fetch(`${base}/pick/${tokenOf(link2.url)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ options: JSON.stringify([opt()]) }),
-  });
-  assert.equal(post.status, 410);
+// Nothing in the system may still hand somebody a link to it. The tool that
+// minted them is gone from the registry, and the doctrine paragraph that told
+// the agent to offer it is gone from the template — one without the other is
+// the failure this project keeps repeating in both directions.
+test('nothing can mint a picker link any more', () => {
+  const { BY_NAME } = require('../src/adapters/mcp/registry');
+  assert.equal(BY_NAME.has('send_availability_picker'), false);
+  const doctrine = require('node:fs')
+    .readFileSync(require('node:path').join(__dirname, '../src/intake/agents-template.md'), 'utf8');
+  assert.doesNotMatch(doctrine, /send_availability_picker/);
 });
 
 // ---- agent instructions -----------------------------------------------------
@@ -301,7 +283,8 @@ test('both picker instructions carry the delivery preamble and keep the confirm 
     payload: { meetingId: 7, title: 'פוקר', fromName: 'Alice', options: ['יום שלישי 2.9 — ערב (17:00–21:00)'] },
   });
   assert.match(shared, /^DELIVERY:/);
-  assert.match(shared, /send_availability_picker meeting_id=7/);
+  assert.doesNotMatch(shared, /send_availability_picker/, 'never name a tool that no longer exists');
+  assert.match(shared, /dashboard/);
   assert.match(shared, /Do not declare any slot agreed/);
 
   const done = instructionFor({
