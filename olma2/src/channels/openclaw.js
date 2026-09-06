@@ -220,6 +220,18 @@ function bodyFor(row, p) {
       // office") into a real start and end needs the model's language
       // understanding, not a parser; and each calendar is independently theirs
       // — there is no cross-user invite concept here.
+      // Three different things can be true of the person reading this, and
+      // saying the wrong one is the whole risk of a settle button: everyone
+      // agreed; somebody settled it and this reader had agreed anyway; or
+      // somebody settled it and this reader never said yes. The last one is
+      // told plainly and given the way out, because a cheerful "confirmed!"
+      // to a person who cannot make it is how a tool loses their trust.
+      if (p.settledWithoutYou) {
+        return `The meeting <<<${p.title}>>> was settled by ${p.byName} on <<<${p.slot}>>> WITHOUT this user having agreed to that time — they either declined it or never answered. Tell them plainly: it is set for that time, and ${p.byName} chose not to wait. Do not congratulate them. Ask whether they can make it after all; if they cannot, opt_out_of_meeting is how they say so, and the others are told. Only if they can: ${meetingCalendarStep(p)}`;
+      }
+      if (p.forced) {
+        return `The meeting <<<${p.title}>>> is now SETTLED: <<<${p.slot}>>>. ${p.byName}, who opened it, set it rather than waiting for everyone. This user had already agreed to that time. Tell them warmly. Then, for the calendar: ${meetingCalendarStep(p)}`;
+      }
       return `The meeting <<<${p.title}>>> is now CONFIRMED by every participant: <<<${p.slot}>>>. Tell the user warmly. This is a system-verified confirmation. Then, for the calendar: ${meetingCalendarStep(p)}`;
     case 'meeting_slot_declined':
       return `${p.byName} declined the current slot for meeting <<<${p.title}>>>.${reasonClause(p, 'why it does not work for them')} Tell the user — including the reason if there is one, because "he cannot make it" invites a guess while "he is shooting and finishes late" invites a better time. Then check get_meeting_status for everyone's constraints and propose a new slot via propose_meeting_slot (meeting_id=${p.meetingId}).`;

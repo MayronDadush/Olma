@@ -625,6 +625,12 @@ async function confirmedMeetingFixture(phoneA, phoneB, { bAccess = 'read_write',
     const when = slotStart('יום חמישי 13:00 בקפה');
     await meetings.proposeSlot(c, a.id, id, 'יום חמישי 13:00 בקפה', when);
     await meetings.respondToSlot(c, b.id, id, true, null, null, when);
+    // Agreement arms a minute rather than closing the meeting
+    // (domain/meeting-options.js). This fixture is about what happens AFTER a
+    // meeting is settled, so it spends the minute rather than waiting it out.
+    await c.query(
+      `UPDATE meetings SET settle_due_at = clock_timestamp() - interval '1 second' WHERE id = $1`, [id]);
+    await meetings.options.settleDue(c);
     return id;
   });
   const status = await db.pool.query(`SELECT status FROM meetings WHERE id = $1`, [m]);

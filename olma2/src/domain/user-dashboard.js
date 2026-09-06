@@ -348,7 +348,14 @@ async function loadMeetings(client, userId, zone) {
   const { rows: meetings } = await client.query(
     `SELECT m.id, m.title, m.initiator_id, m.status,
             m.proposed_slot, m.proposed_start_at, m.confirmed_start_at,
-            m.confirmed_slot,
+            m.confirmed_slot, m.settling_option_id, m.settled_by,
+            -- Seconds left of the settle grace, not the instant it ends: the
+            -- page counts down, and a clock on a phone that is four minutes
+            -- fast would otherwise count down to the wrong thing. Negative or
+            -- zero means the sweep simply has not run yet.
+            CASE WHEN m.settle_due_at IS NULL THEN NULL
+                 ELSE greatest(0, ceil(extract(epoch FROM (m.settle_due_at - now()))))::int
+            END AS settle_in,
             -- The proposed moment as the wall clock THIS person reads it, and
             -- as a day offset from their today. The page thinks in offsets
             -- because its grid does; converting here is the same rule every
@@ -456,6 +463,16 @@ async function loadMeetings(client, userId, zone) {
     confirmedStartAt: m.confirmed_start_at,
     confirmedTime: m.confirmed_time,
     confirmedDay: m.confirmed_day === null ? null : Number(m.confirmed_day),
+    // The minute between the last yes and the meeting being over. `settleIn`
+    // is what is LEFT of it; `settlingOptionId` says which row is counting
+    // down, so the page marks that one rather than guessing from the tally.
+    settleIn: m.settle_in === null ? null : Number(m.settle_in),
+    settlingOptionId: m.settling_option_id === null ? null : Number(m.settling_option_id),
+    settledBy: m.settled_by === null ? null : Number(m.settled_by),
+    // Whether this person may end it by hand. The same question the domain
+    // asks, asked here only so the page knows whether to draw the control —
+    // `settleNow` re-asks it whatever the page drew.
+    canSettle: String(m.initiator_id) === String(userId) && m.status === 'negotiating',
     participants: byMeeting.get(m.id) || [],
     options: optionsBy.get(m.id) || [],
     maxOptions: meetingsDomain.options.MAX_ACTIVE,

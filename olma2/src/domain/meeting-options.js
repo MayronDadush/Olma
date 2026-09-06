@@ -7,8 +7,13 @@
 //     initiator approves it (naming which active one it replaces) or rejects;
 //   - the initiator may swap an active option for a new one at any time;
 //   - adding is agreeing: the adder's own answer to it is yes;
-//   - the meeting confirms the moment ONE active option has a yes from every
-//     active participant. Nobody announces agreement; the system does.
+//   - one active option with a yes from every active participant ARMS the
+//     meeting; it settles a minute later, and a mind changed inside that
+//     minute takes the arming back. Nobody announces agreement; the system
+//     does, once, when the minute is up (owner, 2026-09-06);
+//   - and the initiator may settle on an option by hand at any time, agreed
+//     or not — "everyone wants Tuesday, one person cannot make it, and it
+//     happens anyway". That one is immediate: it is already a decision.
 //
 // The single-slot columns on `meetings` and `state` on meeting_participants
 // are MIRRORS of the newest active option (see mirrorCurrent). Every reader
@@ -164,16 +169,33 @@ async function answer(client, userId, meetingId, optionId, value) {
     { meetingId: Number(meetingId), optionId: Number(optionId), slot: rows[0].slot_text });
   await mirrorCurrent(client, meetingId);
   const c = await tryConfirm(client, meetingId);
-  if (c.confirmed) {
-    await audit.record(client, userId, 'meeting.confirmed', { meetingId: Number(meetingId), slot: c.slot });
-    return ok({ meetingId: Number(meetingId), meetingStatus: 'confirmed', slot: c.slot, startsAt: c.startsAt, optionId: Number(optionId) });
+  // The last yes no longer ends the meeting — it starts the minute. Nobody is
+  // told yet, on purpose: the announcement is the thing the grace exists to
+  // hold back. `settleDue` makes it once, when the minute is up.
+  if (c.settling) {
+    return ok({
+      meetingId: Number(meetingId), meetingStatus: 'settling', optionId: Number(optionId),
+      answer: value, slot: c.slot, settleDueAt: c.settleDueAt,
+    });
   }
-  return ok({ meetingId: Number(meetingId), meetingStatus: 'negotiating', optionId: Number(optionId), answer: value });
+  return ok({
+    meetingId: Number(meetingId), meetingStatus: 'negotiating', optionId: Number(optionId),
+    answer: value, ...(c.disarmed ? { unsettled: true } : {}),
+  });
 }
 
-// The hard gate: confirm when one active option has a yes from every active
-// participant. Two people at least — a meeting of one cannot confirm.
-async function tryConfirm(client, meetingId) {
+// The grace between the last yes and the meeting being over. A minute, and it
+// exists because the alternative was measured against real use: a mis-tap on a
+// phone list closed the negotiation and told five people, and the only way
+// back was to cancel a meeting that had just been announced. A minute costs
+// nobody anything and makes a wrong tap a private mistake.
+const SETTLE_GRACE_MS = 60 * 1000;
+
+// The hard gate, unchanged in what it asks: one active option with a yes from
+// every active participant. Two people at least — a meeting of one cannot
+// settle. It no longer WRITES anything; the two callers below decide what a
+// yes here means.
+async function unanimousOption(client, meetingId) {
   const { rows } = await client.query(
     `WITH active AS (
        SELECT user_id FROM meeting_participants WHERE meeting_id = $1 AND state <> 'opted_out')
@@ -186,15 +208,141 @@ async function tryConfirm(client, meetingId) {
            WHERE NOT EXISTS (SELECT 1 FROM meeting_option_answers oa
                               WHERE oa.option_id = o.id AND oa.user_id = a.user_id AND oa.answer = 'y'))
       ORDER BY o.id LIMIT 1`, [meetingId]);
-  const win = rows[0];
-  if (!win) return { confirmed: false };
+  return rows[0] || null;
+}
+
+// Closing the meeting, on a named option. The only writer of `status =
+// 'confirmed'`, reached from exactly two places: the sweep when a grace runs
+// out, and the initiator settling by hand. `byUserId` is null for the first
+// and a person for the second, and that is the difference between "everyone
+// agreed" and "somebody decided" for every message written afterwards.
+async function confirmOn(client, meetingId, option, byUserId = null) {
   const upd = await client.query(
     `UPDATE meetings SET status = 'confirmed', confirmed_slot = $2, confirmed_start_at = $3,
-            proposed_slot = $2, proposed_start_at = $3,
+            proposed_slot = $2, proposed_start_at = $3, settled_by = $4,
+            settle_due_at = NULL, settling_option_id = NULL,
             updated_at = now(), closed_at = now()
-      WHERE id = $1 AND status = 'negotiating'`, [meetingId, win.slot_text, win.starts_at]);
+      WHERE id = $1 AND status = 'negotiating'`,
+    [meetingId, option.slot_text, option.starts_at, byUserId]);
   if (upd.rowCount === 0) return { confirmed: false };
-  return { confirmed: true, slot: win.slot_text, startsAt: win.starts_at, optionId: Number(win.id) };
+  return {
+    confirmed: true, slot: option.slot_text, startsAt: option.starts_at,
+    optionId: Number(option.id), settledBy: byUserId === null ? null : Number(byUserId),
+  };
+}
+
+// Called after anything that could move an answer. Arms the grace when an
+// option has become unanimous, takes the arming back when it stops being one,
+// and — deliberately — never closes anything itself.
+//
+// Re-arming on an option ALREADY counting down would push the moment away
+// every time somebody re-sent a yes they had already given, so the clock is
+// left alone unless the option under it changed.
+async function tryConfirm(client, meetingId, { graceMs = SETTLE_GRACE_MS } = {}) {
+  const win = await unanimousOption(client, meetingId);
+  const { rows } = await client.query(
+    `SELECT settle_due_at, settling_option_id FROM meetings WHERE id = $1 AND status = 'negotiating'`,
+    [meetingId]);
+  const m = rows[0];
+  if (!m) return { confirmed: false, settling: false };
+
+  if (!win) {
+    if (!m.settle_due_at) return { confirmed: false, settling: false };
+    await client.query(
+      `UPDATE meetings SET settle_due_at = NULL, settling_option_id = NULL, updated_at = now()
+        WHERE id = $1 AND status = 'negotiating'`, [meetingId]);
+    return { confirmed: false, settling: false, disarmed: true };
+  }
+  if (m.settle_due_at && Number(m.settling_option_id) === Number(win.id)) {
+    return {
+      confirmed: false, settling: true, settleDueAt: m.settle_due_at,
+      slot: win.slot_text, startsAt: win.starts_at, optionId: Number(win.id),
+    };
+  }
+  const armed = await client.query(
+    `UPDATE meetings SET settle_due_at = clock_timestamp() + make_interval(secs => $2::float8),
+            settling_option_id = $3, updated_at = now()
+      WHERE id = $1 AND status = 'negotiating' RETURNING settle_due_at`,
+    [meetingId, graceMs / 1000, win.id]);
+  if (!armed.rows[0]) return { confirmed: false, settling: false };
+  await audit.record(client, null, 'meeting.settling', {
+    meetingId: Number(meetingId), optionId: Number(win.id), slot: win.slot_text,
+    dueAt: armed.rows[0].settle_due_at,
+  });
+  return {
+    confirmed: false, settling: true, settleDueAt: armed.rows[0].settle_due_at,
+    slot: win.slot_text, startsAt: win.starts_at, optionId: Number(win.id), armed: true,
+  };
+}
+
+// The other half of the grace: every meeting whose minute is up. It re-asks
+// unanimity rather than trusting the armed row — the disarm above runs only on
+// paths that call tryConfirm, and a participant removed by some future path
+// that does not would otherwise leave a meeting armed on an option nobody
+// still agrees to.
+async function settleDue(client, limit = 50) {
+  const { rows } = await client.query(
+    `SELECT id FROM meetings
+      WHERE status = 'negotiating' AND settle_due_at IS NOT NULL AND settle_due_at <= clock_timestamp()
+      ORDER BY settle_due_at LIMIT $1`, [limit]);
+  const settled = [];
+  for (const { id } of rows) {
+    const win = await unanimousOption(client, id);
+    if (!win) {
+      await client.query(
+        `UPDATE meetings SET settle_due_at = NULL, settling_option_id = NULL, updated_at = now()
+          WHERE id = $1 AND status = 'negotiating'`, [id]);
+      continue;
+    }
+    const c = await confirmOn(client, id, win, null);
+    if (!c.confirmed) continue;
+    await audit.record(client, null, 'meeting.confirmed', {
+      meetingId: Number(id), slot: c.slot, unanimous: true,
+    });
+    settled.push({ meetingId: Number(id), ...c });
+  }
+  return settled;
+}
+
+// Initiator only, and immediate: settle on an option whatever the answers say.
+// The case is the owner's own — everyone wants Tuesday, one person cannot make
+// it, and the meeting happens anyway — so this deliberately does NOT check
+// agreement. What it does check is that the option is really on the table, so
+// a meeting cannot be closed onto a time nobody ever saw.
+async function settleNow(client, userId, meetingId, optionId) {
+  const p = await participant(client, meetingId, userId);
+  if (!p) return err('not_found', 'not a participant of this meeting');
+  if (Number(p.initiator_id) !== Number(userId)) {
+    return err('forbidden', 'only the person who opened the coordination settles it',
+      { reason: 'not_initiator' });
+  }
+  if (p.meeting_status !== 'negotiating') {
+    return err('invalid', 'meeting is not negotiating', { reason: 'not_negotiating' });
+  }
+  const { rows } = await client.query(
+    `SELECT id, slot_text, starts_at FROM meeting_options
+      WHERE id = $1 AND meeting_id = $2 AND status = 'active'`, [optionId, meetingId]);
+  if (!rows[0]) return err('not_found', 'no such option on the table', { reason: 'option_not_active' });
+  const c = await confirmOn(client, meetingId, rows[0], userId);
+  if (!c.confirmed) return err('invalid', 'meeting is not negotiating', { reason: 'not_negotiating' });
+  // Who was still missing when it was settled. Not a gate — a fact the
+  // messages need, because "it is set" reads very differently to somebody who
+  // never said yes.
+  const { rows: waiting } = await client.query(
+    `SELECT p.user_id FROM meeting_participants p
+      WHERE p.meeting_id = $1 AND p.state <> 'opted_out'
+        AND NOT EXISTS (SELECT 1 FROM meeting_option_answers oa
+                         WHERE oa.option_id = $2 AND oa.user_id = p.user_id AND oa.answer = 'y')`,
+    [meetingId, rows[0].id]);
+  const withoutYes = waiting.map((r) => Number(r.user_id));
+  await audit.record(client, userId, 'meeting.settled_by_hand', {
+    meetingId: Number(meetingId), optionId: Number(optionId), slot: c.slot, withoutYes,
+  });
+  return ok({
+    meetingId: Number(meetingId), meetingStatus: 'confirmed', slot: c.slot,
+    startsAt: c.startsAt, optionId: Number(optionId), settledBy: Number(userId),
+    withoutYes, unanimous: withoutYes.length === 0,
+  });
 }
 
 // Initiator only: a pending option comes onto the table. When the table is
@@ -225,7 +373,8 @@ async function approve(client, userId, meetingId, optionId, replaceOptionId = nu
   return ok({
     meetingId: Number(meetingId), optionId: Number(optionId), proposerId: Number(rows[0].added_by),
     slot: rows[0].slot_text, replaced: replaceOptionId ? Number(replaceOptionId) : null,
-    meetingStatus: c.confirmed ? 'confirmed' : 'negotiating', ...(c.confirmed ? { confirmedSlot: c.slot } : {}),
+    meetingStatus: c.settling ? 'settling' : 'negotiating',
+    ...(c.settling ? { settlingSlot: c.slot, settleDueAt: c.settleDueAt } : {}),
   });
 }
 
@@ -260,4 +409,7 @@ async function swap(client, userId, meetingId, replaceOptionId, slotText, starts
   return ok({ ...added.data, replaced: Number(replaceOptionId), replacedSlot: rep.rows[0].slot_text });
 }
 
-module.exports = { MAX_ACTIVE, list, add, answer, approve, reject, swap, tryConfirm, mirrorCurrent, activeCount };
+module.exports = {
+  MAX_ACTIVE, SETTLE_GRACE_MS, list, add, answer, approve, reject, swap,
+  tryConfirm, unanimousOption, confirmOn, settleDue, settleNow, mirrorCurrent, activeCount,
+};
