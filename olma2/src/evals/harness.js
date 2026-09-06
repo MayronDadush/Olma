@@ -83,18 +83,36 @@ async function resetEvalUser(client, userId) {
 // Best-effort and never throws, exactly like the hook — a brokerd that is
 // down leaves the turn to `turn_start`, which is what happens in production
 // too.
+//
+// Every exit destroys the socket and both handles are unref'd. `end()` alone
+// was not enough: it sends FIN and waits for the other side, so on the box —
+// the one machine where the socket actually answers — the handle outlived the
+// test child, `node --test` waited on it for ever, and the on-box suite wedged
+// on both attempts (CLAUDE.md, Testing: a test child that cannot exit is
+// invisible). A best-effort call must not be able to hold a process open.
 function openTurnForEval(agentId, { connect = net.connect, sock = BROKERD_SOCK } = {}) {
   return new Promise((resolve) => {
     let done = false;
-    const finish = () => { if (!done) { done = true; resolve(); } };
-    let socket;
+    let socket = null;
+    let t = null;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (t) clearTimeout(t);
+      try { if (socket) socket.destroy(); } catch { /* already gone */ }
+      resolve();
+    };
     try { socket = connect(sock); } catch { return finish(); }
-    const t = setTimeout(() => { try { socket.destroy(); } catch { /* gone */ } finish(); }, OPEN_TIMEOUT_MS);
-    socket.on('error', () => { clearTimeout(t); finish(); });
-    socket.on('close', () => { clearTimeout(t); finish(); });
-    socket.on('data', () => { clearTimeout(t); finish(); try { socket.end(); } catch { /* gone */ } });
+    t = setTimeout(finish, OPEN_TIMEOUT_MS);
+    if (typeof t.unref === 'function') t.unref();
+    if (typeof socket.unref === 'function') socket.unref();
+    socket.on('error', finish);
+    socket.on('close', finish);
+    socket.on('data', finish);
     socket.on('connect', () => {
-      socket.write(`${JSON.stringify({ id: 1, method: 'turn_open', params: { agentId, kind: 'text' } })}\n`);
+      try {
+        socket.write(`${JSON.stringify({ id: 1, method: 'turn_open', params: { agentId, kind: 'text' } })}\n`);
+      } catch { finish(); }
     });
   });
 }
