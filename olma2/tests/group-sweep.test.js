@@ -96,7 +96,7 @@ test('one known member is enough: she registers, introduces herself, and locks',
 
   // Registered means tag-only from here, with the deny belt on.
   const cfg = occ.loadConfig(configPath);
-  assert.deepEqual(cfg.channels.whatsapp.groups[JID(2)], { requireMention: true });
+  assert.deepEqual(cfg.channels.whatsapp.accounts.default.groups[JID(2)], { requireMention: true });
   assert.equal(occ.isGroupMuted(cfg, JID(2)), true);
 });
 
@@ -182,7 +182,12 @@ test('the last person writes, and the group opens with an agent of its own', asy
 test('a group that opens in the small hours opens quietly and announces later', async () => {
   const a = await connectedUser('+972603000050', { timezone: 'Asia/Jerusalem' });
   const roster = a.phone;
-  const night = new Date('2026-09-06T00:30:00+03:00');   // 00:30 in Jerusalem
+  // A time of DAY, on a date safely behind us. Pinned to an absolute date this
+  // test was green for a day and red the next: `noteMention` stamps the real
+  // clock, and once the wall clock passed the pinned timestamp the group read
+  // as mid-conversation and announced at half past midnight.
+  const day = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
+  const night = new Date(`${day}T00:30:00+03:00`);   // 00:30 in Jerusalem
 
   const g = gatewayWith({ jid: JID(6), roster, at: night.getTime() });
   const out = await withTx(db.pool, (c) => job.sweepGroups(c, {
@@ -204,7 +209,7 @@ test('a group that opens in the small hours opens quietly and announces later', 
   assert.equal(row.opened_announced_at, null);
 
   // Morning.
-  const morning = new Date('2026-09-06T09:30:00+03:00');
+  const morning = new Date(`${day}T09:30:00+03:00`);
   const g2 = gatewayWith({ jid: JID(6), roster, at: night.getTime() });
   const out2 = await withTx(db.pool, (c) => job.sweepGroups(c, { ...g2.deps, now: morning }));
   assert.equal(out2.announced, 1);
@@ -282,4 +287,75 @@ test('the announcement window follows the group, and a live tag overrides it', (
   assert.equal(job.mayAnnounce(tagged, night), true);
 
   assert.equal(job.mayAnnounce(asleep, new Date('2026-09-06T10:00:00+03:00')), true);
+});
+
+// ---- the sender gate ---------------------------------------------------------
+//
+// The room admission decides which GROUPS she is in. This decides which people
+// in them the gateway will wake her for at all — and with nothing written it
+// admits everyone, because an absent `groupAllowFrom` falls back to
+// `allowFrom`, which is `["*"]`. The sweep owns it so that one rule covers a
+// user joining, pausing, being blocked and being deleted.
+
+test('the sweep makes the sender list the current users, every pass', async () => {
+  const a = await connectedUser('+972604000001');
+  await connectedUser('+972604000002');
+  const g = gatewayWith({ jid: JID(1), roster: '+972604000001, +972604000002' });
+
+  assert.equal(occ.isGroupSenderGateOpen(occ.loadConfig(configPath)), true,
+    'before the first pass nothing gates the senders');
+  const out = await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+  assert.equal(out.senderGateOpen, false);
+  const admitted = () => occ.groupAllowFrom(occ.loadConfig(configPath));
+  assert.ok(admitted().includes(a.phone));
+  assert.ok(admitted().includes('+972604000002'));
+
+  // Pausing somebody takes them out: her answer lands in the whole room, so a
+  // paused member's tag would walk straight around the pause.
+  await db.pool.query(`UPDATE users SET paused_at = now() WHERE id = $1`, [a.id]);
+  await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+  assert.ok(!admitted().includes(a.phone));
+  assert.ok(admitted().includes('+972604000002'), 'and nobody else moved');
+
+  // Deleting the row takes them out too, with no separate call site: one
+  // declarative rule covers joining, pausing, blocking and deletion alike.
+  await db.pool.query(`UPDATE users SET paused_at = NULL WHERE id = $1`, [a.id]);
+  await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+  assert.ok(admitted().includes(a.phone), 'un-pausing puts them back');
+  await db.pool.query(`DELETE FROM users WHERE id = $1`, [a.id]);
+  await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+  assert.ok(!admitted().includes(a.phone));
+});
+
+// The one direction that must never happen quietly: emptying the list reads as
+// "no list", which is the wide-open door again. Everyone in this file's
+// database is blocked for the length of this test to reach that state.
+test('a system with no eligible users never writes an empty sender list', async () => {
+  await connectedUser('+972604000010');
+  const g = gatewayWith({ jid: JID(2), roster: '+972604000010' });
+  await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+  const before = occ.groupAllowFrom(occ.loadConfig(configPath));
+  assert.ok(before.length > 0);
+
+  await db.pool.query(`UPDATE users SET status = 'blocked'`);
+  try {
+    const out = await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+    assert.deepEqual(occ.groupAllowFrom(occ.loadConfig(configPath)), before,
+      'the last known-good list stays rather than becoming an open door');
+    assert.equal(out.senderGateOpen, false);
+  } finally {
+    await db.pool.query(`UPDATE users SET status = 'active'`);
+  }
+});
+
+test('her own number never reaches the sender list', async () => {
+  await connectedUser(occ.SELF_PHONE);
+  await connectedUser('+972604000020');
+  const g = gatewayWith({ jid: JID(3), roster: '+972604000020' });
+  await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+
+  const admitted = occ.groupAllowFrom(occ.loadConfig(configPath));
+  assert.ok(admitted.includes('+972604000020'));
+  assert.ok(!admitted.includes(occ.SELF_PHONE),
+    'her own tag comes back in her own outbound message — a loop with her at both ends');
 });

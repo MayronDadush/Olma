@@ -78,12 +78,12 @@ test('admitting a group creates the allowlist entry, mention-gated', () => {
   const cfg = baseConfig();
   assert.equal(occ.isGroupAdmitted(cfg, JID), false);
   assert.equal(occ.admitGroup(cfg, JID), true);
-  assert.deepEqual(cfg.channels.whatsapp.groups, { [JID]: { requireMention: true } });
+  assert.deepEqual(cfg.channels.whatsapp.accounts.default.groups, { [JID]: { requireMention: true } });
   assert.equal(occ.admitGroup(cfg, JID), false);
   assert.equal(occ.isGroupAdmitted(cfg, JID), true);
 
   assert.equal(occ.unadmitGroup(cfg, JID), true);
-  assert.deepEqual(cfg.channels.whatsapp.groups, {});
+  assert.deepEqual(cfg.channels.whatsapp.accounts.default.groups, {});
   assert.equal(occ.unadmitGroup(cfg, JID), false);
 });
 
@@ -120,4 +120,85 @@ test('removing a group binding never matches a direct peer of the same id', () =
   occ.addBinding(cfg, { agentId: 'u-12', phone: '+972500000000' });
   occ.removeGroupBinding(cfg, '+972500000000');
   assert.equal(cfg.bindings.length, 1);
+});
+
+// ---- who may speak to her in a group ----------------------------------------
+//
+// Every assertion below was first put to the running gateway's own resolver
+// (2026-09-06, `resolveStableChannelMessageIngress` with the WhatsApp plugin's
+// arguments). The decisions it returned:
+//
+//   groupAllowFrom UNSET, a stranger writes  ALLOW  group_policy_allowed
+//   groupAllowFrom = [],  a stranger writes  ALLOW  group_policy_allowed
+//   groupAllowFrom = [u], a stranger writes  BLOCK  group_policy_not_allowlisted
+//   groupAllowFrom = [u], u writes           ALLOW  group_policy_allowed
+//   groupAllowFrom = [u], SHE writes         BLOCK  group_policy_not_allowlisted
+
+test('the sender list becomes exactly the people given, sorted and deduped', () => {
+  const cfg = baseConfig();
+  const first = occ.syncGroupAllowFrom(cfg, ['+972500000002', '972500000001', '+972500000002']);
+  assert.equal(first.changed, true);
+  assert.deepEqual(cfg.channels.whatsapp.accounts.default.groupAllowFrom,
+    ['+972500000001', '+972500000002']);
+
+  // Declarative: the same input is a no-op, and a shrunken input shrinks it.
+  assert.equal(occ.syncGroupAllowFrom(cfg, ['+972500000001', '+972500000002']).changed, false);
+  assert.equal(occ.syncGroupAllowFrom(cfg, ['+972500000001']).changed, true);
+  assert.deepEqual(occ.groupAllowFrom(cfg), ['+972500000001']);
+});
+
+// Her own outbound messages tag her — the introduction carries a real
+// self-mention — so her number in this list is a loop with her at both ends.
+test('her own number is never admitted, however it is spelled', () => {
+  const cfg = baseConfig();
+  occ.syncGroupAllowFrom(cfg, [occ.SELF_PHONE, occ.SELF_PHONE.slice(1), '+972500000001']);
+  assert.deepEqual(occ.groupAllowFrom(cfg), ['+972500000001']);
+});
+
+// The trap this whole thing exists for: an empty list is NOT a closed door.
+// The gateway reads it as no list at all and falls back to `allowFrom`, which
+// is `["*"]`. Writing one would look like locking up and be the opposite.
+test('an empty sender list is refused rather than written', () => {
+  const cfg = baseConfig();
+  occ.syncGroupAllowFrom(cfg, ['+972500000001']);
+  const res = occ.syncGroupAllowFrom(cfg, []);
+  assert.equal(res.changed, false);
+  assert.equal(res.refusedEmpty, true);
+  assert.deepEqual(occ.groupAllowFrom(cfg), ['+972500000001'],
+    'the last known-good list stays; only groupPolicy can mean "nobody"');
+});
+
+test('the open sender gate is visible, including when it is spelled as absence', () => {
+  const cfg = baseConfig();
+  cfg.channels.whatsapp.accounts.default.groupPolicy = 'allowlist';
+  assert.equal(occ.isGroupSenderGateOpen(cfg), true,
+    'allowlist with no groupAllowFrom falls back to allowFrom ["*"] — wide open');
+
+  cfg.channels.whatsapp.accounts.default.groupAllowFrom = [];
+  assert.equal(occ.isGroupSenderGateOpen(cfg), true, 'and an empty array is the same door');
+
+  occ.syncGroupAllowFrom(cfg, ['+972500000001']);
+  assert.equal(occ.isGroupSenderGateOpen(cfg), false);
+
+  // A wildcard smuggled into the list itself is the same open door.
+  cfg.channels.whatsapp.accounts.default.groupAllowFrom = ['*'];
+  assert.equal(occ.isGroupSenderGateOpen(cfg), true);
+
+  // Nothing is open while group inbound is off entirely.
+  cfg.channels.whatsapp.accounts.default.groupPolicy = 'disabled';
+  assert.equal(occ.isGroupSenderGateOpen(cfg), false);
+});
+
+// The map moved from `channels.whatsapp.groups` to the account, because the
+// gateway's reload planner takes the first matching prefix and the WhatsApp
+// plugin declares `channels.whatsapp` a NOOP prefix while
+// `channels.whatsapp.accounts` is a hot one. A config written before the move
+// must still read correctly, or every group already admitted goes unadmitted.
+test('a groups map at the old channel level is still read', () => {
+  const cfg = baseConfig();
+  cfg.channels.whatsapp.groups = { [JID]: { requireMention: true } };
+  assert.equal(occ.isGroupAdmitted(cfg, JID), true);
+  assert.equal(occ.admitGroup(cfg, JID), false, 'already admitted, wherever it was written');
+  assert.equal(occ.unadmitGroup(cfg, JID), true);
+  assert.equal(occ.isGroupAdmitted(cfg, JID), false);
 });

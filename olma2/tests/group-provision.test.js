@@ -68,7 +68,7 @@ test('the greeter installs muted, owning every group with no agent of its own', 
   const wildcard = cfg.bindings.find((b) => b.match.peer.kind === 'group' && b.match.peer.id === '*');
   assert.equal(wildcard.agentId, pg.GREETER_AGENT_ID);
   // The "*" entry is what lets a group we have never seen wake her at all.
-  assert.deepEqual(cfg.channels.whatsapp.groups['*'], { requireMention: false });
+  assert.deepEqual(cfg.channels.whatsapp.accounts.default.groups['*'], { requireMention: false });
 
   // Safe to run on every brokerd start.
   assert.deepEqual(pg.installGreeter({ configPath }),
@@ -98,8 +98,8 @@ test('registration admits the group tag-only, outranking the greeter wildcard', 
     { changed: true, admitted: true, muted: true });
 
   const cfg = occ.loadConfig(configPath);
-  assert.deepEqual(cfg.channels.whatsapp.groups[jid], { requireMention: true });
-  assert.deepEqual(cfg.channels.whatsapp.groups['*'], { requireMention: false });
+  assert.deepEqual(cfg.channels.whatsapp.accounts.default.groups[jid], { requireMention: true });
+  assert.deepEqual(cfg.channels.whatsapp.accounts.default.groups['*'], { requireMention: false });
   // The belt goes on at registration, so there is never a window where a group
   // without an agent is also without a deny rule.
   assert.equal(occ.isGroupMuted(cfg, jid), true);
@@ -183,7 +183,7 @@ test('re-locking takes the agent and the route away, and keeps the memory', asyn
   assert.equal(cfg.bindings.filter((b) => b.match.peer.id === group.external_id).length, 0);
   assert.equal(occ.isGroupMuted(cfg, group.external_id), true, 'and the belt goes back on');
   // Still admitted: she must keep SEEING the group, she just cannot speak in it.
-  assert.deepEqual(cfg.channels.whatsapp.groups[group.external_id], { requireMention: true });
+  assert.deepEqual(cfg.channels.whatsapp.accounts.default.groups[group.external_id], { requireMention: true });
 
   assert.match(fs.readFileSync(path.join(ws, 'MEMORY.md'), 'utf8'), /משחקים בשלישי/,
     'a group that re-opens must not have forgotten itself');

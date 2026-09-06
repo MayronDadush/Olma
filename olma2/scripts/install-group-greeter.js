@@ -8,7 +8,7 @@
 //   agents.entries.ggreet                      the muted agent
 //   bindings[] peer {kind:'group', id:'*'}     every group with no agent of its own
 //   session.sendPolicy deny agent:ggreet:      the mute, permanent
-//   channels.whatsapp.groups["*"]              admits groups we have never seen
+//   channels.whatsapp.accounts.default.groups["*"]  admits groups never seen
 //
 // It does NOT touch `groupPolicy`. Group inbound stays exactly as disabled or
 // enabled as it was — turning the feature on is a separate, deliberate step:
@@ -17,9 +17,13 @@
 //   node scripts/install-group-greeter.js --status   # what is in place
 //
 // Then, when group mode is actually meant to go live, set
-// `channels.whatsapp.accounts.default.groupPolicy` to "allowlist" with
-// `groupAllowFrom` carrying Olma's USERS' phone numbers — and never her own
-// (proactive-text.js explains the loop that guards against).
+// `channels.whatsapp.accounts.default.groupPolicy` to "allowlist". The sender
+// list under it is NOT set by hand: the group sweep keeps
+// `groupAllowFrom` equal to the current users on every pass
+// (`jobs/groups.js`, syncSenderGate). What --status prints as
+// `senderGateOpen` is the thing to read before flipping the policy — true
+// means every sender in every group would be admitted, because an absent or
+// empty `groupAllowFrom` falls back to `allowFrom`, which is `["*"]`.
 const occ = require('../src/intake/openclaw-config');
 const pg = require('../src/intake/provision-group');
 
@@ -27,7 +31,10 @@ const configPath = process.env.OLMA_OPENCLAW_CONFIG || occ.DEFAULT_PATH;
 
 function status() {
   const cfg = occ.loadConfig(configPath);
-  const groups = (cfg.channels && cfg.channels.whatsapp && cfg.channels.whatsapp.groups) || {};
+  const account = (cfg.channels && cfg.channels.whatsapp && cfg.channels.whatsapp.accounts
+    && cfg.channels.whatsapp.accounts.default) || {};
+  const groups = { ...((cfg.channels && cfg.channels.whatsapp && cfg.channels.whatsapp.groups) || {}),
+    ...(account.groups || {}) };
   return {
     configPath,
     agent: occ.hasAgent(cfg, pg.GREETER_AGENT_ID),
@@ -36,8 +43,11 @@ function status() {
       (b) => b.match && b.match.peer && b.match.peer.kind === 'group' && b.match.peer.id === '*'),
     admitsUnknownGroups: Object.hasOwn(groups, '*'),
     registeredGroups: Object.keys(groups).filter((k) => k !== '*'),
-    groupPolicy: (cfg.channels && cfg.channels.whatsapp && cfg.channels.whatsapp.accounts
-      && cfg.channels.whatsapp.accounts.default || {}).groupPolicy || '(unset)',
+    groupPolicy: account.groupPolicy || '(unset)',
+    // The two that answer "who can talk to her in a group". A count rather
+    // than the numbers themselves: this is printed into terminals and logs.
+    groupAllowFrom: occ.groupAllowFrom(cfg).length,
+    senderGateOpen: occ.isGroupSenderGateOpen(cfg),
   };
 }
 

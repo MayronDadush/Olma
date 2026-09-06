@@ -456,12 +456,105 @@ Two things the tests caught rather than the design:
 - Opening and announcing are two moments, so they are two columns. A group that
   opens at 00:30 really is open; it just does not say so until the morning.
 
+## The sender gate: `groupAllowFrom` (measured 2026-09-06)
+
+Everything above decides which *rooms* she is in. This is the other half —
+which *people* in them the gateway will wake her for at all — and until now it
+was open.
+
+Enabling group mode means `groupPolicy: "allowlist"`. The obvious reading of
+that word is wrong. What the WhatsApp plugin actually does
+(`resolveWhatsAppInboundPolicy`, `monitor-CySzv38g.js`) is:
+
+```js
+const groupAllowFrom =
+  (account.groupAllowFrom?.length ? account.groupAllowFrom : undefined)
+  ?? (configuredAllowFrom.length > 0 ? configuredAllowFrom : undefined) ?? [];
+```
+
+It resolves the fallback **itself**, before handing the list to the gateway
+core — which is why the core is then called with
+`groupAllowFromFallbackToAllowFrom: false`, and why reading only the core is
+reassuring and wrong. Ours is `allowFrom: ["*"]`.
+
+Put to the gateway's own resolver, one group, one sender:
+
+| `groupAllowFrom` | sender | decision |
+|---|---|---|
+| unset | a stranger | ALLOW `group_policy_allowed` |
+| `[]` | a stranger | ALLOW `group_policy_allowed` |
+| `[user]` | a stranger | BLOCK `group_policy_not_allowlisted` |
+| `[user]` | that user | ALLOW `group_policy_allowed` |
+| `[user]` | **her own number** | BLOCK `group_policy_not_allowlisted` |
+| `["accessGroup:x"]`, x defined | a member | ALLOW |
+| `["accessGroup:x"]`, x undefined | anyone | BLOCK `access_group_missing` |
+
+Three things follow.
+
+**An empty list is not a closed door.** `[]` and "no key" are the same
+wide-open door, so `syncGroupAllowFrom` refuses to write one and leaves the
+last known-good list in place. The only thing that means *nobody* is
+`groupPolicy: "disabled"`.
+
+**The list is the users, and the group sweep owns it.** `syncSenderGate` makes
+it exactly `status = 'active' AND paused_at IS NULL AND NOT is_eval`, every
+pass. Declarative on purpose: one rule covers a user joining, pausing, being
+blocked and being deleted, instead of four mirrored call sites that drift. It
+is not done at provisioning time because `channels.whatsapp.accounts.*`
+restarts the WhatsApp channel, and paying that mid-onboarding is the cost
+`addAllowFrom` already refuses to pay.
+
+*A paused user is deliberately not in the list.* Her answer in a group reaches
+the whole room including them, so admitting a paused member's tag walks
+straight around the pause the delivery gate exists to enforce.
+
+**Her own number must never be in it**, and `syncGroupAllowFrom` drops it
+however it is spelled. Her outbound messages tag her — the introduction carries
+a real self-mention — so an echo arriving past the gateway's de-duplication
+window would be a sender she trusts, with her at both ends of the loop.
+
+`accessGroups` was measured too and rejected: it works, but it buys nothing
+here (both paths cost the same reload) and it fails closed on a dangling
+reference, which turns one half-written config into a system that hears
+nobody.
+
+### And the map moved, because of where the reload planner looks
+
+Found while verifying the above, not by a test. The planner takes the **first**
+rule whose prefix matches (`matchRule`, `config-reload-plan.js`), and the
+WhatsApp plugin declares:
+
+```
+configPrefixes: ["channels.whatsapp.enabled",
+                 "channels.whatsapp.accounts",
+                 "channels.whatsapp.selfChatMode"]   -> hot, restart-channel
+noopPrefixes:   ["channels.whatsapp"]                -> none
+```
+
+So `channels.whatsapp.groups` — where admission was being written — matches
+only the noop rule. A write that touched nothing else was **dropped in
+silence**, which made `admitRegisteredGroup` (admission + the sendPolicy mute,
+both noop paths) a write that did nothing at all. The map now goes under
+`channels.whatsapp.accounts.default`, where it is a hot reason that applies on
+its own. The gateway merges the channel-level map into the account
+(`resolveChannelGroups` → `resolveMergedAccountConfig`), so the readers accept
+both and only the writers changed.
+
+`scripts/install-group-greeter.js --status` prints `senderGateOpen`. That is
+the line to read before turning `groupPolicy` on — an open sender gate is
+spelled as an absent key, which is the one thing reading the config file
+cannot show you.
+
 ## Still open
 
 1. Does the in-Olma group object own meetings/coordination directly, or is it
    a view over the existing pairwise connections?
 2. Exact "has DM'd" predicate — `onboarded_at`, or a real inbound message.
 3. Whether an operator can force-unlock a group from the dashboard.
+4. A paused member is out of `groupAllowFrom` but still counts as *connected*
+   by `isConnected` (a `user_id` and a `last_inbound_at`), so they can still be
+   the reason a group opens while being unable to speak in it. Probably right,
+   not decided.
 
 ## iMessage
 

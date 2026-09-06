@@ -45,8 +45,43 @@ function greeterInstalled(configPath) {
 // to it.
 function mayAnnounce(group, now = new Date()) {
   const lastMention = group.last_mention_at ? new Date(group.last_mention_at).getTime() : 0;
-  if (lastMention && now.getTime() - lastMention < gate.CONVERSATION_GRACE_MS) return true;
+  // `elapsed >= 0` is not pedantry. A mention stamped AFTER the moment we are
+  // deciding for is not a conversation in progress, it is a clock that
+  // disagrees with itself — and read as a live tag it would open quiet hours
+  // in the small hours, which is the one thing this window exists to stop.
+  const elapsed = now.getTime() - lastMention;
+  if (lastMention && elapsed >= 0 && elapsed < gate.CONVERSATION_GRACE_MS) return true;
   return gate.withinWindow(GROUP_WINDOW, group.timezone || groups.DEFAULT_TIMEZONE, now);
+}
+
+// Who may reach her in a group AT ALL. The room admission above decides which
+// groups she is in; this decides which people in them the gateway will even
+// wake her for, and left alone it admits everyone — see the measurement in
+// openclaw-config.js (`groupAllowFrom` unset falls back to `allowFrom`, which
+// is `["*"]`).
+//
+// It is declarative and it lives here rather than in user provisioning, for
+// two reasons. One rule then covers a user joining, pausing, being blocked and
+// being deleted, instead of four mirrored call sites that drift. And
+// provisioning keeps its cheap write: `channels.whatsapp.accounts.*` restarts
+// the WhatsApp channel, and paying that in the middle of somebody's onboarding
+// is exactly the cost `addAllowFrom` already refuses to pay.
+//
+// A user who is paused is deliberately NOT here. Her answer in a group reaches
+// the whole room including them, so admitting a paused member's tag would walk
+// straight around the pause the delivery gate exists to enforce.
+async function syncSenderGate(client, configPath) {
+  const { rows } = await client.query(
+    `SELECT phone FROM users
+      WHERE status = 'active' AND paused_at IS NULL AND NOT is_eval
+      ORDER BY phone`);
+  const cfg = occ.loadConfig(configPath);
+  const synced = occ.syncGroupAllowFrom(cfg, rows.map((r) => r.phone));
+  // Written inside the sweep's transaction and not undone on rollback, which
+  // is safe in the one direction that matters: the list is derived from rows
+  // this pass only READ, and the next pass re-derives it either way.
+  if (synced.changed) occ.saveConfig(cfg, configPath);
+  return { ...synced, open: occ.isGroupSenderGateOpen(cfg) };
 }
 
 // One pass. deps: { configPath, listGroupSessions, readGroupContext, send, now }
@@ -58,6 +93,11 @@ async function sweepGroups(client, deps) {
 
   const readContext = deps.readGroupContext || sessions.readGroupContext;
   const now = deps.now || new Date();
+
+  // Before anything else, and every pass: a stale sender gate is the one
+  // failure here that is invisible from the outside — she keeps working, she
+  // is just answerable by people who never signed up.
+  const senderGate = await syncSenderGate(client, configPath);
 
   // Scoped to the agents that can actually own a group, never a full scan.
   // `listSessions()` opens every agent's sqlite store, and on a one-core box a
@@ -73,6 +113,9 @@ async function sweepGroups(client, deps) {
   const out = {
     registered: [], intros: 0, notices: 0, opened: [], relocked: [], announced: 0,
     unreadable: 0, strangers: 0, skipped: 0,
+    // `senderGateOpen` is the loud one: true means the gateway is admitting
+    // every sender in every group, and nothing else in this pass can tell.
+    senderAllowFrom: senderGate.entries.length, senderGateOpen: senderGate.open,
   };
 
   for (const session of list(agentIds)) {
@@ -236,4 +279,6 @@ async function runGroupSweep(pool, deps) {
   }
 }
 
-module.exports = { sweepGroups, runGroupSweep, greeterInstalled, mayAnnounce, GROUP_WINDOW };
+module.exports = {
+  sweepGroups, runGroupSweep, greeterInstalled, mayAnnounce, syncSenderGate, GROUP_WINDOW,
+};
