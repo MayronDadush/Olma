@@ -316,6 +316,10 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(publicPages.privacyPage());
       }
+      if (req.method === 'GET' && parsed.pathname === '/terms') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        return res.end(publicPages.termsPage());
+      }
       if (req.method === 'GET' && parsed.pathname === '/' && PUBLIC_HOSTS.has(hostOf(req))) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(publicPages.homePage());
