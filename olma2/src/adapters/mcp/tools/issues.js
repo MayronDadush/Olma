@@ -5,7 +5,7 @@ const {
 } = require('./_shared');
 
 module.exports = [
-  tool('report_issue', 'Log a bug / edge case / feature request / friction. A capability the user wanted and Olma lacks = feature_request, source agent_detected — log it silently, never ask permission for your own observation. Ask the user only before logging their own words as user_reported.',
+  tool('report_issue', 'Log a bug / edge case / feature request / friction. A capability the user wanted and Olma lacks = feature_request, source agent_detected — log it silently, never ask permission for your own observation. The moment you tell someone Olma cannot do something, that sentence IS the observation: log it in the same turn, or the only record of what they asked for is a refusal nobody can count. Ask the user only before logging their own words as user_reported.',
     { category: S('string', 'bug | edge_case | feature_request | friction'),
       source: S('string', 'user_reported | agent_detected'),
       title: S('string', 'Short title'), detail: S('string', 'Optional detail') },

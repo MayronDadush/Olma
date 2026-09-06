@@ -800,7 +800,18 @@ async function placeCall(user) {
 }
 const dialServer = http.createServer((req, res) => {
   const reply = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
-  if (req.method !== 'POST' || req.url !== '/dial') return reply(404, { ok: false, error: 'not found' });
+  // `/probe` asks the same two gates the dial asks and stops there: is this
+  // number one we serve, and is there a live row behind it. It rings nothing,
+  // reserves nothing and takes no busy slot, so callers may ask on an ordinary
+  // turn (domain/voice.callAvailable).
+  //
+  // Its own PATH rather than a flag on /dial, and that is the whole safety
+  // property: olma2 and the bridge deploy on separate workflows, so a probe
+  // sent to a bridge that predates this must fail — a `probe: true` field an
+  // old /dial simply ignores would ring somebody's phone to answer a question
+  // about a card. 404 is the correct, harmless answer from an old bridge.
+  const probe = req.method === 'POST' && req.url === '/probe';
+  if (!probe && (req.method !== 'POST' || req.url !== '/dial')) return reply(404, { ok: false, error: 'not found' });
   let body = '';
   req.on('data', (c) => { body += c; if (body.length > 4096) req.destroy(); });
   req.on('end', async () => {
@@ -814,6 +825,10 @@ const dialServer = http.createServer((req, res) => {
     let user;
     try { user = await loadUserByPhone(phone); } catch (e) { log('dial lookup failed:', e.message); return reply(500, { ok: false, error: 'lookup failed' }); }
     if (!user) return reply(403, { ok: false, error: 'voice calls are not enabled for this user yet' });
+    // Both gates passed. A probe stops here — deliberately without reporting
+    // busy/capacity, which are answers about this second, and a card rendered
+    // from them would be stale by the next turn.
+    if (probe) return reply(200, { ok: true, available: true });
     if (isBusy(user.id)) return reply(409, { ok: false, error: 'a call is already in progress' });
     if (busyCount() >= MAX_CONCURRENT_CALLS) return reply(503, { ok: false, error: 'the line is busy right now' });
     busy.set(user.id, { until: Date.now() + 60_000 }); // reserve BEFORE the await

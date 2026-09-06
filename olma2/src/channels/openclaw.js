@@ -123,6 +123,18 @@ function reasonClause(p, what) {
 // threshold, so an in-flight digest is never changed underneath itself.
 const DEFAULT_CARD_MIN_ITEMS = 3;
 
+// How the morning is allowed to end. `mayAsk === false` means they did not
+// write between the last digest and this one — so whatever gap the model is
+// about to notice, it has already asked about it once and been met with
+// silence. See jobs/sweeps.sweepDigests for the four mornings that produced
+// this. Undefined (a row enqueued before this shipped) keeps the old ending.
+const ASK_CLAUSE = ' End on ONE thing that moves the day: either the single next action out of what you just listed, or one question that fills a real gap you actually have about them — a date, a missing detail on an open task. One of the two, never both, never a list. If neither is honestly there, end on the list itself and stop.';
+const NO_ASK_CLAUSE = ' Do NOT ask them anything at all — no question mark anywhere. They have not written since the last digest, so every question you can think of has already been asked once and left unanswered, and asking it again is the one thing that guarantees the next one is not read either. End on the single next action out of what you just listed, or on the list itself, and stop.';
+
+function endingClause(p) {
+  return p.mayAsk === false ? NO_ASK_CLAUSE : ASK_CLAUSE;
+}
+
 function cardClause(p) {
   const raw = p.cardMinItems;
   const min = Number.isFinite(Number(raw)) ? Number(raw) : DEFAULT_CARD_MIN_ITEMS;
@@ -148,7 +160,7 @@ function bodyFor(row, p) {
       // question every single morning is the drum this doctrine forbids
       // everywhere else, and it would be worse than the filler it replaced.
       return `Scheduled digest time. Call get_my_digest with scope="${p.scope || 'summary'}" now${''
-        } — and if their calendar is connected (USER.md says), also my_calendar_events for the next day or two: a digest that says "יום עמוס לך מחר" because it actually looked is the whole point of having the calendar connected. Send the user a natural, warm summary of the result in their language. If crossUser.awaitingOthers is non-empty, say so in one line — someone they are waiting on has not answered yet; being owed an answer is news, and staying silent about it is how a person ends up believing nothing is happening. End on ONE thing that moves the day: either the single next action out of what you just listed, or one question that fills a real gap you actually have about them — a date, a missing detail on an open task. One of the two, never both, never a list. If neither is honestly there, end on the list itself and stop.${cardClause(p)} ${p.folded && p.folded.length ? `Also weave in these queued updates naturally: ${JSON.stringify(p.folded)}.` : ''}`;
+        } — and if their calendar is connected (USER.md says), also my_calendar_events for the next day or two: a digest that says "יום עמוס לך מחר" because it actually looked is the whole point of having the calendar connected. Send the user a natural, warm summary of the result in their language. If crossUser.awaitingOthers is non-empty, say so in one line — someone they are waiting on has not answered yet; being owed an answer is news, and staying silent about it is how a person ends up believing nothing is happening.${endingClause(p)}${cardClause(p)} ${p.folded && p.folded.length ? `Also weave in these queued updates naturally: ${JSON.stringify(p.folded)}.` : ''}`;
     case 'reminder':
       // Every rung of the escalation ladder rides the RAW pipe, so this branch
       // is reached only by a reminder payload carrying its own `instruction`

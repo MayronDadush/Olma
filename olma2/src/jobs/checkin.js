@@ -13,6 +13,7 @@
 // outbox gate holds the row until the user's own window opens.
 const meetings = require('../domain/meetings');
 const { enqueue } = require('../outbox/enqueue');
+const { lookupTimezone } = require('../domain/phone-timezone');
 
 const HOUR_MS = 3600_000;
 const MIN_MS = 60_000;
@@ -28,10 +29,71 @@ const WEEK_MS = 7 * 24 * HOUR_MS;
 // when the next one comes due, so someone who signs up at 23:00 — whose steps
 // are all held by their quiet hours — wakes up to ONE message, the latest step
 // still live, instead of three at once.
+
+// A step's `instruction` may be a function of (client, user) when what to say
+// depends on what we already hold about that person. The first message is the
+// only one that does today.
+//
+// Two things every new person needs said, and neither was being said. Their
+// NAME is whatever WhatsApp's display field happened to contain — captured
+// unconfirmed on their first turn (see turn-gate.captureDisplayName) and then
+// used as though it were theirs; שחר was greeted by a surname he never gave.
+// Their TIMEZONE is a dialling-code guess, and until this it was either not
+// mentioned at all (Sarah spent her first evening three hours out and only
+// found out because an operator noticed) or mentioned as an IANA string — the
+// model told שחר "אני מניחה שאתה בישראל (Asia/Jerusalem)", which is our
+// vocabulary leaking onto a stranger's phone.
+//
+// So: state the guess with the evidence for it, name the COUNTRY and never the
+// zone, hand them the travel line, and confirm the name — one question mark in
+// the whole message, on the name, because that is the half we actually need an
+// answer to. The zone is announced, not asked: they can correct it, and the
+// discovery ladder will ask for the city later only if `timezone_asked_at` is
+// still NULL.
+function firstContactInstruction(client, u) {
+  const guess = lookupTimezone(u.phone);
+  const lines = ['They joined ~15 minutes ago. Do not ask them for anything yet — SHOW them something.'
+    + ' Look at what they already gave you and do one concretely useful thing with it: offer a reminder'
+    + ' on a task that clearly has a time, point out something due soon, or group what they dumped.'
+    + ' One short message, one offer, easy to say yes to.'];
+  // Only when the guess is real AND still a guess. Someone who already told us
+  // where they are must not be informed of our assumption about them.
+  if (guess && !u.timezone_confirmed) {
+    // A country whose dialling code spans several zones is the case that
+    // actually costs someone their morning: Sarah's +1 bought her New York
+    // while she was in Los Angeles, and every dated thing she said that first
+    // evening was saved three hours early. "You are in the US" would not have
+    // helped her — naming the CITY whose clock we set is the only version of
+    // this sentence a wrong guess cannot survive unnoticed.
+    const city = String(guess.timezone).split('/').pop().replace(/_/g, ' ');
+    lines.push(`Then, in ONE sentence, tell them what you are assuming and why: their number starts`
+      + ` +${guess.code}, so you are guessing they are in ${guess.country} (that label is for you —`
+      + ` name the country in THEIR language) and you have set their hours to it.`
+      + (guess.ambiguous
+        ? ` That country spans several timezones and you had to pick one, so say which city's clock`
+          + ` you set — ${city} — in their language, so a wrong guess is visible to them instead of silent.`
+        : '')
+      + ' Never say the timezone NAME — not "Asia/Jerusalem", not "America/New_York", nothing of that'
+      + ' shape; that is our vocabulary, not theirs. Follow it immediately with the travel line, so they'
+      + ' learn they can just say so: "ואם תיסע או תעבור לעיר אחרת, פשוט תגיד לי" (match their language'
+      + ' and their gender forms). This is a STATEMENT, not a question — do not ask them to confirm it'
+      + ' and do not ask which city.');
+  }
+  // The one question the message is allowed to carry.
+  if (u.first_name && !u.name_confirmed) {
+    lines.push(`End by checking the name you have: you were given "${u.first_name}" by WhatsApp, not by them.`
+      + ' Ask it as one short warm question ("נעים להכיר! שחר, נכון?"), using only the first name.'
+      + ' On their answer call set_my_name. This is the ONLY question mark in the message.');
+  } else if (!u.first_name) {
+    lines.push('You do not have their name. Ask only for it — nothing else, and nothing after it.');
+  }
+  return lines.join(' ');
+}
+
 const ONBOARDING_STEPS = [
   {
     slot: '15m', afterMs: 15 * MIN_MS, expiresAfterMs: 2 * HOUR_MS,
-    instruction: 'They joined ~15 minutes ago. Do not ask them for anything yet — SHOW them something. Look at what they already gave you and do one concretely useful thing with it: offer a reminder on a task that clearly has a time, point out something due soon, or group what they dumped. One short message, one offer, easy to say yes to. If they gave you nothing at all, ask only for their name — nothing else.',
+    instruction: firstContactInstruction,
   },
   {
     slot: '2h', afterMs: 2 * HOUR_MS, expiresAfterMs: 5 * HOUR_MS,
@@ -151,7 +213,8 @@ function requiredGapMs(ageDays, misses) {
 
 async function eligibleUsers(client, now) {
   const { rows } = await client.query(
-    `SELECT u.id, u.first_name, u.checkin_misses, u.last_checkin_at, u.onboarded_at,
+    `SELECT u.id, u.first_name, u.phone, u.name_confirmed, u.timezone, u.timezone_confirmed,
+            u.timezone_asked_at, u.checkin_misses, u.last_checkin_at, u.onboarded_at,
             GREATEST(coalesce(u.onboarded_at, u.created_at),
                      coalesce((SELECT max(a.created_at) FROM audit_log a WHERE a.actor_id = u.id), u.created_at)
             ) AS last_activity
@@ -342,7 +405,8 @@ function daysAgo(ts) {
 async function discoveryGaps(client, userId) {
   const gaps = [];
   const { rows: u } = await client.query(
-    `SELECT digest_times, timezone, timezone_confirmed FROM users WHERE id = $1`, [userId]);
+    `SELECT digest_times, timezone, timezone_confirmed, timezone_asked_at
+       FROM users WHERE id = $1`, [userId]);
   // FIRST, ahead of the digest: an unconfirmed zone poisons every dated thing
   // underneath it, and a digest offered at "09:00" in the wrong zone just
   // schedules the bug. Measured on the box 2026-09-03: nine of ten active
@@ -359,7 +423,15 @@ async function discoveryGaps(client, userId) {
   // validates it through Intl — and no user has ever been told that. A person
   // who travels and says nothing keeps getting their morning digest and their
   // reminders on a clock they left behind.
-  if (!u[0].timezone_confirmed) {
+  // Asked once, ever — never twice, and never once per route. `timezone_asked_at`
+  // rather than the topic string, because the two asks that reached Sarah four
+  // days apart carried two different topics ('timezone_repair' from an
+  // operator's one-off, 'timezone' from this ladder) and the once-ever dedup
+  // below could not see across them. An unanswered question repeated is not a
+  // second chance, it is the reason the third one goes unread too; if they
+  // never say, the guess stays and the travel line has already told them how
+  // to change it (migration 044).
+  if (!u[0].timezone_confirmed && !u[0].timezone_asked_at) {
     const guessed = u[0].timezone
       ? `We are currently guessing ${u[0].timezone}, which came from their phone number and is not a location.`
       : 'We have no timezone for them at all, so everything falls back to UTC.';
@@ -441,7 +513,8 @@ async function run(client, now = Date.now()) {
     if (step && step.skipIf && await step.skipIf(client, u)) step = null;
     if (step) {
       rung = `onboarding_${step.slot}`;
-      instruction = step.instruction;
+      instruction = typeof step.instruction === 'function'
+        ? await step.instruction(client, u) : step.instruction;
       key = `onboarding:${u.id}:${step.slot}`;
       expiresAt = new Date(new Date(u.onboarded_at).getTime() + step.expiresAfterMs).toISOString();
     } else {
@@ -465,6 +538,15 @@ async function run(client, now = Date.now()) {
           : `UPDATE users SET last_checkin_at = now(), checkin_misses = checkin_misses + 1 WHERE id = $1`,
         [u.id]
       );
+      // Stamped on the ENQUEUE, not on the answer: the promise is "asked
+      // once", and a question the gate later drops still used up the one turn
+      // this person's patience had for it. Any topic that begins 'timezone',
+      // so an operator's one-off repair message spends the same single ask.
+      if (topic && /^timezone/.test(topic)) {
+        await client.query(
+          `UPDATE users SET timezone_asked_at = now() WHERE id = $1 AND timezone_asked_at IS NULL`,
+          [u.id]);
+      }
       results.push({ userId: u.id, rung });
     }
   }

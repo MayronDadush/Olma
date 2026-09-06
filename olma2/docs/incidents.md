@@ -40,6 +40,8 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [Good morning at half past one (fixed 2026-09-06)](#good-morning-at-half-past-one-fixed-2026-09-06)
+- [The morning digest asked the same question four mornings running (fixed 2026-09-06)](#the-morning-digest-asked-the-same-question-four-mornings-running-fixed-2026-09-06)
 - [Four good mornings to a man who had stopped answering (fixed 2026-09-05)](#four-good-mornings-to-a-man-who-had-stopped-answering-fixed-2026-09-05)
 - [The reminder that could not climb, because its first rung died on the wire (fixed 2026-09-05)](#the-reminder-that-could-not-climb-because-its-first-rung-died-on-the-wire-fixed-2026-09-05)
 
@@ -93,6 +95,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Facts, names and the user card**
 
+- [The carryover leak came back, and the code cannot say how (2026-09-06)](#the-carryover-leak-came-back-and-the-code-cannot-say-how-2026-09-06)
 - [The fact table admitted everything and ranked by recency (fixed 2026-08-28)](#the-fact-table-admitted-everything-and-ranked-by-recency-fixed-2026-08-28)
 - [The name was in front of us on every turn (fixed 2026-08-22)](#the-name-was-in-front-of-us-on-every-turn-fixed-2026-08-22)
 - [The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)](#the-carryover-detector-checked-the-wrong-half-of-the-pair-so-the-flagged-case-was-innocent-and-the-real-leaks-were-invisible-fixed-2026-09-03)
@@ -100,6 +103,8 @@ never trust a dated narrative for something you are about to act on.
 
 **Time, timezones and scheduling**
 
+- [The city was asked four times, because two routes each asked it once (fixed 2026-09-06)](#the-city-was-asked-four-times-because-two-routes-each-asked-it-once-fixed-2026-09-06)
+- [The first message states the timezone instead of asking for it (2026-09-06)](#the-first-message-states-the-timezone-instead-of-asking-for-it-2026-09-06)
 - [A phone number is not a location (2026-08-31)](#a-phone-number-is-not-a-location-2026-08-31)
 - [A Saturday nudge about Friday's poker game (fixed 2026-08-22)](#a-saturday-nudge-about-fridays-poker-game-fixed-2026-08-22)
 - [Both of them explained why, and neither ever heard it (fixed 2026-08-22)](#both-of-them-explained-why-and-neither-ever-heard-it-fixed-2026-08-22)
@@ -110,6 +115,7 @@ never trust a dated narrative for something you are about to act on.
 - [Yahav's first evening: the hour she promised and the message that got nothing (2026-09-05)](#yahavs-first-evening-the-hour-she-promised-and-the-message-that-got-nothing-2026-09-05)
 
 **Features as they shipped**
+- [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
 - [Two messages three seconds apart, and the first one's work was cancelled (2026-09-06)](#two-messages-three-seconds-apart-and-the-first-ones-work-was-cancelled-2026-09-06)
 - [A 👍 is the answer; the sentence after it is a second notification (2026-09-05)](#a--is-the-answer-the-sentence-after-it-is-a-second-notification-2026-09-05)
@@ -1093,6 +1099,68 @@ down; the audit row carries fingerprints, which is what `token-leak.js`
 compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
+
+
+### Good morning at half past one (fixed 2026-09-06)
+
+Sarah (u-17, Los Angeles) got a message at **01:26 in the morning** on
+2026-09-03. Quiet hours were on, her timezone was right, and the delivery gate
+had done its job: the row was sitting held with `hold_reason = 'night'` and a
+`release_after` in the morning. Something released it early.
+
+Three rows carry the identical microsecond stamp, `2026-09-03
+08:26:10.736419` — the outbox row's new `release_after`, a `message.received`,
+and a `turn.opened_implicitly`. The transcript for that instant is session
+`c7040aaf`, and its first line is `[OpenClaw heartbeat poll]`, followed by
+`list_my_tasks`. Nobody wrote to her. The gateway's own 30-minute heartbeat
+ran a turn on her agent, the model skipped `turn_start`, `openTurnImplicitly`
+covered for it — and `openRecord` released every night-held row for that user,
+unconditionally, because up to that point every caller had a real inbound
+message behind it.
+
+**A night hold is released by the PERSON writing, and by nothing else.**
+`openRecord` now takes `{ wake }`: the gateway opener
+(`openFromGateway`, driven by a real `message:preprocessed`) passes `true`,
+the implicit fallback passes `false`. The fallback still counts the turn and
+still adopts the open — it just no longer treats "a turn happened" as "they
+are awake", which is an inference, and the one thing a quiet-hours guarantee
+cannot be built on.
+
+The heartbeat that triggered this is itself off since 2026-09-05 ("The
+heartbeat was the bill"), so the exact path is closed twice over. It was left
+fixed at the `openRecord` level anyway: any future turn Olma starts on
+somebody's agent — an eval, a repair sweep, a feature nobody has written yet —
+arrives through the same door.
+
+### The morning digest asked the same question four mornings running (fixed 2026-09-06)
+
+"Nobody is asked a question they have already not answered once" was enforced
+in the check-in ladder and nowhere else. The morning digest has its own
+instruction, and it ended with *"end on ONE thing that moves the day: … or one
+question that fills a real gap you actually have about them"*. Nothing
+malfunctioned. Every morning the model looked for a real gap, found the same
+one, and asked it again — Sarah was asked whether the brunch and the move had
+happened on the mornings of 2, 4, 5 and 6 September, and answered none of the
+four.
+
+Across her whole Wednesday conversation: **12 questions in 13 delivered
+messages.** (The worst single message — 494 characters, five question marks —
+turned out never to have been delivered at all: it was composed inside the
+heartbeat session above, whose target is `none`. The delivered ones ran
+100–430 characters. The length was not the problem; the interrogation was.)
+
+The sweep now reads its own history. `sweepDigests` selects the last digest
+that actually went out — `sent_at IS NOT NULL AND hold_reason IS NULL`, so a
+cancelled or expired row is not counted as something they ignored — and puts
+`mayAsk` on the payload: false when nothing was received from them since it.
+`channels/openclaw.js` swaps the ending clause on that flag, and the silent
+version is explicit rather than merely softer: *no question mark anywhere*,
+because "ask a gentler question" is what produced four mornings of this.
+
+Two properties worth keeping. It is a **backoff, not a mute** — one message
+from them re-opens the question the next morning. And the ending is chosen by
+the ROW, so a digest already queued when this shipped keeps the wording it was
+enqueued with, the same rule `cardMinItems` follows.
 
 ### Four good mornings to a man who had stopped answering (fixed 2026-09-05)
 
@@ -2608,6 +2676,42 @@ never `T...Z`.
 
 ## Facts, names and the user card
 
+
+### The carryover leak came back, and the code cannot say how (2026-09-06)
+
+Repaired 2026-09-03: 24 characters of another user's intake text (u-14) sitting
+in u-17's USER.md carryover section. Read again on 2026-09-06: the section is
+back, now with **49 characters belonging to u-8** — text Sarah never wrote,
+presented to her agent every turn as something she had said.
+
+It was not inert. The agent read it and acted on it: task 459, *"Ask Chaim at
+21:30 where to do Passover"*, with reminder 143 armed to fire at 2026-09-07
+04:30 UTC. A stranger's sentence became a stranger's errand on her list.
+
+**How it reappeared is genuinely unknown, and this entry says so rather than
+naming a plausible culprit.** Four candidates were checked and cleared:
+`refreshUserCard` preserves the tail from the first `\n## ` and never creates
+that section; `resync-agent-templates.js` writes AGENTS.md only;
+`provisionUser`/`seedWorkspace` would have left a second
+`user.provisioned.workspace` audit row and there is none for u-17; the testbed
+restore is keyed by phone. Something wrote it, and nothing we can read
+recorded doing so.
+
+So the answer shipped is not a fix for a cause — it is **continuous repair**.
+`carryover_repair` is now an armed job on the ten-minute beat
+(`jobs/registry.js`, `expectations.js`), running `repairCarryovers` with
+`apply: true` and refreshing every card it touched. `domain/carryover-repair`'s
+peer reader became awaitable so brokerd can hand it `sessions-async` — the
+daemon answers live users on the same loop and must not read sqlite
+synchronously. `admin.carryover_leak_repaired` joined `PERMANENT_PREFIXES` in
+`domain/audit.js`, so a leak that heals itself at 03:00 still leaves a row
+somebody can count months later; a self-healing system with a prunable audit
+trail is a system that has quietly decided the incident never happened.
+
+The two-in-four-days recurrence is the actual finding. **Repairing on a
+schedule is what you ship when you cannot name the writer** — and the audit
+rows are how anyone will ever notice it is still happening.
+
 ### The fact table admitted everything and ranked by recency (fixed 2026-08-28)
 
 The owner read the dashboard's "מה נלמד לאחרונה" and asked whether that is
@@ -2829,6 +2933,48 @@ tick did the final flip, the next reported zero new/closed issues — stable.
 
 
 ## Time, timezones and scheduling
+
+
+### The city was asked four times, because two routes each asked it once (fixed 2026-09-06)
+
+Sarah was asked which city she lives in on her first contact, and then again,
+and again. Each asking route was individually correct: the first-contact step
+asks once by construction, and `discoveryGaps` offers a gap **at most once
+ever**, deduped on the outbox `topic`. They simply did not know about each
+other, and a topic string only dedups against rows written under that same
+string — so "once ever" was once ever *per route*.
+
+The stamp now lives on the person, not on the route: `users.timezone_asked_at`
+(migration 044, backfilled from the outbox rows that had already asked).
+Whichever route asks stamps it, and every route reads it. The general shape:
+**a "once ever" promise deduped on the asking mechanism is a promise per
+mechanism** — if a second mechanism can ask the same question, the record has
+to sit on the thing being asked.
+
+### The first message states the timezone instead of asking for it (2026-09-06)
+
+Shahar joined and was asked where he lives. He had written from a `+972`
+number. The owner's note: it would be nicer to say *"from your +972 number I'm
+guessing you're in Israel, so I'm setting your times to that — tell me any
+time if you want it changed"*, and to spend the one question on something the
+number genuinely cannot answer: *"nice to meet you! Shahar, right?"* — the
+name on file came from WhatsApp's profile, and nobody had ever confirmed it is
+what he wants to be called.
+
+`ONBOARDING_STEPS[0].instruction` is therefore built per person now
+(`firstContactInstruction`), from `lookupTimezone`: it shows the dialling code
+and the country it implies, names the picked city where the country is
+ambiguous, forbids the IANA string (nobody says "Asia/Jerusalem" out loud),
+requires the "tell me if you travel" line, and ends on **exactly one**
+question — the name check, quoting the name actually on file and telling the
+model to call `set_my_name` with the answer.
+
+A guess stated out loud is cheaper than a question in both directions: it is
+right most of the time, it is corrigible when it is wrong, and it does not
+spend the one thing a first message can afford to ask for. The zone was
+already being guessed from the number either way (see "A phone number is not a
+location" — the guess is a guess, which is exactly why saying it out loud is
+better than hiding it behind a question).
 
 ### A phone number is not a location (2026-08-31)
 
@@ -3189,6 +3335,43 @@ rule working exactly as written.
 
 
 ## Features as they shipped
+
+
+### An offer to call a number the bridge has never served (fixed 2026-09-06)
+
+Asked on 2026-09-05 to set a reminder, Sarah was told *"I can call you now if
+you'd like"*. `VOICE_ENABLED_PHONES` has never contained her US number. Had
+she said yes, the dial would have come straight back as a refusal.
+
+The model was not hallucinating a feature — `call_me_on_the_phone` is real,
+it is in every agent's tool list, and nothing anywhere told this agent that it
+would not work for **this** person. The allowlist lives in the bridge's `.env`,
+a separate process on a separate deploy workflow, and there was no way to ask
+it a question short of placing a call.
+
+So there is one now. `POST /probe` on the bridge's loopback dial API runs the
+same two gates the dial runs — the allowlist, then a live user row — and stops
+there, ringing nothing and reserving no busy slot.
+`domain/voice.callAvailable` asks it while a card renders (2s budget), and
+`user-card.js` prints one line: available, not available, or — on `null` —
+nothing at all. The line carries its own instruction, because that costs only
+the turns where it is true, unlike a sentence of doctrine.
+
+**Three values, never two.** `null` is "could not ask", and it must not
+collapse into "no": a bridge that is restarting would otherwise tell somebody
+every few minutes that their calls had been taken away (CLAUDE.md, "A thing
+that could not be READ is never a thing in trouble").
+
+**And the probe is a PATH, not a flag — this is the whole safety property.**
+The first version sent `{ probe: true }` to `POST /dial`. olma2 and the bridge
+ship on *separate workflows*, so olma2 can be newer than the bridge for
+minutes at a time; a bridge that predates the change would have ignored the
+unknown field and **placed a real phone call to answer a question about
+rendering a card**. As its own path it 404s instead, `callAvailable` reads
+that as `null`, and the card silently omits the line. That silence is by
+design, which means nothing would ever notice a `/probe` that stopped
+existing — so `voice-bridge/deploy.sh`'s health check now asserts it: `/dial`
+404s a GET, `/probe` 403s a phone nobody serves.
 
 ### The reply's first six seconds were bookkeeping (2026-09-05)
 

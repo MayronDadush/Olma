@@ -19,6 +19,11 @@ const JOB_INTERVAL_SECONDS = {
   unanswered_sweep: 60,
   lane_watchdog: 30,
   config_guard: 600,
+  // Same beat as the guard that reports the same condition — the two are one
+  // mechanism split in half, and a repair slower than its own detector would
+  // leave the window this closes half open. Nearly every tick reads a dozen
+  // small files and finds nothing.
+  carryover_repair: 600,
   // The demo switch. Once a minute because the two-hour expiry is re-decided
   // every tick rather than held in a timer — a timer dies with the process and
   // the promise "it turns itself off" has to survive a restart.

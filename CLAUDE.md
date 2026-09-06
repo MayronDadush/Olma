@@ -162,6 +162,12 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   the `idempotency_key` that stops the sweep re-creating it.
 - **The delivery gate is the chokepoint and a paused user has no exceptions** —
   not reminders, not urgent, not another user's fan-out.
+- **Only the PERSON writing releases a night-held row.** `openRecord` takes
+  `{ wake }`: the gateway opener, which has a real `message:preprocessed`
+  behind it, passes `true`; `openTurnImplicitly` — the fallback for a model
+  that skipped `turn_start` — passes `false`. Unconditional, it woke Sarah at
+  01:26 for a gateway heartbeat poll (`incidents.md`, "Good morning at half
+  past one"). A turn happening is not evidence that anyone is awake.
 - **A reminder rung the GATE held is never chased; a rung OUR pipe lost is
   redone at once.** The discriminator is on the expired outbox row: the gate
   leaves `attempts = 0` and no `last_error`, a dead pipe leaves both. The
@@ -253,6 +259,21 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   (`jobs/checkin.js`, `requiredGapMs`, `pickRung(…, misses)`). What is
   THEIRS — a meeting waiting on them, a deadline tomorrow — still outranks
   the quiet.
+  **The morning digest obeys the same rule and had to be told so separately**:
+  `sweepDigests` puts `mayAsk` on the payload — false when nothing was
+  received since the last digest that really went out (`sent_at` set,
+  `hold_reason` null, so a cancelled row is not counted as silence) — and
+  `channels/openclaw.js` swaps in an ending with no question mark anywhere.
+  A backoff, not a mute: one message from them re-opens it. It asked Sarah the
+  same question on four mornings first (`incidents.md`, "The morning digest
+  asked the same question four mornings running").
+- **A "once ever" question is stamped on the PERSON, never deduped on the
+  route that asks it.** Two routes each honouring "at most once" is twice.
+  The city is `users.timezone_asked_at` (migration 044), written by whichever
+  route asks and read by both (`incidents.md`, "The city was asked four
+  times"). And the first message **states** the zone guessed from the dialling
+  code rather than asking for it, spending its one question on the name on
+  file — `firstContactInstruction`, built per person.
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
   The gateway carries it end to end — `reply_to_id` in `Conversation info`, the
   quoted text in a `Reply target of current user message` block — and nothing
@@ -443,6 +464,25 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   at once and the LAST to finish wins. `placeMark` kills an older child still
   starting up when a newer mark arrives for the same message; one that
   already exited is simply replaced on the phone.
+- **Olma never offers a capability without asking the thing that owns it.**
+  Phone calls live behind the bridge's own allowlist, in another process on
+  another deploy workflow; `domain/voice.callAvailable` asks `POST /probe`
+  (which rings nothing) and the card states the answer. **Three values, never
+  two** — `null` is "could not ask" and prints no line at all. **The probe is
+  a PATH and not a flag on `/dial`**: the two ship separately, so a probe can
+  reach a bridge that predates it, and a field an old `/dial` ignores would
+  ring somebody's phone to render a card. Its 404 is the harmless answer, and
+  `voice-bridge/deploy.sh` asserts `/probe` still exists, because
+  `null` is silent by design (`incidents.md`, "An offer to call a number the
+  bridge has never served").
+- **A carryover leak is repaired on a schedule, because nothing can name the
+  writer.** Another user's intake text appeared in u-17's card twice in four
+  days; the agent turned the second one into a task with a reminder. The
+  `carryover_repair` job applies `repairCarryovers` every ten minutes and
+  refreshes the cards it touched. `admin.carryover_leak_repaired` is in
+  `PERMANENT_PREFIXES` — a self-healing exposure with a prunable audit trail
+  is one nobody can ever count (`incidents.md`, "The carryover leak came
+  back").
 - **Olma never claims a lookup it did not perform.** No price, no stock level,
   no "מצאתי לך", no link to a RESULT — all of it asserts a fetch that never
   happened. `search_link` is the one exception and only because a link to a

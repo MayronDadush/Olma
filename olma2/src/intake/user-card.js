@@ -93,6 +93,24 @@ function renderCard(user, prefs, facts = [], extras = {}) {
       ? `Calendar: connected (${extras.calendar})`
       : 'Calendar: not connected');
   }
+  // Whether call_me_on_the_phone would actually ring for THIS number. Asked of
+  // the bridge, which is the only thing that knows (domain/voice.callAvailable)
+  // — and printed only when it answered. `undefined`/null is "we could not
+  // ask", and prints nothing at all, so a bridge that is down never tells
+  // somebody their feature was taken away.
+  //
+  // The line carries its own instruction because that is the cheapest place
+  // for it: a doctrine sentence costs every user every turn, this costs the
+  // turns where it is true. Asked for a call reminder on 2026-09-05, Sarah was
+  // offered "I can call you now if you'd like" — her number has never been on
+  // the bridge's list, so the offer had nowhere to land.
+  if (extras.calls === true) {
+    lines.push('Phone calls: available — call_me_on_the_phone rings them within seconds. '
+      + 'Only when they ask; never offer it unprompted.');
+  } else if (extras.calls === false) {
+    lines.push('Phone calls: NOT available for this number — never offer to call them, '
+      + 'and if they ask, say plainly that calls are not open for them yet.');
+  }
   // Stated as what it is ALLOWED to do, not merely that it exists: an agent
   // that knows a mailbox is connected but not that it is read-only is one
   // offer away from promising to send a reply it cannot send.
@@ -186,7 +204,13 @@ async function refreshUserCard(pool, userId) {
         WHERE user_id = $1 AND built_at > now() - ($2 || ' hours')::interval`,
       [userId, String(require('../jobs/planning').PLAN_FRESH_HOURS)]
     );
+    // Best-effort and bounded (2s): a card refresh must not sit on a socket.
+    // Anything other than a straight yes/no from the bridge stays null and the
+    // line is left off entirely.
+    let calls = null;
+    try { calls = await require('../domain/voice').callAvailable(user); } catch { calls = null; }
     const extras = {
+      calls,
       calendar: cal[0] ? cal[0].access_level : false,
       mail: mailRows[0] ? (mailRows[0].account_label || 'connected') : false,
       connections: conn[0].n,

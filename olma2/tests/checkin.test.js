@@ -612,3 +612,90 @@ test('a passed meeting neither nudges nor blocks the rest of the ladder', async 
       `the ladder moves on to something real, got ${pick.rung}`);
   } finally { c.release(); }
 });
+
+// One city question per person, ever — not one per code path.
+//
+// Sarah (u-17) was asked which city she was in twice, four days apart: once by
+// an operator's repair message carrying topic 'timezone_repair', once by this
+// ladder's own 'timezone'. The once-ever dedup below keys on the topic string,
+// so to it those were two different questions; to her they were the same one,
+// asked again after she had already declined to answer it.
+test('the city is asked once ever, across every route that asks it', async () => {
+  const u = await makeUser(db.pool, '+972641000081', { firstName: 'Sarah' });
+  const c = await db.pool.connect();
+  try {
+    await c.query(`UPDATE users SET timezone = 'America/New_York' WHERE id = $1`, [u.id]);
+    await c.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, 'a'), ($1, 'b')`, [u.id]);
+    assert.equal((await checkin.pickRung(c, u.id)).topic, 'timezone');
+
+    // Somebody else asked — an operator's one-off, a topic this ladder has
+    // never heard of. The stamp is the only thing the two share.
+    await c.query(`UPDATE users SET timezone_asked_at = now() WHERE id = $1`, [u.id]);
+
+    const pick = await checkin.pickRung(c, u.id);
+    assert.notEqual(pick.topic, 'timezone', 'asked once is asked');
+    // ...and the ladder moves on to the gap underneath rather than going quiet.
+    assert.equal(pick.topic, 'digest');
+  } finally { c.release(); }
+});
+
+test('asking stamps the ask, so the next tick cannot ask again', async () => {
+  const u = await makeUser(db.pool, '+972641000082', { firstName: 'Noa' });
+  await db.pool.query(
+    `UPDATE users SET timezone = 'America/New_York', onboarded_at = now() - interval '9 days',
+            last_checkin_at = now() - interval '9 days' WHERE id = $1`, [u.id]);
+  await db.pool.query(`INSERT INTO tasks (owner_id, title) VALUES ($1, 'a'), ($1, 'b')`, [u.id]);
+  // Eligibility reads last_activity off the audit trail, and provisioning
+  // wrote rows a second ago — age them with the user or she is never idle.
+  await db.pool.query(
+    `UPDATE audit_log SET created_at = now() - interval '9 days' WHERE actor_id = $1`, [u.id]);
+
+  await withTx(db.pool, (c) => checkin.run(c, Date.now()));
+  const { rows } = await db.pool.query(
+    `SELECT timezone_asked_at, (SELECT payload->>'topic' FROM outbox
+        WHERE user_id = u.id AND kind = 'checkin' ORDER BY id DESC LIMIT 1) AS topic
+       FROM users u WHERE u.id = $1`, [u.id]);
+  assert.equal(rows[0].topic, 'timezone', 'the ask went out');
+  assert.ok(rows[0].timezone_asked_at, 'and was stamped on the way out, not on the answer');
+});
+
+// The first message a stranger ever gets. Two things it must carry and neither
+// was being carried: what we are ASSUMING about where they are (Sarah spent her
+// first evening three hours out and found out from an operator), and a check on
+// the NAME, which is whatever WhatsApp's display field held — שחר was greeted
+// by a surname he never gave. And one thing it must never carry: an IANA zone
+// name, which is our vocabulary. He was sent "אני מניחה שאתה בישראל
+// (Asia/Jerusalem)".
+test('the first message states the timezone guess in plain words and checks the name', () => {
+  const first = checkin.ONBOARDING_STEPS[0].instruction;
+  assert.equal(typeof first, 'function', 'it depends on the person, so it is built per person');
+
+  const shahar = first(null, {
+    phone: '+972525497771', first_name: 'שחר מזושיאן', name_confirmed: false, timezone_confirmed: false,
+  });
+  assert.match(shahar, /\+972/, 'it shows the evidence: the dialling code');
+  assert.match(shahar, /ישראל/, 'and names the country');
+  assert.doesNotMatch(shahar, /Asia\/Jerusalem"?\s*\)/, 'never the zone as a thing to say');
+  assert.match(shahar, /travel line/, 'and hands them the way to correct it later');
+  assert.match(shahar, /STATEMENT, not a question/, 'the zone is told, not asked');
+  assert.match(shahar, /שחר מזושיאן/, 'the name we hold is quoted so it can be checked');
+  assert.match(shahar, /ONLY question mark/, 'exactly one ask in the whole message');
+
+  // A country whose dialling code spans several zones is the case that cost
+  // Sarah her first evening: "+1" bought her New York while she was in Los
+  // Angeles. Naming the CITY whose clock we set is the only version of the
+  // sentence a wrong guess cannot survive unnoticed.
+  const sarah = first(null, {
+    phone: '+15167802250', first_name: 'Sarah', name_confirmed: false, timezone_confirmed: false,
+  });
+  assert.match(sarah, /New York/, 'an ambiguous country must name the city it picked');
+  assert.match(sarah, /spans several timezones/);
+
+  // Someone who already told us where they are is not informed of our
+  // assumption about them, and a confirmed name is not re-checked.
+  const settled = first(null, {
+    phone: '+972500000000', first_name: 'דנה', name_confirmed: true, timezone_confirmed: true,
+  });
+  assert.doesNotMatch(settled, /guessing/);
+  assert.doesNotMatch(settled, /question mark/);
+});

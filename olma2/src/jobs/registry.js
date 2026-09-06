@@ -22,6 +22,10 @@ const checkin = require('./checkin');
 const sweeps = require('./sweeps');
 const intake = require('./intake');
 const configGuard = require('./config-guard');
+const carryoverRepair = require('../domain/carryover-repair');
+// The worker-thread facade, never channels/sessions directly: this daemon
+// answers live users on the same loop (CLAUDE.md, "What is live").
+const sessionsAsync = require('../channels/sessions-async');
 const livenessWatch = require('./liveness-watch');
 const unanswered = require('./unanswered');
 const laneWatchdog = require('./lane-watchdog');
@@ -225,6 +229,21 @@ function jobs({ pool }) {
     } },
     { name: 'config_guard', run: () => withTx(pool, (c) =>
       configGuard.run(c, { configPath: OPENCLAW_CONFIG, send: rawSend, validateConfig })) },
+    // A card quoting a stranger's intake message is REPAIRED here, not merely
+    // reported. config_guard already names it, and naming it was not enough:
+    // on 2026-09-06 the row sat on the dashboard for four hours while the
+    // agent turned the stranger's words into a task and a reminder on the
+    // wrong person's phone. Removal only — a section it cannot prove is
+    // foreign is left exactly where it is (domain/carryover-repair.js), and
+    // the card is re-rendered afterwards so the agent's next turn is clean.
+    { name: 'carryover_repair', run: async () => {
+      const out = await carryoverRepair.repairCarryovers(pool, {
+        apply: true,
+        readPeerText: (phone) => sessionsAsync.readPeerUserText('intake', phone),
+      });
+      await refreshAfter(out.repaired.map((r) => r.id));
+      return out;
+    } },
     { name: 'boost_reconcile', run: () => withTx(pool, (c) =>
       boostJob.run(c, { configPath: OPENCLAW_CONFIG })) },
     { name: 'memory_consolidation', run: () => withTx(pool, (c) =>
