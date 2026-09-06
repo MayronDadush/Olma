@@ -147,6 +147,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two branches, one migration number — a third time, in one afternoon (fixed 2026-08-29)](#two-branches-one-migration-number--a-third-time-in-one-afternoon-fixed-2026-08-29)
 - [Two branches, one migration number (fixed 2026-08-22)](#two-branches-one-migration-number-fixed-2026-08-22)
 - [The suite was green thirteen hours a day and red eleven (fixed 2026-08-30)](#the-suite-was-green-thirteen-hours-a-day-and-red-eleven-fixed-2026-08-30)
+- [Three deploys died on a test that raced the second hand (fixed 2026-09-06)](#three-deploys-died-on-a-test-that-raced-the-second-hand-fixed-2026-09-06)
 - [Deploying doctrine no longer needs a second command (2026-08-21)](#deploying-doctrine-no-longer-needs-a-second-command-2026-08-21)
 - [A rollback cannot reach the filesystem (fixed 2026-08-27)](#a-rollback-cannot-reach-the-filesystem-fixed-2026-08-27)
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
@@ -4233,7 +4234,9 @@ person is already having simply continues, silently more capable.
   Peer wildcard `peer:{kind:"direct",id:"*"}` is supported, outranked by exact
   peers.
 - **Never poll `openclaw sessions list` on a timer** — measured 2.9s of CPU
-  per invocation, which on this 1-vCPU box is ~20% of the core per 15s tick
+  per invocation, which on the 1-vCPU box of the day was ~20% of the core per
+  15s tick (the droplet has had two cores since 2026-09-06; the measurement
+  stands, the fraction halves, and the rule is unchanged)
   and directly slows every agent reply. The same facts (plus token counters
   and the gateway's own cost estimate) are in
   `agents/<id>/sessions/sessions.json`, keyed by session key. `olma2/src/channels/sessions.js`
@@ -4746,6 +4749,53 @@ instead of sending. Two things worth carrying:
 - **A fallback default is not an open door.** The comment was not lazy, it was
   wrong about which way an unknown phone fails — and a test asserting a SEND
   must own the hour of every phone it points at, not just the default one.
+
+### Three deploys died on a test that raced the second hand (fixed 2026-09-06)
+
+`main` went red three times running, on
+`tests/meeting-deep-link.test.js` — `slot_changed`, "the slot the user
+approved is no longer on the table" — on bytes that had passed the PR twice.
+
+The test proposed an option at `at(72)` and then said yes at `at(72)`,
+computing the moment **twice**. `at()` is second-precision off `Date.now()`.
+Cross a second boundary in the gap and the yes names a moment one second off
+the table, which `respond_to_meeting_slot` refuses on purpose — that refusal
+is the fix for a real incident where three proposals crossed within eight
+seconds and a yes to Sunday landed on Tuesday. **The domain code was right and
+the test was racing the clock.** Its own sibling,
+`meeting-confirm-order.test.js`, had already learned this and pins
+`const when = at(24)` once, with a comment saying why.
+
+Three things worth keeping:
+
+- **The gap is a property of the machine, not of the code.** 65ms in CI,
+  227ms and then 603ms in `deploy.sh`'s on-box run — niced to 19, sharing one
+  core with live agent turns. A race CI wins nine times out of ten, the box
+  loses nearly always. **The on-box suite is the last gate and the slowest
+  machine**, which is the whole reason it exists (`On-box suite catches what
+  CI cannot`), and it is where timing assumptions go to die.
+- **A suite failure inside `deploy.sh` leaves a mixed box, and does not roll
+  back.** The order is rsync → RELEASE marker → `npm install` → migrations →
+  suite → restart. A red suite aborts before the restart, so `roll_back` never
+  runs — correctly, since nothing was replaced. What is left is new code on
+  disk, **migrations already applied**, old code in memory, `/ready` 200 and
+  every user served exactly as before. Read `RELEASE` for what is on disk and
+  `ActiveEnterTimestamp` for what is running; they disagreeing is this state,
+  not a broken deploy. Whether it is harmless depends on which files moved:
+  here, ten runtime files differed and the only reader of any of them was
+  `bin/olma-brokerd.js` — the long-lived process that had not restarted — while
+  the per-turn MCP shim, which re-execs on every tool call, loaded none of
+  them. That is worth checking rather than assuming.
+- **The scheduled clock-drift run had shipped the day before, for exactly this
+  class, and this is not how it was caught.** `deploy.sh` found it first,
+  three times, because the deploy runs on the hostile machine and the schedule
+  only runs at four hours. Both are worth having; neither replaces reading the
+  failure.
+
+The box was resized from one core to two the same evening, which widens the
+odds without changing the rule: **a moment a test will later assert on is
+computed once.** `SUITE_CONCURRENCY` was left at 2 — it was chosen for the
+old shape and has not been re-measured on the new one.
 
 ### Deploying doctrine no longer needs a second command (2026-08-21)
 
