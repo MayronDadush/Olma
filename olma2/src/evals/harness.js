@@ -59,9 +59,19 @@ async function resetEvalUser(client, userId) {
   await client.query(`DELETE FROM meetings WHERE initiator_id = $1`, [userId]);
   await client.query(`DELETE FROM outbox WHERE user_id = $1`, [userId]);
   await client.query(`DELETE FROM connections WHERE requester_id = $1 OR target_id = $1`, [userId]);
+  // The quota counter is state too, and leaving it made the suite lie. The
+  // eval user has the same 50-a-day free cap as anyone, `resetEvalUser` wiped
+  // their DATA and left the count, and a day with a few manual runs simply
+  // crossed it: `turn_start` then answers `send_block_notice` and every
+  // scenario after that measures the block, not the model. Four days in the
+  // last week went over (2026-09-01 through 09-05, 53 to 63) and 2026-09-06
+  // reached 105 — reds that read as model failures and were not. No scenario
+  // asserts on quota, so a blank slate includes this.
+  await client.query(`DELETE FROM quota_counters WHERE user_id = $1`, [userId]);
   await client.query(
     `UPDATE users SET paused_at = NULL, resume_offer_sent_at = NULL,
             checkin_misses = 0, last_checkin_at = NULL,
+            quota_blocked_until = NULL, quota_notice_sent_at = NULL,
             last_fact_extraction_at = now()
       WHERE id = $1`, [userId]
   );

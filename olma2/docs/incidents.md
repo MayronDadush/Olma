@@ -21,6 +21,7 @@ never trust a dated narrative for something you are about to act on.
 
 - [A message reached the box and stopped there, and nothing could tell (detector added 2026-09-06)](#a-message-reached-the-box-and-stopped-there-and-nothing-could-tell-detector-added-2026-09-06)
 - [The roster was never in the transcript (2026-09-06)](#the-roster-was-never-in-the-transcript-2026-09-06)
+- [She was a member of her own group (2026-09-06)](#she-was-a-member-of-her-own-group-2026-09-06)
 - [`main` said NO_REPLY into a real person's WhatsApp (2026-09-01)](#main-said-no_reply-into-a-real-persons-whatsapp-2026-09-01)
 - [The actual reason it kept converging on מירון: `heartbeat.target` defaults to `"owner"` (fixed 2026-09-02)](#the-actual-reason-it-kept-converging-on-מירון-heartbeattarget-defaults-to-owner-fixed-2026-09-02)
 - [A healthy service read as down, because the scope was wrong (2026-09-01)](#a-healthy-service-read-as-down-because-the-scope-was-wrong-2026-09-01)
@@ -250,6 +251,44 @@ the block in the transcript because the model needed to see it; the group
 design read that back as "the transcript carries it". The measurement that
 would have caught it — one real inbound, one query — took a minute once
 somebody ran it.
+
+### She was a member of her own group (2026-09-06)
+
+The two bugs that stood between the first real group registering and Olma
+being useful in it, both found live, an hour apart, on the same room.
+
+**She was in her own roster.** The gateway's `group_members` line for the
+test group read `+972559347282, +972549495254, M&M (+972526269826)`, and the
+first number is hers. `parseRoster` took all three. So the group held a
+member who has never written to her privately and never will, which means it
+could never open — and the gate notice, whose whole job is to tag the people
+who have not signed up yet, tagged her own number and asked it to send her
+"היי". That is what the room saw, and the owner reported it in those words.
+`parseRoster` now drops her, keyed off the same `OLMA_WA_NUMBER` the intro's
+own `{{me}}` tag uses, so one variable moves both. There is no clean signal
+in the line itself — she is formatted exactly like anyone else — which is
+why the number has to be known rather than inferred.
+
+**The introduction could be missed exactly once, for ever.** It was sent on
+the pass that REGISTERED the group. Its send blew the 120s `openclaw message
+send` timeout (the box was at load 13 running another deploy's on-box suite),
+and every later pass takes the already-registered branch — so the room was
+registered, locked, and silent, with no path back. It is now due while
+`introduced_at` is NULL (migration 044) and stamped only when the send
+returns true, the shape `opened_announced_at` beside it already had. A failed
+intro also ends the pass, so a room she has not greeted is never nudged
+first.
+
+The shape both share: **a one-shot send with no record of whether it
+landed.** The registration branch was a natural place to put "her first
+words" and a terrible place to keep them, because the branch is the record
+and the branch runs once. Anything she says once per room needs a column of
+its own.
+
+Deployed 18:37 UTC. On the first sweep the group dropped her from its
+members, said the opening it had owed since 17:11, and opened with its own
+agent `g-1`. The "everyone is here" line waited for the 09:00-21:00 window,
+which is correct: it was 21:37 in Tel Aviv.
 
 ### A healthy service read as down, because the scope was wrong (2026-09-01)
 

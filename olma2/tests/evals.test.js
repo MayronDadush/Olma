@@ -85,6 +85,31 @@ test('resetEvalUser wipes the fixture and refuses a real person', async () => {
   });
 });
 
+// Four days in the week before 2026-09-06 ran the eval user past the 50-a-day
+// free cap, and 2026-09-06 reached 105. Over the line `turn_start` answers
+// `send_block_notice` instead of `proceed`, so every scenario after the
+// crossing measured the block rather than the model — and the reds read as
+// model failures. The reset is what has to make that impossible.
+test('resetEvalUser clears the quota, or the run measures the block notice', async () => {
+  const quota = require('../src/domain/quota');
+  await withTx(db.pool, async (c) => {
+    const limit = Number(await flagsDomain.getFlag(c, 'quota_daily_free'));
+    for (let i = 0; i < limit + 2; i++) await quota.countMessage(c, evalUser.id);
+    const blocked = await quota.countMessage(c, evalUser.id);
+    assert.equal(blocked.data.blocked, true, 'past the cap the person is blocked — the precondition of the bug');
+    const { rows: b } = await c.query(`SELECT quota_blocked_until FROM users WHERE id = $1`, [evalUser.id]);
+    assert.ok(b[0].quota_blocked_until, 'and the block is stamped on the row, which outlives the counter');
+
+    await harness.resetEvalUser(c, evalUser.id);
+    const after = await quota.countMessage(c, evalUser.id);
+    assert.equal(after.data.blocked, false, 'a reset user starts the next scenario able to be answered');
+    const { rows: b2 } = await c.query(`SELECT quota_blocked_until FROM users WHERE id = $1`, [evalUser.id]);
+    assert.equal(b2[0].quota_blocked_until, null, 'the stamp goes too — clearing the counter alone leaves the block');
+    const { rows } = await c.query(`SELECT count(*)::int AS n FROM quota_counters WHERE user_id = $1`, [evalUser.id]);
+    assert.equal(rows[0].n, 1, 'only the count this very call just made');
+  });
+});
+
 test('a hard-check failure is RED and the judge is not even consulted', async () => {
   let judgeCalled = false;
   const r = await harness.runScenario(db.pool, evalUser, byId['stop-service'], {
