@@ -47,6 +47,13 @@ function fakeTurns(script) {
   };
 }
 
+// Every makeTurnRunner here injects this. The default opener talks to the REAL
+// brokerd socket, which does not exist on a laptop or in CI and DOES exist on
+// the box, where `deploy.sh` runs this same suite — a unit test would send a
+// live `turn_open` for the eval user to the production daemon, and hold its
+// socket open besides. Only the eval run itself opens a real turn.
+const noOpen = async () => {};
+
 // Stubs for deps.complete — the judge's raw model reply, as llm.complete
 // would return it.
 const judgePass = async () => ({ ok: true, text: '{"verdict":"pass","problems":[]}' });
@@ -330,8 +337,10 @@ test('makeTurnRunner passes --model only when a candidate was named', async () =
   const calls = [];
   const fakeRun = async (args) => { calls.push(args); return { result: { meta: {}, payloads: [] } }; };
   const withModel = harness.makeTurnRunner(
-    { agentId: 'u-15', sessionKey: 'k', model: 'openrouter/qwen/qwen3.7-flash' }, { runOpenclawJson: fakeRun });
-  const baseline = harness.makeTurnRunner({ agentId: 'u-15', sessionKey: 'k' }, { runOpenclawJson: fakeRun });
+    { agentId: 'u-15', sessionKey: 'k', model: 'openrouter/qwen/qwen3.7-flash' },
+    { runOpenclawJson: fakeRun, openTurn: noOpen });
+  const baseline = harness.makeTurnRunner({ agentId: 'u-15', sessionKey: 'k' },
+    { runOpenclawJson: fakeRun, openTurn: noOpen });
   await withModel('שלום');
   await baseline('שלום');
   assert.deepEqual(calls[0].slice(-2), ['--model', 'openrouter/qwen/qwen3.7-flash']);
@@ -359,6 +368,7 @@ test('makeTurnRunner reads tool calls from the sqlite store when sessionFile is 
   ];
   const runTurn = harness.makeTurnRunner({ agentId: 'u-15', sessionKey: 'k' }, {
     runOpenclawJson: fakeRun,
+    openTurn: noOpen,
     readSessionEventsSlice: (agentId, key, fromSeq) => {
       slices.push([agentId, key, fromSeq]);
       return events.shift();
@@ -706,9 +716,14 @@ test("a scenario is scoped by the database clock, not this process's millisecond
 // gets no context block and the whole suite silently measures the fallback.
 test('the harness opens each turn through brokerd, with no message id to react to', async () => {
   const written = [];
+  const life = { destroyed: 0, unrefs: 0 };
   const fakeSocket = () => {
     const h = {};
-    const s = { on(ev, fn) { h[ev] = fn; return s; }, write(x) { written.push(x); setTimeout(() => h.data && h.data('{"ok":true}\n'), 0); }, end() {}, destroy() {} };
+    const s = {
+      on(ev, fn) { h[ev] = fn; return s; },
+      write(x) { written.push(x); setTimeout(() => h.data && h.data('{"ok":true}\n'), 0); },
+      end() {}, destroy() { life.destroyed++; }, unref() { life.unrefs++; },
+    };
     setTimeout(() => h.connect && h.connect(), 0);
     return s;
   };
@@ -718,6 +733,13 @@ test('the harness opens each turn through brokerd, with no message id to react t
   assert.equal(msg.method, 'turn_open');
   assert.deepEqual(msg.params, { agentId: 'u-15', kind: 'text' });
   assert.equal(msg.params.messageId, undefined, 'no message id: nothing to put a 👀 on');
+
+  // The handle is closed and unref'd on the way out. `end()` alone leaves the
+  // socket waiting on the far side, and on the box — where deploy.sh runs this
+  // suite and the socket really answers — that held the test child open and
+  // wedged the whole run twice.
+  assert.equal(life.destroyed, 1, 'the socket is destroyed, not merely ended');
+  assert.equal(life.unrefs, 1, 'and unref\'d, so it cannot hold the process open either way');
 
   // brokerd down is not an eval failure — the turn falls back to turn_start.
   const dead = () => { const h = {}; const s = { on(ev, fn) { h[ev] = fn; return s; }, write() {}, end() {}, destroy() {} }; setTimeout(() => h.error && h.error(new Error('ECONNREFUSED')), 0); return s; };
