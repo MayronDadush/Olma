@@ -24,6 +24,20 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // of any tool at all — name, schema, and the identity parameter every tool
 // carries. The four descriptions long enough to pay for it are each a
 // compressed incident, so the cost was taken here in the open instead.
+//
+// It was NOT raised a second time the same day. Descriptions elsewhere grew
+// 135 chars while that branch was open and put the surface at 55,570; rather
+// than move the line again for growth that was not its own, `settle_meeting`
+// was cut 339 -> 261. **Read this before your next trim:** most of that came
+// out of the Hebrew, because JSON escapes every Hebrew character as \uXXXX
+// and each one costs SIX. A Hebrew example is the most expensive sentence in
+// any description here and the cheapest place to find room.
+//
+// The surface now stands at 55,492 — a margin of EIGHT. The next tool, or the
+// next sentence added to a description, goes red, and a twenty-character
+// shave will not save it. That is the ceiling doing its job: what is left to
+// cut are the compressed incidents, so the next person should expect to argue
+// for raising this deliberately rather than to find easy fat.
 const JSON_CEILING = 55_500;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;

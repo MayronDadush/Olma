@@ -103,7 +103,7 @@ module.exports = [
   // about a fifth option waiting for the initiator: that one asks "does this
   // belong on the table", this one ends the negotiation. Conflating them would
   // put one word between "put it up for discussion" and "it is decided".
-  tool('settle_meeting', 'Initiator only: set the meeting on one option NOW, without waiting for everyone ("בוא נקבע על שלישי, דנה ממילא לא יכולה"). Unnecessary when all have agreed — that settles itself. Whoever had not said yes is told it was set without them and may still bow out. Get the user\'s yes on the exact option first; option_id from get_meeting_status.',
+  tool('settle_meeting', 'Initiator only: set the meeting on one option NOW, without waiting for everyone ("בוא נקבע על שלישי, דנה לא יכולה"). Unanimity settles itself. Whoever never said yes is told and may bow out. Confirm the option with them first; option_id from get_meeting_status.',
     { meeting_id: S('number', 'Meeting id'), option_id: S('number', 'The option to set it on') },
     ['meeting_id', 'option_id'],
     async (client, user, a) => {
