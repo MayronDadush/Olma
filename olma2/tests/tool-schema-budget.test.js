@@ -15,7 +15,16 @@ const assert = require('node:assert/strict');
 const { toolDefinitions } = require('../src/adapters/mcp/registry');
 const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 
-const JSON_CEILING = 55_000;
+// Raised once, deliberately, on 2026-09-06: 55,000 -> 55,500, to fit the 89th
+// tool. `settle_meeting` is the sentence half of the settle button the owner
+// asked for, and without it the meeting can be ended from the page and not
+// from a conversation — the exact shape of bug this project keeps finding
+// ("the agent understood, and the outcome had nowhere to go"). Its own
+// description was trimmed to 339 chars first; what is left is the floor cost
+// of any tool at all — name, schema, and the identity parameter every tool
+// carries. The four descriptions long enough to pay for it are each a
+// compressed incident, so the cost was taken here in the open instead.
+const JSON_CEILING = 55_500;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;
 

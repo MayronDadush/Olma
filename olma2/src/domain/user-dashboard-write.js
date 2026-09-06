@@ -350,12 +350,24 @@ const ACTIONS = {
     const res = await meetings.options.answer(client, userId, p.meetingId, p.optionId, p.answer === 'y' ? 'y' : 'n');
     if (!res.ok) return res;
     const me = await users.getById(client, userId);
-    // The confirm fan-out is the one respondToSlot's yes uses; a plain no on
-    // one of several options is not a decline of the meeting and tells nobody.
-    if (res.data.meetingStatus === 'confirmed') {
+    // The same fan-out respondToSlot's yes uses; a plain no on one of several
+    // options is not a decline of the meeting and tells nobody. Since the
+    // settle grace, a last yes ARMS and nobody is told for a minute — this
+    // still routes through the fan-out, which now knows that and stays quiet.
+    if (res.data.meetingStatus === 'settling') {
       return meetingFanout.afterSlotResponse(client, me, p.meetingId, res, { accept: true });
     }
     return res;
+  },
+
+  // The button the owner asked for (2026-09-06): set it on this option now,
+  // agreed or not. The domain refuses anyone but the initiator, so the page
+  // hiding it from everyone else is a hint and this is the rule.
+  async settleMeeting(client, userId, p) {
+    const res = await meetings.settleNow(client, userId, p.meetingId, p.optionId);
+    if (!res.ok) return res;
+    const me = await users.getById(client, userId);
+    return meetingFanout.afterSettled(client, p.meetingId, res, { actor: me });
   },
 
   async approveOption(client, userId, p) {

@@ -5,6 +5,7 @@
 const { enqueue, collectHeld } = require('../outbox/enqueue');
 const reminders = require('../domain/reminders');
 const meetings = require('../domain/meetings');
+const meetingFanout = require('../domain/meeting-fanout');
 const tasks = require('../domain/tasks');
 const quota = require('../domain/quota');
 const flags = require('../domain/flags');
@@ -181,6 +182,25 @@ async function sweepStaleMeetings(client, nowMs) {
   return out;
 }
 
+// ---- meetings whose grace has run out ---------------------------------------
+// The other half of the settle grace (domain/meeting-options.js). Unanimity
+// arms a meeting; this closes it a minute later, and tells everybody once.
+//
+// Nothing here decides anything: `settleDue` re-asks whether the option is
+// still unanimous and simply disarms the ones that are not, so a mind changed
+// inside the minute costs a row in this sweep and no message at all. There is
+// no actor — this is the system agreeing with itself — so every participant
+// gets an outbox row, including the person whose yes started the clock.
+async function sweepSettlingMeetings(client) {
+  const settled = await meetings.options.settleDue(client);
+  const out = [];
+  for (const s of settled) {
+    await meetingFanout.afterSettled(client, s.meetingId, { ok: true, data: s }, { actor: null });
+    out.push({ meetingId: s.meetingId, slot: s.slot });
+  }
+  return out;
+}
+
 // ---- media jobs -------------------------------------------------------------
 // Poll videos OpenRouter is still rendering, download the finished ones into
 // the requester's workspace, and enqueue the delivery. Lives in domain/media
@@ -342,6 +362,6 @@ async function sweepFinishedTasks(client, nowIso) {
 }
 
 module.exports = {
-  sweepReminders, sweepDigests, sweepUnblocks, sweepStaleMeetings, sweepMediaJobs,
-  sweepNameConfirm, sweepFinishedTasks,
+  sweepReminders, sweepDigests, sweepUnblocks, sweepStaleMeetings, sweepSettlingMeetings,
+  sweepMediaJobs, sweepNameConfirm, sweepFinishedTasks,
 };

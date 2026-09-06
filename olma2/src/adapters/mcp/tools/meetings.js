@@ -99,6 +99,18 @@ module.exports = [
       if (!res.ok) return res;
       return meetingFanout.afterOptionDecision(client, user, a.meeting_id, res, { approved: false });
     }),
+  // The button in a sentence. Not folded into decide_meeting_option, which is
+  // about a fifth option waiting for the initiator: that one asks "does this
+  // belong on the table", this one ends the negotiation. Conflating them would
+  // put one word between "put it up for discussion" and "it is decided".
+  tool('settle_meeting', 'Initiator only: set the meeting on one option NOW, without waiting for everyone ("בוא נקבע על שלישי, דנה ממילא לא יכולה"). Unnecessary when all have agreed — that settles itself. Whoever had not said yes is told it was set without them and may still bow out. Get the user\'s yes on the exact option first; option_id from get_meeting_status.',
+    { meeting_id: S('number', 'Meeting id'), option_id: S('number', 'The option to set it on') },
+    ['meeting_id', 'option_id'],
+    async (client, user, a) => {
+      const res = await meetings.settleNow(client, user.id, a.meeting_id, a.option_id);
+      if (!res.ok) return res;
+      return meetingFanout.afterSettled(client, a.meeting_id, res, { actor: user });
+    }),
   tool('opt_out_of_meeting', 'Leave a meeting — while it is being negotiated, OR "I can\'t come" after it was confirmed (the meeting stays on for the others; the initiator must cancel_meeting instead). This is one person bowing out, NOT a cancellation for everyone — when the user is the initiator, or means "call the whole thing off", that is cancel_meeting. Confirm with the user first.',
     { meeting_id: S('number', 'Meeting id') }, ['meeting_id'],
     async (client, user, a) => {

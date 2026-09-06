@@ -143,7 +143,7 @@ test('the page is offered once, only from chat, only once two options are on the
   // Settling: the yes that confirms carries the calendar hint, never the page.
   const yes = await call('respond_to_meeting_slot', ben, { meeting_id: m, accept: true, accepted_starts_at: at(72) });
   assert.equal(yes.ok, true, JSON.stringify(yes.error));
-  assert.equal(yes.data.meetingStatus, 'confirmed');
+  assert.equal(yes.data.meetingStatus, 'settling');
   assert.equal(yes.data.hints && yes.data.hints.dashboard, undefined, 'offered a page for a meeting that is over');
 });
 

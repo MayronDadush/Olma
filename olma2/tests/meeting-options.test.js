@@ -35,6 +35,15 @@ async function withClient(fn) {
   try { return await fn(client); } finally { client.release(); }
 }
 const at = (h) => slotStart('', { hours: h });
+// Unanimity arms a minute; the sweep spends it. Tests that care about the END
+// of a negotiation run the minute out rather than waiting for it — and pulling
+// `settle_due_at` back is the honest way, because it leaves `settleDue`'s own
+// re-check of unanimity exactly where production has it.
+async function runGrace(c, meetingId) {
+  await c.query(
+    `UPDATE meetings SET settle_due_at = clock_timestamp() - interval '1 second' WHERE id = $1`, [meetingId]);
+  return opts.settleDue(c);
+}
 async function trio(c, title) {
   return Number((await meetings.startMeeting(c, ann.id, title, [ben.id, cal.id])).data.meeting.id);
 }
@@ -139,7 +148,11 @@ test('a yes to any option counts for THAT option; the first unanimous one confir
     // ann and cal say yes to B → B is unanimous → confirmed to B
     assert.equal((await opts.answer(c, ann.id, m, b.id, 'y')).data.meetingStatus, 'negotiating');
     const done = await opts.answer(c, cal.id, m, b.id, 'y');
-    assert.equal(done.data.meetingStatus, 'confirmed');
+    assert.equal(done.data.meetingStatus, 'settling',
+      'the last yes arms the minute — it does not end the meeting');
+    assert.equal((await c.query(`SELECT status FROM meetings WHERE id = $1`, [m])).rows[0].status,
+      'negotiating', 'and nothing is confirmed while the minute is still running');
+    assert.equal((await runGrace(c, m)).length, 1);
     assert.equal(done.data.slot, 'B');
     const st = await meetings.getStatus(c, ann.id, m);
     assert.equal(st.data.meeting.status, 'confirmed');
@@ -158,9 +171,10 @@ test('someone who left is not counted; the same moment twice is one option', asy
     assert.equal(again.data.duplicate, true);
     assert.equal(again.data.option.id, a.id, 'the second person to name the moment agreed to it');
     assert.equal((await opts.list(c, m)).length, 1);
-    // cal leaves; ann and ben's yes is now everyone → confirmed
-    assert.equal((await meetings.optOut(c, cal.id, m)).data.meetingStatus, 'confirmed',
-      'an exit that completes the gate confirms, through the same gate');
+    // cal leaves; ann and ben's yes is now everyone → the minute starts
+    assert.equal((await meetings.optOut(c, cal.id, m)).data.meetingStatus, 'settling',
+      'an exit that completes the gate arms it, through the same gate');
+    assert.equal((await runGrace(c, m)).length, 1, 'and the minute closes it');
   });
 });
 

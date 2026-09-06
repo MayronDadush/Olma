@@ -184,10 +184,17 @@ async function proposeSlot(client, userId, meetingId, slotText, startsAt) {
   });
 }
 
-// The hard gate. Confirms only when every active participant has
-// confirmed_current. Called from respondToSlot and applyExit only.
+// The hard gate. Since 2026-09-06 it ARMS rather than confirms: unanimity
+// starts a minute, and options.settleDue closes the meeting when the minute is
+// up and the option is still unanimous. Called from respondToSlot and
+// applyExit only.
 async function tryConfirm(client, meetingId) {
   return options.tryConfirm(client, meetingId);
+}
+
+// Initiator only: settle on an option now, agreed or not.
+async function settleNow(client, userId, meetingId, optionId) {
+  return options.settleNow(client, userId, meetingId, optionId);
 }
 
 async function respondToSlot(client, userId, meetingId, accept, counterProposal, counterStartsAt, acceptedStartsAt) {
@@ -228,7 +235,12 @@ async function respondToSlot(client, userId, meetingId, accept, counterProposal,
   if (accept) {
     const r = await options.answer(client, userId, meetingId, target.id, 'y');
     if (!r.ok) return r;
-    if (r.data.meetingStatus === 'confirmed') return ok({ meetingId, meetingStatus: 'confirmed', slot: r.data.slot });
+    if (r.data.meetingStatus === 'settling') {
+      return ok({
+        meetingId, meetingStatus: 'settling', slot: r.data.slot,
+        settleDueAt: r.data.settleDueAt, yourState: 'confirmed_current', optionId: target.id,
+      });
+    }
     return ok({ meetingId, meetingStatus: 'negotiating', yourState: 'confirmed_current', optionId: target.id });
   }
 
@@ -314,11 +326,14 @@ async function applyExit(client, userId, meetingId, cause) {
     await audit.record(client, userId, 'meeting.no_match', { meetingId, reason: 'everyone_opted_out' });
     return ok({ meetingId, meetingStatus: 'no_match', yourState: 'opted_out' });
   }
-  // Remaining participants might now all agree on the current slot.
+  // Their leaving may have made an option unanimous among those left — which
+  // now starts the minute rather than ending the meeting.
   const c = await tryConfirm(client, meetingId);
-  if (c.confirmed) {
-    await audit.record(client, userId, 'meeting.confirmed', { meetingId, slot: c.slot });
-    return ok({ meetingId, meetingStatus: 'confirmed', yourState: 'opted_out' });
+  if (c.settling) {
+    return ok({
+      meetingId, meetingStatus: 'settling', slot: c.slot,
+      settleDueAt: c.settleDueAt, yourState: 'opted_out',
+    });
   }
   return ok({ meetingId, meetingStatus: 'negotiating', yourState: 'opted_out' });
 }
@@ -582,7 +597,7 @@ async function listNegotiating(client, userId = null) {
 module.exports = {
   startMeeting, recordConstraint, proposeSlot, respondToSlot,
   optOut, rejoin, applyExit, withdrawConfirmed, cancelMeeting, setTitle,
-  getStatus, listMine, pendingMeetingFor, tryConfirm,
+  getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow,
   expireStaleMeetings, expireOne, listNegotiating, EXPIRE_AFTER_START_MS, LEGACY_STALE_DAYS,
   shareableConstraints, constraintTexts, shareableTexts,
   CONSTRAINT_MAX_CHARS, MAX_SHARED_REASONS,

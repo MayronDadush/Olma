@@ -11,6 +11,7 @@ const { withTx } = require('../src/db/pool');
 const write = require('../src/domain/user-dashboard-write');
 const dash = require('../src/domain/user-dashboard');
 const meetings = require('../src/domain/meetings');
+const meetingFanout = require('../src/domain/meeting-fanout');
 
 let db, me, gali, ron;
 const tx = (fn) => withTx(db.pool, fn);
@@ -77,7 +78,20 @@ test('a coordination reaches the page with a slot, and every answer state', asyn
   assert.equal(byId[String(gali.id)].answer, 'y', 'proposing is agreeing to it');
 });
 
-test('a yes from the page confirms the meeting and tells everybody else', async () => {
+// The minute between the last yes and the meeting being over, spent on demand.
+async function runGrace(id) {
+  return tx(async (c) => {
+    await c.query(
+      `UPDATE meetings SET settle_due_at = clock_timestamp() - interval '1 second' WHERE id = $1`, [id]);
+    const settled = await meetings.options.settleDue(c);
+    for (const s of settled) {
+      await meetingFanout.afterSettled(c, s.meetingId, { ok: true, data: s }, { actor: null });
+    }
+    return settled;
+  });
+}
+
+test('a yes from the page arms the meeting, and the minute tells everybody', async () => {
   const id = await coordination(gali, [me, ron], 'פוקר');
   const when = tomorrowAt('20');
   await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־20:00', when));
@@ -85,16 +99,20 @@ test('a yes from the page confirms the meeting and tells everybody else', async 
 
   const r = await actAs(me, 'respondToMeeting', { meetingId: id, accept: true, acceptedStartAt: when });
   assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
-  assert.equal(r.data.meetingStatus, 'confirmed');
+  assert.equal(r.data.meetingStatus, 'settling');
 
+  const early = await db.pool.query(
+    `SELECT 1 FROM outbox WHERE kind = 'meeting_confirmed' AND (payload->>'meetingId')::bigint = $1`, [id]);
+  assert.equal(early.rows.length, 0,
+    'nobody may be told inside the minute — the announcement is what the grace holds back');
+
+  assert.equal((await runGrace(id)).length, 1);
   const { rows } = await db.pool.query(
     `SELECT user_id FROM outbox WHERE kind = 'meeting_confirmed'
        AND (payload->>'meetingId')::bigint = $1`, [id]);
   const told = rows.map((x) => Number(x.user_id)).sort();
-  assert.deepEqual(told, [gali.id, ron.id].map(Number).sort(),
-    'a tap confirmed the meeting and nobody else was told');
-  assert.equal(told.includes(Number(me.id)), false,
-    'the person who tapped was sent a notification about their own tap');
+  assert.deepEqual(told, [gali.id, ron.id, me.id].map(Number).sort((a, b) => a - b),
+    'when the system settles it there is no actor mid-turn, so everyone gets the row');
 });
 
 test('a no from the page is a decline, and the initiator hears it', async () => {
@@ -261,7 +279,8 @@ test('answers land on one option each, and the first unanimous option confirms t
   assert.equal((await actAs(me, 'answerOption', { meetingId: id, optionId: a.id, answer: 'n' })).ok, true);
   assert.equal((await actAs(me, 'answerOption', { meetingId: id, optionId: b.id, answer: 'y' })).data.meetingStatus, 'negotiating');
   const done = await actAs(ron, 'answerOption', { meetingId: id, optionId: b.id, answer: 'y' });
-  assert.equal(done.data.meetingStatus, 'confirmed');
+  assert.equal(done.data.meetingStatus, 'settling');
+  await runGrace(id);
   m = (await tx((c) => dash.load(c, me.id))).data.meetings.find((x) => Number(x.id) === id);
   assert.equal(m.status, 'confirmed');
   assert.equal(new Date(m.confirmedStartAt).getTime(), new Date(b.startsAt).getTime(), 'settled on the option that was unanimous');
