@@ -497,10 +497,32 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   is there anything here the mark cannot carry.** For a reminder, the hour Olma
   CHOSE is; the hour they NAMED is not, and the save never is.
 - **One in-flight reaction per message.** A mark is a whole `openclaw` CLI
-  start-up (15s wall on the box), so a short turn has the 👀 and the 👍 alive
-  at once and the LAST to finish wins. `placeMark` kills an older child still
-  starting up when a newer mark arrives for the same message; one that
-  already exited is simply replaced on the phone.
+  start-up (15s wall on the box, measured again at 14.5s on two cores), so a
+  short turn has the 👀 and the 👍 alive at once and the LAST to finish wins.
+  `placeMark` kills an older child still starting up when a newer mark arrives
+  for the same message; one that already exited is simply replaced on the phone.
+- **The shim's connection outlives the turn, so nothing per-turn may be latched
+  to it.** `bin/olma-mcp.js` caches ONE socket for the life of its process and
+  that process runs for hours, so the same `turn` object serves every turn it
+  handles. Adoption of a gateway open was behind a `!turn.opened` latch that
+  clears only on a change of user — never — and the first message the process
+  ever saw froze into `turn.messageId`: Miron got an ⏰ on a message from five
+  minutes earlier, and once the id aged out nothing was marked at all for six
+  hours (`incidents.md`, "The mark that never moved"). `takePending` now runs
+  on EVERY call and removes what it takes, which is what keeps a count spent
+  once; only the implicit recovery stays latched, because with no opening on
+  file nothing can tell one turn from the next on that socket. **A test that
+  passes a fresh `newTurn()` per turn is not testing the connection we have.**
+- **The 👀 on a person's message is the GATEWAY's** (`ackReaction` in
+  `openclaw.json`), placed on receipt from its own config, and ours is a second
+  one behind it. So a working 👀 is no evidence that `placeMark` works at all —
+  read the gateway journal for what it actually SENT, per emoji, before
+  concluding the mark path is alive.
+- **`placeMark` claims nothing and therefore must SAY something.** It is
+  fire-and-forget by design — no exit code may reach the caller, and nothing
+  user-visible may depend on a mark landing — but it logs the attempt and logs a
+  non-zero exit, because without that "the reaction failed" and "no reaction was
+  ever attempted" are the same observation from the box.
 - **Olma never offers a capability without asking the thing that owns it.**
   Phone calls live behind the bridge's own allowlist, in another process on
   another deploy workflow; `domain/voice.callAvailable` asks `POST /probe`

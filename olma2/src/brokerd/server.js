@@ -271,9 +271,6 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
         // model skipped the call, and the record has to be repaired by the
         // one layer that cannot forget (see domain/turn.js).
         //
-        // The flag is read ONLY on that defect path — a healthy turn opens
-        // with turn_start, marks itself opened, and never touches this
-        // branch again, so nothing is added to the hot path.
         // A connection that ever serves a different user is not the same turn,
         // whatever the transport thinks.
         if (turn.userId !== actorId) {
@@ -286,18 +283,40 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
           turn.marked = null;
         }
 
-        if (!turn.opened) {
+        // ── A pending open is adopted on ANY call, not the connection's first ─
+        // This was `if (!turn.opened)` for two days, and `turn.opened` is a
+        // latch that only ever clears on a change of user — which never
+        // happens, one agent serving one person. But the shim caches ONE
+        // socket for the life of the MCP process (`bin/olma-mcp.js`), and that
+        // process outlives the turn by hours. So the FIRST message the process
+        // ever saw froze itself into `turn.messageId`, and every turn after it
+        // marked that message instead of its own: Miron got an ⏰ on a message
+        // he had sent five minutes and forty seconds earlier, and once the
+        // frozen id aged past the live window Yahav's evening earned no closing
+        // mark at all for six hours (`incidents.md`, "The mark that never
+        // moved"). Every 👀 anyone saw in between was the gateway's own
+        // `ackReaction`, which is why the feature looked alive throughout.
+        //
+        // Adopting per call is safe against the double-count this latch was
+        // guarding: `takePending` REMOVES the entry, so each opening — and each
+        // count, quota and first-turn verdict on it — is consumed exactly once,
+        // by whichever call gets there first. Later calls in the same turn find
+        // nothing pending and keep what they hold.
+        const pre = takePending(actorId);
+        if (pre) {
           turn.opened = true;
-          // Opened by the gateway already (turn_open): adopt it. The count,
-          // the first-turn verdict and the message id are all in hand, and
-          // the opening mark already went out — nothing here runs twice.
-          const pre = takePending(actorId);
-          if (pre) {
-            turn.counted = pre.counted; turn.quota = pre.quota; turn.firstTurn = pre.firstTurn;
-            turn.messageId = pre.messageId; turn.lastInboundAt = pre.lastInboundAt;
-            turn.messageKind = pre.kind; turn.marked = pre.marked; turn.reactionVocab = pre.reactionVocab;
-            turn.openedByGateway = true;
-          } else if (name !== 'turn_start' && await turnDomain.isEnabledFor(client, auth.data.user)) {
+          turn.counted = pre.counted; turn.quota = pre.quota; turn.firstTurn = pre.firstTurn;
+          turn.messageId = pre.messageId; turn.lastInboundAt = pre.lastInboundAt;
+          turn.messageKind = pre.kind; turn.marked = pre.marked; turn.reactionVocab = pre.reactionVocab;
+          turn.openedByGateway = true;
+        } else if (!turn.opened) {
+          // No gateway open on file and this connection has not served a turn
+          // yet: the model skipped `turn_start` and the record needs repairing.
+          // Still latched, and deliberately — without an opening there is
+          // nothing that can tell one turn from the next on this socket, so a
+          // per-call recovery would count a single message once per tool.
+          turn.opened = true;
+          if (name !== 'turn_start' && await turnDomain.isEnabledFor(client, auth.data.user)) {
             const recovered = await turnDomain.openTurnImplicitly(client, auth.data.user, { firstTool: name });
             turn.counted = recovered.counted;
             turn.quota = recovered.quota;
@@ -306,9 +325,16 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
             // longer tell a first message from a thousandth one.
             turn.firstTurn = recovered.firstTurn;
           }
+        } else if (turn.messageId && !reactions.isLive(turn.lastInboundAt, clock())) {
+          // Nothing to adopt, and the opening we are still holding is older
+          // than the window a mark may be placed in — so it belongs to a turn
+          // that has ended. `markFor` would refuse it anyway; dropping it here
+          // says so once, where the id lives, instead of leaving a dead message
+          // id on the turn for every later reader to have to distrust.
+          turn.messageId = null; turn.lastInboundAt = null; turn.marked = null;
         }
 
-        const out = await tool.handler(client, auth.data.user, stripIdentity(args), { flood, turn });
+        const out = await tool.handler(client, auth.data.user, stripIdentity(args), { flood, turn, now: clock });
         // The recovery's count is worth exactly one `turn_start`. Clearing it
         // here means a connection that outlives its turn cannot make the NEXT
         // turn's turn_start believe its message was already counted — which
@@ -341,7 +367,10 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
       // is the user's OWN phone out of our database — never anything the model
       // supplied — so a wrong id can only mark a different message in the same
       // person's chat with Olma.
-      const mark = reactions.markFor(name, result, turn);
+      // The injected clock, not `Date.now()`: the turn's `lastInboundAt` was
+      // written from it, and a liveness test where the two sides read different
+      // clocks is one no test can pin.
+      const mark = reactions.markFor(name, result, turn, clock());
       let placed = null;
       if (mark && actorPhone) {
         placed = placeMark({
