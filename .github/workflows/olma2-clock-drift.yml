@@ -1,0 +1,80 @@
+name: olma2 tests (clock drift)
+
+# The same suite, at four different hours of the day, on the real clock.
+#
+# CLAUDE.md's Testing section has said "never let a test depend on the hour it
+# runs" since the suite was green thirteen hours a day and red eleven. On
+# 2026-09-06 it happened again, inside a test written that same day to hold a
+# rule about not telling people things that are not true: two of Miron's real
+# hours were spelled into a fixture, the file passed all afternoon, and from
+# 18:00 the armed moment was in the past and every run died. It was found
+# because somebody happened to run the suite that evening.
+#
+# Two mechanisms were tried and thrown away before this one, both for the same
+# reason — they flagged working code, which is how a detector dies (CLAUDE.md,
+# "Recurring failure shapes"):
+#
+#   * Shifting the process clock with a Date proxy. 29 failures, nearly all
+#     false: the suite legitimately compares JS time against Postgres `now()`,
+#     and moving only one of them invents a skew that production never has.
+#   * Flagging near-today date literals in test files. 180 of them across 17
+#     files, and most are CORRECT — a pinned instant handed to a pure function
+#     as `now` is the very pattern the rule recommends.
+#
+# So: no cleverness. Run the real suite on the real clock at spread hours and
+# let a genuine hour-dependence fail honestly. 02/08/14/20 UTC is 05:00,
+# 11:00, 17:00 and 23:00 in Israel — across the workday boundary, the evening
+# where this last broke, and the quiet hours the delivery gate cares about.
+#
+# There is deliberately NO deploy job here and this file never calls
+# deploy.sh: it is a reader, and a scheduled run must never be able to ship
+# anything. Its own concurrency group, so it can never displace a merge's
+# queued deploy on main (the group there holds one pending run, and losing it
+# means main ships nothing).
+on:
+  schedule:
+    - cron: '0 2,8,14,20 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: olma2-clock-drift
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: olma
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: olma2_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      OLMA_TEST_ADMIN_URL: postgres://olma:ci-password@127.0.0.1:5432/olma2_test
+      OLMA_DB_URL: postgres://olma:ci-password@127.0.0.1:5432/olma2_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --no-audit --no-fund
+        working-directory: olma2
+      - run: bash scripts/run-suite.sh
+        working-directory: olma2
+        env:
+          SUITE_TIMEOUT: '180'
+          SUITE_ATTEMPTS: '3'
+      # A red here means the suite means something different at this hour than
+      # it did at the last one. That is a broken test, never a flaky one — do
+      # not add continue-on-error, and do not re-run it until it passes.
+      - name: What a failure here means
+        if: failure()
+        run: |
+          echo "The suite passed at merge time and failed at $(date -u +%H:%M) UTC."
+          echo "Something under test reads the wall clock. Find it; do not re-run."

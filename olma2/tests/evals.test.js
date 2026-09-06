@@ -85,6 +85,31 @@ test('resetEvalUser wipes the fixture and refuses a real person', async () => {
   });
 });
 
+// Four days in the week before 2026-09-06 ran the eval user past the 50-a-day
+// free cap, and 2026-09-06 reached 105. Over the line `turn_start` answers
+// `send_block_notice` instead of `proceed`, so every scenario after the
+// crossing measured the block rather than the model — and the reds read as
+// model failures. The reset is what has to make that impossible.
+test('resetEvalUser clears the quota, or the run measures the block notice', async () => {
+  const quota = require('../src/domain/quota');
+  await withTx(db.pool, async (c) => {
+    const limit = Number(await flagsDomain.getFlag(c, 'quota_daily_free'));
+    for (let i = 0; i < limit + 2; i++) await quota.countMessage(c, evalUser.id);
+    const blocked = await quota.countMessage(c, evalUser.id);
+    assert.equal(blocked.data.blocked, true, 'past the cap the person is blocked — the precondition of the bug');
+    const { rows: b } = await c.query(`SELECT quota_blocked_until FROM users WHERE id = $1`, [evalUser.id]);
+    assert.ok(b[0].quota_blocked_until, 'and the block is stamped on the row, which outlives the counter');
+
+    await harness.resetEvalUser(c, evalUser.id);
+    const after = await quota.countMessage(c, evalUser.id);
+    assert.equal(after.data.blocked, false, 'a reset user starts the next scenario able to be answered');
+    const { rows: b2 } = await c.query(`SELECT quota_blocked_until FROM users WHERE id = $1`, [evalUser.id]);
+    assert.equal(b2[0].quota_blocked_until, null, 'the stamp goes too — clearing the counter alone leaves the block');
+    const { rows } = await c.query(`SELECT count(*)::int AS n FROM quota_counters WHERE user_id = $1`, [evalUser.id]);
+    assert.equal(rows[0].n, 1, 'only the count this very call just made');
+  });
+});
+
 test('a hard-check failure is RED and the judge is not even consulted', async () => {
   let judgeCalled = false;
   const r = await harness.runScenario(db.pool, evalUser, byId['stop-service'], {
@@ -711,6 +736,54 @@ test("a scenario is scoped by the database clock, not this process's millisecond
   assert.ok(r.hardFailures.some((f) => /every turn was opened/.test(f.name)), JSON.stringify(r.hardFailures));
 });
 
+// The bug the assertion above cannot see, because it needs a whole process.
+// Unref'ing the socket AND the timer left a pending promise with nothing
+// holding the event loop, so Node exited 0 in the middle of an eval run — no
+// output, no error, `eval_runs.finished_at` NULL, and systemd reporting
+// success. Two runs died that way on 2026-09-06 before anyone noticed, and it
+// would have taken the nightly with it.
+//
+// It has to be a UNIX socket and a child with no stdio. Over TCP the connect
+// holds a `GetAddrInfoReqWrap` that keeps the loop alive on its own, and
+// stdio pipes do the same, so both hide the bug completely — the first
+// version of this test passed against the broken code.
+test('a turn waiting on brokerd keeps the process alive — it does not exit 0 mid-run', async () => {
+  const net = require('node:net');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { spawn } = require('node:child_process');
+
+  // Every handle here is unref'd or torn down by hand. This file runs as a
+  // `node --test` child, and a child that cannot exit hangs the whole suite
+  // with no output at all — awaiting `server.close()` is exactly that risk.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma-turnopen-'));
+  const sock = path.join(dir, 's');
+  const accepted = [];
+  const server = net.createServer((c) => { accepted.push(c); });  // answer nothing: the deadline ends it
+  server.unref();
+  await new Promise((r) => server.listen(sock, r));
+  const harnessPath = require.resolve('../src/evals/harness');
+
+  try {
+    const code = await new Promise((resolve) => {
+      const child = spawn(process.execPath, ['-e', `
+        const h = require(${JSON.stringify(harnessPath)});
+        h.openTurnForEval('u-15', { sock: ${JSON.stringify(sock)} }).then(() => process.exit(7));
+      `], { stdio: 'ignore' });
+      const kill = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* gone */ } }, 15_000);
+      kill.unref();
+      child.on('exit', (c) => { clearTimeout(kill); resolve(c); });
+    });
+    assert.equal(code, 7,
+      'the child exited before the opener finished — an unref\'d socket lets the loop drain, silently');
+  } finally {
+    for (const c of accepted) { try { c.destroy(); } catch { /* gone */ } }
+    server.close();
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* gone */ }
+  }
+});
+
 // The harness opens its own turns over brokerd's socket, exactly as the
 // gateway hook does for a real message — without that, a covered eval user
 // gets no context block and the whole suite silently measures the fallback.
@@ -739,7 +812,7 @@ test('the harness opens each turn through brokerd, with no message id to react t
   // suite and the socket really answers — that held the test child open and
   // wedged the whole run twice.
   assert.equal(life.destroyed, 1, 'the socket is destroyed, not merely ended');
-  assert.equal(life.unrefs, 1, 'and unref\'d, so it cannot hold the process open either way');
+  assert.equal(life.unrefs, 0, 'and NOT unref\'d — the socket is what keeps the process alive while it waits');
 
   // brokerd down is not an eval failure — the turn falls back to turn_start.
   const dead = () => { const h = {}; const s = { on(ev, fn) { h[ev] = fn; return s; }, write() {}, end() {}, destroy() {} }; setTimeout(() => h.error && h.error(new Error('ECONNREFUSED')), 0); return s; };

@@ -11,6 +11,7 @@ const usersDomain = require('../domain/users');
 const audit = require('../domain/audit');
 const { ok, err } = require('../domain/results');
 const occ = require('./openclaw-config');
+const guard = require('./production-guard');
 const { timezoneForPhone } = require('../domain/phone-timezone');
 const { resolveLocale } = require('../domain/language');
 
@@ -18,10 +19,59 @@ const TEMPLATE_PATH = path.join(__dirname, 'agents-template.md');
 
 function defaultPaths(agentId) {
   const base = process.env.OLMA_OPENCLAW_HOME || '/root/.openclaw';
-  return {
+  const paths = {
     workspace: `${base}/workspaces/${agentId}`,
     agentDir: `${base}/agents/${agentId}/agent`,
   };
+  // The second half of the same lock as openclaw-config's: the roster is not
+  // the only thing a stray sweep writes. seedWorkspace overwrites AGENTS.md,
+  // USER.md and .olma-identity outright, so resolving a live path from a test
+  // process means overwriting a real person's identity with a token from a
+  // database that is about to be dropped. See intake/production-guard.js.
+  guard.assertNotProduction(`workspace for ${agentId}`, paths.workspace);
+  return paths;
+}
+
+// Everything a fresh provisioning is entitled to overwrite. seedWorkspace
+// rewrites each of these unconditionally, so finding one is not evidence of a
+// previous occupant — finding anything ELSE is.
+const SEEDED_ENTRIES = new Set([
+  'AGENTS.md', 'IDENTITY.md', 'USER.md', 'MEMORY.md', 'memory', '.olma-identity',
+]);
+
+// Agent ids are `u-<serial>`, and a Postgres sequence never reissues a number
+// — so within one database a workspace directory belongs to exactly one person
+// for ever, and a directory already sitting on the id we are about to use came
+// from somewhere else. It has happened twice: a rollback that left orphaned
+// agents behind (2026-08-27) and the phantom agents a test-database sweep
+// provisioned into the live home (2026-09-05).
+//
+// The danger is not the files seedWorkspace rewrites — it is the ones it does
+// not touch. `memory/YYYY-MM-DD.md` daily notes are auto-injected at session
+// start, so the new person's agent would read the previous occupant's notes as
+// its own. Real users came within 90 minutes of this: u-21 was cleaned out on
+// 2026-09-06 at 15:01 and reissued to a new user at 16:28.
+//
+// Moved aside rather than deleted: whatever is in there was somebody's, and a
+// provisioning path is the wrong place to destroy evidence.
+function evictStaleWorkspace(workspace) {
+  if (!fs.existsSync(workspace)) return null;
+  const leftovers = fs.readdirSync(workspace).filter((e) => !SEEDED_ENTRIES.has(e));
+  // `memory/` is seeded, but seeded EMPTY — so the directory being ours says
+  // nothing and its contents say everything. The daily notes inside it are the
+  // whole reason this function exists: nothing rewrites them, and the gateway
+  // injects the last two days at session start, so an inherited note is read
+  // by the new person's agent as its own memory of them.
+  const notes = fs.existsSync(path.join(workspace, 'memory'))
+    ? fs.readdirSync(path.join(workspace, 'memory')) : [];
+  if (notes.length) leftovers.push(...notes.map((n) => `memory/${n}`));
+  if (leftovers.length === 0) return null;
+  const parked = `${workspace}.orphan-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  try { execFileSync('chattr', ['-i', path.join(workspace, '.olma-identity')]); } catch { /* none */ }
+  fs.renameSync(workspace, parked);
+  console.warn(`[provision] ${workspace} already held ${JSON.stringify(leftovers)} from an `
+    + `earlier occupant of this id; moved to ${parked} and starting clean`);
+  return parked;
 }
 
 // Seal = neutralise OpenClaw's stock onboarding kit before it ever runs:
@@ -279,6 +329,14 @@ async function provisionUser(client, {
   // step actually created something is recorded, so registerUndo can put the
   // world back exactly as it found it and never more (a workspace that
   // already existed is never deleted by an undo).
+  // Before workspaceExisted is read: evicting turns a dirty inherited
+  // directory into no directory at all, which is exactly what the undo below
+  // should then be allowed to remove.
+  const parkedWorkspace = evictStaleWorkspace(paths.workspace);
+  if (parkedWorkspace) {
+    await audit.record(client, user.id, 'user.provisioned.workspace_evicted',
+      { agentId, parkedWorkspace });
+  }
   const workspaceExisted = fs.existsSync(paths.workspace);
   // Which turn doctrine they get (see renderAgentsMd): decided per person by
   // the flag, at the moment the file is written — the resync script applies
@@ -335,5 +393,5 @@ async function provisionUser(client, {
 
 module.exports = {
   provisionUser, seedWorkspace, renderAgentsMd, defaultPaths, TEMPLATE_PATH,
-  removeWorkspaceTree, undoProvisionSideEffects,
+  removeWorkspaceTree, undoProvisionSideEffects, evictStaleWorkspace,
 };

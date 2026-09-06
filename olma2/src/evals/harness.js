@@ -59,9 +59,19 @@ async function resetEvalUser(client, userId) {
   await client.query(`DELETE FROM meetings WHERE initiator_id = $1`, [userId]);
   await client.query(`DELETE FROM outbox WHERE user_id = $1`, [userId]);
   await client.query(`DELETE FROM connections WHERE requester_id = $1 OR target_id = $1`, [userId]);
+  // The quota counter is state too, and leaving it made the suite lie. The
+  // eval user has the same 50-a-day free cap as anyone, `resetEvalUser` wiped
+  // their DATA and left the count, and a day with a few manual runs simply
+  // crossed it: `turn_start` then answers `send_block_notice` and every
+  // scenario after that measures the block, not the model. Four days in the
+  // last week went over (2026-09-01 through 09-05, 53 to 63) and 2026-09-06
+  // reached 105 — reds that read as model failures and were not. No scenario
+  // asserts on quota, so a blank slate includes this.
+  await client.query(`DELETE FROM quota_counters WHERE user_id = $1`, [userId]);
   await client.query(
     `UPDATE users SET paused_at = NULL, resume_offer_sent_at = NULL,
             checkin_misses = 0, last_checkin_at = NULL,
+            quota_blocked_until = NULL, quota_notice_sent_at = NULL,
             last_fact_extraction_at = now()
       WHERE id = $1`, [userId]
   );
@@ -84,12 +94,19 @@ async function resetEvalUser(client, userId) {
 // down leaves the turn to `turn_start`, which is what happens in production
 // too.
 //
-// Every exit destroys the socket and both handles are unref'd. `end()` alone
-// was not enough: it sends FIN and waits for the other side, so on the box —
-// the one machine where the socket actually answers — the handle outlived the
-// test child, `node --test` waited on it for ever, and the on-box suite wedged
-// on both attempts (CLAUDE.md, Testing: a test child that cannot exit is
-// invisible). A best-effort call must not be able to hold a process open.
+// Every exit DESTROYS the socket. `end()` alone was not enough: it sends FIN
+// and waits for the other side, and a live brokerd does not hang up, so the
+// handle outlived the call.
+//
+// The socket stays REF'd, and only the timeout is unref'd. Unref'ing both was
+// a bug that silently ended two eval runs mid-suite (2026-09-06): while this
+// promise is pending the socket and the timer are the ONLY work in flight, so
+// with neither of them holding the loop Node found nothing left to do and
+// exited 0 — no output, no error, `eval_runs.finished_at` NULL, and a unit
+// that reported success. A pending promise is not a running process. The
+// socket is what keeps us alive until the answer or the deadline; the
+// unref'd timer still fires while it does, and both are gone the moment
+// `finish` runs.
 function openTurnForEval(agentId, { connect = net.connect, sock = BROKERD_SOCK } = {}) {
   return new Promise((resolve) => {
     let done = false;
@@ -105,7 +122,6 @@ function openTurnForEval(agentId, { connect = net.connect, sock = BROKERD_SOCK }
     try { socket = connect(sock); } catch { return finish(); }
     t = setTimeout(finish, OPEN_TIMEOUT_MS);
     if (typeof t.unref === 'function') t.unref();
-    if (typeof socket.unref === 'function') socket.unref();
     socket.on('error', finish);
     socket.on('close', finish);
     socket.on('data', finish);

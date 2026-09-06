@@ -430,7 +430,7 @@ async function discoveryGaps(client, userId) {
   // below could not see across them. An unanswered question repeated is not a
   // second chance, it is the reason the third one goes unread too; if they
   // never say, the guess stays and the travel line has already told them how
-  // to change it (migration 044).
+  // to change it (migration 045).
   if (!u[0].timezone_confirmed && !u[0].timezone_asked_at) {
     const guessed = u[0].timezone
       ? `We are currently guessing ${u[0].timezone}, which came from their phone number and is not a location.`

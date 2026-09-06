@@ -269,7 +269,7 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   asked the same question four mornings running").
 - **A "once ever" question is stamped on the PERSON, never deduped on the
   route that asks it.** Two routes each honouring "at most once" is twice.
-  The city is `users.timezone_asked_at` (migration 044), written by whichever
+  The city is `users.timezone_asked_at` (migration 045), written by whichever
   route asks and read by both (`incidents.md`, "The city was asked four
   times"). And the first message **states** the zone guessed from the dialling
   code rather than asking for it, spending its one question on the name on
@@ -365,6 +365,28 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `tests/onboarding-review.test.js`** — the founding case is Yahav's real
   evening, replayed end to end, and a check whose failure cannot be written
   down is one nobody will trust in six weeks.
+- **The onboarding review only ever watches the FRONT DOOR; `promise_watch`
+  watches everyone.** A new person's first hours are read back twice (above);
+  every ACTIVE person is asked once a day whether the moment they named is the
+  moment that got armed (`jobs/promise-watch.js`, the pure half in
+  `domain/reminder-promise.js`). Miron hit the promised-hour fault weeks into
+  his life here and nothing saw it for six hours. **It reads THEIR message, not
+  Olma's** — "the meeting is at 19:00, I'll remind you" is ambiguous prose no
+  regex should judge, "תזכיר לי ב-19:00" has one correct outcome — and it
+  judges only when BOTH halves are visible: a moment they named, and a reminder
+  armed within five minutes in response. Nothing armed at all is three
+  different stories and is never reported. It files an `issues` row keyed on a
+  deterministic title carrying the message timestamp, so re-reading the
+  overlapping window cannot file twice.
+- **The suite runs again on a schedule, at four hours of the day**
+  (`.github/workflows/olma2-clock-drift.yml`) — no deploy job, its own
+  concurrency group so it can never displace a merge's queued deploy. A red
+  there means a test means something different at that hour: broken, not
+  flaky, and never to be re-run until green. **Do not replace this with a
+  clock-shifting preload or a scan for near-today date literals** — both were
+  built and thrown away on 2026-09-06, because the first invents a JS/Postgres
+  skew production never has (29 false failures) and the second flags the very
+  pattern the rule recommends (180 literals, most of them correct).
 - **`/health` sees the DB, every `job_heartbeats` row, and the gateway — and
   nothing else.** A component that writes no heartbeat is invisible to it, and
   says so by staying green. That is how the gateway went unwatched for months
@@ -546,9 +568,13 @@ Verified on the box at the cutover, 2026-08-17:
 - `openclaw.json` `mcp.servers` has exactly ONE entry, `/opt/olma2/bin/olma-mcp.js`.
   v1's `olma-mcp.js` is not registered, so **every v1-only tool is dead** —
   Google Calendar and Monday included (see [Known gaps](#known-gaps)).
-- The roster has changed repeatedly since (`u-18`..`u-22` were removed
-  2026-09-01) — **read it, do not trust a list written here**; the `intake`
-  agent exists,
+- The roster has changed repeatedly since — **read it, do not trust a list
+  written here**. This line used to say `u-18`..`u-22` were removed on
+  2026-09-01, and by 2026-09-06 four of them were back: not because anyone
+  re-added them, but because a test-suite sweep provisioned phantoms into the
+  live roster (`incidents.md`, "The test suite provisioned into production").
+  An id present here is not evidence a person exists, and an id absent is not
+  evidence one does not. The `intake` agent exists,
   so the v2 intake sweeps are live, not inert. Each user's DB
   `workspace_path` matches the gateway's configured workspace for their agent
   exactly (`/root/.openclaw/workspaces/u-<id>`) — the schedule-card feature
@@ -764,6 +790,22 @@ Two things the suite learned the hard way:
   or an unpinned `drainOnce` passes or fails depending on when you run it.
   The suite was green thirteen hours a day and red eleven before this.
 
+- **A test file must never reach the LIVE gateway — not its home, not its
+  roster.** `deploy.sh --restart` runs this suite on the box, where the
+  defaults ARE production. `tests/helpers.js` points `OLMA_OPENCLAW_HOME` and
+  `OLMA_OPENCLAW_CONFIG` at a temp dir, and `intake/production-guard.js` throws
+  if a process with `NODE_TEST_CONTEXT` set resolves anything under
+  `/root/.openclaw`. Both are needed: isolation travels by environment and is
+  gone the moment a test spawns a child with a hand-built `env` instead of
+  `{ ...process.env }` — which is how a test brokerd's `intake_sweep` came to
+  provision real people out of a throwaway database, overwriting six identity
+  files and leaving four agents bound to nothing, three times in two days.
+  **Anything resolving one of those paths reads it per call, never captures it
+  at module load** — as a constant, whether the isolation took depended on
+  require order. (`incidents.md`, "The test suite provisioned into production".)
+- **`OLMA_HEARTBEAT: 'off'` does NOT turn the sweeps off** — that is
+  `OLMA_WORKER`. Two separate gates in `bin/olma-brokerd.js`, and the first
+  reads like it means "quiet".
 - **A test file must never write into a directory the other test files read.**
   They are separate processes over one filesystem. A decoy migration dropped
   into the real `migrations/` for a few milliseconds threw in every *other*

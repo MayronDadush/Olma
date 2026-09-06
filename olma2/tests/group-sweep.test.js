@@ -101,6 +101,66 @@ test('one known member is enough: she registers, introduces herself, and locks',
   assert.equal(occ.isGroupMuted(cfg, JID(2)), true);
 });
 
+// The first real group, 2026-09-06: registered, and then silent for ever.
+// The intro lived inside the registration branch, its send blew the 120s CLI
+// timeout on a box saturated by a deploy, and the next pass took the
+// already-registered path. A room she has joined and never greeted is the one
+// outcome this feature cannot have.
+test('an introduction that did not go out is said again next pass, and no nudge jumps ahead of it', async () => {
+  const a = await connectedUser('+972603000100');
+  const jid = JID(20);
+  const roster = `דני (${a.phone}), +972603000101`;
+  let deliver = false;
+  const sent = [];
+  const at = Date.now();
+  const deps = {
+    configPath,
+    listGroupSessions: () => [{
+      key: `agent:ggreet:whatsapp:group:${jid}`, agentId: pg.GREETER_AGENT_ID,
+      channel: 'whatsapp', chatType: 'group', peer: jid, lastInteractionAt: at,
+    }],
+    readGroupContext: () => ({ subject: 'פאדל', members: roster, wasMentioned: true, at, messageId: 'M-1' }),
+    send: async (target, body) => { if (!deliver) return false; sent.push({ target, body }); return true; },
+  };
+
+  // registered, but the pipe was down: nothing said, nothing stamped
+  let out = await withTx(db.pool, (c) => job.sweepGroups(c, deps));
+  assert.deepEqual(out.registered, [jid]);
+  assert.equal(out.intros, 0);
+  assert.equal(out.introFailed, 1);
+  assert.deepEqual(sent, []);
+  let row = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  assert.equal(row.introduced_at, null, 'nothing said, nothing stamped');
+  assert.equal(row.notices_sent, 0, 'a room she has not greeted is not nudged');
+
+  // the pipe comes back, and a tag arrives in the meantime: the opening comes
+  // first and alone — never "nice to meet you" and "some of you are missing"
+  // in one breath
+  deliver = true;
+  deps.listGroupSessions = () => [{
+    key: `agent:ggreet:whatsapp:group:${jid}`, agentId: pg.GREETER_AGENT_ID,
+    channel: 'whatsapp', chatType: 'group', peer: jid, lastInteractionAt: at + 60_000,
+  }];
+  out = await withTx(db.pool, (c) => job.sweepGroups(c, deps));
+  assert.deepEqual(out.registered, [], 'registered once, greeted later');
+  assert.equal(out.intros, 1);
+  assert.equal(out.notices, 0, 'the nudge waits for a tag she has been present for');
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].body, /נעים מאוד/);
+  row = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  assert.ok(row.introduced_at, 'stamped only once it landed');
+
+  // and it is never said twice
+  deps.listGroupSessions = () => [{
+    key: `agent:ggreet:whatsapp:group:${jid}`, agentId: pg.GREETER_AGENT_ID,
+    channel: 'whatsapp', chatType: 'group', peer: jid, lastInteractionAt: at + 120_000,
+  }];
+  out = await withTx(db.pool, (c) => job.sweepGroups(c, deps));
+  assert.equal(out.intros, 0);
+  assert.equal(out.notices, 1, 'now a tag gets the explanation');
+  assert.match(sent.at(-1).body, /עוד לא שלחו לי/);
+});
+
 test('a tag in a locked group is answered, then answered shorter, every time', async () => {
   const a = await connectedUser('+972603000020');
   const missing = '+972603000021';

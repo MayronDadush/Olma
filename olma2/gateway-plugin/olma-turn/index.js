@@ -120,6 +120,7 @@ export function buildHandler({ agents, connect, sock, timeoutMs, log = trace } =
 // Nothing is returned to the gateway; the prompt goes out untouched.
 const GROUP_KEY_RE = /^agent:(ggreet|g-\d+):whatsapp:group:[^:\s]+@g\.us$/;
 const CONVERSATION_INFO_RE = /Conversation info[^\n]*\n```json\n([\s\S]*?)\n```/;
+const CONVERSATION_INFO_RE_G = new RegExp(CONVERSATION_INFO_RE.source, "g");
 
 // The same walk as domain/group-context.parseConversationInfo (the suite
 // holds the two together); a copy because this module must load in the
@@ -147,6 +148,35 @@ export function findConversationInfo(value, depth = 0) {
   return null;
 }
 
+// EVERY block in a payload, not the first — the first is not the best.
+// Measured on the first live group message (2026-09-06 16:56): the block in
+// `prompt` carried the sender and nothing else, and taking it meant never
+// looking at the one the gateway builds with the roster in it. A hook payload
+// holds several descriptions of the same turn and only some are complete.
+export function findAllConversationInfo(value, out = [], depth = 0) {
+  if (depth > 6 || value == null) return out;
+  if (typeof value === "string") {
+    for (const m of value.matchAll(CONVERSATION_INFO_RE_G)) {
+      try { out.push(JSON.parse(m[1])); } catch { /* not ours */ }
+    }
+    return out;
+  }
+  if (Array.isArray(value) || typeof value === "object") {
+    for (const v of Object.values(value)) findAllConversationInfo(v, out, depth + 1);
+  }
+  return out;
+}
+
+// Which of them describes the turn best. The roster is the whole point, so it
+// outranks everything; the message id (a reply can quote it) comes next. A tie
+// keeps the earlier candidate, so the source order below decides.
+export function scoreInfo(info) {
+  if (!info || typeof info !== "object") return -1;
+  return (typeof info.group_members === "string" && info.group_members ? 4 : 0)
+    + (typeof info.group_subject === "string" && info.group_subject ? 2 : 0)
+    + (typeof info.message_id === "string" && info.message_id ? 1 : 0);
+}
+
 export function buildGroupContextHandler({ connect, sock, timeoutMs, log = trace } = {}) {
   return async (event, ctx) => {
     const sessionKey = String((ctx && ctx.sessionKey) || "");
@@ -154,31 +184,39 @@ export function buildGroupContextHandler({ connect, sock, timeoutMs, log = trace
     if (!m) return undefined;
     const agentId = m[1];
     // Where the block sits is the gateway's business and has moved before
-    // (before_prompt_build sees none of it). Newest first: the runtime
-    // context rides at the END of the history snapshot, and an older message
-    // must never be read as the current one.
+    // (before_prompt_build sees none of it at all). So: every block in every
+    // field, and the richest one wins. History newest first — the runtime
+    // context for THIS turn rides at the end of the snapshot, and an older
+    // message must never be read as the current one.
     const history = Array.isArray(event && event.historyMessages) ? [...event.historyMessages].reverse() : null;
     const sources = [
       ["prompt", event && event.prompt],
       ["system", event && event.systemPrompt],
       ["history", history],
     ];
-    let info = null;
-    let where = null;
+    const candidates = [];
     for (const [name, value] of sources) {
-      info = findConversationInfo(value);
-      if (info) { where = name; break; }
+      for (const found of findAllConversationInfo(value)) candidates.push({ where: name, info: found });
     }
-    if (!info) {
+    if (!candidates.length) {
       log({ group: agentId, outcome: "no-block", promptChars: typeof event?.prompt === "string" ? event.prompt.length : 0, history: history ? history.length : 0 });
       return undefined;
     }
+    let best = candidates[0];
+    for (const c of candidates) if (scoreInfo(c.info) > scoreInfo(best.info)) best = c;
+    const info = best.info;
+    const where = best.where;
+    // The keys of every candidate, so a gateway that stops carrying the roster
+    // is a line in this log rather than a group that never registers. Keys
+    // only: the values are a real room's phone numbers.
+    const seen = candidates.map((c) => `${c.where}:${Object.keys(c.info).join("|")}`);
     const t0 = Date.now();
     const reply = await askBroker("group_context", { agentId, sessionKey: sessionKey.slice(0, 200), info, at: Date.now() }, { connect, sock, timeoutMs });
     log({
       group: agentId, where, members: Boolean(info.group_members), mentioned: info.was_mentioned === true,
       outcome: reply && reply.ok === true ? "stored" : (reply ? "refused" : "unreachable"),
-      ...(reply && reply.error ? { error: String(reply.error) } : {}), ms: Date.now() - t0,
+      ...(reply && reply.error ? { error: String(reply.error) } : {}),
+      ...(info.group_members ? {} : { seen }), ms: Date.now() - t0,
     });
     return undefined;
   };

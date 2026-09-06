@@ -74,6 +74,11 @@ const JOB_INTERVAL_SECONDS = {
   // Five minutes: two bad ticks before a word means an outage is reported
   // within ten. Faster would alarm on a single probe timeout.
   liveness_watch: 300,
+  // Daily. It reads a transcript per person who armed anything yesterday, so
+  // it is the most expensive sweep on the box per tick and the least urgent:
+  // a reminder set for the wrong hour is worth knowing about today, not
+  // within the minute.
+  promise_watch: 86400,
   retention_sweep: 86400,
   // Not a brokerd job: root's crontab runs scripts/backup-offbox.sh nightly
   // after the pg_dump, and the script writes this row itself. Listed here so
@@ -109,8 +114,26 @@ function shouldKickOnStart(jobName) {
 }
 
 // nth kick scheduled, 0-based → when it fires.
-function kickDelayMs(index) {
-  return KICK_FIRST_DELAY_MS + index * KICK_SPACING_MS;
+//
+// The spacing is DERIVED from how many jobs are being kicked, never a bare
+// constant. The invariant is that the whole herd is through before the
+// SHORTEST kicked interval elapses — past that, the last kick and that job's
+// first real tick start racing, which is the opposite of staggering. At a
+// fixed 15s the herd grew with the job list and walked towards that cliff
+// silently: on 2026-09-06 main sat at 19 kicked jobs and a last kick of
+// 290s against a 300s floor, and the twentieth job tipped it to 305s. Nothing
+// warned, because a constant that is still just big enough looks identical to
+// one that was chosen. Deriving it means adding a job compresses the herd
+// instead of overflowing it, and `total` is passed by the caller because only
+// the caller knows how many there will be.
+const KICK_LAST_MS = Math.floor(KICK_MIN_SECONDS * 1000 * 0.8);
+
+function kickDelayMs(index, total = 1) {
+  const room = KICK_LAST_MS - KICK_FIRST_DELAY_MS;
+  const spacing = total > 1
+    ? Math.min(KICK_SPACING_MS, Math.floor(room / (total - 1)))
+    : KICK_SPACING_MS;
+  return KICK_FIRST_DELAY_MS + index * spacing;
 }
 
 function isStale(jobName, lastRunAt, now = Date.now()) {
@@ -128,5 +151,5 @@ function assessJobs(rows, now = Date.now()) {
 
 module.exports = {
   JOB_INTERVAL_SECONDS, STALE_MULTIPLIER, isStale, assessJobs,
-  KICK_MIN_SECONDS, intervalSeconds, shouldKickOnStart, kickDelayMs,
+  KICK_MIN_SECONDS, KICK_LAST_MS, intervalSeconds, shouldKickOnStart, kickDelayMs,
 };

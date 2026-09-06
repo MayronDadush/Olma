@@ -41,6 +41,21 @@ test('the roster string is parsed with the name half optional', () => {
 
 // A display name that is really the phone number tells us nothing and looks
 // like a name — the same trap captureDisplayName already guards in DMs.
+// The first real group, 2026-09-06. The gateway lists her among the members
+// of every room she is in: `+972559347282, +972549495254, M&M (+972526269826)`.
+// Left in, she is a member who has never written to herself — the group can
+// never open, and the nudge asking who is missing tags her own number.
+test('she is in every group she is in, and is not a member of it', () => {
+  const live = '+972559347282, +972549495254, M&M (+972526269826)';
+  const { members, unparsed } = groups.parseRoster(live);
+  assert.deepEqual(members.map((m) => m.phone), ['+972549495254', '+972526269826']);
+  assert.deepEqual(unparsed, [], 'dropped as herself, never reported as unreadable');
+  assert.equal(groups.SELF_PHONE, '+972559347282');
+  // and a room of nobody but her is a room with no members at all — the sweep
+  // reads that as "no evidence" and leaves it alone, never as an open group
+  assert.deepEqual(groups.parseRoster(groups.SELF_PHONE).members, []);
+});
+
 test('a numeric display name is dropped, not stored as a name', () => {
   const { members } = groups.parseRoster('972504444444 (+972504444444)');
   assert.deepEqual(members, [{ phone: '+972504444444', displayName: null }]);

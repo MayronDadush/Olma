@@ -51,10 +51,13 @@ async function main() {
   // /health judges staleness against, so a changed interval can never leave
   // the dashboard calling a healthy job late. Slow jobs also get one staggered
   // run at startup; see KICK_MIN_SECONDS there for why that is not optional.
+  // How many kicks there will be, counted BEFORE any are armed: the stagger
+  // compresses to fit the herd, and it cannot do that one job at a time.
+  let kickTotal = 0;
   const arm = (job, fn) => {
     timers.push(setInterval(() => beat(job, fn), intervalSeconds(job) * 1000));
     if (shouldKickOnStart(job)) {
-      kicks.push(setTimeout(() => beat(job, fn), kickDelayMs(kicks.length)));
+      kicks.push(setTimeout(() => beat(job, fn), kickDelayMs(kicks.length, kickTotal)));
     }
   };
 
@@ -70,6 +73,7 @@ async function main() {
     // daemon knows about it. arm() (above) supplies the cadence, the
     // heartbeat and the startup kick for every entry alike.
     const list = jobs({ pool });
+    kickTotal = list.filter((j) => shouldKickOnStart(j.name)).length;
     for (const job of list) arm(job.name, job.run);
     console.log(`[brokerd] outbox worker + sweeps armed (${list.length} jobs)`);
   }
