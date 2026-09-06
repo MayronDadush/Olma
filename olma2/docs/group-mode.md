@@ -75,11 +75,27 @@ must not inherit anyone's private context.
 the model reports back through a tool would be a gate the model can open by
 under-reporting. It must not be built that way.
 
-We already read the gateway's own storage server-side:
-`olma2/src/channels/sessions.js` (dual-mode, files ≤2026.6.x / agent sqlite
-≥2026.8.1). The group session's transcript carries the inbound
-`Conversation info:` block verbatim, `group_members` included. brokerd parses
-it there — no model in the trust path.
+~~We already read the gateway's own storage server-side:
+`olma2/src/channels/sessions.js`. The group session's transcript carries the
+inbound `Conversation info:` block verbatim, `group_members` included.~~
+**Wrong, and measured wrong on the first live message (2026-09-06 15:09
+UTC).** On OpenClaw 2026.8.1 the transcript keeps the bare text of the
+message; the block is composed per turn and handed to the model, and the
+only transcripts on the box that contain one were written by our own
+probes. The internal `message:preprocessed` hook does not carry it either
+(its mapper keeps `isGroup`/`groupId` and drops `GroupMembers`), and
+`openclaw directory groups members` answers "not supported" for WhatsApp.
+
+What does see it is the gateway's `llm_input` plugin hook, which receives
+the model's input verbatim. `gateway-plugin/olma-turn` reads the block there
+for every group turn (the greeter's and a group agent's), sends it to
+brokerd as `group_context`, and brokerd files it in `group_inbound_context`
+(one row per session, replaced on every message; `domain/group-context.js`).
+The sweep reads that row. Same trust path as before — the block is the
+gateway's own description of the envelope, written before the model says a
+word — one hop longer. The plugin's trace (`run/turn-context-plugin.log`,
+`where`) records which field of the hook payload the block was found in, so
+a gateway that moves it again is caught by a line, not by a silent group.
 
 New tables (numbering picked from `max(version)` on the box at write time,
 never `ls migrations/`):
@@ -301,7 +317,8 @@ session: { sendPolicy: { rules: [ { action: "deny", match: { rawKeyPrefix: "agen
 
 An unknown group therefore lands on **`ggreet`, an agent that is permanently
 muted at the gateway** and exists for one reason: to make a turn happen so the
-group, its subject and its roster are written to a transcript brokerd can read.
+group, its subject and its roster reach brokerd (through the plugin's
+`llm_input` hook — see "Not the model", above).
 brokerd then registers the group, sends the canned introduction on the raw pipe,
 and writes the group's own entry (`requireMention: true`), its own agent and its
 own binding — one `saveConfig`, so it hot-applies.
@@ -439,8 +456,9 @@ feature is switched on. Nothing about it writes production config on a timer.
 
 One pass, per group session:
 
-1. read the group's transcript (`sessions.readGroupContext`) for the subject,
-   the roster, and whether anything is newer than our watermark;
+1. read what the plugin filed for the group (`group-context.read`) for the
+   subject, the roster and the tag's message id, and the session listing for
+   whether anything is newer than our watermark;
 2. never seen it → register (which refuses unless a member is already an Olma
    user), admit it tag-only, and say the introduction;
 3. seen it → reconcile the roster, evaluate the gate, and act on the
@@ -453,8 +471,8 @@ session scan: `listSessions()` opens every agent's sqlite store, and a
 ten-second sweep doing that is the polling cost this project already paid once
 (`openclaw sessions list`, 2.9s of CPU per call).
 
-**Every uncertain case falls silent.** An unparseable roster entry, an
-unreadable transcript, a member who resolves to nobody — each leaves the group
+**Every uncertain case falls silent.** An unparseable roster entry, a
+session with no filed row yet, a member who resolves to nobody — each leaves the group
 exactly where it was. A group that stays quiet when it should have spoken is a
 bug; a group that speaks when somebody has not signed up is the feature
 failing.

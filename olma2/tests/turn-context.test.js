@@ -234,14 +234,15 @@ test('the plugin fails open: not enabled, no open, a refusal, a dead socket, a t
   assert.equal(log.at(-1).outcome, 'unreachable');
 });
 
-test('the plugin module registers before_prompt_build under its own id and reads the agent list from its config', async () => {
+test('the plugin module registers its two hooks under its own id and reads the agent list from its config', async () => {
   const on = [];
   const def = plugin.default;
   assert.equal(def.id, 'olma-turn');
   def.register({ pluginConfig: { agents: ['u-3'] }, on: (name, fn) => on.push([name, fn]) });
-  assert.equal(on.length, 1);
-  assert.equal(on[0][0], 'before_prompt_build');
-  assert.equal(typeof on[0][1], 'function');
+  // before_prompt_build prepends the opening; llm_input files what the
+  // gateway says about a group turn (tests/group-context.test.js).
+  assert.deepEqual(on.map(([name]) => name), ['before_prompt_build', 'llm_input']);
+  for (const [, fn] of on) assert.equal(typeof fn, 'function');
 });
 
 // Miron, 2026-09-06, "בוצע" quoting the lunch reminder: the context came back

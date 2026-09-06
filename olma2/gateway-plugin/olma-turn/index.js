@@ -108,13 +108,90 @@ export function buildHandler({ agents, connect, sock, timeoutMs, log = trace } =
   };
 }
 
+// ---- group context ---------------------------------------------------------
+// The second thing this plugin does, since 2026-09-06: for a GROUP turn (the
+// greeter's or a group agent's) it reads the `Conversation info` block out
+// of the model's input on `llm_input` and hands it to brokerd as
+// `group_context` — subject, roster, sender, was she tagged, message id.
+// That block is the only place the gateway still says who is in the room:
+// the transcript keeps the bare text, the preprocessed hook's context drops
+// `GroupMembers`, and the directory command does not do WhatsApp. The sweep
+// (jobs/groups.js) reads brokerd's row where it used to read the store.
+// Nothing is returned to the gateway; the prompt goes out untouched.
+const GROUP_KEY_RE = /^agent:(ggreet|g-\d+):whatsapp:group:[^:\s]+@g\.us$/;
+const CONVERSATION_INFO_RE = /Conversation info[^\n]*\n```json\n([\s\S]*?)\n```/;
+
+// The same walk as domain/group-context.parseConversationInfo (the suite
+// holds the two together); a copy because this module must load in the
+// gateway's own loader with nothing of ours beside it.
+export function findConversationInfo(value, depth = 0) {
+  if (depth > 6 || value == null) return null;
+  if (typeof value === "string") {
+    const m = CONVERSATION_INFO_RE.exec(value);
+    if (!m) return null;
+    try { return JSON.parse(m[1]); } catch { return null; }
+  }
+  if (Array.isArray(value)) {
+    for (const v of value) {
+      const found = findConversationInfo(v, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof value === "object") {
+    for (const v of Object.values(value)) {
+      const found = findConversationInfo(v, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+export function buildGroupContextHandler({ connect, sock, timeoutMs, log = trace } = {}) {
+  return async (event, ctx) => {
+    const sessionKey = String((ctx && ctx.sessionKey) || "");
+    const m = GROUP_KEY_RE.exec(sessionKey);
+    if (!m) return undefined;
+    const agentId = m[1];
+    // Where the block sits is the gateway's business and has moved before
+    // (before_prompt_build sees none of it). Newest first: the runtime
+    // context rides at the END of the history snapshot, and an older message
+    // must never be read as the current one.
+    const history = Array.isArray(event && event.historyMessages) ? [...event.historyMessages].reverse() : null;
+    const sources = [
+      ["prompt", event && event.prompt],
+      ["system", event && event.systemPrompt],
+      ["history", history],
+    ];
+    let info = null;
+    let where = null;
+    for (const [name, value] of sources) {
+      info = findConversationInfo(value);
+      if (info) { where = name; break; }
+    }
+    if (!info) {
+      log({ group: agentId, outcome: "no-block", promptChars: typeof event?.prompt === "string" ? event.prompt.length : 0, history: history ? history.length : 0 });
+      return undefined;
+    }
+    const t0 = Date.now();
+    const reply = await askBroker("group_context", { agentId, sessionKey: sessionKey.slice(0, 200), info, at: Date.now() }, { connect, sock, timeoutMs });
+    log({
+      group: agentId, where, members: Boolean(info.group_members), mentioned: info.was_mentioned === true,
+      outcome: reply && reply.ok === true ? "stored" : (reply ? "refused" : "unreachable"),
+      ...(reply && reply.error ? { error: String(reply.error) } : {}), ms: Date.now() - t0,
+    });
+    return undefined;
+  };
+}
+
 export default {
   id: "olma-turn",
   name: "Olma turn context",
-  description: "Prepends the turn's opening (what turn_start would return) to the prompt, from brokerd.",
+  description: "Prepends the turn's opening (what turn_start would return) to the prompt, from brokerd; files what the gateway says about a group turn.",
   register(api) {
     const cfg = (api && api.pluginConfig) || {};
     trace({ registered: true, agents: Array.isArray(cfg.agents) ? cfg.agents : "all" });
     api.on("before_prompt_build", buildHandler({ agents: cfg.agents }));
+    api.on("llm_input", buildGroupContextHandler());
   },
 };
