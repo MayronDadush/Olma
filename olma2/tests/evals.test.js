@@ -688,8 +688,13 @@ test("a scenario is scoped by the database clock, not this process's millisecond
     complete: judgePass,
   });
 
-  assert.match(String(seen), /\.\d{6}/,
-    'microsecond precision, or a row written 400µs earlier still reads as later');
+  // Postgres prints the fraction with trailing zeros trimmed — `.09107` is a
+  // microsecond value too, and matching six digits failed the deploy the
+  // first time the clock ended in a zero (2026-09-06). This proves the mark is
+  // the database's text and not a millisecond count; the strict-after check
+  // below is what proves the precision.
+  assert.match(String(seen), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?\+00$/,
+    "the mark is a database timestamp, not this process's milliseconds");
   const { rows } = await db.pool.query(`SELECT ($1::timestamptz > $2::timestamptz) AS after`, [seen, rowAt]);
   assert.equal(rows[0].after, true, 'the mark must sit strictly after a row committed before the scenario');
   assert.equal(r.status, 'red', JSON.stringify(r.hardFailures));
