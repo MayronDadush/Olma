@@ -274,7 +274,7 @@ function privacyPage() {
     <p>Otherwise, data is disclosed only where required by law.</p>
 
     <h2>Where it is stored</h2>
-    <p>Data is held in a database on a dedicated server in Europe (DigitalOcean). Google access and refresh tokens are encrypted at rest (AES-256-GCM) with the key held outside the database. A daily backup is retained for 14 days and then deleted.</p>
+    <p>Data is held in a database on a dedicated server in the United States (DigitalOcean). Google access and refresh tokens are encrypted at rest (AES-256-GCM) with the key held outside the database. A daily backup is retained for 14 days and then deleted.</p>
 
     <h2>Deletion and control</h2>
     <ul>
@@ -328,7 +328,7 @@ function privacyPage() {
       <p>מעבר לכך, מידע נמסר רק אם חובה על פי דין.</p>
 
       <h3>איפה זה נשמר</h3>
-      <p>המידע יושב במסד נתונים על שרת ייעודי באירופה (DigitalOcean). אסימוני הגישה לגוגל מוצפנים במנוחה (AES-256-GCM) והמפתח נשמר מחוץ למסד הנתונים. מתבצע גיבוי יומי שנשמר 14 יום ואז נמחק.</p>
+      <p>המידע יושב במסד נתונים על שרת ייעודי בארצות הברית (DigitalOcean). אסימוני הגישה לגוגל מוצפנים במנוחה (AES-256-GCM) והמפתח נשמר מחוץ למסד הנתונים. מתבצע גיבוי יומי שנשמר 14 יום ואז נמחק.</p>
 
       <h3>מחיקה ושליטה</h3>
       <ul>

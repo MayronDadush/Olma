@@ -161,6 +161,60 @@ test('an introduction that did not go out is said again next pass, and no nudge 
   assert.match(sent.at(-1).body, /עוד לא שלחו לי/);
 });
 
+// The other half of the same evening. The CLI hands the message to the gateway
+// and THEN waits for the turn to finish, so a send that blows the 120s timeout
+// has very probably been delivered — `runOpenclaw` says `timedOut` rather than
+// failing outright, and everything she says once per room treats that as said.
+// Read as a failure it costs the room a second "nice to meet you" and a second
+// walk through the whole gate explanation, on exactly the busy box that made
+// the timeout happen.
+test('a send that timed out is treated as said, and is not said again', async () => {
+  const a = await connectedUser('+972603000130');
+  const missing = '+972603000131';
+  const jid = JID(23);
+  const roster = `${a.phone}, ${missing}`;
+  const at = Date.now();
+  const sent = [];
+  let answer = 'unknown';
+  const gateway = (activity) => ({
+    configPath,
+    listGroupSessions: () => [{
+      key: `agent:${pg.GREETER_AGENT_ID}:whatsapp:group:${jid}`, agentId: pg.GREETER_AGENT_ID,
+      channel: 'whatsapp', chatType: 'group', peer: jid, lastInteractionAt: activity,
+    }],
+    readGroupContext: () => ({ subject: 'פאדל', members: roster, wasMentioned: true, at: activity }),
+    send: async (target, body) => { sent.push(body); return answer; },
+  });
+
+  // The introduction: we never learned whether it landed.
+  let out = await withTx(db.pool, (c) => job.sweepGroups(c, gateway(at)));
+  assert.deepEqual(out.registered, [jid]);
+  assert.equal(out.intros, 0, 'not counted as delivered');
+  assert.equal(out.introFailed, 0, 'and not counted as lost either');
+  assert.equal(out.unconfirmed, 1, 'the doubt is on the heartbeat, not in the room');
+  let row = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  assert.ok(row.introduced_at, 'stamped, so the next pass does not greet them twice');
+
+  // A tag, and the same silence from the pipe.
+  out = await withTx(db.pool, (c) => job.sweepGroups(c, gateway(at + 60_000)));
+  assert.equal(out.intros, 0, 'she does not introduce herself twice');
+  assert.equal(out.notices, 0);
+  assert.equal(out.unconfirmed, 1);
+  assert.equal(sent.length, 2);
+  assert.match(sent[1], /עוד לא שלחו לי/, 'the long explanation, once');
+  row = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  assert.ok(row.gate_notice_at, 'a wait we probably announced is a wait we announced');
+
+  // The pipe comes back. The next tag gets the SHORT answer: the explanation
+  // has been spent.
+  answer = 'sent';
+  out = await withTx(db.pool, (c) => job.sweepGroups(c, gateway(at + 120_000)));
+  assert.equal(out.notices, 1);
+  assert.equal(out.unconfirmed, 0);
+  assert.match(sent.at(-1), /עוד מחכה ל/);
+  assert.equal(sent.filter((b) => /נעים מאוד/.test(b)).length, 1, 'greeted exactly once');
+});
+
 test('a tag in a locked group is answered, then answered shorter, every time', async () => {
   const a = await connectedUser('+972603000020');
   const missing = '+972603000021';
@@ -246,6 +300,9 @@ test('a sweep with no new activity says nothing', async () => {
   assert.deepEqual(again.sent, []);
 });
 
+// The room never heard that anybody was missing, so there is nothing here to
+// announce the end of. It opens, it gets its agent, and it says nothing — the
+// introduction was the whole greeting this room needed.
 test('the last person writes, and the group opens with an agent of its own', async () => {
   const a = await connectedUser('+972603000040');
   const b = await makeUser(db.pool, '+972603000041');
@@ -261,8 +318,8 @@ test('the last person writes, and the group opens with an agent of its own', asy
   const out = await withTx(db.pool, (c) => job.sweepGroups(c, second.deps));
 
   assert.deepEqual(out.opened, [JID(5)]);
-  assert.equal(out.announced, 1);
-  assert.match(second.sent.at(-1).body, /כולם כאן/);
+  assert.equal(out.announced, 0, 'nobody was ever told to wait');
+  assert.deepEqual(second.sent, [], 'the opening line answers a sentence she never said');
 
   const row = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', JID(5)));
   assert.equal(row.state, 'open');
@@ -272,40 +329,110 @@ test('the last person writes, and the group opens with an agent of its own', asy
   assert.ok(cfg.bindings.some((bd) => bd.match.peer.id === JID(5)));
 });
 
+// ...and the other half of the same rule. A room she DID make wait hears that
+// the wait is over, because that sentence is an answer to her own
+// "עוד לא שלחו לי".
+test('a room that was told somebody was missing hears that everybody arrived', async () => {
+  const a = await connectedUser('+972603000110');
+  const b = await makeUser(db.pool, '+972603000111');
+  const roster = `${a.phone}, ${b.phone}`;
+  const at = Date.now();
+
+  const first = gatewayWith({ jid: JID(21), roster, at });
+  await withTx(db.pool, (c) => job.sweepGroups(c, first.deps));   // registers + intro
+
+  // Somebody tags her while b is still a stranger: now the room has been told.
+  const tagged = gatewayWith({ jid: JID(21), roster, at: at + 60_000, messageId: 'MSG-9' });
+  const out2 = await withTx(db.pool, (c) => job.sweepGroups(c, tagged.deps));
+  assert.equal(out2.notices, 1);
+  const told = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', JID(21)));
+  assert.ok(told.gate_notice_at, 'the wait is on the record, not just the notice count');
+
+  await db.pool.query(`UPDATE users SET last_inbound_at = now() WHERE id = $1`, [b.id]);
+  const third = gatewayWith({ jid: JID(21), roster, at: at + 120_000 });
+  const out3 = await withTx(db.pool, (c) => job.sweepGroups(c, {
+    ...third.deps, now: helpers.daytime(),
+  }));
+  assert.deepEqual(out3.opened, [JID(21)]);
+  assert.equal(out3.announced, 1);
+  assert.match(third.sent.at(-1).body, /כולם כאן/);
+});
+
+// A room told it was too big was never waiting on a PERSON, so trimming it
+// down to size opens it without the fanfare. Same column, the other branch of
+// `noteNoticeSent`.
+test('a room that was only ever told it was too large opens quietly', async () => {
+  const flags = require('../src/domain/flags');
+  const a = await connectedUser('+972603000120');
+  const b = await connectedUser('+972603000121');
+  const roster = `${a.phone}, ${b.phone}`;
+  const at = Date.now();
+
+  await withTx(db.pool, (c) => flags.setFlag(c, 'group_max_members', 1));
+  try {
+    const first = gatewayWith({ jid: JID(22), roster, at });
+    await withTx(db.pool, (c) => job.sweepGroups(c, first.deps));   // registers + intro
+
+    const tagged = gatewayWith({ jid: JID(22), roster, at: at + 60_000 });
+    const out2 = await withTx(db.pool, (c) => job.sweepGroups(c, tagged.deps));
+    assert.equal(out2.notices, 1);
+    assert.match(tagged.sent.at(-1).body, /מסתדרת טוב עד/);
+    const told = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', JID(22)));
+    assert.ok(told.last_notice_at, 'it was answered');
+    assert.equal(told.gate_notice_at, null, 'but nobody was ever missing');
+  } finally {
+    await withTx(db.pool, (c) => flags.setFlag(c, 'group_max_members', 25));
+  }
+
+  const third = gatewayWith({ jid: JID(22), roster, at: at + 120_000 });
+  const out3 = await withTx(db.pool, (c) => job.sweepGroups(c, {
+    ...third.deps, now: helpers.daytime(),
+  }));
+  assert.deepEqual(out3.opened, [JID(22)]);
+  assert.equal(out3.announced, 0);
+  assert.deepEqual(third.sent, []);
+});
+
 // 02:00 is not a reason to keep a group locked, and it is not a reason to
 // wake fifteen people either.
 test('a group that opens in the small hours opens quietly and announces later', async () => {
   const a = await connectedUser('+972603000050', { timezone: 'Asia/Jerusalem' });
-  const roster = a.phone;
+  const b = await makeUser(db.pool, '+972603000051', { timezone: 'Asia/Jerusalem' });
+  const roster = `${a.phone}, ${b.phone}`;
   // A time of DAY, on a date safely behind us. Pinned to an absolute date this
   // test was green for a day and red the next: `noteMention` stamps the real
   // clock, and once the wall clock passed the pinned timestamp the group read
   // as mid-conversation and announced at half past midnight.
   const day = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
   const night = new Date(`${day}T00:30:00+03:00`);   // 00:30 in Jerusalem
+  const evening = night.getTime() - 3 * 3600_000;    // 21:30 the evening before
 
-  const g = gatewayWith({ jid: JID(6), roster, at: night.getTime() });
-  const out = await withTx(db.pool, (c) => job.sweepGroups(c, {
-    ...g.deps,
-    now: night,
-    // No live tag: the group opened because somebody wrote to her in private.
-    readGroupContext: () => ({ subject: 'לילה', members: roster, at: night.getTime() - 3 * 3600_000 }),
-    listGroupSessions: () => [{
-      key: `agent:${pg.GREETER_AGENT_ID}:whatsapp:group:${JID(6)}`,
-      agentId: pg.GREETER_AGENT_ID, channel: 'whatsapp', chatType: 'group', peer: JID(6),
-      lastInteractionAt: night.getTime() - 3 * 3600_000,
-    }],
+  // Registered and greeted, then tagged while b is still a stranger — which is
+  // what earns the opening line at all. A reply to a live tag has no hours.
+  const first = gatewayWith({ jid: JID(6), roster, at: evening });
+  await withTx(db.pool, (c) => job.sweepGroups(c, { ...first.deps, now: new Date(evening) }));
+  const tagged = gatewayWith({ jid: JID(6), roster, at: evening + 60_000 });
+  const told = await withTx(db.pool, (c) => job.sweepGroups(c, {
+    ...tagged.deps, now: new Date(evening + 60_000),
   }));
+  assert.equal(told.notices, 1);
+
+  // b writes to her in the middle of the night. No live tag: the group opens
+  // because of something that happened in a private chat.
+  await db.pool.query(`UPDATE users SET last_inbound_at = now() WHERE id = $1`, [b.id]);
+  const g = gatewayWith({ jid: JID(6), roster, at: evening + 60_000 });
+  const out = await withTx(db.pool, (c) => job.sweepGroups(c, { ...g.deps, now: night }));
 
   assert.deepEqual(out.opened, [JID(6)], 'it really is open');
   assert.equal(out.announced, 0, 'it just does not shout about it at half past midnight');
+  assert.deepEqual(g.sent, []);
   const row = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', JID(6)));
   assert.ok(row.opened_at);
   assert.equal(row.opened_announced_at, null);
 
   // Morning.
   const morning = new Date(`${day}T09:30:00+03:00`);
-  const g2 = gatewayWith({ jid: JID(6), roster, at: night.getTime() });
+  const g2 = gatewayWith({ jid: JID(6), roster, at: evening + 60_000 });
   const out2 = await withTx(db.pool, (c) => job.sweepGroups(c, { ...g2.deps, now: morning }));
   assert.equal(out2.announced, 1);
   assert.match(g2.sent[0].body, /כולם כאן/);

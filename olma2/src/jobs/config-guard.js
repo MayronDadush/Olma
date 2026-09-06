@@ -515,6 +515,96 @@ async function checkUnreachableJoiners(client, now = new Date()) {
     `user ${r.id} joined ${String(r.onboarded_at.toISOString ? r.onboarded_at.toISOString() : r.onboarded_at).slice(0, 10)} and has never been reached — nothing delivered to them and nothing received from them since; their agent, binding or config write probably failed silently`);
 }
 
+// Someone wrote to Olma and the system has no idea they exist.
+//
+// Every other check in this file, and `checkUnreachableJoiners` right above it
+// most of all, starts from the `users` table. That is precisely the blind spot:
+// a person dropped at the gateway boundary never becomes a row, so no query
+// over our own data can see them. This one starts from the only record that
+// survives such a person — the gateway's durable ingress queue.
+//
+// It exists because of מעיין (+972502200581), 2026-09-05 23:06 Israel time.
+// Her message reached the box (her LID's WhatsApp session files were written
+// at 20:06:11 UTC and the ingress queue holds exactly one row for that lane)
+// and was discarded 21ms later: no `Inbound message` log line, no agent run, no
+// session, no user row. `processDurableInboundMessage` has six paths that drop
+// a message and log only under `verbose`, which production does not run, so
+// there was nothing to find and nothing to alert on. She waited a day, and was
+// found only because the owner happened to forward a screenshot.
+//
+// The discriminator is a SESSION, not a user row, and that distinction is the
+// whole check. When registration is closed, strangers are answered by the
+// intake greeter and deliberately not onboarded — those people have a session
+// and no user row, and they are fine. Someone with neither was never seen by
+// anything. Without that test this would go permanently red every time
+// registration was closed, and an alarm that is always on is off.
+//
+// A dashboard row, not BREAKS_USERS: no tool call is failing, because there is
+// nobody whose tool calls could fail. Same reasoning as its sibling above, and
+// the same reason it is the worse bug.
+//
+// No upper window on purpose. The violation stops being true the moment they
+// get a user row, which is the only thing that actually helps them, and
+// `closeResolved` will close it then. A time window would instead close the
+// issue while the person was still waiting.
+//
+// WHAT THIS CANNOT SEE, measured 2026-09-06 rather than assumed: a message
+// dropped for someone who is ALREADY a user. The ingress queue is not a log of
+// inbound messages — Olma's own outgoing replies land on the same lane a second
+// or two after the model produces text, and once a row completes there is
+// nothing left to tell the two apart (payload_json is nulled, metadata is
+// empty, every row shares one queue_name/channel_id, and the completion
+// latency that looks like a discriminator — 4ms for an echo, 3.9s for a real
+// turn — is a heuristic, not a fact). So per-user "events in vs turns
+// recorded" was tried and abandoned: on live data it disagreed by 3x in BOTH
+// directions with nothing wrong. A known user's dropped message stays
+// invisible, and the honest place to say so is here rather than in a check
+// that would file guesses.
+const STRANGER_GRACE_MS = 30 * 60 * 1000;
+async function checkUnansweredStrangers(client, deps = {}) {
+  const now = (deps.now || new Date()).getTime();
+  const listPeers = deps.listInboundPeers || (() => sessions.listInboundPeers());
+  const listSessions = deps.listSessions || (() => sessions.listSessions());
+
+  const peers = await listPeers();
+  // null is "the gateway's store could not be read", which is not evidence
+  // that nobody wrote — it is the absence of evidence either way.
+  if (!peers) return { violations: [], skipped: 'gateway ingress store unreadable' };
+  const settled = peers.filter((p) => p.lastAt > 0 && now - p.lastAt > STRANGER_GRACE_MS);
+  if (!settled.length) return { violations: [], skipped: null };
+
+  const seen = await listSessions();
+  if (!seen) return { violations: [], skipped: 'gateway session stores unreadable' };
+  const peersWithSession = new Set();
+  for (const s of seen) if (s && s.peer) peersWithSession.add(String(s.peer).replace(/^\+/, ''));
+
+  const { rows } = await client.query('SELECT phone FROM users WHERE phone IS NOT NULL');
+  const known = new Set(rows.map((r) => String(r.phone).replace(/^\+/, '')));
+
+  const violations = [];
+  for (const p of settled) {
+    // A lane we cannot put a number to is reported as itself rather than
+    // skipped: "we saw traffic from someone and cannot say who" is a real
+    // finding, and silently dropping it would hide exactly the case where the
+    // gateway's own mapping is what broke.
+    const digits = p.phone ? p.phone.replace(/^\+/, '') : null;
+    if (digits && (known.has(digits) || peersWithSession.has(digits))) continue;
+    if (!digits && peersWithSession.has(p.laneKey)) continue;
+    // The title is the dedup key, so it carries the IDENTITY and nothing that
+    // moves: a "last seen" stamp and a message count both change the moment
+    // the person writes again, which would close the open row and file a new
+    // one for the same waiting person — the churn the guard exists to avoid.
+    // The row's own created_at is the "when", and it is stable by
+    // construction: the grace plus one tick after their first message.
+    violations.push(digits
+      ? `+${digits} wrote to Olma and the system has no record of them — no session and no user row, `
+        + 'so their message was accepted by the gateway and then dropped without reaching anything'
+      : `an inbound lane (${p.laneKey}) has written to Olma and cannot be resolved to a phone number, `
+        + 'so nobody can tell who is waiting');
+  }
+  return { violations, skipped: null };
+}
+
 // Permission to use a model is spread across THREE independent lists, and a
 // model missing from any one of them is refused — so they only work when they
 // agree. Found 2026-09-01, the expensive way: a pilot registered two models
@@ -941,6 +1031,8 @@ async function run(client, { configPath, ...deps } = {}) {
   violations = violations.concat(await checkCarryovers(client));
   violations = violations.concat(await checkStuckOutbox(client));
   violations = violations.concat(await checkUnreachableJoiners(client, deps.now));
+  const strangers = await checkUnansweredStrangers(client, deps);
+  violations = violations.concat(strangers.violations);
   violations = violations.concat(await checkInfraAgentSessions(client, deps));
   violations = violations.concat(await checkLeakedTokens(client, deps));
   const filed = await fileViolations(client, violations);
@@ -954,6 +1046,10 @@ async function run(client, { configPath, ...deps } = {}) {
     // stops being looked at; one that appears only when a check went quiet is
     // the whole reason it is here.
     ...(applied.skipped ? { configValidation: applied.skipped } : {}),
+    // A check that goes quiet is indistinguishable from one that passes, and
+    // this one reads a store owned by the gateway — the most likely thing in
+    // the file to stop being readable after a version bump.
+    ...(strangers.skipped ? { strangerCheck: strangers.skipped } : {}),
     // Always present when it ran, so the doctrine's headroom is a number an
     // operator watches shrink rather than a thing they hear about once it is
     // already gone.
@@ -967,6 +1063,7 @@ module.exports = {
   run, checkOpenclawConfig, checkModelPermissions, checkConfigApplied, makeConfigValidator,
   checkIdentityFiles, checkAgentsTokens,
   checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkUnreachableJoiners, checkInfraAgentSessions,
+  checkUnansweredStrangers, STRANGER_GRACE_MS,
   UNREACHABLE_GRACE_HOURS,
   checkLegacyWorkspaceState, LEGACY_WORKSPACE_STATE,
   checkBootstrapBudget, bootstrapBudget,

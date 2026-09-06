@@ -44,9 +44,18 @@ function runOpenclaw(args) {
     const child = spawn('openclaw', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
     child.stderr.on('data', (d) => { stderr += d; });
+    // A timeout is NOT a failure, and the difference is user-visible. The CLI
+    // hands the message to the gateway and only then waits for its answer, so
+    // a kill at the deadline leaves a message that has very likely ALREADY
+    // gone out. Read as "not sent", it makes her say one-shot sentences twice:
+    // the first real group was told the whole gate explanation at 17:17 while
+    // our own books recorded nothing sent, so the next tag would have started
+    // the explanation over from the top (2026-09-06). Callers that only need
+    // "did it work" still see ok:false; the ones that must never repeat
+    // themselves read `timedOut` and treat it as said.
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
-      resolve({ ok: false, error: 'openclaw timeout' });
+      resolve({ ok: false, timedOut: true, error: 'openclaw timeout' });
     }, SEND_TIMEOUT_MS);
     child.on('exit', (code) => {
       clearTimeout(timer);

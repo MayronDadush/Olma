@@ -19,6 +19,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Gateway, config and upgrades**
 
+- [A message reached the box and stopped there, and nothing could tell (detector added 2026-09-06)](#a-message-reached-the-box-and-stopped-there-and-nothing-could-tell-detector-added-2026-09-06)
 - [The roster was never in the transcript (2026-09-06)](#the-roster-was-never-in-the-transcript-2026-09-06)
 - [She was a member of her own group (2026-09-06)](#she-was-a-member-of-her-own-group-2026-09-06)
 - [`main` said NO_REPLY into a real person's WhatsApp (2026-09-01)](#main-said-no_reply-into-a-real-persons-whatsapp-2026-09-01)
@@ -151,6 +152,66 @@ never trust a dated narrative for something you are about to act on.
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
 
 ## Gateway, config and upgrades
+
+### A message reached the box and stopped there, and nothing could tell (detector added 2026-09-06)
+
+מעיין wrote to Olma on 2026-09-05 at 23:06 Israel time. She was answered a day
+later, and only because the owner happened to forward a screenshot of her
+message and ask what had happened to it.
+
+What the evidence says, once there was a reason to look:
+
+| | |
+|---|---|
+| her WhatsApp session files, written by the gateway | 2026-09-05 20:06:11 UTC |
+| `channel_ingress_events` row for her lane | received 20:06:11.103, `completed` 20:06:11.124 |
+| `Inbound message` log line | none |
+| agent run, session, user row, audit row | none of them |
+
+So the message arrived, was accepted onto the gateway's durable queue, and was
+marked done twenty-one milliseconds later having reached nothing. The config
+was checked and cleared: this was not a closed door. `processDurableInboundMessage`
+in the WhatsApp extension has **six** paths that return `"completed"` without
+handling the message, and every one of them explains itself only through
+`logWhatsAppVerbose` — which production does not run. The likeliest of them
+fired during the box's worst minute of the day (rss 631 MiB, event-loop delay
+1,070 ms, caused by a deploy running the full test suite on the box). There was
+nothing in any log to find, which is why nothing was found.
+
+**The detection gap is the real incident.** Sixteen sweeps watch this system
+and not one of them could see her, for a reason that is structural rather than
+accidental: every check in `config-guard.js` — `checkUnreachableJoiners`, the
+closest sibling, included — starts from the `users` table. A person dropped at
+the gateway boundary never becomes a row. The one record that survives such a
+person is the gateway's own ingress queue, so `checkUnansweredStrangers` starts
+there instead and asks the opposite question: of every lane that has written to
+us, which belongs to nobody we have any trace of.
+
+**The discriminator is a SESSION, not a user row**, and that is the whole
+check. When registration is closed, strangers are answered by the intake
+greeter and deliberately not onboarded — they have a session and no user row,
+and they are fine. Someone with neither was never seen by anything. Get that
+wrong and the check is red every time registration is closed, which is how an
+alert list dies. There is no upper time window either: the violation stops
+being true when they get a user row, and a window would let `closeResolved`
+close the issue while the person was still waiting.
+
+**What it cannot see, measured rather than assumed.** The obvious next step —
+compare ingress events against `message.received` per known user — was tried on
+live data and abandoned. The ingress queue is not a log of inbound messages:
+Olma's own replies are queued on the same lane a second or two after the model
+produces text, and once a row completes nothing distinguishes them (payload is
+nulled, metadata empty, one `queue_name` for everything; the completion latency
+that looks like a tell — 4 ms for an echo against 3.9 s for a real turn — is a
+heuristic). Per-user counts disagreed by 3x in *both* directions with nothing
+wrong. A known user's dropped message therefore stays invisible, and that is
+recorded in the code rather than papered over with a check that files guesses.
+
+Proven both ways before shipping, because a detector that cannot go red is not
+a detector: against production it reports zero (every one of the fifteen live
+person-lanes is a user or has a session), and with the database rewound inside
+a rolled-back transaction to the state it was actually in that night — her user
+row gone, her session subtracted — it names her, by number, once.
 
 ### The roster was never in the transcript (2026-09-06)
 
