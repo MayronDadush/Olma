@@ -198,6 +198,19 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `/opt/olma2/run/turn-context-plugin.log`. Turning it on for someone means
   ALL THREE: the flag, the plugin's agent list, and a resync of their
   AGENTS.md — the flag alone changes only what brokerd answers.
+  **The prompt that `before_prompt_build` sees is the bare text.** The
+  Conversation info block (`reply_to_id`) and the reply-target block are
+  attached AFTER that hook, so the plugin cannot see a reply; the turn-open
+  hook can (the WhatsApp quote marker is in the event body) and sends
+  `replyToId` with `turn_open`. brokerd keeps one pending open PER MESSAGE
+  (a queue per person, oldest first), not one per person: two messages a few
+  seconds apart each keep their own count, opening and reply target
+  (`incidents.md`, "Two messages three seconds apart").
+- **`messages.queue.mode` stays `followup`.** The gateway default, `steer`,
+  pushes a message that arrives mid-turn INTO the running turn and cancels
+  the tool calls the model just made ("Skipped due to queued user message").
+  `followup` gives it a turn of its own. `config_guard` goes red otherwise;
+  `scripts/set-queue-mode.js --apply` sets it.
 - **A turn Olma started is not a message from the person.** `--deliver` reaches
   the agent on the person's own agent and session key, so nothing in the MCP
   call distinguishes it from typing — `domain/self-initiated.js` marks it and
