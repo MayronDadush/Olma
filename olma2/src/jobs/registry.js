@@ -120,7 +120,8 @@ function jobs({ pool }) {
   // was completely silent — #140, the fix for exactly that, sat undeployed
   // for a day for exactly that reason. A dashboard row, never an alarm:
   // running the previous release breaks nobody's tool calls.
-  const deployDrift = require('./deploy-drift');
+  const promiseWatch = require('./promise-watch');
+const deployDrift = require('./deploy-drift');
 
   return [
     { name: 'outbox_worker', run: async () => {
@@ -268,6 +269,11 @@ function jobs({ pool }) {
     // Never speaks to them; the report is for whoever runs the system.
     { name: 'onboarding_review', run: () => withTx(pool, (c) =>
       onboardingReview.sweepOnboardingReview(c, {})) },
+    // Asks of EVERY active person, once a day, the question the onboarding
+    // review asks only of new ones: was the moment they named the moment that
+    // got armed. Miron hit that fault weeks into his life here and nothing
+    // saw it (docs/incidents.md, "The check that only watched the front door").
+    { name: 'promise_watch', run: () => withTx(pool, (c) => promiseWatch.sweepPromiseWatch(c, {})) },
     { name: 'deploy_drift', run: () => withTx(pool, (c) => deployDrift.sweepDeployDrift(c)) },
   ];
 }

@@ -110,13 +110,22 @@ test('a mangled meeting value opens the plain page — never an error, never ech
 
 test('the page is offered once, only from chat, only once two options are on the table, and not after settling', async () => {
   const m = await meetingOf('סבב');
+  // Each moment is computed ONCE. at() is second-precision off the live clock,
+  // and a yes must name the exact starts_at that was proposed — computing
+  // at(72) again forty milliseconds later crossed a second boundary on CI
+  // (2026-09-06, main run 34049350911) and the yes was refused as
+  // slot_changed, on bytes the PR had passed twice. The sibling test in
+  // meeting-confirm-order.test.js had already learned this.
+  const t24 = at(24);
+  const t48 = at(48);
+  const t72 = at(72);
   // One option: the table is not yet worth a page.
-  const one = await call('propose_meeting_slot', ann, { meeting_id: m, slot_description: 'option 1', starts_at: at(24) });
+  const one = await call('propose_meeting_slot', ann, { meeting_id: m, slot_description: 'option 1', starts_at: t24 });
   assert.equal(one.ok, true, JSON.stringify(one.error));
   assert.equal(one.data.hints && one.data.hints.dashboard, undefined, 'offered on a one-option table');
 
   // Two options: offered, exactly here, naming the meeting.
-  const two = await call('propose_meeting_slot', ann, { meeting_id: m, slot_description: 'option 2', starts_at: at(48) });
+  const two = await call('propose_meeting_slot', ann, { meeting_id: m, slot_description: 'option 2', starts_at: t48 });
   assert.equal(two.ok, true, JSON.stringify(two.error));
   assert.match(two.data.hints.dashboard, new RegExp(`open_my_dashboard with meeting_id=${m}`));
   assert.match(two.data.hints.dashboard, /optional/);
@@ -124,15 +133,15 @@ test('the page is offered once, only from chat, only once two options are on the
   assert.match(two.data.hints.table, /2 option/);
 
   // A third move by the same person: not again.
-  const three = await call('propose_meeting_slot', ann, { meeting_id: m, slot_description: 'option 3', starts_at: at(72) });
+  const three = await call('propose_meeting_slot', ann, { meeting_id: m, slot_description: 'option 3', starts_at: t72 });
   assert.equal(three.ok, true, JSON.stringify(three.error));
   assert.equal(three.data.hints.dashboard, undefined, 'offered twice to the same person');
 
   // The other side's first move on a full table: offered to THEM, once.
-  const bens = await call('respond_to_meeting_slot', ben, { meeting_id: m, accept: false, accepted_starts_at: at(24) });
+  const bens = await call('respond_to_meeting_slot', ben, { meeting_id: m, accept: false, accepted_starts_at: t24 });
   assert.equal(bens.ok, true, JSON.stringify(bens.error));
   assert.match(bens.data.hints.dashboard, new RegExp(`meeting_id=${m}`));
-  const bens2 = await call('respond_to_meeting_slot', ben, { meeting_id: m, accept: false, accepted_starts_at: at(48) });
+  const bens2 = await call('respond_to_meeting_slot', ben, { meeting_id: m, accept: false, accepted_starts_at: t48 });
   assert.equal(bens2.data.hints && bens2.data.hints.dashboard, undefined);
 
   // The record of "offered" is an audit row per person per meeting.
@@ -141,7 +150,7 @@ test('the page is offered once, only from chat, only once two options are on the
   assert.deepEqual(rows.map((r) => Number(r.actor_id)), [ann.id, ben.id].sort((a, b) => a - b));
 
   // Settling: the yes that confirms carries the calendar hint, never the page.
-  const yes = await call('respond_to_meeting_slot', ben, { meeting_id: m, accept: true, accepted_starts_at: at(72) });
+  const yes = await call('respond_to_meeting_slot', ben, { meeting_id: m, accept: true, accepted_starts_at: t72 });
   assert.equal(yes.ok, true, JSON.stringify(yes.error));
   assert.equal(yes.data.meetingStatus, 'settling');
   assert.equal(yes.data.hints && yes.data.hints.dashboard, undefined, 'offered a page for a meeting that is over');

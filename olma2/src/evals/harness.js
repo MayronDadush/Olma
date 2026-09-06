@@ -83,18 +83,42 @@ async function resetEvalUser(client, userId) {
 // Best-effort and never throws, exactly like the hook — a brokerd that is
 // down leaves the turn to `turn_start`, which is what happens in production
 // too.
+//
+// Every exit DESTROYS the socket. `end()` alone was not enough: it sends FIN
+// and waits for the other side, and a live brokerd does not hang up, so the
+// handle outlived the call.
+//
+// The socket stays REF'd, and only the timeout is unref'd. Unref'ing both was
+// a bug that silently ended two eval runs mid-suite (2026-09-06): while this
+// promise is pending the socket and the timer are the ONLY work in flight, so
+// with neither of them holding the loop Node found nothing left to do and
+// exited 0 — no output, no error, `eval_runs.finished_at` NULL, and a unit
+// that reported success. A pending promise is not a running process. The
+// socket is what keeps us alive until the answer or the deadline; the
+// unref'd timer still fires while it does, and both are gone the moment
+// `finish` runs.
 function openTurnForEval(agentId, { connect = net.connect, sock = BROKERD_SOCK } = {}) {
   return new Promise((resolve) => {
     let done = false;
-    const finish = () => { if (!done) { done = true; resolve(); } };
-    let socket;
+    let socket = null;
+    let t = null;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (t) clearTimeout(t);
+      try { if (socket) socket.destroy(); } catch { /* already gone */ }
+      resolve();
+    };
     try { socket = connect(sock); } catch { return finish(); }
-    const t = setTimeout(() => { try { socket.destroy(); } catch { /* gone */ } finish(); }, OPEN_TIMEOUT_MS);
-    socket.on('error', () => { clearTimeout(t); finish(); });
-    socket.on('close', () => { clearTimeout(t); finish(); });
-    socket.on('data', () => { clearTimeout(t); finish(); try { socket.end(); } catch { /* gone */ } });
+    t = setTimeout(finish, OPEN_TIMEOUT_MS);
+    if (typeof t.unref === 'function') t.unref();
+    socket.on('error', finish);
+    socket.on('close', finish);
+    socket.on('data', finish);
     socket.on('connect', () => {
-      socket.write(`${JSON.stringify({ id: 1, method: 'turn_open', params: { agentId, kind: 'text' } })}\n`);
+      try {
+        socket.write(`${JSON.stringify({ id: 1, method: 'turn_open', params: { agentId, kind: 'text' } })}\n`);
+      } catch { finish(); }
     });
   });
 }
