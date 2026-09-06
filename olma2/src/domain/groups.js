@@ -319,10 +319,19 @@ function decideNotice(group) {
   return { kind: group.notices_sent === 0 ? 'explain' : 'nudge' };
 }
 
-async function noteNoticeSent(client, groupId) {
+// `toldOfMissing` separates the two things a notice can be about. Only a
+// notice naming people who have not written to her stamps `gate_notice_at`,
+// and only that stamp earns the opening line when they finally do — a room
+// told it is too large was never waiting on anybody, and a room that was
+// never waiting has nothing to celebrate (migration 047).
+async function noteNoticeSent(client, groupId, { toldOfMissing = true } = {}) {
   await client.query(
-    `UPDATE chat_groups SET last_notice_at = now(), notices_sent = notices_sent + 1 WHERE id = $1`,
-    [groupId]
+    `UPDATE chat_groups
+        SET last_notice_at = now(),
+            notices_sent = notices_sent + 1,
+            gate_notice_at = CASE WHEN $2 THEN now() ELSE gate_notice_at END
+      WHERE id = $1`,
+    [groupId, toldOfMissing === true]
   );
   return ok({ groupId });
 }

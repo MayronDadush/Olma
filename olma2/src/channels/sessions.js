@@ -693,10 +693,137 @@ function scanAssistantTextSince(agentId, sinceMs, base = HOME()) {
   });
 }
 
+// ---- who has written to the gateway at all ---------------------------------
+//
+// Everything above reads what happened AFTER a message was accepted. This
+// reads the gateway's own durable ingress queue, which is the only record of a
+// message that was accepted and then dropped — and the gateway drops silently:
+// `processDurableInboundMessage` has six paths that discard a message and log
+// only under `verbose`, which production does not run.
+//
+// It is the sole evidence we have that a person wrote at all. Nothing else in
+// this system can see them: they never get a session, never get a user row,
+// and so no check that starts from `users` can ever notice them (see
+// jobs/config-guard.checkUnansweredStrangers).
+
+function gatewayDbPath(base) {
+  return path.join(base, 'state', 'openclaw.sqlite');
+}
+
+// WhatsApp addresses a peer either by phone JID or by LID, and which one a
+// given conversation uses is not ours to choose — the box's live lanes are
+// almost all `@lid`. The reverse-mapping files are written by the gateway when
+// it first resolves a LID, so they are the only way back to a number.
+function lidToPhone(base) {
+  const map = new Map();
+  const root = path.join(base, 'credentials', 'whatsapp');
+  let accounts;
+  try { accounts = fs.readdirSync(root); } catch { return map; }
+  for (const account of accounts) {
+    let files;
+    try { files = fs.readdirSync(path.join(root, account)); } catch { continue; }
+    for (const f of files) {
+      const m = /^lid-mapping-(\d+)_reverse\.json$/.exec(f);
+      if (!m) continue;
+      try {
+        const phone = JSON.parse(fs.readFileSync(path.join(root, account, f), 'utf8'));
+        if (typeof phone === 'string' && /^\d{7,15}$/.test(phone)) map.set(m[1], phone);
+      } catch { /* a half-written mapping is simply not a mapping */ }
+    }
+  }
+  return map;
+}
+
+// Olma's own number and LID, so the self-chat lane is never reported as a
+// stranger. Read from creds.json, which is the account's credential file:
+// ONLY `me.id` and `me.lid` are touched and only their digits leave this
+// function — nothing else in that file may ever be returned, logged or stored.
+function selfIdentifiers(base) {
+  const out = new Set();
+  const root = path.join(base, 'credentials', 'whatsapp');
+  let accounts;
+  try { accounts = fs.readdirSync(root); } catch { return out; }
+  for (const account of accounts) {
+    try {
+      const creds = JSON.parse(fs.readFileSync(path.join(root, account, 'creds.json'), 'utf8'));
+      for (const v of [creds && creds.me && creds.me.id, creds && creds.me && creds.me.lid]) {
+        const digits = typeof v === 'string' ? (/^(\d{7,20})/.exec(v) || [])[1] : null;
+        if (digits) out.add(digits);
+      }
+    } catch { /* no creds for this account; it simply contributes nothing */ }
+  }
+  return out;
+}
+
+// Every direct peer whose lane the gateway has queued traffic on. Groups are
+// excluded — the caller is asking "did a PERSON write to us", and a group is
+// not a person; so is Olma's own number, or the self-chat reads as a stranger.
+//
+// `events` is LANE ACTIVITY, not a message count, and the difference matters
+// enough that no caller may treat it as one: Olma's own outgoing replies are
+// queued on the same lane a second or two after the model produces text, and
+// a completed row keeps nothing that separates them from a real inbound
+// message (payload_json is nulled on completion, metadata is empty, and every
+// row shares one queue_name). Measured on the box 2026-09-06. The one question
+// this store answers exactly is "has this lane ever been heard from at all",
+// which is the whole of `config-guard.checkUnansweredStrangers`.
+//
+// Returns null when the gateway's store cannot be opened, and [] when it opens
+// and holds nothing: "a thing that could not be READ is never a thing in
+// trouble", and collapsing those two into one value is how a check starts
+// reporting a healthy system.
+function listInboundPeers(base = HOME()) {
+  let db;
+  try {
+    db = new DatabaseSync(gatewayDbPath(base), { readOnly: true });
+  } catch {
+    return null;
+  }
+  let rows;
+  try {
+    rows = db.prepare(
+      `SELECT lane_key, MIN(received_at) AS first_at, MAX(received_at) AS last_at,
+              COUNT(*) AS events
+         FROM channel_ingress_events
+        WHERE lane_key IS NOT NULL
+        GROUP BY lane_key`
+    ).all();
+  } catch {
+    // The table is the gateway's, not ours: a version that renames or drops it
+    // must read as "cannot judge", never as "nobody has ever written".
+    return null;
+  } finally {
+    try { db.close(); } catch { /* already closed */ }
+  }
+
+  const lids = lidToPhone(base);
+  const self = selfIdentifiers(base);
+  const out = [];
+  for (const r of rows) {
+    const key = String(r.lane_key);
+    if (key.endsWith('@g.us') || key.endsWith('@broadcast') || key.endsWith('@status')) continue;
+    const lid = /^(\d+)@lid$/.exec(key);
+    const jid = /^(\d+)@s\.whatsapp\.net$/.exec(key);
+    const raw = lid ? lid[1] : (jid ? jid[1] : null);
+    if (!raw || self.has(raw)) continue;
+    const phone = lid ? (lids.get(raw) || null) : raw;
+    out.push({
+      laneKey: key,
+      // null means "we saw traffic and cannot say whose" — a different fact
+      // from a resolved number, and the caller must not treat it as one.
+      phone: phone ? '+' + phone : null,
+      firstAt: Number(r.first_at) || 0,
+      lastAt: Number(r.last_at) || 0,
+      events: Number(r.events) || 0,
+    });
+  }
+  return out;
+}
+
 module.exports = {
   listSessions, listSessionsForAgent, listGroupSessions, readGroupContext,
   findConversationInfo, indexPath, parseKey,
   readRecentMessages, readPeerUserText, readPeerDisplayName, displayNameFromPrompt,
   listTranscripts, readTranscriptUsage, readSessionEventsSlice, hasInboundUserTurn,
-  scanAssistantTextSince,
+  scanAssistantTextSince, listInboundPeers,
 };

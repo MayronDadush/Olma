@@ -48,6 +48,20 @@ function greeterInstalled(configPath) {
 // May a proactive line go out to this group right now? Anything that is a
 // REPLY to a live tag always may — that is the grace window, not an exception
 // to it.
+// What `deps.send` answered, in the only three states that exist: it went
+// out, we do not know, or it definitely did not. A timeout is the middle one
+// — the gateway already has the message (channels/openclaw.js) — and for
+// every sentence she says ONCE per room the middle one has to count as said.
+// A room told "nice to meet you" twice, or walked through the whole gate
+// explanation a second time, is worse off than a room that missed one line,
+// and the timeout is not rare: it is what a busy box does.
+//
+// Booleans still work, because most callers and every older test speak them.
+function said(result) {
+  if (result === 'unknown') return 'unknown';
+  return result === true || result === 'sent' ? 'sent' : 'failed';
+}
+
 function mayAnnounce(group, now = new Date()) {
   const lastMention = group.last_mention_at ? new Date(group.last_mention_at).getTime() : 0;
   // `elapsed >= 0` is not pedantry. A mention stamped AFTER the moment we are
@@ -129,6 +143,9 @@ async function sweepGroups(client, deps) {
   });
   const out = {
     registered: [], intros: 0, introFailed: 0, notices: 0, opened: [], relocked: [], announced: 0,
+    // Sends that blew the CLI timeout this pass: stamped as said, because
+    // they probably were, and counted here so the heartbeat shows the doubt.
+    unconfirmed: 0,
     unreadable: 0, strangers: 0, skipped: 0,
     // `senderGateOpen` is the loud one: true means the gateway is admitting
     // every sender in every group, and nothing else in this pass can tell.
@@ -176,9 +193,13 @@ async function sweepGroups(client, deps) {
     // ever because this sat inside the registration branch and the box was too
     // busy to run the CLI inside its timeout (2026-09-06). She is answering a
     // live message either way, so the quiet-hours window does not apply.
+    // A send we are UNSURE of stamps: the same busy box that loses the answer
+    // has usually delivered the message, and a room greeted twice reads worse
+    // than one greeted late.
     if (!group.introduced_at) {
-      if (await deps.send(jid, text.renderGroupIntro(wording))) {
-        out.intros++;
+      const delivery = said(await deps.send(jid, text.renderGroupIntro(wording)));
+      if (delivery !== 'failed') {
+        if (delivery === 'unknown') out.unconfirmed++; else out.intros++;
         justGreeted = true;
         const { rows: stamped } = await client.query(
           `UPDATE chat_groups SET introduced_at = now() WHERE id = $1 RETURNING *`, [group.id]);
@@ -265,12 +286,19 @@ async function sweepGroups(client, deps) {
       // answering it, so it waits for the group's own hours. Two columns
       // rather than one because opening and announcing are different moments
       // — a group that opens at 02:00 is still open, it is just not announced
-      // until morning.
-      if (!group.opened_announced_at && mayAnnounce(group, now)) {
-        if (await deps.send(jid, text.renderGroupOpened(wording))) {
+      // until morning. And it goes out only if there was a wait to end. "יש! כולם כאן" ANSWERS her own
+      // "עוד לא שלחו לי: …"; in a room where nobody was ever missing it
+      // announces the end of something that never started, which is what the
+      // first real group got (owner, 2026-09-06 — "כולם היו מההתחלה שם"). The
+      // introduction has already welcomed them, and it is the whole greeting
+      // that room needs. `gate_notice_at` is stamped only by a notice about
+      // somebody MISSING, never by `too_large` (migration 047).
+      if (!group.opened_announced_at && group.gate_notice_at && mayAnnounce(group, now)) {
+        const delivery = said(await deps.send(jid, text.renderGroupOpened(wording)));
+        if (delivery !== 'failed') {
+          if (delivery === 'unknown') out.unconfirmed++; else out.announced++;
           await client.query(`UPDATE chat_groups SET opened_announced_at = now() WHERE id = $1`,
             [group.id]);
-          out.announced++;
           await audit.record(client, group.registered_by_user_id, 'group.opened', {
             groupId: group.id, externalId: jid, from: before,
           });
@@ -289,9 +317,14 @@ async function sweepGroups(client, deps) {
           ? text.renderGroupTooLarge(Number(await flags.getFlag(client, 'group_max_members')) || 25, wording)
           : text.renderGroupGateNotice({ kind: notice.kind, missing: missing.map((m) => m.phone) }, wording);
         const opts = ctx.messageId ? { replyTo: ctx.messageId } : undefined;
-        if (await deps.send(jid, body, opts)) {
-          await groups.noteNoticeSent(client, group.id);
-          out.notices++;
+        const delivery = said(await deps.send(jid, body, opts));
+        if (delivery !== 'failed') {
+          if (delivery === 'unknown') out.unconfirmed++; else out.notices++;
+          // `toldOfMissing` is what earns the opening line later: a room told
+          // it is too large was never waiting on a person.
+          await groups.noteNoticeSent(client, group.id, {
+            toldOfMissing: notice.kind !== 'too_large',
+          });
         }
       }
     }
