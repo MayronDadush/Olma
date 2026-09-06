@@ -2763,7 +2763,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     setTaskReminder:"setTaskReminder", setTaskCalendar:"setTaskCalendar",
     shareTask:"shareTask", revokeShare:"revokeShare",
     grantFeature:"grantFeature", revokeFeature:"revokeFeature",
-    setTimezone:"setTimezone", pause:"pause", resume:"resume",
+    setTimezone:"setTimezone", pause:"pause", resume:"resume", callMe:"callMe",
     inviteContact:"inviteContact",
     respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting",
     rejoinMeeting:"rejoinMeeting",
@@ -3274,6 +3274,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.provFailed":"לא הצלחתי לפתוח את מסך ההרשאות של גוגל",
       "toast.open":"פותח את השיחה שלך עם עולמה ב־{name}","toast.chanOn":"{name} מחובר · עולמה תענה גם שם",
       "toast.calling":"עולמה מתקשרת אליך עכשיו",
+      "toast.callFailed":"לא הצלחתי להתקשר עכשיו — נסה שוב בעוד רגע",
       "toast.done":"המשימה הושלמה","toast.saved":"המשימה נשמרה",
       "toast.updated":"המשימה עודכנה","toast.deleted":"המשימה נמחקה",
       "toast.needTitle":"צריך שם למשימה",
@@ -3505,6 +3506,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.provFailed":"Google's permission screen would not open",
       "toast.open":"Opening your chat with Allma in {name}","toast.chanOn":"{name} connected · Allma answers there too",
       "toast.calling":"Allma is calling you now",
+      "toast.callFailed":"The call would not go through — try again in a moment",
       "toast.done":"Task completed","toast.saved":"Task saved",
       "toast.updated":"Task updated","toast.deleted":"Task deleted",
       "toast.needTitle":"Give the task a name",
@@ -4156,7 +4158,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      the whole point of the mockup is to show what the screen becomes once it
      does. On a live page it is only what the server can really do today, and
      the rest is greyed rather than left tappable. */
-  var AVAIL = {prov:{}, mail:false};
+  var AVAIL = {prov:{}, mail:false, call:false};
   function provReady(id){ return !LIVE || AVAIL.prov[id] === true; }
   /* The Google services this system has a domain module for. Drive and Keep
      are drawn because the account has them, not because we can read them —
@@ -4182,7 +4184,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          neither has asking Olma to ring you — so on a live page both are
          waiting, and only the channel somebody actually arrived on is open. */
       if(c.call){
-        var callReady = !LIVE;
+        var callReady = !LIVE || AVAIL.call === true;
         return '<button class="chan call' + (callReady ? "" : " soon") + '" data-call="1" data-state="idle"' +
           (callReady ? "" : " inert") + ' style="--ci:' + i + '">' +
           tileFor("call", c.icon) +
@@ -4297,6 +4299,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     setCallState(el, "ringing");
     el.classList.add("ringing");
     toast(t("toast.calling"));
+    /* The one action on this page whose failure cannot be left to the silent
+       reload: nothing on screen changed, so a refusal that says nothing reads
+       as a phone that is about to ring and never does. */
+    if(LIVE) API.send("callMe", {}, function(data){
+      if(!data){ clearTimeout(callT); el.classList.remove("ringing"); setCallState(el, "idle"); toast(t("toast.callFailed")); }
+    });
     callT = setTimeout(function(){
       el.classList.remove("ringing");
       setCallState(el, "idle");
@@ -7812,6 +7820,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
        that can answer that half. Everything not named here is greyed. */
     AVAIL.prov = {google:true};
     AVAIL.mail = !!(d.available && d.available.mail);
+    /* Ringing from this page is behind its own allowlist
+       (voice.pageCallAllowed). Until somebody is on it the tile draws
+       itself "בקרוב", which is what it has always done — the difference is
+       that there is now something behind it when the answer turns yes. */
+    AVAIL.call = !!(d.available && d.available.call);
     hydrateProviders(d.integrations);
     hydrateChannels(d.channels);
     /* The address book behind "add a friend" — their own `user_contacts`,

@@ -37,6 +37,7 @@ const meetings = require('./meetings');
 const meetingFanout = require('./meeting-fanout');
 const optionMoment = require('./meeting-option-moment');
 const calendar = require('./calendar');
+const voice = require('./voice');
 const googleContacts = require('./google-contacts');
 const mail = require('./mail');
 const googleConnect = require('./google-connect');
@@ -449,6 +450,28 @@ const ACTIONS = {
     // screen is the definition of confirmed, and it is what lets setTimezone
     // repair the rows a guessed zone had already converted wrongly.
     return users.setTimezone(client, userId, p.timezone, true);
+  },
+
+  // ---- the phone ----------------------------------------------------------
+  // The same domain call the agent makes for `call_me_on_the_phone`, reached
+  // from the tile instead of from a sentence. Two gates stand in front of it
+  // and they answer different questions: `pageCallAllowed` decides whether the
+  // BUTTON exists for this person, and the voice bridge decides whether the
+  // NUMBER may be dialled at all. The page hides a tile the first refuses;
+  // this re-asks it anyway, because a hidden control is a hint and the server
+  // is the rule.
+  async callMe(client, userId) {
+    const paused = await refuseIfPaused(client, userId);
+    if (paused) return paused;
+    const { rows } = await client.query(
+      `SELECT id, phone FROM users WHERE id = $1`, [userId]);
+    const user = rows[0];
+    if (!user) return err('not_found', 'user not found');
+    if (!await voice.pageCallAllowed(client, user)) {
+      return err('forbidden', 'calling from the page is not open for this user',
+        { reason: 'not_enabled' });
+    }
+    return voice.requestCall(client, user);
   },
 
   async pause(client, userId) {
