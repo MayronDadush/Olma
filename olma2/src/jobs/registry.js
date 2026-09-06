@@ -223,7 +223,13 @@ const deployDrift = require('./deploy-drift');
     // waiting on somebody to sign up costs nothing at all.
     { name: 'group_sweep', run: () => groupsJob.runGroupSweep(pool, {
       configPath: OPENCLAW_CONFIG(),
-      send: async (jid, body, opts) => (await rawSend(jid, body, opts)).ok,
+      // Three outcomes, not two. 'unknown' is a send that blew the CLI's
+      // timeout: the gateway has it and has very likely delivered it, so the
+      // sweep must never say that sentence again — see channels/openclaw.js.
+      send: async (jid, body, opts) => {
+        const r = await rawSend(jid, body, opts);
+        return r.ok ? 'sent' : (r.timedOut ? 'unknown' : 'failed');
+      },
     }) },
     { name: 'intake_template_sync', run: async () => {
       if (!intake.intakeConfigured(OPENCLAW_CONFIG())) return { skipped: true };
