@@ -44,8 +44,27 @@ function defaultPaths(agentId) {
 // trust boundary as before: the same workspace, behind the same
 // tools.fs.workspaceOnly. The file stays as the recovery path and the root
 // of trust config-guard watches.
-function renderAgentsMd(identityToken) {
-  const rendered = fs.readFileSync(TEMPLATE_PATH, 'utf8').replaceAll('{{IDENTITY_TOKEN}}', identityToken);
+//
+// Two doctrines live in one template since Phase B of "the turn opens
+// itself": `{{#turn:tool}}…{{/turn:tool}}` is the every-turn rule as a tool
+// call, `{{#turn:context}}…{{/turn:context}}` is the same rule read from the
+// `Turn context` block the gateway plugin prepends (domain/turn.js,
+// CONTEXT_FLAG). One variant is kept per person and the other stripped, so
+// the file the gateway measures never carries both. Block markers sit on
+// their own lines and take those lines with them; inline markers vary a few
+// words mid-sentence. Both variants have to fit the bootstrap budget, and
+// tests/intake.test.js measures both.
+const TURN_BLOCK_RE = /^\{\{#turn:(\w+)\}\}\n([\s\S]*?)^\{\{\/turn:\1\}\}\n/gm;
+const TURN_INLINE_RE = /\{\{#turn:(\w+)\}\}([\s\S]*?)\{\{\/turn:\1\}\}/g;
+function pickTurnVariant(text, variant) {
+  const keep = (_m, name, body) => (name === variant ? body : '');
+  return text.replace(TURN_BLOCK_RE, keep).replace(TURN_INLINE_RE, keep);
+}
+
+function renderAgentsMd(identityToken, { turnContext = false } = {}) {
+  const raw = fs.readFileSync(TEMPLATE_PATH, 'utf8');
+  const rendered = pickTurnVariant(raw, turnContext ? 'context' : 'tool')
+    .replaceAll('{{IDENTITY_TOKEN}}', identityToken);
   if (rendered.includes('{{')) throw new Error('agents-template.md has an unfilled placeholder');
   if (!rendered.includes(identityToken)) throw new Error('agents-template.md lost its {{IDENTITY_TOKEN}} slot');
   return rendered;
@@ -54,9 +73,9 @@ function renderAgentsMd(identityToken) {
 // agents-template.md's doctrine tells the agent to process a pending section
 // here on its first real turn, then remove it. Extracted facts only, never
 // the raw transcript (token cost).
-function seedWorkspace(workspace, { firstName, identityToken, firstMessage, invitedInfo }) {
+function seedWorkspace(workspace, { firstName, identityToken, firstMessage, invitedInfo, turnContext = false }) {
   fs.mkdirSync(workspace, { recursive: true });
-  fs.writeFileSync(path.join(workspace, 'AGENTS.md'), renderAgentsMd(identityToken), { mode: 0o600 });
+  fs.writeFileSync(path.join(workspace, 'AGENTS.md'), renderAgentsMd(identityToken, { turnContext }), { mode: 0o600 });
   fs.writeFileSync(path.join(workspace, 'IDENTITY.md'), 'Olma — personal assistant. Warm, brief, practical.\n');
 
   let userMd = `# User\n\nFirst name: ${firstName || 'unknown'}\n`;
@@ -261,8 +280,12 @@ async function provisionUser(client, {
   // world back exactly as it found it and never more (a workspace that
   // already existed is never deleted by an undo).
   const workspaceExisted = fs.existsSync(paths.workspace);
+  // Which turn doctrine they get (see renderAgentsMd): decided per person by
+  // the flag, at the moment the file is written — the resync script applies
+  // the same rule to everyone already provisioned when the flag changes.
+  const turnContext = await require('../domain/turn').contextEnabledFor(client, user);
   seedWorkspace(paths.workspace, {
-    firstName: user.first_name, identityToken: user.identity_token, firstMessage, invitedInfo,
+    firstName: user.first_name, identityToken: user.identity_token, firstMessage, invitedInfo, turnContext,
   });
   fs.mkdirSync(paths.agentDir, { recursive: true });
 

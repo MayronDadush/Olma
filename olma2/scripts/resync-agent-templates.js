@@ -16,6 +16,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createPool } = require('../src/db/pool');
 const { renderAgentsMd } = require('../src/intake/provision');
+const turnDomain = require('../src/domain/turn');
 
 const APPLY = process.argv.includes('--apply');
 
@@ -28,6 +29,13 @@ const APPLY = process.argv.includes('--apply');
     `SELECT id, first_name, phone, workspace_path, identity_token FROM users
      WHERE status = 'active' AND workspace_path IS NOT NULL ORDER BY id`);
 
+  // Which turn doctrine each person gets — the tool call, or the Turn
+  // context block the gateway plugin prepends — is a per-person flag
+  // (domain/turn.js, CONTEXT_FLAG), read once here rather than per row.
+  const client = await pool.connect();
+  let contextFlag;
+  try { contextFlag = await require('../src/domain/flags').getFlag(client, turnDomain.CONTEXT_FLAG); } finally { client.release(); }
+
   let changed = 0, same = 0, missing = 0;
   for (const u of rows) {
     const p = path.join(u.workspace_path, 'AGENTS.md');
@@ -36,9 +44,10 @@ const APPLY = process.argv.includes('--apply');
       missing++;
       continue;
     }
-    const rendered = renderAgentsMd(u.identity_token);
+    const turnContext = turnDomain.coveredBy(contextFlag, u.phone);
+    const rendered = renderAgentsMd(u.identity_token, { turnContext });
     if (fs.readFileSync(p, 'utf8') === rendered) { same++; continue; }
-    console.log(`  ${APPLY ? '→' : '·'} ${u.id} ${u.first_name || u.phone}: template is stale`);
+    console.log(`  ${APPLY ? '→' : '·'} ${u.id} ${u.first_name || u.phone}: template is stale${turnContext ? ' (turn-context doctrine)' : ''}`);
     if (APPLY) {
       fs.writeFileSync(p, rendered, { mode: 0o600 });
       fs.chmodSync(p, 0o600); // writeFileSync mode applies only at creation
