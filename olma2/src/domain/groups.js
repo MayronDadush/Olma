@@ -28,6 +28,15 @@ const audit = require('./audit');
 
 const DEFAULT_TIMEZONE = 'Asia/Jerusalem';
 
+// Her own number, as the gateway writes it into the roster of every group she
+// is in. Measured on the first real group (2026-09-06): `group_members` was
+// `+972559347282, +972549495254, M&M (+972526269826)` — the first is her.
+// Left in, she is a member who has never written to herself, so the group can
+// never open and the nudge tags her own number at the people it is asking for
+// help. Same source as the intro's `{{me}}` tag (proactive-text.SELF_NUMBER),
+// so one env var moves both.
+const SELF_PHONE = normalizePhone(process.env.OLMA_WA_NUMBER || '972559347282');
+
 // ---- roster parsing ---------------------------------------------------------
 
 // The gateway formats the roster as `Name (+972…), +972…, Name (+972…)` —
@@ -50,6 +59,8 @@ function parseRoster(raw) {
     if (!rawPhone) { unparsed.push(entry); continue; }
     const phone = normalizePhone(rawPhone);
     if (!phone) { unparsed.push(entry); continue; }
+    // She is in every group she is in; she is not a member of it.
+    if (phone === SELF_PHONE) continue;
     const displayName = withName ? cleanName(withName[1]) : null;
     members.push({ phone, displayName });
   }
@@ -326,7 +337,7 @@ async function noteMention(client, groupId) {
 
 module.exports = {
   DEFAULT_TIMEZONE,
-  parseRoster, normalizePhone, majorityTimezone,
+  parseRoster, normalizePhone, majorityTimezone, SELF_PHONE,
   registerGroup, getById, getByExternalId, listMembers, syncRoster,
   decideState, evaluate, applyState,
   decideNotice, noteNoticeSent, noteMention,
