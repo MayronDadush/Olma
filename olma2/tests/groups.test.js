@@ -289,4 +289,17 @@ test('mentions and notices are stamped where the delivery gate can read them', a
   assert.ok(row.last_mention_at, 'the gate needs this for its 15-minute grace');
   assert.ok(row.last_notice_at);
   assert.equal(row.notices_sent, 1);
+  assert.ok(row.gate_notice_at, 'a notice about somebody missing is what the opening line answers');
+
+  // The other kind of notice. It is still an answer to a tag, so it counts and
+  // it stamps the cooldown column — but nobody in that room was ever waiting
+  // on a person, and "יש! כולם כאן" would answer a sentence she never said.
+  const big = await withTx(db.pool, (c) => groups.registerGroup(c, {
+    externalId: JID(3) + '.y', members: [{ phone: a.phone }],
+  }));
+  await withTx(db.pool, (c) => groups.noteNoticeSent(c, big.data.group.id, { toldOfMissing: false }));
+  const other = await withTx(db.pool, (c) => groups.getById(c, big.data.group.id));
+  assert.ok(other.last_notice_at);
+  assert.equal(other.notices_sent, 1);
+  assert.equal(other.gate_notice_at, null);
 });
