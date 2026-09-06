@@ -106,10 +106,15 @@ never trust a dated narrative for something you are about to act on.
 - [users.timezone must never be NULL](#userstimezone-must-never-be-null)
 - [Availability is tapped on a page, not typed (2026-08-28)](#availability-is-tapped-on-a-page-not-typed-2026-08-28)
 
+- [Yahav's first evening: the hour she promised and the message that got nothing (2026-09-05)](#yahavs-first-evening-the-hour-she-promised-and-the-message-that-got-nothing-2026-09-05)
+
 **Features as they shipped**
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
 - [Two messages three seconds apart, and the first one's work was cancelled (2026-09-06)](#two-messages-three-seconds-apart-and-the-first-ones-work-was-cancelled-2026-09-06)
 - [A 👍 is the answer; the sentence after it is a second notification (2026-09-05)](#a--is-the-answer-the-sentence-after-it-is-a-second-notification-2026-09-05)
+- [The hint that outvoted the mark (2026-09-06)](#the-hint-that-outvoted-the-mark-2026-09-06)
+- [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
+- [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
 
 - [Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)](#live-updates--עדכן-אותי-על-as-infrastructure-2026-08-28)
 - [Image + video generation, access-limited, spend in its own column (2026-08-28)](#image--video-generation-access-limited-spend-in-its-own-column-2026-08-28)
@@ -3056,6 +3061,87 @@ immediately before the merge, not once at the start.
   `instructionFor` — pinned by tests like every other proactive kind.
 
 
+### Yahav's first evening: the hour she promised and the message that got nothing (2026-09-05)
+
+A new user, three hours old, two faults nobody would have found by looking at
+a dashboard. Both were discovered by reading his whole first evening back by
+hand — the gateway transcript, his rows in Postgres, and the gateway log for
+the same minutes, cross-read against each other. That afternoon is why
+`jobs/onboarding-review.js` exists.
+
+**The hour she promised.** He wrote "תזכיר לי בבקשה מחר ב19:00, להתקשר למלי".
+`add_task` stored `due_at = 19:00`, `domain/auto-reminder.js` armed its
+reminder an hour before it, and Olma told him: "רשמתי לך לתזכורת מחר ב-19:00".
+The reminder was set for 18:00. Nothing in the data distinguished "the thing
+is at 19:00" from "remind me at 19:00", and the hint on the tool result said
+`say when you will remind them` while offering only the due date and a UTC
+instant to say it from — so the sentence was assembled from whichever was
+nearer to hand.
+
+An hour earlier he had made the identical request about his father, and that
+one came out right: the model happened to follow `add_task` with an explicit
+`set_task_reminder` at 11:30, which superseded the automatic 10:30 row. Same
+sentence shape, same evening, opposite outcome, and the only difference was
+what the model remembered — while the hint actively told it not to make that
+call. So the distinction moved into the call: `add_task` takes `remind_at`
+for the hour THEY named, it replaces the automatic one rather than joining it,
+and the result now states the armed moment in their own zone so a time nobody
+armed is not available to say. Paid for in the tool-schema budget by trimming
+`set_task_reminder`'s description; the schemas were 17 chars under the ceiling.
+
+**The message that got nothing.** At 23:00:29 he asked for that reminder. His
+three tool calls each timed out after 30s against a brokerd that had been
+restarted nine times in his first two hours by a live deploy, the model
+produced no text at all, and the gateway wrote one line:
+
+```
+visible channel turn dispatched with no queued reply payloads:
+  channel=whatsapp messageId=… sessionKey=agent:u-18:… cause=completed
+```
+
+Nothing read that line. He was answered only because the 2h check-in rung
+fired two seconds later and happened to ask about the same person, and he
+replied to it.
+
+Neither existing repair case could have seen it. `jobs/unanswered.js` (a) and
+(b) both read the END of the transcript, and by the time any sweep looked, the
+transcript ended in a delivered reply to a later message. The dropped one sat
+in the middle of the history, where nothing looks.
+
+**The wrong fix, named before it was built.** The first theory was that
+`lane-watchdog.js` missed it by 3.7 seconds: the gateway had logged `lane wait
+exceeded … waitedMs=86325` and `DEFAULT_MIN_AGE_MS` is 90,000. Checking it
+first: there were **zero** `stuck session` lines in the entire day's log (the
+gateway still emits the string — the condition simply never arose), and
+`queueAhead` was 0, which `pickWedged` also requires. Nothing there could have
+fired at any floor. Lowering it would have changed nothing and made a
+legitimately slow run likelier to be aborted. The watchdog has never aborted
+anything, all time; that is a detector with no case yet, not a broken one.
+
+The fix is `unanswered.js` case (c), keyed on the message id the gateway
+named. Its instruction tells the model to look BACK past the healthy exchange
+sitting on top of the silence, and it carries no "but they were sent something
+afterwards" guard — that is exactly what happened here, and treating unrelated
+later traffic as an answer is how the silence went unnoticed.
+
+**Seven other things, all mechanical.** A task the extraction sweep filed 73
+minutes before he answered "לא תודה" to the offer, still open. 👀 left
+standing on four of his seven messages. "רשמתי ✅" written under an ⏰ that had
+already said it. Two greetings, because the `intake` agent answered his first
+message and `u-18` sent the verbatim onboarding four minutes later without
+acknowledging what he had written. `u-18` recycled from a user removed four
+days earlier, whose transcript still sits in the same sqlite file. One fact
+saved from a two-hour conversation, with a ברית, a trip and a Monday
+appointment all unsaved. And the Google Calendar offer queued for 04:58 the
+next morning because the rung is on a clock, while he had handed over three
+dated commitments in two hours.
+
+What went right and is worth keeping: asked for flight prices, Olma refused to
+invent any, said plainly she cannot browse, produced a `search_link` (her
+words, the URL from `domain/search-link.js`) and filed issue #75. That is the
+rule working exactly as written.
+
+
 ## Features as they shipped
 
 ### The reply's first six seconds were bookkeeping (2026-09-05)
@@ -3216,6 +3302,102 @@ call the gateway's `message.action` over its WebSocket RPC (milliseconds, and
 an actual ack); the react action's delegated authorization needs conversation
 and account context the CLI resolves internally, so that is a separate piece
 of work, recorded here so it is not re-discovered.
+
+### The hint that outvoted the mark (2026-09-06)
+
+The fix above shipped, deployed, and was read verbatim by the model on every
+turn it applied to — and it kept losing. Miron, 11:29 the next morning:
+
+> משימת עבודה - תזכיר לי עוד שעתיים לדבר עם מור חן ולבקש ממנה את החומרי גלם
+
+A 👍 went onto that message, `hints.markPlaced` was on the tool result, and he
+got a sentence anyway: `הוספתי ✅ "לדבר עם מור חן — לבקש חומרי גלם" לתזכורת עוד
+שעתיים (13:29), אזכיר לך שעה לפני 💪`. The first instinct was that the hint had
+not deployed. It had; it was in the production tool result, quoted above,
+for both Miron and Yahav.
+
+What beat it was on the same result. `hints.reminders` said "Reminders were
+armed automatically — **say when you will remind them**", and the doctrine said
+the same words every turn. One instruction was conditional (*write only if the
+words carry something the mark cannot*); the other was unconditional (*say
+this*). A model resolving two instructions that cannot both be obeyed follows
+the one that names an action. The mark was never ignored — it was outvoted, and
+it would have gone on being outvoted for as long as anything else on the result
+asked for a sentence unconditionally.
+
+So both were rewritten to answer `markPlaced`'s question rather than a
+different one. The hour Olma **chose** is something the mark cannot carry, and
+is worth one short line. The hour they **named** is not — they said it
+themselves one message ago — and the fact that it was saved never is, in either
+branch, because that is precisely what the 👍 reported. `add_task`'s
+`remindersAsked` flag, added the day before for the Yahav fault, turned out to
+be exactly the discriminator this needed.
+
+Two smaller things fell out of the same turn. Reminder 129 was armed for 12:29
+against a "remind me in two hours" said at 11:29 — the Yahav bug reaching a
+second person, before the `remind_at` fix had merged. And
+`onboarding-review.js`'s `saidWhatTheMarkSaid` check, written for exactly this
+shape, did not fire: its word list held רשמתי, שמרתי, מחקתי and not הוספתי. A
+detector built from a word list goes quiet the first time the model picks a
+different verb, which is the ordinary way the ones in this file stop working.
+
+### The dedupe list that could not contain the answer (2026-09-06)
+
+Miron said "לאכול צהריים ב-12" at 09:24 and "תזכיר לי עוד שעתיים לדבר עם מור חן"
+at 11:29. Both were saved correctly, with their hour and a reminder. About
+half an hour after each, `jobs/fact-extraction.js` filed the same commitment a
+second time — no hour, no reminder, `source = 'extracted'`. Two tasks became
+four, and the newer copies of both are the ones with nothing attached.
+
+The prompt does ask it not to, and hands it his open list to check against.
+He has 67 open tasks; the cap is 40; and the query took the OLDEST forty. So
+the one task most likely to be duplicated — the one saved minutes earlier, in
+the very conversation being read back — was the one task structurally
+guaranteed not to be in the list. Every user past the cap had this, and the
+symptom is invisible unless you look at two rows side by side and notice one
+of them has no time on it.
+
+Now the newest forty, re-sorted for reading so parents still precede their
+subtasks. Nothing about the cap or the prompt changed; the forty are simply
+the forty that could matter.
+
+### The four checks that could never have fired (2026-09-06)
+
+Four checks were added to the onboarding review after reading Yahav's *second*
+day: a "מחר" about that same morning, two proactive rungs fifty seconds apart,
+a reminder still climbing its ladder at the third rung, a capability refusal
+with no issue filed. All four passed their tests. Then their timing was
+measured against the real conversation they were written from:
+
+```
+first message 21:02:55   ·   the review's window closes 00:02:55
+   3.7h  OUTSIDE   refusal, nothing filed          (00:47)
+   4.0h  OUTSIDE   "מחר" about today               (01:00)
+  11.0h  OUTSIDE   two rungs 50s apart             (08:01)
+  12.7h  OUTSIDE   "מחר" about today again         (09:47)
+  13.0h  OUTSIDE   reminder chased                 (10:01)
+```
+
+Not one of them could ever have fired. They would have sat in the checks file,
+green in the suite, reporting nothing, for as long as anybody cared to leave
+them there — the detector-that-cannot-fail shape, arriving inside the thing
+built to catch it.
+
+Three hours is still the right moment for the first read: the conversation is
+live and the faults it finds are cheap to fix. It is simply not the only
+moment. `STAGES` is now `'3h'` and `'1d'` (26 hours — it clears the same hour
+of the next morning, so a first evening's night-gated messages and the morning
+rungs that follow them sit inside one window instead of across its edge).
+
+Two decisions worth keeping. **Both stages start at the person's first
+message**; only the end moves — `promisedTimeNotArmed` holds a sentence said at
+hour twelve against a reminder armed at hour one, and a window that began at
+hour three would show it the sentence and not the reminder. And because that
+makes the day read a superset, **it files only what is new**: a finding is the
+same finding when its id and its detail match, the earlier one is already on
+its own unacknowledged row, and re-filing it would double every count that
+reads this table. The alerts strip counts `DISTINCT user_id` for the same
+reason.
 
 ### Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)
 

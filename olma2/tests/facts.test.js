@@ -694,6 +694,42 @@ test('the read-back also asks for commitments, with the open list as the dedupe 
   // impossible: the answer is data, and applyExtraction has no path to either.
 });
 
+// Miron, 2026-09-06, twice in one morning. He said "לאכול צהריים ב-12" and
+// then, two hours later, "תזכיר לי עוד שעתיים לדבר עם מור חן". Both were saved
+// correctly by the agent, with their hour and a reminder. About half an hour
+// after each, this job filed the same commitment a second time — no hour, no
+// reminder, `source = 'extracted'`.
+//
+// The prompt asks it not to, and hands it the open list to check against. He
+// had 67 open tasks, the cap is 40, and the list was the OLDEST forty — so the
+// one task most likely to be duplicated, the one saved minutes earlier in the
+// very conversation being read, was the one guaranteed not to be in it. A
+// dedupe reference that cannot contain the answer is not a dedupe reference.
+test('the dedupe list is the newest tasks, not the oldest — the duplicate is always a recent one', async () => {
+  const u = await makeUser(db.pool, '+972500000601', { firstName: 'מירון' });
+  const { withTx } = require('../src/db/pool');
+  const tasksDomain = require('../src/domain/tasks');
+  const ids = [];
+  for (let i = 0; i < extraction.OPEN_TASKS_IN_PROMPT + 5; i++) {
+    const r = await withTx(db.pool, (c) => tasksDomain.addTask(c, u.id, { title: `משימה ${i}` }));
+    ids.push(r.data.task.id);
+  }
+  const justSaid = await withTx(db.pool, (c) => tasksDomain.addTask(c, u.id, { title: 'לדבר עם מור חן' }));
+
+  const ctx = await withTx(db.pool, (c) => extraction.gatherContext(c, u.id));
+  assert.equal(ctx.openTasks.length, extraction.OPEN_TASKS_IN_PROMPT, 'the cap still holds');
+  assert.ok(ctx.openTasks.some((t) => t.id === justSaid.data.task.id),
+    'the task he named a minute ago is in the list he is asked to check against');
+  assert.ok(!ctx.openTasks.some((t) => t.id === ids[0]),
+    'and the oldest one, which nothing in this conversation could duplicate, is what dropped out');
+  // Still readable: parents before their subtasks, ascending, not id DESC.
+  const shown = ctx.openTasks.map((t) => t.id);
+  assert.deepEqual(shown, [...shown].sort((a, b) => a - b));
+
+  assert.match(extraction.buildInstruction('THEM: לדבר עם מור חן', [], ctx.openTasks),
+    /לדבר עם מור חן/);
+});
+
 // The structural half of the "גלי מעדיפה לא להיפגש בשבת" fix. She said one
 // Saturday did not suit her, for ONE meeting; the constraint was correctly
 // recorded against that meeting, and this job then read the sentence back out

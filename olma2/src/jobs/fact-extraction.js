@@ -35,7 +35,9 @@ const TURN_TIMEOUT_MS = 120_000;
 // user-written text is pasted into a prompt at once.
 const READ_MESSAGES = 40;
 const MAX_TRANSCRIPT_CHARS = 6000;
-// How much of their open list goes into the prompt as the dedupe reference.
+// How much of their open list goes into the prompt as the dedupe reference —
+// the most RECENT that many, because the task at risk of being saved twice is
+// always one from the conversation being read (see gatherContext).
 const OPEN_TASKS_IN_PROMPT = 40;
 // The meetings whose already-recorded constraints go in as the "do not
 // generalise this" reference, and how far back a closed one still counts —
@@ -303,10 +305,21 @@ async function gatherContext(client, userId) {
   // Their open list goes in for one reason: without it the same commitment is
   // re-saved every time it comes up in conversation, and a duplicated task is
   // worse than a missed one — it makes the list look untrustworthy.
+  // The NEWEST of them, then re-ordered for reading. This used to take the
+  // oldest, and for anyone past the cap that excluded the one task the model
+  // was most likely to duplicate: the one saved minutes earlier, in the
+  // conversation being read. Miron, 2026-09-06, twice in one morning — 67 open
+  // tasks, a cap of 40, and both "לאכול צהריים" and "לדבר עם מור חן" filed a
+  // second time about half an hour after he said them, without their hour and
+  // so without a reminder. The prompt asked for a dedupe against a list that
+  // could not contain the answer.
   const { rows: openTasks } = await client.query(
-    `SELECT id, title, parent_id FROM tasks
-      WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL
-      ORDER BY coalesce(parent_id, id), parent_id NULLS FIRST, id LIMIT $2`,
+    `SELECT id, title, parent_id FROM (
+        SELECT id, title, parent_id FROM tasks
+         WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL
+         ORDER BY id DESC LIMIT $2
+      ) recent
+      ORDER BY coalesce(parent_id, id), parent_id NULLS FIRST, id`,
     [userId, OPEN_TASKS_IN_PROMPT]
   );
   // What they have already said about a meeting they are arranging. This is

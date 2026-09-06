@@ -256,9 +256,16 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   correcting them would falsify the record. Two readers must answer to BOTH
   spellings and say so — `facts.SYSTEM_NOUN_RE` (old facts are still in the
   table) and the voice bridge's name check and Deepgram keyterms.
-- **A task saved with a `due_at` arms its own reminder** — an hour before a
-  timed one, 08:00 that morning for a day-shaped one (local midnight in THEIR
-  zone is the discriminator). `domain/auto-reminder.js` decides when,
+- **`due_at` is when the THING is; `remind_at` is the hour THEY named.** A task
+  saved with a `due_at` arms its own reminder — an hour before a timed one,
+  08:00 that morning for a day-shaped one (local midnight in THEIR zone is the
+  discriminator) — and "תזכיר לי מחר ב-19:00" is not that: pass 19:00 as
+  `add_task`'s `remind_at` and it replaces the automatic row rather than
+  joining it. **Olma states the hour she will remind them, so the ARMED moment
+  rides the result** (`remindersAt`, in their zone) and no other time is
+  available to say. Yahav was told 19:00 for a reminder set to 18:00 while the
+  identical request beside it came out right, because that one the model
+  happened to correct by hand (`incidents.md`, "Yahav's first evening"). `domain/auto-reminder.js` decides when,
   `reminders.attachAutoReminder` is the only writer of `auto = true`, and an
   explicit `set_task_reminder` cancels the pending auto row rather than joining
   it. This REVERSED "never set one unasked" (2026-09-04, same day it was
@@ -297,6 +304,22 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   not re-alert. It speaks over the gateway's own pipe (owner's choice, no
   SMS), so a gateway that stays dead is repaired from here but reported only
   by the external monitor.
+- **A new person's first hours are read back by code TWICE — three hours in,
+  and again after their first day** (`jobs/onboarding-review.js`, `STAGES`; the
+  checks are pure, in `domain/onboarding-review.js`). It never messages them —
+  it files one row per person per stage, clean ones included, because a review
+  that only appears when something is wrong cannot tell you the rate. A `bad`
+  verdict means somebody was told something untrue or got no answer: a
+  dashboard row and an alerts pill until acknowledged, never `BREAKS_USERS`.
+  **Both stages start at their first message and only the END moves** — several
+  checks hold something said late against a reminder armed early — so the day
+  read sees everything the early one saw and files only what is NEW. There are
+  two stages because four checks written from Yahav's second day fire at 3.7 to
+  13 hours in and, at three hours, not one of them could ever have fired.
+  **Adding a check means adding its failing case to
+  `tests/onboarding-review.test.js`** — the founding case is Yahav's real
+  evening, replayed end to end, and a check whose failure cannot be written
+  down is one nobody will trust in six weeks.
 - **`/health` sees the DB, every `job_heartbeats` row, and the gateway — and
   nothing else.** A component that writes no heartbeat is invisible to it, and
   says so by staying green. That is how the gateway went unwatched for months
@@ -383,6 +406,14 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   a second notification for the same fact (Miron, 2026-09-05: "deleted ✅"
   under a 👍). The mark table is `reactions.TOOL_MARKS`; the undo-shaped
   tools (archive, cancel reminder, edit, forget) earn the same 👍 as a capture.
+- **`markPlaced` is CONDITIONAL, so nothing else on the same result may be an
+  unconditional instruction to write.** It lost to one for two days: the tool
+  result said "say when you will remind them" beside it, and Miron got
+  "הוספתי ✅ … לתזכורת עוד שעתיים" under a live 👍 (2026-09-06). The hint was
+  neither missing nor ignored — it was outvoted. **Every hint and every line of
+  doctrine about what to SAY must answer the same question `markPlaced` asks:
+  is there anything here the mark cannot carry.** For a reminder, the hour Olma
+  CHOSE is; the hour they NAMED is not, and the save never is.
 - **One in-flight reaction per message.** A mark is a whole `openclaw` CLI
   start-up (15s wall on the box), so a short turn has the 👀 and the 👍 alive
   at once and the LAST to finish wins. `placeMark` kills an older child still

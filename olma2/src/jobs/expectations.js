@@ -58,6 +58,13 @@ const JOB_INTERVAL_SECONDS = {
   // Hourly is also what makes the drift READABLE: a gap reported as "3 hours"
   // is a story, a gap reported as "12 minutes" is noise on a normal deploy.
   deploy_drift: 3600,
+  // Every ten minutes, and it does nothing on nearly all of them: the review
+  // is due twice per person, three hours in and again after their first day.
+  // Ten minutes is how much later than "three hours" the report is allowed to
+  // be — near enough that
+  // the conversation is still live, far enough that this never competes with
+  // the minute-rhythm sweeps for the one CPU.
+  onboarding_review: 600,
   // Five minutes: two bad ticks before a word means an outage is reported
   // within ten. Faster would alarm on a single probe timeout.
   liveness_watch: 300,

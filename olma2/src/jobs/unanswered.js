@@ -8,7 +8,18 @@
 //   (b) composed and never dispatched — the transcript ends with an assistant
 //       reply old enough that its send cannot be in flight, and the gateway
 //       log has no `Sent message <id> -> sha256:<12 hex>` for that person
-//       since (the hash is of the recipient jid; verified live 2026-08-31).
+//       since (the hash is of the recipient jid; verified live 2026-08-31);
+//   (c) the turn ran and produced nothing — the gateway logged `no queued
+//       reply payloads` against that message id.
+//
+// (a) and (b) both read the END of the transcript, which is why (c) exists.
+// Yahav, 2026-09-05: his 23:00 message was swallowed, a check-in rung landed
+// two seconds later, he answered THAT, and it was answered normally — so by
+// the time any sweep looked, the transcript ended in a delivered reply and
+// both nets read the conversation as healthy. The dropped message sat in the
+// middle of it, invisible to a rule that only ever looks at the last turn.
+// (c) is keyed on the message the gateway named, so its place in the history
+// does not matter.
 //
 // Deliberately NOT folded into checkin.js: repair on a minutes rhythm and
 // outreach on an hours-to-days rhythm would fight over one tick. Stories:
@@ -20,6 +31,9 @@ const crypto = require('node:crypto');
 // minute inside brokerd and reads transcripts, and the main thread must not
 // block on that (see channels/sessions-async.js).
 const sessions = require('../channels/sessions-async');
+// parseKey only — pure string work, no disk, so it does not belong behind the
+// worker facade. lane-watchdog.js loads the same module in the same process.
+const { parseKey } = require('../channels/sessions');
 const laneLog = require('./lane-watchdog');
 const { enqueue } = require('../outbox/enqueue');
 const audit = require('../domain/audit');
@@ -132,11 +146,51 @@ function covers(sent, at) {
     && sent.windows.some((w) => w.from <= at && at <= w.to);
 }
 
-function readSentEventsFromLog(now) {
-  return parseSentEvents([
+// Both readers want the same two tails, and each is 512KB off a file on a
+// 1-vCPU box — read once, parse twice.
+function readLogTails(now) {
+  return [
     { raw: laneLog.readTail(laneLog.todayLogPath(now - 24 * 3600_000)), openEnded: false },
     { raw: laneLog.readTail(laneLog.todayLogPath(now)), openEnded: true },
-  ]);
+  ];
+}
+
+function readSentEventsFromLog(now, chunks) {
+  return parseSentEvents(chunks || readLogTails(now));
+}
+
+// ---- case (c): the turn produced nothing at all ----------------------------
+
+// Indexed by the peer the session key names, so a user is matched by their own
+// phone rather than by an agent id — agent ids are recycled (u-18 was somebody
+// else's four days before Yahav got it) and a stale line under a reused id
+// would otherwise be repaired to the wrong person.
+function droppedTurnsByPeer(chunks) {
+  const byPeer = new Map();
+  for (const { raw } of chunks || []) {
+    for (const d of laneLog.parseDroppedTurns(raw)) {
+      const parsed = parseKey(d.sessionKey);
+      const peer = parsed && parsed.peer;
+      if (!peer) continue;
+      if (!byPeer.has(peer)) byPeer.set(peer, []);
+      byPeer.get(peer).push(d);
+    }
+  }
+  return byPeer;
+}
+
+// The newest dropped turn for this person that is old enough to be a real
+// silence and young enough to still answer as if it had just arrived — the
+// same window as case (a), for the same reasons.
+function droppedTurnFor(byPeer, phone, now) {
+  const list = byPeer.get(phone) || [];
+  let best = null;
+  for (const d of list) {
+    const age = now - d.at;
+    if (!(age >= MIN_AGE_MS && age <= MAX_AGE_MS)) continue;
+    if (!best || d.at > best.at) best = d;
+  }
+  return best;
 }
 
 // An undelivered reply is only repaired when it was a reply to the PERSON —
@@ -178,17 +232,29 @@ function undeliveredReply(msgs, sent, phone, now) {
 // last text-bearing message is the JOB's own instruction, in the `user` role.
 // That reads exactly like an unanswered message and would send the person a
 // "repair" reply to a conversation that was never broken.
-async function sweepUnanswered(client, { readMessages, readSentEvents, now = Date.now() } = {}) {
+async function sweepUnanswered(client, { readMessages, readSentEvents, readDroppedTurns, now = Date.now() } = {}) {
   const read = readMessages
     || ((agentId, peer) => sessions.readRecentMessages(agentId, 6, undefined, peer));
   // Read lazily, once for the whole sweep — the log tail does not change per
   // user, and most ticks never reach a case-(b) candidate at all.
+  let tails;
+  const chunks = () => {
+    if (tails === undefined) tails = readLogTails(now);
+    return tails;
+  };
   let sentEvents;
   const sent = () => {
     if (sentEvents === undefined) {
-      sentEvents = readSentEvents ? readSentEvents() : readSentEventsFromLog(now);
+      sentEvents = readSentEvents ? readSentEvents() : readSentEventsFromLog(now, chunks());
     }
     return sentEvents;
+  };
+  let dropped;
+  const droppedTurns = () => {
+    if (dropped === undefined) {
+      dropped = readDroppedTurns ? readDroppedTurns() : droppedTurnsByPeer(chunks());
+    }
+    return dropped;
   };
   const { rows } = await client.query(
     `SELECT id, agent_id, phone FROM users
@@ -254,6 +320,51 @@ async function sweepUnanswered(client, { readMessages, readSentEvents, now = Dat
       continue;
     }
 
+    // case (c): the gateway named a message of theirs that got nothing back.
+    // Checked before (b) because it is direct evidence about ONE message
+    // rather than an inference from the shape of the transcript's tail, and
+    // because (a) and (b) have both already declined to see it.
+    //
+    // No "but they were sent something afterwards" guard. That is exactly what
+    // happened to Yahav — a rung landed two seconds later and his own reply to
+    // it was answered — and treating unrelated later traffic as an answer to
+    // THIS message is how the silence went unnoticed in the first place. The
+    // instruction below carries the escape instead: the model reads the
+    // conversation and says NO_REPLY if the thing was in fact answered.
+    const drop = droppedTurnFor(droppedTurns(), u.phone, now);
+    if (drop) {
+      const res = await enqueue(client, {
+        userId: u.id, kind: 'checkin', urgency: 'urgent',
+        expiresAt: new Date(now + MAX_AGE_MS).toISOString(),
+        payload: {
+          rung: 'unanswered_repair',
+          repairKind: 'dropped_turn',
+          checkinInstruction: [
+            'One of their recent messages was read but produced no reply at all — a fault on our side, not theirs.',
+            'It is NOT necessarily the last thing they wrote: look back through the conversation for a message of',
+            'theirs that nothing ever responded to, including one buried above later exchanges.',
+            'If everything they asked for has in fact been answered or acted on since, reply with exactly NO_REPLY and nothing else.',
+            'Otherwise answer that message now, normally, as if you had just read it.',
+            'If you CANNOT see the conversation — empty history, a failed read, a tool refusing you —',
+            'reply with exactly NO_REPLY. Never guess what they wanted, never turn notes or memory into a message.',
+            'Do not apologise for a delay, do not mention a technical problem or system issue, do not explain yourself —',
+            'from their side this should simply read as your reply arriving.',
+          ].join(' '),
+        },
+        // The message id the gateway named: one repair per swallowed message,
+        // and a re-run of the sweep over the same log tail is a no-op.
+        idempotencyKey: `dropped:${u.id}:${drop.messageId}`,
+      });
+      if (res.data.enqueued) {
+        await audit.record(client, u.id, 'delivery.unanswered_repair', {
+          kind: 'dropped_turn', messageId: drop.messageId,
+          cause: drop.cause, ageSeconds: Math.round((now - drop.at) / 1000),
+        });
+        repaired.push(u.id);
+      }
+      continue;
+    }
+
     // case (b): the reply exists in the transcript and its send never happened
     const lost = undeliveredReply(msgs, sent(), u.phone, now);
     if (!lost) continue;
@@ -293,5 +404,6 @@ async function sweepUnanswered(client, { readMessages, readSentEvents, now = Dat
 
 module.exports = {
   sweepUnanswered, sentHashFor, undeliveredReply, readSentEventsFromLog, parseSentEvents, covers,
+  readLogTails, droppedTurnsByPeer, droppedTurnFor,
   MIN_AGE_MS, MAX_AGE_MS, SENT_SLACK_MS,
 };
