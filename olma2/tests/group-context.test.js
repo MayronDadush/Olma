@@ -124,6 +124,41 @@ test('the plugin finds the block wherever the gateway puts it, newest history en
   }
 });
 
+// The first live group message (2026-09-06 16:56): the block in `prompt`
+// held the sender and nothing else, the roster was in another field of the
+// same payload, and taking the first hit meant the group never registered.
+test('the richest block wins, not the first one — and a payload with no roster says which keys it did carry', async () => {
+  const calls = [];
+  const logs = [];
+  const handler = plugin.buildGroupContextHandler({ connect: fakeSocket(calls), log: (l) => logs.push(l) });
+  const ctx = { sessionKey: KEY, agentId: 'ggreet' };
+  const thin = { sender: { id: '+972526269826', name: 'M&M' }, timestamp: '2026-09-06 19:56', is_group_chat: true };
+
+  await handler({
+    prompt: `${block(thin)}\n\nהיי עולמה`,
+    historyMessages: [{ role: 'user', content: block(info({ message_id: 'RICH' })) }],
+  }, ctx);
+  assert.equal(calls.at(-1).params.info.message_id, 'RICH');
+  assert.equal(calls.at(-1).params.info.group_members, 'M&M (+972526269826), +972603000011');
+  assert.equal(logs.at(-1).where, 'history');
+  assert.equal(logs.at(-1).members, true);
+  assert.ok(!logs.at(-1).seen, 'nothing to explain when the roster is there');
+
+  // Nothing anywhere carries a roster: still filed (the sender is real), and
+  // the trace names every candidate's keys so the next gateway change is a
+  // line in a log rather than a silent group.
+  await handler({ prompt: block(thin), systemPrompt: block({ chat_id: `whatsapp:${JID}`, message_id: 'M2' }) }, ctx);
+  assert.equal(logs.at(-1).members, false);
+  assert.equal(logs.at(-1).where, 'system', 'a message id beats nothing');
+  assert.deepEqual(logs.at(-1).seen, [
+    'prompt:sender|timestamp|is_group_chat',
+    'system:chat_id|message_id',
+  ]);
+  assert.equal(plugin.scoreInfo(info()), 7);
+  assert.equal(plugin.scoreInfo(thin), 0);
+  assert.equal(plugin.scoreInfo(null), -1);
+});
+
 test('brokerd files the row for the session the block names, and refuses the rest', async () => {
   const stored = await broker.dispatch({ id: 1, method: 'group_context', params: { agentId: 'ggreet', sessionKey: KEY, info: info() } });
   assert.deepEqual(stored, { ok: true, stored: true, members: true, wasMentioned: true });
