@@ -264,3 +264,26 @@ test('a served page is stamped, so the preview scaffolding never reaches anybody
   assert.ok(html.includes('!document.documentElement.hasAttribute("data-served")'),
     'the language shortcut is not gated, so a stray L retranslates a real list');
 });
+
+// Groups were designed and never built: the /me payload carries no groups,
+// user-dashboard-write.js has no group action, and the ACT map has no entry.
+// So on a served page the three seeded lists are somebody else's example and
+// a group made there is forgotten on reload. They ride the SAME stamp as the
+// preview buttons rather than a hidden=true after hydrate(), because hiding
+// from script shows them for as long as the server takes to answer.
+test('a served page shows no groups, because nothing on the server keeps one', async () => {
+  const cookie = await signIn();
+  const html = await (await get('/me', { headers: { cookie } })).text();
+  assert.ok(html.includes('html[data-served] .groupsblock'),
+    'nothing hides the groups section on a served page');
+  // The rule is worthless if it names a class the markup stopped carrying, so
+  // check both ends: the list and the button that makes one.
+  assert.match(html, /<div style="--i:2" class="groupsblock">/,
+    'the groups section no longer carries the class the rule hides');
+  assert.match(html, /id="addGroup"/, 'the add-group button vanished from the page entirely');
+  assert.match(html, /class="addmini ghost groupsblock" id="addGroup"/,
+    'the add-group button is not covered by the rule, so a served page still offers to make one');
+  // And the seed is still there for the design copy — this hides it, it does
+  // not delete the work.
+  assert.ok(html.includes('\u05e4\u05d5\u05e7\u05e8'), 'the seeded groups were deleted rather than hidden');
+});

@@ -621,6 +621,16 @@ html[data-served] .langtog,
 html[data-served] .introtog,
 html[data-served] .newtog,
 html[data-served] .themetog{display:none}
+/* Groups do not survive being served either, for a different reason: nothing
+   backs them. The /me payload carries no groups, user-dashboard-write.js has
+   no group action and the ACT map has no entry — so the three lists on a
+   served page are somebody else's example (פוקר, פאדל, האו״ם, seeded when
+   this was designed), and a group made there is forgotten on the next reload.
+   Hidden by the same stamp and for the same reason as the buttons above: from
+   script it would show until the server answered. Emptying the seed instead
+   would leave a section still offering to make one. Open this file from disk
+   and the whole feature is there, which is what the design copy is for. */
+html[data-served] .groupsblock{display:none}
 .langtog{
   position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:14px;z-index:40;
   display:flex;padding:3px;border-radius:999px;background:var(--surface);
@@ -2195,9 +2205,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          them you will reach for again. -->
     <div class="viewrow pair" style="--i:1">
       <button class="addmini" id="addFriend"><svg><use href="#i-plus"/></svg><span data-i18n="fr.invite"></span></button>
-      <button class="addmini ghost" id="addGroup"><svg><use href="#i-plus"/></svg><span data-i18n="gr.new"></span></button>
+      <button class="addmini ghost groupsblock" id="addGroup"><svg><use href="#i-plus"/></svg><span data-i18n="gr.new"></span></button>
     </div>
-    <div style="--i:2">
+    <div style="--i:2" class="groupsblock">
       <div class="glabel"><span data-i18n="gr.h"></span><span class="hint" data-i18n="gr.hint"></span></div>
       <div class="searchwrap" id="groupSearch" hidden>
         <svg class="sicon"><use href="#i-search"/></svg>
