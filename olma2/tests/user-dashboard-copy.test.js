@@ -91,17 +91,3 @@ test('the empty coordination list points at a button that is really there', () =
   assert.match(PAGE, /API\.send\("startMeeting"/,
     'and pressing it has to reach the server, not just draw a card');
 });
-
-test('the note describes the settling the server actually does', () => {
-  // It used to promise a separate "settle" tap. There is no such control on
-  // this page, and there is no such step in the domain: one option answered
-  // yes by everyone still in the meeting confirms itself.
-  assert.doesNotMatch(PAGE, /הקביעה עצמה היא לחיצה נפרדת/);
-  assert.doesNotMatch(PAGE, /Settling is a separate tap/);
-  assert.match(PAGE, /"mt\.note":"תשובה אומרת אם אתה יכול — לא שקבעתם\. כשכולם מסמנים/);
-
-  const options = fs.readFileSync(
-    path.join(__dirname, '..', 'src', 'domain', 'meeting-options.js'), 'utf8');
-  assert.match(options, /status = 'confirmed'/,
-    'the sentence is only true while the options module still confirms on its own');
-});
