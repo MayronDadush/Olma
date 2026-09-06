@@ -1,56 +1,9 @@
 'use strict';
 // turn gate — one slice of the tool registry (see ../registry.js).
 const {
-  users, onboardingDomain, selfInitiated, digest, quota, reactions, audit, S, ok, captureDisplayName, stale, tool, flags,
+  users, selfInitiated, quota, reactions, audit, S, ok, captureDisplayName, stale, tool, flags,
 } = require('./_shared');
-
-// The per-field guidance for turn_start's optional fields. In the RESULT and
-// not in the description: the description is injected on every turn for every
-// user, these fields show up on a handful of turns in a person's life.
-function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms }) {
-  const hints = {};
-  if (genderForms === 'feminine') {
-    // The doctrine already says "hold the stored preference"; the nightly
-    // evals kept catching one masculine verb in an otherwise feminine reply
-    // ("בא לך" is fine, "תרצה" is not). A cheap model attends to the result
-    // it just read far better than to a rule 40k chars up, so the reminder
-    // rides here, on exactly the people it applies to, and nowhere else.
-    hints.genderForms = 'They asked to be addressed in FEMININE Hebrew forms. Every verb and '
-      + 'pronoun aimed at them is feminine — תרצי, את יכולה, תוכלי, שלך — never תרצה, אתה, '
-      + 'תוכל. Reread the whole reply before sending; a single masculine form is a failure.';
-  }
-  if (replyTarget) {
-    hints.replyTarget = 'They used WhatsApp reply on ONE earlier message, and the '
-      + '"Reply target of current user message" block above holds its text. Answer THAT '
-      + 'message — "סיימתי" on a reply to a rent reminder closes the rent task, not the '
-      + 'newest thing either of you said. If the quoted text no longer matches anything '
-      + 'you can act on, ask about it rather than guessing at the latest topic.';
-  }
-  if (offerResume) {
-    hints.offerResume = 'First message since they paused: answer what they actually asked, then add '
-      + 'ONE line asking if they would like Olma to start reaching out again.';
-  }
-  if (recentReminders && recentReminders.length) {
-    // "probably the newest one" is a guess, and a quote is not — so when both
-    // are on the same turn this one steps aside rather than arguing with the
-    // hint above. Both fire on exactly the case the reply bug was reported
-    // for: a bare "סיימתי" sent as a reply to yesterday's rent reminder.
-    hints.recentReminders = 'Reminders Olma already delivered in the last day — a bare reply like '
-      + '"סיימתי" or "עשיתי" is probably about the newest one'
-      + (replyTarget ? ', UNLESS the quoted message names another: it wins.' : '.');
-  }
-  if (planHeadline) {
-    hints.planHeadline = 'The headline of today\'s overnight plan; the full plan is in your USER.md '
-      + '— read it and lead with it when they ask about their day or plans.';
-  }
-  if (languageNudge) {
-    hints.languageNudge = 'They have written several messages running in a language other than the '
-      + 'one stored for them: ask ONE short question, IN THE LANGUAGE THEY ARE WRITING IN, whether '
-      + 'they would like Olma to switch — call set_my_language if they say yes. Ask once; if they '
-      + 'do not take it up, drop it.';
-  }
-  return Object.keys(hints).length ? { hints } : {};
-}
+const turnDomain = require('../../../domain/turn');
 
 module.exports = [
   tool('turn_start', 'Call this FIRST on every user message, once. Counts the message toward quota and returns how to proceed: proceed | send_block_notice (send the included today view, once) | silent (do not reply at all). Pass sender_name, message_id, reply_to_id and wrote_in from the Conversation info whenever present. Any extra field in the result comes with a matching entry in hints saying what to do with it — follow it.',
@@ -187,28 +140,6 @@ module.exports = [
         }
       }
 
-      // A paused person who writes gets answered — pausing stops Olma
-      // INITIATING, not answering (see domain/pause.js) — but before this, that
-      // answer was the whole reply. They were then back to relying on their OWN
-      // memory that resume_olma exists, exactly the asymmetry that caused
-      // 'pause' to exist in the first place: Olma has a structured way to know
-      // they are paused, and they do not. So the FIRST message they send after
-      // pausing gets one extra thing: an offer to turn Olma back on.
-      //
-      // Never a second time in the same pause period — asking on every message
-      // while paused is the pitch-to-retain pattern the stop doctrine forbids,
-      // and if they ignored the first offer, an unread reminder they never
-      // asked for is not an improvement. The WHERE clause makes this atomic and
-      // self-limiting: comparing against paused_at, not clearing the column on
-      // resume, means a leftover value from an earlier pause cycle reads as
-      // "not offered this time" for free.
-      const offered = await client.query(
-        `UPDATE users SET resume_offer_sent_at = now()
-          WHERE id = $1 AND paused_at IS NOT NULL
-            AND (resume_offer_sent_at IS NULL OR resume_offer_sent_at < paused_at)
-          RETURNING id`, [user.id]);
-      const offerResume = offered.rowCount > 0;
-
       // Called SECOND, after some other tool already opened the turn? Then
       // brokerd's recovery path counted this message and recorded it (see
       // domain/turn.js), and counting again would charge one message to the
@@ -231,118 +162,23 @@ module.exports = [
       // Skipped when the recovery path already wrote it: one message, one row,
       // or the response-rate metric silently counts this person twice.
       if (!alreadyCounted && !ourTurn) await audit.record(client, user.id, 'message.received', null);
-      // Reminders now go out on the raw pipe (channels/openclaw.js), which
-      // never touches this person's session history — so a bare reply like
-      // "סיימתי" would otherwise reach an agent that has no idea a reminder
-      // just fired (the exact v1 "improvises incorrect context" incident).
-      // brokerd knows what it sent without needing the session to remember:
-      // the outbox row IS the record. Only the last day, only actually-sent
-      // rows, and the field is omitted entirely when empty — which is nearly
-      // every turn, so this costs nothing in the common case.
-      const { rows: recentRem } = await client.query(
-        `SELECT payload, sent_at FROM outbox
-          WHERE user_id = $1 AND kind = 'reminder' AND hold_reason IS NULL
-            AND sent_at > now() - interval '24 hours'
-          ORDER BY sent_at DESC LIMIT 3`, [user.id]);
-      const recentReminders = recentRem
-        .map((r) => {
-          const p = typeof r.payload === 'string' ? JSON.parse(r.payload) : (r.payload || {});
-          return p.title ? { title: String(p.title).slice(0, 200), sentAt: r.sent_at } : null;
-        })
-        .filter(Boolean);
-
-      // The overnight plan's headline, through the same every-turn channel as
-      // recentReminders — and for the same reason: USER.md is injected on
-      // session START only (contextInjection: continuation-skip), so a plan
-      // built while a session sleeps is invisible to it for the session's
-      // whole remaining life. Observed live on the feature's first evening —
-      // "מה התוכניות שלי להיום" answered from the digest tool while a
-      // fresh plan sat unread in the card. Headline only (~20 tokens); the
-      // full plan is in USER.md, which the agent can read when it matters.
-      // Paused users get none: leaning forward is what they declined.
-      const { rows: planRow } = user.paused_at ? { rows: [] } : await client.query(
-        `SELECT headline FROM user_plans
-          WHERE user_id = $1 AND built_at > now() - interval '26 hours'`, [user.id]);
-      const planHeadline = planRow[0] ? planRow[0].headline : null;
-      // Stored by remember_preference when they asked to be addressed as a
-      // woman (or said so themselves). Read here, not from the card: the card
-      // is a fact the model may or may not attend to, the result is a
-      // sentence it has just read. Masculine is the doctrine's default and
-      // gets no hint — the hint exists for the register that keeps slipping.
-      const { rows: genderRow } = await client.query(
-        `SELECT value FROM user_preferences WHERE user_id = $1 AND key = 'gender_forms'`, [user.id]);
-      const genderForms = genderRow[0] && /נקבה|feminine|female|woman/i.test(String(genderRow[0].value))
-        ? 'feminine' : null;
-
-      // USER.md is re-rendered only when something on it moved. turn_start runs
-      // on every single message, so it cannot join CARD_TOOLS wholesale — it
-      // flags the card itself, on the one turn in a person's life that fills in
-      // their name (see brokerd/server.js).
       // The one turn in a person's life where there is no conversation to
       // continue. Until this flag existed, `proceed` was all the agent ever
       // got, and the doctrine told it there is no welcome moment — so someone
       // whose first word was "היי" was answered "היי" and never onboarded,
-      // for ever. The greeter-conversation path that doctrine assumes only
-      // fires when the person wrote something worth carrying across; a
-      // one-word opener carries nothing, and that is the common case.
-      //
-      // Whichever entry point opened the turn is the one that saw the NULL:
-      // when a tool beat turn_start to it, brokerd's recovery already
-      // overwrote `last_inbound_at`, so its verdict travels here in ctx rather
-      // than being re-derived from a row that has already moved.
+      // for ever. Whichever entry point opened the turn is the one that saw
+      // the NULL: when the gateway or another tool beat turn_start to it,
+      // brokerd already overwrote `last_inbound_at`, so its verdict travels
+      // here in ctx rather than being re-derived from a row that has moved.
       const firstTurn = alreadyCounted
         ? Boolean(ctx && ctx.turn && ctx.turn.firstTurn)
         : firstEverTurn;
-      // Stamped once, only here — the one place that actually hands the
-      // model onboarding.sendVerbatim, whether firstTurn came from this call's
-      // own self-join or from an earlier recovery in the same turn (see the
-      // comment above). Anchors the 60-second "did they answer the welcome"
-      // nudge (jobs/sweeps.sweepNameConfirm): neither `last_inbound_at` (moves
-      // on their every message, including this one) nor `onboarded_at` (set at
-      // provisioning, before they have necessarily written a word) names this
-      // moment.
-      if (firstTurn) {
-        await client.query(`UPDATE users SET first_turn_at = now() WHERE id = $1`, [user.id]);
-      }
-
-      // The instruction rides in the RESULT, not in AGENTS.md, and that is a
-      // budget decision rather than a style one: the doctrine renders to 39249
-      // of the 39250 chars the gateway will inject, so a paragraph added there
-      // is a paragraph silently deleted from the middle of some other section
-      // on every turn for every user (tests/intake.test.js guards this).
-      // Here it costs ~60 tokens once in a person's lifetime, and it arrives at
-      // the exact moment it applies — which for a cheap model beats a rule
-      // buried in 40k chars it only partly attends to.
-      if (!counted.data.blocked) {
-        return stale(ok({
-          directive: 'proceed', locale: user.locale,
-          ...(firstTurn ? {
-            firstTurn: true,
-            onboarding: {
-              sendVerbatim: onboardingDomain.openingMessage(user.locale),
-              instruction: 'Their first ever message. Open your reply with '
-                + 'sendVerbatim, character for character — do not translate, reword, '
-                + 'shorten, or add to it. If they actually asked for something, answer '
-                + 'it below those lines; otherwise stop there. No feature tour, no menu, '
-                + 'and no follow-up question this turn.',
-            },
-          } : {}),
-          ...(offerResume ? { offerResume: true } : {}),
-          ...(languageNudge ? { languageNudge } : {}),
-          ...(recentReminders.length ? { recentReminders } : {}),
-          ...(planHeadline ? { planHeadline } : {}),
-          ...(replyTarget ? { replyTarget: true } : {}),
-          ...(genderForms ? { genderForms } : {}),
-          // What to do with each of those, said only when it is there. This
-          // used to be four sentences in the tool description — paid on every
-          // turn by every user, for fields that appear on a handful of turns
-          // in a person's life. Same budget rule as `onboarding` above.
-          ...turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms }),
-        }), namedNow);
-      }
-      const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);
-      if (!shouldNotice) return stale(ok({ directive: 'silent', reason: 'blocked_already_notified' }), namedNow);
-      const view = await digest.assemble(client, user.id, 'block_view');
-      return stale(ok({ directive: 'send_block_notice', blockView: view.data }), namedNow);
+      // Everything the model is told beyond "you were counted" — the resume
+      // offer, recent reminders, the plan headline, the first-turn opener,
+      // the block notice — lives in domain/turn.advise, shared with brokerd's
+      // `turn_context` (the same opening, delivered in the prompt instead of
+      // a tool result, for the people the turn_context_phones flag covers).
+      const data = await turnDomain.advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge });
+      return stale(ok(data), namedNow);
     }),
 ];

@@ -7839,6 +7839,29 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     renderAll();
     if(mtOpen) renderMeet();
     loadDays();
+    openFromHash();
+  }
+  /* A link minted for ONE meeting arrives as #meeting=<id> (the sign-in POST
+     hands it over in the redirect; adapters/http/user-dashboard.js). The page
+     opens on it — the tab, then the sheet — and only if it is a meeting of
+     theirs: a number that names nothing opens the page as usual, silently.
+     The fragment is dropped once used, so a refresh is the ordinary page and
+     not the sheet coming back every time. Runs after hydrate, when MEETS is
+     real; the seed page honours it too, so the design can be previewed
+     arriving this way. */
+  var hashOpened = false;
+  function openFromHash(){
+    if(hashOpened) return;
+    var m = /^#meeting=([1-9][0-9]{0,11})$/.exec(location.hash || "");
+    if(!m) return;
+    hashOpened = true;
+    var id = mtById(Number(m[1])) ? Number(m[1]) : (mtById(m[1]) ? m[1] : null);
+    try{ history.replaceState(null, "", location.pathname + location.search); }catch(e){}
+    if(!id) return;
+    /* nobody arriving for one meeting is made to sit through the intro first */
+    markIntroSeen(); introFinish();
+    go("cal");
+    openMeet(id);
   }
   /* On the seam rather than inside the closure, for the same reason the seam
      exists at all: this is the function that turns a payload into a page, so
@@ -7991,7 +8014,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   /* One or the other, never both: the three-stage intro stages the APP, and
      a stranger is not being shown the app. */
+  /* a deep link skips the intro entirely — see openFromHash */
+  if(/^#meeting=/.test(location.hash || "")) markIntroSeen();
   if(NEWUSER) startWelcome(); else startIntro();
+  /* the seed page only: on a served page the seed MEETS are placeholders and
+     the real ones arrive with hydrate(), which calls this itself */
+  if(!document.documentElement.hasAttribute("data-served")) openFromHash();
   $("#newTog").addEventListener("click", function(){
     NEWUSER = !NEWUSER;
     document.documentElement.classList.toggle("is-new", NEWUSER);

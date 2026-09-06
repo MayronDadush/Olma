@@ -184,6 +184,20 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   nothing counted twice, every mark on the real message id (`incidents.md`,
   "The reply's first six seconds were bookkeeping"). `turn_start` still works
   and is now a no-op on the record when the gateway got there first.
+  **Phase B (2026-09-06, per-person):** for the phones in the
+  `turn_context_phones` flag, what `turn_start` would RETURN is prepended to
+  the prompt by the gateway plugin `gateway-plugin/olma-turn`
+  (`before_prompt_build` → brokerd `turn_context`, link-installed from
+  `/opt/olma2`, `plugins.entries.olma-turn` with
+  `hooks.allowConversationAccess: true`, agent list in its `config.agents`),
+  and their AGENTS.md is the `{{#turn:context}}` variant of the template
+  (`renderAgentsMd(token, {turnContext})`; the resync script picks per
+  person). The plugin fails open and the variant doctrine falls back to
+  calling `turn_start` when no `Turn context` block is there, so a dead
+  plugin costs a tool call, never a count. Trace:
+  `/opt/olma2/run/turn-context-plugin.log`. Turning it on for someone means
+  ALL THREE: the flag, the plugin's agent list, and a resync of their
+  AGENTS.md — the flag alone changes only what brokerd answers.
 - **A turn Olma started is not a message from the person.** `--deliver` reaches
   the agent on the person's own agent and session key, so nothing in the MCP
   call distinguishes it from typing — `domain/self-initiated.js` marks it and
