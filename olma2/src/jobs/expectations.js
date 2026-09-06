@@ -69,6 +69,11 @@ const JOB_INTERVAL_SECONDS = {
   // Five minutes: two bad ticks before a word means an outage is reported
   // within ten. Faster would alarm on a single probe timeout.
   liveness_watch: 300,
+  // Daily. It reads a transcript per person who armed anything yesterday, so
+  // it is the most expensive sweep on the box per tick and the least urgent:
+  // a reminder set for the wrong hour is worth knowing about today, not
+  // within the minute.
+  promise_watch: 86400,
   retention_sweep: 86400,
   // Not a brokerd job: root's crontab runs scripts/backup-offbox.sh nightly
   // after the pg_dump, and the script writes this row itself. Listed here so

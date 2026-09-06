@@ -344,6 +344,28 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `tests/onboarding-review.test.js`** — the founding case is Yahav's real
   evening, replayed end to end, and a check whose failure cannot be written
   down is one nobody will trust in six weeks.
+- **The onboarding review only ever watches the FRONT DOOR; `promise_watch`
+  watches everyone.** A new person's first hours are read back twice (above);
+  every ACTIVE person is asked once a day whether the moment they named is the
+  moment that got armed (`jobs/promise-watch.js`, the pure half in
+  `domain/reminder-promise.js`). Miron hit the promised-hour fault weeks into
+  his life here and nothing saw it for six hours. **It reads THEIR message, not
+  Olma's** — "the meeting is at 19:00, I'll remind you" is ambiguous prose no
+  regex should judge, "תזכיר לי ב-19:00" has one correct outcome — and it
+  judges only when BOTH halves are visible: a moment they named, and a reminder
+  armed within five minutes in response. Nothing armed at all is three
+  different stories and is never reported. It files an `issues` row keyed on a
+  deterministic title carrying the message timestamp, so re-reading the
+  overlapping window cannot file twice.
+- **The suite runs again on a schedule, at four hours of the day**
+  (`.github/workflows/olma2-clock-drift.yml`) — no deploy job, its own
+  concurrency group so it can never displace a merge's queued deploy. A red
+  there means a test means something different at that hour: broken, not
+  flaky, and never to be re-run until green. **Do not replace this with a
+  clock-shifting preload or a scan for near-today date literals** — both were
+  built and thrown away on 2026-09-06, because the first invents a JS/Postgres
+  skew production never has (29 false failures) and the second flags the very
+  pattern the rule recommends (180 literals, most of them correct).
 - **`/health` sees the DB, every `job_heartbeats` row, and the gateway — and
   nothing else.** A component that writes no heartbeat is invisible to it, and
   says so by staying green. That is how the gateway went unwatched for months

@@ -116,6 +116,8 @@ never trust a dated narrative for something you are about to act on.
 - [The hint that outvoted the mark (2026-09-06)](#the-hint-that-outvoted-the-mark-2026-09-06)
 - [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
 - [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
+- [The check that only watched the front door (2026-09-06)](#the-check-that-only-watched-the-front-door-2026-09-06)
+- [Two mechanisms for a clock-dependent test, both thrown away (2026-09-06)](#two-mechanisms-for-a-clock-dependent-test-both-thrown-away-2026-09-06)
 
 - [Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)](#live-updates--עדכן-אותי-על-as-infrastructure-2026-08-28)
 - [Image + video generation, access-limited, spend in its own column (2026-08-28)](#image--video-generation-access-limited-spend-in-its-own-column-2026-08-28)
@@ -3444,6 +3446,71 @@ same finding when its id and its detail match, the earlier one is already on
 its own unacknowledged row, and re-filing it would double every count that
 reads this table. The alerts strip counts `DISTINCT user_id` for the same
 reason.
+
+### The check that only watched the front door (2026-09-06)
+
+The onboarding review worked. Three hours into Yahav's first evening it found
+the 19:00 he was promised against the 18:00 that was armed, filed it, and put
+a red pill on the board — exactly what it was built to do.
+
+The next morning Miron wrote "משימת עבודה - תזכיר לי עוד שעתיים לדבר עם מור חן"
+at 11:29 and had 12:29 armed for him. Same fault. Nothing saw it. He has been
+a user for weeks, and the review only ever reads the first day of a life.
+
+That is the detection-layer failure in this file's own list, wearing a new
+coat: the detector was real, it was precise, and its window excluded almost
+everybody it was meant to protect. It was found six hours later by a person
+reading a conversation by hand — which is the thing the review exists to stop
+anyone having to do.
+
+`jobs/promise-watch.js` asks the same question of every active person, once a
+day. It reads **their** message rather than Olma's, which is the whole reason
+it can run this widely: "הפגישה ב-19:00, אזכיר לך" is ambiguous prose and a
+regex judging it would cry wolf on every schedule summary, while "תזכיר לי
+ב-19:00" is an instruction with one correct outcome. It also reads relative
+asks — "עוד שעתיים", "בעוד חצי שעה" — against the timestamp of the message
+that contains them, which is the only way Miron's case is legible at all.
+
+It judges only when both halves are in front of it: a moment they named, and a
+reminder armed within five minutes in response. A request that armed nothing
+is three different stories — a request this reader misparsed, a task saved
+without one, a question Olma asked back — and only one of them is a fault, so
+it reports none of them. A person who armed nothing all day is never read at
+all, which is also where the cost goes: the transcript read is the expensive
+part and it is skipped for everyone with nothing to check.
+
+### Two mechanisms for a clock-dependent test, both thrown away (2026-09-06)
+
+The same day, a test written to hold a rule about honesty broke a different
+rule in this file. `tests/auto-reminder.test.js` spelled Miron's real 13:29 and
+Yahav's 19:00 into its fixture. Those are hours of the day: it passed all
+afternoon, and from 18:00 `attachAutoReminder` declined a moment already past,
+no reminder was attached, `hints` never existed, and every run died on the same
+line. CLAUDE.md has warned about this since the suite was "green thirteen hours
+a day and red eleven". The rule was there; the mechanism was not.
+
+Two were built and both were discarded, for the same reason — they flagged
+working code:
+
+**A clock-shifting preload.** A `Date` proxy behind `NODE_OPTIONS=--require`,
+moving only `Date.now()` and the no-argument constructor. It ran, and produced
+29 failures of which almost none were real: the suite legitimately compares JS
+time against Postgres `now()`, and shifting one side invents a skew production
+never has. A detector that reddens on a healthy system is spent the first time
+someone checks it.
+
+**A scan for near-today date literals in test files.** 180 across 17 files —
+and most of them are *correct*. A pinned instant handed to a pure function as
+its `now` is precisely the pattern the rule recommends; the literal is not the
+problem, using the real clock is, and no static scan can tell those apart.
+
+What shipped has no cleverness in it: `.github/workflows/olma2-clock-drift.yml`
+runs the real suite on the real clock at 02/08/14/20 UTC — 05:00, 11:00, 17:00
+and 23:00 in Israel, across the workday boundary, the evening this last broke,
+and the quiet hours the gate cares about. Zero false positives, because nothing
+is being simulated. It carries no deploy job and its own concurrency group, so
+a scheduled run can never displace a merge's queued deploy on `main`, where the
+group holds one pending run and losing it means main ships nothing.
 
 ### Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)
 
