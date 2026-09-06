@@ -145,7 +145,7 @@ const FORWARDED = [
   'listSessions', 'listSessionsForAgent', 'readRecentMessages', 'readPeerUserText',
   'readPeerDisplayName', 'listTranscripts', 'readTranscriptUsage',
   'readSessionEventsSlice', 'hasInboundUserTurn', 'scanAssistantTextSince',
-  'listGroupSessions', 'readGroupContext',
+  'listGroupSessions', 'readGroupContext', 'listInboundPeers',
 ];
 // `_call` is for the suite only — it is how the deadline test reaches the
 // worker's guarded stall hook. Nothing in src/ calls it.
