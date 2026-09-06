@@ -64,6 +64,15 @@ test('the privacy policy is served unauthenticated, on either host', async () =>
   }
 });
 
+test('the terms of service page is served unauthenticated, on either host', async () => {
+  for (const host of [PUBLIC, ADMIN]) {
+    const res = await get('/terms', host);
+    assert.equal(res.status, 200, `terms should not need a password on ${host}`);
+    const html = await res.text();
+    assert.ok(html.includes('תנאי שימוש'));
+  }
+});
+
 // ---- the admin dashboard must NOT have moved -------------------------------
 
 test('`/` on the ADMIN host still demands the admin password', async () => {
@@ -143,8 +152,15 @@ test('the mail promise on the public pages matches what the code can actually do
 });
 
 test('neither page carries a form, a script, or anything that takes input', () => {
-  for (const html of [publicPages.homePage(), publicPages.privacyPage()]) {
+  for (const html of [publicPages.homePage(), publicPages.privacyPage(), publicPages.termsPage()]) {
     assert.ok(!/<form/i.test(html), 'a public unauthenticated page must not accept input');
     assert.ok(!/<script/i.test(html), 'these pages have no moving parts on purpose');
   }
+});
+
+test('the terms page reads English first, links the privacy policy, and carries the Hebrew text in full', () => {
+  const html = publicPages.termsPage();
+  assert.ok(/Terms of Service/i.test(html), 'a Google reviewer reads English first');
+  assert.ok(html.includes('href="/privacy"'), 'terms must link the privacy policy');
+  assert.ok(html.includes('תנאי שימוש (עברית)'), 'Hebrew users still get the full terms');
 });
