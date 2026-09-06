@@ -24,6 +24,10 @@ function trace(fields) {
   try { require('node:fs').appendFileSync(TRACE, JSON.stringify({ at: new Date().toISOString(), ...fields }) + '\n'); } catch { /* best effort */ }
 }
 
+// One line at import time, so "was THIS file loaded, by which process" is
+// answerable from the trace alone.
+trace({ loaded: true, pid: process.pid, file: __filename });
+
 function agentIdOf(sessionKey) {
   const m = /^agent:(u-\d+):/.exec(String(sessionKey || ''));
   return m ? m[1] : null;

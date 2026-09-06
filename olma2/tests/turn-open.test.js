@@ -8,6 +8,10 @@ const assert = require('node:assert/strict');
 const { freshDb, makeUser } = require('./helpers');
 const { createBrokerServer } = require('../src/brokerd/server');
 const selfInitiated = require('../src/domain/self-initiated');
+// The handler traces to a file next to the production socket by default, and
+// the on-box suite runs as root on the box: four fixture events once landed in
+// the live trace and read as the gateway having fired. Route it away first.
+process.env.OLMA_HOOK_TRACE = require('node:path').join(require('node:os').tmpdir(), `turn-open-hook-test-${process.pid}.log`);
 const hook = require('../gateway-hooks/olma-turn-open/handler');
 
 let db, broker, marks, now;
