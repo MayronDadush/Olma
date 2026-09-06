@@ -4,7 +4,29 @@
 // there is what is left of that file.
 const flagsDomain = require('../../../../domain/flags');
 const infraCost = require('../../../infra-cost');
+const pricing = require('../../../../domain/model-pricing');
 const { esc } = require('../../html');
+
+// Sum re-priced ledger rows into one row per key, carrying the cost, the
+// token total, and whether ANY row in the group is still unpriceable — the
+// ≈ is a property of the group, exactly as `bool_or(estimated)` was in the
+// SQL this replaced.
+function rollup(rows, keyOf, describe) {
+  const groups = new Map();
+  for (const r of rows) {
+    const k = keyOf(r);
+    let g = groups.get(k);
+    if (!g) { g = { rows: [], cost: 0, tokens: 0, estimated: false }; groups.set(k, g); }
+    g.rows.push(r);
+    g.cost += r.cost;
+    g.tokens += Number(r.input_tokens) + Number(r.output_tokens)
+      + Number(r.cache_read_tokens) + Number(r.cache_write_tokens);
+    if (r.estimated) g.estimated = true;
+  }
+  return [...groups.entries()].map(([k, g]) => ({
+    ...describe(k, g.rows), cost: g.cost, tokens: g.tokens, estimated: g.estimated,
+  }));
+}
 
 // Every dollar figure on the cost page renders in shekels by default, USD
 // alongside as the secondary number — the owner's ask, and the natural
@@ -146,21 +168,51 @@ async function renderCost(client) {
   // usage_system_ledger holds the agents nobody owns (main, intake) — real
   // spend that the old sweep dropped on the floor, which is part of why the
   // attributed figure read low for a month.
-  const days = await client.query(
-    `SELECT date, sum(cost) AS cost, bool_or(est) AS estimated FROM (
-       SELECT date, cost_usd AS cost, estimated AS est FROM usage_ledger
-       UNION ALL
-       SELECT date, cost_usd AS cost, estimated AS est FROM usage_system_ledger
-     ) x GROUP BY date ORDER BY date DESC LIMIT 14`);
-  const top = await client.query(
-    `SELECT u.first_name, u.phone, sum(l.total_tokens) AS tokens, sum(l.cost_usd) AS cost
-     FROM usage_ledger l JOIN users u ON u.id = l.user_id
-     WHERE l.date >= date_trunc('month', CURRENT_DATE)
-     GROUP BY u.id ORDER BY cost DESC LIMIT 10`);
-  const system = await client.query(
-    `SELECT agent_id, sum(cost_usd) AS cost FROM usage_system_ledger
-     WHERE date >= date_trunc('month', CURRENT_DATE)
-     GROUP BY agent_id ORDER BY cost DESC`);
+  //
+  // Every figure below is priced HERE, from the token columns, through the
+  // rate table as it stands today — the stored `cost_usd` is used only for a
+  // model that still has no rate. The ledgers are append-only on purpose, so
+  // a row written under a wrong rate keeps it for ever; that is correct for
+  // the record and wrong for the screen. On 2026-09-03 four models were
+  // measured against their real published prices and found to have been
+  // priced by the blended fallback at 16x, 37x, 39x and 54x over, while the
+  // evals judge had been priced at ZERO since 2026-08-28 — errors in BOTH
+  // directions, sitting in one table. The owner read this page on 2026-09-06
+  // and asked, reasonably, why the eval user had cost $5.76: $3.98 of it was
+  // four rows from a single pilot day whose true cost was about twenty cents.
+  // Re-pricing at render costs one pass over rows already fetched, changes
+  // no history, and makes the ≈ mean what it says: no known rate, rather
+  // than a rate known to be wrong.
+  const ledgerRows = await client.query(
+    `SELECT l.date, l.model, l.input_tokens, l.output_tokens, l.cache_read_tokens,
+            l.cache_write_tokens, l.cost_usd, l.user_id, u.first_name, u.phone, NULL AS agent_id
+       FROM usage_ledger l JOIN users u ON u.id = l.user_id
+      WHERE l.date >= LEAST(date_trunc('month', CURRENT_DATE)::date, CURRENT_DATE - 30)
+     UNION ALL
+     SELECT s.date, s.model, s.input_tokens, s.output_tokens, s.cache_read_tokens,
+            s.cache_write_tokens, s.cost_usd, NULL, NULL, NULL, s.agent_id
+       FROM usage_system_ledger s
+      WHERE s.date >= LEAST(date_trunc('month', CURRENT_DATE)::date, CURRENT_DATE - 30)`);
+  const blended = await pricing.blendedRate(client);
+  const priced = ledgerRows.rows.map((r) => {
+    const p = pricing.priceUsage({
+      input: r.input_tokens, output: r.output_tokens,
+      cacheRead: r.cache_read_tokens, cacheWrite: r.cache_write_tokens,
+    }, r.model, blended);
+    // No rate today means the fallback is still the best available answer,
+    // and the stored number already IS that fallback — keep it, and keep
+    // saying so with the ≈.
+    return { ...r, cost: p.estimated ? Number(r.cost_usd) : p.cost, estimated: p.estimated };
+  });
+  const days = { rows: rollup(priced, (r) => String(r.date), (k, rows) => ({ date: rows[0].date }))
+    .sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 14) };
+  const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  const thisMonth = priced.filter((r) => new Date(r.date) >= monthStart);
+  const top = { rows: rollup(thisMonth.filter((r) => r.user_id != null), (r) => String(r.user_id),
+    (k, rows) => ({ first_name: rows[0].first_name, phone: rows[0].phone }))
+    .sort((a, b) => b.cost - a.cost).slice(0, 10) };
+  const system = { rows: rollup(thisMonth.filter((r) => r.agent_id != null), (r) => r.agent_id,
+    (k) => ({ agent_id: k })).sort((a, b) => b.cost - a.cost) };
   // Image+video generation spend — its own ledger and its own block, exactly
   // as asked: this money is billed by OpenRouter per generation (their own
   // usage.cost figure, not token arithmetic), so folding it into the model
@@ -259,8 +311,9 @@ async function renderCost(client) {
     <div><h4>לפי משתמש (החודש)</h4><table><tr><th>מי</th><th>עלות</th></tr>
     ${top.rows.map((r) => `<tr><td>${esc(r.first_name || r.phone)}</td><td>${money(Number(r.cost), 3)}</td></tr>`).join('')}
     ${system.rows.map((r) => `<tr><td class="dim">${esc(r.agent_id)} (מערכת)</td><td class="dim">${money(Number(r.cost), 3)}</td></tr>`).join('')}</table></div></div>
-    <p class="dim small">מחושב מהתמלילים עצמם — סכימת הטוקנים בפועל לפי התעריף של כל מודל.
-    ${anyEstimated ? 'שורות עם ≈ כוללות מודל בלי תעריף ידוע, שתומחר בתעריף ממוצע. ' : ''}החיוב האמיתי מגיע מ-Anthropic. שער דולר-שקל: ${fx.configured && fx.rate ? `₪${fx.rate.toFixed(3)} ל-$1` : 'לא זמין כרגע'}.</p>`;
+    <p class="dim small">מחושב מהתמלילים עצמם — סכימת הטוקנים בפועל לפי התעריף של כל מודל, <b>לפי טבלת התעריפים כפי שהיא היום</b>.
+    הספרים עצמם לא משתנים למפרע, ולכן שורה שנרשמה בתעריף שהתברר כשגוי מוצגת כאן מתוקנת ונשמרת שם כמו שנכתבה.
+    ${anyEstimated ? 'שורות עם ≈ הן מודל שאין לו תעריף ידוע גם היום, ותומחר בתעריף ממוצע. ' : ''}החיוב האמיתי מגיע מ-Anthropic. שער דולר-שקל: ${fx.configured && fx.rate ? `₪${fx.rate.toFixed(3)} ל-$1` : 'לא זמין כרגע'}.</p>`;
 }
 
 module.exports = { makeMoney, renderInfraRow, LOW_DAYS, LOW_USD, prepaidLow, prepaidRow, renderInfraCosts, renderCost };
