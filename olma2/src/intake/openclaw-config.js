@@ -26,14 +26,25 @@
 // bug. The one-off catch-all binding (install-intake.js) IS a bindings-only
 // change and does still need its single manual restart.
 const fs = require('node:fs');
+const { assertNotProduction } = require('./production-guard');
 
-const DEFAULT_PATH = process.env.OLMA_OPENCLAW_CONFIG || '/root/.openclaw/openclaw.json';
+// Read per call, never captured at module load: a test file sets
+// OLMA_OPENCLAW_CONFIG at the top of tests/helpers.js, and whether that lands
+// before or after this module is first required depends on which other module
+// happened to pull it in. A constant made the isolation depend on require
+// order, which is exactly the kind of thing that works until it doesn't.
+// channels/sessions.js resolves its own home the same way, for the same reason.
+function defaultPath() {
+  return process.env.OLMA_OPENCLAW_CONFIG || '/root/.openclaw/openclaw.json';
+}
 
-function loadConfig(path = DEFAULT_PATH) {
+function loadConfig(path = defaultPath()) {
+  assertNotProduction('openclaw config', path);
   return JSON.parse(fs.readFileSync(path, 'utf8'));
 }
 
-function saveConfig(cfg, path = DEFAULT_PATH) {
+function saveConfig(cfg, path = defaultPath()) {
+  assertNotProduction('openclaw config', path);
   const tmp = path + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2), { mode: 0o600 });
   fs.renameSync(tmp, path);
@@ -135,7 +146,16 @@ function addAllowFrom(cfg, phone) {
 }
 
 module.exports = {
-  DEFAULT_PATH, loadConfig, saveConfig,
+  defaultPath, loadConfig, saveConfig,
   addAgent, removeAgent, addBinding, addCatchAllBinding, addAllowFrom,
   usesEntries, listAgentIds, hasAgent,
 };
+
+// A getter, not a value: `occ.DEFAULT_PATH` now answers with whatever the
+// environment says at the moment it is READ. Six call sites reach for it, and
+// the one that matters most — jobs/registry.js, which hands it to the intake
+// sweep — is evaluated while brokerd is still loading its modules. As a plain
+// constant that call site captured the production path before a test process
+// had finished setting up its own, which is how the sweep came to write into
+// the live roster from a throwaway database.
+Object.defineProperty(module.exports, 'DEFAULT_PATH', { get: defaultPath, enumerable: true });

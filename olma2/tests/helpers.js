@@ -6,6 +6,46 @@ require('../src/db/types'); // tests must see production's int8 typing
 // Never chattr +i inside test fixtures — an immutable file under /tmp
 // survives the teardown's rm -rf and litters the box (see intake/provision).
 process.env.OLMA_IMMUTABLE_IDENTITY = 'off';
+
+// ...and never the live gateway's home or roster either. `deploy.sh --restart`
+// runs this suite ON THE BOX, where the defaults these two variables replace
+// ARE production. A test that spawns a real brokerd (tests/mcp-e2e.test.js)
+// gets every sweep with it, including intake_sweep: it read the LIVE session
+// index, resolved those people against the empty throwaway database, and
+// provisioned them under the fresh low ids it got back — overwriting six real
+// users' .olma-identity files and leaving four agents bound to nothing, three
+// times in two days (incidents.md, and intake/production-guard.js for the
+// second lock that catches a child which loses these).
+//
+// Set at module load, before any test file's own requires: every test file
+// requires this helper on its first line, and the modules that read these
+// variables now do so per call rather than at load, so require order cannot
+// decide whether the isolation took.
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+if (!process.env.OLMA_OPENCLAW_HOME) {
+  process.env.OLMA_OPENCLAW_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'olma2-test-home-'));
+}
+if (!process.env.OLMA_OPENCLAW_CONFIG) {
+  // A real shape, not an empty object. Two things read this and both draw the
+  // wrong conclusion from a stub: openclaw-config picks its entries-vs-list
+  // format from what the config already has, so a fixture missing
+  // `agents.entries` exercises the legacy branch the box left behind on
+  // 2026-08-31; and `bootstrapMaxChars` is the doctrine ceiling, which falls
+  // back to the GATEWAY's 20,000 default when absent — against which the real
+  // 38.7k doctrine reads as wildly over the line and the health board goes red
+  // for a file that fits. The box sets 40,000; mirror it. Tests that care
+  // about either write their own config over the top.
+  const cfgPath = path.join(process.env.OLMA_OPENCLAW_HOME, 'openclaw.json');
+  fs.writeFileSync(cfgPath, JSON.stringify({
+    agents: { defaults: { bootstrapMaxChars: 40000 }, entries: {} },
+    bindings: [],
+    channels: { whatsapp: { accounts: { default: { allowFrom: [] } } } },
+  }, null, 2));
+  process.env.OLMA_OPENCLAW_CONFIG = cfgPath;
+}
+
 const { Client, Pool } = require('pg');
 const crypto = require('node:crypto');
 const { migrate } = require('../src/db/migrate');
