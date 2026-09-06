@@ -23,6 +23,7 @@ const boostJob = require('../../jobs/boost');
 const issuesDomain = require('../../domain/issues');
 const auditDomain = require('../../domain/audit');
 const reactionsDomain = require('../../domain/reactions');
+const templatesDomain = require('../../domain/message-templates');
 const dashboardAuth = require('../../domain/dashboard-auth');
 const { refreshUserCard } = require('../../intake/user-card');
 const { withTx } = require('../../db/pool');
@@ -399,6 +400,17 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
             const prev = await flagsDomain.getFlag(client, reactionsDomain.VOCAB_FLAG);
             await flagsDomain.setFlag(client, reactionsDomain.VOCAB_FLAG, next);
             await auditDomain.record(client, null, 'admin.reaction_emoji', { from: prev || {}, to: next });
+          } else if (url.pathname === '/templates') {
+            // Same contract as /reactions: the object is REPLACED, a blank box
+            // is the default, and "reset" is the same write with nothing in
+            // it. What differs is that a refused box is NAMED — on the audit
+            // row, which the section reads back and shows under the box.
+            const next = body.reset ? { overrides: {}, rejected: {} } : templatesDomain.parseForm(body);
+            const prev = await flagsDomain.getFlag(client, templatesDomain.FLAG);
+            await flagsDomain.setFlag(client, templatesDomain.FLAG, next.overrides);
+            await auditDomain.record(client, null, 'admin.message_templates', {
+              from: prev || {}, to: next.overrides, rejected: next.rejected,
+            });
           } else if (url.pathname === '/issues/status') {
             await issuesDomain.setStatus(client, Number(body.id), body.status);
           } else if (url.pathname === '/users/quota') {
