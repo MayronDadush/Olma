@@ -86,9 +86,15 @@ export function buildHandler({ agents, connect, sock, timeoutMs, log = trace } =
       sessionKey: ctx && ctx.sessionKey ? String(ctx.sessionKey).slice(0, 120) : null,
       trigger: ctx && ctx.trigger ? String(ctx.trigger) : null,
       messageProvider: ctx && ctx.messageProvider ? String(ctx.messageProvider) : null,
-      // The gateway puts `reply_to_id` in the prompt's Conversation info block
-      // ONLY when the person replied to one specific message. A yes/no about
-      // the prompt's shape is all brokerd needs to hand back the hint.
+      // A `reply_to_id` in the prompt would mean the person replied to one
+      // specific message. On OpenClaw 2026.8.1 it is never here: the prompt
+      // this hook sees is the bare text, and the Conversation info block that
+      // carries `reply_to_id` is attached after it (measured 2026-09-06, the
+      // context came back in its no-reply shape for a real quoted reply). The
+      // reply reaches brokerd from the turn-open hook instead (it parses the
+      // WhatsApp quote marker at preprocess time); this stays as a second
+      // source for a gateway that changes the order, and `promptChars` in the
+      // trace says which shape a given gateway hands over.
       replyTarget: /"reply_to_id"\s*:/.test(prompt),
     };
     const t0 = Date.now();
@@ -97,7 +103,7 @@ export function buildHandler({ agents, connect, sock, timeoutMs, log = trace } =
     if (!reply || reply.ok !== true) { log({ agentId, outcome: reply ? "refused" : "unreachable", ms }); return undefined; }
     if (!reply.enabled) { log({ agentId, outcome: "not-enabled", ms }); return undefined; }
     if (typeof reply.context !== "string" || !reply.context) { log({ agentId, outcome: "no-open", trigger: params.trigger, ms }); return undefined; }
-    log({ agentId, outcome: "prepended", directive: reply.directive || null, chars: reply.context.length, ms });
+    log({ agentId, outcome: "prepended", directive: reply.directive || null, chars: reply.context.length, promptChars: prompt.length, replyInPrompt: params.replyTarget, ms });
     return { prependContext: reply.context };
   };
 }

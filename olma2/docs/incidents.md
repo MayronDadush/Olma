@@ -108,6 +108,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Features as they shipped**
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
+- [Two messages three seconds apart, and the first one's work was cancelled (2026-09-06)](#two-messages-three-seconds-apart-and-the-first-ones-work-was-cancelled-2026-09-06)
 - [A 👍 is the answer; the sentence after it is a second notification (2026-09-05)](#a--is-the-answer-the-sentence-after-it-is-a-second-notification-2026-09-05)
 
 - [Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)](#live-updates--עדכן-אותי-על-as-infrastructure-2026-08-28)
@@ -3106,6 +3107,81 @@ once. The lesson is the standing one: **a hook that loads is not a hook
 that runs, and the only proof is a line it wrote on a real event.** The
 probe pattern — a hook that records the events it is handed — is how to
 answer that in five minutes next time instead of a night of reading.
+
+### Two messages three seconds apart, and the first one's work was cancelled (2026-09-06)
+
+Miron, 14:04 local, replying to the recurring lunch reminder with "בוצע";
+14:05, replying to a different reminder ("לבדוק משהו במחשב") with "עוד לא".
+Olma answered: "חח בסדר, החזרתי — אז לא סיימת עדיין. על מה ה'בוצע' התייחס? 🤔".
+Nothing had been completed, nothing had been restored, and the second reply
+had been read as a retraction of the first.
+
+Three things had gone wrong at once, and only the third was the one the
+owner asked about ("didn't we fix the reply thing?"). It had been fixed (PR
+#188) and it was live — the model chose task 438, "לאכול צהריים", off the
+quote in the first turn. What came next was two other failures.
+
+**The gateway's queue mode.** `messages.queue.mode` was unset, which is
+"steer": a message that arrives while a turn runs is pushed INTO that turn at
+the next checkpoint, and the tool calls the model has just made are cancelled
+with `Skipped due to queued user message`. The transcript shows exactly that:
+`complete_task(438)` → skipped; "עוד לא" appended to the same run; the model,
+now holding two messages and one cancelled action, called `restore_task(438)`
+— on a task that was never completed — got `finished task not found`, and
+wrote "החזרתי" anyway. `scripts/set-queue-mode.js --apply` sets "followup":
+the running turn finishes and the queued message gets a turn of its own, with
+its own count (the turn-open hook fires per message), its own opening in the
+prompt (the plugin runs per prompt build) and its own reply target.
+`config_guard` goes red for anything else. "collect" was rejected on purpose:
+it merges the queued messages into one prompt, one count and one reply target
+for two messages.
+
+**The plugin could not see the reply.** Phase B of "the turn opens itself"
+had shipped that morning, with the reply detected by a regex over the prompt
+the `before_prompt_build` hook receives. Read the gateway's own code
+(`get-reply-*.js`, `buildReplyPromptEnvelopeBase`): the `prompt` that hook
+gets is `baseBody`, the bare text — "בוצע". The Conversation info block that
+carries `reply_to_id`, and the `Reply target of current user message` block,
+are attached to the prompt as a separate context block AFTER the hook. Proved
+on the real turn without touching the gateway: the context that went out was
+536 chars, and `advise()` for that user in a rolled-back transaction gives 536
+without the reply hint and 990 with it. So for the two people on Phase B the
+reply hint had never once been delivered, on the day it was switched on. The
+fix moves the reply to where it IS visible before the model runs: the
+`message:preprocessed` event the turn-open hook receives carries the
+channel's envelope body, and the WhatsApp channel writes the quote into it as
+`[Replying to <sender> id:<message id>]…[/Replying]`. The hook parses the id
+out (only the id — the quoted text stays in the gateway, like the message
+text always has), brokerd keeps it on the pending open, and `turn_context`
+builds the hint from that. The plugin's regex stays as a second source and
+the trace now records `promptChars` and `replyInPrompt`, so the next gateway
+version says for itself which shape it hands over. Two method points worth
+keeping: a feature switched on for two people needs a real quoted reply from
+one of them before it is called working, and "the context was 536 chars" is a
+measurement that can be compared against the function's own output on the
+same data — that comparison settled in a minute what a probe could not.
+
+**brokerd held one pending open per user.** The second message's `turn_open`
+overwrote the first's, so the first turn's tools would have adopted the
+SECOND message's open — its marks on the wrong message — and under "followup"
+the first message's open would simply have been gone, its turn's `turn_start`
+counting it a second time. It is a queue per person now, oldest first, capped
+at eight. Which entry a turn adopts is the whole design: the shim's first tool
+call takes the oldest entry whose opening was already put in a prompt (that
+is the turn now running; a later message that arrived meanwhile keeps its own
+entry), or — with no such entry, the turn_start path — the newest, dropping
+the older ones, because those belong to turns that ended with no tool call
+and adopting one would put this turn's marks one message behind. The plugin's
+`turn_context` reads the oldest entry not yet in a prompt and drops everything
+older than it (the gateway runs one turn per session at a time, so anything
+older is a finished turn's leftover). A turn Olma started reads no entry at
+all; the person's own pending message keeps its opening for its own prompt.
+
+**The sentence after an error.** `restore_task`'s not-found now carries a hint
+that nothing was restored and that the reply must say so. It is the same
+doctrine as "Olma never claims a lookup it did not perform", and the same
+budget rule as every other hint: it costs tokens on the one turn it applies
+to, at the moment the model decides what to write.
 
 ### A 👍 is the answer; the sentence after it is a second notification (2026-09-05)
 

@@ -25,6 +25,7 @@ function baseConfig() {
       defaults: { heartbeat: { every: '0m', target: 'none' } },
     },
     hooks: { internal: { enabled: true, entries: { 'olma-turn-open': { enabled: true } } } },
+    messages: { queue: { mode: 'followup' } },
     bindings: [],
     tools: { fs: { workspaceOnly: true }, alsoAllow: ['read', 'write'] },
     mcp: { servers: { olma: { command: 'node', args: ['shim.js'] } } },
@@ -639,6 +640,25 @@ test('config guard: the turn-open hook must be enabled', () => {
   assert.match(guard.checkOpenclawConfig(cfg)[0], /olma-turn-open/);
   cfg.hooks = { internal: { enabled: false, entries: { 'olma-turn-open': { enabled: true } } } };
   assert.match(guard.checkOpenclawConfig(cfg)[0], /olma-turn-open/, 'the master switch off is the same failure');
+});
+
+// Miron, 2026-09-06: "בוצע" quoting one reminder, "עוד לא" quoting another
+// three seconds later. The gateway's default queue mode ("steer") pushed the
+// second into the running turn and cancelled the completion the model had
+// just asked for ("Skipped due to queued user message"). "followup" gives
+// each message its own turn.
+test('config guard: a message that arrives mid-turn must wait for its own turn (queue mode followup)', () => {
+  const cfg = baseConfig();
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
+  delete cfg.messages;
+  let v = guard.checkOpenclawConfig(cfg);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /messages\.queue\.mode is unset \(gateway default "steer"\)/);
+  assert.match(v[0], /set-queue-mode/, 'says how to fix it');
+  cfg.messages = { queue: { mode: 'steer' } };
+  assert.match(guard.checkOpenclawConfig(cfg)[0], /messages\.queue\.mode is "steer"/);
+  cfg.messages = { queue: { mode: 'collect' } };
+  assert.equal(guard.checkOpenclawConfig(cfg).length, 1, 'collect merges the two into one prompt: one count, one reply target — not what we want either');
 });
 
 test('config guard: the gateway heartbeat must be explicitly off', () => {
