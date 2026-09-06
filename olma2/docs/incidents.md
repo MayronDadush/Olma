@@ -20,6 +20,7 @@ never trust a dated narrative for something you are about to act on.
 **Gateway, config and upgrades**
 
 - [The roster was never in the transcript (2026-09-06)](#the-roster-was-never-in-the-transcript-2026-09-06)
+- [She was a member of her own group (2026-09-06)](#she-was-a-member-of-her-own-group-2026-09-06)
 - [`main` said NO_REPLY into a real person's WhatsApp (2026-09-01)](#main-said-no_reply-into-a-real-persons-whatsapp-2026-09-01)
 - [The actual reason it kept converging on מירון: `heartbeat.target` defaults to `"owner"` (fixed 2026-09-02)](#the-actual-reason-it-kept-converging-on-מירון-heartbeattarget-defaults-to-owner-fixed-2026-09-02)
 - [A healthy service read as down, because the scope was wrong (2026-09-01)](#a-healthy-service-read-as-down-because-the-scope-was-wrong-2026-09-01)
@@ -35,6 +36,8 @@ never trust a dated narrative for something you are about to act on.
 - [A restore put a leaked token back (fixed 2026-09-05)](#a-restore-put-a-leaked-token-back-fixed-2026-09-05)
 
 - [The lock that worked perfectly, on three files out of sixteen (2026-09-01)](#the-lock-that-worked-perfectly-on-three-files-out-of-sixteen-2026-09-01)
+- [The test suite provisioned into production, three times (fixed 2026-09-06)](#the-test-suite-provisioned-into-production-three-times-fixed-2026-09-06)
+- [A new user moved into the previous occupant's workspace (fixed 2026-09-06)](#a-new-user-moved-into-the-previous-occupants-workspace-fixed-2026-09-06)
 - [A leaked token has a rotation now, and the file order is the design (2026-09-03)](#a-leaked-token-has-a-rotation-now-and-the-file-order-is-the-design-2026-09-03)
 - [The guard was right within a minute, and unread for eighty (fixed 2026-09-01)](#the-guard-was-right-within-a-minute-and-unread-for-eighty-fixed-2026-09-01)
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
@@ -187,6 +190,44 @@ the block in the transcript because the model needed to see it; the group
 design read that back as "the transcript carries it". The measurement that
 would have caught it — one real inbound, one query — took a minute once
 somebody ran it.
+
+### She was a member of her own group (2026-09-06)
+
+The two bugs that stood between the first real group registering and Olma
+being useful in it, both found live, an hour apart, on the same room.
+
+**She was in her own roster.** The gateway's `group_members` line for the
+test group read `+972559347282, +972549495254, M&M (+972526269826)`, and the
+first number is hers. `parseRoster` took all three. So the group held a
+member who has never written to her privately and never will, which means it
+could never open — and the gate notice, whose whole job is to tag the people
+who have not signed up yet, tagged her own number and asked it to send her
+"היי". That is what the room saw, and the owner reported it in those words.
+`parseRoster` now drops her, keyed off the same `OLMA_WA_NUMBER` the intro's
+own `{{me}}` tag uses, so one variable moves both. There is no clean signal
+in the line itself — she is formatted exactly like anyone else — which is
+why the number has to be known rather than inferred.
+
+**The introduction could be missed exactly once, for ever.** It was sent on
+the pass that REGISTERED the group. Its send blew the 120s `openclaw message
+send` timeout (the box was at load 13 running another deploy's on-box suite),
+and every later pass takes the already-registered branch — so the room was
+registered, locked, and silent, with no path back. It is now due while
+`introduced_at` is NULL (migration 044) and stamped only when the send
+returns true, the shape `opened_announced_at` beside it already had. A failed
+intro also ends the pass, so a room she has not greeted is never nudged
+first.
+
+The shape both share: **a one-shot send with no record of whether it
+landed.** The registration branch was a natural place to put "her first
+words" and a terrible place to keep them, because the branch is the record
+and the branch runs once. Anything she says once per room needs a column of
+its own.
+
+Deployed 18:37 UTC. On the first sweep the group dropped her from its
+members, said the opening it had owed since 17:11, and opened with its own
+agent `g-1`. The "everyone is here" line waited for the 09:00-21:00 window,
+which is correct: it was 21:37 in Tel Aviv.
 
 ### A healthy service read as down, because the scope was wrong (2026-09-01)
 
@@ -930,6 +971,95 @@ files, and one `lsattr` settled the whole question:
 **Every locked file survived; every file that was overwritten was unlocked.**
 No exceptions in either direction. The protection was never weak — it had
 simply never been backfilled onto the users who existed before it shipped.
+
+> **That last sentence was wrong, and it took four days to find out.** On
+> 2026-09-05 it happened again to six files, and u-11's was among them — locked
+> on 2026-09-01 and overwritten anyway. `chattr +i` stops a WRITE to the file;
+> provisioning calls `chattr -i` first, by design, because it is the thing
+> entitled to rewrite it. The lock never protected against the writer that
+> comes through the front door. See the next entry, which is what actually
+> closed this.
+
+### The test suite provisioned into production, three times (fixed 2026-09-06)
+
+The 2026-09-01 entry above named the wrong cause and therefore shipped the
+wrong fix. The lock was backfilled, and on 2026-09-05 20:03, 2026-09-06 09:18
+and 2026-09-06 12:45 six live `.olma-identity` files were overwritten again —
+one of them locked. Each timestamp sits inside a deploy.
+
+The chain, end to end. `deploy.sh --restart` runs the full suite **on the
+box**, where `/root/.openclaw` is production. `tests/mcp-e2e.test.js` spawns a
+real `bin/olma-brokerd.js` against a throwaway database with
+`OLMA_HEARTBEAT: 'off'` — which disables the heartbeat and **not** the worker,
+so every sweep came with it. `intake_sweep` resolved its config path from
+`openclaw-config.DEFAULT_PATH`, a module-level constant that had already
+captured `/root/.openclaw/openclaw.json`, and listed sessions from the LIVE
+session index. It then looked those real people up in the EMPTY test database,
+found nothing, and provisioned them — under whatever low ids that database's
+sequence handed out. `seedWorkspace` rewrote real workspaces with tokens from a
+database that was dropped seconds later, and `saveConfig` wrote agents `u-19`,
+`u-21`, `u-22` and `u-24` into the live roster, bound to nothing.
+
+Two things made it hard to see:
+
+- **The post-deploy resync healed half of it.** `deploy.sh` finishes by running
+  `resync-agent-templates.js --apply`, which rewrites `AGENTS.md` — the file
+  that actually carries the token — from the DB. So by the time anyone looked,
+  only the `.olma-identity` fallback was still wrong, and `config_guard`
+  appends "fallback only, AGENTS.md carries the right token" in exactly that
+  case, which `BREAKS_USERS` deliberately excludes. The alert fired only on the
+  run where the resync had not caught up.
+- **Nobody was looking for a writer with permission.** The investigation went
+  to interrupted rotations and unlocked files twice before the deploy
+  timestamps were lined up against the write times.
+
+The fix is two locks, because one of them travels by environment and
+environments get lost:
+
+1. **Isolation.** `tests/helpers.js` points `OLMA_OPENCLAW_HOME` and
+   `OLMA_OPENCLAW_CONFIG` at a `mkdtemp` directory for every test process,
+   beside the `OLMA_IMMUTABLE_IDENTITY = 'off'` that was already there for the
+   same reason. The paths are now read **per call** rather than captured at
+   module load (`openclaw-config.defaultPath()`, `jobs/registry`'s
+   `OPENCLAW_CONFIG()`) — as constants, whether the isolation took depended on
+   which module happened to be required first.
+2. **A fail-closed guard.** `intake/production-guard.js` throws if a process
+   with `NODE_TEST_CONTEXT` set resolves a path under `/root/.openclaw`.
+   `node --test` sets that variable in every test child and it IS inherited by
+   spawned grandchildren (measured), so it survives exactly the case isolation
+   does not: a child given a hand-built `env` instead of `{ ...process.env }`.
+   Worst case is a red suite, which is the correct outcome for a test that was
+   about to edit production.
+
+`tests/production-guard.test.js` drives both at real production paths, so a
+refactor that quietly stops checking turns red rather than green — and it
+asserts `NODE_TEST_CONTEXT` is actually set, because a guard keyed on a
+variable nobody sets would pass everything for ever.
+
+### A new user moved into the previous occupant's workspace (fixed 2026-09-06)
+
+Cleaning up after the above surfaced a second, independent fault. Agent ids are
+`u-<serial>` and a Postgres sequence never reissues a number, so within one
+database a workspace belongs to one person for ever — but the phantom agents
+came from a DIFFERENT database, whose sequence started at 1 and handed out ids
+production had already used or was about to.
+
+The phantom `u-21` was cleaned out of the roster on 2026-09-06 at 15:01. At
+16:28 a real new user was provisioned and was issued `u-21`. He inherited the
+phantom's `agents/u-21/` state directory. He was unharmed — that phantom never
+ran a turn, so the directory held only scaffolding — which is luck, not design.
+
+`seedWorkspace` overwrites `AGENTS.md`, `USER.md` and `.olma-identity`
+outright, so the danger was never those. It is `memory/YYYY-MM-DD.md`: nothing
+rewrites the daily notes, and the gateway injects the last two days at session
+start, so the new person's agent would have read the previous occupant's notes
+as its own memory of them. `provision.evictStaleWorkspace` now moves a
+directory holding anything `seedWorkspace` does not own to
+`<workspace>.orphan-<stamp>` and starts clean — moved, never deleted, because
+whatever is in there was somebody's and a provisioning path is the wrong place
+to destroy evidence. The first version of that check missed the case it was
+written for: `memory/` is itself a seeded entry, so it looked only at the top
+level and the notes inside it were invisible. The test caught it.
 
 `domain/identity-repair.js` + `scripts/repair-identity-files.js` (dry-run by
 default) do two jobs, and the second is the one that stops the recurrence:
