@@ -65,7 +65,7 @@ function checkOpenclawConfig(cfg) {
   // so the rule is "0m, explicitly". A dashboard row, not BREAKS_USERS: a
   // heartbeat that came back costs money and one leak vector, never a tool
   // call. (fix: scripts/disable-heartbeats.js --apply)
-  // The turn opens itself: the gateway's message:received hook tells brokerd a
+  // The turn opens itself: the gateway's message:preprocessed hook tells brokerd a
   // person wrote, before the model's first call (gateway-hooks/olma-turn-open).
   // Missing or disabled, every reply is one model call slower and the 👀 waits
   // for the model. Dashboard row: replies still work, the old way.

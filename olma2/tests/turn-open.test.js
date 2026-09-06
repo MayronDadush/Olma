@@ -1,5 +1,5 @@
 'use strict';
-// The turn opens itself. The gateway's message:received hook sends brokerd a
+// The turn opens itself. The gateway's message:preprocessed hook sends brokerd a
 // `turn_open` before the model's first call; the record side of turn_start
 // runs then, the 👀 goes on then, and whichever tool the model calls first
 // adopts that turn — nothing counted twice, every mark on the right message.
@@ -142,10 +142,26 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
   assert.equal(msg.method, 'turn_open');
   assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', at: '2026-09-05T10:00:00.000Z' });
   assert.ok(!written[0].includes('סודי'), 'the text never leaves the gateway');
+  // The shape the gateway ACTUALLY sends (OpenClaw 2026.8.1, measured
+  // 2026-09-06): `message:preprocessed`, sender name and media type flat on
+  // the context, no `media` array, no `metadata`. `received` never comes.
+  assert.equal(await hook({
+    type: 'message', action: 'preprocessed', sessionKey: 'agent:u-3:whatsapp:direct:+972500000000', timestamp: new Date('2026-09-05T10:00:05Z'),
+    context: { from: '+972500000000', body: 'סודי', bodyForAgent: 'סודי', messageId: '3EB0HOOK0002', senderName: 'Miron', mediaType: 'audio/ogg', transcript: 'שלום', provider: 'whatsapp', cfg: {} },
+  }, { connect: fakeSocket }), true);
+  assert.equal(written.length, 2);
+  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', at: '2026-09-05T10:00:05.000Z' });
+  assert.ok(!written[1].includes('סודי') && !written[1].includes('שלום'), 'neither text nor transcript leaves the gateway');
+  // A gateway that fires BOTH for one message opens it once.
+  assert.equal(await hook({
+    type: 'message', action: 'received', sessionKey: 'agent:u-3:whatsapp:direct:+972500000000',
+    context: { messageId: '3EB0HOOK0002', metadata: { senderName: 'Miron' } },
+  }, { connect: fakeSocket }), false);
+  assert.equal(written.length, 2, 'the same message id was not opened twice');
   // not ours: a command event, an agent that is not a user, a missing session key
   assert.equal(await hook({ type: 'command', action: 'new', sessionKey: 'agent:u-3:x' }, { connect: fakeSocket }), false);
   assert.equal(await hook({ type: 'message', action: 'received', sessionKey: 'agent:main:whatsapp:direct:+1' }, { connect: fakeSocket }), false);
-  assert.equal(written.length, 1);
+  assert.equal(written.length, 2);
   // brokerd down: the hook fails quietly and the model's own opener takes over
   const failing = () => { const h = {}; const s = { on(ev, fn) { h[ev] = fn; return s; }, write() {}, end() {}, destroy() {} }; setTimeout(() => h.error && h.error(new Error('ECONNREFUSED')), 0); return s; };
   assert.equal(await hook({ type: 'message', action: 'received', sessionKey: 'agent:u-3:whatsapp:direct:+1', context: { messageId: 'x' } }, { connect: failing }), false);
