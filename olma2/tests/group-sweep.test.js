@@ -11,7 +11,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { freshDb, makeUser } = require('./helpers');
+const helpers = require('./helpers');
+const { freshDb, makeUser } = helpers;
 const { withTx } = require('../src/db/pool');
 const occ = require('../src/intake/openclaw-config');
 const groupsDomain = require('../src/domain/groups');
@@ -235,6 +236,16 @@ test('a newcomer who never wrote re-locks an open group', async () => {
   const cfg = occ.loadConfig(configPath);
   assert.equal(cfg.bindings.filter((b) => b.match.peer.id === JID(7)).length, 0);
   assert.equal(occ.isGroupMuted(cfg, JID(7)), true);
+
+  // The newcomer writes to her. The room hears that it is back on — the
+  // person who caused the lock is the one person nothing else would tell.
+  await connectedUser('+972603000061');
+  const third = gatewayWith({ jid: JID(7), roster: `${a.phone}, +972603000061`, at: Date.now() + 120_000 });
+  const again = await withTx(db.pool, (c) => job.sweepGroups(c, {
+    ...third.deps, now: helpers.daytime(),
+  }));
+  assert.deepEqual(again.opened, [JID(7)]);
+  assert.equal(again.announced, 1, 'a re-open is announced like a first open');
 });
 
 // The failure mode this guards is the quiet one: a roster line we cannot read

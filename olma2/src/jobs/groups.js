@@ -22,7 +22,10 @@ const flags = require('../domain/flags');
 const audit = require('../domain/audit');
 const text = require('../domain/proactive-text');
 const gate = require('../outbox/gate');
-const sessions = require('../channels/sessions');
+// Through the worker facade, never channels/sessions.js: every read there is
+// synchronous, and this runs inside brokerd on the loop that answers live
+// users. Ten seconds is exactly the cadence that would deafen the daemon.
+const sessions = require('../channels/sessions-async');
 const occ = require('../intake/openclaw-config');
 const pg = require('../intake/provision-group');
 const { withTx } = require('../db/pool');
@@ -108,8 +111,13 @@ async function sweepGroups(client, deps) {
   const { rows: openAgents } = await client.query(
     `SELECT agent_id FROM chat_groups WHERE agent_id IS NOT NULL AND state <> 'retired'`);
   const agentIds = [pg.GREETER_AGENT_ID, ...openAgents.map((r) => r.agent_id)];
-  const list = deps.listGroupSessions || ((ids) => ids.flatMap(
-    (id) => sessions.listSessionsForAgent(id).filter((s) => s.chatType === 'group')));
+  const list = deps.listGroupSessions || (async (ids) => {
+    const all = [];
+    for (const id of ids) {
+      all.push(...(await sessions.listSessionsForAgent(id)).filter((s) => s.chatType === 'group'));
+    }
+    return all;
+  });
   const out = {
     registered: [], intros: 0, notices: 0, opened: [], relocked: [], announced: 0,
     unreadable: 0, strangers: 0, skipped: 0,
@@ -118,11 +126,11 @@ async function sweepGroups(client, deps) {
     senderAllowFrom: senderGate.entries.length, senderGateOpen: senderGate.open,
   };
 
-  for (const session of list(agentIds)) {
+  for (const session of await list(agentIds)) {
     const jid = session.peer;
     if (!jid || !jid.endsWith('@g.us')) { out.skipped++; continue; }
 
-    const ctx = readContext(session.agentId, session.key);
+    const ctx = await readContext(session.agentId, session.key);
     // Null is "no evidence", not "an empty group" — a store we could not read
     // must never look like a group with nobody in it.
     if (!ctx || !ctx.members) { out.unreadable++; continue; }

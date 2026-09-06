@@ -187,6 +187,26 @@ test('re-locking takes the agent and the route away, and keeps the memory', asyn
 
   assert.match(fs.readFileSync(path.join(ws, 'MEMORY.md'), 'utf8'), /משחקים בשלישי/,
     'a group that re-opens must not have forgotten itself');
+  assert.equal(locked.data.group.opened_announced_at, null,
+    'a re-lock re-arms the announcement, so a re-open is heard again');
+});
+
+// The sweep refreshes the card every ten seconds; a card that has not changed
+// must not be a disk write every ten seconds.
+test('the group card is written only when it changes', async () => {
+  writeConfig();
+  pg.installGreeter({ configPath });
+  const a = await connectedUser('+972602000070');
+  const group = await registerGroup('120363000000000009@g.us', [a.phone]);
+  await withTx(db.pool, (c) => groups.applyState(c, group.id, 'open'));
+  const res = await withTx(db.pool, (c) => pg.provisionGroup(c, { groupId: group.id, configPath }));
+  const ws = res.data.group.workspace_path;
+  const members = await withTx(db.pool, (c) => groups.listMembers(c, group.id));
+
+  assert.equal(pg.refreshGroupCard(ws, { subject: 'פאדל שלישי', members, state: 'open' }), false,
+    'seeded moments ago with exactly this content');
+  assert.equal(pg.refreshGroupCard(ws, { subject: 'פאדל רביעי', members, state: 'open' }), true);
+  assert.equal(pg.refreshGroupCard(ws, { subject: 'פאדל רביעי', members, state: 'open' }), false);
 });
 
 test('a rolled-back provisioning leaves nothing that can speak', async () => {

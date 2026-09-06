@@ -1408,3 +1408,45 @@ test('with nothing wrong the green job rows are a fold; a problem row is never b
     await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'minute_sweeps'`);
   }
 });
+
+// ---- groups --------------------------------------------------------------------
+
+test('the groups section names who is still missing, and says whether the sender gate is closed', async () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const groups = require('../src/domain/groups');
+  const { SECTIONS } = require('../src/adapters/http/dashboard');
+  const section = SECTIONS.find((s) => s.id === 'groups');
+
+  const a = await makeUser(db.pool, '+972619000031', { firstName: 'מירון' });
+  await db.pool.query(`UPDATE users SET last_inbound_at = now() WHERE id = $1`, [a.id]);
+  await withTx(db.pool, (c) => groups.registerGroup(c, {
+    externalId: '120363000000000031@g.us', subject: 'פאדל שלישי',
+    members: [{ phone: a.phone }, { phone: '+972619000032', displayName: 'גלי' }],
+  }));
+
+  // A config that LOOKS locked down and is not: allowlist with no sender list
+  // falls back to allowFrom ["*"]. The board must say so in red.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'olma-dash-groups-'));
+  const cfgPath = path.join(tmp, 'openclaw.json');
+  const account = { dmPolicy: 'open', allowFrom: ['*'], groupPolicy: 'allowlist' };
+  fs.writeFileSync(cfgPath, JSON.stringify({ agents: { entries: {} }, channels: { whatsapp: { accounts: { default: account } } }, bindings: [] }));
+  try {
+    let html = await withTx(db.pool, (c) => section.render(c, 'csrf', null, { configPath: cfgPath }));
+    assert.ok(html.includes('פאדל שלישי'));
+    assert.ok(html.includes('נעולה'));
+    assert.ok(html.includes('גלי'), 'the missing member is named');
+    assert.ok(!html.includes('+972619000032'), 'and never numbered');
+    assert.ok(html.includes('שער השולחים פתוח'), 'an absent groupAllowFrom is the open door, and the board says so');
+
+    account.groupAllowFrom = [a.phone];
+    fs.writeFileSync(cfgPath, JSON.stringify({ agents: { entries: {} }, channels: { whatsapp: { accounts: { default: account } } }, bindings: [] }));
+    html = await withTx(db.pool, (c) => section.render(c, 'csrf', null, { configPath: cfgPath }));
+    assert.ok(html.includes('שער השולחים סגור (1 מספרים)'));
+
+    // And a config that cannot be read is reported as unread, never as fine.
+    html = await withTx(db.pool, (c) => section.render(c, 'csrf', null, { configPath: path.join(tmp, 'missing.json') }));
+    assert.ok(html.includes('לא נקראו'));
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});

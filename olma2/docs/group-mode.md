@@ -549,9 +549,22 @@ cannot show you.
 
 1. Does the in-Olma group object own meetings/coordination directly, or is it
    a view over the existing pairwise connections?
-2. Exact "has DM'd" predicate — `onboarded_at`, or a real inbound message.
-3. Whether an operator can force-unlock a group from the dashboard.
-4. A paused member is out of `groupAllowFrom` but still counts as *connected*
+2. ~~Exact "has DM'd" predicate~~ — decided: `users.last_inbound_at`, a real
+   inbound message (`domain/groups.js`, `isConnected`).
+3. Whether an operator can force-unlock a group from the dashboard. The
+   admin page now SHOWS groups (`admin/sections/groups.js`) and deliberately
+   has no button: a forced open is a second writer to the gate.
+4. **`retired` is never written.** Nothing detects her being removed from a
+   group — the gateway raises no event we read — so a group she has left keeps
+   its row, its agent and its admission until somebody notices. Harmless
+   (nothing reaches her from a group she is not in) but it will not clean up
+   after itself.
+5. **An open group's agent has no working tools yet.** Its token is
+   `olma_grp_…`, and the MCP shim resolves identity against `users`, so every
+   tool call from a group agent fails by name until the coordination layer
+   teaches brokerd to read a group token. That layer is next; until it lands
+   an open group can talk but cannot act.
+6. A paused member is out of `groupAllowFrom` but still counts as *connected*
    by `isConnected` (a `user_id` and a `last_inbound_at`), so they can still be
    the reason a group opens while being unable to speak in it. Probably right,
    not decided.

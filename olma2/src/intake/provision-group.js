@@ -72,7 +72,9 @@ function renderGroupMd({ subject, members, state }) {
   return [
     `# ${subject || 'קבוצה'}`,
     '',
-    `מצב: ${state === 'open' ? 'פתוחה — כולם מחוברים' : 'נעולה — עוד לא כולם מחוברים'}`,
+    `מצב: ${state === 'open' ? 'פתוחה — כולם מחוברים'
+      : state === 'too_large' ? 'גדולה מדי — אני לא מתערבת כאן'
+        : 'נעולה — עוד לא כולם מחוברים'}`,
     `אנשים בקבוצה (${names.length}): ${names.join(', ') || '—'}`,
     '',
     '(מה שאני יודעת על הקבוצה הזאת נמצא כאן ובזיכרון שלי. על אנשים בפרטי — לא.)',
@@ -98,9 +100,16 @@ function seedWorkspace(workspace, { subject, identityToken, members, state }) {
 
 // GROUP.md is rewritten on every roster change, so a group that gained or lost
 // somebody does not spend a week describing a room that no longer exists.
+// Compared before it is written: the sweep calls this every ten seconds for
+// every open group, and a card that has not changed is not a disk write.
 function refreshGroupCard(workspace, { subject, members, state }) {
   if (!workspace || !fs.existsSync(workspace)) return false;
-  fs.writeFileSync(path.join(workspace, 'GROUP.md'), renderGroupMd({ subject, members, state }));
+  const file = path.join(workspace, 'GROUP.md');
+  const next = renderGroupMd({ subject, members, state });
+  let current = null;
+  try { current = fs.readFileSync(file, 'utf8'); } catch { /* first write */ }
+  if (current === next) return false;
+  fs.writeFileSync(file, next);
   return true;
 }
 
@@ -236,10 +245,13 @@ async function provisionGroup(client, { groupId, configPath, registerUndo }) {
 }
 
 // Registration: admit the group, tag-only. This one stands alone safely —
-// a `channels.whatsapp.*.groups` write hot-applies by itself (measured
-// 2026-09-05: "config hot reload applied (…groups)"), at the cost of a ~5s
+// a `channels.whatsapp.accounts.default.groups` write hot-applies by itself
+// (the journal, 2026-09-05 19:48: "config hot reload applied
+// (channels.whatsapp.accounts.default.groups)"), at the cost of a ~5s
 // whatsapp channel restart. That cost is why it is a per-group registration
-// lever and never a per-message one.
+// lever and never a per-message one. The path is the whole point: the same
+// map one level up, at `channels.whatsapp.groups`, is a noop prefix and the
+// write vanishes — openclaw-config.js, admitGroup.
 //
 // The exact entry outranks the greeter's `"*"`, so from here on only a real
 // tag wakes anything in this group.
@@ -278,8 +290,12 @@ async function lockGroup(client, { groupId, configPath }) {
   };
   occ.saveConfig(cfg, configPath);
 
+  // The announcement is re-armed with the lock: when this group opens again
+  // the room should hear it again, because the person who re-locked it is the
+  // one who just connected, and nothing else tells them it worked.
   const { rows } = await client.query(
-    `UPDATE chat_groups SET agent_id = NULL WHERE id = $1 RETURNING *`, [group.id]);
+    `UPDATE chat_groups SET agent_id = NULL, opened_announced_at = NULL WHERE id = $1 RETURNING *`,
+    [group.id]);
   await audit.record(client, group.registered_by_user_id, 'group.locked', {
     groupId: group.id, agentId: group.agent_id, ...removed,
   });
