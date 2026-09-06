@@ -3164,6 +3164,32 @@ enabling needs one restart. Phase B (the model stops calling `turn_start`,
 hints move to USER.md and the doctrine) and Phase C (the tool leaves the
 schema) are in `~/.claude/plans/olma-no-turn-start.md`.
 
+**It did not fire (found 2026-09-06).** The hook loaded cleanly ("loaded 1
+internal hook handler", `hooks info` said Ready, Events: message:received),
+and then fifteen real WhatsApp messages went through overnight with no
+`turn_open`, no trace line, no `turn.opened_by_gateway` row. Every static
+reading of the gateway bundle said it should have: the registry is one
+process-wide singleton, the loader registers the handler under exactly the
+key the emitter uses, `emitMessageReceivedHooks` runs at the end of every
+prepared dispatch with the session key present. Two false leads on the way:
+four lines in the trace file that looked like the hook running were the
+on-box test suite writing fixture events into the production path (fixed —
+the test now points `OLMA_HOOK_TRACE` at a temp file), and a debugger on the
+live process was the natural next step and rightly not available.
+
+What settled it was a second, throwaway hook subscribed to five events that
+wrote one line per event it was handed. Miron's next message produced
+`message:preprocessed` 300 ms after the inbound log line, `agent:bootstrap`
+a second later, `message:sent` on the reply — and no `message:received` at
+all. On OpenClaw 2026.8.1 the WhatsApp path simply does not fire the event
+the docs list first; `preprocessed` carries the same session key and message
+id, with the sender's name and media type flat on the context instead of
+under `metadata`/`media`. The hook now accepts both and opens a message id
+once. The lesson is the standing one: **a hook that loads is not a hook
+that runs, and the only proof is a line it wrote on a real event.** The
+probe pattern — a hook that records the events it is handed — is how to
+answer that in five minutes next time instead of a night of reading.
+
 ### A 👍 is the answer; the sentence after it is a second notification (2026-09-05)
 
 Miron replied "תמחוק את המשימה" to a reminder, saw the 👍 land on his own

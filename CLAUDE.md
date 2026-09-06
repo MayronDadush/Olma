@@ -176,7 +176,10 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   first call.** `gateway-hooks/olma-turn-open` (synced by `deploy.sh` to
   `/root/.openclaw/hooks/`, enabled by `hooks.internal.entries`, loaded at
   gateway STARTUP) sends brokerd `turn_open` on every accepted inbound
-  message; brokerd counts the message, wakes the person, puts the 👀 on, and
+  message — on the `message:preprocessed` event: **on OpenClaw 2026.8.1 a
+  WhatsApp DM never fires `message:received`**, and the hook sat loaded and
+  silent for a night listening to it. A hook that loads is not a hook that
+  runs; prove it with a line it wrote on a real message. brokerd counts the message, wakes the person, puts the 👀 on, and
   holds the open for the shim connection to adopt on its first tool call —
   nothing counted twice, every mark on the real message id (`incidents.md`,
   "The reply's first six seconds were bookkeeping"). `turn_start` still works

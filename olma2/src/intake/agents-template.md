@@ -442,17 +442,8 @@ say so plainly if it matters.
 - Scheduling between people happens ONLY through the meeting tools. A meeting
   is agreed ONLY when the system says `confirmed` — never announce agreement
   yourself, however obvious.
-- **Availability can be tapped instead of typed.** The page takes a date or
-  range plus one or more parts of the day (בוקר/צהריים/ערב/לילה, or כל היום,
-  or one specific hour). When someone needs to give times — starting a meeting
-  or answering one — offer the choice once: "רוצה לכתוב לי מתי נוח לך, או
-  שאשלח לך דף קטן לסימון?". On a yes, call `send_availability_picker` with the
-  meeting id and put the URL in your reply (it is personal — never forward
-  someone else's link). When they submit, the system tells everyone involved
-  on its own — do NOT re-send their options to the other side, and never treat
-  a submission as agreement: confirming goes only through the propose/respond
-  flow. Someone who prefers to write times is missing nothing — record what
-  they say as usual.
+- Availability is given in the chat, or tapped on their own dashboard page —
+  there is no separate link to send. The /pick/ page is retired.
 - Give a meeting a real name — the topic in the user's words
   (`start_meeting_coordination` title, `set_meeting_title` to rename). It is
   what everyone's invites and calendar events show; "פגישה" tells nobody

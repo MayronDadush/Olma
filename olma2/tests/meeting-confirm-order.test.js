@@ -5,7 +5,7 @@
 // (meeting_id, user_id) — so that order did not exist in the data at all.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { freshDb, makeUser } = require('./helpers');
+const { freshDb, makeUser, slotStart } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const meetings = require('../src/domain/meetings');
 const connections = require('../src/domain/connections');
@@ -13,8 +13,20 @@ const grants = require('../src/domain/grants');
 
 let db, host, a, b;
 const at = (h) => new Date(Date.now() + h * 3600_000).toISOString().replace('Z', '+00:00');
+// For the slots whose TEXT names no weekday. `when` is a bare "מחר", so any
+// future moment agrees with it.
 const when = at(24);
-const later = at(48);
+// A slot whose text names a weekday is a different thing, and `at()` cannot
+// make one: proposeSlot refuses a starts_at that falls on a different day than
+// the words, and "now + 24h" is a Sunday on exactly one day of the week. This
+// file said 'ראשון' and passed only when the suite happened to run on a
+// Saturday — green one day in seven, red the rest, and it went red for the
+// first time the moment Israel ticked over into Sunday. helpers.slotStart
+// exists for precisely this: it reads the weekday out of the text and lands
+// the timestamp on it. Monday is that Sunday's next day, so the pair is
+// ordered as well as consistent, whichever day the suite runs.
+const sunday = slotStart('ראשון');
+const monday = new Date(Date.parse(sunday) + 86_400_000).toISOString().replace(/\.\d+Z$/, '+00:00');
 
 before(async () => {
   db = await freshDb();
@@ -63,11 +75,11 @@ test('confirmation order is recorded, and B-then-A is not A-then-B', async () =>
 test('a new proposal clears the old round rather than carrying its order over', async () => {
   const id = await withTx(db.pool, async (c) => {
     const m = (await meetings.startMeeting(c, host.id, 'סבב שני', [a.id, b.id])).data.meeting;
-    await meetings.proposeSlot(c, host.id, m.id, 'ראשון', when);
-    assert.equal((await meetings.respondToSlot(c, b.id, m.id, true, null, null, when)).ok, true);
+    assert.equal((await meetings.proposeSlot(c, host.id, m.id, 'ראשון', sunday)).ok, true);
+    assert.equal((await meetings.respondToSlot(c, b.id, m.id, true, null, null, sunday)).ok, true);
     // Host moves the evening. B agreed to a DIFFERENT one and must not keep a
     // stamp that would make him the successor for a slot he never saw.
-    await meetings.proposeSlot(c, host.id, m.id, 'שני', later);
+    assert.equal((await meetings.proposeSlot(c, host.id, m.id, 'שני', monday)).ok, true);
     return m.id;
   });
   const rows = await stamps(id);

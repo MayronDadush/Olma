@@ -482,7 +482,35 @@ function deadLinkPage(res, error) {
   return res.end(messagePage('הקישור לא נמצא', 'ייתכן שהקישור שגוי או נמחק. אפשר לבקש מעולמה קישור חדש.'));
 }
 
+// Retired 2026-09-06. The picker was the first ephemeral UI and it did its
+// job; what replaced it is the meetings tab of the personal dashboard, which
+// is the same act (tap the days, tap the parts of the day) on a page the
+// person already has, against people they can see, with the answers and the
+// settle button in one place. Two pages that both collect availability is one
+// too many — Olma handed somebody the picker link when what they asked for was
+// their dashboard, which is exactly the confusion two doors produce.
+//
+// RETIRED, NOT DELETED. Everything below the gate still works and is still
+// tested; domain/availability.js still stores submissions, still computes the
+// overlap and still owns the daypart vocabulary that meetings read. Flip this
+// to false and the page is back. What must NOT come back without a decision is
+// a second way IN — see the tool that used to mint these links
+// (adapters/mcp/tools/meetings.js) and the doctrine paragraph that offered it.
+//
+// The gate sits ahead of loadPage on purpose: a link already in somebody's
+// WhatsApp gets one honest sentence and a way forward, not a 404 and not a
+// working form whose submit would land in a flow nobody is watching.
+const PICKER_RETIRED = true;
+
+function retiredPage(res) {
+  res.writeHead(410, headers());
+  return res.end(messagePage('הדף הזה נסגר',
+    'תיאום הפגישות עבר לעמוד האישי שלך, ושם אפשר לסמן מתי מתאים ולראות מה מתאים לכולם. '
+    + 'בקשו מעולמה בוואטסאפ קישור לעמוד שלכם.'));
+}
+
 async function handle(req, res, pool, token, opts = {}) {
+  if (PICKER_RETIRED) return retiredPage(res);
   if (req.method === 'GET') {
     const client = await pool.connect();
     try {
