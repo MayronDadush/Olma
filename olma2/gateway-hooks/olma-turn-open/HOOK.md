@@ -2,12 +2,14 @@
 name: olma-turn-open
 description: "Tell brokerd a person just wrote, before the model's first call"
 metadata:
-  { "openclaw": { "events": ["message:received"], "requires": { "bins": ["node"] } } }
+  { "openclaw": { "events": ["message:preprocessed", "message:received"], "requires": { "bins": ["node"] } } }
 ---
 
 # olma-turn-open
 
-On every accepted inbound message this writes one JSON line to Olma's brokerd
+On every accepted inbound message (`message:preprocessed` — on OpenClaw
+2026.8.1 a WhatsApp DM never fires `message:received`; both are accepted, a
+message id opens once) this writes one JSON line to Olma's brokerd
 socket: which agent, which message id, whether it was a voice note. brokerd
 opens the turn from that — counts the message, marks the person awake, puts
 the 👀 on their message — while the model is still reading the prompt. Nothing

@@ -69,7 +69,7 @@ async function openRecord(client, user) {
   return { counted: true, quota: counted, firstTurn };
 }
 
-// Opened by the gateway's own message:received hook (gateway-hooks/
+// Opened by the gateway's own message:preprocessed hook (gateway-hooks/
 // olma-turn-open), BEFORE the model's first call — so the person is counted,
 // marked awake and shown a 👀 while the model is still reading the prompt.
 // A turn Olma started is not a message from the person, here as everywhere.

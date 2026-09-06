@@ -24,28 +24,58 @@ function trace(fields) {
   try { require('node:fs').appendFileSync(TRACE, JSON.stringify({ at: new Date().toISOString(), ...fields }) + '\n'); } catch { /* best effort */ }
 }
 
+// One line at import time, so "was THIS file loaded, by which process" is
+// answerable from the trace alone.
+trace({ loaded: true, pid: process.pid, file: __filename });
+
 function agentIdOf(sessionKey) {
   const m = /^agent:(u-\d+):/.exec(String(sessionKey || ''));
   return m ? m[1] : null;
 }
 
+// `received` carries a `media` array; `preprocessed` carries a flat
+// `mediaType` (and a `transcript` once a voice note was transcribed).
 function isVoice(context) {
-  const media = Array.isArray(context && context.media) ? context.media : [];
-  return media.some((m) => /^audio\//i.test(String((m && (m.mimeType || m.contentType || m.type)) || '')));
+  const c = context || {};
+  const media = Array.isArray(c.media) ? c.media : [];
+  if (media.some((m) => /^audio\//i.test(String((m && (m.mimeType || m.contentType || m.type)) || '')))) return true;
+  if (/^audio\//i.test(String(c.mediaType || ''))) return true;
+  return typeof c.transcript === 'string' && c.transcript.trim() !== '';
+}
+
+// Which inbound events open a turn. Measured on OpenClaw 2026.8.1 (2026-09-06,
+// olma-hook-probe): a WhatsApp DM fires `message:preprocessed` ~300ms after
+// the inbound log line and `agent:bootstrap` a second later — and NEVER
+// `message:received`, which this hook had listened for alone while fifteen
+// real messages went by. Both are accepted; a message id seen once is not
+// opened twice should a later gateway fire both.
+const OPENING_ACTIONS = new Set(['received', 'preprocessed']);
+const SEEN_MAX = 500;
+const seen = new Map(); // messageId → true, insertion-ordered, bounded
+function seenBefore(messageId) {
+  if (!messageId) return false;
+  if (seen.has(messageId)) return true;
+  seen.set(messageId, true);
+  if (seen.size > SEEN_MAX) seen.delete(seen.keys().next().value);
+  return false;
 }
 
 // Exported for tests: `connect` is the one seam (net.connect in production).
 function handle(event, { connect = net.connect, sock = SOCK } = {}) {
-  if (!event || event.type !== 'message' || event.action !== 'received') { trace({ skip: 'not-received', type: event && event.type, action: event && event.action }); return false; }
+  if (!event || event.type !== 'message' || !OPENING_ACTIONS.has(event.action)) { trace({ skip: 'not-inbound', type: event && event.type, action: event && event.action }); return false; }
   const agentId = agentIdOf(event.sessionKey);
   if (!agentId) { trace({ skip: 'no-agent', sessionKey: String(event.sessionKey || '').slice(0, 40) }); return false; }
   const ctx = event.context || {};
   const meta = ctx.metadata || {};
+  const messageId = ctx.messageId ? String(ctx.messageId) : null;
+  if (seenBefore(messageId)) { trace({ skip: 'duplicate', agentId, action: event.action }); return false; }
+  // `received` puts the sender's name under metadata; `preprocessed` flattens it.
+  const senderName = meta.senderName || ctx.senderName;
   const params = {
     agentId,
-    messageId: ctx.messageId ? String(ctx.messageId) : null,
+    messageId,
     kind: isVoice(ctx) ? 'voice' : 'text',
-    senderName: meta.senderName ? String(meta.senderName).slice(0, 80) : null,
+    senderName: senderName ? String(senderName).slice(0, 80) : null,
     at: new Date(event.timestamp || Date.now()).toISOString(),
   };
   return new Promise((resolve) => {
@@ -70,3 +100,4 @@ module.exports.default = handle;
 module.exports.handle = handle;
 module.exports.agentIdOf = agentIdOf;
 module.exports.isVoice = isVoice;
+module.exports._resetSeen = () => seen.clear();
