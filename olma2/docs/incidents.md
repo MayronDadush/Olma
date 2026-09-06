@@ -112,6 +112,7 @@ never trust a dated narrative for something you are about to act on.
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
 - [A 👍 is the answer; the sentence after it is a second notification (2026-09-05)](#a--is-the-answer-the-sentence-after-it-is-a-second-notification-2026-09-05)
 - [The hint that outvoted the mark (2026-09-06)](#the-hint-that-outvoted-the-mark-2026-09-06)
+- [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
 - [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
 
 - [Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)](#live-updates--עדכן-אותי-על-as-infrastructure-2026-08-28)
@@ -3263,6 +3264,26 @@ second person, before the `remind_at` fix had merged. And
 shape, did not fire: its word list held רשמתי, שמרתי, מחקתי and not הוספתי. A
 detector built from a word list goes quiet the first time the model picks a
 different verb, which is the ordinary way the ones in this file stop working.
+
+### The dedupe list that could not contain the answer (2026-09-06)
+
+Miron said "לאכול צהריים ב-12" at 09:24 and "תזכיר לי עוד שעתיים לדבר עם מור חן"
+at 11:29. Both were saved correctly, with their hour and a reminder. About
+half an hour after each, `jobs/fact-extraction.js` filed the same commitment a
+second time — no hour, no reminder, `source = 'extracted'`. Two tasks became
+four, and the newer copies of both are the ones with nothing attached.
+
+The prompt does ask it not to, and hands it his open list to check against.
+He has 67 open tasks; the cap is 40; and the query took the OLDEST forty. So
+the one task most likely to be duplicated — the one saved minutes earlier, in
+the very conversation being read back — was the one task structurally
+guaranteed not to be in the list. Every user past the cap had this, and the
+symptom is invisible unless you look at two rows side by side and notice one
+of them has no time on it.
+
+Now the newest forty, re-sorted for reading so parents still precede their
+subtasks. Nothing about the cap or the prompt changed; the forty are simply
+the forty that could matter.
 
 ### The four checks that could never have fired (2026-09-06)
 
