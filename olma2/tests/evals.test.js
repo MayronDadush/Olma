@@ -9,7 +9,8 @@ const assert = require('node:assert/strict');
 const { freshDb, makeUser } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const harness = require('../src/evals/harness');
-const { SCENARIOS } = require('../src/evals/scenarios');
+const scenarios = require('../src/evals/scenarios');
+const { SCENARIOS } = scenarios;
 const evalsJob = require('../src/jobs/evals');
 const tasksDomain = require('../src/domain/tasks');
 const flagsDomain = require('../src/domain/flags');
@@ -45,6 +46,13 @@ function fakeTurns(script) {
     return { reply: step.reply || 'בסדר', toolCalls: step.toolCalls || ['turn_start'], model: 'x/test-model' };
   };
 }
+
+// Every makeTurnRunner here injects this. The default opener talks to the REAL
+// brokerd socket, which does not exist on a laptop or in CI and DOES exist on
+// the box, where `deploy.sh` runs this same suite — a unit test would send a
+// live `turn_open` for the eval user to the production daemon, and hold its
+// socket open besides. Only the eval run itself opens a real turn.
+const noOpen = async () => {};
 
 // Stubs for deps.complete — the judge's raw model reply, as llm.complete
 // would return it.
@@ -329,8 +337,10 @@ test('makeTurnRunner passes --model only when a candidate was named', async () =
   const calls = [];
   const fakeRun = async (args) => { calls.push(args); return { result: { meta: {}, payloads: [] } }; };
   const withModel = harness.makeTurnRunner(
-    { agentId: 'u-15', sessionKey: 'k', model: 'openrouter/qwen/qwen3.7-flash' }, { runOpenclawJson: fakeRun });
-  const baseline = harness.makeTurnRunner({ agentId: 'u-15', sessionKey: 'k' }, { runOpenclawJson: fakeRun });
+    { agentId: 'u-15', sessionKey: 'k', model: 'openrouter/qwen/qwen3.7-flash' },
+    { runOpenclawJson: fakeRun, openTurn: noOpen });
+  const baseline = harness.makeTurnRunner({ agentId: 'u-15', sessionKey: 'k' },
+    { runOpenclawJson: fakeRun, openTurn: noOpen });
   await withModel('שלום');
   await baseline('שלום');
   assert.deepEqual(calls[0].slice(-2), ['--model', 'openrouter/qwen/qwen3.7-flash']);
@@ -358,6 +368,7 @@ test('makeTurnRunner reads tool calls from the sqlite store when sessionFile is 
   ];
   const runTurn = harness.makeTurnRunner({ agentId: 'u-15', sessionKey: 'k' }, {
     runOpenclawJson: fakeRun,
+    openTurn: noOpen,
     readSessionEventsSlice: (agentId, key, fromSeq) => {
       slices.push([agentId, key, fromSeq]);
       return events.shift();
@@ -615,4 +626,133 @@ test('sweeps that select users all exclude the eval user', async () => {
       'a due reminder on the eval user must never reach the send list');
     await harness.resetEvalUser(c, evalUser.id);
   });
+});
+
+// Phase B moves the opening out of the model's hands and into the prompt, per
+// person, by the `turn_context_phones` flag. The eval user is covered by that
+// flag like anyone else the day it says `all` — and on that day `turn_start
+// first in every turn` would be asserting the OLD doctrine against a model
+// correctly following the new one. So the check follows the flag.
+test('the opening check follows the doctrine the user is actually running', async () => {
+  const turnCtx = require('../src/domain/turn');
+  const wrote = () => fakeTurns([{ reply: 'קצר.', toolCalls: ['turn_start'] }]);
+
+  // Uncovered (today): turn_start first is required, and its absence is red.
+  const plain = await harness.runScenario(db.pool, evalUser, byId['general-knowledge'], {
+    runTurn: wrote(), complete: judgePass,
+  });
+  assert.equal(plain.status, 'green', JSON.stringify(plain.hardFailures));
+
+  await withTx(db.pool, (c) => flagsDomain.setFlag(c, turnCtx.CONTEXT_FLAG, evalUser.phone));
+  try {
+    // Covered: the same turn is now RED, because the call was wasted — the
+    // opening was already in the prompt.
+    const spent = await harness.runScenario(db.pool, evalUser, byId['general-knowledge'], {
+      runTurn: wrote(), complete: judgePass,
+    });
+    assert.equal(spent.status, 'red', JSON.stringify(spent));
+    assert.ok(spent.hardFailures.some((f) => /no turn_start spent/.test(f.name)),
+      `expected the wasted-call check to fail, got: ${JSON.stringify(spent.hardFailures)}`);
+
+    // ...and a turn that reads its opening out of the prompt is green.
+    const clean = await harness.runScenario(db.pool, evalUser, byId['general-knowledge'], {
+      runTurn: fakeTurns([{ reply: 'קצר.', toolCalls: [] }]), complete: judgePass,
+    });
+    assert.equal(clean.status, 'green', JSON.stringify(clean.hardFailures));
+
+    // The invariant still bites when nothing opened the turn at all — the
+    // replacement check must not be a check that cannot fail.
+    const unopened = await harness.runScenario(db.pool, evalUser, byId['general-knowledge'], {
+      runTurn: async () => ({ reply: 'קצר.', toolCalls: [], model: 'x/test-model' }),
+      complete: judgePass,
+    });
+    assert.equal(unopened.status, 'red');
+    assert.ok(unopened.hardFailures.some((f) => /every turn was opened/.test(f.name)),
+      JSON.stringify(unopened.hardFailures));
+  } finally {
+    await withTx(db.pool, (c) => flagsDomain.setFlag(c, turnCtx.CONTEXT_FLAG, ''));
+  }
+});
+
+// `turnWasOpened` counts audit rows at or after the scenario's start mark, and
+// that mark used to be `Date.now()` — milliseconds, against a `created_at`
+// column in microseconds. Two fast scenarios in the same millisecond meant the
+// first one's turn counted as the second one's, so a turn nothing opened went
+// green. The mark comes from the database now.
+test("a scenario is scoped by the database clock, not this process's milliseconds", async () => {
+  let seen = null;
+  const probe = {
+    id: 'probe-scope',
+    turns: ['שלום'],
+    hard: async (client, ctx) => { seen = ctx.startedAt; return scenarios.turnOpening(client, ctx); },
+  };
+  const rowAt = await withTx(db.pool, async (c) => {
+    await require('../src/domain/audit').record(c, evalUser.id, 'message.received', null);
+    const { rows } = await c.query(
+      `SELECT max(created_at)::text AS t FROM audit_log WHERE actor_id = $1`, [evalUser.id]);
+    return rows[0].t;
+  });
+
+  const r = await harness.runScenario(db.pool, evalUser, probe, {
+    runTurn: async () => ({ reply: 'קצר.', toolCalls: [], model: 'x/test-model' }),
+    complete: judgePass,
+  });
+
+  // Postgres prints the fraction with trailing zeros trimmed — `.09107` is a
+  // microsecond value too, and matching six digits failed the deploy the
+  // first time the clock ended in a zero (2026-09-06). This proves the mark is
+  // the database's text and not a millisecond count; the strict-after check
+  // below is what proves the precision.
+  assert.match(String(seen), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?\+00$/,
+    "the mark is a database timestamp, not this process's milliseconds");
+  const { rows } = await db.pool.query(`SELECT ($1::timestamptz > $2::timestamptz) AS after`, [seen, rowAt]);
+  assert.equal(rows[0].after, true, 'the mark must sit strictly after a row committed before the scenario');
+  assert.equal(r.status, 'red', JSON.stringify(r.hardFailures));
+  assert.ok(r.hardFailures.some((f) => /every turn was opened/.test(f.name)), JSON.stringify(r.hardFailures));
+});
+
+// The harness opens its own turns over brokerd's socket, exactly as the
+// gateway hook does for a real message — without that, a covered eval user
+// gets no context block and the whole suite silently measures the fallback.
+test('the harness opens each turn through brokerd, with no message id to react to', async () => {
+  const written = [];
+  const life = { destroyed: 0, unrefs: 0 };
+  const fakeSocket = () => {
+    const h = {};
+    const s = {
+      on(ev, fn) { h[ev] = fn; return s; },
+      write(x) { written.push(x); setTimeout(() => h.data && h.data('{"ok":true}\n'), 0); },
+      end() {}, destroy() { life.destroyed++; }, unref() { life.unrefs++; },
+    };
+    setTimeout(() => h.connect && h.connect(), 0);
+    return s;
+  };
+  await harness.openTurnForEval('u-15', { connect: fakeSocket });
+  assert.equal(written.length, 1);
+  const msg = JSON.parse(written[0]);
+  assert.equal(msg.method, 'turn_open');
+  assert.deepEqual(msg.params, { agentId: 'u-15', kind: 'text' });
+  assert.equal(msg.params.messageId, undefined, 'no message id: nothing to put a 👀 on');
+
+  // The handle is closed and unref'd on the way out. `end()` alone leaves the
+  // socket waiting on the far side, and on the box — where deploy.sh runs this
+  // suite and the socket really answers — that held the test child open and
+  // wedged the whole run twice.
+  assert.equal(life.destroyed, 1, 'the socket is destroyed, not merely ended');
+  assert.equal(life.unrefs, 1, 'and unref\'d, so it cannot hold the process open either way');
+
+  // brokerd down is not an eval failure — the turn falls back to turn_start.
+  const dead = () => { const h = {}; const s = { on(ev, fn) { h[ev] = fn; return s; }, write() {}, end() {}, destroy() {} }; setTimeout(() => h.error && h.error(new Error('ECONNREFUSED')), 0); return s; };
+  await harness.openTurnForEval('u-15', { connect: dead });
+
+  // and the turn runner calls it before every turn
+  const opened = [];
+  const runTurn = harness.makeTurnRunner({ agentId: 'u-15', sessionKey: 'k' }, {
+    openTurn: async (a) => { opened.push(a); },
+    runOpenclawJson: async () => ({ result: { payloads: [{ text: 'ok' }], meta: {} } }),
+    readSessionEventsSlice: () => null,
+  });
+  await runTurn('שלום');
+  await runTurn('עוד משהו');
+  assert.deepEqual(opened, ['u-15', 'u-15']);
 });

@@ -8,6 +8,7 @@
 const usersDomain = require('../domain/users');
 const { enqueue } = require('../outbox/enqueue');
 const { introMessage } = require('./messages');
+const templates = require('../domain/message-templates');
 const { ok } = require('../domain/results');
 
 async function ensurePendingUser(client, phone) {
@@ -42,7 +43,7 @@ async function afterConnectionRequest(client, requester, connection, targetKnown
       text: introMessage({
         inviterName, inviterPhone: requester.phone,
         reason: connection.invite_reason, phone: connection.target_phone,
-      }),
+      }, await templates.load(client)),
     },
     idempotencyKey: `connintro:${connection.id}`,
   });

@@ -412,6 +412,98 @@ function hasInboundUserTurn(agentId, sessionKey, base = HOME()) {
   });
 }
 
+// ---- group mode -------------------------------------------------------------
+
+// Every group session across every agent: the greeter's (groups nobody has
+// registered yet, and registered groups that are still locked) and each open
+// group's own. The peer is the WhatsApp group JID.
+function listGroupSessions(base = HOME()) {
+  return listSessions(base).filter((s) => s.chatType === 'group' && s.channel === 'whatsapp');
+}
+
+// Walks an event object's string fields looking for the inbound
+// `Conversation info:` block. It is buried at a different depth depending on
+// storage generation and event kind (a prompt field in the trajectory era, an
+// event_json string in sqlite), and the shape is the gateway's, not ours —
+// so this searches rather than reaches, and a shape change costs a missed
+// read instead of a crash.
+function findConversationInfo(value, depth = 0) {
+  if (depth > 6 || value == null) return null;
+  if (typeof value === 'string') {
+    const m = CONVERSATION_INFO_RE.exec(value);
+    if (!m) return null;
+    try { return JSON.parse(m[1]); } catch { return null; }
+  }
+  if (Array.isArray(value)) {
+    for (const v of value) {
+      const found = findConversationInfo(v, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof value === 'object') {
+    for (const v of Object.values(value)) {
+      const found = findConversationInfo(v, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+// What a group's transcript says about the group itself: its subject, its
+// roster, and who spoke last.
+//
+// This is the whole reason a locked group runs a muted turn at all. The
+// roster arrives in the inbound envelope, which reaches the MODEL's prompt —
+// so reading it back through a tool the model calls would be a gate the model
+// could open by under-reporting. Here it is read off the gateway's own
+// transcript store instead, with nothing in the trust path.
+//
+// Returns null when there is nothing to read: an unknown key, an unreadable
+// store, or a transcript with no inbound group turn yet. Null is "no
+// evidence", never "an empty group".
+function readGroupContext(agentId, sessionKey, base = HOME()) {
+  const source = currentSessionFor(agentId, base, null);
+  const parsed = parseKey(sessionKey);
+  const direct = withAgentDb(agentId, base, (db) => {
+    const node = db.prepare(
+      'SELECT current_session_id FROM session_nodes WHERE session_key = ?').get(sessionKey);
+    if (!node) return null;
+    return db.prepare(
+      'SELECT event_json FROM transcript_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?')
+      .all(node.current_session_id, TRANSCRIPT_TAIL_EVENTS);
+  });
+  let events = [];
+  if (direct) {
+    for (const r of direct) {
+      try { events.push(JSON.parse(r.event_json)); } catch { /* corrupt event */ }
+    }
+  } else if (source) {
+    events = readTranscriptTail(agentId, base, source);
+  }
+
+  for (const ev of events) {
+    const info = findConversationInfo(ev);
+    if (!info) continue;
+    // A block from another conversation in a shared store would attach one
+    // group's roster to another. The greeter serves every unregistered group
+    // at once, so this check is not theoretical.
+    if (parsed && info.chat_id && String(info.chat_id) !== parsed.peer) continue;
+    return {
+      subject: typeof info.group_subject === 'string' ? info.group_subject : null,
+      members: typeof info.group_members === 'string' ? info.group_members : null,
+      senderE164: (info.sender && (info.sender.e164 || info.sender.id)) || null,
+      senderName: (info.sender && info.sender.name) || null,
+      wasMentioned: info.was_mentioned === true,
+      // The tagging message's own id, so an answer can be sent as a reply to
+      // it (`openclaw message send --reply-to`). Absent on older events.
+      messageId: typeof info.message_id === 'string' && info.message_id ? info.message_id : null,
+      at: ev.timestamp || null,
+    };
+  }
+  return null;
+}
+
 // Everything a stranger said to the intake greeter, joined into one blob.
 // This is what makes the greeter's silence safe: nothing the person typed
 // while we were setting them up is lost — their own agent gets it and
@@ -602,7 +694,8 @@ function scanAssistantTextSince(agentId, sinceMs, base = HOME()) {
 }
 
 module.exports = {
-  listSessions, listSessionsForAgent, indexPath, parseKey,
+  listSessions, listSessionsForAgent, listGroupSessions, readGroupContext,
+  findConversationInfo, indexPath, parseKey,
   readRecentMessages, readPeerUserText, readPeerDisplayName, displayNameFromPrompt,
   listTranscripts, readTranscriptUsage, readSessionEventsSlice, hasInboundUserTurn,
   scanAssistantTextSince,

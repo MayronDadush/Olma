@@ -17,13 +17,17 @@
 // marked users.is_eval; every sweep skips it and the outbox gate drops its
 // rows, so the fake phone number can never generate delivery noise.
 const fs = require('node:fs');
+const net = require('node:net');
 const { withTx } = require('../db/pool');
 const { runOpenclawJson } = require('../channels/openclaw');
 const sessionIndex = require('../channels/sessions');
 const { refreshUserCard } = require('../intake/user-card');
 const llm = require('../adapters/llm');
+const turnDomain = require('../domain/turn');
 
 const EVAL_PHONE = '+972599999001';
+const BROKERD_SOCK = process.env.OLMA_SOCK || '/opt/olma2/run/brokerd.sock';
+const OPEN_TIMEOUT_MS = 2_000;
 // Different family than the production agent model, on purpose.
 const JUDGE_MODEL = 'moonshotai/kimi-k2.6';
 const TURN_TIMEOUT_MS = 240_000; // a cold flash turn measured ~77s; leave room
@@ -63,6 +67,56 @@ async function resetEvalUser(client, userId) {
   );
 }
 
+// A real person's turn is opened by the gateway's own hook before the model
+// reads anything (gateway-hooks/olma-turn-open). The harness sends its turns
+// through `openclaw agent --message`, which fires no inbound-channel event,
+// so nothing would open them — and once a user is covered by
+// `turn_context_phones` that is not a cosmetic difference: with no open on
+// file brokerd hands the plugin nothing, the doctrine falls back to calling
+// `turn_start`, and the eval measures the FALLBACK path while every real
+// person is on the other one. An eval that tests a path nobody is on is
+// worse than no eval.
+//
+// So the harness opens the turn itself, over the same socket the hook uses.
+// Deliberately WITHOUT a message id: brokerd only places the 👀 when it has
+// one, and there is no real WhatsApp message here to put a reaction on.
+// Best-effort and never throws, exactly like the hook — a brokerd that is
+// down leaves the turn to `turn_start`, which is what happens in production
+// too.
+//
+// Every exit destroys the socket and both handles are unref'd. `end()` alone
+// was not enough: it sends FIN and waits for the other side, so on the box —
+// the one machine where the socket actually answers — the handle outlived the
+// test child, `node --test` waited on it for ever, and the on-box suite wedged
+// on both attempts (CLAUDE.md, Testing: a test child that cannot exit is
+// invisible). A best-effort call must not be able to hold a process open.
+function openTurnForEval(agentId, { connect = net.connect, sock = BROKERD_SOCK } = {}) {
+  return new Promise((resolve) => {
+    let done = false;
+    let socket = null;
+    let t = null;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (t) clearTimeout(t);
+      try { if (socket) socket.destroy(); } catch { /* already gone */ }
+      resolve();
+    };
+    try { socket = connect(sock); } catch { return finish(); }
+    t = setTimeout(finish, OPEN_TIMEOUT_MS);
+    if (typeof t.unref === 'function') t.unref();
+    if (typeof socket.unref === 'function') socket.unref();
+    socket.on('error', finish);
+    socket.on('close', finish);
+    socket.on('data', finish);
+    socket.on('connect', () => {
+      try {
+        socket.write(`${JSON.stringify({ id: 1, method: 'turn_open', params: { agentId, kind: 'text' } })}\n`);
+      } catch { finish(); }
+    });
+  });
+}
+
 // Tool names out of a gateway transcript slice, in order of appearance.
 // The transcript is append-only JSONL; reading from the previous offset gives
 // exactly this turn's calls — the same trick usage attribution relies on.
@@ -80,10 +134,12 @@ function toolCallsInSlice(text) {
 function makeTurnRunner({ agentId, sessionKey, model }, deps = {}) {
   const run = deps.runOpenclawJson || runOpenclawJson;
   const readEventsSlice = deps.readSessionEventsSlice || sessionIndex.readSessionEventsSlice;
+  const openTurn = deps.openTurn || openTurnForEval;
   let offset = 0;        // bytes into the transcript FILE (gateway ≤ 2026.6.x)
   let sqliteOffset = 0;  // next unread event seq (gateway ≥ 2026.8.1)
   let sessionFile = null;
   return async function runTurn(message) {
+    await openTurn(agentId);
     const json = await run(
       ['agent', '--agent', agentId, '--session-key', sessionKey, '--message', message, '--json',
         // A per-call override, exactly as scripts/model-pilot.js uses it: it
@@ -363,9 +419,22 @@ async function runScenario(pool, user, scenario, deps = {}) {
   const started = Date.now();
   const result = { scenario: scenario.id, status: 'error', hardFailures: [], judge: null, reply: null };
   try {
+    let turnContext = false;
+    let startedAt = new Date(started).toISOString();
     await withTx(pool, async (c) => {
       await resetEvalUser(c, user.id);
       if (scenario.seed) await scenario.seed(c, user.id);
+      turnContext = await turnDomain.contextEnabledFor(c, user);
+      // The scoping mark comes from the DATABASE clock, not this process's.
+      // `Date.now()` is milliseconds and `created_at` is microseconds, so a
+      // row committed 400µs before the scenario began still reads as
+      // `created_at >= startedAt` — the previous scenario's turn counted as
+      // this one's, and an unopened turn went green. `clock_timestamp()` is
+      // taken inside this transaction, after every earlier scenario has
+      // committed and before any of this one's turns run. As TEXT on purpose:
+      // the pg driver parses a timestamptz into a JS Date, which is
+      // milliseconds again and would throw the precision away on the way back.
+      ({ rows: [{ t: startedAt }] } = await c.query('SELECT clock_timestamp()::text AS t'));
     });
     // Outside the transaction — the card must reflect committed seed state
     // (the planning-pass lesson: a card rendered inside the tx cannot see it).
@@ -390,7 +459,12 @@ async function runScenario(pool, user, scenario, deps = {}) {
     // scenario in the same run.
     const ctx = {
       userId: user.id, turns, toolCalls: turns.flatMap((t) => t.toolCalls),
-      startedAt: new Date(started).toISOString(),
+      startedAt,
+      // Which side opens this user's turns decides what the opening check
+      // may assert (see scenarios.turnOpening). Read per run, not cached:
+      // the flag is how the rollout moves, and a scenario must judge the
+      // model against the doctrine it is actually running.
+      turnContext,
     };
     result.reply = turns.length ? turns[turns.length - 1].reply : null;
 
@@ -440,7 +514,7 @@ async function runScenario(pool, user, scenario, deps = {}) {
 module.exports = {
   EVAL_PHONE, JUDGE_MODEL, TURN_TIMEOUT_MS,
   getEvalUser, resetEvalUser, runScenario, judgeScenario,
-  makeTurnRunner, toolCallsInSlice, JUDGE_SYSTEM,
+  makeTurnRunner, toolCallsInSlice, openTurnForEval, JUDGE_SYSTEM,
   verifyProblems, stateSnapshot, JUDGE_MAX_TOKENS, JUDGE_TRUNCATION_MAX_TOKENS,
   JUDGE_ATTEMPTS, JUDGE_TIMEOUT_MS,
   JUDGE_RETRY_DELAY_MS,

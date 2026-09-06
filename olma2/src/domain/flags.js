@@ -24,6 +24,12 @@ const DEFAULTS = {
   reminder_escalation_max: 3,
   reminder_escalation_gap_hours: 3,
   live_subscriptions_per_user: 5,   // cap on active live-update subscriptions
+  // Group mode (domain/groups.js): the largest group she will work in. Above
+  // it she says so once and stops — a 50-person group never realistically gets
+  // every member to write to her privately, and each tag costs a model turn.
+  // A flag rather than a constant because it is a taste call about a product
+  // that has not met a real group yet.
+  group_max_members: 25,
   // channels/openclaw.js digest branch: how many items make the morning
   // picture a wall of text worth drawing instead of listing. The number is a
   // flag because it is a taste call about a message people read every day,

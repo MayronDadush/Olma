@@ -35,6 +35,24 @@ function turnStartFirst(ctx) {
   };
 }
 
+// ...and its opposite, for a user whose opening arrives in the PROMPT
+// (`turn_context_phones`, Phase B): the doctrine those users run says do NOT
+// call turn_start while the `Turn context` block is there, so a call is a
+// wasted round trip — the entire saving the feature exists for. Asserting
+// `turn_start` first for such a user would be asserting the old doctrine
+// against the new one, and it would go red for the model being right.
+function turnStartNotSpent(ctx) {
+  const bad = ctx.turns.filter((t) => t.toolCalls.includes('turn_start'));
+  return {
+    name: 'no turn_start spent — the opening came in the prompt',
+    pass: bad.length === 0,
+    detail: bad.length
+      ? `${bad.length} of ${ctx.turns.length} turn(s) called turn_start anyway `
+        + '(the block was missing, or the doctrine variant is the wrong one)'
+      : undefined,
+  };
+}
+
 // The same rule, asserted one layer down: every turn was OPENED — counted
 // toward quota, person marked awake — whichever tool the model reached for.
 //
@@ -62,6 +80,19 @@ async function turnWasOpened(client, ctx) {
     pass: rows[0].n >= ctx.turns.length,
     detail: `${rows[0].n} of ${ctx.turns.length} turns counted`,
   };
+}
+
+// The opening check every scenario carries, in TWO parts, because a single
+// verdict cannot say which half broke. The invariant first — the turn was
+// counted, whoever opened it — then the shape the doctrine this user runs
+// asks for. `ctx.turnContext` is resolved per run by the harness from the
+// flag itself, so a scenario judges the model against the doctrine it is
+// actually running rather than the one that was current when it was written.
+async function turnOpening(client, ctx) {
+  return [
+    await turnWasOpened(client, ctx),
+    ctx.turnContext ? turnStartNotSpent(ctx) : turnStartFirst(ctx),
+  ];
 }
 
 // The gateway hands the model WhatsApp reply context as its own labelled block
@@ -118,7 +149,7 @@ const SCENARIOS = [
     title: 'בקשת חיבור לבית ספר נדחית בלי לכתוב אותו',
     turns: ['אתה יכול לכתוב לי עבודה של 300 מילים על הרצל לבית ספר?'],
     hard: async (client, ctx) => [
-      turnStartFirst(ctx),
+      ...await turnOpening(client, ctx),
       // The essay itself is the failure — 300 words of Hebrew is 1500+ chars,
       // a decline-plus-offer is a fraction of that.
       { name: 'reply is not the essay', pass: (ctx.turns[0].reply || '').length < 700,
@@ -133,7 +164,7 @@ const SCENARIOS = [
     title: 'שאלת ידע כללי לא הופכת להרצאה',
     turns: ['מה ההבדל בין ריבית פריים לריבית משתנה?'],
     hard: async (client, ctx) => [
-      turnStartFirst(ctx),
+      ...await turnOpening(client, ctx),
       { name: 'reply is short, not a lecture', pass: (ctx.turns[0].reply || '').length < 500,
         detail: `reply length ${(ctx.turns[0].reply || '').length}` },
     ],
@@ -144,7 +175,7 @@ const SCENARIOS = [
     title: 'שעה שנאמרה בעברית נשמרת בשעון של המשתמש, לא UTC',
     turns: ['תרשמי לי משמרת מחר מ15:00 עד 22:00'],
     hard: async (client, ctx) => [
-      turnStartFirst(ctx),
+      ...await turnOpening(client, ctx),
       // The 2026-08-26 incident: "רביעי מ15-22" stored as 15:00 UTC, reminder
       // derived 2.5 hours after the real shift started.
       { name: 'a task exists at 15:00 in HER timezone',
@@ -167,7 +198,7 @@ const SCENARIOS = [
     title: 'מטרה שנאמרה בשיחה נשמרת באותו טרן, בלי לבקש רשות',
     turns: ['אני חייב להתחיל למכור שלושה רכבים שלי'],
     hard: async (client, ctx) => [
-      turnStartFirst(ctx),
+      ...await turnOpening(client, ctx),
       // The vehicles incident: said out loud, saved nowhere, never mentioned
       // again. A goal IS a task, saved before any question is asked.
       { name: 'at least one task was saved this turn',
@@ -182,7 +213,7 @@ const SCENARIOS = [
     title: 'מספר טלפון הולך לאנשי קשר, לא לזיכרון',
     turns: ['תשמרי את המספר של אמא שלי: 052-1234567'],
     hard: async (client, ctx) => [
-      turnStartFirst(ctx),
+      ...await turnOpening(client, ctx),
       { name: 'a contact row holds the number',
         pass: (await count(client,
           `SELECT count(*)::int AS n FROM user_contacts
@@ -199,7 +230,7 @@ const SCENARIOS = [
     title: 'הצפת משימות נשמרת בקריאה אחת, לא בלולאה',
     turns: ['יש לי מלא דברים על הראש: לקבוע תור לרופא שיניים, לשלם ארנונה עד חמישי, להזמין מתנה ליום הולדת של אמא, ולבדוק את ביטוח הרכב'],
     hard: async (client, ctx) => [
-      turnStartFirst(ctx),
+      ...await turnOpening(client, ctx),
       { name: 'at least 4 tasks saved',
         pass: (await count(client, `SELECT count(*)::int AS n FROM tasks WHERE owner_id = $1`, [ctx.userId])) >= 4 },
       { name: 'ONE add_tasks_bulk, not an add_task loop',
@@ -214,7 +245,7 @@ const SCENARIOS = [
     title: 'פגישה עם מי שאינו מחובר לא נקבעת ולא מומצאת',
     turns: ['תקבעי לי פגישה עם דודו למחר בערב'],
     hard: async (client, ctx) => [
-      turnStartFirst(ctx),
+      ...await turnOpening(client, ctx),
       // Scheduling between people happens ONLY through the meeting tools, and
       // those require an active connection. Nothing may pretend otherwise.
       { name: 'no meeting row was created',
@@ -238,7 +269,7 @@ const SCENARIOS = [
       await tasks.addTask(client, userId, { title: 'לקבוע חוג לילדה', source: 'chat' });
     },
     turns: ['מה הכי דחוף אצלי השבוע?'],
-    hard: async (client, ctx) => [turnStartFirst(ctx)],
+    hard: async (client, ctx) => [...await turnOpening(client, ctx)],
     rubric: 'למשתמשת שמורה העדפת מגדר נקבה. בדוק כל פועל ופנייה בתשובה: הכל חייב להיות בלשון נקבה עקבית ("תרצי", "את יכולה") — אפילו החלקה אחת ללשון זכר ("אתה", "תרצה") היא כשל. בנוסף: התשובה עונה מהמשימות האמיתיות שלה, לא ממציאה.',
   },
   {
@@ -253,7 +284,7 @@ const SCENARIOS = [
     title: 'שאלה על מייל בלי תיבה מחוברת — לא ממציאים מיילים',
     turns: ['תבדקי לי מה כתבו לי מהבנק במייל השבוע'],
     hard: async (client, ctx) => [
-      turnStartFirst(ctx),
+      ...await turnOpening(client, ctx),
       { name: 'no mailbox was invented into existence',
         pass: (await count(client,
           `SELECT count(*)::int AS n FROM integrations WHERE user_id = $1 AND provider = 'gmail'`,
@@ -280,7 +311,7 @@ const SCENARIOS = [
       `${replyTargetBlock('תזכורת: לשלם ארנונה — עדיין פתוח אצלך.')}\nסיימתי`,
     ],
     hard: async (client, ctx) => [
-      turnStartFirst(ctx),
+      ...await turnOpening(client, ctx),
       { name: 'the QUOTED task was closed',
         pass: (await count(client,
           `SELECT count(*)::int AS n FROM tasks
@@ -334,7 +365,7 @@ const SCENARIOS = [
     },
     turns: ['בפגישה "קפה עם דנה" תציעי בבקשה גם את יום שלישי הקרוב ב-20:00, בנוסף למה שכבר הוצע'],
     hard: async (client, ctx) => [
-      turnStartFirst(ctx),
+      ...await turnOpening(client, ctx),
       // THIS run's meeting only — the newest by that name. Two runs inside an
       // hour once left two meetings behind, and a count across both read four
       // options where the model had correctly added exactly one.
@@ -360,4 +391,4 @@ for (const s of SCENARIOS) {
   seen.add(s.id);
 }
 
-module.exports = { SCENARIOS, turnStartFirst, turnWasOpened };
+module.exports = { SCENARIOS, turnStartFirst, turnStartNotSpent, turnOpening, turnWasOpened };

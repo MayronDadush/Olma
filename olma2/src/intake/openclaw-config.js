@@ -145,9 +145,304 @@ function addAllowFrom(cfg, phone) {
   return true;
 }
 
+// ---- group mode (olma2/docs/group-mode.md) ---------------------------------
+// Three levers, each verified against the running gateway on 2026-09-04
+// rather than against the docs, because two of the three do not behave the
+// way the docs read:
+//
+// 1. ADMISSION — the groups MAP, keyed by group JID (written under
+//    `channels.whatsapp.accounts.default` — see admitGroup for why), and
+//    it is an allowlist the moment it is non-empty: adding the first entry
+//    blocks every group that is not in it. Hot-applies, but a channels change
+//    RESTARTS the whatsapp channel (~9s of no inbound, measured), so this is
+//    a per-group registration lever, never a per-message one.
+//
+// 2. ROUTING — a normal binding with `peer.kind: 'group'`.
+//
+// 3. THE MUTE — `session.sendPolicy`, at the TOP LEVEL of the config and not
+//    under `agents.defaults.session` where the config-agents doc's example
+//    puts it (`resolveSendPolicy` reads `params.cfg.session?.sendPolicy`).
+//    `deny` sets `suppressDelivery` unconditionally, so the turn still runs
+//    and still writes its transcript — which is exactly what a locked group
+//    needs: she sees the roster, and cannot speak.
+//
+// The trap under 3, and the reason `muteGroup` never travels alone: a
+// sendPolicy-ONLY write is evaluated and DROPPED — the gateway logged
+// "config change detected; evaluating reload (session.sendPolicy)" and then
+// nothing, the same noop-plan early-exit that swallows a bindings-only write
+// (see the header of this file). Bundled with an `agents.entries` change it
+// applied in ~4s. Every lock/unlock therefore rides along with an agent or
+// binding write in ONE saveConfig, exactly like provisioning.
+//
+// A second trap, probed before building on it: the mere PRESENCE of
+// `session.sendPolicy` makes `resolveSendPolicy` deny any session key whose
+// peer shape it finds ambiguous. Every one of the 46 live session keys on the
+// box, plus every other key shape this gateway mints (main, cron, heartbeat,
+// explicit model-run, webchat, newsletter), was run through the gateway's own
+// resolver with and without a group rule: one key changed, the group's own.
+
+// The prefix a group's sessions share, in the STRIPPED form the resolver also
+// matches (`session.groupScope: "per-group"` → agent:<id>:whatsapp:group:<jid>).
+// Keying on the group rather than on the agent means a group that is later
+// re-provisioned under a different agent id stays muted.
+function groupSessionPrefix(jid) {
+  return `whatsapp:group:${String(jid).toLowerCase()}`;
+}
+
+function sendPolicyRules(cfg) {
+  cfg.session = cfg.session || {};
+  cfg.session.sendPolicy = cfg.session.sendPolicy || { rules: [], default: 'allow' };
+  cfg.session.sendPolicy.rules = cfg.session.sendPolicy.rules || [];
+  // `default` decides every session no rule matched — an absent or misspelt
+  // value resolving to anything but 'allow' would mute the entire system.
+  cfg.session.sendPolicy.default = 'allow';
+  return cfg.session.sendPolicy.rules;
+}
+
+function isGroupMuted(cfg, jid) {
+  const prefix = groupSessionPrefix(jid);
+  const rules = (cfg.session && cfg.session.sendPolicy && cfg.session.sendPolicy.rules) || [];
+  return rules.some((r) => r && r.action === 'deny' && r.match && r.match.keyPrefix === prefix);
+}
+
+// MUST be written in the same saveConfig as an agent/binding change (see above).
+function muteGroup(cfg, jid) {
+  if (isGroupMuted(cfg, jid)) return false;
+  sendPolicyRules(cfg).push({
+    action: 'deny',
+    match: { keyPrefix: groupSessionPrefix(jid) },
+  });
+  return true;
+}
+
+function unmuteGroup(cfg, jid) {
+  if (!cfg.session || !cfg.session.sendPolicy || !Array.isArray(cfg.session.sendPolicy.rules)) return false;
+  const prefix = groupSessionPrefix(jid);
+  const before = cfg.session.sendPolicy.rules.length;
+  cfg.session.sendPolicy.rules = cfg.session.sendPolicy.rules.filter(
+    (r) => !(r && r.action === 'deny' && r.match && r.match.keyPrefix === prefix)
+  );
+  return cfg.session.sendPolicy.rules.length !== before;
+}
+
+// Admission. `requireMention` is the product rule — only a real @-mention or a
+// reply wakes her — and it is set per group rather than through
+// `messages.groupChat.mentionPatterns`, which would ALSO make her name in free
+// text a trigger. The owner asked for a real tag only, so no patterns are ever
+// written.
+//
+// WHERE the map is written is load-bearing, and it is not where this code
+// first put it. The gateway's reload planner takes the FIRST rule whose prefix
+// matches (`matchRule`, config-reload-plan.js), and the WhatsApp plugin
+// declares (its manifest, shared-D3B14d45.js):
+//
+//   configPrefixes: ["channels.whatsapp.enabled",
+//                    "channels.whatsapp.accounts",
+//                    "channels.whatsapp.selfChatMode"]   -> hot, restart-channel
+//   noopPrefixes:   ["channels.whatsapp"]                -> none
+//
+// So `channels.whatsapp.groups` matches only the noop rule and a write that
+// touches nothing else is DROPPED IN SILENCE — the same early-exit that eats a
+// bindings-only and a sendPolicy-only write. Under `accounts.default` the very
+// same map is a hot reason that applies on its own. The gateway merges the
+// channel-level map into the account anyway (`resolveChannelGroups` ->
+// `resolveMergedAccountConfig`), so the readers below accept both and the
+// writers only ever use the account.
+function whatsappAccount(cfg, { create = false } = {}) {
+  if (!create) {
+    return (cfg.channels && cfg.channels.whatsapp && cfg.channels.whatsapp.accounts
+      && cfg.channels.whatsapp.accounts.default) || null;
+  }
+  cfg.channels = cfg.channels || {};
+  cfg.channels.whatsapp = cfg.channels.whatsapp || {};
+  cfg.channels.whatsapp.accounts = cfg.channels.whatsapp.accounts || {};
+  cfg.channels.whatsapp.accounts.default = cfg.channels.whatsapp.accounts.default || {};
+  return cfg.channels.whatsapp.accounts.default;
+}
+
+// Read the way the gateway reads: the account's own map wins, the channel-level
+// one is inherited. A config written before the move still resolves.
+function groupsMap(cfg) {
+  const acc = whatsappAccount(cfg);
+  const channelLevel = (cfg.channels && cfg.channels.whatsapp && cfg.channels.whatsapp.groups) || {};
+  return { ...channelLevel, ...((acc && acc.groups) || {}) };
+}
+
+function admitGroup(cfg, jid) {
+  if (Object.hasOwn(groupsMap(cfg), jid)) return false;
+  const acc = whatsappAccount(cfg, { create: true });
+  acc.groups = acc.groups || {};
+  acc.groups[jid] = { requireMention: true };
+  return true;
+}
+
+function unadmitGroup(cfg, jid) {
+  let removed = false;
+  for (const map of [whatsappAccount(cfg) && whatsappAccount(cfg).groups,
+    cfg.channels && cfg.channels.whatsapp && cfg.channels.whatsapp.groups]) {
+    if (map && Object.hasOwn(map, jid)) { delete map[jid]; removed = true; }
+  }
+  return removed;
+}
+
+function isGroupAdmitted(cfg, jid) {
+  return Object.hasOwn(groupsMap(cfg), jid);
+}
+
+// ---- who may speak to her in a group ---------------------------------------
+//
+// `groups` above decides which ROOMS she is in. This decides which PEOPLE in
+// them can reach her at all, and without it the room admission is the only
+// gate there is.
+//
+// The trap, measured against this gateway's own resolver on 2026-09-06
+// (the WhatsApp plugin, monitor-CySzv38g.js, resolveWhatsAppInboundPolicy):
+//
+//   const groupAllowFrom = (account.groupAllowFrom?.length ? ... : undefined)
+//     ?? (configuredAllowFrom.length > 0 ? configuredAllowFrom : undefined) ?? [];
+//
+// The plugin resolves the fallback ITSELF before handing the list to the core
+// resolver (which is why it then passes `groupAllowFromFallbackToAllowFrom:
+// false` and why reading only the core looks reassuring). Ours is
+// `allowFrom: ["*"]`, so with `groupAllowFrom` unset every sender in every
+// group is admitted:
+//
+//   groupAllowFrom UNSET, a stranger writes   -> ALLOW  group_policy_allowed
+//   groupAllowFrom = [] (empty), stranger     -> ALLOW  group_policy_allowed
+//   groupAllowFrom = [user],     stranger     -> BLOCK  group_policy_not_allowlisted
+//   groupAllowFrom = [user],     that user    -> ALLOW  group_policy_allowed
+//
+// **An empty array is not a closed door — it is the same wide-open door as no
+// key at all.** So this never writes one: a caller with nothing to allow is
+// told, and the config is left as it was. The only thing that means "nobody"
+// is `groupPolicy: "disabled"`.
+//
+// Her own number must never appear here. Her outbound messages tag her (the
+// intro carries a real self-mention), and an echo arriving past the gateway's
+// own de-duplication window would otherwise be a sender she trusts — a loop
+// with her at both ends. Keeping her out of the list is the second belt under
+// that, and it costs nothing: measured, her own number is BLOCKed at ingress.
+const SELF_PHONE = normalizePhone(process.env.OLMA_WA_NUMBER || '+972559347282');
+
+function normalizePhone(value) {
+  const digits = String(value == null ? '' : value).replace(/[^0-9]/g, '');
+  return digits ? `+${digits}` : '';
+}
+
+function groupAllowFrom(cfg) {
+  const acc = whatsappAccount(cfg);
+  return acc && Array.isArray(acc.groupAllowFrom) ? acc.groupAllowFrom.slice() : [];
+}
+
+// Declarative: the list becomes exactly these people. One rule covers a user
+// joining, a user pausing and a user being deleted, instead of three mirrored
+// call sites that drift apart.
+function syncGroupAllowFrom(cfg, phones) {
+  const wanted = [];
+  for (const phone of phones || []) {
+    const e164 = normalizePhone(phone);
+    if (!e164 || e164 === SELF_PHONE) continue;
+    if (!wanted.includes(e164)) wanted.push(e164);
+  }
+  wanted.sort();
+  if (!wanted.length) return { changed: false, refusedEmpty: true, entries: groupAllowFrom(cfg) };
+
+  const current = groupAllowFrom(cfg);
+  const same = current.length === wanted.length && current.every((v, i) => v === wanted[i]);
+  if (same) return { changed: false, refusedEmpty: false, entries: current };
+  whatsappAccount(cfg, { create: true }).groupAllowFrom = wanted;
+  return { changed: true, refusedEmpty: false, entries: wanted };
+}
+
+// "Can anybody at all reach her in a group right now?" — the question a config
+// file cannot be read for, because the dangerous answer is spelled as an
+// absent key. True means the sender gate admits everyone.
+function isGroupSenderGateOpen(cfg) {
+  const acc = whatsappAccount(cfg) || {};
+  if ((acc.groupPolicy || (cfg.channels && cfg.channels.whatsapp && cfg.channels.whatsapp.groupPolicy)) === 'disabled') {
+    return false;
+  }
+  const list = groupAllowFrom(cfg);
+  const effective = list.length ? list : (Array.isArray(acc.allowFrom) ? acc.allowFrom : []);
+  return effective.length === 0 || effective.some((v) => String(v).trim() === '*');
+}
+
+// The greeter's catch-all: every group with no exact binding of its own lands
+// on one permanently muted agent. Exact peer bindings outrank a wildcard (the
+// same precedence the direct catch-all relies on), so a group that has been
+// given its own agent stops coming here the moment that binding is written.
+function addGroupWildcardBinding(cfg, { agentId }) {
+  cfg.bindings = cfg.bindings || [];
+  if (cfg.bindings.some((b) => b.match && b.match.peer && b.match.peer.kind === 'group' && b.match.peer.id === '*')) {
+    return false;
+  }
+  cfg.bindings.push({
+    type: 'route', agentId, comment: 'Olma group greeter — every group without its own agent',
+    match: { channel: 'whatsapp', accountId: 'default', peer: { kind: 'group', id: '*' } },
+  });
+  return true;
+}
+
+// Mutes a whole AGENT rather than one group — `rawKeyPrefix` matches the raw
+// session key, which begins `agent:<id>:`. This is what makes the greeter safe:
+// it runs turns for groups nobody has vetted yet, and nothing it says can ever
+// reach anybody.
+function muteAgent(cfg, agentId) {
+  const prefix = `agent:${String(agentId).toLowerCase()}:`;
+  const rules = sendPolicyRules(cfg);
+  if (rules.some((r) => r && r.action === 'deny' && r.match && r.match.rawKeyPrefix === prefix)) return false;
+  rules.push({ action: 'deny', match: { rawKeyPrefix: prefix } });
+  return true;
+}
+
+function isAgentMuted(cfg, agentId) {
+  const prefix = `agent:${String(agentId).toLowerCase()}:`;
+  const rules = (cfg.session && cfg.session.sendPolicy && cfg.session.sendPolicy.rules) || [];
+  return rules.some((r) => r && r.action === 'deny' && r.match && r.match.rawKeyPrefix === prefix);
+}
+
+// `groups["*"]` admits every group — including one we have never seen, which
+// is the whole point: it is what lets a first message anywhere reach the
+// greeter. `requireMention: false` here is the DEFAULT only; a registered
+// group's own entry outranks it (verified in `resolveChannelGroupRequireMention`:
+// exact entry, then "*", then true).
+function admitAllGroups(cfg) {
+  const current = groupsMap(cfg)['*'];
+  if (current && current.requireMention === false) return false;
+  const acc = whatsappAccount(cfg, { create: true });
+  acc.groups = acc.groups || {};
+  acc.groups['*'] = { ...(current || {}), requireMention: false };
+  return true;
+}
+
+function addGroupBinding(cfg, { agentId, jid, comment }) {
+  cfg.bindings = cfg.bindings || [];
+  if (cfg.bindings.some((b) => b.match && b.match.peer && b.match.peer.kind === 'group' && b.match.peer.id === jid)) {
+    return false;
+  }
+  cfg.bindings.push({
+    type: 'route', agentId, comment: comment || `Olma group (${jid})`,
+    match: { channel: 'whatsapp', accountId: 'default', peer: { kind: 'group', id: jid } },
+  });
+  return true;
+}
+
+function removeGroupBinding(cfg, jid) {
+  if (!Array.isArray(cfg.bindings)) return false;
+  const before = cfg.bindings.length;
+  cfg.bindings = cfg.bindings.filter(
+    (b) => !(b.match && b.match.peer && b.match.peer.kind === 'group' && b.match.peer.id === jid)
+  );
+  return cfg.bindings.length !== before;
+}
+
 module.exports = {
   defaultPath, loadConfig, saveConfig,
   addAgent, removeAgent, addBinding, addCatchAllBinding, addAllowFrom,
+  groupSessionPrefix, muteGroup, unmuteGroup, isGroupMuted,
+  addGroupWildcardBinding, muteAgent, isAgentMuted, admitAllGroups,
+  admitGroup, unadmitGroup, isGroupAdmitted, addGroupBinding, removeGroupBinding,
+  groupAllowFrom, syncGroupAllowFrom, isGroupSenderGateOpen, SELF_PHONE,
   usesEntries, listAgentIds, hasAgent,
 };
 

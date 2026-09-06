@@ -127,6 +127,14 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `models.providers.openrouter.models[]`, and
   `agents.defaults.modelPolicy.allow`. Two of three is registered-and-unusable,
   and invisible until an override is tried.
+- **The `Conversation info` block is prompt-only: the transcript keeps the
+  bare text.** On 2026.8.1 the roster, the tag and the message id of a group
+  message exist in one place code can reach — the `llm_input` plugin hook,
+  which hands over the model's input verbatim (`gateway-plugin/olma-turn`
+  → brokerd `group_context` → `group_inbound_context`). Group mode was
+  designed to read them off the store, went live, and registered nothing
+  (`incidents.md`, "The roster was never in the transcript"). A store
+  that our own probes wrote into is not evidence of what the gateway writes.
 - **Never poll `openclaw sessions list` on a timer** — 2.9s of CPU per call on
   a 1-vCPU box, which directly slows every user's reply.
 - **The gateway heartbeat stays OFF: `agents.defaults.heartbeat.every: "0m"`.**
@@ -206,6 +214,22 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   (a queue per person, oldest first), not one per person: two messages a few
   seconds apart each keep their own count, opening and reply target
   (`incidents.md`, "Two messages three seconds apart").
+  **Widening it to everybody is four steps, and the first one was not
+  optional** (step 1 done 2026-09-06, the rest planned 2026-09-07):
+  (1) the evals. The eval user (`users.is_eval`, u-15) becomes a covered user
+  the moment the flag says `all`, and the failure is SILENT rather than red:
+  the CLI fires the plugin but not the turn-open hook, so brokerd answers
+  `context: null`, the doctrine falls back to `turn_start`, and the suite
+  goes on measuring the fallback path while every real user is on the context
+  one (plus a `turn.context_without_open` audit row per turn). Fixed: the
+  harness opens each turn through brokerd itself (`openTurnForEval`), and the
+  opening check follows the flag — `turnStartFirst` while uncovered,
+  `turnStartNotSpent` once covered (`scenarios.turnOpening`).
+  (2) flag `turn_context_phones` = `all`. (3) EMPTY the plugin's
+  `config.agents` rather than listing everyone — empty means every `u-N`
+  agent, so a user who joins next week is covered without anyone
+  remembering, and the flag stays the only gate. (4) restart the gateway
+  (`config.agents` is read once, at register) and resync every AGENTS.md.
 - **`messages.queue.mode` stays `followup`.** The gateway default, `steer`,
   pushes a message that arrives mid-turn INTO the running turn and cancels
   the tool calls the model just made ("Skipped due to queued user message").
@@ -613,6 +637,15 @@ no JS — but structured differently:
   after the transaction commits, never inside it.** USER.md is what the agent
   reads every turn; skipping this puts the card out of sync with the DB, which
   is the exact bug fixed on 2026-08-19.
+- **Every sentence Olma sends VERBATIM — reminders and their rungs, the first
+  contact to a stranger, everything said in a group — has its default in
+  `domain/message-templates.js` and is reworded from the admin page
+  ("ניסוחים", the `message_templates` flag), never by editing the literal in
+  code on the owner's behalf.** Senders pass the loaded overrides as the last
+  argument of `proactive-text.render*` / `intake/messages.*`; an override
+  that drops a required placeholder is refused by name on the page and
+  ignored at render, so a hand-edited flag row cannot ship a nudge with no
+  tags in it.
 - **Cancelling a queued message is an UPDATE, never a DELETE**
   (`sent_at = now(), hold_reason = 'cancelled_by_admin'`). The row carries the
   `idempotency_key` that stops the sweep which produced it from producing it

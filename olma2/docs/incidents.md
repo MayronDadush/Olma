@@ -19,6 +19,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Gateway, config and upgrades**
 
+- [The roster was never in the transcript (2026-09-06)](#the-roster-was-never-in-the-transcript-2026-09-06)
 - [`main` said NO_REPLY into a real person's WhatsApp (2026-09-01)](#main-said-no_reply-into-a-real-persons-whatsapp-2026-09-01)
 - [The actual reason it kept converging on מירון: `heartbeat.target` defaults to `"owner"` (fixed 2026-09-02)](#the-actual-reason-it-kept-converging-on-מירון-heartbeattarget-defaults-to-owner-fixed-2026-09-02)
 - [A healthy service read as down, because the scope was wrong (2026-09-01)](#a-healthy-service-read-as-down-because-the-scope-was-wrong-2026-09-01)
@@ -141,6 +142,51 @@ never trust a dated narrative for something you are about to act on.
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
 
 ## Gateway, config and upgrades
+
+### The roster was never in the transcript (2026-09-06)
+
+Group mode (`docs/group-mode.md`) reads who is in a WhatsApp group off the
+gateway's own description of the inbound message — the `Conversation info`
+block, `group_members` included — because a roster the model reports is a
+gate the model can open. The design read that block out of the group
+session's transcript, `sessions.readGroupContext`, and every test of the
+sweep fed it a transcript with the block in it.
+
+The owner turned the feature on (greeter installed, `groupPolicy` set to
+`allowlist`, 15:00 UTC) and wrote in the test group. The gateway routed the
+message to the greeter, the greeter ran its muted turn, and the sweep
+reported `unreadable: 1` every ten seconds. The transcript held the message
+as bare text — `"@232040725262501 היי עולמה"` — and nothing else.
+
+Across every agent on the box, zero real transcripts contained the block.
+Nine did: all written by our own eval and probe harnesses, which had copied
+the prompt shape into the store by hand. That is what the design had been
+measured against. The other candidates were checked in the same hour: the
+`message:preprocessed` internal hook's mapper keeps `isGroup` and `groupId`
+and drops `GroupMembers`; the persisted message's `__openclaw` field has the
+sender and nothing about the room; the state database holds the session and
+its audit rows, no members; `openclaw directory groups members --channel
+whatsapp` returns "does not support group members listing", and `groups list`
+"account is owned by another process".
+
+The block is composed in `inbound-meta` per turn (`group_members:
+sanitizePromptBody(ctx.GroupMembers)`) and joins the runtime context that
+the `llm_input` plugin hook receives verbatim (`prompt`, `systemPrompt`,
+`historyMessages`). So the plugin that already prepends the turn's opening
+(`gateway-plugin/olma-turn`) grew a second handler: on `llm_input`, for a
+group session key, find the block, send it to brokerd as `group_context`;
+brokerd files one row per session in `group_inbound_context`; the sweep
+reads the row where it read the store. The trust path is unchanged — the
+gateway wrote the block before the model saw anything — and the plugin's
+trace names which field it was found in, so the next gateway that moves it
+fails on a line in a log instead of on a silent group.
+
+The rule: a store that our own harness writes into proves nothing about what
+the gateway writes. `tests/reply-target.test.js` and the eval harness put
+the block in the transcript because the model needed to see it; the group
+design read that back as "the transcript carries it". The measurement that
+would have caught it — one real inbound, one query — took a minute once
+somebody ran it.
 
 ### A healthy service read as down, because the scope was wrong (2026-09-01)
 
