@@ -29,6 +29,16 @@ const TZ = 'Asia/Jerusalem';
 // would be worse than none (CLAUDE.md, Testing).
 const NOW = new Date('2026-09-04T10:00:00Z');   // 13:00 in Jerusalem
 
+// …and for the handlers, which read the real clock, a real moment that is
+// always ahead of it. Returns "<tomorrow in Jerusalem>T<hh:mm>:00<offset>".
+function tomorrowAt(hhmm) {
+  const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const ymd = d.toLocaleDateString('en-CA', { timeZone: TZ });
+  const off = new Intl.DateTimeFormat('en-US', { timeZone: TZ, timeZoneName: 'longOffset' })
+    .formatToParts(d).find((p) => p.type === 'timeZoneName').value.replace('GMT', '');
+  return `${ymd}T${hhmm}:00${off}`;
+}
+
 // ---- the rule, without a database ------------------------------------------
 
 test('a task with a real time is reminded an hour before, in their zone', () => {
@@ -285,12 +295,18 @@ test('the reminder hint never orders a sentence the 👍 has already sent', asyn
   const described = toolDefinitions().find((d) => d.name === 'add_task');
   const u = await freshUser('+972500000114');
 
+  // Tomorrow, not a date written down the day this was: these two go through
+  // the real handler on the real clock, and `attachAutoReminder` declines a
+  // moment already past. Pinned to 2026-09-06 it armed nothing from 15:00 UTC
+  // that day onwards — `hints` never existed and every run after that hour
+  // died on this line (CLAUDE.md, Testing: never let a test depend on the hour
+  // it runs). The offset is read off the zone for THAT day, so the 18:00 the
+  // assertions below name survives Israel leaving summer time.
   const asked = await withTx(db.pool, (c) => add.handler(c, u, {
-    title: 'לדבר עם מור חן', due_at: '2026-09-06T13:29:00+03:00',
-    remind_at: '2026-09-06T13:29:00+03:00',
+    title: 'לדבר עם מור חן', due_at: tomorrowAt('13:29'), remind_at: tomorrowAt('13:29'),
   }));
   const auto = await withTx(db.pool, (c) => add.handler(c, u, {
-    title: 'פגישה', due_at: '2026-09-06T19:00:00+03:00',
+    title: 'פגישה', due_at: tomorrowAt('19:00'),
   }));
 
   // Their own hour: nothing to add, and the hint says so rather than asking
