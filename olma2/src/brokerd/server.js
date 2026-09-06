@@ -19,6 +19,7 @@ const turnDomain = require('../domain/turn');
 const reactions = require('../domain/reactions');
 const selfInitiated = require('../domain/self-initiated');
 const { captureDisplayName } = require('../adapters/mcp/tools/_shared');
+const groupContext = require('../domain/group-context');
 
 // One of these per turn. The gateway spawns a fresh MCP shim for every agent
 // turn and the shim holds ONE socket to brokerd for its whole life, so a
@@ -182,6 +183,22 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
   // misfired costs a tool call, not a count. Never opens a turn itself: the
   // prompt build runs for cron lanes and deliveries too, and this cannot tell
   // a person writing from a job running on their agent; the hook can.
+  // The gateway plugin's `llm_input` sighting of a GROUP turn: the
+  // Conversation info block the gateway composed for the model, reduced to
+  // the row the group sweep reads (domain/group-context.js — why this exists
+  // is written there). Only the greeter and the group agents may file one,
+  // only for a session of their own, and only for the group the block itself
+  // names. Nothing here is user data and no turn is opened: a group turn is
+  // not a person writing to her.
+  async function handleGroupContext(params = {}) {
+    const agentId = String(params.agentId || '').trim();
+    if (!/^(ggreet|g-\d+)$/.test(agentId)) return { ok: false, error: 'bad agentId' };
+    const built = groupContext.fromConversationInfo(agentId, params.sessionKey, params.info, { at: params.at });
+    if (!built.ok) return { ok: false, error: built.reason };
+    await withTx(pool, (client) => groupContext.store(client, built.row));
+    return { ok: true, stored: true, members: built.row.members ? true : false, wasMentioned: built.row.wasMentioned };
+  }
+
   async function handleTurnContext(params = {}) {
     const agentId = String(params.agentId || '').trim();
     if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
@@ -383,6 +400,8 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
         return handleTurnOpen(msg.params || {});
       case 'turn_context':
         return handleTurnContext(msg.params || {});
+      case 'group_context':
+        return handleGroupContext(msg.params || {});
       default:
         return { ok: false, error: `unknown method ${msg.method}` };
     }

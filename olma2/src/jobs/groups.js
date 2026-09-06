@@ -22,6 +22,7 @@ const flags = require('../domain/flags');
 const audit = require('../domain/audit');
 const text = require('../domain/proactive-text');
 const templates = require('../domain/message-templates');
+const groupContext = require('../domain/group-context');
 const gate = require('../outbox/gate');
 // Through the worker facade, never channels/sessions.js: every read there is
 // synchronous, and this runs inside brokerd on the loop that answers live
@@ -95,7 +96,11 @@ async function sweepGroups(client, deps) {
   const configPath = deps.configPath;
   if (!greeterInstalled(configPath)) return { skipped: 'no_greeter' };
 
-  const readContext = deps.readGroupContext || sessions.readGroupContext;
+  // The newest message per group, as the gateway described it to the model.
+  // Since 2026-09-06 that is a DB row brokerd writes from the gateway plugin
+  // (domain/group-context.js), not the transcript: on OpenClaw 2026.8.1 the
+  // store keeps the bare text and the block was never there to read.
+  const readContext = deps.readGroupContext || ((agentId, key) => groupContext.read(client, agentId, key));
   const now = deps.now || new Date();
 
   // Before anything else, and every pass: a stale sender gate is the one
@@ -123,7 +128,7 @@ async function sweepGroups(client, deps) {
     return all;
   });
   const out = {
-    registered: [], intros: 0, notices: 0, opened: [], relocked: [], announced: 0,
+    registered: [], intros: 0, introFailed: 0, notices: 0, opened: [], relocked: [], announced: 0,
     unreadable: 0, strangers: 0, skipped: 0,
     // `senderGateOpen` is the loud one: true means the gateway is admitting
     // every sender in every group, and nothing else in this pass can tell.
@@ -142,7 +147,10 @@ async function sweepGroups(client, deps) {
     if (!members.length) { out.unreadable++; continue; }
 
     let group = await groups.getByExternalId(client, 'whatsapp', jid);
-    let justRegistered = false;
+    // Set when she says her opening in THIS pass — registered or not. The gate
+    // below reads it: she does not say "nice to meet you" and "some of you have
+    // not signed up" in one breath.
+    let justGreeted = false;
 
     // ---- first sight -------------------------------------------------------
     if (!group) {
@@ -153,22 +161,40 @@ async function sweepGroups(client, deps) {
       // all in a group of strangers — no row, no agent, no introduction.
       if (!reg.ok) { out.strangers++; continue; }
       group = reg.data.group;
-      justRegistered = true;
       out.registered.push(jid);
 
       // Tag-only from here, and the deny belt goes on in the same write.
       pg.admitRegisteredGroup({ configPath, jid });
+    } else {
+      await groups.syncRoster(client, group.id, members);
+    }
 
-      // Her first words in the room. She is answering a live message, so the
-      // quiet-hours window does not apply — somebody is plainly there.
+    // ---- her first words in the room ---------------------------------------
+    // Due while `introduced_at` is NULL, not only on the pass that registered
+    // the group. A send that fails leaves the column NULL and the next pass
+    // says it again — the first real group was registered and left silent for
+    // ever because this sat inside the registration branch and the box was too
+    // busy to run the CLI inside its timeout (2026-09-06). She is answering a
+    // live message either way, so the quiet-hours window does not apply.
+    if (!group.introduced_at) {
       if (await deps.send(jid, text.renderGroupIntro(wording))) {
         out.intros++;
+        justGreeted = true;
+        const { rows: stamped } = await client.query(
+          `UPDATE chat_groups SET introduced_at = now() WHERE id = $1 RETURNING *`, [group.id]);
+        group = stamped[0] || group;
         await audit.record(client, group.registered_by_user_id, 'group.introduced', {
           groupId: group.id, externalId: jid,
         });
+      } else {
+        // Said nothing and stamped nothing: it is due again next pass. The
+        // notice below is not — a room that has not been greeted has nothing
+        // to be nudged about yet.
+        out.introFailed++;
+        await client.query(`UPDATE chat_groups SET last_seen_at = $2 WHERE id = $1`,
+          [group.id, new Date(session.lastInteractionAt || now)]);
+        continue;
       }
-    } else {
-      await groups.syncRoster(client, group.id, members);
     }
 
     // A roster line we could not read a phone out of is a member we cannot
@@ -193,7 +219,7 @@ async function sweepGroups(client, deps) {
     // actually asks her for something.
     const lastSeen = group.last_seen_at ? new Date(group.last_seen_at).getTime() : 0;
     const activity = Number(session.lastInteractionAt || 0);
-    const isNew = !justRegistered && activity > lastSeen;
+    const isNew = !justGreeted && activity > lastSeen;
     // Somebody is demonstrably present either way, which is what the
     // announcement's grace window is about.
     if (activity > lastSeen) await groups.noteMention(client, group.id);

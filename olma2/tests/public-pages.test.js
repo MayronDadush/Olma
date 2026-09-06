@@ -64,6 +64,15 @@ test('the privacy policy is served unauthenticated, on either host', async () =>
   }
 });
 
+test('the terms of service page is served unauthenticated, on either host', async () => {
+  for (const host of [PUBLIC, ADMIN]) {
+    const res = await get('/terms', host);
+    assert.equal(res.status, 200, `terms should not need a password on ${host}`);
+    const html = await res.text();
+    assert.ok(html.includes('תנאי שימוש'));
+  }
+});
+
 // ---- the admin dashboard must NOT have moved -------------------------------
 
 test('`/` on the ADMIN host still demands the admin password', async () => {
@@ -127,7 +136,8 @@ test('the policy states the same scopes as the home page, in both languages', ()
   for (const scope of ['calendar.readonly', 'calendar.events', 'contacts.readonly', 'gmail.readonly', 'userinfo.email']) {
     assert.ok(html.includes(scope), `privacy policy does not disclose ${scope}`);
   }
-  assert.ok(/Privacy Policy \(English\)/.test(html), 'a Google reviewer reads English');
+  assert.ok(/Privacy Policy/i.test(html), 'a Google reviewer reads English first');
+  assert.ok(html.includes('מדיניות פרטיות (עברית)'), 'Hebrew users still get the full policy');
   assert.ok(/myaccount\.google\.com\/permissions/.test(html), 'users must be told how to revoke directly');
 });
 
@@ -142,8 +152,15 @@ test('the mail promise on the public pages matches what the code can actually do
 });
 
 test('neither page carries a form, a script, or anything that takes input', () => {
-  for (const html of [publicPages.homePage(), publicPages.privacyPage()]) {
+  for (const html of [publicPages.homePage(), publicPages.privacyPage(), publicPages.termsPage()]) {
     assert.ok(!/<form/i.test(html), 'a public unauthenticated page must not accept input');
     assert.ok(!/<script/i.test(html), 'these pages have no moving parts on purpose');
   }
+});
+
+test('the terms page reads English first, links the privacy policy, and carries the Hebrew text in full', () => {
+  const html = publicPages.termsPage();
+  assert.ok(/Terms of Service/i.test(html), 'a Google reviewer reads English first');
+  assert.ok(html.includes('href="/privacy"'), 'terms must link the privacy policy');
+  assert.ok(html.includes('תנאי שימוש (עברית)'), 'Hebrew users still get the full terms');
 });
