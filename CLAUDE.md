@@ -316,6 +316,20 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   correcting them would falsify the record. Two readers must answer to BOTH
   spellings and say so — `facts.SYSTEM_NOUN_RE` (old facts are still in the
   table) and the voice bridge's name check and Deepgram keyterms.
+- **An explicit reminder replaces the automatic one only on the SAME local
+  day; on another day it stands beside it.** Both are otherwise about catching
+  one thing at its due date, and two messages for that is the bug the
+  supersede exists to stop — but Vered asked for one "בעוד דקה" (the word was
+  נוספת) and lost the 08:00 she had for the next morning. **A past `remind_at`
+  is refused at the TOOL boundary** (`adapters/mcp/tools/reminders.js`, on
+  `reminders.momentIsPast`), never inside `setReminder`: our own sweeps,
+  repairs and most of the suite arm past moments on purpose, and only a model
+  asking for one is a mistake. Refused before the write, so a moment we will
+  not honour cannot withdraw one we would have.
+- **A day named with ל־ in a title dates the THING, not the task.** "לארגן
+  אימון לרביעי" is arranged BEFORE Wednesday; filed ON Wednesday it is useless.
+  `datetime.datesTheObject` reports that shape on the result and lets the model
+  resolve it — it has the conversation, the function has a string.
 - **`due_at` is when the THING is; `remind_at` is the hour THEY named.** A task
   saved with a `due_at` arms its own reminder — an hour before a timed one,
   08:00 that morning for a day-shaped one (local midnight in THEIR zone is the

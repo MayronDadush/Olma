@@ -47,6 +47,7 @@ never trust a dated narrative for something you are about to act on.
 - [Good morning at half past one (fixed 2026-09-06)](#good-morning-at-half-past-one-fixed-2026-09-06)
 - [The morning digest asked the same question four mornings running (fixed 2026-09-06)](#the-morning-digest-asked-the-same-question-four-mornings-running-fixed-2026-09-06)
 - [Four good mornings to a man who had stopped answering (fixed 2026-09-05)](#four-good-mornings-to-a-man-who-had-stopped-answering-fixed-2026-09-05)
+- [Vered's first evening: five tasks, three that would not have arrived (fixed 2026-09-06)](#vereds-first-evening-five-tasks-three-that-would-not-have-arrived-fixed-2026-09-06)
 - [The reminder that could not climb, because its first rung died on the wire (fixed 2026-09-05)](#the-reminder-that-could-not-climb-because-its-first-rung-died-on-the-wire-fixed-2026-09-05)
 
 - [Olma's own check-in counted as the user writing back (fixed 2026-09-04)](#olmas-own-check-in-counted-as-the-user-writing-back-fixed-2026-09-04)
@@ -1390,6 +1391,76 @@ three days and sends one line with no question mark and no pitch; two misses
 someone with a miss on record. The timezone ask carries the exact Hebrew
 sentence, gender forms aside. User 13 was set to three misses by hand so the
 next thing he hears from עולמה is his own reply.
+
+### Vered's first evening: five tasks, three that would not have arrived (fixed 2026-09-06)
+
+She opened with a voice note — *"אני צריכה לזכור **למחר** לעשות כמה משימות"* —
+and listed five. The scope word was said once and governed the whole
+enumeration. By the time the evening was over, three of the five would not
+have reached her the next morning, and the page told her they would.
+
+**"לארגן אימון לרביעי" was filed on Wednesday.** Olma answered *"רשמתי את הכל
+למחר (שני), חוץ מהאימון לרביעי"* — so the one task that had to happen first
+was the one taken out of tomorrow, and a reminder to ARRANGE a Wednesday
+training was armed for 07:00 on Wednesday. The ל־ dates the training; the
+arranging is what the task is. `datesTheObject` now reports that shape —
+ל+weekday in the title AND the task filed on that same weekday — as a hint on
+the result. Disagreement is `weekdayClash`'s job and means something else;
+here the AGREEMENT is the tell, because a date copied off the noun always
+agrees with it. It reports rather than decides: resolving it needs the
+conversation, and the function has a string.
+
+**"לדבר עם אביטל" lost its 08:00 to a moment three hours gone.** A reminder
+written at 23:02 was armed for 20:02 the same evening — valid ISO, correct
+offset, already past. It fired on the spot, its outbox row expired
+undelivered, and on the way in it cancelled the 08:00 she had been promised in
+the same breath: *"תזכורת ב-8:00 בבוקר, הכול מסודר ☺️"*. Two things came out of
+this one:
+
+- **The refusal is at the TOOL boundary, not in the domain.** Arming a past
+  moment is legitimate for our own code — most of the suite does it to make a
+  reminder due and then drive the sweep, and a repair rearming a missed row
+  needs it. Putting the guard in `setReminder` turned 20+ green tests red for
+  doing the right thing, which is the shape of a detector that flags a working
+  system. Only a MODEL asking for a past moment is a mistake, so
+  `domain/reminders.momentIsPast` is a predicate and
+  `adapters/mcp/tools/reminders.js` is what refuses.
+- **Refused, not clamped**, and refused BEFORE the write. Clamping fires the
+  reminder the instant it is stored — the outcome to prevent, not the one to
+  settle for — and refusing early is what stops a moment we will not honour
+  from withdrawing one we would have. The error says `NOTHING was changed` in
+  those words, because a refusal that leaves the caller guessing about damage
+  is half an error message.
+
+**"לדבר עם גידיס" lost its 08:00 to the word נוספת.** She asked for a reminder
+*"בעוד דקה"* — **additional** — and an explicit reminder cancelled the
+automatic one it was meant to stand beside. The rule that did it is right and
+stays: *"תזכירי לי בשמונה"* on a task that already carries an auto reminder
+must not produce two messages about one thing. What was missing is that both
+moments are then about catching the same thing at its due date. **Same local
+day replaces; another day stands beside it** — a reminder tonight and a
+reminder tomorrow morning are two jobs, and cancelling the first silently is
+data loss. The supersede also moved from `sent_at IS NULL` to `attempts = 0`,
+for the reason directly below.
+
+**And the page drew a bell on all of them.** `domain/user-dashboard.js` asked
+`sent_at IS NULL` three lines under its own comment saying *"`attempts = 0` is
+the question to ask"* and counting the three readers that had already told
+somebody the wrong thing. This was the fourth. A reminder that has fired keeps
+a null `sent_at` for up to a day while the ladder runs, so both of Vered's
+dead reminders rendered as live bells — the page promising exactly what the
+database had thrown away.
+
+**Still open, deliberately not touched**: the same `sent_at IS NULL` predicate
+appears in roughly fifteen other reminder readers (`domain/tasks.js`,
+`digest.js`, `planning.js`, `checkin.js`, `pause.js`, the admin sections).
+Some ask a genuinely different question and rewriting them as a batch is how a
+correct one gets broken. They are listed rather than fixed, one at a time,
+against the question each is actually asking.
+
+The three rows already in the database were repaired through the domain
+functions — a deploy does not reach a row — and the founding cases are in
+`tests/vered-lost-morning.test.js`.
 
 ### The reminder that could not climb, because its first rung died on the wire (fixed 2026-09-05)
 
