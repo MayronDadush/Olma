@@ -176,3 +176,53 @@ test('the dashboard tells the page which categories were guesses', async () => {
   assert.equal(byId.get(guessed.data.task.id).catAuto, true);
   assert.equal(byId.get(chosen.data.task.id).catAuto, false);
 });
+
+// ── The vocabulary the corpus asked for ────────────────────────────────────
+// Measured against production on 2026-09-06: of 65 open tasks holding no
+// usable category, the classifier named ZERO. Not because the rules were
+// wrong but because they had never met these words. Each title below is a
+// real one from that set, kept verbatim so the stems stay tied to the reason
+// they exist rather than to a category name someone liked.
+test('the words this system\'s own users actually write', () => {
+  const cases = [
+    ['ריצות בים פעמיים בשבוע', 'health'],
+    ['משחק פאדל עם יובל', 'health'],
+    ['ללכת לשתות מים', 'health'],
+    ['לבנות מערכת לניהול התיק השקעות (מיוחד על המס)', 'money'],
+    ['בדוק ולהשוואת מחירים במסלקה פנסיונית', 'money'],
+    ['לשלוח את הפרומפט על OpenClaw + MCP', 'work'],
+    ['דאשבורד', 'work'],
+    ['סגור מלון וספא בירושלים', 'errands'],
+    ['לבדוק מחירים לטיסות ללרנקה בתאריכים 15.9 עד 18.9', 'errands'],
+    ['להתקשר לוילה בראון לקבוע מסאז׳', 'errands'],
+    ['לעזור לשרה במעבר דירה ביום רביעי בשעה 17:00', 'home'],
+    ['Moving — need Maor\'s help this Wednesday', 'home'],
+  ];
+  for (const [title, want] of cases) {
+    assert.equal(taskCategory.classifyText(title), want, `"${title}" should read as ${want}`);
+  }
+});
+
+// The cost of a keyword list is the word it eats by accident, and Hebrew glues
+// its prefixes on, so a short stem is a landmine. These are the near misses
+// the new stems sit next to; each one has to stay unclassified or land
+// somewhere else entirely.
+test('the widened list does not swallow its neighbours', () => {
+  // Two stems were WRITTEN and then taken back out, and these are why: bare
+  // `ריצה` lives inside `פריצה`, and `ספא` inside `ספארי`. The plural and the
+  // infinitive carry the same meaning without the collision, so those shipped
+  // instead — and `מלון` already caught the trip these were reaching for.
+  // Five more were never written at all, for the same reason: קוד (הקודם),
+  // שרת (משרת), באג (באגף), צבע (אצבע), רכב (מורכב).
+  for (const title of [
+    'פריצה לדירה — לדבר עם המשטרה',
+    'לבדוק את הספארי בחיפה',
+    'לקרוא את הפרק הקודם',
+    'הוא משרת בצבא',
+    'לצבוע את האצבע',
+    'עניין מורכב',
+  ]) {
+    assert.equal(taskCategory.classifyText(title), null,
+      `"${title}" must stay uncategorised — a wrong category hides a task better than no category does`);
+  }
+});
