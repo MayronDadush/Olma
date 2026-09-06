@@ -22,6 +22,7 @@ const flags = require('../domain/flags');
 const audit = require('../domain/audit');
 const text = require('../domain/proactive-text');
 const templates = require('../domain/message-templates');
+const groupContext = require('../domain/group-context');
 const gate = require('../outbox/gate');
 // Through the worker facade, never channels/sessions.js: every read there is
 // synchronous, and this runs inside brokerd on the loop that answers live
@@ -95,7 +96,11 @@ async function sweepGroups(client, deps) {
   const configPath = deps.configPath;
   if (!greeterInstalled(configPath)) return { skipped: 'no_greeter' };
 
-  const readContext = deps.readGroupContext || sessions.readGroupContext;
+  // The newest message per group, as the gateway described it to the model.
+  // Since 2026-09-06 that is a DB row brokerd writes from the gateway plugin
+  // (domain/group-context.js), not the transcript: on OpenClaw 2026.8.1 the
+  // store keeps the bare text and the block was never there to read.
+  const readContext = deps.readGroupContext || ((agentId, key) => groupContext.read(client, agentId, key));
   const now = deps.now || new Date();
 
   // Before anything else, and every pass: a stale sender gate is the one

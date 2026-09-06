@@ -698,14 +698,13 @@ test("a scenario is scoped by the database clock, not this process's millisecond
     complete: judgePass,
   });
 
-  // The database's own text rendering, which `Date.prototype.toISOString` can
-  // never produce: a space instead of the T, a numeric offset instead of Z.
-  // NOT a count of fractional digits — Postgres trims trailing zeros, so a
-  // microsecond value ending in one renders five, and this check failed about
-  // one CI run in ten for a formatting artifact rather than a lost digit.
-  assert.match(String(seen), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?[+-]\d{2}/,
-    'the mark comes from the database clock, not this process');
-  assert.doesNotMatch(String(seen), /T.*Z$/, 'a JS ISO string here means the millisecond clock is back');
+  // Postgres prints the fraction with trailing zeros trimmed — `.09107` is a
+  // microsecond value too, and matching six digits failed the deploy the
+  // first time the clock ended in a zero (2026-09-06). This proves the mark is
+  // the database's text and not a millisecond count; the strict-after check
+  // below is what proves the precision.
+  assert.match(String(seen), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?\+00$/,
+    "the mark is a database timestamp, not this process's milliseconds");
   const { rows } = await db.pool.query(`SELECT ($1::timestamptz > $2::timestamptz) AS after`, [seen, rowAt]);
   assert.equal(rows[0].after, true, 'the mark must sit strictly after a row committed before the scenario');
   assert.equal(r.status, 'red', JSON.stringify(r.hardFailures));
