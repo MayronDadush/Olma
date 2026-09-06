@@ -51,7 +51,7 @@ async function connectedUser(phone, extra = {}) {
 
 // One group, as the gateway would present it: a greeter session whose
 // transcript carries the roster the inbound envelope put there.
-function gatewayWith({ jid, roster, subject = 'פאדל שלישי', at = Date.now(), agentId = pg.GREETER_AGENT_ID }) {
+function gatewayWith({ jid, roster, subject = 'פאדל שלישי', at = Date.now(), agentId = pg.GREETER_AGENT_ID, messageId = 'MSG-1' }) {
   const sent = [];
   return {
     sent,
@@ -62,8 +62,8 @@ function gatewayWith({ jid, roster, subject = 'פאדל שלישי', at = Date.n
         agentId, channel: 'whatsapp', chatType: 'group', peer: jid,
         lastInteractionAt: at,
       }],
-      readGroupContext: () => ({ subject, members: roster, wasMentioned: true, at }),
-      send: async (target, body) => { sent.push({ target, body }); return true; },
+      readGroupContext: () => ({ subject, members: roster, wasMentioned: true, at, messageId }),
+      send: async (target, body, opts) => { sent.push({ target, body, replyTo: opts && opts.replyTo }); return true; },
     },
   };
 }
@@ -101,7 +101,7 @@ test('one known member is enough: she registers, introduces herself, and locks',
   assert.equal(occ.isGroupMuted(cfg, JID(2)), true);
 });
 
-test('a tag in a locked group is answered once, then shortened, then held', async () => {
+test('a tag in a locked group is answered, then answered shorter, every time', async () => {
   const a = await connectedUser('+972603000020');
   const missing = '+972603000021';
   const roster = `${a.phone}, ${missing}`;
@@ -110,30 +110,64 @@ test('a tag in a locked group is answered once, then shortened, then held', asyn
   const first = gatewayWith({ jid: JID(3), roster, at });
   await withTx(db.pool, (c) => job.sweepGroups(c, first.deps));   // registers + intro
   assert.equal(first.sent.length, 1);
+  assert.equal(first.sent[0].replyTo, undefined, 'the intro is not a reply to anything');
 
   // A tag: new activity on the session.
   at += 60_000;
-  const second = gatewayWith({ jid: JID(3), roster, at });
+  const second = gatewayWith({ jid: JID(3), roster, at, messageId: 'MSG-2' });
   const out2 = await withTx(db.pool, (c) => job.sweepGroups(c, second.deps));
   assert.equal(out2.notices, 1);
   assert.match(second.sent[0].body, /עוד לא שלחו לי/);
   assert.match(second.sent[0].body, new RegExp(`@\\${missing}`));
+  assert.equal(second.sent[0].replyTo, 'MSG-2', 'the answer quotes the message that tagged her');
 
-  // Another tag inside the cooldown: nothing.
+  // Another tag a minute later: answered again, shorter. There is no cooldown
+  // — the owner's rule is that every tag is answered.
   at += 60_000;
-  const third = gatewayWith({ jid: JID(3), roster, at });
+  const third = gatewayWith({ jid: JID(3), roster, at, messageId: 'MSG-3' });
   const out3 = await withTx(db.pool, (c) => job.sweepGroups(c, third.deps));
-  assert.equal(out3.notices, 0);
-  assert.deepEqual(third.sent, []);
+  assert.equal(out3.notices, 1);
+  assert.match(third.sent[0].body, /עוד מחכה ל/);
+  assert.equal(third.sent[0].replyTo, 'MSG-3');
 
-  // Past the cooldown, the answer comes back shorter.
-  at += groupsDomain.NOTICE_COOLDOWN_MS + 60_000;
-  const fourth = gatewayWith({ jid: JID(3), roster, at });
-  await withTx(db.pool, (c) => job.sweepGroups(c, {
-    ...fourth.deps, now: new Date(Date.now() + groupsDomain.NOTICE_COOLDOWN_MS + 60_000),
-  }));
+  // A transcript with no message id still gets its answer, just not as a reply.
+  at += 60_000;
+  const fourth = gatewayWith({ jid: JID(3), roster, at, messageId: null });
+  await withTx(db.pool, (c) => job.sweepGroups(c, fourth.deps));
   assert.equal(fourth.sent.length, 1);
-  assert.match(fourth.sent[0].body, /עוד מחכה ל/);
+  assert.equal(fourth.sent[0].replyTo, undefined);
+});
+
+// The owner rewords her sentences from the admin page; the sweep reads that
+// object every pass, so an edit is live on the next tag. A box that lost its
+// tags is not an edit, and the default goes out instead.
+test('a reworded notice reaches the group, and one without its tags does not', async () => {
+  const a = await connectedUser('+972603000090');
+  const missing = '+972603000091';
+  const roster = `${a.phone}, ${missing}`;
+  const flags = require('../src/domain/flags');
+  const templates = require('../src/domain/message-templates');
+  await withTx(db.pool, (c) => flags.setFlag(c, templates.FLAG, {
+    group_intro: 'שלום, אני כאן. תתייגו {{me}} כשצריך.',
+    group_gate_explain: 'רגע — {{missing}} עוד לא כתבו לי.',
+    group_gate_nudge: 'בלי תיוגים בכלל',
+  }));
+  try {
+    let at = Date.now();
+    const first = gatewayWith({ jid: JID(9), roster, at });
+    await withTx(db.pool, (c) => job.sweepGroups(c, first.deps));
+    assert.equal(first.sent[0].body, `שלום, אני כאן. תתייגו @+${require('../src/domain/proactive-text').SELF_NUMBER} כשצריך.`);
+    at += 60_000;
+    const second = gatewayWith({ jid: JID(9), roster, at });
+    await withTx(db.pool, (c) => job.sweepGroups(c, second.deps));
+    assert.equal(second.sent[0].body, `רגע — @${missing} עוד לא כתבו לי.`);
+    at += 60_000;
+    const third = gatewayWith({ jid: JID(9), roster, at });
+    await withTx(db.pool, (c) => job.sweepGroups(c, third.deps));
+    assert.equal(third.sent[0].body, `עוד מחכה ל: @${missing}  🧐`, 'the tagless rewording is ignored');
+  } finally {
+    await withTx(db.pool, (c) => flags.setFlag(c, templates.FLAG, {}));
+  }
 });
 
 // Nothing new happened, so there is nothing to say. A sweep that talks on its

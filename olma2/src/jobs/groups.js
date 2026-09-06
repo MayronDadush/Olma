@@ -21,6 +21,7 @@ const groups = require('../domain/groups');
 const flags = require('../domain/flags');
 const audit = require('../domain/audit');
 const text = require('../domain/proactive-text');
+const templates = require('../domain/message-templates');
 const gate = require('../outbox/gate');
 // Through the worker facade, never channels/sessions.js: every read there is
 // synchronous, and this runs inside brokerd on the loop that answers live
@@ -101,6 +102,9 @@ async function sweepGroups(client, deps) {
   // failure here that is invisible from the outside — she keeps working, she
   // is just answerable by people who never signed up.
   const senderGate = await syncSenderGate(client, configPath);
+  // The owner's rewordings of her four sentences (domain/message-templates),
+  // once per pass.
+  const wording = await templates.load(client);
 
   // Scoped to the agents that can actually own a group, never a full scan.
   // `listSessions()` opens every agent's sqlite store, and on a one-core box a
@@ -157,7 +161,7 @@ async function sweepGroups(client, deps) {
 
       // Her first words in the room. She is answering a live message, so the
       // quiet-hours window does not apply — somebody is plainly there.
-      if (await deps.send(jid, text.renderGroupIntro())) {
+      if (await deps.send(jid, text.renderGroupIntro(wording))) {
         out.intros++;
         await audit.record(client, group.registered_by_user_id, 'group.introduced', {
           groupId: group.id, externalId: jid,
@@ -237,7 +241,7 @@ async function sweepGroups(client, deps) {
       // — a group that opens at 02:00 is still open, it is just not announced
       // until morning.
       if (!group.opened_announced_at && mayAnnounce(group, now)) {
-        if (await deps.send(jid, text.renderGroupOpened())) {
+        if (await deps.send(jid, text.renderGroupOpened(wording))) {
           await client.query(`UPDATE chat_groups SET opened_announced_at = now() WHERE id = $1`,
             [group.id]);
           out.announced++;
@@ -247,15 +251,19 @@ async function sweepGroups(client, deps) {
         }
       }
     } else if (isNew) {
-      // Tagged while locked. Every tag gets an answer — the owner's rule —
-      // but the answer shortens after the first, and a cooldown keeps a
-      // repeat-tagger from turning her into a spammer in somebody's group.
-      const notice = groups.decideNotice(group, { now });
+      // Tagged while locked. Every tag gets an answer — the owner's rule, and
+      // he took out the cooldown that once held the second one — but the
+      // answer shortens after the first. It goes out as a REPLY to the message
+      // that tagged her when the transcript gave us its id: in a room where
+      // three people are talking, a bare "עוד מחכה ל…" floats; quoted under
+      // the tag, it is plainly an answer to that person.
+      const notice = groups.decideNotice(group);
       if (notice.kind !== 'none') {
         const body = notice.kind === 'too_large'
-          ? text.renderGroupTooLarge(Number(await flags.getFlag(client, 'group_max_members')) || 25)
-          : text.renderGroupGateNotice({ kind: notice.kind, missing: missing.map((m) => m.phone) });
-        if (await deps.send(jid, body)) {
+          ? text.renderGroupTooLarge(Number(await flags.getFlag(client, 'group_max_members')) || 25, wording)
+          : text.renderGroupGateNotice({ kind: notice.kind, missing: missing.map((m) => m.phone) }, wording);
+        const opts = ctx.messageId ? { replyTo: ctx.messageId } : undefined;
+        if (await deps.send(jid, body, opts)) {
           await groups.noteNoticeSent(client, group.id);
           out.notices++;
         }

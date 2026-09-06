@@ -38,8 +38,11 @@ function jobs({ pool }) {
   const creditWatch = require('./credit-watch');
   const efficiencyWatch = require('./efficiency-watch');
   const { runOpenclaw } = require('../channels/openclaw');
-  const rawSend = (phone, text) => runOpenclaw([
+  // `replyTo` quotes a message (the group sweep answers a tag under the tag);
+  // the CLI's `--reply-to`, verified 2026-09-06 with `--dry-run --json`.
+  const rawSend = (phone, text, opts) => runOpenclaw([
     'message', 'send', '--channel', 'whatsapp', '--target', phone, '--message', text,
+    ...(opts && opts.replyTo ? ['--reply-to', String(opts.replyTo)] : []),
   ]);
   // Free lanes the gateway has classified stuck and then declined to free.
   // 30s, because this is the difference between a person waiting ~90s and a
@@ -207,7 +210,7 @@ function jobs({ pool }) {
     // waiting on somebody to sign up costs nothing at all.
     { name: 'group_sweep', run: () => groupsJob.runGroupSweep(pool, {
       configPath: OPENCLAW_CONFIG,
-      send: async (jid, body) => (await rawSend(jid, body)).ok,
+      send: async (jid, body, opts) => (await rawSend(jid, body, opts)).ok,
     }) },
     { name: 'intake_template_sync', run: async () => {
       if (!intake.intakeConfigured(OPENCLAW_CONFIG)) return { skipped: true };

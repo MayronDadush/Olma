@@ -12,6 +12,7 @@ const { spawn } = require('node:child_process');
 const usersDomain = require('../domain/users');
 const selfInitiated = require('../domain/self-initiated');
 const proactiveText = require('../domain/proactive-text');
+const templates = require('../domain/message-templates');
 
 const SEND_TIMEOUT_MS = 120_000;
 
@@ -398,10 +399,14 @@ function makeDeliverer(pool) {
   return async function deliver(row) {
     const client = await pool.connect();
     let channel;
+    let wording;
     try {
       const ch = await usersDomain.primaryChannel(client, row.user_id);
       if (!ch.ok) return { ok: false, error: 'no primary channel' };
       channel = ch.data.channel;
+      // The owner's rewordings of the fixed texts (domain/message-templates);
+      // read per delivery so an edit on the admin page is live at once.
+      wording = await templates.load(client);
     } finally { client.release(); }
 
     // Reminders skip the agent turn entirely and go out on the raw pipe.
@@ -416,7 +421,7 @@ function makeDeliverer(pool) {
     // turn_start compensates by returning the last day's delivered reminders
     // from the outbox itself. Same retry contract as every other send: the
     // result feeds the worker's attempts/backoff, never fire-and-forget.
-    const rawText = proactiveText.rawPipeTextFor(row);
+    const rawText = proactiveText.rawPipeTextFor(row, wording);
     if (rawText) {
       return runOpenclaw([
         'message', 'send',

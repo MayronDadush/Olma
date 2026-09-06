@@ -28,6 +28,7 @@ const audit = require('../domain/audit');
 const { enqueue } = require('../outbox/enqueue');
 const { provisionUser } = require('../intake/provision');
 const { reopenMessage } = require('../intake/messages');
+const templates = require('../domain/message-templates');
 const occ = require('../intake/openclaw-config');
 // The worker-thread facade: this sweep ticks every 5 seconds inside brokerd,
 // and its reads are the most frequent synchronous work the daemon did
@@ -195,6 +196,7 @@ async function sweepReopen(client) {
     `SELECT phone FROM waitlist WHERE notified_at IS NULL LIMIT 50`
   );
   let notified = 0;
+  const wording = await templates.load(client);
   for (const { phone } of rows) {
     let user = await usersDomain.getByPhone(client, phone);
     if (!user) {
@@ -207,7 +209,7 @@ async function sweepReopen(client) {
     }
     await enqueue(client, {
       userId: user.id, kind: 'registration_reopened',
-      payload: { text: reopenMessage(phone) },
+      payload: { text: reopenMessage(phone, wording) },
       idempotencyKey: `reopen:${phone}`,
     });
     await client.query(`UPDATE waitlist SET notified_at = now() WHERE phone = $1`, [phone]);

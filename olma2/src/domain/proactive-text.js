@@ -17,6 +17,7 @@
 // reminder. turn_start closes that gap from the DB side: it returns the
 // reminders delivered in the last day, because brokerd knows exactly what was
 // sent without needing the session to remember it.
+const templates = require('./message-templates');
 
 // Titles are the user's own words; bound them to one message-safe line.
 function cleanTitle(title) {
@@ -32,16 +33,17 @@ function cleanTitle(title) {
 // Written without grammatical gender on purpose. Deterministic text cannot
 // know who it is addressing, and in Hebrew a guess is wrong for half the
 // people who read it — so every verb here is an infinitive or first-person.
-const FOLLOW_UP = 'בוצע? אפשר לכתוב לי, או להגיד לי להפסיק להזכיר על זה.';
-const LAST_CALL = 'זו התזכורת האחרונה על זה — לא אזכיר שוב מיוזמתי. אם עדיין רלוונטי, אפשר להגיד לי מתי להזכיר.';
-
-function renderReminderText(payload) {
+//
+// The sentences themselves live in domain/message-templates.js (three
+// templates, one per rung), where the owner can reword them from the admin
+// page; `overrides` is that page's stored object, loaded by the caller.
+function renderReminderText(payload, overrides) {
   const p = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
   const title = cleanTitle(p.title);
   if (!title) return null;
   const attempt = Number(p.attempt) || 1;
-  if (attempt <= 1) return `⏰ תזכורת: ${title}`;
-  return `⏰ תזכורת חוזרת: ${title}\n${p.finalAttempt ? LAST_CALL : FOLLOW_UP}`;
+  const key = attempt <= 1 ? 'reminder' : (p.finalAttempt ? 'reminder_last' : 'reminder_followup');
+  return templates.render(key, { title }, overrides);
 }
 
 // ---- group mode -------------------------------------------------------------
@@ -55,7 +57,9 @@ function renderReminderText(payload) {
 // plural — what it must never do is guess the gender of a single member.
 //
 // Wording owned by the owner (2026-09-05); these are his sentences, not a
-// paraphrase of them. Change them only when he asks.
+// paraphrase of them. The defaults are in domain/message-templates.js and he
+// rewords them from the admin page (`overrides`) — never edit them in code
+// on his behalf.
 
 // A tag only PINGS when the token is a phone number: the gateway attaches
 // native mention metadata for `@+<digits>` tokens that match a current
@@ -92,42 +96,28 @@ function mentionTokens(phones) {
 const SELF_NUMBER = process.env.OLMA_WA_NUMBER || '972559347282';
 
 // The first thing said in a group, on the first message there from anyone.
-function renderGroupIntro() {
-  return [
-    'נעים מאוד, אני עולמה 👋',
-    'אני עוזרת לקבוצות לתאם דברים בלי הפינג-פונג: מי פנוי מתי ומי עוד לא ענה.',
-    `כשאתם צריכים אותי - תתייגו אותי ${mentionTokens([SELF_NUMBER])}. בלי תיוג אני לא מתערבת מקווה שכולכם מחוברים 🙌`,
-  ].join('\n');
+function renderGroupIntro(overrides) {
+  return templates.render('group_intro', { me: mentionTokens([SELF_NUMBER]) }, overrides);
 }
 
 // kind comes from groups.decideNotice: 'explain' the first time, 'nudge' after.
-function renderGroupGateNotice({ kind, missing }) {
-  const tags = mentionTokens(missing);
-  if (kind === 'nudge') return `עוד מחכה ל: ${tags}  🧐`;
-  return [
-    'כדי שאוכל לתאם לכם משהו, אני צריכה שכל אחד כאן ישלח לי הודעה - אחרת אין לי דרך לשאול אותו מתי הוא פנוי.',
-    `רק אומרת.. עוד לא שלחו לי: ${tags}`,
-    '״היי״ בפרטי וזהו, אני מתחילה לעבוד ☺️',
-  ].join('\n');
+function renderGroupGateNotice({ kind, missing }, overrides) {
+  const key = kind === 'nudge' ? 'group_gate_nudge' : 'group_gate_explain';
+  return templates.render(key, { missing: mentionTokens(missing) }, overrides);
 }
 
 // Said once, when the last person finally writes and the group opens. Held to
 // the group's quiet hours like any other proactive message — she is starting
-// this conversation, not answering one.
-//
-// DRAFT WORDING: the four messages above are the owner's own sentences; this
-// one is not his yet.
-function renderGroupOpened() {
-  return [
-    'יש! כולם כאן ואפשר להתחיל 🎉',
-    'תתייגו אותי ותגידו מה לתאם — פגישה, משחק, מה שבא — ואני ארוץ לכל אחד בפרטי ואחזור עם מה שמסתדר.',
-  ].join('\n');
+// this conversation, not answering one. Approved as written by the owner,
+// 2026-09-06.
+function renderGroupOpened(overrides) {
+  return templates.render('group_opened', {}, overrides);
 }
 
 // The cap is a flag (`group_max_members`), so the number is passed in rather
 // than written into the sentence — a raised cap must not leave her quoting 25.
-function renderGroupTooLarge(maxMembers) {
-  return `אני מסתדרת טוב עד ${maxMembers} אנשים, וכאן יש יותר - אז לא אתערב פה. בפרטי אני תמיד זמינה.`;
+function renderGroupTooLarge(maxMembers, overrides) {
+  return templates.render('group_too_large', { max: maxMembers }, overrides);
 }
 
 // The single decision point the deliverer consults: a non-null return means
@@ -135,11 +125,11 @@ function renderGroupTooLarge(maxMembers) {
 // checkins and digests are conversational BY DESIGN (the whole 2026-08-20
 // checkin redesign was making them personal enough to answer), and a payload
 // carrying its own `instruction` is asking for a model turn by definition.
-function rawPipeTextFor(row) {
+function rawPipeTextFor(row, overrides) {
   if (row.kind !== 'reminder') return null;
   const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
   if (p.instruction) return null;
-  return renderReminderText(p);
+  return renderReminderText(p, overrides);
 }
 
 module.exports = {

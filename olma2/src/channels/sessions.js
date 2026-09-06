@@ -495,6 +495,9 @@ function readGroupContext(agentId, sessionKey, base = HOME()) {
       senderE164: (info.sender && (info.sender.e164 || info.sender.id)) || null,
       senderName: (info.sender && info.sender.name) || null,
       wasMentioned: info.was_mentioned === true,
+      // The tagging message's own id, so an answer can be sent as a reply to
+      // it (`openclaw message send --reply-to`). Absent on older events.
+      messageId: typeof info.message_id === 'string' && info.message_id ? info.message_id : null,
       at: ev.timestamp || null,
     };
   }

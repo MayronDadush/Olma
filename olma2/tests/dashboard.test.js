@@ -1382,6 +1382,61 @@ test('the reaction emoji are edited one box per state, not as JSON, and a typo n
   assert.equal(forged.status, 403);
 });
 
+// Every fixed sentence, editable in one place, with the guard that matters:
+// a box that lost a required placeholder is refused BY NAME on the page, and
+// the default keeps going out.
+test('the templates section rewords a fixed sentence, refuses a broken one by name, and resets', async () => {
+  const templates = require('../src/domain/message-templates');
+  const text = require('../src/domain/proactive-text');
+  const page = await fetch(base + '/', { headers: { Authorization: AUTH } });
+  const csrf = /csrf=([a-f0-9]+)/.exec(page.headers.get('set-cookie'))[1];
+  const html0 = sectionOf(await page.text(), 'templates');
+  assert.ok(html0.includes('action="/templates"'), 'the editor has its own section');
+  for (const t of templates.TEMPLATES) {
+    assert.ok(html0.includes(`name="${t.key}"`), `a box for ${t.key}`);
+    assert.ok(html0.includes(t.label), t.label);
+  }
+  assert.ok(html0.includes('לאנשים בפרטי') && html0.includes('בקבוצות'), 'split by audience');
+  assert.ok(html0.includes('{{missing}}'), 'the placeholders are explained');
+  const post = (fields) => fetch(base + '/templates', {
+    method: 'POST', redirect: 'manual',
+    headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ csrf, back: '/#templates', ...fields }).toString(),
+  });
+  const r = await post({
+    group_gate_nudge: 'נו, {{missing}}?\r\n',
+    reminder: templates.spec('reminder').text,   // the default typed back
+    group_intro: 'היי, אני עולמה',                // lost {{me}}
+  });
+  assert.equal(r.status, 303);
+  assert.equal(r.headers.get('location'), '/#templates');
+  const stored = await withTx(db.pool, (c) => flags.getFlag(c, templates.FLAG));
+  assert.deepEqual(stored, { group_gate_nudge: 'נו, {{missing}}?' });
+  // ...and that is what a group now hears, through the same call the sweep makes.
+  assert.equal(text.renderGroupGateNotice({ kind: 'nudge', missing: ['+972501111111'] }, stored), 'נו, @+972501111111?');
+  const html1 = sectionOf(await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text(), 'templates');
+  assert.ok(html1.includes('>נו, {{missing}}?</textarea>'), 'the box shows the override');
+  assert.ok(html1.includes('מנוסח מחדש'), 'and says it is live');
+  assert.ok(html1.includes('לא נשמר: חסר {{me}}'), 'the refused box is named, with the reason');
+  const audit = await db.pool.query(`SELECT detail FROM audit_log WHERE event = 'admin.message_templates' ORDER BY id DESC LIMIT 1`);
+  assert.deepEqual(audit.rows[0].detail.to, { group_gate_nudge: 'נו, {{missing}}?' });
+  assert.deepEqual(Object.keys(audit.rows[0].detail.rejected), ['group_intro']);
+  // Saving with the box cleared REPLACES the object.
+  await post({ group_opened: 'פתוח!' });
+  assert.deepEqual(await withTx(db.pool, (c) => flags.getFlag(c, templates.FLAG)), { group_opened: 'פתוח!' });
+  // The reset button returns everything to the defaults.
+  await post({ group_opened: 'פתוח!', reset: '1' });
+  assert.deepEqual(await withTx(db.pool, (c) => flags.getFlag(c, templates.FLAG)), {});
+  const html2 = sectionOf(await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text(), 'templates');
+  assert.ok(!html2.includes('לא נשמר:'), 'a reset clears the refusal note too');
+  // A forged CSRF cannot touch it.
+  const forged = await fetch(base + '/templates', {
+    method: 'POST', headers: { Authorization: AUTH, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'group_opened=x&csrf=forged',
+  });
+  assert.equal(forged.status, 403);
+});
+
 test('the header dot goes red for a dead gateway, like /health already did', async () => {
   gatewayState = { status: 'down', detail: 'ECONNREFUSED', port: 18789 };
   try {

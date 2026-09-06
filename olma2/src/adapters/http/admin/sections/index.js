@@ -15,6 +15,7 @@ const { renderWaitlist, renderAudit } = require('./logs');
 const { renderOutcomes } = require('./outcomes');
 const { renderBrain } = require('./brain');
 const { renderGroups } = require('./groups');
+const { renderTemplates } = require('./templates');
 
 
 // The page is six collapsible groups, in this order, and only the first is
@@ -47,6 +48,7 @@ const SECTIONS = [
   { id: 'groups', group: 'people', title: 'קבוצות', hint: 'קבוצות וואטסאפ שעולמה יושבת בהן. נעולה = מישהו שם עוד לא כתב לה בפרטי, והיא עונה לאף אחד עד שכולם כתבו. הכל נקבע מהשיחה עצמה — אין כאן כפתור לפתוח קבוצה ביד.', render: renderGroups },
   { id: 'brain', group: 'people', title: 'מה עולמה יודעת ועל מה היא מחכה', hint: 'שני צדדים של אותו דבר: מה המערכת למדה על האנשים, ומה תקוע אצלה כי אדם עדיין לא ענה.', render: renderBrain },
   { id: 'flags', group: 'controls', title: 'הגדרות מערכת', hint: 'שינוי כאן חל מיד, בלי עדכון גרסה. כל הגדרה מוסברת בשורה שלה.', render: renderFlags },
+  { id: 'templates', group: 'controls', title: 'ניסוחים', hint: 'כל הודעה שעולמה שולחת כמו שהיא, בלי מודל — תזכורות, פנייה ראשונה לאדם חדש, וכל מה שהיא אומרת בקבוצה. ברירת המחדל מוצגת ליד כל תיבה; תיבה ריקה = ברירת המחדל. ניסוח שחסר בו משתנה חובה לא נשמר, ונאמר למה.', render: renderTemplates },
   { id: 'contacts', group: 'people', title: 'ספר הכתובות', hint: 'כל אנשי הקשר שהמשתמשים ייבאו או שמרו, מקובצים לפי מספר טלפון — כל השמות שניתנו לאותו מספר, ומי מהם כבר משתמש אצלנו.', render: renderContactsSection },
   { id: 'waitlist', group: 'people', title: 'רשימת המתנה', hint: 'אנשים שפנו כשההרשמה הייתה סגורה. יקבלו הודעה כשתיפתח.', render: renderWaitlist },
   { id: 'audit', group: 'controls', title: 'יומן פעילות', hint: 'הפעולות האחרונות במערכת, לפי סדר.', render: renderAudit },

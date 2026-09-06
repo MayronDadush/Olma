@@ -540,6 +540,15 @@ no JS — but structured differently:
   after the transaction commits, never inside it.** USER.md is what the agent
   reads every turn; skipping this puts the card out of sync with the DB, which
   is the exact bug fixed on 2026-08-19.
+- **Every sentence Olma sends VERBATIM — reminders and their rungs, the first
+  contact to a stranger, everything said in a group — has its default in
+  `domain/message-templates.js` and is reworded from the admin page
+  ("ניסוחים", the `message_templates` flag), never by editing the literal in
+  code on the owner's behalf.** Senders pass the loaded overrides as the last
+  argument of `proactive-text.render*` / `intake/messages.*`; an override
+  that drops a required placeholder is refused by name on the page and
+  ignored at render, so a hand-edited flag row cannot ship a nudge with no
+  tags in it.
 - **Cancelling a queued message is an UPDATE, never a DELETE**
   (`sent_at = now(), hold_reason = 'cancelled_by_admin'`). The row carries the
   `idempotency_key` that stops the sweep which produced it from producing it

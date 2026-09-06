@@ -165,8 +165,21 @@ So:
   we have those numbers from the roster;
 - two shapes, escalating, not one repeated line: **first** tag in a locked
   group → the explanation; **subsequent** tags → the nudge that mentions the
-  missing members by name. Rate-limited per group, so a repeat-tagger cannot
-  turn her into a spammer in someone else's group.
+  missing members by name. **Every tag is answered** — there was a 30-minute
+  cooldown for a day and the owner removed it (2026-09-06: "כל תיוג עונה בלי
+  צינון"). What keeps her from flooding a room is the sweep itself: it reads
+  the newest tag per tick, so forty tags inside one tick are one answer;
+- the answer is sent as a **reply to the message that tagged her**
+  (`openclaw message send --reply-to <id>`, the id read from the transcript's
+  `Conversation info` block as `message_id`) when the id is there, and as a
+  plain message when it is not. The intro and the opening announcement are
+  never replies — nobody asked them;
+- **the wording is the owner's, and he edits it from the admin page** —
+  "ניסוחים" under הגדרות, `domain/message-templates.js`, stored as the
+  `message_templates` flag. The defaults in code are what a fresh install
+  says; an override that drops a required placeholder (the `{{missing}}` tags
+  of a nudge, her own `{{me}}` tag in the intro) is refused by name on the
+  page and ignored at render if it ever reaches the flag by hand.
 
 ### No cold DMs, ever
 
@@ -553,7 +566,9 @@ cannot show you.
    inbound message (`domain/groups.js`, `isConnected`).
 3. Whether an operator can force-unlock a group from the dashboard. The
    admin page now SHOWS groups (`admin/sections/groups.js`) and deliberately
-   has no button: a forced open is a second writer to the gate.
+   has no button: a forced open is a second writer to the gate. What the
+   operator CAN change is the wording of everything she says there
+   (`admin/sections/templates.js`, since 2026-09-06).
 4. **`retired` is never written.** Nothing detects her being removed from a
    group — the gateway raises no event we read — so a group she has left keeps
    its row, its agent and its admission until somebody notices. Harmless

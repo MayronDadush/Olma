@@ -289,11 +289,13 @@ async function applyState(client, groupId, next) {
 // by brokerd from this decision — the model is muted and cannot produce
 // either, which is the entire point.
 //
-// Pure, and rate-limited by wall-clock rather than by count, so a group that
-// tags her forty times in a minute hears from her once.
-const NOTICE_COOLDOWN_MS = 30 * 60_000;
-
-function decideNotice(group, { now = new Date(), cooldownMs = NOTICE_COOLDOWN_MS } = {}) {
+// Every tag is answered. There was a 30-minute cooldown here for a day
+// (2026-09-05) and the owner removed it: a person who tags her and hears
+// nothing has been told she is broken, not that she is being polite. What
+// keeps her from spamming a room is the sweep itself, which reads one
+// transcript per tick and answers the NEWEST tag it finds — forty tags inside
+// one tick are one answer, and the answer gets shorter after the first.
+function decideNotice(group) {
   if (group.state === 'open') return { kind: 'none', reason: 'group is open' };
   if (group.state === 'retired') return { kind: 'none', reason: 'not in this group' };
   if (group.state === 'too_large') {
@@ -302,10 +304,6 @@ function decideNotice(group, { now = new Date(), cooldownMs = NOTICE_COOLDOWN_MS
     return group.notices_sent > 0
       ? { kind: 'none', reason: 'already told them it is too large' }
       : { kind: 'too_large' };
-  }
-  const last = group.last_notice_at ? new Date(group.last_notice_at).getTime() : 0;
-  if (last && now.getTime() - last < cooldownMs) {
-    return { kind: 'none', reason: 'cooldown' };
   }
   return { kind: group.notices_sent === 0 ? 'explain' : 'nudge' };
 }
@@ -327,7 +325,7 @@ async function noteMention(client, groupId) {
 }
 
 module.exports = {
-  DEFAULT_TIMEZONE, NOTICE_COOLDOWN_MS,
+  DEFAULT_TIMEZONE,
   parseRoster, normalizePhone, majorityTimezone,
   registerGroup, getById, getByExternalId, listMembers, syncRoster,
   decideState, evaluate, applyState,

@@ -227,21 +227,17 @@ test('the group timezone follows the majority of its members', async () => {
   assert.equal(row.timezone, 'Europe/Berlin');
 });
 
-// The notice is the only thing a locked group ever hears, so its rate limiting
-// is the difference between an explanation and Olma spamming somebody's group.
-test('the first tag explains, later tags nudge, and a cooldown holds the line', () => {
+// The notice is the only thing a locked group ever hears. Every tag gets one
+// — the owner removed the cooldown that used to hold the second tag — and the
+// answer shortens after the first, so a room that keeps tagging her hears a
+// one-liner rather than the explanation again.
+test('the first tag explains, every later tag nudges, and nothing waits on a clock', () => {
   const locked = { state: 'locked', notices_sent: 0, last_notice_at: null };
   assert.equal(groups.decideNotice(locked).kind, 'explain');
 
-  const now = new Date('2026-09-05T10:00:00Z');
-  const justTold = { state: 'locked', notices_sent: 1, last_notice_at: new Date(now.getTime() - 60_000) };
-  assert.equal(groups.decideNotice(justTold, { now }).kind, 'none');
-
-  const cooledOff = {
-    state: 'locked', notices_sent: 1,
-    last_notice_at: new Date(now.getTime() - groups.NOTICE_COOLDOWN_MS - 1000),
-  };
-  assert.equal(groups.decideNotice(cooledOff, { now }).kind, 'nudge');
+  const justTold = { state: 'locked', notices_sent: 1, last_notice_at: new Date(Date.now() - 5_000) };
+  assert.equal(groups.decideNotice(justTold).kind, 'nudge', 'five seconds later is still answered');
+  assert.equal(groups.decideNotice({ ...justTold, notices_sent: 40 }).kind, 'nudge');
 
   assert.equal(groups.decideNotice({ state: 'open', notices_sent: 0 }).kind, 'none');
   assert.equal(groups.decideNotice({ state: 'retired', notices_sent: 0 }).kind, 'none');
