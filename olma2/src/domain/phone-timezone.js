@@ -66,7 +66,11 @@ function lookupTimezone(phone) {
   if (!digits) return null;
   for (const e of SORTED) {
     if (digits.startsWith(e.code)) {
-      return { country: e.country, timezone: e.tz, lang: e.lang, ambiguous: Boolean(e.ambiguous) };
+      // `code` travels with the answer because a caller that wants to SHOW
+      // its reasoning ("your number starts +972") cannot re-derive which
+      // prefix matched — the codes vary from one digit to three, and slicing
+      // a fixed number off the phone produces "+9725".
+      return { code: e.code, country: e.country, timezone: e.tz, lang: e.lang, ambiguous: Boolean(e.ambiguous) };
     }
   }
   return null;

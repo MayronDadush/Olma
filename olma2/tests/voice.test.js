@@ -22,8 +22,14 @@ async function withClient(fn) {
   try { return await fn(client); } finally { client.release(); }
 }
 
-// A stand-in bridge on an ephemeral port, answering like the real dial API.
-function fakeBridge(answer) {
+// A stand-in bridge on an ephemeral port, answering like the real API.
+//
+// It ROUTES, because the paths are the point: /dial rings a phone and /probe
+// does not. `probe` is omitted by default, so the default fake is a bridge
+// that predates /probe and 404s it — the exact thing the box can really be,
+// the two processes shipping on separate workflows. A route left out answers
+// 404 exactly as the real bridge does.
+function fakeBridge(answer, probe) {
   return new Promise((resolve) => {
     const seen = [];
     const srv = http.createServer((req, res) => {
@@ -31,7 +37,10 @@ function fakeBridge(answer) {
       req.on('data', (c) => { body += c; });
       req.on('end', () => {
         seen.push({ url: req.url, body });
-        const a = typeof answer === 'function' ? answer(body) : answer;
+        const route = req.url === '/probe' ? probe : (req.url === '/dial' ? answer : null);
+        const a = route == null
+          ? { status: 404, json: { ok: false, error: 'not found' } }
+          : (typeof route === 'function' ? route(body) : route);
         res.writeHead(a.status || 200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(a.json));
       });
@@ -111,4 +120,84 @@ test('a busy bridge (409, call in progress) relays as-is', async () => {
     delete process.env.VOICE_BRIDGE_DIAL_URL;
     await bridge.close();
   }
+});
+
+// Asked for a call reminder on 2026-09-05, Sarah was told "I can call you now
+// if you'd like" — an offer that would have come straight back as a refusal,
+// her US number never having been on the bridge's list. The assistant had no
+// way to ask, so it guessed. `callAvailable` is that way, and its answer is
+// THREE-valued on purpose: yes, no, and "could not ask" — because a bridge
+// that is down must never be rendered as a feature somebody lost.
+test('callAvailable probes without ringing anything', async () => {
+  const bridge = await fakeBridge(
+    { json: { ok: true, callSid: 'CA-SHOULD-NOT-HAPPEN' } },
+    { json: { ok: true, available: true } });
+  process.env.VOICE_BRIDGE_DIAL_URL = bridge.url;
+  try {
+    assert.equal(await voice.callAvailable(user), true);
+    assert.deepEqual(bridge.seen.map((r) => r.url), ['/probe'], 'nothing touched /dial');
+    assert.equal(JSON.parse(bridge.seen[0].body).phone, '+972526269826');
+  } finally {
+    delete process.env.VOICE_BRIDGE_DIAL_URL;
+    await bridge.close();
+  }
+});
+
+// The whole reason the probe is a PATH and not a `probe: true` field on /dial.
+// olma2 and the bridge deploy on separate workflows, so this is a real state
+// the box can be in for minutes: an old bridge has no /probe, 404s it, and the
+// card simply omits the line. The same old bridge would have IGNORED a flag on
+// /dial and rung Sarah's phone to answer a question about rendering a card.
+test('a bridge too old to have /probe answers nothing, and rings nobody', async () => {
+  const stale = await fakeBridge({ json: { ok: true, callSid: 'CA-SHOULD-NOT-HAPPEN' } });
+  process.env.VOICE_BRIDGE_DIAL_URL = stale.url;
+  try {
+    assert.equal(await voice.callAvailable(user), null);
+    assert.deepEqual(stale.seen.map((r) => r.url), ['/probe'], 'nothing touched /dial');
+  } finally {
+    delete process.env.VOICE_BRIDGE_DIAL_URL;
+    await stale.close();
+  }
+});
+
+test('a refusal the bridge actually made is a no', async () => {
+  const bridge = await fakeBridge(null, { status: 403, json: { ok: false, error: 'not enabled' } });
+  process.env.VOICE_BRIDGE_DIAL_URL = bridge.url;
+  try {
+    assert.equal(await voice.callAvailable(user), false);
+  } finally {
+    delete process.env.VOICE_BRIDGE_DIAL_URL;
+    await bridge.close();
+  }
+});
+
+// null is not false. An unreadable answer is "we do not know", and the card
+// leaves the line off entirely rather than telling someone their calls are
+// gone every time the bridge restarts (CLAUDE.md, "A thing that could not be
+// READ is never a thing in trouble").
+test('a bridge that is down or broken answers nothing, not "no"', async () => {
+  process.env.VOICE_BRIDGE_DIAL_URL = 'http://127.0.0.1:1/dial';
+  try {
+    assert.equal(await voice.callAvailable(user), null);
+  } finally { delete process.env.VOICE_BRIDGE_DIAL_URL; }
+
+  const broken = await fakeBridge(null, { status: 500, json: { ok: false, error: 'boom' } });
+  process.env.VOICE_BRIDGE_DIAL_URL = broken.url;
+  try {
+    assert.equal(await voice.callAvailable(user), null, 'a 500 is not a verdict');
+  } finally {
+    delete process.env.VOICE_BRIDGE_DIAL_URL;
+    await broken.close();
+  }
+});
+
+test('the card says what the bridge said, and stays silent when it said nothing', () => {
+  const { renderCard } = require('../src/intake/user-card');
+  const u = { first_name: 'Sarah', locale: 'en', timezone: 'America/Los_Angeles' };
+  assert.match(renderCard(u, [], [], { calls: true }), /Phone calls: available/);
+  const no = renderCard(u, [], [], { calls: false });
+  assert.match(no, /Phone calls: NOT available/);
+  assert.match(no, /never offer to call them/, 'the line carries its own instruction');
+  assert.doesNotMatch(renderCard(u, [], [], { calls: null }), /Phone calls/);
+  assert.doesNotMatch(renderCard(u, [], [], {}), /Phone calls/);
 });

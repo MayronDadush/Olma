@@ -12,8 +12,20 @@
 // so a bad section is re-emitted on every refresh, for ever; and the guard that
 // was supposed to catch it only ever looked at cards whose text collided with
 // another card's. Prevention has been in jobs/intake.readIntakeFirstMessage
-// since 2026-08-27 and the live reader was re-verified correct on 2026-09-03 —
-// so this is purely going back for the damage already written down.
+// since 2026-08-27 and the live reader was re-verified correct on 2026-09-03.
+//
+// This was a one-off script until 2026-09-06, and being one-off is what let it
+// happen twice. The 2026-09-03 run removed 24 chars of user 14's words from
+// Sarah's card; by 2026-09-06 her card carried 49 DIFFERENT foreign chars —
+// user 8's — and the mechanism that put them back has never been named (the
+// same window rewrote six `.olma-identity` files with the wrong tokens). The
+// detector saw it: `config_guard` filed the leak at 12:47. Four hours later
+// her agent read the stranger's words off her own card, made a task out of
+// them and armed a reminder on her phone for that evening. A detector whose
+// only output is a dashboard row is not a fix — so this now runs as a sweep
+// (jobs/registry `carryover_repair`) that REPAIRS on every tick, and the
+// audit row it writes is `permanent`, because "it healed itself in four
+// minutes" must still be answerable months later.
 //
 // The section is REMOVED, never rewritten with the right text. Their real first
 // message is days old by now; re-injecting it would hand the agent a stale
@@ -61,6 +73,9 @@ function classify(card, ownText) {
 }
 
 async function repairCarryovers(pool, { apply = false, log = () => {}, readPeerText } = {}) {
+  // Awaited, so brokerd can hand in the worker-thread facade
+  // (channels/sessions-async) while the one-off script keeps the sync reader.
+  // A sweep inside the daemon must never call channels/sessions directly.
   const read = readPeerText || ((phone) => sessions.readPeerUserText(INTAKE_AGENT_ID, phone));
   const { rows } = await pool.query(
     `SELECT id, phone, first_name, workspace_path FROM users
@@ -73,7 +88,7 @@ async function repairCarryovers(pool, { apply = false, log = () => {}, readPeerT
     let card;
     try { card = fs.readFileSync(file, 'utf8'); } catch { continue; }
     let own = null;
-    try { own = read(u.phone); } catch { own = null; }
+    try { own = await read(u.phone); } catch { own = null; }
     const { verdict, quoted, reason } = classify(card, own == null ? null : own);
 
     if (verdict === 'clean') { out.clean++; continue; }
@@ -87,11 +102,12 @@ async function repairCarryovers(pool, { apply = false, log = () => {}, readPeerT
     // A leak. Report the LENGTH and the owner if we can name them, never the
     // text: copying a stranger's private message into audit_log to record that
     // it leaked would spread it one table further.
-    const owner = rows.find((o) => {
-      if (o.id === u.id) return false;
-      let t = null; try { t = read(o.phone); } catch { return false; }
-      return t && norm(t).includes(quoted);
-    });
+    let owner = null;
+    for (const o of rows) {
+      if (o.id === u.id) continue;
+      let t = null; try { t = await read(o.phone); } catch { continue; }
+      if (t && norm(t).includes(quoted)) { owner = o; break; }
+    }
     log(`  user ${u.id} (${u.first_name || '—'}): LEAK — quotes ${quoted.length} chars they never sent`
       + (owner ? `, which belong to user ${owner.id}` : ''));
     if (!apply) { out.repaired.push({ id: u.id, ownerId: owner ? owner.id : null }); continue; }

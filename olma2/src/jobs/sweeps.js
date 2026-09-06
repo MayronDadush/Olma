@@ -93,10 +93,19 @@ async function sweepReminders(client, nowIso) {
 // Fires when a user's local HH:MM matches one of their digest_times (±2min
 // tolerance so a slow tick can't skip a slot). Budget-held rows fold in here.
 async function sweepDigests(client, now = new Date()) {
+  // `last_digest_at` is what decides whether this morning may ask anything.
+  // Only rows that were really delivered count: a cancelled or expired row
+  // carries sent_at too (that is how cancelling stops its producer), and
+  // treating one as a digest the person ignored would silence the next
+  // morning over a message they never saw.
   const { rows } = await client.query(
-    `SELECT id, digest_times, digest_scope, timezone FROM users
-     WHERE status = 'active' AND onboarded_at IS NOT NULL AND digest_times IS NOT NULL
-       AND paused_at IS NULL AND NOT is_eval`
+    `SELECT u.id, u.digest_times, u.digest_scope, u.timezone, u.last_inbound_at,
+            (SELECT max(o.sent_at) FROM outbox o
+              WHERE o.user_id = u.id AND o.kind = 'digest'
+                AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL) AS last_digest_at
+       FROM users u
+      WHERE u.status = 'active' AND u.onboarded_at IS NOT NULL AND u.digest_times IS NOT NULL
+        AND u.paused_at IS NULL AND NOT u.is_eval`
   );
   // Read once for the whole sweep, not per user: it is one operator setting,
   // and a flag that changed mid-loop would give two users different mornings
@@ -117,9 +126,22 @@ async function sweepDigests(client, now = new Date()) {
     // insert lost to its own idempotency key (the ±2min tolerance means this
     // sweep visits the same slot on two or three consecutive ticks): the held
     // messages were stamped delivered and rode along with nothing.
+    // "Nobody is asked a question they have already not answered once" was
+    // enforced in the check-in ladder and nowhere else, so the digest kept its
+    // own counter of nothing: Sarah was asked "did the brunch and the moving
+    // happen?" on four consecutive mornings (02, 04, 05, 06 September) and
+    // answered none of them, because each morning the model looked for a real
+    // gap, found the same one, and asked again. Silence to yesterday's digest
+    // is the answer to today's question.
+    //
+    // Absent, not false, when they have never had a digest: an old row still
+    // in flight carries no `mayAsk` and keeps the wording it was enqueued
+    // with, the same way `cardMinItems` is treated.
+    const mayAsk = !u.last_digest_at
+      || (u.last_inbound_at && new Date(u.last_inbound_at) > new Date(u.last_digest_at));
     const res = await enqueue(client, {
       userId: u.id, kind: 'digest',
-      payload: { scope: u.digest_scope || 'summary', cardMinItems, folded: [] },
+      payload: { scope: u.digest_scope || 'summary', cardMinItems, folded: [], mayAsk: Boolean(mayAsk) },
       idempotencyKey: `digest:${u.id}:${day}:${slot}`,
     });
     if (!res.data.enqueued) continue;

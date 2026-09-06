@@ -45,6 +45,16 @@ CI does the same on every merge to `main` that touches `voice-bridge/`
 — the pure half of the bridge (`lib/persona.js`, `lib/env.js`) has tests; the
 call path itself is proven by a real call.
 
+`server.js` cannot be `require`d from a checkout (it loads olma2's pg pool and
+domain modules at import), so the two loopback routes are proven by the deploy
+check instead of a unit test: `/dial` answers 404 to a GET and `/probe`
+answers 403 to a phone nobody serves. The second matters more than it looks —
+`/probe` exists so olma2 can ask "would a call to this person go through"
+without ringing anyone, and because it is a PATH, a bridge that predates it
+404s and the asking side reads that as "could not ask". That failure is
+silent by design, so the only thing that ever notices a `/probe` which
+stopped existing is this check.
+
 `olma-voice-bridge.service` is the unit, kept here so it is not one more thing
 that exists only on the droplet. It is **system-scope** (`systemctl restart`,
 not `systemctl --user`) — see CLAUDE.md, "systemd scope".

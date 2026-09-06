@@ -194,3 +194,48 @@ test('recovery never burns the once-per-pause resume offer', async () => {
   const res = await call(u, 'turn_start', {}, newTurn());
   assert.match(res.text, /offerResume/, 'the offer survived to be delivered');
 });
+
+// The half of the opening that must NOT be recovered: waking the delivery
+// queue. Sarah, 2026-09-03 — a gateway heartbeat poll ran a turn on her agent,
+// the model reached for `list_my_tasks` before `turn_start`, and this path,
+// which cannot tell a heartbeat from a person, released her night-held
+// check-in. The gate then saw an inbound eight seconds old, applied its
+// 15-minute mid-conversation grace, and delivered "Good morning!" at 01:26 her
+// time. Recovering the RECORD is right — a turn happened. Asserting that a
+// PERSON is awake, from a turn nobody can attribute to one, is how somebody
+// gets woken up.
+test('the fallback opener counts the turn but never wakes a night-held row', async () => {
+  const u = await makeUser(db.pool, '+972573000009', { firstName: 'שרה' });
+  await setFlag('all');
+  const tomorrow = new Date(Date.now() + 10 * 3600_000);
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, hold_reason, release_after)
+     VALUES ($1, 'checkin', '{}', 'normal', 'night', $2)`, [u.id, tomorrow]);
+
+  await call(u, 'list_my_tasks', {}, newTurn());
+
+  const c = await counts(u.id);
+  assert.equal(c.recovered, 1, 'the turn is still recovered');
+  assert.equal(c.quota, 1, 'and still counted — a turn did happen');
+  const { rows } = await db.pool.query(
+    `SELECT release_after <= now() AS woken FROM outbox
+      WHERE user_id = $1 AND sent_at IS NULL`, [u.id]);
+  assert.equal(rows[0].woken, false, 'the night hold keeps its schedule');
+});
+
+// The gateway hook is the opener that DOES have the evidence: it fires on
+// `message:preprocessed`, an accepted inbound message and nothing else.
+test('the gateway opener, which has a real message behind it, does wake them', async () => {
+  const u = await makeUser(db.pool, '+972573000010', { firstName: 'שרה2' });
+  const tomorrow = new Date(Date.now() + 10 * 3600_000);
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, hold_reason, release_after)
+     VALUES ($1, 'checkin', '{}', 'normal', 'night', $2)`, [u.id, tomorrow]);
+
+  await withTx(db.pool, (c) => turnDomain.openFromGateway(c, u, { messageId: 'ABC', kind: 'text' }));
+
+  const { rows } = await db.pool.query(
+    `SELECT release_after <= now() AS woken FROM outbox
+      WHERE user_id = $1 AND sent_at IS NULL`, [u.id]);
+  assert.equal(rows[0].woken, true, 'a real inbound message gets the gate to re-decide');
+});
