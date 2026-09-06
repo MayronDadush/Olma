@@ -541,9 +541,13 @@ Verified on the box at the cutover, 2026-08-17:
 - `openclaw.json` `mcp.servers` has exactly ONE entry, `/opt/olma2/bin/olma-mcp.js`.
   v1's `olma-mcp.js` is not registered, so **every v1-only tool is dead** —
   Google Calendar and Monday included (see [Known gaps](#known-gaps)).
-- The roster has changed repeatedly since (`u-18`..`u-22` were removed
-  2026-09-01) — **read it, do not trust a list written here**; the `intake`
-  agent exists,
+- The roster has changed repeatedly since — **read it, do not trust a list
+  written here**. This line used to say `u-18`..`u-22` were removed on
+  2026-09-01, and by 2026-09-06 four of them were back: not because anyone
+  re-added them, but because a test-suite sweep provisioned phantoms into the
+  live roster (`incidents.md`, "The test suite provisioned into production").
+  An id present here is not evidence a person exists, and an id absent is not
+  evidence one does not. The `intake` agent exists,
   so the v2 intake sweeps are live, not inert. Each user's DB
   `workspace_path` matches the gateway's configured workspace for their agent
   exactly (`/root/.openclaw/workspaces/u-<id>`) — the schedule-card feature
@@ -759,6 +763,22 @@ Two things the suite learned the hard way:
   or an unpinned `drainOnce` passes or fails depending on when you run it.
   The suite was green thirteen hours a day and red eleven before this.
 
+- **A test file must never reach the LIVE gateway — not its home, not its
+  roster.** `deploy.sh --restart` runs this suite on the box, where the
+  defaults ARE production. `tests/helpers.js` points `OLMA_OPENCLAW_HOME` and
+  `OLMA_OPENCLAW_CONFIG` at a temp dir, and `intake/production-guard.js` throws
+  if a process with `NODE_TEST_CONTEXT` set resolves anything under
+  `/root/.openclaw`. Both are needed: isolation travels by environment and is
+  gone the moment a test spawns a child with a hand-built `env` instead of
+  `{ ...process.env }` — which is how a test brokerd's `intake_sweep` came to
+  provision real people out of a throwaway database, overwriting six identity
+  files and leaving four agents bound to nothing, three times in two days.
+  **Anything resolving one of those paths reads it per call, never captures it
+  at module load** — as a constant, whether the isolation took depended on
+  require order. (`incidents.md`, "The test suite provisioned into production".)
+- **`OLMA_HEARTBEAT: 'off'` does NOT turn the sweeps off** — that is
+  `OLMA_WORKER`. Two separate gates in `bin/olma-brokerd.js`, and the first
+  reads like it means "quiet".
 - **A test file must never write into a directory the other test files read.**
   They are separate processes over one filesystem. A decoy migration dropped
   into the real `migrations/` for a few milliseconds threw in every *other*

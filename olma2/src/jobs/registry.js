@@ -28,7 +28,13 @@ const laneWatchdog = require('./lane-watchdog');
 const onboardingReview = require('./onboarding-review');
 const memoryConsolidation = require('./memory-consolidation');
 const groupsJob = require('./groups');
-const { DEFAULT_PATH: OPENCLAW_CONFIG } = require('../intake/openclaw-config');
+// Resolved per job run, never destructured at module load: brokerd requires
+// this file while it is still starting, and a captured value pins whichever
+// path the environment held at that instant. A test process that spawns a real
+// brokerd sets its own OLMA_OPENCLAW_CONFIG, and the sweep below must honour
+// it — see intake/production-guard.js for what happened when it did not.
+const occ = require('../intake/openclaw-config');
+const OPENCLAW_CONFIG = () => occ.defaultPath();
 
 // jobs({ pool }) -> [{ name, run }] in arming order.
 function jobs({ pool }) {
@@ -204,7 +210,7 @@ const deployDrift = require('./deploy-drift');
     // a gateway agent entry that no ROLLBACK can take back, so the sweep owns
     // its own transaction and undoes those on the way out of a failure.
     { name: 'intake_sweep', run: () => intake.runIntakeSweep(pool, {
-      configPath: OPENCLAW_CONFIG, readFirstMessage: intake.readIntakeFirstMessage,
+      configPath: OPENCLAW_CONFIG(), readFirstMessage: intake.readIntakeFirstMessage,
     }) },
     { name: 'reopen_sweep', run: () => withTx(pool, (c) => intake.sweepReopen(c)) },
     // Group mode. Inert until `scripts/install-group-greeter.js` has run —
@@ -216,18 +222,18 @@ const deployDrift = require('./deploy-drift');
     // Every word it sends is fixed text on the raw pipe — no model, so a group
     // waiting on somebody to sign up costs nothing at all.
     { name: 'group_sweep', run: () => groupsJob.runGroupSweep(pool, {
-      configPath: OPENCLAW_CONFIG,
+      configPath: OPENCLAW_CONFIG(),
       send: async (jid, body, opts) => (await rawSend(jid, body, opts)).ok,
     }) },
     { name: 'intake_template_sync', run: async () => {
-      if (!intake.intakeConfigured(OPENCLAW_CONFIG)) return { skipped: true };
+      if (!intake.intakeConfigured(OPENCLAW_CONFIG())) return { skipped: true };
       const open = (await flagsDomain.getFlag(pool, 'registration_open')) === true;
       return syncIntakeWorkspace(open);
     } },
     { name: 'config_guard', run: () => withTx(pool, (c) =>
-      configGuard.run(c, { configPath: OPENCLAW_CONFIG, send: rawSend, validateConfig })) },
+      configGuard.run(c, { configPath: OPENCLAW_CONFIG(), send: rawSend, validateConfig })) },
     { name: 'boost_reconcile', run: () => withTx(pool, (c) =>
-      boostJob.run(c, { configPath: OPENCLAW_CONFIG })) },
+      boostJob.run(c, { configPath: OPENCLAW_CONFIG() })) },
     { name: 'memory_consolidation', run: () => withTx(pool, (c) =>
       memoryConsolidation.sweepMemoryConsolidation(c, { runAgent: runSilentAgentTurn })) },
     // Thinks over a direct model call (adapters/llm.js), not an agent turn —
@@ -258,7 +264,7 @@ const deployDrift = require('./deploy-drift');
     // delivery queue, two bad ticks before a word, a dead gateway restarted
     // before anything is said, WhatsApp for the news (jobs/liveness-watch.js).
     { name: 'liveness_watch', run: () => withTx(pool, (c) =>
-      livenessWatch.run(c, { configPath: OPENCLAW_CONFIG, send: rawSend })) },
+      livenessWatch.run(c, { configPath: OPENCLAW_CONFIG(), send: rawSend })) },
     // Reads a new person's first hours back and files what it finds — once
     // three hours in, once again after the first full day, because five of the
     // faults this exists to catch happened between hour four and hour thirteen.
