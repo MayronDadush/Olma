@@ -2712,6 +2712,15 @@ The two-in-four-days recurrence is the actual finding. **Repairing on a
 schedule is what you ship when you cannot name the writer** — and the audit
 rows are how anyone will ever notice it is still happening.
 
+**Late the same day the section was gone again**, this time legitimately: her
+USER.md was rewritten at 17:48 UTC with no `## ` tail at all, which is the
+designed lifecycle — the agent processes a carryover section on a real turn
+and removes it. So the leak self-cleared for the second time in four days
+without anyone learning who wrote it, which is precisely the state the repair
+job exists for. **What does not self-clear is what the agent already did with
+it**: task 459 and reminder 143 are still on Sarah's list and still need
+undoing by hand.
+
 ### The fact table admitted everything and ranked by recency (fixed 2026-08-28)
 
 The owner read the dashboard's "מה נלמד לאחרונה" and asked whether that is
