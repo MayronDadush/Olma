@@ -127,7 +127,8 @@ test('the policy states the same scopes as the home page, in both languages', ()
   for (const scope of ['calendar.readonly', 'calendar.events', 'contacts.readonly', 'gmail.readonly', 'userinfo.email']) {
     assert.ok(html.includes(scope), `privacy policy does not disclose ${scope}`);
   }
-  assert.ok(/Privacy Policy \(English\)/.test(html), 'a Google reviewer reads English');
+  assert.ok(/Privacy Policy/i.test(html), 'a Google reviewer reads English first');
+  assert.ok(html.includes('מדיניות פרטיות (עברית)'), 'Hebrew users still get the full policy');
   assert.ok(/myaccount\.google\.com\/permissions/.test(html), 'users must be told how to revoke directly');
 });
 

@@ -10,6 +10,15 @@
 // four allowlisted routes (see CLAUDE.md, "Two hostnames"), which is exactly
 // right for a dashboard nobody should reach and exactly wrong for this.
 //
+// English first, Hebrew second: the product's own users are mostly Hebrew
+// speakers today, but Google's verification reviewer reads English, and the
+// company is meant to go global. Both languages say the same thing in full —
+// neither is a summary of the other, because a policy that says different
+// things in two languages is worse than one language. The brand string
+// "Allma - Personal Assistant" must stay byte-identical to the OAuth consent
+// screen's configured App name (Google Auth Platform → Branding), or
+// verification flags a name mismatch between the app and its homepage.
+//
 // TWO THINGS THAT MUST STAY TRUE, because a verification reviewer checks
 // them and because they are the honest description either way:
 //
@@ -21,6 +30,7 @@
 //
 // No JS, no forms, no state: these are the only two pages in this codebase a
 // completely unauthenticated stranger can read, so they get no moving parts.
+const BRAND = 'Allma - Personal Assistant';
 const ASSISTANT = 'עולמה';
 const WA_NUMBER = '972559347282';
 const CONTACT_EMAIL = 'mayrondadush@gmail.com';
@@ -84,7 +94,7 @@ a:hover{border-bottom-color:currentColor}
 .cta:hover{background:var(--accent-2);border-bottom:0}
 .foot{margin-top:44px;padding-top:18px;border-top:1px solid var(--sep);font-size:13px;color:var(--text-3)}
 .foot a{color:var(--text-2)}
-.en{margin-top:52px;padding-top:26px;border-top:1px solid var(--sep);direction:ltr;text-align:left}
+.he{margin-top:52px;padding-top:26px;border-top:1px solid var(--sep);direction:rtl;text-align:right}
 .updated{font-size:13.5px;color:var(--text-3);margin-top:4px}
 @media (prefers-reduced-motion:no-preference){
   .wrap>*{animation:rise .55s var(--ease) both}
@@ -92,7 +102,7 @@ a:hover{border-bottom-color:currentColor}
 }
 `;
 
-const LOGO = `<svg viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${ASSISTANT}">
+const LOGO = `<svg viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${BRAND}">
   <defs>
     <linearGradient id="lg" x1="18" y1="10" x2="80" y2="86" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#7C4DFF"/><stop offset="1" stop-color="#4A22B4"/>
@@ -106,7 +116,9 @@ const LOGO = `<svg viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" role="
   <circle cx="70" cy="22" r="5.2" fill="#fff" opacity=".9"/>
 </svg>`;
 
-function shell(title, bodyHtml, { lang = 'he', dir = 'rtl' } = {}) {
+// English first, ltr by default: this is now the primary reading direction.
+// The Hebrew section on each page opts back into rtl via the `.he` wrapper.
+function shell(title, bodyHtml, { lang = 'en', dir = 'ltr' } = {}) {
   return `<!doctype html>
 <html lang="${lang}" dir="${dir}">
 <head>
@@ -126,170 +138,211 @@ function shell(title, bodyHtml, { lang = 'he', dir = 'rtl' } = {}) {
 
 // Google's reviewer reads this to decide whether the scopes we ask for match
 // what the product says it does, so every capability below names the exact
-// permission behind it and its limit.
+// permission behind it and its limit. Said once in English, then again in
+// Hebrew for the people actually using it today — same claims, both times.
 function homePage() {
-  return shell(`${ASSISTANT} — עוזרת אישית בוואטסאפ`, `
+  return shell(`${BRAND} — a WhatsApp AI assistant`, `
     <div class="mark">${LOGO}</div>
-    <h1>${ASSISTANT}</h1>
-    <p class="lede">עוזרת אישית שחיה בתוך וואטסאפ. כותבים לה בשפה שלכם — היא זוכרת, מזכירה, ומתאמת. אין מה להתקין.</p>
+    <h1>${BRAND}</h1>
+    <p class="lede">A personal assistant that lives inside WhatsApp. Write to it in your own language — it remembers, reminds, and coordinates. Nothing to install.</p>
 
-    <p><a class="cta" href="https://wa.me/${WA_NUMBER}">פתיחת שיחה בוואטסאפ</a></p>
+    <p><a class="cta" href="https://wa.me/${WA_NUMBER}">Start a WhatsApp chat</a></p>
 
-    <h2>מה היא עושה</h2>
+    <h2>What it does</h2>
     <ul>
-      <li><b>משימות ותזכורות</b> — אומרים לה משהו פעם אחת, והיא מזכירה בזמן הנכון.</li>
-      <li><b>תיאום פגישות</b> — בין אנשים שמחוברים זה לזה, כולל מציאת זמן שמתאים לכולם.</li>
-      <li><b>סיכום יומי</b> — תמונה קצרה של היום, בשעה שבוחרים.</li>
-      <li><b>זיכרון</b> — העדפות ועובדות שנאמרו בשיחה, כדי שלא צריך לחזור עליהן.</li>
+      <li><b>Tasks & reminders</b> — tell it once, and it reminds you at the right time.</li>
+      <li><b>Meeting coordination</b> — between people connected to each other, including finding a time that works for everyone.</li>
+      <li><b>Daily summary</b> — a short picture of your day, at a time you choose.</li>
+      <li><b>Memory</b> — preferences and facts mentioned in conversation, so you never repeat yourself.</li>
     </ul>
 
-    <h2>חיבור לחשבון הגוגל שלכם — לבחירתכם</h2>
-    <p>${ASSISTANT} עובדת מצוין בלי שום חיבור. אם בכל זאת מחברים, כל הרשאה נפרדת, מתבקשת רק אחרי שביקשתם אותה במפורש, וניתנת לניתוק בכל רגע.</p>
+    <h2>Connecting your Google account — your choice</h2>
+    <p>${BRAND} works great with no connection at all. If you do connect, every permission is separate, requested only after you explicitly asked for it, and can be disconnected at any time.</p>
 
     <div class="card">
-      <h3>יומן Google</h3>
-      <p>לראות מה יש ביומן כדי לענות על "מה יש לי מחר", ולהציע זמנים שפנויים באמת. אם תבחרו גם הרשאת עריכה — להוסיף אירוע שביקשתם.</p>
-      <p class="perm">ההרשאה: <code>calendar.readonly</code> לצפייה בלבד, או <code>calendar.events</code> אם אישרתם גם עריכה. אתם בוחרים לפני שהקישור נוצר.</p>
+      <h3>Google Calendar</h3>
+      <p>See what's on your calendar to answer "what do I have tomorrow", and suggest times that are genuinely free. If you also grant edit access, add an event you asked for.</p>
+      <p class="perm">Permission: <code>calendar.readonly</code> for viewing only, or <code>calendar.events</code> if you also approved editing. You choose before the link is created.</p>
     </div>
 
     <div class="card">
-      <h3>אנשי קשר Google</h3>
-      <p>ייבוא שמות ומספרים לפנקס הכתובות הפרטי שלכם כאן, כדי שלא תצטרכו להכתיב מספר שכבר קיים אצלכם בטלפון. הייבוא שקט לחלוטין: הוא לא שולח הודעה לאף אחד ולא מספר לאיש שאתם משתמשים ב${ASSISTANT}.</p>
-      <p class="perm">ההרשאה: <code>contacts.readonly</code> — קריאה בלבד.</p>
+      <h3>Google Contacts</h3>
+      <p>Import names and numbers into your own private address book here, so you don't have to dictate a number already in your phone. The import is completely silent: it notifies nobody and tells no one that you use ${BRAND}.</p>
+      <p class="perm">Permission: <code>contacts.readonly</code> — read-only.</p>
     </div>
 
     <div class="card">
       <h3>Gmail</h3>
-      <p>לחפש בתיבה שלכם כשאתם מבקשים — "מה כתבו לי מבית הספר?" — ולפתוח הודעה אחת כדי לענות. ${ASSISTANT} <b>לא</b> עוברת על המיילים מיוזמתה, ולא יכולה לשלוח, להשיב, למחוק או לתייק כלום.</p>
-      <p class="perm">ההרשאה: <code>gmail.readonly</code> — קריאה בלבד. אין הרשאת שליחה, ואין כלי שמסוגל לשלוח.</p>
+      <p>Search your inbox when you ask — "what did the school send me?" — and open one message to answer. ${BRAND} does <b>not</b> go through your mail on its own, and cannot send, reply, delete or file anything.</p>
+      <p class="perm">Permission: <code>gmail.readonly</code> — read-only. No send permission, and no tool capable of sending.</p>
     </div>
 
-    <h2>פרטיות</h2>
-    <p>אנחנו לא מוכרים מידע ולא משתמשים בו לפרסום. המידע מגוגל משמש אך ורק כדי לענות לכם — לא לאימון מודלים ולא לשום שימוש אחר. <a href="/privacy">מדיניות הפרטיות המלאה</a>.</p>
+    <h2>Privacy</h2>
+    <p>We do not sell information and do not use it for advertising. Data from Google is used solely to answer you — not to train models, and not for any other purpose. <a href="/privacy">Full privacy policy</a>.</p>
+
+    <div class="he">
+      <div class="mark">${LOGO}</div>
+      <h2>${ASSISTANT}</h2>
+      <p class="lede">עוזרת אישית שחיה בתוך וואטסאפ. כותבים לה בשפה שלכם — היא זוכרת, מזכירה, ומתאמת. אין מה להתקין.</p>
+
+      <p><a class="cta" href="https://wa.me/${WA_NUMBER}">פתיחת שיחה בוואטסאפ</a></p>
+
+      <h3>מה היא עושה</h3>
+      <ul>
+        <li><b>משימות ותזכורות</b> — אומרים לה משהו פעם אחת, והיא מזכירה בזמן הנכון.</li>
+        <li><b>תיאום פגישות</b> — בין אנשים שמחוברים זה לזה, כולל מציאת זמן שמתאים לכולם.</li>
+        <li><b>סיכום יומי</b> — תמונה קצרה של היום, בשעה שבוחרים.</li>
+        <li><b>זיכרון</b> — העדפות ועובדות שנאמרו בשיחה, כדי שלא צריך לחזור עליהן.</li>
+      </ul>
+
+      <h3>חיבור לחשבון הגוגל שלכם — לבחירתכם</h3>
+      <p>${ASSISTANT} עובדת מצוין בלי שום חיבור. אם בכל זאת מחברים, כל הרשאה נפרדת, מתבקשת רק אחרי שביקשתם אותה במפורש, וניתנת לניתוק בכל רגע.</p>
+
+      <div class="card">
+        <h3>יומן Google</h3>
+        <p>לראות מה יש ביומן כדי לענות על "מה יש לי מחר", ולהציע זמנים שפנויים באמת. אם תבחרו גם הרשאת עריכה — להוסיף אירוע שביקשתם.</p>
+        <p class="perm">ההרשאה: <code>calendar.readonly</code> לצפייה בלבד, או <code>calendar.events</code> אם אישרתם גם עריכה. אתם בוחרים לפני שהקישור נוצר.</p>
+      </div>
+
+      <div class="card">
+        <h3>אנשי קשר Google</h3>
+        <p>ייבוא שמות ומספרים לפנקס הכתובות הפרטי שלכם כאן, כדי שלא תצטרכו להכתיב מספר שכבר קיים אצלכם בטלפון. הייבוא שקט לחלוטין: הוא לא שולח הודעה לאף אחד ולא מספר לאיש שאתם משתמשים ב${ASSISTANT}.</p>
+        <p class="perm">ההרשאה: <code>contacts.readonly</code> — קריאה בלבד.</p>
+      </div>
+
+      <div class="card">
+        <h3>Gmail</h3>
+        <p>לחפש בתיבה שלכם כשאתם מבקשים — "מה כתבו לי מבית הספר?" — ולפתוח הודעה אחת כדי לענות. ${ASSISTANT} <b>לא</b> עוברת על המיילים מיוזמתה, ולא יכולה לשלוח, להשיב, למחוק או לתייק כלום.</p>
+        <p class="perm">ההרשאה: <code>gmail.readonly</code> — קריאה בלבד. אין הרשאת שליחה, ואין כלי שמסוגל לשלוח.</p>
+      </div>
+
+      <h3>פרטיות</h3>
+      <p>אנחנו לא מוכרים מידע ולא משתמשים בו לפרסום. המידע מגוגל משמש אך ורק כדי לענות לכם — לא לאימון מודלים ולא לשום שימוש אחר. <a href="/privacy">מדיניות הפרטיות המלאה</a>.</p>
+    </div>
 
     <div class="foot">
-      <p>allma.world · <a href="/privacy">מדיניות פרטיות</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+      <p>allma.world · <a href="/privacy">Privacy Policy</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
     </div>
   `);
 }
 
 // ---- privacy ----------------------------------------------------------------
 
-// Hebrew first because that is what the people using this read, English in
-// full below because that is what a Google reviewer reads. Neither is a
+// English first because that is what a Google reviewer reads, Hebrew in full
+// below because that is what the people using this today read. Neither is a
 // summary of the other — a policy that says different things in two
 // languages is worse than one language.
-const UPDATED = '2026-09-04';
+const UPDATED = '2026-09-06';
 
 function privacyPage() {
-  return shell(`מדיניות פרטיות — ${ASSISTANT}`, `
+  return shell(`Privacy Policy — ${BRAND}`, `
     <div class="mark">${LOGO}</div>
-    <h1>מדיניות פרטיות</h1>
-    <p class="updated">עודכן: ${UPDATED}</p>
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: ${UPDATED}</p>
 
-    <h2>מי אנחנו</h2>
-    <p>${ASSISTANT} (allma.world) היא עוזרת אישית שפועלת דרך וואטסאפ. השירות מופעל על ידי מפעיל יחיד; לפניות: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
+    <h2>Who we are</h2>
+    <p>${BRAND} (allma.world) is a personal assistant that works over WhatsApp, operated by an individual developer. Contact: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
 
-    <h2>איזה מידע נשמר</h2>
+    <h2>What we store</h2>
     <ul>
-      <li><b>פרטי החשבון</b> — מספר הטלפון שדרכו אתם כותבים, שם פרטי אם מסרתם, אזור זמן והעדפות שפה.</li>
-      <li><b>תוכן השיחה</b> — ההודעות שאתם כותבים ל${ASSISTANT} והתשובות שלה, כדי שהשיחה תמשיך להיות רציפה.</li>
-      <li><b>מה שביקשתם שתזכור</b> — משימות, תזכורות, פגישות, העדפות ועובדות.</li>
-      <li><b>מידע מגוגל</b> — רק אם חיברתם, ורק לפי ההרשאות שאישרתם (פירוט למטה).</li>
+      <li><b>Account details</b> — the phone number you write from, a first name if you gave one, timezone and language preference.</li>
+      <li><b>Conversation content</b> — your messages and the assistant's replies, so the conversation stays coherent.</li>
+      <li><b>What you asked it to remember</b> — tasks, reminders, meetings, preferences and facts.</li>
+      <li><b>Google data</b> — only if you connected it, and only under the scopes you approved.</li>
     </ul>
 
-    <h2>מידע מחשבון גוגל</h2>
-    <p>החיבור לגוגל הוא בחירה, לא תנאי. כל הרשאה מתבקשת בנפרד ובמסך ההסכמה של גוגל עצמה, ואפשר לאשר חלק ולסרב לשאר.</p>
+    <h2>Google user data</h2>
+    <p>Connecting Google is optional. Each permission is requested separately on Google's own consent screen, and you may grant some and decline others.</p>
     <ul>
-      <li><b>יומן</b> (<code>calendar.readonly</code> או <code>calendar.events</code>) — לקרוא אירועים כדי לענות על שאלות לגבי הלו"ז ולהציע זמנים פנויים, ולהוסיף או לערוך אירוע רק אם אישרתם הרשאת עריכה וביקשתם זאת.</li>
-      <li><b>אנשי קשר</b> (<code>contacts.readonly</code>) — לייבא שמות ומספרים לפנקס כתובות פרטי בחשבון שלכם. הייבוא לא שולח הודעה לאיש ולא חושף לאף צד שלישי שאתם משתמשים בשירות.</li>
-      <li><b>Gmail</b> (<code>gmail.readonly</code>) — לחפש בתיבה ולפתוח הודעה בודדת, <b>רק כשאתם מבקשים במפורש</b>. אין סריקה יזומה, אין תהליך רקע שקורא מיילים, ואין יכולת טכנית לשלוח, להשיב, למחוק או לתייק.</li>
-      <li><b>כתובת המייל של החשבון</b> (<code>userinfo.email</code>) — כדי להציג לכם לאיזה חשבון התחברתם, וכדי לצרף משתתפים להזמנה ליומן כשאתם מתאמים פגישה.</li>
+      <li><b>Calendar</b> (<code>calendar.readonly</code> or <code>calendar.events</code>) — read events to answer questions about your schedule and propose genuinely free times; create or edit an event only if you granted edit access and explicitly asked for it.</li>
+      <li><b>Contacts</b> (<code>contacts.readonly</code>) — import names and numbers into a private address book on your own account. The import notifies nobody and discloses to no third party that you use the service.</li>
+      <li><b>Gmail</b> (<code>gmail.readonly</code>) — search your mailbox and open a single message, <b>only when you explicitly ask</b>. There is no proactive scanning, no background job that reads mail, and no technical ability to send, reply, delete or file anything.</li>
+      <li><b>Account email address</b> (<code>userinfo.email</code>) — to show you which account is connected, and to invite participants to a calendar event when you coordinate a meeting.</li>
     </ul>
 
-    <h2>שימוש מוגבל (Limited Use)</h2>
-    <p>השימוש שלנו במידע שמתקבל מממשקי Google, והעברתו, עומדים ב<a href="https://developers.google.com/terms/api-services-user-data-policy">מדיניות נתוני המשתמש של שירותי Google API</a>, לרבות דרישות ה-Limited Use. באופן קונקרטי: המידע מגוגל משמש אך ורק כדי לספק לכם את התכונות שתיארנו למעלה; הוא אינו נמכר; אינו משמש לפרסום; ואינו משמש לאימון מודלים כלליים.</p>
+    <h2>Limited Use</h2>
+    <p>Our use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Specifically: Google user data is used solely to provide the user-facing features described above; it is not sold; it is not used for advertising; and it is not used to train generalized models.</p>
 
-    <h2>עם מי המידע נחלק</h2>
-    <p>איננו מוכרים מידע ואיננו מעבירים אותו למפרסמים. כדי שהשירות יעבוד, מידע עובר לספקים הבאים ולהם בלבד:</p>
+    <h2>Who we share with</h2>
+    <p>We do not sell data and do not share it with advertisers. To operate the service, data is processed by:</p>
     <ul>
-      <li><b>ספק המודל</b> — טקסט השיחה נשלח למודל שפה דרך OpenRouter (כיום DeepSeek, עם Anthropic כגיבוי) כדי לחבר תשובה.</li>
-      <li><b>וואטסאפ / Meta</b> — הערוץ שדרכו ההודעות מגיעות ונשלחות.</li>
-      <li><b>Twilio</b> — רק אם השתמשתם בשיחה קולית.</li>
-      <li><b>Google</b> — רק עבור השירותים שחיברתם בעצמכם.</li>
+      <li><b>Model provider</b> — conversation text is sent to a language model via OpenRouter (currently DeepSeek, with Anthropic as fallback) to compose a reply.</li>
+      <li><b>WhatsApp / Meta</b> — the channel messages arrive and are sent over.</li>
+      <li><b>Twilio</b> — only if you used a voice call.</li>
+      <li><b>Google</b> — only for the services you connected yourself.</li>
     </ul>
-    <p>מעבר לכך, מידע נמסר רק אם חובה על פי דין.</p>
+    <p>Otherwise, data is disclosed only where required by law.</p>
 
-    <h2>איפה זה נשמר</h2>
-    <p>המידע יושב במסד נתונים על שרת ייעודי באירופה (DigitalOcean). אסימוני הגישה לגוגל מוצפנים במנוחה (AES-256-GCM) והמפתח נשמר מחוץ למסד הנתונים. מתבצע גיבוי יומי שנשמר 14 יום ואז נמחק.</p>
+    <h2>Where it is stored</h2>
+    <p>Data is held in a database on a dedicated server in Europe (DigitalOcean). Google access and refresh tokens are encrypted at rest (AES-256-GCM) with the key held outside the database. A daily backup is retained for 14 days and then deleted.</p>
 
-    <h2>מחיקה ושליטה</h2>
+    <h2>Deletion and control</h2>
     <ul>
-      <li><b>ניתוק גוגל</b> — אפשר לבקש מ${ASSISTANT} לנתק כל שירות בכל רגע. אנחנו מוחקים את האסימון אצלנו ומבטלים אותו מול גוגל.</li>
-      <li>אפשר גם לבטל את הגישה ישירות דרך <a href="https://myaccount.google.com/permissions">ההרשאות בחשבון הגוגל שלכם</a>.</li>
-      <li><b>השהיה</b> — אפשר לבקש מ${ASSISTANT} להפסיק ליזום פנייה. זו השהיה הפיכה, לא מחיקה.</li>
-      <li><b>מחיקת הכל</b> — פנייה ל<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> תמחק את החשבון ואת כל המידע הקשור אליו.</li>
+      <li><b>Disconnect Google</b> — ask the assistant to disconnect any service at any time. We delete our stored token and revoke it with Google.</li>
+      <li>You can also revoke access directly from your <a href="https://myaccount.google.com/permissions">Google account permissions</a>.</li>
+      <li><b>Pause</b> — ask the assistant to stop reaching out. This is a reversible pause, not a deletion.</li>
+      <li><b>Delete everything</b> — email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> and the account and all associated data are deleted.</li>
     </ul>
 
-    <h2>ילדים</h2>
-    <p>השירות אינו מיועד לגילאים מתחת ל-16.</p>
+    <h2>Children</h2>
+    <p>The service is not intended for anyone under 16.</p>
 
-    <h2>שינויים</h2>
-    <p>אם המדיניות תשתנה באופן מהותי, התאריך בראש העמוד יתעדכן ונודיע בשיחה.</p>
+    <h2>Changes</h2>
+    <p>If this policy changes materially, the date at the top is updated and we tell you in the conversation.</p>
 
-    <div class="en">
-      <h2>Privacy Policy (English)</h2>
-      <p class="updated">Last updated: ${UPDATED}</p>
+    <div class="he">
+      <h2>מדיניות פרטיות (עברית)</h2>
+      <p class="updated">עודכן: ${UPDATED}</p>
 
-      <h3>Who we are</h3>
-      <p>${ASSISTANT} / Allma (allma.world) is a personal assistant that works over WhatsApp, operated by an individual developer. Contact: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
+      <h3>מי אנחנו</h3>
+      <p>${ASSISTANT} (allma.world) היא עוזרת אישית שפועלת דרך וואטסאפ. השירות מופעל על ידי מפעיל יחיד; לפניות: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>.</p>
 
-      <h3>What we store</h3>
+      <h3>איזה מידע נשמר</h3>
       <ul>
-        <li><b>Account details</b> — the phone number you write from, a first name if you gave one, timezone and language preference.</li>
-        <li><b>Conversation content</b> — your messages and the assistant's replies, so the conversation stays coherent.</li>
-        <li><b>What you asked it to remember</b> — tasks, reminders, meetings, preferences and facts.</li>
-        <li><b>Google data</b> — only if you connected it, and only under the scopes you approved.</li>
+        <li><b>פרטי החשבון</b> — מספר הטלפון שדרכו אתם כותבים, שם פרטי אם מסרתם, אזור זמן והעדפות שפה.</li>
+        <li><b>תוכן השיחה</b> — ההודעות שאתם כותבים ל${ASSISTANT} והתשובות שלה, כדי שהשיחה תמשיך להיות רציפה.</li>
+        <li><b>מה שביקשתם שתזכור</b> — משימות, תזכורות, פגישות, העדפות ועובדות.</li>
+        <li><b>מידע מגוגל</b> — רק אם חיברתם, ורק לפי ההרשאות שאישרתם (פירוט למטה).</li>
       </ul>
 
-      <h3>Google user data</h3>
-      <p>Connecting Google is optional. Each permission is requested separately on Google's own consent screen, and you may grant some and decline others.</p>
+      <h3>מידע מחשבון גוגל</h3>
+      <p>החיבור לגוגל הוא בחירה, לא תנאי. כל הרשאה מתבקשת בנפרד ובמסך ההסכמה של גוגל עצמה, ואפשר לאשר חלק ולסרב לשאר.</p>
       <ul>
-        <li><b>Calendar</b> (<code>calendar.readonly</code> or <code>calendar.events</code>) — read events to answer questions about your schedule and propose genuinely free times; create or edit an event only if you granted edit access and explicitly asked for it.</li>
-        <li><b>Contacts</b> (<code>contacts.readonly</code>) — import names and numbers into a private address book on your own account. The import notifies nobody and discloses to no third party that you use the service.</li>
-        <li><b>Gmail</b> (<code>gmail.readonly</code>) — search your mailbox and open a single message, <b>only when you explicitly ask</b>. There is no proactive scanning, no background job that reads mail, and no technical ability to send, reply, delete or file anything.</li>
-        <li><b>Account email address</b> (<code>userinfo.email</code>) — to show you which account is connected, and to invite participants to a calendar event when you coordinate a meeting.</li>
+        <li><b>יומן</b> (<code>calendar.readonly</code> או <code>calendar.events</code>) — לקרוא אירועים כדי לענות על שאלות לגבי הלו"ז ולהציע זמנים פנויים, ולהוסיף או לערוך אירוע רק אם אישרתם הרשאת עריכה וביקשתם זאת.</li>
+        <li><b>אנשי קשר</b> (<code>contacts.readonly</code>) — לייבא שמות ומספרים לפנקס כתובות פרטי בחשבון שלכם. הייבוא לא שולח הודעה לאיש ולא חושף לאף צד שלישי שאתם משתמשים בשירות.</li>
+        <li><b>Gmail</b> (<code>gmail.readonly</code>) — לחפש בתיבה ולפתוח הודעה בודדת, <b>רק כשאתם מבקשים במפורש</b>. אין סריקה יזומה, אין תהליך רקע שקורא מיילים, ואין יכולת טכנית לשלוח, להשיב, למחוק או לתייק.</li>
+        <li><b>כתובת המייל של החשבון</b> (<code>userinfo.email</code>) — כדי להציג לכם לאיזה חשבון התחברתם, וכדי לצרף משתתפים להזמנה ליומן כשאתם מתאמים פגישה.</li>
       </ul>
 
-      <h3>Limited Use</h3>
-      <p>Our use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Specifically: Google user data is used solely to provide the user-facing features described above; it is not sold; it is not used for advertising; and it is not used to train generalized models.</p>
+      <h3>שימוש מוגבל (Limited Use)</h3>
+      <p>השימוש שלנו במידע שמתקבל מממשקי Google, והעברתו, עומדים ב<a href="https://developers.google.com/terms/api-services-user-data-policy">מדיניות נתוני המשתמש של שירותי Google API</a>, לרבות דרישות ה-Limited Use. באופן קונקרטי: המידע מגוגל משמש אך ורק כדי לספק לכם את התכונות שתיארנו למעלה; הוא אינו נמכר; אינו משמש לפרסום; ואינו משמש לאימון מודלים כלליים.</p>
 
-      <h3>Who we share with</h3>
-      <p>We do not sell data and do not share it with advertisers. To operate the service, data is processed by:</p>
+      <h3>עם מי המידע נחלק</h3>
+      <p>איננו מוכרים מידע ואיננו מעבירים אותו למפרסמים. כדי שהשירות יעבוד, מידע עובר לספקים הבאים ולהם בלבד:</p>
       <ul>
-        <li><b>Model provider</b> — conversation text is sent to a language model via OpenRouter (currently DeepSeek, with Anthropic as fallback) to compose a reply.</li>
-        <li><b>WhatsApp / Meta</b> — the channel messages arrive and are sent over.</li>
-        <li><b>Twilio</b> — only if you used a voice call.</li>
-        <li><b>Google</b> — only for the services you connected yourself.</li>
+        <li><b>ספק המודל</b> — טקסט השיחה נשלח למודל שפה דרך OpenRouter (כיום DeepSeek, עם Anthropic כגיבוי) כדי לחבר תשובה.</li>
+        <li><b>וואטסאפ / Meta</b> — הערוץ שדרכו ההודעות מגיעות ונשלחות.</li>
+        <li><b>Twilio</b> — רק אם השתמשתם בשיחה קולית.</li>
+        <li><b>Google</b> — רק עבור השירותים שחיברתם בעצמכם.</li>
       </ul>
-      <p>Otherwise, data is disclosed only where required by law.</p>
+      <p>מעבר לכך, מידע נמסר רק אם חובה על פי דין.</p>
 
-      <h3>Where it is stored</h3>
-      <p>Data is held in a database on a dedicated server in Europe (DigitalOcean). Google access and refresh tokens are encrypted at rest (AES-256-GCM) with the key held outside the database. A daily backup is retained for 14 days and then deleted.</p>
+      <h3>איפה זה נשמר</h3>
+      <p>המידע יושב במסד נתונים על שרת ייעודי באירופה (DigitalOcean). אסימוני הגישה לגוגל מוצפנים במנוחה (AES-256-GCM) והמפתח נשמר מחוץ למסד הנתונים. מתבצע גיבוי יומי שנשמר 14 יום ואז נמחק.</p>
 
-      <h3>Deletion and control</h3>
+      <h3>מחיקה ושליטה</h3>
       <ul>
-        <li><b>Disconnect Google</b> — ask the assistant to disconnect any service at any time. We delete our stored token and revoke it with Google.</li>
-        <li>You can also revoke access directly from your <a href="https://myaccount.google.com/permissions">Google account permissions</a>.</li>
-        <li><b>Pause</b> — ask the assistant to stop reaching out. This is a reversible pause, not a deletion.</li>
-        <li><b>Delete everything</b> — email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> and the account and all associated data are deleted.</li>
+        <li><b>ניתוק גוגל</b> — אפשר לבקש מ${ASSISTANT} לנתק כל שירות בכל רגע. אנחנו מוחקים את האסימון אצלנו ומבטלים אותו מול גוגל.</li>
+        <li>אפשר גם לבטל את הגישה ישירות דרך <a href="https://myaccount.google.com/permissions">ההרשאות בחשבון הגוגל שלכם</a>.</li>
+        <li><b>השהיה</b> — אפשר לבקש מ${ASSISTANT} להפסיק ליזום פנייה. זו השהיה הפיכה, לא מחיקה.</li>
+        <li><b>מחיקת הכל</b> — פנייה ל<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> תמחק את החשבון ואת כל המידע הקשור אליו.</li>
       </ul>
 
-      <h3>Children</h3>
-      <p>The service is not intended for anyone under 16.</p>
+      <h3>ילדים</h3>
+      <p>השירות אינו מיועד לגילאים מתחת ל-16.</p>
 
-      <h3>Changes</h3>
-      <p>If this policy changes materially, the date at the top is updated and we tell you in the conversation.</p>
+      <h3>שינויים</h3>
+      <p>אם המדיניות תשתנה באופן מהותי, התאריך בראש העמוד יתעדכן ונודיע בשיחה.</p>
     </div>
 
     <div class="foot">
@@ -298,4 +351,4 @@ function privacyPage() {
   `);
 }
 
-module.exports = { homePage, privacyPage, ASSISTANT, CONTACT_EMAIL, UPDATED };
+module.exports = { homePage, privacyPage, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED };
