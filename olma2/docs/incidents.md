@@ -4788,9 +4788,28 @@ Three things worth keeping:
   them. That is worth checking rather than assuming.
 - **The scheduled clock-drift run had shipped the day before, for exactly this
   class, and this is not how it was caught.** `deploy.sh` found it first,
-  three times, because the deploy runs on the hostile machine and the schedule
-  only runs at four hours. Both are worth having; neither replaces reading the
-  failure.
+  because the deploy runs on the hostile machine and the schedule only runs at
+  four hours. Both are worth having; neither replaces reading the failure.
+
+**Two causes wore one costume, and counting the red runs hid that.** Three
+deploys failed in a row and it was tempting — and wrong — to call them three
+of the same thing. Reading each one's terminal state instead:
+
+| run | what actually ended it |
+|---|---|
+| `34049350911` (76098bb) | attempt 1 wedged, attempt 2 produced a real result: 1472 pass, **1 fail**, the deep-link test |
+| `34050220314` (91f5f33) | **wedged on both attempts, never produced a result** — the deep-link test also failed inside attempt 1 |
+| `34053184196` (8c788b6) | 1497 pass, 1 fail — a different test entirely (`onboarding-review`, fixed separately) |
+
+So the race was real and the fix was necessary, and it was **not** the whole
+story: a solo on-box suite measured **234s against `SUITE_TIMEOUT=420`**, so
+anything else holding the CPU at the same time pushes both runs past the cap
+and both report as wedges. A wedge and an assertion failure look alike from
+the outside — both arrive as a red `deploy` — and they take opposite actions.
+`run-suite.sh` prints the banner precisely so they can be told apart: **read
+which one you have before deciding whether a re-run is even meaningful.**
+Re-running 34049350911 was reasonable and it failed again, on the assertion,
+which is what identified the race.
 
 The box was resized from one core to two the same evening, which widens the
 odds without changing the rule: **a moment a test will later assert on is

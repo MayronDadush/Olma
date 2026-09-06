@@ -94,6 +94,11 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   where it does not wedge). The `deploy_drift` dashboard row
   (`jobs/deploy-drift.js`) reports this gap hourly — a row and never an alert,
   since being a few commits behind breaks nobody.
+- **A red `deploy` is EITHER a wedge or a real failure, and they take opposite
+  actions** — `run-suite.sh`'s banner is what tells them apart, so read it
+  before deciding a re-run means anything. A solo on-box suite runs ~234s
+  against `SUITE_TIMEOUT=420` (measured 2026-09-06), so a second thing holding
+  the CPU pushes both past the cap and both report as wedges.
 - **A red suite inside `deploy.sh` leaves a MIXED box and does not roll back.**
   The order is rsync → RELEASE marker → `npm install` → migrations → suite →
   restart, so a failure aborts before the restart and `roll_back` never runs —
