@@ -214,6 +214,17 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   (a queue per person, oldest first), not one per person: two messages a few
   seconds apart each keep their own count, opening and reply target
   (`incidents.md`, "Two messages three seconds apart").
+  **Widening it to everybody is four steps, and the first one is not
+  optional** (planned 2026-09-07): (1) `src/evals/scenarios.js` —
+  `turnStartFirst` asserts every turn's FIRST tool call is `turn_start`, and
+  the eval user (`users.is_eval`, u-15 today) is a covered user the moment
+  the flag says `all`, so five scenarios go red for the model doing the right
+  thing. Teach it to accept a turn the gateway opened before flipping
+  anything. (2) flag `turn_context_phones` = `all`. (3) EMPTY the plugin's
+  `config.agents` rather than listing everyone — empty means every `u-N`
+  agent, so a user who joins next week is covered without anyone
+  remembering, and the flag stays the only gate. (4) restart the gateway
+  (`config.agents` is read once, at register) and resync every AGENTS.md.
 - **`messages.queue.mode` stays `followup`.** The gateway default, `steer`,
   pushes a message that arrives mid-turn INTO the running turn and cancels
   the tool calls the model just made ("Skipped due to queued user message").
