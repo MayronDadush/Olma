@@ -39,7 +39,7 @@ function taskHints(res) {
 }
 
 module.exports = [
-  tool('list_my_tasks', 'List your open tasks (status=done for completed).',
+  tool('list_my_tasks', 'List your open tasks (status=done for completed). Each carries its pending reminders with the hour to SAY, in their clock — a due date is when the thing is, never when you will remind them.',
     { status: S('string', 'open | done (default open)') }, [],
     (client, user, a) => tasks.listTasks(client, user.id, { status: a.status || 'open' })),
   tool('add_task', 'Add one task; parent_task_id makes it a subtask (one level). due_at is when the THING is, and arms a reminder automatically an hour before (08:00 for a whole-day one). remind_at is for "תזכיר לי ב-19:00": that hour IS the reminder and replaces the automatic one. A dictated shopping run is filed as a list. Follow any hints on the reply. Times MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their own local time (USER.md); never bare digits with a Z.',

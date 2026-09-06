@@ -240,3 +240,30 @@ test('the hint states the armed hour and never asks for a time it did not arm', 
   // time and left it to pick one.
   assert.doesNotMatch(add.description, /never call set_task_reminder for that one/);
 });
+
+// The second source of the same lie. Yahav's first morning: asked what was on
+// his day, Olma read list_my_tasks and said "תזכורות ב-7:00, 11:30 ו-19:00",
+// twice, across two messages. 19:00 was a DUE date; the reminder was armed for
+// 18:00. No correctly behaving model could have said otherwise — the reminder
+// times were not on the result at all.
+test('the task list carries the hour it will actually remind them, in their clock', async () => {
+  const u = await freshUser('+972500000113');
+  const timed = await withTx(db.pool, (c) => tasks.addTask(c, u.id, {
+    title: 'להתקשר למלי', dueAt: '2026-09-06T19:00:00+03:00', now: NOW,
+  }));
+  await withTx(db.pool, (c) => tasks.addTask(c, u.id, { title: 'בלי תאריך', now: NOW }));
+
+  const list = await withTx(db.pool, (c) => tasks.listTasks(c, u.id, {}));
+  const mali = list.data.tasks.find((t) => t.id === timed.data.task.id);
+  const bare = list.data.tasks.find((t) => t.title === 'בלי תאריך');
+
+  // 18:00 local is what is armed. 19:00 is the due hour and is NOT offered as
+  // a reminder time anywhere on this result.
+  assert.deepEqual(mali.reminders.map((r) => r.at), ['2026-09-06 18:00']);
+  assert.equal(bare.reminders, undefined, 'a task with no reminder says nothing about one');
+
+  // and a cancelled or sent reminder is not a plan
+  await withTx(db.pool, (c) => reminders.cancelReminder(c, u.id, mali.reminders[0].id));
+  const after = await withTx(db.pool, (c) => tasks.listTasks(c, u.id, {}));
+  assert.equal(after.data.tasks.find((t) => t.id === mali.id).reminders, undefined);
+});
