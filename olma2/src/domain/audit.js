@@ -9,9 +9,15 @@
 // consent records: when someone granted an outside service access to their
 // calendar, at what level, and when they took it back. That trail should
 // outlive a routine cleanup window.
+// `admin.carryover_leak_repaired` is here for a different reason from the rest:
+// it is the only record that one person's private words were ever on another
+// person's card. The repair sweep heals that within minutes, so the file, the
+// dashboard row and the issue are all gone by the time anyone asks — and a
+// cross-user exposure that leaves no trail is one nobody can count.
 const PERMANENT_PREFIXES = ['share.', 'connection.', 'grant.', 'user.provisioned', 'user.blocked',
   'calendar.connected', 'calendar.disconnected', 'calendar.access_changed',
-  'contacts.connected', 'contacts.reconnected', 'contacts.disconnected'];
+  'contacts.connected', 'contacts.reconnected', 'contacts.disconnected',
+  'admin.carryover_leak_repaired'];
 
 function retentionClassFor(event) {
   return PERMANENT_PREFIXES.some((p) => event.startsWith(p)) ? 'permanent' : 'routine';

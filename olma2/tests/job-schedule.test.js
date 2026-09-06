@@ -61,7 +61,7 @@ test('a job slower than the gap between deploys is kicked at startup', () => {
 test('kicks are staggered, not a thundering herd on a 1-vCPU box', () => {
   const kicked = armedJobs.filter(shouldKickOnStart);
   assert.ok(kicked.length >= 5, 'expected several slow jobs to be kicked');
-  const delays = kicked.map((_, i) => kickDelayMs(i));
+  const delays = kicked.map((_, i) => kickDelayMs(i, kicked.length));
   assert.ok(delays[0] >= 15_000, 'the first kick waits for the process to settle');
   for (let i = 1; i < delays.length; i += 1) {
     assert.ok(delays[i] - delays[i - 1] >= 10_000,
@@ -72,6 +72,27 @@ test('kicks are staggered, not a thundering herd on a 1-vCPU box', () => {
   const shortestKicked = Math.min(...kicked.map(intervalSeconds)) * 1000;
   assert.ok(delays[delays.length - 1] < shortestKicked,
     `last kick at ${delays[delays.length - 1]}ms must precede ${shortestKicked}ms`);
+});
+
+// The assertion above passed for months while the herd grew towards the cliff,
+// because it only ever measured TODAY's job list. It went red the first time
+// two branches each added a job (2026-09-06: promise_watch and
+// carryover_repair, 19 -> 20 kicked, last kick 305s against a 300s floor) —
+// which is the one moment it is least useful, mid-merge, with two authors who
+// each tested green alone. So the invariant is now checked against job counts
+// nobody has reached yet: adding a job must compress the stagger, never
+// overflow the window.
+test('the stagger compresses as jobs are added, rather than walking off a cliff', () => {
+  const floor = KICK_MIN_SECONDS * 1000;
+  for (const total of [1, 2, 5, 20, 40, 100]) {
+    const last = kickDelayMs(total - 1, total);
+    assert.ok(last < floor,
+      `with ${total} kicked jobs the last kick is ${last}ms, past the ${floor}ms floor`);
+    for (let i = 1; i < total; i += 1) {
+      assert.ok(kickDelayMs(i, total) > kickDelayMs(i - 1, total),
+        'kicks must stay strictly ordered however tight the spacing gets');
+    }
+  }
 });
 
 test('card refreshes happen after the sweep transaction, never inside it', () => {

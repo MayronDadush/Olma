@@ -26,10 +26,18 @@ SSH="ssh -i $SSH_KEY -o ServerAliveInterval=15 -o ServerAliveCountMax=6"
 # 404 is the proof: the process is up, the port is bound, and it is OUR server
 # answering — a dead unit refuses the connection, a stranger would not answer
 # with this body. The unit must also be active, or a crash loop reads as up.
+# ...and /probe answers 403 for a number nobody serves. That is the proof for
+# the route olma2's card renderer asks (domain/voice.callAvailable): the probe
+# is a PATH, so a bridge that predates it 404s and the card silently loses the
+# line rather than lying. Checking it here is what stops that silence from
+# being permanent and unnoticed. Harmless by construction — the empty phone
+# fails the allowlist gate long before anything dials.
 bridge_ok() {
   $SSH "$SERVER" "
     systemctl is-active --quiet $UNIT &&
-    curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8792/dial | grep -q '^404\$'
+    curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8792/dial | grep -q '^404\$' &&
+    curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+      -d '{\"phone\":\"\"}' http://127.0.0.1:8792/probe | grep -q '^403\$'
   "
 }
 

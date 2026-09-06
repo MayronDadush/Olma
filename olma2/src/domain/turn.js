@@ -61,7 +61,22 @@ async function contextEnabledFor(client, user) {
 // the quota count, the message.received row. Whichever of the openers runs
 // FIRST is the only one that can still see a NULL last_inbound_at, so the
 // first-turn verdict is captured here and handed back.
-async function openRecord(client, user) {
+// `wake` — whether this opener has EVIDENCE that a person just wrote, as
+// opposed to a turn that merely happened on their agent. Only the waking half
+// is gated: the record half (last_inbound_at, the backoff reset, the count)
+// stays unconditional, because a turn that reached the model is still activity
+// worth recording even when we cannot name what started it.
+//
+// Sarah, 2026-09-03: a gateway heartbeat poll ran a turn on her agent, the
+// model reached for `list_my_tasks` before `turn_start`, and the implicit
+// opener — which cannot tell a heartbeat from a person — released her
+// night-held check-in. The gate then saw an inbound 8 seconds old, applied the
+// mid-conversation grace, and delivered "Good morning!" at 01:26 her time.
+// Heartbeats are off since 2026-09-05, but the hole is the opener, not the
+// heartbeat: anything that runs a turn without a real inbound message can
+// still reach this. Waking someone is the one thing here that must never be
+// done on an inference (`incidents.md`, "Good morning at half past one").
+async function openRecord(client, user, { wake = false } = {}) {
   const opened = await client.query(
     `UPDATE users u SET last_inbound_at = now(),
             checkin_misses = CASE WHEN u.checkin_misses > 0 THEN 0 ELSE u.checkin_misses END
@@ -73,7 +88,7 @@ async function openRecord(client, user) {
   // Night-held rows get their re-hearing. The gate stays the only judge: this
   // only makes the worker re-read them, it cannot deliver anything the gate
   // would refuse (see the 2026-08-27 entry).
-  await client.query(
+  if (wake) await client.query(
     `UPDATE outbox SET release_after = now()
       WHERE user_id = $1 AND sent_at IS NULL AND hold_reason = 'night'
         AND release_after > now()`, [user.id]);
@@ -93,7 +108,9 @@ async function openFromGateway(client, user, { messageId, kind } = {}) {
     await audit.record(client, user.id, 'turn.opened_by_gateway', { selfInitiated: true, messageId: messageId || null });
     return { counted: false, quota: null, firstTurn: false, skipped: 'self_initiated' };
   }
-  const rec = await openRecord(client, user);
+  // The gateway hook fires on `message:preprocessed` — an accepted inbound
+  // message and nothing else — so this opener, alone, may wake the queue.
+  const rec = await openRecord(client, user, { wake: true });
   await audit.record(client, user.id, 'turn.opened_by_gateway', { messageId: messageId || null, kind: kind || 'text' });
   return rec;
 }
@@ -118,7 +135,12 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
   // two runs FIRST is the only one that can still see a NULL last_inbound_at,
   // so this path has to capture the first-turn verdict and carry it back — see
   // the `firstTurn` return below.
-  const rec = await openRecord(client, user);
+  // `wake` stays off here on purpose: this path is the FALLBACK, reached
+  // whenever the model skipped turn_start, and it has no message id, no
+  // gateway event and no way to tell a person from a system turn. The cost of
+  // not waking is that a night-held row waits for the window to open, which is
+  // the gate's own default; the cost of waking wrongly is a message at 01:26.
+  const rec = await openRecord(client, user, { wake: false });
   const { counted, quota, firstTurn } = { counted: rec.counted, quota: rec.quota, firstTurn: rec.firstTurn };
   // The skip itself is recorded, not just repaired. A defect that is silently
   // compensated for is a defect nobody ever measures — and the whole reason

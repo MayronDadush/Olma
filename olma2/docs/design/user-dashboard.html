@@ -621,6 +621,16 @@ html[data-served] .langtog,
 html[data-served] .introtog,
 html[data-served] .newtog,
 html[data-served] .themetog{display:none}
+/* Groups do not survive being served either, for a different reason: nothing
+   backs them. The /me payload carries no groups, user-dashboard-write.js has
+   no group action and the ACT map has no entry — so the three lists on a
+   served page are somebody else's example (פוקר, פאדל, האו״ם, seeded when
+   this was designed), and a group made there is forgotten on the next reload.
+   Hidden by the same stamp and for the same reason as the buttons above: from
+   script it would show until the server answered. Emptying the seed instead
+   would leave a section still offering to make one. Open this file from disk
+   and the whole feature is there, which is what the design copy is for. */
+html[data-served] .groupsblock{display:none}
 .langtog{
   position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:14px;z-index:40;
   display:flex;padding:3px;border-radius:999px;background:var(--surface);
@@ -2205,9 +2215,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          them you will reach for again. -->
     <div class="viewrow pair" style="--i:1">
       <button class="addmini" id="addFriend"><svg><use href="#i-plus"/></svg><span data-i18n="fr.invite"></span></button>
-      <button class="addmini ghost" id="addGroup"><svg><use href="#i-plus"/></svg><span data-i18n="gr.new"></span></button>
+      <button class="addmini ghost groupsblock" id="addGroup"><svg><use href="#i-plus"/></svg><span data-i18n="gr.new"></span></button>
     </div>
-    <div style="--i:2">
+    <div style="--i:2" class="groupsblock">
       <div class="glabel"><span data-i18n="gr.h"></span><span class="hint" data-i18n="gr.hint"></span></div>
       <div class="searchwrap" id="groupSearch" hidden>
         <svg class="sicon"><use href="#i-search"/></svg>
@@ -3169,8 +3179,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "cal.pMeet":"מסמנים מתי מתאים, עולמה מוצאת את החלון הטוב ביותר לכולם.",
       "sheet.close":"סגירה","mt.open":"תיאומים פעילים","mt.new":"תיאום פגישה חדש",
       "mt.note":"תשובה אומרת אם אתה יכול — לא שקבעתם. כשכולם מסמנים את אותה אופציה היא נקבעת מעצמה, אחרי דקה שבה עוד אפשר לשנות. מי שפתח את התיאום יכול גם לקבוע לבד, גם אם לא כולם יכלו.",
-      "mt.empty":"אין תיאום פעיל כרגע.",
-      "mt.emptyLive":"אין תיאום פעיל כרגע. כדי לפתוח תיאום חדש — תבקשו מעולמה בצ׳אט.",
+      "mt.empty":"אין תיאום פעיל כרגע. אפשר לפתוח אחד למעלה, או פשוט לבקש מעולמה.",
       "toast.mtNoUnanswer":"אפשר להחליף בין ״אני יכול״ ל״לא מתאים לי״, אבל לא לחזור ללא־תשובה",
       "mt.n0":"אין","mt.n1":"תיאום אחד","mt.nN":"{n} תיאומים",
       "mt.ask":"מתי מתאים לך?","mt.askOne":"אתה יכול להגיע?","mt.settledLbl":"המועד שנקבע",
@@ -3404,8 +3413,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "cal.pMeet":"Everyone marks when they can. Allma finds the window that fits.",
       "sheet.close":"Close","mt.open":"Active coordinations","mt.new":"New coordination",
       "mt.note":"An answer says whether you can \u2014 not that it is settled. When everyone marks the same option it settles itself, after a minute in which anyone can still change their answer. Whoever opened the coordination can also settle it alone, even if not everyone could.",
-      "mt.empty":"Nothing being coordinated right now.",
-      "mt.emptyLive":"Nothing being coordinated right now. To start one, ask Allma in the chat.",
+      "mt.empty":"Nothing being coordinated right now. Start one above, or just ask Allma.",
       "toast.mtNoUnanswer":"You can switch between yes and no, but not back to no answer",
       "mt.n0":"none","mt.n1":"1 coordination","mt.nN":"{n} coordinations",
       "mt.ask":"When suits you?","mt.askOne":"Can you make it?","mt.settledLbl":"The time you settled on",
@@ -6831,10 +6839,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     });
     $("#calRead").hidden = mode !== "cal";
     $("#calMeet").hidden = mode === "cal";
-    /* Starting a coordination is the multi-option flow — several candidate
-       times, offered at once — and the system has no call for it. Opening one
-       still happens by asking Olma, which does exist and works. Hiding the
-       button and saying where it went is the honest version of "not yet". */
+    /* This used to be hidden, and the comment here still said so long after
+       the sheet behind it started calling `startMeeting` for real. The button
+       belongs to the coordination mode and to nothing else, which is the whole
+       rule: the calendar mode is a week you read, this one is a thing you
+       open. */
     $("#mtNew").hidden = mode === "cal";
     $("#calSub").textContent = t(mode === "cal" ? "cal.p" : "cal.pMeet");
     if(mode === "meet") renderMeets();
