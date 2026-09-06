@@ -267,3 +267,46 @@ test('the task list carries the hour it will actually remind them, in their cloc
   const after = await withTx(db.pool, (c) => tasks.listTasks(c, u.id, {}));
   assert.equal(after.data.tasks.find((t) => t.id === mali.id).reminders, undefined);
 });
+
+// Miron, 2026-09-06 11:29. "משימת עבודה - תזכיר לי עוד שעתיים לדבר עם מור חן".
+// brokerd put a 👍 on the message and the result carried `hints.markPlaced`
+// verbatim — the hint whose whole purpose is NO_REPLY when the mark says it
+// all. He got 'הוספתי ✅ "לדבר עם מור חן" לתזכורת עוד שעתיים (13:29)' anyway.
+//
+// The hint was not missing and it was not ignored. It was outvoted: the SAME
+// result said "say when you will remind them", an unconditional instruction to
+// write, and an unconditional instruction beats a conditional one every time.
+// So the reminder hint now answers the question markPlaced is asking — is
+// there anything here that words can carry — instead of answering a different
+// one. An hour Olma picked is news. An hour they named is not.
+test('the reminder hint never orders a sentence the 👍 has already sent', async () => {
+  const { BY_NAME, toolDefinitions } = require('../src/adapters/mcp/registry');
+  const add = BY_NAME.get('add_task');
+  const described = toolDefinitions().find((d) => d.name === 'add_task');
+  const u = await freshUser('+972500000114');
+
+  const asked = await withTx(db.pool, (c) => add.handler(c, u, {
+    title: 'לדבר עם מור חן', due_at: '2026-09-06T13:29:00+03:00',
+    remind_at: '2026-09-06T13:29:00+03:00',
+  }));
+  const auto = await withTx(db.pool, (c) => add.handler(c, u, {
+    title: 'פגישה', due_at: '2026-09-06T19:00:00+03:00',
+  }));
+
+  // Their own hour: nothing to add, and the hint says so rather than asking
+  // for a sentence that would talk over the mark.
+  assert.match(asked.data.hints.reminders, /not a reason to write/);
+  assert.doesNotMatch(asked.data.hints.reminders, /say (that|when|THAT)/);
+
+  // The hour Olma chose is the one thing worth a line — and it is 18:00, the
+  // armed one, not the 19:00 the thing is at.
+  assert.match(auto.data.hints.reminders, /18:00/);
+  assert.doesNotMatch(auto.data.hints.reminders, /19:00/);
+  assert.match(auto.data.hints.reminders, /one short line/);
+
+  // Neither branch, and no description read every turn, tells it to report the
+  // save. That fact belongs to the mark.
+  for (const text of [asked.data.hints.reminders, auto.data.hints.reminders, described.description]) {
+    assert.doesNotMatch(text, /say when you will remind them/);
+  }
+});

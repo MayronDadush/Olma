@@ -22,9 +22,23 @@ const base = (over = {}) => ({
   user: { id: 1, timezone: TZ, timezoneConfirmed: true },
   outbound: [], inbound: [], tasks: [], reminders: [],
   facts: 1, preferences: 0, integrations: [], droppedTurns: [], toolErrors: 0,
-  deployedDuringWindow: false, calendarOffered: false,
+  deployedDuringWindow: false, calendarOffered: false, sends: [], audit: [],
   ...over,
 });
+
+// One review per tick is deliberate (the transcript read is the expensive
+// part), and this file leaves several reviewable people behind it in one
+// database — so a test that wants ITS person reviewed runs the sweep until it
+// has nothing left to do, which is what a few minutes of real ticks are.
+async function drain(now, deps) {
+  const out = [];
+  for (let i = 0; i < 25; i++) {
+    const { reviewed } = await withTx(db.pool, (c) => job.sweepOnboardingReview(c, { ...deps, now }));
+    if (!reviewed.length) break;
+    out.push(...reviewed);
+  }
+  return out;
+}
 
 // ---- the checks, without a database ----------------------------------------
 
@@ -130,6 +144,142 @@ test('a check that throws is reported as itself, never as silence', () => {
   assert.ok(f, 'the check either judged or said it could not');
 });
 
+// ---- the four checks added after his second day ----------------------------
+
+test('"מחר" about a moment that has already rung is a plain untruth', () => {
+  // 09:47 on the 6th: "מחר ב-7:00 בגדים לאימון, 11:30 אבא, 19:00 מלי".
+  // Every one of those was that same day, and 07:00 had gone two hours before.
+  const { findings } = review(base({
+    outbound: [{ at: '2026-09-06T06:47:23Z', text: 'מחר ב-7:00 בגדים לאימון, 11:30 אבא, 19:00 מלי' }],
+    reminders: [
+      { id: 1, remindAt: '2026-09-06T04:00:00Z' },   // 07:00 local, already passed
+      { id: 2, remindAt: '2026-09-06T08:30:00Z' },   // 11:30 local, still ahead
+    ],
+  }));
+  const hits = findings.filter((f) => f.id === 'wrong_day_word');
+  assert.equal(hits.length, 2);
+  const passed = hits.find((f) => f.detail.said === '07:00');
+  assert.equal(passed.severity, 'bad', 'it had already rung');
+  assert.equal(passed.detail.meant, '2026-09-07');
+  assert.equal(passed.detail.actually, '2026-09-06');
+  assert.equal(hits.find((f) => f.detail.said === '11:30').severity, 'warn', 'still ahead of them');
+});
+
+test('"מחר" the night before is simply correct', () => {
+  // 22:56 on the 5th, about 11:30 on the 6th — the message that started all of
+  // this, and the one this check must never flag.
+  const { findings } = review(base({
+    outbound: [{ at: '2026-09-05T19:56:20Z', text: 'מחר (ראשון) ב-11:30 אזכיר לך לדבר עם אבא' }],
+    reminders: [{ id: 1, remindAt: '2026-09-06T08:30:00Z' }],
+  }));
+  assert.equal(findings.find((f) => f.id === 'wrong_day_word'), undefined);
+});
+
+test('"היום" about today passes, and a day word beside an unscheduled hour is not judged', () => {
+  assert.equal(review(base({
+    outbound: [{ at: '2026-09-06T05:01:54Z', text: 'יש לי בשבילך משימות היום, תזכורות ב-11:30 ו-19:00' }],
+    reminders: [{ id: 1, remindAt: '2026-09-06T08:30:00Z' }, { id: 2, remindAt: '2026-09-06T16:00:00Z' }],
+  })).findings.find((f) => f.id === 'wrong_day_word'), undefined);
+
+  assert.equal(review(base({
+    outbound: [{ at: '2026-09-06T05:00:00Z', text: 'מחר ב-14:00 יש משחק' }],
+    reminders: [{ id: 1, remindAt: '2026-09-06T08:30:00Z' }],
+  })).findings.find((f) => f.id === 'wrong_day_word'), undefined, 'nothing is scheduled for 14:00');
+});
+
+test('מחרתיים is not מחר', () => {
+  assert.equal(review(base({
+    outbound: [{ at: '2026-09-06T05:00:00Z', text: 'מחרתיים ב-11:30' }],
+    reminders: [{ id: 1, remindAt: '2026-09-06T08:30:00Z' }],
+  })).findings.find((f) => f.id === 'wrong_day_word'), undefined);
+});
+
+test('a reminder that went out twice and changed nothing is reported', () => {
+  // His wake-up: 07:00, then the ladder again at 10:00, by which time it could
+  // not do the one job it had.
+  const { findings } = review(base({
+    reminders: [{ id: 121, remindAt: '2026-09-06T04:00:00Z', attempts: 2 }],
+  }));
+  const f = findings.find((x) => x.id === 'reminder_chased');
+  assert.equal(f.severity, 'warn');
+  assert.equal(f.detail.reminders[0].attempts, 2);
+  // one delivery is the plan working
+  assert.equal(review(base({ reminders: [{ id: 1, remindAt: 'x', attempts: 1 }] }))
+    .findings.find((x) => x.id === 'reminder_chased'), undefined);
+});
+
+test('two messages nobody asked for, fifty seconds apart', () => {
+  const { findings } = review(base({
+    sends: [
+      { at: '2026-09-06T05:01:54Z', kind: 'checkin', rung: 'onboarding_5h' },
+      { at: '2026-09-06T05:02:44Z', kind: 'checkin', rung: 'onboarding_8h' },
+    ],
+  }));
+  const f = findings.find((x) => x.id === 'proactive_pile_up');
+  assert.equal(f.detail.first.rung, 'onboarding_5h');
+  assert.equal(f.detail.second.rung, 'onboarding_8h');
+  assert.match(f.title, /50s apart/);
+});
+
+test('a reply to something they said in between is a conversation, not a pile-up', () => {
+  assert.equal(review(base({
+    sends: [
+      { at: '2026-09-06T05:01:54Z', kind: 'checkin', rung: 'onboarding_5h' },
+      { at: '2026-09-06T05:02:44Z', kind: 'checkin', rung: 'onboarding_8h' },
+    ],
+    inbound: [{ at: '2026-09-06T05:02:20Z', text: 'בוקר טוב' }],
+  })).findings.find((f) => f.id === 'proactive_pile_up'), undefined);
+
+  assert.equal(review(base({
+    sends: [
+      { at: '2026-09-06T05:01:54Z', kind: 'checkin', rung: 'a' },
+      { at: '2026-09-06T06:30:00Z', kind: 'checkin', rung: 'b' },
+    ],
+  })).findings.find((f) => f.id === 'proactive_pile_up'), undefined, 'an hour and a half apart is not a pile-up');
+});
+
+test('a capability refusal with nothing filed; the same refusal WITH an issue passes', () => {
+  const said = [{ at: '2026-09-05T21:47:10Z', text: 'אין לי אפשרות לשלוח התראות כל 3 דקות — התזכורות שלי לא תומכות בקצב כזה.' }];
+  const f = review(base({ outbound: said })).findings.find((x) => x.id === 'refusal_without_issue');
+  assert.equal(f.severity, 'note');
+
+  // the flight-prices refusal an evening earlier, which DID file issue #75
+  assert.equal(review(base({
+    outbound: said,
+    audit: [{ event: 'issue.reported', at: '2026-09-05T21:47:40Z' }],
+  })).findings.find((x) => x.id === 'refusal_without_issue'), undefined);
+});
+
+test('the verbs a confirmation actually uses, not the ones the list happened to hold', () => {
+  // Miron's line, 2026-09-06 11:29, verbatim — a 👍 was on his message and
+  // `hints.markPlaced` was on the same tool result. The check that exists to
+  // catch this did not, because "הוספתי" was not in the word list. A detector
+  // that can no longer fail is not a detector (CLAUDE.md, Recurring failure
+  // shapes), and one whose founding case walks past it never was one.
+  const { findings } = review(base({
+    outbound: [{
+      at: '2026-09-06T08:29:39Z', markPlaced: true,
+      text: 'הוספתי ✅ "לדבר עם מור חן — לבקש חומרי גלם" לתזכורת עוד שעתיים (13:29), אזכיר לך שעה לפני 💪',
+    }],
+  }));
+  const f = findings.find((x) => x.id === 'said_what_the_mark_said');
+  assert.ok(f, 'the confirmation verb is recognised');
+  assert.match(f.detail.line, /^הוספתי/);
+
+  // Without a mark there is nothing being said twice, and a first line that
+  // carries something of its own is not a confirmation at all.
+  assert.equal(review(base({ outbound: [{ at: 'x', text: 'הוספתי ✅' }] }))
+    .findings.find((x) => x.id === 'said_what_the_mark_said'), undefined);
+  assert.equal(review(base({ outbound: [{ at: 'x', markPlaced: true, text: 'הוספתיים זה לא פועל' }] }))
+    .findings.find((x) => x.id === 'said_what_the_mark_said'), undefined);
+});
+
+test('a plain "no" is not a capability refusal', () => {
+  assert.equal(review(base({
+    outbound: [{ at: 'x', text: 'לא, זה לא יכול להיות נכון' }],
+  })).findings.find((f) => f.id === 'refusal_without_issue'), undefined);
+});
+
 // ---- the sweep, against a real database ------------------------------------
 
 test('the review runs once per person, three hours in, and never speaks to them', async () => {
@@ -154,12 +304,14 @@ test('the review runs once per person, three hours in, and never speaks to them'
   assert.equal(first.reviewed.length, 1);
   assert.equal(first.reviewed[0].userId, u.id);
 
-  // once per person, for ever
+  // once per person per stage, for ever — and at four hours in, the day stage
+  // is not due yet, so a second tick has nothing at all to do.
   assert.deepEqual((await run()).reviewed, []);
 
   const { rows } = await db.pool.query(
-    `SELECT worst, findings, evidence FROM onboarding_reviews WHERE user_id = $1`, [u.id]);
+    `SELECT stage, worst, findings, evidence FROM onboarding_reviews WHERE user_id = $1`, [u.id]);
   assert.equal(rows.length, 1);
+  assert.equal(rows[0].stage, '3h');
   // The zone was a phone-prefix guess and nobody confirmed it — a note, and
   // the whole verdict, because nothing else went wrong in an empty transcript.
   assert.equal(rows[0].worst, 'note');
@@ -181,13 +333,103 @@ test('too new to review, and too old to bother', async () => {
     [fresh.id, new Date(now - 60 * 60_000)]);
   await db.pool.query(
     `UPDATE users SET agent_id = 'u-' || id, first_turn_at = $2 WHERE id = $1`,
-    [stale.id, new Date(now - 5 * 24 * 3600_000)]);
+    [stale.id, new Date(now - 6 * 24 * 3600_000)]);
 
   const res = await withTx(db.pool, (c) => job.sweepOnboardingReview(c, {
     now, readMessages: () => [], readSessionEvents: () => ({ text: '' }),
     readLogTails: () => [], readRelease: () => null,
   }));
   assert.deepEqual(res.reviewed.map((r) => r.userId).filter((id) => [fresh.id, stale.id].includes(id)), []);
+});
+
+// The reason the second stage exists at all. Every one of the four checks
+// added after Yahav's second day fires on something that happened between 3.7
+// and 13 hours in — measured, not guessed — and at three hours not one of them
+// could have fired. This test is that measurement, kept: a "מחר" said at 09:47
+// about a reminder that rang at 07:00 the same morning, twelve and a half
+// hours after his first message.
+test('the day read sees what the three-hour one structurally cannot, and does not repeat it', async () => {
+  const first = Date.parse('2026-09-05T18:00:00Z');
+  const u = await makeUser(db.pool, '+972626000005', { firstName: 'יהב', timezone: TZ });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, first_turn_at = $2, timezone_confirmed = true WHERE id = $1`,
+    [u.id, new Date(first)]
+  );
+  const task = await db.pool.query(
+    `INSERT INTO tasks (owner_id, title, source, due_at, created_at)
+     VALUES ($1, 'בגדים לאימון', 'chat', $2, $2) RETURNING id`,
+    [u.id, new Date(first + 3600_000)]);
+  await db.pool.query(
+    `INSERT INTO task_reminders (task_id, remind_at, auto, created_at)
+     VALUES ($1, $2, true, $3)`,
+    [task.rows[0].id, new Date('2026-09-06T04:00:00Z'), new Date(first + 3600_000)]);
+
+  // 09:47 local on the 6th — 12.7 hours in. "מחר ב-7:00" about an hour that
+  // had rung two hours earlier.
+  const said = [
+    { role: 'user', at: new Date(first + 60_000).toISOString(), text: 'בגדים לאימון מחר' },
+    { role: 'assistant', at: '2026-09-06T06:47:23Z', text: 'מחר ב-7:00 בגדים לאימון' },
+  ];
+  const deps = {
+    readMessages: () => said, readSessionEvents: () => ({ text: '' }),
+    readLogTails: () => [], readRelease: () => null,
+  };
+
+  // Three hours in: the sentence has not been said yet, and nothing sees it.
+  const early = await drain(first + 4 * 3600_000, deps);
+  assert.deepEqual(early.filter((r) => r.userId === u.id).map((r) => r.stage), ['3h']);
+  const { rows: e } = await db.pool.query(
+    `SELECT findings FROM onboarding_reviews WHERE user_id = $1 AND stage = '3h'`, [u.id]);
+  assert.equal(e[0].findings.find((f) => f.id === 'wrong_day_word'), undefined,
+    'a three-hour window cannot see hour twelve — this is the gap, not a bug');
+
+  // A day in, the same checks are shown the same evidence plus nine more hours
+  // of it, and the fault is there.
+  const late = await drain(first + 27 * 3600_000, deps);
+  assert.deepEqual(late.filter((r) => r.userId === u.id).map((r) => r.stage), ['1d']);
+  const { rows: d } = await db.pool.query(
+    `SELECT worst, findings FROM onboarding_reviews WHERE user_id = $1 AND stage = '1d'`, [u.id]);
+  const f = d[0].findings.find((x) => x.id === 'wrong_day_word');
+  assert.ok(f, 'the day read sees it');
+  assert.equal(f.detail.said, '07:00');
+  assert.equal(d[0].worst, 'bad');
+
+  // and neither row is written twice
+  assert.deepEqual(await drain(first + 28 * 3600_000, deps), []);
+});
+
+// The day window is a superset of the three-hour one, so without this every
+// finding the early read already reported would be filed a second time and
+// every count over this table would double.
+test('the day read reports what is new, not what the early one already said', async () => {
+  const first = Date.parse('2026-09-05T18:00:00Z');
+  const u = await makeUser(db.pool, '+972626000006', { firstName: 'כפול', timezone: TZ });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, first_turn_at = $2, timezone_confirmed = false WHERE id = $1`,
+    [u.id, new Date(first)]
+  );
+  const deps = {
+    readMessages: () => [], readSessionEvents: () => ({ text: '' }),
+    readLogTails: () => [], readRelease: () => null,
+  };
+  await drain(first + 4 * 3600_000, deps);
+  await drain(first + 27 * 3600_000, deps);
+
+  const { rows } = await db.pool.query(
+    `SELECT stage, worst, findings FROM onboarding_reviews WHERE user_id = $1 ORDER BY stage`, [u.id]);
+  assert.deepEqual(rows.map((r) => r.stage), ['1d', '3h']);
+  const day = rows.find((r) => r.stage === '1d');
+  const early = rows.find((r) => r.stage === '3h');
+  // The unconfirmed zone is still unconfirmed at the day read, and the check
+  // still fires — but it is already on his record and is not filed again.
+  assert.deepEqual(early.findings.map((f) => f.id), ['timezone_unconfirmed']);
+  assert.deepEqual(day.findings, []);
+  assert.equal(day.worst, 'clean');
+
+  // The alert strip counts people, not rows, for exactly this reason.
+  const { rows: c } = await db.pool.query(
+    `SELECT count(DISTINCT user_id)::int AS n FROM onboarding_reviews WHERE acknowledged_at IS NULL`);
+  assert.ok(c[0].n >= 1);
 });
 
 test('Yahav\'s first evening, end to end, comes back with what the hand-review found', async () => {

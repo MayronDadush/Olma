@@ -7,19 +7,37 @@
 // would pull — the gateway transcript, their rows in Postgres, the gateway log
 // — and writes the answer where the owner will see it.
 //
-// WHY THREE HOURS. Early enough that the conversation is still the one thing
-// the person has been judged on and a bad reminder has not fired yet; late
-// enough that the onboarding rungs at 15m and 2h have run and the fact sweep
-// has been round. Yahav's whole story — the reminder promised for an hour
-// nothing was set for, the message that got no answer, the task filed over a
-// "no thanks" — was fully formed by 23:05 on his first evening, and every one
-// of those was still cheap to fix at that point.
+// WHY TWO STAGES. Three hours is early enough that the conversation is still
+// the one thing the person has been judged on and a bad reminder has not fired
+// yet; late enough that the onboarding rungs at 15m and 2h have run and the
+// fact sweep has been round. Yahav's whole first story — the reminder promised
+// for an hour nothing was set for, the message that got no answer, the task
+// filed over a "no thanks" — was fully formed by 23:05 on his first evening,
+// and every one of those was still cheap to fix at that point.
+//
+// But it was not the whole story, and the three-hour window is structurally
+// unable to see the rest. Measured against his real first day: the refusal
+// with nothing filed came at 3.7h, "מחר" about that same morning at 4.0h and
+// again at 12.7h, two check-in rungs fifty seconds apart at 11.0h, a reminder
+// still being chased at 13.0h. Four checks were written for exactly those
+// faults and, at three hours, not one of them could ever have fired — which is
+// the failure shape this whole file exists to catch, arriving inside the
+// catcher (CLAUDE.md: "a detector that can no longer fail is not a detector").
+// So a second review reads the first DAY back, after the night gate, the
+// check-in ladder and the reminders have all had their turn.
+//
+// Both stages start at the person's first message; only the end moves, because
+// several checks compare something said late against a reminder armed early
+// and cannot be shown one without the other. The later stage therefore sees
+// everything the earlier one saw, and reports only what is NEW — the earlier
+// finding is already on its own row, unacknowledged, and repeating it would
+// double every count that reads this table.
 //
 // It never messages the person. This is a report about the system, addressed
 // to whoever runs it.
 const usersDomain = require('../domain/users');
 const audit = require('../domain/audit');
-const { review } = require('../domain/onboarding-review');
+const { review, worstOf } = require('../domain/onboarding-review');
 const sessions = require('../channels/sessions-async');
 const laneLog = require('./lane-watchdog');
 
@@ -27,8 +45,18 @@ const REVIEW_AFTER_MS = 3 * 3600_000;
 // Stop offering to review a conversation nobody can act on any more. A person
 // whose first day was a week ago is a retrospective, not a repair.
 const GIVE_UP_AFTER_MS = 48 * 3600_000;
-// One person per tick. The transcript read is the expensive part and this job
-// has no deadline — a backlog of two clears in two minutes.
+// The day read. 26 hours, not 24: it clears the same hour of the following
+// morning, so a first evening's night-gated messages and the morning rungs
+// that follow them are inside one window rather than split across its edge.
+const DAY_REVIEW_AFTER_MS = 26 * 3600_000;
+const DAY_GIVE_UP_AFTER_MS = 5 * 24 * 3600_000;
+const STAGES = [
+  { id: '3h', after: REVIEW_AFTER_MS, giveUp: GIVE_UP_AFTER_MS },
+  { id: '1d', after: DAY_REVIEW_AFTER_MS, giveUp: DAY_GIVE_UP_AFTER_MS },
+];
+// One review per tick, across both stages. The transcript read is the
+// expensive part and this job has no deadline — a backlog of two clears in
+// two minutes.
 const MAX_PER_TICK = 1;
 // How many messages back to read. Three hours of a busy first evening was 14
 // on the worst day so far; the cap is for a runaway, not for the normal case.
@@ -54,9 +82,9 @@ const TOOL_ERROR_RE = /assistant backend not reachable|ERROR unavailable/g;
 
 // ---- assembly ---------------------------------------------------------------
 
-async function evidenceFor(client, u, deps, now) {
+async function evidenceFor(client, u, deps, now, stage = STAGES[0]) {
   const startMs = new Date(u.first_turn_at).getTime();
-  const endMs = Math.min(startMs + REVIEW_AFTER_MS, now);
+  const endMs = Math.min(startMs + stage.after, now);
   const inWindow = (at) => {
     const t = Date.parse(at);
     return Number.isFinite(t) && t >= startMs && t <= endMs;
@@ -73,10 +101,22 @@ async function evidenceFor(client, u, deps, now) {
     [u.id, new Date(startMs), new Date(endMs)]
   );
   const { rows: reminders } = await client.query(
-    `SELECT r.id, r.task_id, r.remind_at, r.auto, r.cancelled_at
+    `SELECT r.id, r.task_id, r.remind_at, r.auto, r.cancelled_at, r.attempts
        FROM task_reminders r JOIN tasks t ON t.id = r.task_id
       WHERE t.owner_id = $1 AND r.created_at BETWEEN $2 AND $3 ORDER BY r.id`,
     [u.id, new Date(startMs), new Date(endMs)]
+  );
+  // What Olma DECIDED to say, and when it actually landed. Not the window:
+  // the whole first day, because the messages the night gate holds are exactly
+  // the ones that arrive together in the morning, hours after the window this
+  // review covers has closed. Held-then-released is the pile-up.
+  const { rows: sends } = await client.query(
+    `SELECT id, kind, payload->>'rung' AS rung, sent_at
+       FROM outbox
+      WHERE user_id = $1 AND sent_at IS NOT NULL AND hold_reason IS NULL
+        AND created_at >= $2
+      ORDER BY sent_at`,
+    [u.id, new Date(startMs)]
   );
   const { rows: counts } = await client.query(
     `SELECT (SELECT count(*) FROM user_facts WHERE user_id = $1)::int AS facts,
@@ -128,10 +168,15 @@ async function evidenceFor(client, u, deps, now) {
   // sweep got to them.
   let droppedTurns = [];
   try {
-    const chunks = deps.readLogTails ? deps.readLogTails() : [
-      { raw: laneLog.readTail(laneLog.todayLogPath(now - 24 * 3600_000)) },
-      { raw: laneLog.readTail(laneLog.todayLogPath(now)) },
-    ];
+    // Every daily log the window touches, not a fixed "today and yesterday":
+    // the day stage looks 26 hours back, which is two calendar days from some
+    // hours and three from others, and a log file nobody opened is a dropped
+    // turn nobody sees.
+    const days = new Set();
+    for (let t = startMs; t < endMs + 86_400_000; t += 86_400_000) days.add(laneLog.todayLogPath(Math.min(t, endMs)));
+    days.add(laneLog.todayLogPath(endMs));
+    const chunks = deps.readLogTails ? deps.readLogTails()
+      : [...days].map((path) => ({ raw: laneLog.readTail(path) }));
     const { parseKey } = require('../channels/sessions');
     for (const { raw } of chunks) {
       for (const d of laneLog.parseDroppedTurns(raw)) {
@@ -160,7 +205,11 @@ async function evidenceFor(client, u, deps, now) {
     })),
     reminders: reminders.map((r) => ({
       id: r.id, taskId: r.task_id, remindAt: new Date(r.remind_at).toISOString(),
-      auto: r.auto, cancelledAt: r.cancelled_at ? new Date(r.cancelled_at).toISOString() : null,
+      auto: r.auto, attempts: Number(r.attempts) || 0,
+      cancelledAt: r.cancelled_at ? new Date(r.cancelled_at).toISOString() : null,
+    })),
+    sends: sends.map((r) => ({
+      kind: r.kind, rung: r.rung, at: new Date(r.sent_at).toISOString(),
     })),
     facts: counts[0].facts,
     preferences: counts[0].preferences,
@@ -196,49 +245,77 @@ function readRelease() {
 
 // ---- the sweep --------------------------------------------------------------
 
+// What this stage found that no earlier stage already reported. A finding is
+// the same finding when its id and its detail are the same — the detail is
+// what makes "the 07:00 she called tomorrow" different from "the 19:00 she
+// called tomorrow", so comparing on id alone would silence the second.
+function newFindings(findings, seen) {
+  return findings.filter((f) => !seen.has(`${f.id}|${JSON.stringify(f.detail ?? null)}`));
+}
 async function sweepOnboardingReview(client, deps = {}) {
   const now = deps.now || Date.now();
-  const { rows } = await client.query(
-    `SELECT u.id, u.first_name, u.phone, u.agent_id, u.timezone, u.timezone_confirmed,
-            u.locale, u.first_turn_at
-       FROM users u
-       LEFT JOIN onboarding_reviews r ON r.user_id = u.id
-      WHERE u.first_turn_at IS NOT NULL
-        AND u.agent_id IS NOT NULL
-        AND NOT u.is_eval
-        AND r.id IS NULL
-        AND u.first_turn_at <= $1 AND u.first_turn_at > $2
-      ORDER BY u.first_turn_at
-      LIMIT $3`,
-    [new Date(now - REVIEW_AFTER_MS), new Date(now - GIVE_UP_AFTER_MS), MAX_PER_TICK]
-  );
-  if (!rows.length) return { reviewed: [] };
-
   const reviewed = [];
-  for (const u of rows) {
-    const evidence = await evidenceFor(client, u, deps, now);
-    const { findings, worst } = review(evidence);
-    // The row is written whatever the verdict — a clean first day is the
-    // baseline every later one is read against, and a review that only ever
-    // appears when something is wrong cannot tell you the rate.
-    const ins = await client.query(
-      `INSERT INTO onboarding_reviews (user_id, window_start, window_end, worst, findings, evidence)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
-       ON CONFLICT (user_id) DO NOTHING
-       RETURNING id`,
-      [u.id, evidence.windowStart, evidence.windowEnd, worst,
-        JSON.stringify(findings), JSON.stringify(evidence)]
+
+  for (const stage of STAGES) {
+    if (reviewed.length >= MAX_PER_TICK) break;
+    const { rows } = await client.query(
+      `SELECT u.id, u.first_name, u.phone, u.agent_id, u.timezone, u.timezone_confirmed,
+              u.locale, u.first_turn_at
+         FROM users u
+         LEFT JOIN onboarding_reviews r ON r.user_id = u.id AND r.stage = $4
+        WHERE u.first_turn_at IS NOT NULL
+          AND u.agent_id IS NOT NULL
+          AND NOT u.is_eval
+          AND r.id IS NULL
+          AND u.first_turn_at <= $1 AND u.first_turn_at > $2
+        ORDER BY u.first_turn_at
+        LIMIT $3`,
+      [new Date(now - stage.after), new Date(now - stage.giveUp),
+        MAX_PER_TICK - reviewed.length, stage.id]
     );
-    if (!ins.rows[0]) continue;   // another tick got there first
-    await audit.record(client, u.id, 'onboarding.reviewed', {
-      worst, findings: findings.map((f) => f.id),
-    });
-    reviewed.push({ userId: u.id, worst, findings: findings.length });
+
+    for (const u of rows) {
+      const evidence = await evidenceFor(client, u, deps, now, stage);
+      const all = review(evidence).findings;
+      // Everything an earlier stage already put on this person's record. The
+      // day review sees the whole first day, the three-hour one included, and
+      // a finding reported twice is counted twice by everything downstream.
+      const { rows: prior } = await client.query(
+        `SELECT findings FROM onboarding_reviews WHERE user_id = $1`, [u.id]
+      );
+      const seen = new Set();
+      for (const row of prior) {
+        for (const f of row.findings || []) seen.add(`${f.id}|${JSON.stringify(f.detail ?? null)}`);
+      }
+      const findings = newFindings(all, seen);
+      const worst = worstOf(findings);
+
+      // The row is written whatever the verdict — a clean first day is the
+      // baseline every later one is read against, and a review that only ever
+      // appears when something is wrong cannot tell you the rate. A second
+      // stage with nothing new to say is itself the answer to "did the first
+      // day get worse after we stopped watching".
+      const ins = await client.query(
+        `INSERT INTO onboarding_reviews (user_id, stage, window_start, window_end, worst, findings, evidence)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
+         ON CONFLICT (user_id, stage) DO NOTHING
+         RETURNING id`,
+        [u.id, stage.id, evidence.windowStart, evidence.windowEnd, worst,
+          JSON.stringify(findings), JSON.stringify(evidence)]
+      );
+      if (!ins.rows[0]) continue;   // another tick got there first
+      await audit.record(client, u.id, 'onboarding.reviewed', {
+        stage: stage.id, worst, findings: findings.map((f) => f.id),
+      });
+      reviewed.push({
+        userId: u.id, stage: stage.id, worst, findings: findings.length, carried: all.length - findings.length,
+      });
+    }
   }
   return { reviewed };
 }
 
 module.exports = {
-  sweepOnboardingReview, evidenceFor, readRelease,
-  REVIEW_AFTER_MS, GIVE_UP_AFTER_MS, MAX_PER_TICK,
+  sweepOnboardingReview, evidenceFor, readRelease, newFindings,
+  STAGES, REVIEW_AFTER_MS, GIVE_UP_AFTER_MS, DAY_REVIEW_AFTER_MS, DAY_GIVE_UP_AFTER_MS, MAX_PER_TICK,
 };

@@ -111,6 +111,8 @@ never trust a dated narrative for something you are about to act on.
 **Features as they shipped**
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
 - [A 👍 is the answer; the sentence after it is a second notification (2026-09-05)](#a--is-the-answer-the-sentence-after-it-is-a-second-notification-2026-09-05)
+- [The hint that outvoted the mark (2026-09-06)](#the-hint-that-outvoted-the-mark-2026-09-06)
+- [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
 
 - [Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)](#live-updates--עדכן-אותי-על-as-infrastructure-2026-08-28)
 - [Image + video generation, access-limited, spend in its own column (2026-08-28)](#image--video-generation-access-limited-spend-in-its-own-column-2026-08-28)
@@ -3223,6 +3225,82 @@ call the gateway's `message.action` over its WebSocket RPC (milliseconds, and
 an actual ack); the react action's delegated authorization needs conversation
 and account context the CLI resolves internally, so that is a separate piece
 of work, recorded here so it is not re-discovered.
+
+### The hint that outvoted the mark (2026-09-06)
+
+The fix above shipped, deployed, and was read verbatim by the model on every
+turn it applied to — and it kept losing. Miron, 11:29 the next morning:
+
+> משימת עבודה - תזכיר לי עוד שעתיים לדבר עם מור חן ולבקש ממנה את החומרי גלם
+
+A 👍 went onto that message, `hints.markPlaced` was on the tool result, and he
+got a sentence anyway: `הוספתי ✅ "לדבר עם מור חן — לבקש חומרי גלם" לתזכורת עוד
+שעתיים (13:29), אזכיר לך שעה לפני 💪`. The first instinct was that the hint had
+not deployed. It had; it was in the production tool result, quoted above,
+for both Miron and Yahav.
+
+What beat it was on the same result. `hints.reminders` said "Reminders were
+armed automatically — **say when you will remind them**", and the doctrine said
+the same words every turn. One instruction was conditional (*write only if the
+words carry something the mark cannot*); the other was unconditional (*say
+this*). A model resolving two instructions that cannot both be obeyed follows
+the one that names an action. The mark was never ignored — it was outvoted, and
+it would have gone on being outvoted for as long as anything else on the result
+asked for a sentence unconditionally.
+
+So both were rewritten to answer `markPlaced`'s question rather than a
+different one. The hour Olma **chose** is something the mark cannot carry, and
+is worth one short line. The hour they **named** is not — they said it
+themselves one message ago — and the fact that it was saved never is, in either
+branch, because that is precisely what the 👍 reported. `add_task`'s
+`remindersAsked` flag, added the day before for the Yahav fault, turned out to
+be exactly the discriminator this needed.
+
+Two smaller things fell out of the same turn. Reminder 129 was armed for 12:29
+against a "remind me in two hours" said at 11:29 — the Yahav bug reaching a
+second person, before the `remind_at` fix had merged. And
+`onboarding-review.js`'s `saidWhatTheMarkSaid` check, written for exactly this
+shape, did not fire: its word list held רשמתי, שמרתי, מחקתי and not הוספתי. A
+detector built from a word list goes quiet the first time the model picks a
+different verb, which is the ordinary way the ones in this file stop working.
+
+### The four checks that could never have fired (2026-09-06)
+
+Four checks were added to the onboarding review after reading Yahav's *second*
+day: a "מחר" about that same morning, two proactive rungs fifty seconds apart,
+a reminder still climbing its ladder at the third rung, a capability refusal
+with no issue filed. All four passed their tests. Then their timing was
+measured against the real conversation they were written from:
+
+```
+first message 21:02:55   ·   the review's window closes 00:02:55
+   3.7h  OUTSIDE   refusal, nothing filed          (00:47)
+   4.0h  OUTSIDE   "מחר" about today               (01:00)
+  11.0h  OUTSIDE   two rungs 50s apart             (08:01)
+  12.7h  OUTSIDE   "מחר" about today again         (09:47)
+  13.0h  OUTSIDE   reminder chased                 (10:01)
+```
+
+Not one of them could ever have fired. They would have sat in the checks file,
+green in the suite, reporting nothing, for as long as anybody cared to leave
+them there — the detector-that-cannot-fail shape, arriving inside the thing
+built to catch it.
+
+Three hours is still the right moment for the first read: the conversation is
+live and the faults it finds are cheap to fix. It is simply not the only
+moment. `STAGES` is now `'3h'` and `'1d'` (26 hours — it clears the same hour
+of the next morning, so a first evening's night-gated messages and the morning
+rungs that follow them sit inside one window instead of across its edge).
+
+Two decisions worth keeping. **Both stages start at the person's first
+message**; only the end moves — `promisedTimeNotArmed` holds a sentence said at
+hour twelve against a reminder armed at hour one, and a window that began at
+hour three would show it the sentence and not the reminder. And because that
+makes the day read a superset, **it files only what is new**: a finding is the
+same finding when its id and its detail match, the earlier one is already on
+its own unacknowledged row, and re-filing it would double every count that
+reads this table. The alerts strip counts `DISTINCT user_id` for the same
+reason.
 
 ### Live updates — "עדכן אותי על..." as infrastructure (2026-08-28)
 

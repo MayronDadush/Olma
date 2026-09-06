@@ -24,12 +24,26 @@ function taskHints(res) {
     // moment nobody armed if the armed moment is the only one on the result.
     // Yahav (2026-09-05) was told 19:00 for a reminder set to 18:00 — the due
     // date was the nearest time to hand and the hint asked for a sentence.
+    //
+    // The two branches differ in whether there is anything to SAY, which is
+    // not the same question as whether a reminder exists. An hour Olma picked
+    // is news. An hour they named is not: they said it themselves one message
+    // ago. Both branches therefore stay silent about the save itself — that is
+    // what the 👍 on their message is for, and a sentence repeating it is a
+    // second notification for one fact (Miron, 2026-09-06: 'הוספתי ✅ ...
+    // לתזכורת עוד שעתיים' under a live `hints.markPlaced`). The old wording
+    // here — "say when you will remind them" — was unconditional, and an
+    // unconditional instruction to write beats markPlaced's conditional one
+    // every time; that, not a missing hint, is why the mark kept getting
+    // talked over.
     const at = Array.isArray(d.remindersAt) && d.remindersAt.length ? ` (${d.remindersAt.join(', ')}, their time)` : '';
     hints.reminders = d.remindersAsked
-      ? `The reminder is set for the hour they asked for${at} — say that back and nothing else about it.`
-      : `Reminders were armed automatically${at} — say THAT time, not the due time, and do not ask `
-        + 'permission. Only call set_task_reminder if they wanted a different moment or a repeat; if '
-        + 'they said "remind me at X", X was the reminder and belongs in add_task\'s remind_at.';
+      ? `Armed for the hour they themselves named${at}: they already know it, so this is not a reason `
+        + 'to write. Say nothing about the reminder unless something here differs from what they asked.'
+      : `Reminders were armed automatically${at} — that hour is the one thing worth saying, in one short `
+        + 'line, and never the due time. Do not also say the task was saved, and do not ask permission. '
+        + 'Only call set_task_reminder if they wanted a different moment or a repeat; if they said '
+        + '"remind me at X", X was the reminder and belongs in add_task\'s remind_at.';
   }
   if (d.autoRemindersSkipped) {
     hints.autoRemindersSkipped = `${d.autoRemindersSkipped} timed item(s) went past the per-call reminder cap and `

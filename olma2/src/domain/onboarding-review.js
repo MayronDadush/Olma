@@ -67,6 +67,26 @@ function hhmm(iso, tz, partsInZone) {
   return `${String(p.hh).padStart(2, '0')}:${String(p.mi).padStart(2, '0')}`;
 }
 
+// Calendar arithmetic in THEIR zone. Never instants: "the day after this
+// message" is a date question, and adding 86400000ms to one answers it wrong
+// twice a year.
+function ymd(iso, tz, partsInZone) {
+  const p = partsInZone(tz || 'UTC', new Date(iso));
+  return { y: p.y, m: p.m, d: p.d };
+}
+function shiftDays({ y, m, d }, n) {
+  const t = new Date(Date.UTC(y, m - 1, d + n));
+  return { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate() };
+}
+const sameDay = (a, b) => a.y === b.y && a.m === b.m && a.d === b.d;
+const dateStr = ({ y, m, d }) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+// `\b` is an ASCII word boundary and there is none beside a Hebrew letter — the
+// same trap that made CONFIRMATION_ONLY match nothing. Letter lookarounds
+// instead, which also keep "מחרתיים" out of "מחר".
+const TOMORROW_RE = /(?<!\p{L})(מחר|tomorrow)(?!\p{L})/iu;
+const TODAY_RE = /(?<!\p{L})(היום|today)(?!\p{L})/iu;
+
 // ---- the checks -------------------------------------------------------------
 //
 // Each takes the assembled evidence and returns zero or more findings. Adding
@@ -225,7 +245,11 @@ function calendarOpeningMissed(e) {
 // `\b` is an ASCII word boundary and there is none after a Hebrew letter, so
 // it matched nothing at all here — the check ran clean for the wrong reason,
 // which is the failure mode this file exists to catch.
-const CONFIRMATION_ONLY = /^(רשמתי|נרשם|שמרתי|נשמר|בוצע|מחקתי|נמחק|עדכנתי|done|saved|noted)(?!\p{L})/iu;
+// Miron, 2026-09-06: 'הוספתי ✅ "לדבר עם מור חן" לתזכורת עוד שעתיים' — under a
+// 👍, with `hints.markPlaced` on the same result. The list above did not hold
+// the verb he actually saw, which is the ordinary way a detector like this
+// goes quiet: it is a word list, and the model has more words than the list.
+const CONFIRMATION_ONLY = /^(רשמתי|נרשם|שמרתי|נשמר|הוספתי|הוספנו|נוסף|קבעתי|סידרתי|ארגנתי|בוצע|מחקתי|נמחק|עדכנתי|done|saved|noted|added|created)(?!\p{L})/iu;
 function saidWhatTheMarkSaid(e) {
   const out = [];
   for (const m of e.outbound || []) {
@@ -242,14 +266,143 @@ function saidWhatTheMarkSaid(e) {
   return out;
 }
 
+// "מחר ב-7:00" said at 09:47, about a reminder that had rung at 07:00 that
+// morning. Twice on Yahav's first day, and once at 01:00 about something six
+// hours away — past midnight the calendar day has already turned over, and
+// "the next morning" stops being tomorrow. Nothing in the data is wrong here;
+// only the sentence is, which is why no schema can catch it and this can.
+//
+// Only times that MATCH a moment we hold are judged. A day word beside an hour
+// nothing was scheduled for is a sentence about something else.
+function wrongDayWord(e) {
+  const { partsInZone } = e.helpers;
+  const tz = e.user.timezone;
+  const moments = [
+    ...(e.reminders || []).filter((r) => !r.cancelledAt)
+      .map((r) => ({ kind: 'reminder', iso: r.remindAt })),
+    ...(e.tasks || []).filter((t) => t.dueAt).map((t) => ({ kind: 'due', iso: t.dueAt })),
+  ].map((m) => ({ ...m, at: hhmm(m.iso, tz, partsInZone), day: ymd(m.iso, tz, partsInZone) }));
+
+  const out = [];
+  for (const msg of e.outbound || []) {
+    if (!msg.at) continue;
+    const offset = TOMORROW_RE.test(msg.text) ? 1 : (TODAY_RE.test(msg.text) ? 0 : null);
+    if (offset === null) continue;
+    const said = timesIn(msg.text);
+    if (said.size === 0) continue;
+    const expected = shiftDays(ymd(msg.at, tz, partsInZone), offset);
+    for (const m of moments) {
+      if (!said.has(m.at)) continue;
+      if (sameDay(m.day, expected)) continue;
+      const alreadyPassed = Date.parse(m.iso) < Date.parse(msg.at);
+      out.push({
+        id: 'wrong_day_word',
+        // Calling a moment that has already been and gone "tomorrow" is a
+        // plain untruth to the person. Off by a day on something still ahead
+        // is a mistake they can still act on.
+        severity: alreadyPassed ? 'bad' : 'warn',
+        title: alreadyPassed
+          ? `said "${offset ? 'מחר' : 'היום'}" about ${m.at}, which had already passed`
+          : `said "${offset ? 'מחר' : 'היום'}" about a moment on another day`,
+        detail: {
+          at: msg.at, said: m.at, kind: m.kind,
+          meant: dateStr(expected), actually: dateStr(m.day),
+          text: String(msg.text).slice(0, 200),
+        },
+      });
+    }
+  }
+  return out;
+}
+
+// A rung only advances once the previous one actually REACHED them
+// (domain/reminders.js), so attempts > 1 means: it was delivered, nothing was
+// completed or cancelled, and Olma said it again hours later. That ladder is
+// right for a task somebody forgot. It is wrong for what Yahav asked for — a
+// wake-up "every 3 minutes until I write קמתי", which got one at 07:00 and a
+// chase at 10:00, by which time it could not do the one job it had.
+function reminderChased(e) {
+  const chased = (e.reminders || []).filter((r) => Number(r.attempts) > 1 && !r.cancelledAt);
+  if (!chased.length) return [];
+  return [{
+    id: 'reminder_chased',
+    severity: 'warn',
+    title: `${chased.length} reminder(s) went out more than once and were never acted on`,
+    detail: { reminders: chased.map((r) => ({ id: r.id, attempts: Number(r.attempts), at: r.remindAt })) },
+  }];
+}
+
+// Two things Olma decided to say, landing together. The delivery gate stops a
+// message arriving in the night; nothing stops everything the night held from
+// arriving in the same minute when the window opens. Yahav's 5h and 8h
+// onboarding rungs were both released at 08:01 and 08:02 — a good-morning
+// summary, then a Google Calendar pitch fifty seconds later.
+const PILE_UP_MS = 15 * 60_000;
+function proactivePileUp(e) {
+  const sends = (e.sends || []).filter((s) => s.at).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  const inbound = (e.inbound || []).map((m) => Date.parse(m.at)).filter(Number.isFinite);
+  const out = [];
+  for (let i = 1; i < sends.length; i++) {
+    const prev = Date.parse(sends[i - 1].at);
+    const cur = Date.parse(sends[i].at);
+    if (!(cur - prev < PILE_UP_MS)) continue;
+    // A second message answering something they said in between is a
+    // conversation, not a pile-up.
+    if (inbound.some((t) => t > prev && t < cur)) continue;
+    out.push({
+      id: 'proactive_pile_up',
+      severity: 'warn',
+      title: `two messages nobody asked for, ${Math.round((cur - prev) / 1000)}s apart`,
+      detail: {
+        first: { at: sends[i - 1].at, rung: sends[i - 1].rung || sends[i - 1].kind },
+        second: { at: sends[i].at, rung: sends[i].rung || sends[i].kind },
+      },
+    });
+  }
+  return out;
+}
+
+// Olma told him she cannot send a reminder every three minutes. True, and said
+// well — and nothing was filed. The same evening she told him she cannot
+// browse the web and opened issue #75 for it. Two refusals, one product
+// signal recorded, and the difference was what the model happened to do. What
+// a person asked for and could not have is the most valuable thing a first
+// conversation produces.
+//
+// First person and about a capability, so "לא יכול להיות" and a plain "no"
+// stay out of it.
+const REFUSAL_RE = /אין לי (אפשרות|דרך|יכולת)|לא תומכ|אני לא יכולה|לא ניתן לי|I can't|I cannot|not able to/i;
+const ISSUE_WINDOW_MS = 10 * 60_000;
+function refusalWithoutIssue(e) {
+  const filed = (e.audit || []).filter((a) => a.event === 'issue.reported')
+    .map((a) => Date.parse(a.at)).filter(Number.isFinite);
+  const out = [];
+  for (const m of e.outbound || []) {
+    if (!m.at || !REFUSAL_RE.test(m.text)) continue;
+    const t = Date.parse(m.at);
+    if (filed.some((f) => Math.abs(f - t) <= ISSUE_WINDOW_MS)) continue;
+    out.push({
+      id: 'refusal_without_issue',
+      severity: 'note',
+      title: 'told them Olma cannot do something, and filed nothing',
+      detail: { at: m.at, text: String(m.text).slice(0, 200) },
+    });
+  }
+  return out;
+}
+
 const CHECKS = [
   promisedTimeNotArmed,
+  wrongDayWord,
   droppedTurns,
   toolsFailed,
   deployedDuringOnboarding,
   nothingLearned,
   tasksNobodyConfirmed,
   calendarOpeningMissed,
+  reminderChased,
+  proactivePileUp,
+  refusalWithoutIssue,
   timezoneUnconfirmed,
   saidWhatTheMarkSaid,
 ];

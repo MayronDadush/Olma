@@ -175,7 +175,9 @@ async function collectAlerts(client, { hbRows, gateway }) {
          -- BREAKS_USERS — nothing is failing right now — but it is the one
          -- thing on this board with a name and a face behind it, and it goes
          -- quiet again as soon as it is acknowledged.
-         (SELECT count(*)::int FROM onboarding_reviews
+         -- DISTINCT: two stages read the same person, and the alert counts
+         -- people, not rows.
+         (SELECT count(DISTINCT user_id)::int FROM onboarding_reviews
             WHERE worst = 'bad' AND acknowledged_at IS NULL) AS bad_onboardings`,
       [evalsJob.PILOT_TRIGGER]);
     const r = rows[0] || {};
