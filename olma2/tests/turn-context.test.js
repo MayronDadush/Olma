@@ -243,3 +243,97 @@ test('the plugin module registers before_prompt_build under its own id and reads
   assert.equal(on[0][0], 'before_prompt_build');
   assert.equal(typeof on[0][1], 'function');
 });
+
+// Miron, 2026-09-06, "בוצע" quoting the lunch reminder: the context came back
+// in its no-reply shape (536 chars, not 990), because the prompt the plugin
+// sees is the bare text — the Conversation info block with `reply_to_id` is
+// attached after the hook. The turn-open hook sees the WhatsApp quote marker
+// and carries the id; the context is built from that.
+test('a reply the hook saw becomes the replyTarget hint in the context, with or without the plugin noticing', async () => {
+  const u = await agentUser();
+  await enable(u.phone);
+  await open({ agentId: u.agentId, messageId: '3EB0RPL0001', kind: 'text', replyToId: '3EB0QUOTED01' });
+  const r = await context({ agentId: u.agentId, trigger: 'user', messageProvider: 'whatsapp', replyTarget: false });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const data = parse(r.context);
+  assert.equal(data.replyTarget, true);
+  assert.match(data.hints.replyTarget, /Reply target of current user message/);
+  // the plain message: no hint
+  const u2 = await agentUser();
+  await enable(u2.phone);
+  await open({ agentId: u2.agentId, messageId: '3EB0RPL0002', kind: 'text' });
+  const r2 = await context({ agentId: u2.agentId, trigger: 'user', messageProvider: 'whatsapp' });
+  const d2 = parse(r2.context);
+  assert.equal(d2.replyTarget, undefined);
+  assert.equal(d2.hints && d2.hints.replyTarget, undefined);
+  // the plugin's own detection still counts, for a gateway that puts reply_to_id in the prompt
+  const u3 = await agentUser();
+  await enable(u3.phone);
+  await open({ agentId: u3.agentId, messageId: '3EB0RPL0003', kind: 'text' });
+  const r3 = await context({ agentId: u3.agentId, trigger: 'user', messageProvider: 'whatsapp', replyTarget: true });
+  assert.equal(parse(r3.context).replyTarget, true);
+});
+
+// The gateway runs one turn per session at a time (queue mode followup). Two
+// messages a few seconds apart: the first turn's prompt is built, its tools
+// run, THEN the second turn's prompt is built. Each must get its own opening
+// and its own message id, and a turn that ends with no tool call must leave
+// nothing for the next turn to adopt by mistake.
+test('two quick messages under followup: each prompt gets its own opening, each turn its own marks, and a tool-less turn leaves nothing behind', async () => {
+  const u = await agentUser();
+  await enable(u.phone);
+  const before = broker.pendingCount();
+  // message 1 arrives, its prompt is built
+  await open({ agentId: u.agentId, messageId: '3EB0FU0001', kind: 'text' });
+  const c1 = await context({ agentId: u.agentId, trigger: 'user', messageProvider: 'whatsapp' });
+  assert.ok(c1.context);
+  // message 2 arrives while turn 1 is still running
+  await open({ agentId: u.agentId, messageId: '3EB0FU0002', kind: 'text', replyToId: '3EB0FUQ' });
+  assert.equal(broker.pendingCount(), before + 2);
+  // turn 1's first tool adopts message 1, not the newer message 2
+  const t1 = newTurn();
+  await call(u, 'add_task', { title: 'ראשון' }, t1);
+  assert.equal(t1.messageId, '3EB0FU0001');
+  assert.equal(marks.at(-1).messageId, '3EB0FU0001', 'the 👍 lands on the message this turn answers');
+  assert.equal(broker.pendingCount(), before + 1, 'message 2 is still waiting for its own turn');
+  // turn 2's prompt is built: its own opening, its own reply target
+  const c2 = await context({ agentId: u.agentId, trigger: 'user', messageProvider: 'whatsapp' });
+  const d2 = parse(c2.context);
+  assert.equal(d2.replyTarget, true, 'the reply belongs to message 2 and reaches its prompt');
+  const t2 = newTurn();
+  await call(u, 'add_task', { title: 'שני' }, t2);
+  assert.equal(t2.messageId, '3EB0FU0002');
+  assert.equal(broker.pendingCount(), before);
+  assert.equal(await received(u.id), 2, 'two messages, two counts, by their opens');
+
+  // Now a turn that answers with words alone (no tool) followed by one that
+  // calls a tool: the second turn's prompt drops the first's leftover open,
+  // so its tools adopt their own message.
+  await open({ agentId: u.agentId, messageId: '3EB0FU0003', kind: 'text' });
+  await context({ agentId: u.agentId, trigger: 'user', messageProvider: 'whatsapp' });
+  // ...turn 3 ends with no tool call...
+  await open({ agentId: u.agentId, messageId: '3EB0FU0004', kind: 'text' });
+  await context({ agentId: u.agentId, trigger: 'user', messageProvider: 'whatsapp' });
+  assert.equal(broker.pendingCount(), before + 1, 'the tool-less turn\'s open was dropped when the next prompt was built');
+  const t4 = newTurn();
+  await call(u, 'add_task', { title: 'רביעי' }, t4);
+  assert.equal(t4.messageId, '3EB0FU0004');
+  assert.equal(broker.pendingCount(), before);
+  assert.equal(await received(u.id), 4);
+});
+
+test('a turn Olma started leaves the person\'s pending open alone', async () => {
+  const u = await agentUser();
+  await enable(u.phone);
+  await open({ agentId: u.agentId, messageId: '3EB0SELF01', kind: 'text' });
+  selfInitiated.begin(u.id);
+  const r = await context({ agentId: u.agentId, trigger: 'user', messageProvider: 'whatsapp' });
+  assert.equal(r.ok, true);
+  selfInitiated._reset();
+  // the person's own prompt still gets a first-class opening afterwards
+  const r2 = await context({ agentId: u.agentId, trigger: 'user', messageProvider: 'whatsapp' });
+  assert.ok(r2.context, 'the open was not consumed by Olma\'s own turn');
+  const t = newTurn();
+  await call(u, 'add_task', { title: 'x' }, t);
+  assert.equal(t.messageId, '3EB0SELF01');
+});
