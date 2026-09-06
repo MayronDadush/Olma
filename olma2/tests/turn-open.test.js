@@ -140,7 +140,7 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
   assert.equal(written.length, 1);
   const msg = JSON.parse(written[0]);
   assert.equal(msg.method, 'turn_open');
-  assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', at: '2026-09-05T10:00:00.000Z' });
+  assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', replyToId: null, at: '2026-09-05T10:00:00.000Z' });
   assert.ok(!written[0].includes('סודי'), 'the text never leaves the gateway');
   // The shape the gateway ACTUALLY sends (OpenClaw 2026.8.1, measured
   // 2026-09-06): `message:preprocessed`, sender name and media type flat on
@@ -150,7 +150,7 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
     context: { from: '+972500000000', body: 'סודי', bodyForAgent: 'סודי', messageId: '3EB0HOOK0002', senderName: 'Miron', mediaType: 'audio/ogg', transcript: 'שלום', provider: 'whatsapp', cfg: {} },
   }, { connect: fakeSocket }), true);
   assert.equal(written.length, 2);
-  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', at: '2026-09-05T10:00:05.000Z' });
+  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', replyToId: null, at: '2026-09-05T10:00:05.000Z' });
   assert.ok(!written[1].includes('סודי') && !written[1].includes('שלום'), 'neither text nor transcript leaves the gateway');
   // A gateway that fires BOTH for one message opens it once.
   assert.equal(await hook({
@@ -165,4 +165,64 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
   // brokerd down: the hook fails quietly and the model's own opener takes over
   const failing = () => { const h = {}; const s = { on(ev, fn) { h[ev] = fn; return s; }, write() {}, end() {}, destroy() {} }; setTimeout(() => h.error && h.error(new Error('ECONNREFUSED')), 0); return s; };
   assert.equal(await hook({ type: 'message', action: 'received', sessionKey: 'agent:u-3:whatsapp:direct:+1', context: { messageId: 'x' } }, { connect: failing }), false);
+});
+
+// Miron, 2026-09-06: "בוצע" replying to one reminder, "עוד לא" replying to
+// another three seconds later. The plugin that puts the opening in the prompt
+// cannot see the reply (the prompt it gets is the bare text), so the hook —
+// which sees the WhatsApp envelope with the quote marker — carries the id.
+test('a WhatsApp reply reaches brokerd as replyToId, parsed from the quote marker; the quoted text stays behind', async () => {
+  const written = [];
+  const fakeSocket = () => {
+    const handlers = {};
+    const s = { on(ev, fn) { handlers[ev] = fn; return s; }, write(x) { written.push(x); setTimeout(() => handlers.data && handlers.data('{"ok":true}\n'), 0); }, end() { handlers.close && handlers.close(); }, destroy() {} };
+    setTimeout(() => handlers.connect && handlers.connect(), 0);
+    return s;
+  };
+  const body = '[WhatsApp +972500000000 +31m Sun 2026-09-06 11:04:59 UTC] +972500000000: בוצע\n\n[Replying to 12345678901234@lid id:3EB0QUOTED0001]\n⏰ תזכורת חוזרת: לאכול צהריים\n[/Replying]';
+  hook._resetSeen();
+  assert.equal(await hook({
+    type: 'message', action: 'preprocessed', sessionKey: 'agent:u-3:whatsapp:direct:+972500000000', timestamp: new Date('2026-09-06T11:04:59Z'),
+    context: { from: '+972500000000', body, bodyForAgent: 'בוצע', messageId: '3EB0REPLY0001', senderName: 'Miron', provider: 'whatsapp', cfg: {} },
+  }, { connect: fakeSocket }), true);
+  const params = JSON.parse(written[0]).params;
+  assert.equal(params.replyToId, '3EB0QUOTED0001');
+  assert.equal(params.messageId, '3EB0REPLY0001');
+  assert.ok(!written[0].includes('צהריים') && !written[0].includes('בוצע'), 'neither the quote nor the text leaves the gateway');
+  // no quote: null, never a guess from the body
+  assert.equal(await hook({
+    type: 'message', action: 'preprocessed', sessionKey: 'agent:u-3:whatsapp:direct:+972500000000',
+    context: { body: '[WhatsApp +972500000000] +972500000000: שלום id:notaquote', messageId: '3EB0REPLY0002', provider: 'whatsapp' },
+  }, { connect: fakeSocket }), true);
+  assert.equal(JSON.parse(written[1]).params.replyToId, null);
+  // a gateway that puts the field on the event wins over the parse
+  assert.equal(hook.replyToIdOf({ replyToId: '3EB0FIELD', body }), '3EB0FIELD');
+  assert.equal(hook.replyToIdOf({}), null);
+});
+
+// One slot per user was the shape until 2026-09-06. Two messages a few seconds
+// apart — the second's open overwrote the first's, and whichever turn's tools
+// came first adopted the wrong message. Now each message keeps its own open.
+test('two quick messages keep two opens; each turn adopts its own, and nothing older is left behind to be adopted by mistake', async () => {
+  const u = await agentUser('+972641100009', 'u-909');
+  const before = broker.pendingCount();
+  await open({ agentId: 'u-909', messageId: '3EB0Q1', kind: 'text' });
+  await open({ agentId: 'u-909', messageId: '3EB0Q2', kind: 'text' });
+  assert.equal(await received(u.id), 2, 'both counted, by their opens');
+  assert.equal(broker.pendingCount(), before + 2, 'the second did not overwrite the first');
+  // No opening in any prompt (the turn_start path): the newest is the live
+  // one and the older is dropped with it — that turn ended without a tool.
+  const turn = newTurn();
+  await call(u, 'add_task', { title: 'x' }, turn);
+  assert.equal(turn.messageId, '3EB0Q2');
+  assert.equal(await received(u.id), 2, 'no third count');
+  assert.equal(broker.pendingCount(), before, 'the stale older open went with it');
+  // Capped: a person who writes a dozen lines while the model thinks does
+  // not grow the queue without bound.
+  for (let i = 0; i < 12; i += 1) await open({ agentId: 'u-909', messageId: `3EB0CAP${i}`, kind: 'text' });
+  assert.ok(broker.pendingCount() - before <= 8, `capped, got ${broker.pendingCount() - before}`);
+  const t2 = newTurn();
+  await call(u, 'add_task', { title: 'y' }, t2);
+  assert.equal(t2.messageId, '3EB0CAP11', 'the newest survives the cap');
+  assert.equal(broker.pendingCount(), before);
 });

@@ -26,6 +26,7 @@ const { ok, err } = require('./results');
 const meetingsDomain = require('./meetings');
 const optionMoment = require('./meeting-option-moment');
 const mail = require('./mail');
+const voice = require('./voice');
 
 // A task's own category vocabulary is closed server-side (tasks.category is
 // validated as a closed set, not free text), so the page can rely on it —
@@ -48,7 +49,7 @@ const SOURCE_CAPS = {
 // is not a known import is the person's own writing.
 const importSource = (src) => (Object.hasOwn(SOURCE_CAPS, src) ? src : null);
 
-// The gate reads `role` and `phone`, and neither belongs in loadUser's row:
+// The gates read `role` and `phone`, and neither belongs in loadUser's row:
 // that row is the payload's own source, and the whole discipline there is that
 // no phone number can reach a browser from it. Fetching the two fields into a
 // throwaway object keeps them out of anything that gets serialised, and makes
@@ -58,7 +59,7 @@ const importSource = (src) => (Object.hasOwn(SOURCE_CAPS, src) ? src : null);
 // on the allowlist, or no". Handed a row without the columns it consults, it
 // would answer "no" for everybody and be quietly wrong for exactly the people
 // the allowlist exists for.
-async function mailIdentity(client, userId) {
+async function gateIdentity(client, userId) {
   const { rows } = await client.query(
     `SELECT id, role, phone FROM users WHERE id = $1`, [userId]);
   return rows[0] || { id: userId };
@@ -522,7 +523,11 @@ async function load(client, userId) {
   // allowlist (mail.requireMailAccess), so for almost everybody Gmail is a
   // service on a connected account that still cannot be switched on. Without
   // this the page would draw it as available and find out only on the tap.
-  const mailGate = await mail.requireMailAccess(client, await mailIdentity(client, userId));
+  // One read, two gates: mail is an allowlist, and so is ringing from this
+  // page. Neither field it fetches ever reaches the payload below.
+  const gateUser = await gateIdentity(client, userId);
+  const mailGate = await mail.requireMailAccess(client, gateUser);
+  const callAllowed = await voice.pageCallAllowed(client, gateUser);
   const channels = await loadChannels(client, userId);
   const contacts = await loadContacts(client, userId);
   const meetings = await loadMeetings(client, userId, zone);
@@ -554,7 +559,7 @@ async function load(client, userId) {
     archived: tasks.archived,
     friends,
     integrations,
-    available: { mail: mailGate.ok },
+    available: { mail: mailGate.ok, call: callAllowed },
     meetings,
     meetingsLeft,
   });

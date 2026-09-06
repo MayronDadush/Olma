@@ -521,7 +521,11 @@ async function unarchiveTask(client, ownerId, taskId) {
   // nothing else, and those rows now sit in the page's archive (see
   // user-dashboard.js). Asking only about `archived_at` would have put a way
   // back on screen and then refused it — the same shape of bug this is fixing.
-  if (!rows[0]) return err('not_found', 'finished task not found');
+  // Miron, 2026-09-06: this error came back and the model still wrote
+  // "החזרתי". An error result is a fact about what did NOT happen, and the
+  // sentence that follows it must say so — the tool result is where the
+  // model reads that, at the moment it decides what to write.
+  if (!rows[0]) return err('not_found', 'finished task not found', { hint: 'Nothing was restored — do not tell them it was. Say what you could not find.' });
   await audit.record(client, ownerId, 'task.unarchived', { taskId });
   return ok({ taskId, title: rows[0].title });
 }
