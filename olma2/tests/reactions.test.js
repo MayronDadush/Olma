@@ -2,6 +2,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const r = require('../src/domain/reactions');
+// placeMark now writes a line per mark. The suite is not a journal: silence it
+// by default, and the one test that asserts on the lines installs its own sinks.
+r._setLogs(() => {}, () => {});
 const { withTx } = require('../src/db/pool');
 
 test('reactions: one emoji per state, and no state shares one', () => {
@@ -161,8 +164,9 @@ test('reactions: placeMark is detached, unref\'d, and never claims delivery', ()
     'an attached child dies with its parent while reporting success — the MCP-shim rule');
   assert.equal(child.unrefd, true);
   assert.ok(calls[0].args.includes('👍'));
-  // `attempted`, never `sent`. There is no exit code to read, so there is no
-  // claim to make — and nothing user-visible may depend on the mark landing.
+  // `attempted`, never `sent`. The exit code is now read, but only to write a
+  // line — the caller is still told nothing it could mistake for delivery, and
+  // nothing user-visible may depend on the mark landing.
   assert.deepEqual(out, { attempted: true, state: 'done', emoji: '👍' });
   assert.equal(out.sent, undefined);
 
@@ -210,6 +214,57 @@ test('reactions: a newer mark kills an older one still starting up, and replaces
   const other = r.placeMark({ ...base, messageId: '3EB0RACE0002', state: 'working' }, { spawn });
   assert.equal(other.superseded, undefined);
   assert.equal(spawned[2].child.killed, false);
+});
+
+// A mark that failed and a mark on somebody's phone looked identical from the
+// box: this function reads no exit code and nothing downstream reads its
+// result, so for two days the only way to answer "did the 👍 go out" was to
+// look at a phone. Yahav's evening could not be explained from the record at
+// all (`incidents.md`, "The mark that never moved").
+test('reactions: a mark says what it tried, and says when the CLI failed', () => {
+  const out = [], err = [];
+  r._setLogs((l) => out.push(l), (l) => err.push(l));
+  try {
+    const mkChild = () => {
+      const h = {};
+      const c = { on(ev, fn) { h[ev] = fn; }, unref() {}, kill() {}, exit(code, sig) { h.exit && h.exit(code, sig); }, fail(e) { h.error && h.error(e); } };
+      return c;
+    };
+    const spawned = [];
+    const spawn = () => { const c = mkChild(); spawned.push(c); return c; };
+    const base = { channel: 'whatsapp', target: '+972500000000', messageId: '3EB0LOG0001' };
+
+    r.placeMark({ ...base, state: 'done' }, { spawn });
+    assert.equal(out.length, 1);
+    assert.match(out[0], /\[reactions\] done → 3EB0LOG0001/);
+    // A clean exit says nothing further. One line per mark, not two.
+    spawned[0].exit(0, null);
+    assert.deepEqual(err, []);
+
+    // A CLI that exits non-zero — a dead gateway, a refused channel — is the
+    // case this exists for, and it is the ONLY thing said at error level.
+    r.placeMark({ ...base, state: 'scheduled' }, { spawn });
+    spawned[1].exit(1, null);
+    assert.equal(err.length, 1);
+    assert.match(err[0], /\[reactions\] scheduled 3EB0LOG0001 failed: exit 1/);
+
+    // A superseded child is killed on purpose. That is the normal end of a
+    // mark overtaken by a newer one, and reporting it as a failure would make
+    // the error line mean two things — which is how a log stops being read.
+    r.placeMark({ ...base, state: 'working' }, { spawn });
+    r.placeMark({ ...base, state: 'done' }, { spawn });
+    spawned[2].exit(null, 'SIGTERM');
+    assert.equal(err.length, 1, 'the killed 👀 is not a failure');
+    assert.match(out.at(-1), /superseded/);
+
+    // A box with no `openclaw` at all reports the ENOENT rather than swallowing
+    // it: the whole feature being dead must not look like nobody wrote anything.
+    r.placeMark({ ...base, messageId: '3EB0LOG0002', state: 'done' }, { spawn });
+    spawned.at(-1).fail(new Error('spawn openclaw ENOENT'));
+    assert.match(err.at(-1), /could not start: spawn openclaw ENOENT/);
+  } finally {
+    r._setLogs(() => {}, () => {});
+  }
 });
 
 test('reactions: every marked tool exists, and the table is the only list', () => {

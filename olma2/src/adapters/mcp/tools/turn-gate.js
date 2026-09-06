@@ -71,7 +71,10 @@ module.exports = [
       // this stays a no-op, the same way it always has for a bare heartbeat.
       if (ctx && ctx.turn) {
         const id = reactions.cleanMessageId(args && args.message_id);
-        if (id) { ctx.turn.messageId = id; ctx.turn.lastInboundAt = Date.now(); }
+        // brokerd's clock, not this module's: the gateway opener stamps the
+        // same field from it, and two writers of one field reading two clocks
+        // makes liveness depend on which of them got there first.
+        if (id) { ctx.turn.messageId = id; ctx.turn.lastInboundAt = (ctx.now || Date.now)(); }
         // How the message ARRIVED, for the opening mark only: 👂 for a voice
         // note, 👀 for anything typed. The model is the only thing in this call
         // that knows — a transcription reaches it, the MediaType never reaches

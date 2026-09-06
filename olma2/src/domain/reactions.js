@@ -226,6 +226,12 @@ function isLive(lastInboundAt, now = Date.now()) {
 // claim-free, like everything else here.
 const inFlight = new Map(); // messageId → child
 
+// Injectable for the suite, which must be able to assert on what was said
+// without a journal — and so a test never writes into the on-box one.
+let log = (line) => console.log(line);
+let logError = (line) => console.error(line);
+function _setLogs(out, err) { log = out || log; logError = err || logError; }
+
 function placeMark(opts = {}, deps = {}) {
   const args = buildReactArgs(opts);
   if (!args) return { attempted: false, reason: 'not_applicable' };
@@ -235,21 +241,44 @@ function placeMark(opts = {}, deps = {}) {
   const prev = inFlight.get(key);
   if (prev && !prev.exited) {
     superseded = true;
+    prev.killed = true;
     try { if (typeof prev.child.kill === 'function') prev.child.kill(); } catch { /* already gone */ }
     inFlight.delete(key);
   }
   try {
     const child = spawnFn('openclaw', args, { detached: true, stdio: 'ignore' });
+    // ── Say what was tried, and say when it failed ────────────────────────────
+    // This function makes no delivery claim and nothing downstream reads its
+    // result, which is right — but it also wrote no line anywhere, and that is
+    // how a mark that never left the box stayed indistinguishable from one on
+    // somebody's phone. The gateway logs what it SENDS; without an attempt line
+    // here there is nothing to compare that against, so "no reaction" could not
+    // be told from "no attempt" (`incidents.md`, "The mark that never moved" —
+    // and the shape above it in CLAUDE.md: null and [] must never collapse).
+    // A trace, not an alarm: one line per mark asked for, one more only when
+    // the CLI exits non-zero.
+    log(`[reactions] ${opts.state} → ${key}${superseded ? ' (superseded a mark still starting up)' : ''}`);
     // An ENOENT on a box without the CLI arrives as an event, not a throw, and
     // an unhandled 'error' on a child process takes the whole daemon down.
-    const entry = { child, exited: false };
+    const entry = { child, exited: false, killed: false };
     if (child && typeof child.on === 'function') {
-      child.on('error', () => { entry.exited = true; if (inFlight.get(key) === entry) inFlight.delete(key); });
-      child.on('exit', () => { entry.exited = true; if (inFlight.get(key) === entry) inFlight.delete(key); });
+      child.on('error', (e) => {
+        entry.exited = true;
+        if (inFlight.get(key) === entry) inFlight.delete(key);
+        logError(`[reactions] ${opts.state} ${key} could not start: ${e && e.message}`);
+      });
+      child.on('exit', (code, signal) => {
+        entry.exited = true;
+        if (inFlight.get(key) === entry) inFlight.delete(key);
+        // A killed child is the normal end of a superseded mark, not a failure.
+        if (entry.killed) return;
+        if (code !== 0) logError(`[reactions] ${opts.state} ${key} failed: exit ${code} signal ${signal}`);
+      });
     }
     if (child && typeof child.unref === 'function') child.unref();
     inFlight.set(key, entry);
-  } catch {
+  } catch (e) {
+    logError(`[reactions] ${opts.state} ${key} could not spawn: ${e && e.message}`);
     return { attempted: false, reason: 'spawn_failed' };
   }
   return { attempted: true, state: opts.state, emoji: REACTION_STATES[opts.state], ...(superseded ? { superseded: true } : {}) };
@@ -334,5 +363,5 @@ const VOCAB_FLAG = 'reaction_emoji';
 module.exports = {
   REACTION_STATES, REACTION_CAPABLE, TOOL_MARKS, LIVE_WINDOW_MS, VOCAB_FLAG,
   isReactionCapable, buildReactArgs, outcomeState, placeMark, markFor, isLive,
-  cleanMessageId, vocabulary, isUsableEmoji,
+  cleanMessageId, vocabulary, isUsableEmoji, _setLogs,
 };
