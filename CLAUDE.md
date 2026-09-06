@@ -127,6 +127,14 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `models.providers.openrouter.models[]`, and
   `agents.defaults.modelPolicy.allow`. Two of three is registered-and-unusable,
   and invisible until an override is tried.
+- **The `Conversation info` block is prompt-only: the transcript keeps the
+  bare text.** On 2026.8.1 the roster, the tag and the message id of a group
+  message exist in one place code can reach — the `llm_input` plugin hook,
+  which hands over the model's input verbatim (`gateway-plugin/olma-turn`
+  → brokerd `group_context` → `group_inbound_context`). Group mode was
+  designed to read them off the store, went live, and registered nothing
+  (`incidents.md`, "The roster was never in the transcript"). A store
+  that our own probes wrote into is not evidence of what the gateway writes.
 - **Never poll `openclaw sessions list` on a timer** — 2.9s of CPU per call on
   a 1-vCPU box, which directly slows every user's reply.
 - **The gateway heartbeat stays OFF: `agents.defaults.heartbeat.every: "0m"`.**
