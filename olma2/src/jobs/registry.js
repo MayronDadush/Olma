@@ -153,8 +153,13 @@ function jobs({ pool }) {
       // bigger", and the number has to be the CURRENT rendered size, not a
       // constant somebody updates by hand. Read fresh — six-hourly, one file.
       promptChars: (() => {
-        try { return require('../intake/provision').renderAgentsMd('olma_tok_' + '0'.repeat(32)).length; }
-        catch { return null; }
+        // The larger of the two doctrine variants (renderAgentsMd): the
+        // budget question is about the biggest file any agent is handed.
+        try {
+          const { renderAgentsMd } = require('../intake/provision');
+          const tok = 'olma_tok_' + '0'.repeat(32);
+          return Math.max(renderAgentsMd(tok).length, renderAgentsMd(tok, { turnContext: true }).length);
+        } catch { return null; }
       })(),
     })) },
     // One tick for the minute-sweeps. They were separate intervals firing
@@ -248,8 +253,8 @@ function jobs({ pool }) {
     { name: 'metrics_sweep', run: () => withTx(pool, (c) => metrics.sweepMetrics(c)) },
     { name: 'retention_sweep', run: () => withTx(pool, (c) => retention.sweepRetention(c)) },
     // Is everything working, and will the owner hear if not: gateway probe +
-    // delivery queue, two bad ticks before a word, WhatsApp when the pipe is
-    // up and Twilio SMS when the pipe IS the problem (jobs/liveness-watch.js).
+    // delivery queue, two bad ticks before a word, a dead gateway restarted
+    // before anything is said, WhatsApp for the news (jobs/liveness-watch.js).
     { name: 'liveness_watch', run: () => withTx(pool, (c) =>
       livenessWatch.run(c, { configPath: OPENCLAW_CONFIG, send: rawSend })) },
     { name: 'deploy_drift', run: () => withTx(pool, (c) => deployDrift.sweepDeployDrift(c)) },

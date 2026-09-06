@@ -28,7 +28,13 @@ async function withClient(fn) {
   try { return await fn(client); } finally { client.release(); }
 }
 // Offsets from now, stated the way every tool requires: with an offset.
-const at = (hours) => new Date(Date.now() + hours * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00');
+// One clock for the whole file, frozen at load and rounded to the second the
+// same way the value is. Two at() calls a few lines apart used to straddle a
+// second boundary on the box and fail a deploy by exactly one second — twice
+// on 2026-09-05. Relative moments stay relative; they simply agree with each
+// other.
+const NOW = Math.floor(Date.now() / 1000) * 1000;
+const at = (hours) => new Date(NOW + hours * 3600_000).toISOString().replace(/\.\d+Z$/, '+00:00');
 
 // ------------------------------------------------------------------ the kind
 
@@ -108,9 +114,13 @@ test('editing one end is checked against the end already stored', async () => {
     const bad = await tasks.editTask(c, ana.id, id, { dueAt: at(40) });
     assert.equal(bad.ok, false);
 
-    const good = await tasks.editTask(c, ana.id, id, { endsAt: at(33) });
+    // One moment, computed once: at() is relative to now, and computing it
+    // twice across a second boundary failed a production deploy on
+    // 2026-09-05 by exactly one second.
+    const end = at(33);
+    const good = await tasks.editTask(c, ana.id, id, { endsAt: end });
     assert.equal(good.ok, true);
-    assert.equal(new Date(good.data.task.ends_at).toISOString(), new Date(at(33)).toISOString());
+    assert.equal(new Date(good.data.task.ends_at).toISOString(), new Date(end).toISOString());
   });
 });
 

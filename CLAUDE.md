@@ -172,6 +172,45 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **"What is still pending" must ask `attempts = 0`**, not `sent_at IS NULL` —
   since the escalation ladder, a delivered row sits with `sent_at` NULL for up
   to a day.
+- **The turn opens itself, from the gateway's own hook, before the model's
+  first call.** `gateway-hooks/olma-turn-open` (synced by `deploy.sh` to
+  `/root/.openclaw/hooks/`, enabled by `hooks.internal.entries`, loaded at
+  gateway STARTUP) sends brokerd `turn_open` on every accepted inbound
+  message — on the `message:preprocessed` event: **on OpenClaw 2026.8.1 a
+  WhatsApp DM never fires `message:received`**, and the hook sat loaded and
+  silent for a night listening to it. A hook that loads is not a hook that
+  runs; prove it with a line it wrote on a real message. brokerd counts the message, wakes the person, puts the 👀 on, and
+  holds the open for the shim connection to adopt on its first tool call —
+  nothing counted twice, every mark on the real message id (`incidents.md`,
+  "The reply's first six seconds were bookkeeping"). `turn_start` still works
+  and is now a no-op on the record when the gateway got there first.
+  **Phase B (2026-09-06, per-person):** for the phones in the
+  `turn_context_phones` flag, what `turn_start` would RETURN is prepended to
+  the prompt by the gateway plugin `gateway-plugin/olma-turn`
+  (`before_prompt_build` → brokerd `turn_context`, link-installed from
+  `/opt/olma2`, `plugins.entries.olma-turn` with
+  `hooks.allowConversationAccess: true`, agent list in its `config.agents`),
+  and their AGENTS.md is the `{{#turn:context}}` variant of the template
+  (`renderAgentsMd(token, {turnContext})`; the resync script picks per
+  person). The plugin fails open and the variant doctrine falls back to
+  calling `turn_start` when no `Turn context` block is there, so a dead
+  plugin costs a tool call, never a count. Trace:
+  `/opt/olma2/run/turn-context-plugin.log`. Turning it on for someone means
+  ALL THREE: the flag, the plugin's agent list, and a resync of their
+  AGENTS.md — the flag alone changes only what brokerd answers.
+  **The prompt that `before_prompt_build` sees is the bare text.** The
+  Conversation info block (`reply_to_id`) and the reply-target block are
+  attached AFTER that hook, so the plugin cannot see a reply; the turn-open
+  hook can (the WhatsApp quote marker is in the event body) and sends
+  `replyToId` with `turn_open`. brokerd keeps one pending open PER MESSAGE
+  (a queue per person, oldest first), not one per person: two messages a few
+  seconds apart each keep their own count, opening and reply target
+  (`incidents.md`, "Two messages three seconds apart").
+- **`messages.queue.mode` stays `followup`.** The gateway default, `steer`,
+  pushes a message that arrives mid-turn INTO the running turn and cancels
+  the tool calls the model just made ("Skipped due to queued user message").
+  `followup` gives it a turn of its own. `config_guard` goes red otherwise;
+  `scripts/set-queue-mode.js --apply` sets it.
 - **A turn Olma started is not a message from the person.** `--deliver` reaches
   the agent on the person's own agent and session key, so nothing in the MCP
   call distinguishes it from typing — `domain/self-initiated.js` marks it and
@@ -249,16 +288,15 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   binding and the next silent failure of the same shape alike. Dashboard row,
   not `BREAKS_USERS`. It is the opposite of `isDeafOnDayOne`, which needs two
   onboarding messages to have LANDED and then sends less.
-- **`liveness_watch` is the one alarm with a channel that is not the gateway.**
-  Twilio SMS when the gateway is down, WhatsApp otherwise, the other as
-  fallback; two bad ticks before a word; state in the `liveness_state` flag
-  so a restart mid-outage does not re-alert. Its heartbeat note says
-  `smsConfigured` and `alertFailed` — "nothing wrong" and "could not tell
-  you" must never read alike.
-  **It repairs before it reports**: a gateway down for two ticks is restarted
-  (`intake/gateway-restart.js`, once per half hour) and probed again; the
-  owner hears the outcome — healed over WhatsApp, or "restarted, still down"
-  over SMS. A dead brokerd or box it cannot see; that is the external monitor.
+- **`liveness_watch` repairs before it reports.** Every five minutes: gateway
+  probe and delivery queue; two bad ticks before a word; a gateway down for
+  two ticks is restarted (`intake/gateway-restart.js`, once per half hour) and
+  probed again; the news goes over WhatsApp — healed, stuck deliveries, or
+  recovered — and a message that could not go out is `alertFailed` on the
+  heartbeat. State in the `liveness_state` flag so a restart mid-outage does
+  not re-alert. It speaks over the gateway's own pipe (owner's choice, no
+  SMS), so a gateway that stays dead is repaired from here but reported only
+  by the external monitor.
 - **`/health` sees the DB, every `job_heartbeats` row, and the gateway — and
   nothing else.** A component that writes no heartbeat is invisible to it, and
   says so by staying green. That is how the gateway went unwatched for months
@@ -724,17 +762,14 @@ next session to rebuild something that already works.
 What is genuinely still missing is **Monday.com** (v1 had it read-only for one
 user). No tools, no domain module, nobody has asked for it since the cutover.
 
-### The gateway can only ever be watched from OUTSIDE itself — half closed (2026-09-05)
+### The gateway can only ever be watched from OUTSIDE itself — repaired from inside since 2026-09-05
 
-`/health` checks the gateway, and since 2026-09-05 `liveness_watch`
-(`jobs/liveness-watch.js`, every five minutes inside brokerd) probes it and
-the delivery queue and can say so over a channel that is NOT the gateway:
-Twilio SMS (`channels/twilio-sms.js`, `TWILIO_SID/TOKEN/FROM` in
-`/opt/olma2/.env`), WhatsApp when the pipe is up. Two bad ticks before a
-word, one alert per outage plus a six-hourly reminder, a recovery message.
-
-What is still uncovered, and always will be from in here: a dead brokerd, a
-dead box, a dead network. Those need an uptime monitor hitting
+`/health` checks it, and `liveness_watch` (`jobs/liveness-watch.js`) now
+RESTARTS a gateway that has been down for two five-minute ticks, then says so
+over WhatsApp once the pipe is back. What nothing here can do is report a
+gateway that stays dead, a dead brokerd, a dead box or a dead network — every
+alarm rides the gateway's own pipe (a Twilio SMS channel was built and removed
+the same day at the owner's request). Those need an uptime monitor hitting
 `https://allma.world/health` (public, unauthenticated, the hostname that
-outlives the duckdns one). That still does not exist and needs the owner's
-account at a monitoring service.
+outlives the duckdns one), which needs the owner's account at a monitoring
+service and does not exist yet.

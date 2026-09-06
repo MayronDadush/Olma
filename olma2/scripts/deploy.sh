@@ -88,10 +88,27 @@ $SSH "$SERVER" "
   fi
 "
 
-rsync -az --delete \
+# --chown: the receiving side is root, and `-a` would otherwise stamp every
+# file with the SENDING uid (the CI runner's 1001, a laptop's 501). Nothing
+# of ours minds, but the gateway's plugin scanner refuses a plugin directory
+# not owned by the user running it — `openclaw plugins install --link` on
+# gateway-plugin/olma-turn answered "no valid plugin manifest" until the
+# directory was chowned by hand (2026-09-06). Root-owned is also simply what
+# a deploy to /opt should produce.
+rsync -az --delete --chown=root:root \
   --exclude node_modules --exclude .env --exclude '*.log' --exclude run \
   -e "$SSH" \
   "$SRC_DIR/" "$SERVER:$DEST/"
+
+# The gateway's internal hooks live under the OpenClaw state dir, not under
+# /opt/olma2 — gateway-hooks/ is their source of record and this keeps the
+# two identical. Hooks load at gateway STARTUP; a changed handler takes effect
+# on the next gateway restart, which this deploy deliberately does not do.
+rsync -az --delete --chown=root:root -e "$SSH" "$SRC_DIR/gateway-hooks/" "$SERVER:/root/.openclaw/hooks/"
+# The gateway PLUGIN (gateway-plugin/olma-turn) needs no copy of its own: it
+# is link-installed from its place in the tree (`openclaw plugins install
+# --link /opt/olma2/gateway-plugin/olma-turn`), so the rsync above already
+# updated it. Same rule as the hooks: plugin code loads at gateway STARTUP.
 
 # What that snapshot actually CONTAINS, written into the live tree right after
 # the sync. It rides into the archive on the next deploy, which is the only way

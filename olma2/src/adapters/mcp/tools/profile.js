@@ -55,8 +55,8 @@ module.exports = [
   // instead of asking for it a sentence at a time.
   tool('open_my_dashboard',
     'A personal link to THIS user\'s own dashboard: tasks and archive, connections and what each may do, connected accounts, timezone — all editable there. Offer it when they want to SEE or rearrange several things at once, or ask for a link or a screen. Put the URL in your reply; it opens once and stays open. Everything on it can still be done here in chat — never the answer to a question you can just answer.',
-    {}, [],
-    (client, user) => dashboardAuth.createLinkUrl(client, user.id)),
+    { meeting_id: S('number', 'Optional: open the page ON this meeting (its tab and sheet). Only when the reply\'s hints asked for it, or they want to see a specific coordination.') }, [],
+    (client, user, a) => dashboardAuth.createLinkUrl(client, user.id, { meetingId: a.meeting_id })),
 
   // The tools that did not exist when a user asked to stop and Olma, having
   // nothing to call, simply said goodbye and messaged him again the next

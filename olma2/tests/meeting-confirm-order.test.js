@@ -13,7 +13,20 @@ const grants = require('../src/domain/grants');
 
 let db, host, a, b;
 const at = (h) => new Date(Date.now() + h * 3600_000).toISOString().replace('Z', '+00:00');
+// For the slots whose TEXT names no weekday. `when` is a bare "מחר", so any
+// future moment agrees with it.
 const when = at(24);
+// A slot whose text names a weekday is a different thing, and `at()` cannot
+// make one: proposeSlot refuses a starts_at that falls on a different day than
+// the words, and "now + 24h" is a Sunday on exactly one day of the week. This
+// file said 'ראשון' and passed only when the suite happened to run on a
+// Saturday — green one day in seven, red the rest, and it went red for the
+// first time the moment Israel ticked over into Sunday. helpers.slotStart
+// exists for precisely this: it reads the weekday out of the text and lands
+// the timestamp on it. Monday is that Sunday's next day, so the pair is
+// ordered as well as consistent, whichever day the suite runs.
+const sunday = slotStart('ראשון');
+const monday = new Date(Date.parse(sunday) + 86_400_000).toISOString().replace(/\.\d+Z$/, '+00:00');
 
 before(async () => {
   db = await freshDb();
@@ -62,17 +75,11 @@ test('confirmation order is recorded, and B-then-A is not A-then-B', async () =>
 test('a new proposal clears the old round rather than carrying its order over', async () => {
   const id = await withTx(db.pool, async (c) => {
     const m = (await meetings.startMeeting(c, host.id, 'סבב שני', [a.id, b.id])).data.meeting;
-    // A named weekday needs a moment that AGREES with it: proposeSlot
-    // cross-checks the two (`datetime.weekdayClash`), so `now + 24h` under the
-    // word "ראשון" is a clash on any day but Saturday — this test was red every
-    // Sunday and green the rest of the week.
-    const sunday = slotStart('ראשון');
-    const monday = slotStart('שני');
-    await meetings.proposeSlot(c, host.id, m.id, 'ראשון', sunday);
+    assert.equal((await meetings.proposeSlot(c, host.id, m.id, 'ראשון', sunday)).ok, true);
     assert.equal((await meetings.respondToSlot(c, b.id, m.id, true, null, null, sunday)).ok, true);
     // Host moves the evening. B agreed to a DIFFERENT one and must not keep a
     // stamp that would make him the successor for a slot he never saw.
-    await meetings.proposeSlot(c, host.id, m.id, 'שני', monday);
+    assert.equal((await meetings.proposeSlot(c, host.id, m.id, 'שני', monday)).ok, true);
     return m.id;
   });
   const rows = await stamps(id);

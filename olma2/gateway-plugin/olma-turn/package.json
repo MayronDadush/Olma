@@ -1,0 +1,8 @@
+{
+  "name": "olma-turn",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenClaw plugin: prepends what turn_start would return to the prompt, from brokerd, so the model reads its opening instead of calling for it.",
+  "openclaw": { "extensions": ["./index.js"] }
+}

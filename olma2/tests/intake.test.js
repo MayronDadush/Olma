@@ -24,6 +24,8 @@ function baseConfig() {
       list: [{ id: 'intake', workspace: '/x/intake', agentDir: '/x/intake-agent' }],
       defaults: { heartbeat: { every: '0m', target: 'none' } },
     },
+    hooks: { internal: { enabled: true, entries: { 'olma-turn-open': { enabled: true } } } },
+    messages: { queue: { mode: 'followup' } },
     bindings: [],
     tools: { fs: { workspaceOnly: true }, alsoAllow: ['read', 'write'] },
     mcp: { servers: { olma: { command: 'node', args: ['shim.js'] } } },
@@ -626,6 +628,39 @@ test('config guard: a multi-agent roster with no ambient owner is a violation', 
 // them a 33k-token turn answered NO_REPLY. Nothing of ours rides on the
 // gateway's heartbeat (every sweep is a brokerd job), and it is the road one
 // agent's brunch reminder once took into a different user's chat.
+test('config guard: the turn-open hook must be enabled', () => {
+  const cfg = baseConfig();
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
+  delete cfg.hooks;
+  let v = guard.checkOpenclawConfig(cfg);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /olma-turn-open is not enabled/);
+  assert.match(v[0], /enable-turn-open-hook/, 'says how to fix it');
+  cfg.hooks = { internal: { enabled: true, entries: { 'olma-turn-open': { enabled: false } } } };
+  assert.match(guard.checkOpenclawConfig(cfg)[0], /olma-turn-open/);
+  cfg.hooks = { internal: { enabled: false, entries: { 'olma-turn-open': { enabled: true } } } };
+  assert.match(guard.checkOpenclawConfig(cfg)[0], /olma-turn-open/, 'the master switch off is the same failure');
+});
+
+// Miron, 2026-09-06: "בוצע" quoting one reminder, "עוד לא" quoting another
+// three seconds later. The gateway's default queue mode ("steer") pushed the
+// second into the running turn and cancelled the completion the model had
+// just asked for ("Skipped due to queued user message"). "followup" gives
+// each message its own turn.
+test('config guard: a message that arrives mid-turn must wait for its own turn (queue mode followup)', () => {
+  const cfg = baseConfig();
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
+  delete cfg.messages;
+  let v = guard.checkOpenclawConfig(cfg);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /messages\.queue\.mode is unset \(gateway default "steer"\)/);
+  assert.match(v[0], /set-queue-mode/, 'says how to fix it');
+  cfg.messages = { queue: { mode: 'steer' } };
+  assert.match(guard.checkOpenclawConfig(cfg)[0], /messages\.queue\.mode is "steer"/);
+  cfg.messages = { queue: { mode: 'collect' } };
+  assert.equal(guard.checkOpenclawConfig(cfg).length, 1, 'collect merges the two into one prompt: one count, one reply target — not what we want either');
+});
+
 test('config guard: the gateway heartbeat must be explicitly off', () => {
   const cfg = baseConfig();
   assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
@@ -1348,8 +1383,12 @@ test('agent doctrine: AGENTS.md fits the gateway budget, with room for one more 
   // gateway measures. Chars, never bytes — the gateway slices UTF-16, and
   // measuring this Hebrew file with `wc -c` overstates the overflow by 2x,
   // which is how the first attempt at this mis-sized the cut.
-  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
-  const rendered = tpl.replaceAll('{{IDENTITY_TOKEN}}', 'olma_tok_' + 'a'.repeat(32));
+  // Both doctrine variants (the tool-opened turn and the Turn-context-opened
+  // one, provision.renderAgentsMd) are measured; a person's file carries one.
+  const { renderAgentsMd } = require('../src/intake/provision');
+  const tok = 'olma_tok_' + 'a'.repeat(32);
+  const variants = [renderAgentsMd(tok), renderAgentsMd(tok, { turnContext: true })];
+  const rendered = variants.reduce((a, b) => (a.length >= b.length ? a : b));
   const headroom = DEPLOYED_BOOTSTRAP_MAX_CHARS - rendered.length;
   // Over the line the gateway says nothing at all: trimAgentsBootstrapContent
   // keeps a head and a tail and deletes what is between them, so the damage is
@@ -1364,6 +1403,28 @@ test('agent doctrine: AGENTS.md fits the gateway budget, with room for one more 
   assert.ok(headroom >= guard.BOOTSTRAP_WARN_MARGIN,
     `AGENTS.md has only ${headroom} chars of headroom (want >= ${guard.BOOTSTRAP_WARN_MARGIN}). ` +
     'This fails BEFORE anything is lost, which is the whole point — shorten something else in the same change.');
+});
+
+test('agent doctrine: the context-opened variant tells the model to read the block, not call the tool — and to fall back when the block is missing', () => {
+  const { renderAgentsMd } = require('../src/intake/provision');
+  const tok = 'olma_tok_' + 'a'.repeat(32);
+  const tool = renderAgentsMd(tok);
+  const ctx = renderAgentsMd(tok, { turnContext: true });
+  assert.match(tool, /before anything else, call `turn_start` once/);
+  assert.doesNotMatch(tool, /Turn context/);
+  assert.doesNotMatch(ctx, /before anything else, call `turn_start` once/);
+  assert.match(ctx, /Do NOT call\n`turn_start` while that block is there/);
+  assert.match(ctx, /Only when a message has NO\n`Turn context` block, call `turn_start` once/);
+  assert.match(ctx, /read the Turn context,\n {3}then `pause_olma`/);
+  assert.match(ctx, /the Turn context tells you\nwith `offerResume: true`/);
+  for (const v of [tool, ctx]) {
+    assert.ok(!v.includes('{{#turn') && !v.includes('{{/turn'), 'no marker survives rendering');
+    assert.match(v, /Follow its directive exactly:/);
+  }
+  // the block the plugin prepends names itself the way the doctrine does
+  const turnDomain = require('../src/domain/turn');
+  assert.match(turnDomain.CONTEXT_HEADER, /^Turn context \(from the system, not the person/);
+  assert.match(turnDomain.renderContext({ directive: 'proceed', locale: 'he' }), /\nOK \{"directive":"proceed","locale":"he"\}$/);
 });
 
 // The backstop for the outage above: if that file ever appears in a workspace

@@ -184,11 +184,32 @@ function readCookie(header) {
 // URL needs a flag read and the domain function does not — the same split
 // availability.js makes, and for the same reason: one place decides what the
 // public host is.
-async function createLinkUrl(client, userId) {
+// A link may name ONE meeting, and then the page opens on it — the tab, the
+// sheet, the people, the options — instead of on the front page with the
+// coordination three taps away. It is the thing the retired /pick/ page did
+// best (one tap from WhatsApp and you are looking at the meeting), kept.
+//
+// The id rides the URL as a query on the sign-in page and as a fragment after
+// it: a fragment would be dropped by the form POST that spends the link, and a
+// query would reach the server on /me, which has no reason to see it. Only a
+// meeting this person is still IN is named; anything else is silently a plain
+// link, because a wrong number here should open their page, not an error.
+async function createLinkUrl(client, userId, { meetingId } = {}) {
   const made = await createLink(client, userId);
   if (!made.ok) return made;
   const base = String(await flags.getFlag(client, 'public_base_url') || '').replace(/\/$/, '');
-  return ok({ url: `${base}${LINK_PATH}/${made.data.token}`, expiresInMinutes: LINK_TTL_MINUTES });
+  let url = `${base}${LINK_PATH}/${made.data.token}`;
+  const mid = Number(meetingId);
+  let named;
+  if (Number.isInteger(mid) && mid > 0) {
+    const { rows } = await client.query(
+      `SELECT 1 FROM meeting_participants p JOIN meetings m ON m.id = p.meeting_id
+        WHERE p.meeting_id = $1 AND p.user_id = $2 AND p.state <> 'opted_out'
+          AND m.status IN ('negotiating', 'confirmed')`,
+      [mid, userId]);
+    if (rows[0]) { url += `?meeting=${mid}`; named = mid; }
+  }
+  return ok({ url, expiresInMinutes: LINK_TTL_MINUTES, meetingId: named });
 }
 
 module.exports = {

@@ -136,7 +136,17 @@ button:active{opacity:.75}
 
 // The sign-in page. One button, and the button is the whole point: pressing it
 // is a POST, and only a POST spends the key.
-function signInPage(res, token, firstName) {
+// The meeting a link was minted for, if any — see dashboard-auth.createLinkUrl.
+// Read off the sign-in URL's query, echoed into the form's action so the POST
+// still knows it, and handed to the page as a fragment. Anything but a plain
+// positive integer is treated as absent: the page decides whether the number
+// names a meeting of theirs, and a number that does not simply opens the page.
+function meetingParam(reqUrl) {
+  const q = new URL(String(reqUrl || ''), 'http://x').searchParams.get('meeting');
+  return q && /^[1-9][0-9]{0,11}$/.test(q) ? q : null;
+}
+
+function signInPage(res, token, firstName, meeting) {
   const hi = firstName ? `שלום ${esc(firstName)}` : 'שלום';
   res.writeHead(200, headers(HTML));
   return res.end(`<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
@@ -158,7 +168,7 @@ small{display:block;margin-top:14px;font-size:12.5px;opacity:.45}
 </style></head><body><div class="card">
 <h1>${hi}</h1>
 <p>הקישור הזה נפתח פעם אחת. אחרי שתיכנס הוא כבר לא יעבוד — הדף עצמו יישאר פתוח.</p>
-<form method="POST" action="/d/${esc(token)}"><button type="submit">כניסה</button></form>
+<form method="POST" action="/d/${esc(token)}${meeting ? `?meeting=${meeting}` : ''}"><button type="submit">כניסה</button></form>
 <small>הקישור תקף ל־${auth.LINK_TTL_MINUTES} דקות</small>
 </div></body></html>`);
 }
@@ -220,7 +230,7 @@ async function handle(req, res, pool, pathname) {
         return messagePage(res, 410, 'הקישור כבר לא פעיל',
           'קישורי כניסה תקפים לזמן קצר ולשימוש אחד. אפשר לבקש מעולמה קישור חדש בוואטסאפ.');
       }
-      return signInPage(res, token, peek.data.firstName);
+      return signInPage(res, token, peek.data.firstName, meetingParam(req.url));
     }
     if (req.method === 'POST') {
       const opened = await withTx(pool, (c) => auth.redeemLink(c, token));
@@ -228,8 +238,9 @@ async function handle(req, res, pool, pathname) {
         return messagePage(res, 410, 'הקישור כבר לא פעיל',
           'ייתכן שכבר נכנסת איתו. אפשר לבקש מעולמה קישור חדש בוואטסאפ.');
       }
+      const meeting = meetingParam(req.url);
       res.writeHead(303, headers(HTML, {
-        Location: '/me',
+        Location: meeting ? `/me#meeting=${meeting}` : '/me',
         'Set-Cookie': auth.cookieHeader(opened.data.sessionId),
       }));
       return res.end();

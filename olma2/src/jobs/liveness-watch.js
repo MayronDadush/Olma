@@ -8,10 +8,12 @@
 //
 // What this can and cannot see, said plainly. It runs inside brokerd, so a
 // dead brokerd, a dead box or a dead network is invisible to it — only an
-// external monitor on https://allma.world/health covers that. What it adds is
-// the half that used to be impossible: a DEAD GATEWAY. Every alarm rode the
-// gateway's own pipe; this one has a second channel, Twilio SMS
-// (channels/twilio-sms.js), and uses it exactly when the pipe is the problem.
+// external monitor on https://allma.world/health covers that. And it speaks
+// over the gateway's own pipe (the owner chose no second channel, 2026-09-05),
+// so a gateway that stays dead cannot be REPORTED from here — it can only be
+// REPAIRED from here, which is what the restart below is for. A restart that
+// works is announced once the pipe is back; one that does not shows on the
+// heartbeat as alertFailed, and the external monitor is the alarm.
 //
 // Rules, each earned elsewhere in this repo:
 //   - two consecutive bad ticks before a word (a single probe timeout on a
@@ -25,7 +27,6 @@
 //     re-alert from scratch, and the heartbeat note carries every number so
 //     "nothing wrong" and "not looking" read differently on the board.
 const { checkGateway } = require('../adapters/gateway-health');
-const twilioSms = require('../channels/twilio-sms');
 const flagsDomain = require('../domain/flags');
 const { ALERT_PHONE_FLAG, DEFAULT_ALERT_PHONE } = require('./credit-watch');
 const gatewayRestart = require('../intake/gateway-restart');
@@ -76,25 +77,15 @@ async function readState(client) {
   } catch { return {}; }
 }
 
-// Delivery to the owner: WhatsApp (the raw pipe) when the gateway is up, SMS
-// when it is not — and the other one as a fallback either way. Returns the
-// channel that confirmed, or null.
-async function tell(deps, phone, text, gatewayDown) {
-  const sms = deps.sms || twilioSms.send;
-  const order = gatewayDown ? ['sms', 'whatsapp'] : ['whatsapp', 'sms'];
-  for (const ch of order) {
-    try {
-      if (ch === 'sms') {
-        if (!(deps.smsConfigured ?? twilioSms.configured())) continue;
-        const r = await sms(phone, text);
-        if (r && r.ok) return 'sms';
-      } else if (typeof deps.send === 'function') {
-        const r = await deps.send(phone, text);
-        if (r && r.ok) return 'whatsapp';
-      }
-    } catch { /* the next channel is the answer */ }
-  }
-  return null;
+// Delivery to the owner over the raw WhatsApp pipe. Returns 'whatsapp' when
+// the send confirmed, null otherwise — and null is a real answer the caller
+// records on the heartbeat rather than a silence.
+async function tell(deps, phone, text) {
+  if (typeof deps.send !== 'function') return null;
+  try {
+    const r = await deps.send(phone, text);
+    return r && r.ok ? 'whatsapp' : null;
+  } catch { return null; }
 }
 
 async function run(client, deps = {}) {
@@ -135,8 +126,7 @@ async function run(client, deps = {}) {
 
   const prev = restarted ? { ...prev0, lastRestartAt: now } : prev0;
   const phone = (await flagsDomain.getFlag(client, ALERT_PHONE_FLAG)) || DEFAULT_ALERT_PHONE;
-  const smsConfigured = deps.smsConfigured ?? twilioSms.configured();
-  const note = { gateway: gatewayNow.status, stuck, dying, delivered30m: delivered, smsConfigured };
+  const note = { gateway: gatewayNow.status, stuck, dying, delivered30m: delivered };
   if (gatewayNow.status === 'unknown') note.gatewayDetail = gatewayNow.detail;
   if (restarted) { note.restarted = true; note.restartOk = restartOk; }
 
@@ -147,7 +137,7 @@ async function run(client, deps = {}) {
       : { down: true, since: now, ticks: 1, reasons, lastAlertAt: null };
     const due = next.ticks >= TICKS_BEFORE_ALERT && (!next.lastAlertAt || now - next.lastAlertAt >= REALERT_MS);
     if (due) {
-      const channel = await tell(deps, phone, alertText(reasons, next.since), gatewayNow.status === 'down');
+      const channel = await tell(deps, phone, alertText(reasons, next.since));
       if (channel) { next.lastAlertAt = now; note.alerted = channel; } else note.alertFailed = true;
     }
   } else if (prev.down) {
@@ -155,10 +145,10 @@ async function run(client, deps = {}) {
     if (restarted && restartOk) {
       // Fell and came back on its own: said once, as the outcome it is. The
       // pipe just came back, so WhatsApp carries it.
-      const channel = await tell(deps, phone, healedText(prev.since, now), false);
+      const channel = await tell(deps, phone, healedText(prev.since, now));
       if (channel) note.selfHealed = channel; else { note.alertFailed = true; next = { ...prev, recoveredAt: now }; }
     } else if (prev.lastAlertAt) {
-      const channel = await tell(deps, phone, recoveredText(prev.since, now), false);
+      const channel = await tell(deps, phone, recoveredText(prev.since, now));
       if (channel) note.recovered = channel; else { note.alertFailed = true; next = { ...prev, recoveredAt: now }; }
     }
   } else {

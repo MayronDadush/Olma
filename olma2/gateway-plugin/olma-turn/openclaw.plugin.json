@@ -1,0 +1,16 @@
+{
+  "id": "olma-turn",
+  "name": "Olma turn context",
+  "activation": { "onStartup": true },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "agents": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Agent ids (u-<id>) the plugin acts for. Absent or empty: every user agent. brokerd gates a second time, per user, on the turn_context_phones flag."
+      }
+    }
+  }
+}

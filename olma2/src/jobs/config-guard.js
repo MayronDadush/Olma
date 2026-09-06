@@ -65,9 +65,30 @@ function checkOpenclawConfig(cfg) {
   // so the rule is "0m, explicitly". A dashboard row, not BREAKS_USERS: a
   // heartbeat that came back costs money and one leak vector, never a tool
   // call. (fix: scripts/disable-heartbeats.js --apply)
+  // The turn opens itself: the gateway's message:preprocessed hook tells brokerd a
+  // person wrote, before the model's first call (gateway-hooks/olma-turn-open).
+  // Missing or disabled, every reply is one model call slower and the 👀 waits
+  // for the model. Dashboard row: replies still work, the old way.
+  const hookEntry = ((((cfg.hooks || {}).internal || {}).entries || {})['olma-turn-open']) || null;
+  const hooksOn = ((cfg.hooks || {}).internal || {}).enabled !== false;
+  if (!hooksOn || !hookEntry || hookEntry.enabled !== true) {
+    violations.push('hooks.internal.entries.olma-turn-open is not enabled — turns open only on the model\'s first call, one model call slower per reply (fix: scripts/enable-turn-open-hook.js --apply, then restart the gateway)');
+  }
   const every = (((cfg.agents || {}).defaults || {}).heartbeat || {}).every;
   if (every !== '0m') {
     violations.push(`agents.defaults.heartbeat.every is ${every === undefined ? 'unset (gateway default 30m)' : JSON.stringify(every)} — every agent runs a NO_REPLY model turn on a timer, most of the bill (fix: scripts/disable-heartbeats.js --apply)`);
+  }
+  // What the gateway does with a message that arrives while a turn is
+  // running. Its default, "steer", pushes it INTO the running turn and
+  // cancels tool calls the model had just made ("Skipped due to queued user
+  // message") — Miron, 2026-09-06: "בוצע" on a quoted reminder, "עוד לא" three
+  // seconds later on another, and the completion never ran. "followup" lets
+  // the turn finish and gives the second message a turn of its own: its own
+  // count, its own opening in the prompt, its own reply target. Dashboard
+  // row, not BREAKS_USERS. (fix: scripts/set-queue-mode.js --apply)
+  const queueMode = ((cfg.messages || {}).queue || {}).mode;
+  if (queueMode !== 'followup') {
+    violations.push(`messages.queue.mode is ${queueMode === undefined ? 'unset (gateway default "steer")' : JSON.stringify(queueMode)} — a second message mid-turn cancels the first one's tool calls instead of waiting for its own turn (fix: scripts/set-queue-mode.js --apply)`);
   }
   return violations;
 }
