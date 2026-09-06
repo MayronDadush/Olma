@@ -11,7 +11,22 @@
 // back as a plain err envelope the agent can relay honestly — never a throw,
 // because "calls aren't available for you yet" is an answer, not a failure.
 const audit = require('./audit');
+const flags = require('./flags');
 const { ok, err } = require('./results');
+
+// Who the personal page may OFFER a call to. This is not a second security
+// boundary — the bridge refuses a number it does not serve however the dial
+// arrives — it is a release valve, so the button can be finished and wired
+// while nobody sees it. Empty list, nobody: the tile draws itself "בקרוב"
+// exactly as it did before this shipped.
+const PAGE_CALL_PHONES_FLAG = 'dashboard_call_phones';
+
+async function pageCallAllowed(client, user) {
+  if (!user || !user.phone) return false;
+  const raw = (await flags.getFlag(client, PAGE_CALL_PHONES_FLAG)) ?? '';
+  return String(raw).split(/[,\s]+/).map((s) => s.trim()).filter(Boolean)
+    .includes(user.phone);
+}
 
 function dialUrl() {
   return process.env.VOICE_BRIDGE_DIAL_URL || 'http://127.0.0.1:8792/dial';
@@ -44,4 +59,4 @@ async function requestCall(client, user, deps = {}) {
   return ok({ calling: true });
 }
 
-module.exports = { requestCall, dialUrl };
+module.exports = { requestCall, dialUrl, pageCallAllowed, PAGE_CALL_PHONES_FLAG };
