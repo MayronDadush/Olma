@@ -25,7 +25,9 @@ const configGuard = require('./config-guard');
 const livenessWatch = require('./liveness-watch');
 const unanswered = require('./unanswered');
 const laneWatchdog = require('./lane-watchdog');
+const onboardingReview = require('./onboarding-review');
 const memoryConsolidation = require('./memory-consolidation');
+const groupsJob = require('./groups');
 const { DEFAULT_PATH: OPENCLAW_CONFIG } = require('../intake/openclaw-config');
 
 // jobs({ pool }) -> [{ name, run }] in arming order.
@@ -37,8 +39,11 @@ function jobs({ pool }) {
   const creditWatch = require('./credit-watch');
   const efficiencyWatch = require('./efficiency-watch');
   const { runOpenclaw } = require('../channels/openclaw');
-  const rawSend = (phone, text) => runOpenclaw([
+  // `replyTo` quotes a message (the group sweep answers a tag under the tag);
+  // the CLI's `--reply-to`, verified 2026-09-06 with `--dry-run --json`.
+  const rawSend = (phone, text, opts) => runOpenclaw([
     'message', 'send', '--channel', 'whatsapp', '--target', phone, '--message', text,
+    ...(opts && opts.replyTo ? ['--reply-to', String(opts.replyTo)] : []),
   ]);
   // Free lanes the gateway has classified stuck and then declined to free.
   // 30s, because this is the difference between a person waiting ~90s and a
@@ -201,6 +206,18 @@ function jobs({ pool }) {
       configPath: OPENCLAW_CONFIG, readFirstMessage: intake.readIntakeFirstMessage,
     }) },
     { name: 'reopen_sweep', run: () => withTx(pool, (c) => intake.sweepReopen(c)) },
+    // Group mode. Inert until `scripts/install-group-greeter.js` has run —
+    // with no greeter agent the sweep returns immediately, which is what makes
+    // it safe to arm before the feature is turned on. Scoped to the greeter
+    // plus whichever agents actually own an open group, never a full session
+    // scan: this box has one core, and a sweep that opens every agent's store
+    // every ten seconds is the polling cost this project already paid once.
+    // Every word it sends is fixed text on the raw pipe — no model, so a group
+    // waiting on somebody to sign up costs nothing at all.
+    { name: 'group_sweep', run: () => groupsJob.runGroupSweep(pool, {
+      configPath: OPENCLAW_CONFIG,
+      send: async (jid, body, opts) => (await rawSend(jid, body, opts)).ok,
+    }) },
     { name: 'intake_template_sync', run: async () => {
       if (!intake.intakeConfigured(OPENCLAW_CONFIG)) return { skipped: true };
       const open = (await flagsDomain.getFlag(pool, 'registration_open')) === true;
@@ -241,6 +258,12 @@ function jobs({ pool }) {
     // before anything is said, WhatsApp for the news (jobs/liveness-watch.js).
     { name: 'liveness_watch', run: () => withTx(pool, (c) =>
       livenessWatch.run(c, { configPath: OPENCLAW_CONFIG, send: rawSend })) },
+    // Reads a new person's first hours back and files what it finds — once
+    // three hours in, once again after the first full day, because five of the
+    // faults this exists to catch happened between hour four and hour thirteen.
+    // Never speaks to them; the report is for whoever runs the system.
+    { name: 'onboarding_review', run: () => withTx(pool, (c) =>
+      onboardingReview.sweepOnboardingReview(c, {})) },
     { name: 'deploy_drift', run: () => withTx(pool, (c) => deployDrift.sweepDeployDrift(c)) },
   ];
 }

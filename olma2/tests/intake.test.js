@@ -982,9 +982,17 @@ test('agent doctrine: a due date arms its own reminder, and asking first is the 
   const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
   assert.match(tpl, /a due_at gets its own automatically/);
   assert.match(tpl, /an hour\s+before a timed task, 08:00 that morning for a whole-day one/);
-  assert.match(tpl, /Never ask\s+permission; say when you will remind them/);
+  assert.match(tpl, /Never ask\s+permission\./);
+  // Yahav and Miron, 2026-09-05/06: the old wording here was "say when you
+  // will remind them", an unconditional instruction to write a sentence. It
+  // beat `hints.markPlaced` — which asks for NO_REPLY when the mark says it
+  // all — every single time, because one of them was affirmative and the
+  // other conditional. The hour Olma CHOSE is news; the hour they NAMED is
+  // not, and the 👍 already reported the save.
+  assert.match(tpl, /The hour YOU chose is worth one short line; the hour THEY named\s+is not/);
+  assert.match(tpl, /the 👍 on their message already said\s+it was saved/);
   // set_task_reminder still exists, and still means something different.
-  assert.match(tpl, /`set_task_reminder` is for a\s+moment they asked for, and replaces it/);
+  assert.match(tpl, /`set_task_reminder` is for a moment they asked for, and\s+replaces it/);
   // Same placement requirement as before: the operative section, not the
   // curiosity ladder four hundred lines away.
   assert.ok(tpl.indexOf('gets its own automatically') > tpl.indexOf('## Tasks and reminders'));

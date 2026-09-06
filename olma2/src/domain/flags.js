@@ -11,6 +11,12 @@ const DEFAULTS = {
   intake_hourly_cap: 30,     // intake circuit breaker: max new-stranger sessions/hour
   // Media generation (domain/media.js): who may, and on which models.
   media_gen_phones: '+972505404255',
+  // Who may ring Olma from the personal page (domain/voice.js,
+  // pageCallAllowed). Comma-separated E.164, and EMPTY on purpose: the wire
+  // is complete and the tile stays "בקרוב" for everybody until a number is
+  // put here. The chat tool (call_me_on_the_phone) is not gated by this — the
+  // voice bridge is still the judge of who it will dial for either door.
+  dashboard_call_phones: '',
   media_image_model: 'meta/muse-image',
   media_video_model: 'bytedance/seedance-2.0-mini',
   // Reminder escalation (domain/reminders.js): how many times one reminder may
@@ -18,6 +24,12 @@ const DEFAULTS = {
   reminder_escalation_max: 3,
   reminder_escalation_gap_hours: 3,
   live_subscriptions_per_user: 5,   // cap on active live-update subscriptions
+  // Group mode (domain/groups.js): the largest group she will work in. Above
+  // it she says so once and stops — a 50-person group never realistically gets
+  // every member to write to her privately, and each tag costs a model turn.
+  // A flag rather than a constant because it is a taste call about a product
+  // that has not met a real group yet.
+  group_max_members: 25,
   // channels/openclaw.js digest branch: how many items make the morning
   // picture a wall of text worth drawing instead of listing. The number is a
   // flag because it is a taste call about a message people read every day,

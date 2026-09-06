@@ -5,7 +5,7 @@
 // back in here after its own permission check), keeping one write path.
 const { ok, err } = require('./results');
 const audit = require('./audit');
-const { hasOffset, badTime } = require('./datetime');
+const { hasOffset, badTime, partsInZone } = require('./datetime');
 const reminders = require('./reminders');
 const autoReminder = require('./auto-reminder');
 const shopping = require('./shopping-list');
@@ -57,9 +57,10 @@ function pickCategory({ category, title, parent }) {
 // `kind` is decided the same way and for the same reasons (task-kind.js): it
 // is what lets a passed appointment leave the list while a job that is merely
 // late stays on it.
-async function addTask(client, ownerId, { title, category, dueAt, endsAt, parentId, source, now }) {
+async function addTask(client, ownerId, { title, category, dueAt, endsAt, parentId, source, remindAt, now }) {
   if (!title || !title.trim()) return err('invalid', 'title required');
   if (dueAt && !hasOffset(dueAt)) return badTime('due_at', dueAt);
+  if (remindAt && !hasOffset(remindAt)) return badTime('remind_at', remindAt);
   const range = checkRange(dueAt, endsAt);
   if (range) return range;
   let parent = null;
@@ -86,8 +87,42 @@ async function addTask(client, ownerId, { title, category, dueAt, endsAt, parent
       taskKind.decideKind({ title }), parentId || null, source || null]
   );
   await audit.record(client, ownerId, 'task.created', { taskId: rows[0].id, parentId: parentId || null });
+  // A moment they named as the REMINDER is not the moment the thing happens,
+  // and the automatic hour-before is only ever right about the second one.
+  // "תזכיר לי מחר ב-19:00 להתקשר למלי" armed 18:00 while Olma told him 19:00
+  // (Yahav, 2026-09-05) — the same sentence shape as the task beside it, which
+  // came out right only because the model happened to correct it by hand.
+  // Passed here it is not a matter of what the model remembers: this is the
+  // reminder that gets set, and the automatic one never runs.
+  if (remindAt) {
+    const set = await reminders.setReminder(client, ownerId, rows[0].id, remindAt, null);
+    if (!set.ok) return set;
+    return ok({
+      task: rows[0],
+      reminders: [set.data.reminder],
+      remindersAt: await localLabels(client, ownerId, [set.data.reminder]),
+      remindersAsked: true,
+    });
+  }
   const auto = await autoAttach(client, ownerId, [rows[0]], now);
   return ok({ task: rows[0], ...auto });
+}
+
+// The armed moments written the way the PERSON would say them, in their own
+// zone. Olma has to tell them when she will remind them, and until this the
+// only times on the result were `remind_at` in UTC and `due_at` — so the
+// sentence was assembled from whichever the model reached for, and it reached
+// for the due date (Yahav, 2026-09-05: "מחר ב-19:00" over a reminder armed for
+// 18:00). A time that was never armed is now not available to say.
+async function localLabels(client, ownerId, rows) {
+  if (!rows || !rows.length) return undefined;
+  const { rows: u } = await client.query(`SELECT timezone FROM users WHERE id = $1`, [ownerId]);
+  const tz = (u[0] && u[0].timezone) || 'UTC';
+  const pad = (n) => String(n).padStart(2, '0');
+  return rows.map((r) => {
+    const p = partsInZone(tz, new Date(r.remind_at));
+    return `${p.y}-${pad(p.m)}-${pad(p.d)} ${pad(p.hh)}:${pad(p.mi)}`;
+  });
 }
 
 // Give every task that arrived with a moment its reminder, and say what
@@ -113,7 +148,11 @@ async function autoAttach(client, ownerId, tasks, now) {
     if (r) made.push(r);
   }
   if (!made.length && !skipped) return {};
-  return { reminders: made, ...(skipped ? { autoRemindersSkipped: skipped } : {}) };
+  return {
+    reminders: made,
+    ...(made.length ? { remindersAt: await localLabels(client, ownerId, made) } : {}),
+    ...(skipped ? { autoRemindersSkipped: skipped } : {}),
+  };
 }
 
 // Change a task that already exists. Until the dashboard there was no way to
@@ -236,6 +275,16 @@ async function addTasksBulk(client, ownerId, items, { parentId, source, now } = 
   return ok({ tasks: created, ...auto });
 }
 
+// The list carries each task's PENDING reminders, in the person's own clock.
+//
+// It used to be `SELECT * FROM tasks` and nothing else, which made it the
+// second and quieter source of the fault the remind_at change above was
+// written for. Asked on his first morning what was on his day, Olma read this
+// list and said "תזכורות ב-7:00, 11:30 ו-19:00" — twice, across two messages —
+// and 19:00 was a DUE date. The reminder was armed for 18:00, and no correctly
+// behaving model could have said otherwise: the reminder times were not on the
+// result at all, so the due dates were the only times there were to read.
+// A tool that reports a plan has to report the plan, not something beside it.
 async function listTasks(client, ownerId, { status, includeArchived } = {}) {
   const { rows } = await client.query(
     `SELECT * FROM tasks
@@ -245,7 +294,39 @@ async function listTasks(client, ownerId, { status, includeArchived } = {}) {
      ORDER BY parent_id NULLS FIRST, due_at NULLS LAST, id`,
     [ownerId, status || null, Boolean(includeArchived)]
   );
-  return ok({ tasks: rows });
+  if (!rows.length) return ok({ tasks: rows });
+
+  // Pending only. A sent or cancelled reminder is a thing that happened or a
+  // plan that was withdrawn; neither is an hour to promise anybody.
+  const { rows: pending } = await client.query(
+    `SELECT r.id, r.task_id, r.remind_at, r.repeat_rule
+       FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+      WHERE t.owner_id = $1 AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+      ORDER BY r.remind_at`,
+    [ownerId]
+  );
+  if (!pending.length) return ok({ tasks: rows });
+
+  const { rows: u } = await client.query(`SELECT timezone FROM users WHERE id = $1`, [ownerId]);
+  const tz = (u[0] && u[0].timezone) || 'UTC';
+  const pad = (n) => String(n).padStart(2, '0');
+  const byTask = new Map();
+  for (const r of pending) {
+    const p = partsInZone(tz, new Date(r.remind_at));
+    const key = Number(r.task_id);
+    if (!byTask.has(key)) byTask.set(key, []);
+    byTask.get(key).push({
+      id: Number(r.id),
+      // The hour to SAY, already in their zone. A UTC instant sitting beside a
+      // local due date is how the wrong one gets picked.
+      at: `${p.y}-${pad(p.m)}-${pad(p.d)} ${pad(p.hh)}:${pad(p.mi)}`,
+      remindAt: new Date(r.remind_at).toISOString(),
+      ...(r.repeat_rule ? { repeatRule: r.repeat_rule } : {}),
+    });
+  }
+  return ok({
+    tasks: rows.map((t) => (byTask.has(Number(t.id)) ? { ...t, reminders: byTask.get(Number(t.id)) } : t)),
+  });
 }
 
 // Completing a task auto-cancels its pending reminders — no reminding about

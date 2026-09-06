@@ -206,6 +206,17 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   (a queue per person, oldest first), not one per person: two messages a few
   seconds apart each keep their own count, opening and reply target
   (`incidents.md`, "Two messages three seconds apart").
+  **Widening it to everybody is four steps, and the first one is not
+  optional** (planned 2026-09-07): (1) `src/evals/scenarios.js` —
+  `turnStartFirst` asserts every turn's FIRST tool call is `turn_start`, and
+  the eval user (`users.is_eval`, u-15 today) is a covered user the moment
+  the flag says `all`, so five scenarios go red for the model doing the right
+  thing. Teach it to accept a turn the gateway opened before flipping
+  anything. (2) flag `turn_context_phones` = `all`. (3) EMPTY the plugin's
+  `config.agents` rather than listing everyone — empty means every `u-N`
+  agent, so a user who joins next week is covered without anyone
+  remembering, and the flag stays the only gate. (4) restart the gateway
+  (`config.agents` is read once, at register) and resync every AGENTS.md.
 - **`messages.queue.mode` stays `followup`.** The gateway default, `steer`,
   pushes a message that arrives mid-turn INTO the running turn and cancels
   the tool calls the model just made ("Skipped due to queued user message").
@@ -256,9 +267,16 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   correcting them would falsify the record. Two readers must answer to BOTH
   spellings and say so — `facts.SYSTEM_NOUN_RE` (old facts are still in the
   table) and the voice bridge's name check and Deepgram keyterms.
-- **A task saved with a `due_at` arms its own reminder** — an hour before a
-  timed one, 08:00 that morning for a day-shaped one (local midnight in THEIR
-  zone is the discriminator). `domain/auto-reminder.js` decides when,
+- **`due_at` is when the THING is; `remind_at` is the hour THEY named.** A task
+  saved with a `due_at` arms its own reminder — an hour before a timed one,
+  08:00 that morning for a day-shaped one (local midnight in THEIR zone is the
+  discriminator) — and "תזכיר לי מחר ב-19:00" is not that: pass 19:00 as
+  `add_task`'s `remind_at` and it replaces the automatic row rather than
+  joining it. **Olma states the hour she will remind them, so the ARMED moment
+  rides the result** (`remindersAt`, in their zone) and no other time is
+  available to say. Yahav was told 19:00 for a reminder set to 18:00 while the
+  identical request beside it came out right, because that one the model
+  happened to correct by hand (`incidents.md`, "Yahav's first evening"). `domain/auto-reminder.js` decides when,
   `reminders.attachAutoReminder` is the only writer of `auto = true`, and an
   explicit `set_task_reminder` cancels the pending auto row rather than joining
   it. This REVERSED "never set one unasked" (2026-09-04, same day it was
@@ -297,6 +315,22 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   not re-alert. It speaks over the gateway's own pipe (owner's choice, no
   SMS), so a gateway that stays dead is repaired from here but reported only
   by the external monitor.
+- **A new person's first hours are read back by code TWICE — three hours in,
+  and again after their first day** (`jobs/onboarding-review.js`, `STAGES`; the
+  checks are pure, in `domain/onboarding-review.js`). It never messages them —
+  it files one row per person per stage, clean ones included, because a review
+  that only appears when something is wrong cannot tell you the rate. A `bad`
+  verdict means somebody was told something untrue or got no answer: a
+  dashboard row and an alerts pill until acknowledged, never `BREAKS_USERS`.
+  **Both stages start at their first message and only the END moves** — several
+  checks hold something said late against a reminder armed early — so the day
+  read sees everything the early one saw and files only what is NEW. There are
+  two stages because four checks written from Yahav's second day fire at 3.7 to
+  13 hours in and, at three hours, not one of them could ever have fired.
+  **Adding a check means adding its failing case to
+  `tests/onboarding-review.test.js`** — the founding case is Yahav's real
+  evening, replayed end to end, and a check whose failure cannot be written
+  down is one nobody will trust in six weeks.
 - **`/health` sees the DB, every `job_heartbeats` row, and the gateway — and
   nothing else.** A component that writes no heartbeat is invisible to it, and
   says so by staying green. That is how the gateway went unwatched for months
@@ -383,6 +417,14 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   a second notification for the same fact (Miron, 2026-09-05: "deleted ✅"
   under a 👍). The mark table is `reactions.TOOL_MARKS`; the undo-shaped
   tools (archive, cancel reminder, edit, forget) earn the same 👍 as a capture.
+- **`markPlaced` is CONDITIONAL, so nothing else on the same result may be an
+  unconditional instruction to write.** It lost to one for two days: the tool
+  result said "say when you will remind them" beside it, and Miron got
+  "הוספתי ✅ … לתזכורת עוד שעתיים" under a live 👍 (2026-09-06). The hint was
+  neither missing nor ignored — it was outvoted. **Every hint and every line of
+  doctrine about what to SAY must answer the same question `markPlaced` asks:
+  is there anything here the mark cannot carry.** For a reminder, the hour Olma
+  CHOSE is; the hour they NAMED is not, and the save never is.
 - **One in-flight reaction per message.** A mark is a whole `openclaw` CLI
   start-up (15s wall on the box), so a short turn has the 👀 and the 👍 alive
   at once and the LAST to finish wins. `placeMark` kills an older child still
@@ -578,6 +620,15 @@ no JS — but structured differently:
   after the transaction commits, never inside it.** USER.md is what the agent
   reads every turn; skipping this puts the card out of sync with the DB, which
   is the exact bug fixed on 2026-08-19.
+- **Every sentence Olma sends VERBATIM — reminders and their rungs, the first
+  contact to a stranger, everything said in a group — has its default in
+  `domain/message-templates.js` and is reworded from the admin page
+  ("ניסוחים", the `message_templates` flag), never by editing the literal in
+  code on the owner's behalf.** Senders pass the loaded overrides as the last
+  argument of `proactive-text.render*` / `intake/messages.*`; an override
+  that drops a required placeholder is refused by name on the page and
+  ignored at render, so a hand-edited flag row cannot ship a nudge with no
+  tags in it.
 - **Cancelling a queued message is an UPDATE, never a DELETE**
   (`sent_at = now(), hold_reason = 'cancelled_by_admin'`). The row carries the
   `idempotency_key` that stops the sweep which produced it from producing it

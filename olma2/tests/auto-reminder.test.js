@@ -177,3 +177,136 @@ test('the reminder is written in the OWNER\'s zone, not the server\'s', async ()
   // was theirs. Read as UTC it is not day-shaped at all and would arm 06:00Z.
   assert.equal(new Date(res.data.reminders[0].remind_at).toISOString(), '2026-09-06T15:00:00.000Z');
 });
+
+// ---- "remind me at X" is not "the thing is at X" ----------------------------
+//
+// Yahav, 2026-09-05, his first evening. "תזכיר לי בבקשה מחר ב19:00, להתקשר
+// למלי" was saved as due_at 19:00, the reflex armed 18:00, and Olma told him
+// 19:00 — the hour he asked for, the hour nothing was set for. The identical
+// sentence about his father an hour earlier came out right, because that time
+// the model followed up with set_task_reminder by hand. The difference between
+// the two was what the model remembered, so it moved into the call.
+
+test('a reminder hour they named is armed at that hour, not an hour before it', async () => {
+  const u = await freshUser('+972500000110');
+  const res = await withTx(db.pool, (c) => tasks.addTask(c, u.id, {
+    title: 'להתקשר למלי להגיד תודה על המתנה',
+    dueAt: '2026-09-06T19:00:00+03:00',
+    remindAt: '2026-09-06T19:00:00+03:00',
+    now: NOW,
+  }));
+  assert.ok(res.ok);
+  assert.equal(res.data.reminders.length, 1);
+  // 19:00 Jerusalem. The reflex would have said 16:00Z — the 18:00 he was never told about.
+  assert.equal(new Date(res.data.reminders[0].remind_at).toISOString(), '2026-09-06T16:00:00.000Z');
+  assert.equal(res.data.reminders[0].auto, false, 'they asked for it; it is not ours');
+  assert.equal(res.data.remindersAsked, true);
+
+  const live = await withTx(db.pool, (c) => reminders.listReminders(c, u.id, res.data.task.id));
+  assert.equal(live.data.reminders.length, 1, 'one thing, one reminder — the automatic one never ran');
+});
+
+test('the armed moment comes back in THEIR clock, so no other time is available to say', async () => {
+  const u = await freshUser('+972500000111');
+  const auto = await withTx(db.pool, (c) => tasks.addTask(c, u.id, {
+    title: 'פגישה', dueAt: '2026-09-06T19:00:00+03:00', now: NOW,
+  }));
+  // Armed 18:00 local. That is what the result says, and the due hour is not
+  // dressed up as a reminder anywhere on it.
+  assert.deepEqual(auto.data.remindersAt, ['2026-09-06 18:00']);
+
+  const asked = await withTx(db.pool, (c) => tasks.addTask(c, u.id, {
+    title: 'להתקשר למלי', dueAt: '2026-09-06T19:00:00+03:00',
+    remindAt: '2026-09-06T19:00:00+03:00', now: NOW,
+  }));
+  assert.deepEqual(asked.data.remindersAt, ['2026-09-06 19:00']);
+});
+
+test('a bare local remind_at is refused, like every other time', async () => {
+  const u = await freshUser('+972500000112');
+  const res = await withTx(db.pool, (c) => tasks.addTask(c, u.id, {
+    title: 'להתקשר למלי', dueAt: '2026-09-06T19:00:00+03:00',
+    remindAt: '2026-09-06T19:00', now: NOW,
+  }));
+  assert.equal(res.ok, false);
+  assert.match(JSON.stringify(res), /remind_at/);
+});
+
+test('the hint states the armed hour and never asks for a time it did not arm', () => {
+  const { toolDefinitions } = require('../src/adapters/mcp/registry');
+  const add = toolDefinitions().find((d) => d.name === 'add_task');
+  assert.ok(add.inputSchema.properties.remind_at, 'add_task takes the hour they named');
+  // The sentence that produced the wrong answer: it told the model to say a
+  // time and left it to pick one.
+  assert.doesNotMatch(add.description, /never call set_task_reminder for that one/);
+});
+
+// The second source of the same lie. Yahav's first morning: asked what was on
+// his day, Olma read list_my_tasks and said "תזכורות ב-7:00, 11:30 ו-19:00",
+// twice, across two messages. 19:00 was a DUE date; the reminder was armed for
+// 18:00. No correctly behaving model could have said otherwise — the reminder
+// times were not on the result at all.
+test('the task list carries the hour it will actually remind them, in their clock', async () => {
+  const u = await freshUser('+972500000113');
+  const timed = await withTx(db.pool, (c) => tasks.addTask(c, u.id, {
+    title: 'להתקשר למלי', dueAt: '2026-09-06T19:00:00+03:00', now: NOW,
+  }));
+  await withTx(db.pool, (c) => tasks.addTask(c, u.id, { title: 'בלי תאריך', now: NOW }));
+
+  const list = await withTx(db.pool, (c) => tasks.listTasks(c, u.id, {}));
+  const mali = list.data.tasks.find((t) => t.id === timed.data.task.id);
+  const bare = list.data.tasks.find((t) => t.title === 'בלי תאריך');
+
+  // 18:00 local is what is armed. 19:00 is the due hour and is NOT offered as
+  // a reminder time anywhere on this result.
+  assert.deepEqual(mali.reminders.map((r) => r.at), ['2026-09-06 18:00']);
+  assert.equal(bare.reminders, undefined, 'a task with no reminder says nothing about one');
+
+  // and a cancelled or sent reminder is not a plan
+  await withTx(db.pool, (c) => reminders.cancelReminder(c, u.id, mali.reminders[0].id));
+  const after = await withTx(db.pool, (c) => tasks.listTasks(c, u.id, {}));
+  assert.equal(after.data.tasks.find((t) => t.id === mali.id).reminders, undefined);
+});
+
+// Miron, 2026-09-06 11:29. "משימת עבודה - תזכיר לי עוד שעתיים לדבר עם מור חן".
+// brokerd put a 👍 on the message and the result carried `hints.markPlaced`
+// verbatim — the hint whose whole purpose is NO_REPLY when the mark says it
+// all. He got 'הוספתי ✅ "לדבר עם מור חן" לתזכורת עוד שעתיים (13:29)' anyway.
+//
+// The hint was not missing and it was not ignored. It was outvoted: the SAME
+// result said "say when you will remind them", an unconditional instruction to
+// write, and an unconditional instruction beats a conditional one every time.
+// So the reminder hint now answers the question markPlaced is asking — is
+// there anything here that words can carry — instead of answering a different
+// one. An hour Olma picked is news. An hour they named is not.
+test('the reminder hint never orders a sentence the 👍 has already sent', async () => {
+  const { BY_NAME, toolDefinitions } = require('../src/adapters/mcp/registry');
+  const add = BY_NAME.get('add_task');
+  const described = toolDefinitions().find((d) => d.name === 'add_task');
+  const u = await freshUser('+972500000114');
+
+  const asked = await withTx(db.pool, (c) => add.handler(c, u, {
+    title: 'לדבר עם מור חן', due_at: '2026-09-06T13:29:00+03:00',
+    remind_at: '2026-09-06T13:29:00+03:00',
+  }));
+  const auto = await withTx(db.pool, (c) => add.handler(c, u, {
+    title: 'פגישה', due_at: '2026-09-06T19:00:00+03:00',
+  }));
+
+  // Their own hour: nothing to add, and the hint says so rather than asking
+  // for a sentence that would talk over the mark.
+  assert.match(asked.data.hints.reminders, /not a reason to write/);
+  assert.doesNotMatch(asked.data.hints.reminders, /say (that|when|THAT)/);
+
+  // The hour Olma chose is the one thing worth a line — and it is 18:00, the
+  // armed one, not the 19:00 the thing is at.
+  assert.match(auto.data.hints.reminders, /18:00/);
+  assert.doesNotMatch(auto.data.hints.reminders, /19:00/);
+  assert.match(auto.data.hints.reminders, /one short line/);
+
+  // Neither branch, and no description read every turn, tells it to report the
+  // save. That fact belongs to the mark.
+  for (const text of [asked.data.hints.reminders, auto.data.hints.reminders, described.description]) {
+    assert.doesNotMatch(text, /say when you will remind them/);
+  }
+});
