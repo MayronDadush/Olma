@@ -221,7 +221,7 @@ function homePage() {
     </div>
 
     <div class="foot">
-      <p>allma.world · <a href="/privacy">Privacy Policy</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+      <p>allma.world · <a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
     </div>
   `);
 }
@@ -346,9 +346,87 @@ function privacyPage() {
     </div>
 
     <div class="foot">
-      <p><a href="/">allma.world</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+      <p><a href="/">allma.world</a> · <a href="/terms">Terms of Service</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
     </div>
   `);
 }
 
-module.exports = { homePage, privacyPage, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED };
+// ---- terms of service ---------------------------------------------------
+
+// Google's Branding page asks for an "Application Terms of Service link" —
+// optional for verification itself, but Google shows a warning without one
+// and a real product should have terms regardless. Same house rule as the
+// privacy policy: English first in full, Hebrew second in full, neither a
+// summary of the other.
+function termsPage() {
+  return shell(`Terms of Service — ${BRAND}`, `
+    <div class="mark">${LOGO}</div>
+    <h1>Terms of Service</h1>
+    <p class="updated">Last updated: ${UPDATED}</p>
+
+    <h2>Agreement</h2>
+    <p>These terms govern your use of ${BRAND} (allma.world), a personal assistant that operates over WhatsApp, operated by an individual developer. By starting a conversation with the assistant, you agree to these terms and to the <a href="/privacy">Privacy Policy</a>, which describes what data is collected and how it is used.</p>
+
+    <h2>The service</h2>
+    <p>${BRAND} answers messages, keeps reminders and tasks, coordinates meetings between connected people, and — only if you choose to connect it — reads (and, where you explicitly grant it, edits) Google Calendar, Contacts and Gmail on your behalf. The service is provided as-is and may change, and features may be added or removed, without prior notice.</p>
+
+    <h2>Acceptable use</h2>
+    <p>Use the service only for your own personal, lawful purposes. Do not use it to harass, impersonate, or send unsolicited messages to others; do not attempt to access another person's account or data; do not attempt to disrupt, reverse-engineer, or overload the service.</p>
+
+    <h2>Your account</h2>
+    <p>Your account is tied to the WhatsApp number you write from. You are responsible for the security of that number and of any Google account you connect. Connecting Google is entirely optional and can be undone at any time — ask the assistant to disconnect, or revoke access directly from your <a href="https://myaccount.google.com/permissions">Google account permissions</a>.</p>
+
+    <h2>No warranty</h2>
+    <p>The service is provided without warranties of any kind, express or implied. A reminder, a calendar read, or a coordinated meeting time may be delayed, wrong, or not delivered — do not rely on it for anything where that failure would cause serious harm (medical, legal, financial, or safety-critical decisions).</p>
+
+    <h2>Limitation of liability</h2>
+    <p>To the maximum extent permitted by law, the developer is not liable for any indirect, incidental, or consequential damages arising from use of, or inability to use, the service.</p>
+
+    <h2>Ending the service</h2>
+    <p>You may stop using the service at any time. Ask the assistant to pause, or email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> to delete your account and all associated data. The developer may suspend or terminate access for a violation of these terms, or discontinue the service entirely, with reasonable notice where practical.</p>
+
+    <h2>Changes to these terms</h2>
+    <p>If these terms change materially, the date at the top is updated and you are told in the conversation.</p>
+
+    <h2>Contact</h2>
+    <p><a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+
+    <div class="he">
+      <h2>תנאי שימוש (עברית)</h2>
+      <p class="updated">עודכן: ${UPDATED}</p>
+
+      <h3>הסכמה</h3>
+      <p>תנאים אלה חלים על השימוש ב${ASSISTANT} (allma.world), עוזרת אישית שפועלת דרך וואטסאפ ומופעלת על ידי מפעיל יחיד. פתיחת שיחה עם העוזרת מהווה הסכמה לתנאים אלה ול<a href="/privacy">מדיניות הפרטיות</a>, המפרטת אילו נתונים נאספים וכיצד נעשה בהם שימוש.</p>
+
+      <h3>השירות</h3>
+      <p>${ASSISTANT} עונה להודעות, שומרת תזכורות ומשימות, מתאמת פגישות בין אנשים מחוברים, ו — רק אם תבחרו לחבר — קוראת (ובמקום שאישרתם עריכה במפורש, גם עורכת) יומן Google, אנשי קשר ו-Gmail בשמכם. השירות ניתן כפי שהוא (as-is), ותכונות עשויות להשתנות, להתווסף או להוסר, ללא הודעה מוקדמת.</p>
+
+      <h3>שימוש מותר</h3>
+      <p>השתמשו בשירות אך ורק למטרות אישיות וחוקיות. אין להשתמש בו כדי להטריד, להתחזות, או לשלוח הודעות לא רצויות לאחרים; אין לנסות לגשת לחשבון או למידע של אדם אחר; אין לנסות לשבש, להנדס לאחור, או להעמיס על השירות.</p>
+
+      <h3>החשבון שלכם</h3>
+      <p>החשבון שלכם מקושר למספר הוואטסאפ שדרכו אתם כותבים. אתם אחראים לאבטחת המספר הזה ושל כל חשבון Google שתחברו. חיבור גוגל הוא לגמרי אופציונלי וניתן לביטול בכל רגע — בקשו מהעוזרת לנתק, או בטלו את הגישה ישירות דרך <a href="https://myaccount.google.com/permissions">ההרשאות בחשבון הגוגל שלכם</a>.</p>
+
+      <h3>ללא אחריות</h3>
+      <p>השירות ניתן ללא אחריות מכל סוג, מפורשת או משתמעת. תזכורת, קריאת יומן, או תיאום זמן פגישה עלולים להתעכב, לטעות, או לא להגיע — אין להסתמך על השירות בכל דבר שבו כשל כזה יגרום לנזק חמור (החלטות רפואיות, משפטיות, כספיות, או קריטיות לבטיחות).</p>
+
+      <h3>הגבלת אחריות</h3>
+      <p>ככל שהחוק מתיר זאת, המפעיל אינו אחראי לכל נזק עקיף, תוצאתי או מקרי הנובע מהשימוש בשירות או מחוסר היכולת להשתמש בו.</p>
+
+      <h3>סיום השימוש</h3>
+      <p>ניתן להפסיק את השימוש בשירות בכל רגע. בקשו מהעוזרת להשהות, או שלחו מייל ל<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> למחיקת החשבון וכל המידע הקשור אליו. המפעיל רשאי להשעות או לסיים גישה במקרה של הפרת תנאים אלה, או להפסיק את השירות כליל, בהודעה סבירה מראש כאשר הדבר מעשי.</p>
+
+      <h3>שינויים בתנאים</h3>
+      <p>אם תנאים אלה ישתנו באופן מהותי, התאריך בראש העמוד יתעדכן ונודיע על כך בשיחה.</p>
+
+      <h3>יצירת קשר</h3>
+      <p><a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+    </div>
+
+    <div class="foot">
+      <p><a href="/">allma.world</a> · <a href="/privacy">Privacy Policy</a> · <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a></p>
+    </div>
+  `);
+}
+
+module.exports = { homePage, privacyPage, termsPage, BRAND, ASSISTANT, CONTACT_EMAIL, UPDATED };
