@@ -206,13 +206,18 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   (a queue per person, oldest first), not one per person: two messages a few
   seconds apart each keep their own count, opening and reply target
   (`incidents.md`, "Two messages three seconds apart").
-  **Widening it to everybody is four steps, and the first one is not
-  optional** (planned 2026-09-07): (1) `src/evals/scenarios.js` —
-  `turnStartFirst` asserts every turn's FIRST tool call is `turn_start`, and
-  the eval user (`users.is_eval`, u-15 today) is a covered user the moment
-  the flag says `all`, so five scenarios go red for the model doing the right
-  thing. Teach it to accept a turn the gateway opened before flipping
-  anything. (2) flag `turn_context_phones` = `all`. (3) EMPTY the plugin's
+  **Widening it to everybody is four steps, and the first one was not
+  optional** (step 1 done 2026-09-06, the rest planned 2026-09-07):
+  (1) the evals. The eval user (`users.is_eval`, u-15) becomes a covered user
+  the moment the flag says `all`, and the failure is SILENT rather than red:
+  the CLI fires the plugin but not the turn-open hook, so brokerd answers
+  `context: null`, the doctrine falls back to `turn_start`, and the suite
+  goes on measuring the fallback path while every real user is on the context
+  one (plus a `turn.context_without_open` audit row per turn). Fixed: the
+  harness opens each turn through brokerd itself (`openTurnForEval`), and the
+  opening check follows the flag — `turnStartFirst` while uncovered,
+  `turnStartNotSpent` once covered (`scenarios.turnOpening`).
+  (2) flag `turn_context_phones` = `all`. (3) EMPTY the plugin's
   `config.agents` rather than listing everyone — empty means every `u-N`
   agent, so a user who joins next week is covered without anyone
   remembering, and the flag stays the only gate. (4) restart the gateway
