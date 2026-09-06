@@ -394,8 +394,17 @@ test('the day read sees what the three-hour one structurally cannot, and does no
   assert.equal(f.detail.said, '07:00');
   assert.equal(d[0].worst, 'bad');
 
-  // and neither row is written twice
-  assert.deepEqual(await drain(first + 28 * 3600_000, deps), []);
+  // and neither row is written twice — asked of THIS person, like the two
+  // assertions above it. Unfiltered, it also asserted that no OTHER user in
+  // the file was due at this instant, and that is not a fact this test owns:
+  // `fresh` two tests up is pinned to the real clock (now - 1h) while this
+  // drain runs on a fixed simulated one (2026-09-06T22:00Z), so for the one
+  // real hour a day when the gap between them lands inside the 3h window,
+  // a stranger's legitimate review appeared here and failed the file. It cost
+  // a production deploy on 2026-09-06 at 19:04 UTC, and it is the exact shape
+  // CLAUDE.md warns about under "never let a test depend on the hour it runs".
+  assert.deepEqual((await drain(first + 28 * 3600_000, deps))
+    .filter((r) => r.userId === u.id), []);
 });
 
 // The day window is a superset of the three-hour one, so without this every
