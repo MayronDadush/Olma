@@ -285,12 +285,29 @@ test('the reminder hint never orders a sentence the 👍 has already sent', asyn
   const described = toolDefinitions().find((d) => d.name === 'add_task');
   const u = await freshUser('+972500000114');
 
+  // The tool handler takes no `now`, so it runs on the real clock: the moment
+  // under test has to be genuinely ahead of it, and the two hours have to be
+  // derived rather than written down. Spelling Miron's own 13:29 into the
+  // fixture made this file pass all afternoon and fail every evening from
+  // 18:00 — the exact shape CLAUDE.md's "never let a test depend on the hour
+  // it runs" is about, committed into the test written to enforce a rule.
+  const { partsInZone } = require('../src/domain/datetime');
+  const hhmm = (ms) => {
+    const p = partsInZone(TZ, new Date(ms));
+    return `${String(p.hh).padStart(2, '0')}:${String(p.mi).padStart(2, '0')}`;
+  };
+  const due = new Date(Date.now() + 2 * 86_400_000);
+  due.setUTCMinutes(30, 0, 0);            // never local midnight, so never the 08:00 day-shaped branch
+  const dueIso = due.toISOString();
+  const dueLabel = hhmm(due.getTime());
+  const armedLabel = hhmm(due.getTime() - 3600_000);
+  assert.notEqual(dueLabel, armedLabel);
+
   const asked = await withTx(db.pool, (c) => add.handler(c, u, {
-    title: 'לדבר עם מור חן', due_at: '2026-09-06T13:29:00+03:00',
-    remind_at: '2026-09-06T13:29:00+03:00',
+    title: 'לדבר עם מור חן', due_at: dueIso, remind_at: dueIso,
   }));
   const auto = await withTx(db.pool, (c) => add.handler(c, u, {
-    title: 'פגישה', due_at: '2026-09-06T19:00:00+03:00',
+    title: 'פגישה', due_at: dueIso,
   }));
 
   // Their own hour: nothing to add, and the hint says so rather than asking
@@ -298,10 +315,10 @@ test('the reminder hint never orders a sentence the 👍 has already sent', asyn
   assert.match(asked.data.hints.reminders, /not a reason to write/);
   assert.doesNotMatch(asked.data.hints.reminders, /say (that|when|THAT)/);
 
-  // The hour Olma chose is the one thing worth a line — and it is 18:00, the
-  // armed one, not the 19:00 the thing is at.
-  assert.match(auto.data.hints.reminders, /18:00/);
-  assert.doesNotMatch(auto.data.hints.reminders, /19:00/);
+  // The hour Olma chose is the one thing worth a line — the ARMED one, an
+  // hour before, never the hour the thing is at.
+  assert.ok(auto.data.hints.reminders.includes(armedLabel), 'the armed hour is on the hint');
+  assert.ok(!auto.data.hints.reminders.includes(dueLabel), 'the due hour is not');
   assert.match(auto.data.hints.reminders, /one short line/);
 
   // Neither branch, and no description read every turn, tells it to report the
