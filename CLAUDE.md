@@ -319,6 +319,19 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   binding and the next silent failure of the same shape alike. Dashboard row,
   not `BREAKS_USERS`. It is the opposite of `isDeafOnDayOne`, which needs two
   onboarding messages to have LANDED and then sends less.
+- **Every check that starts from `users` is blind to the person the gateway
+  dropped**, because they never became a row.
+  `config_guard.checkUnansweredStrangers` starts from the gateway's ingress
+  queue instead (`sessions.listInboundPeers`) and reports a lane with neither
+  a session nor a user row after 30 minutes. **The discriminator is the
+  SESSION** — a stranger the intake greeter answered has one and no user row
+  by design, and counting them would make the check red whenever registration
+  is closed. Dashboard row; no upper window (it closes when they get a user
+  row, not when we get bored). **The ingress queue is not a message log** —
+  Olma's own replies are queued on the same lane and a completed row keeps
+  nothing that tells them apart, so it answers "has this lane ever been heard
+  from" and nothing quantitative (`incidents.md`, "A message reached the box
+  and stopped there").
 - **`liveness_watch` repairs before it reports.** Every five minutes: gateway
   probe and delivery queue; two bad ticks before a word; a gateway down for
   two ticks is restarted (`intake/gateway-restart.js`, once per half hour) and
