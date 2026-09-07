@@ -44,6 +44,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [Good morning at half past one (fixed 2026-09-06)](#good-morning-at-half-past-one-fixed-2026-09-06)
 - [The morning digest asked the same question four mornings running (fixed 2026-09-06)](#the-morning-digest-asked-the-same-question-four-mornings-running-fixed-2026-09-06)
 - [Four good mornings to a man who had stopped answering (fixed 2026-09-05)](#four-good-mornings-to-a-man-who-had-stopped-answering-fixed-2026-09-05)
@@ -1294,6 +1295,55 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
 
+
+### Nine reminders, nine messages (fixed 2026-09-07)
+
+Vered (u-24) woke up on her first full morning here to **nine separate
+WhatsApp messages**, one per reminder, arriving between 08:06 and 08:07. Each
+one was correct. Together they were a wall.
+
+Nothing was wrong with the gate, the ladder or the sweep. The outbox drains a
+row at a time — `drainOnce` locks one row, decides on it, sends it, marks it —
+and that is exactly right for everything else it carries: a connection
+request, a digest, a meeting update are each their own event. Reminders are
+the one kind where several rows regularly describe **one moment in somebody's
+day**, because a night of held rows is released by a single `release_after`
+and because a person who says "תזכירי לי על כל אלה מחר בבוקר" means one
+morning, not nine.
+
+Coalescing happens at **delivery**, in the worker, and deliberately not at
+enqueue. A batch built by the sweep would need one idempotency key for several
+reminders, and then cancelling any one of them would let the sweep re-create
+the whole group — which is the shape of the fault that had woken her at half
+past one two nights earlier. At delivery there is no new key and no new row:
+each reminder stays individually cancellable, expires on its own two hours,
+and climbs its own ladder. The only thing shared is the one send that happens
+to carry all of them.
+
+Three constraints fell out of that and are each a line of code:
+
+- **Only rows that pass the same gate.** Siblings are re-`decide()`d against
+  the identical facts rather than assumed — expiry is per row, and a rung whose
+  two hours ran out must not reach the phone by riding along on a live one.
+- **Only rows that render with the same rung template.** A first reminder and
+  a "זו התזכורת האחרונה" cannot be the same message: a batch may only make the
+  promise every line in it makes. Hence three list templates rather than one,
+  mirroring the three rungs — `reminder_list`, `reminder_list_followup`,
+  `reminder_list_last`, all rewordable from the admin page like every other
+  sentence Olma sends verbatim.
+- **A failed send fails for every row it carried**, and the siblings are then
+  skipped for the rest of that tick. Without the second half, a batch that
+  failed was immediately re-sent one row at a time in the same tick, spending
+  the backoff it had just scheduled.
+
+The cap (`MAX_BATCH = 8`) is not a limit on what is due — anything past it
+goes out on the next tick as its own message. It is a limit on how long one
+message may be.
+
+Left as a follow-up: sending the schedule card image instead of a text list.
+The owner asked for "בבת אחת או בתמונה", and the text list is the half that
+fixes the flood without a new render path in the delivery loop; Vered was
+asked directly which she would rather have.
 
 ### Good morning at half past one (fixed 2026-09-06)
 
