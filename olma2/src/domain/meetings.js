@@ -23,16 +23,33 @@ const EXPIRE_AFTER_START_MS = 6 * 3600_000;
 // pendingMeetingFor — and are closed once they are plainly abandoned.
 const LEGACY_STALE_DAYS = 3;
 
-async function startMeeting(client, initiatorId, title, participantUserIds) {
+// `groupId` makes this the coordination OF A ROOM (domain/group-meetings.js),
+// and it changes exactly one rule: the pairwise `meetings` grant is not asked
+// for. That is not a hole in the grant model, it is a different consent —
+// everyone in an open group has written to Olma privately, they are all in one
+// visible room together, and the request was made out loud in front of them.
+// A grant says "you two may coordinate through me"; the room says the same
+// thing, for everybody in it at once, in public. What does NOT change is what
+// travels: a group coordination carries the room's name and the thing being
+// arranged, and nothing whatsoever out of anybody's private chat.
+//
+// The caller is responsible for the membership itself — group-meetings.js
+// takes the participants off the live roster of an OPEN group and nowhere
+// else. Passing a groupId with a list of arbitrary user ids would bypass the
+// grants for people who never shared a room, which is why this argument is
+// not reachable from any tool a person can call.
+async function startMeeting(client, initiatorId, title, participantUserIds, { groupId = null } = {}) {
   if (!Array.isArray(participantUserIds) || participantUserIds.length === 0) {
     return err('invalid', 'at least one participant required');
   }
   const unique = [...new Set(participantUserIds)].filter((id) => id !== initiatorId);
   if (unique.length === 0) return err('invalid', 'participants must include someone other than you');
 
-  for (const pid of unique) {
-    const gate = await grants.requireFeatureBetween(client, initiatorId, pid, 'meetings');
-    if (!gate.ok) return { ...gate, error: { ...gate.error, participantId: pid } };
+  if (!groupId) {
+    for (const pid of unique) {
+      const gate = await grants.requireFeatureBetween(client, initiatorId, pid, 'meetings');
+      if (!gate.ok) return { ...gate, error: { ...gate.error, participantId: pid } };
+    }
   }
 
   // A meeting with no name becomes a calendar event called "פגישה" and a
@@ -50,8 +67,8 @@ async function startMeeting(client, initiatorId, title, participantUserIds) {
   }
 
   const { rows } = await client.query(
-    `INSERT INTO meetings (initiator_id, title) VALUES ($1, $2) RETURNING *`,
-    [initiatorId, finalTitle]
+    `INSERT INTO meetings (initiator_id, title, group_id) VALUES ($1, $2, $3) RETURNING *`,
+    [initiatorId, finalTitle, groupId]
   );
   const meeting = rows[0];
   for (const uid of [initiatorId, ...unique]) {
@@ -60,7 +77,9 @@ async function startMeeting(client, initiatorId, title, participantUserIds) {
       [meeting.id, uid]
     );
   }
-  await audit.record(client, initiatorId, 'meeting.started', { meetingId: meeting.id, participants: unique });
+  await audit.record(client, initiatorId, 'meeting.started', {
+    meetingId: meeting.id, participants: unique, groupId: groupId || undefined,
+  });
   return ok({ meeting });
 }
 
