@@ -148,6 +148,38 @@ test('the flag arrives with the exact opening copy, in their language', async ()
   assert.equal(next.onboarding, undefined, 'and never again');
 });
 
+test('a name given in the first message is saved, not asked for again', async () => {
+  // עידן, 2026-09-07, his first message and his first minute:
+  //
+  //   08:40  he:   קוראים לי עידן
+  //   08:41  Olma: [the opening copy, verbatim]
+  //   08:42  Olma: עידן, נכון? 😊
+  //
+  // The instruction said "if they actually asked for something, answer it
+  // below those lines; otherwise stop there" — and telling us your name is
+  // not asking for something, so it was dropped. `name_confirmed` stayed
+  // false, and the 60-second rung (jobs/sweeps.sweepNameConfirm) did exactly
+  // what it is built to do: asked him to confirm the name he had just typed.
+  //
+  // The repair is upstream of the rung, and it is a TOOL CALL rather than a
+  // sentence — the brand copy still goes out alone, with no thanks, no
+  // acknowledgement and no extra question. That is the part worth holding
+  // open: a future edit that turns this into "greet them by their new name"
+  // breaks the opening copy the owner fixed by hand.
+  const u = await makeUser(db.pool, '+972611003013', { firstName: null, locale: 'he' });
+  const { data } = await turnStart(u, { opened: false, counted: false });
+  const said = data.onboarding.instruction;
+  assert.match(said, /set_my_name/, 'nothing tells the model what to do with a name it was just given');
+  assert.match(said, /קוראים לי/, 'and it names the shape, in the language people write it in');
+  assert.match(said, /do not ask them to confirm it/i,
+    'the whole point: he had already said it');
+  assert.match(said, /Do not mention it|silently/i,
+    'saving it must not add a sentence to brand copy that is sent verbatim');
+  // The rules that were already there have to survive the addition.
+  assert.match(said, /character for character/i);
+  assert.match(said, /no follow-up question this turn/i);
+});
+
 test('an English speaker gets the English opening', async () => {
   const u = await makeUser(db.pool, '+15551230007', { firstName: null, locale: 'en' });
   const { data } = await turnStart(u, { opened: false, counted: false });

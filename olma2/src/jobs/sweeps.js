@@ -246,6 +246,23 @@ async function sweepMediaJobs(client) {
 // lands (a name confirmed is a name USER.md can trust; the WhatsApp display
 // name is only ever an unconfirmed guess until then).
 //
+// **The opening is a REPLY, so "they have not replied" is never the whole
+// truth.** `first_turn_at` is stamped during their first turn, and that turn
+// is opened by their own first message — so this fires at somebody who wrote
+// exactly once and then stopped, which is a real state worth a nudge, and NOT
+// at somebody who has been silent toward us (that person has no first turn and
+// is invisible here). Measured 2026-09-07: it had fired at 4 of 4 people who
+// ever reached a first turn, and every one of them had written first.
+//
+// That is why the wording below no longer says where the name came from. It
+// said "most likely from their WhatsApp profile"; עידן's came from Miron's
+// Google contacts (`user.name_prefilled_from_contacts`), and his one message
+// was "קוראים לי עידן" — so Olma asked him to confirm a name he had just
+// typed. A sweep may say what is in the columns and nothing else. The real
+// repair for his case is upstream, in turn_start's first-turn instruction,
+// which now saves a name given in that first message; this rung is the net
+// under it, and `name_confirmed` is what stops it once the name is real.
+//
 // Anchored on `first_turn_at`, not `onboarded_at`: that column is stamped by
 // turn_start in the exact statement that hands the model the opening copy
 // (registry.js), so it is the true "when did we say hello" moment — a person
@@ -276,14 +293,20 @@ async function sweepNameConfirm(client, nowIso) {
     // gets checked by name; nothing yet just gets asked. Either way this is
     // the ONE thing to ask — no feature tour riding along with it.
     const instruction = u.first_name
-      ? `They have not replied since your opening message, about a minute ago. `
-        + `You have an unconfirmed guess at their name — "${u.first_name}", most `
-        + `likely from their WhatsApp profile. Ask, in one short warm line: is `
-        + `that their name? And if not, what should you call them? One emoji, `
-        + `nothing else this turn — no feature tour, no second question.`
-      : `They have not replied since your opening message, about a minute ago. `
-        + `You do not have a name for them yet. Ask, in one short warm line, `
-        + `what you should call them. One emoji, nothing else this turn.`;
+      ? `They wrote once, about a minute ago, and nothing since. The name on `
+        + `file is "${u.first_name}" and nobody has heard it from them — it may `
+        + `be from their WhatsApp profile, or from someone else's address book, `
+        + `and this system does not know which. FIRST read what they actually `
+        + `wrote: if they already said what to call them, call set_my_name and `
+        + `answer whatever else was in that message — never ask them to confirm `
+        + `a name they just gave you. Only if their message says nothing about `
+        + `their name, ask in one short warm line whether "${u.first_name}" is `
+        + `right, and what to call them if not. One emoji, nothing else this `
+        + `turn — no feature tour, no second question.`
+      : `They wrote once, about a minute ago, and nothing since, and there is `
+        + `no name on file. If what they wrote already says what to call them, `
+        + `call set_my_name instead of asking. Otherwise ask, in one short warm `
+        + `line, what you should call them. One emoji, nothing else this turn.`;
     const res = await enqueue(client, {
       userId: u.id, kind: 'checkin',
       payload: { checkinInstruction: instruction, rung: 'name_confirm_1m' },
