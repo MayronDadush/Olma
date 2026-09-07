@@ -80,14 +80,14 @@ async function createLink(client, userId) {
 async function peekLink(client, token) {
   if (!TOKEN_RE.test(String(token || ''))) return err('not_found', 'malformed token');
   const { rows } = await client.query(
-    `SELECT u.first_name
+    `SELECT u.first_name, u.locale
        FROM magic_links m JOIN users u ON u.id = m.user_id
       WHERE m.token_hash = $1 AND m.used_at IS NULL AND m.expires_at > now()
         AND u.status = 'active' AND u.is_eval = false`,
     [hash(token)]
   );
   if (!rows[0]) return err('not_found', 'link is spent, expired, or unknown');
-  return ok({ firstName: rows[0].first_name });
+  return ok({ firstName: rows[0].first_name, locale: rows[0].locale });
 }
 
 // Spend the link and open a session. Returns the RAW session id, once.
@@ -130,11 +130,11 @@ async function resolveSession(client, sid) {
         AND s.last_seen_at > now() - ($2 || ' days')::interval
         AND s.created_at   > now() - ($3 || ' days')::interval
         AND u.status = 'active' AND u.is_eval = false
-      RETURNING s.user_id`,
+      RETURNING s.user_id, u.locale`,
     [hash(sid), String(SESSION_IDLE_DAYS), String(SESSION_MAX_DAYS)]
   );
   if (!rows[0]) return err('not_found', 'no session');
-  return ok({ userId: rows[0].user_id });
+  return ok({ userId: rows[0].user_id, locale: rows[0].locale });
 }
 
 async function endSession(client, sid) {

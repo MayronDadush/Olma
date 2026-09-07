@@ -326,6 +326,41 @@ test('moving a task answers its ladder: rungs retire, the queued rung is withdra
   });
 });
 
+// Vered's r164, the same night: the ladder had reached its LAST rung by itself
+// at 22:32, so the reminder row was already retired — and its final message
+// sat in the outbox, held for the night, due at 08:00 about a task she had
+// moved to 09:00. Nothing was left to retire, so the first cut of this
+// withdrew nothing. The move answers the queued message too.
+test('moving a task withdraws a queued rung even when its ladder had already ended', async () => {
+  const { enqueue } = require('../src/outbox/enqueue');
+  await withClient(async (c) => {
+    const iso = (d) => new Date(d).toISOString().replace('Z', '+00:00');
+    const HOUR = 3600_000;
+    const t = (await tasks.addTask(c, alice.id, { title: 'לדבר עם גידי', dueAt: iso(Date.now() + 2 * HOUR) })).data.task;
+    const { rows: [auto] } = await c.query(`SELECT * FROM task_reminders WHERE task_id = $1`, [t.id]);
+    // All three rungs spent; the third retired the reminder as it was queued.
+    await reminders.recordAttempt(c, auto.id);
+    await reminders.recordAttempt(c, auto.id);
+    await reminders.recordAttempt(c, auto.id, { retire: true });
+    await enqueue(c, { userId: alice.id, kind: 'reminder', urgency: 'normal',
+      payload: { taskId: Number(t.id), rung: 3, attempt: 3, finalAttempt: true, auto: true },
+      idempotencyKey: reminders.attemptKey(auto.id, 3) });
+    await c.query(`UPDATE outbox SET hold_reason = 'night', release_after = now() + interval '8 hours'
+                    WHERE idempotency_key = $1`, [reminders.attemptKey(auto.id, 3)]);
+
+    const r = await tasks.snoozeTask(c, alice.id, t.id, iso(Date.now() + 26 * HOUR));
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.data.remindersRetired || [], [], 'nothing left to retire on the reminder row');
+    const { rows: [queued] } = await c.query(`SELECT sent_at, hold_reason FROM outbox WHERE idempotency_key = $1`,
+      [reminders.attemptKey(auto.id, 3)]);
+    assert.ok(queued.sent_at, 'the dawn rung is withdrawn all the same');
+    assert.equal(queued.hold_reason, 'moved');
+    const { rows: [a] } = await c.query(
+      `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'reminder.moved_with_task' ORDER BY id DESC LIMIT 1`, [alice.id]);
+    assert.ok(a && a.detail.outboxWithdrawn.length === 1, 'the withdrawal is on the record');
+  });
+});
+
 test('a snooze leaves an explicit pending reminder alone, cancels a stale automatic one, and does not re-arm over a moment they named', async () => {
   await withClient(async (c) => {
     const iso = (d) => new Date(d).toISOString().replace('Z', '+00:00');

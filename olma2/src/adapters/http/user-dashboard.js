@@ -61,6 +61,21 @@ function servedPageHtml(extra = '') {
   return '<html data-served="1"' + extra + '>\n' + pageHtml();
 }
 
+// The language the page draws in. The page reads `data-locale` off the root
+// element and falls back to the house language when it is missing — which is
+// what every signed-in visitor got until 2026-09-07, because nothing ever put
+// it there: `users.locale` said `en` for two people and the page never heard.
+// Only the two languages the page has strings for are stamped; anything else
+// on file (or nothing) reads as Hebrew, exactly the rule the page itself uses.
+function pageLocale(locale) {
+  return String(locale || '').trim().toLowerCase().startsWith('en') ? 'en' : 'he';
+}
+
+// A signed-in person's own page, in their language.
+function ownPageHtml(locale) {
+  return servedPageHtml(` data-locale="${pageLocale(locale)}"`);
+}
+
 // The same page, told it is speaking to somebody it does not know.
 //
 // Deliberately the answer for an EXPIRED link too, not only for a stranger.
@@ -146,10 +161,32 @@ function meetingParam(reqUrl) {
   return q && /^[1-9][0-9]{0,11}$/.test(q) ? q : null;
 }
 
-function signInPage(res, token, firstName, meeting) {
-  const hi = firstName ? `שלום ${esc(firstName)}` : 'שלום';
+// The front door is drawn in the person's language too: the link was minted
+// for a known user, so `peekLink` knows what they have on file, and a page that
+// greets Sarah in Hebrew before an English dashboard is the same bug twice.
+const SIGN_IN_COPY = {
+  he: {
+    dir: 'rtl',
+    hi: (name) => (name ? `שלום ${esc(name)}` : 'שלום'),
+    body: 'הקישור הזה נפתח פעם אחת. אחרי שתיכנס הוא כבר לא יעבוד — הדף עצמו יישאר פתוח.',
+    button: 'כניסה',
+    ttl: (m) => `הקישור תקף ל־${m} דקות`,
+  },
+  en: {
+    dir: 'ltr',
+    hi: (name) => (name ? `Hi ${esc(name)}` : 'Hi'),
+    body: 'This link opens once. After you sign in it stops working — the page itself stays open.',
+    button: 'Sign in',
+    ttl: (m) => `The link is valid for ${m} minutes`,
+  },
+};
+
+function signInPage(res, token, firstName, meeting, locale) {
+  const lang = pageLocale(locale);
+  const t = SIGN_IN_COPY[lang];
+  const hi = t.hi(firstName);
   res.writeHead(200, headers(HTML));
-  return res.end(`<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8">
+  return res.end(`<!doctype html><html dir="${t.dir}" lang="${lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
 <title>עולמה</title><style>
 :root{color-scheme:light dark}
@@ -167,9 +204,9 @@ button:active{opacity:.75}
 small{display:block;margin-top:14px;font-size:12.5px;opacity:.45}
 </style></head><body><div class="card">
 <h1>${hi}</h1>
-<p>הקישור הזה נפתח פעם אחת. אחרי שתיכנס הוא כבר לא יעבוד — הדף עצמו יישאר פתוח.</p>
-<form method="POST" action="/d/${esc(token)}${meeting ? `?meeting=${meeting}` : ''}"><button type="submit">כניסה</button></form>
-<small>הקישור תקף ל־${auth.LINK_TTL_MINUTES} דקות</small>
+<p>${t.body}</p>
+<form method="POST" action="/d/${esc(token)}${meeting ? `?meeting=${meeting}` : ''}"><button type="submit">${t.button}</button></form>
+<small>${t.ttl(auth.LINK_TTL_MINUTES)}</small>
 </div></body></html>`);
 }
 
@@ -204,11 +241,12 @@ function sameOrigin(req) {
   return Boolean(host) && origin === 'https://' + host;
 }
 
+// Who this cookie is — `{ userId, locale }` — or null for nobody.
 async function currentUser(pool, req) {
   const sid = auth.readCookie(req.headers.cookie);
   if (!sid) return null;
   const res = await withTx(pool, (c) => auth.resolveSession(c, sid));
-  return res.ok ? res.data.userId : null;
+  return res.ok ? res.data : null;
 }
 
 // The mount asks this before handing anything over, so the operator dashboard
@@ -230,7 +268,7 @@ async function handle(req, res, pool, pathname) {
         return messagePage(res, 410, 'הקישור כבר לא פעיל',
           'קישורי כניסה תקפים לזמן קצר ולשימוש אחד. אפשר לבקש מעולמה קישור חדש בוואטסאפ.');
       }
-      return signInPage(res, token, peek.data.firstName, meetingParam(req.url));
+      return signInPage(res, token, peek.data.firstName, meetingParam(req.url), peek.data.locale);
     }
     if (req.method === 'POST') {
       const opened = await withTx(pool, (c) => auth.redeemLink(c, token));
@@ -266,7 +304,8 @@ async function handle(req, res, pool, pathname) {
     return sendJson(res, 404, { ok: false, error: { code: 'not_found' } });
   }
 
-  const userId = await currentUser(pool, req);
+  const who = await currentUser(pool, req);
+  const userId = who ? who.userId : null;
 
   // ---- the page -----------------------------------------------------------
   if (pathname === '/me') {
@@ -282,7 +321,7 @@ async function handle(req, res, pool, pathname) {
       return res.end(newPageHtml());
     }
     res.writeHead(200, headers(HTML));
-    return res.end(servedPageHtml());
+    return res.end(ownPageHtml(who.locale));
   }
 
   // Past this point everything is JSON, including the refusals — the page is
