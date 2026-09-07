@@ -1,13 +1,20 @@
 'use strict';
 // groups — one section of the admin page (see ./index.js).
 //
-// Read-only, on purpose. Every state here is decided by the sweep from the
+// The STATE here is read-only, on purpose: it is decided by the sweep from the
 // gateway's own transcripts (jobs/groups.js), and an operator button that
 // forced a group open would be a second writer to a gate whose whole promise
 // is that it opens only when the last person has written to her. What the
 // operator needs is to SEE it: which groups exist, who is still missing, and
 // whether the sender gate is closed — the one thing the config file spells as
 // an absent key.
+//
+// The one editable thing is the KIND and its numbers (migration 051), because
+// that is a setting and not something the sweep derived: what sort of room it
+// is, and how many people the thing it arranges needs. Olma asks the room once
+// and this is where it gets fixed when the room never answered or answered
+// wrongly. It goes through `groups.setKind` — validated and audited exactly
+// like the room's own answer.
 const { esc } = require('../../html');
 const { ago } = require('../html');
 const occ = require('../../../../intake/openclaw-config');
@@ -34,7 +41,24 @@ function gateLine(configPath) {
   return `<p class="dim">קבוצות בשער: <b>${esc(policy)}</b> · מקבל פנים ${greeter ? 'מותקן' : 'לא מותקן'} · ${gate}</p>`;
 }
 
-async function renderGroups(client, _csrf, _probe, ctx = {}) {
+
+// The kind, and the numbers that only a game has. An empty select is the third
+// state and stays available: it means nobody has told her, which is not the
+// same as "social" and must be visible as its own thing.
+function kindForm(g, csrf) {
+  const sel = (v, label) => `<option value="${v}"${g.kind === v ? ' selected' : ''}>${label}</option>`;
+  const num = (name, v) => `<input name="${name}" size="2" value="${v === null || v === undefined ? '' : esc(String(v))}" title="${name}">`;
+  return `<form method="post" action="/group-kind" style="display:inline">
+    <input type="hidden" name="csrf" value="${esc(csrf || '')}">
+    <input type="hidden" name="id" value="${g.id}">
+    <select name="kind">${g.kind ? '' : '<option value="" selected>—</option>'}${sel('game', 'משחק')}${sel('social', 'חברתית')}</select>
+    ${num('minimum', g.quorum_min)}${num('maximum', g.quorum_max)}
+    <label class="dim"><input type="checkbox" name="close_at_target"${g.close_at_target ? ' checked' : ''}>סוגר ביעד</label>
+    <button>שמור</button>
+  </form>`;
+}
+
+async function renderGroups(client, csrf, _probe, ctx = {}) {
   const { rows: groups } = await client.query(
     `SELECT g.*, u.first_name AS registered_by
        FROM chat_groups g LEFT JOIN users u ON u.id = g.registered_by_user_id
@@ -67,10 +91,13 @@ async function renderGroups(client, _csrf, _probe, ctx = {}) {
       <td class="dim">${esc(g.registered_by || '—')}</td>
       <td class="dim">${g.last_mention_at ? esc(ago(g.last_mention_at)) : '—'}</td>
       <td class="dim">${g.opened_announced_at ? '✓' : (g.opened_at ? 'ממתינה לשעות' : '—')}</td>
+      <td>${kindForm(g, csrf)}</td>
     </tr>`;
   }).join('');
   return `${head}<table><tr><th>קבוצה</th><th>מצב</th><th>אנשים</th><th>עוד לא כתבו לה</th>
-    <th>נרשמה דרך</th><th>תיוג אחרון</th><th>הוכרזה</th></tr>${rows}</table>`;
+    <th>נרשמה דרך</th><th>תיוג אחרון</th><th>הוכרזה</th><th>סוג וכמה צריך</th></tr>${rows}</table>
+    <p class="dim">סוג: <b>משחק</b> — יש מינימום, ואולי מקסימום שאפשר לסגור עליו.
+    <b>חברתית</b> — כולם מוזמנים, בלי מינימום. ריק = אף אחד עוד לא אמר לה, והיא לא מנחשת.</p>`;
 }
 
 module.exports = { renderGroups, STATE_LABEL };

@@ -686,6 +686,55 @@ the room hears nothing on its own — no start line, no progress, no
 confirmation — until somebody tags her. Those are the five moments the owner
 named, and they are built next.
 
+## Two kinds of room, and what "enough people" means (2026-09-07)
+
+The owner's third decision, and the one that needed a question asked out loud.
+There are two kinds of group and Olma has to know which one she is in
+(migration 051, `chat_groups.kind`):
+
+- **`social`** — friends, work, family. Everyone is invited, there is no
+  minimum, and the goal is a time that suits everybody. It may still happen
+  with some of them if that is what they decide.
+- **`game`** — padel, poker. Everyone is invited too, but the thing needs a
+  MINIMUM to happen at all and may have a maximum; a room that says so can be
+  closed the moment the maximum is reached (`close_at_target`).
+
+**NULL is the third state and is never read as `social`.** A room nobody has
+answered for is coordinated exactly as it was before the column existed, and
+`groups.quorumFor` returns `known: false` with every other field null — not
+"0 of 0", which a caller could read as a full house. There is simply no true
+sentence about "enough people" available to say about that room.
+
+**Where the question is asked, and why there.** In the ROOM, once ever, folded
+into the line she already says when a coordination starts (`start_group_
+coordination` → `hints.ask`, stamped by `kind_asked_at` whether or not anybody
+answers). The three candidates were: privately to whoever invited her, in the
+group, or something else. Privately loses on a fact: **we do not know who added
+her.** `registered_by_user_id` is the lowest-id user on the roster, not the
+inviter, and the gateway does not tell us. In the room wins on two more: the
+answer is a fact ABOUT the room that anybody in it can correct, and at the
+first coordination it is the first moment the answer changes anything, with the
+room demonstrably listening. It costs one clause on a message she was sending
+anyway.
+
+**The minimum is a number they gave her, and she does not overrule it.**
+`settle_group_coordination` refuses below it and says how many are short; the
+room can lower the number (`set_group_kind` again) or wait. Both are decisions
+for them.
+
+**Closing from the room.** The coordination belongs to the room, so any member
+may close it, in public, in front of everybody — that is the check a private
+tool cannot have. Underneath, `options.settleNow` runs as the INITIATOR: the
+room stands in for whoever holds that column, and the audit row
+(`group.coordination_settled`) records who actually said it. The fan-out passes
+`byName`/`groupSubject` and **no actor**, because the acting member is mid-turn
+in the ROOM — with an actor they would be the one person never told privately,
+and would be handed a calendar instruction their group agent cannot act on.
+
+The dashboard's groups section gains exactly this one editable thing
+(`POST /group-kind` → `groups.setKind`). State stays read-only there for the
+reason it always has: the gate is the sweep's to decide.
+
 ## iMessage
 
 Not available on this box. The official path is `@openclaw/imessage` driving

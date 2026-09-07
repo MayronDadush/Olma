@@ -18,7 +18,8 @@ before(async () => { db = await freshDb(); });
 after(async () => { await db.teardown(); });
 
 const JID = (n) => `12036311111111${n}@g.us`;
-const TOKEN = (suffix) => 'olma_grp_' + String(suffix).repeat(32).slice(0, 32);
+// Padded, so room(1) and room(11) cannot mint the same token.
+const TOKEN = (n) => 'olma_grp_' + String(n).padStart(2, '0').repeat(16);
 
 async function openGroup(client, { jid, members, token, subject }) {
   const reg = await groups.registerGroup(client, { externalId: jid, members, subject });
@@ -40,7 +41,7 @@ async function room(n, { subject = 'פאדל חמישי' } = {}) {
     people.push(u);
   }
   const group = await withTx(db.pool, (c) => openGroup(c, {
-    jid: JID(n), subject, token: TOKEN(String(n)),
+    jid: JID(n), subject, token: TOKEN(n),
     members: people.map((u) => ({ phone: u.phone })),
   }));
   return { group, people };
@@ -148,4 +149,128 @@ test('a room with nothing running says so, rather than inventing a coordination'
   const { group } = await room(6);
   const status = await withTx(db.pool, (c) => groupMeetings.coordinationStatus(c, group));
   assert.equal(status.coordination, null);
+});
+
+test('a room nobody has classified has nothing to say about "enough people"', async () => {
+  const { group, people } = await room(7);
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, people[0], 'פאדל'));
+  assert.equal(started.data.askKind, true, 'the one question is due');
+
+  const q = groups.quorumFor(group, 3);
+  assert.equal(q.known, false);
+  assert.deepEqual([q.min, q.max, q.met, q.short], [null, null, null, null],
+    'not "0 of 0" — nothing at all, so nothing can be read as a full house');
+
+  const status = await withTx(db.pool, (c) => groupMeetings.coordinationStatus(c, group));
+  assert.equal(status.coordination.kind, null);
+  assert.equal(status.coordination.options.length, 0);
+});
+
+test('the kind question is asked once ever, answered or not', async () => {
+  const { group, people } = await room(8);
+  const first = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, people[0], 'ארוחה'));
+  assert.equal(first.data.askKind, true);
+  // Nobody answers. The coordination closes and another one starts later.
+  await db.pool.query(`UPDATE meetings SET status = 'cancelled' WHERE group_id = $1`, [group.id]);
+  const fresh = await withTx(db.pool, (c) => groups.getById(c, group.id));
+  const second = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, fresh, people[0], 'עוד ארוחה'));
+  assert.equal(second.data.created, true);
+  assert.equal(second.data.askKind, false, 'a room that let the question go by is not asked again');
+});
+
+test('a game has a minimum and a social group cannot have one', async () => {
+  const { group, people } = await room(9);
+  const bad = await withTx(db.pool, (c) => groups.setKind(c, group.id, { kind: 'social', min: 4 }, people[0].id));
+  assert.equal(bad.ok, false);
+  assert.match(bad.error.message, /no minimum or maximum/);
+  assert.equal((await withTx(db.pool, (c) => groups.setKind(c, group.id, { kind: 'poker' }))).ok, false);
+  assert.equal((await withTx(db.pool, (c) => groups.setKind(c, group.id, { kind: 'game', min: 5, max: 4 }))).ok, false);
+  assert.equal((await withTx(db.pool, (c) => groups.setKind(c, group.id, { kind: 'game', min: 1 }))).ok, false);
+
+  const good = await withTx(db.pool, (c) => groups.setKind(c, group.id,
+    { kind: 'game', min: 4, max: 4, closeAtTarget: true }, people[0].id));
+  assert.equal(good.ok, true);
+  const g = good.data.group;
+  assert.equal(groups.quorumFor(g, 3).met, false);
+  assert.equal(groups.quorumFor(g, 3).short, 1);
+  assert.equal(groups.quorumFor(g, 4).met, true);
+  assert.equal(groups.quorumFor(g, 4).mayClose, true, 'four of four, and this room closes at its target');
+  // A social room is never short of anybody: whoever can, comes.
+  assert.equal(groups.quorumFor({ kind: 'social' }, 1).met, true);
+  assert.equal(groups.quorumFor({ kind: 'social' }, 1).mayClose, false);
+});
+
+test('the room cannot close a game below its own minimum, and can at it', async () => {
+  const { group, people } = await room(10);
+  const [a, b] = people;
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'פאדל'));
+  const meetingId = Number(started.data.meeting.id);
+  const when = slotStart('רביעי', { hours: 96 });
+  const optionId = await withTx(db.pool, async (c) => {
+    const added = await options.add(c, a.id, meetingId, 'רביעי 20:00', when);
+    return added.data.option.id;
+  });
+  const gamely = await withTx(db.pool, (c) => groups.setKind(c, group.id, { kind: 'game', min: 3 }, a.id));
+  const g = gamely.data.group;
+
+  const tooFew = await withTx(db.pool, (c) => groupMeetings.settle(c, g, a, optionId));
+  assert.equal(tooFew.ok, false);
+  assert.equal(tooFew.error.reason, 'below_minimum');
+  assert.match(tooFew.error.message, /1 of the 3/);
+
+  await withTx(db.pool, async (c) => {
+    await options.answer(c, b.id, meetingId, optionId, 'y');
+    await options.answer(c, people[2].id, meetingId, optionId, 'y');
+  });
+  const closed = await withTx(db.pool, (c) => groupMeetings.settle(c, g, b, optionId));
+  assert.equal(closed.ok, true, closed.ok ? '' : JSON.stringify(closed.error));
+  assert.equal(closed.data.meetingStatus, 'confirmed');
+
+  // Everybody hears it privately — including the member who said it in the
+  // room, who is mid-turn THERE and would otherwise never be told.
+  const { rows } = await db.pool.query(
+    `SELECT user_id, payload FROM outbox
+      WHERE kind = 'meeting_confirmed' AND (payload->>'meetingId')::bigint = $1`, [meetingId]);
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0].payload.groupSubject, 'פאדל חמישי');
+  const body = instructionFor({ kind: 'meeting_confirmed', payload: rows[0].payload });
+  assert.match(body, /closed it in the group/);
+  assert.doesNotMatch(body, /who opened it/, 'nobody "opened" a coordination that belongs to the room');
+});
+
+test('a member of another room cannot close this one', async () => {
+  const { group, people } = await room(11);
+  const other = await room(12);
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, people[0], 'פוקר'));
+  const meetingId = Number(started.data.meeting.id);
+  const when = slotStart('חמישי', { hours: 96 });
+  const optionId = await withTx(db.pool, async (c) =>
+    (await options.add(c, people[0].id, meetingId, 'חמישי 21:00', when)).data.option.id);
+
+  const res = await withTx(db.pool, (c) => groupMeetings.settle(c, group, other.people[0], optionId));
+  assert.equal(res.ok, false);
+  assert.match(res.error.message, /not a member of this group/);
+});
+
+test('no group tool hands the room its own identity token back', async () => {
+  // The token is in AGENTS.md, where the model reads it out of a file. A copy
+  // in a tool RESULT is a second copy in the context for nothing — and every
+  // `chat_groups` row carries it, so any handler that returns a row leaks it
+  // by accident. Driven through the handlers themselves rather than by reading
+  // the source, because the next one will be written by somebody who never
+  // saw this test.
+  const { group, people } = await room(13);
+  const token = group.identity_token;
+  assert.match(token, /^olma_grp_/);
+  const tools = require('../src/adapters/mcp/tools/group');
+  const args = {
+    start_group_coordination: { what: 'פאדל' },
+    set_group_kind: { kind: 'game', minimum: 4 },
+    settle_group_coordination: { option_id: 1 },
+  };
+  for (const t of tools) {
+    const res = await withTx(db.pool, (c) =>
+      t.handler(c, { group, actingUser: people[0] }, args[t.name] || {}, {}));
+    assert.equal(JSON.stringify(res).includes(token), false, `${t.name} put the group token in its result`);
+  }
 });
