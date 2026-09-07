@@ -558,6 +558,22 @@ async function run(client, now = Date.now()) {
       if (!step && Number(after.checkin_misses) >= GIVE_UP_MISSES) {
         await pause.quietPause(client, u.id);
       }
+      // A day-one step that has not gone out yet is REPLACED by the next one,
+      // not joined by it. The expiry above was meant to do this ("every step
+      // expires when the next one comes due") and does not: the 5h step lives
+      // twelve hours, so somebody who joined at 23:00 had the 5h and the 8h
+      // both held for the night and both released at 08:00 — Yahav on
+      // 2026-09-06 (05:01:54 and 05:02:44), ג.ב due the same on 2026-09-08.
+      // Withdrawn like a cancellation (an UPDATE, never a DELETE: the key is
+      // what stops the sweep re-creating it); a step already delivered is
+      // untouched, because it was heard.
+      if (step) {
+        await client.query(
+          `UPDATE outbox SET sent_at = now(), hold_reason = 'superseded'
+            WHERE user_id = $1 AND kind = 'checkin' AND sent_at IS NULL AND id <> $2
+              AND idempotency_key LIKE 'onboarding:' || $1::text || ':%'`,
+          [u.id, res.data.outboxId]);
+      }
       // Stamped on the ENQUEUE, not on the answer: the promise is "asked
       // once", and a question the gate later drops still used up the one turn
       // this person's patience had for it. Any topic that begins 'timezone',

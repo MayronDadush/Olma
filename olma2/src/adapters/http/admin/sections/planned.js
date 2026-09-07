@@ -9,7 +9,7 @@ const OUTBOX_STATE = {
   sent: 'נשלחו', ready: 'ממתינות לשליחה',
   night: 'ממתינות לשעה מתאימה', blocked: 'ממתינות (המשתמש במכסה)',
   budget: 'יצטרפו לסיכום הבא', expired: 'פג תוקפן',
-  quiet: 'נעצרו — לא עונה', moved: 'המשימה זזה',
+  quiet: 'נעצרו — לא עונה', moved: 'המשימה זזה', superseded: 'הוחלפו בשלב הבא',
   settling: 'ממתינות לייצוב המערכת',
   cancelled_by_admin: 'בוטל ע"י מנהל',
 };

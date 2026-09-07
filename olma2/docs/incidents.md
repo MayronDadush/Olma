@@ -1501,9 +1501,24 @@ Noted, not acted on: "עדכון ב-9" became five *reminders*, each with a ladd
 of its own — 12:00 "בוצע?", the day after — where `digest_times = 09:00` was
 the tool that says "update" and nothing more. That is doctrine, and it waits.
 
-Two bugs in the same day are still open and get their own PRs: a held
-onboarding step must be superseded by the next rather than stacked, and a
-brain-dump item must not be given a `due_at`.
+One bug from the same day is still open and gets its own PR: a brain-dump
+item must not be given a `due_at`. The other — a held onboarding step must be
+superseded by the next rather than stacked — shipped on 2026-09-08 (below,
+"Two good mornings at once").
+
+**Two good mornings at once (fixed 2026-09-08).** The day-one ladder's
+comment says every step expires when the next one comes due, so an overnight
+signup wakes to ONE message. The numbers never said that: the 5h step lives
+twelve hours and the 8h step comes due at eight, so both sat night-held and
+both went out at 08:00 — Yahav on 2026-09-06 at 05:01:54 and 05:02:44 UTC,
+already in `tests/onboarding-review.test.js` as a fixture without anyone
+reading it as this bug; and ג.ב, who joined at 22:52 on 2026-09-07, was due
+the same pair the next morning (replayed in a rolled-back transaction: the 5h
+and the 8h rows both live at 05:00 UTC). Now `checkin.run` withdraws any
+still-unsent day-one row of the same person when it enqueues the next step
+(`hold_reason = 'superseded'`, an UPDATE like every cancellation); a step that
+was delivered is left alone. The morning is the latest step still live, which
+is what the comment promised.
 
 ### The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)
 
