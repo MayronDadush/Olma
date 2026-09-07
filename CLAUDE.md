@@ -174,6 +174,15 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   redo goes out under the next rung's key with the plain wording, keeps the
   urgency of the rung it replaces, and still spends a rung so a broken pipe
   cannot loop (`incidents.md`, "The reminder that could not climb").
+- **Reminders that come due in the same tick go out as ONE message, and the
+  coalescing happens at DELIVERY, never at enqueue.** A batch enqueued under
+  one idempotency key would let cancelling a single reminder re-create the
+  group. In the worker there is no new row: siblings are locked in the same
+  transaction, re-`decide()`d (expiry is per row), grouped by rung template (a
+  batch may only make the promise every line in it makes — hence three list
+  templates), and a failed send fails for all of them and skips them for the
+  rest of the tick. Vered got nine messages in ninety seconds
+  (`incidents.md`, "Nine reminders, nine messages").
 
 ### Data you must not get wrong
 
