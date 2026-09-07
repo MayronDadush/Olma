@@ -335,6 +335,15 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   is a message; a person who only likes looks silent. Vered got eighteen
   messages on her second day and answered none (`incidents.md`, "Eighteen
   messages, no answer").
+- **Moving a task's date answers every rung that was chasing the old one.**
+  `snoozeTask` → `reminders.retireForMovedTask`: a one-off reminder already
+  climbing (`attempts >= 1`) is RETIRED (`sent_at`, never cancelled — they
+  answered it by moving the thing), its queued outbox row is withdrawn as
+  `hold_reason = 'moved'`, a pending AUTOMATIC reminder for the old date is
+  cancelled and re-armed for the new one (an explicit reminder on the task
+  blocks the re-arm, as on `add_task`), a repeating one is left alone. It
+  did neither for a day: Vered moved five tasks to 09:00 and the ladders of
+  their old date still had "זו התזכורת האחרונה" ×7 due at 08:00 (same entry).
 - **A "once ever" question is stamped on the PERSON, never deduped on the
   route that asks it.** Two routes each honouring "at most once" is twice.
   The city is `users.timezone_asked_at` (migration 045), written by whichever

@@ -416,6 +416,59 @@ function attemptKey(reminderId, attempt) {
 
 // Record that a rung went on the wire. `retire` stamps sent_at, which is what
 // takes the reminder out of the pending set for good.
+// A task whose date the PERSON moved has answered every rung that was chasing
+// it: "בוצע?" about Monday has no meaning once they said "Tuesday". Vered
+// (2026-09-07) moved five tasks to the next morning at 09:00 and, had this not
+// existed, would have been told "זו התזכורת האחרונה" about all of them at 08:00
+// — the rung 3 of the ladders that rung 1 and 2 had already climbed on the OLD
+// date — an hour before the reminders she had just asked for (`incidents.md`,
+// "Eighteen messages, no answer").
+//
+// Three things, and each is a different sentence:
+// - A rung already climbing (attempts >= 1, one-off) is RETIRED, `sent_at`,
+//   not cancelled: they answered it, by moving the thing. Its queued outbox
+//   row, if the sweep already made one (night-held, say), is withdrawn under
+//   its own reason so the worker cannot deliver it at dawn.
+// - A pending AUTOMATIC reminder for the old date (attempts = 0, `auto`) is
+//   Olma's own inference from a date that no longer exists: cancelled, and
+//   armed again for the new date by the only writer of `auto = true`. An
+//   explicit reminder they set for the same task (`auto = false`) stops that
+//   re-arm exactly as it would on add_task — they named a moment.
+// - A repeating reminder is its own cadence and is left alone.
+async function retireForMovedTask(client, ownerId, task, { timezone, now = new Date() } = {}) {
+  const { rows: retired } = await client.query(
+    `UPDATE task_reminders SET sent_at = $2
+      WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL
+        AND repeat_rule IS NULL AND attempts >= 1
+      RETURNING id`, [task.id, now]);
+  const retiredIds = retired.map((r) => Number(r.id));
+  let withdrawn = [];
+  if (retiredIds.length) {
+    const keys = retiredIds.flatMap((id) => [`reminder:${id}`, `reminder:${id}:%`]);
+    ({ rows: withdrawn } = await client.query(
+      `UPDATE outbox SET sent_at = now(), hold_reason = 'moved'
+        WHERE user_id = $1 AND kind = 'reminder' AND sent_at IS NULL
+          AND idempotency_key LIKE ANY($2::text[])
+        RETURNING id`, [ownerId, keys]));
+  }
+  const { rows: stale } = await client.query(
+    `UPDATE task_reminders SET cancelled_at = $2
+      WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL
+        AND repeat_rule IS NULL AND attempts = 0 AND auto
+      RETURNING id`, [task.id, now]);
+  const rearmed = task.due_at ? await attachAutoReminder(client, ownerId, task, timezone, now) : null;
+  if (retiredIds.length || stale.length || rearmed) {
+    await audit.record(client, ownerId, 'reminder.moved_with_task', {
+      taskId: Number(task.id),
+      retired: retiredIds,
+      outboxWithdrawn: withdrawn.map((r) => Number(r.id)),
+      autoCancelled: stale.map((r) => Number(r.id)),
+      rearmed: rearmed ? Number(rearmed.id) : null,
+    });
+  }
+  return { retired: retiredIds, withdrawn: withdrawn.length, autoCancelled: stale.map((r) => Number(r.id)), reminder: rearmed };
+}
+
 async function recordAttempt(client, reminderId, { retire } = {}) {
   await client.query(
     `UPDATE task_reminders
@@ -434,7 +487,7 @@ async function markSent(client, reminderId) {
 
 module.exports = {
   setReminder, attachAutoReminder, cancelReminder, listReminders, dueForSending, markSent,
-  momentIsPast, PAST_GRACE_MS,
+  retireForMovedTask, momentIsPast, PAST_GRACE_MS,
   normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor,
   recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS,
 };

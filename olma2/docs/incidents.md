@@ -1459,6 +1459,37 @@ as `quiet` rather than sent, her reminders and tasks are untouched, and the
 ladder's one-liner comes on ~10.9 and, unanswered, on ~17.9, after which she
 is paused until she writes.
 
+**The same evening, the second half.** Vered wrote back at 21:43 — two voice
+messages: *"היי הכל בסדר. אשמח לעדכון מחר בתשע בבוקר של שאר המשימות"*. The quiet
+switched itself off (`checkin_misses` → 0 on the first message, as designed),
+the turn-open hook answered in 132ms and 103ms with `connectMs` on both lines,
+and Olma moved five tasks to 09:00 the next day and armed five explicit
+reminders for that hour. One message at 09:00, coalesced — right.
+
+What a read-only `dueForSending` at 05:01 UTC then showed: **seven reminders
+due at 08:00**, every one of them rung 3 — "זו התזכורת האחרונה" — about the
+tasks she had just moved. `snoozeTask` moved `due_at` and touched nothing
+else; the reminders of the old date, two rungs up their ladders since 11:06
+that morning, had no idea. She would have been told, at 08:00, that this was
+the last reminder for six things, and at 09:00 reminded of the same six.
+
+Moving the thing IS the answer to the rung. `reminders.retireForMovedTask`
+(called from `snoozeTask` when the date actually changed): a one-off reminder
+already climbing is retired — `sent_at`, not cancelled, because she answered
+it — and its queued outbox row, if the sweep had already made one, is
+withdrawn under `hold_reason = 'moved'`; a pending automatic reminder for the
+old date is cancelled and re-armed an hour before the new one through
+`attachAutoReminder`, which refuses when an explicit reminder stands on the
+task — exactly Vered's case, so her five 09:00 reminders stayed alone; a
+repeating reminder is its own cadence and is left as it is. The armed hour
+rides the result (`remindersAt`) so the same hint that states it back after
+`add_task` states it after a move. Her seven stale rungs were retired by hand
+through the same function the night this shipped, with the owner's word.
+
+Noted, not acted on: "עדכון ב-9" became five *reminders*, each with a ladder
+of its own — 12:00 "בוצע?", the day after — where `digest_times = 09:00` was
+the tool that says "update" and nothing more. That is doctrine, and it waits.
+
 Two bugs in the same day are still open and get their own PRs: a held
 onboarding step must be superseded by the next rather than stacked, and a
 brain-dump item must not be given a `due_at`.
