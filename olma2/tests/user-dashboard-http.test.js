@@ -251,7 +251,7 @@ test('the served page really is the one that knows how to hydrate', async () => 
 test('a served page is stamped, so the preview scaffolding never reaches anybody', async () => {
   const cookie = await signIn();
   const html = await (await get('/me', { headers: { cookie } })).text();
-  assert.match(html, /^<html data-served="1">/,
+  assert.match(html, /^<html data-served="1" data-locale="he">/,
     'a served page was not stamped, so the preview buttons are live in production');
   // The stamp only means anything if the stylesheet still acts on it.
   assert.ok(html.includes('html[data-served] .langtog'),
@@ -286,4 +286,33 @@ test('a served page shows no groups, because nothing on the server keeps one', a
   // And the seed is still there for the design copy — this hides it, it does
   // not delete the work.
   assert.ok(html.includes('\u05e4\u05d5\u05e7\u05e8'), 'the seeded groups were deleted rather than hidden');
+});
+
+// The page draws in whatever `data-locale` the root element carries and falls
+// back to Hebrew without one. For a signed-in person that attribute IS the
+// language decision, and until 2026-09-07 nothing set it: Sarah's row said
+// `en`, the JSON the page fetched said `en`, and the page — which never reads
+// the JSON for this — rendered Hebrew. Same for the sign-in page in front of it.
+test('a signed-in page and its sign-in page speak the language on file', async () => {
+  const sarah = await makeUser(db.pool, '+972531930003', { firstName: 'Sarah', locale: 'en' });
+  const link = await withTx(db.pool, (c) => auth.createLink(c, sarah.id));
+  assert.equal(link.ok, true);
+
+  const front = await (await get('/d/' + link.data.token)).text();
+  assert.match(front, /<html dir="ltr" lang="en">/, 'the sign-in page for an English user is not English');
+  assert.ok(front.includes('Hi Sarah'), 'the sign-in page greeted her in the wrong language');
+  assert.ok(!/שלום|כניסה/.test(front), 'Hebrew copy survived on an English sign-in page');
+
+  const opened = await get('/d/' + link.data.token, { method: 'POST' });
+  assert.equal(opened.status, 303);
+  const html = await (await get('/me', { headers: { cookie: cookieFrom(opened) } })).text();
+  assert.match(html, /^<html data-served="1" data-locale="en">/,
+    'an English user was served a page with no language on it, which the page reads as Hebrew');
+
+  // And the house language is still the default for someone with nothing on
+  // file — the Hebrew user above (no locale set) gets `he`, and so does the
+  // sign-in page in front of them.
+  const heFront = await (await get('/d/' + await newToken())).text();
+  assert.match(heFront, /<html dir="rtl" lang="he">/);
+  assert.ok(heFront.includes('שלום Miron'));
 });
