@@ -499,6 +499,37 @@ test('worker: reminders that come due together go out as ONE message', async () 
     'every row the one send carried is delivered, not just the one that led it');
 });
 
+// The language decision is taken at delivery from the joined users row, so
+// the proof has to go through the worker's own query: a row hand-built in a
+// test with `locale: 'en'` on it proves nothing about what the deliverer
+// actually receives.
+test('worker: the row that reaches the deliverer carries the recipient\'s locale, so an English speaker\'s reminders are English', async () => {
+  const proactiveText = require('../src/domain/proactive-text');
+  await flushOutbox();
+  const sarah = await makeUser(db.pool, '+972581000009', { firstName: 'Sarah', timezone: 'UTC', locale: 'en' });
+  const now = new Date('2026-08-16T12:00:00Z');
+  for (const [i, title] of ['call mom', 'pay rent'].entries()) {
+    await withTx(db.pool, (c) => enqueue(c, {
+      userId: sarah.id, kind: 'reminder', urgency: 'urgent', payload: { title },
+      idempotencyKey: `reminder:en:${i}`,
+    }));
+  }
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { title: 'תרופה' },
+    idempotencyKey: 'reminder:he:0',
+  }));
+  const sent = [];
+  const out = await drainOnce(db.pool, async (r) => { sent.push(r); return { ok: true }; }, now);
+  assert.equal(out.delivered, 2, 'her two are one message; his is another');
+
+  const hers = sent.find((r) => r.user_id === sarah.id);
+  const his = sent.find((r) => r.user_id === user.id);
+  assert.equal(hers.locale, 'en', 'the worker did not join the locale onto the row');
+  const herText = proactiveText.rawPipeTextFor(hers);
+  assert.match(herText, /^⏰ Reminders:\n• call mom\n• pay rent$/);
+  assert.equal(proactiveText.rawPipeTextFor(his), '⏰ תזכורת: תרופה');
+});
+
 test('worker: a batch that fails to send fails for every row it carried', async () => {
   await flushOutbox();
   for (const [i, title] of ['אחת', 'שתיים'].entries()) {
