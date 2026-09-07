@@ -699,3 +699,50 @@ test('the first message states the timezone guess in plain words and checks the 
   assert.doesNotMatch(settled, /guessing/);
   assert.doesNotMatch(settled, /question mark/);
 });
+
+// Yahav, 2026-09-06, 05:01:54 and 05:02:44 UTC: the 5h and the 8h steps, both
+// held for the night, both released at 08:00. ג.ב was due the same pair on
+// 2026-09-08. The comment on the ladder promised ONE message — the latest
+// step still live — and the expiry numbers never delivered it.
+test('day one: a step still held when the next comes due is superseded, not stacked', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const H = 3600_000;
+  const u = await makeUser(db.pool, '+972615000090', { firstName: 'Gil' });
+  const t0 = Date.now() - 9 * H;
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = to_timestamp($2/1000.0) WHERE id = $1`,
+    [u.id, t0]);
+
+  // 5h comes due; the row sits held for the night.
+  let out = await withTx(db.pool, (c) => checkin.run(c, t0 + 5 * H + 60_000));
+  assert.deepEqual(out.filter((r) => r.userId === u.id).map((r) => r.rung), ['onboarding_5h']);
+  await db.pool.query(`UPDATE outbox SET hold_reason = 'night', release_after = now() + interval '6 hours'
+                        WHERE user_id = $1`, [u.id]);
+
+  // 8h comes due: the 5h row is withdrawn, the 8h row is the one still live.
+  out = await withTx(db.pool, (c) => checkin.run(c, t0 + 8 * H + 60_000));
+  assert.deepEqual(out.filter((r) => r.userId === u.id).map((r) => r.rung), ['onboarding_8h']);
+  const { rows } = await db.pool.query(
+    `SELECT idempotency_key, sent_at, hold_reason FROM outbox WHERE user_id = $1 ORDER BY id`, [u.id]);
+  assert.equal(rows.length, 2);
+  assert.match(rows[0].idempotency_key, /:5h$/);
+  assert.ok(rows[0].sent_at, 'the held 5h step is withdrawn');
+  assert.equal(rows[0].hold_reason, 'superseded');
+  assert.match(rows[1].idempotency_key, /:8h$/);
+  assert.equal(rows[1].sent_at, null, 'the 8h step is the morning');
+
+  // A step that was DELIVERED is not touched by the next one — it was heard.
+  const v = await makeUser(db.pool, '+972615000091', { firstName: 'Tal' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = to_timestamp($2/1000.0) WHERE id = $1`,
+    [v.id, t0]);
+  await withTx(db.pool, (c) => checkin.run(c, t0 + 5 * H + 60_000));
+  await db.pool.query(`UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE user_id = $1`, [v.id]);
+  out = await withTx(db.pool, (c) => checkin.run(c, t0 + 8 * H + 60_000));
+  assert.deepEqual(out.filter((r) => r.userId === v.id).map((r) => r.rung), ['onboarding_8h']);
+  const { rows: theirs } = await db.pool.query(
+    `SELECT idempotency_key, hold_reason, sent_at FROM outbox WHERE user_id = $1 ORDER BY id`, [v.id]);
+  assert.equal(theirs[0].hold_reason, null, 'delivered stays delivered');
+  assert.ok(theirs[0].sent_at);
+  assert.equal(theirs[1].sent_at, null, 'and the 8h step is live beside it');
+});

@@ -315,6 +315,11 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   A backoff, not a mute: one message from them re-opens it. It asked Sarah the
   same question on four mornings first (`incidents.md`, "The morning digest
   asked the same question four mornings running").
+- **A day-one step that has not gone out is REPLACED by the next, never
+  joined by it.** `checkin.run` withdraws the person's still-unsent
+  `onboarding:*` rows (`hold_reason = 'superseded'`) when it enqueues the
+  next step; the expiry numbers alone never did this and two steps went out
+  at 08:00 to two people (`incidents.md`, "Two good mornings at once").
 - **Somebody who has stopped answering hears nothing Olma decided to say, and
   nothing on their record is cancelled.** The check-in ladder's one miss
   (`checkin_misses >= 1`) is the signal and the delivery gate is where it
