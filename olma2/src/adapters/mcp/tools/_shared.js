@@ -36,6 +36,7 @@ const voice = require('../../../domain/voice');
 const relay = require('../../../domain/relay');
 const cardStore = require('../../../domain/card-store');
 const facts = require('../../../domain/facts');
+const groups = require('../../../domain/groups');
 const searchLink = require('../../../domain/search-link');
 const contacts = require('../../../domain/contacts');
 const reactions = require('../../../domain/reactions');
@@ -104,15 +105,27 @@ function tool(name, description, props, required, handler) {
     inputSchema: {
       type: 'object',
       properties: {
-        // Repeated on every one of the 86 schemas, on every turn: each word here
-        // costs 86 times what it looks like.
-        [IDENTITY_PARAM]: S('string', 'your identity string from AGENTS.md'),
+        // Repeated on every one of the 90 schemas, on every turn: each word here
+        // costs 90 times what it looks like — which is why "identity string"
+        // became "identity" the day the group tools needed paying for. The
+        // model has never needed the noun; it needs the file name.
+        [IDENTITY_PARAM]: S('string', 'your identity from AGENTS.md'),
         ...props,
       },
       required: [IDENTITY_PARAM, ...required],
     },
     handler,
   };
+}
+
+// A tool a GROUP agent may call. Same schema shape, one field different, and
+// that field is the whole security boundary: brokerd routes on `audience`, so
+// a group token can never reach a user tool and a user token can never reach
+// one of these. The handler is called with `{ group, actingUser }` instead of
+// a user row — a group tool cannot be handed a person by accident, because
+// there is no person in its signature to hand.
+function groupTool(name, description, props, required, handler) {
+  return { ...tool(name, description, props, required, handler), audience: 'group' };
 }
 
 // Resolve a connected counterparty by phone. Deliberately does NOT reveal
@@ -128,5 +141,5 @@ async function connectedUserByPhone(client, actorId, phone, feature) {
 
 
 module.exports = {
-  users, onboardingDomain, selfInitiated, tasks, reminders, preferences, connections, grants, shares, meetings, availability, dashboardAuth, issues, digest, quota, calendar, taskCalendar, googleContacts, mail, googleConnect, scheduleCard, media, liveUpdates, pause, voice, relay, cardStore, facts, searchLink, contacts, reactions, audit, meetingFanout, S, ok, err, scrubTokens, IDENTITY_PARAM, ICON_NAMES, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, meetingCalendarFanout, calendarRoleFor, cancelCalendarCleanup, calendarHintFor, meetingBrief, CANCEL_CLEANUP_HINTS, captureDisplayName, stale, tool, connectedUserByPhone, flags,
+  users, onboardingDomain, selfInitiated, tasks, reminders, preferences, connections, grants, shares, meetings, availability, dashboardAuth, issues, digest, quota, calendar, taskCalendar, googleContacts, mail, googleConnect, scheduleCard, media, liveUpdates, pause, voice, relay, cardStore, facts, searchLink, contacts, reactions, audit, meetingFanout, S, ok, err, scrubTokens, IDENTITY_PARAM, ICON_NAMES, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, meetingCalendarFanout, calendarRoleFor, cancelCalendarCleanup, calendarHintFor, meetingBrief, CANCEL_CLEANUP_HINTS, captureDisplayName, stale, tool, groupTool, groups, connectedUserByPhone, flags,
 };

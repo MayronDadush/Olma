@@ -344,10 +344,95 @@ async function noteMention(client, groupId) {
   return ok({ groupId });
 }
 
+// ---- the group's own identity ----------------------------------------------
+//
+// A SECOND door, deliberately not a branch inside `users.resolveByToken`.
+// That function's whole contract is "possession of this token IS this person",
+// and the one thing a group must never be is a person: a group agent that
+// resolved to a user would hold that user's tasks, their facts, their
+// calendar and their private chat, in a room with other people in it. So the
+// group token lives in its own column, resolves through its own function, and
+// the two never meet — the migration that created the column said so before
+// any of this existed (042).
+//
+// Token shape mirrors a user's exactly (prefix + 32 hex) so nothing downstream
+// has to special-case its length.
+const GROUP_TOKEN_RE = /^olma_grp_[0-9a-f]{32}$/;
+
+// Which DOOR a token is for, by prefix alone — never whether it is valid.
+// A truncated group token has to reach the group resolver and be refused
+// there: routed to the user door instead it would come back "unknown identity
+// token", and the model would go looking for a person's file it does not
+// have.
+function looksLikeGroupToken(token) {
+  return typeof token === 'string' && token.startsWith('olma_grp_');
+}
+
+async function resolveByToken(client, identityToken) {
+  const recovery = ' — read the file .olma-identity in your workspace and retry with its exact contents as olma_identity, never from memory';
+  if (!GROUP_TOKEN_RE.test(String(identityToken || ''))) {
+    return err('forbidden', 'malformed group identity' + recovery);
+  }
+  const { rows } = await client.query(
+    `SELECT * FROM chat_groups WHERE identity_token = $1`, [identityToken]);
+  const group = rows[0];
+  if (!group) return err('forbidden', 'unknown group identity' + recovery);
+  // Only an OPEN group acts. A locked one is muted at the gateway and has no
+  // agent, so this should be unreachable — which is exactly why it is checked:
+  // the day the mute fails, the tools must not be the thing that lets a room
+  // where somebody never signed up start reaching those people privately.
+  if (group.state !== 'open') {
+    return err('forbidden', `this group is ${group.state}, not open`);
+  }
+  return ok({ group });
+}
+
+// WHO, in the room, this turn is acting for. Read off the last inbound the
+// gateway filed for the group (domain/group-context), never from anything the
+// model sends: a group agent that could name its own actor could act as any
+// member of the room, and the whole point of the group having its own identity
+// is that the person is chosen by the server.
+//
+// Null is a real answer — nothing filed yet, or the person who tagged her is
+// not a user. A caller that needs a person must refuse on null rather than
+// pick one.
+async function actingMember(client, group) {
+  if (!group || !group.agent_id) return null;
+  const sessionKey = `agent:${group.agent_id}:whatsapp:group:${group.external_id}`;
+  const { rows: ctx } = await client.query(
+    `SELECT sender_e164 FROM group_inbound_context WHERE session_key = $1 AND agent_id = $2`,
+    [sessionKey, group.agent_id]);
+  const phone = ctx[0] && normalizePhone(ctx[0].sender_e164);
+  if (!phone) return null;
+  const { rows } = await client.query(
+    `SELECT u.* FROM users u
+       JOIN chat_group_members m ON m.user_id = u.id AND m.group_id = $2 AND m.left_at IS NULL
+      WHERE u.phone = $1`,
+    [phone, group.id]);
+  return rows[0] || null;
+}
+
+// What she is allowed to say out loud about the room, and nothing else: who is
+// in it (the room can see that itself) and who has not written to her (she
+// already tags exactly those people in the gate notice). No name, no fact and
+// no availability from anybody's private chat crosses this line.
+async function roomStatus(client, group) {
+  const members = await listMembers(client, group.id);
+  return {
+    subject: group.subject, state: group.state,
+    members: members.map((m) => ({
+      phone: m.phone,
+      displayName: m.display_name || null,
+      wroteToHer: Boolean(m.user_id && m.last_inbound_at),
+    })),
+  };
+}
+
 module.exports = {
   DEFAULT_TIMEZONE,
   parseRoster, normalizePhone, majorityTimezone, SELF_PHONE,
   registerGroup, getById, getByExternalId, listMembers, syncRoster,
   decideState, evaluate, applyState,
   decideNotice, noteNoticeSent, noteMention,
+  GROUP_TOKEN_RE, looksLikeGroupToken, resolveByToken, actingMember, roomStatus,
 };
