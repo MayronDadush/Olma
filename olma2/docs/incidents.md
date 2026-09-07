@@ -114,6 +114,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two people, no introduction — the sweep beat the greeter to the door (fixed 2026-09-08)](#two-people-no-introduction--the-sweep-beat-the-greeter-to-the-door-fixed-2026-09-08)
 - ["This app is blocked", and the scope that was pricing the whole app (2026-09-07)](#this-app-is-blocked-and-the-scope-that-was-pricing-the-whole-app-2026-09-07)
 - [Two things at 08:00, and the one that says who she is came second (2026-09-08)](#two-things-at-0800-and-the-one-that-says-who-she-is-came-second-2026-09-08)
+- [The deploy that went red for one minute a day (2026-09-08)](#the-deploy-that-went-red-for-one-minute-a-day-2026-09-08)
 - [The door Google's screen is behind, closed until the screen is fixed (2026-09-08)](#the-door-googles-screen-is-behind-closed-until-the-screen-is-fixed-2026-09-08)
 - [The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)](#the-carryover-detector-checked-the-wrong-half-of-the-pair-so-the-flagged-case-was-innocent-and-the-real-leaks-were-invisible-fixed-2026-09-03)
 - [One carryover leak filed itself seven times — `config_guard`'s dedup key wasn't deterministic (fixed 2026-09-03)](#one-carryover-leak-filed-itself-seven-times--config_guards-dedup-key-wasnt-deterministic-fixed-2026-09-03)
@@ -3916,6 +3917,47 @@ Neither would have shown up in the suite as it stood, and neither is visible in
 the code — the first needs a step to decline, and the second needs a decline
 AND an unsent step already waiting. What found them was replaying the actual
 person's actual night, inside a transaction that was rolled back.
+
+### The deploy that went red for one minute a day (2026-09-08)
+
+`tests/quiet-mode.test.js` failed inside `deploy.sh` on bytes that had passed
+the PR run and two full local suites:
+
+```
+✖ an automatic reminder is dropped as quiet ... one asked for in words still comes
+  AssertionError: the sweep does not know about the quiet — the gate is the chokepoint
+  1 !== 2
+```
+
+The diff it failed on could not reach `sweepReminders` at all — it touched the
+delivery gate, the check-in supersede and a worker fact query. That is the tell
+worth keeping: **when the failing assertion is somewhere the change cannot
+reach, stop looking at the change.**
+
+The test built its due date as `Date.now() + 90 minutes`. Its user has no
+timezone, so the zone is UTC, and `auto-reminder.isDayShaped` reads a due date
+at local midnight — `hh === 0 && mi === 0`, seconds ignored — as DAY-shaped,
+which earns 08:00 that morning rather than an hour before. So for one minute of
+every day, when the test happens to start between 22:30 and 22:31 UTC, the
+automatic reminder is armed for 08:00 instead of the moment the test then
+sweeps at, and the sweep finds one reminder instead of two.
+
+The product was right both times. The test was reading `Date.now()`, which is
+the thing the suite has been burned by before and has a whole scheduled
+workflow to catch (`olma2-clock-drift.yml`, four hours of the day — none of
+them 22:30). The on-box suite ran at 22:26 and this file reached that test at
+22:30:something.
+
+Fixed by nudging the due moment off local midnight and, more usefully, by
+asserting the thing the nudge protects: the reminder is armed an hour before,
+not at 08:00. A miscount two assertions later named the gate; now the failure
+names its own cause. Checked against all 1440 start-minutes of a day.
+
+**The box was left MIXED in the meantime** — `deploy.sh` writes the RELEASE
+marker before the suite, so `/opt/olma2` held the new sha while brokerd was
+still running the previous one and `/ready` answered 200 throughout. Exactly
+the state the marker rule describes, and the reason the restart timestamp is
+the thing to check rather than the marker.
 
 ### The door Google's screen is behind, closed until the screen is fixed (2026-09-08)
 
