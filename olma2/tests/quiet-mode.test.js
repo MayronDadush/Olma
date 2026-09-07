@@ -79,23 +79,43 @@ test('an automatic reminder is dropped as quiet, stays on her record, and its la
   const u = await makeUser(db.pool, '+972661000001', { firstName: 'ורד' });
   // The auto reminder refuses a moment already past, so both are armed half an
   // hour ahead and the sweep runs at a `now` past them.
-  const armedAt = new Date(Date.now() + 30 * 60_000);
+  //
+  // The due moment is nudged off local midnight first. A due date AT local
+  // midnight is DAY-shaped (auto-reminder.isDayShaped: hh === 0 && mi === 0)
+  // and earns 08:00 that morning instead of an hour before, which is correct
+  // product behaviour and would silently change what this test is about — the
+  // auto reminder would not be due at `now` and the sweep would find one
+  // reminder instead of two. This user has no timezone, so the zone is UTC,
+  // and `now + 90m` lands inside that minute for one minute of every day. The
+  // on-box suite ran inside it on 2026-09-08 and the deploy went red on bytes
+  // that had passed twice (CLAUDE.md, Testing: never let a test depend on the
+  // hour it runs).
+  let dueAt = new Date(Date.now() + 90 * 60_000);
+  if (dueAt.getUTCHours() === 0 && dueAt.getUTCMinutes() === 0) {
+    dueAt = new Date(dueAt.getTime() + 60_000);
+  }
+  const armedAt = new Date(dueAt.getTime() - 60 * 60_000);
   const now = new Date(armedAt.getTime() + 5 * 60_000);
   // The brain-dump shape: a task the model dated, so an automatic reminder an
   // hour before it.
   await withTx(db.pool, (c) => tasks.addTask(c, u.id, {
-    title: 'לבדוק משימות נוספות', dueAt: new Date(armedAt.getTime() + 60 * 60_000).toISOString(),
+    title: 'לבדוק משימות נוספות', dueAt: dueAt.toISOString(),
   }));
   // And one she asked for: "תזכירי לי" — no due date, an explicit reminder.
   const asked = await withTx(db.pool, (c) => tasks.addTask(c, u.id, { title: 'להתקשר לרופא' }));
   await withTx(db.pool, (c) => reminders.setReminder(c, u.id, asked.data.task.id, armedAt.toISOString()));
   const { rows: armed } = await db.pool.query(
-    `SELECT r.id, r.task_id, r.auto FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+    `SELECT r.id, r.task_id, r.auto, r.remind_at FROM task_reminders r JOIN tasks t ON t.id = r.task_id
       WHERE t.owner_id = $1 ORDER BY r.id`, [u.id]);
   assert.equal(armed.length, 2);
   const autoRow = armed.find((r) => r.auto);
   const wordsRow = armed.find((r) => !r.auto);
   assert.ok(autoRow && wordsRow, 'one automatic, one asked for');
+  // Says out loud what the nudge above is protecting: an hour before the
+  // moment, not 08:00. If this ever reads as the morning again, the failure
+  // names its own cause instead of surfacing as a miscount further down.
+  assert.equal(new Date(autoRow.remind_at).getTime(), armedAt.getTime(),
+    'the dated task is moment-shaped, so its reminder is an hour before — not the 08:00 a day-shaped one earns');
 
   // She let a check-in pass.
   await db.pool.query(`UPDATE users SET checkin_misses = 1 WHERE id = $1`, [u.id]);
