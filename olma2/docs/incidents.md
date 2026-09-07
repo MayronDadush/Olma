@@ -125,6 +125,7 @@ never trust a dated narrative for something you are about to act on.
 - [A 👍 is the answer; the sentence after it is a second notification (2026-09-05)](#a--is-the-answer-the-sentence-after-it-is-a-second-notification-2026-09-05)
 - [The hint that outvoted the mark (2026-09-06)](#the-hint-that-outvoted-the-mark-2026-09-06)
 - [The mark that never moved (2026-09-07)](#the-mark-that-never-moved-2026-09-07)
+- [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
 - [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
 - [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
 - [The check that only watched the front door (2026-09-06)](#the-check-that-only-watched-the-front-door-2026-09-06)
@@ -3841,6 +3842,45 @@ gateway-opened turns on ONE reused `turn` object, each marking its own message.
 Passing a fresh `newTurn()` per turn — which every earlier test in that file
 did — is exactly what hid this, because it modelled a connection that does not
 exist.
+
+### The message id the model made up (2026-09-07)
+
+Two hours after the mark logging shipped, the first thing it printed was this:
+
+```
+[whatsapp] Sending reaction "👀" -> message manual
+[whatsapp] Sending reaction "👀" -> message auto-3
+```
+
+Neither is a WhatsApp message id. They are `source` values, and they reached
+the gateway as `--message-id` because `turn_start` takes the id from the MODEL
+— relayed out of the untrusted Conversation info block, which is the only place
+it exists (`CLAUDE.md`, "A WhatsApp reply names ONE message").
+
+The audit rows name the shape exactly: `turn.opened_implicitly` with
+`firstTool: get_my_digest` and `selfInitiated: true`. **A turn Olma started.**
+There was no inbound message, so there was no id — and the model did not pass
+nothing. It passed something.
+
+The comment already in `turn-gate.js` had assumed the opposite, in as many
+words: *"A self-initiated turn carries no real inbound message, so it never has
+a message_id to begin with — `cleanMessageId` reads that as absent and this
+stays a no-op."* `cleanMessageId` bounds the SHAPE, and `manual` is six
+printable characters. A hallucinated id is well-formed by construction, so no
+regex here can ever be the answer; what separates a real id from an invented
+one is **provenance**, which this layer already knows.
+
+The cost was not the wasted reaction. `turn_start` overwrote
+`ctx.turn.messageId` unconditionally, so on a turn the gateway HAD opened with
+the real id, the model's invention displaced it — and the closing mark went to
+`manual` instead of to the person's message. That is the fault fixed the day
+before ("The mark that never moved") reappearing through a second door, which
+is the ordinary way things in this file come back.
+
+So the id is taken only when the model is the best source there is: never on
+`ourTurn`, never over an id the gateway already put on the turn, and otherwise
+exactly as before — a real person writing, with no gateway opening on file,
+is still a turn where the model is all we have.
 
 ### The dedupe list that could not contain the answer (2026-09-06)
 

@@ -158,6 +158,41 @@ test('with no new opening, the message id is dropped once it ages out — never 
   assert.equal(marks.length, before, 'and nothing was marked on a message from half an hour ago');
 });
 
+// 2026-09-07, read straight off the gateway journal:
+//   Sent reaction "👀" -> message manual
+//   Sent reaction "👀" -> message auto-3
+// A model with nothing to relay does not pass nothing, it passes something.
+// `cleanMessageId` bounds the SHAPE and a hallucinated id is well-formed, so
+// what separates them is provenance — which this layer already knows.
+test('a message id the model made up is refused when we already know better', async () => {
+  const u = await agentUser('+972641100012', 'u-912');
+
+  // Olma's own delivery: there is no inbound message, so nothing the model
+  // says here can be right. This is the mark `ourTurn` already applies to
+  // last_inbound_at and the first-turn signal, applied to one more field.
+  const ours = newTurn();
+  await selfInitiated.around(u.id, () => call(u, 'turn_start', { message_id: 'manual' }, ours));
+  assert.equal(ours.messageId, null, 'no inbound message means no id to mark');
+  const before = marks.length;
+  await selfInitiated.around(u.id, () => call(u, 'add_task', { title: 'x' }, ours));
+  assert.equal(marks.length, before, 'and therefore nothing to react to');
+
+  // A gateway-opened turn carries the REAL id off the WhatsApp envelope, and
+  // the model must not be able to move the closing mark off it.
+  const turn = newTurn();
+  await open({ agentId: 'u-912', messageId: '3EB0REAL0001', kind: 'text' });
+  await call(u, 'turn_start', { message_id: 'auto-3' }, turn);
+  assert.equal(turn.messageId, '3EB0REAL0001', "the gateway's id stands");
+  await call(u, 'add_task', { title: 'y' }, turn);
+  assert.equal(marks.at(-1).messageId, '3EB0REAL0001');
+
+  // With no gateway opening and a real person writing, the model is still the
+  // only source there is — this narrows the field, it does not close it.
+  const relayed = newTurn();
+  await call(u, 'turn_start', { message_id: '3EB0RELAY0001' }, relayed);
+  assert.equal(relayed.messageId, '3EB0RELAY0001');
+});
+
 test('a turn Olma started is not a message from the person — the hook path honours the mark too', async () => {
   const u = await agentUser('+972641100005', 'u-905');
   const r = await selfInitiated.around(u.id, () => open({ agentId: 'u-905', messageId: '3EB0GATE0006', kind: 'text' }));
