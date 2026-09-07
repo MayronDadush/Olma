@@ -364,10 +364,16 @@ async function sweepGroupVoice(client, deps) {
     // duplicate column name in one row silently keeps the LAST one — which
     // would date every coordination from the day the ROOM was registered.
     `SELECT m.id AS meeting_id, m.status, m.created_at AS meeting_created_at,
-            m.group_base_at, m.group_chase_at, m.group_done_at, g.*
+            m.group_base_at, m.group_chase_at, m.group_done_at,
+            m.group_dayof_at, m.group_hour_at, g.*
        FROM meetings m JOIN chat_groups g ON g.id = m.group_id
       WHERE g.state = 'open'
-        AND (m.status = 'negotiating' OR (m.status = 'confirmed' AND m.group_done_at IS NULL))
+        AND (m.status = 'negotiating'
+             OR (m.status = 'confirmed'
+                 AND (m.group_done_at IS NULL
+                      -- still ahead of us, and one of the two reminders unsaid
+                      OR (m.confirmed_start_at IS NOT NULL AND m.confirmed_start_at > now()
+                          AND (m.group_dayof_at IS NULL OR m.group_hour_at IS NULL)))))
       ORDER BY (m.status = 'confirmed') DESC, m.id DESC`);
 
   // At most one line per room per pass. Two sentences in a row about the same
@@ -376,14 +382,18 @@ async function sweepGroupVoice(client, deps) {
   for (const row of rows) {
     if (spoken.has(String(row.id))) continue;
     const { rows: full } = await client.query(
-      `SELECT id, title, status, confirmed_slot, initiator_id FROM meetings WHERE id = $1`, [row.meeting_id]);
+      `SELECT id, title, status, confirmed_slot, confirmed_start_at, initiator_id
+         FROM meetings WHERE id = $1`, [row.meeting_id]);
     const st = await groupMeetings.statusOf(client, row, full[0] || null);
     const line = groupVoice.decideGroupLine(st.coordination, {
       saidBase: Boolean(row.group_base_at),
       saidChase: Boolean(row.group_chase_at),
       saidDone: Boolean(row.group_done_at),
+      saidDayOf: Boolean(row.group_dayof_at),
+      saidHour: Boolean(row.group_hour_at),
       startedAtMs: new Date(row.meeting_created_at).getTime(),
       nowMs: now.getTime(),
+      timezone: row.timezone,
     });
     if (line.kind === 'none') continue;
     // Due, but not now: the room is asleep. Nothing is stamped, so it goes out
@@ -394,7 +404,10 @@ async function sweepGroupVoice(client, deps) {
     const delivery = said(await deps.send(row.external_id, text.renderGroupCoordination(line, wording)));
     if (delivery === 'failed') { out.failed++; continue; }
     if (delivery === 'unknown') out.unconfirmed++;
-    const column = { base: 'group_base_at', chase: 'group_chase_at', done: 'group_done_at' }[line.kind];
+    const column = {
+      base: 'group_base_at', chase: 'group_chase_at', done: 'group_done_at',
+      dayof: 'group_dayof_at', soon: 'group_hour_at',
+    }[line.kind];
     await client.query(`UPDATE meetings SET ${column} = now() WHERE id = $1`, [row.meeting_id]);
     await audit.record(client, row.registered_by_user_id, 'group.coordination_said', {
       groupId: row.id, meetingId: Number(row.meeting_id), kind: line.kind,

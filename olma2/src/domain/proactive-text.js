@@ -160,6 +160,8 @@ function renderGroupCoordination(line, overrides) {
   if (line.kind === 'chase') {
     return templates.render('group_coord_chase', { missing: mentionTokens(line.missing || []) }, overrides);
   }
+  if (line.kind === 'dayof') return templates.render('group_coord_dayof', { slot: line.slot }, overrides);
+  if (line.kind === 'soon') return templates.render('group_coord_soon', { slot: line.slot }, overrides);
   return templates.render('group_coord_done', { slot: line.slot }, overrides);
 }
 

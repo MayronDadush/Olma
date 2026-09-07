@@ -29,6 +29,23 @@ const CHASE_FALLBACK_MS = 6 * 3600_000;
 // (people are still answering) and never later than a day.
 const CHASE_MIN_MS = 3600_000;
 const CHASE_MAX_MS = 24 * 3600_000;
+// The two reminders about a coordination that is already set. "An hour
+// before" is exactly that; the day-of line is skipped when the thing is
+// already close, because two messages three hours apart about the same
+// evening is the room being nagged about a plan it made itself.
+const HOUR_BEFORE_MS = 3600_000;
+const DAY_OF_MIN_LEAD_MS = 3 * 3600_000;
+
+// The calendar day a moment falls on, in a given zone. Comparing timestamps
+// would call 23:00 and 01:00 the same night, which is right for people and
+// wrong for "today".
+function localDay(ms, timezone) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone || 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date(ms));
+  } catch { return new Date(ms).toISOString().slice(0, 10); }
+}
 
 function chaseDueAt(startedAtMs, earliestStartMs) {
   if (!earliestStartMs || earliestStartMs <= startedAtMs) return startedAtMs + CHASE_FALLBACK_MS;
@@ -53,11 +70,22 @@ function leadingOption(options) {
 // that just confirmed makes "who has not answered" a wrong question, and
 // saying the base of a plan that is already settled is worse than saying
 // nothing.
-function decideGroupLine(co, { saidBase, saidChase, saidDone, startedAtMs, nowMs }) {
+function decideGroupLine(co, {
+  saidBase, saidChase, saidDone, saidDayOf, saidHour, startedAtMs, nowMs, timezone,
+} = {}) {
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
   if (co.status === 'confirmed') {
-    if (saidDone) return { kind: 'none', reason: 'already said it is set' };
-    return { kind: 'done', slot: co.confirmedSlot };
+    if (!saidDone) return { kind: 'done', slot: co.confirmedSlot };
+    // Then the two reminders, and the NEARER one wins when both are due in
+    // the same pass: "in an hour" is true and "today" is merely also true.
+    const at = co.confirmedStartAt ? new Date(co.confirmedStartAt).getTime() : 0;
+    if (!at || nowMs >= at) return { kind: 'none', reason: 'nothing left to remind about' };
+    if (!saidHour && nowMs >= at - HOUR_BEFORE_MS) return { kind: 'soon', slot: co.confirmedSlot };
+    if (!saidDayOf && localDay(nowMs, timezone) === localDay(at, timezone)
+      && at - nowMs > DAY_OF_MIN_LEAD_MS) {
+      return { kind: 'dayof', slot: co.confirmedSlot };
+    }
+    return { kind: 'none', reason: 'already reminded, or not yet due' };
   }
   if (co.status !== 'negotiating') return { kind: 'none', reason: `coordination is ${co.status}` };
 
@@ -95,6 +123,6 @@ function earliestStart(co) {
 }
 
 module.exports = {
-  decideGroupLine, leadingOption, chaseDueAt,
-  CHASE_FALLBACK_MS, CHASE_MIN_MS, CHASE_MAX_MS,
+  decideGroupLine, leadingOption, chaseDueAt, localDay,
+  CHASE_FALLBACK_MS, CHASE_MIN_MS, CHASE_MAX_MS, HOUR_BEFORE_MS, DAY_OF_MIN_LEAD_MS,
 };

@@ -174,3 +174,69 @@ test('a coordination that is already set is never chased', () => {
   assert.equal(line.kind, 'done');
   assert.equal(line.slot, 'שלישי 20:00');
 });
+
+test('the room is reminded on the day and an hour before, and never after it started', () => {
+  const tz = 'Asia/Jerusalem';
+  // 20:00 Israel time today, expressed as an instant.
+  const start = new Date();
+  start.setUTCHours(17, 0, 0, 0);
+  const co = { status: 'confirmed', confirmedSlot: 'היום 20:00', confirmedStartAt: start.toISOString(), options: [], silent: [] };
+  const base = { saidBase: true, saidChase: true, saidDone: true, startedAtMs: 0, timezone: tz };
+
+  const morning = groupVoice.decideGroupLine(co, { ...base, nowMs: start.getTime() - 9 * 3600_000 });
+  assert.equal(morning.kind, 'dayof');
+
+  // Both due at once: the nearer one is the true one, and the day-of stamp
+  // is not what stops it — the hour-before simply outranks it.
+  const closer = groupVoice.decideGroupLine(co, { ...base, nowMs: start.getTime() - 40 * 60_000 });
+  assert.equal(closer.kind, 'soon');
+
+  // Yesterday: it is not today anywhere, so nothing is due.
+  const dayBefore = groupVoice.decideGroupLine(co, { ...base, nowMs: start.getTime() - 30 * 3600_000 });
+  assert.equal(dayBefore.kind, 'none');
+
+  // Two hours to go and nothing said yet: the day-of line is skipped (too
+  // close to be worth its own message) and the hour-before is not due, so
+  // this room simply hears nothing until an hour out.
+  const late = groupVoice.decideGroupLine(co, { ...base, saidDayOf: false, nowMs: start.getTime() - 2 * 3600_000 });
+  assert.equal(late.kind, 'none');
+  const nearly = groupVoice.decideGroupLine(co, { ...base, saidDayOf: false, nowMs: start.getTime() - 50 * 60_000 });
+  assert.equal(nearly.kind, 'soon');
+
+  // It has started. Nothing to remind anybody about.
+  const after = groupVoice.decideGroupLine(co, { ...base, saidHour: true, nowMs: start.getTime() + 60_000 });
+  assert.equal(after.kind, 'none');
+
+  // A slot that never carried a moment cannot be reminded about at all.
+  const undated = groupVoice.decideGroupLine(
+    { ...co, confirmedStartAt: null }, { ...base, nowMs: Date.now() });
+  assert.equal(undated.kind, 'none');
+});
+
+test('the reminders ride the same pass, once each, and only for this coordination', async () => {
+  const { group, people } = await room(5);
+  const [a, b] = people;
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'פאדל'));
+  const meetingId = Number(started.data.meeting.id);
+  // Tomorrow, so the option is a real future moment; every pass below names
+  // its own `now` relative to it.
+  const at = new Date(Date.now() + 24 * 3600_000);
+  at.setUTCHours(15, 0, 0, 0);
+  const optionId = await withTx(db.pool, async (c) =>
+    (await options.add(c, a.id, meetingId, 'מחר 18:00', at.toISOString().replace('Z', '+00:00'))).data.option.id);
+  await withTx(db.pool, (c) => options.answer(c, b.id, meetingId, optionId, 'y'));
+  const fresh = await withTx(db.pool, (c) => groups.getById(c, group.id));
+  await withTx(db.pool, (c) => groupMeetings.settle(c, fresh, a, optionId));
+
+  const sent = [];
+  await pass(sent, new Date(at.getTime() - 8 * 3600_000));
+  assert.match(sent[0].body, /סגור/, 'first it is set');
+  await pass(sent, new Date(at.getTime() - 7 * 3600_000));
+  assert.match(sent[1].body, /היום/, 'then, on the day');
+  await pass(sent, new Date(at.getTime() - 7 * 3600_000));
+  assert.equal(sent.length, 2, 'and not twice');
+  await pass(sent, new Date(at.getTime() - 30 * 60_000));
+  assert.match(sent[2].body, /עוד שעה/, 'then an hour before');
+  await pass(sent, new Date(at.getTime() + 60_000));
+  assert.equal(sent.length, 3, 'and nothing at all once it has started');
+});

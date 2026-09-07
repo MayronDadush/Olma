@@ -770,6 +770,18 @@ room whose members are slow costs nothing at all.
 At most one line per room per pass. Two sentences in a row about the same plan
 is a paragraph nobody asked for, and the second one keeps.
 
+**The fifth moment — the two reminders (migration 053)** — rides the same pass
+once the coordination is set: one on the morning of the day, one an hour
+before. The nearer one wins when both are due, and the day-of line is skipped
+entirely when the thing is less than three hours away, because "today" and "in
+an hour" two hours apart is the room being nagged about a plan it made itself.
+Neither is possible without a real `confirmed_start_at` — a slot that never
+carried a moment cannot be reminded about, and inventing one would be worse
+than silence. Both stop existing the moment the thing starts: a reminder that
+arrives late is not a reminder. That is also what happens to an hour-before
+line the group's quiet hours would hold past the event — it is never sent,
+rather than sent at the wrong time.
+
 ## iMessage
 
 Not available on this box. The official path is `@openclaw/imessage` driving

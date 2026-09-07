@@ -168,6 +168,7 @@ async function statusOf(client, group, meeting) {
     coordination: {
       meetingId: Number(meeting.id), title: meeting.title, status: meeting.status,
       confirmedSlot: meeting.confirmed_slot || null,
+      confirmedStartAt: meeting.confirmed_start_at || null,
       startedBy: who(meeting.initiator_id).name,
       participants: active.length,
       options: table,

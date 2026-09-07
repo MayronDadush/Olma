@@ -161,6 +161,18 @@ const TEMPLATES = [
     vars: { slot: 'הזמן שנסגר' }, required: ['slot'],
     text: 'סגור: {{slot}} 🎉',
   },
+  {
+    key: 'group_coord_dayof', audience: 'group', label: 'תיאום — תזכורת ביום עצמו',
+    help: 'בבוקר היום שבו זה קורה, ורק אם נשארו לפחות שלוש שעות — אחרת התזכורת של שעה לפני מספיקה.',
+    vars: { slot: 'הזמן שנסגר' }, required: ['slot'],
+    text: 'מזכירה — היום: {{slot}} 👋',
+  },
+  {
+    key: 'group_coord_soon', audience: 'group', label: 'תיאום — שעה לפני',
+    help: 'שעה לפני. לא נשלחת מאוחר יותר: משהו שכבר התחיל לא צריך תזכורת.',
+    vars: { slot: 'הזמן שנסגר' }, required: ['slot'],
+    text: 'עוד שעה: {{slot}} 🙂',
+  },
 ];
 
 const BY_KEY = new Map(TEMPLATES.map((t) => [t.key, t]));
