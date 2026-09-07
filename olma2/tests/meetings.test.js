@@ -25,6 +25,15 @@ before(async () => {
 });
 after(async () => { await db.teardown(); });
 
+// The last yes arms a minute (domain/meeting-options.js); the sweep spends it.
+// Tests about the END of a negotiation pull the armed moment back and run the
+// sweep, which keeps `settleDue`'s own re-check of unanimity in the path.
+async function runGrace(c, meetingId) {
+  await c.query(
+    `UPDATE meetings SET settle_due_at = clock_timestamp() - interval '1 second' WHERE id = $1`, [meetingId]);
+  return meetings.options.settleDue(c);
+}
+
 async function withClient(fn) {
   const client = await db.pool.connect();
   try { return await fn(client); } finally { client.release(); }
@@ -61,10 +70,12 @@ test('confirm requires EVERY active participant on the identical slot', async ()
     assert.equal(states[alice.id], 'awaiting');
     assert.equal(states[bob.id], 'awaiting');
 
-    // both remaining accept → NOW it confirms, to the exact slot
+    // both remaining accept → the minute starts, and spending it confirms to
+    // the exact slot
     await meetings.respondToSlot(c, alice.id, m.id, true, null, null, wed);
     r = await meetings.respondToSlot(c, bob.id, m.id, true, null, null, wed);
-    assert.equal(r.data.meetingStatus, 'confirmed');
+    assert.equal(r.data.meetingStatus, 'settling');
+    assert.equal((await runGrace(c, m.id)).length, 1);
     const done = await meetings.getStatus(c, alice.id, m.id);
     assert.equal(done.data.meeting.status, 'confirmed');
     assert.equal(done.data.meeting.confirmed_slot, 'Wednesday 18:00, phone');
@@ -114,10 +125,12 @@ test('an accept is pinned to an option on the table; one naming none is refused 
     const good = await meetings.respondToSlot(c, bob.id, m.id, true, null, null, tuesday);
     assert.equal(good.ok, true);
     assert.equal(good.data.yourState, 'confirmed_current');
-    // carol's yes to Tuesday makes it unanimous → confirmed to Tuesday, not Monday
+    // carol's yes to Tuesday makes it unanimous → it settles to Tuesday, not
+    // Monday, once the minute is spent
     const done = await meetings.respondToSlot(c, carol.id, m.id, true, null, null, tuesday);
-    assert.equal(done.data.meetingStatus, 'confirmed');
+    assert.equal(done.data.meetingStatus, 'settling');
     assert.equal(done.data.slot, 'יום שלישי 20:00');
+    assert.equal((await runGrace(c, m.id))[0].slot, 'יום שלישי 20:00');
   });
 });
 
@@ -131,7 +144,8 @@ test('accept binding: a legacy row with no machine time still accepts', async ()
     await c.query(`UPDATE meeting_options SET starts_at = NULL WHERE meeting_id = $1`, [m.id]);
     const r = await meetings.respondToSlot(c, bob.id, m.id, true);
     assert.equal(r.ok, true);
-    assert.equal(r.data.meetingStatus, 'confirmed');
+    assert.equal(r.data.meetingStatus, 'settling');
+    assert.equal((await runGrace(c, m.id)).length, 1);
   });
 });
 
@@ -156,7 +170,8 @@ test('opt-out of a third participant can complete the confirmation gate', async 
     await meetings.respondToSlot(c, bob.id, m.id, true, null, null, mon);
     // carol is the lone holdout; her opting out leaves alice+bob who both agreed
     const r = await meetings.optOut(c, carol.id, m.id);
-    assert.equal(r.data.meetingStatus, 'confirmed');
+    assert.equal(r.data.meetingStatus, 'settling');
+    assert.equal((await runGrace(c, m.id)).length, 1);
   });
 });
 
@@ -569,6 +584,7 @@ async function confirmedMeeting(c, initiator, others, slotText = 'Tuesday 17:00,
     const r = await meetings.respondToSlot(c, u.id, m.id, true, null, null, when);
     assert.ok(r.ok, JSON.stringify(r.error || {}));
   }
+  await runGrace(c, m.id);
   const st = await c.query(`SELECT status FROM meetings WHERE id = $1`, [m.id]);
   assert.equal(st.rows[0].status, 'confirmed', 'fixture must reach confirmed');
   return Number(m.id);

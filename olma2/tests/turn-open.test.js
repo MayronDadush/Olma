@@ -107,6 +107,57 @@ test('a pending open the model never followed expires and is not adopted by a la
   assert.equal(turn.messageId, '3EB0GATE0005');
 });
 
+// ── The connection outlives the turn ────────────────────────────────────────
+// The shim caches one socket for the life of the MCP process, so the SAME
+// `turn` object serves every turn that process ever handles. Adoption used to
+// be latched to its first tool call, which froze the first message's id on it
+// for ever. Both halves of the damage are pinned here: a mark on the wrong
+// message while the frozen id was still live, and no mark at all once it aged
+// out. Neither test passes a fresh `newTurn()` — reusing one IS the case.
+test('a second gateway-opened turn on the SAME connection marks its own message, not the first one\'s', async () => {
+  const u = await agentUser('+972641100010', 'u-910');
+  const turn = newTurn(); // one connection, reused — this is the whole point
+  await open({ agentId: 'u-910', messageId: '3EB0SAME0001', kind: 'text' });
+  await call(u, 'add_task', { title: 'ראשונה' }, turn);
+  assert.equal(marks.at(-1).state, 'done');
+  assert.equal(marks.at(-1).messageId, '3EB0SAME0001');
+
+  // Miron, 2026-09-06: three messages inside five minutes, each its own turn.
+  now += 4 * 60_000;
+  await open({ agentId: 'u-910', messageId: '3EB0SAME0002', kind: 'text' });
+  const r = await call(u, 'add_task', { title: 'שנייה' }, turn);
+  assert.equal(r.ok, true, r.text);
+  assert.equal(turn.messageId, '3EB0SAME0002', 'the turn moved to the new message');
+  assert.equal(marks.at(-1).messageId, '3EB0SAME0002', 'the 👍 landed on the message that earned it');
+  assert.equal(await received(u.id), 2, 'two messages, counted once each');
+
+  // and the dedup set moved with it: the second message earns its own 👍
+  // rather than being swallowed as a repeat of the first message's.
+  const done = marks.filter((m) => m.state === 'done');
+  assert.equal(done.length, 2);
+  assert.deepEqual(done.map((m) => m.messageId), ['3EB0SAME0001', '3EB0SAME0002']);
+});
+
+test('with no new opening, the message id is dropped once it ages out — never marked late', async () => {
+  const u = await agentUser('+972641100011', 'u-911');
+  const turn = newTurn();
+  await open({ agentId: 'u-911', messageId: '3EB0STALE001', kind: 'text' });
+  await call(u, 'add_task', { title: 'עכשיו' }, turn);
+  assert.equal(marks.at(-1).messageId, '3EB0STALE001');
+
+  // A turn with no gateway open behind it — a delivery, a cron lane — arriving
+  // on the same socket half an hour later. `markFor` would refuse the dead id
+  // on its own; what this pins is that the turn stops CARRYING it, so no later
+  // reader has to know to distrust it. Yahav's 22:07 message was six hours
+  // stale by the time a tool call reached it, and the test above is the half
+  // that fails without the fix.
+  now += 30 * 60_000;
+  const before = marks.length;
+  await call(u, 'add_task', { title: 'מאוחר' }, turn);
+  assert.equal(turn.messageId, null, 'the dead id is dropped, not carried');
+  assert.equal(marks.length, before, 'and nothing was marked on a message from half an hour ago');
+});
+
 test('a turn Olma started is not a message from the person — the hook path honours the mark too', async () => {
   const u = await agentUser('+972641100005', 'u-905');
   const r = await selfInitiated.around(u.id, () => open({ agentId: 'u-905', messageId: '3EB0GATE0006', kind: 'text' }));

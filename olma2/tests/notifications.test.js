@@ -8,6 +8,8 @@ const { freshDb, makeUser, slotStart } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const { createBrokerServer } = require('../src/brokerd/server');
 const connections = require('../src/domain/connections');
+const meetings = require('../src/domain/meetings');
+const meetingFanout = require('../src/domain/meeting-fanout');
 const grants = require('../src/domain/grants');
 
 let db, broker, miron, kapish;
@@ -19,6 +21,23 @@ async function call(user, name, args) {
   });
   assert.ok(res.ok, `${name} transport failed`);
   return res.text;
+}
+
+// Agreement arms a minute; the sweep spends it and is the thing that tells
+// anybody (domain/meeting-options.js, jobs/sweeps.js). Every assertion below
+// about what LANDS therefore runs the minute out first — waiting for it would
+// make this file a slow test about a clock.
+async function runGrace(meetingId) {
+  return withTx(db.pool, async (c) => {
+    await c.query(
+      `UPDATE meetings SET settle_due_at = clock_timestamp() - interval '1 second'
+        WHERE id = $1 AND settle_due_at IS NOT NULL`, [meetingId]);
+    const settled = await meetings.options.settleDue(c);
+    for (const s of settled) {
+      await meetingFanout.afterSettled(c, s.meetingId, { ok: true, data: s }, { actor: null });
+    }
+    return settled;
+  });
 }
 
 async function outboxFor(userId, kind) {
@@ -68,10 +87,14 @@ test('meeting lifecycle fans out at every turn', async () => {
   assert.equal(rows[0].payload.slot, 'Wednesday 18:00, phone');
   assert.equal(rows[0].payload.startsAt, wed);
 
-  // miron accepts → gate closes → kapish hears CONFIRMED exactly once
+  // miron accepts → the gate closes, and the minute starts. Nobody hears a
+  // thing yet; when it runs out, kapish hears CONFIRMED exactly once.
   const accepted = await call(miron, 'respond_to_meeting_slot',
     { meeting_id: meetingId, accept: true, accepted_starts_at: wed });
-  assert.match(accepted, /"meetingStatus":"confirmed"/);
+  assert.match(accepted, /"meetingStatus":"settling"/);
+  assert.equal((await outboxFor(kapish.id, 'meeting_confirmed')).length, 0,
+    'the announcement is exactly what the grace holds back');
+  assert.equal((await runGrace(meetingId)).length, 1);
   rows = await outboxFor(kapish.id, 'meeting_confirmed');
   assert.equal(rows.length, 1);
   assert.equal(rows[0].payload.slot, 'Wednesday 18:00, phone');
@@ -134,8 +157,9 @@ test('two proposals are two options; a yes names one; confirming supersedes the 
   // already on it, Sunday is unanimous: confirmed to Sunday, not to the newest
   const good = await call(kapish, 'respond_to_meeting_slot', {
     meeting_id: meetingId, accept: true, accepted_starts_at: sun });
-  assert.match(good, /"meetingStatus":"confirmed"/);
+  assert.match(good, /"meetingStatus":"settling"/);
   assert.match(good, /Sunday 09:00, phone/);
+  assert.equal((await runGrace(meetingId)).length, 1);
   const after = (await outboxFor(kapish.id, 'meeting_slot_proposed'))
     .filter((r) => Number(r.payload.meetingId) === meetingId);
   for (const r of after) assert.equal(r.hold_reason, 'superseded', `${r.payload.slot} should be superseded once the meeting confirmed`);

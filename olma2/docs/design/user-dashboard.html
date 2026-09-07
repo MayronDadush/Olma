@@ -1048,6 +1048,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   font-size:12.5px;font-weight:600;
 }
 .moclash svg{width:13px;height:13px;flex:none}
+/* The settle grace. Green rather than amber on purpose: nothing is wrong, the
+   meeting is agreed — the number is only saying how long the door stays open
+   to change your mind. Amber here would read as a problem to solve. */
+.mosettling{
+  display:flex;align-items:center;gap:7px;margin-top:10px;
+  padding:7px 10px;border-radius:11px;
+  background:var(--ok-soft);color:var(--ok);
+  font-size:12.5px;font-weight:600;
+}
+.mosettling svg{width:13px;height:13px;flex:none}
 .moconfirm{
   margin:11px -14px -12px;padding:12px 14px;
   background:var(--warn-soft);border-radius:0 0 var(--r-group,16px) var(--r-group,16px);
@@ -2778,6 +2788,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting",
     rejoinMeeting:"rejoinMeeting",
     startMeeting:"startMeeting", addOption:"addOption", answerOption:"answerOption",
+    settleMeeting:"settleMeeting",
     approveOption:"approveOption", rejectOption:"rejectOption", swapOption:"swapOption",
     startGoogle:"startGoogle", stopGoogle:"stopGoogle",
     stopGoogleService:"stopGoogleService"
@@ -3167,7 +3178,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "cal.fromMeet":"נקבע בתיאום","cal.meetTag":"פגישה",
       "cal.pMeet":"מסמנים מתי מתאים, עולמה מוצאת את החלון הטוב ביותר לכולם.",
       "sheet.close":"סגירה","mt.open":"תיאומים פעילים","mt.new":"תיאום פגישה חדש",
-      "mt.note":"תשובה אומרת אם אתה יכול — לא שקבעתם. הקביעה עצמה היא לחיצה נפרדת, וכל אחד בתיאום יכול לעשות אותה.",
+      "mt.note":"תשובה אומרת אם אתה יכול — לא שקבעתם. כשכולם מסמנים את אותה אופציה היא נקבעת מעצמה, אחרי דקה שבה עוד אפשר לשנות. מי שפתח את התיאום יכול גם לקבוע לבד, גם אם לא כולם יכלו.",
       "mt.empty":"אין תיאום פעיל כרגע. אפשר לפתוח אחד למעלה, או פשוט לבקש מעולמה.",
       "toast.mtNoUnanswer":"אפשר להחליף בין ״אני יכול״ ל״לא מתאים לי״, אבל לא לחזור ללא־תשובה",
       "mt.n0":"אין","mt.n1":"תיאום אחד","mt.nN":"{n} תיאומים",
@@ -3177,6 +3188,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.me":"אתה","mt.waiting":"בהמתנה","mt.gone":"יצא","mt.withList":"עם {list}",
       "mt.part.morning":"בוקר","mt.part.noon":"צהריים","mt.part.evening":"ערב","mt.part.night":"לילה",
       "mt.allFree":"מתאים לכולם","mt.pick":"קביעה",
+      "mt.settlingIn":"כולם יכולים — נקבע בעוד {n} שניות, עוד אפשר לשנות",
+      "mt.settlingNow":"כולם יכולים — נקבע עכשיו",
       "mt.iCan":"אני יכול","mt.iCant":"לא יכול",
       "mt.bestTag":"המתאים ביותר","mt.settledTag":"נקבע",
       "mt.gapNo":"מי שלא יכול: {list}","mt.gapWait":"מי שעוד לא ענה: {list}",
@@ -3226,6 +3239,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.mtCalAdd":"נוסף ליומן שלך","toast.mtCalGone":"הוסר מהיומן שלך",
       "toast.mtStarted":"נשלחה בקשה ל{list} — כשיענו זה יופיע כאן",
       "toast.mtConfirmed":"נקבע — {when}. כולם קיבלו הודעה.",
+      "toast.mtSettleFailed":"לא הצלחתי לקבוע — נסה שוב בעוד רגע",
       "tcat.imported":"מפלטפורמות מחוברות",
       "sheet.fromApp":"הגיעה מ־{name}","sheet.noField":"ל־{name} אין את השדה הזה",
       "cn.title":"מי מאנשי הקשר שלך?","cn.from":"מתוך אנשי הקשר של {name}",
@@ -3398,7 +3412,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "cal.fromMeet":"Settled in a coordination","cal.meetTag":"Meeting",
       "cal.pMeet":"Everyone marks when they can. Allma finds the window that fits.",
       "sheet.close":"Close","mt.open":"Active coordinations","mt.new":"New coordination",
-      "mt.note":"An answer says whether you can \u2014 not that it is settled. Settling is a separate tap, and anybody in the coordination can make it.",
+      "mt.note":"An answer says whether you can \u2014 not that it is settled. When everyone marks the same option it settles itself, after a minute in which anyone can still change their answer. Whoever opened the coordination can also settle it alone, even if not everyone could.",
       "mt.empty":"Nothing being coordinated right now. Start one above, or just ask Allma.",
       "toast.mtNoUnanswer":"You can switch between yes and no, but not back to no answer",
       "mt.n0":"none","mt.n1":"1 coordination","mt.nN":"{n} coordinations",
@@ -3408,6 +3422,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.me":"You","mt.waiting":"not yet","mt.gone":"left","mt.withList":"With {list}",
       "mt.part.morning":"morning","mt.part.noon":"midday","mt.part.evening":"evening","mt.part.night":"night",
       "mt.allFree":"Fits everyone","mt.pick":"Settle",
+      "mt.settlingIn":"Everyone can — settles in {n}s, you can still change it",
+      "mt.settlingNow":"Everyone can — settling now",
       "mt.iCan":"I can","mt.iCant":"I can't",
       "mt.bestTag":"Best fit","mt.settledTag":"Settled",
       "mt.gapNo":"Can't make it: {list}","mt.gapWait":"Haven't answered: {list}",
@@ -3457,6 +3473,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.mtCalAdd":"Added to your calendar","toast.mtCalGone":"Removed from your calendar",
       "toast.mtStarted":"Request sent to {list} — answers show up here",
       "toast.mtConfirmed":"Settled \u2014 {when}. Everyone has been told.",
+      "toast.mtSettleFailed":"That would not settle \u2014 try again in a moment",
       "tcat.imported":"From connected platforms",
       "sheet.fromApp":"Came from {name}","sheet.noField":"{name} has no such field",
       "cn.title":"Who from your contacts?","cn.from":"From your {name} contacts",
@@ -6139,11 +6156,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         '<svg><use href="#i-check"/></svg>' + esc(t("mt.iCan")) + "</button>" +
         '<button class="mobtn no" data-a="n" aria-pressed="' + (mineAns === "n") + '">' +
         '<svg><use href="#i-x"/></svg>' + esc(t("mt.iCant")) + "</button>" +
-        /* Settling is somebody deciding between several candidate times. A
-           real meeting confirms itself the moment the last person says yes —
-           there is no decision left to take and no call that takes it — so on
-           a live account the button is not there. */
-        (LIVE ? "" : '<button class="mobtn settle" data-settle>' + esc(t("mt.pick")) + "</button>") +
+        /* Settling by hand is the owner's own case (2026-09-06): everybody
+           wants Tuesday, one person cannot make it, and it happens anyway.
+           Agreement no longer needs it — a unanimous option settles itself a
+           minute later — so this is the exception, and it belongs to the
+           person who opened the coordination. `canSettle` is the server's
+           answer to that; the seed page has no server and shows it always. */
+        (!LIVE || m.canSettle ? '<button class="mobtn settle" data-settle>' + esc(t("mt.pick")) + "</button>" : "") +
         "</div>";
 
     var confirm = "";
@@ -6159,6 +6178,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         "</button>" +
         '<button class="mobtn" data-cancelsettle>' + esc(t("sheet.cancel")) + "</button></div></div>";
     }
+    /* The grace, on the row it belongs to. It is a countdown rather than a
+       spinner because the number is the offer: this is how long you have to
+       change your mind, and a spinner would say only "wait". */
+    var counting = !settled && m.settleIn !== null && m.settleIn !== undefined
+      && String(m.settlingOpt) === String(o.id);
+    var settling = counting
+      ? '<div class="mosettling"><svg><use href="#i-clock"/></svg><span>' +
+        esc(m.settleIn > 0 ? t("mt.settlingIn", {n:m.settleIn}) : t("mt.settlingNow")) +
+        "</span></div>"
+      : "";
     var clash = settled ? null : mtClash(m, o);
     var warn = clash
       ? '<div class="moclash"><svg><use href="#i-clock"/></svg><span>' +
@@ -6168,7 +6197,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     return '<div class="group mopt' + (isBest ? " best" : "") + (settled ? " settled" : "") +
       '" data-opt="' + o.id + '">' + head + bar +
       '<div class="motally">' + mtTallyFor(m, o) + "</div>" +
-      '<div class="mtppl">' + mtFacesFor(m, o) + "</div>" + warn + act + confirm + "</div>";
+      '<div class="mtppl">' + mtFacesFor(m, o) + "</div>" + settling + warn + act + confirm + "</div>";
   }
 
   function renderMeet(){
@@ -6303,9 +6332,22 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   });
   function mtSettle(o){
     var m = mtOpen;
+    mtSettling = null;
+    if(LIVE){
+      /* Everyone is told by the server, this person included — so the page
+         says only that it went, and the reload brings back the meeting as it
+         really is. Drawing it settled first would be a guess about a call the
+         server is still entitled to refuse. */
+      toast(t("toast.mtConfirmed", {when:mtOptLabel(m, o)}));
+      API.send("settleMeeting", {meetingId:m.id, optionId:o.id}, function(data){
+        if(!data) toast(t("toast.mtSettleFailed"));
+        API.reload();
+      });
+      renderMeet();
+      return;
+    }
     m.settled = o.id;
     m.inCal = true;
-    mtSettling = null;
     API.call("confirmSlot", {meeting_id:m.id, option_id:o.id});
     renderMeet(); renderMeets(); renderStrip(selDay);
     toast(t("toast.mtConfirmed", {when:mtOptLabel(m, o)}));
@@ -6924,6 +6966,40 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     paintGreeting();
   }
   setInterval(tickClocks, 30000);
+
+  /* ── the settle grace, ticking ──
+     `settleIn` arrives once, from the server, and a number that arrives once
+     and then sits there reads as broken — it is a countdown or it is nothing.
+     So the page counts the seconds down itself and asks the server ONE
+     question when it reaches zero: what happened. It never settles anything
+     locally, because it does not know whether somebody changed their mind in
+     the last second — only that the answer is now worth re-reading.
+     The sweep runs on its own minute, so the first re-read can still find the
+     meeting negotiating; `settleAsked` is per meeting-and-moment, which lets
+     the next tick ask again without turning the page into a poller. */
+  var settleAsked = {};
+  function tickSettle(){
+    if(!LIVE) return;
+    var live = MEETS.filter(function(m){
+      return typeof m.settleIn === "number" && !m.settled;
+    });
+    if(!live.length) return;
+    var redraw = false;
+    live.forEach(function(m){
+      if(m.settleIn > 0){ m.settleIn -= 1; redraw = true; return; }
+      var key = m.id + ":" + (m.settlingOpt || "");
+      if(settleAsked[key]) return;
+      settleAsked[key] = true;
+      /* One read, and the reload brings the meeting back as it really is —
+         confirmed, or still negotiating because somebody said no in time. */
+      API.reload();
+    });
+    if(redraw){
+      renderMeets();
+      if(mtOpen && live.some(function(m){ return m.id === mtOpen.id; })) renderMeet();
+    }
+  }
+  setInterval(tickSettle, 1000);
 
   /* ───────── calendar ───────── */
   /* Which seven days the strip is showing, counted in weeks from the one that
@@ -7752,7 +7828,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       /* Whether the settled slot sits on THIS person's own calendar is not
          something we record per participant, so it is not claimed. */
       inCal:false,
-      startsAt:settledOpt ? m.confirmedStartAt : m.proposedStartAt
+      startsAt:settledOpt ? m.confirmedStartAt : m.proposedStartAt,
+      /* Seconds left of the settle grace, and the option it is counting down
+         on. Both come from the server — a phone whose clock is four minutes
+         out must not be the thing deciding when a meeting is settled. */
+      settleIn:(typeof m.settleIn === "number" ? m.settleIn : null),
+      settlingOpt:(m.settlingOptionId || null),
+      /* Whether this person may end it by hand. The server answers this and
+         re-asks it on the way in; the button is a hint, not the rule. */
+      canSettle:!!m.canSettle
     };
   }
   function liveContact(c){

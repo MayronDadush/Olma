@@ -77,12 +77,15 @@ function calendarRoleFor(roles, userId) {
 // hint on that result the one person guaranteed to be present would be the one
 // person never told to put it on their calendar. Observed live on meeting 1 —
 // the accepter held the only connected calendar and was never prompted.
-async function meetingCalendarFanout(client, meetingId, recipients, basePayload, key) {
+async function meetingCalendarFanout(client, meetingId, recipients, basePayload, key, extraFor = null) {
   const roles = await calendar.meetingCalendarRoles(client, meetingId);
   for (const uid of recipients) {
     await enqueue(client, {
       userId: uid, kind: 'meeting_confirmed', urgency: 'urgent',
-      payload: { ...basePayload, calendarRole: calendarRoleFor(roles, uid) },
+      payload: {
+        ...basePayload, calendarRole: calendarRoleFor(roles, uid),
+        ...(extraFor ? extraFor(uid) : {}),
+      },
       idempotencyKey: `${key}:${uid}`,
     });
   }
@@ -122,6 +125,53 @@ function calendarHintFor(role, meetingId) {
   }
 }
 
+// What the person who just completed the agreement is told. They are the one
+// human guaranteed to be present at this instant, and the one most likely to
+// read a silence as a failure — so their agent hears that the silence is the
+// feature, and what it is holding back.
+function settlingHint(slot) {
+  return `That was the last yes${slot ? ` — everyone is agreed on <<<${slot}>>>` : ''}. The meeting is not `
+    + 'settled yet: it settles about a minute from now, and anybody who changes their answer inside that '
+    + 'minute takes it back. Say it is agreed and will be confirmed in a moment; do not touch the calendar '
+    + 'yet and do not call anything else — everyone, this user included, is told when it actually settles.';
+}
+
+// Every active participant, nobody excepted.
+async function activeParticipants(client, meetingId) {
+  const { rows } = await client.query(
+    `SELECT user_id FROM meeting_participants WHERE meeting_id = $1 AND state <> 'opted_out'`,
+    [meetingId]
+  );
+  return rows.map((r) => Number(r.user_id));
+}
+
+// The meeting is over, told once, to everybody. Reached from exactly the two
+// places that can end a negotiation: the sweep at the end of a grace (no
+// actor, everyone gets a row) and the initiator settling by hand (their own
+// turn carries the hint instead of a row).
+//
+// `withoutYes` is the difference the messages care about. A confirmation that
+// says "everybody agreed" to somebody who never answered is a small lie told
+// at the worst moment, so the people who were settled OVER are told that they
+// were, and told they can still say they cannot make it.
+async function afterSettled(client, meetingId, res, { actor = null } = {}) {
+  if (!res.ok) return res;
+  const brief = await meetingBrief(client, meetingId);
+  // Every queued question about this meeting is now a wrong question.
+  await supersedeQueuedMeetingRows(client, meetingId,
+    ['meeting_slot_proposed', 'meeting_option_pending', 'meeting_invite']);
+  const everyone = await activeParticipants(client, meetingId);
+  const recipients = actor ? everyone.filter((id) => id !== Number(actor.id)) : everyone;
+  const withoutYes = new Set((res.data.withoutYes || []).map(Number));
+  const roles = await meetingCalendarFanout(client, meetingId, recipients, {
+    meetingId: Number(meetingId), title: brief.title || 'meeting',
+    slot: res.data.slot || brief.confirmed_slot,
+    ...(actor ? { byName: actorName(actor), forced: true } : {}),
+  }, `mconf:${meetingId}`, (uid) => (withoutYes.has(Number(uid)) ? { settledWithoutYou: true } : {}));
+  if (actor) res.data.hint = calendarHintFor(calendarRoleFor(roles, actor.id), Number(meetingId));
+  return res;
+}
+
 async function meetingBrief(client, meetingId) {
   const { rows } = await client.query(
     `SELECT title, initiator_id, proposed_slot, confirmed_slot FROM meetings WHERE id = $1`, [meetingId]
@@ -138,15 +188,11 @@ async function meetingBrief(client, meetingId) {
 async function afterSlotResponse(client, actor, meetingId, res, { accept } = {}) {
   const brief = await meetingBrief(client, meetingId);
   const others = await activeParticipantsExcept(client, meetingId, actor.id);
-  if (res.data.meetingStatus === 'confirmed') {
-    // The negotiation is over; a queued ask about any slot is moot — the
-    // meeting_confirmed fan-out is what everyone should hear next.
-    await supersedeQueuedMeetingRows(client, meetingId, ['meeting_slot_proposed']);
-    const roles = await meetingCalendarFanout(client, meetingId, others, {
-      meetingId: Number(meetingId), title: brief.title || 'meeting',
-      slot: res.data.slot || brief.confirmed_slot, byName: actorName(actor),
-    }, `mconf:${meetingId}`);
-    res.data.hint = calendarHintFor(calendarRoleFor(roles, actor.id), Number(meetingId));
+  if (res.data.meetingStatus === 'settling') {
+    // Their yes was the last one. NOBODY is told yet — that is the entire
+    // point of the grace: the announcement is what cannot be taken back, so
+    // it waits with everything else until options.settleDue makes it.
+    res.data.hint = settlingHint(res.data.slot);
   } else if (res.data.proposedSlot) {
     // decline carried a counter → everyone else hears the NEW option. The asks
     // about the others are not cancelled: since options, those are still on
@@ -240,12 +286,11 @@ async function afterOptOut(client, actor, meetingId, res) {
     res.data.meetingStatus === 'no_match' ? 'meeting_no_match' : 'meeting_opt_out', {
       meetingId: Number(meetingId), title: brief.title || 'meeting', byName: actorName(actor),
     }, { key: `mexit:${meetingId}:${actor.id}` });
-  if (res.data.meetingStatus === 'confirmed') {
-    // the exit completed the gate for everyone left
-    await meetingCalendarFanout(client, meetingId,
-      await activeParticipantsExcept(client, meetingId, actor.id), {
-        meetingId: Number(meetingId), title: brief.title || 'meeting', slot: brief.proposed_slot,
-      }, `mconf:${meetingId}`);
+  if (res.data.meetingStatus === 'settling') {
+    // Their exit left the rest agreed. Same silence as any other arming: the
+    // people left are about to be told once, a minute from now.
+    res.data.hint = 'Their leaving left everyone else agreed on one time, so the meeting settles on its own '
+      + 'shortly and all of them are told then. Nothing more for this user to do.';
   }
   return res;
 }
@@ -287,13 +332,8 @@ async function afterOptionDecision(client, actor, meetingId, res, { approved } =
       meetingId: Number(meetingId), title: brief.title || 'meeting', slot: res.data.slot,
       optionId: res.data.optionId, byName: actorName(actor), approvedFromPending: true,
     }, { key: `mopt:${meetingId}:${res.data.optionId}` });
-    if (res.data.meetingStatus === 'confirmed') {
-      await supersedeQueuedMeetingRows(client, meetingId, ['meeting_slot_proposed']);
-      const roles = await meetingCalendarFanout(client, meetingId, others, {
-        meetingId: Number(meetingId), title: brief.title || 'meeting',
-        slot: res.data.confirmedSlot, byName: actorName(actor),
-      }, `mconf:${meetingId}`);
-      res.data.hint = calendarHintFor(calendarRoleFor(roles, actor.id), Number(meetingId));
+    if (res.data.meetingStatus === 'settling') {
+      res.data.hint = settlingHint(res.data.settlingSlot);
     }
     return res;
   }
@@ -313,6 +353,7 @@ async function afterStart(client, actor, res, participantIds, title) {
 }
 
 module.exports = {
+  afterSettled,
   afterStart, afterOptionAdded, afterOptionDecision,
   afterSlotResponse, afterOptOut, afterRejoin,
   actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept,

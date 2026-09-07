@@ -183,6 +183,10 @@ const deployDrift = require('./deploy-drift');
       digests: await sweeps.sweepDigests(c),
       unblocks: await sweeps.sweepUnblocks(c),
       staleMeetings: await sweeps.sweepStaleMeetings(c),
+      // The settle grace is a minute, so this tick IS the resolution of the
+      // feature: anything slower and "about a minute" becomes "a few". It is
+      // one indexed query against a partial index that is empty almost always.
+      settlingMeetings: await sweeps.sweepSettlingMeetings(c),
       mediaJobs: await sweeps.sweepMediaJobs(c),
       // 60s cadence is what makes a 60-second nudge possible at all — the
       // checkin ladder's own tick (below) is 5 minutes, chosen for its
