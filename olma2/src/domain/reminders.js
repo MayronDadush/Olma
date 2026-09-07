@@ -347,7 +347,7 @@ async function dueForSending(client, now, opts = {}) {
   const gapHours = Number.isFinite(Number(opts.gapHours)) && Number(opts.gapHours) > 0
     ? Number(opts.gapHours) : ESCALATION_GAP_HOURS;
   const { rows } = await client.query(
-    `SELECT r.id AS reminder_id, r.task_id, r.remind_at, r.repeat_rule, r.attempts,
+    `SELECT r.id AS reminder_id, r.task_id, r.remind_at, r.repeat_rule, r.attempts, r.auto,
             t.owner_id, t.title, t.due_at, u.timezone,
             -- true when the previous rung was OURS to lose: the pipe failed on
             -- every try and the row expired with nothing delivered.

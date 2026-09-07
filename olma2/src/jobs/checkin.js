@@ -12,6 +12,7 @@
 // miss-backoff (1 → three days, 2 → weekly, 3 → stop). Daytime is NOT checked here — the
 // outbox gate holds the row until the user's own window opens.
 const meetings = require('../domain/meetings');
+const pause = require('../domain/pause');
 const { enqueue } = require('../outbox/enqueue');
 const { lookupTimezone } = require('../domain/phone-timezone');
 
@@ -272,6 +273,23 @@ async function pickRung(client, userId, misses = 0) {
     };
   }
 
+  // Nobody is asked a question they have already not answered once. A person
+  // who let the last check-in pass gets no discovery pitch, no "anything
+  // new?", and none of Olma's OPINIONS either — "you have six overdue tasks,
+  // want to trim?" (overload) and "that goal has not moved" (stalled_goal)
+  // are things Olma decided to raise, and Vered's one evening message on
+  // 2026-09-07 was exactly the first of those, to a person who had answered
+  // nothing all day. The two rungs above still apply, because a meeting
+  // waiting on them or a deadline tomorrow is theirs, not ours. This is the
+  // other half of the cadence: fewer messages, and the ones that go carry
+  // no ask.
+  if (misses >= 1) {
+    return {
+      rung: 'silence',
+      instruction: 'They did not answer the last check-in. ONE short line, no question mark anywhere: say you are here when they want you, and that you will stay quiet until they write. Nothing about tasks, nothing to add, no offer. If a real message from them is in the conversation more recently than your last check-in, answer that instead.',
+    };
+  }
+
   const overdue = await client.query(
     `SELECT count(*)::int AS n FROM tasks
      WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL AND due_at < now()`,
@@ -327,17 +345,6 @@ async function pickRung(client, userId, misses = 0) {
   // same gap forever, which is the exact re-pitching this exists to prevent.
   // Once every current gap has already been offered, this rung has nothing
   // left to say and falls through to plain silence below.
-  // Nobody is asked a question they have already not answered once. A person
-  // who let the last check-in pass gets no discovery pitch and no "anything
-  // new?" — the rungs above still apply, because a meeting waiting on them or
-  // a deadline tomorrow is theirs, not ours. This is the other half of the
-  // cadence: fewer messages, and the ones that go carry no ask.
-  if (misses >= 1) {
-    return {
-      rung: 'silence',
-      instruction: 'They did not answer the last check-in. ONE short line, no question mark anywhere: say you are here when they want you, and that you will stay quiet until they write. Nothing about tasks, nothing to add, no offer. If a real message from them is in the conversation more recently than your last check-in, answer that instead.',
-    };
-  }
   const gaps = await discoveryGaps(client, userId);
   if (gaps.length) {
     const { rows: prev } = await client.query(
@@ -532,12 +539,25 @@ async function run(client, now = Date.now()) {
       // not require an answer ("show them something"), and several never even
       // reach the person (quiet-hours expiry). Only the regular cadence — a
       // message that asked and got nothing — is evidence of being ignored.
-      await client.query(
+      const { rows: [after] } = await client.query(
         step
-          ? `UPDATE users SET last_checkin_at = now() WHERE id = $1`
-          : `UPDATE users SET last_checkin_at = now(), checkin_misses = checkin_misses + 1 WHERE id = $1`,
+          ? `UPDATE users SET last_checkin_at = now() WHERE id = $1 RETURNING checkin_misses`
+          : `UPDATE users SET last_checkin_at = now(), checkin_misses = checkin_misses + 1 WHERE id = $1 RETURNING checkin_misses`,
         [u.id]
       );
+      // The end of the ladder is a pause, not a silence. Counted on the
+      // ENQUEUE like the miss itself: this check-in is the third thing asked
+      // with no answer to the two before it, and whether it lands or the gate
+      // drops it, nothing else is going to. `quietPause` cancels nothing —
+      // the reminders and the tasks stay on their record — and openRecord
+      // ends it on the first message they send. (The check-in just enqueued
+      // still goes: the worker's gate reads paused_at at DELIVERY, so it is
+      // dropped as `paused` — the owner's rule is that a person who has
+      // stopped answering hears nothing more, and "this is the last one"
+      // would be one more.)
+      if (!step && Number(after.checkin_misses) >= GIVE_UP_MISSES) {
+        await pause.quietPause(client, u.id);
+      }
       // Stamped on the ENQUEUE, not on the answer: the promise is "asked
       // once", and a question the gate later drops still used up the one turn
       // this person's patience had for it. Any topic that begins 'timezone',

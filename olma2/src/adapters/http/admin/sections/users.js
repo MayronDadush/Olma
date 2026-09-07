@@ -11,7 +11,7 @@ const PLAN_LABEL = { free: 'חינם', paid: 'מנוי' };
 async function renderUsers(client, csrf) {
   const { rows } = await client.query(
     `SELECT u.id, u.phone, u.first_name, u.last_name, u.status, u.agent_id,
-            u.quota_blocked_until, u.quota_override_daily, u.onboarded_at, u.paused_at, e.plan,
+            u.quota_blocked_until, u.quota_override_daily, u.onboarded_at, u.paused_at, u.paused_reason, e.plan,
             (SELECT count(*) FROM tasks t WHERE t.owner_id = u.id AND t.status = 'open' AND t.archived_at IS NULL) AS open_tasks
      FROM users u LEFT JOIN entitlements e ON e.user_id = u.id
      ORDER BY u.id LIMIT 200`);
@@ -25,7 +25,8 @@ async function renderUsers(client, csrf) {
     ${rows.map((u) => `<tr>
       <td><a href="/user?id=${u.id}">${esc([u.first_name, u.last_name].filter(Boolean).join(' ') || u.phone)}</a></td>
       <td class="mono dim">${esc(u.phone)}</td>
-      <td>${u.paused_at ? '<span class="pill warn">ביקש להפסיק</span>'
+      <td>${u.paused_at ? (u.paused_reason === 'quiet_ladder'
+          ? '<span class="pill warn">מושהה — לא עונה</span>' : '<span class="pill warn">ביקש להפסיק</span>')
         : blocked(u) ? '<span class="pill warn">הגיע למכסה</span>'
         : u.status === 'active' ? '<span class="pill ok">פעיל</span>'
         : `<span class="pill">${STATUS_LABEL[u.status] || esc(u.status)}</span>`}</td>
