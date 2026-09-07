@@ -58,6 +58,9 @@ test('an override replaces the sentence and keeps the placeholders working', () 
     'דני (+972501) רוצה אותך כאן');
   assert.equal(messages.reopenMessage('+1555', overrides), 'Room now. Reply here.');
   assert.equal(messages.reopenMessage('+972501', overrides), templates.spec('reopen_he').text);
+  // the English rung is its own box: rewording the Hebrew one leaves it alone
+  assert.equal(text.renderReminderText({ title: 'pills' }, overrides, 'en'), '⏰ Reminder: pills');
+  assert.equal(text.renderReminderText({ title: 'pills' }, { reminder_en: '🔔 {{title}}' }, 'en'), '🔔 pills');
 });
 
 // The guard that matters most: a stored override that lost its required
