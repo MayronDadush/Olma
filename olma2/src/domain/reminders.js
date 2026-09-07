@@ -442,9 +442,17 @@ async function retireForMovedTask(client, ownerId, task, { timezone, now = new D
         AND repeat_rule IS NULL AND attempts >= 1
       RETURNING id`, [task.id, now]);
   const retiredIds = retired.map((r) => Number(r.id));
+  // Every queued rung of every one-off reminder on the task, not only of the
+  // ones retired just now. A ladder that has already climbed to its last rung
+  // is retired on the reminder row (`sent_at` set, attempts exhausted) while
+  // its final message still sits in the outbox, held for the night — Vered's
+  // r164 (2026-09-07): the rung nobody could retire because the reminder was
+  // already over, due at 08:00 about a task she had moved to 09:00.
+  const { rows: all } = await client.query(
+    `SELECT id FROM task_reminders WHERE task_id = $1 AND repeat_rule IS NULL`, [task.id]);
   let withdrawn = [];
-  if (retiredIds.length) {
-    const keys = retiredIds.flatMap((id) => [`reminder:${id}`, `reminder:${id}:%`]);
+  if (all.length) {
+    const keys = all.flatMap((r) => [`reminder:${r.id}`, `reminder:${r.id}:%`]);
     ({ rows: withdrawn } = await client.query(
       `UPDATE outbox SET sent_at = now(), hold_reason = 'moved'
         WHERE user_id = $1 AND kind = 'reminder' AND sent_at IS NULL
@@ -457,7 +465,7 @@ async function retireForMovedTask(client, ownerId, task, { timezone, now = new D
         AND repeat_rule IS NULL AND attempts = 0 AND auto
       RETURNING id`, [task.id, now]);
   const rearmed = task.due_at ? await attachAutoReminder(client, ownerId, task, timezone, now) : null;
-  if (retiredIds.length || stale.length || rearmed) {
+  if (retiredIds.length || withdrawn.length || stale.length || rearmed) {
     await audit.record(client, ownerId, 'reminder.moved_with_task', {
       taskId: Number(task.id),
       retired: retiredIds,
