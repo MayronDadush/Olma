@@ -675,8 +675,14 @@ test('the first message states the timezone guess in plain words and checks the 
   });
   assert.match(shahar, /\+972/, 'it shows the evidence: the dialling code');
   assert.match(shahar, /ישראל/, 'and names the country');
-  assert.doesNotMatch(shahar, /Asia\/Jerusalem"?\s*\)/, 'never the zone as a thing to say');
-  assert.match(shahar, /travel line/, 'and hands them the way to correct it later');
+  assert.doesNotMatch(shahar, /Asia\/Jerusalem/, 'never the zone, not even as a thing not to say');
+  // A Hebrew speaker in a one-clock country is handed the SENTENCE, quoted, so
+  // there is nothing to translate: described in English, the model told בר
+  // "וקבעתי את השעות accordingly" (2026-09-07).
+  assert.match(shahar, /word for word/, 'the sentence is quoted, not described');
+  assert.match(shahar, /"המספר שלך מתחיל ב־\+972, אז אני מניחה שאתה בישראל וכיוונתי את השעות לפי זה\. ואם תיסע או תעבור לעיר אחרת, פשוט תגיד לי\."/,
+    'the exact sentence, evidence and travel line included');
+  assert.doesNotMatch(shahar, /set their hours|guessing they are in/, 'no English description left beside the quote to translate from');
   assert.match(shahar, /STATEMENT, not a question/, 'the zone is told, not asked');
   assert.match(shahar, /שחר מזושיאן/, 'the name we hold is quoted so it can be checked');
   assert.match(shahar, /ONLY question mark/, 'exactly one ask in the whole message');
@@ -690,6 +696,16 @@ test('the first message states the timezone guess in plain words and checks the 
   });
   assert.match(sarah, /New York/, 'an ambiguous country must name the city it picked');
   assert.match(sarah, /spans several timezones/);
+  assert.match(sarah, /travel line/, 'the described form still hands them the way to correct it');
+  // An English speaker in a one-clock country stays on the described form:
+  // the country labels on file are Hebrew, so there is no English sentence to
+  // quote yet, and an English description read by an English speaker leaks
+  // nothing.
+  const english = first(null, {
+    phone: '+972525497772', first_name: 'Dan', name_confirmed: false, timezone_confirmed: false, locale: 'en',
+  });
+  assert.match(english, /guessing they are in/);
+  assert.doesNotMatch(english, /word for word/);
 
   // Someone who already told us where they are is not informed of our
   // assumption about them, and a confirmed name is not re-checked.
