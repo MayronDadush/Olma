@@ -69,6 +69,15 @@ const DEFAULTS = {
   // appointment at 09:00 is not swept while somebody is still in the waiting
   // room, short enough that it is gone before they next look.
   task_auto_archive_grace_hours: 3,
+  // domain/google-connect-gate.js: who may mint a NEW Google consent link
+  // (calendar, contacts, or the combined one). '' = nobody but an admin,
+  // 'all' = everybody, or a comma-separated E.164 list. Default CLOSED, for
+  // the reason email_access_phones is closed: the console half of the feature
+  // — scopes and the verification tier — is still open, and a link that lands
+  // on Google's "app is not secure" screen is a worse first impression than a
+  // feature nobody was offered yet. Blocks new links only; anyone already
+  // connected keeps working.
+  google_connect_phones: '',
 };
 
 async function getFlag(client, key) {

@@ -754,6 +754,21 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   request was `calendar: read_only, mail: false` — his block came from the
   app's configuration, never from his URL. `tests/public-pages.test.js` fails
   on any restricted scope named on any public page.
+- **Every NEW Google consent link goes through one door, and it is CLOSED**
+  (`domain/google-connect-gate.js`, flag `google_connect_phones`: '' = nobody
+  but an admin, 'all' = everybody, or an E.164 list). While the app is
+  unverified its link lands on Google's "not verified" screen, and the owner's
+  rule is that nobody meets that screen (2026-09-08). One flag for calendar
+  AND contacts because `start_google_connection` mints ONE link covering both
+  — gating only the calendar would send the same person to the same screen
+  through the contacts half. It gates MINTING: an existing connection keeps
+  syncing, nothing is disconnected, and mail keeps its own separate gate for
+  the narrower restricted-scope reason above. **A closed door also silences
+  the OFFER** — the day-one 8h step and both `calendar:*` check-in rungs
+  decline while it is shut, because an offer the tool then refuses is the
+  worst kind: they say yes first. The proactive rungs were never the main
+  path anyway — u-30 started a calendar auth two minutes after joining, from
+  the conversation, and has no connection to show for it.
 - **A display name is not a word to be translated.** It arrives in whatever
   script its owner chose; `Idan T` became "היי אידן!" in the first sentence
   that person ever read, while the right spelling sat in a database the

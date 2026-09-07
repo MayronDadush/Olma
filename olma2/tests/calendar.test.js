@@ -93,6 +93,7 @@ function integrationRow(userId) {
 before(async () => {
   db = await freshDb();
   user = await makeUser(db.pool, '+972631000001', { firstName: 'Dana' });
+  await withTx(db.pool, (c) => require('../src/domain/flags').setFlag(c, 'google_connect_phones', 'all'));
   server = createDashboard({ pool: db.pool, adminUser: 'admin', adminPass: 'test-password-123' });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;

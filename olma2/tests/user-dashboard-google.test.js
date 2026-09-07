@@ -38,6 +38,7 @@ let db, me;
 before(async () => {
   db = await freshDb();
   me = await makeUser(db.pool, '+972531920051', { firstName: 'מירון' });
+  await withTx(db.pool, (c) => require('../src/domain/flags').setFlag(c, 'google_connect_phones', 'all'));
 });
 after(async () => { if (db) await db.teardown(); });
 
