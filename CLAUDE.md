@@ -545,6 +545,16 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   a second notification for the same fact (Miron, 2026-09-05: "deleted ✅"
   under a 👍). The mark table is `reactions.TOOL_MARKS`; the undo-shaped
   tools (archive, cancel reminder, edit, forget) earn the same 👍 as a capture.
+- **A message that is only thanks is answered by a 🙏 and by nothing else.**
+  Sixth reaction state; the hint (`turnHints.thanksOnly`) asks for `NO_REPLY`
+  on the same argument as `markPlaced`. **The classification runs in the
+  turn-open hook and only the boolean reaches brokerd** — the text still never
+  leaves the gateway. Strict on purpose: a miss costs one "בשמחה", a false
+  positive means Olma ignores a real request, so an explicit thanks is
+  required, a question mark disqualifies, and every other word must be on a
+  short filler list. **Needs a gateway restart to take effect** — the hook is
+  read at startup, and until then the code is live and inert
+  (`incidents.md`, "בשמחה יהב, שיהיה ערב טוב").
 - **`markPlaced` is CONDITIONAL, so nothing else on the same result may be an
   unconditional instruction to write.** It lost to one for two days: the tool
   result said "say when you will remind them" beside it, and Miron got

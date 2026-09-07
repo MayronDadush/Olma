@@ -139,7 +139,11 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
       const user = rows[0];
       if (!user) { out = { ok: false, error: 'no active user for agent' }; return; }
       const rec = await turnDomain.openFromGateway(client, user, { messageId, kind });
-      const state = kind === 'voice' ? 'listening' : 'working';
+      // The hook classified the text and sent us the verdict, never the words
+      // (gateway-hooks/olma-turn-open). A message that is only thanks gets 🙏
+      // instead of 👀: 👀 promises a reply and this one is not getting one.
+      const thanksOnly = params.thanks === true;
+      const state = thanksOnly ? 'thanks' : (kind === 'voice' ? 'listening' : 'working');
       const entry = {
         messageId, kind, lastInboundAt: clock(), openedAt: clock(),
         // The WhatsApp display name, kept for `turn_context` below: on the
@@ -153,6 +157,7 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
         // relays `reply_to_id` itself, as before.
         replyToId: reactions.cleanMessageId(params.replyToId) || null,
         counted: rec.counted, quota: rec.quota, firstTurn: Boolean(rec.firstTurn),
+        thanksOnly,
         marked: new Set(), contextSent: false,
       };
       if (!rec.skipped && messageId) {
@@ -237,6 +242,7 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
         // (model fallback) is the same message, and must not stamp twice.
         firstTurn: Boolean(pre && pre.firstTurn && !pre.contextSent),
         ourTurn, replyTarget, languageNudge: null,
+        thanksOnly: Boolean(pre && pre.thanksOnly),
       });
       if (pre) pre.contextSent = true;
       out = { ok: true, enabled: true, context: turnDomain.renderContext(data), directive: data.directive };
@@ -308,6 +314,7 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
           turn.counted = pre.counted; turn.quota = pre.quota; turn.firstTurn = pre.firstTurn;
           turn.messageId = pre.messageId; turn.lastInboundAt = pre.lastInboundAt;
           turn.messageKind = pre.kind; turn.marked = pre.marked; turn.reactionVocab = pre.reactionVocab;
+          turn.thanksOnly = pre.thanksOnly;
           turn.openedByGateway = true;
         } else if (!turn.opened) {
           // No gateway open on file and this connection has not served a turn

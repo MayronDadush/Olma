@@ -65,6 +65,43 @@ function replyToIdOf(context) {
   return m ? m[1].slice(0, 80) : null;
 }
 
+// ── A message that is only thanks ────────────────────────────────────────────
+// "תודה" earns a reply, a sign-off and a good evening, and every one of those
+// is a notification for an exchange that was already over. A 🙏 says the same
+// thing for the price of nothing (brokerd places it; see domain/reactions.js),
+// and the hint that rides the opening tells the model the mark is the answer.
+//
+// The classification happens HERE, inside the gateway, and only the BOOLEAN
+// travels — the text stays on this side like everything else in this file.
+//
+// Deliberately strict, and the asymmetry is the whole design: a miss costs one
+// "בשמחה", which is today's behaviour, while a false positive means Olma
+// silently ignores something somebody actually asked. So the message must
+// CONTAIN an explicit thanks and every other word must be on a short filler
+// list; anything else — a question mark, a verb, a noun nobody listed — is not
+// this. Long-form gratitude ("תודה על כל העזרה אתמול") takes the ordinary path
+// on purpose.
+const THANKS_WORD_RE = /^(תודה|תודות|thanks|thankyou|thank|thx|tnx|ty|merci)$/u;
+const FILLER_WORD_RE = /^(רבה|ענק|ענקית|גדולה|לך|לכם|מראש|מעולה|סבבה|אחלה|מושלם|יאללה|אוקיי|אוקי|ok|okay|you|u|so|much|very|lots|lot|a|great|perfect|cool|nice)$/u;
+const REPLY_BLOCK_RE = /\[Replying to[^\]]*\][\s\S]*?\[\/Replying\]/g;
+const MAX_THANKS_WORDS = 5;
+
+function thanksOnly(text) {
+  const raw = String(text || '').replace(REPLY_BLOCK_RE, ' ');
+  // A question is never a closed exchange, whatever else is in the sentence.
+  if (/[?？]/.test(raw)) return false;
+  // Everything that is not a letter or a space goes: punctuation, digits,
+  // emoji and the direction marks WhatsApp sprinkles through Hebrew.
+  const words = raw.replace(/[^\p{L}\s]/gu, ' ').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > MAX_THANKS_WORDS) return false;
+  let sawThanks = false;
+  for (const w of words) {
+    if (THANKS_WORD_RE.test(w)) { sawThanks = true; continue; }
+    if (!FILLER_WORD_RE.test(w)) return false;
+  }
+  return sawThanks;
+}
+
 // Which inbound events open a turn. Measured on OpenClaw 2026.8.1 (2026-09-06,
 // olma-hook-probe): a WhatsApp DM fires `message:preprocessed` ~300ms after
 // the inbound log line and `agent:bootstrap` a second later — and NEVER
@@ -99,6 +136,9 @@ function handle(event, { connect = net.connect, sock = SOCK } = {}) {
     kind: isVoice(ctx) ? 'voice' : 'text',
     senderName: senderName ? String(senderName).slice(0, 80) : null,
     replyToId: replyToIdOf(ctx),
+    // The transcript when there is one — a voice note that says only "תודה"
+    // is the same exchange — and the envelope body otherwise.
+    thanks: thanksOnly(ctx.transcript || ctx.body),
     at: new Date(event.timestamp || Date.now()).toISOString(),
   };
   return new Promise((resolve) => {
@@ -113,7 +153,7 @@ function handle(event, { connect = net.connect, sock = SOCK } = {}) {
     });
     // Resolve BEFORE ending the socket: a synchronous 'close' would otherwise
     // settle the promise as a failure that already succeeded.
-    socket.on('data', (d) => { clearTimeout(t); trace({ agentId, outcome: 'sent', replyTo: Boolean(params.replyToId), reply: String(d).slice(0, 80) }); finish(true); try { socket.end(); } catch { /* gone */ } });
+    socket.on('data', (d) => { clearTimeout(t); trace({ agentId, outcome: 'sent', replyTo: Boolean(params.replyToId), thanks: params.thanks, reply: String(d).slice(0, 80) }); finish(true); try { socket.end(); } catch { /* gone */ } });
     socket.on('close', () => { clearTimeout(t); finish(done ? undefined : false); });
   });
 }
@@ -124,4 +164,5 @@ module.exports.handle = handle;
 module.exports.agentIdOf = agentIdOf;
 module.exports.isVoice = isVoice;
 module.exports.replyToIdOf = replyToIdOf;
+module.exports.thanksOnly = thanksOnly;
 module.exports._resetSeen = () => seen.clear();

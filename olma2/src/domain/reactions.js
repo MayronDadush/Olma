@@ -41,6 +41,14 @@ const REACTION_STATES = Object.freeze({
   // for "diarised" in general and left a person unable to tell a row that will
   // reach out from one that will simply sit there.
   scheduled: '⏰',
+  // They said thank you and nothing else. A sixth STATE rather than a second
+  // emoji for `working` (which the comment above refuses), because it carries
+  // what 👀 cannot: 👀 says "I am on it" and promises a reply, 🙏 says the
+  // exchange is closed and promises nothing. It is the whole answer — the turn
+  // that receives it is told to say nothing at all (domain/turn.turnHints),
+  // which is the point: "בשמחה יהב, שיהיה ערב טוב" is a notification for a
+  // conversation that had already ended.
+  thanks: '🙏',
   // The turn ended needing something only they can supply. Without this, a
   // blocked turn is indistinguishable from a slow one.
   needs_input: '❓',

@@ -128,6 +128,7 @@ never trust a dated narrative for something you are about to act on.
 - [A 👍 is the answer; the sentence after it is a second notification (2026-09-05)](#a--is-the-answer-the-sentence-after-it-is-a-second-notification-2026-09-05)
 - [The hint that outvoted the mark (2026-09-06)](#the-hint-that-outvoted-the-mark-2026-09-06)
 - [The mark that never moved (2026-09-07)](#the-mark-that-never-moved-2026-09-07)
+- ["בשמחה יהב, שיהיה ערב טוב" (2026-09-07)](#בשמחה-יהב-שיהיה-ערב-טוב-2026-09-07)
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
 - [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
@@ -4037,6 +4038,48 @@ gateway-opened turns on ONE reused `turn` object, each marking its own message.
 Passing a fresh `newTurn()` per turn — which every earlier test in that file
 did — is exactly what hid this, because it modelled a connection that does not
 exist.
+
+### "בשמחה יהב, שיהיה ערב טוב" (2026-09-07)
+
+Yahav wrote "תודה". He got a reply, his name, and a good evening — three
+things, none of which he had asked for, on an exchange that was already
+finished. A notification, a line in his chat, and a model turn, for a message
+whose entire content was that no more was needed.
+
+The obvious fix is a line of doctrine telling the model not to do that. It was
+the wrong fix twice over: the doctrine is full (39,229 of 39,250 chars), so
+the paragraph would have to be paid for by deleting another; and it would be
+read on every turn by every user to change the behaviour of a handful. The
+budget rule this project already has says guidance rides the RESULT.
+
+So the whole thing is code, and it reuses two mechanisms that were already
+there. `reactions.REACTION_STATES` gains a sixth state — 🙏, which earns a row
+rather than being a second emoji for `working` because it carries what 👀
+cannot: 👀 says "I am on it" and promises a reply, 🙏 says the exchange is
+closed and promises nothing. And `turnHints` gains the one hint that asks for
+silence, argued exactly like `markPlaced`: the mark is already on their
+message and it answers them, so words after it are a second notification.
+
+**The classification happens inside the gateway, and only the boolean
+travels.** The turn-open hook already parses the message body (for the
+WhatsApp reply marker) and already sends brokerd everything except the text —
+"brokerd has no use for it", as its own comment says. It still has none: the
+hook decides, and `turn_open` carries `thanks: true`.
+
+The detector is strict, and the asymmetry is the design. A miss costs one
+"בשמחה", which is the behaviour we already have. A false positive means Olma
+silently ignores something a person actually asked for. So the message must
+CONTAIN an explicit thanks and every other word must be on a short filler
+list; a question mark disqualifies it outright, and long-form gratitude
+("תודה על התזכורת") takes the ordinary path on purpose. The hint is
+conditional in the same way `markPlaced` is, so even a false positive is
+recoverable: the model still has the message in front of it and can overrule.
+
+**The hook is loaded at gateway STARTUP**, so this one needs
+`systemctl --user restart openclaw-gateway` after the deploy — `deploy.sh`
+syncs the file and cannot make the gateway re-read it. Until that restart the
+code is live and inert: no `thanks` param arrives, every message opens with
+👀, and nothing behaves differently.
 
 ### The rung nobody asked for, at half past one (2026-09-07)
 
