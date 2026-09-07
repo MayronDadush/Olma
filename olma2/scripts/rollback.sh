@@ -39,7 +39,7 @@ SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
 # one long-lived connection too, and it was left on a bare `ssh` when deploy.sh
 # was fixed. A rollback whose transport dies halfway is strictly worse than a
 # deploy doing it: it is the thing you reach for when production is already
-# wrong, and an orphaned remote process competing for the droplet's one core is
+# wrong, and an orphaned remote process competing for the droplet's CPU is
 # the last thing that moment needs.
 SSH="ssh -i $SSH_KEY -o ServerAliveInterval=15 -o ServerAliveCountMax=6"
 

@@ -55,6 +55,31 @@ const TEMPLATES = [
     vars: { title: 'מה שביקשו להזכיר' }, required: ['title'],
     text: '⏰ תזכורת חוזרת: {{title}}\nזו התזכורת האחרונה על זה — לא אזכיר שוב מיוזמתי. אם עדיין רלוונטי, אפשר להגיד לי מתי להזכיר.',
   },
+  // ---- the same three rungs, when several arrive at once -------------------
+  // Nine reminders that come due in the same minute were nine messages, one
+  // per row, because the outbox drains a row at a time. Vered got exactly that
+  // on her first morning. A list is not a different message — it is the same
+  // rung, said once, and it therefore needs one template per rung: a batch may
+  // only make the promise every line in it makes, and 'זו התזכורת האחרונה'
+  // is a promise.
+  {
+    key: 'reminder_list', audience: 'private', label: 'כמה תזכורות יחד',
+    help: 'כשכמה תזכורות מגיעות באותו רגע — הודעה אחת במקום אחת לכל תזכורת. אותו שלב ראשון, רק ברשימה.',
+    vars: { items: 'התזכורות, שורה לכל אחת' }, required: ['items'],
+    text: '⏰ תזכורות:\n{{items}}',
+  },
+  {
+    key: 'reminder_list_followup', audience: 'private', label: 'כמה תזכורות חוזרות יחד',
+    help: 'אותו דבר לשלב השני והשלישי. חייבת להגיד איך מפסיקים, בדיוק כמו תזכורת חוזרת בודדת.',
+    vars: { items: 'התזכורות, שורה לכל אחת' }, required: ['items'],
+    text: '⏰ תזכורות חוזרות:\n{{items}}\nמשהו מהן בוצע? אפשר לכתוב לי, או להגיד לי להפסיק להזכיר.',
+  },
+  {
+    key: 'reminder_list_last', audience: 'private', label: 'כמה תזכורות אחרונות יחד',
+    help: 'השלב האחרון בסולם, לכמה תזכורות יחד. אחריה עולמה לא מזכירה שוב על אף אחת מהן מיוזמתה.',
+    vars: { items: 'התזכורות, שורה לכל אחת' }, required: ['items'],
+    text: '⏰ תזכורות חוזרות:\n{{items}}\nאלו התזכורות האחרונות עליהן — לא אזכיר שוב מיוזמתי. אם משהו עדיין רלוונטי, אפשר להגיד לי מתי להזכיר.',
+  },
   {
     key: 'stranger_intro_he', audience: 'private', label: 'פנייה ראשונה לאדם חדש (עברית)',
     help: 'כשמשתמש ביקש להתחבר למספר שעוד לא אצלנו. ההודעה הראשונה שהאדם הזה מקבל מעולמה, ולכן בלי ניחוש מגדר.',
