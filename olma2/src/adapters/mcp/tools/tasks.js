@@ -38,6 +38,20 @@ function taskHints(res, user = {}) {
       + 'it has to happen earlier: move it with edit_task to when they would actually do it, and '
       + 'say which day you put it on. If the task IS the thing, leave it and say nothing.';
   }
+  // Two asks that arrived in one sentence. Reports rather than splits, for the
+  // same reason objectDated does: only the model knows whether "ואז" joined two
+  // errands or narrated the steps of one. See domain/tasks.joinsTwoAsks for why
+  // the pattern is as narrow as it is.
+  const twoAsks = [d.task, ...(Array.isArray(d.tasks) ? d.tasks : [])]
+    .filter(Boolean)
+    .filter((t) => tasks.joinsTwoAsks(t.title))
+    .map((t) => `"${t.title}"`);
+  if (twoAsks.length) {
+    hints.twoAsks = `${twoAsks.join(', ')} — this reads as TWO things joined by ו, saved as one. `
+      + 'If they are two separate asks, split it: edit_task the first one down to its own half and '
+      + 'add_task the second, then say what you did in one line. If it is one job described in '
+      + 'steps, leave it and say nothing.';
+  }
   if (Array.isArray(d.reminders) && d.reminders.length) {
     // The times are stated back, in their zone, because the model cannot say a
     // moment nobody armed if the armed moment is the only one on the result.
