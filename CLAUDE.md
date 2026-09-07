@@ -665,6 +665,17 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   second copy of it** — the greeter was told to "say who you are and name one
   or two things you help with", so it wrote its own version and עידן read two
   introductions ninety seconds apart (`incidents.md`, "Two introductions").
+- **`gmail.readonly` is a RESTRICTED scope and everything else Olma asks for
+  is merely SENSITIVE — the two words are different verification tracks, and
+  one restricted scope prices the whole app onto the paid one** (an annual
+  third-party CASA assessment, on top of the free demo-video/privacy-policy
+  track calendar and contacts need). Mail is closed for that reason
+  (2026-09-07): `tools/email.js` is deleted, `start_google_connection` has no
+  `mail` parameter, and `tests/mail.test.js` fails if either returns.
+  `domain/mail.js` and its 32 tests are untouched — reopening is one small
+  file plus a re-verification. **Never add a scope without checking which list
+  it is on**; an unverified app asking for a restricted one is blocked
+  outright rather than warned, which is what עידן's "This app is blocked" was.
 - **A display name is not a word to be translated.** It arrives in whatever
   script its owner chose; `Idan T` became "היי אידן!" in the first sentence
   that person ever read, while the right spelling sat in a database the

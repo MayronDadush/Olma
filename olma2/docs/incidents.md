@@ -109,6 +109,7 @@ never trust a dated narrative for something you are about to act on.
 - [The name was in front of us on every turn (fixed 2026-08-22)](#the-name-was-in-front-of-us-on-every-turn-fixed-2026-08-22)
 - ["קוראים לי עידן", and ninety seconds later: "עידן, נכון?" (fixed 2026-09-07)](#קוראים-לי-עידן-and-ninety-seconds-later-עידן-נכון-fixed-2026-09-07)
 - [Two introductions, ninety seconds apart (fixed 2026-09-07)](#two-introductions-ninety-seconds-apart-fixed-2026-09-07)
+- ["This app is blocked", and the scope that was pricing the whole app (2026-09-07)](#this-app-is-blocked-and-the-scope-that-was-pricing-the-whole-app-2026-09-07)
 - [The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)](#the-carryover-detector-checked-the-wrong-half-of-the-pair-so-the-flagged-case-was-innocent-and-the-real-leaks-were-invisible-fixed-2026-09-03)
 - [One carryover leak filed itself seven times — `config_guard`'s dedup key wasn't deterministic (fixed 2026-09-03)](#one-carryover-leak-filed-itself-seven-times--config_guards-dedup-key-wasnt-deterministic-fixed-2026-09-03)
 
@@ -3527,6 +3528,71 @@ Two smaller things in the same twenty-five seconds:
   them. The honest fix is a per-agent MCP exclusion in the gateway config —
   left alone deliberately (an invalid config is IGNORED, not rejected), and
   this costs nothing when that lands.
+
+### "This app is blocked", and the scope that was pricing the whole app (2026-09-07)
+
+עידן tapped the calendar consent link and got Google's hard block — not the
+"Google hasn't verified this app" warning with an Advanced escape hatch, the
+flat refusal. Nothing on our side saw it: `google_connect.auth_started` is
+written when the link is minted, there is no `integrations` row when it is
+never completed, and no check compares the two. It surfaced only because the
+owner sent a screenshot.
+
+**The obvious diagnosis was wrong, and the data said so.** "The app is in
+Testing, add him as a test user" — except a refresh token issued to an app in
+Testing expires after seven days, and:
+
+```
+user 8   google_calendar  connected 2026-08-20  ->  refreshed 2026-09-07
+user 12  google_calendar  connected 2026-08-22  ->  refreshed 2026-09-07
+```
+
+Eighteen and sixteen days, refreshing fine. The app is in **Production,
+unverified**, so test users are not the lever and never were.
+
+What is left for a hard block on a Production app is either a Workspace admin
+who restricts unverified third-party apps (his employer's, nothing we can fix,
+and the one-minute test is to retry from a personal @gmail.com) or a
+**restricted** scope. And that is where reading the scope list paid for
+itself:
+
+| scope | Google's list | verification |
+|---|---|---|
+| `calendar.readonly`, `calendar.events`, `contacts.readonly`, `userinfo.email` | sensitive | demo video, privacy policy on a verified domain, Search Console ownership. Free. |
+| `gmail.readonly` | **restricted** | all of the above **plus** an annual third-party security assessment (CASA), which costs real money. |
+
+The track is decided by what the consent screen DECLARES, so one restricted
+scope was moving calendar — the feature four people actually use — onto the
+paid track. Mail had **two** connections ever, u-3 and u-12, both inside the
+owner's own circle, and the `email_access_phones` flag was `"all"`, so any new
+person could have triggered a restricted-scope consent at any time.
+
+So mail is closed while the app goes through sensitive-track verification.
+`src/adapters/mcp/tools/email.js` is deleted and `start_google_connection`
+lost its `mail` parameter — **the parameter, not just the permission
+underneath it**: a checkbox a model can see is a mailbox it will offer.
+`domain/mail.js`, `mail-gmail.js` and all 32 of their tests are untouched, so
+reopening is re-adding one small file after a re-verification, not a rebuild.
+
+Two shapes worth keeping from how this was built:
+
+- **The first attempt was a runtime `GMAIL_CLOSED` constant above the admin
+  bypass in `requireMailAccess`, and it broke twenty-five tests** of machinery
+  that is fine — every test that needed a connected mailbox set one up through
+  `beginConnection`. A gate placed where the setup runs is a gate that deletes
+  the coverage instead of the feature.
+- **The repo's own layout rule then made the decision.**
+  `tests/tool-registry-layout.test.js` forbids a tool file the registry does
+  not list ("a set of tools nobody can call"), so "keep the file, comment out
+  the require" was never available: either the tools stay registered and
+  refuse at runtime, or they go. They went, and the guard against them coming
+  back is a **test** rather than a constant — the risk here is a future
+  session re-adding them without knowing the price, and a failing test is what
+  speaks to that person at exactly that moment.
+
+Still open and not built: nothing watches for an `auth_started` with no
+`integrations` row, so the next person Google blocks will look exactly like a
+person who changed their mind.
 
 ### The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)
 

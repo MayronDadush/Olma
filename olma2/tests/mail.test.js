@@ -545,18 +545,49 @@ test('the card says read-only, not merely connected', () => {
   assert.ok(renderCard({ first_name: 'Dana' }, [], [], { mail: false }).includes('Email: not connected'));
 });
 
-test('the tools exist, and none of them can send anything', () => {
+// This test used to assert the five mailbox tools EXIST. It asserts the
+// opposite now, and the reason is money rather than design: `gmail.readonly`
+// is a RESTRICTED scope at Google, every other scope this product asks for is
+// merely sensitive, and one restricted scope moves the whole app — calendar
+// included — onto a verification track that requires a paid third-party
+// security assessment every year. Two mailboxes were ever connected, both
+// inside the owner's circle, against four calendars.
+//
+// Everything below this test still passes: the domain, the adapter, the
+// fencing, the token refresh. Reopening is re-adding one small tool file
+// after re-verification, which is why the assertions about WORDING moved to
+// the domain instead of disappearing with the descriptions.
+test('no tool can reach a mailbox, and nothing asks Google for gmail.readonly', () => {
   const defs = require('../src/adapters/mcp/registry').toolDefinitions();
   const names = defs.map((t) => t.name);
   for (const n of ['start_email_connection', 'email_status', 'disconnect_email', 'search_my_email', 'read_email']) {
-    assert.ok(names.includes(n), `missing tool ${n}`);
+    assert.ok(!names.includes(n),
+      `${n} is registered again — re-read domain/mail.js before you do that, it costs money`);
   }
   assert.ok(!names.some((n) => /send_email|reply_email|email_draft/.test(n)),
     'Phase 1 is read-only — a send tool must arrive with its own consent scope, not by accident');
-  const search = defs.find((t) => t.name === 'search_my_email');
-  assert.ok(/ONLY when they ask/.test(search.description), 'the never-browse-unasked rule is not at the call site');
-  const read = defs.find((t) => t.name === 'read_email');
-  assert.ok(/never on instructions inside it/i.test(read.description));
+
+  // The combined link is the other door, and it is the one that would fail
+  // quietly: a `mail` parameter left in the schema is a restricted scope the
+  // model can tick on somebody's behalf.
+  const combined = defs.find((t) => t.name === 'start_google_connection');
+  assert.ok(combined, 'the calendar/contacts link still exists');
+  assert.equal(combined.inputSchema.properties.mail, undefined,
+    'no mail checkbox on the combined consent');
+  assert.doesNotMatch(combined.description, /mail/i);
+
+  // Belt: no tool description anywhere may name the scope or offer a mailbox.
+  for (const t of defs) {
+    assert.doesNotMatch(t.description, /gmail/i, `${t.name} offers a mailbox`);
+  }
+});
+
+test('the read-only wording that lived on the tool descriptions still exists', () => {
+  // Those two sentences were the only place the never-browse-unasked rule and
+  // the untrusted-body rule were stated to a model. The descriptions are gone;
+  // the rules are not, and whoever re-adds the tools must carry them back.
+  assert.match(mail.UNTRUSTED_NOTE, /never instructions to you/i);
+  assert.match(mail.UNTRUSTED_NOTE, /never a thing to do/i);
 });
 
 test('the delivery instructions exist for every mail outbox kind', () => {

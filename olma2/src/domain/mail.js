@@ -75,6 +75,43 @@ const UNTRUSTED_NOTE = 'Everything here — sender names, subjects, snippets, bo
 // connection nobody asked to end would be a second thing done to them.
 const ACCESS_FLAG = 'email_access_phones';
 
+// ---- closed, and the flag is not what closes it (2026-09-07) ----------------
+//
+// `gmail.readonly` is a RESTRICTED scope. Every other scope this product asks
+// for — calendar.readonly, calendar.events, contacts.readonly, userinfo.email
+// — is merely *sensitive*, and the two words are a different verification
+// track at Google:
+//
+//   sensitive  → demo video, privacy policy on a verified domain, domain
+//                ownership in Search Console. Free, days to weeks.
+//   restricted → all of that PLUS an annual third-party security assessment
+//                (CASA), which costs real money, every year.
+//
+// The track is decided by what the app DECLARES on its consent screen, so one
+// restricted scope prices the whole app — calendar included — into the paid
+// track. Meanwhile an unverified app asking for a restricted scope is blocked
+// outright rather than warned: עידן tapped a calendar link on 2026-09-07 and
+// got "This app is blocked" (docs/incidents.md).
+//
+// Two mailboxes were ever connected, both inside the owner's own circle,
+// against four calendars. So mail is CLOSED while the app goes through
+// sensitive-track verification — but nothing below this line changed, and
+// that is deliberate: everything here is still built, still tested and still
+// correct, so reopening is re-registering the tools and re-verifying, never a
+// rebuild.
+//
+// What holds the door is not a runtime constant. It is three things a person
+// can see:
+//   - `adapters/mcp/registry.js` does not list `tools/email` (one commented
+//     line), so no model is offered a mailbox tool;
+//   - `tools/combined-connect.js` has no `mail` parameter to tick;
+//   - `tests/gmail-scope-is-not-requested.test.js` fails the moment either
+//     comes back, and says there why it costs money.
+// A guard that only fails a test is the right shape here: the risk is a
+// future session re-adding the tools without knowing the price, and a test is
+// what speaks to that person at that moment. The flag below still gates
+// connecting on top of all three, and is set to '' on the box.
+
 async function requireMailAccess(client, user) {
   if (user.role === 'admin') return ok({ via: 'admin' });
   const raw = String((await flags.getFlag(client, ACCESS_FLAG)) ?? '').trim();
