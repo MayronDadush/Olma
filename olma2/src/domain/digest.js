@@ -20,8 +20,12 @@ async function assemble(client, userId, scope) {
 
   const counts = (await client.query(
     `SELECT
-       count(*) FILTER (WHERE status = 'open') ::int AS open_tasks,
-       count(*) FILTER (WHERE status = 'open' AND due_at::date <= CURRENT_DATE) ::int AS due_or_overdue
+       count(*) FILTER (WHERE status = 'open' AND kind IS DISTINCT FROM 'event') ::int AS open_tasks,
+       count(*) FILTER (WHERE status = 'open' AND kind IS DISTINCT FROM 'event'
+                          AND due_at::date <= CURRENT_DATE) ::int AS due_or_overdue,
+       count(*) FILTER (WHERE status = 'open' AND kind = 'event') ::int AS open_events,
+       count(*) FILTER (WHERE status = 'open' AND kind = 'event'
+                          AND due_at::date = CURRENT_DATE) ::int AS events_today
      FROM tasks WHERE owner_id = $1 AND archived_at IS NULL`,
     [userId]
   )).rows[0];
@@ -78,7 +82,12 @@ async function assemble(client, userId, scope) {
 
   const base = {
     scope,
-    counts: { openTasks: counts.open_tasks, dueOrOverdue: counts.due_or_overdue, pendingReminders: reminderCount },
+    counts: {
+      openTasks: counts.open_tasks, dueOrOverdue: counts.due_or_overdue, pendingReminders: reminderCount,
+      // Calendar entries counted apart from jobs: "3 open tasks" that are two
+      // meetings and an errand is not a number anybody can act on.
+      openEvents: counts.open_events, eventsToday: counts.events_today,
+    },
     crossUser: { pendingMeetings, awaitingOthers, pendingConnections, pendingShares },
   };
 
@@ -88,13 +97,19 @@ async function assemble(client, userId, scope) {
 
   const taskFilter = scope === 'today'
     ? `AND due_at IS NOT NULL AND due_at::date <= CURRENT_DATE` : '';
-  const tasks = (await client.query(
-    `SELECT id, title, category, due_at, parent_id FROM tasks
+  const rows = (await client.query(
+    `SELECT id, title, category, due_at, ends_at, kind, location, parent_id FROM tasks
      WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL AND include_in_digest ${taskFilter}
      ORDER BY due_at NULLS LAST, id`,
     [userId]
   )).rows;
-  return ok({ ...base, tasks });
+  // Two lists, not one: what is on their calendar (a moment they will be at)
+  // and what is on their plate (a job until it is done). One mixed list read
+  // out in order is how a meeting gets announced as a task — ג.ב, 2026-09-07.
+  const strip = (r, keys) => Object.fromEntries(Object.entries(r).filter(([k]) => !keys.includes(k)));
+  const events = rows.filter((r) => r.kind === 'event').map((r) => strip(r, ['kind']));
+  const tasks = rows.filter((r) => r.kind !== 'event').map((r) => strip(r, ['kind', 'ends_at', 'location']));
+  return ok({ ...base, events, tasks });
 }
 
 

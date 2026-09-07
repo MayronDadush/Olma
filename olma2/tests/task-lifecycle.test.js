@@ -299,3 +299,101 @@ test('a blocked or eval user is never swept', async () => {
   const { rows } = await db.pool.query(`SELECT archived_at FROM tasks WHERE id = $1`, [t.id]);
   assert.equal(rows[0].archived_at, null);
 });
+
+// ------------------------------------------------------------- said, not guessed
+//
+// ג.ב, 2026-09-07, his first message: "תכניסי פגישה יום שלישי 11.45 עם תמר
+// גבריאלי בביהס קרית חינוך דרור". The row came out right — kind = event,
+// 11:45–12:45, a reminder at 10:45 — because "פגישה" is on the word list.
+// What he read was "הנה, רשמתי." and then, in a second message, about a
+// reminder he had not asked for: a to-do's sentences about a calendar entry.
+// The words had decided in silence and nothing had told the model. Now the
+// model says what it is, the words are the fallback, the place is a field,
+// and the result says what was filed so the sentence can match it.
+test("the caller's word wins over the title; a word that is not one of the two is not said", async () => {
+  await withClient(async (c) => {
+    const said = (await tasks.addTask(c, ana.id, { title: 'פגישה עם הבנק', kind: 'todo', dueAt: at(5) })).data.task;
+    assert.equal(said.kind, 'todo', '"פגישה" in the title, but they said it is a job to do');
+    const booked = (await tasks.addTask(c, ana.id, { title: 'לקבוע תור לרופא', kind: 'event', dueAt: at(5) })).data.task;
+    assert.equal(booked.kind, 'event', 'the verb says todo, the caller says event: the caller has the conversation');
+    const noWord = (await tasks.addTask(c, ana.id, { title: 'רופא שיניים', kind: 'meeting', dueAt: at(5) })).data.task;
+    assert.equal(noWord.kind, 'todo', 'an unknown word is "not said", and the words fall back to the default');
+    const guessed = (await tasks.addTask(c, ana.id, { title: 'רופא שיניים', kind: 'event', dueAt: at(5) })).data.task;
+    assert.equal(guessed.kind, 'event', 'no word in the title says appointment; the model knew');
+  });
+});
+
+test('an event carries where it is, apart from its title, and an edit can say either', async () => {
+  await withClient(async (c) => {
+    const t = (await tasks.addTask(c, ana.id, {
+      title: 'פגישה עם תמר גבריאלי', kind: 'event', location: '  ביהס קרית חינוך דרור ', dueAt: at(20), endsAt: at(21),
+    })).data.task;
+    assert.equal(t.location, 'ביהס קרית חינוך דרור');
+    assert.equal(t.title, 'פגישה עם תמר גבריאלי', 'the place is not in the title');
+    const moved = (await tasks.editTask(c, ana.id, t.id, { location: 'זום' })).data.task;
+    assert.equal(moved.location, 'זום');
+    const cleared = (await tasks.editTask(c, ana.id, t.id, { location: null })).data.task;
+    assert.equal(cleared.location, null);
+    // "זה לא פגישה, זה משהו שאני צריך לעשות" — the person corrects the kind.
+    const asJob = (await tasks.editTask(c, ana.id, t.id, { kind: 'todo' })).data.task;
+    assert.equal(asJob.kind, 'todo');
+    const untouched = (await tasks.editTask(c, ana.id, t.id, { kind: 'whatever', title: 'פגישה עם תמר' })).data.task;
+    assert.equal(untouched.kind, 'todo', 'a word that is not one of the two changes nothing');
+    const bulk = (await tasks.addTasksBulk(c, ana.id, [
+      { title: 'ישיבת צוות', kind: 'event', location: 'משרד', dueAt: at(30) },
+      { title: 'לקנות חלב' },
+    ])).data.tasks;
+    assert.equal(bulk[0].kind, 'event'); assert.equal(bulk[0].location, 'משרד');
+    assert.equal(bulk[1].kind, 'todo'); assert.equal(bulk[1].location, null);
+  });
+});
+
+test('the result says a calendar entry was filed, and the list says which rows are the calendar', async () => {
+  const { BY_NAME } = require('../src/adapters/mcp/registry');
+  const { withTx } = require('../src/db/pool');
+  const add = BY_NAME.get('add_task');
+  const list = BY_NAME.get('list_my_tasks');
+  const u = await makeUser(db.pool, '+972501000084', { firstName: 'Gal', timezone: 'Asia/Jerusalem' });
+
+  // Nothing on the calendar yet: the list has no kinds hint to give.
+  const job = await withTx(db.pool, (c) => add.handler(c, u, { title: 'לקנות חלב', kind: 'todo' }));
+  assert.equal(job.ok, true);
+  assert.equal(job.data.hints && job.data.hints.event, undefined, 'a to-do says nothing about the calendar');
+  const before = await withTx(db.pool, (c) => list.handler(c, u, {}));
+  assert.equal(before.data.hints, undefined, 'no calendar entry, no hint');
+
+  const meet = await withTx(db.pool, (c) => add.handler(c, u, {
+    title: 'פגישה עם תמר גבריאלי', kind: 'event', location: 'ביהס קרית חינוך דרור', due_at: at(20), ends_at: at(21),
+  }));
+  assert.equal(meet.ok, true, JSON.stringify(meet.error));
+  assert.equal(meet.data.task.kind, 'event');
+  assert.match(meet.data.hints.event, /CALENDAR/);
+  assert.match(meet.data.hints.event, /פגישה עם תמר גבריאלי/);
+  assert.match(meet.data.hints.event, /never "רשמתי משימה"/);
+  assert.match(meet.data.hints.event, /If you say anything/, 'conditional, like markPlaced — never an order to write');
+
+  const after = await withTx(db.pool, (c) => list.handler(c, u, {}));
+  assert.ok(after.data.tasks.some((t) => t.kind === 'event' && t.location === 'ביהס קרית חינוך דרור'));
+  assert.match(after.data.hints.kinds, /ביומן/);
+  assert.match(after.data.hints.kinds, /לעשות/);
+});
+
+test('the digest hands over the calendar and the plate as two lists, and counts them apart', async () => {
+  const digest = require('../src/domain/digest');
+  const u = await makeUser(db.pool, '+972501000085', { firstName: 'Dana' });
+  await withClient(async (c) => {
+    await tasks.addTask(c, u.id, { title: 'ישיבת צוות', kind: 'event', location: 'משרד', dueAt: at(2), endsAt: at(3) });
+    await tasks.addTask(c, u.id, { title: 'לשלם חשמל', dueAt: at(4) });
+    await tasks.addTask(c, u.id, { title: 'לנקות את הבית' });
+    const full = (await digest.assemble(c, u.id, 'full')).data;
+    assert.deepEqual(full.events.map((e) => e.title), ['ישיבת צוות']);
+    assert.equal(full.events[0].location, 'משרד');
+    assert.ok(full.events[0].ends_at, 'an event knows when it ends');
+    assert.deepEqual(full.tasks.map((e) => e.title), ['לשלם חשמל', 'לנקות את הבית']);
+    assert.ok(!('kind' in full.tasks[0]) && !('location' in full.tasks[0]), 'a to-do carries no calendar fields');
+    assert.equal(full.counts.openTasks, 2, 'open tasks are the jobs');
+    assert.equal(full.counts.openEvents, 1);
+    const summary = (await digest.assemble(c, u.id, 'summary')).data;
+    assert.equal(summary.events, undefined, 'summary stays counts-only');
+  });
+});

@@ -139,6 +139,7 @@ never trust a dated narrative for something you are about to act on.
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
 - [Two asks, one task (2026-09-07)](#two-asks-one-task-2026-09-07)
+- ["הנה, רשמתי", about a meeting (2026-09-07)](#הנה-רשמתי-about-a-meeting-2026-09-07)
 - [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
 - [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
 - [The check that only watched the front door (2026-09-06)](#the-check-that-only-watched-the-front-door-2026-09-06)
@@ -5287,6 +5288,62 @@ and drives `/pick/` links only — the OAuth redirect reads the JSON file, not
 the flag, and confusing the two is how half a migration ships. Verified
 durable across two deploys that landed mid-migration.
 
+
+### "הנה, רשמתי", about a meeting (2026-09-07)
+
+ג.ב's first message, 22:52: *"תכניסי פגישה יום שלישי 11.45 עם תמר גבריאלי
+בביהס קרית חינוך דרור"*. What was saved was right in every column: a task
+with `kind = 'event'`, 11:45–12:45 in his zone, a reminder at 10:45, the
+place in the title because there was nowhere else for it. What he read was
+*"הנה, רשמתי."* and then, a minute later, *"אזכיר לך ב-10:45 בבוקר."* — a
+to-do's sentences, and a reminder he had not asked for, about the one thing
+he had asked to put in a calendar. The owner's reading, the same evening:
+Olma confuses tasks and reminders. She does not, in the data. She does in
+her mouth.
+
+`tasks.kind` had existed since migration 036: 'event' for a moment somebody
+will be AT, 'todo' for a job, decided by `task-kind.decideKind` from the
+words in the title — "פגישה" is on the list, so this one was judged
+correctly — and read by exactly one thing, `sweepFinishedTasks`, which
+closes a passed event and says so. Nineteen events on the box by that
+evening, every one of them handled right at the end. Not one reader on the
+way there knew: `add_task` had no field for it, its result did not say it,
+`list_my_tasks` returned the column with nothing that explained it, the
+digest counted "open tasks" with meetings inside the number, the personal
+dashboard drew one list, the admin page one table. The model had one verb,
+"רשמתי", and used it on everything, because everything it was ever handed
+was called a task.
+
+So the word is now said rather than only guessed. `add_task`,
+`add_tasks_bulk` and `edit_task` take `kind`; the model has the
+conversation — it knows "רופא שיניים מחר ב-9" is an appointment though no
+word in that title says so — and `decideKind` falls back to the words only
+when nothing was said, treating anything that is not one of the two words as
+"not said" rather than as an error, so a refused task can never be the price
+of a misspelled field. An event has a `location` (migration 052), out of the
+title and out to Google with the event. And every reader separates the two:
+`taskHints.event` says what was filed and which words fit it — a calendar
+entry, the day, the hour, the place, never "רשמתי משימה" — conditionally,
+like every hint that has to live beside `markPlaced`; `list_my_tasks` carries
+`hints.kinds` ("ביומן" first, "לעשות" after, never one mixed list);
+`get_my_digest` returns `events` beside `tasks` and counts `openEvents`
+apart from `openTasks`; the scheduled digest's instruction says calendar
+first, plate second; the personal dashboard splits a day into "ביומן" and
+"לעשות" when it holds both, shows the place under an event, and tags it
+"אירוע" rather than "משימה" in the calendar view; the admin table gets a
+pill. The doctrine's calendar paragraph now says "save it THAT TURN as an
+event" — four characters, inside the budget.
+
+Left as it is, on purpose: a reminder still hangs on a task. "להוציא את
+העוגה בעוד 20 דקות" is a to-do with a reminder and stays on the list until
+somebody ticks it — the ladder, quiet mode and `list_my_reminders` are all
+keyed on `task_id`, and a reminder with no task is a second PR on its own
+argument. And nobody has asked for a priority.
+
+Also that evening, from the same conversation, not part of this: the
+60-second name rung told the model to ask whether "ג.ב" was right, and the
+model answered `NO_REPLY`; and the admin page shows the delivery prompts of
+Olma's own sweeps under the person's name, as if they had typed them.
 
 ## CI, migrations and deploying
 

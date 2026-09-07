@@ -191,6 +191,8 @@ async function renderUserPage(client, userId, { confirmDelete = false, csrf = ''
   const done = tasks.filter((t) => t.status === 'done').slice(0, 15);
   const taskRow = (t) => `<tr>
     <td>${t.parent_id ? '<span class="dim">↳</span> ' : ''}${esc(t.title)}
+        ${t.kind === 'event' ? '<span class="pill">אירוע</span>' : ''}
+        ${t.location ? `<span class="dim small">📍 ${esc(t.location)}</span>` : ''}
         ${t.category ? `<span class="pill">${esc(t.category)}</span>` : ''}
         ${t.source === 'extracted' ? '<span class="pill">מהשיחה</span>' : ''}</td>
     <td class="dim small nowrap">${t.due_at ? new Date(t.due_at).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }) : ''}</td>

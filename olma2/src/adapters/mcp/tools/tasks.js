@@ -52,6 +52,22 @@ function taskHints(res, user = {}) {
       + 'add_task the second, then say what you did in one line. If it is one job described in '
       + 'steps, leave it and say nothing.';
   }
+  // What was filed as an EVENT is on their calendar, not their list, and the
+  // one sentence that never fits it is "רשמתי" — that is what a to-do gets.
+  // ג.ב (2026-09-07) asked to put a meeting in, was told "הנה, רשמתי" and
+  // then, in a second message, about a reminder he had not asked for. The
+  // row was right (kind = event, 11:45–12:45); nothing had told the model.
+  // Conditional like every other hint here: it says what words to use IF
+  // there are words, and never asks for a sentence the 👍 already sent.
+  const events = [d.task, ...(Array.isArray(d.tasks) ? d.tasks : [])]
+    .filter((t) => t && t.kind === 'event')
+    .map((t) => `"${t.title}"`);
+  if (events.length) {
+    hints.event = `${events.join(', ')} went onto their CALENDAR, not their to-do list: it closes by itself `
+      + 'once its time passes and is never chased with "בוצע?". If you say anything about it, say it '
+      + 'as a calendar entry — the day, the hour, the place if they gave one ("ביומן: שלישי 11:45, '
+      + 'ביהס דרור") — never "רשמתי משימה", and never call it a task.';
+  }
   if (Array.isArray(d.reminders) && d.reminders.length) {
     // The times are stated back, in their zone, because the model cannot say a
     // moment nobody armed if the armed moment is the only one on the result.
@@ -85,25 +101,45 @@ function taskHints(res, user = {}) {
   return Object.keys(hints).length ? ok({ ...d, hints }) : res;
 }
 
+// The list is ONE array so nothing that reads it by shape breaks, and the
+// hint is what separates it into the two lists the person hears: what is on
+// the calendar, then what is on the plate. Only when there is a calendar.
+function listHints(res) {
+  if (!res || !res.ok || !res.data || !Array.isArray(res.data.tasks)) return res;
+  if (!res.data.tasks.some((t) => t.kind === 'event')) return res;
+  return ok({
+    ...res.data,
+    hints: {
+      kinds: 'kind:"event" rows are CALENDAR entries (a moment they will be at — meeting, appointment, '
+        + 'shift; it leaves the list by itself once it passes); kind:"todo" rows are jobs until done. '
+        + 'When you tell them what they have, give the calendar first as "ביומן" and the to-dos after '
+        + 'as "לעשות" — two short lists, never one mixed one, and never a meeting called a task.',
+    },
+  });
+}
+
 module.exports = [
-  tool('list_my_tasks', 'List your open tasks (status=done for completed). Each carries its pending reminders with the hour to SAY, in their clock — a due date is when the thing is, never when you will remind them.',
+  tool('list_my_tasks', 'List your open tasks (status=done for completed). Each carries its kind (event = on their calendar, todo = on their plate) and its pending reminders with the hour to SAY, in their clock — a due date is when the thing is, never when you will remind them.',
     { status: S('string', 'open | done (default open)') }, [],
-    (client, user, a) => tasks.listTasks(client, user.id, { status: a.status || 'open' })),
-  tool('add_task', 'Add one task; parent_task_id makes it a subtask (one level). due_at is when the THING is, and arms a reminder automatically an hour before (08:00 for a whole-day one). remind_at is for "תזכיר לי ב-19:00": that hour IS the reminder and replaces the automatic one. A dictated shopping run is filed as a list. Follow any hints on the reply. Times MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their own local time (USER.md); never bare digits with a Z.',
-    { title: S('string', 'Task title'), category: S('string', 'home|work|family|health|money|errands; omit unless the person named one (worked out from the title).'),
+    async (client, user, a) => listHints(await tasks.listTasks(client, user.id, { status: a.status || 'open' }))),
+  tool('add_task', 'Add one thing: a todo (a job, stays until done) or an event (a moment they will be AT — meeting, appointment, shift — closes by itself once it passes). Say which in kind. due_at is when the THING is, and arms a reminder automatically an hour before (08:00 for a whole-day one). remind_at is for "תזכיר לי ב-19:00": that hour IS the reminder and replaces the automatic one. A dictated shopping run is filed as a list. Follow any hints on the reply. Times MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their own local time (USER.md); never bare digits with a Z.',
+    { title: S('string', 'What it is — never the hours or the place, those have fields'),
+      kind: S('string', 'event | todo. "יש לי פגישה מחר ב-10" is an event; "לקבוע פגישה" is a todo. Omitted = guessed from the title.'),
+      location: S('string', 'Where an event is ("ביהס דרור", "זום") — never in the title.'),
+      category: S('string', 'home|work|family|health|money|errands; omit unless the person named one (worked out from the title).'),
       due_at: S('string', 'Optional ISO-8601 datetime WITH UTC offset, e.g. 2026-08-20T09:00:00+03:00'),
       ends_at: S('string', 'Optional end of a range, same format: a shift is title \'משמרת\', due_at 12:00, ends_at 19:00 — never hours in the title.'),
       remind_at: S('string', 'The hour THEY named to be reminded, same format. Replaces the automatic one.'),
       parent_task_id: S('number', 'Optional parent (project) id') }, ['title'],
     async (client, user, a) => taskHints(await tasks.addTask(client, user.id, {
-      title: a.title, category: a.category, dueAt: a.due_at, endsAt: a.ends_at,
+      title: a.title, kind: a.kind, location: a.location, category: a.category, dueAt: a.due_at, endsAt: a.ends_at,
       remindAt: a.remind_at, parentId: a.parent_task_id,
     }), user)),
   tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task. Also the way to SPLIT a goal into its parts: pass parent_task_id and the parts become subtasks in the same call. Timed items get their reminders automatically; when the reply carries hints, follow them. Any due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), converted from their own local time (USER.md); never bare digits with a Z.',
-    { items: S('array', 'Array of {title, category?, due_at?, ends_at?}; due_at ISO-8601 WITH UTC offset; category as in add_task.', { items: { type: 'object' } }),
+    { items: S('array', 'Array of {title, kind?, location?, category?, due_at?, ends_at?}; kind event|todo, location, category and times as in add_task.', { items: { type: 'object' } }),
       parent_task_id: S('number', 'Optional: save every item as a subtask of this project (one level)') }, ['items'],
     async (client, user, a) => taskHints(await tasks.addTasksBulk(client, user.id, (a.items || []).map((i) => ({
-      title: i.title, category: i.category, dueAt: i.due_at, endsAt: i.ends_at,
+      title: i.title, kind: i.kind, location: i.location, category: i.category, dueAt: i.due_at, endsAt: i.ends_at,
     })), { parentId: a.parent_task_id }), user)),
   tool('complete_task', 'Mark a task done. Pending reminders on it are cancelled automatically. If the task carries a REPEATING reminder it is a standing one — the reply comes back with recurring:true and nextRemindAt, the task stays open and the cadence stays armed, because doing it once does not finish it. Say when it next comes round. To end a standing task for good: cancel_reminder first, then complete_task.',
     { task_id: S('number', 'Task id') }, ['task_id'],
@@ -111,13 +147,17 @@ module.exports = [
   tool('snooze_task', 'Move a task\'s due date; its reminders follow (a rung chasing the old date is closed, the automatic one re-arms an hour before the new one). new_due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00); a bare local time is rejected.',
     { task_id: S('number', 'Task id'), new_due_at: S('string', 'New ISO-8601 datetime WITH UTC offset') }, ['task_id', 'new_due_at'],
     async (client, user, a) => taskHints(await tasks.snoozeTask(client, user.id, a.task_id, a.new_due_at), user)),
-  tool('edit_task', 'Change an existing task\'s title, category or time — WITHOUT losing its reminders or place under a project. Send only the fields you are changing; null clears one. Gives a task an end time: a shift saved as "משמרת - ראשון 12:00-19:00" becomes title "משמרת", due_at 12:00, ends_at 19:00.',
+  tool('edit_task', 'Change an existing task\'s title, kind, location, category or time — WITHOUT losing its reminders or place under a project. Send only the fields you are changing; null clears one. Gives a task an end time: a shift saved as "משמרת - ראשון 12:00-19:00" becomes title "משמרת", due_at 12:00, ends_at 19:00.',
     { task_id: S('number', 'Task id'), title: S('string', 'Optional new title'),
+      kind: S('string', 'event | todo — when the person says it was filed as the wrong one'),
+      location: S('string', 'Where an event is; null clears it'),
       category: S('string', 'One of home|work|family|health|money|errands — only when the person named it; marks it as their choice.'),
       due_at: S('string', 'Optional new start, ISO-8601 WITH UTC offset'),
       ends_at: S('string', 'Optional new end, ISO-8601 WITH UTC offset, after due_at.') }, ['task_id'],
     (client, user, a) => tasks.editTask(client, user.id, a.task_id, {
       ...(a.title === undefined ? {} : { title: a.title }),
+      ...(a.kind === undefined ? {} : { kind: a.kind }),
+      ...(a.location === undefined ? {} : { location: a.location }),
       ...(a.category === undefined ? {} : { category: a.category }),
       ...(a.due_at === undefined ? {} : { dueAt: a.due_at }),
       ...(a.ends_at === undefined ? {} : { endsAt: a.ends_at }),

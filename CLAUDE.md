@@ -401,6 +401,21 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   repairs and most of the suite arm past moments on purpose, and only a model
   asking for one is a mistake. Refused before the write, so a moment we will
   not honour cannot withdraw one we would have.
+- **An event is SAID, never only guessed, and it is never told back as a
+  task.** `tasks.kind` ('event' | 'todo', migration 036) was decided by the
+  words in the title and read by exactly one thing, the archive sweep — so
+  ג.ב asked to put a meeting in, the row came out right, and he read "הנה,
+  רשמתי" plus a reminder he had not asked for (`incidents.md`, "הנה, רשמתי,
+  about a meeting"). Now `add_task`/`add_tasks_bulk`/`edit_task` take `kind`
+  (the model has the conversation; `task-kind.decideKind` falls back to the
+  words only when nothing was said, and an unknown word is "not said"), an
+  event has a `location` (migration 052, out of the title, out to Google
+  with the event), and every reader separates the two: `taskHints.event`
+  says what to call it, `list_my_tasks` carries `hints.kinds`, the digest
+  returns `events` beside `tasks` and counts them apart, the personal
+  dashboard lists "ביומן" before "לעשות" inside a day. A reminder still
+  hangs on a task — "להוציא את העוגה בעוד 20 דקות" is still a to-do with a
+  reminder, by choice, for now.
 - **A day named with ל־ in a title dates the THING, not the task.** "לארגן
   אימון לרביעי" is arranged BEFORE Wednesday; filed ON Wednesday it is useless.
   `datetime.datesTheObject` reports that shape on the result and lets the model

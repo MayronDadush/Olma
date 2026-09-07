@@ -155,7 +155,7 @@ async function setTaskSync(client, userId, taskId, on, deps = {}) {
 // ever disagreeing about whether a row belongs on somebody's calendar.
 async function pending(client, { limit = MAX_PER_TICK, now = new Date() } = {}) {
   const { rows } = await client.query(
-    `SELECT t.id, t.owner_id, t.title, t.due_at, t.ends_at, t.calendar_event_id,
+    `SELECT t.id, t.owner_id, t.title, t.due_at, t.ends_at, t.location, t.calendar_event_id,
             u.calendar_sync_tasks, t.calendar_opt_in, t.status, t.archived_at,
             COALESCE(t.calendar_opt_in, u.calendar_sync_tasks) AS sync_wanted
        FROM tasks t
@@ -208,7 +208,7 @@ async function syncOne(client, t, deps = {}) {
   if (!wanted) return { id: t.id, action: 'skipped' };
 
   const { start, end } = windowFor(t.due_at, t.ends_at);
-  const res = await create(client, t.owner_id, { title: t.title, start, end });
+  const res = await create(client, t.owner_id, { title: t.title, start, end, location: t.location || undefined });
   if (!res.ok) return { id: t.id, action: 'add', ok: false, error: res.error.message };
   await client.query(
     `UPDATE tasks SET calendar_event_id = $2 WHERE id = $1`, [t.id, res.data.eventId]);

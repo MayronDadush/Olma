@@ -321,3 +321,22 @@ test('the payload carries the whole name, and Olma\'s own', async () => {
   assert.equal(res.data.user.assistantName, 'נועה',
     'a renamed Olma is still called עולמה on her own dashboard');
 });
+
+test('an event reaches the page as one, with where it is, and a plain task as a to-do', async () => {
+  const ev = await withTx(db.pool, (c) => tasks.addTask(c, me.id, {
+    title: 'פגישה עם תמר גבריאלי', kind: 'event', location: 'ביהס קרית חינוך דרור',
+    dueAt: '2026-09-08T11:45:00+03:00', endsAt: '2026-09-08T12:45:00+03:00',
+  }));
+  assert.equal(ev.ok, true, ev.ok ? '' : JSON.stringify(ev.error));
+  const job = await withTx(db.pool, (c) => tasks.addTask(c, me.id, { title: 'לקנות חלב' }));
+  assert.equal(job.ok, true);
+  const d = (await load(me.id)).data;
+  const e = d.tasks.find((x) => x.title === 'פגישה עם תמר גבריאלי');
+  assert.equal(e.kind, 'event');
+  assert.equal(e.location, 'ביהס קרית חינוך דרור');
+  assert.equal(e.time, '11:45');
+  assert.equal(e.endTime, '12:45');
+  const t = d.tasks.find((x) => x.title === 'לקנות חלב');
+  assert.equal(t.kind, 'todo');
+  assert.equal(t.location, null);
+});
