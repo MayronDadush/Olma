@@ -23,8 +23,8 @@ function fakeGoogle() {
   const calls = [];
   return {
     calls,
-    createEvent: async (client, userId, { title, start }) => {
-      calls.push({ op: 'create', userId, title, start });
+    createEvent: async (client, userId, { title, start, location }) => {
+      calls.push({ op: 'create', userId, title, start, location });
       return { ok: true, data: { eventId: calendar.eventIdFor(userId, title, start), created: true } };
     },
     deleteEvent: async (client, userId, { eventId }) => {
@@ -296,4 +296,21 @@ test('one person cannot switch another person\'s task', async () => {
   const r = await withClient((c) => tc.setTaskSync(c, mine.id, t.data.task.id, true, fakeGoogle()));
   assert.equal(r.ok, false);
   assert.equal(r.error.code, 'not_found');
+});
+
+test("an event's place goes out with it to Google", async () => {
+  const u = await syncingUser('+972501000086');
+  const g = fakeGoogle();
+  const t = await withClient(async (c) => (await tasksDomain.addTask(c, u.id, {
+    title: 'פגישה עם תמר', kind: 'event', location: 'ביהס קרית חינוך דרור', dueAt: SOON,
+  })).data.task);
+  await withClient((c) => tc.sweepTaskCalendar(c, { ...g, now: "2026-09-04T00:00:00Z" }));
+  const created = g.calls.find((x) => x.op === 'create' && x.title === 'פגישה עם תמר');
+  assert.ok(created, 'the event was written out');
+  assert.equal(created.location, 'ביהס קרית חינוך דרור');
+  const plain = await withClient(async (c) => (await tasksDomain.addTask(c, u.id, { title: 'לשלם חשמל', dueAt: SOON })).data.task);
+  await withClient((c) => tc.sweepTaskCalendar(c, { ...g, now: "2026-09-04T00:00:00Z" }));
+  const job = g.calls.find((x) => x.op === 'create' && x.title === 'לשלם חשמל');
+  assert.equal(job.location, undefined, 'no place, no location field');
+  assert.ok(t.id && plain.id);
 });

@@ -1461,6 +1461,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:999px;
   background:var(--accent-soft);color:var(--accent);flex:none
 }
+/* Where an event is, under its title in the list — small, because the title
+   is the thing and the place is only ever there to help find it. */
+.tloc{display:block;font-size:11.5px;color:var(--text-3);margin-top:1px}
+.glabel .sub{font-weight:600;color:var(--text-3)}
 @keyframes evLand{
   0%{box-shadow:0 0 0 0 var(--accent-soft)}
   38%{box-shadow:0 0 0 9px var(--accent-soft)}
@@ -3131,7 +3135,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "tasks.h":"המשימות שלך","tasks.open":"פתוחות","tasks.archive":"ארכיון",
       "tasks.n0":"אין משימות פתוחות","tasks.n1":"משימה פתוחה אחת","tasks.nN":"{n} משימות פתוחות",
       "remc.n0":"אין תזכורות","remc.n1":"תזכורת אחת מוגדרת","remc.nN":"{n} תזכורות מוגדרות",
-      "bucket.late":"באיחור","bucket.today":"היום","bucket.tomorrow":"מחר","bucket.later":"בהמשך","tasks.new":"משימה חדשה","tasks.empty":"אין משימות פתוחות. יום נקי.",
+      "bucket.late":"באיחור","bucket.today":"היום","bucket.tomorrow":"מחר","bucket.later":"בהמשך","kind.event":"ביומן","kind.todo":"לעשות","cal.eventTag":"אירוע","tasks.new":"משימה חדשה","tasks.empty":"אין משימות פתוחות. יום נקי.",
       "tasks.doneAt":"הושלמה {when}","tasks.justNow":"הרגע",
       "tasks.arcShown":"מוצגות {n} האחרונות מתוך {all}","tasks.restore":"החזרה לרשימה",
       "toast.restored":"„{name}” חזרה לרשימה",
@@ -3368,7 +3372,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "tasks.h":"Your tasks","tasks.open":"Open","tasks.archive":"Archive",
       "tasks.n0":"No open tasks","tasks.n1":"1 open task","tasks.nN":"{n} open tasks",
       "remc.n0":"no reminders set","remc.n1":"1 reminder set","remc.nN":"{n} reminders set",
-      "bucket.late":"Overdue","bucket.today":"Today","bucket.tomorrow":"Tomorrow","bucket.later":"Later","tasks.new":"New task","tasks.empty":"Nothing open. Clear day.",
+      "bucket.late":"Overdue","bucket.today":"Today","bucket.tomorrow":"Tomorrow","bucket.later":"Later","kind.event":"On the calendar","kind.todo":"To do","cal.eventTag":"Event","tasks.new":"New task","tasks.empty":"Nothing open. Clear day.",
       "tasks.doneAt":"Done {when}","tasks.justNow":"just now",
       "tasks.arcShown":"Showing the last {n} of {all}","tasks.restore":"Put back on the list",
       "toast.restored":"\u201c{name}\u201d is back on your list",
@@ -4805,9 +4809,23 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
           ? '<i class="cdot" style="background:' + catOf(x.cat).c + '" title="' + esc(t("tcat." + x.cat)) + '"></i>'
           : "")) +
       esc(L(x.t) || t("sheet.untitled")) + "</span>" +
-      (x.who && x.who.length ? faceStack(x.who) : "") + "</div>" +
+      (x.who && x.who.length ? faceStack(x.who) : "") +
+      (x.kind === "event" && x.loc ? '<span class="tloc">' + esc(x.loc) + "</span>" : "") + "</div>" +
       (end ? '<span class="tend">' + end + "</span>" : "") +
       "</div></div></div>";
+  }
+  /* Inside a day, the calendar comes before the plate: a meeting at 11:45 and
+     "לקנות חלב" are not one list, and reading them as one is how a meeting
+     gets called a task. Both sub-labels appear only when both kinds are
+     there — a day of nothing but errands is not labelled "to do". */
+  function kindGroups(items){
+    var evs = items.filter(function(x){ return x.kind === "event"; }),
+        todos = items.filter(function(x){ return x.kind !== "event"; });
+    if(!evs.length || !todos.length) return '<div class="group">' + evs.concat(todos).map(taskHTML).join("") + "</div>";
+    return '<div class="glabel"><span class="sub">' + esc(t("kind.event")) + "</span></div>" +
+      '<div class="group">' + evs.map(taskHTML).join("") + "</div>" +
+      '<div class="glabel"><span class="sub">' + esc(t("kind.todo")) + "</span></div>" +
+      '<div class="group">' + todos.map(taskHTML).join("") + "</div>";
   }
   var viewBy = "time";
   /* One place for all of them, whichever way the list is sorted — so it is
@@ -4843,8 +4861,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       var items = open.filter(function(x){ return !x.src && bucketFor(x.d) === b; });
       if(!items.length) return;
       html += '<div class="tsec"><div class="glabel"><span class="' + (b === "late" ? "late" : "") + '">' +
-        esc(t("bucket." + b)) + "</span></div>" +
-        '<div class="group">' + items.map(taskHTML).join("") + "</div></div>";
+        esc(t("bucket." + b)) + "</span></div>" + kindGroups(items) + "</div>";
     });
     html += importedSection();
     if(!open.length) html = '<div class="group"><div class="empty">' + esc(t("tasks.empty")) + "</div></div>";
@@ -7033,8 +7050,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       evs.push({time:x.all ? "" : (x.tm || ""), allDay:x.all,
                 end:x.all ? "" : (x.tmEnd || ""),
                 title:L(x.t) || t("sheet.untitled"),
-                sub:t(x.rem ? "cal.taskRem" : "cal.taskSub", {name:chanName(defaultChannel)}),
-                c:"var(--accent)", task:x.id});
+                /* An event says where it is; a task says where it came from. */
+                sub:x.kind === "event" && x.loc ? x.loc
+                  : t(x.rem ? "cal.taskRem" : "cal.taskSub", {name:chanName(defaultChannel)}),
+                c:"var(--accent)", task:x.id, kind:x.kind});
     });
     /* A settled coordination stops being a question and becomes a thing in
        the day. It carries a mark saying where it came from and its own
@@ -7097,7 +7116,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         (v.end ? "<small>" + v.end + "</small>" : "") + "</div>" +
         '<div class="evbar" style="background:' + v.c + '"></div>' +
         '<div class="evbody"><div class="evtitle">' + esc(v.title) +
-        (v.task ? '<span class="evtag">' + esc(t("cal.taskTag")) + "</span>" : "") +
+        (v.task ? '<span class="evtag">' + esc(t(v.kind === "event" ? "cal.eventTag" : "cal.taskTag")) + "</span>" : "") +
         (v.meet ? '<span class="evtag">' + esc(t("cal.meetTag")) + "</span>" : "") +
         '</div><div class="evsub">' + esc(v.sub) + "</div></div>" +
         (v.meet ? '<button class="evdrop" data-uncal="' + v.meet + '" title="' +
@@ -7691,6 +7710,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          side against the standing switch (domain/user-dashboard.js). */
       cal:!!x.calendar,
       tmEnd:x.endTime || "",
+      /* A moment they will be at, or a job until it is done — the server's
+         reading of tasks.kind, with the place an event carries. The list
+         shows the calendar before the to-dos on the strength of this. */
+      kind:x.kind === "event" ? "event" : "todo",
+      loc:x.location || "",
       cat:(x.category && x.category !== "none") ? x.category : "",
       /* Whether Olma chose the category rather than the person. Real, not a
          seed flourish: `tasks.category_auto` records it, and a task edited by
