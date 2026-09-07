@@ -1486,6 +1486,14 @@ rides the result (`remindersAt`) so the same hint that states it back after
 `add_task` states it after a move. Her seven stale rungs were retired by hand
 through the same function the night this shipped, with the owner's word.
 
+Six of them. The seventh, r164 — "לדבר עם גידיס" — had reached its last rung
+by itself at 22:32, so the reminder row was already retired and the function
+found nothing to retire; its final message was still in the outbox, held for
+the night, due at 08:00. The withdrawal was keyed on the reminders retired
+*just now*, and a ladder that had already ended is not one of those. Closed by
+hand that night; the function now withdraws the queued rungs of EVERY one-off
+reminder on the task, whatever state their ladder is in.
+
 Noted, not acted on: "עדכון ב-9" became five *reminders*, each with a ladder
 of its own — 12:00 "בוצע?", the day after — where `digest_times = 09:00` was
 the tool that says "update" and nothing more. That is doctrine, and it waits.
