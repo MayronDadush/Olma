@@ -627,6 +627,15 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   happened. `search_link` is the one exception and only because a link to a
   *search* claims nothing: the model supplies WORDS, `domain/search-link.js`
   builds the URL. A model that writes URLs eventually writes a fabricated one.
+- **A `url` in a tool result is delivered by the MODEL or not at all** — no
+  outbox row, no template, no follow-up sweep sends it. So every result that
+  mints one carries `sendLinkVerbatim` (`domain/action-link.js`), which says
+  the characters must be in THIS reply and names the sentence that broke it:
+  Olma wrote "שלחתי לך קישור 🫡" with no link under it and עידן answered "איפה
+  שלחת לי את הקישור?" (2026-09-07). Same class as claiming a lookup — an
+  action asserted that nothing performed. `tests/consent-link-reaches-the-
+  person.test.js` scans `src/domain` for a seventh one; `availability.js` is
+  exempt by name because `/pick/` is retired.
 
 ### systemd scope
 

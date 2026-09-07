@@ -12,6 +12,7 @@
 // Olma — see domain/contacts.js#importContacts for where the actual rows
 // land.
 const { ok, err } = require('./results');
+const actionLink = require('./action-link');
 const audit = require('./audit');
 const cryptoStore = require('./crypto-store');
 const google = require('./google-oauth');
@@ -36,11 +37,10 @@ async function beginConnection(client, userId) {
     [state, userId, PROVIDER, google.STATE_TTL_MS / 1000]
   );
   await audit.record(client, userId, 'contacts.auth_started', {});
-  return ok({
-    url: google.contactsConsentUrl(state),
+  return ok(actionLink.withLink(google.contactsConsentUrl(state), {
     validForMinutes: google.STATE_TTL_MS / 60000,
     tellTheUser: 'הקישור מבקש הרשאת קריאה בלבד לאנשי הקשר בגוגל. הייבוא פרטי לחלוטין — אף אחד לא מקבל הודעה, ואף אחד לא רואה שהם קשורים לעולמה.',
-  });
+  }));
 }
 
 // Same redeem-first shape as calendar.completeOAuth, filtered to THIS

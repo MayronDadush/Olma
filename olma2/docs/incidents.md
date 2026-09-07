@@ -144,6 +144,7 @@ never trust a dated narrative for something you are about to act on.
 - [The mailbox, Phase 1: read-only Gmail, and nobody's mail is browsed (2026-09-02)](#the-mailbox-phase-1-read-only-gmail-and-nobodys-mail-is-browsed-2026-09-02)
 - [Voice-note transcription moved to ElevenLabs Scribe v2 (2026-08-18)](#voice-note-transcription-moved-to-elevenlabs-scribe-v2-2026-08-18)
 - [Onboarding has no "welcome" step any more (redesigned 2026-08-17)](#onboarding-has-no-welcome-step-any-more-redesigned-2026-08-17)
+- [The link she said she sent (fixed 2026-09-07)](#the-link-she-said-she-sent-fixed-2026-09-07)
 - [A Google consent with no calendar scope was stored as "connected" (fixed 2026-08-20)](#a-google-consent-with-no-calendar-scope-was-stored-as-connected-fixed-2026-08-20)
 - [The move to allma.world, and the truncated link that asked for the admin password (2026-09-04)](#the-move-to-allmaworld-and-the-truncated-link-that-asked-for-the-admin-password-2026-09-04)
 
@@ -4661,6 +4662,65 @@ person is already having simply continues, silently more capable.
 - Stdio MCP servers get NO identity env vars from the gateway (probed) —
   the workspace `.olma-identity` file remains the only auth root; brokerd's
   `config_guard` job watches the config invariants that protect it.
+
+### The link she said she sent (fixed 2026-09-07)
+
+עידן joined at 08:39 and asked, four minutes in, whether Olma could read his
+calendar. She could not yet, offered to connect it, he said read-only, and
+`start_google_connection` returned exactly what it should:
+
+```
+05:43:52  { url: "https://accounts.google.com/o/oauth2/v2/auth?client_id=…",
+            requested: { calendar: "read_only" }, validForMinutes: 15,
+            tellTheUser: "הקישור מבקש: יומן (צפייה בלבד)…" }
+05:43:57  Olma: שלחתי לך קישור 🫡 תפתח אותו, תתחבר עם חשבון גוגל שלך…
+05:44:21  עידן: איפה שלחת לי את הקישור? אני לא רואה אותו
+```
+
+There was no link in the message. Nothing was broken: the state row was
+written, the URL was well-formed, the audit row is there. **The result handed
+the model a `url` and never said the url was the deliverable** — so the model
+described the link, in a sentence that asserts it had been sent, and the
+person spent the next two minutes looking for something that did not exist.
+
+That is the same class as claiming a lookup nobody performed (CLAUDE.md,
+"Olma never claims a lookup it did not perform"): an action asserted that
+nothing performed. It is *not* a wording problem, and the fix is not a
+doctrine sentence — the doctrine is at its char ceiling and a link is minted
+on a handful of turns in a person's life. It rides the RESULT.
+
+`domain/action-link.js` is one constant and one wrapper, `withLink(url, rest)`,
+adding `sendLinkVerbatim` to six results: the three single-purpose Google
+consents, the combined one, the personal-dashboard deep link and
+`search_link`. The wording is modelled on the one instruction in this system
+already proven to make a model reproduce a string character for character —
+`turn_start`'s `onboarding.sendVerbatim` — and it names the failing sentence
+in the language it failed in, because "be clear about the link" is advice and
+"never write שלחתי לך קישור" is a rule.
+
+**Two things were deliberately not done.** The url was not folded into
+`tellTheUser`: that string is the owner's wording about what is being
+approved, reworded from the admin page, and a 300-character Google URL spliced
+through the middle of it is not something anyone can proof-read.
+`availability.js` was not touched: `/pick/` is 410 and no tool reaches it, so
+wiring an instruction into it would be pretending it is alive — it is exempt
+by name in the test, which is where that decision surfaces if it is revived.
+
+The guard is a scan of `src/domain` rather than a rule anyone has to remember,
+and it was checked against the tree as it stood before the fix, where it named
+all six. Its first draft named only four: `dashboard-auth.js` returns
+`ok({ url, expiresInMinutes })` on ONE line, and a scan looking for a `url:` at
+the start of a line walked straight past it. A guard is not a guard until you
+have watched it go red for the real case.
+
+**What this did NOT fix, and it matters here:** עידן still has no calendar.
+The link he finally received leads to Google's *"This app is blocked — this app
+tried to access sensitive info in your Google Account"* screen, because
+`calendar.readonly` is a sensitive scope and the OAuth client is not published
+for accounts outside its test-user list. Four accounts have ever completed a
+Google connection (users 3, 8, 12, 13); every one of them predates this. That
+wall lives in the Google Cloud console, not in this repo, and nothing here
+watches for it — an `auth_started` with no `integrations` row is invisible.
 
 ### A Google consent with no calendar scope was stored as "connected" (fixed 2026-08-20)
 
