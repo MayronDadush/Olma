@@ -333,7 +333,21 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
             + 'sendVerbatim, character for character — do not translate, reword, '
             + 'shorten, or add to it. If they actually asked for something, answer '
             + 'it below those lines; otherwise stop there. No feature tour, no menu, '
-            + 'and no follow-up question this turn.',
+            + 'and no follow-up question this turn. '
+            // A first message is not only a request — it is also the first
+            // thing they ever tell us about themselves, and "otherwise stop
+            // there" used to throw that away. עידן's first words were
+            // "קוראים לי עידן" and ninety seconds later Olma asked him
+            // whether his name was עידן (2026-09-07). Saving it is a TOOL
+            // CALL, not a sentence, so it costs this turn nothing and it is
+            // what stops the 60-second name nudge from ever reaching a
+            // person who already answered it.
+            + 'One thing does happen silently: if this message tells you what '
+            + 'to call them ("קוראים לי…", "אני …", a name and nothing else), '
+            + 'call set_my_name with confirmed: true before you reply — they '
+            + 'stated it, so it is not an observation. Do not mention it, do '
+            + 'not thank them for it, and do not ask them to confirm it, now '
+            + 'or later. Your reply is still the copy above and nothing else.',
         },
       } : {}),
       ...(offerResume ? { offerResume: true } : {}),

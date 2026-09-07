@@ -107,6 +107,7 @@ never trust a dated narrative for something you are about to act on.
 - [The carryover leak came back, and the code cannot say how (2026-09-06)](#the-carryover-leak-came-back-and-the-code-cannot-say-how-2026-09-06)
 - [The fact table admitted everything and ranked by recency (fixed 2026-08-28)](#the-fact-table-admitted-everything-and-ranked-by-recency-fixed-2026-08-28)
 - [The name was in front of us on every turn (fixed 2026-08-22)](#the-name-was-in-front-of-us-on-every-turn-fixed-2026-08-22)
+- ["קוראים לי עידן", and ninety seconds later: "עידן, נכון?" (fixed 2026-09-07)](#קוראים-לי-עידן-and-ninety-seconds-later-עידן-נכון-fixed-2026-09-07)
 - [The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)](#the-carryover-detector-checked-the-wrong-half-of-the-pair-so-the-flagged-case-was-innocent-and-the-real-leaks-were-invisible-fixed-2026-09-03)
 - [One carryover leak filed itself seven times — `config_guard`'s dedup key wasn't deterministic (fixed 2026-09-03)](#one-carryover-leak-filed-itself-seven-times--config_guards-dedup-key-wasnt-deterministic-fixed-2026-09-03)
 
@@ -3385,6 +3386,89 @@ started carry a Conversation info block), writes it unconfirmed, soft-deletes
 the fact the name had been hiding in, and refreshes USER.md. It sends nothing:
 messaging someone to say we had forgotten their name would cost them more than
 the bug did.
+
+### "קוראים לי עידן", and ninety seconds later: "עידן, נכון?" (fixed 2026-09-07)
+
+עידן's entire first minute here, from the transcript:
+
+```
+08:40  עידן:  קוראים לי עידן
+08:41  Olma:  [the opening copy, verbatim]
+08:42  Olma:  עידן, נכון? 😊
+```
+
+He was asked to confirm the name he had typed two minutes earlier, and the row
+already held `עידן תומר` — prefilled at provisioning from Miron's Google
+contacts (`user.name_prefilled_from_contacts`), which nobody had told him and
+nobody could have told him, because the code that sent the question does not
+know it either.
+
+Two separate faults, both of them about a component asserting something outside
+its own columns.
+
+**The first message was heard and filed as hearsay.** `turn_start`'s first-turn
+instruction said: send the opening copy verbatim, *"if they actually asked for
+something, answer it below those lines; otherwise stop there."* Telling us your
+name is not asking for something, so nothing in the turn was about the name.
+What the model did anyway is the part worth reading twice — at 05:41:04 it
+called `set_my_name` **without `confirmed`**, so it landed as
+`user.name_observed`, `name_confirmed` stayed `false`, and the rung read the
+column and fired. The tool was called. The flag the rung reads was not set.
+
+So the instruction now names the flag, not just the tool: *"call `set_my_name`
+with `confirmed: true` before you reply — they stated it, so it is not an
+observation."* It is right about the reply — the brand copy goes out alone, no
+thanks, no acknowledgement, no extra question — and it was wrong about the
+turn: a first message is also the first thing a person ever tells us about
+themselves, and a TOOL CALL costs that reply nothing.
+
+That made a second instruction reachable on the same turn. `set_my_name`
+answers a confirmed name on an empty list with `nextStep` — *"greet them by it
+in one short line, then … invite them to pour out whatever is on their
+plate"* — which is the exact opposite of "send the copy and stop". Two
+unconditional instructions about one reply is the failure already recorded
+under "The hint that outvoted the mark", so it was decided rather than left to
+the model: `nextStep` is suppressed for the opening turn, on the same
+`first_turn_at = last_inbound_at` invariant the rung uses, plus the turn's own
+`firstTurn` verdict for a model that reached for the tool before `turn_start`.
+Nothing is lost by it — the dead end `nextStep` exists to fix is the person
+whose ONLY message was their name in answer to a greeting, and עידן's very
+next message was a real question.
+
+**The 60-second rung then said three things it could not know.** Its wording
+was *"They have not replied since your opening message"* and *"an unconfirmed
+guess at their name — `"עידן"`, most likely from their WhatsApp profile."*
+
+- *"They have not replied"* reads as silence, and the state it fires on is the
+  opposite. `first_turn_at` is stamped during the turn the person's OWN first
+  message opened, so the rung can only ever reach somebody who wrote once and
+  stopped — and can never reach somebody who has never written. Measured on
+  production the same day: 4 of 4 people who had ever reached a first turn got
+  this rung, every one of them having written first. The moment is right; the
+  sentence describing it was the inverse of the truth, and the model acted on
+  the sentence.
+- *"most likely from their WhatsApp profile"* is one of at least three
+  provenances (`users.first_name` is written by provisioning from a contact
+  card, by `turn_start` from the display name, and by `set_my_name`), and the
+  sweep reads the column, not the history. It named the wrong one to a model
+  that will repeat it out loud.
+- Nothing sent the model to the transcript before it asked. The one thing that
+  could have saved the exchange — *read what they actually wrote* — was the
+  one thing the instruction never said.
+
+The rung now says what is in the columns and hands the rest over: they wrote
+once and nothing since; the name on file is `"…"` and *"nobody has heard it
+from them — it may be from their WhatsApp profile, or from someone else's
+address book, and this system does not know which"*; FIRST read what they
+wrote, call `set_my_name` if they already said it, **never ask them to confirm
+a name they just gave you**, and only otherwise ask.
+
+The fixture is the reason this survived a test file with ten passing tests:
+`openedAgo()` writes `first_turn_at = last_inbound_at` by hand, and a fixture
+that encodes *"they never replied"* cannot notice that production only reaches
+that row the other way. The founding case is therefore held open upstream too,
+in `tests/first-turn.test.js` — where the state is produced by an actual first
+turn rather than an UPDATE.
 
 ### The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)
 

@@ -638,6 +638,23 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `PERMANENT_PREFIXES` — a self-healing exposure with a prunable audit trail
   is one nobody can ever count (`incidents.md`, "The carryover leak came
   back").
+- **An instruction handed to the model may assert what its own columns hold,
+  and not one word more.** A sweep sees `users.first_name`; it does not see
+  where that name came from, and it has never read the person's message. The
+  60-second name rung said "they have not replied" (the state it fires on is
+  reached BY their writing) and "most likely from their WhatsApp profile"
+  (עידן's came from someone else's Google contacts), so Olma asked him to
+  confirm the name he had typed ninety seconds earlier. What the code cannot
+  know, it sends the model to READ — the transcript is right there and the
+  sweep is not (`incidents.md`, "קוראים לי עידן").
+- **Telling the model to call a tool is not telling it what the reader of that
+  tool's write actually checks.** The model DID call `set_my_name` for עידן —
+  with `confirmed` omitted, so it landed as an observation and the rung, which
+  keys on `name_confirmed`, fired anyway. Name the FLAG, not just the tool.
+- **A fixture that writes the state by hand cannot notice the state is only
+  ever reached the other way.** Ten passing tests described a nudge for
+  someone who had gone silent; production only ever fires it at someone who
+  wrote once. Hold the founding case open where the state is PRODUCED.
 - **Olma never claims a lookup it did not perform.** No price, no stock level,
   no "מצאתי לך", no link to a RESULT — all of it asserts a fetch that never
   happened. `search_link` is the one exception and only because a link to a
