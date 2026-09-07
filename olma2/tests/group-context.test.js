@@ -170,7 +170,11 @@ test('the richest block wins, not the first one — and a payload with no roster
 
 test('brokerd files the row for the session the block names, and refuses the rest', async () => {
   const stored = await broker.dispatch({ id: 1, method: 'group_context', params: { agentId: 'ggreet', sessionKey: KEY, info: info() } });
-  assert.deepEqual(stored, { ok: true, stored: true, members: true, wasMentioned: true });
+  // `memberWrote` false because this fixture has no chat_groups row for the
+  // jid, so there is no membership to stamp — the window in
+  // tests/group-window.test.js is where that half is held open.
+  assert.deepEqual(stored,
+    { ok: true, stored: true, members: true, wasMentioned: true, memberWrote: false });
   const row = await withTx(db.pool, (c) => groupContext.read(c, 'ggreet', KEY));
   assert.equal(row.members, 'M&M (+972526269826), +972603000011');
   assert.equal(row.subject, 'פאדל שלישי');

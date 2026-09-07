@@ -814,6 +814,40 @@ the whole argument for a second table rather than a `group_id` on `outbox`:
 the user gate stays the only door to a human being, structurally rather than by
 intention.
 
+## The room is the conversation too (owner, 2026-09-08)
+
+> "אם הם שלחו הודעה בקבוצה (לא משנה מה) אחרי שהתחיל התיאום זה אומר שהחלון של
+> 15 דקות נפתח והיא יכולה לשלוח להם בנושא התיאום."
+
+The first real group coordination reached nobody. מירון asked her, in the
+room, to arrange something for the three of them; she said in the room that she
+was asking everyone privately; עמית's invite was dropped as `quiet` and
+מירון's was held as `night`. Both were writing in that room at the time.
+
+So a member's message in the room opens the delivery gate's own fifteen-minute
+window — the same one a DM opens, on the same argument: somebody who just spoke
+is awake, and quiet hours are not protecting them from anything.
+
+- The stamp is `chat_group_members.last_wrote_at` (migration 056), written by
+  `groupContext.noteMemberWrote` in the same transaction as the context row.
+- The worker fills `facts.groupWroteAt` **only** for a row whose payload names
+  a meeting, whose meeting names a group, in which this person wrote **after
+  the coordination started**. That query is the entire scope of the exception;
+  the gate itself does not know what a meeting is.
+- It releases `night` and it releases the `quiet` drop. It does not touch a
+  pause, it does not touch `checkin_misses`, and it lets nothing else through:
+  a connection request to the same person on the same tick is still dropped.
+
+**What it cannot see.** A registered room is `requireMention: true`, so a
+message that does not name her (or reply to her) is dropped by the gateway
+before any hook of ours runs. Measured on the box 2026-09-08: in group 3, from
+registration at 20:53 to 21:02, exactly two messages reached her — both naming
+her, each one model run in `audit_events` — while the room went on talking. So
+`last_wrote_at` records the messages she was ALLOWED to see, and its silence is
+never evidence that somebody said nothing. Making it complete means
+`requireMention: false` for the room, which is a model turn per message; the
+owner has not asked for that and the token measurement argues against it.
+
 ## iMessage
 
 Not available on this box. The official path is `@openclaw/imessage` driving

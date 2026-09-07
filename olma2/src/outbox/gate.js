@@ -118,11 +118,24 @@ function decide(facts) {
   // the gate dropped is never chased (dueForSending), so the ladder simply
   // ends where it stood. Never 'hold': they may write back in a month, and
   // a month of held rows released together is the morning she already had.
+  // `groupWroteAt` is the one thing that answers back. The worker sets it ONLY
+  // for a row about a coordination in a room this person wrote in since that
+  // coordination started (outbox/worker.js) — so the exception is scoped by
+  // its own absence, and the gate does not have to know what a meeting is.
+  // A person who spoke in the room a minute ago has not stopped answering and
+  // has not been left alone by a quiet hour; the owner's rule, 2026-09-08, and
+  // the same argument `midConversation` already makes about a DM. What it is
+  // NOT is a general reopening: nothing else Olma decided to say gets through
+  // on it, the reminder and the ladder keep standing where they stood, and a
+  // paused user is refused above this line without reading any of it.
+  const wroteInRoom = facts.groupWroteAt ? new Date(facts.groupWroteAt).getTime() : 0;
+  const inRoomGrace = wroteInRoom > 0 && (now.getTime() - wroteInRoom) < CONVERSATION_GRACE_MS;
+
   if ((Number(facts.checkinMisses) || 0) >= 1 && row.kind !== 'checkin') {
     const rung = Number(row.payload && row.payload.rung) || 1;
     const askedInWords = row.kind === 'reminder' && rung <= 1
       && row.payload && row.payload.auto === false;
-    if (!askedInWords) return { action: 'drop', holdReason: 'quiet' };
+    if (!askedInWords && !inRoomGrace) return { action: 'drop', holdReason: 'quiet' };
   }
 
   if (blocked) {
@@ -149,7 +162,8 @@ function decide(facts) {
   const rung = Number(row.payload && row.payload.rung) || 1;
   const userChoseThisTime = row.kind === 'digest' || (row.kind === 'reminder' && rung <= 1);
   const lastInbound = facts.lastInboundAt ? new Date(facts.lastInboundAt).getTime() : 0;
-  const midConversation = lastInbound > 0 && (now.getTime() - lastInbound) < CONVERSATION_GRACE_MS;
+  const midConversation = (lastInbound > 0 && (now.getTime() - lastInbound) < CONVERSATION_GRACE_MS)
+    || inRoomGrace;
   if (!userChoseThisTime && !midConversation && !withinWindow(window, tz, now)) {
     return {
       action: 'hold', holdReason: 'night',
