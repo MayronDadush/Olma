@@ -172,6 +172,19 @@ test('the hints turn_start would give ride along: a reply target, the first mess
   assert.match(data.hints.offerResume, /ONE line/);
 });
 
+test('a thanks reaches the prompt as a request for silence, and the mark is 🙏', async () => {
+  const u = await agentUser();
+  await enable(u.phone);
+  await open({ agentId: u.agentId, messageId: '3EB0CTXTHX1', kind: 'text', thanks: true });
+  assert.equal(marks[0].state, 'thanks');
+  const res = await context({ agentId: u.agentId });
+  const data = parse(res.context);
+  assert.match(data.hints.thanksOnly, /NO_REPLY/,
+    'the people whose turn opens in the prompt must get this hint there — it is the only opening they read');
+  // And nothing else changes: it is still a counted message from a person.
+  assert.equal(await received(u.id), 1);
+});
+
 test('an agent with no active user, or a malformed id, is refused', async () => {
   assert.equal((await context({ agentId: 'u-999999' })).ok, false);
   assert.equal((await context({ agentId: 'main' })).ok, false);

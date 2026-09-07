@@ -226,7 +226,7 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
   assert.equal(written.length, 1);
   const msg = JSON.parse(written[0]);
   assert.equal(msg.method, 'turn_open');
-  assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', replyToId: null, at: '2026-09-05T10:00:00.000Z' });
+  assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, at: '2026-09-05T10:00:00.000Z' });
   assert.ok(!written[0].includes('סודי'), 'the text never leaves the gateway');
   // The shape the gateway ACTUALLY sends (OpenClaw 2026.8.1, measured
   // 2026-09-06): `message:preprocessed`, sender name and media type flat on
@@ -236,7 +236,7 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
     context: { from: '+972500000000', body: 'סודי', bodyForAgent: 'סודי', messageId: '3EB0HOOK0002', senderName: 'Miron', mediaType: 'audio/ogg', transcript: 'שלום', provider: 'whatsapp', cfg: {} },
   }, { connect: fakeSocket }), true);
   assert.equal(written.length, 2);
-  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', replyToId: null, at: '2026-09-05T10:00:05.000Z' });
+  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, at: '2026-09-05T10:00:05.000Z' });
   assert.ok(!written[1].includes('סודי') && !written[1].includes('שלום'), 'neither text nor transcript leaves the gateway');
   // A gateway that fires BOTH for one message opens it once.
   assert.equal(await hook({
@@ -311,4 +311,50 @@ test('two quick messages keep two opens; each turn adopts its own, and nothing o
   await call(u, 'add_task', { title: 'y' }, t2);
   assert.equal(t2.messageId, '3EB0CAP11', 'the newest survives the cap');
   assert.equal(broker.pendingCount(), before);
+});
+
+// ── "תודה" is answered by the mark, and by nothing else ──────────────────────
+
+test('the hook reads a thanks and sends the verdict, never the words', () => {
+  const yes = ['תודה', 'תודה רבה', 'תודה רבה לך!', 'מעולה, תודה 🙏', 'thanks!', 'Thank you so much', 'ty'];
+  const no = [
+    'תודה?',                       // a question is never a closed exchange
+    'תודה, ותוסיף חלב לרשימה',      // thanks AND an ask is an ask
+    'תודה על התזכורת',              // long-form gratitude takes the ordinary path
+    'מעולה',                        // acknowledgement is not thanks
+    '👍',                           // an emoji alone is not a thanks we can read
+    '',
+  ];
+  for (const t of yes) assert.equal(hook.thanksOnly(t), true, `thanks: ${JSON.stringify(t)}`);
+  for (const t of no) assert.equal(hook.thanksOnly(t), false, `not thanks: ${JSON.stringify(t)}`);
+  // A WhatsApp reply quotes the earlier message into the body; the quoted text
+  // is not what they just wrote and must not be read as if it were.
+  assert.equal(hook.thanksOnly('[Replying to Olma id:3EB0X]\nתזכורת: לקנות חלב\n[/Replying]\nתודה רבה'), true);
+  assert.equal(hook.thanksOnly('[Replying to Olma id:3EB0X]\nתודה\n[/Replying]\nתבטל את זה'), false);
+});
+
+test('a message that is only thanks gets 🙏 instead of 👀, and the turn is told to say nothing', async () => {
+  const u = await agentUser('+972641100031', 'u-931');
+  const r = await open({ agentId: 'u-931', messageId: '3EB0THANKS01', kind: 'text', thanks: true });
+  assert.equal(r.opened, true);
+  assert.equal(marks.length, 1);
+  assert.equal(marks[0].state, 'thanks', '👀 promises a reply, and this one is not getting one');
+  assert.equal(marks[0].emoji, '🙏');
+  assert.equal(marks[0].messageId, '3EB0THANKS01');
+  // It is still a real message: counted, awake, on the record like any other.
+  assert.equal(await received(u.id), 1);
+
+  const turn = newTurn();
+  const res = await call(u, 'turn_start', { message_id: '3EB0THANKS01' }, turn);
+  assert.match(res.text, /thanksOnly/, 'the hint rides the opening the model just read');
+  assert.match(res.text, /NO_REPLY/);
+});
+
+test('an ordinary message carries no silence hint', async () => {
+  const u = await agentUser('+972641100032', 'u-932');
+  await open({ agentId: 'u-932', messageId: '3EB0THANKS02', kind: 'text' });
+  assert.equal(marks[0].state, 'working');
+  const res = await call(u, 'turn_start', { message_id: '3EB0THANKS02' }, newTurn());
+  assert.doesNotMatch(res.text, /thanksOnly/,
+    'a hint that asks for silence must never reach a turn that owes an answer');
 });

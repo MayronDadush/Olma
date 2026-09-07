@@ -200,7 +200,12 @@ module.exports = [
       // the block notice — lives in domain/turn.advise, shared with brokerd's
       // `turn_context` (the same opening, delivered in the prompt instead of
       // a tool result, for the people the turn_context_phones flag covers).
-      const data = await turnDomain.advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge });
+      const data = await turnDomain.advise(client, user, {
+        counted, firstTurn, ourTurn, replyTarget, languageNudge,
+        // Set by the gateway opener and adopted with the rest of the pending
+        // open; a turn nothing opened has no verdict and gets no hint.
+        thanksOnly: Boolean(ctx && ctx.turn && ctx.turn.thanksOnly),
+      });
       return stale(ok(data), namedNow);
     }),
 ];

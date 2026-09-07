@@ -14,7 +14,7 @@ test('reactions: one emoji per state, and no state shares one', () => {
   // Pinned by name so a future "let us make it livelier" edit has to argue with
   // a test rather than quietly turn the vocabulary into decoration.
   assert.deepEqual(Object.keys(r.REACTION_STATES).sort(),
-    ['done', 'failed', 'listening', 'needs_input', 'scheduled', 'working']);
+    ['done', 'failed', 'listening', 'needs_input', 'scheduled', 'thanks', 'working']);
 });
 
 test('reactions: builds a real openclaw argv for a capable channel', () => {

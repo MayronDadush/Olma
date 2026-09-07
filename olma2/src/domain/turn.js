@@ -164,7 +164,7 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
 // turn by every user, for fields that appear on a handful of turns in a
 // person's life. The budget rule (CLAUDE.md, "Doctrine"): guidance about a
 // RESULT rides the result.
-function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms }) {
+function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms, thanksOnly }) {
   const hints = {};
   if (genderForms === 'feminine') {
     // The doctrine already says "hold the stored preference"; the nightly
@@ -182,6 +182,19 @@ function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, 
       + 'message — "סיימתי" on a reply to a rent reminder closes the rent task, not the '
       + 'newest thing either of you said. If the quoted text no longer matches anything '
       + 'you can act on, ask about it rather than guessing at the latest topic.';
+  }
+  if (thanksOnly) {
+    // The one hint that asks for SILENCE, and it is the same argument as
+    // `markPlaced`: a 🙏 is already on their message and it answers them, so
+    // words after it are a second notification for an exchange that is over.
+    // Conditional in exactly the way markPlaced is — the model can still see
+    // the message and overrule this, which is what makes a false positive in
+    // the gateway's detector cost nothing.
+    hints.thanksOnly = 'Their message reads as thanks and nothing else, and a 🙏 is already on it '
+      + '— that IS the answer. Reply with exactly NO_REPLY and nothing else. No "בשמחה", no '
+      + 'sign-off, no wishing them a good evening: the exchange is closed and another message '
+      + 'reopens it. Write only if the message actually asks something, or something here needs '
+      + 'saying that the mark cannot carry.';
   }
   if (offerResume) {
     hints.offerResume = 'First message since they paused: answer what they actually asked, then add '
@@ -224,7 +237,7 @@ function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, 
 //               person did anything.
 //   replyTarget, languageNudge — what only the model (or the gateway) could
 //               see about this message; null when nobody reported them.
-async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge }) {
+async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly }) {
   // A paused person who writes gets answered — pausing stops Olma
   // INITIATING, not answering (see domain/pause.js) — but before this, that
   // answer was the whole reply. They were then back to relying on their OWN
@@ -329,7 +342,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(planHeadline ? { planHeadline } : {}),
       ...(replyTarget ? { replyTarget: true } : {}),
       ...(genderForms ? { genderForms } : {}),
-      ...turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms }),
+      ...turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms, thanksOnly }),
     };
   }
   const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);
