@@ -3,13 +3,14 @@
 const {
   tasks, S, tool, ok,
 } = require('./_shared');
+const dt = require('../../../domain/datetime');
 
 // What to tell the person about what add_task/add_tasks_bulk just did — on
 // the RESULT, only on the calls where it applies, rather than four sentences
 // in a description every turn pays for (the same budget rule as turn_start's
 // hints). The fields themselves come from domain/tasks.js and
 // domain/shopping-list.js; this only explains them.
-function taskHints(res) {
+function taskHints(res, user = {}) {
   if (!res || !res.ok || !res.data) return res;
   const d = res.data;
   const hints = {};
@@ -18,6 +19,24 @@ function taskHints(res) {
       + 'not that you created a task. merged:true means it joined the run already open; alreadyOnList '
       + 'names what was there; dueAtIgnored means a date they gave was NOT applied to the existing '
       + 'list — offer it rather than assume it.';
+  }
+  // A date lifted off the noun instead of off the work. `datesTheObject` fires
+  // only where the two readings diverge — ל+weekday in the title AND the task
+  // filed on that very weekday — and it reports rather than decides, because
+  // resolving it needs the conversation and it only has a string. See
+  // domain/datetime.js for Vered's evening, which is the founding case.
+  const objectDated = [d.task, ...(Array.isArray(d.tasks) ? d.tasks : [])]
+    .filter(Boolean)
+    .map((t) => {
+      const m = dt.datesTheObject(t.title, t.due_at, user.timezone);
+      return m ? `"${t.title}"` : null;
+    })
+    .filter(Boolean);
+  if (objectDated.length) {
+    hints.objectDated = `${objectDated.join(', ')} — the day in the title is when the THING is, `
+      + 'and it is also the day this was filed on. If the task is to ARRANGE or PREPARE for it, '
+      + 'it has to happen earlier: move it with edit_task to when they would actually do it, and '
+      + 'say which day you put it on. If the task IS the thing, leave it and say nothing.';
   }
   if (Array.isArray(d.reminders) && d.reminders.length) {
     // The times are stated back, in their zone, because the model cannot say a
@@ -65,13 +84,13 @@ module.exports = [
     async (client, user, a) => taskHints(await tasks.addTask(client, user.id, {
       title: a.title, category: a.category, dueAt: a.due_at, endsAt: a.ends_at,
       remindAt: a.remind_at, parentId: a.parent_task_id,
-    }))),
+    }), user)),
   tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task. Also the way to SPLIT a goal into its parts: pass parent_task_id and the parts become subtasks in the same call. Timed items get their reminders automatically; when the reply carries hints, follow them. Any due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), converted from their own local time (USER.md); never bare digits with a Z.',
     { items: S('array', 'Array of {title, category?, due_at?, ends_at?}; due_at ISO-8601 WITH UTC offset; category as in add_task.', { items: { type: 'object' } }),
       parent_task_id: S('number', 'Optional: save every item as a subtask of this project (one level)') }, ['items'],
     async (client, user, a) => taskHints(await tasks.addTasksBulk(client, user.id, (a.items || []).map((i) => ({
       title: i.title, category: i.category, dueAt: i.due_at, endsAt: i.ends_at,
-    })), { parentId: a.parent_task_id }))),
+    })), { parentId: a.parent_task_id }), user)),
   tool('complete_task', 'Mark a task done. Pending reminders on it are cancelled automatically. If the task carries a REPEATING reminder it is a standing one — the reply comes back with recurring:true and nextRemindAt, the task stays open and the cadence stays armed, because doing it once does not finish it. Say when it next comes round. To end a standing task for good: cancel_reminder first, then complete_task.',
     { task_id: S('number', 'Task id') }, ['task_id'],
     (client, user, a) => tasks.completeTask(client, user.id, a.task_id)),

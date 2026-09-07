@@ -140,6 +140,40 @@ function weekdayClash(label, text, startsAt, tz) {
     { reason: 'weekday_mismatch', namedWeekdays: named, actualWeekday: actual });
 }
 
+// ---- a date that belongs to the OBJECT, not to the task ---------------------
+//
+// "לארגן אימון לרביעי" — organise a training FOR Wednesday. The ל־ dates the
+// TRAINING; the organising has to happen before it. Vered's first evening
+// (2026-09-06): she opened with "אני צריכה לזכור למחר לעשות כמה משימות",
+// listed five, and the fifth was this one. It was filed on Wednesday and
+// answered with "רשמתי את הכל למחר, חוץ מהאימון לרביעי" — so the one task
+// that needed doing first was the one taken out of tomorrow, and a reminder
+// to arrange a Wednesday training was armed for 07:00 on Wednesday.
+//
+// This does NOT decide; it reports an ambiguity the model is better placed to
+// resolve, because the model has the conversation and this function has a
+// string. It fires only on the narrow shape where the two readings actually
+// diverge: ל+weekday in the title AND the moment landing on that same
+// weekday. Disagreement is already `weekdayClash`'s job and means something
+// else entirely — here the agreement is the tell, because a date copied off
+// the noun always agrees with it.
+//
+// "ביום רביעי" and "ברביעי" are untouched: ב־ dates the task itself, which is
+// the ordinary case and must stay silent.
+const HE_FOR_WEEKDAY_RES = [
+  ['ראשון', 0], ['שני', 1], ['שלישי', 2], ['רביעי', 3], ['חמישי', 4], ['שישי', 5], ['שבת', 6],
+].map(([w, index]) => ({ index, re: new RegExp(`(?:^|\\s)ל(?:יום\\s+)?${w}(?![\\u0590-\\u05FF])`, 'u') }));
+
+function datesTheObject(title, startsAt, tz) {
+  if (typeof title !== 'string' || !title.trim() || !startsAt) return null;
+  const actual = weekdayInZone(startsAt, tz);
+  if (actual === null) return null;
+  for (const { index, re } of HE_FOR_WEEKDAY_RES) {
+    if (index === actual && re.test(title)) return { weekday: index, name: dayName(index) };
+  }
+  return null;
+}
+
 // ---- does this text pin itself to a moment? ---------------------------------
 //
 // user_facts.expires_at is how a fact with a shelf life says so, and nothing
@@ -264,6 +298,7 @@ function weekdayOfParts({ y, m, d }) {
 }
 
 module.exports = {
+  datesTheObject,
   OFFSET_RE, hasOffset, badTime,
   weekdaysInText, weekdayInZone, weekdayClash,
   namesAMoment,

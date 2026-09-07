@@ -1746,3 +1746,76 @@ test('deprovisioning a binding whose agent is already off the roster restarts th
   assert.ok(!(after.bindings || []).some((b) => b.match && b.match.peer && b.match.peer.id === phone),
     'the binding is gone from the file either way');
 });
+
+// The user who would not stay deleted (2026-09-07).
+//
+// A phantom created by an eval run against production was deleted — row,
+// agent, binding and workspace, all four confirmed gone — and was back inside
+// sixty seconds, because sweepIntakeSessions reads the GATEWAY's session store
+// and provisions any phone there that has no active user row, with no age
+// bound. The stale intake session was 24.8 hours old and belonged to nobody.
+// Deleting the account is not deleting the person until that goes too.
+test('deleting a user forgets the intake session the sweep would rebuild them from', async () => {
+  const phone = '+972601000557';
+  const made = await withTx(db.pool, (c) => provision.provisionUser(c, { phone, configPath }));
+  assert.equal(made.ok, true);
+
+  const { deprovisionUser } = require('../src/intake/deprovision');
+  const asked = [];
+  const res = await withTx(db.pool, (c) => deprovisionUser(c, phone, {
+    configPath, removeWorkspace: false,
+    deleteSession: async (key) => { asked.push(key); return true; },
+  }));
+  assert.equal(res.ok, true, JSON.stringify(res));
+  // The exact key the gateway stores, not a guess at its shape: agent, channel,
+  // chat type, peer (channels/sessions.js). A key that is one segment off
+  // deletes nothing and reports success.
+  assert.deepEqual(asked, [`agent:intake:whatsapp:direct:${phone}`]);
+  assert.equal(res.data.intakeSessionForgotten, true);
+});
+
+// A reset WANTS them discoverable again, and the testbed rehearsal runs inside
+// a transaction that is always rolled back — a ROLLBACK cannot restore a
+// deleted session, so it must never be asked for one.
+test('a reset opts out, and then nothing is asked of the gateway at all', async () => {
+  const phone = '+972601000558';
+  assert.equal((await withTx(db.pool, (c) => provision.provisionUser(c, { phone, configPath }))).ok, true);
+
+  const { deprovisionUser } = require('../src/intake/deprovision');
+  const asked = [];
+  const res = await withTx(db.pool, (c) => deprovisionUser(c, phone, {
+    configPath, removeWorkspace: false, forgetIntakeSession: false,
+    deleteSession: async (key) => { asked.push(key); return true; },
+  }));
+  assert.equal(res.ok, true);
+  assert.deepEqual(asked, [], 'the seam was never called');
+  assert.equal(res.data.intakeSessionForgotten, null, 'not attempted is null, never false');
+});
+
+// `deploy.sh --restart` runs this suite ON THE BOX, where the gateway is
+// production and its sessions belong to real people. The default deleter must
+// refuse there — and say "not attempted" rather than "failed", so a caller
+// cannot read a refusal as a session that survived (CLAUDE.md, "null (could
+// not read) and [] must never collapse into the same value").
+test('the real deleter refuses to touch the live gateway from a test process', async () => {
+  const { deleteSession, intakeSessionKey } = require('../src/intake/gateway-session');
+  assert.equal(process.env.NODE_TEST_CONTEXT ? true : false, true, 'this IS a test process');
+  assert.equal(await deleteSession(intakeSessionKey('+972601000559')), null);
+});
+
+// The account is already gone by the time the gateway is asked. Reporting the
+// failure matters — the sweep may rebuild them — but hiding the deletion behind
+// it would leave the operator thinking nothing happened when the row is gone.
+test('a gateway that refuses the delete does not turn a real deletion into a failure', async () => {
+  const phone = '+972601000560';
+  assert.equal((await withTx(db.pool, (c) => provision.provisionUser(c, { phone, configPath }))).ok, true);
+
+  const { deprovisionUser } = require('../src/intake/deprovision');
+  const res = await withTx(db.pool, (c) => deprovisionUser(c, phone, {
+    configPath, removeWorkspace: false, deleteSession: async () => false,
+  }));
+  assert.equal(res.ok, true, 'the user is deleted whatever the gateway said');
+  assert.equal(res.data.intakeSessionForgotten, false, 'and the failure is reported, not swallowed');
+  const { rows } = await db.pool.query(`SELECT count(*)::int c FROM users WHERE phone = $1`, [phone]);
+  assert.equal(rows[0].c, 0);
+});

@@ -316,6 +316,17 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   for it) plus `hints.replyTarget` (arrives mid-turn, says to answer the quoted
   message) is what makes it land; `tests/reply-target.test.js` and eval
   `reply-to-older-message` hold both halves open.
+- **Deleting a user is not deleting a person until the GATEWAY's intake
+  session goes too.** `deprovisionUser` removes everything olma2 owns — row,
+  agent, binding, workspace — and `sweepIntakeSessions` rebuilds them from the
+  gateway's session store, which it reads with no age bound: any peer that ever
+  reached the greeter and has no active user row is provisioned on the next
+  five-minute tick. A deleted account silently undid itself inside five
+  minutes, looking exactly like someone coming back on their own.
+  `forgetIntakeSession` (default true) is now the difference between deleting
+  an account and resetting one; the testbed rehearsal opts out because its
+  transaction is rolled back and a ROLLBACK cannot restore a deleted session
+  (`incidents.md`, "The user who would not stay deleted").
 - **The ledgers are append-only.** Rows already written stay as written, even
   when the pricing that produced them was wrong.
 - **A meeting negotiates several options (`domain/meeting-options.js`, up to
@@ -333,6 +344,20 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   correcting them would falsify the record. Two readers must answer to BOTH
   spellings and say so — `facts.SYSTEM_NOUN_RE` (old facts are still in the
   table) and the voice bridge's name check and Deepgram keyterms.
+- **An explicit reminder replaces the automatic one only on the SAME local
+  day; on another day it stands beside it.** Both are otherwise about catching
+  one thing at its due date, and two messages for that is the bug the
+  supersede exists to stop — but Vered asked for one "בעוד דקה" (the word was
+  נוספת) and lost the 08:00 she had for the next morning. **A past `remind_at`
+  is refused at the TOOL boundary** (`adapters/mcp/tools/reminders.js`, on
+  `reminders.momentIsPast`), never inside `setReminder`: our own sweeps,
+  repairs and most of the suite arm past moments on purpose, and only a model
+  asking for one is a mistake. Refused before the write, so a moment we will
+  not honour cannot withdraw one we would have.
+- **A day named with ל־ in a title dates the THING, not the task.** "לארגן
+  אימון לרביעי" is arranged BEFORE Wednesday; filed ON Wednesday it is useless.
+  `datetime.datesTheObject` reports that shape on the result and lets the model
+  resolve it — it has the conversation, the function has a string.
 - **`due_at` is when the THING is; `remind_at` is the hour THEY named.** A task
   saved with a `due_at` arms its own reminder — an hour before a timed one,
   08:00 that morning for a day-shaped one (local midnight in THEIR zone is the

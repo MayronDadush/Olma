@@ -8,9 +8,17 @@
 //
 // Like provisioning, the agent and binding are removed in ONE config write,
 // so the routing change is live immediately — see openclaw-config.js for why
-// that pairing matters. Once the binding is gone, the intake catch-all picks
-// that phone up again, which is exactly what "let me test onboarding from
-// scratch" needs.
+// that pairing matters. Once the binding is gone, a message from that phone
+// lands on the intake catch-all again, which is what "let me test onboarding
+// from scratch" needs.
+//
+// What it does NOT mean is that the person is gone. Everything above is ours;
+// the gateway's session store is not, and the intake sweep reads that store
+// with no age bound (jobs/intake.js). So a phone whose intake session is still
+// there is provisioned again on the next tick — WITHOUT the person writing —
+// and "delete my account" silently undoes itself inside five minutes. Hence
+// `forgetIntakeSession`, which is the difference between deleting an account
+// and resetting one (incidents.md, "The user who would not stay deleted").
 const occ = require('./openclaw-config');
 const { removeWorkspaceTree } = require('./provision');
 const { ok, err } = require('../domain/results');
@@ -40,8 +48,14 @@ async function previewDeletion(client, phone) {
 // gateway config or a real workspace.
 async function deprovisionUser(client, phone, {
   configPath, removeWorkspace = true,
+  // Drop the gateway's intake session too, so the sweep cannot re-create the
+  // person. False is for a RESET that wants them discoverable again, and for
+  // the testbed rehearsal, whose transaction is always rolled back — a deleted
+  // session is not something a ROLLBACK can put back.
+  forgetIntakeSession = true,
   // Same seam as provisionUser: injectable so the suite never spawns systemctl.
   restartGateway = require('./gateway-restart').restartGateway,
+  deleteSession = require('./gateway-session').deleteSession,
 } = {}) {
   const preview = await previewDeletion(client, phone);
   if (!preview.ok) return preview;
@@ -72,6 +86,17 @@ async function deprovisionUser(client, phone, {
     restarted = await restartGateway();
   }
 
+  // Last, and only once the row and the routing are already gone: if this
+  // fails the person is still deleted, and the worst case is the sweep
+  // rebuilding them — visible, and fixable by running this again. Doing it
+  // first would delete a real transcript for a deprovision that then threw.
+  // `null` means a test process declined to touch the live gateway at all.
+  let intakeSessionForgotten = null;
+  if (forgetIntakeSession) {
+    const { intakeSessionKey } = require('./gateway-session');
+    intakeSessionForgotten = await deleteSession(intakeSessionKey(phone));
+  }
+
   // Through removeWorkspaceTree, never a bare rmSync: .olma-identity carries
   // the immutable bit (chattr +i) since 2026-08-27, which stops root too — so
   // a plain recursive remove throws EPERM and the directory survives while
@@ -84,7 +109,7 @@ async function deprovisionUser(client, phone, {
   return ok({
     user, counts,
     config: { agentRemoved, bindingRemoved, restarted },
-    workspaceRemoved,
+    workspaceRemoved, intakeSessionForgotten,
   });
 }
 

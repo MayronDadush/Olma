@@ -493,7 +493,15 @@ test('per-user page shows their tasks, reminders and learned facts', async () =>
   await withTx(db.pool, async (c) => {
     const project = (await tasks.addTask(c, user.id, { title: 'קניות לשבת' })).data.task;
     await tasks.addTask(c, user.id, { title: 'חלב', parentId: project.id });
-    const t = (await tasks.addTask(c, user.id, { title: 'לקבוע רופא שיניים', dueAt: new Date(Date.now() + 86400_000).toISOString() })).data.task;
+    await tasks.addTask(c, user.id, { title: 'לקבוע רופא שיניים', dueAt: new Date(Date.now() + 86400_000).toISOString() });
+    // The explicit reminder goes on a task with NO due date, so the count this
+    // asserts is one thing and not an accident of the hour. On a due-dated task
+    // an explicit reminder REPLACES the automatic one only on the same local
+    // day (domain/reminders.setReminder) — "in an hour" against a due date
+    // "this time tomorrow" is two different days for all but the last hour of
+    // one, so the pending count here was 2 for twenty-three hours a day and 1
+    // for the twenty-fourth.
+    const t = (await tasks.addTask(c, user.id, { title: 'להתקשר למוסך' })).data.task;
     await reminders.setReminder(c, user.id, t.id, new Date(Date.now() + 3600_000).toISOString());
     await tasks.completeTask(c, user.id, (await tasks.addTask(c, user.id, { title: 'משימה שבוצעה' })).data.task.id);
     await prefs.remember(c, user.id, 'person.maya', 'אשתו');
@@ -502,7 +510,7 @@ test('per-user page shows their tasks, reminders and learned facts', async () =>
   const res = await fetch(base + `/user?id=${user.id}`, { headers: { Authorization: AUTH } });
   assert.equal(res.status, 200);
   const html = await res.text();
-  for (const t of ['קניות לשבת', 'חלב', 'לקבוע רופא שיניים', 'משימה שבוצעה', 'אשתו', 'משימות פתוחות', '⏰ 1', '↳']) {
+  for (const t of ['קניות לשבת', 'חלב', 'לקבוע רופא שיניים', 'להתקשר למוסך', 'משימה שבוצעה', 'אשתו', 'משימות פתוחות', '⏰ 1', '↳']) {
     assert.ok(html.includes(t), `user page contains "${t}"`);
   }
   // main page links to it

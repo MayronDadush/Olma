@@ -134,6 +134,41 @@ function nextOccurrence(from, rule, tz = 'UTC') {
   return at(p.y, p.m, p.d + 7);
 }
 
+// ---- a moment already gone --------------------------------------------------
+//
+// Vered, 2026-09-06: a reminder written at 23:02 was armed for 20:02 the same
+// evening — valid ISO, correct offset, three hours gone. It fired on the spot,
+// its outbox row expired undelivered, and on the way in it cancelled the 08:00
+// she had just been promised in the same breath.
+//
+// This is a predicate, not a guard inside setReminder, and the layer matters.
+// Arming a reminder in the past is a legitimate thing for our own code to do —
+// most of the suite does it to make a reminder due and then drive the sweep,
+// and a repair script rearming a missed row needs it too. The mistake is
+// specifically **the model asking for one**, so the refusal lives at the tool
+// boundary where that request arrives (adapters/mcp/tools/reminders.js) and
+// where refusing costs nothing else. Refused rather than clamped: clamping
+// fires it the instant it is stored, which is the outcome to prevent, not the
+// one to settle for. The grace absorbs the seconds between the model composing
+// the moment and the tool reaching the database; three hours is not that.
+const PAST_GRACE_MS = 2 * 60_000;
+
+function momentIsPast(remindAt, now = new Date()) {
+  const when = new Date(remindAt);
+  if (Number.isNaN(when.getTime())) return false;
+  return when.getTime() < new Date(now).getTime() - PAST_GRACE_MS;
+}
+
+// Which local day a moment falls on, in the person's own zone. Used to decide
+// whether an explicit reminder is REPLACING the automatic one or standing
+// beside it — see setReminder.
+const pad = (n) => String(n).padStart(2, '0');
+
+function localDayKey(value, tz) {
+  const p = dt.partsInZone(tz, new Date(value));
+  return `${p.y}-${pad(p.m)}-${pad(p.d)}`;
+}
+
 async function setReminder(client, ownerId, taskId, remindAt, repeatRule) {
   if (!remindAt) return err('invalid', 'remind_at required');
   if (!hasOffset(remindAt)) return badTime('remind_at', remindAt);
@@ -144,6 +179,7 @@ async function setReminder(client, ownerId, taskId, remindAt, repeatRule) {
   );
   if (!rows[0]) return err('not_found', 'task not found');
   if (rows[0].status !== 'open') return err('invalid', 'cannot set a reminder on a completed task');
+  const tz = rows[0].timezone || 'Asia/Jerusalem';
   // "every month" has to be pinned to a day, and this is the only place that
   // knows both the moment and the zone to read it in. Stored as the concrete
   // day so the rule can never re-derive itself from a clamped occurrence and
@@ -154,11 +190,23 @@ async function setReminder(client, ownerId, taskId, remindAt, repeatRule) {
   // reminder produces two messages about one thing — and the person never
   // asked for the first, so it is ours to withdraw. Only PENDING auto rows go:
   // one that already fired is a thing that happened, not a plan to revise.
+  //
+  // ...but only on the SAME local day. Replacing is what "at eight, not
+  // whenever you were going to" means, and both moments are then about
+  // catching the same thing at its due date. A reminder on a DIFFERENT day is
+  // a second job, and cancelling the first is silent data loss: Vered asked
+  // for one "בעוד דקה" — the word was נוספת, additional — and lost the 08:00
+  // she had for the next morning (2026-09-06). Same day replaces; another day
+  // stands beside it. `attempts = 0`, not `sent_at IS NULL`: since the
+  // escalation ladder a delivered row keeps a null `sent_at` for up to a day,
+  // and a reminder that already reached her is not a plan to revise.
+  const newDay = localDayKey(remindAt, tz);
   const superseded = await client.query(
     `UPDATE task_reminders SET cancelled_at = now()
-      WHERE task_id = $1 AND auto AND sent_at IS NULL AND cancelled_at IS NULL
+      WHERE task_id = $1 AND auto AND attempts = 0 AND cancelled_at IS NULL
+        AND to_char(remind_at AT TIME ZONE $2, 'YYYY-MM-DD') = $3
       RETURNING id`,
-    [taskId]
+    [taskId, tz, newDay]
   );
   const ins = await client.query(
     `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, auto)
@@ -378,6 +426,7 @@ async function markSent(client, reminderId) {
 
 module.exports = {
   setReminder, attachAutoReminder, cancelReminder, listReminders, dueForSending, markSent,
+  momentIsPast, PAST_GRACE_MS,
   normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor,
   recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS,
 };
