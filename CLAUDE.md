@@ -655,6 +655,21 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   ever reached the other way.** Ten passing tests described a nudge for
   someone who had gone silent; production only ever fires it at someone who
   wrote once. Hold the founding case open where the state is PRODUCED.
+- **The owner's opening copy is said ONCE, by whichever voice reaches the
+  person first.** An organic joiner meets the intake greeter, so the greeter
+  sends it verbatim and provisioning stamps `users.opening_sent_at`;
+  `turn_start` reads that column and, on the same `firstTurn`, tells the model
+  the introduction is done instead of handing out `sendVerbatim`. A NULL means
+  nobody has greeted them (testbed reset, hand-provisioned) and their own agent
+  still opens. **A prompt that DESCRIBES brand copy instead of quoting it is a
+  second copy of it** — the greeter was told to "say who you are and name one
+  or two things you help with", so it wrote its own version and עידן read two
+  introductions ninety seconds apart (`incidents.md`, "Two introductions").
+- **A display name is not a word to be translated.** It arrives in whatever
+  script its owner chose; `Idan T` became "היי אידן!" in the first sentence
+  that person ever read, while the right spelling sat in a database the
+  greeter cannot see. Use it only when it is already in the language they
+  wrote in, exactly as spelled — otherwise greet them with no name.
 - **Olma never claims a lookup it did not perform.** No price, no stock level,
   no "מצאתי לך", no link to a RESULT — all of it asserts a fetch that never
   happened. `search_link` is the one exception and only because a link to a

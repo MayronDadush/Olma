@@ -186,6 +186,31 @@ test('a name given in the first message is saved, not asked for again', async ()
   assert.match(said, /no follow-up question this turn/i);
 });
 
+test('somebody the greeter already welcomed is not welcomed again', async () => {
+  // The duplicate introduction, from the receiving end. An organic joiner
+  // reaches the intake greeter first; since 2026-09-07 the greeter sends the
+  // owner's copy itself and provisioning stamps opening_sent_at, so the one
+  // thing this turn must NOT do is say hello a second time. עידן read two
+  // introductions ninety seconds apart, in two different voices.
+  const u = await makeUser(db.pool, '+972611003016', { firstName: null, locale: 'he' });
+  await db.pool.query(`UPDATE users SET opening_sent_at = now() WHERE id = $1`, [u.id]);
+
+  const { data } = await turnStart(u, { opened: false, counted: false });
+  assert.equal(data.firstTurn, true, 'it is still the first turn on their own agent');
+  assert.equal(data.onboarding.sendVerbatim, undefined,
+    'and the copy they have already read is not handed out again');
+  assert.equal(data.onboarding.alreadyOpened, true);
+  const said = data.onboarding.instruction;
+  assert.match(said, /already been greeted/i);
+  assert.match(said, /Answer what they actually wrote/i);
+  assert.doesNotMatch(said, /character for character/i, 'there is no copy to send');
+  // The 2026-08-17 rule this restores, in the words of the greeter's own file:
+  // the conversation simply continues, silently more capable.
+  assert.match(said, /do not say anything about being set up, ready/i);
+  // The name half is not part of the opening and survives either way.
+  assert.match(said, /set_my_name with confirmed: true/);
+});
+
 test('an English speaker gets the English opening', async () => {
   const u = await makeUser(db.pool, '+15551230007', { firstName: null, locale: 'en' });
   const { data } = await turnStart(u, { opened: false, counted: false });

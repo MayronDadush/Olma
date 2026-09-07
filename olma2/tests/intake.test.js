@@ -190,6 +190,19 @@ test('provisionUser: an explicit firstName always wins over any prefill', async 
   assert.equal(res.data.user.first_name, 'מהשיחה');
 });
 
+test('a user provisioned outside the greeter has heard nobody, and is not stamped', async () => {
+  // The other half of the same rule. A testbed reset or a hand-provisioned
+  // account never met the intake agent, so their own agent IS the first voice
+  // they hear and turn_start must still hand out the opening copy. A default
+  // of "greeted" here would silently delete the welcome for exactly the people
+  // who have not had one.
+  const res = await withTx(db.pool, (c) => provisionUser(c, { phone: '+972601000231', configPath }));
+  assert.equal(res.ok, true);
+  const { rows } = await db.pool.query(
+    `SELECT opening_sent_at FROM users WHERE phone = '+972601000231'`);
+  assert.equal(rows[0].opening_sent_at, null);
+});
+
 test('intake sweep: open registration provisions immediately — no separate welcome message', async () => {
   const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
     configPath,
@@ -206,8 +219,14 @@ test('intake sweep: open registration provisions immediately — no separate wel
   assert.equal(outboxRows.length, 0, 'nothing enqueued at provisioning time');
 
   const { rows: userRows } = await db.pool.query(
-    `SELECT workspace_path, onboarded_at FROM users WHERE phone = '+972601000002'`);
+    `SELECT workspace_path, onboarded_at, opening_sent_at FROM users WHERE phone = '+972601000002'`);
   assert.ok(userRows[0].onboarded_at, 'onboarded_at is set at provisioning, not on a later delivery');
+  // Everyone this sweep provisions was found ON the greeter's session list, so
+  // reaching this line means the greeter has already opened with the owner's
+  // copy. The stamp is what stops turn_start sending it a second time
+  // (domain/turn.js) — without it the person reads two introductions, which
+  // is the very duplicate the line above says was retired.
+  assert.ok(userRows[0].opening_sent_at, 'the greeter said hello, and the record says so');
   const userMd = fs.readFileSync(path.join(userRows[0].workspace_path, 'USER.md'), 'utf8');
   assert.match(userMd, /מה שכבר שיתפו לפני שהמערכת האישית הייתה מוכנה/);
   assert.match(userMd, /היי מה זה הדבר הזה\?/, 'their own words reach their personal workspace');
@@ -829,9 +848,26 @@ test('intake workspace sync: open/closed variants, idempotent writes', () => {
   // Olma's voice) — silence turned out to feel worse than a good generic
   // reply, and there is no separate personal welcome any more for a second
   // voice to clash with.
-  assert.match(text, /Answer for real/);
+  assert.match(text, /answer for real/i);
   assert.match(text, /Olma/);
   assert.ok(!/NO_REPLY/.test(text), 'no longer told to stay silent');
+  // 2026-09-07: the introduction is the OWNER's copy, said here and only
+  // here. It used to be described in prose ("say who you are, and name
+  // concretely one or two things you actually help with") and the model wrote
+  // its own version, which then collided with the copy turn_start sends —
+  // עידן read two introductions ninety seconds apart. Both locales, because
+  // the greeter is the one component that answers before anyone knows which
+  // language this person speaks.
+  const { OPENING } = require('../src/domain/onboarding');
+  assert.ok(text.includes(OPENING.he), 'the owner\'s Hebrew copy, character for character');
+  assert.ok(text.includes(OPENING.en), 'and the English one');
+  assert.match(text, /FIRST reply/, 'said once, on the first reply');
+  // The name in the metadata is written in whoever's alphabet its owner chose.
+  // "Idan T" became "אידן" in the first sentence עידן ever read.
+  assert.match(text, /transliterate/i, 'a name is not a word to be translated');
+  // Twelve seconds of a first reply went on olma__turn_start against an MCP
+  // server that is not connected for this agent.
+  assert.match(text, /Do not call any tool, ever/);
   // Not testing for the ABSENCE of "later welcome" phrasing here — the
   // instruction legitimately quotes that exact phrase to prohibit it
   // ('never say "X"'), which makes a simple negative regex self-defeating.

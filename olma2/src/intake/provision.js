@@ -236,6 +236,14 @@ function undoProvisionSideEffects({
 async function provisionUser(client, {
   phone, firstName, invitedByConnectionId, configPath, timezone, locale,
   firstMessage, invitedInfo, registerUndo,
+  // True when this person reached the intake greeter and it answered them —
+  // which is every person the intake sweep provisions, because a session on
+  // the intake agent is how the sweep found them at all. The greeter opens
+  // with the owner's copy (intake/intake-workspace.js), so `opening_sent_at`
+  // is what stops turn_start introducing her a second time. Default false:
+  // a hand-provisioned or testbed-reset account has met nobody, and their own
+  // agent is the first voice they will hear.
+  greetedByIntake = false,
   // The bindings-only fallback below. Injectable so the suite never spawns
   // systemctl; production takes the default (intake/gateway-restart.js).
   restartGateway = require('./gateway-restart').restartGateway,
@@ -307,11 +315,15 @@ async function provisionUser(client, {
   const agentId = `u-${user.id}`;
   const paths = defaultPaths(agentId);
   const { rows } = await client.query(
+    // COALESCE on opening_sent_at for the same reason as onboarded_at: a
+    // re-provision must not move the moment somebody was greeted.
     `UPDATE users SET status = 'active', agent_id = $2, workspace_path = $3,
             first_name = COALESCE(first_name, $4), onboarded_at = COALESCE(onboarded_at, now()),
-            locale = $5
+            locale = $5,
+            opening_sent_at = CASE WHEN $6 THEN COALESCE(opening_sent_at, now()) ELSE opening_sent_at END
      WHERE id = $1 RETURNING *`,
-    [user.id, agentId, paths.workspace, firstName || null, resolvedLocale.locale]
+    [user.id, agentId, paths.workspace, firstName || null, resolvedLocale.locale,
+      greetedByIntake === true]
   );
   user = rows[0];
 
