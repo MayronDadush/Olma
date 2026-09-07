@@ -14,6 +14,7 @@ const sessionIndex = require('../src/channels/sessions');
 const invites = require('../src/intake/invites');
 const guard = require('../src/jobs/config-guard');
 const flags = require('../src/domain/flags');
+const { OPENING } = require('../src/domain/onboarding');
 const connections = require('../src/domain/connections');
 
 let db, tmp, configPath;
@@ -208,6 +209,7 @@ test('intake sweep: open registration provisions immediately — no separate wel
     configPath,
     listSessions: async () => [{ phone: '+972601000002', key: 'agent:intake:whatsapp:direct:+972601000002' }],
     readFirstMessage: async () => 'היי מה זה הדבר הזה?',
+    readGreeterReply: async () => OPENING.he,
   }));
   assert.deepEqual(out.provisioned, ['+972601000002']);
 
@@ -221,11 +223,11 @@ test('intake sweep: open registration provisions immediately — no separate wel
   const { rows: userRows } = await db.pool.query(
     `SELECT workspace_path, onboarded_at, opening_sent_at FROM users WHERE phone = '+972601000002'`);
   assert.ok(userRows[0].onboarded_at, 'onboarded_at is set at provisioning, not on a later delivery');
-  // Everyone this sweep provisions was found ON the greeter's session list, so
-  // reaching this line means the greeter has already opened with the owner's
-  // copy. The stamp is what stops turn_start sending it a second time
-  // (domain/turn.js) — without it the person reads two introductions, which
-  // is the very duplicate the line above says was retired.
+  // The greeter really did open with the owner's copy here — the fixture says
+  // so, and the sweep read it rather than assuming it. The stamp is what stops
+  // turn_start sending it a second time (domain/turn.js); without it the
+  // person reads two introductions, which is the duplicate the line above
+  // says was retired.
   assert.ok(userRows[0].opening_sent_at, 'the greeter said hello, and the record says so');
   const userMd = fs.readFileSync(path.join(userRows[0].workspace_path, 'USER.md'), 'utf8');
   assert.match(userMd, /מה שכבר שיתפו לפני שהמערכת האישית הייתה מוכנה/);
@@ -237,6 +239,86 @@ test('intake sweep: open registration provisions immediately — no separate wel
     listSessions: async () => [{ phone: '+972601000002', key: 'x' }],
   }));
   assert.equal(again.provisioned.length, 0);
+});
+
+// ---- the evening two people were provisioned before anyone had greeted them
+//
+// Real, 2026-09-07. The sweep ticks every five seconds; the greeter answers in
+// twenty to forty. So it always won the race, and `greetedByIntake: true` was
+// asserting that the greeter had already sent the owner's opening copy at a
+// moment the greeter had not spoken at all. Both people were stamped as
+// introduced, `turn_start` told their own agents "the introduction is done",
+// and neither ever learned what Olma was.
+//
+// The second half is worse than a race, and no wait fixes it on its own: the
+// greeter is TOLD to open with the copy and does not always do it. בר's first
+// ever message was "אני יכול מחר" — he was in a WhatsApp group Olma sits in,
+// had been asked when he was free, and answered. The greeter answered his
+// question back, in its own words. A first message from a group participant is
+// an ANSWER, not a hello, and that is now the normal way people arrive.
+
+test('the greeter has not spoken yet, so nobody is taken over and nothing is stamped', async () => {
+  const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
+    configPath,
+    // ageMs is what the real session list carries; 0.36s is what was measured.
+    listSessions: async () => [{ phone: '+972601000240', key: 'k', ageMs: 360 }],
+    readGreeterReply: async () => null,
+    readFirstMessage: async () => { throw new Error('must not read a store the gateway is still writing'); },
+  }));
+  assert.equal(out.provisioned.length, 0, 'provisioning raced the greeter and won');
+  assert.equal(out.waitingOnGreeter, 1);
+  const { rows } = await db.pool.query(
+    `SELECT id FROM users WHERE phone = '+972601000240'`);
+  assert.equal(rows.length, 0, 'no user row until the greeter has said something');
+});
+
+test('the greeter answered the question instead of opening — so their OWN agent still opens', async () => {
+  // Verbatim from the box: what בר actually read, thirty seconds after he was
+  // provisioned and stamped as already-introduced.
+  const whatTheGreeterReallySaid = 'אני רושם את זה — שאתה פנוי מחר 👍\n\n'
+    + 'מטפל/ת בך האישי/ת יקבל את כל ההקשר עוד רגע וימשיך משם, אל תדאג.';
+  const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
+    configPath,
+    listSessions: async () => [{ phone: '+972601000241', key: 'k', ageMs: 40_000 }],
+    readGreeterReply: async () => whatTheGreeterReallySaid,
+    readFirstMessage: async () => 'אני יכול מחר',
+  }));
+  assert.deepEqual(out.provisioned, ['+972601000241']);
+  const { rows } = await db.pool.query(
+    `SELECT opening_sent_at, workspace_path FROM users WHERE phone = '+972601000241'`);
+  assert.equal(rows[0].opening_sent_at, null,
+    'the greeter never said the opening, so the record must not claim it did');
+  // And his words survive, which is the whole reason for waiting.
+  const userMd = fs.readFileSync(path.join(rows[0].workspace_path, 'USER.md'), 'utf8');
+  assert.match(userMd, /אני יכול מחר/, 'the first message a group participant sends is the payload');
+});
+
+test('a greeter that never answers cannot strand somebody outside the system', async () => {
+  const out = await withTx(db.pool, (c) => intake.sweepIntakeSessions(c, {
+    configPath,
+    // Past the grace: the greeter is broken, not slow.
+    listSessions: async () => [{ phone: '+972601000242', key: 'k', ageMs: intake.GREETER_GRACE_MS + 1 }],
+    readGreeterReply: async () => null,
+    readFirstMessage: async () => null,
+  }));
+  assert.deepEqual(out.provisioned, ['+972601000242'], 'the wait is bounded');
+  const { rows } = await db.pool.query(
+    `SELECT opening_sent_at FROM users WHERE phone = '+972601000242'`);
+  assert.equal(rows[0].opening_sent_at, null,
+    'nobody greeted them, so their own agent must');
+});
+
+test('saidTheOpening reads the copy, not the intention', () => {
+  assert.equal(intake.saidTheOpening(OPENING.he), true);
+  assert.equal(intake.saidTheOpening(OPENING.en), true);
+  assert.equal(intake.saidTheOpening(`${OPENING.he}\n\nעוד משהו שהמודל הוסיף.`), true,
+    'a line added after the copy does not un-say it');
+  assert.equal(intake.saidTheOpening(null), false);
+  assert.equal(intake.saidTheOpening(''), false);
+  assert.equal(intake.saidTheOpening('היי, אני עולמה 👋'), false,
+    'the greeting line alone is not the introduction — it is the substance that is');
+  assert.equal(intake.saidTheOpening('היי! אני כאן כדי לעזור לך, ספר לי מה תרצה'), false,
+    'a paraphrase is a second copy of the brand copy, not the brand copy');
 });
 
 test('intake sweep: closed registration waitlists organic strangers, still admits invited ones', async () => {
@@ -381,6 +463,9 @@ test('a sweep that throws leaves no workspace and no agent behind', async () => 
       { phone: '+972601000801', ageMs: 1000 },
       { phone: '+972601000802', ageMs: 1000 },
     ],
+    // Both have been answered by the greeter, so both get as far as the
+    // carryover read — which is where this test wants the explosion.
+    readGreeterReply: async () => 'היי, מה שלומך?',
     readFirstMessage: async () => {
       if (++seen === 2) {
         // Snapshot at the moment of failure: the first person is fully
