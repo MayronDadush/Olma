@@ -21,7 +21,14 @@ const TOOLS = [
   ...require('./tools/preferences'),
   ...require('./tools/combined-connect'),
   ...require('./tools/calendar'),
-  ...require('./tools/email'),
+  // No `./tools/email` (2026-09-07). `gmail.readonly` is a RESTRICTED scope
+  // and prices the whole app into Google's paid verification track — the five
+  // mailbox tools were deleted rather than left here refusing, because an
+  // unlisted tool file is what tests/tool-registry-layout.test.js forbids and
+  // a listed one spends the schema budget on every turn to offer something
+  // that cannot happen. `domain/mail.js` and its 32 tests are untouched:
+  // reopening is re-adding one small file, after re-verification.
+  // See domain/mail.js, "closed, and the flag is not what closes it".
   ...require('./tools/issues'),
   ...require('./tools/contacts'),
   ...require('./tools/bulk-contact-import'),
