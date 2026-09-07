@@ -29,6 +29,9 @@ const reminders = require('./reminders');
 // last occurrence — rather than just adding the interval to `now` — is what
 // keeps "18:00 every day" landing at 18:00 rather than at whatever hour the
 // person happened to press resume.
+// users.paused_reason for a pause the check-in ladder made (migration 049).
+const QUIET_LADDER = 'quiet_ladder';
+
 const MAX_CATCHUP_STEPS = 800; // ~2 years of daily; a guard, never a limit in practice
 
 function nextOccurrenceAfter(from, rule, notBefore, tz) {
@@ -60,8 +63,10 @@ async function isPaused(client, userId) {
 // thirty, only ever with the whole suite running in parallel. One clock, one
 // transaction timestamp, and the two are now exactly equal.
 async function pauseUser(client, userId, { note = null } = {}) {
+  // paused_reason = NULL: this pause is THEIRS (or the admin's), so a ladder
+  // pause already in place is taken over and stops ending on its own.
   const { rows } = await client.query(
-    `UPDATE users SET paused_at = COALESCE(paused_at, now()) WHERE id = $1
+    `UPDATE users SET paused_at = COALESCE(paused_at, now()), paused_reason = NULL WHERE id = $1
       RETURNING id, paused_at`, [userId]);
   if (!rows[0]) return err('not_found', 'no such user');
 
@@ -125,11 +130,42 @@ async function resumeUser(client, userId, { now = new Date() } = {}) {
     if (res.ok) rearmed.push({ taskId: Number(f.task_id), remindAt: next.toISOString() });
   }
 
-  await client.query(`UPDATE users SET paused_at = NULL WHERE id = $1`, [userId]);
+  await client.query(`UPDATE users SET paused_at = NULL, paused_reason = NULL WHERE id = $1`, [userId]);
   await audit.record(client, userId, 'user.resumed', {
     pausedAt, remindersRearmed: rearmed.map((r) => r.taskId),
   });
   return ok({ rearmed });
 }
 
-module.exports = { pauseUser, resumeUser, isPaused, nextOccurrenceAfter };
+// The pause the check-in ladder makes after three unanswered check-ins. It
+// is NOT pauseUser: nothing on their record is cancelled — not a reminder,
+// not a queued row — because the owner's rule for somebody who has stopped
+// answering is "stop it arriving, cancel nothing". paused_at alone does the
+// stopping: the gate drops every row for a paused person, dueForSending and
+// the sweeps skip them, and the dashboard says so. A pause already in place
+// (theirs) is left exactly as it is, reason included.
+async function quietPause(client, userId) {
+  const { rows } = await client.query(
+    `UPDATE users SET paused_at = now(), paused_reason = $2
+      WHERE id = $1 AND paused_at IS NULL RETURNING paused_at`, [userId, QUIET_LADDER]);
+  if (!rows[0]) return ok({ paused: false });
+  await audit.record(client, userId, 'user.paused', {
+    note: QUIET_LADDER, reason: QUIET_LADDER,
+    remindersCancelled: [], outboxCancelled: [], dataDeleted: false,
+  });
+  return ok({ paused: true, pausedAt: rows[0].paused_at });
+}
+
+// Ends a ladder pause, and ONLY a ladder pause, on evidence that the person
+// wrote. A pause they asked for is ended by them or by the admin, never here.
+// Nothing to re-arm: quietPause took nothing down.
+async function quietResume(client, userId) {
+  const { rows } = await client.query(
+    `UPDATE users SET paused_at = NULL, paused_reason = NULL
+      WHERE id = $1 AND paused_reason = $2 RETURNING id`, [userId, QUIET_LADDER]);
+  if (!rows[0]) return ok({ resumed: false });
+  await audit.record(client, userId, 'user.resumed', { reason: QUIET_LADDER, remindersRearmed: [] });
+  return ok({ resumed: true });
+}
+
+module.exports = { pauseUser, resumeUser, quietPause, quietResume, isPaused, nextOccurrenceAfter, QUIET_LADDER };

@@ -1,0 +1,22 @@
+-- When the owner's opening copy was said to this person, and by whom.
+--
+-- The copy (domain/onboarding.js) says of itself that it "cannot reach
+-- somebody twice", and that was true of the only sender it had. It is not true
+-- of the PERSON: an organic joiner meets the intake greeter first, and the
+-- greeter — a model told to "say who you are and name one or two things you
+-- help with" — writes its own paraphrase of that same copy. עידן read both,
+-- ninety seconds apart, in two different voices (docs/incidents.md, "Two
+-- introductions, ninety seconds apart").
+--
+-- So the greeter now sends the copy itself, verbatim, and this column is how
+-- turn_start knows not to send it again. NULL means nobody has greeted them
+-- yet — which is the right answer for an account created any other way (the
+-- testbed reset, a hand-provisioned user), where their own agent is still the
+-- first voice they hear.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS opening_sent_at timestamptz;
+
+-- No backfill, deliberately. Every existing user has already had their first
+-- turn — `first_turn_at` is set, or they have never written at all — so the
+-- onboarding block cannot reach them again whatever this column says, and a
+-- backfill guessing at who the greeter answered months ago would be inventing
+-- a fact to sit permanently in a column that reads as one.

@@ -494,6 +494,8 @@ async function snoozeTask(client, ownerId, taskId, newDueAt) {
   // many times it has moved before, and whether a reminder had already fired
   // — a postponement AFTER being nudged means something different from one
   // the person made on their own.
+  // Read BEFORE the ladder is retired below, or every move would count as
+  // "after a reminder" — the retirement writes the same `sent_at` this counts.
   const { rows: ctx } = await client.query(
     `SELECT (SELECT count(*)::int FROM task_reminders
               WHERE task_id = $1 AND sent_at IS NOT NULL) AS reminders_fired,
@@ -516,7 +518,26 @@ async function snoozeTask(client, ownerId, taskId, newDueAt) {
     snoozeCount: priorSnoozes + 1,
     afterReminder: remindersFired > 0,
   });
-  return ok({ task });
+
+  // The reminders follow the date. A rung that was chasing the old one has
+  // been answered by the move; an automatic reminder for the old date is
+  // re-armed for the new one (reminders.retireForMovedTask). Only when the
+  // date actually changed — a snooze onto the same instant moves nothing.
+  const dateChanged = !fromDueAt || new Date(fromDueAt).getTime() !== new Date(newDueAt).getTime();
+  if (!dateChanged) return ok({ task });
+  const { rows: u } = await client.query(`SELECT timezone FROM users WHERE id = $1`, [ownerId]);
+  const moved = await reminders.retireForMovedTask(client, ownerId, task, {
+    timezone: (u[0] && u[0].timezone) || 'UTC',
+  });
+  return ok({
+    task,
+    ...(moved.retired.length ? { remindersRetired: moved.retired } : {}),
+    // Same shape as add_task's, so the same hint states the armed hour back.
+    ...(moved.reminder ? {
+      reminders: [moved.reminder],
+      remindersAt: await localLabels(client, ownerId, [moved.reminder]),
+    } : {}),
+  });
 }
 
 async function archiveTask(client, ownerId, taskId) {

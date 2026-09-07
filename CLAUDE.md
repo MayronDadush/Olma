@@ -315,6 +315,35 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   A backoff, not a mute: one message from them re-opens it. It asked Sarah the
   same question on four mornings first (`incidents.md`, "The morning digest
   asked the same question four mornings running").
+- **Somebody who has stopped answering hears nothing Olma decided to say, and
+  nothing on their record is cancelled.** The check-in ladder's one miss
+  (`checkin_misses >= 1`) is the signal and the delivery gate is where it
+  acts: every row is dropped as `hold_reason = 'quiet'` — reminder rungs,
+  digests, another user's fan-out — except the ladder's own check-in (the
+  three-day and the weekly "מה איתך") and rung 1 of a reminder they asked for
+  IN WORDS (`payload.auto === false`, which `sweepReminders` puts on every
+  rung). The reminder and the task stay exactly as they were: the owner's
+  rule is "stop it arriving, cancel nothing", and a rung the gate dropped is
+  never chased. `pickRung` puts the quiet one-liner ABOVE overload and a
+  stalled goal (Olma's opinions) and BELOW a stuck meeting and a deadline
+  (theirs). **The third miss is a pause, not a silence** — `pause.quietPause`
+  sets `paused_at` with `paused_reason = 'quiet_ladder'` (migration 049) and
+  takes nothing down, and `openRecord({ wake: true })` ends it on the first
+  message they send; a pause THEY asked for (`paused_reason` NULL) is ended
+  only by them or by the admin. **A "like" never reaches us** — on OpenClaw
+  2026.8.1 there is no reaction event, so the only sign of interest we have
+  is a message; a person who only likes looks silent. Vered got eighteen
+  messages on her second day and answered none (`incidents.md`, "Eighteen
+  messages, no answer").
+- **Moving a task's date answers every rung that was chasing the old one.**
+  `snoozeTask` → `reminders.retireForMovedTask`: a one-off reminder already
+  climbing (`attempts >= 1`) is RETIRED (`sent_at`, never cancelled — they
+  answered it by moving the thing), its queued outbox row is withdrawn as
+  `hold_reason = 'moved'`, a pending AUTOMATIC reminder for the old date is
+  cancelled and re-armed for the new one (an explicit reminder on the task
+  blocks the re-arm, as on `add_task`), a repeating one is left alone. It
+  did neither for a day: Vered moved five tasks to 09:00 and the ladders of
+  their old date still had "זו התזכורת האחרונה" ×7 due at 08:00 (same entry).
 - **A "once ever" question is stamped on the PERSON, never deduped on the
   route that asks it.** Two routes each honouring "at most once" is twice.
   The city is `users.timezone_asked_at` (migration 045), written by whichever
@@ -638,6 +667,58 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `PERMANENT_PREFIXES` — a self-healing exposure with a prunable audit trail
   is one nobody can ever count (`incidents.md`, "The carryover leak came
   back").
+- **An instruction handed to the model may assert what its own columns hold,
+  and not one word more.** A sweep sees `users.first_name`; it does not see
+  where that name came from, and it has never read the person's message. The
+  60-second name rung said "they have not replied" (the state it fires on is
+  reached BY their writing) and "most likely from their WhatsApp profile"
+  (עידן's came from someone else's Google contacts), so Olma asked him to
+  confirm the name he had typed ninety seconds earlier. What the code cannot
+  know, it sends the model to READ — the transcript is right there and the
+  sweep is not (`incidents.md`, "קוראים לי עידן").
+- **Telling the model to call a tool is not telling it what the reader of that
+  tool's write actually checks.** The model DID call `set_my_name` for עידן —
+  with `confirmed` omitted, so it landed as an observation and the rung, which
+  keys on `name_confirmed`, fired anyway. Name the FLAG, not just the tool.
+- **A fixture that writes the state by hand cannot notice the state is only
+  ever reached the other way.** Ten passing tests described a nudge for
+  someone who had gone silent; production only ever fires it at someone who
+  wrote once. Hold the founding case open where the state is PRODUCED.
+- **The owner's opening copy is said ONCE, by whichever voice reaches the
+  person first.** An organic joiner meets the intake greeter, so the greeter
+  sends it verbatim and provisioning stamps `users.opening_sent_at`;
+  `turn_start` reads that column and, on the same `firstTurn`, tells the model
+  the introduction is done instead of handing out `sendVerbatim`. A NULL means
+  nobody has greeted them (testbed reset, hand-provisioned) and their own agent
+  still opens. **A prompt that DESCRIBES brand copy instead of quoting it is a
+  second copy of it** — the greeter was told to "say who you are and name one
+  or two things you help with", so it wrote its own version and עידן read two
+  introductions ninety seconds apart (`incidents.md`, "Two introductions").
+- **`gmail.readonly` is a RESTRICTED scope and everything else Olma asks for
+  is merely SENSITIVE — the two words are different verification tracks, and
+  one restricted scope prices the whole app onto the paid one** (an annual
+  third-party CASA assessment, on top of the free demo-video/privacy-policy
+  track calendar and contacts need). Mail is closed for that reason
+  (2026-09-07): `tools/email.js` is deleted, `start_google_connection` has no
+  `mail` parameter, and `tests/mail.test.js` fails if either returns.
+  `domain/mail.js` and its 32 tests are untouched — reopening is one small
+  file plus a re-verification. **Never add a scope without checking which list
+  it is on**; an unverified app asking for a restricted one is blocked
+  outright rather than warned, which is what עידן's "This app is blocked" was.
+  **The track follows what the app DECLARES, and the declaration lives in
+  three places, only one of them in this repo**: the consent screen's scope
+  list (Google Auth Platform, project `692111599145`), `/privacy` and `/terms`
+  (`adapters/http/public-pages.js` — the pages the reviewer actually reads),
+  and the code that mints the consent URL. Deleting the tools moved only the
+  third: the pages went on offering Gmail for a day afterwards, and עידן's own
+  request was `calendar: read_only, mail: false` — his block came from the
+  app's configuration, never from his URL. `tests/public-pages.test.js` fails
+  on any restricted scope named on any public page.
+- **A display name is not a word to be translated.** It arrives in whatever
+  script its owner chose; `Idan T` became "היי אידן!" in the first sentence
+  that person ever read, while the right spelling sat in a database the
+  greeter cannot see. Use it only when it is already in the language they
+  wrote in, exactly as spelled — otherwise greet them with no name.
 - **Olma never claims a lookup it did not perform.** No price, no stock level,
   no "מצאתי לך", no link to a RESULT — all of it asserts a fetch that never
   happened. `search_link` is the one exception and only because a link to a

@@ -45,6 +45,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)](#a-hundred-and-five-pending-reminders-thirteen-of-them-pending-fixed-2026-09-07)
 - [The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)](#the-hooks-timer-fired-late-and-brokerd-took-the-blame-fixed-2026-09-07)
@@ -107,6 +108,9 @@ never trust a dated narrative for something you are about to act on.
 - [The carryover leak came back, and the code cannot say how (2026-09-06)](#the-carryover-leak-came-back-and-the-code-cannot-say-how-2026-09-06)
 - [The fact table admitted everything and ranked by recency (fixed 2026-08-28)](#the-fact-table-admitted-everything-and-ranked-by-recency-fixed-2026-08-28)
 - [The name was in front of us on every turn (fixed 2026-08-22)](#the-name-was-in-front-of-us-on-every-turn-fixed-2026-08-22)
+- ["קוראים לי עידן", and ninety seconds later: "עידן, נכון?" (fixed 2026-09-07)](#קוראים-לי-עידן-and-ninety-seconds-later-עידן-נכון-fixed-2026-09-07)
+- [Two introductions, ninety seconds apart (fixed 2026-09-07)](#two-introductions-ninety-seconds-apart-fixed-2026-09-07)
+- ["This app is blocked", and the scope that was pricing the whole app (2026-09-07)](#this-app-is-blocked-and-the-scope-that-was-pricing-the-whole-app-2026-09-07)
 - [The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)](#the-carryover-detector-checked-the-wrong-half-of-the-pair-so-the-flagged-case-was-innocent-and-the-real-leaks-were-invisible-fixed-2026-09-03)
 - [One carryover leak filed itself seven times — `config_guard`'s dedup key wasn't deterministic (fixed 2026-09-03)](#one-carryover-leak-filed-itself-seven-times--config_guards-dedup-key-wasnt-deterministic-fixed-2026-09-03)
 
@@ -1376,6 +1380,119 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
 
+
+### Eighteen messages, no answer (fixed 2026-09-07)
+
+Vered (u-24) joined on the evening of 2026-09-06 and answered everything Olma
+said that night — four messages, four replies, the last at 23:02. Then she
+stopped. On 2026-09-07 Olma sent her **eighteen messages and got no answer to
+any of them**: at 01:33 the second rung of a reminder (the bug fixed under
+"The rung nobody asked for, at half past one"); at 08:00–08:20 the three
+onboarding steps (2h, 5h, 8h — created at 00:11, 03:09 and 06:09, all held
+for the night, all released together), nine reminders one by one (the flood
+fixed under "Nine reminders, nine messages") and an apology; at 11:06 the
+second rungs of all nine, coalesced by then into three; and at 20:10 a
+cheerful "יש לך 6 משימות באיחור, רוצה לקצץ?".
+
+Two of those are bugs with their own entries. The rest was policy working as
+written, and the policy was wrong in one place: **the check-in ladder already
+knew not to ask a question twice** — one miss, three days of quiet, then a
+one-liner with no question mark; two misses, weekly; three, nothing until
+they write — **and nothing else did.** Reminders were exempt from the quiet
+on the argument that "what is THEIRS outranks it", and by that reading six
+tasks the model had dated to "tomorrow 09:00" out of a brain-dump ("לבדוק
+משימות נוספות שיש לי", "לארגן אימון לרביעי") were hers, three rungs each.
+And the evening message — the `overload` rung, Olma's own offer to trim —
+sat ABOVE the silence rung in `pickRung`, so the first thing said to a
+person who had answered nothing all day was an opinion about her backlog.
+
+The owner's rule, in his words: *"מעכשיו לדעתי עולמה לא צריכה לרשום כלום
+לורד עד שיעברו 3 ימים … ואם ורד לא ממשיכה לענות לנסות אחרי עוד שבוע ורק אם
+היא לא ענתה לאף אחד מההודעות האלה להשהות אותה."* And when the first draft
+proposed cancelling her live reminders so nothing would go out at 08:00 the
+next morning: *"אני לא רוצה לבטל אותם אני רוצה לעצור אותם מלהגיע … משתמש
+שלא עושה לייק ולא מגיב לכלום, זה משתמש שלא כלכך מעוניין במוצר — ואני ממש
+לא רוצה שהמוצר יעמס עליו."* Stop it arriving; cancel nothing.
+
+That is exactly the shape the delivery gate exists for. The fix
+(`outbox/gate.js`, `jobs/checkin.js`, `domain/pause.js`, migration 049):
+
+- **The gate drops, by name.** A new fact, `checkinMisses`, from the same
+  `users` row the worker already joins. At one miss or more every row is
+  dropped with `hold_reason = 'quiet'` — a terminal stamp on the OUTBOX row,
+  and nothing else: the reminder keeps its `attempts`, its `sent_at` NULL,
+  its task open. `dueForSending` already refuses to chase a rung the gate
+  dropped (no attempts, no error), so the ladder ends where it stood rather
+  than resuming a week later. Two things pass: the ladder's own check-in,
+  which IS the three-day and the weekly "מה איתך", and rung 1 of a reminder
+  they asked for in words. `sweepReminders` now puts `auto` on every rung's
+  payload so the gate can tell "תזכירי לי מחר ב-8" from a date the model
+  inferred; an old row with neither is not provably theirs and is dropped.
+  Never a hold: they may write back in a month, and a month of held rows
+  released together is the morning she already had.
+- **The quiet outranks Olma's opinions and not theirs.** `pickRung` moves
+  the silence one-liner above `overload` and `stalled_goal`; `stuck_meeting`
+  and `deadline_risk` stay above it.
+- **The third miss is a pause.** Counted on the enqueue like the miss
+  itself, `pause.quietPause` sets `paused_at` with `paused_reason =
+  'quiet_ladder'` and cancels nothing — not `pauseUser`, which disarms every
+  reminder because the person asked it to. The check-in just enqueued then
+  meets the gate as a paused person's row and is dropped as `paused`:
+  "this is the last one" would be one more. `openRecord({ wake: true })`
+  ends a ladder pause on the first message they send — gated on `wake` for
+  the same reason the night re-hearing is (a turn that merely happened on
+  their agent is not them writing; "Good morning at half past one") — and
+  leaves a pause they asked for alone, which `pauseUser` marks by writing
+  `paused_reason = NULL` even over a ladder pause already in place. The
+  admin page names the two differently ("מושהה — לא עונה" / "ביקש להפסיק").
+
+**What we cannot see.** The owner's threshold was "לא עושה לייק ולא מגיב
+לכלום". On OpenClaw 2026.8.1 the hook events are `message:received /
+preprocessed / transcribed / sent` — there is no reaction event, so a 👍 on
+Olma's message never reaches the box. The only sign of interest we have is a
+message. A person who only likes looks, to us, like a person who did not
+answer, and the threshold was set knowing that.
+
+For Vered herself: `checkin_misses = 1` since 20:10 local on 2026-09-07, so
+from the deploy her six rung-3 rows due at 08:00 the next morning are dropped
+as `quiet` rather than sent, her reminders and tasks are untouched, and the
+ladder's one-liner comes on ~10.9 and, unanswered, on ~17.9, after which she
+is paused until she writes.
+
+**The same evening, the second half.** Vered wrote back at 21:43 — two voice
+messages: *"היי הכל בסדר. אשמח לעדכון מחר בתשע בבוקר של שאר המשימות"*. The quiet
+switched itself off (`checkin_misses` → 0 on the first message, as designed),
+the turn-open hook answered in 132ms and 103ms with `connectMs` on both lines,
+and Olma moved five tasks to 09:00 the next day and armed five explicit
+reminders for that hour. One message at 09:00, coalesced — right.
+
+What a read-only `dueForSending` at 05:01 UTC then showed: **seven reminders
+due at 08:00**, every one of them rung 3 — "זו התזכורת האחרונה" — about the
+tasks she had just moved. `snoozeTask` moved `due_at` and touched nothing
+else; the reminders of the old date, two rungs up their ladders since 11:06
+that morning, had no idea. She would have been told, at 08:00, that this was
+the last reminder for six things, and at 09:00 reminded of the same six.
+
+Moving the thing IS the answer to the rung. `reminders.retireForMovedTask`
+(called from `snoozeTask` when the date actually changed): a one-off reminder
+already climbing is retired — `sent_at`, not cancelled, because she answered
+it — and its queued outbox row, if the sweep had already made one, is
+withdrawn under `hold_reason = 'moved'`; a pending automatic reminder for the
+old date is cancelled and re-armed an hour before the new one through
+`attachAutoReminder`, which refuses when an explicit reminder stands on the
+task — exactly Vered's case, so her five 09:00 reminders stayed alone; a
+repeating reminder is its own cadence and is left as it is. The armed hour
+rides the result (`remindersAt`) so the same hint that states it back after
+`add_task` states it after a move. Her seven stale rungs were retired by hand
+through the same function the night this shipped, with the owner's word.
+
+Noted, not acted on: "עדכון ב-9" became five *reminders*, each with a ladder
+of its own — 12:00 "בוצע?", the day after — where `digest_times = 09:00` was
+the tool that says "update" and nothing more. That is doctrine, and it waits.
+
+Two bugs in the same day are still open and get their own PRs: a held
+onboarding step must be superseded by the next rather than stacked, and a
+brain-dump item must not be given a `due_at`.
 
 ### The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)
 
@@ -3385,6 +3502,211 @@ started carry a Conversation info block), writes it unconfirmed, soft-deletes
 the fact the name had been hiding in, and refreshes USER.md. It sends nothing:
 messaging someone to say we had forgotten their name would cost them more than
 the bug did.
+
+### "קוראים לי עידן", and ninety seconds later: "עידן, נכון?" (fixed 2026-09-07)
+
+עידן's entire first minute here, from the transcript:
+
+```
+08:40  עידן:  קוראים לי עידן
+08:41  Olma:  [the opening copy, verbatim]
+08:42  Olma:  עידן, נכון? 😊
+```
+
+He was asked to confirm the name he had typed two minutes earlier, and the row
+already held `עידן תומר` — prefilled at provisioning from Miron's Google
+contacts (`user.name_prefilled_from_contacts`), which nobody had told him and
+nobody could have told him, because the code that sent the question does not
+know it either.
+
+Two separate faults, both of them about a component asserting something outside
+its own columns.
+
+**The first message was heard and filed as hearsay.** `turn_start`'s first-turn
+instruction said: send the opening copy verbatim, *"if they actually asked for
+something, answer it below those lines; otherwise stop there."* Telling us your
+name is not asking for something, so nothing in the turn was about the name.
+What the model did anyway is the part worth reading twice — at 05:41:04 it
+called `set_my_name` **without `confirmed`**, so it landed as
+`user.name_observed`, `name_confirmed` stayed `false`, and the rung read the
+column and fired. The tool was called. The flag the rung reads was not set.
+
+So the instruction now names the flag, not just the tool: *"call `set_my_name`
+with `confirmed: true` before you reply — they stated it, so it is not an
+observation."* It is right about the reply — the brand copy goes out alone, no
+thanks, no acknowledgement, no extra question — and it was wrong about the
+turn: a first message is also the first thing a person ever tells us about
+themselves, and a TOOL CALL costs that reply nothing.
+
+That made a second instruction reachable on the same turn. `set_my_name`
+answers a confirmed name on an empty list with `nextStep` — *"greet them by it
+in one short line, then … invite them to pour out whatever is on their
+plate"* — which is the exact opposite of "send the copy and stop". Two
+unconditional instructions about one reply is the failure already recorded
+under "The hint that outvoted the mark", so it was decided rather than left to
+the model: `nextStep` is suppressed for the opening turn, on the same
+`first_turn_at = last_inbound_at` invariant the rung uses, plus the turn's own
+`firstTurn` verdict for a model that reached for the tool before `turn_start`.
+Nothing is lost by it — the dead end `nextStep` exists to fix is the person
+whose ONLY message was their name in answer to a greeting, and עידן's very
+next message was a real question.
+
+**The 60-second rung then said three things it could not know.** Its wording
+was *"They have not replied since your opening message"* and *"an unconfirmed
+guess at their name — `"עידן"`, most likely from their WhatsApp profile."*
+
+- *"They have not replied"* reads as silence, and the state it fires on is the
+  opposite. `first_turn_at` is stamped during the turn the person's OWN first
+  message opened, so the rung can only ever reach somebody who wrote once and
+  stopped — and can never reach somebody who has never written. Measured on
+  production the same day: 4 of 4 people who had ever reached a first turn got
+  this rung, every one of them having written first. The moment is right; the
+  sentence describing it was the inverse of the truth, and the model acted on
+  the sentence.
+- *"most likely from their WhatsApp profile"* is one of at least three
+  provenances (`users.first_name` is written by provisioning from a contact
+  card, by `turn_start` from the display name, and by `set_my_name`), and the
+  sweep reads the column, not the history. It named the wrong one to a model
+  that will repeat it out loud.
+- Nothing sent the model to the transcript before it asked. The one thing that
+  could have saved the exchange — *read what they actually wrote* — was the
+  one thing the instruction never said.
+
+The rung now says what is in the columns and hands the rest over: they wrote
+once and nothing since; the name on file is `"…"` and *"nobody has heard it
+from them — it may be from their WhatsApp profile, or from someone else's
+address book, and this system does not know which"*; FIRST read what they
+wrote, call `set_my_name` if they already said it, **never ask them to confirm
+a name they just gave you**, and only otherwise ask.
+
+The fixture is the reason this survived a test file with ten passing tests:
+`openedAgo()` writes `first_turn_at = last_inbound_at` by hand, and a fixture
+that encodes *"they never replied"* cannot notice that production only reaches
+that row the other way. The founding case is therefore held open upstream too,
+in `tests/first-turn.test.js` — where the state is produced by an actual first
+turn rather than an UPDATE.
+
+### Two introductions, ninety seconds apart (fixed 2026-09-07)
+
+The same conversation as above, one message earlier:
+
+```
+05:39:07  עידן:  היי                                    → the intake greeter
+05:39:32  Olma:  היי אידן! 👋
+                 אני עולמה, העוזרת האישית שלך בוואטסאפ…
+05:40:36  עידן:  קוראים לי עידן                          → his own agent, u-26
+05:41:13  Olma:  היי, אני עולמה 👋
+                 אני כאן כדי לעזור לכם עם משימות…
+```
+
+Two introductions, two voices, one person. `intake-workspace.js` has said
+since 2026-08-17 that this cannot happen — *"two separate 'voices' (a generic
+reply now, a scripted personal welcome later) is what caused a real
+duplicate-message incident. There is no later welcome any more"* — and
+`onboarding.js` says of the copy that *"it cannot reach somebody twice."* Both
+were true of the senders they knew about. Neither was true of the person: the
+opening copy shipped on 2026-09-04 as a *scripted personal welcome later*, and
+nobody read the file that forbade it.
+
+The greeter's own introduction was not improvised out of nothing either — its
+doctrine told it to write one: *"say who you are, and name concretely one or
+two things you actually help with."* So the system held two versions of one
+paragraph, one of them brand copy the owner had revised by hand on a real
+phone, the other regenerated by a cheap model on every first contact.
+
+**The fix is which voice says it, not whether.** The greeter is the one that
+must answer instantly, so the greeter now sends the owner's copy itself,
+verbatim, both locales, on its first reply only. Provisioning stamps
+`users.opening_sent_at` — every person the intake sweep provisions was found
+on the greeter's own session list, so reaching that line means the greeter has
+this conversation — and `turn_start` reads it: same `firstTurn`, no
+`sendVerbatim`, and an instruction that says the introduction is done and this
+is one conversation carrying on. An account provisioned any other way (a
+testbed reset, a hand-provisioned user) has met nobody, keeps a NULL, and
+still gets the copy from its own agent.
+
+Two smaller things in the same twenty-five seconds:
+
+- **"היי אידן"** — his WhatsApp display name is `Idan T`, in Latin letters.
+  The greeter invented a Hebrew spelling for it and misspelled his name in the
+  first sentence he ever read, while `עידן תומר` was already in the database
+  it cannot see. It is told now: use a display name only if it is already
+  written in the language they wrote to you in, exactly as spelled there;
+  never transliterate; otherwise greet them with no name at all.
+- **Twelve of those twenty-five seconds** went on `olma__turn_start` returning
+  *"bundle-mcp server \"olma\" is not connected"*. The `olma` MCP server is
+  registered globally in `openclaw.json`, so its tools are listed to the
+  intake agent as well, and there is no identity token there for any of them.
+  Its AGENTS.md said "You have NO tools" while the tool list plainly showed
+  some; it now says the ones it can see do not work for it and to call none of
+  them. The honest fix is a per-agent MCP exclusion in the gateway config —
+  left alone deliberately (an invalid config is IGNORED, not rejected), and
+  this costs nothing when that lands.
+
+### "This app is blocked", and the scope that was pricing the whole app (2026-09-07)
+
+עידן tapped the calendar consent link and got Google's hard block — not the
+"Google hasn't verified this app" warning with an Advanced escape hatch, the
+flat refusal. Nothing on our side saw it: `google_connect.auth_started` is
+written when the link is minted, there is no `integrations` row when it is
+never completed, and no check compares the two. It surfaced only because the
+owner sent a screenshot.
+
+**The obvious diagnosis was wrong, and the data said so.** "The app is in
+Testing, add him as a test user" — except a refresh token issued to an app in
+Testing expires after seven days, and:
+
+```
+user 8   google_calendar  connected 2026-08-20  ->  refreshed 2026-09-07
+user 12  google_calendar  connected 2026-08-22  ->  refreshed 2026-09-07
+```
+
+Eighteen and sixteen days, refreshing fine. The app is in **Production,
+unverified**, so test users are not the lever and never were.
+
+What is left for a hard block on a Production app is either a Workspace admin
+who restricts unverified third-party apps (his employer's, nothing we can fix,
+and the one-minute test is to retry from a personal @gmail.com) or a
+**restricted** scope. And that is where reading the scope list paid for
+itself:
+
+| scope | Google's list | verification |
+|---|---|---|
+| `calendar.readonly`, `calendar.events`, `contacts.readonly`, `userinfo.email` | sensitive | demo video, privacy policy on a verified domain, Search Console ownership. Free. |
+| `gmail.readonly` | **restricted** | all of the above **plus** an annual third-party security assessment (CASA), which costs real money. |
+
+The track is decided by what the consent screen DECLARES, so one restricted
+scope was moving calendar — the feature four people actually use — onto the
+paid track. Mail had **two** connections ever, u-3 and u-12, both inside the
+owner's own circle, and the `email_access_phones` flag was `"all"`, so any new
+person could have triggered a restricted-scope consent at any time.
+
+So mail is closed while the app goes through sensitive-track verification.
+`src/adapters/mcp/tools/email.js` is deleted and `start_google_connection`
+lost its `mail` parameter — **the parameter, not just the permission
+underneath it**: a checkbox a model can see is a mailbox it will offer.
+`domain/mail.js`, `mail-gmail.js` and all 32 of their tests are untouched, so
+reopening is re-adding one small file after a re-verification, not a rebuild.
+
+Two shapes worth keeping from how this was built:
+
+- **The first attempt was a runtime `GMAIL_CLOSED` constant above the admin
+  bypass in `requireMailAccess`, and it broke twenty-five tests** of machinery
+  that is fine — every test that needed a connected mailbox set one up through
+  `beginConnection`. A gate placed where the setup runs is a gate that deletes
+  the coverage instead of the feature.
+- **The repo's own layout rule then made the decision.**
+  `tests/tool-registry-layout.test.js` forbids a tool file the registry does
+  not list ("a set of tools nobody can call"), so "keep the file, comment out
+  the require" was never available: either the tools stay registered and
+  refuse at runtime, or they go. They went, and the guard against them coming
+  back is a **test** rather than a constant — the risk here is a future
+  session re-adding them without knowing the price, and a failing test is what
+  speaks to that person at exactly that moment.
+
+Still open and not built: nothing watches for an `auth_started` with no
+`integrations` row, so the next person Google blocks will look exactly like a
+person who changed their mind.
 
 ### The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)
 

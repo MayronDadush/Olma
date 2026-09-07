@@ -33,7 +33,8 @@ const CARD_TOOLS = new Set([
   // the calls that change them refresh it. Connecting a calendar happens in
   // the OAuth callback (an HTTP route, not a tool) — the dashboard calls
   // refreshUserCard there itself.
-  'disconnect_calendar', 'disconnect_email',
+  // 'disconnect_email' left with the mail tools (2026-09-07, registry.js).
+  'disconnect_calendar',
   'respond_to_connection_request', 'revoke_connection', 'set_contact_label',
   // The address book is on the card as a count, because the whole point of
   // saving a contact is that nobody is ever asked for that number again — and

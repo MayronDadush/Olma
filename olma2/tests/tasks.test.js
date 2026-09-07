@@ -274,3 +274,91 @@ test('a title that joins two asks is reported, and an ordinary one is not', () =
   assert.equal(joinsTwoAsks(''), false);
   assert.equal(joinsTwoAsks(null), false);
 });
+
+// Vered, 2026-09-07, 21:43: "אשמח לעדכון מחר בתשע בבוקר של שאר המשימות". Five
+// tasks moved to 09:00 the next day — and the reminders of their OLD date, two
+// rungs up their ladders, still had "זו התזכורת האחרונה" scheduled for 08:00.
+// Moving the thing IS the answer to the rung: the ladder closes, the automatic
+// reminder follows the date, a rung the sweep had already queued is withdrawn.
+test('moving a task answers its ladder: rungs retire, the queued rung is withdrawn, the auto reminder follows the date', async () => {
+  const { enqueue } = require('../src/outbox/enqueue');
+  await withClient(async (c) => {
+    const iso = (d) => new Date(d).toISOString().replace('Z', '+00:00');
+    const HOUR = 3600_000;
+    const oldDue = new Date(Date.now() + 2 * HOUR);
+    const t = (await tasks.addTask(c, alice.id, { title: 'לבדוק על שחיינים', dueAt: iso(oldDue) })).data.task;
+    const { rows: [auto] } = await c.query(`SELECT * FROM task_reminders WHERE task_id = $1`, [t.id]);
+    assert.equal(auto.auto, true);
+    // Rungs 1 and 2 went out; rung 3 is queued, held for the night.
+    await reminders.recordAttempt(c, auto.id);
+    await reminders.recordAttempt(c, auto.id);
+    await enqueue(c, { userId: alice.id, kind: 'reminder', urgency: 'normal',
+      payload: { taskId: Number(t.id), rung: 3, attempt: 3, finalAttempt: true, auto: true },
+      idempotencyKey: reminders.attemptKey(auto.id, 3) });
+    await c.query(`UPDATE outbox SET hold_reason = 'night', release_after = now() + interval '8 hours'
+                    WHERE idempotency_key = $1`, [reminders.attemptKey(auto.id, 3)]);
+
+    const newDue = new Date(Date.now() + 26 * HOUR);
+    const r = await tasks.snoozeTask(c, alice.id, t.id, iso(newDue));
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.data.remindersRetired, [Number(auto.id)]);
+
+    const { rows: [old] } = await c.query(`SELECT sent_at, cancelled_at FROM task_reminders WHERE id = $1`, [auto.id]);
+    assert.ok(old.sent_at, 'retired — answered by the move, not cancelled');
+    assert.equal(old.cancelled_at, null);
+    const { rows: [queued] } = await c.query(`SELECT sent_at, hold_reason FROM outbox WHERE idempotency_key = $1`,
+      [reminders.attemptKey(auto.id, 3)]);
+    assert.ok(queued.sent_at, 'the dawn rung is withdrawn');
+    assert.equal(queued.hold_reason, 'moved');
+
+    // The automatic reminder follows the date: an hour before the new one.
+    assert.equal(r.data.reminders.length, 1);
+    assert.equal(new Date(r.data.reminders[0].remind_at).getTime(), newDue.getTime() - HOUR);
+    assert.equal(r.data.reminders[0].auto, true);
+    assert.ok(Array.isArray(r.data.remindersAt) && r.data.remindersAt.length === 1, 'the armed hour rides the result');
+    const { rows: live } = await c.query(
+      `SELECT id FROM task_reminders WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL`, [t.id]);
+    assert.equal(live.length, 1, 'exactly one live reminder on the task');
+
+    // And the sweep would not chase the retired one at what used to be its rung 3.
+    const due = await reminders.dueForSending(c, new Date(Date.now() + 30 * HOUR));
+    assert.ok(!due.data.due.some((d) => Number(d.reminder_id) === Number(auto.id)));
+  });
+});
+
+test('a snooze leaves an explicit pending reminder alone, cancels a stale automatic one, and does not re-arm over a moment they named', async () => {
+  await withClient(async (c) => {
+    const iso = (d) => new Date(d).toISOString().replace('Z', '+00:00');
+    const HOUR = 3600_000;
+    const t = (await tasks.addTask(c, alice.id, { title: 'להתקשר לרופא', dueAt: iso(Date.now() + 2 * HOUR) })).data.task;
+    // "תזכירי לי מחר ב-8" — an explicit moment on another day, standing beside the auto one.
+    const named = new Date(Date.now() + 40 * HOUR);
+    const rem = (await reminders.setReminder(c, alice.id, t.id, iso(named))).data.reminder;
+    const before = (await c.query(`SELECT id, auto FROM task_reminders WHERE task_id = $1 AND cancelled_at IS NULL`, [t.id])).rows;
+    assert.equal(before.length, 2, 'auto and explicit, different days');
+
+    const r = await tasks.snoozeTask(c, alice.id, t.id, iso(Date.now() + 30 * HOUR));
+    assert.equal(r.ok, true);
+    assert.equal(r.data.remindersRetired, undefined, 'nothing was mid-ladder');
+    assert.equal(r.data.reminders, undefined, 'they named a moment, so no automatic one is armed over it');
+    const { rows: live } = await c.query(
+      `SELECT id, auto, remind_at FROM task_reminders WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL`, [t.id]);
+    assert.equal(live.length, 1);
+    assert.equal(Number(live[0].id), Number(rem.id), 'the one they set is the one that stays');
+    assert.equal(new Date(live[0].remind_at).getTime(), named.getTime());
+  });
+});
+
+test('a snooze onto the same instant moves nothing and retires nothing', async () => {
+  await withClient(async (c) => {
+    const iso = (d) => new Date(d).toISOString().replace('Z', '+00:00');
+    const due = new Date(Date.now() + 5 * 3600_000);
+    const t = (await tasks.addTask(c, alice.id, { title: 'same', dueAt: iso(due) })).data.task;
+    const { rows: [auto] } = await c.query(`SELECT id FROM task_reminders WHERE task_id = $1`, [t.id]);
+    await reminders.recordAttempt(c, auto.id);
+    const r = await tasks.snoozeTask(c, alice.id, t.id, iso(due));
+    assert.equal(r.ok, true);
+    const { rows: [same] } = await c.query(`SELECT sent_at FROM task_reminders WHERE id = $1`, [auto.id]);
+    assert.equal(same.sent_at, null);
+  });
+});

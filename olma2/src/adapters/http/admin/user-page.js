@@ -140,9 +140,15 @@ async function renderDeletePanel(client, u, confirming, csrf) {
 // an operator concludes the system is broken.
 function renderPauseBanner(u, csrf) {
   if (!u.paused_at) return '';
-  return `<section><h3>ביקש להפסיק</h3>
-    <p class="hint">הפסיק לקבל פניות יזומות ב-${esc(String(u.paused_at).slice(0, 16))}.
-      שום דבר לא נמחק — המשימות, העובדות וההיסטוריה שלו במקום. עולמה עדיין עונה לו אם הוא כותב.</p>
+  // Two pauses that look the same on the record and end differently: the one
+  // they asked for ends only here or by their own word; the one the check-in
+  // ladder made ends by itself the moment they write.
+  const ladder = u.paused_reason === 'quiet_ladder';
+  return `<section><h3>${ladder ? 'מושהה — לא עונה' : 'ביקש להפסיק'}</h3>
+    <p class="hint">${ladder
+      ? `שלושה צ'ק-אינים בלי תשובה, אז עולמה הפסיקה לפנות ב-${esc(String(u.paused_at).slice(0, 16))}. שום דבר לא בוטל — התזכורות והמשימות במקום. ההודעה הראשונה שלו מחזירה אותו לבד.`
+      : `הפסיק לקבל פניות יזומות ב-${esc(String(u.paused_at).slice(0, 16))}.
+      שום דבר לא נמחק — המשימות, העובדות וההיסטוריה שלו במקום. עולמה עדיין עונה לו אם הוא כותב.`}</p>
     <form method="post" action="/users/resume" class="inline">
       <input type="hidden" name="csrf" value="${csrf}">
       <input type="hidden" name="user_id" value="${u.id}">

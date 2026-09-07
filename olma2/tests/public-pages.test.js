@@ -117,7 +117,7 @@ test('the host match ignores case and a port suffix', async () => {
 
 test('the home page names every Google scope the code really requests, and links the policy', () => {
   const html = publicPages.homePage();
-  for (const scope of ['calendar.readonly', 'calendar.events', 'contacts.readonly', 'gmail.readonly']) {
+  for (const scope of ['calendar.readonly', 'calendar.events', 'contacts.readonly']) {
     assert.ok(html.includes(scope), `home page does not disclose ${scope}`);
   }
   assert.ok(html.includes('href="/privacy"'), 'Google requires the home page to link the privacy policy');
@@ -133,7 +133,7 @@ test('the privacy policy carries the Limited Use disclosure and the policy link'
 
 test('the policy states the same scopes as the home page, in both languages', () => {
   const html = publicPages.privacyPage();
-  for (const scope of ['calendar.readonly', 'calendar.events', 'contacts.readonly', 'gmail.readonly', 'userinfo.email']) {
+  for (const scope of ['calendar.readonly', 'calendar.events', 'contacts.readonly', 'userinfo.email']) {
     assert.ok(html.includes(scope), `privacy policy does not disclose ${scope}`);
   }
   assert.ok(/Privacy Policy/i.test(html), 'a Google reviewer reads English first');
@@ -141,14 +141,42 @@ test('the policy states the same scopes as the home page, in both languages', ()
   assert.ok(/myaccount\.google\.com\/permissions/.test(html), 'users must be told how to revoke directly');
 });
 
-test('the mail promise on the public pages matches what the code can actually do', () => {
-  // domain/mail.js Phase 1 has no send tool at all; the pages must not
-  // soften that into something vaguer, and must not overclaim either.
+test('no public page declares a RESTRICTED scope, in either language', () => {
+  // These pages ARE the declaration a verification reviewer reads, and the
+  // free sensitive track is decided by what an app declares rather than by
+  // what it calls. They went on describing Gmail for a day after the tools
+  // that used it were deleted (2026-09-07) — a page saying `gmail.readonly`
+  // is an app asking for `gmail.readonly` as far as that reader is concerned.
+  //
+  // The list is every RESTRICTED Google scope a personal assistant could
+  // plausibly grow into, not just the one that was here: the next person to
+  // add mail, Drive or chat has to come through this test.
+  const RESTRICTED = [
+    'gmail.readonly', 'gmail.modify', 'gmail.send', 'gmail.compose',
+    'https://mail.google.com/', 'drive.readonly', 'auth/drive',
+  ];
+  for (const [name, html] of Object.entries({
+    home: publicPages.homePage(),
+    privacy: publicPages.privacyPage(),
+    terms: publicPages.termsPage(),
+  })) {
+    for (const scope of RESTRICTED) {
+      assert.ok(!html.includes(scope),
+        `the ${name} page declares the restricted scope ${scope} — that is the paid verification track`);
+    }
+    assert.ok(!/Gmail/.test(html), `the ${name} page still offers Gmail as a feature`);
+  }
+});
+
+test('what the pages DO promise still matches what the code can do', () => {
   const home = publicPages.homePage();
   const privacy = publicPages.privacyPage();
-  assert.ok(/לא.*יכולה לשלוח/.test(home), 'the home page must state mail is read-only');
-  assert.ok(/no technical ability to send, reply, delete or file/i.test(privacy));
-  assert.ok(/only when you explicitly ask/i.test(privacy), 'the never-browse-unasked promise belongs in the policy');
+  // Contacts import is the one silent read left, and both pages carry the
+  // promise that it tells nobody.
+  assert.ok(/notifies nobody/i.test(home), 'the home page must keep the silent-import promise');
+  assert.ok(/notifies nobody and discloses to no third party/i.test(privacy));
+  // Calendar writes only where edit access was granted AND asked for.
+  assert.ok(/only if you granted edit access and explicitly asked for it/i.test(privacy));
 });
 
 test('neither page carries a form, a script, or anything that takes input', () => {

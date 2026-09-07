@@ -65,7 +65,7 @@ async function drainOnce(pool, deliver, now = new Date()) {
   // anyway, and only mislead readers into thinking it protects something).
   const { rows: candidates } = await pool.query(
     `SELECT o.*, u.timezone, u.agent_id, u.quota_blocked_until, u.first_name, u.last_inbound_at,
-            u.digest_times, u.paused_at, u.is_eval
+            u.digest_times, u.paused_at, u.is_eval, u.checkin_misses
      FROM outbox o JOIN users u ON u.id = o.user_id
      WHERE o.sent_at IS NULL AND (o.release_after IS NULL OR o.release_after <= $1)
        -- A budget hold with no release time is waiting for the next digest to
@@ -124,6 +124,7 @@ async function drainOnce(pool, deliver, now = new Date()) {
         const facts = {
           row, plan, blocked, paused: Boolean(row.paused_at),
           evalUser: Boolean(row.is_eval),
+          checkinMisses: Number(row.checkin_misses) || 0,
           blockedUntil: row.quota_blocked_until,
           window: win.data.window, tz: row.timezone,
           lastInboundAt: row.last_inbound_at,
