@@ -368,3 +368,23 @@ test('an ordinary message carries no silence hint', async () => {
   assert.doesNotMatch(res.text, /thanksOnly/,
     'a hint that asks for silence must never reach a turn that owes an answer');
 });
+
+// Eleven opens timed out on the hook's side and left nothing here — because
+// this path had no catch, a transaction that threw would have been an
+// unhandled rejection with no line in the journal, and a slow one had no
+// clock on it at all. The failure is now an answer the hook can read and a
+// line the journal keeps; a slow open says which step took the time.
+test('a turn_open whose transaction fails answers with an error and logs it, instead of vanishing', async () => {
+  const deadPool = { connect: async () => { throw new Error('pool exhausted'); } };
+  const logged = [];
+  const orig = console.error;
+  console.error = (...a) => { logged.push(a.map(String).join(' ')); };
+  try {
+    const b = createBrokerServer({ pool: deadPool, placeMark: () => ({ attempted: true }) });
+    const r = await b.dispatch({ id: 1, method: 'turn_open', params: { agentId: 'u-902', messageId: '3EB0DEAD0001' } });
+    assert.deepEqual(r, { ok: false, error: 'turn_open failed' });
+  } finally { console.error = orig; }
+  assert.equal(logged.length, 1);
+  assert.match(logged[0], /turn_open u-902 failed after \d+ms/);
+  assert.match(logged[0], /pool exhausted/);
+});
