@@ -23,6 +23,7 @@ const boostJob = require('../../jobs/boost');
 const issuesDomain = require('../../domain/issues');
 const auditDomain = require('../../domain/audit');
 const reactionsDomain = require('../../domain/reactions');
+const groupsDomain = require('../../domain/groups');
 const templatesDomain = require('../../domain/message-templates');
 const dashboardAuth = require('../../domain/dashboard-auth');
 const { refreshUserCard } = require('../../intake/user-card');
@@ -415,6 +416,19 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
             await auditDomain.record(client, null, 'admin.message_templates', {
               from: prev || {}, to: next.overrides, rejected: next.rejected,
             });
+          } else if (url.pathname === '/group-kind') {
+            // What kind of room it is, and how many people its plan needs.
+            // NOT the gate: state stays read-only here (see sections/groups.js
+            // for why), and this is the one thing about a group that is a
+            // SETTING rather than something the sweep derived. Through the
+            // domain function, so a number typed here is validated and
+            // audited exactly like one the room said out loud.
+            await groupsDomain.setKind(client, Number(body.id), {
+              kind: body.kind,
+              min: body.minimum === '' ? null : body.minimum,
+              max: body.maximum === '' ? null : body.maximum,
+              closeAtTarget: body.close_at_target === 'on',
+            }, null);
           } else if (url.pathname === '/issues/status') {
             await issuesDomain.setStatus(client, Number(body.id), body.status);
           } else if (url.pathname === '/users/quota') {

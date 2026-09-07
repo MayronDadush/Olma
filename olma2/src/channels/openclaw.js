@@ -235,11 +235,15 @@ function bodyFor(row, p) {
       // somebody settled it and this reader never said yes. The last one is
       // told plainly and given the way out, because a cheerful "confirmed!"
       // to a person who cannot make it is how a tool loses their trust.
+      // A coordination that came out of a room says so: the person hearing
+      // this was asked privately and is about to be told it is decided, and
+      // "in the group" is the difference between a decision they can see the
+      // origin of and one that arrived from nowhere.
       if (p.settledWithoutYou) {
-        return `The meeting <<<${p.title}>>> was settled by ${p.byName} on <<<${p.slot}>>> WITHOUT this user having agreed to that time — they either declined it or never answered. Tell them plainly: it is set for that time, and ${p.byName} chose not to wait. Do not congratulate them. Ask whether they can make it after all; if they cannot, opt_out_of_meeting is how they say so, and the others are told. Only if they can: ${meetingCalendarStep(p)}`;
+        return `The meeting <<<${p.title}>>>${p.groupSubject ? ` (coordinated in the group <<<${p.groupSubject}>>>)` : ''} was settled by ${p.byName} on <<<${p.slot}>>> WITHOUT this user having agreed to that time — they either declined it or never answered. Tell them plainly: it is set for that time, and ${p.byName} chose not to wait. Do not congratulate them. Ask whether they can make it after all; if they cannot, opt_out_of_meeting is how they say so, and the others are told. Only if they can: ${meetingCalendarStep(p)}`;
       }
       if (p.forced) {
-        return `The meeting <<<${p.title}>>> is now SETTLED: <<<${p.slot}>>>. ${p.byName}, who opened it, set it rather than waiting for everyone. This user had already agreed to that time. Tell them warmly. Then, for the calendar: ${meetingCalendarStep(p)}`;
+        return `The meeting <<<${p.title}>>> is now SETTLED: <<<${p.slot}>>>. ${p.byName} ${p.groupSubject ? `closed it in the group <<<${p.groupSubject}>>>` : 'who opened it, set it'} rather than waiting for everyone. This user had already agreed to that time. Tell them warmly. Then, for the calendar: ${meetingCalendarStep(p)}`;
       }
       return `The meeting <<<${p.title}>>> is now CONFIRMED by every participant: <<<${p.slot}>>>. Tell the user warmly. This is a system-verified confirmation. Then, for the calendar: ${meetingCalendarStep(p)}`;
     case 'meeting_slot_declined':

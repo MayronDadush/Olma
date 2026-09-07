@@ -428,11 +428,98 @@ async function roomStatus(client, group) {
   };
 }
 
+// ---- what kind of room this is ---------------------------------------------
+//
+// Two kinds, and a third state that is neither (migration 051). The owner's
+// framing (2026-09-07): a room of friends invites everybody and has no
+// minimum; a room that plays padel needs four. Both invite everyone — the
+// difference is what "enough" means, and whether there is a moment where the
+// thing is FULL.
+//
+// NULL is never treated as 'social'. A room nobody has answered for is
+// coordinated exactly as it was before this existed, and no sentence about a
+// quorum is available to say about it. That is the whole rule: a guess never
+// acts.
+const GROUP_KINDS = ['social', 'game'];
+
+function validKind(kind) {
+  return GROUP_KINDS.includes(String(kind || ''));
+}
+
+// Set or correct it. The admin page and the group tool both come through here,
+// so a number typed on the dashboard is validated exactly like one the room
+// said out loud.
+async function setKind(client, groupId, { kind, min = null, max = null, closeAtTarget = null }, actorId = null) {
+  const group = await getById(client, groupId);
+  if (!group) return err('not_found', 'no such group');
+  if (!validKind(kind)) return err('invalid', `kind must be one of: ${GROUP_KINDS.join(', ')}`);
+  const asInt = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
+  const lo = asInt(min);
+  const hi = asInt(max);
+  for (const [label, v] of [['minimum', lo], ['maximum', hi]]) {
+    if (v === null) continue;
+    if (!Number.isInteger(v) || v < 2 || v > 100) {
+      return err('invalid', `${label} must be a whole number between 2 and 100`);
+    }
+  }
+  if (lo !== null && hi !== null && hi < lo) return err('invalid', 'the maximum cannot be below the minimum');
+  // A social room has no quorum by definition — accepting numbers for one
+  // would create a room that is 'social' and behaves like a game.
+  if (kind === 'social' && (lo !== null || hi !== null)) {
+    return err('invalid', 'a social group has no minimum or maximum — that is what makes it social');
+  }
+  const { rows } = await client.query(
+    `UPDATE chat_groups
+        SET kind = $2, quorum_min = $3, quorum_max = $4,
+            close_at_target = COALESCE($5, close_at_target),
+            kind_asked_at = COALESCE(kind_asked_at, now())
+      WHERE id = $1 RETURNING *`,
+    [groupId, kind, lo, hi, closeAtTarget === null ? null : Boolean(closeAtTarget)]);
+  await audit.record(client, actorId, 'group.kind', {
+    groupId, kind, min: lo, max: hi, closeAtTarget: closeAtTarget === null ? undefined : Boolean(closeAtTarget),
+  });
+  return ok({ group: rows[0] });
+}
+
+// Asked once, ever — stamped whether or not anybody answers. A room that let
+// the question go by is not asked it again on the next coordination; the
+// dashboard is where it gets filled in after that.
+async function noteKindAsked(client, groupId) {
+  await client.query(
+    `UPDATE chat_groups SET kind_asked_at = COALESCE(kind_asked_at, now()) WHERE id = $1`, [groupId]);
+  return ok({ groupId });
+}
+
+// Pure: what a given number of yes-answers means for this room. `known` false
+// is the NULL kind — every other field is null with it, so a caller that
+// forgets to check cannot accidentally read "0 short of 0" as a full house.
+function quorumFor(group, yesCount) {
+  if (!group || !validKind(group.kind)) {
+    return { known: false, kind: null, min: null, max: null, met: null, short: null, full: false, mayClose: false };
+  }
+  const min = group.quorum_min === null || group.quorum_min === undefined ? null : Number(group.quorum_min);
+  const max = group.quorum_max === null || group.quorum_max === undefined ? null : Number(group.quorum_max);
+  const yes = Number(yesCount) || 0;
+  return {
+    known: true, kind: group.kind, min, max,
+    // A room with no minimum is never short of anybody: everyone is invited
+    // and whoever can, comes.
+    met: min === null ? true : yes >= min,
+    short: min === null ? 0 : Math.max(0, min - yes),
+    full: max !== null && yes >= max,
+    // The only automatic-looking thing here, and it still only ever tells the
+    // model it MAY: closing is an act, and an act in a room is said out loud
+    // by somebody.
+    mayClose: Boolean(group.close_at_target) && max !== null && yes >= max,
+  };
+}
+
 module.exports = {
   DEFAULT_TIMEZONE,
   parseRoster, normalizePhone, majorityTimezone, SELF_PHONE,
   registerGroup, getById, getByExternalId, listMembers, syncRoster,
   decideState, evaluate, applyState,
   decideNotice, noteNoticeSent, noteMention,
+  GROUP_KINDS, validKind, setKind, noteKindAsked, quorumFor,
   GROUP_TOKEN_RE, looksLikeGroupToken, resolveByToken, actingMember, roomStatus,
 };

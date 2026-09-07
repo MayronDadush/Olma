@@ -154,7 +154,13 @@ async function activeParticipants(client, meetingId) {
 // says "everybody agreed" to somebody who never answered is a small lie told
 // at the worst moment, so the people who were settled OVER are told that they
 // were, and told they can still say they cannot make it.
-async function afterSettled(client, meetingId, res, { actor = null } = {}) {
+// `actor` is somebody sitting in their own private turn: they get no outbox
+// row (the tool result is their notification) and the calendar hint instead.
+// A coordination settled in a GROUP has no such person — the acting member is
+// mid-turn in the ROOM, where a calendar instruction would be useless — so
+// that path passes `byName`/`groupSubject` and no actor, and everybody
+// including the person who said it hears about it privately.
+async function afterSettled(client, meetingId, res, { actor = null, byName = null, groupSubject = null } = {}) {
   if (!res.ok) return res;
   const brief = await meetingBrief(client, meetingId);
   // Every queued question about this meeting is now a wrong question.
@@ -163,10 +169,12 @@ async function afterSettled(client, meetingId, res, { actor = null } = {}) {
   const everyone = await activeParticipants(client, meetingId);
   const recipients = actor ? everyone.filter((id) => id !== Number(actor.id)) : everyone;
   const withoutYes = new Set((res.data.withoutYes || []).map(Number));
+  const settledBy = actor ? actorName(actor) : byName;
   const roles = await meetingCalendarFanout(client, meetingId, recipients, {
     meetingId: Number(meetingId), title: brief.title || 'meeting',
     slot: res.data.slot || brief.confirmed_slot,
-    ...(actor ? { byName: actorName(actor), forced: true } : {}),
+    ...(settledBy ? { byName: settledBy, forced: true } : {}),
+    ...(groupSubject ? { groupSubject } : {}),
   }, `mconf:${meetingId}`, (uid) => (withoutYes.has(Number(uid)) ? { settledWithoutYou: true } : {}));
   if (actor) res.data.hint = calendarHintFor(calendarRoleFor(roles, actor.id), Number(meetingId));
   return res;

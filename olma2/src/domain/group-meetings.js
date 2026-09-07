@@ -112,7 +112,16 @@ async function startCoordination(client, group, actingUser, title) {
   await audit.record(client, actingUser.id, 'group.coordination_started', {
     groupId: group.id, meetingId: Number(meeting.id), participants: members.length,
   });
-  return ok({ meeting, created: true, participants: members.length });
+  // The one question, asked once ever, and folded into the line she was going
+  // to say anyway. It is asked HERE rather than at registration for two
+  // reasons: this is the first moment the answer changes anything, and the
+  // room is demonstrably listening — somebody just spoke to her. It is asked
+  // in the room rather than privately because the answer is a fact ABOUT the
+  // room that everyone in it can correct, and because we do not reliably know
+  // who added her to it.
+  const askKind = !groups.validKind(group.kind) && !group.kind_asked_at;
+  if (askKind) await groups.noteKindAsked(client, group.id);
+  return ok({ meeting, created: true, participants: members.length, askKind });
 }
 
 // Where it stands, in the room's terms. Answers only — never a reason.
@@ -142,6 +151,9 @@ async function coordinationStatus(client, group) {
     return {
       optionId: o.id, slot: o.slotText, startsAt: o.startsAt,
       yes, no, missing: active.filter((uid) => !(uid in (o.answers || {}))).map(who),
+      // What that many yeses MEANS in this room — nothing at all until
+      // somebody has said what kind of room it is (groups.quorumFor).
+      quorum: groups.quorumFor(group, yes.length),
     };
   });
 
@@ -156,8 +168,61 @@ async function coordinationStatus(client, group) {
       // people at all, and these ones are out.
       silent: active.filter((uid) => !answeredSomething.has(uid)).map(who),
       optedOut,
+      // The room's own settings, so she never has to infer them from the
+      // options: kind null means nobody has told her, and then there is no
+      // true sentence about "enough people" available to say.
+      kind: groups.validKind(group.kind) ? group.kind : null,
+      minimum: group.quorum_min === null || group.quorum_min === undefined ? null : Number(group.quorum_min),
+      maximum: group.quorum_max === null || group.quorum_max === undefined ? null : Number(group.quorum_max),
     },
   };
 }
 
-module.exports = { startCoordination, coordinationStatus, currentMeeting, coordinatingMembers, memberLabel };
+// Closing it, from the room. The coordination belongs to the room, so any
+// member of the room may close it — in public, in front of everybody, which is
+// the check that matters and the one a private tool cannot have. Underneath it
+// is `options.settleNow` acting as the INITIATOR: the room stands in for the
+// person who happens to hold that column, and the audit row records who
+// actually said it.
+//
+// The one thing it will not do is close a game below its own minimum. That is
+// not Olma overruling anybody: the minimum is a number the room gave her and
+// can change (setKind), and a padel game with three people is not the thing
+// they asked her to arrange. She says how many are short and lets them decide
+// which of the two to move.
+async function settle(client, group, actingUser, optionId) {
+  if (!group || group.state !== 'open') return err('forbidden', 'this group is not open');
+  if (!actingUser) {
+    return err('invalid', 'I cannot tell who asked for this — ask them to say it again in the group');
+  }
+  const members = await coordinatingMembers(client, group.id);
+  if (!members.some((m) => Number(m.user_id) === Number(actingUser.id))) {
+    return err('forbidden', 'that person is not a member of this group');
+  }
+  const meeting = await currentMeeting(client, group.id);
+  if (!meeting) return err('not_found', 'nothing is being coordinated in this group right now');
+
+  const table = await options.list(client, Number(meeting.id));
+  const chosen = table.find((o) => o.status === 'active' && Number(o.id) === Number(optionId));
+  if (!chosen) return err('not_found', 'no such time on the table', { reason: 'option_not_active' });
+  const yes = Object.values(chosen.answers || {}).filter((a) => a === 'y').length;
+  const q = groups.quorumFor(group, yes);
+  if (q.known && q.min !== null && !q.met) {
+    return err('invalid',
+      `that time has ${yes} of the ${q.min} this group needs — ${q.short} short. Either wait, or the group can change the number.`,
+      { reason: 'below_minimum', yes, minimum: q.min, short: q.short });
+  }
+
+  const res = await options.settleNow(client, Number(meeting.initiator_id), Number(meeting.id), Number(optionId));
+  if (!res.ok) return res;
+  await audit.record(client, actingUser.id, 'group.coordination_settled', {
+    groupId: group.id, meetingId: Number(meeting.id), optionId: Number(optionId), yes,
+  });
+  await fanout.afterSettled(client, Number(meeting.id), res, {
+    byName: memberLabel(members.find((m) => Number(m.user_id) === Number(actingUser.id)) || {}),
+    groupSubject: group.subject || null,
+  });
+  return res;
+}
+
+module.exports = { startCoordination, coordinationStatus, settle, currentMeeting, coordinatingMembers, memberLabel };
