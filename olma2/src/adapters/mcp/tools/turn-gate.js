@@ -70,7 +70,26 @@ module.exports = [
       // a message_id to begin with — `cleanMessageId` reads that as absent and
       // this stays a no-op, the same way it always has for a bare heartbeat.
       if (ctx && ctx.turn) {
-        const id = reactions.cleanMessageId(args && args.message_id);
+        // ── When the model's message id is worth anything ────────────────────
+        // It is relayed by the MODEL out of an untrusted metadata block, and a
+        // model with nothing to relay does not pass nothing — it passes
+        // something. Measured on 2026-09-07: `manual` and `auto-3` reached
+        // WhatsApp as `--message-id`, both on turns OLMA started, where there
+        // was no inbound message to name (`incidents.md`, "The message id the
+        // model made up"). `cleanMessageId` cannot catch that and should not
+        // try: it bounds the SHAPE, and a hallucinated id is well-formed. What
+        // separates them is provenance, which we already know here.
+        //
+        // So the id is taken only when the model is the best source there is:
+        //   - our own turn has no inbound message at all, so nothing it says
+        //     here can be right — this is the same mark `ourTurn` already
+        //     applies to last_inbound_at, the check-in backoff and the
+        //     first-turn signal, applied to one more field;
+        //   - a turn the gateway opened already carries the REAL id off the
+        //     WhatsApp envelope, and letting the model overwrite it moved the
+        //     closing mark off the person's actual message.
+        const gatewayKnows = Boolean(ctx.turn.openedByGateway && ctx.turn.messageId);
+        const id = ourTurn || gatewayKnows ? null : reactions.cleanMessageId(args && args.message_id);
         // brokerd's clock, not this module's: the gateway opener stamps the
         // same field from it, and two writers of one field reading two clocks
         // makes liveness depend on which of them got there first.

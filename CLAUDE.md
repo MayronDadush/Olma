@@ -570,6 +570,13 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   once; only the implicit recovery stays latched, because with no opening on
   file nothing can tell one turn from the next on that socket. **A test that
   passes a fresh `newTurn()` per turn is not testing the connection we have.**
+- **A model with nothing to relay passes something, not nothing.** `turn_start`
+  takes `message_id` from the model, and on turns Olma started — where there is
+  no inbound message — it sent `manual` and `auto-3` to WhatsApp, overwriting
+  the real id the gateway had put on the turn (`incidents.md`, "The message id
+  the model made up"). `cleanMessageId` bounds the SHAPE and an invented id is
+  well-formed, so **no regex can settle this** — provenance can: never take it
+  on `ourTurn`, never over an id the gateway already supplied.
 - **The 👀 on a person's message is the GATEWAY's** (`ackReaction` in
   `openclaw.json`), placed on receipt from its own config, and ours is a second
   one behind it. So a working 👀 is no evidence that `placeMark` works at all —
