@@ -85,7 +85,15 @@ function pickCategory({ category, title, parent }) {
 // `kind` is decided the same way and for the same reasons (task-kind.js): it
 // is what lets a passed appointment leave the list while a job that is merely
 // late stays on it.
-async function addTask(client, ownerId, { title, category, dueAt, endsAt, parentId, source, remindAt, now }) {
+// A place is a short line of text or nothing. Trimmed and capped, never
+// refused: the title is what makes a task, and a place too long to be one is
+// still a place somebody named.
+const cleanLocation = (v) => {
+  const s = v == null ? '' : String(v).trim();
+  return s ? s.slice(0, 200) : null;
+};
+
+async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, location, parentId, source, remindAt, now }) {
   if (!title || !title.trim()) return err('invalid', 'title required');
   if (dueAt && !hasOffset(dueAt)) return badTime('due_at', dueAt);
   if (remindAt && !hasOffset(remindAt)) return badTime('remind_at', remindAt);
@@ -109,10 +117,10 @@ async function addTask(client, ownerId, { title, category, dueAt, endsAt, parent
   }
   const cat = pickCategory({ category, title, parent });
   const { rows } = await client.query(
-    `INSERT INTO tasks (owner_id, title, category, category_auto, due_at, ends_at, kind, parent_id, source)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, 'chat')) RETURNING *`,
+    `INSERT INTO tasks (owner_id, title, category, category_auto, due_at, ends_at, kind, location, parent_id, source)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, 'chat')) RETURNING *`,
     [ownerId, title.trim(), cat.category, cat.auto, dueAt || null, endsAt || null,
-      taskKind.decideKind({ title }), parentId || null, source || null]
+      taskKind.decideKind({ title, kind }), cleanLocation(location), parentId || null, source || null]
   );
   await audit.record(client, ownerId, 'task.created', { taskId: rows[0].id, parentId: parentId || null });
   // A moment they named as the REMINDER is not the moment the thing happens,
@@ -220,6 +228,19 @@ async function editTask(client, ownerId, taskId, patch = {}) {
     sets.push('category_auto = false');
     changed.category = category;
   }
+  if (has('kind')) {
+    // The person (or the model, with the conversation in front of it) saying
+    // what this is. Only the two words count; anything else is "not said"
+    // and leaves the row as it was — an edit must not turn a meeting into a
+    // job because a caller misspelled a field.
+    const k = taskKind.normaliseKind(patch.kind);
+    if (k) { sets.push(`kind = $${vals.push(k)}`); changed.kind = k; }
+  }
+  if (has('location')) {
+    const loc = cleanLocation(patch.location);
+    sets.push(`location = $${vals.push(loc)}`);
+    changed.location = loc;
+  }
   if (has('dueAt')) {
     // Same rule as add_task, and for the same incident: a bare local time gets
     // read in the server's zone and lands hours off (the shift stored as 15:00Z).
@@ -289,10 +310,11 @@ async function addTasksBulk(client, ownerId, items, { parentId, source, now } = 
     if (bad) return bad;
     const cat = pickCategory({ category: item.category, title: item.title, parent });
     const { rows } = await client.query(
-      `INSERT INTO tasks (owner_id, title, category, category_auto, due_at, ends_at, kind, parent_id, source)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      `INSERT INTO tasks (owner_id, title, category, category_auto, due_at, ends_at, kind, location, parent_id, source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
       [ownerId, item.title.trim(), cat.category, cat.auto, item.dueAt || null,
-        item.endsAt || null, taskKind.decideKind({ title: item.title }), parentId || null, rowSource]
+        item.endsAt || null, taskKind.decideKind({ title: item.title, kind: item.kind }),
+        cleanLocation(item.location), parentId || null, rowSource]
     );
     created.push(rows[0]);
   }

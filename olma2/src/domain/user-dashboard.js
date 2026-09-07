@@ -90,6 +90,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
   // shared OUT, i.e. exactly half the feature, silently.
   const { rows: tasks } = await client.query(
     `SELECT t.id, t.title, t.category, t.category_auto, t.source, t.status, t.parent_id, t.ends_at,
+            t.kind, t.location,
             t.archived_at IS NOT NULL AS archived, t.completed_at,
             t.due_at, t.owner_id,
             -- the wall clock the person actually chose, resolved in THEIR zone
@@ -190,6 +191,11 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
       // day view can only draw the block if it is told where it stops.
       endTime: t.all_day ? null : (t.end_time || null),
       allDay: t.all_day,
+      // A moment they will be AT, or a job until it is done. The page lists
+      // the calendar before the to-dos on the strength of this; a row that
+      // predates the column (NULL) is a job, which is the safe reading.
+      kind: t.kind === 'event' ? 'event' : 'todo',
+      location: t.location || null,
       done: t.status === 'done',
       // The archive lists what was finished and when; nothing else reads it.
       completedAt: t.completed_at,

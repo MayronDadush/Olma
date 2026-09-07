@@ -59,12 +59,25 @@ function normalise(s) {
   return String(s || '').replace(/[֑-ׇ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
-// Words only. A start-and-end time was the obvious second signal and it is
+const KINDS = ['event', 'todo'];
+// What the caller SAID it is, or null. The model has the conversation — it
+// knows "רופא שיניים מחר ב-9" is an appointment even though no word in the
+// title says so — and since 2026-09-07 it is asked to say. Anything that is
+// not one of the two words is treated as not said, never as an error: a
+// refused task is worse than a guessed kind.
+function normaliseKind(v) {
+  const k = String(v || '').trim().toLowerCase();
+  return KINDS.includes(k) ? k : null;
+}
+
+// Words only, when nobody said. A start-and-end time was the obvious second signal and it is
 // deliberately NOT used: "לעבוד על המצגת 14:00-16:00" is a job somebody
 // blocked time for, and treating the block as proof of a moment would archive
 // it at four o'clock whether or not the presentation got written. A range
 // makes the calendar better (tasks.ends_at); it does not make a task finished.
-function decideKind({ title } = {}) {
+function decideKind({ title, kind } = {}) {
+  const said = normaliseKind(kind);
+  if (said) return said;
   const hay = normalise(title);
   if (!hay) return 'todo';
   for (const re of TODO_RE) if (re.test(hay)) return 'todo';
@@ -72,4 +85,4 @@ function decideKind({ title } = {}) {
   return 'todo';
 }
 
-module.exports = { decideKind, TODO_VERBS, EVENT_WORDS };
+module.exports = { decideKind, normaliseKind, KINDS, TODO_VERBS, EVENT_WORDS };
