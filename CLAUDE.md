@@ -284,6 +284,17 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   for it) plus `hints.replyTarget` (arrives mid-turn, says to answer the quoted
   message) is what makes it land; `tests/reply-target.test.js` and eval
   `reply-to-older-message` hold both halves open.
+- **Deleting a user is not deleting a person until the GATEWAY's intake
+  session goes too.** `deprovisionUser` removes everything olma2 owns — row,
+  agent, binding, workspace — and `sweepIntakeSessions` rebuilds them from the
+  gateway's session store, which it reads with no age bound: any peer that ever
+  reached the greeter and has no active user row is provisioned on the next
+  five-minute tick. A deleted account silently undid itself inside five
+  minutes, looking exactly like someone coming back on their own.
+  `forgetIntakeSession` (default true) is now the difference between deleting
+  an account and resetting one; the testbed rehearsal opts out because its
+  transaction is rolled back and a ROLLBACK cannot restore a deleted session
+  (`incidents.md`, "The user who would not stay deleted").
 - **The ledgers are append-only.** Rows already written stay as written, even
   when the pricing that produced them was wrong.
 - **A meeting negotiates several options (`domain/meeting-options.js`, up to
