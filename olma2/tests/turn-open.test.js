@@ -251,6 +251,16 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
   // brokerd down: the hook fails quietly and the model's own opener takes over
   const failing = () => { const h = {}; const s = { on(ev, fn) { h[ev] = fn; return s; }, write() {}, end() {}, destroy() {} }; setTimeout(() => h.error && h.error(new Error('ECONNREFUSED')), 0); return s; };
   assert.equal(await hook({ type: 'message', action: 'received', sessionKey: 'agent:u-3:whatsapp:direct:+1', context: { messageId: 'x' } }, { connect: failing }), false);
+
+  // Every outcome line carries how long brokerd took. A trace that says
+  // "timeout" and not how far it got cannot tell a tight deadline from a slow
+  // transaction, and the fix for one hides the other.
+  const lines = require('node:fs').readFileSync(process.env.OLMA_HOOK_TRACE, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const outcomes = lines.filter((l) => l.outcome);
+  const sent = outcomes.filter((l) => l.outcome === 'sent');
+  assert.ok(sent.length >= 2);
+  for (const l of outcomes) assert.equal(typeof l.ms, 'number', `${l.outcome} line without ms: ${JSON.stringify(l)}`);
+  assert.equal(outcomes.at(-1).outcome, 'error', 'the refused connect is the last line written');
 });
 
 // Miron, 2026-09-06: "בוצע" replying to one reminder, "עוד לא" replying to

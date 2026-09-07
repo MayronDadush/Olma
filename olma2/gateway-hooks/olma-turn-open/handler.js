@@ -144,16 +144,24 @@ function handle(event, { connect = net.connect, sock = SOCK } = {}) {
   return new Promise((resolve) => {
     let done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    // How long brokerd took, on every line. Ten of the first sixty-one opens
+    // timed out (2026-09-07) and the trace could not say whether brokerd had
+    // answered at 2.1s or would have at 9s — two different bugs, one of which
+    // a longer deadline fixes and one it only hides. `connected` on a timeout
+    // separates a socket that never opened from a transaction that ran long.
+    const started = Date.now();
+    let connected = false;
     let socket;
     try { socket = connect(sock); } catch { return finish(false); }
-    const t = setTimeout(() => { try { socket.destroy(); } catch { /* gone */ } trace({ agentId, outcome: 'timeout' }); finish(false); }, TIMEOUT_MS);
-    socket.on('error', (e) => { clearTimeout(t); trace({ agentId, outcome: 'error', error: String(e && e.code || e).slice(0, 40) }); finish(false); });
+    const t = setTimeout(() => { try { socket.destroy(); } catch { /* gone */ } trace({ agentId, outcome: 'timeout', ms: Date.now() - started, connected }); finish(false); }, TIMEOUT_MS);
+    socket.on('error', (e) => { clearTimeout(t); trace({ agentId, outcome: 'error', ms: Date.now() - started, error: String(e && e.code || e).slice(0, 40) }); finish(false); });
     socket.on('connect', () => {
+      connected = true;
       socket.write(JSON.stringify({ id: 1, method: 'turn_open', params }) + '\n');
     });
     // Resolve BEFORE ending the socket: a synchronous 'close' would otherwise
     // settle the promise as a failure that already succeeded.
-    socket.on('data', (d) => { clearTimeout(t); trace({ agentId, outcome: 'sent', replyTo: Boolean(params.replyToId), thanks: params.thanks, reply: String(d).slice(0, 80) }); finish(true); try { socket.end(); } catch { /* gone */ } });
+    socket.on('data', (d) => { clearTimeout(t); trace({ agentId, outcome: 'sent', ms: Date.now() - started, replyTo: Boolean(params.replyToId), thanks: params.thanks, reply: String(d).slice(0, 80) }); finish(true); try { socket.end(); } catch { /* gone */ } });
     socket.on('close', () => { clearTimeout(t); finish(done ? undefined : false); });
   });
 }
