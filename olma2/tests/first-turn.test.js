@@ -170,6 +170,12 @@ test('a name given in the first message is saved, not asked for again', async ()
   const { data } = await turnStart(u, { opened: false, counted: false });
   const said = data.onboarding.instruction;
   assert.match(said, /set_my_name/, 'nothing tells the model what to do with a name it was just given');
+  // The half that was missing on the day: the model DID call set_my_name for
+  // עידן at 05:41:04 — with confirmed omitted, so it landed as an
+  // observation, name_confirmed stayed false, and the rung fired anyway.
+  // Naming the tool is not enough; the flag is what the rung reads.
+  assert.match(said, /confirmed: true/,
+    'an unconfirmed save leaves the 60-second rung armed — that is the whole bug');
   assert.match(said, /קוראים לי/, 'and it names the shape, in the language people write it in');
   assert.match(said, /do not ask them to confirm it/i,
     'the whole point: he had already said it');
@@ -252,17 +258,24 @@ test('the doctrine still fits the gateway budget after this change', () => {
 // opening copy deliberately asks nothing, so this is the only moment left to
 // invite them in — and the tool that knows the moment has arrived is the one
 // that just took their name.
-async function call(user, name, args) {
+async function call(user, name, args, turn = { opened: true, counted: true }) {
   const res = await broker.dispatch(
     { id: 1, method: 'tool_call',
       params: { name, args: { olma_identity: user.identity_token, ...args } } },
-    { opened: true, counted: true });
+    turn);
   assert.equal(res.ok, true, res.text);
   return JSON.parse(res.text.replace(/^OK /, ''));
 }
 
 test('confirming a name on an empty list invites them to dump everything', async () => {
   const u = await makeUser(db.pool, '+972611003008', { firstName: null });
+  // They were greeted a few minutes ago and have written since — the invitation
+  // belongs to a LATER turn, and the guard below owns the opening one. Left as
+  // a never-written user this fixture is the opening turn, which is how it
+  // caught the guard the day it was added.
+  await db.pool.query(
+    `UPDATE users SET first_turn_at = now() - interval '10 minutes',
+                      last_inbound_at = now() - interval '5 minutes' WHERE id = $1`, [u.id]);
   const out = await call(u, 'set_my_name', { first_name: 'מירון', confirmed: true });
   assert.equal(out.user.first_name, 'מירון');
   assert.match(out.nextStep, /invite them/i);
@@ -283,10 +296,59 @@ test('a name merely observed does not trigger the invitation', async () => {
 
 test('someone who already has a list is not invited to start one', async () => {
   const u = await makeUser(db.pool, '+972611003010', { firstName: null });
+  await db.pool.query(
+    `UPDATE users SET first_turn_at = now() - interval '30 days',
+                      last_inbound_at = now() - interval '1 hour' WHERE id = $1`, [u.id]);
   await call(u, 'add_task', { title: 'לשלם שכר דירה' });
   const out = await call(u, 'set_my_name', { first_name: 'ותיקה', confirmed: true });
   assert.equal(out.nextStep, undefined,
     'a month-old user who only now confirms their name is not a new user');
+});
+
+test('the opening turn keeps its own instruction — the invitation does not gatecrash it', async () => {
+  // Reachable only since the first-turn instruction started asking for
+  // set_my_name (2026-09-07). turn_start has just told the model to send the
+  // owner's copy verbatim and stop; nextStep would tell it, in the same turn,
+  // to greet them by name and invite them to pour everything out. Two
+  // unconditional instructions about one reply is the "outvoted hint" shape,
+  // and the brand copy is the one that must win.
+  const u = await makeUser(db.pool, '+972611003014', { firstName: null, locale: 'he' });
+  // ONE turn object across both calls, because that is what production is: the
+  // MCP shim caches a single socket, so turn_start and every tool after it in
+  // the same turn share it. A fresh object per call — which is what the `call`
+  // helper above builds — reads as a new user to brokerd (server.js, the
+  // `turn.userId !== actorId` reset), re-opens the turn and moves
+  // last_inbound_at, which is the very equality this guard reads.
+  const turn = { opened: false, counted: false };
+  const { data } = await turnStart(u, turn);
+  assert.equal(data.firstTurn, true, 'the state has to come from a real opening turn');
+
+  const out = await call(u, 'set_my_name', { first_name: 'עידן', confirmed: true }, turn);
+  assert.equal(out.user.name_confirmed, true, 'the name is still saved, and confirmed');
+  assert.equal(out.nextStep, undefined, 'and it says nothing about what to write');
+
+  // Their next message is a turn of its own — last_inbound_at moves, first_turn_at
+  // does not — and from there the invitation is free to fire for anyone it
+  // still applies to.
+  await turnStart(u, turn);
+  const later = await call(u, 'set_my_name', { first_name: 'עידן', confirmed: true }, turn);
+  assert.match(later.nextStep, /invite them/i,
+    'the guard is about THIS turn, not about ever having had an opening one');
+});
+
+test('...and still not when the model reached for the tool before turn_start', async () => {
+  // The other door into the same turn. brokerd's recovery opens it and carries
+  // the first-turn verdict, but only turn_start stamps first_turn_at — so the
+  // timestamps alone read "not the opening turn" on the one turn that most is.
+  const u = await makeUser(db.pool, '+972611003015', { firstName: null, locale: 'he' });
+  await withTx(db.pool, (c) => flagsDomain.setFlag(c, turnDomain.FLAG, 'all'));
+
+  const turn = { opened: false, counted: false };
+  const out = await call(u, 'set_my_name', { first_name: 'עידן', confirmed: true }, turn);
+  assert.equal(turn.firstTurn, true, 'the recovery ran and captured the verdict');
+  const stamp = await db.pool.query('SELECT first_turn_at FROM users WHERE id=$1', [u.id]);
+  assert.equal(stamp.rows[0].first_turn_at, null, 'and nothing has stamped first_turn_at');
+  assert.equal(out.nextStep, undefined, 'the opening copy is still the whole reply');
 });
 
 test('turn_start stamps first_turn_at exactly when it hands out the opening, equal to last_inbound_at', async () => {

@@ -331,9 +331,10 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
             // person who already answered it.
             + 'One thing does happen silently: if this message tells you what '
             + 'to call them ("קוראים לי…", "אני …", a name and nothing else), '
-            + 'call set_my_name before you reply. Do not mention it, do not '
-            + 'thank them for it, and do not ask them to confirm it — they '
-            + 'just told you.',
+            + 'call set_my_name with confirmed: true before you reply — they '
+            + 'stated it, so it is not an observation. Do not mention it, do '
+            + 'not thank them for it, and do not ask them to confirm it, now '
+            + 'or later. Your reply is still the copy above and nothing else.',
         },
       } : {}),
       ...(offerResume ? { offerResume: true } : {}),

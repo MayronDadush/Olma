@@ -621,6 +621,10 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   confirm the name he had typed ninety seconds earlier. What the code cannot
   know, it sends the model to READ — the transcript is right there and the
   sweep is not (`incidents.md`, "קוראים לי עידן").
+- **Telling the model to call a tool is not telling it what the reader of that
+  tool's write actually checks.** The model DID call `set_my_name` for עידן —
+  with `confirmed` omitted, so it landed as an observation and the rung, which
+  keys on `name_confirmed`, fired anyway. Name the FLAG, not just the tool.
 - **A fixture that writes the state by hand cannot notice the state is only
   ever reached the other way.** Ten passing tests described a nudge for
   someone who had gone silent; production only ever fires it at someone who

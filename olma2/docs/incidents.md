@@ -3306,17 +3306,34 @@ know it either.
 Two separate faults, both of them about a component asserting something outside
 its own columns.
 
-**The first message was heard and thrown away.** `turn_start`'s first-turn
+**The first message was heard and filed as hearsay.** `turn_start`'s first-turn
 instruction said: send the opening copy verbatim, *"if they actually asked for
 something, answer it below those lines; otherwise stop there."* Telling us your
-name is not asking for something, so it fell into "otherwise" and `set_my_name`
-was never called. That instruction is right about the reply — the brand copy
-goes out alone, no thanks, no acknowledgement, no extra question — and wrong
-about the turn: a first message is also the first thing a person ever tells us
-about themselves. The repair is a TOOL CALL rather than a sentence, so it costs
-the reply nothing: *"One thing does happen silently: if this message tells you
-what to call them … call `set_my_name` before you reply. Do not mention it, do
-not thank them for it, and do not ask them to confirm it — they just told you."*
+name is not asking for something, so nothing in the turn was about the name.
+What the model did anyway is the part worth reading twice — at 05:41:04 it
+called `set_my_name` **without `confirmed`**, so it landed as
+`user.name_observed`, `name_confirmed` stayed `false`, and the rung read the
+column and fired. The tool was called. The flag the rung reads was not set.
+
+So the instruction now names the flag, not just the tool: *"call `set_my_name`
+with `confirmed: true` before you reply — they stated it, so it is not an
+observation."* It is right about the reply — the brand copy goes out alone, no
+thanks, no acknowledgement, no extra question — and it was wrong about the
+turn: a first message is also the first thing a person ever tells us about
+themselves, and a TOOL CALL costs that reply nothing.
+
+That made a second instruction reachable on the same turn. `set_my_name`
+answers a confirmed name on an empty list with `nextStep` — *"greet them by it
+in one short line, then … invite them to pour out whatever is on their
+plate"* — which is the exact opposite of "send the copy and stop". Two
+unconditional instructions about one reply is the failure already recorded
+under "The hint that outvoted the mark", so it was decided rather than left to
+the model: `nextStep` is suppressed for the opening turn, on the same
+`first_turn_at = last_inbound_at` invariant the rung uses, plus the turn's own
+`firstTurn` verdict for a model that reached for the tool before `turn_start`.
+Nothing is lost by it — the dead end `nextStep` exists to fix is the person
+whose ONLY message was their name in answer to a greeting, and עידן's very
+next message was a real question.
 
 **The 60-second rung then said three things it could not know.** Its wording
 was *"They have not replied since your opening message"* and *"an unconfirmed
