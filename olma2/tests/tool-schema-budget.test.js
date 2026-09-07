@@ -33,8 +33,10 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // and each one costs SIX. A Hebrew example is the most expensive sentence in
 // any description here and the cheapest place to find room.
 //
-// The surface now stands at 55,492 — a margin of EIGHT. The next tool, or the
-// next sentence added to a description, goes red, and a twenty-character
+// The surface now stands at 55,453 — a margin of 47, after the five group
+// tools (2026-09-07) paid for themselves by trimming their own four
+// descriptions rather than anything a user tool had earned. The next tool, or
+// the next sentence added to a description, goes red, and a twenty-character
 // shave will not save it. That is the ceiling doing its job: what is left to
 // cut are the compressed incidents, so the next person should expect to argue
 // for raising this deliberately rather than to find easy fat.

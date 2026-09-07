@@ -126,7 +126,14 @@ async function startCoordination(client, group, actingUser, title) {
 
 // Where it stands, in the room's terms. Answers only — never a reason.
 async function coordinationStatus(client, group) {
-  const meeting = await currentMeeting(client, group.id, { includeClosed: true });
+  return statusOf(client, group, await currentMeeting(client, group.id, { includeClosed: true }));
+}
+
+// The same, for a meeting the caller already has. The sweep needs this one:
+// it works from a list of coordinations that owe the room a sentence, and
+// "the room's newest" is not the same meeting once a room has started its
+// next one.
+async function statusOf(client, group, meeting) {
   if (!meeting) return { coordination: null };
   const members = await groups.listMembers(client, group.id);
   const labelByUser = new Map(members.filter((m) => m.user_id).map((m) => [Number(m.user_id), memberLabel(m)]));
@@ -161,6 +168,7 @@ async function coordinationStatus(client, group) {
     coordination: {
       meetingId: Number(meeting.id), title: meeting.title, status: meeting.status,
       confirmedSlot: meeting.confirmed_slot || null,
+      confirmedStartAt: meeting.confirmed_start_at || null,
       startedBy: who(meeting.initiator_id).name,
       participants: active.length,
       options: table,
@@ -225,4 +233,7 @@ async function settle(client, group, actingUser, optionId) {
   return res;
 }
 
-module.exports = { startCoordination, coordinationStatus, settle, currentMeeting, coordinatingMembers, memberLabel };
+module.exports = {
+  startCoordination, coordinationStatus, statusOf, settle,
+  currentMeeting, coordinatingMembers, memberLabel,
+};

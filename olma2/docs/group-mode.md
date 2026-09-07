@@ -735,6 +735,53 @@ The dashboard's groups section gains exactly this one editable thing
 (`POST /group-kind` → `groups.setKind`). State stays read-only there for the
 reason it always has: the gate is the sweep's to decide.
 
+## The three lines a room hears unasked (2026-09-07)
+
+The owner named five moments a group hears from her: when she starts
+coordinating, when she has a base, mid-way when she wants to speed it up, when
+it succeeds, and reminders on the day. The first is her own turn — somebody
+tagged her, the model answers — and the day-of reminders have a clock of their
+own. The other three are `jobs/groups.sweepGroupVoice`, a MINUTE pass beside
+the ten-second gate sweep, and `domain/group-voice.decideGroupLine` decides
+which of them is due.
+
+- **A base** is what she has when the leading option is a real plan: in a game,
+  its own minimum; anywhere else, two people who can make the same time. One
+  person agreeing with themselves is not a direction — the adder's own yes is
+  recorded automatically, so `>= 1` would fire on every proposal.
+- **The chase** names only people who have answered NOTHING. Somebody who said
+  no has answered, and chasing them is asking them to change their mind in
+  front of the room. It waits half the distance to the thing itself (clamped to
+  between an hour and a day), so a game tomorrow is chased in hours and a
+  dinner next month is not chased today.
+- **Done** outranks both. A coordination that just settled makes "who has not
+  answered" a wrong question, and the base of a plan that is already set is
+  worse than silence.
+
+Once each per COORDINATION, not per room (three columns on `meetings`,
+migration 053) — a group that arranges padel every week hears all three again
+next week, about the new one. Each waits for the group's own daytime through
+the same `mayAnnounce` the opening announcement uses, and a line held at 02:00
+stamps nothing, so it simply goes out in the morning. Every word is fixed text
+on the raw pipe from `domain/message-templates.js`, rewordable by the owner
+from the admin page, for the same reason the gate notices are: no model, so a
+room whose members are slow costs nothing at all.
+
+At most one line per room per pass. Two sentences in a row about the same plan
+is a paragraph nobody asked for, and the second one keeps.
+
+**The fifth moment — the two reminders (migration 054)** — rides the same pass
+once the coordination is set: one on the morning of the day, one an hour
+before. The nearer one wins when both are due, and the day-of line is skipped
+entirely when the thing is less than three hours away, because "today" and "in
+an hour" two hours apart is the room being nagged about a plan it made itself.
+Neither is possible without a real `confirmed_start_at` — a slot that never
+carried a moment cannot be reminded about, and inventing one would be worse
+than silence. Both stop existing the moment the thing starts: a reminder that
+arrives late is not a reminder. That is also what happens to an hour-before
+line the group's quiet hours would hold past the event — it is never sent,
+rather than sent at the wrong time.
+
 ## iMessage
 
 Not available on this box. The official path is `@openclaw/imessage` driving

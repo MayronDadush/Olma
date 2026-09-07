@@ -239,6 +239,18 @@ const deployDrift = require('./deploy-drift');
         return r.ok ? 'sent' : (r.timedOut ? 'unknown' : 'failed');
       },
     }) },
+    // The three sentences a room hears about its own coordination, unasked
+    // (the owner's five moments, 2026-09-07 — the other two are her own turn
+    // and the day-of reminders). A minute, not ten seconds: the gate above is
+    // answering a person standing there, and this is a state that changes over
+    // hours. Same raw pipe, same fixed text, and each line waits for the
+    // group's own daytime.
+    { name: 'group_voice', run: () => withTx(pool, (c) => groupsJob.sweepGroupVoice(c, {
+      send: async (jid, body) => {
+        const r = await rawSend(jid, body);
+        return r.ok ? 'sent' : (r.timedOut ? 'unknown' : 'failed');
+      },
+    })) },
     { name: 'intake_template_sync', run: async () => {
       if (!intake.intakeConfigured(OPENCLAW_CONFIG())) return { skipped: true };
       const open = (await flagsDomain.getFlag(pool, 'registration_open')) === true;

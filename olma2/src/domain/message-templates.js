@@ -182,6 +182,42 @@ const TEMPLATES = [
     vars: { max: 'התקרה שבהגדרות (group_max_members)' }, required: ['max'],
     text: 'אני מסתדרת טוב עד {{max}} אנשים, וכאן יש יותר - אז לא אתערב פה. בפרטי אני תמיד זמינה.',
   },
+  // ---- what a room hears about its own coordination, unasked --------------
+  // Three of the owner's five moments (2026-09-07). Each is said once per
+  // coordination and each waits for the group's own hours: nobody asked for
+  // them, which is also why they are three short lines and not three
+  // paragraphs.
+  {
+    key: 'group_coord_base', audience: 'group', label: 'תיאום — יש כיוון',
+    help: 'פעם אחת בכל תיאום, ברגע שיש זמן שכמה אנשים אמרו לו כן (או שהגיע למינימום, בקבוצת משחק).',
+    vars: { slot: 'הזמן שמוביל', yes: 'כמה אמרו לו כן', missing: 'תיוגים של מי שעוד לא אמר כן לזמן הזה' },
+    required: ['slot'],
+    text: 'יש כיוון: {{slot}} — {{yes}} כבר בפנים.\nמחכה ל{{missing}} 🤞',
+  },
+  {
+    key: 'group_coord_chase', audience: 'group', label: 'תיאום — מזרזת באמצע',
+    help: 'פעם אחת בכל תיאום, כשעבר חצי מהדרך לזמן שמדובר עליו ויש מי שעוד לא ענה כלום בפרטי.',
+    vars: { missing: 'תיוגים של מי שעוד לא ענה כלום' }, required: ['missing'],
+    text: 'עוד לא שמעתי מ{{missing}} — תגידו לי בפרטי מתי אתם יכולים ואני סוגרת את זה.',
+  },
+  {
+    key: 'group_coord_done', audience: 'group', label: 'תיאום — נסגר',
+    help: 'פעם אחת, כשהתיאום נסגר על זמן. כל אחד מקבל את זה גם בפרטי; זאת השורה בקבוצה.',
+    vars: { slot: 'הזמן שנסגר' }, required: ['slot'],
+    text: 'סגור: {{slot}} 🎉',
+  },
+  {
+    key: 'group_coord_dayof', audience: 'group', label: 'תיאום — תזכורת ביום עצמו',
+    help: 'בבוקר היום שבו זה קורה, ורק אם נשארו לפחות שלוש שעות — אחרת התזכורת של שעה לפני מספיקה.',
+    vars: { slot: 'הזמן שנסגר' }, required: ['slot'],
+    text: 'מזכירה — היום: {{slot}} 👋',
+  },
+  {
+    key: 'group_coord_soon', audience: 'group', label: 'תיאום — שעה לפני',
+    help: 'שעה לפני. לא נשלחת מאוחר יותר: משהו שכבר התחיל לא צריך תזכורת.',
+    vars: { slot: 'הזמן שנסגר' }, required: ['slot'],
+    text: 'עוד שעה: {{slot}} 🙂',
+  },
 ];
 
 const BY_KEY = new Map(TEMPLATES.map((t) => [t.key, t]));

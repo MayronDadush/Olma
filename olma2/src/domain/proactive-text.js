@@ -160,6 +160,24 @@ function renderGroupTooLarge(maxMembers, overrides) {
   return templates.render('group_too_large', { max: maxMembers }, overrides);
 }
 
+// The three lines a room hears about its own coordination (domain/group-voice
+// decides WHICH, and the sweep decides whether the hour allows it). Everything
+// tagged goes through mentionTokens for the same reason the gate notice does:
+// only a phone-number token pings anybody.
+function renderGroupCoordination(line, overrides) {
+  if (line.kind === 'base') {
+    return templates.render('group_coord_base', {
+      slot: line.slot, yes: String(line.yes), missing: mentionTokens(line.missing || []),
+    }, overrides);
+  }
+  if (line.kind === 'chase') {
+    return templates.render('group_coord_chase', { missing: mentionTokens(line.missing || []) }, overrides);
+  }
+  if (line.kind === 'dayof') return templates.render('group_coord_dayof', { slot: line.slot }, overrides);
+  if (line.kind === 'soon') return templates.render('group_coord_soon', { slot: line.slot }, overrides);
+  return templates.render('group_coord_done', { slot: line.slot }, overrides);
+}
+
 // The single decision point the deliverer consults: a non-null return means
 // "send this text on the raw pipe, no agent turn". Deliberately narrow —
 // checkins and digests are conversational BY DESIGN (the whole 2026-08-20
@@ -178,5 +196,6 @@ function rawPipeTextFor(row, overrides) {
 
 module.exports = {
   renderReminderText, rawPipeTextFor, reminderTemplateKey, localizedKey,
-  renderGroupIntro, renderGroupGateNotice, renderGroupTooLarge, renderGroupOpened, mentionTokens, MAX_TAGS, SELF_NUMBER,
+  renderGroupIntro, renderGroupGateNotice, renderGroupTooLarge, renderGroupOpened,
+  renderGroupCoordination, mentionTokens, MAX_TAGS, SELF_NUMBER,
 };
