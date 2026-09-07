@@ -95,6 +95,35 @@ async function turnOpening(client, ctx) {
   ];
 }
 
+// The reply is in the person's language, and it is a reply — not working
+// notes. יהב (2026-09-07 11:21) received "I see they replied 'בוצע' … Let me
+// look at …" above his Hebrew answer: the model narrated in English in the
+// SAME text block as the message, and the gateway sends the block. The judge
+// rubric checks Hebrew QUALITY and would at most call that a concern (yellow,
+// two nights before anyone hears); this is RED, deterministic, and the harness
+// runs it on every scenario. Letters are counted, not words, so a URL, a
+// product name or an English word in a Hebrew sentence cannot trip it;
+// narration is matched by the openings it actually used.
+const NARRATION_RE = /^\s*(I |I'(m|ll|ve)\b|Let me\b|They (replied|want|said|asked|wrote)\b|The (user|reply|person)\b|Looking at\b|Now I\b|First,|Okay,|Wait,)/m;
+
+function replyLanguage(ctx, locale = 'he') {
+  const bad = [];
+  for (const [i, t] of ctx.turns.entries()) {
+    const text = String(t.reply || '').trim();
+    if (!text || text === 'NO_REPLY') continue;
+    const stripped = text.replace(/https?:\/\/\S+/g, '').replace(/MEDIA:\s*\S+/g, '');
+    const latin = (stripped.match(/[A-Za-z]/g) || []).length;
+    const hebrew = (stripped.match(/[\u0590-\u05FF]/g) || []).length;
+    const narrates = NARRATION_RE.test(stripped);
+    const foreign = locale === 'he' && latin > hebrew && latin > 25;
+    if (narrates || foreign) {
+      bad.push(`turn ${i + 1}: ${narrates ? 'working notes in the reply' : 'not in their language'}`
+        + ` — "${stripped.replace(/\s+/g, ' ').slice(0, 90)}"`);
+    }
+  }
+  return { name: 'the reply is the message, in their language', pass: bad.length === 0, detail: bad[0] };
+}
+
 // The gateway hands the model WhatsApp reply context as its own labelled block
 // ahead of the body — `⟦openclaw:ctx⟧`, then a json fence (dist/inbound-meta-*.js,
 // `buildInboundUserContextPrefix`). The harness sends a bare `--message`, so a
@@ -391,4 +420,4 @@ for (const s of SCENARIOS) {
   seen.add(s.id);
 }
 
-module.exports = { SCENARIOS, turnStartFirst, turnStartNotSpent, turnOpening, turnWasOpened };
+module.exports = { SCENARIOS, turnStartFirst, turnStartNotSpent, turnOpening, turnWasOpened, replyLanguage };

@@ -110,6 +110,43 @@ test('resetEvalUser clears the quota, or the run measures the block notice', asy
   });
 });
 
+// יהב, 2026-09-07 11:21 — the reply the gateway actually sent him, verbatim.
+const YAHAV_REPLY = 'I see they replied "בוצע" to a reminder message about the two 10:00 tasks. Let me look at what tasks are still done-worthy.\n\n'
+  + 'The reply was to a reminder about "לשלוח הודעה לרשויות על הקורס מוגנות" and "להביא דואר". I already completed those plus the 11:00 task.\n\n'
+  + 'סגרתי את השליחה לרשויות, הדואר, והבקשה מהכולם ✅ נשאר הכדור ב-12:00 לתזכורת בהמשך.';
+
+test('replyLanguage: working notes or another language in the reply are red; links, names and NO_REPLY are not', () => {
+  const turns = (...replies) => ({ turns: replies.map((reply) => ({ message: 'x', reply, toolCalls: [] })) });
+  const yahav = scenarios.replyLanguage(turns(YAHAV_REPLY));
+  assert.equal(yahav.pass, false, 'the founding case passed');
+  assert.match(yahav.detail, /working notes/);
+  assert.match(yahav.detail, /turn 1/);
+  // an all-English answer to a Hebrew speaker, even with no narration opener
+  assert.equal(scenarios.replyLanguage(turns('Sure, your meeting is on Wednesday at five and I set a reminder.')).pass, false);
+  // pre-tool narration shapes seen the same day
+  assert.equal(scenarios.replyLanguage(turns('Let me ask which they want.')).pass, false);
+  // and the things that must NOT trip it: a link, a product name, an English
+  // word inside a Hebrew sentence, a silent turn, an empty one
+  assert.equal(scenarios.replyLanguage(turns(
+    'הנה הלוח האישי שלך: https://allma.world/d/' + 'a'.repeat(64),
+    'רשמתי ✅ הפגישה ב-Zoom ביום רביעי ב-17:00, ואזכיר לך שעה לפני.',
+    'המייל חזר ✅ (mayrondadush@gmail.com, קריאה בלבד).',
+    'NO_REPLY', '',
+  )).pass, true);
+  // the failing turn is named, not the first turn
+  const late = scenarios.replyLanguage(turns('בסדר 👍', YAHAV_REPLY));
+  assert.match(late.detail, /turn 2/);
+});
+
+test('every scenario is red on a narrated reply, whatever it is about', async () => {
+  const r = await harness.runScenario(db.pool, evalUser, byId['hebrew-gender-feminine'], {
+    runTurn: fakeTurns([{ reply: YAHAV_REPLY }]),
+    complete: judgePass, openTurn: noOpen,
+  });
+  assert.equal(r.status, 'red');
+  assert.ok(r.hardFailures.some((f) => /in their language/.test(f.name)), JSON.stringify(r.hardFailures));
+});
+
 test('a hard-check failure is RED and the judge is not even consulted', async () => {
   let judgeCalled = false;
   const r = await harness.runScenario(db.pool, evalUser, byId['stop-service'], {
