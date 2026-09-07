@@ -47,6 +47,7 @@ never trust a dated narrative for something you are about to act on.
 **Delivery, outbox and proactive messages**
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)](#a-hundred-and-five-pending-reminders-thirteen-of-them-pending-fixed-2026-09-07)
+- [The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)](#the-hooks-timer-fired-late-and-brokerd-took-the-blame-fixed-2026-09-07)
 - [Good morning at half past one (fixed 2026-09-06)](#good-morning-at-half-past-one-fixed-2026-09-06)
 - [The morning digest asked the same question four mornings running (fixed 2026-09-06)](#the-morning-digest-asked-the-same-question-four-mornings-running-fixed-2026-09-06)
 - [Four good mornings to a man who had stopped answering (fixed 2026-09-05)](#four-good-mornings-to-a-man-who-had-stopped-answering-fixed-2026-09-05)
@@ -1375,6 +1376,57 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
 
+
+### The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)
+
+Eleven of the first ~200 `turn_open`s the gateway hook sent timed out on its
+2-second deadline. Each one dropped the person to the fallback path —
+`turn.opened_implicitly`, no 👀 on their message, no wake from a night hold —
+and seven of the eleven were u-3, the heaviest user on the box.
+
+brokerd answered a `ping` in 1ms, so the first reading was "the `turn_open`
+transaction is slow", and a day was spent on that: pool size, row locks on
+`users`, the outbox worker holding a lock through a 15-second CLI delivery.
+Every hypothesis was checked against the box and none fit — no outbox send
+near any timeout, no crash, no journal line, and **no audit row at all**,
+which meant the transaction had not merely run late but had never committed.
+The box could not say why, because nothing logged: Postgres has no slow-query
+log, brokerd's `turn_open` had no catch and no clock (its `tool_call`
+neighbour had both), and the hook's trace said "timeout" and nothing else.
+
+So two instruments went in before any fix: `ms` and `connected` on every
+hook trace line (#262), and a catch plus per-step laps on brokerd's handler
+(#263). The next timeout arrived three hours later and settled it in one line:
+
+```
+{"agentId":"u-3","outcome":"timeout","ms":3817,"connected":false}
+```
+
+A 2000ms timer that fires at 3817ms means the process it runs in was blocked
+for most of two seconds. **The gateway's** loop, not brokerd's. The journal
+showed the gap: inbound at 16:03:46.9, the gateway's own 👀 at :47.19, then
+nothing until the model fetch at :51.94 — 4.7 seconds of pre-model
+bookkeeping for a heavy user (workspace files, memory, a 39k AGENTS.md, the
+session store), all synchronous. When the loop came back, the timers phase ran
+before the poll phase: the deadline fired first and destroyed a socket whose
+`connect` was queued right behind it. The request never left the gateway.
+That is why brokerd's side was always empty, and why "raise the deadline to
+4 seconds" — the obvious fix from day one — would have been a guess that
+happened to work for stalls under 4s and hidden every longer one.
+
+The fix is two clocks. The 2s brokerd budget starts at **connect**; a socket
+that never connects has its own 10s cap. The gateway runs the hook through
+`fireAndForgetHook`, so nobody waits on either. Each trace line now carries
+`ms` and `connectMs`: the gap between them is the gateway's stall, and what
+follows `connectMs` is brokerd's. `tests/turn-open.test.js` models the stall
+as a late connect under mock timers, and asserts the old design's exact
+failure.
+
+Two shapes from the recurring list, both at once. *A failure named after the
+wrong culprit*: brokerd was blamed for a day on the strength of being the
+thing at the other end of the socket. And *absence of evidence scored as
+evidence*: an empty brokerd log was read as "brokerd did something and left
+no trace", when it meant brokerd had been asked nothing.
 
 ### A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)
 

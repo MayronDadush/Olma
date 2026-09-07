@@ -234,7 +234,14 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   message — on the `message:preprocessed` event: **on OpenClaw 2026.8.1 a
   WhatsApp DM never fires `message:received`**, and the hook sat loaded and
   silent for a night listening to it. A hook that loads is not a hook that
-  runs; prove it with a line it wrote on a real message. brokerd counts the message, wakes the person, puts the 👀 on, and
+  runs; prove it with a line it wrote on a real message. **Its deadline runs
+  from CONNECT, not from start** — the gateway's own pre-model bookkeeping
+  blocks its loop for seconds on a heavy user, a timer that fires late runs
+  before the queued connect callback, and one clock from the start killed
+  eleven opens that had never reached brokerd while brokerd was blamed for a
+  day (`incidents.md`, "The hook's timer fired late"). `ms` minus `connectMs`
+  on the trace line is the gateway's stall; the rest is brokerd's.
+  brokerd counts the message, wakes the person, puts the 👀 on, and
   holds the open for the shim connection to adopt on its first tool call —
   nothing counted twice, every mark on the real message id (`incidents.md`,
   "The reply's first six seconds were bookkeeping"). `turn_start` still works
