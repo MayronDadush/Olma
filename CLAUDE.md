@@ -168,6 +168,14 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   that skipped `turn_start` — passes `false`. Unconditional, it woke Sarah at
   01:26 for a gateway heartbeat poll (`incidents.md`, "Good morning at half
   past one"). A turn happening is not evidence that anyone is awake.
+- **Only rung 1 of a reminder is a moment THEY chose; every rung after it is
+  one OLMA chose, and quiet hours apply to it.** The gate exempted `kind ===
+  'reminder'` wholesale, so Vered was asked "בוצע?" at 01:33 about a reminder
+  she had set for 22:32 (`incidents.md`, "The rung nobody asked for, at half
+  past one"). `sweepReminders` already drew this line for the daily budget and
+  the night window never got the same sentence. The rung rides the payload as
+  its own field, not as `attempt`: `attempt` drives the WORDING and a redo
+  deliberately uses rung 1's text while still being Olma's moment.
 - **A reminder rung the GATE held is never chased; a rung OUR pipe lost is
   redone at once.** The discriminator is on the expired outbox row: the gate
   leaves `attempts = 0` and no `last_error`, a dead pipe leaves both. The

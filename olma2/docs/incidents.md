@@ -125,6 +125,7 @@ never trust a dated narrative for something you are about to act on.
 - [A 👍 is the answer; the sentence after it is a second notification (2026-09-05)](#a--is-the-answer-the-sentence-after-it-is-a-second-notification-2026-09-05)
 - [The hint that outvoted the mark (2026-09-06)](#the-hint-that-outvoted-the-mark-2026-09-06)
 - [The mark that never moved (2026-09-07)](#the-mark-that-never-moved-2026-09-07)
+- [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
 - [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
 - [The check that only watched the front door (2026-09-06)](#the-check-that-only-watched-the-front-door-2026-09-06)
@@ -3841,6 +3842,48 @@ gateway-opened turns on ONE reused `turn` object, each marking its own message.
 Passing a fresh `newTurn()` per turn — which every earlier test in that file
 did — is exactly what hid this, because it modelled a connection that does not
 exist.
+
+### The rung nobody asked for, at half past one (2026-09-07)
+
+Vered's first evening. At 22:31 she asked for a reminder "בעוד דקה"; it was
+armed for 22:32. At **01:33** her phone lit up with
+"⏰ תזכורת חוזרת: לדבר עם גידיס בוצע? אפשר לכתוב לי, או להגיד לי להפסיק להזכיר על
+זה."
+
+The delivery gate is the chokepoint and it did exactly what it was told:
+
+```js
+// reminder/digest: the user picked those times.
+const userChoseThisTime = row.kind === 'reminder' || row.kind === 'digest';
+```
+
+The comment is the bug. It is true of rung 1 — that moment IS the one they
+named — and false of every rung after it. Rung 2 is "three hours after rung 1
+landed" and rung 3 is "the next day at that hour"; both numbers are ours.
+Quiet hours exist to stop us waking somebody with something WE decided to say,
+and an escalation rung is the purest example of that, so it was the one kind of
+message with a blanket exemption from them.
+
+`sweepReminders` already draws this exact line one layer up, for the daily
+budget — *"Only the moment THEY chose is urgent enough to skip the budget. A
+follow-up is Olma's own idea and queues like everything else Olma decided to
+say"* — and the night window simply never got the same sentence.
+
+The fix is that sentence: the exemption is `kind === 'digest'` or a reminder at
+**rung 1**. The rung rides the payload as its own field rather than being read
+off `attempt`, because `attempt` drives the WORDING and a redo deliberately
+uses rung 1's plain text while still being a moment Olma chose.
+
+Two properties make rung 1's exemption safe to keep as it is. It expires two
+hours past its own moment, so it can never land far from what they picked —
+while a later rung expires two hours from NOW and could land anywhere in the
+night. And the conversation grace is untouched: somebody who wrote two minutes
+ago is demonstrably awake and still gets every rung.
+
+A rung held overnight usually then expires before the window opens, and that is
+the intended end of it: the ladder needs `prev.sent_at IS NOT NULL AND
+prev.hold_reason IS NULL` to climb, so a held rung stops the ladder rather than
+stacking up a queue of nags for the morning.
 
 ### The dedupe list that could not contain the answer (2026-09-06)
 
