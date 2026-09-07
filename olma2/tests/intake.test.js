@@ -1534,6 +1534,22 @@ test('agent doctrine: AGENTS.md fits the gateway budget, with room for one more 
     'This fails BEFORE anything is lost, which is the whole point — shorten something else in the same change.');
 });
 
+// Reasoning models narrate in English between tool calls, and when the
+// narration lands in the SAME text block as the answer the gateway sends both:
+// יהב got "I see they replied … Let me look at …" above his Hebrew reply
+// (2026-09-07 11:21, one send, 412 chars). The delivery-turn preamble already
+// forbids this for turns Olma starts; the doctrine has to say it for the turns
+// a person starts, in both variants.
+test('agent doctrine: the reply is the message — no narration, no other language, in both variants', () => {
+  const { renderAgentsMd } = require('../src/intake/provision');
+  const tok = 'olma_tok_' + 'a'.repeat(32);
+  for (const md of [renderAgentsMd(tok), renderAgentsMd(tok, { turnContext: true })]) {
+    assert.match(md, /\*\*Your reply is the message, nothing else\.\*\*/);
+    assert.match(md, /Never narrate what you did or are about\nto do/);
+    assert.match(md, /never in a language\nother than theirs/);
+  }
+});
+
 test('agent doctrine: the context-opened variant tells the model to read the block, not call the tool — and to fall back when the block is missing', () => {
   const { renderAgentsMd } = require('../src/intake/provision');
   const tok = 'olma_tok_' + 'a'.repeat(32);
