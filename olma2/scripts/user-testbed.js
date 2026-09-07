@@ -532,7 +532,12 @@ async function cmdRehearse(pool, phone, ref) {
     const before = await stateOfClosure(client);
     rowsChecked = Object.values(before).reduce((a, r) => a + r.length, 0);
 
-    const del = await deprovisionUser(client, phone, { configPath: cfgPath, removeWorkspace: false });
+    // forgetIntakeSession stays false for the same reason removeWorkspace does:
+    // this whole block is inside a transaction that is always rolled back, and
+    // a ROLLBACK cannot bring a deleted gateway session back.
+    const del = await deprovisionUser(client, phone, {
+      configPath: cfgPath, removeWorkspace: false, forgetIntakeSession: false,
+    });
     if (!del.ok) throw new Error(`deprovision failed: ${del.error.message}`);
     const { rows: gone } = await client.query('SELECT count(*)::int c FROM users WHERE phone = $1', [phone]);
     if (gone[0].c !== 0) throw new Error('the user was not actually deleted — this rehearsal proves nothing');

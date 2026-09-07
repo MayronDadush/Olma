@@ -138,7 +138,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
     `SELECT r.id, r.task_id, r.remind_at, r.repeat_rule
      FROM task_reminders r
      WHERE r.task_id = ANY($1::bigint[])
-       AND r.cancelled_at IS NULL AND r.sent_at IS NULL
+       AND r.cancelled_at IS NULL AND r.attempts = 0
      ORDER BY r.task_id, r.remind_at`,
     [ids]
   );
