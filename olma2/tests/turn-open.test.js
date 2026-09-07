@@ -388,3 +388,51 @@ test('a turn_open whose transaction fails answers with an error and logs it, ins
   assert.match(logged[0], /turn_open u-902 failed after \d+ms/);
   assert.match(logged[0], /pool exhausted/);
 });
+
+// 2026-09-07, u-3: the hook's 2s timer fired at 3.8s with `connected:false`.
+// The gateway's own loop was blocked by its pre-model bookkeeping, and when it
+// came back the timer ran before the connect callback and killed a socket
+// that was about to succeed. So the brokerd budget starts at CONNECT; a
+// socket that never opens has its own, longer cap. Mock clock: a stall is
+// modelled as connect arriving late, and neither case waits real seconds.
+test('a connect the gateway delivered late is not a brokerd timeout; a socket that never connects still gives up', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const lines = () => require('node:fs').readFileSync(process.env.OLMA_HOOK_TRACE, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const lateSocket = (connectAfterMs, answerAfterMs) => () => {
+    const h = {};
+    const s = { on(ev, fn) { h[ev] = fn; return s; }, write() { setTimeout(() => h.data && h.data('{"ok":true}\n'), answerAfterMs); }, end() { h.close && h.close(); }, destroy() {} };
+    setTimeout(() => h.connect && h.connect(), connectAfterMs);
+    return s;
+  };
+  const ev = (id) => ({ type: 'message', action: 'preprocessed', sessionKey: 'agent:u-3:whatsapp:direct:+972500000000', context: { messageId: id, body: 'x' } });
+
+  // Connect at 3.5s — past the old 2s deadline — then brokerd answers in 300ms.
+  const p1 = hook(ev('3EB0STALL0001'), { connect: lateSocket(3500, 300) });
+  t.mock.timers.tick(3500); t.mock.timers.tick(300);
+  return p1.then(async (ok1) => {
+    assert.equal(ok1, true, 'a stalled gateway must not be read as a slow brokerd');
+    const l1 = lines().at(-1);
+    assert.equal(l1.outcome, 'sent');
+    assert.equal(l1.connected, true);
+    assert.equal(l1.connectMs, 3500);
+    assert.equal(l1.ms, 3800);
+
+    // Connected promptly, brokerd silent: the 2s budget runs from connect.
+    const p2 = hook(ev('3EB0STALL0002'), { connect: lateSocket(100, 60_000) });
+    t.mock.timers.tick(100); t.mock.timers.tick(2000);
+    assert.equal(await p2, false);
+    const l2 = lines().at(-1);
+    assert.equal(l2.outcome, 'timeout');
+    assert.equal(l2.connected, true);
+    assert.equal(l2.ms, 2100, 'two seconds after connect, not after start');
+
+    // Never connects: the longer cap, and the line says so.
+    const p3 = hook(ev('3EB0STALL0003'), { connect: lateSocket(60_000, 0) });
+    t.mock.timers.tick(10_000);
+    assert.equal(await p3, false);
+    const l3 = lines().at(-1);
+    assert.equal(l3.outcome, 'timeout');
+    assert.equal(l3.connected, false);
+    assert.equal(l3.ms, 10_000);
+  });
+});

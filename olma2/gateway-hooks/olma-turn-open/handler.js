@@ -16,7 +16,19 @@
 const net = require('node:net');
 
 const SOCK = process.env.OLMA_SOCK || '/opt/olma2/run/brokerd.sock';
-const TIMEOUT_MS = 2000;
+// Two clocks, not one. The brokerd budget starts when the socket CONNECTS;
+// before that a separate, longer cap covers a socket that never does. One
+// clock from the start was wrong in a way the trace could finally show
+// (2026-09-07, u-3): the 2s timer fired at 3.8s with `connected:false`. A
+// timer that fires late means the gateway's own event loop was blocked — its
+// pre-model bookkeeping for a heavy user runs seconds — and when the loop
+// came back the timer ran before the connect callback and destroyed a socket
+// that was about to succeed. Eleven of the first ~200 opens died that way,
+// every one with nothing on brokerd's side, because none ever reached it.
+// The gateway runs this hook through `fireAndForgetHook`, so nobody is kept
+// waiting by a longer cap; it only bounds how long a socket may sit unopened.
+const TIMEOUT_MS = 2000;      // from connect: brokerd's answer
+const CONNECT_CAP_MS = 10000; // from start: a socket that never connects
 // One bounded line per event, next to the socket, so "did the hook run" is a
 // question with an answer. Shape only: type, action, agent, outcome. Never the
 // text, never the sender. Best-effort; a failed write is not this hook's job.
@@ -144,24 +156,28 @@ function handle(event, { connect = net.connect, sock = SOCK } = {}) {
   return new Promise((resolve) => {
     let done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };
-    // How long brokerd took, on every line. Ten of the first sixty-one opens
-    // timed out (2026-09-07) and the trace could not say whether brokerd had
-    // answered at 2.1s or would have at 9s — two different bugs, one of which
-    // a longer deadline fixes and one it only hides. `connected` on a timeout
-    // separates a socket that never opened from a transaction that ran long.
+    // `ms` from the start and `connectMs` for when the socket opened, on every
+    // line: the gap between them is the gateway's own stall, and what follows
+    // `connectMs` is brokerd's.
     const started = Date.now();
     let connected = false;
+    let connectMs = null;
     let socket;
     try { socket = connect(sock); } catch { return finish(false); }
-    const t = setTimeout(() => { try { socket.destroy(); } catch { /* gone */ } trace({ agentId, outcome: 'timeout', ms: Date.now() - started, connected }); finish(false); }, TIMEOUT_MS);
-    socket.on('error', (e) => { clearTimeout(t); trace({ agentId, outcome: 'error', ms: Date.now() - started, error: String(e && e.code || e).slice(0, 40) }); finish(false); });
+    const timing = () => ({ ms: Date.now() - started, connected, ...(connectMs === null ? {} : { connectMs }) });
+    const giveUp = () => { try { socket.destroy(); } catch { /* gone */ } trace({ agentId, outcome: 'timeout', ...timing() }); finish(false); };
+    let t = setTimeout(giveUp, CONNECT_CAP_MS);
+    socket.on('error', (e) => { clearTimeout(t); trace({ agentId, outcome: 'error', ...timing(), error: String(e && e.code || e).slice(0, 40) }); finish(false); });
     socket.on('connect', () => {
       connected = true;
+      connectMs = Date.now() - started;
+      clearTimeout(t);
+      t = setTimeout(giveUp, TIMEOUT_MS);
       socket.write(JSON.stringify({ id: 1, method: 'turn_open', params }) + '\n');
     });
     // Resolve BEFORE ending the socket: a synchronous 'close' would otherwise
     // settle the promise as a failure that already succeeded.
-    socket.on('data', (d) => { clearTimeout(t); trace({ agentId, outcome: 'sent', ms: Date.now() - started, replyTo: Boolean(params.replyToId), thanks: params.thanks, reply: String(d).slice(0, 80) }); finish(true); try { socket.end(); } catch { /* gone */ } });
+    socket.on('data', (d) => { clearTimeout(t); trace({ agentId, outcome: 'sent', ...timing(), replyTo: Boolean(params.replyToId), thanks: params.thanks, reply: String(d).slice(0, 80) }); finish(true); try { socket.end(); } catch { /* gone */ } });
     socket.on('close', () => { clearTimeout(t); finish(done ? undefined : false); });
   });
 }
