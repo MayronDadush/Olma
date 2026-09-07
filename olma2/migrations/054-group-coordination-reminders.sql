@@ -1,7 +1,7 @@
 -- The two reminders a room gets about a coordination that is already set.
 --
 -- The owner's fifth moment (2026-09-07): "תזכורת ביום שמתקיים התיאום / שעה
--- לפני". Two more stamps beside the three in 052, for the same reason — said
+-- לפני". Two more stamps beside the three in 053, for the same reason — said
 -- once each, per coordination, and a room that plays every week gets them
 -- again next week about the new one.
 --

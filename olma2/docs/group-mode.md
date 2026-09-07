@@ -759,7 +759,7 @@ which of them is due.
   worse than silence.
 
 Once each per COORDINATION, not per room (three columns on `meetings`,
-migration 052) — a group that arranges padel every week hears all three again
+migration 053) — a group that arranges padel every week hears all three again
 next week, about the new one. Each waits for the group's own daytime through
 the same `mayAnnounce` the opening announcement uses, and a line held at 02:00
 stamps nothing, so it simply goes out in the morning. Every word is fixed text
@@ -770,7 +770,7 @@ room whose members are slow costs nothing at all.
 At most one line per room per pass. Two sentences in a row about the same plan
 is a paragraph nobody asked for, and the second one keeps.
 
-**The fifth moment — the two reminders (migration 053)** — rides the same pass
+**The fifth moment — the two reminders (migration 054)** — rides the same pass
 once the coordination is set: one on the morning of the day, one an hour
 before. The nearer one wins when both are due, and the day-of line is skipped
 entirely when the thing is less than three hours away, because "today" and "in
