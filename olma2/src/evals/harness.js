@@ -24,6 +24,7 @@ const sessionIndex = require('../channels/sessions');
 const { refreshUserCard } = require('../intake/user-card');
 const llm = require('../adapters/llm');
 const turnDomain = require('../domain/turn');
+const scenarios = require('./scenarios');
 
 const EVAL_PHONE = '+972599999001';
 const BROKERD_SOCK = process.env.OLMA_SOCK || '/opt/olma2/run/brokerd.sock';
@@ -487,7 +488,10 @@ async function runScenario(pool, user, scenario, deps = {}) {
     const client = await pool.connect();
     let checks;
     try {
-      checks = await scenario.hard(client, ctx);
+      // Every scenario, whatever it is about: the reply must be a reply, in
+      // their language (scenarios.replyLanguage). Appended here rather than
+      // spread into each `hard` so a new scenario cannot forget it.
+      checks = [...await scenario.hard(client, ctx), scenarios.replyLanguage(ctx)];
       result.hardFailures = checks.filter((c) => !c.pass).map((c) => ({ name: c.name, detail: c.detail }));
       // Only on failure: a green scenario needs no autopsy, and the snapshot
       // is read on the SAME connection, before the next scenario's reset.
