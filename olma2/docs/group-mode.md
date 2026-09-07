@@ -644,6 +644,48 @@ altogether. The hazard it was always guarding ("nothing here may bet on one
 shim per session") stops being one person acting as another and becomes a
 whole ROOM acting as one of the people in it.
 
+## The trigger, wired (2026-09-07)
+
+The engine was always going to be `domain/meetings.js`; this is the wiring, and
+it is deliberately thin. `domain/group-meetings.js` has two functions and no
+scheduling of its own.
+
+- **A coordination belongs to the ROOM** (owner, 2026-09-07): `meetings.group_id`
+  (migration 050) is the room, `initiator_id` is still the member who asked —
+  somebody has to be able to settle it and to decide a fifth option — and every
+  sentence anybody is sent names the room, not that person.
+- **Inside a room the pairwise `meetings` grant is not asked for.** That is not
+  a hole in the grant model, it is a different consent: everyone in an OPEN
+  group has written to Olma privately, they are all in one visible room, and
+  the request was made out loud in front of them. `startMeeting`'s `groupId`
+  argument is the only path that skips the grant, it is reachable from no tool
+  a person can call, and `group-meetings.js` builds its participant list from
+  the live roster of an open group and nowhere else. Two of those members are
+  still refused a private coordination with each other — proven in
+  `tests/group-coordination.test.js`; the room did not become a connection.
+- **One coordination per room at a time.** A second ask while one is running
+  returns the running one with `created=false`. A room with two tables of times
+  has no way to say which one it means.
+- **A turn with no acting member starts nothing.** `groups.actingMember` is
+  null when the gateway filed no sender or the sender is not a user; picking a
+  member instead would put somebody's name on a decision they never made.
+- **What crosses into the room and what does not.** `group_coordination_status`
+  returns the options, each member's yes/no, and who has not answered at all —
+  that IS the coordination, and a room that cannot see it cannot coordinate.
+  It never selects `meeting_participants.constraints`: a reason is prose
+  written in a private chat, and reading it out to a room is a different act
+  from sharing it with one other participant.
+- **The private question names the room.** `meeting_invite` gained
+  `groupSubject`, and `channels/openclaw.js` says "the group X is coordinating
+  Y — answers happen here, never in the group".
+
+Two edges left open on purpose, both belonging to the cadence PR: the
+downstream fan-outs (`meeting_slot_proposed` and the rest) still read as a
+person-to-person meeting and lean on the TITLE to carry what it is about; and
+the room hears nothing on its own — no start line, no progress, no
+confirmation — until somebody tags her. Those are the five moments the owner
+named, and they are built next.
+
 ## iMessage
 
 Not available on this box. The official path is `@openclaw/imessage` driving

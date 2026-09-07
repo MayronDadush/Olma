@@ -129,3 +129,19 @@ test('the room status carries only what she may say out loud in the room', async
   const fields = new Set(status.members.flatMap((m) => Object.keys(m)));
   assert.deepEqual([...fields].sort(), ['displayName', 'phone', 'wroteToHer']);
 });
+
+test('every tool in the group file is a group tool, and no other file has one', () => {
+  // The audience field is the whole boundary (brokerd routes on it), and it is
+  // set by which HELPER a tool was written with. A `tool(...)` that lands in
+  // this file by copy-paste would be offered to a group agent and refused at
+  // brokerd — reachable only through a room, and confusing when it happens.
+  const groupFile = require('../src/adapters/mcp/tools/group');
+  for (const t of groupFile) assert.equal(t.audience, 'group', `${t.name} is a group tool`);
+  assert.deepEqual(groupFile.map((t) => t.name).sort(),
+    ['group_coordination_status', 'group_status', 'start_group_coordination']);
+
+  const { toolDefinitions } = require('../src/adapters/mcp/registry');
+  const groupNames = new Set(groupFile.map((t) => t.name));
+  const elsewhere = toolDefinitions({ audience: 'group' }).map((t) => t.name).filter((n) => !groupNames.has(n));
+  assert.deepEqual(elsewhere, [], 'a group-audience tool defined outside tools/group.js');
+});
