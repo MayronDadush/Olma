@@ -17,6 +17,7 @@ const audit = require('./audit');
 const crypto = require('node:crypto');
 const cryptoStore = require('./crypto-store');
 const google = require('./google-oauth');
+const connectGate = require('./google-connect-gate');
 const { enqueue } = require('../outbox/enqueue');
 const googleFamily = require('./google-family');
 
@@ -26,6 +27,8 @@ const MAX_EVENTS = 20;
 // ---- consent ---------------------------------------------------------------
 
 async function beginConnection(client, userId, access) {
+  const allowed = await connectGate.requireGoogleConnect(client, userId);
+  if (!allowed.ok) return allowed;
   if (!google.SCOPES[access]) {
     return err('invalid', 'access must be "read_only" or "read_write" — ask the user which they want');
   }

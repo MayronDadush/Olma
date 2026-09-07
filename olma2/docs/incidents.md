@@ -113,6 +113,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two introductions, ninety seconds apart (fixed 2026-09-07)](#two-introductions-ninety-seconds-apart-fixed-2026-09-07)
 - [Two people, no introduction — the sweep beat the greeter to the door (fixed 2026-09-08)](#two-people-no-introduction--the-sweep-beat-the-greeter-to-the-door-fixed-2026-09-08)
 - ["This app is blocked", and the scope that was pricing the whole app (2026-09-07)](#this-app-is-blocked-and-the-scope-that-was-pricing-the-whole-app-2026-09-07)
+- [The door Google's screen is behind, closed until the screen is fixed (2026-09-08)](#the-door-googles-screen-is-behind-closed-until-the-screen-is-fixed-2026-09-08)
 - [The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)](#the-carryover-detector-checked-the-wrong-half-of-the-pair-so-the-flagged-case-was-innocent-and-the-real-leaks-were-invisible-fixed-2026-09-03)
 - [One carryover leak filed itself seven times — `config_guard`'s dedup key wasn't deterministic (fixed 2026-09-03)](#one-carryover-leak-filed-itself-seven-times--config_guards-dedup-key-wasnt-deterministic-fixed-2026-09-03)
 
@@ -3844,6 +3845,49 @@ Two shapes worth keeping from how this was built:
 Still open and not built: nothing watches for an `auth_started` with no
 `integrations` row, so the next person Google blocks will look exactly like a
 person who changed their mind.
+
+### The door Google's screen is behind, closed until the screen is fixed (2026-09-08)
+
+The entry above ends on a gap: nothing watches for an `auth_started` with no
+`integrations` row. The next night produced one, unprompted. u-30 was
+provisioned at 00:26, wrote three messages, and at 00:28:30 — two minutes into
+their life here — `calendar.auth_started` was written. There is no
+`integrations` row for them. Whatever they saw on Google's screen, they did
+not come back.
+
+Nothing proactive did that. The day-one calendar step fires at eight hours and
+the check-in rung needs a quiet person; this was the model, in conversation,
+two minutes in. **That is the part worth keeping**: the offer sites anyone
+would think to switch off were not the ones that reached this person, and a
+switch on those three would have read as "the calendar is no longer offered"
+while the main path stayed wide open.
+
+So the gate is on the MINT, not on the pitch — `beginConnection` in all three
+of `calendar.js`, `google-contacts.js` and `google-connect.js`, which is every
+route that has ever produced a consent URL, the personal dashboard's
+`/me/act` included (its test failed the moment the gate went in, which is how
+that route announced itself). One flag for calendar and contacts together
+because `start_google_connection` mints ONE link covering both, and a gate on
+half of a single link is not a gate.
+
+The pitches are silenced as well, and not as belt-and-braces: an offer whose
+tool will refuse is worse than no offer, because the person says yes first and
+then hears no. The day-one 8h step declines, and both `calendar:*` check-in
+rungs go quiet — `needs_reauth` included, which is the one that took an
+argument. Someone whose calendar Google has stopped accepting is already
+getting nothing from it; walking them back to a door that will not open is not
+a repair, it is a second disappointment. It comes back by itself when the flag
+reopens, and the test says so.
+
+What is NOT closed: an existing connection. Nothing is disconnected, nothing
+revoked, every sync and every read carries on — the flag governs new links
+only, exactly as `email_access_phones` does for mail. An admin is exempt so the
+owner can go and look at Google's screen himself, which is the only way anyone
+finds out it has stopped shouting.
+
+The `auth_started`-with-no-`integrations` watcher is still not built. It is
+now the only way this class of failure gets noticed, and while the door is
+shut there is nothing for it to notice.
 
 ### The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)
 

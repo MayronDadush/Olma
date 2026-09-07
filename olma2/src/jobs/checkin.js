@@ -11,6 +11,7 @@
 // Eligibility gates mirror v1 checkin.js: idle >24h, no checkin in 24h,
 // miss-backoff (1 → three days, 2 → weekly, 3 → stop). Daytime is NOT checked here — the
 // outbox gate holds the row until the user's own window opens.
+const connectGate = require('../domain/google-connect-gate');
 const meetings = require('../domain/meetings');
 const pause = require('../domain/pause');
 const { enqueue } = require('../outbox/enqueue');
@@ -132,6 +133,12 @@ const ONBOARDING_STEPS = [
     // reason a step may decline: it falls through to the ordinary ladder
     // rather than spending their day-one slot on a solved problem.
     skipIf: async (client, u) => {
+      // Nothing to pitch that we would then refuse to do. While Google
+      // connecting is switched off (domain/google-connect-gate.js) this step
+      // would spend a day-one slot offering a link the tool will not mint —
+      // the worst version of an offer, because the person says yes first.
+      const allowed = await connectGate.requireGoogleConnect(client, u.id);
+      if (!allowed.ok) return true;
       const { rows } = await client.query(
         `SELECT 1 FROM integrations
           WHERE user_id = $1 AND status = 'connected' AND provider LIKE 'google%' LIMIT 1`,
@@ -494,7 +501,12 @@ async function discoveryGaps(client, userId) {
     `SELECT status FROM integrations
      WHERE user_id = $1 AND provider = 'google_calendar'`, [userId]);
   const calStatus = cal[0] ? cal[0].status : null;
-  if (calStatus !== 'connected') {
+  // Same reason as the day-one step above: while connecting is off, both of
+  // these end at a link that cannot be minted. needs_reauth goes quiet too —
+  // their calendar is already doing nothing, and being walked back to a wall
+  // is worse than being left alone until the door reopens.
+  const canConnect = (await connectGate.requireGoogleConnect(client, userId)).ok;
+  if (calStatus !== 'connected' && canConnect) {
     // Two distinct topics, not one: a never-connected pitch that should
     // never repeat once declined must not also gate off the needs_reauth
     // recovery, which CLAUDE.md documents as the only mechanism that ever

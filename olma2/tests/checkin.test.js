@@ -6,7 +6,10 @@ const { withTx } = require('../src/db/pool');
 const checkin = require('../src/jobs/checkin');
 
 let db;
-before(async () => { db = await freshDb(); });
+before(async () => {
+  db = await freshDb();
+  await withTx(db.pool, (c) => require('../src/domain/flags').setFlag(c, 'google_connect_phones', 'all'));
+});
 after(async () => { await db.teardown(); });
 
 // Onboarded 3 days ago and silent since (no audit rows after creation window).
@@ -163,6 +166,61 @@ test('day one: the calendar offer is skipped once Google is connected', async ()
       [u.id]);
     assert.equal(await step.skipIf(client, u), true);
   } finally { client.release(); }
+});
+
+test('day one: the calendar offer is skipped while Google connecting is off', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const flags = require('../src/domain/flags');
+  const step = checkin.ONBOARDING_STEPS.find((s) => s.slot === '8h');
+  const u = await makeUser(db.pool, '+972615000140', { firstName: 'Gil' });
+  const client = await db.pool.connect();
+  try {
+    assert.equal(await step.skipIf(client, u), false, 'open: the offer stands');
+    // Nothing connected, so the only thing that changes is the door. An offer
+    // the tool would then refuse is the worst kind — they say yes first.
+    await flags.setFlag(client, 'google_connect_phones', '');
+    assert.equal(await step.skipIf(client, u), true);
+    await flags.setFlag(client, 'google_connect_phones', 'all');
+    assert.equal(await step.skipIf(client, u), false, 'reopening restores it');
+  } finally { client.release(); }
+});
+
+test('the ongoing calendar pitch goes quiet while connecting is off', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const flags = require('../src/domain/flags');
+  const u = await makeUser(db.pool, '+972615000141', { firstName: 'Shira' });
+  await db.pool.query(
+    `UPDATE users SET timezone = 'Asia/Jerusalem', timezone_confirmed = TRUE WHERE id = $1`, [u.id]);
+  const c = await db.pool.connect();
+  try {
+    // Close every gap except the calendar, exactly as the pitch test above does.
+    await c.query(`UPDATE users SET digest_times = '09:00' WHERE id = $1`, [u.id]);
+    await c.query(
+      `INSERT INTO user_facts (user_id, category, fact)
+       VALUES ($1, 'context', 'אחת'), ($1, 'work', 'שתיים'), ($1, 'plans', 'שלוש')`, [u.id]);
+    const friend = await makeUser(db.pool, '+972615000142', { firstName: 'Tal' });
+    const connections = require('../src/domain/connections');
+    const req = await connections.requestConnection(c, u.id, friend.phone, {});
+    await connections.respondToConnection(c, friend.id, req.data.connection.id, 'approve');
+
+    assert.equal((await checkin.pickRung(c, u.id)).topic, 'calendar:not_connected');
+
+    await flags.setFlag(c, 'google_connect_phones', '');
+    let pick = await checkin.pickRung(c, u.id);
+    assert.notEqual(pick && pick.topic, 'calendar:not_connected');
+
+    // A connection Google has stopped accepting goes quiet too: their calendar
+    // is already doing nothing, and walking them back to a door that will not
+    // open is worse than leaving it until it does.
+    await c.query(
+      `INSERT INTO integrations (user_id, provider, status, access_level)
+       VALUES ($1, 'google_calendar', 'needs_reauth', 'read_write')`, [u.id]);
+    pick = await checkin.pickRung(c, u.id);
+    assert.notEqual(pick && pick.topic, 'calendar:needs_reauth');
+
+    await flags.setFlag(c, 'google_connect_phones', 'all');
+    assert.equal((await checkin.pickRung(c, u.id)).topic, 'calendar:needs_reauth');
+  } finally { c.release(); }
 });
 
 test('day one: the dashboard rung is skipped if they already have a link', async () => {
