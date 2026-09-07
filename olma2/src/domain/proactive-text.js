@@ -37,12 +37,39 @@ function cleanTitle(title) {
 // The sentences themselves live in domain/message-templates.js (three
 // templates, one per rung), where the owner can reword them from the admin
 // page; `overrides` is that page's stored object, loaded by the caller.
+// Which of the three rung templates a payload renders with. Exported because
+// the worker groups by it: reminders that come due together go out as ONE
+// message, and a message may only make the promise every line in it makes —
+// mixing a first reminder with a "this is the last one I will send" would say
+// something untrue about half its own lines.
+function reminderTemplateKey(payload) {
+  const p = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
+  const attempt = Number(p.attempt) || 1;
+  return attempt <= 1 ? 'reminder' : (p.finalAttempt ? 'reminder_last' : 'reminder_followup');
+}
+
+// The list form of each rung. One key per rung, for the reason above.
+const LIST_TEMPLATE = {
+  reminder: 'reminder_list',
+  reminder_followup: 'reminder_list_followup',
+  reminder_last: 'reminder_list_last',
+};
+
+// `items` is set by the worker at DELIVERY time and is never stored on the
+// row: batching is a property of what happened to arrive together, not of what
+// was enqueued. Enqueuing a batch would have given several reminders one
+// idempotency key, and then cancelling one of them would let the sweep produce
+// the whole batch again — which is the fault this system already had once, at
+// half past one in the morning.
 function renderReminderText(payload, overrides) {
   const p = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
-  const title = cleanTitle(p.title);
+  const key = reminderTemplateKey(p);
+  const items = (Array.isArray(p.items) ? p.items : []).map(cleanTitle).filter(Boolean);
+  if (items.length > 1) {
+    return templates.render(LIST_TEMPLATE[key], { items: items.map((t) => `\u2022 ${t}`).join('\n') }, overrides);
+  }
+  const title = cleanTitle(p.title) || items[0];
   if (!title) return null;
-  const attempt = Number(p.attempt) || 1;
-  const key = attempt <= 1 ? 'reminder' : (p.finalAttempt ? 'reminder_last' : 'reminder_followup');
   return templates.render(key, { title }, overrides);
 }
 
@@ -133,6 +160,6 @@ function rawPipeTextFor(row, overrides) {
 }
 
 module.exports = {
-  renderReminderText, rawPipeTextFor,
+  renderReminderText, rawPipeTextFor, reminderTemplateKey,
   renderGroupIntro, renderGroupGateNotice, renderGroupTooLarge, renderGroupOpened, mentionTokens, MAX_TAGS, SELF_NUMBER,
 };
