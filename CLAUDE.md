@@ -217,7 +217,16 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   well-formed-but-wrong time still needs a semantic cross-check.
 - **"What is still pending" must ask `attempts = 0`**, not `sent_at IS NULL` —
   since the escalation ladder, a delivered row sits with `sent_at` NULL for up
-  to a day.
+  to two days with `remind_at` receding into the past. The rule was written the
+  day the ladder shipped and four readers still had it wrong a day later,
+  `list_my_reminders` worst of all: it filtered on `cancelled_at` alone, so it
+  had been returning RETIRED reminders as things still to come since long
+  before the ladder — 105 rows on the box, 13 of them pending. **The test that
+  should have caught it asserted on replicas of those queries that it had
+  written itself** (`incidents.md`, "A hundred and five pending reminders").
+  Eight other `sent_at IS NULL` readers are RIGHT: completing, pausing,
+  replacing and not-stacking all ask "what would still fire", which a
+  mid-ladder row would.
 - **The turn opens itself, from the gateway's own hook, before the model's
   first call.** `gateway-hooks/olma-turn-open` (synced by `deploy.sh` to
   `/root/.openclaw/hooks/`, enabled by `hooks.internal.entries`, loaded at
@@ -679,6 +688,10 @@ confusing, check whether it is one of these before theorising.
   prompt.**
 - **A flag the writer sets and the reader ignores is worse than no flag,
   because it is a promise.**
+- **A test that asserts on a replica of a query cannot fail when the original
+  drifts.** Hand-copying a `WHERE` clause into the test to check "the dashboard
+  would not show this" proves only that you can write the clause twice. Call
+  the function production calls, even when that means rendering a page.
 - **A number nobody reconciles drifts in silence.** Cost was wrong in both
   directions for a month while every page looked healthy. Show the gap always,
   not only when it breaks.

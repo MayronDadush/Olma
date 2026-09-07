@@ -46,6 +46,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Delivery, outbox and proactive messages**
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
+- [A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)](#a-hundred-and-five-pending-reminders-thirteen-of-them-pending-fixed-2026-09-07)
 - [Good morning at half past one (fixed 2026-09-06)](#good-morning-at-half-past-one-fixed-2026-09-06)
 - [The morning digest asked the same question four mornings running (fixed 2026-09-06)](#the-morning-digest-asked-the-same-question-four-mornings-running-fixed-2026-09-06)
 - [Four good mornings to a man who had stopped answering (fixed 2026-09-05)](#four-good-mornings-to-a-man-who-had-stopped-answering-fixed-2026-09-05)
@@ -1374,6 +1375,51 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
 
+
+### A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)
+
+`list_my_reminders` is described to the model as "List pending reminders."
+Asked on the live database the day this was found, it returned **105 rows for
+real users. Thirteen of them were pending.**
+
+The query filtered on `cancelled_at IS NULL` and nothing else. Seventy-eight
+of those rows were reminders that had fired, been delivered and been retired —
+`sent_at` stamped, the hour long past — and they had been coming back as
+things still to come since before the escalation ladder existed. Nobody
+noticed because for most of that time the answer was merely useless; it became
+a false statement the moment Olma started reading it back as a promise.
+
+The ladder added a second way to be wrong, and this one was already written
+down. `sent_at` is stamped only on **retirement**, so a reminder that
+delivered rung 1 sits with `sent_at IS NULL` for up to two days while
+`remind_at` recedes into the past. Three more readers asked `sent_at IS NULL`
+and got that wrong the same way: `list_my_tasks` attached the stale hour to
+the task as the next time Olma would raise it, the admin "what is planned to
+be sent" section printed it as a future local time, and the per-task ⏰ count
+on the user page counted it. Every one of the fourteen mid-ladder rows on the
+box had `remind_at` behind `now()`.
+
+The rule — *"what is still pending" must ask `attempts = 0`, not
+`sent_at IS NULL`* — was in `CLAUDE.md` already, written when the ladder
+shipped, and four readers had it right (`digest.js`, `planning.js`,
+`planned.js`'s other query, `timezone-repair.js`). What is worth keeping is
+**why the test suite was no help**: the escalation test had a case named "a
+reminder mid-ladder is not reported as one that has yet to fire", and it
+asserted on three queries **it had written itself** — hand-copied replicas of
+what the digest, the plan and the dashboard were believed to run. A replica of
+a query cannot fail when the original drifts, and three of the four originals
+were wrong while it was green. The new case calls `listReminders`,
+`listTasks` and `renderUserPage` themselves.
+
+Eight other readers ask `sent_at IS NULL` and are **correct**, which is why
+this was not a sweep: completing a task, pausing a user, setting a replacement
+reminder and refusing to stack an automatic one all mean "cancel/consider
+everything still armed", and a mid-ladder reminder is very much still armed.
+The question those ask is not "what is still coming" — it is "what would
+still fire", and the two only look alike.
+
+Nothing about what is ARMED changed. Rung 2 and rung 3 still go out. This is
+only about what a person is told.
 
 ### Nine reminders, nine messages (fixed 2026-09-07)
 

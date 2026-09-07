@@ -337,3 +337,57 @@ test('a reminder mid-ladder is not reported as one that has yet to fire', async 
   assert.equal(await planned(), 0, 'the plan must not announce a time already behind us');
   assert.equal(await overdueOnDashboard(), 0, 'and it is not an operator problem');
 });
+
+// The test above this one asserts on SQL it writes itself, and every reader it
+// stands in for was wrong at the time. That is the whole failure shape: a
+// replica of a query cannot fail when the original drifts. So this one calls
+// the functions production calls, and it is the only place that proves what a
+// person is TOLD about a reminder mid-climb.
+//
+// Measured on the live database the day it was fixed: `list_my_reminders`
+// returned 105 rows for real users and 13 of them were pending. It filtered on
+// `cancelled_at` alone, so it had been reporting RETIRED reminders as still to
+// come since long before the ladder existed; the ladder only added a second
+// way to be wrong.
+test('nothing tells anybody about a reminder that already went out', async (t) => {
+  const { pool, teardown, user, taskId } = await setup('+972505500009');
+  t.after(teardown);
+  const r = await reminderRow(pool);
+  const listed = () => withTx(pool, (c) => reminders.listReminders(c, user.id, null));
+  const onTask = async () => {
+    const res = await withTx(pool, (c) => tasks.listTasks(c, user.id, {}));
+    return res.data.tasks.find((x) => Number(x.id) === Number(taskId)).reminders || [];
+  };
+  const onAdminPage = async () => {
+    const c = await pool.connect();
+    try {
+      const page = await require('../src/adapters/http/admin/user-page')
+        .renderUserPage(c, user.id, {});
+      return page;
+    } finally { c.release(); }
+  };
+
+  assert.equal((await listed()).data.reminders.length, 1, 'before it fires, it is real');
+  assert.equal((await onTask()).length, 1);
+  assert.match(await onAdminPage(), /⏰ 1/, 'and the operator sees one');
+
+  // Rung 1 goes out and lands. The row stays `sent_at IS NULL` by design — the
+  // ladder is still climbing — and `remind_at` is now an hour behind us.
+  await withTx(pool, (c) => sweeps.sweepReminders(c, TICK1));
+  await deliver(pool, r.id, 1, AT);
+  const mid = await reminderRow(pool);
+  assert.equal(mid.sent_at, null);
+  assert.equal(Number(mid.attempts), 1);
+
+  assert.deepEqual((await listed()).data.reminders, [],
+    'she was reminded an hour ago; naming that hour again promises it twice');
+  assert.deepEqual(await onTask(), [],
+    'and the task must not carry a wall-clock time already behind us');
+  assert.doesNotMatch(await onAdminPage(), /⏰ 1/,
+    'nor is it something still planned to send');
+
+  // Rung 2 still goes out. Not listing it is about what is SAID, never about
+  // what is armed — silence here would be a reminder quietly dropped.
+  await withTx(pool, (c) => sweeps.sweepReminders(c, PLUS_3H));
+  assert.equal((await outboxKeys(pool)).length, 2, 'the ladder is untouched');
+});
