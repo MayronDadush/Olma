@@ -308,6 +308,22 @@ test('a greeter that never answers cannot strand somebody outside the system', a
     'nobody greeted them, so their own agent must');
 });
 
+// The greeter QUOTES the opening, so its file has to be rendered with the
+// owner's rewording — and the sweep's "did the greeter say it" check has to
+// recognise the reworded copy as well as the default, because the file is
+// re-rendered by a job and for a few minutes after an edit it said either.
+test('a reworded opening reaches the greeter\'s file, and the sweep recognises it as said', () => {
+  const { intakeAgentsMd } = require('../src/intake/intake-workspace');
+  const reworded = { opening_he: 'היי, אני עולמה 👋\n\nבואו נעשה סדר במשימות שלכם.\nכתבו לי הכל.' };
+  const md = intakeAgentsMd(true, reworded);
+  assert.ok(md.includes(reworded.opening_he), 'the greeter quotes the reworded copy');
+  assert.ok(!md.includes(OPENING.he), 'and not the default beside it');
+  assert.ok(md.includes(OPENING.en), 'the untouched language stays the default');
+  assert.equal(intake.saidTheOpening('היי, אני עולמה 👋\n\nבואו נעשה סדר במשימות שלכם.\nכתבו לי הכל.', reworded), true);
+  assert.equal(intake.saidTheOpening(OPENING.he, reworded), true, 'the default still counts — the file may not have been re-rendered yet');
+  assert.equal(intake.saidTheOpening('בואו נעשה סדר במשימות שלכם.'), false, 'without the override it is not the copy');
+});
+
 test('saidTheOpening reads the copy, not the intention', () => {
   assert.equal(intake.saidTheOpening(OPENING.he), true);
   assert.equal(intake.saidTheOpening(OPENING.en), true);

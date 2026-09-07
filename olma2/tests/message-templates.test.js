@@ -98,3 +98,36 @@ test('the form: blank and the default are not overrides, CRLF is normalised, ref
   assert.deepEqual(templates.parseForm({}), { overrides: {}, rejected: {} });
   assert.deepEqual(templates.parseForm(null), { overrides: {}, rejected: {} });
 });
+
+// The opening copy was the one verbatim message outside this file; since
+// 2026-09-08 it is a template like the others, and `OPENING` is its defaults.
+test('the opening is a template: OPENING is its default, an override is what a stranger reads', () => {
+  const onboarding = require('../src/domain/onboarding');
+  assert.equal(onboarding.OPENING.he, templates.spec('opening_he').text);
+  assert.equal(onboarding.OPENING.en, templates.spec('opening_en').text);
+  assert.equal(onboarding.openingMessage('he'), onboarding.OPENING.he);
+  assert.equal(onboarding.openingMessage('fr'), onboarding.OPENING.en, 'anything not Hebrew is English');
+  const reworded = { opening_he: 'היי, אני עולמה 👋\n\nבואו נעשה סדר.' };
+  assert.equal(onboarding.openingMessage('he', reworded), reworded.opening_he);
+  assert.equal(onboarding.openingMessage('en', reworded), onboarding.OPENING.en, 'the other language is untouched');
+  assert.equal(onboarding.openingMessage('he', { opening_he: '' }), onboarding.OPENING.he, 'a blank override is the default');
+});
+
+test('families: a Hebrew template and its English twin are one message with two boxes', () => {
+  const fam = Object.fromEntries(templates.families().map((f) => [f.id, f]));
+  assert.equal(fam.reminder.he.key, 'reminder');
+  assert.equal(fam.reminder.en.key, 'reminder_en');
+  assert.equal(fam.stranger_intro.he.key, 'stranger_intro_he');
+  assert.equal(fam.stranger_intro.en.key, 'stranger_intro_en');
+  assert.equal(fam.opening.he.key, 'opening_he');
+  assert.equal(fam.group_intro.en, null, 'a group message has no English twin, and says so rather than inventing one');
+  // label and help come from the Hebrew member, so the twins never disagree
+  assert.equal(fam.reminder.label, templates.spec('reminder').label);
+  for (const f of templates.families()) {
+    if (f.he && f.en) assert.equal(f.he.label, f.en.label, `${f.id}: the twins carry one label`);
+    assert.ok(f.label && f.help, `${f.id} has a label and a help line`);
+  }
+  // every template is in exactly one family
+  const members = templates.families().flatMap((f) => [f.he, f.en].filter(Boolean).map((t) => t.key));
+  assert.deepEqual(members.sort(), templates.TEMPLATES.map((t) => t.key).sort());
+});
