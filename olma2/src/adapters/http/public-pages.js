@@ -3,10 +3,10 @@
 // explains what this is, and a privacy policy.
 //
 // They exist because Google's OAuth verification requires both — an app
-// asking for calendar, contacts or Gmail scopes must have a working home
-// page describing its functionality and a reachable privacy policy on the
-// same verified domain, or the "Google hasn't verified this app" screen
-// never goes away. Until now allma.world answered 404 to everything except
+// asking for calendar or contacts scopes must have a working home page
+// describing its functionality and a reachable privacy policy on the same
+// verified domain, or the "Google hasn't verified this app" screen never
+// goes away. Until now allma.world answered 404 to everything except
 // four allowlisted routes (see CLAUDE.md, "Two hostnames"), which is exactly
 // right for a dashboard nobody should reach and exactly wrong for this.
 //
@@ -23,10 +23,16 @@
 // them and because they are the honest description either way:
 //
 //   1. Every permission named here matches a scope the code actually
-//      requests (domain/google-oauth.js, mail-gmail.js). Claiming less than
-//      we ask for fails review; claiming more is a lie to the user.
+//      requests (domain/google-connect.js). Claiming less than we ask for
+//      fails review; claiming more is a lie to the user — and, since
+//      2026-09-07, claiming more can also cost money. These pages described
+//      Gmail (`gmail.readonly`) for a day after the tools that used it were
+//      deleted, and a RESTRICTED scope named on the privacy policy is a
+//      restricted scope as far as a reviewer reading that page is concerned:
+//      the free sensitive track is decided by what the app DECLARES, in the
+//      console and here alike, never by what it happens to call.
 //   2. The Limited Use paragraph is not decoration — it is the specific
-//      disclosure Google requires for sensitive and restricted scopes.
+//      disclosure Google requires for sensitive scopes.
 //
 // No JS, no forms, no state: these are the only two pages in this codebase a
 // completely unauthenticated stranger can read, so they get no moving parts.
@@ -171,12 +177,6 @@ function homePage() {
       <p class="perm">Permission: <code>contacts.readonly</code> — read-only.</p>
     </div>
 
-    <div class="card">
-      <h3>Gmail</h3>
-      <p>Search your inbox when you ask — "what did the school send me?" — and open one message to answer. ${BRAND} does <b>not</b> go through your mail on its own, and cannot send, reply, delete or file anything.</p>
-      <p class="perm">Permission: <code>gmail.readonly</code> — read-only. No send permission, and no tool capable of sending.</p>
-    </div>
-
     <h2>Privacy</h2>
     <p>We do not sell information and do not use it for advertising. Data from Google is used solely to answer you — not to train models, and not for any other purpose. <a href="/privacy">Full privacy policy</a>.</p>
 
@@ -208,12 +208,6 @@ function homePage() {
         <h3>אנשי קשר Google</h3>
         <p>ייבוא שמות ומספרים לפנקס הכתובות הפרטי שלכם כאן, כדי שלא תצטרכו להכתיב מספר שכבר קיים אצלכם בטלפון. הייבוא שקט לחלוטין: הוא לא שולח הודעה לאף אחד ולא מספר לאיש שאתם משתמשים ב${ASSISTANT}.</p>
         <p class="perm">ההרשאה: <code>contacts.readonly</code> — קריאה בלבד.</p>
-      </div>
-
-      <div class="card">
-        <h3>Gmail</h3>
-        <p>לחפש בתיבה שלכם כשאתם מבקשים — "מה כתבו לי מבית הספר?" — ולפתוח הודעה אחת כדי לענות. ${ASSISTANT} <b>לא</b> עוברת על המיילים מיוזמתה, ולא יכולה לשלוח, להשיב, למחוק או לתייק כלום.</p>
-        <p class="perm">ההרשאה: <code>gmail.readonly</code> — קריאה בלבד. אין הרשאת שליחה, ואין כלי שמסוגל לשלוח.</p>
       </div>
 
       <h3>פרטיות</h3>
@@ -256,7 +250,6 @@ function privacyPage() {
     <ul>
       <li><b>Calendar</b> (<code>calendar.readonly</code> or <code>calendar.events</code>) — read events to answer questions about your schedule and propose genuinely free times; create or edit an event only if you granted edit access and explicitly asked for it.</li>
       <li><b>Contacts</b> (<code>contacts.readonly</code>) — import names and numbers into a private address book on your own account. The import notifies nobody and discloses to no third party that you use the service.</li>
-      <li><b>Gmail</b> (<code>gmail.readonly</code>) — search your mailbox and open a single message, <b>only when you explicitly ask</b>. There is no proactive scanning, no background job that reads mail, and no technical ability to send, reply, delete or file anything.</li>
       <li><b>Account email address</b> (<code>userinfo.email</code>) — to show you which account is connected, and to invite participants to a calendar event when you coordinate a meeting.</li>
     </ul>
 
@@ -310,7 +303,6 @@ function privacyPage() {
       <ul>
         <li><b>יומן</b> (<code>calendar.readonly</code> או <code>calendar.events</code>) — לקרוא אירועים כדי לענות על שאלות לגבי הלו"ז ולהציע זמנים פנויים, ולהוסיף או לערוך אירוע רק אם אישרתם הרשאת עריכה וביקשתם זאת.</li>
         <li><b>אנשי קשר</b> (<code>contacts.readonly</code>) — לייבא שמות ומספרים לפנקס כתובות פרטי בחשבון שלכם. הייבוא לא שולח הודעה לאיש ולא חושף לאף צד שלישי שאתם משתמשים בשירות.</li>
-        <li><b>Gmail</b> (<code>gmail.readonly</code>) — לחפש בתיבה ולפתוח הודעה בודדת, <b>רק כשאתם מבקשים במפורש</b>. אין סריקה יזומה, אין תהליך רקע שקורא מיילים, ואין יכולת טכנית לשלוח, להשיב, למחוק או לתייק.</li>
         <li><b>כתובת המייל של החשבון</b> (<code>userinfo.email</code>) — כדי להציג לכם לאיזה חשבון התחברתם, וכדי לצרף משתתפים להזמנה ליומן כשאתם מתאמים פגישה.</li>
       </ul>
 
@@ -368,7 +360,7 @@ function termsPage() {
     <p>These terms govern your use of ${BRAND} (allma.world), a personal assistant that operates over WhatsApp, operated by an individual developer. By starting a conversation with the assistant, you agree to these terms and to the <a href="/privacy">Privacy Policy</a>, which describes what data is collected and how it is used.</p>
 
     <h2>The service</h2>
-    <p>${BRAND} answers messages, keeps reminders and tasks, coordinates meetings between connected people, and — only if you choose to connect it — reads (and, where you explicitly grant it, edits) Google Calendar, Contacts and Gmail on your behalf. The service is provided as-is and may change, and features may be added or removed, without prior notice.</p>
+    <p>${BRAND} answers messages, keeps reminders and tasks, coordinates meetings between connected people, and — only if you choose to connect it — reads (and, where you explicitly grant it, edits) Google Calendar and Contacts on your behalf. The service is provided as-is and may change, and features may be added or removed, without prior notice.</p>
 
     <h2>Acceptable use</h2>
     <p>Use the service only for your own personal, lawful purposes. Do not use it to harass, impersonate, or send unsolicited messages to others; do not attempt to access another person's account or data; do not attempt to disrupt, reverse-engineer, or overload the service.</p>
@@ -399,7 +391,7 @@ function termsPage() {
       <p>תנאים אלה חלים על השימוש ב${ASSISTANT} (allma.world), עוזרת אישית שפועלת דרך וואטסאפ ומופעלת על ידי מפעיל יחיד. פתיחת שיחה עם העוזרת מהווה הסכמה לתנאים אלה ול<a href="/privacy">מדיניות הפרטיות</a>, המפרטת אילו נתונים נאספים וכיצד נעשה בהם שימוש.</p>
 
       <h3>השירות</h3>
-      <p>${ASSISTANT} עונה להודעות, שומרת תזכורות ומשימות, מתאמת פגישות בין אנשים מחוברים, ו — רק אם תבחרו לחבר — קוראת (ובמקום שאישרתם עריכה במפורש, גם עורכת) יומן Google, אנשי קשר ו-Gmail בשמכם. השירות ניתן כפי שהוא (as-is), ותכונות עשויות להשתנות, להתווסף או להוסר, ללא הודעה מוקדמת.</p>
+      <p>${ASSISTANT} עונה להודעות, שומרת תזכורות ומשימות, מתאמת פגישות בין אנשים מחוברים, ו — רק אם תבחרו לחבר — קוראת (ובמקום שאישרתם עריכה במפורש, גם עורכת) יומן Google ואנשי קשר בשמכם. השירות ניתן כפי שהוא (as-is), ותכונות עשויות להשתנות, להתווסף או להוסר, ללא הודעה מוקדמת.</p>
 
       <h3>שימוש מותר</h3>
       <p>השתמשו בשירות אך ורק למטרות אישיות וחוקיות. אין להשתמש בו כדי להטריד, להתחזות, או לשלוח הודעות לא רצויות לאחרים; אין לנסות לגשת לחשבון או למידע של אדם אחר; אין לנסות לשבש, להנדס לאחור, או להעמיס על השירות.</p>

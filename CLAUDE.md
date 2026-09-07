@@ -676,6 +676,15 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   file plus a re-verification. **Never add a scope without checking which list
   it is on**; an unverified app asking for a restricted one is blocked
   outright rather than warned, which is what עידן's "This app is blocked" was.
+  **The track follows what the app DECLARES, and the declaration lives in
+  three places, only one of them in this repo**: the consent screen's scope
+  list (Google Auth Platform, project `692111599145`), `/privacy` and `/terms`
+  (`adapters/http/public-pages.js` — the pages the reviewer actually reads),
+  and the code that mints the consent URL. Deleting the tools moved only the
+  third: the pages went on offering Gmail for a day afterwards, and עידן's own
+  request was `calendar: read_only, mail: false` — his block came from the
+  app's configuration, never from his URL. `tests/public-pages.test.js` fails
+  on any restricted scope named on any public page.
 - **A display name is not a word to be translated.** It arrives in whatever
   script its owner chose; `Idan T` became "היי אידן!" in the first sentence
   that person ever read, while the right spelling sat in a database the
