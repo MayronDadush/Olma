@@ -322,34 +322,55 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
   // Here it costs ~60 tokens once in a person's lifetime, and it arrives at
   // the exact moment it applies — which for a cheap model beats a rule
   // buried in 40k chars it only partly attends to.
+  // The half that is true whichever voice said hello. A first message is not
+  // only a request — it is also the first thing they ever tell us about
+  // themselves, and the instruction used to throw that away ("otherwise stop
+  // there"). עידן's first words were "קוראים לי עידן"; ninety seconds later
+  // Olma asked him whether his name was עידן. Saving it is a TOOL CALL, not a
+  // sentence, so it costs the reply nothing, and `confirmed: true` is the part
+  // that matters — the model DID call set_my_name that day, unconfirmed, and
+  // the 60-second rung reads `name_confirmed` (2026-09-07).
+  const NAME_IN_FIRST_MESSAGE =
+    'One thing does happen silently: if this message tells you what to call '
+    + 'them ("קוראים לי…", "אני …", a name and nothing else), call set_my_name '
+    + 'with confirmed: true before you reply — they stated it, so it is not an '
+    + 'observation. Do not mention it, do not thank them for it, and do not ask '
+    + 'them to confirm it, now or later.';
+
+  // Whether anyone has already said hello. An organic joiner met the intake
+  // greeter, which opens with this exact copy and stamps `opening_sent_at` at
+  // provisioning; sending it again here is the duplicate introduction עידן
+  // read twice in ninety seconds (`incidents.md`, "Two introductions").
+  // Everyone else — hand-provisioned, testbed-reset — has heard nobody, and
+  // this turn is where the copy belongs.
+  const onboarding = firstTurn
+    ? (user.opening_sent_at
+      ? {
+        alreadyOpened: true,
+        instruction: 'Their first message to YOU, but not their first message '
+          + 'to Olma: they have already been greeted, in these words, and the '
+          + 'introduction is done. Do not introduce yourself, do not welcome '
+          + 'them, do not say anything about being set up, ready, or newly '
+          + 'able to help — from their side this is one conversation that has '
+          + 'simply carried on. Answer what they actually wrote, in one short '
+          + 'reply. ' + NAME_IN_FIRST_MESSAGE,
+      }
+      : {
+        sendVerbatim: onboardingDomain.openingMessage(user.locale),
+        instruction: 'Their first ever message, and nobody has greeted them '
+          + 'yet. Open your reply with sendVerbatim, character for character — '
+          + 'do not translate, reword, shorten, or add to it. If they actually '
+          + 'asked for something, answer it below those lines; otherwise stop '
+          + 'there. No feature tour, no menu, and no follow-up question this '
+          + 'turn. ' + NAME_IN_FIRST_MESSAGE
+          + ' Your reply is still the copy above and nothing else.',
+      })
+    : null;
+
   if (!counted.data.blocked) {
     return {
       directive: 'proceed', locale: user.locale,
-      ...(firstTurn ? {
-        firstTurn: true,
-        onboarding: {
-          sendVerbatim: onboardingDomain.openingMessage(user.locale),
-          instruction: 'Their first ever message. Open your reply with '
-            + 'sendVerbatim, character for character — do not translate, reword, '
-            + 'shorten, or add to it. If they actually asked for something, answer '
-            + 'it below those lines; otherwise stop there. No feature tour, no menu, '
-            + 'and no follow-up question this turn. '
-            // A first message is not only a request — it is also the first
-            // thing they ever tell us about themselves, and "otherwise stop
-            // there" used to throw that away. עידן's first words were
-            // "קוראים לי עידן" and ninety seconds later Olma asked him
-            // whether his name was עידן (2026-09-07). Saving it is a TOOL
-            // CALL, not a sentence, so it costs this turn nothing and it is
-            // what stops the 60-second name nudge from ever reaching a
-            // person who already answered it.
-            + 'One thing does happen silently: if this message tells you what '
-            + 'to call them ("קוראים לי…", "אני …", a name and nothing else), '
-            + 'call set_my_name with confirmed: true before you reply — they '
-            + 'stated it, so it is not an observation. Do not mention it, do '
-            + 'not thank them for it, and do not ask them to confirm it, now '
-            + 'or later. Your reply is still the copy above and nothing else.',
-        },
-      } : {}),
+      ...(firstTurn ? { firstTurn: true, onboarding } : {}),
       ...(offerResume ? { offerResume: true } : {}),
       ...(languageNudge ? { languageNudge } : {}),
       ...(recentReminders.length ? { recentReminders } : {}),

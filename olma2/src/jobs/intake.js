@@ -151,6 +151,11 @@ async function sweepIntakeSessions(client, deps) {
     const prov = await provisionUser(client, {
       phone, invitedByConnectionId: invited ? invited.id : null, configPath: deps.configPath,
       firstMessage, invitedInfo, registerUndo: deps.registerUndo,
+      // Unconditional here, and that is the point: this sweep's entire input
+      // is the intake agent's own session list, so reaching this line means
+      // the greeter has this conversation and has answered it with the
+      // owner's opening copy. Nothing else provisions through this path.
+      greetedByIntake: true,
     });
     if (!prov.ok) { out.skipped++; continue; }
     const user = prov.data.user;
