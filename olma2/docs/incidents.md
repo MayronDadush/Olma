@@ -44,6 +44,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [Good morning at half past one (fixed 2026-09-06)](#good-morning-at-half-past-one-fixed-2026-09-06)
 - [The morning digest asked the same question four mornings running (fixed 2026-09-06)](#the-morning-digest-asked-the-same-question-four-mornings-running-fixed-2026-09-06)
 - [Four good mornings to a man who had stopped answering (fixed 2026-09-05)](#four-good-mornings-to-a-man-who-had-stopped-answering-fixed-2026-09-05)
@@ -149,6 +150,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two branches, one migration number — a third time, in one afternoon (fixed 2026-08-29)](#two-branches-one-migration-number--a-third-time-in-one-afternoon-fixed-2026-08-29)
 - [Two branches, one migration number (fixed 2026-08-22)](#two-branches-one-migration-number-fixed-2026-08-22)
 - [The suite was green thirteen hours a day and red eleven (fixed 2026-08-30)](#the-suite-was-green-thirteen-hours-a-day-and-red-eleven-fixed-2026-08-30)
+- [Three deploys died on a test that raced the second hand (fixed 2026-09-06)](#three-deploys-died-on-a-test-that-raced-the-second-hand-fixed-2026-09-06)
 - [Deploying doctrine no longer needs a second command (2026-08-21)](#deploying-doctrine-no-longer-needs-a-second-command-2026-08-21)
 - [A rollback cannot reach the filesystem (fixed 2026-08-27)](#a-rollback-cannot-reach-the-filesystem-fixed-2026-08-27)
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
@@ -1295,6 +1297,55 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
 
+
+### Nine reminders, nine messages (fixed 2026-09-07)
+
+Vered (u-24) woke up on her first full morning here to **nine separate
+WhatsApp messages**, one per reminder, arriving between 08:06 and 08:07. Each
+one was correct. Together they were a wall.
+
+Nothing was wrong with the gate, the ladder or the sweep. The outbox drains a
+row at a time — `drainOnce` locks one row, decides on it, sends it, marks it —
+and that is exactly right for everything else it carries: a connection
+request, a digest, a meeting update are each their own event. Reminders are
+the one kind where several rows regularly describe **one moment in somebody's
+day**, because a night of held rows is released by a single `release_after`
+and because a person who says "תזכירי לי על כל אלה מחר בבוקר" means one
+morning, not nine.
+
+Coalescing happens at **delivery**, in the worker, and deliberately not at
+enqueue. A batch built by the sweep would need one idempotency key for several
+reminders, and then cancelling any one of them would let the sweep re-create
+the whole group — which is the shape of the fault that had woken her at half
+past one two nights earlier. At delivery there is no new key and no new row:
+each reminder stays individually cancellable, expires on its own two hours,
+and climbs its own ladder. The only thing shared is the one send that happens
+to carry all of them.
+
+Three constraints fell out of that and are each a line of code:
+
+- **Only rows that pass the same gate.** Siblings are re-`decide()`d against
+  the identical facts rather than assumed — expiry is per row, and a rung whose
+  two hours ran out must not reach the phone by riding along on a live one.
+- **Only rows that render with the same rung template.** A first reminder and
+  a "זו התזכורת האחרונה" cannot be the same message: a batch may only make the
+  promise every line in it makes. Hence three list templates rather than one,
+  mirroring the three rungs — `reminder_list`, `reminder_list_followup`,
+  `reminder_list_last`, all rewordable from the admin page like every other
+  sentence Olma sends verbatim.
+- **A failed send fails for every row it carried**, and the siblings are then
+  skipped for the rest of that tick. Without the second half, a batch that
+  failed was immediately re-sent one row at a time in the same tick, spending
+  the backoff it had just scheduled.
+
+The cap (`MAX_BATCH = 8`) is not a limit on what is due — anything past it
+goes out on the next tick as its own message. It is a limit on how long one
+message may be.
+
+Left as a follow-up: sending the schedule card image instead of a text list.
+The owner asked for "בבת אחת או בתמונה", and the text list is the half that
+fixes the flood without a new render path in the delivery loop; Vered was
+asked directly which she would rather have.
 
 ### Good morning at half past one (fixed 2026-09-06)
 
@@ -4346,7 +4397,9 @@ person is already having simply continues, silently more capable.
   Peer wildcard `peer:{kind:"direct",id:"*"}` is supported, outranked by exact
   peers.
 - **Never poll `openclaw sessions list` on a timer** — measured 2.9s of CPU
-  per invocation, which on this 1-vCPU box is ~20% of the core per 15s tick
+  per invocation, which on the 1-vCPU box of the day was ~20% of the core per
+  15s tick (the droplet has had two cores since 2026-09-06; the measurement
+  stands, the fraction halves, and the rule is unchanged)
   and directly slows every agent reply. The same facts (plus token counters
   and the gateway's own cost estimate) are in
   `agents/<id>/sessions/sessions.json`, keyed by session key. `olma2/src/channels/sessions.js`
@@ -4859,6 +4912,72 @@ instead of sending. Two things worth carrying:
 - **A fallback default is not an open door.** The comment was not lazy, it was
   wrong about which way an unknown phone fails — and a test asserting a SEND
   must own the hour of every phone it points at, not just the default one.
+
+### Three deploys died on a test that raced the second hand (fixed 2026-09-06)
+
+`main` went red three times running, on
+`tests/meeting-deep-link.test.js` — `slot_changed`, "the slot the user
+approved is no longer on the table" — on bytes that had passed the PR twice.
+
+The test proposed an option at `at(72)` and then said yes at `at(72)`,
+computing the moment **twice**. `at()` is second-precision off `Date.now()`.
+Cross a second boundary in the gap and the yes names a moment one second off
+the table, which `respond_to_meeting_slot` refuses on purpose — that refusal
+is the fix for a real incident where three proposals crossed within eight
+seconds and a yes to Sunday landed on Tuesday. **The domain code was right and
+the test was racing the clock.** Its own sibling,
+`meeting-confirm-order.test.js`, had already learned this and pins
+`const when = at(24)` once, with a comment saying why.
+
+Three things worth keeping:
+
+- **The gap is a property of the machine, not of the code.** 65ms in CI,
+  227ms and then 603ms in `deploy.sh`'s on-box run — niced to 19, sharing one
+  core with live agent turns. A race CI wins nine times out of ten, the box
+  loses nearly always. **The on-box suite is the last gate and the slowest
+  machine**, which is the whole reason it exists (`On-box suite catches what
+  CI cannot`), and it is where timing assumptions go to die.
+- **A suite failure inside `deploy.sh` leaves a mixed box, and does not roll
+  back.** The order is rsync → RELEASE marker → `npm install` → migrations →
+  suite → restart. A red suite aborts before the restart, so `roll_back` never
+  runs — correctly, since nothing was replaced. What is left is new code on
+  disk, **migrations already applied**, old code in memory, `/ready` 200 and
+  every user served exactly as before. Read `RELEASE` for what is on disk and
+  `ActiveEnterTimestamp` for what is running; they disagreeing is this state,
+  not a broken deploy. Whether it is harmless depends on which files moved:
+  here, ten runtime files differed and the only reader of any of them was
+  `bin/olma-brokerd.js` — the long-lived process that had not restarted — while
+  the per-turn MCP shim, which re-execs on every tool call, loaded none of
+  them. That is worth checking rather than assuming.
+- **The scheduled clock-drift run had shipped the day before, for exactly this
+  class, and this is not how it was caught.** `deploy.sh` found it first,
+  because the deploy runs on the hostile machine and the schedule only runs at
+  four hours. Both are worth having; neither replaces reading the failure.
+
+**Two causes wore one costume, and counting the red runs hid that.** Three
+deploys failed in a row and it was tempting — and wrong — to call them three
+of the same thing. Reading each one's terminal state instead:
+
+| run | what actually ended it |
+|---|---|
+| `34049350911` (76098bb) | attempt 1 wedged, attempt 2 produced a real result: 1472 pass, **1 fail**, the deep-link test |
+| `34050220314` (91f5f33) | **wedged on both attempts, never produced a result** — the deep-link test also failed inside attempt 1 |
+| `34053184196` (8c788b6) | 1497 pass, 1 fail — a different test entirely (`onboarding-review`, fixed separately) |
+
+So the race was real and the fix was necessary, and it was **not** the whole
+story: a solo on-box suite measured **234s against `SUITE_TIMEOUT=420`**, so
+anything else holding the CPU at the same time pushes both runs past the cap
+and both report as wedges. A wedge and an assertion failure look alike from
+the outside — both arrive as a red `deploy` — and they take opposite actions.
+`run-suite.sh` prints the banner precisely so they can be told apart: **read
+which one you have before deciding whether a re-run is even meaningful.**
+Re-running 34049350911 was reasonable and it failed again, on the assertion,
+which is what identified the race.
+
+The box was resized from one core to two the same evening, which widens the
+odds without changing the rule: **a moment a test will later assert on is
+computed once.** `SUITE_CONCURRENCY` was left at 2 — it was chosen for the
+old shape and has not been re-measured on the new one.
 
 ### Deploying doctrine no longer needs a second command (2026-08-21)
 

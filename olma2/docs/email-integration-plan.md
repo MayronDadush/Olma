@@ -485,7 +485,7 @@ common case free: "יש משהו שאני צריך לענות עליו?" is answ
 
 ---
 
-## 11. Jobs, cadence, and the 1-vCPU box
+## 11. Jobs, cadence, and the small box
 
 One new job, `mail_sweep`, in `jobs/expectations.js` at **900s**. It syncs,
 triages and enqueues in one tick, bounded by `MAX_USERS_PER_TICK` (start at

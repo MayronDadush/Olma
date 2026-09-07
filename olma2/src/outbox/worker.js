@@ -7,6 +7,7 @@ const { withTx } = require('../db/pool');
 const preferences = require('../domain/preferences');
 const quota = require('../domain/quota');
 const flagsDomain = require('../domain/flags');
+const proactiveText = require('../domain/proactive-text');
 const { decide } = require('./gate');
 
 // A delivery is a full model turn — 30-90s of wall time and most of the box's
@@ -15,6 +16,41 @@ const { decide } = require('./gate');
 // texted them raw error strings) is worse than a slower drain. Cheap terminal
 // outcomes (expire/drop/hold) stay uncapped — only actual sends count.
 const MAX_DELIVERIES_PER_TICK = 5;
+
+// ── Reminders that come due together go out together ────────────────────────
+// The outbox drains a row at a time, so nine reminders due at 08:00 were nine
+// separate WhatsApp messages — which is what Vered got on her first morning
+// after a night of held rows all released at once. They are one moment in her
+// day and should be one message.
+//
+// Coalescing happens HERE, at delivery, and deliberately not at enqueue. A
+// batch built by the sweep would have to share one idempotency key, and then
+// cancelling a single reminder would let the sweep re-create the whole group —
+// the exact shape of the fault that woke her at half past one. At delivery
+// there is no new key and no new row: the rows stay individually cancellable,
+// individually expiring, each climbing its own ladder, and the only thing that
+// is shared is the one send that happens to carry all of them.
+//
+// The cap is not a limit on what is due — anything past it goes out on the
+// next tick as its own message — it is a limit on how long one message may be.
+const MAX_BATCH = 8;
+
+function payloadOf(row) {
+  const p = row.payload;
+  return (typeof p === 'string' ? JSON.parse(p) : p) || {};
+}
+
+// The template key this row would render with, or null if it is not a
+// batchable reminder at all: a payload carrying an `instruction` asks for a
+// model turn by definition (proactive-text.rawPipeTextFor), and a titleless
+// row renders nothing.
+function batchKeyFor(row) {
+  if (row.kind !== 'reminder') return null;
+  const p = payloadOf(row);
+  if (p.instruction) return null;
+  if (!String(p.title || '').trim()) return null;
+  return proactiveText.reminderTemplateKey(p);
+}
 
 // deliver(user, row) → { ok, error? } — injected; production uses
 // channels/openclaw.js, tests inject a recorder.
@@ -42,8 +78,15 @@ async function drainOnce(pool, deliver, now = new Date()) {
     [now]
   );
 
+  // Rows a batch earlier in this tick already carried. On success the re-lock
+  // below would skip them anyway (sent_at is set); on FAILURE it would not,
+  // and the sibling would be sent again immediately as its own message —
+  // spending the retry the backoff had just scheduled, in the same tick.
+  const carried = new Set();
+
   for (const row of candidates) {
     if (outcomes.delivered + outcomes.failed >= MAX_DELIVERIES_PER_TICK) break;
+    if (carried.has(String(row.id))) continue;
     try {
       await withTx(pool, async (client) => {
         // re-lock this row; skip if another tick got it meanwhile
@@ -76,7 +119,9 @@ async function drainOnce(pool, deliver, now = new Date()) {
           [row.user_id, now]
         );
 
-        const verdict = decide({
+        // Named, because the batch below re-decides each sibling against the
+        // identical facts — everything here except `row` is about the PERSON.
+        const facts = {
           row, plan, blocked, paused: Boolean(row.paused_at),
           evalUser: Boolean(row.is_eval),
           blockedUntil: row.quota_blocked_until,
@@ -84,7 +129,8 @@ async function drainOnce(pool, deliver, now = new Date()) {
           lastInboundAt: row.last_inbound_at,
           hasDigest: Boolean(row.digest_times),
           sentToday: sentRows[0].n, budget, now,
-        });
+        };
+        const verdict = decide(facts);
 
         // Terminal, like 'expired': sent_at is stamped so the sweep that produced
         // this row cannot produce it again, and hold_reason records that nothing
@@ -113,12 +159,47 @@ async function drainOnce(pool, deliver, now = new Date()) {
           return;
         }
 
-        const result = await deliver(row);
+        // Everything else of this person's that is due right now, renders with
+        // the SAME rung template, and would pass this same gate. Locked in
+        // this transaction, so a row another tick already holds is simply not
+        // batched rather than waited for; and re-decided rather than assumed,
+        // because expiry is per row — a rung whose two hours ran out must not
+        // ride along on a sibling that is still live.
+        const ids = [row.id];
+        const titles = [payloadOf(row).title];
+        const key = batchKeyFor(row);
+        if (key) {
+          const { rows: siblings } = await client.query(
+            `SELECT * FROM outbox
+              WHERE user_id = $1 AND id <> $2 AND kind = 'reminder' AND sent_at IS NULL
+                AND (release_after IS NULL OR release_after <= $3)
+                AND (hold_reason IS DISTINCT FROM 'budget' OR release_after IS NOT NULL)
+              ORDER BY created_at, id
+              FOR UPDATE SKIP LOCKED`,
+            [row.user_id, row.id, now]
+          );
+          for (const sib of siblings) {
+            if (ids.length >= MAX_BATCH) break;
+            if (batchKeyFor(sib) !== key) continue;
+            if (decide({ ...facts, row: sib }).action !== 'deliver') continue;
+            ids.push(sib.id);
+            titles.push(payloadOf(sib).title);
+            carried.add(String(sib.id));
+          }
+        }
+
+        // `items` rides the in-memory row only. Nothing about the batch is
+        // written down, so a redelivery after a failed send re-forms it from
+        // whatever is still due then.
+        const result = await deliver(
+          ids.length > 1 ? { ...row, payload: { ...payloadOf(row), items: titles } } : row
+        );
         if (result.ok) {
           await client.query(
-            `UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE id = $1`, [row.id]
+            `UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE id = ANY($1::bigint[])`, [ids]
           );
           outcomes.delivered++;
+          if (ids.length > 1) outcomes.batched = (outcomes.batched || 0) + ids.length - 1;
         } else {
           // 5s, 15s, 45s, 2m15s, then capped at 10 minutes. The first retry has
           // to be seconds: the most common failure is a welcome racing the
@@ -147,13 +228,15 @@ async function drainOnce(pool, deliver, now = new Date()) {
           // 26 each tick aborted on them — oldest-first, so they sat at the head
           // of the queue with 28 healthy messages stuck behind them. Topping the
           // account back up would not have cleared it; only this line does.
+          // Every row the send was carrying, not just the one that led it: a
+          // batch is one send, so a failure is one failure for all of them.
           await client.query(
             `UPDATE outbox SET attempts = attempts + 1, last_error = $2,
                     release_after = now() + least(
                       interval '10 minutes',
                       interval '5 seconds' * power(3, least(attempts, 6)))
-             WHERE id = $1`,
-            [row.id, String(result.error || 'delivery failed').slice(0, 500)]
+             WHERE id = ANY($1::bigint[])`,
+            [ids, String(result.error || 'delivery failed').slice(0, 500)]
           );
           outcomes.failed++;
         }
@@ -172,4 +255,4 @@ async function drainOnce(pool, deliver, now = new Date()) {
   return outcomes;
 }
 
-module.exports = { drainOnce, MAX_DELIVERIES_PER_TICK };
+module.exports = { drainOnce, MAX_DELIVERIES_PER_TICK, MAX_BATCH };

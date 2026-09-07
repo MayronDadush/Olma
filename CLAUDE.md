@@ -94,6 +94,20 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   where it does not wedge). The `deploy_drift` dashboard row
   (`jobs/deploy-drift.js`) reports this gap hourly — a row and never an alert,
   since being a few commits behind breaks nobody.
+- **A red `deploy` is EITHER a wedge or a real failure, and they take opposite
+  actions** — `run-suite.sh`'s banner is what tells them apart, so read it
+  before deciding a re-run means anything. A solo on-box suite runs ~234s
+  against `SUITE_TIMEOUT=420` (measured 2026-09-06), so a second thing holding
+  the CPU pushes both past the cap and both report as wedges.
+- **A red suite inside `deploy.sh` leaves a MIXED box and does not roll back.**
+  The order is rsync → RELEASE marker → `npm install` → migrations → suite →
+  restart, so a failure aborts before the restart and `roll_back` never runs —
+  correctly, nothing was replaced. New code and applied migrations on disk, old
+  code in memory, `/ready` 200, users served as before. `RELEASE` and
+  `ActiveEnterTimestamp` disagreeing is this state. Whether it is harmless
+  depends on which files moved: `bin/olma-brokerd.js` is long-lived and holds
+  the old ones, while the MCP shim re-execs per tool call — check, do not
+  assume.
 - **The `sha` in `/opt/olma2/RELEASE` is the ONLY unambiguous answer to "is
   production running what I merged."** Everything else is inference about how
   it got there. Timestamps lie in BOTH directions: the marker is written
@@ -135,8 +149,9 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   designed to read them off the store, went live, and registered nothing
   (`incidents.md`, "The roster was never in the transcript"). A store
   that our own probes wrote into is not evidence of what the gateway writes.
-- **Never poll `openclaw sessions list` on a timer** — 2.9s of CPU per call on
-  a 1-vCPU box, which directly slows every user's reply.
+- **Never poll `openclaw sessions list` on a timer** — 2.9s of CPU per call,
+  measured when the box had one core and still most of a core now that it has
+  two. It directly slows every user's reply.
 - **The gateway heartbeat stays OFF: `agents.defaults.heartbeat.every: "0m"`.**
   `target: "none"` only suppresses delivery; the 30-minute NO_REPLY turn
   still runs for every agent, and it was 82% of the model bill (2026-09-05,
@@ -182,6 +197,15 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   redo goes out under the next rung's key with the plain wording, keeps the
   urgency of the rung it replaces, and still spends a rung so a broken pipe
   cannot loop (`incidents.md`, "The reminder that could not climb").
+- **Reminders that come due in the same tick go out as ONE message, and the
+  coalescing happens at DELIVERY, never at enqueue.** A batch enqueued under
+  one idempotency key would let cancelling a single reminder re-create the
+  group. In the worker there is no new row: siblings are locked in the same
+  transaction, re-`decide()`d (expiry is per row), grouped by rung template (a
+  batch may only make the promise every line in it makes — hence three list
+  templates), and a failed send fails for all of them and skips them for the
+  rest of the tick. Vered got nine messages in ninety seconds
+  (`incidents.md`, "Nine reminders, nine messages").
 
 ### Data you must not get wrong
 
@@ -766,6 +790,9 @@ no JS — but structured differently:
 ## Server
 
 `ssh root@157.230.210.233` (key `~/.ssh/id_ed25519`). Ubuntu 24.04, Node 24,
+**2 vCPU / 2GB since 2026-09-06** — the hostname still reads
+`ubuntu-s-1vcpu-2gb-nyc1`, so `nproc` is the only honest answer, and older
+comments and incident entries that say "one core" were true when written.
 OpenClaw global npm package (`openclaw`). No `sqlite3` CLI on the box — use
 Node's built-in `node:sqlite` (`DatabaseSync`) for any manual DB query.
 
@@ -834,6 +861,12 @@ Two things the suite learned the hard way:
   `helpers.daytime()` and `helpers.slotStart()`; a hard-coded "Tuesday 17:00"
   or an unpinned `drainOnce` passes or fails depending on when you run it.
   The suite was green thirteen hours a day and red eleven before this.
+- **A moment a test will later assert on is computed ONCE**, into a variable.
+  `slotStart`/`at()` are second-precision off the live clock, so computing the
+  same moment twice can straddle a second — and a yes must name the exact
+  `starts_at` that was proposed. Three deploys died on this, on bytes the PR
+  had passed twice: 65ms of gap in CI, 603ms in `deploy.sh`'s niced on-box run
+  (`incidents.md`, "Three deploys died on a test that raced the second hand").
 
 - **A test file must never reach the LIVE gateway — not its home, not its
   roster.** `deploy.sh --restart` runs this suite on the box, where the

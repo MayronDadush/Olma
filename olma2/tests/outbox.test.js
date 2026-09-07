@@ -445,3 +445,78 @@ test('a tick delivers at most MAX_DELIVERIES_PER_TICK — a backlog drains in sh
   const second = await drainOnce(db.pool, rec.deliver, new Date('2026-08-16T12:00:00Z'));
   assert.equal(second.delivered, 3, 'the next tick finishes the backlog');
 });
+
+// Vered's first morning: a night of held reminders released together, and she
+// got nine separate WhatsApp messages one after another. They are one moment
+// in her day.
+test('worker: reminders that come due together go out as ONE message', async () => {
+  const proactiveText = require('../src/domain/proactive-text');
+  await flushOutbox();
+  const now = new Date('2026-08-16T12:00:00Z');
+  for (const [i, title] of ['לדבר עם גידיס', 'להתקשר לאביטל', 'לארגן אימון'].entries()) {
+    await withTx(db.pool, (c) => enqueue(c, {
+      userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { title },
+      idempotencyKey: `reminder:batch:${i}`,
+    }));
+  }
+  // A second rung says something the first does not ("בוצע? … להפסיק להזכיר"),
+  // so it is a different message and must go out as its own.
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'reminder', urgency: 'normal',
+    payload: { title: 'לשלוח מסמכים', attempt: 2 },
+    idempotencyKey: 'reminder:batch:rung2',
+  }));
+  // Expired: its own two hours ran out, and it must not ride along on a
+  // sibling that is still live.
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { title: 'עבר זמנה' },
+    expiresAt: new Date(now.getTime() - 60_000), idempotencyKey: 'reminder:batch:stale',
+  }));
+
+  const sent = [];
+  const out = await drainOnce(db.pool, async (r) => { sent.push(r); return { ok: true }; }, now);
+
+  assert.equal(out.delivered, 2, 'three first rungs are one message; the second rung is its own');
+  assert.equal(out.batched, 2, 'two rows folded into the send that led them');
+  assert.equal(out.expired, 1);
+
+  const list = proactiveText.rawPipeTextFor(sent[0]);
+  assert.match(list, /גידיס/);
+  assert.match(list, /אביטל/);
+  assert.match(list, /אימון/);
+  assert.doesNotMatch(list, /עבר זמנה/, 'an expired rung is not delivered by the back door');
+  assert.doesNotMatch(list, /מסמכים/, 'a follow-up rung never joins a first one');
+
+  const solo = proactiveText.rawPipeTextFor(sent[1]);
+  assert.match(solo, /מסמכים/);
+  assert.match(solo, /להפסיק להזכיר/, 'the follow-up still says how to stop it');
+
+  const { rows } = await db.pool.query(
+    `SELECT idempotency_key k, sent_at, hold_reason FROM outbox
+      WHERE idempotency_key LIKE 'reminder:batch:%' ORDER BY id`);
+  for (const r of rows) assert.ok(r.sent_at, `${r.k} must be marked sent`);
+  assert.equal(rows.filter((r) => r.hold_reason === null).length, 4,
+    'every row the one send carried is delivered, not just the one that led it');
+});
+
+test('worker: a batch that fails to send fails for every row it carried', async () => {
+  await flushOutbox();
+  for (const [i, title] of ['אחת', 'שתיים'].entries()) {
+    await withTx(db.pool, (c) => enqueue(c, {
+      userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { title },
+      idempotencyKey: `reminder:batchfail:${i}`,
+    }));
+  }
+  const out = await drainOnce(db.pool, async () => ({ ok: false, error: 'pipe down' }),
+    new Date('2026-08-16T12:00:00Z'));
+  assert.equal(out.failed, 1, 'one send, one failure');
+  const { rows } = await db.pool.query(
+    `SELECT attempts, last_error, release_after FROM outbox
+      WHERE idempotency_key LIKE 'reminder:batchfail:%' ORDER BY id`);
+  assert.equal(rows.length, 2);
+  for (const r of rows) {
+    assert.equal(r.attempts, 1, 'the row that rode along must climb its own retry counter too');
+    assert.match(r.last_error, /pipe down/);
+    assert.ok(r.release_after, 'and must be held off until the backoff passes');
+  }
+});
