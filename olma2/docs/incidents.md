@@ -113,6 +113,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two introductions, ninety seconds apart (fixed 2026-09-07)](#two-introductions-ninety-seconds-apart-fixed-2026-09-07)
 - [Two people, no introduction — the sweep beat the greeter to the door (fixed 2026-09-08)](#two-people-no-introduction--the-sweep-beat-the-greeter-to-the-door-fixed-2026-09-08)
 - ["This app is blocked", and the scope that was pricing the whole app (2026-09-07)](#this-app-is-blocked-and-the-scope-that-was-pricing-the-whole-app-2026-09-07)
+- [Two things at 08:00, and the one that says who she is came second (2026-09-08)](#two-things-at-0800-and-the-one-that-says-who-she-is-came-second-2026-09-08)
 - [The door Google's screen is behind, closed until the screen is fixed (2026-09-08)](#the-door-googles-screen-is-behind-closed-until-the-screen-is-fixed-2026-09-08)
 - [The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)](#the-carryover-detector-checked-the-wrong-half-of-the-pair-so-the-flagged-case-was-innocent-and-the-real-leaks-were-invisible-fixed-2026-09-03)
 - [One carryover leak filed itself seven times — `config_guard`'s dedup key wasn't deterministic (fixed 2026-09-03)](#one-carryover-leak-filed-itself-seven-times--config_guards-dedup-key-wasnt-deterministic-fixed-2026-09-03)
@@ -3845,6 +3846,41 @@ Two shapes worth keeping from how this was built:
 Still open and not built: nothing watches for an `auth_started` with no
 `integrations` row, so the next person Google blocks will look exactly like a
 person who changed their mind.
+
+### Two things at 08:00, and the one that says who she is came second (2026-09-08)
+
+ג.ב never heard the opening copy — the greeter answered him in its own words
+while provisioning had already stamped `opening_sent_at`, so his own agent was
+told the introduction was done ("Two people, no introduction", fixed the same
+night). The repair was a hand-queued message: here is who I am, sorry this
+reached you a day late.
+
+It was queued for 09:00. The day-one calendar offer was due at 08:00. So the
+first thing he was going to hear from Olma, ever, was a request to connect his
+Google Calendar — from an assistant that had not yet said what she was.
+
+Nothing was broken. Both rows were correct, both times were correct, and the
+only thing deciding which came first was `ORDER BY o.created_at` in the
+worker's candidate query. Move either row by a minute, or create them the
+other way round, and the morning reads completely differently. **An ordering
+that is right by accident is the thing to fix, not the row.**
+
+So `introduction` is now a kind the gate knows: while one is unsent, every
+other row for that person is held as `awaiting_introduction`. Two details that
+are not decoration:
+
+- **Held, never dropped.** The introduction lands and the queue moves on the
+  next tick. Dropping would spend messages nobody ever read.
+- **Exempt from the daily proactive budget.** Everything else is waiting
+  behind it, so a budget-held introduction is a deadlock that only the
+  two-day bound breaks. It is also not one of Olma's four daily initiatives:
+  it is the sentence that makes the other four make sense. The integration
+  test found this — the shared test user had spent its budget, and the queue
+  simply stopped.
+
+A moment THEY chose still passes: a digest, and rung 1 of a reminder they
+asked for in words. Somebody who set a reminder for 10:45 knows perfectly well
+who is sending it, and making that wait for an introduction would be absurd.
 
 ### The door Google's screen is behind, closed until the screen is fixed (2026-09-08)
 

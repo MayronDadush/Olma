@@ -34,6 +34,36 @@ test('gate: blocked user holds everything except paid reminders and unblock', ()
   assert.equal(decide({ ...blocked, row: row({ kind: 'unblock_summary' }) }).action, 'deliver');
 });
 
+test('gate: an unsent introduction holds everything Olma decided to say, in front of it', () => {
+  const waiting = { ...baseFacts, introductionPending: true };
+  // Olma's own initiatives wait. Held, never dropped — the introduction lands
+  // and the queue moves on the next tick.
+  const held = decide({ ...waiting, row: row() });
+  assert.equal(held.action, 'hold');
+  assert.equal(held.holdReason, 'awaiting_introduction');
+  assert.equal(held.releaseAfter, null);
+  assert.equal(decide({ ...waiting, row: row({ kind: 'meeting_invite' }) }).holdReason, 'awaiting_introduction');
+
+  // The introduction itself is what everything is waiting FOR.
+  assert.equal(decide({ ...waiting, row: row({ kind: 'introduction' }) }).action, 'deliver');
+  // ...including on a day whose proactive budget is already spent: everything
+  // else waits behind it, so a budget hold here is a deadlock.
+  assert.equal(decide({ ...baseFacts, sentToday: 9, row: row({ kind: 'introduction' }) }).action, 'deliver');
+  assert.equal(decide({ ...baseFacts, sentToday: 9, row: row() }).holdReason, 'budget');
+
+  // A moment THEY chose passes: somebody who asked for a reminder in words
+  // knows who is sending it, and holding it back for an introduction would be
+  // absurd. Same line the rest of the gate draws.
+  assert.equal(decide({ ...waiting, row: row({ kind: 'digest' }) }).action, 'deliver');
+  assert.equal(decide({ ...waiting, row: row({ kind: 'reminder', payload: { rung: 1 } }) }).action, 'deliver');
+  // Rung 2 is Olma's moment, not theirs, so it waits like the rest.
+  assert.equal(decide({ ...waiting, row: row({ kind: 'reminder', payload: { rung: 2 } }) }).holdReason,
+    'awaiting_introduction');
+
+  // Nothing pending, nothing changes.
+  assert.equal(decide({ ...baseFacts, row: row() }).action, 'deliver');
+});
+
 test('gate: night holds until the personal window opens; user-chosen times bypass', () => {
   const night = { ...baseFacts, now: threeAmUTC };
   const held = decide({ ...night, row: row() });
@@ -550,4 +580,37 @@ test('worker: a batch that fails to send fails for every row it carried', async 
     assert.match(r.last_error, /pipe down/);
     assert.ok(r.release_after, 'and must be held off until the backoff passes');
   }
+});
+
+test('the introduction goes out first, and the queue moves the moment it has', async () => {
+  await flushOutbox();
+  const rec = recorder();
+  const at = new Date('2026-08-16T12:00:00Z');
+  // Their own user: this file's shared one has spent its daily budget several
+  // times over by now, and the budget is a different rule being tested above.
+  const fresh = await makeUser(db.pool, '+972581000077', { firstName: 'Gal', timezone: 'UTC' });
+  // Created in the WRONG order on purpose: ordering by creation time is the
+  // accident this rule replaces (ג.ב, 2026-09-08 — his introduction and a
+  // day-one offer were both due at 08:00).
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: fresh.id, kind: 'checkin', payload: { checkinInstruction: 'offer them something' },
+    idempotencyKey: 'intro-after',
+  }));
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: fresh.id, kind: 'introduction', payload: { instruction: 'say who you are' },
+    idempotencyKey: 'intro-first',
+  }));
+
+  let out = await drainOnce(db.pool, rec.deliver, at);
+  assert.equal(out.delivered, 1);
+  assert.deepEqual(rec.sent, ['introduction']);
+  const { rows: held } = await db.pool.query(
+    `SELECT hold_reason, sent_at FROM outbox WHERE idempotency_key = 'intro-after'`);
+  assert.equal(held[0].hold_reason, 'awaiting_introduction');
+  assert.equal(held[0].sent_at, null, 'held, not dropped');
+
+  // The introduction has landed; nothing is waiting for it any more.
+  out = await drainOnce(db.pool, rec.deliver, at);
+  assert.equal(out.delivered, 1);
+  assert.deepEqual(rec.sent, ['introduction', 'checkin']);
 });
