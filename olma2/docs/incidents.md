@@ -111,6 +111,7 @@ never trust a dated narrative for something you are about to act on.
 - [The name was in front of us on every turn (fixed 2026-08-22)](#the-name-was-in-front-of-us-on-every-turn-fixed-2026-08-22)
 - ["קוראים לי עידן", and ninety seconds later: "עידן, נכון?" (fixed 2026-09-07)](#קוראים-לי-עידן-and-ninety-seconds-later-עידן-נכון-fixed-2026-09-07)
 - [Two introductions, ninety seconds apart (fixed 2026-09-07)](#two-introductions-ninety-seconds-apart-fixed-2026-09-07)
+- [Two people, no introduction — the sweep beat the greeter to the door (fixed 2026-09-08)](#two-people-no-introduction--the-sweep-beat-the-greeter-to-the-door-fixed-2026-09-08)
 - ["This app is blocked", and the scope that was pricing the whole app (2026-09-07)](#this-app-is-blocked-and-the-scope-that-was-pricing-the-whole-app-2026-09-07)
 - [The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)](#the-carryover-detector-checked-the-wrong-half-of-the-pair-so-the-flagged-case-was-innocent-and-the-real-leaks-were-invisible-fixed-2026-09-03)
 - [One carryover leak filed itself seven times — `config_guard`'s dedup key wasn't deterministic (fixed 2026-09-03)](#one-carryover-leak-filed-itself-seven-times--config_guards-dedup-key-wasnt-deterministic-fixed-2026-09-03)
@@ -3688,6 +3689,81 @@ Two smaller things in the same twenty-five seconds:
   them. The honest fix is a per-agent MCP exclusion in the gateway config —
   left alone deliberately (an invalid config is IGNORED, not rejected), and
   this costs nothing when that lands.
+
+### Two people, no introduction — the sweep beat the greeter to the door (fixed 2026-09-08)
+
+Three hours after the fix above shipped, the owner: *"כתב הודעה ולא קיבל מענה
+משתמש חדש 0528787799. זה חמור."*
+
+בר פחם's first and only message to Olma, at 23:24 Israel time:
+
+> אני יכול מחר
+
+Not a hello. He is in **פחם הסעות 🚌**, a WhatsApp group Olma sits in, was
+asked when he was free, and answered — in a DM, because that is where you
+answer an assistant. The owner had to say this out loud before anyone saw it:
+*"במקום לשלוח 'היי' לעולמה ואז להגיד לה מתי הוא פנוי — הוא ישר רשם לה מחר."*
+
+What the greeter said back, thirty-three seconds later:
+
+> אני רושם את זה — שאתה פנוי מחר 👍
+>
+> מטפל/ת בך האישי/ת יקבל את כל ההקשר עוד רגע וימשיך משם, אל תדאג.
+
+Both sentences are false. The greeter has no tools at all, by design, so
+nothing was written down; and nothing carried his words anywhere, so nobody
+continued. `u-29`'s transcript was empty, `first_turn_at` NULL, and his USER.md
+held one line: `First name: בר פחם`. He waited an hour and a quarter.
+
+**The timeline is the whole bug.** The intake sweep ticks every five seconds:
+
+```
+20:24:11.292  inbound "אני יכול מחר"           → routed to intake, he has no agent yet
+20:24:11.649  sweep provisions u-29, stamps opening_sent_at, reads an EMPTY carryover
+20:24:28      binding hot-reloads — from here he routes to his own agent
+20:24:44.363  the greeter finally answers, in its own words
+```
+
+`greetedByIntake: true` was passed unconditionally, and the comment defending
+it said reaching that line "means the greeter has this conversation **and has
+answered it with the owner's opening copy**." At the moment it ran, the greeter
+had not answered anything. The stamp led the reply by 32 seconds for בר and 19
+for ג.ב (u-28), the other person caught the same evening.
+
+The cost is exact, and it is visible in u-28's own transcript:
+
+```json
+"onboarding":{"alreadyOpened":true,"instruction":"...they have already been
+greeted, in these words, and the introduction is done. Do not introduce
+yourself, do not welcome them..."}
+```
+
+Two people were dropped into a working assistant with nobody ever telling them
+what it was — caused by the fix, three hours old, that existed to stop one
+person being told twice.
+
+**Waiting is necessary but not sufficient**, and this is the part worth
+keeping. The greeter's prompt *does* say to open with the copy verbatim; it had
+been resynced and was correct on the box. It still did not obey, for either
+person, because both first messages carried a real request and a model with a
+real question in front of it answers the question. So `saidTheOpening()` reads
+the greeter's actual text rather than trusting either the prompt or the
+session list, and compares on the copy's substance line — the greeting line
+alone is short enough to collide, and a paraphrase must not count.
+
+The fix, in `jobs/intake.js`: do not provision while the greeter has said
+nothing and the session is younger than `GREETER_GRACE_MS`; past that, provision
+anyway with `greetedByIntake: false`, so a broken greeter costs a person a
+slightly later takeover rather than stranding them. Waiting is also what makes
+the carryover readable at all — his words now reach his workspace, which is the
+only reason the wait pays for itself twice.
+
+**Repair.** The owner approved sending בר the opening at 23:53, quiet hours
+and all (`admin.opening_sent_manually`, gateway message
+`3EB00BFFB1E474385EFCC0`). He replied in **thirty seconds** — "אני פנוי מחר
+ובשישי" — his own agent picked it up, correctly did not re-introduce itself
+this time, and saved the availability. u-28 keeps his lost introduction: his
+`firstTurn` is spent and cannot fire again.
 
 ### "This app is blocked", and the scope that was pricing the whole app (2026-09-07)
 

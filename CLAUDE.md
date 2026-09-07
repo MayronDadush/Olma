@@ -711,6 +711,24 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   second copy of it** — the greeter was told to "say who you are and name one
   or two things you help with", so it wrote its own version and עידן read two
   introductions ninety seconds apart (`incidents.md`, "Two introductions").
+  **`greetedByIntake` is READ off the greeter's actual reply, never assumed
+  from the session list.** The sweep ticks every five seconds and the greeter
+  answers in twenty to forty, so for one evening it stamped everybody as
+  greeted before the greeter had said a word — 32 seconds early for u-29, 19
+  for u-28 — and `turn_start` then told both agents the introduction was done.
+  Two people met Olma with nobody ever saying what she was. Waiting is also
+  what makes the CARRYOVER readable: provisioning 0.36s after the message read
+  a store the gateway had not finished writing, so בר's first words reached
+  nobody while the greeter told him they had been noted. The wait is bounded —
+  past `GREETER_GRACE_MS` a silent greeter provisions anyway, unstamped, and
+  their own agent opens (`incidents.md`, "Two people, no introduction").
+- **A first message is not a hello, and the newest arrivals prove it.** People
+  now reach Olma from a WhatsApp group she already sits in: they are asked when
+  they are free and they DM the ANSWER — בר's first ever word to her was "אני
+  יכול מחר". The greeter is told to open with the copy and does not, because a
+  real question in front of it gets a real answer. Any code that treats the
+  first inbound as a greeting to be replaced, deduped or discarded is throwing
+  away the only thing the person came to say.
 - **`gmail.readonly` is a RESTRICTED scope and everything else Olma asks for
   is merely SENSITIVE — the two words are different verification tracks, and
   one restricted scope prices the whole app onto the paid one** (an annual

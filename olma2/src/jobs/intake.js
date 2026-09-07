@@ -27,6 +27,7 @@ const flags = require('../domain/flags');
 const audit = require('../domain/audit');
 const { enqueue } = require('../outbox/enqueue');
 const { provisionUser } = require('../intake/provision');
+const onboardingDomain = require('../domain/onboarding');
 const { reopenMessage } = require('../intake/messages');
 const templates = require('../domain/message-templates');
 const occ = require('../intake/openclaw-config');
@@ -81,6 +82,55 @@ async function readIntakeFirstMessage(phone, otherPhones = []) {
   } catch { return null; }
 }
 
+// ---- has the greeter actually spoken, and what did it say? -------------------
+
+// The sweep ticks every FIVE SECONDS, and the greeter takes twenty to forty to
+// answer. So for the whole life of this code the sweep has been reaching a new
+// person long before the greeter said a word to them, and then claiming, in
+// `greetedByIntake`, that the greeter had answered with the owner's opening
+// copy. Measured on the two people it hurt on 2026-09-07: the stamp preceded
+// the greeter's reply by 32 seconds (u-29) and 19 seconds (u-28).
+//
+// It is false a second way even after the greeter has spoken. Its prompt does
+// say to open with the copy verbatim, and it does not always obey: a person
+// whose first message carries a real request gets a real answer instead. That
+// is not a rare shape — it is the NORMAL one for the population this product
+// now grows by. בר was in a WhatsApp group Olma sits in, was asked when he was
+// free, and DM'd "אני יכול מחר" as his first ever word to her. A first message
+// from a group participant is an ANSWER, not a hello.
+//
+// So neither half may be assumed. Read what the greeter actually said, and let
+// the text decide (`incidents.md`, "Two people, no introduction").
+const GREETER_GRACE_MS = 5 * 60_000;
+
+async function defaultReadGreeterReply(phone) {
+  try {
+    const msgs = await sessions.readRecentMessages(INTAKE_AGENT_ID, 10, undefined, phone);
+    // Newest assistant turn wins. `readRecentMessages` already drops the
+    // marker a crashed turn leaves behind, so "it answered" cannot be a model
+    // call that died.
+    const last = [...msgs].reverse().find((m) => m.role === 'assistant');
+    return last ? last.text : null;
+  } catch { return null; }
+}
+
+// Did that reply carry the owner's opening copy?
+//
+// Compared on the copy's SUBSTANCE line rather than the whole block: the
+// greeting line is short enough to collide by accident, the last line ends in
+// an emoji that survives a round trip less reliably, and a stray trailing
+// space must not read as "never introduced" and buy them a second
+// introduction. Both locales are checked because the sweep runs before the
+// user row that would settle which one they are.
+function saidTheOpening(text) {
+  if (!text) return false;
+  const t = String(text);
+  return Object.values(onboardingDomain.OPENING).some((copy) => {
+    const substance = copy.split('\n').filter(Boolean)[1];
+    return Boolean(substance) && t.includes(substance);
+  });
+}
+
 function intakeConfigured(configPath) {
   try {
     const cfg = occ.loadConfig(configPath);
@@ -111,7 +161,7 @@ async function sweepIntakeSessions(client, deps) {
     out.breakerTripped = true;
   }
 
-  for (const { phone } of sessions) {
+  for (const { phone, ageMs } of sessions) {
     if (!/^\+\d{7,15}$/.test(phone)) { out.skipped++; continue; }
     const existing = await usersDomain.getByPhone(client, phone);
     if (existing && existing.status === 'active' && existing.agent_id) { out.skipped++; continue; }
@@ -133,6 +183,29 @@ async function sweepIntakeSessions(client, deps) {
       continue;
     }
 
+    // Wait for the greeter to say SOMETHING before taking this person over.
+    //
+    // Provisioning at 0.36s after their message (measured, u-29) is what lost
+    // בר's first words: `readFirstMessage` reads the same session store the
+    // gateway had not finished writing, so the carryover came back empty and
+    // his "אני יכול מחר" reached nobody — while the greeter, thirty seconds
+    // later, told him it had been noted and that his own assistant would pick
+    // it up. Neither was true. Waiting a tick or two costs nothing (the
+    // greeter is holding the conversation either way) and is what makes both
+    // the carryover and `greetedByIntake` readable at all.
+    //
+    // Bounded, because a greeter that never answers must not strand somebody
+    // outside the system for ever: past the grace we provision anyway, and
+    // `greetedByIntake` is then false — so their own agent opens with the
+    // copy, which is exactly the behaviour that predates this whole path.
+    const greeterReply = deps.readGreeterReply
+      ? await deps.readGreeterReply(phone)
+      : await defaultReadGreeterReply(phone);
+    if (greeterReply === null && (ageMs ?? Infinity) < GREETER_GRACE_MS) {
+      out.waitingOnGreeter = (out.waitingOnGreeter || 0) + 1;
+      continue;
+    }
+
     // Extracted before provisioning so seedWorkspace can write it straight
     // into USER.md — facts only (readPeerUserText caps + condenses), never
     // the raw transcript.
@@ -151,11 +224,14 @@ async function sweepIntakeSessions(client, deps) {
     const prov = await provisionUser(client, {
       phone, invitedByConnectionId: invited ? invited.id : null, configPath: deps.configPath,
       firstMessage, invitedInfo, registerUndo: deps.registerUndo,
-      // Unconditional here, and that is the point: this sweep's entire input
-      // is the intake agent's own session list, so reaching this line means
-      // the greeter has this conversation and has answered it with the
-      // owner's opening copy. Nothing else provisions through this path.
-      greetedByIntake: true,
+      // What the greeter ACTUALLY said, never what it was told to say. This
+      // was `true` unconditionally for one evening, on the reasoning that
+      // being in the greeter's session list proved the greeter had answered
+      // with the opening copy. It proved neither (see saidTheOpening above),
+      // and two people were stamped as introduced without ever being
+      // introduced: `turn_start` then told their own agents the introduction
+      // was done, so nobody ever said who Olma was.
+      greetedByIntake: saidTheOpening(greeterReply),
     });
     if (!prov.ok) { out.skipped++; continue; }
     const user = prov.data.user;
@@ -226,4 +302,5 @@ async function sweepReopen(client) {
 module.exports = {
   sweepIntakeSessions, runIntakeSweep, sweepReopen, intakeConfigured, INTAKE_AGENT_ID,
   defaultListIntakeSessions, readIntakeFirstMessage,
+  defaultReadGreeterReply, saidTheOpening, GREETER_GRACE_MS,
 };
