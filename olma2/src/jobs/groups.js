@@ -23,6 +23,8 @@ const audit = require('../domain/audit');
 const text = require('../domain/proactive-text');
 const templates = require('../domain/message-templates');
 const groupContext = require('../domain/group-context');
+const groupMeetings = require('../domain/group-meetings');
+const groupVoice = require('../domain/group-voice');
 const gate = require('../outbox/gate');
 // Through the worker facade, never channels/sessions.js: every read there is
 // synchronous, and this runs inside brokerd on the loop that answers live
@@ -336,6 +338,73 @@ async function sweepGroups(client, deps) {
   return out;
 }
 
+// ---- what the room hears about its own coordination -------------------------
+//
+// A second, slower pass, and deliberately not part of the one above. That one
+// is the GATE — it runs every ten seconds because a tag deserves an answer now
+// — and this one is three sentences a room hears at most once each per
+// coordination. Sharing a tick would mean doing this work six times a minute
+// for a result that changes over hours.
+//
+// Everything it sends is fixed text on the raw pipe (domain/message-templates,
+// reworded by the owner from the admin page), for the same reason as the gate
+// notices: no model, so a room whose members are slow costs nothing at all.
+// And every line waits for the group's own daytime (mayAnnounce) — nobody
+// asked for these, which is exactly what makes the hour matter.
+async function sweepGroupVoice(client, deps) {
+  const now = deps.now || new Date();
+  const wording = await templates.load(client);
+  const out = { said: [], unconfirmed: 0, failed: 0, held: 0 };
+
+  // Coordinations that could still owe the room a sentence. A confirmed one
+  // is here only until its line goes out; a negotiating one stays until it
+  // closes, and the decision below is what says "nothing new".
+  const { rows } = await client.query(
+    // Aliased, both of them: `g.*` also has an `id` and a `created_at`, and a
+    // duplicate column name in one row silently keeps the LAST one — which
+    // would date every coordination from the day the ROOM was registered.
+    `SELECT m.id AS meeting_id, m.status, m.created_at AS meeting_created_at,
+            m.group_base_at, m.group_chase_at, m.group_done_at, g.*
+       FROM meetings m JOIN chat_groups g ON g.id = m.group_id
+      WHERE g.state = 'open'
+        AND (m.status = 'negotiating' OR (m.status = 'confirmed' AND m.group_done_at IS NULL))
+      ORDER BY (m.status = 'confirmed') DESC, m.id DESC`);
+
+  // At most one line per room per pass. Two sentences in a row about the same
+  // plan is a paragraph nobody asked for, and the second one keeps.
+  const spoken = new Set();
+  for (const row of rows) {
+    if (spoken.has(String(row.id))) continue;
+    const { rows: full } = await client.query(
+      `SELECT id, title, status, confirmed_slot, initiator_id FROM meetings WHERE id = $1`, [row.meeting_id]);
+    const st = await groupMeetings.statusOf(client, row, full[0] || null);
+    const line = groupVoice.decideGroupLine(st.coordination, {
+      saidBase: Boolean(row.group_base_at),
+      saidChase: Boolean(row.group_chase_at),
+      saidDone: Boolean(row.group_done_at),
+      startedAtMs: new Date(row.meeting_created_at).getTime(),
+      nowMs: now.getTime(),
+    });
+    if (line.kind === 'none') continue;
+    // Due, but not now: the room is asleep. Nothing is stamped, so it goes out
+    // in the morning — which is the whole reason these three are separate
+    // columns and not one counter.
+    if (!mayAnnounce(row, now)) { out.held++; continue; }
+
+    const delivery = said(await deps.send(row.external_id, text.renderGroupCoordination(line, wording)));
+    if (delivery === 'failed') { out.failed++; continue; }
+    if (delivery === 'unknown') out.unconfirmed++;
+    const column = { base: 'group_base_at', chase: 'group_chase_at', done: 'group_done_at' }[line.kind];
+    await client.query(`UPDATE meetings SET ${column} = now() WHERE id = $1`, [row.meeting_id]);
+    await audit.record(client, row.registered_by_user_id, 'group.coordination_said', {
+      groupId: row.id, meetingId: Number(row.meeting_id), kind: line.kind,
+    });
+    spoken.add(String(row.id));
+    out.said.push({ groupId: row.id, meetingId: Number(row.meeting_id), kind: line.kind });
+  }
+  return out;
+}
+
 // Owns the transaction, for the same reason the intake sweep does: provisioning
 // writes files and a gateway config that no ROLLBACK can reach. Anything the
 // pass created is undone on the way out, and this wrapper sits OUTSIDE withTx
@@ -355,5 +424,5 @@ async function runGroupSweep(pool, deps) {
 }
 
 module.exports = {
-  sweepGroups, runGroupSweep, greeterInstalled, mayAnnounce, syncSenderGate, GROUP_WINDOW,
+  sweepGroups, runGroupSweep, sweepGroupVoice, greeterInstalled, mayAnnounce, syncSenderGate, GROUP_WINDOW,
 };

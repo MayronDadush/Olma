@@ -14,6 +14,7 @@ const JOB_INTERVAL_SECONDS = {
   minute_sweeps: 60, // reminders + digests + unblocks, one tick
   intake_sweep: 5,
   group_sweep: 10,
+  group_voice: 60,
   reopen_sweep: 60,
   intake_template_sync: 60,
   unanswered_sweep: 60,
