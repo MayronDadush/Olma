@@ -119,13 +119,13 @@ function listHints(res) {
 }
 
 module.exports = [
-  tool('list_my_tasks', 'List your open tasks (status=done for completed). Each carries its kind (event = on their calendar, todo = on their plate) and its pending reminders with the hour to SAY, in their clock — a due date is when the thing is, never when you will remind them.',
+  tool('list_my_tasks', 'List your open tasks (status=done for completed). Each carries its kind (event = calendar, todo = job) and its pending reminders with the hour to SAY, in their clock — a due date is when the thing is, never when you will remind them.',
     { status: S('string', 'open | done (default open)') }, [],
     async (client, user, a) => listHints(await tasks.listTasks(client, user.id, { status: a.status || 'open' }))),
-  tool('add_task', 'Add one thing: a todo (a job, stays until done) or an event (a moment they will be AT — meeting, appointment, shift — closes by itself once it passes). Say which in kind. due_at is when the THING is, and arms a reminder automatically an hour before (08:00 for a whole-day one). remind_at is for "תזכיר לי ב-19:00": that hour IS the reminder and replaces the automatic one. A dictated shopping run is filed as a list. Follow any hints on the reply. Times MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their own local time (USER.md); never bare digits with a Z.',
+  tool('add_task', 'Add one todo (a job until done) or event (a moment they will be AT; closes when it passes) — say which in kind. due_at is when the THING is, and arms a reminder automatically an hour before (08:00 for a whole-day one). remind_at is for "תזכיר לי ב-19:00": that hour IS the reminder and replaces the automatic one. A dictated shopping run is filed as a list. Follow any hints on the reply. Times MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their own local time (USER.md); never bare digits with a Z.',
     { title: S('string', 'What it is — never the hours or the place, those have fields'),
-      kind: S('string', 'event | todo. "יש לי פגישה מחר ב-10" is an event; "לקבוע פגישה" is a todo. Omitted = guessed from the title.'),
-      location: S('string', 'Where an event is ("ביהס דרור", "זום") — never in the title.'),
+      kind: S('string', 'event | todo ("פגישה מחר ב-10" = event, "לקבוע פגישה" = todo); omitted = guessed from the title'),
+      location: S('string', 'Where an event is — never in the title'),
       category: S('string', 'home|work|family|health|money|errands; omit unless the person named one (worked out from the title).'),
       due_at: S('string', 'Optional ISO-8601 datetime WITH UTC offset, e.g. 2026-08-20T09:00:00+03:00'),
       ends_at: S('string', 'Optional end of a range, same format: a shift is title \'משמרת\', due_at 12:00, ends_at 19:00 — never hours in the title.'),
@@ -149,7 +149,7 @@ module.exports = [
     async (client, user, a) => taskHints(await tasks.snoozeTask(client, user.id, a.task_id, a.new_due_at), user)),
   tool('edit_task', 'Change an existing task\'s title, kind, location, category or time — WITHOUT losing its reminders or place under a project. Send only the fields you are changing; null clears one. Gives a task an end time: a shift saved as "משמרת - ראשון 12:00-19:00" becomes title "משמרת", due_at 12:00, ends_at 19:00.',
     { task_id: S('number', 'Task id'), title: S('string', 'Optional new title'),
-      kind: S('string', 'event | todo — when the person says it was filed as the wrong one'),
+      kind: S('string', 'event | todo'),
       location: S('string', 'Where an event is; null clears it'),
       category: S('string', 'One of home|work|family|health|money|errands — only when the person named it; marks it as their choice.'),
       due_at: S('string', 'Optional new start, ISO-8601 WITH UTC offset'),
