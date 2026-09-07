@@ -118,7 +118,14 @@ function decide(facts) {
   // the gate dropped is never chased (dueForSending), so the ladder simply
   // ends where it stood. Never 'hold': they may write back in a month, and
   // a month of held rows released together is the morning she already had.
-  if ((Number(facts.checkinMisses) || 0) >= 1 && row.kind !== 'checkin') {
+  //
+  // An `introduction` is exempt for the same reason the ladder's own check-in
+  // is: it is the one thing Olma OWES rather than something she decided to
+  // say, and somebody who has not answered is the likeliest person never to
+  // have been told who was writing to them in the first place. ג.ב would have
+  // lost his to this rule on the morning it was queued for (2026-09-08).
+  if ((Number(facts.checkinMisses) || 0) >= 1
+    && row.kind !== 'checkin' && row.kind !== 'introduction') {
     const rung = Number(row.payload && row.payload.rung) || 1;
     const askedInWords = row.kind === 'reminder' && rung <= 1
       && row.payload && row.payload.auto === false;

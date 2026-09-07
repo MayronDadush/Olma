@@ -34,6 +34,18 @@ test('gate: blocked user holds everything except paid reminders and unblock', ()
   assert.equal(decide({ ...blocked, row: row({ kind: 'unblock_summary' }) }).action, 'deliver');
 });
 
+test('gate: an introduction survives the quiet drop, like the ladder\'s own check-in', () => {
+  const quiet = { ...baseFacts, checkinMisses: 1 };
+  // Everything Olma decided to say stops for someone who has gone quiet...
+  assert.equal(decide({ ...quiet, row: row({ kind: 'meeting_invite' }) }).holdReason, 'quiet');
+  assert.equal(decide({ ...quiet, row: row({ kind: 'digest' }) }).holdReason, 'quiet');
+  // ...but the introduction is the one thing she OWES, and somebody who has
+  // not answered is the likeliest person never to have been told who was
+  // writing to them. ג.ב would have lost his to this rule (2026-09-08).
+  assert.equal(decide({ ...quiet, row: row({ kind: 'introduction' }) }).action, 'deliver');
+  assert.equal(decide({ ...quiet, row: row({ kind: 'checkin' }) }).action, 'deliver');
+});
+
 test('gate: an unsent introduction holds everything Olma decided to say, in front of it', () => {
   const waiting = { ...baseFacts, introductionPending: true };
   // Olma's own initiatives wait. Held, never dropped — the introduction lands

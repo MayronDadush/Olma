@@ -596,13 +596,18 @@ async function run(client, now = Date.now()) {
       // Withdrawn like a cancellation (an UPDATE, never a DELETE: the key is
       // what stops the sweep re-creating it); a step already delivered is
       // untouched, because it was heard.
-      if (step) {
-        await client.query(
-          `UPDATE outbox SET sent_at = now(), hold_reason = 'superseded'
-            WHERE user_id = $1 AND kind = 'checkin' AND sent_at IS NULL AND id <> $2
-              AND idempotency_key LIKE 'onboarding:' || $1::text || ':%'`,
-          [u.id, res.data.outboxId]);
-      }
+      //
+      // ANY still-unsent check-in, not just a day-one one. Keyed on
+      // 'onboarding:%' this covered step-replaces-step and nothing else, so
+      // the moment a day-one step DECLINED and the run fell through to an
+      // ordinary rung, the two stood side by side again — held for the night
+      // and released together in the morning. That is exactly what the
+      // calendar step declining produced for ג.ב: a 5h step and a discovery
+      // rung, both due at 08:00. The ladder has one live rung at a time.
+      await client.query(
+        `UPDATE outbox SET sent_at = now(), hold_reason = 'superseded'
+          WHERE user_id = $1 AND kind = 'checkin' AND sent_at IS NULL AND id <> $2`,
+        [u.id, res.data.outboxId]);
       // Stamped on the ENQUEUE, not on the answer: the promise is "asked
       // once", and a question the gate later drops still used up the one turn
       // this person's patience had for it. Any topic that begins 'timezone',

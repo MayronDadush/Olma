@@ -3882,6 +3882,41 @@ A moment THEY chose still passes: a digest, and rung 1 of a reminder they
 asked for in words. Somebody who set a reminder for 10:45 knows perfectly well
 who is sending it, and making that wait for an introduction would be absurd.
 
+**Two more things only the rehearsal could have found.** Replaying his night
+against the deployed code — `checkin.run` at each moment a step comes due, then
+asking the gate what it would do at 08:00 — printed this:
+
+```
+  8218 introduction   due=Y → drop/quiet
+  8248 checkin        due=Y → deliver
+  8256 checkin        due=Y → deliver
+```
+
+Two check-ins and no introduction: the exact inverse of the intended morning,
+and both halves were caused by closing the Google door an hour earlier.
+
+The `quiet` drop, first. When the 8h calendar step declines, the run falls
+through to an ordinary rung — and an ordinary rung increments
+`checkin_misses`, while a day-one step deliberately does not. One miss is all
+the gate needs to drop everything that is not a check-in, so the introduction
+died on a counter that his own unanswered nudge had moved. **An introduction is
+not something Olma decided to say; it is something she owes**, and the person
+who has not answered is the likeliest one never to have been told who was
+writing to them. It is now exempt, alongside the ladder's own check-in.
+
+Then the pile-up. `#278` had just taught a day-one step to supersede the step
+still waiting, keyed on `onboarding:<uid>:%` — which covers step-replaces-step
+and nothing else. A step that DECLINES and falls through to an ordinary rung
+writes a different key, so the two stood side by side, were both held for the
+night, and were both released at 08:00. The same bug, through a door opened
+that evening. The supersede now takes any still-unsent check-in: **the ladder
+has one live rung at a time**, whatever produced it.
+
+Neither would have shown up in the suite as it stood, and neither is visible in
+the code — the first needs a step to decline, and the second needs a decline
+AND an unsent step already waiting. What found them was replaying the actual
+person's actual night, inside a transaction that was rolled back.
+
 ### The door Google's screen is behind, closed until the screen is fixed (2026-09-08)
 
 The entry above ends on a gap: nothing watches for an `auth_started` with no
