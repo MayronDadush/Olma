@@ -751,6 +751,36 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   person.test.js` scans `src/domain` for a seventh one; `availability.js` is
   exempt by name because `/pick/` is retired.
 
+### In a group
+
+The whole feature is `olma2/docs/group-mode.md`; these are the four rules that
+have already had to be argued for.
+
+- **Two identity doors, routed by the token PREFIX** — `users.resolveByToken`
+  for a person, `groups.resolveByToken` for a room (`olma_grp_…`). brokerd
+  enforces `audience: 'group'`; the MCP shim serves the union and cannot know
+  which agent is calling, so a user tool called with a group token is refused
+  at the server and nowhere else.
+- **Nothing a group tool returns may carry the room's own row or anybody's
+  reasons.** `chat_groups` holds `identity_token`, and
+  `meeting_participants.constraints` is why one person said no — the room is
+  told "Tuesday does not work for Dana", never why. A behavioural test asserts
+  no group tool ever returns that row.
+- **NULL is the honest third state and a guess never acts.** `chat_groups.kind`
+  (migration 051) is asked ONCE, in the room — the gateway never tells us who
+  added her, and `registered_by_user_id` is merely the lowest-id member — and
+  until it is answered she has nothing to say about "enough people": not
+  "one more" and not "we have enough". `quorum_min/max` are about the PLAN and
+  are unrelated to the `group_max_members` flag, which is about the room.
+- **Everything a room hears unasked is fixed text on the raw pipe**, because
+  the group agent is MUTED at the gateway while the group is locked — there is
+  no model output to use. Defaults in `domain/message-templates.js`, reworded
+  by the owner from the admin page. Five lines per coordination (base, chase,
+  done, the morning of, an hour before), each stamped on `meetings` so it is
+  said once per coordination and again next week for the next one, at most one
+  line per room per pass, and every one of them held to the group's own
+  daytime — a line held at 02:00 stamps nothing and goes out in the morning.
+
 ### systemd scope
 
 - **Only `openclaw-gateway` is a user-level unit** (`systemctl --user`, needs
