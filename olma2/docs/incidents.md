@@ -45,6 +45,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)](#a-hundred-and-five-pending-reminders-thirteen-of-them-pending-fixed-2026-09-07)
 - [The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)](#the-hooks-timer-fired-late-and-brokerd-took-the-blame-fixed-2026-09-07)
@@ -1379,6 +1380,88 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
 
+
+### Eighteen messages, no answer (fixed 2026-09-07)
+
+Vered (u-24) joined on the evening of 2026-09-06 and answered everything Olma
+said that night — four messages, four replies, the last at 23:02. Then she
+stopped. On 2026-09-07 Olma sent her **eighteen messages and got no answer to
+any of them**: at 01:33 the second rung of a reminder (the bug fixed under
+"The rung nobody asked for, at half past one"); at 08:00–08:20 the three
+onboarding steps (2h, 5h, 8h — created at 00:11, 03:09 and 06:09, all held
+for the night, all released together), nine reminders one by one (the flood
+fixed under "Nine reminders, nine messages") and an apology; at 11:06 the
+second rungs of all nine, coalesced by then into three; and at 20:10 a
+cheerful "יש לך 6 משימות באיחור, רוצה לקצץ?".
+
+Two of those are bugs with their own entries. The rest was policy working as
+written, and the policy was wrong in one place: **the check-in ladder already
+knew not to ask a question twice** — one miss, three days of quiet, then a
+one-liner with no question mark; two misses, weekly; three, nothing until
+they write — **and nothing else did.** Reminders were exempt from the quiet
+on the argument that "what is THEIRS outranks it", and by that reading six
+tasks the model had dated to "tomorrow 09:00" out of a brain-dump ("לבדוק
+משימות נוספות שיש לי", "לארגן אימון לרביעי") were hers, three rungs each.
+And the evening message — the `overload` rung, Olma's own offer to trim —
+sat ABOVE the silence rung in `pickRung`, so the first thing said to a
+person who had answered nothing all day was an opinion about her backlog.
+
+The owner's rule, in his words: *"מעכשיו לדעתי עולמה לא צריכה לרשום כלום
+לורד עד שיעברו 3 ימים … ואם ורד לא ממשיכה לענות לנסות אחרי עוד שבוע ורק אם
+היא לא ענתה לאף אחד מההודעות האלה להשהות אותה."* And when the first draft
+proposed cancelling her live reminders so nothing would go out at 08:00 the
+next morning: *"אני לא רוצה לבטל אותם אני רוצה לעצור אותם מלהגיע … משתמש
+שלא עושה לייק ולא מגיב לכלום, זה משתמש שלא כלכך מעוניין במוצר — ואני ממש
+לא רוצה שהמוצר יעמס עליו."* Stop it arriving; cancel nothing.
+
+That is exactly the shape the delivery gate exists for. The fix
+(`outbox/gate.js`, `jobs/checkin.js`, `domain/pause.js`, migration 049):
+
+- **The gate drops, by name.** A new fact, `checkinMisses`, from the same
+  `users` row the worker already joins. At one miss or more every row is
+  dropped with `hold_reason = 'quiet'` — a terminal stamp on the OUTBOX row,
+  and nothing else: the reminder keeps its `attempts`, its `sent_at` NULL,
+  its task open. `dueForSending` already refuses to chase a rung the gate
+  dropped (no attempts, no error), so the ladder ends where it stood rather
+  than resuming a week later. Two things pass: the ladder's own check-in,
+  which IS the three-day and the weekly "מה איתך", and rung 1 of a reminder
+  they asked for in words. `sweepReminders` now puts `auto` on every rung's
+  payload so the gate can tell "תזכירי לי מחר ב-8" from a date the model
+  inferred; an old row with neither is not provably theirs and is dropped.
+  Never a hold: they may write back in a month, and a month of held rows
+  released together is the morning she already had.
+- **The quiet outranks Olma's opinions and not theirs.** `pickRung` moves
+  the silence one-liner above `overload` and `stalled_goal`; `stuck_meeting`
+  and `deadline_risk` stay above it.
+- **The third miss is a pause.** Counted on the enqueue like the miss
+  itself, `pause.quietPause` sets `paused_at` with `paused_reason =
+  'quiet_ladder'` and cancels nothing — not `pauseUser`, which disarms every
+  reminder because the person asked it to. The check-in just enqueued then
+  meets the gate as a paused person's row and is dropped as `paused`:
+  "this is the last one" would be one more. `openRecord({ wake: true })`
+  ends a ladder pause on the first message they send — gated on `wake` for
+  the same reason the night re-hearing is (a turn that merely happened on
+  their agent is not them writing; "Good morning at half past one") — and
+  leaves a pause they asked for alone, which `pauseUser` marks by writing
+  `paused_reason = NULL` even over a ladder pause already in place. The
+  admin page names the two differently ("מושהה — לא עונה" / "ביקש להפסיק").
+
+**What we cannot see.** The owner's threshold was "לא עושה לייק ולא מגיב
+לכלום". On OpenClaw 2026.8.1 the hook events are `message:received /
+preprocessed / transcribed / sent` — there is no reaction event, so a 👍 on
+Olma's message never reaches the box. The only sign of interest we have is a
+message. A person who only likes looks, to us, like a person who did not
+answer, and the threshold was set knowing that.
+
+For Vered herself: `checkin_misses = 1` since 20:10 local on 2026-09-07, so
+from the deploy her six rung-3 rows due at 08:00 the next morning are dropped
+as `quiet` rather than sent, her reminders and tasks are untouched, and the
+ladder's one-liner comes on ~10.9 and, unanswered, on ~17.9, after which she
+is paused until she writes.
+
+Two bugs in the same day are still open and get their own PRs: a held
+onboarding step must be superseded by the next rather than stacked, and a
+brain-dump item must not be given a `due_at`.
 
 ### The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)
 

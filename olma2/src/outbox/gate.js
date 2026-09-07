@@ -99,6 +99,32 @@ function decide(facts) {
     return { action: 'expire' };
   }
 
+  // ── Somebody who has stopped answering ────────────────────────────────────
+  // `checkin_misses >= 1` means the ladder already asked "את פה?" and got
+  // nothing back. From that moment nothing Olma decided to say goes out —
+  // not a reminder rung, not a digest, not another user's fan-out — until
+  // they write (openRecord resets the counter on a real inbound message).
+  // What still passes: the ladder's own check-in, which IS the three-day and
+  // the weekly "מה איתך" (jobs/checkin.js, requiredGapMs), and rung 1 of a
+  // reminder they asked for IN WORDS (`payload.auto === false`) — the moment
+  // they named is theirs, and finding a week later that it never came is a
+  // disappointment, not a relief. An automatic reminder — the model's
+  // inference from a due date — is Olma's idea and stops with the rest.
+  //
+  // 'drop' on the OUTBOX row only, and the reminder and the task behind it
+  // stay exactly as they were: the owner's rule is "stop them arriving, cancel
+  // nothing" (Vered, 2026-09-07: eighteen messages on her second day and no
+  // answer to any; `incidents.md`, "Eighteen messages, no answer"). A rung
+  // the gate dropped is never chased (dueForSending), so the ladder simply
+  // ends where it stood. Never 'hold': they may write back in a month, and
+  // a month of held rows released together is the morning she already had.
+  if ((Number(facts.checkinMisses) || 0) >= 1 && row.kind !== 'checkin') {
+    const rung = Number(row.payload && row.payload.rung) || 1;
+    const askedInWords = row.kind === 'reminder' && rung <= 1
+      && row.payload && row.payload.auto === false;
+    if (!askedInWords) return { action: 'drop', holdReason: 'quiet' };
+  }
+
   if (blocked) {
     const paidReminder = row.kind === 'reminder' && plan !== 'free';
     if (!paidReminder && row.kind !== 'unblock_summary') {

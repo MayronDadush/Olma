@@ -18,6 +18,7 @@
 const quota = require('./quota');
 const audit = require('./audit');
 const flags = require('./flags');
+const pause = require('./pause');
 const selfInitiated = require('./self-initiated');
 const digest = require('./digest');
 const onboardingDomain = require('./onboarding');
@@ -92,6 +93,11 @@ async function openRecord(client, user, { wake = false } = {}) {
     `UPDATE outbox SET release_after = now()
       WHERE user_id = $1 AND sent_at IS NULL AND hold_reason = 'night'
         AND release_after > now()`, [user.id]);
+  // A pause the check-in ladder made ends on the first message they send —
+  // gated on `wake` for the same reason the re-hearing is: a turn that merely
+  // happened on their agent is not them writing. A pause THEY asked for is
+  // untouched here (pause.quietResume matches on the reason).
+  if (wake) await pause.quietResume(client, user.id);
 
   const counted = await quota.countMessage(client, user.id);
   await audit.record(client, user.id, 'message.received', null);

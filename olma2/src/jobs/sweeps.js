@@ -51,6 +51,11 @@ async function sweepReminders(client, nowIso) {
         // deliberately uses rung 1's plain text, while this drives the QUIET
         // HOURS and a redo is still Olma choosing the moment.
         rung: attempt,
+        // Whether the model inferred this reminder from a due date (true) or
+        // the person asked for it in words (false). The gate's quiet rule
+        // reads it: once somebody has stopped answering, only rung 1 of a
+        // reminder they asked for still goes out.
+        auto: Boolean(r.auto),
         ...(redo ? { redo: true } : attempt > 1 ? { attempt, finalAttempt } : {}),
       },
       // Rung 1 keeps the original 2h-past-the-moment window. A later rung is

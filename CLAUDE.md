@@ -315,6 +315,26 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   A backoff, not a mute: one message from them re-opens it. It asked Sarah the
   same question on four mornings first (`incidents.md`, "The morning digest
   asked the same question four mornings running").
+- **Somebody who has stopped answering hears nothing Olma decided to say, and
+  nothing on their record is cancelled.** The check-in ladder's one miss
+  (`checkin_misses >= 1`) is the signal and the delivery gate is where it
+  acts: every row is dropped as `hold_reason = 'quiet'` — reminder rungs,
+  digests, another user's fan-out — except the ladder's own check-in (the
+  three-day and the weekly "מה איתך") and rung 1 of a reminder they asked for
+  IN WORDS (`payload.auto === false`, which `sweepReminders` puts on every
+  rung). The reminder and the task stay exactly as they were: the owner's
+  rule is "stop it arriving, cancel nothing", and a rung the gate dropped is
+  never chased. `pickRung` puts the quiet one-liner ABOVE overload and a
+  stalled goal (Olma's opinions) and BELOW a stuck meeting and a deadline
+  (theirs). **The third miss is a pause, not a silence** — `pause.quietPause`
+  sets `paused_at` with `paused_reason = 'quiet_ladder'` (migration 049) and
+  takes nothing down, and `openRecord({ wake: true })` ends it on the first
+  message they send; a pause THEY asked for (`paused_reason` NULL) is ended
+  only by them or by the admin. **A "like" never reaches us** — on OpenClaw
+  2026.8.1 there is no reaction event, so the only sign of interest we have
+  is a message; a person who only likes looks silent. Vered got eighteen
+  messages on her second day and answered none (`incidents.md`, "Eighteen
+  messages, no answer").
 - **A "once ever" question is stamped on the PERSON, never deduped on the
   route that asks it.** Two routes each honouring "at most once" is twice.
   The city is `users.timezone_asked_at` (migration 045), written by whichever
