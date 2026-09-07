@@ -67,18 +67,35 @@ function firstContactInstruction(client, u) {
     // helped her — naming the CITY whose clock we set is the only version of
     // this sentence a wrong guess cannot survive unnoticed.
     const city = String(guess.timezone).split('/').pop().replace(/_/g, ' ');
-    lines.push(`Then, in ONE sentence, tell them what you are assuming and why: their number starts`
-      + ` +${guess.code}, so you are guessing they are in ${guess.country} (that label is for you —`
-      + ` name the country in THEIR language) and you have set their hours to it.`
-      + (guess.ambiguous
-        ? ` That country spans several timezones and you had to pick one, so say which city's clock`
-          + ` you set — ${city} — in their language, so a wrong guess is visible to them instead of silent.`
-        : '')
-      + ' Never say the timezone NAME — not "Asia/Jerusalem", not "America/New_York", nothing of that'
-      + ' shape; that is our vocabulary, not theirs. Follow it immediately with the travel line, so they'
-      + ' learn they can just say so: "ואם תיסע או תעבור לעיר אחרת, פשוט תגיד לי" (match their language'
-      + ' and their gender forms). This is a STATEMENT, not a question — do not ask them to confirm it'
-      + ' and do not ask which city.');
+    // A Hebrew speaker whose country has one clock gets the sentence ITSELF,
+    // not a description of it. Described in English, the model translated
+    // "you have set their hours to it" for בר as "וקבעתי את השעות accordingly"
+    // (2026-09-07) — one word left behind in the language of the instruction —
+    // and the day before, for שחר, it said the zone name the description
+    // forbade. Quoted, there is nothing to translate and nothing to forbid.
+    // The country labels in phone-timezone are already Hebrew, which is what
+    // makes the quote possible here and not (yet) for an English speaker or
+    // for a country whose city has no Hebrew name on file.
+    const hebrew = !String(u.locale || '').toLowerCase().startsWith('en');
+    if (hebrew && !guess.ambiguous) {
+      lines.push(`Then say this, word for word, changing only the gender forms if a stored`
+        + ` preference says feminine: "המספר שלך מתחיל ב־+${guess.code}, אז אני מניחה שאתה`
+        + ` ב${guess.country} וכיוונתי את השעות לפי זה. ואם תיסע או תעבור לעיר אחרת, פשוט תגיד לי."`
+        + ' This is a STATEMENT, not a question — do not ask them to confirm it and do not ask which city.');
+    } else {
+      lines.push(`Then, in ONE sentence, tell them what you are assuming and why: their number starts`
+        + ` +${guess.code}, so you are guessing they are in ${guess.country} (that label is for you —`
+        + ` name the country in THEIR language) and you have set their hours to it.`
+        + (guess.ambiguous
+          ? ` That country spans several timezones and you had to pick one, so say which city's clock`
+            + ` you set — ${city} — in their language, so a wrong guess is visible to them instead of silent.`
+          : '')
+        + ' Never say the timezone NAME — not "Asia/Jerusalem", not "America/New_York", nothing of that'
+        + ' shape; that is our vocabulary, not theirs. Follow it immediately with the travel line, so they'
+        + ' learn they can just say so: "ואם תיסע או תעבור לעיר אחרת, פשוט תגיד לי" (match their language'
+        + ' and their gender forms). This is a STATEMENT, not a question — do not ask them to confirm it'
+        + ' and do not ask which city.');
+    }
   }
   // The one question the message is allowed to carry.
   if (u.first_name && !u.name_confirmed) {
