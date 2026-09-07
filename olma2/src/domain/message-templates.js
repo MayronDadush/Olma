@@ -80,6 +80,51 @@ const TEMPLATES = [
     vars: { items: 'התזכורות, שורה לכל אחת' }, required: ['items'],
     text: '⏰ תזכורות חוזרות:\n{{items}}\nאלו התזכורות האחרונות עליהן — לא אזכיר שוב מיוזמתי. אם משהו עדיין רלוונטי, אפשר להגיד לי מתי להזכיר.',
   },
+  // ---- the same six, for somebody whose language is English ---------------
+  // A reminder goes out with no model between the code and the phone, so the
+  // language a person has on file (users.locale — decided from their first
+  // message, changed only when they ask) has to be honoured HERE, by picking
+  // a template, or it is not honoured at all: Sarah wrote to Olma in English
+  // for a month and her reminders arrived in Hebrew, because the ladder had
+  // one set of sentences. proactive-text picks `<key>_en` for an `en` locale
+  // and the plain key for everybody else. English has no grammatical gender
+  // to avoid, so these read a little more naturally than the Hebrew ones can.
+  {
+    key: 'reminder_en', audience: 'private', label: 'תזכורת (אנגלית)',
+    help: 'אותה תזכורת, למי שהשפה שלו אנגלית.',
+    vars: { title: 'what they asked to be reminded of, in their words' }, required: ['title'],
+    text: '⏰ Reminder: {{title}}',
+  },
+  {
+    key: 'reminder_followup_en', audience: 'private', label: 'תזכורת חוזרת (אנגלית)',
+    help: 'השלב השני והשלישי, באנגלית. חייבת להגיד איך מפסיקים אותה.',
+    vars: { title: 'what they asked to be reminded of' }, required: ['title'],
+    text: '⏰ Reminder again: {{title}}\nDone? Just tell me — or tell me to stop reminding you about this.',
+  },
+  {
+    key: 'reminder_last_en', audience: 'private', label: 'תזכורת אחרונה (אנגלית)',
+    help: 'השלב האחרון בסולם, באנגלית. אחריה עולמה לא מזכירה שוב מיוזמתה, וההודעה צריכה להגיד את זה.',
+    vars: { title: 'what they asked to be reminded of' }, required: ['title'],
+    text: '⏰ Reminder again: {{title}}\nThis is the last reminder about this — I won\'t bring it up again on my own. If it still matters, tell me when to remind you.',
+  },
+  {
+    key: 'reminder_list_en', audience: 'private', label: 'כמה תזכורות יחד (אנגלית)',
+    help: 'כמה תזכורות באותו רגע, באנגלית — הודעה אחת.',
+    vars: { items: 'the reminders, one per line' }, required: ['items'],
+    text: '⏰ Reminders:\n{{items}}',
+  },
+  {
+    key: 'reminder_list_followup_en', audience: 'private', label: 'כמה תזכורות חוזרות יחד (אנגלית)',
+    help: 'אותו דבר לשלב השני והשלישי, באנגלית. חייבת להגיד איך מפסיקים.',
+    vars: { items: 'the reminders, one per line' }, required: ['items'],
+    text: '⏰ Reminders again:\n{{items}}\nAny of these done? Just tell me — or tell me to stop reminding you.',
+  },
+  {
+    key: 'reminder_list_last_en', audience: 'private', label: 'כמה תזכורות אחרונות יחד (אנגלית)',
+    help: 'השלב האחרון לכמה תזכורות יחד, באנגלית. אחריה עולמה לא מזכירה שוב על אף אחת מהן מיוזמתה.',
+    vars: { items: 'the reminders, one per line' }, required: ['items'],
+    text: '⏰ Reminders again:\n{{items}}\nThese are the last reminders about them — I won\'t bring them up again on my own. If any still matter, tell me when to remind you.',
+  },
   {
     key: 'stranger_intro_he', audience: 'private', label: 'פנייה ראשונה לאדם חדש (עברית)',
     help: 'כשמשתמש ביקש להתחבר למספר שעוד לא אצלנו. ההודעה הראשונה שהאדם הזה מקבל מעולמה, ולכן בלי ניחוש מגדר.',

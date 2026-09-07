@@ -47,6 +47,7 @@ never trust a dated narrative for something you are about to act on.
 **Delivery, outbox and proactive messages**
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
+- [Her reminders arrived in Hebrew (fixed 2026-09-07)](#her-reminders-arrived-in-hebrew-fixed-2026-09-07)
 - [A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)](#a-hundred-and-five-pending-reminders-thirteen-of-them-pending-fixed-2026-09-07)
 - [The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)](#the-hooks-timer-fired-late-and-brokerd-took-the-blame-fixed-2026-09-07)
 - [Good morning at half past one (fixed 2026-09-06)](#good-morning-at-half-past-one-fixed-2026-09-06)
@@ -1597,6 +1598,42 @@ still fire", and the two only look alike.
 
 Nothing about what is ARMED changed. Rung 2 and rung 3 still go out. This is
 only about what a person is told.
+
+### Her reminders arrived in Hebrew (fixed 2026-09-07)
+
+Sarah (u-17) has written to Olma in English since the day she joined, and
+`users.locale` has said `en` for as long. Her conversation is English: the
+doctrine tells the model her language is decided, `turn_start` hands it over
+every turn, USER.md says `Language: en`. Her reminders were Hebrew. So were
+the follow-up rungs — "בוצע? אפשר לכתוב לי…" to somebody who cannot read it —
+and, until the same day, her personal dashboard.
+
+Every one of those is a sentence with **no model between the code and the
+phone**. A reminder rides the raw pipe on purpose (a medication reminder
+must not be downstream of a billing account), which means nothing on that
+path ever reads "reply in their language" — and `domain/message-templates.js`
+had one set of rung sentences, in Hebrew. `rawPipeTextFor` took the row and
+the owner's rewordings and had no third argument to take a language with.
+The dashboard was the same shape in a different file: the page reads
+`data-locale` off its root element and falls back to Hebrew without one, and
+the server never stamped it (PR #271).
+
+The fix keeps the house rule about verbatim text — every sentence has its
+default in `message-templates.js` and is reworded from the admin page — and
+applies it twice: six `_en` templates beside the six Hebrew rungs, each its
+own box on the "ניסוחים" page, and `proactive-text.localizedKey` picks the
+`_en` one when the recipient's locale starts with `en`. The locale is read at
+**delivery**, off the users row the worker already joins for the timezone,
+never stamped on the payload at enqueue — somebody who switches language
+mid-ladder hears the next rung in the new one. Anything that is not `en`
+(Hebrew, nothing on file, a language with no sentences yet) says the Hebrew
+default, the same two-way rule the dashboard applies.
+
+What this did NOT fix, listed so nobody reads the entry as "language is
+done": the Hebrew examples inside the instructions handed to the model for
+digests, deliverables and the mail confirmation (`channels/openclaw.js` —
+"in their language" followed by a Hebrew example the model sometimes copies),
+and the two 410 pages behind a dead dashboard link, where no person is known.
 
 ### Nine reminders, nine messages (fixed 2026-09-07)
 

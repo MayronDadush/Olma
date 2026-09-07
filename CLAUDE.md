@@ -936,7 +936,12 @@ no JS — but structured differently:
   argument of `proactive-text.render*` / `intake/messages.*`; an override
   that drops a required placeholder is refused by name on the page and
   ignored at render, so a hand-edited flag row cannot ship a nudge with no
-  tags in it.
+  tags in it. **And a verbatim sentence has no model to read "their language"
+  off USER.md, so the language is a TEMPLATE choice made at delivery** —
+  `localizedKey` picks the `_en` twin of a rung for an `en` recipient, off the
+  users row the worker joins, never off the payload. Sarah got a month of
+  Hebrew reminders under an English conversation (`incidents.md`, "Her
+  reminders arrived in Hebrew").
 - **Cancelling a queued message is an UPDATE, never a DELETE**
   (`sent_at = now(), hold_reason = 'cancelled_by_admin'`). The row carries the
   `idempotency_key` that stops the sweep which produced it from producing it

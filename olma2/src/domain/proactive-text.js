@@ -55,22 +55,35 @@ const LIST_TEMPLATE = {
   reminder_last: 'reminder_list_last',
 };
 
+// The language a rung is said in. There is no model on this pipe to read
+// "reply in their language" off USER.md, so the recipient's `users.locale` is
+// the whole decision, made here: `en` (any variant) picks the `_en` template,
+// everything else — Hebrew, nothing on file, a language we have no sentences
+// for — says the Hebrew default. The same two-way rule the personal dashboard
+// applies. Read at DELIVERY, off the joined users row, never stamped on the
+// payload at enqueue: a person who switches language mid-ladder should hear
+// the next rung in the new one.
+function localizedKey(key, locale) {
+  return String(locale || '').trim().toLowerCase().startsWith('en') ? `${key}_en` : key;
+}
+
 // `items` is set by the worker at DELIVERY time and is never stored on the
 // row: batching is a property of what happened to arrive together, not of what
 // was enqueued. Enqueuing a batch would have given several reminders one
 // idempotency key, and then cancelling one of them would let the sweep produce
 // the whole batch again — which is the fault this system already had once, at
 // half past one in the morning.
-function renderReminderText(payload, overrides) {
+function renderReminderText(payload, overrides, locale) {
   const p = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
   const key = reminderTemplateKey(p);
   const items = (Array.isArray(p.items) ? p.items : []).map(cleanTitle).filter(Boolean);
   if (items.length > 1) {
-    return templates.render(LIST_TEMPLATE[key], { items: items.map((t) => `\u2022 ${t}`).join('\n') }, overrides);
+    return templates.render(localizedKey(LIST_TEMPLATE[key], locale),
+      { items: items.map((t) => `\u2022 ${t}`).join('\n') }, overrides);
   }
   const title = cleanTitle(p.title) || items[0];
   if (!title) return null;
-  return templates.render(key, { title }, overrides);
+  return templates.render(localizedKey(key, locale), { title }, overrides);
 }
 
 // ---- group mode -------------------------------------------------------------
@@ -152,14 +165,18 @@ function renderGroupTooLarge(maxMembers, overrides) {
 // checkins and digests are conversational BY DESIGN (the whole 2026-08-20
 // checkin redesign was making them personal enough to answer), and a payload
 // carrying its own `instruction` is asking for a model turn by definition.
+//
+// `row.locale` is the recipient's, joined onto the outbox row by the worker's
+// candidate query (outbox/worker.js) — the row that reaches the deliverer is
+// that joined row, so the language rides along with the timezone.
 function rawPipeTextFor(row, overrides) {
   if (row.kind !== 'reminder') return null;
   const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
   if (p.instruction) return null;
-  return renderReminderText(p, overrides);
+  return renderReminderText(p, overrides, row.locale);
 }
 
 module.exports = {
-  renderReminderText, rawPipeTextFor, reminderTemplateKey,
+  renderReminderText, rawPipeTextFor, reminderTemplateKey, localizedKey,
   renderGroupIntro, renderGroupGateNotice, renderGroupTooLarge, renderGroupOpened, mentionTokens, MAX_TAGS, SELF_NUMBER,
 };
