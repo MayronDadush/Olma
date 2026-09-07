@@ -126,19 +126,45 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
 
   // The gateway's opener. The agent id is the only identity the hook has, and
   // it is enough: one agent, one active user (config_guard keeps it so).
+  // Eleven of the first ~200 opens the gateway hook sent timed out on ITS side
+  // (2s) and left nothing here — no audit row, no journal line, no crash — so
+  // whether brokerd was slow, blocked or never reached could not be told
+  // apart. `tool_call` above logs its failures; this path did not. Now it
+  // does, and it logs where the time went whenever it takes longer than the
+  // hook is willing to wait for half of it. A quiet failure is not a passing
+  // one (CLAUDE.md, "a check that goes quiet").
+  const TURN_OPEN_SLOW_MS = 1000;
   async function handleTurnOpen(params = {}) {
     const agentId = String(params.agentId || '').trim();
     if (!/^u-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
+    const started = Date.now();
+    const steps = [];
+    const lap = (name) => steps.push(`${name}=${Date.now() - started}`);
+    try {
+      const out = await openTurnFromGateway(agentId, params, lap);
+      const ms = Date.now() - started;
+      if (ms >= TURN_OPEN_SLOW_MS) console.error(`[brokerd] turn_open ${agentId} slow: ${ms}ms (${steps.join(' ')})`);
+      return out;
+    } catch (e) {
+      console.error(`[brokerd] turn_open ${agentId} failed after ${Date.now() - started}ms (${steps.join(' ')}):`, e);
+      return { ok: false, error: 'turn_open failed' };
+    }
+  }
+
+  async function openTurnFromGateway(agentId, params, lap) {
     const messageId = reactions.cleanMessageId(params.messageId);
     const kind = params.kind === 'voice' ? 'voice' : 'text';
     let out = null;
     let mark = null;
     await withTx(pool, async (client) => {
+      lap('tx');
       const { rows } = await client.query(
         `SELECT id, phone FROM users WHERE agent_id = $1 AND status = 'active'`, [agentId]);
+      lap('user');
       const user = rows[0];
       if (!user) { out = { ok: false, error: 'no active user for agent' }; return; }
       const rec = await turnDomain.openFromGateway(client, user, { messageId, kind });
+      lap('open');
       // The hook classified the text and sent us the verdict, never the words
       // (gateway-hooks/olma-turn-open). A message that is only thanks gets 🙏
       // instead of 👀: 👀 promises a reply and this one is not getting one.
@@ -164,6 +190,7 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
         // The 👀 (or 👂) goes on now, from here, while the model is still reading
         // the prompt — the ack the feature promised, given before any model latency.
         const vocab = reactions.vocabulary(await require('../domain/flags').getFlag(client, reactions.VOCAB_FLAG));
+        lap('vocab');
         mark = { channel: 'whatsapp', target: user.phone, messageId, state, emoji: vocab[state] };
         entry.marked.add(`${messageId}:${state}`);
         entry.reactionVocab = vocab;
@@ -171,6 +198,7 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
       if (!rec.skipped) pushPending(Number(user.id), entry);
       out = { ok: true, opened: !rec.skipped, skipped: rec.skipped || null, userId: Number(user.id), counted: rec.counted };
     });
+    lap('commit');
     if (mark) placeMark(mark);
     return out;
   }
