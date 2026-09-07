@@ -380,6 +380,12 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **`BREAKS_USERS` means exactly "their tool calls fail right now."** Anything
   else is a dashboard row. Widening it makes the alert list mean two things,
   which is how an alert list dies.
+- **A hint that fires on ordinary input is worse than no hint** — it costs
+  tokens on every turn it does not apply to and teaches the model to skim past
+  hints, including the ones that matter. Measure a new pattern against real
+  data before shipping it, and keep the readings you REJECTED in the test with
+  the real rows that killed them (`tasks.joinsTwoAsks`, checked against all
+  202 production titles; `incidents.md`, "Two asks, one task").
 - **An issue title must be deterministic** — it is the dedup key. A title built
   from unordered query results makes the guard file and close the same
   condition on alternating ticks.

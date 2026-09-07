@@ -130,6 +130,7 @@ never trust a dated narrative for something you are about to act on.
 - [The mark that never moved (2026-09-07)](#the-mark-that-never-moved-2026-09-07)
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
+- [Two asks, one task (2026-09-07)](#two-asks-one-task-2026-09-07)
 - [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
 - [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
 - [The check that only watched the front door (2026-09-06)](#the-check-that-only-watched-the-front-door-2026-09-06)
@@ -4117,6 +4118,34 @@ So the id is taken only when the model is the best source there is: never on
 `ourTurn`, never over an id the gateway already put on the turn, and otherwise
 exactly as before — a real person writing, with no gateway opening on file,
 is still a turn where the model is all we have.
+
+### Two asks, one task (2026-09-07)
+
+Yahav said two things in one sentence, joined by ו, and got one task holding
+both. Finishing the first half left a row that was neither done nor open, and
+nothing in the system could see that — a task is one string, and the string
+was exactly what he said.
+
+The model is the only party that can settle it: "ואז" sometimes joins two
+errands and sometimes narrates the steps of one, and telling them apart needs
+the conversation. So this reports and never splits, the same shape as
+`datetime.datesTheObject` — a hint on the `add_task` result, costing tokens
+only on the turns it fires.
+
+**The pattern's narrowness is the whole of the work, and it was measured
+rather than argued.** Run against all 202 task titles in production:
+
+| reading | fires on | verdict |
+|---|---|---|
+| `וגם` / `ואז` / `וכן` / `ואחר כך` / `ולאחר מכן` | 1 title — "לבחור ביחד את הכדורים ואז לקנות אותם" | kept: precisely the sentence worth asking about |
+| also a joined infinitive (`…ולתלות`) | "להוציא את הכביסה ולתלות אותה", "לדבר עם מור חן ולבקש חומרי גלם" | dropped — Hebrew chains infinitives inside ONE chore all the time |
+| also a bare `ו+ש` prefix | "…ושמעיין תבקש החזרים מהקופה" | dropped — here וש is the start of a name |
+
+A hint that fires on ordinary input is worse than no hint. It costs tokens on
+every turn it does not apply to, and it teaches the model to skim past hints —
+including the ones that matter. The three rows above are in
+`tests/tasks.test.js` with the real titles that killed them, so the next
+attempt to widen this has to argue with them.
 
 ### The dedupe list that could not contain the answer (2026-09-06)
 

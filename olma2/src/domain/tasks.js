@@ -14,6 +14,34 @@ const taskKind = require('./task-kind');
 
 const MAX_BULK = 60;
 
+// ── Two asks that arrived in one sentence ────────────────────────────────────
+// Yahav said two things joined by ו and got one task holding both, so
+// finishing the first half left a row that was neither done nor open. The
+// model is the only party that can settle it — it has the conversation and
+// this has a string — so this REPORTS and never splits, exactly like
+// datetime.datesTheObject.
+//
+// Only the explicit sequencing and addition markers, and that narrowness was
+// measured rather than guessed. Against all 202 task titles in production
+// (2026-09-07):
+//
+//   * these markers fire ONCE — "לבחור ביחד את הכדורים ואז לקנות אותם", which
+//     is precisely the sentence worth asking about;
+//   * a rule that also read a joined INFINITIVE (`...ולתלות`) fired on
+//     "להוציא את הכביסה ולתלות אותה" and "לדבר עם מור חן ולבקש חומרי גלם" —
+//     both plainly ONE chore. Hebrew chains infinitives inside a single task
+//     all the time, so that reading was dropped;
+//   * a rule that read a bare ו+ש prefix fired on "...ושמעיין תבקש החזרים",
+//     where וש is a name, not a conjunction. Dropped for the same reason.
+//
+// A hint that fires on ordinary titles is worse than no hint: it costs tokens
+// on turns it does not apply to and teaches the model to skim past hints.
+const TWO_ASKS_RE = /(^|\s)(וגם|ואז|וכן|ואחר[ -]?כך|ולאחר[ -]?מכן)(\s|$)/u;
+
+function joinsTwoAsks(title) {
+  return TWO_ASKS_RE.test(String(title || ''));
+}
+
 // One place that decides whether a parent is usable, so add_task and the bulk
 // split path can never disagree about what "one level of nesting" means.
 async function checkParent(client, ownerId, parentId) {
@@ -546,5 +574,5 @@ async function projectOverview(client, ownerId, projectId) {
 module.exports = {
   MAX_BULK, addTask, addTasksBulk, editTask, listTasks, completeTask,
   snoozeTask, archiveTask, unarchiveTask, projectOverview,
-  completeParentIfDrained,
+  completeParentIfDrained, joinsTwoAsks,
 };

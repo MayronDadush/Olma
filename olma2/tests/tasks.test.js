@@ -250,3 +250,27 @@ test('audit trail records the lifecycle', async () => {
     assert.ok(events['reminder.created'] >= 2);
   });
 });
+
+// ── Two asks that arrived in one sentence ────────────────────────────────────
+// Yahav said two things joined by ו and got one task holding both, so
+// finishing the first half left a row that was neither done nor open.
+test('a title that joins two asks is reported, and an ordinary one is not', () => {
+  const { joinsTwoAsks } = require('../src/domain/tasks');
+  assert.ok(joinsTwoAsks('לקנות חלב וגם לחם'));
+  assert.ok(joinsTwoAsks('לדבר עם גידיס ואז לחזור לאבי'));
+  assert.ok(joinsTwoAsks('לשלוח את המסמכים ואחר כך להתקשר לרואה חשבון'));
+
+  // The three readings that were measured against all 202 production titles
+  // and thrown away, each with the real title that killed it. A hint firing on
+  // ordinary titles costs tokens on turns it does not apply to and teaches the
+  // model to skim past hints — so these must stay quiet.
+  assert.equal(joinsTwoAsks('להוציא את הכביסה ולתלות אותה'), false,
+    'Hebrew chains infinitives inside ONE chore');
+  assert.equal(joinsTwoAsks('לדבר עם מור חן ולבקש חומרי גלם'), false,
+    'and inside one conversation');
+  assert.equal(joinsTwoAsks('לבקש מכולם פעילויות למצגת ושמעיין תבקש החזרים מהקופה'), false,
+    'here וש is the start of a name, not a conjunction');
+  assert.equal(joinsTwoAsks('לקנות חלב'), false);
+  assert.equal(joinsTwoAsks(''), false);
+  assert.equal(joinsTwoAsks(null), false);
+});
