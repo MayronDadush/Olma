@@ -46,6 +46,41 @@ test('gate: night holds until the personal window opens; user-chosen times bypas
   assert.equal(decide({ ...night, row: row({ kind: 'digest' }) }).action, 'deliver');
 });
 
+// Vered, her first evening: a reminder for 22:32, and "בוצע?" at 01:33. Rung 1
+// is the moment she named; rungs 2 and 3 are three hours later and the next
+// day, and she named neither. The exemption belongs to the moment, not to the
+// word "reminder" (`incidents.md`, "The rung nobody asked for, at half past
+// one").
+test('gate: an escalation rung is Olma\'s moment, not theirs, and waits for the morning', () => {
+  const night = { ...baseFacts, now: threeAmUTC };
+  const reminder = (payload) => row({ kind: 'reminder', payload });
+
+  // Rung 1, however it is spelled: no payload at all, or an explicit rung.
+  assert.equal(decide({ ...night, row: reminder(undefined) }).action, 'deliver');
+  assert.equal(decide({ ...night, row: reminder({ rung: 1 }) }).action, 'deliver');
+
+  // Rung 2 and rung 3 wait.
+  const second = decide({ ...night, row: reminder({ rung: 2, attempt: 2 }) });
+  assert.equal(second.action, 'hold');
+  assert.equal(second.holdReason, 'night');
+  assert.equal(Math.round((second.releaseAfter - threeAmUTC) / 3600_000), 6);
+  assert.equal(decide({ ...night, row: reminder({ rung: 3, attempt: 3, finalAttempt: true }) }).holdReason, 'night');
+
+  // A redo carries no `attempt` — it deliberately uses rung 1's wording — so
+  // the wording field cannot be what decides this, and `rung` is why.
+  assert.equal(decide({ ...night, row: reminder({ rung: 2, redo: true }) }).holdReason, 'night');
+
+  // In the daytime every rung goes out as before: this moves the hour, it does
+  // not silence the ladder.
+  const day = { ...baseFacts };
+  assert.equal(decide({ ...day, row: reminder({ rung: 3, attempt: 3 }) }).action, 'deliver');
+
+  // And someone demonstrably awake still gets it — the conversation grace is
+  // not overridden by a rule about not waking people.
+  const justWrote = new Date(threeAmUTC.getTime() - 2 * 60_000).toISOString();
+  assert.equal(decide({ ...night, row: reminder({ rung: 2 }), lastInboundAt: justWrote }).action, 'deliver');
+});
+
 test('gate: someone who just wrote is awake — quiet hours do not silence a live conversation', () => {
   const night = { ...baseFacts, now: threeAmUTC };
   // 3am, well outside any window, but they messaged two minutes ago

@@ -44,6 +44,13 @@ async function sweepReminders(client, nowIso) {
       urgency: attempt === 1 || (redo && attempt === 2) ? 'urgent' : 'normal',
       payload: {
         taskId: Number(r.task_id), title: r.title, remindAt: r.remind_at,
+        // Which rung this is, always — the gate reads it to decide whether the
+        // moment is THEIRS or OURS, and it must be able to tell that for a redo
+        // too, which carries no `attempt`. Kept separate from `attempt` for
+        // exactly that reason: `attempt` drives the WORDING and a redo
+        // deliberately uses rung 1's plain text, while this drives the QUIET
+        // HOURS and a redo is still Olma choosing the moment.
+        rung: attempt,
         ...(redo ? { redo: true } : attempt > 1 ? { attempt, finalAttempt } : {}),
       },
       // Rung 1 keeps the original 2h-past-the-moment window. A later rung is

@@ -106,8 +106,22 @@ function decide(facts) {
     }
   }
 
-  // reminder/digest: the user picked those times.
-  const userChoseThisTime = row.kind === 'reminder' || row.kind === 'digest';
+  // ── Which moments are THEIRS ─────────────────────────────────────────────
+  // A digest runs at an hour they set, and rung 1 of a reminder is the moment
+  // they named — quiet hours have never applied to either, because the whole
+  // point of quiet hours is not to wake somebody with something WE decided to
+  // say. Every later rung is something we decided to say: rung 2 is "three
+  // hours after rung 1 landed" and rung 3 is "the next day", and neither
+  // number came from the person. Vered asked for a reminder at 22:32 on her
+  // first evening and was asked "בוצע?" at 01:33 (`incidents.md`, "The rung
+  // nobody asked for, at half past one"). `sweepReminders` already draws this
+  // exact line for the daily budget — "Only the moment THEY chose is urgent
+  // enough to skip it" — and the night window simply never got the same
+  // sentence. Rung 1 is also bounded: it expires two hours past its own
+  // moment, so the exemption cannot place a message far from what they picked,
+  // while a later rung expires two hours from NOW and could land anywhere.
+  const rung = Number(row.payload && row.payload.rung) || 1;
+  const userChoseThisTime = row.kind === 'digest' || (row.kind === 'reminder' && rung <= 1);
   const lastInbound = facts.lastInboundAt ? new Date(facts.lastInboundAt).getTime() : 0;
   const midConversation = lastInbound > 0 && (now.getTime() - lastInbound) < CONVERSATION_GRACE_MS;
   if (!userChoseThisTime && !midConversation && !withinWindow(window, tz, now)) {
