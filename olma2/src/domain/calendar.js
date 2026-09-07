@@ -12,6 +12,7 @@
 // Everything returns structured results and nothing throws, per the domain
 // contract in results.js.
 const { ok, err } = require('./results');
+const actionLink = require('./action-link');
 const audit = require('./audit');
 const crypto = require('node:crypto');
 const cryptoStore = require('./crypto-store');
@@ -38,14 +39,13 @@ async function beginConnection(client, userId, access) {
     [state, userId, PROVIDER, access, google.STATE_TTL_MS / 1000]
   );
   await audit.record(client, userId, 'calendar.auth_started', { access });
-  return ok({
-    url: google.consentUrl(state, access),
+  return ok(actionLink.withLink(google.consentUrl(state, access), {
     accessRequested: access,
     validForMinutes: google.STATE_TTL_MS / 60000,
     tellTheUser: access === 'read_write'
       ? 'הקישור יבקש הרשאה לצפות וגם להוסיף ולערוך אירועים.'
       : 'הקישור יבקש הרשאת צפייה בלבד — עולמה לא תוכל לשנות שום דבר ביומן.',
-  });
+  }));
 }
 
 // Called by the public dashboard callback. `state` is the only thing standing

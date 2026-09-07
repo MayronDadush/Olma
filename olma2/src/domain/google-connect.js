@@ -21,6 +21,7 @@
 // requested was actually granted is the token revoked and the whole thing
 // reported as declined.
 const { ok, err } = require('./results');
+const actionLink = require('./action-link');
 const audit = require('./audit');
 const cryptoStore = require('./crypto-store');
 const google = require('./google-oauth');
@@ -76,12 +77,11 @@ async function beginConnection(client, user, { calendarAccess, wantContacts, wan
   if (wantContacts) parts.push('אנשי קשר (קריאה בלבד)');
   if (wantMail) parts.push('מייל (קריאה בלבד)');
 
-  return ok({
-    url: google.buildConsentUrl(state, [...scopes].join(' ')),
+  return ok(actionLink.withLink(google.buildConsentUrl(state, [...scopes].join(' ')), {
     requested: requestedServices,
     validForMinutes: google.STATE_TTL_MS / 60000,
     tellTheUser: `הקישור מבקש: ${parts.join(', ')}. במסך של גוגל אפשר לבטל סימון לכל אחד מהם בנפרד — עולמה תחבר בדיוק את מה שסומן.`,
-  });
+  }));
 }
 
 // ---- persistence (mirrors calendar.js / google-contacts.js / mail.js) -------

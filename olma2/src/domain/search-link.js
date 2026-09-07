@@ -11,6 +11,7 @@
 // what people keep asking for that we cannot do. Story: docs/incidents.md,
 // "\"I can't do that\" was the whole answer (fixed 2026-08-21)".
 const { ok, err } = require('./results');
+const actionLink = require('./action-link');
 const audit = require('./audit');
 const flags = require('./flags');
 
@@ -73,7 +74,7 @@ async function buildSearchLink(client, userId, query) {
   // The demand signal. Not the point of the feature, and the only reason this
   // question is answerable at all.
   await audit.record(client, userId, 'search_link.offered', { query: q });
-  return ok({ url, query: q });
+  return ok(actionLink.withLink(url, { query: q }));
 }
 
 module.exports = { buildSearchLink, encodeQuery, DEFAULT_BASE, MAX_QUERY };

@@ -24,6 +24,7 @@
 // fenced explicitly.
 const nodeCrypto = require('node:crypto');
 const { ok, err } = require('./results');
+const actionLink = require('./action-link');
 const audit = require('./audit');
 const flags = require('./flags');
 const cryptoStore = require('./crypto-store');
@@ -116,13 +117,12 @@ async function beginConnection(client, user, providerId = 'gmail') {
     [state, userId, adapter.provider, STATE_TTL_MINUTES]
   );
   await audit.record(client, userId, 'email.auth_started', { provider: adapter.provider });
-  return ok({
-    url: adapter.consentUrl(state),
+  return ok(actionLink.withLink(adapter.consentUrl(state), {
     provider: adapter.provider,
     accessRequested: 'read_only',
     validForMinutes: STATE_TTL_MINUTES,
     tellTheUser: 'הקישור מבקש הרשאת קריאה בלבד לתיבת המייל. עולמה לא עוברת על המיילים מיוזמתה — היא תחפש רק כשתבקש, ולא יכולה לשלוח או למחוק כלום.',
-  });
+  }));
 }
 
 // Called by the public dashboard callback. `state` is the only thing between

@@ -27,6 +27,7 @@
 //    sign-in. Blocking someone, or pausing them, must not leave a live tab.
 const crypto = require('node:crypto');
 const { ok, err } = require('./results');
+const actionLink = require('./action-link');
 const flags = require('./flags');
 
 // A link is for the person who just asked for it, in the conversation they are
@@ -209,7 +210,7 @@ async function createLinkUrl(client, userId, { meetingId } = {}) {
       [mid, userId]);
     if (rows[0]) { url += `?meeting=${mid}`; named = mid; }
   }
-  return ok({ url, expiresInMinutes: LINK_TTL_MINUTES, meetingId: named });
+  return ok(actionLink.withLink(url, { expiresInMinutes: LINK_TTL_MINUTES, meetingId: named }));
 }
 
 module.exports = {
