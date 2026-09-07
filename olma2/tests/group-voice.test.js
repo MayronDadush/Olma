@@ -11,6 +11,7 @@ const groupMeetings = require('../src/domain/group-meetings');
 const groupVoice = require('../src/domain/group-voice');
 const options = require('../src/domain/meeting-options');
 const groupsJob = require('../src/jobs/groups');
+const groupOutbox = require('../src/domain/group-outbox');
 
 let db;
 before(async () => { db = await freshDb(); });
@@ -39,12 +40,16 @@ async function room(n, { subject = 'פאדל' } = {}) {
 }
 
 // A pass with a recording sender, at an hour inside the group's window.
+// Both halves, in brokerd's order: the sweep decides and writes a row, the
+// sender drains it (migration 055). What the room HEARS is `sent`.
 async function pass(sent, at = null) {
   const now = at || (() => { const d = new Date(); d.setUTCHours(11, 0, 0, 0); return d; })();
-  return withTx(db.pool, (c) => groupsJob.sweepGroupVoice(c, {
+  const decided = await withTx(db.pool, (c) => groupsJob.sweepGroupVoice(c, { now }));
+  const drained = await groupOutbox.drainOnce(db.pool, {
     now,
     send: async (jid, body) => { sent.push({ jid, body }); return 'sent'; },
-  }));
+  });
+  return { ...decided, ...drained };
 }
 
 test('a room hears "there is a direction" once, when two people can make the same time', async () => {

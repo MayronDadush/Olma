@@ -32,6 +32,7 @@ const laneWatchdog = require('./lane-watchdog');
 const onboardingReview = require('./onboarding-review');
 const memoryConsolidation = require('./memory-consolidation');
 const groupsJob = require('./groups');
+const groupOutbox = require('../domain/group-outbox');
 // Resolved per job run, never destructured at module load: brokerd requires
 // this file while it is still starting, and a captured value pins whichever
 // path the environment held at that instant. A test process that spawns a real
@@ -231,13 +232,6 @@ const deployDrift = require('./deploy-drift');
     // waiting on somebody to sign up costs nothing at all.
     { name: 'group_sweep', run: () => groupsJob.runGroupSweep(pool, {
       configPath: OPENCLAW_CONFIG(),
-      // Three outcomes, not two. 'unknown' is a send that blew the CLI's
-      // timeout: the gateway has it and has very likely delivered it, so the
-      // sweep must never say that sentence again — see channels/openclaw.js.
-      send: async (jid, body, opts) => {
-        const r = await rawSend(jid, body, opts);
-        return r.ok ? 'sent' : (r.timedOut ? 'unknown' : 'failed');
-      },
     }) },
     // The three sentences a room hears about its own coordination, unasked
     // (the owner's five moments, 2026-09-07 — the other two are her own turn
@@ -245,12 +239,24 @@ const deployDrift = require('./deploy-drift');
     // answering a person standing there, and this is a state that changes over
     // hours. Same raw pipe, same fixed text, and each line waits for the
     // group's own daytime.
-    { name: 'group_voice', run: () => withTx(pool, (c) => groupsJob.sweepGroupVoice(c, {
-      send: async (jid, body) => {
-        const r = await rawSend(jid, body);
+    { name: 'group_voice', run: () => withTx(pool, (c) => groupsJob.sweepGroupVoice(c, {})) },
+    // The one sender for everything the two sweeps above decided to say. They
+    // write a row and the stamp in one transaction; this spawns the CLI. The
+    // split is the whole fix for a room told the same sentence twice when a
+    // deploy restarted brokerd between the send and the stamp (2026-09-07):
+    // a claim is taken BEFORE anything is spawned, and it is never given back,
+    // so the worst case here is a line nobody hears rather than one heard
+    // twice. Ten seconds, because two of the four sentences are answers to
+    // somebody who has just tagged her.
+    { name: 'group_outbox', run: () => groupOutbox.drainOnce(pool, {
+      // Three outcomes, not two. 'unknown' is a send that blew the CLI's
+      // timeout: the gateway has it and has very likely delivered it, so the
+      // row is closed rather than retried — see channels/openclaw.js.
+      send: async (jid, body, opts) => {
+        const r = await rawSend(jid, body, opts);
         return r.ok ? 'sent' : (r.timedOut ? 'unknown' : 'failed');
       },
-    })) },
+    }) },
     { name: 'intake_template_sync', run: async () => {
       if (!intake.intakeConfigured(OPENCLAW_CONFIG())) return { skipped: true };
       const open = (await flagsDomain.getFlag(pool, 'registration_open')) === true;

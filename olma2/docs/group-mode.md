@@ -782,6 +782,38 @@ arrives late is not a reminder. That is also what happens to an hour-before
 line the group's quiet hours would hold past the event — it is never sent,
 rather than sent at the wrong time.
 
+## Everything she says to a room goes through a queue (2026-09-08)
+
+The room read "יש! כולם כאן" twice on 2026-09-07, 28 seconds apart, because the
+sweep sent first and stamped afterwards and a deploy restarted brokerd in
+between (`incidents.md`, "The room was told twice"). The four unasked sentences
+— introduction, opening, gate notice, coordination line — are now DECIDED and
+DELIVERED by different jobs.
+
+- `sweepGroups` / `sweepGroupVoice` enqueue a row and stamp their column **in
+  one transaction**, and send nothing. `group_outbox` (migration 055) holds
+  `kind` + `payload`, not text.
+- `group_outbox` (the job, every 10s) renders each row from the owner's
+  CURRENT wording and puts it on the raw pipe — same rule as the reminder
+  rungs, so a sentence he rewords while a row is queued goes out in the new
+  words.
+- `idempotency_key` is UNIQUE and is the real guarantee: `g3:opened`,
+  `g3:notice:2`, `g3:m18:base`. A lost stamp cannot produce the sentence twice.
+- A claim is never handed back after a crash — the row is closed as
+  `unconfirmed` two minutes on. A refusal the CLI actually made is retried
+  once, then abandoned. `attempts` counts; `claimed_at` is the claim; they are
+  two columns because one loses the count on every retry.
+
+**A pass can no longer see what it just said**, and that is the standing cost
+of the split. `groupOutbox.pending(client, groupId, 'intro')` is how the gate
+sweep still knows not to nudge a room it introduced itself to on this very
+pass.
+
+The queue has no column that can name a person, and a test asserts it. That is
+the whole argument for a second table rather than a `group_id` on `outbox`:
+the user gate stays the only door to a human being, structurally rather than by
+intention.
+
 ## iMessage
 
 Not available on this box. The official path is `@openclaw/imessage` driving

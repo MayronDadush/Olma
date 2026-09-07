@@ -21,6 +21,15 @@ const groupContext = require('../src/domain/group-context');
 const groupsDomain = require('../src/domain/groups');
 const pg = require('../src/intake/provision-group');
 const job = require('../src/jobs/groups');
+const groupOutbox = require('../src/domain/group-outbox');
+
+// The two halves brokerd runs in order: the sweep decides and files a row, the
+// sender drains it (migration 055).
+async function pass(deps) {
+  const decided = await withTx(db.pool, (c) => job.sweepGroups(c, deps));
+  const drained = await groupOutbox.drainOnce(db.pool, deps);
+  return { ...decided, ...drained };
+}
 process.env.OLMA_PLUGIN_TRACE = path.join(os.tmpdir(), `group-context-plugin-test-${process.pid}.log`);
 
 let db, broker, plugin, tmp, configPath;
@@ -215,13 +224,13 @@ test('the sweep registers a group from the filed row alone, and answers the tag 
   };
 
   // before anything was filed: unreadable, silent, no row
-  let out = await withTx(db.pool, (c) => job.sweepGroups(c, deps));
+  let out = await pass(deps);
   assert.equal(out.unreadable, 1);
   assert.deepEqual(sent, []);
 
   // the plugin files the first message (not a tag — she wakes on anything before registration)
   await broker.dispatch({ id: 1, method: 'group_context', params: { agentId: 'ggreet', sessionKey: key, info: info({ chat_id: `whatsapp:${jid}`, message_id: 'FIRST', was_mentioned: false, group_members: `דני (${a.phone}), +972603000011` }) } });
-  out = await withTx(db.pool, (c) => job.sweepGroups(c, deps));
+  out = await pass(deps);
   assert.deepEqual(out.registered, [jid]);
   assert.equal(out.intros, 1);
   assert.match(sent[0].body, /נעים מאוד/);
@@ -231,7 +240,7 @@ test('the sweep registers a group from the filed row alone, and answers the tag 
   // a tag, one message later: the notice, quoted under the tag
   deps.listGroupSessions = () => [{ key, agentId: 'ggreet', channel: 'whatsapp', chatType: 'group', peer: jid, lastInteractionAt: at + 60_000 }];
   await broker.dispatch({ id: 2, method: 'group_context', params: { agentId: 'ggreet', sessionKey: key, info: info({ chat_id: `whatsapp:${jid}`, message_id: 'TAG-1', was_mentioned: true, group_members: `דני (${a.phone}), +972603000011` }) } });
-  out = await withTx(db.pool, (c) => job.sweepGroups(c, deps));
+  out = await pass(deps);
   assert.equal(out.notices, 1);
   assert.equal(sent.at(-1).replyTo, 'TAG-1');
   assert.match(sent.at(-1).body, /@\+972603000011/);

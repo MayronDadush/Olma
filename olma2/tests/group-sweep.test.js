@@ -18,6 +18,17 @@ const occ = require('../src/intake/openclaw-config');
 const groupsDomain = require('../src/domain/groups');
 const pg = require('../src/intake/provision-group');
 const job = require('../src/jobs/groups');
+const groupOutbox = require('../src/domain/group-outbox');
+
+// What brokerd does in two jobs, in the order it does it: `sweepGroups`
+// decides and writes rows, `group_outbox` spawns the CLI. Every assertion
+// below about what a room HEARD depends on both halves running, which is the
+// point — deciding and sending are separate transactions now (migration 055).
+async function pass(deps) {
+  const decided = await withTx(db.pool, (c) => job.sweepGroups(c, deps));
+  const drained = await groupOutbox.drainOnce(db.pool, deps);
+  return { ...decided, ...drained };
+}
 
 let db, tmp, configPath;
 
@@ -33,7 +44,11 @@ after(async () => {
   await db.teardown();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  // Each test is its own room and its own story. A line queued by an earlier
+  // one and never drained would otherwise be delivered into this one's
+  // recorder — the tests share a database, production does not share a past.
+  await db.pool.query(`DELETE FROM group_outbox WHERE sent_at IS NULL`);
   fs.writeFileSync(configPath, JSON.stringify({
     agents: { entries: { main: { name: 'main' } } },
     channels: { whatsapp: { accounts: { default: { dmPolicy: 'open', allowFrom: ['*'] } } } },
@@ -72,7 +87,7 @@ const JID = (n) => `12036300000000000${n}@g.us`;
 
 test('a group of strangers gets nothing at all — no row, no introduction', async () => {
   const g = gatewayWith({ jid: JID(1), roster: '+972603000001, +972603000002' });
-  const out = await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+  const out = await pass(g.deps);
 
   assert.equal(out.strangers, 1);
   assert.deepEqual(g.sent, [], 'she has no business in a room where she knows nobody');
@@ -83,7 +98,7 @@ test('a group of strangers gets nothing at all — no row, no introduction', asy
 test('one known member is enough: she registers, introduces herself, and locks', async () => {
   const a = await connectedUser('+972603000010');
   const g = gatewayWith({ jid: JID(2), roster: `מירון (${a.phone}), +972603000011` });
-  const out = await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+  const out = await pass(g.deps);
 
   assert.deepEqual(out.registered, [JID(2)]);
   assert.equal(out.intros, 1);
@@ -123,15 +138,26 @@ test('an introduction that did not go out is said again next pass, and no nudge 
     send: async (target, body) => { if (!deliver) return false; sent.push({ target, body }); return true; },
   };
 
-  // registered, but the pipe was down: nothing said, nothing stamped
-  let out = await withTx(db.pool, (c) => job.sweepGroups(c, deps));
+  // Registered, and the pipe was down. Since migration 055 the DECISION and
+  // the send are different transactions: the sentence is written down and
+  // stamped here, and the queue holds it until the pipe comes back. What is
+  // being asserted is unchanged — the room does not stay ungreeted — but the
+  // thing that guarantees it is now the row, not a second decision.
+  let out = await pass(deps);
   assert.deepEqual(out.registered, [jid]);
-  assert.equal(out.intros, 0);
-  assert.equal(out.introFailed, 1);
+  assert.equal(out.intros, 1, 'decided');
+  assert.equal(out.sent, 0, 'and not delivered');
   assert.deepEqual(sent, []);
   let row = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
-  assert.equal(row.introduced_at, null, 'nothing said, nothing stamped');
   assert.equal(row.notices_sent, 0, 'a room she has not greeted is not nudged');
+  const { rows: queued } = await db.pool.query(
+    `SELECT o.kind, o.attempts, o.claimed_at, o.sent_at FROM group_outbox o
+       JOIN chat_groups g ON g.id = o.group_id WHERE g.external_id = $1`, [jid]);
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0].kind, 'intro');
+  assert.equal(queued[0].sent_at, null, 'still owed to the room');
+  assert.equal(queued[0].claimed_at, null, 'a refused send is worth one more try');
+  assert.equal(queued[0].attempts, 1, 'and the one that failed is counted');
 
   // the pipe comes back, and a tag arrives in the meantime: the opening comes
   // first and alone — never "nice to meet you" and "some of you are missing"
@@ -141,24 +167,24 @@ test('an introduction that did not go out is said again next pass, and no nudge 
     key: `agent:ggreet:whatsapp:group:${jid}`, agentId: pg.GREETER_AGENT_ID,
     channel: 'whatsapp', chatType: 'group', peer: jid, lastInteractionAt: at + 60_000,
   }];
-  out = await withTx(db.pool, (c) => job.sweepGroups(c, deps));
+  out = await pass(deps);
   assert.deepEqual(out.registered, [], 'registered once, greeted later');
-  assert.equal(out.intros, 1);
+  assert.equal(out.intros, 0, 'the sentence was decided on last pass, not again');
+  assert.equal(out.sent, 1, 'the queued one went out');
   assert.equal(out.notices, 0, 'the nudge waits for a tag she has been present for');
   assert.equal(sent.length, 1);
   assert.match(sent[0].body, /נעים מאוד/);
-  row = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
-  assert.ok(row.introduced_at, 'stamped only once it landed');
 
   // and it is never said twice
   deps.listGroupSessions = () => [{
     key: `agent:ggreet:whatsapp:group:${jid}`, agentId: pg.GREETER_AGENT_ID,
     channel: 'whatsapp', chatType: 'group', peer: jid, lastInteractionAt: at + 120_000,
   }];
-  out = await withTx(db.pool, (c) => job.sweepGroups(c, deps));
+  out = await pass(deps);
   assert.equal(out.intros, 0);
   assert.equal(out.notices, 1, 'now a tag gets the explanation');
   assert.match(sent.at(-1).body, /עוד לא שלחו לי/);
+  assert.equal(sent.filter((m) => /נעים מאוד/.test(m.body)).length, 1, 'greeted exactly once');
 });
 
 // The other half of the same evening. The CLI hands the message to the gateway
@@ -187,18 +213,18 @@ test('a send that timed out is treated as said, and is not said again', async ()
   });
 
   // The introduction: we never learned whether it landed.
-  let out = await withTx(db.pool, (c) => job.sweepGroups(c, gateway(at)));
+  let out = await pass(gateway(at));
   assert.deepEqual(out.registered, [jid]);
-  assert.equal(out.intros, 0, 'not counted as delivered');
-  assert.equal(out.introFailed, 0, 'and not counted as lost either');
+  assert.equal(out.intros, 1, 'the sentence was decided on and written down');
+  assert.equal(out.sent, 0, 'but nothing came back to say it arrived');
   assert.equal(out.unconfirmed, 1, 'the doubt is on the heartbeat, not in the room');
   let row = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
   assert.ok(row.introduced_at, 'stamped, so the next pass does not greet them twice');
 
   // A tag, and the same silence from the pipe.
-  out = await withTx(db.pool, (c) => job.sweepGroups(c, gateway(at + 60_000)));
+  out = await pass(gateway(at + 60_000));
   assert.equal(out.intros, 0, 'she does not introduce herself twice');
-  assert.equal(out.notices, 0);
+  assert.equal(out.notices, 1);
   assert.equal(out.unconfirmed, 1);
   assert.equal(sent.length, 2);
   assert.match(sent[1], /עוד לא שלחו לי/, 'the long explanation, once');
@@ -208,8 +234,9 @@ test('a send that timed out is treated as said, and is not said again', async ()
   // The pipe comes back. The next tag gets the SHORT answer: the explanation
   // has been spent.
   answer = 'sent';
-  out = await withTx(db.pool, (c) => job.sweepGroups(c, gateway(at + 120_000)));
+  out = await pass(gateway(at + 120_000));
   assert.equal(out.notices, 1);
+  assert.equal(out.sent, 1);
   assert.equal(out.unconfirmed, 0);
   assert.match(sent.at(-1), /עוד מחכה ל/);
   assert.equal(sent.filter((b) => /נעים מאוד/.test(b)).length, 1, 'greeted exactly once');
@@ -222,14 +249,14 @@ test('a tag in a locked group is answered, then answered shorter, every time', a
   let at = Date.now();
 
   const first = gatewayWith({ jid: JID(3), roster, at });
-  await withTx(db.pool, (c) => job.sweepGroups(c, first.deps));   // registers + intro
+  await pass(first.deps);   // registers + intro
   assert.equal(first.sent.length, 1);
   assert.equal(first.sent[0].replyTo, undefined, 'the intro is not a reply to anything');
 
   // A tag: new activity on the session.
   at += 60_000;
   const second = gatewayWith({ jid: JID(3), roster, at, messageId: 'MSG-2' });
-  const out2 = await withTx(db.pool, (c) => job.sweepGroups(c, second.deps));
+  const out2 = await pass(second.deps);
   assert.equal(out2.notices, 1);
   assert.match(second.sent[0].body, /עוד לא שלחו לי/);
   assert.match(second.sent[0].body, new RegExp(`@\\${missing}`));
@@ -239,7 +266,7 @@ test('a tag in a locked group is answered, then answered shorter, every time', a
   // — the owner's rule is that every tag is answered.
   at += 60_000;
   const third = gatewayWith({ jid: JID(3), roster, at, messageId: 'MSG-3' });
-  const out3 = await withTx(db.pool, (c) => job.sweepGroups(c, third.deps));
+  const out3 = await pass(third.deps);
   assert.equal(out3.notices, 1);
   assert.match(third.sent[0].body, /עוד מחכה ל/);
   assert.equal(third.sent[0].replyTo, 'MSG-3');
@@ -247,7 +274,7 @@ test('a tag in a locked group is answered, then answered shorter, every time', a
   // A transcript with no message id still gets its answer, just not as a reply.
   at += 60_000;
   const fourth = gatewayWith({ jid: JID(3), roster, at, messageId: null });
-  await withTx(db.pool, (c) => job.sweepGroups(c, fourth.deps));
+  await pass(fourth.deps);
   assert.equal(fourth.sent.length, 1);
   assert.equal(fourth.sent[0].replyTo, undefined);
 });
@@ -269,15 +296,15 @@ test('a reworded notice reaches the group, and one without its tags does not', a
   try {
     let at = Date.now();
     const first = gatewayWith({ jid: JID(9), roster, at });
-    await withTx(db.pool, (c) => job.sweepGroups(c, first.deps));
+    await pass(first.deps);
     assert.equal(first.sent[0].body, `שלום, אני כאן. תתייגו @+${require('../src/domain/proactive-text').SELF_NUMBER} כשצריך.`);
     at += 60_000;
     const second = gatewayWith({ jid: JID(9), roster, at });
-    await withTx(db.pool, (c) => job.sweepGroups(c, second.deps));
+    await pass(second.deps);
     assert.equal(second.sent[0].body, `רגע — @${missing} עוד לא כתבו לי.`);
     at += 60_000;
     const third = gatewayWith({ jid: JID(9), roster, at });
-    await withTx(db.pool, (c) => job.sweepGroups(c, third.deps));
+    await pass(third.deps);
     assert.equal(third.sent[0].body, `עוד מחכה ל: @${missing}  🧐`, 'the tagless rewording is ignored');
   } finally {
     await withTx(db.pool, (c) => flags.setFlag(c, templates.FLAG, {}));
@@ -292,10 +319,10 @@ test('a sweep with no new activity says nothing', async () => {
   const at = Date.now();
 
   const first = gatewayWith({ jid: JID(4), roster, at });
-  await withTx(db.pool, (c) => job.sweepGroups(c, first.deps));
+  await pass(first.deps);
 
   const again = gatewayWith({ jid: JID(4), roster, at });   // same timestamp
-  const out = await withTx(db.pool, (c) => job.sweepGroups(c, again.deps));
+  const out = await pass(again.deps);
   assert.equal(out.notices, 0);
   assert.deepEqual(again.sent, []);
 });
@@ -309,13 +336,13 @@ test('the last person writes, and the group opens with an agent of its own', asy
   const roster = `${a.phone}, ${b.phone}`;
 
   const first = gatewayWith({ jid: JID(5), roster, at: Date.now() });
-  await withTx(db.pool, (c) => job.sweepGroups(c, first.deps));
+  await pass(first.deps);
 
   // b finally writes to her privately.
   await db.pool.query(`UPDATE users SET last_inbound_at = now() WHERE id = $1`, [b.id]);
 
   const second = gatewayWith({ jid: JID(5), roster, at: Date.now() + 60_000 });
-  const out = await withTx(db.pool, (c) => job.sweepGroups(c, second.deps));
+  const out = await pass(second.deps);
 
   assert.deepEqual(out.opened, [JID(5)]);
   assert.equal(out.announced, 0, 'nobody was ever told to wait');
@@ -339,20 +366,20 @@ test('a room that was told somebody was missing hears that everybody arrived', a
   const at = Date.now();
 
   const first = gatewayWith({ jid: JID(21), roster, at });
-  await withTx(db.pool, (c) => job.sweepGroups(c, first.deps));   // registers + intro
+  await pass(first.deps);   // registers + intro
 
   // Somebody tags her while b is still a stranger: now the room has been told.
   const tagged = gatewayWith({ jid: JID(21), roster, at: at + 60_000, messageId: 'MSG-9' });
-  const out2 = await withTx(db.pool, (c) => job.sweepGroups(c, tagged.deps));
+  const out2 = await pass(tagged.deps);
   assert.equal(out2.notices, 1);
   const told = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', JID(21)));
   assert.ok(told.gate_notice_at, 'the wait is on the record, not just the notice count');
 
   await db.pool.query(`UPDATE users SET last_inbound_at = now() WHERE id = $1`, [b.id]);
   const third = gatewayWith({ jid: JID(21), roster, at: at + 120_000 });
-  const out3 = await withTx(db.pool, (c) => job.sweepGroups(c, {
+  const out3 = await pass({
     ...third.deps, now: helpers.daytime(),
-  }));
+  });
   assert.deepEqual(out3.opened, [JID(21)]);
   assert.equal(out3.announced, 1);
   assert.match(third.sent.at(-1).body, /כולם כאן/);
@@ -371,10 +398,10 @@ test('a room that was only ever told it was too large opens quietly', async () =
   await withTx(db.pool, (c) => flags.setFlag(c, 'group_max_members', 1));
   try {
     const first = gatewayWith({ jid: JID(22), roster, at });
-    await withTx(db.pool, (c) => job.sweepGroups(c, first.deps));   // registers + intro
+    await pass(first.deps);   // registers + intro
 
     const tagged = gatewayWith({ jid: JID(22), roster, at: at + 60_000 });
-    const out2 = await withTx(db.pool, (c) => job.sweepGroups(c, tagged.deps));
+    const out2 = await pass(tagged.deps);
     assert.equal(out2.notices, 1);
     assert.match(tagged.sent.at(-1).body, /מסתדרת טוב עד/);
     const told = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', JID(22)));
@@ -385,9 +412,9 @@ test('a room that was only ever told it was too large opens quietly', async () =
   }
 
   const third = gatewayWith({ jid: JID(22), roster, at: at + 120_000 });
-  const out3 = await withTx(db.pool, (c) => job.sweepGroups(c, {
+  const out3 = await pass({
     ...third.deps, now: helpers.daytime(),
-  }));
+  });
   assert.deepEqual(out3.opened, [JID(22)]);
   assert.equal(out3.announced, 0);
   assert.deepEqual(third.sent, []);
@@ -410,18 +437,18 @@ test('a group that opens in the small hours opens quietly and announces later', 
   // Registered and greeted, then tagged while b is still a stranger — which is
   // what earns the opening line at all. A reply to a live tag has no hours.
   const first = gatewayWith({ jid: JID(6), roster, at: evening });
-  await withTx(db.pool, (c) => job.sweepGroups(c, { ...first.deps, now: new Date(evening) }));
+  await pass({ ...first.deps, now: new Date(evening) });
   const tagged = gatewayWith({ jid: JID(6), roster, at: evening + 60_000 });
-  const told = await withTx(db.pool, (c) => job.sweepGroups(c, {
+  const told = await pass({
     ...tagged.deps, now: new Date(evening + 60_000),
-  }));
+  });
   assert.equal(told.notices, 1);
 
   // b writes to her in the middle of the night. No live tag: the group opens
   // because of something that happened in a private chat.
   await db.pool.query(`UPDATE users SET last_inbound_at = now() WHERE id = $1`, [b.id]);
   const g = gatewayWith({ jid: JID(6), roster, at: evening + 60_000 });
-  const out = await withTx(db.pool, (c) => job.sweepGroups(c, { ...g.deps, now: night }));
+  const out = await pass({ ...g.deps, now: night });
 
   assert.deepEqual(out.opened, [JID(6)], 'it really is open');
   assert.equal(out.announced, 0, 'it just does not shout about it at half past midnight');
@@ -433,7 +460,7 @@ test('a group that opens in the small hours opens quietly and announces later', 
   // Morning.
   const morning = new Date(`${day}T09:30:00+03:00`);
   const g2 = gatewayWith({ jid: JID(6), roster, at: evening + 60_000 });
-  const out2 = await withTx(db.pool, (c) => job.sweepGroups(c, { ...g2.deps, now: morning }));
+  const out2 = await pass({ ...g2.deps, now: morning });
   assert.equal(out2.announced, 1);
   assert.match(g2.sent[0].body, /כולם כאן/);
 });
@@ -441,14 +468,14 @@ test('a group that opens in the small hours opens quietly and announces later', 
 test('a newcomer who never wrote re-locks an open group', async () => {
   const a = await connectedUser('+972603000060');
   const first = gatewayWith({ jid: JID(7), roster: a.phone, at: Date.now() });
-  await withTx(db.pool, (c) => job.sweepGroups(c, first.deps));
+  await pass(first.deps);
   const opened = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', JID(7)));
   assert.equal(opened.state, 'open');
 
   const second = gatewayWith({
     jid: JID(7), roster: `${a.phone}, +972603000061`, at: Date.now() + 60_000,
   });
-  const out = await withTx(db.pool, (c) => job.sweepGroups(c, second.deps));
+  const out = await pass(second.deps);
 
   assert.deepEqual(out.relocked, [JID(7)]);
   const row = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', JID(7)));
@@ -462,9 +489,9 @@ test('a newcomer who never wrote re-locks an open group', async () => {
   // person who caused the lock is the one person nothing else would tell.
   await connectedUser('+972603000061');
   const third = gatewayWith({ jid: JID(7), roster: `${a.phone}, +972603000061`, at: Date.now() + 120_000 });
-  const again = await withTx(db.pool, (c) => job.sweepGroups(c, {
+  const again = await pass({
     ...third.deps, now: helpers.daytime(),
-  }));
+  });
   assert.deepEqual(again.opened, [JID(7)]);
   assert.equal(again.announced, 1, 'a re-open is announced like a first open');
 });
@@ -475,7 +502,7 @@ test('a newcomer who never wrote re-locks an open group', async () => {
 test('an unreadable roster entry keeps the group where it is', async () => {
   const a = await connectedUser('+972603000070');
   const g = gatewayWith({ jid: JID(8), roster: `${a.phone}, ~Someone` });
-  const out = await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+  const out = await pass(g.deps);
 
   assert.equal(out.skipped, 1);
   assert.deepEqual(out.opened, []);
@@ -486,12 +513,12 @@ test('an unreadable roster entry keeps the group where it is', async () => {
 test('a transcript that cannot be read is no evidence, not an empty group', async () => {
   const a = await connectedUser('+972603000080');
   const first = gatewayWith({ jid: JID(9), roster: a.phone, at: Date.now() });
-  await withTx(db.pool, (c) => job.sweepGroups(c, first.deps));
+  await pass(first.deps);
 
   const blind = gatewayWith({ jid: JID(9), roster: a.phone, at: Date.now() + 60_000 });
-  const out = await withTx(db.pool, (c) => job.sweepGroups(c, {
+  const out = await pass({
     ...blind.deps, readGroupContext: () => null,
-  }));
+  });
   assert.equal(out.unreadable, 1);
   const members = await withTx(db.pool, async (c) => {
     const row = await groupsDomain.getByExternalId(c, 'whatsapp', JID(9));
@@ -536,7 +563,7 @@ test('the sweep makes the sender list the current users, every pass', async () =
 
   assert.equal(occ.isGroupSenderGateOpen(occ.loadConfig(configPath)), true,
     'before the first pass nothing gates the senders');
-  const out = await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+  const out = await pass(g.deps);
   assert.equal(out.senderGateOpen, false);
   const admitted = () => occ.groupAllowFrom(occ.loadConfig(configPath));
   assert.ok(admitted().includes(a.phone));
@@ -545,17 +572,17 @@ test('the sweep makes the sender list the current users, every pass', async () =
   // Pausing somebody takes them out: her answer lands in the whole room, so a
   // paused member's tag would walk straight around the pause.
   await db.pool.query(`UPDATE users SET paused_at = now() WHERE id = $1`, [a.id]);
-  await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+  await pass(g.deps);
   assert.ok(!admitted().includes(a.phone));
   assert.ok(admitted().includes('+972604000002'), 'and nobody else moved');
 
   // Deleting the row takes them out too, with no separate call site: one
   // declarative rule covers joining, pausing, blocking and deletion alike.
   await db.pool.query(`UPDATE users SET paused_at = NULL WHERE id = $1`, [a.id]);
-  await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+  await pass(g.deps);
   assert.ok(admitted().includes(a.phone), 'un-pausing puts them back');
   await db.pool.query(`DELETE FROM users WHERE id = $1`, [a.id]);
-  await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+  await pass(g.deps);
   assert.ok(!admitted().includes(a.phone));
 });
 
@@ -565,13 +592,13 @@ test('the sweep makes the sender list the current users, every pass', async () =
 test('a system with no eligible users never writes an empty sender list', async () => {
   await connectedUser('+972604000010');
   const g = gatewayWith({ jid: JID(2), roster: '+972604000010' });
-  await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+  await pass(g.deps);
   const before = occ.groupAllowFrom(occ.loadConfig(configPath));
   assert.ok(before.length > 0);
 
   await db.pool.query(`UPDATE users SET status = 'blocked'`);
   try {
-    const out = await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+    const out = await pass(g.deps);
     assert.deepEqual(occ.groupAllowFrom(occ.loadConfig(configPath)), before,
       'the last known-good list stays rather than becoming an open door');
     assert.equal(out.senderGateOpen, false);
@@ -584,7 +611,7 @@ test('her own number never reaches the sender list', async () => {
   await connectedUser(occ.SELF_PHONE);
   await connectedUser('+972604000020');
   const g = gatewayWith({ jid: JID(3), roster: '+972604000020' });
-  await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+  await pass(g.deps);
 
   const admitted = occ.groupAllowFrom(occ.loadConfig(configPath));
   assert.ok(admitted.includes('+972604000020'));
