@@ -168,6 +168,46 @@ test('day one: the calendar offer is skipped once Google is connected', async ()
   } finally { client.release(); }
 });
 
+test('a rung the ladder falls through to also replaces the step still waiting', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const flags = require('../src/domain/flags');
+  const H = 3600_000;
+  const u = await makeUser(db.pool, '+972615000143', { firstName: 'Ben' });
+  const t0 = Date.now() - 9 * H;
+  await db.pool.query(
+    `UPDATE users SET onboarded_at = $2, created_at = $2, timezone = 'Asia/Jerusalem',
+            timezone_confirmed = TRUE, last_inbound_at = $2
+       WHERE id = $1`, [u.id, new Date(t0)]);
+
+  const c = await db.pool.connect();
+  try {
+    // The 5h step goes out and is held for the night, exactly as it was for him.
+    await checkin.run(c, t0 + 5 * H + 60_000);
+    await c.query(
+      `UPDATE outbox SET hold_reason = 'night', release_after = now() + interval '8 hours'
+        WHERE user_id = $1 AND kind = 'checkin' AND sent_at IS NULL`, [u.id]);
+    const five = await c.query(
+      `SELECT id FROM outbox WHERE user_id = $1 AND kind = 'checkin' AND sent_at IS NULL`, [u.id]);
+    assert.equal(five.rows.length, 1);
+
+    // Now the 8h step DECLINES (Google connecting is shut), so the run falls
+    // through to an ordinary rung. Keyed on 'onboarding:%' the supersede would
+    // have missed it and both would have been released together in the morning.
+    await flags.setFlag(c, 'google_connect_phones', '');
+    await checkin.run(c, t0 + 8 * H + 60_000);
+    await flags.setFlag(c, 'google_connect_phones', 'all');
+
+    const { rows } = await c.query(
+      `SELECT id, hold_reason, sent_at FROM outbox
+        WHERE user_id = $1 AND kind = 'checkin' ORDER BY id`, [u.id]);
+    const older = rows.find((r) => String(r.id) === String(five.rows[0].id));
+    assert.equal(older.hold_reason, 'superseded', 'the waiting step is replaced, not joined');
+    assert.ok(older.sent_at, 'withdrawn like a cancellation');
+    const live = rows.filter((r) => !r.sent_at);
+    assert.equal(live.length, 1, 'exactly one live rung');
+  } finally { c.release(); }
+});
+
 test('day one: the calendar offer is skipped while Google connecting is off', async () => {
   const checkin = require('../src/jobs/checkin');
   const flags = require('../src/domain/flags');

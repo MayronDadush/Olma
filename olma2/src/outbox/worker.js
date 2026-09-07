@@ -115,8 +115,22 @@ async function drainOnce(pool, deliver, now = new Date()) {
            WHERE user_id = $1 AND sent_at IS NOT NULL AND sent_at::date = $2::date
              AND (hold_reason IS NULL OR hold_reason NOT IN ('expired', 'cancelled_by_admin', 'paused', 'superseded'))
              AND urgency <> 'urgent'
-             AND kind NOT IN ('reminder', 'digest')`,
+             AND kind NOT IN ('reminder', 'digest', 'introduction')`,
           [row.user_id, now]
+        );
+
+        // An introduction still waiting to go out. Bounded to two days on
+        // purpose: a repair that was queued and somehow never delivered must
+        // not silence everything else for this person for ever, and past that
+        // the queue is more useful than the apology.
+        const { rows: introRows } = await client.query(
+          `SELECT 1 FROM outbox
+            WHERE user_id = $1 AND kind = 'introduction' AND sent_at IS NULL
+              AND id <> $2
+              AND (expires_at IS NULL OR expires_at > $3)
+              AND created_at > $3::timestamptz - interval '2 days'
+            LIMIT 1`,
+          [row.user_id, row.id, now]
         );
 
         // Named, because the batch below re-decides each sibling against the
@@ -129,6 +143,7 @@ async function drainOnce(pool, deliver, now = new Date()) {
           window: win.data.window, tz: row.timezone,
           lastInboundAt: row.last_inbound_at,
           hasDigest: Boolean(row.digest_times),
+          introductionPending: introRows.length > 0,
           sentToday: sentRows[0].n, budget, now,
         };
         const verdict = decide(facts);

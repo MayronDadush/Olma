@@ -197,6 +197,21 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   redo goes out under the next rung's key with the plain wording, keeps the
   urgency of the rung it replaces, and still spends a rung so a broken pipe
   cannot loop (`incidents.md`, "The reminder that could not climb").
+- **Nothing Olma DECIDED to say goes out in front of an introduction she still
+  owes.** An `introduction` outbox row is her saying who she is to somebody who
+  never heard it — the intake greeter's job normally, a queued repair when the
+  greeter missed. While one is unsent the gate holds every other row as
+  `awaiting_introduction` (held, never dropped) and exempts it from the daily
+  budget, because everything else is waiting behind it and a budget hold there
+  is a deadlock. A moment THEY chose still passes — a digest, rung 1 of a
+  reminder they asked for in words — on the same line the gate draws
+  everywhere else, and it survives the quiet drop too: somebody who has not
+  answered is the likeliest person never to have been told who was writing to
+  them. Bounded to two days in the worker: a repair that never
+  went out must not silence somebody for ever. What decided this before was
+  `ORDER BY created_at`, which is an accident: ג.ב's introduction and a
+  day-one calendar offer were both due at 08:00, from an assistant that had
+  not yet said what she was (2026-09-08).
 - **Reminders that come due in the same tick go out as ONE message, and the
   coalescing happens at DELIVERY, never at enqueue.** A batch enqueued under
   one idempotency key would let cancelling a single reminder re-create the
@@ -315,11 +330,15 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   A backoff, not a mute: one message from them re-opens it. It asked Sarah the
   same question on four mornings first (`incidents.md`, "The morning digest
   asked the same question four mornings running").
-- **A day-one step that has not gone out is REPLACED by the next, never
-  joined by it.** `checkin.run` withdraws the person's still-unsent
+- **A day-one step that has not gone out is REPLACED by the NEXT CHECK-IN of
+  any kind, never joined by it.** `checkin.run` withdraws the person's still-unsent
   `onboarding:*` rows (`hold_reason = 'superseded'`) when it enqueues the
-  next step; the expiry numbers alone never did this and two steps went out
-  at 08:00 to two people (`incidents.md`, "Two good mornings at once").
+  next check-in; the expiry numbers alone never did this and two steps went
+  out at 08:00 to two people (`incidents.md`, "Two good mornings at once").
+  Keyed on `onboarding:%` it covered step-replaces-step and nothing else, so a
+  day-one step that DECLINED and fell through to an ordinary rung put the two
+  side by side again — which is what the closed Google door produced the same
+  night. The ladder has ONE live rung at a time.
 - **Somebody who has stopped answering hears nothing Olma decided to say, and
   nothing on their record is cancelled.** The check-in ladder's one miss
   (`checkin_misses >= 1`) is the signal and the delivery gate is where it

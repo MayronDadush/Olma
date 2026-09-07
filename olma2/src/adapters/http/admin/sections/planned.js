@@ -10,6 +10,7 @@ const OUTBOX_STATE = {
   night: 'ממתינות לשעה מתאימה', blocked: 'ממתינות (המשתמש במכסה)',
   budget: 'יצטרפו לסיכום הבא', expired: 'פג תוקפן',
   quiet: 'נעצרו — לא עונה', moved: 'המשימה זזה', superseded: 'הוחלפו בשלב הבא',
+  awaiting_introduction: 'ממתינות להיכרות',
   settling: 'ממתינות לייצוב המערכת',
   cancelled_by_admin: 'בוטל ע"י מנהל',
 };
@@ -25,6 +26,7 @@ const CANCELLED_BY_ADMIN = 'cancelled_by_admin';
 // learn an internal identifier to understand what Olma is about to say.
 const KIND_LABELS = {
   checkin: 'פנייה יזומה',
+  introduction: 'היכרות ראשונה',
   reminder: 'תזכורת',
   digest: 'סיכום יומי',
   unblock_summary: 'סיכום אחרי מכסה',
