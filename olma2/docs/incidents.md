@@ -38,6 +38,7 @@ never trust a dated narrative for something you are about to act on.
 
 - [The lock that worked perfectly, on three files out of sixteen (2026-09-01)](#the-lock-that-worked-perfectly-on-three-files-out-of-sixteen-2026-09-01)
 - [The test suite provisioned into production, three times (fixed 2026-09-06)](#the-test-suite-provisioned-into-production-three-times-fixed-2026-09-06)
+- [The user who would not stay deleted (fixed 2026-09-07)](#the-user-who-would-not-stay-deleted-fixed-2026-09-07)
 - [A new user moved into the previous occupant's workspace (fixed 2026-09-06)](#a-new-user-moved-into-the-previous-occupants-workspace-fixed-2026-09-06)
 - [A leaked token has a rotation now, and the file order is the design (2026-09-03)](#a-leaked-token-has-a-rotation-now-and-the-file-order-is-the-design-2026-09-03)
 - [The guard was right within a minute, and unread for eighty (fixed 2026-09-01)](#the-guard-was-right-within-a-minute-and-unread-for-eighty-fixed-2026-09-01)
@@ -1106,6 +1107,66 @@ refactor that quietly stops checking turns red rather than green — and it
 asserts `NODE_TEST_CONTEXT` is actually set, because a guard keyed on a
 variable nobody sets would pass everything for ever.
 
+### The user who would not stay deleted (fixed 2026-09-07)
+
+On the morning of 2026-09-07, three WhatsApp messages went out to
+`+972500000777` — a meeting proposal and two onboarding check-ins, delivered
+between 08:01 and 08:06 Israel time. Nobody meant to message that number.
+Two more had been queued overnight and the delivery gate had held and expired
+them correctly; the gate was never the problem.
+
+The number belonged to `u-25`, a user row created at 20:46 the previous
+evening by the LIVE brokerd. Not by a test process — the fail-closed guard
+added the day before was working, and was never in this path. Someone had run
+the eval suite against production. The eval user (`u-15`, "בדיקה") proposed a
+slot to a fixture number, the intake greeter answered it, and the intake sweep
+turned that lane into a real person with a real onboarding ladder.
+
+Deleting it did not work. `scripts/delete-user.js --apply` reported everything
+gone — row, agent, binding, workspace, all four verified — and sixty seconds
+later the same phone was back as `u-27`, with a fresh id and a fresh ladder.
+The second delete would have done the same.
+
+**`deprovisionUser` deletes everything olma2 owns, and the sweep rebuilds
+people from something it does not own.** `sweepIntakeSessions` iterates the
+GATEWAY's session store (`jobs/intake.js`), and the loop has no age bound: any
+peer that ever reached the intake greeter and has no active user row is
+provisioned on the next five-minute tick. The stale intake session here was
+24.8 hours old and belonged to nobody. Deleting the row simply made the phone
+eligible again.
+
+This was never only about a phantom. **"Delete my account" did not stick for
+anyone** whose intake session was still in the store — the dashboard's delete
+button and the CLI both — and it undid itself within five minutes, silently,
+looking exactly like a person who had come back on their own.
+
+The fix is `intake/gateway-session.js`: `deprovisionUser` now also deletes
+`agent:intake:whatsapp:direct:<phone>` through the gateway's own CLI, which
+archives the transcript on the way out. Three things about its shape:
+
+- **Through the CLI, never the sqlite file.** The gateway owns that store and
+  holds it open (CLAUDE.md, "We were a second writer to someone else's file").
+- **It refuses to run in a test process and returns `null`, not `false`.**
+  `deploy.sh --restart` runs the suite ON THE BOX, where those sessions belong
+  to real people. "Not attempted" and "attempted and failed" are different
+  answers and a caller that conflates them reports a session as surviving when
+  nothing ever asked.
+- **`forgetIntakeSession: false` is the difference between deleting an account
+  and resetting one.** `user-testbed.js`'s rehearsal opts out because its whole
+  transaction is rolled back, and a ROLLBACK cannot bring a deleted session
+  back. A `reset` does NOT opt out: leaving the session there provisions the
+  person again without them writing, which is not the cold start that command
+  claims to produce.
+
+Two things went wrong in the diagnosis and are worth keeping. The orphan
+agents were reported as "inert, no bindings" from a cross-reference that was
+simply wrong — `u-27` had a binding to that very phone. And the first
+confirmation that the phantom stayed away was worthless: the heartbeat query
+behind it failed on a bad column name for every one of its fifteen attempts,
+so "no row" was measured against a sweep nobody had shown had run. The real
+proof is the sweep's own note, `{"provisioned":[],"waitlisted":[],
+"skipped":14}` at 06:00:49.
+
 ### A new user moved into the previous occupant's workspace (fixed 2026-09-06)
 
 Cleaning up after the above surfaced a second, independent fault. Agent ids are
@@ -1153,6 +1214,17 @@ right up until the moment they did not.
 - **A missing file is reported, never written blind.** Writing a token into a
   directory that may no longer be that person's workspace is worse than the
   auth failure it would paper over.
+
+**Confirmed on a real person, 2026-09-07.** עידן was provisioned into `u-26`
+at 05:39, an id whose directory had held another user's leaked intake text
+since the previous evening. `evictStaleWorkspace` parked it as
+`u-26.orphan-2026-09-07T05-39-09-248Z` and seeded clean: his card was written
+from scratch and no file under his workspace predates his signup. The parked
+directories accumulate and nothing prunes them — deliberate, since each one is
+somebody's data set aside by a provisioning path that is the wrong place to
+destroy evidence, but it means **an `orphan-` directory is not dead space and
+an `u-N` directory with no user row is not proof of a phantom.** It may be a
+workspace waiting for the next holder of that id.
 
 ### A leaked token has a rotation now, and the file order is the design (2026-09-03)
 
