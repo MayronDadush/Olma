@@ -326,10 +326,18 @@ async function listTasks(client, ownerId, { status, includeArchived } = {}) {
 
   // Pending only. A sent or cancelled reminder is a thing that happened or a
   // plan that was withdrawn; neither is an hour to promise anybody.
+  //
+  // `attempts = 0` is what says that, and `sent_at IS NULL` stopped saying it
+  // when the escalation ladder shipped: a reminder that DELIVERED rung 1 keeps
+  // `sent_at` NULL for up to two days, so the `at` built below was a wall-clock
+  // hour already in the past, attached to the task as the next time Olma would
+  // raise it. Every mid-ladder row on the live database had `remind_at` behind
+  // now the day this was fixed.
   const { rows: pending } = await client.query(
     `SELECT r.id, r.task_id, r.remind_at, r.repeat_rule
        FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-      WHERE t.owner_id = $1 AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+      WHERE t.owner_id = $1 AND r.sent_at IS NULL AND r.attempts = 0
+        AND r.cancelled_at IS NULL
       ORDER BY r.remind_at`,
     [ownerId]
   );

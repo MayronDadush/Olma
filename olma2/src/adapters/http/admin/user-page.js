@@ -162,7 +162,8 @@ async function renderUserPage(client, userId, { confirmDelete = false, csrf = ''
 
   const { rows: tasks } = await client.query(
     `SELECT t.*, (SELECT count(*)::int FROM task_reminders r
-                  WHERE r.task_id = t.id AND r.sent_at IS NULL AND r.cancelled_at IS NULL) AS pending_reminders
+                  WHERE r.task_id = t.id AND r.sent_at IS NULL AND r.attempts = 0
+                    AND r.cancelled_at IS NULL) AS pending_reminders
      FROM tasks t WHERE t.owner_id = $1 AND t.archived_at IS NULL
      ORDER BY t.status = 'done', coalesce(t.parent_id, t.id), t.parent_id NULLS FIRST, t.id`, [userId]);
   const { rows: prefs } = await client.query(

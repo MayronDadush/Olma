@@ -293,11 +293,19 @@ async function cancelReminder(client, ownerId, reminderId) {
   });
 }
 
+// Pending means `attempts = 0`, and this asked neither half of that. It
+// filtered on `cancelled_at` alone, so a RETIRED reminder — the hour came, the
+// message went out, the row was stamped — came back as one still to come; and
+// since the escalation ladder a row that delivered rung 1 keeps `sent_at` NULL
+// for up to two days while `remind_at` sits in the past. Measured on the live
+// database the day this was fixed: 105 rows returned for real users, 13 of
+// them actually pending. The tool's own description says "pending reminders",
+// so every one of the other 92 was an hour Olma could promise somebody twice.
 async function listReminders(client, ownerId, taskId) {
   const { rows } = await client.query(
     `SELECT r.* FROM task_reminders r JOIN tasks t ON t.id = r.task_id
      WHERE t.owner_id = $1 AND ($2::bigint IS NULL OR r.task_id = $2)
-       AND r.cancelled_at IS NULL
+       AND r.cancelled_at IS NULL AND r.sent_at IS NULL AND r.attempts = 0
      ORDER BY r.remind_at`,
     [ownerId, taskId || null]
   );

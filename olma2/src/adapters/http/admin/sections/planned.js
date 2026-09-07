@@ -193,7 +193,8 @@ async function renderPlannedForUser(client, u, csrf = '') {
     `SELECT t.title, r.repeat_rule,
             to_char(r.remind_at AT TIME ZONE COALESCE($2, 'UTC'), 'DD/MM HH24:MI') AS local_time
      FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-     WHERE t.owner_id = $1 AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+     WHERE t.owner_id = $1 AND r.sent_at IS NULL AND r.attempts = 0
+       AND r.cancelled_at IS NULL
      ORDER BY r.remind_at LIMIT 15`, [u.id, u.timezone]);
 
   const hidden = `<input type="hidden" name="csrf" value="${csrf}">
