@@ -37,11 +37,32 @@ const TOOLS = [
   ...require('./tools/shares'),
   ...require('./tools/meetings'),
   ...require('./tools/facts'),
+  ...require('./tools/group'),
 ];
 const BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
 
-function toolDefinitions() {
-  return TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema }));
+// Who a tool is for. Unmarked means a person, because that is what 86 of them
+// are; `audience: 'group'` is set by `groupTool` and by nothing else.
+// brokerd enforces this — the list below only decides what a given agent is
+// SHOWN, and a list is not a lock.
+function audienceOf(t) { return t.audience === 'group' ? 'group' : 'user'; }
+
+// What the shim serves. It is the WHOLE list, group tools included, and that
+// is a measurement rather than a preference: the gateway spawns the MCP child
+// with cwd `/root` and none of its own environment (checked on the live box,
+// 2026-09-07 — `PWD=/root` and nothing else), and our agent entries carry no
+// per-agent MCP scoping we could rely on. So the shim cannot know which agent
+// it is answering, and a list it filtered by guesswork would take a group
+// agent's only tools away from it.
+//
+// That is affordable exactly because the list is not the lock: brokerd refuses
+// a group token on a person's tool and a person's token on a group tool, at
+// the point of the call. The group set is kept tiny for the same reason every
+// schema is (55k on every turn for everybody), and each one says GROUP AGENTS
+// ONLY in its first three words so a person's model does not reach for it.
+function toolDefinitions({ audience = null } = {}) {
+  const list = audience ? TOOLS.filter((t) => audienceOf(t) === audience) : TOOLS;
+  return list.map(({ name, description, inputSchema }) => ({ name, description, inputSchema }));
 }
 
-module.exports = { TOOLS, BY_NAME, toolDefinitions };
+module.exports = { TOOLS, BY_NAME, toolDefinitions, audienceOf };

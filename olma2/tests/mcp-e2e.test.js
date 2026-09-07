@@ -488,3 +488,58 @@ test('the identity never reaches a handler under either name', async () => {
   assert.equal(rows.length, 1, 'the legacy-named call did real work');
   assert.equal(Number(rows[0].owner_id), Number(bob.id), 'as the right person');
 });
+
+// ---- the group door ---------------------------------------------------------
+//
+// Last in the file on purpose: a group token proven on this connection turns
+// the shim's identity repair off for the rest of it (bin/olma-mcp.js — a
+// connection that has served two KINDS stops repairing), and the repair tests
+// above have to run against a connection that still has it.
+test('a group speaks with its own identity, and cannot borrow a person\'s tools', async () => {
+  const groups = require('../src/domain/groups');
+  const { withTx } = require('../src/db/pool');
+  const token = 'olma_grp_' + 'e'.repeat(32);
+  const jid = '120363000000000777@g.us';
+
+  await db.pool.query(`UPDATE users SET last_inbound_at = now() WHERE id = ANY($1)`,
+    [[alice.id, bob.id]]);
+  const group = await withTx(db.pool, async (c) => {
+    const reg = await groups.registerGroup(c, {
+      externalId: jid, subject: 'e2e room', members: [{ phone: alice.phone }, { phone: bob.phone }],
+    });
+    const { rows } = await c.query(
+      `UPDATE chat_groups SET state = 'open', agent_id = $2, identity_token = $3
+        WHERE id = $1 RETURNING *`, [reg.data.group.id, `g-${reg.data.group.id}`, token]);
+    return rows[0];
+  });
+
+  // The room's own tool, over the real shim and the real socket.
+  const status = await callTool('group_status', { olma_identity: token });
+  assert.match(status, /^OK/);
+  assert.match(status, new RegExp(alice.phone.replace('+', '\\+')));
+
+  // A person's tool with the group's key: refused at the call, not at the list.
+  const borrowed = await callTool('list_my_tasks', { olma_identity: token });
+  assert.match(borrowed, /^ERROR/);
+  assert.match(borrowed, /not available in a group/);
+
+  // And the mirror: a person cannot ask a room's question from their private
+  // chat, where nobody else can see what was asked.
+  const asPerson = await callTool('group_status', { olma_identity: alice.identity_token });
+  assert.match(asPerson, /^ERROR/);
+  assert.match(asPerson, /only available to a group/);
+
+  // Every group call is on the record with the member it acted for — nothing
+  // was filed by the gateway here, so there is no acting member to name, and
+  // the row says so rather than guessing one.
+  const { rows: audited } = await db.pool.query(
+    `SELECT actor_id, detail FROM audit_log WHERE event = 'group.tool' ORDER BY id DESC LIMIT 1`);
+  assert.equal(audited.length, 1);
+  assert.equal(audited[0].actor_id, null);
+  assert.equal(Number(audited[0].detail.groupId), Number(group.id));
+  assert.equal(audited[0].detail.tool, 'group_status');
+
+  const { rows: refused } = await db.pool.query(
+    `SELECT detail FROM audit_log WHERE event = 'group.tool_refused' ORDER BY id DESC LIMIT 1`);
+  assert.equal(refused[0].detail.tool, 'list_my_tasks');
+});

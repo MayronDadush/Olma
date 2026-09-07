@@ -33,8 +33,23 @@ const CALL_TIMEOUT_MS = 30_000;
 // A repair writes the CURRENT parameter name and clears the legacy one, so a
 // model still copying the old name from earlier in its session is nudged
 // forward rather than kept there (brokerd accepts both regardless).
-const TOKEN_RE = /^olma_tok_[0-9a-f]{32}$/;
+//
+// Since group mode there are TWO kinds of identity — a person's `olma_tok_`
+// and a group's `olma_grp_` — and the repair must never cross between them.
+// The comment above already named the hazard ("nothing here may bet on" one
+// shim per session); with a group token in play it stops being theoretical,
+// because the mistake would no longer be one person acting as another but a
+// whole ROOM acting as one of the people in it. So: a proven token of a
+// second kind on the same connection disables the repair for that connection
+// entirely. Nothing is lost — the repair exists for a model that mistypes,
+// and a connection serving two kinds has bigger problems than a typo.
+const USER_TOKEN_RE = /^olma_tok_[0-9a-f]{32}$/;
+const GROUP_TOKEN_RE = /^olma_grp_[0-9a-f]{32}$/;
+const wellFormed = (t) => USER_TOKEN_RE.test(t) || GROUP_TOKEN_RE.test(t);
+const kindOf = (t) => (GROUP_TOKEN_RE.test(t) ? 'group' : 'user');
 let knownGoodToken = null;
+let knownGoodKind = null;
+let mixedKinds = false;
 
 // ---- brokerd client (single socket, sequential-friendly, id-mapped) --------
 let sockConn = null;
@@ -119,7 +134,7 @@ rl.on('line', async (line) => {
       const { name, arguments: rawArgs } = params || {};
       const args = { ...(rawArgs || {}) };
       // Malformed identity + a proven one on hand → repair before the round trip.
-      if (knownGoodToken && !TOKEN_RE.test(String(readIdentity(args) || ''))) {
+      if (knownGoodToken && !mixedKinds && !wellFormed(String(readIdentity(args) || ''))) {
         args[IDENTITY_PARAM] = knownGoodToken;
         delete args[LEGACY_IDENTITY_PARAM];
       }
@@ -127,8 +142,11 @@ rl.on('line', async (line) => {
       try {
         const res = await brokerCall(name, args);
         text = res.text || (res.ok ? 'OK' : 'ERROR internal: empty broker reply');
-        if (text.startsWith('OK') && TOKEN_RE.test(String(readIdentity(args) || ''))) {
-          knownGoodToken = readIdentity(args);
+        const used = String(readIdentity(args) || '');
+        if (text.startsWith('OK') && wellFormed(used)) {
+          if (knownGoodKind && kindOf(used) !== knownGoodKind) mixedKinds = true;
+          knownGoodToken = used;
+          knownGoodKind = kindOf(used);
         }
       } catch (e) {
         text = `ERROR unavailable: assistant backend not reachable (${e.message})`;

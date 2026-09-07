@@ -592,15 +592,57 @@ cannot show you.
    its row, its agent and its admission until somebody notices. Harmless
    (nothing reaches her from a group she is not in) but it will not clean up
    after itself.
-5. **An open group's agent has no working tools yet.** Its token is
-   `olma_grp_…`, and the MCP shim resolves identity against `users`, so every
-   tool call from a group agent fails by name until the coordination layer
-   teaches brokerd to read a group token. That layer is next; until it lands
-   an open group can talk but cannot act.
+5. ~~An open group's agent has no working tools yet.~~ **Closed 2026-09-07.**
+   A group token now resolves through its own door (`groups.resolveByToken`),
+   never through `users.resolveByToken` — see "The group's own door" below.
 6. A paused member is out of `groupAllowFrom` but still counts as *connected*
    by `isConnected` (a `user_id` and a `last_inbound_at`), so they can still be
    the reason a group opens while being unable to speak in it. Probably right,
    not decided.
+
+## The group's own door (2026-09-07)
+
+`users.resolveByToken` is "possession of this token IS this person", and the
+one thing a group must never be is a person: a group agent that resolved to a
+user would hold that user's tasks, facts, calendar and private chat inside a
+room with other people in it. So there are two doors and they never meet.
+
+- **Routing is by PREFIX, before either lookup.** `olma_grp_…` goes to
+  `groups.resolveByToken`; everything else to the person's door. A truncated
+  group token is therefore refused *as a group* — sent to the user door it
+  would come back "unknown identity token" and send the model hunting for a
+  file it does not have.
+- **Only an OPEN group acts.** A locked group is muted at the gateway and has
+  no agent, so this is unreachable today — which is why it is checked. The day
+  the mute fails, the tools must not be what lets a room where somebody never
+  signed up start reaching those people privately.
+- **The acting member is chosen by the server.** `groups.actingMember` reads
+  the last inbound the gateway filed for the group (`group_inbound_context`)
+  and joins it to the group's own live membership. A group agent that could
+  name its own actor could act as anybody in the room. Null — nothing filed,
+  or the sender is not a member — is a real answer, and a caller that needs a
+  person must refuse rather than pick one.
+- **The audiences are disjoint and brokerd enforces it**: a group token on a
+  person's tool and a person's token on a group tool are both refused at the
+  call, each with an audit row (`group.tool_refused`). Every successful group
+  call writes `group.tool` naming the member it acted for.
+
+**The tool LIST is not the lock, and cannot be.** Measured on the box
+2026-09-07: the gateway spawns the MCP child with `cwd=/root` and none of its
+own environment (`PWD=/root` and nothing else in `/proc/<pid>/environ`), and
+our agent entries carry no per-agent MCP scoping. The shim therefore cannot
+know which agent it is answering, and serves every tool to everybody — so the
+refusal has to live where the call runs. Group tools say `GROUP AGENTS ONLY`
+in their first three words so a person's model does not reach for one, and the
+group set is kept tiny because every schema is injected on every turn for
+everybody (55k budget).
+
+**The shim's identity repair is now kind-aware.** It replaces a *malformed*
+token with one already proven on the same stdio connection; with two kinds of
+token in the world, a connection that has proven both stops repairing
+altogether. The hazard it was always guarding ("nothing here may bet on one
+shim per session") stops being one person acting as another and becomes a
+whole ROOM acting as one of the people in it.
 
 ## iMessage
 

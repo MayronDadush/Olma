@@ -10,7 +10,7 @@ const net = require('node:net');
 const fs = require('node:fs');
 const { withTx } = require('../db/pool');
 const usersDomain = require('../domain/users');
-const { BY_NAME } = require('../adapters/mcp/registry');
+const { BY_NAME, audienceOf } = require('../adapters/mcp/registry');
 const { renderResult } = require('../adapters/mcp/render');
 const { readIdentity, stripIdentity } = require('../adapters/mcp/identity-param');
 const { FloodCounter } = require('./flood');
@@ -20,6 +20,7 @@ const reactions = require('../domain/reactions');
 const selfInitiated = require('../domain/self-initiated');
 const { captureDisplayName } = require('../adapters/mcp/tools/_shared');
 const groupContext = require('../domain/group-context');
+const groupsDomain = require('../domain/groups');
 
 // One of these per turn. The gateway spawns a fresh MCP shim for every agent
 // turn and the shim holds ONE socket to brokerd for its whole life, so a
@@ -288,6 +289,45 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
       // reaction target is read from OUR row, never from anything the model sent.
       let actorPhone = null;
       const result = await withTx(pool, async (client) => {
+        // ── the group door ────────────────────────────────────────────────
+        // Routed on the token's PREFIX, before the user door is even tried:
+        // a group token must never be looked up among people, and a truncated
+        // one must be refused as a group rather than come back "unknown
+        // identity token" and send the model hunting for a person's file.
+        //
+        // Everything below this branch — the quota, the 👀 on somebody's
+        // message, USER.md — is person-shaped and none of it applies to a
+        // room. A group turn is short by construction: resolve, check the
+        // audience, name the member who tagged her, run.
+        if (groupsDomain.looksLikeGroupToken(readIdentity(args))) {
+          const g = await groupsDomain.resolveByToken(client, readIdentity(args));
+          if (!g.ok) {
+            await require('../domain/audit').record(client, null, 'auth.failed', {
+              tool: name, reason: g.error.message, caller: 'group',
+            });
+            return g;
+          }
+          const group = g.data.group;
+          // A list is not a lock. The shim shows a group agent only its own
+          // handful, but the refusal that matters is here: a group token
+          // reaching a person's tool is the failure this whole design exists
+          // to make impossible, so it is checked where the call actually runs.
+          if (audienceOf(tool) !== 'group') {
+            await require('../domain/audit').record(client, group.registered_by_user_id, 'group.tool_refused', {
+              tool: name, groupId: group.id, reason: 'not a group tool',
+            });
+            return { ok: false, error: { code: 'forbidden', message: `${name} is not available in a group` } };
+          }
+          const actingUser = await groupsDomain.actingMember(client, group);
+          // On the record every time, with the member it acted for: a room is
+          // several people, and "who asked for this" is the first question
+          // anybody will have about anything she did there.
+          await require('../domain/audit').record(client, actingUser ? actingUser.id : null, 'group.tool', {
+            tool: name, groupId: group.id, actingPhone: actingUser ? actingUser.phone : null,
+          });
+          return tool.handler(client, { group, actingUser }, stripIdentity(args), { flood, now: clock });
+        }
+
         const auth = await usersDomain.resolveByToken(client, readIdentity(args));
         if (!auth.ok) {
           // Every auth failure is on the record: a bug or an attempt, and in
@@ -296,6 +336,12 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
             tool: name, reason: auth.error.message,
           });
           return auth;
+        }
+        // The mirror of the refusal above: these tools answer to a room, and
+        // a person calling one would be asking about a group from inside a
+        // private chat where nobody else can see what was asked.
+        if (audienceOf(tool) === 'group') {
+          return { ok: false, error: { code: 'forbidden', message: `${name} is only available to a group` } };
         }
         actorId = auth.data.user.id;
         actorPhone = auth.data.user.phone;
