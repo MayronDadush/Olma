@@ -285,7 +285,13 @@ test('moving a task answers its ladder: rungs retire, the queued rung is withdra
   await withClient(async (c) => {
     const iso = (d) => new Date(d).toISOString().replace('Z', '+00:00');
     const HOUR = 3600_000;
-    const oldDue = new Date(Date.now() + 2 * HOUR);
+    // Both moments sit on :30, whatever the clock says: test users have no
+    // timezone (UTC), and at 22:00 UTC "now + 2h" lands on 00:00 — which
+    // `isDayShaped` reads as a day-shaped task and arms 08:00 that morning
+    // instead of an hour before. Three CI runs died on that one minute
+    // (2026-09-07; CLAUDE.md, Testing: never depend on the hour it runs).
+    const halfPast = (ms) => { const d = new Date(ms); d.setUTCMinutes(30, 0, 0); return d; };
+    const oldDue = halfPast(Date.now() + 2 * HOUR);
     const t = (await tasks.addTask(c, alice.id, { title: 'לבדוק על שחיינים', dueAt: iso(oldDue) })).data.task;
     const { rows: [auto] } = await c.query(`SELECT * FROM task_reminders WHERE task_id = $1`, [t.id]);
     assert.equal(auto.auto, true);
@@ -298,7 +304,7 @@ test('moving a task answers its ladder: rungs retire, the queued rung is withdra
     await c.query(`UPDATE outbox SET hold_reason = 'night', release_after = now() + interval '8 hours'
                     WHERE idempotency_key = $1`, [reminders.attemptKey(auto.id, 3)]);
 
-    const newDue = new Date(Date.now() + 26 * HOUR);
+    const newDue = halfPast(Date.now() + 26 * HOUR);
     const r = await tasks.snoozeTask(c, alice.id, t.id, iso(newDue));
     assert.equal(r.ok, true);
     assert.deepEqual(r.data.remindersRetired, [Number(auto.id)]);
