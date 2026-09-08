@@ -185,6 +185,22 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `agents.defaults.systemAgent.agentId`** on a multi-agent roster, or every
   agent-less send refuses. Verify the pipe, never the file:
   `openclaw message send … --dry-run --json`.
+- **The raw pipe goes over the gateway's own WebSocket now, with the CLI
+  behind it** (`channels/gateway-rpc.js`, `channels/openclaw.sendRawMessage`).
+  A fresh `openclaw` process cost 8.8-12.7s idle and 49-95s while a room was
+  busy, against 120-190ms to connect and 5-35ms per call on an open socket —
+  the cost was never the send, it was a cold Node process loading the CLI.
+  **The fallback is narrow on purpose, and widening it is how a room gets told
+  the same thing twice**: a request that never reached the gateway retries on
+  the CLI, a request the gateway ANSWERED with an error stays failed (the CLI
+  reaches the same handler), and a request written to the wire that then timed
+  out is `timedOut` and is retried NOWHERE — the gateway hands the message to
+  WhatsApp before it answers. `idempotencyKey` is required by the send schema
+  and is fresh per attempt, exactly as a new CLI process was. The module
+  refuses outright inside `node --test`: `deploy.sh --restart` runs the suite
+  on the box, where `127.0.0.1:18789` serves real people and, unlike the
+  config path, a socket has no temp-directory equivalent.
+  `OLMA_GATEWAY_RPC_SEND=off` in `/opt/olma2/.env` puts everything back.
 - **Cancelling a queued message is an UPDATE, never a DELETE.** The row carries
   the `idempotency_key` that stops the sweep re-creating it.
 - **The delivery gate is the chokepoint and a paused user has no exceptions** —
