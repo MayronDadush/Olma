@@ -173,15 +173,19 @@ test('gate: someone who just wrote is awake — quiet hours do not silence a liv
   assert.equal(decide({ ...busy, row: row() }).holdReason, 'budget');
 });
 
-test('gate: default quiet hours run 21:00 to 08:00', () => {
+test('gate: default quiet hours run 21:00 to 09:00', () => {
   const { DEFAULT_WINDOW } = require('../src/domain/preferences');
   const tz = 'UTC';
   const at = (h) => new Date(`2026-08-16T${String(h).padStart(2, '0')}:30:00Z`);
-  assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(9)), true);
+  assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(9)), true, 'awake from 09:00');
   assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(20)), true, '20:30 is still awake time');
   assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(21)), false, 'quiet from 21:00');
   assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(7)), false, 'still quiet at 07:30');
-  assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(8)), true, 'awake from 08:00');
+  // 08:30 was awake time until 2026-09-08 and is not any more. The hours are
+  // now SAID to people (jobs/checkin.js, the timezone rung), so this line is
+  // not a taste question — it is the sentence we send, asserted from the side
+  // that has to honour it.
+  assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(8)), false, 'quiet until 09:00');
 });
 
 test('gate: personal window beats the default one', () => {
@@ -189,6 +193,94 @@ test('gate: personal window beats the default one', () => {
   assert.equal(decide({ ...lateOwl, row: row() }).action, 'deliver'); // 03:00 inside their overnight window
   const sameNowDefault = { ...baseFacts, now: threeAmUTC };
   assert.equal(decide({ ...sameNowDefault, row: row() }).action, 'hold');
+});
+
+// ---------------- gate: whole days they asked to keep ------------------------
+//
+// Hours are one preference and days are another, and until 2026-09-08 only the
+// first existed — so somebody who keeps Shabbat had nowhere to say so and was
+// never asked. The owner's line on what survives a quiet day is the narrowest
+// one available: a reminder they asked for IN WORDS, first rung. Not a digest
+// (quiet hours exempt it because they picked the hour; a day off is a day off),
+// and not an automatic reminder the model inferred from a due date.
+//
+// Saturday 2026-08-15 and Friday 2026-08-14 are literals, so the weekday is
+// fixed regardless of when the suite runs — but the INDEX is derived rather
+// than written down, because "Saturday is 6" is exactly the kind of constant
+// that is right until somebody changes the base of the array.
+const saturdayNoonUTC = new Date('2026-08-15T12:00:00Z');
+const SAT = saturdayNoonUTC.getUTCDay();
+const FRI = new Date('2026-08-14T12:00:00Z').getUTCDay();
+
+test('gate: a quiet day holds everything Olma decided to say', () => {
+  const shabbat = { ...baseFacts, now: saturdayNoonUTC, quietDays: [SAT] };
+  // Midday, inside their window, nothing wrong with the row — and still held.
+  const held = decide({ ...shabbat, row: row() });
+  assert.equal(held.action, 'hold');
+  assert.equal(held.holdReason, 'quiet_day');
+
+  // The digest is the one that separates a quiet DAY from quiet HOURS: the
+  // night rule lets it through because they chose the hour, and this one does
+  // not, because a morning picture of a day they asked not to hear about is
+  // the message they were opting out of.
+  assert.equal(decide({ ...shabbat, row: row({ kind: 'digest' }) }).holdReason, 'quiet_day');
+
+  // An automatic reminder is the model's inference from a due date, not a
+  // moment anybody named.
+  assert.equal(
+    decide({ ...shabbat, row: row({ kind: 'reminder', payload: { rung: 1, auto: true } }) }).holdReason,
+    'quiet_day');
+
+  // Urgency buys nothing. Neither does another user's fan-out landing here.
+  assert.equal(decide({ ...shabbat, row: row({ urgency: 'urgent' }) }).holdReason, 'quiet_day');
+});
+
+test('gate: the reminder they asked for in words still arrives on a quiet day', () => {
+  const shabbat = { ...baseFacts, now: saturdayNoonUTC, quietDays: [SAT] };
+  const asked = row({ kind: 'reminder', payload: { rung: 1, auto: false } });
+  assert.equal(decide({ ...shabbat, row: asked }).action, 'deliver');
+
+  // Rung 2 of that same reminder is Olma's moment, not theirs — the same line
+  // the night window and the stopped-answering rule both draw.
+  assert.equal(
+    decide({ ...shabbat, row: row({ kind: 'reminder', payload: { rung: 2, auto: false } }) }).holdReason,
+    'quiet_day');
+});
+
+test('gate: a quiet day releases into the next day they kept, not the next morning', () => {
+  // Friday AND Saturday quiet: a row held on Friday must not wake up on
+  // Saturday, or the second day they asked for is one we never honoured.
+  const friday = new Date('2026-08-14T12:00:00Z');
+  const both = { ...baseFacts, now: friday, quietDays: [FRI, SAT] };
+  const held = decide({ ...both, row: row() });
+  assert.equal(held.holdReason, 'quiet_day');
+  const releaseDay = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jerusalem', weekday: 'short',
+  }).format(held.releaseAfter);
+  assert.equal(releaseDay, 'Sun', 'Friday + Saturday quiet releases on Sunday');
+
+  // And it lands inside their window rather than at whatever hour it was held.
+  assert.equal(withinWindow(DAY, 'Asia/Jerusalem', held.releaseAfter), true);
+});
+
+test('gate: no quiet days is the same gate as before', () => {
+  // The feature has to be invisible to everyone who never answered the
+  // question — `[]` and "not asked" are the same delivery, and an empty array
+  // must never read as "every day".
+  assert.equal(decide({ ...baseFacts, now: saturdayNoonUTC, quietDays: [], row: row() }).action, 'deliver');
+  assert.equal(decide({ ...baseFacts, now: saturdayNoonUTC, row: row() }).action, 'deliver');
+});
+
+test('gate: the quiet day is theirs, in their zone, not the server\'s', () => {
+  // 23:00 UTC Friday is already Saturday in Jerusalem. A gate that asked UTC
+  // would deliver; one that asks the person's own calendar holds.
+  const lateFridayUTC = new Date('2026-08-14T23:00:00Z');
+  const nightOwl = {
+    ...baseFacts, now: lateFridayUTC, quietDays: [SAT],
+    window: { start: '00:00', end: '23:59' }, // take the night rule out of it
+  };
+  assert.equal(new Date(lateFridayUTC).getUTCDay(), FRI, 'still Friday in UTC');
+  assert.equal(decide({ ...nightOwl, row: row() }).holdReason, 'quiet_day');
 });
 
 test('gate: over budget folds normal, urgent passes', () => {

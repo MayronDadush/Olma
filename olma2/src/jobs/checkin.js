@@ -50,7 +50,7 @@ const WEEK_MS = 7 * 24 * HOUR_MS;
 // zone, hand them the travel line, and confirm the name — one question mark in
 // the whole message, on the name, because that is the half we actually need an
 // answer to. The zone is announced, not asked: they can correct it, and the
-// discovery ladder will ask for the city later only if `timezone_asked_at` is
+// discovery ladder will ask which country later only if `timezone_asked_at` is
 // still NULL.
 function firstContactInstruction(client, u) {
   const guess = lookupTimezone(u.phone);
@@ -450,10 +450,24 @@ async function discoveryGaps(client, userId) {
   //
   // It carries the travel line because the two are the same conversation and
   // nobody gets told either one: today a user can say "I am in Barcelona" and
-  // it works — the model maps the city to an IANA zone and setTimezone
+  // it works — the model maps the place to an IANA zone and setTimezone
   // validates it through Intl — and no user has ever been told that. A person
   // who travels and says nothing keeps getting their morning digest and their
   // reminders on a clock they left behind.
+  //
+  // It asks for the COUNTRY, not the city (owner, 2026-09-08): a zone moves
+  // when you cross a border, so the city was asking a stranger to translate a
+  // question we could have asked directly. The five countries where that is
+  // false are named in the instruction and get a follow-up — dropping them
+  // would re-open the fault this rung was built around, where Sarah's +1
+  // bought her New York while she was in Los Angeles.
+  //
+  // And it is the one place a person is TOLD the default hours, which is why
+  // the two of them ride together: the answer to "which country" is what makes
+  // 09:00-21:00 mean anything (preferences.DEFAULT_WINDOW — those hours are in
+  // THEIR zone, so until the zone is settled the sentence has no referent).
+  // The same message opens the two doors nothing else opens: different hours,
+  // and whole days they want nothing on but the reminders they asked for.
   // Asked once, ever — never twice, and never once per route. `timezone_asked_at`
   // rather than the topic string, because the two asks that reached Sarah four
   // days apart carried two different topics ('timezone_repair' from an
@@ -468,7 +482,7 @@ async function discoveryGaps(client, userId) {
       : 'We have no timezone for them at all, so everything falls back to UTC.';
     gaps.push({
       topic: 'timezone',
-      instruction: `${guessed} Ask which CITY they are in — never ask for a timezone name, that is our problem not theirs — and call set_my_timezone with the IANA zone for that city and confirmed: true. Say it in exactly this shape — the second sentence is the travel line, where they learn to just say so when they travel or move — changing only the gender forms to match them: "באיזו עיר אתה נמצא? ככה אדע מתי מתאים לכתוב לך. ואם תיסע או תעבור לעיר אחרת, פשוט תגיד לי." Do not paraphrase it, do not add a second sentence, do not explain the mechanism — a reworded version once came out as "נוסע לשם אחרת", which nobody could read.`,
+      instruction: `${guessed} Ask which COUNTRY they are in — never ask for a timezone name, that is our problem not theirs — and call set_my_timezone with the IANA zone and confirmed: true. ONE exception, and it is the whole reason this used to ask for a city: a handful of countries span several timezones (the US, Canada, Russia, Australia, Brazil, Mexico). If the country they name is one of those, you do not have an answer yet — ask which area or nearest big city as a short follow-up, and only then call set_my_timezone. Everywhere else the country IS the zone, and asking a Frenchman which city he is in is asking him to do our arithmetic. Say it in exactly this shape — the end of the second line is the travel line, where they learn to just say so when they travel or move — changing only the gender forms to match them: "באיזו מדינה אתה נמצא? ככה אדע מתי מתאים לכתוב לך.\nברירת המחדל שלי היא לכתוב לך בין 9:00 ל- 21:00 בשעון המקומי, ואם תיסע או תעבור למקום אחר — פשוט תגיד לי.\n🫡 אם מעדיף שעות אחרות, או שיש ימים בשבוע שבהם לא תרצה לקבל ממני כלום חוץ מתזכורות שביקשת — תגיד ואשנה." Do not paraphrase it, do not add a fourth line, do not explain the mechanism — a reworded version once came out as "נוסע לשם אחרת", which nobody could read. There is exactly ONE question mark in it, on the country; the hours and the quiet days are STATEMENTS, because three questions in one message is a form. If they answer the hours, call remember_preference key "availability" value "HH:MM-HH:MM". If they name days they want nothing on, call remember_preference key "quiet_days" with lowercase English three-letter days, comma-separated — "fri,sat" — whatever language they said them in.`,
     });
   }
   const { rows: openTasks } = await client.query(

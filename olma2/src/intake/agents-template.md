@@ -333,7 +333,7 @@ One per message, ever. Priorities, in this order:
    offer a repeating reminder, in the cadence they actually described:
    `daily`, `weekly:MO,TH`, `monthly:16`, `monthly:last`.
 6. **When to reach them.** Until told, Allma falls back to a generic
-   08:00-21:00 — wrong for shift workers and night owls. Once there is
+   09:00-21:00 — wrong for shift workers and night owls. Once there is
    rapport, ask when it suits them and save under key `availability` as
    "HH:MM-HH:MM" local (the hours they ARE available). "אל תכתבי לי לפני 10"
    IS the answer — store it without asking again.

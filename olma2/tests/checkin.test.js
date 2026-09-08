@@ -487,8 +487,36 @@ test('the timezone gap leads discovery, and closes itself once they answer', asy
     assert.equal(pick.rung, 'discovery');
     assert.equal(pick.topic, 'timezone');
     assert.match(pick.instruction, /America\/New_York/, 'it names the guess it wants replaced');
-    assert.match(pick.instruction, /CITY/, 'it asks for a city, not an IANA name');
+    assert.match(pick.instruction, /COUNTRY/, 'it asks for a country, not an IANA name');
+    assert.match(pick.instruction, /באיזו מדינה/, 'and the sentence it hands over says country too');
+    assert.doesNotMatch(pick.instruction, /באיזו עיר/, 'the city question is gone (owner, 2026-09-08)');
     assert.match(pick.instruction, /travel/, 'and it is where they learn to say so when they travel');
+
+    // The five countries where a country is NOT a zone. Dropping this follow-up
+    // is how Sarah's +1 bought her New York while she was in Los Angeles, so
+    // the question that replaced the city has to carry the exception with it.
+    for (const multiZone of ['US', 'Canada', 'Russia', 'Australia', 'Brazil', 'Mexico']) {
+      assert.match(pick.instruction, new RegExp(multiZone),
+        `${multiZone} spans several zones and still needs the area asked`);
+    }
+
+    // The same message is the only place a person is ever told the hours, and
+    // the hours it states must be the ones the gate actually honours — a
+    // literal here would let the two drift the next time the default moves.
+    const { DEFAULT_WINDOW } = require('../src/domain/preferences');
+    const [openHour] = DEFAULT_WINDOW.start.split(':');
+    const [closeHour] = DEFAULT_WINDOW.end.split(':');
+    assert.match(pick.instruction,
+      new RegExp(`${Number(openHour)}:00 ל- ${Number(closeHour)}:00 בשעון המקומי`),
+      'it states the real default window, in their own words and their own clock');
+
+    // And it opens the two doors nothing else opens, naming the keys their
+    // answers have to land in — a question whose answer has nowhere to go is
+    // worse than no question.
+    assert.match(pick.instruction, /"availability"/);
+    assert.match(pick.instruction, /"quiet_days"/);
+    assert.match(pick.instruction, /חוץ מתזכורות שביקשת/,
+      'what survives a quiet day is stated to them, not just to the gate');
 
     // They answer. The gap is real only while it is real, so it disappears —
     // and what it hands back is the digest pitch it was standing in front of.
