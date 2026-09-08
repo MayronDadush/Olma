@@ -90,6 +90,12 @@ const MODELS = [
   'openrouter/openai/gpt-oss-120b',
   'openrouter/openai/gpt-5-nano',
   'openrouter/openai/gpt-5-mini',
+  // Haiku 4.5 THROUGH OpenRouter ($1.00 / $5.00), 2026-09-08: the gateway's
+  // own anthropic profile is unavailable (no credit, owner's choice), so
+  // `anthropic/claude-haiku-4-5` fails at CLI start — "Prepared direct auth
+  // fallback cannot bypass unavailable profiles" — and a pilot on it is
+  // twelve errors in three minutes. Same weights, funded provider.
+  'openrouter/anthropic/claude-haiku-4.5',
 ];
 
 const APPLY = process.argv.includes('--apply');
