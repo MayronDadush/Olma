@@ -288,6 +288,37 @@ test('a served page shows no groups, because nothing on the server keeps one', a
   assert.ok(html.includes('\u05e4\u05d5\u05e7\u05e8'), 'the seeded groups were deleted rather than hidden');
 });
 
+// Two of the three permission rows on a connected person carry a "+", and each
+// one opens the thing its own switch is for with that person already on it.
+// The rule the pair has to keep is that the button never outlives the grant
+// beside it: both end at a domain call that asks `requireFeatureBetween` for
+// exactly the feature the switch holds (`sharing`, `meetings`), so a "+" on a
+// row that is switched off would be an offer the server refuses. Checked on
+// the SERVED page rather than the file on disk, because this is the copy a
+// person actually presses.
+test('a permission that has a screen behind it offers to open it, and only while granted', async () => {
+  const cookie = await signIn();
+  const html = await (await get('/me', { headers: { cookie } })).text();
+  // Both rows, and only these two — `msg` is something you ask her for in
+  // words, and there is no screen to send anyone to.
+  assert.match(html, /tasks:\{attr:"newshared", label:"fr\.newTask"\}/,
+    'the shared-task "+" is no longer declared on the tasks row');
+  assert.match(html, /meet: \{attr:"newmeet",\s+label:"fr\.newMeet"\}/,
+    'the coordination "+" is no longer declared on the meet row');
+  assert.ok(!/msg:\s*\{attr:/.test(html), 'the message row grew a "+" with nothing behind it');
+  // Rendered hidden unless the grant is on, and revealed by the same switch.
+  assert.ok(html.includes('(f.p[k] ? "" : " hidden")'),
+    'the "+" no longer follows the grant on its own row');
+  assert.ok(html.includes('if(pact) refreshPermAction(pact.attr, f.id, on);'),
+    'flipping a permission no longer opens or shuts the button beside it');
+  // And what the coordination one does: the other screen, in the mode that
+  // owns coordinations, with the person already picked and nothing started.
+  assert.ok(html.includes('startMeetingWith(+nm.dataset.newmeet)'),
+    'nothing handles a press on the coordination "+"');
+  assert.match(html, /go\("cal"\);\s*\n\s*setCalMode\("meet"\);\s*\n\s*openMtNew\(\[fid\]\);/,
+    'the coordination "+" no longer lands on the meetings screen with that person on it');
+});
+
 // The page draws in whatever `data-locale` the root element carries and falls
 // back to Hebrew without one. For a signed-in person that attribute IS the
 // language decision, and until 2026-09-07 nothing set it: Sarah's row said

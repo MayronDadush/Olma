@@ -3148,6 +3148,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "sheet.pickSearch":"חיפוש חבר","sheet.pickNone":"אין חבר בשם „{q}”.",
       "share.remove":"הסרה מהמשימה","toast.tookOff":"{who} כבר לא במשימה",
       "fr.newTask":"משימה משותפת חדשה","toast.newShared":"משימה משותפת חדשה עם {name}",
+      "fr.newMeet":"תיאום פגישה חדש","toast.newMeet":"תיאום פגישה חדש עם {name}",
       "sheet.sharePick":"מי עוד יראה את המשימה ויוכל לסמן אותה",
       "toast.shared":"„{name}” משותפת עכשיו עם {who}","toast.unshared":"„{name}” חזרה להיות שלך בלבד",
       "tasks.leftAt":"יצאת ממנה",
@@ -3385,6 +3386,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "sheet.pickSearch":"Search friends","sheet.pickNone":"No friend matches \u201c{q}\u201d.",
       "share.remove":"Remove from task","toast.tookOff":"{who} is no longer on it",
       "fr.newTask":"New shared task","toast.newShared":"New shared task with {name}",
+      "fr.newMeet":"New coordination","toast.newMeet":"New coordination with {name}",
       "sheet.sharePick":"Who else sees this task and can tick it off",
       "toast.shared":"\u201c{name}\u201d is now shared with {who}","toast.unshared":"\u201c{name}\u201d is yours alone again",
       "tasks.leftAt":"you left it",
@@ -4560,7 +4562,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         API.setFriendPermission(f.id, sw.dataset.p, on);
         var live = PKEYS.filter(function(k){ return f.p[k]; }).length;
         $('[data-fs="' + f.id + '"]').textContent = permsLine(live, L(f.since));
-        if(sw.dataset.p === "tasks") refreshShareAction(f.id, on);
+        var pact = PERMACT[sw.dataset.p];
+        if(pact) refreshPermAction(pact.attr, f.id, on);
       }
       if(sw.id === "sRemind"){ $("#sRemindFold").classList.toggle("open", on); commit(); }
       if(sw.id === "sAllDay" || sw.id === "sCal") commit();
@@ -6727,8 +6730,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#mtNewGo").disabled = !mtPickWho.length || !mtPickDays.length;
     paintCue($("#mtNewSheet"), $("#mtNewCue"));
   }
-  $("#mtNew").addEventListener("click", function(){
-    mtPickWho = []; mtPickDays = [1, 2, 3]; mtPickQ = ""; dgPage["#mtDays"] = 0;
+  /* Everything the sheet remembers is cleared here rather than in the button's
+     listener, so the one other door into it — a "+" on somebody's permission
+     row — cannot arrive carrying the last coordination's days. `who` is the
+     only thing that ever differs between the two. */
+  function openMtNew(who){
+    mtPickWho = (who || []).slice(); mtPickDays = [1, 2, 3]; mtPickQ = ""; dgPage["#mtDays"] = 0;
     mtNewPart = "evening"; mtNewExact = ""; mtNewAllDay = false;
     mtPerDay = false; mtDayPart = {};
     $("#mtName").value = "";
@@ -6737,7 +6744,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#mtWhenEcho").hidden = true;
     renderMtNew();
     showSheet($("#mtNewSheet"));
-  });
+  }
+  $("#mtNew").addEventListener("click", function(){ openMtNew([]); });
   $("#mtPick").addEventListener("click", function(e){
     var g = e.target.closest("[data-mtgr]");
     if(g){
@@ -7300,6 +7308,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     head2.setAttribute("aria-expanded", grOpen[id] ? "true" : "false");
   });
 
+  /* Which permission rows carry a "+", what it is called, and which attribute
+     the click handler reads. Keyed by PKEYS, so a row with no entry simply
+     renders the switch alone. */
+  var PERMACT = {
+    tasks:{attr:"newshared", label:"fr.newTask"},
+    meet: {attr:"newmeet",   label:"fr.newMeet"}
+  };
   function renderFriends(){
     var show = FRIENDS.length > SEARCH_AT;
     $("#friendSearch").hidden = !show;
@@ -7313,12 +7328,17 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       var live = PKEYS.filter(function(k){ return f.p[k]; }).length;
       var perms = PKEYS.map(function(k){
         /* The way to USE the permission sits on the permission's own row, and
-           only while it is granted: one tap opens a new task with this person
-           already on it. A button that outlived the switch beside it would be
-           an offer the server refuses. */
-        var act = k === "tasks"
-          ? '<button class="permact" data-newshared="' + f.id + '"' + (f.p.tasks ? "" : " hidden") +
-            ' aria-label="' + esc(t("fr.newTask")) + '" title="' + esc(t("fr.newTask")) +
+           only while it is granted: one tap opens the thing that switch is
+           for, with this person already on it. A button that outlived the
+           switch beside it would be an offer the server refuses — both of
+           these end at a domain call that asks `requireFeatureBetween` for
+           the very grant the switch holds. Only two of the three rows have
+           one: passing a message on is something you ask her for in words,
+           and there is no screen here to send you to. */
+        var pa = PERMACT[k];
+        var act = pa
+          ? '<button class="permact" data-' + pa.attr + '="' + f.id + '"' + (f.p[k] ? "" : " hidden") +
+            ' aria-label="' + esc(t(pa.label)) + '" title="' + esc(t(pa.label)) +
             '"><svg><use href="#i-plus"/></svg></button>'
           : "";
         return '<div class="permrow"><div class="permtxt"><b>' + esc(t("p." + k)) + "</b><span>" + esc(t("p." + k + "Sub")) + "</span></div>" + act +
@@ -7348,8 +7368,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   });
   /* It opens and shuts on the switch's own clock, the same clip-path movement
      the access control in Connections makes — one gesture, not two. */
-  function refreshShareAction(fid, on){
-    var b = $('[data-newshared="' + fid + '"]');
+  function refreshPermAction(attr, fid, on){
+    var b = $("[data-" + attr + '="' + fid + '"]');
     if(!b) return;
     b.classList.remove("opening", "shutting");
     if(on){
@@ -7375,9 +7395,26 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     updateSheetCue();
     toast(t("toast.newShared", {name:L(f.n)}));
   }
+  /* The task button opens a sheet over wherever you were; this one leaves the
+     page, because coordinating a time IS the other screen and half of it —
+     which days, which part of the day — has no representation here. So it
+     goes there, in the mode that owns coordinations, with the sheet already
+     open on the person whose row was tapped. What it does NOT do is start
+     anything: when is still an open question and this button never answers it
+     for them. */
+  function startMeetingWith(fid){
+    var f = friendById(fid);
+    if(!f) return;
+    go("cal");
+    setCalMode("meet");
+    openMtNew([fid]);
+    toast(t("toast.newMeet", {name:L(f.n)}));
+  }
   $("#friendGroup").addEventListener("click", function(e){
     var ns = e.target.closest("[data-newshared]");
     if(ns){ startSharedTask(+ns.dataset.newshared); return; }
+    var nm = e.target.closest("[data-newmeet]");
+    if(nm){ startMeetingWith(+nm.dataset.newmeet); return; }
     var head = e.target.closest("[data-friend]");
     if(!head) return;
     var id = head.dataset.friend, fold = $('[data-ffold="' + id + '"]');
