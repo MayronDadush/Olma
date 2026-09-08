@@ -46,6 +46,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Delivery, outbox and proactive messages**
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
+- [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
@@ -1392,6 +1393,58 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
 
+
+### היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)
+
+Guy was added to "5 Percent (Maprinter)" and did exactly what the room asked.
+He DM'd Olma at 19:01. The intake greeter answered him and provisioning
+stamped `opening_sent_at` at **19:01:22**.
+
+At **19:02:06** the room queued "עוד מחכה ל: @גיא מסיקה 🙄" and said it at
+19:03:05. At 19:06 a member wrote **"היא שבורה מירון"**. The room finally
+opened at 19:04:37 and the room heard about it at 19:06:22.
+
+**The gate was reading the wrong column, for a reason that used to be right.**
+`isConnected` asked `users.last_inbound_at IS NOT NULL`, and the comment above
+it explained — correctly — why `onboarded_at` would not do: it is stamped at
+provisioning, "before they have necessarily said a word". That is true of a
+hand-provisioned account. It is false of every organic joiner, because
+provisioning happens *because* the person wrote.
+
+The hole is that two voices can hear somebody's first message and only one of
+them stamps `last_inbound_at`:
+
+| who heard them | what it stamps |
+|---|---|
+| their own agent (`openRecord`, `turn_start`) | `last_inbound_at` |
+| the intake greeter | `opening_sent_at` |
+
+Guy met the greeter, so his own agent had heard nothing until **19:04:28** —
+three minutes after he wrote. For those three minutes the column the gate reads
+was NULL and the room said he was missing.
+
+`opening_sent_at` is the right second column and not a guess: it is stamped
+only for `greetedByIntake`, which is read off the greeter's *actual reply* and
+never assumed from the session list, and the greeter replies to nothing but a
+real inbound message. A silent greeter leaves it NULL, which falls straight
+back to the old predicate — so nothing here lets a phone number that has never
+written open a room.
+
+Two smaller things came out with it. The admin page had **re-written the
+predicate by hand** (`!(m.user_id && m.last_inbound_at)`), so it would have
+gone on naming Guy as missing after the gate stopped — the "test that asserts
+on a replica of a query" shape, in a render path; it now calls
+`groups.isConnected`. And the fix changes nothing about the three rooms live
+today, all of which are already open: it is entirely about the next person
+through the door.
+
+**What it does NOT do, and why not.** The obvious fix — stamp `last_inbound_at`
+at provisioning — was rejected after reading its readers. That column being
+NULL is the **once-per-life first-turn signal** (`openRecord` computes
+`firstTurn` from `prev_inbound === null`), and `last_inbound_at = first_turn_at`
+is the **silence test** behind the name-confirm rung. Stamping it early would
+have spent the first-turn signal and broken the silence test to fix a gate.
+The narrow column was the right lever.
 
 ### The room was told twice (fixed 2026-09-08)
 

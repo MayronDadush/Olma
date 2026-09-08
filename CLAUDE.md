@@ -961,6 +961,21 @@ have already had to be argued for.
   `groupOutbox.pending` is how the gate sweep still knows not to nudge a room
   it has only this second greeted (`incidents.md`, "The room was told twice").
 
+- **TWO columns say somebody has written to Olma, because two voices can hear
+  their first message.** `isConnected` (the group gate) asks
+  `last_inbound_at OR opening_sent_at`: their own agent stamps the first
+  (`openRecord`, `turn_start`), the intake GREETER stamps the second — and the
+  greeter is who an organic joiner meets, so their own agent may have heard
+  nothing for minutes. `opening_sent_at` is proof and not a guess (stamped only
+  for `greetedByIntake`, read off the greeter's actual reply); a silent greeter
+  leaves it NULL and falls back to the first, so nothing lets a phone number
+  that never wrote open a room. Guy wrote at 19:01, his own agent saw him at
+  19:04:28, and at 19:02:06 the room queued "עוד מחכה ל: גיא" about him —
+  a member replied "היא שבורה" (`incidents.md`, "היא שבורה"). **Do NOT fix this
+  by stamping `last_inbound_at` at provisioning**: that column being NULL is the
+  once-per-life first-turn signal in `openRecord`, and `last_inbound_at =
+  first_turn_at` is the silence test behind the name rung.
+
 - **Being in the room IS the introduction, and it is not the inferred closeness
   the old rule forbids.** Everybody in a group with Olma who is ALREADY a user
   becomes connected to everybody else there, every feature on, nobody asked

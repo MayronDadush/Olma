@@ -19,6 +19,7 @@ const { esc } = require('../../html');
 const { ago } = require('../html');
 const occ = require('../../../../intake/openclaw-config');
 const { GREETER_AGENT_ID } = require('../../../../intake/provision-group');
+const groupsDomain = require('../../../../domain/groups');
 
 const STATE_LABEL = {
   locked: 'נעולה', open: 'פתוחה', too_large: 'גדולה מדי', retired: 'עזבה',
@@ -67,7 +68,8 @@ async function renderGroups(client, csrf, _probe, ctx = {}) {
   if (!groups.length) return head + '<p class="dim">אין קבוצות עדיין.</p>';
 
   const { rows: members } = await client.query(
-    `SELECT m.group_id, m.phone, m.display_name, m.user_id, u.last_inbound_at, u.first_name
+    `SELECT m.group_id, m.phone, m.display_name, m.user_id,
+            u.last_inbound_at, u.opening_sent_at, u.first_name
        FROM chat_group_members m LEFT JOIN users u ON u.id = m.user_id
       WHERE m.left_at IS NULL AND m.group_id = ANY($1)
       ORDER BY m.first_seen_at`, [groups.map((g) => g.id)]);
@@ -81,7 +83,11 @@ async function renderGroups(client, csrf, _probe, ctx = {}) {
     const list = byGroup.get(g.id) || [];
     // Names for the missing, never numbers — this page is read over a
     // shoulder more often than the config is.
-    const missing = list.filter((m) => !(m.user_id && m.last_inbound_at))
+    // The gate's own predicate, called rather than re-written here: a
+    // hand-copied WHERE clause cannot fail when the original drifts, and this
+    // page naming somebody the gate does not consider missing is the operator
+    // being told the room is stuck on a person who is already through.
+    const missing = list.filter((m) => !groupsDomain.isConnected(m))
       .map((m) => m.first_name || m.display_name || '(ללא שם)');
     return `<tr>
       <td>${esc(g.subject || g.external_id)}</td>
