@@ -274,3 +274,23 @@ test('no group tool hands the room its own identity token back', async () => {
     assert.equal(JSON.stringify(res).includes(token), false, `${t.name} put the group token in its result`);
   }
 });
+
+test('the room is told she will ask, never that she has', async () => {
+  // 2026-09-07, the first real coordination: the tool answered `asked: 2` and
+  // the model wrote "על זה. שואלת את כולם בפרטי מתי מתאים" into the room —
+  // while both invites were still sitting in the queue, one held for the night
+  // and one dropped because that person had stopped answering. Nobody was
+  // asked anything. The count was rows enqueued, and the word was a claim the
+  // tool had no way to support.
+  const { group, people } = await room(14);
+  const tool = require('../src/adapters/mcp/tools/group')
+    .find((t) => t.name === 'start_group_coordination');
+  const res = await withTx(db.pool, (c) =>
+    tool.handler(c, { group, actingUser: people[0] }, { what: 'פאדל' }, {}));
+
+  assert.equal(res.ok, true);
+  assert.equal(res.data.willAsk, people.length - 1, 'how many are OWED a message');
+  assert.equal('asked' in res.data, false, 'the word that made the claim is gone');
+  assert.match(res.data.hints.room, /WHEN THEY ARE AVAILABLE/);
+  assert.match(res.data.hints.room, /Never say they have already been asked/);
+});
