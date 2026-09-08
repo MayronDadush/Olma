@@ -138,6 +138,67 @@ test('the gate stays locked while one member has never written, then opens', asy
 
 // A member who is in the roster but is nobody we know is the common case while
 // a group fills up, and the one an "is this phone a user" check gets wrong.
+// The founding case, replayed: Guy's evening, 2026-09-08. He wrote "היי" at
+// 19:01, the intake greeter answered him and provisioning stamped
+// `opening_sent_at` at 19:01:22 — but his own agent saw nothing until
+// 19:04:28, because the greeter had taken that message. `last_inbound_at`
+// was NULL for those three minutes, so at 19:02:06 the room queued "עוד
+// מחכה ל: גיא" about somebody who had already written, and a member of that
+// group replied "היא שבורה מירון".
+//
+// Written against the state PRODUCTION reaches, not a hand-set one: the row
+// here is exactly what `provisionUser({ greetedByIntake: true })` leaves
+// behind — greeted, never having reached their own agent.
+test('somebody the intake greeter answered is through the gate, though their own agent has heard nothing', async () => {
+  const a = await connectedUser('+972501000100');
+  const greeted = await makeUser(db.pool, '+972501000101', { firstName: 'גיא' });
+  await db.pool.query(
+    `UPDATE users SET opening_sent_at = now() WHERE id = $1`, [greeted.id]);
+  // The exact production shape: the greeter has spoken, the person's own
+  // agent has not been reached, so this column is still empty.
+  const { rows: [row] } = await db.pool.query(
+    `SELECT last_inbound_at FROM users WHERE id = $1`, [greeted.id]);
+  assert.equal(row.last_inbound_at, null, 'the fixture stopped describing the bug');
+
+  const gid = await withTx(db.pool, async (c) => {
+    const r = await groups.registerGroup(c, {
+      externalId: JID(10), subject: 'פאדל',
+      members: [{ phone: a.phone, displayName: 'מירון' }, { phone: greeted.phone, displayName: 'גיא' }],
+    });
+    assert.ok(r.ok, r.ok ? '' : r.error.message);
+    return r.data.group.id;
+  });
+
+  const evald = await withTx(db.pool, (c) => groups.evaluate(c, gid));
+  assert.equal(evald.data.state, 'open',
+    'the room is still waiting for somebody who wrote to Olma three minutes ago');
+  assert.deepEqual(evald.data.missing, []);
+});
+
+// The other half, and the reason this is two columns and not "any user row":
+// a hand-provisioned or testbed-reset account has met nobody. `opening_sent_at`
+// is NULL there by design (`greetedByIntake` defaults to false), so nothing
+// about this change lets a silent phone number open a room.
+test('a user nobody has greeted and who has never written still keeps the group locked', async () => {
+  const a = await connectedUser('+972501000102');
+  const silent = await makeUser(db.pool, '+972501000103', { firstName: 'שקט' });
+  const { rows: [row] } = await db.pool.query(
+    `SELECT last_inbound_at, opening_sent_at FROM users WHERE id = $1`, [silent.id]);
+  assert.equal(row.last_inbound_at, null);
+  assert.equal(row.opening_sent_at, null, 'provisioning greeted somebody it should not have');
+
+  const gid = await withTx(db.pool, async (c) => {
+    const r = await groups.registerGroup(c, {
+      externalId: JID(11), subject: 'פוקר',
+      members: [{ phone: a.phone, displayName: 'מירון' }, { phone: silent.phone, displayName: 'שקט' }],
+    });
+    return r.data.group.id;
+  });
+  const evald = await withTx(db.pool, (c) => groups.evaluate(c, gid));
+  assert.equal(evald.data.state, 'locked');
+  assert.deepEqual(evald.data.missing.map((m) => m.phone), [silent.phone]);
+});
+
 test('a member who is not a user at all keeps the group locked', async () => {
   const a = await connectedUser('+972501000020');
   const reg = await withTx(db.pool, (c) => groups.registerGroup(c, {
