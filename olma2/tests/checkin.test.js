@@ -507,8 +507,8 @@ test('the timezone gap leads discovery, and closes itself once they answer', asy
     const [openHour] = DEFAULT_WINDOW.start.split(':');
     const [closeHour] = DEFAULT_WINDOW.end.split(':');
     assert.match(pick.instruction,
-      new RegExp(`${Number(openHour)}:00 ל-${Number(closeHour)}:00`),
-      'it states the real default window, in their own words');
+      new RegExp(`${Number(openHour)}:00 ל- ${Number(closeHour)}:00 בשעון המקומי`),
+      'it states the real default window, in their own words and their own clock');
 
     // And it opens the two doors nothing else opens, naming the keys their
     // answers have to land in — a question whose answer has nowhere to go is
