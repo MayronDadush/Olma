@@ -45,6 +45,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
@@ -1446,6 +1447,42 @@ NULL is the **once-per-life first-turn signal** (`openRecord` computes
 is the **silence test** behind the name-confirm rung. Stamping it early would
 have spent the first-turn signal and broken the silence test to fix a gate.
 The narrow column was the right lever.
+### Six good mornings for one timeout (fixed 2026-09-09)
+
+Dana joined on the evening of 2026-09-07. At 05:22 the next morning the
+check-in ladder queued her fifteen-minute day-one step (outbox row 8675,
+`onboarding:31:15m`), and between 05:23 and 05:40 she received six turns from
+Olma: the same check-in, worded five different ways, and the last one with the
+model's own tool-call markup — `<｜DSML｜tool_calls>` and her `olma_identity`
+token — pasted into the message. Her transcript shows six `DELIVERY:` turns
+for one row.
+
+The row's own record says what happened: `attempts = 5, last_error =
+'openclaw timeout'`. `runOpenclaw` in `channels/openclaw.js` kills the CLI at
+`SEND_TIMEOUT_MS` (120s) and returns `{ ok: false, timedOut: true }`, and its
+comment already said what that means — the CLI hands the turn to the gateway
+and only then waits, so the kill ends the WAITING and the turn goes on to
+deliver whatever it says. The group sender had learned this on 2026-09-06
+("The room was told twice"). The outbox worker had not: it read `ok: false`,
+stamped a backoff, and retried five seconds later — a whole new agent turn,
+which wrote a whole new message. Five seconds, fifteen, forty-five, then two
+and a quarter minutes: six turns in seventeen minutes, on a morning when the
+model was slow enough that each one ran past two minutes. Sixteen rows timed
+out in the thirty days before the fix; three were retried; hers was the worst.
+
+**The fix is in `outbox/worker.js`**: a `timedOut` result is booked as sent —
+`sent_at` set, `hold_reason` NULL so every "was it delivered" reader agrees
+(the ladder's next rung, the digest's last-sent, `isDeafOnDayOne`), one
+attempt spent, the timeout kept in `last_error`, and an audit row
+`delivery.unconfirmed` so the day's count of them is one query away. It is
+never retried. The trade is explicit: a message that really was lost to a
+dead gateway is now not chased, and that person hears the next thing Olma
+has to say instead. That is one missing message against six copies of one,
+and the six are what a new person reads on her first morning.
+
+The markup leak in the sixth turn is the model's — a DeepSeek turn that
+emitted its tool-call frame as text — and it is not fixed here; it is why
+the eval judge and the Hebrew-quality count on the dashboard exist.
 
 ### The room was told twice (fixed 2026-09-08)
 
