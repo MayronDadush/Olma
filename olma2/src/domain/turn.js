@@ -22,6 +22,7 @@ const pause = require('./pause');
 const selfInitiated = require('./self-initiated');
 const digest = require('./digest');
 const onboardingDomain = require('./onboarding');
+const templates = require('./message-templates');
 
 // Rollout control. Absent/empty = off everywhere, so deploying this changes
 // nothing until someone turns it on: a fix for an invisible defect must not
@@ -362,7 +363,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
           + 'reply. ' + NAME_IN_FIRST_MESSAGE,
       }
       : {
-        sendVerbatim: onboardingDomain.openingMessage(user.locale),
+        sendVerbatim: onboardingDomain.openingMessage(user.locale, await templates.load(client)),
         instruction: 'Their first ever message, and nobody has greeted them '
           + 'yet. Open your reply with sendVerbatim, character for character — '
           + 'do not translate, reword, shorten, or add to it. If they actually '

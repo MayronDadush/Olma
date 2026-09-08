@@ -116,6 +116,7 @@ before(async () => {
   // The feature ships behind a staged-rollout flag that is OFF by default;
   // open it for the suite and test the closed case on its own, below.
   await withTx(db.pool, (c) => require('../src/domain/flags').setFlag(c, mail.ACCESS_FLAG, 'all'));
+  await withTx(db.pool, (c) => require('../src/domain/flags').setFlag(c, 'google_connect_phones', 'all'));
   server = createDashboard({ pool: db.pool, adminUser: 'admin', adminPass: 'test-password-123' });
   await new Promise((r) => server.listen(0, r));
 });

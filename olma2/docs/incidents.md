@@ -48,6 +48,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
+- [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
 - [Her reminders arrived in Hebrew (fixed 2026-09-07)](#her-reminders-arrived-in-hebrew-fixed-2026-09-07)
 - [A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)](#a-hundred-and-five-pending-reminders-thirteen-of-them-pending-fixed-2026-09-07)
 - [The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)](#the-hooks-timer-fired-late-and-brokerd-took-the-blame-fixed-2026-09-07)
@@ -114,6 +115,9 @@ never trust a dated narrative for something you are about to act on.
 - [Two introductions, ninety seconds apart (fixed 2026-09-07)](#two-introductions-ninety-seconds-apart-fixed-2026-09-07)
 - [Two people, no introduction — the sweep beat the greeter to the door (fixed 2026-09-08)](#two-people-no-introduction--the-sweep-beat-the-greeter-to-the-door-fixed-2026-09-08)
 - ["This app is blocked", and the scope that was pricing the whole app (2026-09-07)](#this-app-is-blocked-and-the-scope-that-was-pricing-the-whole-app-2026-09-07)
+- [Two things at 08:00, and the one that says who she is came second (2026-09-08)](#two-things-at-0800-and-the-one-that-says-who-she-is-came-second-2026-09-08)
+- [The deploy that went red for one minute a day (2026-09-08)](#the-deploy-that-went-red-for-one-minute-a-day-2026-09-08)
+- [The door Google's screen is behind, closed until the screen is fixed (2026-09-08)](#the-door-googles-screen-is-behind-closed-until-the-screen-is-fixed-2026-09-08)
 - [The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)](#the-carryover-detector-checked-the-wrong-half-of-the-pair-so-the-flagged-case-was-innocent-and-the-real-leaks-were-invisible-fixed-2026-09-03)
 - [One carryover leak filed itself seven times — `config_guard`'s dedup key wasn't deterministic (fixed 2026-09-03)](#one-carryover-leak-filed-itself-seven-times--config_guards-dedup-key-wasnt-deterministic-fixed-2026-09-03)
 
@@ -1725,6 +1729,63 @@ done": the Hebrew examples inside the instructions handed to the model for
 digests, deliverables and the mail confirmation (`channels/openclaw.js` —
 "in their language" followed by a Hebrew example the model sometimes copies),
 and the two 410 pages behind a dead dashboard link, where no person is known.
+
+### Fifty-two seconds behind the introduction (fixed 2026-09-08)
+
+ג.ב read the message that finally said who Olma was at **08:00:27**. At
+**08:01:19** — fifty-two seconds later — he was asked which city he lives in.
+Two messages, correct, in the right order, and one more than anybody wanted.
+
+The ordering had been fixed the night before (see the introduction rule in
+`CLAUDE.md`): the introduction goes first and everything else is held behind
+it as `awaiting_introduction`. What nothing did was hold the check-in for a
+moment afterwards — the hold releases the instant the introduction is stamped
+sent, so the very next row in the same drain went out on its heels.
+
+That is the general shape, not one person's morning. The outbox drains a row
+at a time, so everything that comes due together arrives as a run. Reminders
+had already been given a batch the day before, but only with each other and
+only when they render with the same rung template.
+
+**The first measurement of how often this happens was wrong, and wrong in the
+direction that would have justified the most work.** Counting rows delivered
+within five minutes of each other said fifty runs of check-ins and thirty-four
+of reminders. Then the reminder pairs came back with a gap of zero seconds and
+identical timestamps to the microsecond — because a batch is stamped by one
+`UPDATE ... WHERE id = ANY(...)`, so every row it carried shares the
+transaction's clock. Those were not runs. They were the batch working, counted
+five times. Collapsing on `(user_id, sent_at)` gives the true number: **fifteen
+runs in the day and a bit since the batch shipped**, and almost all of them
+across different kinds — a reminder and the morning digest forty seconds
+apart, a check-in behind a digest.
+
+The same fact fixes a second thing. The daily budget counted rows, so a merged
+message spent a slot per row and merging cost more than sending the same
+things separately. It counts `DISTINCT sent_at` now: the budget is a limit on
+how often Olma interrupts somebody, and that is messages.
+
+`domain/message-merge.js` decides which rows may travel together, and two of
+its boundaries were argued for rather than assumed:
+
+- **A reminder is never folded into a composed turn.** Every rung rides the
+  raw pipe with the owner's own wording and no model in the path. A model
+  asked to include a sentence usually does — and the one time it rewords or
+  drops it, the person never hears about the thing they asked to be reminded
+  of, and the row is stamped delivered all the same. Reminders merge with
+  reminders and with nothing else, which is why the top pair on the list
+  above, a reminder beside the digest, is still two messages on purpose.
+- **At most one ASK per message.** Two questions in one message get one
+  answer, and neither the model nor the tool behind it can tell which was
+  answered: a connection request and a travel question in the same breath is a
+  wrong tool call waiting to happen. This is the doctrine's own "never more
+  than one ask", applied to a message assembled from parts rather than written
+  as one. Statements travel freely, the single question goes last.
+
+A row carrying its own hand-written `instruction` is never composed with,
+which is what keeps ג.ב's introduction saying exactly what it says and nothing
+else. So the morning that prompted all this is still two messages — the
+introduction cannot merge with anything, by design. The gap between them is a
+separate decision, and nobody has taken it.
 
 ### Nine reminders, nine messages (fixed 2026-09-07)
 
@@ -3918,6 +3979,160 @@ Two shapes worth keeping from how this was built:
 Still open and not built: nothing watches for an `auth_started` with no
 `integrations` row, so the next person Google blocks will look exactly like a
 person who changed their mind.
+
+### Two things at 08:00, and the one that says who she is came second (2026-09-08)
+
+ג.ב never heard the opening copy — the greeter answered him in its own words
+while provisioning had already stamped `opening_sent_at`, so his own agent was
+told the introduction was done ("Two people, no introduction", fixed the same
+night). The repair was a hand-queued message: here is who I am, sorry this
+reached you a day late.
+
+It was queued for 09:00. The day-one calendar offer was due at 08:00. So the
+first thing he was going to hear from Olma, ever, was a request to connect his
+Google Calendar — from an assistant that had not yet said what she was.
+
+Nothing was broken. Both rows were correct, both times were correct, and the
+only thing deciding which came first was `ORDER BY o.created_at` in the
+worker's candidate query. Move either row by a minute, or create them the
+other way round, and the morning reads completely differently. **An ordering
+that is right by accident is the thing to fix, not the row.**
+
+So `introduction` is now a kind the gate knows: while one is unsent, every
+other row for that person is held as `awaiting_introduction`. Two details that
+are not decoration:
+
+- **Held, never dropped.** The introduction lands and the queue moves on the
+  next tick. Dropping would spend messages nobody ever read.
+- **Exempt from the daily proactive budget.** Everything else is waiting
+  behind it, so a budget-held introduction is a deadlock that only the
+  two-day bound breaks. It is also not one of Olma's four daily initiatives:
+  it is the sentence that makes the other four make sense. The integration
+  test found this — the shared test user had spent its budget, and the queue
+  simply stopped.
+
+A moment THEY chose still passes: a digest, and rung 1 of a reminder they
+asked for in words. Somebody who set a reminder for 10:45 knows perfectly well
+who is sending it, and making that wait for an introduction would be absurd.
+
+**Two more things only the rehearsal could have found.** Replaying his night
+against the deployed code — `checkin.run` at each moment a step comes due, then
+asking the gate what it would do at 08:00 — printed this:
+
+```
+  8218 introduction   due=Y → drop/quiet
+  8248 checkin        due=Y → deliver
+  8256 checkin        due=Y → deliver
+```
+
+Two check-ins and no introduction: the exact inverse of the intended morning,
+and both halves were caused by closing the Google door an hour earlier.
+
+The `quiet` drop, first. When the 8h calendar step declines, the run falls
+through to an ordinary rung — and an ordinary rung increments
+`checkin_misses`, while a day-one step deliberately does not. One miss is all
+the gate needs to drop everything that is not a check-in, so the introduction
+died on a counter that his own unanswered nudge had moved. **An introduction is
+not something Olma decided to say; it is something she owes**, and the person
+who has not answered is the likeliest one never to have been told who was
+writing to them. It is now exempt, alongside the ladder's own check-in.
+
+Then the pile-up. `#278` had just taught a day-one step to supersede the step
+still waiting, keyed on `onboarding:<uid>:%` — which covers step-replaces-step
+and nothing else. A step that DECLINES and falls through to an ordinary rung
+writes a different key, so the two stood side by side, were both held for the
+night, and were both released at 08:00. The same bug, through a door opened
+that evening. The supersede now takes any still-unsent check-in: **the ladder
+has one live rung at a time**, whatever produced it.
+
+Neither would have shown up in the suite as it stood, and neither is visible in
+the code — the first needs a step to decline, and the second needs a decline
+AND an unsent step already waiting. What found them was replaying the actual
+person's actual night, inside a transaction that was rolled back.
+
+### The deploy that went red for one minute a day (2026-09-08)
+
+`tests/quiet-mode.test.js` failed inside `deploy.sh` on bytes that had passed
+the PR run and two full local suites:
+
+```
+✖ an automatic reminder is dropped as quiet ... one asked for in words still comes
+  AssertionError: the sweep does not know about the quiet — the gate is the chokepoint
+  1 !== 2
+```
+
+The diff it failed on could not reach `sweepReminders` at all — it touched the
+delivery gate, the check-in supersede and a worker fact query. That is the tell
+worth keeping: **when the failing assertion is somewhere the change cannot
+reach, stop looking at the change.**
+
+The test built its due date as `Date.now() + 90 minutes`. Its user has no
+timezone, so the zone is UTC, and `auto-reminder.isDayShaped` reads a due date
+at local midnight — `hh === 0 && mi === 0`, seconds ignored — as DAY-shaped,
+which earns 08:00 that morning rather than an hour before. So for one minute of
+every day, when the test happens to start between 22:30 and 22:31 UTC, the
+automatic reminder is armed for 08:00 instead of the moment the test then
+sweeps at, and the sweep finds one reminder instead of two.
+
+The product was right both times. The test was reading `Date.now()`, which is
+the thing the suite has been burned by before and has a whole scheduled
+workflow to catch (`olma2-clock-drift.yml`, four hours of the day — none of
+them 22:30). The on-box suite ran at 22:26 and this file reached that test at
+22:30:something.
+
+Fixed by nudging the due moment off local midnight and, more usefully, by
+asserting the thing the nudge protects: the reminder is armed an hour before,
+not at 08:00. A miscount two assertions later named the gate; now the failure
+names its own cause. Checked against all 1440 start-minutes of a day.
+
+**The box was left MIXED in the meantime** — `deploy.sh` writes the RELEASE
+marker before the suite, so `/opt/olma2` held the new sha while brokerd was
+still running the previous one and `/ready` answered 200 throughout. Exactly
+the state the marker rule describes, and the reason the restart timestamp is
+the thing to check rather than the marker.
+
+### The door Google's screen is behind, closed until the screen is fixed (2026-09-08)
+
+The entry above ends on a gap: nothing watches for an `auth_started` with no
+`integrations` row. The next night produced one, unprompted. u-30 was
+provisioned at 00:26, wrote three messages, and at 00:28:30 — two minutes into
+their life here — `calendar.auth_started` was written. There is no
+`integrations` row for them. Whatever they saw on Google's screen, they did
+not come back.
+
+Nothing proactive did that. The day-one calendar step fires at eight hours and
+the check-in rung needs a quiet person; this was the model, in conversation,
+two minutes in. **That is the part worth keeping**: the offer sites anyone
+would think to switch off were not the ones that reached this person, and a
+switch on those three would have read as "the calendar is no longer offered"
+while the main path stayed wide open.
+
+So the gate is on the MINT, not on the pitch — `beginConnection` in all three
+of `calendar.js`, `google-contacts.js` and `google-connect.js`, which is every
+route that has ever produced a consent URL, the personal dashboard's
+`/me/act` included (its test failed the moment the gate went in, which is how
+that route announced itself). One flag for calendar and contacts together
+because `start_google_connection` mints ONE link covering both, and a gate on
+half of a single link is not a gate.
+
+The pitches are silenced as well, and not as belt-and-braces: an offer whose
+tool will refuse is worse than no offer, because the person says yes first and
+then hears no. The day-one 8h step declines, and both `calendar:*` check-in
+rungs go quiet — `needs_reauth` included, which is the one that took an
+argument. Someone whose calendar Google has stopped accepting is already
+getting nothing from it; walking them back to a door that will not open is not
+a repair, it is a second disappointment. It comes back by itself when the flag
+reopens, and the test says so.
+
+What is NOT closed: an existing connection. Nothing is disconnected, nothing
+revoked, every sync and every read carries on — the flag governs new links
+only, exactly as `email_access_phones` does for mail. An admin is exempt so the
+owner can go and look at Google's screen himself, which is the only way anyone
+finds out it has stopped shouting.
+
+The `auth_started`-with-no-`integrations` watcher is still not built. It is
+now the only way this class of failure gets noticed, and while the door is
+shut there is nothing for it to notice.
 
 ### The carryover detector checked the wrong half of the pair, so the flagged case was innocent and the real leaks were invisible (fixed 2026-09-03)
 

@@ -11,6 +11,7 @@
 // Eligibility gates mirror v1 checkin.js: idle >24h, no checkin in 24h,
 // miss-backoff (1 → three days, 2 → weekly, 3 → stop). Daytime is NOT checked here — the
 // outbox gate holds the row until the user's own window opens.
+const connectGate = require('../domain/google-connect-gate');
 const meetings = require('../domain/meetings');
 const pause = require('../domain/pause');
 const { enqueue } = require('../outbox/enqueue');
@@ -132,6 +133,12 @@ const ONBOARDING_STEPS = [
     // reason a step may decline: it falls through to the ordinary ladder
     // rather than spending their day-one slot on a solved problem.
     skipIf: async (client, u) => {
+      // Nothing to pitch that we would then refuse to do. While Google
+      // connecting is switched off (domain/google-connect-gate.js) this step
+      // would spend a day-one slot offering a link the tool will not mint —
+      // the worst version of an offer, because the person says yes first.
+      const allowed = await connectGate.requireGoogleConnect(client, u.id);
+      if (!allowed.ok) return true;
       const { rows } = await client.query(
         `SELECT 1 FROM integrations
           WHERE user_id = $1 AND status = 'connected' AND provider LIKE 'google%' LIMIT 1`,
@@ -494,7 +501,12 @@ async function discoveryGaps(client, userId) {
     `SELECT status FROM integrations
      WHERE user_id = $1 AND provider = 'google_calendar'`, [userId]);
   const calStatus = cal[0] ? cal[0].status : null;
-  if (calStatus !== 'connected') {
+  // Same reason as the day-one step above: while connecting is off, both of
+  // these end at a link that cannot be minted. needs_reauth goes quiet too —
+  // their calendar is already doing nothing, and being walked back to a wall
+  // is worse than being left alone until the door reopens.
+  const canConnect = (await connectGate.requireGoogleConnect(client, userId)).ok;
+  if (calStatus !== 'connected' && canConnect) {
     // Two distinct topics, not one: a never-connected pitch that should
     // never repeat once declined must not also gate off the needs_reauth
     // recovery, which CLAUDE.md documents as the only mechanism that ever
@@ -584,13 +596,18 @@ async function run(client, now = Date.now()) {
       // Withdrawn like a cancellation (an UPDATE, never a DELETE: the key is
       // what stops the sweep re-creating it); a step already delivered is
       // untouched, because it was heard.
-      if (step) {
-        await client.query(
-          `UPDATE outbox SET sent_at = now(), hold_reason = 'superseded'
-            WHERE user_id = $1 AND kind = 'checkin' AND sent_at IS NULL AND id <> $2
-              AND idempotency_key LIKE 'onboarding:' || $1::text || ':%'`,
-          [u.id, res.data.outboxId]);
-      }
+      //
+      // ANY still-unsent check-in, not just a day-one one. Keyed on
+      // 'onboarding:%' this covered step-replaces-step and nothing else, so
+      // the moment a day-one step DECLINED and the run fell through to an
+      // ordinary rung, the two stood side by side again — held for the night
+      // and released together in the morning. That is exactly what the
+      // calendar step declining produced for ג.ב: a 5h step and a discovery
+      // rung, both due at 08:00. The ladder has one live rung at a time.
+      await client.query(
+        `UPDATE outbox SET sent_at = now(), hold_reason = 'superseded'
+          WHERE user_id = $1 AND kind = 'checkin' AND sent_at IS NULL AND id <> $2`,
+        [u.id, res.data.outboxId]);
       // Stamped on the ENQUEUE, not on the answer: the promise is "asked
       // once", and a question the gate later drops still used up the one turn
       // this person's patience had for it. Any topic that begins 'timezone',

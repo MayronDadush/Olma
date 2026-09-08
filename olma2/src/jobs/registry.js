@@ -260,7 +260,10 @@ const deployDrift = require('./deploy-drift');
     { name: 'intake_template_sync', run: async () => {
       if (!intake.intakeConfigured(OPENCLAW_CONFIG())) return { skipped: true };
       const open = (await flagsDomain.getFlag(pool, 'registration_open')) === true;
-      return syncIntakeWorkspace(open);
+      // The greeter quotes the opening copy, so a rewording on the admin page
+      // reaches its file on this job's next tick, the same way the flag does.
+      const wording = await require('../domain/message-templates').load(pool);
+      return syncIntakeWorkspace(open, undefined, wording);
     } },
     { name: 'config_guard', run: () => withTx(pool, (c) =>
       configGuard.run(c, { configPath: OPENCLAW_CONFIG(), send: rawSend, validateConfig })) },

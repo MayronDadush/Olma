@@ -197,6 +197,21 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   redo goes out under the next rung's key with the plain wording, keeps the
   urgency of the rung it replaces, and still spends a rung so a broken pipe
   cannot loop (`incidents.md`, "The reminder that could not climb").
+- **Nothing Olma DECIDED to say goes out in front of an introduction she still
+  owes.** An `introduction` outbox row is her saying who she is to somebody who
+  never heard it — the intake greeter's job normally, a queued repair when the
+  greeter missed. While one is unsent the gate holds every other row as
+  `awaiting_introduction` (held, never dropped) and exempts it from the daily
+  budget, because everything else is waiting behind it and a budget hold there
+  is a deadlock. A moment THEY chose still passes — a digest, rung 1 of a
+  reminder they asked for in words — on the same line the gate draws
+  everywhere else, and it survives the quiet drop too: somebody who has not
+  answered is the likeliest person never to have been told who was writing to
+  them. Bounded to two days in the worker: a repair that never
+  went out must not silence somebody for ever. What decided this before was
+  `ORDER BY created_at`, which is an accident: ג.ב's introduction and a
+  day-one calendar offer were both due at 08:00, from an assistant that had
+  not yet said what she was (2026-09-08).
 - **Reminders that come due in the same tick go out as ONE message, and the
   coalescing happens at DELIVERY, never at enqueue.** A batch enqueued under
   one idempotency key would let cancelling a single reminder re-create the
@@ -206,6 +221,25 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   templates), and a failed send fails for all of them and skips them for the
   rest of the tick. Vered got nine messages in ninety seconds
   (`incidents.md`, "Nine reminders, nine messages").
+- **Anything else due in the same moment is ONE message too, and two rules say
+  what may travel together** (`domain/message-merge.js`). A REMINDER is never
+  folded into a composed turn: every rung rides the raw pipe with the owner's
+  wording and no model, and handing the one sentence a person asked for to a
+  model that may reword or drop it would leave the row stamped delivered all
+  the same. And a merged message carries **at most one ASK** — two questions
+  get one answer and nothing can tell which was answered — with the statements
+  first and the question last. A row carrying its own hand-written
+  `instruction` is never composed with (that is what keeps an introduction
+  saying exactly what it says), and a kind absent from `MERGEABLE` goes alone,
+  so one added next month is safe until somebody reads it. Same place and same
+  reason as the reminder batch: at DELIVERY, no new row, no new key, every
+  sibling re-`decide()`d because expiry and the holds are per row.
+  **The daily budget counts `DISTINCT sent_at`, not rows** — one `UPDATE`
+  stamps a whole batch with one timestamp, and the budget limits how often
+  Olma interrupts somebody, which is messages. Counting rows charged a merged
+  message twice and made merging cost more than sending the same things apart;
+  it is also what made the first measurement of this problem read one message
+  as five (`incidents.md`, "Fifty-two seconds behind the introduction").
 
 ### Data you must not get wrong
 
@@ -315,11 +349,15 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   A backoff, not a mute: one message from them re-opens it. It asked Sarah the
   same question on four mornings first (`incidents.md`, "The morning digest
   asked the same question four mornings running").
-- **A day-one step that has not gone out is REPLACED by the next, never
-  joined by it.** `checkin.run` withdraws the person's still-unsent
+- **A day-one step that has not gone out is REPLACED by the NEXT CHECK-IN of
+  any kind, never joined by it.** `checkin.run` withdraws the person's still-unsent
   `onboarding:*` rows (`hold_reason = 'superseded'`) when it enqueues the
-  next step; the expiry numbers alone never did this and two steps went out
-  at 08:00 to two people (`incidents.md`, "Two good mornings at once").
+  next check-in; the expiry numbers alone never did this and two steps went
+  out at 08:00 to two people (`incidents.md`, "Two good mornings at once").
+  Keyed on `onboarding:%` it covered step-replaces-step and nothing else, so a
+  day-one step that DECLINED and fell through to an ordinary rung put the two
+  side by side again — which is what the closed Google door produced the same
+  night. The ladder has ONE live rung at a time.
 - **Somebody who has stopped answering hears nothing Olma decided to say, and
   nothing on their record is cancelled.** The check-in ladder's one miss
   (`checkin_misses >= 1`) is the signal and the delivery gate is where it
@@ -754,6 +792,21 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   request was `calendar: read_only, mail: false` — his block came from the
   app's configuration, never from his URL. `tests/public-pages.test.js` fails
   on any restricted scope named on any public page.
+- **Every NEW Google consent link goes through one door, and it is CLOSED**
+  (`domain/google-connect-gate.js`, flag `google_connect_phones`: '' = nobody
+  but an admin, 'all' = everybody, or an E.164 list). While the app is
+  unverified its link lands on Google's "not verified" screen, and the owner's
+  rule is that nobody meets that screen (2026-09-08). One flag for calendar
+  AND contacts because `start_google_connection` mints ONE link covering both
+  — gating only the calendar would send the same person to the same screen
+  through the contacts half. It gates MINTING: an existing connection keeps
+  syncing, nothing is disconnected, and mail keeps its own separate gate for
+  the narrower restricted-scope reason above. **A closed door also silences
+  the OFFER** — the day-one 8h step and both `calendar:*` check-in rungs
+  decline while it is shut, because an offer the tool then refuses is the
+  worst kind: they say yes first. The proactive rungs were never the main
+  path anyway — u-30 started a calendar auth two minutes after joining, from
+  the conversation, and has no connection to show for it.
 - **A display name is not a word to be translated.** It arrives in whatever
   script its owner chose; `Idan T` became "היי אידן!" in the first sentence
   that person ever read, while the right spelling sat in a database the

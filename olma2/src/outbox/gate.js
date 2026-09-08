@@ -131,11 +131,39 @@ function decide(facts) {
   const wroteInRoom = facts.groupWroteAt ? new Date(facts.groupWroteAt).getTime() : 0;
   const inRoomGrace = wroteInRoom > 0 && (now.getTime() - wroteInRoom) < CONVERSATION_GRACE_MS;
 
-  if ((Number(facts.checkinMisses) || 0) >= 1 && row.kind !== 'checkin') {
+  // An `introduction` is exempt for the same reason the ladder's own check-in
+  // is: it is the one thing Olma OWES rather than something she decided to
+  // say, and somebody who has not answered is the likeliest person never to
+  // have been told who was writing to them in the first place. ג.ב would have
+  // lost his to this rule on the morning it was queued for (2026-09-08).
+  if ((Number(facts.checkinMisses) || 0) >= 1
+    && row.kind !== 'checkin' && row.kind !== 'introduction') {
     const rung = Number(row.payload && row.payload.rung) || 1;
     const askedInWords = row.kind === 'reminder' && rung <= 1
       && row.payload && row.payload.auto === false;
     if (!askedInWords && !inRoomGrace) return { action: 'drop', holdReason: 'quiet' };
+  }
+
+  // ── Nothing before the introduction ──────────────────────────────────────
+  // An `introduction` row is Olma saying who she is to somebody who never
+  // heard it — normally the intake greeter's job, and a hand-queued repair
+  // when the greeter missed (ג.ב, 2026-09-08: greeted with the greeter's own
+  // words instead of the copy, so `opening_sent_at` was stamped and his own
+  // agent was then told the introduction was done).
+  //
+  // While one is queued, nothing Olma DECIDED to say goes out in front of it.
+  // Order by creation time is what decided this before, which is an accident:
+  // his introduction and the day-one calendar offer were both due at 08:00 and
+  // the offer came from an assistant that had not yet said what she was.
+  //
+  // Held, never dropped — the introduction lands and the queue moves. A moment
+  // THEY chose still passes, the same line the gate draws everywhere else: a
+  // person who asked for a 10:45 reminder in words knows perfectly well who is
+  // sending it, and making them wait for an introduction would be absurd.
+  if (facts.introductionPending && row.kind !== 'introduction') {
+    const r = Number(row.payload && row.payload.rung) || 1;
+    const theirs = row.kind === 'digest' || (row.kind === 'reminder' && r <= 1);
+    if (!theirs) return { action: 'hold', holdReason: 'awaiting_introduction', releaseAfter: null };
   }
 
   if (blocked) {
@@ -171,7 +199,14 @@ function decide(facts) {
     };
   }
 
-  if (row.urgency !== 'urgent' && !userChoseThisTime && sentToday >= budget) {
+  // The introduction is exempt from the daily budget, and it is the only kind
+  // exempt for a reason that is not about whose moment it is. Everything else
+  // in this person's queue is held BEHIND it, so a budget-held introduction is
+  // a deadlock that only the two-day bound in the worker breaks — and it is
+  // not one of Olma's four daily initiatives in the first place. It is the
+  // sentence that makes the other four make sense.
+  if (row.kind !== 'introduction'
+    && row.urgency !== 'urgent' && !userChoseThisTime && sentToday >= budget) {
     // A budget-held row is picked up by the next digest rather than retried on
     // a clock — but sweepDigests only visits users who HAVE digest_times, so
     // for everyone else that pickup never comes and the row sits unsent

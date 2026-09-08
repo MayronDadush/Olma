@@ -24,9 +24,11 @@
 // words (docs/incidents.md, "Two introductions, ninety seconds apart").
 const fs = require('node:fs');
 const path = require('node:path');
-const { OPENING } = require('../domain/onboarding');
+const { openingMessage } = require('../domain/onboarding');
 
-function intakeAgentsMd(registrationOpen) {
+// `overrides` is the owner's rewording (domain/message-templates.load); the
+// greeter's file quotes the opening EXACTLY, so it has to be rendered with them.
+function intakeAgentsMd(registrationOpen, overrides) {
   const shared = [
     '# Olma intake',
     '',
@@ -79,10 +81,10 @@ function intakeAgentsMd(registrationOpen) {
     'it, shorten it or add to it:',
     '',
     'If they wrote in Hebrew:',
-    OPENING.he,
+    openingMessage('he', overrides),
     '',
     'In any other language:',
-    OPENING.en,
+    openingMessage('en', overrides),
     '',
     'If they asked for something in that first message, answer it in one short',
     'line BELOW those lines. If they did not, stop there — the text already',
@@ -131,10 +133,10 @@ function intakeAgentsMd(registrationOpen) {
 
 // Writes the workspace (idempotent) and returns whether anything changed —
 // brokerd calls this on a timer keyed to the registration_open flag.
-function syncIntakeWorkspace(registrationOpen, base = process.env.OLMA_OPENCLAW_HOME || '/root/.openclaw') {
+function syncIntakeWorkspace(registrationOpen, base = process.env.OLMA_OPENCLAW_HOME || '/root/.openclaw', overrides) {
   const ws = path.join(base, 'workspaces', 'intake');
   fs.mkdirSync(ws, { recursive: true });
-  const desired = intakeAgentsMd(registrationOpen);
+  const desired = intakeAgentsMd(registrationOpen, overrides);
   const p = path.join(ws, 'AGENTS.md');
   const current = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null;
   if (current === desired) return { changed: false, workspace: ws };

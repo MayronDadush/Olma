@@ -16,6 +16,7 @@ const actionLink = require('./action-link');
 const audit = require('./audit');
 const cryptoStore = require('./crypto-store');
 const google = require('./google-oauth');
+const connectGate = require('./google-connect-gate');
 const { enqueue } = require('../outbox/enqueue');
 const contacts = require('./contacts');
 const googleFamily = require('./google-family');
@@ -27,6 +28,8 @@ const MAX_PAGES = 10; // hard bound: 10k contacts, well past any real address bo
 // ---- consent ----------------------------------------------------------------
 
 async function beginConnection(client, userId) {
+  const allowed = await connectGate.requireGoogleConnect(client, userId);
+  if (!allowed.ok) return allowed;
   if (!google.isConfigured()) {
     return err('invalid', 'Google is not configured on this server');
   }

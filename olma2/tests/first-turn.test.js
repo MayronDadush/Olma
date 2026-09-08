@@ -211,6 +211,21 @@ test('somebody the greeter already welcomed is not welcomed again', async () => 
   assert.match(said, /set_my_name with confirmed: true/);
 });
 
+// The owner rewords the opening from the admin page like every other fixed
+// sentence (2026-09-08); the words turn_start hands over are the reworded ones.
+test('a reworded opening is what turn_start hands over, character for character', async () => {
+  const templates = require('../src/domain/message-templates');
+  const reworded = 'היי, אני עולמה 👋\n\nכאן בשביל הסדר שלך.';
+  await withTx(db.pool, (c) => flagsDomain.setFlag(c, templates.FLAG, { opening_he: reworded }));
+  try {
+    const u = await makeUser(db.pool, '+972611003099', { firstName: null, locale: 'he' });
+    const { data } = await turnStart(u, { opened: false, counted: false });
+    assert.equal(data.onboarding.sendVerbatim, reworded);
+  } finally {
+    await withTx(db.pool, (c) => flagsDomain.setFlag(c, templates.FLAG, {}));
+  }
+});
+
 test('an English speaker gets the English opening', async () => {
   const u = await makeUser(db.pool, '+15551230007', { firstName: null, locale: 'en' });
   const { data } = await turnStart(u, { opened: false, counted: false });

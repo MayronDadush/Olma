@@ -78,6 +78,9 @@ const STYLE = `<style>
   .cols{display:flex;gap:24px;flex-wrap:wrap} .cols>div{flex:1;min-width:240px}
   table.settings td:first-child{max-width:520px}
   table.templates td:first-child{width:50%}
+  table.templates.bilingual td:first-child{width:18%}
+  table.templates.bilingual td{vertical-align:top}
+  table.templates.bilingual td:nth-child(3){direction:ltr;text-align:left}
   pre.tpl{white-space:pre-wrap;font:inherit;font-size:12.5px;margin:6px 0 0;padding:6px 8px;background:var(--surface-2);border-radius:6px;color:var(--muted)}
   textarea.tpl{width:100%;box-sizing:border-box;font:inherit;font-size:13px;padding:6px 8px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;resize:vertical}
   textarea.tpl:focus{outline:2px solid var(--accent);outline-offset:-1px}

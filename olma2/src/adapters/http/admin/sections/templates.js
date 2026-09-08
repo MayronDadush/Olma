@@ -32,20 +32,35 @@ async function lastRejections(client) {
 
 function varsLine(t) {
   const names = Object.keys(t.vars);
-  if (!names.length) return '<div class="dim small">בלי משתנים.</div>';
+  if (!names.length) return '';
   const parts = names.map((n) => `<span class="mono">{{${n}}}</span> — ${esc(t.vars[n])}${t.required.includes(n) ? ' <b>(חובה)</b>' : ''}`);
   return `<div class="dim small">משתנים: ${parts.join(' · ')}</div>`;
 }
 
-function row(t, stored, rejected) {
+// One language of one message: the default, the box, and what the last save
+// refused for it. An empty cell is a message that exists in Hebrew only —
+// everything said in a group, today — and says so rather than offering a box
+// that nothing would ever send.
+function cell(t, stored, rejected) {
+  if (!t) return '<td class="dim small">רק בעברית — אין גרסה באנגלית להודעה הזו.</td>';
   const override = typeof stored[t.key] === 'string' ? stored[t.key] : '';
   const live = templates.textFor(t.key, stored);
   const badge = override && live === override ? ' <span class="pill ok">מנוסח מחדש</span>' : '';
   const refused = rejected[t.key] ? `<div class="warn small">לא נשמר: ${esc(rejected[t.key])}</div>` : '';
-  return `<tr id="tpl-${esc(t.key)}">
-    <td><div>${esc(t.label)}${badge}</div><div class="dim small">${esc(t.help)}</div>${varsLine(t)}
-      <pre class="tpl" title="ברירת המחדל">${esc(t.text)}</pre></td>
-    <td><textarea class="tpl" name="${esc(t.key)}" rows="${Math.max(3, t.text.split('\n').length + 1)}" maxlength="${templates.MAX_LENGTH}" placeholder="ריק = ברירת המחדל">${esc(override)}</textarea>${refused}</td>
+  return `<td>${badge}${varsLine(t)}
+      <pre class="tpl" title="ברירת המחדל">${esc(t.text)}</pre>
+      <textarea class="tpl" name="${esc(t.key)}" rows="${Math.max(3, t.text.split('\n').length + 1)}" maxlength="${templates.MAX_LENGTH}" placeholder="ריק = ברירת המחדל">${esc(override)}</textarea>${refused}</td>`;
+}
+
+// One row per MESSAGE, Hebrew beside English (domain/message-templates
+// .families): the owner asked (2026-09-08) for every fixed sentence in one
+// place, in both languages, rather than the English twins scattered down the
+// same list as separate entries.
+function row(f, stored, rejected) {
+  return `<tr id="tpl-${esc(f.id)}">
+    <td><div>${esc(f.label)}</div><div class="dim small">${esc(f.help)}</div></td>
+    ${cell(f.he, stored, rejected)}
+    ${cell(f.en, stored, rejected)}
   </tr>`;
 }
 
@@ -53,8 +68,8 @@ async function renderTemplates(client, csrf) {
   const stored = await templates.load(client);
   const rejected = await lastRejections(client);
   const tables = AUDIENCES.map(({ id, title }) => {
-    const rows = templates.TEMPLATES.filter((t) => t.audience === id).map((t) => row(t, stored, rejected)).join('');
-    return `<h4>${title}</h4><table class="settings templates"><tr><th>ההודעה וברירת המחדל</th><th>במקום זה</th></tr>${rows}</table>`;
+    const rows = templates.families().filter((f) => f.audience === id).map((f) => row(f, stored, rejected)).join('');
+    return `<h4>${title}</h4><table class="settings templates bilingual"><tr><th>ההודעה</th><th>עברית</th><th>אנגלית</th></tr>${rows}</table>`;
   }).join('');
   return `<form method="post" action="/templates">
       <input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="back" value="/#templates">

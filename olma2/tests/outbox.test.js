@@ -34,6 +34,48 @@ test('gate: blocked user holds everything except paid reminders and unblock', ()
   assert.equal(decide({ ...blocked, row: row({ kind: 'unblock_summary' }) }).action, 'deliver');
 });
 
+test('gate: an introduction survives the quiet drop, like the ladder\'s own check-in', () => {
+  const quiet = { ...baseFacts, checkinMisses: 1 };
+  // Everything Olma decided to say stops for someone who has gone quiet...
+  assert.equal(decide({ ...quiet, row: row({ kind: 'meeting_invite' }) }).holdReason, 'quiet');
+  assert.equal(decide({ ...quiet, row: row({ kind: 'digest' }) }).holdReason, 'quiet');
+  // ...but the introduction is the one thing she OWES, and somebody who has
+  // not answered is the likeliest person never to have been told who was
+  // writing to them. ג.ב would have lost his to this rule (2026-09-08).
+  assert.equal(decide({ ...quiet, row: row({ kind: 'introduction' }) }).action, 'deliver');
+  assert.equal(decide({ ...quiet, row: row({ kind: 'checkin' }) }).action, 'deliver');
+});
+
+test('gate: an unsent introduction holds everything Olma decided to say, in front of it', () => {
+  const waiting = { ...baseFacts, introductionPending: true };
+  // Olma's own initiatives wait. Held, never dropped — the introduction lands
+  // and the queue moves on the next tick.
+  const held = decide({ ...waiting, row: row() });
+  assert.equal(held.action, 'hold');
+  assert.equal(held.holdReason, 'awaiting_introduction');
+  assert.equal(held.releaseAfter, null);
+  assert.equal(decide({ ...waiting, row: row({ kind: 'meeting_invite' }) }).holdReason, 'awaiting_introduction');
+
+  // The introduction itself is what everything is waiting FOR.
+  assert.equal(decide({ ...waiting, row: row({ kind: 'introduction' }) }).action, 'deliver');
+  // ...including on a day whose proactive budget is already spent: everything
+  // else waits behind it, so a budget hold here is a deadlock.
+  assert.equal(decide({ ...baseFacts, sentToday: 9, row: row({ kind: 'introduction' }) }).action, 'deliver');
+  assert.equal(decide({ ...baseFacts, sentToday: 9, row: row() }).holdReason, 'budget');
+
+  // A moment THEY chose passes: somebody who asked for a reminder in words
+  // knows who is sending it, and holding it back for an introduction would be
+  // absurd. Same line the rest of the gate draws.
+  assert.equal(decide({ ...waiting, row: row({ kind: 'digest' }) }).action, 'deliver');
+  assert.equal(decide({ ...waiting, row: row({ kind: 'reminder', payload: { rung: 1 } }) }).action, 'deliver');
+  // Rung 2 is Olma's moment, not theirs, so it waits like the rest.
+  assert.equal(decide({ ...waiting, row: row({ kind: 'reminder', payload: { rung: 2 } }) }).holdReason,
+    'awaiting_introduction');
+
+  // Nothing pending, nothing changes.
+  assert.equal(decide({ ...baseFacts, row: row() }).action, 'deliver');
+});
+
 test('gate: night holds until the personal window opens; user-chosen times bypass', () => {
   const night = { ...baseFacts, now: threeAmUTC };
   const held = decide({ ...night, row: row() });
@@ -223,8 +265,14 @@ test('night hold: row waits, then releases when the window opens', async () => {
 // Five messages had gone out that day, and not one of them was subject to the
 // budget it exhausted.
 const BUDGET_DAY = '2026-08-16T12:00:00Z';
+// A minute apart, because these stand for messages that actually went out one
+// after another. The budget counts DISTINCT sent_at — a batch is stamped by one
+// UPDATE and shares its transaction's timestamp to the microsecond, so rows
+// that rode in one message are one message against the budget. Written with a
+// single timestamp, these four would have read as one send.
 async function alreadySentThatDay(rows) {
-  const values = rows.map((r) => `($1,'${r.kind}','{}','${r.urgency}',$2)`).join(', ');
+  const values = rows.map((r, i) =>
+    `($1,'${r.kind}','{}','${r.urgency}', $2::timestamptz + interval '${i} minutes')`).join(', ');
   await db.pool.query(
     `INSERT INTO outbox (user_id, kind, payload, urgency, sent_at) VALUES ${values}`,
     [user.id, BUDGET_DAY]
@@ -550,4 +598,37 @@ test('worker: a batch that fails to send fails for every row it carried', async 
     assert.match(r.last_error, /pipe down/);
     assert.ok(r.release_after, 'and must be held off until the backoff passes');
   }
+});
+
+test('the introduction goes out first, and the queue moves the moment it has', async () => {
+  await flushOutbox();
+  const rec = recorder();
+  const at = new Date('2026-08-16T12:00:00Z');
+  // Their own user: this file's shared one has spent its daily budget several
+  // times over by now, and the budget is a different rule being tested above.
+  const fresh = await makeUser(db.pool, '+972581000077', { firstName: 'Gal', timezone: 'UTC' });
+  // Created in the WRONG order on purpose: ordering by creation time is the
+  // accident this rule replaces (ג.ב, 2026-09-08 — his introduction and a
+  // day-one offer were both due at 08:00).
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: fresh.id, kind: 'checkin', payload: { checkinInstruction: 'offer them something' },
+    idempotencyKey: 'intro-after',
+  }));
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: fresh.id, kind: 'introduction', payload: { instruction: 'say who you are' },
+    idempotencyKey: 'intro-first',
+  }));
+
+  let out = await drainOnce(db.pool, rec.deliver, at);
+  assert.equal(out.delivered, 1);
+  assert.deepEqual(rec.sent, ['introduction']);
+  const { rows: held } = await db.pool.query(
+    `SELECT hold_reason, sent_at FROM outbox WHERE idempotency_key = 'intro-after'`);
+  assert.equal(held[0].hold_reason, 'awaiting_introduction');
+  assert.equal(held[0].sent_at, null, 'held, not dropped');
+
+  // The introduction has landed; nothing is waiting for it any more.
+  out = await drainOnce(db.pool, rec.deliver, at);
+  assert.equal(out.delivered, 1);
+  assert.deepEqual(rec.sent, ['introduction', 'checkin']);
 });

@@ -89,8 +89,46 @@ const DELIVERY_PREAMBLE = [
 
 function instructionFor(row) {
   const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
+  const parts = Array.isArray(p.mergedParts) ? p.mergedParts : [];
+  if (parts.length > 1) return `${DELIVERY_PREAMBLE}\n\n${mergedBody(parts)}`;
   if (p.instruction) return `${DELIVERY_PREAMBLE}\n\n${p.instruction}`;
   return `${DELIVERY_PREAMBLE}\n\n${bodyFor(row, p)}`;
+}
+
+// Several rows the worker decided may travel together (domain/message-merge.js
+// decides WHICH; this decides how the joint message reads). Each part keeps its
+// OWN body text word for word — the card clause on a digest, the rung wording
+// on a check-in, the data-only fences on anything quoted — so nothing about a
+// part changes because it happens to have company. What is added is only the
+// framing: one message, in this order, ending on the single question if there
+// is one.
+//
+// `mergedParts` is set at DELIVERY on the in-memory row and is never stored, so
+// a redelivery after a failed send re-forms the group from whatever is still
+// due then, exactly as the reminder batch does with `items`.
+function mergedBody(parts) {
+  const bodies = parts.map((part, i) => {
+    const pp = typeof part.payload === 'string' ? JSON.parse(part.payload) : (part.payload || {});
+    return `PART ${i + 1} OF ${parts.length}:\n${bodyFor({ kind: part.kind }, pp)}`;
+  });
+  return [
+    `${parts.length} things for this person came due at the same moment.`,
+    'Say them as ONE message, never as several: every block of text you emit',
+    'reaches their phone as its own WhatsApp message, and a run of them seconds',
+    'apart is the exact thing this is here to prevent.',
+    '',
+    'Write one natural piece in their language, following the parts in the order',
+    'below and joining them the way a person would — no headings, no numbering,',
+    'no part-by-part announcements, nothing that reveals these arrived as',
+    'separate items. Say an overlapping thing once. Still make every tool call',
+    'the parts ask for.',
+    '',
+    'At most one part below ends in a question, and if one does it is the LAST.',
+    'Ask that question and no other, and never add one of your own: they get one',
+    'message and can only answer one thing.',
+    '',
+    bodies.join('\n\n'),
+  ].join('\n');
 }
 
 // The calendar half of a confirmation, by this person's own role. It runs in

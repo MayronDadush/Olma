@@ -19,24 +19,25 @@
 // guess. Anything that is not Hebrew gets English: those are the two locales
 // the product actually ships, and a missing translation must fall back to a
 // real message rather than to an empty one.
-// Second revision, 2026-09-04, after reading the first one on a real phone:
-// the "welcome to your world" line went, and the greeting got a blank line
-// under it so the name lands on its own before the two lines of substance.
+//
+// Since 2026-09-08 the copy itself lives in domain/message-templates.js
+// (`opening_he` / `opening_en`), beside every other sentence Olma says
+// verbatim, so the owner rewords it from the admin page like the rest.
+// `OPENING` stays exported as the DEFAULTS — what a fresh install says — and
+// `openingMessage` takes the loaded overrides, like every other sender.
+const templates = require('./message-templates');
+
 const OPENING = {
-  he: 'היי, אני עולמה 👋\n'
-    + '\n'
-    + 'אני כאן כדי לעזור לכם עם משימות, תזכורות ותיאומים מול האנשים שחשובים לכם.\n'
-    + 'אפשר לכתוב, להקליט או פשוט לשלוח הכל בבלגן — אני אעשה לכם סדר ☺️',
-  en: "Hey! I'm Allma \u{1F44B}\n"
-    + '\n'
-    + 'I’m here to help you manage tasks, set reminders, and schedule with the '
-    + 'people who matter most.\n'
-    + 'Text me, send a voice message, or just throw everything at me — '
-    + 'I’ll keep you organized ☺️',
+  he: templates.spec('opening_he').text,
+  en: templates.spec('opening_en').text,
 };
 
-function openingMessage(locale) {
-  return OPENING[locale] || OPENING.en;
+function openingKey(locale) {
+  return locale === 'he' ? 'opening_he' : 'opening_en';
 }
 
-module.exports = { openingMessage, OPENING };
+function openingMessage(locale, overrides) {
+  return templates.textFor(openingKey(locale), overrides);
+}
+
+module.exports = { openingMessage, openingKey, OPENING };

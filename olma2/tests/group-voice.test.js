@@ -52,19 +52,20 @@ async function room(n, { subject = 'פאדל' } = {}) {
 // A pass with a recording sender, at an hour inside the group's window.
 // Both halves, in brokerd's order: the sweep decides and writes a row, the
 // sender drains it (migration 055). What the room HEARS is `sent`.
-// `room` is not decoration. The sweep visits EVERY group in the database, so
-// a coordination another test in this file left running is swept on this
-// test's `now` too — and these tests move `now` a day out, where another
-// room's chase falls due. Two chase lines about other rooms landed in the
-// middle of the reminder story that way, and only at some hours of the day.
-// Each test reads its own room and nothing else.
-async function pass(sent, at = null, room = null) {
+//
+// `onlyJid` keeps a test's `sent` array to its OWN room. Every room every
+// earlier test in this file built is still in the database, and this sweep
+// visits all of them: a pass told a `now` far enough ahead makes those older
+// coordinations due for their chase line, which then lands in this test's
+// array and is counted as one of its own messages. That is not flakiness — the
+// sweep is behaving correctly and the collection was too wide.
+async function pass(sent, at = null, onlyJid = null) {
   const now = at || (() => { const d = new Date(); d.setUTCHours(11, 0, 0, 0); return d; })();
   const decided = await withTx(db.pool, (c) => groupsJob.sweepGroupVoice(c, { now }));
   const drained = await groupOutbox.drainOnce(db.pool, {
     now,
     send: async (jid, body) => {
-      if (!room || jid === room) sent.push({ jid, body });
+      if (!onlyJid || jid === onlyJid) sent.push({ jid, body });
       return 'sent';
     },
   });
@@ -252,15 +253,22 @@ test('the reminders ride the same pass, once each, and only for this coordinatio
   const fresh = await withTx(db.pool, (c) => groups.getById(c, group.id));
   await withTx(db.pool, (c) => groupMeetings.settle(c, fresh, a, optionId));
 
+  // This room only. The last pass below jumps `now` past the meeting, which is
+  // also far enough ahead to make the coordinations OTHER tests in this file
+  // left behind due for their chase — real lines, correctly sent, to other
+  // rooms. Collecting them here made this assertion depend on the hour the
+  // suite ran: green in CI on 2026-09-07 and red on the 08:00 clock-drift run
+  // the next morning, on bytes nobody had touched.
   const sent = [];
-  await pass(sent, new Date(at.getTime() - 8 * 3600_000), group.external_id);
+  const mine = JID(5);
+  await pass(sent, new Date(at.getTime() - 8 * 3600_000), mine);
   assert.match(sent[0].body, /סגור/, 'first it is set');
-  await pass(sent, new Date(at.getTime() - 7 * 3600_000), group.external_id);
+  await pass(sent, new Date(at.getTime() - 7 * 3600_000), mine);
   assert.match(sent[1].body, /היום/, 'then, on the day');
-  await pass(sent, new Date(at.getTime() - 7 * 3600_000), group.external_id);
+  await pass(sent, new Date(at.getTime() - 7 * 3600_000), mine);
   assert.equal(sent.length, 2, 'and not twice');
-  await pass(sent, new Date(at.getTime() - 30 * 60_000), group.external_id);
+  await pass(sent, new Date(at.getTime() - 30 * 60_000), mine);
   assert.match(sent[2].body, /עוד שעה/, 'then an hour before');
-  await pass(sent, new Date(at.getTime() + 60_000), group.external_id);
+  await pass(sent, new Date(at.getTime() + 60_000), mine);
   assert.equal(sent.length, 3, 'and nothing at all once it has started');
 });

@@ -25,6 +25,7 @@ const actionLink = require('./action-link');
 const audit = require('./audit');
 const cryptoStore = require('./crypto-store');
 const google = require('./google-oauth');
+const connectGate = require('./google-connect-gate');
 const { enqueue } = require('../outbox/enqueue');
 const calendar = require('./calendar');
 const googleContacts = require('./google-contacts');
@@ -44,6 +45,14 @@ async function beginConnection(client, user, { calendarAccess, wantContacts, wan
   }
   if (!calendarAccess && !wantContacts && !wantMail) {
     return err('invalid', 'ask which of calendar, contacts or mail the user wants — at least one is required');
+  }
+  // Calendar and contacts share the consent screen this gate exists to keep
+  // people off, so the combined link is refused whenever either of them is
+  // part of it. Mail keeps its own gate below — it was closed first, for the
+  // narrower reason that its scope is on Google's restricted list.
+  if (calendarAccess || wantContacts) {
+    const gate = await connectGate.requireGoogleConnect(client, user.id);
+    if (!gate.ok) return gate;
   }
   if (wantMail) {
     const gate = await mail.requireMailAccess(client, user);
