@@ -429,6 +429,17 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   blocks the re-arm, as on `add_task`), a repeating one is left alone. It
   did neither for a day: Vered moved five tasks to 09:00 and the ladders of
   their old date still had "זו התזכורת האחרונה" ×7 due at 08:00 (same entry).
+- **A task chases through ONE ladder — the one behind the LATEST reminder
+  they asked for.** Two explicit reminders on one task are two moments THEY
+  chose, and both first rungs go out; but each used to climb on its own, so
+  Maya, who asked for 16:00 and 16:15 for one call, got "בוצע?" twice that
+  evening and "זו התזכורת האחרונה" twice the next afternoon. When rung 1 of a
+  one-off reminder goes out, `sweepReminders` → `reminders.retireSiblingLadders`
+  RETIRES every other one-off reminder on the task already climbing (`sent_at`,
+  never cancelled) and withdraws their queued follow-up rungs as `hold_reason
+  = 'superseded'`; a sibling's rung 1 is never touched. Same-moment siblings
+  are ordered by id so the later one does the retiring (`incidents.md`, "Two
+  ladders for one phone call").
 - **A "once ever" question is stamped on the PERSON, never deduped on the
   route that asks it.** Two routes each honouring "at most once" is twice.
   The city is `users.timezone_asked_at` (migration 045), written by whichever

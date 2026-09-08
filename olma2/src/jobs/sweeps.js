@@ -69,6 +69,12 @@ async function sweepReminders(client, nowIso) {
     });
     if (res.data.enqueued) {
       await reminders.recordAttempt(client, r.reminder_id, { retire: finalAttempt });
+      // The moment THEY chose has now been said. A task chases through ONE
+      // ladder — the one behind the latest reminder they asked for — so any
+      // sibling already climbing retires here (reminders.retireSiblingLadders).
+      if (attempt === 1 && !repeats) {
+        await reminders.retireSiblingLadders(client, r.owner_id, r.task_id, r.reminder_id, new Date(now));
+      }
       // Spawn the next occurrence. The rule vocabulary lives in one place —
       // this used to compare against the literals 'daily'/'weekly' while the
       // model was storing 'FREQ=DAILY', so every repeating reminder silently

@@ -143,6 +143,7 @@ never trust a dated narrative for something you are about to act on.
 - [The mark that never moved (2026-09-07)](#the-mark-that-never-moved-2026-09-07)
 - ["בשמחה יהב, שיהיה ערב טוב" (2026-09-07)](#בשמחה-יהב-שיהיה-ערב-טוב-2026-09-07)
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
+- [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
 - [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
 - [Two asks, one task (2026-09-07)](#two-asks-one-task-2026-09-07)
 - ["הנה, רשמתי", about a meeting (2026-09-07)](#הנה-רשמתי-about-a-meeting-2026-09-07)
@@ -4981,6 +4982,50 @@ A rung held overnight usually then expires before the window opens, and that is
 the intended end of it: the ladder needs `prev.sent_at IS NOT NULL AND
 prev.hold_reason IS NULL` to climb, so a held rung stops the ladder rather than
 stacking up a queue of nags for the morning.
+### Two ladders for one phone call (fixed 2026-09-08)
+
+On 2026-09-03 Maya wrote: "7.9 בשעה 16:15 יש לי שיחת טלפון עם רופא אשמח
+שתזכיר לי בשעה 16 וגם בשעה 16:15". Olma set two reminders on the one task —
+r92 at 16:00 and r93 at 16:15 — and told her so. Exactly right.
+
+On the 7th both first rungs went out at their moments. Then each reminder
+climbed its own ladder: "בוצע?" at 19:01 and again at 19:16, and the next
+afternoon — a day after the call — "זו התזכורת האחרונה: שיחת טלפון עם רופא"
+at 16:00 and again at 16:15. Six messages for one call, the last four of them
+in identical pairs fifteen minutes apart. The owner saw the pair and asked why
+she was getting the same message twice.
+
+Nothing in the ladder was wrong about a single reminder. The escalation was
+built per reminder row (rung 2 three hours after rung 1 landed, rung 3 the next
+day at the hour), and nothing had ever said what two rows on one task mean.
+Delivery coalesces rungs that fall in the SAME tick ("Nine reminders, nine
+messages"), which is why two reminders at the same minute never showed this;
+fifteen minutes apart is two ticks, and every rung after the first was a
+duplicate of a chase already running.
+
+The sentence that was missing: **both first rungs are hers; the chase is one.**
+`sweepReminders` now calls `reminders.retireSiblingLadders` the moment rung 1
+of a one-off reminder is enqueued. Every other one-off reminder on the task
+that is already climbing (`attempts >= 1`) is retired — `sent_at`, never
+`cancelled_at`, the same distinction `retireForMovedTask` draws: she answered
+nothing, but the later reminder answers the earlier one's chase. Every queued
+FOLLOW-UP rung of a sibling is withdrawn as `hold_reason = 'superseded'`
+(an UPDATE, so the idempotency key stays and the sweep cannot re-create it).
+A sibling's rung 1 is never touched: it is a moment she chose, and it may be
+sitting in the outbox held for the night. `dueForSending` orders same-moment
+siblings by id so that, when two are rung 1 in one tick, the later one is the
+one that retires the other.
+
+With this, Maya's request produces four messages: 16:00, 16:15, "בוצע?" at
+19:16, and the last rung at 16:15 the next day. `tests/reminder-escalation
+.test.js` holds all three shapes — fifteen minutes apart, four hours apart
+with a rung 2 already held for the night, and the same minute.
+
+Not fixed, and noted: task 353 stayed open throughout. At 10:23 on the 7th
+she wrote "זה היה ב11 השיחה" and Olma answered "סימנתי את זה ✓" — the audit
+shows it completed task 440 ("שיחה עם מתנדבת מתעניינת"), not the doctor call.
+Whether that was the call she meant is not knowable from here; had the doctor
+call been completed, neither ladder would have climbed at all.
 ### The message id the model made up (2026-09-07)
 
 Two hours after the mark logging shipped, the first thing it printed was this:
