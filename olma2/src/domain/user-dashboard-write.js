@@ -457,6 +457,45 @@ const ACTIONS = {
   },
 
   // ---- me ------------------------------------------------------------------
+  // The "פרטים אישיים" card, which until now saved nothing at all: the four
+  // inputs repainted the page and no action existed behind them. So the
+  // obvious repair for a wrong name — type the right one — was silently
+  // discarded on reload, which mattered because for seven people the name on
+  // that card had come out of somebody else's address book.
+  //
+  // One action for the whole card rather than four, because it is edited as
+  // one thing and a half-saved card is worse than an unsaved one. Every field
+  // is optional and `undefined` leaves it alone, so the page may send only
+  // what changed.
+  //
+  // The name goes through `users.setName` with confirmed: TRUE. A person
+  // typing their own name into their own profile is the strongest statement of
+  // it we will ever get — stronger than the WhatsApp display name, which is a
+  // guess, and it is the only route here that can overwrite one.
+  async saveProfile(client, userId, p) {
+    if (typeof p.firstName === 'string') {
+      const named = await users.setName(client, userId, p.firstName,
+        typeof p.lastName === 'string' ? p.lastName : null, { confirmed: true, source: 'user_dashboard' });
+      if (!named.ok) return named;
+    } else if (typeof p.lastName === 'string') {
+      return err('invalid', 'a last name cannot be saved without a first name');
+    }
+    const fields = {};
+    if (p.birthday !== undefined) fields.birthday = p.birthday === '' ? null : p.birthday;
+    if (p.addressGender !== undefined) fields.addressGender = p.addressGender === '' ? null : p.addressGender;
+    if (Object.keys(fields).length) {
+      const saved = await users.setProfileFields(client, userId, fields);
+      if (!saved.ok) return saved;
+    }
+    const { rows } = await client.query(
+      `SELECT first_name, last_name, birthday, address_gender FROM users WHERE id = $1`, [userId]);
+    return ok({
+      firstName: rows[0].first_name, lastName: rows[0].last_name,
+      birthday: rows[0].birthday ? users.isoDay(rows[0].birthday) : null,
+      addressGender: rows[0].address_gender,
+    });
+  },
+
   async setTimezone(client, userId, p) {
     // Always confirmed from here: a person picking their own city on their own
     // screen is the definition of confirmed, and it is what lets setTimezone

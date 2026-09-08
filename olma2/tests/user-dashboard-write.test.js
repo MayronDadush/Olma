@@ -346,3 +346,52 @@ test('a phone number in the payload is ignored', async () => {
   assert.equal(r.ok, false);
   assert.equal(r.error.code, 'not_found');
 });
+
+// ---------------------------------------------------------------- profile
+//
+// The "פרטים אישיים" card saved nothing until this action existed: four inputs
+// that repainted the page and sent the server nothing. It mattered because for
+// seven people the name on that card had been taken out of somebody else's
+// address book, and typing the right one over it was discarded on reload.
+
+test('saveProfile saves the whole card, and a name typed here is CONFIRMED', async () => {
+  const r = await act('saveProfile', {
+    firstName: 'דב', lastName: 'לוי', birthday: '1994-03-16', addressGender: 'female',
+  });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  assert.equal(r.data.firstName, 'דב');
+  assert.equal(r.data.lastName, 'לוי');
+  assert.equal(r.data.birthday, '1994-03-16');
+  assert.equal(r.data.addressGender, 'female');
+
+  const { rows } = await db.pool.query(
+    `SELECT first_name, name_confirmed FROM users WHERE id = $1`, [me.id]);
+  // A person typing their own name into their own profile is the strongest
+  // statement of it there is — stronger than a WhatsApp display name, which is
+  // a guess — and this is the only route that may overwrite one.
+  assert.equal(rows[0].name_confirmed, true,
+    'a name typed on the profile page landed as a guess, so the next guess can overwrite it');
+});
+
+test('saveProfile takes only what it was sent', async () => {
+  await act('saveProfile', { firstName: 'דב', birthday: '1994-03-16', addressGender: 'female' });
+  // Nothing about the birthday in this call: it must survive.
+  const r = await act('saveProfile', { firstName: 'דב', addressGender: 'male' });
+  assert.equal(r.data.birthday, '1994-03-16', 'a field the page did not send was cleared');
+  // Emptying the date picker sends "", which is the page's way of saying none.
+  const cleared = await act('saveProfile', { firstName: 'דב', birthday: '' });
+  assert.equal(cleared.data.birthday, null, 'emptying the field did not reach the column');
+});
+
+test('saveProfile refuses a surname with nobody to attach it to', async () => {
+  const r = await act('saveProfile', { lastName: 'לוי' });
+  assert.equal(r.ok, false);
+  assert.equal(r.error.code, 'invalid');
+});
+
+test('the page is told the birthday and the address gender it must render', async () => {
+  await act('saveProfile', { firstName: 'דב', birthday: '1994-03-16', addressGender: 'female' });
+  const page = await tx((c) => dash.load(c, me.id));
+  assert.equal(page.data.user.birthday, '1994-03-16');
+  assert.equal(page.data.user.addressGender, 'female');
+});

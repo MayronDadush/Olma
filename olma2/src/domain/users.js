@@ -254,6 +254,73 @@ async function setAssistantPersona(client, userId, { gender, name } = {}) {
   return ok({ gender: rows[0].assistant_gender, name: rows[0].assistant_name || 'עולמה' });
 }
 
+// The two fields the personal dashboard's "פרטים אישיים" card kept asking for
+// and never saved. Both are theirs to state and neither is ever observed into:
+// nothing infers a birthday from a calendar event, and nothing guesses how to
+// address somebody from their name.
+//
+// `undefined` means "not in this request" and leaves the column alone; `null`
+// means "clear it", which is how the date picker's own empty state reaches the
+// database. That distinction is the whole reason this is not two COALESCEs.
+async function setProfileFields(client, userId, { birthday, addressGender } = {}) {
+  const setBirthday = birthday !== undefined;
+  const setGender = addressGender !== undefined;
+  if (!setBirthday && !setGender) return err('invalid', 'nothing to change');
+
+  let day = null;
+  if (setBirthday && birthday !== null) {
+    // ISO only, and a real day: `new Date('2026-02-31')` rolls into March
+    // rather than failing, so the round trip through UTC is the check.
+    day = String(birthday).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return err('invalid', 'birthday must be YYYY-MM-DD');
+    const parsed = new Date(day + 'T00:00:00Z');
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== day) {
+      return err('invalid', `no such day: ${birthday}`);
+    }
+    // A birthday in the future is somebody mistyping the year, and a date
+    // before 1900 is the same mistake in the other direction. Neither is worth
+    // storing, and both would make any age we ever compute nonsense.
+    const year = Number(day.slice(0, 4));
+    if (parsed.getTime() > Date.now()) return err('invalid', 'that birthday has not happened yet');
+    if (year < 1900) return err('invalid', 'that birthday is not plausible');
+  }
+
+  let gender = null;
+  if (setGender && addressGender !== null) {
+    gender = String(addressGender).trim().toLowerCase();
+    if (gender !== 'male' && gender !== 'female') {
+      return err('invalid', `address gender must be "male" or "female", got: ${addressGender}`);
+    }
+  }
+
+  const { rows } = await client.query(
+    `UPDATE users
+        SET birthday = CASE WHEN $2 THEN $3::date ELSE birthday END,
+            address_gender = CASE WHEN $4 THEN $5 ELSE address_gender END
+      WHERE id = $1
+      RETURNING birthday, address_gender`,
+    [userId, setBirthday, day, setGender, gender]
+  );
+  if (!rows[0]) return err('not_found', 'no such user');
+  await audit.record(client, userId, 'user.profile_set', {
+    birthday: rows[0].birthday ? isoDay(rows[0].birthday) : null,
+    addressGender: rows[0].address_gender,
+  });
+  return ok({
+    birthday: rows[0].birthday ? isoDay(rows[0].birthday) : null,
+    addressGender: rows[0].address_gender,
+  });
+}
+
+// A DATE column comes back from node-postgres as a Date pinned to local
+// midnight, so `toISOString()` on it is a day out for anyone west of UTC. The
+// calendar day is what was stored and what everything reads back.
+function isoDay(d) {
+  if (typeof d === 'string') return d.slice(0, 10);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 // Changing the zone used to change one column and leave every instant already
 // written at the old offset — see domain/timezone-repair.js for what that cost.
 //
@@ -310,6 +377,6 @@ module.exports = {
   newIdentityToken, resolveByToken, getByPhone, getById,
   createUser, primaryChannel, sessionKeyFor, setName, setTimezone, setLocale,
   noteObservedLanguage,
-  setAssistantPersona,
-  cleanName,
+  setAssistantPersona, setProfileFields,
+  cleanName, isoDay,
 };

@@ -2257,7 +2257,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
           <div class="fgrid">
             <div class="ffield"><label for="fname" data-i18n="me.first"></label><input id="fname" type="text" autocomplete="given-name"></div>
             <div class="ffield"><label for="lname" data-i18n="me.last"></label><input id="lname" type="text" autocomplete="family-name"></div>
-            <div class="ffield"><label for="bday" data-i18n="me.bday"></label><button class="dateval" id="bday" data-cal="bday" data-val="1994-03-16"></button></div>
+            <div class="ffield"><label for="bday" data-i18n="me.bday"></label><button class="dateval" id="bday" data-cal="bday" data-clearable="1" data-val=""></button></div>
             <div class="ffield">
               <label id="genderLabel" data-i18n="me.form"></label>
               <div class="seg" id="genderSeg" role="group" aria-labelledby="genderLabel">
@@ -2787,6 +2787,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     setTaskReminder:"setTaskReminder", setTaskCalendar:"setTaskCalendar",
     shareTask:"shareTask", revokeShare:"revokeShare",
     grantFeature:"grantFeature", revokeFeature:"revokeFeature",
+    saveProfile:"saveProfile",
     setTimezone:"setTimezone", pause:"pause", resume:"resume", callMe:"callMe",
     inviteContact:"inviteContact",
     respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting",
@@ -3245,6 +3246,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.mtStarted":"נשלחה בקשה ל{list} — כשיענו זה יופיע כאן",
       "toast.mtConfirmed":"נקבע — {when}. כולם קיבלו הודעה.",
       "toast.mtSettleFailed":"לא הצלחתי לקבוע — נסה שוב בעוד רגע",
+      "toast.saveFailed":"לא הצלחתי לשמור — נסה שוב בעוד רגע",
       "tcat.imported":"מפלטפורמות מחוברות",
       "sheet.fromApp":"הגיעה מ־{name}","sheet.noField":"ל־{name} אין את השדה הזה",
       "cn.title":"מי מאנשי הקשר שלך?","cn.from":"מתוך אנשי הקשר של {name}",
@@ -3480,6 +3482,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.mtStarted":"Request sent to {list} — answers show up here",
       "toast.mtConfirmed":"Settled \u2014 {when}. Everyone has been told.",
       "toast.mtSettleFailed":"That would not settle \u2014 try again in a moment",
+      "toast.saveFailed":"That would not save — try again in a moment",
       "tcat.imported":"From connected platforms",
       "sheet.fromApp":"Came from {name}","sheet.noField":"{name} has no such field",
       "cn.title":"Who from your contacts?","cn.from":"From your {name} contacts",
@@ -5657,6 +5660,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       return new Date(2026, 8, 6 + i).toLocaleDateString(loc(), {weekday:"narrow"});
     });
   }
+  /* The twelve-year block the current year falls in. Anchored on a fixed
+     origin rather than on calY, so paging back and forward returns to the same
+     grid instead of drifting by wherever you happened to be. */
+  function yearBlock(){ return calY - ((calY % 12) + 12) % 12; }
   function calHTML(){
     var val = calAnchor ? (calAnchor.dataset.val || "") : "", today = ymd(new Date()), i = 0;
     var head = '<div class="calhead">' +
@@ -5664,10 +5671,19 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       '<button class="calttl" data-calpane="1">' +
         (calPane === "days"
           ? esc(new Date(calY, calM, 1).toLocaleDateString(loc(), {month:"long", year:"numeric"}))
-          : esc(String(calY))) +
+          : calPane === "months"
+            ? esc(String(calY))
+            : esc(yearBlock() + " – " + (yearBlock() + 11))) +
       "</button>" +
       '<button class="calnav" data-calnav="1" aria-label="next"><svg viewBox="0 0 16 16"><path d="M6 2l6 6-6 6"/></svg></button>' +
       "</div>";
+    if(calPane === "years"){
+      var y0 = yearBlock();
+      return head + '<div class="calmg">' + Array.from({length:12}, function(_, k){
+        var y = y0 + k;
+        return '<button style="--i:' + (i++) + '" aria-pressed="' + (y === calY) + '" data-calyear="' + y + '">' + y + "</button>";
+      }).join("") + "</div>";
+    }
     if(calPane === "months"){
       return head + '<div class="calmg">' + monthNames().map(function(n, m){
         return '<button style="--i:' + (i++) + '" aria-pressed="' + (m === calM) + '" data-calmonth="' + m + '">' + esc(n) + "</button>";
@@ -5688,7 +5704,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
           '<button data-calday="' + isoAt(1) + '">' + esc(t("cal.tomorrow")) + "</button>" +
           '<button data-calday="">' + esc(t("cal.clear")) + "</button>" +
         "</div>"
-      : "";
+      /* "today" and "tomorrow" are not birthdays; emptying one is a real
+         answer, and without this the field is one-way. */
+      : calAnchor && calAnchor.dataset.clearable
+        ? '<div class="calfoot"><button data-calday="">' + esc(t("cal.clear")) + "</button></div>"
+        : "";
     return head +
       '<div class="calgrid">' + dowNames().map(function(n){ return '<div class="caldow">' + esc(n) + "</div>"; }).join("") + "</div>" +
       '<div class="calgrid">' + cells + "</div>" + quick;
@@ -5704,7 +5724,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   function renderCal(){ $("#calPop").innerHTML = calHTML(); placeCal(); }
   function openCal(el){
-    calAnchor = el; calPane = "days";
+    calAnchor = el;
+    /* An unset birthday opens on the year grid, because the one thing certain
+       about it is that it is not this month. Once it has a value it opens on
+       that day, like every other date field. */
+    calPane = (el.dataset.clearable && !el.dataset.val) ? "years" : "days";
     var v = el.dataset.val, d = v ? new Date(v + "T00:00:00") : new Date();
     calY = d.getFullYear(); calM = d.getMonth();
     $("#calScrim").hidden = false; $("#calPop").hidden = false;
@@ -5724,13 +5748,20 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var nav = e.target.closest("[data-calnav]");
     if(nav){
       var step = +nav.dataset.calnav;
-      if(calPane === "months"){ calY += step; }
+      if(calPane === "years"){ calY += step * 12; }
+      else if(calPane === "months"){ calY += step; }
       else { calM += step; if(calM > 11){ calM = 0; calY++; } if(calM < 0){ calM = 11; calY--; } }
       renderCal(); return;
     }
     if(e.target.closest("[data-calpane]")){
-      calPane = calPane === "days" ? "months" : "days"; renderCal(); return;
+      /* days → months → years, then back to days. A date thirty years back was
+         thirty taps on the year arrow before the third pane existed, which is
+         not a date field anybody would use twice. */
+      calPane = calPane === "days" ? "months" : calPane === "months" ? "years" : "days";
+      renderCal(); return;
     }
+    var yr = e.target.closest("[data-calyear]");
+    if(yr){ calY = +yr.dataset.calyear; calPane = "months"; renderCal(); return; }
     var mo = e.target.closest("[data-calmonth]");
     if(mo){ calM = +mo.dataset.calmonth; calPane = "days"; renderCal(); return; }
     var day = e.target.closest("[data-calday]");
@@ -5750,6 +5781,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       commit();
     } else {
       el.textContent = v ? longDate(v) : t("sheet.noDate");
+      /* The birthday is the only [data-cal] outside a task, and it is now a
+         stored field rather than a label. Repaint the avatar for the same
+         reason the cake exists, then save — clearing counts as saving. */
+      if(el.id === "bday"){ paintAvatars(); saveProfile(true); }
       toast(t("toast.updated"));
     }
     closeCal();
@@ -7449,8 +7484,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var on = $('#genderSeg button[aria-pressed="true"]');
     return on && on.dataset.g === "f" ? "f" : "m";
   }
+  /* `.value` on a <button> is "" and always was, so this returned false for
+     every person on every day — the one place the cake was meant to show for
+     YOU. The date lives in dataset.val, where [data-cal] puts it. */
   function myBirthday(){
-    var v = $("#bday").value;
+    var v = $("#bday").dataset.val;
     if(!v) return false;
     return isBirthday(+v.slice(5,7) + "-" + (+v.slice(8,10)));
   }
@@ -7478,9 +7516,42 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var a = e.target.closest(".avatar, .fav");
     if(a) hop(a);
   });
+  /* ── the personal details card, which used to save nothing ──
+     Four inputs that repainted the page and sent the server nothing: a name
+     typed here was gone on the next reload, which is how somebody looking at a
+     name that came out of another person's address book had no way to fix it.
+     One call for the whole card, because it is one thing on screen and a
+     half-saved card is worse than an unsaved one.
+
+     Text fields save on a pause rather than on every keystroke — the same
+     bargain the task sheet makes — and the two controls that produce a value
+     in one gesture (the date, the segment) save immediately. */
+  var profileTimer = null;
+  function profilePayload(){
+    return {
+      firstName: $("#fname").value.trim(),
+      lastName: $("#lname").value.trim(),
+      birthday: $("#bday").dataset.val || "",
+      addressGender: myGender() === "f" ? "female" : "male"
+    };
+  }
+  function saveProfile(now){
+    if(!LIVE) return;
+    clearTimeout(profileTimer);
+    /* A first name is the one field the server refuses to clear: it is what
+       every message she writes opens with. Empty simply does not save, and the
+       value they emptied is still on screen to put back. */
+    if(!$("#fname").value.trim()) return;
+    var go = function(){
+      API.send("saveProfile", profilePayload(), function(data){
+        if(!data) toast(t("toast.saveFailed"));
+      });
+    };
+    if(now) go(); else profileTimer = setTimeout(go, 700);
+  }
   $("#bday").addEventListener("change", paintAvatars);
-  $("#fname").addEventListener("input", syncName);
-  $("#lname").addEventListener("input", syncName);
+  $("#fname").addEventListener("input", function(){ syncName(); saveProfile(false); });
+  $("#lname").addEventListener("input", function(){ syncName(); saveProfile(false); });
   $("#oname").addEventListener("input", syncName);
   $("#shuffleAvatar").addEventListener("click", function(){
     var next = myAvatar;
@@ -7511,6 +7582,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     toast(t(paused ? "toast.paused" : "toast.resumed"));
   });
 
+  /* Marked before the listener below so the handler that repaints can also
+     save — how she addresses them is a fact about them, not a display option. */
   $("#genderSeg").addEventListener("click", function(e){
     var b = e.target.closest("button");
     if(!b) return;
@@ -7519,6 +7592,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     /* the greeting on the connections page is gendered, so it moves with this */
     $("#toolsH").textContent = brandTag(myGender());
     $("#bigAvatar").classList.remove("pop"); void $("#bigAvatar").offsetWidth; $("#bigAvatar").classList.add("pop");
+    /* One gesture, one value — saved at once rather than on the text fields'
+       pause. This is the field that changes every verb Olma writes to them, so
+       it is the last one that should sit unsaved in a browser. */
+    saveProfile(true);
     toast(t(b.dataset.g === "f" ? "toast.fem" : "toast.masc"));
   });
 
@@ -7957,6 +8034,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          greeted everybody else as מירון דדוש. */
       PROFILE.first = d.user.firstName || "";
       PROFILE.last = d.user.lastName || "";
+      /* The other two halves of the same card. The birthday is almost always
+         null, and the empty field IS the honest answer — the seeded date under
+         everybody was the whole complaint. Address gender likewise: null means
+         nobody has said, and the page's own default is masculine, which is
+         what the doctrine assumes too. */
+      $("#bday").dataset.val = d.user.birthday || "";
+      $("#bday").textContent = d.user.birthday ? longDate(d.user.birthday) : t("sheet.noDate");
+      $$('#genderSeg button').forEach(function(x){
+        x.setAttribute("aria-pressed", x.dataset.g === (d.user.addressGender === "female" ? "f" : "m") ? "true" : "false");
+      });
       if(d.user.assistantName) PROFILE.olma = d.user.assistantName;
     }
     open = (d.tasks || []).map(liveTask);

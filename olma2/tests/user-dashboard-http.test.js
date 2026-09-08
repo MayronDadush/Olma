@@ -319,6 +319,28 @@ test('a permission that has a screen behind it offers to open it, and only while
     'the coordination "+" no longer lands on the meetings screen with that person on it');
 });
 
+// Every person on the system was shown 16 March 1994 as their date of birth.
+// It was `data-val="1994-03-16"` in the markup and hydrate() never touched it,
+// so it was not a default anybody had chosen — it was the design file's
+// fixture, served to real people. There is no birthday to seed: the honest
+// empty state is an empty field.
+test('a served page seeds nobody a date of birth', async () => {
+  const cookie = await signIn();
+  const html = await (await get('/me', { headers: { cookie } })).text();
+  assert.doesNotMatch(html, /id="bday"[^>]*data-val="\d/,
+    'the birthday field carries a seeded date again');
+  assert.match(html, /id="bday"[^>]*data-val=""/, 'the birthday field lost its value slot');
+  // Empty has to be reachable again once a date is set, or the field is
+  // one-way. "today"/"tomorrow" belong to a task and are deliberately not here.
+  assert.match(html, /id="bday"[^>]*data-clearable="1"/,
+    'the birthday can be set but never emptied');
+  // And the card must actually save, which is the whole point: before this the
+  // four inputs repainted the page and no action existed behind them.
+  assert.match(html, /saveProfile:"saveProfile"/, 'the profile card saves nothing again');
+  assert.ok(html.includes('$("#bday").dataset.val = d.user.birthday || ""'),
+    'a real birthday from the server never reaches the field');
+});
+
 // The page draws in whatever `data-locale` the root element carries and falls
 // back to Hebrew without one. For a signed-in person that attribute IS the
 // language decision, and until 2026-09-07 nothing set it: Sarah's row said

@@ -209,3 +209,30 @@ test('refreshUserCard counts the facts it did not print', async () => {
   assert.match(text, /\(\+3 more not shown here/);
   fs.rmSync(ws, { recursive: true, force: true });
 });
+
+// The two fields the /me profile card now saves have to REACH the agent, or
+// they are a column nobody reads — which CLAUDE.md names as worse than no
+// column, because it is a promise. Both render off the default only, on a card
+// injected on every turn for every user.
+test('how to address them reaches the card, and only when it is not the default', () => {
+  const fem = renderCard({ first_name: 'דנה', address_gender: 'female' }, [], []);
+  assert.match(fem, /FEMININE/, 'nothing tells the agent how to address her');
+  // Masculine is the documented default for address and the doctrine already
+  // assumes it, so spending a line on it every turn buys nothing.
+  const masc = renderCard({ first_name: 'דן', address_gender: 'male' }, [], []);
+  assert.doesNotMatch(masc, /FEMININE|MASCULINE register — every verb/,
+    'the default is being restated on every turn for every user');
+  // NULL is a real third state: nobody has said.
+  const unsaid = renderCard({ first_name: 'דן' }, [], []);
+  assert.doesNotMatch(unsaid, /FEMININE/);
+});
+
+test('a birthday reaches the card as the day they gave, not as an age', () => {
+  // A Date at LOCAL midnight, which is exactly what node-postgres hands back
+  // for a DATE column — the shape that goes a day out through toISOString().
+  const text = renderCard({ first_name: 'דנה', birthday: new Date(1994, 2, 16) }, [], []);
+  assert.match(text, /Birthday: 1994-03-16/, 'the birthday is missing or has moved a day');
+  assert.doesNotMatch(text, /Birthday: .*\d+ years/, 'an age would be stale the moment it is written');
+  assert.doesNotMatch(renderCard({ first_name: 'דנה' }, [], []), /Birthday/,
+    'a card with no birthday still talks about one');
+});

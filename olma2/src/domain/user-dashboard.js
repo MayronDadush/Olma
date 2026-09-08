@@ -27,6 +27,9 @@ const meetingsDomain = require('./meetings');
 const optionMoment = require('./meeting-option-moment');
 const mail = require('./mail');
 const voice = require('./voice');
+// Named apart from any local `users` binding for the same reason
+// `meetingsDomain` is — this file binds row arrays to plain nouns.
+const usersDomain = require('./users');
 
 // A task's own category vocabulary is closed server-side (tasks.category is
 // validated as a closed set, not free text), so the page can rely on it —
@@ -564,6 +567,12 @@ async function load(client, userId) {
       // omits these leaves a real person looking at the fixture's name.
       lastName: user.last_name,
       assistantName: user.assistant_name,
+      // The other two halves of the "פרטים אישיים" card. Both are nullable and
+      // both are genuinely empty for almost everyone — the page must render an
+      // empty field rather than a placeholder date, which is the bug that put
+      // 16 March 1994 under every person on the system.
+      birthday: user.birthday ? usersDomain.isoDay(user.birthday) : null,
+      addressGender: user.address_gender,
       timezone: zone,
       timezoneConfirmed: user.timezone_confirmed,
       // Rendered in whatever language they have been writing in — it is not a
