@@ -215,3 +215,68 @@ test('setTimezone validates IANA names', async () => {
     assert.equal(bad.error.code, 'invalid');
   } finally { client.release(); }
 });
+
+// ---------------------------------------------------------- profile fields
+//
+// The two columns the /me "פרטים אישיים" card needed and did not have. The
+// card had asked for four fields since it was designed and saved none of them:
+// the inputs repainted the page, no action existed behind them, and the date
+// of birth every person on the system saw — 16 March 1994 — was hard-coded
+// into the markup of the design file the live page is served from.
+
+test('setProfileFields stores a birthday and how to address them', async () => {
+  const u = await makeUser(db.pool, '+972507000001');
+  const client = await db.pool.connect();
+  try {
+    const res = await users.setProfileFields(client, u.id,
+      { birthday: '1994-03-16', addressGender: 'female' });
+    assert.equal(res.ok, true, res.ok ? '' : JSON.stringify(res.error));
+    assert.equal(res.data.birthday, '1994-03-16');
+    assert.equal(res.data.addressGender, 'female');
+  } finally { client.release(); }
+
+  const { rows } = await db.pool.query(
+    `SELECT birthday, address_gender FROM users WHERE id = $1`, [u.id]);
+  // A DATE comes back as a Date at LOCAL midnight, so toISOString() on it is a
+  // day out anywhere west of UTC. isoDay is what every reader goes through.
+  assert.equal(users.isoDay(rows[0].birthday), '1994-03-16',
+    'the stored day moved — somebody is converting a calendar day through UTC');
+  assert.equal(rows[0].address_gender, 'female');
+});
+
+test('setProfileFields: undefined leaves a column alone, null clears it', async () => {
+  const u = await makeUser(db.pool, '+972507000002');
+  const client = await db.pool.connect();
+  try {
+    await users.setProfileFields(client, u.id, { birthday: '1990-01-02', addressGender: 'female' });
+    // Only the gender named: the birthday must survive untouched.
+    const one = await users.setProfileFields(client, u.id, { addressGender: 'male' });
+    assert.equal(one.data.birthday, '1990-01-02', 'a field nobody mentioned was overwritten');
+    assert.equal(one.data.addressGender, 'male');
+    // Emptying the date picker is a real answer, and it has to reach the column.
+    const cleared = await users.setProfileFields(client, u.id, { birthday: null });
+    assert.equal(cleared.data.birthday, null, 'clearing the birthday did not clear it');
+    assert.equal(cleared.data.addressGender, 'male', 'clearing one field cleared another');
+    const nothing = await users.setProfileFields(client, u.id, {});
+    assert.equal(nothing.ok, false);
+  } finally { client.release(); }
+});
+
+test('setProfileFields refuses a day that is not one', async () => {
+  const u = await makeUser(db.pool, '+972507000003');
+  const client = await db.pool.connect();
+  try {
+    for (const bad of ['16/03/1994', '1994-3-16', 'yesterday', '1994-02-31', '']) {
+      const res = await users.setProfileFields(client, u.id, { birthday: bad });
+      assert.equal(res.ok, false, `accepted ${JSON.stringify(bad)} as a birthday`);
+      assert.equal(res.error.code, 'invalid');
+    }
+    // 31 February is the one that matters: `new Date('1994-02-31')` does not
+    // throw, it rolls into March, so a naive parse stores the wrong day.
+    const future = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    assert.equal((await users.setProfileFields(client, u.id, { birthday: future })).ok, false,
+      'a birthday in the future is a mistyped year, not a birthday');
+    assert.equal((await users.setProfileFields(client, u.id, { birthday: '1804-05-06' })).ok, false);
+    assert.equal((await users.setProfileFields(client, u.id, { addressGender: 'other' })).ok, false);
+  } finally { client.release(); }
+});

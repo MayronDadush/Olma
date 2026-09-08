@@ -17,6 +17,9 @@
 // by a re-render that lands in between.
 const fs = require('node:fs');
 const path = require('node:path');
+// Safe as a top-level require: domain/users pulls in results, audit,
+// timezone-repair and language, none of which reach back here.
+const { isoDay } = require('../domain/users');
 
 // Tool names whose success makes the card stale. Kept here, next to the
 // renderer, so adding a card field and adding its trigger are one edit.
@@ -63,6 +66,23 @@ function renderCard(user, prefs, facts = [], extras = {}) {
     : 'First name: unknown — ask what to call them and save it with set_my_name');
   if (user.last_name) lines.push(`Last name: ${user.last_name}`);
   lines.push(`Language: ${user.locale || 'he'}`);
+  // How to ADDRESS them, which Hebrew inflects on nearly every verb. Rendered
+  // only off the default, exactly as the assistant persona below is: masculine
+  // is the documented default for address, so the common case costs nothing on
+  // a card that is injected on every turn for every user. NULL is a real third
+  // state — nobody has said — and it renders nothing rather than asserting the
+  // default as a fact somebody chose.
+  if (user.address_gender === 'female') {
+    lines.push('Address them in the FEMININE — every verb and adjective aimed at them '
+      + '(שמרתי לך, את רוצה), no mixing. This is how they speak of themselves, '
+      + 'and is unrelated to the assistant\'s own register.');
+  }
+  // Stated by them on their own profile page and never inferred — nothing
+  // reads a birthday off a calendar event. It is on the card because the point
+  // of holding it is that Olma can use it, and a column nothing reads is worse
+  // than no column: it is a promise. The day is given as-is rather than as an
+  // age, because the age changes and this string is rendered from a snapshot.
+  if (user.birthday) lines.push(`Birthday: ${isoDay(user.birthday)} (they told us; never guess one)`);
   // Who the assistant is for THIS user — rendered only off the default.
   // The default (עולמה, feminine register) is already the doctrine every
   // agent carries, and repeating it on every turn for every user is cost.
