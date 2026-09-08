@@ -147,6 +147,7 @@ never trust a dated narrative for something you are about to act on.
 - [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
 - [Two asks, one task (2026-09-07)](#two-asks-one-task-2026-09-07)
 - [The same thing, saved twice (fixed 2026-09-08)](#the-same-thing-saved-twice-fixed-2026-09-08)
+- [A time in the title and no reminder (fixed 2026-09-09)](#a-time-in-the-title-and-no-reminder-fixed-2026-09-09)
 - ["הנה, רשמתי", about a meeting (2026-09-07)](#הנה-רשמתי-about-a-meeting-2026-09-07)
 - [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
 - [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
@@ -5065,6 +5066,84 @@ So the id is taken only when the model is the best source there is: never on
 `ourTurn`, never over an id the gateway already put on the turn, and otherwise
 exactly as before — a real person writing, with no gateway opening on file,
 is still a turn where the model is all we have.
+
+### A time in the title and no reminder (fixed 2026-09-09)
+
+Cleaning up after the duplicates above left 27 `extracted` tasks standing on
+the box. Every single one of them had a NULL `due_at` — not most, all 27 — and
+three carried the moment inside the title, as words:
+
+| task | owner | title | source |
+|---|---|---|---|
+| 439 | u-3 | לאכול צהריים ב12 | extracted |
+| 262 | u-11 | לעזור לשרה במעבר דירה ביום רביעי בשעה 17:00 | extracted |
+| 37 | u-9 | תרופות בשעה 6 בערב | brain_dump |
+
+Somebody said an hour out loud, the extraction pass heard it, wrote it down —
+and wrote it into the one field nothing can act on. A `due_at` arms an
+automatic reminder; a title is a string. So for the one kind of commitment
+that most needs a reminder, the hour was captured and then thrown away in the
+same write.
+
+The obvious reading is a lazy model, and it is wrong. There were two separate
+faults and only one of them was the model's:
+
+- `add_tasks_bulk` **does** take a `due_at` per item, and the brain-dump path
+  simply did not use it. A model miss.
+- `applyExtraction`'s schema was `{"title", "subtasks"}` — **no date field
+  existed at all**. Nothing the model answered could have carried an hour.
+
+And underneath both, the reason the prompt's own line "Never invent a date they
+did not give you" was not just correct but the only safe rule available:
+`renderTranscript` rendered `THEM:` / `YOU:` lines and **discarded every
+`m.at`**, and the instruction stated neither the current moment nor the
+person's timezone (`dueUsers` did not even select the column). This job reads a
+conversation 30 minutes to several hours after it happened. Against a bare
+transcript with no clock anywhere, "מחר בשעה 18:00" is not a moment — it is a
+moment relative to a "now" nobody had told the model. Asked to date that, the
+only honest answers are a guess and a refusal, and the prompt correctly chose
+refusal. **The date field was missing because the clock was missing.** Adding
+the field first would have bought a year of wrong reminders.
+
+So the clock came first. Each transcript line is now stamped
+`[YYYY-MM-DD HH:MM]` with the wall clock **it was written at**, in their zone —
+off the message the gateway stored, never off the clock this sweep runs on,
+because the gap between the two is exactly what has to be visible. The prompt
+states the same clock for "now" and names the zone. A line whose message has no
+usable timestamp renders **bare**, with no stamp at all, rather than borrowing
+`now()`: a voice call arrives from the bridge as `{role, content}` with no
+per-message clock anywhere, and a made-up stamp would hide that rather than
+report it — the same `null`-is-not-`[]` rule as everywhere else in this file.
+
+Only then the field. `"due_at"` joined the tasks schema with the rules the
+model needs and the server cannot enforce: only a moment stated out loud, full
+ISO with their offset, resolved against the stamp on the line that said it,
+null as the normal answer — and the ל־ distinction, because "לארגן אימון
+לרביעי" is arranged BEFORE Wednesday while "האימון ברביעי ב-19:00" is the thing
+itself, and no regex can tell those two apart from the string.
+
+What comes back is not trusted. `usableDue` refuses four shapes, and on every
+one of them **the date is dropped and the task is kept** — the same handling
+the facts half has always given `expires_at`, for the same reason: the
+commitment is what they said, the moment is what the model resolved, and only
+one of those two is theirs.
+
+- **Not parseable**, or not a string. "מחר בערב" comes back as a title, not a date.
+- **No explicit UTC offset.** A bare local time is read as UTC and lands three
+  hours out for an Israeli user. `addTask` refuses this too — which would cost
+  the task as well, so it is caught here first, where only the date is lost.
+- **Already past.** Nothing to remind anybody about, and `attachAutoReminder`
+  would arm a rung that fires the moment it is written.
+- **Beyond a year.** That is the shape a wrong YEAR takes, and the facts half
+  has already caught exactly this live: "טס לרומא בספטמבר" came back with
+  `expires_at` 2025-09-15 — the month the person gave, the year the model
+  assumed from its training prior.
+
+The count rides the audit row as `taskDatesDropped` and the sweep result as
+`datesDropped`, on the same argument as the duplicate counter beside it: a
+guard that silently drops things looks identical to a quiet week, and a number
+that climbs every night is the only thing that would say the model is proposing
+moments this job will not honour.
 
 ### The same thing, saved twice (fixed 2026-09-08)
 

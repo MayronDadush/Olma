@@ -21,6 +21,7 @@ const users = require('../domain/users');
 const meetings = require('../domain/meetings');
 const llm = require('../adapters/llm');
 const flagsDomain = require('../domain/flags');
+const { partsInZone, hasOffset } = require('../domain/datetime');
 // Off the main thread (channels/sessions-async.js): this job reads whole
 // transcripts, on the same event loop that answers live users.
 const { readRecentMessages } = require('../channels/sessions-async');
@@ -89,13 +90,46 @@ function newMessagesSince(messages, sinceMs) {
   return messages.filter((m) => atMs(m) > sinceMs);
 }
 
-function renderTranscript(messages) {
+// Every line carries the wall clock it was written at, in THEIR zone, and that
+// is what makes a date recoverable at all. This job reads a conversation hours
+// after it happened, so "מחר בשעה 18:00" against a bare transcript is not a
+// moment — it is a moment relative to a "now" the model was never told. It had
+// no clock and was told, correctly, never to invent a date; what came out was a
+// task titled "לאכול צהריים ב12" with no due date, and therefore no reminder,
+// for the one kind of commitment that most needs one.
+//
+// The stamp comes off the message the gateway stored (`m.at`), never off the
+// clock this sweep runs on: it is when they SAID it, and the gap between the
+// two is exactly what has to be visible.
+function renderTranscript(messages, tz) {
   const text = messages
-    .map((m) => `${m.role === 'user' ? 'THEM' : 'YOU'}: ${m.text}`)
+    .map((m) => {
+      const stamp = localStamp(m, tz);
+      return `${stamp ? `[${stamp}] ` : ''}${m.role === 'user' ? 'THEM' : 'YOU'}: ${m.text}`;
+    })
     .join('\n');
   // Keep the END of the conversation when trimming — the tail is where
   // conclusions live ("ok, so I'm flying Thursday"), the head is small talk.
   return text.length > MAX_TRANSCRIPT_CHARS ? text.slice(-MAX_TRANSCRIPT_CHARS) : text;
+}
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+// An instant as a wall clock in `tz`. One renderer for both the transcript
+// stamps and the "it is now" line, so the model is never comparing two clocks.
+function stampInZone(ms, tz) {
+  const p = partsInZone(tz || 'UTC', new Date(ms));
+  return `${p.y}-${pad2(p.m)}-${pad2(p.d)} ${pad2(p.hh)}:${pad2(p.mi)}`;
+}
+
+// A message's own moment as its writer's wall clock, or null when it has none.
+// Never borrowed from now(): a wrong clock on one line is worse than a missing
+// one, because only the missing one can be seen. A voice call arrives with no
+// per-message timestamps at all, so an unstamped line is a normal shape and not
+// an error — it just cannot anchor a relative date.
+function localStamp(message, tz) {
+  const ms = atMs(message);
+  return ms ? stampInZone(ms, tz) : null;
 }
 
 // The extraction brief. Same rules the agent-turn version enforced, now aimed
@@ -124,10 +158,19 @@ function buildInstruction(transcript, existingFacts, openTasks = [], profile = {
     'The JSON shape:',
     '{',
     '  "facts":  [{"category": "...", "fact": "...", "importance": 1, "expires_at": null, "replaces": null}],',
-    '  "tasks":  [{"title": "...", "subtasks": []}],',
+    '  "tasks":  [{"title": "...", "subtasks": [], "due_at": null}],',
     profile.firstName ? '  "name": null' : '  "name": {"first": "...", "last": null} or null',
     ...(opts.includeSummary ? ['  "summary": "..." or null'] : []),
     '}',
+    '',
+    // Without these two lines the model has no "now" and therefore cannot turn
+    // any relative moment into a date — which is exactly why it was told never
+    // to try. Every transcript line carries its own stamp in the same zone, so
+    // "מחר" is measured from when they SAID it, not from when this job ran.
+    `It is now ${stampInZone(opts.now || Date.now(), opts.tz)} where they are (timezone ${opts.tz || 'UTC'}).`,
+    'A line of the conversation below that carries a [YYYY-MM-DD HH:MM] stamp was',
+    'written at that moment, in that same zone — which may be hours ago. A line',
+    'with no stamp has no known moment and can anchor nothing.',
     '',
     'What you already know about them, each with its #id — do NOT record any of this',
     'again, and do not restate it in slightly different words:',
@@ -197,6 +240,19 @@ function buildInstruction(transcript, existingFacts, openTasks = [], profile = {
     '',
     'Never invent a date they did not give you.',
     '',
+    '"due_at" is when the THING happens, and null is the normal answer. Fill it in',
+    'ONLY when they said the moment out loud — "מחר בשעה 18:00", "ביום רביעי ב-17:00",',
+    '"at 4 today". Write it as a full ISO-8601 datetime WITH their offset, resolved',
+    'against the stamp on the line that said it: 2026-09-10T18:00:00+03:00. Never',
+    'guess an hour they did not name, and never date a task just because it sounds',
+    'urgent — a task with no due date is complete and normal, a wrong one sends them',
+    'a reminder for a moment that is not theirs.',
+    // The ל־ rule (CLAUDE.md): "לארגן אימון לרביעי" is arranged BEFORE Wednesday.
+    // A server-side regex cannot tell the two apart; the model has the sentence.
+    'And it is when the THING is, not when to get ready for it. "לארגן אימון לרביעי"',
+    'is arranging something BEFORE Wednesday, so it has no due_at at all — while',
+    '"האימון ברביעי ב-19:00" IS the thing, and does.',
+    '',
     ...(profile.firstName
       ? ['"name" must be null — we already know what they are called.', '']
       // Only asked when there is a blank to fill, so the usual run does not
@@ -226,6 +282,36 @@ function buildInstruction(transcript, existingFacts, openTasks = [], profile = {
 // written through the same domain functions the live tools call — which also
 // enforce their own rules (category vocabulary, importance range, one-level
 // nesting, bulk cap) a second time.
+// How far ahead a proposed due date may reach. A moment stated in a WhatsApp
+// conversation is days or weeks away; a year out is the model reasoning about
+// a date rather than reading one, and the cost of being wrong there is a
+// reminder nobody can connect to anything they said.
+const DUE_HORIZON_MS = 365 * 24 * 3600_000;
+
+// The same shape as the facts half's `expires_at` handling above, and for the
+// same reason: on anything doubtful the DATE is dropped and the TASK is kept.
+// The commitment is what they said; the moment is what the model resolved, and
+// only one of those two is theirs. Four ways a proposal fails:
+//   - not a string, or unparseable;
+//   - no explicit UTC offset — a bare local time is read as UTC and lands three
+//     hours out for an Israeli user (CLAUDE.md, "Every time crossing a tool
+//     boundary needs an explicit offset"). addTask refuses this too; refusing
+//     here keeps the TASK, where addTask would lose both;
+//   - already past — nothing to remind anyone about, and attachAutoReminder
+//     would arm a rung that fires the moment it is written;
+//   - beyond the horizon, which is the shape a wrong YEAR takes ("2027-09-10"
+//     for a Thursday next week), the exact mistake the facts half caught live.
+function usableDue(value) {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const raw = value.trim();
+  if (!hasOffset(raw)) return undefined;
+  const t = Date.parse(raw);
+  if (Number.isNaN(t)) return undefined;
+  const now = Date.now();
+  if (t <= now || t > now + DUE_HORIZON_MS) return undefined;
+  return raw;
+}
+
 // knownFactIds: the exact set of #ids the model was shown this call. `replaces`
 // is only ever honoured against that snapshot — never an id from earlier in
 // this same batch, and never one invented — the same anchoring pattern the
@@ -235,7 +321,7 @@ async function applyExtraction(client, user, parsed, knownFactIds = new Set()) {
   // silently, and a nightly job that quietly drops facts looks exactly like a
   // quiet week. If a guard ever starts over-firing — refusing real facts every
   // night — this counter is the only place that would say so.
-  const out = { recorded: 0, tasksCaptured: 0, refused: {}, replaced: 0 };
+  const out = { recorded: 0, tasksCaptured: 0, refused: {}, replaced: 0, datesDropped: 0 };
   const factList = Array.isArray(parsed.facts) ? parsed.facts.slice(0, 20) : [];
   for (const f of factList) {
     if (!f || typeof f.fact !== 'string') continue;
@@ -272,8 +358,10 @@ async function applyExtraction(client, user, parsed, knownFactIds = new Set()) {
   const taskList = Array.isArray(parsed.tasks) ? parsed.tasks.slice(0, 10) : [];
   for (const t of taskList) {
     if (!t || typeof t.title !== 'string' || !t.title.trim()) continue;
+    const dueAt = usableDue(t.due_at);
+    if (t.due_at && !dueAt) out.datesDropped++;
     const created = await tasks.addTask(client, user.id, {
-      title: t.title, source: 'extracted',
+      title: t.title, dueAt, source: 'extracted',
     });
     if (!created.ok) {
       // Counted for the same reason the facts half counts its refusals: this
@@ -363,7 +451,11 @@ async function gatherContext(client, userId) {
 // anything in it we have not read".
 async function dueUsers(client, now = Date.now(), minGapHours = 0) {
   const { rows } = await client.query(
-    `SELECT id, agent_id, phone, first_name, workspace_path, last_inbound_at, last_fact_extraction_at
+    // `timezone` is what turns "מחר בשעה 18:00" into an instant: the transcript
+    // is stamped in it and the prompt states "now" in it. NULL is impossible
+    // by rule (CLAUDE.md) and still defended for at the two readers below.
+    `SELECT id, agent_id, phone, first_name, timezone, workspace_path,
+            last_inbound_at, last_fact_extraction_at
        FROM users
       WHERE status = 'active' AND agent_id IS NOT NULL AND onboarded_at IS NOT NULL
         -- Sends nothing, but it spends a model turn reading their conversation
@@ -412,7 +504,7 @@ async function sweepFactExtraction(client, deps = {}) {
   // hidden longest.
   const out = {
     considered: due.length, extracted: [], recorded: 0, tasksCaptured: 0, replaced: 0,
-    skipped: 0, failed: [],
+    datesDropped: 0, skipped: 0, failed: [],
   };
   // By guard reason, across everyone this tick. Attached to `out` at the end
   // only when non-empty: the heartbeat note is this object JSON-stringified and
@@ -440,8 +532,11 @@ async function sweepFactExtraction(client, deps = {}) {
 
     const { known, openTasks, meetingConstraints } = await gatherContext(client, u.id);
 
-    const message = buildInstruction(renderTranscript(fresh), known, openTasks,
-      { firstName: u.first_name }, meetingConstraints);
+    // NULL is impossible by rule and UTC is the same fallback the delivery gate
+    // and the digest sweep take — an hour wrong beats an unparseable prompt.
+    const tz = u.timezone || 'UTC';
+    const message = buildInstruction(renderTranscript(fresh, tz), known, openTasks,
+      { firstName: u.first_name }, meetingConstraints, { now, tz });
 
     // One direct call, one JSON answer. No session, no tools, no identity
     // token — the model cannot write anything; it can only propose.
@@ -466,11 +561,17 @@ async function sweepFactExtraction(client, deps = {}) {
         factsRecorded: applied.recorded, tasksCaptured: applied.tasksCaptured,
         ...(Object.keys(applied.refused).length ? { factsRefused: applied.refused } : {}),
         ...(applied.replaced ? { factsReplaced: applied.replaced } : {}),
+        // A number that climbs says the model is proposing moments this job
+        // will not honour — a bare local time, a wrong year — and the task is
+        // going out dateless again. Only written when it is not zero, same as
+        // the two above.
+        ...(applied.datesDropped ? { taskDatesDropped: applied.datesDropped } : {}),
       });
       out.extracted.push(u.id);
       out.recorded += applied.recorded;
       out.tasksCaptured += applied.tasksCaptured;
       out.replaced += applied.replaced;
+      out.datesDropped += applied.datesDropped;
       for (const [why, n] of Object.entries(applied.refused)) {
         refused[why] = (refused[why] || 0) + n;
       }
@@ -493,7 +594,7 @@ async function sweepFactExtraction(client, deps = {}) {
 
 module.exports = {
   sweepFactExtraction, dueUsers, buildInstruction, renderTranscript, newMessagesSince,
-  isMachineText, readPersonMessages, applyExtraction, gatherContext,
+  isMachineText, readPersonMessages, applyExtraction, gatherContext, usableDue,
   CHAPTER_GAP_MS, MAX_PER_TICK, READ_MESSAGES, MAX_TRANSCRIPT_CHARS, INSTRUCTION_MARKER,
-  OPEN_TASKS_IN_PROMPT, MEETINGS_IN_PROMPT, MEETING_CONSTRAINT_WINDOW_MS,
+  OPEN_TASKS_IN_PROMPT, MEETINGS_IN_PROMPT, MEETING_CONSTRAINT_WINDOW_MS, DUE_HORIZON_MS,
 };
