@@ -630,7 +630,20 @@ html[data-served] .themetog{display:none}
    script it would show until the server answered. Emptying the seed instead
    would leave a section still offering to make one. Open this file from disk
    and the whole feature is there, which is what the design copy is for. */
-html[data-served] .groupsblock{display:none}
+/* The BUTTON stays hidden when served: a WhatsApp room is not something this
+   page can create, and a group made here is still forgotten on reload. The
+   LIST is a different thing since 2026-09-09 — the rooms Olma is in arrive
+   from the server as groups that are already made, so it shows when there is
+   something real in it and `hydrate` hides it when there is not. */
+html[data-served] button.groupsblock{display:none}
+/* The LIST starts hidden on a served page too, and `hydrate` turns it back on
+   only once real rooms have arrived. Deliberately not a `hidden` set from
+   script after the fetch: the three seeded design groups are IN the markup,
+   so anything that hides them only when hydrate runs shows a real person
+   somebody else's example lists for as long as the server takes to answer —
+   which is the whole reason the rule this replaced covered the list as well. */
+html[data-served] .groupsblock:not(button){display:none}
+html[data-served] .groupsblock.live{display:block}
 .langtog{
   position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:14px;z-index:40;
   display:flex;padding:3px;border-radius:999px;background:var(--surface);
@@ -3174,7 +3187,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       /* A group is one person's own shortcut, not a shared object — nobody is
          asked to join one and nobody is told they are in one. The hint says
          so, because a list of names usually implies the opposite. */
-      "gr.h":"קבוצות","gr.hint":"רשימות שלך · אף אחד לא מתבקש לאשר","gr.new":"קבוצה חדשה",
+      "gr.h":"קבוצות","gr.hint":"אף אחד לא מתבקש לאשר · קבוצה מוואטסאפ מגיעה מוכנה","gr.new":"קבוצה חדשה",
+      "gr.room":"מוואטסאפ","gr.off":"{n} עוד לא אצל עולמה",
+      "gr.roomNote":"הקבוצה הזאת מגיעה מוואטסאפ — השם ומי נמצא בה נקבעים שם.",
       "gr.count.n0":"עדיין ריקה","gr.count.n1":"חבר אחד","gr.count.nN":"{n} חברים",
       "gr.members":"מי בקבוצה","gr.namePh":"שם הקבוצה","gr.untitled":"קבוצה ללא שם",
       "gr.search":"חיפוש קבוצה","gr.noMatch":"אין קבוצה בשם „{q}”.",
@@ -3410,7 +3425,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "fr.search":"Search friends","fr.clear":"Clear","fr.noMatch":"No friend matches \u201c{q}\u201d.",
       "fr.p.n0":"No permissions on","fr.p.n1":"1 permission on","fr.p.nN":"{n} permissions on",
       "fr.bday":"Birthday today","fr.remove":"Remove connection","fr.invite":"Invite a friend",
-      "gr.h":"Groups","gr.hint":"Your own lists · nobody is asked to approve","gr.new":"New group",
+      "gr.h":"Groups","gr.hint":"Nobody is asked to approve · a WhatsApp room arrives ready","gr.new":"New group",
+      "gr.room":"From WhatsApp","gr.off":"{n} not on Allma yet",
+      "gr.roomNote":"This group comes from WhatsApp \u2014 its name and who is in it are set there.",
       "gr.count.n0":"Empty so far","gr.count.n1":"1 person","gr.count.nN":"{n} people",
       "gr.members":"Who is in it","gr.namePh":"Group name","gr.untitled":"Untitled group",
       "gr.search":"Search groups","gr.noMatch":"No group matches \u201c{q}\u201d.",
@@ -7225,24 +7242,46 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#groupEmpty").hidden = !none;
     $("#groupEmpty").textContent = none ? (q ? t("gr.noMatch", {q:groupQ.trim()}) : t("gr.empty")) : "";
     $("#groupGroup").innerHTML = list.map(function(g){
-      var chips = FRIENDS.map(function(f){
-        var inIt = g.m.indexOf(f.id) > -1;
-        return '<button class="frchip" aria-pressed="' + inIt + '" data-grtog="' + g.id + ":" + f.id + '">' +
-          '<span class="fav">' + avatarSVG(f.av, {g:f.g}) + "</span>" + esc(L(f.n)) + "</button>";
-      }).join("");
       var open = !!grOpen[g.id];
+      var sub = g.room && g.off
+        ? pl("gr.count", g.m.length) + " \u00b7 " + t("gr.off", {n:g.off})
+        : pl("gr.count", g.m.length);
+      /* A room's fold is READ-ONLY. Every control the design offers here edits
+         something WhatsApp owns — the name, who is in it, whether it exists at
+         all — and a control that cannot keep its promise is worse than no
+         control. What it shows instead is who is in the room, including the
+         people who are not on Olma: they are why the count and the faces
+         differ, and without them the row looks like it lost somebody. */
+      var body = g.room
+        ? '<div class="glabel"><span>' + esc(t("gr.members")) + "</span></div>" +
+          '<div class="chipcloud">' +
+          g.m.map(function(id){
+            var f = friendById(id);
+            return f ? '<button class="frchip" aria-pressed="true" disabled>' +
+              '<span class="fav">' + avatarSVG(f.av, {g:f.g}) + "</span>" + esc(L(f.n)) + "</button>" : "";
+          }).join("") +
+          (g.offNames || []).map(function(nm){
+            return '<button class="frchip" aria-pressed="false" disabled>' + esc(nm) + "</button>";
+          }).join("") +
+          '</div><p class="note" style="margin-top:10px">' + esc(t("gr.roomNote")) + "</p>"
+        : '<input class="grname" data-grname="' + g.id + '" value="' + esc(L(g.n)) +
+          '" data-i18n-ph="gr.namePh" placeholder="' + esc(t("gr.namePh")) + '" autocomplete="off">' +
+          '<div class="glabel"><span>' + esc(t("gr.members")) + "</span></div>" +
+          '<div class="chipcloud">' + FRIENDS.map(function(f){
+            var inIt = g.m.indexOf(f.id) > -1;
+            return '<button class="frchip" aria-pressed="' + inIt + '" data-grtog="' + g.id + ":" + f.id + '">' +
+              '<span class="fav">' + avatarSVG(f.av, {g:f.g}) + "</span>" + esc(L(f.n)) + "</button>";
+          }).join("") + "</div>" +
+          '<button class="linkbtn danger" data-grdel="' + g.id + '" style="margin-top:10px;display:block">' +
+          esc(t("gr.remove")) + "</button>";
       return '<div class="rowset"><button class="row" data-group="' + g.id +
         '" aria-expanded="' + open + '">' + grFaces(g) +
-        '<div class="row-txt"><div class="row-title">' + esc(grName(g)) + "</div>" +
-        '<div class="row-sub" data-grsub="' + g.id + '">' + esc(pl("gr.count", g.m.length)) + "</div></div>" +
+        '<div class="row-txt"><div class="row-title">' + esc(grName(g)) +
+        (g.room ? ' <span class="hint">' + esc(t("gr.room")) + "</span>" : "") + "</div>" +
+        '<div class="row-sub" data-grsub="' + g.id + '">' + esc(sub) + "</div></div>" +
         '<svg class="chev"><use href="#i-chev"/></svg></button>' +
         '<div class="fold' + (open ? " open" : "") + '" data-grfold="' + g.id + '"><div><div class="foldpad">' +
-        '<input class="grname" data-grname="' + g.id + '" value="' + esc(L(g.n)) +
-        '" data-i18n-ph="gr.namePh" placeholder="' + esc(t("gr.namePh")) + '" autocomplete="off">' +
-        '<div class="glabel"><span>' + esc(t("gr.members")) + "</span></div>" +
-        '<div class="chipcloud">' + chips + "</div>" +
-        '<button class="linkbtn danger" data-grdel="' + g.id + '" style="margin-top:10px;display:block">' +
-        esc(t("gr.remove")) + "</button></div></div></div></div>";
+        body + "</div></div></div></div>";
     }).join("");
   }
   $("#addGroup").addEventListener("click", function(){
@@ -7790,6 +7829,36 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          msg:  have.indexOf("messages") > -1}
     };
   }
+  /* A WhatsApp room, arriving as a group that is already made. Two things
+     make it different from a group somebody assembles here, and the row says
+     both: its name belongs to WhatsApp, so it cannot be renamed from this
+     page, and its membership is whoever is in the room, so nobody is added or
+     dropped here either. `m` is only the members who are ON Olma — they are
+     also, by now, friends, which is why `friendById` finds them — and the
+     people who are not are counted instead, because a room drawn with half
+     its people missing reads as the wrong room.
+
+     `n` is duplicated into both languages on purpose: the room's name is the
+     one its members chose in WhatsApp and is never translated, and the search
+     and render paths both expect the two-language shape. */
+  function liveGroup(g){
+    var mine = (g.members || []).filter(function(m){ return !m.self; });
+    var onOlma = mine.filter(function(m){ return m.onOlma && m.id; });
+    var name = g.name || "";
+    return {
+      /* The room's own numeric id, because every handler on this page coerces
+         with `+` and a string id would silently match nothing — including the
+         group picker in the coordination flow, which is the point of the
+         whole thing. Nothing collides: a group made ON this page only exists
+         when the page is opened from disk, where no server groups arrive. */
+      id: g.id, room: true,
+      n: {he:name, en:name},
+      m: onOlma.map(function(m){ return m.id; }),
+      off: mine.length - onOlma.length,
+      offNames: mine.filter(function(m){ return !m.onOlma; })
+                    .map(function(m){ return m.name || ""; }).filter(Boolean)
+    };
+  }
   /* Which provider tile each integration row belongs to. The server names a
      SERVICE (`google_calendar`); the page groups by ACCOUNT (`google`),
      because that is how a person thinks about having connected Google once. */
@@ -7972,6 +8041,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       return {id:x.id, t:x.title, done:whenLabel(x.completedAt)};
     });
     FRIENDS = (d.friends || []).map(liveFriend);
+    /* The rooms she is in, as groups that are already made. The block that
+       draws them is design-only until this arrives: a group somebody makes on
+       this page is forgotten on reload, and a section offering that to a real
+       person would be a promise nothing keeps. With rooms behind it there is
+       something real to show, so it appears — and the "new group" button
+       beside it does not, because a WhatsApp room is not something this page
+       can create. */
+    GROUPS = (d.groups || []).map(liveGroup);
+    var block = document.querySelector(".groupsblock:not(button)");
+    if(block) block.classList.toggle("live", GROUPS.length > 0);
     /* Google is the only provider with a connection behind it, and Gmail
        inside it is allowlisted per person, so the server is the only thing
        that can answer that half. Everything not named here is greyed. */

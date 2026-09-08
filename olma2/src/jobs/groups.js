@@ -31,6 +31,7 @@ const groupContext = require('../domain/group-context');
 const groupMeetings = require('../domain/group-meetings');
 const groupVoice = require('../domain/group-voice');
 const groupOutbox = require('../domain/group-outbox');
+const groupConnections = require('../domain/group-connections');
 const gate = require('../outbox/gate');
 // Through the worker facade, never channels/sessions.js: every read there is
 // synchronous, and this runs inside brokerd on the loop that answers live
@@ -139,6 +140,10 @@ async function sweepGroups(client, deps) {
     // twice (migration 055).
     registered: [], intros: 0, notices: 0, opened: [], relocked: [], announced: 0,
     unreadable: 0, strangers: 0, skipped: 0,
+    // Connections made because two people share a room. Counts the pairs
+    // this pass changed, so a steady state reads 0 and a new member reads
+    // however many people were already in there with her.
+    connected: 0,
     // `senderGateOpen` is the loud one: true means the gateway is admitting
     // every sender in every group, and nothing else in this pass can tell.
     senderAllowFrom: senderGate.entries.length, senderGateOpen: senderGate.open,
@@ -177,6 +182,17 @@ async function sweepGroups(client, deps) {
     } else {
       await groups.syncRoster(client, group.id, members);
     }
+
+    // Standing in the same room IS the introduction (owner's rule, 2026-09-09):
+    // everybody here who is already a user is connected to everybody else,
+    // every feature on. On EVERY pass, not only the one that registered the
+    // group — the room fills up over days, and a member who signs up next week
+    // has to be connected by the pass that notices, not by somebody
+    // remembering. It costs two queries once everyone is connected
+    // (`group-connections.js`), and it never invites a stranger or undoes a
+    // revoke.
+    const linked = await groupConnections.connectRoom(client, group.id);
+    out.connected += linked.data.created + linked.data.activated;
 
     // ---- her first words in the room ---------------------------------------
     // Due while `introduced_at` is NULL, not only on the pass that registered

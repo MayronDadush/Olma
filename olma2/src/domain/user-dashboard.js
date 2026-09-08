@@ -275,6 +275,55 @@ async function loadFriends(client, userId) {
   }));
 }
 
+// The WhatsApp rooms this person shares with Olma, each already carrying the
+// people in it — the room arrives here as a group they can coordinate with,
+// with the name it has in WhatsApp, rather than as a list they have to
+// assemble out of their friends one by one (owner's ask, 2026-09-09).
+//
+// Two things are deliberately absent. No phone numbers: everyone in the room
+// can see them in WhatsApp, and this payload is bound for a browser, so it
+// keeps the same line every other person on this page is behind — first name
+// and nothing else. And no `identity_token`, which lives on `chat_groups` and
+// is the room's door: a group tool may not return that row, and neither may
+// this one.
+//
+// Members who are not on Olma are listed by the display name the room already
+// shows, flagged `onOlma: false`, because a room drawn with half its people
+// missing reads as the wrong room. They cannot be put in a coordination — the
+// page shows them and cannot select them.
+async function loadGroups(client, userId) {
+  const { rows } = await client.query(
+    `SELECT g.id, g.subject, g.state, g.kind, g.timezone,
+            m2.user_id, m2.display_name, u.first_name
+       FROM chat_group_members me
+       JOIN chat_groups g ON g.id = me.group_id
+       JOIN chat_group_members m2 ON m2.group_id = g.id AND m2.left_at IS NULL
+       LEFT JOIN users u ON u.id = m2.user_id
+      WHERE me.user_id = $1 AND me.left_at IS NULL
+      ORDER BY g.id, u.first_name NULLS LAST, m2.phone`,
+    [userId]
+  );
+  const byGroup = new Map();
+  for (const r of rows) {
+    const id = Number(r.id);
+    let g = byGroup.get(id);
+    if (!g) {
+      g = { id, name: r.subject, state: r.state, kind: r.kind, timezone: r.timezone, members: [] };
+      byGroup.set(id, g);
+    }
+    const onOlma = Boolean(r.user_id);
+    g.members.push({
+      id: onOlma ? Number(r.user_id) : null,
+      name: onOlma ? r.first_name : (r.display_name || null),
+      onOlma,
+      // The page draws the viewer differently ("you"), and working that out in
+      // the browser means shipping the viewer's id twice.
+      self: onOlma && Number(r.user_id) === Number(userId),
+    });
+  }
+  return [...byGroup.values()];
+}
+
 // Integrations, one row per provider, with the scope the person granted. The
 // credential columns are never selected — this object is bound for a browser.
 async function loadIntegrations(client, userId) {
@@ -553,6 +602,7 @@ async function load(client, userId) {
   const callAllowed = await voice.pageCallAllowed(client, gateUser);
   const channels = await loadChannels(client, userId);
   const contacts = await loadContacts(client, userId);
+  const groups = await loadGroups(client, userId);
   const meetings = await loadMeetings(client, userId, zone);
   const meetingsLeft = await loadLeftMeetings(client, userId);
   return ok({
@@ -578,6 +628,7 @@ async function load(client, userId) {
     },
     channels,
     contacts,
+    groups,
     tasks: tasks.open,
     archived: tasks.archived,
     friends,
