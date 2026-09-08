@@ -219,7 +219,13 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   reminder they asked for in words — on the same line the gate draws
   everywhere else, and it survives the quiet drop too: somebody who has not
   answered is the likeliest person never to have been told who was writing to
-  them. Bounded to two days in the worker: a repair that never
+  them. **It also keeps the floor for ten minutes AFTER it lands**
+  (`INTRODUCTION_ROOM_MS`), counted from the introduction's own `sent_at` and
+  never from when the waiting row was last looked at — released on a plain
+  "while one is pending" clock, the next row went out on its heels and was read
+  as part of it (ג.ב, 08:00:27 and 08:01:19). The worker reads that landing with
+  `hold_reason IS NULL`: a cancelled or superseded introduction carries
+  `sent_at` too and reached nobody. Bounded to two days in the worker: a repair that never
   went out must not silence somebody for ever. What decided this before was
   `ORDER BY created_at`, which is an accident: ג.ב's introduction and a
   day-one calendar offer were both due at 08:00, from an assistant that had

@@ -76,6 +76,38 @@ test('gate: an unsent introduction holds everything Olma decided to say, in fron
   assert.equal(decide({ ...baseFacts, row: row() }).action, 'deliver');
 });
 
+test('gate: an introduction that has just landed keeps the floor for ten minutes', () => {
+  // Ordering alone was not enough. ג.ב read who Olma was at 08:00:27 and was
+  // asked which city he lives in at 08:01:19: the hold released the instant the
+  // introduction was stamped sent, so the next row went out on its heels and
+  // was read as part of it.
+  const justSent = (msAgo) => ({
+    ...baseFacts, introductionPending: false,
+    introductionSentAt: new Date(noonUTC.getTime() - msAgo),
+  });
+
+  const heldAt2min = decide({ ...justSent(2 * 60_000), row: row() });
+  assert.equal(heldAt2min.action, 'hold');
+  assert.equal(heldAt2min.holdReason, 'awaiting_introduction');
+  assert.equal(new Date(heldAt2min.releaseAfter).getTime(),
+    noonUTC.getTime() + 8 * 60_000,
+    'the release is ten minutes after the introduction LANDED, not ten from now — '
+    + 'counted from now, a row looked at late would wait twice as long as one looked at early');
+
+  // Past the ten minutes it simply goes.
+  assert.equal(decide({ ...justSent(11 * 60_000), row: row() }).action, 'deliver');
+
+  // A moment THEY chose still passes, exactly as it does while one is pending.
+  assert.equal(decide({ ...justSent(60_000), row: row({ kind: 'digest' }) }).action, 'deliver');
+  assert.equal(decide({ ...justSent(60_000), row: row({ kind: 'reminder', payload: { rung: 1 } }) }).action,
+    'deliver');
+  assert.equal(decide({ ...justSent(60_000), row: row({ kind: 'reminder', payload: { rung: 2 } }) }).holdReason,
+    'awaiting_introduction');
+
+  // Nothing on record, nothing changes.
+  assert.equal(decide({ ...baseFacts, introductionSentAt: null, row: row() }).action, 'deliver');
+});
+
 test('gate: night holds until the personal window opens; user-chosen times bypass', () => {
   const night = { ...baseFacts, now: threeAmUTC };
   const held = decide({ ...night, row: row() });
@@ -600,7 +632,33 @@ test('worker: a batch that fails to send fails for every row it carried', async 
   }
 });
 
-test('the introduction goes out first, and the queue moves the moment it has', async () => {
+test('an introduction nobody ever received holds nothing back', async () => {
+  await flushOutbox();
+  const rec = recorder();
+  const at = new Date('2026-08-16T12:00:00Z');
+  const fresh = await makeUser(db.pool, '+972581000078', { firstName: 'Noa', timezone: 'UTC' });
+  // Cancelled from the admin page, and superseded by a reworded replacement:
+  // both carry `sent_at`, which is how cancelling stops the producer making the
+  // row again, and neither reached the person. Counted as a landing, they would
+  // silence this user for ten minutes on the strength of a message that was
+  // never sent.
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, sent_at, hold_reason) VALUES
+       ($1,'introduction','{}','normal', $2::timestamptz, 'cancelled_by_admin'),
+       ($1,'introduction','{}','normal', $2::timestamptz, 'superseded')`,
+    [fresh.id, at]
+  );
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: fresh.id, kind: 'checkin', payload: { checkinInstruction: 'hello' },
+    idempotencyKey: 'intro-never-landed',
+  }));
+
+  const out = await drainOnce(db.pool, rec.deliver, new Date(at.getTime() + 60_000));
+  assert.equal(out.delivered, 1);
+  assert.deepEqual(rec.sent, ['checkin']);
+});
+
+test('the introduction goes out first, and the queue waits for it to be read', async () => {
   await flushOutbox();
   const rec = recorder();
   const at = new Date('2026-08-16T12:00:00Z');
@@ -627,8 +685,22 @@ test('the introduction goes out first, and the queue moves the moment it has', a
   assert.equal(held[0].hold_reason, 'awaiting_introduction');
   assert.equal(held[0].sent_at, null, 'held, not dropped');
 
-  // The introduction has landed; nothing is waiting for it any more.
-  out = await drainOnce(db.pool, rec.deliver, at);
+  // The drain stamps with the real clock and this test lives at a fixed
+  // moment, so the landing is dated into that moment's frame — the gap below
+  // is a real ten minutes either way.
+  await db.pool.query(
+    `UPDATE outbox SET sent_at = $1 WHERE idempotency_key = 'intro-first'`, [at]);
+
+  // A minute later it is still waiting. The introduction has the floor: a
+  // second message on its heels is read as part of the first, and whatever it
+  // asked is answered by nobody (ג.ב, 2026-09-08, 08:00:27 and 08:01:19).
+  out = await drainOnce(db.pool, rec.deliver, new Date(at.getTime() + 60_000));
+  assert.equal(out.delivered, 0);
+  assert.equal(out.held, 1);
+  assert.deepEqual(rec.sent, ['introduction']);
+
+  // Eleven minutes later the queue moves.
+  out = await drainOnce(db.pool, rec.deliver, new Date(at.getTime() + 11 * 60_000));
   assert.equal(out.delivered, 1);
   assert.deepEqual(rec.sent, ['introduction', 'checkin']);
 });
