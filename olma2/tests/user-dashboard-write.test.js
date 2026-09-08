@@ -346,3 +346,14 @@ test('a phone number in the payload is ignored', async () => {
   assert.equal(r.ok, false);
   assert.equal(r.error.code, 'not_found');
 });
+
+test('the page is told when this person actually joined', async () => {
+  const page = await tx((c) => dash.load(c, me.id));
+  // An instant, rendered as a month in the reader's own language by the page.
+  assert.match(page.data.user.memberSince, /^\d{4}-\d{2}-\d{2}T/,
+    'the joining date is missing or is not an instant');
+  const { rows } = await db.pool.query(
+    `SELECT COALESCE(onboarded_at, created_at) AS since FROM users WHERE id = $1`, [me.id]);
+  assert.equal(page.data.user.memberSince, rows[0].since.toISOString(),
+    'the page is shown a different date from the one on the row');
+});

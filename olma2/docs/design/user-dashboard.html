@@ -2247,7 +2247,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <section class="view" data-view="me">
     <div class="hero-profile" style="--i:0">
       <div class="avatar" id="bigAvatar"></div>
-      <div class="who"><b id="whoName"></b><span data-i18n="me.since"></span></div>
+      <div class="who"><b id="whoName"></b><span id="whoSince"></span></div>
       <button class="linkbtn" id="shuffleAvatar" data-i18n="me.avatar"></button>
     </div>
     <div class="stack" style="--i:1">
@@ -3258,7 +3258,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "p.meet":"תיאום פגישות","p.meetSub":"יכול להציע לך מועדים",
       "p.msg":"העברת הודעות","p.msgSub":"יכול לשלוח לך דרך עולמה",
 
-      "me.since":"חבר בעולמה מאז מאי 2026","me.avatar":"החלפת דמות",
+      "me.since":"חבר בעולמה מאז {when}","me.avatar":"החלפת דמות",
       "me.personal":"פרטים אישיים","me.first":"שם פרטי","me.last":"שם משפחה","me.bday":"תאריך לידה",
       "me.where":"מיקום",
       "me.guessed":"נוחש לפי קידומת הטלפון","me.confirmed":"אישרת בעצמך",
@@ -3493,7 +3493,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "p.meet":"Meeting scheduling","p.meetSub":"Can propose times to you",
       "p.msg":"Message relay","p.msgSub":"Can write to you through Allma",
 
-      "me.since":"On Allma since May 2026","me.avatar":"Change character",
+      "me.since":"On Allma since {when}","me.avatar":"Change character",
       "me.personal":"Personal details","me.first":"First name","me.last":"Last name","me.bday":"Date of birth",
       "me.where":"Location",
       "me.guessed":"Guessed from your phone number","me.confirmed":"Confirmed by you",
@@ -3885,6 +3885,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     phone:"+972526269826",
     first:{he:"מירון",en:"Miron"}, last:{he:"דדוש",en:"Dadush"}, olma:{he:"עולמה",en:"Allma"}
   };
+  /* The design copy needs a date to draw; a served page overwrites it from
+     the payload, and a served page with no date shows the line not at all. */
+  var MEMBER_SINCE = "2026-05-12T09:00:00.000Z";
   var myAvatar = seedIndex(PROFILE.phone);
 
   /* `w` marks a service Olma could WRITE to. It is what makes the access
@@ -7596,6 +7599,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#lname").value = L(PROFILE.last);
     $("#oname").value = L(PROFILE.olma);
     $("#friendCount").textContent = t("fr.count", {n:FRIENDS.length});
+    /* Silent rather than wrong when the server sent no date. The line it
+       replaced said "מאז מאי 2026" to every person on the system — including
+       the ones who joined in September — because it was a fixed string in the
+       copy table and never a date at all. */
+    $("#whoSince").textContent = MEMBER_SINCE ? t("me.since", {when:monthLabel(MEMBER_SINCE)}) : "";
     /* Hard-coded WhatsApp here said something the delivery gate does not
        promise: a reminder goes out on whichever channel is the default, and
        that is a setting one page away. */
@@ -7689,6 +7697,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      translated — L() already returns a plain string unchanged, so a title
      needs no wrapping at all. This is only for the few places the page still
      builds a LABEL out of data (the archive's "when"). */
+  /* A joining date is a month, not a day — "מאז 7 בספטמבר" reads like an
+     appointment. The year is always shown: this line exists to say how long
+     they have been here, and a bare month cannot answer that next year. */
+  function monthLabel(iso){
+    if(!iso) return "";
+    try{
+      return new Intl.DateTimeFormat(LOCALE === "en" ? "en-GB" : "he-IL",
+        {month:"long", year:"numeric"}).format(new Date(iso));
+    }catch(err){ return ""; }
+  }
   function whenLabel(iso){
     if(!iso) return "";
     try{
@@ -7955,6 +7973,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          move. It was the owner's own name, which is exactly why this survived
          the first real phone: it read perfectly for one person and would have
          greeted everybody else as מירון דדוש. */
+      MEMBER_SINCE = d.user.memberSince || null;
       PROFILE.first = d.user.firstName || "";
       PROFILE.last = d.user.lastName || "";
       if(d.user.assistantName) PROFILE.olma = d.user.assistantName;
