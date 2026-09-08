@@ -164,6 +164,7 @@ never trust a dated narrative for something you are about to act on.
 
 **CI, migrations and deploying**
 
+- [The merge that never ran (2026-09-08)](#the-merge-that-never-ran-2026-09-08)
 - [A test file poisoned every other one (root-caused and fixed 2026-09-04)](#a-test-file-poisoned-every-other-one-root-caused-and-fixed-2026-09-04)
 - [The deploy marker leads the restart, so the timestamps lie both ways (2026-09-04)](#the-deploy-marker-leads-the-restart-so-the-timestamps-lie-both-ways-2026-09-04)
 - [The rollback was one release deep, on a five-merge day (2026-09-03)](#the-rollback-was-one-release-deep-on-a-five-merge-day-2026-09-03)
@@ -5726,6 +5727,47 @@ model answered `NO_REPLY`; and the admin page shows the delivery prompts of
 Olma's own sweeps under the person's name, as if they had typed them.
 
 ## CI, migrations and deploying
+
+### The merge that never ran (2026-09-08)
+
+PR #285 was merged into `main` at 09:53Z. Both of the branch's own runs — the
+`push` and the `pull_request` — had gone green on the identical sha four
+minutes earlier, `gh pr merge` returned silently, and
+`git merge-base --is-ancestor` confirmed the commit was in `main`. Every
+signal a session normally reads said the work had shipped.
+
+Nothing had. GitHub created no workflow run for the merge commit: not a
+queued one, not a cancelled one, not a failure. `gh run list` showed the
+branch's two green runs and then the previous merge's, with the new merge
+commit simply absent, and
+`gh api repos/.../commits/133a593/check-suites --jq .total_count` answered
+`0` twenty-five minutes later. GitHub's status page read "All Systems
+Operational" throughout. There was no cause to find on our side and nothing
+to re-run.
+
+This is the [absence-of-evidence
+shape](#recurring-failure-shapes) in its purest form: every documented
+CI-failure mode in this repo — the wedge that reports `cancelled`, the wedge
+that reports `failure`, the queued run displaced on `main`, the red `test`
+that skips `deploy` — is a run you can go and read. This one had no artifact
+at all, and "no red anywhere" reads exactly like success. What settled it was
+the rule that already existed for a different reason: the sha in
+`/opt/olma2/RELEASE` was still the previous merge's, and the box's
+`max(version)` from `schema_migrations` was 54 while the branch had shipped
+055 and 056.
+
+The recorded recovery — deploy the merged sha yourself — then failed too, and
+for a reason worth writing down: `deploy.sh` rsyncs with `--chown=root:root`,
+and the rsync Apple ships with macOS does not have that flag. It archived the
+outgoing release, refused the transfer, and stopped. Production was untouched
+and healthy on the old release the whole time, which is the one good thing
+about the way it failed: the script aborts before it replaces anything.
+
+So the fix is a hand crank. `olma2-tests.yml` gained `workflow_dispatch`, and
+the `deploy` job's `if` now admits it alongside `push` — on `main` and nowhere
+else, so a dispatch on a feature branch still cannot reach the box.
+`gh workflow run olma2-tests.yml --ref main` now does exactly what a merge
+does: migrations check, full suite, `deploy.sh --restart`.
 
 ### The deploy marker leads the restart, so the timestamps lie both ways (2026-09-04)
 

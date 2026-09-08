@@ -94,6 +94,18 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   where it does not wedge). The `deploy_drift` dashboard row
   (`jobs/deploy-drift.js`) reports this gap hourly — a row and never an alert,
   since being a few commits behind breaks nobody.
+- **A merge can produce NO run at all, and that is the one failure with
+  nothing to re-run.** On 2026-09-08 the merge of PR #285 to `main` created no
+  workflow run and no check suite — `gh run list` showed the branch's own
+  green runs and nothing for the merge commit — so `main` held code the box had
+  never seen and everything looked finished. **`gh api repos/<o>/<r>/commits/
+  <sha>/check-suites --jq .total_count` returning `0` is the tell**, and the
+  `RELEASE` sha is what proves it. The recovery is `gh workflow run
+  olma2-tests.yml --ref main` (the `workflow_dispatch` trigger exists for this
+  and deploys exactly as a push does). **A laptop `deploy.sh` is NOT the
+  fallback on a Mac** — Apple's rsync has no `--chown`, so it aborts after
+  archiving the outgoing release and before touching anything
+  (`incidents.md`, "The merge that never ran").
 - **A red `deploy` is EITHER a wedge or a real failure, and they take opposite
   actions** — `run-suite.sh`'s banner is what tells them apart, so read it
   before deciding a re-run means anything. A solo on-box suite runs ~234s
