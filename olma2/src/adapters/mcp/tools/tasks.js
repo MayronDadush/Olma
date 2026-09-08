@@ -20,6 +20,16 @@ function taskHints(res, user = {}) {
       + 'names what was there; dueAtIgnored means a date they gave was NOT applied to the existing '
       + 'list — offer it rather than assume it.';
   }
+  // Part of a dump was already open on their list and was not saved again
+  // (domain/tasks.js, "The same thing, saved twice"). The whole-dump case is an
+  // ERROR and never reaches here, so this only ever fires where something else
+  // WAS saved — which is why it says to name what went in rather than to lead
+  // with what did not.
+  if (Array.isArray(d.duplicatesSkipped) && d.duplicatesSkipped.length) {
+    hints.duplicatesSkipped = `${d.duplicatesSkipped.map((t) => `"${t}"`).join(', ')} — already open `
+      + 'on their list, so nothing was saved for those and they are NOT in tasks. Say what you did '
+      + 'save; mention the rest only as already being there, and never as newly added.';
+  }
   // A date lifted off the noun instead of off the work. `datesTheObject` fires
   // only where the two readings diverge — ל+weekday in the title AND the task
   // filed on that very weekday — and it reports rather than decides, because

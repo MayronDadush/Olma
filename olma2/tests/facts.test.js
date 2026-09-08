@@ -1002,3 +1002,31 @@ test('facts: the first-person guard is words, not the -י suffix', () => {
     assert.equal(facts.firstPerson(good), false, `should be kept: ${good}`);
   }
 });
+
+// The tasks half of this job wrote sixteen of the twenty-one duplicate tasks on
+// the box: it reads a conversation the live tools already captured, and the
+// only thing between it and a second copy was a line in the prompt. The guard
+// now lives in domain/tasks; what this holds open is that the job COUNTS the
+// refusal instead of reporting a duplicate as a capture — the same reason the
+// facts half has counted its own refusals since it shipped. A number that
+// climbs every night says the prompt's dedupe is not landing.
+test('a task the extraction re-proposes is refused and counted, never captured', async () => {
+  const u = await seedChatter('+972590009008', 40);
+  await withClient(async (c) => {
+    const tasksDomain = require('../src/domain/tasks');
+    const live = await tasksDomain.addTask(c, u.id, { title: 'להתקשר למכבי פיזיותרפיה', source: 'chat' });
+    assert.equal(live.ok, true);
+
+    const applied = await extraction.applyExtraction(c, u, {
+      facts: [],
+      tasks: [{ title: 'להתקשר למכבי פיזיותרפיה' }, { title: 'לחדש דרכון' }],
+    }, new Set());
+
+    assert.equal(applied.tasksCaptured, 1, 'only the one that was genuinely new');
+    assert.equal(applied.refused.conflict, 1, 'and the one it tried to repeat is on the record');
+
+    const open = await tasksDomain.listTasks(c, u.id, { status: 'open' });
+    assert.deepEqual(open.data.tasks.map((t) => t.title).sort(),
+      ['להתקשר למכבי פיזיותרפיה', 'לחדש דרכון'].sort());
+  });
+});

@@ -106,7 +106,7 @@ test('half a range, or a backwards one, is refused rather than stored', async ()
 
 test('editing one end is checked against the end already stored', async () => {
   await withClient(async (c) => {
-    const r = await tasks.addTask(c, ana.id, { title: 'משמרת', dueAt: at(24), endsAt: at(31) });
+    const r = await tasks.addTask(c, ana.id, { title: 'משמרת לילה', dueAt: at(24), endsAt: at(31) });
     const id = r.data.task.id;
     // Moving only the START past the stored end is exactly as broken as
     // writing the pair that way, and a check that looked only at the patch
@@ -126,7 +126,7 @@ test('editing one end is checked against the end already stored', async () => {
 
 test('clearing the start clears the end with it', async () => {
   await withClient(async (c) => {
-    const r = await tasks.addTask(c, ana.id, { title: 'משמרת', dueAt: at(24), endsAt: at(31) });
+    const r = await tasks.addTask(c, ana.id, { title: 'משמרת בוקר', dueAt: at(24), endsAt: at(31) });
     const cleared = await tasks.editTask(c, ana.id, r.data.task.id, { dueAt: null });
     assert.equal(cleared.ok, true);
     assert.equal(cleared.data.task.ends_at, null, 'an end with nothing to end is not a time');
@@ -314,11 +314,11 @@ test("the caller's word wins over the title; a word that is not one of the two i
   await withClient(async (c) => {
     const said = (await tasks.addTask(c, ana.id, { title: 'פגישה עם הבנק', kind: 'todo', dueAt: at(5) })).data.task;
     assert.equal(said.kind, 'todo', '"פגישה" in the title, but they said it is a job to do');
-    const booked = (await tasks.addTask(c, ana.id, { title: 'לקבוע תור לרופא', kind: 'event', dueAt: at(5) })).data.task;
+    const booked = (await tasks.addTask(c, ana.id, { title: 'לקבוע תור לרופא עור', kind: 'event', dueAt: at(5) })).data.task;
     assert.equal(booked.kind, 'event', 'the verb says todo, the caller says event: the caller has the conversation');
     const noWord = (await tasks.addTask(c, ana.id, { title: 'רופא שיניים', kind: 'meeting', dueAt: at(5) })).data.task;
     assert.equal(noWord.kind, 'todo', 'an unknown word is "not said", and the words fall back to the default');
-    const guessed = (await tasks.addTask(c, ana.id, { title: 'רופא שיניים', kind: 'event', dueAt: at(5) })).data.task;
+    const guessed = (await tasks.addTask(c, ana.id, { title: 'רופא שיניים בתל אביב', kind: 'event', dueAt: at(5) })).data.task;
     assert.equal(guessed.kind, 'event', 'no word in the title says appointment; the model knew');
   });
 });

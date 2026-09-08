@@ -275,7 +275,17 @@ async function applyExtraction(client, user, parsed, knownFactIds = new Set()) {
     const created = await tasks.addTask(client, user.id, {
       title: t.title, source: 'extracted',
     });
-    if (!created.ok) continue;
+    if (!created.ok) {
+      // Counted for the same reason the facts half counts its refusals: this
+      // job is the one that produced sixteen of the twenty-one duplicate tasks
+      // on the box (domain/tasks.js, "The same thing, saved twice"), and the
+      // guard that now stops them is invisible unless somebody can see how
+      // often it fires. A number that climbs every night says the prompt's own
+      // dedupe is not landing; one that falls to nothing says it is.
+      const why = (created.error && created.error.code) || 'unknown';
+      out.refused[why] = (out.refused[why] || 0) + 1;
+      continue;
+    }
     out.tasksCaptured++;
     const subs = Array.isArray(t.subtasks) ? t.subtasks.filter((s) => typeof s === 'string' && s.trim()) : [];
     if (subs.length) {

@@ -403,3 +403,128 @@ test('a snooze onto the same instant moves nothing and retires nothing', async (
     assert.equal(same.sent_at, null);
   });
 });
+
+// ── The same thing, saved twice ──────────────────────────────────────────────
+// The founding case is Maya's, replayed through the real path: "להתקשר למכבי
+// פיזיותרפיה" saved from the conversation at 10:20 with the date she gave, and
+// saved again 48 minutes later by the extraction pass with no date at all. She
+// had 13 open tasks against a prompt cap of 40, so the row WAS in front of the
+// model — which is the whole reason this is enforced here and not asked for.
+test('a task already open is not saved a second time, and the refusal names the row they have', async () => {
+  const maya = await makeUser(db.pool, '+972501000188');
+  await withClient(async (c) => {
+    const iso = (d) => new Date(d).toISOString().replace('Z', '+00:00');
+    const first = await tasks.addTask(c, maya.id, {
+      title: 'להתקשר למכבי פיזיותרפיה', source: 'chat',
+      dueAt: iso(Date.now() + 6 * 24 * 3600_000),
+    });
+    assert.equal(first.ok, true);
+
+    // The second arrival: same words, no date — exactly the shape the
+    // extraction pass produces, since it is told never to invent one.
+    const again = await tasks.addTask(c, maya.id, {
+      title: 'להתקשר למכבי פיזיותרפיה', source: 'extracted',
+    });
+    assert.equal(again.ok, false);
+    assert.equal(again.error.code, 'conflict');
+    assert.equal(Number(again.error.existingTaskId), Number(first.data.task.id),
+      'the model is handed the id it should be editing instead');
+
+    const open = await tasks.listTasks(c, maya.id, { status: 'open' });
+    assert.equal(open.data.tasks.length, 1, 'nothing was written');
+    assert.equal(new Date(open.data.tasks[0].due_at).getTime(),
+      new Date(first.data.task.due_at).getTime(),
+      'and the date she actually gave is still the one on the row');
+  });
+});
+
+// Case and inner spacing only. Anything cleverer is a judgement about two
+// sentences, and every one of the 21 duplicates on the box was character-identical.
+test('the match is on the title after case and spacing, and nothing looser', async () => {
+  const nadav = await makeUser(db.pool, '+972501000189');
+  await withClient(async (c) => {
+    assert.equal((await tasks.addTask(c, nadav.id, { title: 'Renew  the passport' })).ok, true);
+    assert.equal((await tasks.addTask(c, nadav.id, { title: '  renew the passport ' })).ok, false,
+      'same words, different case and spacing');
+    assert.equal((await tasks.addTask(c, nadav.id, { title: 'renew the passport at the office' })).ok, true,
+      'a longer sentence is a different task — resolving that needs the conversation');
+  });
+});
+
+// The guard is about the OPEN list, which is what lets a person do a thing
+// twice. Maya's ביטוח נסיעות: ticked off on the 8th, set again the same evening.
+test('a task that was ticked off can be set again', async () => {
+  const rina = await makeUser(db.pool, '+972501000190');
+  await withClient(async (c) => {
+    const first = (await tasks.addTask(c, rina.id, { title: 'ביטוח נסיעות' })).data.task;
+    await tasks.completeTask(c, rina.id, first.id);
+    const again = await tasks.addTask(c, rina.id, { title: 'ביטוח נסיעות' });
+    assert.equal(again.ok, true, 'a thing they finished is a thing they may do again');
+  });
+});
+
+// A refusal must not earn the 👍 that a capture earns — which is the whole
+// reason this is an error and not an ok carrying the existing row.
+test('a duplicate earns no mark on their message', async () => {
+  const gil = await makeUser(db.pool, '+972501000191');
+  await withClient(async (c) => {
+    const reactions = require('../src/domain/reactions');
+    const turn = () => ({ messageId: 'wamid.TEST', lastInboundAt: new Date().toISOString() });
+    const first = await tasks.addTask(c, gil.id, { title: 'לתאם ביקור' });
+    assert.equal(reactions.markFor('add_task', first, turn()), 'done',
+      'a real capture still earns its 👍');
+    const dup = await tasks.addTask(c, gil.id, { title: 'לתאם ביקור' });
+    assert.equal(reactions.markFor('add_task', dup, turn()), null,
+      'nothing was saved, so nothing may tell her it was');
+  });
+});
+
+// Two shapes in one: a dump that repeats what is already open, and a dump that
+// repeats itself inside one call (Yahav, 2026-09-07 — the same line twice, no
+// gap at all, because a bulk insert never looked at what it had just written).
+test('a dump skips what is already open and what it says twice, and reports both', async () => {
+  const yahav = await makeUser(db.pool, '+972501000192');
+  await withClient(async (c) => {
+    await tasks.addTask(c, yahav.id, { title: 'לדבר עם אבי לגבי אילת' });
+    const bulk = await tasks.addTasksBulk(c, yahav.id, [
+      { title: 'להזמין מלון' },
+      { title: 'לדבר עם אבי לגבי אילת' },
+      { title: 'להזמין מלון' },
+      { title: 'לבדוק טיסות' },
+    ]);
+    assert.equal(bulk.ok, true);
+    assert.deepEqual(bulk.data.tasks.map((t) => t.title), ['להזמין מלון', 'לבדוק טיסות']);
+    assert.deepEqual(bulk.data.duplicatesSkipped, ['לדבר עם אבי לגבי אילת', 'להזמין מלון'],
+      'what was declined rides the result rather than vanishing');
+    const open = await tasks.listTasks(c, yahav.id, { status: 'open' });
+    assert.equal(open.data.tasks.length, 3);
+  });
+});
+
+test('a dump in which everything was already open saves nothing and says so as an error', async () => {
+  const dana = await makeUser(db.pool, '+972501000193');
+  await withClient(async (c) => {
+    const first = (await tasks.addTasksBulk(c, dana.id, [{ title: 'כביסה' }, { title: 'קניות' }])).data.tasks;
+    const again = await tasks.addTasksBulk(c, dana.id, [{ title: 'קניות' }, { title: 'כביסה' }]);
+    assert.equal(again.ok, false, 'an ok here would earn a 👍 for saving nothing');
+    assert.equal(again.error.code, 'conflict');
+    assert.equal(Number(again.error.existingTaskId),
+      Number(first.find((t) => t.title === 'קניות').id));
+  });
+});
+
+// Maya's "סדר בבית": saved as a project, and fourteen seconds later filed as
+// one of its own parts. The parent is on the open list like anything else, so
+// the same guard catches it — no rule about parents was needed.
+test('a breakdown cannot file a part under its own project title', async () => {
+  const noa = await makeUser(db.pool, '+972501000194');
+  await withClient(async (c) => {
+    const project = (await tasks.addTask(c, noa.id, { title: 'סדר בבית' })).data.task;
+    const parts = await tasks.addTasksBulk(c, noa.id,
+      [{ title: 'כלים' }, { title: 'סדר בבית' }, { title: 'שאיבה' }],
+      { parentId: project.id });
+    assert.equal(parts.ok, true);
+    assert.deepEqual(parts.data.tasks.map((t) => t.title), ['כלים', 'שאיבה']);
+    assert.deepEqual(parts.data.duplicatesSkipped, ['סדר בבית']);
+  });
+});

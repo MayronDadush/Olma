@@ -111,7 +111,10 @@ test('an off-vocabulary category is folded onto a key and owned by us', async ()
 
 test('a subtask inherits its project when its own words say nothing', async () => {
   await withClient(async (c) => {
-    const parent = await tasks.addTask(c, alice.id, { title: 'סופר' });
+    // A title of its own: the same person already has an open 'סופר' from the
+    // test above, and an identical open task is now refused (domain/tasks.js,
+    // "The same thing, saved twice").
+    const parent = await tasks.addTask(c, alice.id, { title: 'סופר השבוע' });
     assert.equal(parent.data.task.category, 'errands');
     const kid = await tasks.addTask(c, alice.id, { title: 'ירקות', parentId: parent.data.task.id });
     assert.equal(kid.data.task.category, 'errands');

@@ -510,6 +510,28 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   dashboard lists "ביומן" before "לעשות" inside a day. A reminder still
   hangs on a task — "להוציא את העוגה בעוד 20 דקות" is still a to-do with a
   reminder, by choice, for now.
+- **A task already OPEN on somebody's list is never saved a second time.**
+  Four writers — the live `add_task`, a brain dump, a breakdown's subtasks and
+  the nightly extraction pass — each relied on the model not repeating itself,
+  and the box held 21 pairs of open tasks sharing a title across three of
+  twenty users. Sixteen came from `jobs/fact-extraction.js`, which reads a
+  conversation 7–83 minutes after the live tool already captured the same
+  sentence out of it; 37% of every task that job has written is a duplicate.
+  The dedupe was a line in the prompt with the open list handed over
+  underneath, and Maya had 13 open tasks against a cap of 40 — the row was in
+  front of the model. The guard is in `domain/tasks.js` (`normaliseTitle`,
+  `openTitles`): same owner, same title after case and inner spacing, **still
+  open and unarchived** — never a time window (all 21 firsts were open; a
+  window would have to guess at ביטוח נסיעות, ticked off in the morning and set
+  again that evening) and never also the due date (11 of 21 duplicates carry a
+  different one, nearly always none). It **refuses** rather than returning the
+  existing row, because `TOOL_MARKS` puts 👍 on the message for any `add_task`
+  that returns ok and a failed call earns no mark — an ok would thumbs-up a
+  task that was never saved. `add_tasks_bulk` skips duplicates, grows its map
+  as it goes so a dump repeating itself is caught too, reports them in
+  `duplicatesSkipped`, and refuses outright when nothing was left to save.
+  A test that gives one person two open tasks with the same title now fails;
+  twenty-three did (`incidents.md`, "The same thing, saved twice").
 - **A day named with ל־ in a title dates the THING, not the task.** "לארגן
   אימון לרביעי" is arranged BEFORE Wednesday; filed ON Wednesday it is useless.
   `datetime.datesTheObject` reports that shape on the result and lets the model
