@@ -2903,6 +2903,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          rest are ours to fix and saying "invalid" to somebody helps nobody. */
       if(error && error.reason === "paused")      toast(t("toast.pausedRefusal"));
       else if(error && error.reason === "not_enabled") toast(t("toast.notOpenYet"));
+      else if(error && error.reason === "duplicate") toast(t("toast.duplicate"));
       else if(error && error.reason === "no_writeback")
         toast(t("toast.importedRefusal", {name:(SOURCES[error.source] || {}).name || error.source}));
       API.reload();
@@ -3298,6 +3299,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.chanSoon":"{name} עדיין לא מחובר — עולמה כותבת בוואטסאפ",
       "toast.provSoon":"החיבור ל{name} עוד לא מוכן — בינתיים רק גוגל",
       "toast.notOpenYet":"זה עוד לא פתוח — יגיע בהמשך",
+      "toast.duplicate":"זה כבר ברשימה שלך",
       "soon":"בקרוב",
       "toast.provFailed":"לא הצלחתי לפתוח את מסך ההרשאות של גוגל",
       "toast.open":"פותח את השיחה שלך עם עולמה ב־{name}","toast.chanOn":"{name} מחובר · עולמה תענה גם שם",
@@ -3533,6 +3535,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.chanSoon":"{name} is not connected yet — Allma writes on WhatsApp",
       "toast.provSoon":"{name} cannot be connected yet — Google only, for now",
       "toast.notOpenYet":"Not open yet — it is coming",
+      "toast.duplicate":"That is already on your list",
       "soon":"Soon",
       "toast.provFailed":"Google's permission screen would not open",
       "toast.open":"Opening your chat with Allma in {name}","toast.chanOn":"{name} connected · Allma answers there too",

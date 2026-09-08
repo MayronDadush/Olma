@@ -146,6 +146,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
 - [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
 - [Two asks, one task (2026-09-07)](#two-asks-one-task-2026-09-07)
+- [The same thing, saved twice (fixed 2026-09-08)](#the-same-thing-saved-twice-fixed-2026-09-08)
 - ["הנה, רשמתי", about a meeting (2026-09-07)](#הנה-רשמתי-about-a-meeting-2026-09-07)
 - [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
 - [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
@@ -5064,6 +5065,91 @@ So the id is taken only when the model is the best source there is: never on
 `ourTurn`, never over an id the gateway already put on the turn, and otherwise
 exactly as before — a real person writing, with no gateway opening on file,
 is still a turn where the model is all we have.
+
+### The same thing, saved twice (fixed 2026-09-08)
+
+The owner noticed a few duplicate tasks on one person's list and asked why.
+The answer was not about that person: on 2026-09-08 the box held **21 pairs of
+open tasks sharing a title**, across three of the twenty users, and fifteen of
+them were his own.
+
+Where they came from, by the writer of the SECOND row:
+
+| writer | pairs |
+|---|---|
+| `extracted` — the nightly fact-extraction pass | 16 |
+| `brain_dump` — `add_tasks_bulk` at top level | 2 |
+| `breakdown` — `add_tasks_bulk` under a parent | 1 |
+| `voice_call` | 1 |
+
+Sixteen of twenty-one came from one job, and the mechanism is plain once you
+see it. `jobs/fact-extraction.js` reads a conversation chapter after it closes
+— seven to eighty-three minutes later — and the live tools have usually already
+captured the commitment out of that same conversation. Maya said she had to
+ring Maccabi about physiotherapy; `add_task` filed it at 10:20 with the date
+she gave; the extraction pass read the transcript at 11:08 and filed it again
+with no date at all, because that job is told, correctly, never to invent one.
+Forty-eight minutes and one row apart. Thirty-seven percent of every task that
+job has ever written is a duplicate of something already on the list.
+
+The dedupe existed and was a **sentence in the prompt** — "Their open list — do
+not save anything already on it, in any wording" — with the list handed over
+underneath it. This is not the failure that was fixed on 2026-09-06, where the
+list was cut from the oldest and so could not contain the row most likely to be
+duplicated (Miron, 67 open tasks against a cap of 40). Maya had thirteen. The
+row was in front of the model, and the model wrote it again anyway.
+
+Nothing under the prompt checked. `addTask` validates the title, the offsets,
+the range, the parent, and whether the sentence is a dictated shopping list —
+and `shopping.absorb`, one call further down, has deduped a run's items against
+what is already on it since the day it shipped, for exactly this reason ("adding
+חלב to a list that has חלב makes the list wrong in the shop"). Top-level tasks
+had no equivalent. Four writers, all of them relying on a model not repeating
+itself.
+
+**The test is "already OPEN", not a time window, and both halves were
+measured.** In all 21 pairs the first row was still open and unarchived when
+the second was written, so the open list catches every one — while letting
+through the case a window would have to guess at: ביטוח נסיעות, ticked off on
+the morning of the 8th and set again that evening for a new trip, which is a
+person doing a thing twice. Matching on the due date as well was tried and
+dropped: eleven of the twenty-one duplicates carry a *different* date from the
+row they copy, and nearly always none at all.
+
+What it also refuses is worth writing down, because it is the cost: four
+re-mentions of a task still sitting open, 19 to 265 hours later. Two of those
+read as duplicates that were merely slow; the other two — "ללכת לשתות מים",
+"לסדר את הבית" — are somebody saying a standing chore out loud again. They now
+hear that it is already on the list rather than getting a second identical row.
+Nothing is lost either way: the refusal carries the id of the row they already
+have and tells the model to use `edit_task` on it.
+
+**It is an error and not an `ok` carrying the existing row, and that is not a
+style choice.** `reactions.TOOL_MARKS` puts 👍 on the person's message whenever
+`add_task` returns ok, and `markFor` gives a failed call no mark at all. An ok
+here would have put a thumbs-up under a message whose task was never saved —
+the same class as "שלחתי לך קישור" with no link under it. `add_tasks_bulk`
+follows the same line: a dump that saved *something* is an ok reporting what it
+declined in `duplicatesSkipped`, and a dump in which every line was already
+open is the same refusal `add_task` makes.
+
+Three smaller things the same guard closed, each of which had its own shape:
+
+- Maya's "סדר בבית" was saved as a project and, fourteen seconds later, filed
+  as one of its own parts. The parent is on the open list like anything else,
+  so no rule about parents was needed.
+- Yahav's dump contained the same line twice with no gap at all — a bulk insert
+  never looked at what it had just written. The map the bulk path builds now
+  grows as it goes.
+- `applyExtraction` counted a duplicate as a capture. It now counts the refusal
+  the way the facts half has always counted its own, so a number that climbs
+  every night says the prompt's dedupe is not landing and one that falls to
+  nothing says it is.
+
+Fixture drift, worth knowing before the next such guard: twenty-three tests in
+four files broke, and every one of them was a test giving the same person two
+open tasks with the same title — two shared helpers (`mkTask`, `taskWithReminder`)
+accounted for all but four. None of them were about titles.
 
 ### Two asks, one task (2026-09-07)
 

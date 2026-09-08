@@ -93,6 +93,76 @@ const cleanLocation = (v) => {
   return s ? s.slice(0, 200) : null;
 };
 
+// ── The same thing, saved twice ──────────────────────────────────────────────
+// Nothing checked whether a task was already on the list. Four writers — the
+// live `add_task`, a brain dump, a breakdown's subtasks, and the nightly
+// extraction pass — each relied on the model not repeating itself, and the
+// model repeats itself. Measured on production 2026-09-08: 21 pairs sharing a
+// title, across three people. Sixteen of them were written by fact-extraction,
+// 7 to 83 minutes after the live tool had already captured the same sentence
+// from the same conversation — including Maya's "להתקשר למכבי פיזיותרפיה",
+// saved at 10:20 with its date and again at 11:08 without one.
+//
+// The prompt already asks for this ("Their open list — do not save anything
+// already on it, in any wording") and hands over the list to check against.
+// Maya had 13 open tasks against a cap of 40, so the row WAS in front of the
+// model; an instruction is not an enforcement, and this is the layer that can
+// actually refuse.
+//
+// OPEN, not a time window, and the window was the first thing tried. In all 21
+// pairs the first task was still open and unarchived when the second was
+// written, so "already open" catches every one — and it lets through the case
+// a window would have to guess at: ביטוח נסיעות, ticked off on the 8th and set
+// again the same evening for a new trip, which is a person doing a thing twice.
+//
+// Same due date is NOT part of the test, and that was measured too: eleven of
+// the twenty-one duplicates carry a DIFFERENT date from the row they copy, and
+// almost always none at all, because the extraction pass is told never to
+// invent a date it was not given. Requiring the dates to match would have
+// missed half of them, Maya's two included.
+//
+// What it also refuses, and this is the real cost: four re-mentions of a task
+// still sitting open — 19, 20, 39 and 265 hours later. Two of those read as
+// duplicates that were merely slow; the other two ("ללכת לשתות מים", "לסדר את
+// הבית") are somebody saying a standing chore out loud again. They now hear
+// that it is already on the list instead of getting a second identical row,
+// which is the better of the two answers: nothing is lost, because the refusal
+// carries the id of the row they already have and says what to do with it.
+//
+// Exact title after case and whitespace, and deliberately no fuzzy matching.
+// Every one of the 21 was character-identical; "לדבר עם תום" against "לדבר עם
+// תום על רכש ציוד" is a judgement about two sentences, and the file that makes
+// those (shopping-list.js) is a hundred lines of narrowing for one of them.
+const normaliseTitle = (t) => String(t == null ? '' : t).trim().toLowerCase().replace(/\s+/g, ' ');
+
+// The open list as a title → row map, for the bulk path which has to check
+// many titles and to notice a dump that repeats itself inside one call (Yahav,
+// 2026-09-07: the same line twice in one `add_tasks_bulk`, no gap at all).
+async function openTitles(client, ownerId) {
+  const { rows } = await client.query(
+    `SELECT id, title FROM tasks
+      WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL`,
+    [ownerId]
+  );
+  return new Map(rows.map((r) => [normaliseTitle(r.title), r]));
+}
+
+// `reason` is what the personal dashboard branches on — it shows a toast per
+// reason and otherwise reloads in silence, so without one a person typing a
+// task they already have would watch the row simply not appear.
+//
+// A refusal, not a quiet skip, and it has to be an ERROR rather than an ok
+// carrying the row they already had. `reactions.TOOL_MARKS` puts 👍 on the
+// person's message whenever `add_task` returns ok, and a 👍 for something that
+// was never saved is the exact fault this project keeps writing down: an
+// action asserted that nothing performed. A failed call earns no mark, so the
+// model has to say what happened — and the message here tells it what to say.
+const duplicateError = (existing) => err('conflict',
+  `"${existing.title}" is already open on their list (task #${existing.id}) — nothing was saved. `
+  + 'Do not add it again and do not say you did; tell them it is already there, and if they meant '
+  + 'to change something about it use edit_task or set_task_reminder on that id.',
+  { reason: 'duplicate', existingTaskId: Number(existing.id) });
+
 async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, location, parentId, source, remindAt, now }) {
   if (!title || !title.trim()) return err('invalid', 'title required');
   if (dueAt && !hasOffset(dueAt)) return badTime('due_at', dueAt);
@@ -115,6 +185,12 @@ async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, 
     const list = await shopping.absorb(client, ownerId, { title, dueAt, source });
     if (list) return list;
   }
+  // After the shopping branch, which does its own dedupe against the items
+  // already on the run, and before anything is written or armed: a duplicate
+  // must not reach autoAttach either, or the second copy quietly arms a second
+  // reminder for the same thing.
+  const already = (await openTitles(client, ownerId)).get(normaliseTitle(title));
+  if (already) return duplicateError(already);
   const cat = pickCategory({ category, title, parent });
   const { rows } = await client.query(
     `INSERT INTO tasks (owner_id, title, category, category_auto, due_at, ends_at, kind, location, parent_id, source)
@@ -302,12 +378,21 @@ async function addTasksBulk(client, ownerId, items, { parentId, source, now } = 
     parent = check.data.parent;
   }
   const rowSource = source || (parentId ? 'breakdown' : 'brain_dump');
+  // Checked once for the whole call and grown as we go, so a dump repeating
+  // itself is caught alongside one repeating what is already on the list. The
+  // parent is in this map too when it is open, which is what stops a breakdown
+  // filing a subtask under its own title — Maya's "סדר בבית", saved as a
+  // project and then again as one of its own parts fourteen seconds later.
+  const open = await openTitles(client, ownerId);
+  const skipped = [];
   const created = [];
   for (const item of items) {
     if (!item || !item.title || !item.title.trim()) return err('invalid', 'every item needs a title');
     if (item.dueAt && !hasOffset(item.dueAt)) return badTime(`due_at for "${item.title.trim().slice(0, 40)}"`, item.dueAt);
     const bad = checkRange(item.dueAt, item.endsAt, `"${item.title.trim().slice(0, 40)}"`);
     if (bad) return bad;
+    const key = normaliseTitle(item.title);
+    if (open.has(key)) { skipped.push(item.title.trim()); continue; }
     const cat = pickCategory({ category: item.category, title: item.title, parent });
     const { rows } = await client.query(
       `INSERT INTO tasks (owner_id, title, category, category_auto, due_at, ends_at, kind, location, parent_id, source)
@@ -317,12 +402,19 @@ async function addTasksBulk(client, ownerId, items, { parentId, source, now } = 
         cleanLocation(item.location), parentId || null, rowSource]
     );
     created.push(rows[0]);
+    open.set(key, rows[0]);
   }
+  // A dump in which EVERY line was already on the list saved nothing, so it is
+  // the same refusal `add_task` makes — for the same reason, which is the 👍
+  // that an ok would earn. A dump that saved something is an ok, and the part
+  // it declined rides the result rather than vanishing (CLAUDE.md: no silent
+  // caps — a cap nobody is told about reads as "everything was covered").
+  if (!created.length) return duplicateError(open.get(normaliseTitle(skipped[0])));
   await audit.record(client, ownerId, 'task.bulk_created', {
-    count: created.length, parentId: parentId || null,
+    count: created.length, parentId: parentId || null, duplicates: skipped.length,
   });
   const auto = await autoAttach(client, ownerId, created, now);
-  return ok({ tasks: created, ...auto });
+  return ok({ tasks: created, ...auto, ...(skipped.length ? { duplicatesSkipped: skipped } : {}) });
 }
 
 // The list carries each task's PENDING reminders, in the person's own clock.
@@ -625,5 +717,5 @@ async function projectOverview(client, ownerId, projectId) {
 module.exports = {
   MAX_BULK, addTask, addTasksBulk, editTask, listTasks, completeTask,
   snoozeTask, archiveTask, unarchiveTask, projectOverview,
-  completeParentIfDrained, joinsTwoAsks,
+  completeParentIfDrained, joinsTwoAsks, normaliseTitle,
 };
