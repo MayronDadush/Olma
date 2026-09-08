@@ -122,10 +122,17 @@ async function defaultReadGreeterReply(phone) {
 // space must not read as "never introduced" and buy them a second
 // introduction. Both locales are checked because the sweep runs before the
 // user row that would settle which one they are.
-function saidTheOpening(text) {
+// Checked against the DEFAULTS and the owner's current rewording both: the
+// greeter's file is re-rendered by a job, so for a few minutes after an edit
+// the copy it actually said may be either one.
+function saidTheOpening(text, overrides) {
   if (!text) return false;
   const t = String(text);
-  return Object.values(onboardingDomain.OPENING).some((copy) => {
+  const copies = [
+    ...Object.values(onboardingDomain.OPENING),
+    onboardingDomain.openingMessage('he', overrides), onboardingDomain.openingMessage('en', overrides),
+  ];
+  return copies.some((copy) => {
     const substance = copy.split('\n').filter(Boolean)[1];
     return Boolean(substance) && t.includes(substance);
   });
@@ -231,7 +238,7 @@ async function sweepIntakeSessions(client, deps) {
       // and two people were stamped as introduced without ever being
       // introduced: `turn_start` then told their own agents the introduction
       // was done, so nobody ever said who Olma was.
-      greetedByIntake: saidTheOpening(greeterReply),
+      greetedByIntake: saidTheOpening(greeterReply, await templates.load(client)),
     });
     if (!prov.ok) { out.skipped++; continue; }
     const user = prov.data.user;

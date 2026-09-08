@@ -37,6 +37,31 @@ const PLACEHOLDER_RE = /\{\{\s*([a-z_]+)\s*\}\}/g;
 // pair is what the page shows, in the same voice as the settings table.
 const TEMPLATES = [
   // ---- to one person, in private ------------------------------------------
+  // The first thing a new person ever reads. Brand copy, the owner's, and the
+  // one verbatim message that lived OUTSIDE this file until 2026-09-08
+  // (domain/onboarding.js keeps the name `OPENING` and reads it from here).
+  // Said by whichever voice reaches the person first — the intake greeter's
+  // AGENTS.md quotes it, `turn_start` hands it over as `sendVerbatim` — and
+  // both read the override, so a rewording here is what a stranger reads.
+  {
+    key: 'opening_he', audience: 'private', label: 'הודעת הפתיחה',
+    help: 'המשפט הראשון שאדם חדש קורא — מהגרייטר או מהסוכן שלו, פעם אחת בחיים. בלי שאלה בסוף: את השם שואלים אחר כך.',
+    vars: {}, required: [],
+    text: 'היי, אני עולמה 👋\n'
+      + '\n'
+      + 'אני כאן כדי לעזור לכם עם משימות, תזכורות ותיאומים מול האנשים שחשובים לכם.\n'
+      + 'אפשר לכתוב, להקליט או פשוט לשלוח הכל בבלגן — אני אעשה לכם סדר ☺️',
+  },
+  {
+    key: 'opening_en', audience: 'private', label: 'הודעת הפתיחה', help: '',
+    vars: {}, required: [],
+    text: "Hey! I'm Allma \u{1F44B}\n"
+      + '\n'
+      + 'I’m here to help you manage tasks, set reminders, and schedule with the '
+      + 'people who matter most.\n'
+      + 'Text me, send a voice message, or just throw everything at me — '
+      + 'I’ll keep you organized ☺️',
+  },
   {
     key: 'reminder', audience: 'private', label: 'תזכורת',
     help: 'התזכורת עצמה, בשעה שהאדם ביקש. יוצאת בלי מודל, ולכן גם כשאין קרדיט.',
@@ -90,64 +115,64 @@ const TEMPLATES = [
   // and the plain key for everybody else. English has no grammatical gender
   // to avoid, so these read a little more naturally than the Hebrew ones can.
   {
-    key: 'reminder_en', audience: 'private', label: 'תזכורת (אנגלית)',
-    help: 'אותה תזכורת, למי שהשפה שלו אנגלית.',
+    key: 'reminder_en', audience: 'private', label: 'תזכורת',
+    help: '',
     vars: { title: 'what they asked to be reminded of, in their words' }, required: ['title'],
     text: '⏰ Reminder: {{title}}',
   },
   {
-    key: 'reminder_followup_en', audience: 'private', label: 'תזכורת חוזרת (אנגלית)',
-    help: 'השלב השני והשלישי, באנגלית. חייבת להגיד איך מפסיקים אותה.',
+    key: 'reminder_followup_en', audience: 'private', label: 'תזכורת חוזרת',
+    help: '',
     vars: { title: 'what they asked to be reminded of' }, required: ['title'],
     text: '⏰ Reminder again: {{title}}\nDone? Just tell me — or tell me to stop reminding you about this.',
   },
   {
-    key: 'reminder_last_en', audience: 'private', label: 'תזכורת אחרונה (אנגלית)',
-    help: 'השלב האחרון בסולם, באנגלית. אחריה עולמה לא מזכירה שוב מיוזמתה, וההודעה צריכה להגיד את זה.',
+    key: 'reminder_last_en', audience: 'private', label: 'תזכורת אחרונה',
+    help: '',
     vars: { title: 'what they asked to be reminded of' }, required: ['title'],
     text: '⏰ Reminder again: {{title}}\nThis is the last reminder about this — I won\'t bring it up again on my own. If it still matters, tell me when to remind you.',
   },
   {
-    key: 'reminder_list_en', audience: 'private', label: 'כמה תזכורות יחד (אנגלית)',
-    help: 'כמה תזכורות באותו רגע, באנגלית — הודעה אחת.',
+    key: 'reminder_list_en', audience: 'private', label: 'כמה תזכורות יחד',
+    help: '',
     vars: { items: 'the reminders, one per line' }, required: ['items'],
     text: '⏰ Reminders:\n{{items}}',
   },
   {
-    key: 'reminder_list_followup_en', audience: 'private', label: 'כמה תזכורות חוזרות יחד (אנגלית)',
-    help: 'אותו דבר לשלב השני והשלישי, באנגלית. חייבת להגיד איך מפסיקים.',
+    key: 'reminder_list_followup_en', audience: 'private', label: 'כמה תזכורות חוזרות יחד',
+    help: '',
     vars: { items: 'the reminders, one per line' }, required: ['items'],
     text: '⏰ Reminders again:\n{{items}}\nAny of these done? Just tell me — or tell me to stop reminding you.',
   },
   {
-    key: 'reminder_list_last_en', audience: 'private', label: 'כמה תזכורות אחרונות יחד (אנגלית)',
-    help: 'השלב האחרון לכמה תזכורות יחד, באנגלית. אחריה עולמה לא מזכירה שוב על אף אחת מהן מיוזמתה.',
+    key: 'reminder_list_last_en', audience: 'private', label: 'כמה תזכורות אחרונות יחד',
+    help: '',
     vars: { items: 'the reminders, one per line' }, required: ['items'],
     text: '⏰ Reminders again:\n{{items}}\nThese are the last reminders about them — I won\'t bring them up again on my own. If any still matter, tell me when to remind you.',
   },
   {
-    key: 'stranger_intro_he', audience: 'private', label: 'פנייה ראשונה לאדם חדש (עברית)',
+    key: 'stranger_intro_he', audience: 'private', label: 'פנייה ראשונה לאדם חדש',
     help: 'כשמשתמש ביקש להתחבר למספר שעוד לא אצלנו. ההודעה הראשונה שהאדם הזה מקבל מעולמה, ולכן בלי ניחוש מגדר.',
     vars: { inviter_name: 'מי ביקש להתחבר', inviter_phone: 'המספר שלו, כדי שיזהו', reason: 'הסיבה שכתב, עם מקף לפניה — או כלום אם לא כתב' },
     required: ['inviter_name', 'inviter_phone'],
     text: 'היי! כאן עולמה — עוזרת אישית שעובדת בוואטסאפ.\n\n{{inviter_name}} ({{inviter_phone}}) ביקש/ה להתחבר אליך דרכי{{reason}}.\n\nאם זה מעניין אותך, פשוט תענה/י לי כאן ואספר איך זה עובד. אם לא — אפשר להתעלם, ולא אכתוב שוב.',
   },
   {
-    key: 'stranger_intro_en', audience: 'private', label: 'פנייה ראשונה לאדם חדש (אנגלית)',
-    help: 'אותה הודעה למספר שאינו ישראלי.',
+    key: 'stranger_intro_en', audience: 'private', label: 'פנייה ראשונה לאדם חדש',
+    help: '',
     vars: { inviter_name: 'who asked to connect', inviter_phone: 'their number', reason: 'their reason, with a dash before it — or nothing' },
     required: ['inviter_name', 'inviter_phone'],
     text: 'Hi! This is Olma — a personal assistant that lives in WhatsApp.\n\n{{inviter_name}} ({{inviter_phone}}) asked to connect with you through me{{reason}}.\n\nIf you\'re curious, just reply here and I\'ll explain how it works. If not — feel free to ignore this, I won\'t write again.',
   },
   {
-    key: 'reopen_he', audience: 'private', label: 'ההרשמה נפתחה מחדש (עברית)',
+    key: 'reopen_he', audience: 'private', label: 'ההרשמה נפתחה מחדש',
     help: 'למי שפנה כשההרשמה הייתה סגורה ונכנס לרשימת ההמתנה — ההבטחה שקיימנו.',
     vars: {}, required: [],
     text: 'היי! כאן עולמה — פנית אליי כשלא הייתה אפשרות לצרף משתמשים חדשים. עכשיו נפתח מקום! אם עדיין רלוונטי, פשוט תענה/י לי כאן ונתחיל 🙂',
   },
   {
-    key: 'reopen_en', audience: 'private', label: 'ההרשמה נפתחה מחדש (אנגלית)',
-    help: 'אותה הודעה למספר שאינו ישראלי.',
+    key: 'reopen_en', audience: 'private', label: 'ההרשמה נפתחה מחדש',
+    help: '',
     vars: {}, required: [],
     text: 'Hi! Olma here — you reached out while new sign-ups were paused. There\'s room now! If you\'re still interested, just reply here and we\'ll get started 🙂',
   },
@@ -221,6 +246,35 @@ const TEMPLATES = [
 ];
 
 const BY_KEY = new Map(TEMPLATES.map((t) => [t.key, t]));
+
+// ---- one message, two languages --------------------------------------------
+// A Hebrew template and its English twin are two keys (`reminder` and
+// `reminder_en`, `reopen_he` and `reopen_en`) so that each is its own box and
+// its own override — but to the person editing them they are ONE message, and
+// the page shows them as one row with two columns. The family is the key with
+// its language suffix removed; a key with no suffix is Hebrew. Label and help
+// are the Hebrew member's (the twins carry the same label and an empty help).
+function langOf(key) {
+  return /_en$/.test(key) ? 'en' : 'he';
+}
+function familyOf(key) {
+  return key.replace(/_(he|en)$/, '');
+}
+function families() {
+  const out = [];
+  const seen = new Map();
+  for (const t of TEMPLATES) {
+    const id = familyOf(t.key);
+    let f = seen.get(id);
+    if (!f) {
+      f = { id, audience: t.audience, label: t.label, help: t.help, he: null, en: null };
+      seen.set(id, f); out.push(f);
+    }
+    f[langOf(t.key)] = t;
+    if (langOf(t.key) === 'he') { f.label = t.label; f.help = t.help; }
+  }
+  return out;
+}
 
 function spec(key) {
   const t = BY_KEY.get(key);
@@ -297,4 +351,5 @@ function parseForm(body) {
 
 module.exports = {
   FLAG, MAX_LENGTH, TEMPLATES, spec, validate, normalize, textFor, render, load, parseForm, placeholdersIn,
+  families, familyOf, langOf,
 };

@@ -1406,6 +1406,15 @@ test('the templates section rewords a fixed sentence, refuses a broken one by na
   }
   assert.ok(html0.includes('לאנשים בפרטי') && html0.includes('בקבוצות'), 'split by audience');
   assert.ok(html0.includes('{{missing}}'), 'the placeholders are explained');
+  // One row per MESSAGE, Hebrew beside English (owner's ask, 2026-09-08): the
+  // twins share a row, the opening copy is in here like everything else, and
+  // a Hebrew-only message says so instead of offering a box nothing sends.
+  assert.ok(html0.includes('<th>עברית</th><th>אנגלית</th>'), 'two language columns');
+  assert.equal((html0.match(/id="tpl-reminder"/g) || []).length, 1, 'reminder is one row');
+  assert.ok(!html0.includes('id="tpl-reminder_en"'), 'the English twin is a column, not a row of its own');
+  assert.ok(html0.includes('name="reminder_en"') && html0.includes('name="opening_he"') && html0.includes('name="opening_en"'));
+  assert.equal((html0.match(/רק בעברית — אין גרסה באנגלית/g) || []).length,
+    templates.families().filter((f) => !f.en).length, 'every Hebrew-only message says so, once');
   const post = (fields) => fetch(base + '/templates', {
     method: 'POST', redirect: 'manual',
     headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },
