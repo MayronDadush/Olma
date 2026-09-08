@@ -14,6 +14,14 @@ on:
     # the timeouts below exist to end. Found on the PR that added them, which
     # was itself unchecked.
     paths: ['olma2/**', '.github/workflows/olma2-tests.yml']
+  # The hand crank, for the day GitHub simply does not create the run. On
+  # 2026-09-08 the merge of PR #285 produced no workflow run and no check
+  # suite at all — nothing red, nothing queued, nothing to re-run — so main
+  # held code the box had never seen and the only recorded recovery
+  # (CLAUDE.md, "deploy the merged sha yourself") needs an rsync that
+  # supports --chown, which macOS does not ship. This trigger is the way
+  # back: run it on `main` and it does exactly what a merge does.
+  workflow_dispatch:
 
 # Two branches picking the same next migration number is the ordinary way
 # this repo works (see the "Two branches, one migration number" incident in
@@ -132,7 +140,12 @@ jobs:
     # that only a genuine hang reaches it, short enough that a hung deploy is
     # not still holding main's serialized queue hours later.
     timeout-minutes: 30
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # A manual run on main deploys too — that is the entire point of the
+    # hand crank above. Every other event still cannot reach the box: a
+    # dispatch on a feature branch fails the ref test, exactly as a push to
+    # one does.
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
