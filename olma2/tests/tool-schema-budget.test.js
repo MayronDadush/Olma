@@ -33,13 +33,23 @@ const { IDENTITY_PARAM } = require('../src/adapters/mcp/identity-param');
 // and each one costs SIX. A Hebrew example is the most expensive sentence in
 // any description here and the cheapest place to find room.
 //
-// The surface now stands at 55,453 — a margin of 47, after the five group
-// tools (2026-09-07) paid for themselves by trimming their own four
-// descriptions rather than anything a user tool had earned. The next tool, or
-// the next sentence added to a description, goes red, and a twenty-character
-// shave will not save it. That is the ceiling doing its job: what is left to
-// cut are the compressed incidents, so the next person should expect to argue
-// for raising this deliberately rather than to find easy fat.
+// The surface stood at 55,453 — a margin of 47 — after the five group tools
+// (2026-09-07) paid for themselves by trimming their own four descriptions
+// rather than anything a user tool had earned. The next tool, or the next
+// sentence added to a description, goes red, and a twenty-character shave will
+// not save it. That is the ceiling doing its job: what is left to cut are the
+// compressed incidents, so the next person should expect to argue for raising
+// this deliberately rather than to find easy fat.
+//
+// It went red immediately, on `quiet_days` (2026-09-08), and the ceiling held:
+// a first draft explaining the key in the description cost 248 and was
+// rejected here, so what shipped is the KEY NAME only — 36 chars, inside the
+// margin — while the sentence that says what the value means moved to the
+// discovery ladder's timezone rung, an outbox payload that costs nothing on
+// the turns it does not apply to. That is the intended answer to this test,
+// and it is available more often than it looks: the description has to carry
+// only what the model needs on a turn nobody could predict. 55,494 now, margin
+// of 6 — the next one really does have to argue.
 const JSON_CEILING = 55_500;
 const DESCRIPTION_CEILING = 700;
 const IDENTITY_DESCRIPTION_CEILING = 40;

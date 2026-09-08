@@ -53,6 +53,37 @@ function msUntilWindowOpen(window, tz, date = new Date()) {
   return deltaMin * 60_000;
 }
 
+// Which day of the week it is where THEY are — 0 = Sunday, matching
+// preferences.DAY_NAMES. Same fail-open shape as minutesInTz: a broken zone
+// falls back to UTC rather than throwing inside the gate.
+const WEEKDAYS = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+function weekdayInTz(tz, date = new Date()) {
+  try {
+    const s = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz || 'UTC', weekday: 'short',
+    }).format(date);
+    const d = WEEKDAYS[s];
+    return d === undefined ? date.getUTCDay() : d;
+  } catch {
+    return date.getUTCDay();
+  }
+}
+
+// Milliseconds until the first moment past a run of quiet days that is also
+// inside their window. Approximate across DST for the same reason
+// msUntilWindowOpen is, and safe for a second reason: `releaseAfter` only says
+// when to LOOK at the row again — decide() then runs in full, so an answer
+// that lands an hour early simply holds again.
+function msUntilQuietDaysEnd(quietDays, window, tz, date = new Date()) {
+  const DAY_MS = 86_400_000;
+  for (let d = 1; d <= 7; d++) {
+    const probe = new Date(date.getTime() + d * DAY_MS);
+    if (quietDays.includes(weekdayInTz(tz, probe))) continue;
+    return (probe.getTime() - date.getTime()) + msUntilWindowOpen(window, tz, probe);
+  }
+  return 7 * DAY_MS; // unreachable: parseQuietDays refuses all seven
+}
+
 // Start of the next UTC day — the moment the daily send budget resets, since
 // the count is taken over sent_at::date.
 function nextUtcMidnight(date) {
@@ -75,7 +106,18 @@ const CONVERSATION_GRACE_MS = 15 * 60_000;
 // message, short enough that the day-one ladder still happens that morning.
 const INTRODUCTION_ROOM_MS = 10 * 60_000;
 
-// facts: { row, plan, blocked, paused, window, tz, sentToday, budget, now, lastInboundAt }
+// The narrowest thing in the system that still counts as "they asked for
+// this": rung 1 of a reminder whose payload says a person put it there in
+// words, not a due date the model inferred. Two separate rules need exactly
+// this line — somebody who stopped answering, and a day they marked quiet —
+// and writing it twice is how the two would drift apart.
+function askedForInWords(row) {
+  const rung = Number(row.payload && row.payload.rung) || 1;
+  return row.kind === 'reminder' && rung <= 1
+    && Boolean(row.payload) && row.payload.auto === false;
+}
+
+// facts: { row, plan, blocked, paused, window, quietDays, tz, sentToday, budget, now, lastInboundAt }
 // returns { action: 'deliver' | 'hold' | 'expire' | 'drop', holdReason?, releaseAfter? }
 function decide(facts) {
   const { row, plan, blocked, paused, window, tz, sentToday, budget } = facts;
@@ -145,10 +187,37 @@ function decide(facts) {
   // lost his to this rule on the morning it was queued for (2026-09-08).
   if ((Number(facts.checkinMisses) || 0) >= 1
     && row.kind !== 'checkin' && row.kind !== 'introduction') {
-    const rung = Number(row.payload && row.payload.rung) || 1;
-    const askedInWords = row.kind === 'reminder' && rung <= 1
-      && row.payload && row.payload.auto === false;
-    if (!askedInWords && !inRoomGrace) return { action: 'drop', holdReason: 'quiet' };
+    if (!askedForInWords(row) && !inRoomGrace) return { action: 'drop', holdReason: 'quiet' };
+  }
+
+  // ── A day they said they want nothing on ─────────────────────────────────
+  // The same sentence as above about WHAT survives, and the opposite answer
+  // about what happens to the rest. Somebody who stopped answering has no
+  // bounded "later", so their rows are dropped; a quiet day ends on a known
+  // morning, so these are held for it — the shape of the night window, one
+  // rung up.
+  //
+  // What does NOT pass is the whole difference between a quiet day and quiet
+  // hours. A DIGEST does not: quiet hours exempt it because they picked the
+  // hour, but a day off is a day off, and a morning picture of a day they
+  // asked not to hear about is the message they were opting out of. Nor does
+  // an AUTOMATIC reminder, which is the model's inference from a due date
+  // rather than a moment anybody named (owner, 2026-09-08: "רק 1").
+  //
+  // Nor an INTRODUCTION, and the exemption it has one branch up does not
+  // transfer, because that branch DROPS and this one HOLDS: the reason an
+  // introduction survives somebody who stopped answering is that it would
+  // otherwise be lost for good, and here it simply lands on the next day they
+  // kept. `inRoomGrace` stays out for the same reason — speaking in a room is
+  // not asking Olma for the things this day was set aside from, and nothing
+  // is lost by it waiting.
+  const quietDays = facts.quietDays || [];
+  if (quietDays.length && !askedForInWords(row)
+      && quietDays.includes(weekdayInTz(tz, now))) {
+    return {
+      action: 'hold', holdReason: 'quiet_day',
+      releaseAfter: new Date(now.getTime() + msUntilQuietDaysEnd(quietDays, window, tz, now)),
+    };
   }
 
   // ── Nothing before the introduction ──────────────────────────────────────
@@ -253,5 +322,6 @@ function decide(facts) {
 
 module.exports = {
   decide, withinWindow, msUntilWindowOpen, minutesInTz, parseHHMM, nextUtcMidnight,
+  weekdayInTz, msUntilQuietDaysEnd, askedForInWords,
   CONVERSATION_GRACE_MS,
 };

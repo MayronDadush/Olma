@@ -189,6 +189,28 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   the `idempotency_key` that stops the sweep re-creating it.
 - **The delivery gate is the chokepoint and a paused user has no exceptions** —
   not reminders, not urgent, not another user's fan-out.
+- **Quiet HOURS and a quiet DAY draw different lines, and the digest is where
+  they differ.** Hours exempt a digest and rung 1 of any reminder — they chose
+  those moments. A day in `quiet_days` (preference, `"fri,sat"`, read by
+  `preferences.quietDays`) exempts only `askedForInWords` — rung 1 of a
+  reminder a PERSON put there in words — so a digest, an automatic reminder off
+  a due date, and an introduction all wait. Held and never dropped, released
+  into the next day they KEPT (Friday+Saturday releases on Sunday, inside their
+  window), judged in THEIR zone: 23:00 UTC Friday is already Saturday in
+  Jerusalem. Seven quiet days is refused at the parse, because that is `pause`,
+  which is reversible and reports on itself. The introduction's exemption from
+  the stopped-answering rule does NOT transfer here — that branch drops, this
+  one holds, and nothing is lost by waiting.
+- **`DEFAULT_WINDOW` (09:00-21:00) is no longer only a fallback — it is a
+  sentence somebody read.** The discovery ladder's timezone rung states the
+  hours in the same message that asks which country they are in, so moving the
+  constant without moving that copy makes the first message we ever sent them a
+  lie. The test asserts the copy against the constant for exactly that reason.
+- **That rung asks for the COUNTRY, not the city** (owner, 2026-09-08): a zone
+  moves when you cross a border. The six where that is false — US, Canada,
+  Russia, Australia, Brazil, Mexico — are named in the instruction and get a
+  follow-up about the area, and dropping that re-opens the fault the rung was
+  built around (Sarah's +1 bought her New York while she was in Los Angeles).
 - **Only the PERSON writing releases a night-held row.** `openRecord` takes
   `{ wake }`: the gateway opener, which has a real `message:preprocessed`
   behind it, passes `true`; `openTurnImplicitly` — the fallback for a model

@@ -99,6 +99,7 @@ async function drainOnce(pool, deliver, now = new Date()) {
         const plan = await quota.planFor(client, row.user_id);
         const blocked = await quota.isBlocked(client, row.user_id, now.toISOString());
         const win = await preferences.availabilityWindow(client, row.user_id);
+        const quiet = await preferences.quietDays(client, row.user_id);
         const budget = Number(await flagsDomain.getFlag(client, 'proactive_daily_budget') ?? 4);
         // Count only what the budget actually governs. Urgent rows and the two
         // user-chosen kinds are exempt in decide() — counting them here let a day
@@ -188,7 +189,7 @@ async function drainOnce(pool, deliver, now = new Date()) {
           evalUser: Boolean(row.is_eval),
           checkinMisses: Number(row.checkin_misses) || 0,
           blockedUntil: row.quota_blocked_until,
-          window: win.data.window, tz: row.timezone,
+          window: win.data.window, quietDays: quiet.data.days, tz: row.timezone,
           lastInboundAt: row.last_inbound_at, groupWroteAt,
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,

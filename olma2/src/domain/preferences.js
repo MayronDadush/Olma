@@ -54,12 +54,19 @@ async function list(client, userId) {
 // Availability for the delivery gate. Stored as "HH:MM-HH:MM" in the user's
 // own timezone under key 'availability'.
 //
-// 08:00-21:00 is ONLY a fallback for someone who has not told us their hours
-// yet — quiet hours run from 21:00 until 08:00. It is a starting point, not
+// 09:00-21:00 is ONLY a fallback for someone who has not told us their hours
+// yet — quiet hours run from 21:00 until 09:00. It is a starting point, not
 // an answer: the agent is expected to learn each person's real hours in
 // conversation and store them here (see agents-template.md), because a
 // shift worker and a parent of a toddler do not share a schedule.
-const DEFAULT_WINDOW = { start: '08:00', end: '21:00' };
+//
+// The number moved 09:00-20:00 → 08:00-21:00 → 09:00-21:00 (owner, 2026-09-08),
+// and the last move is the first one a stranger is TOLD about: the discovery
+// ladder's timezone rung now states these hours in the same message that asks
+// which country they are in. So this constant is no longer only a fallback —
+// it is a sentence somebody read, and changing it without changing that
+// sentence makes the first message we ever sent them a lie.
+const DEFAULT_WINDOW = { start: '09:00', end: '21:00' };
 
 async function availabilityWindow(client, userId) {
   const { rows } = await client.query(
@@ -72,4 +79,48 @@ async function availabilityWindow(client, userId) {
   return ok({ window: { start: `${m[1]}:${m[2]}`, end: `${m[3]}:${m[4]}` }, source: 'stated' });
 }
 
-module.exports = { remember, forget, list, availabilityWindow, DEFAULT_WINDOW };
+// ---- days they want nothing at all -----------------------------------------
+// A window is hours; this is DAYS. Somebody who keeps Shabbat, or simply does
+// not want work on a Friday, cannot express that as "HH:MM-HH:MM" — and until
+// 2026-09-08 there was nowhere in the system for the answer to go, so the
+// question was never asked. It is asked now (jobs/checkin.js, the timezone
+// rung), which is exactly why this had to exist first: a question whose answer
+// has nowhere to land is worse than no question.
+//
+// Stored under key 'quiet_days' as lowercase English three-letter days,
+// comma-separated: "fri,sat". English and not Hebrew because it is a key's
+// value, read by code — what the PERSON said is in their own words in the
+// conversation, and the model translates once, here.
+const DAY_NAMES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+// Forgiving on the way in, strict about the result: anything unrecognised is
+// dropped rather than failing, because the gate reads this on every row and a
+// hand-edited preference must never be able to stop delivery entirely.
+function parseQuietDays(value) {
+  const days = new Set();
+  for (const part of String(value || '').toLowerCase().split(/[\s,]+/)) {
+    const i = DAY_NAMES.indexOf(part.slice(0, 3));
+    if (i >= 0) days.add(i);
+  }
+  // Seven quiet days is not a preference, it is a pause — and pause is a
+  // different feature with its own reversal path (domain/pause.js). Reading it
+  // as "every day" would mute somebody permanently through a route nothing
+  // reports on, so it is read as nothing at all.
+  if (days.size >= 7) return [];
+  return [...days].sort((a, b) => a - b);
+}
+
+async function quietDays(client, userId) {
+  const { rows } = await client.query(
+    `SELECT value FROM user_preferences WHERE user_id = $1 AND key = 'quiet_days'`,
+    [userId]
+  );
+  if (!rows[0]) return ok({ days: [], source: 'default' });
+  const days = parseQuietDays(rows[0].value);
+  return ok({ days, source: days.length ? 'stated' : 'default' });
+}
+
+module.exports = {
+  remember, forget, list, availabilityWindow, DEFAULT_WINDOW,
+  quietDays, parseQuietDays, DAY_NAMES,
+};

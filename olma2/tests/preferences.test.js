@@ -81,3 +81,36 @@ test('availabilityWindow: stated beats default, garbage falls back safely', asyn
     assert.equal(garbage.data.source, 'default'); // gate never crashes on bad data
   });
 });
+
+test('quietDays: whole days off, and no way to spell a permanent mute', async () => {
+  await withClient(async (c) => {
+    const none = await prefs.quietDays(c, user.id);
+    assert.deepEqual(none.data.days, [], 'nobody has answered this by default');
+    assert.equal(none.data.source, 'default');
+
+    await prefs.remember(c, user.id, 'quiet_days', 'fri,sat');
+    const stated = await prefs.quietDays(c, user.id);
+    assert.equal(stated.data.source, 'stated');
+    assert.deepEqual(stated.data.days.map((d) => prefs.DAY_NAMES[d]), ['fri', 'sat']);
+
+    // Forgiving on the way in: the model writes what a person said, and
+    // spacing, order and full day names are not worth a failed save.
+    await prefs.remember(c, user.id, 'quiet_days', 'Saturday, friday  sunday');
+    assert.deepEqual(
+      (await prefs.quietDays(c, user.id)).data.days.map((d) => prefs.DAY_NAMES[d]),
+      ['sun', 'fri', 'sat'], 'sorted, deduped, case-insensitive, three letters is enough');
+
+    // Unrecognised words are dropped rather than failing — the gate reads this
+    // on every row and must never be stoppable by a bad value.
+    await prefs.remember(c, user.id, 'quiet_days', 'weekends and holidays');
+    assert.deepEqual((await prefs.quietDays(c, user.id)).data.days, []);
+
+    // Seven quiet days is a pause, which is a different feature with its own
+    // reversal path. Reading it here would mute somebody through a route
+    // nothing reports on, so it reads as nothing at all.
+    await prefs.remember(c, user.id, 'quiet_days', 'sun,mon,tue,wed,thu,fri,sat');
+    const everyDay = await prefs.quietDays(c, user.id);
+    assert.deepEqual(everyDay.data.days, []);
+    assert.equal(everyDay.data.source, 'default');
+  });
+});
