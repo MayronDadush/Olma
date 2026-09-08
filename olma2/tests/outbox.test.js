@@ -265,8 +265,14 @@ test('night hold: row waits, then releases when the window opens', async () => {
 // Five messages had gone out that day, and not one of them was subject to the
 // budget it exhausted.
 const BUDGET_DAY = '2026-08-16T12:00:00Z';
+// A minute apart, because these stand for messages that actually went out one
+// after another. The budget counts DISTINCT sent_at — a batch is stamped by one
+// UPDATE and shares its transaction's timestamp to the microsecond, so rows
+// that rode in one message are one message against the budget. Written with a
+// single timestamp, these four would have read as one send.
 async function alreadySentThatDay(rows) {
-  const values = rows.map((r) => `($1,'${r.kind}','{}','${r.urgency}',$2)`).join(', ');
+  const values = rows.map((r, i) =>
+    `($1,'${r.kind}','{}','${r.urgency}', $2::timestamptz + interval '${i} minutes')`).join(', ');
   await db.pool.query(
     `INSERT INTO outbox (user_id, kind, payload, urgency, sent_at) VALUES ${values}`,
     [user.id, BUDGET_DAY]

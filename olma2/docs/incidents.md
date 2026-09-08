@@ -47,6 +47,7 @@ never trust a dated narrative for something you are about to act on.
 **Delivery, outbox and proactive messages**
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
+- [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
 - [Her reminders arrived in Hebrew (fixed 2026-09-07)](#her-reminders-arrived-in-hebrew-fixed-2026-09-07)
 - [A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)](#a-hundred-and-five-pending-reminders-thirteen-of-them-pending-fixed-2026-09-07)
 - [The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)](#the-hooks-timer-fired-late-and-brokerd-took-the-blame-fixed-2026-09-07)
@@ -1654,6 +1655,63 @@ done": the Hebrew examples inside the instructions handed to the model for
 digests, deliverables and the mail confirmation (`channels/openclaw.js` —
 "in their language" followed by a Hebrew example the model sometimes copies),
 and the two 410 pages behind a dead dashboard link, where no person is known.
+
+### Fifty-two seconds behind the introduction (fixed 2026-09-08)
+
+ג.ב read the message that finally said who Olma was at **08:00:27**. At
+**08:01:19** — fifty-two seconds later — he was asked which city he lives in.
+Two messages, correct, in the right order, and one more than anybody wanted.
+
+The ordering had been fixed the night before (see the introduction rule in
+`CLAUDE.md`): the introduction goes first and everything else is held behind
+it as `awaiting_introduction`. What nothing did was hold the check-in for a
+moment afterwards — the hold releases the instant the introduction is stamped
+sent, so the very next row in the same drain went out on its heels.
+
+That is the general shape, not one person's morning. The outbox drains a row
+at a time, so everything that comes due together arrives as a run. Reminders
+had already been given a batch the day before, but only with each other and
+only when they render with the same rung template.
+
+**The first measurement of how often this happens was wrong, and wrong in the
+direction that would have justified the most work.** Counting rows delivered
+within five minutes of each other said fifty runs of check-ins and thirty-four
+of reminders. Then the reminder pairs came back with a gap of zero seconds and
+identical timestamps to the microsecond — because a batch is stamped by one
+`UPDATE ... WHERE id = ANY(...)`, so every row it carried shares the
+transaction's clock. Those were not runs. They were the batch working, counted
+five times. Collapsing on `(user_id, sent_at)` gives the true number: **fifteen
+runs in the day and a bit since the batch shipped**, and almost all of them
+across different kinds — a reminder and the morning digest forty seconds
+apart, a check-in behind a digest.
+
+The same fact fixes a second thing. The daily budget counted rows, so a merged
+message spent a slot per row and merging cost more than sending the same
+things separately. It counts `DISTINCT sent_at` now: the budget is a limit on
+how often Olma interrupts somebody, and that is messages.
+
+`domain/message-merge.js` decides which rows may travel together, and two of
+its boundaries were argued for rather than assumed:
+
+- **A reminder is never folded into a composed turn.** Every rung rides the
+  raw pipe with the owner's own wording and no model in the path. A model
+  asked to include a sentence usually does — and the one time it rewords or
+  drops it, the person never hears about the thing they asked to be reminded
+  of, and the row is stamped delivered all the same. Reminders merge with
+  reminders and with nothing else, which is why the top pair on the list
+  above, a reminder beside the digest, is still two messages on purpose.
+- **At most one ASK per message.** Two questions in one message get one
+  answer, and neither the model nor the tool behind it can tell which was
+  answered: a connection request and a travel question in the same breath is a
+  wrong tool call waiting to happen. This is the doctrine's own "never more
+  than one ask", applied to a message assembled from parts rather than written
+  as one. Statements travel freely, the single question goes last.
+
+A row carrying its own hand-written `instruction` is never composed with,
+which is what keeps ג.ב's introduction saying exactly what it says and nothing
+else. So the morning that prompted all this is still two messages — the
+introduction cannot merge with anything, by design. The gap between them is a
+separate decision, and nobody has taken it.
 
 ### Nine reminders, nine messages (fixed 2026-09-07)
 

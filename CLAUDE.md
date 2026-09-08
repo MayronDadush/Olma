@@ -221,6 +221,25 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   templates), and a failed send fails for all of them and skips them for the
   rest of the tick. Vered got nine messages in ninety seconds
   (`incidents.md`, "Nine reminders, nine messages").
+- **Anything else due in the same moment is ONE message too, and two rules say
+  what may travel together** (`domain/message-merge.js`). A REMINDER is never
+  folded into a composed turn: every rung rides the raw pipe with the owner's
+  wording and no model, and handing the one sentence a person asked for to a
+  model that may reword or drop it would leave the row stamped delivered all
+  the same. And a merged message carries **at most one ASK** — two questions
+  get one answer and nothing can tell which was answered — with the statements
+  first and the question last. A row carrying its own hand-written
+  `instruction` is never composed with (that is what keeps an introduction
+  saying exactly what it says), and a kind absent from `MERGEABLE` goes alone,
+  so one added next month is safe until somebody reads it. Same place and same
+  reason as the reminder batch: at DELIVERY, no new row, no new key, every
+  sibling re-`decide()`d because expiry and the holds are per row.
+  **The daily budget counts `DISTINCT sent_at`, not rows** — one `UPDATE`
+  stamps a whole batch with one timestamp, and the budget limits how often
+  Olma interrupts somebody, which is messages. Counting rows charged a merged
+  message twice and made merging cost more than sending the same things apart;
+  it is also what made the first measurement of this problem read one message
+  as five (`incidents.md`, "Fifty-two seconds behind the introduction").
 
 ### Data you must not get wrong
 
