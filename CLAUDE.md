@@ -940,6 +940,39 @@ have already had to be argued for.
   `groupOutbox.pending` is how the gate sweep still knows not to nudge a room
   it has only this second greeted (`incidents.md`, "The room was told twice").
 
+- **Being in the room IS the introduction, and it is not the inferred closeness
+  the old rule forbids.** Everybody in a group with Olma who is ALREADY a user
+  becomes connected to everybody else there, every feature on, nobody asked
+  (`domain/group-connections.js`, on every sweep pass). The reversed rule
+  refused connections guessed from data; this is a fact both people can see,
+  and they already have each other's number in that room. Three lines it does
+  not cross: a member who has never met Olma is **not invited** (that path
+  messages a stranger), a `declined`/`revoked` pair is **never re-created**
+  (revoking is the only way out, and a revoke a room can undo is not one), and
+  nothing here moves anybody's data — every grant only means they MAY be asked,
+  and a share still waits for the viewer, a relayed message still passes the
+  recipient's gate. **Its own event, `connection.auto_connected`, one row per
+  side** — `jobs/metrics.js` counts `connection.approved` as a friction signal,
+  and a per-person audit view asks `WHERE actor_id = $1`. **Ask about the PAIR,
+  never the direction**: `connections_live_pair` is UNIQUE on
+  `(requester_id, target_phone)`, so the mirror row of an existing invite
+  passes the constraint and leaves two live connections for one pair. The
+  whole room's state is read in ONE query, not three per pair — a room of
+  twenty-five is three hundred pairs inside the sweep's transaction, which is
+  the lock shape of "The room was told twice".
+- **The room reaches each member's OWN page as a group already made** — its
+  WhatsApp name, its people, read-only (`user-dashboard.loadGroups`). The
+  groups design was hidden whole on a served page because nothing kept a
+  group; now the halves part company, the list showing and the "new group"
+  button still hidden, because a WhatsApp room is not something that page can
+  create. **No phone numbers and no `identity_token`** — the room's row is its
+  door and this payload goes to a browser; non-users are drawn by the display
+  name the room already shows, because a room missing half its people reads as
+  the wrong room. The list is hidden in CSS until `hydrate` marks it live, not
+  from script after the fetch: the seeded design groups are in the markup and
+  would be somebody else's example lists on a real person's screen until the
+  server answered.
+
 - **A member's message in the room opens the gate's fifteen-minute window for
   that room's coordination, and for nothing else** (migration 056,
   `chat_group_members.last_wrote_at`). It releases `night` and the `quiet`

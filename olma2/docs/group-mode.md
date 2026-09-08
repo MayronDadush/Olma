@@ -220,23 +220,85 @@ Concretely that means the group agent gets a group identity token, its own
 workspace and memory, and a tool surface that has no access to any user's
 private domain objects. Not "instructed not to" — not wired to.
 
-### Opening a group creates real connections (scope still open)
+### Being in the room is the introduction (decided, owner, 2026-09-09)
 
-The owner's rule: the moment every member is connected and the group opens,
-the members automatically become **connections of each other** in Olma with
-full sharing, and they see a new group inside Olma for easy coordination.
+The owner's rule: everybody in a WhatsApp group with Olma automatically becomes
+connected to everybody else there, and each of them opens their personal page
+to find that room already there as a group — the same people, under the name it
+has in WhatsApp.
 
 The connection layer is a clean fit — it already is the base layer every
-cross-user feature sits on, and joining a group plus each person DMing Olma is
-an explicit act, not inferred closeness (which stays forbidden).
+cross-user feature sits on, and this is not the inferred closeness that stays
+forbidden ("these two talk about each other, they must be close"). Being in the
+room is a fact both people can see: they already have each other's number
+there, and the errand that brought them in is a shared one. The room is the
+consent moment the approval flow was standing in for.
 
-**Open:** auto-granting *all sharing capabilities* is the part to decide
-deliberately. Grants are per-side, per-feature, by design; a 20-person work
-group would mint 190 pairs with everything open, which nobody asked for
-individually. Narrower default on the table: create the connection
-automatically, leave per-feature grants at their normal defaults, and let the
-new in-Olma group object carry the coordination powers (it is the natural
-owner of "schedule something for these six people" anyway).
+`domain/group-connections.js`, called by the group sweep on every pass. Three
+lines it does not cross, each of which would turn a convenience into something
+nobody agreed to:
+
+1. **Only people who are already users.** A member who has never met Olma is
+   not invited by this. `requestConnection`'s invite path sends a stranger a
+   message, and a room of twelve would become twelve introductions nobody
+   asked for.
+2. **A `declined` or `revoked` pair is never re-created.** Revoking is the only
+   way out of a connection, and a revoke that walking into a room undoes is not
+   a way out at all. Those two stay unconnected while sharing the room.
+3. **Nothing here reads or moves anybody's data.** Every feature is granted on
+   both sides, which means each of them MAY be asked — a share still waits for
+   the viewer to accept it, a relayed message still passes the recipient's own
+   delivery gate.
+
+**The earlier narrower option was rejected deliberately.** It was to create the
+connection and leave the per-feature grants at their defaults, on the argument
+that a 20-person work group mints 190 pairs with everything open. What decided
+it the other way is that since 2026-08-27 activating a connection already
+auto-grants all three features on both sides — approving the friendship IS the
+consent moment — so leaving the grants off here would have made a room-made
+connection the one kind that is connected and unusable.
+
+**Its own audit event, never `connection.approved`.** `jobs/metrics.js` counts
+approvals as a friction signal, and a number that silently absorbs a second
+meaning is a number nobody can read six weeks later. One
+`connection.auto_connected` row PER SIDE, because a per-person audit view asks
+`WHERE actor_id = $1` and a single row would leave one of the two with nothing
+on their record.
+
+**It runs on every pass and is idempotent by construction**, which is what
+makes a member who signs up next week connected by the pass that notices,
+without anybody remembering to run anything. The whole room's state is read in
+ONE query rather than three per pair: a room of twenty-five is three hundred
+pairs, and asking about each of them inside the sweep's transaction is exactly
+the shape that held a lock on `chat_groups` for twenty seconds ("The room was
+told twice"). Steady state is two queries and no writes.
+
+### The room arrives on the personal page as a group already made
+
+The other half of the same rule, on the surface the owner chose — each person's
+own page, not the admin one. `docs/design/user-dashboard.html` has carried a
+complete groups design since it was built, hidden whole on a served page
+because nothing on the server kept a group and one made there was forgotten on
+reload. The rooms are the missing server half: `user-dashboard.loadGroups`
+returns each room the viewer is in, by its WhatsApp subject, with its members.
+
+What that changes about the hiding is that the two halves part company. The
+**list** shows, because there is now something real in it. The **button that
+makes one** stays hidden, because a WhatsApp room is not something this page can
+create — and a room renders as a read-only fold: no rename, no delete, chips
+that do not toggle. The name and who is in it are decided in WhatsApp, and a
+control here that looked like it could change either would be lying.
+
+**No phone numbers and no `identity_token`.** The room's row is its door
+(rule: nothing a group tool returns may carry it), and this payload goes to a
+browser. Members who are not users are drawn by the display name the room
+already shows, because a room drawn with half its people missing reads as the
+wrong room — a name, and no way to reach them from here.
+
+The list stays hidden in CSS until `hydrate` puts `.live` on it, rather than
+being hidden from script after the fetch: the seeded design groups are in the
+markup, so hiding them only once the answer arrives shows a real person
+somebody else's example lists for as long as the server takes.
 
 ### A group only exists if Olma already knows somebody in it
 

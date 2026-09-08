@@ -265,24 +265,37 @@ test('a served page is stamped, so the preview scaffolding never reaches anybody
     'the language shortcut is not gated, so a stray L retranslates a real list');
 });
 
-// Groups were designed and never built: the /me payload carries no groups,
-// user-dashboard-write.js has no group action, and the ACT map has no entry.
-// So on a served page the three seeded lists are somebody else's example and
-// a group made there is forgotten on reload. They ride the SAME stamp as the
-// preview buttons rather than a hidden=true after hydrate(), because hiding
-// from script shows them for as long as the server takes to answer.
-test('a served page shows no groups, because nothing on the server keeps one', async () => {
+// The groups section was designed and hidden whole, because nothing on the
+// server kept a group and one made on this page was forgotten on reload. Since
+// 2026-09-09 half of that is no longer true: the WhatsApp rooms Olma sits in
+// arrive in the /me payload as groups that are already made. So the two halves
+// part company — the LIST can show, the BUTTON still cannot, because a
+// WhatsApp room is not something this page can create.
+//
+// The list stays hidden in CSS until `hydrate` puts `.live` on it. That is the
+// half a `hidden = true` set after the fetch would get wrong: the three seeded
+// design groups are in the markup, so hiding them from script shows a real
+// person somebody else's example lists for as long as the server takes to
+// answer.
+test('a served page hides the groups it cannot keep, and shows the rooms it can', async () => {
   const cookie = await signIn();
   const html = await (await get('/me', { headers: { cookie } })).text();
-  assert.ok(html.includes('html[data-served] .groupsblock'),
-    'nothing hides the groups section on a served page');
-  // The rule is worthless if it names a class the markup stopped carrying, so
-  // check both ends: the list and the button that makes one.
-  assert.match(html, /<div style="--i:2" class="groupsblock">/,
-    'the groups section no longer carries the class the rule hides');
-  assert.match(html, /id="addGroup"/, 'the add-group button vanished from the page entirely');
+  // The button that makes one is still gone on a served page, both ends checked
+  // — the rule is worthless if it names a class the markup stopped carrying.
+  assert.ok(html.includes('html[data-served] button.groupsblock'),
+    'a served page still offers to make a group it cannot keep');
   assert.match(html, /class="addmini ghost groupsblock" id="addGroup"/,
-    'the add-group button is not covered by the rule, so a served page still offers to make one');
+    'the add-group button is not covered by the rule that hides it');
+  // The list is hidden by the same stamp and re-shown only by hydrate, so the
+  // seeded examples never reach a real person's screen.
+  assert.ok(html.includes('html[data-served] .groupsblock:not(button){display:none}'),
+    'the seeded design groups are visible on a served page before the fetch answers');
+  assert.ok(html.includes('html[data-served] .groupsblock.live{display:block}'),
+    'nothing can ever show the list again, so real rooms would never appear');
+  assert.match(html, /<div style="--i:2" class="groupsblock">/,
+    'the groups section no longer carries the class both rules name');
+  assert.match(html, /classList\.toggle\("live", GROUPS\.length > 0\)/,
+    'hydrate no longer turns the list on, so the rooms arrive and stay hidden');
   // And the seed is still there for the design copy — this hides it, it does
   // not delete the work.
   assert.ok(html.includes('\u05e4\u05d5\u05e7\u05e8'), 'the seeded groups were deleted rather than hidden');
