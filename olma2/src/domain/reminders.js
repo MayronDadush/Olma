@@ -220,6 +220,49 @@ async function setReminder(client, ownerId, taskId, remindAt, repeatRule) {
   return ok({ reminder: ins.rows[0], supersededAuto: superseded.rowCount });
 }
 
+// One ladder per task. Maya asked for a reminder at 16:00 AND one at 16:15
+// for the same call (2026-09-03); each was a reminder of its own, so each
+// climbed — "בוצע?" twice, fifteen minutes apart, that evening, and "זו
+// התזכורת האחרונה" twice the next afternoon, about a call she had had the day
+// before (incidents.md, "Two ladders for one phone call"). Both first rungs
+// are hers and both go out. But once the LATER one has said its piece, the
+// earlier one's chase is answered: whatever the second reminder was for, it
+// was not "chase me twice more about the first". So when rung 1 of a one-off
+// reminder goes out, every other one-off reminder on the task that is already
+// climbing is retired (`sent_at`, never cancelled — nothing they asked for is
+// withdrawn) and every queued FOLLOW-UP rung of a sibling is withdrawn as
+// 'superseded'. A sibling's rung 1 is never touched: that is a moment they
+// chose, and it may still be sitting in the outbox held for the night.
+async function retireSiblingLadders(client, ownerId, taskId, reminderId, now = new Date()) {
+  const { rows: retired } = await client.query(
+    `UPDATE task_reminders SET sent_at = $3
+      WHERE task_id = $1 AND id <> $2 AND sent_at IS NULL AND cancelled_at IS NULL
+        AND repeat_rule IS NULL AND attempts >= 1
+      RETURNING id`, [taskId, reminderId, now]);
+  // Every sibling's queued follow-ups, not only those retired just now — a
+  // ladder that already reached its last rung is retired on the row while its
+  // final message may still be held in the outbox (retireForMovedTask has the
+  // same sentence, from Vered's r164).
+  const { rows: siblings } = await client.query(
+    `SELECT id FROM task_reminders WHERE task_id = $1 AND id <> $2 AND repeat_rule IS NULL`,
+    [taskId, reminderId]);
+  let withdrawn = [];
+  if (siblings.length) {
+    ({ rows: withdrawn } = await client.query(
+      `UPDATE outbox SET sent_at = now(), hold_reason = 'superseded'
+        WHERE user_id = $1 AND kind = 'reminder' AND sent_at IS NULL
+          AND idempotency_key LIKE ANY($2::text[])
+        RETURNING id`, [ownerId, siblings.map((r) => `reminder:${r.id}:%`)]));
+  }
+  const out = { retired: retired.map((r) => Number(r.id)), withdrawn: withdrawn.map((r) => Number(r.id)) };
+  if (out.retired.length || out.withdrawn.length) {
+    await audit.record(client, ownerId, 'reminder.ladder_superseded', {
+      taskId: Number(taskId), by: Number(reminderId), ...out,
+    });
+  }
+  return out;
+}
+
 // The reminder Olma attaches by itself when a task arrives carrying a moment.
 // Separate from setReminder on purpose: this one is allowed to decline (it
 // returns null for "no reminder was warranted"), it never overrides an
@@ -400,7 +443,9 @@ async function dueForSending(client, now, opts = {}) {
           )
          )
        )
-     ORDER BY r.remind_at`,
+     -- Then by id: two reminders at the SAME moment are rung 1 in the same tick,
+     -- and the later one must be the one that retires the other's ladder.
+     ORDER BY r.remind_at, r.id`,
     [now, maxAttempts, gapHours]
   );
   return ok({ due: rows });
@@ -494,7 +539,7 @@ async function markSent(client, reminderId) {
 }
 
 module.exports = {
-  setReminder, attachAutoReminder, cancelReminder, listReminders, dueForSending, markSent,
+  setReminder, attachAutoReminder, retireSiblingLadders, cancelReminder, listReminders, dueForSending, markSent,
   retireForMovedTask, momentIsPast, PAST_GRACE_MS,
   normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor,
   recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS,
