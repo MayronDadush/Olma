@@ -56,17 +56,17 @@ module.exports = [
       private: S('boolean', 'true = do not repeat this to the other participants. Default false.') },
     ['meeting_id', 'constraint'],
     (client, user, a) => meetings.recordConstraint(client, user.id, a.meeting_id, a.constraint, a.private === true)),
-  tool('propose_meeting_slot', 'Add ONE candidate time to the meeting\'s table (up to 4; a fifth from anyone but the initiator waits for the initiator\'s approval). Proposing means your user agrees to it — every part from what they said; a time without a day: say the full slot back and get their yes first. starts_at is the same moment as slot_description, ISO-8601 with offset; past times, or a weekday other than the text names, are refused. Calendar connected? Check my_calendar_events for that day first.',
+  tool('propose_meeting_slot', 'Add ONE candidate time to the meeting\'s table (up to 5). At five it is refused and the refusal lists them: ask the user which one to drop, remove_meeting_option, then propose again. Proposing means your user agrees to it — every part from what they said; a time without a day: say the full slot back and get their yes first. starts_at is the same moment as slot_description, ISO-8601 with offset; past times, or a weekday other than the text names, are refused. Calendar connected? Check my_calendar_events for that day first.',
     { meeting_id: S('number', 'Meeting id'), slot_description: S('string', 'e.g. "Tuesday 17:00 at the office"'),
       starts_at: S('string', 'The same moment — same DAY — as slot_description, ISO-8601 with offset, e.g. 2026-08-25T17:00:00+03:00') },
     ['meeting_id', 'slot_description', 'starts_at'],
     async (client, user, a) => {
       const res = await meetings.proposeSlot(client, user.id, a.meeting_id, a.slot_description, a.starts_at);
       // A proposal JOINS the table (2026-09-05); the asks about the other
-      // options stand. afterOptionAdded knows the three outcomes — on the
-      // table, pending for the initiator, or a moment already there.
+      // options stand. afterOptionAdded knows the two outcomes — on the table,
+      // or a moment somebody had already put there.
       const out = await meetingFanout.afterOptionAdded(client, user, a.meeting_id, res);
-      if (out.ok && !out.data.pending && !out.data.duplicate) {
+      if (out.ok && !out.data.duplicate) {
         const table = (await meetings.options.list(client, a.meeting_id)).filter((o) => o.status === 'active');
         out.data.hints = { ...(out.data.hints || {}), table: `${table.length} option(s) now on the table; the others still stand. It confirms the moment one option has everyone's yes — you never announce agreement.` };
       }
@@ -84,25 +84,18 @@ module.exports = [
       const out = await meetingFanout.afterSlotResponse(client, user, a.meeting_id, res, { accept: a.accept });
       return offerDashboardOnce(client, user, a.meeting_id, out);
     }),
-  tool('decide_meeting_option', 'Initiator only: approve or turn down a FIFTH option a participant proposed while four were on the table (you were told its option_id). Approving names which of the four it replaces (replace_option_id, from get_meeting_status). Everyone hears an approved option as a proposal; only its proposer hears a refusal.',
-    { meeting_id: S('number', 'Meeting id'), option_id: S('number', 'The pending option'),
-      approve: S('boolean', 'true = onto the table, false = turned down'),
-      replace_option_id: S('number', 'With approve=true when the table is full: the option it replaces') },
-    ['meeting_id', 'option_id', 'approve'],
+  tool('remove_meeting_option', 'Take ONE candidate time off the meeting\'s table. Anyone in the coordination may remove any option, whoever added it — so name the exact time back to the user and get their yes first; option_id from get_meeting_status. This is also how a sixth time gets in: the table is full, so remove one, then propose. Everyone who had answered that time is told it is gone. It does NOT end the coordination — that is cancel_meeting (initiator) or opt_out_of_meeting.',
+    { meeting_id: S('number', 'Meeting id'), option_id: S('number', 'The option to take off the table') },
+    ['meeting_id', 'option_id'],
     async (client, user, a) => {
-      if (a.approve) {
-        const res = await meetings.options.approve(client, user.id, a.meeting_id, a.option_id, a.replace_option_id || null);
-        if (!res.ok) return res;
-        return meetingFanout.afterOptionDecision(client, user, a.meeting_id, res, { approved: true });
-      }
-      const res = await meetings.options.reject(client, user.id, a.meeting_id, a.option_id);
+      const res = await meetings.options.remove(client, user.id, a.meeting_id, a.option_id);
       if (!res.ok) return res;
-      return meetingFanout.afterOptionDecision(client, user, a.meeting_id, res, { approved: false });
+      return meetingFanout.afterOptionRemoved(client, user, a.meeting_id, res);
     }),
-  // The button in a sentence. Not folded into decide_meeting_option, which is
-  // about a fifth option waiting for the initiator: that one asks "does this
-  // belong on the table", this one ends the negotiation. Conflating them would
-  // put one word between "put it up for discussion" and "it is decided".
+  // The button in a sentence. Not folded into remove_meeting_option, which is
+  // about what is on the table: that one asks "does this time belong here",
+  // this one ends the negotiation. Conflating them would put one word between
+  // "put it up for discussion" and "it is decided".
   tool('settle_meeting', 'Initiator only: set the meeting on one option NOW, without waiting for everyone ("בוא נקבע על שלישי, דנה לא יכולה"). Unanimity settles itself. Whoever never said yes is told and may bow out. Confirm the option with them first; option_id from get_meeting_status.',
     { meeting_id: S('number', 'Meeting id'), option_id: S('number', 'The option to set it on') },
     ['meeting_id', 'option_id'],

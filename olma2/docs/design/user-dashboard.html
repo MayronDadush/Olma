@@ -1022,7 +1022,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 }
 .mochip svg{width:9px;height:9px}
 .mochip.done{background:var(--ok-soft);color:var(--ok)}
-.mochip.pend{background:var(--warn-soft);color:var(--warn)}
 .motally{font-size:12.5px;color:var(--text-3);margin-top:1px}
 .motally em{font-style:normal;font-weight:600}
 .motally em.y{color:var(--accent)}
@@ -1077,8 +1076,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 }
 .moconfirm p{margin:0;font-size:13.5px;color:var(--text-2);font-weight:600}
 .moconfirm .moact{margin-top:9px}
-.mopend{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:9px}
-.mopend .moact{margin-top:0}
 
 /* the answer so far, as a bar — the task list's fill asked of people. Two
    segments, because a coordination has three answers and one fill would file
@@ -2727,10 +2724,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
                             press naming who is being left out
        MEETS[].opts      →  the candidate slots. Each is a real moment: a
                             date plus either a canonicalPart or an exact
-                            time, or neither when the meeting is all_day. A
-                            pending one is a proposal from somebody who did
-                            not open the coordination, and is visible to
-                            nobody but the creator and its own author
+                            time, or neither when the meeting is all_day.
+                            Everybody sees the same table and anybody in the
+                            coordination may add to it or take from it — five
+                            places, no proposal waiting on anyone's approval
        MEETS[].ans       →  meeting_availability, one row per person per
                             option, 'y' or 'n'. ABSENT is a third value and
                             has to stay one: folding "has not answered" into
@@ -2806,7 +2803,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     rejoinMeeting:"rejoinMeeting",
     startMeeting:"startMeeting", addOption:"addOption", answerOption:"answerOption",
     settleMeeting:"settleMeeting",
-    approveOption:"approveOption", rejectOption:"rejectOption", swapOption:"swapOption",
+    removeOption:"removeOption", swapOption:"swapOption",
     startGoogle:"startGoogle", stopGoogle:"stopGoogle",
     stopGoogleService:"stopGoogleService"
   };
@@ -3216,11 +3213,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.gapNo":"מי שלא יכול: {list}","mt.gapWait":"מי שעוד לא ענה: {list}",
       "mt.gapMeNo":"סימנת שאתה לא יכול במועד הזה.","mt.gapMeWait":"עוד לא ענית על המועד הזה.",
       "mt.settleAnyway":"לסגור בלי {list}","mt.settleMe":"לסגור בכל זאת",
-      "mt.proposedBy":"הציע: {name}","mt.sentToCreator":"נשלח ל{name}",
-      "mt.approve":"אישור","mt.reject":"לא הפעם",
-      "mt.addOpt":"הוספת מועד","mt.proposeOpt":"הצעת מועד","mt.addGo":"הוספה",
-      "mt.proposeNote":"מה שתציע יישלח ל{name}, והם יחליטו.",
-      "mt.proposeSpent":"כבר הצעת מועד אחד, והוא ממתין להם.",
+      "mt.addOpt":"הוספת מועד","mt.addGo":"הוספה",
       "mt.capFull":"{n} מועדים זה המקסימום — הוספה תשאל מה להחליף.",
       "mt.overCap":"יוצעו {n} הראשונים",
       "mt.swapTitle":"מה להחליף?","mt.swapNew":"במקומו ייכנס: {when}",
@@ -3253,8 +3246,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mtday.n0":"עוד לא נבחרו ימים","mtday.n1":"נבחר יום אחד","mtday.nN":"נבחרו {n} ימים",
       "mt.pickSearch":"חיפוש חבר או קבוצה","mt.noMatch":"אין התאמה.",
       "toast.mtGroup":"{name} — {n} חברים נוספו",
-      "toast.mtApproved":"נוסף — {when}","toast.mtRejected":"ההצעה נדחתה",
-      "toast.mtOptAdded":"נוסף — {when}","toast.mtOptSent":"נשלח לאישור — {when}",
+      "toast.mtOptAdded":"נוסף — {when}",
       "toast.mtSwapped":"{out} הוחלף ב{in}",
       "toast.mtLeft":"יצאת מ{name}","toast.mtWhen":"סומנו {n} ימים",
       "toast.mtCalAdd":"נוסף ליומן שלך","toast.mtCalGone":"הוסר מהיומן שלך",
@@ -3454,11 +3446,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.gapNo":"Can't make it: {list}","mt.gapWait":"Haven't answered: {list}",
       "mt.gapMeNo":"You marked that you can't make this one.","mt.gapMeWait":"You haven't answered this one.",
       "mt.settleAnyway":"Settle without {list}","mt.settleMe":"Settle anyway",
-      "mt.proposedBy":"Proposed by {name}","mt.sentToCreator":"Sent to {name}",
-      "mt.approve":"Approve","mt.reject":"Not this one",
-      "mt.addOpt":"Add a time","mt.proposeOpt":"Propose a time","mt.addGo":"Add",
-      "mt.proposeNote":"What you propose goes to {name}, and they decide.",
-      "mt.proposeSpent":"You have already proposed one, and it is waiting on them.",
+      "mt.addOpt":"Add a time","mt.addGo":"Add",
       "mt.capFull":"{n} times is the most \u2014 adding one asks what it replaces.",
       "mt.overCap":"the first {n} will be offered",
       "mt.swapTitle":"What should it replace?","mt.swapNew":"In its place: {when}",
@@ -3491,8 +3479,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mtday.n0":"No days chosen yet","mtday.n1":"1 day chosen","mtday.nN":"{n} days chosen",
       "mt.pickSearch":"Search a friend or a group","mt.noMatch":"Nothing matches.",
       "toast.mtGroup":"{name} \u2014 {n} people added",
-      "toast.mtApproved":"Added \u2014 {when}","toast.mtRejected":"Proposal declined",
-      "toast.mtOptAdded":"Added \u2014 {when}","toast.mtOptSent":"Sent for approval \u2014 {when}",
+      "toast.mtOptAdded":"Added \u2014 {when}",
       "toast.mtSwapped":"{out} replaced by {in}",
       "toast.mtLeft":"You left {name}","toast.mtWhen":"{n} days marked",
       "toast.mtCalAdd":"Added to your calendar","toast.mtCalGone":"Removed from your calendar",
@@ -5834,25 +5821,26 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      participants are still [0].concat(who) whoever opened it. `ans` is one
      answer per person per option; absent is "has not answered", which is a
      third thing and never folded into "cannot". */
-  var MEET_CAP = 4;
+  var MEET_CAP = 5;
   var PARTS = ["morning","noon","evening","night"];
   /* Coordinations this person left. Its own array rather than a flag on MEETS,
      because a left one carries only a title and an id — that is all the server
      sends and all putting yourself back needs. */
   var MTLEFT = [];
   var MEETS = [
-    /* mine, mid-flight: three real options, one objection, one person who
-       left, and a fourth option somebody else proposed that only I can see. */
+    /* mine, mid-flight: four options, one objection, one person who left, and
+       one of the four put there by somebody else — which needs no marking,
+       because a table anybody may add to is a table nobody has to approve. */
     {id:1, t:{he:"פוקר",en:"Poker"}, by:0, who:[3,7,10], allDay:false,
      opts:[{id:11, day:1, part:"evening"}, {id:12, day:3, part:"evening"},
-           {id:13, day:5, time:"21:00"}, {id:14, day:2, part:"noon", pending:true, by:7}],
+           {id:13, day:5, time:"21:00"}, {id:14, day:2, part:"noon", by:7}],
      ans:{0:{11:"y", 12:"y"}, 3:{11:"y", 12:"y", 13:"n"}, 7:{11:"y", 13:"y"}},
      left:[10], settled:null, inCal:false},
 
-    /* somebody else's, and the option I proposed is waiting on them */
+    /* somebody else's, with a time I put on the table myself */
     {id:2, t:{he:"קפה עם גלי",en:"Coffee with Gali"}, by:1, who:[1], allDay:false,
      opts:[{id:21, day:0, part:"morning"}, {id:22, day:1, part:"noon"},
-           {id:23, day:2, time:"17:30", pending:true, by:0}],
+           {id:23, day:2, time:"17:30", by:0}],
      ans:{0:{21:"y"}, 1:{21:"y", 22:"y"}},
      left:[], settled:null, inCal:false},
 
@@ -5896,7 +5884,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   function mtGone(m, pid){ return m.left.indexOf(pid) > -1; }
   function mtName(pid){ return pid === 0 ? t("mt.me") : (friendById(pid) ? L(friendById(pid).n) : ""); }
-  function mtMine(m){ return m.by === 0; }
   function mtOptById(m, id){
     return m.opts.filter(function(o){ return o.id === id; })[0] || null;
   }
@@ -5914,20 +5901,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     for(var k in row) if(row[k]) return true;
     return false;
   }
-  function mtLive(m){ return m.opts.filter(function(o){ return !o.pending; }); }
-  /* A pending option is the creator's decision to make, so nobody else is
-     shown one — an option that might vanish is worse than one that arrives
-     late, and somebody who voted on a disappearing option has had their
-     answer thrown away. The one exception is the person who proposed it,
-     who otherwise cannot tell whether it was sent at all and proposes again. */
-  function mtVisible(m){
-    return m.opts.filter(function(o){ return !o.pending || mtMine(m) || o.by === 0; });
-  }
-  function mtPendingMine(m){
-    return m.opts.filter(function(o){ return o.pending && o.by === 0; }).length > 0;
-  }
+  /* Everybody sees the same options, and there is no longer any state in
+     which one exists for one reader and not another (owner, 2026-09-09): the
+     five places on the table are the group's, anybody in the coordination may
+     add one or take one off, and nothing waits for the creator to allow it. */
   function mtBest(m){
-    var r = mtLive(m).slice().sort(function(a, b){
+    var r = m.opts.slice().sort(function(a, b){
       /* Most people, then fewest objections — two slots that fit the same
          number are not equally good if somebody has already said no to one. */
       return mtN(m, b, "y") - mtN(m, a, "y") || mtN(m, a, "n") - mtN(m, b, "n");
@@ -5961,7 +5940,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   function mtStatus(m){
     if(m.settled) return "settled";
     var b = mtBest(m), total = mtActive(m).length;
-    if(!b) return mtLive(m).length ? "waiting" : "empty";
+    if(!b) return m.opts.length ? "waiting" : "empty";
     var y = mtN(m, b, "y"), wait = total - y - mtN(m, b, "n");
     return y === total ? "ready" : wait ? "waiting" : "stuck";
   }
@@ -5971,7 +5950,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       return s ? mtOptLabel(m, s) : (m.slotText ? t("mt.settledAs", {when:m.slotText}) : t("mt.stateNone"));
     }
     var b = mtBest(m), total = mtActive(m).length;
-    if(!b) return mtLive(m).length ? t("mt.stateNone") : (m.slotText || t("mt.stateNoOpts"));
+    if(!b) return m.opts.length ? t("mt.stateNone") : (m.slotText || t("mt.stateNoOpts"));
     var y = mtN(m, b, "y"), no = mtN(m, b, "n"), wait = total - y - no;
     if(y === total) return mtOptLabel(m, b);
     if(wait) return pl("mtW", wait);
@@ -5979,7 +5958,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   function mtCardHTML(m){
     var st = mtStatus(m);
-    var mine = mtLive(m).filter(function(o){ return !mtAns(m, 0, o.id); }).length;
+    var mine = m.opts.filter(function(o){ return !mtAns(m, 0, o.id); }).length;
     /* Leaving is offered here, on the row, because the reason to leave is
        usually "this should stop appearing in my list" — which is a thought you
        have while looking AT the list, not one that survives two taps into the
@@ -6166,25 +6145,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   function mtOptHTML(m, o){
     var total = mtActive(m).length;
     var y = mtN(m, o, "y"), no = mtN(m, o, "n");
-    var isBest = !m.settled && mtBest(m) === o && mtLive(m).length > 1;
+    var isBest = !m.settled && mtBest(m) === o && m.opts.length > 1;
     var settled = m.settled === o.id;
     var mineAns = mtAns(m, 0, o.id);
     var head = '<div class="mohead"><b>' + esc(mtOptLabel(m, o)) + "</b>" +
       (settled ? '<span class="mochip done"><svg><use href="#i-check"/></svg>' + esc(t("mt.settledTag")) + "</span>"
        : isBest ? '<span class="mochip best">' + esc(t("mt.bestTag")) + "</span>" : "") + "</div>";
-
-    if(o.pending){
-      /* Two audiences, one row. The creator gets a decision; the person who
-         proposed it gets a receipt, so they do not propose it again. */
-      return '<div class="group mopt pending" data-opt="' + o.id + '">' + head +
-        '<div class="mopend">' +
-        (mtMine(m)
-          ? '<span class="mochip pend">' + esc(t("mt.proposedBy", {name:mtName(o.by)})) + "</span>" +
-            '<div class="moact"><button class="mobtn ok" data-approve><svg><use href="#i-check"/></svg>' +
-            esc(t("mt.approve")) + '</button><button class="mobtn" data-reject>' + esc(t("mt.reject")) + "</button></div>"
-          : '<span class="mochip pend">' + esc(t("mt.sentToCreator", {name:mtName(m.by)})) + "</span>")
-        + "</div></div>";
-    }
 
     var bar = '<span class="mtbar">' +
       '<i class="y" style="--w:' + (y / Math.max(1,total) * 100).toFixed(1) + '%"></i>' +
@@ -6250,7 +6216,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#mtTitle").textContent = L(m.t);
     $("#mtWho").textContent = t("mt.withList", {list:nameList(m.who.map(mtName))});
     $("#mtAskLbl").textContent = t(m.settled ? "mt.settledLbl"
-      : mtLive(m).length === 1 ? "mt.askOne" : "mt.ask");
+      : m.opts.length === 1 ? "mt.askOne" : "mt.ask");
 
     $("#mtFaces").innerHTML = mtPeople(m).map(function(pid){
       var gone = mtGone(m, pid), said = mtAnswered(m, pid);
@@ -6260,24 +6226,17 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         esc(mtName(pid)) + (gone ? " · " + t("mt.gone") : said ? "" : " · " + t("mt.waiting")) + "</span>";
     }).join("");
 
-    $("#mtOpts").innerHTML = mtVisible(m).map(function(o){ return mtOptHTML(m, o); }).join("")
+    $("#mtOpts").innerHTML = m.opts.map(function(o){ return mtOptHTML(m, o); }).join("")
       || '<div class="group"><div class="empty">' + esc(t("mt.stateNoOpts")) + "</div></div>";
 
-    /* Adding is capped, and a non-creator gets exactly one proposal — so the
-       row disappears rather than failing on press, and the note says why.
-
-       On a real account it is hidden outright. The system negotiates one slot
-       at a time and there is no call that adds a second candidate, so the
-       button could only ever add a row this browser could see — offering a
-       time the other people are never shown is worse than not offering it. */
-    var full = mtLive(m).length >= MEET_CAP;
-    var spent = !mtMine(m) && mtPendingMine(m);
-    $("#mtAddWrap").hidden = !!m.settled || spent;
-    $("#mtAddOptLbl").textContent = t(mtMine(m) ? "mt.addOpt" : "mt.proposeOpt");
-    $("#mtAddNote").textContent = m.settled ? ""
-      : spent ? t("mt.proposeSpent")
-      : full && mtMine(m) ? t("mt.capFull", {n:MEET_CAP})
-      : mtMine(m) ? "" : t("mt.proposeNote", {name:mtName(m.by)});
+    /* Adding is capped and nothing else: whoever opened the coordination has
+       no more say over the table than anybody else in it. At the cap the
+       button stays alive and the press asks what it replaces, which is why the
+       note says so before they get there rather than after. */
+    $("#mtAddWrap").hidden = !!m.settled;
+    $("#mtAddOptLbl").textContent = t("mt.addOpt");
+    $("#mtAddNote").textContent = m.settled || m.opts.length < MEET_CAP ? ""
+      : t("mt.capFull", {n:MEET_CAP});
     $("#mtAddNote").hidden = !$("#mtAddNote").textContent;
 
     /* Two different exits, and they must never read alike: one clears your
@@ -6334,29 +6293,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       API.send("answerOption", {meetingId:m.id, optionId:o.id, answer:want}, function(){ API.reload(); });
       mtSettling = null;
       renderMeet(); renderMeets();
-      return;
-    }
-    if(e.target.closest("[data-approve]")){
-      if(LIVE && mtLive(m).length >= MEET_CAP){
-        /* Four already on the table: approving means naming the one it
-           replaces, and the swap sheet is exactly that question. */
-        swapApprove = o; swapNew = o;
-        closeSheets();
-        setTimeout(function(){ renderSwap(); showSheet($("#mtSwapSheet")); }, 260);
-        return;
-      }
-      delete o.pending; delete o.by;
-      API.call("startMeeting", {meeting_id:m.id, approve_option:o.id});
-      API.send("approveOption", {meetingId:m.id, optionId:o.id}, function(){ API.reload(); });
-      renderMeet(); renderMeets();
-      toast(t("toast.mtApproved", {when:mtOptLabel(m, o)}));
-      return;
-    }
-    if(e.target.closest("[data-reject]")){
-      m.opts = m.opts.filter(function(x){ return x !== o; });
-      API.send("rejectOption", {meetingId:m.id, optionId:o.id}, function(){ API.reload(); });
-      renderMeet(); renderMeets();
-      toast(t("toast.mtRejected"));
       return;
     }
     if(e.target.closest("[data-settle]")){
@@ -6507,7 +6443,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   $("#mtAddOpt").addEventListener("click", function(){
     if(!mtOpen) return;
     optDay = 1; optPart = "evening"; optExact = ""; dgPage["#mtOptDays"] = 0;
-    $("#mtOptTitle").textContent = t(mtMine(mtOpen) ? "mt.addOpt" : "mt.proposeOpt");
+    $("#mtOptTitle").textContent = t("mt.addOpt");
     renderOptSheet();
     showSheet($("#mtOptSheet"));
   });
@@ -6532,14 +6468,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(m.allDay){ /* nothing more to say about a whole day */ }
     else if(optExact) o.time = $("#mtOptTime").value;
     else o.part = optPart;
-    /* On a real account the server decides: a participant's option goes on the
-       table while there is room, and waits for the initiator only as a fifth. */
-    if(!LIVE && !mtMine(m)){ o.pending = true; o.by = 0; }
-    if(LIVE && !mtMine(m) && mtLive(m).length >= MEET_CAP){ o.pending = true; o.by = 0; }
     /* At the cap the question is asked on the way OUT, once there is something
-       to swap in. Asking first would mean deleting an option in exchange for a
-       replacement that never arrived. */
-    if(mtMine(m) && mtLive(m).length >= MEET_CAP){
+       to swap in — the owner's rule for the sixth time (2026-09-09): let them
+       type it, then ask what goes. Asking first would mean giving up an option
+       in exchange for a replacement that never arrived. */
+    if(m.opts.length >= MEET_CAP){
       swapNew = o;
       closeSheets();
       setTimeout(function(){ renderSwap(); showSheet($("#mtSwapSheet")); }, 260);
@@ -6556,19 +6489,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     closeSheets();
     setTimeout(function(){ showSheet($("#mtSheet")); renderMeet(); renderMeets(); }, 260);
     /* the swap path says the whole sentence itself — one action, one toast */
-    if(!quiet) toast(t(mtMine(m) ? "toast.mtOptAdded" : "toast.mtOptSent", {when:mtOptLabel(m, o)}));
+    if(!quiet) toast(t("toast.mtOptAdded", {when:mtOptLabel(m, o)}));
   }
 
   /* ── at the cap: swap, never a dead button ── */
   var swapNew = null;
-  /* Set when the swap sheet is asking "which one does this APPROVED fifth
-     replace" rather than "which one does this new option replace". */
-  var swapApprove = null;
   function renderSwap(){
     var m = mtOpen;
     if(!m || !swapNew) return;
     $("#mtSwapNew").textContent = t("mt.swapNew", {when:mtOptLabel(m, swapNew)});
-    $("#mtSwapList").innerHTML = mtLive(m).map(function(o){
+    $("#mtSwapList").innerHTML = m.opts.map(function(o){
       return '<button class="row no-icon" data-drop="' + o.id + '">' +
         '<div class="row-txt"><div class="row-title">' + esc(mtOptLabel(m, o)) + "</div>" +
         '<div class="row-sub">' + esc(mtN(m, o, "y") ? pl("mtY", mtN(m, o, "y")) : t("mt.noneYet")) + "</div></div>" +
@@ -6584,15 +6514,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     m.opts = m.opts.filter(function(o){ return o.id !== id; });
     mtActive(m).forEach(function(pid){ if(m.ans[pid]) delete m.ans[pid][id]; });
     var added = swapNew; swapNew = null;
-    if(swapApprove){
-      var ap = swapApprove; swapApprove = null;
-      delete ap.pending; delete ap.by;
-      API.send("approveOption", {meetingId:m.id, optionId:ap.id, replaceOptionId:id}, function(){ API.reload(); });
-      closeSheets();
-      setTimeout(function(){ showSheet($("#mtSheet")); renderMeet(); renderMeets(); }, 260);
-      toast(t("toast.mtSwapped", {out:mtOptLabel(m, gone), in:mtOptLabel(m, ap)}));
-      return;
-    }
     if(LIVE){
       API.send("swapOption", {meetingId:m.id, replaceOptionId:id, day:added.day, part:added.part || null,
         time:added.time || null, allDay:!!m.allDay}, function(){ API.reload(); });
@@ -7938,7 +7859,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       if(o.allDay) allDay = true;
       else if(o.time) opt.time = o.time;
       else opt.part = o.part || "evening";
-      if(o.pending){ opt.pending = true; opt.by = o.by === null ? null : meId(o.by); }
+      opt.by = o.by === null || o.by === undefined ? null : meId(o.by);
       opts.push(opt);
       Object.keys(o.answers || {}).forEach(function(uid){
         var pid = meId(uid);

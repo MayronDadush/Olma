@@ -1,8 +1,9 @@
 'use strict';
-// Several candidate times per meeting (2026-09-05, the owner's rules): anyone
-// in the meeting adds up to four; a fifth from a non-initiator waits for the
-// initiator; the initiator swaps when it is full; adding is agreeing; the
-// meeting confirms when ONE option is unanimous among the people still in it.
+// Several candidate times per meeting (2026-09-05, revised 2026-09-09): anyone
+// in the meeting adds up to five and anyone in it may take one off, whoever
+// put it there; a sixth is refused to everybody and the refusal names the five,
+// which `swap` answers in one transaction; adding is agreeing; the meeting
+// confirms when ONE option is unanimous among the people still in it.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { freshDb, makeUser, slotStart } = require('./helpers');
@@ -53,87 +54,168 @@ async function kinds(userId, meetingId) {
   return rows.map((r) => r.kind);
 }
 
-test('up to four options; the initiator hits a wall, a participant\'s fifth waits for approval', async () => {
+test('five options, added by anybody; a sixth is refused to everybody and names the five', async () => {
   await withClient(async (c) => {
-    const m = await trio(c, 'ארבע');
-    for (let i = 1; i <= 4; i++) {
+    const m = await trio(c, 'חמש');
+    for (let i = 1; i <= 5; i++) {
       const r = await opts.add(c, i % 2 ? ann.id : ben.id, m, `option ${i}`, at(24 * i));
       assert.equal(r.ok, true, JSON.stringify(r.error));
-      assert.equal(r.data.pending, false);
     }
     const table = await opts.list(c, m);
-    assert.equal(table.filter((o) => o.status === 'active').length, 4);
+    assert.equal(table.length, 5);
     // adding is agreeing: each adder answered yes to their own
     assert.equal(table.find((o) => o.slotText === 'option 1').answers[String(ann.id)], 'y');
     assert.equal(table.find((o) => o.slotText === 'option 2').answers[String(ben.id)], 'y');
 
-    const wall = await opts.add(c, ann.id, m, 'option 5 by initiator', at(24 * 5));
-    assert.equal(wall.ok, false);
-    assert.equal(wall.error.reason, 'options_full');
+    // The wall is the same wall for the person who opened it and for everybody
+    // else — and it hands back the table, because the caller's next question is
+    // which one goes.
+    for (const who of [ann, cal]) {
+      const wall = await opts.add(c, who.id, m, 'option 6', at(24 * 6));
+      assert.equal(wall.ok, false);
+      assert.equal(wall.error.reason, 'options_full');
+      assert.equal(wall.error.options.length, 5);
+      assert.equal(wall.error.options.some((o) => o.slotText === 'option 3'), true);
+    }
+    assert.equal((await opts.list(c, m)).length, 5, 'and nothing was written');
 
-    const fifth = await opts.add(c, cal.id, m, 'option 5 by cal', at(24 * 6));
-    assert.equal(fifth.ok, true);
-    assert.equal(fifth.data.pending, true, 'a fifth from a participant waits for the initiator');
-    assert.equal(fifth.data.initiatorId, Number(ann.id));
-    assert.equal((await opts.list(c, m)).filter((o) => o.status === 'active').length, 4, 'not on the table yet');
-    // the single-slot mirror is the newest ACTIVE option, never the pending one
-    const st = await meetings.getStatus(c, ann.id, m);
-    assert.equal(st.data.meeting.proposed_slot, 'option 4');
-    assert.equal(st.data.options.length, 5);
-    assert.equal(st.data.options.filter((o) => o.status === 'pending').length, 1);
-
-    // only the initiator decides; approving at a full table must name the one it replaces
-    const pendingId = fifth.data.option.id;
-    const notYou = await opts.approve(c, ben.id, m, pendingId);
-    assert.equal(notYou.ok, false);
-    assert.equal(notYou.error.code, 'forbidden');
-    const noRoom = await opts.approve(c, ann.id, m, pendingId);
-    assert.equal(noRoom.ok, false);
-    assert.equal(noRoom.error.reason, 'replace_required');
+    // The answer to the wall: this one instead of that one, in one call, from
+    // somebody who did not open the coordination.
     const out = (await opts.list(c, m)).find((o) => o.slotText === 'option 1');
-    const ok = await opts.approve(c, ann.id, m, pendingId, out.id);
-    assert.equal(ok.ok, true);
+    const sw = await opts.swap(c, cal.id, m, out.id, 'option 6', at(24 * 6));
+    assert.equal(sw.ok, true, JSON.stringify(sw.error));
+    assert.equal(sw.data.replacedSlot, 'option 1');
     const after = await opts.list(c, m);
-    assert.equal(after.filter((o) => o.status === 'active').length, 4);
-    assert.equal(after.some((o) => o.slotText === 'option 1'), false, 'the replaced one is off the table');
-    assert.equal(after.find((o) => o.slotText === 'option 5 by cal').status, 'active');
-    assert.equal(after.find((o) => o.slotText === 'option 5 by cal').answers[String(cal.id)], 'y', 'the proposer\'s yes travelled with it');
+    assert.equal(after.length, 5);
+    assert.equal(after.some((o) => o.slotText === 'option 1'), false);
+    assert.equal(after.find((o) => o.slotText === 'option 6').answers[String(cal.id)], 'y',
+      'the swapper agreed to what they put up, like any other adder');
   });
 });
 
-test('the initiator turns a fifth down, and only its proposer is told', async () => {
+test('anyone in the coordination removes any option, and the people who answered it are told', async () => {
   await withClient(async (c) => {
-    const m = await trio(c, 'לא הפעם');
-    for (let i = 1; i <= 4; i++) await opts.add(c, ann.id, m, `o${i}`, at(24 * i));
-    const fifth = await opts.add(c, ben.id, m, 'ben fifth', at(24 * 7));
-    assert.equal(fifth.data.pending, true);
-    await fanout.afterOptionAdded(c, ben, m, fifth);
-    assert.deepEqual(await kinds(ann.id, m), ['meeting_option_pending'], 'the initiator hears about the fifth');
-    assert.deepEqual(await kinds(cal.id, m), [], 'nobody else does');
+    const m = await trio(c, 'מחיקה');
+    const a = (await opts.add(c, ann.id, m, 'A', at(24))).data.option;
+    const b = (await opts.add(c, ann.id, m, 'B', at(48))).data.option;
+    assert.equal((await opts.answer(c, cal.id, m, a.id, 'y')).ok, true);
+    assert.equal((await opts.answer(c, ben.id, m, a.id, 'n')).ok, true);
 
-    const no = await opts.reject(c, ann.id, m, fifth.data.option.id);
-    assert.equal(no.ok, true);
-    await fanout.afterOptionDecision(c, ann, m, no, { approved: false });
-    assert.deepEqual(await kinds(ben.id, m), ['meeting_option_rejected']);
-    assert.equal((await opts.list(c, m)).length, 4, 'a rejected option is gone from the table and the queue');
+    // ben did not add it and did not open the coordination, and removes it all
+    // the same. Ann answered it by adding it and cal by voting: both are told.
+    const gone = await opts.remove(c, ben.id, m, a.id);
+    assert.equal(gone.ok, true, JSON.stringify(gone.error));
+    assert.equal(gone.data.slot, 'A');
+    assert.equal(gone.data.optionsLeft, 1);
+    assert.deepEqual(gone.data.hadAnswered.sort(), [Number(ann.id), Number(cal.id)].sort());
+    const table = await opts.list(c, m);
+    assert.deepEqual(table.map((o) => o.slotText), ['B']);
+    // the mirror followed it: the single-slot columns are B now, not A
+    assert.equal((await c.query('SELECT proposed_slot FROM meetings WHERE id = $1', [m])).rows[0].proposed_slot, 'B');
+    // removing it twice is not a second removal
+    assert.equal((await opts.remove(c, ben.id, m, a.id)).error.reason, 'option_not_active');
+    // and the answers to it stopped counting: ann and ben each said yes to
+    // exactly one option, and A is not on the table to make anything unanimous
+    assert.equal((await c.query('SELECT settle_due_at FROM meetings WHERE id = $1', [m])).rows[0].settle_due_at, null);
+    // the last one may go too — a table with nothing on it is where every
+    // coordination starts, and anybody may put something back on it
+    assert.equal((await opts.remove(c, cal.id, m, b.id)).data.optionsLeft, 0);
+    assert.equal((await opts.list(c, m)).length, 0);
+    assert.equal((await opts.add(c, cal.id, m, 'C', at(72))).ok, true);
   });
 });
 
-test('the initiator swaps an option; the others hear the new one as a proposal', async () => {
+test('removing the option a grace was running on takes the arming back', async () => {
+  await withClient(async (c) => {
+    const m = await trio(c, 'ביטול הספירה');
+    const a = (await opts.add(c, ann.id, m, 'A', at(26))).data.option;
+    await opts.answer(c, ben.id, m, a.id, 'y');
+    const armed = await opts.answer(c, cal.id, m, a.id, 'y');
+    assert.equal(armed.data.meetingStatus, 'settling');
+    const gone = await opts.remove(c, ben.id, m, a.id);
+    assert.equal(gone.ok, true);
+    assert.equal(gone.data.meetingStatus, 'negotiating');
+    assert.equal((await c.query('SELECT settle_due_at, settling_option_id FROM meetings WHERE id = $1', [m])).rows[0].settle_due_at, null);
+    // and the minute running out on a meeting with nothing on the table
+    // closes nothing
+    assert.deepEqual(await runGrace(c, m), []);
+    assert.equal((await c.query('SELECT status FROM meetings WHERE id = $1', [m])).rows[0].status, 'negotiating');
+  });
+});
+
+test('removing the first of two unanimous options arms the other', async () => {
+  await withClient(async (c) => {
+    const m = await trio(c, 'שתיים פה אחד');
+    const a = (await opts.add(c, ann.id, m, 'A', at(28))).data.option;
+    const b = (await opts.add(c, ann.id, m, 'B', at(52))).data.option;
+    for (const o of [a, b]) {
+      await opts.answer(c, ben.id, m, o.id, 'y');
+      await opts.answer(c, cal.id, m, o.id, 'y');
+    }
+    // A armed first (lowest id wins the tie), so taking A away leaves B
+    // holding everybody's yes — and this is the path that notices.
+    const gone = await opts.remove(c, cal.id, m, a.id);
+    assert.equal(gone.data.meetingStatus, 'settling');
+    assert.equal(gone.data.settlingSlot, 'B');
+    assert.equal((await runGrace(c, m)).length, 1);
+    assert.equal((await c.query('SELECT confirmed_slot FROM meetings WHERE id = $1', [m])).rows[0].confirmed_slot, 'B');
+  });
+});
+
+test('a stranger to the coordination cannot touch its table, and a settled one is closed', async () => {
+  await withClient(async (c) => {
+    const dee = await makeUser(db.pool, '+972532000004', { firstName: 'Dee' });
+    const m = await trio(c, 'זר');
+    const a = (await opts.add(c, ann.id, m, 'A', at(30))).data.option;
+    assert.equal((await opts.remove(c, dee.id, m, a.id)).error.code, 'not_found');
+    assert.equal((await opts.swap(c, dee.id, m, a.id, 'B', at(54))).error.code, 'not_found');
+    // somebody who left is out of it too
+    await meetings.optOut(c, cal.id, m);
+    assert.equal((await opts.remove(c, cal.id, m, a.id)).ok, false);
+    // and once it is confirmed the table is history
+    await opts.answer(c, ben.id, m, a.id, 'y');
+    await runGrace(c, m);
+    assert.equal((await opts.remove(c, ben.id, m, a.id)).error.reason, 'not_negotiating');
+  });
+});
+
+test('the swap that anyone may make; a participant is refused only when they are not in it', async () => {
   await withClient(async (c) => {
     const m = await trio(c, 'החלפה');
     for (let i = 1; i <= 4; i++) await opts.add(c, ann.id, m, `s${i}`, at(24 * i));
     const s2 = (await opts.list(c, m)).find((o) => o.slotText === 's2');
-    const notYou = await opts.swap(c, ben.id, m, s2.id, 'ben swap', at(24 * 9));
-    assert.equal(notYou.ok, false);
-    const sw = await opts.swap(c, ann.id, m, s2.id, 'new s2', at(24 * 9));
-    assert.equal(sw.ok, true);
+    const sw = await opts.swap(c, ben.id, m, s2.id, 'new s2', at(24 * 9));
+    assert.equal(sw.ok, true, JSON.stringify(sw.error));
     assert.equal(sw.data.replacedSlot, 's2');
-    const table = (await opts.list(c, m)).filter((o) => o.status === 'active');
+    const table = await opts.list(c, m);
     assert.equal(table.length, 4);
     assert.equal(table.some((o) => o.slotText === 's2'), false);
-    await fanout.afterOptionAdded(c, ann, m, sw);
+    await fanout.afterOptionAdded(c, ben, m, sw);
+    assert.deepEqual(await kinds(ann.id, m), ['meeting_slot_proposed']);
+  });
+});
+
+test('the removal reaches only the people who had answered, and takes the queued question with it', async () => {
+  await withClient(async (c) => {
+    const m = await trio(c, 'למי מספרים');
+    const a = (await opts.add(c, ann.id, m, 'A', at(32)));
+    // everyone was asked about A
+    await fanout.afterOptionAdded(c, ann, m, a);
     assert.deepEqual(await kinds(ben.id, m), ['meeting_slot_proposed']);
+    assert.deepEqual(await kinds(cal.id, m), ['meeting_slot_proposed']);
+    // cal answered it; ben never did
+    await opts.answer(c, cal.id, m, a.data.option.id, 'n');
+    const gone = await opts.remove(c, ann.id, m, a.data.option.id);
+    await fanout.afterOptionRemoved(c, ann, m, gone);
+    assert.deepEqual(await kinds(cal.id, m), ['meeting_slot_proposed', 'meeting_option_removed'],
+      'the person whose answer went with it is told');
+    assert.deepEqual(await kinds(ben.id, m), ['meeting_slot_proposed'],
+      'and the person who never answered hears nothing new');
+    // ben's copy of the question is a question about a time nobody can answer
+    const { rows } = await c.query(
+      `SELECT hold_reason FROM outbox WHERE user_id = $1 AND kind = 'meeting_slot_proposed'
+        AND (payload->>'meetingId')::bigint = $2`, [ben.id, m]);
+    assert.deepEqual(rows.map((r) => r.hold_reason), ['superseded']);
   });
 });
 

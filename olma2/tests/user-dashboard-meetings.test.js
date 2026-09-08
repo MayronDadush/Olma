@@ -214,7 +214,7 @@ test('a coordination started from the page carries its options, in the person\'s
   assert.equal(r.data.options.length, 2);
   const page = await tx((c) => dash.load(c, gali.id));
   const m = page.data.meetings.find((x) => Number(x.id) === id);
-  assert.equal(m.maxOptions, 4);
+  assert.equal(m.maxOptions, 5);
   assert.equal(m.options.length, 2);
   const ev = m.options.find((o) => o.part === 'evening');
   const ex = m.options.find((o) => o.time === '20:30');
@@ -222,7 +222,6 @@ test('a coordination started from the page carries its options, in the person\'s
   assert.equal(ev.time, null, 'a daypart option carries no clock time to the page');
   assert.equal(ex.day, 2);
   assert.equal(ex.part, null);
-  assert.equal(ev.pending, false);
   assert.equal(String(ev.by), String(me.id));
   assert.equal(ev.answers[String(me.id)], 'y', 'adding is agreeing');
   assert.equal(ev.answers[String(gali.id)], undefined);
@@ -234,41 +233,62 @@ test('a coordination started from the page carries its options, in the person\'s
   assert.deepEqual(rows.map((x) => Number(x.user_id)), [Number(gali.id), Number(ron.id)].sort((a, b) => a - b));
 });
 
-test('a participant adds options until the table is full; the fifth waits for the initiator, who approves it in place of another', async () => {
-  const r = await actAs(me, 'startMeeting', { title: 'ארבע', participantIds: [gali.id, ron.id], options: [{ day: 1, time: '10:00' }] });
+test('anybody fills the table to five; the sixth is refused with the five in the error, and a swap answers it', async () => {
+  const r = await actAs(me, 'startMeeting', { title: 'חמש', participantIds: [gali.id, ron.id], options: [{ day: 1, time: '10:00' }] });
   const id = Number(r.data.meeting.id);
-  for (const day of [2, 3, 4]) {
+  for (const day of [2, 3, 4, 5]) {
     const a = await actAs(gali, 'addOption', { meetingId: id, day, time: '10:00' });
     assert.equal(a.ok, true, JSON.stringify(a.error));
-    assert.equal(a.data.pending, false);
   }
-  const fifth = await actAs(gali, 'addOption', { meetingId: id, day: 5, part: 'noon' });
-  assert.equal(fifth.ok, true);
-  assert.equal(fifth.data.pending, true);
   let page = await tx((c) => dash.load(c, me.id));
   let m = page.data.meetings.find((x) => Number(x.id) === id);
-  assert.equal(m.options.filter((o) => !o.pending).length, 4);
-  const pend = m.options.find((o) => o.pending);
-  assert.equal(String(pend.by), String(gali.id));
-  // the initiator's own fifth is a wall, not a pending row
-  const wall = await actAs(me, 'addOption', { meetingId: id, day: 6, time: '10:00' });
-  assert.equal(wall.ok, false);
-  assert.equal(wall.error.reason, 'options_full');
-  // gali cannot approve her own; me must name what it replaces
-  assert.equal((await actAs(gali, 'approveOption', { meetingId: id, optionId: pend.id })).ok, false);
-  assert.equal((await actAs(me, 'approveOption', { meetingId: id, optionId: pend.id })).error.reason, 'replace_required');
-  const out = m.options.find((o) => !o.pending && o.day === 1);
-  const ok = await actAs(me, 'approveOption', { meetingId: id, optionId: pend.id, replaceOptionId: out.id });
-  assert.equal(ok.ok, true, JSON.stringify(ok.error));
+  assert.equal(m.options.length, 5, 'a participant filled it, not only the person who opened it');
+
+  // The sixth is the same refusal for everybody, and it hands back the table
+  // so the page can ask which one goes without a second round trip.
+  for (const who of [me, gali, ron]) {
+    const wall = await actAs(who, 'addOption', { meetingId: id, day: 6, time: '10:00' });
+    assert.equal(wall.ok, false);
+    assert.equal(wall.error.reason, 'options_full');
+    assert.equal(wall.error.options.length, 5);
+  }
+
+  // ron neither opened it nor added anything, and still answers the wall.
+  const out = m.options.find((o) => o.day === 1);
+  const sw = await actAs(ron, 'swapOption', { meetingId: id, replaceOptionId: out.id, day: 6, time: '10:00' });
+  assert.equal(sw.ok, true, JSON.stringify(sw.error));
   page = await tx((c) => dash.load(c, ron.id));
   m = page.data.meetings.find((x) => Number(x.id) === id);
-  assert.equal(m.options.length, 4);
+  assert.equal(m.options.length, 5);
   assert.equal(m.options.some((o) => o.id === out.id), false);
-  assert.equal(m.options.find((o) => o.id === pend.id).pending, false);
-  assert.equal(m.options.find((o) => o.id === pend.id).part, 'noon', 'the daypart survived the round trip');
-  // ron hears the approved fifth as a proposal, like any other option
-  const { rows } = await db.pool.query(`SELECT kind FROM outbox WHERE user_id = $1 AND (payload->>'meetingId')::bigint = $2 AND (payload->>'optionId')::bigint = $3`, [ron.id, id, pend.id]);
+  assert.equal(m.options.some((o) => o.day === 6), true);
+  // and the others hear the new time as they would any other proposal
+  const { rows } = await db.pool.query(
+    `SELECT kind FROM outbox WHERE user_id = $1 AND (payload->>'meetingId')::bigint = $2 AND (payload->>'slot') LIKE '%' ORDER BY id DESC LIMIT 1`,
+    [me.id, id]);
   assert.deepEqual(rows.map((x) => x.kind), ['meeting_slot_proposed']);
+});
+
+test('a tap removes any option, whoever put it there, and only the people who answered it are told', async () => {
+  const r = await actAs(me, 'startMeeting', { title: 'מחיקה', participantIds: [gali.id, ron.id], options: [{ day: 1, part: 'evening' }, { day: 2, part: 'noon' }] });
+  const id = Number(r.data.meeting.id);
+  let m = (await tx((c) => dash.load(c, me.id))).data.meetings.find((x) => Number(x.id) === id);
+  const victim = m.options.find((o) => o.part === 'evening');
+  assert.equal((await actAs(ron, 'answerOption', { meetingId: id, optionId: victim.id, answer: 'y' })).ok, true);
+
+  // gali did not add it and did not open the coordination.
+  const gone = await actAs(gali, 'removeOption', { meetingId: id, optionId: victim.id });
+  assert.equal(gone.ok, true, JSON.stringify(gone.error));
+  assert.equal(gone.data.optionsLeft, 1);
+  m = (await tx((c) => dash.load(c, ron.id))).data.meetings.find((x) => Number(x.id) === id);
+  assert.equal(m.options.length, 1, 'gone from everybody\'s table, not only hers');
+  assert.equal(m.options.some((o) => o.id === victim.id), false);
+
+  const { rows } = await db.pool.query(
+    `SELECT user_id FROM outbox WHERE kind = 'meeting_option_removed' AND (payload->>'meetingId')::bigint = $1 ORDER BY user_id`, [id]);
+  const told = rows.map((x) => Number(x.user_id)).sort((a, b) => a - b);
+  assert.deepEqual(told, [Number(me.id), Number(ron.id)].sort((a, b) => a - b),
+    'the adder and the person who voted; not the person who removed it');
 });
 
 test('answers land on one option each, and the first unanimous option confirms the meeting', async () => {
@@ -286,26 +306,6 @@ test('answers land on one option each, and the first unanimous option confirms t
   assert.equal(new Date(m.confirmedStartAt).getTime(), new Date(b.startsAt).getTime(), 'settled on the option that was unanimous');
   const { rows } = await db.pool.query(`SELECT user_id FROM outbox WHERE kind = 'meeting_confirmed' AND (payload->>'meetingId')::bigint = $1 ORDER BY user_id`, [id]);
   assert.equal(rows.length >= 2, true, 'the others were told it is confirmed');
-});
-
-test('the initiator swaps an option; a participant cannot; a rejected fifth tells only its proposer', async () => {
-  const r = await actAs(me, 'startMeeting', { title: 'החלפה', participantIds: [gali.id], options: [{ day: 1, time: '09:00' }, { day: 2, time: '09:00' }, { day: 3, time: '09:00' }, { day: 4, time: '09:00' }] });
-  const id = Number(r.data.meeting.id);
-  let m = (await tx((c) => dash.load(c, me.id))).data.meetings.find((x) => Number(x.id) === id);
-  const victim = m.options.find((o) => o.day === 2);
-  assert.equal((await actAs(gali, 'swapOption', { meetingId: id, replaceOptionId: victim.id, day: 7, time: '09:00' })).ok, false);
-  const sw = await actAs(me, 'swapOption', { meetingId: id, replaceOptionId: victim.id, day: 7, time: '09:00' });
-  assert.equal(sw.ok, true, JSON.stringify(sw.error));
-  m = (await tx((c) => dash.load(c, me.id))).data.meetings.find((x) => Number(x.id) === id);
-  assert.equal(m.options.length, 4);
-  assert.equal(m.options.some((o) => o.day === 2), false);
-  assert.equal(m.options.some((o) => o.day === 7), true);
-  const fifth = await actAs(gali, 'addOption', { meetingId: id, day: 8, time: '09:00' });
-  assert.equal(fifth.data.pending, true);
-  const no = await actAs(me, 'rejectOption', { meetingId: id, optionId: fifth.data.option.id });
-  assert.equal(no.ok, true);
-  const { rows } = await db.pool.query(`SELECT user_id FROM outbox WHERE kind = 'meeting_option_rejected' AND (payload->>'meetingId')::bigint = $1`, [id]);
-  assert.deepEqual(rows.map((x) => Number(x.user_id)), [Number(gali.id)]);
 });
 
 test('a pick the page could not have made is refused, not stored', () => {

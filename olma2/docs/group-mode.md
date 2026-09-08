@@ -714,8 +714,10 @@ scheduling of its own.
 
 - **A coordination belongs to the ROOM** (owner, 2026-09-07): `meetings.group_id`
   (migration 050) is the room, `initiator_id` is still the member who asked —
-  somebody has to be able to settle it and to decide a fifth option — and every
-  sentence anybody is sent names the room, not that person.
+  somebody has to be able to settle it — and every sentence anybody is sent
+  names the room, not that person. Since 2026-09-09 that is ALL it means for
+  the table: any member in the coordination adds and removes candidate times,
+  and nothing waits for the person who asked.
 - **Inside a room the pairwise `meetings` grant is not asked for.** That is not
   a hole in the grant model, it is a different consent: everyone in an OPEN
   group has written to Olma privately, they are all in one visible room, and
