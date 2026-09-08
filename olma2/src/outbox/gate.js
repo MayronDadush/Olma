@@ -68,6 +68,13 @@ function nextUtcMidnight(date) {
 // are demonstrably awake and mid-conversation, so the window does not apply.
 const CONVERSATION_GRACE_MS = 15 * 60_000;
 
+// How long an introduction has the floor to itself. Somebody meeting Olma for
+// the first time is reading one thing; a second message a minute behind it is
+// read as part of the first, and whatever it asked for is answered by nobody.
+// Ten minutes is the owner's call (2026-09-08) — long enough to be a separate
+// message, short enough that the day-one ladder still happens that morning.
+const INTRODUCTION_ROOM_MS = 10 * 60_000;
+
 // facts: { row, plan, blocked, paused, window, tz, sentToday, budget, now, lastInboundAt }
 // returns { action: 'deliver' | 'hold' | 'expire' | 'drop', holdReason?, releaseAfter? }
 function decide(facts) {
@@ -160,10 +167,30 @@ function decide(facts) {
   // THEY chose still passes, the same line the gate draws everywhere else: a
   // person who asked for a 10:45 reminder in words knows perfectly well who is
   // sending it, and making them wait for an introduction would be absurd.
-  if (facts.introductionPending && row.kind !== 'introduction') {
+  //
+  // And it does not merely go FIRST — it gets the room to be read. The hold
+  // used to release the instant the introduction was stamped sent, so the very
+  // next row in the same drain went out on its heels: ג.ב read who Olma was at
+  // 08:00:27 and was asked which city he lives in at 08:01:19. The gap is
+  // measured from the moment the introduction actually LANDED, never from the
+  // last time the waiting row happened to be looked at — held on a plain
+  // "while one is pending" clock, a row evaluated just after the introduction
+  // went out is released seconds later all the same, which is the bug wearing
+  // a longer number.
+  if (row.kind !== 'introduction') {
     const r = Number(row.payload && row.payload.rung) || 1;
     const theirs = row.kind === 'digest' || (row.kind === 'reminder' && r <= 1);
-    if (!theirs) return { action: 'hold', holdReason: 'awaiting_introduction', releaseAfter: null };
+    if (!theirs) {
+      if (facts.introductionPending) {
+        return { action: 'hold', holdReason: 'awaiting_introduction', releaseAfter: null };
+      }
+      if (facts.introductionSentAt) {
+        const readyAt = new Date(new Date(facts.introductionSentAt).getTime() + INTRODUCTION_ROOM_MS);
+        if (readyAt > now) {
+          return { action: 'hold', holdReason: 'awaiting_introduction', releaseAfter: readyAt };
+        }
+      }
+    }
   }
 
   if (blocked) {

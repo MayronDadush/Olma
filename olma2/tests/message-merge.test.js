@@ -186,17 +186,17 @@ test('worker: a message Olma owes goes alone and is never blended into', async (
   // The introduction is the owner's copy and says in its own words to add
   // nothing — so it is never composed with anything, and the check-in behind
   // it stays its own message rather than being blended in.
+  assert.equal(rec.sent.length, 1);
   assert.equal(rec.sent[0].kind, 'introduction');
-  assert.ok(rec.sent.every((r) => r.payload.mergedParts === undefined),
+  assert.equal(rec.sent[0].payload.mergedParts, undefined,
     'nothing merges with a message Olma owes in her own words');
 
-  // What the gate does NOT do, recorded here so a change to it is deliberate:
-  // `awaiting_introduction` releases the moment the introduction is stamped
-  // sent, so the check-in follows in the SAME drain rather than being spaced
-  // out. Two messages, in the right order — the ordering was the fix
-  // (2026-09-08); the gap between them is a separate decision nobody has taken.
-  assert.equal(rec.sent.length, 2);
-  assert.equal(rec.sent[1].kind, 'checkin');
+  // And it is not tailgated either. The check-in stays held for the ten
+  // minutes the introduction has the floor, so it cannot be read as part of it.
+  const { rows } = await db.pool.query(
+    `SELECT sent_at, hold_reason FROM outbox WHERE idempotency_key = 'm-after-intro'`);
+  assert.equal(rows[0].sent_at, null);
+  assert.equal(rows[0].hold_reason, 'awaiting_introduction');
 });
 
 test('worker: a merged message costs ONE slot of the daily budget, not one per row', async () => {

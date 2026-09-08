@@ -165,6 +165,22 @@ async function drainOnce(pool, deliver, now = new Date()) {
           [row.user_id, row.id, now]
         );
 
+        // And one that has just LANDED. The gate gives an introduction a few
+        // minutes of the floor to itself, counted from the moment it actually
+        // went out rather than from whenever the waiting row was last looked
+        // at — a row evaluated a second after the introduction was stamped
+        // would otherwise be released a second later. `hold_reason IS NULL` is
+        // load-bearing: a cancelled or superseded introduction carries
+        // `sent_at` too, and nothing was ever delivered.
+        const { rows: introSent } = await client.query(
+          `SELECT sent_at FROM outbox
+            WHERE user_id = $1 AND kind = 'introduction'
+              AND sent_at IS NOT NULL AND hold_reason IS NULL
+              AND sent_at > $2::timestamptz - interval '1 hour'
+            ORDER BY sent_at DESC LIMIT 1`,
+          [row.user_id, now]
+        );
+
         // Named, because the batch below re-decides each sibling against the
         // identical facts — everything here except `row` is about the PERSON.
         const facts = {
@@ -176,6 +192,7 @@ async function drainOnce(pool, deliver, now = new Date()) {
           lastInboundAt: row.last_inbound_at, groupWroteAt,
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,
+          introductionSentAt: introSent[0] ? introSent[0].sent_at : null,
           sentToday: sentRows[0].n, budget, now,
         };
         const verdict = decide(facts);

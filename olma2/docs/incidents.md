@@ -1785,8 +1785,18 @@ its boundaries were argued for rather than assumed:
 A row carrying its own hand-written `instruction` is never composed with,
 which is what keeps ג.ב's introduction saying exactly what it says and nothing
 else. So the morning that prompted all this is still two messages — the
-introduction cannot merge with anything, by design. The gap between them is a
-separate decision, and nobody has taken it.
+introduction cannot merge with anything, by design.
+
+**The gap between them was the owner's call, taken the same day: ten minutes.**
+Merging was never going to fix this pair, so the fix is room. The hold is
+counted from the introduction's own `sent_at` rather than from "while one is
+pending" — on the pending clock, a row evaluated a second after the
+introduction was stamped is released a second later, which is the original bug
+wearing a longer number, and a row evaluated early waits twice as long as one
+evaluated late. The worker reads the landing with `hold_reason IS NULL`,
+because a cancelled or superseded introduction carries `sent_at` too and
+reached nobody: counted as a landing, a message that was never sent would
+silence somebody for ten minutes.
 
 ### Nine reminders, nine messages (fixed 2026-09-07)
 
