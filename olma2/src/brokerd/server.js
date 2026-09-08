@@ -229,8 +229,18 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
     if (!/^(ggreet|g-\d+)$/.test(agentId)) return { ok: false, error: 'bad agentId' };
     const built = groupContext.fromConversationInfo(agentId, params.sessionKey, params.info, { at: params.at });
     if (!built.ok) return { ok: false, error: built.reason };
-    await withTx(pool, (client) => groupContext.store(client, built.row));
-    return { ok: true, stored: true, members: built.row.members ? true : false, wasMentioned: built.row.wasMentioned };
+    let wrote = false;
+    await withTx(pool, async (client) => {
+      await groupContext.store(client, built.row);
+      // Same transaction: the room's newest message and "this member spoke"
+      // are one fact, and a stamp without the context row would be a window
+      // opened by a message nothing else can account for.
+      wrote = await groupContext.noteMemberWrote(client, built.row);
+    });
+    return {
+      ok: true, stored: true, members: built.row.members ? true : false,
+      wasMentioned: built.row.wasMentioned, memberWrote: wrote,
+    };
   }
 
   async function handleTurnContext(params = {}) {

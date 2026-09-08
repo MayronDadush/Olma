@@ -33,7 +33,14 @@ module.exports = [
       if (!res.ok) return res;
       const hints = {
         room: res.data.created
-          ? 'Say ONE short line in the room: you are on it and you are asking everyone privately. Do not list the members and do not ask anything here.'
+          // "asking everyone privately" was a claim, and on 2026-09-07 it was
+          // untrue in the room where it was first said: both invites were
+          // still queued (one held for the night, one dropped as quiet) and
+          // nothing had reached anybody. The room read "שואלת את כולם בפרטי"
+          // about messages that never went. The owner's wording, and the only
+          // one this tool can honestly support: she will ask each of them when
+          // they are available (`incidents.md`, "The room was told twice").
+          ? 'Say ONE short line in the room: you are on it, and you will ask each of them privately WHEN THEY ARE AVAILABLE. Never say they have already been asked — nothing has reached anybody yet, and some of them are asleep or have stopped answering. Do not list the members and do not ask anything here.'
           : 'This room already has that coordination running. Say where it stands (group_coordination_status), do not start another.',
       };
       // The one question this room is ever asked about itself, folded into
@@ -44,7 +51,9 @@ module.exports = [
       }
       return ok({
         meetingId: Number(res.data.meeting.id), title: res.data.meeting.title,
-        created: res.data.created, asked: res.data.participants - 1, hints,
+        // Not `asked`. The number is how many people a message is now owed
+        // to, and every one of them still has to pass the delivery gate.
+        created: res.data.created, willAsk: res.data.participants - 1, hints,
       });
     }),
 

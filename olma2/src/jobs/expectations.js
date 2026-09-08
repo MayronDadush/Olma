@@ -15,6 +15,7 @@ const JOB_INTERVAL_SECONDS = {
   intake_sweep: 5,
   group_sweep: 10,
   group_voice: 60,
+  group_outbox: 10,
   reopen_sweep: 60,
   intake_template_sync: 60,
   unanswered_sweep: 60,

@@ -856,6 +856,27 @@ have already had to be argued for.
   said once per coordination and again next week for the next one, at most one
   line per room per pass, and every one of them held to the group's own
   daytime — a line held at 02:00 stamps nothing and goes out in the morning.
+- **A sweep DECIDES and the `group_outbox` job SAYS** (migration 055). The row
+  and the stamp are written in one transaction, the UNIQUE `idempotency_key`
+  is what actually stops a sentence twice, and a claim is never handed back —
+  a sender that died mid-send leaves a row closed as `unconfirmed`, because a
+  room that misses a line is better off than a room told the same thing twice.
+  It is deliberately not the `outbox` table and has no column that can name a
+  user: one queue per audience, so the user gate stays the only door to a
+  person. **The cost is that a pass cannot see what it just said** —
+  `groupOutbox.pending` is how the gate sweep still knows not to nudge a room
+  it has only this second greeted (`incidents.md`, "The room was told twice").
+
+- **A member's message in the room opens the gate's fifteen-minute window for
+  that room's coordination, and for nothing else** (migration 056,
+  `chat_group_members.last_wrote_at`). It releases `night` and the `quiet`
+  drop on the same argument the DM window already makes — somebody who just
+  spoke is awake — and the SCOPE is the worker's query, not the gate: only a
+  row naming a meeting whose group they wrote in after that coordination
+  started. A pause is still read first and absolutely. **The column is blind
+  to anything that did not name her** (a registered room is
+  `requireMention: true`), so its silence is never evidence that somebody said
+  nothing.
 
 ### systemd scope
 

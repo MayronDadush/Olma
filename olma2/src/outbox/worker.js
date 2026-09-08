@@ -127,6 +127,30 @@ async function drainOnce(pool, deliver, now = new Date()) {
           [row.user_id, now]
         );
 
+        // Did this person write in the room that is running this coordination,
+        // since it started? Only then, and only for a row about that
+        // coordination, does the gate's 15-minute window open on it — the
+        // owner's rule, 2026-09-08. The query is what scopes the exception:
+        // `meetings.group_id` ties the row to one room, `last_wrote_at >=
+        // mt.created_at` is his "after the coordination started", and a row
+        // with no meeting behind it never asks at all.
+        //
+        // A message that did not name her never reaches this column (see
+        // migration 056), so a NULL here means "she was shown nothing from
+        // them", never "they said nothing".
+        const meetingId = Number(row.payload && row.payload.meetingId) || 0;
+        let groupWroteAt = null;
+        if (meetingId) {
+          const { rows: wrote } = await client.query(
+            `SELECT max(m.last_wrote_at) AS at
+               FROM meetings mt
+               JOIN chat_group_members m
+                 ON m.group_id = mt.group_id AND m.user_id = $2 AND m.left_at IS NULL
+              WHERE mt.id = $1 AND mt.group_id IS NOT NULL
+                AND m.last_wrote_at IS NOT NULL AND m.last_wrote_at >= mt.created_at`,
+            [meetingId, row.user_id]);
+          groupWroteAt = wrote[0] ? wrote[0].at : null;
+        }
         // An introduction still waiting to go out. Bounded to two days on
         // purpose: a repair that was queued and somehow never delivered must
         // not silence everything else for this person for ever, and past that
@@ -149,7 +173,7 @@ async function drainOnce(pool, deliver, now = new Date()) {
           checkinMisses: Number(row.checkin_misses) || 0,
           blockedUntil: row.quota_blocked_until,
           window: win.data.window, tz: row.timezone,
-          lastInboundAt: row.last_inbound_at,
+          lastInboundAt: row.last_inbound_at, groupWroteAt,
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,
           sentToday: sentRows[0].n, budget, now,
@@ -205,7 +229,11 @@ async function drainOnce(pool, deliver, now = new Date()) {
           for (const sib of siblings) {
             if (ids.length >= MAX_BATCH) break;
             if (batchKeyFor(sib) !== key) continue;
-            if (decide({ ...facts, row: sib }).action !== 'deliver') continue;
+            // `groupWroteAt` was read for THIS row's coordination and is the
+            // one fact here that is about the row rather than the person. The
+            // batch is reminders only, which never carry a meeting, so it is
+            // null for every sibling — said out loud rather than relied upon.
+            if (decide({ ...facts, groupWroteAt: null, row: sib }).action !== 'deliver') continue;
             ids.push(sib.id);
             titles.push(payloadOf(sib).title);
             carried.add(String(sib.id));

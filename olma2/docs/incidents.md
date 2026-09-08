@@ -45,6 +45,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
@@ -1387,6 +1388,79 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
 
+
+### The room was told twice (fixed 2026-09-08)
+
+The owner's own group — he, מירון and עמית — read the same sentence twice:
+
+```
+21:00:10  יש! כולם כאן. מעכשיו אפשר לתייג אותי…
+21:00:38  יש! כולם כאן. מעכשיו אפשר לתייג אותי…
+```
+
+Twenty-eight seconds apart, both from the group sweep, and the code that sent
+them was written so that this could not happen. It reads:
+
+```js
+const ok = await deps.send(jid, body);          // the CLI, ~16s on the box
+if (ok) await client.query(`UPDATE chat_groups SET opened_announced_at = now() …`);
+```
+
+The stamp is the guard, the guard was there, and the guard is on the wrong side
+of a sixteen-second hole. `deps.send` is `spawn(…, {detached: true}).unref()` —
+detached exactly so a message survives the process that started it — and at
+21:00:10 systemd stopped brokerd for a deploy while that child was still
+starting up. The child lived, WhatsApp got the message, and the transaction
+holding the UPDATE died with its parent. `opened_announced_at` was still NULL
+when the new brokerd's first sweep ran, so it decided all over again, correctly,
+on the evidence it had.
+
+Nothing about this is specific to a deploy. Any crash, OOM, or `withTx`
+rollback between the send and the stamp does the same thing, and the window is
+the CLI's whole start-up. All four sentences a room hears unasked — the
+introduction, the opening, the gate notices, the coordination lines — had it.
+
+**The fix is `group_outbox` (migration 055).** The sweep no longer sends: it
+writes a row and stamps the column in the SAME transaction, so a rollback takes
+both or neither, and a separate job drains the queue. Three things carry it:
+
+- **The `idempotency_key` is UNIQUE**, and it is the actual guarantee. Stamps
+  can be lost to a rollback, a bug, a hand-written UPDATE; `g3:opened` already
+  in the table cannot be inserted a second time whatever else went wrong. The
+  stamp is now a convenience, not the thing standing between a room and a
+  duplicate.
+- **A claim is never given back.** The sender takes the row (`claimed_at IS
+  NULL` → `now()`) before it spawns anything, so a process that dies mid-send
+  leaves a row nobody will pick up again — the same trade the whole feature
+  makes elsewhere: a room that misses one sentence is better off than a room
+  told the same thing twice. Two minutes later `closeStaleClaims` closes it as
+  `hold_reason = 'unconfirmed'`, which is what "we do not know" looks like on
+  the record.
+- **A definite refusal is the other case.** The CLI ran and said no, so nothing
+  was delivered and the claim IS handed back — once. That is why `attempts` and
+  `claimed_at` are two columns and not one: the first version counted attempts
+  and reset the counter on each retry, which made the second strike
+  unreachable and would have retried a broken pipe for ever.
+
+The split cost the sweeps something real, and it is worth naming because it is
+the shape of every decide/deliver split: **a pass can no longer see what it
+just said.** "Do not nudge a room I have only this second introduced myself to"
+used to be a local variable; now the greeting is a row somebody else will
+deliver, and the check is `groupOutbox.pending(client, group.id, 'intro')`.
+A test caught it (the nudge went out in the same drain as נעים מאוד) — the
+production symptom would have been two sentences in one breath to a room
+meeting her for the first time.
+
+Two things this queue deliberately is not. It is **not** the `outbox` table:
+every reader of that one joins `users` and asks about quiet hours, a pause, the
+daily budget, the quiet ladder, and a room is none of those things. One queue
+per audience, each with exactly one sender, is what keeps "there is no second
+way to reach a person" true — and `group_outbox` has no column that can name a
+user, which a test asserts, so that stays structural rather than intended. And
+it does **not** decide: `mayAnnounce` stays with the sweep that knows what the
+sentence is. A "there is a direction" line queued at 02:00 and released at
+09:00 could be about a plan settled overnight; the fix for that is to decide at
+09:00, which is what already happens.
 
 ### Eighteen messages, no answer (fixed 2026-09-07)
 

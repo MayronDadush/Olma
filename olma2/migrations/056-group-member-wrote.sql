@@ -1,0 +1,23 @@
+-- When each member last wrote in the room.
+--
+-- The owner's rule (2026-09-08): "if מירון and עמית sent a message in the
+-- group — whatever it is — after the coordination started, the 15-minute
+-- window is open and she may reach them about that coordination." It is the
+-- same argument the delivery gate already makes about a DM: somebody who just
+-- wrote is demonstrably awake, so quiet hours are not protecting them from
+-- anything. It matters because the private invites for the first real group
+-- coordination reached nobody — one member was dropped as `quiet`, the other
+-- held as `night` — while the room was being told she was asking everyone.
+--
+-- Keyed by PHONE, like the rest of this table: a member who is not a user yet
+-- still writes in the room, and the stamp is about the room, not the account.
+--
+-- What it CANNOT see is the honest half. In a registered room the gateway is
+-- configured `requireMention: true`, and a message that does not tag her (or
+-- reply to her) is dropped before any hook of ours runs — no log line, no
+-- turn, no sender. Measured on the box 2026-09-08: in group 3, from
+-- registration at 20:53 to 21:02, exactly two messages reached her and both
+-- named her, while the room went on talking. So this column records the
+-- messages she was ALLOWED to see, and its silence is never evidence that
+-- somebody said nothing.
+ALTER TABLE chat_group_members ADD COLUMN IF NOT EXISTS last_wrote_at TIMESTAMPTZ;
