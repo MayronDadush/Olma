@@ -228,15 +228,21 @@ test('the reminders ride the same pass, once each, and only for this coordinatio
   const fresh = await withTx(db.pool, (c) => groups.getById(c, group.id));
   await withTx(db.pool, (c) => groupMeetings.settle(c, fresh, a, optionId));
 
-  const sent = [];
-  await pass(sent, new Date(at.getTime() - 8 * 3600_000));
-  assert.match(sent[0].body, /סגור/, 'first it is set');
-  await pass(sent, new Date(at.getTime() - 7 * 3600_000));
-  assert.match(sent[1].body, /היום/, 'then, on the day');
-  await pass(sent, new Date(at.getTime() - 7 * 3600_000));
-  assert.equal(sent.length, 2, 'and not twice');
-  await pass(sent, new Date(at.getTime() - 30 * 60_000));
-  assert.match(sent[2].body, /עוד שעה/, 'then an hour before');
-  await pass(sent, new Date(at.getTime() + 60_000));
-  assert.equal(sent.length, 3, 'and nothing at all once it has started');
+  // The sweep reads EVERY open room, and the rooms the tests above left
+  // negotiating reach their own chase moment under this test's clock — it
+  // runs a day ahead of the real one, and a chase is due 24h after the
+  // real-clock start. So the file was red whenever it ran before 14:30 UTC
+  // (2026-09-08). Only this room's lines are the subject here.
+  const all = [];
+  const sent = () => all.filter((s) => s.jid === group.external_id);
+  await pass(all, new Date(at.getTime() - 8 * 3600_000));
+  assert.match(sent()[0].body, /סגור/, 'first it is set');
+  await pass(all, new Date(at.getTime() - 7 * 3600_000));
+  assert.match(sent()[1].body, /היום/, 'then, on the day');
+  await pass(all, new Date(at.getTime() - 7 * 3600_000));
+  assert.equal(sent().length, 2, 'and not twice');
+  await pass(all, new Date(at.getTime() - 30 * 60_000));
+  assert.match(sent()[2].body, /עוד שעה/, 'then an hour before');
+  await pass(all, new Date(at.getTime() + 60_000));
+  assert.equal(sent().length, 3, 'and nothing at all once it has started');
 });
