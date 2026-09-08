@@ -532,6 +532,27 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `duplicatesSkipped`, and refuses outright when nothing was left to save.
   A test that gives one person two open tasks with the same title now fails;
   twenty-three did (`incidents.md`, "The same thing, saved twice").
+- **A model asked to date something must first be told what time it is.** Every
+  one of the 27 `extracted` tasks on the box had a NULL `due_at` and three
+  carried the hour inside the title as words — "לאכול צהריים ב12", "לעזור לשרה
+  במעבר דירה ביום רביעי בשעה 17:00" — so the moment was said out loud and no
+  reminder could ever fire for it. Not a bad prompt: `renderTranscript` threw
+  away every `m.at`, the instruction stated neither "now" nor the person's
+  zone, and the schema had no date field at all, so "מחר בשעה 18:00" was not
+  resolvable and "never invent a date" was the only safe rule available. Each
+  line now carries the wall clock it was WRITTEN at, in their zone (off the
+  stored message, never off the sweep's own clock — the gap between the two is
+  the point), and the prompt states the same clock for now. **A line with no
+  timestamp renders bare rather than borrowing `now()`** — a voice call arrives
+  with no per-message clock at all, and a made-up stamp would hide that.
+  What comes back is validated hard and, on anything doubtful, **the DATE is
+  dropped and the TASK is kept** (`usableDue`, counted as `datesDropped`),
+  exactly as the facts half has always handled `expires_at`: the commitment is
+  what they said, the moment is what the model resolved, and only one of those
+  two is theirs. Four refusals — unparseable, no explicit offset (`hasOffset`;
+  refused here rather than at `addTask`, which would lose the task as well),
+  already past, or past a one-year horizon, which is the shape a wrong YEAR
+  takes (`incidents.md`, "A time in the title and no reminder").
 - **A day named with ל־ in a title dates the THING, not the task.** "לארגן
   אימון לרביעי" is arranged BEFORE Wednesday; filed ON Wednesday it is useless.
   `datetime.datesTheObject` reports that shape on the result and lets the model
