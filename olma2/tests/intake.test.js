@@ -8,6 +8,7 @@ const { freshDb, makeUser } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const occ = require('../src/intake/openclaw-config');
 const provision = require('../src/intake/provision');
+const users = require('../src/domain/users');
 const { provisionUser } = provision;
 const intake = require('../src/jobs/intake');
 const sessionIndex = require('../src/channels/sessions');
@@ -148,40 +149,52 @@ test('provisionUser: firstMessage and invitedInfo both land in USER.md, wrapped 
   assert.match(userMd, /connection_id=42/);
 });
 
-test('provisionUser: a name every existing owner agrees on prefills first_name, unconfirmed', async () => {
+// These three used to assert the opposite — that a name every address book
+// agreed on became the newcomer's own. It shipped, and on the box the
+// agreement clause never once did any work: all seven people it named had a
+// single saved row, so one person's private label was the whole "consensus".
+// Kept as the record of a rule that now runs the other way.
+test('provisionUser: a name in somebody else\'s address book does not name the newcomer', async () => {
   const contacts = require('../src/domain/contacts');
   const a = await makeUser(db.pool, '+972601000200', { firstName: 'Owner A' });
   const b = await makeUser(db.pool, '+972601000201', { firstName: 'Owner B' });
   const newcomerPhone = '+972601000202';
+  // Two owners, agreeing, one of them the strongest source a contact has —
+  // the shape that used to prefill hardest.
   await withTx(db.pool, (c) => contacts.saveContact(c, a.id, { name: 'דנה כהן', phone: newcomerPhone, source: 'user_stated' }));
   await withTx(db.pool, (c) => contacts.saveContact(c, b.id, { name: 'דנה כהן', phone: newcomerPhone, source: 'contact_card' }));
 
   const res = await withTx(db.pool, (c) => provisionUser(c, { phone: newcomerPhone, configPath }));
   assert.ok(res.ok);
-  assert.equal(res.data.user.first_name, 'דנה כהן');
-  assert.equal(res.data.user.name_confirmed, false, 'a prefilled name is a guess, not a stated fact');
-
+  assert.equal(res.data.user.first_name, null,
+    'a newcomer was named out of somebody else\'s address book');
+  // Nothing left to audit, because nothing was taken.
   const { rows } = await db.pool.query(
-    `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'user.name_prefilled_from_contacts'`,
+    `SELECT 1 FROM audit_log WHERE actor_id = $1 AND event = 'user.name_prefilled_from_contacts'`,
     [res.data.user.id]);
-  assert.equal(rows.length, 1, 'the source stays in the audit trail, never in anything user-facing');
-  assert.equal(rows[0].detail.savedByCount, 2);
+  assert.equal(rows.length, 0, 'the prefill is gone but still recording itself');
 });
 
-test('provisionUser: disagreeing names across address books prefill nothing', async () => {
+// The single-row case is the one that actually happened, seven times out of
+// seven — and it is the one an "everybody agrees" guard can never catch.
+test('provisionUser: one person\'s label for a number names nobody', async () => {
   const contacts = require('../src/domain/contacts');
   const a = await makeUser(db.pool, '+972601000210', { firstName: 'Owner C' });
-  const b = await makeUser(db.pool, '+972601000211', { firstName: 'Owner D' });
   const phone = '+972601000212';
-  await withTx(db.pool, (c) => contacts.saveContact(c, a.id, { name: 'דנה', phone, source: 'user_stated' }));
-  await withTx(db.pool, (c) => contacts.saveContact(c, b.id, { name: 'עודד', phone, source: 'user_stated' }));
+  await withTx(db.pool, (c) => contacts.saveContact(c, a.id, { name: 'דב נתיב צלם עורך', phone, source: 'user_stated' }));
 
   const res = await withTx(db.pool, (c) => provisionUser(c, { phone, configPath }));
   assert.ok(res.ok);
-  assert.equal(res.data.user.first_name, null, 'two different names is not "the same answer" — leave it unset');
+  assert.equal(res.data.user.first_name, null, 'a contact card became a person\'s name');
+  // And the honest source is now reachable: the capture on the first turn is
+  // guarded by `!user.first_name`, which the label used to make false for ever.
+  const named = await withTx(db.pool, (c) => users.setName(c, res.data.user.id, 'דב', null,
+    { confirmed: false, source: 'whatsapp_display_name' }));
+  assert.equal(named.ok, true, 'the display name could not land on a nameless row');
+  assert.equal(named.data.user.first_name, 'דב');
 });
 
-test('provisionUser: an explicit firstName always wins over any prefill', async () => {
+test('provisionUser: a name handed in explicitly is still the name', async () => {
   const contacts = require('../src/domain/contacts');
   const a = await makeUser(db.pool, '+972601000220', { firstName: 'Owner E' });
   const phone = '+972601000221';
