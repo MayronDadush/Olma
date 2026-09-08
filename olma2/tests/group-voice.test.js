@@ -39,11 +39,20 @@ async function room(n, { subject = 'פאדל' } = {}) {
 }
 
 // A pass with a recording sender, at an hour inside the group's window.
-async function pass(sent, at = null) {
+// `onlyJid` keeps a test's `sent` array to its OWN room. Every room every
+// earlier test in this file built is still in the database, and this sweep
+// visits all of them: a pass told a `now` far enough ahead makes those older
+// coordinations due for their chase line, which then lands in this test's
+// array and is counted as one of its own messages. That is not flakiness — the
+// sweep is behaving correctly and the collection was too wide.
+async function pass(sent, at = null, onlyJid = null) {
   const now = at || (() => { const d = new Date(); d.setUTCHours(11, 0, 0, 0); return d; })();
   return withTx(db.pool, (c) => groupsJob.sweepGroupVoice(c, {
     now,
-    send: async (jid, body) => { sent.push({ jid, body }); return 'sent'; },
+    send: async (jid, body) => {
+      if (!onlyJid || jid === onlyJid) sent.push({ jid, body });
+      return 'sent';
+    },
   }));
 }
 
@@ -228,15 +237,22 @@ test('the reminders ride the same pass, once each, and only for this coordinatio
   const fresh = await withTx(db.pool, (c) => groups.getById(c, group.id));
   await withTx(db.pool, (c) => groupMeetings.settle(c, fresh, a, optionId));
 
+  // This room only. The last pass below jumps `now` past the meeting, which is
+  // also far enough ahead to make the coordinations OTHER tests in this file
+  // left behind due for their chase — real lines, correctly sent, to other
+  // rooms. Collecting them here made this assertion depend on the hour the
+  // suite ran: green in CI on 2026-09-07 and red on the 08:00 clock-drift run
+  // the next morning, on bytes nobody had touched.
   const sent = [];
-  await pass(sent, new Date(at.getTime() - 8 * 3600_000));
+  const mine = JID(5);
+  await pass(sent, new Date(at.getTime() - 8 * 3600_000), mine);
   assert.match(sent[0].body, /סגור/, 'first it is set');
-  await pass(sent, new Date(at.getTime() - 7 * 3600_000));
+  await pass(sent, new Date(at.getTime() - 7 * 3600_000), mine);
   assert.match(sent[1].body, /היום/, 'then, on the day');
-  await pass(sent, new Date(at.getTime() - 7 * 3600_000));
+  await pass(sent, new Date(at.getTime() - 7 * 3600_000), mine);
   assert.equal(sent.length, 2, 'and not twice');
-  await pass(sent, new Date(at.getTime() - 30 * 60_000));
+  await pass(sent, new Date(at.getTime() - 30 * 60_000), mine);
   assert.match(sent[2].body, /עוד שעה/, 'then an hour before');
-  await pass(sent, new Date(at.getTime() + 60_000));
+  await pass(sent, new Date(at.getTime() + 60_000), mine);
   assert.equal(sent.length, 3, 'and nothing at all once it has started');
 });
