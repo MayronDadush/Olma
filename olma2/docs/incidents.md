@@ -45,8 +45,10 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
+- [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
 - [Her reminders arrived in Hebrew (fixed 2026-09-07)](#her-reminders-arrived-in-hebrew-fixed-2026-09-07)
 - [A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)](#a-hundred-and-five-pending-reminders-thirteen-of-them-pending-fixed-2026-09-07)
 - [The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)](#the-hooks-timer-fired-late-and-brokerd-took-the-blame-fixed-2026-09-07)
@@ -162,6 +164,7 @@ never trust a dated narrative for something you are about to act on.
 
 **CI, migrations and deploying**
 
+- [The merge that never ran (2026-09-08)](#the-merge-that-never-ran-2026-09-08)
 - [A test file poisoned every other one (root-caused and fixed 2026-09-04)](#a-test-file-poisoned-every-other-one-root-caused-and-fixed-2026-09-04)
 - [The deploy marker leads the restart, so the timestamps lie both ways (2026-09-04)](#the-deploy-marker-leads-the-restart-so-the-timestamps-lie-both-ways-2026-09-04)
 - [The rollback was one release deep, on a five-merge day (2026-09-03)](#the-rollback-was-one-release-deep-on-a-five-merge-day-2026-09-03)
@@ -1387,6 +1390,79 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 ## Delivery, outbox and proactive messages
 
 
+### The room was told twice (fixed 2026-09-08)
+
+The owner's own group — he, מירון and עמית — read the same sentence twice:
+
+```
+21:00:10  יש! כולם כאן. מעכשיו אפשר לתייג אותי…
+21:00:38  יש! כולם כאן. מעכשיו אפשר לתייג אותי…
+```
+
+Twenty-eight seconds apart, both from the group sweep, and the code that sent
+them was written so that this could not happen. It reads:
+
+```js
+const ok = await deps.send(jid, body);          // the CLI, ~16s on the box
+if (ok) await client.query(`UPDATE chat_groups SET opened_announced_at = now() …`);
+```
+
+The stamp is the guard, the guard was there, and the guard is on the wrong side
+of a sixteen-second hole. `deps.send` is `spawn(…, {detached: true}).unref()` —
+detached exactly so a message survives the process that started it — and at
+21:00:10 systemd stopped brokerd for a deploy while that child was still
+starting up. The child lived, WhatsApp got the message, and the transaction
+holding the UPDATE died with its parent. `opened_announced_at` was still NULL
+when the new brokerd's first sweep ran, so it decided all over again, correctly,
+on the evidence it had.
+
+Nothing about this is specific to a deploy. Any crash, OOM, or `withTx`
+rollback between the send and the stamp does the same thing, and the window is
+the CLI's whole start-up. All four sentences a room hears unasked — the
+introduction, the opening, the gate notices, the coordination lines — had it.
+
+**The fix is `group_outbox` (migration 055).** The sweep no longer sends: it
+writes a row and stamps the column in the SAME transaction, so a rollback takes
+both or neither, and a separate job drains the queue. Three things carry it:
+
+- **The `idempotency_key` is UNIQUE**, and it is the actual guarantee. Stamps
+  can be lost to a rollback, a bug, a hand-written UPDATE; `g3:opened` already
+  in the table cannot be inserted a second time whatever else went wrong. The
+  stamp is now a convenience, not the thing standing between a room and a
+  duplicate.
+- **A claim is never given back.** The sender takes the row (`claimed_at IS
+  NULL` → `now()`) before it spawns anything, so a process that dies mid-send
+  leaves a row nobody will pick up again — the same trade the whole feature
+  makes elsewhere: a room that misses one sentence is better off than a room
+  told the same thing twice. Two minutes later `closeStaleClaims` closes it as
+  `hold_reason = 'unconfirmed'`, which is what "we do not know" looks like on
+  the record.
+- **A definite refusal is the other case.** The CLI ran and said no, so nothing
+  was delivered and the claim IS handed back — once. That is why `attempts` and
+  `claimed_at` are two columns and not one: the first version counted attempts
+  and reset the counter on each retry, which made the second strike
+  unreachable and would have retried a broken pipe for ever.
+
+The split cost the sweeps something real, and it is worth naming because it is
+the shape of every decide/deliver split: **a pass can no longer see what it
+just said.** "Do not nudge a room I have only this second introduced myself to"
+used to be a local variable; now the greeting is a row somebody else will
+deliver, and the check is `groupOutbox.pending(client, group.id, 'intro')`.
+A test caught it (the nudge went out in the same drain as נעים מאוד) — the
+production symptom would have been two sentences in one breath to a room
+meeting her for the first time.
+
+Two things this queue deliberately is not. It is **not** the `outbox` table:
+every reader of that one joins `users` and asks about quiet hours, a pause, the
+daily budget, the quiet ladder, and a room is none of those things. One queue
+per audience, each with exactly one sender, is what keeps "there is no second
+way to reach a person" true — and `group_outbox` has no column that can name a
+user, which a test asserts, so that stays structural rather than intended. And
+it does **not** decide: `mayAnnounce` stays with the sweep that knows what the
+sentence is. A "there is a direction" line queued at 02:00 and released at
+09:00 could be about a plan settled overnight; the fix for that is to decide at
+09:00, which is what already happens.
+
 ### Eighteen messages, no answer (fixed 2026-09-07)
 
 Vered (u-24) joined on the evening of 2026-09-06 and answered everything Olma
@@ -1654,6 +1730,63 @@ done": the Hebrew examples inside the instructions handed to the model for
 digests, deliverables and the mail confirmation (`channels/openclaw.js` —
 "in their language" followed by a Hebrew example the model sometimes copies),
 and the two 410 pages behind a dead dashboard link, where no person is known.
+
+### Fifty-two seconds behind the introduction (fixed 2026-09-08)
+
+ג.ב read the message that finally said who Olma was at **08:00:27**. At
+**08:01:19** — fifty-two seconds later — he was asked which city he lives in.
+Two messages, correct, in the right order, and one more than anybody wanted.
+
+The ordering had been fixed the night before (see the introduction rule in
+`CLAUDE.md`): the introduction goes first and everything else is held behind
+it as `awaiting_introduction`. What nothing did was hold the check-in for a
+moment afterwards — the hold releases the instant the introduction is stamped
+sent, so the very next row in the same drain went out on its heels.
+
+That is the general shape, not one person's morning. The outbox drains a row
+at a time, so everything that comes due together arrives as a run. Reminders
+had already been given a batch the day before, but only with each other and
+only when they render with the same rung template.
+
+**The first measurement of how often this happens was wrong, and wrong in the
+direction that would have justified the most work.** Counting rows delivered
+within five minutes of each other said fifty runs of check-ins and thirty-four
+of reminders. Then the reminder pairs came back with a gap of zero seconds and
+identical timestamps to the microsecond — because a batch is stamped by one
+`UPDATE ... WHERE id = ANY(...)`, so every row it carried shares the
+transaction's clock. Those were not runs. They were the batch working, counted
+five times. Collapsing on `(user_id, sent_at)` gives the true number: **fifteen
+runs in the day and a bit since the batch shipped**, and almost all of them
+across different kinds — a reminder and the morning digest forty seconds
+apart, a check-in behind a digest.
+
+The same fact fixes a second thing. The daily budget counted rows, so a merged
+message spent a slot per row and merging cost more than sending the same
+things separately. It counts `DISTINCT sent_at` now: the budget is a limit on
+how often Olma interrupts somebody, and that is messages.
+
+`domain/message-merge.js` decides which rows may travel together, and two of
+its boundaries were argued for rather than assumed:
+
+- **A reminder is never folded into a composed turn.** Every rung rides the
+  raw pipe with the owner's own wording and no model in the path. A model
+  asked to include a sentence usually does — and the one time it rewords or
+  drops it, the person never hears about the thing they asked to be reminded
+  of, and the row is stamped delivered all the same. Reminders merge with
+  reminders and with nothing else, which is why the top pair on the list
+  above, a reminder beside the digest, is still two messages on purpose.
+- **At most one ASK per message.** Two questions in one message get one
+  answer, and neither the model nor the tool behind it can tell which was
+  answered: a connection request and a travel question in the same breath is a
+  wrong tool call waiting to happen. This is the doctrine's own "never more
+  than one ask", applied to a message assembled from parts rather than written
+  as one. Statements travel freely, the single question goes last.
+
+A row carrying its own hand-written `instruction` is never composed with,
+which is what keeps ג.ב's introduction saying exactly what it says and nothing
+else. So the morning that prompted all this is still two messages — the
+introduction cannot merge with anything, by design. The gap between them is a
+separate decision, and nobody has taken it.
 
 ### Nine reminders, nine messages (fixed 2026-09-07)
 
@@ -5594,6 +5727,47 @@ model answered `NO_REPLY`; and the admin page shows the delivery prompts of
 Olma's own sweeps under the person's name, as if they had typed them.
 
 ## CI, migrations and deploying
+
+### The merge that never ran (2026-09-08)
+
+PR #285 was merged into `main` at 09:53Z. Both of the branch's own runs — the
+`push` and the `pull_request` — had gone green on the identical sha four
+minutes earlier, `gh pr merge` returned silently, and
+`git merge-base --is-ancestor` confirmed the commit was in `main`. Every
+signal a session normally reads said the work had shipped.
+
+Nothing had. GitHub created no workflow run for the merge commit: not a
+queued one, not a cancelled one, not a failure. `gh run list` showed the
+branch's two green runs and then the previous merge's, with the new merge
+commit simply absent, and
+`gh api repos/.../commits/133a593/check-suites --jq .total_count` answered
+`0` twenty-five minutes later. GitHub's status page read "All Systems
+Operational" throughout. There was no cause to find on our side and nothing
+to re-run.
+
+This is the [absence-of-evidence
+shape](#recurring-failure-shapes) in its purest form: every documented
+CI-failure mode in this repo — the wedge that reports `cancelled`, the wedge
+that reports `failure`, the queued run displaced on `main`, the red `test`
+that skips `deploy` — is a run you can go and read. This one had no artifact
+at all, and "no red anywhere" reads exactly like success. What settled it was
+the rule that already existed for a different reason: the sha in
+`/opt/olma2/RELEASE` was still the previous merge's, and the box's
+`max(version)` from `schema_migrations` was 54 while the branch had shipped
+055 and 056.
+
+The recorded recovery — deploy the merged sha yourself — then failed too, and
+for a reason worth writing down: `deploy.sh` rsyncs with `--chown=root:root`,
+and the rsync Apple ships with macOS does not have that flag. It archived the
+outgoing release, refused the transfer, and stopped. Production was untouched
+and healthy on the old release the whole time, which is the one good thing
+about the way it failed: the script aborts before it replaces anything.
+
+So the fix is a hand crank. `olma2-tests.yml` gained `workflow_dispatch`, and
+the `deploy` job's `if` now admits it alongside `push` — on `main` and nowhere
+else, so a dispatch on a feature branch still cannot reach the box.
+`gh workflow run olma2-tests.yml --ref main` now does exactly what a merge
+does: migrations check, full suite, `deploy.sh --restart`.
 
 ### The deploy marker leads the restart, so the timestamps lie both ways (2026-09-04)
 

@@ -115,4 +115,32 @@ async function read(client, agentId, sessionKey) {
   };
 }
 
-module.exports = { SESSION_KEY_RE, parseConversationInfo, fromConversationInfo, store, read };
+// A member wrote in the room, and that is now a fact with a consequence: it
+// opens the delivery gate's 15-minute conversation window for the coordination
+// that room is running (outbox/gate.js, `wroteInTheRoom`). The owner's rule,
+// 2026-09-08 — a person who just spoke is awake, whichever chat they spoke in.
+//
+// Written here because this is the ONLY place a group sender is ever learned,
+// and it inherits that source's blind spot exactly: a registered room is
+// `requireMention: true`, so what does not name her never arrives, and this
+// column stays silent for it. Silence here is "she was not shown a message",
+// never "nobody wrote".
+//
+// Keyed by phone, and her own number can never match one: `syncSenderGate`
+// keeps her out of the sender list, and `chat_group_members` is the room's
+// people. `greatest` because the clock on the block is the gateway's and a
+// late-arriving turn must not move the stamp backwards.
+async function noteMemberWrote(client, row) {
+  const jid = String(row.chatId || '').split(':').pop();
+  const digits = String(row.senderE164 || '').replace(/\D/g, '');
+  if (!jid || digits.length < 7 || digits.length > 15) return false;
+  const { rowCount } = await client.query(
+    `UPDATE chat_group_members m
+        SET last_wrote_at = greatest(coalesce(m.last_wrote_at, to_timestamp(0)), $3)
+       FROM chat_groups g
+      WHERE g.id = m.group_id AND g.external_id = $1 AND m.phone = $2 AND m.left_at IS NULL`,
+    [jid, `+${digits}`, row.at]);
+  return rowCount > 0;
+}
+
+module.exports = { SESSION_KEY_RE, parseConversationInfo, fromConversationInfo, store, read, noteMemberWrote };

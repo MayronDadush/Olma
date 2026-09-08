@@ -9,6 +9,7 @@ const quota = require('../domain/quota');
 const flagsDomain = require('../domain/flags');
 const proactiveText = require('../domain/proactive-text');
 const { decide } = require('./gate');
+const { mergeRoleFor, planMerge, MERGEABLE_KINDS } = require('../domain/message-merge');
 
 // A delivery is a full model turn — 30-90s of wall time and most of the box's
 // one core. An unbounded tick over a backlog (observed live 2026-08-27: ~20
@@ -110,8 +111,15 @@ async function drainOnce(pool, deliver, now = new Date()) {
         // is how cancelling stops the producer re-creating them — but nothing
         // was ever delivered, so counting them would let cancelling a message
         // burn the same budget as sending it.
+        //
+        // count(DISTINCT sent_at), not count(*): a batch is stamped by one
+        // `UPDATE ... WHERE id = ANY(...)`, so every row it carried shares the
+        // transaction's timestamp to the microsecond. The budget is a limit on
+        // how often Olma interrupts somebody, and that is messages — counting
+        // rows would charge a merged message twice and make merging cost more
+        // than sending the same things separately.
         const { rows: sentRows } = await client.query(
-          `SELECT count(*)::int AS n FROM outbox
+          `SELECT count(DISTINCT sent_at)::int AS n FROM outbox
            WHERE user_id = $1 AND sent_at IS NOT NULL AND sent_at::date = $2::date
              AND (hold_reason IS NULL OR hold_reason NOT IN ('expired', 'cancelled_by_admin', 'paused', 'superseded'))
              AND urgency <> 'urgent'
@@ -119,6 +127,30 @@ async function drainOnce(pool, deliver, now = new Date()) {
           [row.user_id, now]
         );
 
+        // Did this person write in the room that is running this coordination,
+        // since it started? Only then, and only for a row about that
+        // coordination, does the gate's 15-minute window open on it — the
+        // owner's rule, 2026-09-08. The query is what scopes the exception:
+        // `meetings.group_id` ties the row to one room, `last_wrote_at >=
+        // mt.created_at` is his "after the coordination started", and a row
+        // with no meeting behind it never asks at all.
+        //
+        // A message that did not name her never reaches this column (see
+        // migration 056), so a NULL here means "she was shown nothing from
+        // them", never "they said nothing".
+        const meetingId = Number(row.payload && row.payload.meetingId) || 0;
+        let groupWroteAt = null;
+        if (meetingId) {
+          const { rows: wrote } = await client.query(
+            `SELECT max(m.last_wrote_at) AS at
+               FROM meetings mt
+               JOIN chat_group_members m
+                 ON m.group_id = mt.group_id AND m.user_id = $2 AND m.left_at IS NULL
+              WHERE mt.id = $1 AND mt.group_id IS NOT NULL
+                AND m.last_wrote_at IS NOT NULL AND m.last_wrote_at >= mt.created_at`,
+            [meetingId, row.user_id]);
+          groupWroteAt = wrote[0] ? wrote[0].at : null;
+        }
         // An introduction still waiting to go out. Bounded to two days on
         // purpose: a repair that was queued and somehow never delivered must
         // not silence everything else for this person for ever, and past that
@@ -141,7 +173,7 @@ async function drainOnce(pool, deliver, now = new Date()) {
           checkinMisses: Number(row.checkin_misses) || 0,
           blockedUntil: row.quota_blocked_until,
           window: win.data.window, tz: row.timezone,
-          lastInboundAt: row.last_inbound_at,
+          lastInboundAt: row.last_inbound_at, groupWroteAt,
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,
           sentToday: sentRows[0].n, budget, now,
@@ -197,18 +229,60 @@ async function drainOnce(pool, deliver, now = new Date()) {
           for (const sib of siblings) {
             if (ids.length >= MAX_BATCH) break;
             if (batchKeyFor(sib) !== key) continue;
-            if (decide({ ...facts, row: sib }).action !== 'deliver') continue;
+            // `groupWroteAt` was read for THIS row's coordination and is the
+            // one fact here that is about the row rather than the person. The
+            // batch is reminders only, which never carry a meeting, so it is
+            // null for every sibling — said out loud rather than relied upon.
+            if (decide({ ...facts, groupWroteAt: null, row: sib }).action !== 'deliver') continue;
             ids.push(sib.id);
             titles.push(payloadOf(sib).title);
             carried.add(String(sib.id));
           }
         }
 
-        // `items` rides the in-memory row only. Nothing about the batch is
-        // written down, so a redelivery after a failed send re-forms it from
-        // whatever is still due then.
+        // ── The same, across kinds ──────────────────────────────────────
+        // The batch above merges reminders with reminders. This one merges
+        // everything else that came due in the same moment and is not
+        // diminished by the company — a check-in behind the morning digest,
+        // a "these went to the archive" beside it. domain/message-merge.js
+        // draws that line and holds the one-ask rule; here we only lock,
+        // re-decide and carry, exactly as above. A row is either in the
+        // reminder batch or in this one, never both: a reminder rides the raw
+        // pipe with the owner's wording and no model, and that is the whole
+        // reason it is not folded into a composed turn.
+        let mergedParts = null;
+        if (!key && mergeRoleFor(row)) {
+          const { rows: others } = await client.query(
+            `SELECT * FROM outbox
+              WHERE user_id = $1 AND id <> $2 AND sent_at IS NULL
+                AND kind = ANY($4)
+                AND (release_after IS NULL OR release_after <= $3)
+                AND (hold_reason IS DISTINCT FROM 'budget' OR release_after IS NOT NULL)
+              ORDER BY created_at, id
+              FOR UPDATE SKIP LOCKED`,
+            [row.user_id, row.id, now, MERGEABLE_KINDS]
+          );
+          // Re-decided rather than assumed, for the same reason as above:
+          // expiry, quiet and the introduction hold are all per row, and a row
+          // the gate would stop must not ride along on one it would not.
+          const deliverable = others.filter((sib) => decide({ ...facts, row: sib }).action === 'deliver');
+          const parts = planMerge(row, deliverable);
+          if (parts) {
+            mergedParts = parts.map((r) => ({ kind: r.kind, payload: payloadOf(r) }));
+            for (const part of parts) {
+              if (String(part.id) === String(row.id)) continue;
+              ids.push(part.id);
+              carried.add(String(part.id));
+            }
+          }
+        }
+
+        // `items` and `mergedParts` ride the in-memory row only. Nothing about
+        // the batch is written down, so a redelivery after a failed send
+        // re-forms it from whatever is still due then.
         const result = await deliver(
-          ids.length > 1 ? { ...row, payload: { ...payloadOf(row), items: titles } } : row
+          mergedParts ? { ...row, payload: { ...payloadOf(row), mergedParts } }
+            : ids.length > 1 ? { ...row, payload: { ...payloadOf(row), items: titles } } : row
         );
         if (result.ok) {
           await client.query(

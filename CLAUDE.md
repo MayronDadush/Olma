@@ -94,6 +94,18 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   where it does not wedge). The `deploy_drift` dashboard row
   (`jobs/deploy-drift.js`) reports this gap hourly — a row and never an alert,
   since being a few commits behind breaks nobody.
+- **A merge can produce NO run at all, and that is the one failure with
+  nothing to re-run.** On 2026-09-08 the merge of PR #285 to `main` created no
+  workflow run and no check suite — `gh run list` showed the branch's own
+  green runs and nothing for the merge commit — so `main` held code the box had
+  never seen and everything looked finished. **`gh api repos/<o>/<r>/commits/
+  <sha>/check-suites --jq .total_count` returning `0` is the tell**, and the
+  `RELEASE` sha is what proves it. The recovery is `gh workflow run
+  olma2-tests.yml --ref main` (the `workflow_dispatch` trigger exists for this
+  and deploys exactly as a push does). **A laptop `deploy.sh` is NOT the
+  fallback on a Mac** — Apple's rsync has no `--chown`, so it aborts after
+  archiving the outgoing release and before touching anything
+  (`incidents.md`, "The merge that never ran").
 - **A red `deploy` is EITHER a wedge or a real failure, and they take opposite
   actions** — `run-suite.sh`'s banner is what tells them apart, so read it
   before deciding a re-run means anything. A solo on-box suite runs ~234s
@@ -221,6 +233,25 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   templates), and a failed send fails for all of them and skips them for the
   rest of the tick. Vered got nine messages in ninety seconds
   (`incidents.md`, "Nine reminders, nine messages").
+- **Anything else due in the same moment is ONE message too, and two rules say
+  what may travel together** (`domain/message-merge.js`). A REMINDER is never
+  folded into a composed turn: every rung rides the raw pipe with the owner's
+  wording and no model, and handing the one sentence a person asked for to a
+  model that may reword or drop it would leave the row stamped delivered all
+  the same. And a merged message carries **at most one ASK** — two questions
+  get one answer and nothing can tell which was answered — with the statements
+  first and the question last. A row carrying its own hand-written
+  `instruction` is never composed with (that is what keeps an introduction
+  saying exactly what it says), and a kind absent from `MERGEABLE` goes alone,
+  so one added next month is safe until somebody reads it. Same place and same
+  reason as the reminder batch: at DELIVERY, no new row, no new key, every
+  sibling re-`decide()`d because expiry and the holds are per row.
+  **The daily budget counts `DISTINCT sent_at`, not rows** — one `UPDATE`
+  stamps a whole batch with one timestamp, and the budget limits how often
+  Olma interrupts somebody, which is messages. Counting rows charged a merged
+  message twice and made merging cost more than sending the same things apart;
+  it is also what made the first measurement of this problem read one message
+  as five (`incidents.md`, "Fifty-two seconds behind the introduction").
 
 ### Data you must not get wrong
 
@@ -837,6 +868,27 @@ have already had to be argued for.
   said once per coordination and again next week for the next one, at most one
   line per room per pass, and every one of them held to the group's own
   daytime — a line held at 02:00 stamps nothing and goes out in the morning.
+- **A sweep DECIDES and the `group_outbox` job SAYS** (migration 055). The row
+  and the stamp are written in one transaction, the UNIQUE `idempotency_key`
+  is what actually stops a sentence twice, and a claim is never handed back —
+  a sender that died mid-send leaves a row closed as `unconfirmed`, because a
+  room that misses a line is better off than a room told the same thing twice.
+  It is deliberately not the `outbox` table and has no column that can name a
+  user: one queue per audience, so the user gate stays the only door to a
+  person. **The cost is that a pass cannot see what it just said** —
+  `groupOutbox.pending` is how the gate sweep still knows not to nudge a room
+  it has only this second greeted (`incidents.md`, "The room was told twice").
+
+- **A member's message in the room opens the gate's fifteen-minute window for
+  that room's coordination, and for nothing else** (migration 056,
+  `chat_group_members.last_wrote_at`). It releases `night` and the `quiet`
+  drop on the same argument the DM window already makes — somebody who just
+  spoke is awake — and the SCOPE is the worker's query, not the gate: only a
+  row naming a meeting whose group they wrote in after that coordination
+  started. A pause is still read first and absolutely. **The column is blind
+  to anything that did not name her** (a registered room is
+  `requireMention: true`), so its silence is never evidence that somebody said
+  nothing.
 
 ### systemd scope
 

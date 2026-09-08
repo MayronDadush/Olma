@@ -12,6 +12,13 @@
 // model is in neither the roster path nor the speaking path — every word this
 // sweep sends is written in proactive-text.js and goes out on the raw pipe.
 //
+// Nothing here talks to the gateway any more: every sentence becomes a row in
+// `group_outbox` inside the same transaction as the stamp that records it as
+// said, and one sender drains that queue (domain/group-outbox.js). Deciding
+// and sending were one step until 2026-09-07, and the sixteen seconds between
+// them were long enough for a deploy to restart brokerd and have a room told
+// the same thing twice.
+//
 // The direction every uncertain case falls: **silent**. An unparseable roster
 // entry, a transcript that cannot be read, a group whose members we cannot
 // resolve — all of them leave the group locked. A group that stays quiet when
@@ -20,11 +27,10 @@
 const groups = require('../domain/groups');
 const flags = require('../domain/flags');
 const audit = require('../domain/audit');
-const text = require('../domain/proactive-text');
-const templates = require('../domain/message-templates');
 const groupContext = require('../domain/group-context');
 const groupMeetings = require('../domain/group-meetings');
 const groupVoice = require('../domain/group-voice');
+const groupOutbox = require('../domain/group-outbox');
 const gate = require('../outbox/gate');
 // Through the worker facade, never channels/sessions.js: every read there is
 // synchronous, and this runs inside brokerd on the loop that answers live
@@ -50,20 +56,6 @@ function greeterInstalled(configPath) {
 // May a proactive line go out to this group right now? Anything that is a
 // REPLY to a live tag always may — that is the grace window, not an exception
 // to it.
-// What `deps.send` answered, in the only three states that exist: it went
-// out, we do not know, or it definitely did not. A timeout is the middle one
-// — the gateway already has the message (channels/openclaw.js) — and for
-// every sentence she says ONCE per room the middle one has to count as said.
-// A room told "nice to meet you" twice, or walked through the whole gate
-// explanation a second time, is worse off than a room that missed one line,
-// and the timeout is not rare: it is what a busy box does.
-//
-// Booleans still work, because most callers and every older test speak them.
-function said(result) {
-  if (result === 'unknown') return 'unknown';
-  return result === true || result === 'sent' ? 'sent' : 'failed';
-}
-
 function mayAnnounce(group, now = new Date()) {
   const lastMention = group.last_mention_at ? new Date(group.last_mention_at).getTime() : 0;
   // `elapsed >= 0` is not pedantry. A mention stamped AFTER the moment we are
@@ -123,10 +115,6 @@ async function sweepGroups(client, deps) {
   // failure here that is invisible from the outside — she keeps working, she
   // is just answerable by people who never signed up.
   const senderGate = await syncSenderGate(client, configPath);
-  // The owner's rewordings of her four sentences (domain/message-templates),
-  // once per pass.
-  const wording = await templates.load(client);
-
   // Scoped to the agents that can actually own a group, never a full scan.
   // `listSessions()` opens every agent's sqlite store, and on a one-core box a
   // sweep that does that every ten seconds is the polling cost this project
@@ -144,10 +132,12 @@ async function sweepGroups(client, deps) {
     return all;
   });
   const out = {
-    registered: [], intros: 0, introFailed: 0, notices: 0, opened: [], relocked: [], announced: 0,
-    // Sends that blew the CLI timeout this pass: stamped as said, because
-    // they probably were, and counted here so the heartbeat shows the doubt.
-    unconfirmed: 0,
+    // Every one of these counts a sentence QUEUED, not delivered: this pass
+    // decides and writes the row, and `group_outbox` reports what actually
+    // went out. Splitting the two is the point — the deciding is transactional
+    // and the sending is not, and pretending otherwise is what said a line
+    // twice (migration 055).
+    registered: [], intros: 0, notices: 0, opened: [], relocked: [], announced: 0,
     unreadable: 0, strangers: 0, skipped: 0,
     // `senderGateOpen` is the loud one: true means the gateway is admitting
     // every sender in every group, and nothing else in this pass can tell.
@@ -199,25 +189,17 @@ async function sweepGroups(client, deps) {
     // has usually delivered the message, and a room greeted twice reads worse
     // than one greeted late.
     if (!group.introduced_at) {
-      const delivery = said(await deps.send(jid, text.renderGroupIntro(wording)));
-      if (delivery !== 'failed') {
-        if (delivery === 'unknown') out.unconfirmed++; else out.intros++;
-        justGreeted = true;
-        const { rows: stamped } = await client.query(
-          `UPDATE chat_groups SET introduced_at = now() WHERE id = $1 RETURNING *`, [group.id]);
-        group = stamped[0] || group;
-        await audit.record(client, group.registered_by_user_id, 'group.introduced', {
-          groupId: group.id, externalId: jid,
-        });
-      } else {
-        // Said nothing and stamped nothing: it is due again next pass. The
-        // notice below is not — a room that has not been greeted has nothing
-        // to be nudged about yet.
-        out.introFailed++;
-        await client.query(`UPDATE chat_groups SET last_seen_at = $2 WHERE id = $1`,
-          [group.id, new Date(session.lastInteractionAt || now)]);
-        continue;
-      }
+      await groupOutbox.enqueue(client, {
+        groupId: group.id, kind: 'intro', idempotencyKey: `g${group.id}:intro`,
+      });
+      out.intros++;
+      justGreeted = true;
+      const { rows: stamped } = await client.query(
+        `UPDATE chat_groups SET introduced_at = now() WHERE id = $1 RETURNING *`, [group.id]);
+      group = stamped[0] || group;
+      await audit.record(client, group.registered_by_user_id, 'group.introduced', {
+        groupId: group.id, externalId: jid,
+      });
     }
 
     // A roster line we could not read a phone out of is a member we cannot
@@ -242,7 +224,12 @@ async function sweepGroups(client, deps) {
     // actually asks her for something.
     const lastSeen = group.last_seen_at ? new Date(group.last_seen_at).getTime() : 0;
     const activity = Number(session.lastInteractionAt || 0);
-    const isNew = !justGreeted && activity > lastSeen;
+    // `justGreeted` covers the pass that decided the introduction; the pending
+    // row covers every pass after it until the greeting has actually gone out.
+    // Deciding and sending are separate transactions now, so a pass that finds
+    // `introduced_at` stamped is NOT evidence the room has heard anything yet.
+    const greetingOwed = justGreeted || await groupOutbox.pending(client, group.id, 'intro');
+    const isNew = !greetingOwed && activity > lastSeen;
     // Somebody is demonstrably present either way, which is what the
     // announcement's grace window is about.
     if (activity > lastSeen) await groups.noteMention(client, group.id);
@@ -296,15 +283,15 @@ async function sweepGroups(client, deps) {
       // that room needs. `gate_notice_at` is stamped only by a notice about
       // somebody MISSING, never by `too_large` (migration 047).
       if (!group.opened_announced_at && group.gate_notice_at && mayAnnounce(group, now)) {
-        const delivery = said(await deps.send(jid, text.renderGroupOpened(wording)));
-        if (delivery !== 'failed') {
-          if (delivery === 'unknown') out.unconfirmed++; else out.announced++;
-          await client.query(`UPDATE chat_groups SET opened_announced_at = now() WHERE id = $1`,
-            [group.id]);
-          await audit.record(client, group.registered_by_user_id, 'group.opened', {
-            groupId: group.id, externalId: jid, from: before,
-          });
-        }
+        await groupOutbox.enqueue(client, {
+          groupId: group.id, kind: 'opened', idempotencyKey: `g${group.id}:opened`,
+        });
+        out.announced++;
+        await client.query(`UPDATE chat_groups SET opened_announced_at = now() WHERE id = $1`,
+          [group.id]);
+        await audit.record(client, group.registered_by_user_id, 'group.opened', {
+          groupId: group.id, externalId: jid, from: before,
+        });
       }
     } else if (isNew) {
       // Tagged while locked. Every tag gets an answer — the owner's rule, and
@@ -315,19 +302,25 @@ async function sweepGroups(client, deps) {
       // the tag, it is plainly an answer to that person.
       const notice = groups.decideNotice(group);
       if (notice.kind !== 'none') {
-        const body = notice.kind === 'too_large'
-          ? text.renderGroupTooLarge(Number(await flags.getFlag(client, 'group_max_members')) || 25, wording)
-          : text.renderGroupGateNotice({ kind: notice.kind, missing: missing.map((m) => m.phone) }, wording);
-        const opts = ctx.messageId ? { replyTo: ctx.messageId } : undefined;
-        const delivery = said(await deps.send(jid, body, opts));
-        if (delivery !== 'failed') {
-          if (delivery === 'unknown') out.unconfirmed++; else out.notices++;
-          // `toldOfMissing` is what earns the opening line later: a room told
-          // it is too large was never waiting on a person.
-          await groups.noteNoticeSent(client, group.id, {
-            toldOfMissing: notice.kind !== 'too_large',
-          });
-        }
+        // The key counts the notice, so a second tag earns a second (shorter)
+        // one while the first can never be written twice.
+        const nth = Number(group.notices_sent || 0) + 1;
+        const payload = notice.kind === 'too_large'
+          ? { maxMembers: Number(await flags.getFlag(client, 'group_max_members')) || 25 }
+          : { kind: notice.kind, missing: missing.map((m) => m.phone) };
+        await groupOutbox.enqueue(client, {
+          groupId: group.id,
+          kind: notice.kind === 'too_large' ? 'too_large' : 'gate_notice',
+          payload,
+          replyTo: ctx.messageId || null,
+          idempotencyKey: `g${group.id}:notice:${nth}`,
+        });
+        out.notices++;
+        // `toldOfMissing` is what earns the opening line later: a room told
+        // it is too large was never waiting on a person.
+        await groups.noteNoticeSent(client, group.id, {
+          toldOfMissing: notice.kind !== 'too_large',
+        });
       }
     }
 
@@ -353,8 +346,7 @@ async function sweepGroups(client, deps) {
 // asked for these, which is exactly what makes the hour matter.
 async function sweepGroupVoice(client, deps) {
   const now = deps.now || new Date();
-  const wording = await templates.load(client);
-  const out = { said: [], unconfirmed: 0, failed: 0, held: 0 };
+  const out = { said: [], held: 0 };
 
   // Coordinations that could still owe the room a sentence. A confirmed one
   // is here only until its line goes out; a negotiating one stays until it
@@ -401,9 +393,12 @@ async function sweepGroupVoice(client, deps) {
     // columns and not one counter.
     if (!mayAnnounce(row, now)) { out.held++; continue; }
 
-    const delivery = said(await deps.send(row.external_id, text.renderGroupCoordination(line, wording)));
-    if (delivery === 'failed') { out.failed++; continue; }
-    if (delivery === 'unknown') out.unconfirmed++;
+    await groupOutbox.enqueue(client, {
+      groupId: row.id,
+      kind: 'coordination',
+      payload: { line },
+      idempotencyKey: `g${row.id}:m${row.meeting_id}:${line.kind}`,
+    });
     const column = {
       base: 'group_base_at', chase: 'group_chase_at', done: 'group_done_at',
       dayof: 'group_dayof_at', soon: 'group_hour_at',

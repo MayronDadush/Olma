@@ -2,7 +2,7 @@
 // The three sentences a room hears without asking. Most of what matters here
 // is what it does NOT say: not twice, not about a plan that is already set,
 // not at two in the morning, and not to somebody who answered and said no.
-const { test, before, after } = require('node:test');
+const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { freshDb, makeUser, slotStart } = require('./helpers');
 const { withTx } = require('../src/db/pool');
@@ -11,10 +11,21 @@ const groupMeetings = require('../src/domain/group-meetings');
 const groupVoice = require('../src/domain/group-voice');
 const options = require('../src/domain/meeting-options');
 const groupsJob = require('../src/jobs/groups');
+const groupOutbox = require('../src/domain/group-outbox');
 
 let db;
 before(async () => { db = await freshDb(); });
 after(async () => { await db.teardown(); });
+
+// Since migration 055 a line is DECIDED in one pass and DELIVERED by another,
+// so a line this file's earlier tests decided and the hour then held is still
+// owed when a later test drains the queue at a daytime `now` — and it goes out
+// into that test's recorder, about another test's room. Two chase lines
+// arrived in the middle of the reminder story that way. Each test's story is
+// its own room and its own queue.
+beforeEach(async () => {
+  await db.pool.query(`DELETE FROM group_outbox WHERE sent_at IS NULL`);
+});
 
 const JID = (n) => `12036322222222${n}@g.us`;
 const TOKEN = (n) => 'olma_grp_' + String(n).padStart(2, '0').repeat(16);
@@ -39,12 +50,26 @@ async function room(n, { subject = 'פאדל' } = {}) {
 }
 
 // A pass with a recording sender, at an hour inside the group's window.
-async function pass(sent, at = null) {
+// Both halves, in brokerd's order: the sweep decides and writes a row, the
+// sender drains it (migration 055). What the room HEARS is `sent`.
+//
+// `onlyJid` keeps a test's `sent` array to its OWN room. Every room every
+// earlier test in this file built is still in the database, and this sweep
+// visits all of them: a pass told a `now` far enough ahead makes those older
+// coordinations due for their chase line, which then lands in this test's
+// array and is counted as one of its own messages. That is not flakiness — the
+// sweep is behaving correctly and the collection was too wide.
+async function pass(sent, at = null, onlyJid = null) {
   const now = at || (() => { const d = new Date(); d.setUTCHours(11, 0, 0, 0); return d; })();
-  return withTx(db.pool, (c) => groupsJob.sweepGroupVoice(c, {
+  const decided = await withTx(db.pool, (c) => groupsJob.sweepGroupVoice(c, { now }));
+  const drained = await groupOutbox.drainOnce(db.pool, {
     now,
-    send: async (jid, body) => { sent.push({ jid, body }); return 'sent'; },
-  }));
+    send: async (jid, body) => {
+      if (!onlyJid || jid === onlyJid) sent.push({ jid, body });
+      return 'sent';
+    },
+  });
+  return { ...decided, ...drained };
 }
 
 test('a room hears "there is a direction" once, when two people can make the same time', async () => {
@@ -58,12 +83,12 @@ test('a room hears "there is a direction" once, when two people can make the sam
   const optionId = await withTx(db.pool, async (c) =>
     (await options.add(c, a.id, meetingId, 'שלישי 20:00', when)).data.option.id);
   let sent = [];
-  await pass(sent);
+  await pass(sent, null, group.external_id);
   assert.deepEqual(sent, [], 'one person agreeing with themselves is not news');
 
   await withTx(db.pool, (c) => options.answer(c, b.id, meetingId, optionId, 'y'));
   sent = [];
-  await pass(sent);
+  await pass(sent, null, group.external_id);
   assert.equal(sent.length, 1);
   assert.match(sent[0].body, /יש כיוון/);
   assert.match(sent[0].body, /שלישי 20:00/);
@@ -71,7 +96,7 @@ test('a room hears "there is a direction" once, when two people can make the sam
 
   // Said once, ever, for this coordination.
   sent = [];
-  await pass(sent);
+  await pass(sent, null, group.external_id);
   assert.deepEqual(sent, [], 'the second pass has nothing new to say');
 });
 
@@ -87,12 +112,12 @@ test('the base of a game is its own minimum, not two people', async () => {
   await withTx(db.pool, (c) => options.answer(c, b.id, meetingId, optionId, 'y'));
 
   let sent = [];
-  await pass(sent);
+  await pass(sent, null, group.external_id);
   assert.deepEqual(sent, [], 'two of the three this game needs is not a base');
 
   await withTx(db.pool, (c) => options.answer(c, c3.id, meetingId, optionId, 'y'));
   sent = [];
-  await pass(sent);
+  await pass(sent, null, group.external_id);
   assert.equal(sent.length, 1);
   assert.match(sent[0].body, /יש כיוון/);
 });
@@ -110,7 +135,7 @@ test('a settled coordination is announced, and nothing else about it is', async 
   await withTx(db.pool, (c) => groupMeetings.settle(c, fresh, a, optionId));
 
   const sent = [];
-  await pass(sent);
+  await pass(sent, null, group.external_id);
   assert.equal(sent.length, 1, 'one line, not "there is a direction" and "it is set"');
   assert.match(sent[0].body, /סגור/);
   assert.match(sent[0].body, /חמישי 19:00/);
@@ -133,7 +158,7 @@ test('nothing proactive goes out in the middle of the night', async () => {
   const night = new Date();
   night.setUTCHours(1, 0, 0, 0);
   const sent = [];
-  const held = await pass(sent, night);
+  const held = await pass(sent, night, group.external_id);
   assert.deepEqual(sent, []);
   assert.equal(held.held, 1, 'held, not dropped — nothing was stamped');
 
@@ -228,15 +253,22 @@ test('the reminders ride the same pass, once each, and only for this coordinatio
   const fresh = await withTx(db.pool, (c) => groups.getById(c, group.id));
   await withTx(db.pool, (c) => groupMeetings.settle(c, fresh, a, optionId));
 
+  // This room only. The last pass below jumps `now` past the meeting, which is
+  // also far enough ahead to make the coordinations OTHER tests in this file
+  // left behind due for their chase — real lines, correctly sent, to other
+  // rooms. Collecting them here made this assertion depend on the hour the
+  // suite ran: green in CI on 2026-09-07 and red on the 08:00 clock-drift run
+  // the next morning, on bytes nobody had touched.
   const sent = [];
-  await pass(sent, new Date(at.getTime() - 8 * 3600_000));
+  const mine = JID(5);
+  await pass(sent, new Date(at.getTime() - 8 * 3600_000), mine);
   assert.match(sent[0].body, /סגור/, 'first it is set');
-  await pass(sent, new Date(at.getTime() - 7 * 3600_000));
+  await pass(sent, new Date(at.getTime() - 7 * 3600_000), mine);
   assert.match(sent[1].body, /היום/, 'then, on the day');
-  await pass(sent, new Date(at.getTime() - 7 * 3600_000));
+  await pass(sent, new Date(at.getTime() - 7 * 3600_000), mine);
   assert.equal(sent.length, 2, 'and not twice');
-  await pass(sent, new Date(at.getTime() - 30 * 60_000));
+  await pass(sent, new Date(at.getTime() - 30 * 60_000), mine);
   assert.match(sent[2].body, /עוד שעה/, 'then an hour before');
-  await pass(sent, new Date(at.getTime() + 60_000));
+  await pass(sent, new Date(at.getTime() + 60_000), mine);
   assert.equal(sent.length, 3, 'and nothing at all once it has started');
 });
