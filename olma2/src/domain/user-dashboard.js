@@ -74,7 +74,8 @@ async function gateIdentity(client, userId) {
 async function loadUser(client, userId) {
   const { rows } = await client.query(
     `SELECT id, first_name, last_name, assistant_name, timezone, timezone_confirmed,
-            locale, paused_at IS NOT NULL AS paused, digest_scope, calendar_sync_tasks
+            locale, paused_at IS NOT NULL AS paused, digest_scope, calendar_sync_tasks,
+            birthday, address_gender
      FROM users WHERE id = $1 AND status != 'blocked' AND is_eval = false`,
     [userId]
   );
