@@ -71,7 +71,8 @@ async function gateIdentity(client, userId) {
 async function loadUser(client, userId) {
   const { rows } = await client.query(
     `SELECT id, first_name, last_name, assistant_name, timezone, timezone_confirmed,
-            locale, paused_at IS NOT NULL AS paused, digest_scope, calendar_sync_tasks
+            locale, paused_at IS NOT NULL AS paused, digest_scope, calendar_sync_tasks,
+            COALESCE(onboarded_at, created_at) AS member_since
      FROM users WHERE id = $1 AND status != 'blocked' AND is_eval = false`,
     [userId]
   );
@@ -564,6 +565,13 @@ async function load(client, userId) {
       // omits these leaves a real person looking at the fixture's name.
       lastName: user.last_name,
       assistantName: user.assistant_name,
+      // When they became a member, which the page had been asserting as a
+      // fixed sentence — "מאז מאי 2026" for everybody, including people who
+      // joined in September. `onboarded_at` is the moment provisioning made
+      // them active; `created_at` covers a row that predates it (an invited
+      // stranger, a waitlist entry). Sent as an instant and rendered as a
+      // month in the reader's own language, like every other date here.
+      memberSince: user.member_since ? user.member_since.toISOString() : null,
       timezone: zone,
       timezoneConfirmed: user.timezone_confirmed,
       // Rendered in whatever language they have been writing in — it is not a

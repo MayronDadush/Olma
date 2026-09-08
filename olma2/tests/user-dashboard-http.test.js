@@ -319,6 +319,21 @@ test('a permission that has a screen behind it offers to open it, and only while
     'the coordination "+" no longer lands on the meetings screen with that person on it');
 });
 
+// "חבר בעולמה מאז מאי 2026" was not a date. It was a fixed sentence in the
+// copy table, shown to every person on the system — including the ones who
+// joined in September — and no column was ever consulted for it.
+test('the joining line is a date the server sent, not a sentence', async () => {
+  const cookie = await signIn();
+  const html = await (await get('/me', { headers: { cookie } })).text();
+  assert.doesNotMatch(html, /"me\.since":"[^"]*2026[^"]*"/,
+    'the joining month is hard-coded in the copy table again');
+  assert.match(html, /"me\.since":"[^"]*\{when\}/, 'the sentence lost the slot the date goes in');
+  assert.match(html, /id="whoSince"/, 'nothing on the page renders the joining line');
+  // Silent beats wrong: a payload with no date shows no line at all.
+  assert.ok(html.includes('MEMBER_SINCE ? t("me.since", {when:monthLabel(MEMBER_SINCE)}) : ""'),
+    'a page with no joining date would assert one anyway');
+});
+
 // The page draws in whatever `data-locale` the root element carries and falls
 // back to Hebrew without one. For a signed-in person that attribute IS the
 // language decision, and until 2026-09-07 nothing set it: Sarah's row said
