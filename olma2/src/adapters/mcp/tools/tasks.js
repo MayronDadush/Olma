@@ -4,6 +4,7 @@ const {
   tasks, S, tool, ok,
 } = require('./_shared');
 const dt = require('../../../domain/datetime');
+const format = require('../../../domain/message-format');
 
 // What to tell the person about what add_task/add_tasks_bulk just did — on
 // the RESULT, only on the calls where it applies, rather than four sentences
@@ -116,10 +117,16 @@ function taskHints(res, user = {}) {
 // the calendar, then what is on the plate. Only when there is a calendar.
 function listHints(res) {
   if (!res || !res.ok || !res.data || !Array.isArray(res.data.tasks)) return res;
-  if (!res.data.tasks.some((t) => t.kind === 'event')) return res;
+  // Two conditions, not one: "there are several of these" and "two of these
+  // are different things" are different facts about the same result, and the
+  // layout hint has no work to do on a single line.
+  if (res.data.tasks.length < 2) return res;
+  const layout = { layout: format.HINTS.list };
+  if (!res.data.tasks.some((t) => t.kind === 'event')) return ok({ ...res.data, hints: layout });
   return ok({
     ...res.data,
     hints: {
+      ...layout,
       kinds: 'kind:"event" rows are CALENDAR entries (a moment they will be at — meeting, appointment, '
         + 'shift; it leaves the list by itself once it passes); kind:"todo" rows are jobs until done. '
         + 'When you tell them what they have, give the calendar first as "ביומן" and the to-dos after '
@@ -156,7 +163,16 @@ module.exports = [
     (client, user, a) => tasks.completeTask(client, user.id, a.task_id)),
   tool('snooze_task', 'Move a task\'s due date; its reminders follow (a rung chasing the old date is closed, the automatic one re-arms an hour before the new one). new_due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00); a bare local time is rejected.',
     { task_id: S('number', 'Task id'), new_due_at: S('string', 'New ISO-8601 datetime WITH UTC offset') }, ['task_id', 'new_due_at'],
-    async (client, user, a) => taskHints(await tasks.snoozeTask(client, user.id, a.task_id, a.new_due_at), user)),
+    async (client, user, a) => {
+      const res = taskHints(await tasks.snoozeTask(client, user.id, a.task_id, a.new_due_at), user);
+      // Deliberately NOT inside `taskHints`: add_task and edit_task go through
+      // it too and both earn a 👍, and an unconditional "say this" beside a
+      // conditional markPlaced is the fault that put a sentence under a live
+      // thumbs-up for two days (CLAUDE.md, "markPlaced is CONDITIONAL").
+      // snooze_task earns no mark, so a sentence is expected of it anyway.
+      if (!res || !res.ok || !res.data) return res;
+      return ok({ ...res.data, hints: { ...(res.data.hints || {}), moved: format.HINTS.struckOut } });
+    }),
   tool('edit_task', 'Change an existing task\'s title, kind, location, category or time — WITHOUT losing its reminders or place under a project. Send only the fields you are changing; null clears one. Gives a task an end time: a shift saved as "משמרת - ראשון 12:00-19:00" becomes title "משמרת", due_at 12:00, ends_at 19:00.',
     { task_id: S('number', 'Task id'), title: S('string', 'Optional new title'),
       kind: S('string', 'event | todo'),

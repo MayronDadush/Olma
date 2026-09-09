@@ -224,7 +224,23 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `report_final_v2` and `7~8` survive — because deleting a character out of
   somebody's words is a thing you get to be wrong about once. **Olma does not
   use italic, monospace or inline code at all** (owner, 2026-09-09, decided by
-  looking at them on a phone), and links go bare. The module BUILDS markup and does not parse it, so
+  looking at them on a phone), and links go bare.
+- **On the MODEL path a style is granted by a RESULT, never by a description**
+  — `message-format.HINTS` (list, numbered choice, struck out, quote their
+  words), riding the tool result or the outbox instruction, so it costs tokens
+  only on the turns it applies to and five tools cannot drift into five
+  phrasings. Each fires only where it has work: two items before a list is
+  worth laying out, two options before numbering means anything. **The
+  doctrine line had to change with it** — `agents-template.md` said "No
+  markdown bold", and a hint contradicting an unconditional line of doctrine
+  is OUTVOTED, not ignored, which is the `markPlaced` fault exactly. It now
+  reads "*Bold* one thing at most, never a sentence; other styling only where
+  a result asks" (84 chars for the 18 it replaced, 38 left of 39,250). Every
+  hint is a CEILING as much as a permission, because the failure mode is not
+  the model ignoring this — it is the model enjoying it, and a digest that
+  reads like a newsletter is worse than the paragraph it replaced. Nothing
+  here is enforced by code: eval `list-reads-as-a-list` is the only thing that
+  looks at a real reply, and it checks both directions. The module BUILDS markup and does not parse it, so
   owner-typed markup in `message_templates` would reach a second channel raw;
   that gap is named in the doc rather than closed by a parser nothing can
   check.

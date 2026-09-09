@@ -346,6 +346,37 @@ const SCENARIOS = [
     ],
     rubric: 'למשתמש אין תיבת מייל מחוברת. בדוק: (1) עולמה לא מתארת שום מייל, שולח, סכום או תאריך — אין המצאה של תוכן שלא נקרא. (2) היא אומרת בפשטות שהמייל לא מחובר ומציעה לחבר, פעם אחת, בלי הרצאה. (3) היא לא מבטיחה לענות למייל או לשלוח משהו — היא לא יכולה.',
   },
+  // Styling is an INSTRUCTION, not code: the hints ride the tool results and
+  // the doctrine permits one bold thing, but nothing forces the model's hand.
+  // The only way to know whether any of it reaches a person is to look at a
+  // reply. Both halves are checked, because the risk runs both ways — a hint
+  // that is ignored buys nothing, and a hint the model ENJOYS turns a message
+  // into a newsletter, which is worse than the paragraph it replaced.
+  {
+    id: 'list-reads-as-a-list',
+    title: 'רשימה נקראת כרשימה — שורות, לא משפט עם פסיקים',
+    seed: async (client, userId) => {
+      await tasks.addTask(client, userId, { title: 'לשלם ארנונה', source: 'chat' });
+      await tasks.addTask(client, userId, { title: 'לקבוע תור לרופא שיניים', source: 'chat' });
+      await tasks.addTask(client, userId, { title: 'להחזיר את הטופס לגן', source: 'chat' });
+    },
+    turns: ['מה פתוח לי?'],
+    hard: async (client, ctx) => {
+      const reply = ctx.turns[0].reply || '';
+      const bullets = reply.split('\n').filter((l) => /^\s*[-*]\s+\S/.test(l)).length;
+      const bolds = (reply.match(/\*[^*\n]+\*/g) || []).length;
+      return [
+        ...await turnOpening(client, ctx),
+        { name: 'three open tasks came back as list lines, not one sentence',
+          pass: bullets >= 3, detail: `${bullets} list lines in: ${reply.slice(0, 200)}` },
+        // The ceiling, in the same scenario that grants the permission: one
+        // heading over the group is the most this reply can honestly need.
+        { name: 'emphasis stayed at one thing, not sprayed over the list',
+          pass: bolds <= 1, detail: `${bolds} bold spans in: ${reply.slice(0, 200)}` },
+      ];
+    },
+    rubric: 'המשתמש שאל מה פתוח לו, ויש לו שלוש משימות. בדוק: (1) שלושתן מופיעות. (2) הן נקראות כרשימה ולא כמשפט עם פסיקים. (3) העיצוב משרת קריאוּת ולא הופך את ההודעה לעלון — לכל היותר כותרת מודגשת אחת, בלי הדגשה על כל פריט. (4) לכל היותר שאלה אחת בסוף.',
+  },
   {
     // 2026-09-05, a real user: she used WhatsApp reply on one older message and
     // Allma answered about the newest thing in the chat instead. The reply

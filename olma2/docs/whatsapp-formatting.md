@@ -123,9 +123,28 @@ The words in the table are never touched — this is a rendering decision, and
   out as typed, which is how emphasis on a verbatim message is his to decide
   without a deploy.
 - **Everything in a group**: fixed text, always WhatsApp by definition.
-- **Everything a model writes**: unstyled, still. `agents-template.md` says
-  "No markdown bold", which is a deliberate voice decision, not an oversight.
-  Reversing it belongs in that file, which renders at 39,146 of the 39,250
-  characters the gateway will inject — about 104 free, plus the 17 that
-  sentence itself occupies. Enough for one instruction, which is not the same
-  as having decided what the instruction should say.
+- **Everything a model writes**: styled where a RESULT says so, and nowhere
+  else. `message-format.HINTS` holds the four sentences — list, numbered
+  choice, struck out, quote their words — in one place so five tools cannot
+  drift into five phrasings. They ride the tool result or the outbox
+  instruction, never a tool description: a description is injected every turn
+  for every user, a result costs tokens only on the turns it applies to.
+  Wired into `list_my_tasks`, `list_my_reminders`, `my_calendar_events` and
+  the digest (lists); `get_meeting_status` (numbering, and what left);
+  `snooze_task` and `tasks_auto_archived` (what left); `relayed_message`,
+  `connection_request`, `travel`, `live_update` and both meeting reasons
+  (quote). Each fires only where it has work — two items before a list is
+  worth laying out, two options before numbering means anything.
+- **The doctrine line changed**, and had to. `agents-template.md` said "No
+  markdown bold", and a result hint that contradicts an unconditional line of
+  doctrine is *outvoted*, not ignored — that is the `markPlaced` fault, which
+  cost two days. It now reads "*Bold* one thing at most, never a sentence;
+  other styling only where a result asks", which is 84 characters against the
+  18 it replaced and leaves 38 free of the gateway's 39,250.
+- **What no test can tell you**: whether the model complies. These are
+  instructions. `evals/scenarios.js` → `list-reads-as-a-list` is the only
+  thing that actually looks at a reply, and it checks both directions — three
+  tasks come back as three list lines, and emphasis stays at one span. A hint
+  the model enjoys is worse than one it ignores.
+
+Before 2026-09-09 everything a model wrote was unstyled.

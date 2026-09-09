@@ -172,3 +172,44 @@ test('what Olma writes herself is never cleaned — only what somebody else type
   const out = renderReminderText({ title: 'תרופה' }, { reminder: '⏰ *{{title}}*' }, 'he', 'whatsapp');
   assert.equal(out, '⏰ *תרופה*');
 });
+
+// ---- where the guidance actually rides -------------------------------------
+// Styling on the model path is an instruction, and an instruction is only
+// worth anything where the model reads it. These assert the plumbing: the
+// hint is on the RESULT (not in a description, which every turn pays for),
+// and it fires only where it has work to do.
+test('the styling hints ride results and instructions, never a tool description', () => {
+  const { TOOLS } = require('../src/adapters/mcp/registry');
+  // A detector that can no longer fail is not a detector: if the registry ever
+  // stops handing us tools, this must go red rather than quietly pass.
+  assert.ok(Array.isArray(TOOLS) && TOOLS.length > 50, `registry returned ${TOOLS && TOOLS.length} tools`);
+  for (const t of TOOLS) {
+    const desc = String((t && (t.description || (t.spec && t.spec.description))) || '');
+    for (const [key, hint] of Object.entries(format.HINTS)) {
+      assert.ok(!desc.includes(hint.slice(0, 40)),
+        `${t.name}'s DESCRIPTION carries the ${key} hint — every turn for every user pays for that`);
+    }
+  }
+});
+
+test('every hint is a ceiling as well as a permission', () => {
+  // The failure mode is not that the model ignores this, it is that it enjoys
+  // it. Each hint therefore has to say where to stop, in its own words.
+  const bounded = {
+    list: /[Nn]ever as a comma-separated sentence/,
+    numberedChoice: /answer with just the number/,
+    struckOut: /kept in place rather than dropped/,
+    quoteTheirWords: /never the fence markers/,
+  };
+  for (const [key, re] of Object.entries(bounded)) {
+    assert.match(format.HINTS[key], re, `${key} grants without bounding`);
+  }
+  // And the doctrine line that permits bold at all still names its own limit,
+  // in the file the gateway injects every turn.
+  const doctrine = require('node:fs')
+    .readFileSync(require('node:path').join(__dirname, '..', 'src/intake/agents-template.md'), 'utf8');
+  assert.match(doctrine, /\*Bold\* one thing at most, never a sentence/);
+  assert.doesNotMatch(doctrine, /No markdown bold/,
+    'the prohibition and the permission cannot both be in there — a hint that contradicts '
+    + 'doctrine is outvoted, which is the markPlaced fault');
+});
