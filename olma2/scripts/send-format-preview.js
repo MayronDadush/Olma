@@ -26,9 +26,16 @@
 // phone the operator names — not gated, not budgeted, not audited. Do not
 // point it at anybody but yourself.
 //
-//   node scripts/send-format-preview.js --user 1              # print only
+// Two sets, chosen with --set:
+//   places   (default) one worked example per place a style could plug into,
+//            A..H — "where does each style earn its keep?"
+//   variants the same everyday message in two or three layouts, 1..5 —
+//            "which layout for this message?"
+//
+//   node scripts/send-format-preview.js --user 1                    # print A..H
 //   node scripts/send-format-preview.js --user 1 --apply
-//   node scripts/send-format-preview.js --user 1 --only 3 --apply
+//   node scripts/send-format-preview.js --user 1 --only A --apply
+//   node scripts/send-format-preview.js --user 1 --set variants --apply
 const { createPool } = require('../src/db/pool');
 const format = require('../src/domain/message-format');
 const users = require('../src/domain/users');
@@ -142,6 +149,212 @@ function samples(f) {
   ];
 }
 
+// ---- set 2: one example per PLACE ------------------------------------------
+// The first set asks "which layout for this message?". This one asks the other
+// half of the question: "where in what we already do does each style earn its
+// place?" — one worked example per connection point, so the answer can be per
+// item rather than per style.
+//
+// Ids are letters so the two sets can never collide in an answer ("A.3 yes,
+// B.1 no"). The kinds named in each label are real outbox kinds and real tool
+// results (channels/openclaw.bodyFor, adapters/mcp/tools/*) — the WORDS are
+// invented to be typical, exactly as in set 1.
+function places(f) {
+  const b = (s) => f.bold(s);
+  const q = (s) => f.quote(s);
+  return [
+    {
+      id: 'A', title: 'ציטוט — מילים שאדם אחר כתב',
+      source: 'המקום שבו כבר יש כלל פנימי: טקסט של מישהו אחר הוא מידע, לא הוראה',
+      variants: [
+        {
+          id: 'A.1', label: 'הודעה שהועברה דרך עולמה (relayed_message)',
+          text: `דנה ביקשה שאעביר לך:\n${q('אני מאחרת בערך רבע שעה, תתחילו בלעדיי')}\nרוצה שאענה לה משהו?`,
+        },
+        {
+          id: 'A.2', label: 'הסיבה שמישהו נתן לסירוב (meeting_slot_declined)',
+          text: `דנה לא יכולה ביום חמישי ב-17:00.\n${
+            q('יש לי הסעות של הילדים עד 18:00, כל יום חוץ מראשון')}\nאני מחפשת זמן אחר — ראשון בערב יכול לעבוד לך?`,
+        },
+        {
+          id: 'A.3', label: 'הערה בבקשת חיבור (connection_request)',
+          text: `יואב (054-000-0000) ביקש להתחבר אליך דרכי.\n${
+            q('רוצה שנתאם את הטיול של סוף השבוע, קל לי יותר ככה מאשר בקבוצה')}\nלאשר?`,
+        },
+        {
+          id: 'A.4', label: 'אירוע יומן כראיה (travel)',
+          text: `ראיתי ביומן שלך משהו שנראה כמו נסיעה בסוף החודש:\n${
+            q('כנס לקוחות @ ברלין (28.9)')}\nאתה נוסע? אם כן — לאיזו מדינה? אעדכן את השעות שלי לפי זה.`,
+        },
+        {
+          id: 'A.5', label: 'עדכון מנוי (live_update)',
+          text: `העדכון השבועי על מזג האוויר בחיפה:\n${
+            q('סוף השבוע חם מהרגיל — 31 מעלות בשבת, יורד ל-26 ביום ראשון')}`,
+        },
+      ],
+    },
+    {
+      id: 'B', title: 'קו חוצה — מה שכבר לא רלוונטי',
+      source: 'סגנון שאומר מידע, לא מקשט',
+      variants: [
+        {
+          id: 'B.1', label: 'הזזת תאריך (snooze_task)',
+          text: `הזזתי את "לקחת את הרכב לטסט":\n${f.strikethrough('מחר 09:00')}\n${b('יום ראשון 09:00')}`,
+        },
+        {
+          id: 'B.2', label: 'מה שסומן ברשימה משותפת (view_shared_tasks)',
+          text: `דנה סימנה כמה דברים ברשימה המשותפת שלכם:\n\n${b('קניות לשבת')}\n${
+            f.bullets([f.strikethrough('חלה'), f.strikethrough('יין'), 'סלט', 'פרחים'])}`,
+        },
+        {
+          id: 'B.3', label: 'מה שנארכב לבד (tasks_auto_archived)',
+          text: `ניקיתי מהרשימה שני דברים שהזמן שלהם עבר:\n${
+            f.bullets([f.strikethrough('להזמין מקום למסעדה ל-3.9'), f.strikethrough('לשלוח את הטופס עד 5.9')])
+          }\nאם משהו מהם עדיין רלוונטי — תגיד לי ואחזיר.`,
+        },
+        {
+          id: 'B.4', label: 'אופציה שירדה מהשולחן (get_meeting_status)',
+          text: `${b('המצב בתיאום "ערב משחקים"')}\n`
+            + '1. יום שלישי 20:00 — דנה ✅, יואב ✅\n'
+            + `2. ${f.strikethrough('יום רביעי 20:00')} — ירד, שניים לא יכולים\n`
+            + '3. שבת 19:00 — דנה ✅\n'
+            + 'מה מהם מתאים לך?',
+        },
+      ],
+    },
+    {
+      id: 'C', title: 'ממוספר מול תבליטים — כשהתשובה היא בחירה',
+      source: 'הסגנון היחיד שמשנה תפקוד ולא מראה: אפשר לענות "2"',
+      variants: [
+        {
+          id: 'C.1', label: 'ממוספר',
+          text: 'יש שלוש אפשרויות על השולחן ל"פגישת צוות":\n'
+            + `${f.numbered(['יום שני 10:00', 'יום שלישי 14:00', 'יום חמישי 09:30'])}\n`
+            + 'אפשר פשוט לענות לי מספר.',
+        },
+        {
+          id: 'C.2', label: 'אותו דבר בתבליטים — להשוואה',
+          text: 'יש שלוש אפשרויות על השולחן ל"פגישת צוות":\n'
+            + `${f.bullets(['יום שני 10:00', 'יום שלישי 14:00', 'יום חמישי 09:30'])}\n`
+            + 'מה מתאים לך?',
+        },
+      ],
+    },
+    {
+      id: 'D', title: 'רשימות — כל מקום שקוראים בו רשימה בחזרה',
+      source: 'הקבוצה הגדולה ביותר: 12 כלים מחזירים רשימה',
+      variants: [
+        {
+          id: 'D.1', label: 'רשימת קניות (shopping-list)',
+          text: `פירקתי לך את זה לרשימה 👍\n\n${b('קניות')}\n${
+            f.bullets(['חלב', 'קוטג׳', 'גבינה צהובה', 'לחם פרוס'])}`,
+        },
+        {
+          id: 'D.2', label: 'מה פתוח אצלך (list_my_tasks)',
+          text: 'זה מה שפתוח אצלך עכשיו:\n\n'
+            + `${b('היום')}\n${f.bullets(['להחזיר את הטופס לגן', 'לשלם ארנונה'])}\n\n`
+            + `${b('השבוע')}\n${f.bullets(['לסגור סיכום עם רואה החשבון', 'לתקן את הדוד'])}\n\n`
+            + `${b('בלי תאריך')}\n${f.bullets(['להזמין מסננים למים'])}`,
+        },
+        {
+          id: 'D.3', label: 'תזכורות שעוד לפניך (list_my_reminders)',
+          text: `${b('התזכורות שעוד לפניך')}\n${f.bullets([
+            'מחר 08:00 — הטופס לגן',
+            'ראשון 09:00 — רכב לטסט',
+            'כל יום 12:00 — החזרים לקופה',
+          ])}`,
+        },
+        {
+          id: 'D.4', label: 'היומן (my_calendar_events)',
+          text: `${b('מחר ביומן')}\n${f.bullets([
+            '09:00 — סטנדאפ',
+            '11:30 — דנה, קפה ליד המשרד',
+            '16:00 — הורים־מורים',
+          ])}\nהבוקר שלך צפוף, ומ-13:00 עד 16:00 אתה פנוי.`,
+        },
+      ],
+    },
+    {
+      id: 'E', title: 'מודגש — העוגן שצריך לתפוס בגלילה',
+      source: 'השעה, מי מדבר, ומילת המצב',
+      variants: [
+        {
+          id: 'E.1', label: 'השעה שנסגרה (meeting_confirmed)',
+          text: `סגור 🎉 ${b('יום חמישי, 17:00')} — קפה ליד המשרד.\nהוספתי ליומן והזמנתי את דנה.`,
+        },
+        {
+          id: 'E.2', label: 'מי מדבר (share_offer)',
+          text: `${b('יואב')} מציע לשתף אותך במשימה "ציוד לטיול" — תוכלו להוסיף ולסמן ביחד.\nלאשר?`,
+        },
+        {
+          id: 'E.3', label: 'מילת המצב (meeting_cancelled)',
+          text: `${b('בוטל')} — דנה ביטלה את הפגישה של יום חמישי ב-17:00.\n`
+            + 'היא הייתה כבר סגורה, אז הורדתי אותה מהיומן שלך.',
+        },
+        {
+          id: 'E.4', label: 'בקבוצה (group_coord_done)',
+          text: `סגור: ${b('יום שלישי 20:00')} 🎉`,
+        },
+      ],
+    },
+    {
+      id: 'F', title: 'רוחב קבוע — ההתראות שמגיעות אליך, לא למשתמשים',
+      source: 'המקום היחיד שבו "נראה כמו מערכת" זה נכון. סיכון אפס למשתמשים',
+      variants: [
+        {
+          id: 'F.1', label: 'התאוששות (liveness_watch)',
+          text: `${b('עולמה — התאוששה')} ✅\n`
+            + 'הגייטוויי לא הגיב בשתי בדיקות רצופות. הפעלתי מחדש, הוא חזר.\n\n'
+            + f.monospace('זמן מושבת    9 דק׳\nהודעות בתור   4\nנשלחו מאז     4'),
+        },
+        {
+          id: 'F.2', label: 'אזהרת קרדיט (credit_watch)',
+          text: `${b('קרדיט — אזהרה')} ⚠️\n`
+            + 'לפי הקצב של השבוע האחרון נשארו בערך 11 ימים.\n\n'
+            + f.monospace('יתרה          $42.80\nממוצע יומי    $3.71\nימים שנותרו   11'),
+        },
+      ],
+    },
+    {
+      id: 'G', title: 'נטוי — כדי לראות למה כדאי לדלג',
+      source: 'ההמלצה שלי היא לא להשתמש בזה; ההודעה הזאת היא הראיה',
+      variants: [
+        {
+          id: 'G.1', label: 'נטוי, עברית מול אנגלית',
+          text: `${f.italic('ככה נראה נטוי בעברית')}\n`
+            + `${f.italic('And this is italic in English')}\n`
+            + 'תשווה בין השתיים. בעברית ההטיה כמעט לא נראית, ובחלק מהמכשירים היא מתרנדרת עקום.',
+        },
+      ],
+    },
+    {
+      id: 'H', title: 'מלכודות — מה שיישבר',
+      source: 'שווה לראות פעם אחת כדי לא לגלות את זה על משתמש',
+      variants: [
+        {
+          id: 'H.1', label: 'קישור בתוך קוד מפסיק להיות לחיץ',
+          text: `${b('מלכודת: קישור')}\n`
+            + 'קישור רגיל — לחיץ:\n'
+            + 'https://allma.world/me\n\n'
+            + 'אותו קישור בתוך קוד — לא לחיץ:\n'
+            + `${f.inlineCode('https://allma.world/me')}\n\n`
+            + 'לכן כל קישור שעולמה שולחת חייב לצאת נקי, בלי שום עיצוב סביבו.',
+        },
+        {
+          id: 'H.2', label: 'טקסט שאתה כתבת, עם כוכבית בפנים',
+          text: `${b('מלכודת: הטקסט שלך')}\n`
+            + 'נניח שכתבת: לקנות חלב *דל לקטוז*\n'
+            + 'אין תו בריחה בוואטסאפ, אז עולמה לא מוסיפה הדגשה משלה על טקסט כזה — '
+            + 'עטיפה נוספת הייתה שוברת את השורה. מה שמודגש למטה זה הכוכביות שלך, לא שלה:\n\n'
+            + '⏰ תזכורת: לקנות חלב *דל לקטוז*',
+        },
+      ],
+    },
+  ];
+}
+
+const SETS = { variants: samples, places };
+
 function arg(name) {
   const i = process.argv.indexOf(name);
   return i === -1 ? null : process.argv[i + 1];
@@ -175,9 +388,12 @@ async function main() {
   const only = arg('--only');
   const { phone, channelType, pool } = await target();
   try {
-    const groups = samples(format.formatterFor(channelType))
-      .filter((g) => !only || g.id === only);
-    if (!groups.length) throw new Error(`--only ${only} matches no group`);
+    const setName = arg('--set') || 'places';
+    const build = SETS[setName];
+    if (!build) throw new Error(`--set must be one of: ${Object.keys(SETS).join(', ')}`);
+    const groups = build(format.formatterFor(channelType))
+      .filter((g) => !only || g.id === only.toUpperCase() || g.id === only);
+    if (!groups.length) throw new Error(`--only ${only} matches no group in set "${setName}"`);
 
     const queue = [];
     for (const g of groups) {
