@@ -105,6 +105,17 @@ function checkOpenclawConfig(cfg) {
       violations.push(`agents.defaults.models["${primary}"].params.provider.order is unset — OpenRouter picks a different provider per request and the prompt cache dies with every switch (fix: scripts/pin-openrouter-provider.js --apply, then restart the gateway)`);
     }
   }
+  // A session that never resets carries the whole conversation into every
+  // call. Measured 2026-09-09: u-3's one session, open since 2026-08-27, was
+  // 205k tokens per call — $0.018 of history per message, 8–23s to the first
+  // token, 52% of the real-user bill across four people. "daily" rolls it at
+  // 02:00 UTC; the record is in the DB, and channels/sessions.js follows the
+  // window chain so the watchers still see yesterday. Dashboard row: replies
+  // still work, at yesterday's price. (fix: scripts/set-session-reset.js --apply)
+  const resetMode = ((cfg.session || {}).reset || {}).mode;
+  if (resetMode !== 'daily') {
+    violations.push(`session.reset.mode is ${resetMode === undefined ? 'unset (gateway default "none")' : JSON.stringify(resetMode)} — a session never ends, so every reply reads the whole history since the person joined (fix: scripts/set-session-reset.js --apply)`);
+  }
   return violations;
 }
 

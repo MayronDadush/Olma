@@ -32,6 +32,7 @@ function baseConfig() {
     },
     hooks: { internal: { enabled: true, entries: { 'olma-turn-open': { enabled: true } } } },
     messages: { queue: { mode: 'followup' } },
+    session: { reset: { mode: 'daily', atHour: 2 } },
     bindings: [],
     tools: { fs: { workspaceOnly: true }, alsoAllow: ['read', 'write'] },
     mcp: { servers: { olma: { command: 'node', args: ['shim.js'] } } },
@@ -815,6 +816,24 @@ test('config guard: the live OpenRouter model must name its provider order', () 
   assert.equal(guard.checkOpenclawConfig(cfg).length, 1, 'an empty order pins nothing');
   // a direct-provider primary has no router to pin
   cfg.agents.defaults.model.primary = 'anthropic/claude-haiku-4-5';
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
+});
+
+// A session that never resets carries the whole conversation into every
+// call. Measured 2026-09-09: u-3's one session, open since 2026-08-27, was
+// 205k tokens per call — $0.018 of history per message and 8–23s to the
+// first token (docs/incidents.md, "The conversation that never ended").
+test('config guard: every session must reset daily', () => {
+  const cfg = baseConfig();
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
+  delete cfg.session;
+  let v = guard.checkOpenclawConfig(cfg);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /session\.reset\.mode is unset \(gateway default "none"\)/);
+  assert.match(v[0], /set-session-reset/, 'says how to fix it');
+  cfg.session = { reset: { mode: 'idle', idleMinutes: 120 } };
+  assert.match(guard.checkOpenclawConfig(cfg)[0], /session\.reset\.mode is "idle"/, 'idle is not the rule: a person who writes every hour would never reset');
+  cfg.session = { reset: { mode: 'daily', atHour: 2 } };
   assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
 });
 
