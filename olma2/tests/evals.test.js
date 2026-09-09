@@ -138,6 +138,48 @@ test('replyLanguage: working notes or another language in the reply are red; lin
   assert.match(late.detail, /turn 2/);
 });
 
+test('herOwnVoice: a masculine self-reference or model markup is red; her feminine forms, other people\'s verbs and quotes are not', () => {
+  const turns = (...replies) => ({ turns: replies.map((reply) => ({ message: 'x', reply, toolCalls: [] })) });
+  // the real slips, as read off three days of her messages (2026-09-06..08)
+  for (const slip of [
+    'אני מבין. כבר אמרתי לשרה 🤝',
+    'מצטער, יובל — שיחות קוליות עדיין לא זמינות בשבילך לצערי.',
+    'אני מניח שאתה בישראל, אז קבעתי שהשעות כאן זה הזמן שלך.',
+    'גאי, קיבלתי את התמונה אבל אני לא יכול לראות אותה — מה יש בה?',
+    'תודה, פתח תקווה — סומן. עכשיו אני יודע מתי נוח לכתוב לך',
+  ]) {
+    const r = scenarios.herOwnVoice(turns(slip));
+    assert.equal(r.pass, false, slip);
+    assert.match(r.detail, /masculine/);
+  }
+  // the sixth check-in Dana got (2026-09-08): the model's frame, delivered
+  const leak = scenarios.herOwnVoice(turns('<｜DSML｜tool_calls>\n<｜DSML｜invoke name="olma__set_my_name">'));
+  assert.equal(leak.pass, false);
+  assert.match(leak.detail, /markup/);
+  assert.equal(scenarios.herOwnVoice(turns('הטוקן שלך olma_tok_0123456789abcdef0123456789abcdef')).pass, false);
+  // and what must NOT trip it: her own feminine forms, the same verbs about
+  // somebody else, forms that do not change, a quote of the person's words,
+  // a silent turn
+  assert.equal(scenarios.herOwnVoice(turns(
+    'אני מבינה, אני לא יכולה לראות תמונות כרגע — מה יש בה?',
+    'אתה יודע מה, הוא יכול מחר ואת מבינה את זה.',
+    'אני רואה שיש לך פגישה מחר, אני מקווה שזה מסתדר ואני רוצה לעזור.',
+    'כתבת "אני יכול מחר" — רשמתי ✅',
+    'NO_REPLY', '',
+  )).pass, true);
+  // the failing turn is named, not the first turn
+  assert.match(scenarios.herOwnVoice(turns('בסדר 👍', 'אני מצטער על הבלבול')).detail, /turn 2/);
+});
+
+test('every scenario is red on a masculine self-reference, whatever it is about', async () => {
+  const r = await harness.runScenario(db.pool, evalUser, byId['stop-service'], {
+    runTurn: fakeTurns([{ reply: 'אני מבין. עצרתי הכול, ולא מחקתי כלום.' }]),
+    complete: judgePass, openTurn: noOpen,
+  });
+  assert.equal(r.status, 'red');
+  assert.ok(r.hardFailures.some((f) => /her own voice/.test(f.name)), JSON.stringify(r.hardFailures));
+});
+
 test('every scenario is red on a narrated reply, whatever it is about', async () => {
   const r = await harness.runScenario(db.pool, evalUser, byId['hebrew-gender-feminine'], {
     runTurn: fakeTurns([{ reply: YAHAV_REPLY }]),

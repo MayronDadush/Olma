@@ -22,6 +22,7 @@ const tasks = require('../domain/tasks');
 const preferences = require('../domain/preferences');
 const users = require('../domain/users');
 const meetings = require('../domain/meetings');
+const hebrewQuality = require('../domain/hebrew-quality');
 
 // Every turn must open with turn_start — the rule everything else (quota,
 // pause, offerResume, name capture) hangs off. Checked for every scenario
@@ -122,6 +123,30 @@ function replyLanguage(ctx, locale = 'he') {
     }
   }
   return { name: 'the reply is the message, in their language', pass: bad.length === 0, detail: bad[0] };
+}
+
+// She is a woman, and she says so in every verb. "אני מבין", "מצטער, יובל",
+// "אני לא יכול לראות תמונות" — 8 of 383 real messages over three days
+// (2026-09-06..08) had a masculine self-reference, and the doctrine that
+// forbids it is full. The judge rubric would call it a concern; this is RED,
+// deterministic, and runs on every scenario. The patterns are
+// domain/hebrew-quality, shared with the daily count on the dashboard so the
+// eval and the metric can never disagree on what a slip is. The same reader
+// catches the model's own frame delivered as text (a tool-call marker, an
+// identity token), which reached two real phones.
+function herOwnVoice(ctx) {
+  const bad = [];
+  for (const [i, t] of ctx.turns.entries()) {
+    const text = String(t.reply || '').trim();
+    if (!text || text === 'NO_REPLY') continue;
+    const flaws = hebrewQuality.flawsIn(text);
+    if (flaws.length) {
+      const f = flaws[0];
+      bad.push(`turn ${i + 1}: ${f.kind === 'markup' ? 'model markup in the reply' : 'a masculine self-reference'}`
+        + ` — "${f.at}"`);
+    }
+  }
+  return { name: 'she speaks in her own voice, with nothing of the model showing', pass: bad.length === 0, detail: bad[0] };
 }
 
 // The gateway hands the model WhatsApp reply context as its own labelled block
@@ -420,4 +445,4 @@ for (const s of SCENARIOS) {
   seen.add(s.id);
 }
 
-module.exports = { SCENARIOS, turnStartFirst, turnStartNotSpent, turnOpening, turnWasOpened, replyLanguage };
+module.exports = { SCENARIOS, turnStartFirst, turnStartNotSpent, turnOpening, turnWasOpened, replyLanguage, herOwnVoice };

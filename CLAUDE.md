@@ -600,6 +600,14 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   data before shipping it, and keep the readings you REJECTED in the test with
   the real rows that killed them (`tasks.joinsTwoAsks`, checked against all
   202 production titles; `incidents.md`, "Two asks, one task").
+- **Her voice is checked by code, not by the judge.** `domain/hebrew-quality.
+  flawsIn` is the one list of what a slip is — a masculine self-reference
+  ("אני מבין", "מצטער, יובל"), the model's own markup or a token in a
+  sentence — read by the eval check `scenarios.herOwnVoice` (red on every
+  scenario) and by the daily count on the dashboard. Measured on 383 real
+  messages before shipping: 10 hits, 10 real. Extend the list there and
+  re-measure; `רואה` is what a false positive looks like (same in both
+  genders), and the forms that do not change are left out on purpose.
 - **An issue title must be deterministic** — it is the dedup key. A title built
   from unordered query results makes the guard file and close the same
   condition on alternating ticks.
