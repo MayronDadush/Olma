@@ -171,8 +171,23 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
 // turn by every user, for fields that appear on a handful of turns in a
 // person's life. The budget rule (CLAUDE.md, "Doctrine"): guidance about a
 // RESULT rides the result.
-function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms, thanksOnly }) {
+function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms, thanksOnly, today }) {
   const hints = {};
+  if (today) {
+    // Rides beside the block on every turn it is on, because a block the
+    // model has no instruction for is one it reads past and then fetches
+    // again with a tool call — the thing the block exists to replace.
+    hints.today = 'today = everything filed with Olma for TODAY (' + today.date + '), in their own '
+      + 'local time; an item with no `at` is for the day, not an hour — never invent one. '
+      + '`overdue` counts to-dos due before today. Answer "מה יש לי היום" / "מה על הפרק" from it '
+      + 'and do NOT call get_my_digest, list_my_tasks or my_calendar_events for today; empty '
+      + 'lists mean nothing is filed. Those tools are still for another day, the week, the '
+      + 'overdue items themselves, reminders'
+      + (today.googleCalendar
+        ? ', and their connected Google calendar, whose events this block does NOT hold — '
+          + 'my_calendar_events for those.'
+        : ' or details this block does not carry.');
+  }
   if (genderForms === 'feminine') {
     // The doctrine already says "hold the stored preference"; the nightly
     // evals kept catching one masculine verb in an otherwise feminine reply
@@ -412,6 +427,8 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       })
     : null;
 
+  const today = counted.data.blocked ? null : await todayBlock(client, user.id);
+
   if (!counted.data.blocked) {
     return {
       directive: 'proceed', locale: user.locale,
@@ -422,13 +439,80 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(planHeadline ? { planHeadline } : {}),
       ...(replyTarget ? { replyTarget: true } : {}),
       ...(genderForms ? { genderForms } : {}),
-      ...turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms, thanksOnly }),
+      ...(today ? { today } : {}),
+      ...turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms, thanksOnly, today }),
     };
   }
   const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);
   if (!shouldNotice) return { directive: 'silent', reason: 'blocked_already_notified' };
   const view = await digest.assemble(client, user.id, 'block_view');
   return { directive: 'send_block_notice', blockView: view.data };
+}
+
+// What is on TODAY, on every turn, so "מה יש לי היום" is answered from the
+// opening instead of from a tool call. Measured over the fourteen days to
+// 2026-09-09: get_my_digest was called 137 times and list_my_tasks 131,
+// most of them for today, and each one is a whole extra model call — ~4s
+// and another ~48k prompt tokens — to fetch a dozen rows brokerd already
+// had in front of it. Deterministic on purpose: a query, not a summary.
+//
+// Their zone, in Postgres (`AT TIME ZONE`, DST-safe, the same way the
+// digest and the gate convert): an event at 23:30 UTC is tomorrow for
+// somebody in Jerusalem and is not listed today, and one at 22:30 UTC
+// yesterday IS today. A day-shaped item (local midnight, the discriminator
+// auto-reminder.isDayShaped uses) carries no `at`, so the model has no hour
+// to invent. Events and to-dos apart, as everywhere else; to-dos due before
+// today are a COUNT (`overdue`), never a list — one person on the box has
+// thirty. Capped at TODAY_CAP rows with `more` saying how many were cut,
+// so one crowded day cannot bloat every turn.
+//
+// Not a plan and not an opinion — it is the answer to a question — so a
+// paused person gets it too, unlike planHeadline. A NULL zone reads as UTC
+// here as it does in the gate, and CLAUDE.md says it must never be NULL.
+const TODAY_CAP = 12;
+async function todayBlock(client, userId) {
+  const { rows: [day] } = await client.query(
+    `SELECT to_char(now() AT TIME ZONE COALESCE(u.timezone, 'UTC'), 'YYYY-MM-DD') AS date,
+            EXISTS (SELECT 1 FROM integrations i
+                     WHERE i.user_id = u.id AND i.provider = 'google_calendar' AND i.status = 'connected') AS google
+       FROM users u WHERE u.id = $1`, [userId]);
+  if (!day) return null;
+  const { rows } = await client.query(
+    `WITH z AS (SELECT COALESCE(timezone, 'UTC') AS tz FROM users WHERE id = $1),
+          t AS (SELECT t.id, t.title, t.kind, t.location,
+                       t.due_at AT TIME ZONE z.tz AS local_due,
+                       t.ends_at AT TIME ZONE z.tz AS local_end,
+                       (now() AT TIME ZONE z.tz)::date AS local_today
+                  FROM tasks t, z
+                 WHERE t.owner_id = $1 AND t.status = 'open' AND t.archived_at IS NULL
+                   AND t.due_at IS NOT NULL
+                   AND (t.due_at AT TIME ZONE z.tz)::date <= (now() AT TIME ZONE z.tz)::date)
+     SELECT title, kind, location,
+            to_char(local_due, 'HH24:MI') AS at,
+            to_char(local_end, 'HH24:MI') AS until,
+            local_due::date < local_today AS overdue,
+            local_due = date_trunc('day', local_due) AS day_shaped
+       FROM t ORDER BY local_due, id`, [userId]);
+  const item = (r) => ({
+    title: String(r.title).slice(0, 120),
+    ...(r.day_shaped ? {} : { at: r.at }),
+    ...(r.kind === 'event' && r.until && !r.day_shaped ? { until: r.until } : {}),
+    ...(r.kind === 'event' && r.location ? { location: String(r.location).slice(0, 80) } : {}),
+  });
+  const onToday = rows.filter((r) => !r.overdue);
+  const overdue = rows.filter((r) => r.overdue && r.kind !== 'event').length;
+  const events = onToday.filter((r) => r.kind === 'event');
+  const tasks = onToday.filter((r) => r.kind !== 'event');
+  const shown = [...events, ...tasks].slice(0, TODAY_CAP);
+  const more = events.length + tasks.length - shown.length;
+  return {
+    date: day.date,
+    events: shown.filter((r) => r.kind === 'event').map(item),
+    tasks: shown.filter((r) => r.kind !== 'event').map(item),
+    overdue,
+    ...(more > 0 ? { more } : {}),
+    ...(day.google ? { googleCalendar: true } : {}),
+  };
 }
 
 // The opening as prompt text, for the people whose turn is opened by the
