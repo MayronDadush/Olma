@@ -155,6 +155,7 @@ never trust a dated narrative for something you are about to act on.
 - [The same thing, saved twice (fixed 2026-09-08)](#the-same-thing-saved-twice-fixed-2026-09-08)
 - [A time in the title and no reminder (fixed 2026-09-09)](#a-time-in-the-title-and-no-reminder-fixed-2026-09-09)
 - [A silence read as a delivery fault (fixed 2026-09-09)](#a-silence-read-as-a-delivery-fault-fixed-2026-09-09)
+- [A lost reply is re-sent, not re-answered (fixed 2026-09-09)](#a-lost-reply-is-re-sent-not-re-answered-fixed-2026-09-09)
 - ["הנה, רשמתי", about a meeting (2026-09-07)](#הנה-רשמתי-about-a-meeting-2026-09-07)
 - [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
 - [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
@@ -5518,6 +5519,71 @@ And a repair job is the most dangerous kind of job there is. Every other sweep
 acts on a state it observed. This one acts on a BELIEF that something failed,
 and when the belief is wrong it manufactures the exact disturbance it exists to
 prevent. Nothing was broken in Yahav's conversation until the repair arrived.
+
+### A lost reply is re-sent, not re-answered (fixed 2026-09-09)
+
+The entry above closed the door the repair walked through. This one is about
+what the repair was doing on the other side of it, which was wrong on its own
+terms and would have stayed wrong the next time a reply really did get lost.
+
+Case (b) of `jobs/unanswered.js` detects a reply that was composed and never
+dispatched: the transcript ends with an assistant turn, and the gateway log has
+no `Sent` line for that person behind it. Having established that, it ran a
+MODEL turn:
+
+> Your last reply in this conversation was composed but never delivered — the
+> person never saw it. … Read the conversation and send the substance of that
+> answer again, naturally, as your reply now.
+
+The reply is right there. `undeliveredReply` is looking straight at it — it is
+the message the whole detection is about — and the repair handed a second model
+the job of reconstructing it from a conversation it had to go and re-read. Every
+line of that instruction after the first is an attempt to manage a risk that
+only exists because the text was thrown away: how to handle newer messages, what
+to do if the history cannot be read, not to apologise, not to mention a
+technical problem. It bought nothing and cost three things — a cold-cache model
+call, a dependency on the model being up at the exact moment our own pipe had
+just been proven broken, and a free-text turn on a `--deliver` session, where
+every block the model emits reaches the phone. Yahav read the third one.
+
+So the reply now goes out **as itself**, on the raw pipe, with no model in the
+path — the same argument reminders were moved off the model for in the first
+place (`incidents.md`, the 2026-08-23 credit outage). `undeliveredReply` carries
+`text` alongside `composedAt`, the row's payload holds `verbatimReply`, and
+`proactive-text.rawPipeTextFor` — the one place that decides raw-pipe-or-agent-
+turn — returns it before the kind gate.
+
+**A raw send does not enter the person's session, and here that is the point
+rather than the cost.** The composed reply is already in the transcript; only
+the send failed. Re-sending it verbatim makes the phone match the history. The
+model turn did the opposite: it appended a SECOND assistant turn saying roughly
+the same thing, so the conversation ended up holding the answer twice, one of
+them never delivered — in a function whose entire job is reading the tail of
+that transcript.
+
+Two clauses died with the instruction and both deserved to. *"If their later
+messages changed what a good answer is, answer the newest state"* guarded a case
+the detector already excludes: it fires only when the assistant's reply is the
+LAST thing in the transcript, so there is no newer state by construction. And
+the *"if you CANNOT see the conversation, reply NO_REPLY"* clause — the one the
+model ignored on the way to Yahav's phone — is gone because there is no longer
+anything to see: the text is on the row.
+
+**Verbatim or nothing.** The one shape that cannot survive the raw pipe is an
+attachment: `MEDIA: <path>` on its own line is a convention the GATEWAY reads
+off an agent's reply, and `openclaw message send` has no such reading, so a
+lost schedule card sent this way would arrive as the literal word `MEDIA:` and a
+filesystem path. That case is counted on the sweep's heartbeat (`unsendable`)
+and left alone. Nothing is improvised in its place — the person's own next
+message and the check-in ladder are the fallbacks, and both beat a guess. It is
+counted rather than audited because with no outbox row there is no cooldown
+either, and an audit row would be filed every tick for up to forty-five minutes.
+
+The admin page follows the same line. `plannedSubject` deliberately shows a
+subject and never a preview, because the payload holds an instruction the agent
+will reword and promising wording we cannot keep is the v1 stale-digest rule.
+This row is the second exception to that after an operator's hand-typed message,
+and for the identical reason: nothing will reword it.
 
 ### A time in the title and no reminder (fixed 2026-09-09)
 

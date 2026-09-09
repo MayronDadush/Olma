@@ -72,6 +72,19 @@ function isInjectedInstruction(m) {
 // reply is the sentinel and that anything in front of it IS delivered, so
 // "בוצע NO_REPLY" is a real reply and must stay repairable.
 const SILENCE = 'NO_REPLY';
+// A reply is re-sent as ITSELF or not at all (see the enqueue for case (b)).
+// The one shape that cannot survive the raw pipe is an attachment: `MEDIA:` on
+// its own line is a convention the GATEWAY reads off an agent's reply, and
+// `openclaw message send` has no such reading — the path would go out to the
+// person as literal text with no image behind it. So a lost schedule card is
+// counted and left alone rather than half-sent.
+const MEDIA_LINE_RE = /^\s*MEDIA:\s*\S/m;
+function resendableVerbatim(text) {
+  const t = String(text || '').trim();
+  if (!t) return { ok: false, why: 'empty' };
+  if (MEDIA_LINE_RE.test(t)) return { ok: false, why: 'media' };
+  return { ok: true, text: t };
+}
 function isSilence(m) {
   return m.role === 'assistant' && String(m.text || '').trim() === SILENCE;
 }
@@ -252,7 +265,7 @@ function undeliveredReply(msgs, sent, phone, now) {
 
   const hash = sentHashFor(phone);
   const delivered = sent.events.some((e) => e.hash === hash && e.at >= composedAt - SENT_SLACK_MS);
-  return delivered ? null : { composedAt: last.at, age };
+  return delivered ? null : { composedAt: last.at, age, text: last.text };
 }
 
 // deps.readMessages(agentId, peer) → [{role, text, at}] so tests never touch disk.
@@ -311,6 +324,8 @@ async function sweepUnanswered(client, { readMessages, readSentEvents, readDropp
   const coolingIds = new Set(cooling.map((r) => r.user_id));
 
   const repaired = [];
+  // Real losses this pass could not re-send as themselves, by reason.
+  const unsendable = {};
   for (const u of rows) {
     if (coolingIds.has(u.id)) continue;
     let msgs;
@@ -400,6 +415,43 @@ async function sweepUnanswered(client, { readMessages, readSentEvents, readDropp
     const lost = undeliveredReply(msgs, sent(), u.phone, now);
     if (!lost) continue;
 
+    // The answer is already written. Until 2026-09-09 this ran a MODEL turn and
+    // asked it to "send the substance of that answer again" — which is asking a
+    // second model to reconstruct, from a conversation it has to re-read, a
+    // reply the transcript is holding word for word. It bought nothing and cost
+    // three things: a cold-cache call, a dependency on the model being up at
+    // the moment our own pipe was proven broken, and a free-text turn on a
+    // --deliver session where EVERY block reaches the phone. Yahav read the
+    // third one — "No conversation history is accessible to me in this
+    // session", in English, about our internals (incidents.md, "A silence read
+    // as a delivery fault"). The guard against exactly that was in the
+    // instruction, in words, and the model went past it.
+    //
+    // So the reply goes out as ITSELF, on the raw pipe, with no model in the
+    // path — the same argument reminders were moved for. Two things fall out of
+    // it that the model turn could not have:
+    //   - The transcript already contains this reply, and a raw send does not
+    //     write to the session (channels/openclaw.js). Re-sending verbatim
+    //     makes the phone match the history. The model turn APPENDED a second
+    //     assistant turn saying roughly the same thing, so the conversation
+    //     then held the answer twice and only one of them had been delivered.
+    //   - The instruction's "if their later messages changed what a good answer
+    //     is, answer the newest state" clause is gone with it. It guarded a
+    //     case this detector already excludes: `undeliveredReply` fires only
+    //     when the assistant's reply is the LAST thing in the transcript, so
+    //     there is no newer state by construction.
+    const body = resendableVerbatim(lost.text);
+    if (!body.ok) {
+      // Detected a real loss and cannot re-send it as itself. Nothing is
+      // improvised in its place: the person's own next message and the check-in
+      // ladder are the fallbacks, and both are better than a guess. Counted on
+      // the sweep's heartbeat so a path that declines still says so — no audit
+      // row, because with no outbox row there is no cooldown either and this
+      // would file one every tick for up to MAX_AGE_MS.
+      unsendable[body.why] = (unsendable[body.why] || 0) + 1;
+      continue;
+    }
+
     const res = await enqueue(client, {
       userId: u.id, kind: 'checkin', urgency: 'urgent',
       expiresAt: new Date(now + MAX_AGE_MS).toISOString(),
@@ -410,31 +462,26 @@ async function sweepUnanswered(client, { readMessages, readSentEvents, readDropp
         // silence is the duplicate-message complaint this area started with.
         rung: 'unanswered_repair',
         repairKind: 'undelivered_reply',
-        checkinInstruction: [
-          'Your last reply in this conversation was composed but never delivered — the person never saw it.',
-          'A delivery fault on our side, not theirs.',
-          'Read the conversation and send the substance of that answer again, naturally, as your reply now.',
-          'If their later messages changed what a good answer is, answer the newest state rather than repeating the old one.',
-          'If you CANNOT see the conversation — empty history, a failed read, a tool refusing you —',
-          'reply with exactly NO_REPLY. Never guess, never turn notes or memory into a message.',
-          'Do not apologise for a delay, do not mention a technical problem or system issue —',
-          'from their side this should simply read as your reply arriving.',
-        ].join(' '),
+        // Read by proactive-text.rawPipeTextFor, which is the ONE place that
+        // decides raw-pipe-or-agent-turn. Non-empty by the guard above, so the
+        // row can never fall through to a model turn.
+        verbatimReply: body.text,
       },
       idempotencyKey: `undelivered:${u.id}:${lost.composedAt}`,
     });
     if (res.data.enqueued) {
       await audit.record(client, u.id, 'delivery.unanswered_repair', {
-        kind: 'undelivered_reply', ageSeconds: Math.round(lost.age / 1000),
+        kind: 'undelivered_reply', ageSeconds: Math.round(lost.age / 1000), verbatim: true,
       });
       repaired.push(u.id);
     }
   }
-  return { repaired };
+  return { repaired, ...(Object.keys(unsendable).length ? { unsendable } : {}) };
 }
 
 module.exports = {
-  sweepUnanswered, sentHashFor, undeliveredReply, readSentEventsFromLog, parseSentEvents, covers,
+  sweepUnanswered, sentHashFor, undeliveredReply, resendableVerbatim,
+  readSentEventsFromLog, parseSentEvents, covers,
   readLogTails, droppedTurnsByPeer, droppedTurnFor,
   MIN_AGE_MS, MAX_AGE_MS, SENT_SLACK_MS,
 };
