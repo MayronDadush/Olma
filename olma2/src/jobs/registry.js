@@ -308,7 +308,7 @@ const deployDrift = require('./deploy-drift');
     { name: 'live_updates', run: () => withTx(pool, (c) => liveUpdates.sweepLiveUpdates(c, {})) },
     { name: 'usage_sweep', run: () => withTx(pool, (c) => usage.sweepUsage(c)) },
     { name: 'voice_usage_sweep', run: () => withTx(pool, (c) => voiceUsage.sweepVoiceUsage(c)) },
-    { name: 'metrics_sweep', run: () => withTx(pool, (c) => metrics.sweepMetrics(c)) },
+    { name: 'metrics_sweep', run: () => withTx(pool, (c) => metrics.sweepMetrics(c, new Date(), { sessions: sessionsAsync })) },
     { name: 'retention_sweep', run: () => withTx(pool, (c) => retention.sweepRetention(c)) },
     // Is everything working, and will the owner hear if not: gateway probe +
     // delivery queue, two bad ticks before a word, a dead gateway restarted
