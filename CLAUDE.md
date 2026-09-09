@@ -170,6 +170,19 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `incidents.md`, "The heartbeat was the bill"). Nothing of ours rides on it.
   `config_guard` goes red if it comes back; `scripts/disable-heartbeats.js
   --apply` turns it off again.
+- **Every session resets daily: `session.reset: { mode: "daily", atHour: 2 }`**
+  (UTC on the box — 05:00 in Israel, before anybody writes). The gateway
+  default is "none", and a session that never ends carries the whole
+  conversation into every call: on 2026-09-09 u-3's one session, open since
+  08-27, was 205k tokens a call — $0.018 of history per message before the
+  first word, 8–23 s to the first token, 52% of the real-user bill across
+  four people (`incidents.md`, "The conversation that never ended"). What
+  the conversation knows lives in the DB and USER.md, not in the window.
+  **`readRecentMessages` follows `session_windows.previous_session_id`** so
+  the watchers (promise_watch, the onboarding review, fact extraction,
+  unanswered) still see yesterday on the morning after — a reader of the
+  live session id alone is blind once a day. `config_guard` goes red if the
+  mode comes back off; `scripts/set-session-reset.js --apply` sets it.
 
 ### Delivering a message
 
@@ -203,6 +216,23 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `OLMA_GATEWAY_RPC_SEND=off` in `/opt/olma2/.env` puts everything back.
 - **Cancelling a queued message is an UPDATE, never a DELETE.** The row carries
   the `idempotency_key` that stops the sweep re-creating it.
+- **A STYLE is chosen at delivery, off the recipient's channel, and a channel
+  the table has never heard of gets PLAIN** (`domain/message-format.js`, the
+  whole reference is `olma2/docs/whatsapp-formatting.md`). WhatsApp renders
+  eight things and nothing else — bold, italic, strikethrough, monospace,
+  inline code, block quote, bulleted and numbered lists; no underline, no
+  headings, no `[label](url)`, all three of which arrive as literal
+  characters. `user_channels.channel_type` has only ever held `whatsapp`,
+  which is what has made "WhatsApp markup" and "our markup" look like one
+  thing. Same rule and same reason as `localizedKey` for the LANGUAGE of a
+  rung: what a person can read is a fact about them at the moment of sending,
+  never about the row. **There is no escape character**, so a value we did not
+  write — a task title is the person's own words — is left unwrapped when it
+  already carries the marker: emphasis lost, sentence correct, which is the
+  right way round. The module BUILDS markup and does not parse it, so
+  owner-typed markup in `message_templates` would reach a second channel raw;
+  that gap is named in the doc rather than closed by a parser nothing can
+  check.
 - **The delivery gate is the chokepoint and a paused user has no exceptions** —
   not reminders, not urgent, not another user's fan-out.
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where
@@ -591,6 +621,17 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   refused here rather than at `addTask`, which would lose the task as well),
   already past, or past a one-year horizon, which is the shape a wrong YEAR
   takes (`incidents.md`, "A time in the title and no reminder").
+- **A title need not restate the hour the row now carries, but only the SERVER
+  may take it out.** The same model, given a clock, sets `due_at` AND leaves the
+  words in the title — new behaviour, because before the field existed the words
+  were the only copy. `titleWithoutStatedTime` removes a TRAILING time
+  expression, and only when the hour it names is the hour being stored. **The
+  cross-check is the design**: measured against all 253 titles on the box it
+  matched 8, stripped 2, and refused "Brunch with a friend — Tuesday Sep 1 at
+  10:00", whose `due_at` is 07:00 — the two disagree, and stripping would have
+  deleted the only record of it. Deliberately NOT a prompt line: the model
+  cannot know whether `usableDue` will accept its date, so a clean title written
+  up front loses the moment entirely on every date the server drops.
 - **A day named with ל־ in a title dates the THING, not the task.** "לארגן
   אימון לרביעי" is arranged BEFORE Wednesday; filed ON Wednesday it is useless.
   `datetime.datesTheObject` reports that shape on the result and lets the model
