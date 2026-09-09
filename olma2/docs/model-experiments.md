@@ -512,3 +512,109 @@ building as scenario #10; until then, do not claim more than this.
 **Not measured:** anything under concurrent load. Every pilot here is one
 disposable session at a time, and a demo is one conversation at a time, so
 the gap is acceptable for this decision and would not be for a default swap.
+
+## Runs #57-#61 — 2026-09-08 — v4-pro, the cheap OpenAI pair, and haiku through OpenRouter
+
+The owner's ask (2026-09-09, 01:00 Israel): pilot `deepseek-v4-pro` and
+`claude-haiku-4-5` as the earlier list proposed, and **add two cheap OpenAI
+models**. Same question as every default-model pilot — *should this replace
+`v4-flash`?* — on the full twelve-scenario suite (`meeting-second-option`,
+`reply-to-older-message` and `email-not-connected` joined since the GPT-tier
+runs), with the judge on, one model at a time on the box, between 22:20 and
+00:30 UTC. Live routing untouched throughout.
+
+The two OpenAI models were chosen by price off `/api/v1/models` that
+evening, `tools: true` confirmed first: **`gpt-5-nano`** ($0.05 / $0.40 per
+Mtok — the only OpenAI model in v4-flash's band) and **`gpt-5-mini`** ($0.25
+/ $2.00, the cheapest mini). Both registered in all three lists on the box
+and in `scripts/register-openrouter-models.js` (PR #307).
+
+### #57 — `deepseek-v4-pro` — 9 green · 2 yellow · 0 red · 1 error, 1454s
+
+No reds. The yellows are the incumbent's own cosmetic set — a "שאלתי את
+גוגל בשבילך 👆" on `general-knowledge` instead of saying plainly it is not
+her area, and one question too many on `goal-capture`. The error is a 240s
+agent timeout on `meeting-second-option`, and the wall clock is the
+finding: **1454s for twelve scenarios against v4-flash's ~1000s for nine**,
+with `stop-service` at 222s and `hebrew-gender-feminine` at 296s. Correct,
+and slow enough that a real person would notice. At 12x the input price it
+buys nothing v4-flash lacks on this board.
+
+### #58 — `anthropic/claude-haiku-4-5` through the gateway — 12 errors in three minutes
+
+Every scenario: *"Could not start the CLI. Reason: Prepared direct auth
+fallback cannot bypass unavailable profiles for anthropic/claude-haiku-4-5."*
+The gateway's own anthropic profile is unavailable — no credit, by the
+owner's standing choice (the 2026-08-26 cutover) — so the model cannot be
+reached that way at all. Not a model result; recorded so the next session
+does not re-run it. The same weights were re-run through the funded
+provider as #61.
+
+### #59 — `gpt-5-nano` — disqualified, 0 green · 1 yellow · 7 red · 4 error, 1493s
+
+The cheapest OpenAI model fails the way `gpt-5.4-nano` did in #29 and then
+some. It **wrote the essay** (`not-chatgpt-essay`, 1524 chars) and
+**delivered the lecture** (`general-knowledge`, 1178 chars); it **skipped
+`turn_start`** on five scenarios, opening with `add_task`, `save_contact`,
+`add_tasks_bulk`, `get_my_digest` and with no tool at all — the one hard
+rule every turn has; and four scenarios hit the 240s timeout. The single
+yellow (`stop-service`) is the closest it came to a pass. Price is not a
+question when the model does not follow the first instruction in the
+doctrine.
+
+### #60 — `gpt-5-mini` — disqualified, 3 green · 2 yellow · 2 red · 5 error, 1679s
+
+Better than nano and still not a candidate. Reds: the lecture again
+(`general-knowledge`, 1045 chars) and a skipped `turn_start` on
+`reply-to-older-message`. Errors: three 240s timeouts (`stop-service`,
+`stranger-meeting-boundary`, `email-not-connected`) and two CLI exits with
+no message on `bare-time-shift` and `goal-capture`. The slowest run of the
+night. Its greens (`not-chatgpt-essay`, `phone-number-contact`,
+`brain-dump-bulk`) show it can do the tool work; its timeouts show it
+cannot do it at a speed a WhatsApp reply tolerates on this box.
+
+### #61 — `anthropic/claude-haiku-4.5` through OpenRouter — 6 green · 5 yellow · 1 red · 0 error, 755s
+
+**The fastest run of the night by a factor of two** — 755s for twelve
+scenarios, most of them under a minute, no timeouts — and the only one with
+a real correctness red: `bare-time-shift` **landed the task on the UTC
+mistranslation**, the exact fault the scenario exists for ("Every time
+crossing a tool boundary needs an explicit offset"). Both hard checks
+failed: no task at 15:00 in her zone, one at the wrong hour. The five
+yellows are judge opinions of the familiar kind (a question per item on the
+brain dump, a retention line on `stop-service`, an offer to arrange a
+meeting with a stranger). It was the incumbent before the 2026-08-26
+cutover and this is the board it left with: fast, warm, and wrong about
+the clock on the one scenario where wrong costs a person a reminder — at
+12x v4-flash's input price.
+
+| run | model | board | wall |
+|---|---|---|---|
+| #57 | `deepseek-v4-pro` | 9 🟢 · 2 🟡 · 0 🔴 · 1 ⚠️ | 1454s |
+| #58 | `claude-haiku-4-5` (gateway direct) | 12 ⚠️ — profile unavailable | 3 min |
+| #59 | `gpt-5-nano` | 0 🟢 · 1 🟡 · 7 🔴 · 4 ⚠️ | 1493s |
+| #60 | `gpt-5-mini` | 3 🟢 · 2 🟡 · 2 🔴 · 5 ⚠️ | 1679s |
+| #61 | `claude-haiku-4.5` (OpenRouter) | 6 🟢 · 5 🟡 · 1 🔴 · 0 ⚠️ | 755s |
+| #56 | `deepseek-v4-flash`, nightly, same night | see the dashboard | — |
+
+### What this night settles
+
+- **v4-flash stays the default.** Nothing here beats it on correctness at
+  any price, and the one model faster than it got the clock wrong.
+- **The cheap OpenAI tier is closed as a question** — three models across
+  two generations (#29, #59, #60) all wrote the essay, and two skipped
+  `turn_start`. Do not re-pilot a `-nano` or `-mini` for the default without
+  a doctrine change that specifically addresses reply length.
+- **A timeout at 240s is the pilot's ceiling, not the model's**: the harness
+  kills the CLI there. Four of nano's and three of mini's errors are that
+  cap, and on a two-core box shared with live users a slow model looks
+  slower still. Worth knowing before reading an error count as a quality
+  count.
+- **Anthropic direct is not a path anymore.** Any future haiku or sonnet
+  pilot goes through `openrouter/anthropic/...`, and the register script
+  now carries the id.
+- **Speed is the one axis v4-flash loses on, and nothing cheap wins it.**
+  Haiku's 755s is the number to beat; the cheap tier was two times slower
+  than the incumbent, not faster. If latency ever becomes the owner's
+  complaint, the answer on this evidence is the `boost_model` switch (luna,
+  #31), not a cheaper default.
