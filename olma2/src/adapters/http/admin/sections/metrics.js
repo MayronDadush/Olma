@@ -21,6 +21,32 @@ const METRIC_LABELS = {
 
 const METRIC_ORDER = Object.keys(METRIC_LABELS);
 
+// pg's own driver (postgres-date, via pg-types) parses a DATE column with
+// `new Date(year, month - 1, day)` — the LOCAL-timezone constructor, by its
+// own comment "YYYY-MM-DD will be parsed as local time" — never
+// `Date.UTC(...)`. On the box that happens to look like UTC-safe because the
+// box's OS clock is UTC, so `d.toISOString().slice(0, 10)` (a UTC read of a
+// local-built Date) came out right there and nowhere else: on a laptop in
+// Israel (UTC+3) the same Date reads one day EARLIER once converted to UTC,
+// so "today"'s row landed in "yesterday" everywhere in this file (`ageOf`,
+// `voiceLine`, the daily table) — three cards read zero and one real day
+// stayed pinned as the row before it, only reproducible off the box.
+// `String(thatDate)` is a second, unrelated trap — it is
+// `Date.prototype.toString()`, "Wed Sep 09 2026 …", not the ISO form, and an
+// earlier version of this function used `String(r.date).slice(0, 10)`, which
+// matched nothing anywhere, ever. The fix for both: read the Date back with
+// the SAME local getters pg used to build it, never a UTC one — that
+// round-trips correctly regardless of which machine (or timezone) the
+// process runs in. A caller that already has a plain ISO string (tests,
+// `today`'s own default) passes through unchanged.
+function dateKey(d) {
+  if (!(d instanceof Date)) return String(d).slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 // ---- growth: today against yesterday, this week against last -------------
 // The owner's question (2026-09-09) is "are we growing", asked day over day
 // and week over week, and a table of daily rows answers it only with a
@@ -41,7 +67,7 @@ const WINDOWS = [
 // windows are counted on the same calendar the rows were.
 function growthTable(rows, today = new Date().toISOString().slice(0, 10)) {
   const day0 = Date.parse(`${today}T00:00:00Z`);
-  const ageOf = (d) => Math.round((day0 - Date.parse(`${String(d).slice(0, 10)}T00:00:00Z`)) / 86400_000);
+  const ageOf = (d) => Math.round((day0 - Date.parse(`${dateKey(d)}T00:00:00Z`)) / 86400_000);
   const out = {};
   for (const m of GROWTH_METRICS) out[m] = WINDOWS.map(() => 0);
   for (const r of rows) {
@@ -64,7 +90,7 @@ function voiceLine(rows, today = new Date().toISOString().slice(0, 10)) {
   const by = new Map();
   for (const r of rows) {
     if (r.metric !== 'assistant_messages' && r.metric !== 'hebrew_flaws') continue;
-    const d = String(r.date).slice(0, 10);
+    const d = dateKey(r.date);
     if (!by.has(d)) by.set(d, { assistant_messages: 0, hebrew_flaws: 0 });
     by.get(d)[r.metric] = Number(r.value);
   }
@@ -96,7 +122,7 @@ async function renderMetrics(client) {
     </table>`;
   const byDate = new Map();
   for (const r of rows) {
-    const d = String(r.date).slice(0, 10);
+    const d = dateKey(r.date);
     if (Date.now() - Date.parse(`${d}T00:00:00Z`) > 8 * 86400_000) continue;
     if (!byDate.has(d)) byDate.set(d, {});
     byDate.get(d)[r.metric] = Number(r.value);
@@ -115,4 +141,4 @@ async function renderMetrics(client) {
       `<tr><td class="nowrap">${d}</td>${cols.map((m) => `<td>${vals[m] ?? 0}</td>`).join('')}</tr>`).join('')}</table>`;
 }
 
-module.exports = { METRIC_LABELS, METRIC_ORDER, GROWTH_METRICS, WINDOWS, growthTable, voiceLine, renderMetrics };
+module.exports = { METRIC_LABELS, METRIC_ORDER, GROWTH_METRICS, WINDOWS, dateKey, growthTable, voiceLine, renderMetrics };

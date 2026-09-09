@@ -19,11 +19,30 @@ after(async () => { await db.teardown(); });
 
 const iso = (daysAgo) => new Date(Date.now() - daysAgo * 86400_000).toISOString().slice(0, 10);
 
-test('growthTable: each window sums its own days, and active users are averaged, not summed', () => {
+// pg's own date parser: a DATE column comes back as `new Date(Date.UTC(y, m-1, d))`,
+// never a string. `String()` of that is `Date.prototype.toString()` — the
+// weekday-first local form, not the ISO one — so a fixture built from a
+// plain string cannot reproduce the bug this file exists to catch.
+// domain/hebrew-quality's founding-case comment ("measured, not assumed")
+// is the same discipline: a check must be exercised against the real shape.
+const pgDate = (isoDay) => new Date(`${isoDay}T00:00:00Z`);
+
+test('dateKey: a pg Date column and a plain string both key the same day', () => {
+  assert.equal(section.dateKey(new Date('2026-09-09T00:00:00.000Z')), '2026-09-09');
+  assert.equal(section.dateKey('2026-09-09'), '2026-09-09');
+  // the bug this guards: String(Date) is "Wed Sep 09 2026 …", not the ISO
+  // form, and slicing THAT to 10 chars is "Wed Sep 09" — a key nothing
+  // else in the file ever looks up, and a string Date.parse cannot read
+  // (NaN), which read as "outside every window" everywhere it compared,
+  // never as an error.
+  assert.notEqual(String(new Date('2026-09-09T00:00:00.000Z')).slice(0, 10), '2026-09-09');
+});
+
+test('growthTable: each window sums its own days, and active users are averaged, not summed — against real pg-shaped dates', () => {
   const today = '2026-09-09';
   const rows = [];
   for (let age = 0; age < 60; age++) {
-    const d = new Date(Date.parse(`${today}T00:00:00Z`) - age * 86400_000).toISOString().slice(0, 10);
+    const d = pgDate(new Date(Date.parse(`${today}T00:00:00Z`) - age * 86400_000).toISOString().slice(0, 10));
     rows.push({ date: d, metric: 'messages_received', value: age < 7 ? 10 : (age < 14 ? 5 : 1) });
     rows.push({ date: d, metric: 'active_users', value: 12 });
   }
@@ -35,7 +54,7 @@ test('growthTable: each window sums its own days, and active users are averaged,
   assert.deepEqual(g.groups_created, [0, 0, 0, 0, 0, 0]);
 });
 
-test('the sweep counts what people sent and the rooms she joined, and the section renders the comparison', async () => {
+test('the sweep counts what people sent and the rooms she joined, and the section renders the real numbers — through a real pg row, not a fixture', async () => {
   await withTx(db.pool, async (c) => {
     await audit.record(c, user.id, 'message.received', { n: 1 });
     await audit.record(c, user.id, 'message.received', { n: 2 });
@@ -43,16 +62,21 @@ test('the sweep counts what people sent and the rooms she joined, and the sectio
   });
   await withTx(db.pool, (c) => metrics.sweepMetrics(c));
   const { rows } = await db.pool.query(
-    `SELECT metric, value FROM product_metrics_daily WHERE date = $1::date AND metric IN ('messages_received', 'groups_created')`, [iso(0)]);
+    `SELECT date, metric, value FROM product_metrics_daily WHERE date = $1::date AND metric IN ('messages_received', 'groups_created', 'active_users')`, [iso(0)]);
+  // this is the exact row shape renderMetrics gets in production — a real
+  // pg client, never a hand-built object — so date really is a Date here
+  assert.ok(rows[0].date instanceof Date, 'a real query returns a Date, not a string');
   const by = Object.fromEntries(rows.map((r) => [r.metric, Number(r.value)]));
   assert.equal(by.messages_received, 2);
   assert.equal(by.groups_created, 1);
   // rendered through the function the dashboard calls, never a replica of its query
   const html = await section.renderMetrics(db.pool);
   assert.match(html, /צמיחה — יום מול יום/);
-  assert.match(html, /הודעות שהתקבלו/);
-  assert.match(html, /קבוצות חדשות/);
-  assert.match(html, /7 שלפניהם/);
+  // the actual numbers, not just that the labels are on the page — this is
+  // what the label-only version of this test missed on 2026-09-09
+  assert.match(html, /<div class="num">2<\/div><div class="lbl">הודעות שהתקבלו היום<\/div>/);
+  assert.match(html, /nowrap">הודעות שהתקבלו<\/td><td>2<\/td><td>0<\/td><td>2<\/td>/);
+  assert.match(html, /nowrap">קבוצות חדשות<\/td><td>1<\/td><td>0<\/td><td>1<\/td>/);
 });
 
 test('her voice is counted per day from the transcripts: flawed of written, and an unreadable store is not a clean one', async () => {
@@ -66,7 +90,7 @@ test('her voice is counted per day from the transcripts: flawed of written, and 
       { at, text: 'רשמתי ✅ אזכיר לך שעה לפני.' },
       { at: at + 1000, text: 'אני מבין. כבר אמרתי לשרה 🤝' },
       { at: at + 2000, text: 'NO_REPLY' },
-      { at: at - 86400_000, text: 'אני מניח שאתה בישראל' }, // yesterday — not this day's count
+      { at: at - 86400_000, text: 'אני מניח שאתה בישראל' }, // yesterday — must NOT land in today's count
     ],
     [`u-${other.id}`]: null, // a store that could not be opened
   };
@@ -76,7 +100,8 @@ test('her voice is counted per day from the transcripts: flawed of written, and 
   const { rows } = await db.pool.query(
     `SELECT metric, value FROM product_metrics_daily WHERE date = $1::date AND metric IN ('assistant_messages', 'hebrew_flaws') ORDER BY metric`, [day]);
   assert.deepEqual(rows.map((r) => [r.metric, Number(r.value)]), [['assistant_messages', 2], ['hebrew_flaws', 1]]);
-  // the section says "1 of 2" for today, never a percentage
+  // the section says "1 of 2" for TODAY specifically, never yesterday's
+  // slip folded in and never a percentage
   const html = await section.renderMetrics(db.pool);
   assert.match(html, /העברית של עולמה/);
   assert.match(html, /היום 1 מתוך 2/);
