@@ -14,11 +14,22 @@ An undated claim about a model is worth nothing three weeks later.
 ## How to run one
 
 ```bash
-node scripts/run-evals.js --model openrouter/qwen/qwen3.7-flash
+# the smoke set first — the four scenarios a candidate has failed before
+node scripts/run-evals.js --model openrouter/qwen/qwen3.7-flash --only stop-service,goal-capture,bare-time-shift,hebrew-gender-feminine
+# the whole suite, once it survives that
+node scripts/run-evals.js --model openrouter/qwen/qwen3.7-flash --full
 ```
 
-Drives all nine behavioral scenarios on a candidate model instead of the
-live default. Safety properties, none of them incidental:
+Drives the behavioral scenarios on a candidate model instead of the live
+default. **A pilot without `--only` or `--full` is refused** (2026-09-09):
+a full run is twelve scenarios, three or four calls each on the candidate
+plus a reasoning judge on every reply, and in the four days to 2026-09-09
+the eval user cost $7.31 against $2.49 for every real person together —
+`gpt-5-mini` $1.65, `gpt-5-nano` $1.46, `claude-haiku-4.5` $2.26 for one
+full run each, two of them disqualified by their third scenario. The judge
+alone is ~$0.20 a run; `--no-judge` keeps the hard checks (tool selection,
+DB state) and drops it. One pilot a day, and the smoke set before the rest.
+Safety properties, none of them incidental:
 
 - **Nothing is routed anywhere.** The override rides one disposable session
   per scenario (`--model`, the gateway's own per-call flag). `agents.defaults.model`
