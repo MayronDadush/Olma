@@ -261,6 +261,13 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   templates), and a failed send fails for all of them and skips them for the
   rest of the tick. Vered got nine messages in ninety seconds
   (`incidents.md`, "Nine reminders, nine messages").
+- **A `--deliver` that TIMES OUT has very likely gone out, and is never
+  retried.** The CLI hands the turn to the gateway and waits for the model;
+  the kill at `SEND_TIMEOUT_MS` ends the waiting, never the turn. The worker
+  books a `timedOut` result as sent (`last_error` keeps the timeout, audit
+  `delivery.unconfirmed`) — retried as a failure, each retry was a new turn
+  and a new message, and Dana got her day-one check-in six times in seventeen
+  minutes (`incidents.md`, "Six good mornings for one timeout").
 - **Anything else due in the same moment is ONE message too, and two rules say
   what may travel together** (`domain/message-merge.js`). A REMINDER is never
   folded into a composed turn: every rung rides the raw pipe with the owner's

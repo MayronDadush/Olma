@@ -9,6 +9,7 @@ const quota = require('../domain/quota');
 const flagsDomain = require('../domain/flags');
 const proactiveText = require('../domain/proactive-text');
 const { decide } = require('./gate');
+const audit = require('../domain/audit');
 const { mergeRoleFor, planMerge, MERGEABLE_KINDS } = require('../domain/message-merge');
 
 // A delivery is a full model turn — 30-90s of wall time and most of the box's
@@ -307,6 +308,32 @@ async function drainOnce(pool, deliver, now = new Date()) {
             `UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE id = ANY($1::bigint[])`, [ids]
           );
           outcomes.delivered++;
+          if (ids.length > 1) outcomes.batched = (outcomes.batched || 0) + ids.length - 1;
+        } else if (result.timedOut) {
+          // A timeout is a message that has very likely gone out, not one that
+          // failed (channels/openclaw.js, `runOpenclaw`). The CLI hands the
+          // turn to the gateway and waits for the model; killing it at the
+          // deadline stops the WAITING, never the turn, and `--deliver` sends
+          // whatever the turn says. Retried as a failure, every retry is a
+          // whole new turn and a whole new message: Dana got the same day-one
+          // check-in six times in seventeen minutes (2026-09-08, row 8675,
+          // attempts = 5), the last of them with the model's tool-call markup
+          // in it. So the row is booked as SENT — one attempt spent, the
+          // timeout kept in `last_error` so the dashboard can count them — and
+          // never retried. The price is the rare message that really was lost
+          // to a dead gateway; that person hears the next thing Olma has to
+          // say, which is a smaller harm than six copies of this one.
+          await client.query(
+            `UPDATE outbox SET sent_at = now(), hold_reason = NULL,
+                    attempts = attempts + 1, last_error = $2
+             WHERE id = ANY($1::bigint[])`,
+            [ids, String(result.error || 'openclaw timeout').slice(0, 500)]
+          );
+          await audit.record(client, row.user_id, 'delivery.unconfirmed', {
+            outboxIds: ids.map(Number), kind: row.kind, error: String(result.error || 'openclaw timeout').slice(0, 200),
+          });
+          outcomes.delivered++;
+          outcomes.unconfirmed = (outcomes.unconfirmed || 0) + 1;
           if (ids.length > 1) outcomes.batched = (outcomes.batched || 0) + ids.length - 1;
         } else {
           // 5s, 15s, 45s, 2m15s, then capped at 10 minutes. The first retry has
