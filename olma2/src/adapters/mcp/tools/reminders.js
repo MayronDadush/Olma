@@ -48,5 +48,16 @@ module.exports = [
     }),
   tool('list_my_reminders', 'List pending reminders, optionally for one task.',
     { task_id: S('number', 'Optional task id') }, [],
-    (client, user, a) => reminders.listReminders(client, user.id, a.task_id)),
+    async (client, user, a) => {
+      const res = await reminders.listReminders(client, user.id, a.task_id);
+      if (!res.ok || !res.data || !res.data.chasing) return res;
+      // `chasing` is the half of the answer that was missing entirely until
+      // 2026-09-09 — reminders that already went out and are still following
+      // up on their own. Said on the result, on the few calls where any
+      // exists, rather than in the description on every turn.
+      return ok({ ...res.data, hints: { chasing: 'These already went out and will follow up on '
+        + 'their own — a few hours on and again tomorrow. They are NOT hours to promise anybody: '
+        + 'say a time from `reminders`, never from here. To stop one, cancel_reminder(id); the task '
+        + 'stays. To move the next one, cancel it and set_task_reminder on its taskId.' } });
+    }),
 ];

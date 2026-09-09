@@ -373,6 +373,34 @@ test('delivery failure → attempts + backoff, then success on retry', async () 
   assert.equal(out.delivered, 1);
 });
 
+test('a timed-out delivery is booked as sent, never retried — Dana got the same check-in six times', async () => {
+  await flushOutbox();
+  // kind=reminder for the same reason as the retry test above: the second
+  // drain's clock must not be night-held by the wall clock of the test run.
+  await withTx(db.pool, (c) => enqueue(c, { userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { title: 'x' }, idempotencyKey: 'slow' }));
+  let calls = 0;
+  // What channels/openclaw.js returns when the CLI is killed at the deadline:
+  // the turn kept running on the gateway and the message very likely landed.
+  const deliver = async () => { calls++; return { ok: false, timedOut: true, error: 'openclaw timeout' }; };
+  let out = await drainOnce(db.pool, deliver, new Date('2026-08-16T12:00:00Z'));
+  assert.equal(out.delivered, 1);
+  assert.equal(out.unconfirmed, 1);
+  assert.equal(out.failed, 0, 'a timeout is not a failure');
+  const { rows } = await db.pool.query(`SELECT sent_at, hold_reason, attempts, last_error FROM outbox WHERE idempotency_key = 'slow'`);
+  assert.ok(rows[0].sent_at, 'the row is sent');
+  assert.equal(rows[0].hold_reason, null, 'sent, not held or dropped — every "was it delivered" reader agrees');
+  assert.equal(rows[0].attempts, 1);
+  assert.match(rows[0].last_error, /timeout/);
+  // A later tick finds nothing to do with it — no second turn, no second message.
+  out = await drainOnce(db.pool, deliver, new Date('2026-08-16T12:30:00Z'));
+  assert.equal(out.delivered, 0);
+  assert.equal(calls, 1);
+  const { rows: audit } = await db.pool.query(
+    `SELECT detail FROM audit_log WHERE event = 'delivery.unconfirmed' AND actor_id = $1`, [user.id]);
+  assert.equal(audit.length, 1);
+  assert.equal(audit[0].detail.kind, 'reminder');
+});
+
 test('night hold: row waits, then releases when the window opens', async () => {
   await flushOutbox();
   await withTx(db.pool, (c) => enqueue(c, { userId: user.id, kind: 'checkin', idempotencyKey: 'night1' }));
