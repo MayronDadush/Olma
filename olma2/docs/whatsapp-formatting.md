@@ -123,6 +123,17 @@ The words in the table are never touched — this is a rendering decision, and
   out as typed, which is how emphasis on a verbatim message is his to decide
   without a deploy.
 - **Everything in a group**: fixed text, always WhatsApp by definition.
+- **The morning digest is HYBRID since 2026-09-09** — the half that is the
+  same every morning is drawn by code (`domain/digest-block.js`), handed to
+  the model finished on `get_my_digest`'s result, and relayed character for
+  character; the half that changes is the one sentence around it, which is
+  what a model is actually for. The block reads the timezone and the locale
+  off the person and the styling off their channel, so the layout cannot
+  drift between two mornings and a task cannot go missing on the way through.
+  A schedule CARD replaces the block above `digest_card_min_items` — never
+  both, which would be the same morning twice. Eval
+  `digest-block-relayed-untouched` is what checks the split survives contact
+  with a real reply.
 - **Everything a model writes**: styled where a RESULT says so, and nowhere
   else. `message-format.HINTS` holds the four sentences — list, numbered
   choice, struck out, quote their words — in one place so five tools cannot

@@ -244,6 +244,20 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   owner-typed markup in `message_templates` would reach a second channel raw;
   that gap is named in the doc rather than closed by a parser nothing can
   check.
+- **What is the same every time is DRAWN, and only the sentence about it is a
+  model's** (`domain/digest-block.js`, the morning digest, 2026-09-09). The
+  block is rendered in code — the calendar first, the to-dos after, the moment
+  in the shortest honest form in THEIR zone, the styling off their channel and
+  the words off their locale — handed over finished on `get_my_digest`'s
+  result, and relayed verbatim; the model adds one sentence and nothing else.
+  It buys a layout that cannot drift, a list that cannot lose a task, a suite
+  check instead of an eval, and no cost. It costs what every deterministic
+  sentence here costs: **no grammatical gender**, so nothing in a drawn block
+  may be a verb addressed to anybody, and one set of words per language. A
+  schedule CARD replaces the block above `digest_card_min_items` — never both.
+  **`null` (nothing due) and an empty block are different answers**: a morning
+  with nothing on it is a real morning and the sentence about it is the
+  model's, never an empty heading.
 - **The delivery gate is the chokepoint and a paused user has no exceptions** —
   not reminders, not urgent, not another user's fan-out.
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where

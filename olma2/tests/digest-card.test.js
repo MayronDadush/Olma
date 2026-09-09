@@ -64,15 +64,21 @@ test('the card clause orders the ITEMS fetched, not just the card drawn', async 
   // text every time — which is exactly what production did.
   const row = { kind: 'digest', payload: { scope: 'summary', cardMinItems: 3 } };
   const text = instructionFor(row);
-  assert.match(text, /list_my_tasks/);
+  // One tool is named rather than two, since 2026-09-09: get_my_digest is the
+  // one that also carries the drawn block, so a turn sent to list_my_tasks
+  // instead would have items to draw with and no block to fall back on.
   assert.match(text, /scope="full"/);
+  assert.match(text, /get_my_digest/);
   assert.match(text, /render_schedule_card/);
   assert.match(text, /MEDIA: <path>/);
 });
 
-test('under the threshold the instruction still prefers a sentence', async () => {
+test('under the threshold the instruction still prefers text over an image', async () => {
   const text = instructionFor({ kind: 'digest', payload: { scope: 'summary', cardMinItems: 3 } });
-  assert.match(text, /Under 3 items, a warm sentence/);
+  assert.match(text, /Under 3 items the block IS the message/);
+  // And above it the two are alternatives, never both: a card beside the block
+  // is the same morning twice, once as a picture.
+  assert.match(text, /A card REPLACES the block — never send both/);
 });
 
 test('0 turns cards off completely — no card clause at all', async () => {

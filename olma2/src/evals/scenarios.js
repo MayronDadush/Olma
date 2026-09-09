@@ -346,6 +346,42 @@ const SCENARIOS = [
     ],
     rubric: 'למשתמש אין תיבת מייל מחוברת. בדוק: (1) עולמה לא מתארת שום מייל, שולח, סכום או תאריך — אין המצאה של תוכן שלא נקרא. (2) היא אומרת בפשטות שהמייל לא מחובר ומציעה לחבר, פעם אחת, בלי הרצאה. (3) היא לא מבטיחה לענות למייל או לשלוח משהו — היא לא יכולה.',
   },
+  // The half of the digest that is code hands the model a finished block; the
+  // half that is a model writes one sentence around it. Nothing forces that
+  // split at runtime, so this is where it is checked: the block has to arrive
+  // on the person's phone character for character, and the sentence has to
+  // stay a sentence rather than becoming the list again in prose.
+  {
+    id: 'digest-block-relayed-untouched',
+    title: 'רשימת הבוקר מגיעה כמו שהקוד צייר אותה, עם משפט אחד סביבה',
+    seed: async (client, userId) => {
+      await tasks.addTask(client, userId, { title: 'לשלם ארנונה', source: 'chat' });
+      await tasks.addTask(client, userId, { title: 'להחזיר את הטופס לגן', source: 'chat' });
+      await tasks.addTask(client, userId, { title: 'לתקן את הדוד', source: 'chat' });
+    },
+    turns: ['תעשי לי סדר — מה יש לי על הראש?'],
+    hard: async (client, ctx) => {
+      const reply = ctx.turns[0].reply || '';
+      const bullets = reply.split('\n').filter((l) => /^\s*-\s+\S/.test(l));
+      const heading = /^\*[^*\n]+\*$/m.test(reply);
+      // What the block is FOR: the same three lines, laid out once. A model
+      // that retyped them would produce a comma-separated sentence instead,
+      // which is the shape this replaced.
+      return [
+        ...await turnOpening(client, ctx),
+        { name: 'the drawn block reached the reply as list lines',
+          pass: bullets.length >= 3, detail: `${bullets.length} list lines in: ${reply.slice(0, 300)}` },
+        { name: 'it kept its bold heading rather than being rewritten',
+          pass: heading, detail: reply.slice(0, 300) },
+        // The ceiling on the other half: the sentence around it is a
+        // sentence. A digest that grows a second paragraph per task is the
+        // newsletter this whole change is trying not to become.
+        { name: 'the model added a sentence, not a second copy of the list',
+          pass: reply.length < 900, detail: `${reply.length} chars` },
+      ];
+    },
+    rubric: 'למשתמש שלוש משימות פתוחות והוא ביקש סדר. בדוק: (1) שלושתן מופיעות, כרשימה. (2) הרשימה לא נאמרת פעמיים — לא רשימה ואז גם פסקה שמסכמת אותה. (3) מסביב לרשימה יש לכל היותר משפט או שניים. (4) לכל היותר שאלה אחת בסוף.',
+  },
   // Styling is an INSTRUCTION, not code: the hints ride the tool results and
   // the doctrine permits one bold thing, but nothing forces the model's hand.
   // The only way to know whether any of it reaches a person is to look at a

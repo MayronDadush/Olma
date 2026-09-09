@@ -227,7 +227,7 @@ function cardClause(p) {
   const raw = p.cardMinItems;
   const min = Number.isFinite(Number(raw)) ? Number(raw) : DEFAULT_CARD_MIN_ITEMS;
   if (min <= 0) return '';
-  return ` If the counts show ${min} or more open items, do NOT list them as text: fetch the actual items first (list_my_tasks, or get_my_digest with scope="full" — the summary scope returns counts only), then call render_schedule_card and reply with one short sentence plus "MEDIA: <path>" on its own line. Under ${min} items, a warm sentence or two is better than an image.`;
+  return ` If the counts show ${min} or more open items, the picture is long enough to be worth an IMAGE instead: fetch the actual items first (get_my_digest with scope="full" — the summary scope returns counts only), then call render_schedule_card and reply with one short sentence plus "MEDIA: <path>" on its own line. A card REPLACES the block — never send both, which would be the same morning twice. Under ${min} items the block IS the message.`;
 }
 
 function bodyFor(row, p) {
@@ -248,7 +248,7 @@ function bodyFor(row, p) {
       // question every single morning is the drum this doctrine forbids
       // everywhere else, and it would be worse than the filler it replaced.
       return `Scheduled digest time. Call get_my_digest with scope="${p.scope || 'summary'}" now${''
-        } — and if their calendar is connected (USER.md says), also my_calendar_events for the next day or two: a digest that says "יום עמוס לך מחר" because it actually looked is the whole point of having the calendar connected. Send the user a natural, warm summary of the result in their language — what is on their calendar (events) first, then what is on their plate (tasks), as two short parts; a meeting is never read out as a task. ${format.HINTS.list} If crossUser.awaitingOthers is non-empty, say so in one line — someone they are waiting on has not answered yet; being owed an answer is news, and staying silent about it is how a person ends up believing nothing is happening.${endingClause(p)}${cardClause(p)} ${p.folded && p.folded.length ? `Also weave in these queued updates naturally: ${JSON.stringify(p.folded)}.` : ''}`;
+        } — and if their calendar is connected (USER.md says), also my_calendar_events for the next day or two: a digest that says "יום עמוס לך מחר" because it actually looked is the whole point of having the calendar connected. The result carries \`block\`: the list, ALREADY laid out and already in their language — the calendar first and the to-dos after, which is a separation a meeting must never lose. Put it in your reply exactly as it is and add nothing to it: do not rewrite it, do not reorder it, and never say any of it again in prose. Your job is the sentence AROUND it, which is the half a model is actually for. On scope="summary" there is no block, because counts are what that person asked for — write those in a line of your own. If crossUser.awaitingOthers is non-empty, say so in one line — someone they are waiting on has not answered yet; being owed an answer is news, and staying silent about it is how a person ends up believing nothing is happening.${endingClause(p)}${cardClause(p)} ${p.folded && p.folded.length ? `Also weave in these queued updates naturally: ${JSON.stringify(p.folded)}.` : ''}`;
     case 'reminder':
       // Every rung of the escalation ladder rides the RAW pipe, so this branch
       // is reached only by a reminder payload carrying its own `instruction`
