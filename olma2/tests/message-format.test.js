@@ -113,3 +113,62 @@ test('a reminder list is a native WhatsApp list, and a bullet character elsewher
   const last = renderReminderText({ ...payload, attempt: 3, finalAttempt: true }, undefined, 'he', 'whatsapp');
   assert.match(last, /התזכורות האחרונות/);
 });
+
+// ---- emphasis the PERSON typed ---------------------------------------------
+// The other half of the no-escape-character problem. wrapInline refuses to ADD
+// emphasis to a value carrying a marker; this removes emphasis the value would
+// otherwise produce by itself, on the verbatim path only.
+//
+// The readings kept below are the ones that decide how narrow the rule is —
+// each is a real shape a title takes, and each would be damaged by the obvious
+// implementation (delete every marker).
+test('emphasis a person typed is cleaned out of a verbatim message', () => {
+  const s = format.stripUserMarkup;
+  assert.equal(s('לקנות חלב *דל לקטוז*'), 'לקנות חלב דל לקטוז');
+  assert.equal(s('*הכל מודגש*'), 'הכל מודגש');
+  assert.equal(s('חלב *דל* ולחם *מלא*'), 'חלב דל ולחם מלא', 'two pairs in one title');
+  assert.equal(s('*_שניים יחד_*'), 'שניים יחד', 'nested');
+  assert.equal(s('~בוטל~ מחר'), 'בוטל מחר');
+  assert.equal(s('run `npm test`'), 'run npm test');
+  assert.equal(s(null), '');
+});
+
+test('a marker that is part of the word is left exactly as it is', () => {
+  const s = format.stripUserMarkup;
+  // Deleting a character out of somebody's words is a thing you get to be
+  // wrong about once, so every one of these REJECTED a blunter rule.
+  assert.equal(s('report_final_v2'), 'report_final_v2', 'that underscore is the file name');
+  assert.equal(s('7~8 בערב'), '7~8 בערב', 'a lone marker pairs with nothing');
+  assert.equal(s('3 * 4 שולחנות'), '3 * 4 שולחנות', 'the marker hugs no word');
+  assert.equal(s('a*b*c'), 'a*b*c', 'glued inside a token on both sides');
+});
+
+test('the cleaning reaches the three places nothing retypes the words', () => {
+  // A reminder title...
+  assert.equal(renderReminderText({ title: 'לקנות חלב *דל לקטוז*' }, undefined, 'he', 'whatsapp'),
+    '⏰ תזכורת: לקנות חלב דל לקטוז');
+  // ...every line of a batch...
+  const list = renderReminderText({ items: ['חלב *דל*', 'לחם'] }, undefined, 'he', 'whatsapp');
+  assert.doesNotMatch(list, /\*/, `a marker survived a batch line: ${list}`);
+  // ...and a slot proposed by one person, on its way to a whole room.
+  const { renderGroupCoordination } = require('../src/domain/proactive-text');
+  const done = renderGroupCoordination({ kind: 'done', slot: 'יום חמישי *17:00*' });
+  assert.match(done, /יום חמישי 17:00/);
+  assert.doesNotMatch(done, /\*/);
+  // The first sentence a stranger ever reads is not styled by whoever invited
+  // them either — the reason is free text another user wrote.
+  const { introMessage } = require('../src/intake/messages');
+  const intro = introMessage({
+    inviterName: 'יואב', inviterPhone: '054-000-0000',
+    reason: 'לתאם את *הטיול* של סוף השבוע', phone: '+972541112222',
+  });
+  assert.match(intro, /לתאם את הטיול של סוף השבוע/);
+  assert.doesNotMatch(intro, /\*/);
+});
+
+test('what Olma writes herself is never cleaned — only what somebody else typed', () => {
+  // The owner may put *{{title}}* in a template on the admin page. The value
+  // is cleaned; the sentence around it is his and is left alone.
+  const out = renderReminderText({ title: 'תרופה' }, { reminder: '⏰ *{{title}}*' }, 'he', 'whatsapp');
+  assert.equal(out, '⏰ *תרופה*');
+});

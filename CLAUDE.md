@@ -200,7 +200,15 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   never about the row. **There is no escape character**, so a value we did not
   write — a task title is the person's own words — is left unwrapped when it
   already carries the marker: emphasis lost, sentence correct, which is the
-  right way round. The module BUILDS markup and does not parse it, so
+  right way round. The OTHER half of that is `stripUserMarkup`, which removes
+  emphasis such a value would render on its own, on the three verbatim paths
+  where no model retypes the words (a reminder title and its batch lines, a
+  room's slot text, the name and reason a stranger first reads). It is narrow
+  on purpose — a pair goes only when both markers sit at a word boundary, so
+  `report_final_v2` and `7~8` survive — because deleting a character out of
+  somebody's words is a thing you get to be wrong about once. **Olma does not
+  use italic, monospace or inline code at all** (owner, 2026-09-09, decided by
+  looking at them on a phone), and links go bare. The module BUILDS markup and does not parse it, so
   owner-typed markup in `message_templates` would reach a second channel raw;
   that gap is named in the doc rather than closed by a parser nothing can
   check.

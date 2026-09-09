@@ -28,6 +28,11 @@ built from `message-format.STYLES`, so it cannot fall behind the table.
 tables, no colour or size. A bare URL becomes clickable on its own; `#` and
 `[…](…)` arrive as the literal characters, which is worse than not trying.
 
+A URL stays tappable **inside** inline code too — checked on a real phone
+2026-09-09, after this file claimed the opposite. It was wrong. We still send
+links bare, because the owner prefers how they look, not because a styled one
+would break.
+
 ## The four rules that bite
 
 - **There is no escape character.** You cannot show a literal `*` next to bold
@@ -70,6 +75,46 @@ deciding where a `*` is a marker and where it is an asterisk somebody typed —
 a guess nobody can check until a real second platform exists to check it
 against. Named here rather than papered over with an untestable parser.
 
+## The house style, decided by looking (2026-09-09)
+
+Every style below WhatsApp renders; these are the ones Olma is allowed to use.
+The decisions came from sending the real messages to a phone
+(`scripts/send-format-preview.js`) rather than from arguing about a table.
+
+- **Italic is not used at all.** In Hebrew the slant is barely visible and some
+  devices render it badly. Seen side by side with English italic in one
+  message; the answer was immediate. The capability table still says WhatsApp
+  renders it — that is a fact about the platform, and this is a fact about us.
+- **Monospace and inline code are not used** — including in the alarms that
+  reach the owner rather than a user, which had been the one place a
+  system-looking message would have been correct. Not wanted.
+- **Links go bare**, for preference rather than for breakage (see above).
+- **Emphasis somebody else typed is cleaned**, not passed through. See below.
+
+## Emphasis the person typed
+
+A task title is their words and may carry an asterisk, so `לקנות חלב *דל
+לקטוז*` used to arrive with two words in bold that nobody chose. The owner's
+call is to clean those markers: `message-format.stripUserMarkup`, applied on
+the three verbatim paths where no model retypes the words — a reminder title
+and every line of a batch, the slot text a room hears, and the name and reason
+in the first message a stranger ever reads.
+
+It is not `wrapInline`'s rule and does not replace it: that one refuses to ADD
+emphasis to a value carrying a marker, this one removes emphasis the value
+would produce on its own. Both stay.
+
+The rule is deliberately narrow, because deleting a character out of somebody's
+words is a thing you get to be wrong about once. A pair goes only when BOTH
+markers sit at a word boundary — the shape of emphasis a person typed on
+purpose. A marker glued inside a token is part of the token:
+`report_final_v2`, `7~8 בערב` and `3 * 4 שולחנות` come through untouched, and
+the test keeps them as the readings that rejected the blunter rule. The cost is
+that a stray slant can survive a file name, which is the right way round.
+
+The words in the table are never touched — this is a rendering decision, and
+`tasks.title` still holds what they said.
+
 ## Where styling is and is not used today
 
 - **Reminders and their rungs** (the raw pipe): the list form is a native
@@ -78,8 +123,9 @@ against. Named here rather than papered over with an untestable parser.
   out as typed, which is how emphasis on a verbatim message is his to decide
   without a deploy.
 - **Everything in a group**: fixed text, always WhatsApp by definition.
-- **Everything a model writes**: unstyled. `agents-template.md` says "No
-  markdown bold", which is a deliberate voice decision, not an oversight — and
-  reversing it belongs in that file, where the doctrine is at 39,229 of the
-  39,250 characters the gateway will inject, so a sentence added there has to
-  be paid for by deleting one.
+- **Everything a model writes**: unstyled, still. `agents-template.md` says
+  "No markdown bold", which is a deliberate voice decision, not an oversight.
+  Reversing it belongs in that file, which renders at 39,146 of the 39,250
+  characters the gateway will inject — about 104 free, plus the 17 that
+  sentence itself occupies. Enough for one instruction, which is not the same
+  as having decided what the instruction should say.

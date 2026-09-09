@@ -183,6 +183,58 @@ function formatterFor(channelType) {
   };
 }
 
+// ---- text somebody else wrote ----------------------------------------------
+// A task title is the person's own words and may contain an asterisk. Passing
+// it through means WhatsApp renders THEIR characters as emphasis: "לקנות חלב
+// *דל לקטוז*" arrives with two words in bold that nobody chose to bold. The
+// owner's call, after seeing it on a phone (2026-09-09), is to clean those
+// markers rather than live with them.
+//
+// This is the other half of the no-escape-character problem, and the two
+// defences are not interchangeable: `wrapInline` refuses to ADD emphasis to a
+// value that already carries a marker, and this removes emphasis the value
+// would otherwise produce on its own. Both stay. This one runs only on the
+// VERBATIM path — a reminder, a first contact, a line in a group — because
+// there is no model there to retype the words; anything a model writes is its
+// own output and is not somebody else's text any more.
+//
+// The rule narrows rather than widens, because deleting a character out of
+// somebody's words is a thing you get to be wrong about once. A pair is
+// removed only when BOTH markers sit at a word boundary, which is the shape
+// of emphasis a person typed on purpose. A marker glued inside a token is
+// part of the token:
+//
+//   לקנות חלב *דל לקטוז*  →  the asterisks go, the words stay
+//   report_final_v2       →  untouched; that underscore is the file's name
+//   7~8 בערב              →  untouched; a lone marker pairs with nothing
+//   3 * 4 שולחנות         →  untouched; the marker hugs no word
+//
+// The cost of that narrowness is that a stray slant can still survive a file
+// name. That is the right way round — a mangled name is a worse message than
+// an unintended italic, and Olma does not use italic herself.
+const USER_MARKERS = ['*', '_', '~', '`'];
+
+// What may follow a closing marker. Deliberately not `\\b`: the text is mostly
+// Hebrew, where a word boundary between two Hebrew letters does not exist as
+// far as JS is concerned.
+const CLOSE_AFTER = '\\s.,!?;:)\\]}"\'\u05f3\u05f4';
+
+function pairRe(marker) {
+  const m = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${m}(?!\\s)([^\\n${m === '`' ? '`' : m}]*?)(?<!\\s)${m}(?=$|[${CLOSE_AFTER}])`, 'gm');
+}
+
+function stripUserMarkup(value) {
+  let s = String(value == null ? '' : value);
+  for (const marker of USER_MARKERS) {
+    const re = pairRe(marker);
+    // Looped because removing one pair can put the next one at a boundary,
+    // and because a title may carry two.
+    for (let before = null; before !== s;) { before = s; s = s.replace(re, '$1$2'); }
+  }
+  return s;
+}
+
 // ---- the reference message --------------------------------------------------
 // One message showing every style THIS channel renders, each next to its name
 // and the characters that produce it, built from the table above so the demo
@@ -248,5 +300,5 @@ function sampler(lang = 'he', channelType = 'whatsapp') {
 
 module.exports = {
   STYLES, UNSUPPORTED, PLATFORMS, ALL_KEYS,
-  capabilitiesFor, supports, formatterFor, sampler,
+  capabilitiesFor, supports, formatterFor, sampler, stripUserMarkup,
 };

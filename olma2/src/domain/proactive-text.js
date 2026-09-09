@@ -20,9 +20,16 @@
 const templates = require('./message-templates');
 const format = require('./message-format');
 
-// Titles are the user's own words; bound them to one message-safe line.
+// Titles are the user's own words; bound them to one message-safe line — and
+// take the emphasis out of them. A title carrying an asterisk arrives with
+// WhatsApp rendering THEIR characters as bold, which nobody chose (the owner
+// looked at it on a phone and asked for it cleaned, 2026-09-09). It happens
+// here rather than at `addTask` because the words in the table stay the words
+// they said: this is a rendering decision, on the one path where no model
+// retypes the text. See message-format.stripUserMarkup for how narrow the
+// rule is and what it deliberately leaves alone.
 function cleanTitle(title) {
-  return String(title || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  return format.stripUserMarkup(String(title || '').replace(/\s+/g, ' ').trim()).slice(0, 200);
 }
 
 // Rungs 2 and 3 of the escalation ladder ride this same raw pipe, for the same
@@ -171,18 +178,26 @@ function renderGroupTooLarge(maxMembers, overrides) {
 // decides WHICH, and the sweep decides whether the hour allows it). Everything
 // tagged goes through mentionTokens for the same reason the gate notice does:
 // only a phone-number token pings anybody.
+// A slot is free text somebody proposed ("יום חמישי 17:00 בקפה ליד המשרד"), so
+// it reaches a whole room with their punctuation in it. Same cleaning as a
+// reminder title, and for the stronger reason: in a group the person whose
+// asterisks would be rendered is not even the person reading them.
+function slotText(slot) {
+  return format.stripUserMarkup(slot);
+}
+
 function renderGroupCoordination(line, overrides) {
   if (line.kind === 'base') {
     return templates.render('group_coord_base', {
-      slot: line.slot, yes: String(line.yes), missing: mentionTokens(line.missing || []),
+      slot: slotText(line.slot), yes: String(line.yes), missing: mentionTokens(line.missing || []),
     }, overrides);
   }
   if (line.kind === 'chase') {
     return templates.render('group_coord_chase', { missing: mentionTokens(line.missing || []) }, overrides);
   }
-  if (line.kind === 'dayof') return templates.render('group_coord_dayof', { slot: line.slot }, overrides);
-  if (line.kind === 'soon') return templates.render('group_coord_soon', { slot: line.slot }, overrides);
-  return templates.render('group_coord_done', { slot: line.slot }, overrides);
+  if (line.kind === 'dayof') return templates.render('group_coord_dayof', { slot: slotText(line.slot) }, overrides);
+  if (line.kind === 'soon') return templates.render('group_coord_soon', { slot: slotText(line.slot) }, overrides);
+  return templates.render('group_coord_done', { slot: slotText(line.slot) }, overrides);
 }
 
 // The single decision point the deliverer consults: a non-null return means
