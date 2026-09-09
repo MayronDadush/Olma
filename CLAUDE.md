@@ -703,6 +703,18 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   prompt is a request, not a guarantee: wherever a model's raw output reaches a
   person with no server-side gate, the prompt is the only thing standing there
   and it can simply be ignored.
+- **A reply that got lost is RE-SENT, never re-answered.** The transcript is
+  holding the composed reply word for word, so handing a model the job of
+  saying it again is asking a second model to reconstruct what we already have
+  — and it is what put English internals on Yahav's phone. `undeliveredReply`
+  carries the text and it goes out on the raw pipe with no model in the path
+  (2026-09-09), for the same reason reminders were moved there. **A raw send
+  does not enter the session**, which is the point and not a cost: the reply is
+  already in the history, so re-sending verbatim makes the phone match it,
+  where the model turn appended a SECOND assistant turn and left the
+  conversation holding the answer twice. **Verbatim or nothing** — a reply
+  carrying a `MEDIA:` line is a gateway convention the raw pipe cannot honour,
+  so it is counted on the heartbeat and left alone rather than half-sent.
 
 ### Writing detectors and alarms
 

@@ -472,9 +472,15 @@ test('a composed reply that never left the box is repaired; a delivered one neve
     `SELECT payload FROM outbox
       WHERE user_id = $1 AND payload->>'repairKind' = 'undelivered_reply'`, [u.id]);
   assert.equal(rows.length, 1);
-  assert.match(rows[0].payload.checkinInstruction, /never delivered/);
-  assert.match(rows[0].payload.checkinInstruction, /NO_REPLY/);
-  assert.match(rows[0].payload.checkinInstruction, /Do not apologise/);
+  // The reply the box already composed, carried word for word — no instruction
+  // for a model to re-answer from, because no model is in this path any more.
+  assert.equal(rows[0].payload.verbatimReply, 'ספר לי, אני רושמת');
+  assert.equal(rows[0].payload.checkinInstruction, undefined);
+  // ...and the ONE function that decides raw-pipe-or-agent-turn agrees, called
+  // on the row production hands it rather than on a hand-built lookalike.
+  assert.equal(
+    require('../src/domain/proactive-text').rawPipeTextFor({ kind: 'checkin', payload: rows[0].payload }),
+    'ספר לי, אני רושמת');
   // same rung as case (a) so ONE cooldown covers both repair kinds
   assert.equal(rows[0].payload.rung, 'unanswered_repair');
 
@@ -751,4 +757,93 @@ test('a reply that only CONTAINS the sentinel is still a real reply', async () =
     now,
   }));
   assert.deepEqual(out.repaired, [u.id], 'she never saw a sentence that was written for her');
+});
+
+// ── A lost reply is re-sent as itself ────────────────────────────────────────
+// The repair used to hand a MODEL the job of saying the lost answer again. It
+// had the whole answer in front of it and asked for a reconstruction anyway,
+// and on 2026-09-09 the reconstruction was "No conversation history is
+// accessible to me in this session", in English, on Yahav's phone. These hold
+// the two halves of the replacement open: what goes out is the composed text
+// itself, and what cannot go out as itself does not go out at all.
+test('a reply the pipe lost is re-sent word for word, with no model in the path', async () => {
+  const unanswered = require('../src/jobs/unanswered');
+  const proactiveText = require('../src/domain/proactive-text');
+  const now = Date.now();
+  const ago = (min) => new Date(now - min * 60_000).toISOString();
+  const u = await makeUser(db.pool, '+972617000043', { firstName: 'Yahav' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = now() - interval '2 days' WHERE id = $1`, [u.id]);
+
+  // A real answer: several sentences, an emoji, a newline — everything a
+  // "substance of that answer" instruction would have had to reproduce.
+  const reply = 'רשמתי לך את הפגישה ליום שלישי ב-10:00 ✅\nאזכיר לך שעה לפני.';
+  const msgs = [
+    { role: 'user', text: 'תרשמי פגישה ביום שלישי בעשר', at: ago(10) },
+    { role: 'assistant', text: reply, at: ago(9) },
+  ];
+  const out = await withTx(db.pool, (c) => unanswered.sweepUnanswered(c, {
+    readDroppedTurns: () => new Map(),
+    readMessages: (agentId) => (agentId === `u-${u.id}` ? msgs : []),
+    readSentEvents: () => ({ events: [], windows: [{ from: 0, to: Infinity }] }),
+    now,
+  }));
+  assert.deepEqual(out.repaired, [u.id]);
+  assert.equal(out.unsendable, undefined, 'a plain text reply is sendable');
+
+  const { rows } = await db.pool.query(
+    `SELECT kind, urgency, payload FROM outbox
+      WHERE user_id = $1 AND payload->>'repairKind' = 'undelivered_reply'`, [u.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].payload.verbatimReply, reply, 'the newline and the ✅ survive intact');
+  // The row still rides `checkin`/urgent, because that is what carries a repair
+  // past the quiet drop and out of the merge — the delivery changed, not the gate.
+  assert.equal(rows[0].kind, 'checkin');
+  assert.equal(rows[0].urgency, 'urgent');
+  // The decision point production uses, on production's own row: a non-null
+  // answer here is exactly what means "no agent turn".
+  assert.equal(proactiveText.rawPipeTextFor(rows[0]), reply);
+});
+
+test('a lost reply that cannot go out as itself is counted, never improvised', async () => {
+  const unanswered = require('../src/jobs/unanswered');
+  const now = Date.now();
+  const ago = (min) => new Date(now - min * 60_000).toISOString();
+  const u = await makeUser(db.pool, '+972617000044', { firstName: 'Maya' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = now() - interval '2 days' WHERE id = $1`, [u.id]);
+
+  // A schedule card: the sentence is text, the picture is a gateway convention
+  // the raw pipe knows nothing about. Sending this verbatim would put the word
+  // "MEDIA:" and a filesystem path on somebody's phone.
+  const msgs = [
+    { role: 'user', text: 'מה יש לי השבוע', at: ago(10) },
+    { role: 'assistant', text: 'הנה השבוע שלך:\nMEDIA: /root/.openclaw/workspaces/u-9/cards/ab12.png', at: ago(9) },
+  ];
+  const out = await withTx(db.pool, (c) => unanswered.sweepUnanswered(c, {
+    readDroppedTurns: () => new Map(),
+    readMessages: (agentId) => (agentId === `u-${u.id}` ? msgs : []),
+    readSentEvents: () => ({ events: [], windows: [{ from: 0, to: Infinity }] }),
+    now,
+  }));
+  assert.deepEqual(out.repaired, [], 'nothing is sent');
+  // But the pass says so — a path that declines to act and reports nothing is
+  // indistinguishable from one that found nothing to do.
+  assert.deepEqual(out.unsendable, { media: 1 });
+  const { rows } = await db.pool.query(
+    `SELECT id FROM outbox WHERE user_id = $1 AND payload->>'rung' = 'unanswered_repair'`, [u.id]);
+  assert.equal(rows.length, 0, 'and files no row a model would have had to fill');
+});
+
+test('resendableVerbatim: what may be re-sent as itself', () => {
+  const { resendableVerbatim } = require('../src/jobs/unanswered');
+  assert.deepEqual(resendableVerbatim('שלום'), { ok: true, text: 'שלום' });
+  // Trimmed, because an all-whitespace reply is nothing to send.
+  assert.deepEqual(resendableVerbatim('  שלום  '), { ok: true, text: 'שלום' });
+  assert.equal(resendableVerbatim('   \n ').ok, false);
+  assert.equal(resendableVerbatim('').why, 'empty');
+  assert.equal(resendableVerbatim(null).why, 'empty');
+  assert.equal(resendableVerbatim('הנה\nMEDIA: /x/y.png').why, 'media');
+  // The convention is a line of its own; the word inside a sentence is not it.
+  assert.equal(resendableVerbatim('דיברנו על MEDIA: זה נושא אחר').ok, true);
 });
