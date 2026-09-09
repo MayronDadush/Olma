@@ -16,7 +16,6 @@
 // wrongly. It goes through `groups.setKind` — validated and audited exactly
 // like the room's own answer.
 const { esc } = require('../../html');
-const { ago } = require('../html');
 const occ = require('../../../../intake/openclaw-config');
 const { GREETER_AGENT_ID } = require('../../../../intake/provision-group');
 const groupsDomain = require('../../../../domain/groups');
@@ -95,13 +94,20 @@ async function renderGroups(client, csrf, _probe, ctx = {}) {
       <td>${list.length}</td>
       <td>${missing.length ? esc(missing.join(', ')) : '—'}</td>
       <td class="dim">${esc(g.registered_by || '—')}</td>
-      <td class="dim">${g.last_mention_at ? esc(ago(g.last_mention_at)) : '—'}</td>
       <td class="dim">${g.opened_announced_at ? '✓' : (g.opened_at ? 'ממתינה לשעות' : '—')}</td>
       <td>${kindForm(g, csrf)}</td>
     </tr>`;
   }).join('');
+  // No "תיוג אחרון" column. It rendered `chat_groups.last_mention_at`, which
+  // the sweep rewrote on every pass whatever anybody did, so it read "seconds
+  // ago" for every room for ever — and once `mayAnnounce` moved off that column
+  // (migration 056) this page was its only reader left, so the write goes with
+  // it (migration 059; the DB column stays, migrations here are additive).
+  // Nothing here replaces it: the honest
+  // version would have been "when a session she can see last moved", and the
+  // sweep cannot see `main`, which is the session the raw pipe sends as.
   return `${head}<table><tr><th>קבוצה</th><th>מצב</th><th>אנשים</th><th>עוד לא כתבו לה</th>
-    <th>נרשמה דרך</th><th>תיוג אחרון</th><th>הוכרזה</th><th>סוג וכמה צריך</th></tr>${rows}</table>
+    <th>נרשמה דרך</th><th>הוכרזה</th><th>סוג וכמה צריך</th></tr>${rows}</table>
     <p class="dim">סוג: <b>משחק</b> — יש מינימום, ואולי מקסימום שאפשר לסגור עליו.
     <b>חברתית</b> — כולם מוזמנים, בלי מינימום. ריק = אף אחד עוד לא אמר לה, והיא לא מנחשת.</p>`;
 }

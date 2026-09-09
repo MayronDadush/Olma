@@ -656,3 +656,108 @@ test('her own number never reaches the sender list', async () => {
   assert.ok(!admitted.includes(occ.SELF_PHONE),
     'her own tag comes back in her own outbound message — a loop with her at both ends');
 });
+
+// ---- one watermark per gateway session (migration 059) ----------------------
+//
+// Every fixture above hands the sweep ONE session per room, and production
+// never does: a room has the muted greeter's session and, once it is open, its
+// own `g-N` agent's. That is the whole reason this survived — the loop runs
+// once per session, and against a single `chat_groups.last_seen_at` each
+// iteration overwrote the previous one's mark, so on the next pass every
+// session was comparing its own stamp against somebody else's.
+//
+// Measured live on 2026-09-09, two readings three minutes apart with nobody
+// writing in any room: all three rooms carried the same `last_mention_at` to
+// the microsecond, and it had advanced.
+function twoSessions({ jid, roster, subject = 'פאדל שלישי', greeterAt, ownAgentId, ownAt, messageId = 'MSG-1' }) {
+  const sent = [];
+  const session = (agentId, at) => ({
+    key: `agent:${agentId}:whatsapp:group:${jid}`,
+    agentId, channel: 'whatsapp', chatType: 'group', peer: jid, lastInteractionAt: at,
+  });
+  return {
+    sent,
+    deps: {
+      configPath,
+      // Greeter first, exactly as `sweepGroups` builds `agentIds`:
+      // `[GREETER, ...open agents]`.
+      listGroupSessions: () => [session(pg.GREETER_AGENT_ID, greeterAt), session(ownAgentId, ownAt)],
+      readGroupContext: () => ({ subject, members: roster, wasMentioned: true, at: ownAt, messageId }),
+      send: async (target, body, opts) => { sent.push({ target, body, replyTo: opts && opts.replyTo }); return true; },
+    },
+  };
+}
+
+// The one that was firing every ten seconds in a shape production could reach.
+// Nothing changes between the second pass and the third — same roster, same two
+// stamps — and the room must hear nothing the second time. Against one column
+// per room it heard a nudge on every pass for ever: the greeter's iteration
+// wrote its older stamp back over the mark the `g-N` iteration had left, and
+// the `g-N` iteration then read that regressed number and called its own
+// unchanged turn a fresh tag.
+test('two sessions and nothing new: the room is answered once, not on every pass', async () => {
+  const a = await connectedUser('+972605000010');
+  await makeUser(db.pool, '+972605000011');   // never wrote to her: the room stays locked
+  const jid = JID(30);
+  const roster = `${a.phone}, +972605000011`;
+  const at = Date.now();
+
+  await pass(gatewayWith({ jid, roster, at }).deps);   // registers + introduces
+  const owner = 'g-99';
+
+  // Something really did happen: the room's own session is a minute newer than
+  // anything we have watermarked.
+  const tagged = twoSessions({ jid, roster, greeterAt: at, ownAgentId: owner, ownAt: at + 60_000 });
+  const second = await pass(tagged.deps);
+  assert.equal(second.notices, 1, 'a turn newer than our mark in a locked room is a tag');
+
+  // And now nothing happens at all. Same stamps, same roster, twice more.
+  for (const n of [3, 4]) {
+    const quiet = twoSessions({ jid, roster, greeterAt: at, ownAgentId: owner, ownAt: at + 60_000 });
+    const out = await pass(quiet.deps);
+    assert.equal(out.notices, 0, `pass ${n} answered a tag nobody sent`);
+    assert.deepEqual(quiet.sent, [], `pass ${n} said something into a silent room`);
+  }
+
+  const row = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  assert.equal(row.notices_sent, 1, 'and the notice count did not climb');
+});
+
+// The one place the old fault leaked into a room today. `agentIds` is built
+// once at the top of the pass, so a room that re-locks on its GREETER's
+// iteration still has its own `g-N` session iterated afterwards — and that
+// iteration used to read the watermark the greeter had just overwritten, find
+// itself newer, and answer a tag nobody had sent. The room is silent now, and
+// hears the explanation the next time somebody actually asks her for
+// something, which is what the notice is for.
+test('a room that re-locks mid-pass does not answer a tag nobody sent', async () => {
+  const a = await connectedUser('+972605000020');
+  const b = await connectedUser('+972605000021');
+  const jid = JID(31);
+  const roster = `${a.phone}, ${b.phone}`;
+  const at = Date.now();
+
+  await pass({ ...gatewayWith({ jid, roster, at }).deps, now: helpers.daytime() });
+  const open = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  assert.equal(open.state, 'open');
+  assert.ok(open.agent_id, 'the room has an agent of its own to be a second session');
+
+  // A pass with both sessions, so each one carries a watermark of its own.
+  const settled = twoSessions({ jid, roster, greeterAt: at, ownAgentId: open.agent_id, ownAt: at + 60_000 });
+  await pass({ ...settled.deps, now: helpers.daytime() });
+
+  // Now a stranger appears in the roster and NOTHING else moves — the same two
+  // stamps, neither of them newer than its own mark. The gate closes again on
+  // the greeter's iteration, while the room's own session is still in the list
+  // behind it, and against one column per room that iteration would read the
+  // stamp the greeter had just written back over it.
+  const grown = twoSessions({
+    jid, roster: `${roster}, +972605000022`,
+    greeterAt: at, ownAgentId: open.agent_id, ownAt: at + 60_000,
+  });
+  const out = await pass({ ...grown.deps, now: helpers.daytime() });
+
+  assert.deepEqual(out.relocked, [jid]);
+  assert.equal(out.notices, 0, 'nobody tagged her — the roster changed under her');
+  assert.deepEqual(grown.sent, []);
+});

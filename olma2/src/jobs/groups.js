@@ -65,14 +65,17 @@ function greeterInstalled(configPath) {
 // "5 Percent (Maprinter)", `group_outbox` #4). Two separate faults, either one
 // enough on its own:
 //
-//   `last_mention_at` is stamped by the sweep whenever a group session's
-//   `lastInteractionAt` is newer than `chat_groups.last_seen_at` — but a room
+//   `last_mention_at` was stamped by the sweep whenever a group session's
+//   `lastInteractionAt` was newer than `chat_groups.last_seen_at` — but a room
 //   has SEVERAL gateway sessions (`main`, `ggreet`, `g-N`) and the sweep runs
-//   its loop once per session while `last_seen_at` is one column, overwritten
-//   by whichever session came last. So some other session is always newer, the
-//   stamp is rewritten on EVERY pass, and the fifteen-minute window never
-//   closes. Measured live: all three rooms carried the same `last_mention_at`
+//   its loop once per session while `last_seen_at` was one column, overwritten
+//   by whichever session came last. So some other session was always newer, the
+//   stamp was rewritten on EVERY pass, and the fifteen-minute window never
+//   closed. Measured live: all three rooms carried the same `last_mention_at`
 //   to the millisecond, advancing every tick, with nobody writing.
+//   The watermark is per (group, session) now and nothing writes that column
+//   any more (migration 059) — but this window stays where it is, because the
+//   second fault below is untouched by that and is enough on its own.
 //
 //   And `lastInteractionAt` moves when OLMA sends into the room — the raw pipe
 //   sends as `agents.defaults.systemAgent.agentId`, which is `main`, whose
@@ -251,8 +254,8 @@ async function sweepGroups(client, deps) {
     // check. Leave the group exactly as it is rather than opening it on a
     // roster we know is incomplete.
     if (unparsed.length) {
-      await client.query(`UPDATE chat_groups SET last_seen_at = $2 WHERE id = $1`,
-        [group.id, new Date(session.lastInteractionAt || now)]);
+      await groups.noteSeen(client, group.id, session.key,
+        new Date(session.lastInteractionAt || now));
       out.skipped++;
       continue;
     }
@@ -267,7 +270,13 @@ async function sweepGroups(client, deps) {
     // is not going to say "nice to meet you" and "some of you have not signed
     // up" in the same breath — the nudge belongs to the next time somebody
     // actually asks her for something.
-    const lastSeen = group.last_seen_at ? new Date(group.last_seen_at).getTime() : 0;
+    // THIS session's watermark, never the room's. A room has several gateway
+    // sessions and this loop runs once per session; one column per room meant
+    // each iteration overwrote the last one's mark, so every session spent the
+    // next pass comparing itself against somebody else's number and "newer
+    // than we have seen" was true for ever (migration 059).
+    const seen = await groups.seenAt(client, group.id, session.key);
+    const lastSeen = seen ? new Date(seen).getTime() : 0;
     const activity = Number(session.lastInteractionAt || 0);
     // `justGreeted` covers the pass that decided the introduction; the pending
     // row covers every pass after it until the greeting has actually gone out.
@@ -275,9 +284,6 @@ async function sweepGroups(client, deps) {
     // `introduced_at` stamped is NOT evidence the room has heard anything yet.
     const greetingOwed = justGreeted || await groupOutbox.pending(client, group.id, 'intro');
     const isNew = !greetingOwed && activity > lastSeen;
-    // Somebody is demonstrably present either way, which is what the
-    // announcement's grace window is about.
-    if (activity > lastSeen) await groups.noteMention(client, group.id);
 
     // ---- the gate ----------------------------------------------------------
     const evaluated = await groups.evaluate(client, group.id);
@@ -349,6 +355,21 @@ async function sweepGroups(client, deps) {
       // that tagged her when the transcript gave us its id: in a room where
       // three people are talking, a bare "עוד מחכה ל…" floats; quoted under
       // the tag, it is plainly an answer to that person.
+      //
+      // So `isNew` is the only thing standing here. `decideNotice` never
+      // returns 'none' for a locked room, and the idempotency key counts
+      // `notices_sent`, which this branch increments — a fresh key every time,
+      // dedupping nothing. Until migration 059 what stood in for that guard was
+      // an accident of coupling: the broken watermark needed two sessions to
+      // oscillate, two sessions needed an agent, and an agent meant OPEN, which
+      // never reaches this branch. It leaked in one place — the pass that
+      // re-locks a room. `agentIds` is built once at the top, so the room's own
+      // `g-N` session is still iterated after the greeter's iteration took the
+      // agent away; it read the watermark the greeter had just overwritten,
+      // found itself newer, and answered a tag nobody had sent. That notice is
+      // gone with this and nothing replaces it: a re-locked room is silent
+      // until somebody actually asks her for something, which is what the
+      // paragraph above says the nudge is for.
       const notice = groups.decideNotice(group);
       if (notice.kind !== 'none') {
         // The key counts the notice, so a second tag earns a second (shorter)
@@ -373,8 +394,7 @@ async function sweepGroups(client, deps) {
       }
     }
 
-    await client.query(`UPDATE chat_groups SET last_seen_at = $2 WHERE id = $1`,
-      [group.id, new Date(activity || now)]);
+    await groups.noteSeen(client, group.id, session.key, new Date(activity || now));
   }
 
   return out;

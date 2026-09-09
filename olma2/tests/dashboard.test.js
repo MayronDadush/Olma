@@ -1510,6 +1510,15 @@ test('the groups section names who is still missing, and says whether the sender
     assert.ok(html.includes('נעולה'));
     assert.ok(html.includes('גלי'), 'the missing member is named');
     assert.ok(!html.includes('+972619000032'), 'and never numbered');
+
+    // No "תיוג אחרון": it rendered `chat_groups.last_mention_at`, which the
+    // sweep rewrote on every pass whatever anybody did, so it read "seconds
+    // ago" for every room for ever (migration 059).
+    assert.ok(!html.includes('תיוג אחרון'), 'a column that always said the same thing is off the page');
+    // And the header and the row still agree. Dropping one of the two is how a
+    // table silently shifts every value one column to the left.
+    assert.equal((html.match(/<th>/g) || []).length, (html.match(/<td/g) || []).length,
+      'one cell per column');
     assert.ok(html.includes('שער השולחים פתוח'), 'an absent groupAllowFrom is the open door, and the board says so');
 
     account.groupAllowFrom = [a.phone];
