@@ -550,7 +550,10 @@ function makeDeliverer(pool) {
     // turn_start compensates by returning the last day's delivered reminders
     // from the outbox itself. Same retry contract as every other send: the
     // result feeds the worker's attempts/backoff, never fire-and-forget.
-    const rawText = proactiveText.rawPipeTextFor(row, wording);
+    // The channel decides the STYLES the text may use, exactly as the joined
+    // `locale` decides its language — both read here, at delivery, off the
+    // person rather than off the row (domain/message-format.js).
+    const rawText = proactiveText.rawPipeTextFor(row, wording, channel.channel_type);
     if (rawText) {
       return sendRawMessage({
         channel: channel.channel_type,

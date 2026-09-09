@@ -244,15 +244,42 @@ function readTranscriptTail(agentId, base, source) {
     }
     return out;
   }
-  const rows = withAgentDb(agentId, base, (db) =>
-    db.prepare('SELECT event_json FROM transcript_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?')
-      .all(source.sessionId, TRANSCRIPT_TAIL_EVENTS));
+  // The live session id names TODAY's window only. `session.reset` rolls the
+  // window daily (scripts/set-session-reset.js), and the previous window's
+  // rows stay in the store behind `session_windows.previous_session_id` —
+  // so the tail walks that chain until it has enough events, or a reader
+  // asking on the morning after a reset would find one message and call it
+  // the whole conversation (promise_watch reads yesterday's ask; the
+  // onboarding review reads a first evening that spans 02:00 UTC). Bounded
+  // by the same event cap, so a long day costs the same as before; the hop
+  // cap only stops a pathological chain. A store without the table (an
+  // older gateway, the test fixture) simply has no previous window.
+  const rows = withAgentDb(agentId, base, (db) => {
+    const out = [];
+    let sessionId = source.sessionId;
+    for (let hop = 0; sessionId && hop <= RESET_CHAIN_HOPS && out.length < TRANSCRIPT_TAIL_EVENTS; hop++) {
+      for (const r of db.prepare('SELECT event_json FROM transcript_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?')
+        .all(sessionId, TRANSCRIPT_TAIL_EVENTS - out.length)) out.push(r);
+      sessionId = previousWindow(db, sessionId);
+    }
+    return out;
+  });
   if (!rows) return [];
   const out = [];
   for (const r of rows) {
     try { out.push(JSON.parse(r.event_json)); } catch { /* corrupt event */ }
   }
   return out;
+}
+
+const RESET_CHAIN_HOPS = 6; // a week of daily windows, newest first
+function previousWindow(db, sessionId) {
+  try {
+    const r = db.prepare('SELECT previous_session_id FROM session_windows WHERE session_id = ?').get(sessionId);
+    return r && r.previous_session_id ? String(r.previous_session_id) : null;
+  } catch {
+    return null; // no session_windows table: nothing before this window
+  }
 }
 
 function readRecentMessages(agentId, limit = 10, base = HOME(), peer = null) {

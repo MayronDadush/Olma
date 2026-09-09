@@ -97,6 +97,8 @@ never trust a dated narrative for something you are about to act on.
 
 **Cost, billing and the money page**
 
+- [The conversation that never ended (fixed 2026-09-09)](#the-conversation-that-never-ended-fixed-2026-09-09)
+- [The pilot that read as an expensive day (fixed 2026-09-09)](#the-pilot-that-read-as-an-expensive-day-fixed-2026-09-09)
 - [The heartbeat was the bill (fixed 2026-09-05)](#the-heartbeat-was-the-bill-fixed-2026-09-05)
 - [The ledger overstated OpenRouter by 65%, in both directions at once (fixed 2026-09-03)](#the-ledger-overstated-openrouter-by-65-in-both-directions-at-once-fixed-2026-09-03)
 - [OpenRouter cache reads were priced 5x too high (fixed 2026-08-31)](#openrouter-cache-reads-were-priced-5x-too-high-fixed-2026-08-31)
@@ -3314,6 +3316,154 @@ next and only the last one was measured first.
 
 ## Cost, billing and the money page
 
+### The conversation that never ended (fixed 2026-09-09)
+
+The owner asked, with usage growing, what "working smart" would look like in
+numbers. Every agent's transcript store was walked on 2026-09-09 for the four
+clean days since the heartbeat went off (09-06 → 09-09), plus `usage_ledger`
+and OpenRouter's own `/generation` records for the response ids in the
+transcripts. Real users cost $2.49 in those four days (~90 messages a day,
+$0.0073 a message, 2.9 model calls a message); the eval user cost $7.31 —
+the cheap-model pilots of 09-08 and 09-09 alone cost more than a week of
+real people. Three things nobody had measured:
+
+**A session never resets.** `session.reset` defaults to `"none"`, so a
+session key keeps one history window for ever. Per agent, prompt tokens per
+model call since 09-06:
+
+| agent | messages | calls | prompt/call | cache | first-call latency |
+|---|---|---|---|---|---|
+| u-3 (one session since 08-27) | 79 | 178 | **172,019** (max 206,270) | 60% | 8–23 s |
+| u-10 | 40 | 89 | 71,943 | 61% | |
+| u-18 | 34 | 96 | 57,478 | 63% | |
+| everyone else | | | 35–48k | 47–68% | 3–5 s |
+
+At $0.089/M uncached, u-3's every message cost $0.018 before the model
+read a word — his four days, $1.30, were 52% of the whole real-user bill.
+The doctrine (11k tokens) and the tool schemas (15k) that every rule in
+this file fights over were sitting under 170k tokens of chat. Every user
+drifts there; u-3 took thirteen days. What the conversation knows is not in
+the window — tasks, reminders, meetings, facts, preferences are in the DB and
+USER.md — and the memory files the design leans on are empty on the box
+(`MEMORY.md` 35 bytes, no daily notes in any workspace), so nothing rides
+on them either way.
+
+Fix: `session.reset: { mode: "daily", atHour: 2 }` (UTC on the box — 05:00
+in Israel), `scripts/set-session-reset.js --apply`, and a `config_guard`
+rule that goes red when it comes back off. **The reset would have blinded
+every watcher once a day**: `channels/sessions.readRecentMessages` read the
+tail of the CURRENT session id only, and `promise_watch` reads the ask a
+person made the evening before, the onboarding review reads a first evening
+that spans 02:00 UTC, fact extraction and `unanswered` read the last few
+turns. The 2026.8.1 store keeps the chain — `session_windows(session_id,
+previous_session_id, reason)` — and the tail now walks it until it has its
+events, under the same cap as before.
+
+**The cache dies between turns, and it is not the TTL.** First call of a
+turn, bucketed by the gap since the agent's previous call (real users, not
+evals): under two minutes 62% cached; 2–10 minutes 9%; 10–60 minutes 4%;
+1–4 hours 0%. Within a turn the second call hits ~90%. OpenRouter's
+generation records named the reason: `deepseek/deepseek-v4-flash` was being
+served by three providers in six hours — StreamLake, DeepInfra, GMICloud —
+and a prefix cache is per provider. Even on the same provider a new turn one
+minute later missed, so the first call of every message pays for the full
+prompt (avg 62k tokens, 44k of them uncached) — about 45% of the bill.
+DigitalOcean serves the same model at $0.068/M input against
+$0.089–0.091 for the three in use, cache reads at $0.0168, 99.7% uptime.
+Fix: pin the provider order (`scripts/pin-openrouter-provider.js`,
+separate PR) and MEASURE whether one provider's cache survives the gap —
+the price cut is certain, the cache win is the experiment.
+
+**`turn_start` is 37% of every tool call** — 922 of 2,482 in fourteen days,
+one of the 2.9 calls a message. Phase B (the turn context in the prompt,
+`gateway-plugin/olma-turn`) was live for two people; widening it removes a
+model round-trip from every reply (3–7 s, ~$0.0011) and the `.olma-identity`
+reads that fresh sessions spend (70 in four days). Done in its own PR.
+
+What did NOT move the numbers, for the next person tempted: the schemas
+(55k chars ≈ 15k tokens, 26 tools uncalled in fourteen days = 24% of it)
+and the doctrine are ~26k tokens a call and cost a fifth of that once the
+cache holds; audience-filtering the tools is impossible at `tools/list`
+(one MCP process for every agent, `cwd=/root`, verified) and worth under $1
+a month anyway; NO_REPLY turns are 2–5% since the heartbeat went off.
+
+### The pilot that read as an expensive day (fixed 2026-09-09)
+
+On the morning of 2026-09-09 the efficiency watch sent this:
+
+> 📈 עולמה — יעילות: משהו חרג מהרגיל
+> 2026-09-08 · 120 הודעות נכנסות
+> • עלות להודעה: $0.0411 (רגיל: $0.0155, פי 2.7)
+> מודלים:
+> • openai/gpt-5-mini — $1.6513, מטמון 94%
+> • openai/gpt-5-nano — $1.4595, מטמון 96%
+> • deepseek/deepseek-v4-flash — $0.9626, מטמון 61%
+
+and the advice under it blamed deepseek's uncached input and proposed trimming
+the conversation history sent to the model.
+
+**Every number in it is correct and the conclusion is wrong.** The day was two
+populations added together:
+
+| | messages | cost | $/msg |
+|---|---|---|---|
+| real users | 52 | $0.9136 | $0.0179 |
+| eval harness (`users.is_eval`, u-15) | 68 | $4.0050 | $0.0589 |
+| what the watch measured | 120 | $4.9186 | $0.0411 |
+
+Real users were at 1.13x their own baseline. gpt-5-mini and gpt-5-nano are the
+model pilots of 09-08 (`docs/model-experiments.md`); no real person has ever
+been routed to either. deepseek-v4-flash — named as the culprit — is the only
+model a real user was on, is the cheapest of the three, and had run $1.09,
+$0.88 and $0.66 on the three days before.
+
+**The defect is in `dailyRatios`, and it is one line of SQL.** The `usr` CTE
+summed all of `usage_ledger`; nothing on that path had ever carried
+`NOT is_eval`, although twenty other sweeps that start from `users` do. So the
+cost side counted the benchmark and the message side counted it too — a
+harness whose cost per message is a property of whichever model is on trial
+that week, and whose message VOLUME is equally arbitrary (127 eval messages on
+09-06, 14 on 09-07).
+
+Three things the fix had to get right, and only the first is obvious:
+
+1. **Both sides together.** Excluding the eval user from the numerator alone
+   would have built the mirror-image fault — real spend divided by inflated
+   traffic, reading as suspiciously cheap for ever.
+2. **`evidence()` moves with the ratios.** The model list is what a person
+   reads to find the culprit, and drawn from a population no ratio covers it is
+   worse than no list: it ranked the innocent model third of three. Same
+   filter, same population.
+3. **The excluded spend is still printed.** `evalCost` and `evalMessages` ride
+   every day, the alert (`ניסויי מודלים באותו יום: … — לא נכללים באף מספר
+   למעלה`) and the heartbeat note, never inside a ratio. Without that the fix
+   is this file's oldest failure shape wearing the opposite coat: $4 a day that
+   no metric can see, and an operator who knows the day was expensive reading a
+   report that never mentions it and concluding the watch is broken.
+
+Verified before merging by running the fixed `dailyRatios`/`crossings`/
+`evidence` from a throwaway copy on the box against the live database:
+2026-09-08 returns `crossings: []` and one model, `deepseek-v4-flash $0.9136`.
+Both new tests go red with the filter neutralised; the second exists because
+the failure mode of a fix like this is quietly becoming an off switch, so it
+holds a genuine 3x regression open on a day a large pilot is also running.
+
+**What this is an instance of.** Not "we forgot a WHERE clause" — the watch's
+own header says every metric is a ratio judged against this system's own recent
+days, and a ratio is only a statement about a system if both halves describe
+the same one. It is also the second fault of 2026-09 caused by the eval user
+being counted as a person (the first: `resetEvalUser` never clearing
+`quota_counters`, so every scenario past 50/day scored a block notice). And it
+is the fourth time an alarm in this system has been right about a number and
+wrong about its cause — the cache-alert misdiagnosis of 09-04, whose suggested
+fix would also have raised cost, is the same sentence with different nouns.
+
+Deliberately NOT changed: `jobs/metrics.js` and the dashboard's cost sections
+still count everything. They answer "what did we spend", which the pilots are
+genuinely part of. The rule is not "filter `is_eval` everywhere" — it is to
+know which question the number answers.
+
+
 ### The heartbeat was the bill (fixed 2026-09-05)
 
 The audit's "13 calls per inbound message" (the cache-alert misdiagnosis of
@@ -5312,6 +5462,46 @@ The count rides the audit row as `taskDatesDropped` and the sweep result as
 guard that silently drops things looks identical to a quiet week, and a number
 that climbs every night is the only thing that would say the model is proposing
 moments this job will not honour.
+
+**The same day, live on the owner's own account**, the fix was proved end to
+end and immediately showed its own fallout. "אני צריך להתקשר לחברת הביטוח היום
+ב-17:00" became task 657 with `due_at` 17:00 and an automatic reminder armed
+for 16:00, which was delivered at 16:01:52 — the chain that had been broken.
+But the title came out as `להתקשר לחברת הביטוח היום ב-17:00`: the model now
+sets the column **and** keeps the words. That is new. Before the field existed
+the words were the only copy of the moment, so nothing had ever been redundant.
+
+The obvious fix — a prompt line asking for a clean title — is wrong, and the
+reason is the validator above. The model cannot know whether `usableDue` will
+accept the date it proposes. Told to write a clean title, it would strip the
+hour from its own words while the server dropped the date underneath it, and
+the moment would survive in neither the column nor the title: strictly worse
+than before any of this. So the trim is server-side and conditional on the date
+actually being stored — `titleWithoutStatedTime`, applied only where `dueAt` is
+truthy.
+
+What keeps it from being a regex guessing at somebody's sentence is a
+cross-check: the hour named in the title must be the hour being stored. It was
+measured against all 253 titles on the box before shipping — 8 matched the
+pattern, 2 were stripped, and the third was refused:
+
+| title | stored `due_at` | outcome |
+|---|---|---|
+| להתקשר לחברת הביטוח היום ב-17:00 | 17:00 | stripped |
+| Nail appointment — Tuesday Sep 8 at 12:00 | 12:00 | stripped |
+| **Brunch with a friend — Tuesday Sep 1 at 10:00** | **07:00** | **refused** |
+
+The third is a real row whose title and column disagree by three hours.
+Stripping it would have deleted the only record of the disagreement and left a
+row that looked consistent. One row out of 253 is the entire argument for the
+cross-check, and it is in the test with its real values.
+
+Three further bounds, each with a real shape behind it: the match is anchored
+to the END, because a moment named mid-sentence is part of what the thing IS
+("פגישה של 17:00 עם הבנק") and cutting there rewrites their words; a part-of-day
+word is what licenses reading "ב-6 בערב" as 18:00, never the bare digit; and a
+cut that would leave a stub is refused, because "ב-17:00" alone is not a task
+anybody can read.
 
 ### The same thing, saved twice (fixed 2026-09-08)
 
