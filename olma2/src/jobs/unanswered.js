@@ -67,6 +67,15 @@ function isInjectedInstruction(m) {
   return m.role === 'user' && /^DELIVERY:/.test(String(m.text || ''));
 }
 
+// The silence sentinel, trimmed — a trailing newline must not turn a decision
+// into a delivery fault. Exact match on purpose: the doctrine says the entire
+// reply is the sentinel and that anything in front of it IS delivered, so
+// "בוצע NO_REPLY" is a real reply and must stay repairable.
+const SILENCE = 'NO_REPLY';
+function isSilence(m) {
+  return m.role === 'assistant' && String(m.text || '').trim() === SILENCE;
+}
+
 function lastTurn(msgs) {
   for (let i = msgs.length - 1; i >= 0; i--) {
     if (isInjectedInstruction(msgs[i])) continue;
@@ -203,6 +212,28 @@ function undeliveredReply(msgs, sent, phone, now) {
   const last = seq[seq.length - 1];
   const prev = seq[seq.length - 2];
   if (!last || last.role !== 'assistant') return null;
+  // A DECISION to stay quiet is not a reply that got lost. `NO_REPLY` is the
+  // silence sentinel, and since the reaction doctrine it is the CORRECT answer
+  // to a large and growing class of messages: brokerd puts a 👍 on the message,
+  // `hints.markPlaced` says the mark carries the whole fact, and the model
+  // rightly says nothing. Every one of those lands in the transcript as an
+  // assistant turn after a user turn with no send event behind it — which is
+  // this function's entire definition of a lost reply.
+  //
+  // Yahav, 2026-09-09: "בוצע הפקדת צק" → task completed, 👍 placed, `NO_REPLY`.
+  // Three minutes later this declared the silence a delivery fault and ran a
+  // repair turn, and he read "No conversation history is accessible to me in
+  // this session" — in English, about our internals, on a conversation that
+  // had worked perfectly.
+  //
+  // Same shape as the fix in channels/sessions.js, which drops
+  // FAILED_TURN_MARKER because a dead turn was indistinguishable from a reply
+  // and blinded THIS function the other way (2026-08-20). Twice now the
+  // transcript's shape has failed to carry the turn's meaning; the sentinel is
+  // checked here rather than in the shared reader because a deliberate silence
+  // is real history — the admin conversation view and the metrics rollup each
+  // decide what it means to them.
+  if (isSilence(last)) return null;
   if (!prev || prev.role !== 'user' || isInjectedInstruction(prev)) return null;
 
   const composedAt = Date.parse(last.at);

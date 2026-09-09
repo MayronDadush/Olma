@@ -153,6 +153,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two asks, one task (2026-09-07)](#two-asks-one-task-2026-09-07)
 - [The same thing, saved twice (fixed 2026-09-08)](#the-same-thing-saved-twice-fixed-2026-09-08)
 - [A time in the title and no reminder (fixed 2026-09-09)](#a-time-in-the-title-and-no-reminder-fixed-2026-09-09)
+- [A silence read as a delivery fault (fixed 2026-09-09)](#a-silence-read-as-a-delivery-fault-fixed-2026-09-09)
 - ["הנה, רשמתי", about a meeting (2026-09-07)](#הנה-רשמתי-about-a-meeting-2026-09-07)
 - [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
 - [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
@@ -5384,6 +5385,75 @@ So the id is taken only when the model is the best source there is: never on
 `ourTurn`, never over an id the gateway already put on the turn, and otherwise
 exactly as before — a real person writing, with no gateway opening on file,
 is still a turn where the model is all we have.
+
+### A silence read as a delivery fault (fixed 2026-09-09)
+
+Yahav wrote "בוצע הפקדת צק" at 19:34. Everything after that was correct:
+brokerd completed task 646, put a 👍 on his message, and the model answered
+`NO_REPLY` — exactly what `hints.markPlaced` asks for, because the mark carries
+the whole fact and a sentence under it is a second notification for the same
+thing. A healthy turn, start to finish.
+
+At 19:39 he read this, in English:
+
+> No conversation history is accessible to me in this session — there are no
+> prior messages visible and nothing from any stored session search. I cannot
+> reconstruct what was said or what the undelivered reply contained.
+
+The transcript says what happened:
+
+```
+16:34:32  user       "בוצע הפקדת צק"
+16:35:03  assistant  "NO_REPLY"                      ← 8 chars, the sentinel
+16:38:47  user       "DELIVERY: …"                   ← the repair, injected
+16:38:54  assistant  "Let me check the conversation history."
+16:39:07  assistant  "I don't have access to the conversation history…"
+16:39:14  assistant  "No conversation history is accessible to me…"   ← delivered
+```
+
+`unanswered.undeliveredReply` looks for an assistant turn after a user turn
+with no send event behind it, and calls that a reply that was composed and lost.
+A `NO_REPLY` is exactly that shape — and of course there is no send event,
+because nothing was ever meant to be sent. **The detector could not tell a
+decision to stay quiet from a delivery fault.**
+
+That is not a rare corner. Since the reaction doctrine, `NO_REPLY` is the
+CORRECT answer to a large and growing class of messages — every "done ✅"-shaped
+message earns a mark and a silence — and a message like that is exactly the kind
+that sits at the end of a conversation. The window is 3 to 45 minutes and the
+sweep runs every 60 seconds, so any conversation ending in a 👍 sat in the trap
+for forty-two minutes. It had fired three times in total (user 8 and user 14 on
+2026-09-02, Yahav today), but the exposure was growing with every improvement to
+how well Olma keeps quiet.
+
+**The same function had already been blinded once by the same class, in the
+opposite direction.** `channels/sessions.js` drops `FAILED_TURN_MARKER` because
+a turn that died before producing content was stored as an ordinary assistant
+message, so a user whose message got no reply got no repair either (2026-08-20).
+Twice now the transcript's shape has failed to carry the turn's MEANING, and
+both times the reader had to be told. The sentinel is checked in the detector
+rather than in the shared reader, because unlike the failed-turn marker a
+deliberate silence is real history: the admin conversation view and the metrics
+rollup each decide what it means to them. Exact match after a trim — the
+doctrine is explicit that any text in FRONT of the sentinel IS delivered, so
+"בוצע NO_REPLY" is a real reply and must stay repairable.
+
+**Two things worth keeping from the wreckage.**
+
+The repair instruction had anticipated this precise branch: *"If you CANNOT see
+the conversation — empty history, a failed read, a tool refusing you — reply
+with exactly NO_REPLY. Never guess … Do not apologise for a delay, do not
+mention a technical problem or system issue."* The model hit that branch and did
+the opposite of every clause in it. A safety property written as a sentence in a
+prompt is a request, not a guarantee; wherever a model's raw output reaches a
+person with no server-side gate, the prompt is the only thing standing there.
+The fix therefore had to be in the detector — not to sharpen the wording — so
+the turn is never created.
+
+And a repair job is the most dangerous kind of job there is. Every other sweep
+acts on a state it observed. This one acts on a BELIEF that something failed,
+and when the belief is wrong it manufactures the exact disturbance it exists to
+prevent. Nothing was broken in Yahav's conversation until the repair arrived.
 
 ### A time in the title and no reminder (fixed 2026-09-09)
 
