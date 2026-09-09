@@ -48,6 +48,7 @@ never trust a dated narrative for something you are about to act on.
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
+- [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
@@ -1447,6 +1448,69 @@ NULL is the **once-per-life first-turn signal** (`openRecord` computes
 is the **silence test** behind the name-confirm rung. Stamping it early would
 have spent the first-turn signal and broken the silence test to fix a gate.
 The narrow column was the right lever.
+### The room was told about a meeting at 01:12 (fixed 2026-09-09)
+
+The owner read it on his phone the next morning: the group "5 Percent
+(Maprinter)" had been sent a coordination line at **01:12 local**. The row is
+`group_outbox` #4 — `kind: 'coordination'`, the `chase` line, decided at
+22:11:25 UTC and delivered at 22:12:11 UTC. Nobody in that room had written
+since **19:11 local**, six hours earlier.
+
+Group quiet hours were not missing. `GROUP_WINDOW` has said `09:00–21:00`
+since group mode shipped, the group's `timezone` is `Asia/Jerusalem`, and
+`majorityTimezone` had set it correctly from the members' own zones. The
+window was there. It was **never shut**.
+
+`mayAnnounce` gives a room a fifteen-minute grace when somebody is plainly
+present — the same grace a DM gets, so that an answer is never held at a
+person standing right there. It took that grace from
+`chat_groups.last_mention_at`, and two independent faults meet in that column.
+
+**One: the watermark is per room and the activity is per session.** The sweep
+stamps `last_mention_at` when a group session's `lastInteractionAt` is newer
+than `chat_groups.last_seen_at`. But a registered room has SEVERAL gateway
+sessions — `main`, the greeter `ggreet`, and the room's own `g-N` — and the
+sweep's loop runs once per session while `last_seen_at` is a single column,
+overwritten at the end of each iteration by whichever session came last. Some
+other session is therefore always newer than the watermark, so the stamp is
+rewritten on every pass and the fifteen minutes never elapse. Read live on
+2026-09-09, two queries two minutes apart, with nobody writing in any room:
+
+    1 M&M                    seen=2026-09-07T15:30  mention=2026-09-09T04:16:32.754
+    2 5 Percent (Maprinter)  seen=2026-09-08T16:11  mention=2026-09-09T04:16:32.754
+    3 פחם הסעות 🚌            seen=2026-09-07T21:00  mention=2026-09-09T04:16:32.754
+
+Three rooms, one timestamp to the millisecond — three `UPDATE … now()` calls
+in one transaction — and it had advanced by the second reading. `last_seen_at`
+for group 1 is exactly the `g-1` session's stamp while `main`'s for the same
+room is four hours newer, which is the shape of the bug in one line.
+
+**Two: her own voice moves the signal.** The raw pipe sends as
+`agents.defaults.systemAgent.agentId`, which is `main`. So `main`'s session for
+a room is stamped every time OLMA speaks into it — the session for group 2
+reads `22:12:11.324`, the second the 01:12 line went out. A window that any
+send re-opens is a window that authorises the next send.
+
+**The fix** is to take the grace from a column that means what the rule needs:
+`chat_group_members.last_wrote_at`, the newest moment a MEMBER wrote
+(migration 056). It is per room, it is written only from a real inbound
+message, and Olma's own voice never reaches it. For group 2 on that night it
+held 19:11 local, so the chase would have waited for the morning. A row that
+does not carry the column at all gets no grace and falls to the hours — fail
+closed, because the cost that way is a line held until morning and the cost
+the other way is this entry.
+
+Four tests go red without it, two of them replaying this room: the sweep's own
+`last_mention_at` stamped a minute before the decision, the room's people last
+heard from in the evening, and the line still waiting for 09:00.
+
+**What is NOT fixed here.** The `last_seen_at` watermark is still wrong — one
+column against several sessions — so `last_mention_at` still churns on every
+pass and the admin page's "last mention" is not a fact. Nothing reads it for a
+decision any more, which is why this PR stops at the decision; making the
+watermark honest means one per (room, session), and that is a migration and a
+restructured loop, not a line.
+
 ### Six good mornings for one timeout (fixed 2026-09-09)
 
 Dana joined on the evening of 2026-09-07. At 05:22 the next morning the

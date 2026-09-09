@@ -355,6 +355,23 @@ async function noteNoticeSent(client, groupId, { toldOfMissing = true } = {}) {
   return ok({ groupId });
 }
 
+// The newest moment a MEMBER wrote in this room, or null if none ever has.
+//
+// This is what `jobs/groups.mayAnnounce` gives its fifteen-minute grace to,
+// and the reason it is this column and not `chat_groups.last_mention_at` is
+// written out in full over there: `last_mention_at` follows gateway SESSION
+// activity, which a room has several of and which Olma's own sends move, so
+// its window renews itself and never shuts. `last_wrote_at` is per room, is
+// written only from a real inbound message, and Olma's own voice never
+// reaches it (migration 056).
+async function lastMemberWriteAt(client, groupId) {
+  const { rows } = await client.query(
+    `SELECT max(last_wrote_at) AS at FROM chat_group_members WHERE group_id = $1`,
+    [groupId]
+  );
+  return (rows[0] && rows[0].at) || null;
+}
+
 // The gate's `lastInboundAt` for a group: stamped on every real mention, so
 // outbox/gate.js gives the group the same 15-minute conversation grace a DM
 // gets and never holds an answer to someone standing right there.
@@ -538,7 +555,7 @@ module.exports = {
   parseRoster, normalizePhone, majorityTimezone, SELF_PHONE,
   registerGroup, getById, getByExternalId, listMembers, syncRoster,
   decideState, evaluate, applyState, isConnected,
-  decideNotice, noteNoticeSent, noteMention,
+  decideNotice, noteNoticeSent, noteMention, lastMemberWriteAt,
   GROUP_KINDS, validKind, setKind, noteKindAsked, quorumFor,
   GROUP_TOKEN_RE, looksLikeGroupToken, resolveByToken, actingMember, roomStatus,
 };
