@@ -185,6 +185,22 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `agents.defaults.systemAgent.agentId`** on a multi-agent roster, or every
   agent-less send refuses. Verify the pipe, never the file:
   `openclaw message send … --dry-run --json`.
+- **The raw pipe goes over the gateway's own WebSocket now, with the CLI
+  behind it** (`channels/gateway-rpc.js`, `channels/openclaw.sendRawMessage`).
+  A fresh `openclaw` process cost 8.8-12.7s idle and 49-95s while a room was
+  busy, against 120-190ms to connect and 5-35ms per call on an open socket —
+  the cost was never the send, it was a cold Node process loading the CLI.
+  **The fallback is narrow on purpose, and widening it is how a room gets told
+  the same thing twice**: a request that never reached the gateway retries on
+  the CLI, a request the gateway ANSWERED with an error stays failed (the CLI
+  reaches the same handler), and a request written to the wire that then timed
+  out is `timedOut` and is retried NOWHERE — the gateway hands the message to
+  WhatsApp before it answers. `idempotencyKey` is required by the send schema
+  and is fresh per attempt, exactly as a new CLI process was. The module
+  refuses outright inside `node --test`: `deploy.sh --restart` runs the suite
+  on the box, where `127.0.0.1:18789` serves real people and, unlike the
+  config path, a socket has no temp-directory equivalent.
+  `OLMA_GATEWAY_RPC_SEND=off` in `/opt/olma2/.env` puts everything back.
 - **Cancelling a queued message is an UPDATE, never a DELETE.** The row carries
   the `idempotency_key` that stops the sweep re-creating it.
 - **A STYLE is chosen at delivery, off the recipient's channel, and a channel
@@ -278,6 +294,13 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   templates), and a failed send fails for all of them and skips them for the
   rest of the tick. Vered got nine messages in ninety seconds
   (`incidents.md`, "Nine reminders, nine messages").
+- **A `--deliver` that TIMES OUT has very likely gone out, and is never
+  retried.** The CLI hands the turn to the gateway and waits for the model;
+  the kill at `SEND_TIMEOUT_MS` ends the waiting, never the turn. The worker
+  books a `timedOut` result as sent (`last_error` keeps the timeout, audit
+  `delivery.unconfirmed`) — retried as a failure, each retry was a new turn
+  and a new message, and Dana got her day-one check-in six times in seventeen
+  minutes (`incidents.md`, "Six good mornings for one timeout").
 - **Anything else due in the same moment is ONE message too, and two rules say
   what may travel together** (`domain/message-merge.js`). A REMINDER is never
   folded into a composed turn: every rung rides the raw pipe with the owner's
@@ -318,6 +341,21 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   Eight other `sent_at IS NULL` readers are RIGHT: completing, pausing,
   replacing and not-stacking all ask "what would still fire", which a
   mid-ladder row would.
+- **…and "what is still going to REACH them" is a THIRD question, which
+  `attempts = 0` answers wrongly.** A mid-ladder reminder has two messages
+  left to send and was invisible in all four readers, so the row Olma was
+  asked to stop was the one row nothing could name: she cancelled the two she
+  could see, on other tasks, and the ladder climbed on ("תפסיק עם התזכורות
+  … הבאה רק ביום שני", 2026-09-09; `incidents.md`, "The reminder that would
+  not stop"). The two answers travel APART and never merge — `list_my_
+  reminders` returns `chasing` beside `reminders`, and only `reminders` is an
+  hour anyone may say out loud. The fast path is `turn_start`'s
+  `recentReminders`, which already fires on the turn that answers a reminder
+  and now carries `reminderId`/`taskId`/`stillChasing`; the id is not in the
+  outbox payload, it is in the `idempotency_key`. **And cancelling withdraws
+  the queued rung** (`hold_reason = 'cancelled'`) — the ladder dies on the
+  reminder row while a rung the gate is holding for the night stays
+  deliverable, which makes "ביטלתי" a lie for hours.
 - **The turn opens itself, from the gateway's own hook, before the model's
   first call.** `gateway-hooks/olma-turn-open` (synced by `deploy.sh` to
   `/root/.openclaw/hooks/`, enabled by `hooks.internal.entries`, loaded at
@@ -602,6 +640,14 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   data before shipping it, and keep the readings you REJECTED in the test with
   the real rows that killed them (`tasks.joinsTwoAsks`, checked against all
   202 production titles; `incidents.md`, "Two asks, one task").
+- **Her voice is checked by code, not by the judge.** `domain/hebrew-quality.
+  flawsIn` is the one list of what a slip is — a masculine self-reference
+  ("אני מבין", "מצטער, יובל"), the model's own markup or a token in a
+  sentence — read by the eval check `scenarios.herOwnVoice` (red on every
+  scenario) and by the daily count on the dashboard. Measured on 383 real
+  messages before shipping: 10 hits, 10 real. Extend the list there and
+  re-measure; `רואה` is what a false positive looks like (same in both
+  genders), and the forms that do not change are left out on purpose.
 - **An issue title must be deterministic** — it is the dedup key. A title built
   from unordered query results makes the guard file and close the same
   condition on alternating ticks.

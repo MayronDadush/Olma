@@ -12,7 +12,7 @@ const OUTBOX_STATE = {
   quiet: 'נעצרו — לא עונה', moved: 'המשימה זזה', superseded: 'הוחלפו בשלב הבא',
   awaiting_introduction: 'ממתינות להיכרות',
   settling: 'ממתינות לייצוב המערכת',
-  cancelled_by_admin: 'בוטל ע"י מנהל',
+  cancelled_by_admin: 'בוטל ע"י מנהל', cancelled: 'התזכורת בוטלה',
 };
 
 // Cancelling is a WRITE, never a DELETE. The row carries the idempotency_key

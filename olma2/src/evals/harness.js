@@ -489,9 +489,10 @@ async function runScenario(pool, user, scenario, deps = {}) {
     let checks;
     try {
       // Every scenario, whatever it is about: the reply must be a reply, in
-      // their language (scenarios.replyLanguage). Appended here rather than
-      // spread into each `hard` so a new scenario cannot forget it.
-      checks = [...await scenario.hard(client, ctx), scenarios.replyLanguage(ctx)];
+      // their language (scenarios.replyLanguage), in her own voice with no
+      // model markup in it (scenarios.herOwnVoice). Appended here rather than
+      // spread into each `hard` so a new scenario cannot forget them.
+      checks = [...await scenario.hard(client, ctx), scenarios.replyLanguage(ctx), scenarios.herOwnVoice(ctx)];
       result.hardFailures = checks.filter((c) => !c.pass).map((c) => ({ name: c.name, detail: c.detail }));
       // Only on failure: a green scenario needs no autopsy, and the snapshot
       // is read on the SAME connection, before the next scenario's reset.
