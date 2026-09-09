@@ -1074,6 +1074,17 @@ have already had to be argued for.
   said once per coordination and again next week for the next one, at most one
   line per room per pass, and every one of them held to the group's own
   daytime — a line held at 02:00 stamps nothing and goes out in the morning.
+  **What opens that window early is a MEMBER writing, never her own voice or a
+  session's activity.** `mayAnnounce` took its grace from
+  `chat_groups.last_mention_at`, and a room was told about a coordination at
+  01:12 (`incidents.md`, "The room was told about a meeting at 01:12"): the
+  sweep stamps that column when a group SESSION looks newer than
+  `chat_groups.last_seen_at`, a room has several sessions against one
+  watermark column, so the stamp is rewritten every pass and the fifteen
+  minutes never elapse — and `main`'s session, which the raw pipe sends as, is
+  stamped by Olma's own sends, so any line re-opened the window for the next
+  one. It reads the newest `chat_group_members.last_wrote_at` now. A row
+  without that column gets NO grace and falls to the hours.
 - **A sweep DECIDES and the `group_outbox` job SAYS** (migration 055). The row
   and the stamp are written in one transaction, the UNIQUE `idempotency_key`
   is what actually stops a sentence twice, and a claim is never handed back —
@@ -1134,12 +1145,15 @@ have already had to be argued for.
   server answered.
 
 - **A member's message in the room opens the gate's fifteen-minute window for
-  that room's coordination, and for nothing else** (migration 056,
-  `chat_group_members.last_wrote_at`). It releases `night` and the `quiet`
+  that room's coordination — and, since 2026-09-09, the room's own announcement
+  window; nothing else** (migration 056, `chat_group_members.last_wrote_at`).
+  It releases `night` and the `quiet`
   drop on the same argument the DM window already makes — somebody who just
   spoke is awake — and the SCOPE is the worker's query, not the gate: only a
   row naming a meeting whose group they wrote in after that coordination
-  started. A pause is still read first and absolutely. **The column is blind
+  started. `jobs/groups.mayAnnounce` is the second reader, for the reason in
+  the daytime rule above: it is the only signal of presence in a room that
+  Olma's own sends cannot move. A pause is still read first and absolutely. **The column is blind
   to anything that did not name her** (a registered room is
   `requireMention: true`), so its silence is never evidence that somebody said
   nothing.
