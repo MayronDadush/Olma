@@ -608,6 +608,17 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   refused here rather than at `addTask`, which would lose the task as well),
   already past, or past a one-year horizon, which is the shape a wrong YEAR
   takes (`incidents.md`, "A time in the title and no reminder").
+- **A title need not restate the hour the row now carries, but only the SERVER
+  may take it out.** The same model, given a clock, sets `due_at` AND leaves the
+  words in the title — new behaviour, because before the field existed the words
+  were the only copy. `titleWithoutStatedTime` removes a TRAILING time
+  expression, and only when the hour it names is the hour being stored. **The
+  cross-check is the design**: measured against all 253 titles on the box it
+  matched 8, stripped 2, and refused "Brunch with a friend — Tuesday Sep 1 at
+  10:00", whose `due_at` is 07:00 — the two disagree, and stripping would have
+  deleted the only record of it. Deliberately NOT a prompt line: the model
+  cannot know whether `usableDue` will accept its date, so a clean title written
+  up front loses the moment entirely on every date the server drops.
 - **A day named with ל־ in a title dates the THING, not the task.** "לארגן
   אימון לרביעי" is arranged BEFORE Wednesday; filed ON Wednesday it is useless.
   `datetime.datesTheObject` reports that shape on the result and lets the model

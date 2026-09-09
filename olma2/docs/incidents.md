@@ -5313,6 +5313,46 @@ guard that silently drops things looks identical to a quiet week, and a number
 that climbs every night is the only thing that would say the model is proposing
 moments this job will not honour.
 
+**The same day, live on the owner's own account**, the fix was proved end to
+end and immediately showed its own fallout. "אני צריך להתקשר לחברת הביטוח היום
+ב-17:00" became task 657 with `due_at` 17:00 and an automatic reminder armed
+for 16:00, which was delivered at 16:01:52 — the chain that had been broken.
+But the title came out as `להתקשר לחברת הביטוח היום ב-17:00`: the model now
+sets the column **and** keeps the words. That is new. Before the field existed
+the words were the only copy of the moment, so nothing had ever been redundant.
+
+The obvious fix — a prompt line asking for a clean title — is wrong, and the
+reason is the validator above. The model cannot know whether `usableDue` will
+accept the date it proposes. Told to write a clean title, it would strip the
+hour from its own words while the server dropped the date underneath it, and
+the moment would survive in neither the column nor the title: strictly worse
+than before any of this. So the trim is server-side and conditional on the date
+actually being stored — `titleWithoutStatedTime`, applied only where `dueAt` is
+truthy.
+
+What keeps it from being a regex guessing at somebody's sentence is a
+cross-check: the hour named in the title must be the hour being stored. It was
+measured against all 253 titles on the box before shipping — 8 matched the
+pattern, 2 were stripped, and the third was refused:
+
+| title | stored `due_at` | outcome |
+|---|---|---|
+| להתקשר לחברת הביטוח היום ב-17:00 | 17:00 | stripped |
+| Nail appointment — Tuesday Sep 8 at 12:00 | 12:00 | stripped |
+| **Brunch with a friend — Tuesday Sep 1 at 10:00** | **07:00** | **refused** |
+
+The third is a real row whose title and column disagree by three hours.
+Stripping it would have deleted the only record of the disagreement and left a
+row that looked consistent. One row out of 253 is the entire argument for the
+cross-check, and it is in the test with its real values.
+
+Three further bounds, each with a real shape behind it: the match is anchored
+to the END, because a moment named mid-sentence is part of what the thing IS
+("פגישה של 17:00 עם הבנק") and cutting there rewrites their words; a part-of-day
+word is what licenses reading "ב-6 בערב" as 18:00, never the bare digit; and a
+cut that would leave a stub is refused, because "ב-17:00" alone is not a task
+anybody can read.
+
 ### The same thing, saved twice (fixed 2026-09-08)
 
 The owner noticed a few duplicate tasks on one person's list and asked why.
