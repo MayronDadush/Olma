@@ -52,6 +52,7 @@ never trust a dated narrative for something you are about to act on.
 - [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
 - [Her reminders arrived in Hebrew (fixed 2026-09-07)](#her-reminders-arrived-in-hebrew-fixed-2026-09-07)
 - [A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)](#a-hundred-and-five-pending-reminders-thirteen-of-them-pending-fixed-2026-09-07)
+- [The reminder that would not stop (fixed 2026-09-09)](#the-reminder-that-would-not-stop-fixed-2026-09-09)
 - [The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)](#the-hooks-timer-fired-late-and-brokerd-took-the-blame-fixed-2026-09-07)
 - [Good morning at half past one (fixed 2026-09-06)](#good-morning-at-half-past-one-fixed-2026-09-06)
 - [The morning digest asked the same question four mornings running (fixed 2026-09-06)](#the-morning-digest-asked-the-same-question-four-mornings-running-fixed-2026-09-06)
@@ -1750,6 +1751,83 @@ still fire", and the two only look alike.
 
 Nothing about what is ARMED changed. Rung 2 and rung 3 still go out. This is
 only about what a person is told.
+
+### The reminder that would not stop (fixed 2026-09-09)
+
+The last line of the entry above is the whole of this one. Rung 2 and rung 3
+still go out — and after that fix there was no longer anywhere a person, or
+the model answering them, could see that they would.
+
+08:00, 2026-09-09. Rung 1 of a reminder lands: "⏰ תזכורת: לדבר עם אסתר על
+הצילומים בשבוע הבא בנתניה". At 08:01 the owner replies, quoting that exact
+message: **"תפסיק עם התזכורות לזמן הקרוב / תזכורת הבאה רק ביום שני"**. At
+08:02 Olma answers "ביטלתי ✅ התזכורת למור חן (הייתה יומית) והתזכורת להארד
+דיסק לאבא. נשארה רק התזכורת לאסתר — ביום שני ב-09:00", and asks whether to
+delete those two tasks as well. Every word of that is true, the ladder about
+אסתר kept climbing, and the report was one line: *"זה לא עבד כי הוא המשיך
+להזכיר לי."*
+
+The model understood perfectly and had nothing to act on. A one-off reminder
+that has delivered rung 1 sits with `attempts = 1, sent_at NULL`, and all four
+readers filter `attempts = 0` — `list_my_reminders`, `list_my_tasks`, the
+digest, the personal dashboard. That filter is right, and the entry above is
+why. What nobody noticed is that it was answering a **second** question with
+it. There are two:
+
+- *What hour may Olma promise somebody?* — `attempts = 0`. A mid-ladder row's
+  `remind_at` is behind `now()`; saying it out loud is the 105-row bug.
+- *What is still going to reach this person?* — a mid-ladder row is exactly
+  that, and it is going to reach them twice more.
+
+So the one row that was about to send two more messages was the one row
+nothing could name. `cancel_reminder` takes an id; every path to that id was
+closed. Olma did the only thing available — she cancelled the two reminders
+she could see, which were on other people's tasks and had not been mentioned —
+and reported the pending Monday 09:00 row on the אסתר task as "the one that
+remains", which it was, in the only list she had.
+
+`taskStillOpen` then fired on both cancels, correctly, and produced the
+closing question about deleting the tasks. Nothing malfunctioned anywhere. The
+whole failure is a read path that does not exist.
+
+Three halves to the fix, none of them a new tool — the tool surface stood at
+55,494 of its 55,500 ceiling, and the guidance belongs on the result anyway:
+
+1. **`turn_start`'s `recentReminders` carries the id.** It already fires on
+   precisely this turn ("a bare סיימתי is probably about the newest one") and
+   already reads the outbox rows Olma sent; it handed over a title and a
+   timestamp. It now carries `reminderId`, `taskId` and `stillChasing` for a
+   ladder that can still climb, plus a hint naming `cancel_reminder` and
+   saying the task is untouched. The id was never in the payload — it is in
+   the `idempotency_key` (`reminder:<id>[:<rung>]`), which is what the join
+   reads it back out of.
+2. **`list_my_reminders` answers both questions, apart.** `reminders` is
+   unchanged, and is still the only thing an hour may be said from. `chasing`
+   is the new one: id, taskId, title, the moment they originally asked for
+   (never a guess at when the next rung lands) and how many rungs have gone.
+   Absent, not empty, when there are none. Merging the two lists would reopen
+   the 105-row bug on the same afternoon it was closed, so they never merge.
+3. **Cancelling withdraws the queued rung.** `cancelReminder` stopped the
+   ladder — `dueForSending` filters `cancelled_at` — but left a rung already
+   in the outbox deliverable, and the gate holds a follow-up rung all night
+   because it is Olma's moment and not theirs. So the window between "ביטלתי"
+   and the reminder arriving anyway was hours wide. `hold_reason =
+   'cancelled'`, the same sentence `retireForMovedTask` and
+   `retireSiblingLadders` already say.
+
+`tests/reminder-stop.test.js` replays the morning: the ladder is walked to
+rung 1 **through the sweep and a real delivery**, never by writing
+`attempts = 1` into a fixture, because a fixture that writes the state by hand
+cannot notice the state is only ever reached the other way. Three of its seven
+cases go red without the fix; the other four pin behaviour that already held
+(cancelling does end a ladder, the task survives it) so that a future
+simplification cannot take those away quietly.
+
+Two shapes from the recurring list. *The agent understood, and the outcome had
+nowhere to go* — the fourth time, and the instruction was again to look for
+the missing read, not the bad prompt. And *a flag the writer sets and the
+reader ignores is worse than no flag*: `attempts` was written faithfully by
+the sweep and read by four queries that all meant something else by it.
 
 ### Her reminders arrived in Hebrew (fixed 2026-09-07)
 

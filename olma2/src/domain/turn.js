@@ -215,6 +215,19 @@ function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, 
     hints.recentReminders = 'Reminders Olma already delivered in the last day — a bare reply like '
       + '"סיימתי" or "עשיתי" is probably about the newest one'
       + (replyTarget ? ', UNLESS the quoted message names another: it wins.' : '.');
+    // One carrying `stillChasing` has follow-up rungs left to send. "Stop
+    // reminding me about this" is about THOSE, and it is the only thing on
+    // this turn that can act on them: nothing the model can list will show
+    // that row (see advise). Named here rather than in a description, because
+    // it is true on the handful of turns that answer a reminder and on no
+    // other.
+    if (recentReminders.some((r) => r.stillChasing)) {
+      hints.stillChasing = 'A reminder marked stillChasing will send follow-up rungs on its own — a few '
+        + 'hours from now and again tomorrow. If they ask to stop, pause or postpone reminders about '
+        + 'that thing, cancel_reminder(reminderId) is what ends it; the task and everything else stay '
+        + 'exactly as they are. For "the next one only on Monday", cancel it and then set_task_reminder '
+        + 'on its taskId for the moment they named. Cancelling a DIFFERENT reminder does not stop this one.';
+    }
   }
   if (planHeadline) {
     hints.planHeadline = 'The headline of today\'s overnight plan; the full plan is in your USER.md '
@@ -275,15 +288,40 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
   // the outbox row IS the record. Only the last day, only actually-sent
   // rows, and the field is omitted entirely when empty — which is nearly
   // every turn, so this costs nothing in the common case.
+  //
+  // It carries the reminder's OWN id, and whether that ladder can still
+  // climb. "תפסיק עם התזכורות … הבאה רק ביום שני" is the reply this hint
+  // fires on, and until 2026-09-09 the model had a title and nothing to act
+  // on: every read path it has — list_my_reminders, list_my_tasks, the
+  // digest — filters `attempts = 0`, which is right for "an hour Olma may
+  // promise" and wrong for "what is still going to reach you". A reminder
+  // mid-ladder is invisible in all three, so the one row that was about to
+  // send two more messages was the one row that could not be named. Olma
+  // cancelled the two she COULD see, on other people's tasks, and the ladder
+  // she was asked to stop climbed on (incidents.md, "The reminder that would
+  // not stop"). The id is not in the payload; it is in the idempotency key
+  // (reminders.attemptKey), which is what the LEFT JOIN reads it back out of.
   const { rows: recentRem } = await client.query(
-    `SELECT payload, sent_at FROM outbox
-      WHERE user_id = $1 AND kind = 'reminder' AND hold_reason IS NULL
-        AND sent_at > now() - interval '24 hours'
-      ORDER BY sent_at DESC LIMIT 3`, [user.id]);
+    `SELECT o.payload, o.sent_at, o.idempotency_key,
+            (r.id IS NOT NULL) AS still_chasing, r.id AS reminder_id, r.task_id
+       FROM outbox o
+       LEFT JOIN task_reminders r
+         ON r.id = substring(o.idempotency_key from '^reminder:([0-9]+)')::bigint
+        AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+      WHERE o.user_id = $1 AND o.kind = 'reminder' AND o.hold_reason IS NULL
+        AND o.sent_at > now() - interval '24 hours'
+      ORDER BY o.sent_at DESC LIMIT 3`, [user.id]);
   const recentReminders = recentRem
     .map((r) => {
       const p = typeof r.payload === 'string' ? JSON.parse(r.payload) : (r.payload || {});
-      return p.title ? { title: String(p.title).slice(0, 200), sentAt: r.sent_at } : null;
+      if (!p.title) return null;
+      return {
+        title: String(p.title).slice(0, 200),
+        sentAt: r.sent_at,
+        ...(r.still_chasing
+          ? { reminderId: Number(r.reminder_id), taskId: Number(r.task_id), stillChasing: true }
+          : {}),
+      };
     })
     .filter(Boolean);
 
