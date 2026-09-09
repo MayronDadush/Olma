@@ -115,6 +115,33 @@ that a stray slant can survive a file name, which is the right way round.
 The words in the table are never touched — this is a rendering decision, and
 `tasks.title` still holds what they said.
 
+## Two languages, and only two (owner, 2026-09-09)
+
+Hebrew and English. Nothing else is planned, so the rule is worth stating
+rather than leaving as the shape the code happens to have.
+
+Every message said in PRIVATE exists as a `he`/`en` pair; everything said in a
+GROUP is Hebrew only, by design, and the page says so instead of offering a
+box nothing would send. A test in `message-templates.test.js` holds both
+halves, so the next private template cannot ship with one language — which is
+how Sarah read a month of Hebrew reminders under an English conversation.
+
+The direction of the fallback differs in the two places that pick, and that is
+deliberate rather than an accident:
+
+- a **rung** falls back to Hebrew (`proactive-text.localizedKey`), because
+  there are only two sets of sentences and `createUser` COALESCEs the column
+  to `he`;
+- an **opening** falls back to English (`onboarding.openingKey`), because the
+  intake greeter beside it is told "if they wrote in Hebrew … in any other
+  language", and the two voices must agree about a stranger.
+
+What is NOT allowed is what that second one used to do: an exact match on
+`'he'`. `set_my_language` stores any ISO code lowercased — its own description
+offers "he, en, ar, ru" — so `he-il` is ordinary, and it bought an English
+opening followed by Hebrew reminders for ever after. Both readers test the
+PREFIX now, and an empty locale is the house language.
+
 ## Where styling is and is not used today
 
 - **Reminders and their rungs** (the raw pipe): the list form is a native

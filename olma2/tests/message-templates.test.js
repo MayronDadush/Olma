@@ -179,3 +179,43 @@ test('the reworded sentence is the one the page previews, not the default', () =
   const shown = templates.example('reminder', { reminder: '🔔 {{title}} — עכשיו' });
   assert.equal(shown, '🔔 לקחת את הרכב לטסט — עכשיו');
 });
+
+// ---- two languages, and only two (owner, 2026-09-09) -----------------------
+test('every message said in PRIVATE exists in both languages', () => {
+  // Sarah wrote in English for a month and her reminders arrived in Hebrew,
+  // because a verbatim sentence has no model to read a language off. The fix
+  // was per-template twins; this is what stops the NEXT private template
+  // shipping with only one of them.
+  for (const f of templates.families()) {
+    if (f.audience !== 'private') continue;
+    assert.ok(f.he, `${f.id} has no Hebrew`);
+    assert.ok(f.en, `${f.id} has no English — an English speaker would read Hebrew`);
+  }
+  // A room is Hebrew by design and says so on the page rather than offering a
+  // box nothing would ever send. Asserted so that "no English" stays a
+  // decision rather than becoming an oversight nobody notices.
+  const groups = templates.families().filter((f) => f.audience === 'group');
+  assert.ok(groups.length >= 5);
+  for (const f of groups) assert.equal(f.en, null, `${f.id} grew an English twin — decide what sends it`);
+});
+
+test('a locale variant is still that language, in both readers', () => {
+  const { openingKey } = require('../src/domain/onboarding');
+  // `set_my_language` stores any ISO code lowercased, so he-il and en-us are
+  // ordinary values. An exact match on 'he' gave he-il an ENGLISH opening and
+  // Hebrew reminders for ever after — two opposite fallbacks for one decision.
+  for (const he of ['he', 'he-il', 'HE', '  he  ']) {
+    assert.equal(openingKey(he), 'opening_he', String(he));
+    assert.equal(text.localizedKey('reminder', he), 'reminder', String(he));
+  }
+  for (const en of ['en', 'en-us', 'EN']) {
+    assert.equal(openingKey(en), 'opening_en', String(en));
+    assert.equal(text.localizedKey('reminder', en), 'reminder_en', String(en));
+  }
+  // Nothing on file is the house language, exactly as createUser COALESCEs it.
+  for (const none of [null, undefined, '']) assert.equal(openingKey(none), 'opening_he', String(none));
+  // And a third language meets the English opening the greeter would have
+  // sent it — the one place the two rules point different ways, on purpose.
+  assert.equal(openingKey('ru'), 'opening_en');
+  assert.equal(text.localizedKey('reminder', 'ru'), 'reminder', 'no Russian rungs exist to send');
+});
