@@ -49,7 +49,12 @@ function arg(name) {
 }
 
 // Each scenario carries the maxTokens its REAL job passes, because that is
-// the number the model has to succeed inside. `--budget <n>` multiplies them
+// the number the model has to succeed inside. This comment was true of only
+// one of the three when it was written: fact-extraction and planning passed
+// NO cap at all, so their real ceiling was the adapter's `maxTokens || 2048`
+// default and the harness measured them at 2000 and 1500 against it. The
+// constant is imported now rather than copied, so the harness cannot drift
+// from the jobs again. `--budget <n>` multiplies them
 // all, which exists to answer one specific question and no other: when a
 // reasoning model returns nothing, is it unable to do the task or did it
 // spend the answer on thinking? Those are different findings and only the
@@ -101,7 +106,7 @@ const SCENARIOS = [
     // The biggest consumer and the one with teeth: what it returns becomes
     // rows in `facts` and `tasks`, i.e. things Olma later says out loud.
     why: 'writes facts and tasks; a wrong date here becomes a reminder at the wrong hour',
-    maxTokens: 2000,
+    maxTokens: llm.BACKGROUND_MAX_TOKENS,
     build: () => factExtraction.buildInstruction(
       factExtraction.renderTranscript(CONVERSATION, TZ),
       EXISTING_FACTS, OPEN_TASKS, {}, [], { now: NOW, tz: TZ }
@@ -145,7 +150,7 @@ const SCENARIOS = [
   {
     id: 'planning',
     why: 'the overnight plan the assistant reads before speaking to them',
-    maxTokens: 1500,
+    maxTokens: llm.BACKGROUND_MAX_TOKENS,
     build: () => planning.buildBrief({
       user: { timezone: TZ, first_name: 'תמר' },
       tasks: OPEN_TASKS,

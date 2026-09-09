@@ -586,7 +586,16 @@ async function sweepFactExtraction(client, deps = {}) {
 
     // One direct call, one JSON answer. No session, no tools, no identity
     // token — the model cannot write anything; it can only propose.
-    const res = await complete({ ...(await llm.backgroundModel(client)), user: message, timeoutMs: TURN_TIMEOUT_MS });
+    const res = await complete({
+      ...(await llm.backgroundModel(client)), user: message, timeoutMs: TURN_TIMEOUT_MS,
+      // Stated rather than left to the adapter default, which is the same
+      // number: this is the LARGEST answer on the background path — every fact
+      // and every task out of a whole chapter of conversation — and it is the
+      // one that measured closest to the ceiling (the incumbent v4-flash wrote
+      // 1988 tokens against 2000 on a realistic fixture, 2026-09-09). A budget
+      // that tight belongs where somebody editing the prompt will see it.
+      maxTokens: llm.BACKGROUND_MAX_TOKENS,
+    });
 
     // A reply that is not parseable JSON is a failed run, not an empty one:
     // the watermark stays put and the same conversation is re-read next tick.
@@ -633,7 +642,7 @@ async function sweepFactExtraction(client, deps = {}) {
     } else {
       out.failed.push({
         userId: u.id,
-        error: String((res && res.error) || (res && res.ok ? 'unparseable model output' : 'unknown')).slice(0, 200),
+        error: llm.whyUnparseable(res).slice(0, 200),
       });
     }
   }

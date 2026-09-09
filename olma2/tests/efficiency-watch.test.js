@@ -488,3 +488,51 @@ test('the report and the brief both say a slide is a slide', () => {
   assert.match(brief, /shortening a stable, cacheable system prompt/);
   assert.ok(brief.includes('→'), 'the day-by-day series is what stops a same-day guess');
 });
+
+// The only background consumer whose failure a PERSON reads. Advice cut at the
+// ceiling is half a recommendation printed as a whole one, so here the ceiling
+// has to be a DISCARD and not merely a note — the four other consumers can
+// afford to log it and skip, this one cannot afford to print it.
+test('advice the token ceiling cut is thrown away, and the numbers still go out', async () => {
+  const sent = [];
+  const deps = {
+    llm: {
+      backgroundModel: async () => ({ model: 'nex-agi/nex-n2.5-mini' }),
+      complete: async () => ({
+        // A reasoning model that thought until the budget ran out. `ok` is
+        // true and there IS text — which is exactly why nothing caught this:
+        // the old line asked only whether text came back.
+        ok: true, finishReason: 'length',
+        text: 'הסיבה העיקרית לעלייה היא ככל הנראה שהפרומפט גדל, ולכן כדאי לקצר את',
+        model: 'nex-agi/nex-n2.5-mini',
+        usage: { input: 4000, output: 2000, cacheRead: 0, cacheWrite: 0 },
+      }),
+    },
+    send: async (phone, text) => { sent.push({ phone, text }); return { ok: true }; },
+    alertHourOpen: async () => true,
+    promptChars: 39_146,
+  };
+  // A first alert needs a clean slate on both memories the watch keeps: the
+  // flag it stamps and the issues it has already filed.
+  await pool.query(`DELETE FROM usage_ledger`);
+  await pool.query(`DELETE FROM audit_log WHERE event = 'message.received'`);
+  await pool.query(`DELETE FROM issues WHERE title LIKE 'efficiency:%'`);
+  await flags.setFlag(pool, eff.ALERTED_FLAG, []);
+  for (let d = 8; d >= 2; d--) {
+    await seedDay(d, { messages: 40, inTokens: 2_000_000, cacheTokens: 1_400_000, cost: 0.62 });
+  }
+  await seedDay(1, { messages: 40, inTokens: 7_000_000, cacheTokens: 1_750_000, cost: 2.8 });
+  await seedDay(0, { messages: 5, inTokens: 250_000, cacheTokens: 175_000, cost: 0.08 });
+
+  const out = await eff.run(pool, deps);
+  assert.ok(out.crossed >= 2, 'the regression is still detected — the advice is not the alarm');
+  assert.equal(out.notified, true, 'and it is still reported');
+  assert.equal(sent.length, 1);
+  // The truncated sentence must appear nowhere: not in the message, and not
+  // in the issue row an operator opens next week.
+  assert.doesNotMatch(sent[0].text, /ולכן כדאי לקצר את/,
+    'half a recommendation reads as a whole one, and this one was cut mid-word');
+  const { rows } = await pool.query(
+    `SELECT detail FROM issues WHERE source = 'agent_detected' ORDER BY id DESC LIMIT 1`);
+  assert.equal(JSON.parse(rows[0].detail).advice, null);
+});
