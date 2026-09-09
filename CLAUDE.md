@@ -170,6 +170,19 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `incidents.md`, "The heartbeat was the bill"). Nothing of ours rides on it.
   `config_guard` goes red if it comes back; `scripts/disable-heartbeats.js
   --apply` turns it off again.
+- **Every session resets daily: `session.reset: { mode: "daily", atHour: 2 }`**
+  (UTC on the box — 05:00 in Israel, before anybody writes). The gateway
+  default is "none", and a session that never ends carries the whole
+  conversation into every call: on 2026-09-09 u-3's one session, open since
+  08-27, was 205k tokens a call — $0.018 of history per message before the
+  first word, 8–23 s to the first token, 52% of the real-user bill across
+  four people (`incidents.md`, "The conversation that never ended"). What
+  the conversation knows lives in the DB and USER.md, not in the window.
+  **`readRecentMessages` follows `session_windows.previous_session_id`** so
+  the watchers (promise_watch, the onboarding review, fact extraction,
+  unanswered) still see yesterday on the morning after — a reader of the
+  live session id alone is blind once a day. `config_guard` goes red if the
+  mode comes back off; `scripts/set-session-reset.js --apply` sets it.
 
 ### Delivering a message
 
