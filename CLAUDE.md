@@ -675,6 +675,22 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **An issue title must be deterministic** — it is the dedup key. A title built
   from unordered query results makes the guard file and close the same
   condition on alternating ticks.
+- **A ratio's numerator and its denominator must describe the SAME people, and
+  the eval user is in neither.** `users.is_eval` traffic is a benchmark whose
+  cost per message is a property of whatever model is on trial, so it enters
+  and leaves every metric TOGETHER — dropping it from one side alone builds the
+  mirror-image fault. `efficiency-watch` had it in both halves and read
+  2026-09-08 as $0.0411/message against a $0.0155 baseline, when real users
+  were 52 messages at $0.0179 — 1.13x their own baseline — and the advice that
+  came back was to trim the conversation history real users get, to pay for a
+  pilot. **Its EVIDENCE query has to move with it**: a model list drawn from a
+  population no ratio covers is what ranked deepseek-v4-flash third and got it
+  blamed. And the excluded spend still has to be printed somewhere unratio'd
+  (`evalCost`), or the fix is the other failure — $4 a day that no number can
+  see (`incidents.md`, "The pilot that read as an expensive day"). Nothing else
+  on the cost path filters `is_eval`, and for the dashboard's cost pages that
+  is arguably right: they answer "what did we spend", not "how efficient are
+  we". Know which question the number you are writing answers.
 - **A thing that could not be READ is never a thing in trouble.** An unreadable
   config, a failed billing API, a missing log: report it in the heartbeat, file
   nothing, alert nobody.
