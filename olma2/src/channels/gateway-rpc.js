@@ -95,7 +95,16 @@ function readTarget() {
     throw failed(`gateway auth mode ${mode} is not handled here`, { dispatched: false });
   }
   if (!token) throw failed('gateway has no shared secret configured', { dispatched: false });
-  return { url: `ws://127.0.0.1:${gw.port || 18789}`, token };
+  // On a multi-agent roster an agent-less send is REFUSED — "session key
+  // \"main\" has no explicit owner" — and this is the same
+  // `agents.defaults.systemAgent.agentId` the CLI resolves for us today
+  // (CLAUDE.md, "the raw pipe needs systemAgent.agentId"). The CLI reads it
+  // from the config and passes it; so do we, from the same key, rather than
+  // naming an agent here. Measured against the live gateway 2026-09-09: the
+  // send is refused without it.
+  const defaults = (cfg.agents && cfg.agents.defaults) || {};
+  const systemAgentId = (defaults.systemAgent && defaults.systemAgent.agentId) || '';
+  return { url: `ws://127.0.0.1:${gw.port || 18789}`, token, systemAgentId };
 }
 
 function available() {
@@ -140,7 +149,7 @@ function connect() {
 
   const pending = new Map();
   const ws = new WebSocket(target.url);
-  const state = { ws, pending, idleTimer: null, ready: null };
+  const state = { ws, pending, idleTimer: null, ready: null, systemAgentId: target.systemAgentId };
   conn = state;
 
   state.ready = new Promise((resolve, reject) => {
@@ -260,6 +269,7 @@ async function sendMessage({ channel, to, message, replyToId }) {
     to,
     message,
     idempotencyKey: randomUUID(),
+    ...(state.systemAgentId ? { agentId: state.systemAgentId } : {}),
     ...(replyToId ? { replyToId: String(replyToId) } : {}),
   };
   const payload = await send(state, 'send', params, REQUEST_TIMEOUT_MS);
