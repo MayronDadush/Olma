@@ -153,6 +153,20 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `models.providers.openrouter.models[]`, and
   `agents.defaults.modelPolicy.allow`. Two of three is registered-and-unusable,
   and invisible until an override is tried.
+- **The live OpenRouter model names its providers in order**
+  (`agents.defaults.models["openrouter/deepseek/deepseek-v4-flash"].params
+  .provider.order`, `scripts/pin-openrouter-provider.js --apply`, restart the
+  gateway). Unpinned, OpenRouter picked a different provider per request —
+  three in six hours on 2026-09-09 — and a prompt cache is per provider, so
+  the first call of nearly every message paid the whole prompt: 0–9% cached
+  for any gap over two minutes, ~90% for the second call of the same turn
+  (`incidents.md`, "The conversation that never ended"). DigitalOcean first
+  for the price ($0.068/M against $0.089–0.091), the two it was already using
+  behind it, `allow_fallbacks: true` so an outage costs the cache and never a
+  reply. `register-openrouter-models.js` writes `{}` per model and would wipe
+  this; `config_guard` goes red when the order is gone. `model-pricing.js`
+  prices flash at the pinned provider's rates — new rows only, the ledger is
+  append-only.
 - **The `Conversation info` block is prompt-only: the transcript keeps the
   bare text.** On 2026.8.1 the roster, the tag and the message id of a group
   message exist in one place code can reach — the `llm_input` plugin hook,
@@ -410,8 +424,9 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   (a queue per person, oldest first), not one per person: two messages a few
   seconds apart each keep their own count, opening and reply target
   (`incidents.md`, "Two messages three seconds apart").
-  **Widening it to everybody is four steps, and the first one was not
-  optional** (step 1 done 2026-09-06, the rest planned 2026-09-07):
+  **Widened to everybody on 2026-09-09** (`scripts/enable-turn-context.js
+  --apply`, then a gateway restart and a resync) — it was four steps, and the
+  first one was not optional:
   (1) the evals. The eval user (`users.is_eval`, u-15) becomes a covered user
   the moment the flag says `all`, and the failure is SILENT rather than red:
   the CLI fires the plugin but not the turn-open hook, so brokerd answers
@@ -426,6 +441,12 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   agent, so a user who joins next week is covered without anyone
   remembering, and the flag stays the only gate. (4) restart the gateway
   (`config.agents` is read once, at register) and resync every AGENTS.md.
+  **Every half-state is the OLD behaviour, not a broken one** — the doctrine
+  falls back to `turn_start` when no Turn context block is there — which is
+  why `config_guard.checkTurnContextCoverage` goes red when the flag and
+  the plugin list disagree: a fallback nobody notices is a model round-trip
+  on every message for ever. It was 922 of 2,482 tool calls in the fourteen
+  days before (`incidents.md`, "The conversation that never ended").
 - **`messages.queue.mode` stays `followup`.** The gateway default, `steer`,
   pushes a message that arrives mid-turn INTO the running turn and cancels
   the tool calls the model just made ("Skipped due to queued user message").

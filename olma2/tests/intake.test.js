@@ -24,9 +24,14 @@ function baseConfig() {
   return {
     agents: {
       list: [{ id: 'intake', workspace: '/x/intake', agentDir: '/x/intake-agent' }],
-      defaults: { heartbeat: { every: '0m', target: 'none' } },
+      defaults: {
+        heartbeat: { every: '0m', target: 'none' },
+        model: { primary: 'openrouter/deepseek/deepseek-v4-flash' },
+        models: { 'openrouter/deepseek/deepseek-v4-flash': { params: { provider: { order: ['digitalocean', 'streamlake'], allow_fallbacks: true } } } },
+      },
     },
     hooks: { internal: { enabled: true, entries: { 'olma-turn-open': { enabled: true } } } },
+    plugins: { entries: { 'olma-turn': { enabled: true, hooks: { allowConversationAccess: true }, config: { agents: [] } } } },
     messages: { queue: { mode: 'followup' } },
     session: { reset: { mode: 'daily', atHour: 2 } },
     bindings: [],
@@ -793,6 +798,60 @@ test('config guard: a message that arrives mid-turn must wait for its own turn (
   assert.match(guard.checkOpenclawConfig(cfg)[0], /messages\.queue\.mode is "steer"/);
   cfg.messages = { queue: { mode: 'collect' } };
   assert.equal(guard.checkOpenclawConfig(cfg).length, 1, 'collect merges the two into one prompt: one count, one reply target — not what we want either');
+});
+
+// Phase B's three halves — flag, plugin list, doctrine — each fall back to
+// the old `turn_start` call when they disagree, so nothing goes red on its
+// own; the guard is what does (scripts/enable-turn-context.js, 2026-09-09).
+test('config guard: the turn-context flag and the plugin list must agree', async () => {
+  const flags = require('../src/domain/flags');
+  const turn = require('../src/domain/turn');
+  const cfg = baseConfig();
+  const check = (c) => withTx(db.pool, (client) => guard.checkTurnContextCoverage(client, c));
+  try {
+    // off everywhere: the pre-Phase-B world, by choice — nothing to say
+    await withTx(db.pool, (c) => flags.setFlag(c, turn.CONTEXT_FLAG, ''));
+    assert.deepEqual(await check(cfg), []);
+    // everybody, plugin list empty: the shipped state
+    await withTx(db.pool, (c) => flags.setFlag(c, turn.CONTEXT_FLAG, 'all'));
+    assert.deepEqual(await check(cfg), []);
+    // everybody on the flag, two people on the plugin: everyone else falls back silently
+    cfg.plugins.entries['olma-turn'].config.agents = ['u-3', 'u-12'];
+    let v = await check(cfg);
+    assert.equal(v.length, 1);
+    assert.match(v[0], /still lists 2 agent/);
+    assert.match(v[0], /enable-turn-context/, 'says how to fix it');
+    // a per-person flag with a per-person list is a legitimate pilot
+    await withTx(db.pool, (c) => flags.setFlag(c, turn.CONTEXT_FLAG, '+972501111111'));
+    assert.deepEqual(await check(cfg), []);
+    // but a flag with no plugin behind it is a tool call per message for everyone it names
+    delete cfg.plugins;
+    v = await check(cfg);
+    assert.equal(v.length, 1);
+    assert.match(v[0], /olma-turn is missing/);
+  } finally {
+    await withTx(db.pool, (c) => flags.setFlag(c, turn.CONTEXT_FLAG, ''));
+  }
+});
+
+// Unpinned, OpenRouter served deepseek-v4-flash from three providers in six
+// hours (2026-09-09) and the prompt cache died with every switch — 0–9% on
+// the first call of a turn (docs/incidents.md, "The conversation that never
+// ended"). The guard asks only that an ORDER exists: which providers is a
+// price decision the script owns.
+test('config guard: the live OpenRouter model must name its provider order', () => {
+  const cfg = baseConfig();
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
+  cfg.agents.defaults.models['openrouter/deepseek/deepseek-v4-flash'] = {}; // what register-openrouter-models.js writes
+  let v = guard.checkOpenclawConfig(cfg);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /params\.provider\.order is unset/);
+  assert.match(v[0], /pin-openrouter-provider/, 'says how to fix it');
+  cfg.agents.defaults.models['openrouter/deepseek/deepseek-v4-flash'] = { params: { provider: { order: [] } } };
+  assert.equal(guard.checkOpenclawConfig(cfg).length, 1, 'an empty order pins nothing');
+  // a direct-provider primary has no router to pin
+  cfg.agents.defaults.model.primary = 'anthropic/claude-haiku-4-5';
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
 });
 
 // A session that never resets carries the whole conversation into every
