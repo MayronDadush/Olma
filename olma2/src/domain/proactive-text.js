@@ -18,6 +18,7 @@
 // reminders delivered in the last day, because brokerd knows exactly what was
 // sent without needing the session to remember it.
 const templates = require('./message-templates');
+const format = require('./message-format');
 
 // Titles are the user's own words; bound them to one message-safe line.
 function cleanTitle(title) {
@@ -73,13 +74,19 @@ function localizedKey(key, locale) {
 // idempotency key, and then cancelling one of them would let the sweep produce
 // the whole batch again — which is the fault this system already had once, at
 // half past one in the morning.
-function renderReminderText(payload, overrides, locale) {
+//
+// `channelType` is the recipient's platform and is read at DELIVERY for exactly
+// the reason the locale is: a bulleted list is a native WhatsApp list ("- ")
+// and a stray hyphen anywhere else, so the bullet CHARACTER is what a channel
+// we do not know gets (domain/message-format.js). Absent, it is plain \u2014 never
+// WhatsApp on the assumption that everyone is on WhatsApp today.
+function renderReminderText(payload, overrides, locale, channelType) {
   const p = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
   const key = reminderTemplateKey(p);
   const items = (Array.isArray(p.items) ? p.items : []).map(cleanTitle).filter(Boolean);
   if (items.length > 1) {
     return templates.render(localizedKey(LIST_TEMPLATE[key], locale),
-      { items: items.map((t) => `\u2022 ${t}`).join('\n') }, overrides);
+      { items: format.formatterFor(channelType).bullets(items) }, overrides);
   }
   const title = cleanTitle(p.title) || items[0];
   if (!title) return null;
@@ -187,11 +194,15 @@ function renderGroupCoordination(line, overrides) {
 // `row.locale` is the recipient's, joined onto the outbox row by the worker's
 // candidate query (outbox/worker.js) — the row that reaches the deliverer is
 // that joined row, so the language rides along with the timezone.
-function rawPipeTextFor(row, overrides) {
+//
+// `channelType` comes from the deliverer's own `primaryChannel` lookup rather
+// than the row, for the same reason again: it is a fact about the person at the
+// moment of sending.
+function rawPipeTextFor(row, overrides, channelType) {
   if (row.kind !== 'reminder') return null;
   const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
   if (p.instruction) return null;
-  return renderReminderText(p, overrides, row.locale);
+  return renderReminderText(p, overrides, row.locale, channelType);
 }
 
 module.exports = {

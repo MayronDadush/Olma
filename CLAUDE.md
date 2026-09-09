@@ -203,6 +203,23 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `OLMA_GATEWAY_RPC_SEND=off` in `/opt/olma2/.env` puts everything back.
 - **Cancelling a queued message is an UPDATE, never a DELETE.** The row carries
   the `idempotency_key` that stops the sweep re-creating it.
+- **A STYLE is chosen at delivery, off the recipient's channel, and a channel
+  the table has never heard of gets PLAIN** (`domain/message-format.js`, the
+  whole reference is `olma2/docs/whatsapp-formatting.md`). WhatsApp renders
+  eight things and nothing else — bold, italic, strikethrough, monospace,
+  inline code, block quote, bulleted and numbered lists; no underline, no
+  headings, no `[label](url)`, all three of which arrive as literal
+  characters. `user_channels.channel_type` has only ever held `whatsapp`,
+  which is what has made "WhatsApp markup" and "our markup" look like one
+  thing. Same rule and same reason as `localizedKey` for the LANGUAGE of a
+  rung: what a person can read is a fact about them at the moment of sending,
+  never about the row. **There is no escape character**, so a value we did not
+  write — a task title is the person's own words — is left unwrapped when it
+  already carries the marker: emphasis lost, sentence correct, which is the
+  right way round. The module BUILDS markup and does not parse it, so
+  owner-typed markup in `message_templates` would reach a second channel raw;
+  that gap is named in the doc rather than closed by a parser nothing can
+  check.
 - **The delivery gate is the chokepoint and a paused user has no exceptions** —
   not reminders, not urgent, not another user's fan-out.
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where
