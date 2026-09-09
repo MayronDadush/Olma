@@ -145,9 +145,33 @@ test('an unparseable model reply fails the file and leaves it in place for retry
     });
     assert.equal(res.failed.length, 1);
     assert.equal(res.processed.length, 0);
+    assert.equal(res.failed[0].error, 'unparseable model output');
   });
   assert.equal(fs.existsSync(path.join(dir, 'e.json')), true, 'left in place, not silently dropped');
   assert.equal(fs.existsSync(path.join(dir, 'processed', 'e.json')), false);
+});
+
+// This job asks for MORE than any other on the background path — every fact
+// and task out of a call, plus a summary on top — off a transcript nothing
+// bounds. It ran on the adapter's unnamed default for its whole life, so when
+// the ceiling does cut an answer, the file it leaves behind has to say so.
+test('a reply the token ceiling cut says so, instead of blaming the model', async () => {
+  const u = await makeUser(db.pool, '+972590002014', { firstName: 'איתי' });
+  writeCall('cut.json', { user: u.id, messages: [{ role: 'user', content: 'שלום' }] });
+  await withClient(async (c) => {
+    const res = await voiceCalls.sweepVoiceCalls(c, {
+      transcriptsDir: dir,
+      complete: () => ({
+        ok: true, text: '{"facts":[{"fact":"עוב', finishReason: 'length',
+        model: 'deepseek/deepseek-v4-flash',
+        usage: { input: 3000, output: 2048, cacheRead: 0, cacheWrite: 0 },
+      }),
+    });
+    assert.equal(res.failed.length, 1);
+    assert.match(res.failed[0].error, /max_tokens/);
+  });
+  // Same outcome as any other failure — the difference is only what it says.
+  assert.equal(fs.existsSync(path.join(dir, 'cut.json')), true);
 });
 
 test('re-running after a successful process is a no-op — the file already moved', async () => {

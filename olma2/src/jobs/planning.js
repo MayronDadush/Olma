@@ -251,12 +251,23 @@ async function sweepPlanning(client, deps = {}) {
     } catch { /* a missed question never costs somebody their plan */ }
 
     const brief = buildBrief({ user: u, tasks, reminders, events, facts, now });
-    const res = await complete({ ...(await llm.backgroundModel(client)), user: brief, timeoutMs: CALL_TIMEOUT_MS });
+    const res = await complete({
+      ...(await llm.backgroundModel(client)), user: brief, timeoutMs: CALL_TIMEOUT_MS,
+      // A headline and a few bullets need a fraction of this. The budget is
+      // for the REASONING, which is why it is not trimmed to the answer: a
+      // model that thinks before it writes spends the same allowance, and the
+      // live-updates summariser lost real runs to exactly that at 700.
+      maxTokens: llm.BACKGROUND_MAX_TOKENS,
+    });
     const parsed = res.ok ? llm.parseJsonObject(res.text) : null;
     const plan = parsed ? validatePlan(parsed, tasks.map((t) => t.id)) : null;
 
     if (!plan) {
-      out.failed.push({ userId: u.id, error: String((res && res.error) || 'unparseable or empty plan').slice(0, 200) });
+      // `parsed` but no `plan` is a THIRD thing — valid JSON the validator
+      // rejected — and it is neither a bad model nor a small budget, so it
+      // keeps its own words rather than borrowing the helper's.
+      const why = parsed ? 'plan failed validation' : llm.whyUnparseable(res);
+      out.failed.push({ userId: u.id, error: why.slice(0, 200) });
       continue;
     }
     try { await llm.recordUsage(client, u.id, res.model, res.usage); } catch { /* never fail a plan over bookkeeping */ }
