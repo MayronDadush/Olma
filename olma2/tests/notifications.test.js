@@ -671,3 +671,84 @@ test('a swallowed message is repaired even with a healthy conversation on top of
   assert.equal(parsed[0].messageId, 'ZZZ9');
   assert.equal(parsed[0].cause, 'completed');
 });
+
+// ---------------------------------------------------------------------------
+// A decision to stay quiet is not a reply that got lost
+//
+// Yahav, 2026-09-09, replayed with his real messages. He wrote "בוצע הפקדת צק";
+// brokerd completed the task and put a 👍 on the message; the model correctly
+// answered NO_REPLY, because `hints.markPlaced` says the mark carries the whole
+// fact. Three minutes later the undelivered-reply detector saw an assistant
+// turn after a user turn with no send event behind it — its entire definition
+// of a lost reply — and ran a repair turn. He read, in English, about a
+// conversation that had worked perfectly:
+//
+//   "No conversation history is accessible to me in this session — there are
+//    no prior messages visible and nothing from any stored session search."
+//
+// The repair instruction had ANTICIPATED this exact branch ("If you CANNOT see
+// the conversation … reply with exactly NO_REPLY … do not mention a technical
+// problem") and the model ignored it. A safety property written as a sentence
+// in a prompt is a request, not a guarantee — so the detector must not create
+// the turn in the first place.
+test('a NO_REPLY silence is never repaired as an undelivered reply', async () => {
+  const unanswered = require('../src/jobs/unanswered');
+  const now = Date.now();
+  const ago = (min) => new Date(now - min * 60_000).toISOString();
+  const u = await makeUser(db.pool, '+972617000041', { firstName: 'יהב' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = now() - interval '2 days' WHERE id = $1`, [u.id]);
+
+  // Only HIS agent sees this transcript: the sweep walks every active user in
+  // the database, and a mock that answers the same thing for all of them makes
+  // the assertion about whoever else a neighbouring test left behind.
+  const sweep = (m) => withTx(db.pool, (c) => unanswered.sweepUnanswered(c, {
+    readDroppedTurns: () => new Map(),
+    readMessages: (agentId) => (agentId === `u-${u.id}` ? m : []),
+    // An all-covering window and an empty send log: the harshest case, where
+    // every other guard says "lost". Only the sentinel stands between him and
+    // the repair turn.
+    readSentEvents: () => ({ events: [], windows: [{ from: 0, to: Infinity }] }),
+    now,
+  }));
+
+  assert.deepEqual((await sweep([
+    { role: 'user', text: 'בוצע הפקדת צק', at: ago(10) },
+    { role: 'assistant', text: 'NO_REPLY', at: ago(9) },
+  ])).repaired, [], 'the 👍 said it; the silence was correct');
+
+  // Whitespace must not turn a decision into a delivery fault.
+  assert.deepEqual((await sweep([
+    { role: 'user', text: 'בוצע הפקדת צק', at: ago(10) },
+    { role: 'assistant', text: '  NO_REPLY\n', at: ago(9) },
+  ])).repaired, []);
+
+  const { rows } = await db.pool.query(
+    `SELECT count(*)::int AS n FROM outbox
+      WHERE user_id = $1 AND payload->>'repairKind' = 'undelivered_reply'`, [u.id]);
+  assert.equal(rows[0].n, 0, 'nothing may be queued at him at all');
+});
+
+// The other half, and the reason this is a sentinel check and not a "did the
+// assistant say anything short" check: the doctrine is explicit that any text
+// in FRONT of the sentinel is delivered to the person. So a reply that carries
+// words is a real reply, and losing it is a real fault that must still repair.
+test('a reply that only CONTAINS the sentinel is still a real reply', async () => {
+  const unanswered = require('../src/jobs/unanswered');
+  const now = Date.now();
+  const ago = (min) => new Date(now - min * 60_000).toISOString();
+  const u = await makeUser(db.pool, '+972617000042', { firstName: 'Dana' });
+  await db.pool.query(
+    `UPDATE users SET agent_id = 'u-' || id, onboarded_at = now() - interval '2 days' WHERE id = $1`, [u.id]);
+
+  const out = await withTx(db.pool, (c) => unanswered.sweepUnanswered(c, {
+    readDroppedTurns: () => new Map(),
+    readMessages: (agentId) => (agentId === `u-${u.id}` ? [
+      { role: 'user', text: 'מה קורה עם הדוח', at: ago(10) },
+      { role: 'assistant', text: 'שלחתי לך אותו הבוקר NO_REPLY', at: ago(9) },
+    ] : []),
+    readSentEvents: () => ({ events: [], windows: [{ from: 0, to: Infinity }] }),
+    now,
+  }));
+  assert.deepEqual(out.repaired, [u.id], 'she never saw a sentence that was written for her');
+});

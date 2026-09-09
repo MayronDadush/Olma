@@ -674,6 +674,36 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   a reminder as well — moved to `create_calendar_event`'s own description,
   where the model reads it at the moment it would make that mistake.
 
+- **A DECISION to stay quiet is not a reply that got lost.** `NO_REPLY` is the
+  silence sentinel and, since the reaction doctrine, it is the CORRECT answer to
+  a growing class of messages — brokerd puts a 👍 on, `markPlaced` says the mark
+  carries the whole fact, the model rightly says nothing. Every one of those
+  lands in the transcript as an assistant turn after a user turn with no send
+  event behind it, which was `unanswered.undeliveredReply`'s entire definition
+  of a lost reply. Yahav's "בוצע הפקדת צק" was answered perfectly — task
+  completed, 👍 placed — and three minutes later a repair turn told him "No
+  conversation history is accessible to me in this session", in English
+  (2026-09-09). **The sentinel is checked in the DETECTOR, not in the shared
+  reader**: a deliberate silence is real history, and the admin conversation
+  view and the metrics rollup each decide what it means to them. Exact match
+  after a trim — the doctrine says anything in FRONT of the sentinel is
+  delivered, so "בוצע NO_REPLY" is a real reply and stays repairable. Second
+  time the transcript's shape has failed to carry a turn's meaning for this same
+  function: `channels/sessions.js` drops `FAILED_TURN_MARKER` because a dead
+  turn was indistinguishable from a reply and blinded it the OTHER way
+  (`incidents.md`, "A silence read as a delivery fault").
+- **A repair job fires precisely when the system's belief about itself is
+  already wrong, so it must be the most sceptical thing in the codebase.** Every
+  other sweep acts on a state it observed; this one acts on a belief that
+  something failed, and a wrong belief manufactures the very disturbance it
+  exists to prevent. And **its instruction anticipating a failure buys nothing**
+  — the repair prompt said "if you CANNOT see the conversation, reply with
+  exactly NO_REPLY, do not mention a technical problem" and the model did the
+  opposite, in the wrong language. A safety property written as a sentence in a
+  prompt is a request, not a guarantee: wherever a model's raw output reaches a
+  person with no server-side gate, the prompt is the only thing standing there
+  and it can simply be ignored.
+
 ### Writing detectors and alarms
 
 - **`BREAKS_USERS` means exactly "their tool calls fail right now."** Anything
