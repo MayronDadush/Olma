@@ -31,6 +31,7 @@ function baseConfig() {
       },
     },
     hooks: { internal: { enabled: true, entries: { 'olma-turn-open': { enabled: true } } } },
+    plugins: { entries: { 'olma-turn': { enabled: true, hooks: { allowConversationAccess: true }, config: { agents: [] } } } },
     messages: { queue: { mode: 'followup' } },
     session: { reset: { mode: 'daily', atHour: 2 } },
     bindings: [],
@@ -797,6 +798,40 @@ test('config guard: a message that arrives mid-turn must wait for its own turn (
   assert.match(guard.checkOpenclawConfig(cfg)[0], /messages\.queue\.mode is "steer"/);
   cfg.messages = { queue: { mode: 'collect' } };
   assert.equal(guard.checkOpenclawConfig(cfg).length, 1, 'collect merges the two into one prompt: one count, one reply target — not what we want either');
+});
+
+// Phase B's three halves — flag, plugin list, doctrine — each fall back to
+// the old `turn_start` call when they disagree, so nothing goes red on its
+// own; the guard is what does (scripts/enable-turn-context.js, 2026-09-09).
+test('config guard: the turn-context flag and the plugin list must agree', async () => {
+  const flags = require('../src/domain/flags');
+  const turn = require('../src/domain/turn');
+  const cfg = baseConfig();
+  const check = (c) => withTx(db.pool, (client) => guard.checkTurnContextCoverage(client, c));
+  try {
+    // off everywhere: the pre-Phase-B world, by choice — nothing to say
+    await withTx(db.pool, (c) => flags.setFlag(c, turn.CONTEXT_FLAG, ''));
+    assert.deepEqual(await check(cfg), []);
+    // everybody, plugin list empty: the shipped state
+    await withTx(db.pool, (c) => flags.setFlag(c, turn.CONTEXT_FLAG, 'all'));
+    assert.deepEqual(await check(cfg), []);
+    // everybody on the flag, two people on the plugin: everyone else falls back silently
+    cfg.plugins.entries['olma-turn'].config.agents = ['u-3', 'u-12'];
+    let v = await check(cfg);
+    assert.equal(v.length, 1);
+    assert.match(v[0], /still lists 2 agent/);
+    assert.match(v[0], /enable-turn-context/, 'says how to fix it');
+    // a per-person flag with a per-person list is a legitimate pilot
+    await withTx(db.pool, (c) => flags.setFlag(c, turn.CONTEXT_FLAG, '+972501111111'));
+    assert.deepEqual(await check(cfg), []);
+    // but a flag with no plugin behind it is a tool call per message for everyone it names
+    delete cfg.plugins;
+    v = await check(cfg);
+    assert.equal(v.length, 1);
+    assert.match(v[0], /olma-turn is missing/);
+  } finally {
+    await withTx(db.pool, (c) => flags.setFlag(c, turn.CONTEXT_FLAG, ''));
+  }
 });
 
 // Unpinned, OpenRouter served deepseek-v4-flash from three providers in six

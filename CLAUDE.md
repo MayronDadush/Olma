@@ -424,8 +424,9 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   (a queue per person, oldest first), not one per person: two messages a few
   seconds apart each keep their own count, opening and reply target
   (`incidents.md`, "Two messages three seconds apart").
-  **Widening it to everybody is four steps, and the first one was not
-  optional** (step 1 done 2026-09-06, the rest planned 2026-09-07):
+  **Widened to everybody on 2026-09-09** (`scripts/enable-turn-context.js
+  --apply`, then a gateway restart and a resync) — it was four steps, and the
+  first one was not optional:
   (1) the evals. The eval user (`users.is_eval`, u-15) becomes a covered user
   the moment the flag says `all`, and the failure is SILENT rather than red:
   the CLI fires the plugin but not the turn-open hook, so brokerd answers
@@ -440,6 +441,12 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   agent, so a user who joins next week is covered without anyone
   remembering, and the flag stays the only gate. (4) restart the gateway
   (`config.agents` is read once, at register) and resync every AGENTS.md.
+  **Every half-state is the OLD behaviour, not a broken one** — the doctrine
+  falls back to `turn_start` when no Turn context block is there — which is
+  why `config_guard.checkTurnContextCoverage` goes red when the flag and
+  the plugin list disagree: a fallback nobody notices is a model round-trip
+  on every message for ever. It was 922 of 2,482 tool calls in the fourteen
+  days before (`incidents.md`, "The conversation that never ended").
 - **`messages.queue.mode` stays `followup`.** The gateway default, `steer`,
   pushes a message that arrives mid-turn INTO the running turn and cancels
   the tool calls the model just made ("Skipped due to queued user message").

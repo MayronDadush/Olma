@@ -119,6 +119,33 @@ function checkOpenclawConfig(cfg) {
   return violations;
 }
 
+// Phase B has three halves that must agree — the `turn_context_phones`
+// flag (what brokerd answers, and which doctrine variant the resync writes),
+// the plugin's `config.agents` list (who the gateway asks for), and the
+// resynced AGENTS.md — and every half-state is the OLD behaviour rather than
+// a broken one: the doctrine falls back to `turn_start` when no Turn context
+// block is there. That is exactly why it needs a row: a fallback nobody
+// notices is a model round-trip on every message, for ever, for whoever the
+// halves disagree about. Widened to everybody on 2026-09-09
+// (scripts/enable-turn-context.js). Dashboard row, never BREAKS_USERS.
+async function checkTurnContextCoverage(client, cfg) {
+  const violations = [];
+  const flags = require('../domain/flags');
+  const turn = require('../domain/turn');
+  const flag = String((await flags.getFlag(client, turn.CONTEXT_FLAG)) || '').trim();
+  if (!flag) return violations; // off everywhere: the pre-Phase-B world, by choice
+  const entry = (((cfg.plugins || {}).entries || {})['olma-turn']) || null;
+  if (!entry || entry.enabled !== true) {
+    violations.push(`turn_context_phones is ${JSON.stringify(flag)} but plugins.entries.olma-turn is ${entry ? 'disabled' : 'missing'} — every covered person's doctrine falls back to a turn_start call on every message (fix: scripts/enable-turn-context.js --apply, then restart the gateway)`);
+    return violations;
+  }
+  const list = Array.isArray((entry.config || {}).agents) ? entry.config.agents : [];
+  if (flag === 'all' && list.length) {
+    violations.push(`turn_context_phones is "all" but plugins.entries.olma-turn.config.agents still lists ${list.length} agent(s) — everyone else's doctrine falls back to a turn_start call on every message (fix: scripts/enable-turn-context.js --apply, then restart the gateway)`);
+  }
+  return violations;
+}
+
 async function checkIdentityFiles(client) {
   const { rows } = await client.query(
     `SELECT id, phone, workspace_path, identity_token FROM users
@@ -1040,6 +1067,7 @@ async function run(client, { configPath, ...deps } = {}) {
     violations = violations.concat(checkOpenclawConfig(cfg));
     violations = violations.concat(checkModelPermissions(cfg));
     violations = violations.concat(await checkOrphanAgents(client, cfg));
+    violations = violations.concat(await checkTurnContextCoverage(client, cfg));
     budget = await checkBootstrapBudget(client, cfg);
     violations = violations.concat(budget.violations);
   } catch (e) {
@@ -1086,6 +1114,7 @@ async function run(client, { configPath, ...deps } = {}) {
 }
 
 module.exports = {
+  checkTurnContextCoverage,
   run, checkOpenclawConfig, checkModelPermissions, checkConfigApplied, makeConfigValidator,
   checkIdentityFiles, checkAgentsTokens,
   checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkUnreachableJoiners, checkInfraAgentSessions,
