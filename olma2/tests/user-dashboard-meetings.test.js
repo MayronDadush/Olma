@@ -269,14 +269,19 @@ test('anybody fills the table to five; the sixth is refused with the five in the
   assert.deepEqual(rows.map((x) => x.kind), ['meeting_slot_proposed']);
 });
 
-test('a tap removes any option, whoever put it there, and only the people who answered it are told', async () => {
+test('a tap removes any option, whoever put it there, and the news travels with the next update', async () => {
   const r = await actAs(me, 'startMeeting', { title: 'מחיקה', participantIds: [gali.id, ron.id], options: [{ day: 1, part: 'evening' }, { day: 2, part: 'noon' }] });
   const id = Number(r.data.meeting.id);
   let m = (await tx((c) => dash.load(c, me.id))).data.meetings.find((x) => Number(x.id) === id);
   const victim = m.options.find((o) => o.part === 'evening');
   assert.equal((await actAs(ron, 'answerOption', { meetingId: id, optionId: victim.id, answer: 'y' })).ok, true);
+  // ron has heard about this coordination and the message reached him
+  await db.pool.query(
+    `UPDATE outbox SET sent_at = now() WHERE user_id = $1 AND (payload->>'meetingId')::bigint = $2`, [ron.id, id]);
 
   // gali did not add it and did not open the coordination.
+  const before = Number((await db.pool.query(
+    `SELECT coalesce(max(id), 0)::int AS id FROM outbox`)).rows[0].id);
   const gone = await actAs(gali, 'removeOption', { meetingId: id, optionId: victim.id });
   assert.equal(gone.ok, true, JSON.stringify(gone.error));
   assert.equal(gone.data.optionsLeft, 1);
@@ -284,11 +289,17 @@ test('a tap removes any option, whoever put it there, and only the people who an
   assert.equal(m.options.length, 1, 'gone from everybody\'s table, not only hers');
   assert.equal(m.options.some((o) => o.id === victim.id), false);
 
+  // A tap sends nothing of its own…
+  const said = await db.pool.query(
+    `SELECT count(*)::int AS n FROM outbox WHERE id > $1`, [before]);
+  assert.equal(said.rows[0].n, 0, 'a removal is never a message of its own');
+  // …and the next time somebody puts a time up, ron is told what went.
+  const added = await actAs(me, 'addOption', { meetingId: id, day: 3, time: '18:00' });
   const { rows } = await db.pool.query(
-    `SELECT user_id FROM outbox WHERE kind = 'meeting_option_removed' AND (payload->>'meetingId')::bigint = $1 ORDER BY user_id`, [id]);
-  const told = rows.map((x) => Number(x.user_id)).sort((a, b) => a - b);
-  assert.deepEqual(told, [Number(me.id), Number(ron.id)].sort((a, b) => a - b),
-    'the adder and the person who voted; not the person who removed it');
+    `SELECT payload FROM outbox WHERE user_id = $1 AND (payload->>'optionId')::bigint = $2`,
+    [ron.id, added.data.option.id]);
+  assert.equal(rows[0].payload.removedOptions.length, 1);
+  assert.equal(rows[0].payload.removedOptions[0].byName, 'Gali');
 });
 
 test('answers land on one option each, and the first unanimous option confirms the meeting', async () => {

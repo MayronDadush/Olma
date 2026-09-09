@@ -360,6 +360,11 @@ async function settleNow(client, userId, meetingId, optionId) {
 // the history. The answers already given to it stay in the table as a record
 // and stop counting for anything, because every reader of an answer starts
 // from an ACTIVE option.
+//
+// It sends nobody a message (owner, 2026-09-09). The fact that a time came off
+// the table, and who took it off, rides the next thing each person hears about
+// this coordination — `unheardRemovals` below is that reader, and getStatus is
+// the same fact for somebody who asks.
 async function remove(client, userId, meetingId, optionId) {
   const p = await participant(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
@@ -367,19 +372,10 @@ async function remove(client, userId, meetingId, optionId) {
     return err('invalid', 'meeting is not negotiating', { reason: 'not_negotiating' });
   }
   if (p.state === 'opted_out') return err('invalid', 'you opted out of this meeting');
-  // Who had answered it, before the row stops counting. Their yes or no went
-  // with the option, so they are the people who have to be told — read here
-  // rather than in the fan-out, because after this transaction nothing can
-  // tell an answer to a deleted option from an answer that never happened.
-  const { rows: answered } = await client.query(
-    `SELECT oa.user_id FROM meeting_option_answers oa
-       JOIN meeting_participants mp ON mp.meeting_id = $2 AND mp.user_id = oa.user_id
-      WHERE oa.option_id = $1 AND mp.state <> 'opted_out' AND oa.user_id <> $3`,
-    [optionId, meetingId, userId]);
   const { rows } = await client.query(
-    `UPDATE meeting_options SET status = 'deleted', decided_at = now()
+    `UPDATE meeting_options SET status = 'deleted', decided_at = now(), removed_by = $3
       WHERE id = $1 AND meeting_id = $2 AND status = 'active'
-      RETURNING slot_text, starts_at, added_by`, [optionId, meetingId]);
+      RETURNING slot_text, starts_at, added_by`, [optionId, meetingId, userId]);
   if (!rows[0]) return err('not_found', 'no such option on the table', { reason: 'option_not_active' });
   await audit.record(client, userId, 'meeting.option_removed', {
     meetingId: Number(meetingId), optionId: Number(optionId), slot: rows[0].slot_text,
@@ -394,11 +390,53 @@ async function remove(client, userId, meetingId, optionId) {
     meetingId: Number(meetingId), optionId: Number(optionId), slot: rows[0].slot_text,
     startsAt: rows[0].starts_at,
     addedBy: rows[0].added_by === null ? null : Number(rows[0].added_by),
-    hadAnswered: answered.map((a) => Number(a.user_id)),
     optionsLeft: await activeCount(client, meetingId),
     meetingStatus: c.settling ? 'settling' : 'negotiating',
     ...(c.settling ? { settlingSlot: c.slot, settleDueAt: c.settleDueAt } : {}),
   });
+}
+
+// Every time taken off this table, newest first, with the person who took it.
+// For somebody who ASKS what is going on (getStatus): the state of the table
+// includes what is no longer on it, and "Ben took Tuesday off" is the sentence
+// that stops a person hunting for a row they remember.
+async function removed(client, meetingId, limit = 10) {
+  const { rows } = await client.query(
+    `SELECT o.slot_text, o.starts_at, o.decided_at, o.removed_by, u.first_name
+       FROM meeting_options o LEFT JOIN users u ON u.id = o.removed_by
+      WHERE o.meeting_id = $1 AND o.status = 'deleted'
+      ORDER BY o.decided_at DESC LIMIT $2`, [meetingId, limit]);
+  return rows.map((r) => ({
+    slot: r.slot_text, startsAt: r.starts_at, at: r.decided_at,
+    byId: r.removed_by === null ? null : Number(r.removed_by),
+    byName: r.first_name || null,
+  }));
+}
+
+// The same fact for somebody who is about to hear from us anyway: what came off
+// the table since the last message about this coordination that actually
+// REACHED them. A removal is never its own message (owner, 2026-09-09), so this
+// is the only way it is ever said, and the baseline has to be delivery rather
+// than the row being written — a row the gate held reached nobody, and the next
+// one that lands has to carry the news again.
+//
+// Their own removal is not news to them. The kind filter is not decoration:
+// `meetingId` is on meeting payloads only, and the cast would throw on the
+// first row that put something else under that name.
+async function unheardRemovals(client, meetingId, userId, limit = 4) {
+  const { rows } = await client.query(
+    `WITH heard AS (
+       SELECT max(sent_at) AS at FROM outbox
+        WHERE user_id = $2 AND kind LIKE 'meeting\_%' ESCAPE '\'
+          AND sent_at IS NOT NULL AND hold_reason IS NULL
+          AND (payload->>'meetingId')::bigint = $1)
+     SELECT o.slot_text, o.decided_at, u.first_name
+       FROM meeting_options o LEFT JOIN users u ON u.id = o.removed_by
+      WHERE o.meeting_id = $1 AND o.status = 'deleted'
+        AND o.removed_by IS DISTINCT FROM $2::bigint
+        AND o.decided_at > coalesce((SELECT at FROM heard), '-infinity'::timestamptz)
+      ORDER BY o.decided_at DESC LIMIT $3`, [meetingId, userId, limit]);
+  return rows.map((r) => ({ slot: r.slot_text, byName: r.first_name || null }));
 }
 
 // Take one option off the table and put a new one on, in one transaction.
@@ -424,6 +462,6 @@ async function swap(client, userId, meetingId, replaceOptionId, slotText, starts
 }
 
 module.exports = {
-  MAX_ACTIVE, SETTLE_GRACE_MS, list, add, answer, remove, swap,
+  MAX_ACTIVE, SETTLE_GRACE_MS, list, add, answer, remove, removed, unheardRemovals, swap,
   tryConfirm, unanimousOption, confirmOn, settleDue, settleNow, mirrorCurrent, activeCount,
 };

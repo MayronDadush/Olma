@@ -486,6 +486,17 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   is deleted, and it had never run for a real person — 8 option rows in the
   whole history of the feature, every one `active`, and no `meeting.option_
   approved` or `option_rejected` row in the audit log (measured on the box).
+- **A time taken OFF that table is never a message of its own** (owner,
+  2026-09-09) — the commonest removal is somebody taking back a time they typed
+  a minute ago. It rides the next thing each person hears about that
+  coordination (`meeting-fanout.withRemovals` → `options.unheardRemovals`, per
+  recipient at enqueue, appended once in `channels/openclaw.removedClause`
+  rather than written into eight templates), and `getStatus` carries it for
+  anybody who ASKS. **The baseline is the last message about that coordination
+  that actually REACHED them** (`sent_at` set, `hold_reason` null) — a row the
+  gate held reached nobody, so the next one that lands says it again — and
+  nobody is told about their own removal. `meeting_options.removed_by`
+  (migration 058) exists so the name is in the same query as the slot.
 - **The assistant is עולמה / Allma; the system is still olma2.** The rename
   (2026-09-04) covers user- and operator-facing text only — repo, `/opt/olma2`,
   the services, the MCP tool prefix and `olma_identity` keep the old name.

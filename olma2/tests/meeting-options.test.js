@@ -3,7 +3,9 @@
 // in the meeting adds up to five and anyone in it may take one off, whoever
 // put it there; a sixth is refused to everybody and the refusal names the five,
 // which `swap` answers in one transaction; adding is agreeing; the meeting
-// confirms when ONE option is unanimous among the people still in it.
+// confirms when ONE option is unanimous among the people still in it. A removal
+// messages nobody — it rides the next thing each person hears about the
+// coordination, and getStatus has it for anyone who asks.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { freshDb, makeUser, slotStart } = require('./helpers');
@@ -93,7 +95,7 @@ test('five options, added by anybody; a sixth is refused to everybody and names 
   });
 });
 
-test('anyone in the coordination removes any option, and the people who answered it are told', async () => {
+test('anyone in the coordination removes any option, and the answers to it stop counting', async () => {
   await withClient(async (c) => {
     const m = await trio(c, 'מחיקה');
     const a = (await opts.add(c, ann.id, m, 'A', at(24))).data.option;
@@ -107,7 +109,6 @@ test('anyone in the coordination removes any option, and the people who answered
     assert.equal(gone.ok, true, JSON.stringify(gone.error));
     assert.equal(gone.data.slot, 'A');
     assert.equal(gone.data.optionsLeft, 1);
-    assert.deepEqual(gone.data.hadAnswered.sort(), [Number(ann.id), Number(cal.id)].sort());
     const table = await opts.list(c, m);
     assert.deepEqual(table.map((o) => o.slotText), ['B']);
     // the mirror followed it: the single-slot columns are B now, not A
@@ -195,28 +196,127 @@ test('the swap that anyone may make; a participant is refused only when they are
   });
 });
 
-test('the removal reaches only the people who had answered, and takes the queued question with it', async () => {
+test('a removal messages nobody, and takes the queued question about it with it', async () => {
   await withClient(async (c) => {
-    const m = await trio(c, 'למי מספרים');
-    const a = (await opts.add(c, ann.id, m, 'A', at(32)));
-    // everyone was asked about A
+    const m = await trio(c, 'בלי הודעה');
+    const a = await opts.add(c, ann.id, m, 'A', at(32));
     await fanout.afterOptionAdded(c, ann, m, a);
     assert.deepEqual(await kinds(ben.id, m), ['meeting_slot_proposed']);
-    assert.deepEqual(await kinds(cal.id, m), ['meeting_slot_proposed']);
-    // cal answered it; ben never did
     await opts.answer(c, cal.id, m, a.data.option.id, 'n');
+
     const gone = await opts.remove(c, ann.id, m, a.data.option.id);
     await fanout.afterOptionRemoved(c, ann, m, gone);
-    assert.deepEqual(await kinds(cal.id, m), ['meeting_slot_proposed', 'meeting_option_removed'],
-      'the person whose answer went with it is told');
-    assert.deepEqual(await kinds(ben.id, m), ['meeting_slot_proposed'],
-      'and the person who never answered hears nothing new');
-    // ben's copy of the question is a question about a time nobody can answer
+    // Nobody hears about it as a message of its own — not the person who
+    // answered it, not anybody else.
+    assert.deepEqual(await kinds(cal.id, m), ['meeting_slot_proposed']);
+    assert.deepEqual(await kinds(ben.id, m), ['meeting_slot_proposed']);
+    // and the question about a time nobody can answer is off the queue
     const { rows } = await c.query(
-      `SELECT hold_reason FROM outbox WHERE user_id = $1 AND kind = 'meeting_slot_proposed'
-        AND (payload->>'meetingId')::bigint = $2`, [ben.id, m]);
-    assert.deepEqual(rows.map((r) => r.hold_reason), ['superseded']);
+      `SELECT hold_reason FROM outbox WHERE kind = 'meeting_slot_proposed'
+        AND (payload->>'meetingId')::bigint = $1`, [m]);
+    assert.deepEqual(rows.map((r) => r.hold_reason), ['superseded', 'superseded']);
   });
+});
+
+test('what came off the table rides the next thing each person hears', async () => {
+  await withClient(async (c) => {
+    const m = await trio(c, 'נוסע איתה');
+    const first = await opts.add(c, ann.id, m, 'A', at(34));
+    await fanout.afterOptionAdded(c, ann, m, first);
+    // Ben has been told about A and the message REACHED him.
+    await c.query(
+      `UPDATE outbox SET sent_at = now() WHERE user_id = $1 AND (payload->>'meetingId')::bigint = $2`,
+      [ben.id, m]);
+    const gone = await opts.remove(c, cal.id, m, first.data.option.id);
+    await fanout.afterOptionRemoved(c, cal, m, gone);
+
+    // The next update about this coordination carries it, with the name.
+    const second = await opts.add(c, ann.id, m, 'B', at(58));
+    await fanout.afterOptionAdded(c, ann, m, second);
+    const payloadFor = async (uid) => (await c.query(
+      `SELECT payload FROM outbox WHERE user_id = $1 AND (payload->>'optionId')::bigint = $2`,
+      [uid, second.data.option.id])).rows[0].payload;
+    const toBen = await payloadFor(ben.id);
+    assert.deepEqual(toBen.removedOptions, [{ slot: 'A', byName: 'Cal' }]);
+    // Not to the person who removed it: their own doing is not news.
+    assert.equal((await payloadFor(cal.id)).removedOptions, undefined);
+
+    // Once a message carrying it has really landed, it is not said twice.
+    await c.query(
+      `UPDATE outbox SET sent_at = now() WHERE user_id = $1 AND (payload->>'meetingId')::bigint = $2`,
+      [ben.id, m]);
+    const third = await opts.add(c, ann.id, m, 'C', at(82));
+    await fanout.afterOptionAdded(c, ann, m, third);
+    const later = (await c.query(
+      `SELECT payload FROM outbox WHERE user_id = $1 AND (payload->>'optionId')::bigint = $2`,
+      [ben.id, third.data.option.id])).rows[0].payload;
+    assert.equal(later.removedOptions, undefined);
+  });
+});
+
+test('a message the gate HELD is not a message they heard, so the news waits for one that lands', async () => {
+  await withClient(async (c) => {
+    const m = await trio(c, 'הוחזק');
+    const a = await opts.add(c, ann.id, m, 'A', at(36));
+    await fanout.afterOptionAdded(c, ann, m, a);
+    await c.query(
+      `UPDATE outbox SET sent_at = now() WHERE user_id = $1 AND (payload->>'meetingId')::bigint = $2`,
+      [ben.id, m]);
+    const gone = await opts.remove(c, cal.id, m, a.data.option.id);
+    await fanout.afterOptionRemoved(c, cal, m, gone);
+
+    // The next row carries the news and is then DROPPED by the gate.
+    const b = await opts.add(c, ann.id, m, 'B', at(60));
+    await fanout.afterOptionAdded(c, ann, m, b);
+    await c.query(
+      `UPDATE outbox SET sent_at = now(), hold_reason = 'quiet'
+        WHERE user_id = $1 AND (payload->>'optionId')::bigint = $2`, [ben.id, b.data.option.id]);
+    // So the one after it says it again — a dropped row reached nobody.
+    const d = await opts.add(c, ann.id, m, 'C', at(84));
+    await fanout.afterOptionAdded(c, ann, m, d);
+    const again = (await c.query(
+      `SELECT payload FROM outbox WHERE user_id = $1 AND (payload->>'optionId')::bigint = $2`,
+      [ben.id, d.data.option.id])).rows[0].payload;
+    assert.deepEqual(again.removedOptions, [{ slot: 'A', byName: 'Cal' }]);
+  });
+});
+
+test('somebody who asks is told what came off the table and who took it off', async () => {
+  await withClient(async (c) => {
+    const m = await trio(c, 'מה קרה');
+    const a = (await opts.add(c, ann.id, m, 'A', at(38))).data.option;
+    const b = (await opts.add(c, ben.id, m, 'B', at(62))).data.option;
+    await opts.remove(c, cal.id, m, a.id);
+    const st = await meetings.getStatus(c, ann.id, m);
+    assert.deepEqual(st.data.options.map((o) => o.slotText), ['B']);
+    assert.equal(st.data.removedOptions.length, 1);
+    assert.equal(st.data.removedOptions[0].slot, 'A');
+    assert.equal(st.data.removedOptions[0].byName, 'Cal');
+    assert.equal(st.data.removedOptions[0].byId, Number(cal.id));
+    assert.ok(st.data.removedOptions[0].at instanceof Date);
+    // a swap is not a removal: it says its own sentence, and this list is for
+    // times nobody put anything in place of
+    await opts.swap(c, ann.id, m, b.id, 'B2', at(86));
+    assert.equal((await meetings.getStatus(c, ann.id, m)).data.removedOptions.length, 1);
+  });
+});
+
+test('the delivery instruction folds the removal in as a clause, never as a message', () => {
+  const { instructionFor } = require('../src/channels/openclaw');
+  const text = instructionFor({
+    kind: 'meeting_slot_proposed',
+    payload: {
+      meetingId: 7, title: 'פוקר', slot: 'שלישי 21:00', byName: 'Ann',
+      removedOptions: [{ slot: 'ראשון 20:00', byName: 'Cal' }],
+    },
+  });
+  assert.match(text, /came off the table/);
+  assert.match(text, /<<<ראשון 20:00>>> — Cal took it off/);
+  assert.match(text, /never a separate message and never a question/);
+  // and a payload with nothing removed says nothing about removals
+  assert.doesNotMatch(
+    instructionFor({ kind: 'meeting_slot_proposed', payload: { meetingId: 7, title: 'פוקר', slot: 'שלישי 21:00', byName: 'Ann' } }),
+    /came off the table/);
 });
 
 test('a yes to any option counts for THAT option; the first unanimous one confirms', async () => {
