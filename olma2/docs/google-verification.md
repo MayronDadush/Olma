@@ -28,7 +28,7 @@ Started 2026-09-08. Update the status table as steps land.
 | Domain ownership | ✅ done | two `google-site-verification` TXT records on `allma.world` |
 | Redirect URI | ✅ matches | `/opt/olma/google-oauth.json` → `https://allma.world/oauth/google/callback` |
 | Agent cannot request Gmail | ✅ hardcoded | `tools/combined-connect.js` passes `wantMail: false`; no job or tool imports `mail` |
-| `email_access_phones` flag | ⚠️ **`all`** | see [Loose end](#loose-end-the-mail-flag-is-open) |
+| `email_access_phones` flag | ⚠️ **`all`** — one field to close | see [Loose end](#loose-end-the-mail-flag-is-open) |
 | Consent-screen scope list | ❓ **unknown — blocks everything** | see below |
 | Publishing status | ❓ unknown | console only |
 | Demo video | ⬜ not recorded | script below |
@@ -190,9 +190,19 @@ the hardcoded `wantMail: false` in `tools/combined-connect.js`. One line of code
 is the whole defence.
 
 Set it to `''` so the data agrees with the intent. It can only refuse more, it
-is reversible from the admin page, and nothing reads mail today. Do this before
-submitting, not after: the point of the exercise is that the app cannot ask for
-a restricted scope.
+is reversible, and nothing reads mail today. Do this before submitting, not
+after: the point of the exercise is that the app cannot ask for a restricted
+scope.
+
+**Where:** admin dashboard → **הגדרות מערכת** → *חיבור תיבת מייל — מי מורשה*.
+Clear the field, save. That form already routes through `flags.setFlag` and
+writes the `admin.*` audit row, which is why it is the way to do this and a
+hand-run `UPDATE` on the box is not. Its own help text has said "leave closed
+until the Gmail permission is approved in Google's console" since the field
+was added — the value simply never followed the text.
+
+The neighbouring field, *חיבור גוגל (יומן ואנשי קשר) — מי מורשה*, is the one to
+set to `all` on the day Google approves. Leave it empty until then.
 
 ---
 
