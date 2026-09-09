@@ -97,6 +97,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Cost, billing and the money page**
 
+- [The pilot that read as an expensive day (fixed 2026-09-09)](#the-pilot-that-read-as-an-expensive-day-fixed-2026-09-09)
 - [The heartbeat was the bill (fixed 2026-09-05)](#the-heartbeat-was-the-bill-fixed-2026-09-05)
 - [The ledger overstated OpenRouter by 65%, in both directions at once (fixed 2026-09-03)](#the-ledger-overstated-openrouter-by-65-in-both-directions-at-once-fixed-2026-09-03)
 - [OpenRouter cache reads were priced 5x too high (fixed 2026-08-31)](#openrouter-cache-reads-were-priced-5x-too-high-fixed-2026-08-31)
@@ -3313,6 +3314,82 @@ next and only the last one was measured first.
 
 
 ## Cost, billing and the money page
+
+### The pilot that read as an expensive day (fixed 2026-09-09)
+
+On the morning of 2026-09-09 the efficiency watch sent this:
+
+> 📈 עולמה — יעילות: משהו חרג מהרגיל
+> 2026-09-08 · 120 הודעות נכנסות
+> • עלות להודעה: $0.0411 (רגיל: $0.0155, פי 2.7)
+> מודלים:
+> • openai/gpt-5-mini — $1.6513, מטמון 94%
+> • openai/gpt-5-nano — $1.4595, מטמון 96%
+> • deepseek/deepseek-v4-flash — $0.9626, מטמון 61%
+
+and the advice under it blamed deepseek's uncached input and proposed trimming
+the conversation history sent to the model.
+
+**Every number in it is correct and the conclusion is wrong.** The day was two
+populations added together:
+
+| | messages | cost | $/msg |
+|---|---|---|---|
+| real users | 52 | $0.9136 | $0.0179 |
+| eval harness (`users.is_eval`, u-15) | 68 | $4.0050 | $0.0589 |
+| what the watch measured | 120 | $4.9186 | $0.0411 |
+
+Real users were at 1.13x their own baseline. gpt-5-mini and gpt-5-nano are the
+model pilots of 09-08 (`docs/model-experiments.md`); no real person has ever
+been routed to either. deepseek-v4-flash — named as the culprit — is the only
+model a real user was on, is the cheapest of the three, and had run $1.09,
+$0.88 and $0.66 on the three days before.
+
+**The defect is in `dailyRatios`, and it is one line of SQL.** The `usr` CTE
+summed all of `usage_ledger`; nothing on that path had ever carried
+`NOT is_eval`, although twenty other sweeps that start from `users` do. So the
+cost side counted the benchmark and the message side counted it too — a
+harness whose cost per message is a property of whichever model is on trial
+that week, and whose message VOLUME is equally arbitrary (127 eval messages on
+09-06, 14 on 09-07).
+
+Three things the fix had to get right, and only the first is obvious:
+
+1. **Both sides together.** Excluding the eval user from the numerator alone
+   would have built the mirror-image fault — real spend divided by inflated
+   traffic, reading as suspiciously cheap for ever.
+2. **`evidence()` moves with the ratios.** The model list is what a person
+   reads to find the culprit, and drawn from a population no ratio covers it is
+   worse than no list: it ranked the innocent model third of three. Same
+   filter, same population.
+3. **The excluded spend is still printed.** `evalCost` and `evalMessages` ride
+   every day, the alert (`ניסויי מודלים באותו יום: … — לא נכללים באף מספר
+   למעלה`) and the heartbeat note, never inside a ratio. Without that the fix
+   is this file's oldest failure shape wearing the opposite coat: $4 a day that
+   no metric can see, and an operator who knows the day was expensive reading a
+   report that never mentions it and concluding the watch is broken.
+
+Verified before merging by running the fixed `dailyRatios`/`crossings`/
+`evidence` from a throwaway copy on the box against the live database:
+2026-09-08 returns `crossings: []` and one model, `deepseek-v4-flash $0.9136`.
+Both new tests go red with the filter neutralised; the second exists because
+the failure mode of a fix like this is quietly becoming an off switch, so it
+holds a genuine 3x regression open on a day a large pilot is also running.
+
+**What this is an instance of.** Not "we forgot a WHERE clause" — the watch's
+own header says every metric is a ratio judged against this system's own recent
+days, and a ratio is only a statement about a system if both halves describe
+the same one. It is also the second fault of 2026-09 caused by the eval user
+being counted as a person (the first: `resetEvalUser` never clearing
+`quota_counters`, so every scenario past 50/day scored a block notice). And it
+is the fourth time an alarm in this system has been right about a number and
+wrong about its cause — the cache-alert misdiagnosis of 09-04, whose suggested
+fix would also have raised cost, is the same sentence with different nouns.
+
+Deliberately NOT changed: `jobs/metrics.js` and the dashboard's cost sections
+still count everything. They answer "what did we spend", which the pilots are
+genuinely part of. The rule is not "filter `is_eval` everywhere" — it is to
+know which question the number answers.
 
 ### The heartbeat was the bill (fixed 2026-09-05)
 
