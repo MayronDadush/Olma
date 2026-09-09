@@ -13,6 +13,7 @@ const usersDomain = require('../domain/users');
 const selfInitiated = require('../domain/self-initiated');
 const proactiveText = require('../domain/proactive-text');
 const templates = require('../domain/message-templates');
+const gatewayRpc = require('./gateway-rpc');
 
 const SEND_TIMEOUT_MS = 120_000;
 
@@ -86,6 +87,45 @@ const DELIVERY_PREAMBLE = [
   'Work only through tool calls, then output exactly one thing: the final',
   'message, or NO_REPLY. Every fragment of text you emit reaches their phone.',
 ].join(' ');
+
+// The raw pipe, one sentence: the gateway's own RPC first, the CLI behind it.
+//
+// Same contract as `runOpenclaw` — `{ ok }`, plus `timedOut` for the one case
+// where "not sent" would be a lie — because both call sites feed the outbox's
+// attempts/backoff and the group sweep's said-it-once bookkeeping, and neither
+// may learn a new vocabulary because the transport changed.
+//
+// The fallback is deliberately NARROW. A request that never reached the
+// gateway (no config, no socket, a refused handshake, the module cooling off)
+// is a clean retry and goes down the CLI. A request the gateway ANSWERED with
+// an error is a definite non-delivery and stays failed — the CLI would reach
+// the same handler and be told the same thing. A request that was written to
+// the wire and then timed out or lost its socket is `timedOut`, and is retried
+// NOWHERE: the gateway hands the message to WhatsApp before it answers, so
+// retrying it on the other pipe is how a room gets told the same thing twice.
+async function sendRawMessage({ channel, target, message, replyTo }, deps = {}) {
+  const gatewaySend = deps.gatewaySend || gatewayRpc.sendMessage;
+  const cli = deps.runOpenclaw || runOpenclaw;
+  try {
+    await gatewaySend({
+      channel, to: target, message,
+      ...(replyTo ? { replyToId: String(replyTo) } : {}),
+    });
+    return { ok: true, via: 'gateway' };
+  } catch (err) {
+    if (err && err.refused) return { ok: false, error: `gateway: ${err.message}`, via: 'gateway' };
+    if (err && err.dispatched) {
+      return { ok: false, timedOut: true, error: `gateway: ${err.message}`, via: 'gateway' };
+    }
+  }
+  return cli([
+    'message', 'send',
+    '--channel', channel,
+    '--target', target,
+    '--message', message,
+    ...(replyTo ? ['--reply-to', String(replyTo)] : []),
+  ]);
+}
 
 function instructionFor(row) {
   const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
@@ -512,12 +552,11 @@ function makeDeliverer(pool) {
     // result feeds the worker's attempts/backoff, never fire-and-forget.
     const rawText = proactiveText.rawPipeTextFor(row, wording);
     if (rawText) {
-      return runOpenclaw([
-        'message', 'send',
-        '--channel', channel.channel_type,
-        '--target', channel.channel_identifier,
-        '--message', rawText,
-      ]);
+      return sendRawMessage({
+        channel: channel.channel_type,
+        target: channel.channel_identifier,
+        message: rawText,
+      });
     }
 
     // Users without an agent yet (pending: invited strangers, waitlist) are
@@ -554,6 +593,6 @@ function makeDeliverer(pool) {
 }
 
 module.exports = {
-  makeDeliverer, instructionFor, runOpenclaw, runOpenclawJson,
+  makeDeliverer, instructionFor, runOpenclaw, runOpenclawJson, sendRawMessage,
   abortSessionLane, runSilentAgentTurn,
 };

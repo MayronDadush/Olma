@@ -49,13 +49,19 @@ function jobs({ pool }) {
   // jobs/credit-watch.js for why both choices are the point.
   const creditWatch = require('./credit-watch');
   const efficiencyWatch = require('./efficiency-watch');
-  const { runOpenclaw } = require('../channels/openclaw');
+  const { sendRawMessage } = require('../channels/openclaw');
   // `replyTo` quotes a message (the group sweep answers a tag under the tag);
-  // the CLI's `--reply-to`, verified 2026-09-06 with `--dry-run --json`.
-  const rawSend = (phone, text, opts) => runOpenclaw([
-    'message', 'send', '--channel', 'whatsapp', '--target', phone, '--message', text,
-    ...(opts && opts.replyTo ? ['--reply-to', String(opts.replyTo)] : []),
-  ]);
+  // the CLI's `--reply-to`, verified 2026-09-06 with `--dry-run --json`, and
+  // the gateway `send` RPC's `replyToId` behind it.
+  // Every sentence a room hears unasked comes through here, which is why this
+  // is the path that got the gateway socket: a fresh `openclaw` process cost
+  // 8.8s idle and 49-95s while the room was busy (measured 2026-09-08).
+  const rawSend = (phone, text, opts) => sendRawMessage({
+    channel: 'whatsapp',
+    target: phone,
+    message: text,
+    replyTo: opts && opts.replyTo ? opts.replyTo : undefined,
+  });
   // Free lanes the gateway has classified stuck and then declined to free.
   // 30s, because this is the difference between a person waiting ~90s and a
   // person waiting until unanswered_sweep notices minutes later.
