@@ -146,15 +146,22 @@ test('a marker that is part of the word is left exactly as it is', () => {
 test('the cleaning reaches the three places nothing retypes the words', () => {
   // A reminder title...
   assert.equal(renderReminderText({ title: 'לקנות חלב *דל לקטוז*' }, undefined, 'he', 'whatsapp'),
-    '⏰ תזכורת: לקנות חלב דל לקטוז');
+    '⏰ תזכורת: *לקנות חלב דל לקטוז*');
   // ...every line of a batch...
+  // Only the ITEM lines are checked: the rung's own heading is emphasised on
+  // purpose now, and asserting "no asterisk anywhere" would have quietly made
+  // this test about the template instead of about the person's words.
   const list = renderReminderText({ items: ['חלב *דל*', 'לחם'] }, undefined, 'he', 'whatsapp');
-  assert.doesNotMatch(list, /\*/, `a marker survived a batch line: ${list}`);
+  const items = list.split('\n').filter((l) => l.startsWith('- '));
+  assert.equal(items.length, 2, list);
+  for (const line of items) assert.doesNotMatch(line, /\*/, `a marker survived a batch line: ${line}`);
   // ...and a slot proposed by one person, on its way to a whole room.
+  // The room's line bolds the slot itself, so what is checked here is that the
+  // markers the PROPOSER typed are gone and the template's own pair is the
+  // only one left — exactly one span, around the whole slot.
   const { renderGroupCoordination } = require('../src/domain/proactive-text');
   const done = renderGroupCoordination({ kind: 'done', slot: 'יום חמישי *17:00*' });
-  assert.match(done, /יום חמישי 17:00/);
-  assert.doesNotMatch(done, /\*/);
+  assert.equal(done, 'סגור: *יום חמישי 17:00* 🎉');
   // The first sentence a stranger ever reads is not styled by whoever invited
   // them either — the reason is free text another user wrote.
   const { introMessage } = require('../src/intake/messages');
@@ -163,7 +170,10 @@ test('the cleaning reaches the three places nothing retypes the words', () => {
     reason: 'לתאם את *הטיול* של סוף השבוע', phone: '+972541112222',
   });
   assert.match(intro, /לתאם את הטיול של סוף השבוע/);
-  assert.doesNotMatch(intro, /\*/);
+  // The name is emphasised by the template; the reason the OTHER user typed
+  // carries no emphasis of its own into a stranger's first message.
+  assert.match(intro, /\*יואב\*/);
+  assert.equal((intro.match(/\*/g) || []).length, 2, intro);
 });
 
 test('what Olma writes herself is never cleaned — only what somebody else typed', () => {

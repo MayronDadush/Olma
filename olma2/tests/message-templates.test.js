@@ -30,10 +30,12 @@ test('every default passes its own validation, and keys are unique', () => {
 test('with nothing stored, every sender says exactly the reviewed default', () => {
   assert.equal(text.renderGroupGateNotice({ kind: 'nudge', missing: ['+972501111111'] }),
     'עוד מחכה ל: @+972501111111  🧐');
-  assert.equal(text.renderReminderText({ title: 'לקחת תרופה' }), '⏰ תזכורת: לקחת תרופה');
+  // The title is the anchor of the sentence and carries the emphasis (owner,
+  // 2026-09-09). The words are unchanged; only the markers are new.
+  assert.equal(text.renderReminderText({ title: 'לקחת תרופה' }), '⏰ תזכורת: *לקחת תרופה*');
   assert.equal(text.renderGroupTooLarge(25), templates.spec('group_too_large').text.replace('{{max}}', '25'));
   assert.match(messages.introMessage({ inviterName: 'דני', inviterPhone: '+972501', phone: '+972502' }),
-    /דני \(\+972501\) ביקש\/ה להתחבר אליך דרכי\./);
+    /\*דני\* \(\+972501\) ביקש\/ה להתחבר אליך דרכי\./);
   assert.match(messages.introMessage({ inviterName: 'דני', inviterPhone: '+972501', reason: 'פאדל', phone: '+972502' }),
     /דרכי — פאדל\./);
   assert.match(messages.introMessage({ inviterName: 'Dan', inviterPhone: '+1555', phone: '+1555' }), /^Hi! This is Olma/);
@@ -59,7 +61,7 @@ test('an override replaces the sentence and keeps the placeholders working', () 
   assert.equal(messages.reopenMessage('+1555', overrides), 'Room now. Reply here.');
   assert.equal(messages.reopenMessage('+972501', overrides), templates.spec('reopen_he').text);
   // the English rung is its own box: rewording the Hebrew one leaves it alone
-  assert.equal(text.renderReminderText({ title: 'pills' }, overrides, 'en'), '⏰ Reminder: pills');
+  assert.equal(text.renderReminderText({ title: 'pills' }, overrides, 'en'), '⏰ Reminder: *pills*');
   assert.equal(text.renderReminderText({ title: 'pills' }, { reminder_en: '🔔 {{title}}' }, 'en'), '🔔 pills');
 });
 
@@ -130,4 +132,50 @@ test('families: a Hebrew template and its English twin are one message with two 
   // every template is in exactly one family
   const members = templates.families().flatMap((f) => [f.he, f.en].filter(Boolean).map((t) => t.key));
   assert.deepEqual(members.sort(), templates.TEMPLATES.map((t) => t.key).sort());
+});
+
+// ---- the page shows the message, not a legend ------------------------------
+// 2026-09-09: the owner reads these boxes to decide how a sentence READS, and
+// a sentence full of `{{ }}` cannot be read that way. Every template therefore
+// carries a sample beside the placeholders it fills.
+test('every placeholder a template can use has a sample to show it with', () => {
+  for (const t of templates.TEMPLATES) {
+    const sample = t.sample || {};
+    for (const name of Object.keys(t.vars)) {
+      assert.ok(Object.hasOwn(sample, name),
+        `${t.key} has no sample for {{${name}}} — the page would print an empty gap`);
+    }
+    // ...and the rendered example really is free of them, which is the point.
+    const shown = templates.example(t.key, {});
+    assert.doesNotMatch(shown, /\{\{/, `${t.key} still shows a placeholder: ${shown}`);
+    assert.ok(shown.trim(), `${t.key} renders to nothing`);
+  }
+});
+
+// ---- emphasis, added 2026-09-09 --------------------------------------------
+test('a wrapped placeholder is bolded only when the value can carry it', () => {
+  // WhatsApp has no escape character, so wrapping a title that already holds a
+  // marker makes half a sentence bold. The template asks; this decides.
+  assert.equal(templates.render('reminder', { title: 'לקחת תרופה' }), '⏰ תזכורת: *לקחת תרופה*');
+  assert.equal(templates.render('reminder', { title: 'לקנות 5* ביצים' }), '⏰ תזכורת: לקנות 5* ביצים');
+  assert.equal(templates.render('reminder', { title: 'report_final_v2' }), '⏰ תזכורת: report_final_v2');
+  // An empty value takes the markers with it rather than leaving `**` behind.
+  assert.equal(templates.render('reminder', { title: '  ' }), '⏰ תזכורת: ');
+});
+
+test('a mention tag is never wrapped, or it stops pinging anybody', () => {
+  // A tag only notifies when the token is a bare @+digits. This is the one
+  // placeholder emphasis must never touch, in any group template.
+  for (const t of templates.TEMPLATES) {
+    for (const marker of ['*', '_', '~']) {
+      assert.ok(!t.text.includes(`${marker}{{missing}}${marker}`),
+        `${t.key} wraps {{missing}} in ${marker} — that tag would notify nobody`);
+      assert.ok(!t.text.includes(`${marker}{{me}}${marker}`), `${t.key} wraps {{me}} in ${marker}`);
+    }
+  }
+});
+
+test('the reworded sentence is the one the page previews, not the default', () => {
+  const shown = templates.example('reminder', { reminder: '🔔 {{title}} — עכשיו' });
+  assert.equal(shown, '🔔 לקחת את הרכב לטסט — עכשיו');
 });

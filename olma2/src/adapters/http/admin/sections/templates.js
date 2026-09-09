@@ -30,6 +30,16 @@ async function lastRejections(client) {
   return d && d.rejected && typeof d.rejected === 'object' ? d.rejected : {};
 }
 
+// The preview above the box shows the LIVE sentence — the override when there
+// is one, the default otherwise — with real values in place of the
+// placeholders (message-templates.example). The owner asked for that on
+// 2026-09-09: a legend describing `{{inviter_name}}` is not the same as seeing
+// the message, and the thing being decided here is how it READS.
+//
+// The legend stays underneath it, small, because it is not decoration: an
+// override that drops a required placeholder is refused by name, and the
+// operator cannot type one whose name the page never showed him. What it is
+// no longer asked to do is stand in for the message itself.
 function varsLine(t) {
   const names = Object.keys(t.vars);
   if (!names.length) return '';
@@ -47,8 +57,9 @@ function cell(t, stored, rejected) {
   const live = templates.textFor(t.key, stored);
   const badge = override && live === override ? ' <span class="pill ok">מנוסח מחדש</span>' : '';
   const refused = rejected[t.key] ? `<div class="warn small">לא נשמר: ${esc(rejected[t.key])}</div>` : '';
-  return `<td>${badge}${varsLine(t)}
-      <pre class="tpl" title="ברירת המחדל">${esc(t.text)}</pre>
+  return `<td>${badge}
+      <pre class="tpl" title="ככה ההודעה תיראה בוואטסאפ">${esc(templates.example(t.key, stored))}</pre>
+      ${varsLine(t)}
       <textarea class="tpl" name="${esc(t.key)}" rows="${Math.max(3, t.text.split('\n').length + 1)}" maxlength="${templates.MAX_LENGTH}" placeholder="ריק = ברירת המחדל">${esc(override)}</textarea>${refused}</td>`;
 }
 
