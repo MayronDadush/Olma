@@ -301,6 +301,21 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   Eight other `sent_at IS NULL` readers are RIGHT: completing, pausing,
   replacing and not-stacking all ask "what would still fire", which a
   mid-ladder row would.
+- **…and "what is still going to REACH them" is a THIRD question, which
+  `attempts = 0` answers wrongly.** A mid-ladder reminder has two messages
+  left to send and was invisible in all four readers, so the row Olma was
+  asked to stop was the one row nothing could name: she cancelled the two she
+  could see, on other tasks, and the ladder climbed on ("תפסיק עם התזכורות
+  … הבאה רק ביום שני", 2026-09-09; `incidents.md`, "The reminder that would
+  not stop"). The two answers travel APART and never merge — `list_my_
+  reminders` returns `chasing` beside `reminders`, and only `reminders` is an
+  hour anyone may say out loud. The fast path is `turn_start`'s
+  `recentReminders`, which already fires on the turn that answers a reminder
+  and now carries `reminderId`/`taskId`/`stillChasing`; the id is not in the
+  outbox payload, it is in the `idempotency_key`. **And cancelling withdraws
+  the queued rung** (`hold_reason = 'cancelled'`) — the ladder dies on the
+  reminder row while a rung the gate is holding for the night stays
+  deliverable, which makes "ביטלתי" a lie for hours.
 - **The turn opens itself, from the gateway's own hook, before the model's
   first call.** `gateway-hooks/olma-turn-open` (synced by `deploy.sh` to
   `/root/.openclaw/hooks/`, enabled by `hooks.internal.entries`, loaded at
