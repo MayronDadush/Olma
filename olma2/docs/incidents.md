@@ -48,6 +48,7 @@ never trust a dated narrative for something you are about to act on.
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
+- [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
@@ -97,6 +98,8 @@ never trust a dated narrative for something you are about to act on.
 
 **Cost, billing and the money page**
 
+- [The conversation that never ended (fixed 2026-09-09)](#the-conversation-that-never-ended-fixed-2026-09-09)
+- [The pilot that read as an expensive day (fixed 2026-09-09)](#the-pilot-that-read-as-an-expensive-day-fixed-2026-09-09)
 - [The heartbeat was the bill (fixed 2026-09-05)](#the-heartbeat-was-the-bill-fixed-2026-09-05)
 - [The ledger overstated OpenRouter by 65%, in both directions at once (fixed 2026-09-03)](#the-ledger-overstated-openrouter-by-65-in-both-directions-at-once-fixed-2026-09-03)
 - [OpenRouter cache reads were priced 5x too high (fixed 2026-08-31)](#openrouter-cache-reads-were-priced-5x-too-high-fixed-2026-08-31)
@@ -151,6 +154,8 @@ never trust a dated narrative for something you are about to act on.
 - [Two asks, one task (2026-09-07)](#two-asks-one-task-2026-09-07)
 - [The same thing, saved twice (fixed 2026-09-08)](#the-same-thing-saved-twice-fixed-2026-09-08)
 - [A time in the title and no reminder (fixed 2026-09-09)](#a-time-in-the-title-and-no-reminder-fixed-2026-09-09)
+- [A silence read as a delivery fault (fixed 2026-09-09)](#a-silence-read-as-a-delivery-fault-fixed-2026-09-09)
+- [A lost reply is re-sent, not re-answered (fixed 2026-09-09)](#a-lost-reply-is-re-sent-not-re-answered-fixed-2026-09-09)
 - ["הנה, רשמתי", about a meeting (2026-09-07)](#הנה-רשמתי-about-a-meeting-2026-09-07)
 - [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
 - [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
@@ -1447,6 +1452,69 @@ NULL is the **once-per-life first-turn signal** (`openRecord` computes
 is the **silence test** behind the name-confirm rung. Stamping it early would
 have spent the first-turn signal and broken the silence test to fix a gate.
 The narrow column was the right lever.
+### The room was told about a meeting at 01:12 (fixed 2026-09-09)
+
+The owner read it on his phone the next morning: the group "5 Percent
+(Maprinter)" had been sent a coordination line at **01:12 local**. The row is
+`group_outbox` #4 — `kind: 'coordination'`, the `chase` line, decided at
+22:11:25 UTC and delivered at 22:12:11 UTC. Nobody in that room had written
+since **19:11 local**, six hours earlier.
+
+Group quiet hours were not missing. `GROUP_WINDOW` has said `09:00–21:00`
+since group mode shipped, the group's `timezone` is `Asia/Jerusalem`, and
+`majorityTimezone` had set it correctly from the members' own zones. The
+window was there. It was **never shut**.
+
+`mayAnnounce` gives a room a fifteen-minute grace when somebody is plainly
+present — the same grace a DM gets, so that an answer is never held at a
+person standing right there. It took that grace from
+`chat_groups.last_mention_at`, and two independent faults meet in that column.
+
+**One: the watermark is per room and the activity is per session.** The sweep
+stamps `last_mention_at` when a group session's `lastInteractionAt` is newer
+than `chat_groups.last_seen_at`. But a registered room has SEVERAL gateway
+sessions — `main`, the greeter `ggreet`, and the room's own `g-N` — and the
+sweep's loop runs once per session while `last_seen_at` is a single column,
+overwritten at the end of each iteration by whichever session came last. Some
+other session is therefore always newer than the watermark, so the stamp is
+rewritten on every pass and the fifteen minutes never elapse. Read live on
+2026-09-09, two queries two minutes apart, with nobody writing in any room:
+
+    1 M&M                    seen=2026-09-07T15:30  mention=2026-09-09T04:16:32.754
+    2 5 Percent (Maprinter)  seen=2026-09-08T16:11  mention=2026-09-09T04:16:32.754
+    3 פחם הסעות 🚌            seen=2026-09-07T21:00  mention=2026-09-09T04:16:32.754
+
+Three rooms, one timestamp to the millisecond — three `UPDATE … now()` calls
+in one transaction — and it had advanced by the second reading. `last_seen_at`
+for group 1 is exactly the `g-1` session's stamp while `main`'s for the same
+room is four hours newer, which is the shape of the bug in one line.
+
+**Two: her own voice moves the signal.** The raw pipe sends as
+`agents.defaults.systemAgent.agentId`, which is `main`. So `main`'s session for
+a room is stamped every time OLMA speaks into it — the session for group 2
+reads `22:12:11.324`, the second the 01:12 line went out. A window that any
+send re-opens is a window that authorises the next send.
+
+**The fix** is to take the grace from a column that means what the rule needs:
+`chat_group_members.last_wrote_at`, the newest moment a MEMBER wrote
+(migration 056). It is per room, it is written only from a real inbound
+message, and Olma's own voice never reaches it. For group 2 on that night it
+held 19:11 local, so the chase would have waited for the morning. A row that
+does not carry the column at all gets no grace and falls to the hours — fail
+closed, because the cost that way is a line held until morning and the cost
+the other way is this entry.
+
+Four tests go red without it, two of them replaying this room: the sweep's own
+`last_mention_at` stamped a minute before the decision, the room's people last
+heard from in the evening, and the line still waiting for 09:00.
+
+**What is NOT fixed here.** The `last_seen_at` watermark is still wrong — one
+column against several sessions — so `last_mention_at` still churns on every
+pass and the admin page's "last mention" is not a fact. Nothing reads it for a
+decision any more, which is why this PR stops at the decision; making the
+watermark honest means one per (room, session), and that is a migration and a
+restructured loop, not a line.
+
 ### Six good mornings for one timeout (fixed 2026-09-09)
 
 Dana joined on the evening of 2026-09-07. At 05:22 the next morning the
@@ -3313,6 +3381,154 @@ next and only the last one was measured first.
 
 
 ## Cost, billing and the money page
+
+### The conversation that never ended (fixed 2026-09-09)
+
+The owner asked, with usage growing, what "working smart" would look like in
+numbers. Every agent's transcript store was walked on 2026-09-09 for the four
+clean days since the heartbeat went off (09-06 → 09-09), plus `usage_ledger`
+and OpenRouter's own `/generation` records for the response ids in the
+transcripts. Real users cost $2.49 in those four days (~90 messages a day,
+$0.0073 a message, 2.9 model calls a message); the eval user cost $7.31 —
+the cheap-model pilots of 09-08 and 09-09 alone cost more than a week of
+real people. Three things nobody had measured:
+
+**A session never resets.** `session.reset` defaults to `"none"`, so a
+session key keeps one history window for ever. Per agent, prompt tokens per
+model call since 09-06:
+
+| agent | messages | calls | prompt/call | cache | first-call latency |
+|---|---|---|---|---|---|
+| u-3 (one session since 08-27) | 79 | 178 | **172,019** (max 206,270) | 60% | 8–23 s |
+| u-10 | 40 | 89 | 71,943 | 61% | |
+| u-18 | 34 | 96 | 57,478 | 63% | |
+| everyone else | | | 35–48k | 47–68% | 3–5 s |
+
+At $0.089/M uncached, u-3's every message cost $0.018 before the model
+read a word — his four days, $1.30, were 52% of the whole real-user bill.
+The doctrine (11k tokens) and the tool schemas (15k) that every rule in
+this file fights over were sitting under 170k tokens of chat. Every user
+drifts there; u-3 took thirteen days. What the conversation knows is not in
+the window — tasks, reminders, meetings, facts, preferences are in the DB and
+USER.md — and the memory files the design leans on are empty on the box
+(`MEMORY.md` 35 bytes, no daily notes in any workspace), so nothing rides
+on them either way.
+
+Fix: `session.reset: { mode: "daily", atHour: 2 }` (UTC on the box — 05:00
+in Israel), `scripts/set-session-reset.js --apply`, and a `config_guard`
+rule that goes red when it comes back off. **The reset would have blinded
+every watcher once a day**: `channels/sessions.readRecentMessages` read the
+tail of the CURRENT session id only, and `promise_watch` reads the ask a
+person made the evening before, the onboarding review reads a first evening
+that spans 02:00 UTC, fact extraction and `unanswered` read the last few
+turns. The 2026.8.1 store keeps the chain — `session_windows(session_id,
+previous_session_id, reason)` — and the tail now walks it until it has its
+events, under the same cap as before.
+
+**The cache dies between turns, and it is not the TTL.** First call of a
+turn, bucketed by the gap since the agent's previous call (real users, not
+evals): under two minutes 62% cached; 2–10 minutes 9%; 10–60 minutes 4%;
+1–4 hours 0%. Within a turn the second call hits ~90%. OpenRouter's
+generation records named the reason: `deepseek/deepseek-v4-flash` was being
+served by three providers in six hours — StreamLake, DeepInfra, GMICloud —
+and a prefix cache is per provider. Even on the same provider a new turn one
+minute later missed, so the first call of every message pays for the full
+prompt (avg 62k tokens, 44k of them uncached) — about 45% of the bill.
+DigitalOcean serves the same model at $0.068/M input against
+$0.089–0.091 for the three in use, cache reads at $0.0168, 99.7% uptime.
+Fix: pin the provider order (`scripts/pin-openrouter-provider.js`,
+separate PR) and MEASURE whether one provider's cache survives the gap —
+the price cut is certain, the cache win is the experiment.
+
+**`turn_start` is 37% of every tool call** — 922 of 2,482 in fourteen days,
+one of the 2.9 calls a message. Phase B (the turn context in the prompt,
+`gateway-plugin/olma-turn`) was live for two people; widening it removes a
+model round-trip from every reply (3–7 s, ~$0.0011) and the `.olma-identity`
+reads that fresh sessions spend (70 in four days). Done in its own PR.
+
+What did NOT move the numbers, for the next person tempted: the schemas
+(55k chars ≈ 15k tokens, 26 tools uncalled in fourteen days = 24% of it)
+and the doctrine are ~26k tokens a call and cost a fifth of that once the
+cache holds; audience-filtering the tools is impossible at `tools/list`
+(one MCP process for every agent, `cwd=/root`, verified) and worth under $1
+a month anyway; NO_REPLY turns are 2–5% since the heartbeat went off.
+
+### The pilot that read as an expensive day (fixed 2026-09-09)
+
+On the morning of 2026-09-09 the efficiency watch sent this:
+
+> 📈 עולמה — יעילות: משהו חרג מהרגיל
+> 2026-09-08 · 120 הודעות נכנסות
+> • עלות להודעה: $0.0411 (רגיל: $0.0155, פי 2.7)
+> מודלים:
+> • openai/gpt-5-mini — $1.6513, מטמון 94%
+> • openai/gpt-5-nano — $1.4595, מטמון 96%
+> • deepseek/deepseek-v4-flash — $0.9626, מטמון 61%
+
+and the advice under it blamed deepseek's uncached input and proposed trimming
+the conversation history sent to the model.
+
+**Every number in it is correct and the conclusion is wrong.** The day was two
+populations added together:
+
+| | messages | cost | $/msg |
+|---|---|---|---|
+| real users | 52 | $0.9136 | $0.0179 |
+| eval harness (`users.is_eval`, u-15) | 68 | $4.0050 | $0.0589 |
+| what the watch measured | 120 | $4.9186 | $0.0411 |
+
+Real users were at 1.13x their own baseline. gpt-5-mini and gpt-5-nano are the
+model pilots of 09-08 (`docs/model-experiments.md`); no real person has ever
+been routed to either. deepseek-v4-flash — named as the culprit — is the only
+model a real user was on, is the cheapest of the three, and had run $1.09,
+$0.88 and $0.66 on the three days before.
+
+**The defect is in `dailyRatios`, and it is one line of SQL.** The `usr` CTE
+summed all of `usage_ledger`; nothing on that path had ever carried
+`NOT is_eval`, although twenty other sweeps that start from `users` do. So the
+cost side counted the benchmark and the message side counted it too — a
+harness whose cost per message is a property of whichever model is on trial
+that week, and whose message VOLUME is equally arbitrary (127 eval messages on
+09-06, 14 on 09-07).
+
+Three things the fix had to get right, and only the first is obvious:
+
+1. **Both sides together.** Excluding the eval user from the numerator alone
+   would have built the mirror-image fault — real spend divided by inflated
+   traffic, reading as suspiciously cheap for ever.
+2. **`evidence()` moves with the ratios.** The model list is what a person
+   reads to find the culprit, and drawn from a population no ratio covers it is
+   worse than no list: it ranked the innocent model third of three. Same
+   filter, same population.
+3. **The excluded spend is still printed.** `evalCost` and `evalMessages` ride
+   every day, the alert (`ניסויי מודלים באותו יום: … — לא נכללים באף מספר
+   למעלה`) and the heartbeat note, never inside a ratio. Without that the fix
+   is this file's oldest failure shape wearing the opposite coat: $4 a day that
+   no metric can see, and an operator who knows the day was expensive reading a
+   report that never mentions it and concluding the watch is broken.
+
+Verified before merging by running the fixed `dailyRatios`/`crossings`/
+`evidence` from a throwaway copy on the box against the live database:
+2026-09-08 returns `crossings: []` and one model, `deepseek-v4-flash $0.9136`.
+Both new tests go red with the filter neutralised; the second exists because
+the failure mode of a fix like this is quietly becoming an off switch, so it
+holds a genuine 3x regression open on a day a large pilot is also running.
+
+**What this is an instance of.** Not "we forgot a WHERE clause" — the watch's
+own header says every metric is a ratio judged against this system's own recent
+days, and a ratio is only a statement about a system if both halves describe
+the same one. It is also the second fault of 2026-09 caused by the eval user
+being counted as a person (the first: `resetEvalUser` never clearing
+`quota_counters`, so every scenario past 50/day scored a block notice). And it
+is the fourth time an alarm in this system has been right about a number and
+wrong about its cause — the cache-alert misdiagnosis of 09-04, whose suggested
+fix would also have raised cost, is the same sentence with different nouns.
+
+Deliberately NOT changed: `jobs/metrics.js` and the dashboard's cost sections
+still count everything. They answer "what did we spend", which the pilots are
+genuinely part of. The rule is not "filter `is_eval` everywhere" — it is to
+know which question the number answers.
+
 
 ### The heartbeat was the bill (fixed 2026-09-05)
 
@@ -5235,6 +5451,140 @@ So the id is taken only when the model is the best source there is: never on
 exactly as before — a real person writing, with no gateway opening on file,
 is still a turn where the model is all we have.
 
+### A silence read as a delivery fault (fixed 2026-09-09)
+
+Yahav wrote "בוצע הפקדת צק" at 19:34. Everything after that was correct:
+brokerd completed task 646, put a 👍 on his message, and the model answered
+`NO_REPLY` — exactly what `hints.markPlaced` asks for, because the mark carries
+the whole fact and a sentence under it is a second notification for the same
+thing. A healthy turn, start to finish.
+
+At 19:39 he read this, in English:
+
+> No conversation history is accessible to me in this session — there are no
+> prior messages visible and nothing from any stored session search. I cannot
+> reconstruct what was said or what the undelivered reply contained.
+
+The transcript says what happened:
+
+```
+16:34:32  user       "בוצע הפקדת צק"
+16:35:03  assistant  "NO_REPLY"                      ← 8 chars, the sentinel
+16:38:47  user       "DELIVERY: …"                   ← the repair, injected
+16:38:54  assistant  "Let me check the conversation history."
+16:39:07  assistant  "I don't have access to the conversation history…"
+16:39:14  assistant  "No conversation history is accessible to me…"   ← delivered
+```
+
+`unanswered.undeliveredReply` looks for an assistant turn after a user turn
+with no send event behind it, and calls that a reply that was composed and lost.
+A `NO_REPLY` is exactly that shape — and of course there is no send event,
+because nothing was ever meant to be sent. **The detector could not tell a
+decision to stay quiet from a delivery fault.**
+
+That is not a rare corner. Since the reaction doctrine, `NO_REPLY` is the
+CORRECT answer to a large and growing class of messages — every "done ✅"-shaped
+message earns a mark and a silence — and a message like that is exactly the kind
+that sits at the end of a conversation. The window is 3 to 45 minutes and the
+sweep runs every 60 seconds, so any conversation ending in a 👍 sat in the trap
+for forty-two minutes. It had fired three times in total (user 8 and user 14 on
+2026-09-02, Yahav today), but the exposure was growing with every improvement to
+how well Olma keeps quiet.
+
+**The same function had already been blinded once by the same class, in the
+opposite direction.** `channels/sessions.js` drops `FAILED_TURN_MARKER` because
+a turn that died before producing content was stored as an ordinary assistant
+message, so a user whose message got no reply got no repair either (2026-08-20).
+Twice now the transcript's shape has failed to carry the turn's MEANING, and
+both times the reader had to be told. The sentinel is checked in the detector
+rather than in the shared reader, because unlike the failed-turn marker a
+deliberate silence is real history: the admin conversation view and the metrics
+rollup each decide what it means to them. Exact match after a trim — the
+doctrine is explicit that any text in FRONT of the sentinel IS delivered, so
+"בוצע NO_REPLY" is a real reply and must stay repairable.
+
+**Two things worth keeping from the wreckage.**
+
+The repair instruction had anticipated this precise branch: *"If you CANNOT see
+the conversation — empty history, a failed read, a tool refusing you — reply
+with exactly NO_REPLY. Never guess … Do not apologise for a delay, do not
+mention a technical problem or system issue."* The model hit that branch and did
+the opposite of every clause in it. A safety property written as a sentence in a
+prompt is a request, not a guarantee; wherever a model's raw output reaches a
+person with no server-side gate, the prompt is the only thing standing there.
+The fix therefore had to be in the detector — not to sharpen the wording — so
+the turn is never created.
+
+And a repair job is the most dangerous kind of job there is. Every other sweep
+acts on a state it observed. This one acts on a BELIEF that something failed,
+and when the belief is wrong it manufactures the exact disturbance it exists to
+prevent. Nothing was broken in Yahav's conversation until the repair arrived.
+
+### A lost reply is re-sent, not re-answered (fixed 2026-09-09)
+
+The entry above closed the door the repair walked through. This one is about
+what the repair was doing on the other side of it, which was wrong on its own
+terms and would have stayed wrong the next time a reply really did get lost.
+
+Case (b) of `jobs/unanswered.js` detects a reply that was composed and never
+dispatched: the transcript ends with an assistant turn, and the gateway log has
+no `Sent` line for that person behind it. Having established that, it ran a
+MODEL turn:
+
+> Your last reply in this conversation was composed but never delivered — the
+> person never saw it. … Read the conversation and send the substance of that
+> answer again, naturally, as your reply now.
+
+The reply is right there. `undeliveredReply` is looking straight at it — it is
+the message the whole detection is about — and the repair handed a second model
+the job of reconstructing it from a conversation it had to go and re-read. Every
+line of that instruction after the first is an attempt to manage a risk that
+only exists because the text was thrown away: how to handle newer messages, what
+to do if the history cannot be read, not to apologise, not to mention a
+technical problem. It bought nothing and cost three things — a cold-cache model
+call, a dependency on the model being up at the exact moment our own pipe had
+just been proven broken, and a free-text turn on a `--deliver` session, where
+every block the model emits reaches the phone. Yahav read the third one.
+
+So the reply now goes out **as itself**, on the raw pipe, with no model in the
+path — the same argument reminders were moved off the model for in the first
+place (`incidents.md`, the 2026-08-23 credit outage). `undeliveredReply` carries
+`text` alongside `composedAt`, the row's payload holds `verbatimReply`, and
+`proactive-text.rawPipeTextFor` — the one place that decides raw-pipe-or-agent-
+turn — returns it before the kind gate.
+
+**A raw send does not enter the person's session, and here that is the point
+rather than the cost.** The composed reply is already in the transcript; only
+the send failed. Re-sending it verbatim makes the phone match the history. The
+model turn did the opposite: it appended a SECOND assistant turn saying roughly
+the same thing, so the conversation ended up holding the answer twice, one of
+them never delivered — in a function whose entire job is reading the tail of
+that transcript.
+
+Two clauses died with the instruction and both deserved to. *"If their later
+messages changed what a good answer is, answer the newest state"* guarded a case
+the detector already excludes: it fires only when the assistant's reply is the
+LAST thing in the transcript, so there is no newer state by construction. And
+the *"if you CANNOT see the conversation, reply NO_REPLY"* clause — the one the
+model ignored on the way to Yahav's phone — is gone because there is no longer
+anything to see: the text is on the row.
+
+**Verbatim or nothing.** The one shape that cannot survive the raw pipe is an
+attachment: `MEDIA: <path>` on its own line is a convention the GATEWAY reads
+off an agent's reply, and `openclaw message send` has no such reading, so a
+lost schedule card sent this way would arrive as the literal word `MEDIA:` and a
+filesystem path. That case is counted on the sweep's heartbeat (`unsendable`)
+and left alone. Nothing is improvised in its place — the person's own next
+message and the check-in ladder are the fallbacks, and both beat a guess. It is
+counted rather than audited because with no outbox row there is no cooldown
+either, and an audit row would be filed every tick for up to forty-five minutes.
+
+The admin page follows the same line. `plannedSubject` deliberately shows a
+subject and never a preview, because the payload holds an instruction the agent
+will reword and promising wording we cannot keep is the v1 stale-digest rule.
+This row is the second exception to that after an operator's hand-typed message,
+and for the identical reason: nothing will reword it.
+
 ### A time in the title and no reminder (fixed 2026-09-09)
 
 Cleaning up after the duplicates above left 27 `extracted` tasks standing on
@@ -5312,6 +5662,46 @@ The count rides the audit row as `taskDatesDropped` and the sweep result as
 guard that silently drops things looks identical to a quiet week, and a number
 that climbs every night is the only thing that would say the model is proposing
 moments this job will not honour.
+
+**The same day, live on the owner's own account**, the fix was proved end to
+end and immediately showed its own fallout. "אני צריך להתקשר לחברת הביטוח היום
+ב-17:00" became task 657 with `due_at` 17:00 and an automatic reminder armed
+for 16:00, which was delivered at 16:01:52 — the chain that had been broken.
+But the title came out as `להתקשר לחברת הביטוח היום ב-17:00`: the model now
+sets the column **and** keeps the words. That is new. Before the field existed
+the words were the only copy of the moment, so nothing had ever been redundant.
+
+The obvious fix — a prompt line asking for a clean title — is wrong, and the
+reason is the validator above. The model cannot know whether `usableDue` will
+accept the date it proposes. Told to write a clean title, it would strip the
+hour from its own words while the server dropped the date underneath it, and
+the moment would survive in neither the column nor the title: strictly worse
+than before any of this. So the trim is server-side and conditional on the date
+actually being stored — `titleWithoutStatedTime`, applied only where `dueAt` is
+truthy.
+
+What keeps it from being a regex guessing at somebody's sentence is a
+cross-check: the hour named in the title must be the hour being stored. It was
+measured against all 253 titles on the box before shipping — 8 matched the
+pattern, 2 were stripped, and the third was refused:
+
+| title | stored `due_at` | outcome |
+|---|---|---|
+| להתקשר לחברת הביטוח היום ב-17:00 | 17:00 | stripped |
+| Nail appointment — Tuesday Sep 8 at 12:00 | 12:00 | stripped |
+| **Brunch with a friend — Tuesday Sep 1 at 10:00** | **07:00** | **refused** |
+
+The third is a real row whose title and column disagree by three hours.
+Stripping it would have deleted the only record of the disagreement and left a
+row that looked consistent. One row out of 253 is the entire argument for the
+cross-check, and it is in the test with its real values.
+
+Three further bounds, each with a real shape behind it: the match is anchored
+to the END, because a moment named mid-sentence is part of what the thing IS
+("פגישה של 17:00 עם הבנק") and cutting there rewrites their words; a part-of-day
+word is what licenses reading "ב-6 בערב" as 18:00, never the bare digit; and a
+cut that would leave a stub is refused, because "ב-17:00" alone is not a task
+anybody can read.
 
 ### The same thing, saved twice (fixed 2026-09-08)
 

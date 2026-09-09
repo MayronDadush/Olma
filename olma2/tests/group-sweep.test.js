@@ -536,16 +536,54 @@ test('with no greeter installed the sweep does nothing at all', async () => {
   assert.deepEqual(g.sent, []);
 });
 
-test('the announcement window follows the group, and a live tag overrides it', () => {
+test('the announcement window follows the group, and a member writing overrides it', () => {
   const night = new Date('2026-09-06T02:00:00+03:00');
-  const asleep = { timezone: 'Asia/Jerusalem', last_mention_at: null };
+  const asleep = { timezone: 'Asia/Jerusalem', last_member_write_at: null };
   assert.equal(job.mayAnnounce(asleep, night), false);
 
-  // Somebody tagged her a minute ago: they are plainly awake.
-  const tagged = { timezone: 'Asia/Jerusalem', last_mention_at: new Date(night.getTime() - 60_000) };
-  assert.equal(job.mayAnnounce(tagged, night), true);
+  // Somebody wrote in the room a minute ago: they are plainly awake.
+  const awake = { timezone: 'Asia/Jerusalem', last_member_write_at: new Date(night.getTime() - 60_000) };
+  assert.equal(job.mayAnnounce(awake, night), true);
 
   assert.equal(job.mayAnnounce(asleep, new Date('2026-09-06T10:00:00+03:00')), true);
+});
+
+// The 01:12 line, as the row that produced it. Group "5 Percent (Maprinter)"
+// on 2026-09-08: the newest member write was 19:11 local, six hours earlier,
+// and `last_mention_at` was minutes old because the sweep rewrites it on every
+// pass (see mayAnnounce for why). Reading the session stamp says yes; reading
+// the room's own people says no, which is the answer.
+test('a room nobody has written in since the evening is asleep, however busy her own sessions look', () => {
+  const oneTwelveAm = new Date('2026-09-09T01:12:00+03:00');
+  const room = {
+    timezone: 'Asia/Jerusalem',
+    last_mention_at: new Date(oneTwelveAm.getTime() - 60_000),
+    last_member_write_at: new Date('2026-09-08T19:11:54+03:00'),
+  };
+  assert.equal(job.mayAnnounce(room, oneTwelveAm), false);
+});
+
+// A row assembled without the roster gets the hours, never the grace.
+test('a row that never learned when anybody wrote is treated as asleep at night', () => {
+  const night = new Date('2026-09-06T02:00:00+03:00');
+  assert.equal(job.mayAnnounce({ timezone: 'Asia/Jerusalem' }, night), false);
+  assert.equal(job.mayAnnounce({ timezone: 'Asia/Jerusalem' }, new Date('2026-09-06T10:00:00+03:00')), true);
+});
+
+// The clock disagreeing with itself is not evidence anybody is up.
+test('a write stamped in the future buys no grace', () => {
+  const night = new Date('2026-09-06T02:00:00+03:00');
+  const ahead = { timezone: 'Asia/Jerusalem', last_member_write_at: new Date(night.getTime() + 60_000) };
+  assert.equal(job.mayAnnounce(ahead, night), false);
+});
+
+// The hours are the group's own, and the group's own is the majority of its
+// members (domain/groups.majorityTimezone) — so the same instant is night in
+// one room and the working day in another.
+test('two rooms in different zones answer differently at the same instant', () => {
+  const instant = new Date('2026-09-09T01:12:00+03:00'); // 22:12 UTC
+  assert.equal(job.mayAnnounce({ timezone: 'Asia/Jerusalem' }, instant), false);
+  assert.equal(job.mayAnnounce({ timezone: 'America/New_York' }, instant), true); // 18:12 there
 });
 
 // ---- the sender gate ---------------------------------------------------------

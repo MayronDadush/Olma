@@ -214,10 +214,20 @@ function renderGroupCoordination(line, overrides) {
 // than the row, for the same reason again: it is a fact about the person at the
 // moment of sending.
 function rawPipeTextFor(row, overrides, channelType) {
+  const payload = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
+  // A reply OUR pipe lost, re-sent as itself (jobs/unanswered.js, case (b)).
+  // It is the one text here that is neither a template nor a model's output:
+  // the model already wrote it, this conversation's transcript already holds
+  // it, and the only thing that failed was the send. So there is nothing to
+  // render, nothing to translate — it is already in the language they were
+  // being answered in — and nothing for a second model to improve on.
+  // Checked before the kind gate because the row rides `checkin` deliberately:
+  // that kind is what already earns a repair its way past the quiet drop, and
+  // re-deciding the gate was not part of fixing the delivery.
+  if (payload.verbatimReply) return String(payload.verbatimReply);
   if (row.kind !== 'reminder') return null;
-  const p = typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload || {});
-  if (p.instruction) return null;
-  return renderReminderText(p, overrides, row.locale, channelType);
+  if (payload.instruction) return null;
+  return renderReminderText(payload, overrides, row.locale, channelType);
 }
 
 module.exports = {

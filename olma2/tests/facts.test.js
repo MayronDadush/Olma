@@ -1170,3 +1170,103 @@ test('the sweep hands the extraction the person\'s own timezone', async () => {
     assert.equal(row.timezone, 'Asia/Jerusalem');
   });
 });
+
+// ---------------------------------------------------------------------------
+// A title need not restate the hour the row already carries
+//
+// Fallout from the fix above, seen the moment it went live on 2026-09-09: the
+// model, now that it has a clock, sets due_at AND leaves the words in the
+// title. "להתקשר לחברת הביטוח היום ב-17:00" with a due_at of 17:00 says the
+// same thing twice, and only one of the two can be acted on. Before the date
+// field existed the words were the only copy, so this is new.
+//
+// The cross-check is the whole design: the hour named in the title must be the
+// hour being stored. Measured against all 253 titles on the box — matched 8,
+// stripped 2, and refused a third whose title and due_at disagree.
+
+test('the stated hour comes out of the title when the row now carries it', () => {
+  const tz = 'Asia/Nicosia';
+  const strip = (t, iso) => extraction.titleWithoutStatedTime(t, iso, tz);
+  // The live case, from the owner's own account.
+  assert.equal(strip('להתקשר לחברת הביטוח היום ב-17:00', '2026-09-09T17:00:00+03:00'),
+    'להתקשר לחברת הביטוח');
+  // A real row on the box, in English, with an em-dashed date that must survive.
+  assert.equal(strip('Nail appointment — Tuesday Sep 8 at 12:00', '2026-09-08T12:00:00+03:00'),
+    'Nail appointment — Tuesday Sep 8');
+  // "ב-6 בערב" is 18:00 — the part of day is what licenses the +12, and task 37
+  // on the box is titled exactly this.
+  assert.equal(strip('תרופות בשעה 6 בערב', '2026-09-09T18:00:00+03:00'), 'תרופות');
+});
+
+test('a title whose hour disagrees with the stored one is left alone', () => {
+  // Task 247 on the box, verbatim: the title says 10:00 and the due_at is
+  // 07:00. They disagree, and the disagreement is the only thing worth keeping
+  // — stripping here would delete the evidence and leave a row that looks
+  // consistent. This single real row is why the cross-check exists.
+  assert.equal(
+    extraction.titleWithoutStatedTime(
+      'Brunch with a friend — Tuesday Sep 1 at 10:00', '2026-09-01T07:00:00+03:00', 'Asia/Nicosia'),
+    'Brunch with a friend — Tuesday Sep 1 at 10:00');
+});
+
+test('only a TRAILING hour is a restatement; one mid-sentence is their words', () => {
+  const tz = 'Asia/Nicosia';
+  // The moment here is part of what the thing IS. Cutting inside the sentence
+  // rewrites what they said, and leaves ungrammatical wreckage behind.
+  assert.equal(
+    extraction.titleWithoutStatedTime('פגישה של 17:00 עם הבנק', '2026-09-09T17:00:00+03:00', tz),
+    'פגישה של 17:00 עם הבנק');
+  // Nothing but the hour: a stub is not a task anybody can read.
+  assert.equal(extraction.titleWithoutStatedTime('ב-17:00', '2026-09-09T17:00:00+03:00', tz), 'ב-17:00');
+  // The ל־ rule's case has no clock in it at all and must never be touched.
+  assert.equal(
+    extraction.titleWithoutStatedTime('לארגן אימון לרביעי', '2026-09-10T09:00:00+03:00', tz),
+    'לארגן אימון לרביעי');
+});
+
+test('a DROPPED date leaves the hour in the title, where it is the only copy', async () => {
+  const u = await seedChatter('+972590009301', 40);
+  await db.pool.query(`UPDATE users SET timezone = 'Asia/Nicosia' WHERE id = $1`, [u.id]);
+  await withClient(async (c) => {
+    // A bare local time: usableDue refuses it, so nothing is stored — and the
+    // words must therefore survive. This is the regression the prompt-side fix
+    // would have caused, held open where it would happen.
+    const bare = new Date(Date.now() + 26 * 3600_000);
+    const local = `${bare.getUTCFullYear()}-${String(bare.getUTCMonth() + 1).padStart(2, '0')}`
+      + `-${String(bare.getUTCDate()).padStart(2, '0')}T09:00:00`;
+    const applied = await extraction.applyExtraction(c, { ...u, timezone: 'Asia/Nicosia' }, {
+      facts: [], tasks: [{ title: 'להתקשר לחברת הביטוח ב-9', due_at: local }],
+    }, new Set());
+    assert.equal(applied.tasksCaptured, 1);
+    assert.equal(applied.datesDropped, 1);
+    assert.equal(applied.titlesTrimmed, 0, 'nothing was stored, so nothing may be removed');
+
+    const { rows } = await c.query(
+      `SELECT title, due_at FROM tasks WHERE owner_id = $1 AND status = 'open'`, [u.id]);
+    assert.equal(rows[0].due_at, null);
+    assert.equal(rows[0].title, 'להתקשר לחברת הביטוח ב-9', 'the hour is all that is left of it');
+  });
+});
+
+test('an ACCEPTED date takes the hour out of the title, end to end', async () => {
+  const u = await seedChatter('+972590009302', 40);
+  await withClient(async (c) => {
+    const due = new Date(Date.now() + 26 * 3600_000);
+    // Built in UTC and asserted in UTC, so the test does not depend on where it
+    // runs — the pool pins Etc/UTC exactly for this.
+    const iso = due.toISOString().replace('Z', '+00:00');
+    const hh = String(due.getUTCHours()).padStart(2, '0');
+    const mm = String(due.getUTCMinutes()).padStart(2, '0');
+    const applied = await extraction.applyExtraction(c, { ...u, timezone: 'UTC' }, {
+      facts: [], tasks: [{ title: `להתקשר לחברת הביטוח ב-${hh}:${mm}`, due_at: iso }],
+    }, new Set());
+    assert.equal(applied.tasksCaptured, 1);
+    assert.equal(applied.datesDropped, 0);
+    assert.equal(applied.titlesTrimmed, 1);
+
+    const { rows } = await c.query(
+      `SELECT title, due_at FROM tasks WHERE owner_id = $1 AND status = 'open'`, [u.id]);
+    assert.equal(rows[0].title, 'להתקשר לחברת הביטוח');
+    assert.equal(new Date(rows[0].due_at).getTime(), due.getTime());
+  });
+});

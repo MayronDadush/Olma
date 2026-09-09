@@ -153,6 +153,20 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `models.providers.openrouter.models[]`, and
   `agents.defaults.modelPolicy.allow`. Two of three is registered-and-unusable,
   and invisible until an override is tried.
+- **The live OpenRouter model names its providers in order**
+  (`agents.defaults.models["openrouter/deepseek/deepseek-v4-flash"].params
+  .provider.order`, `scripts/pin-openrouter-provider.js --apply`, restart the
+  gateway). Unpinned, OpenRouter picked a different provider per request —
+  three in six hours on 2026-09-09 — and a prompt cache is per provider, so
+  the first call of nearly every message paid the whole prompt: 0–9% cached
+  for any gap over two minutes, ~90% for the second call of the same turn
+  (`incidents.md`, "The conversation that never ended"). DigitalOcean first
+  for the price ($0.068/M against $0.089–0.091), the two it was already using
+  behind it, `allow_fallbacks: true` so an outage costs the cache and never a
+  reply. `register-openrouter-models.js` writes `{}` per model and would wipe
+  this; `config_guard` goes red when the order is gone. `model-pricing.js`
+  prices flash at the pinned provider's rates — new rows only, the ledger is
+  append-only.
 - **The `Conversation info` block is prompt-only: the transcript keeps the
   bare text.** On 2026.8.1 the roster, the tag and the message id of a group
   message exist in one place code can reach — the `llm_input` plugin hook,
@@ -170,6 +184,19 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `incidents.md`, "The heartbeat was the bill"). Nothing of ours rides on it.
   `config_guard` goes red if it comes back; `scripts/disable-heartbeats.js
   --apply` turns it off again.
+- **Every session resets daily: `session.reset: { mode: "daily", atHour: 2 }`**
+  (UTC on the box — 05:00 in Israel, before anybody writes). The gateway
+  default is "none", and a session that never ends carries the whole
+  conversation into every call: on 2026-09-09 u-3's one session, open since
+  08-27, was 205k tokens a call — $0.018 of history per message before the
+  first word, 8–23 s to the first token, 52% of the real-user bill across
+  four people (`incidents.md`, "The conversation that never ended"). What
+  the conversation knows lives in the DB and USER.md, not in the window.
+  **`readRecentMessages` follows `session_windows.previous_session_id`** so
+  the watchers (promise_watch, the onboarding review, fact extraction,
+  unanswered) still see yesterday on the morning after — a reader of the
+  live session id alone is blind once a day. `config_guard` goes red if the
+  mode comes back off; `scripts/set-session-reset.js --apply` sets it.
 
 ### Delivering a message
 
@@ -225,6 +252,10 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   somebody's words is a thing you get to be wrong about once. **Olma does not
   use italic, monospace or inline code at all** (owner, 2026-09-09, decided by
   looking at them on a phone), and links go bare.
+  The module BUILDS markup and does not parse it, so
+  owner-typed markup in `message_templates` would reach a second channel raw;
+  that gap is named in the doc rather than closed by a parser nothing can
+  check.
 - **On the MODEL path a style is granted by a RESULT, never by a description**
   — `message-format.HINTS` (list, numbered choice, struck out, quote their
   words), riding the tool result or the outbox instruction, so it costs tokens
@@ -240,10 +271,7 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   the model ignoring this — it is the model enjoying it, and a digest that
   reads like a newsletter is worse than the paragraph it replaced. Nothing
   here is enforced by code: eval `list-reads-as-a-list` is the only thing that
-  looks at a real reply, and it checks both directions. The module BUILDS markup and does not parse it, so
-  owner-typed markup in `message_templates` would reach a second channel raw;
-  that gap is named in the doc rather than closed by a parser nothing can
-  check.
+  looks at a real reply, and it checks both directions.
 - **What is the same every time is DRAWN, and only the sentence about it is a
   model's** (`domain/digest-block.js`, the morning digest, 2026-09-09). The
   block is rendered in code — the calendar first, the to-dos after, the moment
@@ -435,8 +463,9 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   (a queue per person, oldest first), not one per person: two messages a few
   seconds apart each keep their own count, opening and reply target
   (`incidents.md`, "Two messages three seconds apart").
-  **Widening it to everybody is four steps, and the first one was not
-  optional** (step 1 done 2026-09-06, the rest planned 2026-09-07):
+  **Widened to everybody on 2026-09-09** (`scripts/enable-turn-context.js
+  --apply`, then a gateway restart and a resync) — it was four steps, and the
+  first one was not optional:
   (1) the evals. The eval user (`users.is_eval`, u-15) becomes a covered user
   the moment the flag says `all`, and the failure is SILENT rather than red:
   the CLI fires the plugin but not the turn-open hook, so brokerd answers
@@ -451,6 +480,12 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   agent, so a user who joins next week is covered without anyone
   remembering, and the flag stays the only gate. (4) restart the gateway
   (`config.agents` is read once, at register) and resync every AGENTS.md.
+  **Every half-state is the OLD behaviour, not a broken one** — the doctrine
+  falls back to `turn_start` when no Turn context block is there — which is
+  why `config_guard.checkTurnContextCoverage` goes red when the flag and
+  the plugin list disagree: a fallback nobody notices is a model round-trip
+  on every message for ever. It was 922 of 2,482 tool calls in the fourteen
+  days before (`incidents.md`, "The conversation that never ended").
 - **`messages.queue.mode` stays `followup`.** The gateway default, `steer`,
   pushes a message that arrives mid-turn INTO the running turn and cancels
   the tool calls the model just made ("Skipped due to queued user message").
@@ -646,6 +681,17 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   refused here rather than at `addTask`, which would lose the task as well),
   already past, or past a one-year horizon, which is the shape a wrong YEAR
   takes (`incidents.md`, "A time in the title and no reminder").
+- **A title need not restate the hour the row now carries, but only the SERVER
+  may take it out.** The same model, given a clock, sets `due_at` AND leaves the
+  words in the title — new behaviour, because before the field existed the words
+  were the only copy. `titleWithoutStatedTime` removes a TRAILING time
+  expression, and only when the hour it names is the hour being stored. **The
+  cross-check is the design**: measured against all 253 titles on the box it
+  matched 8, stripped 2, and refused "Brunch with a friend — Tuesday Sep 1 at
+  10:00", whose `due_at` is 07:00 — the two disagree, and stripping would have
+  deleted the only record of it. Deliberately NOT a prompt line: the model
+  cannot know whether `usableDue` will accept its date, so a clean title written
+  up front loses the moment entirely on every date the server drops.
 - **A day named with ל־ in a title dates the THING, not the task.** "לארגן
   אימון לרביעי" is arranged BEFORE Wednesday; filed ON Wednesday it is useless.
   `datetime.datesTheObject` reports that shape on the result and lets the model
@@ -666,6 +712,48 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   added): the half that was right — a calendar ask is one thing, not a task and
   a reminder as well — moved to `create_calendar_event`'s own description,
   where the model reads it at the moment it would make that mistake.
+
+- **A DECISION to stay quiet is not a reply that got lost.** `NO_REPLY` is the
+  silence sentinel and, since the reaction doctrine, it is the CORRECT answer to
+  a growing class of messages — brokerd puts a 👍 on, `markPlaced` says the mark
+  carries the whole fact, the model rightly says nothing. Every one of those
+  lands in the transcript as an assistant turn after a user turn with no send
+  event behind it, which was `unanswered.undeliveredReply`'s entire definition
+  of a lost reply. Yahav's "בוצע הפקדת צק" was answered perfectly — task
+  completed, 👍 placed — and three minutes later a repair turn told him "No
+  conversation history is accessible to me in this session", in English
+  (2026-09-09). **The sentinel is checked in the DETECTOR, not in the shared
+  reader**: a deliberate silence is real history, and the admin conversation
+  view and the metrics rollup each decide what it means to them. Exact match
+  after a trim — the doctrine says anything in FRONT of the sentinel is
+  delivered, so "בוצע NO_REPLY" is a real reply and stays repairable. Second
+  time the transcript's shape has failed to carry a turn's meaning for this same
+  function: `channels/sessions.js` drops `FAILED_TURN_MARKER` because a dead
+  turn was indistinguishable from a reply and blinded it the OTHER way
+  (`incidents.md`, "A silence read as a delivery fault").
+- **A repair job fires precisely when the system's belief about itself is
+  already wrong, so it must be the most sceptical thing in the codebase.** Every
+  other sweep acts on a state it observed; this one acts on a belief that
+  something failed, and a wrong belief manufactures the very disturbance it
+  exists to prevent. And **its instruction anticipating a failure buys nothing**
+  — the repair prompt said "if you CANNOT see the conversation, reply with
+  exactly NO_REPLY, do not mention a technical problem" and the model did the
+  opposite, in the wrong language. A safety property written as a sentence in a
+  prompt is a request, not a guarantee: wherever a model's raw output reaches a
+  person with no server-side gate, the prompt is the only thing standing there
+  and it can simply be ignored.
+- **A reply that got lost is RE-SENT, never re-answered.** The transcript is
+  holding the composed reply word for word, so handing a model the job of
+  saying it again is asking a second model to reconstruct what we already have
+  — and it is what put English internals on Yahav's phone. `undeliveredReply`
+  carries the text and it goes out on the raw pipe with no model in the path
+  (2026-09-09), for the same reason reminders were moved there. **A raw send
+  does not enter the session**, which is the point and not a cost: the reply is
+  already in the history, so re-sending verbatim makes the phone match it,
+  where the model turn appended a SECOND assistant turn and left the
+  conversation holding the answer twice. **Verbatim or nothing** — a reply
+  carrying a `MEDIA:` line is a gateway convention the raw pipe cannot honour,
+  so it is counted on the heartbeat and left alone rather than half-sent.
 
 ### Writing detectors and alarms
 
@@ -689,6 +777,22 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 - **An issue title must be deterministic** — it is the dedup key. A title built
   from unordered query results makes the guard file and close the same
   condition on alternating ticks.
+- **A ratio's numerator and its denominator must describe the SAME people, and
+  the eval user is in neither.** `users.is_eval` traffic is a benchmark whose
+  cost per message is a property of whatever model is on trial, so it enters
+  and leaves every metric TOGETHER — dropping it from one side alone builds the
+  mirror-image fault. `efficiency-watch` had it in both halves and read
+  2026-09-08 as $0.0411/message against a $0.0155 baseline, when real users
+  were 52 messages at $0.0179 — 1.13x their own baseline — and the advice that
+  came back was to trim the conversation history real users get, to pay for a
+  pilot. **Its EVIDENCE query has to move with it**: a model list drawn from a
+  population no ratio covers is what ranked deepseek-v4-flash third and got it
+  blamed. And the excluded spend still has to be printed somewhere unratio'd
+  (`evalCost`), or the fix is the other failure — $4 a day that no number can
+  see (`incidents.md`, "The pilot that read as an expensive day"). Nothing else
+  on the cost path filters `is_eval`, and for the dashboard's cost pages that
+  is arguably right: they answer "what did we spend", not "how efficient are
+  we". Know which question the number you are writing answers.
 - **A thing that could not be READ is never a thing in trouble.** An unreadable
   config, a failed billing API, a missing log: report it in the heartbeat, file
   nothing, alert nobody.
@@ -1051,6 +1155,17 @@ have already had to be argued for.
   said once per coordination and again next week for the next one, at most one
   line per room per pass, and every one of them held to the group's own
   daytime — a line held at 02:00 stamps nothing and goes out in the morning.
+  **What opens that window early is a MEMBER writing, never her own voice or a
+  session's activity.** `mayAnnounce` took its grace from
+  `chat_groups.last_mention_at`, and a room was told about a coordination at
+  01:12 (`incidents.md`, "The room was told about a meeting at 01:12"): the
+  sweep stamps that column when a group SESSION looks newer than
+  `chat_groups.last_seen_at`, a room has several sessions against one
+  watermark column, so the stamp is rewritten every pass and the fifteen
+  minutes never elapse — and `main`'s session, which the raw pipe sends as, is
+  stamped by Olma's own sends, so any line re-opened the window for the next
+  one. It reads the newest `chat_group_members.last_wrote_at` now. A row
+  without that column gets NO grace and falls to the hours.
 - **A sweep DECIDES and the `group_outbox` job SAYS** (migration 055). The row
   and the stamp are written in one transaction, the UNIQUE `idempotency_key`
   is what actually stops a sentence twice, and a claim is never handed back —
@@ -1111,12 +1226,15 @@ have already had to be argued for.
   server answered.
 
 - **A member's message in the room opens the gate's fifteen-minute window for
-  that room's coordination, and for nothing else** (migration 056,
-  `chat_group_members.last_wrote_at`). It releases `night` and the `quiet`
+  that room's coordination — and, since 2026-09-09, the room's own announcement
+  window; nothing else** (migration 056, `chat_group_members.last_wrote_at`).
+  It releases `night` and the `quiet`
   drop on the same argument the DM window already makes — somebody who just
   spoke is awake — and the SCOPE is the worker's query, not the gate: only a
   row naming a meeting whose group they wrote in after that coordination
-  started. A pause is still read first and absolutely. **The column is blind
+  started. `jobs/groups.mayAnnounce` is the second reader, for the reason in
+  the daytime rule above: it is the only signal of presence in a room that
+  Olma's own sends cannot move. A pause is still read first and absolutely. **The column is blind
   to anything that did not name her** (a registered room is
   `requireMention: true`), so its silence is never evidence that somebody said
   nothing.

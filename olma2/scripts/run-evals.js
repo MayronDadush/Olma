@@ -7,7 +7,8 @@
 //   node scripts/run-evals.js                 # full suite
 //   node scripts/run-evals.js --only stop-service,goal-capture
 //   node scripts/run-evals.js --no-judge      # hard checks only (faster/cheaper)
-//   node scripts/run-evals.js --model openrouter/qwen/qwen3.7-flash
+//   node scripts/run-evals.js --model openrouter/qwen/qwen3.7-flash --only stop-service,goal-capture,bare-time-shift,hebrew-gender-feminine
+//   node scripts/run-evals.js --model openrouter/qwen/qwen3.7-flash --full   # every scenario, after the smoke set passed
 //
 // --model is the CHEAPER-MODEL PILOT: it drives the whole suite on a
 // candidate model instead of the live default, which turns nine real
@@ -30,6 +31,11 @@ function arg(name) {
 }
 
 const ICONS = { green: '🟢', yellow: '🟡', red: '🔴', error: '⚠️' };
+// The scenarios a candidate model has actually failed before (docs/
+// model-experiments.md): a skipped turn_start on the confirmation turn, a
+// missed capture, a bare time read in the wrong zone, one masculine verb.
+// A model that survives these has earned the other nine.
+const SMOKE = ['stop-service', 'goal-capture', 'bare-time-shift', 'hebrew-gender-feminine'];
 
 (async () => {
   const only = arg('only');
@@ -42,8 +48,22 @@ const ICONS = { green: '🟢', yellow: '🟡', red: '🔴', error: '⚠️' };
   }
 
   const model = arg('model');
+  // A full pilot is twelve scenarios, three or four calls each on the
+  // candidate plus a reasoning judge on every reply, and it is the single
+  // largest line on the bill: the eval user cost $7.31 in the four days to
+  // 2026-09-09 against $2.49 for every real person together — gpt-5-mini
+  // $1.65, gpt-5-nano $1.46 and claude-haiku-4.5 $2.26 for one full run
+  // each (usage_ledger, user 15). Two of the three were disqualified by
+  // their third scenario. So a pilot starts on the smoke set — the four
+  // scenarios that have failed a candidate before — and earns the rest.
+  if (model && !only && !process.argv.includes('--full')) {
+    console.error(`a full pilot on ${model} runs all ${SCENARIOS.length} scenarios and the judge — $1.5–2.3 for the last three candidates.`);
+    console.error(`start with the smoke set:  --only ${SMOKE.join(',')}`);
+    console.error('and pass --full for the whole suite once it survives that. --no-judge drops the judge (hard checks only).');
+    process.exit(2);
+  }
   const pool = createPool();
-  if (model) console.log(`pilot: driving the suite on ${model} (live routing untouched)\n`);
+  if (model) console.log(`pilot: driving ${scenarios.length} scenario(s) on ${model} (live routing untouched)\n`);
   const summary = await runEvalSuite(pool, {
     trigger: model ? PILOT_TRIGGER : 'manual', scenarios,
     deps: { skipJudge: process.argv.includes('--no-judge'), agentModel: model },

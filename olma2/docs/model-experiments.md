@@ -14,11 +14,22 @@ An undated claim about a model is worth nothing three weeks later.
 ## How to run one
 
 ```bash
-node scripts/run-evals.js --model openrouter/qwen/qwen3.7-flash
+# the smoke set first — the four scenarios a candidate has failed before
+node scripts/run-evals.js --model openrouter/qwen/qwen3.7-flash --only stop-service,goal-capture,bare-time-shift,hebrew-gender-feminine
+# the whole suite, once it survives that
+node scripts/run-evals.js --model openrouter/qwen/qwen3.7-flash --full
 ```
 
-Drives all nine behavioral scenarios on a candidate model instead of the
-live default. Safety properties, none of them incidental:
+Drives the behavioral scenarios on a candidate model instead of the live
+default. **A pilot without `--only` or `--full` is refused** (2026-09-09):
+a full run is twelve scenarios, three or four calls each on the candidate
+plus a reasoning judge on every reply, and in the four days to 2026-09-09
+the eval user cost $7.31 against $2.49 for every real person together —
+`gpt-5-mini` $1.65, `gpt-5-nano` $1.46, `claude-haiku-4.5` $2.26 for one
+full run each, two of them disqualified by their third scenario. The judge
+alone is ~$0.20 a run; `--no-judge` keeps the hard checks (tool selection,
+DB state) and drops it. One pilot a day, and the smoke set before the rest.
+Safety properties, none of them incidental:
 
 - **Nothing is routed anywhere.** The override rides one disposable session
   per scenario (`--model`, the gateway's own per-call flag). `agents.defaults.model`
@@ -618,3 +629,104 @@ the clock on the one scenario where wrong costs a person a reminder — at
   than the incumbent, not faster. If latency ever becomes the owner's
   complaint, the answer on this evidence is the `boost_model` switch (luna,
   #31), not a cheaper default.
+
+## Runs #62-#68 — 2026-09-09 — the BACKGROUND model, which nothing had ever measured
+
+Every run above this line drives the **agent turn**. This is the first entry
+about the other half of the bill, and it needed a new harness to exist at all:
+`scripts/pilot-background-model.js`.
+
+**Why they are not the same question.** The background path is five jobs —
+`fact-extraction`, `planning`, `live-updates`, `voice-calls`,
+`efficiency-watch` — making direct `llm.complete` calls with no tools, no
+gateway and no doctrine. Their entire contract is *return one JSON object my
+validator accepts*, and every one of them fails **soft**: `parseJsonObject`
+returns null, the job catches it, logs and skips. So a background model that
+cannot hold JSON breaks nothing anybody can see. It quietly stops the memory,
+the plans and the summaries from being written — and the reason nobody had
+measured this before is precisely that nothing ever goes red.
+
+The harness runs the REAL prompt builders (`buildInstruction`, `buildBrief`,
+`briefFor`) and scores through the REAL validators (`usableDue`,
+`validatePlan`), never a hand-copied replica of either. Fixtures, not real
+conversations: a candidate is a NEW VENDOR, and sending twenty real
+conversations to one to find out whether its JSON parses is the owner's call,
+not a benchmark's. The efficiency brief is the only real-data scenario, and
+only because that prompt is numbers by construction.
+
+**Owner's ask (2026-09-09):** the OpenRouter update listed Nex-N2.5 Mini and
+Pro at $0 and Mercury 2.5 at $0.04/$0.15 — "יש פה מודלים חינמיים (Nex)
+שיכולים להתאים לעיבוד רקע, ו-Mercury 2.5 זול לשיחות."
+
+### The board, at each job's REAL token budget
+
+| Run | Model | Hard failures | Wall | Cost |
+|---|---|---|---|---|
+| #62 | `deepseek/deepseek-v4-flash` (live default) | **0** | 74s | $0.001326 |
+| #63 | `nex-agi/nex-n2.5-mini:free` | 2 | 22s | $0 |
+| #64 | `nex-agi/nex-n2.5-pro:free` | 2 | 375s | $0 |
+| #65 | `inception/mercury-2.5` | 3 | 9s | $0.000909 |
+
+A hard failure is the real job discarding the answer.
+
+**Both candidates are reasoning models, and all three failures are the same
+failure.** They spend the token budget on thinking and return truncated JSON
+or nothing at all. Mercury wrote 1,969 output tokens on the efficiency brief
+and not one character of answer. This is the fault `efficiency-watch.js`
+already carries a comment about — *"a reasoning model can spend its whole
+answer budget thinking and return nothing — the live-updates summariser lost a
+real run to exactly that at 700"* — reproduced now on two more models. **Any
+future background candidate should be assumed to be one until measured.**
+
+### The diagnostic: `--budget 4`
+
+Raising every scenario's `maxTokens` 4x separates *cannot* from *needs room*.
+Only the second is fixable from our side, and it costs latency on every call.
+
+| Run | Model | Hard failures | Wall |
+|---|---|---|---|
+| #66 | `nex-n2.5-mini:free` | **0** | 30s |
+| #67 | `nex-n2.5-mini:free` (repeat) | **0** | 25s |
+| #68 | `inception/mercury-2.5` | **0** | 12s |
+
+Repeated because one run is an anecdote. Both Mini runs came back clean.
+
+### What this actually says
+
+- **Nex Mini works, and it is faster than the incumbent even while thinking.**
+  30s and 25s against v4-flash's 74s, at $0. On `fact-extraction` it found the
+  Friday-availability constraint that **v4-flash missed** in the baseline run.
+- **Mercury 2.5 is the fastest thing on the board by a distance** — 12s for
+  all three scenarios, 4s each — for about the incumbent's price.
+- **Nex Pro is disqualified.** Two 180s timeouts *with headers received and no
+  body*. The real jobs use `TURN_TIMEOUT_MS = 120_000`, so it fails harder in
+  production than in this harness. Not a quality result; it never answered.
+- **Neither candidate is better at the thing that matters most.** Both saved
+  the fact-extraction task with **no date**, which is `usableDue`'s safe
+  failure and exactly what the incumbent also does. Nothing here fixes the
+  gap that entry is about.
+- **One candidate walked into a known wrong answer.** Nex Mini's second run
+  proposed shortening the system prompt for a falling cache hit rate — the
+  2026-09-04 advice that would have deleted the one region that WAS cached.
+  The prompt warns against it in as many words; v4-flash did not take the bait
+  and Nex did, once out of two.
+
+### Recommendation, and what it costs
+
+**Do not switch the `background_llm` flag on this evidence.** The candidates
+pass only with 4x the token budget, which means adopting one is really two
+changes — the flag AND raising `maxTokens` in five jobs — and the second is
+the kind that looks free until a reasoning model decides to think for 90
+seconds inside a sweep holding a transaction.
+
+What the evidence DOES support, and is one line rather than five:
+**`efficiency-watch`'s own advice call already runs at `maxTokens: 2000` for a
+four-line answer** because this exact fault was found there once. The same
+reasoning has not been applied to the other four consumers, and it should be —
+independently of any model change, because it makes the incumbent's rare
+truncations survivable too.
+
+Re-measure before adopting either: a `:free` OpenRouter model is rate-limited,
+deprioritised under load, and can be withdrawn without notice. A free model
+that is unavailable at 03:00 is a background layer that silently stops
+writing — the same failure this entry is about, arriving from the other side.

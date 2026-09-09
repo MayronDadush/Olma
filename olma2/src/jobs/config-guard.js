@@ -90,6 +90,59 @@ function checkOpenclawConfig(cfg) {
   if (queueMode !== 'followup') {
     violations.push(`messages.queue.mode is ${queueMode === undefined ? 'unset (gateway default "steer")' : JSON.stringify(queueMode)} — a second message mid-turn cancels the first one's tool calls instead of waiting for its own turn (fix: scripts/set-queue-mode.js --apply)`);
   }
+  // Who serves the live default model. Unpinned, OpenRouter spreads
+  // deepseek-v4-flash across providers per request (three in six hours on
+  // 2026-09-09) and a prompt cache is per provider, so the first call of
+  // nearly every message paid the whole prompt. The pin names the cheapest
+  // provider first with fallbacks behind it; an upgrade or a re-registration
+  // (scripts/register-openrouter-models.js writes `{}` per model) that drops
+  // it puts the bill back up with nothing else visibly wrong. Dashboard row.
+  // (fix: scripts/pin-openrouter-provider.js --apply, then restart the gateway)
+  const primary = (((cfg.agents || {}).defaults || {}).model || {}).primary;
+  if (typeof primary === 'string' && primary.startsWith('openrouter/')) {
+    const order = (((((cfg.agents || {}).defaults || {}).models || {})[primary] || {}).params || {}).provider;
+    if (!order || !Array.isArray(order.order) || !order.order.length) {
+      violations.push(`agents.defaults.models["${primary}"].params.provider.order is unset — OpenRouter picks a different provider per request and the prompt cache dies with every switch (fix: scripts/pin-openrouter-provider.js --apply, then restart the gateway)`);
+    }
+  }
+  // A session that never resets carries the whole conversation into every
+  // call. Measured 2026-09-09: u-3's one session, open since 2026-08-27, was
+  // 205k tokens per call — $0.018 of history per message, 8–23s to the first
+  // token, 52% of the real-user bill across four people. "daily" rolls it at
+  // 02:00 UTC; the record is in the DB, and channels/sessions.js follows the
+  // window chain so the watchers still see yesterday. Dashboard row: replies
+  // still work, at yesterday's price. (fix: scripts/set-session-reset.js --apply)
+  const resetMode = ((cfg.session || {}).reset || {}).mode;
+  if (resetMode !== 'daily') {
+    violations.push(`session.reset.mode is ${resetMode === undefined ? 'unset (gateway default "none")' : JSON.stringify(resetMode)} — a session never ends, so every reply reads the whole history since the person joined (fix: scripts/set-session-reset.js --apply)`);
+  }
+  return violations;
+}
+
+// Phase B has three halves that must agree — the `turn_context_phones`
+// flag (what brokerd answers, and which doctrine variant the resync writes),
+// the plugin's `config.agents` list (who the gateway asks for), and the
+// resynced AGENTS.md — and every half-state is the OLD behaviour rather than
+// a broken one: the doctrine falls back to `turn_start` when no Turn context
+// block is there. That is exactly why it needs a row: a fallback nobody
+// notices is a model round-trip on every message, for ever, for whoever the
+// halves disagree about. Widened to everybody on 2026-09-09
+// (scripts/enable-turn-context.js). Dashboard row, never BREAKS_USERS.
+async function checkTurnContextCoverage(client, cfg) {
+  const violations = [];
+  const flags = require('../domain/flags');
+  const turn = require('../domain/turn');
+  const flag = String((await flags.getFlag(client, turn.CONTEXT_FLAG)) || '').trim();
+  if (!flag) return violations; // off everywhere: the pre-Phase-B world, by choice
+  const entry = (((cfg.plugins || {}).entries || {})['olma-turn']) || null;
+  if (!entry || entry.enabled !== true) {
+    violations.push(`turn_context_phones is ${JSON.stringify(flag)} but plugins.entries.olma-turn is ${entry ? 'disabled' : 'missing'} — every covered person's doctrine falls back to a turn_start call on every message (fix: scripts/enable-turn-context.js --apply, then restart the gateway)`);
+    return violations;
+  }
+  const list = Array.isArray((entry.config || {}).agents) ? entry.config.agents : [];
+  if (flag === 'all' && list.length) {
+    violations.push(`turn_context_phones is "all" but plugins.entries.olma-turn.config.agents still lists ${list.length} agent(s) — everyone else's doctrine falls back to a turn_start call on every message (fix: scripts/enable-turn-context.js --apply, then restart the gateway)`);
+  }
   return violations;
 }
 
@@ -1014,6 +1067,7 @@ async function run(client, { configPath, ...deps } = {}) {
     violations = violations.concat(checkOpenclawConfig(cfg));
     violations = violations.concat(checkModelPermissions(cfg));
     violations = violations.concat(await checkOrphanAgents(client, cfg));
+    violations = violations.concat(await checkTurnContextCoverage(client, cfg));
     budget = await checkBootstrapBudget(client, cfg);
     violations = violations.concat(budget.violations);
   } catch (e) {
@@ -1060,6 +1114,7 @@ async function run(client, { configPath, ...deps } = {}) {
 }
 
 module.exports = {
+  checkTurnContextCoverage,
   run, checkOpenclawConfig, checkModelPermissions, checkConfigApplied, makeConfigValidator,
   checkIdentityFiles, checkAgentsTokens,
   checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkUnreachableJoiners, checkInfraAgentSessions,

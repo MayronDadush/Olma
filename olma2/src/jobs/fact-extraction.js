@@ -312,6 +312,49 @@ function usableDue(value) {
   return raw;
 }
 
+// A title need not restate the hour the row already carries. Once due_at is
+// stored, "להתקשר לחברת הביטוח היום ב-17:00" says the same thing twice — and
+// only the column can be acted on. Measured live on 2026-09-09: the model given
+// a clock now sets due_at AND leaves the words in the title, which is new,
+// because before the date field existed the words were the only copy.
+//
+// Deliberately NOT a line in the prompt. The model cannot know whether the
+// server will accept its date, so a prompt telling it to write a clean title
+// would lose the moment entirely on every date `usableDue` drops — a bare local
+// time, a wrong year — leaving neither a column nor the words. Done here it is
+// conditional on the date actually being stored, which is the one condition
+// that makes removing the words safe.
+//
+// THE CROSS-CHECK is what separates this from a regex guessing at somebody's
+// sentence: the hour named in the title must be the hour being stored. Measured
+// against all 253 titles on the box — it matched 8, stripped 2 (both right),
+// and refused a third: "Brunch with a friend — Tuesday Sep 1 at 10:00" carries
+// a due_at of 07:00, and the two disagree. Without the cross-check that call
+// would have deleted the only record of the disagreement.
+const TITLE_DAY = '(?:היום|מחר|מחרתיים|הערב|ביום\\s+\\S+|בשבת|בראשון|בשני|בשלישי|ברביעי|בחמישי|בשישי|today|tomorrow|tonight)';
+const TITLE_PART = '(?:בבוקר|בצהריים|אחה"?צ|אחר\\s+הצהריים|בערב|בלילה|am|pm|a\\.m\\.|p\\.m\\.)';
+const TITLE_CLOCK = '(?:בשעה\\s*|ב-?|at\\s+|@\\s*)(\\d{1,2})(?::(\\d{2}))?';
+// Anchored to the END. A moment named mid-sentence is part of what the thing IS
+// — "פגישה של 17:00 עם הבנק" — and cutting there rewrites their words.
+const TITLE_TIME_RE = new RegExp(
+  `[\\s,\\-–—]*(?:${TITLE_DAY}\\s*)?${TITLE_CLOCK}(?:\\s*${TITLE_PART})?\\s*$`, 'i');
+
+function titleWithoutStatedTime(title, dueAtIso, tz) {
+  const t = String(title || '').trim();
+  const m = t.match(TITLE_TIME_RE);
+  if (!m) return t;
+  const p = partsInZone(tz || 'UTC', new Date(dueAtIso));
+  let hh = Number(m[1]);
+  // "ב-5 בערב" is 17:00 — only ever upward, and only when a part-of-day says so.
+  if (/בערב|בלילה|pm|p\.m\./i.test(m[0]) && hh < 12) hh += 12;
+  if (hh !== p.hh) return t;
+  if (m[2] !== undefined && Number(m[2]) !== p.mi) return t;
+  const cut = t.slice(0, t.length - m[0].length).replace(/[\s,\-–—]+$/, '').trim();
+  // Never leave a stub: "ב-17:00" on its own is not a task anybody can read.
+  if (cut.length < 3 || !/[֐-׿a-z]/i.test(cut)) return t;
+  return cut;
+}
+
 // knownFactIds: the exact set of #ids the model was shown this call. `replaces`
 // is only ever honoured against that snapshot — never an id from earlier in
 // this same batch, and never one invented — the same anchoring pattern the
@@ -321,7 +364,7 @@ async function applyExtraction(client, user, parsed, knownFactIds = new Set()) {
   // silently, and a nightly job that quietly drops facts looks exactly like a
   // quiet week. If a guard ever starts over-firing — refusing real facts every
   // night — this counter is the only place that would say so.
-  const out = { recorded: 0, tasksCaptured: 0, refused: {}, replaced: 0, datesDropped: 0 };
+  const out = { recorded: 0, tasksCaptured: 0, refused: {}, replaced: 0, datesDropped: 0, titlesTrimmed: 0 };
   const factList = Array.isArray(parsed.facts) ? parsed.facts.slice(0, 20) : [];
   for (const f of factList) {
     if (!f || typeof f.fact !== 'string') continue;
@@ -360,8 +403,11 @@ async function applyExtraction(client, user, parsed, knownFactIds = new Set()) {
     if (!t || typeof t.title !== 'string' || !t.title.trim()) continue;
     const dueAt = usableDue(t.due_at);
     if (t.due_at && !dueAt) out.datesDropped++;
+    // Only ever when the date was actually stored — see titleWithoutStatedTime.
+    const title = dueAt ? titleWithoutStatedTime(t.title, dueAt, user.timezone) : t.title;
+    if (title !== t.title) out.titlesTrimmed++;
     const created = await tasks.addTask(client, user.id, {
-      title: t.title, dueAt, source: 'extracted',
+      title, dueAt, source: 'extracted',
     });
     if (!created.ok) {
       // Counted for the same reason the facts half counts its refusals: this
@@ -540,7 +586,16 @@ async function sweepFactExtraction(client, deps = {}) {
 
     // One direct call, one JSON answer. No session, no tools, no identity
     // token — the model cannot write anything; it can only propose.
-    const res = await complete({ ...(await llm.backgroundModel(client)), user: message, timeoutMs: TURN_TIMEOUT_MS });
+    const res = await complete({
+      ...(await llm.backgroundModel(client)), user: message, timeoutMs: TURN_TIMEOUT_MS,
+      // Stated rather than left to the adapter default, which is the same
+      // number: this is the LARGEST answer on the background path — every fact
+      // and every task out of a whole chapter of conversation — and it is the
+      // one that measured closest to the ceiling (the incumbent v4-flash wrote
+      // 1988 tokens against 2000 on a realistic fixture, 2026-09-09). A budget
+      // that tight belongs where somebody editing the prompt will see it.
+      maxTokens: llm.BACKGROUND_MAX_TOKENS,
+    });
 
     // A reply that is not parseable JSON is a failed run, not an empty one:
     // the watermark stays put and the same conversation is re-read next tick.
@@ -566,6 +621,9 @@ async function sweepFactExtraction(client, deps = {}) {
         // going out dateless again. Only written when it is not zero, same as
         // the two above.
         ...(applied.datesDropped ? { taskDatesDropped: applied.datesDropped } : {}),
+        // Per-user only, never on the sweep note: the heartbeat is truncated at
+        // 200 chars and this is cosmetic, unlike the drop count beside it.
+        ...(applied.titlesTrimmed ? { taskTitlesTrimmed: applied.titlesTrimmed } : {}),
       });
       out.extracted.push(u.id);
       out.recorded += applied.recorded;
@@ -584,7 +642,7 @@ async function sweepFactExtraction(client, deps = {}) {
     } else {
       out.failed.push({
         userId: u.id,
-        error: String((res && res.error) || (res && res.ok ? 'unparseable model output' : 'unknown')).slice(0, 200),
+        error: llm.whyUnparseable(res).slice(0, 200),
       });
     }
   }
@@ -595,6 +653,7 @@ async function sweepFactExtraction(client, deps = {}) {
 module.exports = {
   sweepFactExtraction, dueUsers, buildInstruction, renderTranscript, newMessagesSince,
   isMachineText, readPersonMessages, applyExtraction, gatherContext, usableDue,
+  titleWithoutStatedTime,
   CHAPTER_GAP_MS, MAX_PER_TICK, READ_MESSAGES, MAX_TRANSCRIPT_CHARS, INSTRUCTION_MARKER,
   OPEN_TASKS_IN_PROMPT, MEETINGS_IN_PROMPT, MEETING_CONSTRAINT_WINDOW_MS, DUE_HORIZON_MS,
 };

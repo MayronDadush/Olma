@@ -87,6 +87,11 @@ function plannedSubject(row) {
   // Everything else is an instruction the agent will reword, so showing it
   // would promise wording we cannot keep.
   if (p.rung === 'admin' && p.checkinInstruction) return esc(String(p.checkinInstruction).slice(0, 90));
+  // The second case, and the only other one: a reply our own pipe lost, queued
+  // to go out on the raw pipe word for word (jobs/unanswered.js). The sentence
+  // above about wording we cannot keep is exactly what does NOT apply here —
+  // no agent will reword it, because no agent is in the path.
+  if (p.verbatimReply) return esc(String(p.verbatimReply).slice(0, 90));
   if (row.kind === 'checkin' && p.rung) return RUNG_LABELS[p.rung] || esc(p.rung);
   if (p.title) return esc(String(p.title).slice(0, 60));
   return '<span class="dim">—</span>';
