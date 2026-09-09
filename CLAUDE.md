@@ -153,6 +153,20 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   `models.providers.openrouter.models[]`, and
   `agents.defaults.modelPolicy.allow`. Two of three is registered-and-unusable,
   and invisible until an override is tried.
+- **The live OpenRouter model names its providers in order**
+  (`agents.defaults.models["openrouter/deepseek/deepseek-v4-flash"].params
+  .provider.order`, `scripts/pin-openrouter-provider.js --apply`, restart the
+  gateway). Unpinned, OpenRouter picked a different provider per request —
+  three in six hours on 2026-09-09 — and a prompt cache is per provider, so
+  the first call of nearly every message paid the whole prompt: 0–9% cached
+  for any gap over two minutes, ~90% for the second call of the same turn
+  (`incidents.md`, "The conversation that never ended"). DigitalOcean first
+  for the price ($0.068/M against $0.089–0.091), the two it was already using
+  behind it, `allow_fallbacks: true` so an outage costs the cache and never a
+  reply. `register-openrouter-models.js` writes `{}` per model and would wipe
+  this; `config_guard` goes red when the order is gone. `model-pricing.js`
+  prices flash at the pinned provider's rates — new rows only, the ledger is
+  append-only.
 - **The `Conversation info` block is prompt-only: the transcript keeps the
   bare text.** On 2026.8.1 the roster, the tag and the message id of a group
   message exist in one place code can reach — the `llm_input` plugin hook,
