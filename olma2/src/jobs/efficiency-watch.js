@@ -595,6 +595,12 @@ async function run(client, deps = {}) {
         maxTokens: 2000,
       });
       advice = res && res.ok && res.text ? String(res.text).trim().slice(0, 600) : null;
+      // Advice cut mid-sentence is not advice, and it reads as advice: the
+      // report would print half a recommendation with nothing marking it as
+      // half. This is the only consumer whose failure a PERSON sees, so it is
+      // the only one where the ceiling has to be a discard and not just a
+      // note. The numbers above it are unaffected — they never came from here.
+      if (res && res.finishReason === 'length') advice = null;
       // Recorded even though it is a hundredth of a cent: a direct call has no
       // transcript for the usage sweep to find, so unrecorded spend does not
       // exist on paper (migration 012's whole lesson). It belongs in the SYSTEM

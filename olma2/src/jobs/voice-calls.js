@@ -82,10 +82,17 @@ async function processFile(client, dir, file, deps) {
     { includeSummary: true, tz, now: deps.now || Date.now() });
 
   const complete = deps.complete || llm.complete;
-  const res = await complete({ ...(await llm.backgroundModel(client)), user: message, timeoutMs: TURN_TIMEOUT_MS });
+  const res = await complete({
+    ...(await llm.backgroundModel(client)), user: message, timeoutMs: TURN_TIMEOUT_MS,
+    // The same builder fact-extraction uses, plus a summary field on top of
+    // it — so this asks for MORE than the tightest measured answer on the
+    // path, off a transcript nobody bounded. It has been running on the
+    // adapter default all along; that default is now a name.
+    maxTokens: llm.BACKGROUND_MAX_TOKENS,
+  });
   const parsed = res.ok ? llm.parseJsonObject(res.text) : null;
   if (!res.ok || !parsed) {
-    return { failed: true, error: String((res && res.error) || 'unparseable model output').slice(0, 200) };
+    return { failed: true, error: llm.whyUnparseable(res).slice(0, 200) };
   }
   try { await llm.recordUsage(client, user.id, res.model, res.usage); } catch { /* never fail the run over bookkeeping */ }
 
