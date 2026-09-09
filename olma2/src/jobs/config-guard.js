@@ -90,6 +90,21 @@ function checkOpenclawConfig(cfg) {
   if (queueMode !== 'followup') {
     violations.push(`messages.queue.mode is ${queueMode === undefined ? 'unset (gateway default "steer")' : JSON.stringify(queueMode)} — a second message mid-turn cancels the first one's tool calls instead of waiting for its own turn (fix: scripts/set-queue-mode.js --apply)`);
   }
+  // Who serves the live default model. Unpinned, OpenRouter spreads
+  // deepseek-v4-flash across providers per request (three in six hours on
+  // 2026-09-09) and a prompt cache is per provider, so the first call of
+  // nearly every message paid the whole prompt. The pin names the cheapest
+  // provider first with fallbacks behind it; an upgrade or a re-registration
+  // (scripts/register-openrouter-models.js writes `{}` per model) that drops
+  // it puts the bill back up with nothing else visibly wrong. Dashboard row.
+  // (fix: scripts/pin-openrouter-provider.js --apply, then restart the gateway)
+  const primary = (((cfg.agents || {}).defaults || {}).model || {}).primary;
+  if (typeof primary === 'string' && primary.startsWith('openrouter/')) {
+    const order = (((((cfg.agents || {}).defaults || {}).models || {})[primary] || {}).params || {}).provider;
+    if (!order || !Array.isArray(order.order) || !order.order.length) {
+      violations.push(`agents.defaults.models["${primary}"].params.provider.order is unset — OpenRouter picks a different provider per request and the prompt cache dies with every switch (fix: scripts/pin-openrouter-provider.js --apply, then restart the gateway)`);
+    }
+  }
   // A session that never resets carries the whole conversation into every
   // call. Measured 2026-09-09: u-3's one session, open since 2026-08-27, was
   // 205k tokens per call — $0.018 of history per message, 8–23s to the first
