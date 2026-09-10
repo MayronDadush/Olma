@@ -402,6 +402,59 @@ test('reactions: a real turn marks the message 👀 and then upgrades it', async
   assert.equal(marks.length, n, "a new user on the connection starts with no message id, not the last one's");
 });
 
+// Miron, 2026-09-10: "בימי שבת אל תשלח לי תזכורות ולא כלום" was saved as
+// quiet_days inside the same second, and he read "שבת — שמור. לא תזכורות, לא
+// דיגסט, כלום." back. Not the model overruling the mark — `remember_preference`
+// was not in TOOL_MARKS, so no 👍 was placed and the result carried no
+// markPlaced for it to read. Through the dispatcher, because the table alone
+// proves nothing about what the model is handed.
+test('reactions: a rule about how Olma should behave earns the 👍 and the hint', async (t) => {
+  const db = await freshDb();
+  t.after(() => db.teardown());
+  const marks = [];
+  const broker = createBrokerServer({
+    pool: db.pool,
+    placeMark: (opts) => { marks.push(opts); return { attempted: true }; },
+  });
+  const user = await makeUser(db.pool, '+972500000903', { firstName: 'Miron' });
+  // One turn per message, as production has it: markFor stamps `messageId:state`
+  // so a second 👍 inside one turn is deliberately dropped, and reusing a turn
+  // here would be testing that dedup instead of this table.
+  const newTurn = () => ({ userId: null, opened: false, counted: false, quota: null, messageId: null, lastInboundAt: null });
+  const call = (name, args, turn) => broker.dispatch(
+    { id: 1, method: 'tool_call', params: { name, args: { identity_token: user.identity_token, ...args } } }, turn);
+  const hints = (res) => JSON.parse(res.text.replace(/^OK /, '')).hints || {};
+
+  const rule = newTurn();
+  await call('turn_start', { message_id: '3EB0QUIETDAY1' }, rule);
+  const saved = await call('remember_preference', { key: 'quiet_days', value: 'sat' }, rule);
+  assert.ok(saved.ok);
+  assert.equal(marks.at(-1).state, 'done');
+  assert.equal(marks.at(-1).messageId, '3EB0QUIETDAY1');
+  assert.match(hints(saved).markPlaced, /NO_REPLY/);
+
+  // Taking it back is the same shape — the undo-shaped row's own argument.
+  const undo = newTurn();
+  await call('turn_start', { message_id: '3EB0QUIETDAY2' }, undo);
+  const dropped = await call('forget_preference', { key: 'quiet_days' }, undo);
+  assert.ok(dropped.ok);
+  assert.equal(marks.at(-1).state, 'done');
+  assert.match(hints(dropped).markPlaced, /NO_REPLY/);
+
+  // A preference that was never there is a failed call, and a failed call
+  // earns no mark: the person is owed the words in that case.
+  const again = newTurn();
+  await call('turn_start', { message_id: '3EB0QUIETDAY3' }, again);
+  const n = marks.length;
+  const missing = await call('forget_preference', { key: 'quiet_days' }, again);
+  assert.match(missing.text, /^ERR/, 'the second forget finds nothing to forget');
+  assert.equal(marks.length, n, 'nothing was saved, so nothing may say it was');
+
+  // Reading is still not doing.
+  await call('list_my_preferences', {}, again);
+  assert.equal(marks.length, n);
+});
+
 // ── The vocabulary is the operator's, and a voice note is heard, not seen ─────
 // Miron, 2026-09-04, having watched a 👀 turn into a ⏰ on his own phone: make
 // it a setting, so "done" can be a 👍 instead of a message saying done; and for

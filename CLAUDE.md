@@ -954,7 +954,17 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   something** — a question, a caveat, an error. A sentence after the mark is
   a second notification for the same fact (Miron, 2026-09-05: "deleted ✅"
   under a 👍). The mark table is `reactions.TOOL_MARKS`; the undo-shaped
-  tools (archive, cancel reminder, edit, forget) earn the same 👍 as a capture.
+  tools (archive, cancel reminder, edit, forget) earn the same 👍 as a capture,
+  and so do the two preference tools — a rule about how Olma should BEHAVE is
+  done the moment the row is written. **A tool ABSENT from that table produces
+  a sentence that looks exactly like the model ignoring the doctrine**: no row
+  → no 👍 → no `markPlaced` → nothing ever told it the fact was already
+  carried. Miron asked for silence on Shabbat, it was saved as `quiet_days`
+  inside the same second, and he read it back in words (2026-09-10) — the
+  mirror of "The hint that outvoted the mark", and indistinguishable from it
+  from the outside. `remember_fact` stays out beside `forget_fact` on purpose:
+  a fact is usually captured in passing while the real answer is written, so
+  its mark would be about the side-effect, not about what they asked.
 - **A message that is only thanks is answered by a 🙏 and by nothing else.**
   Sixth reaction state; the hint (`turnHints.thanksOnly`) asks for `NO_REPLY`
   on the same argument as `markPlaced`. **The classification runs in the
