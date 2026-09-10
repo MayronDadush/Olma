@@ -1661,6 +1661,25 @@ on.
   it blank with `vis is not defined`; open the file directly in a real
   browser instead.
 
+## Reading this repo costs tokens, so large reads are blocked (2026-09-10)
+
+`.claude/hooks/shunt.js` is a PreToolUse hook that **denies** a whole-file `Read`
+(or a bare `cat`/`less`/`more`) of anything over `SHUNT_MIN_LINES`, default 350.
+78 of 464 source files are over that line, and they hold 54,626 of the repo's
+101,752 lines: 17% of the files carrying 54% of the mass.
+
+The deny message names the three ways through — delegate to the `bulk-reader`
+agent (`.claude/agents/bulk-reader.md`, a cheap model whose context is thrown
+away and whose answer carries line numbers), read a targeted slice with
+offset+limit, or grep. **Delegate to understand, slice to edit**: an edit needs
+real line numbers, so make that read yourself rather than editing off a summary.
+
+Targeted reads, pipelines, subagents and non-text files are never blocked, and
+every error path allows the call — a hook that breaks reads is worse than none.
+Same argument as `markPlaced` and the reply gate: an instruction in a prompt is
+a request, and one at the tool boundary is a rule. Borrowed from
+`spotify/portal-ai-plugins`.
+
 ## Known gaps
 
 Real, open, and nobody is working on them.
