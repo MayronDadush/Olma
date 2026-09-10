@@ -47,7 +47,13 @@ const MASCULINE_OPENER_RE = new RegExp(
 // token, in a sentence a person read. Both have reached a real phone — the
 // 2026-09-02 DSML leak and Dana's sixth check-in on 2026-09-08 (with her own
 // olma_identity token in it).
-const MARKUP_RE = /<[｜|]DSML[｜|]|<\|?tool_calls?\|?>|\bolma_(?:tok|grp)_[0-9a-f]{8,}\b|\{"name":\s*"olma_[a-z_]+"/;
+//
+// Read from `domain/reply-leak.js` since 2026-09-10 rather than kept here:
+// that module is the DELIVERY gate for the same shape, and a count on the
+// dashboard that disagreed with what the gate stops would be worse than
+// either alone. One owner, two readers — the eval's `markup` flaw is what
+// this call still means.
+const { FRAME_RE: MARKUP_RE } = require('./reply-leak');
 
 // Quoted text is somebody else's words: "כתבת 'אני יכול מחר'" is not her slip.
 function unquoted(text) {

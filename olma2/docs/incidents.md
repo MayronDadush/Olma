@@ -156,6 +156,7 @@ never trust a dated narrative for something you are about to act on.
 - [A time in the title and no reminder (fixed 2026-09-09)](#a-time-in-the-title-and-no-reminder-fixed-2026-09-09)
 - [A silence read as a delivery fault (fixed 2026-09-09)](#a-silence-read-as-a-delivery-fault-fixed-2026-09-09)
 - [A lost reply is re-sent, not re-answered (fixed 2026-09-09)](#a-lost-reply-is-re-sent-not-re-answered-fixed-2026-09-09)
+- [The working-out arrived instead of the message (fixed 2026-09-10)](#the-working-out-arrived-instead-of-the-message-fixed-2026-09-10)
 - ["הנה, רשמתי", about a meeting (2026-09-07)](#הנה-רשמתי-about-a-meeting-2026-09-07)
 - [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
 - [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
@@ -5584,6 +5585,128 @@ subject and never a preview, because the payload holds an instruction the agent
 will reword and promising wording we cannot keep is the v1 stale-digest rule.
 This row is the second exception to that after an operator's hand-typed message,
 and for the identical reason: nothing will reword it.
+
+### The working-out arrived instead of the message (fixed 2026-09-10)
+
+Yahav, 08:28: "תוכלי להזכיר לי היום בשעה 13:00 לבטל את האשראי". The 👍 went on
+his message, the task was saved, the reminder was armed for 13:00 in his own
+zone — every part of the work was right. What arrived on his phone was the
+model working out whether it had been:
+
+> הם אמרו 13:00 — due_at נקבע ל-13:00. remind_at שמרתי 13:00, שזה הזמן שהם אמרו
+> — לא צריך להזכיר לפני, זה בדיוק בשעה שהם ביקשו. The reminder is set for 13:00
+> their time.
+>
+> Wait, let me re-check — remind_at was set to 2026-09-10T10:00:00Z which is
+> 13:00 in Asia/Jerusalem. That's correct — the reminder will fire at 13:00
+> exactly as they asked. And due_at also at 13:00. Good.
+>
+> The hints say a 👍 was placed and the reminder is armed for the hour they
+> named, so nothing to add — unless there's an undelivered reply from before.
+>
+> Looking at the turn context: it says one of their recent messages was read
+> but produced no reply. The only message I see in this session …
+
+Four paragraphs about him in the third person, half of it in English, naming
+our own columns, ending in the decision that there was nothing to say. The
+model reached the right answer — `markPlaced` says a plain instruction under a
+👍 is answered with `NO_REPLY` — and then delivered the road it took to get
+there. Nothing was mis-stored, no reminder was wrong; the only defect is that
+the deliberation was the message.
+
+**The doctrine already forbade every part of it**, in three sentences of
+`agents-template.md`: "Your reply is the message, nothing else", "Never narrate
+what you did or are about to do — no 'I see they replied…', no 'Let me
+check…'", and "Any text you put in front of `NO_REPLY` is DELIVERED". The last
+two were written after the previous two occurrences: the DSML tool-call syntax
+with a live `olma_identity` in it (2026-09-02) and two English paragraphs of
+working notes above a Hebrew answer (2026-09-07). Third time in nine days, and
+every answer so far had been another sentence in the prompt.
+
+Which is the rule this repo had already written down and could not act on: a
+safety property written as a sentence in a prompt is a request, not a
+guarantee, and wherever a model's raw output reaches a person with no
+server-side gate the prompt is the only thing standing there.
+
+**There was a gate all along.** `domain/token-leak.js` records, from
+2026-09-02, that "the gateway exposes no per-agent MCP server config and no
+outbound message hook (both confirmed against its published schema)" — and
+that is what made NOTICING the leak the whole of the design, twice. It is
+wrong for the version the box runs. OpenClaw 2026.8.1's plugin catalog
+(`docs/plugins/hooks.md`, "Messages and delivery") publishes
+`reply_payload_sending` — Modify / gate, "Mutate or cancel normalized reply
+payloads before delivery", running after payload normalization and before
+channel delivery — and `message_sending` beside it. Neither appears on the
+`allowConversationAccess` list, so neither needs a permission we do not have.
+The belief cost two incidents; the check that would have ended it is the one
+this file keeps recommending — read the vendor's own catalog for the version
+you are actually running, not the note somebody wrote about it a fortnight ago.
+
+**What now stands there.** `gateway-plugin/olma-turn` registers a third hook.
+The decision is `domain/reply-leak.gateReply` and it is made LOCALLY, in the
+gateway, with no socket in the path: a gate that stops working the moment
+brokerd hiccups is not a gate, and one that waits on a socket before every
+reply is a new way to be slow. brokerd is asked only after something was
+found, on a 1.5s deadline, and the audit row (`reply.gated`) is the only
+record — never the text, and never a frame marker in the clear, because that
+marker can BE a live credential.
+
+**Two tiers, because the two actions have opposite costs.** Dropping text is
+destructive, so only markers that cannot appear in a sentence a person is meant
+to read may drop: a frame marker, one of our own column or parameter names off
+a closed list, an ISO-8601 instant (Olma says "13:00", never "10:00:00Z"), and
+the name of a block only the model is shown. Every OTHER snake_case identifier
+— which is the shape of every internal name nobody has thought of, and also of
+a word a developer might have put in a task title — is reported and delivered.
+The audit row is where the next addition to the closed list comes from.
+
+**The unit is the paragraph, not the line, and the cut is everything up to the
+last one that leaked.** Both halves were paid for by this message. Yahav's
+third paragraph ("The hints say a 👍 was placed…") carries no marker at all and
+is not a message to anybody; so does the second line of the 2026-09-07 notes.
+Working notes are written in paragraphs and only some of their sentences name a
+column. And the cut reads off the doctrine — "Work through tools in silence,
+then write the message only" — so anything between two paragraphs of narration
+is narration too, and the 2026-09-07 shape comes out right the other way round:
+the notes go, the Hebrew answer stays. The cost is a reply whose narration came
+LAST, which loses the answer in front of it; of the two mistakes only one puts
+our columns on somebody's phone.
+
+**The sentinel is the one marker that never drops its line.** `jobs/
+unanswered.js` reads "בוצע NO_REPLY" as a real reply on purpose, so the gate
+strips the stray token and delivers the word. A reply that is exactly the
+sentinel is not a leak at all: it is the decision to stay quiet, and the
+gateway drops such a row by itself.
+
+**The gate makes the repair sweep dangerous, and that is fixed in the same
+change.** A cancelled reply leaves precisely the fingerprint `undeliveredReply`
+reads as a delivery fault — an assistant turn in the transcript with no `Sent`
+line behind it — and the repair re-sends verbatim on the raw pipe, which has no
+gate in it. `resendableVerbatim` now runs the same reader: what the gate would
+deliver is what may be re-sent, and when that is nothing, nothing is. Same
+shape as the `MEDIA:` refusal beside it.
+
+**And `main` is not gated.** The raw pipe sends as that session and carries the
+owner's own wording with no model in the path (reminders, group lines, the
+introduction) — a gate there could only ever damage a sentence a person wrote.
+Every agent that puts MODEL output in front of somebody is covered: `u-N`, the
+group agents, and the intake greeter.
+
+The remaining hole is named rather than papered over. Narration that never
+mentions an internal name passes — an English "let me check that for you" is
+still only the doctrine's business. And the 383 real messages
+`domain/hebrew-quality.js` was calibrated against are on the box and were not
+reachable from the session that wrote this, so the identifier tier is
+report-only precisely because it is the unmeasured one.
+
+One last thing this class keeps proving: plugin code loads at gateway STARTUP
+and `deploy.sh` does not restart the gateway. Merging this puts a gate on the
+box that does nothing at all until somebody runs `systemctl --user restart
+openclaw-gateway` — green suite, shipped code, inert gate, which is the exact
+"a hook that loads is not a hook that runs" shape twice recorded above. So the
+plugin now overwrites `/opt/olma2/run/turn-context-plugin.registered` with the
+hooks the RUNNING gateway registered, and `config_guard.checkReplyGateLive`
+reads that file and files a dashboard row for as long as the two disagree.
 
 ### A time in the title and no reminder (fixed 2026-09-09)
 
