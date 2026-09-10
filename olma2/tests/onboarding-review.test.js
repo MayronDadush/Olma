@@ -344,9 +344,19 @@ test('too new to review, and too old to bother', async () => {
   await db.pool.query(
     `UPDATE users SET agent_id = 'u-' || id, first_turn_at = $2 WHERE id = $1`,
     [fresh.id, new Date(now - 60 * 60_000)]);
+  // FIXED, not `now - 6 days`, and the difference is a red suite for 45 hours
+  // at a time. freshDb() is per FILE, so this row outlives its own test, and
+  // MAX_PER_TICK is 1 with ORDER BY first_turn_at — so the moment a real-clock
+  // "six days ago" drifts inside a LATER test's pinned 48-hour window, the
+  // sweep reviews this user instead of that test's, `reviewed.length` is still
+  // 1, and the assertion that fails is three tests further down. Measured:
+  // Yahav's test (now pinned to 2026-09-05T21:00Z) goes red for every run
+  // between 2026-09-09T21:00Z and 2026-09-11T18:00Z. Anything older than 48h
+  // proves "too old to bother" equally well, and a date this far back can
+  // never wander into anybody's window.
   await db.pool.query(
     `UPDATE users SET agent_id = 'u-' || id, first_turn_at = $2 WHERE id = $1`,
-    [stale.id, new Date(now - 6 * 24 * 3600_000)]);
+    [stale.id, new Date('2020-01-01T00:00:00Z')]);
 
   const res = await withTx(db.pool, (c) => job.sweepOnboardingReview(c, {
     now, readMessages: () => [], readSessionEvents: () => ({ text: '' }),

@@ -243,10 +243,49 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   never about the row. **There is no escape character**, so a value we did not
   write — a task title is the person's own words — is left unwrapped when it
   already carries the marker: emphasis lost, sentence correct, which is the
-  right way round. The module BUILDS markup and does not parse it, so
+  right way round. The OTHER half of that is `stripUserMarkup`, which removes
+  emphasis such a value would render on its own, on the three verbatim paths
+  where no model retypes the words (a reminder title and its batch lines, a
+  room's slot text, the name and reason a stranger first reads). It is narrow
+  on purpose — a pair goes only when both markers sit at a word boundary, so
+  `report_final_v2` and `7~8` survive — because deleting a character out of
+  somebody's words is a thing you get to be wrong about once. **Olma does not
+  use italic, monospace or inline code at all** (owner, 2026-09-09, decided by
+  looking at them on a phone), and links go bare.
+  The module BUILDS markup and does not parse it, so
   owner-typed markup in `message_templates` would reach a second channel raw;
   that gap is named in the doc rather than closed by a parser nothing can
   check.
+- **On the MODEL path a style is granted by a RESULT, never by a description**
+  — `message-format.HINTS` (list, numbered choice, struck out, quote their
+  words), riding the tool result or the outbox instruction, so it costs tokens
+  only on the turns it applies to and five tools cannot drift into five
+  phrasings. Each fires only where it has work: two items before a list is
+  worth laying out, two options before numbering means anything. **The
+  doctrine line had to change with it** — `agents-template.md` said "No
+  markdown bold", and a hint contradicting an unconditional line of doctrine
+  is OUTVOTED, not ignored, which is the `markPlaced` fault exactly. It now
+  reads "*Bold* one thing at most, never a sentence; other styling only where
+  a result asks" (84 chars for the 18 it replaced, 38 left of 39,250). Every
+  hint is a CEILING as much as a permission, because the failure mode is not
+  the model ignoring this — it is the model enjoying it, and a digest that
+  reads like a newsletter is worse than the paragraph it replaced. Nothing
+  here is enforced by code: eval `list-reads-as-a-list` is the only thing that
+  looks at a real reply, and it checks both directions.
+- **What is the same every time is DRAWN, and only the sentence about it is a
+  model's** (`domain/digest-block.js`, the morning digest, 2026-09-09). The
+  block is rendered in code — the calendar first, the to-dos after, the moment
+  in the shortest honest form in THEIR zone, the styling off their channel and
+  the words off their locale — handed over finished on `get_my_digest`'s
+  result, and relayed verbatim; the model adds one sentence and nothing else.
+  It buys a layout that cannot drift, a list that cannot lose a task, a suite
+  check instead of an eval, and no cost. It costs what every deterministic
+  sentence here costs: **no grammatical gender**, so nothing in a drawn block
+  may be a verb addressed to anybody, and one set of words per language. A
+  schedule CARD replaces the block above `digest_card_min_items` — never both.
+  **`null` (nothing due) and an empty block are different answers**: a morning
+  with nothing on it is a real morning and the sentence about it is the
+  model's, never an empty heading.
 - **The delivery gate is the chokepoint and a paused user has no exceptions** —
   not reminders, not urgent, not another user's fan-out.
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where

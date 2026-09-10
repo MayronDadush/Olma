@@ -234,9 +234,19 @@ test('an English speaker gets the English opening', async () => {
 });
 
 test('an unknown locale still gets a real message, never an empty one', () => {
+  // A third language meets the English opening, which is also what the intake
+  // greeter is told to send ("if they wrote in Hebrew … in any other
+  // language") — so the two voices agree about a stranger.
   assert.equal(onboarding.openingMessage('fr'), onboarding.OPENING.en);
-  assert.equal(onboarding.openingMessage(undefined), onboarding.OPENING.en);
-  assert.equal(onboarding.openingMessage(null), onboarding.OPENING.en);
+  // Nothing on file is the HOUSE language, changed 2026-09-09. It used to be
+  // English here and Hebrew in every other reader of the same column, which
+  // is two opposite fallbacks for one two-language decision; `createUser`
+  // COALESCEs the column to 'he' and settles which way it should point.
+  assert.equal(onboarding.openingMessage(undefined), onboarding.OPENING.he);
+  assert.equal(onboarding.openingMessage(null), onboarding.OPENING.he);
+  // And a variant is still the language it is a variant of.
+  assert.equal(onboarding.openingMessage('he-il'), onboarding.OPENING.he);
+  assert.equal(onboarding.openingMessage('en-us'), onboarding.OPENING.en);
 });
 
 test('the opening copy is exactly what the owner wrote', () => {

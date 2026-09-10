@@ -28,6 +28,11 @@ built from `message-format.STYLES`, so it cannot fall behind the table.
 tables, no colour or size. A bare URL becomes clickable on its own; `#` and
 `[…](…)` arrive as the literal characters, which is worse than not trying.
 
+A URL stays tappable **inside** inline code too — checked on a real phone
+2026-09-09, after this file claimed the opposite. It was wrong. We still send
+links bare, because the owner prefers how they look, not because a styled one
+would break.
+
 ## The four rules that bite
 
 - **There is no escape character.** You cannot show a literal `*` next to bold
@@ -70,6 +75,73 @@ deciding where a `*` is a marker and where it is an asterisk somebody typed —
 a guess nobody can check until a real second platform exists to check it
 against. Named here rather than papered over with an untestable parser.
 
+## The house style, decided by looking (2026-09-09)
+
+Every style below WhatsApp renders; these are the ones Olma is allowed to use.
+The decisions came from sending the real messages to a phone
+(`scripts/send-format-preview.js`) rather than from arguing about a table.
+
+- **Italic is not used at all.** In Hebrew the slant is barely visible and some
+  devices render it badly. Seen side by side with English italic in one
+  message; the answer was immediate. The capability table still says WhatsApp
+  renders it — that is a fact about the platform, and this is a fact about us.
+- **Monospace and inline code are not used** — including in the alarms that
+  reach the owner rather than a user, which had been the one place a
+  system-looking message would have been correct. Not wanted.
+- **Links go bare**, for preference rather than for breakage (see above).
+- **Emphasis somebody else typed is cleaned**, not passed through. See below.
+
+## Emphasis the person typed
+
+A task title is their words and may carry an asterisk, so `לקנות חלב *דל
+לקטוז*` used to arrive with two words in bold that nobody chose. The owner's
+call is to clean those markers: `message-format.stripUserMarkup`, applied on
+the three verbatim paths where no model retypes the words — a reminder title
+and every line of a batch, the slot text a room hears, and the name and reason
+in the first message a stranger ever reads.
+
+It is not `wrapInline`'s rule and does not replace it: that one refuses to ADD
+emphasis to a value carrying a marker, this one removes emphasis the value
+would produce on its own. Both stay.
+
+The rule is deliberately narrow, because deleting a character out of somebody's
+words is a thing you get to be wrong about once. A pair goes only when BOTH
+markers sit at a word boundary — the shape of emphasis a person typed on
+purpose. A marker glued inside a token is part of the token:
+`report_final_v2`, `7~8 בערב` and `3 * 4 שולחנות` come through untouched, and
+the test keeps them as the readings that rejected the blunter rule. The cost is
+that a stray slant can survive a file name, which is the right way round.
+
+The words in the table are never touched — this is a rendering decision, and
+`tasks.title` still holds what they said.
+
+## Two languages, and only two (owner, 2026-09-09)
+
+Hebrew and English. Nothing else is planned, so the rule is worth stating
+rather than leaving as the shape the code happens to have.
+
+Every message said in PRIVATE exists as a `he`/`en` pair; everything said in a
+GROUP is Hebrew only, by design, and the page says so instead of offering a
+box nothing would send. A test in `message-templates.test.js` holds both
+halves, so the next private template cannot ship with one language — which is
+how Sarah read a month of Hebrew reminders under an English conversation.
+
+The direction of the fallback differs in the two places that pick, and that is
+deliberate rather than an accident:
+
+- a **rung** falls back to Hebrew (`proactive-text.localizedKey`), because
+  there are only two sets of sentences and `createUser` COALESCEs the column
+  to `he`;
+- an **opening** falls back to English (`onboarding.openingKey`), because the
+  intake greeter beside it is told "if they wrote in Hebrew … in any other
+  language", and the two voices must agree about a stranger.
+
+What is NOT allowed is what that second one used to do: an exact match on
+`'he'`. `set_my_language` stores any ISO code lowercased — its own description
+offers "he, en, ar, ru" — so `he-il` is ordinary, and it bought an English
+opening followed by Hebrew reminders for ever after. Both readers test the
+PREFIX now, and an empty locale is the house language.
+
 ## Where styling is and is not used today
 
 - **Reminders and their rungs** (the raw pipe): the list form is a native
@@ -78,8 +150,39 @@ against. Named here rather than papered over with an untestable parser.
   out as typed, which is how emphasis on a verbatim message is his to decide
   without a deploy.
 - **Everything in a group**: fixed text, always WhatsApp by definition.
-- **Everything a model writes**: unstyled. `agents-template.md` says "No
-  markdown bold", which is a deliberate voice decision, not an oversight — and
-  reversing it belongs in that file, where the doctrine is at 39,229 of the
-  39,250 characters the gateway will inject, so a sentence added there has to
-  be paid for by deleting one.
+- **The morning digest is HYBRID since 2026-09-09** — the half that is the
+  same every morning is drawn by code (`domain/digest-block.js`), handed to
+  the model finished on `get_my_digest`'s result, and relayed character for
+  character; the half that changes is the one sentence around it, which is
+  what a model is actually for. The block reads the timezone and the locale
+  off the person and the styling off their channel, so the layout cannot
+  drift between two mornings and a task cannot go missing on the way through.
+  A schedule CARD replaces the block above `digest_card_min_items` — never
+  both, which would be the same morning twice. Eval
+  `digest-block-relayed-untouched` is what checks the split survives contact
+  with a real reply.
+- **Everything a model writes**: styled where a RESULT says so, and nowhere
+  else. `message-format.HINTS` holds the four sentences — list, numbered
+  choice, struck out, quote their words — in one place so five tools cannot
+  drift into five phrasings. They ride the tool result or the outbox
+  instruction, never a tool description: a description is injected every turn
+  for every user, a result costs tokens only on the turns it applies to.
+  Wired into `list_my_tasks`, `list_my_reminders`, `my_calendar_events` and
+  the digest (lists); `get_meeting_status` (numbering, and what left);
+  `snooze_task` and `tasks_auto_archived` (what left); `relayed_message`,
+  `connection_request`, `travel`, `live_update` and both meeting reasons
+  (quote). Each fires only where it has work — two items before a list is
+  worth laying out, two options before numbering means anything.
+- **The doctrine line changed**, and had to. `agents-template.md` said "No
+  markdown bold", and a result hint that contradicts an unconditional line of
+  doctrine is *outvoted*, not ignored — that is the `markPlaced` fault, which
+  cost two days. It now reads "*Bold* one thing at most, never a sentence;
+  other styling only where a result asks", which is 84 characters against the
+  18 it replaced and leaves 38 free of the gateway's 39,250.
+- **What no test can tell you**: whether the model complies. These are
+  instructions. `evals/scenarios.js` → `list-reads-as-a-list` is the only
+  thing that actually looks at a reply, and it checks both directions — three
+  tasks come back as three list lines, and emphasis stays at one span. A hint
+  the model enjoys is worse than one it ignores.
+
+Before 2026-09-09 everything a model wrote was unstyled.
