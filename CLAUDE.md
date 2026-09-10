@@ -771,6 +771,29 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   conversation holding the answer twice. **Verbatim or nothing** — a reply
   carrying a `MEDIA:` line is a gateway convention the raw pipe cannot honour,
   so it is counted on the heartbeat and left alone rather than half-sent.
+- **The model's own working-out is stopped in the GATEWAY, not by the
+  doctrine.** Yahav asked for a reminder at 13:00, got the 👍 and the right
+  reminder, and then read four paragraphs about himself in the third person
+  naming `due_at`, `remind_at` and `2026-09-10T10:00:00Z` (2026-09-10;
+  `incidents.md`, "The working-out arrived instead of the message"). Third time
+  in nine days, and the doctrine had already forbidden it in three sentences —
+  a safety property written as a prompt line is a request. **An outbound gate
+  exists and the note saying otherwise was wrong**: OpenClaw 2026.8.1 publishes
+  `reply_payload_sending` (Modify/gate, no `allowConversationAccess` needed), so
+  `gateway-plugin/olma-turn` registers it and asks `domain/reply-leak
+  .gateReply` — LOCALLY, no socket in the decision, brokerd told only when
+  something was found. Two tiers, because dropping text is destructive and
+  reporting is free: a frame marker, one of our own names off a CLOSED list, an
+  ISO instant or a model-only block name drops; every other snake_case
+  identifier is reported and delivered (it is also the shape of a word in
+  somebody's task title). The unit is the PARAGRAPH and the cut is everything up
+  to the last one that leaked — narration comes first, so notes above a Hebrew
+  answer lose the notes. The sentinel alone is a decision and never a leak; with
+  words it is stripped, because `unanswered` reads "בוצע NO_REPLY" as a real
+  reply. `main` is never gated — that is the raw pipe carrying the owner's
+  wording. **And it is inert until the gateway is restarted** (`systemctl --user
+  restart openclaw-gateway`; `deploy.sh` does not), which is what
+  `config_guard.checkReplyGateLive` reads off the plugin's registration stamp.
 
 ### Writing detectors and alarms
 
@@ -982,6 +1005,19 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   from the outside. `remember_fact` stays out beside `forget_fact` on purpose:
   a fact is usually captured in passing while the real answer is written, so
   its mark would be about the side-effect, not about what they asked.
+- **The hint follows the MARK, not the spawn.** `markFor` dedupes on message
+  AND state — rightly, a repeat mark is a whole CLI start-up that WhatsApp
+  would overwrite with the same emoji — so the SECOND done-tool of a turn
+  gets `null` from it, and the `markPlaced` hint used to be hung off that
+  same answer. Gali answered a repeating reminder, the model correctly called
+  `cancel_reminder` then `complete_task`, and the LAST result it read before
+  writing carried nothing at all: 👍 on her message and "בוצע 👍 שמתי שברכת"
+  under it (2026-09-10). `reactions.doneMarkStands` answers the other
+  question — is a 👍 standing on this message NOW — off the last state
+  ATTEMPTED per message, so a mark that could not be spawned is never claimed
+  and a later ⏰ means the answer is no. Third variant of one family: the mark
+  absent (the preference tools), the mark outvoted (an unconditional hint
+  beside it), the mark present and unannounced.
 - **A message that is only thanks is answered by a 🙏 and by nothing else.**
   Sixth reaction state; the hint (`turnHints.thanksOnly`) asks for `NO_REPLY`
   on the same argument as `markPlaced`. **The classification runs in the

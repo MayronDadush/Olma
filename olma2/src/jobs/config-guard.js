@@ -146,6 +146,47 @@ async function checkTurnContextCoverage(client, cfg) {
   return violations;
 }
 
+// Where the plugin overwrites what the RUNNING gateway registered.
+// `deploy.sh` excludes `run/` from its rsync, so this file survives a deploy
+// and keeps describing the process that is actually serving.
+const REGISTER_STAMP = '/opt/olma2/run/turn-context-plugin.registered';
+// The hook the reply gate rides on. A gateway registered before it existed is
+// shipped-but-inert — the code is on disk, the suite is green, and nothing
+// stands between a model's working-out and a phone.
+const GATE_HOOK = 'reply_payload_sending';
+
+// Twice now a handler has loaded, looked healthy, and done nothing: the
+// turn-open hook listening to an event WhatsApp never fires, and the
+// thanks-only classification live and inert until a restart. Plugin code loads
+// at gateway STARTUP and a deploy deliberately does not restart the gateway,
+// so this is the ordinary state of every plugin change for as long as nobody
+// runs `systemctl --user restart openclaw-gateway` — for the reply gate that
+// window is the one in which Yahav's message can happen again.
+//
+// A missing or unreadable stamp is NOT a thing in trouble: it is what a box
+// that has not restarted since the stamp was introduced looks like, and it is
+// reported on the heartbeat rather than filed. Dashboard row, never
+// BREAKS_USERS — nobody's tools are failing.
+function checkReplyGateLive({ registerStampPath, readFileSync = fs.readFileSync } = {}) {
+  const file = registerStampPath || REGISTER_STAMP;
+  let raw;
+  try { raw = String(readFileSync(file, 'utf8')); } catch (e) {
+    return { violations: [], skipped: `plugin registration unreadable (${e.code || e.message})` };
+  }
+  let rec = null;
+  try { rec = JSON.parse(raw.trim().split('\n').filter(Boolean).pop() || 'null'); } catch { rec = null; }
+  if (!rec || typeof rec !== 'object') return { violations: [], skipped: 'plugin registration unparseable' };
+  const hooks = Array.isArray(rec.hooks) ? rec.hooks.map(String) : [];
+  if (hooks.includes(GATE_HOOK)) return { violations: [], skipped: null };
+  return {
+    violations: [`the gateway is running an olma-turn plugin from before the reply gate `
+      + `(registered ${rec.at || 'at an unknown time'}, hooks: ${hooks.join(', ') || 'none'}) — `
+      + `the model's own working-out can reach a person's phone until the gateway is restarted `
+      + `(fix: systemctl --user restart openclaw-gateway)`],
+    skipped: null,
+  };
+}
+
 async function checkIdentityFiles(client) {
   const { rows } = await client.query(
     `SELECT id, phone, workspace_path, identity_token FROM users
@@ -1089,6 +1130,8 @@ async function run(client, { configPath, ...deps } = {}) {
   violations = violations.concat(strangers.violations);
   violations = violations.concat(await checkInfraAgentSessions(client, deps));
   violations = violations.concat(await checkLeakedTokens(client, deps));
+  const gate = checkReplyGateLive(deps);
+  violations = violations.concat(gate.violations);
   const filed = await fileViolations(client, violations);
   const closed = await closeResolved(client, violations);
   // Filing first, alerting second: the dashboard row is the durable record
@@ -1104,6 +1147,10 @@ async function run(client, { configPath, ...deps } = {}) {
     // this one reads a store owned by the gateway — the most likely thing in
     // the file to stop being readable after a version bump.
     ...(strangers.skipped ? { strangerCheck: strangers.skipped } : {}),
+    // Same rule: this one reads a file the gateway writes at startup, and a
+    // box that has not restarted since the stamp existed has none. Silence
+    // here would read exactly like "the gate is live".
+    ...(gate.skipped ? { replyGateCheck: gate.skipped } : {}),
     // Always present when it ran, so the doctrine's headroom is a number an
     // operator watches shrink rather than a thing they hear about once it is
     // already gone.
@@ -1124,5 +1171,6 @@ module.exports = {
   checkBootstrapBudget, bootstrapBudget,
   GATEWAY_DEFAULT_BOOTSTRAP_MAX_CHARS, BOOTSTRAP_WARN_MARGIN,
   checkLeakedTokens, fileViolations, closeResolved,
+  checkReplyGateLive, REGISTER_STAMP, GATE_HOOK,
   alertCritical, breaksUsers, leaksCredential, ALERTED_FLAG, LEAK_FLAG,
 };

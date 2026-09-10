@@ -170,6 +170,17 @@ function pickWedged(events, minAgeMs = DEFAULT_MIN_AGE_MS, now = null) {
 //
 // Parsed here, beside the other reader of this file; acted on in
 // jobs/unanswered.js, which owns the repair and its cooldown.
+//
+// One cause is not a fault and must never reach the repair: OUR OWN reply
+// gate. The gateway logs this same line when a payload is cancelled or emptied
+// by a hook, naming it in `cause=` — so from 2026-09-10 a message Olma
+// deliberately did not send (`domain/reply-leak.js`, the model's working-out)
+// looks exactly like a message the gateway swallowed. Left in, the repair
+// would run a model turn to answer a message that was already answered
+// correctly, which is this file's own warning about a repair firing on a
+// belief that is already wrong. The cancel is recorded as `reply.gated`; that
+// is where it is read.
+const GATE_SUPPRESSED = /reply_payload_sending_hook/;
 function parseDroppedTurns(raw) {
   const out = [];
   for (const line of String(raw || '').split('\n')) {
@@ -178,6 +189,7 @@ function parseDroppedTurns(raw) {
     try { o = JSON.parse(line); } catch { continue; }
     const msg = String(o.message || '');
     if (!msg.includes('no queued reply payloads')) continue;
+    if (GATE_SUPPRESSED.test(msg)) continue;
     const key = FIELD('sessionKey', msg);
     const messageId = FIELD('messageId', msg);
     const at = Date.parse(o.time || '');
