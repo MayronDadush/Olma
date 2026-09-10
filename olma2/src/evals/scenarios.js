@@ -382,15 +382,16 @@ const SCENARIOS = [
     },
     rubric: 'למשתמש שלוש משימות פתוחות והוא ביקש סדר. בדוק: (1) שלושתן מופיעות, כרשימה. (2) הרשימה לא נאמרת פעמיים — לא רשימה ואז גם פסקה שמסכמת אותה. (3) מסביב לרשימה יש לכל היותר משפט או שניים. (4) לכל היותר שאלה אחת בסוף.',
   },
-  // Styling is an INSTRUCTION, not code: the hints ride the tool results and
-  // the doctrine permits one bold thing, but nothing forces the model's hand.
-  // The only way to know whether any of it reaches a person is to look at a
-  // reply. Both halves are checked, because the risk runs both ways — a hint
-  // that is ignored buys nothing, and a hint the model ENJOYS turns a message
-  // into a newsletter, which is worse than the paragraph it replaced.
+  // The task list is DRAWN since 2026-09-10 (domain/list-block.js), and this
+  // scenario changed with it. What it used to hold open was whether an
+  // instruction reached a reply; what it holds open now is the other side of
+  // the same risk — a block handed over finished can still be retyped,
+  // reordered or summarised on the way out, and nothing in the code can stop
+  // that. So the check is per TITLE rather than a count of bullets: three
+  // lines is not evidence that these three lines survived.
   {
     id: 'list-reads-as-a-list',
-    title: 'רשימה נקראת כרשימה — שורות, לא משפט עם פסיקים',
+    title: 'הרשימה שהקוד צייר מגיעה שורה־שורה, בלי שכתוב',
     seed: async (client, userId) => {
       await tasks.addTask(client, userId, { title: 'לשלם ארנונה', source: 'chat' });
       await tasks.addTask(client, userId, { title: 'לקבוע תור לרופא שיניים', source: 'chat' });
@@ -399,19 +400,29 @@ const SCENARIOS = [
     turns: ['מה פתוח לי?'],
     hard: async (client, ctx) => {
       const reply = ctx.turns[0].reply || '';
-      const bullets = reply.split('\n').filter((l) => /^\s*[-*]\s+\S/.test(l)).length;
+      const lines = reply.split('\n').filter((l) => /^\s*[-*]\s+\S/.test(l));
+      const onItsOwnLine = (t) => lines.some((l) => l.includes(t));
+      const titles = ['לשלם ארנונה', 'לקבוע תור לרופא שיניים', 'להחזיר את הטופס לגן'];
+      const missing = titles.filter((t) => !onItsOwnLine(t));
       const bolds = (reply.match(/\*[^*\n]+\*/g) || []).length;
       return [
         ...await turnOpening(client, ctx),
-        { name: 'three open tasks came back as list lines, not one sentence',
-          pass: bullets >= 3, detail: `${bullets} list lines in: ${reply.slice(0, 200)}` },
+        { name: 'every drawn line reached the reply as its own list line',
+          pass: missing.length === 0,
+          detail: missing.length ? `missing: ${missing.join(' | ')} — in: ${reply.slice(0, 300)}`
+            : `${lines.length} list lines` },
         // The ceiling, in the same scenario that grants the permission: one
         // heading over the group is the most this reply can honestly need.
         { name: 'emphasis stayed at one thing, not sprayed over the list',
           pass: bolds <= 1, detail: `${bolds} bold spans in: ${reply.slice(0, 200)}` },
+        // And the block is the message, not a draft of it: a reply that says
+        // the list and then summarises the list is the newsletter this whole
+        // change exists not to become.
+        { name: 'the model added a sentence, not a second copy of the list',
+          pass: reply.length < 900, detail: `${reply.length} chars` },
       ];
     },
-    rubric: 'המשתמש שאל מה פתוח לו, ויש לו שלוש משימות. בדוק: (1) שלושתן מופיעות. (2) הן נקראות כרשימה ולא כמשפט עם פסיקים. (3) העיצוב משרת קריאוּת ולא הופך את ההודעה לעלון — לכל היותר כותרת מודגשת אחת, בלי הדגשה על כל פריט. (4) לכל היותר שאלה אחת בסוף.',
+    rubric: 'המשתמש שאל מה פתוח לו, ויש לו שלוש משימות. הרשימה עצמה מגיעה למודל מצוירת מראש. בדוק: (1) שלושתן מופיעות, כל אחת בשורה משלה. (2) הרשימה לא נאמרת פעמיים — לא רשימה ואז גם פסקה שמסכמת אותה. (3) לכל היותר כותרת מודגשת אחת, בלי הדגשה על כל פריט. (4) לכל היותר שאלה אחת בסוף.',
   },
   {
     // 2026-09-05, a real user: she used WhatsApp reply on one older message and

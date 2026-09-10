@@ -267,6 +267,15 @@ const HINTS = Object.freeze({
   quoteTheirWords: 'Their words go on a line of their own as a WhatsApp block quote — "> " at '
     + 'the start of every line of it — so the person can see what is theirs and what is yours. '
     + 'Quote the words, never the fence markers around them.',
+  // Not a permission like the four above — the opposite. Where the list is
+  // DRAWN in code (domain/digest-block.js, domain/list-block.js) there is no
+  // styling left to grant, and the only thing left to say is hands off. One
+  // statement of that contract, because three tools now hand a block over and
+  // three phrasings of "relay this exactly" is how one of them drifts into
+  // "summarise this". Each caller appends the one sentence that is ITS own.
+  relayBlock: 'The `block` above is that list, already laid out and already in their language. '
+    + 'Put it in your reply EXACTLY as it is — same lines, same order, same characters — and do '
+    + 'NOT rewrite it, reorder it, summarise it or repeat any of it as prose.',
 });
 
 // ---- the reference message --------------------------------------------------

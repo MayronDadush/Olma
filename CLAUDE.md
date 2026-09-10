@@ -286,6 +286,23 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   **`null` (nothing due) and an empty block are different answers**: a morning
   with nothing on it is a real morning and the sentence about it is the
   model's, never an empty heading.
+- **…and since 2026-09-10 the two lists a person ASKS for are drawn the same
+  way** (`domain/list-block.js`, `list_my_tasks` and `list_my_reminders`).
+  They share the digest's line renderer — `digest-block.contextFor/line/
+  whenLabel`, exported for exactly that — so a day is named the same way in
+  every message Olma sends and there is one answer to "what is today". Two
+  things in them are not layout: the calendar/plate split was a paragraph
+  asking the model to do what `tasks.kind` exists to enforce, and
+  `listReminders` returned rows with **no title**, so saying what a reminder
+  was about meant re-fetching the tasks (the hour now renders in THEIR zone
+  beside the instant, as `listTasks` already did). **`chasing` is never
+  drawn** — the rule that it is not an hour anybody may say out loud becomes a
+  shape instead of a sentence. Below `MIN_LINES` (2) there is no block and the
+  old instruction hints stand, and a block NEVER travels beside `HINTS.list`
+  or the `kinds` paragraph: an unconditional "lay these out" on a result that
+  arrives laid out is the `markPlaced` fault, asking for work already done.
+  `HINTS.relayBlock` states the relay contract once for all three tools that
+  hand a block over; each appends only its own sentence.
 - **The delivery gate is the chokepoint and a paused user has no exceptions** —
   not reminders, not urgent, not another user's fan-out.
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where

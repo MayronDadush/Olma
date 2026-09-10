@@ -53,8 +53,17 @@ const WORDS = {
 // The same two-way rule `proactive-text.localizedKey` applies to a reminder
 // rung: `en` (any variant) gets English, everything else gets the Hebrew that
 // almost everybody here reads. Read at render off the users row.
+//
+// The KEY is exported and the table is not private, because the on-demand
+// lists (domain/list-block.js) need their own headings in the same two
+// languages and must not decide "which language" a second time — one rule
+// written twice is the shape this file already avoided once for the timezone.
+function localeKey(locale) {
+  return String(locale || '').trim().toLowerCase().startsWith('en') ? 'en' : 'he';
+}
+
 function wordsFor(locale) {
-  return String(locale || '').trim().toLowerCase().startsWith('en') ? WORDS.en : WORDS.he;
+  return WORDS[localeKey(locale)];
 }
 
 // Whole-day or timed. A task saved for a DAY lands on local midnight in their
@@ -82,13 +91,16 @@ function daysAway(parts, todayParts) {
 // today says only the hour, tomorrow names itself, this week is a weekday, and
 // anything further off is a date. Nothing here is a sentence, so nothing here
 // has a gender.
-function whenLabel(dueAt, { tz, w, todayParts }) {
+// `alwaysTime` is for a REMINDER, which is an hour by definition: a task saved
+// for a day lands on local midnight and says only its day, but a reminder
+// armed for 00:15 has to say 00:15 or the one fact it carries is gone.
+function whenLabel(dueAt, { tz, w, todayParts }, { alwaysTime } = {}) {
   if (!dueAt) return '';
   const at = new Date(dueAt);
   if (Number.isNaN(at.getTime())) return '';
   const parts = dt.partsInZone(tz, at);
   const away = daysAway(parts, todayParts);
-  const time = isWholeDay(parts) ? '' : hhmm(parts);
+  const time = !alwaysTime && isWholeDay(parts) ? '' : hhmm(parts);
 
   let day = '';
   if (away === 0) day = time ? '' : w.today;
@@ -97,6 +109,17 @@ function whenLabel(dueAt, { tz, w, todayParts }) {
   else day = w.date(parts);
 
   return [day, time].filter(Boolean).join(' ');
+}
+
+// Their zone, their words, and what "today" is where they are — everything a
+// line needs and the only thing a caller has to build. Exported for the same
+// reason `line` is: the on-demand lists draw the SAME line, and two builders
+// of this object is two answers to "what is today".
+//
+// `now` is injectable so a test can pin the day it is describing.
+function contextFor({ locale, timezone, now } = {}) {
+  const tz = timezone || 'UTC';
+  return { tz, w: wordsFor(locale), todayParts: dt.partsInZone(tz, now ? new Date(now) : new Date()) };
 }
 
 // A range only when the END is on the same day and later — a shift that runs
@@ -135,9 +158,8 @@ function line(row, ctx, withRange) {
 // other caller passes nothing and gets the clock.
 function renderDigestBlock(data, { locale, timezone, channelType, now } = {}) {
   const f = format.formatterFor(channelType);
-  const w = wordsFor(locale);
-  const tz = timezone || 'UTC';
-  const ctx = { tz, w, todayParts: dt.partsInZone(tz, now ? new Date(now) : new Date()) };
+  const ctx = contextFor({ locale, timezone, now });
+  const w = ctx.w;
 
   const events = (Array.isArray(data && data.events) ? data.events : [])
     .map((r) => line(r, ctx, true)).filter(Boolean);
@@ -157,4 +179,7 @@ function renderDigestBlock(data, { locale, timezone, channelType, now } = {}) {
   return sections.join('\n\n');
 }
 
-module.exports = { renderDigestBlock, wordsFor, whenLabel, NAMED_DAY_HORIZON };
+module.exports = {
+  renderDigestBlock, wordsFor, localeKey, whenLabel, contextFor, line, rangeLabel,
+  WORDS, NAMED_DAY_HORIZON,
+};
