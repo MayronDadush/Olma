@@ -898,6 +898,23 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   different stories and is never reported. It files an `issues` row keyed on a
   deterministic title carrying the message timestamp, so re-reading the
   overlapping window cannot file twice.
+  **Its second half asks the same question of the TASK, and needs no
+  transcript** (`domain/stated-hour.js`): the hour written in the title against
+  the hour the row will actually fire at, in their zone. `hasOffset` refuses a
+  due_at with NO offset on every write path and cannot refuse a well-formed
+  offset that is simply wrong — Maya's "משמרת עבודה … 16:00-22:00" was stored as
+  16:00Z, three hours from where she lives — which is the semantic cross-check
+  this file has asked for since "Every time crossing a tool boundary". FIRST
+  clock only (a span names its start) and a full HH:MM only ("ב-16" is a day of
+  the month more often than an hour); measured against all 93 dated tasks on the
+  box, 11 carry a clock, 7 agree, and the 4 that disagree are the 4 known
+  faults. **Only rows that can still reach somebody** — open, unarchived, still
+  ahead — so a box whose faults are all historical files nothing, and the
+  founding cases live in the test. **Both halves are blind to a wrong
+  `users.timezone`, because both read it**: the stored instant renders as the
+  hour the title claims and reads as correct, and it only becomes visible once
+  somebody fixes the zone. That class is closed at the write instead —
+  `setTimezone` → `domain/timezone-repair.js`.
 - **The suite runs again on a schedule, at four hours of the day**
   (`.github/workflows/olma2-clock-drift.yml`) — no deploy job, its own
   concurrency group so it can never displace a merge's queued deploy. A red

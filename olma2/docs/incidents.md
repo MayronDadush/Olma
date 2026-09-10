@@ -157,6 +157,7 @@ never trust a dated narrative for something you are about to act on.
 - [The same thing, saved twice (fixed 2026-09-08)](#the-same-thing-saved-twice-fixed-2026-09-08)
 - [A time in the title and no reminder (fixed 2026-09-09)](#a-time-in-the-title-and-no-reminder-fixed-2026-09-09)
 - [A silence read as a delivery fault (fixed 2026-09-09)](#a-silence-read-as-a-delivery-fault-fixed-2026-09-09)
+- [The hour in the title nobody compared (fixed 2026-09-11)](#the-hour-in-the-title-nobody-compared-fixed-2026-09-11)
 - [A lost reply is re-sent, not re-answered (fixed 2026-09-09)](#a-lost-reply-is-re-sent-not-re-answered-fixed-2026-09-09)
 - [The working-out arrived instead of the message (fixed 2026-09-10)](#the-working-out-arrived-instead-of-the-message-fixed-2026-09-10)
 - ["הנה, רשמתי", about a meeting (2026-09-07)](#הנה-רשמתי-about-a-meeting-2026-09-07)
@@ -5683,6 +5684,84 @@ And a repair job is the most dangerous kind of job there is. Every other sweep
 acts on a state it observed. This one acts on a BELIEF that something failed,
 and when the belief is wrong it manufactures the exact disturbance it exists to
 prevent. Nothing was broken in Yahav's conversation until the repair arrived.
+
+### The hour in the title nobody compared (fixed 2026-09-11)
+
+Task 247, Sarah: title "Brunch with a friend — Tuesday Sep 1 at 10:00",
+`due_at` 07:00 her time. It looked like a model that could not read a clock. It
+was not.
+
+| | |
+|---|---|
+| task 247 created | 2026-08-31 **19:07:33** |
+| her zone corrected New_York → Los_Angeles | 2026-08-31 **19:45:38** |
+
+Thirty-eight minutes. The model resolved "10:00" correctly *for the zone on
+file at that instant* — 10:00 EDT is 14:00Z — and correcting the zone is what
+made the title and the row disagree. The +1 dialling code had bought her New
+York while she was in Los Angeles, which `incidents.md` already records.
+
+It reached her. Reminder 79 climbed three rungs: **06:00** on Sep 1, four hours
+early, in a message whose own text said "at 10:00" — a notification that
+contradicted itself; **09:01**, asking whether it was done, fifty-nine minutes
+before it started; and **06:00 the next morning**.
+
+Its twin, task 242, was created three minutes earlier in the same window and
+WAS repaired by hand on 2026-09-02, with an audit row naming the cause in
+words. 247 has no such row — not a decision to skip it, no record at all. Its
+date had passed by the time anyone looked.
+
+**Half of this was already fixed and nobody re-checked.**
+`domain/timezone-repair.js` shipped 2026-09-03, three days after Sarah's
+correction, and `setTimezone` gates it on `wasGuessed` — exactly her case. It
+would have moved task 247 and reminder 79 automatically. The proposal to build
+it was a proposal to rebuild something that already worked, which is the
+failure shape this file's own "Known gaps" section warns about.
+
+**The half that was NOT fixed.** `promise_watch` was asked why it missed this.
+It shipped 2026-09-06, six days later, so it could not have. The real answer is
+worse: it would be blind anyway. `checkPromises` reads `users.timezone` on both
+sides — to parse the hour they named and to render the armed instant back to a
+wall clock — so a wrong zone cancels out. Run against the real rows:
+
+```
+America/New_York       silent — reads as correct
+America/Los_Angeles    REPORTS: armed 07:00
+```
+
+Same message, same instant, same detector. It regains its sight only after
+somebody has already fixed the zone by hand, which is after the reminders have
+fired. A check that reads the same wrong input as the thing it is checking
+cannot see that the input is wrong.
+
+**So the fix is for the other class.** A scan of every dated task on the box
+found four whose title disagrees with the hour stored. One is Sarah's. The
+other three are Maya's, from a brain dump on 2026-08-18, and they are a
+different fault entirely — off by exactly +3, `due_at` written as `16:00Z` for
+a title saying 16:00, with `Asia/Jerusalem` at UTC+3. A bare local time read as
+UTC, under a *correct* zone.
+
+`hasOffset` cannot catch that. Every task write path calls it and it refuses a
+missing offset; `16:00:00+00` has one, and it is simply wrong. CLAUDE.md has
+said from the start that "a well-formed-but-wrong time still needs a semantic
+cross-check", and nothing implemented it — while `titleWithoutStatedTime`
+(2026-09-09) had been computing exactly that comparison and throwing the answer
+away, because it only needed to know whether it was safe to delete the words.
+
+`domain/stated-hour.js` keeps the answer. Measured against all 93 dated tasks
+before shipping: 11 titles carry a clock, 7 agree, and the 4 that disagree are
+the 4 known faults — no false positives. FIRST clock only, because a span
+("16:00-22:00", "בין 14:00 ל-16:00") names its start and `due_at` is the start;
+a full HH:MM only, because "ב-16" is a day of the month more often than an hour
+and a detector that fires on ordinary input is worse than none. It runs as
+`promise_watch`'s second pass and reads no transcript at all, so unlike the
+first half it can afford to look at everybody every day.
+
+It reports only rows that can still reach somebody — open, unarchived, still
+ahead. All four real faults are archived, done or past, so a live box files
+nothing on the day this shipped, and the founding cases are held open in
+`tests/reminder-promise.test.js` instead. That is the intended state: the
+detector exists for the next one, not for the four that already happened.
 
 ### A lost reply is re-sent, not re-answered (fixed 2026-09-09)
 

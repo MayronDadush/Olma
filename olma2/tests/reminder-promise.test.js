@@ -296,3 +296,88 @@ test('the section hint names as many stages as the job actually runs', () => {
   // the gap that let Miron's 12:29 sit unseen for six hours.
   assert.match(s.hint, /promise_watch/);
 });
+
+// ── The hour in the title, against the hour that will fire ───────────────────
+// The other half of "is the moment we stored the moment they meant", asked of
+// the task instead of the reminder. Maya's three work shifts are the founding
+// case: a perfectly well-formed instant three hours from what she said, which
+// `hasOffset` cannot refuse and nothing else was looking at.
+test('a title naming an hour the row does not carry is filed once, and only while it can still fire', async () => {
+  const now = Date.now();
+  const u = await makeUser(db.pool, '+972526269831', { firstName: 'מאיה', timezone: 'Asia/Jerusalem' });
+  await db.pool.query(`UPDATE users SET agent_id = 'u-' || id WHERE id = $1`, [u.id]);
+
+  // Her real row, replayed: the title says 16:00 and the instant is 16:00Z,
+  // which is 19:00 in Jerusalem. Dated ahead so it is still actionable.
+  const day = new Date(now + 3 * 24 * 3600_000).toISOString().slice(0, 10);
+  const bad = await db.pool.query(
+    `INSERT INTO tasks (owner_id, title, source, due_at)
+     VALUES ($1, $2, 'brain_dump', $3::timestamptz) RETURNING id`,
+    [u.id, 'משמרת עבודה - יום ראשון 16:00-22:00', `${day}T16:00:00+00:00`]);
+  const badId = Number(bad.rows[0].id);
+
+  // Beside it, the same shape written CORRECTLY — 16:00 Jerusalem. Nothing to
+  // say about this one, and a rule that reported it would report every task.
+  await db.pool.query(
+    `INSERT INTO tasks (owner_id, title, source, due_at)
+     VALUES ($1, $2, 'brain_dump', $3::timestamptz)`,
+    [u.id, 'משמרת עבודה - יום שני 16:00-22:00', `${day}T16:00:00+03:00`]);
+
+  const deps = { now, readMessages: () => [] };
+  const first = await withTx(db.pool, (c) => job.sweepPromiseWatch(c, deps));
+  assert.equal(first.statedHour, 1, 'the wrong one, and only the wrong one');
+  assert.equal(first.filed, 1);
+
+  const { rows } = await db.pool.query(
+    `SELECT title, detail, related_entity_type, related_entity_id FROM issues WHERE reporter_id = $1`, [u.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].related_entity_type, 'task');
+  assert.equal(Number(rows[0].related_entity_id), badId);
+  assert.match(rows[0].title, /בכותרת 16:00/);
+  assert.match(rows[0].title, /נשמר 19:00/);
+
+  // Read again tomorrow: still found, never filed twice.
+  const second = await withTx(db.pool, (c) => job.sweepPromiseWatch(c, deps));
+  assert.equal(second.statedHour, 1);
+  assert.equal(second.filed, 0);
+
+  // Archived — it can no longer reach her, so it drops out of the pass. This
+  // is why a box whose only faults are historical files nothing here.
+  await db.pool.query(`UPDATE tasks SET archived_at = now() WHERE id = $1`, [badId]);
+  const third = await withTx(db.pool, (c) => job.sweepPromiseWatch(c, deps));
+  assert.equal(third.statedHour, 0);
+});
+
+test('statedHourMismatch: measured against the shapes that actually exist', () => {
+  const { statedHourMismatch, statedHour } = require('../src/domain/stated-hour');
+
+  // The two real faults.
+  assert.deepEqual(
+    statedHourMismatch({ title: 'משמרת עבודה - יום ראשון 16:00-22:00', dueLocal: '19:00' }),
+    { stated: '16:00', stored: '19:00' });
+  assert.deepEqual(
+    statedHourMismatch({ title: 'Brunch with a friend — Tuesday Sep 1 at 10:00', dueLocal: '07:00' }),
+    { stated: '10:00', stored: '07:00' });
+
+  // A span names its START, and due_at is the start. Reading every clock in
+  // the title would report this — the reason only the first one is taken.
+  assert.equal(statedHourMismatch({ title: 'משמרת 16:00-22:00', dueLocal: '16:00' }), null);
+
+  // A bare hour is not a clock. "ב-16" is a day of the month far more often
+  // than an hour, and a detector that fires on ordinary input is worse than
+  // none — this is the reading that was REJECTED, kept with the row shape
+  // that killed it.
+  assert.equal(statedHour('פגישה ב-16 לחודש'), null);
+  assert.equal(statedHour('לשלם ארנונה ב-9'), null);
+
+  // Bounded on both sides, so neither a date fragment nor a score can pass.
+  assert.equal(statedHour('התוצאה הייתה 12:345'), null);
+  assert.equal(statedHour('גרסה 1:2:3'), null);
+  // ...and 24:00 / 61 minutes are not times.
+  assert.equal(statedHour('נפגשים ב-24:00'), null);
+  assert.equal(statedHour('נפגשים ב-10:61'), null);
+
+  // Nothing to compare against is never a fault.
+  assert.equal(statedHourMismatch({ title: 'לקנות חלב', dueLocal: '08:00' }), null);
+  assert.equal(statedHourMismatch({ title: 'פגישה 14:00', dueLocal: null }), null);
+});
