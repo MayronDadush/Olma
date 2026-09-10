@@ -501,29 +501,6 @@ function abortSessionLane({ agentId, key }) {
   ]);
 }
 
-// One silent agent turn: the agent runs tools and edits its own workspace
-// files, but WITHOUT --deliver nothing is sent to the user. Used by the weekly
-// memory consolidation — housekeeping the person never sees. No --to/--channel
-// here on purpose: there is no delivery to target.
-//
-// sessionKey is optional and additive. Without one the gateway files every
-// silent turn into the same default session for that agent, so a job that runs
-// often keeps re-sending its own past prompts as context — measured on the
-// fact-extraction job's first two runs, 14k chars then 24k, growing every time.
-// A caller that wants a clean room each run passes its own key.
-// `userId` is optional and exists only to mark the turn as ours. A silent turn
-// sends nothing, but the agent inside it still calls tools, and a tool call is
-// all it takes for brokerd's recovery to open a turn and write the inbound
-// record (see domain/turn.js). Pass it whenever the caller knows whose agent
-// this is; without it the turn is unmarked, which is the behaviour that was
-// wrong everywhere else.
-function runSilentAgentTurn({ agentId, message, sessionKey, userId }) {
-  const args = ['agent', '--agent', agentId, '--message', message];
-  if (sessionKey) args.push('--session-key', sessionKey);
-  if (userId == null) return runOpenclaw(args);
-  return selfInitiated.around(userId, () => runOpenclaw(args));
-}
-
 // deliver(row) for the outbox worker. Needs a fresh client only for the
 // channel lookup, so it takes the pool.
 function makeDeliverer(pool) {
@@ -599,5 +576,5 @@ function makeDeliverer(pool) {
 
 module.exports = {
   makeDeliverer, instructionFor, runOpenclaw, runOpenclawJson, sendRawMessage,
-  abortSessionLane, runSilentAgentTurn,
+  abortSessionLane,
 };

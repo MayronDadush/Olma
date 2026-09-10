@@ -1540,7 +1540,7 @@ configured. Now live in every workspace:
 
 - **`USER.md`** — tiny identity card, injected every turn.
 - **`memory/YYYY-MM-DD.md`** — raw daily notes, auto-injected for the last 2 days on session start only (`agents.defaults.contextInjection: "continuation-skip"` — full bootstrap files no longer re-inject on every turn within a session, saving ~4-5k tokens/turn).
-- **`MEMORY.md`** — curated long-term summary, folded from daily notes by a weekly root-crontab sweep (`memory-consolidation-sweep.js`, Sunday 03:00 — deliberately not `openclaw cron add`, see gotcha above).
+- **`MEMORY.md`** — curated long-term summary, folded from daily notes weekly in each person's own small hours by `jobs/memory-consolidation.js` (v1's root crontab was left behind by the cutover). **Since 2026-09-10 it is a direct model call and the SERVER writes the file** — the job reads the week's notes and the current file in Node, and the model only returns text. That is what makes the phone-number rule below enforceable: `usableMemory` refuses an answer carrying one, and a refused week is retried, never half-written. `{"changed": false}` is a real answer and still stamps the audit row, because that row is the schedule.
 - Deliberately no embedding key / no `active-memory` plugin — `memory_search`/`memory_get` use free keyword (FTS5/BM25) search, on-demand only, to keep steady-state cost near zero.
 - **Contact/phone-number facts never belong in memory files** — that's what `connections` + `set_contact_label` are for (structured + tool-backed, not prose the model might mis-recall).
 

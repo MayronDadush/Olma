@@ -84,7 +84,6 @@ function jobs({ pool }) {
   // Weekly per user, but ticked hourly: "the small hours" is only meaningful
   // in each person's own timezone, so the job decides who is due rather than
   // the interval deciding for it.
-  const { runSilentAgentTurn } = require('../channels/openclaw');
   // Deep memory: read a finished conversation and write down what it taught
   // us. Ticked every 10 minutes rather than on the chapter boundary itself —
   // there is no event for "they stopped replying", so the job asks who has
@@ -291,7 +290,7 @@ const deployDrift = require('./deploy-drift');
     { name: 'boost_reconcile', run: () => withTx(pool, (c) =>
       boostJob.run(c, { configPath: OPENCLAW_CONFIG() })) },
     { name: 'memory_consolidation', run: () => withTx(pool, (c) =>
-      memoryConsolidation.sweepMemoryConsolidation(c, { runAgent: runSilentAgentTurn })) },
+      memoryConsolidation.sweepMemoryConsolidation(c, {})) },
     // Thinks over a direct model call (adapters/llm.js), not an agent turn —
     // no runAgent dep; the job's default is the real adapter.
     { name: 'fact_extraction', run: async () => {
