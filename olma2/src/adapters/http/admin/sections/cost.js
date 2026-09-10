@@ -264,15 +264,28 @@ async function renderCost(client) {
   const v = voice.rows[0];
   const vMinutes = Number(v.seconds) / 60;
   const vEst = vMinutes * (EST_STT_PER_MIN + EST_TTS_PER_MIN + EST_LLM_PER_MIN);
+  // The dashboard's own lifetime-2-calls quota (domain/voice.js) — how many
+  // people have ever tried the button, and how many hit both attempts and
+  // asked for more. Lifetime counts on `users`, not a monthly window: the
+  // quota itself never resets, so a month boundary would answer a different
+  // question than the one this number is for.
+  const quota = await client.query(
+    `SELECT count(*) FILTER (WHERE voice_call_attempts_used > 0) AS tried,
+            count(*) FILTER (WHERE voice_more_requested_at IS NOT NULL) AS asked_more
+     FROM users`);
+  const q = quota.rows[0];
   const voiceHtml = `<h4>שיחות קול</h4>
     <div class="stats">
       <div class="stat"><div class="num">${Number(v.calls)}</div><div class="lbl">שיחות החודש</div></div>
       <div class="stat"><div class="num">${vMinutes.toFixed(1)}</div><div class="lbl">דקות</div></div>
       <div class="stat"><div class="num">${money(Number(v.twilio), 3)}</div><div class="lbl">Twilio (מדוד)</div></div>
       <div class="stat"><div class="num">≈${money(vEst, 3)}</div><div class="lbl">STT+TTS+מודל (הערכה)</div></div>
+      <div class="stat"><div class="num">${Number(q.tried)}</div><div class="lbl">ניסו שיחה מהדשבורד</div></div>
+      <div class="stat"><div class="num">${Number(q.asked_more)}</div><div class="lbl">ביקשו עוד שיחות</div></div>
     </div>
     <p class="dim small">Twilio לפי המחיר שהוא עצמו מדווח לכל שיחה${Number(v.unsettled) ? ` (${Number(v.unsettled)} שיחות עוד לא תומחרו אצלו — יתעדכן)` : ''};
-    ל-Deepgram/Cartesia/מודל אין חיוב פר-שיחה, לכן הערכה לפי דקה מדודה: ‎$${EST_STT_PER_MIN}+$${EST_TTS_PER_MIN}+$${EST_LLM_PER_MIN} לדקה.</p>`;
+    ל-Deepgram/Cartesia/מודל אין חיוב פר-שיחה, לכן הערכה לפי דקה מדודה: ‎$${EST_STT_PER_MIN}+$${EST_TTS_PER_MIN}+$${EST_LLM_PER_MIN} לדקה.
+    שני המספרים האחרונים הם מצטברים לכל החיים (מכסת 2 השיחות מהדשבורד), לא לפי חודש.</p>`;
 
   if (!days.rows.length) return infraHtml + mediaHtml + voiceHtml + '<p class="dim">עדיין אין נתוני עלות למשתמשים — החישוב רץ כל שעה.</p>';
   const usersTotal = top.rows.reduce((s, r) => s + Number(r.cost), 0);
