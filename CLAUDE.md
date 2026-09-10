@@ -966,6 +966,12 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   reads every turn.
 - **Validate any `back` parameter through `safeBack()`**, or the admin becomes
   an open redirect.
+- **A `SECTIONS` renderer is called `render(client, csrf, cachedGateway,
+  { configPath })` — four positional arguments — so nothing may be appended to
+  one of those signatures.** A clock added in position three received the
+  gateway object, `Intl` threw on it, and the WHOLE admin page 500'd over one
+  user's digest hour (`incidents.md`, "The three tables nobody could merge").
+  Inject into the inner function the section calls instead.
 - **A truncated list must say it is truncated, and no total may be summed from
   the truncated copy.** The per-user cost table was a silent top-10 with 22
   people spending — and `usersTotal`, the month headline and the Anthropic

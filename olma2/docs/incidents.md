@@ -3427,8 +3427,16 @@ for unanswerable without merging them by hand. The digest was the worst of
 the three: a standing setting, never a moment, so "what arrives next" could
 not even be read off it.
 
-They are one list ordered by arrival now, ten rows, with the three-way split
-moved into a "קשור ל" column. Two things it must keep doing:
+Asked what he actually uses the page for, the owner said **reviewing the
+product** — checking that it behaves for each person — across all users at
+once, forward-looking only, with no automatic flagging of what looks wrong.
+That answer decided the shape: one builder (`planFor`) read by both the
+cross-user screen and one person's page, so two readers cannot come to two
+different beliefs about what is coming; grouped by the person who will read
+it, because a duplicate is only obvious beside its twin; and no opinions
+rendered, only facts.
+
+Four things it must keep doing:
 
 - **A reminder mid-ladder is IN the list.** `attempts = 0` answers "what
   would still fire" and not "what is still going to reach them" — the
@@ -3437,14 +3445,41 @@ moved into a "קשור ל" column. Two things it must keep doing:
   which returns both halves, rather than a hand-copied `WHERE`.
 - **…and its hour is not invented.** The next rung is due a gap after the
   previous one was DELIVERED, so there is no moment to print; the row says
-  "אחרי שהשלב הקודם נמסר" and sorts last. A guessed hour said out loud is
-  the fault this whole area keeps producing.
+  "אחרי שהשלב הקודם נמסר" and sorts last. Its SENTENCE is not a guess, and
+  it is the half worth reading before it goes out.
+- **The text is shown wherever there IS a text.** Most rows carry an
+  instruction a model words at send time and stay subject lines, but a
+  reminder and a re-sent lost reply ride the raw pipe with no model in the
+  path. `proactive-text.rawPipeTextFor` — the deliverer's own decision
+  point, not a copy of it — returns exactly the string the pipe will carry,
+  and a ✓ marks the rows that make that claim. Reviewing the product means
+  reading what will arrive, not a summary of what it is about.
+- **Reminders that arrive as one message are one row.** The worker coalesces
+  siblings at delivery, so three reminders at 12:00 are one WhatsApp message
+  with three lines; three rows would misreport both the count and the
+  wording (each would claim the single-reminder template). The batch renders
+  through the same `renderReminderText` the worker uses. The grouping key is
+  the worker's rung template within a MINUTE rather than within a tick — the
+  one approximation available to a page with no tick, and it can only ever
+  show as two what will arrive as one, never the reverse.
 
 The digest row resolves to a real next instant in the person's own zone, and
 only for someone `sweepDigests` would actually visit — an inactive, paused,
 eval or not-yet-onboarded person is promised no digest, because printing an
 hour for a message that is never coming is the same lie in the other
 direction.
+
+**And the fault found while building it, which is the reusable part.** A
+`SECTIONS` entry is rendered as `s.render(client, csrf, cachedGateway,
+{ configPath })` — four positional arguments. A clock added as the third
+parameter of `renderPlanned` therefore received the cached gateway object,
+`Intl` threw `RangeError: Invalid time value` on it, and **every section of
+the admin page 500'd over one user's digest hour**. Twenty-two tests went red
+at once, which is the only reason it was not shipped. Two things came out of
+it: the clock is injected into `renderPlannedQueue` instead, and the zone
+maths is wrapped so that an unreadable zone or instant costs that one row its
+hour and nothing else. A section renderer's signature is not private to the
+section.
 
 ### The conversation that never ended (fixed 2026-09-09)
 

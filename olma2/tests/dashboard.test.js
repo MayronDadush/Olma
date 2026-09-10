@@ -676,7 +676,8 @@ test('planned messages: queued rows, future reminders and standing digests, in l
 
   const p = await makeUser(db.pool, '+972618000055', { firstName: 'Noam', timezone: 'Asia/Jerusalem' });
   await db.pool.query(
-    `UPDATE users SET agent_id = 'u-' || id, digest_times = '08:00' WHERE id = $1`, [p.id]);
+    `UPDATE users SET agent_id = 'u-' || id, digest_times = '08:00', onboarded_at = now()
+      WHERE id = $1`, [p.id]);
 
   await withTx(db.pool, async (c) => {
     // queued now, plus a held one — both must appear, with their reason
@@ -693,9 +694,14 @@ test('planned messages: queued rows, future reminders and standing digests, in l
   assert.match(html, /לקחת את הרכב לטסט/, 'a scheduled reminder appears before it is ever queued');
   assert.match(html, /weekly/);
   assert.match(html, /08:00/, 'the standing daily digest is listed too');
-  // The payload holds an instruction, never the finished text — the page must
-  // not imply it is showing a draft.
-  assert.match(html, /התוכן עצמו נכתב ברגע השליחה/);
+  // A checkin's payload holds an instruction the agent will word at send time,
+  // so the page must not imply it is showing a draft of one...
+  assert.match(html, /מופיע הנושא בלבד/);
+  // ...while a reminder has no model in its path at all, so the exact sentence
+  // that will arrive is knowable now and is what a review of the product needs
+  // to read. Both halves have to stay true on the same page.
+  assert.match(html, /⏰ תזכורת: \*לקחת את הרכב לטסט\*/,
+    'a reminder shows the text that will actually be sent, not a subject line');
 
   // ...and the same, narrowed to one person, on their own page
   const userHtml = await (await fetch(base + `/user?id=${p.id}`, { headers: { Authorization: AUTH } })).text();
