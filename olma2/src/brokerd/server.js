@@ -21,6 +21,7 @@ const selfInitiated = require('../domain/self-initiated');
 const { captureDisplayName } = require('../adapters/mcp/tools/_shared');
 const groupContext = require('../domain/group-context');
 const groupsDomain = require('../domain/groups');
+const replyLeak = require('../domain/reply-leak');
 
 // One of these per turn. The gateway spawns a fresh MCP shim for every agent
 // turn and the shim holds ONE socket to brokerd for its whole life, so a
@@ -241,6 +242,42 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
       ok: true, stored: true, members: built.row.members ? true : false,
       wasMentioned: built.row.wasMentioned, memberWrote: wrote,
     };
+  }
+
+  // The reply gate's report. The plugin has already decided and already acted
+  // — this is the only record that it happened, so it is written even when
+  // nothing was dropped (an `identifier` the closed list has not heard of is
+  // exactly the row somebody needs to see before it becomes the next leak).
+  //
+  // The TEXT never comes here and is never stored. What leaked is the point;
+  // what was in the rest of the message is the person's business, and a frame
+  // marker can BE a live credential (`domain/token-leak.js`) — the plugin
+  // redacts one before it leaves the gateway and this refuses to widen that.
+  async function handleReplyGate(params = {}) {
+    const agentId = String(params.agentId || '').trim();
+    if (!/^(?:u-\d+|g-\d+|ggreet)$/.test(agentId)) return { ok: false, error: 'bad agentId' };
+    const action = String(params.action || '').trim();
+    if (!['pass', 'trim', 'cancel'].includes(action)) return { ok: false, error: 'bad action' };
+    const leaks = (Array.isArray(params.leaks) ? params.leaks : []).slice(0, 12).map((l) => ({
+      kind: String((l && l.kind) || '').slice(0, 20),
+      at: replyLeak.redact(String((l && l.at) || '')).slice(0, 40),
+      line: Number.isInteger(l && l.line) ? l.line : null,
+    }));
+    await withTx(pool, async (client) => {
+      // A group agent has no user row behind it, and audit_log.actor_id is
+      // nullable for exactly that: the event is still the whole record.
+      const { rows } = /^u-\d+$/.test(agentId)
+        ? await client.query('SELECT id FROM users WHERE agent_id = $1 AND status = \'active\'', [agentId])
+        : { rows: [] };
+      await require('../domain/audit').record(client, rows[0] ? Number(rows[0].id) : null, 'reply.gated', {
+        agentId, action, leaks,
+        kinds: [...new Set(leaks.map((l) => l.kind))],
+        chars: Number.isFinite(params.chars) ? params.chars : null,
+        kept: Number.isFinite(params.kept) ? params.kept : null,
+        channel: params.channel ? String(params.channel).slice(0, 40) : null,
+      });
+    });
+    return { ok: true, filed: true };
   }
 
   async function handleTurnContext(params = {}) {
@@ -522,6 +559,8 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
         return handleTurnContext(msg.params || {});
       case 'group_context':
         return handleGroupContext(msg.params || {});
+      case 'reply_gate':
+        return handleReplyGate(msg.params || {});
       default:
         return { ok: false, error: `unknown method ${msg.method}` };
     }

@@ -37,6 +37,7 @@ const { parseKey } = require('../channels/sessions');
 const laneLog = require('./lane-watchdog');
 const { enqueue } = require('../outbox/enqueue');
 const audit = require('../domain/audit');
+const replyLeak = require('../domain/reply-leak');
 
 // Below MIN: the gateway's own recovery deserves first chance (its abort
 // threshold is 75s). Above MAX: too stale to answer as if it just arrived —
@@ -83,6 +84,17 @@ function resendableVerbatim(text) {
   const t = String(text || '').trim();
   if (!t) return { ok: false, why: 'empty' };
   if (MEDIA_LINE_RE.test(t)) return { ok: false, why: 'media' };
+  // The second shape, and it is this sweep's own doing: since 2026-09-10 the
+  // reply gate (`domain/reply-leak.js`, via the plugin) CANCELS a reply that
+  // is the model's working-out, which leaves exactly the fingerprint case (b)
+  // reads as a delivery fault — an assistant turn in the transcript with no
+  // `Sent` line behind it. Re-sending it verbatim would put on Yahav's phone
+  // the very thing the gate had just kept off it, from the one path with no
+  // gate in it (the raw pipe). What the gate would deliver is what may be
+  // re-sent, and when that is nothing, nothing is.
+  const verdict = replyLeak.gateReply(t);
+  if (verdict.action === 'cancel') return { ok: false, why: 'leak' };
+  if (verdict.action === 'trim') return { ok: true, text: verdict.text, gated: true };
   return { ok: true, text: t };
 }
 function isSilence(m) {
