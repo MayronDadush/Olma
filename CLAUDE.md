@@ -988,6 +988,19 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   from the outside. `remember_fact` stays out beside `forget_fact` on purpose:
   a fact is usually captured in passing while the real answer is written, so
   its mark would be about the side-effect, not about what they asked.
+- **The hint follows the MARK, not the spawn.** `markFor` dedupes on message
+  AND state — rightly, a repeat mark is a whole CLI start-up that WhatsApp
+  would overwrite with the same emoji — so the SECOND done-tool of a turn
+  gets `null` from it, and the `markPlaced` hint used to be hung off that
+  same answer. Gali answered a repeating reminder, the model correctly called
+  `cancel_reminder` then `complete_task`, and the LAST result it read before
+  writing carried nothing at all: 👍 on her message and "בוצע 👍 שמתי שברכת"
+  under it (2026-09-10). `reactions.doneMarkStands` answers the other
+  question — is a 👍 standing on this message NOW — off the last state
+  ATTEMPTED per message, so a mark that could not be spawned is never claimed
+  and a later ⏰ means the answer is no. Third variant of one family: the mark
+  absent (the preference tools), the mark outvoted (an unconditional hint
+  beside it), the mark present and unannounced.
 - **A message that is only thanks is answered by a 🙏 and by nothing else.**
   Sixth reaction state; the hint (`turnHints.thanksOnly`) asks for `NO_REPLY`
   on the same argument as `markPlaced`. **The classification runs in the

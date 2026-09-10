@@ -512,6 +512,10 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
           // configurable at all.
           emoji: turn.reactionVocab && turn.reactionVocab[mark],
         });
+        // What is now standing on their message, for the hint below. Recorded
+        // where the attempt is made, so a mark nobody could spawn is never
+        // claimed — `attempted`, never `sent`, exactly as the hint says.
+        if (placed && placed.attempted) reactions.noteMarkAttempted(turn, mark);
       }
       // Miron, 2026-09-05, having deleted a task by reply: he got the 👍 AND a
       // sentence saying it was deleted. The mark already says "done"; words
@@ -524,7 +528,14 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
       // `attempted`, never `sent` — placeMark makes no delivery claim, and
       // neither does this: the instruction is about not repeating the mark's
       // meaning, not about relying on the mark having landed.
-      if (placed && placed.attempted && mark === 'done' && result && result.ok && result.data && typeof result.data === 'object') {
+      // The hint follows the MARK, not the spawn. `markFor` dedupes on message
+      // AND state, so the SECOND done-tool of a turn gets null from it and
+      // used to get no hint either — which is how Gali's `complete_task`, the
+      // last thing the model read before writing, came back saying nothing at
+      // all while a 👍 was already on her message (2026-09-10; see
+      // reactions.doneMarkStands). One mark, and every result that earned it
+      // says so.
+      if (reactions.doneMarkStands(name, result, turn, clock()) && result.data && typeof result.data === 'object') {
         result.data.hints = {
           ...(result.data.hints || {}),
           markPlaced: 'A 👍 has already been put on their message: it tells them this is done. '

@@ -381,11 +381,54 @@ function markFor(toolName, result, turn, now = Date.now()) {
   return effective;
 }
 
+// ── Is a 👍 STANDING on this message? ───────────────────────────────────────
+// A different question from markFor's, and conflating the two is what put a
+// sentence under a live thumbs-up on 2026-09-10. Gali answered a repeating
+// reminder with "בירכתי אין צורך לתזכר"; the model did exactly the right
+// thing — `cancel_reminder`, then `complete_task`, which is the sequence
+// `complete_task`'s own description prescribes for ending a standing task —
+// and she got the 👍 AND "בוצע 👍 שמתי שברכת — הכל סגור."
+//
+// markFor answers "should a mark be SPAWNED", and its dedup rightly says no
+// the second time: a mark is a whole `openclaw` CLI start-up, and WhatsApp
+// replaces a reaction rather than appending one, so an identical second mark
+// costs 15 seconds and changes nothing on the screen. But brokerd hung the
+// `markPlaced` hint off that same answer, so the LAST tool result the model
+// reads before it writes — `complete_task` here — carried nothing at all.
+// The model was not overruling the mark and was not ignoring a hint: at the
+// moment it chose its words, nothing in front of it said a mark existed. It
+// even typed a 👍 into the text, trying to deliver what the reaction already
+// had.
+//
+// So the mark is recorded when it is asked for, and the hint follows THAT.
+// The last state asked for on a message is the one standing on it: placeMark
+// kills an older child still starting up when a newer mark arrives, and
+// WhatsApp replaces whatever was there, so newest-requested wins. A 👍 that
+// a later ⏰ replaced is no longer standing and must not be claimed.
+function noteMarkAttempted(turn, state) {
+  if (!turn || !turn.messageId || !state) return;
+  const standing = turn.markStanding || (turn.markStanding = new Map());
+  standing.set(turn.messageId, state);
+}
+
+// Keyed per message, like everything else on the turn: the shim's connection
+// outlives the turn and serves the same `turn` object for hours, so anything
+// latched to the connection instead of the message freezes (CLAUDE.md, "The
+// mark that never moved").
+function doneMarkStands(toolName, result, turn, now = Date.now()) {
+  if (TOOL_MARKS[toolName] !== 'done') return false;
+  if (!result || !result.ok) return false;
+  if (!turn || !turn.messageId) return false;
+  if (!isLive(turn.lastInboundAt, now)) return false;
+  return Boolean(turn.markStanding && turn.markStanding.get(turn.messageId) === 'done');
+}
+
 // The flag the dashboard's emoji editor writes. One JSON object, one place.
 const VOCAB_FLAG = 'reaction_emoji';
 
 module.exports = {
   REACTION_STATES, REACTION_CAPABLE, TOOL_MARKS, LIVE_WINDOW_MS, VOCAB_FLAG,
+  noteMarkAttempted, doneMarkStands,
   isReactionCapable, buildReactArgs, outcomeState, placeMark, markFor, isLive,
   cleanMessageId, vocabulary, isUsableEmoji, _setLogs,
 };
