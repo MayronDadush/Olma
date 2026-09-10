@@ -8232,8 +8232,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     clearTimeout(introT);
     introStage = stage;
     var root = document.documentElement;
-    root.classList.remove("intro-1", "intro-2", "intro-3", "intro-4");
     if(stage > INTRO_STAGES){ introFinish(); return; }
+    root.classList.remove("intro-1", "intro-2", "intro-3", "intro-4");
     root.classList.add("intro", "intro-" + stage);
     if(stage === 1) root.style.setProperty("--introY", introOffset() + "px");
     if(arm === false) return;
@@ -8244,13 +8244,19 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     introDone = true;
     clearTimeout(introT);
     var root = document.documentElement;
-    root.classList.remove("intro-1", "intro-2", "intro-3", "intro-4");
-    /* `intro` comes off one frame later so the last transition can finish
-       against the same rules it started under — dropping it in the same tick
-       restores the stagger animation mid-move and the page jumps. */
+    /* Stay on intro-4, not off it: html.intro .tabbar hides the bar and
+       html.intro-4 .tabbar is the only rule that shows it again, so dropping
+       intro-4 here — before `intro` itself lifts below — hid the bar and then
+       popped it back a beat later. */
+    root.classList.remove("intro-1", "intro-2", "intro-3");
+    root.classList.add("intro-4");
+    /* `intro` (with it, intro-4) comes off one frame later so the last
+       transition can finish against the same rules it started under —
+       dropping it in the same tick restores the stagger animation mid-move
+       and the page jumps. */
     requestAnimationFrame(function(){
       setTimeout(function(){
-        root.classList.remove("intro");
+        root.classList.remove("intro", "intro-4");
         root.classList.add("intro-settled");
         root.style.removeProperty("--introY");
       }, 350);
