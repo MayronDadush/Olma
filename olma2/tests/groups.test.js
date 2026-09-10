@@ -338,16 +338,14 @@ test('a retired group never comes back on a stale roster read', async () => {
   assert.equal(back.data.group.state, 'retired');
 });
 
-test('mentions and notices are stamped where the delivery gate can read them', async () => {
+test('notices are stamped where the sweep and the opening line can read them', async () => {
   const a = await connectedUser('+972501000090');
   const reg = await withTx(db.pool, (c) => groups.registerGroup(c, {
     externalId: JID(3) + '.x', members: [{ phone: a.phone }],
   }));
   const gid = reg.data.group.id;
-  await withTx(db.pool, (c) => groups.noteMention(c, gid));
   await withTx(db.pool, (c) => groups.noteNoticeSent(c, gid));
   const row = await withTx(db.pool, (c) => groups.getById(c, gid));
-  assert.ok(row.last_mention_at, 'the gate needs this for its 15-minute grace');
   assert.ok(row.last_notice_at);
   assert.equal(row.notices_sent, 1);
   assert.ok(row.gate_notice_at, 'a notice about somebody missing is what the opening line answers');

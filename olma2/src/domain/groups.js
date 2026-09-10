@@ -372,11 +372,42 @@ async function lastMemberWriteAt(client, groupId) {
   return (rows[0] && rows[0].at) || null;
 }
 
-// The gate's `lastInboundAt` for a group: stamped on every real mention, so
-// outbox/gate.js gives the group the same 15-minute conversation grace a DM
-// gets and never holds an answer to someone standing right there.
-async function noteMention(client, groupId) {
-  await client.query(`UPDATE chat_groups SET last_mention_at = now() WHERE id = $1`, [groupId]);
+// ---- the sweep's watermark, one per gateway session -------------------------
+//
+// "Is this turn newer than the last one we looked at" — the question that
+// makes a turn in a locked room a TAG and therefore something she answers.
+//
+// It is per (group, session) and not per group because a room has several
+// gateway sessions: the muted greeter's, and its own `g-N` agent's once it is
+// open. The sweep's loop runs once per session, and against a single column
+// each iteration overwrote the previous one's watermark, so on the next pass
+// every session was comparing its own stamp against somebody else's and the
+// answer was yes for ever (migration 059).
+//
+// A session we have never watermarked inherits the room's newest watermark
+// rather than starting at zero. Zero would read a room's entire history as one
+// fresh turn — which is a notice answering a message nobody sent, at the two
+// moments a new session appears: the deploy that creates this table, and the
+// provisioning that gives an opening room its own agent. Too new is silence;
+// too old is answering the past, so this falls the safe way.
+async function seenAt(client, groupId, sessionKey) {
+  const { rows } = await client.query(
+    `SELECT max(last_seen_at) FILTER (WHERE session_key = $2) AS own,
+            max(last_seen_at) AS room
+       FROM chat_group_session_seen WHERE group_id = $1`,
+    [groupId, sessionKey]
+  );
+  const r = rows[0] || {};
+  return r.own || r.room || null;
+}
+
+async function noteSeen(client, groupId, sessionKey, at) {
+  await client.query(
+    `INSERT INTO chat_group_session_seen (group_id, session_key, last_seen_at)
+          VALUES ($1, $2, $3)
+     ON CONFLICT (group_id, session_key) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at`,
+    [groupId, sessionKey, at]
+  );
   return ok({ groupId });
 }
 
@@ -555,7 +586,7 @@ module.exports = {
   parseRoster, normalizePhone, majorityTimezone, SELF_PHONE,
   registerGroup, getById, getByExternalId, listMembers, syncRoster,
   decideState, evaluate, applyState, isConnected,
-  decideNotice, noteNoticeSent, noteMention, lastMemberWriteAt,
+  decideNotice, noteNoticeSent, seenAt, noteSeen, lastMemberWriteAt,
   GROUP_KINDS, validKind, setKind, noteKindAsked, quorumFor,
   GROUP_TOKEN_RE, looksLikeGroupToken, resolveByToken, actingMember, roomStatus,
 };
