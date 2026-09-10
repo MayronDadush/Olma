@@ -98,6 +98,8 @@ never trust a dated narrative for something you are about to act on.
 
 **Cost, billing and the money page**
 
+- [Twelve people off the bottom of the money page (fixed 2026-09-10)](#twelve-people-off-the-bottom-of-the-money-page-fixed-2026-09-10)
+- [The three tables nobody could merge (2026-09-10)](#the-three-tables-nobody-could-merge-2026-09-10)
 - [The conversation that never ended (fixed 2026-09-09)](#the-conversation-that-never-ended-fixed-2026-09-09)
 - [The pilot that read as an expensive day (fixed 2026-09-09)](#the-pilot-that-read-as-an-expensive-day-fixed-2026-09-09)
 - [The heartbeat was the bill (fixed 2026-09-05)](#the-heartbeat-was-the-bill-fixed-2026-09-05)
@@ -3384,6 +3386,65 @@ next and only the last one was measured first.
 
 
 ## Cost, billing and the money page
+
+### Twelve people off the bottom of the money page (fixed 2026-09-10)
+
+The owner read the per-user cost table and asked why he could not see what
+each user had cost. He was reading the whole table: it was ten rows because
+the query said `.slice(0, 10)`, and 22 people had spend that month. The
+twelve below the cut were not shown, not counted and not mentioned — no
+"and 12 more", nothing.
+
+The truncation was never only a display cut, which is what made it worth an
+entry. `usersTotal` was summed from the same sliced array, so **the "סה״כ
+החודש" headline dropped everyone past tenth place**, and the Anthropic
+reconciliation line under it — the one number on the page whose whole job is
+to notice when our attribution and the real bill disagree — was computed
+against that undercount. It was reporting a gap that was partly its own
+truncation. `top.rows.length` fed "משתמשים פעילים החודש" as well, so the
+count of active users read 10 for ever, however many people joined.
+
+Small money ($1.09 of ~$17 that month) and a large failure shape: **a list
+that truncates must say so, and no total may be summed from the truncated
+copy.** The fix removes the slice — a page read daily by one person does not
+need a cap at twenty-two rows — and the regression test gives thirteen
+people spend and asserts all three: every name on the page, the headline
+equal to the rows, and the active count equal to thirteen rather than ten.
+
+The same page had the same shape in a second place, found while fixing this
+one: `renderPlannedForUser` capped its queue at fifteen with no line saying
+so. Its replacement announces the cut (`ועוד N מתוכננות אחריהן`).
+
+### The three tables nobody could merge (2026-09-10)
+
+What Olma is about to say to one person is decided in three places, and the
+admin page showed them as three separate tables: the outbox queue, the
+reminders that have no outbox row yet, and a standing line naming the hour
+the daily digest fires at. Opening a real user's page returned
+"אין כרגע הודעה בתור", three reminders all at 14/09 12:00, and
+"כל יום ב-10:00" — every fact present and the one question the page exists
+for unanswerable without merging them by hand. The digest was the worst of
+the three: a standing setting, never a moment, so "what arrives next" could
+not even be read off it.
+
+They are one list ordered by arrival now, ten rows, with the three-way split
+moved into a "קשור ל" column. Two things it must keep doing:
+
+- **A reminder mid-ladder is IN the list.** `attempts = 0` answers "what
+  would still fire" and not "what is still going to reach them" — the
+  documented third question — so a reminder already climbing was invisible
+  in this reader like every other. It reuses `reminders.listReminders`,
+  which returns both halves, rather than a hand-copied `WHERE`.
+- **…and its hour is not invented.** The next rung is due a gap after the
+  previous one was DELIVERED, so there is no moment to print; the row says
+  "אחרי שהשלב הקודם נמסר" and sorts last. A guessed hour said out loud is
+  the fault this whole area keeps producing.
+
+The digest row resolves to a real next instant in the person's own zone, and
+only for someone `sweepDigests` would actually visit — an inactive, paused,
+eval or not-yet-onboarded person is promised no digest, because printing an
+hour for a message that is never coming is the same lie in the other
+direction.
 
 ### The conversation that never ended (fixed 2026-09-09)
 

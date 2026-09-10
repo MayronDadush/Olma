@@ -966,6 +966,14 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   reads every turn.
 - **Validate any `back` parameter through `safeBack()`**, or the admin becomes
   an open redirect.
+- **A truncated list must say it is truncated, and no total may be summed from
+  the truncated copy.** The per-user cost table was a silent top-10 with 22
+  people spending — and `usersTotal`, the month headline and the Anthropic
+  reconciliation line under it were all summed from the same sliced array, so
+  the cut moved money out of the total and not only off the screen
+  (`incidents.md`, "Twelve people off the bottom of the money page"). Prefer
+  no cap on a page one person reads daily; where a cap is real, print the
+  remainder.
 
 ### Doctrine
 

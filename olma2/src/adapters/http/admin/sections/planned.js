@@ -4,6 +4,8 @@
 // there is what is left of that file.
 const { ago } = require('../html');
 const { esc } = require('../../html');
+const dt = require('../../../../domain/datetime');
+const remindersDomain = require('../../../../domain/reminders');
 
 const OUTBOX_STATE = {
   sent: 'נשלחו', ready: 'ממתינות לשליחה',
@@ -178,53 +180,167 @@ async function renderPlannedQueue(client) {
       שלו תצטרף לסיכום הבא.</p>`;
 }
 
+// ---- the next thing Olma will say to one person -----------------------------
+// What she will send them next is decided in three separate places, and a
+// reader of only one of them sees an empty page: the outbox holds what is
+// already queued (minutes away), `task_reminders` holds the moments people
+// asked for and gets an outbox row only when the sweep brings it due, and the
+// daily digest has no row anywhere until its minute arrives. This section
+// showed those three as three tables and left the merge to the operator, so
+// there was no answer at all to the one question worth asking — what is next.
+// They are one ordered list now, and the three-way split stays visible in the
+// "קשור ל" column rather than in the page layout.
+const NEXT_LIMIT = 10;
+
+// One formatter for all three sources, so a moment reads the same way whether
+// Postgres or Node produced it. Their zone, never the operator's.
+function localStamp(tz, at) {
+  const p = dt.partsInZone(tz || 'UTC', new Date(at));
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(p.d)}/${pad(p.m)} ${pad(p.hh)}:${pad(p.mi)}`;
+}
+
+// The next digest slot that is still ahead of them, in their own zone. The
+// conditions are sweepDigests' own: a paused, inactive, eval or not-yet-
+// onboarded person is never visited by it, and printing an hour for one would
+// promise a message that is never coming.
+function nextDigest(u, now) {
+  if (!u.digest_times || u.status !== 'active' || u.paused_at || u.is_eval || !u.onboarded_at) return null;
+  const tz = u.timezone || 'UTC';
+  const p = dt.partsInZone(tz, now);
+  let best = null;
+  for (const raw of String(u.digest_times).split(',')) {
+    const m = /^\s*(\d{1,2}):(\d{2})\s*$/.exec(raw);
+    if (!m) continue;
+    const hh = Number(m[1]), mi = Number(m[2]);
+    // Today's slot if it has not passed, otherwise tomorrow's. Day 32 of a
+    // month is what Date.UTC rolls over for us, so no month-end special case.
+    for (const plus of [0, 1]) {
+      const at = dt.instantInZone(tz, { y: p.y, m: p.m, d: p.d + plus, hh, mi, ss: 0 });
+      if (at > now) {
+        if (!best || at < best.at) best = { at, slot: `${String(hh).padStart(2, '0')}:${m[2]}` };
+        break;
+      }
+    }
+  }
+  return best;
+}
+
 // The same question narrowed to one person: what is Olma about to say to
 // THEM. Same honesty as the global view — subjects, not drafts.
-async function renderPlannedForUser(client, u, csrf = '') {
+async function renderPlannedForUser(client, u, csrf = '', now = new Date()) {
   const back = `/user?id=${u.id}`;
+  const tz = u.timezone || 'UTC';
   // Times are read out and written back in the PERSON's timezone, not the
   // operator's: "09:00" on this page has to mean the same 09:00 the message
   // will actually arrive at. The conversion is left to Postgres in both
   // directions (AT TIME ZONE), so there is no hand-rolled offset arithmetic to
   // get wrong around DST.
   const { rows: queued } = await client.query(
-    `SELECT o.id, o.kind, o.hold_reason, o.attempts, o.payload,
-            to_char(o.release_after AT TIME ZONE COALESCE($2, 'UTC'), 'DD/MM HH24:MI') AS local_release,
+    `SELECT o.id, o.kind, o.hold_reason, o.attempts, o.payload, o.release_after,
             to_char(o.release_after AT TIME ZONE COALESCE($2, 'UTC'), 'YYYY-MM-DD"T"HH24:MI') AS release_input,
             to_char(o.expires_at   AT TIME ZONE COALESCE($2, 'UTC'), 'YYYY-MM-DD"T"HH24:MI') AS expires_input
      FROM outbox o WHERE o.user_id = $1 AND o.sent_at IS NULL
-     ORDER BY COALESCE(o.release_after, o.created_at) LIMIT 15`, [u.id, u.timezone]);
+     -- No LIMIT: the merged list below caps what it SHOWS and then prints how
+     -- many it did not, and a limit here would silently understate that count.
+     -- The set is small by construction — the daily proactive budget and row
+     -- expiry both bound it.
+     ORDER BY COALESCE(o.release_after, o.created_at)`, [u.id, u.timezone]);
   const { rows: cancelled } = await client.query(
     `SELECT id, kind, payload, sent_at FROM outbox
       WHERE user_id = $1 AND hold_reason = $2 ORDER BY id DESC LIMIT 5`, [u.id, CANCELLED_BY_ADMIN]);
-  const { rows: reminders } = await client.query(
-    `SELECT t.title, r.repeat_rule,
-            to_char(r.remind_at AT TIME ZONE COALESCE($2, 'UTC'), 'DD/MM HH24:MI') AS local_time
-     FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-     WHERE t.owner_id = $1 AND r.sent_at IS NULL AND r.attempts = 0
-       AND r.cancelled_at IS NULL
-     ORDER BY r.remind_at LIMIT 15`, [u.id, u.timezone]);
+  // The domain function production itself calls, not a copy of its WHERE
+  // clause: it is the one place that knows both "still going to fire"
+  // (attempts = 0) and "already climbing and still going to reach them"
+  // (chasing), and a hand-copied replica here could not fail when it drifts.
+  const rem = (await remindersDomain.listReminders(client, u.id)).data;
 
   const hidden = `<input type="hidden" name="csrf" value="${csrf}">
       <input type="hidden" name="back" value="${back}">`;
 
-  const queuedHtml = queued.length ? `<h4>בתור</h4>
-    <table><tr><th>סוג</th><th>בנושא</th><th>מתי (שעון שלו)</th><th>פג תוקף</th><th>מצב</th><th></th></tr>
-    ${queued.map((r) => `<tr${r.attempts > 0 ? ' class="bad"' : ''}>
-      <td>${KIND_LABELS[r.kind] || esc(r.kind)}</td>
-      <td class="small">${plannedSubject(r)}</td>
-      <td colspan="2"><form method="post" action="/outbox/reschedule" class="inline">${hidden}
+  const rows = [];
+
+  for (const r of queued) {
+    rows.push({
+      // A row with no release_after goes on the next tick, so it sorts ahead
+      // of everything with a stated hour rather than to the end.
+      sortAt: r.release_after ? new Date(r.release_after).getTime() : 0,
+      message: plannedSubject(r),
+      source: KIND_LABELS[r.kind] || esc(r.kind),
+      when: r.release_after ? esc(localStamp(tz, r.release_after)) : '<span class="dim">מיד</span>',
+      state: r.hold_reason ? (OUTBOX_STATE[r.hold_reason] || esc(r.hold_reason))
+        : (r.attempts > 0 ? `נסיון ${r.attempts}` : '<span class="dim">בדרך</span>'),
+      bad: r.attempts > 0,
+      actions: `<form method="post" action="/outbox/reschedule" class="inline">${hidden}
         <input type="hidden" name="id" value="${r.id}">
         <input type="datetime-local" name="release_after" value="${esc(r.release_input || '')}"
                title="ריק = לשלוח בהזדמנות הקרובה">
         <input type="datetime-local" name="expires_at" value="${esc(r.expires_input || '')}"
                title="אחרי המועד הזה ההודעה כבר לא תישלח. ריק = בלי תפוגה.">
-        <button>שמור מועד</button></form></td>
-      <td class="small">${r.hold_reason ? (OUTBOX_STATE[r.hold_reason] || esc(r.hold_reason)) : '<span class="dim">בדרך</span>'}</td>
-      <td><form method="post" action="/outbox/cancel" class="inline">${hidden}
+        <button>שמור מועד</button></form>
+        <form method="post" action="/outbox/cancel" class="inline">${hidden}
         <input type="hidden" name="id" value="${r.id}">
-        <button class="danger">בטל</button></form></td>
-    </tr>`).join('')}</table>` : '';
+        <button class="danger">בטל</button></form>`,
+    });
+  }
+
+  for (const r of rem.reminders || []) {
+    const at = new Date(r.remind_at);
+    rows.push({
+      sortAt: at.getTime(),
+      message: esc(r.title),
+      source: `תזכורת${r.repeat_rule ? ` <span class="dim">· חוזרת ${esc(r.repeat_rule)}</span>` : ''}`,
+      when: esc(localStamp(tz, at)),
+      state: at <= now ? '<span class="pill">באיחור</span>' : '<span class="dim">תיכנס לתור בזמנה</span>',
+    });
+  }
+
+  // A reminder mid-ladder has one or two messages still to send and was
+  // invisible in every reader that asked `attempts = 0` — the row Olma was
+  // asked to stop was the one row nothing could name. It belongs here for
+  // exactly that reason, and its HOUR does not: the next rung is due a gap
+  // after the previous one was DELIVERED, so any time printed for it would be
+  // a guess. Last in the list, and saying so.
+  for (const r of rem.chasing || []) {
+    rows.push({
+      // Finite on purpose: two Infinities subtract to NaN, and a comparator
+      // that returns NaN orders nothing.
+      sortAt: Number.MAX_SAFE_INTEGER,
+      message: esc(r.title),
+      source: `תזכורת <span class="dim">· רדיפה, שלב ${r.rungsSent + 1}</span>`,
+      when: '<span class="dim">אחרי שהשלב הקודם נמסר</span>',
+      state: `<span class="dim">נשלחה ${r.rungsSent}×</span>`,
+    });
+  }
+
+  const digest = nextDigest(u, now);
+  if (digest) {
+    rows.push({
+      sortAt: digest.at.getTime(),
+      message: 'סיכום יומי',
+      source: `<span class="dim">קבוע · כל יום ב-${esc(digest.slot)}</span>`,
+      when: esc(localStamp(tz, digest.at)),
+      state: '<span class="dim">לפי השעה שהוא בחר</span>',
+    });
+  }
+
+  rows.sort((a, b) => a.sortAt - b.sortAt);
+  const shown = rows.slice(0, NEXT_LIMIT);
+  // Never a silent cut: the same page had a top-ten on its cost table for
+  // months and nothing on it said so.
+  const more = rows.length - shown.length;
+
+  const nextHtml = shown.length ? `<table>
+    <tr><th>ההודעה</th><th>קשור ל</th><th>מתי תגיע</th><th>מצב</th><th></th></tr>
+    ${shown.map((r) => `<tr${r.bad ? ' class="bad"' : ''}>
+      <td class="small">${r.message}</td>
+      <td class="small">${r.source}</td>
+      <td class="nowrap small">${r.when}</td>
+      <td class="small">${r.state}</td>
+      <td>${r.actions || ''}</td>
+    </tr>`).join('')}</table>
+    ${more > 0 ? `<p class="dim small">ועוד ${more} מתוכננות אחריהן.</p>` : ''}`
+    : '<p class="dim">אין כרגע שום דבר מתוכנן אליו.</p>';
 
   const cancelledHtml = cancelled.length ? `<h4>בוטלו ע"י מנהל</h4>
     <table><tr><th>סוג</th><th>בנושא</th><th>מתי בוטל</th></tr>
@@ -254,13 +370,11 @@ async function renderPlannedForUser(client, u, csrf = '') {
     </form>`;
 
   return `<section><h3>מה מתוכנן להישלח אליו</h3>
-    <p class="hint">בשעון המקומי שלו (${esc(u.timezone || 'UTC')}). הנוסח נכתב ברגע השליחה — כאן הנושא בלבד.</p>
-    ${queued.length ? queuedHtml : '<p class="dim">אין כרגע הודעה בתור.</p>'}
-    ${reminders.length ? `<h4>תזכורות מתוזמנות</h4><table><tr><th>על מה</th><th>מתי</th><th>חוזר</th></tr>
-      ${reminders.map((r) => `<tr><td class="small">${esc(r.title)}</td>
-        <td class="nowrap small">${esc(r.local_time)}</td>
-        <td class="dim small">${r.repeat_rule ? esc(r.repeat_rule) : '—'}</td></tr>`).join('')}</table>` : ''}
-    ${u.digest_times ? `<h4>סיכום יומי</h4><p class="small">כל יום ב-<span class="mono">${esc(u.digest_times)}</span></p>` : ''}
+    <p class="hint">${NEXT_LIMIT} ההודעות היזומות הבאות, בשעון המקומי שלו (${esc(tz)}).
+      הנוסח נכתב ברגע השליחה — כאן הנושא בלבד. השעות עשויות לזוז: הודעה שנופלת בשעות
+      השקט שלו תמתין לבוקר, ומי שכבר קיבל מספיק היום — שלו תצטרף לסיכום הבא.
+      פנייה יזומה שהסריקות מחליטות עליה בזמן אמת נולדת רק ברגע ההחלטה, ולכן אינה כאן.</p>
+    ${nextHtml}
     ${cancelledHtml}
     ${composeHtml}
   </section>`;
