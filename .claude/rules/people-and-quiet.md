@@ -1,13 +1,13 @@
 ---
 paths:
   - "olma2/src/jobs/checkin.js"
-  - "olma2/src/jobs/onboarding.js"
+  - "olma2/src/jobs/onboarding-review.js"
   - "olma2/src/domain/users.js"
   - "olma2/src/domain/pause.js"
   - "olma2/src/domain/preferences.js"
   - "olma2/src/domain/onboarding.js"
   - "olma2/src/intake/**"
-  - "olma2/src/jobs/digests.js"
+  - "olma2/src/jobs/sweeps.js"
 ---
 
 # People, silence and data you must not get wrong

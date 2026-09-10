@@ -10,8 +10,8 @@ paths:
   - "olma2/src/domain/pause.js"
   - "olma2/src/channels/openclaw.js"
   - "olma2/src/channels/gateway-rpc.js"
-  - "olma2/src/jobs/digests.js"
-  - "olma2/src/jobs/reminders.js"
+  - "olma2/src/jobs/sweeps.js"
+  - "olma2/src/outbox/gate.js"
 ---
 
 # Delivering a message

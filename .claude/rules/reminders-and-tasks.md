@@ -12,7 +12,7 @@ paths:
   - "olma2/src/adapters/mcp/tools/tasks.js"
   - "olma2/src/adapters/mcp/tools/meetings.js"
   - "olma2/src/jobs/fact-extraction.js"
-  - "olma2/src/jobs/reminders.js"
+  - "olma2/src/jobs/sweeps.js"
 ---
 
 # Reminders, tasks and dates

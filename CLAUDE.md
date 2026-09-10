@@ -97,7 +97,7 @@ Loads when you **Read** a file under `migrations/**`, `scripts/deploy.sh`, `scri
 ### Talking to the gateway (and systemd scope)
 
 **`.claude/rules/gateway.md`** — writing openclaw.json, the three model lists, heartbeats, the daily session reset, and which units are user-scope.
-Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intake/provision.js`, `src/channels/**` and 10 more.
+Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intake/provision.js`, `src/channels/**` and 9 more.
 
 - **Never shell out to `openclaw config set`**
 - **An invalid config is IGNORED, not rejected.**
@@ -139,7 +139,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 ### Turns, and what reaches the person
 
 **`.claude/rules/turns-and-replies.md`** — who opens a turn, the queue mode, self-initiated turns, the reply target, NO_REPLY, repair jobs and the outbound leak gate.
-Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `src/domain/self-initiated.js` and 7 more.
+Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `src/domain/self-initiated.js` and 6 more.
 
 - **The turn opens itself, from the gateway's own hook, before the model's first call.**
 - **`messages.queue.mode` stays `followup`.**
@@ -171,7 +171,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 ### People, silence, and data you must not get wrong
 
 **`.claude/rules/people-and-quiet.md`** — the timezone that must never be NULL, the check-in ladder, the once-ever question, deleting a person, and the rename.
-Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding.js`, `src/domain/users.js` and 5 more.
+Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding-review.js`, `src/domain/users.js` and 5 more.
 
 - **`users.timezone` must never be NULL**
 - **Every time crossing a tool boundary needs an explicit offset.**

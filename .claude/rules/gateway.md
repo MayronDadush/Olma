@@ -12,7 +12,6 @@ paths:
   - "olma2/scripts/set-cache-retention.js"
   - "olma2/scripts/enable-turn-context.js"
   - "olma2/scripts/register-openrouter-models.js"
-  - "olma2/scripts/cache-probe.js"
 ---
 
 # Talking to the gateway

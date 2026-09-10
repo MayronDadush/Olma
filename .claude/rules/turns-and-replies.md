@@ -4,7 +4,6 @@ paths:
   - "olma2/src/domain/turn.js"
   - "olma2/src/domain/self-initiated.js"
   - "olma2/src/domain/reply-leak.js"
-  - "olma2/src/domain/unanswered.js"
   - "olma2/gateway-hooks/**"
   - "olma2/gateway-plugin/**"
   - "olma2/bin/olma-mcp.js"
