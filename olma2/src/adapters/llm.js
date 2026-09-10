@@ -1,9 +1,9 @@
 'use strict';
 // Direct model calls for background cognition — the jobs that read and think
-// but never speak to anyone (fact extraction, memory consolidation, and the
-// planning pass to come).
+// but never speak to anyone. Every one of them is here since memory
+// consolidation, the last holdout, moved across on 2026-09-10.
 //
-// Why this exists next to runSilentAgentTurn: an agent turn through the
+// Why this exists rather than a silent agent turn: an agent turn through the
 // gateway carries the full interactive stack — the system prompt, AGENTS.md,
 // and 60+ tool schemas, ~21k cold tokens — to do a job that needs a transcript
 // and one JSON answer. Routing background thinking here cuts the cost per

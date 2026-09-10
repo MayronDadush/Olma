@@ -1570,7 +1570,7 @@ configured. Now live in every workspace:
 
 - **`USER.md`** — tiny identity card, injected every turn.
 - **`memory/YYYY-MM-DD.md`** — raw daily notes, auto-injected for the last 2 days on session start only (`agents.defaults.contextInjection: "continuation-skip"` — full bootstrap files no longer re-inject on every turn within a session, saving ~4-5k tokens/turn).
-- **`MEMORY.md`** — curated long-term summary, folded from daily notes by a weekly root-crontab sweep (`memory-consolidation-sweep.js`, Sunday 03:00 — deliberately not `openclaw cron add`, see gotcha above).
+- **`MEMORY.md`** — curated long-term summary, folded from daily notes weekly in each person's own small hours by `jobs/memory-consolidation.js` (v1's root crontab was left behind by the cutover). **Since 2026-09-10 it is a direct model call and the SERVER writes the file** — the job reads the week's notes and the current file in Node, and the model only returns text. That is what makes the phone-number rule below enforceable: `usableMemory` refuses an answer carrying one, and a refused week is retried, never half-written. `{"changed": false}` is a real answer and still stamps the audit row, because that row is the schedule.
 - Deliberately no embedding key / no `active-memory` plugin — `memory_search`/`memory_get` use free keyword (FTS5/BM25) search, on-demand only, to keep steady-state cost near zero.
 - **Contact/phone-number facts never belong in memory files** — that's what `connections` + `set_contact_label` are for (structured + tool-backed, not prose the model might mis-recall).
 
@@ -1690,6 +1690,25 @@ on.
   — a sandboxed file-preview pane with no outbound network access will show
   it blank with `vis is not defined`; open the file directly in a real
   browser instead.
+
+## Reading this repo costs tokens, so large reads are blocked (2026-09-10)
+
+`.claude/hooks/shunt.js` is a PreToolUse hook that **denies** a whole-file `Read`
+(or a bare `cat`/`less`/`more`) of anything over `SHUNT_MIN_LINES`, default 350.
+78 of 464 source files are over that line, and they hold 54,626 of the repo's
+101,752 lines: 17% of the files carrying 54% of the mass.
+
+The deny message names the three ways through — delegate to the `bulk-reader`
+agent (`.claude/agents/bulk-reader.md`, a cheap model whose context is thrown
+away and whose answer carries line numbers), read a targeted slice with
+offset+limit, or grep. **Delegate to understand, slice to edit**: an edit needs
+real line numbers, so make that read yourself rather than editing off a summary.
+
+Targeted reads, pipelines, subagents and non-text files are never blocked, and
+every error path allows the call — a hook that breaks reads is worse than none.
+Same argument as `markPlaced` and the reply gate: an instruction in a prompt is
+a request, and one at the tool boundary is a rule. Borrowed from
+`spotify/portal-ai-plugins`.
 
 ## Known gaps
 
