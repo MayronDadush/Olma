@@ -143,7 +143,7 @@ function recorder() {
 }
 
 test('worker: two things due at the same moment are one send, and both rows are stamped', async () => {
-  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+  await db.pool.query(`UPDATE outbox SET sent_at = now() - interval '2 hours' WHERE sent_at IS NULL`);
   await withTx(db.pool, (c) => enqueue(c, {
     userId: user.id, kind: 'tasks_auto_archived', payload: { titles: ['an old errand'] },
     idempotencyKey: 'm-arch',
@@ -169,7 +169,7 @@ test('worker: two things due at the same moment are one send, and both rows are 
 });
 
 test('worker: a message Olma owes goes alone and is never blended into', async () => {
-  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+  await db.pool.query(`UPDATE outbox SET sent_at = now() - interval '2 hours' WHERE sent_at IS NULL`);
   await withTx(db.pool, (c) => enqueue(c, {
     userId: user.id, kind: 'introduction',
     payload: { instruction: 'Say the following EXACTLY as written: <<<היי, אני עולמה>>>' },
@@ -200,7 +200,7 @@ test('worker: a message Olma owes goes alone and is never blended into', async (
 });
 
 test('worker: a merged message costs ONE slot of the daily budget, not one per row', async () => {
-  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+  await db.pool.query(`UPDATE outbox SET sent_at = now() - interval '2 hours' WHERE sent_at IS NULL`);
   await db.pool.query(`DELETE FROM outbox WHERE user_id = $1`, [user.id]);
   // TODAY, because the send under test stamps itself with the real clock and
   // the budget counts the day it is asked about. `daytime()` is noon today,
@@ -242,7 +242,7 @@ test('worker: a merged message costs ONE slot of the daily budget, not one per r
 });
 
 test('worker: a merged send that fails backs off every row it was carrying', async () => {
-  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+  await db.pool.query(`UPDATE outbox SET sent_at = now() - interval '2 hours' WHERE sent_at IS NULL`);
   await withTx(db.pool, (c) => enqueue(c, {
     userId: user.id, kind: 'calendar_connected', payload: {}, idempotencyKey: 'm-fail-a',
   }));

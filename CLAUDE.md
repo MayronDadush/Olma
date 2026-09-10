@@ -282,10 +282,31 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   check instead of an eval, and no cost. It costs what every deterministic
   sentence here costs: **no grammatical gender**, so nothing in a drawn block
   may be a verb addressed to anybody, and one set of words per language. A
-  schedule CARD replaces the block above `digest_card_min_items` — never both.
+  schedule CARD replaces the block above `digest_card_min_items` — and the two
+  are mutually exclusive IN CODE, because a turn handed both sends both.
+  `get_my_digest` returns either the `block` or `hints.card`, never the pair;
+  the delivery instruction names no threshold and only relays whichever came
+  back; the flag has that one reader. Told as a rule instead — "a card REPLACES
+  the block, never send both" in the instruction, beside a result saying "put
+  this in your reply EXACTLY as it is" — Miron read his evening at 18:01 and
+  again at 18:02 (`incidents.md`, "The same evening, twice"). Third time an
+  unconditional instruction on a RESULT has outvoted a conditional one in the
+  prompt; the result always wins.
   **`null` (nothing due) and an empty block are different answers**: a morning
   with nothing on it is a real morning and the sentence about it is the
   model's, never an empty heading.
+- **The same thing does not go out twice inside a few minutes unless the person
+  ASKED** (owner, 2026-09-10; `domain/repeat-guard.js` holds the window and the
+  sentence, and exactly two places read it). The gate drops a second row of the
+  same kind as `hold_reason = 'duplicate'` for the kinds where that is always
+  Olma repeating herself (`SAYS_IT_ONCE`) and audits it, because a guard nobody
+  can count is one nobody will trust — a reminder is NOT one of them, since the
+  ladder is meant to come back. `render_schedule_card` refuses a
+  content-identical card on a turn OLMA started (`selfInitiated`), which is the
+  half no outbox row exists for; a person asking twice is answered twice, and a
+  redraw after a refusal is different content and passes. **Neither can see the
+  words a model chose**, so two different renderings of one fact are stopped
+  only by never handing one turn both.
 - **The delivery gate is the chokepoint and a paused user has no exceptions** —
   not reminders, not urgent, not another user's fan-out.
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where

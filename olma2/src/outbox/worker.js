@@ -183,6 +183,34 @@ async function drainOnce(pool, deliver, now = new Date()) {
           [row.user_id, now]
         );
 
+        // What this person has actually HEARD in the last hour, by kind — the
+        // fact behind the gate's repeat guard. Keyed by kind rather than read
+        // for this row's kind alone, because the batch and the merge below
+        // re-decide siblings of other kinds against these same facts, and a
+        // number gathered for the lead row would be answering the wrong
+        // question for them. `hold_reason IS NULL` is what makes it "heard": a
+        // cancelled, superseded or dropped row carries sent_at too and reached
+        // nobody (a timed-out send does not — it is stamped clean, because it
+        // very likely went out).
+        const { rows: heard } = await client.query(
+          // Bounded on BOTH sides against the tick's own clock. The upper bound
+          // is not paranoia about the future: Postgres stamps `sent_at` with
+          // its own clock while this tick carries the JavaScript `now` it was
+          // handed, so a row delivered moments ago is routinely a few
+          // milliseconds ahead of it — and a caller running the drain at a
+          // moment of its own choosing (every test that does, and the on-box
+          // replays) would otherwise read every genuinely later row as "just
+          // sent" and drop the whole queue as duplicates. A minute of slack
+          // covers the skew and nothing else.
+          `SELECT kind, max(sent_at) AS at FROM outbox
+            WHERE user_id = $1 AND sent_at IS NOT NULL AND hold_reason IS NULL
+              AND sent_at > $2::timestamptz - interval '1 hour'
+              AND sent_at <= $2::timestamptz + interval '1 minute'
+            GROUP BY kind`,
+          [row.user_id, now]
+        );
+        const lastSentByKind = Object.fromEntries(heard.map((r) => [r.kind, r.at]));
+
         // Named, because the batch below re-decides each sibling against the
         // identical facts — everything here except `row` is about the PERSON.
         const facts = {
@@ -195,6 +223,7 @@ async function drainOnce(pool, deliver, now = new Date()) {
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,
           introductionSentAt: introSent[0] ? introSent[0].sent_at : null,
+          lastSentByKind,
           sentToday: sentRows[0].n, budget, now,
         };
         const verdict = decide(facts);
@@ -207,6 +236,16 @@ async function drainOnce(pool, deliver, now = new Date()) {
             `UPDATE outbox SET sent_at = now(), hold_reason = $2 WHERE id = $1`,
             [row.id, verdict.holdReason]
           );
+          // Every other drop reason is a state somebody can look up — paused,
+          // quiet, an eval row. A duplicate is the only one that says something
+          // upstream produced a message it should not have, so it leaves a row
+          // to count: a guard nobody can measure is one nobody will trust.
+          if (verdict.holdReason === 'duplicate') {
+            await audit.record(client, row.user_id, 'delivery.duplicate_suppressed', {
+              outboxId: Number(row.id), kind: row.kind,
+              lastSentAt: lastSentByKind[row.kind] || null,
+            });
+          }
           outcomes.dropped++;
           return;
         }

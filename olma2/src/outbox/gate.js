@@ -117,6 +117,34 @@ function askedForInWords(row) {
     && Boolean(row.payload) && row.payload.auto === false;
 }
 
+// ── Nothing Olma decided to say goes out twice inside a few minutes ─────────
+// The owner's rule, 2026-09-10. The kinds below are the ones where a second
+// copy inside the window is always the system repeating itself and never a
+// person asking again: each is something Olma decided to say, at a moment she
+// picked or at one they picked ONCE. Everything absent from this set is
+// unguarded, which is the safe direction, and the exclusions are deliberate:
+//
+//   reminder     — the escalation ladder is SUPPOSED to come back. Rung 2 is
+//                  not rung 1 said again, and same-moment rungs already
+//                  coalesce into one message in the worker.
+//   introduction — said once by construction, and everything else is already
+//                  held behind it; a guard here could only ever misfire.
+//   cross-user   — a relay, a meeting answer, a connection request. Another
+//                  person writing twice is them, not us, and it is not ours
+//                  to swallow.
+//
+// The one case this is knowingly strict about: somebody whose digest_times
+// name two hours inside the same ten minutes gets one digest. That is not a
+// schedule anyone means, and the alternative — carrying the slot on the row so
+// the gate can tell two chosen moments apart — is a column and a migration for
+// a preference nobody has ever set.
+const { REPEAT_WINDOW_MS } = require('../domain/repeat-guard');
+
+const SAYS_IT_ONCE = new Set([
+  'digest', 'checkin', 'travel',
+  'tasks_auto_archived', 'calendar_connected', 'contacts_connected', 'email_connected',
+]);
+
 // facts: { row, plan, blocked, paused, window, quietDays, tz, sentToday, budget, now, lastInboundAt }
 // returns { action: 'deliver' | 'hold' | 'expire' | 'drop', holdReason?, releaseAfter? }
 function decide(facts) {
@@ -146,6 +174,26 @@ function decide(facts) {
 
   if (row.expires_at && new Date(row.expires_at) <= now) {
     return { action: 'expire' };
+  }
+
+  // A repeat, per the set above. 'drop', not 'hold': the thing was said, and
+  // saying it ten minutes later is the same message arriving late rather than
+  // a message that has not arrived. Stamped with its own reason so the
+  // dashboard can count them — a guard that silently swallows rows is
+  // indistinguishable from one that never fires.
+  //
+  // No floor on `since`, and that is the worker's doing rather than an
+  // oversight: a sibling stamped by Postgres inside this same drain is
+  // routinely a few milliseconds AHEAD of the JavaScript `now` this function
+  // was handed, so a `since >= 0` guard here let both copies straight through
+  // — the clock-order trap SENT_SLACK_MS exists for in jobs/unanswered.js. The
+  // worker bounds `lastSentByKind` on both sides against its own clock before
+  // this ever sees it, so anything in the map is genuinely behind us.
+  const lastSame = facts.lastSentByKind && facts.lastSentByKind[row.kind];
+  if (lastSame && SAYS_IT_ONCE.has(row.kind)) {
+    if (now.getTime() - new Date(lastSame).getTime() < REPEAT_WINDOW_MS) {
+      return { action: 'drop', holdReason: 'duplicate' };
+    }
   }
 
   // ── Somebody who has stopped answering ────────────────────────────────────
@@ -323,5 +371,5 @@ function decide(facts) {
 module.exports = {
   decide, withinWindow, msUntilWindowOpen, minutesInTz, parseHHMM, nextUtcMidnight,
   weekdayInTz, msUntilQuietDaysEnd, askedForInWords,
-  CONVERSATION_GRACE_MS,
+  CONVERSATION_GRACE_MS, SAYS_IT_ONCE, REPEAT_WINDOW_MS,
 };

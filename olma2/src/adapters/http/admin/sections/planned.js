@@ -11,6 +11,7 @@ const OUTBOX_STATE = {
   budget: 'יצטרפו לסיכום הבא', expired: 'פג תוקפן',
   quiet: 'נעצרו — לא עונה', moved: 'המשימה זזה', superseded: 'הוחלפו בשלב הבא',
   awaiting_introduction: 'ממתינות להיכרות',
+  duplicate: 'נחסמו — אותו דבר נשלח זה עתה',
   settling: 'ממתינות לייצוב המערכת',
   cancelled_by_admin: 'בוטל ע"י מנהל', cancelled: 'התזכורת בוטלה',
 };

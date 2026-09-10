@@ -157,4 +157,36 @@ function renderDigestBlock(data, { locale, timezone, channelType, now } = {}) {
   return sections.join('\n\n');
 }
 
-module.exports = { renderDigestBlock, wordsFor, whenLabel, NAMED_DAY_HORIZON };
+// How many lines the block would have. This is the number that decides whether
+// a turn gets the block or a drawn card, so it is counted off the SAME filters
+// renderDigestBlock applies above — a threshold measured against a different
+// list than the one it is choosing about is a bug waiting for the first
+// person with a subtask.
+function blockItemCount(data) {
+  const events = (Array.isArray(data && data.events) ? data.events : []).length;
+  const tasks = (Array.isArray(data && data.tasks) ? data.tasks : [])
+    .filter((r) => !r.parent_id).length;
+  return events + tasks;
+}
+
+// The operator's one switch (`digest_card_min_items`): at or above it the list
+// is long enough to be worth an image, below it the block IS the message, and 0
+// turns cards off entirely.
+//
+// It has exactly ONE reader, adapters/mcp/tools/digest.js, and that is the
+// whole point. It used to have two — the flag was also stamped into every
+// digest row and spoken as a number in the delivery instruction — and two
+// readers of one threshold is how a turn came to be told "draw a card" and
+// handed a block to send in the same breath (incidents.md, "The same evening,
+// twice").
+const DEFAULT_CARD_MIN_ITEMS = 3;
+function drawInsteadOfBlock(itemCount, minItems) {
+  const n = Number(minItems);
+  const min = Number.isFinite(n) ? n : DEFAULT_CARD_MIN_ITEMS;
+  return min > 0 && itemCount >= min;
+}
+
+module.exports = {
+  renderDigestBlock, wordsFor, whenLabel, NAMED_DAY_HORIZON,
+  blockItemCount, drawInsteadOfBlock, DEFAULT_CARD_MIN_ITEMS,
+};

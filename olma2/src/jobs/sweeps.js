@@ -126,10 +126,16 @@ async function sweepDigests(client, now = new Date()) {
       WHERE u.status = 'active' AND u.onboarded_at IS NOT NULL AND u.digest_times IS NOT NULL
         AND u.paused_at IS NULL AND NOT u.is_eval`
   );
-  // Read once for the whole sweep, not per user: it is one operator setting,
-  // and a flag that changed mid-loop would give two users different mornings
-  // for no reason anyone could later explain.
-  const cardMinItems = Number(await flags.getFlag(client, 'digest_card_min_items'));
+  // `digest_card_min_items` used to be read here and stamped onto every row,
+  // so that an in-flight digest could not change threshold underneath itself.
+  // It is read by get_my_digest instead now, and by nothing else. One reader:
+  // stamping it here left the delivery instruction quoting one number while the
+  // tool applied another, which is how a turn was told a card replaces the
+  // block and then handed the block to send as well (2026-09-10, Miron's
+  // evening at 18:01 and again at 18:02). An operator moving the flag while a
+  // digest sits in the queue now reaches that digest — a smaller price than two
+  // readers of one threshold, and the reason is written down rather than
+  // rediscovered.
   const out = [];
   for (const u of rows) {
     const localMin = minutesInTz(u.timezone, now);
@@ -160,7 +166,7 @@ async function sweepDigests(client, now = new Date()) {
       || (u.last_inbound_at && new Date(u.last_inbound_at) > new Date(u.last_digest_at));
     const res = await enqueue(client, {
       userId: u.id, kind: 'digest',
-      payload: { scope: u.digest_scope || 'summary', cardMinItems, folded: [], mayAsk: Boolean(mayAsk) },
+      payload: { scope: u.digest_scope || 'summary', folded: [], mayAsk: Boolean(mayAsk) },
       idempotencyKey: `digest:${u.id}:${day}:${slot}`,
     });
     if (!res.data.enqueued) continue;

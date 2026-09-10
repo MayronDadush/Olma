@@ -148,6 +148,7 @@ never trust a dated narrative for something you are about to act on.
 - [The hint that outvoted the mark (2026-09-06)](#the-hint-that-outvoted-the-mark-2026-09-06)
 - [The mark that never moved (2026-09-07)](#the-mark-that-never-moved-2026-09-07)
 - ["בשמחה יהב, שיהיה ערב טוב" (2026-09-07)](#בשמחה-יהב-שיהיה-ערב-טוב-2026-09-07)
+- [The same evening, twice (fixed 2026-09-10)](#the-same-evening-twice-fixed-2026-09-10)
 - [A sentence about Shabbat, because the table had never heard of preferences (fixed 2026-09-10)](#a-sentence-about-shabbat-because-the-table-had-never-heard-of-preferences-fixed-2026-09-10)
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
@@ -5327,6 +5328,76 @@ recoverable: the model still has the message in front of it and can overrule.
 syncs the file and cannot make the gateway re-read it. Until that restart the
 code is live and inert: no `thanks` param arrives, every message opens with
 👀, and nothing behaves differently.
+
+### The same evening, twice (fixed 2026-09-10)
+
+Miron, 18:01 and 18:02: a picture of his evening, and then the same picture of
+his evening. One outbox row, one delivery, one `--deliver` turn — and every
+text block a model emits on such a turn is a WhatsApp message of its own, so
+one turn said it twice.
+
+Nothing about it was the model disobeying. It was told, in the digest
+instruction, that a card REPLACES the block and never to send both. That
+instruction also ordered the call that made obeying impossible:
+
+- `cardClause` (channels/openclaw.js) said "if the counts show N or more open
+  items … get_my_digest with scope=\"full\" … then render_schedule_card".
+- `scope="full"` is the ONLY scope that returns a `block` — and it came back
+  with `hints.block`: *"Put it in your reply EXACTLY as it is."*
+
+An unconditional instruction to write, arriving mid-turn on a tool result,
+against a conditional one from the top of the prompt. **That is the third time
+this exact shape has cost a message** — "The hint that outvoted the mark" and
+"A sentence about Shabbat" are the other two — and the position that wins is
+always the same one: the result, not the prompt. Six hours earlier the drawn
+block had shipped (#329, 11:49); 18:00 was the first evening digest after it.
+
+Two readers of one threshold made it worse and are gone with it. The flag
+`digest_card_min_items` was read by `sweepDigests`, stamped onto every row and
+quoted as a number in the instruction, while the tool applied its own reading —
+so an operator moving the flag could put the two into open disagreement. The
+flag has one reader now, `get_my_digest`, and the instruction names no number.
+
+**The fix is that a turn is never handed both.** `get_my_digest` returns EITHER
+a `block` to send as it stands OR `hints.card`, an order to draw — decided in
+code, off the same count `renderDigestBlock` would lay out, and never both. The
+instruction only relays whichever came back. A sentence in a prompt asking a
+model not to send two things is a request; not giving it two things is a
+guarantee.
+
+The general rule underneath it is the owner's, said the same evening: **the
+same thing does not go out twice inside a few minutes unless the person asked
+for it.** It lives in `domain/repeat-guard.js` with one window (10 minutes) and
+two readers, because there are exactly two places a repeat can be produced:
+
+- **the gate** — a second row of the same kind, for the kinds where that is
+  always Olma repeating herself (`SAYS_IT_ONCE`). Dropped as `duplicate`, with
+  an `delivery.duplicate_suppressed` audit row, because a guard nobody can
+  count is a guard nobody will trust. Reminders are excluded on purpose: the
+  ladder is *supposed* to come back, and rung 2 is not rung 1 again.
+- **the card tool** — the same card drawn twice on a turn OLMA started, which
+  is the shape above and the one the gate cannot see (no second row exists).
+  Content-identical only, so the redraw the doctrine actually asks for — the
+  render refused, narrow the range and draw again — passes untouched. And only
+  when the turn is ours: a person who asks to see their week twice has asked
+  twice, and the second answer is an answer.
+
+What it does NOT cover, said out loud so nobody trusts it further than it
+goes: nothing here can see the words a model chose. Two DIFFERENT renderings of
+the same facts share no signature, and are prevented only by the line above —
+never hand one turn both of them.
+
+Two clock traps, both paid for during the fix. The sibling's `sent_at` is
+Postgres' clock while the tick carries a JavaScript one, so a row delivered
+moments ago reads as a few milliseconds in the FUTURE and a `since >= 0` guard
+let both copies through — the same trap `SENT_SLACK_MS` exists for in
+`jobs/unanswered.js`. Bounding the read on both sides against the tick's own
+clock fixes it, and is also what keeps a drain run at a moment of its own
+choosing from reading the whole queue as duplicates.
+
+And three suite failures that were the guard working: fixtures clearing the
+decks with `sent_at = now()` were claiming this person had heard five things in
+the last second. They say two hours ago now, which is what they always meant.
 
 ### A sentence about Shabbat, because the table had never heard of preferences (fixed 2026-09-10)
 

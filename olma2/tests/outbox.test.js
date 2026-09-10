@@ -332,8 +332,14 @@ function recorder() {
 
 // Each worker test starts from an empty pending set — a failed assertion in
 // one test must not leak rows into the next one's drain.
+// Clears the decks between tests: everything still queued counts as already
+// delivered. Stamped two HOURS back rather than at `now()`, because that is
+// what the fixture actually means — these went out earlier, they are not five
+// things this person heard in the last second. At now() the gate's repeat guard
+// reads them exactly as it should and drops the next row of the same kind as a
+// duplicate, which is the guard working and the fixture lying.
 async function flushOutbox() {
-  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+  await db.pool.query(`UPDATE outbox SET sent_at = now() - interval '2 hours' WHERE sent_at IS NULL`);
 }
 
 test('worker delivers pending rows and records sent_at', async () => {
