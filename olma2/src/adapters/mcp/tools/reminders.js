@@ -4,6 +4,7 @@ const {
   reminders, S, tool, ok,
 } = require('./_shared');
 const { err } = require('../../../domain/results');
+const format = require('../../../domain/message-format');
 const dt = require('../../../domain/datetime');
 
 // The moment is well-formed, carries the right offset, and has already gone.
@@ -50,12 +51,17 @@ module.exports = [
     { task_id: S('number', 'Optional task id') }, [],
     async (client, user, a) => {
       const res = await reminders.listReminders(client, user.id, a.task_id);
-      if (!res.ok || !res.data || !res.data.chasing) return res;
+      if (!res.ok || !res.data) return res;
+      // The layout hint stands on its own: a list is worth laying out whether
+      // or not anything happens to be mid-ladder.
+      const many = Array.isArray(res.data.reminders) && res.data.reminders.length > 1;
+      const layout = many ? { layout: format.HINTS.list } : {};
+      if (!res.data.chasing) return many ? ok({ ...res.data, hints: layout }) : res;
       // `chasing` is the half of the answer that was missing entirely until
       // 2026-09-09 — reminders that already went out and are still following
       // up on their own. Said on the result, on the few calls where any
       // exists, rather than in the description on every turn.
-      return ok({ ...res.data, hints: { chasing: 'These already went out and will follow up on '
+      return ok({ ...res.data, hints: { ...layout, chasing: 'These already went out and will follow up on '
         + 'their own — a few hours on and again tomorrow. They are NOT hours to promise anybody: '
         + 'say a time from `reminders`, never from here. To stop one, cancel_reminder(id); the task '
         + 'stays. To move the next one, cancel it and set_task_reminder on its taskId.' } });

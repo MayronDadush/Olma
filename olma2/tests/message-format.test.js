@@ -113,3 +113,113 @@ test('a reminder list is a native WhatsApp list, and a bullet character elsewher
   const last = renderReminderText({ ...payload, attempt: 3, finalAttempt: true }, undefined, 'he', 'whatsapp');
   assert.match(last, /התזכורות האחרונות/);
 });
+
+// ---- emphasis the PERSON typed ---------------------------------------------
+// The other half of the no-escape-character problem. wrapInline refuses to ADD
+// emphasis to a value carrying a marker; this removes emphasis the value would
+// otherwise produce by itself, on the verbatim path only.
+//
+// The readings kept below are the ones that decide how narrow the rule is —
+// each is a real shape a title takes, and each would be damaged by the obvious
+// implementation (delete every marker).
+test('emphasis a person typed is cleaned out of a verbatim message', () => {
+  const s = format.stripUserMarkup;
+  assert.equal(s('לקנות חלב *דל לקטוז*'), 'לקנות חלב דל לקטוז');
+  assert.equal(s('*הכל מודגש*'), 'הכל מודגש');
+  assert.equal(s('חלב *דל* ולחם *מלא*'), 'חלב דל ולחם מלא', 'two pairs in one title');
+  assert.equal(s('*_שניים יחד_*'), 'שניים יחד', 'nested');
+  assert.equal(s('~בוטל~ מחר'), 'בוטל מחר');
+  assert.equal(s('run `npm test`'), 'run npm test');
+  assert.equal(s(null), '');
+});
+
+test('a marker that is part of the word is left exactly as it is', () => {
+  const s = format.stripUserMarkup;
+  // Deleting a character out of somebody's words is a thing you get to be
+  // wrong about once, so every one of these REJECTED a blunter rule.
+  assert.equal(s('report_final_v2'), 'report_final_v2', 'that underscore is the file name');
+  assert.equal(s('7~8 בערב'), '7~8 בערב', 'a lone marker pairs with nothing');
+  assert.equal(s('3 * 4 שולחנות'), '3 * 4 שולחנות', 'the marker hugs no word');
+  assert.equal(s('a*b*c'), 'a*b*c', 'glued inside a token on both sides');
+});
+
+test('the cleaning reaches the three places nothing retypes the words', () => {
+  // A reminder title...
+  assert.equal(renderReminderText({ title: 'לקנות חלב *דל לקטוז*' }, undefined, 'he', 'whatsapp'),
+    '⏰ תזכורת: *לקנות חלב דל לקטוז*');
+  // ...every line of a batch...
+  // Only the ITEM lines are checked: the rung's own heading is emphasised on
+  // purpose now, and asserting "no asterisk anywhere" would have quietly made
+  // this test about the template instead of about the person's words.
+  const list = renderReminderText({ items: ['חלב *דל*', 'לחם'] }, undefined, 'he', 'whatsapp');
+  const items = list.split('\n').filter((l) => l.startsWith('- '));
+  assert.equal(items.length, 2, list);
+  for (const line of items) assert.doesNotMatch(line, /\*/, `a marker survived a batch line: ${line}`);
+  // ...and a slot proposed by one person, on its way to a whole room.
+  // The room's line bolds the slot itself, so what is checked here is that the
+  // markers the PROPOSER typed are gone and the template's own pair is the
+  // only one left — exactly one span, around the whole slot.
+  const { renderGroupCoordination } = require('../src/domain/proactive-text');
+  const done = renderGroupCoordination({ kind: 'done', slot: 'יום חמישי *17:00*' });
+  assert.equal(done, 'סגור: *יום חמישי 17:00* 🎉');
+  // The first sentence a stranger ever reads is not styled by whoever invited
+  // them either — the reason is free text another user wrote.
+  const { introMessage } = require('../src/intake/messages');
+  const intro = introMessage({
+    inviterName: 'יואב', inviterPhone: '054-000-0000',
+    reason: 'לתאם את *הטיול* של סוף השבוע', phone: '+972541112222',
+  });
+  assert.match(intro, /לתאם את הטיול של סוף השבוע/);
+  // The name is emphasised by the template; the reason the OTHER user typed
+  // carries no emphasis of its own into a stranger's first message.
+  assert.match(intro, /\*יואב\*/);
+  assert.equal((intro.match(/\*/g) || []).length, 2, intro);
+});
+
+test('what Olma writes herself is never cleaned — only what somebody else typed', () => {
+  // The owner may put *{{title}}* in a template on the admin page. The value
+  // is cleaned; the sentence around it is his and is left alone.
+  const out = renderReminderText({ title: 'תרופה' }, { reminder: '⏰ *{{title}}*' }, 'he', 'whatsapp');
+  assert.equal(out, '⏰ *תרופה*');
+});
+
+// ---- where the guidance actually rides -------------------------------------
+// Styling on the model path is an instruction, and an instruction is only
+// worth anything where the model reads it. These assert the plumbing: the
+// hint is on the RESULT (not in a description, which every turn pays for),
+// and it fires only where it has work to do.
+test('the styling hints ride results and instructions, never a tool description', () => {
+  const { TOOLS } = require('../src/adapters/mcp/registry');
+  // A detector that can no longer fail is not a detector: if the registry ever
+  // stops handing us tools, this must go red rather than quietly pass.
+  assert.ok(Array.isArray(TOOLS) && TOOLS.length > 50, `registry returned ${TOOLS && TOOLS.length} tools`);
+  for (const t of TOOLS) {
+    const desc = String((t && (t.description || (t.spec && t.spec.description))) || '');
+    for (const [key, hint] of Object.entries(format.HINTS)) {
+      assert.ok(!desc.includes(hint.slice(0, 40)),
+        `${t.name}'s DESCRIPTION carries the ${key} hint — every turn for every user pays for that`);
+    }
+  }
+});
+
+test('every hint is a ceiling as well as a permission', () => {
+  // The failure mode is not that the model ignores this, it is that it enjoys
+  // it. Each hint therefore has to say where to stop, in its own words.
+  const bounded = {
+    list: /[Nn]ever as a comma-separated sentence/,
+    numberedChoice: /answer with just the number/,
+    struckOut: /kept in place rather than dropped/,
+    quoteTheirWords: /never the fence markers/,
+  };
+  for (const [key, re] of Object.entries(bounded)) {
+    assert.match(format.HINTS[key], re, `${key} grants without bounding`);
+  }
+  // And the doctrine line that permits bold at all still names its own limit,
+  // in the file the gateway injects every turn.
+  const doctrine = require('node:fs')
+    .readFileSync(require('node:path').join(__dirname, '..', 'src/intake/agents-template.md'), 'utf8');
+  assert.match(doctrine, /\*Bold\* one thing at most, never a sentence/);
+  assert.doesNotMatch(doctrine, /No markdown bold/,
+    'the prohibition and the permission cannot both be in there — a hint that contradicts '
+    + 'doctrine is outvoted, which is the markPlaced fault');
+});

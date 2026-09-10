@@ -148,6 +148,7 @@ never trust a dated narrative for something you are about to act on.
 - [The hint that outvoted the mark (2026-09-06)](#the-hint-that-outvoted-the-mark-2026-09-06)
 - [The mark that never moved (2026-09-07)](#the-mark-that-never-moved-2026-09-07)
 - ["בשמחה יהב, שיהיה ערב טוב" (2026-09-07)](#בשמחה-יהב-שיהיה-ערב-טוב-2026-09-07)
+- [A sentence about Shabbat, because the table had never heard of preferences (fixed 2026-09-10)](#a-sentence-about-shabbat-because-the-table-had-never-heard-of-preferences-fixed-2026-09-10)
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
 - [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
@@ -5327,6 +5328,48 @@ recoverable: the model still has the message in front of it and can overrule.
 syncs the file and cannot make the gateway re-read it. Until that restart the
 code is live and inert: no `thanks` param arrives, every message opens with
 👀, and nothing behaves differently.
+
+### A sentence about Shabbat, because the table had never heard of preferences (fixed 2026-09-10)
+
+Miron, 09:05:
+
+> בימי שבת אל תשלח לי תזכורות ולא כלום
+
+The save was perfect and instant — `remember_preference` with key `quiet_days`
+and value `sat`, the row still on the box — and he read a sentence back anyway:
+`שבת — שמור. לא תזכורות, לא דיגסט, כלום.` His question was the right one: why
+not just a 👍.
+
+The two entries above make this look like the doctrine losing an argument
+again, and it is not. Nothing was outvoted and nothing was ignored: the model
+was never told a mark existed, because there was no mark. `TOOL_MARKS` covered
+tasks, the calendar, reminders and the undo-shaped tools, and had never
+covered how Olma should BEHAVE — `remember_preference` and `forget_preference`
+were simply not in it. No entry means no 👍, no 👍 means brokerd attaches no
+`hints.markPlaced`, and a model with a plain instruction in front of it and
+nothing saying the fact was already carried does the only thing left: it
+writes. What he saw was the OLD behaviour, intact, in a corner the feature
+had never reached.
+
+That is the failure shape worth keeping. A missing row here is invisible from
+both ends — the tool returns ok, the model behaves reasonably, and the only
+evidence is a sentence that reads exactly like a model ignoring its
+instructions. It is the mirror of "The hint that outvoted the mark": there the
+hint was present and beaten, here it was absent and nobody could tell the
+difference from the outside.
+
+An instruction about how to work belongs in the table on the same argument as
+the undo-shaped tools: it is done the moment the row is written, nothing is
+pending, and nothing is waiting on the person. `remember_fact` is deliberately
+left out beside `forget_fact` — a fact is usually captured in passing while
+the real answer is being written, so its 👍 would be about the side-effect
+rather than about what they asked.
+
+The test goes through brokerd, not the table: what matters is that
+`hints.markPlaced` reaches the model on that call, and the table alone proves
+nothing about what the model is handed. It also pins the two negatives —
+a `forget_preference` that finds nothing earns no mark (the person is owed the
+words), and reading preferences still is not doing anything.
 
 ### The rung nobody asked for, at half past one (2026-09-07)
 

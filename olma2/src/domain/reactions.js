@@ -322,6 +322,22 @@ const TOOL_MARKS = Object.freeze({
   cancel_reminder: 'done',
   edit_task: 'done',
   forget_fact: 'done',
+  // How Olma should BEHAVE, as opposed to what she should hold: "בימי שבת אל
+  // תשלח לי תזכורות ולא כלום" (Miron, 2026-09-10). It was saved as quiet_days
+  // inside the same second and he read a sentence back — because these two
+  // were simply never in this table, so no 👍 was placed, so the result never
+  // carried `markPlaced`, so nothing told the model the fact had already been
+  // conveyed. The model was not overruling the mark; it never saw one.
+  //
+  // It belongs here on the same argument as the undo-shaped row above: an
+  // instruction about how to work is done the moment the row is written, with
+  // nothing pending and nothing waiting on them. The asymmetry this leaves is
+  // deliberate and worth naming — `remember_fact` beside `forget_fact` is
+  // still unmarked, because a fact is usually captured in passing while the
+  // real answer is being written, and that turn's 👍 would be about the
+  // side-effect rather than about what they asked.
+  remember_preference: 'done',
+  forget_preference: 'done',
   set_task_reminder: 'scheduled',
 });
 

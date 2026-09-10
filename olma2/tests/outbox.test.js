@@ -726,8 +726,8 @@ test('worker: the row that reaches the deliverer carries the recipient\'s locale
   const his = sent.find((r) => r.user_id === user.id);
   assert.equal(hers.locale, 'en', 'the worker did not join the locale onto the row');
   const herText = proactiveText.rawPipeTextFor(hers);
-  assert.match(herText, /^⏰ Reminders:\n• call mom\n• pay rent$/);
-  assert.equal(proactiveText.rawPipeTextFor(his), '⏰ תזכורת: תרופה');
+  assert.match(herText, /^⏰ \*Reminders\*\n• call mom\n• pay rent$/);
+  assert.equal(proactiveText.rawPipeTextFor(his), '⏰ תזכורת: *תרופה*');
 });
 
 test('worker: a batch that fails to send fails for every row it carried', async () => {
