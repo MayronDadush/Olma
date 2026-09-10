@@ -5372,6 +5372,68 @@ nothing about what the model is handed. It also pins the two negatives —
 a `forget_preference` that finds nothing earns no mark (the person is owed the
 words), and reading preferences still is not doing anything.
 
+**And then the rest of the table (same day).** Shown the shape of the fault,
+the owner's answer was the general rule rather than the one row: a person
+should not collect messages, and anything that can end in a like should. The
+table went from thirteen tools to thirty-six in the first pass — everything
+Olma HOLDS (`remember_fact` beside `forget_fact` after all, contacts,
+labels) and every SETTING (timezone, name, language, persona, digest,
+calendar sync, connection grants, both disconnects), plus the undo half
+nobody had noticed was missing (`restore_task`, `update_calendar_event`,
+`delete_calendar_event`, `cancel_live_update`). `subscribe_live_updates` is
+⏰ rather than 👍, on `set_task_reminder`'s own line: it is armed and it will
+speak to them later.
+
+Asked why the exclusions were grouped by REASON rather than by "did it change
+something and need nothing further from the person", the answer was that the
+second framing is the right one and the reasons were never four independent
+rules — they were four ways of failing that one test. A scan against all 89
+tools by that single question found five more the first pass had missed
+entirely: `revoke_share`, `respond_to_share`, `opt_out_of_meeting`,
+`cancel_meeting` and `create_shared_meeting_event` are the ACTOR's own exit
+from something shared, in hand the moment the tool returns — unlike
+proposing or negotiating one, where the table on offer is still changing
+underneath them. Table: forty-one.
+
+The same pass over `request_connection` found the sharper case. It reads at
+the call site exactly like `send_message_to_connection` beside it — both
+"not finished, waiting on somebody else" — and that similarity is what put
+it in the same excluded family the first time. But `request_connection`
+genuinely is armed to speak to THIS person again: `respond_to_connection_
+request` fans the answer back out to the requester by name, the same
+mechanism `set_task_reminder` and `subscribe_live_updates` already earn ⏰
+for. `send_message_to_connection` cannot make that claim — nothing ever
+notifies the sender once their message lands — so it stays unmarked for the
+opposite reason it looked excluded for. Table: forty-two, three of them ⏰.
+
+The exclusions took the real work, and they are written above the table
+because a row that is absent looks like an oversight six weeks later while a
+row that is present is at least visible in a diff. Four families, four
+different reasons: a result that must be SPOKEN (a link, a media path, the
+digest block, an import's counts — `sendLinkVerbatim` exists because a URL
+nothing says reaches nobody, and a 👍 on one of those is Olma claiming an
+action she never delivered); one still WAITING on another person (a relayed
+message, and every step of a meeting or connection NEGOTIATION — propose,
+respond, decide, settle, the other side's own approval — whose whole value
+to the person is what the table now looks like, or, for `respond_to_
+connection_request`, whose decision belongs to someone else); one whose own
+hint unconditionally asks for words the mark cannot carry (`pause_olma`,
+where silence is the one answer "stop" must never get; `resume_olma`;
+`snooze_task`, which owes them the new date struck through against the
+old); and reading.
+
+That third family is the one to be careful with, because it is the only one
+where the exclusion is a property of the HINT and not of the tool. Moving one
+of them into the table means rewriting its hint to be conditional first —
+otherwise it is "The hint that outvoted the mark" again, deliberately this
+time.
+
+The cost is bounded and worth stating, since the obvious objection is that
+every mark is a whole `openclaw` CLI start-up: `markFor` dedupes on message
+AND state, so a turn calling three marked tools still spawns one closing mark.
+What grows is the number of turns that get a closing mark at all, which is
+the point.
+
 ### The hint the dedup swallowed (fixed 2026-09-10)
 
 Gali, 19:33, replying to a repeating reminder that asked "בוצע?":

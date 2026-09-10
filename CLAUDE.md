@@ -993,23 +993,40 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   (`hints.markPlaced`) and the model answers `NO_REPLY` unless words add
   something** — a question, a caveat, an error. A sentence after the mark is
   a second notification for the same fact (Miron, 2026-09-05: "deleted ✅"
-  under a 👍). The mark table is `reactions.TOOL_MARKS`; the undo-shaped
-  tools (archive, cancel reminder, edit, forget) earn the same 👍 as a capture,
-  and so do the two preference tools — a rule about how Olma should BEHAVE is
-  done the moment the row is written. **A tool ABSENT from that table produces
-  a sentence that looks exactly like the model ignoring the doctrine**: no row
-  → no 👍 → no `markPlaced` → nothing ever told it the fact was already
-  carried. Miron asked for silence on Shabbat, it was saved as `quiet_days`
-  inside the same second, and he read it back in words (2026-09-10) — the
-  mirror of "The hint that outvoted the mark", and indistinguishable from it
-  from the outside. `remember_fact` stays out beside `forget_fact` on purpose:
-  a fact is usually captured in passing while the real answer is written, so
-  its mark would be about the side-effect, not about what they asked.
-- **The hint follows the MARK, not the spawn.** `markFor` dedupes on message
-  AND state — rightly, a repeat mark is a whole CLI start-up that WhatsApp
-  would overwrite with the same emoji — so the SECOND done-tool of a turn
-  gets `null` from it, and the `markPlaced` hint used to be hung off that
-  same answer. Gali answered a repeating reminder, the model correctly called
+  under a 👍). **A tool ABSENT from `reactions.TOOL_MARKS` produces a sentence
+  that looks exactly like the model ignoring the doctrine**: no row → no 👍 →
+  no `markPlaced` → nothing ever told it the fact was already carried. That is
+  what answered Miron's "בימי שבת אל תשלח לי תזכורות ולא כלום" in words while
+  the row was already saved (2026-09-10) — from the outside, indistinguishable
+  from "The hint that outvoted the mark".
+- **The owner's rule is that anything which CAN end in a like should**
+  (2026-09-10), so the table covers every capture, every undo, everything Olma
+  HOLDS (facts, contacts), every SETTING — preferences, timezone, name,
+  language, persona, digest, calendar sync, connection grants, disconnects —
+  and every side of a share/meeting the ACTOR alone closes (revoke, respond,
+  opt out, cancel, the shared calendar event). `subscribe_live_updates` and
+  `request_connection` are ⏰ beside `set_task_reminder`: the generalised
+  definition is "this row will proactively speak to them later", which a
+  connection request genuinely does (the other side's answer fans back out to
+  the requester) and a relayed message genuinely does NOT — nothing ever
+  notifies the sender once it lands, so `send_message_to_connection` stays
+  unmarked rather than borrowing a mark that would be a claim nothing backs.
+  **Three families stay out and each is a different reason** (the list is
+  above the table in `reactions.js`): a result that must be SPOKEN — a link, a
+  media path, the digest block, an import's counts, because a URL nothing says
+  reaches nobody; one still WAITING on somebody else — a relayed message,
+  every step of a meeting NEGOTIATION (not its exit), where 👍 says "done"
+  about something that is not; one whose own hint UNCONDITIONALLY asks for
+  words the mark cannot carry — `pause_olma` (silence is the one answer "stop"
+  must never get), `resume_olma`, `snooze_task`, so moving one there means
+  rewriting its hint first, never just adding a row; and reading.
+  `tests/reactions.test.js` fails if a guarded name leaves every list, and the
+  cost is bounded — `markFor` dedupes on message AND state, so a turn calling
+  three marked tools still spawns ONE closing mark.
+- **The hint follows the MARK, not the spawn.** `markFor`'s dedup above is
+  right and untouched, but the SECOND done-tool of a turn still gets `null`
+  from it, and the `markPlaced` hint used to be hung off that same answer.
+  Gali answered a repeating reminder, the model correctly called
   `cancel_reminder` then `complete_task`, and the LAST result it read before
   writing carried nothing at all: 👍 on her message and "בוצע 👍 שמתי שברכת"
   under it (2026-09-10). `reactions.doneMarkStands` answers the other

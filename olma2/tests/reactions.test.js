@@ -563,6 +563,146 @@ test('reactions: a 👍 is claimed only where one is actually standing', async (
   assert.equal(hintsOf(listed).markPlaced, undefined, 'reading is not doing');
 });
 
+// The owner's rule, 2026-09-10: a person should not collect messages, and
+// anything that can end in a like should. `set_my_timezone` is the one he
+// named, and it is the harder half of the batch — it carries hints of its own,
+// so this pins that the mark and the hint can coexist when the hints are
+// conditional and did not fire.
+test('reactions: a setting the person changed ends in the 👍, hints and all', async (t) => {
+  const db = await freshDb();
+  t.after(() => db.teardown());
+  const marks = [];
+  const broker = createBrokerServer({
+    pool: db.pool,
+    placeMark: (opts) => { marks.push(opts); return { attempted: true }; },
+  });
+  const user = await makeUser(db.pool, '+972500000904', { firstName: 'Miron' });
+  const newTurn = () => ({ userId: null, opened: false, counted: false, quota: null, messageId: null, lastInboundAt: null });
+  const call = (name, args, turn) => broker.dispatch(
+    { id: 1, method: 'tool_call', params: { name, args: { identity_token: user.identity_token, ...args } } }, turn);
+  const data = (res) => JSON.parse(res.text.replace(/^OK /, ''));
+
+  const zone = newTurn();
+  await call('turn_start', { message_id: '3EB0SETTINGS1' }, zone);
+  const tz = await call('set_my_timezone', { timezone: 'Europe/Berlin', confirmed: true }, zone);
+  assert.ok(tz.ok);
+  assert.equal(marks.at(-1).state, 'done');
+  assert.match(data(tz).hints.markPlaced, /NO_REPLY/);
+  // Nothing was repaired for a user this new, so the mark stands alone. When
+  // something IS repaired the hint fires and says to speak — markPlaced names
+  // "no other hint here" as one of its own conditions, which is what keeps the
+  // two from colliding the way `hints.reminders` once did.
+  assert.equal(data(tz).hints.moved, undefined);
+
+  const lang = newTurn();
+  await call('turn_start', { message_id: '3EB0SETTINGS2' }, lang);
+  const en = await call('set_my_language', { locale: 'en' }, lang);
+  assert.ok(en.ok);
+  assert.equal(marks.at(-1).state, 'done');
+
+  // A subscription is armed and WILL speak later, which is ⏰ and not 👍 —
+  // the same line set_task_reminder draws.
+  const feed = newTurn();
+  await call('turn_start', { message_id: '3EB0SETTINGS3' }, feed);
+  await call('subscribe_live_updates', { source: 'weather', city: 'תל אביב' }, feed);
+  assert.equal(marks.at(-1).state, 'scheduled');
+});
+
+// request_connection follows the same generalised ⏰ definition as
+// subscribe_live_updates: the row itself does not just sit there, it
+// proactively speaks to THIS person again later — respond_to_connection_request
+// fans the answer back out to the requester by name. send_message_to_connection
+// looks identical at the call site and is NOT this: nothing ever notifies the
+// sender once their message lands, so ⏰ there would be a claim nothing backs.
+test('reactions: a connection request is ⏰ — it will speak to them again; a relayed message never does', async (t) => {
+  const db = await freshDb();
+  t.after(() => db.teardown());
+  const marks = [];
+  const broker = createBrokerServer({
+    pool: db.pool,
+    placeMark: (opts) => { marks.push(opts); return { attempted: true }; },
+  });
+  const asker = await makeUser(db.pool, '+972500000907', { firstName: 'שואל' });
+  const target = await makeUser(db.pool, '+972500000908', { firstName: 'יעד' });
+  const newTurn = () => ({ userId: null, opened: false, counted: false, quota: null, messageId: null, lastInboundAt: null });
+  const call = (name, args, turn) => broker.dispatch(
+    { id: 1, method: 'tool_call', params: { name, args: { identity_token: asker.identity_token, ...args } } }, turn);
+
+  const req = newTurn();
+  await call('turn_start', { message_id: '3EB0CONNREQ01' }, req);
+  const requested = await call('request_connection', { phone: target.phone, reason: 'לתאם משהו' }, req);
+  assert.ok(requested.ok);
+  assert.equal(marks.at(-1).state, 'scheduled');
+  assert.equal(marks.at(-1).emoji, '⏰');
+});
+
+// The exclusions are the fragile half of the table: adding a row is visible in
+// a diff, and NOT adding one looks like an oversight six weeks later. Each
+// group here is a different reason, and each is a real production rule.
+test('reactions: what cannot end in a like stays out of the table, by reason', () => {
+  // Every name is checked against the registry as well as against the table:
+  // a bare "is not marked" assertion passes for a tool that no longer exists,
+  // which would quietly retire the guard rather than fail it.
+  const { TOOLS } = require('../src/adapters/mcp/registry');
+  const exists = new Set(TOOLS.map((t) => t.name));
+  const marked = (name) => {
+    assert.ok(exists.has(name), `this guard names a tool that does not exist: ${name}`);
+    return Object.hasOwn(r.TOOL_MARKS, name);
+  };
+
+  // 1. The result has to be SPOKEN — a link nothing says reaches nobody
+  //    (domain/action-link.sendLinkVerbatim), and a 👍 on it is Olma claiming
+  //    an action she then never delivered.
+  for (const name of ['search_link', 'open_my_dashboard', 'start_google_connection',
+    'start_calendar_connection', 'start_contacts_connection', 'render_schedule_card',
+    'generate_image', 'generate_video', 'get_my_digest', 'import_google_contacts',
+    'import_contacts_file', 'call_me_on_the_phone']) {
+    assert.equal(marked(name), false, `${name} returns something the reply must carry`);
+  }
+
+  // 2. Not finished — waiting on somebody else, OR (send_message_to_connection)
+  //    a claim nothing ever backs: nothing notifies the sender once it lands,
+  //    which is exactly why it is not ⏰ either. 👍/⏰ both say something the
+  //    tool is not yet in a position to say.
+  for (const name of ['share_task_with', 'send_message_to_connection',
+    'start_meeting_coordination', 'propose_meeting_slot', 'respond_to_meeting_slot',
+    'decide_meeting_option', 'settle_meeting', 'respond_to_connection_request']) {
+    assert.equal(marked(name), false, `${name} is waiting on another person`);
+  }
+
+  // 2b. request_connection is the one exception in this family: it genuinely
+  //     IS armed to speak to THIS person again (the requester hears the
+  //     answer), so it earns ⏰ rather than staying unmarked. Checked by
+  //     state, not just absence, so this guard fails if it ever slides back
+  //     to 👍 or drops out of the table entirely.
+  assert.equal(r.TOOL_MARKS.request_connection, 'scheduled',
+    'request_connection is armed to speak to them again, same as a reminder');
+
+  // 2c. Closing a share or a meeting is the ACTOR's own action, in hand the
+  //     moment the tool returns — unlike proposing or negotiating one, where
+  //     the table on offer is still changing. `create_shared_meeting_event`
+  //     is the confirmed write itself, same shape as create_calendar_event.
+  for (const name of ['revoke_share', 'respond_to_share', 'opt_out_of_meeting',
+    'cancel_meeting', 'create_shared_meeting_event']) {
+    assert.equal(marked(name), true, `${name} is the actor's own action, done when it returns`);
+  }
+
+  // 3. The result already asks, unconditionally, for words the mark cannot
+  //    carry. Silence is the one answer "stop" must never get.
+  for (const name of ['pause_olma', 'resume_olma', 'snooze_task']) {
+    assert.equal(marked(name), false, `${name} owes them a sentence of its own`);
+  }
+
+  // 4. Reading is not doing.
+  for (const name of ['list_my_tasks', 'list_my_reminders', 'list_my_preferences',
+    'list_my_facts', 'list_my_contacts', 'list_my_connections', 'list_my_meetings',
+    'list_my_shares', 'list_my_live_updates', 'get_my_profile', 'get_meeting_status',
+    'get_project_overview', 'my_calendar_events', 'calendar_status',
+    'contacts_connection_status', 'view_shared_tasks', 'report_issue']) {
+    assert.equal(marked(name), false, `${name} reads, it does not do`);
+  }
+});
+
 // ── The vocabulary is the operator's, and a voice note is heard, not seen ─────
 // Miron, 2026-09-04, having watched a 👀 turn into a ⏰ on his own phone: make
 // it a setting, so "done" can be a 👍 instead of a message saying done; and for

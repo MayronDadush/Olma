@@ -309,37 +309,134 @@ function placeMark(opts = {}, deps = {}) {
 // more specific claim of the two, and it is the one the person acts on.
 const TOOL_MARKS = Object.freeze({
   turn_start: 'working',
+
+  // ── In hand: captured, done, or already true ────────────────────────────
   complete_task: 'done',
   complete_shared_task: 'done',
   add_task: 'done',
   add_tasks_bulk: 'done',
+  add_subtask_to_shared: 'done',
   create_calendar_event: 'done',
+
   // The undo-shaped asks — "delete that", "stop reminding me", "change it to
   // Tuesday", "forget that" — are done the moment the tool returns, exactly
   // like a capture, and the person reads the same 👍. Added 2026-09-05 after
   // Miron deleted a task by reply and got a 👍 AND a sentence saying so.
   archive_task: 'done',
+  restore_task: 'done',
   cancel_reminder: 'done',
+  cancel_live_update: 'done',
   edit_task: 'done',
+  update_calendar_event: 'done',
+  delete_calendar_event: 'done',
   forget_fact: 'done',
+
+  // What Olma HOLDS about them and the people around them. Silent bookkeeping
+  // by design — `save_contact` says so in as many words — so the save is the
+  // whole answer and a sentence restating it is a second notification.
+  remember_fact: 'done',
+  save_contact: 'done',
+  forget_contact: 'done',
+  set_contact_label: 'done',
+
   // How Olma should BEHAVE, as opposed to what she should hold: "בימי שבת אל
   // תשלח לי תזכורות ולא כלום" (Miron, 2026-09-10). It was saved as quiet_days
-  // inside the same second and he read a sentence back — because these two
-  // were simply never in this table, so no 👍 was placed, so the result never
-  // carried `markPlaced`, so nothing told the model the fact had already been
+  // inside the same second and he read a sentence back — because these were
+  // not in this table, so no 👍 was placed, so the result never carried
+  // `markPlaced`, so nothing told the model the fact had already been
   // conveyed. The model was not overruling the mark; it never saw one.
   //
-  // It belongs here on the same argument as the undo-shaped row above: an
-  // instruction about how to work is done the moment the row is written, with
-  // nothing pending and nothing waiting on them. The asymmetry this leaves is
-  // deliberate and worth naming — `remember_fact` beside `forget_fact` is
-  // still unmarked, because a fact is usually captured in passing while the
-  // real answer is being written, and that turn's 👍 would be about the
-  // side-effect rather than about what they asked.
+  // Same argument as the undo-shaped row above: a rule about how to work is
+  // done when the row is written, with nothing pending and nothing waiting on
+  // the person. `set_my_timezone` and `set_my_name` belong here despite
+  // carrying hints of their own, because those hints are CONDITIONAL and fire
+  // on the rare call where something was repaired — which is precisely the
+  // case `markPlaced` already tells the model to write about.
   remember_preference: 'done',
   forget_preference: 'done',
+  set_my_timezone: 'done',
+  set_my_name: 'done',
+  set_my_language: 'done',
+  set_assistant_persona: 'done',
+  set_digest_preferences: 'done',
+  set_calendar_task_sync: 'done',
+  record_meeting_constraint: 'done',
+  set_meeting_title: 'done',
+
+  // Doors this person opens and closes on their own account. Opening one
+  // returns a LINK and is excluded below; closing one is just closed.
+  disconnect_calendar: 'done',
+  disconnect_google_contacts: 'done',
+  grant_connection_feature: 'done',
+  revoke_connection_feature: 'done',
+  revoke_connection: 'done',
+
+  // The ACTOR's own exit from something shared, in hand the moment the tool
+  // returns — unlike PROPOSING or NEGOTIATING one, where the table on offer
+  // is still changing underneath them and stays unmarked below.
+  // `create_shared_meeting_event` is the confirmed write itself, same shape
+  // as `create_calendar_event` above it.
+  revoke_share: 'done',
+  respond_to_share: 'done',
+  opt_out_of_meeting: 'done',
+  cancel_meeting: 'done',
+  create_shared_meeting_event: 'done',
+
+  // ── ⏰: armed, and it will speak to them later ──────────────────────────
   set_task_reminder: 'scheduled',
+  subscribe_live_updates: 'scheduled',
+  // The generalised definition, not a special case: this row does not just
+  // sit there, it will proactively reach THIS person again — the answer fans
+  // back out to the requester by name (respond_to_connection_request).
+  // `send_message_to_connection` looks identical at the call site and stays
+  // unmarked below for exactly the opposite reason: nothing ever notifies the
+  // SENDER once their message lands, so a mark there would be a claim nothing
+  // backs.
+  request_connection: 'scheduled',
 });
+
+// ── What is deliberately NOT here, and why ──────────────────────────────────
+// The owner's rule is that a person should not collect messages, and anything
+// that can end in a like should (2026-09-10). Four families still cannot, and
+// each is a different reason — worth writing down, because the next reader
+// will otherwise re-derive them one production sentence at a time. Family 2
+// used to also hold `revoke_share`, `respond_to_share`, `opt_out_of_meeting`
+// and `cancel_meeting` — those are the actor's own exit from something
+// shared, done the moment the tool returns, and moved into the table above;
+// what is left in family 2 is only what is still genuinely IN PROGRESS.
+//
+// 1. The result has to be SPOKEN. A link (`search_link`, `open_my_dashboard`,
+//    every `start_*_connection`), a media path (`render_schedule_card`,
+//    `generate_image`/`generate_video`), the digest block, the counts an
+//    import returns. `domain/action-link.sendLinkVerbatim` exists because a
+//    URL nothing says reaches nobody — a 👍 on one of these is Olma claiming
+//    an action she then never delivered.
+// 2. It is not finished, it is WAITING on somebody else. `share_task_with`,
+//    `send_message_to_connection` ("say it is on its way, never that it
+//    already arrived"), and every step of a meeting NEGOTIATION —
+//    propose/respond/decide/settle, plus `respond_to_connection_request`
+//    (the OTHER side's own decision). 👍 there says "done" about something
+//    that is not. `request_connection` looks like it belongs here and does
+//    not: it is ⏰ above, on the same generalised definition as
+//    `subscribe_live_updates` — this row will proactively speak to THEM
+//    again, which `send_message_to_connection` beside it structurally
+//    cannot promise.
+// 3. The tool's own result already asks, unconditionally, for words that
+//    carry more than the mark: `pause_olma` (say plainly she will not write
+//    again — silence is the one answer "stop" must never get), `resume_olma`
+//    (what came back), `snooze_task` (the new date, struck through against the
+//    old). An unconditional "say this" beside a conditional `markPlaced` is
+//    the fault recorded in CLAUDE.md as "markPlaced is CONDITIONAL": the mark
+//    is not ignored, it is outvoted. Moving one of these here means rewriting
+//    its hint first, not just adding a row.
+// 4. Reading is not doing — every `list_*`, `get_*`, `view_*` and `*_status`.
+//    And `report_issue`, which is usually logged in passing while the real
+//    answer is being written, so its 👍 would be about the side-effect.
+//
+// The cost of the additions is bounded and worth stating: `markFor` dedupes on
+// message AND state, so a turn calling three marked tools still spawns ONE
+// closing mark. What grows is the number of turns that get a closing mark at
+// all — which is the point.
 
 // The single decision, kept clear of sockets and spawns so it can be tested
 // directly. Returns the mark to place, or null — and null is a real answer that
