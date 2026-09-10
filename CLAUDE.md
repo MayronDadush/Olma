@@ -286,23 +286,41 @@ looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
   **`null` (nothing due) and an empty block are different answers**: a morning
   with nothing on it is a real morning and the sentence about it is the
   model's, never an empty heading.
-- **…and since 2026-09-10 the two lists a person ASKS for are drawn the same
-  way** (`domain/list-block.js`, `list_my_tasks` and `list_my_reminders`).
-  They share the digest's line renderer — `digest-block.contextFor/line/
-  whenLabel`, exported for exactly that — so a day is named the same way in
-  every message Olma sends and there is one answer to "what is today". Two
-  things in them are not layout: the calendar/plate split was a paragraph
-  asking the model to do what `tasks.kind` exists to enforce, and
-  `listReminders` returned rows with **no title**, so saying what a reminder
-  was about meant re-fetching the tasks (the hour now renders in THEIR zone
-  beside the instant, as `listTasks` already did). **`chasing` is never
-  drawn** — the rule that it is not an hour anybody may say out loud becomes a
-  shape instead of a sentence. Below `MIN_LINES` (2) there is no block and the
-  old instruction hints stand, and a block NEVER travels beside `HINTS.list`
-  or the `kinds` paragraph: an unconditional "lay these out" on a result that
-  arrives laid out is the `markPlaced` fault, asking for work already done.
-  `HINTS.relayBlock` states the relay contract once for all three tools that
-  hand a block over; each appends only its own sentence.
+- **…and since 2026-09-10 the lists and choices a person ASKS for are drawn
+  the same way** (`domain/list-block.js`: `list_my_tasks`, `list_my_reminders`,
+  `my_calendar_events`, `get_meeting_status`). The first three share the
+  digest's line renderer — `digest-block.contextFor/line/whenLabel/dayLabel`,
+  exported for exactly that — so a day is named the same way in every message
+  Olma sends and there is one answer to "what is today". Two things in them
+  are not layout: the calendar/plate split was a paragraph asking the model to
+  do what `tasks.kind` exists to enforce, and `listReminders` returned rows
+  with **no title**, so saying what a reminder was about meant re-fetching the
+  tasks (the hour now renders in THEIR zone beside the instant, as `listTasks`
+  already did). **`chasing` is never drawn** — the rule that it is not an hour
+  anybody may say out loud becomes a shape instead of a sentence.
+  **`my_calendar_events` gets its OWN line builder, never `digest-block.line`**
+  — Google's `start`/`end` are a DATE for an all-day event and an INSTANT for
+  a timed one, and reading a date like an instant puts it at UTC midnight,
+  which in a zone behind UTC is the day before (the exact fault
+  `user-dashboard-events.js`'s `dayGap` already guards under the same name).
+  `dayLabel` (split out of `whenLabel`) is called on the event's own
+  `{y,m,d}` directly, with no zone conversion at all — there is nothing to
+  convert. **`get_meeting_status` numbers only `active` options** — a
+  `pending` fifth is not yet open for anyone to vote on, so numbering it would
+  tell a participant they can "answer with the number" on a choice that is not
+  actually theirs — in the proposer's own words (`slotText`), never a time
+  re-derived from `startsAt` that could disagree with what they said. Below
+  each one's own floor (`MIN_LINES` = 2 active items/options) there is no
+  block and the old instruction hints stand, and a block NEVER travels beside
+  `HINTS.list`/`numberedChoice` or the `kinds` paragraph: an unconditional
+  "lay these out" on a result that arrives laid out is the `markPlaced`
+  fault, asking for work already done. `HINTS.relayBlock` states the relay
+  contract once for all five tools that hand a block over; each appends only
+  its own sentence. **What "gone" still is not drawn**: `meeting-options.list`
+  only ever returns `active`/`pending` rows, so a declined or replaced option
+  is not in the result at all — there is no line for a strike-through to land
+  on, and saying one left the table stays a model's sentence
+  (`HINTS.struckOut`, unchanged).
 - **The delivery gate is the chokepoint and a paused user has no exceptions** —
   not reminders, not urgent, not another user's fan-out.
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where

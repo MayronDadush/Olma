@@ -1,9 +1,10 @@
 'use strict';
 // calendar — one slice of the tool registry (see ../registry.js).
 const {
-  calendar, taskCalendar, S, tool, ok,
+  calendar, taskCalendar, users, S, tool, ok,
 } = require('./_shared');
 const format = require('../../../domain/message-format');
+const listBlock = require('../../../domain/list-block');
 
 module.exports = [
   // The access level is the user's decision, never the model's: it is baked
@@ -34,7 +35,32 @@ module.exports = [
     { days_ahead: S('number', 'How many days forward to look. Default 7, max 60.') }, [],
     async (client, user, a) => {
       const res = await calendar.listEvents(client, user.id, a.days_ahead);
-      if (!res || !res.ok || !res.data || !Array.isArray(res.data.events) || res.data.events.length < 2) return res;
+      if (!res || !res.ok || !res.data || !Array.isArray(res.data.events)) return res;
+      // Drawn rather than retyped (domain/list-block.js), same reason as
+      // list_my_tasks and list_my_reminders: the layout cannot drift between
+      // two readings and a row cannot go missing on the way through. An
+      // all-day event's DATE and a timed event's INSTANT are different shapes
+      // (see list-block.calendarEventLine) — the model is handed neither, only
+      // the finished line.
+      const ch = await users.primaryChannel(client, user.id);
+      const block = listBlock.renderCalendarListBlock(res.data, {
+        locale: user.locale,
+        timezone: user.timezone,
+        channelType: ch.ok ? ch.data.channel.channel_type : null,
+      });
+      if (block) {
+        return ok({
+          ...res.data,
+          block,
+          hints: {
+            ...(res.data.hints || {}),
+            block: `${format.HINTS.relayBlock} Everything you add is at most ONE short sentence.`,
+          },
+        });
+      }
+      // The layout hint is the fallback and never travels beside the block —
+      // see the same rule on the other two drawn lists.
+      if (res.data.events.length < 2) return res;
       return ok({ ...res.data, hints: { layout: format.HINTS.list } });
     }),
   tool('create_calendar_event', 'Add an event to the user\'s own calendar (needs read_write). The event is the WHOLE answer to a calendar request: do not also add a task for the same thing, which would arm a reminder beside an event that already alerts. One request is one thing done. Times MUST carry a UTC offset (2026-08-20T09:00:00+03:00); bare local times are rejected.',
