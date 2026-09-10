@@ -149,6 +149,7 @@ never trust a dated narrative for something you are about to act on.
 - [The mark that never moved (2026-09-07)](#the-mark-that-never-moved-2026-09-07)
 - ["בשמחה יהב, שיהיה ערב טוב" (2026-09-07)](#בשמחה-יהב-שיהיה-ערב-טוב-2026-09-07)
 - [A sentence about Shabbat, because the table had never heard of preferences (fixed 2026-09-10)](#a-sentence-about-shabbat-because-the-table-had-never-heard-of-preferences-fixed-2026-09-10)
+- [The hint the dedup swallowed (fixed 2026-09-10)](#the-hint-the-dedup-swallowed-fixed-2026-09-10)
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
 - [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
@@ -5369,6 +5370,63 @@ The test goes through brokerd, not the table: what matters is that
 nothing about what the model is handed. It also pins the two negatives —
 a `forget_preference` that finds nothing earns no mark (the person is owed the
 words), and reading preferences still is not doing anything.
+
+### The hint the dedup swallowed (fixed 2026-09-10)
+
+Gali, 19:33, replying to a repeating reminder that asked "בוצע?":
+
+> בירכתי אין צורך לתזכר
+
+She got the 👍 on her message — and, under it, `בוצע 👍 שמתי שברכת — הכל סגור.`
+
+The model had done nothing wrong. Twice over: `cancel_reminder` at 19:33:27,
+`complete_task` at 19:33:33, which is exactly the sequence `complete_task`'s
+own description prescribes for ending a standing task. Both are in
+`TOOL_MARKS`. One 👍 went out, correctly, for the first of them.
+
+The second got nothing. `markFor` dedupes on message AND state, so it returned
+`null` for `complete_task` — and brokerd hung the `markPlaced` hint off that
+same answer:
+
+```js
+const mark = reactions.markFor(name, result, turn, clock());
+if (mark && actorPhone) placed = placeMark({ ... });
+if (placed && placed.attempted && mark === 'done' && ...) { hints.markPlaced = ... }
+```
+
+So the LAST tool result the model read before choosing its words said nothing
+about any mark. It was not overruling the 👍 and not ignoring a hint: at that
+moment nothing in front of it said one existed. The tell is in the sentence
+itself — it typed a 👍 into the text, trying to deliver by hand what the
+reaction had already delivered.
+
+Reproduced against a real brokerd before touching anything, with her exact
+sequence: one mark placed, `cancel_reminder` carrying `markPlaced`,
+`complete_task` carrying `hints: null`.
+
+**The dedup is not the bug and was not touched.** A repeat mark is a whole
+`openclaw` CLI start-up (15s on the box) and WhatsApp replaces a reaction
+rather than appending one, so an identical second mark costs fifteen seconds
+and changes nothing on the screen. The fault is that one answer was serving
+two different questions: *should a mark be spawned* (no, there is one) and
+*is a mark standing on this message* (yes). `reactions.doneMarkStands` is the
+second question, and brokerd now asks it.
+
+Two things it must not get wrong, both pinned by tests:
+
+- It reads the last state **attempted**, not "a done mark happened at some
+  point in this turn". A mark that could not be spawned is never claimed —
+  `attempted`, never `sent`, the same discipline the hint's own wording keeps.
+- A ⏰ asked for after a 👍 replaces it on the phone, and `markFor` will not
+  re-ask for a state it already spent this turn. From that point the standing
+  mark is ⏰, and a later done-tool must not be told a thumbs-up is there.
+  The naive version of this fix gets that case wrong.
+
+Third variant of one family, and worth listing together because each looks
+exactly like the model misbehaving and none of them is: the mark **absent**
+(the preference tools, the entry above), the mark **outvoted** (an
+unconditional instruction beside a conditional one), and now the mark
+**present and unannounced**.
 
 ### The rung nobody asked for, at half past one (2026-09-07)
 

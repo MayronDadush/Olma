@@ -455,6 +455,114 @@ test('reactions: a rule about how Olma should behave earns the 👍 and the hint
   assert.equal(marks.length, n);
 });
 
+// Gali, 2026-09-10, answering a repeating reminder with "בירכתי אין צורך
+// לתזכר": she got the 👍 and then "בוצע 👍 שמתי שברכת — הכל סגור." The model
+// did the right thing twice over — cancel_reminder then complete_task is the
+// sequence complete_task's own description prescribes for ending a standing
+// task — and the LAST result it read carried no markPlaced, because markFor
+// had already spent the done-mark on the first tool.
+test('reactions: the second done-tool of a turn is told the 👍 is there', async (t) => {
+  const db = await freshDb();
+  t.after(() => db.teardown());
+  const marks = [];
+  const broker = createBrokerServer({
+    pool: db.pool,
+    placeMark: (opts) => { marks.push(opts); return { attempted: true }; },
+  });
+  const user = await makeUser(db.pool, '+972500000905', { firstName: 'גלי' });
+  const newTurn = () => ({ userId: null, opened: false, counted: false, quota: null, messageId: null, lastInboundAt: null });
+  const call = (name, args, turn) => broker.dispatch(
+    { id: 1, method: 'tool_call', params: { name, args: { identity_token: user.identity_token, ...args } } }, turn);
+  const data = (res) => JSON.parse(res.text.replace(/^OK /, ''));
+
+  // Her task and its repeating reminder, set on an earlier day.
+  const setup = newTurn();
+  const added = await call('add_task', { title: 'לברך שנה טובה' }, setup);
+  const taskId = data(added).task.id;
+  const armed = await call('set_task_reminder', {
+    task_id: taskId,
+    remind_at: new Date(Date.now() + 3600_000).toISOString().replace('Z', '+00:00'),
+    repeat_rule: 'daily',
+  }, setup);
+  const reminderId = data(armed).reminder.id;
+
+  // Her reply is a new message, so a new turn — and in it only these two run.
+  const reply = newTurn();
+  await call('turn_start', { message_id: 'ACB0F2DDF59D6E9578D7B5D1C6D43B79' }, reply);
+  const spawnsBefore = marks.length;
+  const cancelled = await call('cancel_reminder', { reminder_id: reminderId }, reply);
+  const finished = await call('complete_task', { task_id: taskId }, reply);
+  assert.ok(cancelled.ok && finished.ok);
+
+  // Still ONE mark: the dedup is right and is not what changed. A second
+  // identical mark is a whole CLI start-up that WhatsApp would overwrite with
+  // the same emoji.
+  assert.equal(marks.length - spawnsBefore, 1, 'one 👍, not two');
+  assert.equal(marks.at(-1).state, 'done');
+  // Both results say it is there — the second one especially, because it is
+  // the last thing the model reads before it writes.
+  assert.match(data(cancelled).hints.markPlaced, /NO_REPLY/);
+  assert.match(data(finished).hints.markPlaced, /NO_REPLY/);
+});
+
+test('reactions: a 👍 is claimed only where one is actually standing', async (t) => {
+  const db = await freshDb();
+  t.after(() => db.teardown());
+  const marks = [];
+  let allowSpawn = true;
+  const broker = createBrokerServer({
+    pool: db.pool,
+    placeMark: (opts) => {
+      if (!allowSpawn) return { attempted: false, reason: 'spawn_failed' };
+      marks.push(opts);
+      return { attempted: true };
+    },
+  });
+  const user = await makeUser(db.pool, '+972500000906', { firstName: 'גלי' });
+  const newTurn = () => ({ userId: null, opened: false, counted: false, quota: null, messageId: null, lastInboundAt: null });
+  const call = (name, args, turn) => broker.dispatch(
+    { id: 1, method: 'tool_call', params: { name, args: { identity_token: user.identity_token, ...args } } }, turn);
+  const hintsOf = (res) => (JSON.parse(res.text.replace(/^OK /, '')).hints || {});
+
+  // A mark that could not be spawned is never claimed — `attempted`, never
+  // `sent`, and this is the half a standing record could quietly lose.
+  allowSpawn = false;
+  const dead = newTurn();
+  await call('turn_start', { message_id: '3EB0NOSPAWN01' }, dead);
+  const t1 = await call('add_task', { title: 'א' }, dead);
+  const t2 = await call('add_task', { title: 'ב' }, dead);
+  assert.equal(hintsOf(t1).markPlaced, undefined);
+  assert.equal(hintsOf(t2).markPlaced, undefined, 'nothing was placed, so nothing may say it was');
+
+  // A ⏰ asked for after a 👍 replaces it on the phone, and markFor will not
+  // re-ask for a state it already spent this turn — so from here on the mark
+  // standing on that message is ⏰, and a later done-tool must not claim a
+  // thumbs-up that is no longer there. This is the case the naive fix gets
+  // wrong: "a done mark was placed at some point in this turn" is not the
+  // same fact as "a 👍 is on their message now".
+  allowSpawn = true;
+  const armed = newTurn();
+  await call('turn_start', { message_id: '3EB0STANDING1' }, armed);
+  const made = await call('add_task', { title: 'ג' }, armed);
+  const taskId = JSON.parse(made.text.replace(/^OK /, '')).task.id;
+  assert.match(hintsOf(made).markPlaced, /NO_REPLY/);
+  await call('set_task_reminder', {
+    task_id: taskId,
+    remind_at: new Date(Date.now() + 3600_000).toISOString().replace('Z', '+00:00'),
+  }, armed);
+  assert.equal(marks.at(-1).state, 'scheduled');
+  const spawns = marks.length;
+  const archived = await call('archive_task', { task_id: taskId }, armed);
+  assert.ok(archived.ok);
+  assert.equal(marks.length, spawns, 'the done state was already spent this turn');
+  assert.equal(hintsOf(archived).markPlaced, undefined,
+    'the mark on her phone is ⏰ now — nothing may tell the model a 👍 is there');
+
+  // And a read that follows earns no claim of its own.
+  const listed = await call('list_my_tasks', {}, armed);
+  assert.equal(hintsOf(listed).markPlaced, undefined, 'reading is not doing');
+});
+
 // ── The vocabulary is the operator's, and a voice note is heard, not seen ─────
 // Miron, 2026-09-04, having watched a 👀 turn into a ⏰ on his own phone: make
 // it a setting, so "done" can be a 👍 instead of a message saying done; and for
