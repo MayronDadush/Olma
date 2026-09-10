@@ -377,9 +377,29 @@ async function cancelReminder(client, ownerId, reminderId) {
 // how a wall-clock hour already in the past gets read back as the next time
 // Olma will raise something — the "hundred and five pending reminders" bug,
 // which this must not reopen.
+// The wall clock in their zone, added to each row. One users read for the
+// whole list rather than one per row, and skipped entirely when there is
+// nothing to stamp.
+async function withLocalHour(client, ownerId, rows) {
+  const { rows: u } = await client.query(`SELECT timezone FROM users WHERE id = $1`, [ownerId]);
+  const tz = (u[0] && u[0].timezone) || 'UTC';
+  const pad = (n) => String(n).padStart(2, '0');
+  return rows.map((r) => {
+    const p = dt.partsInZone(tz, new Date(r.remind_at));
+    return { ...r, at: `${p.y}-${pad(p.m)}-${pad(p.d)} ${pad(p.hh)}:${pad(p.mi)}` };
+  });
+}
+
 async function listReminders(client, ownerId, taskId) {
+  // `t.title` is joined on and it is not decoration: without it this answered
+  // "reminder 41 at 2026-09-11T16:00:00Z" and nothing else, so anything that
+  // wanted to SAY what a reminder was about had to go and fetch the tasks and
+  // match them up by id — or say the hour with no thing attached to it. The
+  // hour goes out in their own zone beside the instant, for the same reason
+  // `listTasks` does it: a UTC instant sitting next to a local one is how the
+  // wrong one gets picked.
   const { rows } = await client.query(
-    `SELECT r.* FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+    `SELECT r.*, t.title FROM task_reminders r JOIN tasks t ON t.id = r.task_id
      WHERE t.owner_id = $1 AND ($2::bigint IS NULL OR r.task_id = $2)
        AND r.cancelled_at IS NULL AND r.sent_at IS NULL AND r.attempts = 0
      ORDER BY r.remind_at`,
@@ -396,7 +416,7 @@ async function listReminders(client, ownerId, taskId) {
     [ownerId, taskId || null]
   );
   return ok({
-    reminders: rows,
+    reminders: rows.length ? await withLocalHour(client, ownerId, rows) : rows,
     ...(chasing.length ? {
       chasing: chasing.map((r) => ({
         id: Number(r.id),

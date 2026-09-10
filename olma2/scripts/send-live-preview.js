@@ -33,6 +33,7 @@ const users = require('../src/domain/users');
 const templates = require('../src/domain/message-templates');
 const proactiveText = require('../src/domain/proactive-text');
 const digestBlock = require('../src/domain/digest-block');
+const listBlock = require('../src/domain/list-block');
 const messages = require('../src/intake/messages');
 const { sendRawMessage } = require('../src/channels/openclaw');
 
@@ -95,6 +96,7 @@ function build({ locale, channelType, overrides, now }) {
   const w = wordsFor(locale);
   const out = [];
   const add = (label, text) => { if (text) out.push({ label, text }); };
+  const at = (h) => new Date(now + h * 3600_000).toISOString();
   const rem = (payload) => proactiveText.renderReminderText(payload, overrides, locale, channelType);
 
   // 1-3: the ladder, as it really renders. Rung 1 is a moment they chose;
@@ -117,6 +119,28 @@ function build({ locale, channelType, overrides, now }) {
   // 6: the morning block, drawn.
   add('רשימת הבוקר (הבלוק שהקוד מצייר)',
     digestBlock.renderDigestBlock(sampleDigest(now, w), { locale, channelType, now }));
+
+  // 6b-6c: the two lists a person asks for by name, drawn by the same code
+  // that draws the morning. The reminder one is here because its hours are
+  // the whole content — and because `chasing` is passed in deliberately, to
+  // be seen NOT appearing.
+  add('רשימת המשימות (הבלוק שהקוד מצייר)', listBlock.renderTaskListBlock({
+    tasks: [
+      { title: w.dana, kind: 'event', due_at: at(4), ends_at: at(5), location: w.cafe },
+      { title: w.school, kind: 'event', due_at: at(30) },
+      { title: w.rates, kind: 'todo', due_at: at(26) },
+      { title: w.milk, kind: 'todo' },
+      { title: w.boiler, kind: 'todo' },
+    ],
+  }, { locale, channelType, now }));
+  add('רשימת התזכורות (הבלוק שהקוד מצייר)', listBlock.renderReminderListBlock({
+    reminders: [
+      { title: w.car, remind_at: at(3) },
+      { title: w.accountant, remind_at: at(27), repeat_rule: 'weekly:MO,TH' },
+      { title: w.file, remind_at: at(50) },
+    ],
+    chasing: [{ id: 1, taskId: 1, title: w.form, askedFor: at(-20), rungsSent: 1 }],
+  }, { locale, channelType, now }));
 
   // 7: the first sentence a stranger reads.
   add('פנייה ראשונה לאדם חדש', messages.introMessage({

@@ -1,10 +1,11 @@
 'use strict';
 // tasks — one slice of the tool registry (see ../registry.js).
 const {
-  tasks, S, tool, ok,
+  tasks, users, S, tool, ok,
 } = require('./_shared');
 const dt = require('../../../domain/datetime');
 const format = require('../../../domain/message-format');
+const listBlock = require('../../../domain/list-block');
 
 // What to tell the person about what add_task/add_tasks_bulk just did — on
 // the RESULT, only on the calls where it applies, rather than four sentences
@@ -112,11 +113,39 @@ function taskHints(res, user = {}) {
   return Object.keys(hints).length ? ok({ ...d, hints }) : res;
 }
 
-// The list is ONE array so nothing that reads it by shape breaks, and the
-// hint is what separates it into the two lists the person hears: what is on
-// the calendar, then what is on the plate. Only when there is a calendar.
-function listHints(res) {
+// The list is ONE array so nothing that reads it by shape breaks. What
+// separates it into the two lists the person hears — what is on the calendar,
+// then what is on the plate — used to be a paragraph asking the model to do
+// it. It is DRAWN now (domain/list-block.js): the layout cannot drift between
+// two readings, a row cannot go missing on the way through, and a meeting
+// cannot come back called a task, because nothing here builds a mixed list.
+//
+// The instruction hints are the FALLBACK and never travel beside the block.
+// A block handed over with "lay these out as a list" next to it is the
+// markPlaced fault exactly — a conditional result outvoted by an unconditional
+// sentence sitting on the same result — and here it would be worse than
+// outvoted, because it would be asking for the work again after it was done.
+async function listHints(client, user, res, status) {
   if (!res || !res.ok || !res.data || !Array.isArray(res.data.tasks)) return res;
+  const ch = await users.primaryChannel(client, user.id);
+  const block = listBlock.renderTaskListBlock(res.data, {
+    locale: user.locale,
+    timezone: user.timezone,
+    channelType: ch.ok ? ch.data.channel.channel_type : null,
+    status,
+  });
+  if (block) {
+    return ok({
+      ...res.data,
+      block,
+      hints: {
+        ...(res.data.hints || {}),
+        block: `${format.HINTS.relayBlock} Everything you add is at most ONE short sentence around `
+          + 'it — the answer to what they actually asked, or the one thing worth doing first. '
+          + 'If the list IS the answer, send the block alone.',
+      },
+    });
+  }
   // Two conditions, not one: "there are several of these" and "two of these
   // are different things" are different facts about the same result, and the
   // layout hint has no work to do on a single line.
@@ -138,7 +167,10 @@ function listHints(res) {
 module.exports = [
   tool('list_my_tasks', 'List your open tasks (status=done for completed). Each carries its kind (event = calendar, todo = job) and its pending reminders with the hour to SAY, in their clock — a due date is when the thing is, never when you will remind them.',
     { status: S('string', 'open | done (default open)') }, [],
-    async (client, user, a) => listHints(await tasks.listTasks(client, user.id, { status: a.status || 'open' }))),
+    async (client, user, a) => {
+      const status = a.status || 'open';
+      return listHints(client, user, await tasks.listTasks(client, user.id, { status }), status);
+    }),
   tool('add_task', 'Add one todo (a job until done) or event (a moment they will be AT; closes when it passes) — say which in kind. due_at is when the THING is, and arms a reminder automatically an hour before (08:00 for a whole-day one). remind_at is for "תזכיר לי ב-19:00": that hour IS the reminder and replaces the automatic one. A dictated shopping run is filed as a list. Follow any hints on the reply. Times MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their own local time (USER.md); never bare digits with a Z.',
     { title: S('string', 'What it is — never the hours or the place, those have fields'),
       kind: S('string', 'event | todo ("פגישה מחר ב-10" = event, "לקבוע פגישה" = todo); omitted = guessed from the title'),

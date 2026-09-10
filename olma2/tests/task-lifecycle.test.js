@@ -374,8 +374,20 @@ test('the result says a calendar entry was filed, and the list says which rows a
 
   const after = await withTx(db.pool, (c) => list.handler(c, u, {}));
   assert.ok(after.data.tasks.some((t) => t.kind === 'event' && t.location === 'ביהס קרית חינוך דרור'));
-  assert.match(after.data.hints.kinds, /ביומן/);
-  assert.match(after.data.hints.kinds, /לעשות/);
+  // The split is DRAWN now (domain/list-block.js) rather than asked for: the
+  // calendar first under its own heading, the to-dos after, the place beside
+  // the meeting. What used to be a paragraph of instructions is a shape the
+  // code cannot produce wrongly.
+  assert.match(after.data.block, /\*ביומן\*\n- .*פגישה עם תמר גבריאלי, ביהס קרית חינוך דרור/);
+  assert.match(after.data.block, /\*על הרשימה\*\n- לקנות חלב/);
+  assert.ok(after.data.block.indexOf('ביומן') < after.data.block.indexOf('על הרשימה'));
+  // And the instruction hints are GONE, not merely redundant. A block handed
+  // over with "lay these out as a list" beside it is the markPlaced fault —
+  // a conditional result outvoted by an unconditional sentence on the same
+  // result — and here it asks for work that has already been done.
+  assert.equal(after.data.hints.kinds, undefined);
+  assert.equal(after.data.hints.layout, undefined);
+  assert.match(after.data.hints.block, /EXACTLY as it is/);
 });
 
 test('the digest hands over the calendar and the plate as two lists, and counts them apart', async () => {

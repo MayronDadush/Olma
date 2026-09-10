@@ -4,6 +4,7 @@ const {
   digest, users, S, tool, ok,
 } = require('./_shared');
 const digestBlock = require('../../../domain/digest-block');
+const format = require('../../../domain/message-format');
 
 module.exports = [
   tool('get_my_digest', 'Assemble the current picture. scope: summary (counts) | full (every open task) | today (due/overdue today).',
@@ -29,11 +30,12 @@ module.exports = [
         block,
         hints: {
           ...(res.data.hints || {}),
-          block: 'The `block` above is the list, already laid out and already in their language. '
-            + 'Put it in your reply EXACTLY as it is — same lines, same order, same characters — '
-            + 'and do NOT rewrite it, reorder it, summarise it or repeat any of it as prose. '
-            + 'Everything you add is ONE short sentence around it: a greeting before, or the single '
-            + 'thing that moves the day after. If you have nothing true to add, send the block alone.',
+          // The contract itself is `format.HINTS.relayBlock`, said once for all
+          // three tools that hand a block over; only the sentence about THIS
+          // block's own morning is written here.
+          block: `${format.HINTS.relayBlock} Everything you add is ONE short sentence around it: `
+            + 'a greeting before, or the single thing that moves the day after. If you have '
+            + 'nothing true to add, send the block alone.',
         },
       });
     }),
