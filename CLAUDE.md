@@ -272,7 +272,7 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 ### In a group
 
 **`.claude/rules/groups.md`** — the two identity doors, what a room may never be told, NULL as the honest third state, and the group outbox.
-Loads when you **Read** a file under `src/domain/group-connections.js`, `src/domain/group-context.js`, `src/domain/groups.js` and 4 more.
+Loads when you **Read** a file under `src/domain/group-connections.js`, `src/domain/group-context.js`, `src/domain/group-outbox.js` and 5 more.
 
 - **Two identity doors, routed by the token PREFIX**
 - **Nothing a group tool returns may carry the room's own row or anybody's reasons.**
