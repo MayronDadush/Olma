@@ -37,6 +37,17 @@ both.** If you are about to write to a file that way, `Read` it first, or open
 its rules file by hand. Same shape as everything else here: the tool boundary
 enforces it, the prose only asks.
 
+**Two scripts hold the rules honest, both in CI (`claude-rules.yml`) and both
+safe to run by hand.** `check-rules.js` asks whether a rule can still LOAD —
+a glob pointing at a renamed file matches nothing and the rule silently never
+loads. `check-rule-citations.js` asks whether it is still TRUE — every file
+path, `module.fn`, `migration NNN` and constant it names is resolved against
+the code, and a rename is reported. It reads only this file and
+`.claude/rules/`, never `incidents.md`, where a stale citation is the record
+working. **A function cited by its bare name is NOT checked** — that reading
+misfired on 58% of the corpus — so cite one as `module.fn` if you want the
+checker to watch it.
+
 Two companion files are **not** auto-loaded — open them when relevant:
 
 - **`olma2/docs/incidents.md`** — the full narrative of every incident,
