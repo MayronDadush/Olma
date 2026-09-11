@@ -19,6 +19,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Gateway, config and upgrades**
 
+- [Six hours with nobody to talk to (detector added 2026-09-11)](#six-hours-with-nobody-to-talk-to-detector-added-2026-09-11)
 - [The socket that was never closed (fixed 2026-09-11)](#the-socket-that-was-never-closed-fixed-2026-09-11)
 - [A message reached the box and stopped there, and nothing could tell (detector added 2026-09-06)](#a-message-reached-the-box-and-stopped-there-and-nothing-could-tell-detector-added-2026-09-06)
 - [The roster was never in the transcript (2026-09-06)](#the-roster-was-never-in-the-transcript-2026-09-06)
@@ -197,6 +198,72 @@ never trust a dated narrative for something you are about to act on.
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
 
 ## Gateway, config and upgrades
+
+### Six hours with nobody to talk to (detector added 2026-09-11)
+
+At 06:07 the WhatsApp channel exited with `WhatsApp credential persistence did
+not drain before owner release`. Every restart after that lost to `Another
+process owns this WhatsApp connection`: ten auto-restart attempts with a
+5s→300s backoff, exhausted, then the cycle started over. It came back at 12:05,
+when the gateway process was restarted by hand.
+
+Six hours in which not one message could leave the box. What every check said:
+
+| | |
+|---|---|
+| `checkGateway` | `live`, on all 72 ticks |
+| `/health` | `{"ok":true,"stale":[],"failing":[]}` |
+| `liveness_watch` heartbeat | `{"gateway":"live","down":false}` |
+| `openclaw gateway /health` | `{"ok":true,"status":"live"}` |
+
+None of them was lying. The gateway PROCESS was healthy the whole time — it
+answered every probe in milliseconds, ran every agent turn, and wrote every
+transcript. It simply had nothing to send messages down. `gateway-health.js`
+asked one question, "is the process up", and its own comment said the rest had
+their own detectors, naming "a linked WhatsApp" among them. That had never been
+true. A comment asserting coverage that does not exist is worse than no comment:
+it is what stops the next person looking.
+
+The one check that did see something was the outbox's `stuck` count — and it
+arrives late and names nothing. By the time three attempts have failed and
+fifteen minutes have passed, the fault has been running for twenty minutes, and
+what it reports is "messages are not going out", which is the symptom every
+outage shares. `config_guard` filed issue #156 at 08:07 and #157 at 09:17,
+correctly, into a dashboard nobody was looking at — and the only alert channel
+there is the dead WhatsApp. Two hours of true statements that reached no one.
+
+**The detector** is `gateway-health.checkChannels`, asked by `liveness_watch`
+beside the process probe: the gateway's own `channels.status`, which reports
+`linked`, `running`, `connected` and `reconnectAttempts` per channel. Any one
+of the three explicitly `false` is `down`, and it is named in the alert
+separately from the process, because the alert has to say which of the two
+broke — for six hours the answer was "not the one you are about to restart".
+
+**It had to be the WebSocket, not the CLI.** `openclaw channels status --json`
+costs **4.1s of CPU** an answer, measured three times on the box — more than
+the `openclaw sessions list` the never-poll-on-a-timer rule was written for.
+Over the RPC the same question is 11-18ms of CPU cold, measured on the same
+box: 250x, and the difference between a detector and a second bug.
+
+**A dead channel earns the same restart a dead process does**, after the same
+two ticks, under the same half-hour cooldown. The channel's own auto-restart
+lost ten times in a row; restarting the unit fixed it on the first attempt.
+Two ticks matter more here than for the process, because a channel flaps by
+design — a reconnect the same afternoon was down and back inside one second —
+and ten minutes of continuous `connected: false` is what separates them.
+
+**Everything that is not the gateway saying so is `unknown`.** The remedy is a
+restart, so a probe that cannot judge — the RPC off, a refused socket, a
+payload we do not recognise, a field a future version stopped sending — must
+never reach it. `undefined` is a version skew, not an outage. This is the
+detector-becomes-the-hazard line, and it is the one thing in this change worth
+reviewing twice.
+
+What is still not covered: a gateway that stays dead, a dead brokerd, a dead
+box, a dead network. Every alarm here rides the gateway's own pipe. That is
+[Known gaps](../../CLAUDE.md#known-gaps) and it needs the external monitor that
+does not exist yet — this change shortens a six-hour channel outage to about
+ten minutes, and does nothing for the other four.
 
 ### The socket that was never closed (fixed 2026-09-11)
 

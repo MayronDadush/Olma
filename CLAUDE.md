@@ -206,7 +206,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 ### Writing detectors and alarms
 
 **`.claude/rules/detectors.md`** — what BREAKS_USERS means, ratios that describe one population, unreadable is not broken, and the two review jobs.
-Loads when you **Read** a file under `src/jobs/**`, `src/domain/issues.js`, `src/domain/hebrew-quality.js` and 4 more.
+Loads when you **Read** a file under `src/jobs/**`, `src/domain/issues.js`, `src/domain/hebrew-quality.js` and 5 more.
 
 - **`BREAKS_USERS` means exactly "their tool calls fail right now."**
 - **A hint that fires on ordinary input is worse than no hint**
@@ -219,6 +219,7 @@ Loads when you **Read** a file under `src/jobs/**`, `src/domain/issues.js`, `src
 - **A joiner nobody has reached is asked about as a PERSON, not a config.**
 - **Every check that starts from `users` is blind to the person the gateway dropped**
 - **`liveness_watch` repairs before it reports.**
+- **A live gateway PROCESS is not a gateway that can send anything, and for six hours nothing in the system knew the difference.**
 - **A new person's first hours are read back by code TWICE — three hours in, and again after their first day**
 - **The onboarding review only ever watches the FRONT DOOR; `promise_watch` watches everyone.**
 - **`promise_watch`'s second half compares the hour in a task's TITLE to the hour the row will fire at** (`domain/stated-hour.js`) — the semantic cross-check for a well-formed-but-wrong offset, which `hasOffset` cannot refuse. Both halves are blind to a wrong `users.timezone` because both read it; that class is closed at the write, by `setTimezone` → `timezone-repair.js`.
@@ -272,7 +273,7 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 ### In a group
 
 **`.claude/rules/groups.md`** — the two identity doors, what a room may never be told, NULL as the honest third state, and the group outbox.
-Loads when you **Read** a file under `src/domain/group-connections.js`, `src/domain/group-context.js`, `src/domain/groups.js` and 4 more.
+Loads when you **Read** a file under `src/domain/group-connections.js`, `src/domain/group-context.js`, `src/domain/group-outbox.js` and 5 more.
 
 - **Two identity doors, routed by the token PREFIX**
 - **Nothing a group tool returns may carry the room's own row or anybody's reasons.**

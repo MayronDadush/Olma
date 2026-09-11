@@ -24,6 +24,7 @@ function deps(over = {}) {
     log,
     d: {
       checkGateway: async () => over.gateway || { status: 'live', detail: 'live', port: 1 },
+      checkChannels: async () => over.channels || { status: 'live', detail: null, channels: [{ id: 'whatsapp', down: false }] },
       send: async (to, text) => { log.wa.push({ to, text }); return over.waFails ? { ok: false } : { ok: true }; },
       now: over.now,
       settleMs: 0,
@@ -135,4 +136,101 @@ test('a probe that could not judge is reported, not alarmed', async () => {
   assert.match(note.gatewayDetail, /ENOENT/);
   assert.equal(note.down, false);
   assert.deepEqual(log.wa, []);
+});
+
+// 2026-09-11. The WhatsApp channel died at 06:07 and came back at 12:05 —
+// six hours in which every probe this job had said `live`, /health served
+// {"ok":true}, and not one message could leave the box. The process was
+// never the fault, so a check on the process could never have seen it.
+const CHANNEL_DOWN = {
+  status: 'down',
+  detail: 'whatsapp: linked/running/connected = false, 6 reconnect attempts',
+  channels: [{ id: 'whatsapp', down: true, reconnectAttempts: 6, says: 'connected = false' }],
+};
+
+test('a dead channel under a live gateway is an outage, and says which one it is', async () => {
+  const t0 = Date.parse('2026-09-11T06:10:00Z');
+  let { log, d } = deps({ channels: CHANNEL_DOWN, now: t0 });
+  let note = await tick(d);
+  // The distinction the six hours turned on: the process is fine.
+  assert.equal(note.gateway, 'live');
+  assert.equal(note.channels, 'down');
+  assert.equal(note.down, true);
+  assert.deepEqual(log.wa, [], 'one bad tick is never a word');
+
+  ({ log, d } = deps({ channels: CHANNEL_DOWN, now: t0 + 5 * 60_000 }));
+  note = await tick(d);
+  assert.equal(note.alerted, 'whatsapp');
+  assert.match(log.wa[0].text, /ערוץ התקשורת מנותק/);
+  assert.match(log.wa[0].text, /6 reconnect attempts/);
+  assert.ok(!/לא מגיב/.test(log.wa[0].text), 'must not blame the gateway, which answered every probe');
+});
+
+// The channel's own auto-restart tried ten times over those six hours and lost
+// every one to "Another process owns this WhatsApp connection". Restarting the
+// unit fixed it on the first attempt, by hand, at 12:04.
+test('a dead channel earns the same restart a dead gateway does', async () => {
+  const t0 = Date.parse('2026-09-11T06:10:00Z');
+  let { log, d } = deps({ channels: CHANNEL_DOWN, now: t0, waFails: true });
+  await tick(d);
+  assert.equal(log.restarts, undefined, 'not on the first tick');
+
+  ({ log, d } = deps({ channels: CHANNEL_DOWN, now: t0 + 5 * 60_000, waFails: true }));
+  const note = await tick(d);
+  assert.equal(log.restarts, 1);
+  assert.equal(note.restarted, true);
+});
+
+test('a channel that comes back after the restart is reported as healed, naming the channel', async () => {
+  const t0 = Date.parse('2026-09-11T06:10:00Z');
+  let { log, d } = deps({ channels: CHANNEL_DOWN, now: t0, waFails: true });
+  await tick(d);
+
+  // Second tick: down when asked, restarted, and LIVE on the re-probe that
+  // follows the restart — the whole point of probing again before speaking is
+  // that the owner hears the outcome, not the fault.
+  let asked = 0;
+  ({ log, d } = deps({
+    now: t0 + 5 * 60_000,
+    extra: { checkChannels: async () => (++asked === 1 ? CHANNEL_DOWN : { status: 'live', detail: null, channels: [] }) },
+  }));
+  const note = await tick(d);
+  assert.equal(asked, 2, 'probed again after the restart');
+  assert.equal(note.down, false);
+  assert.equal(note.selfHealed, 'whatsapp');
+  assert.match(log.wa[0].text, /ערוץ התקשורת התנתק/);
+  assert.ok(!/שער התקשורת \(OpenClaw\) נפל/.test(log.wa[0].text),
+    'the gateway never fell; the alert may not say it did');
+});
+
+// The remedy for a dead channel is a gateway restart, so "could not tell"
+// must never reach it. A channel probe that fails is a probe, not an outage.
+test('a channel probe that could not judge is reported, never alarmed and never restarted', async () => {
+  const t0 = Date.parse('2026-09-11T06:10:00Z');
+  const unknown = { status: 'unknown', detail: 'cannot ask the gateway: gateway rpc is switched off', channels: [] };
+  for (const at of [t0, t0 + 5 * 60_000]) {
+    const { log, d } = deps({ channels: unknown, now: at });
+    const note = await tick(d);
+    assert.equal(note.channels, 'unknown');
+    assert.match(note.channelDetail, /switched off/);
+    assert.equal(note.down, false);
+    assert.equal(log.restarts, undefined);
+    assert.deepEqual(log.wa, []);
+  }
+});
+
+// A gateway that will not answer /health will not answer an RPC either, and
+// asking would spend one of the three consecutive failures that put the raw
+// send pipe to sleep.
+test('the channel is not asked about when the gateway itself is down', async () => {
+  let asked = 0;
+  const { d } = deps({
+    gateway: { status: 'down', detail: 'ECONNREFUSED', port: 18789 },
+    waFails: true,
+    extra: { checkChannels: async () => { asked++; return { status: 'live', detail: null, channels: [] }; } },
+  });
+  const note = await tick(d);
+  assert.equal(asked, 0);
+  assert.equal(note.channels, 'unknown');
+  assert.match(note.channelDetail, /not asked/);
 });
