@@ -23,7 +23,15 @@ name: claude-rules
 #                            can still go red, because a detector that cannot
 #                            fail is not a detector.
 #
-# No database, no install, two node scripts, a couple of seconds.
+#   finish-line.js           the Stop hook's own self-test. It blocks a turn
+#                            that changed olma2 code without running the suite,
+#                            and a migration nobody checked against the box —
+#                            so it has to be proved in BOTH directions: still
+#                            blocking what it should, still silent on ordinary
+#                            work. A gate that fires on ordinary work is a gate
+#                            somebody turns off.
+#
+# No database, no install, three node scripts, a couple of seconds.
 on:
   push:
     paths: ['.claude/**', 'CLAUDE.md', '.github/workflows/claude-rules.yml']
@@ -46,3 +54,4 @@ jobs:
       - run: node .claude/scripts/check-rules.js
       - run: node .claude/scripts/check-rule-citations.js --self-test
       - run: node .claude/scripts/check-rule-citations.js
+      - run: node .claude/hooks/finish-line.js --self-test

@@ -533,6 +533,31 @@ Same argument as `markPlaced` and the reply gate: an instruction in a prompt is
 a request, and one at the tool boundary is a rule. Borrowed from
 `spotify/portal-ai-plugins`.
 
+## "Done" is checked at the boundary too (2026-09-11)
+
+`.claude/hooks/finish-line.js` is a **Stop** hook, and it blocks exactly two
+things — the two this repo has shipped broken by calling a turn finished:
+
+- **olma2 source changed in this session and the suite has not run since.**
+  Merging is deploying, so an untested change is one that finds out in
+  production. Run `npm run lint && npm test` from `olma2/`.
+- **this branch adds a migration and nothing in the session asked the box for
+  `max(version)`.** Never `ls migrations/`; two branches in flight cannot see
+  each other's files, and that has collided three times in two days.
+
+It **fails open** everywhere, and `stop_hook_active` means a second stop always
+goes through — so it can slow you down once, never trap you. If the suite
+genuinely cannot run, say so in the reply and stop again.
+
+A third candidate was **rejected after measuring it**: "a rule changed with no
+entry in `incidents.md`" would have fired on 8 of the last 22 commits that
+added a rule, about half of them correctly — a 36% block rate on a gate nobody
+can override is how an alarm gets spent. That rule stays prose.
+
+Every Stop writes one line to `olma-finish-line.log` in the system temp dir,
+because a hook that allows and a hook that was never wired up are otherwise the
+same observation. `--self-test` asserts both directions and runs in CI.
+
 ## Known gaps
 
 Real, open, and nobody is working on them.
