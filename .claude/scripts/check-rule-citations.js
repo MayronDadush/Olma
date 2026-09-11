@@ -136,8 +136,13 @@ for (const f of srcFiles) {
 }
 
 // Every name in every text file the repo tracks, for the presence check.
+// THIS FILE IS EXCLUDED. It names citations in its own error messages and its
+// own self-test, so including it made the checker its own evidence: every
+// synthetic name the self-test plants read back as "present in source" the
+// moment this script was first committed, and two negative cases went quiet.
+const SELF = path.relative(ROOT, __filename);
 const ALL_SOURCE = tracked('*.js', '*.sh', '*.sql', '*.yml', '*.yaml')
-  .filter((f) => !f.startsWith('olma2/docs/'))
+  .filter((f) => !f.startsWith('olma2/docs/') && f !== SELF)
   .map((f) => fs.readFileSync(path.join(ROOT, f), 'utf8'))
   .join('\n');
 
@@ -348,6 +353,12 @@ function selfTest() {
       console.error(`  self-test FAILED: \`${citation}\` is ${what} and must not be reported — got: ${problems[0]}`);
       failures += 1;
     }
+  }
+  // The exclusion above, asserted: a name that appears ONLY in this file must
+  // still read as absent, or every negative case here is decoration.
+  if (presentInSource('NO_SUCH_CONSTANT_NAME')) {
+    console.error('  self-test FAILED: this script is its own evidence again — see SELF');
+    failures += 1;
   }
   fs.rmSync(tmp, { recursive: true, force: true });
 
