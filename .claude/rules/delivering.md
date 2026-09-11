@@ -258,7 +258,12 @@ title means this file. Grep the title, not the filename.
   heartbeat, because "attempted and lost" and "nobody attempted" are different
   facts. Failures for any OTHER reason still recompose — closing that needs
   the composed text to outlive the failure, and it carries a `MEDIA:` line,
-  which is the wall `undeliveredReply` already chose to stop at.
+  which is the wall `undeliveredReply` already chose to stop at. **It also
+  stops the rule below it being wrong**: a `--deliver` that times out is booked
+  as SENT, which is right about a healthy gateway and false about a dead
+  channel — outbox 10323 was stamped delivered at 08:01 on a channel that came
+  back at 09:05, and nobody will ever look at that row again. No send, no
+  timeout, no false delivery.
 
 - **A `--deliver` that TIMES OUT has very likely gone out, and is never
   retried.** The CLI hands the turn to the gateway and waits for the model;

@@ -1597,6 +1597,17 @@ Three details that are the whole design:
   "attempted and lost" and "nobody attempted" are different facts about the
   morning and a check that declines to act has to say so somewhere.
 
+**A second thing it stops, found while checking the same morning.** The rule
+above it — a `--deliver` that TIMES OUT is booked as SENT and never retried —
+is right about a healthy gateway and wrong about a dead channel. Outbox 10323,
+a meeting invite for u-10, failed fourteen times with `No active WhatsApp Web
+listener` and on the fifteenth attempt, at 08:01:20, timed out. It was stamped
+`sent_at` with `hold_reason IS NULL`: delivered, as far as every reader in the
+system is concerned. WhatsApp did not come back until 09:05. Nobody received
+it, and nothing will ever look at that row again. Skipping the send closes
+this: no send, no timeout, no false delivery — the row stays unsent and goes
+out when the channel returns.
+
 What this does NOT fix: a send that fails for any other reason still
 recomposes. Closing that needs the composed text to survive the failure, and
 the text lives in the transcript with a `MEDIA:` line attached to a card path —
