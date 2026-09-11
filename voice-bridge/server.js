@@ -777,14 +777,20 @@ function busyCount() {
   return busy.size;
 }
 
-async function placeCall(user) {
+async function placeCall(user, opts = {}) {
   // The userId travels INSIDE the TwiML: Twilio echoes <Parameter> back as
   // start.customParameters on the media stream, which is the only thing tying
   // an incoming websocket to a person. Without it the bridge would have to
   // guess, and guessing here means answering one user with another's data.
+  // maxDurationSec rides the same channel, the same way, only when a caller
+  // (today: the dashboard's lifetime-2-calls quota) asks for a shorter cap
+  // than the default — absent, onStart keeps the original 10 minutes.
+  const durationParam = opts.maxDurationSec
+    ? `<Parameter name="maxDurationSec" value="${opts.maxDurationSec}" />` : '';
   const twiml = '<?xml version="1.0" encoding="UTF-8"?><Response><Connect>'
     + '<Stream url="wss://allma.world/voice-bridge">'
     + `<Parameter name="userId" value="${user.id}" />`
+    + durationParam
     + '</Stream></Connect></Response>';
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TW_SID}/Calls.json`, {
     method: 'POST',
@@ -815,7 +821,16 @@ const dialServer = http.createServer((req, res) => {
   let body = '';
   req.on('data', (c) => { body += c; if (body.length > 4096) req.destroy(); });
   req.on('end', async () => {
-    let phone = null; try { phone = JSON.parse(body).phone; } catch {}
+    let phone = null, maxDurationSec = null;
+    try {
+      const parsed = JSON.parse(body);
+      phone = parsed.phone;
+      // Never allowed to RAISE the cap above the bridge's own default — only
+      // to lower it. A caller sending garbage or a number above the ceiling
+      // is treated as not having asked at all, so onStart's own default holds.
+      const n = Number(parsed.maxDurationSec);
+      if (Number.isFinite(n) && n > 0 && n <= 600) maxDurationSec = Math.floor(n);
+    } catch {}
     // Two gates, deliberately separate: the allowlist says who the FEATURE is
     // open to, the users table says the row is real, active and callable. The
     // 403 wording is unchanged so domain/voice.js's message to the user, and
@@ -833,7 +848,7 @@ const dialServer = http.createServer((req, res) => {
     if (busyCount() >= MAX_CONCURRENT_CALLS) return reply(503, { ok: false, error: 'the line is busy right now' });
     busy.set(user.id, { until: Date.now() + 60_000 }); // reserve BEFORE the await
     try {
-      const sid = await placeCall(user);
+      const sid = await placeCall(user, { maxDurationSec });
       log(`dial requested via API for u${user.id} ->`, sid);
       reply(200, { ok: true, callSid: sid });
     } catch (e) {
@@ -904,8 +919,14 @@ wss.on('connection', (ws) => {
     call.openDeepgram();
     if (TTS === 'cartesia') call.openCartesia();
     call.prefetch().catch((e) => log('prefetch failed', e.message)); // fresh data before the first question
-    // a stuck call must not burn money silently
-    setTimeout(() => { log('max duration reached, hanging up'); try { ws.close(); } catch {} }, 10 * 60 * 1000);
+    // a stuck call must not burn money silently. maxDurationSec rode the
+    // TwiML as a customParameter, same channel as userId — absent (every
+    // caller today except a lifetime-capped dashboard call) or out of range,
+    // the original 10-minute ceiling holds exactly as it always has.
+    const rawMax = Number(d.start?.customParameters?.maxDurationSec);
+    const maxMs = Number.isFinite(rawMax) && rawMax > 0 && rawMax <= 600
+      ? rawMax * 1000 : 10 * 60 * 1000;
+    setTimeout(() => { log('max duration reached, hanging up'); try { ws.close(); } catch {} }, maxMs);
     // cartesia needs its socket open first; elevenlabs is plain HTTP
     if (TTS === 'cartesia') {
       const ready = () => call.cart.readyState === 1 ? call.greet() : setTimeout(ready, 100);
