@@ -78,10 +78,16 @@
   --ease:cubic-bezier(.22,1,.36,1);
   --ease-io:cubic-bezier(.62,.02,.28,1);
   --squash:cubic-bezier(.34,1.56,.44,1);
+  /* Symmetric ease-in-out ("easy ease") — smooth acceleration AND
+     deceleration, unlike --ease's near-linear start. Used only for the
+     opening sequence (the first-visit intro and the stranger's welcome
+     screen), where the choreography reads better settling in gently at
+     both ends rather than snapping into motion. */
+  --ease-easy:cubic-bezier(.42,0,.58,1);
   /* One number for the whole toggle beat. The switch, the knob's squash and
      the access control it reveals all read from it, so they cannot drift out
      of step the way three hand-copied durations did. */
-  --sw-t:.52s;
+  --sw-t:.26s;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
@@ -218,7 +224,7 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
   box-shadow:var(--shadow-s),inset 0 0 0 .5px rgba(0,0,0,.08);
 }
 .avatar svg,.fav svg{width:100%;height:100%;display:block}
-.avatar.pop,.fav.pop{animation:pop .55s var(--spring)}
+.avatar.pop,.fav.pop{animation:pop .275s var(--spring)}
 @keyframes pop{0%{transform:scale(.7) rotate(-10deg)}55%{transform:scale(1.07) rotate(4deg)}100%{transform:none}}
 
 /* ── the character rig ─────────────────────────────────────────
@@ -229,15 +235,15 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
 .ava{--lid:0}
 .ava.line{--lid:.44}
 .ava.night{--lid:.46}
-.avaBody{transform-box:fill-box;transform-origin:50% 88%;animation:avaBreathe 4.6s ease-in-out infinite}
-.avaLids{transform-box:fill-box;transform-origin:top;animation:avaBlink 6.2s infinite;will-change:transform}
+.avaBody{transform-box:fill-box;transform-origin:50% 88%;animation:avaBreathe 2.3s ease-in-out infinite}
+.avaLids{transform-box:fill-box;transform-origin:top;animation:avaBlink 3.1s infinite;will-change:transform}
 .avaPupils{transform-box:fill-box;transform-origin:center;transition:transform .35s var(--ease)}
-.avaStars{animation:avaTwinkle 3.4s ease-in-out infinite}
-.avaHat{transform-box:fill-box;transform-origin:50% 100%;animation:avaTip 3.2s ease-in-out infinite}
-.avaConf{transform-box:fill-box;animation:avaConfFall 3.1s linear infinite}
+.avaStars{animation:avaTwinkle 1.7s ease-in-out infinite}
+.avaHat{transform-box:fill-box;transform-origin:50% 100%;animation:avaTip 1.6s ease-in-out infinite}
+.avaConf{transform-box:fill-box;animation:avaConfFall 1.55s linear infinite}
 /* one tap plays the whole hop. :active only lasted while a finger was down,
    so a normal tap showed a fraction of it and looked like a glitch. */
-.avatar.hop .avaBody,.fav.hop .avaBody{animation:avaHop .6s var(--spring)}
+.avatar.hop .avaBody,.fav.hop .avaBody{animation:avaHop .3s var(--spring)}
 @keyframes avaBreathe{0%,100%{transform:scale(1)}50%{transform:scale(1.024)}}
 @keyframes avaBlink{0%,91%,100%{transform:scaleY(var(--lid))}94.5%,96%{transform:scaleY(1)}}
 @keyframes avaTwinkle{0%,100%{opacity:.3}50%{opacity:1}}
@@ -268,14 +274,14 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
 .live .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);position:relative}
 .live .dot::after{
   content:"";position:absolute;inset:-4px;border-radius:50%;
-  border:1.5px solid var(--ok);opacity:.5;animation:pulse 2.6s var(--ease) infinite;
+  border:1.5px solid var(--ok);opacity:.5;animation:pulse 1.3s var(--ease) infinite;
 }
 @keyframes pulse{0%{transform:scale(.5);opacity:.6}70%,100%{transform:scale(1.25);opacity:0}}
 
 /* ─────────────────────────  view + titles  ───────────────────────── */
 .view{display:none}
 .view.active{display:block}
-.view.active > *{animation:rise .5s var(--ease) both;animation-delay:calc(var(--i,0) * 45ms)}
+.view.active > *{animation:rise .25s var(--ease) both;animation-delay:calc(var(--i,0) * 22.5ms)}
 @keyframes rise{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
 
 /* ══════════════ the first visit ══════════════
@@ -312,10 +318,10 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
    marker so every later view change animates normally. */
 html.intro .view.active > *,
 html.intro-settled .view.active > *{animation:none}
-html.intro [data-stage]{transition:opacity .8s var(--ease),transform .8s var(--ease)}
+html.intro [data-stage]{transition:opacity .4s var(--ease-easy),transform .4s var(--ease-easy)}
 html.intro .tabbar{
   opacity:0;transform:translateY(26px);
-  transition:opacity .7s var(--ease),transform .7s var(--ease);
+  transition:opacity .35s var(--ease-easy),transform .35s var(--ease-easy);
   pointer-events:none;
 }
 /* Stage 1 — the three doors, one after another, in reading order. DOM order
@@ -325,19 +331,19 @@ html.intro .tabbar{
    this state is painted on the first frame: there is no earlier state for a
    transition to run FROM. */
 @keyframes chanIn{from{opacity:0;transform:translateY(18px) scale(.965)}to{opacity:1;transform:none}}
-html.intro-1 .chanrow > .chan{animation:chanIn .72s var(--ease) both;animation-delay:calc(var(--ci,0) * .17s)}
+html.intro-1 .chanrow > .chan{animation:chanIn .36s var(--ease-easy) both;animation-delay:calc(var(--ci,0) * .085s)}
 /* the whole composition sits in the middle of the screen for the first two
    beats, and moves as one thing when it finally goes home */
 html.intro-1 main,
-html.intro-2 main{transform:translateY(var(--introY,0px));transition:transform .85s var(--ease)}
+html.intro-2 main{transform:translateY(var(--introY,0px));transition:transform .425s var(--ease-easy)}
 html.intro-3 main,
-html.intro-4 main{transform:none;transition:transform .85s var(--ease)}
+html.intro-4 main{transform:none;transition:transform .425s var(--ease-easy)}
 /* Stage 2 — the reminders card comes DOWN into the space under the doors. */
 html.intro-1 [data-stage="1b"]{opacity:0;transform:translateY(-18px)}
 /* Stage 3 — the block goes home and the heading arrives from above it. */
 html.intro-1 .title,
 html.intro-2 .title{opacity:0;transform:translateY(-16px)}
-html.intro .title{transition:opacity .8s var(--ease),transform .8s var(--ease)}
+html.intro .title{transition:opacity .4s var(--ease-easy),transform .4s var(--ease-easy)}
 /* Stage 4 — everything else, and the bar. */
 html.intro-1 [data-stage="2"],html.intro-1 [data-stage="3"],
 html.intro-2 [data-stage="2"],html.intro-2 [data-stage="3"],
@@ -471,15 +477,15 @@ button.row:active{background:var(--bg-tint)}
    hands over to the opened account. */
 .connect.ok{
   width:34px;height:34px;padding:0;min-width:0;display:grid;place-items:center;
-  background:var(--ok);color:#fff;animation:okPop .52s var(--spring);
-  transition:width .34s var(--spring),padding .34s var(--spring),
-             background .34s var(--ease),opacity .3s var(--ease),transform .3s var(--spring);
+  background:var(--ok);color:#fff;animation:okPop .26s var(--spring);
+  transition:width .17s var(--spring),padding .17s var(--spring),
+             background .17s var(--ease),opacity .15s var(--ease),transform .15s var(--spring);
 }
 @keyframes okPop{0%{transform:scale(.55)}58%{transform:scale(1.16)}100%{transform:scale(1)}}
 .connect.ok svg{
   width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2.6;
   stroke-linecap:round;stroke-linejoin:round;
-  stroke-dasharray:24;stroke-dashoffset:24;animation:okDraw .34s .1s var(--ease) forwards;
+  stroke-dasharray:24;stroke-dashoffset:24;animation:okDraw .17s .05s var(--ease) forwards;
 }
 @keyframes okDraw{to{stroke-dashoffset:0}}
 .connect.ok.leaving{opacity:0;transform:scale(.4)}
@@ -492,18 +498,18 @@ button.row:active{background:var(--bg-tint)}
   font-size:13px;font-weight:700;color:var(--accent);
   padding:4px 11px;border-radius:999px;background:var(--accent-soft);
 }
-.rowset.pulse{animation:rowPulse 1.8s var(--ease)}
+.rowset.pulse{animation:rowPulse .9s var(--ease)}
 @keyframes rowPulse{
   0%{box-shadow:0 0 0 0 var(--accent-soft)}
   18%{box-shadow:0 0 0 5px var(--accent-soft)}
   100%{box-shadow:0 0 0 0 rgba(0,0,0,0)}
 }
-.rowset.pulse .connect{animation:connectPing 1.8s var(--ease)}
+.rowset.pulse .connect{animation:connectPing .9s var(--ease)}
 @keyframes connectPing{0%,100%{transform:scale(1)}20%{transform:scale(1.14)}40%{transform:scale(.98)}60%{transform:scale(1.06)}}
 .row-end.tiny{font-size:12.5px;font-weight:600;color:var(--text-3);font-variant-numeric:tabular-nums}
 .row-end.tiny.asleep{color:var(--accent);opacity:.85}
-.bdaydot{font-size:13px;margin-inline-start:4px;display:inline-block;animation:avaTip 2.4s ease-in-out infinite}
-.rowset.arriving{animation:arrive .6s var(--ease)}
+.bdaydot{font-size:13px;margin-inline-start:4px;display:inline-block;animation:avaTip 1.2s ease-in-out infinite}
+.rowset.arriving{animation:arrive .3s var(--ease)}
 @keyframes arrive{
   0%{background:var(--accent-soft)}
   100%{background:transparent}
@@ -568,8 +574,8 @@ button.row:active{background:var(--bg-tint)}
 .chan.call[data-state="ready"] i{color:var(--ok)}
 .chan.call[data-state="ready"] .tile{box-shadow:0 0 0 3px var(--accent-soft)}
 @keyframes armPulse{0%,100%{opacity:.55}50%{opacity:1}}
-.chan.call[data-state="arming"] .tile{animation:armPulse 1s var(--ease-io) infinite}
-.chan.call.ringing .tile svg{animation:ring 1s var(--ease) infinite}
+.chan.call[data-state="arming"] .tile{animation:armPulse .5s var(--ease-io) infinite}
+.chan.call.ringing .tile svg{animation:ring .5s var(--ease) infinite}
 @keyframes ring{0%,100%{transform:rotate(0)}20%{transform:rotate(-14deg)}40%{transform:rotate(12deg)}60%{transform:rotate(-8deg)}80%{transform:rotate(5deg)}}
 
 /* what an account actually brings, shown in place instead of in a
@@ -589,7 +595,7 @@ button.row:active{background:var(--bg-tint)}
 .glyphs span svg{width:11.5px;height:11.5px}
 .glyphs span.off{background:var(--bg-tint);color:var(--text-3);transform:scale(.84);opacity:.55}
 @keyframes glyphIn{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:none}}
-.glyphs.fresh span{animation:glyphIn .42s var(--spring) backwards;animation-delay:calc(var(--i,0) * 55ms)}
+.glyphs.fresh span{animation:glyphIn .21s var(--spring) backwards;animation-delay:calc(var(--i,0) * 27.5ms)}
 
 /* the friend list only earns a search field once scanning it stops being
    instant; below that a permanently visible box is one more thing to read. */
@@ -689,7 +695,7 @@ html.is-new .introtog{display:none}
    in particular. */
 .whint{margin-top:34px;display:flex;flex-direction:column;align-items:center;gap:7px}
 .whint b{font-size:14.5px;font-weight:600;color:var(--text)}
-.warrow{width:15px;height:15px;color:var(--accent);animation:wbob 3.4s var(--ease-io) infinite}
+.warrow{width:15px;height:15px;color:var(--accent);animation:wbob 1.7s var(--ease-io) infinite}
 .warrow svg{width:100%;height:100%;display:block}
 @keyframes wbob{0%,100%{transform:translateY(-1px);opacity:.34}50%{transform:translateY(6px);opacity:.92}}
 .wrow{margin-top:13px;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -702,13 +708,13 @@ html.is-new .introtog{display:none}
 @keyframes wrise{from{opacity:0;transform:translateY(15px)}to{opacity:1;transform:none}}
 .welcome .wmark,.welcome .wword,
 .welcome .wlede,.welcome .whint,.welcome .wrow,.welcome .wfoot{
-  animation:wrise .6s var(--ease) both;
+  animation:wrise .3s var(--ease-easy) both;
 }
-.welcome .wword{animation-delay:.09s}
-.welcome .wlede{animation-delay:.16s}
-.welcome .whint{animation-delay:.27s}
-.welcome .wrow{animation-delay:.33s}
-.welcome .wfoot{animation-delay:.42s}
+.welcome .wword{animation-delay:.045s}
+.welcome .wlede{animation-delay:.08s}
+.welcome .whint{animation-delay:.135s}
+.welcome .wrow{animation-delay:.165s}
+.welcome .wfoot{animation-delay:.21s}
 .themetog{
   position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:128px;z-index:80;
   width:26px;height:26px;border-radius:999px;background:var(--surface);
@@ -901,7 +907,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   62%{opacity:1;transform:translateY(1px) scaleY(1.04)}
   100%{opacity:1;transform:none}
 }
-.litem.fresh{animation:itemIn .46s var(--ease-io)}
+.litem.fresh{animation:itemIn .23s var(--ease-io)}
 .additem{text-align:start}
 .additemrow{padding-top:4px}
 
@@ -1308,7 +1314,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .vchip.toggle{box-shadow:inset 0 0 0 1.4px var(--sep-2);background:transparent;color:var(--text-3)}
 .vchip.toggle[aria-checked="true"]{background:var(--accent);color:#fff;box-shadow:none}
 @keyframes chipPop{0%{transform:scale(1)}38%{transform:scale(.93)}100%{transform:scale(1)}}
-.vchip.pop{animation:chipPop .38s var(--ease-io)}
+.vchip.pop{animation:chipPop .19s var(--ease-io)}
 .autotag{
   font-size:11px;font-weight:600;color:var(--accent);background:var(--accent-soft);
   padding:2.5px 8px;border-radius:999px;flex:none;margin-inline-start:8px;
@@ -1396,7 +1402,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   0%{opacity:0;transform:translateY(7px)}
   100%{opacity:1;transform:none}
 }
-.stack.swap{animation:stackSwap .42s var(--ease-io)}
+.stack.swap{animation:stackSwap .21s var(--ease-io)}
 
 /* archive – deliberately quiet */
 .archive{margin-top:34px;opacity:.72;transition:opacity .3s ease}
@@ -1483,7 +1489,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   38%{box-shadow:0 0 0 9px var(--accent-soft)}
   100%{box-shadow:0 0 0 0 rgba(0,0,0,0)}
 }
-.ev.landing{animation:evLand .9s var(--ease)}
+.ev.landing{animation:evLand .45s var(--ease)}
 .ev.pressed{transform:scale(.972);transition:transform .18s var(--spring)}
 /* the way back out of the list: one glyph, on the rows that have a day */
 .tjump{
@@ -1746,10 +1752,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   width:19px;height:19px;border-radius:999px;
   background:var(--accent);color:#fff;
   display:grid;place-items:center;text-decoration:none;
-  animation:badgeIn .52s var(--squash) backwards;
+  animation:badgeIn .26s var(--squash) backwards;
 }
 .defbadge svg{width:10px;height:10px}
-.defbadge.out{animation:badgeIn .28s var(--ease-io) reverse forwards}
+.defbadge.out{animation:badgeIn .14s var(--ease-io) reverse forwards}
 .chan.isdefault{box-shadow:var(--shadow-m),inset 0 0 0 1.5px var(--accent-soft)}
 .chan{transition:transform .28s var(--squash),box-shadow .42s var(--ease-io)}
 
@@ -1820,7 +1826,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   35%{opacity:.85}
   100%{opacity:0;transform:translateX(calc(70% * var(--sd,1))) scaleX(var(--sd,1))}
 }
-.tabpill.sweep::after{animation:lensSweep .6s var(--ease-io)}
+.tabpill.sweep::after{animation:lensSweep .3s var(--ease-io)}
 .tab{
   position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:3px;
   padding:9px 15px 8px;border-radius:19px;color:var(--text-3);min-width:67px;
@@ -1993,7 +1999,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
    unfolding the time picker does, at the same speed */
 @keyframes calCell{from{opacity:0;transform:translateY(5px) scale(.9)}to{opacity:1;transform:none}}
 .calpop.show .calgrid button,.calpop.show .calmg button{
-  animation:calCell .42s var(--squash) backwards;animation-delay:calc(var(--i,0) * 9ms)
+  animation:calCell .21s var(--squash) backwards;animation-delay:calc(var(--i,0) * 4.5ms)
 }
 .btn{
   padding:14px;border-radius:15px;font-size:16.5px;font-weight:600;text-align:center;
@@ -2801,6 +2807,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     shareTask:"shareTask", revokeShare:"revokeShare",
     grantFeature:"grantFeature", revokeFeature:"revokeFeature",
     setTimezone:"setTimezone", pause:"pause", resume:"resume", callMe:"callMe",
+    requestMoreCalls:"requestMoreCalls",
     inviteContact:"inviteContact",
     respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting",
     rejoinMeeting:"rejoinMeeting",
@@ -3117,6 +3124,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "ch.open":"פתיחת השיחה","ch.add":"להוספה",
       "ch.call":"שיחה","ch.callSub":"עולמה תתקשר","ch.calling":"מתקשרת אליך…",
       "ch.callArm":"מתכוננת לשיחה…","ch.callReady":"מוכנה — לחיצה נוספת",
+      "ch.callAttempt":"ניסיון {used} מתוך {limit}","ch.callRequestMore":"בקשה לעוד שיחות",
+      "ch.callRequested":"הבקשה נשלחה",
 
       "cat.cal":"יומן","cat.contacts":"אנשי קשר","cat.mail":"מייל","cat.notes":"פתקים","cat.files":"קבצים",
       "cat.none":"לא מחובר","cat.off":"כבוי",
@@ -3320,6 +3329,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.open":"פותח את השיחה שלך עם עולמה ב־{name}","toast.chanOn":"{name} מחובר · עולמה תענה גם שם",
       "toast.calling":"עולמה מתקשרת אליך עכשיו",
       "toast.callFailed":"לא הצלחתי להתקשר עכשיו — נסה שוב בעוד רגע",
+      "toast.moreRequested":"הבקשה נשלחה",
       "toast.done":"המשימה הושלמה","toast.saved":"המשימה נשמרה",
       "toast.updated":"המשימה עודכנה","toast.deleted":"המשימה נמחקה",
       "toast.needTitle":"צריך שם למשימה",
@@ -3358,6 +3368,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "ch.open":"Open chat","ch.add":"Add",
       "ch.call":"Call","ch.callSub":"Allma rings you","ch.calling":"Calling you…",
       "ch.callArm":"Getting ready…","ch.callReady":"Ready — tap again",
+      "ch.callAttempt":"Attempt {used} of {limit}","ch.callRequestMore":"Request more calls",
+      "ch.callRequested":"Request sent",
 
       "cat.cal":"Calendar","cat.contacts":"Contacts","cat.mail":"Mail","cat.notes":"Notes","cat.files":"Files",
       "cat.none":"Not connected","cat.off":"off",
@@ -3558,6 +3570,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.open":"Opening your chat with Allma in {name}","toast.chanOn":"{name} connected · Allma answers there too",
       "toast.calling":"Allma is calling you now",
       "toast.callFailed":"The call would not go through — try again in a moment",
+      "toast.moreRequested":"Your request has been sent",
       "toast.done":"Task completed","toast.saved":"Task saved",
       "toast.updated":"Task updated","toast.deleted":"Task deleted",
       "toast.needTitle":"Give the task a name",
@@ -3785,7 +3798,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var conf = "", cols = [PAL.cream, PAL.tan, PAL.moss, PAL.rose, PAL.ice];
     for(var i = 0; i < 6; i++){
       conf += '<rect class="avaConf" x="' + (14 + i * 14) + '" y="-8" width="4" height="6" rx="1" fill="' +
-        cols[i % cols.length] + '" style="animation-delay:' + (i * 0.5).toFixed(2) + 's"/>';
+        cols[i % cols.length] + '" style="animation-delay:' + (i * 0.25).toFixed(2) + 's"/>';
     }
     return '<g class="avaHat">' +
       P("M50 5 L62 30 L38 30 Z", PAL.cream) +
@@ -3969,7 +3982,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   var expanded = {}, defaultChannel = "wa";
   /* the toggle beat, taken from the stylesheet so CSS stays the one place
      that decides how long any of this lasts */
-  var SW_MS = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sw-t")) || .52) * 1000;
+  var SW_MS = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--sw-t")) || .26) * 1000;
   function prov(id){ return PROV.filter(function(p){ return p.id === id; })[0]; }
   function onCount(p){ return p.svc.filter(function(s){ return s.on; }).length; }
 
@@ -4196,7 +4209,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     toastEl.textContent = msg;
     toastEl.classList.add("show");
     clearTimeout(toastT);
-    toastT = setTimeout(function(){ toastEl.classList.remove("show"); }, 2100);
+    toastT = setTimeout(function(){ toastEl.classList.remove("show"); }, 1050);
   }
 
   /* ───────── connections view ───────── */
@@ -4209,7 +4222,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      the whole point of the mockup is to show what the screen becomes once it
      does. On a live page it is only what the server can really do today, and
      the rest is greyed rather than left tappable. */
-  var AVAIL = {prov:{}, mail:false, call:false};
+  var AVAIL = {prov:{}, mail:false, call:{allowed:false, attemptsUsed:0, attemptsLimit:2, requested:false}};
   function provReady(id){ return !LIVE || AVAIL.prov[id] === true; }
   /* The Google services this system has a domain module for. Drive and Keep
      are drawn because the account has them, not because we can read them —
@@ -4235,12 +4248,22 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          neither has asking Olma to ring you — so on a live page both are
          waiting, and only the channel somebody actually arrived on is open. */
       if(c.call){
-        var callReady = !LIVE || AVAIL.call === true;
-        return '<button class="chan call' + (callReady ? "" : " soon") + '" data-call="1" data-state="idle"' +
-          (callReady ? "" : " inert") + ' style="--ci:' + i + '">' +
+        var cs = AVAIL.call, callReady = !LIVE || cs.allowed === true;
+        /* Once both lifetime attempts are used the tile itself becomes the
+           "request more calls" control — never a second button crowding the
+           same row — and a request already sent is shown, not re-offered. */
+        var exhausted = callReady && cs.attemptsUsed >= cs.attemptsLimit;
+        var sub = !callReady ? t("soon")
+          : cs.requested ? t("ch.callRequested")
+          : cs.attemptsUsed > 0 ? t("ch.callAttempt", {used:cs.attemptsUsed, limit:cs.attemptsLimit})
+          : t("ch.callSub");
+        var label = exhausted && !cs.requested ? t("ch.callRequestMore") : t("ch.call");
+        return '<button class="chan call' + (callReady ? "" : " soon") +
+          (exhausted ? " exhausted" : "") + (cs.requested ? " requested" : "") +
+          '" data-call="' + (exhausted ? "more" : "1") + '" data-state="idle"' +
+          (callReady && !cs.requested ? "" : " inert") + ' style="--ci:' + i + '">' +
           tileFor("call", c.icon) +
-          "<b>" + esc(t("ch.call")) + "</b><i>" +
-          esc(callReady ? t("ch.callSub") : t("soon")) + "</i></button>";
+          "<b>" + esc(label) + "</b><i>" + esc(sub) + "</i></button>";
       }
       var chanReady = c.on || !LIVE;
       return '<button class="chan' + (c.on ? " on" : "") + (chanReady ? "" : " soon") +
@@ -4326,7 +4349,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      Arming is not instant either, and that is honest rather than theatrical:
      the bridge really does have to be brought up before a call can be placed.
      The wait is where that happens. */
-  var CALL_ARM_MS = 1400, CALL_HOLD_MS = 8000, callT = null, callHoldT = null;
+  var CALL_ARM_MS = 700, CALL_HOLD_MS = 4000, callT = null, callHoldT = null;
   function setCallState(el, st){
     el.dataset.state = st;
     el.querySelector("i").textContent = t({
@@ -4359,7 +4382,22 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     callT = setTimeout(function(){
       el.classList.remove("ringing");
       setCallState(el, "idle");
-    }, 3200);
+    }, 1600);
+  }
+  /* Once both calls are used the same tile asks for more, once. It just
+     records the ask for later manual review — nothing on screen implies the
+     phone is about to ring again — so the only thing that changes is the
+     tile settling into its "sent" state. */
+  function pressRequestMore(el){
+    if(el.classList.contains("requested")) return;
+    API.send("requestMoreCalls", {}, function(data){
+      if(!data) return; /* refused or offline: nothing on screen claims it worked */
+      el.classList.add("requested");
+      el.setAttribute("inert", "");
+      var i = el.querySelector("i");
+      if(i) i.textContent = t("ch.callRequested");
+      toast(t("toast.moreRequested"));
+    });
   }
 
   /* ── one row per account, opening where it stands ── */
@@ -4459,7 +4497,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
           '" title="' + esc(t("ch.defTag")) + '"><svg><use href="#i-check"/></svg></u>');
       } else if(!on && b){
         b.classList.add("out");
-        setTimeout(function(){ if(b.parentNode) b.remove(); }, 300);
+        setTimeout(function(){ if(b.parentNode) b.remove(); }, 150);
       }
     });
   }
@@ -4532,7 +4570,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          every engine (they do not here), so the duration is READ OUT of the
          stylesheet instead — one number, still impossible to drift. */
       sw.classList.remove("moving"); void sw.offsetWidth; sw.classList.add("moving");
-      setTimeout(function(){ sw.classList.remove("moving"); }, SW_MS + 40);
+      setTimeout(function(){ sw.classList.remove("moving"); }, SW_MS + 20);
       sw.setAttribute("aria-checked", on ? "true" : "false");
       if(sw.dataset.svc){
         var parts = sw.dataset.svc.split(":"), p = prov(parts[0]), si = +parts[1];
@@ -4653,7 +4691,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       return;
     }
     var cl = e.target.closest("[data-call]");
-    if(cl){ pressCall(cl); return; }
+    if(cl){ (cl.dataset.call === "more" ? pressRequestMore : pressCall)(cl); return; }
 
     var head = e.target.closest("[data-prov]");
     if(head){
@@ -4705,8 +4743,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         cbtn.classList.add("ok");
         cbtn.removeAttribute("data-busy");
         cbtn.innerHTML = '<svg viewBox="0 0 20 20"><path d="M4 10.6 8 14.6 16 5.8"/></svg>';
-        setTimeout(function(){ cbtn.classList.add("leaving"); }, 620);
-      }, 620);
+        setTimeout(function(){ cbtn.classList.add("leaving"); }, 310);
+      }, 310);
       setTimeout(function(){
         var p2 = prov(cid);
         p2.connected = true;
@@ -4726,7 +4764,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         /* and the little what-is-on strip arrives one glyph at a time */
         var gs = $('[data-prov="' + cid + '"] .glyphs');
         if(gs) gs.classList.add("fresh");
-      }, 1440);
+      }, 720);
       return;
     }
 
@@ -4758,7 +4796,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         delete expanded[did];
         renderTools();
         toast(t("toast.disconnected", {name:dp.name}));
-      }, 300);
+      }, 150);
       return;
     }
 
@@ -4925,7 +4963,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       API.restoreTask(task.id);
       renderTasks(); renderStrip(selDay);
       toast(t("toast.restored", {name:L(task.t) || t("sheet.untitled")}));
-    }, 440);
+    }, 220);
   }
   $("#taskStack").addEventListener("click", function(e){
     var wrap = e.target.closest(".taskwrap");
@@ -4934,7 +4972,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       if(row.classList.contains("done")) return;
       row.classList.add("done");
       var id = +wrap.dataset.id;
-      setTimeout(function(){ wrap.classList.add("gone"); }, 620);
+      setTimeout(function(){ wrap.classList.add("gone"); }, 310);
       setTimeout(function(){
         var i = open.findIndex(function(x){ return x.id === id; });
         if(i > -1){
@@ -4944,7 +4982,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         }
         API.completeTask(id);
         renderTasks(); toast(t("toast.done"));
-      }, 1080);
+      }, 540);
       return;
     }
     var jp = e.target.closest("[data-jump]");
@@ -5050,7 +5088,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
           sheet.style.transform = "";
           $("#scrim").style.opacity = "";
         });
-      }, 300);
+      }, 150);
     }
     grab.addEventListener("pointerdown", function(e){
       if(e.button) return;
@@ -5089,7 +5127,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      about to be wrong */
   function updateSheetCue(){
     paintCue($("#sheet"), $("#sheetCue"));
-    setTimeout(function(){ paintCue($("#sheet"), $("#sheetCue")); }, 580);
+    setTimeout(function(){ paintCue($("#sheet"), $("#sheetCue")); }, 290);
   }
   $("#sheet").addEventListener("scroll", function(){ paintCue($("#sheet"), $("#sheetCue")); });
   $("#sList").addEventListener("scroll", function(){ paintCue($("#sList"), $("#listCue")); });
@@ -5143,7 +5181,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     clearTimeout(savedTimer);
     savedTimer = setTimeout(function(){
       el.textContent = t("sheet.autosave"); el.classList.remove("flash");
-    }, 1300);
+    }, 650);
   }
   /* One writer for every control in the sheet. A new task only joins the
      list once it has a name — an empty row appearing the moment somebody
@@ -5466,7 +5504,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var on = !$("#sAddFold").classList.contains("open");
     $("#sAddFold").classList.toggle("open", on);
     this.setAttribute("aria-expanded", on ? "true" : "false");
-    if(on && !$("#pickSearch").hidden) setTimeout(function(){ $("#pickQ").focus(); }, 280);
+    if(on && !$("#pickSearch").hidden) setTimeout(function(){ $("#pickQ").focus(); }, 140);
     updateSheetCue();
   });
   $("#pickQ").addEventListener("input", function(){
@@ -5489,7 +5527,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     this.setAttribute("aria-expanded", on ? "true" : "false");
     updateSheetCue();
     if(on) paintCue($("#sList"), $("#listCue"));
-    if(on) setTimeout(function(){ $("#sAddItem").focus(); }, 260);
+    if(on) setTimeout(function(){ $("#sAddItem").focus(); }, 130);
   });
   $("#sShareRow").addEventListener("click", function(){
     var on = !$("#sShareFold").classList.contains("open");
@@ -5517,7 +5555,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       }
       API.leaveTask(id);
       renderTasks(); renderStrip(selDay); toast(t("toast.left", {name:name}));
-    }, 460);
+    }, 230);
   });
 
   /* `preset` is how a new task can arrive with somebody already on it — the
@@ -5568,7 +5606,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     creating = isNew;
     syncTitleRow();
     showSheet($("#sheet"));
-    setTimeout(function(){ if(isNew) $("#sTitle").focus(); }, 380);
+    setTimeout(function(){ if(isNew) $("#sTitle").focus(); }, 190);
   }
 
   /* `creating` is not `isNew`. `isNew` stops being true the moment the task
@@ -5648,7 +5686,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       open = open.filter(function(o){ return o.id !== id; });
       API.deleteTask(id);
       renderTasks(); renderStrip(selDay); toast(t("toast.deleted"));
-    }, 460);
+    }, 230);
   });
 
   /* ───────── date popover ─────────
@@ -5736,7 +5774,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(pop.hidden) return;
     pop.classList.remove("show");
     $("#calScrim").hidden = true;
-    setTimeout(function(){ if(!pop.classList.contains("show")) pop.hidden = true; }, 220);
+    setTimeout(function(){ if(!pop.classList.contains("show")) pop.hidden = true; }, 110);
     calAnchor = null;
   }
   $("#calScrim").addEventListener("click", closeCal);
@@ -6342,7 +6380,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
            replaces, and the swap sheet is exactly that question. */
         swapApprove = o; swapNew = o;
         closeSheets();
-        setTimeout(function(){ renderSwap(); showSheet($("#mtSwapSheet")); }, 260);
+        setTimeout(function(){ renderSwap(); showSheet($("#mtSwapSheet")); }, 130);
         return;
       }
       delete o.pending; delete o.by;
@@ -6542,7 +6580,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(mtMine(m) && mtLive(m).length >= MEET_CAP){
       swapNew = o;
       closeSheets();
-      setTimeout(function(){ renderSwap(); showSheet($("#mtSwapSheet")); }, 260);
+      setTimeout(function(){ renderSwap(); showSheet($("#mtSwapSheet")); }, 130);
       return;
     }
     mtAddOption(o);
@@ -6554,7 +6592,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     API.send("addOption", {meetingId:m.id, day:o.day, part:o.part || null, time:o.time || null, allDay:!!m.allDay},
       function(){ API.reload(); });
     closeSheets();
-    setTimeout(function(){ showSheet($("#mtSheet")); renderMeet(); renderMeets(); }, 260);
+    setTimeout(function(){ showSheet($("#mtSheet")); renderMeet(); renderMeets(); }, 130);
     /* the swap path says the whole sentence itself — one action, one toast */
     if(!quiet) toast(t(mtMine(m) ? "toast.mtOptAdded" : "toast.mtOptSent", {when:mtOptLabel(m, o)}));
   }
@@ -6589,7 +6627,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       delete ap.pending; delete ap.by;
       API.send("approveOption", {meetingId:m.id, optionId:ap.id, replaceOptionId:id}, function(){ API.reload(); });
       closeSheets();
-      setTimeout(function(){ showSheet($("#mtSheet")); renderMeet(); renderMeets(); }, 260);
+      setTimeout(function(){ showSheet($("#mtSheet")); renderMeet(); renderMeets(); }, 130);
       toast(t("toast.mtSwapped", {out:mtOptLabel(m, gone), in:mtOptLabel(m, ap)}));
       return;
     }
@@ -6598,7 +6636,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         time:added.time || null, allDay:!!m.allDay}, function(){ API.reload(); });
       m.opts.push(added);
       closeSheets();
-      setTimeout(function(){ showSheet($("#mtSheet")); renderMeet(); renderMeets(); }, 260);
+      setTimeout(function(){ showSheet($("#mtSheet")); renderMeet(); renderMeets(); }, 130);
       toast(t("toast.mtSwapped", {out:mtOptLabel(m, gone), in:mtOptLabel(m, added)}));
       return;
     }
@@ -6860,7 +6898,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          real rows rather than showing a card it would then have to rename. */
       API.send("startMeeting", {title:nm, participantIds:m.who, allDay:m.allDay, options:picks}, function(data){
         API.reload();
-        if(data && data.meeting) setTimeout(function(){ openMeet(Number(data.meeting.id)); }, 700);
+        if(data && data.meeting) setTimeout(function(){ openMeet(Number(data.meeting.id)); }, 350);
       });
       closeSheets();
       toast(t("toast.mtStarted", {list:nameList(m.who.map(mtName))}));
@@ -6873,7 +6911,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     closeSheets();
     renderMeets();
     /* straight into it: the person who started this is the first to answer */
-    setTimeout(function(){ openMeet(m.id); }, 380);
+    setTimeout(function(){ openMeet(m.id); }, 190);
     toast(t("toast.mtStarted", {list:nameList(m.who.map(mtName))}));
   });
 
@@ -7204,12 +7242,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       if(!row){ return; }
       row.scrollIntoView({block:"center", behavior:"smooth"});
       row.classList.add("landing");
-      setTimeout(function(){ row.classList.add("pressed"); }, 620);
+      setTimeout(function(){ row.classList.add("pressed"); }, 310);
       setTimeout(function(){
         row.classList.remove("landing", "pressed");
         openSheet(id);
-      }, 900);
-    }, 480);
+      }, 450);
+    }, 240);
   }
 
   /* ───────── friends ───────── */
@@ -7418,7 +7456,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       b.hidden = false;
       void b.offsetWidth;
       b.classList.add("opening");
-      setTimeout(function(){ b.classList.remove("opening"); }, SW_MS + 40);
+      setTimeout(function(){ b.classList.remove("opening"); }, SW_MS + 20);
     } else {
       b.classList.add("shutting");
       setTimeout(function(){ b.hidden = true; b.classList.remove("shutting"); }, SW_MS);
@@ -7590,11 +7628,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       /* the stretch is released well before the travel ends, so the pill is
          already back to its own shape by the time it arrives — and the origin is
          only let go once that relaxation is over, never during it */
-      pillT = setTimeout(function(){ pill.classList.remove("travel"); }, 200);
+      pillT = setTimeout(function(){ pill.classList.remove("travel"); }, 100);
       clearTimeout(relaxT);
-      relaxT = setTimeout(function(){ pill.classList.remove("relax"); }, 200 + 440);
+      relaxT = setTimeout(function(){ pill.classList.remove("relax"); }, 100 + 220);
       clearTimeout(sweepT);
-      sweepT = setTimeout(function(){ pill.classList.remove("sweep"); }, 640);
+      sweepT = setTimeout(function(){ pill.classList.remove("sweep"); }, 320);
     }
   }
   function selectedTab(){
@@ -8060,7 +8098,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
        (voice.pageCallAllowed). Until somebody is on it the tile draws
        itself "בקרוב", which is what it has always done — the difference is
        that there is now something behind it when the answer turns yes. */
-    AVAIL.call = !!(d.available && d.available.call);
+    AVAIL.call = (d.available && d.available.call) ||
+      {allowed:false, attemptsUsed:0, attemptsLimit:2, requested:false};
     hydrateProviders(d.integrations);
     hydrateChannels(d.channels);
     /* The address book behind "add a friend" — their own `user_contacts`,
@@ -8152,7 +8191,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   /* Two seconds, not three: three was long enough that a person who had
      already read the screen was waiting on it. Four beats now instead of
      three, so the whole thing is a second shorter than it was AND says more. */
-  var INTRO_HOLD = 2000, INTRO_STAGES = 4;
+  var INTRO_HOLD = 1000, INTRO_STAGES = 4;
   var introStage = 0, introT = null, introDone = false;
 
   function introSeen(){
@@ -8193,8 +8232,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     clearTimeout(introT);
     introStage = stage;
     var root = document.documentElement;
-    root.classList.remove("intro-1", "intro-2", "intro-3", "intro-4");
     if(stage > INTRO_STAGES){ introFinish(); return; }
+    root.classList.remove("intro-1", "intro-2", "intro-3", "intro-4");
     root.classList.add("intro", "intro-" + stage);
     if(stage === 1) root.style.setProperty("--introY", introOffset() + "px");
     if(arm === false) return;
@@ -8205,16 +8244,22 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     introDone = true;
     clearTimeout(introT);
     var root = document.documentElement;
-    root.classList.remove("intro-1", "intro-2", "intro-3", "intro-4");
-    /* `intro` comes off one frame later so the last transition can finish
-       against the same rules it started under — dropping it in the same tick
-       restores the stagger animation mid-move and the page jumps. */
+    /* Stay on intro-4, not off it: html.intro .tabbar hides the bar and
+       html.intro-4 .tabbar is the only rule that shows it again, so dropping
+       intro-4 here — before `intro` itself lifts below — hid the bar and then
+       popped it back a beat later. */
+    root.classList.remove("intro-1", "intro-2", "intro-3");
+    root.classList.add("intro-4");
+    /* `intro` (with it, intro-4) comes off one frame later so the last
+       transition can finish against the same rules it started under —
+       dropping it in the same tick restores the stagger animation mid-move
+       and the page jumps. */
     requestAnimationFrame(function(){
       setTimeout(function(){
-        root.classList.remove("intro");
+        root.classList.remove("intro", "intro-4");
         root.classList.add("intro-settled");
         root.style.removeProperty("--introY");
-      }, 700);
+      }, 350);
     });
     markIntroSeen();
     introUnbind();
@@ -8259,7 +8304,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       requestAnimationFrame(function(){ if(introStage === 1) introGo(1); });
     }
     if(document.fonts && document.fonts.ready) document.fonts.ready.then(begin);
-    setTimeout(begin, 2500);
+    setTimeout(begin, 1250);
   }
   /* One or the other, never both: the three-stage intro stages the APP, and
      a stranger is not being shown the app. */

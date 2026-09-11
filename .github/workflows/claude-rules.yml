@@ -5,13 +5,39 @@ name: claude-rules
 # `.claude/` does not belong in the olma2 filter — a rules edit must not
 # redeploy production, and an olma2 edit must not depend on this.
 #
-# What it protects: a path-scoped rule fails SILENTLY. A glob pointing at a
-# renamed or misspelled file matches nothing, the rule never loads, and the
-# first sign is somebody repeating the outage the rule exists to prevent.
-# Seven of the first ninety-one globs written for the split were dead, four of
-# them filenames that had simply been guessed.
+# What it protects, in two layers:
 #
-# No database, no install, one node script, a couple of seconds.
+#   check-rules.js           can the rule LOAD. A path-scoped rule fails
+#                            SILENTLY: a glob pointing at a renamed or
+#                            misspelled file matches nothing, the rule never
+#                            loads, and the first sign is somebody repeating
+#                            the outage it exists to prevent. Seven of the
+#                            first ninety-one globs written for the split were
+#                            dead, four of them filenames simply guessed.
+#
+#   check-rule-citations.js  is the rule still TRUE. A rule names the file,
+#                            function, migration or constant that carries it,
+#                            and a rename leaves it pointing at nothing while
+#                            it keeps loading and keeps costing tokens.
+#                            `--self-test` runs first and proves the checker
+#                            can still go red, because a detector that cannot
+#                            fail is not a detector.
+#
+#   finish-line.js           the Stop hook's own self-test. It blocks a turn
+#                            that changed olma2 code without running the suite,
+#                            and a migration nobody checked against the box —
+#                            so it has to be proved in BOTH directions: still
+#                            blocking what it should, still silent on ordinary
+#                            work. A gate that fires on ordinary work is a gate
+#                            somebody turns off.
+#
+#   deploy-triage.js         the /deploy-triage skill's table against the code.
+#                            The script can end on seventeen named verdicts and
+#                            the skill documents what to do for each; a table
+#                            that quietly stops naming one is worse than no
+#                            table, so the two are asserted to agree.
+#
+# No database, no install, four node scripts, a couple of seconds.
 on:
   push:
     paths: ['.claude/**', 'CLAUDE.md', '.github/workflows/claude-rules.yml']
@@ -32,3 +58,7 @@ jobs:
         with:
           node-version: '24'
       - run: node .claude/scripts/check-rules.js
+      - run: node .claude/scripts/check-rule-citations.js --self-test
+      - run: node .claude/scripts/check-rule-citations.js
+      - run: node .claude/hooks/finish-line.js --self-test
+      - run: node .claude/scripts/deploy-triage.js --self-test

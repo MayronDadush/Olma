@@ -120,10 +120,10 @@ function build({ locale, channelType, overrides, now }) {
   add('רשימת הבוקר (הבלוק שהקוד מצייר)',
     digestBlock.renderDigestBlock(sampleDigest(now, w), { locale, channelType, now }));
 
-  // 6b-6c: the two lists a person asks for by name, drawn by the same code
-  // that draws the morning. The reminder one is here because its hours are
-  // the whole content — and because `chasing` is passed in deliberately, to
-  // be seen NOT appearing.
+  // 6b-6e: the lists and choices a person asks for by name, drawn by the
+  // same code that draws the morning. The reminder one is here because its
+  // hours are the whole content — and because `chasing` is passed in
+  // deliberately, to be seen NOT appearing.
   add('רשימת המשימות (הבלוק שהקוד מצייר)', listBlock.renderTaskListBlock({
     tasks: [
       { title: w.dana, kind: 'event', due_at: at(4), ends_at: at(5), location: w.cafe },
@@ -141,6 +141,30 @@ function build({ locale, channelType, overrides, now }) {
     ],
     chasing: [{ id: 1, taskId: 1, title: w.form, askedFor: at(-20), rungsSent: 1 }],
   }, { locale, channelType, now }));
+
+  // 6d: my_calendar_events — Google's OWN shape, a date for an all-day event
+  // and an instant for a timed one, which is why this gets its own line
+  // builder rather than reusing the digest's (domain/list-block.js).
+  const dateOnly = (daysFromNow) => {
+    const d = new Date(now + daysFromNow * 86400_000);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  };
+  add('רשימת היומן (הבלוק שהקוד מצייר)', listBlock.renderCalendarListBlock({
+    events: [
+      { title: w.dana, start: at(4), end: at(5), location: w.cafe, allDay: false },
+      { title: w.school, start: at(30), allDay: false },
+      { title: w.delivery, start: dateOnly(4), allDay: true },
+    ],
+  }, { locale, channelType, now }));
+
+  // 6e: get_meeting_status — the proposer's OWN words, numbered; a pending
+  // fifth option is passed in deliberately, to be seen NOT numbered.
+  const isEn = String(locale || '').toLowerCase().startsWith('en');
+  add('אופציות לפגישה (הבלוק שהקוד מצייר)', listBlock.renderMeetingOptionsBlock([
+    { id: 2, slotText: w.slot, status: 'active' },
+    { id: 1, slotText: isEn ? 'Wednesday 19:00' : 'יום רביעי 19:00', status: 'active' },
+    { id: 3, slotText: isEn ? 'Thursday, whenever works' : 'יום חמישי, מתי שנוח', status: 'pending' },
+  ], { channelType }));
 
   // 7: the first sentence a stranger reads.
   add('פנייה ראשונה לאדם חדש', messages.introMessage({

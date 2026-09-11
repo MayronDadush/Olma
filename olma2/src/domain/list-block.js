@@ -35,7 +35,7 @@ const format = require('./message-format');
 const digestBlock = require('./digest-block');
 const { normalizeRepeatRule } = require('./reminders');
 
-const { WORDS, localeKey, contextFor, line, whenLabel } = digestBlock;
+const { WORDS, localeKey, contextFor, line, whenLabel, dayLabel, rangeLabel } = digestBlock;
 
 // A list is worth laying out at two items. Below that a heading over a single
 // line is heavier than the sentence it replaces — the same threshold the
@@ -167,4 +167,95 @@ function renderReminderListBlock(data, opts = {}) {
   return section(f, HEADINGS[k].reminders, lines);
 }
 
-module.exports = { renderTaskListBlock, renderReminderListBlock, repeatLabel, MIN_LINES };
+// The event's own DATE, read straight off Google's date-only string with no
+// zone conversion — see dayLabel's own comment for why an instant conversion
+// is the wrong tool for this shape entirely.
+function dateOnlyParts(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || ''));
+  return m ? { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) } : null;
+}
+
+// `calendar.listEvents`'s own shape — {id, title, start, end, location,
+// allDay} — not tasks.kind='event' rows, so it gets its own line builder
+// rather than reusing digest-block.line. A NAMED reason, not a shortcut
+// skipped: an all-day event's `start`/`end` are Google's own DATES (see
+// dateOnlyParts), a timed event's are instants, and only the second shape is
+// safe to hand to rangeLabel/whenLabel at all.
+//
+// A multi-day all-day event shows only its START day — Google's own `end` on
+// one is EXCLUSIVE (a 3-day trip ends the day after it's over), and a range
+// built from that would need its own off-by-one guard. Named here rather
+// than solved speculatively: nothing today asks for a multi-day span in this
+// block, and the single start day is not wrong, only less than it could say.
+function calendarEventLine(ev, ctx) {
+  const title = format.stripUserMarkup(String(ev.title || '').replace(/\s+/g, ' ').trim());
+  if (!title) return null;
+  const where = ev.location ? format.stripUserMarkup(String(ev.location).replace(/\s+/g, ' ').trim()) : '';
+  let when;
+  if (ev.allDay) {
+    // Unlike a task's due_at, every real calendar event carries a date —
+    // Google requires one. One that does not parse is a data anomaly, not a
+    // dateless event, so the line is dropped rather than shown bare: a thing
+    // that could not be READ is never shown as though it had no date at all.
+    const parts = dateOnlyParts(ev.start);
+    if (!parts) return null;
+    when = dayLabel(parts, ctx);
+  } else {
+    when = rangeLabel({ due_at: ev.start, ends_at: ev.end }, ctx);
+  }
+  const head = [when, title].filter(Boolean).join(' — ');
+  return where ? `${head}, ${where}` : head;
+}
+
+// One heading — this is already the calendar half of the digest's split, so
+// there is nothing here for a second heading to separate it from. Order is
+// Google's own (`orderBy: 'startTime'`, calendar.listEvents), never re-sorted.
+function renderCalendarListBlock(data, opts = {}) {
+  const f = format.formatterFor(opts.channelType);
+  const k = localeKey(opts.locale);
+  const ctx = contextFor(opts);
+  const lines = (Array.isArray(data && data.events) ? data.events : [])
+    .map((ev) => calendarEventLine(ev, ctx)).filter(Boolean);
+  if (lines.length < MIN_LINES) return null;
+  return section(f, WORDS[k].calendar, lines);
+}
+
+// A meeting's own numbered choice — the one place numbering is drawn rather
+// than left to the model to invent (message-format.HINTS.numberedChoice), for
+// the reason numbering exists at all: "2" has to name the same option every
+// time it is read, and a model composing the list fresh each turn cannot
+// promise that.
+//
+// The text is the PROPOSER's own words (`slotText`, from `add()`'s own
+// `label: 'slot_description'`) — cleaned, never recomputed from `startsAt`.
+// A time re-derived from the instant could disagree with what the person
+// actually said ("יום שלישי בערב" vs. a recomputed "20:00"), and the words are
+// theirs to keep, the same rule a task title or a calendar location already
+// follows.
+//
+// Only 'active' options are numbered. A 'pending' fifth option is not yet on
+// the table for everyone to vote on — only the initiator decides it, through
+// decide_meeting_option — so numbering it here would tell a participant they
+// can "answer with the number" on a choice that is not actually open to them.
+// `meeting-options.list` already orders active first; nothing here re-sorts.
+//
+// What is NOT here, on purpose: which options are GONE. `meeting-options.list`
+// only ever returns 'active'/'pending' rows, so a declined or replaced option
+// is not in this result at all — there is no line to strike through. Telling
+// the room what changed is a model turn (format.HINTS.struckOut, wired on the
+// tool result exactly as before), because that is a sentence about an EVENT,
+// not a static fact this call can draw.
+function renderMeetingOptionsBlock(options, opts = {}) {
+  const f = format.formatterFor(opts.channelType);
+  const lines = (Array.isArray(options) ? options : [])
+    .filter((o) => o.status === 'active')
+    .map((o) => format.stripUserMarkup(String(o.slotText || '').replace(/\s+/g, ' ').trim()))
+    .filter(Boolean);
+  if (lines.length < MIN_LINES) return null;
+  return f.numbered(lines);
+}
+
+module.exports = {
+  renderTaskListBlock, renderReminderListBlock, renderCalendarListBlock, renderMeetingOptionsBlock,
+  repeatLabel, MIN_LINES,
+};

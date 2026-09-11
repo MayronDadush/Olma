@@ -21,11 +21,48 @@ const { ok, err } = require('./results');
 // exactly as it did before this shipped.
 const PAGE_CALL_PHONES_FLAG = 'dashboard_call_phones';
 
+// Two lifetime attempts, ever — not a windowed daily/hourly allowance, so
+// quota_counters' shape does not fit. Each dashboard-initiated call is asked
+// to run no longer than this, matching Twilio's own per-minute billing
+// boundary the owner had in mind.
+const CALL_ATTEMPTS_LIMIT = 2;
+const CALL_MAX_DURATION_SEC = 120;
+
+// Same staged-rollout shape as mail.requireMailAccess / google-connect-gate:
+// admin always allowed (they need to try this before anyone else is exposed
+// to it), then 'all' opens it to everyone, otherwise a CSV allowlist.
 async function pageCallAllowed(client, user) {
   if (!user || !user.phone) return false;
-  const raw = (await flags.getFlag(client, PAGE_CALL_PHONES_FLAG)) ?? '';
-  return String(raw).split(/[,\s]+/).map((s) => s.trim()).filter(Boolean)
+  if (user.role === 'admin') return true;
+  const raw = String((await flags.getFlag(client, PAGE_CALL_PHONES_FLAG)) ?? '').trim();
+  if (raw.toLowerCase() === 'all') return true;
+  return raw.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean)
     .includes(user.phone);
+}
+
+async function attemptsRemaining(client, userId) {
+  const { rows } = await client.query(
+    `SELECT voice_call_attempts_used FROM users WHERE id = $1`, [userId]);
+  const used = rows[0] ? Number(rows[0].voice_call_attempts_used) : 0;
+  return { used, limit: CALL_ATTEMPTS_LIMIT, remaining: Math.max(0, CALL_ATTEMPTS_LIMIT - used) };
+}
+
+async function recordCallAttempt(client, userId) {
+  const { rows } = await client.query(
+    `UPDATE users SET voice_call_attempts_used = voice_call_attempts_used + 1
+     WHERE id = $1 RETURNING voice_call_attempts_used`, [userId]);
+  return rows[0] ? Number(rows[0].voice_call_attempts_used) : null;
+}
+
+// Idempotent — a second click after "sent" no-ops, the same "once ever,
+// stamped on the person" doctrine as timezone_asked_at / opening_sent_at.
+async function requestMoreCalls(client, userId) {
+  const { rows } = await client.query(
+    `UPDATE users SET voice_more_requested_at = now()
+     WHERE id = $1 AND voice_more_requested_at IS NULL
+     RETURNING voice_more_requested_at`, [userId]);
+  if (rows[0]) await audit.record(client, userId, 'voice.more_requested', {});
+  return ok({ requested: true, alreadyRequested: !rows[0] });
 }
 
 function dialUrl() {
@@ -84,10 +121,17 @@ async function callAvailable(user, deps = {}) {
   } catch { return null; }
 }
 
-async function requestCall(client, user, deps = {}) {
+// opts.maxDurationSec is optional and additive: only the dashboard call path
+// sends it (capping the lifetime-limited calls at CALL_MAX_DURATION_SEC).
+// The chat tool (`call_me_on_the_phone`) calls this with no opts at all, so
+// its wire payload — and therefore its behavior against whatever the bridge's
+// own VOICE_ENABLED_PHONES allows today — is unchanged by this addition.
+async function requestCall(client, user, deps = {}, opts = {}) {
   let res, body;
+  const payload = { phone: user.phone };
+  if (opts.maxDurationSec) payload.maxDurationSec = opts.maxDurationSec;
   try {
-    ({ res, body } = await askBridge({ phone: user.phone }, deps));
+    ({ res, body } = await askBridge(payload, deps));
   } catch {
     return err('unavailable', 'voice calls are not available right now (bridge unreachable)');
   }
@@ -98,4 +142,7 @@ async function requestCall(client, user, deps = {}) {
   return ok({ calling: true });
 }
 
-module.exports = { requestCall, callAvailable, dialUrl, probeUrl, pageCallAllowed, PAGE_CALL_PHONES_FLAG };
+module.exports = {
+  requestCall, callAvailable, dialUrl, probeUrl, pageCallAllowed, PAGE_CALL_PHONES_FLAG,
+  attemptsRemaining, recordCallAttempt, requestMoreCalls, CALL_ATTEMPTS_LIMIT, CALL_MAX_DURATION_SEC,
+};

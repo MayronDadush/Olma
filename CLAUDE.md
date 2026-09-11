@@ -37,6 +37,17 @@ both.** If you are about to write to a file that way, `Read` it first, or open
 its rules file by hand. Same shape as everything else here: the tool boundary
 enforces it, the prose only asks.
 
+**Two scripts hold the rules honest, both in CI (`claude-rules.yml`) and both
+safe to run by hand.** `check-rules.js` asks whether a rule can still LOAD —
+a glob pointing at a renamed file matches nothing and the rule silently never
+loads. `check-rule-citations.js` asks whether it is still TRUE — every file
+path, `module.fn`, `migration NNN` and constant it names is resolved against
+the code, and a rename is reported. It reads only this file and
+`.claude/rules/`, never `incidents.md`, where a stale citation is the record
+working. **A function cited by its bare name is NOT checked** — that reading
+misfired on 58% of the corpus — so cite one as `module.fn` if you want the
+checker to watch it.
+
 Two companion files are **not** auto-loaded — open them when relevant:
 
 - **`olma2/docs/incidents.md`** — the full narrative of every incident,
@@ -94,6 +105,14 @@ Loads when you **Read** a file under `migrations/**`, `scripts/deploy.sh`, `scri
 - **The `sha` in `/opt/olma2/RELEASE` is the ONLY unambiguous answer to "is production running what I merged."**
 - **The marker's `origin` field is load-bearing**
 
+**`/deploy-triage` asks all of the above in the order they have to be asked**
+(`.claude/skills/deploy-triage/`, backed by `.claude/scripts/deploy-triage.js`).
+Read-only, and it names one of seventeen verdicts plus the recovery command for
+that one — it never runs it, because three of them take opposite actions and
+one redeploys production. The rules above are still the authority; the skill is
+only the order, and the thing it saves is working that order out again under
+the impression that the first green answer is the answer.
+
 ### Talking to the gateway (and systemd scope)
 
 **`.claude/rules/gateway.md`** — writing openclaw.json, the three model lists, heartbeats, the daily session reset, and which units are user-scope.
@@ -123,7 +142,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **A STYLE is chosen at delivery, off the recipient's channel, and a channel the table has never heard of gets PLAIN**
 - **On the MODEL path a style is granted by a RESULT, never by a description**
 - **What is the same every time is DRAWN, and only the sentence about it is a model's**
-- **…and since 2026-09-10 the two lists a person ASKS for are drawn the same way**
+- **…and since 2026-09-10 the lists and choices a person ASKS for are drawn the same way**
 - **The delivery gate is the chokepoint and a paused user has no exceptions**
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where they differ.**
 - **`DEFAULT_WINDOW` (09:00-21:00) is no longer only a fallback — it is a sentence somebody read.**
@@ -521,6 +540,61 @@ every error path allows the call — a hook that breaks reads is worse than none
 Same argument as `markPlaced` and the reply gate: an instruction in a prompt is
 a request, and one at the tool boundary is a rule. Borrowed from
 `spotify/portal-ai-plugins`.
+
+### A subagent sees NOTHING of this conversation, and costs ~70k before it starts
+
+Measured on four real subagents, one session, 2026-09-11:
+
+| agent | tool calls | tokens |
+|---|---|---|
+| `general-purpose` | 0 | 90,508 |
+| `claude-code-guide` | 8 | 84,953 |
+| `claude-code-guide` | 5 | 74,424 |
+| `claude-code-guide` | 2 | 61,291 |
+
+The first one did no work at all — it was asked what it could see and answered
+"NO CONTEXT — I have only my task description plus CLAUDE.md, the global
+instructions and memory index, and a git status snapshot." **That 90k is the
+floor, and most of it is this file plus `.claude/rules/` (150KB, ~37k tokens)
+loading again inside every agent you spawn.** Three consequences:
+
+- **Put the context in the prompt.** Nothing you have read, run or decided in
+  this conversation reaches it, and only its final report comes back.
+- **Delegate for the READING, not for the answer.** It pays when the reading it
+  replaces would cost more than the floor — a broad sweep, a 2,000-line file.
+  It never pays for a lookup you could grep. `bulk-reader` runs on haiku for
+  exactly this reason; prefer it whenever the job is reading.
+- **`subagent_type: "fork"`, which would inherit this conversation, is NOT
+  available in this build** (measured the same day: the Agent tool answers with
+  the list it does have — `bulk-reader`, `claude`, `claude-code-guide`,
+  `Explore`, `general-purpose`, `Plan`, `statusline-setup`). Neither is the
+  `SendMessage` that would continue one with its context intact. So there is no
+  cheap "carry on from here" — re-state what it needs, every time.
+
+## "Done" is checked at the boundary too (2026-09-11)
+
+`.claude/hooks/finish-line.js` is a **Stop** hook, and it blocks exactly two
+things — the two this repo has shipped broken by calling a turn finished:
+
+- **olma2 source changed in this session and the suite has not run since.**
+  Merging is deploying, so an untested change is one that finds out in
+  production. Run `npm run lint && npm test` from `olma2/`.
+- **this branch adds a migration and nothing in the session asked the box for
+  `max(version)`.** Never `ls migrations/`; two branches in flight cannot see
+  each other's files, and that has collided three times in two days.
+
+It **fails open** everywhere, and `stop_hook_active` means a second stop always
+goes through — so it can slow you down once, never trap you. If the suite
+genuinely cannot run, say so in the reply and stop again.
+
+A third candidate was **rejected after measuring it**: "a rule changed with no
+entry in `incidents.md`" would have fired on 8 of the last 22 commits that
+added a rule, about half of them correctly — a 36% block rate on a gate nobody
+can override is how an alarm gets spent. That rule stays prose.
+
+Every Stop writes one line to `olma-finish-line.log` in the system temp dir,
+because a hook that allows and a hook that was never wired up are otherwise the
+same observation. `--self-test` asserts both directions and runs in CI.
 
 ## Known gaps
 

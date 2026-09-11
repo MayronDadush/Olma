@@ -161,27 +161,37 @@ PREFIX now, and an empty locale is the house language.
   both, which would be the same morning twice. Eval
   `digest-block-relayed-untouched` is what checks the split survives contact
   with a real reply.
-- **The two lists a person asks for by name are DRAWN too, since 2026-09-10**
-  (`domain/list-block.js`). `list_my_tasks` returns one array with `kind` on
-  each row, and the split into "what is on the calendar" and "what is on the
-  plate" used to be a paragraph asking the model to do it — a meeting read out
-  as a task is the exact fault `tasks.kind` exists to prevent, and an
-  instruction is a request. `list_my_reminders` returned rows with no title at
-  all, so saying what a reminder was *about* meant fetching the tasks and
-  matching them up; the title is joined on now and the hour is rendered in
-  their own zone. `chasing` is deliberately not in the block — the rule that it
-  is never an hour anybody may say out loud becomes a shape rather than a
-  sentence, because there is no line to read it off. Both share the digest's
-  own line renderer, so a day is named the same way in every message Olma
-  sends, and both fall back to the instruction hints below a two-line list.
+- **Three more lists are DRAWN, since 2026-09-10** (`domain/list-block.js`).
+  `list_my_tasks` returns one array with `kind` on each row, and the split into
+  "what is on the calendar" and "what is on the plate" used to be a paragraph
+  asking the model to do it — a meeting read out as a task is the exact fault
+  `tasks.kind` exists to prevent, and an instruction is a request.
+  `list_my_reminders` returned rows with no title at all, so saying what a
+  reminder was *about* meant fetching the tasks and matching them up; the
+  title is joined on now and the hour is rendered in their own zone. `chasing`
+  is deliberately not in the block — the rule that it is never an hour anybody
+  may say out loud becomes a shape rather than a sentence, because there is no
+  line to read it off. `my_calendar_events` gets its own line builder rather
+  than reusing the digest's — Google's `start`/`end` are a DATE for an all-day
+  event and an INSTANT for a timed one, and only the second shape is safe to
+  hand to a zone conversion at all (`domain/user-dashboard-events.js` guards
+  the identical fault under the name `dayGap`). `get_meeting_status` numbers
+  only the *active* options — a *pending* fifth is not yet open for anyone to
+  vote on — in the proposer's own words (`slotText`), never a time re-derived
+  from `startsAt` that could disagree with what they actually said. All four
+  share the digest's line vocabulary where they can, so a day is named the
+  same way in every message Olma sends, and all four fall back to the old
+  instruction hints below their own two-line/two-option floor.
 - **Everything a model writes**: styled where a RESULT says so, and nowhere
   else. `message-format.HINTS` holds the four sentences — list, numbered
   choice, struck out, quote their words — in one place so five tools cannot
   drift into five phrasings. They ride the tool result or the outbox
   instruction, never a tool description: a description is injected every turn
   for every user, a result costs tokens only on the turns it applies to.
-  Wired into `my_calendar_events` and, below a two-line list, `list_my_tasks`
-  and `list_my_reminders` (lists); `get_meeting_status` (numbering, and what left);
+  Wired into, below their own floor, `list_my_tasks`, `list_my_reminders` and
+  `my_calendar_events` (lists) and `get_meeting_status` (numbering — what left
+  is still a model's sentence, since a removed option is not in the result at
+  all to draw);
   `snooze_task` and `tasks_auto_archived` (what left); `relayed_message`,
   `connection_request`, `travel`, `live_update` and both meeting reasons
   (quote). Each fires only where it has work — two items before a list is
@@ -195,8 +205,8 @@ PREFIX now, and an empty locale is the house language.
 - **`HINTS.relayBlock` is the opposite of the four above.** Where the list is
   drawn there is no styling left to grant and the only thing left to say is
   hands off, so the contract — relay it exactly, add at most one sentence,
-  never repeat it as prose — is stated once and each of the three tools that
-  hand a block over appends only the sentence that is its own. Three phrasings
+  never repeat it as prose — is stated once and each of the five tools that
+  hand a block over appends only the sentence that is its own. Five phrasings
   of "relay this exactly" is how one of them drifts into "summarise this".
 - **What no test can tell you**: whether the model complies. These are
   instructions. `evals/scenarios.js` → `list-reads-as-a-list` is the only
