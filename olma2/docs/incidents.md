@@ -47,6 +47,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [The fifth draft was the rude one (fixed 2026-09-11)](#the-fifth-draft-was-the-rude-one-fixed-2026-09-11)
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [The room was greeted twice, by its own registration (fixed 2026-09-11)](#the-room-was-greeted-twice-by-its-own-registration-fixed-2026-09-11)
@@ -1532,6 +1533,75 @@ down; the audit row carries fingerprints, which is what `token-leak.js`
 compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
+
+
+### The fifth draft was the rude one (fixed 2026-09-11)
+
+On the morning the WhatsApp channel was disconnected (see "Six hours with
+nobody to talk to"), Yehav's morning digest was enqueued at 07:00:24 UTC. It
+was composed five times:
+
+| UTC | what the turn produced |
+|---|---|
+| 08:26 | "בוקר טוב יהב ☀️ שלושת התזכורות נשלחו ועוד לא טופלו — רוצה לסגור אחד מהם עכשיו?" + a rendered card |
+| 08:36 | a full task list, drawn |
+| 08:46 | the same list again, drawn again |
+| 08:57 | "בוקר טוב יהב ☀️ 11 מאחור — רוצה לדחות את כולן שבוע ולהוריד לחץ?" + a card |
+| 09:08 | "בוקר טוב ☀️ 11 מחכות, 3 תזכורות נשלחו — **ואתה לא עונה**. רוצה שאני אדחה הכול למחר ואחזיר אותך בשקט?" + a card |
+
+Five model turns. Four schedule cards rendered and thrown away. The channel
+came back at 09:05, so the fifth is the one that reached his phone — and the
+fifth is the one that had spent forty minutes watching him not answer.
+
+He had answered everything he was actually shown. He replied to that message
+fourteen seconds after it landed. The silence the fifth draft scolded him for
+was ours.
+
+**The mechanism.** A model-path delivery is `openclaw agent --deliver`: the
+gateway runs a whole turn — tools, a card, the model's own words — and only
+then hands the result to the channel. A channel that cannot carry it makes the
+send fail, the row backs off, and the next attempt runs the turn AGAIN. Nothing
+from the first attempt survives, because nothing of it was ever written down:
+the outbox row holds an instruction, not a message. So a retry here is not a
+retry. It is a fresh composition, against a world that the failed sends
+themselves have changed.
+
+This is the non-timeout sibling of "Six good mornings for one timeout". That
+one was fixed by booking a timeout as sent, because a timed-out `--deliver` has
+very likely gone out. This one could not take that route: these sends really
+did fail, and the row really was still undelivered.
+
+**The fix** (`src/outbox/worker.js`, `channelProbe`) is to stop composing
+messages that cannot be sent. Before the first send of a tick, the worker asks
+the gateway's own `channels.status` — the probe built for the detector in "Six
+hours with nobody to talk to" — and an explicit `down` skips the send while
+booking *exactly* the bookkeeping the failed send would have booked: `attempts
++ 1`, the reason in `last_error`, the same backoff. Every reader downstream is
+unchanged, and they were checked one by one: the stuck-row alarm counts
+attempts, the reminder-redo discriminator needs `attempts > 0` with an error
+beside it to know our pipe lost a rung rather than the gate holding it, the
+dashboard counts both. The only thing that no longer happens is the turn.
+
+Three details that are the whole design:
+
+- **`unknown` sends.** The probe is not the authority on whether Olma may talk
+  to somebody — it is an optimisation that skips work known to be wasted. A
+  detector that goes quiet must never be the thing that silences the system,
+  which is the hazard `checkChannels` is itself written to avoid, pointed the
+  other way. An RPC that is switched off, a refused socket, a payload shape a
+  later gateway version changed: all of them deliver, exactly as today.
+- **Once per tick, and only behind the gate.** A tick with nothing deliverable
+  never asks at all; a busy one pays 11-18ms on the open WebSocket. Asking per
+  row would have been a poll in everything but name.
+- **`channelDown` is counted apart from `failed`** on the heartbeat, because
+  "attempted and lost" and "nobody attempted" are different facts about the
+  morning and a check that declines to act has to say so somewhere.
+
+What this does NOT fix: a send that fails for any other reason still
+recomposes. Closing that needs the composed text to survive the failure, and
+the text lives in the transcript with a `MEDIA:` line attached to a card path —
+the same wall `undeliveredReply` hit when it chose "verbatim or nothing". The
+channel outage was the case that actually happened, five times, in one morning.
 
 
 ### היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)

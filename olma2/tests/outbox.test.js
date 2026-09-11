@@ -401,6 +401,93 @@ test('a timed-out delivery is booked as sent, never retried — Dana got the sam
   assert.equal(audit[0].detail.kind, 'reminder');
 });
 
+// ── The fifth draft was the rude one ────────────────────────────────────────
+// A model-path delivery runs a whole turn before the channel is asked to carry
+// anything, so a channel that cannot carry it makes every retry a NEW message
+// composed against a world the failed sends themselves created. Yehav's digest
+// was written five times while WhatsApp was disconnected, and the one that
+// landed was the one that had watched him say nothing for forty minutes.
+const downChannel = () => ({
+  status: 'down', channels: [{ id: 'whatsapp', down: true }],
+  detail: 'whatsapp: linked/running/connected = false, 6 reconnect attempts',
+});
+
+test('a channel the gateway says is down: no turn is spent, and the row books the same failure', async () => {
+  await flushOutbox();
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { title: 'x' }, idempotencyKey: 'deadchannel',
+  }));
+  const rec = recorder();
+  const out = await drainOnce(db.pool, rec.deliver, new Date('2026-08-16T12:00:00Z'),
+    { checkChannels: async () => downChannel() });
+  assert.equal(rec.sent.length, 0, 'the whole point: deliver() is never called, so no model turn runs');
+  assert.equal(out.failed, 1);
+  assert.equal(out.channelDown, 1, 'counted apart, so the heartbeat can tell "not attempted" from "attempted and lost"');
+  // Everything downstream must read exactly what a real failed send leaves:
+  // the stuck-row alarm counts attempts, and the reminder redo needs
+  // `attempts > 0` with an error beside it to know OUR pipe lost the rung.
+  const { rows } = await db.pool.query(
+    `SELECT attempts, last_error, release_after, sent_at FROM outbox WHERE idempotency_key = 'deadchannel'`);
+  assert.equal(rows[0].attempts, 1);
+  assert.equal(rows[0].sent_at, null);
+  assert.match(rows[0].last_error, /no turn spent/);
+  assert.match(rows[0].last_error, /linked\/running\/connected = false/, 'the reason names the channel, not just "failed"');
+  assert.ok(rows[0].release_after, 'the same backoff a failed send would have set');
+});
+
+test('a channel that could not be READ still sends — "could not tell" never silences the queue', async () => {
+  await flushOutbox();
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { title: 'x' }, idempotencyKey: 'unknownchannel',
+  }));
+  const rec = recorder();
+  // Every reading that is not the gateway saying so in as many words: the RPC
+  // switched off (which is what the suite itself gets), a refused socket, a
+  // payload a later gateway version changed the shape of.
+  for (const verdict of [
+    { status: 'unknown', detail: 'cannot ask the gateway: gateway rpc is switched off', channels: [] },
+    { status: 'live', detail: null, channels: [{ id: 'whatsapp', down: false }] },
+  ]) {
+    await db.pool.query(`UPDATE outbox SET sent_at = NULL, attempts = 0, release_after = NULL WHERE idempotency_key = 'unknownchannel'`);
+    const out = await drainOnce(db.pool, rec.deliver, new Date('2026-08-16T12:00:00Z'),
+      { checkChannels: async () => verdict });
+    assert.equal(out.delivered, 1, `${verdict.status} must deliver`);
+    assert.equal(out.channelDown, undefined);
+  }
+  assert.equal(rec.sent.length, 2);
+});
+
+test('a probe that throws is unknown, not down', async () => {
+  await flushOutbox();
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { title: 'x' }, idempotencyKey: 'probethrows',
+  }));
+  const rec = recorder();
+  const out = await drainOnce(db.pool, rec.deliver, new Date('2026-08-16T12:00:00Z'),
+    { checkChannels: async () => { throw new Error('socket hung up'); } });
+  assert.equal(out.delivered, 1);
+  assert.equal(rec.sent.length, 1);
+});
+
+test('the channel is asked ONCE a tick, and not at all when nothing is deliverable', async () => {
+  await flushOutbox();
+  let asked = 0;
+  const ask = async () => { asked++; return downChannel(); };
+  // Nothing due: the probe sits behind the gate, so a quiet tick costs nothing.
+  let out = await drainOnce(db.pool, recorder().deliver, new Date('2026-08-16T12:00:00Z'), { checkChannels: ask });
+  assert.equal(out.failed, 0);
+  assert.equal(asked, 0, 'a tick with nothing to send never asks');
+  // Three rows, one tick, one question.
+  for (const k of ['many1', 'many2', 'many3']) {
+    await withTx(db.pool, (c) => enqueue(c, {
+      userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { title: k }, idempotencyKey: k,
+    }));
+  }
+  out = await drainOnce(db.pool, recorder().deliver, new Date('2026-08-16T12:00:00Z'), { checkChannels: ask });
+  assert.ok(out.failed >= 1);
+  assert.equal(asked, 1, 'one probe for the whole tick, never one per row');
+});
+
 test('night hold: row waits, then releases when the window opens', async () => {
   await flushOutbox();
   await withTx(db.pool, (c) => enqueue(c, { userId: user.id, kind: 'checkin', idempotencyKey: 'night1' }));

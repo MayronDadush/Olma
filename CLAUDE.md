@@ -153,6 +153,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **A reminder rung the GATE held is never chased; a rung OUR pipe lost is redone at once.**
 - **Nothing Olma DECIDED to say goes out in front of an introduction she still owes.**
 - **Reminders that come due in the same tick go out as ONE message, and the coalescing happens at DELIVERY, never at enqueue.**
+- **On the model path a retry is not a retry — it is a NEW message, composed against a world the failed sends themselves created.**
 - **A `--deliver` that TIMES OUT has very likely gone out, and is never retried.**
 - **Anything else due in the same moment is ONE message too, and two rules say what may travel together**
 
