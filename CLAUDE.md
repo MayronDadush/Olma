@@ -541,6 +541,36 @@ Same argument as `markPlaced` and the reply gate: an instruction in a prompt is
 a request, and one at the tool boundary is a rule. Borrowed from
 `spotify/portal-ai-plugins`.
 
+### A subagent sees NOTHING of this conversation, and costs ~70k before it starts
+
+Measured on four real subagents, one session, 2026-09-11:
+
+| agent | tool calls | tokens |
+|---|---|---|
+| `general-purpose` | 0 | 90,508 |
+| `claude-code-guide` | 8 | 84,953 |
+| `claude-code-guide` | 5 | 74,424 |
+| `claude-code-guide` | 2 | 61,291 |
+
+The first one did no work at all — it was asked what it could see and answered
+"NO CONTEXT — I have only my task description plus CLAUDE.md, the global
+instructions and memory index, and a git status snapshot." **That 90k is the
+floor, and most of it is this file plus `.claude/rules/` (150KB, ~37k tokens)
+loading again inside every agent you spawn.** Three consequences:
+
+- **Put the context in the prompt.** Nothing you have read, run or decided in
+  this conversation reaches it, and only its final report comes back.
+- **Delegate for the READING, not for the answer.** It pays when the reading it
+  replaces would cost more than the floor — a broad sweep, a 2,000-line file.
+  It never pays for a lookup you could grep. `bulk-reader` runs on haiku for
+  exactly this reason; prefer it whenever the job is reading.
+- **`subagent_type: "fork"`, which would inherit this conversation, is NOT
+  available in this build** (measured the same day: the Agent tool answers with
+  the list it does have — `bulk-reader`, `claude`, `claude-code-guide`,
+  `Explore`, `general-purpose`, `Plan`, `statusline-setup`). Neither is the
+  `SendMessage` that would continue one with its context intact. So there is no
+  cheap "carry on from here" — re-state what it needs, every time.
+
 ## "Done" is checked at the boundary too (2026-09-11)
 
 `.claude/hooks/finish-line.js` is a **Stop** hook, and it blocks exactly two
