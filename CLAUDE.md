@@ -201,6 +201,7 @@ Loads when you **Read** a file under `src/jobs/**`, `src/domain/issues.js`, `src
 - **`liveness_watch` repairs before it reports.**
 - **A new person's first hours are read back by code TWICE — three hours in, and again after their first day**
 - **The onboarding review only ever watches the FRONT DOOR; `promise_watch` watches everyone.**
+- **`promise_watch`'s second half compares the hour in a task's TITLE to the hour the row will fire at** (`domain/stated-hour.js`) — the semantic cross-check for a well-formed-but-wrong offset, which `hasOffset` cannot refuse. Both halves are blind to a wrong `users.timezone` because both read it; that class is closed at the write, by `setTimezone` → `timezone-repair.js`.
 - **The suite runs again on a schedule, at four hours of the day**
 - **`/health` sees the DB, every `job_heartbeats` row, and the gateway — and nothing else.**
 

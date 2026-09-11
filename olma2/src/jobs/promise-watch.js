@@ -22,6 +22,7 @@
 const issues = require('../domain/issues');
 const sessions = require('../channels/sessions-async');
 const { checkPromises } = require('../domain/reminder-promise');
+const { statedHourMismatch } = require('../domain/stated-hour');
 
 // A day, plus two hours of overlap so nothing can fall between two ticks. The
 // dedup key is the message timestamp, so re-reading the overlap is free.
@@ -33,6 +34,14 @@ const TRANSCRIPT_LIMIT = 120;
 // the gateway's sqlite). Daily cadence, so a whole roster clears in one tick;
 // the cap is a guard against a roster that grows while nobody is looking.
 const MAX_USERS_PER_TICK = 40;
+
+// The second half's title. Same contract as titleFor: deterministic, and a
+// different fault for the same person produces a different string. Carries the
+// task id, so correcting the due_at and getting it wrong AGAIN files a new row
+// rather than colliding with the closed one.
+function titleForStatedHour(u, m) {
+  return `השעה בכותרת לא השעה שנשמרה — ${u.first_name || u.phone} · משימה ${m.taskId} · בכותרת ${m.stated} · נשמר ${m.stored}`;
+}
 
 function titleFor(u, f) {
   // Deterministic: the same fault re-read tomorrow produces this same string,
@@ -56,7 +65,7 @@ async function sweepPromiseWatch(client, deps = {}) {
   const readMessages = deps.readMessages
     || ((agentId, peer) => sessions.readRecentMessages(agentId, TRANSCRIPT_LIMIT, undefined, peer));
 
-  const out = { checked: 0, unreadable: 0, found: [], filed: 0 };
+  const out = { checked: 0, unreadable: 0, found: [], filed: 0, statedHour: 0 };
   for (const u of users) {
     // Their reminders from the window, with when each was CREATED — that is
     // what ties a reminder to the message it answers.
@@ -117,9 +126,61 @@ async function sweepPromiseWatch(client, deps = {}) {
       if (res.ok && res.data.issue) out.filed++;
     }
   }
+  await sweepStatedHours(client, now, out);
   return out;
 }
 
+// The other half of the same question — is the moment we stored the moment
+// they meant — asked of the TASK rather than of the reminder.
+//
+// It is a separate pass and not a branch inside the loop above, because it
+// needs no transcript. The reminder half pays a worker thread per user against
+// the gateway's sqlite, which is why it is capped at MAX_USERS_PER_TICK and
+// skips anyone with nothing armed; this one is a single indexed query over the
+// whole roster and can afford to look at everybody, every day.
+//
+// Only rows that can still reach somebody: open, unarchived, and still ahead.
+// A wrong hour on a task that is done, archived or past has already done
+// whatever harm it was going to do, and an issue list that fills with those is
+// one nobody reads. Both of the real faults this was built from are in that
+// state today, which is why a live box files nothing here and the founding
+// cases live in the test instead.
+async function sweepStatedHours(client, now, out) {
+  const { rows } = await client.query(
+    `SELECT t.id, t.title, u.id AS user_id, u.first_name, u.phone,
+            to_char(t.due_at AT TIME ZONE u.timezone, 'HH24:MI') AS due_local
+       FROM tasks t JOIN users u ON u.id = t.owner_id
+      WHERE t.due_at IS NOT NULL AND t.due_at > $1
+        AND t.status = 'open' AND t.archived_at IS NULL
+        AND u.status = 'active' AND NOT u.is_eval
+      ORDER BY t.id`,
+    [new Date(now)]
+  );
+
+  for (const r of rows) {
+    const m = statedHourMismatch({ title: r.title, dueLocal: r.due_local });
+    if (!m) continue;
+    const found = { taskId: Number(r.id), userId: Number(r.user_id), ...m };
+    out.found.push({ ...found, kind: 'stated_hour' });
+    out.statedHour++;
+    const title = titleForStatedHour(r, found);
+    const { rows: seen } = await client.query(
+      `SELECT id FROM issues WHERE title = $1 LIMIT 1`, [title]
+    );
+    if (seen.length) continue;
+    const res = await issues.reportIssue(client, r.user_id, {
+      category: 'bug',
+      source: 'agent_detected',
+      title,
+      detail: JSON.stringify({ taskId: found.taskId, statedInTitle: m.stated, storedAs: m.stored, said: r.title }),
+      relatedEntityType: 'task',
+      relatedEntityId: found.taskId,
+    });
+    if (res.ok && res.data.issue) out.filed++;
+  }
+}
+
 module.exports = {
-  sweepPromiseWatch, titleFor, WINDOW_MS, TRANSCRIPT_LIMIT, MAX_USERS_PER_TICK,
+  sweepPromiseWatch, sweepStatedHours, titleFor, titleForStatedHour,
+  WINDOW_MS, TRANSCRIPT_LIMIT, MAX_USERS_PER_TICK,
 };
