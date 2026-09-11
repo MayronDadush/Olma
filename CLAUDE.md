@@ -153,6 +153,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **A reminder rung the GATE held is never chased; a rung OUR pipe lost is redone at once.**
 - **Nothing Olma DECIDED to say goes out in front of an introduction she still owes.**
 - **Reminders that come due in the same tick go out as ONE message, and the coalescing happens at DELIVERY, never at enqueue.**
+- **On the model path a retry is not a retry — it is a NEW message, composed against a world the failed sends themselves created.**
 - **A `--deliver` that TIMES OUT has very likely gone out, and is never retried.**
 - **Anything else due in the same moment is ONE message too, and two rules say what may travel together**
 
@@ -206,7 +207,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 ### Writing detectors and alarms
 
 **`.claude/rules/detectors.md`** — what BREAKS_USERS means, ratios that describe one population, unreadable is not broken, and the two review jobs.
-Loads when you **Read** a file under `src/jobs/**`, `src/domain/issues.js`, `src/domain/hebrew-quality.js` and 4 more.
+Loads when you **Read** a file under `src/jobs/**`, `src/domain/issues.js`, `src/domain/hebrew-quality.js` and 5 more.
 
 - **`BREAKS_USERS` means exactly "their tool calls fail right now."**
 - **A hint that fires on ordinary input is worse than no hint**
@@ -219,6 +220,7 @@ Loads when you **Read** a file under `src/jobs/**`, `src/domain/issues.js`, `src
 - **A joiner nobody has reached is asked about as a PERSON, not a config.**
 - **Every check that starts from `users` is blind to the person the gateway dropped**
 - **`liveness_watch` repairs before it reports.**
+- **A live gateway PROCESS is not a gateway that can send anything, and for six hours nothing in the system knew the difference.**
 - **A new person's first hours are read back by code TWICE — three hours in, and again after their first day**
 - **The onboarding review only ever watches the FRONT DOOR; `promise_watch` watches everyone.**
 - **`promise_watch`'s second half compares the hour in a task's TITLE to the hour the row will fire at** (`domain/stated-hour.js`) — the semantic cross-check for a well-formed-but-wrong offset, which `hasOffset` cannot refuse. Both halves are blind to a wrong `users.timezone` because both read it; that class is closed at the write, by `setTimezone` → `timezone-repair.js`.

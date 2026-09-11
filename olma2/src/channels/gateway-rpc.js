@@ -277,8 +277,31 @@ async function sendMessage({ channel, to, message, replyToId }) {
   return payload;
 }
 
+// What the gateway thinks of its own channels — `linked`, `running`,
+// `connected`, `reconnectAttempts` per channel. Read by the liveness probe,
+// which is the only reason this is here.
+//
+// It MUST be this transport and not the CLI. `openclaw channels status --json`
+// costs 4.1s of CPU per call, measured three times on the box 2026-09-11 —
+// more than the `openclaw sessions list` that the never-poll-on-a-timer rule
+// was written for. On an open socket the same question is one frame.
+//
+// Its own deadline, well under the five-minute tick: a probe is worth nothing
+// if it can hold the sweep open, and a gateway too busy to answer in ten
+// seconds is answered as `unknown` by the caller rather than waited for.
+const STATUS_TIMEOUT_MS = 10_000;
+
+async function channelsStatus() {
+  if (!available()) throw failed('gateway rpc is switched off', { dispatched: false });
+  const state = await connect();
+  armIdleClose();
+  const payload = await send(state, 'channels.status', {}, STATUS_TIMEOUT_MS);
+  armIdleClose();
+  return payload;
+}
+
 function shutdown() {
   dropConnection(failed('gateway rpc shutting down', { dispatched: true }));
 }
 
-module.exports = { sendMessage, available, shutdown, CLIENT_ID, CLIENT_MODE };
+module.exports = { sendMessage, channelsStatus, available, shutdown, CLIENT_ID, CLIENT_MODE };

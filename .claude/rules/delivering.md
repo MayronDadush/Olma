@@ -237,6 +237,34 @@ title means this file. Grep the title, not the filename.
   rest of the tick. Vered got nine messages in ninety seconds
   (`incidents.md`, "Nine reminders, nine messages").
 
+- **On the model path a retry is not a retry — it is a NEW message, composed
+  against a world the failed sends themselves created.** `--deliver` runs a
+  whole turn before the channel is asked to carry anything, and the outbox row
+  holds an instruction, not a message, so nothing of a failed attempt survives
+  it. While WhatsApp was disconnected on 2026-09-11 Yehav's digest was written
+  five times between 08:26 and 09:08 — five turns, four cards drawn and thrown
+  away — and the draft the returning channel finally carried was the one that
+  had spent forty minutes watching him not answer: "ואתה לא עונה". He had
+  answered everything he was shown; the silence was ours
+  (`incidents.md`, "The fifth draft was the rude one"). So the worker asks
+  `gateway-health.checkChannels` once per tick, behind the gate, and an
+  explicit `down` skips the send while booking exactly what the failed send
+  would have booked — `attempts + 1`, the reason in `last_error`, the same
+  backoff — so the stuck-row alarm, the reminder-redo discriminator and the
+  dashboard all read what they read today. **`unknown` SENDS**: the probe is
+  an optimisation that skips work known to be wasted, never the authority on
+  whether Olma may speak, and a detector that goes quiet must not be what
+  silences the queue. `channelDown` is counted apart from `failed` on the
+  heartbeat, because "attempted and lost" and "nobody attempted" are different
+  facts. Failures for any OTHER reason still recompose — closing that needs
+  the composed text to outlive the failure, and it carries a `MEDIA:` line,
+  which is the wall `undeliveredReply` already chose to stop at. **It also
+  stops the rule below it being wrong**: a `--deliver` that times out is booked
+  as SENT, which is right about a healthy gateway and false about a dead
+  channel — outbox 10323 was stamped delivered at 08:01 on a channel that came
+  back at 09:05, and nobody will ever look at that row again. No send, no
+  timeout, no false delivery.
+
 - **A `--deliver` that TIMES OUT has very likely gone out, and is never
   retried.** The CLI hands the turn to the gateway and waits for the model;
   the kill at `SEND_TIMEOUT_MS` ends the waiting, never the turn. The worker
