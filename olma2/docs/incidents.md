@@ -6007,6 +6007,24 @@ nothing on the day this shipped, and the founding cases are held open in
 `tests/reminder-promise.test.js` instead. That is the intended state: the
 detector exists for the next one, not for the four that already happened.
 
+**The four rows themselves were corrected on 2026-09-11**
+(`scripts/repair-stated-hour.js`, one `admin.task_due_corrected` beside each
+`task.edited`, matching the hand repair of task 242). A deploy does not reach a
+row already written, and an archived task is still readable — `listTasks` takes
+`includeArchived` — so the wrong hour stayed reachable in her own history.
+Two things it deliberately did NOT do. It did not touch `task_reminders`: a
+`remind_at` with `sent_at` on it records when we actually messaged somebody,
+and correcting that would be falsifying what happened, where a `due_at` is a
+statement about when the thing WAS and that statement was wrong. And it did not
+supply the `ends_at` the titles also name ("16:00-22:00") — the fault was the
+hour, and a repair that fills in fields nobody asked for is a repair nobody can
+review. What it had to defeat is that **both domain writers refuse an archived
+row on purpose**, so the archive is lifted and restored around the edit inside
+ONE transaction — no other connection ever sees the row live, and the edit
+still goes through `editTask`, validated and audited like the agent's own.
+All four dates are months past, so even the in-transaction moment of being
+"open with a due date" arms nothing.
+
 ### A lost reply is re-sent, not re-answered (fixed 2026-09-09)
 
 The entry above closed the door the repair walked through. This one is about
