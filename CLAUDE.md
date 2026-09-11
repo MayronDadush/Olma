@@ -105,6 +105,14 @@ Loads when you **Read** a file under `migrations/**`, `scripts/deploy.sh`, `scri
 - **The `sha` in `/opt/olma2/RELEASE` is the ONLY unambiguous answer to "is production running what I merged."**
 - **The marker's `origin` field is load-bearing**
 
+**`/deploy-triage` asks all of the above in the order they have to be asked**
+(`.claude/skills/deploy-triage/`, backed by `.claude/scripts/deploy-triage.js`).
+Read-only, and it names one of seventeen verdicts plus the recovery command for
+that one — it never runs it, because three of them take opposite actions and
+one redeploys production. The rules above are still the authority; the skill is
+only the order, and the thing it saves is working that order out again under
+the impression that the first green answer is the answer.
+
 ### Talking to the gateway (and systemd scope)
 
 **`.claude/rules/gateway.md`** — writing openclaw.json, the three model lists, heartbeats, the daily session reset, and which units are user-scope.

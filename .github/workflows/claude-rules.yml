@@ -31,7 +31,13 @@ name: claude-rules
 #                            work. A gate that fires on ordinary work is a gate
 #                            somebody turns off.
 #
-# No database, no install, three node scripts, a couple of seconds.
+#   deploy-triage.js         the /deploy-triage skill's table against the code.
+#                            The script can end on seventeen named verdicts and
+#                            the skill documents what to do for each; a table
+#                            that quietly stops naming one is worse than no
+#                            table, so the two are asserted to agree.
+#
+# No database, no install, four node scripts, a couple of seconds.
 on:
   push:
     paths: ['.claude/**', 'CLAUDE.md', '.github/workflows/claude-rules.yml']
@@ -55,3 +61,4 @@ jobs:
       - run: node .claude/scripts/check-rule-citations.js --self-test
       - run: node .claude/scripts/check-rule-citations.js
       - run: node .claude/hooks/finish-line.js --self-test
+      - run: node .claude/scripts/deploy-triage.js --self-test
