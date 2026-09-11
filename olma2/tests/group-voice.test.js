@@ -64,6 +64,8 @@ async function pass(sent, at = null, onlyJid = null) {
   const decided = await withTx(db.pool, (c) => groupsJob.sweepGroupVoice(c, { now }));
   const drained = await groupOutbox.drainOnce(db.pool, {
     now,
+    // No channel restart in flight — see group-sweep.test.js's `pass`.
+    channelWrittenAt: () => null,
     send: async (jid, body) => {
       if (!onlyJid || jid === onlyJid) sent.push({ jid, body });
       return 'sent';

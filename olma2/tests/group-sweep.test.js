@@ -24,9 +24,14 @@ const groupOutbox = require('../src/domain/group-outbox');
 // decides and writes rows, `group_outbox` spawns the CLI. Every assertion
 // below about what a room HEARD depends on both halves running, which is the
 // point — deciding and sending are separate transactions now (migration 055).
+// `channelWrittenAt` is pinned to null because a real pass registering a real
+// room DOES write `channels.whatsapp` and the queue then holds for 45 seconds
+// (domain/group-outbox, CHANNEL_RESTART_GRACE_MS) — which would make every
+// assertion below about what the room heard a test of the hold instead. The
+// hold has its own test in group-outbox.test.js; these are about the sentences.
 async function pass(deps) {
   const decided = await withTx(db.pool, (c) => job.sweepGroups(c, deps));
-  const drained = await groupOutbox.drainOnce(db.pool, deps);
+  const drained = await groupOutbox.drainOnce(db.pool, { channelWrittenAt: () => null, ...deps });
   return { ...decided, ...drained };
 }
 
@@ -114,6 +119,49 @@ test('one known member is enough: she registers, introduces herself, and locks',
   const cfg = occ.loadConfig(configPath);
   assert.deepEqual(cfg.channels.whatsapp.accounts.default.groups[JID(2)], { requireMention: true });
   assert.equal(occ.isGroupMuted(cfg, JID(2)), true);
+});
+
+// 2026-09-11, in both rooms registered that evening: the first sentence Olma
+// ever says to a room was said twice. Registering a room writes
+// `channels.whatsapp`, which restarts the WhatsApp channel for about sixteen
+// seconds, and the greeting the same pass decided is drained ten seconds later
+// — into the restart it had just caused. The gateway refused that send, kept
+// the message in its own outbound retry queue and delivered it a second later
+// anyway, and our sender, told "not dispatched", said it again.
+//
+// Nothing is pinned here on purpose. The stamp has to come from the write the
+// sweep really makes: a fixture that sets it by hand would pass on the day
+// nothing sets it at all.
+test('the room is not greeted into the channel restart its own registration caused', async () => {
+  const a = await connectedUser('+972603000200');
+  const jid = JID(21);
+  const g = gatewayWith({ jid, roster: `מירון (${a.phone}), +972603000201` });
+
+  const decided = await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+  assert.deepEqual(decided.registered, [jid]);
+  assert.equal(decided.intros, 1, 'the greeting is decided and written down');
+
+  // The tick that used to say it into the dead channel.
+  const first = await groupOutbox.drainOnce(db.pool, g.deps);
+  assert.deepEqual(g.sent, [], 'not a word while the channel is coming back');
+  assert.equal(first.channelHeld, 1);
+
+  // Held, not spent: a held row has not been picked up, so nothing has been
+  // counted against it and nothing is holding a claim on it.
+  const group = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  const waiting = (await db.pool.query(
+    `SELECT attempts, claimed_at, sent_at FROM group_outbox WHERE idempotency_key = $1`,
+    [`g${group.id}:intro`])).rows[0];
+  assert.equal(waiting.attempts, 0);
+  assert.equal(waiting.claimed_at, null);
+  assert.equal(waiting.sent_at, null);
+
+  // The next tick past the window, which is what production actually does.
+  const later = new Date(Date.now() + groupOutbox.CHANNEL_RESTART_GRACE_MS + 1000);
+  const out = await groupOutbox.drainOnce(db.pool, { ...g.deps, now: later });
+  assert.equal(out.sent, 1);
+  assert.equal(g.sent.length, 1, 'said once, and once only');
+  assert.match(g.sent[0].body, /נעים מאוד/);
 });
 
 // The first real group, 2026-09-06: registered, and then silent for ever.

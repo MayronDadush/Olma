@@ -202,3 +202,64 @@ test('a groups map at the old channel level is still read', () => {
   assert.equal(occ.unadmitGroup(cfg, JID), true);
   assert.equal(occ.isGroupAdmitted(cfg, JID), false);
 });
+
+// ---- which writes restart the WhatsApp channel --------------------------
+//
+// The stamp `saveConfig` leaves is what keeps the group queue out of the
+// sixteen seconds in which the gateway refuses every send (group-outbox.js,
+// CHANNEL_RESTART_GRACE_MS). Its worth is entirely in its PRECISION: a stamp
+// on every write would hold the room's lines behind an agent-only write that
+// restarts nothing, and a guard that fires on ordinary input is worse than no
+// guard. So both directions are asserted, and against a real file — the
+// comparison is with what is on disk, not with what the caller believes.
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+function tempConfig(cfg) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma-cfg-stamp-'));
+  const file = path.join(dir, 'openclaw.json');
+  fs.writeFileSync(file, JSON.stringify(cfg, null, 2));
+  return file;
+}
+
+test('a write that changes channels.whatsapp is stamped; one that does not is not', () => {
+  const file = tempConfig(baseConfig());
+
+  // An agent is a hot write and a real one — it is just not the WhatsApp
+  // channel, so nothing is restarting and the room's queue may keep talking.
+  const before = occ.channelWrittenAt();
+  const cfg = occ.loadConfig(file);
+  cfg.agents.entries['g-1'] = { name: 'g-1' };
+  occ.saveConfig(cfg, file);
+  assert.equal(occ.channelWrittenAt(), before, 'an agents-only write restarts no channel');
+
+  // Admitting a group writes under the account, which does restart it.
+  occ.admitGroup(cfg, JID);
+  occ.saveConfig(cfg, file);
+  const stamped = occ.channelWrittenAt();
+  assert.notEqual(stamped, before);
+  assert.ok(Date.now() - stamped < 5000, 'stamped now, not at some earlier write');
+
+  // Saving the same thing again changes nothing on disk and must not re-arm
+  // the hold — a sweep that re-writes an unchanged config runs every tick.
+  occ.saveConfig(occ.loadConfig(file), file);
+  assert.equal(occ.channelWrittenAt(), stamped);
+});
+
+// A config that is not there yet is one nothing can be running against, so
+// writing it restarts nothing. A config that IS there and cannot be read is a
+// different answer: it is not evidence that its channels block matched, and
+// holding needlessly is cheaper than a room told the same sentence twice.
+test('a first write stamps nothing, an unreadable one stamps', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma-cfg-stamp-new-'));
+  const file = path.join(dir, 'openclaw.json');
+
+  const before = occ.channelWrittenAt();
+  occ.saveConfig(baseConfig(), file);
+  assert.equal(occ.channelWrittenAt(), before, 'nothing was running against a file that did not exist');
+
+  fs.writeFileSync(file, 'not json at all');
+  occ.saveConfig(baseConfig(), file);
+  assert.notEqual(occ.channelWrittenAt(), before, 'could not read is not the same as matched');
+});

@@ -47,6 +47,7 @@ never trust a dated narrative for something you are about to act on.
 **Delivery, outbox and proactive messages**
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
+- [The room was greeted twice, by its own registration (fixed 2026-09-11)](#the-room-was-greeted-twice-by-its-own-registration-fixed-2026-09-11)
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
 - [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
@@ -1558,6 +1559,83 @@ and the six are what a new person reads on her first morning.
 The markup leak in the sixth turn is the model's — a DeepSeek turn that
 emitted its tool-call frame as text — and it is not fixed here; it is why
 the eval judge and the Hebrew-quality count on the dashboard exist.
+
+### The room was greeted twice, by its own registration (fixed 2026-09-11)
+
+Two rooms were created on 2026-09-11 and both read the same sentence twice —
+the first sentence Olma ever says to a room:
+
+```
+12:37  נעים מאוד, אני עולמה 👋 …
+12:37  נעים מאוד, אני עולמה 👋 …
+```
+
+`group_outbox` held exactly ONE row for it (`g5:intro`), so the UNIQUE
+`idempotency_key` from migration 055 did its job. What the row carried was
+`attempts = 2`: the queue picked it up, was told the send had failed, handed
+the claim back and sent it again. Both attempts landed.
+
+The gateway journal, eight seconds wide:
+
+```
+09:36:58  brokerd writes openclaw.json (agent g-5 + the group's route)
+09:36:59  [reload] config change detected
+09:37:05  [gateway/channels] restarting whatsapp channel
+09:37:13  [ws] ⇄ res ✗ send  UNAVAILABLE: No active WhatsApp Web listener   ← our attempt 1
+09:37:14  [whatsapp] Listening for WhatsApp inbound messages
+09:37:14  [whatsapp] Sent message 3EB02543EFBA626D4CB8E9                    ← the greeting, #1
+09:37:14  [outbound/deliver] failed to mirror outbound delivery into session
+          transcript; channel send already succeeded
+09:37:18  [whatsapp] Sent message 3EB0ECDE7439467B37F6A1                    ← the greeting, #2
+09:37:18  [ws] ⇄ res ✓ send                                                 ← our attempt 2
+```
+
+**The room caused its own outage.** Registering a group writes
+`channels.whatsapp.accounts.default.groups.<jid>`, which is the hot write that
+makes the route load — and it restarts the WhatsApp channel. That cost is
+documented at `provision-group.admitRegisteredGroup` as ~5s and was 16 seconds
+here, from the write to the channel listening again. The sweep decides the
+greeting in the same pass as that write, and `group_outbox` drains every ten
+seconds, so the room's first sentence was sent into the restart every single
+time. This is not a race that needs bad luck; it is the ordinary path.
+
+**And a refusal from the gateway is not proof of non-delivery.** The message
+at 09:37:14 has no request line of its own — no `[ws] ⇄ res`, no CLI
+invocation — and it is mirrored under `agent:main`, the raw pipe's identity.
+It came from the gateway's own outbound retry queue: the gateway answered our
+send with an error, kept the message, and delivered it as soon as the channel
+was back. `channels/openclaw.js` says the opposite in as many words —
+
+```js
+// A request the gateway ANSWERED with an error is a definite non-delivery and
+// stays failed — the CLI would reach the same handler and be told the same thing.
+```
+
+— and that sentence is what turned one refusal into two greetings.
+
+**The fix is the first half only.** `saveConfig` now stamps when the write it
+just made changed the `channels.whatsapp` subtree — compared against what was
+ON DISK, because a caller that believes it changed nothing is exactly the
+caller that would forget to say so — and `group_outbox.drainOnce` says nothing
+for 45 seconds after such a stamp (`CHANNEL_RESTART_GRACE_MS`, against a
+measured 16). A held row is not claimed, not counted as an attempt, and still
+`pending()` for the gate sweep that asks whether the room is owed a greeting.
+The trade is the one this table was created to make: a greeting a few seconds
+late against a room hearing it twice.
+
+The second half is open. Every send in the system still reads a gateway
+refusal as a definite non-delivery, and the person queue (`outbox/worker.js`)
+has no hold at all. That class is closed by teaching `sendRawMessage` that a
+`PlatformMessageNotDispatched` answer means the gateway has kept the message —
+not that nobody got it.
+
+Two smaller things fell out of it. `drainOnce`'s new counter is `channelHeld`
+and not `held`, because the voice sweep's result already carries a `held` and
+brokerd spreads the two into one object — a second `held` silently overwrote
+the first, and the only reason it was caught is that two night tests assert on
+it. And the founding-case test does not set the stamp by hand: it runs the
+real sweep, which makes the real config write, because a fixture that stamps
+for itself would pass on the day nothing stamps at all.
 
 ### The room was told twice (fixed 2026-09-08)
 

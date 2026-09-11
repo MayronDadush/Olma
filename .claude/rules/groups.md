@@ -2,6 +2,7 @@
 paths:
   - "olma2/src/domain/group-connections.js"
   - "olma2/src/domain/group-context.js"
+  - "olma2/src/domain/group-outbox.js"
   - "olma2/src/domain/groups.js"
   - "olma2/src/jobs/groups.js"
   - "olma2/src/adapters/mcp/tools/group.js"
@@ -71,6 +72,29 @@ have already had to be argued for.
   person. **The cost is that a pass cannot see what it just said** —
   `groupOutbox.pending` is how the gate sweep still knows not to nudge a room
   it has only this second greeted (`incidents.md`, "The room was told twice").
+
+- **A room's first sentence waits out the channel restart its own registration
+  caused.** Registering a group writes
+  `channels.whatsapp.accounts.default.groups.<jid>` — the hot write that makes
+  the route load — and that restarts the WhatsApp channel: ~5s by the note at
+  `provision-group.admitRegisteredGroup`, 16s measured on 2026-09-11 from the
+  write to the channel listening again. The sweep decides the greeting in the
+  same pass and `group_outbox` drains ten seconds later, so the greeting went
+  into the restart EVERY time, not on an unlucky one. **`saveConfig` stamps a
+  write that changed the `channels.whatsapp` subtree** (compared against what
+  is on DISK — a caller that believes it changed nothing is the caller that
+  would forget to say so), and `drainOnce` says nothing for
+  `CHANNEL_RESTART_GRACE_MS` (45s) after that stamp. A held row is not claimed,
+  spends no attempt, and is still `pending()` for the gate sweep. **The stamp's
+  worth is its precision** — an agents-only write restarts nothing and must not
+  hold the room's lines — so `tests/group-config.test.js` asserts both
+  directions, and the founding case in `tests/group-sweep.test.js` takes its
+  stamp from the sweep's own real write, never by hand. **What is NOT fixed is
+  why a refusal becomes a duplicate at all**: the gateway answered
+  `PlatformMessageNotDispatched`, kept the message, and delivered it a second
+  later anyway, while `channels/openclaw.js` still reads that answer as a
+  definite non-delivery. The person queue has no hold of any kind
+  (`incidents.md`, "The room was greeted twice, by its own registration").
 
 - **TWO columns say somebody has written to Olma, because two voices can hear
   their first message.** `isConnected` (the group gate) asks
