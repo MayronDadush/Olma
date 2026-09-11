@@ -908,3 +908,177 @@ test('the harness opens each turn through brokerd, with no message id to react t
   await runTurn('עוד משהו');
   assert.deepEqual(opened, ['u-15', 'u-15']);
 });
+
+// ── The blank slate, and the two ways it has already not been one ───────────
+//
+// `resetEvalUser` is a hand-written list of DELETEs and the schema keeps
+// growing past it. `quota_counters` was missed for months (above);
+// `meetings` the PARTNER initiated were missed the same way, and the box was
+// holding four orphan `meeting_option_answers` rows when the guard was first
+// pointed at production. Both were invisible: the suite still printed a
+// board, and the second scenario simply ran inside the first one's leftovers.
+//
+// So the guard does not check a second hand-written list. It asks the schema
+// which tables are keyed to a user and requires each to be empty unless it is
+// named with a reason — which is what makes it able to fail on a table nobody
+// has written yet.
+
+test('a meeting the eval user only PARTICIPATES in is cleared too', async () => {
+  await withTx(db.pool, async (c) => {
+    // The shape of the `meeting-second-option` seed: the PARTNER initiates, so
+    // `DELETE FROM meetings WHERE initiator_id = <eval user>` never matched it.
+    // Written as raw rows on purpose — this is a test about a DELETE, and
+    // going through startMeeting would drag in connections and feature grants
+    // that have nothing to do with what is being checked.
+    const partner = await makeUser(db.pool, '+972500000778', { firstName: 'דנה' });
+    const { rows: [m] } = await c.query(
+      `INSERT INTO meetings (initiator_id, title) VALUES ($1, $2) RETURNING id`,
+      [partner.id, 'קפה']);
+    await c.query(
+      `INSERT INTO meeting_participants (meeting_id, user_id) VALUES ($1, $2), ($1, $3)`,
+      [m.id, evalUser.id, partner.id]);
+    const { rows: [opt] } = await c.query(
+      `INSERT INTO meeting_options (meeting_id, slot_text, added_by)
+       VALUES ($1, $2, $3) RETURNING id`, [m.id, 'יום ראשון 18:00', partner.id]);
+    await c.query(
+      `INSERT INTO meeting_option_answers (option_id, user_id, answer) VALUES ($1, $2, 'y')`,
+      [opt.id, evalUser.id]);
+
+    await harness.resetEvalUser(c, evalUser.id);
+
+    const gone = await c.query(`SELECT count(*)::int AS n FROM meetings WHERE id = $1`, [m.id]);
+    assert.equal(gone.rows[0].n, 0,
+      'it survived every reset before this and piled up run on run');
+    const answers = await c.query(
+      `SELECT count(*)::int AS n FROM meeting_option_answers WHERE user_id = $1`, [evalUser.id]);
+    assert.equal(answers.rows[0].n, 0, 'and its options and answers go with it, by cascade');
+    const opts = await c.query(
+      `SELECT count(*)::int AS n FROM meeting_options WHERE meeting_id = $1`, [m.id]);
+    assert.equal(opts.rows[0].n, 0);
+  });
+});
+
+test('the clean-slate guard reads the schema, not a list somebody kept up to date', async () => {
+  await withTx(db.pool, async (c) => {
+    await harness.resetEvalUser(c, evalUser.id);
+    const clean = await harness.cleanSlateViolations(c, evalUser.id);
+    assert.deepEqual(clean, [], `a reset user is on a blank slate, got ${JSON.stringify(clean)}`);
+
+    // Anything the reset does not clear is a violation by default. A task is
+    // standing in here for the next table nobody remembers to add.
+    await tasksDomain.addTask(c, evalUser.id, { title: 'שריד מהריצה הקודמת' });
+    const dirty = await harness.cleanSlateViolations(c, evalUser.id);
+    assert.ok(dirty.some((d) => d.table === 'tasks'), 'leftover rows are named by table');
+    await assert.rejects(() => harness.assertCleanSlate(c, evalUser.id), /not on a blank slate/);
+  });
+});
+
+test('the guard names the table and says which list it belongs on', async () => {
+  await withTx(db.pool, async (c) => {
+    await harness.resetEvalUser(c, evalUser.id);
+    await tasksDomain.addTask(c, evalUser.id, { title: 'שריד' });
+    await assert.rejects(
+      () => harness.assertCleanSlate(c, evalUser.id),
+      (e) => /tasks\.owner_id/.test(e.message) && /KEPT_ACROSS_RESET/.test(e.message)
+    );
+  });
+});
+
+test('state kept on purpose does not trip the guard, and each entry says why', async () => {
+  // The allowlist is documentation as much as configuration: an entry with no
+  // reason is how a real leak gets waved through next year.
+  for (const [table, reason] of Object.entries(harness.KEPT_ACROSS_RESET)) {
+    assert.ok(reason && reason.length > 20, `${table} is allowed through with no reason given`);
+  }
+  await withTx(db.pool, async (c) => {
+    await harness.resetEvalUser(c, evalUser.id);
+    await c.query(
+      `INSERT INTO usage_ledger (user_id, date, model, input_tokens, output_tokens,
+         cache_read_tokens, cache_write_tokens, total_tokens, cost_usd)
+       VALUES ($1, current_date, 'test/model', 1, 1, 0, 0, 2, 0)`, [evalUser.id]);
+    const dirty = await harness.cleanSlateViolations(c, evalUser.id);
+    assert.ok(!dirty.some((d) => d.table === 'usage_ledger'),
+      'the ledgers are append-only; wiping them to make a guard happy would be the worse bug');
+  });
+});
+
+// ── pass^k ─────────────────────────────────────────────────────────────────
+
+test('one trial is byte-identical to today: no trials column, no new rows', async () => {
+  const only = SCENARIOS.filter((s) => s.id === 'goal-capture');
+  const summary = await evalsJob.runEvalSuite(db.pool, {
+    trigger: 'manual', scenarios: only,
+    deps: { skipJudge: true, runTurn: fakeTurns([{ reply: 'רשמתי', toolCalls: ['turn_start', 'add_task'], effect: (c) => tasksDomain.addTask(c, evalUser.id, { title: 'למכור שלושה רכבים' }) }]) },
+  });
+  assert.equal(summary.trials, 1);
+  const { rows } = await db.pool.query(
+    `SELECT trials FROM eval_results WHERE run_id = $1`, [summary.runId]);
+  assert.equal(rows.length, 1, 'one row per scenario, as every reader of this table assumes');
+  assert.equal(rows[0].trials, null, 'and no per-trial detail, so nothing downstream sees a new shape');
+});
+
+test('pass^k keeps the WORST trial, so one green does not carry two reds', () => {
+  const runs = [
+    { scenario: 's', status: 'green', durationMs: 10, hardFailures: [] },
+    { scenario: 's', status: 'red', durationMs: 20, hardFailures: [{ name: 'the real failure' }] },
+    { scenario: 's', status: 'green', durationMs: 30, hardFailures: [] },
+  ];
+  const worst = evalsJob.worstOf(runs);
+  assert.equal(worst.status, 'red');
+  assert.equal(worst.hardFailures[0].name, 'the real failure',
+    'the stored row must describe a run that actually failed, not an average of three');
+});
+
+test('an error outranks a red: a trial that could not finish is never rounded down', () => {
+  assert.ok(evalsJob.SEVERITY.error > evalsJob.SEVERITY.red);
+  assert.ok(evalsJob.SEVERITY.red > evalsJob.SEVERITY.yellow);
+  assert.ok(evalsJob.SEVERITY.yellow > evalsJob.SEVERITY.green);
+  assert.equal(evalsJob.worstOf([
+    { status: 'green' }, { status: 'error' }, { status: 'red' },
+  ]).status, 'error');
+});
+
+test('three trials: one row, the worst status, and the wobble recorded', async () => {
+  const only = SCENARIOS.filter((s) => s.id === 'goal-capture');
+  // Green, then a turn that saves nothing (red), then green again — the shape
+  // of a scenario that "passed" on a rerun with nothing changed.
+  const scripts = [
+    [{ reply: 'רשמתי', toolCalls: ['turn_start', 'add_task'], effect: (c) => tasksDomain.addTask(c, evalUser.id, { title: 'למכור שלושה רכבים' }) }],
+    [{ reply: 'בסדר', toolCalls: ['turn_start'] }],
+    [{ reply: 'רשמתי', toolCalls: ['turn_start', 'add_task'], effect: (c) => tasksDomain.addTask(c, evalUser.id, { title: 'למכור שלושה רכבים' }) }],
+  ];
+  let n = 0;
+  const summary = await evalsJob.runEvalSuite(db.pool, {
+    trigger: 'manual', scenarios: only, trials: 3,
+    deps: { skipJudge: true, runTurn: async (msg) => fakeTurns(scripts[n++ % 3])(msg) },
+  });
+
+  assert.equal(summary.trials, 3);
+  const r = summary.results[0];
+  assert.equal(r.status, 'red', 'one failing trial fails the scenario — that is what pass^k means');
+  assert.equal(r.passedAll, false);
+  assert.equal(r.trials.length, 3);
+  assert.deepEqual(r.trials.map((t) => t.status), ['green', 'red', 'green']);
+
+  const { rows } = await db.pool.query(
+    `SELECT status, trials, duration_ms FROM eval_results WHERE run_id = $1`, [summary.runId]);
+  assert.equal(rows.length, 1, 'still one row per scenario: previousStatus and the board read this table');
+  assert.equal(rows[0].status, 'red');
+  assert.equal(rows[0].trials.length, 3, 'and the per-trial detail is on the row');
+  assert.ok(rows[0].duration_ms >= 0, 'wall time covers every trial, not just the worst one');
+});
+
+test('a scenario green on every trial is green, and says so', async () => {
+  const only = SCENARIOS.filter((s) => s.id === 'goal-capture');
+  const summary = await evalsJob.runEvalSuite(db.pool, {
+    trigger: 'manual', scenarios: only, trials: 2,
+    deps: {
+      skipJudge: true,
+      runTurn: fakeTurns([{ reply: 'רשמתי', toolCalls: ['turn_start', 'add_task'], effect: (c) => tasksDomain.addTask(c, evalUser.id, { title: 'למכור שלושה רכבים' }) }]),
+    },
+  });
+  assert.equal(summary.results[0].status, 'green',
+    `error was: ${summary.results[0].error || JSON.stringify(summary.results[0].hardFailures)}`);
+  assert.equal(summary.results[0].passedAll, true);
+  assert.equal(summary.tally.green, 1);
+});

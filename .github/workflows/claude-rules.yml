@@ -1,0 +1,34 @@
+name: claude-rules
+
+# Its own light job, following voice-bridge.yml and for the same documented
+# reason: a new top-level directory is unchecked until somebody notices, and
+# `.claude/` does not belong in the olma2 filter — a rules edit must not
+# redeploy production, and an olma2 edit must not depend on this.
+#
+# What it protects: a path-scoped rule fails SILENTLY. A glob pointing at a
+# renamed or misspelled file matches nothing, the rule never loads, and the
+# first sign is somebody repeating the outage the rule exists to prevent.
+# Seven of the first ninety-one globs written for the split were dead, four of
+# them filenames that had simply been guessed.
+#
+# No database, no install, one node script, a couple of seconds.
+on:
+  push:
+    paths: ['.claude/**', 'CLAUDE.md', '.github/workflows/claude-rules.yml']
+  pull_request:
+    paths: ['.claude/**', 'CLAUDE.md', '.github/workflows/claude-rules.yml']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node .claude/scripts/check-rules.js
