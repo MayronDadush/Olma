@@ -35,6 +35,15 @@ title means this file. Grep the title, not the filename.
 - **A bindings-ONLY write is silently dropped.** Bundle it with another hot
   change (provisioning writes agent + binding in one `saveConfig`).
 
+- **A write under `channels.whatsapp` RESTARTS the channel, and `saveConfig`
+  now stamps when one happens.** 16s measured on 2026-09-11 from the write to
+  the channel listening again, and every send inside it is refused. The stamp
+  is taken against what is ON DISK, not from what the caller believes it
+  changed; its one reader is `group_outbox`, which stays quiet for 45s after
+  it. Keep it precise — an agents-only write restarts nothing and must not
+  hold anything (`.claude/rules/groups.md`, "A room's first sentence waits out
+  the channel restart its own registration caused").
+
 - **After a gateway version bump, diff `openclaw.json` against what
   `src/intake/openclaw-config.js` expects.** Diffing catches a key that changed
   shape; it does not catch a NEW key that quietly became load-bearing. Only

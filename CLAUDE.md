@@ -121,6 +121,7 @@ Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intak
 - **Never shell out to `openclaw config set`**
 - **An invalid config is IGNORED, not rejected.**
 - **A bindings-ONLY write is silently dropped.**
+- **A write under `channels.whatsapp` RESTARTS the channel, and `saveConfig` now stamps when one happens.**
 - **After a gateway version bump, diff `openclaw.json` against what `src/intake/openclaw-config.js` expects.**
 - **Permission to use a model lives in THREE lists**
 - **The live OpenRouter model names its providers in order**
@@ -278,6 +279,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **NULL is the honest third state and a guess never acts.**
 - **Everything a room hears unasked is fixed text on the raw pipe**
 - **A sweep DECIDES and the `group_outbox` job SAYS**
+- **A room's first sentence waits out the channel restart its own registration caused.**
 - **TWO columns say somebody has written to Olma, because two voices can hear their first message.**
 - **Being in the room IS the introduction, and it is not the inferred closeness the old rule forbids.**
 - **The room reaches each member's OWN page as a group already made**
