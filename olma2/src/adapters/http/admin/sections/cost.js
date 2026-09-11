@@ -208,9 +208,16 @@ async function renderCost(client) {
     .sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 14) };
   const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
   const thisMonth = priced.filter((r) => new Date(r.date) >= monthStart);
+  // Every person who cost anything this month, not a top-10. The slice that
+  // used to be here was invisible from the page — the eleventh person simply
+  // was not there — and it was not only a display cut: `usersTotal` below is
+  // summed from these rows, so the month headline and the Anthropic
+  // reconciliation line under it both dropped everyone past tenth place, and
+  // "משתמשים פעילים החודש" read 10 for ever. Measured on the box 2026-09-10:
+  // 22 people with spend, 12 of them off the page and ~$1.09 out of the total.
   const top = { rows: rollup(thisMonth.filter((r) => r.user_id != null), (r) => String(r.user_id),
     (k, rows) => ({ first_name: rows[0].first_name, phone: rows[0].phone }))
-    .sort((a, b) => b.cost - a.cost).slice(0, 10) };
+    .sort((a, b) => b.cost - a.cost) };
   const system = { rows: rollup(thisMonth.filter((r) => r.agent_id != null), (r) => r.agent_id,
     (k) => ({ agent_id: k })).sort((a, b) => b.cost - a.cost) };
   // Image+video generation spend — its own ledger and its own block, exactly
