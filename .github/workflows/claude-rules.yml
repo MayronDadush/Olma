@@ -62,3 +62,4 @@ jobs:
       - run: node .claude/scripts/check-rule-citations.js
       - run: node .claude/hooks/finish-line.js --self-test
       - run: node .claude/scripts/deploy-triage.js --self-test
+      - run: node .claude/scripts/eval-candidates.js --self-test
