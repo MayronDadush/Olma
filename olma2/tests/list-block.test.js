@@ -216,3 +216,98 @@ test('one reminder is a sentence, not a block — and the result still carries w
   assert.equal(res.data.reminders[0].title, 'לשלם ארנונה');
   assert.ok(res.data.reminders[0].at);
 });
+
+// ── calendar (calendar.listEvents' own shape) ────────────────────────────────
+
+test('a timed calendar event renders as a range, an all-day one as its date, no shared heading needed', () => {
+  const block = lb.renderCalendarListBlock({
+    events: [
+      { title: 'פגישה עם דנה', start: iso('2026-09-10T13:00:00Z'), end: iso('2026-09-10T14:00:00Z'), location: 'הקפה ליד המשרד', allDay: false },
+      { title: 'כנס שנתי', start: '2026-09-12', end: '2026-09-14', allDay: true },
+    ],
+  }, HE);
+  assert.equal(block, '*ביומן*\n- 16:00-17:00 — פגישה עם דנה, הקפה ליד המשרד\n- יום שבת — כנס שנתי');
+});
+
+test('an all-day date is read on its own, never as an instant — no zone can shift it a day', () => {
+  // 2026-09-12 is a Saturday. Read as an instant at UTC midnight, a zone
+  // BEHIND UTC (US) would see Friday evening instead — the exact fault
+  // domain/user-dashboard-events.js already guards under the name `dayGap`.
+  const data = { events: [
+    { title: 'Conference', start: '2026-09-12', allDay: true },
+    { title: 'Second one', start: '2026-09-13', allDay: true },
+  ] };
+  const laToday = { ...EN, timezone: 'America/Los_Angeles', now: Date.parse('2026-09-10T06:00:00Z') };
+  const block = lb.renderCalendarListBlock(data, laToday);
+  assert.match(block, /Saturday — Conference/, 'the 12th stays a Saturday in a zone behind UTC');
+  assert.ok(!block.includes('Friday'), 'never shifted a day earlier by the zone conversion');
+});
+
+test('a calendar event carries no title, or an all-day one no parseable date, is skipped rather than guessed', () => {
+  const block = lb.renderCalendarListBlock({
+    events: [
+      { title: '', start: iso('2026-09-10T13:00:00Z'), allDay: false },
+      { title: 'משהו', start: 'not-a-date', allDay: true },
+      { title: 'פגישה אחת', start: iso('2026-09-11T09:00:00Z'), allDay: false },
+      { title: 'שנייה', start: iso('2026-09-11T10:00:00Z'), allDay: false },
+    ],
+  }, HE);
+  assert.ok(!block.includes('משהו'));
+  assert.match(block, /פגישה אחת/);
+  assert.match(block, /שנייה/);
+});
+
+test('emphasis in a calendar title or location is cleaned, exactly as everywhere else', () => {
+  const block = lb.renderCalendarListBlock({
+    events: [
+      { title: 'פגישה *חשובה*', start: iso('2026-09-10T13:00:00Z'), location: 'משרד *ראשי*', allDay: false },
+      { title: 'עוד אחת', start: iso('2026-09-11T09:00:00Z'), allDay: false },
+    ],
+  }, HE);
+  assert.ok(block.includes('פגישה חשובה'));
+  assert.ok(block.includes('משרד ראשי'));
+  assert.equal((block.match(/\*/g) || []).length, 2, 'only the heading keeps its markers');
+});
+
+test('one calendar event is not a list, and nothing at all is null', () => {
+  assert.equal(lb.renderCalendarListBlock({ events: [{ title: 'לבד', start: iso('2026-09-10T13:00:00Z'), allDay: false }] }, HE), null);
+  assert.equal(lb.renderCalendarListBlock({ events: [] }, HE), null);
+  assert.equal(lb.renderCalendarListBlock({}, HE), null);
+});
+
+// ── meeting options (the numbered choice) ────────────────────────────────────
+
+test('active options are numbered in the order they arrive, in their own words', () => {
+  const block = lb.renderMeetingOptionsBlock([
+    { id: 2, slotText: 'יום שלישי 20:00 בקפה', status: 'active' },
+    { id: 1, slotText: 'יום רביעי 19:00', status: 'active' },
+  ], { channelType: 'whatsapp' });
+  assert.equal(block, '1. יום שלישי 20:00 בקפה\n2. יום רביעי 19:00');
+});
+
+test('a pending option is never numbered — it is not open for anyone to vote on yet', () => {
+  const block = lb.renderMeetingOptionsBlock([
+    { id: 1, slotText: 'אופציה א', status: 'active' },
+    { id: 2, slotText: 'אופציה ב', status: 'active' },
+    { id: 3, slotText: 'הצעה חמישית', status: 'pending' },
+  ], { channelType: 'whatsapp' });
+  assert.equal(block, '1. אופציה א\n2. אופציה ב');
+});
+
+test('one active option is not a choice to number, and nothing at all is null', () => {
+  assert.equal(lb.renderMeetingOptionsBlock([{ id: 1, slotText: 'לבד', status: 'active' }], HE), null);
+  assert.equal(lb.renderMeetingOptionsBlock([], HE), null);
+  assert.equal(lb.renderMeetingOptionsBlock(null, HE), null);
+});
+
+test('emphasis in a proposer\'s own slot text is cleaned, and a channel with no numbering still numbers', () => {
+  const opts = [
+    { id: 1, slotText: 'יום שני *בערב*', status: 'active' },
+    { id: 2, slotText: 'יום שלישי', status: 'active' },
+  ];
+  assert.equal(lb.renderMeetingOptionsBlock(opts, { channelType: 'whatsapp' }),
+    '1. יום שני בערב\n2. יום שלישי');
+  // Numbering reads the same on every channel — only bold/italic/etc. degrade.
+  assert.equal(lb.renderMeetingOptionsBlock(opts, { channelType: 'sms' }),
+    '1. יום שני בערב\n2. יום שלישי');
+});

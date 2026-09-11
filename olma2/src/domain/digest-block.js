@@ -87,6 +87,22 @@ function daysAway(parts, todayParts) {
   return Math.round((a - b) / DAY_MS);
 }
 
+// The DAY half of the moment, on its own — today/tomorrow/a named weekday/a
+// date — with no time attached and never suppressed. Split out of whenLabel
+// (below) because a Google all-day event carries a DATE, never an instant:
+// reading "2026-09-12" as one puts it at midnight UTC, which in a zone behind
+// UTC is the day before (domain/user-dashboard-events.js guards the same
+// fault under the same name, `dayGap`). `domain/list-block.js` calls this
+// directly on the event's own {y,m,d}, with no zone conversion at all — the
+// date is already a wall-clock day and there is nothing to convert.
+function dayLabel(parts, { w, todayParts }) {
+  const away = daysAway(parts, todayParts);
+  if (away === 0) return w.today;
+  if (away === 1) return w.tomorrow;
+  if (away > 1 && away <= NAMED_DAY_HORIZON) return w.day(w.weekdays[dt.weekdayOfParts(parts)]);
+  return w.date(parts);
+}
+
 // The moment, in the person's own terms, as short as it can honestly be:
 // today says only the hour, tomorrow names itself, this week is a weekday, and
 // anything further off is a date. Nothing here is a sentence, so nothing here
@@ -94,20 +110,16 @@ function daysAway(parts, todayParts) {
 // `alwaysTime` is for a REMINDER, which is an hour by definition: a task saved
 // for a day lands on local midnight and says only its day, but a reminder
 // armed for 00:15 has to say 00:15 or the one fact it carries is gone.
-function whenLabel(dueAt, { tz, w, todayParts }, { alwaysTime } = {}) {
+function whenLabel(dueAt, ctx, { alwaysTime } = {}) {
   if (!dueAt) return '';
   const at = new Date(dueAt);
   if (Number.isNaN(at.getTime())) return '';
-  const parts = dt.partsInZone(tz, at);
-  const away = daysAway(parts, todayParts);
+  const parts = dt.partsInZone(ctx.tz, at);
+  const away = daysAway(parts, ctx.todayParts);
   const time = !alwaysTime && isWholeDay(parts) ? '' : hhmm(parts);
-
-  let day = '';
-  if (away === 0) day = time ? '' : w.today;
-  else if (away === 1) day = w.tomorrow;
-  else if (away > 1 && away <= NAMED_DAY_HORIZON) day = w.day(w.weekdays[dt.weekdayOfParts(parts)]);
-  else day = w.date(parts);
-
+  // "Today 16:00" says the same thing twice, so the day word drops only when
+  // a time is ALSO being shown for it — dayLabel on its own never suppresses.
+  const day = away === 0 && time ? '' : dayLabel(parts, ctx);
   return [day, time].filter(Boolean).join(' ');
 }
 
@@ -180,6 +192,6 @@ function renderDigestBlock(data, { locale, timezone, channelType, now } = {}) {
 }
 
 module.exports = {
-  renderDigestBlock, wordsFor, localeKey, whenLabel, contextFor, line, rangeLabel,
+  renderDigestBlock, wordsFor, localeKey, whenLabel, dayLabel, daysAway, contextFor, line, rangeLabel,
   WORDS, NAMED_DAY_HORIZON,
 };

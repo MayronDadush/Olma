@@ -123,7 +123,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **A STYLE is chosen at delivery, off the recipient's channel, and a channel the table has never heard of gets PLAIN**
 - **On the MODEL path a style is granted by a RESULT, never by a description**
 - **What is the same every time is DRAWN, and only the sentence about it is a model's**
-- **…and since 2026-09-10 the two lists a person ASKS for are drawn the same way**
+- **…and since 2026-09-10 the lists and choices a person ASKS for are drawn the same way**
 - **The delivery gate is the chokepoint and a paused user has no exceptions**
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where they differ.**
 - **`DEFAULT_WINDOW` (09:00-21:00) is no longer only a fallback — it is a sentence somebody read.**
