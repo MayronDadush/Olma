@@ -153,6 +153,7 @@ never trust a dated narrative for something you are about to act on.
 - [The mark that never moved (2026-09-07)](#the-mark-that-never-moved-2026-09-07)
 - ["בשמחה יהב, שיהיה ערב טוב" (2026-09-07)](#בשמחה-יהב-שיהיה-ערב-טוב-2026-09-07)
 - [A sentence about Shabbat, because the table had never heard of preferences (fixed 2026-09-10)](#a-sentence-about-shabbat-because-the-table-had-never-heard-of-preferences-fixed-2026-09-10)
+- [The quiet day nobody was ever going to ask for (2026-09-11)](#the-quiet-day-nobody-was-ever-going-to-ask-for-2026-09-11)
 - [The hint the dedup swallowed (fixed 2026-09-10)](#the-hint-the-dedup-swallowed-fixed-2026-09-10)
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
@@ -5229,6 +5230,72 @@ rule working exactly as written.
 
 
 ## Features as they shipped
+
+
+### The quiet day nobody was ever going to ask for (2026-09-11)
+
+The machinery for a quiet day shipped on 2026-09-08 and the question that
+fills it shipped with it, on the discovery ladder's timezone rung. Three days
+later, across the whole roster, the number of people with a `quiet_days` row
+was one — Miron, who typed it unprompted on the 10th and had to be told about
+it twice for reasons of its own (see the Shabbat entry above).
+
+That is not a rung that failed. It is a setting nobody asks for because
+nobody knows it exists, and the answer is not to ask harder. The owner's
+instruction on 2026-09-11 was to make it the DEFAULT: Saturday for Hebrew
+speakers, Sunday for English speakers, unless they said otherwise.
+
+Three decisions inside that, each of which could have gone the other way.
+
+**Geography overrules language.** `calendarFor` reads a Jewish calendar off a
+`he` locale OR an Israeli timezone. The asymmetry is deliberate: Sunday is a
+working day in Israel, so an English speaker in Tel Aviv handed a Christian
+default loses an ordinary Sunday every week and has no idea why. The mirror
+mistake — a Jewish calendar for an English speaker abroad — costs one Saturday
+and one sentence to correct. When a guess has an expensive side, guess away
+from it.
+
+**"They have not said" and "they said no" stopped being the same value.** For
+three days both were `[]` and nothing depended on the difference. The moment
+an unstated day became a real Saturday, a hand-typed `"weekends"` in that
+column would have silently cancelled a day somebody had been TOLD about in
+their first week. So `parseQuietDays` returns three answers — days, `[]` for
+an explicit `none`, `null` for anything unreadable — and only the middle one
+counts as stated. The seven-day case, which is really a pause, joins `null`:
+it was already refused, and refusing it into the default rather than into
+silence is the same refusal one rung better. Same lesson the repo keeps
+relearning under different names, and this time it was visible before it cost
+anything, which is the only reason it is a paragraph and not an entry.
+
+**The delete now means the opposite of what people say.** Every real sentence
+here is "write to me on Saturdays too" — and `forget_preference('quiet_days')`,
+the obvious call for it, now restores the default rather than clearing it. The
+only spelling of "no quiet day" is the value `none`. That is stated in the
+rung's own copy, and `preferences.forget` puts `hints.quietDayDefault` on that
+one key's result for the calls that arrive any other way. It is worded as
+guidance about a TOOL and not as an instruction to write, because
+`remember_preference` and `forget_preference` have carried a 👍 since
+2026-09-10 and an unconditional ask for words beside a mark is the
+`markPlaced` fault, twice documented above.
+
+**And the rung was speaking Hebrew at everybody.** Reading it to add the day,
+it turned out `discoveryGaps` never took a locale at all: the "say this word
+for word" payload was Hebrew for every person on earth, and whatever an
+English speaker actually received was the model quietly declining to follow
+it. It is quoted in both languages now. Quoting rather than describing is the
+rule this rung already carries a scar for — a described version came out as
+"נוסע לשם אחרת" — and the English quote is safe here for the reason
+`firstContactInstruction` cannot have one: no country label inside it.
+
+What the person hears is one line longer and asks for nothing new:
+
+> ברירת המחדל שלי היא לכתוב לך בין 9:00 ל- 21:00 בשעון המקומי, ובשבת לשלוח רק
+> תזכורות שביקשת.
+
+Both halves of that sentence are drawn from the code that enforces them —
+`preferences.DEFAULT_WINDOW` and `holidays.quietDayWord` — and pinned by one
+test, on the argument the hours already had: what somebody was told is a
+promise the gate has to keep.
 
 
 ### An offer to call a number the bridge has never served (fixed 2026-09-06)

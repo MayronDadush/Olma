@@ -510,13 +510,28 @@ test('the timezone gap leads discovery, and closes itself once they answer', asy
       new RegExp(`${Number(openHour)}:00 ל- ${Number(closeHour)}:00 בשעון המקומי`),
       'it states the real default window, in their own words and their own clock');
 
+    // And the day, on exactly the same argument: since 2026-09-11 the quiet
+    // day is a DEFAULT they already have rather than a setting on offer, so
+    // this sentence is a promise the gate has to keep. Pinned to the function
+    // that computes it, never to the word "שבת" — a literal here is how the
+    // message and the behaviour drift apart.
+    const holidays = require('../src/domain/holidays');
+    const heDay = holidays.quietDayWord(
+      holidays.defaultQuietDay(holidays.calendarFor({ locale: 'he' })), 'he');
+    assert.match(pick.instruction, new RegExp(`${heDay} לשלוח רק תזכורות שביקשת`),
+      'it names the day they already have, and what still arrives on it');
+
     // And it opens the two doors nothing else opens, naming the keys their
     // answers have to land in — a question whose answer has nowhere to go is
     // worse than no question.
     assert.match(pick.instruction, /"availability"/);
     assert.match(pick.instruction, /"quiet_days"/);
-    assert.match(pick.instruction, /חוץ מתזכורות שביקשת/,
+    assert.match(pick.instruction, /תזכורות שביקשת/,
       'what survives a quiet day is stated to them, not just to the gate');
+    // Turning it OFF has one spelling and it is not the delete: with no row
+    // at all the default day simply comes back.
+    assert.match(pick.instruction, /"none"/);
+    assert.match(pick.instruction, /never forget_preference/);
 
     // They answer. The gap is real only while it is real, so it disappears —
     // and what it hands back is the digest pitch it was standing in front of.
@@ -525,6 +540,41 @@ test('the timezone gap leads discovery, and closes itself once they answer', asy
     assert.equal(set.ok, true);
     pick = await checkin.pickRung(c, u.id);
     assert.equal(pick.topic, 'digest');
+  } finally {
+    c.release();
+  }
+});
+
+test('an English speaker reads the same three lines, in English, naming Sunday', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const holidays = require('../src/domain/holidays');
+  const u = await makeUser(db.pool, '+14155550142', { firstName: 'Sarah', locale: 'en' });
+  const c = await db.pool.connect();
+  try {
+    await c.query(`UPDATE users SET timezone = 'America/Los_Angeles' WHERE id = $1`, [u.id]);
+    const pick = await checkin.pickRung(c, u.id);
+    assert.equal(pick.topic, 'timezone');
+
+    // Until 2026-09-11 this rung handed every person on earth a Hebrew
+    // sentence to say word for word. Quoted in both languages now, because a
+    // sentence that is only DESCRIBED is a sentence the model rewrites — the
+    // fault that produced "נוסע לשם אחרת". There is no country label inside
+    // this one, which is what makes the English quote safe here.
+    assert.match(pick.instruction, /Which country are you in\?/);
+    assert.doesNotMatch(pick.instruction, /באיזו מדינה/,
+      'an English speaker is never told to say the Hebrew copy');
+
+    const enDay = holidays.quietDayWord(
+      holidays.defaultQuietDay(holidays.calendarFor({ locale: 'en', timezone: 'America/Los_Angeles' })), 'en');
+    assert.equal(enDay, 'on Sundays');
+    assert.match(pick.instruction, new RegExp(`${enDay} I send only the reminders you asked for`));
+
+    // One question mark, on the country: the hours and the day are statements,
+    // because three questions in one message is a form.
+    const quoted = /"(Which country[\s\S]*?)" Do not paraphrase/.exec(pick.instruction);
+    assert.ok(quoted, 'the copy is handed over quoted, not described');
+    assert.equal(quoted[1].split('?').length - 1, 1, 'exactly one question mark');
+    assert.equal(quoted[1].split('\n').length, 3, 'three lines, never a fourth');
   } finally {
     c.release();
   }

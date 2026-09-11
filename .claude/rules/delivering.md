@@ -8,6 +8,7 @@ paths:
   - "olma2/src/domain/list-block.js"
   - "olma2/src/domain/proactive-text.js"
   - "olma2/src/domain/pause.js"
+  - "olma2/src/domain/holidays.js"
   - "olma2/src/channels/openclaw.js"
   - "olma2/src/channels/gateway-rpc.js"
   - "olma2/src/jobs/sweeps.js"
@@ -157,6 +158,27 @@ title means this file. Grep the title, not the filename.
 - **The delivery gate is the chokepoint and a paused user has no exceptions** —
   not reminders, not urgent, not another user's fan-out.
 
+- **An unstated quiet day is not "none" — it is Saturday or Sunday, and which
+  one is a fact about the PERSON.** `domain/holidays.calendarFor` reads a
+  `jewish` calendar off a `he` locale OR an Israeli zone, `christian`
+  otherwise, and `defaultQuietDay` turns that into Saturday or Sunday
+  (owner, 2026-09-11). **Geography overrules language on purpose**: Sunday is
+  a working day in Israel, so guessing Christian for an English speaker in Tel
+  Aviv silences an ordinary Sunday, while the mirror mistake costs a Saturday
+  they can correct in one sentence. A `holiday_calendar` preference beats both
+  and `none` turns the default off entirely.
+  **That makes "they have not said" and "they said no days" different answers
+  for the first time**, so `parseQuietDays` returns THREE things — days, `[]`
+  for an explicit "none", and `null` for a value nothing can read — and only
+  the middle one is stated. A hand-typed "weekends", or the seven-day case
+  that is really a pause, falls back to the default rather than cancelling the
+  day somebody was told about. **The only spelling of "no quiet day" is the
+  value `none`; deleting the row brings the default back**, which is the
+  opposite of every sentence a person actually says here — so
+  `preferences.forget` puts `hints.quietDayDefault` on that one key's result,
+  as guidance about a TOOL and never as an instruction to write, because
+  `remember_preference`/`forget_preference` carry a 👍.
+
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where
   they differ.** Hours exempt a digest and rung 1 of any reminder — they chose
   those moments. A day in `quiet_days` (preference, `"fri,sat"`, read by
@@ -175,6 +197,15 @@ title means this file. Grep the title, not the filename.
   hours in the same message that asks which country they are in, so moving the
   constant without moving that copy makes the first message we ever sent them a
   lie. The test asserts the copy against the constant for exactly that reason.
+  **The quiet DAY is in that sentence too now**, drawn from
+  `holidays.quietDayWord` rather than written out, and pinned by the same
+  test on the same argument — it stopped being a setting on offer and became
+  a default they already have, which is a promise the gate has to keep. The
+  rung is **quoted in both languages** since 2026-09-11: it handed every
+  person on earth the Hebrew copy to say word for word, and a sentence that is
+  only DESCRIBED is one the model rewrites. It can be quoted in English
+  precisely because, unlike `firstContactInstruction`, it carries no country
+  label.
 
 - **That rung asks for the COUNTRY, not the city** (owner, 2026-09-08): a zone
   moves when you cross a border. The six where that is false — US, Canada,

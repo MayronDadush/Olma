@@ -100,7 +100,13 @@ async function drainOnce(pool, deliver, now = new Date()) {
         const plan = await quota.planFor(client, row.user_id);
         const blocked = await quota.isBlocked(client, row.user_id, now.toISOString());
         const win = await preferences.availabilityWindow(client, row.user_id);
-        const quiet = await preferences.quietDays(client, row.user_id);
+        // The row already carries both fields the default is computed from,
+        // so an unstated quiet day costs no extra query: Saturday for
+        // somebody on a Jewish calendar, Sunday for a Christian one
+        // (domain/holidays.js). A person who STATED days — "none" included —
+        // is never overlaid with a guess.
+        const quiet = await preferences.quietDays(client, row.user_id,
+          { locale: row.locale, timezone: row.timezone });
         const budget = Number(await flagsDomain.getFlag(client, 'proactive_daily_budget') ?? 4);
         // Count only what the budget actually governs. Urgent rows and the two
         // user-chosen kinds are exempt in decide() — counting them here let a day

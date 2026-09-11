@@ -12,6 +12,7 @@
 // miss-backoff (1 → three days, 2 → weekly, 3 → stop). Daytime is NOT checked here — the
 // outbox gate holds the row until the user's own window opens.
 const connectGate = require('../domain/google-connect-gate');
+const holidays = require('../domain/holidays');
 const meetings = require('../domain/meetings');
 const pause = require('../domain/pause');
 const { enqueue } = require('../outbox/enqueue');
@@ -436,7 +437,7 @@ function daysAgo(ts) {
 async function discoveryGaps(client, userId) {
   const gaps = [];
   const { rows: u } = await client.query(
-    `SELECT digest_times, timezone, timezone_confirmed, timezone_asked_at
+    `SELECT digest_times, timezone, timezone_confirmed, timezone_asked_at, locale
        FROM users WHERE id = $1`, [userId]);
   // FIRST, ahead of the digest: an unconfirmed zone poisons every dated thing
   // underneath it, and a digest offered at "09:00" in the wrong zone just
@@ -480,9 +481,34 @@ async function discoveryGaps(client, userId) {
     const guessed = u[0].timezone
       ? `We are currently guessing ${u[0].timezone}, which came from their phone number and is not a location.`
       : 'We have no timezone for them at all, so everything falls back to UTC.';
+    // The quiet day is a DEFAULT now, not an empty field, so this message is
+    // no longer offering them a setting — it is telling them one they already
+    // have (domain/holidays.js). Both halves of the sentence are drawn from
+    // the code that will actually enforce them: the hours from
+    // preferences.DEFAULT_WINDOW, the day from holidays.defaultQuietDay, so
+    // moving either cannot leave this sentence behind. Same reasoning as the
+    // hours, one rung further: what a person was TOLD is now a promise the
+    // gate has to keep.
+    const hebrew = !String(u[0].locale || '').toLowerCase().startsWith('en');
+    const day = holidays.defaultQuietDay(holidays.calendarFor({
+      locale: u[0].locale, timezone: u[0].timezone,
+    }));
+    const dayWord = holidays.quietDayWord(day, u[0].locale);
+    // Quoted in BOTH languages, not quoted in one and described in the other:
+    // a described sentence is a sentence the model rewrites, and this one has
+    // already come back as "נוסע לשם אחרת", which nobody could read. There is
+    // no country label inside it, which is what makes the English quote safe
+    // here and not in firstContactInstruction.
+    const copy = hebrew
+      ? 'באיזו מדינה אתה נמצא? ככה אדע מתי מתאים לכתוב לך.'
+        + `\nברירת המחדל שלי היא לכתוב לך בין 9:00 ל- 21:00 בשעון המקומי, ו${dayWord} לשלוח רק תזכורות שביקשת. ואם תיסע או תעבור למקום אחר — פשוט תגיד לי.`
+        + '\n🫡 אם מעדיף שעות אחרות, יום שקט אחר או בלי יום שקט בכלל — תגיד ואשנה.'
+      : 'Which country are you in? That way I\'ll know when it suits to write to you.'
+        + `\nBy default I write to you between 9:00 and 21:00 your local time, and ${dayWord} I send only the reminders you asked for. And if you travel or move somewhere else — just tell me.`
+        + '\n🫡 If you would rather have different hours, a different quiet day, or no quiet day at all — say so and I will change it.';
     gaps.push({
       topic: 'timezone',
-      instruction: `${guessed} Ask which COUNTRY they are in — never ask for a timezone name, that is our problem not theirs — and call set_my_timezone with the IANA zone and confirmed: true. ONE exception, and it is the whole reason this used to ask for a city: a handful of countries span several timezones (the US, Canada, Russia, Australia, Brazil, Mexico). If the country they name is one of those, you do not have an answer yet — ask which area or nearest big city as a short follow-up, and only then call set_my_timezone. Everywhere else the country IS the zone, and asking a Frenchman which city he is in is asking him to do our arithmetic. Say it in exactly this shape — the end of the second line is the travel line, where they learn to just say so when they travel or move — changing only the gender forms to match them: "באיזו מדינה אתה נמצא? ככה אדע מתי מתאים לכתוב לך.\nברירת המחדל שלי היא לכתוב לך בין 9:00 ל- 21:00 בשעון המקומי, ואם תיסע או תעבור למקום אחר — פשוט תגיד לי.\n🫡 אם מעדיף שעות אחרות, או שיש ימים בשבוע שבהם לא תרצה לקבל ממני כלום חוץ מתזכורות שביקשת — תגיד ואשנה." Do not paraphrase it, do not add a fourth line, do not explain the mechanism — a reworded version once came out as "נוסע לשם אחרת", which nobody could read. There is exactly ONE question mark in it, on the country; the hours and the quiet days are STATEMENTS, because three questions in one message is a form. If they answer the hours, call remember_preference key "availability" value "HH:MM-HH:MM". If they name days they want nothing on, call remember_preference key "quiet_days" with lowercase English three-letter days, comma-separated — "fri,sat" — whatever language they said them in.`,
+      instruction: `${guessed} Ask which COUNTRY they are in — never ask for a timezone name, that is our problem not theirs — and call set_my_timezone with the IANA zone and confirmed: true. ONE exception, and it is the whole reason this used to ask for a city: a handful of countries span several timezones (the US, Canada, Russia, Australia, Brazil, Mexico). If the country they name is one of those, you do not have an answer yet — ask which area or nearest big city as a short follow-up, and only then call set_my_timezone. Everywhere else the country IS the zone, and asking a Frenchman which city he is in is asking him to do our arithmetic. Say it in exactly this shape — the end of the second line is the travel line, where they learn to just say so when they travel or move — changing only the gender forms to match them: "${copy}" Do not paraphrase it, do not add a fourth line, do not explain the mechanism — a reworded version once came out as "נוסע לשם אחרת", which nobody could read. There is exactly ONE question mark in it, on the country; the hours and the quiet day are STATEMENTS, because three questions in one message is a form. If they answer the hours, call remember_preference key "availability" value "HH:MM-HH:MM". If they name days they want nothing on, call remember_preference key "quiet_days" with lowercase English three-letter days, comma-separated — "fri,sat" — whatever language they said them in. If they say they want NO quiet day at all, that is remember_preference key "quiet_days" value "none" — never forget_preference, because with no row at all the default day simply comes back.`,
     });
   }
   const { rows: openTasks } = await client.query(
