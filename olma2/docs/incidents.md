@@ -19,6 +19,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Gateway, config and upgrades**
 
+- [The socket that was never closed (fixed 2026-09-11)](#the-socket-that-was-never-closed-fixed-2026-09-11)
 - [A message reached the box and stopped there, and nothing could tell (detector added 2026-09-06)](#a-message-reached-the-box-and-stopped-there-and-nothing-could-tell-detector-added-2026-09-06)
 - [The roster was never in the transcript (2026-09-06)](#the-roster-was-never-in-the-transcript-2026-09-06)
 - [She was a member of her own group (2026-09-06)](#she-was-a-member-of-her-own-group-2026-09-06)
@@ -196,6 +197,63 @@ never trust a dated narrative for something you are about to act on.
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
 
 ## Gateway, config and upgrades
+
+### The socket that was never closed (fixed 2026-09-11)
+
+Yehav asked, at 12:08, for eleven overdue tasks to be pushed to Monday. The
+model called `snooze_task` eleven times. All eleven came back
+`ERROR unavailable: assistant backend not reachable (brokerd timeout)`, thirty
+seconds apart — five and a half minutes of failing, after which Olma told him
+"there is a temporary problem saving this, I will try again in a moment" and
+then did not. He waited forty minutes and asked again himself.
+
+brokerd had been restarted at 12:15:16 by the deploy of PR #343 and was
+listening again at 12:15:17. **One second.** It answered nothing for the next
+seven minutes because the caller never noticed it had gone.
+
+`bin/olma-mcp.js` caches one unix socket for the life of the shim process, and
+the gateway keeps one shim per session — so the same process serves tool calls
+across a restart, by design. It listened for `'error'`. A brokerd that stops
+CLEANLY never emits one: the peer sends FIN, node ends this side too, and the
+socket emits `'end'` and then `'close'`. Neither was handled, so `sockConn`
+stayed set and pointed at a destroyed socket — and `write()` on a destroyed
+socket does not throw and does not emit. It returns `true`. Every call after
+that wrote into nothing and sat out the full `CALL_TIMEOUT_MS`, 30 seconds,
+for ever rather than once.
+
+Reproduced before it was fixed, because the reasoning could have gone either
+way — a write to a closed socket *sounds* like it should fail loudly:
+
+```
+call 1 (broker up)     : OK in 1ms
+-- SIGTERM the broker, then start a new one on the same socket --
+   [socket "end" event]   (unhandled)
+   [socket "close" event] (unhandled) sockConn still set: true
+call 2 (after restart) : FAIL in 3002ms -> brokerd timeout      # the shortened stand-in for 30s
+call 3 (after restart) : FAIL in 3002ms -> brokerd timeout
+call 4 (after restart) : FAIL in 3002ms -> brokerd timeout
+```
+
+**The fix** is `'end'` and `'close'` handlers that drop the cached socket and
+reject what is waiting on it, so the next call dials a new one. Both events,
+because half-open is reachable: a socket destroyed from this side emits only
+`'close'`. All three handlers now go through one `dropSocket(sock, err)` that
+clears `sockConn` **only if it is still the socket that died** — the previous
+`'error'` handler nulled it unconditionally, which was harmless while nothing
+else could replace it and is a race the moment something can.
+
+Nothing about this was specific to Yehav. Every user in a live conversation
+during any deploy had been losing their tools until their next session, and
+the symptom — "assistant backend not reachable" — names brokerd, which was
+healthy. The failure was named after the wrong culprit, which is the shape
+this project keeps rediscovering.
+
+`tests/mcp-e2e.test.js`, "the shim survives a brokerd restart", stops the real
+brokerd, starts another on the same socket and asserts the shim recovers. It
+runs last in the file because it replaces the process the other tests use, and
+it fails in 30,062ms without the fix against 77ms with it — the assertion is on
+the SECOND call after the restart, since the one in flight when the socket dies
+is allowed to lose.
 
 ### A message reached the box and stopped there, and nothing could tell (detector added 2026-09-06)
 
