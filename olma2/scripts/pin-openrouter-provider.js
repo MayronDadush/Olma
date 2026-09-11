@@ -20,6 +20,26 @@
 //     `cacheRead` on first-of-turn calls in the transcripts, or OpenRouter's
 //     `native_tokens_cached` for the same ids, before calling it a win.
 //
+// ── ANSWERED 2026-09-11, and the answer is no ───────────────────────────────
+// `scripts/cache-probe.js` is that reading, two days after this was applied
+// and the gateway restarted. First-of-turn cache, real users: 57% under two
+// minutes, 6% at 2–10, 3% at 10–60 (2,001 calls), 0% past the hour — the
+// pre-pin baseline to the point. `order` is a PREFERENCE, not an exclusion,
+// and `allow_fallbacks: true` is what makes it one: of 54 consecutive calls
+// after the restart, StreamLake served 38 and DigitalOcean 16, and 21 landed
+// on a different provider than the call before them. Same provider as the
+// previous call: 54% cached. Changed: 3%. That is the entire effect.
+//
+// So the price half of this bet is collected and the cache half is not, and
+// the two are not independent: an UNCACHED call on the cheap provider
+// ($0.0679/M × 44k = $0.00299) costs MORE than a 54%-cached call on the
+// dearer one ($0.0840 and $0.0168/M × 44k = $0.00210). If the order is ever
+// re-cut, cut it towards where the traffic actually lands, not down the price
+// list. Turning `allow_fallbacks` off would buy the cache and spend the
+// availability this flag exists to protect — the owner's rule is that an
+// outage costs the cache and never a reply — so it stays on.
+// (`docs/incidents.md`, "The pin held the order and the cache still died".)
+//
 // The knob is OpenClaw's own: `agents.defaults.models["openrouter/<model>"]
 // .params.provider` is forwarded as OpenRouter's request `provider` object
 // (docs: gateway/config-agents, "OpenRouter provider routing"). `order` is

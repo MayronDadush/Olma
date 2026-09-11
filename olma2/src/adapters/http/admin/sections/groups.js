@@ -78,6 +78,15 @@ async function renderGroups(client, csrf, _probe, ctx = {}) {
     byGroup.get(m.group_id).push(m);
   }
 
+  // The intro's own `group_outbox` row — at most one ever, the idempotency key
+  // is `g<id>:intro`. Surfaced here because nothing else on this page shows a
+  // retry: `attempts > 1` is the one thing on the box that tells an operator
+  // "this room may have heard it twice" without SSH and a hand-typed query.
+  const { rows: intros } = await client.query(
+    `SELECT group_id, attempts, claimed_at, sent_at, hold_reason, last_error
+       FROM group_outbox WHERE kind = 'intro' AND group_id = ANY($1)`, [groups.map((g) => g.id)]);
+  const introByGroup = new Map(intros.map((r) => [r.group_id, r]));
+
   const rows = groups.map((g) => {
     const list = byGroup.get(g.id) || [];
     // Names for the missing, never numbers — this page is read over a
@@ -95,6 +104,7 @@ async function renderGroups(client, csrf, _probe, ctx = {}) {
       <td>${missing.length ? esc(missing.join(', ')) : '—'}</td>
       <td class="dim">${esc(g.registered_by || '—')}</td>
       <td class="dim">${g.opened_announced_at ? '✓' : (g.opened_at ? 'ממתינה לשעות' : '—')}</td>
+      <td class="dim">${introLine(g, introByGroup.get(g.id))}</td>
       <td>${kindForm(g, csrf)}</td>
     </tr>`;
   }).join('');
@@ -107,9 +117,29 @@ async function renderGroups(client, csrf, _probe, ctx = {}) {
   // version would have been "when a session she can see last moved", and the
   // sweep cannot see `main`, which is the session the raw pipe sends as.
   return `${head}<table><tr><th>קבוצה</th><th>מצב</th><th>אנשים</th><th>עוד לא כתבו לה</th>
-    <th>נרשמה דרך</th><th>הוכרזה</th><th>סוג וכמה צריך</th></tr>${rows}</table>
+    <th>נרשמה דרך</th><th>הוכרזה</th><th>היכרות</th><th>סוג וכמה צריך</th></tr>${rows}</table>
     <p class="dim">סוג: <b>משחק</b> — יש מינימום, ואולי מקסימום שאפשר לסגור עליו.
     <b>חברתית</b> — כולם מוזמנים, בלי מינימום. ריק = אף אחד עוד לא אמר לה, והיא לא מנחשת.</p>`;
+}
+
+// What the room's own intro row (group_outbox, kind='intro') says happened.
+// `attempts > 1` is the tell an operator cannot see anywhere else: it means
+// the first send was booked as a definite refusal and retried, which is
+// exactly the failure shape a room hearing "נעים מאוד" twice would leave
+// behind if the refusal itself was wrong about nothing having gone out.
+function introLine(g, row) {
+  if (!g.introduced_at) return '—';
+  if (!row) return 'סומן, אין שורה'; // stamped but the row is gone — should not happen, worth a look
+  let label;
+  if (row.sent_at && !row.hold_reason) label = 'נשלחה';
+  else if (row.sent_at && row.hold_reason === 'unconfirmed') label = 'לא ידוע אם נשלחה';
+  else if (row.sent_at && row.hold_reason === 'abandoned') label = 'ננטשה';
+  else if (row.claimed_at) label = 'בתהליך שליחה';
+  else label = 'ממתינה בתור';
+  if (row.attempts > 1) {
+    label += ` (ניסיון ${row.attempts}${row.last_error ? `, קודם: ${esc(String(row.last_error).slice(0, 80))}` : ''})`;
+  }
+  return label;
 }
 
 module.exports = { renderGroups, STATE_LABEL };
