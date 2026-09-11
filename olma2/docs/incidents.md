@@ -99,6 +99,7 @@ never trust a dated narrative for something you are about to act on.
 **Cost, billing and the money page**
 
 - [The conversation that never ended (fixed 2026-09-09)](#the-conversation-that-never-ended-fixed-2026-09-09)
+- [The pin held the order and the cache still died (measured 2026-09-11)](#the-pin-held-the-order-and-the-cache-still-died-measured-2026-09-11)
 - [The pilot that read as an expensive day (fixed 2026-09-09)](#the-pilot-that-read-as-an-expensive-day-fixed-2026-09-09)
 - [The heartbeat was the bill (fixed 2026-09-05)](#the-heartbeat-was-the-bill-fixed-2026-09-05)
 - [The ledger overstated OpenRouter by 65%, in both directions at once (fixed 2026-09-03)](#the-ledger-overstated-openrouter-by-65-in-both-directions-at-once-fixed-2026-09-03)
@@ -3455,6 +3456,75 @@ and the doctrine are ~26k tokens a call and cost a fifth of that once the
 cache holds; audience-filtering the tools is impossible at `tools/list`
 (one MCP process for every agent, `cwd=/root`, verified) and worth under $1
 a month anyway; NO_REPLY turns are 2–5% since the heartbeat went off.
+
+### The pin held the order and the cache still died (measured 2026-09-11)
+
+`scripts/pin-openrouter-provider.js` was applied on 2026-09-09 and the gateway
+restarted at 20:18:52 UTC. Its own header left the verification open, in as
+many words: *"whether ONE provider's prefix cache survives the minutes between
+a person's messages. Nobody knows until it runs a day."* Two days later,
+`scripts/cache-probe.js` read it off the transcripts. It had not.
+
+First call of a turn, real users only, bucketed by the gap since that agent's
+previous call — the pre-pin baseline beside it:
+
+| gap | after the pin | before |
+|---|---|---|
+| under 2 min | 57% | 62% |
+| 2–10 min | 6% | 9% |
+| 10–60 min | 3% (2,001 calls) | 4% |
+| 1–4 h | 0% | 0% |
+| later call of the same turn | 86% | ~90% |
+
+Nothing moved, and the bucket that carries the traffic — 10–60 minutes, two
+thousand calls — is still at three percent.
+
+**The order was never a pin.** Reading OpenRouter's own generation records for
+54 consecutive post-restart calls: StreamLake served 38, DigitalOcean 16, and
+**21 of the 54 landed on a different provider than the call before them**.
+`allow_fallbacks: true` leaves `order` a preference, not an exclusion, so the
+rotation the pin was written to stop went on rotating. Split by that:
+
+| the call before it | cached |
+|---|---|
+| same provider | 54% |
+| different provider | 3% |
+
+That is the whole effect. It is not a TTL and it is not our prompt: the only
+thing Olma injects per turn is the `Turn context` block, and
+`before_prompt_build` prepends that to the USER MESSAGE, downstream of the
+system prompt, the tool schemas and the history — the static prefix is byte-
+stable within a session, and `contextInjection: continuation-skip` keeps the
+bootstrap files from being re-sent per turn. The prefix was never the problem.
+
+**The arithmetic says follow the traffic, not the price list.** Off
+OpenRouter's endpoint table on the day: DigitalOcean $0.0679/M input,
+StreamLake $0.0840/M, both $0.0168/M on cache reads. For the measured 44k-token
+prompt, an UNCACHED DigitalOcean call is $0.00299 and a 54%-CACHED StreamLake
+call is $0.00210 — the dearer provider, cached, is 30% cheaper than the cheap
+one cold. DigitalOcean was put first for the price and then served 30% of the
+traffic; the config and reality disagree, and reality is billing.
+
+**What was deliberately NOT done.** `allow_fallbacks: false` would buy the
+cache and cost the availability the flag exists to protect — the owner's rule
+is that an outage costs the cache and never a reply — so it stays on. The
+change worth making is the cheap half: put the provider that actually serves
+the traffic at the head of the order, keep fallbacks, and re-run the probe in a
+few days. That trades nothing.
+
+**And the money is small, which is the last finding.** Real-user model spend is
+$0.49–$1.39 a day (nine days to 2026-09-10, eval user excluded), so the whole
+cache gap is worth perhaps $5 a month. The case for fixing it is the seconds:
+an uncached 44k-token prompt is what put 8–23 s on the first token in "The
+conversation that never ended". Anyone reaching for this file to cut the BILL
+is in the wrong place by two orders of magnitude — Claude Code sessions
+reading this repo cost more in a week than the assistant does in a year.
+
+**The probe excludes the eval user, and that is load-bearing.** u-15 was 1,609
+of 4,899 calls at a cache rate twenty points above everybody else; averaged in,
+the first reading of this said the cache was healthy for people who do not have
+one. Same rule as `efficiency-watch`, rediscovered inside an hour of writing a
+new ratio.
 
 ### The pilot that read as an expensive day (fixed 2026-09-09)
 
