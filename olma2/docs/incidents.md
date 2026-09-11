@@ -19,6 +19,8 @@ never trust a dated narrative for something you are about to act on.
 
 **Gateway, config and upgrades**
 
+- [Six hours with nobody to talk to (detector added 2026-09-11)](#six-hours-with-nobody-to-talk-to-detector-added-2026-09-11)
+- [The socket that was never closed (fixed 2026-09-11)](#the-socket-that-was-never-closed-fixed-2026-09-11)
 - [A message reached the box and stopped there, and nothing could tell (detector added 2026-09-06)](#a-message-reached-the-box-and-stopped-there-and-nothing-could-tell-detector-added-2026-09-06)
 - [The roster was never in the transcript (2026-09-06)](#the-roster-was-never-in-the-transcript-2026-09-06)
 - [She was a member of her own group (2026-09-06)](#she-was-a-member-of-her-own-group-2026-09-06)
@@ -45,6 +47,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [The fifth draft was the rude one (fixed 2026-09-11)](#the-fifth-draft-was-the-rude-one-fixed-2026-09-11)
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [The room was greeted twice, by its own registration (fixed 2026-09-11)](#the-room-was-greeted-twice-by-its-own-registration-fixed-2026-09-11)
@@ -197,6 +200,129 @@ never trust a dated narrative for something you are about to act on.
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
 
 ## Gateway, config and upgrades
+
+### Six hours with nobody to talk to (detector added 2026-09-11)
+
+At 06:07 the WhatsApp channel exited with `WhatsApp credential persistence did
+not drain before owner release`. Every restart after that lost to `Another
+process owns this WhatsApp connection`: ten auto-restart attempts with a
+5s→300s backoff, exhausted, then the cycle started over. It came back at 12:05,
+when the gateway process was restarted by hand.
+
+Six hours in which not one message could leave the box. What every check said:
+
+| | |
+|---|---|
+| `checkGateway` | `live`, on all 72 ticks |
+| `/health` | `{"ok":true,"stale":[],"failing":[]}` |
+| `liveness_watch` heartbeat | `{"gateway":"live","down":false}` |
+| `openclaw gateway /health` | `{"ok":true,"status":"live"}` |
+
+None of them was lying. The gateway PROCESS was healthy the whole time — it
+answered every probe in milliseconds, ran every agent turn, and wrote every
+transcript. It simply had nothing to send messages down. `gateway-health.js`
+asked one question, "is the process up", and its own comment said the rest had
+their own detectors, naming "a linked WhatsApp" among them. That had never been
+true. A comment asserting coverage that does not exist is worse than no comment:
+it is what stops the next person looking.
+
+The one check that did see something was the outbox's `stuck` count — and it
+arrives late and names nothing. By the time three attempts have failed and
+fifteen minutes have passed, the fault has been running for twenty minutes, and
+what it reports is "messages are not going out", which is the symptom every
+outage shares. `config_guard` filed issue #156 at 08:07 and #157 at 09:17,
+correctly, into a dashboard nobody was looking at — and the only alert channel
+there is the dead WhatsApp. Two hours of true statements that reached no one.
+
+**The detector** is `gateway-health.checkChannels`, asked by `liveness_watch`
+beside the process probe: the gateway's own `channels.status`, which reports
+`linked`, `running`, `connected` and `reconnectAttempts` per channel. Any one
+of the three explicitly `false` is `down`, and it is named in the alert
+separately from the process, because the alert has to say which of the two
+broke — for six hours the answer was "not the one you are about to restart".
+
+**It had to be the WebSocket, not the CLI.** `openclaw channels status --json`
+costs **4.1s of CPU** an answer, measured three times on the box — more than
+the `openclaw sessions list` the never-poll-on-a-timer rule was written for.
+Over the RPC the same question is 11-18ms of CPU cold, measured on the same
+box: 250x, and the difference between a detector and a second bug.
+
+**A dead channel earns the same restart a dead process does**, after the same
+two ticks, under the same half-hour cooldown. The channel's own auto-restart
+lost ten times in a row; restarting the unit fixed it on the first attempt.
+Two ticks matter more here than for the process, because a channel flaps by
+design — a reconnect the same afternoon was down and back inside one second —
+and ten minutes of continuous `connected: false` is what separates them.
+
+**Everything that is not the gateway saying so is `unknown`.** The remedy is a
+restart, so a probe that cannot judge — the RPC off, a refused socket, a
+payload we do not recognise, a field a future version stopped sending — must
+never reach it. `undefined` is a version skew, not an outage. This is the
+detector-becomes-the-hazard line, and it is the one thing in this change worth
+reviewing twice.
+
+What is still not covered: a gateway that stays dead, a dead brokerd, a dead
+box, a dead network. Every alarm here rides the gateway's own pipe. That is
+[Known gaps](../../CLAUDE.md#known-gaps) and it needs the external monitor that
+does not exist yet — this change shortens a six-hour channel outage to about
+ten minutes, and does nothing for the other four.
+
+### The socket that was never closed (fixed 2026-09-11)
+
+Yehav asked, at 12:08, for eleven overdue tasks to be pushed to Monday. The
+model called `snooze_task` eleven times. All eleven came back
+`ERROR unavailable: assistant backend not reachable (brokerd timeout)`, thirty
+seconds apart — five and a half minutes of failing, after which Olma told him
+"there is a temporary problem saving this, I will try again in a moment" and
+then did not. He waited forty minutes and asked again himself.
+
+brokerd had been restarted at 12:15:16 by the deploy of PR #343 and was
+listening again at 12:15:17. **One second.** It answered nothing for the next
+seven minutes because the caller never noticed it had gone.
+
+`bin/olma-mcp.js` caches one unix socket for the life of the shim process, and
+the gateway keeps one shim per session — so the same process serves tool calls
+across a restart, by design. It listened for `'error'`. A brokerd that stops
+CLEANLY never emits one: the peer sends FIN, node ends this side too, and the
+socket emits `'end'` and then `'close'`. Neither was handled, so `sockConn`
+stayed set and pointed at a destroyed socket — and `write()` on a destroyed
+socket does not throw and does not emit. It returns `true`. Every call after
+that wrote into nothing and sat out the full `CALL_TIMEOUT_MS`, 30 seconds,
+for ever rather than once.
+
+Reproduced before it was fixed, because the reasoning could have gone either
+way — a write to a closed socket *sounds* like it should fail loudly:
+
+```
+call 1 (broker up)     : OK in 1ms
+-- SIGTERM the broker, then start a new one on the same socket --
+   [socket "end" event]   (unhandled)
+   [socket "close" event] (unhandled) sockConn still set: true
+call 2 (after restart) : FAIL in 3002ms -> brokerd timeout      # the shortened stand-in for 30s
+call 3 (after restart) : FAIL in 3002ms -> brokerd timeout
+call 4 (after restart) : FAIL in 3002ms -> brokerd timeout
+```
+
+**The fix** is `'end'` and `'close'` handlers that drop the cached socket and
+reject what is waiting on it, so the next call dials a new one. Both events,
+because half-open is reachable: a socket destroyed from this side emits only
+`'close'`. All three handlers now go through one `dropSocket(sock, err)` that
+clears `sockConn` **only if it is still the socket that died** — the previous
+`'error'` handler nulled it unconditionally, which was harmless while nothing
+else could replace it and is a race the moment something can.
+
+Nothing about this was specific to Yehav. Every user in a live conversation
+during any deploy had been losing their tools until their next session, and
+the symptom — "assistant backend not reachable" — names brokerd, which was
+healthy. The failure was named after the wrong culprit, which is the shape
+this project keeps rediscovering.
+
+`tests/mcp-e2e.test.js`, "the shim survives a brokerd restart", stops the real
+brokerd, starts another on the same socket and asserts the shim recovers. It
+runs last in the file because it replaces the process the other tests use, and
+it fails in 30,062ms without the fix against 77ms with it — the assertion is on
+the SECOND call after the restart, since the one in flight when the socket dies
+is allowed to lose.
 
 ### A message reached the box and stopped there, and nothing could tell (detector added 2026-09-06)
 
@@ -1408,6 +1534,86 @@ down; the audit row carries fingerprints, which is what `token-leak.js`
 compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
+
+
+### The fifth draft was the rude one (fixed 2026-09-11)
+
+On the morning the WhatsApp channel was disconnected (see "Six hours with
+nobody to talk to"), Yehav's morning digest was enqueued at 07:00:24 UTC. It
+was composed five times:
+
+| UTC | what the turn produced |
+|---|---|
+| 08:26 | "בוקר טוב יהב ☀️ שלושת התזכורות נשלחו ועוד לא טופלו — רוצה לסגור אחד מהם עכשיו?" + a rendered card |
+| 08:36 | a full task list, drawn |
+| 08:46 | the same list again, drawn again |
+| 08:57 | "בוקר טוב יהב ☀️ 11 מאחור — רוצה לדחות את כולן שבוע ולהוריד לחץ?" + a card |
+| 09:08 | "בוקר טוב ☀️ 11 מחכות, 3 תזכורות נשלחו — **ואתה לא עונה**. רוצה שאני אדחה הכול למחר ואחזיר אותך בשקט?" + a card |
+
+Five model turns. Four schedule cards rendered and thrown away. The channel
+came back at 09:05, so the fifth is the one that reached his phone — and the
+fifth is the one that had spent forty minutes watching him not answer.
+
+He had answered everything he was actually shown. He replied to that message
+fourteen seconds after it landed. The silence the fifth draft scolded him for
+was ours.
+
+**The mechanism.** A model-path delivery is `openclaw agent --deliver`: the
+gateway runs a whole turn — tools, a card, the model's own words — and only
+then hands the result to the channel. A channel that cannot carry it makes the
+send fail, the row backs off, and the next attempt runs the turn AGAIN. Nothing
+from the first attempt survives, because nothing of it was ever written down:
+the outbox row holds an instruction, not a message. So a retry here is not a
+retry. It is a fresh composition, against a world that the failed sends
+themselves have changed.
+
+This is the non-timeout sibling of "Six good mornings for one timeout". That
+one was fixed by booking a timeout as sent, because a timed-out `--deliver` has
+very likely gone out. This one could not take that route: these sends really
+did fail, and the row really was still undelivered.
+
+**The fix** (`src/outbox/worker.js`, `channelProbe`) is to stop composing
+messages that cannot be sent. Before the first send of a tick, the worker asks
+the gateway's own `channels.status` — the probe built for the detector in "Six
+hours with nobody to talk to" — and an explicit `down` skips the send while
+booking *exactly* the bookkeeping the failed send would have booked: `attempts
++ 1`, the reason in `last_error`, the same backoff. Every reader downstream is
+unchanged, and they were checked one by one: the stuck-row alarm counts
+attempts, the reminder-redo discriminator needs `attempts > 0` with an error
+beside it to know our pipe lost a rung rather than the gate holding it, the
+dashboard counts both. The only thing that no longer happens is the turn.
+
+Three details that are the whole design:
+
+- **`unknown` sends.** The probe is not the authority on whether Olma may talk
+  to somebody — it is an optimisation that skips work known to be wasted. A
+  detector that goes quiet must never be the thing that silences the system,
+  which is the hazard `checkChannels` is itself written to avoid, pointed the
+  other way. An RPC that is switched off, a refused socket, a payload shape a
+  later gateway version changed: all of them deliver, exactly as today.
+- **Once per tick, and only behind the gate.** A tick with nothing deliverable
+  never asks at all; a busy one pays 11-18ms on the open WebSocket. Asking per
+  row would have been a poll in everything but name.
+- **`channelDown` is counted apart from `failed`** on the heartbeat, because
+  "attempted and lost" and "nobody attempted" are different facts about the
+  morning and a check that declines to act has to say so somewhere.
+
+**A second thing it stops, found while checking the same morning.** The rule
+above it — a `--deliver` that TIMES OUT is booked as SENT and never retried —
+is right about a healthy gateway and wrong about a dead channel. Outbox 10323,
+a meeting invite for u-10, failed fourteen times with `No active WhatsApp Web
+listener` and on the fifteenth attempt, at 08:01:20, timed out. It was stamped
+`sent_at` with `hold_reason IS NULL`: delivered, as far as every reader in the
+system is concerned. WhatsApp did not come back until 09:05. Nobody received
+it, and nothing will ever look at that row again. Skipping the send closes
+this: no send, no timeout, no false delivery — the row stays unsent and goes
+out when the channel returns.
+
+What this does NOT fix: a send that fails for any other reason still
+recomposes. Closing that needs the composed text to survive the failure, and
+the text lives in the transcript with a `MEDIA:` line attached to a card path —
+the same wall `undeliveredReply` hit when it chose "verbatim or nothing". The
+channel outage was the case that actually happened, five times, in one morning.
 
 
 ### היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)

@@ -34,21 +34,26 @@ async function callTool(name, args) {
   return res.content[0].text;
 }
 
+// Spawned twice: once for the file, once by the restart test at the end.
+function startBrokerd() {
+  const proc = spawn('node', [path.join(BIN, 'olma-brokerd.js')], {
+    env: { ...process.env, OLMA_DB_URL: db.url, OLMA_SOCK: SOCK, OLMA_HEARTBEAT: 'off' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  return new Promise((resolve, reject) => {
+    proc.stdout.on('data', (d) => { if (String(d).includes('listening')) resolve(proc); });
+    proc.stderr.on('data', (d) => console.error('[brokerd]', String(d)));
+    proc.on('exit', (code) => reject(new Error('brokerd exited ' + code)));
+    setTimeout(() => reject(new Error('brokerd start timeout')), 10_000);
+  });
+}
+
 before(async () => {
   db = await freshDb();
   alice = await makeUser(db.pool, '+972571000001', { firstName: 'Alice' });
   bob = await makeUser(db.pool, '+972571000002', { firstName: 'Bob' });
 
-  brokerd = spawn('node', [path.join(BIN, 'olma-brokerd.js')], {
-    env: { ...process.env, OLMA_DB_URL: db.url, OLMA_SOCK: SOCK, OLMA_HEARTBEAT: 'off' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  await new Promise((resolve, reject) => {
-    brokerd.stdout.on('data', (d) => { if (String(d).includes('listening')) resolve(); });
-    brokerd.stderr.on('data', (d) => console.error('[brokerd]', String(d)));
-    brokerd.on('exit', (code) => reject(new Error('brokerd exited ' + code)));
-    setTimeout(() => reject(new Error('brokerd start timeout')), 10_000);
-  });
+  brokerd = await startBrokerd();
 
   shim = spawn('node', [path.join(BIN, 'olma-mcp.js')], {
     env: { ...process.env, OLMA_SOCK: SOCK },
@@ -542,4 +547,38 @@ test('a group speaks with its own identity, and cannot borrow a person\'s tools'
   const { rows: refused } = await db.pool.query(
     `SELECT detail FROM audit_log WHERE event = 'group.tool_refused' ORDER BY id DESC LIMIT 1`);
   assert.equal(refused[0].detail.tool, 'list_my_tasks');
+});
+
+// LAST in the file on purpose: it stops brokerd and starts another one, and
+// every test above wants the first.
+//
+// A deploy restarts brokerd, and the shim outlives it — OpenClaw keeps one
+// shim per session, so the same process goes on serving tool calls across the
+// restart. It used to stop serving them permanently: brokerd's exit is a
+// CLEAN close, which emits 'end' and 'close' and never 'error', and the shim
+// listened only for 'error'. Its cached socket stayed set and destroyed, and
+// `write()` on a destroyed socket returns true without throwing, so every
+// later call waited out the full 30s and answered "assistant backend not
+// reachable (brokerd timeout)". Yehav's eleven snooze_task calls failed that
+// way, 30 seconds apart, one second after brokerd had come back up
+// (2026-09-11; `incidents.md`, "The socket that was never closed").
+//
+// The assertion that matters is the SECOND call: the first one is allowed to
+// fail, because it may be the one in flight when the socket dies. What may
+// never happen again is a shim that stays broken.
+test('the shim survives a brokerd restart', async () => {
+  const before = await callTool('list_my_tasks', { olma_identity: alice.identity_token });
+  assert.match(before, /^OK/);
+
+  brokerd.kill('SIGTERM');
+  await new Promise((resolve) => brokerd.on('exit', resolve));
+  brokerd = await startBrokerd();
+
+  // Whatever the in-flight call does, the next one must reconnect — and fast:
+  // rpc() gives up at 15s, well under the shim's own 30s timeout, so a shim
+  // that has gone back to waiting on the dead socket fails here rather than
+  // passing slowly.
+  await callTool('list_my_tasks', { olma_identity: alice.identity_token }).catch(() => null);
+  const after = await callTool('list_my_tasks', { olma_identity: alice.identity_token });
+  assert.match(after, /^OK/);
 });

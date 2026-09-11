@@ -11,6 +11,7 @@ const proactiveText = require('../domain/proactive-text');
 const { decide } = require('./gate');
 const audit = require('../domain/audit');
 const { mergeRoleFor, planMerge, MERGEABLE_KINDS } = require('../domain/message-merge');
+const { checkChannels } = require('../adapters/gateway-health');
 
 // A delivery is a full model turn — 30-90s of wall time and most of the box's
 // one core. An unbounded tick over a backlog (observed live 2026-08-27: ~20
@@ -37,6 +38,50 @@ const MAX_DELIVERIES_PER_TICK = 5;
 // next tick as its own message — it is a limit on how long one message may be.
 const MAX_BATCH = 8;
 
+// ── A retry is a new message, so a doomed send must not be attempted ────────
+// A delivery on the model path is `openclaw agent --deliver`: the gateway runs
+// a WHOLE TURN — tools, a rendered schedule card, the model's own words — and
+// only then hands the result to the channel. If the channel cannot carry it,
+// the send fails, the row backs off, and the next attempt runs the turn AGAIN.
+// Nothing of the first attempt is kept, because nothing of it was ever written
+// down: the outbox row holds an instruction, not a message.
+//
+// That is not merely expensive. Each recomposition reads a world that the
+// failed sends themselves created. On 2026-09-11 the WhatsApp channel was
+// disconnected from 06:07 to 12:05 and Yehav's morning digest was composed
+// five times — 08:26, 08:36, 08:46, 08:57, 09:08 — five model turns and five
+// freshly rendered cards. Four went nowhere. The fifth, the one the returning
+// channel finally carried, was the one that had watched him say nothing for
+// forty minutes: "11 מחכות, 3 תזכורות נשלחו — ואתה לא עונה". He had answered
+// every message he was actually shown. The silence was ours, and the retry
+// loop is what turned it into an accusation (`incidents.md`, "The fifth draft
+// was the rude one").
+//
+// So: before the first send of a tick, ask the gateway whether its channels
+// can carry anything. `down` skips the send and books exactly the bookkeeping
+// the failed send would have booked — attempts + 1, the reason in
+// `last_error`, the same backoff — so every reader downstream (the stuck-row
+// alarm, the reminder-redo discriminator that needs `attempts > 0` with an
+// error beside it, the dashboard) sees precisely what it sees today. The only
+// thing that does not happen is the turn.
+//
+// `unknown` sends. The probe is not the authority on whether we may talk to
+// somebody — it is an optimisation that skips work known to be wasted — and a
+// detector that goes quiet must never be the thing that silences the system.
+// Refusing on "could not tell" is the hazard the channel detector itself is
+// written to avoid, pointed the other way.
+//
+// Asked at most ONCE per tick, and only when there is a row to send: a quiet
+// tick costs nothing, a busy one costs the 11-18ms the WebSocket answers in.
+function channelProbe(deps) {
+  const ask = deps.checkChannels || checkChannels;
+  let asked = null;
+  return () => {
+    if (!asked) asked = ask({}).catch((e) => ({ status: 'unknown', detail: String((e && e.message) || e), channels: [] }));
+    return asked;
+  };
+}
+
 function payloadOf(row) {
   const p = row.payload;
   return (typeof p === 'string' ? JSON.parse(p) : p) || {};
@@ -56,8 +101,9 @@ function batchKeyFor(row) {
 
 // deliver(user, row) → { ok, error? } — injected; production uses
 // channels/openclaw.js, tests inject a recorder.
-async function drainOnce(pool, deliver, now = new Date()) {
+async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
   const outcomes = { delivered: 0, held: 0, expired: 0, dropped: 0, failed: 0 };
+  const channelsCanCarry = channelProbe(deps);
   // Rows whose own bookkeeping threw, recorded rather than rethrown — see the
   // catch at the bottom of the loop.
   const errored = [];
@@ -305,10 +351,17 @@ async function drainOnce(pool, deliver, now = new Date()) {
         // `items` and `mergedParts` ride the in-memory row only. Nothing about
         // the batch is written down, so a redelivery after a failed send
         // re-forms it from whatever is still due then.
-        const result = await deliver(
-          mergedParts ? { ...row, payload: { ...payloadOf(row), mergedParts } }
-            : ids.length > 1 ? { ...row, payload: { ...payloadOf(row), items: titles } } : row
-        );
+        // The one question asked before any turn is spent. Only an explicit
+        // `down` stops the send; see channelProbe above for why `unknown` does
+        // not, and why this is asked here rather than at the top of the tick
+        // (a tick with nothing deliverable never reaches this line).
+        const channels = await channelsCanCarry();
+        const result = channels.status === 'down'
+          ? { ok: false, error: `channel unavailable, no turn spent: ${channels.detail}` }
+          : await deliver(
+            mergedParts ? { ...row, payload: { ...payloadOf(row), mergedParts } }
+              : ids.length > 1 ? { ...row, payload: { ...payloadOf(row), items: titles } } : row
+          );
         if (result.ok) {
           await client.query(
             `UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE id = ANY($1::bigint[])`, [ids]
@@ -380,6 +433,12 @@ async function drainOnce(pool, deliver, now = new Date()) {
             [ids, String(result.error || 'delivery failed').slice(0, 500)]
           );
           outcomes.failed++;
+          // Counted apart from `failed` on the heartbeat, because the two read
+          // differently on the board: `failed` is sends that were attempted and
+          // did not land, `channelDown` is sends nobody attempted. A check that
+          // declines to act has to say so somewhere or it is indistinguishable
+          // from one that found nothing to do.
+          if (channels.status === 'down') outcomes.channelDown = (outcomes.channelDown || 0) + 1;
         }
       });
     } catch (e) {

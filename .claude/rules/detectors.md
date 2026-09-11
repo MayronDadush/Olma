@@ -5,6 +5,7 @@ paths:
   - "olma2/src/domain/hebrew-quality.js"
   - "olma2/src/domain/onboarding-review.js"
   - "olma2/src/domain/reminder-promise.js"
+  - "olma2/src/adapters/gateway-health.js"
   - "olma2/src/evals/**"
   - "olma2/scripts/run-evals.js"
 ---
@@ -93,14 +94,31 @@ title means this file. Grep the title, not the filename.
   and stopped there").
 
 - **`liveness_watch` repairs before it reports.** Every five minutes: gateway
-  probe and delivery queue; two bad ticks before a word; a gateway down for
-  two ticks is restarted (`intake/gateway-restart.js`, once per half hour) and
+  probe, CHANNEL probe and delivery queue; two bad ticks before a word; a
+  gateway or channel down for two ticks is restarted (`intake/gateway-restart.js`, once per half hour) and
   probed again; the news goes over WhatsApp — healed, stuck deliveries, or
   recovered — and a message that could not go out is `alertFailed` on the
   heartbeat. State in the `liveness_state` flag so a restart mid-outage does
   not re-alert. It speaks over the gateway's own pipe (owner's choice, no
   SMS), so a gateway that stays dead is repaired from here but reported only
   by the external monitor.
+
+- **A live gateway PROCESS is not a gateway that can send anything, and for
+  six hours nothing in the system knew the difference.** `checkGateway` asks
+  the health route; `gateway-health.checkChannels` asks the gateway's own
+  `channels.status` whether each channel is `linked`/`running`/`connected`,
+  and any one of those explicitly `false` is an outage that earns the same
+  restart on the same two ticks (`incidents.md`, "Six hours with nobody to
+  talk to"). Three things it must keep doing: ask over the **WebSocket** —
+  `openclaw channels status --json` is 4.1s of CPU an answer against the
+  RPC's 11-18ms, measured on the box, and belongs to the
+  never-poll-on-a-timer rule; name the channel **separately from the
+  process** in the alert, because through that whole outage the process
+  answered every probe it had; and treat everything that is not the gateway
+  explicitly saying so — RPC off, refused socket, unrecognised payload, a
+  field a later version stopped sending — as `unknown`. The remedy is a
+  restart, so "could not tell" reaching it is the detector becoming the
+  hazard.
 
 - **A new person's first hours are read back by code TWICE — three hours in,
   and again after their first day** (`jobs/onboarding-review.js`, `STAGES`; the
