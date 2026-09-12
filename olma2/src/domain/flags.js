@@ -24,6 +24,14 @@ const DEFAULTS = {
   reminder_escalation_max: 3,
   reminder_escalation_gap_hours: 3,
   live_subscriptions_per_user: 5,   // cap on active live-update subscriptions
+  // outbox/worker.js: how many times a day Olma may interrupt somebody with
+  // something she DECIDED to say. Urgent rows and the three kinds a person
+  // chose for themselves (reminder, digest, introduction) are exempt in
+  // gate.decide and uncounted by the worker. It lived only as an inline
+  // fallback until 2026-09-11, which meant the admin flag editor showed it
+  // with no default beside it — a number nobody can see the default of is one
+  // nobody can safely change.
+  proactive_daily_budget: 4,
   // Group mode (domain/groups.js): the largest group she will work in. Above
   // it she says so once and stops — a 50-person group never realistically gets
   // every member to write to her privately, and each tag costs a model turn.

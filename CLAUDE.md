@@ -133,7 +133,7 @@ Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intak
 ### Delivering a message
 
 **`.claude/rules/delivering.md`** — the delivery gate, quiet hours and quiet days, batching, merging, styles and what a verbatim sentence may say.
-Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format.js`, `src/domain/message-merge.js` and 9 more.
+Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format.js`, `src/domain/message-merge.js` and 10 more.
 
 - **`openclaw agent … --deliver` needs BOTH `--agent <id>` AND an explicit `--session-key`.**
 - **Any outbound send via `child_process` must be `spawn(cmd, args, {detached:true, stdio:'ignore'}).unref()`**
@@ -145,7 +145,9 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **What is the same every time is DRAWN, and only the sentence about it is a model's**
 - **…and since 2026-09-10 the lists and choices a person ASKS for are drawn the same way**
 - **The delivery gate is the chokepoint and a paused user has no exceptions**
+- **An unstated quiet day is not "none" — it is Saturday or Sunday, and which one is a fact about the PERSON.**
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where they differ.**
+- **A chag is QUIET only for somebody who asked for it, and "quiet-able" means yom tov and nothing else.**
 - **`DEFAULT_WINDOW` (09:00-21:00) is no longer only a fallback — it is a sentence somebody read.**
 - **That rung asks for the COUNTRY, not the city**
 - **Only the PERSON writing releases a night-held row.**
@@ -200,6 +202,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **A day-one step that has not gone out is REPLACED by the NEXT CHECK-IN of any kind, never joined by it.**
 - **Somebody who has stopped answering hears nothing Olma decided to say, and nothing on their record is cancelled.**
 - **A "once ever" question is stamped on the PERSON, never deduped on the route that asks it.**
+- **The chag offer is that shape's second column (`holiday_quiet_asked_at`, migration 062), with two routes from the start.**
 - **Deleting a user is not deleting a person until the GATEWAY's intake session goes too.**
 - **The ledgers are append-only.**
 - **The assistant is עולמה / Allma; the system is still olma2.**

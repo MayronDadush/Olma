@@ -12,14 +12,21 @@
 // miss-backoff (1 → three days, 2 → weekly, 3 → stop). Daytime is NOT checked here — the
 // outbox gate holds the row until the user's own window opens.
 const connectGate = require('../domain/google-connect-gate');
+const holidays = require('../domain/holidays');
 const meetings = require('../domain/meetings');
 const pause = require('../domain/pause');
+const preferences = require('../domain/preferences');
 const { enqueue } = require('../outbox/enqueue');
 const { lookupTimezone } = require('../domain/phone-timezone');
 
 const HOUR_MS = 3600_000;
 const MIN_MS = 60_000;
 const WEEK_MS = 7 * 24 * HOUR_MS;
+
+// How close a yom tov has to be before the ladder spends a rung offering to go
+// quiet on it. A week: near enough that the answer is about something real and
+// they can picture it, far enough that it is not a question on the day itself.
+const HOLIDAY_OFFER_DAYS = 7;
 
 // ---- day one ----------------------------------------------------------------
 //
@@ -433,10 +440,19 @@ function daysAgo(ts) {
 // What this specific person is missing, most valuable first. Each entry only
 // appears while its gap is real — set up a digest and that pitch disappears
 // on its own, which is what keeps discovery from ever feeling like marketing.
-async function discoveryGaps(client, userId) {
+// `now` is an injected clock, defaulting to the real one, for the same reason
+// drainOnce and todayBlock take one: one of these gaps depends on how close a
+// chag is, and a test that could only run in the week before Rosh Hashana is a
+// test that runs once a year. Production never passes it.
+async function discoveryGaps(client, userId, now = new Date()) {
   const gaps = [];
   const { rows: u } = await client.query(
-    `SELECT digest_times, timezone, timezone_confirmed, timezone_asked_at
+    `SELECT digest_times, timezone, timezone_confirmed, timezone_asked_at, locale,
+            holiday_quiet_asked_at,
+            (SELECT value FROM user_preferences p
+              WHERE p.user_id = users.id AND p.key = 'holiday_calendar') AS holiday_calendar,
+            (SELECT value FROM user_preferences p
+              WHERE p.user_id = users.id AND p.key = 'quiet_days') AS quiet_days
        FROM users WHERE id = $1`, [userId]);
   // FIRST, ahead of the digest: an unconfirmed zone poisons every dated thing
   // underneath it, and a digest offered at "09:00" in the wrong zone just
@@ -480,10 +496,68 @@ async function discoveryGaps(client, userId) {
     const guessed = u[0].timezone
       ? `We are currently guessing ${u[0].timezone}, which came from their phone number and is not a location.`
       : 'We have no timezone for them at all, so everything falls back to UTC.';
+    // The quiet day is a DEFAULT now, not an empty field, so this message is
+    // no longer offering them a setting — it is telling them one they already
+    // have (domain/holidays.js). Both halves of the sentence are drawn from
+    // the code that will actually enforce them: the hours from
+    // preferences.DEFAULT_WINDOW, the day from holidays.defaultQuietDay, so
+    // moving either cannot leave this sentence behind. Same reasoning as the
+    // hours, one rung further: what a person was TOLD is now a promise the
+    // gate has to keep.
+    const hebrew = !String(u[0].locale || '').toLowerCase().startsWith('en');
+    const day = holidays.defaultQuietDay(holidays.calendarFor({
+      locale: u[0].locale, timezone: u[0].timezone,
+    }));
+    const dayWord = holidays.quietDayWord(day, u[0].locale);
+    // Quoted in BOTH languages, not quoted in one and described in the other:
+    // a described sentence is a sentence the model rewrites, and this one has
+    // already come back as "נוסע לשם אחרת", which nobody could read. There is
+    // no country label inside it, which is what makes the English quote safe
+    // here and not in firstContactInstruction.
+    const copy = hebrew
+      ? 'באיזו מדינה אתה נמצא? ככה אדע מתי מתאים לכתוב לך.'
+        + `\nברירת המחדל שלי היא לכתוב לך בין 9:00 ל- 21:00 בשעון המקומי, ו${dayWord} לשלוח רק תזכורות שביקשת. ואם תיסע או תעבור למקום אחר — פשוט תגיד לי.`
+        + '\n🫡 אם מעדיף שעות אחרות, יום שקט אחר או בלי יום שקט בכלל — תגיד ואשנה.'
+      : 'Which country are you in? That way I\'ll know when it suits to write to you.'
+        + `\nBy default I write to you between 9:00 and 21:00 your local time, and ${dayWord} I send only the reminders you asked for. And if you travel or move somewhere else — just tell me.`
+        + '\n🫡 If you would rather have different hours, a different quiet day, or no quiet day at all — say so and I will change it.';
     gaps.push({
       topic: 'timezone',
-      instruction: `${guessed} Ask which COUNTRY they are in — never ask for a timezone name, that is our problem not theirs — and call set_my_timezone with the IANA zone and confirmed: true. ONE exception, and it is the whole reason this used to ask for a city: a handful of countries span several timezones (the US, Canada, Russia, Australia, Brazil, Mexico). If the country they name is one of those, you do not have an answer yet — ask which area or nearest big city as a short follow-up, and only then call set_my_timezone. Everywhere else the country IS the zone, and asking a Frenchman which city he is in is asking him to do our arithmetic. Say it in exactly this shape — the end of the second line is the travel line, where they learn to just say so when they travel or move — changing only the gender forms to match them: "באיזו מדינה אתה נמצא? ככה אדע מתי מתאים לכתוב לך.\nברירת המחדל שלי היא לכתוב לך בין 9:00 ל- 21:00 בשעון המקומי, ואם תיסע או תעבור למקום אחר — פשוט תגיד לי.\n🫡 אם מעדיף שעות אחרות, או שיש ימים בשבוע שבהם לא תרצה לקבל ממני כלום חוץ מתזכורות שביקשת — תגיד ואשנה." Do not paraphrase it, do not add a fourth line, do not explain the mechanism — a reworded version once came out as "נוסע לשם אחרת", which nobody could read. There is exactly ONE question mark in it, on the country; the hours and the quiet days are STATEMENTS, because three questions in one message is a form. If they answer the hours, call remember_preference key "availability" value "HH:MM-HH:MM". If they name days they want nothing on, call remember_preference key "quiet_days" with lowercase English three-letter days, comma-separated — "fri,sat" — whatever language they said them in.`,
+      instruction: `${guessed} Ask which COUNTRY they are in — never ask for a timezone name, that is our problem not theirs — and call set_my_timezone with the IANA zone and confirmed: true. ONE exception, and it is the whole reason this used to ask for a city: a handful of countries span several timezones (the US, Canada, Russia, Australia, Brazil, Mexico). If the country they name is one of those, you do not have an answer yet — ask which area or nearest big city as a short follow-up, and only then call set_my_timezone. Everywhere else the country IS the zone, and asking a Frenchman which city he is in is asking him to do our arithmetic. Say it in exactly this shape — the end of the second line is the travel line, where they learn to just say so when they travel or move — changing only the gender forms to match them: "${copy}" Do not paraphrase it, do not add a fourth line, do not explain the mechanism — a reworded version once came out as "נוסע לשם אחרת", which nobody could read. There is exactly ONE question mark in it, on the country; the hours and the quiet day are STATEMENTS, because three questions in one message is a form. If they answer the hours, call remember_preference key "availability" value "HH:MM-HH:MM". If they name days they want nothing on, call remember_preference key "quiet_days" with lowercase English three-letter days, comma-separated — "fri,sat" — whatever language they said them in. If they say they want NO quiet day at all, that is remember_preference key "quiet_days" value "none" — never forget_preference, because with no row at all the default day simply comes back.`,
     });
+  }
+  // The second route to the once-ever holiday offer, and the reason there has
+  // to be one: the turn hint only fires on a person who happens to WRITE on
+  // the chag itself, and somebody quiet that week would never be asked at all.
+  // It costs no extra message — the ladder sends one rung per cadence either
+  // way, so this only changes WHICH rung — and it is gated on a real yom tov
+  // being close enough that the answer is worth having.
+  //
+  // Both routes spend the same stamp, `users.holiday_quiet_asked_at`
+  // (migration 062), because two routes each honouring "at most once" is
+  // twice — the fault that asked Sarah for her city four times.
+  const holidayCalendar = holidays.calendarFor({
+    locale: u[0].locale, timezone: u[0].timezone, preference: u[0].holiday_calendar,
+  });
+  if (!u[0].holiday_quiet_asked_at && holidayCalendar !== 'none'
+      && !preferences.parseHolidayQuiet(u[0].quiet_days)) {
+    const soon = await holidays.nextQuietHoliday(holidayCalendar, {
+      tz: u[0].timezone, from: now, days: HOLIDAY_OFFER_DAYS,
+      il: holidays.isIsrael(u[0].timezone), locale: u[0].locale,
+    });
+    if (soon) {
+      gaps.push({
+        topic: 'holidays',
+        instruction: `${soon.name} falls in ${soon.inDays} day(s) for them, and nobody has ever `
+          + 'told them Olma can go quiet on chagim. Say it ONCE, in one line, as a STATEMENT with '
+          + 'no question mark — on chagim you can send only the reminders they asked for, and they '
+          + 'need only say the word. Do not wish them anything yet and do not explain the '
+          + 'mechanism. If they want it, call remember_preference key "quiet_days" ADDING '
+          + '"holidays" to whatever days are already there, so "sat" becomes "sat,holidays". If '
+          + `${soon.name} is not a day they keep at all, that is a different answer and a `
+          + 'different key: remember_preference "holiday_calendar", value "christian" or "none".',
+      });
+    }
   }
   const { rows: openTasks } = await client.query(
     `SELECT count(*)::int AS n FROM tasks
@@ -631,6 +705,14 @@ async function run(client, now = Date.now()) {
           `UPDATE users SET timezone_asked_at = now() WHERE id = $1 AND timezone_asked_at IS NULL`,
           [u.id]);
       }
+      // Same doctrine, same shape, different column: the turn hint on the erev
+      // of a chag spends this stamp too (domain/turn.advise), which is the
+      // whole point of putting it on the PERSON rather than on a topic string.
+      if (topic && /^holidays/.test(topic)) {
+        await client.query(
+          `UPDATE users SET holiday_quiet_asked_at = now()
+            WHERE id = $1 AND holiday_quiet_asked_at IS NULL`, [u.id]);
+      }
       results.push({ userId: u.id, rung });
     }
   }
@@ -638,6 +720,6 @@ async function run(client, now = Date.now()) {
 }
 
 module.exports = {
-  run, eligibleUsers, pickRung, requiredGapMs, idleHoursFor, GIVE_UP_MISSES, MISS_ONE_GAP_MS,
+  run, eligibleUsers, pickRung, discoveryGaps, requiredGapMs, idleHoursFor, GIVE_UP_MISSES, MISS_ONE_GAP_MS,
   onboardingStepDue, ONBOARDING_STEPS, DEAF_SILENT_SLOTS, stalledGoals,
 };

@@ -156,6 +156,8 @@ never trust a dated narrative for something you are about to act on.
 - [The mark that never moved (2026-09-07)](#the-mark-that-never-moved-2026-09-07)
 - ["בשמחה יהב, שיהיה ערב טוב" (2026-09-07)](#בשמחה-יהב-שיהיה-ערב-טוב-2026-09-07)
 - [A sentence about Shabbat, because the table had never heard of preferences (fixed 2026-09-10)](#a-sentence-about-shabbat-because-the-table-had-never-heard-of-preferences-fixed-2026-09-10)
+- [The quiet day nobody was ever going to ask for (2026-09-11)](#the-quiet-day-nobody-was-ever-going-to-ask-for-2026-09-11)
+- [Sixty-four holidays, eight of them quiet (2026-09-11)](#sixty-four-holidays-eight-of-them-quiet-2026-09-11)
 - [The hint the dedup swallowed (fixed 2026-09-10)](#the-hint-the-dedup-swallowed-fixed-2026-09-10)
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
@@ -5435,6 +5437,136 @@ rule working exactly as written.
 
 
 ## Features as they shipped
+
+
+### The quiet day nobody was ever going to ask for (2026-09-11)
+
+The machinery for a quiet day shipped on 2026-09-08 and the question that
+fills it shipped with it, on the discovery ladder's timezone rung. Three days
+later, across the whole roster, the number of people with a `quiet_days` row
+was one — Miron, who typed it unprompted on the 10th and had to be told about
+it twice for reasons of its own (see the Shabbat entry above).
+
+That is not a rung that failed. It is a setting nobody asks for because
+nobody knows it exists, and the answer is not to ask harder. The owner's
+instruction on 2026-09-11 was to make it the DEFAULT: Saturday for Hebrew
+speakers, Sunday for English speakers, unless they said otherwise.
+
+Three decisions inside that, each of which could have gone the other way.
+
+**Geography overrules language.** `calendarFor` reads a Jewish calendar off a
+`he` locale OR an Israeli timezone. The asymmetry is deliberate: Sunday is a
+working day in Israel, so an English speaker in Tel Aviv handed a Christian
+default loses an ordinary Sunday every week and has no idea why. The mirror
+mistake — a Jewish calendar for an English speaker abroad — costs one Saturday
+and one sentence to correct. When a guess has an expensive side, guess away
+from it.
+
+**"They have not said" and "they said no" stopped being the same value.** For
+three days both were `[]` and nothing depended on the difference. The moment
+an unstated day became a real Saturday, a hand-typed `"weekends"` in that
+column would have silently cancelled a day somebody had been TOLD about in
+their first week. So `parseQuietDays` returns three answers — days, `[]` for
+an explicit `none`, `null` for anything unreadable — and only the middle one
+counts as stated. The seven-day case, which is really a pause, joins `null`:
+it was already refused, and refusing it into the default rather than into
+silence is the same refusal one rung better. Same lesson the repo keeps
+relearning under different names, and this time it was visible before it cost
+anything, which is the only reason it is a paragraph and not an entry.
+
+**The delete now means the opposite of what people say.** Every real sentence
+here is "write to me on Saturdays too" — and `forget_preference('quiet_days')`,
+the obvious call for it, now restores the default rather than clearing it. The
+only spelling of "no quiet day" is the value `none`. That is stated in the
+rung's own copy, and `preferences.forget` puts `hints.quietDayDefault` on that
+one key's result for the calls that arrive any other way. It is worded as
+guidance about a TOOL and not as an instruction to write, because
+`remember_preference` and `forget_preference` have carried a 👍 since
+2026-09-10 and an unconditional ask for words beside a mark is the
+`markPlaced` fault, twice documented above.
+
+**And the rung was speaking Hebrew at everybody.** Reading it to add the day,
+it turned out `discoveryGaps` never took a locale at all: the "say this word
+for word" payload was Hebrew for every person on earth, and whatever an
+English speaker actually received was the model quietly declining to follow
+it. It is quoted in both languages now. Quoting rather than describing is the
+rule this rung already carries a scar for — a described version came out as
+"נוסע לשם אחרת" — and the English quote is safe here for the reason
+`firstContactInstruction` cannot have one: no country label inside it.
+
+What the person hears is one line longer and asks for nothing new:
+
+> ברירת המחדל שלי היא לכתוב לך בין 9:00 ל- 21:00 בשעון המקומי, ובשבת לשלוח רק
+> תזכורות שביקשת.
+
+Both halves of that sentence are drawn from the code that enforces them —
+`preferences.DEFAULT_WINDOW` and `holidays.quietDayWord` — and pinned by one
+test, on the argument the hours already had: what somebody was told is a
+promise the gate has to keep.
+
+
+### Sixty-four holidays, eight of them quiet (2026-09-11)
+
+The same conversation asked for the Jewish and Christian calendars: mention a
+chag when there is one, and ask whether people would rather receive nothing
+but reminders on those days. Four decisions came back from the owner, and each
+one is a smaller feature than the sentence that asked for it.
+
+**Not quiet by default, asked once ever.** A chag is a day most people are on
+their phone more, not less, and silently cancelling somebody's reminders on
+Rosh Hashana because a calendar said so is a thing they would have to discover.
+So the default is unchanged and the offer is made once — the same shape as the
+city, and now the second column of it (`users.holiday_quiet_asked_at`,
+migration 062). It has two routes from the start, the discovery ladder and a
+turn hint on the erev, which is precisely the arrangement that asked Sarah for
+her city four times when each route was separately careful. Both read the
+column and whichever gets there first writes it.
+
+**Mentioned in conversation, never announced.** "רק בהקשר השיחה" — the day
+rides `today.holiday` into the turn context and Olma sends nothing of its own.
+A proactive "שנה טובה" from an assistant is a greeting card from a company,
+and the one thing worse is sending it on Yom HaZikaron, so every fast and
+memorial day carries `solemn: true` and the hint says so.
+
+**Yom tov only.** hebcal's filtered year is 64 days, and the first read of it
+made Chanukah, Purim, Lag BaOmer, Chol HaMoed and four fasts all candidates
+for silence. They are real days and ordinary working days both; going quiet on
+them is broken, not respectful. The quiet tier is `flags.CHAG` and nothing
+else: eight days a year in Israel, thirteen abroad. The rest are `mention`,
+which holds nothing and only ever adds a clause to a reply. That split is the
+"a hint that fires on ordinary input is worse than no hint" rule applied to a
+calendar, and the test writes the eight days out as literals so a later
+widening has to edit a list that says what it is widening.
+
+**One key, not two.** Opting in is the token `holidays` inside the existing
+`quiet_days` value (`"sat,holidays"`). A second preference key would have been
+cleaner to read and would not fit: the tool schemas had about eleven
+characters of headroom, and the gate parsing one key instead of two is one
+thing to get wrong.
+
+Three things bit during the build. `require('@hebcal/core')` fails —
+`ERR_PACKAGE_PATH_NOT_EXPORTED`, the package is ESM-only — so it is
+`await import()`ed behind a cached promise that logs once and returns `null`
+for ever on failure; the gate reads this on every outbox row, and a package
+that will not load has to answer "no holidays" rather than throw into
+delivery. The first probe was a day out because it read `ev.getDate().greg()`
+through `toISOString()`, which is a LOCAL-midnight Date and reads back as
+yesterday from a zone ahead of UTC; the production path uses local getters and
+was verified across four server timezones. And `msUntilQuietDaysEnd` had to
+grow from a 14-day probe to 21, because a chag can chain into Shabbat into a
+second chag.
+
+The last one is a test-suite lesson rather than a product one. The suite went
+red on a Saturday the first time, and again on Rosh Hashana — six ladder
+assertions that had never named a date suddenly depended on one, because the
+new defaults are properties of the day the suite runs. Pinning `now` does not
+fix it: the worker stamps `sent_at` with Postgres's clock and counts the daily
+budget against the injected one, so moving the DATE breaks the arithmetic
+instead. Both are fixed in `makeUser` — a test user is created with
+`quiet_days = 'none'` and an already-spent `holiday_quiet_asked_at`, and a test
+that wants the real behaviour opts in with `quietDays: null` /
+`holidayAsked: null` and pins its own clock. The default in a fixture should be
+the state that makes every OTHER file's arithmetic its own.
 
 
 ### An offer to call a number the bridge has never served (fixed 2026-09-06)

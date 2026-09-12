@@ -69,19 +69,57 @@ function weekdayInTz(tz, date = new Date()) {
   }
 }
 
+// The local calendar date where THEY are. Same fail-open shape as the two
+// above, and the same reason the weekday is asked in their zone rather than
+// the server's: 23:00 UTC on the 20th is already the 21st in Jerusalem, and
+// Yom Kippur is a DATE, not an instant.
+function localDateInTz(tz, date = new Date()) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(date);
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+// Is this a day they keep? A weekday they named, or — only for somebody who
+// asked for it — a date the calendar says is a yom tov. One predicate for both
+// so the hold and the RELEASE can never disagree about which days exist:
+// Rosh Hashana runs into Shabbat often enough that a release computed from
+// weekdays alone would wake a row in the middle of a three-day run.
+function quietDayReason(facts, tz, date) {
+  const days = facts.quietDays || [];
+  if (days.includes(weekdayInTz(tz, date))) return 'quiet_day';
+  const dates = facts.quietDates || [];
+  if (dates.length && dates.includes(localDateInTz(tz, date))) return 'quiet_holiday';
+  return null;
+}
+
 // Milliseconds until the first moment past a run of quiet days that is also
 // inside their window. Approximate across DST for the same reason
 // msUntilWindowOpen is, and safe for a second reason: `releaseAfter` only says
 // when to LOOK at the row again — decide() then runs in full, so an answer
 // that lands an hour early simply holds again.
-function msUntilQuietDaysEnd(quietDays, window, tz, date = new Date()) {
+//
+// The probe runs to 21 days rather than 7 now that a holiday can be quiet: a
+// weekly pattern cannot outlast a week, but Pesach in the diaspora plus the
+// Shabbat either side is eight days, and returning "a week" for that would
+// wake the row inside the run it is waiting out.
+const QUIET_RUN_MAX_DAYS = 21;
+
+function msUntilQuietDaysEnd(facts, window, tz, date = new Date()) {
   const DAY_MS = 86_400_000;
-  for (let d = 1; d <= 7; d++) {
+  for (let d = 1; d <= QUIET_RUN_MAX_DAYS; d++) {
     const probe = new Date(date.getTime() + d * DAY_MS);
-    if (quietDays.includes(weekdayInTz(tz, probe))) continue;
+    if (quietDayReason(facts, tz, probe)) continue;
     return (probe.getTime() - date.getTime()) + msUntilWindowOpen(window, tz, probe);
   }
-  return 7 * DAY_MS; // unreachable: parseQuietDays refuses all seven
+  // Unreachable in practice: parseQuietDays refuses all seven weekdays and no
+  // run of yom tov comes close to three weeks. Answering with the cap rather
+  // than never is the fail-open half — a row that looks again too early holds
+  // again, a row that never looks again is lost.
+  return QUIET_RUN_MAX_DAYS * DAY_MS;
 }
 
 // Start of the next UTC day — the moment the daily send budget resets, since
@@ -211,12 +249,17 @@ function decide(facts) {
   // kept. `inRoomGrace` stays out for the same reason — speaking in a room is
   // not asking Olma for the things this day was set aside from, and nothing
   // is lost by it waiting.
-  const quietDays = facts.quietDays || [];
-  if (quietDays.length && !askedForInWords(row)
-      && quietDays.includes(weekdayInTz(tz, now))) {
+  //
+  // A HOLIDAY reaches this line by exactly the same route and is held for
+  // exactly the same reasons — only the hold_reason differs, so the dashboard
+  // can tell "Saturday" from "Yom Kippur" without a second rule to keep in
+  // step. It is opt-in and nothing else about it is special (owner,
+  // 2026-09-11): asked once, and the calendar is yom tov only.
+  const quietReason = !askedForInWords(row) && quietDayReason(facts, tz, now);
+  if (quietReason) {
     return {
-      action: 'hold', holdReason: 'quiet_day',
-      releaseAfter: new Date(now.getTime() + msUntilQuietDaysEnd(quietDays, window, tz, now)),
+      action: 'hold', holdReason: quietReason,
+      releaseAfter: new Date(now.getTime() + msUntilQuietDaysEnd(facts, window, tz, now)),
     };
   }
 
@@ -322,6 +365,6 @@ function decide(facts) {
 
 module.exports = {
   decide, withinWindow, msUntilWindowOpen, minutesInTz, parseHHMM, nextUtcMidnight,
-  weekdayInTz, msUntilQuietDaysEnd, askedForInWords,
+  weekdayInTz, localDateInTz, msUntilQuietDaysEnd, quietDayReason, askedForInWords,
   CONVERSATION_GRACE_MS,
 };

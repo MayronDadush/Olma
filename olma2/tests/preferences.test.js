@@ -7,7 +7,8 @@ const prefs = require('../src/domain/preferences');
 let db, user;
 before(async () => {
   db = await freshDb();
-  user = await makeUser(db.pool, '+972509000001');
+  // No preference row at all: this file is where the DEFAULT is proved.
+  user = await makeUser(db.pool, '+972509000001', { quietDays: null });
 });
 after(async () => { await db.teardown(); });
 
@@ -84,8 +85,9 @@ test('availabilityWindow: stated beats default, garbage falls back safely', asyn
 
 test('quietDays: whole days off, and no way to spell a permanent mute', async () => {
   await withClient(async (c) => {
-    const none = await prefs.quietDays(c, user.id);
-    assert.deepEqual(none.data.days, [], 'nobody has answered this by default');
+    const none = await prefs.quietDays(c, user.id, { locale: 'he' });
+    assert.deepEqual(none.data.days.map((d) => prefs.DAY_NAMES[d]), ['sat'],
+      'unstated is no longer empty: a Hebrew speaker gets Shabbat');
     assert.equal(none.data.source, 'default');
 
     await prefs.remember(c, user.id, 'quiet_days', 'fri,sat');
@@ -101,16 +103,76 @@ test('quietDays: whole days off, and no way to spell a permanent mute', async ()
       ['sun', 'fri', 'sat'], 'sorted, deduped, case-insensitive, three letters is enough');
 
     // Unrecognised words are dropped rather than failing — the gate reads this
-    // on every row and must never be stoppable by a bad value.
-    await prefs.remember(c, user.id, 'quiet_days', 'weekends and holidays');
-    assert.deepEqual((await prefs.quietDays(c, user.id)).data.days, []);
+    // on every row and must never be stoppable by a bad value. What it falls
+    // back TO is the default, not silence: a value nobody can read is not an
+    // answer, and cancelling the day they were told about on the strength of
+    // one is the mistake this distinction exists to stop.
+    await prefs.remember(c, user.id, 'quiet_days', 'whenever, really');
+    const unreadable = await prefs.quietDays(c, user.id, { locale: 'he' });
+    assert.deepEqual(unreadable.data.days.map((d) => prefs.DAY_NAMES[d]), ['sat']);
+    assert.equal(unreadable.data.source, 'default');
+
+    // Saying so, on the other hand, IS an answer, and it is the only way to
+    // spell it — deleting the row brings the default back.
+    await prefs.remember(c, user.id, 'quiet_days', 'none');
+    const said = await prefs.quietDays(c, user.id, { locale: 'he' });
+    assert.deepEqual(said.data.days, []);
+    assert.equal(said.data.source, 'stated');
+
+    // A named day beats a refusal in the same breath: "no, only Saturday".
+    await prefs.remember(c, user.id, 'quiet_days', 'no, sat');
+    assert.deepEqual(
+      (await prefs.quietDays(c, user.id, { locale: 'he' })).data.days.map((d) => prefs.DAY_NAMES[d]),
+      ['sat']);
 
     // Seven quiet days is a pause, which is a different feature with its own
     // reversal path. Reading it here would mute somebody through a route
     // nothing reports on, so it reads as nothing at all.
     await prefs.remember(c, user.id, 'quiet_days', 'sun,mon,tue,wed,thu,fri,sat');
-    const everyDay = await prefs.quietDays(c, user.id);
-    assert.deepEqual(everyDay.data.days, []);
+    const everyDay = await prefs.quietDays(c, user.id, { locale: 'he' });
+    assert.deepEqual(everyDay.data.days.map((d) => prefs.DAY_NAMES[d]), ['sat']);
     assert.equal(everyDay.data.source, 'default');
+  });
+});
+
+test('the default quiet day follows the person, not the server', async () => {
+  await withClient(async (c) => {
+    const u = await makeUser(db.pool, '+14155550111', { quietDays: null });
+    const sunday = await prefs.quietDays(c, u.id, { locale: 'en', timezone: 'America/New_York' });
+    assert.deepEqual(sunday.data.days.map((d) => prefs.DAY_NAMES[d]), ['sun']);
+    assert.equal(sunday.data.calendar, 'christian');
+
+    // An English speaker in Tel Aviv keeps Saturday. Sunday is a WORKING day
+    // there, so the geography has to overrule the language or the default
+    // silences an ordinary Sunday for them.
+    const israeli = await prefs.quietDays(c, u.id, { locale: 'en', timezone: 'Asia/Jerusalem' });
+    assert.deepEqual(israeli.data.days.map((d) => prefs.DAY_NAMES[d]), ['sat']);
+
+    // And a person who has said which calendar they keep is not guessed about.
+    await prefs.remember(c, u.id, 'holiday_calendar', 'none');
+    const nothing = await prefs.quietDays(c, u.id, { locale: 'he', timezone: 'Asia/Jerusalem' });
+    assert.deepEqual(nothing.data.days, []);
+    assert.equal(nothing.data.source, 'default');
+  });
+});
+
+test('forgetting quiet_days restores a real day, and the result says which', async () => {
+  await withClient(async (c) => {
+    const u = await makeUser(db.pool, '+972509000077', { quietDays: null });
+    await prefs.remember(c, u.id, 'quiet_days', 'fri');
+    const gone = await prefs.forget(c, u.id, 'quiet_days', { locale: 'he', timezone: 'Asia/Jerusalem' });
+    assert.equal(gone.ok, true);
+    // Every sentence a person actually says here is the opposite of what the
+    // delete now does, so the one call that can get it wrong is told so.
+    assert.match(gone.data.hints.quietDayDefault, /בשבת/);
+    assert.match(gone.data.hints.quietDayDefault, /"none"/);
+    assert.deepEqual(
+      (await prefs.quietDays(c, u.id, { locale: 'he' })).data.days.map((d) => prefs.DAY_NAMES[d]),
+      ['sat']);
+
+    // Nothing else grows a hint it did not have.
+    await prefs.remember(c, u.id, 'tone', 'short');
+    const plain = await prefs.forget(c, u.id, 'tone', { locale: 'he' });
+    assert.equal(plain.data.hints, undefined);
   });
 });

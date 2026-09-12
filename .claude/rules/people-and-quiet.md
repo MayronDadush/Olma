@@ -81,6 +81,20 @@ title means this file. Grep the title, not the filename.
   times"). And the first message **states** the zone guessed from the dialling
   code rather than asking for it, spending its one question on the name on
   file — `firstContactInstruction`, built per person.
+  **`users.holiday_quiet_asked_at` (migration 062) is the second column of
+  that shape**, and it was built with two routes from the start: the discovery
+  ladder offers quiet chagim when one is within seven days, and `turn.advise`
+  offers the same thing on the erev or the day itself if a conversation gets
+  there first. Whichever arrives stamps, and the other reads the stamp — a
+  topic string in the outbox would have let each of them be right about "at
+  most once" and asked twice between them. **It is spent on the HAND-OUT, not
+  on their answer**: a question the model then did not fit into the reply still
+  used up the one turn this person's patience had, which is the same reasoning
+  as the timezone rung's stamp on enqueue.
+  **The offer and the mention are different promises.** Naming the day is
+  conversation context only (owner, 2026-09-11: "רק בהקשר השיחה") — it rides
+  `today.holiday`, never a message of its own, and a day marked `solemn` (a
+  fast, Yom HaShoah, Yom HaZikaron, Yom Kippur) is never congratulated.
 
 - **Deleting a user is not deleting a person until the GATEWAY's intake
   session goes too.** `deprovisionUser` removes everything olma2 owns — row,

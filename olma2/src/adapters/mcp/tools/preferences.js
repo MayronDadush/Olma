@@ -18,7 +18,10 @@ module.exports = [
     (client, user, a) => preferences.remember(client, user.id, a.key, a.value)),
   tool('forget_preference', 'Remove a learned preference.',
     { key: S('string', 'Preference key') }, ['key'],
-    (client, user, a) => preferences.forget(client, user.id, a.key)),
+    // The whole user, not just the id: forgetting `quiet_days` restores a
+    // DEFAULT that depends on their language and their zone, and the result
+    // says which day came back (domain/preferences.forget).
+    (client, user, a) => preferences.forget(client, user.id, a.key, user)),
   tool('list_my_preferences', 'List learned preferences.', {}, [],
     (client, user) => preferences.list(client, user.id)),
 ];
