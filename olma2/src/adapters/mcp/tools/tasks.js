@@ -1,7 +1,7 @@
 'use strict';
 // tasks — one slice of the tool registry (see ../registry.js).
 const {
-  tasks, users, S, tool, ok,
+  tasks, users, reminders, S, tool, ok, pastMoment,
 } = require('./_shared');
 const dt = require('../../../domain/datetime');
 const format = require('../../../domain/message-format');
@@ -180,10 +180,26 @@ module.exports = [
       ends_at: S('string', 'Optional end of a range, same format: a shift is title \'משמרת\', due_at 12:00, ends_at 19:00 — never hours in the title.'),
       remind_at: S('string', 'The hour THEY named to be reminded, same format. Replaces the automatic one.'),
       parent_task_id: S('number', 'Optional parent (project) id') }, ['title'],
-    async (client, user, a) => taskHints(await tasks.addTask(client, user.id, {
-      title: a.title, kind: a.kind, location: a.location, category: a.category, dueAt: a.due_at, endsAt: a.ends_at,
-      remindAt: a.remind_at, parentId: a.parent_task_id,
-    }), user)),
+    async (client, user, a) => {
+      // Same guard set_task_reminder already has for remind_at — a model
+      // computing "in 5 minutes" can get the arithmetic wrong (Miron, an
+      // instant built off the UTC hour with the local offset tacked on
+      // unconverted, 2026-09-12), and add_task's due_at/remind_at reached
+      // the domain with no such check at all: a past due_at saved silently
+      // with autoReminderAt declining to arm anything (it returns null for
+      // a moment already gone), and Olma told him a reminder was coming
+      // that nothing behind it could ever send.
+      if (a.due_at && reminders.momentIsPast(a.due_at)) {
+        return pastMoment('due_at', a.due_at, user.timezone, 'no task was saved');
+      }
+      if (a.remind_at && reminders.momentIsPast(a.remind_at)) {
+        return pastMoment('remind_at', a.remind_at, user.timezone, 'no task was saved');
+      }
+      return taskHints(await tasks.addTask(client, user.id, {
+        title: a.title, kind: a.kind, location: a.location, category: a.category, dueAt: a.due_at, endsAt: a.ends_at,
+        remindAt: a.remind_at, parentId: a.parent_task_id,
+      }), user);
+    }),
   tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task. Also the way to SPLIT a goal into its parts: pass parent_task_id and the parts become subtasks in the same call. Timed items get their reminders automatically; when the reply carries hints, follow them. Any due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), converted from their own local time (USER.md); never bare digits with a Z.',
     { items: S('array', 'Array of {title, kind?, location?, category?, due_at?, ends_at?}; kind event|todo, location, category and times as in add_task.', { items: { type: 'object' } }),
       parent_task_id: S('number', 'Optional: save every item as a subtask of this project (one level)') }, ['items'],
@@ -196,6 +212,9 @@ module.exports = [
   tool('snooze_task', 'Move a task\'s due date; its reminders follow (a rung chasing the old date is closed, the automatic one re-arms an hour before the new one). new_due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00); a bare local time is rejected.',
     { task_id: S('number', 'Task id'), new_due_at: S('string', 'New ISO-8601 datetime WITH UTC offset') }, ['task_id', 'new_due_at'],
     async (client, user, a) => {
+      if (reminders.momentIsPast(a.new_due_at)) {
+        return pastMoment('new_due_at', a.new_due_at, user.timezone, 'the task was not moved');
+      }
       const res = taskHints(await tasks.snoozeTask(client, user.id, a.task_id, a.new_due_at), user);
       // Deliberately NOT inside `taskHints`: add_task and edit_task go through
       // it too and both earn a 👍, and an unconditional "say this" beside a
@@ -212,14 +231,25 @@ module.exports = [
       category: S('string', 'One of home|work|family|health|money|errands — only when the person named it; marks it as their choice.'),
       due_at: S('string', 'Optional new start, ISO-8601 WITH UTC offset'),
       ends_at: S('string', 'Optional new end, ISO-8601 WITH UTC offset, after due_at.') }, ['task_id'],
-    (client, user, a) => tasks.editTask(client, user.id, a.task_id, {
-      ...(a.title === undefined ? {} : { title: a.title }),
-      ...(a.kind === undefined ? {} : { kind: a.kind }),
-      ...(a.location === undefined ? {} : { location: a.location }),
-      ...(a.category === undefined ? {} : { category: a.category }),
-      ...(a.due_at === undefined ? {} : { dueAt: a.due_at }),
-      ...(a.ends_at === undefined ? {} : { endsAt: a.ends_at }),
-    })),
+    (client, user, a) => {
+      // Miron, 2026-09-12: edit_task's due_at had no past-moment guard at
+      // all, unlike set_task_reminder's remind_at — a wrong instant (UTC
+      // hour with the local offset tacked on, unconverted) saved silently,
+      // and the auto-reminder attach then declined it with no error either
+      // (autoReminderAt returns null for a due_at already gone). Olma told
+      // him "ב-16:41 אשלח לך תזכורת" over a row that could never fire.
+      if (a.due_at && reminders.momentIsPast(a.due_at)) {
+        return pastMoment('due_at', a.due_at, user.timezone, 'the task was not changed');
+      }
+      return tasks.editTask(client, user.id, a.task_id, {
+        ...(a.title === undefined ? {} : { title: a.title }),
+        ...(a.kind === undefined ? {} : { kind: a.kind }),
+        ...(a.location === undefined ? {} : { location: a.location }),
+        ...(a.category === undefined ? {} : { category: a.category }),
+        ...(a.due_at === undefined ? {} : { dueAt: a.due_at }),
+        ...(a.ends_at === undefined ? {} : { endsAt: a.ends_at }),
+      });
+    }),
   tool('restore_task', 'Put an archived task back on the open list, OPEN with its subtasks intact — the way back from anything Olma closed on its own (a passed appointment, a fully-ticked project).',
     { task_id: S('number', 'Task id') }, ['task_id'],
     (client, user, a) => tasks.unarchiveTask(client, user.id, a.task_id)),
