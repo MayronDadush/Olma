@@ -183,6 +183,22 @@ test('a meeting this person is not in cannot be answered or left', async () => {
   assert.equal((await actAs(stranger, 'leaveMeeting', { meetingId: id })).ok, false);
 });
 
+// The whole reason the page hides its own leave button for the person who
+// opened the coordination (see docs/design/user-dashboard.html, renderMeet's
+// `own` gate): this call is refused for them every time, and the page used
+// to offer it anyway, with the refusal never surfaced — a row that vanished
+// and came straight back with no explanation (real report, meeting id 32,
+// 2026-09-12: an empty "פגישה" מירון started, kept returning to his list).
+test('the initiator cannot leave their own coordination from the page', async () => {
+  const id = await coordination(gali, [me, ron], 'שלי');
+  const r = await actAs(gali, 'leaveMeeting', { meetingId: id });
+  assert.equal(r.ok, false, 'an initiator leaving is cancelling, not opting out');
+  assert.equal(r.error.code, 'invalid');
+  const page = await tx((c) => dash.load(c, gali.id));
+  assert.equal(page.data.meetings.some((x) => Number(x.id) === id), true,
+    'refused means still there, not silently archived');
+});
+
 test('a meeting the person left is off the answerable list', async () => {
   const id = await coordination(gali, [me, ron], 'נעלם');
   await actAs(me, 'leaveMeeting', { meetingId: id });

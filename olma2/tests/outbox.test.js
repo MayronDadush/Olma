@@ -263,6 +263,24 @@ test('gate: a quiet day releases into the next day they kept, not the next morni
   assert.equal(withinWindow(DAY, 'Asia/Jerusalem', held.releaseAfter), true);
 });
 
+test('gate: a quiet day releases at the next day\'s window open, not 24h after whenever it was checked', () => {
+  // Checked at 19:00 Saturday (Jerusalem), well after their window had opened
+  // that morning — the day-stepping fallback used to step by the wall-clock
+  // hour `now` happened to land on, so it answered "24 hours from now" and
+  // this row would have waited until 19:00 SUNDAY, ten hours after the day
+  // it was released into had already opened at 09:00. This is the plain
+  // non-Israeli-zone case; the `shabbatWindow` tests below cover the same bug
+  // shape's precise candle-lighting/havdalah version.
+  const saturdayEveningUTC = new Date('2026-08-15T16:00:00Z'); // 19:00 in Asia/Jerusalem
+  const shabbat2 = { ...baseFacts, now: saturdayEveningUTC, quietDays: [SAT] };
+  const held = decide({ ...shabbat2, row: row() });
+  assert.equal(held.holdReason, 'quiet_day');
+  const releaseLocal = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jerusalem', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(held.releaseAfter);
+  assert.equal(releaseLocal, 'Sun 09:00', 'released at Sunday\'s window open, not 24h later at 19:00');
+});
+
 // facts.shabbatWindow is what an Israeli zone's Saturday becomes instead of
 // the plain weekday check (worker.js resolves it via holidays.shabbatWindow
 // and strips 6 out of quietDays when it does) — candle-lighting to havdalah,

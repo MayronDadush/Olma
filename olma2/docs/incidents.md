@@ -3073,6 +3073,34 @@ them and the zone is Israeli — everyone else keeps the plain weekday check
 exactly as before. See `.claude/rules/delivering.md`, "An unstated quiet
 day…" for the rule this refines.
 
+Shipped and re-verified against the two real rows it was built for: מירון's
+and גלי's meeting-confirmation outbox rows were manually released so they
+would resolve under the new code the moment it deployed. גלי's row
+(`Asia/Jerusalem`) went out correctly, right after real havdalah — the fix
+worked. מירון's row came back re-held for another ~24 hours, hold_reason
+`quiet_day`, `release_after` almost exactly one day out — the SAME bug the fix
+had just solved, on the SAME meeting, because his stored timezone is
+`Asia/Nicosia`, not Israel, so `holidays.isIsrael` correctly never touched his
+row and it fell straight through to the plain day-stepping fallback.
+
+That fallback deserved its own look rather than a shrug at "he's just not
+Israeli": `msUntilQuietDaysEnd`'s loop stepped forward in probes of
+`date + d * DAY_MS` — the exact same wall-clock hour `date` (whenever the row
+happened to be checked) fell on, `d` days later. A row confirmed at 20:00 on a
+quiet day therefore waited until 20:00 the next kept day even though that
+day's own window had opened twelve hours earlier, at 09:00 — "roughly 24 hours
+from now" for every quiet-day user on Earth, not only the Israeli-Shabbat one
+just fixed. Fixed the same way: each probe is now anchored at that day's local
+midnight (`date + d * DAY_MS - minutesInTz(tz, date) * 60_000`) instead of at
+`date`'s own clock time, so the loop finds the next kept day's *start*, and
+`msUntilWindowOpen` carries it the rest of the way to that day's actual window
+open — mirroring, at calendar-day rather than to-the-minute precision, the
+same fix `shabbatWindow` made for Israel. Every existing test on this path had
+only ever asserted the release DAY, never the hour, so all of them kept
+passing unchanged through this change — which is exactly how the bug shipped
+unnoticed in the first place. `tests/outbox.test.js` now pins the hour too:
+checked at 19:00 Saturday, released 09:00 Sunday, not 19:00 Sunday.
+
 
 ## Stopping, pausing and doctrine
 
