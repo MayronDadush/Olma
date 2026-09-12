@@ -216,3 +216,45 @@ test('the row draws the rules the design decided', () => {
   assert.match(page, /m\.quorumMin \+ 1 > people \? null : m\.quorumMin \+ 1/,
     'past the top it returns to no minimum');
 });
+
+// The row shipped looking wrong, and none of the assertions above could see
+// it: a class name it had borrowed was already defined further down the same
+// stylesheet, as `display:flex`. The settle question and the clash badge —
+// which the row stacks UNDER itself — were laid out beside it instead, and
+// clipped. A page served as one file has one namespace, so a name being free
+// is a thing to check rather than to assume.
+test('no class the option row owns is defined twice', () => {
+  const page = fs.readFileSync(
+    path.join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
+
+  // The row's own structural names. Not the `.mo*` notes it reuses on purpose,
+  // and not `.group`, which is the page's shared card.
+  const owned = ['mtswipe', 'mtback', 'mtfront', 'mtopt', 'mttop', 'mtmain',
+    'mtring', 'mtformula', 'mtsum', 'mtseg', 'mtcheck', 'mtdel', 'mtvotes', 'minchip'];
+
+  for (const cls of owned) {
+    // A bare definition is the class at the START of a selector with nothing
+    // qualifying it — `.mtopt{…}`. `.mtopt.crown`, `.mtswipe .mtback` and
+    // `.x .mtopt` are modifiers and descendants; those may repeat freely, and
+    // a class may legitimately have NO bare rule at all (`.mtback` is only
+    // ever styled inside `.mtswipe`). What may never happen is two.
+    const bare = page.match(new RegExp('^\\.' + cls + '\\{', 'gm')) || [];
+    assert.ok(bare.length <= 1,
+      `.${cls} has ${bare.length} bare definitions — the later one silently wins by source order`);
+    // And it must be styled somewhere, or the name is a typo nothing reports.
+    assert.match(page, new RegExp('\\.' + cls + '[{ .:,]'), `.${cls} is styled by nothing`);
+  }
+
+  // The two the collision actually cost, pinned by name so a rename has to
+  // come past this line.
+  assert.match(page, /var row = '<div class="mtopt'/,
+    'the option row is .mtopt — .mtrow belongs to the meetings LIST and is display:flex');
+  assert.match(page, /^\.mtrow\{display:flex/m,
+    'and .mtrow still is that, which is why the option row may not borrow it');
+
+  // One card holding every option, not one card each: `#mtOpts` is a `.stack`
+  // with 26px between its children, which spaced the rows apart and left the
+  // hairline separators between them drawing nothing.
+  assert.match(page, /m\.opts\.length\s*\n?\s*\?\s*'<div class="group">' \+ m\.opts\.map/,
+    'the rows share one group, so they read as a table and the swipe has an edge');
+});

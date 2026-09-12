@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "design-pages",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["olma2/scripts/serve-design.js"],
+      "port": 8919,
+      "url": "http://localhost:8919"
+    }
+  ]
+}
