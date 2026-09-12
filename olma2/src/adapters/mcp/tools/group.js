@@ -26,7 +26,7 @@ module.exports = [
   // It never proposes a time: a time proposed from the room would be one
   // person's suggestion wearing the room's voice.
   groupTool('start_group_coordination',
-    'GROUP AGENTS ONLY. The room asked you to arrange something — start coordinating it. Everyone is then asked PRIVATELY when suits them; you never collect times in the room. One per room: asked again while one runs you get that one back (created=false), so say what is already being arranged instead of starting a second.',
+    'GROUP AGENTS ONLY. Call this the moment the room asks to arrange something — never say you are on it before calling it; nothing happens until you do. Everyone is then asked PRIVATELY when suits them; you never collect times here. One per room: asked again mid-run returns the same one (created=false) — say where it stands, do not start a second.',
     { what: S('string', 'What is being arranged, in the room\'s own words ("פאדל השבוע")') }, ['what'],
     async (client, ctx, a) => {
       const res = await groupMeetings.startCoordination(client, ctx.group, ctx.actingUser, a.what);
