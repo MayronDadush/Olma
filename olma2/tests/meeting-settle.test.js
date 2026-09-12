@@ -231,7 +231,11 @@ test('the page draws the button on the server\'s answer and sends the action', (
   const page = fs.readFileSync(
     path.join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
 
-  assert.match(page, /\(!LIVE \|\| m\.canSettle \? '<button class="mobtn settle" data-settle>/,
+  // The shape of the control is the row design's business and has changed
+  // once already; what this pins is the GATE in front of it. Drawn on
+  // anything but `canSettle` it is a button that fails for everybody who is
+  // not the initiator, and it used to be drawn for nobody at all.
+  assert.match(page, /\(!LIVE \|\| m\.canSettle[\s\S]{0,120}?data-settle/,
     'the live button opens on canSettle and nothing else — it used to be drawn for nobody');
   assert.match(page, /API\.send\("settleMeeting", \{meetingId:m\.id, optionId:o\.id\}/,
     'and pressing it has to reach the server rather than draw a settled card');

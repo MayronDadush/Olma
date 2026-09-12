@@ -381,6 +381,14 @@ const ACTIONS = {
     return meetingFanout.afterOptionRemoved(client, me, p.meetingId, res);
   },
 
+  // "Enough for me is 3 of 5". Nobody is messaged about it: it changes which
+  // mark a row draws, never what anybody was asked, so there is nothing here
+  // for a fan-out to say. Sending `null` clears it.
+  async setQuorum(client, userId, p) {
+    return meetings.setQuorum(client, userId, p.meetingId,
+      p.min === null || p.min === undefined || p.min === '' ? null : p.min);
+  },
+
   async swapOption(client, userId, p) {
     const me = await users.getById(client, userId);
     const mom = optionMoment.momentFor(me.timezone, { day: p.day, part: p.part, time: p.time, allDay: p.allDay === true });

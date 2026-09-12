@@ -46,6 +46,22 @@
   --warn-soft:#F8EFDC;
   --ok:#1B9B6B;
   --ok-soft:#E4F4EE;
+  /* The meeting ring's own three colours. A "no" needs a red that is NOT the
+     danger red — deleting and being unable to come are different weights of
+     bad, and the arcs sit millimetres apart. Gold is reserved for the one
+     state no other colour is allowed to mean: everybody can. */
+  --no-arc:#E0736A;
+  --gold:#B07A0B;
+  --gold-arc:#D9A21C;
+  --gold-soft:#FBF1DA;
+  /* The two marks are drawn objects, not glyphs in a text colour, so they keep
+     their own palette across both themes — a crown that inverts stops being a
+     crown. Only the line colour follows the page. */
+  --mk-line:#141322;
+  --mk-gold:#F2B32C;
+  --mk-gold-s:#C4841A;
+  --mk-paper:#FFFFFF;
+  --mk-paper-s:#DDD9EC;
   --knob:#FFFFFF;
   --seg-on:#FFFFFF;
   --glass:rgba(255,255,255,.74);
@@ -110,6 +126,13 @@
     --warn-soft:#332616;
     --ok:#41CB94;
     --ok-soft:#12352A;
+    --no-arc:#C9584F;
+    --gold:#E3B45C;
+    --gold-arc:#D9A21C;
+    --gold-soft:#2C2412;
+    --mk-line:#ECEAF6;
+    --mk-paper:#3A3750;
+    --mk-paper-s:#2A2840;
     --knob:#FFFFFF;
     --seg-on:#383345;
     --glass:rgba(24,23,32,.72);
@@ -147,6 +170,13 @@
   --warn-soft:#332616;
   --ok:#41CB94;
   --ok-soft:#12352A;
+  --no-arc:#C9584F;
+  --gold:#E3B45C;
+  --gold-arc:#D9A21C;
+  --gold-soft:#2C2412;
+  --mk-line:#ECEAF6;
+  --mk-paper:#3A3750;
+  --mk-paper-s:#2A2840;
   --knob:#FFFFFF;
   --seg-on:#383345;
   --glass:rgba(24,23,32,.72);
@@ -1015,23 +1045,115 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 /* ── meeting coordination ──
    An option is a row, not a cell. The grid it replaces was compact and taught
    nobody its second press; a row has space for two buttons that say what they
-   do, and for the answer so far right under the question. */
+   do, and for the answer so far right under the question.
+
+   The row carries FOUR elements and no more — ring, formula, answer, settle —
+   which is what leaves room for the names to open underneath instead of in a
+   second screen, and what keeps the trash off the row entirely on a phone.
+
+   ── the ring ──
+   One object that answers two questions at once: how many said yes (the
+   number, and the accent arc) and how the rest split (the second arc is the
+   noes, the gap is silence). Silence is drawn as absence deliberately — it is
+   not a third opinion, it is the absence of one, and a grey wedge of "hasn't
+   answered" reads as a vote against.
+
+   Two states recolour it, and they are not the same claim. Gold means
+   everybody can: nobody outstanding, nobody against, and it is the ONLY state
+   that settles itself. Green means the coordination's own minimum is met —
+   enough people, not all of them — and it settles nothing, because "enough"
+   is a judgement somebody still has to make with the ✓. */
+.mtring{position:relative;width:38px;height:38px;flex:0 0 auto}
+.mtring svg{transform:rotate(-90deg)}
+.mtring .track{stroke:var(--sep)}
+.mtring .yes{stroke:var(--accent);stroke-linecap:round}
+.mtring .no{stroke:var(--no-arc);stroke-linecap:round}
+.mtring b{position:absolute;inset:0;display:grid;place-items:center;
+  font-weight:650;font-size:11px;color:var(--accent);font-variant-numeric:tabular-nums}
+.mtring.full .yes{stroke:var(--gold-arc)}
+.mtring.full b{color:var(--gold)}
+.mtring.min .yes{stroke:var(--ok)}
+.mtring.min b{color:var(--ok)}
+
+/* ── the formula: day · when · date ──
+   Fixed columns so four rows can be scanned down the day and down the hour
+   without reading a sentence. `min-width` rather than a grid because the row
+   also holds a ring and two controls, and a grid would fight them. */
+.mtformula{display:flex;align-items:center;gap:0;font-size:14px;margin:0 0 2px;white-space:nowrap}
+.mtformula .f-day{font-weight:700;color:var(--text);min-width:3.9em}
+.mtformula .f-when{font-weight:700;color:var(--accent);font-size:13px;min-width:3.9em}
+.mtformula .f-date{font-weight:600;color:var(--text-3);font-size:12px;font-variant-numeric:tabular-nums}
+.mtformula .f-sep{color:var(--text-3);margin:0 6px;font-weight:400}
+.mtformula .mk{width:17px;height:17px;margin-inline-start:6px;flex:none}
+.mtsum{font-size:11.5px;color:var(--text-3);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mtsum .gold{color:var(--gold);font-weight:700}
+.mtsum .grn{color:var(--ok);font-weight:700}
+.mtsum .no{color:var(--danger)}
+
+/* ── the swipe shell ──
+   The gesture IS the first of the two presses a delete takes: it cannot happen
+   by accident, and it is more deliberate than a tap. The red is underneath and
+   the row slides off it, so nothing appears that was not already there. */
+.mtswipe{position:relative;overflow:hidden;border-bottom:1px solid var(--sep)}
+.mtswipe:last-child{border-bottom:0}
+.mtswipe .mtback{position:absolute;inset:0;background:var(--danger);display:flex;align-items:center;
+  justify-content:flex-start;padding-inline-start:20px;gap:9px;color:#fff;font-weight:700;font-size:13.5px;
+  border:0;width:100%;font-family:inherit;cursor:pointer}
+.mtswipe .mtback svg{width:19px;height:19px;color:#fff}
+.mtswipe .mtfront{position:relative;background:var(--surface);
+  transition:transform .22s cubic-bezier(.32,.72,0,1);touch-action:pan-y}
+.mtswipe.dragging .mtfront{transition:none}
+/* The row slides towards the END of the line, which is what uncovers the red
+   sitting at the START where the trash label is — so the direction is logical
+   and `--dirf` is what makes the same rule right in both languages. */
+.mtswipe.open .mtfront{transform:translateX(calc(-96px * var(--dirf)))}
+/* A settled time is not deletable at all — ending a coordination everybody has
+   already been told about is `cancel_meeting`, which messages them. */
+.mtswipe.locked .mtfront{transform:none}
+.mtrow{padding:10px 11px}
+.mtrow.crown{background:linear-gradient(90deg,var(--gold-soft),transparent 80%)}
+.mttop{display:flex;align-items:center;gap:9px}
+.mtmain{flex:1;min-width:0}
+
+/* The desktop half of the same affordance: no swipe with a mouse, so the trash
+   appears on hover and takes its own second click to confirm. */
+.mtdel{border:0;background:transparent;color:var(--text-3);padding:0;width:30px;height:30px;flex:none;
+  display:grid;place-items:center;border-radius:8px;cursor:pointer;opacity:0;transition:.16s}
+.mtdel svg{width:16px;height:16px}
+.mtswipe:hover .mtdel,.mtdel:focus-visible{opacity:1}
+.mtdel:hover{background:var(--danger-soft);color:var(--danger)}
+.mtdel.arm{opacity:1;background:var(--danger);color:#fff}
+@media (hover:none){.mtdel{display:none}}
+
+/* The names, opened by a tap on the row itself. Nobody who has not answered is
+   listed — they are the grey of the ring, and a name under "hasn't answered"
+   invites somebody to read a silence as a refusal. */
+.mtvotes{padding:2px 11px 11px}
+.mtvgrp{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.mtvlab{font-size:11px;font-weight:700;color:var(--text-3);margin-inline-end:2px}
+.mtvlab.y{color:var(--accent)} .mtvlab.n{color:var(--danger)}
+.mtvnote{font-size:11px;color:var(--text-3);margin:4px 0 0}
+
+.mtseg{display:flex;background:var(--sep);border-radius:9px;padding:2px;flex:none}
+.mtseg button{border:0;background:transparent;font:inherit;font-size:12px;font-weight:700;
+  color:var(--text-3);padding:6px 9px;border-radius:7px;cursor:pointer}
+.mtseg button[aria-pressed="true"]{background:var(--seg-on);color:var(--accent);box-shadow:var(--shadow-s)}
+.mtseg button[data-a="n"][aria-pressed="true"]{color:var(--danger)}
+.mtcheck{border:1px solid var(--sep-2);background:transparent;border-radius:9px;padding:0;
+  width:32px;height:32px;flex:none;display:grid;place-items:center;cursor:pointer;color:var(--accent)}
+.mtcheck svg{width:16px;height:16px}
+.mtcheck.arm{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* "Enough for me is 3 of 5" — the coordination's own minimum, set from here. */
+.minchip{display:inline-flex;align-items:center;gap:6px;background:var(--surface);
+  border:1px solid var(--sep-2);border-radius:99px;padding:4px 10px;font-size:12px;
+  font-weight:600;color:var(--text-2);margin:0 0 11px;cursor:pointer;font-family:inherit}
+.minchip b{color:var(--accent);font-variant-numeric:tabular-nums}
+.minchip svg{width:12px;height:12px}
+
 .mopt{padding:13px 14px 12px;margin-bottom:10px}
 .mopt.best{box-shadow:var(--shadow-s),inset 0 0 0 1.5px var(--accent-line)}
 .mopt.settled{opacity:.72}
-.mohead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.mohead b{font-size:15.5px;font-weight:650;letter-spacing:-.012em}
-.mochip{
-  font-size:11px;font-weight:700;padding:2.5px 9px;border-radius:999px;flex:none;
-  display:inline-flex;align-items:center;gap:4px;
-  background:var(--accent-soft);color:var(--accent);
-}
-.mochip svg{width:9px;height:9px}
-.mochip.done{background:var(--ok-soft);color:var(--ok)}
-.motally{font-size:12.5px;color:var(--text-3);margin-top:1px}
-.motally em{font-style:normal;font-weight:600}
-.motally em.y{color:var(--accent)}
-.motally em.n{color:var(--danger)}
 
 /* The two answers, side by side and both labelled. Pressing the one you are
    already on clears it — the third state, without a third gesture. */
@@ -1083,37 +1205,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .moconfirm p{margin:0;font-size:13.5px;color:var(--text-2);font-weight:600}
 .moconfirm .moact{margin-top:9px}
 
-/* the answer so far, as a bar — the task list's fill asked of people. Two
-   segments, because a coordination has three answers and one fill would file
-   "has not answered" under "cannot". */
-.mtbar{
-  display:flex;height:6px;border-radius:999px;overflow:hidden;
-  background:var(--bg-tint);margin:9px 0 6px;
-}
-.mtbar i{display:block;height:100%;width:var(--w,0%);transition:width .5s var(--ease-io)}
-.mtbar i.y{background:var(--accent)}
-.mtbar i.n{background:var(--danger);opacity:.55}
-/* Who, not how many. A ring says the answer and the dot on a "no" means the
-   ring is never the only thing saying it. */
-.mtppl{display:flex;margin-top:7px}
-.mtppl u{
-  display:block;position:relative;width:20px;height:20px;border-radius:50%;flex:none;
-  overflow:visible;text-decoration:none;margin-inline-start:-5px;
-}
-.mtppl u:first-child{margin-inline-start:0}
-.mtppl u > span{
-  display:block;width:100%;height:100%;border-radius:50%;overflow:hidden;
-  background:var(--surface);box-shadow:0 0 0 1.6px var(--surface);
-}
-.mtppl u svg{width:100%;height:100%;display:block}
-.mtppl u.y > span{box-shadow:0 0 0 1.6px var(--accent)}
-.mtppl u.n > span{box-shadow:0 0 0 1.6px var(--danger)}
-.mtppl u.w{opacity:.38}
-.mtppl u.n::after{
-  content:"";position:absolute;bottom:-1px;inset-inline-end:-1px;
-  width:7px;height:7px;border-radius:50%;background:var(--danger);
-  box-shadow:0 0 0 1.4px var(--surface);
-}
 
 .mtfaces{display:flex;flex-wrap:wrap;gap:6px;padding:6px 14px 2px}
 .mtface{
@@ -2066,6 +2157,31 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <symbol id="i-play" viewBox="0 0 16 16"><path d="M4.6 3.2 12.6 8l-8 4.8Z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
   <symbol id="i-undo" viewBox="0 0 16 16"><path d="M3.4 6.2h6.3a3.6 3.6 0 0 1 0 7.2H6.1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 2.9 2.9 6.2 6 9.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-x" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.8 6.6h14.4M9.6 6.6V4.4h4.8v2.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="m6.8 6.6 1 13.4h8.4l1-13.4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <!-- The two marks on a candidate time. Drawn objects rather than glyphs,
+       because the whole point is that they are legible at 17px in a row you
+       are scanning: a crown for the one time everybody can make, a pair of
+       cards for one that has reached the coordination's own minimum. They
+       carry their own palette (--mk-*) and only their outline follows the
+       theme — a crown in the text colour is a smudge. -->
+  <symbol id="m-crown" viewBox="0 0 24 24">
+    <path d="M3.6 17.4V7.2l4.9 4.5L12 5.6l3.5 6.1 4.9-4.5v10.2Z" fill="var(--mk-gold)"/>
+    <path d="M12 5.6l3.5 6.1 4.9-4.5v10.2H12Z" fill="var(--mk-gold-s)"/>
+    <path d="M3.6 17.4V7.2l4.9 4.5L12 5.6l3.5 6.1 4.9-4.5v10.2Z" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M3.4 17.2h17.2v2.4a1.4 1.4 0 0 1-1.4 1.4H4.8a1.4 1.4 0 0 1-1.4-1.4Z" fill="var(--mk-gold)"/>
+    <path d="M12 17.2h8.6v2.4a1.4 1.4 0 0 1-1.4 1.4H12Z" fill="var(--mk-gold-s)"/>
+    <path d="M3.4 17.2h17.2v2.4a1.4 1.4 0 0 1-1.4 1.4H4.8a1.4 1.4 0 0 1-1.4-1.4Z" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <circle cx="3.6" cy="6" r="1.7" fill="var(--mk-gold)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <circle cx="12" cy="4.4" r="1.8" fill="var(--mk-gold)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <circle cx="20.4" cy="6" r="1.7" fill="var(--mk-gold-s)" stroke="var(--mk-line)" stroke-width="1.5"/>
+  </symbol>
+  <symbol id="m-cards" viewBox="0 0 24 24">
+    <g transform="rotate(14 14 12)">
+      <rect x="10" y="4.2" width="9.6" height="13.6" rx="2.2" fill="var(--mk-paper-s)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    </g>
+    <rect x="4.4" y="6.2" width="10.4" height="14.6" rx="2.4" fill="var(--mk-paper)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="M9.6 9.4c1.7 1.9 3.1 2.8 3.1 4.2 0 1.3-1.1 1.9-1.9 1.5-.3-.16-.5-.4-.62-.7l.5 2.1H8.5l.5-2.1c-.11.3-.32.54-.62.7-.8.4-1.9-.2-1.9-1.5 0-1.4 1.4-2.3 3.12-4.2Z" fill="var(--mk-line)"/>
+  </symbol>
   <symbol id="i-search" viewBox="0 0 20 20"><circle cx="8.8" cy="8.8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m13.1 13.1 3.7 3.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   <symbol id="i-phone" viewBox="0 0 20 20"><path d="M5.3 3h1.42c.63 0 1.2.4 1.4 1l.78 2.05c.21.57.03 1.2-.44 1.58l-.7.55a8.7 8.7 0 0 0 3.06 3.06l.55-.7c.38-.47 1.01-.65 1.58-.44l2.05.78c.6.2 1 .77 1 1.4v1.42a2.1 2.1 0 0 1-2.28 2.1C8.5 15.3 4.7 11.5 3.2 5.28A2.1 2.1 0 0 1 5.3 3Z" fill="currentColor"/></symbol>
   <symbol id="i-note" viewBox="0 0 20 20"><path d="M4.4 2.6h11.2v10.2l-4 4.6H4.4Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.6 12.6h-4v4.8M7.2 6.4h5.6M7.2 9.4h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
@@ -2535,6 +2651,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <div class="mtfaces" id="mtFaces"></div>
 
   <div class="glabel" style="margin-top:14px"><span id="mtAskLbl"></span></div>
+  <!-- How many yeses this coordination calls enough. Anybody in it may set it,
+       like everything else about the table, and it settles nothing by itself:
+       it decides which rows earn the 🃏, and a person still has to press the
+       ✓. Unset is the normal state and says so. -->
+  <button class="minchip" id="mtMin"></button>
   <div class="stack" id="mtOpts"></div>
 
   <div id="mtAddWrap" style="margin-top:12px">
@@ -3218,7 +3339,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.settlingIn":"כולם יכולים — נקבע בעוד {n} שניות, עוד אפשר לשנות",
       "mt.settlingNow":"כולם יכולים — נקבע עכשיו",
       "mt.iCan":"אני יכול","mt.iCant":"לא יכול",
-      "mt.bestTag":"המתאים ביותר","mt.settledTag":"נקבע",
+      "mt.settledTag":"נקבע",
       "mt.gapNo":"מי שלא יכול: {list}","mt.gapWait":"מי שעוד לא ענה: {list}",
       "mt.gapMeNo":"סימנת שאתה לא יכול במועד הזה.","mt.gapMeWait":"עוד לא ענית על המועד הזה.",
       "mt.settleAnyway":"לסגור בלי {list}","mt.settleMe":"לסגור בכל זאת",
@@ -3227,6 +3348,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.overCap":"יוצעו {n} הראשונים",
       "mt.swapTitle":"מה להחליף?","mt.swapNew":"במקומו ייכנס: {when}",
       "mt.drop":"החלפה","mt.noneYet":"אף אחד עדיין",
+      "mt.remove":"מחיקה","mt.removeConfirm":"עוד לחיצה כדי למחוק",
+      "mt.quorumMet":"יש מניין",
+      "mt.minNone":"בלי מינימום","mt.minSet":"מספיק לי {n} מתוך {of}",
+      "toast.mtRemoved":"ירד מהשולחן — {when}","toast.mtRemoveFailed":"לא הצלחתי להוריד את המועד",
       "mt.leave":"יציאה מהתיאום",
       "mt.calAdd":"הוספה ליומן שלי","mt.calRemove":"הסרה מהיומן שלי",
       "mt.whenLbl":"מתי ביום","mt.exact":"שעה מדויקת",
@@ -3247,7 +3372,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.withWho":"עם מי","mt.whichDays":"אילו ימים להציע",
       "mt.start":"פתיחת תיאום","mt.untitled":"פגישה",
       "mtsel.n0":"","mtsel.n1":"נבחר אחד","mtsel.nN":"נבחרו {n}",
-      "mt.cant":"לא יכול","mt.canDo":"יכול","mt.noAnswer":"טרם ענה",
+      "mt.cant":"לא יכול","mt.canDo":"יכול",
       "mtY.n0":"","mtY.n1":"אחד יכול","mtY.nN":"{n} יכולים",
       "mtN.n0":"","mtN.n1":"אחד לא יכול","mtN.nN":"{n} לא יכולים",
       "mtW.n0":"","mtW.n1":"אחד טרם ענה","mtW.nN":"{n} טרם ענו",
@@ -3454,7 +3579,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.settlingIn":"Everyone can — settles in {n}s, you can still change it",
       "mt.settlingNow":"Everyone can — settling now",
       "mt.iCan":"I can","mt.iCant":"I can't",
-      "mt.bestTag":"Best fit","mt.settledTag":"Settled",
+      "mt.settledTag":"Settled",
       "mt.gapNo":"Can't make it: {list}","mt.gapWait":"Haven't answered: {list}",
       "mt.gapMeNo":"You marked that you can't make this one.","mt.gapMeWait":"You haven't answered this one.",
       "mt.settleAnyway":"Settle without {list}","mt.settleMe":"Settle anyway",
@@ -3463,6 +3588,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.overCap":"the first {n} will be offered",
       "mt.swapTitle":"What should it replace?","mt.swapNew":"In its place: {when}",
       "mt.drop":"Replace","mt.noneYet":"nobody yet",
+      "mt.remove":"Delete","mt.removeConfirm":"Press again to delete",
+      "mt.quorumMet":"Enough people",
+      "mt.minNone":"No minimum","mt.minSet":"{n} of {of} is enough",
+      "toast.mtRemoved":"Off the table — {when}","toast.mtRemoveFailed":"Could not take that time off",
       "mt.leave":"Leave the coordination",
       "mt.calAdd":"Add to my calendar","mt.calRemove":"Remove from my calendar",
       "mt.whenLbl":"Time of day","mt.exact":"Exact time",
@@ -3483,7 +3612,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.withWho":"With whom","mt.whichDays":"Which days to offer",
       "mt.start":"Open coordination","mt.untitled":"Meeting",
       "mtsel.n0":"","mtsel.n1":"1 chosen","mtsel.nN":"{n} chosen",
-      "mt.cant":"can't","mt.canDo":"can","mt.noAnswer":"no answer yet",
+      "mt.cant":"can't","mt.canDo":"can",
       "mtY.n0":"","mtY.n1":"1 can","mtY.nN":"{n} can",
       "mtN.n0":"","mtN.n1":"1 can't","mtN.nN":"{n} can't",
       "mtW.n0":"","mtW.n1":"1 hasn't answered","mtW.nN":"{n} haven't answered",
@@ -5904,6 +6033,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      left:[], settled:51, inCal:true}
   ];
   var mtSeq = 100, mtOptSeq = 500, mtOpen = null, mtSettling = null, mtLeaving = null;
+  /* Three pieces of per-row state, all of them "what is this row in the middle
+     of": whose names are open, whose desktop trash is armed, and which row a
+     swipe has latched open. They live out here rather than on the DOM because
+     every answer re-renders the list, and state in the markup would not
+     survive it. */
+  var mtOpenVotes = null, mtArmedDel = null, mtSwiped = null;
 
   /* "א, ב ו־ג", never "א ו־ב ו־ג". D.and is the conjunction before the LAST
      name only; everything before it is separated by a comma. Same shape in
@@ -6117,26 +6252,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      different thing on each press. A three-state tap is compact and nobody
      discovers the third state; pressing the button you are already on clears
      it, which is the same idea people already have about a selected chip. */
-  function mtFacesFor(m, o){
-    return mtActive(m).map(function(pid){
-      var f = pid === 0 ? null : friendById(pid);
-      var a = mtAns(m, pid, o.id);
-      var st = a === "y" ? "y" : a === "n" ? "n" : "w";
-      var label = mtName(pid) + " · " + t(st === "y" ? "mt.canDo" : st === "n" ? "mt.cant" : "mt.noAnswer");
-      return '<u class="' + st + '" title="' + esc(label) + '" aria-label="' + esc(label) + '"><span>' +
-        avatarSVG(pid === 0 ? myAvatar : f.av, {g:pid === 0 ? myGender() : f.g}) + "</span></u>";
-    }).join("");
-  }
-  function mtTallyFor(m, o){
-    var total = mtActive(m).length;
-    var y = mtN(m, o, "y"), no = mtN(m, o, "n"), wait = total - y - no;
-    if(y === total) return '<em class="y">' + esc(t("mt.allFree")) + "</em>";
-    var bits = [];
-    if(y) bits.push('<em class="y">' + esc(pl("mtY", y)) + "</em>");
-    if(no) bits.push('<em class="n">' + esc(pl("mtN", no)) + "</em>");
-    if(wait > 0) bits.push("<em>" + esc(pl("mtW", wait)) + "</em>");
-    return bits.join(" · ");
-  }
   /* Who is missing, named. "Not everyone can" and "not everyone has answered"
      are different sentences and the second is the commoner mistake, so the
      confirmation says which one it is and whose name is on it.
@@ -6180,34 +6295,110 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       return mtPartOf(e.time) === (o.part || mtPartOf(o.time));
     })[0] || null;
   }
-  function mtOptHTML(m, o){
+  /* ── the ring ──
+     Two arcs on one circle: the yeses from the top, the noes continuing from
+     where they stop, and the remainder left as track. Silence is the gap, not
+     a third arc — it is the absence of an opinion and drawing it as one reads
+     as a vote against.
+
+     `full` is nobody outstanding and nobody against; `min` is the
+     coordination's own minimum met and NOT everybody. They are exclusive and
+     in that order, because unanimity is also above any minimum and only one of
+     them may claim the ring. */
+  var RING_R = 17, RING_C = 2 * Math.PI * RING_R;
+  function mtRingState(m, o){
     var total = mtActive(m).length;
+    if(!total) return "";
+    var y = mtN(m, o, "y");
+    if(y === total) return "full";
+    if(m.quorumMin && y >= m.quorumMin) return "min";
+    return "";
+  }
+  function mtRingHTML(m, o){
+    var total = Math.max(1, mtActive(m).length);
     var y = mtN(m, o, "y"), no = mtN(m, o, "n");
+    var yLen = y / total * RING_C, nLen = no / total * RING_C;
+    var arc = function(cls, len, offset){
+      return len <= 0 ? "" : '<circle class="' + cls + '" cx="19" cy="19" r="' + RING_R +
+        '" fill="none" stroke-width="3.5" stroke-dasharray="' + len.toFixed(1) + " " +
+        (RING_C - len).toFixed(1) + '" stroke-dashoffset="' + (-offset).toFixed(1) + '"/>';
+    };
+    return '<div class="mtring ' + mtRingState(m, o) + '"><svg width="38" height="38" aria-hidden="true">' +
+      '<circle class="track" cx="19" cy="19" r="' + RING_R + '" fill="none" stroke-width="3.5"/>' +
+      arc("yes", yLen, 0) + arc("no", nLen, yLen) +
+      "</svg><b>" + y + "/" + mtActive(m).length + "</b></div>";
+  }
+  /* day · when · date. Three fixed columns rather than a sentence, so four
+     rows can be read down a column. The date is the one thing never abbreviated
+     away: two Thursdays in one coordination is ordinary. */
+  function mtFormulaHTML(m, o){
+    var d = mtDate(o.day);
+    var day = o.day === 0 ? t("cal.today") : o.day === 1 ? t("cal.tomorrow") : D.full[d.getDay()];
+    var state = mtRingState(m, o);
+    var mark = m.settled === o.id ? ""
+      : state === "full" ? '<svg class="mk" viewBox="0 0 24 24"><use href="#m-crown"/></svg>'
+        : state === "min" ? '<svg class="mk" viewBox="0 0 24 24"><use href="#m-cards"/></svg>' : "";
+    return '<p class="mtformula"><span class="f-day">' + esc(day) + "</span>" +
+      '<span class="f-sep">·</span><span class="f-when">' + esc(mtWhen(m, o)) + "</span>" +
+      '<span class="f-sep">·</span><span class="f-date">' + d.getDate() + "." + (d.getMonth() + 1) + "</span>" +
+      mark + "</p>";
+  }
+  /* The one line under the formula. It leads with whichever of the two marks
+     is showing, because that is the thing the colour already promised. */
+  function mtSumHTML(m, o){
+    var total = mtActive(m).length;
+    var y = mtN(m, o, "y"), no = mtN(m, o, "n"), wait = total - y - no;
+    var state = mtRingState(m, o), bits = [];
+    if(m.settled === o.id) return '<p class="mtsum">' + esc(t("mt.settledTag")) + "</p>";
+    if(state === "full") bits.push('<span class="gold">' + esc(t("mt.allFree")) + "</span>");
+    else if(state === "min") bits.push('<span class="grn">' + esc(t("mt.quorumMet")) + "</span>");
+    else if(y) bits.push(esc(pl("mtY", y)));
+    if(no) bits.push('<span class="no">' + esc(pl("mtN", no)) + "</span>");
+    if(wait > 0) bits.push(esc(pl("mtW", wait)));
+    return '<p class="mtsum">' + bits.join(" · ") + "</p>";
+  }
+  /* Who said what, opened by a tap on the row. Only people who ANSWERED are
+     named: a silence is already in the ring as grey, and listing it under a
+     heading turns "has not got to it" into a position. */
+  function mtVotesHTML(m, o){
+    var yes = [], nos = [], wait = [];
+    mtActive(m).forEach(function(pid){
+      var a = mtAns(m, pid, o.id);
+      (a === "y" ? yes : a === "n" ? nos : wait).push(mtName(pid));
+    });
+    var grp = function(cls, label, names){
+      return names.length ? '<div class="mtvgrp"><span class="mtvlab ' + cls + '">' + esc(label) + "</span>" +
+        names.map(function(n){ return '<span class="pill">' + esc(n) + "</span>"; }).join("") + "</div>" : "";
+    };
+    return '<div class="mtvotes">' + grp("y", t("mt.canDo"), yes) + grp("n", t("mt.cant"), nos) +
+      (wait.length ? '<p class="mtvnote">' + esc(t("mt.gapWait", {list:nameList(wait)})) + "</p>" : "") +
+      "</div>";
+  }
+  function mtOptHTML(m, o){
     var isBest = !m.settled && mtBest(m) === o && m.opts.length > 1;
     var settled = m.settled === o.id;
     var mineAns = mtAns(m, 0, o.id);
-    var head = '<div class="mohead"><b>' + esc(mtOptLabel(m, o)) + "</b>" +
-      (settled ? '<span class="mochip done"><svg><use href="#i-check"/></svg>' + esc(t("mt.settledTag")) + "</span>"
-       : isBest ? '<span class="mochip best">' + esc(t("mt.bestTag")) + "</span>" : "") + "</div>";
 
-    var bar = '<span class="mtbar">' +
-      '<i class="y" style="--w:' + (y / Math.max(1,total) * 100).toFixed(1) + '%"></i>' +
-      '<i class="n" style="--w:' + (no / Math.max(1,total) * 100).toFixed(1) + '%"></i></span>';
-
+    /* Your own answer is a two-state segment rather than two buttons that can
+       both be off-looking: one of them is always pressed once you have said
+       anything, and pressing the pressed one takes the answer back. */
     var act = settled ? ""
-      : '<div class="moact">' +
-        '<button class="mobtn yes" data-a="y" aria-pressed="' + (mineAns === "y") + '">' +
-        '<svg><use href="#i-check"/></svg>' + esc(t("mt.iCan")) + "</button>" +
-        '<button class="mobtn no" data-a="n" aria-pressed="' + (mineAns === "n") + '">' +
-        '<svg><use href="#i-x"/></svg>' + esc(t("mt.iCant")) + "</button>" +
+      : '<div class="mtseg" role="group">' +
+        '<button data-a="y" aria-pressed="' + (mineAns === "y") + '">' + esc(t("mt.iCan")) + "</button>" +
+        '<button data-a="n" aria-pressed="' + (mineAns === "n") + '">' + esc(t("mt.iCant")) + "</button>" +
+        "</div>" +
         /* Settling by hand is the owner's own case (2026-09-06): everybody
            wants Tuesday, one person cannot make it, and it happens anyway.
            Agreement no longer needs it — a unanimous option settles itself a
            minute later — so this is the exception, and it belongs to the
            person who opened the coordination. `canSettle` is the server's
-           answer to that; the seed page has no server and shows it always. */
-        (!LIVE || m.canSettle ? '<button class="mobtn settle" data-settle>' + esc(t("mt.pick")) + "</button>" : "") +
-        "</div>";
+           answer to that; the seed page has no server and shows it always.
+           Two presses, and the first one only arms it: what the second does is
+           tell everybody, including whoever said they cannot make it. */
+        (!LIVE || m.canSettle
+          ? '<button class="mtcheck' + (mtSettling === o.id ? " arm" : "") + '" data-settle ' +
+            'aria-label="' + esc(t("mt.pick")) + '"><svg><use href="#i-check"/></svg></button>'
+          : "");
 
     var confirm = "";
     if(mtSettling === o.id){
@@ -6238,10 +6429,28 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         esc(t("mt.clash", {what:clash.title + (clash.time ? " · " + clash.time : "")})) +
         "</span></div>"
       : "";
-    return '<div class="group mopt' + (isBest ? " best" : "") + (settled ? " settled" : "") +
-      '" data-opt="' + o.id + '">' + head + bar +
-      '<div class="motally">' + mtTallyFor(m, o) + "</div>" +
-      '<div class="mtppl">' + mtFacesFor(m, o) + "</div>" + settling + warn + act + confirm + "</div>";
+    /* Four elements across the row and nothing else — ring, formula, answer,
+       settle. The trash is not among them on a phone: it lives under the row,
+       reached by the swipe, which is what leaves the width for two buttons
+       that say what they do rather than two icons that hint. */
+    var row = '<div class="mtrow' + (mtRingState(m, o) === "full" && !settled ? " crown" : "") + '">' +
+      '<div class="mttop">' + mtRingHTML(m, o) +
+      '<div class="mtmain">' + mtFormulaHTML(m, o) + mtSumHTML(m, o) + "</div>" +
+      act +
+      (settled ? "" : '<button class="mtdel' + (mtArmedDel === o.id ? " arm" : "") + '" data-del ' +
+        'aria-label="' + esc(t(mtArmedDel === o.id ? "mt.removeConfirm" : "mt.remove")) + '">' +
+        '<svg><use href="#i-trash"/></svg></button>') +
+      "</div>" + settling + warn + confirm + "</div>";
+
+    /* A settled time carries no delete at all, on either surface: ending
+       something everybody has already been told about is cancelling the
+       coordination, which is a different action with a message behind it. */
+    return '<div class="mtswipe' + (settled ? " locked" : "") + (isBest ? " best" : "") +
+      (mtSwiped === o.id ? " open" : "") + '" data-opt="' + o.id + '">' +
+      (settled ? "" : '<button class="mtback" data-del-confirm tabindex="-1">' +
+        '<svg><use href="#i-trash"/></svg>' + esc(t("mt.remove")) + "</button>") +
+      '<div class="mtfront">' + row +
+      (mtOpenVotes === o.id ? mtVotesHTML(m, o) : "") + "</div></div>";
   }
 
   function renderMeet(){
@@ -6263,6 +6472,18 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         '<span class="face">' + avatarSVG(pid === 0 ? myAvatar : f.av, {g:pid === 0 ? myGender() : f.g}) + "</span>" +
         esc(mtName(pid)) + (gone ? " · " + t("mt.gone") : said ? "" : " · " + t("mt.waiting")) + "</span>";
     }).join("");
+
+    /* The coordination's own minimum, above the table it applies to. It is a
+       statement about this coordination and not about any one time, which is
+       why it sits over the list rather than on a row — and why it is drawn
+       even when it is unset, as the offer to set one. */
+    var mn = $("#mtMin");
+    mn.hidden = !!m.settled;
+    mn.innerHTML = '<svg><use href="#i-people"/></svg>' +
+      (m.quorumMin
+        ? esc(t("mt.minSet")).replace("{n}", "<b>" + m.quorumMin + "</b>")
+          .replace("{of}", String(mtActive(m).length))
+        : esc(t("mt.minNone")));
 
     $("#mtOpts").innerHTML = m.opts.map(function(o){ return mtOptHTML(m, o); }).join("")
       || '<div class="group"><div class="empty">' + esc(t("mt.stateNoOpts")) + "</div></div>";
@@ -6342,8 +6563,121 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       return;
     }
     if(e.target.closest("[data-force]")){ mtSettle(o); return; }
-    if(e.target.closest("[data-cancelsettle]")){ mtSettling = null; renderMeet(); }
+    if(e.target.closest("[data-cancelsettle]")){ mtSettling = null; renderMeet(); return; }
+
+    /* The red under a swiped row. Getting here already took the gesture, so
+       this press is the second of the two and removes it. */
+    if(e.target.closest("[data-del-confirm]")){ mtRemove(o); return; }
+
+    /* The desktop trash: no swipe with a mouse, so the button itself holds the
+       two presses — the first arms it and turns it red, the second removes.
+       Arming is per row and clearing it is what any other press does. */
+    var del = e.target.closest("[data-del]");
+    if(del){
+      if(mtArmedDel === o.id){ mtRemove(o); return; }
+      mtArmedDel = o.id; mtSwiped = null; renderMeet();
+      return;
+    }
+
+    /* A row the swipe has latched open spends this press closing itself. The
+       gesture asked a question and tapping the row that is sitting on top of
+       the red is the answer "no", not a request to read names. */
+    if(mtSwiped === o.id){ mtSwiped = null; renderMeet(); return; }
+
+    /* Anything else on the row opens the names, which is the row's own press.
+       It also stands the delete down: a person who just tapped the row is not
+       mid-delete, and leaving a red trash armed behind them is how one gets
+       pressed by accident. */
+    mtArmedDel = null;
+    mtOpenVotes = mtOpenVotes === o.id ? null : o.id;
+    renderMeet();
   });
+  /* The minimum cycles rather than opening a picker: the whole range is 2 to
+     the number of people in the coordination, and a sheet for six values is a
+     sheet nobody wants. Past the top it goes back to unset, which is the state
+     it has to be able to reach — a group's number copied in at the start is
+     exactly the one somebody needs to clear. */
+  $("#mtMin").addEventListener("click", function(){
+    var m = mtOpen;
+    if(!m || m.settled) return;
+    var people = mtActive(m).length;
+    var next = !m.quorumMin ? 2 : m.quorumMin + 1 > people ? null : m.quorumMin + 1;
+    if(next === 2 && people < 2) return;
+    m.quorumMin = next;
+    if(LIVE) API.send("setQuorum", {meetingId:m.id, min:next}, function(){ API.reload(); });
+    renderMeet(); renderMeets();
+  });
+  /* Nothing is drawn as gone before the server says so: a removal anybody in
+     the coordination may perform is one the server is still entitled to
+     refuse, and a row that vanishes and comes back is worse than one that
+     waits. */
+  function mtRemove(o){
+    var m = mtOpen;
+    mtArmedDel = null; mtSwiped = null;
+    if(mtOpenVotes === o.id) mtOpenVotes = null;
+    if(LIVE){
+      API.send("removeOption", {meetingId:m.id, optionId:o.id}, function(data){
+        if(!data) toast(t("toast.mtRemoveFailed"));
+        API.reload();
+      });
+      toast(t("toast.mtRemoved", {when:mtOptLabel(m, o)}));
+      renderMeet();
+      return;
+    }
+    m.opts = m.opts.filter(function(x){ return x.id !== o.id; });
+    mtActive(m).forEach(function(pid){ if(m.ans[pid]) delete m.ans[pid][o.id]; });
+    if(mtSettling === o.id) mtSettling = null;
+    renderMeet(); renderMeets();
+    toast(t("toast.mtRemoved", {when:mtOptLabel(m, o)}));
+  }
+  /* ── the swipe ──
+     Pointer events rather than touch, so a trackpad drag behaves the same, and
+     the row follows the finger only once the gesture is unambiguously
+     sideways: the sheet under it scrolls vertically and stealing that would
+     make the list feel stuck. Past a third of the way it latches open and
+     waits for the press; short of that it falls back. */
+  (function(){
+    var SWIPE_OPEN = 96, LATCH = .34;
+    var box = $("#mtOpts"), sw = null, x0 = 0, y0 = 0, dx = 0, axis = "";
+    box.addEventListener("pointerdown", function(e){
+      if(e.pointerType === "mouse") return;
+      var el = e.target.closest(".mtswipe");
+      if(!el || el.classList.contains("locked")) return;
+      sw = el; x0 = e.clientX; y0 = e.clientY; dx = 0; axis = "";
+    });
+    box.addEventListener("pointermove", function(e){
+      if(!sw) return;
+      var mx = e.clientX - x0, my = e.clientY - y0;
+      if(!axis){
+        if(Math.abs(mx) < 6 && Math.abs(my) < 6) return;
+        axis = Math.abs(mx) > Math.abs(my) ? "x" : "y";
+        if(axis === "x") sw.classList.add("dragging");
+      }
+      if(axis !== "x") return;
+      /* Either direction opens it, which is what the page is for: this is an
+         RTL layout and the hand that reaches for "away from me" is not the
+         same hand in both languages. */
+      dx = Math.max(-SWIPE_OPEN, Math.min(SWIPE_OPEN, mx));
+      var front = sw.querySelector(".mtfront");
+      if(front) front.style.transform = "translateX(" + dx + "px)";
+    });
+    var end = function(){
+      if(!sw) return;
+      var el = sw, moved = Math.abs(dx), front = el.querySelector(".mtfront");
+      sw = null; axis = "";
+      el.classList.remove("dragging");
+      if(front) front.style.transform = "";
+      /* The latch is state, not a class left on the node: the next answer
+         anybody gives re-renders this whole list, and a class would go with
+         it while the row still looked open for one frame. */
+      mtSwiped = moved > SWIPE_OPEN * LATCH ? +el.dataset.opt : null;
+      mtArmedDel = null;
+      dx = 0;
+      renderMeet();
+    };
+    box.addEventListener("pointerup", end);
+    box.addEventListener("pointercancel", end);
+  })();
   function mtSettle(o){
     var m = mtOpen;
     mtSettling = null;
@@ -7928,7 +8262,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       settlingOpt:(m.settlingOptionId || null),
       /* Whether this person may end it by hand. The server answers this and
          re-asks it on the way in; the button is a hint, not the rule. */
-      canSettle:!!m.canSettle
+      canSettle:!!m.canSettle,
+      /* How many yeses this coordination calls enough. `null` is no minimum,
+         and no minimum means no green mark ever — never a number guessed from
+         the head count. */
+      quorumMin:(typeof m.quorumMin === "number" ? m.quorumMin : null)
     };
   }
   function liveContact(c){

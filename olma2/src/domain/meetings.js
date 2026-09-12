@@ -66,8 +66,16 @@ async function startMeeting(client, initiatorId, title, participantUserIds, { gr
     finalTitle = `פגישה — ${names.join(', ')}`.slice(0, TITLE_MAX_CHARS);
   }
 
+  // The room's minimum is COPIED here, never read through later (migration
+  // 064). A coordination opened out of a group starts from that room's number
+  // and owns it from this instant — including clearing it, which the group's
+  // own column cannot say for one meeting. A group with no minimum, which is
+  // every group in production today, leaves this NULL exactly as a meeting
+  // with no group does.
   const { rows } = await client.query(
-    `INSERT INTO meetings (initiator_id, title, group_id) VALUES ($1, $2, $3) RETURNING *`,
+    `INSERT INTO meetings (initiator_id, title, group_id, quorum_min)
+     VALUES ($1, $2, $3, (SELECT quorum_min FROM chat_groups WHERE id = $3))
+     RETURNING *`,
     [initiatorId, finalTitle, groupId]
   );
   const meeting = rows[0];
@@ -457,6 +465,36 @@ async function setTitle(client, userId, meetingId, title) {
   });
 }
 
+// How many yeses make this coordination worth settling. `null` clears it.
+//
+// Anybody IN the coordination may set it, on the same argument that lets
+// anybody add or remove a time: the table belongs to the group, not to
+// whoever opened it. What it never does is settle anything by itself —
+// reaching the minimum draws a mark and arms nothing, because "enough people
+// can" is a judgement and only unanimity is a fact (see `options.answer`,
+// which is the one thing that arms the grace).
+async function setQuorum(client, userId, meetingId, min) {
+  const p = await participantRow(client, meetingId, userId);
+  if (!p || p.state === 'opted_out') return err('not_found', 'not a participant of this meeting');
+  let clean = null;
+  if (min !== null && min !== undefined && min !== '') {
+    clean = Number(min);
+    // A minimum of one is whoever proposed it, which is not a minimum. The DB
+    // check says the same thing; saying it here too is what makes the answer a
+    // named refusal rather than a constraint violation.
+    if (!Number.isInteger(clean) || clean < 2) return err('invalid', 'minimum must be a whole number, 2 or more');
+  }
+  const { rows } = await client.query(
+    `UPDATE meetings SET quorum_min = $2, updated_at = now()
+     WHERE id = $1 AND status = 'negotiating'
+     RETURNING id`,
+    [meetingId, clean]
+  );
+  if (!rows[0]) return err('not_found', 'open coordination not found');
+  await audit.record(client, userId, 'meeting.quorum_set', { meetingId, quorumMin: clean });
+  return ok({ meetingId, quorumMin: clean });
+}
+
 async function getStatus(client, userId, meetingId) {
   const p = await participantRow(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
@@ -623,7 +661,7 @@ async function listNegotiating(client, userId = null) {
 
 module.exports = {
   startMeeting, recordConstraint, proposeSlot, respondToSlot,
-  optOut, rejoin, applyExit, withdrawConfirmed, cancelMeeting, setTitle,
+  optOut, rejoin, applyExit, withdrawConfirmed, cancelMeeting, setTitle, setQuorum,
   getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow,
   expireStaleMeetings, expireOne, listNegotiating, EXPIRE_AFTER_START_MS, LEGACY_STALE_DAYS,
   shareableConstraints, constraintTexts, shareableTexts,
