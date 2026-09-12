@@ -144,7 +144,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **On the MODEL path a style is granted by a RESULT, never by a description**
 - **What is the same every time is DRAWN, and only the sentence about it is a model's**
 - **…and since 2026-09-10 the lists and choices a person ASKS for are drawn the same way**
-- **The delivery gate is the chokepoint and a paused user has no exceptions**
+- **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause
 - **An unstated quiet day is not "none" — it is Saturday or Sunday, and which one is a fact about the PERSON.**
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where they differ.**
 - **For an Israeli zone, Saturday's quiet day is candle-lighting to havdalah, not midnight to midnight.**
@@ -292,6 +292,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **TWO columns say somebody has written to Olma, because two voices can hear their first message.**
 - **Being in the room IS the introduction, and it is not the inferred closeness the old rule forbids.**
 - **The room reaches each member's OWN page as a group already made**
+- **A paused member is counted into a room's coordination only until their one invite is spent; a day of silence takes them out**
 - **A member's message in the room opens the gate's fifteen-minute window for that room's coordination — and, since 2026-09-09, the room's own announcement window; nothing else**
 
 ### Testing

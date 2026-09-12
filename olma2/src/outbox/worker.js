@@ -6,6 +6,7 @@
 const { withTx } = require('../db/pool');
 const preferences = require('../domain/preferences');
 const holidays = require('../domain/holidays');
+const pauseDomain = require('../domain/pause');
 const quota = require('../domain/quota');
 const flagsDomain = require('../domain/flags');
 const proactiveText = require('../domain/proactive-text');
@@ -114,7 +115,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
   // anyway, and only mislead readers into thinking it protects something).
   const { rows: candidates } = await pool.query(
     `SELECT o.*, u.timezone, u.agent_id, u.quota_blocked_until, u.first_name, u.last_inbound_at,
-            u.digest_times, u.paused_at, u.is_eval, u.checkin_misses, u.locale
+            u.digest_times, u.paused_at, u.paused_reason, u.room_invite_sent_at, u.is_eval, u.checkin_misses, u.locale
      FROM outbox o JOIN users u ON u.id = o.user_id
      WHERE o.sent_at IS NULL AND (o.release_after IS NULL OR o.release_after <= $1)
        -- A budget hold with no release time is waiting for the next digest to
@@ -227,6 +228,19 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             [meetingId, row.user_id]);
           groupWroteAt = wrote[0] ? wrote[0].at : null;
         }
+        // The one coordination message a PAUSED person still gets (owner,
+        // 2026-09-13; domain/pause.js). Only an invite, only to a meeting a
+        // room started, only while this pause has not spent it. Worker-scoped
+        // like groupWroteAt, and false for every sibling below: it is about
+        // THIS row, and a paused person's other rows must still drop.
+        let pausedRoomInvite = false;
+        if (row.paused_at && row.kind === 'meeting_invite' && meetingId
+            && !pauseDomain.roomInviteSpent(row)) {
+          const { rows: g } = await client.query(
+            `SELECT 1 FROM meetings WHERE id = $1 AND group_id IS NOT NULL AND status = 'negotiating'`,
+            [meetingId]);
+          pausedRoomInvite = g.length > 0;
+        }
         // An introduction still waiting to go out. Bounded to two days on
         // purpose: a repair that was queued and somehow never delivered must
         // not silence everything else for this person for ever, and past that
@@ -265,7 +279,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           checkinMisses: Number(row.checkin_misses) || 0,
           blockedUntil: row.quota_blocked_until,
           window: win.data.window, quietDays, quietDates, shabbatWindow, tz: row.timezone,
-          lastInboundAt: row.last_inbound_at, groupWroteAt,
+          lastInboundAt: row.last_inbound_at, groupWroteAt, pausedRoomInvite,
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,
           introductionSentAt: introSent[0] ? introSent[0].sent_at : null,
@@ -326,7 +340,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             // one fact here that is about the row rather than the person. The
             // batch is reminders only, which never carry a meeting, so it is
             // null for every sibling — said out loud rather than relied upon.
-            if (decide({ ...facts, groupWroteAt: null, row: sib }).action !== 'deliver') continue;
+            if (decide({ ...facts, groupWroteAt: null, pausedRoomInvite: false, row: sib }).action !== 'deliver') continue;
             ids.push(sib.id);
             titles.push(payloadOf(sib).title);
             carried.add(String(sib.id));
@@ -358,7 +372,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           // Re-decided rather than assumed, for the same reason as above:
           // expiry, quiet and the introduction hold are all per row, and a row
           // the gate would stop must not ride along on one it would not.
-          const deliverable = others.filter((sib) => decide({ ...facts, row: sib }).action === 'deliver');
+          const deliverable = others.filter((sib) => decide({ ...facts, pausedRoomInvite: false, row: sib }).action === 'deliver');
           const parts = planMerge(row, deliverable);
           if (parts) {
             mergedParts = parts.map((r) => ({ kind: r.kind, payload: payloadOf(r) }));
@@ -382,12 +396,26 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           ? { ok: false, error: `channel unavailable, no turn spent: ${channels.detail}` }
           : await deliver(
             mergedParts ? { ...row, payload: { ...payloadOf(row), mergedParts } }
-              : ids.length > 1 ? { ...row, payload: { ...payloadOf(row), items: titles } } : row
+              : ids.length > 1 ? { ...row, payload: { ...payloadOf(row), items: titles } }
+                // In memory only, like `items`: the reader tells the model
+                // this person is paused and this is the one message about it.
+                : pausedRoomInvite ? { ...row, payload: { ...payloadOf(row), pausedNotice: true } }
+                  : row
           );
+        // Stamped only once the send confirmed or timed out (booked as sent
+        // below): "we told them" is never written for a message that failed.
+        const spendRoomInvite = async () => {
+          if (!pausedRoomInvite) return;
+          await client.query(`UPDATE users SET room_invite_sent_at = now() WHERE id = $1`, [row.user_id]);
+          await audit.record(client, row.user_id, 'pause.room_invite_sent', {
+            outboxId: Number(row.id), meetingId,
+          });
+        };
         if (result.ok) {
           await client.query(
             `UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE id = ANY($1::bigint[])`, [ids]
           );
+          await spendRoomInvite();
           outcomes.delivered++;
           if (ids.length > 1) outcomes.batched = (outcomes.batched || 0) + ids.length - 1;
         } else if (result.timedOut) {
@@ -413,6 +441,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           await audit.record(client, row.user_id, 'delivery.unconfirmed', {
             outboxIds: ids.map(Number), kind: row.kind, error: String(result.error || 'openclaw timeout').slice(0, 200),
           });
+          await spendRoomInvite();
           outcomes.delivered++;
           outcomes.unconfirmed = (outcomes.unconfirmed || 0) + 1;
           if (ids.length > 1) outcomes.batched = (outcomes.batched || 0) + ids.length - 1;

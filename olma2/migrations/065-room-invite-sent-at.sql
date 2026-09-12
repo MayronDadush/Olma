@@ -1,0 +1,24 @@
+-- The one coordination a PAUSED person still hears about.
+--
+-- A pause meant "Olma never initiates", and a room coordination swept every
+-- member who had ever written to her into the meeting whether they were
+-- paused or not. The gate then dropped their invite, so they never heard of
+-- it — and yet they sat in it as "awaiting", and everybody else's digest said
+-- the coordination was waiting on them. Kapish (2026-09-13) is the other half
+-- of the same fault: he came out of a ladder pause by chatting privately, and
+-- the next two coordinations in a test room reached him in full.
+--
+-- The owner's rule (2026-09-13): a paused person in a room where a
+-- coordination starts gets ONE message about it per pause. Silence for 24
+-- hours takes them out of it and out of every later one; any answer other
+-- than "leave me paused" ends the pause.
+--
+-- One column on the person, the same shape as timezone_asked_at and
+-- holiday_quiet_asked_at: "spent for this pause" is `room_invite_sent_at >=
+-- paused_at`, so a new pause (a new paused_at) is a new allowance without
+-- anything having to clear the stamp. Written only after the send confirms
+-- (or times out, which the worker books as sent).
+--
+-- Additive: NULL for everyone means every paused person has their one
+-- allowance the day this ships.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS room_invite_sent_at TIMESTAMPTZ;

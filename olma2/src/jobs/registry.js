@@ -193,6 +193,10 @@ const deployDrift = require('./deploy-drift');
       // feature: anything slower and "about a minute" becomes "a few". It is
       // one indexed query against a partial index that is empty almost always.
       settlingMeetings: await sweeps.sweepSettlingMeetings(c),
+      // A paused room member a day past their one coordination message with
+      // no answer (domain/group-meetings.js). An hour-scale rule on a minute
+      // tick because the query is one join that is empty almost always.
+      silentPausedMembers: await sweeps.sweepSilentPausedMembers(c),
       mediaJobs: await sweeps.sweepMediaJobs(c),
       // 60s cadence is what makes a 60-second nudge possible at all — the
       // checkin ladder's own tick (below) is 5 minutes, chosen for its
