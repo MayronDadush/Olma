@@ -8,9 +8,9 @@ const { renderReminderText, rawPipeTextFor } = require('../src/domain/proactive-
 // decide. Everything else stays on an agent turn on purpose.
 
 test('a reminder renders deterministically, in the user\'s own words', () => {
-  assert.equal(renderReminderText({ title: 'לקחת תרופה' }), '⏰ תזכורת: לקחת תרופה');
+  assert.equal(renderReminderText({ title: 'לקחת תרופה' }), '⏰ תזכורת: *לקחת תרופה*');
   // whitespace collapsed, one line — the title is interpolated into a message
-  assert.equal(renderReminderText({ title: '  לקחת \n  תרופה  ' }), '⏰ תזכורת: לקחת תרופה');
+  assert.equal(renderReminderText({ title: '  לקחת \n  תרופה  ' }), '⏰ תזכורת: *לקחת תרופה*');
   // a titleless payload renders nothing rather than an empty shell
   assert.equal(renderReminderText({}), null);
   assert.equal(renderReminderText({ title: '   ' }), null);
@@ -20,7 +20,7 @@ test('a reminder renders deterministically, in the user\'s own words', () => {
 });
 
 // Rungs 2 and 3 ride the same pipe, so if they rendered the same sentence the
-// person would get "⏰ תזכורת: לקחת תרופה" three times — the drum the ladder
+// person would get "⏰ תזכורת: *לקחת תרופה*" three times — the drum the ladder
 // exists to avoid. Each rung has to say what it is and name the way out.
 test('a follow-up rung does not repeat the first message', () => {
   const first = renderReminderText({ title: 'לקחת תרופה' });
@@ -45,9 +45,9 @@ test('a follow-up rung does not repeat the first message', () => {
 
 test('only a plain reminder rides the raw pipe — everything conversational stays on the model', () => {
   const rem = { kind: 'reminder', payload: { taskId: 7, title: 'לקחת תרופה' } };
-  assert.equal(rawPipeTextFor(rem), '⏰ תזכורת: לקחת תרופה');
+  assert.equal(rawPipeTextFor(rem), '⏰ תזכורת: *לקחת תרופה*');
   // payload arrives as a string from pg sometimes — same answer
-  assert.equal(rawPipeTextFor({ kind: 'reminder', payload: JSON.stringify({ title: 'x' }) }), '⏰ תזכורת: x');
+  assert.equal(rawPipeTextFor({ kind: 'reminder', payload: JSON.stringify({ title: 'x' }) }), '⏰ תזכורת: *x*');
 
   // checkins are the product: the 2026-08-20 redesign made them personal
   // enough to answer, and a template would undo exactly that
@@ -91,11 +91,11 @@ test('a reminder is said in the language on file — English rungs for an en loc
   // Hebrew, nothing on file, and a language we have no sentences for all say
   // the Hebrew default — the same two-way rule the dashboard applies
   for (const locale of ['he', null, undefined, '', 'fr']) {
-    assert.equal(renderReminderText({ title: 'תרופה' }, undefined, locale), '⏰ תזכורת: תרופה', String(locale));
+    assert.equal(renderReminderText({ title: 'תרופה' }, undefined, locale), '⏰ תזכורת: *תרופה*', String(locale));
   }
 
   // and the deliverer reads it off the row the worker joined, not the payload
-  assert.equal(rawPipeTextFor({ kind: 'reminder', locale: 'en', payload: { title: 'x' } }), '⏰ Reminder: x');
-  assert.equal(rawPipeTextFor({ kind: 'reminder', payload: { title: 'x', locale: 'en' } }), '⏰ תזכורת: x',
+  assert.equal(rawPipeTextFor({ kind: 'reminder', locale: 'en', payload: { title: 'x' } }), '⏰ Reminder: *x*');
+  assert.equal(rawPipeTextFor({ kind: 'reminder', payload: { title: 'x', locale: 'en' } }), '⏰ תזכורת: *x*',
     'a locale smuggled in the payload must not pick the language — it is read at delivery, from the person');
 });

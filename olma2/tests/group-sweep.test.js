@@ -24,9 +24,14 @@ const groupOutbox = require('../src/domain/group-outbox');
 // decides and writes rows, `group_outbox` spawns the CLI. Every assertion
 // below about what a room HEARD depends on both halves running, which is the
 // point — deciding and sending are separate transactions now (migration 055).
+// `channelWrittenAt` is pinned to null because a real pass registering a real
+// room DOES write `channels.whatsapp` and the queue then holds for 45 seconds
+// (domain/group-outbox, CHANNEL_RESTART_GRACE_MS) — which would make every
+// assertion below about what the room heard a test of the hold instead. The
+// hold has its own test in group-outbox.test.js; these are about the sentences.
 async function pass(deps) {
   const decided = await withTx(db.pool, (c) => job.sweepGroups(c, deps));
-  const drained = await groupOutbox.drainOnce(db.pool, deps);
+  const drained = await groupOutbox.drainOnce(db.pool, { channelWrittenAt: () => null, ...deps });
   return { ...decided, ...drained };
 }
 
@@ -114,6 +119,49 @@ test('one known member is enough: she registers, introduces herself, and locks',
   const cfg = occ.loadConfig(configPath);
   assert.deepEqual(cfg.channels.whatsapp.accounts.default.groups[JID(2)], { requireMention: true });
   assert.equal(occ.isGroupMuted(cfg, JID(2)), true);
+});
+
+// 2026-09-11, in both rooms registered that evening: the first sentence Olma
+// ever says to a room was said twice. Registering a room writes
+// `channels.whatsapp`, which restarts the WhatsApp channel for about sixteen
+// seconds, and the greeting the same pass decided is drained ten seconds later
+// — into the restart it had just caused. The gateway refused that send, kept
+// the message in its own outbound retry queue and delivered it a second later
+// anyway, and our sender, told "not dispatched", said it again.
+//
+// Nothing is pinned here on purpose. The stamp has to come from the write the
+// sweep really makes: a fixture that sets it by hand would pass on the day
+// nothing sets it at all.
+test('the room is not greeted into the channel restart its own registration caused', async () => {
+  const a = await connectedUser('+972603000200');
+  const jid = JID(21);
+  const g = gatewayWith({ jid, roster: `מירון (${a.phone}), +972603000201` });
+
+  const decided = await withTx(db.pool, (c) => job.sweepGroups(c, g.deps));
+  assert.deepEqual(decided.registered, [jid]);
+  assert.equal(decided.intros, 1, 'the greeting is decided and written down');
+
+  // The tick that used to say it into the dead channel.
+  const first = await groupOutbox.drainOnce(db.pool, g.deps);
+  assert.deepEqual(g.sent, [], 'not a word while the channel is coming back');
+  assert.equal(first.channelHeld, 1);
+
+  // Held, not spent: a held row has not been picked up, so nothing has been
+  // counted against it and nothing is holding a claim on it.
+  const group = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  const waiting = (await db.pool.query(
+    `SELECT attempts, claimed_at, sent_at FROM group_outbox WHERE idempotency_key = $1`,
+    [`g${group.id}:intro`])).rows[0];
+  assert.equal(waiting.attempts, 0);
+  assert.equal(waiting.claimed_at, null);
+  assert.equal(waiting.sent_at, null);
+
+  // The next tick past the window, which is what production actually does.
+  const later = new Date(Date.now() + groupOutbox.CHANNEL_RESTART_GRACE_MS + 1000);
+  const out = await groupOutbox.drainOnce(db.pool, { ...g.deps, now: later });
+  assert.equal(out.sent, 1);
+  assert.equal(g.sent.length, 1, 'said once, and once only');
+  assert.match(g.sent[0].body, /נעים מאוד/);
 });
 
 // The first real group, 2026-09-06: registered, and then silent for ever.
@@ -536,16 +584,54 @@ test('with no greeter installed the sweep does nothing at all', async () => {
   assert.deepEqual(g.sent, []);
 });
 
-test('the announcement window follows the group, and a live tag overrides it', () => {
+test('the announcement window follows the group, and a member writing overrides it', () => {
   const night = new Date('2026-09-06T02:00:00+03:00');
-  const asleep = { timezone: 'Asia/Jerusalem', last_mention_at: null };
+  const asleep = { timezone: 'Asia/Jerusalem', last_member_write_at: null };
   assert.equal(job.mayAnnounce(asleep, night), false);
 
-  // Somebody tagged her a minute ago: they are plainly awake.
-  const tagged = { timezone: 'Asia/Jerusalem', last_mention_at: new Date(night.getTime() - 60_000) };
-  assert.equal(job.mayAnnounce(tagged, night), true);
+  // Somebody wrote in the room a minute ago: they are plainly awake.
+  const awake = { timezone: 'Asia/Jerusalem', last_member_write_at: new Date(night.getTime() - 60_000) };
+  assert.equal(job.mayAnnounce(awake, night), true);
 
   assert.equal(job.mayAnnounce(asleep, new Date('2026-09-06T10:00:00+03:00')), true);
+});
+
+// The 01:12 line, as the row that produced it. Group "5 Percent (Maprinter)"
+// on 2026-09-08: the newest member write was 19:11 local, six hours earlier,
+// and `last_mention_at` was minutes old because the sweep rewrites it on every
+// pass (see mayAnnounce for why). Reading the session stamp says yes; reading
+// the room's own people says no, which is the answer.
+test('a room nobody has written in since the evening is asleep, however busy her own sessions look', () => {
+  const oneTwelveAm = new Date('2026-09-09T01:12:00+03:00');
+  const room = {
+    timezone: 'Asia/Jerusalem',
+    last_mention_at: new Date(oneTwelveAm.getTime() - 60_000),
+    last_member_write_at: new Date('2026-09-08T19:11:54+03:00'),
+  };
+  assert.equal(job.mayAnnounce(room, oneTwelveAm), false);
+});
+
+// A row assembled without the roster gets the hours, never the grace.
+test('a row that never learned when anybody wrote is treated as asleep at night', () => {
+  const night = new Date('2026-09-06T02:00:00+03:00');
+  assert.equal(job.mayAnnounce({ timezone: 'Asia/Jerusalem' }, night), false);
+  assert.equal(job.mayAnnounce({ timezone: 'Asia/Jerusalem' }, new Date('2026-09-06T10:00:00+03:00')), true);
+});
+
+// The clock disagreeing with itself is not evidence anybody is up.
+test('a write stamped in the future buys no grace', () => {
+  const night = new Date('2026-09-06T02:00:00+03:00');
+  const ahead = { timezone: 'Asia/Jerusalem', last_member_write_at: new Date(night.getTime() + 60_000) };
+  assert.equal(job.mayAnnounce(ahead, night), false);
+});
+
+// The hours are the group's own, and the group's own is the majority of its
+// members (domain/groups.majorityTimezone) — so the same instant is night in
+// one room and the working day in another.
+test('two rooms in different zones answer differently at the same instant', () => {
+  const instant = new Date('2026-09-09T01:12:00+03:00'); // 22:12 UTC
+  assert.equal(job.mayAnnounce({ timezone: 'Asia/Jerusalem' }, instant), false);
+  assert.equal(job.mayAnnounce({ timezone: 'America/New_York' }, instant), true); // 18:12 there
 });
 
 // ---- the sender gate ---------------------------------------------------------
@@ -617,4 +703,109 @@ test('her own number never reaches the sender list', async () => {
   assert.ok(admitted.includes('+972604000020'));
   assert.ok(!admitted.includes(occ.SELF_PHONE),
     'her own tag comes back in her own outbound message — a loop with her at both ends');
+});
+
+// ---- one watermark per gateway session (migration 059) ----------------------
+//
+// Every fixture above hands the sweep ONE session per room, and production
+// never does: a room has the muted greeter's session and, once it is open, its
+// own `g-N` agent's. That is the whole reason this survived — the loop runs
+// once per session, and against a single `chat_groups.last_seen_at` each
+// iteration overwrote the previous one's mark, so on the next pass every
+// session was comparing its own stamp against somebody else's.
+//
+// Measured live on 2026-09-09, two readings three minutes apart with nobody
+// writing in any room: all three rooms carried the same `last_mention_at` to
+// the microsecond, and it had advanced.
+function twoSessions({ jid, roster, subject = 'פאדל שלישי', greeterAt, ownAgentId, ownAt, messageId = 'MSG-1' }) {
+  const sent = [];
+  const session = (agentId, at) => ({
+    key: `agent:${agentId}:whatsapp:group:${jid}`,
+    agentId, channel: 'whatsapp', chatType: 'group', peer: jid, lastInteractionAt: at,
+  });
+  return {
+    sent,
+    deps: {
+      configPath,
+      // Greeter first, exactly as `sweepGroups` builds `agentIds`:
+      // `[GREETER, ...open agents]`.
+      listGroupSessions: () => [session(pg.GREETER_AGENT_ID, greeterAt), session(ownAgentId, ownAt)],
+      readGroupContext: () => ({ subject, members: roster, wasMentioned: true, at: ownAt, messageId }),
+      send: async (target, body, opts) => { sent.push({ target, body, replyTo: opts && opts.replyTo }); return true; },
+    },
+  };
+}
+
+// The one that was firing every ten seconds in a shape production could reach.
+// Nothing changes between the second pass and the third — same roster, same two
+// stamps — and the room must hear nothing the second time. Against one column
+// per room it heard a nudge on every pass for ever: the greeter's iteration
+// wrote its older stamp back over the mark the `g-N` iteration had left, and
+// the `g-N` iteration then read that regressed number and called its own
+// unchanged turn a fresh tag.
+test('two sessions and nothing new: the room is answered once, not on every pass', async () => {
+  const a = await connectedUser('+972605000010');
+  await makeUser(db.pool, '+972605000011');   // never wrote to her: the room stays locked
+  const jid = JID(30);
+  const roster = `${a.phone}, +972605000011`;
+  const at = Date.now();
+
+  await pass(gatewayWith({ jid, roster, at }).deps);   // registers + introduces
+  const owner = 'g-99';
+
+  // Something really did happen: the room's own session is a minute newer than
+  // anything we have watermarked.
+  const tagged = twoSessions({ jid, roster, greeterAt: at, ownAgentId: owner, ownAt: at + 60_000 });
+  const second = await pass(tagged.deps);
+  assert.equal(second.notices, 1, 'a turn newer than our mark in a locked room is a tag');
+
+  // And now nothing happens at all. Same stamps, same roster, twice more.
+  for (const n of [3, 4]) {
+    const quiet = twoSessions({ jid, roster, greeterAt: at, ownAgentId: owner, ownAt: at + 60_000 });
+    const out = await pass(quiet.deps);
+    assert.equal(out.notices, 0, `pass ${n} answered a tag nobody sent`);
+    assert.deepEqual(quiet.sent, [], `pass ${n} said something into a silent room`);
+  }
+
+  const row = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  assert.equal(row.notices_sent, 1, 'and the notice count did not climb');
+});
+
+// The one place the old fault leaked into a room today. `agentIds` is built
+// once at the top of the pass, so a room that re-locks on its GREETER's
+// iteration still has its own `g-N` session iterated afterwards — and that
+// iteration used to read the watermark the greeter had just overwritten, find
+// itself newer, and answer a tag nobody had sent. The room is silent now, and
+// hears the explanation the next time somebody actually asks her for
+// something, which is what the notice is for.
+test('a room that re-locks mid-pass does not answer a tag nobody sent', async () => {
+  const a = await connectedUser('+972605000020');
+  const b = await connectedUser('+972605000021');
+  const jid = JID(31);
+  const roster = `${a.phone}, ${b.phone}`;
+  const at = Date.now();
+
+  await pass({ ...gatewayWith({ jid, roster, at }).deps, now: helpers.daytime() });
+  const open = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  assert.equal(open.state, 'open');
+  assert.ok(open.agent_id, 'the room has an agent of its own to be a second session');
+
+  // A pass with both sessions, so each one carries a watermark of its own.
+  const settled = twoSessions({ jid, roster, greeterAt: at, ownAgentId: open.agent_id, ownAt: at + 60_000 });
+  await pass({ ...settled.deps, now: helpers.daytime() });
+
+  // Now a stranger appears in the roster and NOTHING else moves — the same two
+  // stamps, neither of them newer than its own mark. The gate closes again on
+  // the greeter's iteration, while the room's own session is still in the list
+  // behind it, and against one column per room that iteration would read the
+  // stamp the greeter had just written back over it.
+  const grown = twoSessions({
+    jid, roster: `${roster}, +972605000022`,
+    greeterAt: at, ownAgentId: open.agent_id, ownAt: at + 60_000,
+  });
+  const out = await pass({ ...grown.deps, now: helpers.daytime() });
+
+  assert.deepEqual(out.relocked, [jid]);
+  assert.equal(out.notices, 0, 'nobody tagged her — the roster changed under her');
+  assert.deepEqual(grown.sent, []);
 });

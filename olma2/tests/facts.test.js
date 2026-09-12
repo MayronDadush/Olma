@@ -1030,3 +1030,243 @@ test('a task the extraction re-proposes is refused and counted, never captured',
       ['להתקשר למכבי פיזיותרפיה', 'לחדש דרכון'].sort());
   });
 });
+
+// ---------------------------------------------------------------------------
+// A moment stated in conversation reaches the task as a date
+//
+// Founding case, from the box on 2026-09-08: every one of the 27 surviving
+// `extracted` tasks had a NULL due_at, and three of them carried the moment in
+// their own title — "לאכול צהריים ב12" (u-3), "לעזור לשרה במעבר דירה ביום
+// רביעי בשעה 17:00" (u-11), "תרופות בשעה 6 בערב" (u-9). The moment was said
+// out loud, it survived into the title as words, and no reminder could ever
+// fire for it, because a title is not a date.
+//
+// The cause was structural rather than a bad prompt: the schema had no date
+// field at all, and even if it had, renderTranscript threw away every `m.at`
+// and the instruction stated neither "now" nor the person's zone — so "מחר
+// בשעה 18:00" was not resolvable and "Never invent a date they did not give
+// you" was the only safe rule available. These tests hold both halves open:
+// the clock the model is given, and the refusal to trust what it sends back.
+
+test('a moment they stated becomes the task\'s due date, and arms its reminder', async () => {
+  const u = await seedChatter('+972590009101', 40);
+  // Computed ONCE — an assertion that recomputes it can straddle a second.
+  const due = new Date(Date.now() + 26 * 3600_000);
+  const iso = due.toISOString().replace('Z', '+00:00');
+  await withClient(async (c) => {
+    const applied = await extraction.applyExtraction(c, u, {
+      facts: [], tasks: [{ title: 'לאכול צהריים עם דניאל', due_at: iso }],
+    }, new Set());
+    assert.equal(applied.tasksCaptured, 1);
+    assert.equal(applied.datesDropped, 0);
+
+    const { rows } = await c.query(
+      `SELECT id, due_at FROM tasks WHERE owner_id = $1 AND status = 'open'`, [u.id]
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(new Date(rows[0].due_at).getTime(), due.getTime());
+
+    // The whole point of the date: add_task arms its own reminder off due_at,
+    // so this is where a stranded title turns back into something that fires.
+    const { rows: rem } = await c.query(
+      `SELECT auto, remind_at FROM task_reminders
+        WHERE task_id = $1 AND cancelled_at IS NULL AND sent_at IS NULL`,
+      [rows[0].id]
+    );
+    assert.equal(rem.length, 1, 'a timed task must come with the reminder it earns');
+    assert.equal(rem[0].auto, true);
+    assert.ok(new Date(rem[0].remind_at).getTime() < due.getTime(),
+      'an hour before the thing, not at it');
+  });
+});
+
+// The three ways a proposed date is refused. In every one the TASK survives:
+// the commitment is what they said, the moment is what the model resolved, and
+// only one of those two is theirs. Same shape as the facts half's expires_at.
+test('a doubtful date is dropped and the task is kept', async () => {
+  const cases = [
+    // A bare local time is read as UTC downstream and lands three hours out
+    // for an Israeli user. addTask refuses it outright, which would cost the
+    // task as well — so it is caught here, where only the date is lost.
+    ['no offset', new Date(Date.now() + 26 * 3600_000).toISOString().slice(0, 19)],
+    ['already past', new Date(Date.now() - 3 * 3600_000).toISOString().replace('Z', '+00:00')],
+    // The wrong-YEAR shape: exactly the mistake the facts half caught live
+    // ("טס לרומא בספטמבר" came back as 2025), pointing forwards instead.
+    ['beyond the horizon', new Date(Date.now() + 400 * 24 * 3600_000).toISOString().replace('Z', '+00:00')],
+    ['not a date at all', 'מחר בערב'],
+  ];
+  let n = 0;
+  for (const [label, value] of cases) {
+    const u = await seedChatter(`+97259000920${n}`, 40);
+    n += 1;
+    await withClient(async (c) => {
+      const applied = await extraction.applyExtraction(c, u, {
+        facts: [], tasks: [{ title: `לחדש דרכון ${label}`, due_at: value }],
+      }, new Set());
+      assert.equal(applied.tasksCaptured, 1, `${label}: the task itself must survive`);
+      assert.equal(applied.datesDropped, 1, `${label}: and the drop must be on the record`);
+
+      const { rows } = await c.query(
+        `SELECT title, due_at FROM tasks WHERE owner_id = $1 AND status = 'open'`, [u.id]
+      );
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].due_at, null, `${label}: dateless, never wrongly dated`);
+    });
+  }
+});
+
+test('a task with no date at all is the normal case and counts nothing', async () => {
+  const u = await seedChatter('+972590009210', 40);
+  await withClient(async (c) => {
+    const applied = await extraction.applyExtraction(c, u, {
+      facts: [], tasks: [{ title: 'לסדר את המוסך' }],
+    }, new Set());
+    assert.equal(applied.tasksCaptured, 1);
+    assert.equal(applied.datesDropped, 0, 'nothing was proposed, so nothing was dropped');
+  });
+});
+
+test('every line of the transcript carries its own moment, in their zone', () => {
+  const msgs = [
+    { role: 'user', text: 'מחר בשעה 18:00 יש לי רופא שיניים', at: '2026-09-08T14:30:00Z' },
+    { role: 'assistant', text: 'רשמתי', at: '2026-09-08T14:31:00Z' },
+  ];
+  const rendered = extraction.renderTranscript(msgs, 'Asia/Jerusalem');
+  // 14:30 UTC is 17:30 in Jerusalem — the wall clock they wrote it at, which
+  // is the only thing "מחר" can be measured from.
+  assert.match(rendered, /^\[2026-09-08 17:30\] THEM: מחר בשעה 18:00/m);
+  assert.match(rendered, /^\[2026-09-08 17:31\] YOU: רשמתי/m);
+});
+
+test('a message with no timestamp renders bare rather than borrowing now()', () => {
+  // How a voice call arrives: the bridge writes {role, content} and no clock.
+  // An unstamped line is a normal shape, not an error — it simply cannot
+  // anchor a relative date, and a made-up stamp would hide that.
+  const rendered = extraction.renderTranscript(
+    [{ role: 'user', text: 'מחר בבוקר' }], 'Asia/Jerusalem');
+  assert.equal(rendered, 'THEM: מחר בבוקר');
+});
+
+test('the instruction states the moment and the zone it is stated in', () => {
+  const text = extraction.buildInstruction('THEM: מחר ב-18:00', [], [], { firstName: 'X' }, [],
+    { now: Date.parse('2026-09-08T14:30:00Z'), tz: 'Asia/Jerusalem' });
+  assert.match(text, /It is now 2026-09-08 17:30 where they are \(timezone Asia\/Jerusalem\)/);
+  assert.match(text, /"due_at": null/, 'and the tasks schema must have somewhere to put it');
+  assert.match(text, /full ISO-8601 datetime WITH their offset/);
+  // The ל־ rule: "לארגן אימון לרביעי" is arranged BEFORE Wednesday, so it is
+  // not a due date at all. A server-side regex cannot tell those apart.
+  assert.match(text, /לארגן אימון לרביעי/);
+});
+
+test('the sweep hands the extraction the person\'s own timezone', async () => {
+  const u = await seedChatter('+972590009211', 40);
+  await db.pool.query(`UPDATE users SET timezone = 'Asia/Jerusalem' WHERE id = $1`, [u.id]);
+  await withClient(async (c) => {
+    const due = await extraction.dueUsers(c, Date.now());
+    const row = due.find((x) => Number(x.id) === Number(u.id));
+    assert.ok(row, 'they are due');
+    // Without this column on the row there is no zone to stamp the transcript
+    // with, and the sweep silently falls back to UTC for everyone.
+    assert.equal(row.timezone, 'Asia/Jerusalem');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A title need not restate the hour the row already carries
+//
+// Fallout from the fix above, seen the moment it went live on 2026-09-09: the
+// model, now that it has a clock, sets due_at AND leaves the words in the
+// title. "להתקשר לחברת הביטוח היום ב-17:00" with a due_at of 17:00 says the
+// same thing twice, and only one of the two can be acted on. Before the date
+// field existed the words were the only copy, so this is new.
+//
+// The cross-check is the whole design: the hour named in the title must be the
+// hour being stored. Measured against all 253 titles on the box — matched 8,
+// stripped 2, and refused a third whose title and due_at disagree.
+
+test('the stated hour comes out of the title when the row now carries it', () => {
+  const tz = 'Asia/Nicosia';
+  const strip = (t, iso) => extraction.titleWithoutStatedTime(t, iso, tz);
+  // The live case, from the owner's own account.
+  assert.equal(strip('להתקשר לחברת הביטוח היום ב-17:00', '2026-09-09T17:00:00+03:00'),
+    'להתקשר לחברת הביטוח');
+  // A real row on the box, in English, with an em-dashed date that must survive.
+  assert.equal(strip('Nail appointment — Tuesday Sep 8 at 12:00', '2026-09-08T12:00:00+03:00'),
+    'Nail appointment — Tuesday Sep 8');
+  // "ב-6 בערב" is 18:00 — the part of day is what licenses the +12, and task 37
+  // on the box is titled exactly this.
+  assert.equal(strip('תרופות בשעה 6 בערב', '2026-09-09T18:00:00+03:00'), 'תרופות');
+});
+
+test('a title whose hour disagrees with the stored one is left alone', () => {
+  // Task 247 on the box, verbatim: the title says 10:00 and the due_at is
+  // 07:00. They disagree, and the disagreement is the only thing worth keeping
+  // — stripping here would delete the evidence and leave a row that looks
+  // consistent. This single real row is why the cross-check exists.
+  assert.equal(
+    extraction.titleWithoutStatedTime(
+      'Brunch with a friend — Tuesday Sep 1 at 10:00', '2026-09-01T07:00:00+03:00', 'Asia/Nicosia'),
+    'Brunch with a friend — Tuesday Sep 1 at 10:00');
+});
+
+test('only a TRAILING hour is a restatement; one mid-sentence is their words', () => {
+  const tz = 'Asia/Nicosia';
+  // The moment here is part of what the thing IS. Cutting inside the sentence
+  // rewrites what they said, and leaves ungrammatical wreckage behind.
+  assert.equal(
+    extraction.titleWithoutStatedTime('פגישה של 17:00 עם הבנק', '2026-09-09T17:00:00+03:00', tz),
+    'פגישה של 17:00 עם הבנק');
+  // Nothing but the hour: a stub is not a task anybody can read.
+  assert.equal(extraction.titleWithoutStatedTime('ב-17:00', '2026-09-09T17:00:00+03:00', tz), 'ב-17:00');
+  // The ל־ rule's case has no clock in it at all and must never be touched.
+  assert.equal(
+    extraction.titleWithoutStatedTime('לארגן אימון לרביעי', '2026-09-10T09:00:00+03:00', tz),
+    'לארגן אימון לרביעי');
+});
+
+test('a DROPPED date leaves the hour in the title, where it is the only copy', async () => {
+  const u = await seedChatter('+972590009301', 40);
+  await db.pool.query(`UPDATE users SET timezone = 'Asia/Nicosia' WHERE id = $1`, [u.id]);
+  await withClient(async (c) => {
+    // A bare local time: usableDue refuses it, so nothing is stored — and the
+    // words must therefore survive. This is the regression the prompt-side fix
+    // would have caused, held open where it would happen.
+    const bare = new Date(Date.now() + 26 * 3600_000);
+    const local = `${bare.getUTCFullYear()}-${String(bare.getUTCMonth() + 1).padStart(2, '0')}`
+      + `-${String(bare.getUTCDate()).padStart(2, '0')}T09:00:00`;
+    const applied = await extraction.applyExtraction(c, { ...u, timezone: 'Asia/Nicosia' }, {
+      facts: [], tasks: [{ title: 'להתקשר לחברת הביטוח ב-9', due_at: local }],
+    }, new Set());
+    assert.equal(applied.tasksCaptured, 1);
+    assert.equal(applied.datesDropped, 1);
+    assert.equal(applied.titlesTrimmed, 0, 'nothing was stored, so nothing may be removed');
+
+    const { rows } = await c.query(
+      `SELECT title, due_at FROM tasks WHERE owner_id = $1 AND status = 'open'`, [u.id]);
+    assert.equal(rows[0].due_at, null);
+    assert.equal(rows[0].title, 'להתקשר לחברת הביטוח ב-9', 'the hour is all that is left of it');
+  });
+});
+
+test('an ACCEPTED date takes the hour out of the title, end to end', async () => {
+  const u = await seedChatter('+972590009302', 40);
+  await withClient(async (c) => {
+    const due = new Date(Date.now() + 26 * 3600_000);
+    // Built in UTC and asserted in UTC, so the test does not depend on where it
+    // runs — the pool pins Etc/UTC exactly for this.
+    const iso = due.toISOString().replace('Z', '+00:00');
+    const hh = String(due.getUTCHours()).padStart(2, '0');
+    const mm = String(due.getUTCMinutes()).padStart(2, '0');
+    const applied = await extraction.applyExtraction(c, { ...u, timezone: 'UTC' }, {
+      facts: [], tasks: [{ title: `להתקשר לחברת הביטוח ב-${hh}:${mm}`, due_at: iso }],
+    }, new Set());
+    assert.equal(applied.tasksCaptured, 1);
+    assert.equal(applied.datesDropped, 0);
+    assert.equal(applied.titlesTrimmed, 1);
+
+    const { rows } = await c.query(
+      `SELECT title, due_at FROM tasks WHERE owner_id = $1 AND status = 'open'`, [u.id]);
+    assert.equal(rows[0].title, 'להתקשר לחברת הביטוח');
+    assert.equal(new Date(rows[0].due_at).getTime(), due.getTime());
+  });
+});

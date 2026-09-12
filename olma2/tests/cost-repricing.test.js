@@ -122,3 +122,36 @@ test('the totals and the per-user rows tell the same story', async () => {
   assert.ok(Math.abs(totalUsd - rows) < 0.011,
     `total $${totalUsd} does not match the rows' $${rows.toFixed(4)}`);
 });
+
+test('every person who cost money is on the page, not just the top ten', async () => {
+  // The page listed the ten biggest spenders and nothing else, and the cut was
+  // invisible: no "and 12 more", no count. Worse, the month headline and the
+  // Anthropic reconciliation line under it were both summed from that same
+  // sliced list, so the eleventh person's money left the total as well as the
+  // table. Measured on the box on 2026-09-10: 22 people with spend this month.
+  const names = [];
+  for (let i = 0; i < 13; i++) {
+    const name = `איש${i}`;
+    names.push(name);
+    const u = await makeUser(db.pool, `+9725000020${String(i).padStart(2, '0')}`, { firstName: name });
+    // Descending, so the last three are unambiguously past tenth place.
+    await ledger(u.id, 'deepseek/deepseek-v4-flash',
+      { i: (13 - i) * 100_000, o: 1_000, cr: 0, cw: 0, stored: 0.01, estimated: false });
+  }
+
+  const html = await render();
+  for (const name of names) {
+    assert.match(html, new RegExp(`<td>${name}</td>`), `${name} is not on the page`);
+  }
+
+  const modelBlock = html.slice(html.indexOf('עלות מודל לפי משתמש'));
+  const rows = names.reduce((s, n) => s + usdFor(html, n), 0);
+  const total = /<div class="num">(.*?)<\/div><div class="lbl">סה״כ החודש/.exec(modelBlock);
+  const totalUsd = Number(/\$([\d.]+)/.exec(total[1])[1]);
+  assert.ok(Math.abs(totalUsd - rows) < 0.011,
+    `total $${totalUsd} does not match the rows' $${rows.toFixed(4)}`);
+
+  const active = /<div class="num">(\d+)<\/div><div class="lbl">משתמשים פעילים החודש/.exec(modelBlock);
+  assert.ok(active, 'the active-user count is not on the page');
+  assert.equal(Number(active[1]), 13, 'the count was capped at the slice, so it read 10 for ever');
+});

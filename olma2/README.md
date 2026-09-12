@@ -17,6 +17,7 @@ artifact (see CLAUDE.md at repo root for context and server details).
 | `src/jobs/` | checkin ladder, digest, usage, metrics (Phase D+) |
 | `src/jobs/registry.js` | Every job brokerd arms, as `{ name, run }`; `expectations.js` is the cadence, `tests/job-registry.test.js` holds the two together |
 | `src/evals/` | nightly behavioral evals: scenario suite + harness (see jobs/evals.js) |
+| `gateway-hooks/`, `gateway-plugin/` | The two pieces that run INSIDE the OpenClaw gateway: the turn-open hook, and the plugin that prepends the turn context, files a group turn, and gates the model's reply on its way out. Both load at gateway STARTUP — `deploy.sh` copies them and does not restart it |
 | `bin/olma-brokerd.js` | Long-lived daemon: pool, flood counters, outbox worker (Phase C) |
 | `bin/olma-mcp.js` | Thin stdio shim → brokerd unix socket (Phase C) |
 | `tests/` | `node --test`; each file builds a throwaway DB via the real migrations |

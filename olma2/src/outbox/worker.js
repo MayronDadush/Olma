@@ -5,11 +5,14 @@
 // rests on.
 const { withTx } = require('../db/pool');
 const preferences = require('../domain/preferences');
+const holidays = require('../domain/holidays');
 const quota = require('../domain/quota');
 const flagsDomain = require('../domain/flags');
 const proactiveText = require('../domain/proactive-text');
 const { decide } = require('./gate');
+const audit = require('../domain/audit');
 const { mergeRoleFor, planMerge, MERGEABLE_KINDS } = require('../domain/message-merge');
+const { checkChannels } = require('../adapters/gateway-health');
 
 // A delivery is a full model turn — 30-90s of wall time and most of the box's
 // one core. An unbounded tick over a backlog (observed live 2026-08-27: ~20
@@ -36,6 +39,50 @@ const MAX_DELIVERIES_PER_TICK = 5;
 // next tick as its own message — it is a limit on how long one message may be.
 const MAX_BATCH = 8;
 
+// ── A retry is a new message, so a doomed send must not be attempted ────────
+// A delivery on the model path is `openclaw agent --deliver`: the gateway runs
+// a WHOLE TURN — tools, a rendered schedule card, the model's own words — and
+// only then hands the result to the channel. If the channel cannot carry it,
+// the send fails, the row backs off, and the next attempt runs the turn AGAIN.
+// Nothing of the first attempt is kept, because nothing of it was ever written
+// down: the outbox row holds an instruction, not a message.
+//
+// That is not merely expensive. Each recomposition reads a world that the
+// failed sends themselves created. On 2026-09-11 the WhatsApp channel was
+// disconnected from 06:07 to 12:05 and Yehav's morning digest was composed
+// five times — 08:26, 08:36, 08:46, 08:57, 09:08 — five model turns and five
+// freshly rendered cards. Four went nowhere. The fifth, the one the returning
+// channel finally carried, was the one that had watched him say nothing for
+// forty minutes: "11 מחכות, 3 תזכורות נשלחו — ואתה לא עונה". He had answered
+// every message he was actually shown. The silence was ours, and the retry
+// loop is what turned it into an accusation (`incidents.md`, "The fifth draft
+// was the rude one").
+//
+// So: before the first send of a tick, ask the gateway whether its channels
+// can carry anything. `down` skips the send and books exactly the bookkeeping
+// the failed send would have booked — attempts + 1, the reason in
+// `last_error`, the same backoff — so every reader downstream (the stuck-row
+// alarm, the reminder-redo discriminator that needs `attempts > 0` with an
+// error beside it, the dashboard) sees precisely what it sees today. The only
+// thing that does not happen is the turn.
+//
+// `unknown` sends. The probe is not the authority on whether we may talk to
+// somebody — it is an optimisation that skips work known to be wasted — and a
+// detector that goes quiet must never be the thing that silences the system.
+// Refusing on "could not tell" is the hazard the channel detector itself is
+// written to avoid, pointed the other way.
+//
+// Asked at most ONCE per tick, and only when there is a row to send: a quiet
+// tick costs nothing, a busy one costs the 11-18ms the WebSocket answers in.
+function channelProbe(deps) {
+  const ask = deps.checkChannels || checkChannels;
+  let asked = null;
+  return () => {
+    if (!asked) asked = ask({}).catch((e) => ({ status: 'unknown', detail: String((e && e.message) || e), channels: [] }));
+    return asked;
+  };
+}
+
 function payloadOf(row) {
   const p = row.payload;
   return (typeof p === 'string' ? JSON.parse(p) : p) || {};
@@ -55,8 +102,9 @@ function batchKeyFor(row) {
 
 // deliver(user, row) → { ok, error? } — injected; production uses
 // channels/openclaw.js, tests inject a recorder.
-async function drainOnce(pool, deliver, now = new Date()) {
+async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
   const outcomes = { delivered: 0, held: 0, expired: 0, dropped: 0, failed: 0 };
+  const channelsCanCarry = channelProbe(deps);
   // Rows whose own bookkeeping threw, recorded rather than rethrown — see the
   // catch at the bottom of the loop.
   const errored = [];
@@ -99,7 +147,22 @@ async function drainOnce(pool, deliver, now = new Date()) {
         const plan = await quota.planFor(client, row.user_id);
         const blocked = await quota.isBlocked(client, row.user_id, now.toISOString());
         const win = await preferences.availabilityWindow(client, row.user_id);
-        const quiet = await preferences.quietDays(client, row.user_id);
+        // The row already carries both fields the default is computed from,
+        // so an unstated quiet day costs no extra query: Saturday for
+        // somebody on a Jewish calendar, Sunday for a Christian one
+        // (domain/holidays.js). A person who STATED days — "none" included —
+        // is never overlaid with a guess.
+        const quiet = await preferences.quietDays(client, row.user_id,
+          { locale: row.locale, timezone: row.timezone });
+        // Only for somebody who asked for it, and only then is the calendar
+        // read at all: `holidays` is false for everybody until they say so,
+        // so the common row costs one `if` and no import work (the hebcal
+        // tables load lazily, on first use).
+        const quietDates = quiet.data.holidays
+          ? await holidays.quietDates(quiet.data.calendar, {
+            tz: row.timezone, from: now, il: holidays.isIsrael(row.timezone),
+          })
+          : [];
         const budget = Number(await flagsDomain.getFlag(client, 'proactive_daily_budget') ?? 4);
         // Count only what the budget actually governs. Urgent rows and the two
         // user-chosen kinds are exempt in decide() — counting them here let a day
@@ -189,7 +252,7 @@ async function drainOnce(pool, deliver, now = new Date()) {
           evalUser: Boolean(row.is_eval),
           checkinMisses: Number(row.checkin_misses) || 0,
           blockedUntil: row.quota_blocked_until,
-          window: win.data.window, quietDays: quiet.data.days, tz: row.timezone,
+          window: win.data.window, quietDays: quiet.data.days, quietDates, tz: row.timezone,
           lastInboundAt: row.last_inbound_at, groupWroteAt,
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,
@@ -298,15 +361,48 @@ async function drainOnce(pool, deliver, now = new Date()) {
         // `items` and `mergedParts` ride the in-memory row only. Nothing about
         // the batch is written down, so a redelivery after a failed send
         // re-forms it from whatever is still due then.
-        const result = await deliver(
-          mergedParts ? { ...row, payload: { ...payloadOf(row), mergedParts } }
-            : ids.length > 1 ? { ...row, payload: { ...payloadOf(row), items: titles } } : row
-        );
+        // The one question asked before any turn is spent. Only an explicit
+        // `down` stops the send; see channelProbe above for why `unknown` does
+        // not, and why this is asked here rather than at the top of the tick
+        // (a tick with nothing deliverable never reaches this line).
+        const channels = await channelsCanCarry();
+        const result = channels.status === 'down'
+          ? { ok: false, error: `channel unavailable, no turn spent: ${channels.detail}` }
+          : await deliver(
+            mergedParts ? { ...row, payload: { ...payloadOf(row), mergedParts } }
+              : ids.length > 1 ? { ...row, payload: { ...payloadOf(row), items: titles } } : row
+          );
         if (result.ok) {
           await client.query(
             `UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE id = ANY($1::bigint[])`, [ids]
           );
           outcomes.delivered++;
+          if (ids.length > 1) outcomes.batched = (outcomes.batched || 0) + ids.length - 1;
+        } else if (result.timedOut) {
+          // A timeout is a message that has very likely gone out, not one that
+          // failed (channels/openclaw.js, `runOpenclaw`). The CLI hands the
+          // turn to the gateway and waits for the model; killing it at the
+          // deadline stops the WAITING, never the turn, and `--deliver` sends
+          // whatever the turn says. Retried as a failure, every retry is a
+          // whole new turn and a whole new message: Dana got the same day-one
+          // check-in six times in seventeen minutes (2026-09-08, row 8675,
+          // attempts = 5), the last of them with the model's tool-call markup
+          // in it. So the row is booked as SENT — one attempt spent, the
+          // timeout kept in `last_error` so the dashboard can count them — and
+          // never retried. The price is the rare message that really was lost
+          // to a dead gateway; that person hears the next thing Olma has to
+          // say, which is a smaller harm than six copies of this one.
+          await client.query(
+            `UPDATE outbox SET sent_at = now(), hold_reason = NULL,
+                    attempts = attempts + 1, last_error = $2
+             WHERE id = ANY($1::bigint[])`,
+            [ids, String(result.error || 'openclaw timeout').slice(0, 500)]
+          );
+          await audit.record(client, row.user_id, 'delivery.unconfirmed', {
+            outboxIds: ids.map(Number), kind: row.kind, error: String(result.error || 'openclaw timeout').slice(0, 200),
+          });
+          outcomes.delivered++;
+          outcomes.unconfirmed = (outcomes.unconfirmed || 0) + 1;
           if (ids.length > 1) outcomes.batched = (outcomes.batched || 0) + ids.length - 1;
         } else {
           // 5s, 15s, 45s, 2m15s, then capped at 10 minutes. The first retry has
@@ -347,6 +443,12 @@ async function drainOnce(pool, deliver, now = new Date()) {
             [ids, String(result.error || 'delivery failed').slice(0, 500)]
           );
           outcomes.failed++;
+          // Counted apart from `failed` on the heartbeat, because the two read
+          // differently on the board: `failed` is sends that were attempted and
+          // did not land, `channelDown` is sends nobody attempted. A check that
+          // declines to act has to say so somewhere or it is indistinguishable
+          // from one that found nothing to do.
+          if (channels.status === 'down') outcomes.channelDown = (outcomes.channelDown || 0) + 1;
         }
       });
     } catch (e) {

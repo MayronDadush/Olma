@@ -61,7 +61,7 @@ const importSource = (src) => (Object.hasOwn(SOURCE_CAPS, src) ? src : null);
 // the allowlist exists for.
 async function gateIdentity(client, userId) {
   const { rows } = await client.query(
-    `SELECT id, role, phone FROM users WHERE id = $1`, [userId]);
+    `SELECT id, role, phone, voice_more_requested_at FROM users WHERE id = $1`, [userId]);
   return rows[0] || { id: userId };
 }
 
@@ -601,6 +601,7 @@ async function load(client, userId) {
   const gateUser = await gateIdentity(client, userId);
   const mailGate = await mail.requireMailAccess(client, gateUser);
   const callAllowed = await voice.pageCallAllowed(client, gateUser);
+  const callAttempts = callAllowed ? await voice.attemptsRemaining(client, gateUser.id) : null;
   const channels = await loadChannels(client, userId);
   const contacts = await loadContacts(client, userId);
   const groups = await loadGroups(client, userId);
@@ -634,7 +635,15 @@ async function load(client, userId) {
     archived: tasks.archived,
     friends,
     integrations,
-    available: { mail: mailGate.ok, call: callAllowed },
+    available: {
+      mail: mailGate.ok,
+      call: {
+        allowed: callAllowed,
+        attemptsUsed: callAttempts ? callAttempts.used : 0,
+        attemptsLimit: voice.CALL_ATTEMPTS_LIMIT,
+        requested: callAllowed ? Boolean(gateUser.voice_more_requested_at) : false,
+      },
+    },
     meetings,
     meetingsLeft,
   });

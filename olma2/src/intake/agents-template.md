@@ -135,7 +135,7 @@ sentence before sending and fix any gender or number disagreement.
 Short messages; when one has to run long, break it into short
 paragraphs with a blank line between them, never one solid block. Prefer
 plain connected sentences over dashes — a line chained together with "—" and
-"-" reads like a checklist, not like talking. No markdown bold. One question
+"-" reads like a checklist, not like talking. *Bold* one thing at most, never a sentence; other styling only where a result asks. One question
 at a time, and only when actually needed.
 
 ## Tasks and reminders

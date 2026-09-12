@@ -54,17 +54,49 @@ function greeterInstalled(configPath) {
   } catch { return false; }
 }
 
-// May a proactive line go out to this group right now? Anything that is a
-// REPLY to a live tag always may — that is the grace window, not an exception
-// to it.
+// May a proactive line go out to this group right now? A room where somebody
+// is demonstrably present always may — that is the grace window, the same one
+// a DM gets, and not an exception to the hours.
+//
+// The grace reads `last_member_write_at`: the newest
+// `chat_group_members.last_wrote_at` in the room, which means a MEMBER wrote
+// (migration 056). It used to read `chat_groups.last_mention_at`, and that is
+// how a room was told about a coordination at 01:12 (2026-09-08, group
+// "5 Percent (Maprinter)", `group_outbox` #4). Two separate faults, either one
+// enough on its own:
+//
+//   `last_mention_at` was stamped by the sweep whenever a group session's
+//   `lastInteractionAt` was newer than `chat_groups.last_seen_at` — but a room
+//   has SEVERAL gateway sessions (`main`, `ggreet`, `g-N`) and the sweep runs
+//   its loop once per session while `last_seen_at` was one column, overwritten
+//   by whichever session came last. So some other session was always newer, the
+//   stamp was rewritten on EVERY pass, and the fifteen-minute window never
+//   closed. Measured live: all three rooms carried the same `last_mention_at`
+//   to the millisecond, advancing every tick, with nobody writing.
+//   The watermark is per (group, session) now and nothing writes that column
+//   any more (migration 059) — but this window stays where it is, because the
+//   second fault below is untouched by that and is enough on its own.
+//
+//   And `lastInteractionAt` moves when OLMA sends into the room — the raw pipe
+//   sends as `agents.defaults.systemAgent.agentId`, which is `main`, whose
+//   session for that room was stamped at the exact second the 01:12 line went
+//   out. She talked, therefore she might talk: a window that renews itself.
+//
+// A member writing cannot do either. It is per room, it is written only from
+// a real inbound message, and Olma's own voice never touches it.
+//
+// A row that does not carry the column at all gets NO grace and falls to the
+// hours. Fail closed: the cost is a line held until morning, and the cost the
+// other way is this entry.
 function mayAnnounce(group, now = new Date()) {
-  const lastMention = group.last_mention_at ? new Date(group.last_mention_at).getTime() : 0;
-  // `elapsed >= 0` is not pedantry. A mention stamped AFTER the moment we are
+  const wrote = group.last_member_write_at ? new Date(group.last_member_write_at).getTime() : 0;
+  // `elapsed >= 0` is not pedantry. A write stamped AFTER the moment we are
   // deciding for is not a conversation in progress, it is a clock that
-  // disagrees with itself — and read as a live tag it would open quiet hours
-  // in the small hours, which is the one thing this window exists to stop.
-  const elapsed = now.getTime() - lastMention;
-  if (lastMention && elapsed >= 0 && elapsed < gate.CONVERSATION_GRACE_MS) return true;
+  // disagrees with itself — and read as somebody present it would open quiet
+  // hours in the small hours, which is the one thing this window exists to
+  // stop.
+  const elapsed = now.getTime() - wrote;
+  if (wrote && elapsed >= 0 && elapsed < gate.CONVERSATION_GRACE_MS) return true;
   return gate.withinWindow(GROUP_WINDOW, group.timezone || groups.DEFAULT_TIMEZONE, now);
 }
 
@@ -222,8 +254,8 @@ async function sweepGroups(client, deps) {
     // check. Leave the group exactly as it is rather than opening it on a
     // roster we know is incomplete.
     if (unparsed.length) {
-      await client.query(`UPDATE chat_groups SET last_seen_at = $2 WHERE id = $1`,
-        [group.id, new Date(session.lastInteractionAt || now)]);
+      await groups.noteSeen(client, group.id, session.key,
+        new Date(session.lastInteractionAt || now));
       out.skipped++;
       continue;
     }
@@ -238,7 +270,13 @@ async function sweepGroups(client, deps) {
     // is not going to say "nice to meet you" and "some of you have not signed
     // up" in the same breath — the nudge belongs to the next time somebody
     // actually asks her for something.
-    const lastSeen = group.last_seen_at ? new Date(group.last_seen_at).getTime() : 0;
+    // THIS session's watermark, never the room's. A room has several gateway
+    // sessions and this loop runs once per session; one column per room meant
+    // each iteration overwrote the last one's mark, so every session spent the
+    // next pass comparing itself against somebody else's number and "newer
+    // than we have seen" was true for ever (migration 059).
+    const seen = await groups.seenAt(client, group.id, session.key);
+    const lastSeen = seen ? new Date(seen).getTime() : 0;
     const activity = Number(session.lastInteractionAt || 0);
     // `justGreeted` covers the pass that decided the introduction; the pending
     // row covers every pass after it until the greeting has actually gone out.
@@ -246,9 +284,6 @@ async function sweepGroups(client, deps) {
     // `introduced_at` stamped is NOT evidence the room has heard anything yet.
     const greetingOwed = justGreeted || await groupOutbox.pending(client, group.id, 'intro');
     const isNew = !greetingOwed && activity > lastSeen;
-    // Somebody is demonstrably present either way, which is what the
-    // announcement's grace window is about.
-    if (activity > lastSeen) await groups.noteMention(client, group.id);
 
     // ---- the gate ----------------------------------------------------------
     const evaluated = await groups.evaluate(client, group.id);
@@ -298,7 +333,11 @@ async function sweepGroups(client, deps) {
       // introduction has already welcomed them, and it is the whole greeting
       // that room needs. `gate_notice_at` is stamped only by a notice about
       // somebody MISSING, never by `too_large` (migration 047).
-      if (!group.opened_announced_at && group.gate_notice_at && mayAnnounce(group, now)) {
+      // The row in hand came from provisioning, from a state change or from
+      // the sweep's own list, and none of those carry the roster — so the one
+      // column `mayAnnounce` judges on is fetched here rather than assumed.
+      const presentGroup = { ...group, last_member_write_at: await groups.lastMemberWriteAt(client, group.id) };
+      if (!group.opened_announced_at && group.gate_notice_at && mayAnnounce(presentGroup, now)) {
         await groupOutbox.enqueue(client, {
           groupId: group.id, kind: 'opened', idempotencyKey: `g${group.id}:opened`,
         });
@@ -316,6 +355,21 @@ async function sweepGroups(client, deps) {
       // that tagged her when the transcript gave us its id: in a room where
       // three people are talking, a bare "עוד מחכה ל…" floats; quoted under
       // the tag, it is plainly an answer to that person.
+      //
+      // So `isNew` is the only thing standing here. `decideNotice` never
+      // returns 'none' for a locked room, and the idempotency key counts
+      // `notices_sent`, which this branch increments — a fresh key every time,
+      // dedupping nothing. Until migration 059 what stood in for that guard was
+      // an accident of coupling: the broken watermark needed two sessions to
+      // oscillate, two sessions needed an agent, and an agent meant OPEN, which
+      // never reaches this branch. It leaked in one place — the pass that
+      // re-locks a room. `agentIds` is built once at the top, so the room's own
+      // `g-N` session is still iterated after the greeter's iteration took the
+      // agent away; it read the watermark the greeter had just overwritten,
+      // found itself newer, and answered a tag nobody had sent. That notice is
+      // gone with this and nothing replaces it: a re-locked room is silent
+      // until somebody actually asks her for something, which is what the
+      // paragraph above says the nudge is for.
       const notice = groups.decideNotice(group);
       if (notice.kind !== 'none') {
         // The key counts the notice, so a second tag earns a second (shorter)
@@ -340,8 +394,7 @@ async function sweepGroups(client, deps) {
       }
     }
 
-    await client.query(`UPDATE chat_groups SET last_seen_at = $2 WHERE id = $1`,
-      [group.id, new Date(activity || now)]);
+    await groups.noteSeen(client, group.id, session.key, new Date(activity || now));
   }
 
   return out;
@@ -373,7 +426,9 @@ async function sweepGroupVoice(client, deps) {
     // would date every coordination from the day the ROOM was registered.
     `SELECT m.id AS meeting_id, m.status, m.created_at AS meeting_created_at,
             m.group_base_at, m.group_chase_at, m.group_done_at,
-            m.group_dayof_at, m.group_hour_at, g.*
+            m.group_dayof_at, m.group_hour_at, g.*,
+            (SELECT max(last_wrote_at) FROM chat_group_members
+              WHERE group_id = g.id) AS last_member_write_at
        FROM meetings m JOIN chat_groups g ON g.id = m.group_id
       WHERE g.state = 'open'
         AND (m.status = 'negotiating'

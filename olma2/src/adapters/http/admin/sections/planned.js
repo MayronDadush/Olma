@@ -4,6 +4,12 @@
 // there is what is left of that file.
 const { ago } = require('../html');
 const { esc } = require('../../html');
+const dt = require('../../../../domain/datetime');
+const remindersDomain = require('../../../../domain/reminders');
+const proactiveText = require('../../../../domain/proactive-text');
+const templatesDomain = require('../../../../domain/message-templates');
+const usersDomain = require('../../../../domain/users');
+const flagsDomain = require('../../../../domain/flags');
 
 const OUTBOX_STATE = {
   sent: 'נשלחו', ready: 'ממתינות לשליחה',
@@ -12,7 +18,7 @@ const OUTBOX_STATE = {
   quiet: 'נעצרו — לא עונה', moved: 'המשימה זזה', superseded: 'הוחלפו בשלב הבא',
   awaiting_introduction: 'ממתינות להיכרות',
   settling: 'ממתינות לייצוב המערכת',
-  cancelled_by_admin: 'בוטל ע"י מנהל',
+  cancelled_by_admin: 'בוטל ע"י מנהל', cancelled: 'התזכורת בוטלה',
 };
 
 // Cancelling is a WRITE, never a DELETE. The row carries the idempotency_key
@@ -85,6 +91,11 @@ function plannedSubject(row) {
   // Everything else is an instruction the agent will reword, so showing it
   // would promise wording we cannot keep.
   if (p.rung === 'admin' && p.checkinInstruction) return esc(String(p.checkinInstruction).slice(0, 90));
+  // The second case, and the only other one: a reply our own pipe lost, queued
+  // to go out on the raw pipe word for word (jobs/unanswered.js). The sentence
+  // above about wording we cannot keep is exactly what does NOT apply here —
+  // no agent will reword it, because no agent is in the path.
+  if (p.verbatimReply) return esc(String(p.verbatimReply).slice(0, 90));
   if (row.kind === 'checkin' && p.rung) return RUNG_LABELS[p.rung] || esc(p.rung);
   if (p.title) return esc(String(p.title).slice(0, 60));
   return '<span class="dim">—</span>';
@@ -93,131 +104,309 @@ function plannedSubject(row) {
 // The 7-day outbox rollup and the failures table used to be their own section
 // ("הודעות יוצאות"); they are about the same queue this section shows, so they
 // lead it as one block. renderOutbox is unchanged below.
+// A SECTIONS entry is called as render(client, csrf, gateway, opts) — four
+// positional arguments — so nothing may be added to this signature: a third
+// parameter here silently receives the cached gateway. The clock a test needs
+// to pin is injected into `renderPlannedQueue`, which is what production calls
+// one line down.
 async function renderPlanned(client) {
   return `<h4>הודעות יוצאות — 7 ימים אחרונים</h4>${await renderOutbox(client)}${await renderPlannedQueue(client)}`;
 }
 
-async function renderPlannedQueue(client) {
-  // 1. Already queued: minutes away, or held by the delivery gate.
-  const { rows: queued } = await client.query(
-    `SELECT o.id, o.kind, o.urgency, o.hold_reason, o.attempts, o.payload, o.expires_at,
-            o.user_id, u.first_name, u.last_name, u.phone,
-            to_char(o.release_after AT TIME ZONE COALESCE(u.timezone, 'UTC'), 'DD/MM HH24:MI') AS local_release
-     FROM outbox o JOIN users u ON u.id = o.user_id
-     WHERE o.sent_at IS NULL
-     ORDER BY COALESCE(o.release_after, o.created_at) LIMIT 40`);
+// The cross-user review screen: everything Olma plans to say, to everybody,
+// grouped by the person who will read it. Grouped rather than one flat
+// stream, because the question this page is opened with is "is the product
+// behaving for this person" — a person's whole upcoming plan has to be
+// readable in one block, and a duplicate is only obvious beside its twin.
+// Ordered by whose message lands first.
+async function renderPlannedQueue(client, now = new Date()) {
+  const ctx = await planContext(client, now);
+  // Anyone with something planned, from all three places at once — a person
+  // whose only upcoming message is a digest has no outbox row and no pending
+  // reminder, and a queue-driven list would leave them off entirely.
+  const { rows: people } = await client.query(
+    `SELECT u.*,
+            (SELECT count(DISTINCT o.sent_at) FROM outbox o
+              WHERE o.user_id = u.id AND o.sent_at > now() - interval '7 days'
+                AND o.hold_reason IS NULL) AS sent_7d
+       FROM users u
+      WHERE EXISTS (SELECT 1 FROM outbox o WHERE o.user_id = u.id AND o.sent_at IS NULL)
+         OR EXISTS (SELECT 1 FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+                     WHERE t.owner_id = u.id AND r.sent_at IS NULL AND r.cancelled_at IS NULL)
+         OR (u.digest_times IS NOT NULL AND u.digest_times <> '' AND u.status = 'active')`);
 
-  // 2. Scheduled ahead: the reminders people actually asked for. These have
-  //    no outbox row yet — the sweep creates one when they come due, which is
-  //    why a queue-only view would look almost empty and mean almost nothing.
-  const { rows: reminders } = await client.query(
-    `SELECT r.id, r.repeat_rule, r.attempts, t.title, u.id AS user_id, u.first_name, u.last_name, u.phone,
-            to_char(r.remind_at AT TIME ZONE COALESCE(u.timezone, 'UTC'), 'DD/MM HH24:MI') AS local_time,
-            -- Overdue means "its moment passed and nothing went out". A row
-            -- mid-escalation HAS gone out and is waiting on its next rung;
-            -- flagging it red would send an operator hunting a working system.
-            r.remind_at < now() AND r.attempts = 0 AS overdue
-     FROM task_reminders r
-     JOIN tasks t ON t.id = r.task_id
-     JOIN users u ON u.id = t.owner_id
-     WHERE r.sent_at IS NULL AND r.cancelled_at IS NULL
-     ORDER BY r.remind_at LIMIT 40`);
+  const blocks = [];
+  for (const u of people) {
+    const rows = await planFor(client, u, ctx);
+    if (!rows.length) continue;
+    const shown = rows.slice(0, NEXT_LIMIT);
+    const more = rows.length - shown.length;
+    blocks.push({
+      sortAt: shown[0].sortAt,
+      html: `<h4>${userLink(u)} <span class="dim small">${esc(u.timezone || 'UTC')}
+        · ${Number(u.sent_7d)} הודעות יזומות ב-7 ימים${
+        Number(u.checkin_misses) > 0 ? ` · לא ענה על ${Number(u.checkin_misses)} פניות` : ''}</span></h4>
+      <table><tr><th>ההודעה</th><th>קשור ל</th><th>מתי תגיע</th><th>מצב</th></tr>
+      ${shown.map((r) => `<tr${r.bad ? ' class="bad"' : ''}>${planCells(r)}</tr>`).join('')}</table>
+      ${more > 0 ? `<p class="dim small">ועוד ${more} מתוכננות אחריו.</p>` : ''}`,
+    });
+  }
+  blocks.sort((a, b) => a.sortAt - b.sortAt);
 
-  // 3. Standing: the daily digest each person chose, in their own local time.
-  const { rows: digests } = await client.query(
-    `SELECT id, first_name, last_name, phone, digest_times, digest_scope, timezone
-     FROM users
-     WHERE status = 'active' AND digest_times IS NOT NULL AND digest_times <> ''
-     ORDER BY id`);
-
-  const queuedHtml = queued.length ? `<table>
-      <tr><th>למי</th><th>סוג</th><th>בנושא</th><th>מתי</th><th>מצב</th></tr>
-      ${queued.map((r) => `<tr${r.attempts > 0 ? ' class="bad"' : ''}>
-        <td>${userLink(r)}</td>
-        <td>${KIND_LABELS[r.kind] || esc(r.kind)}</td>
-        <td class="small">${plannedSubject(r)}</td>
-        <td class="nowrap small">${r.local_release ? esc(r.local_release) : '<span class="dim">מיד</span>'}</td>
-        <td class="small">${r.hold_reason ? (OUTBOX_STATE[r.hold_reason] || esc(r.hold_reason))
-          : (r.attempts > 0 ? `נסיון ${r.attempts}` : '<span class="dim">בדרך</span>')}</td>
-      </tr>`).join('')}</table>`
-    : '<p class="dim">אין כרגע הודעה בתור.</p>';
-
-  const remindersHtml = reminders.length ? `<table>
-      <tr><th>למי</th><th>על מה</th><th>מתי</th><th>חוזר</th></tr>
-      ${reminders.map((r) => `<tr>
-        <td>${userLink(r)}</td>
-        <td class="small">${esc(r.title)}</td>
-        <td class="nowrap small">${esc(r.local_time)}${r.overdue ? ' <span class="pill">באיחור</span>' : ''}</td>
-        <td class="dim small">${r.repeat_rule ? esc(r.repeat_rule) : '—'}${
-          r.attempts > 0 ? ` <span class="dim">· נשלחה ${r.attempts}×</span>` : ''}</td>
-      </tr>`).join('')}</table>`
-    : '<p class="dim">אין תזכורות מתוזמנות.</p>';
-
-  const digestHtml = digests.length ? `<table>
-      <tr><th>למי</th><th>שעות</th><th>היקף</th><th>אזור זמן</th></tr>
-      ${digests.map((u) => `<tr>
-        <td>${userLink(u)}</td>
-        <td class="mono small">${esc(u.digest_times)}</td>
-        <td class="small">${esc(u.digest_scope || 'summary')}</td>
-        <td class="dim small">${esc(u.timezone || 'UTC')}</td>
-      </tr>`).join('')}</table>`
-    : '<p class="dim">אף אחד לא הגדיר סיכום יומי.</p>';
-
-  return `<h4>בתור עכשיו — דקות מכאן</h4>${queuedHtml}
-    <h4>תזכורות מתוזמנות — נכנסות לתור כשיגיע זמנן</h4>${remindersHtml}
-    <h4>סיכום יומי קבוע</h4>${digestHtml}
-    <p class="hint">השעות הן בשעון המקומי של כל משתמש. הן עשויות לזוז: הודעה
-      שנופלת בשעות השקט שלו תמתין לבוקר, ומי שכבר קיבל מספיק הודעות היום —
-      שלו תצטרף לסיכום הבא.</p>`;
+  return `${blocks.length ? blocks.map((b) => b.html).join('')
+    : '<p class="dim">אין כרגע שום דבר מתוכנן לאף אחד.</p>'}
+    <p class="hint">עד ${NEXT_LIMIT} הודעות לאדם, בשעון המקומי שלו, לפי מי שההודעה
+      הבאה שלו מוקדמת יותר. שורה עם ✓ יוצאת כלשונה — זה בדיוק הטקסט שיגיע, בלי מודל
+      בדרך; בלי ✓ מודל ינסח אותה ברגע השליחה, ולכן מופיע הנושא בלבד.
+      השעות עשויות לזוז: הודעה שנופלת בשעות השקט שלו תמתין לבוקר, ומי שכבר קיבל מספיק
+      היום — שלו תצטרף לסיכום הבא. פנייה יזומה שהסריקות מחליטות עליה בזמן אמת נולדת רק
+      ברגע ההחלטה, ולכן אינה כאן. הספירה של 7 הימים היא המספר היחיד כאן שמסתכל אחורה.</p>`;
 }
 
-// The same question narrowed to one person: what is Olma about to say to
-// THEM. Same honesty as the global view — subjects, not drafts.
-async function renderPlannedForUser(client, u, csrf = '') {
-  const back = `/user?id=${u.id}`;
-  // Times are read out and written back in the PERSON's timezone, not the
-  // operator's: "09:00" on this page has to mean the same 09:00 the message
-  // will actually arrive at. The conversion is left to Postgres in both
-  // directions (AT TIME ZONE), so there is no hand-rolled offset arithmetic to
-  // get wrong around DST.
+// ---- what Olma is about to say, to one person ------------------------------
+// Built once and read by both views: the cross-user review screen and one
+// person's own page. They differ in what they wrap around it (a name, the
+// reschedule controls), never in what they believe is coming — two readers
+// answering the same question differently is how this page lost twelve
+// people off the bottom of its cost table.
+//
+// It is decided in three separate places, and a reader of only one of them
+// sees an empty page: the outbox holds what is already queued (minutes
+// away), `task_reminders` holds the moments people asked for and gets an
+// outbox row only when the sweep brings it due, and the daily digest has no
+// row anywhere until its minute arrives.
+const NEXT_LIMIT = 10;
+
+// One formatter for all three sources, so a moment reads the same way whether
+// Postgres or Node produced it. Their zone, never the operator's.
+// Wrapped, like nextDigest below: `Intl` throws a RangeError on a zone string
+// it does not know and on an invalid instant alike, and one bad `users` row
+// must not 500 the whole admin page. A moment that cannot be read prints as
+// unknown — never as now, and never as nothing.
+function localStamp(tz, at) {
+  try {
+    const p = dt.partsInZone(tz || 'UTC', new Date(at));
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(p.d)}/${pad(p.m)} ${pad(p.hh)}:${pad(p.mi)}`;
+  } catch { return '?'; }
+}
+
+// The next digest slot that is still ahead of them, in their own zone. The
+// conditions are sweepDigests' own: a paused, inactive, eval or not-yet-
+// onboarded person is never visited by it, and printing an hour for one would
+// promise a message that is never coming.
+function nextDigest(u, now) {
+  try { return nextDigestAt(u, now); } catch { return null; }
+}
+
+function nextDigestAt(u, now) {
+  if (!u.digest_times || u.status !== 'active' || u.paused_at || u.is_eval || !u.onboarded_at) return null;
+  const tz = u.timezone || 'UTC';
+  const p = dt.partsInZone(tz, now);
+  let best = null;
+  for (const raw of String(u.digest_times).split(',')) {
+    const m = /^\s*(\d{1,2}):(\d{2})\s*$/.exec(raw);
+    if (!m) continue;
+    const hh = Number(m[1]), mi = Number(m[2]);
+    // Today's slot if it has not passed, otherwise tomorrow's. Day 32 of a
+    // month is what Date.UTC rolls over for us, so no month-end special case.
+    for (const plus of [0, 1]) {
+      const at = dt.instantInZone(tz, { y: p.y, m: p.m, d: p.d + plus, hh, mi, ss: 0 });
+      if (at > now) {
+        if (!best || at < best.at) best = { at, slot: `${String(hh).padStart(2, '0')}:${m[2]}` };
+        break;
+      }
+    }
+  }
+  return best;
+}
+
+// The sentence that will actually arrive, WHERE THERE IS ONE. Most rows carry
+// an instruction a model will word at send time, and showing that as the
+// message would promise wording we cannot keep — the rule this section has
+// always followed. But a reminder and a re-sent lost reply go out on the raw
+// pipe with no model in the path, so their text is already decided and can be
+// read now, which is the whole point of a page someone reviews the product
+// on. `rawPipeTextFor` is the deliverer's own decision point, not a copy of
+// it: a non-null return is exactly the string the pipe will carry.
+function verbatimFor(row, ctx) {
+  try { return proactiveText.rawPipeTextFor(row, ctx.wording, ctx.channelType) || null; }
+  catch { return null; }
+}
+
+// Everything Olma plans to say to one person, in the order it lands. `ctx`
+// carries what is read once per PAGE rather than once per person: the owner's
+// rewordings, the escalation ceiling, and the clock.
+async function planFor(client, u, ctx) {
+  const tz = u.timezone || 'UTC';
+  const rows = [];
+  const chan = await usersDomain.primaryChannel(client, u.id);
+  const one = { ...ctx, channelType: chan.ok ? chan.data.channel.channel_type : null };
+
   const { rows: queued } = await client.query(
-    `SELECT o.id, o.kind, o.hold_reason, o.attempts, o.payload,
-            to_char(o.release_after AT TIME ZONE COALESCE($2, 'UTC'), 'DD/MM HH24:MI') AS local_release,
+    `SELECT o.id, o.kind, o.hold_reason, o.attempts, o.payload, o.release_after,
             to_char(o.release_after AT TIME ZONE COALESCE($2, 'UTC'), 'YYYY-MM-DD"T"HH24:MI') AS release_input,
             to_char(o.expires_at   AT TIME ZONE COALESCE($2, 'UTC'), 'YYYY-MM-DD"T"HH24:MI') AS expires_input
      FROM outbox o WHERE o.user_id = $1 AND o.sent_at IS NULL
-     ORDER BY COALESCE(o.release_after, o.created_at) LIMIT 15`, [u.id, u.timezone]);
+     -- No LIMIT: the caller caps what it SHOWS and then prints how many it did
+     -- not, and a limit here would silently understate that count. The set is
+     -- small by construction — the daily proactive budget and row expiry both
+     -- bound it.
+     ORDER BY COALESCE(o.release_after, o.created_at)`, [u.id, u.timezone]);
+
+  for (const r of queued) {
+    const text = verbatimFor({ ...r, locale: u.locale }, one);
+    rows.push({
+      // A row with no release_after goes on the next tick, so it sorts ahead
+      // of everything with a stated hour rather than to the end.
+      sortAt: r.release_after ? new Date(r.release_after).getTime() : 0,
+      message: text ? esc(text) : plannedSubject(r),
+      verbatim: Boolean(text),
+      source: KIND_LABELS[r.kind] || esc(r.kind),
+      when: r.release_after ? esc(localStamp(tz, r.release_after)) : '<span class="dim">מיד</span>',
+      state: r.hold_reason ? (OUTBOX_STATE[r.hold_reason] || esc(r.hold_reason))
+        : (r.attempts > 0 ? `נסיון ${r.attempts}` : '<span class="dim">בדרך</span>'),
+      bad: r.attempts > 0,
+      outbox: r,
+    });
+  }
+
+  // The domain function production itself calls, not a copy of its WHERE
+  // clause: it is the one place that knows both "still going to fire"
+  // (attempts = 0) and "already climbing and still going to reach them"
+  // (chasing), and a hand-copied replica here could not fail when it drifts.
+  const rem = (await remindersDomain.listReminders(client, u.id)).data;
+
+  // Reminders that come due together leave as ONE message, so they are ONE
+  // row here — three lines under one hour, which is also the shape in which a
+  // duplicate is obvious. The worker groups by rung template within a tick;
+  // this groups by rung template within a MINUTE, which is the one honest
+  // approximation available to a page with no tick: it can only ever show as
+  // two what will arrive as one, never the reverse.
+  const batches = new Map();
+  for (const r of rem.reminders || []) {
+    const base = { title: r.title, rung: 1, auto: r.auto };
+    const at = new Date(r.remind_at);
+    const key = `${at.toISOString().slice(0, 16)}|${proactiveText.reminderTemplateKey(base)}`;
+    const b = batches.get(key) || { at, titles: [], repeat: r.repeat_rule, base };
+    b.titles.push(r.title);
+    batches.set(key, b);
+  }
+  for (const b of batches.values()) {
+    const text = verbatimFor(
+      { kind: 'reminder', locale: u.locale, payload: { ...b.base, items: b.titles } }, one);
+    rows.push({
+      sortAt: b.at.getTime(),
+      message: text ? esc(text) : esc(b.titles.join(' · ')),
+      verbatim: Boolean(text),
+      source: `תזכורת${b.titles.length > 1 ? ` <span class="dim">· ${b.titles.length} ביחד</span>` : ''}${
+        b.repeat ? ` <span class="dim">· חוזרת ${esc(b.repeat)}</span>` : ''}`,
+      when: esc(localStamp(tz, b.at)),
+      state: b.at <= ctx.now ? '<span class="pill">באיחור</span>' : '<span class="dim">תיכנס לתור בזמנה</span>',
+    });
+  }
+
+  // A reminder mid-ladder has one or two messages still to send and was
+  // invisible in every reader that asked `attempts = 0` — the row Olma was
+  // asked to stop was the one row nothing could name. It belongs here for
+  // exactly that reason, and its HOUR does not: the next rung is due a gap
+  // after the previous one was DELIVERED, so any time printed for it would be
+  // a guess. The SENTENCE is not a guess, and it is the one worth reading
+  // before it goes out — "זו התזכורת האחרונה" is what seven people got wrongly
+  // once already.
+  for (const r of rem.chasing || []) {
+    const attempt = Number(r.rungsSent) + 1;
+    const payload = { title: r.title, rung: attempt, attempt, finalAttempt: attempt >= ctx.maxAttempts };
+    const text = verbatimFor({ kind: 'reminder', locale: u.locale, payload }, one);
+    rows.push({
+      // Finite on purpose: two Infinities subtract to NaN, and a comparator
+      // that returns NaN orders nothing.
+      sortAt: Number.MAX_SAFE_INTEGER,
+      message: text ? esc(text) : esc(r.title),
+      verbatim: Boolean(text),
+      source: `תזכורת <span class="dim">· רדיפה, שלב ${attempt}</span>`,
+      when: '<span class="dim">אחרי שהשלב הקודם נמסר</span>',
+      state: `<span class="dim">נשלחה ${r.rungsSent}×</span>`,
+    });
+  }
+
+  const digest = nextDigest(u, ctx.now);
+  if (digest) {
+    rows.push({
+      sortAt: digest.at.getTime(),
+      message: 'סיכום יומי',
+      source: `<span class="dim">קבוע · כל יום ב-${esc(digest.slot)}</span>`,
+      when: esc(localStamp(tz, digest.at)),
+      state: '<span class="dim">לפי השעה שהוא בחר</span>',
+    });
+  }
+
+  rows.sort((a, b) => a.sortAt - b.sortAt);
+  return rows;
+}
+
+// Read once per page, not once per person: the owner's rewordings and the
+// escalation ceiling are one setting each, and a value that changed mid-loop
+// would render two people's plans under two different rules.
+async function planContext(client, now) {
+  return {
+    now,
+    wording: await templatesDomain.load(client),
+    maxAttempts: Number(await flagsDomain.getFlag(client, 'reminder_escalation_max'))
+      || remindersDomain.ESCALATION_MAX_ATTEMPTS,
+  };
+}
+
+// A row's three review columns. The ✓ is not a judgement about the message —
+// it says only that this text is already decided and no model will touch it,
+// which is the difference between reading what will arrive and reading a
+// summary of what it will be about.
+function planCells(r) {
+  return `<td class="small${r.verbatim ? ' verbatim' : ''}">${
+    r.verbatim ? '<span class="dim" title="יוצא כלשונו — אין מודל בדרך">✓</span> ' : ''}${r.message}</td>
+      <td class="small">${r.source}</td>
+      <td class="nowrap small">${r.when}</td>
+      <td class="small">${r.state}</td>`;
+}
+
+// The same question narrowed to one person, off the same builder, with the
+// controls the review screen has no room for: reschedule and cancel, and the
+// box for writing a proactive message by hand.
+async function renderPlannedForUser(client, u, csrf = '', now = new Date()) {
+  const back = `/user?id=${u.id}`;
+  const hidden = `<input type="hidden" name="csrf" value="${csrf}">
+      <input type="hidden" name="back" value="${back}">`;
+  const rows = await planFor(client, u, await planContext(client, now));
+  const shown = rows.slice(0, NEXT_LIMIT);
+  // Never a silent cut: the same page had a top-ten on its cost table for
+  // months and nothing on it said so.
+  const more = rows.length - shown.length;
+
   const { rows: cancelled } = await client.query(
     `SELECT id, kind, payload, sent_at FROM outbox
       WHERE user_id = $1 AND hold_reason = $2 ORDER BY id DESC LIMIT 5`, [u.id, CANCELLED_BY_ADMIN]);
-  const { rows: reminders } = await client.query(
-    `SELECT t.title, r.repeat_rule,
-            to_char(r.remind_at AT TIME ZONE COALESCE($2, 'UTC'), 'DD/MM HH24:MI') AS local_time
-     FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-     WHERE t.owner_id = $1 AND r.sent_at IS NULL AND r.attempts = 0
-       AND r.cancelled_at IS NULL
-     ORDER BY r.remind_at LIMIT 15`, [u.id, u.timezone]);
 
-  const hidden = `<input type="hidden" name="csrf" value="${csrf}">
-      <input type="hidden" name="back" value="${back}">`;
+  // Only a row that really is in the outbox can be moved or cancelled; a
+  // reminder that has not been queued yet and a digest that has no row at all
+  // have nothing for these forms to address.
+  const actionsFor = (r) => (r.outbox ? `<form method="post" action="/outbox/reschedule" class="inline">${hidden}
+      <input type="hidden" name="id" value="${r.outbox.id}">
+      <input type="datetime-local" name="release_after" value="${esc(r.outbox.release_input || '')}"
+             title="ריק = לשלוח בהזדמנות הקרובה">
+      <input type="datetime-local" name="expires_at" value="${esc(r.outbox.expires_input || '')}"
+             title="אחרי המועד הזה ההודעה כבר לא תישלח. ריק = בלי תפוגה.">
+      <button>שמור מועד</button></form>
+      <form method="post" action="/outbox/cancel" class="inline">${hidden}
+      <input type="hidden" name="id" value="${r.outbox.id}">
+      <button class="danger">בטל</button></form>` : '');
 
-  const queuedHtml = queued.length ? `<h4>בתור</h4>
-    <table><tr><th>סוג</th><th>בנושא</th><th>מתי (שעון שלו)</th><th>פג תוקף</th><th>מצב</th><th></th></tr>
-    ${queued.map((r) => `<tr${r.attempts > 0 ? ' class="bad"' : ''}>
-      <td>${KIND_LABELS[r.kind] || esc(r.kind)}</td>
-      <td class="small">${plannedSubject(r)}</td>
-      <td colspan="2"><form method="post" action="/outbox/reschedule" class="inline">${hidden}
-        <input type="hidden" name="id" value="${r.id}">
-        <input type="datetime-local" name="release_after" value="${esc(r.release_input || '')}"
-               title="ריק = לשלוח בהזדמנות הקרובה">
-        <input type="datetime-local" name="expires_at" value="${esc(r.expires_input || '')}"
-               title="אחרי המועד הזה ההודעה כבר לא תישלח. ריק = בלי תפוגה.">
-        <button>שמור מועד</button></form></td>
-      <td class="small">${r.hold_reason ? (OUTBOX_STATE[r.hold_reason] || esc(r.hold_reason)) : '<span class="dim">בדרך</span>'}</td>
-      <td><form method="post" action="/outbox/cancel" class="inline">${hidden}
-        <input type="hidden" name="id" value="${r.id}">
-        <button class="danger">בטל</button></form></td>
-    </tr>`).join('')}</table>` : '';
+  const nextHtml = shown.length ? `<table>
+    <tr><th>ההודעה</th><th>קשור ל</th><th>מתי תגיע</th><th>מצב</th><th></th></tr>
+    ${shown.map((r) => `<tr${r.bad ? ' class="bad"' : ''}>${planCells(r)}
+      <td>${actionsFor(r)}</td>
+    </tr>`).join('')}</table>
+    ${more > 0 ? `<p class="dim small">ועוד ${more} מתוכננות אחריהן.</p>` : ''}`
+    : '<p class="dim">אין כרגע שום דבר מתוכנן אליו.</p>';
 
   const cancelledHtml = cancelled.length ? `<h4>בוטלו ע"י מנהל</h4>
     <table><tr><th>סוג</th><th>בנושא</th><th>מתי בוטל</th></tr>
@@ -247,13 +436,12 @@ async function renderPlannedForUser(client, u, csrf = '') {
     </form>`;
 
   return `<section><h3>מה מתוכנן להישלח אליו</h3>
-    <p class="hint">בשעון המקומי שלו (${esc(u.timezone || 'UTC')}). הנוסח נכתב ברגע השליחה — כאן הנושא בלבד.</p>
-    ${queued.length ? queuedHtml : '<p class="dim">אין כרגע הודעה בתור.</p>'}
-    ${reminders.length ? `<h4>תזכורות מתוזמנות</h4><table><tr><th>על מה</th><th>מתי</th><th>חוזר</th></tr>
-      ${reminders.map((r) => `<tr><td class="small">${esc(r.title)}</td>
-        <td class="nowrap small">${esc(r.local_time)}</td>
-        <td class="dim small">${r.repeat_rule ? esc(r.repeat_rule) : '—'}</td></tr>`).join('')}</table>` : ''}
-    ${u.digest_times ? `<h4>סיכום יומי</h4><p class="small">כל יום ב-<span class="mono">${esc(u.digest_times)}</span></p>` : ''}
+    <p class="hint">${NEXT_LIMIT} ההודעות היזומות הבאות, בשעון המקומי שלו (${esc(u.timezone || 'UTC')}).
+      שורה עם ✓ יוצאת כלשונה — זה בדיוק הטקסט שיגיע; בלי ✓ מודל ינסח אותה ברגע השליחה,
+      ולכן מופיע הנושא בלבד. השעות עשויות לזוז: הודעה שנופלת בשעות השקט שלו תמתין לבוקר,
+      ומי שכבר קיבל מספיק היום — שלו תצטרף לסיכום הבא.
+      פנייה יזומה שהסריקות מחליטות עליה בזמן אמת נולדת רק ברגע ההחלטה, ולכן אינה כאן.</p>
+    ${nextHtml}
     ${cancelledHtml}
     ${composeHtml}
   </section>`;

@@ -1,9 +1,9 @@
 'use strict';
 // Direct model calls for background cognition — the jobs that read and think
-// but never speak to anyone (fact extraction, memory consolidation, and the
-// planning pass to come).
+// but never speak to anyone. Every one of them is here since memory
+// consolidation, the last holdout, moved across on 2026-09-10.
 //
-// Why this exists next to runSilentAgentTurn: an agent turn through the
+// Why this exists rather than a silent agent turn: an agent turn through the
 // gateway carries the full interactive stack — the system prompt, AGENTS.md,
 // and 60+ tool schemas, ~21k cold tokens — to do a job that needs a transcript
 // and one JSON answer. Routing background thinking here cuts the cost per
@@ -239,4 +239,31 @@ function parseJsonObject(text) {
   try { return JSON.parse(t.slice(start, end + 1)); } catch { return null; }
 }
 
-module.exports = { complete, recordUsage, parseJsonObject, backgroundModel, DEFAULT_MODEL, BACKGROUND_LLM_FLAG };
+// Every background consumer discards a null from `parseJsonObject` and writes
+// down the same sentence — "unparseable model output" — for two failures that
+// take OPPOSITE actions. A model that wrote prose instead of JSON is the wrong
+// model; an answer the token ceiling cut in half is the right model on too
+// small a budget, and raising the budget fixes it. `finishReason` has been on
+// every result since it was added for the eval judge (2026-09-05) and was read
+// by that one caller and nowhere else, so the background path has been unable
+// to tell those two apart for as long as it has existed. It is a NAME for a
+// failure, not a repair: the run still fails and the caller still skips.
+const CEILING_REASON = 'the answer was cut at max_tokens, not malformed — raise the budget, do not blame the model';
+function whyUnparseable(res) {
+  if (!res || !res.ok) return String((res && res.error) || 'unknown');
+  if (res.finishReason === 'length') return CEILING_REASON;
+  return 'unparseable model output';
+}
+
+// The ceiling for one background answer. It was the `maxTokens || 2048` default
+// inside both adapters for three of the five consumers — a number nobody
+// chose, invisible at the call site, and impossible to move for one job
+// without moving it for every direct call in the system. Named here so the
+// jobs that want a different one say so, and the ones that do not still state
+// what they are running at.
+const BACKGROUND_MAX_TOKENS = 2048;
+
+module.exports = {
+  complete, recordUsage, parseJsonObject, backgroundModel, whyUnparseable,
+  DEFAULT_MODEL, BACKGROUND_LLM_FLAG, BACKGROUND_MAX_TOKENS,
+};

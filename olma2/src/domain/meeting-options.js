@@ -11,7 +11,7 @@
 //     their time, is asked what it replaces, and `swap` is that answer in one
 //     transaction. What this replaced: a fifth from a non-initiator used to
 //     wait as `pending` for the initiator to approve or reject. That never
-//     ran for a real person — see migration 058 for the measurement;
+//     ran for a real person — see migration 063 for the measurement;
 //   - adding is agreeing: the adder's own answer to it is yes;
 //   - one active option with a yes from every active participant ARMS the
 //     meeting; it settles a minute later, and a mind changed inside that

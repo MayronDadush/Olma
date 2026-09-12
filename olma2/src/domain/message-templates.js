@@ -47,6 +47,7 @@ const TEMPLATES = [
     key: 'opening_he', audience: 'private', label: 'הודעת הפתיחה',
     help: 'המשפט הראשון שאדם חדש קורא — מהגרייטר או מהסוכן שלו, פעם אחת בחיים. בלי שאלה בסוף: את השם שואלים אחר כך.',
     vars: {}, required: [],
+    sample: {},
     text: 'היי, אני עולמה 👋\n'
       + '\n'
       + 'אני כאן כדי לעזור לכם עם משימות, תזכורות ותיאומים מול האנשים שחשובים לכם.\n'
@@ -55,6 +56,7 @@ const TEMPLATES = [
   {
     key: 'opening_en', audience: 'private', label: 'הודעת הפתיחה', help: '',
     vars: {}, required: [],
+    sample: {},
     text: "Hey! I'm Allma \u{1F44B}\n"
       + '\n'
       + 'I’m here to help you manage tasks, set reminders, and schedule with the '
@@ -66,19 +68,22 @@ const TEMPLATES = [
     key: 'reminder', audience: 'private', label: 'תזכורת',
     help: 'התזכורת עצמה, בשעה שהאדם ביקש. יוצאת בלי מודל, ולכן גם כשאין קרדיט.',
     vars: { title: 'מה שביקשו להזכיר, במילים שלהם' }, required: ['title'],
-    text: '⏰ תזכורת: {{title}}',
+    sample: { title: 'לקחת את הרכב לטסט' },
+    text: '⏰ תזכורת: *{{title}}*',
   },
   {
     key: 'reminder_followup', audience: 'private', label: 'תזכורת חוזרת',
     help: 'השלב השני והשלישי של אותה תזכורת, אם לא ענו. חייבת להגיד איך מפסיקים אותה.',
     vars: { title: 'מה שביקשו להזכיר' }, required: ['title'],
-    text: '⏰ תזכורת חוזרת: {{title}}\nבוצע? אפשר לכתוב לי, או להגיד לי להפסיק להזכיר על זה.',
+    sample: { title: 'לקחת את הרכב לטסט' },
+    text: '⏰ תזכורת חוזרת: *{{title}}*\nבוצע? אפשר לכתוב לי, או להגיד לי להפסיק להזכיר על זה.',
   },
   {
     key: 'reminder_last', audience: 'private', label: 'תזכורת אחרונה',
     help: 'השלב האחרון בסולם. אחריה עולמה לא מזכירה שוב מיוזמתה, וההודעה צריכה להגיד את זה.',
     vars: { title: 'מה שביקשו להזכיר' }, required: ['title'],
-    text: '⏰ תזכורת חוזרת: {{title}}\nזו התזכורת האחרונה על זה — לא אזכיר שוב מיוזמתי. אם עדיין רלוונטי, אפשר להגיד לי מתי להזכיר.',
+    sample: { title: 'לקחת את הרכב לטסט' },
+    text: '⏰ תזכורת חוזרת: *{{title}}*\nזו התזכורת האחרונה על זה — לא אזכיר שוב מיוזמתי. אם עדיין רלוונטי, אפשר להגיד לי מתי להזכיר.',
   },
   // ---- the same three rungs, when several arrive at once -------------------
   // Nine reminders that come due in the same minute were nine messages, one
@@ -91,19 +96,22 @@ const TEMPLATES = [
     key: 'reminder_list', audience: 'private', label: 'כמה תזכורות יחד',
     help: 'כשכמה תזכורות מגיעות באותו רגע — הודעה אחת במקום אחת לכל תזכורת. אותו שלב ראשון, רק ברשימה.',
     vars: { items: 'התזכורות, שורה לכל אחת' }, required: ['items'],
-    text: '⏰ תזכורות:\n{{items}}',
+    sample: { items: '- לקחת את הרכב לטסט\n- להתקשר לרואה החשבון' },
+    text: '⏰ *תזכורות*\n{{items}}',
   },
   {
     key: 'reminder_list_followup', audience: 'private', label: 'כמה תזכורות חוזרות יחד',
     help: 'אותו דבר לשלב השני והשלישי. חייבת להגיד איך מפסיקים, בדיוק כמו תזכורת חוזרת בודדת.',
     vars: { items: 'התזכורות, שורה לכל אחת' }, required: ['items'],
-    text: '⏰ תזכורות חוזרות:\n{{items}}\nמשהו מהן בוצע? אפשר לכתוב לי, או להגיד לי להפסיק להזכיר.',
+    sample: { items: '- לקחת את הרכב לטסט\n- להתקשר לרואה החשבון' },
+    text: '⏰ *תזכורות חוזרות*\n{{items}}\nמשהו מהן בוצע? אפשר לכתוב לי, או להגיד לי להפסיק להזכיר.',
   },
   {
     key: 'reminder_list_last', audience: 'private', label: 'כמה תזכורות אחרונות יחד',
     help: 'השלב האחרון בסולם, לכמה תזכורות יחד. אחריה עולמה לא מזכירה שוב על אף אחת מהן מיוזמתה.',
     vars: { items: 'התזכורות, שורה לכל אחת' }, required: ['items'],
-    text: '⏰ תזכורות חוזרות:\n{{items}}\nאלו התזכורות האחרונות עליהן — לא אזכיר שוב מיוזמתי. אם משהו עדיין רלוונטי, אפשר להגיד לי מתי להזכיר.',
+    sample: { items: '- לקחת את הרכב לטסט\n- להתקשר לרואה החשבון' },
+    text: '⏰ *תזכורות חוזרות*\n{{items}}\nאלו התזכורות האחרונות עליהן — לא אזכיר שוב מיוזמתי. אם משהו עדיין רלוונטי, אפשר להגיד לי מתי להזכיר.',
   },
   // ---- the same six, for somebody whose language is English ---------------
   // A reminder goes out with no model between the code and the phone, so the
@@ -118,62 +126,72 @@ const TEMPLATES = [
     key: 'reminder_en', audience: 'private', label: 'תזכורת',
     help: '',
     vars: { title: 'what they asked to be reminded of, in their words' }, required: ['title'],
-    text: '⏰ Reminder: {{title}}',
+    sample: { title: 'take the car for its test' },
+    text: '⏰ Reminder: *{{title}}*',
   },
   {
     key: 'reminder_followup_en', audience: 'private', label: 'תזכורת חוזרת',
     help: '',
     vars: { title: 'what they asked to be reminded of' }, required: ['title'],
-    text: '⏰ Reminder again: {{title}}\nDone? Just tell me — or tell me to stop reminding you about this.',
+    sample: { title: 'take the car for its test' },
+    text: '⏰ Reminder again: *{{title}}*\nDone? Just tell me — or tell me to stop reminding you about this.',
   },
   {
     key: 'reminder_last_en', audience: 'private', label: 'תזכורת אחרונה',
     help: '',
     vars: { title: 'what they asked to be reminded of' }, required: ['title'],
-    text: '⏰ Reminder again: {{title}}\nThis is the last reminder about this — I won\'t bring it up again on my own. If it still matters, tell me when to remind you.',
+    sample: { title: 'take the car for its test' },
+    text: '⏰ Reminder again: *{{title}}*\nThis is the last reminder about this — I won\'t bring it up again on my own. If it still matters, tell me when to remind you.',
   },
   {
     key: 'reminder_list_en', audience: 'private', label: 'כמה תזכורות יחד',
     help: '',
     vars: { items: 'the reminders, one per line' }, required: ['items'],
-    text: '⏰ Reminders:\n{{items}}',
+    sample: { items: '- take the car for its test\n- call the accountant' },
+    text: '⏰ *Reminders*\n{{items}}',
   },
   {
     key: 'reminder_list_followup_en', audience: 'private', label: 'כמה תזכורות חוזרות יחד',
     help: '',
     vars: { items: 'the reminders, one per line' }, required: ['items'],
-    text: '⏰ Reminders again:\n{{items}}\nAny of these done? Just tell me — or tell me to stop reminding you.',
+    sample: { items: '- take the car for its test\n- call the accountant' },
+    text: '⏰ *Reminders again*\n{{items}}\nAny of these done? Just tell me — or tell me to stop reminding you.',
   },
   {
     key: 'reminder_list_last_en', audience: 'private', label: 'כמה תזכורות אחרונות יחד',
     help: '',
     vars: { items: 'the reminders, one per line' }, required: ['items'],
-    text: '⏰ Reminders again:\n{{items}}\nThese are the last reminders about them — I won\'t bring them up again on my own. If any still matter, tell me when to remind you.',
+    sample: { items: '- take the car for its test\n- call the accountant' },
+    text: '⏰ *Reminders again*\n{{items}}\nThese are the last reminders about them — I won\'t bring them up again on my own. If any still matter, tell me when to remind you.',
   },
   {
     key: 'stranger_intro_he', audience: 'private', label: 'פנייה ראשונה לאדם חדש',
     help: 'כשמשתמש ביקש להתחבר למספר שעוד לא אצלנו. ההודעה הראשונה שהאדם הזה מקבל מעולמה, ולכן בלי ניחוש מגדר.',
     vars: { inviter_name: 'מי ביקש להתחבר', inviter_phone: 'המספר שלו, כדי שיזהו', reason: 'הסיבה שכתב, עם מקף לפניה — או כלום אם לא כתב' },
     required: ['inviter_name', 'inviter_phone'],
-    text: 'היי! כאן עולמה — עוזרת אישית שעובדת בוואטסאפ.\n\n{{inviter_name}} ({{inviter_phone}}) ביקש/ה להתחבר אליך דרכי{{reason}}.\n\nאם זה מעניין אותך, פשוט תענה/י לי כאן ואספר איך זה עובד. אם לא — אפשר להתעלם, ולא אכתוב שוב.',
+    sample: { inviter_name: 'יואב', inviter_phone: '054-000-0000', reason: ' — לתאם את הטיול של סוף השבוע' },
+    text: 'היי! כאן עולמה — עוזרת אישית שעובדת בוואטסאפ.\n\n*{{inviter_name}}* ({{inviter_phone}}) ביקש/ה להתחבר אליך דרכי{{reason}}.\n\nאם זה מעניין אותך, פשוט תענה/י לי כאן ואספר איך זה עובד. אם לא — אפשר להתעלם, ולא אכתוב שוב.',
   },
   {
     key: 'stranger_intro_en', audience: 'private', label: 'פנייה ראשונה לאדם חדש',
     help: '',
     vars: { inviter_name: 'who asked to connect', inviter_phone: 'their number', reason: 'their reason, with a dash before it — or nothing' },
     required: ['inviter_name', 'inviter_phone'],
-    text: 'Hi! This is Olma — a personal assistant that lives in WhatsApp.\n\n{{inviter_name}} ({{inviter_phone}}) asked to connect with you through me{{reason}}.\n\nIf you\'re curious, just reply here and I\'ll explain how it works. If not — feel free to ignore this, I won\'t write again.',
+    sample: { inviter_name: 'Yoav', inviter_phone: '054-000-0000', reason: ' — to sort out the weekend trip' },
+    text: 'Hi! This is Olma — a personal assistant that lives in WhatsApp.\n\n*{{inviter_name}}* ({{inviter_phone}}) asked to connect with you through me{{reason}}.\n\nIf you\'re curious, just reply here and I\'ll explain how it works. If not — feel free to ignore this, I won\'t write again.',
   },
   {
     key: 'reopen_he', audience: 'private', label: 'ההרשמה נפתחה מחדש',
     help: 'למי שפנה כשההרשמה הייתה סגורה ונכנס לרשימת ההמתנה — ההבטחה שקיימנו.',
     vars: {}, required: [],
+    sample: {},
     text: 'היי! כאן עולמה — פנית אליי כשלא הייתה אפשרות לצרף משתמשים חדשים. עכשיו נפתח מקום! אם עדיין רלוונטי, פשוט תענה/י לי כאן ונתחיל 🙂',
   },
   {
     key: 'reopen_en', audience: 'private', label: 'ההרשמה נפתחה מחדש',
     help: '',
     vars: {}, required: [],
+    sample: {},
     text: 'Hi! Olma here — you reached out while new sign-ups were paused. There\'s room now! If you\'re still interested, just reply here and we\'ll get started 🙂',
   },
   // ---- in a group -----------------------------------------------------------
@@ -181,30 +199,35 @@ const TEMPLATES = [
     key: 'group_intro', audience: 'group', label: 'היכרות בקבוצה',
     help: 'המשפט הראשון שלה בקבוצה, על ההודעה הראשונה של מישהו שם. חייבת לכלול את התיוג שלה, כדי שיהיה משהו ללחוץ עליו.',
     vars: { me: 'התיוג של עולמה עצמה (המספר שלה, כתיוג אמיתי)' }, required: ['me'],
+    sample: { me: '@+972559347282' },
     text: 'נעים מאוד, אני עולמה 👋\nאני עוזרת לקבוצות לתאם דברים בלי הפינג-פונג: מי פנוי מתי ומי עוד לא ענה.\nכשאתם צריכים אותי - תתייגו אותי {{me}}. בלי תיוג אני לא מתערבת מקווה שכולכם מחוברים 🙌',
   },
   {
     key: 'group_gate_explain', audience: 'group', label: 'תייגו אותה ולא כולם מחוברים — פעם ראשונה',
     help: 'התשובה לתיוג הראשון בקבוצה נעולה: מסבירה למה היא לא עונה עדיין ומתייגת את מי שחסר.',
     vars: { missing: 'תיוגים של מי שעוד לא כתב לה בפרטי' }, required: ['missing'],
+    sample: { missing: '@+972501234567 @+972521234567' },
     text: 'כדי שאוכל לתאם לכם משהו, אני צריכה שכל אחד כאן ישלח לי הודעה - אחרת אין לי דרך לשאול אותו מתי הוא פנוי.\nרק אומרת.. עוד לא שלחו לי: {{missing}}\n״היי״ בפרטי וזהו, אני מתחילה לעבוד ☺️',
   },
   {
     key: 'group_gate_nudge', audience: 'group', label: 'תייגו אותה ולא כולם מחוברים — מהפעם השנייה',
     help: 'כל תיוג נוסף בקבוצה נעולה. קצרה בכוונה: ההסבר כבר נאמר.',
     vars: { missing: 'תיוגים של מי שעוד לא כתב לה בפרטי' }, required: ['missing'],
+    sample: { missing: '@+972501234567 @+972521234567' },
     text: 'עוד מחכה ל: {{missing}}  🧐',
   },
   {
     key: 'group_opened', audience: 'group', label: 'כולם מחוברים — הקבוצה נפתחה',
     help: 'פעם אחת, כשהאחרון כתב לה בפרטי. יוצאת בשעות היום של הקבוצה, לא באמצע הלילה.',
     vars: {}, required: [],
+    sample: {},
     text: 'יש! כולם כאן ואפשר להתחיל 🎉\nתתייגו אותי ותגידו מה לתאם — פגישה, משחק, מה שבא — ואני ארוץ לכל אחד בפרטי ואחזור עם מה שמסתדר.',
   },
   {
     key: 'group_too_large', audience: 'group', label: 'הקבוצה גדולה מדי',
     help: 'פעם אחת, בקבוצה שמעל התקרה שבהגדרות. המספר מגיע מההגדרה, לא מהטקסט.',
     vars: { max: 'התקרה שבהגדרות (group_max_members)' }, required: ['max'],
+    sample: { max: '25' },
     text: 'אני מסתדרת טוב עד {{max}} אנשים, וכאן יש יותר - אז לא אתערב פה. בפרטי אני תמיד זמינה.',
   },
   // ---- what a room hears about its own coordination, unasked --------------
@@ -217,31 +240,36 @@ const TEMPLATES = [
     help: 'פעם אחת בכל תיאום, ברגע שיש זמן שכמה אנשים אמרו לו כן (או שהגיע למינימום, בקבוצת משחק).',
     vars: { slot: 'הזמן שמוביל', yes: 'כמה אמרו לו כן', missing: 'תיוגים של מי שעוד לא אמר כן לזמן הזה' },
     required: ['slot'],
-    text: 'יש כיוון: {{slot}} — {{yes}} כבר בפנים.\nמחכה ל{{missing}} 🤞',
+    sample: { slot: 'יום שלישי 20:00', yes: '3', missing: '@+972501234567' },
+    text: 'יש כיוון: *{{slot}}* — {{yes}} כבר בפנים.\nמחכה ל{{missing}} 🤞',
   },
   {
     key: 'group_coord_chase', audience: 'group', label: 'תיאום — מזרזת באמצע',
     help: 'פעם אחת בכל תיאום, כשעבר חצי מהדרך לזמן שמדובר עליו ויש מי שעוד לא ענה כלום בפרטי.',
     vars: { missing: 'תיוגים של מי שעוד לא ענה כלום' }, required: ['missing'],
+    sample: { missing: '@+972501234567' },
     text: 'עוד לא שמעתי מ{{missing}} — תגידו לי בפרטי מתי אתם יכולים ואני סוגרת את זה.',
   },
   {
     key: 'group_coord_done', audience: 'group', label: 'תיאום — נסגר',
     help: 'פעם אחת, כשהתיאום נסגר על זמן. כל אחד מקבל את זה גם בפרטי; זאת השורה בקבוצה.',
     vars: { slot: 'הזמן שנסגר' }, required: ['slot'],
-    text: 'סגור: {{slot}} 🎉',
+    sample: { slot: 'יום שלישי 20:00' },
+    text: 'סגור: *{{slot}}* 🎉',
   },
   {
     key: 'group_coord_dayof', audience: 'group', label: 'תיאום — תזכורת ביום עצמו',
     help: 'בבוקר היום שבו זה קורה, ורק אם נשארו לפחות שלוש שעות — אחרת התזכורת של שעה לפני מספיקה.',
     vars: { slot: 'הזמן שנסגר' }, required: ['slot'],
-    text: 'מזכירה — היום: {{slot}} 👋',
+    sample: { slot: 'יום שלישי 20:00' },
+    text: 'מזכירה — היום: *{{slot}}* 👋',
   },
   {
     key: 'group_coord_soon', audience: 'group', label: 'תיאום — שעה לפני',
     help: 'שעה לפני. לא נשלחת מאוחר יותר: משהו שכבר התחיל לא צריך תזכורת.',
     vars: { slot: 'הזמן שנסגר' }, required: ['slot'],
-    text: 'עוד שעה: {{slot}} 🙂',
+    sample: { slot: 'יום שלישי 20:00' },
+    text: 'עוד שעה: *{{slot}}* 🙂',
   },
 ];
 
@@ -320,9 +348,41 @@ function textFor(key, overrides) {
   return t.text;
 }
 
+// A template may WRAP a placeholder in a WhatsApp marker — `*{{title}}*` is how
+// the owner turns emphasis on for a sentence, from the page, without a deploy.
+// It has to be applied here rather than by the literal, because the value is
+// the person's own words: WhatsApp has no escape character, so wrapping a
+// title that still carries a marker of its own produces a half-bold sentence.
+// Same rule as message-format.wrapInline, applied where the template asked for
+// it — if the value cannot be wrapped safely it goes in bare, emphasis lost and
+// sentence intact, which is the right way round. An empty value takes the
+// markers with it rather than leaving `**` behind.
+//
+// `stripUserMarkup` has usually already cleaned the value by the time it gets
+// here; this covers what that rule deliberately leaves alone (a marker glued
+// inside a token, a lone unpaired one).
+const WRAPPED_RE = /([*_~])\{\{\s*([a-z_]+)\s*\}\}\1/g;
+const UNSAFE_TO_WRAP = /[*_~`\n]/;
+
 function render(key, vars, overrides) {
   const v = vars || {};
-  return textFor(key, overrides).replace(PLACEHOLDER_RE, (_, name) => (v[name] == null ? '' : String(v[name])));
+  const value = (name) => (v[name] == null ? '' : String(v[name]));
+  return textFor(key, overrides)
+    .replace(WRAPPED_RE, (_, marker, name) => {
+      const core = value(name);
+      if (!core.trim()) return '';
+      return UNSAFE_TO_WRAP.test(core) ? core : `${marker}${core}${marker}`;
+    })
+    .replace(PLACEHOLDER_RE, (_, name) => value(name));
+}
+
+// The default (or the override, when there is one) with real values in it —
+// what the page shows instead of a sentence full of `{{ }}`. The owner asked
+// for this (2026-09-09): a legend describing the placeholders is not the same
+// as seeing the message. Samples live on the template beside the placeholders
+// they fill, so one cannot be added without the other.
+function example(key, overrides) {
+  return render(key, spec(key).sample || {}, overrides);
 }
 
 async function load(client) {
@@ -351,5 +411,5 @@ function parseForm(body) {
 
 module.exports = {
   FLAG, MAX_LENGTH, TEMPLATES, spec, validate, normalize, textFor, render, load, parseForm, placeholdersIn,
-  families, familyOf, langOf,
+  families, familyOf, langOf, example,
 };

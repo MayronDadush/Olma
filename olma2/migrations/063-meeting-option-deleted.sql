@@ -23,8 +23,11 @@
 -- single meeting.option_approved / option_rejected row in the audit log. The
 -- mechanism being deleted above never ran for a real person.
 --
--- 058: SELECT max(version) FROM schema_migrations on the box was 56 on
--- 2026-09-09, and 057 is claimed by an unmerged branch (never `ls migrations/`).
+-- 063: SELECT max(version) FROM schema_migrations on the box was 62 on
+-- 2026-09-12 (never `ls migrations/`). This file was written as 058 when the
+-- box was at 56; it sat unmerged while 059-062 shipped past it, so it is
+-- renumbered above every version this database has seen rather than filling
+-- the gap 057/058 left — 057 is still claimed by another unmerged branch.
 ALTER TABLE meeting_options DROP CONSTRAINT meeting_options_status_check;
 ALTER TABLE meeting_options ADD CONSTRAINT meeting_options_status_check
   CHECK (status IN ('active', 'pending', 'replaced', 'rejected', 'deleted'));

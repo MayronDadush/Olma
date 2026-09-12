@@ -1,9 +1,11 @@
 'use strict';
 // reminders — one slice of the tool registry (see ../registry.js).
 const {
-  reminders, S, tool, ok,
+  reminders, users, S, tool, ok,
 } = require('./_shared');
 const { err } = require('../../../domain/results');
+const format = require('../../../domain/message-format');
+const listBlock = require('../../../domain/list-block');
 const dt = require('../../../domain/datetime');
 
 // The moment is well-formed, carries the right offset, and has already gone.
@@ -48,5 +50,44 @@ module.exports = [
     }),
   tool('list_my_reminders', 'List pending reminders, optionally for one task.',
     { task_id: S('number', 'Optional task id') }, [],
-    (client, user, a) => reminders.listReminders(client, user.id, a.task_id)),
+    async (client, user, a) => {
+      const res = await reminders.listReminders(client, user.id, a.task_id);
+      if (!res.ok || !res.data) return res;
+      // Drawn rather than retyped (domain/list-block.js), for one reason
+      // beyond the layout: an hour is the whole content of a reminder, and it
+      // is rendered here in THEIR zone from the stored instant instead of
+      // being re-derived by a model reading a UTC timestamp. `chasing` is
+      // deliberately not in it — see the module header.
+      const ch = await users.primaryChannel(client, user.id);
+      const block = listBlock.renderReminderListBlock(res.data, {
+        locale: user.locale,
+        timezone: user.timezone,
+        channelType: ch.ok ? ch.data.channel.channel_type : null,
+      });
+      // The layout hint is the FALLBACK and never travels beside the block,
+      // which has already done that work: an unconditional "lay these out as a
+      // list" on a result that arrives laid out is the markPlaced fault, and
+      // here it would be asking for the work again after it was done.
+      const many = !block && Array.isArray(res.data.reminders) && res.data.reminders.length > 1;
+      const hints = {
+        ...(many ? { layout: format.HINTS.list } : {}),
+        ...(block ? {
+          block: `${format.HINTS.relayBlock} The hours in it are already in their clock — do not `
+            + 'convert them, and do not name an hour that is not on one of those lines. Everything '
+            + 'you add is at most ONE short sentence.',
+        } : {}),
+        // `chasing` is the half of the answer that was missing entirely until
+        // 2026-09-09 — reminders that already went out and are still following
+        // up on their own. Said on the result, on the few calls where any
+        // exists, rather than in the description on every turn.
+        ...(res.data.chasing ? {
+          chasing: 'These already went out and will follow up on their own — a few hours on and '
+            + 'again tomorrow. They are NOT hours to promise anybody: say a time from `reminders`, '
+            + 'never from here. To stop one, cancel_reminder(id); the task stays. To move the next '
+            + 'one, cancel it and set_task_reminder on its taskId.',
+        } : {}),
+      };
+      if (!Object.keys(hints).length) return res;
+      return ok({ ...res.data, ...(block ? { block } : {}), hints });
+    }),
 ];

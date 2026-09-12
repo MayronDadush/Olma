@@ -46,6 +46,11 @@ function recorder(answer = 'sent') {
         sent.push({ jid, body, replyTo: opts && opts.replyTo });
         return typeof answer === 'function' ? answer() : answer;
       },
+      // No WhatsApp channel restart in flight. Every test in this file is
+      // about what the queue does with a ROW; the one about the restart
+      // window supplies its own stamp ("the queue says nothing while the
+      // channel it restarted is coming back").
+      channelWrittenAt: () => null,
     },
   };
 }

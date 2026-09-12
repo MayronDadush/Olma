@@ -22,6 +22,7 @@ const tasks = require('../domain/tasks');
 const preferences = require('../domain/preferences');
 const users = require('../domain/users');
 const meetings = require('../domain/meetings');
+const hebrewQuality = require('../domain/hebrew-quality');
 
 // Every turn must open with turn_start — the rule everything else (quota,
 // pause, offerResume, name capture) hangs off. Checked for every scenario
@@ -122,6 +123,30 @@ function replyLanguage(ctx, locale = 'he') {
     }
   }
   return { name: 'the reply is the message, in their language', pass: bad.length === 0, detail: bad[0] };
+}
+
+// She is a woman, and she says so in every verb. "אני מבין", "מצטער, יובל",
+// "אני לא יכול לראות תמונות" — 8 of 383 real messages over three days
+// (2026-09-06..08) had a masculine self-reference, and the doctrine that
+// forbids it is full. The judge rubric would call it a concern; this is RED,
+// deterministic, and runs on every scenario. The patterns are
+// domain/hebrew-quality, shared with the daily count on the dashboard so the
+// eval and the metric can never disagree on what a slip is. The same reader
+// catches the model's own frame delivered as text (a tool-call marker, an
+// identity token), which reached two real phones.
+function herOwnVoice(ctx) {
+  const bad = [];
+  for (const [i, t] of ctx.turns.entries()) {
+    const text = String(t.reply || '').trim();
+    if (!text || text === 'NO_REPLY') continue;
+    const flaws = hebrewQuality.flawsIn(text);
+    if (flaws.length) {
+      const f = flaws[0];
+      bad.push(`turn ${i + 1}: ${f.kind === 'markup' ? 'model markup in the reply' : 'a masculine self-reference'}`
+        + ` — "${f.at}"`);
+    }
+  }
+  return { name: 'she speaks in her own voice, with nothing of the model showing', pass: bad.length === 0, detail: bad[0] };
 }
 
 // The gateway hands the model WhatsApp reply context as its own labelled block
@@ -321,6 +346,84 @@ const SCENARIOS = [
     ],
     rubric: 'למשתמש אין תיבת מייל מחוברת. בדוק: (1) עולמה לא מתארת שום מייל, שולח, סכום או תאריך — אין המצאה של תוכן שלא נקרא. (2) היא אומרת בפשטות שהמייל לא מחובר ומציעה לחבר, פעם אחת, בלי הרצאה. (3) היא לא מבטיחה לענות למייל או לשלוח משהו — היא לא יכולה.',
   },
+  // The half of the digest that is code hands the model a finished block; the
+  // half that is a model writes one sentence around it. Nothing forces that
+  // split at runtime, so this is where it is checked: the block has to arrive
+  // on the person's phone character for character, and the sentence has to
+  // stay a sentence rather than becoming the list again in prose.
+  {
+    id: 'digest-block-relayed-untouched',
+    title: 'רשימת הבוקר מגיעה כמו שהקוד צייר אותה, עם משפט אחד סביבה',
+    seed: async (client, userId) => {
+      await tasks.addTask(client, userId, { title: 'לשלם ארנונה', source: 'chat' });
+      await tasks.addTask(client, userId, { title: 'להחזיר את הטופס לגן', source: 'chat' });
+      await tasks.addTask(client, userId, { title: 'לתקן את הדוד', source: 'chat' });
+    },
+    turns: ['תעשי לי סדר — מה יש לי על הראש?'],
+    hard: async (client, ctx) => {
+      const reply = ctx.turns[0].reply || '';
+      const bullets = reply.split('\n').filter((l) => /^\s*-\s+\S/.test(l));
+      const heading = /^\*[^*\n]+\*$/m.test(reply);
+      // What the block is FOR: the same three lines, laid out once. A model
+      // that retyped them would produce a comma-separated sentence instead,
+      // which is the shape this replaced.
+      return [
+        ...await turnOpening(client, ctx),
+        { name: 'the drawn block reached the reply as list lines',
+          pass: bullets.length >= 3, detail: `${bullets.length} list lines in: ${reply.slice(0, 300)}` },
+        { name: 'it kept its bold heading rather than being rewritten',
+          pass: heading, detail: reply.slice(0, 300) },
+        // The ceiling on the other half: the sentence around it is a
+        // sentence. A digest that grows a second paragraph per task is the
+        // newsletter this whole change is trying not to become.
+        { name: 'the model added a sentence, not a second copy of the list',
+          pass: reply.length < 900, detail: `${reply.length} chars` },
+      ];
+    },
+    rubric: 'למשתמש שלוש משימות פתוחות והוא ביקש סדר. בדוק: (1) שלושתן מופיעות, כרשימה. (2) הרשימה לא נאמרת פעמיים — לא רשימה ואז גם פסקה שמסכמת אותה. (3) מסביב לרשימה יש לכל היותר משפט או שניים. (4) לכל היותר שאלה אחת בסוף.',
+  },
+  // The task list is DRAWN since 2026-09-10 (domain/list-block.js), and this
+  // scenario changed with it. What it used to hold open was whether an
+  // instruction reached a reply; what it holds open now is the other side of
+  // the same risk — a block handed over finished can still be retyped,
+  // reordered or summarised on the way out, and nothing in the code can stop
+  // that. So the check is per TITLE rather than a count of bullets: three
+  // lines is not evidence that these three lines survived.
+  {
+    id: 'list-reads-as-a-list',
+    title: 'הרשימה שהקוד צייר מגיעה שורה־שורה, בלי שכתוב',
+    seed: async (client, userId) => {
+      await tasks.addTask(client, userId, { title: 'לשלם ארנונה', source: 'chat' });
+      await tasks.addTask(client, userId, { title: 'לקבוע תור לרופא שיניים', source: 'chat' });
+      await tasks.addTask(client, userId, { title: 'להחזיר את הטופס לגן', source: 'chat' });
+    },
+    turns: ['מה פתוח לי?'],
+    hard: async (client, ctx) => {
+      const reply = ctx.turns[0].reply || '';
+      const lines = reply.split('\n').filter((l) => /^\s*[-*]\s+\S/.test(l));
+      const onItsOwnLine = (t) => lines.some((l) => l.includes(t));
+      const titles = ['לשלם ארנונה', 'לקבוע תור לרופא שיניים', 'להחזיר את הטופס לגן'];
+      const missing = titles.filter((t) => !onItsOwnLine(t));
+      const bolds = (reply.match(/\*[^*\n]+\*/g) || []).length;
+      return [
+        ...await turnOpening(client, ctx),
+        { name: 'every drawn line reached the reply as its own list line',
+          pass: missing.length === 0,
+          detail: missing.length ? `missing: ${missing.join(' | ')} — in: ${reply.slice(0, 300)}`
+            : `${lines.length} list lines` },
+        // The ceiling, in the same scenario that grants the permission: one
+        // heading over the group is the most this reply can honestly need.
+        { name: 'emphasis stayed at one thing, not sprayed over the list',
+          pass: bolds <= 1, detail: `${bolds} bold spans in: ${reply.slice(0, 200)}` },
+        // And the block is the message, not a draft of it: a reply that says
+        // the list and then summarises the list is the newsletter this whole
+        // change exists not to become.
+        { name: 'the model added a sentence, not a second copy of the list',
+          pass: reply.length < 900, detail: `${reply.length} chars` },
+      ];
+    },
+    rubric: 'המשתמש שאל מה פתוח לו, ויש לו שלוש משימות. הרשימה עצמה מגיעה למודל מצוירת מראש. בדוק: (1) שלושתן מופיעות, כל אחת בשורה משלה. (2) הרשימה לא נאמרת פעמיים — לא רשימה ואז גם פסקה שמסכמת אותה. (3) לכל היותר כותרת מודגשת אחת, בלי הדגשה על כל פריט. (4) לכל היותר שאלה אחת בסוף.',
+  },
   {
     // 2026-09-05, a real user: she used WhatsApp reply on one older message and
     // Allma answered about the newest thing in the chat instead. The reply
@@ -420,4 +523,4 @@ for (const s of SCENARIOS) {
   seen.add(s.id);
 }
 
-module.exports = { SCENARIOS, turnStartFirst, turnStartNotSpent, turnOpening, turnWasOpened, replyLanguage };
+module.exports = { SCENARIOS, turnStartFirst, turnStartNotSpent, turnOpening, turnWasOpened, replyLanguage, herOwnVoice };

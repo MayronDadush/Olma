@@ -317,8 +317,26 @@ async function cancelReminder(client, ownerId, reminderId) {
     [reminderId, ownerId]
   );
   if (!rows[0]) return err('not_found', 'pending reminder not found');
-  await audit.record(client, ownerId, 'reminder.cancelled', { reminderId });
   const t = rows[0];
+  // Cancelling stops the LADDER — dueForSending filters on cancelled_at, so no
+  // further rung is ever scheduled — but a rung already sitting in the outbox
+  // is a message the worker will still deliver, and "I cancelled it" followed
+  // by the reminder is the same broken promise as never cancelling at all. The
+  // gate holds a follow-up rung all night (it is Olma's moment, not theirs),
+  // so the window where one is queued and unsent is hours wide, not seconds.
+  // Same sentence as retireForMovedTask and retireSiblingLadders, for the same
+  // reason: the reminder row and its queued rungs have to go down together.
+  const { rows: withdrawn } = await client.query(
+    `UPDATE outbox SET sent_at = now(), hold_reason = 'cancelled'
+      WHERE user_id = $1 AND kind = 'reminder' AND sent_at IS NULL
+        AND (idempotency_key = $2 OR idempotency_key LIKE $3)
+      RETURNING id`,
+    [ownerId, `reminder:${reminderId}`, `reminder:${reminderId}:%`]
+  );
+  await audit.record(client, ownerId, 'reminder.cancelled', {
+    reminderId,
+    ...(withdrawn.length ? { outboxWithdrawn: withdrawn.map((r) => Number(r.id)) } : {}),
+  });
   // Another pending reminder on the same task means nothing was orphaned —
   // they trimmed one of several and the task is still going to be raised.
   const { rows: left } = await client.query(
@@ -344,15 +362,74 @@ async function cancelReminder(client, ownerId, reminderId) {
 // database the day this was fixed: 105 rows returned for real users, 13 of
 // them actually pending. The tool's own description says "pending reminders",
 // so every one of the other 92 was an hour Olma could promise somebody twice.
+//
+// `attempts = 0` stays exactly where it is — but it answers "an hour Olma may
+// promise", and there is a SECOND question with a different answer: what is
+// still going to reach this person. A one-off mid-ladder has delivered rung 1
+// and will send two more messages on its own, and it was in neither list. So
+// somebody who replied "stop reminding me about this" was asking about the one
+// row the model could not name, in this tool or in any other: it cancelled
+// what it could see, on other tasks, and the ladder it was asked to stop
+// climbed on (incidents.md, "The reminder that would not stop").
+//
+// They are returned APART and never merged: `reminders` is what may be said
+// out loud as a coming hour, `chasing` is what may be stopped. Merging them is
+// how a wall-clock hour already in the past gets read back as the next time
+// Olma will raise something — the "hundred and five pending reminders" bug,
+// which this must not reopen.
+// The wall clock in their zone, added to each row. One users read for the
+// whole list rather than one per row, and skipped entirely when there is
+// nothing to stamp.
+async function withLocalHour(client, ownerId, rows) {
+  const { rows: u } = await client.query(`SELECT timezone FROM users WHERE id = $1`, [ownerId]);
+  const tz = (u[0] && u[0].timezone) || 'UTC';
+  const pad = (n) => String(n).padStart(2, '0');
+  return rows.map((r) => {
+    const p = dt.partsInZone(tz, new Date(r.remind_at));
+    return { ...r, at: `${p.y}-${pad(p.m)}-${pad(p.d)} ${pad(p.hh)}:${pad(p.mi)}` };
+  });
+}
+
 async function listReminders(client, ownerId, taskId) {
+  // `t.title` is joined on and it is not decoration: without it this answered
+  // "reminder 41 at 2026-09-11T16:00:00Z" and nothing else, so anything that
+  // wanted to SAY what a reminder was about had to go and fetch the tasks and
+  // match them up by id — or say the hour with no thing attached to it. The
+  // hour goes out in their own zone beside the instant, for the same reason
+  // `listTasks` does it: a UTC instant sitting next to a local one is how the
+  // wrong one gets picked.
   const { rows } = await client.query(
-    `SELECT r.* FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+    `SELECT r.*, t.title FROM task_reminders r JOIN tasks t ON t.id = r.task_id
      WHERE t.owner_id = $1 AND ($2::bigint IS NULL OR r.task_id = $2)
        AND r.cancelled_at IS NULL AND r.sent_at IS NULL AND r.attempts = 0
      ORDER BY r.remind_at`,
     [ownerId, taskId || null]
   );
-  return ok({ reminders: rows });
+  const { rows: chasing } = await client.query(
+    `SELECT r.id, r.task_id, r.remind_at, r.attempts, t.title
+       FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+      WHERE t.owner_id = $1 AND ($2::bigint IS NULL OR r.task_id = $2)
+        AND r.cancelled_at IS NULL AND r.sent_at IS NULL AND r.attempts > 0
+        AND r.repeat_rule IS NULL
+        AND t.status = 'open' AND t.archived_at IS NULL
+      ORDER BY r.remind_at`,
+    [ownerId, taskId || null]
+  );
+  return ok({
+    reminders: rows.length ? await withLocalHour(client, ownerId, rows) : rows,
+    ...(chasing.length ? {
+      chasing: chasing.map((r) => ({
+        id: Number(r.id),
+        taskId: Number(r.task_id),
+        title: r.title,
+        // The moment they originally chose. NOT when the next rung lands —
+        // that depends on when the last one was delivered, and a guessed hour
+        // said out loud is the fault this whole area keeps producing.
+        askedFor: new Date(r.remind_at).toISOString(),
+        rungsSent: Number(r.attempts),
+      })),
+    } : {}),
+  });
 }
 
 // The sweep query the whole design leans on: everything due for sending now,

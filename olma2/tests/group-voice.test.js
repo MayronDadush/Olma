@@ -64,6 +64,8 @@ async function pass(sent, at = null, onlyJid = null) {
   const decided = await withTx(db.pool, (c) => groupsJob.sweepGroupVoice(c, { now }));
   const drained = await groupOutbox.drainOnce(db.pool, {
     now,
+    // No channel restart in flight — see group-sweep.test.js's `pass`.
+    channelWrittenAt: () => null,
     send: async (jid, body) => {
       if (!onlyJid || jid === onlyJid) sent.push({ jid, body });
       return 'sent';
@@ -165,6 +167,66 @@ test('nothing proactive goes out in the middle of the night', async () => {
   const morning = [];
   await pass(morning);
   assert.equal(morning.length, 1, 'and it goes out in the morning');
+});
+
+// The 01:12 line. Group "5 Percent (Maprinter)" heard about its coordination
+// at 01:12 local on 2026-09-08 with the window supposedly shut, because
+// `mayAnnounce` took its grace from `chat_groups.last_mention_at` — a column
+// the sweep rewrites on every pass (a room has several gateway sessions and
+// one watermark column), and which Olma's own sends move, since the raw pipe
+// speaks as `main`. Fresh here, exactly as it was that night; nobody has
+// written in the room; the line still waits for the morning.
+test('a stamp Olma herself moved does not open the room at night', async () => {
+  const { group, people } = await room(9);
+  const [a, b] = people;
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'פאדל'));
+  const meetingId = Number(started.data.meeting.id);
+  const when = slotStart('שלישי', { hours: 72 });
+  const optionId = await withTx(db.pool, async (c) =>
+    (await options.add(c, a.id, meetingId, 'שלישי 20:00', when)).data.option.id);
+  await withTx(db.pool, (c) => options.answer(c, b.id, meetingId, optionId, 'y'));
+
+  const night = new Date();
+  night.setUTCHours(1, 0, 0, 0);
+  // What the broken sweep left behind: a mention stamped a minute ago, and a
+  // room whose people last spoke in the evening.
+  await db.pool.query(`UPDATE chat_groups SET last_mention_at = $2 WHERE id = $1`,
+    [group.id, new Date(night.getTime() - 60_000)]);
+  await db.pool.query(
+    `UPDATE chat_group_members SET last_wrote_at = $2 WHERE group_id = $1`,
+    [group.id, new Date(night.getTime() - 7 * 3600_000)]);
+
+  const sent = [];
+  const held = await pass(sent, night, group.external_id);
+  assert.deepEqual(sent, [], 'nobody in the room is awake, whatever her own sessions say');
+  assert.equal(held.held, 1);
+
+  const morning = [];
+  await pass(morning, null, group.external_id);
+  assert.equal(morning.length, 1, 'and it goes out in the morning');
+});
+
+// The other half of the same rule: somebody IS in the room, so she is not
+// holding an answer at a person standing right there.
+test('a member who wrote a minute ago opens the room, at any hour', async () => {
+  const { group, people } = await room(10);
+  const [a, b] = people;
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'פאדל'));
+  const meetingId = Number(started.data.meeting.id);
+  const when = slotStart('שלישי', { hours: 72 });
+  const optionId = await withTx(db.pool, async (c) =>
+    (await options.add(c, a.id, meetingId, 'שלישי 20:00', when)).data.option.id);
+  await withTx(db.pool, (c) => options.answer(c, b.id, meetingId, optionId, 'y'));
+
+  const night = new Date();
+  night.setUTCHours(1, 0, 0, 0);
+  await db.pool.query(
+    `UPDATE chat_group_members SET last_wrote_at = $2 WHERE group_id = $1 AND phone = $3`,
+    [group.id, new Date(night.getTime() - 60_000), b.phone]);
+
+  const sent = [];
+  await pass(sent, night, group.external_id);
+  assert.equal(sent.length, 1);
 });
 
 test('the chase names only the people who answered nothing at all', () => {

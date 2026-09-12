@@ -1,9 +1,11 @@
 'use strict';
 // tasks — one slice of the tool registry (see ../registry.js).
 const {
-  tasks, S, tool, ok,
+  tasks, users, S, tool, ok,
 } = require('./_shared');
 const dt = require('../../../domain/datetime');
+const format = require('../../../domain/message-format');
+const listBlock = require('../../../domain/list-block');
 
 // What to tell the person about what add_task/add_tasks_bulk just did — on
 // the RESULT, only on the calls where it applies, rather than four sentences
@@ -111,15 +113,49 @@ function taskHints(res, user = {}) {
   return Object.keys(hints).length ? ok({ ...d, hints }) : res;
 }
 
-// The list is ONE array so nothing that reads it by shape breaks, and the
-// hint is what separates it into the two lists the person hears: what is on
-// the calendar, then what is on the plate. Only when there is a calendar.
-function listHints(res) {
+// The list is ONE array so nothing that reads it by shape breaks. What
+// separates it into the two lists the person hears — what is on the calendar,
+// then what is on the plate — used to be a paragraph asking the model to do
+// it. It is DRAWN now (domain/list-block.js): the layout cannot drift between
+// two readings, a row cannot go missing on the way through, and a meeting
+// cannot come back called a task, because nothing here builds a mixed list.
+//
+// The instruction hints are the FALLBACK and never travel beside the block.
+// A block handed over with "lay these out as a list" next to it is the
+// markPlaced fault exactly — a conditional result outvoted by an unconditional
+// sentence sitting on the same result — and here it would be worse than
+// outvoted, because it would be asking for the work again after it was done.
+async function listHints(client, user, res, status) {
   if (!res || !res.ok || !res.data || !Array.isArray(res.data.tasks)) return res;
-  if (!res.data.tasks.some((t) => t.kind === 'event')) return res;
+  const ch = await users.primaryChannel(client, user.id);
+  const block = listBlock.renderTaskListBlock(res.data, {
+    locale: user.locale,
+    timezone: user.timezone,
+    channelType: ch.ok ? ch.data.channel.channel_type : null,
+    status,
+  });
+  if (block) {
+    return ok({
+      ...res.data,
+      block,
+      hints: {
+        ...(res.data.hints || {}),
+        block: `${format.HINTS.relayBlock} Everything you add is at most ONE short sentence around `
+          + 'it — the answer to what they actually asked, or the one thing worth doing first. '
+          + 'If the list IS the answer, send the block alone.',
+      },
+    });
+  }
+  // Two conditions, not one: "there are several of these" and "two of these
+  // are different things" are different facts about the same result, and the
+  // layout hint has no work to do on a single line.
+  if (res.data.tasks.length < 2) return res;
+  const layout = { layout: format.HINTS.list };
+  if (!res.data.tasks.some((t) => t.kind === 'event')) return ok({ ...res.data, hints: layout });
   return ok({
     ...res.data,
     hints: {
+      ...layout,
       kinds: 'kind:"event" rows are CALENDAR entries (a moment they will be at — meeting, appointment, '
         + 'shift; it leaves the list by itself once it passes); kind:"todo" rows are jobs until done. '
         + 'When you tell them what they have, give the calendar first as "ביומן" and the to-dos after '
@@ -131,7 +167,10 @@ function listHints(res) {
 module.exports = [
   tool('list_my_tasks', 'List your open tasks (status=done for completed). Each carries its kind (event = calendar, todo = job) and its pending reminders with the hour to SAY, in their clock — a due date is when the thing is, never when you will remind them.',
     { status: S('string', 'open | done (default open)') }, [],
-    async (client, user, a) => listHints(await tasks.listTasks(client, user.id, { status: a.status || 'open' }))),
+    async (client, user, a) => {
+      const status = a.status || 'open';
+      return listHints(client, user, await tasks.listTasks(client, user.id, { status }), status);
+    }),
   tool('add_task', 'Add one todo (a job until done) or event (a moment they will be AT; closes when it passes) — say which in kind. due_at is when the THING is, and arms a reminder automatically an hour before (08:00 for a whole-day one). remind_at is for "תזכיר לי ב-19:00": that hour IS the reminder and replaces the automatic one. A dictated shopping run is filed as a list. Follow any hints on the reply. Times MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their own local time (USER.md); never bare digits with a Z.',
     { title: S('string', 'What it is — never the hours or the place, those have fields'),
       kind: S('string', 'event | todo ("פגישה מחר ב-10" = event, "לקבוע פגישה" = todo); omitted = guessed from the title'),
@@ -156,7 +195,16 @@ module.exports = [
     (client, user, a) => tasks.completeTask(client, user.id, a.task_id)),
   tool('snooze_task', 'Move a task\'s due date; its reminders follow (a rung chasing the old date is closed, the automatic one re-arms an hour before the new one). new_due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00); a bare local time is rejected.',
     { task_id: S('number', 'Task id'), new_due_at: S('string', 'New ISO-8601 datetime WITH UTC offset') }, ['task_id', 'new_due_at'],
-    async (client, user, a) => taskHints(await tasks.snoozeTask(client, user.id, a.task_id, a.new_due_at), user)),
+    async (client, user, a) => {
+      const res = taskHints(await tasks.snoozeTask(client, user.id, a.task_id, a.new_due_at), user);
+      // Deliberately NOT inside `taskHints`: add_task and edit_task go through
+      // it too and both earn a 👍, and an unconditional "say this" beside a
+      // conditional markPlaced is the fault that put a sentence under a live
+      // thumbs-up for two days (CLAUDE.md, "markPlaced is CONDITIONAL").
+      // snooze_task earns no mark, so a sentence is expected of it anyway.
+      if (!res || !res.ok || !res.data) return res;
+      return ok({ ...res.data, hints: { ...(res.data.hints || {}), moved: format.HINTS.struckOut } });
+    }),
   tool('edit_task', 'Change an existing task\'s title, kind, location, category or time — WITHOUT losing its reminders or place under a project. Send only the fields you are changing; null clears one. Gives a task an end time: a shift saved as "משמרת - ראשון 12:00-19:00" becomes title "משמרת", due_at 12:00, ends_at 19:00.',
     { task_id: S('number', 'Task id'), title: S('string', 'Optional new title'),
       kind: S('string', 'event | todo'),

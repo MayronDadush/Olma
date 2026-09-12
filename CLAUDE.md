@@ -7,42 +7,73 @@ are about to act on.
 
 ## How this file is organised (read this first)
 
-This file is loaded into **every** session, so it holds only what you need
-*before* you know which part of the system you are touching:
+This file is loaded into **every** session, in full, on every turn. On
+2026-09-11 it was 1,757 lines and roughly 30,000 tokens, and most of it was
+about one subsystem or another: a session working on the voice bridge paid for
+the reminder ladder on every message it sent. So the rules now live beside the
+code they govern.
 
 | | |
 |---|---|
-| **[Rules that break production](#rules-that-break-production)** | The short list. Violating one of these has already caused an outage. |
-| **[Recurring failure shapes](#recurring-failure-shapes)** | The mistakes this project keeps making in new disguises. |
-| **[What is live](#what-is-live)** · **[Server](#server)** · **[Dashboard](#the-live-dashboard-is-v2s-olma2srcadaptershttpdashboardjs)** | Orientation and reference. |
+| **[Rules that break production](#rules-that-break-production)** | Every rule, by its headline, grouped by the file that holds it. The bodies are in `.claude/rules/`. |
+| **[Recurring failure shapes](#recurring-failure-shapes)** | The mistakes this project keeps making in new disguises. Cross-cutting, so they stay here. |
+| **[What is live](#what-is-live)** · **[Server](#server)** | Orientation and reference. |
 | **[Known gaps](#known-gaps)** | Real, open, and not being worked on. |
+
+### How the rules files work, and the one way they fail
+
+`.claude/rules/*.md` carry a `paths:` list in their frontmatter, and Claude
+Code loads a file's body when it **Read**s a file matching one of those globs.
+The headline of every rule stays here, so you always know a rule exists and
+which file to open even when its body has not loaded.
+
+**Measured on 2026-09-11, because it decides whether this split is safe: a
+`Read` of a matching file loads the rule, and a `cat`/`sed`/`grep` of the same
+file through Bash does NOT.** Both directions were tested with a canary rule.
+That is survivable because an `Edit` requires a `Read` of the file first — so
+the rules governing a file are in front of you before you may change it — but
+it leaves one real hole: **editing a file with `sed` or a heredoc bypasses
+both.** If you are about to write to a file that way, `Read` it first, or open
+its rules file by hand. Same shape as everything else here: the tool boundary
+enforces it, the prose only asks.
+
+**Two scripts hold the rules honest, both in CI (`claude-rules.yml`) and both
+safe to run by hand.** `check-rules.js` asks whether a rule can still LOAD —
+a glob pointing at a renamed file matches nothing and the rule silently never
+loads. `check-rule-citations.js` asks whether it is still TRUE — every file
+path, `module.fn`, `migration NNN` and constant it names is resolved against
+the code, and a rename is reported. It reads only this file and
+`.claude/rules/`, never `incidents.md`, where a stale citation is the record
+working. **A function cited by its bare name is NOT checked** — that reading
+misfired on 58% of the corpus — so cite one as `module.fn` if you want the
+checker to watch it.
 
 Two companion files are **not** auto-loaded — open them when relevant:
 
 - **`olma2/docs/incidents.md`** — the full narrative of every incident,
-  grouped by domain behind a linked contents list. Each rule below is
-  a compression of one of them. **Read the entry before changing the code it
-  describes**: the rule stops you repeating a mistake, the narrative stops you
-  arguing with the rule when it looks inconvenient.
+  grouped by domain behind a linked contents list. Each rule is a compression
+  of one of them. **Read the entry before changing the code it describes**:
+  the rule stops you repeating a mistake, the narrative stops you arguing with
+  the rule when it looks inconvenient.
 - **`olma2/docs/v1-reference.md`** — v1's schema, tools and dashboard.
   Retired-in-place; nothing routes there. For reading old code on the box
   only, and actively misleading if applied to v2.
 - `olma2/docs/model-experiments.md` — dated model pilots.
 - `README.md` — the ops runbook (connect, restart, update).
 
-Both companions were split out of this file on 2026-09-03, verbatim, and more
-has moved across since. **Nothing has ever been deleted** — when a passage
-leaves this file it lands in one of those two. When you fix something, **the
-rule goes here and the story goes in `incidents.md`**; that split is the only
-reason this file is still readable, and it only holds if you keep doing it.
-A long paragraph here is a bug: check whether the rule is already stated
-above, and if it is, the paragraph belongs in `incidents.md`.
+**Nothing has ever been deleted from this file.** Incident narratives moved to
+`incidents.md` on 2026-09-03; rule bodies moved to `.claude/rules/` on
+2026-09-11, verbatim, headline left behind. When you fix something, **the rule
+goes in the right rules file and the story goes in `incidents.md`** — that
+split is the only reason any of this is still readable. A long paragraph in
+the root file is a bug.
 
 > **A comment elsewhere in the repo that cites `CLAUDE.md, "<some section>"`
-> and is not here means `olma2/docs/incidents.md`.** Section titles were
-> carried over unchanged, so searching the quoted title still finds it. Those
-> references were left alone deliberately rather than rewritten across a dozen
-> files mid-flight — grep the title, not the filename.
+> means whichever file now holds that section — usually `incidents.md`, since
+> 2026-09-11 sometimes `.claude/rules/`.** Section titles were carried over
+> unchanged, so searching the quoted title still finds it. Those references
+> were left alone deliberately rather than rewritten across a dozen files
+> mid-flight — grep the title, not the filename.
 
 ---
 
@@ -52,963 +83,228 @@ Each of these has already cost an outage or a user-visible failure. If one
 looks arbitrary or inconvenient, its full story is in `olma2/docs/incidents.md`
 — read that before working around it.
 
+**The headline is not the rule.** It is the reminder that a rule is there.
+Open the rules file named in each block before you act on anything under it.
+
 ### Migrations and deploying
 
-- **Pick a migration number above `SELECT max(version) FROM schema_migrations`
-  on the box** — never `ls migrations/`. Two branches in flight cannot see
-  each other's files; this collided three times in two days. CI's `migrations`
-  job catches it in seconds. Never renumber one already applied anywhere.
-- **Keep migrations additive and backward-compatible.** `deploy.sh --restart`
-  rolls back **code only** — an applied migration stays applied.
-- **`bash olma2/scripts/deploy.sh --restart` is a real production deploy**, and
-  CI runs it on every merge to `main`. Merging is deploying.
-- **…but only for paths CI watches — `olma2/**` and the workflow file. Anything
-  else merges with NO checks at all, and no checks looks exactly like green.**
-  A `CLAUDE.md`-only change gets neither `test` nor a deploy; `olma2/docs/
-  incidents.md` matches the filter, so a pure prose edit there runs the full
-  suite AND redeploys production. Both are "docs" — which side of `olma2/` the
-  file sits on decides the blast radius, and nothing in the filename says so.
-  A new top-level directory is unchecked until someone notices; give it its
-  own light job rather than adding it here, which would redeploy `olma2` for
-  a change that cannot affect it — `voice-bridge/` has one
-  (`.github/workflows/voice-bridge.yml`, which also deploys it on `main`).
-- **After a shared-branch merge, verify it actually shipped**:
-  `git merge-base --is-ancestor <sha> origin/main`. A concurrent session can
-  merge at a head that predates your commit.
-- **A dead CI run arrives under EITHER conclusion, so the conclusion string
-  tells you nothing.** The job timeout reports `cancelled`; `run-suite.sh`
-  exhausting its retries exits 1 and reports `failure`; and on `main` a
-  *queued* run is cancelled outright when a later merge displaces it (the
-  concurrency group holds only one pending run) — that last one is benign, the
-  displacing sha being a descendant and `deploy.sh` rsyncing the whole tree.
-  The wedge banner in the log is the tell, and
-  `git merge-base --is-ancestor <my-sha> <deployed-sha>` settles whether your
-  commit shipped regardless of how the run ended.
-- **On a PR, a pass on either run is authoritative once the branch contains
-  main** (`--is-ancestor origin/main origin/<branch>`) — both then compile
-  identical bytes, so any difference is the host.
+**`.claude/rules/deploying.md`** — migration numbering, what `--restart` guarantees, and the five ways a CI run lies to you.
+Loads when you **Read** a file under `migrations/**`, `scripts/deploy.sh`, `scripts/rollback.sh` and 3 more.
+
+- **Pick a migration number above `SELECT max(version) FROM schema_migrations` on the box**
+- **Keep migrations additive and backward-compatible.**
+- **`bash olma2/scripts/deploy.sh --restart` is a real production deploy**
+- **…but only for paths CI watches — `olma2/**` and the workflow file. Anything else merges with NO checks at all, and no checks looks exactly like green.**
+- **After a shared-branch merge, verify it actually shipped**
+- **A dead CI run arrives under EITHER conclusion, so the conclusion string tells you nothing.**
+- **On a PR, a pass on either run is authoritative once the branch contains main**
 - **A wedged `test` on `main` skips `deploy` silently and main ships nothing**
-  — `deploy` is `needs: test`, and `main` has no `pull_request` run to fall
-  back on. Re-run it; if it wedges again, deploy the merged sha yourself with
-  `deploy.sh --restart` (same suite, on the box, at `--test-concurrency=2`,
-  where it does not wedge). The `deploy_drift` dashboard row
-  (`jobs/deploy-drift.js`) reports this gap hourly — a row and never an alert,
-  since being a few commits behind breaks nobody.
-- **A merge can produce NO run at all, and that is the one failure with
-  nothing to re-run.** On 2026-09-08 the merge of PR #285 to `main` created no
-  workflow run and no check suite — `gh run list` showed the branch's own
-  green runs and nothing for the merge commit — so `main` held code the box had
-  never seen and everything looked finished. **`gh api repos/<o>/<r>/commits/
-  <sha>/check-suites --jq .total_count` returning `0` is the tell**, and the
-  `RELEASE` sha is what proves it. The recovery is `gh workflow run
-  olma2-tests.yml --ref main` (the `workflow_dispatch` trigger exists for this
-  and deploys exactly as a push does). **A laptop `deploy.sh` is NOT the
-  fallback on a Mac** — Apple's rsync has no `--chown`, so it aborts after
-  archiving the outgoing release and before touching anything
-  (`incidents.md`, "The merge that never ran").
-- **A red `deploy` is EITHER a wedge or a real failure, and they take opposite
-  actions** — `run-suite.sh`'s banner is what tells them apart, so read it
-  before deciding a re-run means anything. A solo on-box suite runs ~234s
-  against `SUITE_TIMEOUT=420` (measured 2026-09-06), so a second thing holding
-  the CPU pushes both past the cap and both report as wedges.
+- **A merge can produce NO run at all, and that is the one failure with nothing to re-run.**
+- **A red `deploy` is EITHER a wedge or a real failure, and they take opposite actions**
 - **A red suite inside `deploy.sh` leaves a MIXED box and does not roll back.**
-  The order is rsync → RELEASE marker → `npm install` → migrations → suite →
-  restart, so a failure aborts before the restart and `roll_back` never runs —
-  correctly, nothing was replaced. New code and applied migrations on disk, old
-  code in memory, `/ready` 200, users served as before. `RELEASE` and
-  `ActiveEnterTimestamp` disagreeing is this state. Whether it is harmless
-  depends on which files moved: `bin/olma-brokerd.js` is long-lived and holds
-  the old ones, while the MCP shim re-execs per tool call — check, do not
-  assume.
-- **The `sha` in `/opt/olma2/RELEASE` is the ONLY unambiguous answer to "is
-  production running what I merged."** Everything else is inference about how
-  it got there. Timestamps lie in BOTH directions: the marker is written
-  before the on-box suite and long before the restart, so on a healthy deploy
-  it leads both units by up to ~14 minutes — the identical signature to a
-  deploy that died before restarting — while a manual `systemctl restart`
-  inverts it just as misleadingly. `pgrep` separates them only if you **read
-  what it matched**: the obvious patterns also match your own monitoring
-  shell, and a wait-loop built on one never exits. For "did THIS deploy
-  restart it", take a baseline before starting. (`incidents.md`, "The deploy
-  marker leads the restart".)
-- **The marker's `origin` field is load-bearing** — `github-actions run <id>`
-  gives you a run to go and read; `local <user>@<host>` is a laptop deploy
-  that left no CI record anywhere.
+- **The `sha` in `/opt/olma2/RELEASE` is the ONLY unambiguous answer to "is production running what I merged."**
+- **The marker's `origin` field is load-bearing**
 
-### Talking to the gateway
+**`/deploy-triage` asks all of the above in the order they have to be asked**
+(`.claude/skills/deploy-triage/`, backed by `.claude/scripts/deploy-triage.js`).
+Read-only, and it names one of seventeen verdicts plus the recovery command for
+that one — it never runs it, because three of them take opposite actions and
+one redeploys production. The rules above are still the authority; the skill is
+only the order, and the thing it saves is working that order out again under
+the impression that the first green answer is the answer.
 
-- **Never shell out to `openclaw config set`** — it can hang forever *after* a
-  successful write. Read → modify → `JSON.stringify(cfg, null, 2)` → write.
-- **An invalid config is IGNORED, not rejected.** The gateway logs one line and
-  keeps serving the last valid config, so everything looks healthy while your
-  change was never loaded. **After any config write, verify the gateway applied
-  it** — not that the file says what you meant.
-- **A bindings-ONLY write is silently dropped.** Bundle it with another hot
-  change (provisioning writes agent + binding in one `saveConfig`).
-- **After a gateway version bump, diff `openclaw.json` against what
-  `src/intake/openclaw-config.js` expects.** Diffing catches a key that changed
-  shape; it does not catch a NEW key that quietly became load-bearing. Only
-  exercising the capability end-to-end catches that.
-- **Permission to use a model lives in THREE lists** — `agents.defaults.models`,
-  `models.providers.openrouter.models[]`, and
-  `agents.defaults.modelPolicy.allow`. Two of three is registered-and-unusable,
-  and invisible until an override is tried.
-- **The `Conversation info` block is prompt-only: the transcript keeps the
-  bare text.** On 2026.8.1 the roster, the tag and the message id of a group
-  message exist in one place code can reach — the `llm_input` plugin hook,
-  which hands over the model's input verbatim (`gateway-plugin/olma-turn`
-  → brokerd `group_context` → `group_inbound_context`). Group mode was
-  designed to read them off the store, went live, and registered nothing
-  (`incidents.md`, "The roster was never in the transcript"). A store
-  that our own probes wrote into is not evidence of what the gateway writes.
-- **Never poll `openclaw sessions list` on a timer** — 2.9s of CPU per call,
-  measured when the box had one core and still most of a core now that it has
-  two. It directly slows every user's reply.
+### Talking to the gateway (and systemd scope)
+
+**`.claude/rules/gateway.md`** — writing openclaw.json, the three model lists, heartbeats, the daily session reset, and which units are user-scope.
+Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intake/provision.js`, `src/channels/**` and 9 more.
+
+- **Never shell out to `openclaw config set`**
+- **An invalid config is IGNORED, not rejected.**
+- **A bindings-ONLY write is silently dropped.**
+- **A write under `channels.whatsapp` RESTARTS the channel, and `saveConfig` now stamps when one happens.**
+- **After a gateway version bump, diff `openclaw.json` against what `src/intake/openclaw-config.js` expects.**
+- **Permission to use a model lives in THREE lists**
+- **The live OpenRouter model names its providers in order**
+- **The `Conversation info` block is prompt-only: the transcript keeps the bare text.**
+- **Never poll `openclaw sessions list` on a timer**
 - **The gateway heartbeat stays OFF: `agents.defaults.heartbeat.every: "0m"`.**
-  `target: "none"` only suppresses delivery; the 30-minute NO_REPLY turn
-  still runs for every agent, and it was 82% of the model bill (2026-09-05,
-  `incidents.md`, "The heartbeat was the bill"). Nothing of ours rides on it.
-  `config_guard` goes red if it comes back; `scripts/disable-heartbeats.js
-  --apply` turns it off again.
+- **Every session resets daily: `session.reset: { mode: "daily", atHour: 2 }`**
 
 ### Delivering a message
 
-- **`openclaw agent … --deliver` needs BOTH `--agent <id>` AND an explicit
-  `--session-key`.** Neither alone works: `--to` alone runs the turn on the
-  DEFAULT agent, outside the user's real session, so their next reply has no
-  context.
-- **Any outbound send via `child_process` must be
-  `spawn(cmd, args, {detached:true, stdio:'ignore'}).unref()`** — never bare
-  `execFile`. The MCP process is torn down the moment the tool returns, and a
-  child in its process group dies with it while reporting success.
-- **The raw pipe (`openclaw message send`) needs
-  `agents.defaults.systemAgent.agentId`** on a multi-agent roster, or every
-  agent-less send refuses. Verify the pipe, never the file:
-  `openclaw message send … --dry-run --json`.
-- **Cancelling a queued message is an UPDATE, never a DELETE.** The row carries
-  the `idempotency_key` that stops the sweep re-creating it.
-- **The delivery gate is the chokepoint and a paused user has no exceptions** —
-  not reminders, not urgent, not another user's fan-out.
-- **Quiet HOURS and a quiet DAY draw different lines, and the digest is where
-  they differ.** Hours exempt a digest and rung 1 of any reminder — they chose
-  those moments. A day in `quiet_days` (preference, `"fri,sat"`, read by
-  `preferences.quietDays`) exempts only `askedForInWords` — rung 1 of a
-  reminder a PERSON put there in words — so a digest, an automatic reminder off
-  a due date, and an introduction all wait. Held and never dropped, released
-  into the next day they KEPT (Friday+Saturday releases on Sunday, inside their
-  window), judged in THEIR zone: 23:00 UTC Friday is already Saturday in
-  Jerusalem. Seven quiet days is refused at the parse, because that is `pause`,
-  which is reversible and reports on itself. The introduction's exemption from
-  the stopped-answering rule does NOT transfer here — that branch drops, this
-  one holds, and nothing is lost by waiting.
-- **`DEFAULT_WINDOW` (09:00-21:00) is no longer only a fallback — it is a
-  sentence somebody read.** The discovery ladder's timezone rung states the
-  hours in the same message that asks which country they are in, so moving the
-  constant without moving that copy makes the first message we ever sent them a
-  lie. The test asserts the copy against the constant for exactly that reason.
-- **That rung asks for the COUNTRY, not the city** (owner, 2026-09-08): a zone
-  moves when you cross a border. The six where that is false — US, Canada,
-  Russia, Australia, Brazil, Mexico — are named in the instruction and get a
-  follow-up about the area, and dropping that re-opens the fault the rung was
-  built around (Sarah's +1 bought her New York while she was in Los Angeles).
-- **Only the PERSON writing releases a night-held row.** `openRecord` takes
-  `{ wake }`: the gateway opener, which has a real `message:preprocessed`
-  behind it, passes `true`; `openTurnImplicitly` — the fallback for a model
-  that skipped `turn_start` — passes `false`. Unconditional, it woke Sarah at
-  01:26 for a gateway heartbeat poll (`incidents.md`, "Good morning at half
-  past one"). A turn happening is not evidence that anyone is awake.
-- **Only rung 1 of a reminder is a moment THEY chose; every rung after it is
-  one OLMA chose, and quiet hours apply to it.** The gate exempted `kind ===
-  'reminder'` wholesale, so Vered was asked "בוצע?" at 01:33 about a reminder
-  she had set for 22:32 (`incidents.md`, "The rung nobody asked for, at half
-  past one"). `sweepReminders` already drew this line for the daily budget and
-  the night window never got the same sentence. The rung rides the payload as
-  its own field, not as `attempt`: `attempt` drives the WORDING and a redo
-  deliberately uses rung 1's text while still being Olma's moment.
-- **A reminder rung the GATE held is never chased; a rung OUR pipe lost is
-  redone at once.** The discriminator is on the expired outbox row: the gate
-  leaves `attempts = 0` and no `last_error`, a dead pipe leaves both. The
-  redo goes out under the next rung's key with the plain wording, keeps the
-  urgency of the rung it replaces, and still spends a rung so a broken pipe
-  cannot loop (`incidents.md`, "The reminder that could not climb").
-- **Nothing Olma DECIDED to say goes out in front of an introduction she still
-  owes.** An `introduction` outbox row is her saying who she is to somebody who
-  never heard it — the intake greeter's job normally, a queued repair when the
-  greeter missed. While one is unsent the gate holds every other row as
-  `awaiting_introduction` (held, never dropped) and exempts it from the daily
-  budget, because everything else is waiting behind it and a budget hold there
-  is a deadlock. A moment THEY chose still passes — a digest, rung 1 of a
-  reminder they asked for in words — on the same line the gate draws
-  everywhere else, and it survives the quiet drop too: somebody who has not
-  answered is the likeliest person never to have been told who was writing to
-  them. **It also keeps the floor for ten minutes AFTER it lands**
-  (`INTRODUCTION_ROOM_MS`), counted from the introduction's own `sent_at` and
-  never from when the waiting row was last looked at — released on a plain
-  "while one is pending" clock, the next row went out on its heels and was read
-  as part of it (ג.ב, 08:00:27 and 08:01:19). The worker reads that landing with
-  `hold_reason IS NULL`: a cancelled or superseded introduction carries
-  `sent_at` too and reached nobody. Bounded to two days in the worker: a repair that never
-  went out must not silence somebody for ever. What decided this before was
-  `ORDER BY created_at`, which is an accident: ג.ב's introduction and a
-  day-one calendar offer were both due at 08:00, from an assistant that had
-  not yet said what she was (2026-09-08).
-- **Reminders that come due in the same tick go out as ONE message, and the
-  coalescing happens at DELIVERY, never at enqueue.** A batch enqueued under
-  one idempotency key would let cancelling a single reminder re-create the
-  group. In the worker there is no new row: siblings are locked in the same
-  transaction, re-`decide()`d (expiry is per row), grouped by rung template (a
-  batch may only make the promise every line in it makes — hence three list
-  templates), and a failed send fails for all of them and skips them for the
-  rest of the tick. Vered got nine messages in ninety seconds
-  (`incidents.md`, "Nine reminders, nine messages").
-- **Anything else due in the same moment is ONE message too, and two rules say
-  what may travel together** (`domain/message-merge.js`). A REMINDER is never
-  folded into a composed turn: every rung rides the raw pipe with the owner's
-  wording and no model, and handing the one sentence a person asked for to a
-  model that may reword or drop it would leave the row stamped delivered all
-  the same. And a merged message carries **at most one ASK** — two questions
-  get one answer and nothing can tell which was answered — with the statements
-  first and the question last. A row carrying its own hand-written
-  `instruction` is never composed with (that is what keeps an introduction
-  saying exactly what it says), and a kind absent from `MERGEABLE` goes alone,
-  so one added next month is safe until somebody reads it. Same place and same
-  reason as the reminder batch: at DELIVERY, no new row, no new key, every
-  sibling re-`decide()`d because expiry and the holds are per row.
-  **The daily budget counts `DISTINCT sent_at`, not rows** — one `UPDATE`
-  stamps a whole batch with one timestamp, and the budget limits how often
-  Olma interrupts somebody, which is messages. Counting rows charged a merged
-  message twice and made merging cost more than sending the same things apart;
-  it is also what made the first measurement of this problem read one message
-  as five (`incidents.md`, "Fifty-two seconds behind the introduction").
+**`.claude/rules/delivering.md`** — the delivery gate, quiet hours and quiet days, batching, merging, styles and what a verbatim sentence may say.
+Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format.js`, `src/domain/message-merge.js` and 10 more.
 
-### Data you must not get wrong
+- **`openclaw agent … --deliver` needs BOTH `--agent <id>` AND an explicit `--session-key`.**
+- **Any outbound send via `child_process` must be `spawn(cmd, args, {detached:true, stdio:'ignore'}).unref()`**
+- **The raw pipe (`openclaw message send`) needs `agents.defaults.systemAgent.agentId`**
+- **The raw pipe goes over the gateway's own WebSocket now, with the CLI behind it**
+- **Cancelling a queued message is an UPDATE, never a DELETE.**
+- **A STYLE is chosen at delivery, off the recipient's channel, and a channel the table has never heard of gets PLAIN**
+- **On the MODEL path a style is granted by a RESULT, never by a description**
+- **What is the same every time is DRAWN, and only the sentence about it is a model's**
+- **…and since 2026-09-10 the lists and choices a person ASKS for are drawn the same way**
+- **The delivery gate is the chokepoint and a paused user has no exceptions**
+- **An unstated quiet day is not "none" — it is Saturday or Sunday, and which one is a fact about the PERSON.**
+- **Quiet HOURS and a quiet DAY draw different lines, and the digest is where they differ.**
+- **A chag is QUIET only for somebody who asked for it, and "quiet-able" means yom tov and nothing else.**
+- **`DEFAULT_WINDOW` (09:00-21:00) is no longer only a fallback — it is a sentence somebody read.**
+- **That rung asks for the COUNTRY, not the city**
+- **Only the PERSON writing releases a night-held row.**
+- **Only rung 1 of a reminder is a moment THEY chose; every rung after it is one OLMA chose, and quiet hours apply to it.**
+- **A reminder rung the GATE held is never chased; a rung OUR pipe lost is redone at once.**
+- **Nothing Olma DECIDED to say goes out in front of an introduction she still owes.**
+- **Reminders that come due in the same tick go out as ONE message, and the coalescing happens at DELIVERY, never at enqueue.**
+- **On the model path a retry is not a retry — it is a NEW message, composed against a world the failed sends themselves created.**
+- **A `--deliver` that TIMES OUT has very likely gone out, and is never retried.**
+- **Anything else due in the same moment is ONE message too, and two rules say what may travel together**
 
-- **`users.timezone` must never be NULL** — NULL falls back to UTC in both the
-  delivery gate and the digest sweep, running an Israeli user's quiet hours
-  three hours off.
-- **Every time crossing a tool boundary needs an explicit offset.** A bare
-  local time is read as UTC. A phone number's country is not a location, and a
-  well-formed-but-wrong time still needs a semantic cross-check.
-- **"What is still pending" must ask `attempts = 0`**, not `sent_at IS NULL` —
-  since the escalation ladder, a delivered row sits with `sent_at` NULL for up
-  to two days with `remind_at` receding into the past. The rule was written the
-  day the ladder shipped and four readers still had it wrong a day later,
-  `list_my_reminders` worst of all: it filtered on `cancelled_at` alone, so it
-  had been returning RETIRED reminders as things still to come since long
-  before the ladder — 105 rows on the box, 13 of them pending. **The test that
-  should have caught it asserted on replicas of those queries that it had
-  written itself** (`incidents.md`, "A hundred and five pending reminders").
-  Eight other `sent_at IS NULL` readers are RIGHT: completing, pausing,
-  replacing and not-stacking all ask "what would still fire", which a
-  mid-ladder row would.
-- **The turn opens itself, from the gateway's own hook, before the model's
-  first call.** `gateway-hooks/olma-turn-open` (synced by `deploy.sh` to
-  `/root/.openclaw/hooks/`, enabled by `hooks.internal.entries`, loaded at
-  gateway STARTUP) sends brokerd `turn_open` on every accepted inbound
-  message — on the `message:preprocessed` event: **on OpenClaw 2026.8.1 a
-  WhatsApp DM never fires `message:received`**, and the hook sat loaded and
-  silent for a night listening to it. A hook that loads is not a hook that
-  runs; prove it with a line it wrote on a real message. **Its deadline runs
-  from CONNECT, not from start** — the gateway's own pre-model bookkeeping
-  blocks its loop for seconds on a heavy user, a timer that fires late runs
-  before the queued connect callback, and one clock from the start killed
-  eleven opens that had never reached brokerd while brokerd was blamed for a
-  day (`incidents.md`, "The hook's timer fired late"). `ms` minus `connectMs`
-  on the trace line is the gateway's stall; the rest is brokerd's.
-  brokerd counts the message, wakes the person, puts the 👀 on, and
-  holds the open for the shim connection to adopt on its first tool call —
-  nothing counted twice, every mark on the real message id (`incidents.md`,
-  "The reply's first six seconds were bookkeeping"). `turn_start` still works
-  and is now a no-op on the record when the gateway got there first.
-  **Phase B (2026-09-06, per-person):** for the phones in the
-  `turn_context_phones` flag, what `turn_start` would RETURN is prepended to
-  the prompt by the gateway plugin `gateway-plugin/olma-turn`
-  (`before_prompt_build` → brokerd `turn_context`, link-installed from
-  `/opt/olma2`, `plugins.entries.olma-turn` with
-  `hooks.allowConversationAccess: true`, agent list in its `config.agents`),
-  and their AGENTS.md is the `{{#turn:context}}` variant of the template
-  (`renderAgentsMd(token, {turnContext})`; the resync script picks per
-  person). The plugin fails open and the variant doctrine falls back to
-  calling `turn_start` when no `Turn context` block is there, so a dead
-  plugin costs a tool call, never a count. Trace:
-  `/opt/olma2/run/turn-context-plugin.log`. Turning it on for someone means
-  ALL THREE: the flag, the plugin's agent list, and a resync of their
-  AGENTS.md — the flag alone changes only what brokerd answers.
-  **The prompt that `before_prompt_build` sees is the bare text.** The
-  Conversation info block (`reply_to_id`) and the reply-target block are
-  attached AFTER that hook, so the plugin cannot see a reply; the turn-open
-  hook can (the WhatsApp quote marker is in the event body) and sends
-  `replyToId` with `turn_open`. brokerd keeps one pending open PER MESSAGE
-  (a queue per person, oldest first), not one per person: two messages a few
-  seconds apart each keep their own count, opening and reply target
-  (`incidents.md`, "Two messages three seconds apart").
-  **Widening it to everybody is four steps, and the first one was not
-  optional** (step 1 done 2026-09-06, the rest planned 2026-09-07):
-  (1) the evals. The eval user (`users.is_eval`, u-15) becomes a covered user
-  the moment the flag says `all`, and the failure is SILENT rather than red:
-  the CLI fires the plugin but not the turn-open hook, so brokerd answers
-  `context: null`, the doctrine falls back to `turn_start`, and the suite
-  goes on measuring the fallback path while every real user is on the context
-  one (plus a `turn.context_without_open` audit row per turn). Fixed: the
-  harness opens each turn through brokerd itself (`openTurnForEval`), and the
-  opening check follows the flag — `turnStartFirst` while uncovered,
-  `turnStartNotSpent` once covered (`scenarios.turnOpening`).
-  (2) flag `turn_context_phones` = `all`. (3) EMPTY the plugin's
-  `config.agents` rather than listing everyone — empty means every `u-N`
-  agent, so a user who joins next week is covered without anyone
-  remembering, and the flag stays the only gate. (4) restart the gateway
-  (`config.agents` is read once, at register) and resync every AGENTS.md.
-- **`messages.queue.mode` stays `followup`.** The gateway default, `steer`,
-  pushes a message that arrives mid-turn INTO the running turn and cancels
-  the tool calls the model just made ("Skipped due to queued user message").
-  `followup` gives it a turn of its own. `config_guard` goes red otherwise;
-  `scripts/set-queue-mode.js --apply` sets it.
-- **A turn Olma started is not a message from the person.** `--deliver` reaches
-  the agent on the person's own agent and session key, so nothing in the MCP
-  call distinguishes it from typing — `domain/self-initiated.js` marks it and
-  `turn_start` must honour that mark. Unmarked, it moved `last_inbound_at`
-  (killing `isDeafOnDayOne`), reset `checkin_misses` (killing the check-in
-  backoff), wrote `message.received` (the response-rate numerator counted our
-  own sends as replies) and spent the once-per-life first-turn signal.
-  **The mark outlives the delivery CLI by a minute** (`self-initiated.js`,
-  `OLMA_SELF_INITIATED_GRACE_MS`): the agent's turn keeps running after
-  `--deliver` returns, and its late `turn_start` was counted as the person
-  writing — five times for one silent user (`incidents.md`, "Four good
-  mornings to a man who had stopped answering").
-- **Nobody is asked a question they have already not answered once.** The
-  check-in ladder after one miss: three days of quiet, then a one-liner with
-  no question mark; two misses → weekly; three → nothing until they write
-  (`jobs/checkin.js`, `requiredGapMs`, `pickRung(…, misses)`). What is
-  THEIRS — a meeting waiting on them, a deadline tomorrow — still outranks
-  the quiet.
-  **The morning digest obeys the same rule and had to be told so separately**:
-  `sweepDigests` puts `mayAsk` on the payload — false when nothing was
-  received since the last digest that really went out (`sent_at` set,
-  `hold_reason` null, so a cancelled row is not counted as silence) — and
-  `channels/openclaw.js` swaps in an ending with no question mark anywhere.
-  A backoff, not a mute: one message from them re-opens it. It asked Sarah the
-  same question on four mornings first (`incidents.md`, "The morning digest
-  asked the same question four mornings running").
-- **A day-one step that has not gone out is REPLACED by the NEXT CHECK-IN of
-  any kind, never joined by it.** `checkin.run` withdraws the person's still-unsent
-  `onboarding:*` rows (`hold_reason = 'superseded'`) when it enqueues the
-  next check-in; the expiry numbers alone never did this and two steps went
-  out at 08:00 to two people (`incidents.md`, "Two good mornings at once").
-  Keyed on `onboarding:%` it covered step-replaces-step and nothing else, so a
-  day-one step that DECLINED and fell through to an ordinary rung put the two
-  side by side again — which is what the closed Google door produced the same
-  night. The ladder has ONE live rung at a time.
-- **Somebody who has stopped answering hears nothing Olma decided to say, and
-  nothing on their record is cancelled.** The check-in ladder's one miss
-  (`checkin_misses >= 1`) is the signal and the delivery gate is where it
-  acts: every row is dropped as `hold_reason = 'quiet'` — reminder rungs,
-  digests, another user's fan-out — except the ladder's own check-in (the
-  three-day and the weekly "מה איתך") and rung 1 of a reminder they asked for
-  IN WORDS (`payload.auto === false`, which `sweepReminders` puts on every
-  rung). The reminder and the task stay exactly as they were: the owner's
-  rule is "stop it arriving, cancel nothing", and a rung the gate dropped is
-  never chased. `pickRung` puts the quiet one-liner ABOVE overload and a
-  stalled goal (Olma's opinions) and BELOW a stuck meeting and a deadline
-  (theirs). **The third miss is a pause, not a silence** — `pause.quietPause`
-  sets `paused_at` with `paused_reason = 'quiet_ladder'` (migration 049) and
-  takes nothing down, and `openRecord({ wake: true })` ends it on the first
-  message they send; a pause THEY asked for (`paused_reason` NULL) is ended
-  only by them or by the admin. **A "like" never reaches us** — on OpenClaw
-  2026.8.1 there is no reaction event, so the only sign of interest we have
-  is a message; a person who only likes looks silent. Vered got eighteen
-  messages on her second day and answered none (`incidents.md`, "Eighteen
-  messages, no answer").
-- **Moving a task's date answers every rung that was chasing the old one.**
-  `snoozeTask` → `reminders.retireForMovedTask`: a one-off reminder already
-  climbing (`attempts >= 1`) is RETIRED (`sent_at`, never cancelled — they
-  answered it by moving the thing), every queued outbox rung of every one-off
-  reminder on the task is withdrawn as `hold_reason = 'moved'` — including one
-  whose ladder had already ended, which has nothing left to retire and a final
-  message still held for the night — a pending AUTOMATIC reminder for the old date is
-  cancelled and re-armed for the new one (an explicit reminder on the task
-  blocks the re-arm, as on `add_task`), a repeating one is left alone. It
-  did neither for a day: Vered moved five tasks to 09:00 and the ladders of
-  their old date still had "זו התזכורת האחרונה" ×7 due at 08:00 (same entry).
-- **A task chases through ONE ladder — the one behind the LATEST reminder
-  they asked for.** Two explicit reminders on one task are two moments THEY
-  chose, and both first rungs go out; but each used to climb on its own, so
-  Maya, who asked for 16:00 and 16:15 for one call, got "בוצע?" twice that
-  evening and "זו התזכורת האחרונה" twice the next afternoon. When rung 1 of a
-  one-off reminder goes out, `sweepReminders` → `reminders.retireSiblingLadders`
-  RETIRES every other one-off reminder on the task already climbing (`sent_at`,
-  never cancelled) and withdraws their queued follow-up rungs as `hold_reason
-  = 'superseded'`; a sibling's rung 1 is never touched. Same-moment siblings
-  are ordered by id so the later one does the retiring (`incidents.md`, "Two
-  ladders for one phone call").
-- **A "once ever" question is stamped on the PERSON, never deduped on the
-  route that asks it.** Two routes each honouring "at most once" is twice.
-  The city is `users.timezone_asked_at` (migration 045), written by whichever
-  route asks and read by both (`incidents.md`, "The city was asked four
-  times"). And the first message **states** the zone guessed from the dialling
-  code rather than asking for it, spending its one question on the name on
-  file — `firstContactInstruction`, built per person.
+### Turns, and what reaches the person
+
+**`.claude/rules/turns-and-replies.md`** — who opens a turn, the queue mode, self-initiated turns, the reply target, NO_REPLY, repair jobs and the outbound leak gate.
+Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `src/domain/self-initiated.js` and 6 more.
+
+- **The turn opens itself, from the gateway's own hook, before the model's first call.**
+- **`messages.queue.mode` stays `followup`.**
+- **A turn Olma started is not a message from the person.**
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
-  The gateway carries it end to end — `reply_to_id` in `Conversation info`, the
-  quoted text in a `Reply target of current user message` block — and nothing
-  server-side receives either, so there is no fix available outside the prompt.
-  Measured 2026-09-05: the block alone changes nothing. The same conversation
-  with it and without it produced the same answer, because nothing had told the
-  model it meant anything. `turn_start`'s `reply_to_id` (the model has to look
-  for it) plus `hints.replyTarget` (arrives mid-turn, says to answer the quoted
-  message) is what makes it land; `tests/reply-target.test.js` and eval
-  `reply-to-older-message` hold both halves open.
-- **Deleting a user is not deleting a person until the GATEWAY's intake
-  session goes too.** `deprovisionUser` removes everything olma2 owns — row,
-  agent, binding, workspace — and `sweepIntakeSessions` rebuilds them from the
-  gateway's session store, which it reads with no age bound: any peer that ever
-  reached the greeter and has no active user row is provisioned on the next
-  five-minute tick. A deleted account silently undid itself inside five
-  minutes, looking exactly like someone coming back on their own.
-  `forgetIntakeSession` (default true) is now the difference between deleting
-  an account and resetting one; the testbed rehearsal opts out because its
-  transaction is rolled back and a ROLLBACK cannot restore a deleted session
-  (`incidents.md`, "The user who would not stay deleted").
-- **The ledgers are append-only.** Rows already written stay as written, even
-  when the pricing that produced them was wrong.
-- **A meeting negotiates several options (`domain/meeting-options.js`, up to
-  five, and everybody in the coordination may add one or take one off). The
-  single-slot columns `meetings.proposed_slot/proposed_start_at` and
-  `meeting_participants.state` are MIRRORS of the newest active option** —
-  read them if you like, but write only through the options module
-  (`add/answer/remove/swap`), which re-mirrors after every change.
-  A yes must name one of the options on the table; the meeting confirms the
-  moment one option is unanimous among the people still in it.
-  **A sixth option is refused to EVERYBODY, the initiator included, and the
-  refusal carries the five** — the answer to a full table is a question ("which
-  of these goes?"), which `swap` answers in one transaction. What this replaced
-  on 2026-09-09: a fifth from a non-initiator waited as `pending` for the
-  initiator to `approve` (naming what it replaced) or `reject`. That mechanism
-  is deleted, and it had never run for a real person — 8 option rows in the
-  whole history of the feature, every one `active`, and no `meeting.option_
-  approved` or `option_rejected` row in the audit log (measured on the box).
-- **A time taken OFF that table is never a message of its own** (owner,
-  2026-09-09) — the commonest removal is somebody taking back a time they typed
-  a minute ago. It rides the next thing each person hears about that
-  coordination (`meeting-fanout.withRemovals` → `options.unheardRemovals`, per
-  recipient at enqueue, appended once in `channels/openclaw.removedClause`
-  rather than written into eight templates), and `getStatus` carries it for
-  anybody who ASKS. **The baseline is the last message about that coordination
-  that actually REACHED them** (`sent_at` set, `hold_reason` null) — a row the
-  gate held reached nobody, so the next one that lands says it again — and
-  nobody is told about their own removal. `meeting_options.removed_by`
-  (migration 058) exists so the name is in the same query as the slot.
-- **The assistant is עולמה / Allma; the system is still olma2.** The rename
-  (2026-09-04) covers user- and operator-facing text only — repo, `/opt/olma2`,
-  the services, the MCP tool prefix and `olma_identity` keep the old name.
-  `docs/incidents.md` keeps the old spelling too: it quotes real messages, and
-  correcting them would falsify the record. Two readers must answer to BOTH
-  spellings and say so — `facts.SYSTEM_NOUN_RE` (old facts are still in the
-  table) and the voice bridge's name check and Deepgram keyterms.
-- **An explicit reminder replaces the automatic one only on the SAME local
-  day; on another day it stands beside it.** Both are otherwise about catching
-  one thing at its due date, and two messages for that is the bug the
-  supersede exists to stop — but Vered asked for one "בעוד דקה" (the word was
-  נוספת) and lost the 08:00 she had for the next morning. **A past `remind_at`
-  is refused at the TOOL boundary** (`adapters/mcp/tools/reminders.js`, on
-  `reminders.momentIsPast`), never inside `setReminder`: our own sweeps,
-  repairs and most of the suite arm past moments on purpose, and only a model
-  asking for one is a mistake. Refused before the write, so a moment we will
-  not honour cannot withdraw one we would have.
-- **An event is SAID, never only guessed, and it is never told back as a
-  task.** `tasks.kind` ('event' | 'todo', migration 036) was decided by the
-  words in the title and read by exactly one thing, the archive sweep — so
-  ג.ב asked to put a meeting in, the row came out right, and he read "הנה,
-  רשמתי" plus a reminder he had not asked for (`incidents.md`, "הנה, רשמתי,
-  about a meeting"). Now `add_task`/`add_tasks_bulk`/`edit_task` take `kind`
-  (the model has the conversation; `task-kind.decideKind` falls back to the
-  words only when nothing was said, and an unknown word is "not said"), an
-  event has a `location` (migration 052, out of the title, out to Google
-  with the event), and every reader separates the two: `taskHints.event`
-  says what to call it, `list_my_tasks` carries `hints.kinds`, the digest
-  returns `events` beside `tasks` and counts them apart, the personal
-  dashboard lists "ביומן" before "לעשות" inside a day. A reminder still
-  hangs on a task — "להוציא את העוגה בעוד 20 דקות" is still a to-do with a
-  reminder, by choice, for now.
+- **A DECISION to stay quiet is not a reply that got lost.**
+- **A repair job fires precisely when the system's belief about itself is already wrong, so it must be the most sceptical thing in the codebase.**
+- **A reply that got lost is RE-SENT, never re-answered.**
+- **The model's own working-out is stopped in the GATEWAY, not by the doctrine.**
+
+### Reminders, tasks and dates
+
+**`.claude/rules/reminders-and-tasks.md`** — the three different questions about a pending reminder, ladders, duplicate titles, dating a task, and due_at against remind_at.
+Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/tasks.js`, `src/domain/auto-reminder.js` and 10 more.
+
+- **"What is still pending" must ask `attempts = 0`**
+- **…and "what is still going to REACH them" is a THIRD question, which `attempts = 0` answers wrongly.**
+- **Moving a task's date answers every rung that was chasing the old one.**
+- **A task chases through ONE ladder — the one behind the LATEST reminder they asked for.**
+- **A meeting negotiates several options (`domain/meeting-options.js`, up to five, and everybody in the coordination may add one or take one off). The single-slot columns `meetings.proposed_slot/proposed_start_at` and `meeting_participants.state` are MIRRORS of the newest active option**
+- **A sixth option is refused to EVERYBODY, the initiator included, and the refusal carries the five.**
+- **A time taken OFF that table is never a message of its own — it rides the next thing each person hears about that coordination.**
+- **An explicit reminder replaces the automatic one only on the SAME local day; on another day it stands beside it.**
+- **An event is SAID, never only guessed, and it is never told back as a task.**
 - **A task already OPEN on somebody's list is never saved a second time.**
-  Four writers — the live `add_task`, a brain dump, a breakdown's subtasks and
-  the nightly extraction pass — each relied on the model not repeating itself,
-  and the box held 21 pairs of open tasks sharing a title across three of
-  twenty users. Sixteen came from `jobs/fact-extraction.js`, which reads a
-  conversation 7–83 minutes after the live tool already captured the same
-  sentence out of it; 37% of every task that job has written is a duplicate.
-  The dedupe was a line in the prompt with the open list handed over
-  underneath, and Maya had 13 open tasks against a cap of 40 — the row was in
-  front of the model. The guard is in `domain/tasks.js` (`normaliseTitle`,
-  `openTitles`): same owner, same title after case and inner spacing, **still
-  open and unarchived** — never a time window (all 21 firsts were open; a
-  window would have to guess at ביטוח נסיעות, ticked off in the morning and set
-  again that evening) and never also the due date (11 of 21 duplicates carry a
-  different one, nearly always none). It **refuses** rather than returning the
-  existing row, because `TOOL_MARKS` puts 👍 on the message for any `add_task`
-  that returns ok and a failed call earns no mark — an ok would thumbs-up a
-  task that was never saved. `add_tasks_bulk` skips duplicates, grows its map
-  as it goes so a dump repeating itself is caught too, reports them in
-  `duplicatesSkipped`, and refuses outright when nothing was left to save.
-  A test that gives one person two open tasks with the same title now fails;
-  twenty-three did (`incidents.md`, "The same thing, saved twice").
-- **A day named with ל־ in a title dates the THING, not the task.** "לארגן
-  אימון לרביעי" is arranged BEFORE Wednesday; filed ON Wednesday it is useless.
-  `datetime.datesTheObject` reports that shape on the result and lets the model
-  resolve it — it has the conversation, the function has a string.
-- **`due_at` is when the THING is; `remind_at` is the hour THEY named.** A task
-  saved with a `due_at` arms its own reminder — an hour before a timed one,
-  08:00 that morning for a day-shaped one (local midnight in THEIR zone is the
-  discriminator) — and "תזכיר לי מחר ב-19:00" is not that: pass 19:00 as
-  `add_task`'s `remind_at` and it replaces the automatic row rather than
-  joining it. **Olma states the hour she will remind them, so the ARMED moment
-  rides the result** (`remindersAt`, in their zone) and no other time is
-  available to say. Yahav was told 19:00 for a reminder set to 18:00 while the
-  identical request beside it came out right, because that one the model
-  happened to correct by hand (`incidents.md`, "Yahav's first evening"). `domain/auto-reminder.js` decides when,
-  `reminders.attachAutoReminder` is the only writer of `auto = true`, and an
-  explicit `set_task_reminder` cancels the pending auto row rather than joining
-  it. This REVERSED "never set one unasked" (2026-09-04, same day it was
-  added): the half that was right — a calendar ask is one thing, not a task and
-  a reminder as well — moved to `create_calendar_event`'s own description,
-  where the model reads it at the moment it would make that mistake.
+- **A model asked to date something must first be told what time it is.**
+- **A title need not restate the hour the row now carries, but only the SERVER may take it out.**
+- **A day named with ל־ in a title dates the THING, not the task.**
+- **`due_at` is when the THING is; `remind_at` is the hour THEY named.**
+
+### People, silence, and data you must not get wrong
+
+**`.claude/rules/people-and-quiet.md`** — the timezone that must never be NULL, the check-in ladder, the once-ever question, deleting a person, and the rename.
+Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding-review.js`, `src/domain/users.js` and 5 more.
+
+- **`users.timezone` must never be NULL**
+- **Every time crossing a tool boundary needs an explicit offset.**
+- **Nobody is asked a question they have already not answered once.**
+- **A day-one step that has not gone out is REPLACED by the NEXT CHECK-IN of any kind, never joined by it.**
+- **Somebody who has stopped answering hears nothing Olma decided to say, and nothing on their record is cancelled.**
+- **A "once ever" question is stamped on the PERSON, never deduped on the route that asks it.**
+- **The chag offer is that shape's second column (`holiday_quiet_asked_at`, migration 062), with two routes from the start.**
+- **Deleting a user is not deleting a person until the GATEWAY's intake session goes too.**
+- **The ledgers are append-only.**
+- **The assistant is עולמה / Allma; the system is still olma2.**
 
 ### Writing detectors and alarms
 
-- **`BREAKS_USERS` means exactly "their tool calls fail right now."** Anything
-  else is a dashboard row. Widening it makes the alert list mean two things,
-  which is how an alert list dies.
-- **A hint that fires on ordinary input is worse than no hint** — it costs
-  tokens on every turn it does not apply to and teaches the model to skim past
-  hints, including the ones that matter. Measure a new pattern against real
-  data before shipping it, and keep the readings you REJECTED in the test with
-  the real rows that killed them (`tasks.joinsTwoAsks`, checked against all
-  202 production titles; `incidents.md`, "Two asks, one task").
-- **An issue title must be deterministic** — it is the dedup key. A title built
-  from unordered query results makes the guard file and close the same
-  condition on alternating ticks.
-- **A thing that could not be READ is never a thing in trouble.** An unreadable
-  config, a failed billing API, a missing log: report it in the heartbeat, file
-  nothing, alert nobody.
-- **But a check that goes quiet is indistinguishable from one that passes** —
-  so every path that declines to judge must say so somewhere.
-- **Stamp "we told them" only after the send confirms.** Stamping first makes
-  an outage swallow the alert for exactly the outage it exists to report.
+**`.claude/rules/detectors.md`** — what BREAKS_USERS means, ratios that describe one population, unreadable is not broken, and the two review jobs.
+Loads when you **Read** a file under `src/jobs/**`, `src/domain/issues.js`, `src/domain/hebrew-quality.js` and 5 more.
+
+- **`BREAKS_USERS` means exactly "their tool calls fail right now."**
+- **A hint that fires on ordinary input is worse than no hint**
+- **Her voice is checked by code, not by the judge.**
+- **An issue title must be deterministic**
+- **A ratio's numerator and its denominator must describe the SAME people, and the eval user is in neither.**
+- **A thing that could not be READ is never a thing in trouble.**
+- **But a check that goes quiet is indistinguishable from one that passes**
+- **Stamp "we told them" only after the send confirms.**
 - **A joiner nobody has reached is asked about as a PERSON, not a config.**
-  `config_guard.checkUnreachableJoiners`: onboarded a day ago or more,
-  nothing ever delivered to them (a `sent_at` row with no `hold_reason`) and
-  nothing ever received. That catches a dead-from-birth agent, a dropped
-  binding and the next silent failure of the same shape alike. Dashboard row,
-  not `BREAKS_USERS`. It is the opposite of `isDeafOnDayOne`, which needs two
-  onboarding messages to have LANDED and then sends less.
-- **Every check that starts from `users` is blind to the person the gateway
-  dropped**, because they never became a row.
-  `config_guard.checkUnansweredStrangers` starts from the gateway's ingress
-  queue instead (`sessions.listInboundPeers`) and reports a lane with neither
-  a session nor a user row after 30 minutes. **The discriminator is the
-  SESSION** — a stranger the intake greeter answered has one and no user row
-  by design, and counting them would make the check red whenever registration
-  is closed. Dashboard row; no upper window (it closes when they get a user
-  row, not when we get bored). **The ingress queue is not a message log** —
-  Olma's own replies are queued on the same lane and a completed row keeps
-  nothing that tells them apart, so it answers "has this lane ever been heard
-  from" and nothing quantitative (`incidents.md`, "A message reached the box
-  and stopped there").
-- **`liveness_watch` repairs before it reports.** Every five minutes: gateway
-  probe and delivery queue; two bad ticks before a word; a gateway down for
-  two ticks is restarted (`intake/gateway-restart.js`, once per half hour) and
-  probed again; the news goes over WhatsApp — healed, stuck deliveries, or
-  recovered — and a message that could not go out is `alertFailed` on the
-  heartbeat. State in the `liveness_state` flag so a restart mid-outage does
-  not re-alert. It speaks over the gateway's own pipe (owner's choice, no
-  SMS), so a gateway that stays dead is repaired from here but reported only
-  by the external monitor.
-- **A new person's first hours are read back by code TWICE — three hours in,
-  and again after their first day** (`jobs/onboarding-review.js`, `STAGES`; the
-  checks are pure, in `domain/onboarding-review.js`). It never messages them —
-  it files one row per person per stage, clean ones included, because a review
-  that only appears when something is wrong cannot tell you the rate. A `bad`
-  verdict means somebody was told something untrue or got no answer: a
-  dashboard row and an alerts pill until acknowledged, never `BREAKS_USERS`.
-  **Both stages start at their first message and only the END moves** — several
-  checks hold something said late against a reminder armed early — so the day
-  read sees everything the early one saw and files only what is NEW. There are
-  two stages because four checks written from Yahav's second day fire at 3.7 to
-  13 hours in and, at three hours, not one of them could ever have fired.
-  **Adding a check means adding its failing case to
-  `tests/onboarding-review.test.js`** — the founding case is Yahav's real
-  evening, replayed end to end, and a check whose failure cannot be written
-  down is one nobody will trust in six weeks.
-- **The onboarding review only ever watches the FRONT DOOR; `promise_watch`
-  watches everyone.** A new person's first hours are read back twice (above);
-  every ACTIVE person is asked once a day whether the moment they named is the
-  moment that got armed (`jobs/promise-watch.js`, the pure half in
-  `domain/reminder-promise.js`). Miron hit the promised-hour fault weeks into
-  his life here and nothing saw it for six hours. **It reads THEIR message, not
-  Olma's** — "the meeting is at 19:00, I'll remind you" is ambiguous prose no
-  regex should judge, "תזכיר לי ב-19:00" has one correct outcome — and it
-  judges only when BOTH halves are visible: a moment they named, and a reminder
-  armed within five minutes in response. Nothing armed at all is three
-  different stories and is never reported. It files an `issues` row keyed on a
-  deterministic title carrying the message timestamp, so re-reading the
-  overlapping window cannot file twice.
+- **Every check that starts from `users` is blind to the person the gateway dropped**
+- **`liveness_watch` repairs before it reports.**
+- **A live gateway PROCESS is not a gateway that can send anything, and for six hours nothing in the system knew the difference.**
+- **A new person's first hours are read back by code TWICE — three hours in, and again after their first day**
+- **The onboarding review only ever watches the FRONT DOOR; `promise_watch` watches everyone.**
+- **`promise_watch`'s second half compares the hour in a task's TITLE to the hour the row will fire at** (`domain/stated-hour.js`) — the semantic cross-check for a well-formed-but-wrong offset, which `hasOffset` cannot refuse. Both halves are blind to a wrong `users.timezone` because both read it; that class is closed at the write, by `setTimezone` → `timezone-repair.js`.
 - **The suite runs again on a schedule, at four hours of the day**
-  (`.github/workflows/olma2-clock-drift.yml`) — no deploy job, its own
-  concurrency group so it can never displace a merge's queued deploy. A red
-  there means a test means something different at that hour: broken, not
-  flaky, and never to be re-run until green. **Do not replace this with a
-  clock-shifting preload or a scan for near-today date literals** — both were
-  built and thrown away on 2026-09-06, because the first invents a JS/Postgres
-  skew production never has (29 false failures) and the second flags the very
-  pattern the rule recommends (180 literals, most of them correct).
-- **`/health` sees the DB, every `job_heartbeats` row, and the gateway — and
-  nothing else.** A component that writes no heartbeat is invisible to it, and
-  says so by staying green. That is how the gateway went unwatched for months
-  while sixteen sweeps beside it were checked every minute.
+- **`/health` sees the DB, every `job_heartbeats` row, and the gateway — and nothing else.**
 
-### Two hostnames: allma.world is public, duckdns is admin
+### The dashboard and the two hostnames
 
-- **`allma.world` serves an ALLOWLIST, not the admin dashboard.** Caddy passes
-  a named set of routes to `:8788` — `/pick/<48 hex>`, `/d/<64 hex>`, `/me`,
-  `/me/data`, `/me/events`, `/me/act`, `/me/out`, `/oauth/google/callback`,
-  `/health`, `/ready`, and the three stranger-readable pages `/`, `/privacy`
-  and `/terms` — plus `/voice-bridge*` to `:8791`. Everything else 404s
-  in Caddy and never reaches the app. **Read the Caddyfile for the current
-  set** rather than this line: it said "exactly four" for a day and was wrong
-  the moment the personal dashboard shipped. What does not change is the
-  invariant — the list is exactly the routes the app serves ahead of its Basic
-  Auth check, and **adding a public route to the app does not make it reachable
-  — the Caddyfile has to say so too.** That cost the user dashboard its launch:
-  the code deployed green, `/me` answered on `127.0.0.1:8788`, and every link
-  sent to a person 404'd in Caddy (2026-09-04) — and it cost `/terms` the same
-  way on 2026-09-06: PR #239 deployed green and the page 404'd until the
-  Caddyfile learned about it.
-- **The admin dashboard lives ONLY on `olmachat.duckdns.org`.** It is not
-  exposed on `allma.world` at all, not even behind Basic Auth.
-- **Match `/pick/` on the exact token shape, never `/pick/*`.** A prefix match
-  lets a malformed token fall past `picker.TOKEN_RE` into the Basic Auth
-  check, so a truncated WhatsApp link answers a user with the ADMIN password
-  prompt on the public domain (`incidents.md`, "A truncated link asked a user
-  for the admin password"). The dashboard link follows the same rule —
-  `^/d/[a-f0-9]{64}$`, and the five `/me` routes named one by one rather than
-  `/me*` — for exactly that reason.
-- **Three places hold the domain and none of them are in the repo**:
-  `/etc/caddy/Caddyfile`, `/opt/olma/google-oauth.json` (`public_base_url`,
-  which builds the OAuth `redirect_uri`), and `/opt/olma2-voice-bridge/server.js`
-  (the `<Stream>` TwiML URL). The fourth, the `public_base_url` **flag**, is DB
-  state and drives `/pick/` links only — it is NOT the one OAuth reads. A
-  deploy cannot touch any of the four, and a rollback cannot restore them.
-- **`google-oauth.json` is cached at module level** (`clientConfig()`), so
-  editing it does nothing until `olma2-dashboard` restarts.
-- **A redirect URI must be registered at Google BEFORE the file points at it**,
-  and both hostnames stay registered during any move. Verify against Google
-  rather than the console UI: drive a consent URL and check whether it reaches
-  the sign-in page or `redirect_uri_mismatch`, **with a known-bogus domain as a
-  control** — without one the probe reads "accepted" for everything.
+**`.claude/rules/dashboard-and-domains.md`** — which routes Caddy passes, why /pick/ is matched exactly, and how the admin page is actually structured.
+Loads when you **Read** a file under `src/adapters/http/**`, `docs/design/**`.
+
+- **`allma.world` serves an ALLOWLIST, not the admin dashboard.**
+- **The admin dashboard lives ONLY on `olmachat.duckdns.org`.**
+- **Match `/pick/` on the exact token shape, never `/pick/*`.**
+- **Three places hold the domain and none of them are in the repo**
+- **`google-oauth.json` is cached at module level**
+- **A redirect URI must be registered at Google BEFORE the file points at it**
 - **Changing the domain never invalidates an existing Google connection.**
-  `redirect_uri` belongs to the authorization-code exchange only; the refresh
-  grant sends `client_id`/`client_secret`/`refresh_token` and no URI. Re-consent
-  is needed only if the **client_id** changes — which is why a second OAuth
-  client is the dangerous mistake here, not a second redirect URI.
 
-### Editing the dashboard or domain
+### Doctrine, tools and reactions
 
-- **Admin edits go through the domain functions, never raw SQL**, so an
-  operator's change is validated and audited like the agent's own.
-- **After any preference/fact edit, call `refreshUserCard(pool, userId)` —
-  after the transaction commits, never inside it.** USER.md is what the agent
-  reads every turn.
-- **Validate any `back` parameter through `safeBack()`**, or the admin becomes
-  an open redirect.
+**`.claude/rules/doctrine.md`** — the 39,250-char ceiling, the schema budget, the reaction table and markPlaced, Google scopes and links Olma may not invent.
+Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intake/provision.js`, `src/adapters/mcp/**` and 8 more.
 
-### Doctrine
-
-- **`agents-template.md` reaches existing users only via
-  `scripts/resync-agent-templates.js`.** `deploy.sh --restart` now runs it
-  automatically after the health check passes — a manual local deploy does not.
-- **The doctrine is FULL: 39,229 of the 39,250 chars the gateway will inject
-  (2026-09-05; it was 39,249 the day before).**
-  Over the line nothing is announced — `trimAgentsBootstrapContent` keeps a
-  head and a tail and deletes the middle of whichever section sits at the cut.
-  So a paragraph added there must be paid for by deleting one, and the default
-  answer is to put the instruction in the TOOL RESULT instead, where it costs
-  tokens only on the turns it applies to (`turn_start`'s `onboarding` string,
-  2026-09-04). `tests/intake.test.js` fails before anything is lost.
-  The health board shows the rendered size against the gateway's ceiling
-  (`doctrineMeter` in `dashboard.js`) — an unreadable config reads as an
-  unknown ceiling, never as the gateway's 20k default.
-- **The tool schemas have a ceiling too: 55k chars of JSON, 700 per
-  description, the identity line under 40** (`tests/tool-schema-budget.test.js`).
-  They are injected on every turn for every user, so guidance about what to
-  do with a RESULT rides the result (`turnHints`, `set_my_timezone`'s `hints`),
-  where it costs tokens only on the turns it applies to — never the
-  description. Adding a tool means paying for it by trimming another.
-- **When brokerd has put a 👍 on their message, the result says so
-  (`hints.markPlaced`) and the model answers `NO_REPLY` unless words add
-  something** — a question, a caveat, an error. A sentence after the mark is
-  a second notification for the same fact (Miron, 2026-09-05: "deleted ✅"
-  under a 👍). The mark table is `reactions.TOOL_MARKS`; the undo-shaped
-  tools (archive, cancel reminder, edit, forget) earn the same 👍 as a capture.
+- **`agents-template.md` reaches existing users only via `scripts/resync-agent-templates.js`.**
+- **The doctrine is FULL: 39,229 of the 39,250 chars the gateway will inject (2026-09-05; it was 39,249 the day before).**
+- **The tool schemas have a ceiling too: 55k chars of JSON, 700 per description, the identity line under 40**
+- **When brokerd has put a 👍 on their message, the result says so (`hints.markPlaced`) and the model answers `NO_REPLY` unless words add something**
+- **The owner's rule is that anything which CAN end in a like should**
+- **The hint follows the MARK, not the spawn.**
 - **A message that is only thanks is answered by a 🙏 and by nothing else.**
-  Sixth reaction state; the hint (`turnHints.thanksOnly`) asks for `NO_REPLY`
-  on the same argument as `markPlaced`. **The classification runs in the
-  turn-open hook and only the boolean reaches brokerd** — the text still never
-  leaves the gateway. Strict on purpose: a miss costs one "בשמחה", a false
-  positive means Olma ignores a real request, so an explicit thanks is
-  required, a question mark disqualifies, and every other word must be on a
-  short filler list. **Needs a gateway restart to take effect** — the hook is
-  read at startup, and until then the code is live and inert
-  (`incidents.md`, "בשמחה יהב, שיהיה ערב טוב").
-- **`markPlaced` is CONDITIONAL, so nothing else on the same result may be an
-  unconditional instruction to write.** It lost to one for two days: the tool
-  result said "say when you will remind them" beside it, and Miron got
-  "הוספתי ✅ … לתזכורת עוד שעתיים" under a live 👍 (2026-09-06). The hint was
-  neither missing nor ignored — it was outvoted. **Every hint and every line of
-  doctrine about what to SAY must answer the same question `markPlaced` asks:
-  is there anything here the mark cannot carry.** For a reminder, the hour Olma
-  CHOSE is; the hour they NAMED is not, and the save never is.
-- **One in-flight reaction per message.** A mark is a whole `openclaw` CLI
-  start-up (15s wall on the box, measured again at 14.5s on two cores), so a
-  short turn has the 👀 and the 👍 alive at once and the LAST to finish wins.
-  `placeMark` kills an older child still starting up when a newer mark arrives
-  for the same message; one that already exited is simply replaced on the phone.
-- **The shim's connection outlives the turn, so nothing per-turn may be latched
-  to it.** `bin/olma-mcp.js` caches ONE socket for the life of its process and
-  that process runs for hours, so the same `turn` object serves every turn it
-  handles. Adoption of a gateway open was behind a `!turn.opened` latch that
-  clears only on a change of user — never — and the first message the process
-  ever saw froze into `turn.messageId`: Miron got an ⏰ on a message from five
-  minutes earlier, and once the id aged out nothing was marked at all for six
-  hours (`incidents.md`, "The mark that never moved"). `takePending` now runs
-  on EVERY call and removes what it takes, which is what keeps a count spent
-  once; only the implicit recovery stays latched, because with no opening on
-  file nothing can tell one turn from the next on that socket. **A test that
-  passes a fresh `newTurn()` per turn is not testing the connection we have.**
-- **A model with nothing to relay passes something, not nothing.** `turn_start`
-  takes `message_id` from the model, and on turns Olma started — where there is
-  no inbound message — it sent `manual` and `auto-3` to WhatsApp, overwriting
-  the real id the gateway had put on the turn (`incidents.md`, "The message id
-  the model made up"). `cleanMessageId` bounds the SHAPE and an invented id is
-  well-formed, so **no regex can settle this** — provenance can: never take it
-  on `ourTurn`, never over an id the gateway already supplied.
-- **The 👀 on a person's message is the GATEWAY's** (`ackReaction` in
-  `openclaw.json`), placed on receipt from its own config, and ours is a second
-  one behind it. So a working 👀 is no evidence that `placeMark` works at all —
-  read the gateway journal for what it actually SENT, per emoji, before
-  concluding the mark path is alive.
-- **`placeMark` claims nothing and therefore must SAY something.** It is
-  fire-and-forget by design — no exit code may reach the caller, and nothing
-  user-visible may depend on a mark landing — but it logs the attempt and logs a
-  non-zero exit, because without that "the reaction failed" and "no reaction was
-  ever attempted" are the same observation from the box.
+- **`markPlaced` is CONDITIONAL, so nothing else on the same result may be an unconditional instruction to write.**
+- **One in-flight reaction per message.**
+- **The shim's connection outlives the turn, so nothing per-turn may be latched to it.**
+- **A model with nothing to relay passes something, not nothing.**
+- **The 👀 on a person's message is the GATEWAY's**
+- **`placeMark` claims nothing and therefore must SAY something.**
 - **Olma never offers a capability without asking the thing that owns it.**
-  Phone calls live behind the bridge's own allowlist, in another process on
-  another deploy workflow; `domain/voice.callAvailable` asks `POST /probe`
-  (which rings nothing) and the card states the answer. **Three values, never
-  two** — `null` is "could not ask" and prints no line at all. **The probe is
-  a PATH and not a flag on `/dial`**: the two ship separately, so a probe can
-  reach a bridge that predates it, and a field an old `/dial` ignores would
-  ring somebody's phone to render a card. Its 404 is the harmless answer, and
-  `voice-bridge/deploy.sh` asserts `/probe` still exists, because
-  `null` is silent by design (`incidents.md`, "An offer to call a number the
-  bridge has never served").
-- **A carryover leak is repaired on a schedule, because nothing can name the
-  writer.** Another user's intake text appeared in u-17's card twice in four
-  days; the agent turned the second one into a task with a reminder. The
-  `carryover_repair` job applies `repairCarryovers` every ten minutes and
-  refreshes the cards it touched. `admin.carryover_leak_repaired` is in
-  `PERMANENT_PREFIXES` — a self-healing exposure with a prunable audit trail
-  is one nobody can ever count (`incidents.md`, "The carryover leak came
-  back").
-- **An instruction handed to the model may assert what its own columns hold,
-  and not one word more.** A sweep sees `users.first_name`; it does not see
-  where that name came from, and it has never read the person's message. The
-  60-second name rung said "they have not replied" (the state it fires on is
-  reached BY their writing) and "most likely from their WhatsApp profile"
-  (עידן's came from someone else's Google contacts), so Olma asked him to
-  confirm the name he had typed ninety seconds earlier. What the code cannot
-  know, it sends the model to READ — the transcript is right there and the
-  sweep is not (`incidents.md`, "קוראים לי עידן").
-- **Telling the model to call a tool is not telling it what the reader of that
-  tool's write actually checks.** The model DID call `set_my_name` for עידן —
-  with `confirmed` omitted, so it landed as an observation and the rung, which
-  keys on `name_confirmed`, fired anyway. Name the FLAG, not just the tool.
-- **A fixture that writes the state by hand cannot notice the state is only
-  ever reached the other way.** Ten passing tests described a nudge for
-  someone who had gone silent; production only ever fires it at someone who
-  wrote once. Hold the founding case open where the state is PRODUCED.
-- **The owner's opening copy is said ONCE, by whichever voice reaches the
-  person first.** An organic joiner meets the intake greeter, so the greeter
-  sends it verbatim and provisioning stamps `users.opening_sent_at`;
-  `turn_start` reads that column and, on the same `firstTurn`, tells the model
-  the introduction is done instead of handing out `sendVerbatim`. A NULL means
-  nobody has greeted them (testbed reset, hand-provisioned) and their own agent
-  still opens. **A prompt that DESCRIBES brand copy instead of quoting it is a
-  second copy of it** — the greeter was told to "say who you are and name one
-  or two things you help with", so it wrote its own version and עידן read two
-  introductions ninety seconds apart (`incidents.md`, "Two introductions").
-  **`greetedByIntake` is READ off the greeter's actual reply, never assumed
-  from the session list.** The sweep ticks every five seconds and the greeter
-  answers in twenty to forty, so for one evening it stamped everybody as
-  greeted before the greeter had said a word — 32 seconds early for u-29, 19
-  for u-28 — and `turn_start` then told both agents the introduction was done.
-  Two people met Olma with nobody ever saying what she was. Waiting is also
-  what makes the CARRYOVER readable: provisioning 0.36s after the message read
-  a store the gateway had not finished writing, so בר's first words reached
-  nobody while the greeter told him they had been noted. The wait is bounded —
-  past `GREETER_GRACE_MS` a silent greeter provisions anyway, unstamped, and
-  their own agent opens (`incidents.md`, "Two people, no introduction").
-- **A first message is not a hello, and the newest arrivals prove it.** People
-  now reach Olma from a WhatsApp group she already sits in: they are asked when
-  they are free and they DM the ANSWER — בר's first ever word to her was "אני
-  יכול מחר". The greeter is told to open with the copy and does not, because a
-  real question in front of it gets a real answer. Any code that treats the
-  first inbound as a greeting to be replaced, deduped or discarded is throwing
-  away the only thing the person came to say.
-- **`gmail.readonly` is a RESTRICTED scope and everything else Olma asks for
-  is merely SENSITIVE — the two words are different verification tracks, and
-  one restricted scope prices the whole app onto the paid one** (an annual
-  third-party CASA assessment, on top of the free demo-video/privacy-policy
-  track calendar and contacts need). Mail is closed for that reason
-  (2026-09-07): `tools/email.js` is deleted, `start_google_connection` has no
-  `mail` parameter, and `tests/mail.test.js` fails if either returns.
-  `domain/mail.js` and its 32 tests are untouched — reopening is one small
-  file plus a re-verification. **Never add a scope without checking which list
-  it is on**; an unverified app asking for a restricted one is blocked
-  outright rather than warned, which is what עידן's "This app is blocked" was.
-  **The track follows what the app DECLARES, and the declaration lives in
-  three places, only one of them in this repo**: the consent screen's scope
-  list (Google Auth Platform, project `692111599145`), `/privacy` and `/terms`
-  (`adapters/http/public-pages.js` — the pages the reviewer actually reads),
-  and the code that mints the consent URL. Deleting the tools moved only the
-  third: the pages went on offering Gmail for a day afterwards, and עידן's own
-  request was `calendar: read_only, mail: false` — his block came from the
-  app's configuration, never from his URL. `tests/public-pages.test.js` fails
-  on any restricted scope named on any public page.
+- **A carryover leak is repaired on a schedule, because nothing can name the writer.**
+- **An instruction handed to the model may assert what its own columns hold, and not one word more.**
+- **Telling the model to call a tool is not telling it what the reader of that tool's write actually checks.**
+- **A fixture that writes the state by hand cannot notice the state is only ever reached the other way.**
+- **The owner's opening copy is said ONCE, by whichever voice reaches the person first.**
+- **A first message is not a hello, and the newest arrivals prove it.**
+- **`gmail.readonly` is a RESTRICTED scope and everything else Olma asks for is merely SENSITIVE — the two words are different verification tracks, and one restricted scope prices the whole app onto the paid one**
 - **Every NEW Google consent link goes through one door, and it is CLOSED**
-  (`domain/google-connect-gate.js`, flag `google_connect_phones`: '' = nobody
-  but an admin, 'all' = everybody, or an E.164 list). While the app is
-  unverified its link lands on Google's "not verified" screen, and the owner's
-  rule is that nobody meets that screen (2026-09-08). One flag for calendar
-  AND contacts because `start_google_connection` mints ONE link covering both
-  — gating only the calendar would send the same person to the same screen
-  through the contacts half. It gates MINTING: an existing connection keeps
-  syncing, nothing is disconnected, and mail keeps its own separate gate for
-  the narrower restricted-scope reason above. **A closed door also silences
-  the OFFER** — the day-one 8h step and both `calendar:*` check-in rungs
-  decline while it is shut, because an offer the tool then refuses is the
-  worst kind: they say yes first. The proactive rungs were never the main
-  path anyway — u-30 started a calendar auth two minutes after joining, from
-  the conversation, and has no connection to show for it.
-- **A display name is not a word to be translated.** It arrives in whatever
-  script its owner chose; `Idan T` became "היי אידן!" in the first sentence
-  that person ever read, while the right spelling sat in a database the
-  greeter cannot see. Use it only when it is already in the language they
-  wrote in, exactly as spelled — otherwise greet them with no name.
-- **Olma never claims a lookup it did not perform.** No price, no stock level,
-  no "מצאתי לך", no link to a RESULT — all of it asserts a fetch that never
-  happened. `search_link` is the one exception and only because a link to a
-  *search* claims nothing: the model supplies WORDS, `domain/search-link.js`
-  builds the URL. A model that writes URLs eventually writes a fabricated one.
-- **A `url` in a tool result is delivered by the MODEL or not at all** — no
-  outbox row, no template, no follow-up sweep sends it. So every result that
-  mints one carries `sendLinkVerbatim` (`domain/action-link.js`), which says
-  the characters must be in THIS reply and names the sentence that broke it:
-  Olma wrote "שלחתי לך קישור 🫡" with no link under it and עידן answered "איפה
-  שלחת לי את הקישור?" (2026-09-07). Same class as claiming a lookup — an
-  action asserted that nothing performed. `tests/consent-link-reaches-the-
-  person.test.js` scans `src/domain` for a seventh one; `availability.js` is
-  exempt by name because `/pick/` is retired.
+- **A display name is not a word to be translated.**
+- **Olma never claims a lookup it did not perform.**
+- **A `url` in a tool result is delivered by the MODEL or not at all**
 
 ### In a group
 
-The whole feature is `olma2/docs/group-mode.md`; these are the four rules that
-have already had to be argued for.
+**`.claude/rules/groups.md`** — the two identity doors, what a room may never be told, NULL as the honest third state, and the group outbox.
+Loads when you **Read** a file under `src/domain/group-connections.js`, `src/domain/group-context.js`, `src/domain/group-outbox.js` and 5 more.
 
-- **Two identity doors, routed by the token PREFIX** — `users.resolveByToken`
-  for a person, `groups.resolveByToken` for a room (`olma_grp_…`). brokerd
-  enforces `audience: 'group'`; the MCP shim serves the union and cannot know
-  which agent is calling, so a user tool called with a group token is refused
-  at the server and nowhere else.
-- **Nothing a group tool returns may carry the room's own row or anybody's
-  reasons.** `chat_groups` holds `identity_token`, and
-  `meeting_participants.constraints` is why one person said no — the room is
-  told "Tuesday does not work for Dana", never why. A behavioural test asserts
-  no group tool ever returns that row.
-- **NULL is the honest third state and a guess never acts.** `chat_groups.kind`
-  (migration 051) is asked ONCE, in the room — the gateway never tells us who
-  added her, and `registered_by_user_id` is merely the lowest-id member — and
-  until it is answered she has nothing to say about "enough people": not
-  "one more" and not "we have enough". `quorum_min/max` are about the PLAN and
-  are unrelated to the `group_max_members` flag, which is about the room.
-- **Everything a room hears unasked is fixed text on the raw pipe**, because
-  the group agent is MUTED at the gateway while the group is locked — there is
-  no model output to use. Defaults in `domain/message-templates.js`, reworded
-  by the owner from the admin page. Five lines per coordination (base, chase,
-  done, the morning of, an hour before), each stamped on `meetings` so it is
-  said once per coordination and again next week for the next one, at most one
-  line per room per pass, and every one of them held to the group's own
-  daytime — a line held at 02:00 stamps nothing and goes out in the morning.
-- **A sweep DECIDES and the `group_outbox` job SAYS** (migration 055). The row
-  and the stamp are written in one transaction, the UNIQUE `idempotency_key`
-  is what actually stops a sentence twice, and a claim is never handed back —
-  a sender that died mid-send leaves a row closed as `unconfirmed`, because a
-  room that misses a line is better off than a room told the same thing twice.
-  It is deliberately not the `outbox` table and has no column that can name a
-  user: one queue per audience, so the user gate stays the only door to a
-  person. **The cost is that a pass cannot see what it just said** —
-  `groupOutbox.pending` is how the gate sweep still knows not to nudge a room
-  it has only this second greeted (`incidents.md`, "The room was told twice").
+- **Two identity doors, routed by the token PREFIX**
+- **Nothing a group tool returns may carry the room's own row or anybody's reasons.**
+- **NULL is the honest third state and a guess never acts.**
+- **Everything a room hears unasked is fixed text on the raw pipe**
+- **A sweep DECIDES and the `group_outbox` job SAYS**
+- **A room's first sentence waits out the channel restart its own registration caused.**
+- **TWO columns say somebody has written to Olma, because two voices can hear their first message.**
+- **Being in the room IS the introduction, and it is not the inferred closeness the old rule forbids.**
+- **The room reaches each member's OWN page as a group already made**
+- **A member's message in the room opens the gate's fifteen-minute window for that room's coordination — and, since 2026-09-09, the room's own announcement window; nothing else**
 
-- **Being in the room IS the introduction, and it is not the inferred closeness
-  the old rule forbids.** Everybody in a group with Olma who is ALREADY a user
-  becomes connected to everybody else there, every feature on, nobody asked
-  (`domain/group-connections.js`, on every sweep pass). The reversed rule
-  refused connections guessed from data; this is a fact both people can see,
-  and they already have each other's number in that room. Three lines it does
-  not cross: a member who has never met Olma is **not invited** (that path
-  messages a stranger), a `declined`/`revoked` pair is **never re-created**
-  (revoking is the only way out, and a revoke a room can undo is not one), and
-  nothing here moves anybody's data — every grant only means they MAY be asked,
-  and a share still waits for the viewer, a relayed message still passes the
-  recipient's gate. **Its own event, `connection.auto_connected`, one row per
-  side** — `jobs/metrics.js` counts `connection.approved` as a friction signal,
-  and a per-person audit view asks `WHERE actor_id = $1`. **Ask about the PAIR,
-  never the direction**: `connections_live_pair` is UNIQUE on
-  `(requester_id, target_phone)`, so the mirror row of an existing invite
-  passes the constraint and leaves two live connections for one pair. The
-  whole room's state is read in ONE query, not three per pair — a room of
-  twenty-five is three hundred pairs inside the sweep's transaction, which is
-  the lock shape of "The room was told twice".
-- **The room reaches each member's OWN page as a group already made** — its
-  WhatsApp name, its people, read-only (`user-dashboard.loadGroups`). The
-  groups design was hidden whole on a served page because nothing kept a
-  group; now the halves part company, the list showing and the "new group"
-  button still hidden, because a WhatsApp room is not something that page can
-  create. **No phone numbers and no `identity_token`** — the room's row is its
-  door and this payload goes to a browser; non-users are drawn by the display
-  name the room already shows, because a room missing half its people reads as
-  the wrong room. The list is hidden in CSS until `hydrate` marks it live, not
-  from script after the fetch: the seeded design groups are in the markup and
-  would be somebody else's example lists on a real person's screen until the
-  server answered.
+### Testing
 
-- **A member's message in the room opens the gate's fifteen-minute window for
-  that room's coordination, and for nothing else** (migration 056,
-  `chat_group_members.last_wrote_at`). It releases `night` and the `quiet`
-  drop on the same argument the DM window already makes — somebody who just
-  spoke is awake — and the SCOPE is the worker's query, not the gate: only a
-  row naming a meeting whose group they wrote in after that coordination
-  started. A pause is still read first and absolutely. **The column is blind
-  to anything that did not name her** (a registered room is
-  `requireMention: true`), so its silence is never evidence that somebody said
-  nothing.
+**`.claude/rules/testing.md`** — the pinned UTC pool, never depending on the hour, the production guard, and why a test child that cannot exit is invisible.
+Loads when you **Read** a file under `tests/**`, `scripts/run-suite.sh`.
 
-### systemd scope
-
-- **Only `openclaw-gateway` is a user-level unit** (`systemctl --user`, needs
-  `XDG_RUNTIME_DIR=/run/user/0`). `olma2-brokerd`, `olma2-dashboard` and
-  `olma-voice-bridge` are **system-scope** — plain `systemctl`. Checking the
-  wrong scope reads as a false "service is down".
+- **The test pool pins `Etc/UTC`**
+- **Never let a test depend on the hour or the weekday it runs.**
+- **A moment a test will later assert on is computed ONCE**
+- **A test file must never reach the LIVE gateway — not its home, not its roster.**
+- **`OLMA_HEARTBEAT: 'off'` does NOT turn the sweeps off**
+- **A test file must never write into a directory the other test files read.**
+- **A test child that cannot exit is invisible**
+- **A green from CI may be a retry.**
 
 ---
 
@@ -1138,87 +434,6 @@ Verified on the box at the cutover, 2026-08-17:
   the identical functions in a worker thread with a deadline. The dashboard
   and the eval harness are separate processes and keep calling `sessions.js`.
 
-## The live dashboard is v2's (`olma2/src/adapters/http/dashboard.js`)
-
-`olma2/docs/v1-reference.md` describes **v1's** dashboard, which is dead — its
-"5 edits with a positional param on `renderPage(...)`" recipe does not apply
-here and following it wastes a session. This is the one that serves both
-https://allma.world and https://olmachat.duckdns.org.
-
-Same house style — zero deps, Basic auth, server-rendered HTML + form POSTs,
-no JS — but structured differently:
-
-- **Since 2026-09-05 the file is split:** `dashboard.js` is the router (auth,
-  CSRF, the OAuth callback, the GET/POST handlers, ~490 lines);
-  `admin/sections/*.js` are the section renderers (one file per group of
-  related sections), `admin/sections/index.js` holds `GROUPS` and `SECTIONS`,
-  `admin/user-page.js` and `admin/contacts.js` are the two separate pages,
-  `admin/posts.js` the per-user POST handlers and `safeBack`, `admin/html.js`
-  the shell, `STYLE` and the formatting helpers. Exports are unchanged.
-- **Since 2026-09-05 the page is six collapsible groups** (`GROUPS`, CSS-only
-  `<details>`), only the first open on load, with an alerts strip inside it
-  built from signals the sections already compute (`collectAlerts`, one
-  extra query). Every `SECTIONS` entry names its `group`; a section with an
-  unknown group falls off the page, and the suite checks the two agree. The
-  old outbox and boost sections are blocks inside "מה מתוכנן להישלח" and
-  "הגדרות מערכת"; the reaction vocabulary (`reaction_emoji`) is edited there
-  too, one box per state via `POST /reactions` — never as a JSON flag row.
-- **The personal dashboard (`docs/design/user-dashboard.html`, served as-is)
-  creates coordinations and adds, answers, approves and swaps candidate times
-  through `/me/act` actions that call the SAME domain functions as the chat
-  tools** (`user-dashboard-write.js` → `meeting-options.js`). Picks arrive as
-  `{day, part | time}` in the person's own terms and become an instant in
-  their zone in `meeting-option-moment.js`; never convert in the browser. A section form may send `back=/#<id>`; `safeBack` accepts
-  only ids the page renders.
-- **Sections are a named array, not positional args.** `const SECTIONS = [{ id,
-  title, hint, render }]`, rendered in order by the `GET /` handler. Adding one
-  is a single entry plus its `render*(client, csrf)` function; the `hint` is
-  required by convention, because this is a tool someone reads daily and an
-  unlabelled table is a puzzle. **Read the array for what exists** — it was
-  listed here once and was wrong within a fortnight (10 named, 15 live).
-- **`/user?id=N` is a separate page**, not a section — the per-person
-  drill-down (tasks, conversation, what is planned for them, preferences,
-  facts, delete panel). `renderUserPage` builds it; sections are skipped
-  entirely for that path.
-- **Routing is `url.pathname`**, the opposite of v1's exact-`req.url` rule.
-  Only `/health` (unauthenticated) still matches `req.url` exactly, and the
-  Google OAuth callback matches on its own parsed pathname before auth.
-- Every POST is CSRF-checked against a cookie, runs inside one `withTx`, and
-  redirects 303. A per-user form carries a `back` field — validate it through
-  `safeBack()`, never trust it, or the admin becomes an open redirect.
-- **Admin edits go through the domain functions**, never raw SQL, so an
-  operator's change is validated and audited exactly like the agent's own
-  (`preferences.remember/forget`, `facts.rememberFact/forgetFact`). On top of
-  the domain's own audit row, each writes an `admin.*` event so the trail shows
-  where the change came from.
-- **After any preference/fact edit, call `refreshUserCard(pool, userId)` —
-  after the transaction commits, never inside it.** USER.md is what the agent
-  reads every turn; skipping this puts the card out of sync with the DB, which
-  is the exact bug fixed on 2026-08-19.
-- **Every sentence Olma sends VERBATIM — reminders and their rungs, the first
-  contact to a stranger, everything said in a group — has its default in
-  `domain/message-templates.js` and is reworded from the admin page
-  ("ניסוחים", the `message_templates` flag), never by editing the literal in
-  code on the owner's behalf.** Senders pass the loaded overrides as the last
-  argument of `proactive-text.render*` / `intake/messages.*`; an override
-  that drops a required placeholder is refused by name on the page and
-  ignored at render, so a hand-edited flag row cannot ship a nudge with no
-  tags in it. **And a verbatim sentence has no model to read "their language"
-  off USER.md, so the language is a TEMPLATE choice made at delivery** —
-  `localizedKey` picks the `_en` twin of a rung for an `en` recipient, off the
-  users row the worker joins, never off the payload. Sarah got a month of
-  Hebrew reminders under an English conversation (`incidents.md`, "Her
-  reminders arrived in Hebrew").
-- **Cancelling a queued message is an UPDATE, never a DELETE**
-  (`sent_at = now(), hold_reason = 'cancelled_by_admin'`). The row carries the
-  `idempotency_key` that stops the sweep which produced it from producing it
-  again — delete it and the message comes back on the next tick. Cancelled rows
-  are excluded from the daily-budget count in `outbox/worker.js`, since nothing
-  was ever delivered.
-- Times shown and accepted per user are in **that person's** timezone; the
-  conversion happens in Postgres (`AT TIME ZONE`) in both directions, so there
-  is no offset arithmetic here to break at a DST boundary.
-
 ## Server
 
 `ssh root@157.230.210.233` (key `~/.ssh/id_ed25519`). Ubuntu 24.04, Node 24,
@@ -1271,85 +486,9 @@ configured. Now live in every workspace:
 
 - **`USER.md`** — tiny identity card, injected every turn.
 - **`memory/YYYY-MM-DD.md`** — raw daily notes, auto-injected for the last 2 days on session start only (`agents.defaults.contextInjection: "continuation-skip"` — full bootstrap files no longer re-inject on every turn within a session, saving ~4-5k tokens/turn).
-- **`MEMORY.md`** — curated long-term summary, folded from daily notes by a weekly root-crontab sweep (`memory-consolidation-sweep.js`, Sunday 03:00 — deliberately not `openclaw cron add`, see gotcha above).
+- **`MEMORY.md`** — curated long-term summary, folded from daily notes weekly in each person's own small hours by `jobs/memory-consolidation.js` (v1's root crontab was left behind by the cutover). **Since 2026-09-10 it is a direct model call and the SERVER writes the file** — the job reads the week's notes and the current file in Node, and the model only returns text. That is what makes the phone-number rule below enforceable: `usableMemory` refuses an answer carrying one, and a refused week is retried, never half-written. `{"changed": false}` is a real answer and still stamps the audit row, because that row is the schedule.
 - Deliberately no embedding key / no `active-memory` plugin — `memory_search`/`memory_get` use free keyword (FTS5/BM25) search, on-demand only, to keep steady-state cost near zero.
 - **Contact/phone-number facts never belong in memory files** — that's what `connections` + `set_contact_label` are for (structured + tool-backed, not prose the model might mis-recall).
-
-## Testing
-
-From `olma2/`:
-
-```bash
-npm test          # node --test 'tests/*.test.js'
-npm run lint      # eslint, dev-only; CI runs it before the suite
-```
-
-Real Postgres, one throwaway database per test file (`tests/helpers.freshDb`).
-Two things the suite learned the hard way:
-
-- **The test pool pins `Etc/UTC`**, because production does. A suite green only
-  where the clocks agree is testing a configuration nobody deploys.
-- **Never let a test depend on the hour or the weekday it runs.** Use
-  `helpers.daytime()` and `helpers.slotStart()`; a hard-coded "Tuesday 17:00"
-  or an unpinned `drainOnce` passes or fails depending on when you run it.
-  The suite was green thirteen hours a day and red eleven before this.
-- **A moment a test will later assert on is computed ONCE**, into a variable.
-  `slotStart`/`at()` are second-precision off the live clock, so computing the
-  same moment twice can straddle a second — and a yes must name the exact
-  `starts_at` that was proposed. Three deploys died on this, on bytes the PR
-  had passed twice: 65ms of gap in CI, 603ms in `deploy.sh`'s niced on-box run
-  (`incidents.md`, "Three deploys died on a test that raced the second hand").
-
-- **A test file must never reach the LIVE gateway — not its home, not its
-  roster.** `deploy.sh --restart` runs this suite on the box, where the
-  defaults ARE production. `tests/helpers.js` points `OLMA_OPENCLAW_HOME` and
-  `OLMA_OPENCLAW_CONFIG` at a temp dir, and `intake/production-guard.js` throws
-  if a process with `NODE_TEST_CONTEXT` set resolves anything under
-  `/root/.openclaw`. Both are needed: isolation travels by environment and is
-  gone the moment a test spawns a child with a hand-built `env` instead of
-  `{ ...process.env }` — which is how a test brokerd's `intake_sweep` came to
-  provision real people out of a throwaway database, overwriting six identity
-  files and leaving four agents bound to nothing, three times in two days.
-  **Anything resolving one of those paths reads it per call, never captures it
-  at module load** — as a constant, whether the isolation took depended on
-  require order. (`incidents.md`, "The test suite provisioned into production".)
-- **`OLMA_HEARTBEAT: 'off'` does NOT turn the sweeps off** — that is
-  `OLMA_WORKER`. Two separate gates in `bin/olma-brokerd.js`, and the first
-  reads like it means "quiet".
-- **A test file must never write into a directory the other test files read.**
-  They are separate processes over one filesystem. A decoy migration dropped
-  into the real `migrations/` for a few milliseconds threw in every *other*
-  file's `before` hook — and hung rather than failed, because a connected pg
-  `Client` left open keeps a child's event loop alive for ever, and a child
-  that cannot exit hangs `node --test` silently. Stage fixtures in
-  `fs.mkdtempSync()`; `tests/shared-fixture-writes.test.js` enforces it
-  (`incidents.md`, "A test file poisoned every other one").
-- **A test child that cannot exit is invisible** — the runner waits on it for
-  ever and never flushes its output, so the suite dies with no message.
-  `freshDb()` therefore closes every client in a `finally`, bounds
-  `pool.end()` (a client checked out and never released now fails by name,
-  with the checkout's stack), and arms an unref'd exit watchdog.
-  **`--test-timeout` does NOT cover this** — measured: it catches a hook or
-  test that never *settles*, and does nothing at all for a file whose tests
-  pass but which leaves a handle open. `tests/helpers-guards.test.js` proves
-  both guards still fire.
-
-- **A green from CI may be a retry.** The wedge above is fixed, but
-  `olma2/scripts/run-suite.sh` stays as the backstop for the next child that
-  cannot exit. CI and `deploy.sh` go through it; it retries a **hang** and
-  never a failure:
-  any non-zero exit is final and is reported as-is. **Do not widen that** — a
-  wrapper that re-rolls a genuine red is how a flaky-test culture starts. It
-  prints a banner on every wedge and names the attempt it passed on. **Seeing
-  that banner now means a NEW hang** — diagnose it, do not bank the retry or
-  raise `SUITE_ATTEMPTS`. A wedged child prints nothing, so make it report on
-  itself: `NODE_OPTIONS=--require` a preload with an **unref'd** interval that
-  dumps `process.getActiveResourcesInfo()` to a file.
-
-CI (`.github/workflows/olma2-tests.yml`) runs the same suite plus a
-`migrations` collision check, serialized on `main` so two merges cannot race
-the same rollback snapshot.
-
 
 ## Exploring this repo: graphify — measured, not assumed (2026-08-28)
 
@@ -1391,6 +530,80 @@ on.
   — a sandboxed file-preview pane with no outbound network access will show
   it blank with `vis is not defined`; open the file directly in a real
   browser instead.
+
+## Reading this repo costs tokens, so large reads are blocked (2026-09-10)
+
+`.claude/hooks/shunt.js` is a PreToolUse hook that **denies** a whole-file `Read`
+(or a bare `cat`/`less`/`more`) of anything over `SHUNT_MIN_LINES`, default 350.
+78 of 464 source files are over that line, and they hold 54,626 of the repo's
+101,752 lines: 17% of the files carrying 54% of the mass.
+
+The deny message names the three ways through — delegate to the `bulk-reader`
+agent (`.claude/agents/bulk-reader.md`, a cheap model whose context is thrown
+away and whose answer carries line numbers), read a targeted slice with
+offset+limit, or grep. **Delegate to understand, slice to edit**: an edit needs
+real line numbers, so make that read yourself rather than editing off a summary.
+
+Targeted reads, pipelines, subagents and non-text files are never blocked, and
+every error path allows the call — a hook that breaks reads is worse than none.
+Same argument as `markPlaced` and the reply gate: an instruction in a prompt is
+a request, and one at the tool boundary is a rule. Borrowed from
+`spotify/portal-ai-plugins`.
+
+### A subagent sees NOTHING of this conversation, and costs ~70k before it starts
+
+Measured on four real subagents, one session, 2026-09-11:
+
+| agent | tool calls | tokens |
+|---|---|---|
+| `general-purpose` | 0 | 90,508 |
+| `claude-code-guide` | 8 | 84,953 |
+| `claude-code-guide` | 5 | 74,424 |
+| `claude-code-guide` | 2 | 61,291 |
+
+The first one did no work at all — it was asked what it could see and answered
+"NO CONTEXT — I have only my task description plus CLAUDE.md, the global
+instructions and memory index, and a git status snapshot." **That 90k is the
+floor, and most of it is this file plus `.claude/rules/` (150KB, ~37k tokens)
+loading again inside every agent you spawn.** Three consequences:
+
+- **Put the context in the prompt.** Nothing you have read, run or decided in
+  this conversation reaches it, and only its final report comes back.
+- **Delegate for the READING, not for the answer.** It pays when the reading it
+  replaces would cost more than the floor — a broad sweep, a 2,000-line file.
+  It never pays for a lookup you could grep. `bulk-reader` runs on haiku for
+  exactly this reason; prefer it whenever the job is reading.
+- **`subagent_type: "fork"`, which would inherit this conversation, is NOT
+  available in this build** (measured the same day: the Agent tool answers with
+  the list it does have — `bulk-reader`, `claude`, `claude-code-guide`,
+  `Explore`, `general-purpose`, `Plan`, `statusline-setup`). Neither is the
+  `SendMessage` that would continue one with its context intact. So there is no
+  cheap "carry on from here" — re-state what it needs, every time.
+
+## "Done" is checked at the boundary too (2026-09-11)
+
+`.claude/hooks/finish-line.js` is a **Stop** hook, and it blocks exactly two
+things — the two this repo has shipped broken by calling a turn finished:
+
+- **olma2 source changed in this session and the suite has not run since.**
+  Merging is deploying, so an untested change is one that finds out in
+  production. Run `npm run lint && npm test` from `olma2/`.
+- **this branch adds a migration and nothing in the session asked the box for
+  `max(version)`.** Never `ls migrations/`; two branches in flight cannot see
+  each other's files, and that has collided three times in two days.
+
+It **fails open** everywhere, and `stop_hook_active` means a second stop always
+goes through — so it can slow you down once, never trap you. If the suite
+genuinely cannot run, say so in the reply and stop again.
+
+A third candidate was **rejected after measuring it**: "a rule changed with no
+entry in `incidents.md`" would have fired on 8 of the last 22 commits that
+added a rule, about half of them correctly — a 36% block rate on a gate nobody
+can override is how an alarm gets spent. That rule stays prose.
+
+Every Stop writes one line to `olma-finish-line.log` in the system temp dir,
+because a hook that allows and a hook that was never wired up are otherwise the
+same observation. `--self-test` asserts both directions and runs in CI.
 
 ## Known gaps
 

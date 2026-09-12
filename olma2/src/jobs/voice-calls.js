@@ -59,7 +59,7 @@ async function processFile(client, dir, file, deps) {
   const raw = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
   const userId = Number(raw.user);
   const { rows } = await client.query(
-    `SELECT id, first_name FROM users WHERE id = $1 AND status = 'active' AND NOT is_eval`,
+    `SELECT id, first_name, timezone FROM users WHERE id = $1 AND status = 'active' AND NOT is_eval`,
     [userId]
   );
   const user = rows[0];
@@ -71,16 +71,28 @@ async function processFile(client, dir, file, deps) {
   // recap, but the file still counts as handled.
   if (!user || !said) return { skipped: true };
 
-  const transcript = extraction.renderTranscript(chat);
+  // A call transcript carries no per-message timestamps, so every line renders
+  // unstamped and the "it is now" line is the only clock the model gets. That is
+  // enough for a call, which happens in one sitting and is read minutes later.
+  const tz = user.timezone || 'UTC';
+  const transcript = extraction.renderTranscript(chat, tz);
   const { known, openTasks, meetingConstraints } = await extraction.gatherContext(client, user.id);
   const message = extraction.buildInstruction(transcript, known, openTasks,
-    { firstName: user.first_name }, meetingConstraints, { includeSummary: true });
+    { firstName: user.first_name }, meetingConstraints,
+    { includeSummary: true, tz, now: deps.now || Date.now() });
 
   const complete = deps.complete || llm.complete;
-  const res = await complete({ ...(await llm.backgroundModel(client)), user: message, timeoutMs: TURN_TIMEOUT_MS });
+  const res = await complete({
+    ...(await llm.backgroundModel(client)), user: message, timeoutMs: TURN_TIMEOUT_MS,
+    // The same builder fact-extraction uses, plus a summary field on top of
+    // it — so this asks for MORE than the tightest measured answer on the
+    // path, off a transcript nobody bounded. It has been running on the
+    // adapter default all along; that default is now a name.
+    maxTokens: llm.BACKGROUND_MAX_TOKENS,
+  });
   const parsed = res.ok ? llm.parseJsonObject(res.text) : null;
   if (!res.ok || !parsed) {
-    return { failed: true, error: String((res && res.error) || 'unparseable model output').slice(0, 200) };
+    return { failed: true, error: llm.whyUnparseable(res).slice(0, 200) };
   }
   try { await llm.recordUsage(client, user.id, res.model, res.usage); } catch { /* never fail the run over bookkeeping */ }
 

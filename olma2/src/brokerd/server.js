@@ -21,6 +21,7 @@ const selfInitiated = require('../domain/self-initiated');
 const { captureDisplayName } = require('../adapters/mcp/tools/_shared');
 const groupContext = require('../domain/group-context');
 const groupsDomain = require('../domain/groups');
+const replyLeak = require('../domain/reply-leak');
 
 // One of these per turn. The gateway spawns a fresh MCP shim for every agent
 // turn and the shim holds ONE socket to brokerd for its whole life, so a
@@ -241,6 +242,42 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
       ok: true, stored: true, members: built.row.members ? true : false,
       wasMentioned: built.row.wasMentioned, memberWrote: wrote,
     };
+  }
+
+  // The reply gate's report. The plugin has already decided and already acted
+  // — this is the only record that it happened, so it is written even when
+  // nothing was dropped (an `identifier` the closed list has not heard of is
+  // exactly the row somebody needs to see before it becomes the next leak).
+  //
+  // The TEXT never comes here and is never stored. What leaked is the point;
+  // what was in the rest of the message is the person's business, and a frame
+  // marker can BE a live credential (`domain/token-leak.js`) — the plugin
+  // redacts one before it leaves the gateway and this refuses to widen that.
+  async function handleReplyGate(params = {}) {
+    const agentId = String(params.agentId || '').trim();
+    if (!/^(?:u-\d+|g-\d+|ggreet)$/.test(agentId)) return { ok: false, error: 'bad agentId' };
+    const action = String(params.action || '').trim();
+    if (!['pass', 'trim', 'cancel'].includes(action)) return { ok: false, error: 'bad action' };
+    const leaks = (Array.isArray(params.leaks) ? params.leaks : []).slice(0, 12).map((l) => ({
+      kind: String((l && l.kind) || '').slice(0, 20),
+      at: replyLeak.redact(String((l && l.at) || '')).slice(0, 40),
+      line: Number.isInteger(l && l.line) ? l.line : null,
+    }));
+    await withTx(pool, async (client) => {
+      // A group agent has no user row behind it, and audit_log.actor_id is
+      // nullable for exactly that: the event is still the whole record.
+      const { rows } = /^u-\d+$/.test(agentId)
+        ? await client.query('SELECT id FROM users WHERE agent_id = $1 AND status = \'active\'', [agentId])
+        : { rows: [] };
+      await require('../domain/audit').record(client, rows[0] ? Number(rows[0].id) : null, 'reply.gated', {
+        agentId, action, leaks,
+        kinds: [...new Set(leaks.map((l) => l.kind))],
+        chars: Number.isFinite(params.chars) ? params.chars : null,
+        kept: Number.isFinite(params.kept) ? params.kept : null,
+        channel: params.channel ? String(params.channel).slice(0, 40) : null,
+      });
+    });
+    return { ok: true, filed: true };
   }
 
   async function handleTurnContext(params = {}) {
@@ -475,6 +512,10 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
           // configurable at all.
           emoji: turn.reactionVocab && turn.reactionVocab[mark],
         });
+        // What is now standing on their message, for the hint below. Recorded
+        // where the attempt is made, so a mark nobody could spawn is never
+        // claimed — `attempted`, never `sent`, exactly as the hint says.
+        if (placed && placed.attempted) reactions.noteMarkAttempted(turn, mark);
       }
       // Miron, 2026-09-05, having deleted a task by reply: he got the 👍 AND a
       // sentence saying it was deleted. The mark already says "done"; words
@@ -487,7 +528,14 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
       // `attempted`, never `sent` — placeMark makes no delivery claim, and
       // neither does this: the instruction is about not repeating the mark's
       // meaning, not about relying on the mark having landed.
-      if (placed && placed.attempted && mark === 'done' && result && result.ok && result.data && typeof result.data === 'object') {
+      // The hint follows the MARK, not the spawn. `markFor` dedupes on message
+      // AND state, so the SECOND done-tool of a turn gets null from it and
+      // used to get no hint either — which is how Gali's `complete_task`, the
+      // last thing the model read before writing, came back saying nothing at
+      // all while a 👍 was already on her message (2026-09-10; see
+      // reactions.doneMarkStands). One mark, and every result that earned it
+      // says so.
+      if (reactions.doneMarkStands(name, result, turn, clock()) && result.data && typeof result.data === 'object') {
         result.data.hints = {
           ...(result.data.hints || {}),
           markPlaced: 'A 👍 has already been put on their message: it tells them this is done. '
@@ -522,6 +570,8 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
         return handleTurnContext(msg.params || {});
       case 'group_context':
         return handleGroupContext(msg.params || {});
+      case 'reply_gate':
+        return handleReplyGate(msg.params || {});
       default:
         return { ok: false, error: `unknown method ${msg.method}` };
     }

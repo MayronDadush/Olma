@@ -90,7 +90,101 @@ function checkOpenclawConfig(cfg) {
   if (queueMode !== 'followup') {
     violations.push(`messages.queue.mode is ${queueMode === undefined ? 'unset (gateway default "steer")' : JSON.stringify(queueMode)} — a second message mid-turn cancels the first one's tool calls instead of waiting for its own turn (fix: scripts/set-queue-mode.js --apply)`);
   }
+  // Who serves the live default model. Unpinned, OpenRouter spreads
+  // deepseek-v4-flash across providers per request (three in six hours on
+  // 2026-09-09) and a prompt cache is per provider, so the first call of
+  // nearly every message paid the whole prompt. The pin names the cheapest
+  // provider first with fallbacks behind it; an upgrade or a re-registration
+  // (scripts/register-openrouter-models.js writes `{}` per model) that drops
+  // it puts the bill back up with nothing else visibly wrong. Dashboard row.
+  // (fix: scripts/pin-openrouter-provider.js --apply, then restart the gateway)
+  const primary = (((cfg.agents || {}).defaults || {}).model || {}).primary;
+  if (typeof primary === 'string' && primary.startsWith('openrouter/')) {
+    const order = (((((cfg.agents || {}).defaults || {}).models || {})[primary] || {}).params || {}).provider;
+    if (!order || !Array.isArray(order.order) || !order.order.length) {
+      violations.push(`agents.defaults.models["${primary}"].params.provider.order is unset — OpenRouter picks a different provider per request and the prompt cache dies with every switch (fix: scripts/pin-openrouter-provider.js --apply, then restart the gateway)`);
+    }
+  }
+  // A session that never resets carries the whole conversation into every
+  // call. Measured 2026-09-09: u-3's one session, open since 2026-08-27, was
+  // 205k tokens per call — $0.018 of history per message, 8–23s to the first
+  // token, 52% of the real-user bill across four people. "daily" rolls it at
+  // 02:00 UTC; the record is in the DB, and channels/sessions.js follows the
+  // window chain so the watchers still see yesterday. Dashboard row: replies
+  // still work, at yesterday's price. (fix: scripts/set-session-reset.js --apply)
+  const resetMode = ((cfg.session || {}).reset || {}).mode;
+  if (resetMode !== 'daily') {
+    violations.push(`session.reset.mode is ${resetMode === undefined ? 'unset (gateway default "none")' : JSON.stringify(resetMode)} — a session never ends, so every reply reads the whole history since the person joined (fix: scripts/set-session-reset.js --apply)`);
+  }
   return violations;
+}
+
+// Phase B has three halves that must agree — the `turn_context_phones`
+// flag (what brokerd answers, and which doctrine variant the resync writes),
+// the plugin's `config.agents` list (who the gateway asks for), and the
+// resynced AGENTS.md — and every half-state is the OLD behaviour rather than
+// a broken one: the doctrine falls back to `turn_start` when no Turn context
+// block is there. That is exactly why it needs a row: a fallback nobody
+// notices is a model round-trip on every message, for ever, for whoever the
+// halves disagree about. Widened to everybody on 2026-09-09
+// (scripts/enable-turn-context.js). Dashboard row, never BREAKS_USERS.
+async function checkTurnContextCoverage(client, cfg) {
+  const violations = [];
+  const flags = require('../domain/flags');
+  const turn = require('../domain/turn');
+  const flag = String((await flags.getFlag(client, turn.CONTEXT_FLAG)) || '').trim();
+  if (!flag) return violations; // off everywhere: the pre-Phase-B world, by choice
+  const entry = (((cfg.plugins || {}).entries || {})['olma-turn']) || null;
+  if (!entry || entry.enabled !== true) {
+    violations.push(`turn_context_phones is ${JSON.stringify(flag)} but plugins.entries.olma-turn is ${entry ? 'disabled' : 'missing'} — every covered person's doctrine falls back to a turn_start call on every message (fix: scripts/enable-turn-context.js --apply, then restart the gateway)`);
+    return violations;
+  }
+  const list = Array.isArray((entry.config || {}).agents) ? entry.config.agents : [];
+  if (flag === 'all' && list.length) {
+    violations.push(`turn_context_phones is "all" but plugins.entries.olma-turn.config.agents still lists ${list.length} agent(s) — everyone else's doctrine falls back to a turn_start call on every message (fix: scripts/enable-turn-context.js --apply, then restart the gateway)`);
+  }
+  return violations;
+}
+
+// Where the plugin overwrites what the RUNNING gateway registered.
+// `deploy.sh` excludes `run/` from its rsync, so this file survives a deploy
+// and keeps describing the process that is actually serving.
+const REGISTER_STAMP = '/opt/olma2/run/turn-context-plugin.registered';
+// The hook the reply gate rides on. A gateway registered before it existed is
+// shipped-but-inert — the code is on disk, the suite is green, and nothing
+// stands between a model's working-out and a phone.
+const GATE_HOOK = 'reply_payload_sending';
+
+// Twice now a handler has loaded, looked healthy, and done nothing: the
+// turn-open hook listening to an event WhatsApp never fires, and the
+// thanks-only classification live and inert until a restart. Plugin code loads
+// at gateway STARTUP and a deploy deliberately does not restart the gateway,
+// so this is the ordinary state of every plugin change for as long as nobody
+// runs `systemctl --user restart openclaw-gateway` — for the reply gate that
+// window is the one in which Yahav's message can happen again.
+//
+// A missing or unreadable stamp is NOT a thing in trouble: it is what a box
+// that has not restarted since the stamp was introduced looks like, and it is
+// reported on the heartbeat rather than filed. Dashboard row, never
+// BREAKS_USERS — nobody's tools are failing.
+function checkReplyGateLive({ registerStampPath, readFileSync = fs.readFileSync } = {}) {
+  const file = registerStampPath || REGISTER_STAMP;
+  let raw;
+  try { raw = String(readFileSync(file, 'utf8')); } catch (e) {
+    return { violations: [], skipped: `plugin registration unreadable (${e.code || e.message})` };
+  }
+  let rec = null;
+  try { rec = JSON.parse(raw.trim().split('\n').filter(Boolean).pop() || 'null'); } catch { rec = null; }
+  if (!rec || typeof rec !== 'object') return { violations: [], skipped: 'plugin registration unparseable' };
+  const hooks = Array.isArray(rec.hooks) ? rec.hooks.map(String) : [];
+  if (hooks.includes(GATE_HOOK)) return { violations: [], skipped: null };
+  return {
+    violations: [`the gateway is running an olma-turn plugin from before the reply gate `
+      + `(registered ${rec.at || 'at an unknown time'}, hooks: ${hooks.join(', ') || 'none'}) — `
+      + `the model's own working-out can reach a person's phone until the gateway is restarted `
+      + `(fix: systemctl --user restart openclaw-gateway)`],
+    skipped: null,
+  };
 }
 
 async function checkIdentityFiles(client) {
@@ -1014,6 +1108,7 @@ async function run(client, { configPath, ...deps } = {}) {
     violations = violations.concat(checkOpenclawConfig(cfg));
     violations = violations.concat(checkModelPermissions(cfg));
     violations = violations.concat(await checkOrphanAgents(client, cfg));
+    violations = violations.concat(await checkTurnContextCoverage(client, cfg));
     budget = await checkBootstrapBudget(client, cfg);
     violations = violations.concat(budget.violations);
   } catch (e) {
@@ -1035,6 +1130,8 @@ async function run(client, { configPath, ...deps } = {}) {
   violations = violations.concat(strangers.violations);
   violations = violations.concat(await checkInfraAgentSessions(client, deps));
   violations = violations.concat(await checkLeakedTokens(client, deps));
+  const gate = checkReplyGateLive(deps);
+  violations = violations.concat(gate.violations);
   const filed = await fileViolations(client, violations);
   const closed = await closeResolved(client, violations);
   // Filing first, alerting second: the dashboard row is the durable record
@@ -1050,6 +1147,10 @@ async function run(client, { configPath, ...deps } = {}) {
     // this one reads a store owned by the gateway — the most likely thing in
     // the file to stop being readable after a version bump.
     ...(strangers.skipped ? { strangerCheck: strangers.skipped } : {}),
+    // Same rule: this one reads a file the gateway writes at startup, and a
+    // box that has not restarted since the stamp existed has none. Silence
+    // here would read exactly like "the gate is live".
+    ...(gate.skipped ? { replyGateCheck: gate.skipped } : {}),
     // Always present when it ran, so the doctrine's headroom is a number an
     // operator watches shrink rather than a thing they hear about once it is
     // already gone.
@@ -1060,6 +1161,7 @@ async function run(client, { configPath, ...deps } = {}) {
 }
 
 module.exports = {
+  checkTurnContextCoverage,
   run, checkOpenclawConfig, checkModelPermissions, checkConfigApplied, makeConfigValidator,
   checkIdentityFiles, checkAgentsTokens,
   checkCarryovers, checkOrphanAgents, checkStuckOutbox, checkUnreachableJoiners, checkInfraAgentSessions,
@@ -1069,5 +1171,6 @@ module.exports = {
   checkBootstrapBudget, bootstrapBudget,
   GATEWAY_DEFAULT_BOOTSTRAP_MAX_CHARS, BOOTSTRAP_WARN_MARGIN,
   checkLeakedTokens, fileViolations, closeResolved,
+  checkReplyGateLive, REGISTER_STAMP, GATE_HOOK,
   alertCritical, breaksUsers, leaksCredential, ALERTED_FLAG, LEAK_FLAG,
 };

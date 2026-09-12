@@ -25,9 +25,12 @@ const groupOutbox = require('../src/domain/group-outbox');
 
 // The two halves brokerd runs in order: the sweep decides and files a row, the
 // sender drains it (migration 055).
+// The null `channelWrittenAt` is the same pin as group-sweep.test.js: a pass
+// that registers a room restarts the WhatsApp channel, and the queue holds
+// while it comes back. That window is tested in group-outbox.test.js.
 async function pass(deps) {
   const decided = await withTx(db.pool, (c) => job.sweepGroups(c, deps));
-  const drained = await groupOutbox.drainOnce(db.pool, deps);
+  const drained = await groupOutbox.drainOnce(db.pool, { channelWrittenAt: () => null, ...deps });
   return { ...decided, ...drained };
 }
 process.env.OLMA_PLUGIN_TRACE = path.join(os.tmpdir(), `group-context-plugin-test-${process.pid}.log`);

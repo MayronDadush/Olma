@@ -642,8 +642,13 @@ cannot show you.
 
 1. Does the in-Olma group object own meetings/coordination directly, or is it
    a view over the existing pairwise connections?
-2. ~~Exact "has DM'd" predicate~~ — decided: `users.last_inbound_at`, a real
-   inbound message (`domain/groups.js`, `isConnected`).
+2. ~~Exact "has DM'd" predicate~~ — decided: a real inbound message
+   (`domain/groups.js`, `isConnected`). **Corrected 2026-09-09 to
+   `last_inbound_at OR opening_sent_at`**: two voices can hear somebody's
+   first message and only their own agent stamps the first column. An organic
+   joiner meets the intake GREETER, so for the minutes before their own agent
+   is reached the gate called them missing — Guy wrote at 19:01 and the room
+   said "עוד מחכה ל: גיא" at 19:02:06 (`incidents.md`, "היא שבורה").
 3. Whether an operator can force-unlock a group from the dashboard. The
    admin page now SHOWS groups (`admin/sections/groups.js`) and deliberately
    has no button: a forced open is a second writer to the gate. What the

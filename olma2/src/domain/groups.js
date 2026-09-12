@@ -166,7 +166,7 @@ async function getByExternalId(client, channel, externalId) {
 
 async function listMembers(client, groupId, { includeLeft = false } = {}) {
   const { rows } = await client.query(
-    `SELECT m.*, u.last_inbound_at, u.timezone, u.paused_at, u.first_name
+    `SELECT m.*, u.last_inbound_at, u.opening_sent_at, u.timezone, u.paused_at, u.first_name
        FROM chat_group_members m
        LEFT JOIN users u ON u.id = m.user_id
       WHERE m.group_id = $1 ${includeLeft ? '' : 'AND m.left_at IS NULL'}
@@ -233,13 +233,32 @@ async function syncRoster(client, groupId, members) {
 
 // ---- the gate ---------------------------------------------------------------
 
-// "Has written to her privately" is `users.last_inbound_at IS NOT NULL` — a
-// real inbound message, not `onboarded_at` (stamped at provisioning, before
-// they have necessarily said a word) and not `first_turn_at` (the moment WE
-// handed something to the model). The rule the owner stated is about what the
-// PERSON did.
+// "Has written to her privately" — the rule the owner stated is about what the
+// PERSON did, so `onboarded_at` is still refused (stamped at provisioning, and
+// a hand-provisioned account has said nothing) and so is `first_turn_at` (the
+// moment WE handed something to the model).
+//
+// TWO columns say the person wrote, because there are two voices that can
+// hear them and only one of them stamps `last_inbound_at`:
+//
+//   * `last_inbound_at` — they wrote to their OWN agent. Set by `openRecord`
+//     and by `turn_start`.
+//   * `opening_sent_at` — the INTAKE GREETER answered them. It is stamped
+//     only for `greetedByIntake`, which is read off the greeter's actual
+//     reply and never assumed, and the greeter replies to nothing but a real
+//     inbound message. So the stamp is proof the person wrote, and a silent
+//     greeter leaves it NULL, which falls back to the column above.
+//
+// Missing the second one is what "היא שבורה" was (2026-09-08). Guy wrote
+// "היי" at 19:01, the greeter answered him and provisioning stamped
+// `opening_sent_at` at 19:01:22 — but his own agent saw nothing until
+// 19:04:28, because the greeter had taken that message. So for three minutes
+// `last_inbound_at` was NULL, and at 19:02:06 the room queued "עוד מחכה ל:
+// גיא" about somebody who had already written, and said it at 19:03:05.
+// A first message goes to whoever is at the door; which door it was is not
+// something the person chose, and the gate must not hold it against them.
 function isConnected(member) {
-  return Boolean(member.user_id && member.last_inbound_at);
+  return Boolean(member.user_id && (member.last_inbound_at || member.opening_sent_at));
 }
 
 // Pure, so the whole policy is testable without a database.
@@ -336,11 +355,59 @@ async function noteNoticeSent(client, groupId, { toldOfMissing = true } = {}) {
   return ok({ groupId });
 }
 
-// The gate's `lastInboundAt` for a group: stamped on every real mention, so
-// outbox/gate.js gives the group the same 15-minute conversation grace a DM
-// gets and never holds an answer to someone standing right there.
-async function noteMention(client, groupId) {
-  await client.query(`UPDATE chat_groups SET last_mention_at = now() WHERE id = $1`, [groupId]);
+// The newest moment a MEMBER wrote in this room, or null if none ever has.
+//
+// This is what `jobs/groups.mayAnnounce` gives its fifteen-minute grace to,
+// and the reason it is this column and not `chat_groups.last_mention_at` is
+// written out in full over there: `last_mention_at` follows gateway SESSION
+// activity, which a room has several of and which Olma's own sends move, so
+// its window renews itself and never shuts. `last_wrote_at` is per room, is
+// written only from a real inbound message, and Olma's own voice never
+// reaches it (migration 056).
+async function lastMemberWriteAt(client, groupId) {
+  const { rows } = await client.query(
+    `SELECT max(last_wrote_at) AS at FROM chat_group_members WHERE group_id = $1`,
+    [groupId]
+  );
+  return (rows[0] && rows[0].at) || null;
+}
+
+// ---- the sweep's watermark, one per gateway session -------------------------
+//
+// "Is this turn newer than the last one we looked at" — the question that
+// makes a turn in a locked room a TAG and therefore something she answers.
+//
+// It is per (group, session) and not per group because a room has several
+// gateway sessions: the muted greeter's, and its own `g-N` agent's once it is
+// open. The sweep's loop runs once per session, and against a single column
+// each iteration overwrote the previous one's watermark, so on the next pass
+// every session was comparing its own stamp against somebody else's and the
+// answer was yes for ever (migration 059).
+//
+// A session we have never watermarked inherits the room's newest watermark
+// rather than starting at zero. Zero would read a room's entire history as one
+// fresh turn — which is a notice answering a message nobody sent, at the two
+// moments a new session appears: the deploy that creates this table, and the
+// provisioning that gives an opening room its own agent. Too new is silence;
+// too old is answering the past, so this falls the safe way.
+async function seenAt(client, groupId, sessionKey) {
+  const { rows } = await client.query(
+    `SELECT max(last_seen_at) FILTER (WHERE session_key = $2) AS own,
+            max(last_seen_at) AS room
+       FROM chat_group_session_seen WHERE group_id = $1`,
+    [groupId, sessionKey]
+  );
+  const r = rows[0] || {};
+  return r.own || r.room || null;
+}
+
+async function noteSeen(client, groupId, sessionKey, at) {
+  await client.query(
+    `INSERT INTO chat_group_session_seen (group_id, session_key, last_seen_at)
+          VALUES ($1, $2, $3)
+     ON CONFLICT (group_id, session_key) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at`,
+    [groupId, sessionKey, at]
+  );
   return ok({ groupId });
 }
 
@@ -518,8 +585,8 @@ module.exports = {
   DEFAULT_TIMEZONE,
   parseRoster, normalizePhone, majorityTimezone, SELF_PHONE,
   registerGroup, getById, getByExternalId, listMembers, syncRoster,
-  decideState, evaluate, applyState,
-  decideNotice, noteNoticeSent, noteMention,
+  decideState, evaluate, applyState, isConnected,
+  decideNotice, noteNoticeSent, seenAt, noteSeen, lastMemberWriteAt,
   GROUP_KINDS, validKind, setKind, noteKindAsked, quorumFor,
   GROUP_TOKEN_RE, looksLikeGroupToken, resolveByToken, actingMember, roomStatus,
 };

@@ -23,6 +23,8 @@ const selfInitiated = require('./self-initiated');
 const digest = require('./digest');
 const onboardingDomain = require('./onboarding');
 const templates = require('./message-templates');
+const holidays = require('./holidays');
+const preferences = require('./preferences');
 
 // Rollout control. Absent/empty = off everywhere, so deploying this changes
 // nothing until someone turns it on: a fix for an invisible defect must not
@@ -171,8 +173,46 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
 // turn by every user, for fields that appear on a handful of turns in a
 // person's life. The budget rule (CLAUDE.md, "Doctrine"): guidance about a
 // RESULT rides the result.
-function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms, thanksOnly }) {
+function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms, thanksOnly, today }) {
   const hints = {};
+  if (today) {
+    // Rides beside the block on every turn it is on, because a block the
+    // model has no instruction for is one it reads past and then fetches
+    // again with a tool call — the thing the block exists to replace.
+    hints.today = 'today = everything filed with Olma for TODAY (' + today.date + '), in their own '
+      + 'local time; an item with no `at` is for the day, not an hour — never invent one. '
+      + '`overdue` counts to-dos due before today. Answer "מה יש לי היום" / "מה על הפרק" from it '
+      + 'and do NOT call get_my_digest, list_my_tasks or my_calendar_events for today; empty '
+      + 'lists mean nothing is filed. Those tools are still for another day, the week, the '
+      + 'overdue items themselves, reminders'
+      + (today.googleCalendar
+        ? ', and their connected Google calendar, whose events this block does NOT hold — '
+          + 'my_calendar_events for those.'
+        : ' or details this block does not carry.');
+  }
+  if (today && today.holiday) {
+    // One short line, and it is a CEILING as much as a permission. The
+    // failure mode is not the model ignoring this — it is the model enjoying
+    // it, and a reply that opens with a greeting nobody asked for on 40 days
+    // of the year is worse than never mentioning a chag at all.
+    hints.holiday = 'Today is ' + today.holiday.name + ' where they are. Acknowledge it only if '
+      + 'it fits what they are already talking about, in ONE short clause in their own language, '
+      + 'and never instead of answering them.'
+      + (today.holiday.solemn
+        ? ' It is a fast or a memorial day: no greeting, nothing celebratory.'
+        : '');
+  }
+  if (today && today.askHolidayQuiet) {
+    // The offer, as a STATEMENT with no question mark, for the reason the
+    // timezone rung's hours and quiet day are statements: three questions in
+    // one message is a form. Asked once ever, across both routes.
+    hints.askHolidayQuiet = 'They have never been told they can have chagim quiet. If there is '
+      + 'room for it in this reply, say ONCE, in one line and without a question mark, that on '
+      + 'chagim you can send only the reminders they asked for, and they need only say so. If '
+      + 'they want it, call remember_preference key "quiet_days" adding "holidays" to whatever '
+      + 'days are already there ("sat,holidays"). If these are not their chagim at all, that is '
+      + 'key "holiday_calendar", value "christian" or "none".';
+  }
   if (genderForms === 'feminine') {
     // The doctrine already says "hold the stored preference"; the nightly
     // evals kept catching one masculine verb in an otherwise feminine reply
@@ -215,6 +255,19 @@ function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, 
     hints.recentReminders = 'Reminders Olma already delivered in the last day — a bare reply like '
       + '"סיימתי" or "עשיתי" is probably about the newest one'
       + (replyTarget ? ', UNLESS the quoted message names another: it wins.' : '.');
+    // One carrying `stillChasing` has follow-up rungs left to send. "Stop
+    // reminding me about this" is about THOSE, and it is the only thing on
+    // this turn that can act on them: nothing the model can list will show
+    // that row (see advise). Named here rather than in a description, because
+    // it is true on the handful of turns that answer a reminder and on no
+    // other.
+    if (recentReminders.some((r) => r.stillChasing)) {
+      hints.stillChasing = 'A reminder marked stillChasing will send follow-up rungs on its own — a few '
+        + 'hours from now and again tomorrow. If they ask to stop, pause or postpone reminders about '
+        + 'that thing, cancel_reminder(reminderId) is what ends it; the task and everything else stay '
+        + 'exactly as they are. For "the next one only on Monday", cancel it and then set_task_reminder '
+        + 'on its taskId for the moment they named. Cancelling a DIFFERENT reminder does not stop this one.';
+    }
   }
   if (planHeadline) {
     hints.planHeadline = 'The headline of today\'s overnight plan; the full plan is in your USER.md '
@@ -244,7 +297,7 @@ function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, 
 //               person did anything.
 //   replyTarget, languageNudge — what only the model (or the gateway) could
 //               see about this message; null when nobody reported them.
-async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly }) {
+async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, now }) {
   // A paused person who writes gets answered — pausing stops Olma
   // INITIATING, not answering (see domain/pause.js) — but before this, that
   // answer was the whole reply. They were then back to relying on their OWN
@@ -275,15 +328,40 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
   // the outbox row IS the record. Only the last day, only actually-sent
   // rows, and the field is omitted entirely when empty — which is nearly
   // every turn, so this costs nothing in the common case.
+  //
+  // It carries the reminder's OWN id, and whether that ladder can still
+  // climb. "תפסיק עם התזכורות … הבאה רק ביום שני" is the reply this hint
+  // fires on, and until 2026-09-09 the model had a title and nothing to act
+  // on: every read path it has — list_my_reminders, list_my_tasks, the
+  // digest — filters `attempts = 0`, which is right for "an hour Olma may
+  // promise" and wrong for "what is still going to reach you". A reminder
+  // mid-ladder is invisible in all three, so the one row that was about to
+  // send two more messages was the one row that could not be named. Olma
+  // cancelled the two she COULD see, on other people's tasks, and the ladder
+  // she was asked to stop climbed on (incidents.md, "The reminder that would
+  // not stop"). The id is not in the payload; it is in the idempotency key
+  // (reminders.attemptKey), which is what the LEFT JOIN reads it back out of.
   const { rows: recentRem } = await client.query(
-    `SELECT payload, sent_at FROM outbox
-      WHERE user_id = $1 AND kind = 'reminder' AND hold_reason IS NULL
-        AND sent_at > now() - interval '24 hours'
-      ORDER BY sent_at DESC LIMIT 3`, [user.id]);
+    `SELECT o.payload, o.sent_at, o.idempotency_key,
+            (r.id IS NOT NULL) AS still_chasing, r.id AS reminder_id, r.task_id
+       FROM outbox o
+       LEFT JOIN task_reminders r
+         ON r.id = substring(o.idempotency_key from '^reminder:([0-9]+)')::bigint
+        AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+      WHERE o.user_id = $1 AND o.kind = 'reminder' AND o.hold_reason IS NULL
+        AND o.sent_at > now() - interval '24 hours'
+      ORDER BY o.sent_at DESC LIMIT 3`, [user.id]);
   const recentReminders = recentRem
     .map((r) => {
       const p = typeof r.payload === 'string' ? JSON.parse(r.payload) : (r.payload || {});
-      return p.title ? { title: String(p.title).slice(0, 200), sentAt: r.sent_at } : null;
+      if (!p.title) return null;
+      return {
+        title: String(p.title).slice(0, 200),
+        sentAt: r.sent_at,
+        ...(r.still_chasing
+          ? { reminderId: Number(r.reminder_id), taskId: Number(r.task_id), stillChasing: true }
+          : {}),
+      };
     })
     .filter(Boolean);
 
@@ -374,6 +452,21 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       })
     : null;
 
+  const today = counted.data.blocked ? null : await todayBlock(client, user.id, now || null);
+
+  // Spent on the HAND-OUT, not on their answer, and guarded by `IS NULL` so
+  // two routes can never each spend it. Same doctrine and same shape as
+  // `timezone_asked_at` in the check-in ladder (migration 045, and the four
+  // times the city was asked before it existed): a question the model then
+  // decided not to fit in still used up the one turn this person's patience
+  // had for it, and an unanswered question repeated is the reason the third
+  // one goes unread too.
+  if (today && today.askHolidayQuiet) {
+    await client.query(
+      `UPDATE users SET holiday_quiet_asked_at = now()
+        WHERE id = $1 AND holiday_quiet_asked_at IS NULL`, [user.id]);
+  }
+
   if (!counted.data.blocked) {
     return {
       directive: 'proceed', locale: user.locale,
@@ -384,13 +477,114 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(planHeadline ? { planHeadline } : {}),
       ...(replyTarget ? { replyTarget: true } : {}),
       ...(genderForms ? { genderForms } : {}),
-      ...turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms, thanksOnly }),
+      ...(today ? { today } : {}),
+      ...turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms, thanksOnly, today }),
     };
   }
   const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);
   if (!shouldNotice) return { directive: 'silent', reason: 'blocked_already_notified' };
   const view = await digest.assemble(client, user.id, 'block_view');
   return { directive: 'send_block_notice', blockView: view.data };
+}
+
+// What is on TODAY, on every turn, so "מה יש לי היום" is answered from the
+// opening instead of from a tool call. Measured over the fourteen days to
+// 2026-09-09: get_my_digest was called 137 times and list_my_tasks 131,
+// most of them for today, and each one is a whole extra model call — ~4s
+// and another ~48k prompt tokens — to fetch a dozen rows brokerd already
+// had in front of it. Deterministic on purpose: a query, not a summary.
+//
+// Their zone, in Postgres (`AT TIME ZONE`, DST-safe, the same way the
+// digest and the gate convert): an event at 23:30 UTC is tomorrow for
+// somebody in Jerusalem and is not listed today, and one at 22:30 UTC
+// yesterday IS today. A day-shaped item (local midnight, the discriminator
+// auto-reminder.isDayShaped uses) carries no `at`, so the model has no hour
+// to invent. Events and to-dos apart, as everywhere else; to-dos due before
+// today are a COUNT (`overdue`), never a list — one person on the box has
+// thirty. Capped at TODAY_CAP rows with `more` saying how many were cut,
+// so one crowded day cannot bloat every turn.
+//
+// Not a plan and not an opinion — it is the answer to a question — so a
+// paused person gets it too, unlike planHeadline. A NULL zone reads as UTC
+// here as it does in the gate, and CLAUDE.md says it must never be NULL.
+const TODAY_CAP = 12;
+// `now` is an injected clock, defaulting to Postgres's own, for the same
+// reason drainOnce takes one: a block whose contents depend on the calendar
+// date cannot otherwise be tested on a day that is not today, and a fixture
+// that writes the answer by hand would not be exercising this query at all.
+// Production never passes it.
+async function todayBlock(client, userId, now = null) {
+  const { rows: [day] } = await client.query(
+    `SELECT to_char(COALESCE($2::timestamptz, now()) AT TIME ZONE COALESCE(u.timezone, 'UTC'), 'YYYY-MM-DD') AS date,
+            u.locale, u.timezone, u.holiday_quiet_asked_at,
+            (SELECT value FROM user_preferences p
+              WHERE p.user_id = u.id AND p.key = 'holiday_calendar') AS holiday_calendar,
+            (SELECT value FROM user_preferences p
+              WHERE p.user_id = u.id AND p.key = 'quiet_days') AS quiet_days,
+            EXISTS (SELECT 1 FROM integrations i
+                     WHERE i.user_id = u.id AND i.provider = 'google_calendar' AND i.status = 'connected') AS google
+       FROM users u WHERE u.id = $1`, [userId, now]);
+  if (!day) return null;
+  // Their calendar's own name for today, if today has one. It rides the block
+  // rather than a job because the owner's answer was "רק בהקשר השיחה": Olma
+  // may notice the day in a conversation she was having anyway, and sends
+  // nothing on account of it (2026-09-11).
+  const calendar = holidays.calendarFor({
+    locale: day.locale, timezone: day.timezone, preference: day.holiday_calendar,
+  });
+  const on = await holidays.holidaysOn(calendar, day.date, { il: holidays.isIsrael(day.timezone) });
+  const holiday = on[0] || null;
+  const { rows } = await client.query(
+    `WITH z AS (SELECT COALESCE(timezone, 'UTC') AS tz FROM users WHERE id = $1),
+          t AS (SELECT t.id, t.title, t.kind, t.location,
+                       t.due_at AT TIME ZONE z.tz AS local_due,
+                       t.ends_at AT TIME ZONE z.tz AS local_end,
+                       (COALESCE($2::timestamptz, now()) AT TIME ZONE z.tz)::date AS local_today
+                  FROM tasks t, z
+                 WHERE t.owner_id = $1 AND t.status = 'open' AND t.archived_at IS NULL
+                   AND t.due_at IS NOT NULL
+                   AND (t.due_at AT TIME ZONE z.tz)::date <= (COALESCE($2::timestamptz, now()) AT TIME ZONE z.tz)::date)
+     SELECT title, kind, location,
+            to_char(local_due, 'HH24:MI') AS at,
+            to_char(local_end, 'HH24:MI') AS until,
+            local_due::date < local_today AS overdue,
+            local_due = date_trunc('day', local_due) AS day_shaped
+       FROM t ORDER BY local_due, id`, [userId, now]);
+  const item = (r) => ({
+    title: String(r.title).slice(0, 120),
+    ...(r.day_shaped ? {} : { at: r.at }),
+    ...(r.kind === 'event' && r.until && !r.day_shaped ? { until: r.until } : {}),
+    ...(r.kind === 'event' && r.location ? { location: String(r.location).slice(0, 80) } : {}),
+  });
+  const onToday = rows.filter((r) => !r.overdue);
+  const overdue = rows.filter((r) => r.overdue && r.kind !== 'event').length;
+  const events = onToday.filter((r) => r.kind === 'event');
+  const tasks = onToday.filter((r) => r.kind !== 'event');
+  const shown = [...events, ...tasks].slice(0, TODAY_CAP);
+  const more = events.length + tasks.length - shown.length;
+  return {
+    date: day.date,
+    events: shown.filter((r) => r.kind === 'event').map(item),
+    tasks: shown.filter((r) => r.kind !== 'event').map(item),
+    overdue,
+    ...(more > 0 ? { more } : {}),
+    ...(day.google ? { googleCalendar: true } : {}),
+    ...(holiday ? {
+      holiday: {
+        name: holidays.nameFor(holiday, day.locale),
+        ...(holiday.solemn ? { solemn: true } : {}),
+      },
+    } : {}),
+    // The once-ever offer, second route. It rides the erev and the day itself
+    // — a chag is when somebody can picture the answer — and is spent on the
+    // HAND-OUT, not on their reply, exactly like the timezone rung: a question
+    // the model then chose not to ask still used up the one turn this person's
+    // patience had for it. Stamped by advise(), which is the caller that knows
+    // the hint actually went out.
+    ...(holiday && !day.holiday_quiet_asked_at && !preferences.parseHolidayQuiet(day.quiet_days)
+      && (holiday.tier === holidays.QUIET || /^Erev /.test(holiday.key))
+      ? { askHolidayQuiet: true } : {}),
+  };
 }
 
 // The opening as prompt text, for the people whose turn is opened by the

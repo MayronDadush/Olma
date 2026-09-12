@@ -208,9 +208,16 @@ async function renderCost(client) {
     .sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 14) };
   const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
   const thisMonth = priced.filter((r) => new Date(r.date) >= monthStart);
+  // Every person who cost anything this month, not a top-10. The slice that
+  // used to be here was invisible from the page — the eleventh person simply
+  // was not there — and it was not only a display cut: `usersTotal` below is
+  // summed from these rows, so the month headline and the Anthropic
+  // reconciliation line under it both dropped everyone past tenth place, and
+  // "משתמשים פעילים החודש" read 10 for ever. Measured on the box 2026-09-10:
+  // 22 people with spend, 12 of them off the page and ~$1.09 out of the total.
   const top = { rows: rollup(thisMonth.filter((r) => r.user_id != null), (r) => String(r.user_id),
     (k, rows) => ({ first_name: rows[0].first_name, phone: rows[0].phone }))
-    .sort((a, b) => b.cost - a.cost).slice(0, 10) };
+    .sort((a, b) => b.cost - a.cost) };
   const system = { rows: rollup(thisMonth.filter((r) => r.agent_id != null), (r) => r.agent_id,
     (k) => ({ agent_id: k })).sort((a, b) => b.cost - a.cost) };
   // Image+video generation spend — its own ledger and its own block, exactly
@@ -264,15 +271,28 @@ async function renderCost(client) {
   const v = voice.rows[0];
   const vMinutes = Number(v.seconds) / 60;
   const vEst = vMinutes * (EST_STT_PER_MIN + EST_TTS_PER_MIN + EST_LLM_PER_MIN);
+  // The dashboard's own lifetime-2-calls quota (domain/voice.js) — how many
+  // people have ever tried the button, and how many hit both attempts and
+  // asked for more. Lifetime counts on `users`, not a monthly window: the
+  // quota itself never resets, so a month boundary would answer a different
+  // question than the one this number is for.
+  const quota = await client.query(
+    `SELECT count(*) FILTER (WHERE voice_call_attempts_used > 0) AS tried,
+            count(*) FILTER (WHERE voice_more_requested_at IS NOT NULL) AS asked_more
+     FROM users`);
+  const q = quota.rows[0];
   const voiceHtml = `<h4>שיחות קול</h4>
     <div class="stats">
       <div class="stat"><div class="num">${Number(v.calls)}</div><div class="lbl">שיחות החודש</div></div>
       <div class="stat"><div class="num">${vMinutes.toFixed(1)}</div><div class="lbl">דקות</div></div>
       <div class="stat"><div class="num">${money(Number(v.twilio), 3)}</div><div class="lbl">Twilio (מדוד)</div></div>
       <div class="stat"><div class="num">≈${money(vEst, 3)}</div><div class="lbl">STT+TTS+מודל (הערכה)</div></div>
+      <div class="stat"><div class="num">${Number(q.tried)}</div><div class="lbl">ניסו שיחה מהדשבורד</div></div>
+      <div class="stat"><div class="num">${Number(q.asked_more)}</div><div class="lbl">ביקשו עוד שיחות</div></div>
     </div>
     <p class="dim small">Twilio לפי המחיר שהוא עצמו מדווח לכל שיחה${Number(v.unsettled) ? ` (${Number(v.unsettled)} שיחות עוד לא תומחרו אצלו — יתעדכן)` : ''};
-    ל-Deepgram/Cartesia/מודל אין חיוב פר-שיחה, לכן הערכה לפי דקה מדודה: ‎$${EST_STT_PER_MIN}+$${EST_TTS_PER_MIN}+$${EST_LLM_PER_MIN} לדקה.</p>`;
+    ל-Deepgram/Cartesia/מודל אין חיוב פר-שיחה, לכן הערכה לפי דקה מדודה: ‎$${EST_STT_PER_MIN}+$${EST_TTS_PER_MIN}+$${EST_LLM_PER_MIN} לדקה.
+    שני המספרים האחרונים הם מצטברים לכל החיים (מכסת 2 השיחות מהדשבורד), לא לפי חודש.</p>`;
 
   if (!days.rows.length) return infraHtml + mediaHtml + voiceHtml + '<p class="dim">עדיין אין נתוני עלות למשתמשים — החישוב רץ כל שעה.</p>';
   const usersTotal = top.rows.reduce((s, r) => s + Number(r.cost), 0);

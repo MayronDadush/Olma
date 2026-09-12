@@ -473,14 +473,44 @@ const ACTIONS = {
     const paused = await refuseIfPaused(client, userId);
     if (paused) return paused;
     const { rows } = await client.query(
-      `SELECT id, phone FROM users WHERE id = $1`, [userId]);
+      `SELECT id, role, phone FROM users WHERE id = $1`, [userId]);
     const user = rows[0];
     if (!user) return err('not_found', 'user not found');
     if (!await voice.pageCallAllowed(client, user)) {
       return err('forbidden', 'calling from the page is not open for this user',
         { reason: 'not_enabled' });
     }
-    return voice.requestCall(client, user);
+    // A lifetime cap, not a daily one: two calls, ever, from this button.
+    // Scoped to the dashboard path only — the chat tool's own call site never
+    // passes opts, so it stays governed purely by the bridge's own allowlist,
+    // exactly as before this shipped.
+    const attempts = await voice.attemptsRemaining(client, user.id);
+    if (attempts.remaining <= 0) {
+      return err('forbidden', 'you have used both your calls',
+        { reason: 'attempts_exhausted', ...attempts });
+    }
+    const res = await voice.requestCall(client, user, {}, { maxDurationSec: voice.CALL_MAX_DURATION_SEC });
+    if (res.ok) await voice.recordCallAttempt(client, user.id);
+    return res;
+  },
+
+  // Recorded for later manual review, not an actual grant — the button just
+  // says "the request has been sent" once both calls are used.
+  async requestMoreCalls(client, userId) {
+    const { rows } = await client.query(
+      `SELECT id, role, phone FROM users WHERE id = $1`, [userId]);
+    const user = rows[0];
+    if (!user) return err('not_found', 'user not found');
+    if (!await voice.pageCallAllowed(client, user)) {
+      return err('forbidden', 'calling from the page is not open for this user',
+        { reason: 'not_enabled' });
+    }
+    const attempts = await voice.attemptsRemaining(client, user.id);
+    if (attempts.remaining > 0) {
+      return err('invalid', 'attempts are not exhausted yet',
+        { reason: 'attempts_remaining', ...attempts });
+    }
+    return voice.requestMoreCalls(client, user.id);
   },
 
   async pause(client, userId) {

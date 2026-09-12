@@ -37,6 +37,7 @@ const { parseKey } = require('../channels/sessions');
 const laneLog = require('./lane-watchdog');
 const { enqueue } = require('../outbox/enqueue');
 const audit = require('../domain/audit');
+const replyLeak = require('../domain/reply-leak');
 
 // Below MIN: the gateway's own recovery deserves first chance (its abort
 // threshold is 75s). Above MAX: too stale to answer as if it just arrived —
@@ -65,6 +66,39 @@ const SENT_LINE = /Sent message \S+ -> sha256:([0-9a-f]{12})/;
 // messages never start with the preamble marker.
 function isInjectedInstruction(m) {
   return m.role === 'user' && /^DELIVERY:/.test(String(m.text || ''));
+}
+
+// The silence sentinel, trimmed — a trailing newline must not turn a decision
+// into a delivery fault. Exact match on purpose: the doctrine says the entire
+// reply is the sentinel and that anything in front of it IS delivered, so
+// "בוצע NO_REPLY" is a real reply and must stay repairable.
+const SILENCE = 'NO_REPLY';
+// A reply is re-sent as ITSELF or not at all (see the enqueue for case (b)).
+// The one shape that cannot survive the raw pipe is an attachment: `MEDIA:` on
+// its own line is a convention the GATEWAY reads off an agent's reply, and
+// `openclaw message send` has no such reading — the path would go out to the
+// person as literal text with no image behind it. So a lost schedule card is
+// counted and left alone rather than half-sent.
+const MEDIA_LINE_RE = /^\s*MEDIA:\s*\S/m;
+function resendableVerbatim(text) {
+  const t = String(text || '').trim();
+  if (!t) return { ok: false, why: 'empty' };
+  if (MEDIA_LINE_RE.test(t)) return { ok: false, why: 'media' };
+  // The second shape, and it is this sweep's own doing: since 2026-09-10 the
+  // reply gate (`domain/reply-leak.js`, via the plugin) CANCELS a reply that
+  // is the model's working-out, which leaves exactly the fingerprint case (b)
+  // reads as a delivery fault — an assistant turn in the transcript with no
+  // `Sent` line behind it. Re-sending it verbatim would put on Yahav's phone
+  // the very thing the gate had just kept off it, from the one path with no
+  // gate in it (the raw pipe). What the gate would deliver is what may be
+  // re-sent, and when that is nothing, nothing is.
+  const verdict = replyLeak.gateReply(t);
+  if (verdict.action === 'cancel') return { ok: false, why: 'leak' };
+  if (verdict.action === 'trim') return { ok: true, text: verdict.text, gated: true };
+  return { ok: true, text: t };
+}
+function isSilence(m) {
+  return m.role === 'assistant' && String(m.text || '').trim() === SILENCE;
 }
 
 function lastTurn(msgs) {
@@ -203,6 +237,28 @@ function undeliveredReply(msgs, sent, phone, now) {
   const last = seq[seq.length - 1];
   const prev = seq[seq.length - 2];
   if (!last || last.role !== 'assistant') return null;
+  // A DECISION to stay quiet is not a reply that got lost. `NO_REPLY` is the
+  // silence sentinel, and since the reaction doctrine it is the CORRECT answer
+  // to a large and growing class of messages: brokerd puts a 👍 on the message,
+  // `hints.markPlaced` says the mark carries the whole fact, and the model
+  // rightly says nothing. Every one of those lands in the transcript as an
+  // assistant turn after a user turn with no send event behind it — which is
+  // this function's entire definition of a lost reply.
+  //
+  // Yahav, 2026-09-09: "בוצע הפקדת צק" → task completed, 👍 placed, `NO_REPLY`.
+  // Three minutes later this declared the silence a delivery fault and ran a
+  // repair turn, and he read "No conversation history is accessible to me in
+  // this session" — in English, about our internals, on a conversation that
+  // had worked perfectly.
+  //
+  // Same shape as the fix in channels/sessions.js, which drops
+  // FAILED_TURN_MARKER because a dead turn was indistinguishable from a reply
+  // and blinded THIS function the other way (2026-08-20). Twice now the
+  // transcript's shape has failed to carry the turn's meaning; the sentinel is
+  // checked here rather than in the shared reader because a deliberate silence
+  // is real history — the admin conversation view and the metrics rollup each
+  // decide what it means to them.
+  if (isSilence(last)) return null;
   if (!prev || prev.role !== 'user' || isInjectedInstruction(prev)) return null;
 
   const composedAt = Date.parse(last.at);
@@ -221,7 +277,7 @@ function undeliveredReply(msgs, sent, phone, now) {
 
   const hash = sentHashFor(phone);
   const delivered = sent.events.some((e) => e.hash === hash && e.at >= composedAt - SENT_SLACK_MS);
-  return delivered ? null : { composedAt: last.at, age };
+  return delivered ? null : { composedAt: last.at, age, text: last.text };
 }
 
 // deps.readMessages(agentId, peer) → [{role, text, at}] so tests never touch disk.
@@ -280,6 +336,8 @@ async function sweepUnanswered(client, { readMessages, readSentEvents, readDropp
   const coolingIds = new Set(cooling.map((r) => r.user_id));
 
   const repaired = [];
+  // Real losses this pass could not re-send as themselves, by reason.
+  const unsendable = {};
   for (const u of rows) {
     if (coolingIds.has(u.id)) continue;
     let msgs;
@@ -369,6 +427,43 @@ async function sweepUnanswered(client, { readMessages, readSentEvents, readDropp
     const lost = undeliveredReply(msgs, sent(), u.phone, now);
     if (!lost) continue;
 
+    // The answer is already written. Until 2026-09-09 this ran a MODEL turn and
+    // asked it to "send the substance of that answer again" — which is asking a
+    // second model to reconstruct, from a conversation it has to re-read, a
+    // reply the transcript is holding word for word. It bought nothing and cost
+    // three things: a cold-cache call, a dependency on the model being up at
+    // the moment our own pipe was proven broken, and a free-text turn on a
+    // --deliver session where EVERY block reaches the phone. Yahav read the
+    // third one — "No conversation history is accessible to me in this
+    // session", in English, about our internals (incidents.md, "A silence read
+    // as a delivery fault"). The guard against exactly that was in the
+    // instruction, in words, and the model went past it.
+    //
+    // So the reply goes out as ITSELF, on the raw pipe, with no model in the
+    // path — the same argument reminders were moved for. Two things fall out of
+    // it that the model turn could not have:
+    //   - The transcript already contains this reply, and a raw send does not
+    //     write to the session (channels/openclaw.js). Re-sending verbatim
+    //     makes the phone match the history. The model turn APPENDED a second
+    //     assistant turn saying roughly the same thing, so the conversation
+    //     then held the answer twice and only one of them had been delivered.
+    //   - The instruction's "if their later messages changed what a good answer
+    //     is, answer the newest state" clause is gone with it. It guarded a
+    //     case this detector already excludes: `undeliveredReply` fires only
+    //     when the assistant's reply is the LAST thing in the transcript, so
+    //     there is no newer state by construction.
+    const body = resendableVerbatim(lost.text);
+    if (!body.ok) {
+      // Detected a real loss and cannot re-send it as itself. Nothing is
+      // improvised in its place: the person's own next message and the check-in
+      // ladder are the fallbacks, and both are better than a guess. Counted on
+      // the sweep's heartbeat so a path that declines still says so — no audit
+      // row, because with no outbox row there is no cooldown either and this
+      // would file one every tick for up to MAX_AGE_MS.
+      unsendable[body.why] = (unsendable[body.why] || 0) + 1;
+      continue;
+    }
+
     const res = await enqueue(client, {
       userId: u.id, kind: 'checkin', urgency: 'urgent',
       expiresAt: new Date(now + MAX_AGE_MS).toISOString(),
@@ -379,31 +474,26 @@ async function sweepUnanswered(client, { readMessages, readSentEvents, readDropp
         // silence is the duplicate-message complaint this area started with.
         rung: 'unanswered_repair',
         repairKind: 'undelivered_reply',
-        checkinInstruction: [
-          'Your last reply in this conversation was composed but never delivered — the person never saw it.',
-          'A delivery fault on our side, not theirs.',
-          'Read the conversation and send the substance of that answer again, naturally, as your reply now.',
-          'If their later messages changed what a good answer is, answer the newest state rather than repeating the old one.',
-          'If you CANNOT see the conversation — empty history, a failed read, a tool refusing you —',
-          'reply with exactly NO_REPLY. Never guess, never turn notes or memory into a message.',
-          'Do not apologise for a delay, do not mention a technical problem or system issue —',
-          'from their side this should simply read as your reply arriving.',
-        ].join(' '),
+        // Read by proactive-text.rawPipeTextFor, which is the ONE place that
+        // decides raw-pipe-or-agent-turn. Non-empty by the guard above, so the
+        // row can never fall through to a model turn.
+        verbatimReply: body.text,
       },
       idempotencyKey: `undelivered:${u.id}:${lost.composedAt}`,
     });
     if (res.data.enqueued) {
       await audit.record(client, u.id, 'delivery.unanswered_repair', {
-        kind: 'undelivered_reply', ageSeconds: Math.round(lost.age / 1000),
+        kind: 'undelivered_reply', ageSeconds: Math.round(lost.age / 1000), verbatim: true,
       });
       repaired.push(u.id);
     }
   }
-  return { repaired };
+  return { repaired, ...(Object.keys(unsendable).length ? { unsendable } : {}) };
 }
 
 module.exports = {
-  sweepUnanswered, sentHashFor, undeliveredReply, readSentEventsFromLog, parseSentEvents, covers,
+  sweepUnanswered, sentHashFor, undeliveredReply, resendableVerbatim,
+  readSentEventsFromLog, parseSentEvents, covers,
   readLogTails, droppedTurnsByPeer, droppedTurnFor,
   MIN_AGE_MS, MAX_AGE_MS, SENT_SLACK_MS,
 };

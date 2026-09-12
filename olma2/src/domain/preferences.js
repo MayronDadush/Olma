@@ -5,6 +5,7 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const { phoneLike } = require('./facts');
+const holidays = require('./holidays');
 
 const KEY_RE = /^[a-z0-9_.-]{1,64}$/;
 
@@ -34,12 +35,36 @@ async function remember(client, userId, key, value) {
   return ok({ key });
 }
 
-async function forget(client, userId, key) {
+async function forget(client, userId, key, user = {}) {
   const { rowCount } = await client.query(
     `DELETE FROM user_preferences WHERE user_id = $1 AND key = $2`, [userId, key]
   );
   if (!rowCount) return err('not_found', 'no such preference');
   await audit.record(client, userId, 'preference.forgotten', { key });
+  // Deleting this one key does not mean "no quiet days" any more — it means
+  // "go back to the default", which since 2026-09-11 is a real day. Every
+  // sentence a person actually says here ("write to me on Saturdays too") is
+  // the OPPOSITE of what the delete now does, so the one call that can get
+  // this wrong is told so on its own result.
+  //
+  // It is guidance about a TOOL, never an instruction to write: this tool is
+  // marked done (reactions.TOOL_MARKS), the 👍 is already on their message,
+  // and an unconditional "say something" beside a mark is the markPlaced
+  // fault. If the model needs to fix it, the fix is another call, not a line.
+  if (key === 'quiet_days') {
+    const day = holidays.defaultQuietDay(holidays.calendarFor(user));
+    const word = holidays.quietDayWord(day, user.locale);
+    if (word) {
+      return ok({
+        key,
+        hints: {
+          quietDayDefault: `The DEFAULT quiet day is now back for them: ${word}.`
+            + ' If what they meant was that they want no quiet day at all, that is not this call —'
+            + ' save quiet_days as "none" instead.',
+        },
+      });
+    }
+  }
   return ok({ key });
 }
 
@@ -93,34 +118,88 @@ async function availabilityWindow(client, userId) {
 // conversation, and the model translates once, here.
 const DAY_NAMES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
-// Forgiving on the way in, strict about the result: anything unrecognised is
-// dropped rather than failing, because the gate reads this on every row and a
+// Since 2026-09-11 an unstated quiet day is not "none" — it is Saturday for
+// somebody on a Jewish calendar and Sunday for a Christian one
+// (domain/holidays.js). That makes the difference between "they have not
+// said" and "they said none" load-bearing for the first time, so this returns
+// THREE answers rather than two:
+//
+//   [5, 6]  they named days
+//   []      they said, in so many words, that they want no quiet day
+//   null    there is nothing here we can read as an answer
+//
+// Same distinction the rest of this codebase keeps having to relearn: `null`
+// (could not read) and `[]` (read, found nothing) must never collapse into one
+// value. Collapsed, a hand-typed "weekends" would silently cancel the default
+// somebody was told about in their first week.
+//
+// Forgiving on the way in, because the gate reads this on every row and a
 // hand-edited preference must never be able to stop delivery entirely.
+// Deliberately short, and deliberately without "all"/"any": "all days" is the
+// seven-day case one line down, not a refusal, and guessing wrong on that word
+// is the one mistake here that mutes somebody.
+const SAID_NONE = new Set(['none', 'no', 'never', 'nothing', 'off']);
+
+// Holidays ride in the SAME value — "sat,holidays" — rather than in a key of
+// their own. One key the gate parses, one key the model has to know the name
+// of, and one tool description that did not have to grow: the schema surface
+// had eleven characters of headroom left when this was written
+// (tests/tool-schema-budget.test.js). It is an independent flag, so
+// "none,holidays" is coherent and means exactly what it says — no weekly quiet
+// day, and quiet on yom tov.
+const SAID_HOLIDAYS = new Set(['holidays', 'holiday', 'chag', 'chagim', 'hag', 'hagim']);
+
+function parseHolidayQuiet(value) {
+  return String(value || '').toLowerCase().split(/[\s,]+/).some((p) => SAID_HOLIDAYS.has(p));
+}
+
 function parseQuietDays(value) {
+  const parts = String(value || '').toLowerCase().split(/[\s,]+/).filter(Boolean);
   const days = new Set();
-  for (const part of String(value || '').toLowerCase().split(/[\s,]+/)) {
+  let none = false;
+  for (const part of parts) {
     const i = DAY_NAMES.indexOf(part.slice(0, 3));
-    if (i >= 0) days.add(i);
+    if (i >= 0) { days.add(i); continue; }
+    if (SAID_NONE.has(part)) none = true;
   }
+  // A named day beats "none" in the same value: "no, only sat" is an answer
+  // about Saturday, and reading it as a refusal would drop the one day in it.
+  if (days.size && days.size < 7) return [...days].sort((a, b) => a - b);
   // Seven quiet days is not a preference, it is a pause — and pause is a
   // different feature with its own reversal path (domain/pause.js). Reading it
   // as "every day" would mute somebody permanently through a route nothing
-  // reports on, so it is read as nothing at all.
-  if (days.size >= 7) return [];
-  return [...days].sort((a, b) => a - b);
+  // reports on, so it is read as no answer at all, and the default stands.
+  if (days.size >= 7) return null;
+  return none ? [] : null;
 }
 
-async function quietDays(client, userId) {
+// `user` is the joined users row — `locale` and `timezone` — plus the
+// `holiday_calendar` preference, which is read here in the same query rather
+// than by a second caller, because the DEFAULT is a fact about the person and
+// every reader of it has to get the same one.
+async function quietDays(client, userId, user = {}) {
   const { rows } = await client.query(
-    `SELECT value FROM user_preferences WHERE user_id = $1 AND key = 'quiet_days'`,
+    `SELECT key, value FROM user_preferences
+      WHERE user_id = $1 AND key IN ('quiet_days', 'holiday_calendar')`,
     [userId]
   );
-  if (!rows[0]) return ok({ days: [], source: 'default' });
-  const days = parseQuietDays(rows[0].value);
-  return ok({ days, source: days.length ? 'stated' : 'default' });
+  const byKey = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  const calendar = holidays.calendarFor({
+    locale: user.locale, timezone: user.timezone, preference: byKey.holiday_calendar,
+  });
+  // Opt-in and asked once (users.holiday_quiet_asked_at); nobody has it until
+  // they say so, which is why it is read off the value rather than defaulted
+  // beside the day.
+  const onHolidays = calendar !== 'none' && parseHolidayQuiet(byKey.quiet_days);
+  const stated = byKey.quiet_days === undefined ? null : parseQuietDays(byKey.quiet_days);
+  if (stated !== null) return ok({ days: stated, holidays: onHolidays, source: 'stated', calendar });
+  const day = holidays.defaultQuietDay(calendar);
+  return ok({
+    days: day === null ? [] : [day], holidays: onHolidays, source: 'default', calendar,
+  });
 }
 
 module.exports = {
   remember, forget, list, availabilityWindow, DEFAULT_WINDOW,
-  quietDays, parseQuietDays, DAY_NAMES,
+  quietDays, parseQuietDays, parseHolidayQuiet, DAY_NAMES, SAID_NONE, SAID_HOLIDAYS,
 };

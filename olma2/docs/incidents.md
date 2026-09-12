@@ -19,6 +19,8 @@ never trust a dated narrative for something you are about to act on.
 
 **Gateway, config and upgrades**
 
+- [Six hours with nobody to talk to (detector added 2026-09-11)](#six-hours-with-nobody-to-talk-to-detector-added-2026-09-11)
+- [The socket that was never closed (fixed 2026-09-11)](#the-socket-that-was-never-closed-fixed-2026-09-11)
 - [A message reached the box and stopped there, and nothing could tell (detector added 2026-09-06)](#a-message-reached-the-box-and-stopped-there-and-nothing-could-tell-detector-added-2026-09-06)
 - [The roster was never in the transcript (2026-09-06)](#the-roster-was-never-in-the-transcript-2026-09-06)
 - [She was a member of her own group (2026-09-06)](#she-was-a-member-of-her-own-group-2026-09-06)
@@ -45,12 +47,18 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [The fifth draft was the rude one (fixed 2026-09-11)](#the-fifth-draft-was-the-rude-one-fixed-2026-09-11)
+- [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
+- [The room was greeted twice, by its own registration (fixed 2026-09-11)](#the-room-was-greeted-twice-by-its-own-registration-fixed-2026-09-11)
+- [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
+- [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
 - [Her reminders arrived in Hebrew (fixed 2026-09-07)](#her-reminders-arrived-in-hebrew-fixed-2026-09-07)
 - [A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)](#a-hundred-and-five-pending-reminders-thirteen-of-them-pending-fixed-2026-09-07)
+- [The reminder that would not stop (fixed 2026-09-09)](#the-reminder-that-would-not-stop-fixed-2026-09-09)
 - [The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)](#the-hooks-timer-fired-late-and-brokerd-took-the-blame-fixed-2026-09-07)
 - [Good morning at half past one (fixed 2026-09-06)](#good-morning-at-half-past-one-fixed-2026-09-06)
 - [The morning digest asked the same question four mornings running (fixed 2026-09-06)](#the-morning-digest-asked-the-same-question-four-mornings-running-fixed-2026-09-06)
@@ -94,6 +102,11 @@ never trust a dated narrative for something you are about to act on.
 
 **Cost, billing and the money page**
 
+- [Twelve people off the bottom of the money page (fixed 2026-09-10)](#twelve-people-off-the-bottom-of-the-money-page-fixed-2026-09-10)
+- [The three tables nobody could merge (2026-09-10)](#the-three-tables-nobody-could-merge-2026-09-10)
+- [The conversation that never ended (fixed 2026-09-09)](#the-conversation-that-never-ended-fixed-2026-09-09)
+- [The pin held the order and the cache still died (measured 2026-09-11)](#the-pin-held-the-order-and-the-cache-still-died-measured-2026-09-11)
+- [The pilot that read as an expensive day (fixed 2026-09-09)](#the-pilot-that-read-as-an-expensive-day-fixed-2026-09-09)
 - [The heartbeat was the bill (fixed 2026-09-05)](#the-heartbeat-was-the-bill-fixed-2026-09-05)
 - [The ledger overstated OpenRouter by 65%, in both directions at once (fixed 2026-09-03)](#the-ledger-overstated-openrouter-by-65-in-both-directions-at-once-fixed-2026-09-03)
 - [OpenRouter cache reads were priced 5x too high (fixed 2026-08-31)](#openrouter-cache-reads-were-priced-5x-too-high-fixed-2026-08-31)
@@ -142,11 +155,20 @@ never trust a dated narrative for something you are about to act on.
 - [The hint that outvoted the mark (2026-09-06)](#the-hint-that-outvoted-the-mark-2026-09-06)
 - [The mark that never moved (2026-09-07)](#the-mark-that-never-moved-2026-09-07)
 - ["בשמחה יהב, שיהיה ערב טוב" (2026-09-07)](#בשמחה-יהב-שיהיה-ערב-טוב-2026-09-07)
+- [A sentence about Shabbat, because the table had never heard of preferences (fixed 2026-09-10)](#a-sentence-about-shabbat-because-the-table-had-never-heard-of-preferences-fixed-2026-09-10)
+- [The quiet day nobody was ever going to ask for (2026-09-11)](#the-quiet-day-nobody-was-ever-going-to-ask-for-2026-09-11)
+- [Sixty-four holidays, eight of them quiet (2026-09-11)](#sixty-four-holidays-eight-of-them-quiet-2026-09-11)
+- [The hint the dedup swallowed (fixed 2026-09-10)](#the-hint-the-dedup-swallowed-fixed-2026-09-10)
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
 - [The message id the model made up (2026-09-07)](#the-message-id-the-model-made-up-2026-09-07)
 - [Two asks, one task (2026-09-07)](#two-asks-one-task-2026-09-07)
 - [The same thing, saved twice (fixed 2026-09-08)](#the-same-thing-saved-twice-fixed-2026-09-08)
+- [A time in the title and no reminder (fixed 2026-09-09)](#a-time-in-the-title-and-no-reminder-fixed-2026-09-09)
+- [A silence read as a delivery fault (fixed 2026-09-09)](#a-silence-read-as-a-delivery-fault-fixed-2026-09-09)
+- [The hour in the title nobody compared (fixed 2026-09-11)](#the-hour-in-the-title-nobody-compared-fixed-2026-09-11)
+- [A lost reply is re-sent, not re-answered (fixed 2026-09-09)](#a-lost-reply-is-re-sent-not-re-answered-fixed-2026-09-09)
+- [The working-out arrived instead of the message (fixed 2026-09-10)](#the-working-out-arrived-instead-of-the-message-fixed-2026-09-10)
 - ["הנה, רשמתי", about a meeting (2026-09-07)](#הנה-רשמתי-about-a-meeting-2026-09-07)
 - [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
 - [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
@@ -179,6 +201,129 @@ never trust a dated narrative for something you are about to act on.
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
 
 ## Gateway, config and upgrades
+
+### Six hours with nobody to talk to (detector added 2026-09-11)
+
+At 06:07 the WhatsApp channel exited with `WhatsApp credential persistence did
+not drain before owner release`. Every restart after that lost to `Another
+process owns this WhatsApp connection`: ten auto-restart attempts with a
+5s→300s backoff, exhausted, then the cycle started over. It came back at 12:05,
+when the gateway process was restarted by hand.
+
+Six hours in which not one message could leave the box. What every check said:
+
+| | |
+|---|---|
+| `checkGateway` | `live`, on all 72 ticks |
+| `/health` | `{"ok":true,"stale":[],"failing":[]}` |
+| `liveness_watch` heartbeat | `{"gateway":"live","down":false}` |
+| `openclaw gateway /health` | `{"ok":true,"status":"live"}` |
+
+None of them was lying. The gateway PROCESS was healthy the whole time — it
+answered every probe in milliseconds, ran every agent turn, and wrote every
+transcript. It simply had nothing to send messages down. `gateway-health.js`
+asked one question, "is the process up", and its own comment said the rest had
+their own detectors, naming "a linked WhatsApp" among them. That had never been
+true. A comment asserting coverage that does not exist is worse than no comment:
+it is what stops the next person looking.
+
+The one check that did see something was the outbox's `stuck` count — and it
+arrives late and names nothing. By the time three attempts have failed and
+fifteen minutes have passed, the fault has been running for twenty minutes, and
+what it reports is "messages are not going out", which is the symptom every
+outage shares. `config_guard` filed issue #156 at 08:07 and #157 at 09:17,
+correctly, into a dashboard nobody was looking at — and the only alert channel
+there is the dead WhatsApp. Two hours of true statements that reached no one.
+
+**The detector** is `gateway-health.checkChannels`, asked by `liveness_watch`
+beside the process probe: the gateway's own `channels.status`, which reports
+`linked`, `running`, `connected` and `reconnectAttempts` per channel. Any one
+of the three explicitly `false` is `down`, and it is named in the alert
+separately from the process, because the alert has to say which of the two
+broke — for six hours the answer was "not the one you are about to restart".
+
+**It had to be the WebSocket, not the CLI.** `openclaw channels status --json`
+costs **4.1s of CPU** an answer, measured three times on the box — more than
+the `openclaw sessions list` the never-poll-on-a-timer rule was written for.
+Over the RPC the same question is 11-18ms of CPU cold, measured on the same
+box: 250x, and the difference between a detector and a second bug.
+
+**A dead channel earns the same restart a dead process does**, after the same
+two ticks, under the same half-hour cooldown. The channel's own auto-restart
+lost ten times in a row; restarting the unit fixed it on the first attempt.
+Two ticks matter more here than for the process, because a channel flaps by
+design — a reconnect the same afternoon was down and back inside one second —
+and ten minutes of continuous `connected: false` is what separates them.
+
+**Everything that is not the gateway saying so is `unknown`.** The remedy is a
+restart, so a probe that cannot judge — the RPC off, a refused socket, a
+payload we do not recognise, a field a future version stopped sending — must
+never reach it. `undefined` is a version skew, not an outage. This is the
+detector-becomes-the-hazard line, and it is the one thing in this change worth
+reviewing twice.
+
+What is still not covered: a gateway that stays dead, a dead brokerd, a dead
+box, a dead network. Every alarm here rides the gateway's own pipe. That is
+[Known gaps](../../CLAUDE.md#known-gaps) and it needs the external monitor that
+does not exist yet — this change shortens a six-hour channel outage to about
+ten minutes, and does nothing for the other four.
+
+### The socket that was never closed (fixed 2026-09-11)
+
+Yehav asked, at 12:08, for eleven overdue tasks to be pushed to Monday. The
+model called `snooze_task` eleven times. All eleven came back
+`ERROR unavailable: assistant backend not reachable (brokerd timeout)`, thirty
+seconds apart — five and a half minutes of failing, after which Olma told him
+"there is a temporary problem saving this, I will try again in a moment" and
+then did not. He waited forty minutes and asked again himself.
+
+brokerd had been restarted at 12:15:16 by the deploy of PR #343 and was
+listening again at 12:15:17. **One second.** It answered nothing for the next
+seven minutes because the caller never noticed it had gone.
+
+`bin/olma-mcp.js` caches one unix socket for the life of the shim process, and
+the gateway keeps one shim per session — so the same process serves tool calls
+across a restart, by design. It listened for `'error'`. A brokerd that stops
+CLEANLY never emits one: the peer sends FIN, node ends this side too, and the
+socket emits `'end'` and then `'close'`. Neither was handled, so `sockConn`
+stayed set and pointed at a destroyed socket — and `write()` on a destroyed
+socket does not throw and does not emit. It returns `true`. Every call after
+that wrote into nothing and sat out the full `CALL_TIMEOUT_MS`, 30 seconds,
+for ever rather than once.
+
+Reproduced before it was fixed, because the reasoning could have gone either
+way — a write to a closed socket *sounds* like it should fail loudly:
+
+```
+call 1 (broker up)     : OK in 1ms
+-- SIGTERM the broker, then start a new one on the same socket --
+   [socket "end" event]   (unhandled)
+   [socket "close" event] (unhandled) sockConn still set: true
+call 2 (after restart) : FAIL in 3002ms -> brokerd timeout      # the shortened stand-in for 30s
+call 3 (after restart) : FAIL in 3002ms -> brokerd timeout
+call 4 (after restart) : FAIL in 3002ms -> brokerd timeout
+```
+
+**The fix** is `'end'` and `'close'` handlers that drop the cached socket and
+reject what is waiting on it, so the next call dials a new one. Both events,
+because half-open is reachable: a socket destroyed from this side emits only
+`'close'`. All three handlers now go through one `dropSocket(sock, err)` that
+clears `sockConn` **only if it is still the socket that died** — the previous
+`'error'` handler nulled it unconditionally, which was harmless while nothing
+else could replace it and is a race the moment something can.
+
+Nothing about this was specific to Yehav. Every user in a live conversation
+during any deploy had been losing their tools until their next session, and
+the symptom — "assistant backend not reachable" — names brokerd, which was
+healthy. The failure was named after the wrong culprit, which is the shape
+this project keeps rediscovering.
+
+`tests/mcp-e2e.test.js`, "the shim survives a brokerd restart", stops the real
+brokerd, starts another on the same socket and asserts the shim recovers. It
+runs last in the file because it replaces the process the other tests use, and
+it fails in 30,062ms without the fix against 77ms with it — the assertion is on
+the SECOND call after the restart, since the one in flight when the socket dies
+is allowed to lose.
 
 ### A message reached the box and stopped there, and nothing could tell (detector added 2026-09-06)
 
@@ -1392,6 +1537,314 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 ## Delivery, outbox and proactive messages
 
 
+### The fifth draft was the rude one (fixed 2026-09-11)
+
+On the morning the WhatsApp channel was disconnected (see "Six hours with
+nobody to talk to"), Yehav's morning digest was enqueued at 07:00:24 UTC. It
+was composed five times:
+
+| UTC | what the turn produced |
+|---|---|
+| 08:26 | "בוקר טוב יהב ☀️ שלושת התזכורות נשלחו ועוד לא טופלו — רוצה לסגור אחד מהם עכשיו?" + a rendered card |
+| 08:36 | a full task list, drawn |
+| 08:46 | the same list again, drawn again |
+| 08:57 | "בוקר טוב יהב ☀️ 11 מאחור — רוצה לדחות את כולן שבוע ולהוריד לחץ?" + a card |
+| 09:08 | "בוקר טוב ☀️ 11 מחכות, 3 תזכורות נשלחו — **ואתה לא עונה**. רוצה שאני אדחה הכול למחר ואחזיר אותך בשקט?" + a card |
+
+Five model turns. Four schedule cards rendered and thrown away. The channel
+came back at 09:05, so the fifth is the one that reached his phone — and the
+fifth is the one that had spent forty minutes watching him not answer.
+
+He had answered everything he was actually shown. He replied to that message
+fourteen seconds after it landed. The silence the fifth draft scolded him for
+was ours.
+
+**The mechanism.** A model-path delivery is `openclaw agent --deliver`: the
+gateway runs a whole turn — tools, a card, the model's own words — and only
+then hands the result to the channel. A channel that cannot carry it makes the
+send fail, the row backs off, and the next attempt runs the turn AGAIN. Nothing
+from the first attempt survives, because nothing of it was ever written down:
+the outbox row holds an instruction, not a message. So a retry here is not a
+retry. It is a fresh composition, against a world that the failed sends
+themselves have changed.
+
+This is the non-timeout sibling of "Six good mornings for one timeout". That
+one was fixed by booking a timeout as sent, because a timed-out `--deliver` has
+very likely gone out. This one could not take that route: these sends really
+did fail, and the row really was still undelivered.
+
+**The fix** (`src/outbox/worker.js`, `channelProbe`) is to stop composing
+messages that cannot be sent. Before the first send of a tick, the worker asks
+the gateway's own `channels.status` — the probe built for the detector in "Six
+hours with nobody to talk to" — and an explicit `down` skips the send while
+booking *exactly* the bookkeeping the failed send would have booked: `attempts
++ 1`, the reason in `last_error`, the same backoff. Every reader downstream is
+unchanged, and they were checked one by one: the stuck-row alarm counts
+attempts, the reminder-redo discriminator needs `attempts > 0` with an error
+beside it to know our pipe lost a rung rather than the gate holding it, the
+dashboard counts both. The only thing that no longer happens is the turn.
+
+Three details that are the whole design:
+
+- **`unknown` sends.** The probe is not the authority on whether Olma may talk
+  to somebody — it is an optimisation that skips work known to be wasted. A
+  detector that goes quiet must never be the thing that silences the system,
+  which is the hazard `checkChannels` is itself written to avoid, pointed the
+  other way. An RPC that is switched off, a refused socket, a payload shape a
+  later gateway version changed: all of them deliver, exactly as today.
+- **Once per tick, and only behind the gate.** A tick with nothing deliverable
+  never asks at all; a busy one pays 11-18ms on the open WebSocket. Asking per
+  row would have been a poll in everything but name.
+- **`channelDown` is counted apart from `failed`** on the heartbeat, because
+  "attempted and lost" and "nobody attempted" are different facts about the
+  morning and a check that declines to act has to say so somewhere.
+
+**A second thing it stops, found while checking the same morning.** The rule
+above it — a `--deliver` that TIMES OUT is booked as SENT and never retried —
+is right about a healthy gateway and wrong about a dead channel. Outbox 10323,
+a meeting invite for u-10, failed fourteen times with `No active WhatsApp Web
+listener` and on the fifteenth attempt, at 08:01:20, timed out. It was stamped
+`sent_at` with `hold_reason IS NULL`: delivered, as far as every reader in the
+system is concerned. WhatsApp did not come back until 09:05. Nobody received
+it, and nothing will ever look at that row again. Skipping the send closes
+this: no send, no timeout, no false delivery — the row stays unsent and goes
+out when the channel returns.
+
+What this does NOT fix: a send that fails for any other reason still
+recomposes. Closing that needs the composed text to survive the failure, and
+the text lives in the transcript with a `MEDIA:` line attached to a card path —
+the same wall `undeliveredReply` hit when it chose "verbatim or nothing". The
+channel outage was the case that actually happened, five times, in one morning.
+
+
+### היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)
+
+Guy was added to "5 Percent (Maprinter)" and did exactly what the room asked.
+He DM'd Olma at 19:01. The intake greeter answered him and provisioning
+stamped `opening_sent_at` at **19:01:22**.
+
+At **19:02:06** the room queued "עוד מחכה ל: @גיא מסיקה 🙄" and said it at
+19:03:05. At 19:06 a member wrote **"היא שבורה מירון"**. The room finally
+opened at 19:04:37 and the room heard about it at 19:06:22.
+
+**The gate was reading the wrong column, for a reason that used to be right.**
+`isConnected` asked `users.last_inbound_at IS NOT NULL`, and the comment above
+it explained — correctly — why `onboarded_at` would not do: it is stamped at
+provisioning, "before they have necessarily said a word". That is true of a
+hand-provisioned account. It is false of every organic joiner, because
+provisioning happens *because* the person wrote.
+
+The hole is that two voices can hear somebody's first message and only one of
+them stamps `last_inbound_at`:
+
+| who heard them | what it stamps |
+|---|---|
+| their own agent (`openRecord`, `turn_start`) | `last_inbound_at` |
+| the intake greeter | `opening_sent_at` |
+
+Guy met the greeter, so his own agent had heard nothing until **19:04:28** —
+three minutes after he wrote. For those three minutes the column the gate reads
+was NULL and the room said he was missing.
+
+`opening_sent_at` is the right second column and not a guess: it is stamped
+only for `greetedByIntake`, which is read off the greeter's *actual reply* and
+never assumed from the session list, and the greeter replies to nothing but a
+real inbound message. A silent greeter leaves it NULL, which falls straight
+back to the old predicate — so nothing here lets a phone number that has never
+written open a room.
+
+Two smaller things came out with it. The admin page had **re-written the
+predicate by hand** (`!(m.user_id && m.last_inbound_at)`), so it would have
+gone on naming Guy as missing after the gate stopped — the "test that asserts
+on a replica of a query" shape, in a render path; it now calls
+`groups.isConnected`. And the fix changes nothing about the three rooms live
+today, all of which are already open: it is entirely about the next person
+through the door.
+
+**What it does NOT do, and why not.** The obvious fix — stamp `last_inbound_at`
+at provisioning — was rejected after reading its readers. That column being
+NULL is the **once-per-life first-turn signal** (`openRecord` computes
+`firstTurn` from `prev_inbound === null`), and `last_inbound_at = first_turn_at`
+is the **silence test** behind the name-confirm rung. Stamping it early would
+have spent the first-turn signal and broken the silence test to fix a gate.
+The narrow column was the right lever.
+### The room was told about a meeting at 01:12 (fixed 2026-09-09)
+
+The owner read it on his phone the next morning: the group "5 Percent
+(Maprinter)" had been sent a coordination line at **01:12 local**. The row is
+`group_outbox` #4 — `kind: 'coordination'`, the `chase` line, decided at
+22:11:25 UTC and delivered at 22:12:11 UTC. Nobody in that room had written
+since **19:11 local**, six hours earlier.
+
+Group quiet hours were not missing. `GROUP_WINDOW` has said `09:00–21:00`
+since group mode shipped, the group's `timezone` is `Asia/Jerusalem`, and
+`majorityTimezone` had set it correctly from the members' own zones. The
+window was there. It was **never shut**.
+
+`mayAnnounce` gives a room a fifteen-minute grace when somebody is plainly
+present — the same grace a DM gets, so that an answer is never held at a
+person standing right there. It took that grace from
+`chat_groups.last_mention_at`, and two independent faults meet in that column.
+
+**One: the watermark is per room and the activity is per session.** The sweep
+stamps `last_mention_at` when a group session's `lastInteractionAt` is newer
+than `chat_groups.last_seen_at`. But a registered room has SEVERAL gateway
+sessions — `main`, the greeter `ggreet`, and the room's own `g-N` — and the
+sweep's loop runs once per session while `last_seen_at` is a single column,
+overwritten at the end of each iteration by whichever session came last. Some
+other session is therefore always newer than the watermark, so the stamp is
+rewritten on every pass and the fifteen minutes never elapse. Read live on
+2026-09-09, two queries two minutes apart, with nobody writing in any room:
+
+    1 M&M                    seen=2026-09-07T15:30  mention=2026-09-09T04:16:32.754
+    2 5 Percent (Maprinter)  seen=2026-09-08T16:11  mention=2026-09-09T04:16:32.754
+    3 פחם הסעות 🚌            seen=2026-09-07T21:00  mention=2026-09-09T04:16:32.754
+
+Three rooms, one timestamp to the millisecond — three `UPDATE … now()` calls
+in one transaction — and it had advanced by the second reading. `last_seen_at`
+for group 1 is exactly the `g-1` session's stamp while `main`'s for the same
+room is four hours newer, which is the shape of the bug in one line.
+
+**Two: her own voice moves the signal.** The raw pipe sends as
+`agents.defaults.systemAgent.agentId`, which is `main`. So `main`'s session for
+a room is stamped every time OLMA speaks into it — the session for group 2
+reads `22:12:11.324`, the second the 01:12 line went out. A window that any
+send re-opens is a window that authorises the next send.
+
+**The fix** is to take the grace from a column that means what the rule needs:
+`chat_group_members.last_wrote_at`, the newest moment a MEMBER wrote
+(migration 056). It is per room, it is written only from a real inbound
+message, and Olma's own voice never reaches it. For group 2 on that night it
+held 19:11 local, so the chase would have waited for the morning. A row that
+does not carry the column at all gets no grace and falls to the hours — fail
+closed, because the cost that way is a line held until morning and the cost
+the other way is this entry.
+
+Four tests go red without it, two of them replaying this room: the sweep's own
+`last_mention_at` stamped a minute before the decision, the room's people last
+heard from in the evening, and the line still waiting for 09:00.
+
+**What is NOT fixed here.** The `last_seen_at` watermark is still wrong — one
+column against several sessions — so `last_mention_at` still churns on every
+pass and the admin page's "last mention" is not a fact. Nothing reads it for a
+decision any more, which is why this PR stops at the decision; making the
+watermark honest means one per (room, session), and that is a migration and a
+restructured loop, not a line.
+
+### Six good mornings for one timeout (fixed 2026-09-09)
+
+Dana joined on the evening of 2026-09-07. At 05:22 the next morning the
+check-in ladder queued her fifteen-minute day-one step (outbox row 8675,
+`onboarding:31:15m`), and between 05:23 and 05:40 she received six turns from
+Olma: the same check-in, worded five different ways, and the last one with the
+model's own tool-call markup — `<｜DSML｜tool_calls>` and her `olma_identity`
+token — pasted into the message. Her transcript shows six `DELIVERY:` turns
+for one row.
+
+The row's own record says what happened: `attempts = 5, last_error =
+'openclaw timeout'`. `runOpenclaw` in `channels/openclaw.js` kills the CLI at
+`SEND_TIMEOUT_MS` (120s) and returns `{ ok: false, timedOut: true }`, and its
+comment already said what that means — the CLI hands the turn to the gateway
+and only then waits, so the kill ends the WAITING and the turn goes on to
+deliver whatever it says. The group sender had learned this on 2026-09-06
+("The room was told twice"). The outbox worker had not: it read `ok: false`,
+stamped a backoff, and retried five seconds later — a whole new agent turn,
+which wrote a whole new message. Five seconds, fifteen, forty-five, then two
+and a quarter minutes: six turns in seventeen minutes, on a morning when the
+model was slow enough that each one ran past two minutes. Sixteen rows timed
+out in the thirty days before the fix; three were retried; hers was the worst.
+
+**The fix is in `outbox/worker.js`**: a `timedOut` result is booked as sent —
+`sent_at` set, `hold_reason` NULL so every "was it delivered" reader agrees
+(the ladder's next rung, the digest's last-sent, `isDeafOnDayOne`), one
+attempt spent, the timeout kept in `last_error`, and an audit row
+`delivery.unconfirmed` so the day's count of them is one query away. It is
+never retried. The trade is explicit: a message that really was lost to a
+dead gateway is now not chased, and that person hears the next thing Olma
+has to say instead. That is one missing message against six copies of one,
+and the six are what a new person reads on her first morning.
+
+The markup leak in the sixth turn is the model's — a DeepSeek turn that
+emitted its tool-call frame as text — and it is not fixed here; it is why
+the eval judge and the Hebrew-quality count on the dashboard exist.
+
+### The room was greeted twice, by its own registration (fixed 2026-09-11)
+
+Two rooms were created on 2026-09-11 and both read the same sentence twice —
+the first sentence Olma ever says to a room:
+
+```
+12:37  נעים מאוד, אני עולמה 👋 …
+12:37  נעים מאוד, אני עולמה 👋 …
+```
+
+`group_outbox` held exactly ONE row for it (`g5:intro`), so the UNIQUE
+`idempotency_key` from migration 055 did its job. What the row carried was
+`attempts = 2`: the queue picked it up, was told the send had failed, handed
+the claim back and sent it again. Both attempts landed.
+
+The gateway journal, eight seconds wide:
+
+```
+09:36:58  brokerd writes openclaw.json (agent g-5 + the group's route)
+09:36:59  [reload] config change detected
+09:37:05  [gateway/channels] restarting whatsapp channel
+09:37:13  [ws] ⇄ res ✗ send  UNAVAILABLE: No active WhatsApp Web listener   ← our attempt 1
+09:37:14  [whatsapp] Listening for WhatsApp inbound messages
+09:37:14  [whatsapp] Sent message 3EB02543EFBA626D4CB8E9                    ← the greeting, #1
+09:37:14  [outbound/deliver] failed to mirror outbound delivery into session
+          transcript; channel send already succeeded
+09:37:18  [whatsapp] Sent message 3EB0ECDE7439467B37F6A1                    ← the greeting, #2
+09:37:18  [ws] ⇄ res ✓ send                                                 ← our attempt 2
+```
+
+**The room caused its own outage.** Registering a group writes
+`channels.whatsapp.accounts.default.groups.<jid>`, which is the hot write that
+makes the route load — and it restarts the WhatsApp channel. That cost is
+documented at `provision-group.admitRegisteredGroup` as ~5s and was 16 seconds
+here, from the write to the channel listening again. The sweep decides the
+greeting in the same pass as that write, and `group_outbox` drains every ten
+seconds, so the room's first sentence was sent into the restart every single
+time. This is not a race that needs bad luck; it is the ordinary path.
+
+**And a refusal from the gateway is not proof of non-delivery.** The message
+at 09:37:14 has no request line of its own — no `[ws] ⇄ res`, no CLI
+invocation — and it is mirrored under `agent:main`, the raw pipe's identity.
+It came from the gateway's own outbound retry queue: the gateway answered our
+send with an error, kept the message, and delivered it as soon as the channel
+was back. `channels/openclaw.js` says the opposite in as many words —
+
+```js
+// A request the gateway ANSWERED with an error is a definite non-delivery and
+// stays failed — the CLI would reach the same handler and be told the same thing.
+```
+
+— and that sentence is what turned one refusal into two greetings.
+
+**The fix is the first half only.** `saveConfig` now stamps when the write it
+just made changed the `channels.whatsapp` subtree — compared against what was
+ON DISK, because a caller that believes it changed nothing is exactly the
+caller that would forget to say so — and `group_outbox.drainOnce` says nothing
+for 45 seconds after such a stamp (`CHANNEL_RESTART_GRACE_MS`, against a
+measured 16). A held row is not claimed, not counted as an attempt, and still
+`pending()` for the gate sweep that asks whether the room is owed a greeting.
+The trade is the one this table was created to make: a greeting a few seconds
+late against a room hearing it twice.
+
+The second half is open. Every send in the system still reads a gateway
+refusal as a definite non-delivery, and the person queue (`outbox/worker.js`)
+has no hold at all. That class is closed by teaching `sendRawMessage` that a
+`PlatformMessageNotDispatched` answer means the gateway has kept the message —
+not that nobody got it.
+
+Two smaller things fell out of it. `drainOnce`'s new counter is `channelHeld`
+and not `held`, because the voice sweep's result already carries a `held` and
+brokerd spreads the two into one object — a second `held` silently overwrote
+the first, and the only reason it was caught is that two night tests assert on
+it. And the founding-case test does not set the stamp by hand: it runs the
+real sweep, which makes the real config write, because a fixture that stamps
+for itself would pass on the day nothing stamps at all.
+
 ### The room was told twice (fixed 2026-09-08)
 
 The owner's own group — he, מירון and עמית — read the same sentence twice:
@@ -1696,6 +2149,83 @@ still fire", and the two only look alike.
 
 Nothing about what is ARMED changed. Rung 2 and rung 3 still go out. This is
 only about what a person is told.
+
+### The reminder that would not stop (fixed 2026-09-09)
+
+The last line of the entry above is the whole of this one. Rung 2 and rung 3
+still go out — and after that fix there was no longer anywhere a person, or
+the model answering them, could see that they would.
+
+08:00, 2026-09-09. Rung 1 of a reminder lands: "⏰ תזכורת: לדבר עם אסתר על
+הצילומים בשבוע הבא בנתניה". At 08:01 the owner replies, quoting that exact
+message: **"תפסיק עם התזכורות לזמן הקרוב / תזכורת הבאה רק ביום שני"**. At
+08:02 Olma answers "ביטלתי ✅ התזכורת למור חן (הייתה יומית) והתזכורת להארד
+דיסק לאבא. נשארה רק התזכורת לאסתר — ביום שני ב-09:00", and asks whether to
+delete those two tasks as well. Every word of that is true, the ladder about
+אסתר kept climbing, and the report was one line: *"זה לא עבד כי הוא המשיך
+להזכיר לי."*
+
+The model understood perfectly and had nothing to act on. A one-off reminder
+that has delivered rung 1 sits with `attempts = 1, sent_at NULL`, and all four
+readers filter `attempts = 0` — `list_my_reminders`, `list_my_tasks`, the
+digest, the personal dashboard. That filter is right, and the entry above is
+why. What nobody noticed is that it was answering a **second** question with
+it. There are two:
+
+- *What hour may Olma promise somebody?* — `attempts = 0`. A mid-ladder row's
+  `remind_at` is behind `now()`; saying it out loud is the 105-row bug.
+- *What is still going to reach this person?* — a mid-ladder row is exactly
+  that, and it is going to reach them twice more.
+
+So the one row that was about to send two more messages was the one row
+nothing could name. `cancel_reminder` takes an id; every path to that id was
+closed. Olma did the only thing available — she cancelled the two reminders
+she could see, which were on other people's tasks and had not been mentioned —
+and reported the pending Monday 09:00 row on the אסתר task as "the one that
+remains", which it was, in the only list she had.
+
+`taskStillOpen` then fired on both cancels, correctly, and produced the
+closing question about deleting the tasks. Nothing malfunctioned anywhere. The
+whole failure is a read path that does not exist.
+
+Three halves to the fix, none of them a new tool — the tool surface stood at
+55,494 of its 55,500 ceiling, and the guidance belongs on the result anyway:
+
+1. **`turn_start`'s `recentReminders` carries the id.** It already fires on
+   precisely this turn ("a bare סיימתי is probably about the newest one") and
+   already reads the outbox rows Olma sent; it handed over a title and a
+   timestamp. It now carries `reminderId`, `taskId` and `stillChasing` for a
+   ladder that can still climb, plus a hint naming `cancel_reminder` and
+   saying the task is untouched. The id was never in the payload — it is in
+   the `idempotency_key` (`reminder:<id>[:<rung>]`), which is what the join
+   reads it back out of.
+2. **`list_my_reminders` answers both questions, apart.** `reminders` is
+   unchanged, and is still the only thing an hour may be said from. `chasing`
+   is the new one: id, taskId, title, the moment they originally asked for
+   (never a guess at when the next rung lands) and how many rungs have gone.
+   Absent, not empty, when there are none. Merging the two lists would reopen
+   the 105-row bug on the same afternoon it was closed, so they never merge.
+3. **Cancelling withdraws the queued rung.** `cancelReminder` stopped the
+   ladder — `dueForSending` filters `cancelled_at` — but left a rung already
+   in the outbox deliverable, and the gate holds a follow-up rung all night
+   because it is Olma's moment and not theirs. So the window between "ביטלתי"
+   and the reminder arriving anyway was hours wide. `hold_reason =
+   'cancelled'`, the same sentence `retireForMovedTask` and
+   `retireSiblingLadders` already say.
+
+`tests/reminder-stop.test.js` replays the morning: the ladder is walked to
+rung 1 **through the sweep and a real delivery**, never by writing
+`attempts = 1` into a fixture, because a fixture that writes the state by hand
+cannot notice the state is only ever reached the other way. Three of its seven
+cases go red without the fix; the other four pin behaviour that already held
+(cancelling does end a ladder, the task survives it) so that a future
+simplification cannot take those away quietly.
+
+Two shapes from the recurring list. *The agent understood, and the outcome had
+nowhere to go* — the fourth time, and the instruction was again to look for
+the missing read, not the bad prompt. And *a flag the writer sets and the
+reader ignores is worse than no flag*: `attempts` was written faithfully by
+the sweep and read by four queries that all meant something else by it.
 
 ### Her reminders arrived in Hebrew (fixed 2026-09-07)
 
@@ -3144,6 +3674,317 @@ next and only the last one was measured first.
 
 
 ## Cost, billing and the money page
+
+### Twelve people off the bottom of the money page (fixed 2026-09-10)
+
+The owner read the per-user cost table and asked why he could not see what
+each user had cost. He was reading the whole table: it was ten rows because
+the query said `.slice(0, 10)`, and 22 people had spend that month. The
+twelve below the cut were not shown, not counted and not mentioned — no
+"and 12 more", nothing.
+
+The truncation was never only a display cut, which is what made it worth an
+entry. `usersTotal` was summed from the same sliced array, so **the "סה״כ
+החודש" headline dropped everyone past tenth place**, and the Anthropic
+reconciliation line under it — the one number on the page whose whole job is
+to notice when our attribution and the real bill disagree — was computed
+against that undercount. It was reporting a gap that was partly its own
+truncation. `top.rows.length` fed "משתמשים פעילים החודש" as well, so the
+count of active users read 10 for ever, however many people joined.
+
+Small money ($1.09 of ~$17 that month) and a large failure shape: **a list
+that truncates must say so, and no total may be summed from the truncated
+copy.** The fix removes the slice — a page read daily by one person does not
+need a cap at twenty-two rows — and the regression test gives thirteen
+people spend and asserts all three: every name on the page, the headline
+equal to the rows, and the active count equal to thirteen rather than ten.
+
+The same page had the same shape in a second place, found while fixing this
+one: `renderPlannedForUser` capped its queue at fifteen with no line saying
+so. Its replacement announces the cut (`ועוד N מתוכננות אחריהן`).
+
+### The three tables nobody could merge (2026-09-10)
+
+What Olma is about to say to one person is decided in three places, and the
+admin page showed them as three separate tables: the outbox queue, the
+reminders that have no outbox row yet, and a standing line naming the hour
+the daily digest fires at. Opening a real user's page returned
+"אין כרגע הודעה בתור", three reminders all at 14/09 12:00, and
+"כל יום ב-10:00" — every fact present and the one question the page exists
+for unanswerable without merging them by hand. The digest was the worst of
+the three: a standing setting, never a moment, so "what arrives next" could
+not even be read off it.
+
+Asked what he actually uses the page for, the owner said **reviewing the
+product** — checking that it behaves for each person — across all users at
+once, forward-looking only, with no automatic flagging of what looks wrong.
+That answer decided the shape: one builder (`planFor`) read by both the
+cross-user screen and one person's page, so two readers cannot come to two
+different beliefs about what is coming; grouped by the person who will read
+it, because a duplicate is only obvious beside its twin; and no opinions
+rendered, only facts.
+
+Four things it must keep doing:
+
+- **A reminder mid-ladder is IN the list.** `attempts = 0` answers "what
+  would still fire" and not "what is still going to reach them" — the
+  documented third question — so a reminder already climbing was invisible
+  in this reader like every other. It reuses `reminders.listReminders`,
+  which returns both halves, rather than a hand-copied `WHERE`.
+- **…and its hour is not invented.** The next rung is due a gap after the
+  previous one was DELIVERED, so there is no moment to print; the row says
+  "אחרי שהשלב הקודם נמסר" and sorts last. Its SENTENCE is not a guess, and
+  it is the half worth reading before it goes out.
+- **The text is shown wherever there IS a text.** Most rows carry an
+  instruction a model words at send time and stay subject lines, but a
+  reminder and a re-sent lost reply ride the raw pipe with no model in the
+  path. `proactive-text.rawPipeTextFor` — the deliverer's own decision
+  point, not a copy of it — returns exactly the string the pipe will carry,
+  and a ✓ marks the rows that make that claim. Reviewing the product means
+  reading what will arrive, not a summary of what it is about.
+- **Reminders that arrive as one message are one row.** The worker coalesces
+  siblings at delivery, so three reminders at 12:00 are one WhatsApp message
+  with three lines; three rows would misreport both the count and the
+  wording (each would claim the single-reminder template). The batch renders
+  through the same `renderReminderText` the worker uses. The grouping key is
+  the worker's rung template within a MINUTE rather than within a tick — the
+  one approximation available to a page with no tick, and it can only ever
+  show as two what will arrive as one, never the reverse.
+
+The digest row resolves to a real next instant in the person's own zone, and
+only for someone `sweepDigests` would actually visit — an inactive, paused,
+eval or not-yet-onboarded person is promised no digest, because printing an
+hour for a message that is never coming is the same lie in the other
+direction.
+
+**And the fault found while building it, which is the reusable part.** A
+`SECTIONS` entry is rendered as `s.render(client, csrf, cachedGateway,
+{ configPath })` — four positional arguments. A clock added as the third
+parameter of `renderPlanned` therefore received the cached gateway object,
+`Intl` threw `RangeError: Invalid time value` on it, and **every section of
+the admin page 500'd over one user's digest hour**. Twenty-two tests went red
+at once, which is the only reason it was not shipped. Two things came out of
+it: the clock is injected into `renderPlannedQueue` instead, and the zone
+maths is wrapped so that an unreadable zone or instant costs that one row its
+hour and nothing else. A section renderer's signature is not private to the
+section.
+
+### The conversation that never ended (fixed 2026-09-09)
+
+The owner asked, with usage growing, what "working smart" would look like in
+numbers. Every agent's transcript store was walked on 2026-09-09 for the four
+clean days since the heartbeat went off (09-06 → 09-09), plus `usage_ledger`
+and OpenRouter's own `/generation` records for the response ids in the
+transcripts. Real users cost $2.49 in those four days (~90 messages a day,
+$0.0073 a message, 2.9 model calls a message); the eval user cost $7.31 —
+the cheap-model pilots of 09-08 and 09-09 alone cost more than a week of
+real people. Three things nobody had measured:
+
+**A session never resets.** `session.reset` defaults to `"none"`, so a
+session key keeps one history window for ever. Per agent, prompt tokens per
+model call since 09-06:
+
+| agent | messages | calls | prompt/call | cache | first-call latency |
+|---|---|---|---|---|---|
+| u-3 (one session since 08-27) | 79 | 178 | **172,019** (max 206,270) | 60% | 8–23 s |
+| u-10 | 40 | 89 | 71,943 | 61% | |
+| u-18 | 34 | 96 | 57,478 | 63% | |
+| everyone else | | | 35–48k | 47–68% | 3–5 s |
+
+At $0.089/M uncached, u-3's every message cost $0.018 before the model
+read a word — his four days, $1.30, were 52% of the whole real-user bill.
+The doctrine (11k tokens) and the tool schemas (15k) that every rule in
+this file fights over were sitting under 170k tokens of chat. Every user
+drifts there; u-3 took thirteen days. What the conversation knows is not in
+the window — tasks, reminders, meetings, facts, preferences are in the DB and
+USER.md — and the memory files the design leans on are empty on the box
+(`MEMORY.md` 35 bytes, no daily notes in any workspace), so nothing rides
+on them either way.
+
+Fix: `session.reset: { mode: "daily", atHour: 2 }` (UTC on the box — 05:00
+in Israel), `scripts/set-session-reset.js --apply`, and a `config_guard`
+rule that goes red when it comes back off. **The reset would have blinded
+every watcher once a day**: `channels/sessions.readRecentMessages` read the
+tail of the CURRENT session id only, and `promise_watch` reads the ask a
+person made the evening before, the onboarding review reads a first evening
+that spans 02:00 UTC, fact extraction and `unanswered` read the last few
+turns. The 2026.8.1 store keeps the chain — `session_windows(session_id,
+previous_session_id, reason)` — and the tail now walks it until it has its
+events, under the same cap as before.
+
+**The cache dies between turns, and it is not the TTL.** First call of a
+turn, bucketed by the gap since the agent's previous call (real users, not
+evals): under two minutes 62% cached; 2–10 minutes 9%; 10–60 minutes 4%;
+1–4 hours 0%. Within a turn the second call hits ~90%. OpenRouter's
+generation records named the reason: `deepseek/deepseek-v4-flash` was being
+served by three providers in six hours — StreamLake, DeepInfra, GMICloud —
+and a prefix cache is per provider. Even on the same provider a new turn one
+minute later missed, so the first call of every message pays for the full
+prompt (avg 62k tokens, 44k of them uncached) — about 45% of the bill.
+DigitalOcean serves the same model at $0.068/M input against
+$0.089–0.091 for the three in use, cache reads at $0.0168, 99.7% uptime.
+Fix: pin the provider order (`scripts/pin-openrouter-provider.js`,
+separate PR) and MEASURE whether one provider's cache survives the gap —
+the price cut is certain, the cache win is the experiment.
+
+**`turn_start` is 37% of every tool call** — 922 of 2,482 in fourteen days,
+one of the 2.9 calls a message. Phase B (the turn context in the prompt,
+`gateway-plugin/olma-turn`) was live for two people; widening it removes a
+model round-trip from every reply (3–7 s, ~$0.0011) and the `.olma-identity`
+reads that fresh sessions spend (70 in four days). Done in its own PR.
+
+What did NOT move the numbers, for the next person tempted: the schemas
+(55k chars ≈ 15k tokens, 26 tools uncalled in fourteen days = 24% of it)
+and the doctrine are ~26k tokens a call and cost a fifth of that once the
+cache holds; audience-filtering the tools is impossible at `tools/list`
+(one MCP process for every agent, `cwd=/root`, verified) and worth under $1
+a month anyway; NO_REPLY turns are 2–5% since the heartbeat went off.
+
+### The pin held the order and the cache still died (measured 2026-09-11)
+
+`scripts/pin-openrouter-provider.js` was applied on 2026-09-09 and the gateway
+restarted at 20:18:52 UTC. Its own header left the verification open, in as
+many words: *"whether ONE provider's prefix cache survives the minutes between
+a person's messages. Nobody knows until it runs a day."* Two days later,
+`scripts/cache-probe.js` read it off the transcripts. It had not.
+
+First call of a turn, real users only, bucketed by the gap since that agent's
+previous call — the pre-pin baseline beside it:
+
+| gap | after the pin | before |
+|---|---|---|
+| under 2 min | 57% | 62% |
+| 2–10 min | 6% | 9% |
+| 10–60 min | 3% (2,001 calls) | 4% |
+| 1–4 h | 0% | 0% |
+| later call of the same turn | 86% | ~90% |
+
+Nothing moved, and the bucket that carries the traffic — 10–60 minutes, two
+thousand calls — is still at three percent.
+
+**The order was never a pin.** Reading OpenRouter's own generation records for
+54 consecutive post-restart calls: StreamLake served 38, DigitalOcean 16, and
+**21 of the 54 landed on a different provider than the call before them**.
+`allow_fallbacks: true` leaves `order` a preference, not an exclusion, so the
+rotation the pin was written to stop went on rotating. Split by that:
+
+| the call before it | cached |
+|---|---|
+| same provider | 54% |
+| different provider | 3% |
+
+That is the whole effect. It is not a TTL and it is not our prompt: the only
+thing Olma injects per turn is the `Turn context` block, and
+`before_prompt_build` prepends that to the USER MESSAGE, downstream of the
+system prompt, the tool schemas and the history — the static prefix is byte-
+stable within a session, and `contextInjection: continuation-skip` keeps the
+bootstrap files from being re-sent per turn. The prefix was never the problem.
+
+**The arithmetic says follow the traffic, not the price list.** Off
+OpenRouter's endpoint table on the day: DigitalOcean $0.0679/M input,
+StreamLake $0.0840/M, both $0.0168/M on cache reads. For the measured 44k-token
+prompt, an UNCACHED DigitalOcean call is $0.00299 and a 54%-CACHED StreamLake
+call is $0.00210 — the dearer provider, cached, is 30% cheaper than the cheap
+one cold. DigitalOcean was put first for the price and then served 30% of the
+traffic; the config and reality disagree, and reality is billing.
+
+**What was deliberately NOT done.** `allow_fallbacks: false` would buy the
+cache and cost the availability the flag exists to protect — the owner's rule
+is that an outage costs the cache and never a reply — so it stays on. The
+change worth making is the cheap half: put the provider that actually serves
+the traffic at the head of the order, keep fallbacks, and re-run the probe in a
+few days. That trades nothing.
+
+**And the money is small, which is the last finding.** Real-user model spend is
+$0.49–$1.39 a day (nine days to 2026-09-10, eval user excluded), so the whole
+cache gap is worth perhaps $5 a month. The case for fixing it is the seconds:
+an uncached 44k-token prompt is what put 8–23 s on the first token in "The
+conversation that never ended". Anyone reaching for this file to cut the BILL
+is in the wrong place by two orders of magnitude — Claude Code sessions
+reading this repo cost more in a week than the assistant does in a year.
+
+**The probe excludes the eval user, and that is load-bearing.** u-15 was 1,609
+of 4,899 calls at a cache rate twenty points above everybody else; averaged in,
+the first reading of this said the cache was healthy for people who do not have
+one. Same rule as `efficiency-watch`, rediscovered inside an hour of writing a
+new ratio.
+
+### The pilot that read as an expensive day (fixed 2026-09-09)
+
+On the morning of 2026-09-09 the efficiency watch sent this:
+
+> 📈 עולמה — יעילות: משהו חרג מהרגיל
+> 2026-09-08 · 120 הודעות נכנסות
+> • עלות להודעה: $0.0411 (רגיל: $0.0155, פי 2.7)
+> מודלים:
+> • openai/gpt-5-mini — $1.6513, מטמון 94%
+> • openai/gpt-5-nano — $1.4595, מטמון 96%
+> • deepseek/deepseek-v4-flash — $0.9626, מטמון 61%
+
+and the advice under it blamed deepseek's uncached input and proposed trimming
+the conversation history sent to the model.
+
+**Every number in it is correct and the conclusion is wrong.** The day was two
+populations added together:
+
+| | messages | cost | $/msg |
+|---|---|---|---|
+| real users | 52 | $0.9136 | $0.0179 |
+| eval harness (`users.is_eval`, u-15) | 68 | $4.0050 | $0.0589 |
+| what the watch measured | 120 | $4.9186 | $0.0411 |
+
+Real users were at 1.13x their own baseline. gpt-5-mini and gpt-5-nano are the
+model pilots of 09-08 (`docs/model-experiments.md`); no real person has ever
+been routed to either. deepseek-v4-flash — named as the culprit — is the only
+model a real user was on, is the cheapest of the three, and had run $1.09,
+$0.88 and $0.66 on the three days before.
+
+**The defect is in `dailyRatios`, and it is one line of SQL.** The `usr` CTE
+summed all of `usage_ledger`; nothing on that path had ever carried
+`NOT is_eval`, although twenty other sweeps that start from `users` do. So the
+cost side counted the benchmark and the message side counted it too — a
+harness whose cost per message is a property of whichever model is on trial
+that week, and whose message VOLUME is equally arbitrary (127 eval messages on
+09-06, 14 on 09-07).
+
+Three things the fix had to get right, and only the first is obvious:
+
+1. **Both sides together.** Excluding the eval user from the numerator alone
+   would have built the mirror-image fault — real spend divided by inflated
+   traffic, reading as suspiciously cheap for ever.
+2. **`evidence()` moves with the ratios.** The model list is what a person
+   reads to find the culprit, and drawn from a population no ratio covers it is
+   worse than no list: it ranked the innocent model third of three. Same
+   filter, same population.
+3. **The excluded spend is still printed.** `evalCost` and `evalMessages` ride
+   every day, the alert (`ניסויי מודלים באותו יום: … — לא נכללים באף מספר
+   למעלה`) and the heartbeat note, never inside a ratio. Without that the fix
+   is this file's oldest failure shape wearing the opposite coat: $4 a day that
+   no metric can see, and an operator who knows the day was expensive reading a
+   report that never mentions it and concluding the watch is broken.
+
+Verified before merging by running the fixed `dailyRatios`/`crossings`/
+`evidence` from a throwaway copy on the box against the live database:
+2026-09-08 returns `crossings: []` and one model, `deepseek-v4-flash $0.9136`.
+Both new tests go red with the filter neutralised; the second exists because
+the failure mode of a fix like this is quietly becoming an off switch, so it
+holds a genuine 3x regression open on a day a large pilot is also running.
+
+**What this is an instance of.** Not "we forgot a WHERE clause" — the watch's
+own header says every metric is a ratio judged against this system's own recent
+days, and a ratio is only a statement about a system if both halves describe
+the same one. It is also the second fault of 2026-09 caused by the eval user
+being counted as a person (the first: `resetEvalUser` never clearing
+`quota_counters`, so every scenario past 50/day scored a block notice). And it
+is the fourth time an alarm in this system has been right about a number and
+wrong about its cause — the cache-alert misdiagnosis of 09-04, whose suggested
+fix would also have raised cost, is the same sentence with different nouns.
+
+Deliberately NOT changed: `jobs/metrics.js` and the dashboard's cost sections
+still count everything. They answer "what did we spend", which the pilots are
+genuinely part of. The rule is not "filter `is_eval` everywhere" — it is to
+know which question the number answers.
+
 
 ### The heartbeat was the bill (fixed 2026-09-05)
 
@@ -4598,6 +5439,136 @@ rule working exactly as written.
 ## Features as they shipped
 
 
+### The quiet day nobody was ever going to ask for (2026-09-11)
+
+The machinery for a quiet day shipped on 2026-09-08 and the question that
+fills it shipped with it, on the discovery ladder's timezone rung. Three days
+later, across the whole roster, the number of people with a `quiet_days` row
+was one — Miron, who typed it unprompted on the 10th and had to be told about
+it twice for reasons of its own (see the Shabbat entry above).
+
+That is not a rung that failed. It is a setting nobody asks for because
+nobody knows it exists, and the answer is not to ask harder. The owner's
+instruction on 2026-09-11 was to make it the DEFAULT: Saturday for Hebrew
+speakers, Sunday for English speakers, unless they said otherwise.
+
+Three decisions inside that, each of which could have gone the other way.
+
+**Geography overrules language.** `calendarFor` reads a Jewish calendar off a
+`he` locale OR an Israeli timezone. The asymmetry is deliberate: Sunday is a
+working day in Israel, so an English speaker in Tel Aviv handed a Christian
+default loses an ordinary Sunday every week and has no idea why. The mirror
+mistake — a Jewish calendar for an English speaker abroad — costs one Saturday
+and one sentence to correct. When a guess has an expensive side, guess away
+from it.
+
+**"They have not said" and "they said no" stopped being the same value.** For
+three days both were `[]` and nothing depended on the difference. The moment
+an unstated day became a real Saturday, a hand-typed `"weekends"` in that
+column would have silently cancelled a day somebody had been TOLD about in
+their first week. So `parseQuietDays` returns three answers — days, `[]` for
+an explicit `none`, `null` for anything unreadable — and only the middle one
+counts as stated. The seven-day case, which is really a pause, joins `null`:
+it was already refused, and refusing it into the default rather than into
+silence is the same refusal one rung better. Same lesson the repo keeps
+relearning under different names, and this time it was visible before it cost
+anything, which is the only reason it is a paragraph and not an entry.
+
+**The delete now means the opposite of what people say.** Every real sentence
+here is "write to me on Saturdays too" — and `forget_preference('quiet_days')`,
+the obvious call for it, now restores the default rather than clearing it. The
+only spelling of "no quiet day" is the value `none`. That is stated in the
+rung's own copy, and `preferences.forget` puts `hints.quietDayDefault` on that
+one key's result for the calls that arrive any other way. It is worded as
+guidance about a TOOL and not as an instruction to write, because
+`remember_preference` and `forget_preference` have carried a 👍 since
+2026-09-10 and an unconditional ask for words beside a mark is the
+`markPlaced` fault, twice documented above.
+
+**And the rung was speaking Hebrew at everybody.** Reading it to add the day,
+it turned out `discoveryGaps` never took a locale at all: the "say this word
+for word" payload was Hebrew for every person on earth, and whatever an
+English speaker actually received was the model quietly declining to follow
+it. It is quoted in both languages now. Quoting rather than describing is the
+rule this rung already carries a scar for — a described version came out as
+"נוסע לשם אחרת" — and the English quote is safe here for the reason
+`firstContactInstruction` cannot have one: no country label inside it.
+
+What the person hears is one line longer and asks for nothing new:
+
+> ברירת המחדל שלי היא לכתוב לך בין 9:00 ל- 21:00 בשעון המקומי, ובשבת לשלוח רק
+> תזכורות שביקשת.
+
+Both halves of that sentence are drawn from the code that enforces them —
+`preferences.DEFAULT_WINDOW` and `holidays.quietDayWord` — and pinned by one
+test, on the argument the hours already had: what somebody was told is a
+promise the gate has to keep.
+
+
+### Sixty-four holidays, eight of them quiet (2026-09-11)
+
+The same conversation asked for the Jewish and Christian calendars: mention a
+chag when there is one, and ask whether people would rather receive nothing
+but reminders on those days. Four decisions came back from the owner, and each
+one is a smaller feature than the sentence that asked for it.
+
+**Not quiet by default, asked once ever.** A chag is a day most people are on
+their phone more, not less, and silently cancelling somebody's reminders on
+Rosh Hashana because a calendar said so is a thing they would have to discover.
+So the default is unchanged and the offer is made once — the same shape as the
+city, and now the second column of it (`users.holiday_quiet_asked_at`,
+migration 062). It has two routes from the start, the discovery ladder and a
+turn hint on the erev, which is precisely the arrangement that asked Sarah for
+her city four times when each route was separately careful. Both read the
+column and whichever gets there first writes it.
+
+**Mentioned in conversation, never announced.** "רק בהקשר השיחה" — the day
+rides `today.holiday` into the turn context and Olma sends nothing of its own.
+A proactive "שנה טובה" from an assistant is a greeting card from a company,
+and the one thing worse is sending it on Yom HaZikaron, so every fast and
+memorial day carries `solemn: true` and the hint says so.
+
+**Yom tov only.** hebcal's filtered year is 64 days, and the first read of it
+made Chanukah, Purim, Lag BaOmer, Chol HaMoed and four fasts all candidates
+for silence. They are real days and ordinary working days both; going quiet on
+them is broken, not respectful. The quiet tier is `flags.CHAG` and nothing
+else: eight days a year in Israel, thirteen abroad. The rest are `mention`,
+which holds nothing and only ever adds a clause to a reply. That split is the
+"a hint that fires on ordinary input is worse than no hint" rule applied to a
+calendar, and the test writes the eight days out as literals so a later
+widening has to edit a list that says what it is widening.
+
+**One key, not two.** Opting in is the token `holidays` inside the existing
+`quiet_days` value (`"sat,holidays"`). A second preference key would have been
+cleaner to read and would not fit: the tool schemas had about eleven
+characters of headroom, and the gate parsing one key instead of two is one
+thing to get wrong.
+
+Three things bit during the build. `require('@hebcal/core')` fails —
+`ERR_PACKAGE_PATH_NOT_EXPORTED`, the package is ESM-only — so it is
+`await import()`ed behind a cached promise that logs once and returns `null`
+for ever on failure; the gate reads this on every outbox row, and a package
+that will not load has to answer "no holidays" rather than throw into
+delivery. The first probe was a day out because it read `ev.getDate().greg()`
+through `toISOString()`, which is a LOCAL-midnight Date and reads back as
+yesterday from a zone ahead of UTC; the production path uses local getters and
+was verified across four server timezones. And `msUntilQuietDaysEnd` had to
+grow from a 14-day probe to 21, because a chag can chain into Shabbat into a
+second chag.
+
+The last one is a test-suite lesson rather than a product one. The suite went
+red on a Saturday the first time, and again on Rosh Hashana — six ladder
+assertions that had never named a date suddenly depended on one, because the
+new defaults are properties of the day the suite runs. Pinning `now` does not
+fix it: the worker stamps `sent_at` with Postgres's clock and counts the daily
+budget against the injected one, so moving the DATE breaks the arithmetic
+instead. Both are fixed in `makeUser` — a test user is created with
+`quiet_days = 'none'` and an already-spent `holiday_quiet_asked_at`, and a test
+that wants the real behaviour opts in with `quietDays: null` /
+`holidayAsked: null` and pins its own clock. The default in a fixture should be
+the state that makes every OTHER file's arithmetic its own.
+
+
 ### An offer to call a number the bridge has never served (fixed 2026-09-06)
 
 Asked on 2026-09-05 to set a reminder, Sarah was told *"I can call you now if
@@ -4942,6 +5913,167 @@ syncs the file and cannot make the gateway re-read it. Until that restart the
 code is live and inert: no `thanks` param arrives, every message opens with
 👀, and nothing behaves differently.
 
+### A sentence about Shabbat, because the table had never heard of preferences (fixed 2026-09-10)
+
+Miron, 09:05:
+
+> בימי שבת אל תשלח לי תזכורות ולא כלום
+
+The save was perfect and instant — `remember_preference` with key `quiet_days`
+and value `sat`, the row still on the box — and he read a sentence back anyway:
+`שבת — שמור. לא תזכורות, לא דיגסט, כלום.` His question was the right one: why
+not just a 👍.
+
+The two entries above make this look like the doctrine losing an argument
+again, and it is not. Nothing was outvoted and nothing was ignored: the model
+was never told a mark existed, because there was no mark. `TOOL_MARKS` covered
+tasks, the calendar, reminders and the undo-shaped tools, and had never
+covered how Olma should BEHAVE — `remember_preference` and `forget_preference`
+were simply not in it. No entry means no 👍, no 👍 means brokerd attaches no
+`hints.markPlaced`, and a model with a plain instruction in front of it and
+nothing saying the fact was already carried does the only thing left: it
+writes. What he saw was the OLD behaviour, intact, in a corner the feature
+had never reached.
+
+That is the failure shape worth keeping. A missing row here is invisible from
+both ends — the tool returns ok, the model behaves reasonably, and the only
+evidence is a sentence that reads exactly like a model ignoring its
+instructions. It is the mirror of "The hint that outvoted the mark": there the
+hint was present and beaten, here it was absent and nobody could tell the
+difference from the outside.
+
+An instruction about how to work belongs in the table on the same argument as
+the undo-shaped tools: it is done the moment the row is written, nothing is
+pending, and nothing is waiting on the person. `remember_fact` is deliberately
+left out beside `forget_fact` — a fact is usually captured in passing while
+the real answer is being written, so its 👍 would be about the side-effect
+rather than about what they asked.
+
+The test goes through brokerd, not the table: what matters is that
+`hints.markPlaced` reaches the model on that call, and the table alone proves
+nothing about what the model is handed. It also pins the two negatives —
+a `forget_preference` that finds nothing earns no mark (the person is owed the
+words), and reading preferences still is not doing anything.
+
+**And then the rest of the table (same day).** Shown the shape of the fault,
+the owner's answer was the general rule rather than the one row: a person
+should not collect messages, and anything that can end in a like should. The
+table went from thirteen tools to thirty-six in the first pass — everything
+Olma HOLDS (`remember_fact` beside `forget_fact` after all, contacts,
+labels) and every SETTING (timezone, name, language, persona, digest,
+calendar sync, connection grants, both disconnects), plus the undo half
+nobody had noticed was missing (`restore_task`, `update_calendar_event`,
+`delete_calendar_event`, `cancel_live_update`). `subscribe_live_updates` is
+⏰ rather than 👍, on `set_task_reminder`'s own line: it is armed and it will
+speak to them later.
+
+Asked why the exclusions were grouped by REASON rather than by "did it change
+something and need nothing further from the person", the answer was that the
+second framing is the right one and the reasons were never four independent
+rules — they were four ways of failing that one test. A scan against all 89
+tools by that single question found five more the first pass had missed
+entirely: `revoke_share`, `respond_to_share`, `opt_out_of_meeting`,
+`cancel_meeting` and `create_shared_meeting_event` are the ACTOR's own exit
+from something shared, in hand the moment the tool returns — unlike
+proposing or negotiating one, where the table on offer is still changing
+underneath them. Table: forty-one.
+
+The same pass over `request_connection` found the sharper case. It reads at
+the call site exactly like `send_message_to_connection` beside it — both
+"not finished, waiting on somebody else" — and that similarity is what put
+it in the same excluded family the first time. But `request_connection`
+genuinely is armed to speak to THIS person again: `respond_to_connection_
+request` fans the answer back out to the requester by name, the same
+mechanism `set_task_reminder` and `subscribe_live_updates` already earn ⏰
+for. `send_message_to_connection` cannot make that claim — nothing ever
+notifies the sender once their message lands — so it stays unmarked for the
+opposite reason it looked excluded for. Table: forty-two, three of them ⏰.
+
+The exclusions took the real work, and they are written above the table
+because a row that is absent looks like an oversight six weeks later while a
+row that is present is at least visible in a diff. Four families, four
+different reasons: a result that must be SPOKEN (a link, a media path, the
+digest block, an import's counts — `sendLinkVerbatim` exists because a URL
+nothing says reaches nobody, and a 👍 on one of those is Olma claiming an
+action she never delivered); one still WAITING on another person (a relayed
+message, and every step of a meeting or connection NEGOTIATION — propose,
+respond, decide, settle, the other side's own approval — whose whole value
+to the person is what the table now looks like, or, for `respond_to_
+connection_request`, whose decision belongs to someone else); one whose own
+hint unconditionally asks for words the mark cannot carry (`pause_olma`,
+where silence is the one answer "stop" must never get; `resume_olma`;
+`snooze_task`, which owes them the new date struck through against the
+old); and reading.
+
+That third family is the one to be careful with, because it is the only one
+where the exclusion is a property of the HINT and not of the tool. Moving one
+of them into the table means rewriting its hint to be conditional first —
+otherwise it is "The hint that outvoted the mark" again, deliberately this
+time.
+
+The cost is bounded and worth stating, since the obvious objection is that
+every mark is a whole `openclaw` CLI start-up: `markFor` dedupes on message
+AND state, so a turn calling three marked tools still spawns one closing mark.
+What grows is the number of turns that get a closing mark at all, which is
+the point.
+
+### The hint the dedup swallowed (fixed 2026-09-10)
+
+Gali, 19:33, replying to a repeating reminder that asked "בוצע?":
+
+> בירכתי אין צורך לתזכר
+
+She got the 👍 on her message — and, under it, `בוצע 👍 שמתי שברכת — הכל סגור.`
+
+The model had done nothing wrong. Twice over: `cancel_reminder` at 19:33:27,
+`complete_task` at 19:33:33, which is exactly the sequence `complete_task`'s
+own description prescribes for ending a standing task. Both are in
+`TOOL_MARKS`. One 👍 went out, correctly, for the first of them.
+
+The second got nothing. `markFor` dedupes on message AND state, so it returned
+`null` for `complete_task` — and brokerd hung the `markPlaced` hint off that
+same answer:
+
+```js
+const mark = reactions.markFor(name, result, turn, clock());
+if (mark && actorPhone) placed = placeMark({ ... });
+if (placed && placed.attempted && mark === 'done' && ...) { hints.markPlaced = ... }
+```
+
+So the LAST tool result the model read before choosing its words said nothing
+about any mark. It was not overruling the 👍 and not ignoring a hint: at that
+moment nothing in front of it said one existed. The tell is in the sentence
+itself — it typed a 👍 into the text, trying to deliver by hand what the
+reaction had already delivered.
+
+Reproduced against a real brokerd before touching anything, with her exact
+sequence: one mark placed, `cancel_reminder` carrying `markPlaced`,
+`complete_task` carrying `hints: null`.
+
+**The dedup is not the bug and was not touched.** A repeat mark is a whole
+`openclaw` CLI start-up (15s on the box) and WhatsApp replaces a reaction
+rather than appending one, so an identical second mark costs fifteen seconds
+and changes nothing on the screen. The fault is that one answer was serving
+two different questions: *should a mark be spawned* (no, there is one) and
+*is a mark standing on this message* (yes). `reactions.doneMarkStands` is the
+second question, and brokerd now asks it.
+
+Two things it must not get wrong, both pinned by tests:
+
+- It reads the last state **attempted**, not "a done mark happened at some
+  point in this turn". A mark that could not be spawned is never claimed —
+  `attempted`, never `sent`, the same discipline the hint's own wording keeps.
+- A ⏰ asked for after a 👍 replaces it on the phone, and `markFor` will not
+  re-ask for a state it already spent this turn. From that point the standing
+  mark is ⏰, and a later done-tool must not be told a thumbs-up is there.
+  The naive version of this fix gets that case wrong.
+
+Third variant of one family, and worth listing together because each looks
+exactly like the model misbehaving and none of them is: the mark **absent**
+(the preference tools, the entry above), the mark **outvoted** (an
+unconditional instruction beside a conditional one), and now the mark
+**present and unannounced**.
+
 ### The rung nobody asked for, at half past one (2026-09-07)
 
 Vered's first evening. At 22:31 she asked for a reminder "בעוד דקה"; it was
@@ -5065,6 +6197,476 @@ So the id is taken only when the model is the best source there is: never on
 `ourTurn`, never over an id the gateway already put on the turn, and otherwise
 exactly as before — a real person writing, with no gateway opening on file,
 is still a turn where the model is all we have.
+
+### A silence read as a delivery fault (fixed 2026-09-09)
+
+Yahav wrote "בוצע הפקדת צק" at 19:34. Everything after that was correct:
+brokerd completed task 646, put a 👍 on his message, and the model answered
+`NO_REPLY` — exactly what `hints.markPlaced` asks for, because the mark carries
+the whole fact and a sentence under it is a second notification for the same
+thing. A healthy turn, start to finish.
+
+At 19:39 he read this, in English:
+
+> No conversation history is accessible to me in this session — there are no
+> prior messages visible and nothing from any stored session search. I cannot
+> reconstruct what was said or what the undelivered reply contained.
+
+The transcript says what happened:
+
+```
+16:34:32  user       "בוצע הפקדת צק"
+16:35:03  assistant  "NO_REPLY"                      ← 8 chars, the sentinel
+16:38:47  user       "DELIVERY: …"                   ← the repair, injected
+16:38:54  assistant  "Let me check the conversation history."
+16:39:07  assistant  "I don't have access to the conversation history…"
+16:39:14  assistant  "No conversation history is accessible to me…"   ← delivered
+```
+
+`unanswered.undeliveredReply` looks for an assistant turn after a user turn
+with no send event behind it, and calls that a reply that was composed and lost.
+A `NO_REPLY` is exactly that shape — and of course there is no send event,
+because nothing was ever meant to be sent. **The detector could not tell a
+decision to stay quiet from a delivery fault.**
+
+That is not a rare corner. Since the reaction doctrine, `NO_REPLY` is the
+CORRECT answer to a large and growing class of messages — every "done ✅"-shaped
+message earns a mark and a silence — and a message like that is exactly the kind
+that sits at the end of a conversation. The window is 3 to 45 minutes and the
+sweep runs every 60 seconds, so any conversation ending in a 👍 sat in the trap
+for forty-two minutes. It had fired three times in total (user 8 and user 14 on
+2026-09-02, Yahav today), but the exposure was growing with every improvement to
+how well Olma keeps quiet.
+
+**The same function had already been blinded once by the same class, in the
+opposite direction.** `channels/sessions.js` drops `FAILED_TURN_MARKER` because
+a turn that died before producing content was stored as an ordinary assistant
+message, so a user whose message got no reply got no repair either (2026-08-20).
+Twice now the transcript's shape has failed to carry the turn's MEANING, and
+both times the reader had to be told. The sentinel is checked in the detector
+rather than in the shared reader, because unlike the failed-turn marker a
+deliberate silence is real history: the admin conversation view and the metrics
+rollup each decide what it means to them. Exact match after a trim — the
+doctrine is explicit that any text in FRONT of the sentinel IS delivered, so
+"בוצע NO_REPLY" is a real reply and must stay repairable.
+
+**Two things worth keeping from the wreckage.**
+
+The repair instruction had anticipated this precise branch: *"If you CANNOT see
+the conversation — empty history, a failed read, a tool refusing you — reply
+with exactly NO_REPLY. Never guess … Do not apologise for a delay, do not
+mention a technical problem or system issue."* The model hit that branch and did
+the opposite of every clause in it. A safety property written as a sentence in a
+prompt is a request, not a guarantee; wherever a model's raw output reaches a
+person with no server-side gate, the prompt is the only thing standing there.
+The fix therefore had to be in the detector — not to sharpen the wording — so
+the turn is never created.
+
+And a repair job is the most dangerous kind of job there is. Every other sweep
+acts on a state it observed. This one acts on a BELIEF that something failed,
+and when the belief is wrong it manufactures the exact disturbance it exists to
+prevent. Nothing was broken in Yahav's conversation until the repair arrived.
+
+### The hour in the title nobody compared (fixed 2026-09-11)
+
+Task 247, Sarah: title "Brunch with a friend — Tuesday Sep 1 at 10:00",
+`due_at` 07:00 her time. It looked like a model that could not read a clock. It
+was not.
+
+| | |
+|---|---|
+| task 247 created | 2026-08-31 **19:07:33** |
+| her zone corrected New_York → Los_Angeles | 2026-08-31 **19:45:38** |
+
+Thirty-eight minutes. The model resolved "10:00" correctly *for the zone on
+file at that instant* — 10:00 EDT is 14:00Z — and correcting the zone is what
+made the title and the row disagree. The +1 dialling code had bought her New
+York while she was in Los Angeles, which `incidents.md` already records.
+
+It reached her. Reminder 79 climbed three rungs: **06:00** on Sep 1, four hours
+early, in a message whose own text said "at 10:00" — a notification that
+contradicted itself; **09:01**, asking whether it was done, fifty-nine minutes
+before it started; and **06:00 the next morning**.
+
+Its twin, task 242, was created three minutes earlier in the same window and
+WAS repaired by hand on 2026-09-02, with an audit row naming the cause in
+words. 247 has no such row — not a decision to skip it, no record at all. Its
+date had passed by the time anyone looked.
+
+**Half of this was already fixed and nobody re-checked.**
+`domain/timezone-repair.js` shipped 2026-09-03, three days after Sarah's
+correction, and `setTimezone` gates it on `wasGuessed` — exactly her case. It
+would have moved task 247 and reminder 79 automatically. The proposal to build
+it was a proposal to rebuild something that already worked, which is the
+failure shape this file's own "Known gaps" section warns about.
+
+**The half that was NOT fixed.** `promise_watch` was asked why it missed this.
+It shipped 2026-09-06, six days later, so it could not have. The real answer is
+worse: it would be blind anyway. `checkPromises` reads `users.timezone` on both
+sides — to parse the hour they named and to render the armed instant back to a
+wall clock — so a wrong zone cancels out. Run against the real rows:
+
+```
+America/New_York       silent — reads as correct
+America/Los_Angeles    REPORTS: armed 07:00
+```
+
+Same message, same instant, same detector. It regains its sight only after
+somebody has already fixed the zone by hand, which is after the reminders have
+fired. A check that reads the same wrong input as the thing it is checking
+cannot see that the input is wrong.
+
+**So the fix is for the other class.** A scan of every dated task on the box
+found four whose title disagrees with the hour stored. One is Sarah's. The
+other three are Maya's, from a brain dump on 2026-08-18, and they are a
+different fault entirely — off by exactly +3, `due_at` written as `16:00Z` for
+a title saying 16:00, with `Asia/Jerusalem` at UTC+3. A bare local time read as
+UTC, under a *correct* zone.
+
+`hasOffset` cannot catch that. Every task write path calls it and it refuses a
+missing offset; `16:00:00+00` has one, and it is simply wrong. CLAUDE.md has
+said from the start that "a well-formed-but-wrong time still needs a semantic
+cross-check", and nothing implemented it — while `titleWithoutStatedTime`
+(2026-09-09) had been computing exactly that comparison and throwing the answer
+away, because it only needed to know whether it was safe to delete the words.
+
+`domain/stated-hour.js` keeps the answer. Measured against all 93 dated tasks
+before shipping: 11 titles carry a clock, 7 agree, and the 4 that disagree are
+the 4 known faults — no false positives. FIRST clock only, because a span
+("16:00-22:00", "בין 14:00 ל-16:00") names its start and `due_at` is the start;
+a full HH:MM only, because "ב-16" is a day of the month more often than an hour
+and a detector that fires on ordinary input is worse than none. It runs as
+`promise_watch`'s second pass and reads no transcript at all, so unlike the
+first half it can afford to look at everybody every day.
+
+It reports only rows that can still reach somebody — open, unarchived, still
+ahead. All four real faults are archived, done or past, so a live box files
+nothing on the day this shipped, and the founding cases are held open in
+`tests/reminder-promise.test.js` instead. That is the intended state: the
+detector exists for the next one, not for the four that already happened.
+
+**The four rows themselves were corrected on 2026-09-11**
+(`scripts/repair-stated-hour.js`, one `admin.task_due_corrected` beside each
+`task.edited`, matching the hand repair of task 242). A deploy does not reach a
+row already written, and an archived task is still readable — `listTasks` takes
+`includeArchived` — so the wrong hour stayed reachable in her own history.
+Two things it deliberately did NOT do. It did not touch `task_reminders`: a
+`remind_at` with `sent_at` on it records when we actually messaged somebody,
+and correcting that would be falsifying what happened, where a `due_at` is a
+statement about when the thing WAS and that statement was wrong. And it did not
+supply the `ends_at` the titles also name ("16:00-22:00") — the fault was the
+hour, and a repair that fills in fields nobody asked for is a repair nobody can
+review. What it had to defeat is that **both domain writers refuse an archived
+row on purpose**, so the archive is lifted and restored around the edit inside
+ONE transaction — no other connection ever sees the row live, and the edit
+still goes through `editTask`, validated and audited like the agent's own.
+All four dates are months past, so even the in-transaction moment of being
+"open with a due date" arms nothing.
+
+### A lost reply is re-sent, not re-answered (fixed 2026-09-09)
+
+The entry above closed the door the repair walked through. This one is about
+what the repair was doing on the other side of it, which was wrong on its own
+terms and would have stayed wrong the next time a reply really did get lost.
+
+Case (b) of `jobs/unanswered.js` detects a reply that was composed and never
+dispatched: the transcript ends with an assistant turn, and the gateway log has
+no `Sent` line for that person behind it. Having established that, it ran a
+MODEL turn:
+
+> Your last reply in this conversation was composed but never delivered — the
+> person never saw it. … Read the conversation and send the substance of that
+> answer again, naturally, as your reply now.
+
+The reply is right there. `undeliveredReply` is looking straight at it — it is
+the message the whole detection is about — and the repair handed a second model
+the job of reconstructing it from a conversation it had to go and re-read. Every
+line of that instruction after the first is an attempt to manage a risk that
+only exists because the text was thrown away: how to handle newer messages, what
+to do if the history cannot be read, not to apologise, not to mention a
+technical problem. It bought nothing and cost three things — a cold-cache model
+call, a dependency on the model being up at the exact moment our own pipe had
+just been proven broken, and a free-text turn on a `--deliver` session, where
+every block the model emits reaches the phone. Yahav read the third one.
+
+So the reply now goes out **as itself**, on the raw pipe, with no model in the
+path — the same argument reminders were moved off the model for in the first
+place (`incidents.md`, the 2026-08-23 credit outage). `undeliveredReply` carries
+`text` alongside `composedAt`, the row's payload holds `verbatimReply`, and
+`proactive-text.rawPipeTextFor` — the one place that decides raw-pipe-or-agent-
+turn — returns it before the kind gate.
+
+**A raw send does not enter the person's session, and here that is the point
+rather than the cost.** The composed reply is already in the transcript; only
+the send failed. Re-sending it verbatim makes the phone match the history. The
+model turn did the opposite: it appended a SECOND assistant turn saying roughly
+the same thing, so the conversation ended up holding the answer twice, one of
+them never delivered — in a function whose entire job is reading the tail of
+that transcript.
+
+Two clauses died with the instruction and both deserved to. *"If their later
+messages changed what a good answer is, answer the newest state"* guarded a case
+the detector already excludes: it fires only when the assistant's reply is the
+LAST thing in the transcript, so there is no newer state by construction. And
+the *"if you CANNOT see the conversation, reply NO_REPLY"* clause — the one the
+model ignored on the way to Yahav's phone — is gone because there is no longer
+anything to see: the text is on the row.
+
+**Verbatim or nothing.** The one shape that cannot survive the raw pipe is an
+attachment: `MEDIA: <path>` on its own line is a convention the GATEWAY reads
+off an agent's reply, and `openclaw message send` has no such reading, so a
+lost schedule card sent this way would arrive as the literal word `MEDIA:` and a
+filesystem path. That case is counted on the sweep's heartbeat (`unsendable`)
+and left alone. Nothing is improvised in its place — the person's own next
+message and the check-in ladder are the fallbacks, and both beat a guess. It is
+counted rather than audited because with no outbox row there is no cooldown
+either, and an audit row would be filed every tick for up to forty-five minutes.
+
+The admin page follows the same line. `plannedSubject` deliberately shows a
+subject and never a preview, because the payload holds an instruction the agent
+will reword and promising wording we cannot keep is the v1 stale-digest rule.
+This row is the second exception to that after an operator's hand-typed message,
+and for the identical reason: nothing will reword it.
+
+### The working-out arrived instead of the message (fixed 2026-09-10)
+
+Yahav, 08:28: "תוכלי להזכיר לי היום בשעה 13:00 לבטל את האשראי". The 👍 went on
+his message, the task was saved, the reminder was armed for 13:00 in his own
+zone — every part of the work was right. What arrived on his phone was the
+model working out whether it had been:
+
+> הם אמרו 13:00 — due_at נקבע ל-13:00. remind_at שמרתי 13:00, שזה הזמן שהם אמרו
+> — לא צריך להזכיר לפני, זה בדיוק בשעה שהם ביקשו. The reminder is set for 13:00
+> their time.
+>
+> Wait, let me re-check — remind_at was set to 2026-09-10T10:00:00Z which is
+> 13:00 in Asia/Jerusalem. That's correct — the reminder will fire at 13:00
+> exactly as they asked. And due_at also at 13:00. Good.
+>
+> The hints say a 👍 was placed and the reminder is armed for the hour they
+> named, so nothing to add — unless there's an undelivered reply from before.
+>
+> Looking at the turn context: it says one of their recent messages was read
+> but produced no reply. The only message I see in this session …
+
+Four paragraphs about him in the third person, half of it in English, naming
+our own columns, ending in the decision that there was nothing to say. The
+model reached the right answer — `markPlaced` says a plain instruction under a
+👍 is answered with `NO_REPLY` — and then delivered the road it took to get
+there. Nothing was mis-stored, no reminder was wrong; the only defect is that
+the deliberation was the message.
+
+**The doctrine already forbade every part of it**, in three sentences of
+`agents-template.md`: "Your reply is the message, nothing else", "Never narrate
+what you did or are about to do — no 'I see they replied…', no 'Let me
+check…'", and "Any text you put in front of `NO_REPLY` is DELIVERED". The last
+two were written after the previous two occurrences: the DSML tool-call syntax
+with a live `olma_identity` in it (2026-09-02) and two English paragraphs of
+working notes above a Hebrew answer (2026-09-07). Third time in nine days, and
+every answer so far had been another sentence in the prompt.
+
+Which is the rule this repo had already written down and could not act on: a
+safety property written as a sentence in a prompt is a request, not a
+guarantee, and wherever a model's raw output reaches a person with no
+server-side gate the prompt is the only thing standing there.
+
+**There was a gate all along.** `domain/token-leak.js` records, from
+2026-09-02, that "the gateway exposes no per-agent MCP server config and no
+outbound message hook (both confirmed against its published schema)" — and
+that is what made NOTICING the leak the whole of the design, twice. It is
+wrong for the version the box runs. OpenClaw 2026.8.1's plugin catalog
+(`docs/plugins/hooks.md`, "Messages and delivery") publishes
+`reply_payload_sending` — Modify / gate, "Mutate or cancel normalized reply
+payloads before delivery", running after payload normalization and before
+channel delivery — and `message_sending` beside it. Neither appears on the
+`allowConversationAccess` list, so neither needs a permission we do not have.
+The belief cost two incidents; the check that would have ended it is the one
+this file keeps recommending — read the vendor's own catalog for the version
+you are actually running, not the note somebody wrote about it a fortnight ago.
+
+**What now stands there.** `gateway-plugin/olma-turn` registers a third hook.
+The decision is `domain/reply-leak.gateReply` and it is made LOCALLY, in the
+gateway, with no socket in the path: a gate that stops working the moment
+brokerd hiccups is not a gate, and one that waits on a socket before every
+reply is a new way to be slow. brokerd is asked only after something was
+found, on a 1.5s deadline, and the audit row (`reply.gated`) is the only
+record — never the text, and never a frame marker in the clear, because that
+marker can BE a live credential.
+
+**Two tiers, because the two actions have opposite costs.** Dropping text is
+destructive, so only markers that cannot appear in a sentence a person is meant
+to read may drop: a frame marker, one of our own column or parameter names off
+a closed list, an ISO-8601 instant (Olma says "13:00", never "10:00:00Z"), and
+the name of a block only the model is shown. Every OTHER snake_case identifier
+— which is the shape of every internal name nobody has thought of, and also of
+a word a developer might have put in a task title — is reported and delivered.
+The audit row is where the next addition to the closed list comes from.
+
+**The unit is the paragraph, not the line, and the cut is everything up to the
+last one that leaked.** Both halves were paid for by this message. Yahav's
+third paragraph ("The hints say a 👍 was placed…") carries no marker at all and
+is not a message to anybody; so does the second line of the 2026-09-07 notes.
+Working notes are written in paragraphs and only some of their sentences name a
+column. And the cut reads off the doctrine — "Work through tools in silence,
+then write the message only" — so anything between two paragraphs of narration
+is narration too, and the 2026-09-07 shape comes out right the other way round:
+the notes go, the Hebrew answer stays. The cost is a reply whose narration came
+LAST, which loses the answer in front of it; of the two mistakes only one puts
+our columns on somebody's phone.
+
+**The sentinel is the one marker that never drops its line.** `jobs/
+unanswered.js` reads "בוצע NO_REPLY" as a real reply on purpose, so the gate
+strips the stray token and delivers the word. A reply that is exactly the
+sentinel is not a leak at all: it is the decision to stay quiet, and the
+gateway drops such a row by itself.
+
+**The gate makes the repair sweep dangerous, and that is fixed in the same
+change.** A cancelled reply leaves precisely the fingerprint `undeliveredReply`
+reads as a delivery fault — an assistant turn in the transcript with no `Sent`
+line behind it — and the repair re-sends verbatim on the raw pipe, which has no
+gate in it. `resendableVerbatim` now runs the same reader: what the gate would
+deliver is what may be re-sent, and when that is nothing, nothing is. Same
+shape as the `MEDIA:` refusal beside it.
+
+**And `main` is not gated.** The raw pipe sends as that session and carries the
+owner's own wording with no model in the path (reminders, group lines, the
+introduction) — a gate there could only ever damage a sentence a person wrote.
+Every agent that puts MODEL output in front of somebody is covered: `u-N`, the
+group agents, and the intake greeter.
+
+The remaining hole is named rather than papered over. Narration that never
+mentions an internal name passes — an English "let me check that for you" is
+still only the doctrine's business. And the 383 real messages
+`domain/hebrew-quality.js` was calibrated against are on the box and were not
+reachable from the session that wrote this, so the identifier tier is
+report-only precisely because it is the unmeasured one.
+
+One last thing this class keeps proving: plugin code loads at gateway STARTUP
+and `deploy.sh` does not restart the gateway. Merging this puts a gate on the
+box that does nothing at all until somebody runs `systemctl --user restart
+openclaw-gateway` — green suite, shipped code, inert gate, which is the exact
+"a hook that loads is not a hook that runs" shape twice recorded above. So the
+plugin now overwrites `/opt/olma2/run/turn-context-plugin.registered` with the
+hooks the RUNNING gateway registered, and `config_guard.checkReplyGateLive`
+reads that file and files a dashboard row for as long as the two disagree.
+
+### A time in the title and no reminder (fixed 2026-09-09)
+
+Cleaning up after the duplicates above left 27 `extracted` tasks standing on
+the box. Every single one of them had a NULL `due_at` — not most, all 27 — and
+three carried the moment inside the title, as words:
+
+| task | owner | title | source |
+|---|---|---|---|
+| 439 | u-3 | לאכול צהריים ב12 | extracted |
+| 262 | u-11 | לעזור לשרה במעבר דירה ביום רביעי בשעה 17:00 | extracted |
+| 37 | u-9 | תרופות בשעה 6 בערב | brain_dump |
+
+Somebody said an hour out loud, the extraction pass heard it, wrote it down —
+and wrote it into the one field nothing can act on. A `due_at` arms an
+automatic reminder; a title is a string. So for the one kind of commitment
+that most needs a reminder, the hour was captured and then thrown away in the
+same write.
+
+The obvious reading is a lazy model, and it is wrong. There were two separate
+faults and only one of them was the model's:
+
+- `add_tasks_bulk` **does** take a `due_at` per item, and the brain-dump path
+  simply did not use it. A model miss.
+- `applyExtraction`'s schema was `{"title", "subtasks"}` — **no date field
+  existed at all**. Nothing the model answered could have carried an hour.
+
+And underneath both, the reason the prompt's own line "Never invent a date they
+did not give you" was not just correct but the only safe rule available:
+`renderTranscript` rendered `THEM:` / `YOU:` lines and **discarded every
+`m.at`**, and the instruction stated neither the current moment nor the
+person's timezone (`dueUsers` did not even select the column). This job reads a
+conversation 30 minutes to several hours after it happened. Against a bare
+transcript with no clock anywhere, "מחר בשעה 18:00" is not a moment — it is a
+moment relative to a "now" nobody had told the model. Asked to date that, the
+only honest answers are a guess and a refusal, and the prompt correctly chose
+refusal. **The date field was missing because the clock was missing.** Adding
+the field first would have bought a year of wrong reminders.
+
+So the clock came first. Each transcript line is now stamped
+`[YYYY-MM-DD HH:MM]` with the wall clock **it was written at**, in their zone —
+off the message the gateway stored, never off the clock this sweep runs on,
+because the gap between the two is exactly what has to be visible. The prompt
+states the same clock for "now" and names the zone. A line whose message has no
+usable timestamp renders **bare**, with no stamp at all, rather than borrowing
+`now()`: a voice call arrives from the bridge as `{role, content}` with no
+per-message clock anywhere, and a made-up stamp would hide that rather than
+report it — the same `null`-is-not-`[]` rule as everywhere else in this file.
+
+Only then the field. `"due_at"` joined the tasks schema with the rules the
+model needs and the server cannot enforce: only a moment stated out loud, full
+ISO with their offset, resolved against the stamp on the line that said it,
+null as the normal answer — and the ל־ distinction, because "לארגן אימון
+לרביעי" is arranged BEFORE Wednesday while "האימון ברביעי ב-19:00" is the thing
+itself, and no regex can tell those two apart from the string.
+
+What comes back is not trusted. `usableDue` refuses four shapes, and on every
+one of them **the date is dropped and the task is kept** — the same handling
+the facts half has always given `expires_at`, for the same reason: the
+commitment is what they said, the moment is what the model resolved, and only
+one of those two is theirs.
+
+- **Not parseable**, or not a string. "מחר בערב" comes back as a title, not a date.
+- **No explicit UTC offset.** A bare local time is read as UTC and lands three
+  hours out for an Israeli user. `addTask` refuses this too — which would cost
+  the task as well, so it is caught here first, where only the date is lost.
+- **Already past.** Nothing to remind anybody about, and `attachAutoReminder`
+  would arm a rung that fires the moment it is written.
+- **Beyond a year.** That is the shape a wrong YEAR takes, and the facts half
+  has already caught exactly this live: "טס לרומא בספטמבר" came back with
+  `expires_at` 2025-09-15 — the month the person gave, the year the model
+  assumed from its training prior.
+
+The count rides the audit row as `taskDatesDropped` and the sweep result as
+`datesDropped`, on the same argument as the duplicate counter beside it: a
+guard that silently drops things looks identical to a quiet week, and a number
+that climbs every night is the only thing that would say the model is proposing
+moments this job will not honour.
+
+**The same day, live on the owner's own account**, the fix was proved end to
+end and immediately showed its own fallout. "אני צריך להתקשר לחברת הביטוח היום
+ב-17:00" became task 657 with `due_at` 17:00 and an automatic reminder armed
+for 16:00, which was delivered at 16:01:52 — the chain that had been broken.
+But the title came out as `להתקשר לחברת הביטוח היום ב-17:00`: the model now
+sets the column **and** keeps the words. That is new. Before the field existed
+the words were the only copy of the moment, so nothing had ever been redundant.
+
+The obvious fix — a prompt line asking for a clean title — is wrong, and the
+reason is the validator above. The model cannot know whether `usableDue` will
+accept the date it proposes. Told to write a clean title, it would strip the
+hour from its own words while the server dropped the date underneath it, and
+the moment would survive in neither the column nor the title: strictly worse
+than before any of this. So the trim is server-side and conditional on the date
+actually being stored — `titleWithoutStatedTime`, applied only where `dueAt` is
+truthy.
+
+What keeps it from being a regex guessing at somebody's sentence is a
+cross-check: the hour named in the title must be the hour being stored. It was
+measured against all 253 titles on the box before shipping — 8 matched the
+pattern, 2 were stripped, and the third was refused:
+
+| title | stored `due_at` | outcome |
+|---|---|---|
+| להתקשר לחברת הביטוח היום ב-17:00 | 17:00 | stripped |
+| Nail appointment — Tuesday Sep 8 at 12:00 | 12:00 | stripped |
+| **Brunch with a friend — Tuesday Sep 1 at 10:00** | **07:00** | **refused** |
+
+The third is a real row whose title and column disagree by three hours.
+Stripping it would have deleted the only record of the disagreement and left a
+row that looked consistent. One row out of 253 is the entire argument for the
+cross-check, and it is in the test with its real values.
+
+Three further bounds, each with a real shape behind it: the match is anchored
+to the END, because a moment named mid-sentence is part of what the thing IS
+("פגישה של 17:00 עם הבנק") and cutting there rewrites their words; a part-of-day
+word is what licenses reading "ב-6 בערב" as 18:00, never the bare digit; and a
+cut that would leave a stub is refused, because "ב-17:00" alone is not a task
+anybody can read.
 
 ### The same thing, saved twice (fixed 2026-09-08)
 

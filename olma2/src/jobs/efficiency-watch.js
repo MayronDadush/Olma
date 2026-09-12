@@ -130,6 +130,31 @@ function sig4(v) {
   return v === null || !Number.isFinite(v) ? v : Number(v.toPrecision(4));
 }
 
+// ── The eval user is not a user, and its traffic is not our efficiency ───────
+// Every ratio here divides spend by activity, so both halves have to describe
+// the SAME population or the number means nothing. The model pilots
+// (`docs/model-experiments.md`) run as `users.is_eval` — a benchmarking
+// harness, whose cost per message is a property of whichever model is on
+// trial that week and has no relation to what serving people costs.
+//
+// Left in, it drove a false alert on 2026-09-08: `cost_per_message` read
+// $0.0411 against a $0.0155 baseline and named deepseek-v4-flash, the cheapest
+// thing on the board. The day was 52 real messages at $0.9136 — $0.0176 each,
+// on its own baseline — plus 68 eval messages at $4.0050, and the two were
+// added together. Worse, the advice that came back was to trim the
+// conversation history real users get, to fix an overrun that was never theirs.
+//
+// So the eval user leaves the numerator and the denominator TOGETHER. Dropping
+// it from one alone would swap this alert for its mirror image.
+//
+// It does not leave the report. `evalCost` rides every day and every alert
+// unratio'd, because $4 of spend that no metric can see any more is this
+// repo's own oldest failure shape — a check that goes quiet reads exactly like
+// a check that passed. `NOT EXISTS` rather than a join: a `usage_ledger` row
+// with a NULL `user_id` is real spend with nobody to bill it to, and an inner
+// join would silently drop it.
+const NOT_EVAL = (col) => `NOT EXISTS (SELECT 1 FROM users u WHERE u.id = ${col} AND u.is_eval)`;
+
 // One row per day: the four ratios plus the denominators that produced them,
 // so a later reading can tell "the cost doubled" from "the traffic halved".
 async function dailyRatios(client, days) {
@@ -138,17 +163,22 @@ async function dailyRatios(client, days) {
        SELECT generate_series((current_date - ($1::int - 1))::date, current_date, '1 day')::date AS d
      ),
      msgs AS (
-       SELECT (created_at AT TIME ZONE 'UTC')::date AS d, count(*)::bigint AS n
-         FROM audit_log WHERE event = 'message.received'
-          AND created_at >= current_date - ($1::int - 1)
+       SELECT (a.created_at AT TIME ZONE 'UTC')::date AS d,
+              count(*) FILTER (WHERE ${NOT_EVAL('a.actor_id')})::bigint AS n,
+              count(*) FILTER (WHERE NOT ${NOT_EVAL('a.actor_id')})::bigint AS eval_n
+         FROM audit_log a WHERE a.event = 'message.received'
+          AND a.created_at >= current_date - ($1::int - 1)
         GROUP BY 1
      ),
      usr AS (
-       SELECT date AS d,
-              sum(input_tokens + cache_read_tokens + cache_write_tokens)::bigint AS in_tok,
-              sum(cache_read_tokens)::bigint AS cache_tok,
-              sum(cost_usd)::numeric AS cost
-         FROM usage_ledger WHERE date >= current_date - ($1::int - 1) GROUP BY 1
+       SELECT l.date AS d,
+              sum(l.input_tokens + l.cache_read_tokens + l.cache_write_tokens)
+                FILTER (WHERE ${NOT_EVAL('l.user_id')})::bigint AS in_tok,
+              sum(l.cache_read_tokens)
+                FILTER (WHERE ${NOT_EVAL('l.user_id')})::bigint AS cache_tok,
+              sum(l.cost_usd) FILTER (WHERE ${NOT_EVAL('l.user_id')})::numeric AS cost,
+              sum(l.cost_usd) FILTER (WHERE NOT ${NOT_EVAL('l.user_id')})::numeric AS eval_cost
+         FROM usage_ledger l WHERE l.date >= current_date - ($1::int - 1) GROUP BY 1
      ),
      sys AS (
        SELECT date AS d, sum(cost_usd)::numeric AS cost
@@ -156,9 +186,11 @@ async function dailyRatios(client, days) {
      )
      SELECT days.d::text AS date,
             coalesce(msgs.n, 0)::bigint      AS messages,
+            coalesce(msgs.eval_n, 0)::bigint AS eval_messages,
             coalesce(usr.in_tok, 0)::bigint  AS in_tokens,
             coalesce(usr.cache_tok, 0)::bigint AS cache_tokens,
             coalesce(usr.cost, 0)::float8    AS user_cost,
+            coalesce(usr.eval_cost, 0)::float8 AS eval_cost,
             coalesce(sys.cost, 0)::float8    AS system_cost
        FROM days
        LEFT JOIN msgs ON msgs.d = days.d
@@ -177,6 +209,9 @@ async function dailyRatios(client, days) {
       inTokens: inTok,
       userCost: Number(r.user_cost),
       systemCost: Number(r.system_cost),
+      // Carried, never divided. See NOT_EVAL above.
+      evalCost: Number(r.eval_cost),
+      evalMessages: Number(r.eval_messages),
       // null, never 0, on a day with no denominator. A zero here would read as
       // "perfectly efficient" and drag every baseline down with it — the same
       // rule the cost page's `remaining: null` follows.
@@ -293,6 +328,11 @@ function crossings(history, today) {
 // The investigation, and it is deliberately plain SQL rather than anything
 // clever: which models and which users moved, on the day it moved. This is the
 // evidence a person would go and pull by hand, gathered before anyone has to.
+//
+// It measures the same population the ratios do. A model list that included the
+// eval user is how 2026-09-08's report came to name three models the metric had
+// never been about, and rank the one real users were on THIRD — reading, to
+// anybody who saw the list, as the confession of an expensive day.
 async function evidence(client, date) {
   const [models, users] = await Promise.all([
     client.query(
@@ -300,12 +340,13 @@ async function evidence(client, date) {
               sum(input_tokens + cache_read_tokens + cache_write_tokens)::bigint AS in_tokens,
               sum(cache_read_tokens)::bigint AS cache_tokens,
               sum(cost_usd)::float8 AS cost
-         FROM usage_ledger WHERE date = $1::date
+         FROM usage_ledger l WHERE date = $1::date AND ${NOT_EVAL('l.user_id')}
         GROUP BY model ORDER BY cost DESC LIMIT 5`, [date]),
     client.query(
       `SELECT user_id, sum(cost_usd)::float8 AS cost,
               sum(input_tokens + cache_read_tokens + cache_write_tokens)::bigint AS in_tokens
-         FROM usage_ledger WHERE date = $1::date AND user_id IS NOT NULL
+         FROM usage_ledger l WHERE date = $1::date AND user_id IS NOT NULL
+          AND ${NOT_EVAL('l.user_id')}
         GROUP BY user_id ORDER BY cost DESC LIMIT 5`, [date]),
   ]);
   return {
@@ -340,6 +381,13 @@ function briefFor(crossed, today, ev, promptChars) {
   return [
     'You are looking at cost telemetry for a small WhatsApp assistant',
     `(${today.messages} inbound messages on the latest day, ${ev.users.length} paying users measured).`,
+    // Stated, so the model cannot reach for the pilot as an explanation of a
+    // number the pilot is not in — and cannot propose cutting real users'
+    // context to pay for it, which is what it did on 2026-09-08.
+    ...(today.evalCost > 0 ? [
+      `Benchmark traffic from the eval harness (${usd(today.evalCost)} that day) is EXCLUDED from every`,
+      'number here, on both sides of every ratio. Do not explain these figures with it.',
+    ] : []),
     '',
     // `!== 'trend'`, never `=== 'spike'`: an entry that reaches here without a
     // kind is a caller this function does not know about, and the one outcome
@@ -405,6 +453,13 @@ function reportText(crossed, day, ev, advice) {
     for (const m of ev.models.slice(0, 3)) {
       lines.push(`• ${m.model} — ${usd(m.cost)}, מטמון ${pct(m.cacheRate)}`);
     }
+  }
+  // Named because it is NOT in anything above it. On a pilot day this is the
+  // largest number on the board, and an operator who knows the day was
+  // expensive and reads a report that never mentions it concludes the watch is
+  // broken — which, until this line existed, it was, in the other direction.
+  if (day.evalCost > 0) {
+    lines.push('', `ניסויי מודלים באותו יום: ${usd(day.evalCost)} על ${day.evalMessages} הודעות — לא נכללים באף מספר למעלה.`);
   }
   if (advice) lines.push('', advice.trim());
   // Said every time, because it is the thing that would otherwise be assumed
@@ -480,6 +535,10 @@ async function run(client, deps = {}) {
     messages: day.messages,
     crossed: crossed.length,
     observed: observed.map((c) => `${c.key}:${c.kind}`),
+    // The one place the excluded spend is visible on a tick that alerts about
+    // nothing. Four characters of key for the difference between "the pilots
+    // cost nothing today" and "no metric here can see them any more".
+    evalUsd: sig4(day.evalCost),
     ...extra,
     // Reported every tick even when nothing crossed, so the ratios are numbers
     // an operator watches drift rather than news they hear once. A watch that
@@ -536,6 +595,12 @@ async function run(client, deps = {}) {
         maxTokens: 2000,
       });
       advice = res && res.ok && res.text ? String(res.text).trim().slice(0, 600) : null;
+      // Advice cut mid-sentence is not advice, and it reads as advice: the
+      // report would print half a recommendation with nothing marking it as
+      // half. This is the only consumer whose failure a PERSON sees, so it is
+      // the only one where the ceiling has to be a discard and not just a
+      // note. The numbers above it are unaffected — they never came from here.
+      if (res && res.finishReason === 'length') advice = null;
       // Recorded even though it is a hundredth of a cent: a direct call has no
       // transcript for the usage sweep to find, so unrecorded spend does not
       // exist on paper (migration 012's whole lesson). It belongs in the SYSTEM
@@ -616,5 +681,5 @@ async function run(client, deps = {}) {
 module.exports = {
   run, dailyRatios, crossings, trendFor, escalate, median, evidence, reportText, briefFor,
   METRICS, BASELINE_DAYS, TREND_RECENT_DAYS, TREND_FACTOR, ALERTED_FLAG, MONEY_KEY,
-  SELF_AGENT_ID,
+  SELF_AGENT_ID, NOT_EVAL,
 };
