@@ -666,7 +666,7 @@ test('reactions: what cannot end in a like stays out of the table, by reason', (
   //    tool is not yet in a position to say.
   for (const name of ['share_task_with', 'send_message_to_connection',
     'start_meeting_coordination', 'propose_meeting_slot', 'respond_to_meeting_slot',
-    'decide_meeting_option', 'settle_meeting', 'respond_to_connection_request']) {
+    'remove_meeting_option', 'settle_meeting', 'respond_to_connection_request']) {
     assert.equal(marked(name), false, `${name} is waiting on another person`);
   }
 

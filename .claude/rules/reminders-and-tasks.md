@@ -79,13 +79,33 @@ title means this file. Grep the title, not the filename.
   ladders for one phone call").
 
 - **A meeting negotiates several options (`domain/meeting-options.js`, up to
-  four; a fifth from a non-initiator waits for the initiator). The single-slot
-  columns `meetings.proposed_slot/proposed_start_at` and
+  five, and everybody in the coordination may add one or take one off). The
+  single-slot columns `meetings.proposed_slot/proposed_start_at` and
   `meeting_participants.state` are MIRRORS of the newest active option** —
   read them if you like, but write only through the options module
-  (`add/answer/approve/reject/swap`), which re-mirrors after every change.
+  (`add/answer/remove/swap`), which re-mirrors after every change.
   A yes must name one of the options on the table; the meeting confirms the
   moment one option is unanimous among the people still in it.
+  **A sixth option is refused to EVERYBODY, the initiator included, and the
+  refusal carries the five** — the answer to a full table is a question ("which
+  of these goes?"), which `swap` answers in one transaction. What this replaced
+  on 2026-09-09: a fifth from a non-initiator waited as `pending` for the
+  initiator to `approve` (naming what it replaced) or `reject`. That mechanism
+  is deleted, and it had never run for a real person — 8 option rows in the
+  whole history of the feature, every one `active`, and no `meeting.option_
+  approved` or `option_rejected` row in the audit log (measured on the box).
+
+- **A time taken OFF that table is never a message of its own** (owner,
+  2026-09-09) — the commonest removal is somebody taking back a time they typed
+  a minute ago. It rides the next thing each person hears about that
+  coordination (`meeting-fanout.withRemovals` → `options.unheardRemovals`, per
+  recipient at enqueue, appended once in `channels/openclaw.removedClause`
+  rather than written into eight templates), and `getStatus` carries it for
+  anybody who ASKS. **The baseline is the last message about that coordination
+  that actually REACHED them** (`sent_at` set, `hold_reason` null) — a row the
+  gate held reached nobody, so the next one that lands says it again — and
+  nobody is told about their own removal. `meeting_options.removed_by`
+  (migration 063) exists so the name is in the same query as the slot.
 
 - **An explicit reminder replaces the automatic one only on the SAME local
   day; on another day it stands beside it.** Both are otherwise about catching

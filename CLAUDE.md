@@ -182,7 +182,9 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **…and "what is still going to REACH them" is a THIRD question, which `attempts = 0` answers wrongly.**
 - **Moving a task's date answers every rung that was chasing the old one.**
 - **A task chases through ONE ladder — the one behind the LATEST reminder they asked for.**
-- **A meeting negotiates several options (`domain/meeting-options.js`, up to four; a fifth from a non-initiator waits for the initiator). The single-slot columns `meetings.proposed_slot/proposed_start_at` and `meeting_participants.state` are MIRRORS of the newest active option**
+- **A meeting negotiates several options (`domain/meeting-options.js`, up to five, and everybody in the coordination may add one or take one off). The single-slot columns `meetings.proposed_slot/proposed_start_at` and `meeting_participants.state` are MIRRORS of the newest active option**
+- **A sixth option is refused to EVERYBODY, the initiator included, and the refusal carries the five.**
+- **A time taken OFF that table is never a message of its own — it rides the next thing each person hears about that coordination.**
 - **An explicit reminder replaces the automatic one only on the SAME local day; on another day it stands beside it.**
 - **An event is SAID, never only guessed, and it is never told back as a task.**
 - **A task already OPEN on somebody's list is never saved a second time.**

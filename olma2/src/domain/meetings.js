@@ -486,7 +486,15 @@ async function getStatus(client, userId, meetingId) {
       : shareableTexts(row.constraints),
     availability: avail.get(Number(row.user_id)) || [],
   }));
-  return ok({ meeting: m.rows[0], participants, options: await options.list(client, meetingId) });
+  // What came OFF the table travels with what is on it. A removal sends
+  // nobody a message (owner, 2026-09-09), so somebody asking what is going on
+  // is one of the two places the fact is ever said — and without it a person
+  // hunting for a time they remember is told nothing at all.
+  return ok({
+    meeting: m.rows[0], participants,
+    options: await options.list(client, meetingId),
+    removedOptions: await options.removed(client, meetingId),
+  });
 }
 
 async function listMine(client, userId) {

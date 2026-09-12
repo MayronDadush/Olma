@@ -370,18 +370,15 @@ const ACTIONS = {
     return meetingFanout.afterSettled(client, p.meetingId, res, { actor: me });
   },
 
-  async approveOption(client, userId, p) {
-    const res = await meetings.options.approve(client, userId, p.meetingId, p.optionId, p.replaceOptionId || null);
+  // The swipe on a row, and the trash a desktop hover shows. Anyone in the
+  // coordination may take any time off the table (owner, 2026-09-09), so the
+  // page never has to decide whose row it is — the domain refuses only
+  // somebody who is not in the coordination at all.
+  async removeOption(client, userId, p) {
+    const res = await meetings.options.remove(client, userId, p.meetingId, p.optionId);
     if (!res.ok) return res;
     const me = await users.getById(client, userId);
-    return meetingFanout.afterOptionDecision(client, me, p.meetingId, res, { approved: true });
-  },
-
-  async rejectOption(client, userId, p) {
-    const res = await meetings.options.reject(client, userId, p.meetingId, p.optionId);
-    if (!res.ok) return res;
-    const me = await users.getById(client, userId);
-    return meetingFanout.afterOptionDecision(client, me, p.meetingId, res, { approved: false });
+    return meetingFanout.afterOptionRemoved(client, me, p.meetingId, res);
   },
 
   async swapOption(client, userId, p) {

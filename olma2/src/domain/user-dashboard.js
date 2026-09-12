@@ -449,14 +449,15 @@ async function loadMeetings(client, userId, zone) {
     [ids]
   );
   // Every candidate time, in the page's own terms: a day offset from THIS
-  // person's today and a clock time or daypart, with everyone's answers. A
-  // pending one (a fifth from a non-initiator) travels flagged; the page shows
-  // it to the initiator as a decision and to its proposer as a receipt.
+  // person's today and a clock time or daypart, with everyone's answers. What
+  // is on the table is the whole story since 2026-09-09 — a time somebody
+  // removed is gone for everybody, and there is no longer any option that
+  // exists for one reader and not another.
   const { rows: optRows } = await client.query(
     `SELECT o.id, o.meeting_id, o.slot_text, o.starts_at, o.all_day, o.daypart, o.added_by, o.status,
             coalesce(json_object_agg(a.user_id, a.answer) FILTER (WHERE a.user_id IS NOT NULL), '{}'::json) AS answers
        FROM meeting_options o LEFT JOIN meeting_option_answers a ON a.option_id = o.id
-      WHERE o.meeting_id = ANY($1::bigint[]) AND o.status IN ('active', 'pending')
+      WHERE o.meeting_id = ANY($1::bigint[]) AND o.status = 'active'
       GROUP BY o.id ORDER BY o.id`, [ids]);
   const optionsBy = new Map();
   for (const o of optRows) {
@@ -464,7 +465,7 @@ async function loadMeetings(client, userId, zone) {
     const pick = optionMoment.pickFor(zone, o.starts_at);
     optionsBy.get(o.meeting_id).push({
       id: Number(o.id), day: pick.day, time: o.all_day || o.daypart ? null : pick.time,
-      part: o.daypart || null, allDay: Boolean(o.all_day), pending: o.status === 'pending',
+      part: o.daypart || null, allDay: Boolean(o.all_day),
       by: o.added_by === null ? null : Number(o.added_by), slot: o.slot_text, startsAt: o.starts_at,
       answers: o.answers || {},
     });
