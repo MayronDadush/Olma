@@ -216,3 +216,33 @@ test('the row draws the rules the design decided', () => {
   assert.match(page, /m\.quorumMin \+ 1 > people \? null : m\.quorumMin \+ 1/,
     'past the top it returns to no minimum');
 });
+
+// Leaving is opting OUT; the initiator's only door is cancel_meeting, and
+// that is chat-only (see the swipe-shell CSS comment above). The server has
+// always refused a leave from them — what was missing is the page ever
+// finding that out: it offered the button anyway, appeared to remove the
+// row, and then watched it come back on the next reload with nothing said.
+// tests/user-dashboard-meetings.test.js pins the server side of this; these
+// pin that the served page actually stopped offering the doomed call.
+test('the page never offers a leave it knows the server will refuse', () => {
+  const page = fs.readFileSync(
+    path.join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
+
+  // The sheet's leave button is hidden for the coordination's own initiator,
+  // with an explanation drawn in its place rather than nothing at all.
+  assert.match(page, /var own = m\.by === 0;/, 'the sheet knows whose row this is');
+  assert.match(page, /\$\("#mtLeave"\)\.hidden = own;/, 'and hides the doomed button for them');
+  assert.match(page, /\$\("#mtOwnNote"\)\.hidden = !own;/, 'replacing it with a reason, not silence');
+
+  // The row's quick-leave X is never drawn at all for a coordination this
+  // person started — there is nothing on the list screen that would open the
+  // confirm-and-fail loop.
+  assert.match(page, /m\.by === 0 \? "" :\s*\n\s*'<button class="mtx" data-mtleave=/,
+    'the row omits its own X rather than wiring one that always fails');
+
+  // Belt and suspenders: even if something still calls it, leaving your own
+  // coordination is a no-op rather than an optimistic remove that a reload
+  // then undoes.
+  assert.match(page, /function mtLeave\(m\)\{\s*\n(?:[^\n]*\n)*?\s*if\(m\.by === 0\) return;/,
+    'mtLeave refuses to touch a row you initiated');
+});

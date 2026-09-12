@@ -2669,6 +2669,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
   <!-- Two exits that must never read alike. One clears your own calendar and
        nobody else notices; the other tells four people you are not coming. -->
+  <p class="note" id="mtOwnNote" style="padding:0 14px 10px" hidden></p>
   <div class="sheetbtns wrap">
     <button class="btn ghost" id="mtCal" hidden></button>
     <button class="btn ghost danger" id="mtLeave"></button>
@@ -3353,6 +3354,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.minNone":"בלי מינימום","mt.minSet":"מספיק לי {n} מתוך {of}",
       "toast.mtRemoved":"ירד מהשולחן — {when}","toast.mtRemoveFailed":"לא הצלחתי להוריד את המועד",
       "mt.leave":"יציאה מהתיאום",
+      "mt.ownNote":"פתחת את התיאום הזה — לביטול שלו לכולם, תכתוב לעולמה בצ׳אט.",
       "mt.calAdd":"הוספה ליומן שלי","mt.calRemove":"הסרה מהיומן שלי",
       "mt.whenLbl":"מתי ביום","mt.exact":"שעה מדויקת",
       "mt.allDayRow":"אירוע של יום שלם","mt.allDaySub":"בלי שעות — היום כולו",
@@ -3382,7 +3384,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.mtGroup":"{name} — {n} חברים נוספו",
       "toast.mtOptAdded":"נוסף — {when}",
       "toast.mtSwapped":"{out} הוחלף ב{in}",
-      "toast.mtLeft":"יצאת מ{name}","toast.mtWhen":"סומנו {n} ימים",
+      "toast.mtLeft":"יצאת מ{name}","toast.mtLeaveFailed":"לא הצלחתי להוציא אותך מ{name}",
+      "toast.mtWhen":"סומנו {n} ימים",
       "toast.mtCalAdd":"נוסף ליומן שלך","toast.mtCalGone":"הוסר מהיומן שלך",
       "toast.mtStarted":"נשלחה בקשה ל{list} — כשיענו זה יופיע כאן",
       "toast.mtConfirmed":"נקבע — {when}. כולם קיבלו הודעה.",
@@ -3593,6 +3596,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.minNone":"No minimum","mt.minSet":"{n} of {of} is enough",
       "toast.mtRemoved":"Off the table — {when}","toast.mtRemoveFailed":"Could not take that time off",
       "mt.leave":"Leave the coordination",
+      "mt.ownNote":"You started this one — to cancel it for everyone, message Olma in chat.",
       "mt.calAdd":"Add to my calendar","mt.calRemove":"Remove from my calendar",
       "mt.whenLbl":"Time of day","mt.exact":"Exact time",
       "mt.allDayRow":"A whole-day event","mt.allDaySub":"No hours \u2014 the day itself",
@@ -3622,7 +3626,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.mtGroup":"{name} \u2014 {n} people added",
       "toast.mtOptAdded":"Added \u2014 {when}",
       "toast.mtSwapped":"{out} replaced by {in}",
-      "toast.mtLeft":"You left {name}","toast.mtWhen":"{n} days marked",
+      "toast.mtLeft":"You left {name}","toast.mtLeaveFailed":"Could not take you off {name}",
+      "toast.mtWhen":"{n} days marked",
       "toast.mtCalAdd":"Added to your calendar","toast.mtCalGone":"Removed from your calendar",
       "toast.mtStarted":"Request sent to {list} — answers show up here",
       "toast.mtConfirmed":"Settled \u2014 {when}. Everyone has been told.",
@@ -6154,8 +6159,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       '<span class="mtstate"><em class="mtpill ' + st + '">' + esc(t("mt.pill." + st)) + "</em>" +
       esc(mtState(m)) + "</span></span>" +
       '<svg class="chev"><use href="#i-chev"/></svg></button>' +
-      '<button class="mtx" data-mtleave="' + m.id + '" aria-label="' + esc(t("mt.leave")) + '">' +
-      '<svg><use href="#i-x"/></svg></button></div></div>';
+      /* Not on a coordination you started — the server refuses that leave
+         every time (cancel_meeting is the only door out, and it is chat
+         only), so this X would open the confirm, appear to work, and then
+         watch the row come straight back with no explanation. */
+      (m.by === 0 ? "" :
+        '<button class="mtx" data-mtleave="' + m.id + '" aria-label="' + esc(t("mt.leave")) + '">' +
+        '<svg><use href="#i-x"/></svg></button>') + "</div></div>";
   }
   /* A coordination you left, reduced to what putting yourself back in needs:
      a title and an id. Deliberately NOT a card — a card shows the tally, and
@@ -6506,8 +6516,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
        actually find the event. */
     $("#mtCal").hidden = LIVE || !m.settled;
     $("#mtCal").textContent = t(m.inCal ? "mt.calRemove" : "mt.calAdd");
+    /* Leaving is opting yourself out — the server refuses it from whoever
+       started the coordination (cancel_meeting is their door, and it is chat
+       only, see the swipe-shell CSS above), so offering the same button here
+       would just watch the row vanish and come straight back with nothing
+       said about why. */
+    var own = m.by === 0;
     $("#mtLeave").textContent = t("mt.leave");
-    $("#mtLeave").hidden = false;
+    $("#mtLeave").hidden = own;
+    $("#mtOwnNote").textContent = own ? t("mt.ownNote") : "";
+    $("#mtOwnNote").hidden = !own;
     paintCue($("#mtSheet"), $("#mtCue"));
   }
   function mtById(id){ return MEETS.filter(function(m){ return m.id === id; })[0] || null; }
@@ -6713,10 +6731,23 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      group has to be able to see why the tally dropped, and it stays greyed for
      them until somebody invites them back. */
   function mtLeave(m){
+    /* Whoever started it has no door out through this button — the server
+       refuses every time (see renderMeet's #mtLeave gate) — so this is only
+       the belt to that braces's suspenders: nothing here should ever run for
+       an own row, but silently drawing it gone would be worse than a no-op. */
+    if(m.by === 0) return;
     if(m.left.indexOf(0) < 0) m.left.push(0);
     delete m.ans[0];
     API.call("leaveMeeting", {meeting_id:m.id});
-    API.send("leaveMeeting", {meetingId:m.id});
+    /* Unlike the fire-and-forget calls above, a failure here is told to the
+       person: the row already left the screen and went to the archive, and a
+       refusal that just reloaded in silence would look exactly like the bug
+       this replaced — a coordination that quietly reappears with no reason
+       given. */
+    API.send("leaveMeeting", {meetingId:m.id}, function(data){
+      if(!data) toast(t("toast.mtLeaveFailed", {name:L(m.t)}));
+      API.reload();
+    });
     MEETS = MEETS.filter(function(x){ return x !== m; });
     /* It goes to the archive rather than out of existence. Newest first, the
        way the task archive orders it. */
