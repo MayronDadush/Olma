@@ -414,7 +414,7 @@ const TOOL_MARKS = Object.freeze({
 // 2. It is not finished, it is WAITING on somebody else. `share_task_with`,
 //    `send_message_to_connection` ("say it is on its way, never that it
 //    already arrived"), and every step of a meeting NEGOTIATION —
-//    propose/respond/decide/settle, plus `respond_to_connection_request`
+//    propose/respond/remove/settle, plus `respond_to_connection_request`
 //    (the OTHER side's own decision). 👍 there says "done" about something
 //    that is not. `request_connection` looks like it belongs here and does
 //    not: it is ⏰ above, on the same generalised definition as

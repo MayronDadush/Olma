@@ -818,7 +818,7 @@ test('get_meeting_status draws the numbered choice through the real tool', async
   assert.match(res.data.hints.gone, /struck through/);
 });
 
-test('one active option is a sentence, not a numbered block — even with a pending fifth waiting', async () => {
+test('one active option is a sentence, not a numbered block', async () => {
   const { BY_NAME } = require('../src/adapters/mcp/registry');
   const m = (await withClient((c) => meetings.startMeeting(c, alice.id, 'קפה', [bob.id]))).data.meeting;
   await withClient((c) => meetings.proposeSlot(c, alice.id, m.id, 'יום חמישי 10:00', slotStart('יום חמישי 10:00')));
@@ -828,7 +828,7 @@ test('one active option is a sentence, not a numbered block — even with a pend
   assert.equal(res.data.hints, undefined, 'one option, nothing to say about layout either');
 });
 
-test('a PENDING fifth option is never numbered — it is not yet open for anyone to vote on', async () => {
+test('all five active options are numbered, whoever put them there', async () => {
   const { BY_NAME } = require('../src/adapters/mcp/registry');
   // Alice and bob are already connected with `meetings` granted (top-level
   // before()); only Eve needs a fresh connection.
@@ -843,12 +843,14 @@ test('a PENDING fifth option is never numbered — it is not yet open for anyone
   for (let i = 0; i < 4; i++) {
     await withClient((c) => meetings.proposeSlot(c, alice.id, m.id, `אופציה ${i}`, slotStart(`אופציה ${i}`, { hours: (i + 1) * 24 })));
   }
-  // The table is full (4 active); a fifth from a non-initiator waits pending.
+  // The fifth comes from somebody who did not open the coordination, and it
+  // lands on the table exactly like the other four — there is no state in
+  // which an option exists for one reader and not another.
   const fifth = await withClient((c) => meetings.proposeSlot(c, eve.id, m.id, 'הצעה חמישית', slotStart('הצעה חמישית', { hours: 200 })));
   assert.ok(fifth.ok, JSON.stringify(fifth.error));
 
   const res = await withClient((c) => BY_NAME.get('get_meeting_status').handler(c, alice, { meeting_id: m.id }));
-  assert.equal(res.data.options.length, 5, 'the pending one is still IN the result, for the initiator to decide');
-  assert.ok(!res.data.block.includes('הצעה חמישית'), 'but it earns no number — nobody may vote on it yet');
-  assert.equal((res.data.block.match(/^\d+\. /gm) || []).length, 4);
+  assert.equal(res.data.options.length, 5);
+  assert.ok(res.data.block.includes('הצעה חמישית'), 'anybody may vote on it, so it earns a number');
+  assert.equal((res.data.block.match(/^\d+\. /gm) || []).length, 5);
 });
