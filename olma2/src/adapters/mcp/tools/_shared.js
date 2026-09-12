@@ -46,6 +46,7 @@ const flags = require('../../../domain/flags');
 const { ok, err } = require('../../../domain/results');
 const { scrubTokens } = require('../render');
 const { IDENTITY_PARAM } = require('../identity-param');
+const dt = require('../../../domain/datetime');
 
 const { ICON_NAMES } = scheduleCard;
 
@@ -99,6 +100,29 @@ function stale(result, when) {
   return result;
 }
 
+// The moment is well-formed, carries the right offset, and has already gone.
+// Shared by every tool that takes a model-authored ISO instant on a live task
+// or reminder (reminders.js's remind_at; tasks.js's due_at/new_due_at) — see
+// reminders.js's own comment (and CLAUDE.md, "An explicit reminder replaces
+// the automatic one only on the SAME local day") for why the refusal lives at
+// the TOOL boundary rather than in the domain: our own sweeps, repairs and
+// tests arm past moments legitimately, only a model asking for one is a
+// mistake. `note` says what staying untouched means for THIS call — a
+// reminder tool has no reminder to speak of, a task edit has no changed task.
+const pad = (n) => String(n).padStart(2, '0');
+function pastMoment(label, value, tz, note) {
+  const fmt = (d) => {
+    const p = dt.partsInZone(tz || 'Asia/Jerusalem', d);
+    return `${p.y}-${pad(p.m)}-${pad(p.d)} ${pad(p.hh)}:${pad(p.mi)}`;
+  };
+  return err('invalid',
+    `${label} is already past: ${fmt(new Date(value))} in their timezone, where it is `
+    + `now ${fmt(new Date())}. NOTHING was changed — ${note}. Send the moment you actually `
+    + 'mean, ISO-8601 with their offset. If you meant right now, say it in words instead of '
+    + 'arming it for a moment already gone.',
+    { reason: `${label}_in_past` });
+}
+
 function tool(name, description, props, required, handler) {
   return {
     name,
@@ -142,5 +166,5 @@ async function connectedUserByPhone(client, actorId, phone, feature) {
 
 
 module.exports = {
-  users, onboardingDomain, selfInitiated, tasks, reminders, preferences, connections, grants, shares, meetings, availability, dashboardAuth, issues, digest, quota, calendar, taskCalendar, googleContacts, mail, googleConnect, scheduleCard, media, liveUpdates, pause, voice, relay, cardStore, facts, searchLink, contacts, reactions, audit, meetingFanout, S, ok, err, scrubTokens, IDENTITY_PARAM, ICON_NAMES, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, meetingCalendarFanout, calendarRoleFor, cancelCalendarCleanup, calendarHintFor, meetingBrief, CANCEL_CLEANUP_HINTS, captureDisplayName, stale, tool, groupTool, groups, groupMeetings, connectedUserByPhone, flags,
+  users, onboardingDomain, selfInitiated, tasks, reminders, preferences, connections, grants, shares, meetings, availability, dashboardAuth, issues, digest, quota, calendar, taskCalendar, googleContacts, mail, googleConnect, scheduleCard, media, liveUpdates, pause, voice, relay, cardStore, facts, searchLink, contacts, reactions, audit, meetingFanout, S, ok, err, scrubTokens, IDENTITY_PARAM, ICON_NAMES, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, meetingCalendarFanout, calendarRoleFor, cancelCalendarCleanup, calendarHintFor, meetingBrief, CANCEL_CLEANUP_HINTS, captureDisplayName, stale, tool, groupTool, groups, groupMeetings, connectedUserByPhone, flags, pastMoment,
 };

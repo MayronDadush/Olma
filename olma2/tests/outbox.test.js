@@ -263,6 +263,48 @@ test('gate: a quiet day releases into the next day they kept, not the next morni
   assert.equal(withinWindow(DAY, 'Asia/Jerusalem', held.releaseAfter), true);
 });
 
+// facts.shabbatWindow is what an Israeli zone's Saturday becomes instead of
+// the plain weekday check (worker.js resolves it via holidays.shabbatWindow
+// and strips 6 out of quietDays when it does) — candle-lighting to havdalah,
+// both edges precise, replacing a calendar-day boundary that either missed
+// Friday evening or ran the hold into Sunday.
+const shabbat = { start: new Date('2026-08-14T16:06:00Z'), end: new Date('2026-08-15T17:04:00Z') };
+
+test('gate: the Shabbat window holds from candle-lighting, not from midnight', () => {
+  // Friday afternoon, before candle-lighting: an ordinary message, delivered.
+  const beforeCandles = { ...baseFacts, now: new Date('2026-08-14T12:00:00Z'), quietDays: [], shabbatWindow: shabbat };
+  assert.equal(decide({ ...beforeCandles, row: row() }).action, 'deliver');
+
+  // The instant candle-lighting starts, held — urgency buys nothing, same as
+  // the weekday version of this rule.
+  const atCandles = { ...baseFacts, now: shabbat.start, quietDays: [], shabbatWindow: shabbat };
+  assert.equal(decide({ ...atCandles, row: row({ urgency: 'urgent' }) }).holdReason, 'quiet_day');
+});
+
+test('gate: the Shabbat window releases at havdalah, not at the next calendar day', () => {
+  // A round-the-clock window, so the release is purely about havdalah and not
+  // entangled with a separate "did their window happen to be open" question —
+  // that combination already has its own test above (msUntilWindowOpen).
+  const allDay = { start: '00:00', end: '23:59' };
+
+  // Held mid-afternoon Saturday: the release is havdalah itself (20:04 local
+  // that day), never "24 hours from now" or "tomorrow morning" — the fault
+  // that left a real meeting confirmation sitting until Sunday evening
+  // (owner, 2026-09-12).
+  const midSaturday = {
+    ...baseFacts, window: allDay, now: new Date('2026-08-15T12:00:00Z'), quietDays: [], shabbatWindow: shabbat,
+  };
+  const held = decide({ ...midSaturday, row: row({ kind: 'meeting_confirmed', urgency: 'urgent' }) });
+  assert.equal(held.holdReason, 'quiet_day');
+  assert.equal(held.releaseAfter.toISOString(), shabbat.end.toISOString());
+
+  // A moment after havdalah: not quiet any more, delivers straight away.
+  const afterHavdalah = {
+    ...baseFacts, window: allDay, now: new Date('2026-08-15T17:05:00Z'), quietDays: [], shabbatWindow: shabbat,
+  };
+  assert.equal(decide({ ...afterHavdalah, row: row() }).action, 'deliver');
+});
+
 // A holiday reaches the gate as DATES, not as a weekday, and is otherwise the
 // same rule with the same exemption — the hold_reason is the only difference,
 // so the dashboard can tell "Saturday" from "Yom Kippur" without a second rule
@@ -923,11 +965,14 @@ test('worker: a quiet day nobody asked for still reaches the gate, off the users
   const checkin = rows.find((r) => r.k === 'quiet:default:checkin');
   assert.equal(checkin.hold_reason, 'quiet_day',
     'nobody wrote a preference row, and Saturday held it anyway');
-  // Held, never dropped, and it wakes on a day they kept.
+  // Held, never dropped — and for an Israeli zone the wake is havdalah itself
+  // (2026-08-15 is 20:04 local), not a calendar-day boundary into Sunday
+  // (owner, 2026-09-12: the quiet window is candle-lighting to havdalah).
   const releaseDay = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Jerusalem', weekday: 'short',
   }).format(checkin.release_after);
-  assert.equal(releaseDay, 'Sun');
+  assert.equal(releaseDay, 'Sat');
+  assert.equal(new Date(checkin.release_after).toISOString(), '2026-08-15T17:03:32.000Z');
 
   // And saying so is the one way out: "none" is an answer, an empty row is not.
   const prefs = require('../src/domain/preferences');

@@ -79,6 +79,7 @@ never trust a dated narrative for something you are about to act on.
 - [WhatsApp reactions arrive and are thrown away (measured 2026-08-29)](#whatsapp-reactions-arrive-and-are-thrown-away-measured-2026-08-29)
 - [Proactive delivery needs --to as well (fixed 2026-08-18)](#proactive-delivery-needs---to-as-well-fixed-2026-08-18)
 - [Repeating reminders were silently one-shot (fixed 2026-08-18)](#repeating-reminders-were-silently-one-shot-fixed-2026-08-18)
+- [A confirmed meeting sat quiet a full extra day (fixed 2026-09-12)](#a-confirmed-meeting-sat-quiet-a-full-extra-day-fixed-2026-09-12)
 
 **Stopping, pausing and doctrine**
 
@@ -3027,6 +3028,50 @@ values and revived the dropped occurrences. **Superseded in part 2026-08-29**
 and `monthly:last`, and `nextOccurrence` takes the user's timezone — the
 vocabulary listed here as `daily | weekly | weekly:MO,TH | NULL` is no longer
 the whole of it.
+
+### A confirmed meeting sat quiet a full extra day (fixed 2026-09-12)
+
+מירון confirmed a meeting with גלי from his own dashboard on a Saturday; both
+outbox rows (`meeting_confirmed`) went to `hold_reason = 'quiet_day'` exactly
+as designed — but `release_after` came back as 2026-09-13 15:44 UTC, roughly
+24 hours later, landing Sunday **evening** rather than anywhere near when
+Shabbat actually ended that Saturday night. `msUntilQuietDaysEnd` was never
+wrong on its own terms (`tests/outbox.test.js`, "releases into the next day
+they kept, not the next morning" — deliberately not the next morning) — it
+steps forward in fixed 24-hour jumps from the moment the row was held and
+returns the first jump that lands on a non-quiet weekday, which for a
+calendar-day Saturday is correct but coarse: it cannot answer "a few hours
+from now," only "roughly a day from now."
+
+Fixed by replacing the calendar-day proxy with the real thing, for an Israeli
+zone specifically (`holidays.isIsrael`) — a diaspora Jewish user's Saturday is
+untouched. `holidays.shabbatWindow` resolves candle-lighting → havdalah off
+one reference location (`Location.lookup('Tel Aviv')`, since `users.timezone`
+only ever says the country's zone and never a city) and `gate.js` uses it, when
+present, ahead of the weekday check — both for whether a row is currently held
+(candle-lighting Friday evening onward, never all of Friday; released the
+moment havdalah passes, never carried into Sunday) and for exactly when a held
+row wakes (havdalah itself, not a day-later approximation).
+
+The near miss, caught before shipping rather than after: this exact weekend
+(11-12 September 2026) is the one where Rosh Hashana falls ON Shabbat, and the
+first version of `shabbatWindow` read `HebrewCalendar.calendar`'s own narrative
+events for havdalah — which, correctly for the calendar, defers it to Sunday
+night because the chag's second day runs on. Correctly for the calendar is not
+correctly for this feature: reading that deferral would have silenced an
+ordinary Sunday for every Israeli user with a plain Saturday preference,
+whether or not they had ever asked for chag-quiet — the exact mistake the
+opt-in on `quiet_days` "holidays" exists to prevent (CLAUDE.md, "A chag is
+QUIET only for somebody who asked for it"). `shabbatWindow` computes straight
+off `Zmanim` instead (sunset ± the same offsets `HebrewCalendar.calendar` uses
+by default, 20 minutes and 8.5°) precisely so it never sees a chag at all —
+always the plain Shabbat, every week, and an opted-in chag riding beside it is
+still covered the way it always was, by `quietDates` continuing the hold past
+this window's `end`. `worker.js` only computes the window, and only strips 6
+out of the `quietDays` passed to the gate, when a Saturday is actually among
+them and the zone is Israeli — everyone else keeps the plain weekday check
+exactly as before. See `.claude/rules/delivering.md`, "An unstated quiet
+day…" for the rule this refines.
 
 
 ## Stopping, pausing and doctrine
