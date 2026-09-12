@@ -294,3 +294,17 @@ test('the room is told she will ask, never that she has', async () => {
   assert.match(res.data.hints.room, /WHEN THEY ARE AVAILABLE/);
   assert.match(res.data.hints.room, /Never say they have already been asked/);
 });
+
+// The hint above only reaches the model AFTER it calls the tool. On
+// 2026-09-12, in a room with nobody else in it (מירון, group "ב"), the model
+// answered "בסדר, אני על זה! כולם יקבלו שאלה בפרט" without calling this tool
+// at all — no `group.tool` row, no meeting, nothing queued for anybody to
+// receive. The claim above fixed what she says about a call she DID make;
+// nothing stopped the turn where she made none. The description is the only
+// thing that runs before the call, so the instruction has to live there.
+test('the description tells her to call this before saying anything, not after', () => {
+  const tool = require('../src/adapters/mcp/tools/group')
+    .find((t) => t.name === 'start_group_coordination');
+  assert.match(tool.description, /Call this the moment the room asks/);
+  assert.match(tool.description, /never say you are on it before calling it/);
+});
