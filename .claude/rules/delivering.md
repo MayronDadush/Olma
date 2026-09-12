@@ -224,6 +224,29 @@ title means this file. Grep the title, not the filename.
   6 in `quietDays` and the plain weekday check covers that week, same as before
   this existed (`tests/holidays.test.js`).
 
+- **A quiet day releases at the next kept day's window open, not 24 hours
+  after whenever it was checked** (owner, 2026-09-12, same conversation as the
+  bullet above). The Shabbat fix only reaches Israeli zones — everybody else's
+  quiet day still went through `msUntilQuietDaysEnd`'s day-stepping fallback,
+  which used to probe `date + d * DAY_MS`: the SAME wall-clock hour as
+  whenever the row happened to be checked, `d` days later. A row confirmed at
+  20:00 on a quiet day waited until 20:00 the next kept day, even though that
+  day — and the person's own morning window — had already opened twelve hours
+  earlier. Caught re-verifying the Shabbat fix on the two real rows it was
+  built for: one was in an Israeli zone and released correctly at havdalah,
+  the other's zone was `Asia/Nicosia`, fell through to this fallback, and came
+  back re-held for another ~24h — the exact bug shape the Shabbat fix had just
+  solved for one country. Now each probe is anchored at THAT day's local
+  midnight (`date + d * DAY_MS - minutesInTz(tz, date) * 60_000`, the same
+  "approximate across DST" trade-off `msUntilWindowOpen` already makes)
+  instead of at `date`'s own clock time, so the loop answers "the next kept
+  day's midnight" and `msUntilWindowOpen` carries it the rest of the way to
+  that day's actual window open. Every existing test only ever asserted the
+  release DAY, never the hour, so all of them still pass unchanged —
+  `tests/outbox.test.js` adds one that pins the hour down (checked at 19:00
+  Saturday, released 09:00 Sunday, not 19:00 Sunday) so this cannot regress
+  silently again.
+
 - **A chag is QUIET only for somebody who asked for it, and "quiet-able" means
   yom tov and nothing else** (owner, 2026-09-11: "רק ימי טוב"). `holidays.js`
   sorts every day into two tiers — `quiet` is `flags.CHAG` alone, which is

@@ -117,17 +117,24 @@ function quietDayReason(facts, tz, date) {
 const QUIET_RUN_MAX_DAYS = 21;
 
 function msUntilQuietDaysEnd(facts, window, tz, date = new Date()) {
-  // Inside the Shabbat window itself, the exact end is already known — the
-  // day-stepping scan below is a day too coarse for it and would answer
-  // "24 hours from now" for a row held at, say, Saturday noon, landing the
-  // release Sunday evening instead of right after havdalah tonight.
+  // Inside the Shabbat window itself, the exact end is already known — down
+  // to the minute — which the day-stepping scan below cannot match: it only
+  // knows the CALENDAR DAY a quiet run ends on, not the moment within it.
   const sw = facts.shabbatWindow;
   if (sw && date >= sw.start && date < sw.end) {
     return (sw.end.getTime() - date.getTime()) + msUntilWindowOpen(window, tz, sw.end);
   }
   const DAY_MS = 86_400_000;
+  // Each probe is anchored at THAT day's local midnight, not at `date` plus
+  // d whole days — stepping by the wall-clock hour `date` happens to fall on
+  // answers "24 hours from whenever this row was checked", so a meeting
+  // confirmed at 20:00 on a quiet day waited until 20:00 the next kept day,
+  // even though the day itself, and the world's own morning window, had
+  // already opened hours earlier. Approximate across DST for the same reason
+  // msUntilWindowOpen is.
+  const minutesNow = minutesInTz(tz, date);
   for (let d = 1; d <= QUIET_RUN_MAX_DAYS; d++) {
-    const probe = new Date(date.getTime() + d * DAY_MS);
+    const probe = new Date(date.getTime() + d * DAY_MS - minutesNow * 60_000);
     if (quietDayReason(facts, tz, probe)) continue;
     return (probe.getTime() - date.getTime()) + msUntilWindowOpen(window, tz, probe);
   }
