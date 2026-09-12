@@ -1079,12 +1079,25 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
    Fixed columns so four rows can be scanned down the day and down the hour
    without reading a sentence. `min-width` rather than a grid because the row
    also holds a ring and two controls, and a grid would fight them. */
+/* The line was drawn on a 390px phone and there are narrower ones, so what
+   gives way when it does not fit is decided here rather than by which token
+   happens to be last. The day and the MARK never shrink — one is the answer
+   to "when", the other is the rule the ring is drawing — and the date is the
+   detail, so the date is what truncates and then goes. `min-width:3.9em`
+   lines the columns up between rows and is dropped for `.f-when` before any
+   of that: alignment is a nicety, a clipped crown is a lost signal. */
 .mtformula{display:flex;align-items:center;gap:0;font-size:14px;margin:0 0 2px;white-space:nowrap}
-.mtformula .f-day{font-weight:700;color:var(--text);min-width:3.9em}
-.mtformula .f-when{font-weight:700;color:var(--accent);font-size:13px;min-width:3.9em}
-.mtformula .f-date{font-weight:600;color:var(--text-3);font-size:12px;font-variant-numeric:tabular-nums}
-.mtformula .f-sep{color:var(--text-3);margin:0 6px;font-weight:400}
+.mtformula .f-day{font-weight:700;color:var(--text);min-width:3.9em;flex:none}
+.mtformula .f-when{font-weight:700;color:var(--accent);font-size:13px;min-width:3.9em;flex:0 1 auto;
+  overflow:hidden;text-overflow:ellipsis}
+.mtformula .f-date{font-weight:600;color:var(--text-3);font-size:12px;font-variant-numeric:tabular-nums;
+  flex:0 1 auto;min-width:0;overflow:hidden}
+.mtformula .f-sep{color:var(--text-3);margin:0 6px;font-weight:400;flex:none}
 .mtformula .mk{width:17px;height:17px;margin-inline-start:6px;flex:none}
+@media (max-width:380px){
+  .mtformula .f-when{min-width:0}
+  .mtformula .f-sep{margin:0 4px}
+}
 .mtsum{font-size:11.5px;color:var(--text-3);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mtsum .gold{color:var(--gold);font-weight:700}
 .mtsum .grn{color:var(--ok);font-weight:700}
@@ -1110,8 +1123,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 /* A settled time is not deletable at all — ending a coordination everybody has
    already been told about is `cancel_meeting`, which messages them. */
 .mtswipe.locked .mtfront{transform:none}
-.mtrow{padding:10px 11px}
-.mtrow.crown{background:linear-gradient(90deg,var(--gold-soft),transparent 80%)}
+/* `.mtopt`, not `.mtrow`: the meetings LIST has owned `.mtrow` since long
+   before this row existed, and it is `display:flex` — which laid the clash
+   badge and the settle question out BESIDE the row instead of under it, and
+   clipped both. A stack is the whole point here, so the name had to give. */
+.mtopt{padding:10px 11px}
+.mtopt.crown{background:linear-gradient(90deg,var(--gold-soft),transparent 80%)}
 .mttop{display:flex;align-items:center;gap:9px}
 .mtmain{flex:1;min-width:0}
 
@@ -1198,9 +1215,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   font-size:12.5px;font-weight:600;
 }
 .mosettling svg{width:13px;height:13px;flex:none}
+/* Bleeds to the edges of the row it belongs to, so its negative margins are
+   `.mtopt`'s padding exactly. The square corners are deliberate: `.group`
+   clips the last row's for us, and rounding them here draws a card inside a
+   card on every row above it. */
 .moconfirm{
-  margin:11px -14px -12px;padding:12px 14px;
-  background:var(--warn-soft);border-radius:0 0 var(--r-group,16px) var(--r-group,16px);
+  margin:10px -11px -10px;padding:11px 11px;
+  background:var(--warn-soft);border-radius:0;
 }
 .moconfirm p{margin:0;font-size:13.5px;color:var(--text-2);font-weight:600}
 .moconfirm .moact{margin-top:9px}
@@ -3338,7 +3359,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.allFree":"מתאים לכולם","mt.pick":"קביעה",
       "mt.settlingIn":"כולם יכולים — נקבע בעוד {n} שניות, עוד אפשר לשנות",
       "mt.settlingNow":"כולם יכולים — נקבע עכשיו",
-      "mt.iCan":"אני יכול","mt.iCant":"לא יכול",
+      "mt.iCan":"יכול","mt.iCant":"לא",
       "mt.settledTag":"נקבע",
       "mt.gapNo":"מי שלא יכול: {list}","mt.gapWait":"מי שעוד לא ענה: {list}",
       "mt.gapMeNo":"סימנת שאתה לא יכול במועד הזה.","mt.gapMeWait":"עוד לא ענית על המועד הזה.",
@@ -3578,7 +3599,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "mt.allFree":"Fits everyone","mt.pick":"Settle",
       "mt.settlingIn":"Everyone can — settles in {n}s, you can still change it",
       "mt.settlingNow":"Everyone can — settling now",
-      "mt.iCan":"I can","mt.iCant":"I can't",
+      "mt.iCan":"Can","mt.iCant":"Can't",
       "mt.settledTag":"Settled",
       "mt.gapNo":"Can't make it: {list}","mt.gapWait":"Haven't answered: {list}",
       "mt.gapMeNo":"You marked that you can't make this one.","mt.gapMeWait":"You haven't answered this one.",
@@ -6433,7 +6454,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
        settle. The trash is not among them on a phone: it lives under the row,
        reached by the swipe, which is what leaves the width for two buttons
        that say what they do rather than two icons that hint. */
-    var row = '<div class="mtrow' + (mtRingState(m, o) === "full" && !settled ? " crown" : "") + '">' +
+    var row = '<div class="mtopt' + (mtRingState(m, o) === "full" && !settled ? " crown" : "") + '">' +
       '<div class="mttop">' + mtRingHTML(m, o) +
       '<div class="mtmain">' + mtFormulaHTML(m, o) + mtSumHTML(m, o) + "</div>" +
       act +
@@ -6485,8 +6506,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
           .replace("{of}", String(mtActive(m).length))
         : esc(t("mt.minNone")));
 
-    $("#mtOpts").innerHTML = m.opts.map(function(o){ return mtOptHTML(m, o); }).join("")
-      || '<div class="group"><div class="empty">' + esc(t("mt.stateNoOpts")) + "</div></div>";
+    /* ONE card holding every option, not one card each. `#mtOpts` is a
+       `.stack` — 26px between its children — which was right when an option
+       was a full card and is wrong now: the rows separate themselves with a
+       hairline, and spacing them apart turns a table you read down into four
+       unrelated boxes. It also gives the swipe and the settle question a
+       clipping edge to end at. Same shape as the design's `.listcard`. */
+    $("#mtOpts").innerHTML = m.opts.length
+      ? '<div class="group">' + m.opts.map(function(o){ return mtOptHTML(m, o); }).join("") + "</div>"
+      : '<div class="group"><div class="empty">' + esc(t("mt.stateNoOpts")) + "</div></div>";
 
     /* Adding is capped and nothing else: whoever opened the coordination has
        no more say over the table than anybody else in it. At the cap the
