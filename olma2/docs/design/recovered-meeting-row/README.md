@@ -36,3 +36,18 @@ The rules they settled, all of which the page now enforces:
   a phone, the trash arms before it acts on a desktop.
 - **The minimum cycles all the way back to unset.** A number copied in from a
   room is exactly the one somebody needs to be able to clear.
+
+## Looking at it
+
+The row has now shipped looking wrong once — a class name collided with one
+the meetings list already owned, and the suite could not see it. So look,
+don't only read:
+
+```bash
+node olma2/scripts/serve-design.js
+```
+
+Then open `http://127.0.0.1:8919/` for the real page (יומן → תיאום פגישות →
+a coordination) or `http://127.0.0.1:8919/recovered-meeting-row/meeting-row-final.html`
+for the design beside it. The design was drawn on a **390px** phone; check 375
+too, which is where it runs out of room first.

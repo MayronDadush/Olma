@@ -356,6 +356,23 @@ async function editTask(client, ownerId, taskId, patch = {}) {
   );
   if (!rows[0]) return err('not_found', 'task not found');
   await audit.record(client, ownerId, 'task.edited', { taskId: rows[0].id, changed });
+  // Miron, 2026-09-12: a bare task given its FIRST due_at through edit_task
+  // (rather than add_task, which has always auto-attached) armed nothing at
+  // all, silently — the tool description promises "arms a reminder
+  // automatically an hour before" and only add_task and snooze_task ever
+  // kept that promise. attachAutoReminder is already idempotent (it refuses
+  // to stack on a task that already has a live one, whoever set it), so this
+  // is safe to call unconditionally whenever due_at was part of the patch —
+  // clearing it (`patch.dueAt` falsy) or moving it earlier than `now` both
+  // resolve to autoReminderAt's own null, same as it always has for add_task.
+  if (has('dueAt') && patch.dueAt) {
+    const { rows: uz } = await client.query(`SELECT timezone FROM users WHERE id = $1`, [ownerId]);
+    const tz = (uz[0] && uz[0].timezone) || 'UTC';
+    const armed = await reminders.attachAutoReminder(client, ownerId, rows[0], tz);
+    if (armed) {
+      return ok({ task: rows[0], reminders: [armed], remindersAt: await localLabels(client, ownerId, [armed]) });
+    }
+  }
   return ok({ task: rows[0] });
 }
 
