@@ -1,41 +1,17 @@
 'use strict';
 // reminders — one slice of the tool registry (see ../registry.js).
 const {
-  reminders, users, S, tool, ok,
+  reminders, users, S, tool, ok, pastMoment,
 } = require('./_shared');
-const { err } = require('../../../domain/results');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
-const dt = require('../../../domain/datetime');
-
-// The moment is well-formed, carries the right offset, and has already gone.
-// Vered's 20:02 arrived at 23:02 (2026-09-06): it fired on the spot, expired
-// undelivered, and cancelled the 08:00 she had just been promised on its way
-// in. Refusing HERE means setReminder is never reached, so nothing is
-// superseded — a moment we will not honour must not withdraw one we would
-// have. The domain keeps the predicate and stays permissive on purpose: our
-// own sweeps, repairs and tests arm past moments legitimately; only a model
-// asking for one is a mistake.
-const pad = (n) => String(n).padStart(2, '0');
-function pastMoment(label, value, tz) {
-  const fmt = (d) => {
-    const p = dt.partsInZone(tz || 'Asia/Jerusalem', d);
-    return `${p.y}-${pad(p.m)}-${pad(p.d)} ${pad(p.hh)}:${pad(p.mi)}`;
-  };
-  return err('invalid',
-    `${label} is already past: ${fmt(new Date(value))} in their timezone, where it is `
-    + `now ${fmt(new Date())}. NOTHING was changed — no reminder was set and none was `
-    + 'cancelled. Send the moment you actually mean, ISO-8601 with their offset. If you '
-    + 'meant right now, say it in words instead of arming a reminder for it.',
-    { reason: 'remind_at_in_past' });
-}
 
 module.exports = [
   tool('set_task_reminder', 'Attach a reminder to a task, for a moment they ASKED for. A task saved with a due_at already has one, so this is for a different time or a repeat — it cancels the automatic one, never two. Several per task allowed. remind_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their own local time (USER.md); never bare digits with a Z.',
     { task_id: S('number', 'Task id'), remind_at: S('string', 'ISO-8601 datetime WITH UTC offset'),
       repeat_rule: S('string', 'Optional repeat: "daily"; "weekly"; "weekly:MO,TH" (SU MO TU WE TH FR SA); "monthly:16"; "monthly:last" (the last day, whatever it is; a day past a short month lands on its last day). Anything else is stored as a ONE-OFF, so use these exact forms.') }, ['task_id', 'remind_at'],
     (client, user, a) => (reminders.momentIsPast(a.remind_at)
-      ? pastMoment('remind_at', a.remind_at, user.timezone)
+      ? pastMoment('remind_at', a.remind_at, user.timezone, 'no reminder was set and none was cancelled')
       : reminders.setReminder(client, user.id, a.task_id, a.remind_at, a.repeat_rule))),
   tool('cancel_reminder', 'Cancel a pending reminder. If the result carries taskStillOpen, follow its hint — "cancel the reminder" and "cancel the thing" are the same sentence to most people.',
     { reminder_id: S('number', 'Reminder id') }, ['reminder_id'],

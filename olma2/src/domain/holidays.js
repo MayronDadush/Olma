@@ -303,6 +303,81 @@ function nameFor(entry, locale) {
   return String(locale || '').trim().toLowerCase().startsWith('en') ? entry.name.en : entry.name.he;
 }
 
+// ---- the Israeli Shabbat window (candle-lighting to havdalah) --------------
+// "Saturday is quiet" as a whole calendar day is a blunt proxy for Shabbat,
+// which actually starts Friday evening and ends Saturday night, both edges
+// moving with sunset across the year (owner, 2026-09-12: astronomical, not a
+// fixed clock hour). Scoped to `isIsrael` on purpose — a diaspora Jewish
+// user's default Saturday stays a plain weekday for now, and this is what
+// replaces it: one reference point stands in for the whole country, because
+// `users.timezone` only ever says "Asia/Jerusalem" and never a city.
+let shabbatLocationPromise = null;
+function shabbatLocation() {
+  if (!shabbatLocationPromise) {
+    shabbatLocationPromise = hebcal().then((h) => (h ? h.Location.lookup('Tel Aviv') : null));
+  }
+  return shabbatLocationPromise;
+}
+
+// Candle-lighting → havdalah for the Shabbat nearest `date`, keyed by the
+// Saturday's own local date so a busy Friday costs one lookup.
+//
+// Computed straight off `Zmanim` — sunset minus 20 (hebcal's own fallback for
+// an Israeli location with no more specific city data, `overrideIsraelCandleMins`)
+// for candle-lighting, tzeit at 8.5° (hebcal's own default, "three small
+// stars") for havdalah — deliberately NOT `HebrewCalendar.calendar`'s own
+// narrative events. Those defer Havdalah when a chag rides the same weekend
+// (Rosh Hashana on Shabbat pushes it a night later), and that deferral is
+// EXACTLY what `preferences.quietDays`'s `holidays` opt-in gates — chag-quiet
+// is something a person asks for, never a side effect of a plain Saturday
+// preference (CLAUDE.md, "A chag is QUIET only for somebody who asked for
+// it"). Using the narrative events here would have silenced an ordinary
+// Sunday for every Israeli user with no such opt-in, the one weekend Rosh
+// Hashana falls on Shabbat. So this window is always the PLAIN Shabbat, and
+// an opted-in chag riding beside it is still covered — by `quietDates`,
+// exactly as before this existed, continuing the hold past `end` below.
+// `null` means hebcal could not load (same fail-open shape as everywhere
+// else in this file) or the sun does not set that day at all, which cannot
+// happen at this latitude but `Zmanim` answers `Invalid Date` rather than
+// throw, so it is checked instead of trusted.
+const CANDLE_LIGHTING_MINS = 20;
+const HAVDALAH_DEG = 8.5;
+const shabbatCache = new Map();
+
+async function shabbatWindow(tz, date = new Date()) {
+  if (!isIsrael(tz)) return null;
+  const h = await hebcal();
+  const loc = await shabbatLocation();
+  if (!h || !loc) return null;
+  // The weekday of a Y-M-D string never depends on a clock, so the nearest
+  // Saturday (today counts) is found off `localDate` rather than a second
+  // zone computation. Friday is one calendar day before THAT Saturday, not a
+  // second forward search off today's weekday — the forward formula wraps a
+  // whole week ahead when today already IS Saturday, landing next week's
+  // Friday instead of yesterday's.
+  const todayYmd = localDate(tz, date, 0);
+  const dow = new Date(`${todayYmd}T00:00:00Z`).getUTCDay();
+  const satOffset = (6 - dow + 7) % 7;
+  const satYmd = localDate(tz, date, satOffset);
+  if (shabbatCache.has(satYmd)) return shabbatCache.get(satYmd);
+  const built = (() => {
+    const friYmd = localDate(tz, date, satOffset - 1);
+    // Noon UTC on each date: `Zmanim` reads only the calendar date off
+    // whatever Date it is given (hours are ignored), so this just needs to
+    // land on the right Gregorian day everywhere, which noon safely does.
+    const [fy, fm, fd] = friYmd.split('-').map(Number);
+    const [sy, sm, sd] = satYmd.split('-').map(Number);
+    const start = new h.Zmanim(loc, new Date(Date.UTC(fy, fm - 1, fd, 12)), false)
+      .sunsetOffset(-CANDLE_LIGHTING_MINS, true);
+    const end = new h.Zmanim(loc, new Date(Date.UTC(sy, sm - 1, sd, 12)), false)
+      .tzeit(HAVDALAH_DEG);
+    return (start && end && !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()))
+      ? { start, end } : null;
+  })();
+  shabbatCache.set(satYmd, built);
+  return built;
+}
+
 module.exports.QUIET = QUIET;
 module.exports.MENTION = MENTION;
 module.exports.holidaysOn = holidaysOn;
@@ -312,3 +387,4 @@ module.exports.localDate = localDate;
 module.exports.nameFor = nameFor;
 module.exports.easterSunday = easterSunday;
 module.exports.cleanName = cleanName;
+module.exports.shabbatWindow = shabbatWindow;

@@ -88,7 +88,15 @@ function localDateInTz(tz, date = new Date()) {
 // so the hold and the RELEASE can never disagree about which days exist:
 // Rosh Hashana runs into Shabbat often enough that a release computed from
 // weekdays alone would wake a row in the middle of a three-day run.
+//
+// `facts.shabbatWindow` is the one exception to "a day": for an Israeli zone
+// whose Saturday is quiet, the caller already resolved candle-lighting →
+// havdalah and dropped 6 out of `quietDays` (holidays.shabbatWindow), so the
+// weekday check below never also fires for Saturday and extend the hold past
+// nightfall into a plain calendar-day boundary.
 function quietDayReason(facts, tz, date) {
+  const sw = facts.shabbatWindow;
+  if (sw && date >= sw.start && date < sw.end) return 'quiet_day';
   const days = facts.quietDays || [];
   if (days.includes(weekdayInTz(tz, date))) return 'quiet_day';
   const dates = facts.quietDates || [];
@@ -109,6 +117,14 @@ function quietDayReason(facts, tz, date) {
 const QUIET_RUN_MAX_DAYS = 21;
 
 function msUntilQuietDaysEnd(facts, window, tz, date = new Date()) {
+  // Inside the Shabbat window itself, the exact end is already known — the
+  // day-stepping scan below is a day too coarse for it and would answer
+  // "24 hours from now" for a row held at, say, Saturday noon, landing the
+  // release Sunday evening instead of right after havdalah tonight.
+  const sw = facts.shabbatWindow;
+  if (sw && date >= sw.start && date < sw.end) {
+    return (sw.end.getTime() - date.getTime()) + msUntilWindowOpen(window, tz, sw.end);
+  }
   const DAY_MS = 86_400_000;
   for (let d = 1; d <= QUIET_RUN_MAX_DAYS; d++) {
     const probe = new Date(date.getTime() + d * DAY_MS);
