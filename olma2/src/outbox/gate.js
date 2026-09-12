@@ -246,16 +246,27 @@ function decide(facts) {
   // transfer, because that branch DROPS and this one HOLDS: the reason an
   // introduction survives somebody who stopped answering is that it would
   // otherwise be lost for good, and here it simply lands on the next day they
-  // kept. `inRoomGrace` stays out for the same reason — speaking in a room is
-  // not asking Olma for the things this day was set aside from, and nothing
-  // is lost by it waiting.
+  // kept.
+  //
+  // `inRoomGrace` DOES transfer here, since 2026-09-12 — the one exception to
+  // the paragraph above. It can only be true for a row carrying a
+  // `payload.meetingId` (see worker.js), so this reaches meeting rows only:
+  // the invite, a proposed slot, somebody rejoining or withdrawing. The owner's
+  // reasoning inverts the general rule on purpose — writing in the room after
+  // a coordination started is not "asking Olma for the things this day was set
+  // aside from" in general, but it IS the specific thing a meeting row is
+  // about: the room already knows they are around and probably interested, so
+  // waiting for the quiet day to end is the wrong default for this one kind of
+  // message, even though it is the right one for everything else that reaches
+  // this line.
   //
   // A HOLIDAY reaches this line by exactly the same route and is held for
   // exactly the same reasons — only the hold_reason differs, so the dashboard
   // can tell "Saturday" from "Yom Kippur" without a second rule to keep in
   // step. It is opt-in and nothing else about it is special (owner,
-  // 2026-09-11): asked once, and the calendar is yom tov only.
-  const quietReason = !askedForInWords(row) && quietDayReason(facts, tz, now);
+  // 2026-09-11): asked once, and the calendar is yom tov only. `inRoomGrace`
+  // exempts a meeting row from this one too, same reasoning as above.
+  const quietReason = !askedForInWords(row) && !inRoomGrace && quietDayReason(facts, tz, now);
   if (quietReason) {
     return {
       action: 'hold', holdReason: quietReason,
