@@ -192,6 +192,38 @@ title means this file. Grep the title, not the filename.
   the stopped-answering rule does NOT transfer here — that branch drops, this
   one holds, and nothing is lost by waiting.
 
+- **For an Israeli zone, Saturday's quiet day is candle-lighting to havdalah,
+  not midnight to midnight** (owner, 2026-09-12). A calendar-day Saturday is a
+  blunt proxy for Shabbat — it misses Friday evening entirely and, worse, once
+  held, its release (`msUntilQuietDaysEnd`'s day-stepping scan) can only answer
+  "roughly 24 hours from now," which for a meeting confirmed on a Saturday
+  afternoon landed the release Sunday **evening** rather than anywhere near
+  when Shabbat actually ended (`incidents.md`, "A confirmed meeting sat quiet a
+  full extra day"). `holidays.shabbatWindow(tz, date)` resolves real
+  candle-lighting → havdalah off one reference location
+  (`Location.lookup('Tel Aviv')`, since `users.timezone` only ever says the
+  country's zone and never a city) and is scoped to `holidays.isIsrael` — a
+  diaspora Jewish user's Saturday stays the plain weekday it always was.
+  `outbox/worker.js` computes it once per row, only when Saturday is actually
+  among that person's quiet days, and strips 6 out of the array passed to the
+  gate when it resolves; `gate.js`'s `quietDayReason`/`msUntilQuietDaysEnd`
+  check the `shabbatWindow` field on facts ahead of the weekday check, so the
+  hold now starts at candle-lighting (never all of Friday) and releases at
+  havdalah itself (never a day-later approximation). **Computed straight off
+  `Zmanim` (sunset ± a fixed offset and angle), deliberately NOT
+  `HebrewCalendar.calendar`'s own narrative events** — this shipped the same
+  weekend Rosh Hashana fell on Shabbat (11-12 September 2026), and the
+  narrative correctly defers havdalah to Sunday night because the chag's
+  second day runs on. Correct for the calendar, wrong for this feature: reading
+  it would have silenced an ordinary Sunday for every Israeli user with a plain
+  Saturday preference, whether or not they had ever opted into chag-quiet —
+  exactly the mistake the bullet below exists to prevent. So this window is
+  always the plain Shabbat, every week; an opted-in chag riding beside it is
+  still covered exactly as before, by `quietDates` continuing the hold past
+  this window's `end`. `null` — only when hebcal itself could not load — leaves
+  6 in `quietDays` and the plain weekday check covers that week, same as before
+  this existed (`tests/holidays.test.js`).
+
 - **A chag is QUIET only for somebody who asked for it, and "quiet-able" means
   yom tov and nothing else** (owner, 2026-09-11: "רק ימי טוב"). `holidays.js`
   sorts every day into two tiers — `quiet` is `flags.CHAG` alone, which is

@@ -195,3 +195,39 @@ test('nextQuietHoliday answers in their language, or answers nothing', async () 
   assert.equal(quietMonth, null);
   assert.equal(await holidays.nextQuietHoliday('none', { tz: 'UTC' }), null);
 });
+
+// ---- the Israeli Shabbat window (candle-lighting to havdalah) --------------
+test('shabbatWindow: candle-lighting to havdalah, for an Israeli zone only', async () => {
+  const midweek = new Date('2026-08-12T09:00:00Z'); // Wednesday
+  const win = await holidays.shabbatWindow('Asia/Jerusalem', midweek);
+  assert.ok(win, 'an ordinary week resolves');
+  assert.equal(win.start.toISOString(), '2026-08-14T16:06:00.000Z');
+  assert.equal(win.end.toISOString(), '2026-08-15T17:03:32.000Z');
+
+  // Asked from inside the window itself, or from the Saturday morning before
+  // havdalah — same Shabbat, same answer.
+  const fromSaturday = await holidays.shabbatWindow('Asia/Jerusalem', new Date('2026-08-15T10:00:00Z'));
+  assert.deepEqual(fromSaturday, win);
+
+  // Never for a zone this feature was not asked for.
+  assert.equal(await holidays.shabbatWindow('America/New_York', midweek), null);
+  assert.equal(await holidays.shabbatWindow('Europe/London', midweek), null);
+});
+
+test('shabbatWindow: a chag riding the same weekend never extends it — that is quietDates\' job, and only for somebody who opted in', async () => {
+  // Rosh Hashana 5787 is Friday-Saturday (11-12 September 2026): candle
+  // lighting Friday evening opens the chag and Shabbat at once, and
+  // HebrewCalendar's own narrative would defer havdalah to Sunday night since
+  // the chag's second day runs on. Deliberately not read here — that
+  // deferral is exactly what a person has to opt into (`quiet_days` carrying
+  // "holidays"), and silencing an ordinary Sunday for everyone who has not is
+  // the mistake this function exists to avoid. So the window is the plain
+  // Shabbat regardless: candle-lighting Friday, havdalah Saturday night, the
+  // same as an ordinary week — an opted-in chag riding beside it is still
+  // covered, by quietDates continuing the hold past this window's `end`.
+  const onErev = new Date('2026-09-11T09:00:00Z');
+  const win = await holidays.shabbatWindow('Asia/Jerusalem', onErev);
+  assert.ok(win, 'resolves like any other week');
+  assert.equal(win.start.toISOString(), '2026-09-11T15:32:00.000Z');
+  assert.equal(win.end.toISOString(), '2026-09-12T16:27:36.000Z', 'Saturday night, not Sunday');
+});
