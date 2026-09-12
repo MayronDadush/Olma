@@ -1,0 +1,358 @@
+<title>רשימת המועדים · אפשרות א׳</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Rubik:wght@500;600;700&display=swap">
+<style>
+  :root{
+    --page:#EFEDF5; --panel:#FFFFFF; --ink:#141322; --ink-2:#6C6982; --ink-3:#A29FB5; --rule:#E2DFEE;
+    --bg:#F4F3F8; --surface:#FFFFFF; --surface-2:#FAF9FE; --sep:#E7E5F0; --sep-2:#D9D6E6;
+    --text:#141322; --text-2:#6C6982; --text-3:#A29FB5;
+    --accent:#5B2FD6; --accent-2:#4A22B4; --accent-soft:#EEE8FC;
+    --danger:#DC3A31; --danger-soft:#FCEBE9; --warn:#B57509; --warn-soft:#F8EFDC;
+    --ok:#1B9B6B; --ok-soft:#E4F4EE; --gold:#B07A0B; --gold-soft:#FBF1DA;
+    --shadow:0 1px 2px rgba(20,19,34,.05), 0 8px 26px rgba(20,19,34,.07);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --page:#100F18; --panel:#17161F; --ink:#F2F1F7; --ink-2:#A6A3B8; --ink-3:#6F6C82; --rule:#262432;
+      --bg:#0E0D15; --surface:#191823; --surface-2:#15141E; --sep:#272534; --sep-2:#332F44;
+      --text:#F2F1F7; --text-2:#A6A3B8; --text-3:#6F6C82;
+      --accent:#8B6BF0; --accent-2:#7A56EC; --accent-soft:#241C3D;
+      --danger:#F2665C; --danger-soft:#33191A; --warn:#D9992E; --warn-soft:#2E2415;
+      --ok:#3FBF8D; --ok-soft:#12291F; --gold:#E3B45C; --gold-soft:#2C2412;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 26px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --page:#100F18; --panel:#17161F; --ink:#F2F1F7; --ink-2:#A6A3B8; --ink-3:#6F6C82; --rule:#262432;
+    --bg:#0E0D15; --surface:#191823; --surface-2:#15141E; --sep:#272534; --sep-2:#332F44;
+    --text:#F2F1F7; --text-2:#A6A3B8; --text-3:#6F6C82;
+    --accent:#8B6BF0; --accent-2:#7A56EC; --accent-soft:#241C3D;
+    --danger:#F2665C; --danger-soft:#33191A; --warn:#D9992E; --warn-soft:#2E2415;
+    --ok:#3FBF8D; --ok-soft:#12291F; --gold:#E3B45C; --gold-soft:#2C2412;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 26px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--page); color:var(--ink); direction:rtl;
+    font-family:'Assistant','Heebo',system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px; margin:0 auto; padding:40px 22px 70px}
+
+  .eyebrow{font-size:12px; font-weight:600; letter-spacing:.09em; color:var(--accent); text-transform:uppercase; margin:0 0 10px}
+  h1{font-family:'Rubik',sans-serif; font-weight:700; font-size:clamp(28px,4vw,40px); line-height:1.1;
+     letter-spacing:-.02em; margin:0 0 14px; text-wrap:balance}
+  header.top{max-width:64ch}
+  header.top p{margin:0 0 10px; font-size:16px; line-height:1.6; color:var(--ink-2)}
+  header.top b{color:var(--ink); font-weight:600}
+
+  h2.sec{font-family:'Rubik',sans-serif; font-weight:600; font-size:22px; margin:44px 0 6px; letter-spacing:-.01em}
+  .lede{margin:0 0 18px; font-size:15px; line-height:1.6; color:var(--ink-2); max-width:62ch}
+  .lede b{color:var(--ink); font-weight:600}
+
+  .split{display:grid; gap:26px; grid-template-columns:minmax(320px,400px) minmax(300px,1fr); align-items:start}
+  @media (max-width:820px){ .split{grid-template-columns:1fr} }
+
+  .phone{background:var(--bg); border:1px solid var(--rule); border-radius:22px; padding:16px 13px 18px;
+    box-shadow:var(--shadow); overflow:hidden}
+  .mtop{font-size:12.5px; color:var(--text-2); margin:0 0 4px}
+  .mttl{font-family:'Rubik',sans-serif; font-weight:600; font-size:19px; margin:0 0 3px; color:var(--text)}
+  .msub{font-size:12.5px; color:var(--text-3); margin:0 0 13px}
+  .glabel{font-size:11.5px; color:var(--text-3); margin:15px 2px 7px; font-weight:600}
+
+  .listcard{background:var(--surface); border-radius:15px; overflow:hidden}
+  .lrow{padding:11px 12px; border-bottom:1px solid var(--sep)}
+  .lrow:last-child{border-bottom:0}
+  .lrow.crown{background:linear-gradient(90deg,var(--gold-soft),transparent 78%)}
+  .lrow.settled{background:var(--ok-soft)}
+  .lrow.dead{opacity:.55}
+  .ltop{display:flex; align-items:center; gap:10px}
+
+  /* ── the ring ── */
+  .ring{position:relative; width:42px; height:42px; flex:0 0 auto}
+  .ring svg{transform:rotate(-90deg)}
+  .ring .track{stroke:var(--sep); }
+  .ring .fill{stroke:var(--accent); stroke-linecap:round; transition:stroke-dashoffset .4s}
+  .ring .fill.no{stroke:#E8A39D}
+  .ring b{position:absolute; inset:0; display:grid; place-items:center;
+    font-family:'Rubik',sans-serif; font-weight:600; font-size:12px; color:var(--accent); letter-spacing:-.02em}
+  .ring.full .fill{stroke:var(--gold)}
+  .ring.full b{color:var(--gold)}
+  .ring.min .fill{stroke:var(--ok)}
+  .ring.min b{color:var(--ok)}
+
+  /* ── the formula: day | date | when ── */
+  .lmain{flex:1; min-width:0}
+  .formula{display:flex; align-items:baseline; gap:0; font-size:14.5px; margin:0 0 3px; white-space:nowrap}
+  .f-day{font-weight:700; color:var(--text); min-width:4.6em}
+  .f-date{font-family:'Rubik',sans-serif; font-weight:500; color:var(--text-2); min-width:3.9em; font-size:13.5px}
+  .f-when{font-weight:600; color:var(--accent); font-size:13.5px}
+  .f-sep{color:var(--text-3); margin:0 7px; font-weight:400}
+  .mark{margin-inline-start:6px; font-size:15px; line-height:1}
+  .lsum{font-size:12.5px; color:var(--text-3); margin:0; display:flex; align-items:center; gap:5px}
+  .lsum .ok{color:var(--accent); font-weight:600}
+  .lsum .no{color:var(--danger)}
+  .lsum .gold{color:var(--gold); font-weight:600}
+  .lsum .grn{color:var(--ok); font-weight:600}
+  .chev{color:var(--text-3); font-size:11px; margin-inline-start:auto}
+
+  /* ── actions: settle sits OUTSIDE, before the pair ── */
+  .lacts{display:flex; gap:7px; margin-top:9px; align-items:center}
+  .seg{display:flex; background:var(--sep); border-radius:10px; padding:2px; flex:1}
+  .seg button{border:0; background:transparent; font:inherit; font-size:13px; font-weight:600;
+    color:var(--text-3); padding:7px 0; border-radius:8px; cursor:default; flex:1}
+  .seg button.on{background:var(--surface); color:var(--accent); box-shadow:0 1px 2px rgba(20,19,34,.09)}
+  .seg button.on.neg{color:var(--danger)}
+  .icobtn{border:1px solid var(--sep-2); background:transparent; border-radius:10px; padding:7px 11px;
+    font:inherit; font-size:13px; font-weight:600; color:var(--accent); cursor:default; white-space:nowrap}
+  .icobtn.arm{background:var(--accent); border-color:var(--accent); color:#fff}
+  .icobtn.del{color:var(--text-3); padding:7px 9px}
+  .icobtn.del.arm{background:var(--danger); border-color:var(--danger); color:#fff}
+
+  /* ── the expanded vote breakdown ── */
+  .votes{margin-top:10px; padding-top:9px; border-top:1px dashed var(--sep-2)}
+  .vgrp{display:flex; align-items:center; gap:7px; margin-bottom:6px; font-size:12.5px; flex-wrap:wrap}
+  .vgrp:last-child{margin-bottom:0}
+  .vlab{font-weight:700; font-size:11.5px; min-width:3.4em}
+  .vlab.y{color:var(--accent)} .vlab.n{color:var(--danger)}
+  .pill{background:var(--surface-2); border:1px solid var(--sep); border-radius:99px;
+    padding:3px 9px 3px 4px; display:inline-flex; align-items:center; gap:5px; color:var(--text-2)}
+  .av{width:17px; height:17px; border-radius:50%; display:grid; place-items:center; font-size:9px; font-weight:700; color:#fff}
+  .av.y{background:var(--accent)} .av.n{background:#D9756C}
+  .vnote{font-size:11.5px; color:var(--text-3); margin:7px 0 0}
+
+  .countdown{background:var(--gold-soft); color:var(--gold); border-radius:10px; padding:8px 10px;
+    font-size:12.5px; font-weight:600; margin-top:9px; display:flex; align-items:center; gap:7px}
+  .conf{background:var(--accent-soft); color:var(--accent-2); border-radius:10px; padding:8px 10px;
+    font-size:12.5px; font-weight:600; margin-top:9px}
+  .conf.dngr{background:var(--danger-soft); color:var(--danger)}
+  .warnline{background:var(--warn-soft); color:var(--warn); font-size:12px; font-weight:600;
+    border-radius:9px; padding:6px 9px; margin-top:8px}
+
+  .legend{background:var(--panel); border:1px solid var(--rule); border-radius:14px; padding:15px 16px}
+  .legend h3{font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); margin:0 0 11px}
+  .legend dl{margin:0; display:grid; grid-template-columns:auto 1fr; gap:9px 12px; align-items:start}
+  .legend dt{font-size:19px; line-height:1.3; text-align:center}
+  .legend dd{margin:0; font-size:14px; line-height:1.5; color:var(--ink-2)}
+  .legend dd b{color:var(--ink); font-weight:600; display:block}
+
+  ol.steps{margin:0; padding-inline-start:19px}
+  ol.steps li{font-size:15px; line-height:1.62; color:var(--ink-2); margin-bottom:11px}
+  ol.steps li b{color:var(--ink); font-weight:600}
+  ol.steps code{font-family:'Rubik',monospace; font-size:13px; background:var(--panel);
+    border:1px solid var(--rule); border-radius:5px; padding:1px 5px; color:var(--ink)}
+
+  .flag{border-inline-start:3px solid var(--warn); background:var(--warn-soft); border-radius:0 11px 11px 0;
+    padding:13px 15px; margin:20px 0 0; max-width:64ch}
+  .flag p{margin:0; font-size:14.5px; line-height:1.6; color:var(--ink)}
+  .flag b{font-weight:700}
+
+  table.plan{width:100%; border-collapse:collapse; margin-top:14px; font-size:14.5px}
+  table.plan th, table.plan td{text-align:start; padding:10px 12px; border-bottom:1px solid var(--rule); vertical-align:top}
+  table.plan thead th{font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-3); font-weight:700}
+  table.plan td b{color:var(--ink); font-weight:600}
+  table.plan td{color:var(--ink-2)}
+  .yes{color:var(--ok); font-weight:600} .new{color:var(--accent); font-weight:600}
+  .scroll{overflow-x:auto}
+
+/* מה שנמדד בשרת ולא נובע מהעיצוב — נבדל מהטקסט כדי שלא ייקרא כהמלצה */
+.warn{border-inline-start:3px solid var(--gold,#C4841A);background:rgba(196,132,26,.07);
+  padding:12px 16px;border-radius:12px 0 0 12px;margin:18px 0}
+ol{padding-inline-start:1.3em;line-height:1.7}
+ol li{margin-bottom:10px}
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">אפשרות א׳ · מפרט מלא</p>
+  <h1>שורה לכל מועד, טבעת לכל תשובה</h1>
+  <p>זו אפשרות א׳ עם כל מה שביקשת: הטבעת מה־checklist, כתר למועד שכולם יכולים בו, סימן נפרד למינימום, פירוט הצבעות בלחיצה, קביעה ומחיקה בשתי לחיצות, מחיקה אוטומטית של מועדים שעברו, ונוסחה קבועה של <b>יום · תאריך · שעה</b>.</p>
+</header>
+
+<h2 class="sec">המסך</h2>
+<p class="lede">ארבעה מועדים, כל אחד בשורה. הטבעת בצד ימין היא הדבר הראשון שהעין פוגשת, והנוסחה מיושרת לעמודות כך שאפשר לסרוק את היום, התאריך והשעה מלמעלה למטה בלי לקרוא משפטים.</p>
+
+<div class="split">
+  <div class="phone">
+    <p class="mtop">עם עמית לוי, תמר אלון ואיתי כספי</p>
+    <p class="mttl">פוקר</p>
+    <p class="msub">מתי מתאים לכולם?</p>
+
+    <p class="glabel">המועדים על השולחן</p>
+    <div class="listcard">
+
+      <!-- crown: everyone -->
+      <div class="lrow crown">
+        <div class="ltop">
+          <div class="ring full">
+            <svg width="42" height="42"><circle class="track" cx="21" cy="21" r="17" fill="none" stroke-width="4"/>
+              <circle class="fill" cx="21" cy="21" r="17" fill="none" stroke-width="4"
+                stroke-dasharray="106.8" stroke-dashoffset="0"/></svg>
+            <b>4/4</b>
+          </div>
+          <div class="lmain">
+            <p class="formula"><span class="f-day">מחר</span><span class="f-sep">·</span><span class="f-date">9.9</span><span class="f-sep">·</span><span class="f-when">ערב</span><span class="mark">👑</span></p>
+            <p class="lsum"><span class="gold">כולם יכולים</span> · נקבע אוטומטית בעוד 47 שניות</p>
+          </div>
+          <span class="chev">▾</span>
+        </div>
+        <div class="countdown">⏱ אפשר עוד לשנות תשובה — אחרי הדקה זה נסגר לכולם</div>
+      </div>
+
+      <!-- minimum met, expanded -->
+      <div class="lrow">
+        <div class="ltop">
+          <div class="ring min">
+            <svg width="42" height="42"><circle class="track" cx="21" cy="21" r="17" fill="none" stroke-width="4"/>
+              <circle class="fill" cx="21" cy="21" r="17" fill="none" stroke-width="4"
+                stroke-dasharray="106.8" stroke-dashoffset="26.7"/></svg>
+            <b>3/4</b>
+          </div>
+          <div class="lmain">
+            <p class="formula"><span class="f-day">שישי</span><span class="f-sep">·</span><span class="f-date">11.9</span><span class="f-sep">·</span><span class="f-when">ערב</span><span class="mark">🃏</span></p>
+            <p class="lsum"><span class="grn">יש מניין לפוקר</span> · איתי טרם ענה</p>
+          </div>
+          <span class="chev">▴</span>
+        </div>
+
+        <div class="votes">
+          <div class="vgrp"><span class="vlab y">יכולים</span>
+            <span class="pill"><i class="av y">א</i>אתה</span>
+            <span class="pill"><i class="av y">ע</i>עמית</span>
+            <span class="pill"><i class="av y">ת</i>תמר</span>
+          </div>
+          <p class="vnote">מי שטרם ענה לא מופיע כאן — רק בשורת הסיכום למעלה.</p>
+        </div>
+
+        <div class="lacts">
+          <button class="icobtn">קביעה</button>
+          <div class="seg"><button class="on">יכול</button><button>לא יכול</button></div>
+          <button class="icobtn del">🗑</button>
+        </div>
+      </div>
+
+      <!-- settle armed: second tap -->
+      <div class="lrow">
+        <div class="ltop">
+          <div class="ring">
+            <svg width="42" height="42"><circle class="track" cx="21" cy="21" r="17" fill="none" stroke-width="4"/>
+              <circle class="fill" cx="21" cy="21" r="17" fill="none" stroke-width="4"
+                stroke-dasharray="106.8" stroke-dashoffset="80.1"/></svg>
+            <b>1/4</b>
+          </div>
+          <div class="lmain">
+            <p class="formula"><span class="f-day">ראשון</span><span class="f-sep">·</span><span class="f-date">13.9</span><span class="f-sep">·</span><span class="f-when">21:00</span></p>
+            <p class="lsum">אחד יכול · <span class="no">תמר לא יכולה</span> · אחד טרם ענה</p>
+          </div>
+          <span class="chev">▾</span>
+        </div>
+        <div class="lacts">
+          <button class="icobtn arm">בטוח? לחץ שוב</button>
+          <div class="seg"><button class="on">יכול</button><button>לא יכול</button></div>
+          <button class="icobtn del">🗑</button>
+        </div>
+        <div class="conf">הקביעה תישלח לכל המשתתפים, כולל למי שאמר שלא יכול.</div>
+      </div>
+
+      <!-- delete armed + conflict -->
+      <div class="lrow">
+        <div class="ltop">
+          <div class="ring">
+            <svg width="42" height="42"><circle class="track" cx="21" cy="21" r="17" fill="none" stroke-width="4"/>
+              <circle class="fill no" cx="21" cy="21" r="17" fill="none" stroke-width="4"
+                stroke-dasharray="106.8" stroke-dashoffset="80.1"/></svg>
+            <b>0/4</b>
+          </div>
+          <div class="lmain">
+            <p class="formula"><span class="f-day">חמישי</span><span class="f-sep">·</span><span class="f-date">10.9</span><span class="f-sep">·</span><span class="f-when">צהריים</span></p>
+            <p class="lsum">אתה לא יכול · 2 טרם ענו</p>
+          </div>
+          <span class="chev">▾</span>
+        </div>
+        <div class="warnline">🕐 מתנגש עם משמרת · 12:00</div>
+        <div class="lacts">
+          <button class="icobtn">קביעה</button>
+          <div class="seg"><button>יכול</button><button class="on neg">לא יכול</button></div>
+          <button class="icobtn del arm">🗑 שוב</button>
+        </div>
+        <div class="conf dngr">המועד יירד מהשולחן לכולם. אי אפשר להחזיר אותו.</div>
+      </div>
+
+    </div>
+
+    <p class="glabel">להציע מועד נוסף</p>
+    <div class="listcard" style="padding:11px; text-align:center; color:var(--accent); font-weight:600; font-size:14px">+ הצעת מועד</div>
+  </div>
+
+  <div>
+    <div class="legend">
+      <h3>מה כל סימן אומר</h3>
+      <dl>
+        <dt>👑</dt><dd><b>כולם, כולל כולם</b>אין אף אחד שלא אמר כן. רק המועד הזה נקבע מעצמו אחרי דקה.</dd>
+        <dt>🃏</dt><dd><b>יש מניין</b>הגיע למינימום <b>של התיאום</b> אבל לא כולם. לא נקבע מעצמו — רק ידנית.</dd>
+        <dt>4/4</dt><dd><b>הטבעת</b>כמה אמרו כן מתוך כמה שעדיין בתיאום. זהב = כולם, ירוק = מניין, סגול = בדרך.</dd>
+        <dt>🗑</dt><dd><b>מחיקה</b>שתי לחיצות. יורד מהשולחן לכולם.</dd>
+      </dl>
+    </div>
+
+    <div class="legend" style="margin-top:16px">
+      <h3>הנוסחה</h3>
+      <dl>
+        <dt style="font-size:14px;font-weight:700">יום</dt><dd>מחר · שישי · ראשון — תמיד באותו רוחב, תמיד ראשון.</dd>
+        <dt style="font-size:14px;font-weight:700">תאריך</dt><dd>9.9 · 11.9 — מספרי, קצר, מיושר לעמודה משלו.</dd>
+        <dt style="font-size:14px;font-weight:700">שעה</dt><dd>ערב · 21:00 — בסגול, כי זה מה שמשתנה בין אופציות של אותו יום.</dd>
+      </dl>
+    </div>
+  </div>
+</div>
+
+<h2 class="sec">מה קורה בלחיצה</h2>
+<ol class="steps">
+  <li><b>לחיצה על השורה</b> פותחת את ההצבעות — רק מי שהצביע, מקובץ ל״יכולים״ ו״לא יכולים״. מי שטרם ענה לא מופיע שם בכלל, רק בשורת הסיכום.</li>
+  <li><b>קביעה משמאל לזוג הכפתורים</b>, מחוץ למתג — כי היא לא תשובה שלך, היא החלטה על התיאום. לחיצה ראשונה חושפת <code>בטוח? לחץ שוב</code>; השנייה שולחת לכולם. אפשר לקבוע גם יום שלא כולם יכולים בו, וזו בדיוק הסיבה שהיא לא מוסתרת.</li>
+  <li><b>מחיקה</b> באותו דפוס: לחיצה, אזהרה, לחיצה. שונה בצבע כי היא לא הפיכה.</li>
+  <li><b>כתר = דקה והמועד נסגר לבד.</b> זה כבר עובד היום (הארכה של דקה כבר בפרודקשן) — כאן זה רק מקבל פנים.</li>
+  <li><b>מועד שעבר יורד לבד.</b> ״ערב״ של אתמול נעלם עד הבוקר, בלי שאף אחד ילחץ.</li>
+</ol>
+
+<h2 class="sec">שתי ההכרעות (2026‑09‑09)</h2>
+
+  <p class="lede"><b>המינימום יושב על התיאום.</b> היום <code>quorum_min</code> יושב על <code>chat_groups</code>, כלומר על הקבוצה. הוא עובר ל‑<code>meetings</code>, ניתן לבחירה ולשינוי מתוך מסך התיאום, וחל על כל האופציות שבו.</p>
+
+  <p class="lede">הנקודה העדינה: אם התיאום היה <i>יורש</i> מהקבוצה בזמן קריאה, קבוצת פוקר עם מינימום 4 לא הייתה יכולה לפתוח מפגש רגיל בלי מינימום — בדיוק המקרה שנתת. לכן זו <b>העתקה ברגע הפתיחה</b> ולא ירושה: התיאום נולד עם הערך של הקבוצה כברירת מחדל ומאותו רגע הוא שלו, כולל האפשרות לאפס אותו. שינוי המינימום של הקבוצה חודשיים אחר כך לא נוגע בתיאום חי.</p>
+
+  <div class="flag"><p><b>מה שמצאתי בשרת ושווה שתדע:</b> אף קבוצה בפרודקשן לא הגדירה מינימום מעולם — שלוש הקבוצות עם <code>quorum_min = NULL</code>, ורק לאחת מהן יש בכלל <code>kind</code>. כלומר אין ממה לרשת, וזה גם אומר ש‑🃏 לא היה מופיע לאף אחד היום גם אילו בניתי אותו בדיוק כמו שהוא.</p></div>
+
+  <p class="lede"><b>תיאום שכל המועדים בו עברו — לארכיון, ומעדכנים.</b> חצי מזה כבר בנוי ואני לא בונה אותו מחדש: <code>expireStaleMeetings</code> סוגר תיאום ל‑<code>status = 'expired'</code>, ו‑<code>sweepStaleMeetings</code> שולח על זה הודעה. שני תיאומים בפרודקשן כבר במצב הזה.</p>
+
+  <p class="lede">שלושה דברים כן חסרים, וכולם נובעים ישירות ממה שביקשת:</p>
+  <ol class="steps">
+    <li><b>התנאי לא נכון לריבוי אופציות.</b> הסוויפ בודק את <code>proposed_start_at</code>, שהוא <i>מראה</i> של האופציה הפעילה האחרונה שנוספה — לא של האופציה המאוחרת ביותר בזמן. תיאום שהאופציה החדשה בו כבר עברה אבל יש בו מועד מאוחר יותר ייסגר בטעות. התנאי צריך להיות ״לא נותרה אף אופציה פעילה״, וזה מתחבר בדיוק למחיקה האוטומטית של מועד שעבר: כשהאחרון נמחק, התיאום נסגר.</li>
+    <li><b>הקבוצה לא שומעת כלום.</b> יש חמישה משפטים קבועים לקבוצה (<code>group_coord_base / _chase / _done / _dayof / _soon</code>) וחמישה חותמים על <code>meetings</code>. צריך שישי — ״לא הצלחנו לתאם״ — עם חותם משלו, כדי שייאמר פעם אחת ושוב בשבוע הבא על התיאום הבא, וניתן לניסוח מחדש מדף הניהול כמו כל השאר.</li>
+    <li><b>בתיאום בלי קבוצה רק היוזם שומע.</b> אמרת ״לעדכן אותם״ — כולם. כל מי שעדיין בתיאום מקבל שורה, לא רק מי שפתח אותו.</li>
+  </ol>
+
+<h2 class="sec">מה כבר קיים ומה צריך להיבנות</h2>
+<div class="scroll">
+<table class="plan">
+  <thead><tr><th>מה</th><th>מצב</th><th>איפה</th></tr></thead>
+  <tbody>
+    <tr><td><b>קביעה ידנית של כל מועד</b></td><td class="yes">קיים</td><td>‎settleNow — יוזם התיאום בלבד</td></tr>
+    <tr><td><b>כתר: דקה ואז נסגר לבד</b></td><td class="yes">קיים</td><td>‎SETTLE_GRACE_MS, כבר בפרודקשן</td></tr>
+    <tr><td><b>מינימום — החישוב</b></td><td class="yes">קיים</td><td>‎groups.quorumFor — met / short / full</td></tr>
+    <tr><td><b>מינימום על התיאום</b></td><td class="new">חדש · שרת</td><td>מיגרציה 058+ (בשרת max=56, ו‑057 תפוס ב‑PR #297)</td></tr>
+    <tr><td><b>סגירת תיאום שפג</b></td><td class="yes">קיים</td><td>‎expireStaleMeetings → status 'expired'</td></tr>
+    <tr><td><b>…אבל התנאי לפי כל האופציות</b></td><td class="new">חדש · שרת</td><td>היום נקרא מ‑‎proposed_start_at, שהוא מראה</td></tr>
+    <tr><td><b>הודעה לקבוצה שלא הסתדר</b></td><td class="new">חדש · שרת</td><td>משפט שישי + חותם, דרך ‎group_outbox</td></tr>
+    <tr><td><b>טבעת, כתר, סימן מניין, נוסחת יום·תאריך·שעה</b></td><td class="new">חדש · דף בלבד</td><td>‎user-dashboard.html</td></tr>
+    <tr><td><b>פירוט הצבעות בלחיצה</b></td><td class="new">חדש · דף בלבד</td><td>הנתונים כבר בתשובת ‎/me/data</td></tr>
+    <tr><td><b>אישור בשתי לחיצות</b></td><td class="new">חדש · דף בלבד</td><td>הקריאה לשרת לא משתנה</td></tr>
+    <tr><td><b>מחיקת מועד</b></td><td class="new">חדש · שרת</td><td>אין היום — יש רק החלפה (‎swap)</td></tr>
+    <tr><td><b>מחיקה אוטומטית של מועד שעבר</b></td><td class="new">חדש · שרת</td><td>סוויפ שעתי; היום רק הוספה נחסמת בעבר</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p class="lede" style="margin-top:22px">שלושת השורות האחרונות הן PR-ים נפרדים משלהן, כמו שביקשת. אני מתחיל מהדף — זה מה שאתה רואה — ואז מחיקה, ואז הסוויפ.</p>
+
+</div>

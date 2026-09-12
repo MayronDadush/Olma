@@ -401,7 +401,7 @@ async function loadChannels(client, userId) {
 // participant is `answered: false` rather than an empty option list.
 async function loadMeetings(client, userId, zone) {
   const { rows: meetings } = await client.query(
-    `SELECT m.id, m.title, m.initiator_id, m.status,
+    `SELECT m.id, m.title, m.initiator_id, m.status, m.quorum_min,
             m.proposed_slot, m.proposed_start_at, m.confirmed_start_at,
             m.confirmed_slot, m.settling_option_id, m.settled_by,
             -- Seconds left of the settle grace, not the instant it ends: the
@@ -529,6 +529,11 @@ async function loadMeetings(client, userId, zone) {
     // asks, asked here only so the page knows whether to draw the control —
     // `settleNow` re-asks it whatever the page drew.
     canSettle: String(m.initiator_id) === String(userId) && m.status === 'negotiating',
+    // How many yeses this coordination calls enough, copied off the group when
+    // it opened (migration 064) and its own ever since. `null` is no minimum,
+    // which is every coordination in production today — the page draws no mark
+    // for it rather than inventing one from the head count.
+    quorumMin: m.quorum_min === null ? null : Number(m.quorum_min),
     participants: byMeeting.get(m.id) || [],
     options: optionsBy.get(m.id) || [],
     maxOptions: meetingsDomain.options.MAX_ACTIVE,
