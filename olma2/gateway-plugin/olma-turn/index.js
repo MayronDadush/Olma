@@ -265,9 +265,9 @@ const FRAME_RE = /<[｜|]DSML[｜|]|<\|?tool_calls?\|?>|\bolma_(?:tok|grp)_[0-9a
 export const INTERNAL_NAMES = [
   "due_at", "new_due_at", "remind_at", "starts_at", "ends_at", "accepted_starts_at",
   "counter_starts_at", "expires_at", "sent_at", "last_inbound_at", "paused_at",
-  "opening_sent_at", "timezone_asked_at", "first_turn_at", "last_wrote_at",
+  "opening_sent_at", "timezone_asked_at", "holiday_quiet_asked_at", "first_turn_at", "last_wrote_at",
   "hold_reason", "paused_reason", "idempotency_key", "checkin_misses", "quiet_days",
-  "auto_reminder", "is_eval", "name_confirmed",
+  "auto_reminder", "is_eval", "name_confirmed", "holiday_calendar",
   "olma_identity", "identity_token", "agent_id", "session_key", "user_id",
   "message_id", "message_kind", "reply_to_id", "sender_name", "turn_start",
   "task_id", "parent_task_id", "reminder_id", "meeting_id", "event_id",

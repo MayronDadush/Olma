@@ -23,6 +23,8 @@ const selfInitiated = require('./self-initiated');
 const digest = require('./digest');
 const onboardingDomain = require('./onboarding');
 const templates = require('./message-templates');
+const holidays = require('./holidays');
+const preferences = require('./preferences');
 
 // Rollout control. Absent/empty = off everywhere, so deploying this changes
 // nothing until someone turns it on: a fix for an invisible defect must not
@@ -188,6 +190,29 @@ function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, 
           + 'my_calendar_events for those.'
         : ' or details this block does not carry.');
   }
+  if (today && today.holiday) {
+    // One short line, and it is a CEILING as much as a permission. The
+    // failure mode is not the model ignoring this — it is the model enjoying
+    // it, and a reply that opens with a greeting nobody asked for on 40 days
+    // of the year is worse than never mentioning a chag at all.
+    hints.holiday = 'Today is ' + today.holiday.name + ' where they are. Acknowledge it only if '
+      + 'it fits what they are already talking about, in ONE short clause in their own language, '
+      + 'and never instead of answering them.'
+      + (today.holiday.solemn
+        ? ' It is a fast or a memorial day: no greeting, nothing celebratory.'
+        : '');
+  }
+  if (today && today.askHolidayQuiet) {
+    // The offer, as a STATEMENT with no question mark, for the reason the
+    // timezone rung's hours and quiet day are statements: three questions in
+    // one message is a form. Asked once ever, across both routes.
+    hints.askHolidayQuiet = 'They have never been told they can have chagim quiet. If there is '
+      + 'room for it in this reply, say ONCE, in one line and without a question mark, that on '
+      + 'chagim you can send only the reminders they asked for, and they need only say so. If '
+      + 'they want it, call remember_preference key "quiet_days" adding "holidays" to whatever '
+      + 'days are already there ("sat,holidays"). If these are not their chagim at all, that is '
+      + 'key "holiday_calendar", value "christian" or "none".';
+  }
   if (genderForms === 'feminine') {
     // The doctrine already says "hold the stored preference"; the nightly
     // evals kept catching one masculine verb in an otherwise feminine reply
@@ -272,7 +297,7 @@ function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, 
 //               person did anything.
 //   replyTarget, languageNudge — what only the model (or the gateway) could
 //               see about this message; null when nobody reported them.
-async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly }) {
+async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, now }) {
   // A paused person who writes gets answered — pausing stops Olma
   // INITIATING, not answering (see domain/pause.js) — but before this, that
   // answer was the whole reply. They were then back to relying on their OWN
@@ -427,7 +452,20 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       })
     : null;
 
-  const today = counted.data.blocked ? null : await todayBlock(client, user.id);
+  const today = counted.data.blocked ? null : await todayBlock(client, user.id, now || null);
+
+  // Spent on the HAND-OUT, not on their answer, and guarded by `IS NULL` so
+  // two routes can never each spend it. Same doctrine and same shape as
+  // `timezone_asked_at` in the check-in ladder (migration 045, and the four
+  // times the city was asked before it existed): a question the model then
+  // decided not to fit in still used up the one turn this person's patience
+  // had for it, and an unanswered question repeated is the reason the third
+  // one goes unread too.
+  if (today && today.askHolidayQuiet) {
+    await client.query(
+      `UPDATE users SET holiday_quiet_asked_at = now()
+        WHERE id = $1 AND holiday_quiet_asked_at IS NULL`, [user.id]);
+  }
 
   if (!counted.data.blocked) {
     return {
@@ -470,29 +508,48 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
 // paused person gets it too, unlike planHeadline. A NULL zone reads as UTC
 // here as it does in the gate, and CLAUDE.md says it must never be NULL.
 const TODAY_CAP = 12;
-async function todayBlock(client, userId) {
+// `now` is an injected clock, defaulting to Postgres's own, for the same
+// reason drainOnce takes one: a block whose contents depend on the calendar
+// date cannot otherwise be tested on a day that is not today, and a fixture
+// that writes the answer by hand would not be exercising this query at all.
+// Production never passes it.
+async function todayBlock(client, userId, now = null) {
   const { rows: [day] } = await client.query(
-    `SELECT to_char(now() AT TIME ZONE COALESCE(u.timezone, 'UTC'), 'YYYY-MM-DD') AS date,
+    `SELECT to_char(COALESCE($2::timestamptz, now()) AT TIME ZONE COALESCE(u.timezone, 'UTC'), 'YYYY-MM-DD') AS date,
+            u.locale, u.timezone, u.holiday_quiet_asked_at,
+            (SELECT value FROM user_preferences p
+              WHERE p.user_id = u.id AND p.key = 'holiday_calendar') AS holiday_calendar,
+            (SELECT value FROM user_preferences p
+              WHERE p.user_id = u.id AND p.key = 'quiet_days') AS quiet_days,
             EXISTS (SELECT 1 FROM integrations i
                      WHERE i.user_id = u.id AND i.provider = 'google_calendar' AND i.status = 'connected') AS google
-       FROM users u WHERE u.id = $1`, [userId]);
+       FROM users u WHERE u.id = $1`, [userId, now]);
   if (!day) return null;
+  // Their calendar's own name for today, if today has one. It rides the block
+  // rather than a job because the owner's answer was "רק בהקשר השיחה": Olma
+  // may notice the day in a conversation she was having anyway, and sends
+  // nothing on account of it (2026-09-11).
+  const calendar = holidays.calendarFor({
+    locale: day.locale, timezone: day.timezone, preference: day.holiday_calendar,
+  });
+  const on = await holidays.holidaysOn(calendar, day.date, { il: holidays.isIsrael(day.timezone) });
+  const holiday = on[0] || null;
   const { rows } = await client.query(
     `WITH z AS (SELECT COALESCE(timezone, 'UTC') AS tz FROM users WHERE id = $1),
           t AS (SELECT t.id, t.title, t.kind, t.location,
                        t.due_at AT TIME ZONE z.tz AS local_due,
                        t.ends_at AT TIME ZONE z.tz AS local_end,
-                       (now() AT TIME ZONE z.tz)::date AS local_today
+                       (COALESCE($2::timestamptz, now()) AT TIME ZONE z.tz)::date AS local_today
                   FROM tasks t, z
                  WHERE t.owner_id = $1 AND t.status = 'open' AND t.archived_at IS NULL
                    AND t.due_at IS NOT NULL
-                   AND (t.due_at AT TIME ZONE z.tz)::date <= (now() AT TIME ZONE z.tz)::date)
+                   AND (t.due_at AT TIME ZONE z.tz)::date <= (COALESCE($2::timestamptz, now()) AT TIME ZONE z.tz)::date)
      SELECT title, kind, location,
             to_char(local_due, 'HH24:MI') AS at,
             to_char(local_end, 'HH24:MI') AS until,
             local_due::date < local_today AS overdue,
             local_due = date_trunc('day', local_due) AS day_shaped
-       FROM t ORDER BY local_due, id`, [userId]);
+       FROM t ORDER BY local_due, id`, [userId, now]);
   const item = (r) => ({
     title: String(r.title).slice(0, 120),
     ...(r.day_shaped ? {} : { at: r.at }),
@@ -512,6 +569,21 @@ async function todayBlock(client, userId) {
     overdue,
     ...(more > 0 ? { more } : {}),
     ...(day.google ? { googleCalendar: true } : {}),
+    ...(holiday ? {
+      holiday: {
+        name: holidays.nameFor(holiday, day.locale),
+        ...(holiday.solemn ? { solemn: true } : {}),
+      },
+    } : {}),
+    // The once-ever offer, second route. It rides the erev and the day itself
+    // — a chag is when somebody can picture the answer — and is spent on the
+    // HAND-OUT, not on their reply, exactly like the timezone rung: a question
+    // the model then chose not to ask still used up the one turn this person's
+    // patience had for it. Stamped by advise(), which is the caller that knows
+    // the hint actually went out.
+    ...(holiday && !day.holiday_quiet_asked_at && !preferences.parseHolidayQuiet(day.quiet_days)
+      && (holiday.tier === holidays.QUIET || /^Erev /.test(holiday.key))
+      ? { askHolidayQuiet: true } : {}),
   };
 }
 

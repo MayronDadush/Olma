@@ -157,6 +157,7 @@ never trust a dated narrative for something you are about to act on.
 - ["בשמחה יהב, שיהיה ערב טוב" (2026-09-07)](#בשמחה-יהב-שיהיה-ערב-טוב-2026-09-07)
 - [A sentence about Shabbat, because the table had never heard of preferences (fixed 2026-09-10)](#a-sentence-about-shabbat-because-the-table-had-never-heard-of-preferences-fixed-2026-09-10)
 - [The quiet day nobody was ever going to ask for (2026-09-11)](#the-quiet-day-nobody-was-ever-going-to-ask-for-2026-09-11)
+- [Sixty-four holidays, eight of them quiet (2026-09-11)](#sixty-four-holidays-eight-of-them-quiet-2026-09-11)
 - [The hint the dedup swallowed (fixed 2026-09-10)](#the-hint-the-dedup-swallowed-fixed-2026-09-10)
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
@@ -5502,6 +5503,70 @@ Both halves of that sentence are drawn from the code that enforces them —
 `preferences.DEFAULT_WINDOW` and `holidays.quietDayWord` — and pinned by one
 test, on the argument the hours already had: what somebody was told is a
 promise the gate has to keep.
+
+
+### Sixty-four holidays, eight of them quiet (2026-09-11)
+
+The same conversation asked for the Jewish and Christian calendars: mention a
+chag when there is one, and ask whether people would rather receive nothing
+but reminders on those days. Four decisions came back from the owner, and each
+one is a smaller feature than the sentence that asked for it.
+
+**Not quiet by default, asked once ever.** A chag is a day most people are on
+their phone more, not less, and silently cancelling somebody's reminders on
+Rosh Hashana because a calendar said so is a thing they would have to discover.
+So the default is unchanged and the offer is made once — the same shape as the
+city, and now the second column of it (`users.holiday_quiet_asked_at`,
+migration 062). It has two routes from the start, the discovery ladder and a
+turn hint on the erev, which is precisely the arrangement that asked Sarah for
+her city four times when each route was separately careful. Both read the
+column and whichever gets there first writes it.
+
+**Mentioned in conversation, never announced.** "רק בהקשר השיחה" — the day
+rides `today.holiday` into the turn context and Olma sends nothing of its own.
+A proactive "שנה טובה" from an assistant is a greeting card from a company,
+and the one thing worse is sending it on Yom HaZikaron, so every fast and
+memorial day carries `solemn: true` and the hint says so.
+
+**Yom tov only.** hebcal's filtered year is 64 days, and the first read of it
+made Chanukah, Purim, Lag BaOmer, Chol HaMoed and four fasts all candidates
+for silence. They are real days and ordinary working days both; going quiet on
+them is broken, not respectful. The quiet tier is `flags.CHAG` and nothing
+else: eight days a year in Israel, thirteen abroad. The rest are `mention`,
+which holds nothing and only ever adds a clause to a reply. That split is the
+"a hint that fires on ordinary input is worse than no hint" rule applied to a
+calendar, and the test writes the eight days out as literals so a later
+widening has to edit a list that says what it is widening.
+
+**One key, not two.** Opting in is the token `holidays` inside the existing
+`quiet_days` value (`"sat,holidays"`). A second preference key would have been
+cleaner to read and would not fit: the tool schemas had about eleven
+characters of headroom, and the gate parsing one key instead of two is one
+thing to get wrong.
+
+Three things bit during the build. `require('@hebcal/core')` fails —
+`ERR_PACKAGE_PATH_NOT_EXPORTED`, the package is ESM-only — so it is
+`await import()`ed behind a cached promise that logs once and returns `null`
+for ever on failure; the gate reads this on every outbox row, and a package
+that will not load has to answer "no holidays" rather than throw into
+delivery. The first probe was a day out because it read `ev.getDate().greg()`
+through `toISOString()`, which is a LOCAL-midnight Date and reads back as
+yesterday from a zone ahead of UTC; the production path uses local getters and
+was verified across four server timezones. And `msUntilQuietDaysEnd` had to
+grow from a 14-day probe to 21, because a chag can chain into Shabbat into a
+second chag.
+
+The last one is a test-suite lesson rather than a product one. The suite went
+red on a Saturday the first time, and again on Rosh Hashana — six ladder
+assertions that had never named a date suddenly depended on one, because the
+new defaults are properties of the day the suite runs. Pinning `now` does not
+fix it: the worker stamps `sent_at` with Postgres's clock and counts the daily
+budget against the injected one, so moving the DATE breaks the arithmetic
+instead. Both are fixed in `makeUser` — a test user is created with
+`quiet_days = 'none'` and an already-spent `holiday_quiet_asked_at`, and a test
+that wants the real behaviour opts in with `quietDays: null` /
+`holidayAsked: null` and pins its own clock. The default in a fixture should be
+the state that makes every OTHER file's arithmetic its own.
 
 
 ### An offer to call a number the bridge has never served (fixed 2026-09-06)

@@ -107,3 +107,104 @@ test('the rendered turn context carries the block for the people the plugin serv
   const text = turnDomain.renderContext(await advise(u));
   assert.match(text, /"today":\{"date":"\d{4}-\d{2}-\d{2}","events":\[\{"title":"תור","at":"11:00"\}\]/);
 });
+
+// ---- the day's own name ----------------------------------------------------
+// The owner's answer on 2026-09-11 was that a chag is mentioned "רק בהקשר
+// השיחה" — it rides this block and sends nothing of its own. `now` is injected
+// for the same reason drainOnce takes one: these are calendar dates, and a
+// test that could only run on Rosh Hashana is a test that runs once a year.
+async function adviseAt(user, now) {
+  const client = await db.pool.connect();
+  try {
+    return await turnDomain.advise(client, user, { counted, firstTurn: false, ourTurn: false, now });
+  } finally { client.release(); }
+}
+
+// Rosh Hashana 5787: Saturday 12 and Sunday 13 September 2026 in Israel.
+const ON_CHAG = new Date('2026-09-12T09:00:00Z');
+const EREV = new Date('2026-09-11T09:00:00Z');
+const ORDINARY = new Date('2026-11-17T09:00:00Z');
+
+test('the block names the day when the day has a name, in their own language', async () => {
+  const u = await makeUser(db.pool, '+972612200021', { firstName: 'יוסי', timezone: TZ });
+  const chag = await adviseAt(u, ON_CHAG);
+  assert.equal(chag.today.date, '2026-09-12');
+  assert.equal(chag.today.holiday.name, 'ראש השנה');
+  assert.equal(chag.today.holiday.solemn, undefined, 'a chag is not a fast');
+  // And the model is told what to do with it — one clause, only if it fits.
+  assert.match(chag.hints.holiday, /ראש השנה/);
+  assert.match(chag.hints.holiday, /never instead of answering/);
+
+  // An ordinary Tuesday carries neither the field nor the hint. That is most
+  // of the year, and a hint that fires on ordinary input is worse than none.
+  const plain = await adviseAt(u, ORDINARY);
+  assert.equal(plain.today.holiday, undefined);
+  assert.equal(plain.hints && plain.hints.holiday, undefined);
+});
+
+test('an English speaker gets their own calendar, and their own words for it', async () => {
+  const u = await makeUser(db.pool, '+14155550301',
+    { firstName: 'Sarah', timezone: 'America/New_York', locale: 'en' });
+  const xmas = await adviseAt(u, new Date('2026-12-25T15:00:00Z'));
+  assert.equal(xmas.today.holiday.name, 'Christmas Day');
+  // And a chag is not theirs unless they said it was.
+  const kippur = await adviseAt(u, new Date('2026-09-21T15:00:00Z'));
+  assert.equal(kippur.today.holiday, undefined);
+});
+
+test('a solemn day is named and never congratulated', async () => {
+  const u = await makeUser(db.pool, '+972612200022', { firstName: 'נועה', timezone: TZ });
+  const kippur = await adviseAt(u, new Date('2026-09-21T09:00:00Z'));
+  assert.equal(kippur.today.holiday.name, 'יום כפור');
+  assert.equal(kippur.today.holiday.solemn, true);
+  assert.match(kippur.hints.holiday, /no greeting, nothing celebratory/);
+});
+
+test('the offer to go quiet on chagim is made ONCE, by whichever route gets there first', async () => {
+  const u = await makeUser(db.pool, '+972612200023', { firstName: 'דנה', timezone: TZ, holidayAsked: null });
+  const stamp = async () => (await db.pool.query(
+    `SELECT holiday_quiet_asked_at FROM users WHERE id = $1`, [u.id])).rows[0].holiday_quiet_asked_at;
+  assert.equal(await stamp(), null);
+
+  // The erev is where it lands: a chag is close enough to picture, and the
+  // evening before is when somebody can still decide.
+  const erev = await adviseAt(u, EREV);
+  assert.equal(erev.today.askHolidayQuiet, true);
+  assert.match(erev.hints.askHolidayQuiet, /without a question mark/);
+  assert.match(erev.hints.askHolidayQuiet, /"quiet_days"/);
+  assert.match(erev.hints.askHolidayQuiet, /"holiday_calendar"/);
+
+  // Spent on the HAND-OUT, not on their answer — a question the model then
+  // did not fit in still used up the one turn this person's patience had.
+  assert.ok(await stamp(), 'stamped on the person, not on the route');
+  const again = await adviseAt(u, ON_CHAG);
+  assert.equal(again.today.askHolidayQuiet, undefined, 'asked once, ever');
+  assert.equal(again.hints && again.hints.askHolidayQuiet, undefined);
+  // The day is still NAMED, though — that half was never a question.
+  assert.equal(again.today.holiday.name, 'ראש השנה');
+
+  // And the OTHER route sees the same stamp, which is the whole reason it is a
+  // column on the person rather than a topic string in the outbox.
+  const checkin = require('../src/jobs/checkin');
+  const c = await db.pool.connect();
+  try {
+    const gaps = await checkin.discoveryGaps(c, u.id, EREV);
+    assert.ok(!gaps.some((g) => g.topic === 'holidays'),
+      'the ladder must not ask what a turn hint already asked');
+  } finally { c.release(); }
+});
+
+test('somebody who already asked for quiet chagim is never offered them', async () => {
+  const u = await makeUser(db.pool, '+972612200024', { firstName: 'אבי', timezone: TZ, quietDays: 'sat,holidays', holidayAsked: null });
+  const erev = await adviseAt(u, EREV);
+  assert.equal(erev.today.askHolidayQuiet, undefined);
+  assert.equal(erev.today.holiday.name, 'ערב ראש השנה');
+
+  // Nor is somebody whose calendar is not this one at all.
+  const none = await makeUser(db.pool, '+972612200025', { firstName: 'רון', timezone: TZ, holidayAsked: null });
+  await db.pool.query(
+    `INSERT INTO user_preferences (user_id, key, value) VALUES ($1, 'holiday_calendar', 'none')`, [none.id]);
+  const quiet = await adviseAt(none, EREV);
+  assert.equal(quiet.today.holiday, undefined);
+  assert.equal(quiet.today.askHolidayQuiet, undefined);
+});
