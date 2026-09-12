@@ -31,9 +31,8 @@ const actionLink = require('./action-link');
 const flags = require('./flags');
 
 // A link is for the person who just asked for it, in the conversation they are
-// already in. Long enough to walk to a laptop, short enough that a forwarded
-// screenshot is worthless by the time anyone acts on it.
-const LINK_TTL_MINUTES = 30;
+// already in.
+const LINK_TTL_MINUTES = 24 * 60;
 // Staying signed in IS the feature — this is a phone bookmark, not a bank. The
 // idle window is what expires it; the absolute cap exists so a session cannot
 // live forever by being touched once a month.

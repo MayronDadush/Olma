@@ -44,12 +44,11 @@ async function renderUsers(client, csrf) {
 
 // Open a person's own dashboard, as they see it.
 //
-// The link a user gets in WhatsApp is single-use and lives 30 minutes, which
+// The link a user gets in WhatsApp is single-use and lives 24 hours, which
 // is right for a message somebody might screenshot and wrong for looking
-// through a dozen accounts for layout bugs — by the time you have pasted it
-// into a browser it has often expired. This mints one and goes straight
-// there, so the thirty minutes is never spent waiting; the SESSION it opens
-// is the normal one and lasts thirty idle days.
+// through a dozen accounts for layout bugs. This mints one and goes straight
+// there instead of pasting it into a browser; the SESSION it opens is the
+// normal one and lasts thirty idle days.
 //
 // It is a real sign-in as that person, not a read-only preview, so it is
 // audited under their id like every other admin edit on this page. Offered

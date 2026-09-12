@@ -170,14 +170,14 @@ const SIGN_IN_COPY = {
     hi: (name) => (name ? `שלום ${esc(name)}` : 'שלום'),
     body: 'הקישור הזה נפתח פעם אחת. אחרי שתיכנס הוא כבר לא יעבוד — הדף עצמו יישאר פתוח.',
     button: 'כניסה',
-    ttl: (m) => `הקישור תקף ל־${m} דקות`,
+    ttl: (h) => `הקישור תקף ל־${h} שעות`,
   },
   en: {
     dir: 'ltr',
     hi: (name) => (name ? `Hi ${esc(name)}` : 'Hi'),
     body: 'This link opens once. After you sign in it stops working — the page itself stays open.',
     button: 'Sign in',
-    ttl: (m) => `The link is valid for ${m} minutes`,
+    ttl: (h) => `The link is valid for ${h} hours`,
   },
 };
 
@@ -206,7 +206,7 @@ small{display:block;margin-top:14px;font-size:12.5px;opacity:.45}
 <h1>${hi}</h1>
 <p>${t.body}</p>
 <form method="POST" action="/d/${esc(token)}${meeting ? `?meeting=${meeting}` : ''}"><button type="submit">${t.button}</button></form>
-<small>${t.ttl(auth.LINK_TTL_MINUTES)}</small>
+<small>${t.ttl(auth.LINK_TTL_MINUTES / 60)}</small>
 </div></body></html>`);
 }
 

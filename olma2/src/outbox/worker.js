@@ -163,6 +163,18 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             tz: row.timezone, from: now, il: holidays.isIsrael(row.timezone),
           })
           : [];
+        // An Israeli zone with Saturday among its quiet days gets the real
+        // Shabbat window (candle-lighting → havdalah) instead of the plain
+        // calendar day — `null` only when hebcal itself could not load, in
+        // which case 6 stays in `quietDays` below and the old whole-day check
+        // covers that week (domain/holidays.js has the detail on why even a
+        // chag touching Shabbat still resolves here).
+        const shabbatWindow = holidays.isIsrael(row.timezone) && quiet.data.days.includes(6)
+          ? await holidays.shabbatWindow(row.timezone, now)
+          : null;
+        const quietDays = shabbatWindow
+          ? quiet.data.days.filter((d) => d !== 6)
+          : quiet.data.days;
         const budget = Number(await flagsDomain.getFlag(client, 'proactive_daily_budget') ?? 4);
         // Count only what the budget actually governs. Urgent rows and the two
         // user-chosen kinds are exempt in decide() — counting them here let a day
@@ -252,7 +264,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           evalUser: Boolean(row.is_eval),
           checkinMisses: Number(row.checkin_misses) || 0,
           blockedUntil: row.quota_blocked_until,
-          window: win.data.window, quietDays: quiet.data.days, quietDates, tz: row.timezone,
+          window: win.data.window, quietDays, quietDates, shabbatWindow, tz: row.timezone,
           lastInboundAt: row.last_inbound_at, groupWroteAt,
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,
