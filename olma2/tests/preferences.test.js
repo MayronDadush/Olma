@@ -7,7 +7,8 @@ const prefs = require('../src/domain/preferences');
 let db, user;
 before(async () => {
   db = await freshDb();
-  user = await makeUser(db.pool, '+972509000001');
+  // No preference row at all: this file is where the DEFAULT is proved.
+  user = await makeUser(db.pool, '+972509000001', { quietDays: null });
 });
 after(async () => { await db.teardown(); });
 
@@ -136,7 +137,7 @@ test('quietDays: whole days off, and no way to spell a permanent mute', async ()
 
 test('the default quiet day follows the person, not the server', async () => {
   await withClient(async (c) => {
-    const u = await makeUser(db.pool, '+14155550111');
+    const u = await makeUser(db.pool, '+14155550111', { quietDays: null });
     const sunday = await prefs.quietDays(c, u.id, { locale: 'en', timezone: 'America/New_York' });
     assert.deepEqual(sunday.data.days.map((d) => prefs.DAY_NAMES[d]), ['sun']);
     assert.equal(sunday.data.calendar, 'christian');
@@ -157,7 +158,7 @@ test('the default quiet day follows the person, not the server', async () => {
 
 test('forgetting quiet_days restores a real day, and the result says which', async () => {
   await withClient(async (c) => {
-    const u = await makeUser(db.pool, '+972509000077');
+    const u = await makeUser(db.pool, '+972509000077', { quietDays: null });
     await prefs.remember(c, u.id, 'quiet_days', 'fri');
     const gone = await prefs.forget(c, u.id, 'quiet_days', { locale: 'he', timezone: 'Asia/Jerusalem' });
     assert.equal(gone.ok, true);

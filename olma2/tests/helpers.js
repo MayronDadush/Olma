@@ -210,12 +210,48 @@ async function freshDb() {
 }
 
 // Shorthand: create an active user and return the row.
+// `quietDays` is the third dimension of the same problem daytime() and
+// slotStart() solve, and the only one that could not be solved by pinning.
+//
+// Since 2026-09-11 an unstated quiet day is a REAL day — Saturday for a Hebrew
+// speaker, Sunday for an English one (domain/holidays.js) — so every test that
+// drains the outbox became weekday-dependent overnight: seven of them went red
+// the first Saturday, none of them about quiet days. Pinning `now` to a
+// weekday cannot fix it, because the worker stamps `sent_at` with Postgres's
+// own clock and counts the daily budget against the injected `now`: move the
+// DATE and the budget arithmetic stops describing the same day.
+//
+// So a test user says, out loud, that they keep no quiet day — which is a real
+// state a real person can be in, reached the same way (the value "none"), and
+// not a replica of one. A test that is ABOUT the default passes
+// `quietDays: null` for no preference row at all, or a value like 'fri,sat' to
+// state its own; `tests/preferences.test.js` and the default-quiet-day test in
+// `tests/outbox.test.js` are the two that do.
 async function makeUser(pool, phone, extra = {}) {
   const users = require('../src/domain/users');
   const client = await pool.connect();
   try {
     const res = await users.createUser(client, { phone, firstName: extra.firstName || 'Test', ...extra });
     if (!res.ok) throw new Error('makeUser failed: ' + res.error.message);
+    // Today is a chag for somebody, somewhere, several weeks a year, and the
+    // discovery ladder offers its once-ever holiday rung to anybody not yet
+    // asked — so an unstamped test user makes six unrelated ladder assertions
+    // depend on the date the suite runs. Same shape as the quiet_days line
+    // below and the same fix: the DEFAULT is "already asked", and a test that
+    // wants the real behaviour opts in with `holidayAsked: null` and pins its
+    // own clock. Pinning `now` alone cannot do it — checkin.run reads the live
+    // clock through discoveryGaps.
+    if (extra.holidayAsked !== null) {
+      await client.query(
+        `UPDATE users SET holiday_quiet_asked_at = now() WHERE id = $1`, [res.data.user.id]);
+    }
+    const quiet = extra.quietDays === undefined ? 'none' : extra.quietDays;
+    if (quiet !== null) {
+      await client.query(
+        `INSERT INTO user_preferences (user_id, key, value) VALUES ($1, 'quiet_days', $2)
+         ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value`,
+        [res.data.user.id, quiet]);
+    }
     return res.data.user;
   } finally {
     client.release();

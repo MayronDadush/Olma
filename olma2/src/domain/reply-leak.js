@@ -84,10 +84,10 @@ const INTERNAL_NAMES = [
   // moments and their columns
   'due_at', 'new_due_at', 'remind_at', 'starts_at', 'ends_at', 'accepted_starts_at',
   'counter_starts_at', 'expires_at', 'sent_at', 'last_inbound_at', 'paused_at',
-  'opening_sent_at', 'timezone_asked_at', 'first_turn_at', 'last_wrote_at',
+  'opening_sent_at', 'timezone_asked_at', 'holiday_quiet_asked_at', 'first_turn_at', 'last_wrote_at',
   // the outbox and the gate
   'hold_reason', 'paused_reason', 'idempotency_key', 'checkin_misses', 'quiet_days',
-  'auto_reminder', 'is_eval', 'name_confirmed',
+  'auto_reminder', 'is_eval', 'name_confirmed', 'holiday_calendar',
   // identity and the turn
   'olma_identity', 'identity_token', 'agent_id', 'session_key', 'user_id',
   'message_id', 'message_kind', 'reply_to_id', 'sender_name', 'turn_start',

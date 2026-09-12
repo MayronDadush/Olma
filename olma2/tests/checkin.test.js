@@ -580,6 +580,55 @@ test('an English speaker reads the same three lines, in English, naming Sunday',
   }
 });
 
+test('the ladder offers quiet chagim once, close to one, and stamps the person', async () => {
+  const checkin = require('../src/jobs/checkin');
+  const u = await makeUser(db.pool, '+972641000091', { firstName: 'Avi', holidayAsked: null });
+  const c = await db.pool.connect();
+  try {
+    await c.query(
+      `UPDATE users SET timezone = 'Asia/Jerusalem', timezone_confirmed = true WHERE id = $1`, [u.id]);
+
+    // Pinned: Rosh Hashana 5787 is 12-13 September 2026 in Israel, so this is
+    // four days out. A relative date here would make the test mean something
+    // different every week of the year.
+    const fourDaysOut = new Date('2026-09-08T09:00:00Z');
+    const gaps = await checkin.discoveryGaps(c, u.id, fourDaysOut);
+    const chag = gaps.find((g) => g.topic === 'holidays');
+    assert.ok(chag, 'a yom tov within a week is worth one rung');
+    assert.match(chag.instruction, /ראש השנה/, 'it names the day, in their language');
+    assert.match(chag.instruction, /no question mark/,
+      'a statement, because three questions in one message is a form');
+    assert.match(chag.instruction, /"quiet_days"/);
+    assert.match(chag.instruction, /"holiday_calendar"/);
+    assert.doesNotMatch(chag.instruction, /שנה טובה/,
+      'the offer is not a greeting — the chag has not arrived');
+
+    // It is placed behind the timezone rung and in front of the rest: a zone
+    // nobody confirmed poisons every dated thing under it, including this.
+    assert.ok(gaps.findIndex((g) => g.topic === 'holidays')
+      < gaps.findIndex((g) => g.topic === 'curiosity'));
+
+    // Far from any chag it costs nothing at all.
+    const november = await checkin.discoveryGaps(c, u.id, new Date('2026-11-17T09:00:00Z'));
+    assert.ok(!november.some((g) => g.topic === 'holidays'));
+
+    // Asked, and then never again — stamped on the PERSON, which is what lets
+    // the turn hint and this rung share one promise (migration 062).
+    await c.query(`UPDATE users SET holiday_quiet_asked_at = now() WHERE id = $1`, [u.id]);
+    const after = await checkin.discoveryGaps(c, u.id, fourDaysOut);
+    assert.ok(!after.some((g) => g.topic === 'holidays'), 'asked once, ever');
+
+    // And somebody who already has it is not offered it either.
+    await c.query(`UPDATE users SET holiday_quiet_asked_at = NULL WHERE id = $1`, [u.id]);
+    const prefs = require('../src/domain/preferences');
+    await prefs.remember(c, u.id, 'quiet_days', 'sat,holidays');
+    const already = await checkin.discoveryGaps(c, u.id, fourDaysOut);
+    assert.ok(!already.some((g) => g.topic === 'holidays'));
+  } finally {
+    c.release();
+  }
+});
+
 test('a zone we never had at all is asked about too, and says so', async () => {
   const checkin = require('../src/jobs/checkin');
   const u = await makeUser(db.pool, '+972641000072', { firstName: 'Tal' });

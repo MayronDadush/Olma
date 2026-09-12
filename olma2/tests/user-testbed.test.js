@@ -26,8 +26,11 @@ after(async () => {
 // are not "owned" by the user being deleted. Getting that wrong is the whole
 // risk: delete Miron, and Gali's side of the friendship goes with him.
 async function seed(pool) {
-  const a = await h.makeUser(pool, '+972500000001', { firstName: 'Alef' });
-  const b = await h.makeUser(pool, '+972500000002', { firstName: 'Bet' });
+  // `quietDays: null` so this file's row COUNTS stay its own arithmetic: a
+  // test user otherwise carries an explicit quiet_days preference, and the
+  // cascade assertions below are written as exact numbers on purpose.
+  const a = await h.makeUser(pool, '+972500000001', { firstName: 'Alef', quietDays: null });
+  const b = await h.makeUser(pool, '+972500000002', { firstName: 'Bet', quietDays: null });
   const c = await pool.connect();
   try {
     await c.query(`UPDATE users SET agent_id='u-a', workspace_path=$2 WHERE id=$1`,

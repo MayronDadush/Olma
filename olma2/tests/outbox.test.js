@@ -263,6 +263,70 @@ test('gate: a quiet day releases into the next day they kept, not the next morni
   assert.equal(withinWindow(DAY, 'Asia/Jerusalem', held.releaseAfter), true);
 });
 
+// A holiday reaches the gate as DATES, not as a weekday, and is otherwise the
+// same rule with the same exemption — the hold_reason is the only difference,
+// so the dashboard can tell "Saturday" from "Yom Kippur" without a second rule
+// to keep in step. Opt-in: `quietDates` is empty for everybody who has not
+// asked, which is the `no quiet days is the same gate as before` test below,
+// one dimension over.
+const yomKippur = new Date('2026-09-21T12:00:00Z'); // a Monday, deliberately
+test('gate: a quiet holiday holds the same things a quiet day holds', () => {
+  const kippur = {
+    ...baseFacts, now: yomKippur, quietDays: [], quietDates: ['2026-09-21'],
+  };
+  const held = decide({ ...kippur, row: row() });
+  assert.equal(held.action, 'hold');
+  assert.equal(held.holdReason, 'quiet_holiday', 'named apart from a weekday they chose');
+  assert.equal(decide({ ...kippur, row: row({ kind: 'digest' }) }).holdReason, 'quiet_holiday');
+  assert.equal(decide({ ...kippur, row: row({ urgency: 'urgent' }) }).holdReason, 'quiet_holiday');
+
+  // The one exemption is the same one, word for word: a reminder they put
+  // there themselves, first rung.
+  assert.equal(
+    decide({ ...kippur, row: row({ kind: 'reminder', payload: { rung: 1, auto: false } }) }).action,
+    'deliver');
+  assert.equal(
+    decide({ ...kippur, row: row({ kind: 'reminder', payload: { rung: 1, auto: true } }) }).holdReason,
+    'quiet_holiday');
+
+  // A Monday that is not on the list is an ordinary Monday.
+  assert.equal(decide({ ...kippur, quietDates: ['2026-09-26'], row: row() }).action, 'deliver');
+});
+
+test('gate: a holiday that runs into Shabbat releases after the whole run', () => {
+  // Rosh Hashana 5787 is Saturday 12 and Sunday 13 September 2026, so a
+  // Hebrew speaker with the default Saturday is quiet for three days running.
+  // A release computed from weekdays alone would wake this row on the Sunday,
+  // inside the chag — which is why one predicate answers for both.
+  const erev = new Date('2026-09-11T12:00:00Z'); // Friday
+  const chag = {
+    ...baseFacts, now: erev, quietDays: [SAT], quietDates: ['2026-09-12', '2026-09-13'],
+  };
+  assert.equal(decide({ ...chag, row: row() }).action, 'deliver', 'the erev itself is not quiet');
+
+  const onChag = { ...chag, now: new Date('2026-09-12T12:00:00Z') };
+  const held = decide({ ...onChag, row: row() });
+  assert.equal(held.holdReason, 'quiet_day', 'Saturday is named first — it is the day THEY chose');
+  const releaseDay = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jerusalem', weekday: 'short', day: '2-digit',
+  }).format(held.releaseAfter);
+  assert.equal(releaseDay, '14 Mon', 'not Sunday, which is still Rosh Hashana');
+  assert.equal(withinWindow(DAY, 'Asia/Jerusalem', held.releaseAfter), true);
+});
+
+test('gate: the holiday is judged in THEIR zone too', () => {
+  // 22:00 UTC on the 20th is already Yom Kippur in Jerusalem and still the
+  // 20th in New York.
+  const lateUTC = new Date('2026-09-20T22:00:00Z');
+  const nightOwl = {
+    ...baseFacts, now: lateUTC, quietDays: [], quietDates: ['2026-09-21'],
+    window: { start: '00:00', end: '23:59' },
+  };
+  assert.equal(decide({ ...nightOwl, row: row() }).holdReason, 'quiet_holiday');
+  assert.equal(
+    decide({ ...nightOwl, tz: 'America/New_York', row: row() }).action, 'deliver');
+});
+
 test('gate: no quiet days is the same gate as before', () => {
   // The feature has to be invisible to everyone who never answered the
   // question — `[]` and "not asked" are the same delivery, and an empty array
@@ -834,7 +898,8 @@ test('worker: a quiet day nobody asked for still reaches the gate, off the users
   const saturday = new Date('2026-08-15T12:00:00Z');
   // Hebrew (makeUser's default locale) and a real zone, so "which Saturday"
   // is their Saturday and not the server's.
-  const yossi = await makeUser(db.pool, '+972581000021', { firstName: 'יוסי', timezone: 'Asia/Jerusalem' });
+  const yossi = await makeUser(db.pool, '+972581000021',
+    { firstName: 'יוסי', timezone: 'Asia/Jerusalem', quietDays: null });
   await withTx(db.pool, (c) => enqueue(c, {
     userId: yossi.id, kind: 'checkin', payload: { checkinInstruction: 'מה איתך' },
     idempotencyKey: 'quiet:default:checkin',

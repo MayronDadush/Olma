@@ -192,6 +192,28 @@ title means this file. Grep the title, not the filename.
   the stopped-answering rule does NOT transfer here — that branch drops, this
   one holds, and nothing is lost by waiting.
 
+- **A chag is QUIET only for somebody who asked for it, and "quiet-able" means
+  yom tov and nothing else** (owner, 2026-09-11: "רק ימי טוב"). `holidays.js`
+  sorts every day into two tiers — `quiet` is `flags.CHAG` alone, which is
+  eight days a year in Israel and thirteen abroad, plus Christmas, Easter and
+  Good Friday on the Christian side; everything else hebcal knows is `mention`,
+  and `mention` holds NOTHING. Chanukah, Purim, Lag BaOmer, Chol HaMoed and the
+  fasts are real days AND ordinary working days, and a product that goes silent
+  on them is broken rather than respectful. The raw filtered year was 64 days;
+  the curated list is what stops a hint firing on ordinary input.
+  **Opting in is the token `holidays` inside the existing `quiet_days` value**
+  (`"sat,holidays"`), not a second key — the tool descriptions had about eleven
+  characters left, and one gate-parsed key is one thing to get wrong. The gate
+  then holds as `quiet_holiday` when a LOCAL `YYYY-MM-DD` matches and
+  `quiet_day` when the weekday does, on the same `askedForInWords` exemption,
+  and `msUntilQuietDaysEnd` probes forward up to **21 days** because a chag can
+  chain into Shabbat into a second chag. The dates are computed in THEIR zone
+  by `holidays.quietDates`, from the worker, per row.
+  **`@hebcal/core` is ESM-only and is `await import()`ed behind a cached
+  promise that logs and returns `null` for ever on failure** — the gate reads
+  this on every row, so a package that will not load must answer "no holidays",
+  never throw into delivery.
+
 - **`DEFAULT_WINDOW` (09:00-21:00) is no longer only a fallback — it is a
   sentence somebody read.** The discovery ladder's timezone rung states the
   hours in the same message that asks which country they are in, so moving the

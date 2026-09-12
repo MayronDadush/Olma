@@ -140,6 +140,19 @@ const DAY_NAMES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 // is the one mistake here that mutes somebody.
 const SAID_NONE = new Set(['none', 'no', 'never', 'nothing', 'off']);
 
+// Holidays ride in the SAME value — "sat,holidays" — rather than in a key of
+// their own. One key the gate parses, one key the model has to know the name
+// of, and one tool description that did not have to grow: the schema surface
+// had eleven characters of headroom left when this was written
+// (tests/tool-schema-budget.test.js). It is an independent flag, so
+// "none,holidays" is coherent and means exactly what it says — no weekly quiet
+// day, and quiet on yom tov.
+const SAID_HOLIDAYS = new Set(['holidays', 'holiday', 'chag', 'chagim', 'hag', 'hagim']);
+
+function parseHolidayQuiet(value) {
+  return String(value || '').toLowerCase().split(/[\s,]+/).some((p) => SAID_HOLIDAYS.has(p));
+}
+
 function parseQuietDays(value) {
   const parts = String(value || '').toLowerCase().split(/[\s,]+/).filter(Boolean);
   const days = new Set();
@@ -171,16 +184,22 @@ async function quietDays(client, userId, user = {}) {
     [userId]
   );
   const byKey = Object.fromEntries(rows.map((r) => [r.key, r.value]));
-  const stated = byKey.quiet_days === undefined ? null : parseQuietDays(byKey.quiet_days);
-  if (stated !== null) return ok({ days: stated, source: 'stated' });
   const calendar = holidays.calendarFor({
     locale: user.locale, timezone: user.timezone, preference: byKey.holiday_calendar,
   });
+  // Opt-in and asked once (users.holiday_quiet_asked_at); nobody has it until
+  // they say so, which is why it is read off the value rather than defaulted
+  // beside the day.
+  const onHolidays = calendar !== 'none' && parseHolidayQuiet(byKey.quiet_days);
+  const stated = byKey.quiet_days === undefined ? null : parseQuietDays(byKey.quiet_days);
+  if (stated !== null) return ok({ days: stated, holidays: onHolidays, source: 'stated', calendar });
   const day = holidays.defaultQuietDay(calendar);
-  return ok({ days: day === null ? [] : [day], source: 'default', calendar });
+  return ok({
+    days: day === null ? [] : [day], holidays: onHolidays, source: 'default', calendar,
+  });
 }
 
 module.exports = {
   remember, forget, list, availabilityWindow, DEFAULT_WINDOW,
-  quietDays, parseQuietDays, DAY_NAMES, SAID_NONE,
+  quietDays, parseQuietDays, parseHolidayQuiet, DAY_NAMES, SAID_NONE, SAID_HOLIDAYS,
 };
