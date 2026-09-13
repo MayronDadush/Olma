@@ -15,6 +15,7 @@ const proactiveText = require('../domain/proactive-text');
 const templates = require('../domain/message-templates');
 const format = require('../domain/message-format');
 const gatewayRpc = require('./gateway-rpc');
+const scheduleCard = require('../domain/schedule-card');
 
 const SEND_TIMEOUT_MS = 120_000;
 
@@ -227,7 +228,16 @@ function cardClause(p) {
   const raw = p.cardMinItems;
   const min = Number.isFinite(Number(raw)) ? Number(raw) : DEFAULT_CARD_MIN_ITEMS;
   if (min <= 0) return '';
-  return ` If the counts show ${min} or more open items, the picture is long enough to be worth an IMAGE instead: fetch the actual items first (get_my_digest with scope="full" — the summary scope returns counts only), then call render_schedule_card and reply with one short sentence plus "MEDIA: <path>" on its own line. A card REPLACES the block — never send both, which would be the same morning twice. Under ${min} items the block IS the message.`;
+  // Above `LIMITS.totalItems` (domain/schedule-card.js) the tool refuses
+  // outright rather than draw something unreadable — a real shape for
+  // anyone with a long-running open list. Naming that ceiling HERE, before
+  // the model ever calls the tool, is what stops the failure this replaced:
+  // a card attempted and refused mid-turn, followed by the model narrating
+  // the refusal or retrying as text — and on a --deliver turn every one of
+  // those fragments is its own WhatsApp message (DELIVERY_PREAMBLE above).
+  // Stating the number up front turns a discovered failure into a decision
+  // made before the first tool call, with nothing left to explain.
+  return ` If the counts show ${min} or more open items, the picture is long enough to be worth an IMAGE instead: fetch the actual items first (get_my_digest with scope="full" — the summary scope returns counts only), then call render_schedule_card and reply with one short sentence plus "MEDIA: <path>" on its own line. A card REPLACES the block — never send both, which would be the same morning twice. But past ${scheduleCard.LIMITS.totalItems} open items in total, one image cannot hold them either — render_schedule_card will refuse rather than draw something unreadable, so do not even try it: skip straight to sending the block above as text, with no comment about the count or the picture. Under ${min} items the block IS the message.`;
 }
 
 // A time that came off the table never gets a message of its own (owner,

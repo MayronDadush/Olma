@@ -104,3 +104,79 @@ test('nothing to show is null, which is a different answer from an empty block',
   assert.equal(render({}), null);
   assert.equal(render({ tasks: [{ title: '  ' }] }), null);
 });
+
+// Miron's real morning: a handful of dated items followed by dozens of
+// undated chores, one flat wall of bullets. `tasks.category` is already
+// computed for every task at write time — grouping the undated tail by it
+// is the same declutter the schedule card does, without a model or a tool
+// call, and without ever touching the dated items' own priority order.
+test('a short undated tail stays one flat list — grouping four chores adds a label and nothing else', () => {
+  const out = render({
+    events: [],
+    tasks: [
+      { title: 'לנקות את הבית', due_at: null, category: 'home' },
+      { title: 'לשלם את הארנונה', due_at: null, category: 'money' },
+      { title: 'לקנות חלב', due_at: null, category: 'errands' },
+    ],
+  });
+  assert.doesNotMatch(out, /\*בית\*/, 'below the floor there is no category heading at all');
+  assert.equal(out.split('\n').filter((l) => l.startsWith('- ')).length, 3);
+});
+
+test('a long undated tail is grouped by category, dated items stay out front', () => {
+  const out = render({
+    events: [],
+    tasks: [
+      { title: 'לדבר עם הבנק', due_at: at('2026-09-09T09:00:00+03:00'), category: 'money' },
+      { title: 'לנקות את הבית', due_at: null, category: 'home' },
+      { title: 'לסדר את המטבח', due_at: null, category: 'home' },
+      { title: 'לכבס בגדים', due_at: null, category: 'home' },
+      { title: 'לסיים מצגת ללקוח', due_at: null, category: 'work' },
+      { title: 'לתאם ראיון עבודה', due_at: null, category: 'work' },
+      { title: 'ללכת לרופא שיניים', due_at: null, category: 'health' },
+      { title: 'להזמין תור לבדיקת דם', due_at: null, category: 'health' },
+      { title: 'לשלם את הארנונה', due_at: null, category: 'money' },
+      { title: 'לחשוב על זה', due_at: null, category: null },
+      { title: 'לבדוק משהו', due_at: null, category: null },
+    ],
+  });
+  // The dated item leads, exactly as the flat list always put it first.
+  assert.ok(out.indexOf('לדבר עם הבנק') < out.indexOf('*בית*'), 'a real moment still outranks a category');
+  // One bold heading per category that actually has something in it, in a
+  // fixed order, uncategorised last under the catch-all.
+  const boldLines = out.split('\n').filter((l) => l.startsWith('*') && l.endsWith('*'));
+  assert.deepEqual(boldLines, ['*על הרשימה*', '*בית*', '*עבודה*', '*בריאות*', '*כסף*', '*שונות*']);
+  assert.ok(out.indexOf('*בית*') < out.indexOf('*עבודה*'));
+  assert.ok(out.indexOf('*כסף*') < out.indexOf('*שונות*'));
+  // Every task is still in there — grouping relabels, it never drops.
+  for (const t of ['לנקות את הבית', 'לסדר את המטבח', 'לכבס בגדים', 'לסיים מצגת ללקוח',
+    'לתאם ראיון עבודה', 'ללכת לרופא שיניים', 'להזמין תור לבדיקת דם', 'לשלם את הארנונה',
+    'לחשוב על זה', 'לבדוק משהו']) {
+    assert.ok(out.includes(t), `missing: ${t}`);
+  }
+  // The money group holds BOTH money items — the dated one is not duplicated
+  // into it, and the undated one is not lost from it.
+  const moneyBlock = out.slice(out.indexOf('*כסף*'), out.indexOf('*שונות*'));
+  assert.match(moneyBlock, /לשלם את הארנונה/);
+  assert.doesNotMatch(moneyBlock, /לדבר עם הבנק/, 'the dated task stays with the dated items, not the category');
+});
+
+test('grouping is still off when every undated item lands in the same category', () => {
+  const many = Array.from({ length: 10 }, (_, i) => (
+    { title: `לנקות ${i}`, due_at: null, category: 'home' }
+  ));
+  const out = render({ events: [], tasks: many });
+  // Ten items, one category: a "*בית*" heading over everything says nothing
+  // "על הרשימה" did not already say.
+  assert.doesNotMatch(out, /\*בית\*/);
+  assert.equal(out.split('\n').filter((l) => l.startsWith('- ')).length, 10);
+});
+
+test('category labels are read off the locale, same as every other word here', () => {
+  const undated = ['home', 'home', 'home', 'work', 'work', 'work', 'health', 'health', 'health'];
+  const tasks = undated.map((category, i) => ({ title: `task ${i}`, due_at: null, category }));
+  const en = render({ events: [], tasks }, { locale: 'en' });
+  assert.match(en, /^\*Home\*$/m);
+  assert.match(en, /^\*Work\*$/m);
+  assert.match(en, /^\*Health\*$/m);
+});

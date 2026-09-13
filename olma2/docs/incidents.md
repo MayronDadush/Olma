@@ -8144,3 +8144,55 @@ into the same row. The check going quiet is covered for free: it is a
 `job_heartbeats` row, so `jobs/expectations.js` already calls it stale if it
 stops running, and `/health` already reports that. No second detector needed
 for the detector.
+
+### The digest that could not become a picture, and said so twice (2026-09-13)
+
+Miron reported two things about the same morning digest: he got the day's
+list twice, and it should have arrived as the picture rather than the wall of
+text it actually was.
+
+Both trace to the same collision. `channels/openclaw.js`'s `cardClause` tells
+the model that past `digest_card_min_items` open items, the morning is worth
+drawing as an image — call `render_schedule_card` and reply with a sentence
+plus `MEDIA: <path>`. `domain/schedule-card.js` refuses outright past its own
+`LIMITS.totalItems` (36): "forty rows in one image is unreadable at any size."
+Nothing told the model about that second ceiling. For someone with a long
+`digest_scope: 'full'` list — Miron has had dozens of open items at a time
+since well before this (`incidents.md`, "The same thing, saved twice") — the
+model would reach for the card exactly as instructed, have it refused, and
+be left to recover mid-turn with no guidance for that specific failure.
+
+That recovery is where a second copy of the list becomes possible, not a new
+theory: `DELIVERY_PREAMBLE` (`channels/openclaw.js`) already exists because a
+`--deliver` turn sends every text block the model produces, narration
+included — issue #325 names the general shape (a model's meta-text reaching a
+real person with nothing server-side able to stop it) as an open, unfixed
+gap. A tool call that fails unexpectedly is exactly the moment a model is
+likeliest to write an explanatory sentence before its real answer, and on
+this turn that sentence had the same list behind it that the final reply
+also had to fall back to.
+
+Two changes, neither able to touch the narration gap itself (still open,
+still #325):
+
+- `cardClause` now states the real ceiling, from `schedule-card.LIMITS`
+  itself rather than a second hard-coded number, and tells the model plainly
+  what a huge list already meant implicitly: past it, do not attempt the
+  card at all — go straight to the text block, with nothing said about why.
+  Removing the failure removes the recovery it would have needed.
+- The block itself stops being one flat wall past a point. `digest-
+  block.js`'s new `todoBlock` keeps dated tasks exactly where the query
+  already sorted them — first, in due-date order, never touched — and
+  groups only the undated tail, once it is longer than `CATEGORY_GROUP_MIN`
+  (8) items, by `tasks.category` (`domain/task-category.js`), which was
+  already being computed for every task at write time with no model and no
+  extra cost. A short list, or an undated tail that landed entirely in one
+  category, stays exactly as flat as before — a heading that repeats what
+  "על הרשימה" already said is not an improvement.
+
+Not verified against the box: whether this was really Miron's own item
+count crossing 36, and whether the transcript actually shows a narrated
+explanation ahead of the real reply, the way `#325` predicts. Both would
+settle it; neither was checkable from a code-only session with no server
+access. The fix stands on what the code already proves — the ceiling exists,
+nothing announced it, and a long undated list read as one wall of text.
