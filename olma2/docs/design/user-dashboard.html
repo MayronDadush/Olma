@@ -1374,12 +1374,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .whenecho.miss{background:var(--bg-tint);color:var(--text-3);font-weight:500}
 .whenecho .mobtn{margin-inline-start:auto}
-.tinput{
-  margin-top:9px;border:0;background:var(--bg-tint);border-radius:12px;
-  font:inherit;font-size:15px;font-weight:600;color:var(--text);
-  padding:8px 12px;outline:none;
-}
-.tinput::-webkit-calendar-picker-indicator{opacity:.45;cursor:pointer}
 .pdlist{margin-top:10px;display:grid;gap:9px}
 .pdrow{display:grid;gap:6px}
 .pdrow b{font-size:12.5px;font-weight:650;color:var(--text-3)}
@@ -2013,6 +2007,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   box-shadow:var(--shadow-l),var(--rim);max-height:92vh;overflow-y:auto;
 }
 .sheet.show{transform:none}
+/* #timeSheet stacks on top of an already-open sheet (task editor, meeting
+   sheets); same z-index as every other .sheet would leave paint order to
+   DOM position, and #timeSheet loses that tie against sheets defined later
+   in the markup. Bump it above the whole .sheet layer explicitly. */
+#timeSheet{z-index:82}
 /* ── the top edge is a handle ──
    Five pixels of ribbon cannot be caught with a thumb, so the whole strip
    above the title is the grab area. `touch-action:none` or the browser
@@ -2783,7 +2782,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     <div class="glabel" style="margin-top:16px"><span data-i18n="mt.whenLbl"></span></div>
     <div class="group"><div class="foldpad tight">
       <div class="chips" id="mtOptParts"></div>
-      <input class="tinput" id="mtOptTime" type="time" hidden data-i18n-label="mt.exact">
+      <button class="vchip set" id="mtOptTimeChip" hidden data-i18n-label="mt.exact" style="margin-top:9px"><span id="mtOptTimeVal"></span></button>
+      <input id="mtOptTime" type="time" tabindex="-1" aria-hidden="true"
+             style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
     </div></div>
   </div>
   <div class="sheetbtns">
@@ -2852,7 +2853,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     </div>
     <div id="mtWhenWrap"><div class="foldpad tight">
       <div class="chips" id="mtWhenChips"></div>
-      <input class="tinput" id="mtNewTime" type="time" hidden data-i18n-label="mt.exact">
+      <button class="vchip set" id="mtNewTimeChip" hidden data-i18n-label="mt.exact" style="margin-top:9px"><span id="mtNewTimeVal"></span></button>
+      <input id="mtNewTime" type="time" tabindex="-1" aria-hidden="true"
+             style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
       <button class="linkbtn" id="mtPerDay" aria-pressed="false" data-i18n="mt.perDay"></button>
       <div class="pdlist" id="mtPerDayList" hidden></div>
     </div></div>
@@ -5587,7 +5590,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $$(".sheet").forEach(function(el){ el.classList.remove("show"); });
     activeSheet = null;
   }
-  $("#scrim").addEventListener("click", closeSheets);
+  /* The time sheet sits ON the scrim without owning it (see openTimeSheet),
+     so a tap on the scrim while it is open has to take down only the top
+     layer — closeSheets() underneath would also drop the task sheet it is
+     stacked on. */
+  $("#scrim").addEventListener("click", function(){
+    if($("#timeSheet").classList.contains("show")){ closeTimeSheet(); return; }
+    closeSheets();
+  });
   $("#cityCancel").addEventListener("click", closeSheets);
 
   /* ── a sheet is a thing you can put down ──
@@ -5598,9 +5608,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      movement instead of undoing it. Upward gives a little and no more: there
      is nothing above it to reveal. */
   var DRAG_FRACTION = .3, FLICK_V = .55;
-  function makeDismissable(sheet){
+  function makeDismissable(sheet, onClose){
     var grab = sheet.querySelector(".sgrab");
     if(!grab) return;
+    var close = onClose || closeSheets;
     var dragging = false, y0 = 0, dy = 0, lastY = 0, lastT = 0, v = 0;
     function move(e){
       if(!dragging) return;
@@ -5631,7 +5642,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          snaps back into place — the flash of a thing returning right as it
          leaves. */
       setTimeout(function(){
-        closeSheets();
+        close();
         requestAnimationFrame(function(){
           sheet.classList.remove("flick");
           sheet.style.transform = "";
@@ -5657,7 +5668,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   makeDismissable($("#mtSheet"));
   makeDismissable($("#mtNewSheet"));
   makeDismissable($("#nestSheet"));
-  makeDismissable($("#timeSheet"));
+  makeDismissable($("#timeSheet"), closeTimeSheet);
 
   /* ── the scroll line ──
      Two scrollers ask the same question — is there more, and where am I in it
@@ -5686,6 +5697,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   document.addEventListener("keydown", function(e){
     if(e.key !== "Escape") return;
     if(!$("#calPop").hidden){ closeCal(); return; }
+    if($("#timeSheet").classList.contains("show")){ closeTimeSheet(); return; }
     closeSheets();
   });
 
@@ -6219,12 +6231,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      what RAISES it changed, from the platform's own popup to this page's
      own sheet, the one the clock setting on the profile page already uses */
   $("#sTime").addEventListener("change", commit);
-  $("#sTimeChip").addEventListener("click", function(){ openTimeSheet("start"); });
+  $("#sTimeChip").addEventListener("click", function(){ openTimeSheet($("#sTime")); });
   $("#sEnd").addEventListener("change", commit);
-  $("#sEndChip").addEventListener("click", function(){ openTimeSheet("end"); });
-  /* Five-minute rows, generated once — the same list whether the sheet opens
-     for the start chip or the end one, which of the two hidden inputs a pick
-     lands in is the only thing "start" vs "end" decides. */
+  $("#sEndChip").addEventListener("click", function(){ openTimeSheet($("#sEnd")); });
+  /* Five-minute rows, generated once — the same list every chip on the page
+     opens, whichever hidden input a pick lands in. One picker, everywhere a
+     time is asked for, instead of the platform's own popup on some fields
+     and nothing at all consistent on others. */
   var TIME_SLOTS = (function(){
     var out = [];
     for(var m = 0; m < 1440; m += 5){
@@ -6233,7 +6246,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }
     return out;
   })();
-  var timeAnchor = "start";
+  var timeTarget = null;
   function renderTimeList(q, selected){
     q = (q || "").trim();
     var rows = TIME_SLOTS.filter(function(v){ return !q || v.indexOf(q) > -1; });
@@ -6244,31 +6257,56 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         "</button>";
     }).join("") : '<div class="empty">' + esc(t("time.none")) + "</div>";
   }
-  function openTimeSheet(which){
-    timeAnchor = which;
-    var input = which === "end" ? $("#sEnd") : $("#sTime");
+  /* This sheet opens ON TOP of whatever sheet holds its chip, not instead of
+     it — the same stacking calPop already does for a date. showSheet()/
+     closeSheets() are built for ONE sheet at a time and clear the whole
+     stack, which is right when the sheet underneath itself closes but wrong
+     here: it used to take the task editor (or the meeting sheet) down with
+     it the instant a time was picked. So this sheet manages its own .show,
+     leaves #scrim and activeSheet exactly as the sheet under it left them,
+     and only that sheet's own close touches those. */
+  function openTimeSheet(input){
+    timeTarget = input;
     $("#timeSearch").value = "";
     renderTimeList("", input.value);
-    showSheet($("#timeSheet"));
+    $("#scrim").classList.add("show");
+    $("#timeSheet").classList.add("show");
     var sel = input.value && $('#timeList [data-time="' + input.value + '"]');
     requestAnimationFrame(function(){ if(sel) sel.scrollIntoView({block:"center"}); });
   }
+  function closeTimeSheet(){
+    $("#timeSheet").classList.remove("show");
+  }
   function pickTime(v){
-    var input = timeAnchor === "end" ? $("#sEnd") : $("#sTime");
+    var input = timeTarget;
+    if(!input) return;
     input.value = v;
+    /* every field this sheet feeds listens for one of the two — the task
+       sheet's chips for "change", the meeting flow's for "input" — so both
+       fire and each field hears the one it was already listening for */
+    input.dispatchEvent(new Event("input", {bubbles:true}));
     input.dispatchEvent(new Event("change", {bubbles:true}));
-    closeSheets();
+    closeTimeSheet();
   }
   $("#timeSearch").addEventListener("input", function(){
-    var input = timeAnchor === "end" ? $("#sEnd") : $("#sTime");
-    renderTimeList(this.value, input.value);
+    renderTimeList(this.value, timeTarget ? timeTarget.value : "");
   });
   $("#timeList").addEventListener("click", function(e){
     var b = e.target.closest("[data-time]");
     if(b) pickTime(b.dataset.time);
   });
   $("#timeClear").addEventListener("click", function(){ pickTime(""); });
-  $("#timeCancel").addEventListener("click", closeSheets);
+  $("#timeCancel").addEventListener("click", closeTimeSheet);
+  /* One chip renderer for every field this sheet feeds: hide it when the
+     field has no time to show, otherwise show what it holds (or the 20:00
+     default the meeting flow's "exact" chip has always started from). */
+  function syncTimeChip(input, chip, valEl, exact){
+    chip.hidden = !exact;
+    input.value = exact || "20:00";
+    valEl.textContent = input.value;
+  }
+  $("#mtOptTimeChip").addEventListener("click", function(){ openTimeSheet($("#mtOptTime")); });
+  $("#mtNewTimeChip").addEventListener("click", function(){ openTimeSheet($("#mtNewTime")); });
   $("#sAllDay").addEventListener("click", function(){
     editing.all = this.getAttribute("aria-checked") !== "true";
     this.setAttribute("aria-checked", editing.all ? "true" : "false");
@@ -7337,8 +7375,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     dayGridHTML("#mtOptDays", "#mtOptMon", optDay, false);
     $("#mtOptWhen").hidden = !!(mtOpen && mtOpen.allDay);
     $("#mtOptParts").innerHTML = partChipsHTML(optPart, optExact, "optpart");
-    $("#mtOptTime").hidden = !optExact;
-    $("#mtOptTime").value = optExact || "20:00";
+    syncTimeChip($("#mtOptTime"), $("#mtOptTimeChip"), $("#mtOptTimeVal"), optExact);
     $("#mtOptGo").disabled = optDay < 0 || (optExact && !$("#mtOptTime").value);
     paintCue($("#mtOptSheet"), $("#mtOptCue"));
   }
@@ -7360,7 +7397,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     else { optExact = ""; optPart = b.dataset.optpart; }
     renderOptSheet();
   });
-  $("#mtOptTime").addEventListener("input", function(){ optExact = this.value; });
+  $("#mtOptTime").addEventListener("input", function(){ optExact = this.value; $("#mtOptTimeVal").textContent = this.value; });
   $("#mtOptCancel").addEventListener("click", closeSheets);
   $("#mtOptSheet").addEventListener("scroll", function(){ paintCue($("#mtOptSheet"), $("#mtOptCue")); });
   $("#mtOptGo").addEventListener("click", function(){
@@ -7549,8 +7586,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#mtAllDay").setAttribute("aria-checked", mtNewAllDay);
     $("#mtWhenWrap").hidden = mtNewAllDay;
     $("#mtWhenChips").innerHTML = partChipsHTML(mtNewPart, mtNewExact, "newpart");
-    $("#mtNewTime").hidden = !mtNewExact;
-    $("#mtNewTime").value = mtNewExact || "20:00";
+    syncTimeChip($("#mtNewTime"), $("#mtNewTimeChip"), $("#mtNewTimeVal"), mtNewExact);
     $("#mtPerDay").setAttribute("aria-pressed", mtPerDay);
     $("#mtPerDayList").hidden = !mtPerDay || !mtPickDays.length;
     if(mtPerDay){
@@ -7653,7 +7689,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     else { mtNewExact = ""; mtNewPart = b.dataset.newpart; }
     renderMtWhen();
   });
-  $("#mtNewTime").addEventListener("input", function(){ mtNewExact = this.value; });
+  $("#mtNewTime").addEventListener("input", function(){ mtNewExact = this.value; $("#mtNewTimeVal").textContent = this.value; });
   $("#mtPerDay").addEventListener("click", function(){ mtPerDay = !mtPerDay; renderMtWhen(); });
   $("#mtPerDayList").addEventListener("click", function(e){
     var b = e.target.closest("[data-pd]");
