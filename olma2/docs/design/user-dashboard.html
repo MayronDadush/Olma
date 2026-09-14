@@ -2240,35 +2240,34 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .calpop.show .calgrid button,.calpop.show .calmg button{
   animation:calCell .21s var(--squash) backwards;animation-delay:calc(var(--i,0) * 4.5ms)
 }
-/* the time picker: the calendar's glass card, holding a clock instead of a
-   month — hours as a grid, minutes in quarters, one button to take it */
-.tpop{width:256px}
-.tphead{
-  display:flex;justify-content:center;align-items:baseline;gap:2px;direction:ltr;
-  font-family:'Rubik',sans-serif;font-size:32px;font-weight:600;color:var(--text);
-  font-variant-numeric:tabular-nums;padding:2px 0 8px
+/* the time picker: two wheels, hours and minutes, turned by scrolling —
+   a clock's own gesture, so it never reads as a second calendar */
+.tpop{width:212px;padding:10px 10px 10px}
+.tpwheel{position:relative;display:flex;justify-content:center;align-items:center;height:190px;direction:ltr}
+.tpwheel::before{
+  content:"";position:absolute;inset-inline:6px;top:calc(50% - 20px);height:40px;
+  border-radius:13px;background:var(--bg-tint);box-shadow:inset 0 0 0 1px var(--sep);pointer-events:none
 }
-.tphead i{font-style:normal;color:var(--text-3)}
-.tphead b{font-weight:600;padding:0 4px;border-radius:9px;transition:color .2s var(--ease-io)}
-.tphead b.pick{color:var(--accent)}
-.tplabel{font-size:10.5px;font-weight:700;color:var(--text-3);margin:4px 3px 5px}
-.tpgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;direction:ltr}
-.tpgrid.min{grid-template-columns:repeat(4,1fr)}
-.tpgrid button{
-  height:32px;border-radius:10px;font-size:13.5px;font-weight:500;color:var(--text);
-  font-variant-numeric:tabular-nums;transition:background .3s var(--ease-io),color .3s var(--ease-io)
+.tpcol{
+  position:relative;width:70px;height:190px;overflow-x:hidden;overflow-y:auto;scroll-snap-type:y mandatory;
+  scrollbar-width:none;overscroll-behavior:contain;padding:75px 0;box-sizing:border-box;
+  -webkit-mask-image:linear-gradient(transparent,#000 32%,#000 68%,transparent);
+  mask-image:linear-gradient(transparent,#000 32%,#000 68%,transparent)
 }
-.tpgrid button.dim{color:var(--text-3)}
-.tpgrid button[aria-pressed="true"]{background:var(--accent);color:#fff}
-.tpfoot{margin-top:11px}
+.tpcol::-webkit-scrollbar{display:none}
+.tpcol button{
+  display:block;width:100%;height:40px;scroll-snap-align:center;
+  font-family:'Rubik',sans-serif;font-size:19px;font-weight:500;color:var(--text-3);
+  font-variant-numeric:tabular-nums;direction:ltr;transition:color .18s var(--ease-io),font-size .18s var(--ease-io)
+}
+.tpcol button.on{color:var(--text);font-weight:600;font-size:22px}
+.tpcolon{position:relative;font-family:'Rubik',sans-serif;font-size:20px;font-weight:600;color:var(--text-2);padding-bottom:3px}
+.tpfoot{margin-top:8px}
 .tpfoot button{
   width:100%;padding:10px;border-radius:12px;background:var(--accent);color:#fff;
   font-size:14px;font-weight:600;transition:transform .38s var(--squash)
 }
 .tpfoot button:active{transform:scale(.97)}
-.calpop.show .tpgrid button{
-  animation:calCell .21s var(--squash) backwards;animation-delay:calc(var(--i,0) * 4.5ms)
-}
 .btn{
   padding:14px;border-radius:15px;font-size:16.5px;font-weight:600;text-align:center;
   transition:transform .38s var(--squash),filter .3s var(--ease-io);
@@ -8511,20 +8510,17 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   /* One time picker for every clock on this tab. The browser's own looked
      like a different app in each one, and inside a question card it did not
      open at all — so the page draws its own, on the calendar's glass. */
-  var tpAnchor = null, tpDone = null, tpH = 9, tpM = 0;
+  var tpAnchor = null, tpDone = null, tpH = 9, tpM = 0, TP_ROW = 40, TP_MIN = 5;
   function pad2(n){ return (n < 10 ? "0" : "") + n; }
   function tpHTML(){
     var hours = "", mins = "";
-    for(var h = 0; h < 24; h++){
-      hours += '<button data-tph="' + h + '" style="--i:' + h + '" aria-pressed="' + (h === tpH) + '"' +
-        (h < 6 ? ' class="dim"' : "") + ">" + pad2(h) + "</button>";
-    }
-    [0, 15, 30, 45].forEach(function(m, i){
-      mins += '<button data-tpm="' + m + '" style="--i:' + (24 + i) + '" aria-pressed="' + (m === tpM) + '">' + pad2(m) + "</button>";
-    });
-    return '<div class="tphead"><b id="tpHH">' + pad2(tpH) + '</b><i>:</i><b id="tpMM">' + pad2(tpM) + "</b></div>" +
-      '<div class="tplabel">' + esc(t("tp.hour")) + '</div><div class="tpgrid">' + hours + "</div>" +
-      '<div class="tplabel">' + esc(t("tp.min")) + '</div><div class="tpgrid min">' + mins + "</div>" +
+    for(var h = 0; h < 24; h++) hours += '<button tabindex="-1" data-tpi="' + h + '">' + pad2(h) + "</button>";
+    for(var m = 0; m < 60; m += TP_MIN) mins += '<button tabindex="-1" data-tpi="' + (m / TP_MIN) + '">' + pad2(m) + "</button>";
+    return '<div class="tpwheel">' +
+        '<div class="tpcol" data-tpcol="h" tabindex="0" role="listbox" aria-label="' + esc(t("tp.hour")) + '">' + hours + "</div>" +
+        '<span class="tpcolon">:</span>' +
+        '<div class="tpcol" data-tpcol="m" tabindex="0" role="listbox" aria-label="' + esc(t("tp.min")) + '">' + mins + "</div>" +
+      "</div>" +
       '<div class="tpfoot"><button data-tpok>' + esc(t("tp.ok")) + "</button></div>";
   }
   function placeTimePop(){
@@ -8536,15 +8532,37 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     pop.style.left = left + "px"; pop.style.top = top + "px";
     pop.style.setProperty("--calo", (r.left + r.width / 2 - left) + "px " + (below ? "0%" : "100%"));
   }
+  /* which row sits in the band is read off the scroll position, so a flick,
+     a mouse wheel, a drag and a tap all land on the same answer */
+  function tpRead(col){
+    var n = col.children.length, i = Math.max(0, Math.min(n - 1, Math.round(col.scrollTop / TP_ROW)));
+    $$("button", col).forEach(function(b, j){ b.classList.toggle("on", j === i); });
+    if(col.dataset.tpcol === "h") tpH = i; else tpM = i * TP_MIN;
+  }
+  function tpTurn(col, i, smooth){
+    col.scrollTo({top:i * TP_ROW, behavior:smooth && !REDUCED ? "smooth" : "auto"});
+    if(!smooth) tpRead(col);
+  }
   function openTimePop(anchor, value, done){
     var m = /^(\d{1,2}):(\d{2})$/.exec(value || "");
-    tpH = m ? +m[1] : 9; tpM = m ? +m[2] : 0;
+    tpH = m ? +m[1] : 9;
+    tpM = m ? Math.round(+m[2] / TP_MIN) * TP_MIN : 0;
+    if(tpM === 60) tpM = 55;
     tpAnchor = anchor; tpDone = done;
     anchor.classList.add("open");
     var pop = $("#tpPop");
     pop.innerHTML = tpHTML();
     $("#tpScrim").hidden = false; pop.hidden = false;
     placeTimePop();
+    tpTurn($('[data-tpcol="h"]', pop), tpH, false);
+    tpTurn($('[data-tpcol="m"]', pop), tpM / TP_MIN, false);
+    $$(".tpcol", pop).forEach(function(col){
+      var raf = 0;
+      col.addEventListener("scroll", function(){
+        if(raf) return;
+        raf = requestAnimationFrame(function(){ raf = 0; tpRead(col); });
+      });
+    });
     requestAnimationFrame(function(){ pop.classList.add("show"); });
   }
   function closeTimePop(){
@@ -8558,20 +8576,23 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   $("#tpScrim").addEventListener("click", closeTimePop);
   $("#tpPop").addEventListener("click", function(e){
-    var hb = e.target.closest("[data-tph]"), mb = e.target.closest("[data-tpm]");
-    if(hb || mb){
-      if(hb) tpH = +hb.dataset.tph; else tpM = +mb.dataset.tpm;
-      $$(hb ? "[data-tph]" : "[data-tpm]", this).forEach(function(b){ b.setAttribute("aria-pressed", b === (hb || mb) ? "true" : "false"); });
-      var part = $(hb ? "#tpHH" : "#tpMM");
-      part.textContent = pad2(hb ? tpH : tpM);
-      part.classList.remove("pick"); void part.offsetWidth; part.classList.add("pick");
-      return;
-    }
+    var row = e.target.closest("[data-tpi]");
+    if(row){ tpTurn(row.parentNode, +row.dataset.tpi, true); return; }
     if(e.target.closest("[data-tpok]")){
       var done = tpDone, v = pad2(tpH) + ":" + pad2(tpM);
       closeTimePop();
       if(done) done(v);
     }
+  });
+  $("#tpPop").addEventListener("keydown", function(e){
+    var col = e.target.closest(".tpcol");
+    if(!col) return;
+    if(e.key === "Enter"){ e.preventDefault(); $("#tpPop [data-tpok]").click(); return; }
+    var step = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+    if(!step) return;
+    e.preventDefault();
+    var i = Math.round(col.scrollTop / TP_ROW) + step;
+    tpTurn(col, Math.max(0, Math.min(col.children.length - 1, i)), true);
   });
   window.addEventListener("resize", function(){ if(tpAnchor) placeTimePop(); });
 
