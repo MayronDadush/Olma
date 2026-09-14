@@ -295,6 +295,18 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
    status pill around, and those two are the reason anybody looks up here. */
 .brand-hi{font-size:13px;color:var(--text-2);line-height:1.2}
 .brand-name{font-family:'Rubik',sans-serif;font-weight:600;font-size:17px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hdrend{display:flex;align-items:center;gap:9px;flex:none}
+/* Three icons, one pressed at a time — the same picture language as the seg
+   controls elsewhere, just small enough to live beside the clock on every
+   tab, not only on the profile page. */
+.themeicons{display:flex;gap:2px;padding:3px;border-radius:999px;background:var(--bg-tint);flex:none}
+.themeicons button{
+  width:27px;height:27px;border-radius:50%;display:grid;place-items:center;color:var(--text-3);
+  transition:background var(--sw-t) var(--ease-io),color var(--sw-t) var(--ease-io),transform .38s var(--squash);
+}
+.themeicons button svg{width:15px;height:15px}
+.themeicons button[aria-pressed="true"]{background:var(--surface);color:var(--accent);box-shadow:var(--shadow-s)}
+.themeicons button:active{transform:scale(.88)}
 .live{
   display:inline-flex;align-items:center;gap:7px;flex:none;
   padding:6px 12px 6px 10px;border-radius:999px;
@@ -2370,6 +2382,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <symbol id="i-note" viewBox="0 0 20 20"><path d="M4.4 2.6h11.2v10.2l-4 4.6H4.4Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.6 12.6h-4v4.8M7.2 6.4h5.6M7.2 9.4h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-folder" viewBox="0 0 20 20"><path d="M2.6 5.6a2 2 0 0 1 2-2h2.9l2 2.4h6a2 2 0 0 1 2 2v6.4a2 2 0 0 1-2 2h-10.9a2 2 0 0 1-2-2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
   <symbol id="i-arrdown" viewBox="0 0 16 16"><path d="M2.9 5.3h10.2L8 12.4Z" fill="currentColor" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3.1" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.3 3.3l1.13 1.13M11.57 11.57l1.13 1.13M3.3 12.7l1.13-1.13M11.57 4.43l1.13-1.13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.2 9.4A5.6 5.6 0 1 1 6.6 2.8a4.4 4.4 0 0 0 6.6 6.6Z" fill="currentColor"/></symbol>
+  <symbol id="i-auto" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.8a6.2 6.2 0 0 0 0 12.4Z" fill="currentColor"/></symbol>
   <!-- The mark. A globe that talks: the meridian and the horizon say עולם,
        the tail makes it something you speak to. Its gradient lives here in
        the sheet's own <defs> rather than inside the symbol — a <use> clone
@@ -2403,7 +2418,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       </div>
     </button>
     <button class="topclock" id="topClock" data-i18n-label="city.title"></button>
-    <div class="live"><span class="dot"></span><span id="olmaLive"></span></div>
+    <div class="hdrend">
+      <div class="themeicons" id="themeIcons" role="group" data-i18n-label="me.appearance">
+        <button data-theme-opt="light" aria-pressed="false" data-i18n-label="me.themeLight"><svg><use href="#i-sun"/></svg></button>
+        <button data-theme-opt="dark" aria-pressed="false" data-i18n-label="me.themeDark"><svg><use href="#i-moon"/></svg></button>
+        <button data-theme-opt="auto" aria-pressed="true" data-i18n-label="me.themeAuto"><svg><use href="#i-auto"/></svg></button>
+      </div>
+      <div class="live"><span class="dot"></span><span id="olmaLive"></span></div>
+    </div>
   </header>
 
   <main>
@@ -2688,22 +2710,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
           </div>
         </div>
         <p class="note" style="padding:0 14px" id="setupNote"></p>
-      </div>
-
-      <!-- The page's own look, not Allma's — stored on this device only
-           (localStorage), never sent anywhere. "Auto" is the absence of an
-           override: the stylesheet already follows the system on its own. -->
-      <div>
-        <div class="glabel"><span data-i18n="me.appearance"></span></div>
-        <div class="group">
-          <div class="row no-icon stackrow">
-            <div class="seg" id="themeSeg" role="group" data-i18n-label="me.appearance">
-              <button aria-pressed="false" data-theme-opt="light" data-i18n="me.themeLight"></button>
-              <button aria-pressed="false" data-theme-opt="dark" data-i18n="me.themeDark"></button>
-              <button aria-pressed="true" data-theme-opt="auto" data-i18n="me.themeAuto"></button>
-            </div>
-          </div>
-        </div>
       </div>
 
       <!-- What she knows. Closed by default: it is a list that grows, and the
@@ -3146,6 +3152,23 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     }catch(err){ return "auto"; }
   })();
   applyTheme(THEME);
+  function renderTheme(){
+    $$("#themeIcons button").forEach(function(b){
+      b.setAttribute("aria-pressed", b.dataset.themeOpt === THEME ? "true" : "false");
+    });
+  }
+  $("#themeIcons").addEventListener("click", function(e){
+    var b = e.target.closest("[data-theme-opt]");
+    if(!b || b.dataset.themeOpt === THEME) return;
+    THEME = b.dataset.themeOpt;
+    try{
+      if(THEME === "auto") localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, THEME);
+    }catch(err){ /* private mode or storage blocked — still applies for this visit */ }
+    applyTheme(THEME);
+    renderTheme();
+  });
+  renderTheme();
 
   /* ══════════════════════════════════════════════════════════════
      THE SEAM — where this becomes the real dashboard
@@ -9036,30 +9059,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(serverRow) API.forgetFact(+id, function(){ if(f.promptKey && !f.promptQ) API.reload(); });
   });
 
-  function renderTheme(){
-    $$("#themeSeg button").forEach(function(b){
-      b.setAttribute("aria-pressed", b.dataset.themeOpt === THEME ? "true" : "false");
-    });
-  }
-  $("#themeSeg").addEventListener("click", function(e){
-    var b = e.target.closest("[data-theme-opt]");
-    if(!b || b.dataset.themeOpt === THEME) return;
-    THEME = b.dataset.themeOpt;
-    try{
-      if(THEME === "auto") localStorage.removeItem(THEME_KEY);
-      else localStorage.setItem(THEME_KEY, THEME);
-    }catch(err){ /* private mode or storage blocked — still applies for this visit */ }
-    applyTheme(THEME);
-    renderTheme();
-  });
-
   function renderMe(){
     renderPersonal();
     renderSchedule();
     renderDigest();
     renderOlmaRows();
     renderFacts();
-    renderTheme();
   }
 
   /* ───────── tabs ───────── */
