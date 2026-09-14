@@ -81,6 +81,24 @@ test('under the threshold the instruction still prefers text over an image', asy
   assert.match(text, /A card REPLACES the block — never send both/);
 });
 
+// Miron, 2026-09-13: a "full" digest with dozens of open items came back as
+// one uninterrupted wall of text, not the picture the card clause asks for.
+// `render_schedule_card` (domain/schedule-card.js, LIMITS.totalItems) refuses
+// outright past its own ceiling — so past that number the instruction must
+// say so BEFORE the model tries the tool, or the failure is discovered mid
+// turn, which is exactly the shape that produces a narrated retry and a
+// second WhatsApp message (DELIVERY_PREAMBLE's whole reason for existing).
+test('past the card\'s own ceiling, the instruction heads off the failure instead of leaving it to be discovered', async () => {
+  const { LIMITS } = require('../src/domain/schedule-card');
+  const text = instructionFor({ kind: 'digest', payload: { scope: 'full', cardMinItems: 3 } });
+  assert.match(text, new RegExp(`past ${LIMITS.totalItems} open items`));
+  assert.match(text, /do not even try it/);
+  assert.match(text, /skip straight to sending the block above as text/);
+  // Still ordered after the "worth an image" branch and before the ending —
+  // it is a refinement of the same clause, not a competing instruction.
+  assert.ok(text.indexOf('worth an IMAGE') < text.indexOf(`past ${LIMITS.totalItems}`));
+});
+
 test('0 turns cards off completely — no card clause at all', async () => {
   const text = instructionFor({ kind: 'digest', payload: { scope: 'full', cardMinItems: 0 } });
   assert.doesNotMatch(text, /render_schedule_card/);

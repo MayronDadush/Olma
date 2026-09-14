@@ -20,6 +20,7 @@ const audit = require('./audit');
 const flags = require('./flags');
 const pause = require('./pause');
 const selfInitiated = require('./self-initiated');
+const reactions = require('./reactions');
 const digest = require('./digest');
 const onboardingDomain = require('./onboarding');
 const templates = require('./message-templates');
@@ -108,14 +109,45 @@ async function openRecord(client, user, { wake = false } = {}) {
   return { counted: true, quota: counted, firstTurn };
 }
 
+// A repeat `turn_open` for a message this same opener already processed —
+// the gateway hook retrying past its own 2s deadline (see `handleTurnOpen`'s
+// comment in brokerd/server.js: eleven of the first ~200 timed out on ITS
+// side), or a redelivered webhook — must never be read as a second message.
+// Read as new, it counts the message twice against quota, wakes the queue a
+// second time, and (server.js's `openTurnFromGateway`, gated on this
+// function's own `skipped`) places 👀 a second time on a message that
+// already carries it or already carries the closing mark that replaced it —
+// Miron saw eyes reappear on a message Olma had already answered
+// (2026-09-13). `reactions.LIVE_WINDOW_MS` is reused rather than a second
+// constant: it is already the exact shape of gap a retry actually takes —
+// minutes, never months — and the same window a mark may still land in, so
+// the two cannot disagree about how long a message stays "current".
+async function alreadyOpenedRecently(client, userId, messageId, now) {
+  const { rows } = await client.query(
+    `SELECT 1 FROM audit_log
+      WHERE actor_id = $1 AND event = 'turn.opened_by_gateway'
+        AND created_at > $2::timestamptz - ($3::text || ' milliseconds')::interval
+        AND detail->>'messageId' = $4
+      LIMIT 1`,
+    [userId, new Date(now), String(reactions.LIVE_WINDOW_MS), messageId]
+  );
+  return rows.length > 0;
+}
+
 // Opened by the gateway's own message:preprocessed hook (gateway-hooks/
 // olma-turn-open), BEFORE the model's first call — so the person is counted,
 // marked awake and shown a 👀 while the model is still reading the prompt.
 // A turn Olma started is not a message from the person, here as everywhere.
-async function openFromGateway(client, user, { messageId, kind } = {}) {
+async function openFromGateway(client, user, { messageId, kind, now } = {}) {
   if (selfInitiated.isActive(user.id)) {
     await audit.record(client, user.id, 'turn.opened_by_gateway', { selfInitiated: true, messageId: messageId || null });
     return { counted: false, quota: null, firstTurn: false, skipped: 'self_initiated' };
+  }
+  // Checked before anything else changes: a duplicate must count for
+  // nothing, not merely avoid double-counting one of several things it does.
+  if (messageId && await alreadyOpenedRecently(client, user.id, messageId, now || Date.now())) {
+    await audit.record(client, user.id, 'turn.duplicate_open_skipped', { messageId });
+    return { counted: false, quota: null, firstTurn: false, skipped: 'duplicate_message' };
   }
   // The gateway hook fires on `message:preprocessed` — an accepted inbound
   // message and nothing else — so this opener, alone, may wake the queue.

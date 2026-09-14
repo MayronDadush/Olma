@@ -86,6 +86,28 @@ title means this file. Grep the title, not the filename.
   on every message for ever. It was 922 of 2,482 tool calls in the fourteen
   days before (`incidents.md`, "The conversation that never ended").
 
+- **A repeat of the same message must never be read as a new one.** The
+  gateway hook's `turn_open` counts the message, wakes the person and places
+  the 👀 before the model's first call, and until 2026-09-13 it had no memory
+  of a `messageId` it had already opened a turn for — every call was read as
+  fresh, gated only on `selfInitiated.isActive`. A hook retry past its own 2s
+  deadline (`handleTurnOpen`'s own comment: eleven of the first ~200 opens
+  timed out on THAT side) or a redelivered webhook then replays the whole
+  thing: a second `message.received`, a second wake, and — `openTurnFromGateway`
+  acting unconditionally on `!rec.skipped` — a second 👀 on a message that by
+  then likely already carried the closing mark its answer had earned. Miron
+  saw exactly that: eyes back on a message Olma had already replied to.
+  `turn.openFromGateway` now checks first whether THIS user's
+  `turn.opened_by_gateway` already fired for this exact `messageId` inside
+  `reactions.LIVE_WINDOW_MS` (15 minutes, reused rather than a second
+  constant — it is already the right shape for "how long a retry takes" and
+  the window a mark may still land in) and returns `skipped:
+  'duplicate_message'` before counting, waking or marking anything;
+  `server.js`'s existing `!rec.skipped` guards around the pending-queue push
+  and the `placeMark` call then do the rest with no changes needed there. The
+  miss is audited too (`turn.duplicate_open_skipped`) — a check that goes
+  quiet is indistinguishable from one that never ran.
+
 - **`messages.queue.mode` stays `followup`.** The gateway default, `steer`,
   pushes a message that arrives mid-turn INTO the running turn and cancels
   the tool calls the model just made ("Skipped due to queued user message").

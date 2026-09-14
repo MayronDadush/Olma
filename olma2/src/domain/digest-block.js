@@ -23,6 +23,7 @@
 // words per language rather than a model that speaks all of them.
 const format = require('./message-format');
 const dt = require('./datetime');
+const taskCategory = require('./task-category');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 // How far ahead a weekday name still means something. Past it, "יום שלישי" is
@@ -160,6 +161,59 @@ function line(row, ctx, withRange) {
   return where ? `${head}, ${where}` : head;
 }
 
+// Below this many UNDATED tasks the flat list stays flat — grouping four
+// errands under a bold "בית" is a label added to a list already short enough
+// to scan. Above it (Miron, 2026-09-13: a "full" digest with dozens of open
+// tasks, none of them dated, read as one uninterrupted wall of bullets) this
+// is exactly the case `tasks.category` (domain/task-category.js) already has
+// an answer for, computed in code at write time — no new classification
+// step, only a heading. Dated tasks are never grouped this way: they keep the
+// due-date order the query already sorted them into, ahead of the categories,
+// for the same reason the calendar is never mixed into the to-do list — a
+// moment that is actually coming outranks what it happens to be about.
+const CATEGORY_GROUP_MIN = 8;
+// Same words `task-category.js` itself matches on, so a label a person reads
+// here is a word their own tasks would classify under.
+const CATEGORY_LABELS = {
+  he: {
+    home: 'בית', work: 'עבודה', family: 'משפחה', health: 'בריאות',
+    money: 'כסף', errands: 'סידורים', other: 'שונות',
+  },
+  en: {
+    home: 'Home', work: 'Work', family: 'Family', health: 'Health',
+    money: 'Money', errands: 'Errands', other: 'Other',
+  },
+};
+const CATEGORY_ORDER = [...taskCategory.CATEGORIES, 'other'];
+
+// The to-do half of the digest, on its own: filters out subtasks (they read
+// as orphans out of their parent's context, exactly as the card does), splits
+// dated from undated, and groups the undated tail by category once it is
+// long enough that grouping helps rather than just adding a label.
+function todoBlock(rows, ctx, f, w, locale) {
+  const items = (Array.isArray(rows) ? rows : [])
+    .filter((r) => !r.parent_id)
+    .map((r) => ({ text: line(r, ctx, false), dated: Boolean(r.due_at), category: r.category || 'other' }))
+    .filter((x) => x.text);
+  if (!items.length) return null;
+
+  const dated = items.filter((x) => x.dated).map((x) => x.text);
+  const undated = items.filter((x) => !x.dated);
+  const groups = CATEGORY_ORDER
+    .map((cat) => ({ cat, lines: undated.filter((x) => x.category === cat).map((x) => x.text) }))
+    .filter((g) => g.lines.length);
+
+  // Below the floor, or every undated item landed in one category anyway,
+  // a heading would repeat what "על הרשימה" already said.
+  if (undated.length <= CATEGORY_GROUP_MIN || groups.length <= 1) {
+    return `${f.bold(w.todo)}\n${f.bullets([...dated, ...undated.map((x) => x.text)])}`;
+  }
+
+  const labels = CATEGORY_LABELS[localeKey(locale)];
+  const head = dated.length ? `${f.bold(w.todo)}\n${f.bullets(dated)}` : f.bold(w.todo);
+  return [head, ...groups.map((g) => `${f.bold(labels[g.cat])}\n${f.bullets(g.lines)}`)].join('\n\n');
+}
+
 // `null` and an empty block are different answers and the caller must be able
 // to tell them apart: nothing due at all is a real morning, and it is the
 // model's to write from the counts rather than something to paper over with an
@@ -175,23 +229,19 @@ function renderDigestBlock(data, { locale, timezone, channelType, now } = {}) {
 
   const events = (Array.isArray(data && data.events) ? data.events : [])
     .map((r) => line(r, ctx, true)).filter(Boolean);
-  // A subtask reads as an orphan out of its parent's context ("להביא מטען"),
-  // so the list stays at the top level, exactly as the card does.
-  const tasks = (Array.isArray(data && data.tasks) ? data.tasks : [])
-    .filter((r) => !r.parent_id)
-    .map((r) => line(r, ctx, false)).filter(Boolean);
+  const todo = todoBlock(data && data.tasks, ctx, f, w, locale);
 
-  if (!events.length && !tasks.length) return null;
+  if (!events.length && !todo) return null;
 
   const sections = [];
   // The calendar first and never mixed in: a meeting read out as a task is
   // the fault `tasks.kind` exists to prevent, and a shared list would undo it.
   if (events.length) sections.push(`${f.bold(w.calendar)}\n${f.bullets(events)}`);
-  if (tasks.length) sections.push(`${f.bold(w.todo)}\n${f.bullets(tasks)}`);
+  if (todo) sections.push(todo);
   return sections.join('\n\n');
 }
 
 module.exports = {
   renderDigestBlock, wordsFor, localeKey, whenLabel, dayLabel, daysAway, contextFor, line, rangeLabel,
-  WORDS, NAMED_DAY_HORIZON,
+  WORDS, NAMED_DAY_HORIZON, CATEGORY_GROUP_MIN, CATEGORY_LABELS, CATEGORY_ORDER,
 };

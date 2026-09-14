@@ -165,7 +165,7 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
       lap('user');
       const user = rows[0];
       if (!user) { out = { ok: false, error: 'no active user for agent' }; return; }
-      const rec = await turnDomain.openFromGateway(client, user, { messageId, kind });
+      const rec = await turnDomain.openFromGateway(client, user, { messageId, kind, now: clock() });
       lap('open');
       // The hook classified the text and sent us the verdict, never the words
       // (gateway-hooks/olma-turn-open). A message that is only thanks gets 🙏
