@@ -107,6 +107,61 @@ test('a pending open the model never followed expires and is not adopted by a la
   assert.equal(turn.messageId, '3EB0GATE0005');
 });
 
+// ── A repeat of the SAME message is not a second message ───────────────────
+// Miron, 2026-09-13: the eyes reappeared on a message Olma had already
+// answered. Nothing here required the model to make a mistake — `turn_open`
+// itself had no memory of a message it had already opened a turn for, so a
+// hook retry past its own deadline (see handleTurnOpen's comment) or a
+// redelivered webhook would be read as a brand new message every time.
+test('a repeated turn_open for the SAME message — a hook retry, a redelivered webhook — is not a second turn', async () => {
+  const u = await agentUser('+972641100020', 'u-920');
+  await open({ agentId: 'u-920', messageId: '3EB0RETRY0001', kind: 'text' });
+  assert.equal(marks.length, 1);
+  assert.equal(await received(u.id), 1);
+  const before = broker.pendingCount();
+
+  const r2 = await open({ agentId: 'u-920', messageId: '3EB0RETRY0001', kind: 'text' });
+  assert.equal(r2.ok, true, JSON.stringify(r2));
+  assert.equal(r2.opened, false, 'a duplicate is reported as not opened');
+  assert.equal(r2.skipped, 'duplicate_message');
+  assert.equal(marks.length, 1, 'the eyes do not go on a second time');
+  assert.equal(await received(u.id), 1, 'not counted twice');
+  assert.equal(broker.pendingCount(), before, 'nothing new queued for a tool call to adopt');
+
+  const { rows } = await db.pool.query(
+    `SELECT count(*)::int AS n FROM audit_log WHERE actor_id = $1 AND event = 'turn.duplicate_open_skipped'`, [u.id]);
+  assert.equal(rows[0].n, 1, 'the duplicate is on the record, never silently dropped');
+});
+
+test('a different message right after is untouched by the duplicate guard', async () => {
+  const u = await agentUser('+972641100021', 'u-921');
+  await open({ agentId: 'u-921', messageId: '3EB0TWO0001', kind: 'text' });
+  const r2 = await open({ agentId: 'u-921', messageId: '3EB0TWO0002', kind: 'text' });
+  assert.equal(r2.opened, true);
+  assert.equal(marks.length, 2);
+  assert.equal(await received(u.id), 2);
+});
+
+test('the same message id from a DIFFERENT person is never read as a retry of this one', async () => {
+  const a = await agentUser('+972641100022', 'u-922');
+  const b = await agentUser('+972641100023', 'u-923');
+  await open({ agentId: 'u-922', messageId: 'SHARED-ID-EDGE', kind: 'text' });
+  const r2 = await open({ agentId: 'u-923', messageId: 'SHARED-ID-EDGE', kind: 'text' });
+  assert.equal(r2.opened, true, 'the guard is scoped per person, never global on the id alone');
+  assert.equal(await received(a.id), 1, 'the first person is untouched by the second one\'s open');
+  assert.equal(await received(b.id), 1);
+});
+
+test('past the retry window, a repeat of the same id is a genuinely new turn again', async () => {
+  const u = await agentUser('+972641100024', 'u-924');
+  await open({ agentId: 'u-924', messageId: '3EB0LATE0001', kind: 'text' });
+  now += 16 * 60_000; // past reactions.LIVE_WINDOW_MS (15 minutes) — not a retry any more
+  const r2 = await open({ agentId: 'u-924', messageId: '3EB0LATE0001', kind: 'text' });
+  assert.equal(r2.opened, true, 'sixteen minutes on, whatever this is, it is not the retry the guard exists for');
+  assert.equal(marks.length, 2);
+  assert.equal(await received(u.id), 2);
+});
+
 // ── The connection outlives the turn ────────────────────────────────────────
 // The shim caches one socket for the life of the MCP process, so the SAME
 // `turn` object serves every turn that process ever handles. Adoption used to

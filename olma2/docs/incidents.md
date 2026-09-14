@@ -8196,3 +8196,48 @@ explanation ahead of the real reply, the way `#325` predicts. Both would
 settle it; neither was checkable from a code-only session with no server
 access. The fix stands on what the code already proves — the ceiling exists,
 nothing announced it, and a long undated list read as one wall of text.
+
+### The eyes that came back after Olma had already answered (2026-09-13)
+
+Miron reported a second, unrelated thing about the same conversation: after
+Olma had already replied to him, 👀 landed again on a message that already
+carried it.
+
+`domain/turn.js`'s `openFromGateway` — the gateway's `message:preprocessed`
+hook opener, which counts the message, wakes the person and places the 👀
+before the model's first call — had no memory of a `messageId` it had
+already opened a turn for. Every call was read as a brand new message,
+provided only that `selfInitiated.isActive` said no. Nothing upstream of it
+guarantees exactly-once delivery: `handleTurnOpen`'s own comment
+(`brokerd/server.js`) already recorded that eleven of the first ~200 gateway
+opens timed out on the HOOK's own 2s side, which is exactly the shape of gap
+a retry takes — and a webhook-driven integration redelivering an event after
+a blip is a normal failure mode, not an exotic one. Either shape lands the
+same way here: a second `turn_open` for a `messageId` already handled,
+minutes after the first, read as fresh — a second `message.received`, a
+second wake, and (`server.js`'s `openTurnFromGateway`, unconditionally, on
+`!rec.skipped`) a second 👀, on a message that by then likely already carried
+the closing mark its answer had earned.
+
+`openFromGateway` now checks first: has THIS user's `turn.opened_by_gateway`
+already fired for this exact `messageId`, inside `reactions.LIVE_WINDOW_MS`
+(15 minutes — reused rather than a second constant, since it is already the
+right shape for "how long does a retry take" and the same window a mark may
+still land in)? A hit returns `skipped: 'duplicate_message'` before anything
+is counted, woken or marked — `server.js`'s existing `!rec.skipped` guards
+around both the pending-queue push and the `placeMark` call then do the rest
+with no changes needed there. A miss is audited too
+(`turn.duplicate_open_skipped`), on the same argument as everywhere else in
+this file: a check that goes quiet is indistinguishable from one that never
+ran. Scoped to `actor_id` in the query, so two different people's messages
+sharing whatever shape of id their channel happens to assign are never read
+as the same retry.
+
+Not verified against the box: which of the two failure shapes — a hook
+retry or a redelivered webhook — actually produced Miron's second 👀, or
+whether it is a third shape neither of these names. What the fix closes is
+the gap common to all of them: `turn_open` had no idempotency check at all,
+so ANY repeat of the same message, for any upstream reason, was replayed in
+full. That much needed no server access to establish — it is a fact about
+the code, confirmed by reading `openFromGateway` and `openTurnFromGateway`
+end to end, not an inference from the symptom.
