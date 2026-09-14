@@ -1607,6 +1607,18 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 }
 .tjump svg{width:15px;height:15px}
 .tjump:active{background:var(--accent-soft);color:var(--accent)}
+/* A shared task's pin. Filled where the task is pinned (the section at the
+   top), an outline wherever it has gone back to its place. The path inside the
+   symbol carries no fill of its own, so it inherits this one. */
+.tpin{
+  width:26px;height:26px;flex:none;border-radius:9px;display:grid;place-items:center;
+  color:var(--text-3);transition:background .3s var(--ease-io),color .18s var(--ease)
+}
+.tpin svg{width:15px;height:15px;fill:none}
+.tpin.on{color:var(--accent)}
+.tpin.on svg{fill:currentColor}
+.tpin:active{background:var(--accent-soft);color:var(--accent)}
+.glabel .pinmark{width:12px;height:12px;fill:currentColor;vertical-align:-1px;margin-inline-end:6px}
 
 .bigbtn{
   display:flex;align-items:center;justify-content:center;gap:9px;width:100%;
@@ -2177,6 +2189,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <symbol id="i-pause" viewBox="0 0 16 16"><path d="M5.6 3v10M10.4 3v10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
   <symbol id="i-play" viewBox="0 0 16 16"><path d="M4.6 3.2 12.6 8l-8 4.8Z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
   <symbol id="i-undo" viewBox="0 0 16 16"><path d="M3.4 6.2h6.3a3.6 3.6 0 0 1 0 7.2H6.1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 2.9 2.9 6.2 6 9.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 16 16"><path d="M5.9 1.9h4.2l-.6 4 2.4 2.5v1.3H4.1V8.4l2.4-2.5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 9.7v4.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
   <symbol id="i-x" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.8 6.6h14.4M9.6 6.6V4.4h4.8v2.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="m6.8 6.6 1 13.4h8.4l1-13.4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <!-- The two marks on a candidate time. Drawn objects rather than glyphs,
@@ -2944,7 +2957,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     archiveTask:"archiveTask", restoreTask:"restoreTask",
     setReminder:"setReminder", cancelReminder:"cancelReminder",
     setTaskReminder:"setTaskReminder", setTaskCalendar:"setTaskCalendar",
-    shareTask:"shareTask", revokeShare:"revokeShare",
+    shareTask:"shareTask", revokeShare:"revokeShare", setTaskPin:"setTaskPin",
     grantFeature:"grantFeature", revokeFeature:"revokeFeature",
     setTimezone:"setTimezone", pause:"pause", resume:"resume", callMe:"callMe",
     requestMoreCalls:"requestMoreCalls",
@@ -3302,6 +3315,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "tasks.doneAt":"הושלמה {when}","tasks.justNow":"הרגע",
       "tasks.arcShown":"מוצגות {n} האחרונות מתוך {all}","tasks.restore":"החזרה לרשימה",
       "toast.restored":"„{name}” חזרה לרשימה",
+      "tasks.pinned":"משותפות","tasks.unpin":"ביטול נעיצה","tasks.pin":"נעיצה למעלה",
+      "toast.unpinned":"„{name}” חזרה למקום שלה","toast.pinned":"„{name}” נעוצה למעלה",
 
       "sheet.when":"מתי","sheet.pickTime":"בחירת שעה","sheet.pickEnd":"עד","share.andMore":" ועוד {n}",
       "cat.h":"קטגוריה","cat.auto":"עולמה בחרה","cat.byTime":"לפי זמן","cat.byCat":"לפי קטגוריה",
@@ -3547,6 +3562,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "tasks.doneAt":"Done {when}","tasks.justNow":"just now",
       "tasks.arcShown":"Showing the last {n} of {all}","tasks.restore":"Put back on the list",
       "toast.restored":"\u201c{name}\u201d is back on your list",
+      "tasks.pinned":"Shared","tasks.unpin":"Unpin","tasks.pin":"Pin to top",
+      "toast.unpinned":"\u201c{name}\u201d is back in its place","toast.pinned":"\u201c{name}\u201d is pinned to the top",
 
       "sheet.when":"When","sheet.pickTime":"Pick a time","sheet.pickEnd":"until","share.andMore":" and {n} more",
       "cat.h":"Category","cat.auto":"Allma picked this","cat.byTime":"By time","cat.byCat":"By category",
@@ -4984,6 +5001,24 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       ? t("share.with1", {name:L(f.n)})
       : t("share.withN", {name:L(f.n), n:x.who.length - 1});
   }
+  /* The faces a row draws: everybody on the task except me. `who` alone is the
+     people it was shared WITH, so on a task somebody shared with me it holds
+     me and not them — the owner is added here, and I am taken out. */
+  function facesOf(x){
+    var ids = (x.who || []).filter(function(id){ return id !== 0 && String(id) !== String(MY_ID); });
+    if(x.owner && x.owner !== 0 && ids.indexOf(x.owner) < 0) ids.unshift(x.owner);
+    return ids;
+  }
+  /* Shared with somebody right now, and the pin not taken off. Asked on every
+     paint rather than stored, so a task that stops being shared drops back to
+     its place by itself. Imported tasks keep their own section. */
+  function isPinned(x){ return !x.src && !x.unpinned && facesOf(x).length > 0; }
+  function pinBtn(x){
+    if(x.src || !facesOf(x).length) return "";
+    var on = !x.unpinned, lbl = t(on ? "tasks.unpin" : "tasks.pin");
+    return '<button class="tpin' + (on ? " on" : "") + '" data-pin="' + x.id + '" aria-pressed="' + on +
+      '" aria-label="' + esc(lbl) + '" title="' + esc(lbl) + '"><svg><use href="#i-pin"/></svg></button>';
+  }
   function itemsDone(x){
     return (x.items || []).filter(function(it){ return it.done; }).length;
   }
@@ -5001,6 +5036,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     /* the jump only exists where there is somewhere to jump TO */
     if(x.d && x.cal) end += '<button class="tjump" data-jump="' + x.id + '" aria-label="' + esc(t("cal.showIn")) +
       '"><svg><use href="#i-cal"/></svg></button>';
+    end += pinBtn(x);
     return '<div class="taskwrap" data-id="' + x.id + '"><div class="taskin"><div class="task" role="button" tabindex="0">' +
       '<button class="tick" aria-label="' + esc(t("a11y.tick")) + '"><svg><use href="#i-check"/></svg></button>' +
       '<div class="tbody"><span class="ttitle">' +
@@ -5012,7 +5048,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
           ? '<i class="cdot" style="background:' + catOf(x.cat).c + '" title="' + esc(t("tcat." + x.cat)) + '"></i>'
           : "")) +
       esc(L(x.t) || t("sheet.untitled")) + "</span>" +
-      (x.who && x.who.length ? faceStack(x.who) : "") +
+      (facesOf(x).length ? faceStack(facesOf(x)) : "") +
       (x.kind === "event" && x.loc ? '<span class="tloc">' + esc(x.loc) + "</span>" : "") + "</div>" +
       (end ? '<span class="tend">' + end + "</span>" : "") +
       "</div></div></div>";
@@ -5047,21 +5083,42 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       '</span><span class="hint">' + esc(apps.join(" · ")) + "</span></div>" +
       '<div class="group">' + items.map(taskHTML).join("") + "</div></div>";
   }
+  /* Shared tasks first, whichever way the list is sorted: the section is built
+     once, above both branches, and the branches skip what it drew — the same
+     arrangement the imported section has at the other end. Unpinning one only
+     stops it being skipped, so it lands exactly where it would have been. */
+  function pinnedSection(){
+    var items = open.filter(isPinned);
+    if(!items.length) return "";
+    return '<div class="tsec pinned"><div class="glabel"><span>' +
+      '<svg class="pinmark" aria-hidden="true"><use href="#i-pin"/></svg>' + esc(t("tasks.pinned")) +
+      "</span></div>" + '<div class="group">' + items.map(taskHTML).join("") + "</div></div>";
+  }
+  function setPin(id, on){
+    var x = open.filter(function(o){ return o.id === id; })[0];
+    if(!x) return;
+    x.unpinned = !on;
+    $("#taskStack").classList.remove("swap"); void $("#taskStack").offsetWidth;
+    $("#taskStack").classList.add("swap");
+    renderTasks();
+    if(serverKnows(x)) API.send("setTaskPin", {taskId:x.id, pinned:on});
+    toast(t(on ? "toast.pinned" : "toast.unpinned", {name:L(x.t) || t("sheet.untitled")}));
+  }
   function renderTasks(){
-    var html = "";
+    var html = pinnedSection();
     if(viewBy === "cat"){
       /* Empty categories are not drawn: the set is fixed so the person can
          always MOVE a task into one, but a heading with nothing under it is
          a list of things you do not have. */
       TASKCATS.forEach(function(c){
-        var items = open.filter(function(x){ return !x.src && (x.cat || "none") === c.k; });
+        var items = open.filter(function(x){ return !x.src && !isPinned(x) && (x.cat || "none") === c.k; });
         if(!items.length) return;
         html += '<div class="tsec"><div class="glabel"><span><i class="cdot" style="background:' + c.c +
           '"></i>' + esc(t("tcat." + c.k)) + "</span></div>" +
           '<div class="group">' + items.map(taskHTML).join("") + "</div></div>";
       });
     } else BUCKETS.forEach(function(b){
-      var items = open.filter(function(x){ return !x.src && bucketFor(x.d) === b; });
+      var items = open.filter(function(x){ return !x.src && !isPinned(x) && bucketFor(x.d) === b; });
       if(!items.length) return;
       html += '<div class="tsec"><div class="glabel"><span class="' + (b === "late" ? "late" : "") + '">' +
         esc(t("bucket." + b)) + "</span></div>" + kindGroups(items) + "</div>";
@@ -5080,7 +5137,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       return '<div class="taskwrap" data-arc="' + x.id + '"><div class="taskin"><div class="task">' +
         '<span class="tick done-static"><svg><use href="#i-check"/></svg></span>' +
         '<div class="tbody"><span class="ttitle">' + esc(L(x.t)) + "</span>" +
-        (x.task && x.task.who && x.task.who.length ? faceStack(x.task.who) : "") + "</div>" +
+        (x.task && facesOf(x.task).length ? faceStack(facesOf(x.task)) : "") + "</div>" +
         '<span class="tend"><span class="ttime">' + esc(L(x.done)) + "</span>" +
         '<button class="tundo" data-undo="' + x.id + '" aria-label="' + esc(t("tasks.restore")) +
         '" title="' + esc(t("tasks.restore")) + '"><svg><use href="#i-undo"/></svg></button>' +
@@ -5129,6 +5186,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     }
     var jp = e.target.closest("[data-jump]");
     if(jp){ jumpToCalendar(+jp.dataset.jump); return; }
+    var pn = e.target.closest("[data-pin]");
+    if(pn){ setPin(+pn.dataset.pin, pn.getAttribute("aria-pressed") !== "true"); return; }
     if(wrap) openSheet(+wrap.dataset.id);
   });
   /* It lives on the toolbar row now, outside the list it used to end, so it
@@ -8159,6 +8218,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       /* viewer id -> share row id, because taking somebody off a task revokes
          one specific share and nothing else identifies it. */
       shareIds:(x.who || []).reduce(function(acc, w){ acc[w.id] = w.shareId; return acc; }, {}),
+      /* They took the pin off (migration 066). Only that half is carried: "is
+         it shared" is re-asked on every paint (isPinned), because sharing can
+         change on this page without a reload. */
+      unpinned:!!x.unpinned,
       items:(x.items || []).map(function(i){ return {t:i.title, done:!!i.done}; }),
       src:x.source || undefined
     };
@@ -8437,6 +8500,18 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
        game that does not exist. */
     EVENTS = {};
     PEOPLE = {};
+    /* Everybody on a task who is not a connection of mine gets a face too —
+       above all the person who shared it WITH me, who is on no share row and
+       so was never in `who`: a task somebody shared with me used to draw
+       every face on it except theirs. */
+    (d.tasks || []).forEach(function(x){
+      if(!x.mine && x.owner != null && !FRIENDS.some(function(f){ return f.id === x.owner; }))
+        PEOPLE[x.owner] = {id:x.owner, n:x.ownerName || "", av:seedIndex("u" + x.owner), g:"m"};
+      (x.who || []).forEach(function(w){
+        if(String(w.id) !== String(MY_ID) && !FRIENDS.some(function(f){ return f.id === w.id; }))
+          PEOPLE[w.id] = {id:w.id, n:w.name || "", av:seedIndex("u" + w.id), g:"m"};
+      });
+    });
     var openId = mtOpen ? mtOpen.id : null;
     MEETS = (d.meetings || []).map(liveMeet);
     MTLEFT = (d.meetingsLeft || []).map(function(m){ return {id:m.id, t:m.title || "", settled:!!m.settled, slot:m.slot || ""}; });
