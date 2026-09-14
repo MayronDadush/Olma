@@ -18,8 +18,10 @@
 -- same shape as `timezone_asked_at` (045): the explanation appears the first
 -- time they nest a task, on whichever device, and never again.
 --
--- 068: SELECT max(version) FROM schema_migrations on the box was 67 on
--- 2026-09-14 (never `ls migrations/`).
+-- 069: SELECT max(version) FROM schema_migrations on the box was 68 on
+-- 2026-09-14 — renumbered from 068 after PR #370
+-- (068-profile-gender-birthday-fact-prompt.sql) merged and deployed first
+-- and claimed it (never `ls migrations/`).
 CREATE TABLE IF NOT EXISTS task_order (
   user_id  BIGINT  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   task_id  BIGINT  NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,

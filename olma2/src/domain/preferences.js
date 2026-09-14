@@ -199,7 +199,93 @@ async function quietDays(client, userId, user = {}) {
   });
 }
 
+// ---- the profile page's own doors ------------------------------------------
+// The chat writes these keys as free text through remember_preference, and the
+// gate forgives whatever it finds. A form has no such excuse: what it sends is
+// checked here, shaped exactly the way the gate reads it, and refused by name
+// when it is not — so a value the page saved is never one the gate quietly
+// falls back from.
+const HHMM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+// `null` for both halves means "back to the default", which is deleting the
+// row: the gate reads no row as DEFAULT_WINDOW, and a stored copy of the
+// default would stop following it the day the constant moves.
+async function setAvailability(client, userId, { start, end } = {}) {
+  if (start == null && end == null) {
+    await client.query(
+      `DELETE FROM user_preferences WHERE user_id = $1 AND key = 'availability'`, [userId]);
+    await audit.record(client, userId, 'preference.forgotten', { key: 'availability', source: 'dashboard' });
+    return ok({ window: DEFAULT_WINDOW, source: 'default' });
+  }
+  const s = String(start || '').trim();
+  const e = String(end || '').trim();
+  if (!HHMM_RE.test(s) || !HHMM_RE.test(e)) {
+    return err('invalid', 'start and end must be 24h "HH:MM"', { reason: 'format' });
+  }
+  // An empty window is a pause by another name, and the gate would read it as
+  // never open — the same reason seven quiet days is refused below.
+  if (s === e) return err('invalid', 'the window must not start and end at the same time', { reason: 'empty' });
+  const res = await remember(client, userId, 'availability', `${s}-${e}`);
+  if (!res.ok) return res;
+  return ok({ window: { start: s, end: e }, source: 'stated' });
+}
+
+// The whole answer at once, because the page shows it whole: the days, whether
+// yom tov is quiet, and which calendar's. Always written as a STATED value —
+// `none` when no day is on — because the page has just shown them a default
+// and their pressing save is an answer about it.
+async function setQuietDays(client, userId, { days, holidays: onHolidays, calendar } = {}) {
+  if (!Array.isArray(days)) return err('invalid', 'days must be an array of weekday numbers 0-6', { reason: 'format' });
+  const set = new Set();
+  for (const d of days) {
+    const n = Number(d);
+    if (!Number.isInteger(n) || n < 0 || n > 6) {
+      return err('invalid', 'days must be weekday numbers 0 (Sunday) to 6 (Saturday)', { reason: 'format' });
+    }
+    set.add(n);
+  }
+  if (set.size >= 7) {
+    return err('invalid', 'seven quiet days is a pause — use the pause button instead', { reason: 'all_days' });
+  }
+  let cal = null;
+  if (calendar !== undefined && calendar !== null) {
+    cal = String(calendar).trim().toLowerCase();
+    if (!holidays.CALENDARS.has(cal)) {
+      return err('invalid', `calendar must be one of: ${[...holidays.CALENDARS].join(', ')}`, { reason: 'calendar' });
+    }
+  }
+  // `holidays` left out means "not part of this change": a tap on a weekday
+  // must not quietly take chagim off, and must not count as answering the
+  // chagim question either (below).
+  let keepHolidays = onHolidays === true;
+  if (typeof onHolidays !== 'boolean') {
+    const { rows } = await client.query(
+      `SELECT value FROM user_preferences WHERE user_id = $1 AND key = 'quiet_days'`, [userId]);
+    keepHolidays = rows[0] ? parseHolidayQuiet(rows[0].value) : false;
+  }
+  const names = [...set].sort((a, b) => a - b).map((n) => DAY_NAMES[n]);
+  const parts = names.length ? names : ['none'];
+  if (keepHolidays) parts.push('holidays');
+  const res = await remember(client, userId, 'quiet_days', parts.join(','));
+  if (!res.ok) return res;
+  if (cal) {
+    const calRes = await remember(client, userId, 'holiday_calendar', cal);
+    if (!calRes.ok) return calRes;
+  }
+  // Somebody who has just set chagim on or off on their own screen has
+  // answered the once-ever question, and must not be offered it in chat
+  // afterwards (users.holiday_quiet_asked_at, migration 062). Stamped only when
+  // the holiday half was actually part of what they sent.
+  if (typeof onHolidays === 'boolean') {
+    await client.query(
+      `UPDATE users SET holiday_quiet_asked_at = COALESCE(holiday_quiet_asked_at, now()) WHERE id = $1`,
+      [userId]);
+  }
+  return ok({ days: [...set].sort((a, b) => a - b), holidays: keepHolidays, calendar: cal });
+}
+
 module.exports = {
+  setAvailability, setQuietDays,
   remember, forget, list, availabilityWindow, DEFAULT_WINDOW,
   quietDays, parseQuietDays, parseHolidayQuiet, DAY_NAMES, SAID_NONE, SAID_HOLIDAYS,
 };

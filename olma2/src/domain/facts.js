@@ -135,7 +135,7 @@ function parseExpiry(value) {
   return { ok: true, value: d.toISOString() };
 }
 
-async function rememberFact(client, userId, { category, fact, importance, expiresAt, source, replaces } = {}) {
+async function rememberFact(client, userId, { category, fact, importance, expiresAt, source, replaces, promptKey } = {}) {
   if (!KNOWN_FACT_CATEGORIES.includes(category)) {
     return err('invalid', `category must be one of: ${KNOWN_FACT_CATEGORIES.join(', ')}`, { reason: 'category' });
   }
@@ -170,9 +170,11 @@ async function rememberFact(client, userId, { category, fact, importance, expire
   }
 
   const { rows } = await client.query(
-    `INSERT INTO user_facts (user_id, category, fact, importance, source, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [userId, category, text, imp, src, expiry.value]
+    // prompt_key: which profile-page question this answers (domain/fact-prompts.js);
+    // NULL for every fact that came from a conversation.
+    `INSERT INTO user_facts (user_id, category, fact, importance, source, expires_at, prompt_key)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [userId, category, text, imp, src, expiry.value, promptKey || null]
   );
   await audit.record(client, userId, 'fact.remembered', { factId: Number(rows[0].id), category, importance: imp });
 

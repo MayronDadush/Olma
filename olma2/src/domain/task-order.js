@@ -1,6 +1,6 @@
 'use strict';
 // Where each task sits on one person's dashboard list, once they have dragged
-// it (migration 068). The page sends the whole visible order after every drop
+// it (migration 069). The page sends the whole visible order after every drop
 // and this writes it as one rank per task — no midpoint ranks and nothing to
 // rebalance, because a person's open list is tens of rows, not thousands.
 //

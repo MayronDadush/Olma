@@ -248,7 +248,7 @@ function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, 
       + 'chagim you can send only the reminders they asked for, and they need only say so. If '
       + 'they want it, call remember_preference key "quiet_days" adding "holidays" to whatever '
       + 'days are already there ("sat,holidays"). If these are not their chagim at all, that is '
-      + 'key "holiday_calendar", value "christian" or "none".';
+      + 'key "holiday_calendar", value "jewish", "christian", "muslim" or "none".';
   }
   if (genderForms === 'feminine') {
     // The doctrine already says "hold the stored preference"; the nightly
