@@ -303,6 +303,48 @@ test('a task somebody shared with me is on my list too, and marked as theirs', a
   assert.equal(theirs.sharedRole, null, 'owning something is not a role granted to you');
 });
 
+// The owner is on no share row, so a task somebody shared WITH me used to reach
+// the page with every face on it except theirs. And both sides of a shared
+// task start pinned, and un-pinning is one person's choice about one list.
+test('a shared task names its owner, is pinned on both lists, and un-pinning is per person', async () => {
+  const shares = require('../src/domain/shares');
+  const pins = require('../src/domain/task-pins');
+  const t = await withTx(db.pool, (c) => tasks.addTask(c, friend.id, { title: 'לתכנן את הטיול' }));
+  const id = t.data.task.id;
+  const offer = await withTx(db.pool, (c) => shares.offerShare(c, friend.id, id, me.id, 'viewer'));
+  await withTx(db.pool, (c) => shares.respondToShare(c, me.id, offer.data.share.id, 'accept'));
+  const solo = await withTx(db.pool, (c) => tasks.addTask(c, me.id, { title: 'רק שלי' }));
+
+  const row = async (uid, tid) => (await load(uid)).data.tasks.find((x) => String(x.id) === String(tid));
+  let mine = await row(me.id, id);
+  assert.equal(mine.ownerName, 'Gali', 'the person who shared it has no face without a name');
+  assert.equal(mine.pinned, true);
+  assert.equal((await row(friend.id, id)).pinned, true, 'shared OUT is shared too');
+  assert.equal((await row(friend.id, id)).ownerName, null, 'my own task does not name me to myself');
+  assert.equal((await row(me.id, solo.data.task.id)).pinned, false, 'a task nobody else is on has no pin');
+
+  const off = await withTx(db.pool, (c) => pins.setPinned(c, me.id, id, false));
+  assert.equal(off.ok, true, off.ok ? '' : JSON.stringify(off.error));
+  mine = await row(me.id, id);
+  assert.equal(mine.pinned, false);
+  assert.equal(mine.unpinned, true);
+  assert.equal((await row(friend.id, id)).pinned, true, 'my un-pinning moved it on THEIR list');
+
+  // twice is not an error, and pinning again takes the row away
+  assert.equal((await withTx(db.pool, (c) => pins.setPinned(c, me.id, id, false))).ok, true);
+  await withTx(db.pool, (c) => pins.setPinned(c, me.id, id, true));
+  assert.equal((await row(me.id, id)).pinned, true);
+
+  // a task that is not on my list cannot be pinned, and says nothing about it
+  const stranger = await makeUser(db.pool, '+972531900077', { firstName: 'Zed' });
+  const theirs = await withTx(db.pool, (c) => tasks.addTask(c, stranger.id, { title: 'secret' }));
+  const refused = await withTx(db.pool, (c) => pins.setPinned(c, me.id, theirs.data.task.id, false));
+  assert.equal(refused.ok, false);
+  assert.equal(refused.error.code, 'not_found');
+  const bad = await withTx(db.pool, (c) => pins.setPinned(c, me.id, id, 'no'));
+  assert.equal(bad.error.code, 'invalid');
+});
+
 // The page keeps a seeded profile for the design copy and re-reads it on every
 // render, so anything the payload omits stays as the fixture. The fixture is
 // the owner's own name — which is exactly why this survived the first real

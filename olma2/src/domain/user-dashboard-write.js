@@ -25,6 +25,7 @@ const { ok, err } = require('./results');
 const tasks = require('./tasks');
 const reminders = require('./reminders');
 const shares = require('./shares');
+const taskPins = require('./task-pins');
 const grants = require('./grants');
 const users = require('./users');
 const pause = require('./pause');
@@ -233,6 +234,12 @@ const ACTIONS = {
 
   async respondToShare(client, userId, p) {
     return shares.respondToShare(client, userId, p.shareId, p.decision);
+  },
+
+  // Where a shared task sits on THIS person's list. Not refused while paused:
+  // it changes nothing Olma will send.
+  async setTaskPin(client, userId, p) {
+    return taskPins.setPinned(client, userId, p.taskId, p.pinned);
   },
 
   // ---- friends -------------------------------------------------------------

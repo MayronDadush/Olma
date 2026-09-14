@@ -8187,3 +8187,100 @@ into the same row. The check going quiet is covered for free: it is a
 `job_heartbeats` row, so `jobs/expectations.js` already calls it stale if it
 stops running, and `/health` already reports that. No second detector needed
 for the detector.
+
+### The digest that could not become a picture, and said so twice (2026-09-13)
+
+Miron reported two things about the same morning digest: he got the day's
+list twice, and it should have arrived as the picture rather than the wall of
+text it actually was.
+
+Both trace to the same collision. `channels/openclaw.js`'s `cardClause` tells
+the model that past `digest_card_min_items` open items, the morning is worth
+drawing as an image — call `render_schedule_card` and reply with a sentence
+plus `MEDIA: <path>`. `domain/schedule-card.js` refuses outright past its own
+`LIMITS.totalItems` (36): "forty rows in one image is unreadable at any size."
+Nothing told the model about that second ceiling. For someone with a long
+`digest_scope: 'full'` list — Miron has had dozens of open items at a time
+since well before this (`incidents.md`, "The same thing, saved twice") — the
+model would reach for the card exactly as instructed, have it refused, and
+be left to recover mid-turn with no guidance for that specific failure.
+
+That recovery is where a second copy of the list becomes possible, not a new
+theory: `DELIVERY_PREAMBLE` (`channels/openclaw.js`) already exists because a
+`--deliver` turn sends every text block the model produces, narration
+included — issue #325 names the general shape (a model's meta-text reaching a
+real person with nothing server-side able to stop it) as an open, unfixed
+gap. A tool call that fails unexpectedly is exactly the moment a model is
+likeliest to write an explanatory sentence before its real answer, and on
+this turn that sentence had the same list behind it that the final reply
+also had to fall back to.
+
+Two changes, neither able to touch the narration gap itself (still open,
+still #325):
+
+- `cardClause` now states the real ceiling, from `schedule-card.LIMITS`
+  itself rather than a second hard-coded number, and tells the model plainly
+  what a huge list already meant implicitly: past it, do not attempt the
+  card at all — go straight to the text block, with nothing said about why.
+  Removing the failure removes the recovery it would have needed.
+- The block itself stops being one flat wall past a point. `digest-
+  block.js`'s new `todoBlock` keeps dated tasks exactly where the query
+  already sorted them — first, in due-date order, never touched — and
+  groups only the undated tail, once it is longer than `CATEGORY_GROUP_MIN`
+  (8) items, by `tasks.category` (`domain/task-category.js`), which was
+  already being computed for every task at write time with no model and no
+  extra cost. A short list, or an undated tail that landed entirely in one
+  category, stays exactly as flat as before — a heading that repeats what
+  "על הרשימה" already said is not an improvement.
+
+Not verified against the box: whether this was really Miron's own item
+count crossing 36, and whether the transcript actually shows a narrated
+explanation ahead of the real reply, the way `#325` predicts. Both would
+settle it; neither was checkable from a code-only session with no server
+access. The fix stands on what the code already proves — the ceiling exists,
+nothing announced it, and a long undated list read as one wall of text.
+
+### The eyes that came back after Olma had already answered (2026-09-13)
+
+Miron reported a second, unrelated thing about the same conversation: after
+Olma had already replied to him, 👀 landed again on a message that already
+carried it.
+
+`domain/turn.js`'s `openFromGateway` — the gateway's `message:preprocessed`
+hook opener, which counts the message, wakes the person and places the 👀
+before the model's first call — had no memory of a `messageId` it had
+already opened a turn for. Every call was read as a brand new message,
+provided only that `selfInitiated.isActive` said no. Nothing upstream of it
+guarantees exactly-once delivery: `handleTurnOpen`'s own comment
+(`brokerd/server.js`) already recorded that eleven of the first ~200 gateway
+opens timed out on the HOOK's own 2s side, which is exactly the shape of gap
+a retry takes — and a webhook-driven integration redelivering an event after
+a blip is a normal failure mode, not an exotic one. Either shape lands the
+same way here: a second `turn_open` for a `messageId` already handled,
+minutes after the first, read as fresh — a second `message.received`, a
+second wake, and (`server.js`'s `openTurnFromGateway`, unconditionally, on
+`!rec.skipped`) a second 👀, on a message that by then likely already carried
+the closing mark its answer had earned.
+
+`openFromGateway` now checks first: has THIS user's `turn.opened_by_gateway`
+already fired for this exact `messageId`, inside `reactions.LIVE_WINDOW_MS`
+(15 minutes — reused rather than a second constant, since it is already the
+right shape for "how long does a retry take" and the same window a mark may
+still land in)? A hit returns `skipped: 'duplicate_message'` before anything
+is counted, woken or marked — `server.js`'s existing `!rec.skipped` guards
+around both the pending-queue push and the `placeMark` call then do the rest
+with no changes needed there. A miss is audited too
+(`turn.duplicate_open_skipped`), on the same argument as everywhere else in
+this file: a check that goes quiet is indistinguishable from one that never
+ran. Scoped to `actor_id` in the query, so two different people's messages
+sharing whatever shape of id their channel happens to assign are never read
+as the same retry.
+
+Not verified against the box: which of the two failure shapes — a hook
+retry or a redelivered webhook — actually produced Miron's second 👀, or
+whether it is a third shape neither of these names. What the fix closes is
+the gap common to all of them: `turn_open` had no idempotency check at all,
+so ANY repeat of the same message, for any upstream reason, was replayed in
+full. That much needed no server access to establish — it is a fact about
+the code, confirmed by reading `openFromGateway` and `openTurnFromGateway`
+end to end, not an inference from the symptom.

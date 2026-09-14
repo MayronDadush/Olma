@@ -108,10 +108,20 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
             -- minutes, so wanting it and having it are two different facts and
             -- the page has to be able to tell them apart
             t.calendar_event_id IS NOT NULL AS in_calendar,
-            sh.role AS shared_role
+            sh.role AS shared_role,
+            -- who started it, by first name only: on a task somebody shared
+            -- WITH this person the owner is on no share row, so without this
+            -- the list could draw every face on it except the one who shared
+            ow.first_name AS owner_name,
+            -- they took the pin off this one (migration 066); pinned is the
+            -- default, and it only means anything while the task is shared
+            up.task_id IS NOT NULL AS unpinned
      FROM tasks t
+     JOIN users ow ON ow.id = t.owner_id
      LEFT JOIN shares sh
             ON sh.task_id = t.id AND sh.viewer_id = $1 AND sh.status = 'active'
+     LEFT JOIN task_unpins up
+            ON up.task_id = t.id AND up.user_id = $1
      WHERE t.parent_id IS NULL
        AND (t.owner_id = $1 OR sh.id IS NOT NULL)
      -- Open first, then the finished ones newest-first: the archive shows the
@@ -215,7 +225,13 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
       // somebody else shared can be attributed to them by name.
       mine: String(t.owner_id) === String(userId),
       owner: who.length || String(t.owner_id) !== String(userId) ? t.owner_id : null,
+      ownerName: String(t.owner_id) !== String(userId) ? (t.owner_name || '') : null,
       who,
+      // Sits at the top of their list: shared with somebody right now, and
+      // they have not taken the pin off. A task that stops being shared drops
+      // back to its place without anyone touching it.
+      pinned: (who.length > 0 || String(t.owner_id) !== String(userId)) && !t.unpinned,
+      unpinned: Boolean(t.unpinned),
       // Only set on a task somebody shared WITH this person: 'viewer' or
       // 'editor'. Their own rows carry null, not 'editor' — owning something
       // is not a role granted to you.

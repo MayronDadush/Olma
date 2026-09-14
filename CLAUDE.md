@@ -167,6 +167,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `src/domain/self-initiated.js` and 6 more.
 
 - **The turn opens itself, from the gateway's own hook, before the model's first call.**
+- **A repeat of the same message must never be read as a new one.**
 - **`messages.queue.mode` stays `followup`.**
 - **A turn Olma started is not a message from the person.**
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
