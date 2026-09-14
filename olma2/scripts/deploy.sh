@@ -156,9 +156,26 @@ $SSH "$SERVER" "
   # turns until the gateway texted users raw error strings.)
   # Via run-suite.sh so a wedged runner retries instead of hanging the deploy
   # until the job timeout. Two attempts, not three: a retry here costs the live
-  # box seven more minutes of contended CPU, so the third roll of the dice is
-  # not worth what it takes from users.
-  SUITE_NICE=19 SUITE_CONCURRENCY=2 SUITE_ATTEMPTS=2 SUITE_TIMEOUT=420 bash scripts/run-suite.sh
+  # box another SUITE_TIMEOUT of contended CPU, so the third roll of the dice
+  # is not worth what it takes from users.
+  #
+  # SUITE_TIMEOUT was 420 from when a solo on-box run took ~234s (2026-09-06).
+  # The suite grew and the cap did not: on 2026-09-14 a clean run measured
+  # 397s — 23 seconds under it — so ordinary contention from one live agent
+  # turn pushed BOTH attempts past the cap, and a suite that was merely slow
+  # was killed twice and reported as a wedge. What that costs is not a red
+  # run: the deploy stops before the restart, which leaves the MIXED box
+  # (new code and applied migrations on disk, old code in memory) until
+  # somebody re-runs it.
+  #
+  # 600 is ~1.5x the measured run. The ceiling on this number is the deploy
+  # job's own `timeout-minutes: 30` (.github/workflows/olma2-tests.yml): two
+  # attempts plus the ~40s of rsync/install/migrate/restart around them have
+  # to fit inside it, so this cannot go past ~730 without raising that too —
+  # and a deploy killed by the JOB timeout is the one failure that can land
+  # between the rsync and the rollback safeguard. Re-measure the suite when
+  # you touch this; the gap between the two numbers is the whole warning.
+  SUITE_NICE=19 SUITE_CONCURRENCY=2 SUITE_ATTEMPTS=2 SUITE_TIMEOUT=600 bash scripts/run-suite.sh
 "
 
 # Passes iff both services are actually running (catches an instant crash —

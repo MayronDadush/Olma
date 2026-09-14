@@ -81,9 +81,16 @@ title means this file. Grep the title, not the filename.
 
 - **A red `deploy` is EITHER a wedge or a real failure, and they take opposite
   actions** — `run-suite.sh`'s banner is what tells them apart, so read it
-  before deciding a re-run means anything. A solo on-box suite runs ~234s
-  against `SUITE_TIMEOUT=420` (measured 2026-09-06), so a second thing holding
-  the CPU pushes both past the cap and both report as wedges.
+  before deciding a re-run means anything. **A slow suite and a wedged one are
+  indistinguishable from outside, and the gap that separates them is the
+  number to watch**: the on-box run was ~234s when `SUITE_TIMEOUT` was set to
+  420 (2026-09-06) and 397s by 2026-09-14 — 23 seconds under the cap — so one
+  live agent turn's worth of contention killed both attempts of #366's deploy
+  at the same test, and a re-run seven minutes later passed 1974/1974 in 397s.
+  The cap is `SUITE_TIMEOUT=600` since then, bounded by the deploy job's own
+  `timeout-minutes: 30`: two attempts plus the rsync/install/migrate/restart
+  around them must fit inside it. Re-measure the run when you raise the cap —
+  a suite creeping up on its own timeout announces itself as a wedge.
 
 - **A red suite inside `deploy.sh` leaves a MIXED box and does not roll back.**
   The order is rsync → RELEASE marker → `npm install` → migrations → suite →
