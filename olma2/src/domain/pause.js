@@ -23,7 +23,7 @@
 //
 // ONE exception, and it is the owner's (2026-09-13): a paused person standing
 // in a WhatsApp room where a coordination starts hears about it once per
-// pause (`users.room_invite_sent_at`, migration 065). Being in the room is
+// pause (`users.room_invite_sent_at`, migration 067). Being in the room is
 // not something the pause can see, and silently counting them in — as the
 // room did to Kapish — is worse than one message. Their first message after
 // it, whenever it comes, ends the pause (resumeAfterRoomInvite); a day of

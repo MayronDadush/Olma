@@ -1563,7 +1563,7 @@ every kind of pause):
 - A paused member hears about a room coordination **once per pause**. The gate
   exempts exactly that row (`pausedRoomInvite`, computed in the worker, false
   for batch siblings). The allowance is `users.room_invite_sent_at >=
-  paused_at` (migration 065), and it is stamped only after the send confirms.
+  paused_at` (migration 067), and it is stamped only after the send confirms.
 - Their first message after it, whenever it comes, ends the pause, even one
   they asked for (`pause.resumeAfterRoomInvite`, called from `openRecord({
   wake: true })`, which also stamps `room_invite_answered_at`). If the answer
