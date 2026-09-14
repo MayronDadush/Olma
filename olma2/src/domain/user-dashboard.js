@@ -71,7 +71,8 @@ async function gateIdentity(client, userId) {
 async function loadUser(client, userId) {
   const { rows } = await client.query(
     `SELECT id, first_name, last_name, assistant_name, timezone, timezone_confirmed,
-            locale, paused_at IS NOT NULL AS paused, digest_scope, calendar_sync_tasks
+            locale, paused_at IS NOT NULL AS paused, digest_scope, calendar_sync_tasks,
+            nest_tip_seen_at IS NOT NULL AS nest_tip_seen
      FROM users WHERE id = $1 AND status != 'blocked' AND is_eval = false`,
     [userId]
   );
@@ -122,14 +123,22 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
             ON sh.task_id = t.id AND sh.viewer_id = $1 AND sh.status = 'active'
      LEFT JOIN task_unpins up
             ON up.task_id = t.id AND up.user_id = $1
+     -- where THIS person dragged it (migration 068), per viewer like the pin
+     LEFT JOIN task_order tord
+            ON tord.task_id = t.id AND tord.user_id = $1
      WHERE t.parent_id IS NULL
        AND (t.owner_id = $1 OR sh.id IS NOT NULL)
      -- Open first, then the finished ones newest-first: the archive shows the
      -- last eight and says how many it is hiding, so "last" has to mean when
      -- it was finished, not when it had been due. Open rows are all NULL on
-     -- the second key and fall through to their own order, unchanged.
+     -- the second key and fall through to their own order: where the person
+     -- dragged them, and only then by date. The page never sorts — it files
+     -- this order into its groups — so one rank serves the category view and
+     -- the time view alike, and a row nobody dragged sits after the dragged
+     -- ones in date order, as it always did.
      ORDER BY (t.archived_at IS NOT NULL OR t.status = 'done'),
               COALESCE(t.completed_at, t.archived_at) DESC NULLS LAST,
+              tord.position NULLS LAST,
               t.due_at NULLS LAST, t.id`,
     [userId, zone]
   );
@@ -138,7 +147,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
   const ids = tasks.map((t) => t.id);
   const { rows: items } = await client.query(
     `SELECT id, parent_id, title, status FROM tasks
-     WHERE parent_id = ANY($1::bigint[]) ORDER BY id`,
+     WHERE parent_id = ANY($1::bigint[]) AND archived_at IS NULL ORDER BY id`,
     [ids]
   );
   // Only a reminder that has not finished its escalation ladder counts as
@@ -648,6 +657,8 @@ async function load(client, userId) {
       // The standing switch behind every task's own calendar row. A task that
       // says nothing follows this one.
       calendarSyncTasks: user.calendar_sync_tasks,
+      // Told once what dropping a task onto another does (migration 068).
+      nestTipSeen: Boolean(user.nest_tip_seen),
     },
     channels,
     contacts,

@@ -846,6 +846,26 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .task.done .ttitle::after{transform:scaleX(1)}
 .task{cursor:pointer}
 .task:active{background:var(--surface-2)}
+/* ── dragging a task ──
+   A row is lifted by a long press on a phone and by press-and-move with a
+   mouse. Nothing in a row is text anybody selects, and iOS's own long-press
+   menu would otherwise open on exactly the gesture that lifts it. The clone
+   lives on <body>, not in its group: a .group clips (overflow:hidden) and the
+   lifted row has to be able to sit over the edge of it. */
+.taskwrap{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.dragclone{
+  position:fixed;z-index:85;pointer-events:none;margin:0;
+  background:var(--surface);border-radius:14px;box-shadow:var(--shadow-l);
+  transform-origin:50% 50%;will-change:transform;
+}
+.dragclone .task{cursor:grabbing}
+.taskwrap.dragsrc .task{opacity:.32}
+html.dragging-task, html.dragging-task *{cursor:grabbing !important}
+/* The row it will go INTO: a ring, not a gap — dropping here does not put it
+   beside this task, it puts it inside. */
+.taskwrap.nesttarget .task{background:var(--accent-soft);box-shadow:inset 0 0 0 2px var(--accent)}
+.taskwrap.nesttarget .task::before{display:none}
+.taskwrap + .taskwrap.nesttarget .task::before,.taskwrap.nesttarget + .taskwrap .task::before{display:none}
 .tend{display:flex;align-items:center;gap:8px;flex:none;margin-inline-start:auto;padding-top:1px}
 .tglyph{width:14px;height:14px;color:var(--text-3)}
 .tglyph.bell{color:var(--warn)}
@@ -2148,6 +2168,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   transition:opacity var(--sw-t) var(--ease-io),transform var(--sw-t) var(--ease-io);
 }
 .toast.show{opacity:1;transform:none}
+/* A toast that can be answered — only the one after a task went into a list.
+   Every other toast stays an announcement nobody can tap. */
+.toast.act{pointer-events:auto}
+.toastundo{margin-inline-start:12px;color:var(--accent);font-weight:700;font-size:13px}
 
 @media (max-width:430px){
   .title h1{font-size:29px}
@@ -2835,6 +2859,20 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <div class="scuehold deep"><div class="scue" id="cnCue"><i></i></div></div>
 </div>
 
+<!-- The first time a task is dropped into another. Shown once, ever — the
+     stamp is on the person (users.nest_tip_seen_at) — so it explains the
+     gesture and offers the way back in the same breath. -->
+<div class="sheet" id="nestSheet" role="dialog" aria-modal="true" aria-labelledby="nestTitle">
+  <div class="sgrab"><i class="grabber"></i></div>
+  <h2 id="nestTitle" data-i18n="nest.title"></h2>
+  <p class="note" id="nestWhat" style="padding:0 14px;text-align:center;font-weight:600;color:var(--text)"></p>
+  <p class="note" data-i18n="nest.body" style="padding:0 14px;text-align:center"></p>
+  <div class="sheetbtns">
+    <button class="btn primary" id="nestOk" data-i18n="nest.ok"></button>
+    <button class="btn ghost" id="nestUndo" data-i18n="nest.undo"></button>
+  </div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -2958,6 +2996,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     setReminder:"setReminder", cancelReminder:"cancelReminder",
     setTaskReminder:"setTaskReminder", setTaskCalendar:"setTaskCalendar",
     shareTask:"shareTask", revokeShare:"revokeShare", setTaskPin:"setTaskPin",
+    setTaskOrder:"setTaskOrder", nestTask:"nestTask", unnestTask:"unnestTask",
     grantFeature:"grantFeature", revokeFeature:"revokeFeature",
     setTimezone:"setTimezone", pause:"pause", resume:"resume", callMe:"callMe",
     requestMoreCalls:"requestMoreCalls",
@@ -3317,6 +3356,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.restored":"„{name}” חזרה לרשימה",
       "tasks.pinned":"משותפות","tasks.unpin":"ביטול נעיצה","tasks.pin":"נעיצה למעלה",
       "toast.unpinned":"„{name}” חזרה למקום שלה","toast.pinned":"„{name}” נעוצה למעלה",
+      "nest.title":"המשימה נכנסה לרשימה","nest.ok":"הבנתי","nest.undo":"ביטול",
+      "nest.body":"כשגוררים משימה אל תוך משימה אחרת, היא הופכת לפריט ברשימה שלה. אפשר לסמן אותה שם כשהיא נעשית — או לבטל ולהחזיר אותה למקום.",
+      "toast.nested":"„{name}” נוספה לרשימה „{parent}”","toast.unnested":"„{name}” חזרה להיות משימה","toast.undo":"בטל",
 
       "sheet.when":"מתי","sheet.pickTime":"בחירת שעה","sheet.pickEnd":"עד","share.andMore":" ועוד {n}",
       "cat.h":"קטגוריה","cat.auto":"עולמה בחרה","cat.byTime":"לפי זמן","cat.byCat":"לפי קטגוריה",
@@ -3564,6 +3606,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.restored":"\u201c{name}\u201d is back on your list",
       "tasks.pinned":"Shared","tasks.unpin":"Unpin","tasks.pin":"Pin to top",
       "toast.unpinned":"\u201c{name}\u201d is back in its place","toast.pinned":"\u201c{name}\u201d is pinned to the top",
+      "nest.title":"Added to a list","nest.ok":"Got it","nest.undo":"Undo",
+      "nest.body":"Dropping a task onto another turns it into an item on that task\u2019s list. Tick it off there when it\u2019s done \u2014 or undo to put it back.",
+      "toast.nested":"\u201c{name}\u201d added to \u201c{parent}\u201d","toast.unnested":"\u201c{name}\u201d is a task again","toast.undo":"Undo",
 
       "sheet.when":"When","sheet.pickTime":"Pick a time","sheet.pickEnd":"until","share.andMore":" and {n} more",
       "cat.h":"Category","cat.auto":"Allma picked this","cat.byTime":"By time","cat.byCat":"By category",
@@ -4364,11 +4409,24 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
   /* ───────── toast ───────── */
   var toastEl = $("#toast"), toastT;
-  function toast(msg){
+  function toast(msg, undo){
     toastEl.textContent = msg;
+    toastEl.classList.toggle("act", !!undo);
+    if(undo){
+      var b = document.createElement("button");
+      b.className = "toastundo";
+      b.textContent = t("toast.undo");
+      b.addEventListener("click", function(){
+        clearTimeout(toastT);
+        toastEl.classList.remove("show", "act");
+        undo();
+      });
+      toastEl.appendChild(b);
+    }
     toastEl.classList.add("show");
     clearTimeout(toastT);
-    toastT = setTimeout(function(){ toastEl.classList.remove("show"); }, 1050);
+    /* long enough to reach the button, only when there is one */
+    toastT = setTimeout(function(){ toastEl.classList.remove("show", "act"); }, undo ? 4200 : 1050);
   }
 
   /* ───────── connections view ───────── */
@@ -5190,6 +5248,231 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(pn){ setPin(+pn.dataset.pin, pn.getAttribute("aria-pressed") !== "true"); return; }
     if(wrap) openSheet(+wrap.dataset.id);
   });
+  /* ── dragging tasks ──
+     Two gestures on one lift. Let go BESIDE another row of the same group and
+     the task moves there; let go ONTO another row and it becomes an item on
+     that task's list. Anywhere else, nothing happened.
+
+     The server keeps the order (task_order, one rank per person) and this page
+     never sorts — it files the server's order into groups — so a drop is
+     written as the whole order as it now stands on screen, and the next load
+     draws exactly what was left here. */
+  var nestTipSeen = false;
+  function taskById(id){ return open.filter(function(o){ return String(o.id) === String(id); })[0] || null; }
+  /* Mine means owner 0 — or no owner at all, which is what a row typed on
+     this page carries before the server has answered for it. */
+  function isMine(x){ return !x.owner; }
+  function canLift(x){ return !!x && !x.src && (!LIVE || serverKnows(x)); }
+  /* The owner's four rules, asked before the drop so a row that cannot take
+     this task never lights up. The server refuses the same cases by name. */
+  function canNestInto(child, parent){
+    if(!child || !parent || child === parent) return false;
+    if(child.src || parent.src) return false;
+    if(!isMine(child) || !isMine(parent)) return false;
+    if(child.d) return false;                              /* a date, or a date and an hour */
+    if(child.items && child.items.length) return false;    /* a list does not go into a list */
+    if(facesOf(child).length) return false;                /* it is on somebody else's list too */
+    return true;
+  }
+  function domOrder(){
+    return $$("#taskStack .taskwrap[data-id]").map(function(w){ return w.dataset.id; });
+  }
+  function saveOrder(){
+    var ids = domOrder(), rank = {};
+    ids.forEach(function(id, i){ rank[id] = i; });
+    open.sort(function(a, b){
+      var ra = rank[String(a.id)], rb = rank[String(b.id)];
+      return (ra === undefined ? 1e9 : ra) - (rb === undefined ? 1e9 : rb);
+    });
+    var send = open.filter(function(x){ return !x.src && serverKnows(x); }).map(function(x){ return x.id; });
+    renderTasks();
+    if(send.length) API.send("setTaskOrder", {taskIds:send});
+  }
+  var lastNest = null;
+  function nestInto(childId, parentId){
+    var child = taskById(childId), parent = taskById(parentId);
+    if(!canNestInto(child, parent)) return;
+    var at = open.indexOf(child);
+    open.splice(at, 1);
+    /* Where the server will put it on the next load — items come back in id
+       order (user-dashboard.js) — so the list does not rearrange itself under
+       them on a reload. An item still waiting for its id goes last. */
+    parent.items = (parent.items || []).concat([{id:child.id, t:child.t, done:false}])
+      .sort(function(a, b){ return (a.id || Infinity) - (b.id || Infinity); });
+    renderTasks(); renderStrip(selDay);
+    if(serverKnows(child)) API.send("nestTask", {taskId:child.id, parentId:parent.id});
+    lastNest = {child:child, parent:parent, at:at};
+    var what = t("toast.nested", {name:L(child.t) || t("sheet.untitled"), parent:L(parent.t) || t("sheet.untitled")});
+    if(!nestTipSeen){
+      nestTipSeen = true;
+      $("#nestWhat").textContent = what;
+      showSheet($("#nestSheet"));
+    } else toast(what, undoNest);
+  }
+  function undoNest(){
+    var n = lastNest;
+    lastNest = null;
+    if(!n || !n.parent.items) return;
+    n.parent.items = n.parent.items.filter(function(it){ return String(it.id) !== String(n.child.id); });
+    if(open.indexOf(n.child) < 0) open.splice(Math.min(n.at, open.length), 0, n.child);
+    renderTasks(); renderStrip(selDay);
+    /* Its task_order row was never removed, so the server puts it back at the
+       rank it had without being told. */
+    if(serverKnows(n.child)) API.send("unnestTask", {taskId:n.child.id});
+    toast(t("toast.unnested", {name:L(n.child.t) || t("sheet.untitled")}));
+  }
+  $("#nestOk").addEventListener("click", function(){ lastNest = null; closeSheets(); });
+  $("#nestUndo").addEventListener("click", function(){ closeSheets(); undoNest(); });
+
+  (function(){
+    var HOLD_MS = 350, TOUCH_SLOP = 8, MOUSE_SLOP = 6, EDGE = 76, EDGE_BOTTOM = 120;
+    var stack = $("#taskStack");
+    var press = null, drag = null, swallowUntil = 0;
+
+    function clearPress(){
+      if(press && press.timer) clearTimeout(press.timer);
+      press = null;
+    }
+    function begin(){
+      var p = press;
+      clearPress();
+      if(!p || !document.body.contains(p.wrap)) return;
+      var r = p.wrap.getBoundingClientRect();
+      var clone = document.createElement("div");
+      clone.className = "dragclone";
+      clone.appendChild($(".task", p.wrap).cloneNode(true));
+      clone.style.width = r.width + "px";
+      clone.style.left = r.left + "px";
+      clone.style.top = r.top + "px";
+      document.body.appendChild(clone);
+      p.wrap.classList.add("dragsrc");
+      document.documentElement.classList.add("dragging-task");
+      drag = {
+        wrap:p.wrap, task:taskById(p.wrap.dataset.id), clone:clone, group:p.wrap.parentNode,
+        home:p.wrap.nextSibling, x:p.x, y:p.y, y0:p.y, scroll0:window.scrollY, target:null, raf:0
+      };
+      if(navigator.vibrate) try{ navigator.vibrate(12); }catch(err){}
+      paint();
+      loop();
+    }
+    function paint(){
+      if(!drag) return;
+      var lift = matchMedia("(prefers-reduced-motion: reduce)").matches ? "" : " scale(1.025)";
+      drag.clone.style.transform = "translateY(" + (drag.y - drag.y0) + "px)" + lift;
+    }
+    function setTarget(w){
+      if(drag.target === w) return;
+      if(drag.target) drag.target.classList.remove("nesttarget");
+      drag.target = w;
+      if(w) w.classList.add("nesttarget");
+    }
+    function hitTest(){
+      var el = document.elementFromPoint(drag.x, drag.y);
+      var w = el && el.closest ? el.closest("#taskStack .taskwrap[data-id]") : null;
+      if(!w || w === drag.wrap){ setTarget(null); return; }
+      var r = w.getBoundingClientRect(), rel = (drag.y - r.top) / r.height;
+      var nestable = canNestInto(drag.task, taskById(w.dataset.id));
+      /* the middle of a row is "into it", its edges are "beside it" — and a
+         row that cannot take this task has no middle */
+      if(nestable && rel > .26 && rel < .74){ setTarget(w); return; }
+      setTarget(null);
+      if(w.parentNode !== drag.group) return;               /* another group: nothing moves */
+      if(rel < .5){ if(w.previousSibling !== drag.wrap) drag.group.insertBefore(drag.wrap, w); }
+      else if(w.nextSibling !== drag.wrap) drag.group.insertBefore(drag.wrap, w.nextSibling);
+    }
+    /* The window is the scroller. Near an edge the list moves under a finger
+       that is holding still, which is why this is a frame loop and not only
+       a move handler. */
+    function loop(){
+      if(!drag) return;
+      var v = 0;
+      if(drag.y < EDGE) v = -Math.ceil((EDGE - drag.y) / 6);
+      else if(drag.y > innerHeight - EDGE_BOTTOM) v = Math.ceil((drag.y - (innerHeight - EDGE_BOTTOM)) / 6);
+      if(v){ window.scrollBy(0, v); hitTest(); }
+      drag.raf = requestAnimationFrame(loop);
+    }
+    function finish(commit){
+      var d = drag;
+      drag = null;
+      if(!d) return;
+      cancelAnimationFrame(d.raf);
+      document.documentElement.classList.remove("dragging-task");
+      d.clone.remove();
+      d.wrap.classList.remove("dragsrc");
+      if(d.target) d.target.classList.remove("nesttarget");
+      swallowUntil = Date.now() + 400;
+      if(!commit || !document.body.contains(d.wrap)){ putBack(d); return; }
+      if(d.target){ putBack(d); nestInto(d.wrap.dataset.id, d.target.dataset.id); return; }
+      var gr = d.group.getBoundingClientRect();
+      var inside = d.x >= gr.left && d.x <= gr.right && d.y >= gr.top - 24 && d.y <= gr.bottom + 24;
+      var moved = d.wrap.nextSibling !== d.home;
+      if(!inside){ putBack(d); return; }
+      if(moved) saveOrder();
+    }
+    function putBack(d){
+      if(document.body.contains(d.wrap) && d.home !== d.wrap.nextSibling &&
+         (d.home === null || d.home.parentNode === d.group)) d.group.insertBefore(d.wrap, d.home);
+    }
+    function start(target, x, y, touch){
+      if(drag || press) return;
+      if(activeSheet) return;
+      var wrap = target.closest && target.closest(".taskwrap[data-id]");
+      if(!wrap || !stack.contains(wrap) || target.closest("button")) return;
+      if(!canLift(taskById(wrap.dataset.id))) return;
+      press = {wrap:wrap, x:x, y:y, sx:x, sy:y, touch:touch, scroll:window.scrollY, timer:null};
+      if(touch) press.timer = setTimeout(begin, HOLD_MS);
+    }
+    function move(x, y){
+      if(drag){ drag.x = x; drag.y = y; paint(); hitTest(); return true; }
+      if(!press) return false;
+      var dist = Math.max(Math.abs(x - press.sx), Math.abs(y - press.sy));
+      press.x = x; press.y = y;
+      if(press.touch){ if(dist > TOUCH_SLOP) clearPress(); }   /* that was a scroll */
+      else if(dist > MOUSE_SLOP) begin();
+      return !!drag;
+    }
+
+    /* Touch through touch events rather than pointer events: once a browser
+       decides a touch is a pan it cancels the pointer and there is no getting
+       it back, while a touchmove we cancel simply never scrolls. */
+    stack.addEventListener("touchstart", function(e){
+      if(e.touches.length !== 1){ clearPress(); return; }
+      var p = e.touches[0];
+      start(e.target, p.clientX, p.clientY, true);
+    }, {passive:true});
+    stack.addEventListener("touchmove", function(e){
+      var p = e.touches[0];
+      if(move(p.clientX, p.clientY) && e.cancelable) e.preventDefault();
+    }, {passive:false});
+    stack.addEventListener("touchend", function(e){
+      if(drag){ if(e.cancelable) e.preventDefault(); finish(true); }
+      else clearPress();
+    });
+    stack.addEventListener("touchcancel", function(){ clearPress(); finish(false); });
+    /* the long press is the lift, not a menu */
+    stack.addEventListener("contextmenu", function(e){ if(press || drag) e.preventDefault(); });
+
+    stack.addEventListener("mousedown", function(e){
+      if(e.button !== 0) return;
+      start(e.target, e.clientX, e.clientY, false);
+    });
+    document.addEventListener("mousemove", function(e){
+      if(move(e.clientX, e.clientY)) e.preventDefault();
+    });
+    document.addEventListener("mouseup", function(){
+      if(drag) finish(true); else clearPress();
+    });
+    document.addEventListener("keydown", function(e){ if(e.key === "Escape" && drag) finish(false); });
+    window.addEventListener("scroll", function(){
+      if(press && !drag && Math.abs(window.scrollY - press.scroll) > 4) clearPress();
+    }, {passive:true});
+    /* Letting go ends in a click on whatever is under the finger, and a click
+       on a row opens its sheet. One drop, no sheet. */
+    stack.addEventListener("click", function(e){
+      if(Date.now() < swallowUntil){ e.stopPropagation(); e.preventDefault(); swallowUntil = 0; }
+    }, true);
+  })();
+
   /* It lives on the toolbar row now, outside the list it used to end, so it
      gets its own listener rather than the stack's delegation. */
   $("#addTask").addEventListener("click", function(){ openSheet(null); });
@@ -5308,6 +5591,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   makeDismissable($("#cnSheet"));
   makeDismissable($("#mtSheet"));
   makeDismissable($("#mtNewSheet"));
+  makeDismissable($("#nestSheet"));
 
   /* ── the scroll line ──
      Two scrollers ask the same question — is there more, and where am I in it
@@ -5567,14 +5851,25 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       pill.classList.toggle("full", dn === n);
     }
   }
+  /* Items are rows of their own (tasks.parent_id), written through the same
+     actions a task is: add with a parentId, tick is completeTask, un-tick is
+     restoreTask, remove is archiveTask. Only on a task of mine — on one
+     somebody shared with me every one of those would be refused. */
+  function itemWritable(){ return !!editing && isMine(editing); }
   function addItem(){
     var el = $("#sAddItem"), v = el.value.trim();
     if(!v || !editing) return;
     if(!editing.items) editing.items = [];
-    editing.items.push({t:both(v), done:false});
+    var item = {t:both(v), done:false};
+    editing.items.push(item);
     el.value = "";
     renderSheetList(editing.items.length - 1);
     renderTasks(); flashSaved();
+    if(itemWritable()) whenSaved(editing, function(pid){
+      API.send("addTask", {title:v, parentId:pid}, function(data){
+        if(data && data.task){ item.id = data.task.id; SERVER_IDS[String(data.task.id)] = true; }
+      });
+    });
   }
   $("#sAddItem").addEventListener("keydown", function(e){ if(e.key === "Enter"){ e.preventDefault(); addItem(); } });
   /* typed and then tapped away is still typed — the same promise the title
@@ -5588,11 +5883,19 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       tg.closest(".litem").classList.toggle("on", it.done);
       renderSheetList();
       renderTasks(); flashSaved();
+      if(it.id && itemWritable()){
+        API.send(it.done ? "completeTask" : "restoreTask", {taskId:it.id}, function(data){
+          /* the last item ticked finishes the list itself (completeParentIfDrained):
+             the list is in the archive now, and a re-read is what says so */
+          if(data && data.parentCompleted){ closeSheets(); API.reload(); }
+        });
+      }
       return;
     }
     var rm = e.target.closest("[data-ritem]");
     if(rm){
-      editing.items.splice(+rm.dataset.ritem, 1);
+      var gone = editing.items.splice(+rm.dataset.ritem, 1)[0];
+      if(gone && gone.id && itemWritable()) API.send("archiveTask", {taskId:gone.id});
       if(!editing.items.length) delete editing.items;
       renderSheetList();
       renderTasks(); flashSaved();
@@ -8222,7 +8525,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          it shared" is re-asked on every paint (isPinned), because sharing can
          change on this page without a reload. */
       unpinned:!!x.unpinned,
-      items:(x.items || []).map(function(i){ return {t:i.title, done:!!i.done}; }),
+      /* The id travels now: ticking, removing and adding an item are real
+         writes on the child row, and nothing else names which row it is. */
+      items:(x.items || []).map(function(i){ return {id:i.id, t:i.title, done:!!i.done}; }),
       src:x.source || undefined
     };
   }
@@ -8435,6 +8740,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       MY_ID = d.user.id;
       myAvatar = seedIndex("u" + d.user.id);
       paused = !!d.user.paused;
+      nestTipSeen = !!d.user.nestTipSeen;
       cityConfirmed = !!d.user.timezoneConfirmed;
       var i = CITIES.map(function(c){ return c.tz; }).indexOf(d.user.timezone);
       /* An unlisted zone leaves the city alone rather than snapping to the

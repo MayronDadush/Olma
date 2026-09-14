@@ -26,6 +26,7 @@ const tasks = require('./tasks');
 const reminders = require('./reminders');
 const shares = require('./shares');
 const taskPins = require('./task-pins');
+const taskOrder = require('./task-order');
 const grants = require('./grants');
 const users = require('./users');
 const pause = require('./pause');
@@ -240,6 +241,40 @@ const ACTIONS = {
   // it changes nothing Olma will send.
   async setTaskPin(client, userId, p) {
     return taskPins.setPinned(client, userId, p.taskId, p.pinned);
+  },
+
+  // Where they dragged things to: the whole visible order, sent after a drop.
+  // Not refused while paused, for the same reason as the pin — it changes
+  // nothing Olma will send.
+  async setTaskOrder(client, userId, p) {
+    return taskOrder.setOrder(client, userId, p.taskIds);
+  },
+
+  // A task dropped onto another becomes an item on its list. An imported task
+  // on either side is refused here rather than in tasks.nestTask, because the
+  // source map lives next door and the rule is the one editTask holds: a
+  // change the next sync would erase is not a change.
+  async nestTask(client, userId, p) {
+    for (const id of [p.taskId, p.parentId]) {
+      const origin = await taskOrigin(client, userId, id);
+      if (origin && Object.hasOwn(SOURCE_CAPS, origin.source)) {
+        return err('forbidden', `a ${origin.source} task cannot be nested here`,
+          { reason: 'imported', source: origin.source });
+      }
+    }
+    const res = await tasks.nestTask(client, userId, p.taskId, p.parentId);
+    if (!res.ok) return res;
+    // The notice that explains this is shown once, ever, on whichever device
+    // they did it from — so the stamp is on the person, and COALESCE keeps the
+    // first moment rather than the latest.
+    await client.query(
+      `UPDATE users SET nest_tip_seen_at = COALESCE(nest_tip_seen_at, now()) WHERE id = $1`, [userId]);
+    return ok({ ...res.data, tipSeen: true });
+  },
+
+  // The way back, from the first-time notice or from the toast.
+  async unnestTask(client, userId, p) {
+    return tasks.unnestTask(client, userId, p.taskId);
   },
 
   // ---- friends -------------------------------------------------------------

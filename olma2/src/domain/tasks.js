@@ -54,6 +54,84 @@ async function checkParent(client, ownerId, parentId) {
   return ok({ parent: rows[0] });
 }
 
+// ── One task dropped onto another ────────────────────────────────────────────
+// The dashboard's drag: dropping a task onto another makes it an item on that
+// task's checklist, which is the same `parent_id` nesting the agent's split
+// path writes — so an item made this way is ticked, counted and drained by
+// exactly the code that already handles one.
+//
+// Refused by NAME, because the page has something different to say for each,
+// and the page greys the same cases out before the drop so a refusal here is
+// the rule rather than the usual path:
+//
+//  - `self`     — a task cannot hold itself;
+//  - `is_item`  — it is already an item somewhere (one level of nesting);
+//  - `has_date` — a task with a date is a moment, and an item has none: the
+//                 row would keep a due_at the list never shows and its
+//                 reminder would still fire for a line inside a checklist;
+//  - `is_list`  — it has items of its own, and one level means one level;
+//  - `shared`   — somebody else has it on THEIR list, and making it an item
+//                 would take it off theirs without them doing anything.
+//
+// The parent goes through checkParent, so "not yours" and "is itself an item"
+// mean the same thing here as on add_task.
+async function nestTask(client, ownerId, taskId, parentId) {
+  const id = Number(taskId), pid = Number(parentId);
+  if (!Number.isSafeInteger(id) || id <= 0 || !Number.isSafeInteger(pid) || pid <= 0) {
+    return err('invalid', 'taskId and parentId required');
+  }
+  if (id === pid) return err('invalid', 'a task cannot be an item of itself', { reason: 'self' });
+  const parent = await checkParent(client, ownerId, pid);
+  if (!parent.ok) return parent;
+  const { rows } = await client.query(
+    `SELECT t.id, t.parent_id, t.due_at, t.status,
+            EXISTS (SELECT 1 FROM tasks c WHERE c.parent_id = t.id AND c.archived_at IS NULL) AS has_items,
+            EXISTS (SELECT 1 FROM shares s WHERE s.task_id = t.id
+                     AND s.status IN ('pending_viewer','pending_owner','active')) AS shared
+     FROM tasks t WHERE t.id = $1 AND t.owner_id = $2 AND t.archived_at IS NULL`,
+    [id, ownerId]
+  );
+  const child = rows[0];
+  if (!child || child.status !== 'open') return err('not_found', 'task not found');
+  if (child.parent_id) return err('invalid', 'only one level of nesting', { reason: 'is_item' });
+  if (child.due_at) return err('invalid', 'a task with a date cannot become an item', { reason: 'has_date' });
+  if (child.has_items) return err('invalid', 'a list cannot become an item', { reason: 'is_list' });
+  if (child.shared) return err('invalid', 'a shared task cannot become an item', { reason: 'shared' });
+  // Its own category stands; only a task that had none takes the list's —
+  // the same precedence pickCategory gives a subtask at creation, and marked
+  // as a guess for the same reason.
+  const cat = parent.data.parent.category || null;
+  const { rows: upd } = await client.query(
+    `UPDATE tasks
+        SET parent_id = $3,
+            category_auto = CASE WHEN category IS NULL AND $4::text IS NOT NULL THEN true ELSE category_auto END,
+            category = COALESCE(category, $4::text)
+      WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL AND parent_id IS NULL
+      RETURNING *`,
+    [id, ownerId, pid, cat]
+  );
+  if (!upd[0]) return err('not_found', 'task not found');
+  await audit.record(client, ownerId, 'task.nested', { taskId: id, parentId: pid });
+  return ok({ task: upd[0], parentId: pid });
+}
+
+// The way back: the item is a task on its own again. Its category is left as
+// it is — it may have been inherited, but it is a sensible category either way
+// and silently clearing it would be a second change nobody asked for.
+async function unnestTask(client, ownerId, taskId) {
+  const id = Number(taskId);
+  if (!Number.isSafeInteger(id) || id <= 0) return err('invalid', 'taskId required');
+  const { rows } = await client.query(
+    `UPDATE tasks SET parent_id = NULL
+      WHERE id = $1 AND owner_id = $2 AND parent_id IS NOT NULL AND archived_at IS NULL
+      RETURNING *`,
+    [id, ownerId]
+  );
+  if (!rows[0]) return err('not_found', 'item not found');
+  await audit.record(client, ownerId, 'task.unnested', { taskId: id });
+  return ok({ task: rows[0] });
+}
+
 // An end without a start is not a range, and an end before its start is not a
 // time. Both are refused rather than stored: a half-written range would draw
 // on the day view as a block with no top edge, and the calendar event built
@@ -734,5 +812,5 @@ async function projectOverview(client, ownerId, projectId) {
 module.exports = {
   MAX_BULK, addTask, addTasksBulk, editTask, listTasks, completeTask,
   snoozeTask, archiveTask, unarchiveTask, projectOverview,
-  completeParentIfDrained, joinsTwoAsks, normaliseTitle,
+  completeParentIfDrained, joinsTwoAsks, normaliseTitle, nestTask, unnestTask,
 };
