@@ -27,6 +27,9 @@ const meetingsDomain = require('./meetings');
 const optionMoment = require('./meeting-option-moment');
 const mail = require('./mail');
 const voice = require('./voice');
+const preferences = require('./preferences');
+const holidays = require('./holidays');
+const factPrompts = require('./fact-prompts');
 
 // A task's own category vocabulary is closed server-side (tasks.category is
 // validated as a closed set, not free text), so the page can rely on it —
@@ -70,8 +73,10 @@ async function gateIdentity(client, userId) {
 // for it could only ever be a way to look at the test fixtures.
 async function loadUser(client, userId) {
   const { rows } = await client.query(
-    `SELECT id, first_name, last_name, assistant_name, timezone, timezone_confirmed,
-            locale, paused_at IS NOT NULL AS paused, digest_scope, calendar_sync_tasks
+    `SELECT id, first_name, last_name, assistant_name, assistant_gender, timezone, timezone_confirmed,
+            locale, paused_at IS NOT NULL AS paused, digest_scope, digest_times, calendar_sync_tasks,
+            gender, to_char(birth_date, 'YYYY-MM-DD') AS birth_date,
+            to_char(created_at AT TIME ZONE COALESCE(timezone, 'UTC'), 'YYYY-MM-DD') AS joined_on
      FROM users WHERE id = $1 AND status != 'blocked' AND is_eval = false`,
     [userId]
   );
@@ -598,6 +603,41 @@ async function loadLeftMeetings(client, userId) {
   return left.concat(done.map((m) => ({ id: Number(m.id), title: m.title, youLeft: false, settled: true, slot: m.confirmed_slot || '' })));
 }
 
+// When Olma may write, as the gate will actually read it — the same two domain
+// calls the outbox worker makes, so the page cannot show a window or a quiet
+// day the gate does not keep. `source` tells the page whether it is looking at
+// something they chose or a default they were handed.
+async function loadSchedule(client, user) {
+  const win = await preferences.availabilityWindow(client, user.id);
+  const quiet = await preferences.quietDays(client, user.id, { locale: user.locale, timezone: user.timezone });
+  return {
+    availability: { ...win.data.window, source: win.data.source },
+    defaultWindow: preferences.DEFAULT_WINDOW,
+    quietDays: quiet.data.days,
+    quietDaysSource: quiet.data.source,
+    holidaysQuiet: quiet.data.holidays,
+    calendar: quiet.data.calendar,
+    // Saturday in an Israeli zone is candle-lighting to havdalah, not a
+    // calendar day (outbox/worker.js) — worth saying beside the chip.
+    shabbatWindow: holidays.isIsrael(user.timezone),
+  };
+}
+
+// What Olma knows about them: every active fact, newest first. The card holds
+// the top ten; this page holds all of them, because it is where they come to
+// see what is on file and take something off it.
+async function loadFacts(client, userId) {
+  const { rows } = await client.query(
+    `SELECT id, category, fact, source, learned_at, prompt_key
+       FROM user_facts
+      WHERE user_id = $1 AND active = true AND (expires_at IS NULL OR expires_at > now())
+      ORDER BY learned_at DESC, id DESC`, [userId]);
+  return rows.map((r) => ({
+    id: Number(r.id), category: r.category, fact: r.fact, source: r.source,
+    learnedAt: r.learned_at, promptKey: r.prompt_key,
+  }));
+}
+
 // The whole page, in one object. A missing or blocked user is `not_found` and
 // not an empty dashboard: an empty one reads as "you have nothing", which is a
 // statement about them rather than about the link.
@@ -628,6 +668,9 @@ async function load(client, userId) {
   const groups = await loadGroups(client, userId);
   const meetings = await loadMeetings(client, userId, zone);
   const meetingsLeft = await loadLeftMeetings(client, userId);
+  const schedule = await loadSchedule(client, user);
+  const knownFacts = await loadFacts(client, userId);
+  const prompts = await factPrompts.pending(client, userId, user.locale);
   return ok({
     user: {
       id: user.id,
@@ -648,7 +691,17 @@ async function load(client, userId) {
       // The standing switch behind every task's own calendar row. A task that
       // says nothing follows this one.
       calendarSyncTasks: user.calendar_sync_tasks,
+      // Migration 068. NULL is "not said", and the page shows it as unset
+      // rather than guessing a form of address for them.
+      gender: user.gender,
+      birthDate: user.birth_date,
+      assistantGender: user.assistant_gender,
+      joinedOn: user.joined_on,
+      digestTimes: user.digest_times ? user.digest_times.split(',') : [],
     },
+    schedule,
+    facts: knownFacts,
+    factPrompts: prompts,
     channels,
     contacts,
     groups,

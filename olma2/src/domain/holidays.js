@@ -19,20 +19,19 @@ function isIsrael(timezone) {
   return ISRAEL_ZONES.has(String(timezone || '').trim());
 }
 
-const CALENDARS = new Set(['jewish', 'christian', 'none']);
+const CALENDARS = new Set(['jewish', 'christian', 'muslim', 'none']);
 
-// jewish | christian | none.
+// jewish | christian | muslim | none.
 //
 // `preference` is the `holiday_calendar` preference row when there is one, and
 // it wins outright — a person who has said which calendar they keep is never
-// guessed about again. Nothing WRITES that key yet; the holiday layer is what
-// teaches the model it exists, and reading it from the start is what keeps
-// that a one-line change rather than a second decision point.
+// guessed about again. The model writes it when somebody says so, and since
+// 2026-09-14 the profile page does too (preferences.setQuietDays).
 //
-// There is no Muslim calendar here, and an Arabic speaker in Israel would get
-// Saturday rather than Friday. That is a guess we know is wrong for them, left
-// as a guess rather than invented: `quiet_days` is one sentence away and a row
-// they state beats every rule in this file.
+// `muslim` is only ever STATED, never guessed (owner, 2026-09-14, from the
+// profile page): an Arabic speaker in Israel still gets Saturday until they
+// say otherwise. Guessing a religion off a language is a worse mistake than a
+// quiet day they can change in one tap, and `quiet_days` is one sentence away.
 function calendarFor({ locale, timezone, preference } = {}) {
   const stated = String(preference || '').trim().toLowerCase();
   if (CALENDARS.has(stated)) return stated;
@@ -47,6 +46,7 @@ function calendarFor({ locale, timezone, preference } = {}) {
 function defaultQuietDay(calendar) {
   if (calendar === 'jewish') return 6;    // Saturday
   if (calendar === 'christian') return 0; // Sunday
+  if (calendar === 'muslim') return 5;    // Friday
   return null;
 }
 
@@ -57,6 +57,7 @@ function defaultQuietDay(calendar) {
 // for exactly the reason it pins the hours to DEFAULT_WINDOW.
 const QUIET_DAY_WORDS = {
   0: { he: 'בימי ראשון', en: 'on Sundays' },
+  5: { he: 'בימי שישי', en: 'on Fridays' },
   6: { he: 'בשבת', en: 'on Saturdays' },
 };
 
@@ -68,7 +69,7 @@ function quietDayWord(day, locale) {
 
 module.exports = {
   calendarFor, defaultQuietDay, quietDayWord,
-  isIsrael, QUIET_DAY_WORDS, ISRAEL_ZONES,
+  isIsrael, QUIET_DAY_WORDS, ISRAEL_ZONES, CALENDARS,
 };
 
 // ---- the calendar itself ----------------------------------------------------
@@ -244,6 +245,64 @@ function christianYear(year) {
   return byDate;
 }
 
+// ---- the Islamic side, off the platform's own calendar ----------------------
+// Node carries ICU's Umm al-Qura calendar, so a Hijri date is a formatter call
+// and not a dependency. Umm al-Qura is Saudi Arabia's published calendar; a
+// country that waits for the crescent can land an Eid a day either side of it,
+// which is the same trade the Christian side makes by computing Western Easter
+// only. Somebody whose Eid falls a day later can still say so in a sentence.
+//
+// Same two tiers as the others. QUIET is the two Eids' first day and nothing
+// else — the owner's "only yom tov" rule, carried across rather than widened:
+// Ramadan is a month of ordinary working days, and a product that goes silent
+// on it is broken rather than respectful.
+const ISLAMIC_DAYS = [
+  { month: 9, day: 1, key: 'Ramadan', tier: MENTION, solemn: false, he: 'תחילת הרמדאן', en: 'the start of Ramadan' },
+  { month: 10, day: 1, key: 'Eid al-Fitr', tier: QUIET, solemn: false, he: 'עיד אל־פיטר', en: 'Eid al-Fitr' },
+  { month: 10, day: 2, key: 'Eid al-Fitr II', tier: MENTION, solemn: false, he: 'עיד אל־פיטר', en: 'Eid al-Fitr' },
+  { month: 10, day: 3, key: 'Eid al-Fitr III', tier: MENTION, solemn: false, he: 'עיד אל־פיטר', en: 'Eid al-Fitr' },
+  { month: 12, day: 9, key: 'Day of Arafah', tier: MENTION, solemn: true, he: 'יום ערפה', en: 'the Day of Arafah' },
+  { month: 12, day: 10, key: 'Eid al-Adha', tier: QUIET, solemn: false, he: 'עיד אל־אדחא', en: 'Eid al-Adha' },
+  { month: 12, day: 11, key: 'Eid al-Adha II', tier: MENTION, solemn: false, he: 'עיד אל־אדחא', en: 'Eid al-Adha' },
+  { month: 12, day: 12, key: 'Eid al-Adha III', tier: MENTION, solemn: false, he: 'עיד אל־אדחא', en: 'Eid al-Adha' },
+  { month: 1, day: 1, key: 'Islamic New Year', tier: MENTION, solemn: false, he: 'ראש השנה ההג׳רית', en: 'the Islamic New Year' },
+];
+
+let hijriFormat = null;
+function hijriOf(date) {
+  if (!hijriFormat) {
+    hijriFormat = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura-nu-latn', {
+      timeZone: 'UTC', year: 'numeric', month: 'numeric', day: 'numeric',
+    });
+  }
+  const parts = {};
+  for (const p of hijriFormat.formatToParts(date)) parts[p.type] = p.value;
+  return { month: Number(parts.month), day: Number(parts.day) };
+}
+
+const islamicCache = new Map();
+
+// A whole Gregorian year walked a day at a time: 366 formatter calls, once per
+// year per process, and memoized for the same reason the other two are.
+function islamicYear(year) {
+  if (islamicCache.has(year)) return islamicCache.get(year);
+  const byDate = new Map();
+  try {
+    for (let d = new Date(Date.UTC(year, 0, 1)); d.getUTCFullYear() === year; d = plusDays(d, 1)) {
+      const h = hijriOf(d);
+      const row = ISLAMIC_DAYS.find((r) => r.month === h.month && r.day === h.day);
+      if (!row) continue;
+      byDate.set(ymdOf(d), [{ key: row.key, tier: row.tier, solemn: row.solemn, name: { he: row.he, en: row.en } }]);
+    }
+  } catch (e) {
+    // A runtime without the calendar answers "no holidays", never a throw into
+    // the gate — the same promise the hebcal loader makes.
+    console.error('[holidays] islamic calendar unavailable:', (e && e.message) || e);
+  }
+  islamicCache.set(year, byDate);
+  return byDate;
+}
+
 // ---- what callers ask ------------------------------------------------------
 
 // Every marked event on one LOCAL calendar date, most significant first.
@@ -255,7 +314,8 @@ async function holidaysOn(calendar, ymd, { il = false } = {}) {
   const year = Number(String(ymd).slice(0, 4));
   const byDate = calendar === 'jewish' ? await jewishYear(year, il)
     : calendar === 'christian' ? christianYear(year)
-      : null;
+      : calendar === 'muslim' ? islamicYear(year)
+        : null;
   if (!byDate) return [];
   const found = byDate.get(ymd) || [];
   return [...found].sort((a, b) => (a.tier === QUIET ? 0 : 1) - (b.tier === QUIET ? 0 : 1));
