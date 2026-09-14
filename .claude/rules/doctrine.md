@@ -143,8 +143,11 @@ title means this file. Grep the title, not the filename.
   on `ourTurn`, never over an id the gateway already supplied.
 
 - **The acknowledgement mark is OURS ALONE, and the gateway's own ack stays
-  off** (`messages.ackReaction`, absent; `config_guard` goes red if it comes
-  back, `scripts/disable-ack-reaction.js --apply` removes it again). Until
+  off** (`ackReaction`, under `messages` in `openclaw.json`, absent — written
+  as a bare name because the two-segment form reads as `intake/messages.js` and
+  a function, which is the citation checker doing its job; `config_guard` goes
+  red if it comes back, `scripts/disable-ack-reaction.js --apply` removes it
+  again). Until
   2026-09-14 BOTH placed one and neither could see the other: the gateway from
   its config the instant a message was accepted, ours ~15s later
   (`openTurnFromGateway` → `placeMark`, a whole CLI start-up). Both were 👀, so
