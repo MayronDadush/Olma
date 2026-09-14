@@ -1894,6 +1894,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .row.stackrow .seg{flex:none}
 .hoursvals{gap:4px;flex-wrap:nowrap}
 .hoursvals .vchip{font-variant-numeric:tabular-nums;min-width:62px;text-align:center}
+.digestvals{display:flex;margin-top:9px}
+.digestvals .vchip{font-variant-numeric:tabular-nums}
 .hoursdash{color:var(--text-3);font-weight:600}
 .row-sub.auto{color:var(--accent)}
 
@@ -2646,7 +2648,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
           </div>
           <div class="fold" id="digestFold"><div><div class="foldpad tight">
             <div class="flabel" data-i18n="me.digestTimes"></div>
-            <div class="chips" id="digestTimes"></div>
+            <div class="digestvals"><button class="vchip set" id="digestTime"></button></div>
             <div class="flabel" data-i18n="me.digestScope"></div>
             <div class="seg" id="digestScope" role="group" data-i18n-label="me.digestScope">
               <button aria-pressed="false" data-scope="summary" data-i18n="me.scope.summary"></button>
@@ -2669,13 +2671,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
           <div class="row no-icon">
             <label class="row-title" for="oname" data-i18n="me.calledBy"></label>
             <input class="row-input" id="oname" type="text" maxlength="18" data-i18n-label="me.calledBy">
-          </div>
-          <div class="row no-icon stackrow">
-            <div class="rowline"><div class="row-title" id="olmaGenderLabel" data-i18n="me.olmaForm"></div></div>
-            <div class="seg" id="olmaGenderSeg" role="group" aria-labelledby="olmaGenderLabel">
-              <button aria-pressed="true" data-og="female" data-i18n="me.olmaFem"></button>
-              <button aria-pressed="false" data-og="male" data-i18n="me.olmaMasc"></button>
-            </div>
           </div>
           <div class="row no-icon stackrow">
             <div class="rowline"><div class="row-title" data-i18n="me.language"></div></div>
@@ -3761,7 +3756,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "me.form":"פנייה","me.formHint":"איך עולמה תדבר אליך",
       "me.masc":"לשון זכר","me.fem":"לשון נקבה",
       "me.formNote":"״שמרתי לך״ מול ״שמרתי לך״ — עולמה תתאים את כל הניסוחים שלה.",
-      "me.setup":"עולמה אצלך","me.calledBy":"קוראים לה",
+      "me.setup":"עולמה אצלך","me.calledBy":"השם של עולמה",
       "me.setupNote":"המיקום קובע כל תזכורת, כל שעת שקט וכל סיכום — קידומת טלפון היא מדינה, לא עיר. את השם אפשר להחליף; הוא יופיע בכל הודעה שהיא שולחת.",
       "me.pause":"להשהות את עולמה","me.resume":"עולמה מושהית · להפעלה",
       "me.pauseNote":"היא תפסיק לכתוב מיוזמתה. שום דבר לא נמחק, והודעה אחת ממך מחזירה הכול.",
@@ -3780,11 +3775,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "me.calendar":"לוח החגים","me.cal.jewish":"יהודי","me.cal.christian":"נוצרי","me.cal.muslim":"מוסלמי",
       "me.whenNote":"מחוץ לשעות האלה ובימים השקטים עולמה לא פותחת בשיחה, ומה שחיכה יוצא כשהם נגמרים. תזכורת שביקשת לשעה מסוימת מגיעה בזמן גם אז.",
       "me.digest":"סיכום יומי","me.digestOn":"לקבל סיכום יומי","me.digestOff":"כבוי","me.digestAt":"ב־{times}",
-      "me.digestTimes":"באילו שעות (עד ארבע)","me.digestAdd":"שעה","me.digestScope":"כמה פירוט",
+      "me.digestTimes":"באיזו שעה","me.digestScope":"כמה פירוט",
       "me.scope.summary":"תקציר","me.scope.today":"רק היום","me.scope.full":"הכול",
-      "me.olmaForm":"איך היא מדברת על עצמה","me.olmaFem":"בלשון נקבה","me.olmaMasc":"בלשון זכר",
       "me.language":"השפה שלכם בשיחה",
-      "me.taskCal":"משימות עם תאריך ביומן","me.taskCalSub":"Google Calendar · מה שכבר ביומן נשאר גם כשמכבים",
+      "me.taskCal":"משימות ליומן","me.taskCalSub":"משימות חדשות דרך עולמה שיש להן תאריך ושעה מתווספות ליומן אוטומטית",
       "me.knows":"מה עולמה יודעת","me.knowsRow":"דברים שעולמה זוכרת",
       "me.facts.n0":"עוד לא נשמר כלום","me.facts.n1":"דבר אחד","me.facts.nN":"{n} דברים",
       "me.fqTitle":"לספר לה עוד","me.fqHint":"שאלות קצרות, ואפשר לדלג על כל אחת",
@@ -3797,14 +3791,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "fcat.plans":"תוכניות","fcat.habits":"הרגלים","fcat.context":"כללי",
       "toast.hoursEmpty":"שעת ההתחלה והסיום לא יכולות להיות אותה שעה",
       "toast.allDays":"שבעה ימים שקטים זו כבר השהיה, ויש לה כפתור משלה למטה",
-      "toast.digestMax":"אפשר עד ארבעה סיכומים ביום",
+      
       "toast.calNeeded":"צריך קודם לחבר יומן Google עם הרשאת עריכה",
       "toast.factSaved":"עולמה תזכור","toast.factForgot":"נמחק מהזיכרון",
       "toast.factFirstPerson":"כדאי לנסח בלי ״שלי״, למשל ״כלב בשם רקסי״",
       "toast.factDated":"זה נשמע כמו משהו עם תאריך, ועדיף לשמור אותו כמשימה",
       "toast.factPhone":"מספרי טלפון נשמרים באנשי הקשר, לא כאן",
       "toast.personal":"הפרטים נשמרו","toast.bday":"יום ההולדת נשמר",
-      "toast.olmaFem":"היא תדבר על עצמה בלשון נקבה","toast.olmaMasc":"הוא ידבר על עצמו בלשון זכר",
       "toast.lang":"השפה בשיחה עודכנה",
 
       "city.title":"איפה אתה נמצא?","city.search":"חיפוש עיר","city.none":"לא נמצאה עיר בשם הזה.",
@@ -4043,7 +4036,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "me.form":"Gender","me.formHint":"Only matters in gendered languages",
       "me.masc":"Male","me.fem":"Female",
       "me.formNote":"Hebrew inflects almost every verb for gender, so Allma needs to know. English has no gendered address and nothing here changes it.",
-      "me.setup":"Your Allma","me.calledBy":"Called",
+      "me.setup":"Your Allma","me.calledBy":"Allma's name",
       "me.setupNote":"Your location decides every reminder, quiet hour and summary — a dialling code is a country, not a city. The name is yours to change; it appears in every message she sends.",
       "me.pause":"Pause Allma","me.resume":"Allma is paused · Resume",
       "me.pauseNote":"She stops writing on her own. Nothing is deleted, and one message from you brings it all back.",
@@ -4062,11 +4055,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "me.calendar":"Holiday calendar","me.cal.jewish":"Jewish","me.cal.christian":"Christian","me.cal.muslim":"Muslim",
       "me.whenNote":"Outside these hours and on quiet days Allma doesn't start a conversation, and anything waiting goes out once they end. A reminder you asked for at a set time still arrives on time.",
       "me.digest":"Daily summary","me.digestOn":"Get a daily summary","me.digestOff":"Off","me.digestAt":"At {times}",
-      "me.digestTimes":"At what times (up to four)","me.digestAdd":"Time","me.digestScope":"How much detail",
+      "me.digestTimes":"At what time","me.digestScope":"How much detail",
       "me.scope.summary":"Short","me.scope.today":"Today only","me.scope.full":"Everything",
-      "me.olmaForm":"How she speaks of herself","me.olmaFem":"As she","me.olmaMasc":"As he",
       "me.language":"Your language together",
-      "me.taskCal":"Dated tasks on your calendar","me.taskCalSub":"Google Calendar · entries already there stay when you turn it off",
+      "me.taskCal":"Tasks on your calendar","me.taskCalSub":"New tasks Allma gives a date and time land on your calendar automatically",
       "me.knows":"What Allma knows","me.knowsRow":"Things Allma remembers",
       "me.facts.n0":"Nothing saved yet","me.facts.n1":"One thing","me.facts.nN":"{n} things",
       "me.fqTitle":"Tell her more","me.fqHint":"Short questions, and any can be skipped",
@@ -4079,14 +4071,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "fcat.plans":"Plans","fcat.habits":"Habits","fcat.context":"General",
       "toast.hoursEmpty":"Start and end can't be the same time",
       "toast.allDays":"Seven quiet days is a pause, and that has its own button below",
-      "toast.digestMax":"Up to four summaries a day",
+      
       "toast.calNeeded":"Connect Google Calendar with edit access first",
       "toast.factSaved":"Allma will remember","toast.factForgot":"Forgotten",
       "toast.factFirstPerson":"Try it without “my”, e.g. “a dog called Rex”",
       "toast.factDated":"That sounds like it has a date, so it's better saved as a task",
       "toast.factPhone":"Phone numbers belong in contacts, not here",
       "toast.personal":"Details saved","toast.bday":"Birthday saved",
-      "toast.olmaFem":"She'll speak of herself as she","toast.olmaMasc":"He'll speak of himself as he",
       "toast.lang":"Chat language updated",
 
       "city.title":"Where are you?","city.search":"Search for a city","city.none":"No city by that name.",
@@ -8385,7 +8376,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      In design mode (nothing served) these are seeds, chosen to show every
      state a real person can be in: a default window, a stated quiet day,
      chagim off, a summary on, and a few questions already answered. */
-  var ME = {gender:null, joined:"2026-05-12", olmaGender:"female", locale:"he", taskCal:false};
+  var ME = {gender:null, joined:"2026-05-12", locale:"he", taskCal:false};
   var SCHED = {start:"09:00", end:"21:00", source:"default", def:{start:"09:00", end:"21:00"},
                days:[6], daysSource:"default", holidays:false, calendar:"jewish", shabbat:true};
   var DIGEST = {times:["08:00"], scope:"summary"}, lastDigestTimes = ["08:00"];
@@ -8636,17 +8627,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
   /* ── the daily summary ── */
   function renderDigest(){
-    var on = DIGEST.times.length > 0;
+    var on = DIGEST.times.length > 0, time = DIGEST.times[0] || "08:00";
     $("#digestSwitch").setAttribute("aria-checked", on ? "true" : "false");
     $("#digestFold").classList.toggle("open", on);
     $("#digestSub").textContent = on
-      ? t("me.digestAt", {times:DIGEST.times.join(", ")}) + " · " + t("me.scope." + DIGEST.scope)
+      ? t("me.digestAt", {times:time}) + " · " + t("me.scope." + DIGEST.scope)
       : t("me.digestOff");
-    $("#digestTimes").innerHTML = DIGEST.times.map(function(tm){
-      return '<button class="chip tchip" data-dtime="' + esc(tm) + '" aria-label="' + esc(tm) + '">' + esc(tm) + "<i>&#10005;</i></button>";
-    }).join("") + (DIGEST.times.length < 4
-      ? '<button class="chip tchip add" id="digestAdd"><svg><use href="#i-plus"/></svg>' + esc(t("me.digestAdd")) + "</button>"
-      : "");
+    var chip = $("#digestTime");
+    chip.textContent = time;
+    chip.classList.toggle("set", on);
     $$("#digestScope button").forEach(function(b){
       b.setAttribute("aria-pressed", b.dataset.scope === DIGEST.scope ? "true" : "false");
     });
@@ -8655,24 +8644,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     renderDigest();
     API.setDigest(patch, function(){ flashSaved("#digestSaved"); });
   }
-  $("#digestTimes").addEventListener("click", function(e){
-    var add = e.target.closest("#digestAdd");
-    if(add){ openTimePop(add, "", addDigestTime); return; }
-    var c = e.target.closest("[data-dtime]");
-    if(!c) return;
-    DIGEST.times = DIGEST.times.filter(function(x){ return x !== c.dataset.dtime; });
-    if(DIGEST.times.length) lastDigestTimes = DIGEST.times.slice();
-    saveDigest({times:DIGEST.times});
+  $("#digestTime").addEventListener("click", function(){
+    var btn = this;
+    openTimePop(btn, DIGEST.times[0] || "08:00", function(v){
+      DIGEST.times = [v];
+      lastDigestTimes = DIGEST.times.slice();
+      btn.classList.remove("pop"); void btn.offsetWidth; btn.classList.add("pop");
+      saveDigest({times:DIGEST.times});
+    });
   });
-  function addDigestTime(v){
-    if(!v || DIGEST.times.indexOf(v) > -1) return;
-    if(DIGEST.times.length >= 4){ toast(t("toast.digestMax")); return; }
-    DIGEST.times = DIGEST.times.concat([v]).sort();
-    lastDigestTimes = DIGEST.times.slice();
-    saveDigest({times:DIGEST.times});
-    var nc = $('#digestTimes [data-dtime="' + v + '"]');
-    if(nc) nc.classList.add("enter");
-  }
   $("#digestScope").addEventListener("click", function(e){
     var b = e.target.closest("[data-scope]");
     if(!b || b.dataset.scope === DIGEST.scope) return;
@@ -8682,23 +8662,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
   /* ── who she is to me ── */
   function renderOlmaRows(){
-    $$("#olmaGenderSeg button").forEach(function(b){
-      b.setAttribute("aria-pressed", b.dataset.og === ME.olmaGender ? "true" : "false");
-    });
     var cur = String(ME.locale || "he").slice(0, 2);
     $("#langChips").innerHTML = LANGS.map(function(l){
       return '<button class="chip" data-lang="' + l.v + '" aria-pressed="' + (l.v === cur) + '" lang="' + l.v + '">' + esc(l.n) + "</button>";
     }).join("");
     $("#taskCalSwitch").setAttribute("aria-checked", ME.taskCal ? "true" : "false");
   }
-  $("#olmaGenderSeg").addEventListener("click", function(e){
-    var b = e.target.closest("[data-og]");
-    if(!b || b.dataset.og === ME.olmaGender) return;
-    ME.olmaGender = b.dataset.og;
-    renderOlmaRows();
-    API.setAssistant({gender:ME.olmaGender});
-    toast(t(ME.olmaGender === "male" ? "toast.olmaMasc" : "toast.olmaFem"));
-  });
   $("#langChips").addEventListener("click", function(e){
     var b = e.target.closest("[data-lang]");
     if(!b || b.dataset.lang === String(ME.locale || "").slice(0, 2)) return;
@@ -9512,7 +9481,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       PROFILE.olma = d.user.assistantName || OLMA_DEFAULT;
       ME.gender = d.user.gender || null;
       ME.joined = d.user.joinedOn || null;
-      ME.olmaGender = d.user.assistantGender === "male" ? "male" : "female";
       ME.locale = d.user.locale || "he";
       ME.taskCal = !!d.user.calendarSyncTasks;
       $("#bday").dataset.val = d.user.birthDate || "";
