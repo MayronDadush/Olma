@@ -2707,6 +2707,24 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   </div>
 </div>
 
+<!-- The task sheet's own time chips used to raise the platform's native
+     <input type=time> — a different look on every OS and browser, and the one
+     control on this page that did not look like the rest of it. This is the
+     same sheet the clock setting on the profile page already uses: a search
+     field and a scrollable list, not a wheel or a platform popup. -->
+<div class="sheet" id="timeSheet" role="dialog" aria-modal="true" aria-labelledby="timeTitle">
+  <div class="sgrab"><i class="grabber"></i></div>
+  <h2 id="timeTitle" data-i18n="sheet.pickTime"></h2>
+  <div class="group">
+    <div class="field"><input id="timeSearch" type="search" inputmode="numeric" data-i18n-ph="time.search" autocomplete="off"></div>
+  </div>
+  <div class="group citylist" id="timeList" style="margin-top:12px"></div>
+  <div class="sheetbtns">
+    <button class="btn ghost" id="timeClear" data-i18n="time.clear"></button>
+    <button class="btn ghost" id="timeCancel" data-i18n="sheet.cancel"></button>
+  </div>
+</div>
+
 <!-- ══════════════  meeting coordination  ══════════════
      The grid is the whole idea: rows are the candidate days, columns are the
      four parts of a day, and one tap says "this suits me". Everyone else's
@@ -3517,6 +3535,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "me.noName":"ללא שם",
 
       "city.title":"איפה אתה נמצא?","city.search":"חיפוש עיר","city.none":"לא נמצאה עיר בשם הזה.",
+      "time.search":"חיפוש שעה","time.none":"לא נמצאה שעה כזו.","time.clear":"ללא שעה",
 
       "sheet.new":"משימה חדשה","sheet.edit":"עריכת משימה",
       "sheet.task":"משימה","sheet.taskPh":"מה צריך לעשות?",
@@ -3769,6 +3788,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "me.noName":"No name",
 
       "city.title":"Where are you?","city.search":"Search for a city","city.none":"No city by that name.",
+      "time.search":"Search for a time","time.none":"No time by that name.","time.clear":"No time",
 
       "sheet.new":"New task","sheet.edit":"Edit task",
       "sheet.task":"Task","sheet.taskPh":"What needs doing?",
@@ -5637,6 +5657,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   makeDismissable($("#mtSheet"));
   makeDismissable($("#mtNewSheet"));
   makeDismissable($("#nestSheet"));
+  makeDismissable($("#timeSheet"));
 
   /* ── the scroll line ──
      Two scrollers ask the same question — is there more, and where am I in it
@@ -6193,18 +6214,61 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     updateSheetCue();
   });
   $("#sTitle").addEventListener("input", commit);
+  /* the visible chip is the target; the real <input type=time> holds the
+     value and fires "change" into commit() same as it always did — only
+     what RAISES it changed, from the platform's own popup to this page's
+     own sheet, the one the clock setting on the profile page already uses */
   $("#sTime").addEventListener("change", commit);
-  /* the visible chip is the target; the real <input type=time> is offscreen
-     and exists only to raise the platform's own picker */
-  $("#sTimeChip").addEventListener("click", function(){
-    $("#sTime").focus();
-    try{ $("#sTime").showPicker(); }catch(err){}
-  });
+  $("#sTimeChip").addEventListener("click", function(){ openTimeSheet("start"); });
   $("#sEnd").addEventListener("change", commit);
-  $("#sEndChip").addEventListener("click", function(){
-    $("#sEnd").focus();
-    try{ $("#sEnd").showPicker(); }catch(err){}
+  $("#sEndChip").addEventListener("click", function(){ openTimeSheet("end"); });
+  /* Five-minute rows, generated once — the same list whether the sheet opens
+     for the start chip or the end one, which of the two hidden inputs a pick
+     lands in is the only thing "start" vs "end" decides. */
+  var TIME_SLOTS = (function(){
+    var out = [];
+    for(var m = 0; m < 1440; m += 5){
+      var h = Math.floor(m / 60), mi = m % 60;
+      out.push((h < 10 ? "0" : "") + h + ":" + (mi < 10 ? "0" : "") + mi);
+    }
+    return out;
+  })();
+  var timeAnchor = "start";
+  function renderTimeList(q, selected){
+    q = (q || "").trim();
+    var rows = TIME_SLOTS.filter(function(v){ return !q || v.indexOf(q) > -1; });
+    $("#timeList").innerHTML = rows.length ? rows.map(function(v){
+      return '<button class="row no-icon" data-time="' + v + '">' +
+        '<div class="row-txt"><div class="row-title">' + v + '</div></div>' +
+        (v === selected ? '<svg style="width:15px;height:15px;color:var(--accent);flex:none"><use href="#i-check"/></svg>' : "") +
+        "</button>";
+    }).join("") : '<div class="empty">' + esc(t("time.none")) + "</div>";
+  }
+  function openTimeSheet(which){
+    timeAnchor = which;
+    var input = which === "end" ? $("#sEnd") : $("#sTime");
+    $("#timeSearch").value = "";
+    renderTimeList("", input.value);
+    showSheet($("#timeSheet"));
+    var sel = input.value && $('#timeList [data-time="' + input.value + '"]');
+    requestAnimationFrame(function(){ if(sel) sel.scrollIntoView({block:"center"}); });
+  }
+  function pickTime(v){
+    var input = timeAnchor === "end" ? $("#sEnd") : $("#sTime");
+    input.value = v;
+    input.dispatchEvent(new Event("change", {bubbles:true}));
+    closeSheets();
+  }
+  $("#timeSearch").addEventListener("input", function(){
+    var input = timeAnchor === "end" ? $("#sEnd") : $("#sTime");
+    renderTimeList(this.value, input.value);
   });
+  $("#timeList").addEventListener("click", function(e){
+    var b = e.target.closest("[data-time]");
+    if(b) pickTime(b.dataset.time);
+  });
+  $("#timeClear").addEventListener("click", function(){ pickTime(""); });
+  $("#timeCancel").addEventListener("click", closeSheets);
   $("#sAllDay").addEventListener("click", function(){
     editing.all = this.getAttribute("aria-checked") !== "true";
     this.setAttribute("aria-checked", editing.all ? "true" : "false");
