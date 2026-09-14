@@ -1782,6 +1782,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .ffield > input[type="date"]::-webkit-calendar-picker-indicator,
 .ffield > input[type="time"]::-webkit-calendar-picker-indicator{opacity:.45;cursor:pointer}
 .ffield > .dateval{text-align:start;display:block}
+.ffield > .dateval.cityval{display:flex;align-items:center;gap:8px}
 .ffield .seg{width:100%}
 .seg{
   display:flex;gap:3px;padding:3px;border-radius:11px;background:var(--bg-tint);
@@ -2661,17 +2662,19 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
       <div>
         <div class="glabel"><span data-i18n="me.setup"></span></div>
-        <div class="group">
-          <button class="row no-icon" id="cityRow">
-            <div class="row-txt"><div class="row-title" data-i18n="me.where"></div></div>
-            <span class="row-val" id="cityName"></span>
-            <span class="row-end" id="cityClock"></span>
-            <svg class="chev"><use href="#i-chev"/></svg>
-          </button>
-          <div class="row no-icon">
-            <label class="row-title" for="oname" data-i18n="me.calledBy"></label>
-            <input class="row-input" id="oname" type="text" maxlength="18" data-i18n-label="me.calledBy">
+        <div class="group fpad">
+          <div class="fgrid">
+            <div class="ffield">
+              <label data-i18n="me.where"></label>
+              <button class="dateval cityval" id="cityRow"><span id="cityName"></span><span class="row-end" id="cityClock"></span></button>
+            </div>
+            <div class="ffield">
+              <label for="oname" data-i18n="me.calledBy"></label>
+              <input id="oname" type="text" maxlength="18" autocomplete="off" data-i18n-label="me.calledBy">
+            </div>
           </div>
+        </div>
+        <div class="group" style="margin-top:10px">
           <div class="row no-icon stackrow">
             <div class="rowline"><div class="row-title" data-i18n="me.language"></div></div>
             <div class="chips" id="langChips" role="group" data-i18n-label="me.language"></div>
