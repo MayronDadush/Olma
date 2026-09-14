@@ -8,10 +8,11 @@
 -- of the same fault: he came out of a ladder pause by chatting privately, and
 -- the next two coordinations in a test room reached him in full.
 --
--- The owner's rule (2026-09-13): a paused person in a room where a
+-- The owner's rule (2026-09-13/14): a paused person in a room where a
 -- coordination starts gets ONE message about it per pause. Silence for 24
--- hours takes them out of it and out of every later one; any answer other
--- than "leave me paused" ends the pause.
+-- hours takes them out of it and out of every later one, until they write
+-- again; whenever they do write, anything other than "leave me paused" ends
+-- the pause.
 --
 -- One column on the person, the same shape as timezone_asked_at and
 -- holiday_quiet_asked_at: "spent for this pause" is `room_invite_sent_at >=
@@ -21,4 +22,11 @@
 --
 -- Additive: NULL for everyone means every paused person has their one
 -- allowance the day this ships.
-ALTER TABLE users ADD COLUMN IF NOT EXISTS room_invite_sent_at TIMESTAMPTZ;
+--
+-- `room_invite_answered_at` is the first message they sent after it. It is
+-- what stops "leave me paused" from being undone by the next thing they
+-- write: writing ends the pause only while the invite is still unanswered
+-- (answered_at IS NULL or older than the invite).
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS room_invite_sent_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS room_invite_answered_at TIMESTAMPTZ;

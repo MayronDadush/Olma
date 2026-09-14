@@ -1557,27 +1557,29 @@ coordination was waiting on a person who had never heard of it.
 
 Neither half could be closed with a flag. "Never count in a paused person"
 would coordinate around somebody standing in the room. "Always count them in"
-is the bug. The owner's rule (2026-09-13, applied to every kind of pause):
+is the bug. The owner's rule (2026-09-13, clarified on the 14th, applied to
+every kind of pause):
 
 - A paused member hears about a room coordination **once per pause**. The gate
   exempts exactly that row (`pausedRoomInvite`, computed in the worker, false
   for batch siblings). The allowance is `users.room_invite_sent_at >=
   paused_at` (migration 065), and it is stamped only after the send confirms.
-- If they answer anything within 24 hours, the pause ends, even one they
-  asked for (`pause.resumeAfterRoomInvite`, called from `openRecord({ wake:
-  true })`). If the answer is "leave me paused", `pause_olma` puts the pause
-  back, and `pauseUser` carries the stamp forward so the new `paused_at` is
-  not a new allowance.
+- Their first message after it, whenever it comes, ends the pause, even one
+  they asked for (`pause.resumeAfterRoomInvite`, called from `openRecord({
+  wake: true })`, which also stamps `room_invite_answered_at`). If the answer
+  is "leave me paused", `pause_olma` puts the pause back, and `pauseUser`
+  carries both stamps forward. Carrying them forward does two things: the
+  new `paused_at` is not a new allowance, and their next message does not end
+  the pause again.
 - If they stay silent for a day, they are taken out of that coordination
   (`group-meetings.sweepSilentPausedMembers`, on `minute_sweeps`), and
   `startCoordination` stops counting them in to later ones. Nobody is told
   they left, because they said nothing. The initiator hears only when the exit
   closes the meeting.
 
-What is left open: somebody whose allowance is spent and who writes privately
-more than a day later is handled by the older rules. A ladder pause ends,
-their own pause is offered a resume, and the next coordination counts them in
-again only once they are unpaused.
+The first version ended the pause only on an answer within 24 hours. The
+owner's correction was "עד שיכתוב שוב": a silent person is left out only
+until they write again, whenever that is.
 
 ### The fifth draft was the rude one (fixed 2026-09-11)
 

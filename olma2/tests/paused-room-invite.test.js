@@ -149,14 +149,21 @@ test('answering inside a day ends the pause, even one they asked for; "stay paus
   assert.equal(pause.roomInviteSpent(u), true);
 });
 
-test('an answer more than a day late does not end a pause they asked for', async () => {
+test('writing back days later still ends the pause, and "stay paused" survives their next message', async () => {
   const u = await makeUser(db.pool, '+972607799001');
   await withTx(db.pool, (c) => pause.pauseUser(c, u.id));
   await db.pool.query(
-    `UPDATE users SET paused_at = now() - interval '3 days', room_invite_sent_at = now() - interval '25 hours'
+    `UPDATE users SET paused_at = now() - interval '5 days', room_invite_sent_at = now() - interval '4 days'
       WHERE id = $1`, [u.id]);
   await withTx(db.pool, (c) => turn.openRecord(c, u, { wake: true }));
-  assert.equal(await withTx(db.pool, (c) => pause.isPaused(c, u.id)), true);
+  assert.equal(await withTx(db.pool, (c) => pause.isPaused(c, u.id)), false, 'until he writes again');
+
+  await withTx(db.pool, (c) => pause.pauseUser(c, u.id, { note: 'stay paused' }));
+  await withTx(db.pool, (c) => turn.openRecord(c, u, { wake: true }));
+  assert.equal(await withTx(db.pool, (c) => pause.isPaused(c, u.id)), true,
+    'the message after "leave me paused" does not undo it');
+  const { rows: [r] } = await db.pool.query(`SELECT paused_at, room_invite_sent_at FROM users WHERE id = $1`, [u.id]);
+  assert.equal(pause.roomInviteSpent(r), true, 'and no second invite');
 });
 
 test('a new pause is a new allowance', async () => {

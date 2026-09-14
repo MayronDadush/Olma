@@ -25,9 +25,10 @@
 // in a WhatsApp room where a coordination starts hears about it once per
 // pause (`users.room_invite_sent_at`, migration 065). Being in the room is
 // not something the pause can see, and silently counting them in — as the
-// room did to Kapish — is worse than one message. An answer inside 24 hours
-// ends the pause (resumeAfterRoomInvite); silence takes them out of the
-// coordination and every later one (group-meetings.sweepSilentPausedMembers).
+// room did to Kapish — is worse than one message. Their first message after
+// it, whenever it comes, ends the pause (resumeAfterRoomInvite); a day of
+// silence takes them out of that coordination and every later one until then
+// (group-meetings.sweepSilentPausedMembers).
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const reminders = require('./reminders');
@@ -40,8 +41,9 @@ const reminders = require('./reminders');
 // users.paused_reason for a pause the check-in ladder made (migration 049).
 const QUIET_LADDER = 'quiet_ladder';
 
-// How long a paused person's one coordination message counts as a question
-// still open. An answer inside it ends the pause; past it they are left alone.
+// How long a paused person's one coordination message keeps them in that
+// coordination with no answer, and how long after answering a "leave me
+// paused" still counts as the answer to it.
 const ROOM_INVITE_ANSWER_MS = 24 * 3600_000;
 
 // Has this pause already spent its one coordination message? Read off any row
@@ -85,17 +87,18 @@ async function pauseUser(client, userId, { note = null } = {}) {
   // paused_reason = NULL: this pause is THEIRS (or the admin's), so a ladder
   // pause already in place is taken over and stops ending on its own.
   //
-  // `room_invite_sent_at` is carried forward when their one coordination
-  // message went out in the last 24 hours. That message is usually what they
-  // are answering: writing ended the pause (resumeAfterRoomInvite) and "leave
-  // me paused" brings them here — and without this, the fresh paused_at would
-  // hand them a fresh allowance and the next coordination would reach them
-  // again, which is exactly what they just said no to.
+  // Both room-invite stamps are carried forward when they answered their one
+  // coordination message in the last 24 hours. Writing ended the pause
+  // (resumeAfterRoomInvite) and "leave me paused" brings them here. Without
+  // this the fresh paused_at is a fresh allowance, so the next coordination
+  // reaches them again; and answered_at at the same moment is what keeps
+  // their NEXT message from ending this pause too.
   const { rows } = await client.query(
     `UPDATE users SET paused_at = COALESCE(paused_at, now()), paused_reason = NULL,
-            room_invite_sent_at = CASE
-              WHEN room_invite_sent_at > now() - ($2::bigint * interval '1 millisecond')
-              THEN now() ELSE room_invite_sent_at END
+            room_invite_sent_at = CASE WHEN room_invite_answered_at > now() - ($2::bigint * interval '1 millisecond')
+              THEN now() ELSE room_invite_sent_at END,
+            room_invite_answered_at = CASE WHEN room_invite_answered_at > now() - ($2::bigint * interval '1 millisecond')
+              THEN now() ELSE room_invite_answered_at END
       WHERE id = $1
       RETURNING id, paused_at`, [userId, ROOM_INVITE_ANSWER_MS]);
   if (!rows[0]) return err('not_found', 'no such user');
@@ -199,8 +202,9 @@ async function quietResume(client, userId) {
   return ok({ resumed: true });
 }
 
-// They wrote, inside 24 hours of the one coordination message their pause
-// allows. The owner's rule is that anything they say then — other than asking
+// They wrote, for the first time since the one coordination message their
+// pause allows — whenever that is (owner, 2026-09-14: "until he writes
+// again"). The owner's rule is that anything they say then — other than asking
 // to stay paused — means they are interested, so the pause ends in full,
 // whichever kind it was: a ladder pause the way quietResume ends one, their
 // own the way resume_olma does (their repeating reminders come back). "Leave
@@ -211,12 +215,16 @@ async function quietResume(client, userId) {
 // their agent is not them answering.
 async function resumeAfterRoomInvite(client, userId, { now = new Date() } = {}) {
   const { rows } = await client.query(
-    `SELECT paused_at, paused_reason, room_invite_sent_at FROM users WHERE id = $1`, [userId]);
+    `SELECT paused_at, paused_reason, room_invite_sent_at, room_invite_answered_at FROM users WHERE id = $1`,
+    [userId]);
   const u = rows[0];
   if (!u || !roomInviteSpent(u)) return ok({ resumed: false });
-  if (now.getTime() - new Date(u.room_invite_sent_at).getTime() > ROOM_INVITE_ANSWER_MS) {
+  // Already answered: this pause is the one they asked to keep after it.
+  if (u.room_invite_answered_at
+      && new Date(u.room_invite_answered_at).getTime() >= new Date(u.room_invite_sent_at).getTime()) {
     return ok({ resumed: false });
   }
+  await client.query(`UPDATE users SET room_invite_answered_at = now() WHERE id = $1`, [userId]);
   if (u.paused_reason === QUIET_LADDER) {
     await client.query(`UPDATE users SET paused_at = NULL, paused_reason = NULL WHERE id = $1`, [userId]);
     await audit.record(client, userId, 'user.resumed', {
