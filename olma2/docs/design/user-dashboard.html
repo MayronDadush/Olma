@@ -295,6 +295,18 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
    status pill around, and those two are the reason anybody looks up here. */
 .brand-hi{font-size:13px;color:var(--text-2);line-height:1.2}
 .brand-name{font-family:'Rubik',sans-serif;font-weight:600;font-size:17px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hdrend{display:flex;align-items:center;gap:9px;flex:none}
+/* Three icons, one pressed at a time — the same picture language as the seg
+   controls elsewhere, just small enough to live beside the clock on every
+   tab, not only on the profile page. */
+.themeicons{display:flex;gap:2px;padding:3px;border-radius:999px;background:var(--bg-tint);flex:none}
+.themeicons button{
+  width:27px;height:27px;border-radius:50%;display:grid;place-items:center;color:var(--text-3);
+  transition:background var(--sw-t) var(--ease-io),color var(--sw-t) var(--ease-io),transform .38s var(--squash);
+}
+.themeicons button svg{width:15px;height:15px}
+.themeicons button[aria-pressed="true"]{background:var(--surface);color:var(--accent);box-shadow:var(--shadow-s)}
+.themeicons button:active{transform:scale(.88)}
 .live{
   display:inline-flex;align-items:center;gap:7px;flex:none;
   padding:6px 12px 6px 10px;border-radius:999px;
@@ -1782,6 +1794,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .ffield > input[type="date"]::-webkit-calendar-picker-indicator,
 .ffield > input[type="time"]::-webkit-calendar-picker-indicator{opacity:.45;cursor:pointer}
 .ffield > .dateval{text-align:start;display:block}
+.ffield > .dateval.cityval{display:flex;align-items:center;gap:8px}
 .ffield .seg{width:100%}
 .seg{
   display:flex;gap:3px;padding:3px;border-radius:11px;background:var(--bg-tint);
@@ -2369,6 +2382,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <symbol id="i-note" viewBox="0 0 20 20"><path d="M4.4 2.6h11.2v10.2l-4 4.6H4.4Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.6 12.6h-4v4.8M7.2 6.4h5.6M7.2 9.4h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-folder" viewBox="0 0 20 20"><path d="M2.6 5.6a2 2 0 0 1 2-2h2.9l2 2.4h6a2 2 0 0 1 2 2v6.4a2 2 0 0 1-2 2h-10.9a2 2 0 0 1-2-2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
   <symbol id="i-arrdown" viewBox="0 0 16 16"><path d="M2.9 5.3h10.2L8 12.4Z" fill="currentColor" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3.1" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.3 3.3l1.13 1.13M11.57 11.57l1.13 1.13M3.3 12.7l1.13-1.13M11.57 4.43l1.13-1.13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.2 9.4A5.6 5.6 0 1 1 6.6 2.8a4.4 4.4 0 0 0 6.6 6.6Z" fill="currentColor"/></symbol>
+  <symbol id="i-auto" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.8a6.2 6.2 0 0 0 0 12.4Z" fill="currentColor"/></symbol>
   <!-- The mark. A globe that talks: the meridian and the horizon say עולם,
        the tail makes it something you speak to. Its gradient lives here in
        the sheet's own <defs> rather than inside the symbol — a <use> clone
@@ -2402,7 +2418,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       </div>
     </button>
     <button class="topclock" id="topClock" data-i18n-label="city.title"></button>
-    <div class="live"><span class="dot"></span><span id="olmaLive"></span></div>
+    <div class="hdrend">
+      <div class="themeicons" id="themeIcons" role="group" data-i18n-label="me.appearance">
+        <button data-theme-opt="light" aria-pressed="false" data-i18n-label="me.themeLight"><svg><use href="#i-sun"/></svg></button>
+        <button data-theme-opt="dark" aria-pressed="false" data-i18n-label="me.themeDark"><svg><use href="#i-moon"/></svg></button>
+        <button data-theme-opt="auto" aria-pressed="true" data-i18n-label="me.themeAuto"><svg><use href="#i-auto"/></svg></button>
+      </div>
+      <div class="live"><span class="dot"></span><span id="olmaLive"></span></div>
+    </div>
   </header>
 
   <main>
@@ -2661,17 +2684,19 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
       <div>
         <div class="glabel"><span data-i18n="me.setup"></span></div>
-        <div class="group">
-          <button class="row no-icon" id="cityRow">
-            <div class="row-txt"><div class="row-title" data-i18n="me.where"></div></div>
-            <span class="row-val" id="cityName"></span>
-            <span class="row-end" id="cityClock"></span>
-            <svg class="chev"><use href="#i-chev"/></svg>
-          </button>
-          <div class="row no-icon">
-            <label class="row-title" for="oname" data-i18n="me.calledBy"></label>
-            <input class="row-input" id="oname" type="text" maxlength="18" data-i18n-label="me.calledBy">
+        <div class="group fpad">
+          <div class="fgrid">
+            <div class="ffield">
+              <label data-i18n="me.where"></label>
+              <button class="dateval cityval" id="cityRow"><span id="cityName"></span><span class="row-end" id="cityClock"></span></button>
+            </div>
+            <div class="ffield">
+              <label for="oname" data-i18n="me.calledBy"></label>
+              <input id="oname" type="text" maxlength="18" autocomplete="off" data-i18n-label="me.calledBy">
+            </div>
           </div>
+        </div>
+        <div class="group" style="margin-top:10px">
           <div class="row no-icon stackrow">
             <div class="rowline"><div class="row-title" data-i18n="me.language"></div></div>
             <div class="chips" id="langChips" role="group" data-i18n-label="me.language"></div>
@@ -3107,6 +3132,43 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   "use strict";
   var $  = function(s,r){ return (r||document).querySelector(s); };
   var $$ = function(s,r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); };
+
+  /* Appearance: which of the two palettes the stylesheet already defines is
+     showing. Stored on THIS DEVICE only (localStorage) — it is how the page
+     looks, never something Allma reads or a fact about the person, so it
+     never touches /me/act. "Auto" is not a third value to apply — it is the
+     ABSENCE of data-theme, which is what the CSS already follows on its own
+     via prefers-color-scheme, live, with no JS. Read first thing, before
+     anything paints, so a stored choice never flashes the wrong palette. */
+  var THEME_KEY = "olma.theme";
+  function applyTheme(v){
+    if(v === "light" || v === "dark") document.documentElement.setAttribute("data-theme", v);
+    else document.documentElement.removeAttribute("data-theme");
+  }
+  var THEME = (function(){
+    try{
+      var v = localStorage.getItem(THEME_KEY);
+      return (v === "light" || v === "dark") ? v : "auto";
+    }catch(err){ return "auto"; }
+  })();
+  applyTheme(THEME);
+  function renderTheme(){
+    $$("#themeIcons button").forEach(function(b){
+      b.setAttribute("aria-pressed", b.dataset.themeOpt === THEME ? "true" : "false");
+    });
+  }
+  $("#themeIcons").addEventListener("click", function(e){
+    var b = e.target.closest("[data-theme-opt]");
+    if(!b || b.dataset.themeOpt === THEME) return;
+    THEME = b.dataset.themeOpt;
+    try{
+      if(THEME === "auto") localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, THEME);
+    }catch(err){ /* private mode or storage blocked — still applies for this visit */ }
+    applyTheme(THEME);
+    renderTheme();
+  });
+  renderTheme();
 
   /* ══════════════════════════════════════════════════════════════
      THE SEAM — where this becomes the real dashboard
@@ -3757,6 +3819,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "me.masc":"לשון זכר","me.fem":"לשון נקבה",
       "me.formNote":"״שמרתי לך״ מול ״שמרתי לך״ — עולמה תתאים את כל הניסוחים שלה.",
       "me.setup":"עולמה אצלך","me.calledBy":"השם של עולמה",
+      "me.appearance":"מראה","me.themeLight":"בהיר","me.themeDark":"כהה","me.themeAuto":"אוטומטי",
       "me.setupNote":"המיקום קובע כל תזכורת, כל שעת שקט וכל סיכום — קידומת טלפון היא מדינה, לא עיר. את השם אפשר להחליף; הוא יופיע בכל הודעה שהיא שולחת.",
       "me.pause":"להשהות את עולמה","me.resume":"עולמה מושהית · להפעלה",
       "me.pauseNote":"היא תפסיק לכתוב מיוזמתה. שום דבר לא נמחק, והודעה אחת ממך מחזירה הכול.",
@@ -4037,6 +4100,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "me.masc":"Male","me.fem":"Female",
       "me.formNote":"Hebrew inflects almost every verb for gender, so Allma needs to know. English has no gendered address and nothing here changes it.",
       "me.setup":"Your Allma","me.calledBy":"Allma's name",
+      "me.appearance":"Appearance","me.themeLight":"Light","me.themeDark":"Dark","me.themeAuto":"Auto",
       "me.setupNote":"Your location decides every reminder, quiet hour and summary — a dialling code is a country, not a city. The name is yours to change; it appears in every message she sends.",
       "me.pause":"Pause Allma","me.resume":"Allma is paused · Resume",
       "me.pauseNote":"She stops writing on her own. Nothing is deleted, and one message from you brings it all back.",
