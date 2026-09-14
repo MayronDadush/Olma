@@ -30,6 +30,7 @@ const auth = require('../../domain/dashboard-auth');
 const dash = require('../../domain/user-dashboard');
 const events = require('../../domain/user-dashboard-events');
 const write = require('../../domain/user-dashboard-write');
+const { refreshUserCard } = require('../../intake/user-card');
 
 const LINK_RE = /^\/d\/([a-f0-9]{64})$/;
 const PAGE_PATH = path.join(__dirname, '..', '..', '..', 'docs', 'design', 'user-dashboard.html');
@@ -355,6 +356,10 @@ async function handle(req, res, pool, pathname) {
   const payload = body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload)
     ? body.payload : {};
   const done = await withTx(pool, (c) => write.perform(c, userId, body.action, payload));
+  // After the commit, never inside it (refreshUserCard is best-effort and
+  // never throws), so the card the agent reads next turn says what this page
+  // just saved.
+  if (done.ok && write.CARD_ACTIONS.has(body.action)) await refreshUserCard(pool, userId);
   // A refusal is a 200-shaped envelope at the HTTP layer only when it succeeded;
   // otherwise the status carries the same meaning the code does, so a network
   // panel and the page agree about what happened.

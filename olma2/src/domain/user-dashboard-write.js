@@ -43,6 +43,10 @@ const googleContacts = require('./google-contacts');
 const mail = require('./mail');
 const googleConnect = require('./google-connect');
 const { SOURCE_CAPS } = require('./user-dashboard');
+const preferences = require('./preferences');
+const digest = require('./digest');
+const facts = require('./facts');
+const factPrompts = require('./fact-prompts');
 
 // What a task's origin system can actually hold, for the fields this page can
 // edit. Mirrors the map the page draws its locks from — the page must not be
@@ -528,6 +532,63 @@ const ACTIONS = {
     return voice.requestMoreCalls(client, user.id);
   },
 
+  // ---- the profile page's settings --------------------------------------
+  // Each one is the call its chat tool makes, so a name saved here and a name
+  // said in a message land as the same row. None of them refuses a paused
+  // person: a pause stops Olma reaching OUT, and choosing her hours or taking a
+  // fact off the card is the person reaching in.
+  async setName(client, userId, p) {
+    // Their own screen is the definition of confirmed, the same argument
+    // setTimezone makes above.
+    return users.setName(client, userId, p.firstName, p.lastName, { confirmed: true, source: 'dashboard' });
+  },
+
+  async setPersonal(client, userId, p) {
+    const patch = {};
+    if (Object.hasOwn(p, 'gender')) patch.gender = p.gender;
+    if (Object.hasOwn(p, 'birthDate')) patch.birthDate = p.birthDate;
+    return users.setPersonal(client, userId, patch);
+  },
+
+  async setAssistant(client, userId, p) {
+    return users.setAssistantPersona(client, userId, { gender: p.gender, name: p.name });
+  },
+
+  async setLocale(client, userId, p) {
+    return users.setLocale(client, userId, p.locale);
+  },
+
+  async setAvailability(client, userId, p) {
+    return preferences.setAvailability(client, userId, { start: p.start, end: p.end });
+  },
+
+  async setQuietDays(client, userId, p) {
+    return preferences.setQuietDays(client, userId,
+      { days: p.days, holidays: p.holidays, calendar: p.calendar });
+  },
+
+  async setDigest(client, userId, p) {
+    return digest.setPreferences(client, userId, p.times, p.scope);
+  },
+
+  // Turning it off leaves what is already on the calendar exactly where it is.
+  // The chat tool asks whether to remove those too; this page states that it
+  // does not, rather than deleting a fortnight of entries on one tap.
+  async setCalendarSync(client, userId, p) {
+    return taskCalendar.setSync(client, userId, p.on === true, { removeExisting: false });
+  },
+
+  async forgetFact(client, userId, p) {
+    const id = Number(p.factId);
+    if (!Number.isInteger(id) || id <= 0) return err('invalid', 'factId required');
+    return facts.forgetFact(client, userId, id);
+  },
+
+  async answerFactPrompt(client, userId, p) {
+    const { rows } = await client.query(`SELECT locale FROM users WHERE id = $1`, [userId]);
+    return factPrompts.answer(client, userId, { key: p.key, answer: p.answer, locale: rows[0] && rows[0].locale });
+  },
+
   async pause(client, userId) {
     return pause.pauseUser(client, userId, { note: 'from the dashboard' });
   },
@@ -549,8 +610,26 @@ async function perform(client, userId, action, payload = {}) {
   // dashboard draws with its `admin.*` events. An operator reading the trail
   // has to be able to tell a person tapping their own phone from their agent
   // acting on their behalf.
-  if (res.ok) await audit.record(client, userId, 'dashboard.' + action, payload);
+  if (res.ok) await audit.record(client, userId, 'dashboard.' + action, auditPayload(action, payload));
   return res;
 }
 
-module.exports = { perform, ACTIONS: Object.keys(ACTIONS) };
+// A birthday is personal data and the audit trail is read by operators, so
+// this one action records THAT it changed and not what to.
+function auditPayload(action, payload) {
+  if (action !== 'setPersonal') return payload;
+  return Object.fromEntries(Object.keys(payload).map((k) => [k, true]));
+}
+
+// The actions whose success makes USER.md stale — the card the agent reads on
+// every turn. The HTTP route refreshes it after the transaction commits, the
+// same contract user-card.CARD_TOOLS keeps for the chat tools; without it a
+// person could change their hours here and be answered all day by a card that
+// still carried the old ones.
+const CARD_ACTIONS = new Set([
+  'setName', 'setPersonal', 'setAssistant', 'setLocale', 'setTimezone',
+  'setAvailability', 'setQuietDays', 'setDigest', 'forgetFact', 'answerFactPrompt',
+  'pause', 'resume',
+]);
+
+module.exports = { perform, ACTIONS: Object.keys(ACTIONS), CARD_ACTIONS };

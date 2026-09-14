@@ -63,6 +63,21 @@ function renderCard(user, prefs, facts = [], extras = {}) {
     : 'First name: unknown — ask what to call them and save it with set_my_name');
   if (user.last_name) lines.push(`Last name: ${user.last_name}`);
   lines.push(`Language: ${user.locale || 'he'}`);
+  // Their own answer from the profile page (migration 068), and only when they
+  // gave one: a form of address guessed from a name is the mistake this line
+  // exists to end, so NULL prints nothing rather than a default.
+  if (user.gender === 'male' || user.gender === 'female') {
+    lines.push(`Address them in the ${user.gender === 'female' ? 'FEMININE' : 'MASCULINE'} form — they set it themselves`);
+  }
+  if (user.birth_date) {
+    // node-pg builds a DATE at LOCAL midnight, so toISOString() would move it
+    // a day back on any box east of UTC — read it off the local fields.
+    const d = user.birth_date;
+    const b = d instanceof Date
+      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      : String(d).slice(0, 10);
+    lines.push(`Birthday: ${b}`);
+  }
   // Who the assistant is for THIS user — rendered only off the default.
   // The default (עולמה, feminine register) is already the doctrine every
   // agent carries, and repeating it on every turn for every user is cost.

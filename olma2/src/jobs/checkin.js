@@ -555,7 +555,7 @@ async function discoveryGaps(client, userId, now = new Date()) {
           + 'mechanism. If they want it, call remember_preference key "quiet_days" ADDING '
           + '"holidays" to whatever days are already there, so "sat" becomes "sat,holidays". If '
           + `${soon.name} is not a day they keep at all, that is a different answer and a `
-          + 'different key: remember_preference "holiday_calendar", value "christian" or "none".',
+          + 'different key: remember_preference "holiday_calendar", value "jewish", "christian", "muslim" or "none".',
       });
     }
   }
