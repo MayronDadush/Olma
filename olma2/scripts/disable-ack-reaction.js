@@ -86,21 +86,41 @@ if (!hits.length && !SET) {
 
 for (const h of hits) console.log(`found ${h.path} = ${JSON.stringify(h.value)}`);
 
+// The companion key, reported and deliberately LEFT ALONE. On 2026-09-14 the
+// live config carried `messages.ackReactionScope: "direct"` beside the emoji;
+// it modifies an ack that will no longer be placed, so it does nothing on its
+// own. Removing it would make `--set` restore only half the original setting,
+// and the whole point of --set is that it puts back exactly what was there.
+// Named here because a key left behind with no explanation is the next
+// reader's ten minutes.
+const companions = findKey(cfg, `${KEY}Scope`);
+for (const c of companions) console.log(`found ${c.path} = ${JSON.stringify(c.value)} (left in place — inert without ${KEY}, and --set needs it)`);
+
 // A write under channels.whatsapp restarts the WhatsApp channel — 16s measured,
 // every send inside it refused (.claude/rules/gateway.md). Whether this change
 // is invisible or a brief outage depends entirely on where the key lives, so it
-// is stated before anything is written rather than discovered afterwards.
+// is stated before anything is written rather than discovered afterwards — and
+// stated in BOTH directions, because a silent "no warning" is indistinguishable
+// from a check that never ran.
 const restarts = hits.some((h) => h.path.startsWith('channels.whatsapp'));
 
 if (SET) {
-  const target = hits[0];
-  if (!target) {
-    console.log(`\ncannot --set: ${KEY} is not present, and this script will not guess where it belongs.`);
-    console.log('Add it by hand in the gateway\'s own shape, then re-run to confirm.');
+  // Restoring after a removal is the ONLY time --set matters, and at that
+  // moment the key is by definition gone — so `hits` is empty and there is
+  // nothing to write through. The companion is what makes this answerable
+  // without guessing: `ackReactionScope` sits in the same object the emoji
+  // was removed from, so its parent IS the right home. With neither key
+  // present nothing here knows the gateway's shape, and it says so rather
+  // than inventing a path.
+  const anchor = hits[0] || companions[0];
+  if (!anchor) {
+    console.log(`\ncannot --set: neither ${KEY} nor ${KEY}Scope is present, so nothing here knows`);
+    console.log('where the gateway expects it. Add it by hand, then re-run to confirm.');
     process.exit(1);
   }
-  target.parent[KEY] = SET;
-  console.log(`\n${target.path}: -> ${JSON.stringify(SET)}`);
+  const home = anchor.path.split('.').slice(0, -1).concat(KEY).join('.');
+  anchor.parent[KEY] = SET;
+  console.log(`\n${home}: -> ${JSON.stringify(SET)}`);
 } else {
   for (const h of hits) delete h.parent[KEY];
   console.log(`\nremoving ${hits.length} key(s) — the only acknowledgement mark left is ours (domain/reactions.js)`);
@@ -110,6 +130,8 @@ if (restarts) {
   console.log('\n⚠  this key lives under channels.whatsapp, so writing it RESTARTS the');
   console.log('   WhatsApp channel (~16s, every send refused inside it). Pick a quiet');
   console.log('   moment; group_outbox already stays silent for 45s after a restart.');
+} else {
+  console.log('\nno channels.whatsapp write, so no channel restart — this can go out at any hour.');
 }
 
 if (!APPLY) {

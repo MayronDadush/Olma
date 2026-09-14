@@ -142,11 +142,25 @@ title means this file. Grep the title, not the filename.
   well-formed, so **no regex can settle this** — provenance can: never take it
   on `ourTurn`, never over an id the gateway already supplied.
 
-- **The 👀 on a person's message is the GATEWAY's** (`ackReaction` in
-  `openclaw.json`), placed on receipt from its own config, and ours is a second
-  one behind it. So a working 👀 is no evidence that `placeMark` works at all —
-  read the gateway journal for what it actually SENT, per emoji, before
-  concluding the mark path is alive.
+- **The acknowledgement mark is OURS ALONE, and the gateway's own ack stays
+  off** (`messages.ackReaction`, absent; `config_guard` goes red if it comes
+  back, `scripts/disable-ack-reaction.js --apply` removes it again). Until
+  2026-09-14 BOTH placed one and neither could see the other: the gateway from
+  its config the instant a message was accepted, ours ~15s later
+  (`openTurnFromGateway` → `placeMark`, a whole CLI start-up). Both were 👀, so
+  Miron read it as Olma marking the same message twice — 👀, 👀, 👍. Ours is
+  the one that stays because the gateway's can only ever be ONE emoji, while
+  ours picks off the message itself (🙏 thanks-only, 👂 voice, 👀 typed) and is
+  the same vocabulary, and the same operator-editable flag, as every later
+  mark. The gateway's was therefore not merely redundant but wrong twice over:
+  on a voice note it showed 👀 and we corrected it to 👂 fifteen seconds later.
+  **This inverts the old diagnostic**, which said a working 👀 was no evidence
+  `placeMark` worked — the gateway's ack is what made the mark path look alive
+  through the six hours it was dead (`incidents.md`, "The mark that never
+  moved"). With that gone a 👀 IS ours and does prove the path, and the cost of
+  the trade is that the ack now lands ~15s in rather than instantly. Closing
+  that means moving `placeMark` off the CLI onto `channels/gateway-rpc.js`,
+  whose `send()` already takes any method name.
 
 - **`placeMark` claims nothing and therefore must SAY something.** It is
   fire-and-forget by design — no exit code may reach the caller, and nothing
