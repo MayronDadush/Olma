@@ -8284,3 +8284,45 @@ so ANY repeat of the same message, for any upstream reason, was replayed in
 full. That much needed no server access to establish — it is a fact about
 the code, confirmed by reading `openFromGateway` and `openTurnFromGateway`
 end to end, not an inference from the symptom.
+
+### The suite crept up on its own timeout, and the deploy read it as a wedge (2026-09-14)
+
+PR #366 merged green and its deploy went red. The banner said WEDGE, on both
+of `run-suite.sh`'s two attempts, and both died at the same place — the test
+after `user-testbed.test.js`'s "a snapshot taken before a migration still
+restores". Same file, same point, twice: the signature of a reproducible
+hang, which is what the wedge banner exists to report.
+
+It was not a hang. A re-run seven minutes later, on the identical commit,
+passed **1974/1974 in 397s**.
+
+397 against `SUITE_TIMEOUT=420` is twenty-three seconds of margin. The cap was
+chosen on 2026-09-06, when the same run took ~234s; the suite has grown by
+~70% since and the number never moved. At that margin the thing that decides a
+deploy is not the code — it is whether one live agent turn happens to be
+holding a core while the suite runs. `SUITE_NICE=19` makes the suite yield to
+exactly that traffic, by design, so a busy minute is enough.
+
+**What made it expensive is where the failure lands.** A red suite inside
+`deploy.sh` aborts before the restart, so nothing is replaced and nothing is
+rolled back: the box sat with the new code and its applied migrations on disk
+and the old code still in memory — the MIXED box — while `/ready` answered 200
+and every user was served as before. Nothing looked wrong from outside, and
+the fix from #366 was on the disk of a machine that was not running it.
+
+Raised to `SUITE_TIMEOUT=600`, ~1.5x the measured run. The ceiling is not
+taste: the deploy job's own `timeout-minutes: 30` has to hold two attempts
+plus the ~20s of rsync, install, migrate and restart around them, which puts
+the limit near 730 — and a deploy killed by the JOB timeout is the one failure
+that can land between the rsync and the rollback safeguard, so buying suite
+headroom by spending that margin would trade a recoverable failure for an
+unrecoverable one.
+
+**The lesson is the gap, not the number.** A suite that is merely slow and one
+that is genuinely stuck are indistinguishable from outside — `run-suite.sh`
+can only report "still alive at the cap" — so the distance between the healthy
+runtime and the cap IS the false-wedge rate, and it shrinks on its own every
+time a test is added. Nothing measures it: the 234s in the rule was a number
+somebody wrote down once. Re-measure when you touch the cap, and treat a run
+creeping toward it as the alarm it is, because the first thing it will do is
+look like a bug that is not there.
