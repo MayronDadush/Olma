@@ -108,6 +108,7 @@ never trust a dated narrative for something you are about to act on.
 - [The three tables nobody could merge (2026-09-10)](#the-three-tables-nobody-could-merge-2026-09-10)
 - [The conversation that never ended (fixed 2026-09-09)](#the-conversation-that-never-ended-fixed-2026-09-09)
 - [The pin held the order and the cache still died (measured 2026-09-11)](#the-pin-held-the-order-and-the-cache-still-died-measured-2026-09-11)
+- [DigitalOcean never cached (measured 2026-09-14)](#digitalocean-never-cached-measured-2026-09-14)
 - [The pilot that read as an expensive day (fixed 2026-09-09)](#the-pilot-that-read-as-an-expensive-day-fixed-2026-09-09)
 - [The heartbeat was the bill (fixed 2026-09-05)](#the-heartbeat-was-the-bill-fixed-2026-09-05)
 - [The ledger overstated OpenRouter by 65%, in both directions at once (fixed 2026-09-03)](#the-ledger-overstated-openrouter-by-65-in-both-directions-at-once-fixed-2026-09-03)
@@ -4024,6 +4025,50 @@ of 4,899 calls at a cache rate twenty points above everybody else; averaged in,
 the first reading of this said the cache was healthy for people who do not have
 one. Same rule as `efficiency-watch`, rediscovered inside an hour of writing a
 new ratio.
+
+### DigitalOcean never cached (measured 2026-09-14)
+
+**This corrects the entry above.** It read the cache loss as rotation — "same
+provider 54%, different provider 3%" — and recommended moving the head of the
+order towards the traffic. The split was real and the cause was not: nearly
+all the "same provider" hits were StreamLake following StreamLake.
+
+By 2026-09-14 the order was holding almost perfectly. Of 177 calls read back
+through OpenRouter's generation records, **DigitalOcean served 176** — no
+rotation left to blame — and the first call of a turn was still cached 25% of
+the time (17% of prompt tokens), against 55% for later calls of the same turn.
+
+The probe that settled it sent one 24k-token prompt to one provider at a time
+(`provider.order: [X], allow_fallbacks: false`): cold, again at +3s and +90s,
+then six warm repeats back to back. Calls after the first that read anything
+from cache:
+
+| provider | cached | HQ (OpenRouter /providers) | input $/M that day |
+|---|---|---|---|
+| DigitalOcean | **0 of 8** | not stated | 0.098 |
+| StreamLake | 8 of 8 | CN | 0.084 |
+| Novita | 8 of 8 | US | 0.14 |
+| Baidu | 7 of 8 | CN | 0.0854 |
+
+Probe spend: $0.07. DigitalOcean does not keep a prefix cache for this model
+at all, three seconds apart or ninety. The 9/09 pin put it first for a price
+that had also moved by 9/14 — it was dearer than StreamLake that day.
+OpenRouter's `supports_implicit_caching` field reads `false` for all five, so
+**the published flag is no evidence either way**; only a repeat call is.
+
+**The change:** `ORDER = ['streamlake', 'novita']`, fallbacks still on, and
+`model-pricing.js` at StreamLake's rates for new ledger rows. StreamLake is the
+cheapest provider that caches and was already second in the order. **The
+judgment call is data residency** — StreamLake is CN-headquartered and has
+been serving part of the traffic since 9/09 without anyone deciding that on
+purpose; Novita is the US alternative at a higher list price, and caches
+just as well.
+
+**Still true from the entry above:** the money is small (the whole gap is a
+few dollars a month) and the case is the seconds on the first token. A
+`params` change needs a gateway restart, and the proof is a fresh responseId
+answered by OpenRouter with `provider_name` "StreamLake" — then
+`scripts/cache-probe.js` again after a few days of traffic.
 
 ### The pilot that read as an expensive day (fixed 2026-09-09)
 
