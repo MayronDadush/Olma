@@ -46,6 +46,7 @@
   --warn-soft:#F8EFDC;
   --ok:#1B9B6B;
   --ok-soft:#E4F4EE;
+  --drop-line:#2B6EF2;
   /* The meeting ring's own three colours. A "no" needs a red that is NOT the
      danger red — deleting and being unable to come are different weights of
      bad, and the arcs sit millimetres apart. Gold is reserved for the one
@@ -126,6 +127,7 @@
     --warn-soft:#332616;
     --ok:#41CB94;
     --ok-soft:#12352A;
+    --drop-line:#7FA8FF;
     --no-arc:#C9584F;
     --gold:#E3B45C;
     --gold-arc:#D9A21C;
@@ -170,6 +172,7 @@
   --warn-soft:#332616;
   --ok:#41CB94;
   --ok-soft:#12352A;
+  --drop-line:#7FA8FF;
   --no-arc:#C9584F;
   --gold:#E3B45C;
   --gold-arc:#D9A21C;
@@ -859,7 +862,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   transform-origin:50% 50%;will-change:transform;
 }
 .dragclone .task{cursor:grabbing}
+/* The dimmed row IS the placeholder: live DOM reordering puts it exactly
+   where a drop will land, and the blue line marks that landing spot —
+   deliberately a different hue from .nesttarget's purple ring so "moves
+   beside" never reads as "moves inside". On the WRAP, not the row inside
+   it, so the opacity that dims the row does not wash the line out too.
+   Hidden while a nest target is live (dragsrc-nesting): the dimmed row is
+   not where this drop would land any more. */
 .taskwrap.dragsrc .task{opacity:.32}
+.taskwrap.dragsrc{box-shadow:inset 0 2px 0 0 var(--drop-line)}
+.taskwrap.dragsrc.dragsrc-nesting{box-shadow:none}
 html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 /* The row it will go INTO: a ring, not a gap — dropping here does not put it
    beside this task, it puts it inside. */
@@ -2171,6 +2183,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 /* A toast that can be answered — only the one after a task went into a list.
    Every other toast stays an announcement nobody can tap. */
 .toast.act{pointer-events:auto}
+/* Only a refused drop wears this — a mistake, not a confirmation, so it
+   reads differently at a glance and not only by its words. */
+.toast.err{color:var(--danger);background:var(--danger-soft)}
 .toastundo{margin-inline-start:12px;color:var(--accent);font-weight:700;font-size:13px}
 
 @media (max-width:430px){
@@ -3359,6 +3374,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "nest.title":"המשימה נכנסה לרשימה","nest.ok":"הבנתי","nest.undo":"ביטול",
       "nest.body":"כשגוררים משימה אל תוך משימה אחרת, היא הופכת לפריט ברשימה שלה. אפשר לסמן אותה שם כשהיא נעשית — או לבטל ולהחזיר אותה למקום.",
       "toast.nested":"„{name}” נוספה לרשימה „{parent}”","toast.unnested":"„{name}” חזרה להיות משימה","toast.undo":"בטל",
+      "nestRefuse.hasDate":"משימה עם תאריך או שעה לא יכולה להיכנס לרשימה",
+      "nestRefuse.isList":"רשימה לא יכולה להיכנס לרשימה אחרת",
+      "nestRefuse.shared":"משימה משותפת לא יכולה להיכנס לרשימה",
+      "nestRefuse.imported":"משימה מיובאת לא יכולה להיכנס לרשימה",
+      "nestRefuse.notMine":"אפשר להכניס לרשימה רק משימות שלך",
 
       "sheet.when":"מתי","sheet.pickTime":"בחירת שעה","sheet.pickEnd":"עד","share.andMore":" ועוד {n}",
       "cat.h":"קטגוריה","cat.auto":"עולמה בחרה","cat.byTime":"לפי זמן","cat.byCat":"לפי קטגוריה",
@@ -3609,6 +3629,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "nest.title":"Added to a list","nest.ok":"Got it","nest.undo":"Undo",
       "nest.body":"Dropping a task onto another turns it into an item on that task\u2019s list. Tick it off there when it\u2019s done \u2014 or undo to put it back.",
       "toast.nested":"\u201c{name}\u201d added to \u201c{parent}\u201d","toast.unnested":"\u201c{name}\u201d is a task again","toast.undo":"Undo",
+      "nestRefuse.hasDate":"A task with a date or time can't go into a list",
+      "nestRefuse.isList":"A list can't go inside another list",
+      "nestRefuse.shared":"A shared task can't go into a list",
+      "nestRefuse.imported":"An imported task can't go into a list",
+      "nestRefuse.notMine":"Only your own tasks can go into a list",
 
       "sheet.when":"When","sheet.pickTime":"Pick a time","sheet.pickEnd":"until","share.andMore":" and {n} more",
       "cat.h":"Category","cat.auto":"Allma picked this","cat.byTime":"By time","cat.byCat":"By category",
@@ -4409,9 +4434,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
   /* ───────── toast ───────── */
   var toastEl = $("#toast"), toastT;
-  function toast(msg, undo){
+  function toast(msg, undo, isErr){
     toastEl.textContent = msg;
     toastEl.classList.toggle("act", !!undo);
+    toastEl.classList.toggle("err", !!isErr);
     if(undo){
       var b = document.createElement("button");
       b.className = "toastundo";
@@ -5264,16 +5290,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   function isMine(x){ return !x.owner; }
   function canLift(x){ return !!x && !x.src && (!LIVE || serverKnows(x)); }
   /* The owner's four rules, asked before the drop so a row that cannot take
-     this task never lights up. The server refuses the same cases by name. */
-  function canNestInto(child, parent){
-    if(!child || !parent || child === parent) return false;
-    if(child.src || parent.src) return false;
-    if(!isMine(child) || !isMine(parent)) return false;
-    if(child.d) return false;                              /* a date, or a date and an hour */
-    if(child.items && child.items.length) return false;    /* a list does not go into a list */
-    if(facesOf(child).length) return false;                /* it is on somebody else's list too */
-    return true;
+     this task never lights up — and named, so a refused drop can say why.
+     The server refuses the same cases by name (self/imported/has_date/is_list/shared);
+     "self" never reaches a toast, since hitTest excludes a row's own wrap
+     before this is ever called. */
+  function nestRefusal(child, parent){
+    if(!child || !parent || child === parent) return "self";
+    if(child.src || parent.src) return "imported";
+    if(!isMine(child) || !isMine(parent)) return "notMine";
+    if(child.d) return "hasDate";                          /* a date, or a date and an hour */
+    if(child.items && child.items.length) return "isList"; /* a list does not go into a list */
+    if(facesOf(child).length) return "shared";              /* it is on somebody else's list too */
+    return null;
   }
+  function canNestInto(child, parent){ return !nestRefusal(child, parent); }
   function domOrder(){
     return $$("#taskStack .taskwrap[data-id]").map(function(w){ return w.dataset.id; });
   }
@@ -5349,7 +5379,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       document.documentElement.classList.add("dragging-task");
       drag = {
         wrap:p.wrap, task:taskById(p.wrap.dataset.id), clone:clone, group:p.wrap.parentNode,
-        home:p.wrap.nextSibling, x:p.x, y:p.y, y0:p.y, scroll0:window.scrollY, target:null, raf:0
+        home:p.wrap.nextSibling, x:p.x, y:p.y, y0:p.y, scroll0:window.scrollY, target:null,
+        refusal:null, raf:0
       };
       if(navigator.vibrate) try{ navigator.vibrate(12); }catch(err){}
       paint();
@@ -5365,17 +5396,23 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       if(drag.target) drag.target.classList.remove("nesttarget");
       drag.target = w;
       if(w) w.classList.add("nesttarget");
+      drag.wrap.classList.toggle("dragsrc-nesting", !!w);
     }
     function hitTest(){
       var el = document.elementFromPoint(drag.x, drag.y);
       var w = el && el.closest ? el.closest("#taskStack .taskwrap[data-id]") : null;
-      if(!w || w === drag.wrap){ setTarget(null); return; }
+      if(!w || w === drag.wrap){ setTarget(null); drag.refusal = null; return; }
       var r = w.getBoundingClientRect(), rel = (drag.y - r.top) / r.height;
-      var nestable = canNestInto(drag.task, taskById(w.dataset.id));
+      var inMiddle = rel > .26 && rel < .74;
+      var reason = inMiddle ? nestRefusal(drag.task, taskById(w.dataset.id)) : null;
       /* the middle of a row is "into it", its edges are "beside it" — and a
          row that cannot take this task has no middle */
-      if(nestable && rel > .26 && rel < .74){ setTarget(w); return; }
+      if(inMiddle && !reason){ setTarget(w); drag.refusal = null; return; }
       setTarget(null);
+      /* remembered for the drop, not shown while still hovering — a reason
+         that flashes on every pass over a row it can never enter is worse
+         than none */
+      drag.refusal = inMiddle ? reason : null;
       if(w.parentNode !== drag.group) return;               /* another group: nothing moves */
       if(rel < .5){ if(w.previousSibling !== drag.wrap) drag.group.insertBefore(drag.wrap, w); }
       else if(w.nextSibling !== drag.wrap) drag.group.insertBefore(drag.wrap, w.nextSibling);
@@ -5398,11 +5435,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       cancelAnimationFrame(d.raf);
       document.documentElement.classList.remove("dragging-task");
       d.clone.remove();
-      d.wrap.classList.remove("dragsrc");
+      d.wrap.classList.remove("dragsrc", "dragsrc-nesting");
       if(d.target) d.target.classList.remove("nesttarget");
       swallowUntil = Date.now() + 400;
       if(!commit || !document.body.contains(d.wrap)){ putBack(d); return; }
       if(d.target){ putBack(d); nestInto(d.wrap.dataset.id, d.target.dataset.id); return; }
+      if(d.refusal){ putBack(d); toast(t("nestRefuse." + d.refusal), null, true); return; }
       var gr = d.group.getBoundingClientRect();
       var inside = d.x >= gr.left && d.x <= gr.right && d.y >= gr.top - 24 && d.y <= gr.bottom + 24;
       var moved = d.wrap.nextSibling !== d.home;
@@ -5414,8 +5452,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          (d.home === null || d.home.parentNode === d.group)) d.group.insertBefore(d.wrap, d.home);
     }
     function start(target, x, y, touch){
-      if(drag || press) return;
-      if(activeSheet) return;
+      if(drag || activeSheet) return;
+      /* A press whose release was never seen — a native drag or a release
+         outside the window eats the mouseup — must not block every press
+         after it. The new press is the truth. */
+      clearPress();
       var wrap = target.closest && target.closest(".taskwrap[data-id]");
       if(!wrap || !stack.contains(wrap) || target.closest("button")) return;
       if(!canLift(taskById(wrap.dataset.id))) return;
@@ -5451,6 +5492,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     stack.addEventListener("touchcancel", function(){ clearPress(); finish(false); });
     /* the long press is the lift, not a menu */
     stack.addEventListener("contextmenu", function(e){ if(press || drag) e.preventDefault(); });
+    /* and the browser's own drag — of a selected word, an image, a link — is
+       never what a press on a row means; once it starts, the mouseup that
+       would have ended ours goes to it instead */
+    stack.addEventListener("dragstart", function(e){ e.preventDefault(); });
 
     stack.addEventListener("mousedown", function(e){
       if(e.button !== 0) return;

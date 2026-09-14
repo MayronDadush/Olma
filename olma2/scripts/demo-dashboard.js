@@ -99,6 +99,25 @@ async function main() {
   const handle = app.listeners('request')[0];
   const server = http.createServer((req, res) => {
     if (req.headers.origin === 'http://' + req.headers.host) req.headers.origin = 'https://' + req.headers.host;
+    // Every write, and how it was answered — the page is fire-and-forget, so
+    // this line is the only place a refused drop is visible from outside a
+    // browser's devtools. Reading req's OWN body here (to log the payload) is
+    // exactly the bug it would exist to catch: the real handler's readJsonBody
+    // attaches its 'data'/'end' listeners only after an await (currentUser),
+    // by which point a listener attached here has already put the stream in
+    // flowing mode and drained it — the real listener's 'end' then never
+    // fires and the request hangs forever, unlogged, because res.end is never
+    // reached either. So this only ever wraps the RESPONSE, never the request.
+    if (req.url === '/me/act') {
+      const write = res.write.bind(res), end = res.end.bind(res);
+      let out = '';
+      res.write = (c, ...a) => { out += c; return write(c, ...a); };
+      res.end = (c, ...a) => {
+        if (c) out += c;
+        console.log(`[demo] ${new Date().toISOString().slice(11, 19)} POST /me/act ${res.statusCode} origin=${req.headers.origin || '-'} -> ${String(out).slice(0, 200)}`);
+        return end(c, ...a);
+      };
+    }
     handle(req, res);
   });
   server.listen(PORT, '127.0.0.1', async () => {
