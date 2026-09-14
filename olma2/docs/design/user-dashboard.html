@@ -1886,6 +1886,117 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .hero-profile .who b{display:block;font-family:'Rubik',sans-serif;font-size:22px;font-weight:600}
 .hero-profile .who span{font-size:14px;color:var(--text-2)}
 
+/* ─────────────────────────  profile settings  ───────────────────────── */
+/* A row whose control is too wide to share a line with its title: the title
+   keeps the row's rhythm, the control takes the full width under it. */
+.row.stackrow{flex-direction:column;align-items:stretch;gap:10px;padding-top:12px;padding-bottom:13px}
+.row.stackrow .rowline{display:flex;align-items:center;gap:12px}
+.row.stackrow .seg{flex:none}
+.ghostinput{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;inset-inline-start:0;bottom:0}
+.hoursvals{gap:4px;flex-wrap:nowrap}
+.hoursvals .vchip{font-variant-numeric:tabular-nums;min-width:62px;text-align:center}
+.hoursdash{color:var(--text-3);font-weight:600}
+.row-sub.auto{color:var(--accent)}
+
+/* The week as seven round keys. A quiet day is a day she keeps her distance,
+   so the pressed state is the moon-coloured one rather than a bright tick. */
+.daypick{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.daypick button{
+  aspect-ratio:1;max-width:44px;width:100%;justify-self:center;border-radius:50%;
+  background:var(--bg-tint);color:var(--text-2);font-size:14.5px;font-weight:650;
+  display:grid;place-items:center;
+  transition:background .26s var(--ease-io),color .26s var(--ease-io),transform .38s var(--squash),box-shadow .26s var(--ease-io);
+}
+.daypick button[aria-pressed="true"]{background:var(--accent);color:#fff;box-shadow:var(--shadow-s)}
+.daypick button:active{transform:scale(.9)}
+.daypick button.pop{animation:chipPop .22s var(--ease-io)}
+
+.flabel{font-size:12.5px;font-weight:600;color:var(--text-3);margin:4px 0 8px}
+.foldpad .seg{margin-bottom:2px}
+.flabel + .seg,.chips + .ghostinput + .flabel{margin-top:14px}
+.tchip{display:inline-flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+.tchip i{font-style:normal;opacity:.55;font-size:12px;line-height:1}
+.tchip.add{background:transparent;box-shadow:inset 0 0 0 1.4px var(--sep-2);color:var(--accent)}
+.tchip.add svg{width:11px;height:11px}
+.tchip.enter{animation:chipPop .24s var(--ease-io)}
+
+/* The receipt. It appears beside the card's label for a moment and fades —
+   loud enough to be seen, quiet enough never to be a toast per keystroke. */
+.savedmark{color:var(--ok);opacity:0;transform:translateY(2px);transition:opacity .3s var(--ease),transform .3s var(--ease)}
+.savedmark.show{opacity:1;transform:none}
+
+/* ── what Olma knows ─────────────────────────────────────────── */
+.fqhead{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:2px 0 10px}
+.fqhead b{font-size:14px;font-weight:650}
+.fqhead span{font-size:12.5px;color:var(--text-3)}
+.fqlist{display:flex;flex-direction:column;gap:9px}
+/* Each question is its own small card inside the group, so three of them read
+   as three things to answer rather than one long form. The wrapper animates
+   its height; the card inside animates everything else. */
+.fqwrap{display:grid;grid-template-rows:1fr;transition:grid-template-rows .42s var(--ease-io),margin .42s var(--ease-io)}
+.fqwrap > .fq{min-height:0;overflow:hidden}
+.fq{
+  background:var(--bg);border-radius:14px;padding:12px 12px 12px;
+  box-shadow:inset 0 0 0 1px var(--sep);
+  transition:opacity .3s var(--ease),transform .42s var(--spring),box-shadow .3s var(--ease),background .3s var(--ease);
+}
+.fq .fqtop{display:flex;align-items:flex-start;gap:10px}
+.fq .fqq{flex:1;font-size:15px;font-weight:600;line-height:1.35;padding-top:5px}
+.fq .fqskip{flex:none;width:26px;height:26px;border-radius:50%;color:var(--text-3);font-size:13px;display:grid;place-items:center}
+.fq .fqskip:active{background:var(--bg-tint)}
+.fq .fqbody{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+.fq .fqin{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+.fq .fqin .daypick{flex:1;gap:4px}
+.fq .fqin .daypick button{max-width:36px;font-size:13px}
+.fq .fqtext{
+  flex:1;min-width:0;border:0;background:var(--surface);border-radius:11px;
+  font:inherit;font-size:15px;color:var(--text);padding:9px 12px;outline:none;
+  box-shadow:inset 0 0 0 1px var(--sep);
+}
+.fq .fqtext:focus{box-shadow:inset 0 0 0 1.6px var(--accent)}
+.fq .fqtime{margin-top:0;background:var(--surface);box-shadow:inset 0 0 0 1px var(--sep);font-variant-numeric:tabular-nums}
+.fq .fqto{color:var(--text-3);font-weight:600}
+.fqok{
+  flex:none;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
+  background:var(--bg-tint);color:var(--text-3);align-self:flex-end;
+  transition:background .26s var(--ease-io),color .26s var(--ease-io),transform .38s var(--squash);
+}
+.fqok svg{width:17px;height:17px}
+.fqok:not([disabled]){background:var(--accent);color:#fff;box-shadow:var(--shadow-s)}
+.fqok:not([disabled]):active{transform:scale(.9)}
+.fqok[disabled]{cursor:default}
+/* saved: the tick turns green and pops, the card lifts and folds away */
+.fq.done .fqok{background:var(--ok);color:#fff;animation:okPop .3s var(--spring)}
+.fq.done{box-shadow:inset 0 0 0 1.5px var(--ok);background:var(--surface)}
+.fqwrap.leaving{grid-template-rows:0fr;margin-top:-9px}
+.fqwrap.leaving > .fq{opacity:0;transform:translateY(-6px) scale(.97)}
+.fqwrap.skipping > .fq{opacity:0;transform:translateX(calc(40px * var(--dirf)))}
+.fqwrap.entering{grid-template-rows:0fr}
+.fqwrap.entering > .fq{opacity:0;transform:translateY(12px) scale(.98)}
+.fqdone{font-size:13.5px;color:var(--text-2);text-align:center;padding:8px 0 2px}
+
+.factshead{margin-top:18px;display:flex;justify-content:space-between}
+.factlist{display:flex;flex-direction:column}
+.factwrap{display:grid;grid-template-rows:1fr;transition:grid-template-rows .4s var(--ease-io),opacity .3s var(--ease)}
+.factwrap > .fact{min-height:0;overflow:hidden}
+.fact{display:flex;align-items:center;gap:10px;padding:9px 8px;margin-inline:-8px;position:relative;border-radius:10px;
+  transition:background .9s var(--ease)}
+.factwrap + .factwrap .fact::before{content:"";position:absolute;top:0;inset-inline:8px;height:1px;background:var(--sep)}
+.fact .ftxt{flex:1;min-width:0;font-size:14.5px;line-height:1.4}
+.fact .fcat{flex:none;font-size:11px;font-weight:650;color:var(--text-3);background:var(--bg-tint);padding:2px 8px;border-radius:999px}
+.fact .fdel{flex:none;width:28px;height:28px;border-radius:50%;color:var(--text-3);display:grid;place-items:center;font-size:13px}
+.fact .fdel:active{background:var(--bg-tint);color:var(--danger)}
+.factwrap.gone{grid-template-rows:0fr;opacity:0;pointer-events:none}
+.factwrap.arriving{grid-template-rows:0fr}
+.fact.fresh{background:var(--accent-soft)}
+/* the answer on its way from the card into the list */
+.factfly{
+  position:fixed;z-index:90;pointer-events:none;margin:0;
+  padding:7px 13px;border-radius:999px;background:var(--accent);color:#fff;
+  font-size:13.5px;font-weight:600;white-space:nowrap;max-width:80vw;overflow:hidden;text-overflow:ellipsis;
+  box-shadow:var(--shadow-m);
+}
+
 /* ─────────────────────────  tab bar  ───────────────────────── */
 .tabbar{
   position:fixed;bottom:18px;inset-inline:0;margin-inline:auto;
@@ -2409,11 +2520,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     </div>
   </section>
 
-  <!-- ══════════════  profile  ══════════════ -->
+  <!-- ══════════════  profile  ══════════════
+       Five cards, in the order a person reaches for them: who I am, when she
+       may write, the summary she sends, who she is to me, and what she knows.
+       Every control here saves as it changes — there is no save button, and
+       the glabel's quiet "saved" is the only receipt, because a form that
+       asks you to confirm your own hours is asking twice. -->
   <section class="view" data-view="me">
     <div class="hero-profile" style="--i:0">
       <div class="avatar" id="bigAvatar"></div>
-      <div class="who"><b id="whoName"></b><span data-i18n="me.since"></span></div>
+      <div class="who"><b id="whoName"></b><span id="whoSince"></span></div>
       <button class="linkbtn" id="shuffleAvatar" data-i18n="me.avatar"></button>
     </div>
     <div class="stack" style="--i:1">
@@ -2421,13 +2537,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         <div class="glabel"><span data-i18n="me.personal"></span></div>
         <div class="group fpad">
           <div class="fgrid">
-            <div class="ffield"><label for="fname" data-i18n="me.first"></label><input id="fname" type="text" autocomplete="given-name"></div>
-            <div class="ffield"><label for="lname" data-i18n="me.last"></label><input id="lname" type="text" autocomplete="family-name"></div>
-            <div class="ffield"><label for="bday" data-i18n="me.bday"></label><button class="dateval" id="bday" data-cal="bday" data-val="1994-03-16"></button></div>
+            <div class="ffield"><label for="fname" data-i18n="me.first"></label><input id="fname" type="text" maxlength="40" autocomplete="given-name"></div>
+            <div class="ffield"><label for="lname" data-i18n="me.last"></label><input id="lname" type="text" maxlength="40" autocomplete="family-name"></div>
+            <div class="ffield"><label for="bday" data-i18n="me.bday"></label><button class="dateval" id="bday" data-cal="bday" data-calstart="1990-06-15" data-val=""></button></div>
             <div class="ffield">
               <label id="genderLabel" data-i18n="me.form"></label>
               <div class="seg" id="genderSeg" role="group" aria-labelledby="genderLabel">
-                <button aria-pressed="true" data-g="m" data-i18n="me.masc"></button>
+                <button aria-pressed="false" data-g="m" data-i18n="me.masc"></button>
                 <button aria-pressed="false" data-g="f" data-i18n="me.fem"></button>
               </div>
             </div>
@@ -2435,6 +2551,80 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         </div>
         <p class="note" style="padding:0 14px" data-i18n="me.formNote"></p>
       </div>
+
+      <!-- When she may start a conversation. Hours, days, and chagim are one
+           question — "when do you not want to hear from me" — so they are one
+           card, and the note under it says what still gets through. -->
+      <div>
+        <div class="glabel"><span data-i18n="me.when"></span><span class="hint savedmark" id="whenSaved" data-i18n="me.saved"></span></div>
+        <div class="group">
+          <div class="row no-icon whenrow">
+            <div class="row-txt">
+              <div class="row-title" data-i18n="me.hours"></div>
+              <div class="row-sub" id="hoursSub"></div>
+            </div>
+            <div class="whenvals hoursvals">
+              <button class="vchip set" id="hoursFrom"></button>
+              <span class="hoursdash" aria-hidden="true">–</span>
+              <button class="vchip set" id="hoursTo"></button>
+            </div>
+            <input id="hoursFromIn" type="time" tabindex="-1" aria-hidden="true" class="ghostinput">
+            <input id="hoursToIn" type="time" tabindex="-1" aria-hidden="true" class="ghostinput">
+          </div>
+          <div class="row no-icon stackrow">
+            <div class="rowline">
+              <div class="row-txt">
+                <div class="row-title" data-i18n="me.quietDays"></div>
+                <div class="row-sub" id="quietSub"></div>
+              </div>
+            </div>
+            <div class="daypick" id="quietDays" role="group" data-i18n-label="me.quietDays"></div>
+          </div>
+          <div class="row no-icon">
+            <div class="row-txt">
+              <div class="row-title" data-i18n="me.holidays"></div>
+              <div class="row-sub" id="holidaySub"></div>
+            </div>
+            <button class="switch" role="switch" aria-checked="false" id="holidaySwitch" data-i18n-label="me.holidays"></button>
+          </div>
+          <div class="row no-icon stackrow">
+            <div class="rowline"><div class="row-title" data-i18n="me.calendar"></div></div>
+            <div class="seg" id="calendarSeg" role="group" data-i18n-label="me.calendar">
+              <button aria-pressed="false" data-calkind="jewish" data-i18n="me.cal.jewish"></button>
+              <button aria-pressed="false" data-calkind="christian" data-i18n="me.cal.christian"></button>
+              <button aria-pressed="false" data-calkind="muslim" data-i18n="me.cal.muslim"></button>
+            </div>
+          </div>
+        </div>
+        <p class="note" style="padding:0 14px" id="whenNote"></p>
+      </div>
+
+      <!-- The daily summary. Off is a real answer, so the switch leads and the
+           times only unfold once there is a summary to time. -->
+      <div>
+        <div class="glabel"><span data-i18n="me.digest"></span><span class="hint savedmark" id="digestSaved" data-i18n="me.saved"></span></div>
+        <div class="group">
+          <div class="row no-icon">
+            <div class="row-txt">
+              <div class="row-title" data-i18n="me.digestOn"></div>
+              <div class="row-sub" id="digestSub"></div>
+            </div>
+            <button class="switch" role="switch" aria-checked="false" id="digestSwitch" data-i18n-label="me.digestOn"></button>
+          </div>
+          <div class="fold" id="digestFold"><div><div class="foldpad tight">
+            <div class="flabel" data-i18n="me.digestTimes"></div>
+            <div class="chips" id="digestTimes"></div>
+            <input id="digestTimeIn" type="time" tabindex="-1" aria-hidden="true" class="ghostinput">
+            <div class="flabel" data-i18n="me.digestScope"></div>
+            <div class="seg" id="digestScope" role="group" data-i18n-label="me.digestScope">
+              <button aria-pressed="false" data-scope="summary" data-i18n="me.scope.summary"></button>
+              <button aria-pressed="false" data-scope="today" data-i18n="me.scope.today"></button>
+              <button aria-pressed="false" data-scope="full" data-i18n="me.scope.full"></button>
+            </div>
+          </div></div></div>
+        </div>
+      </div>
+
       <div>
         <div class="glabel"><span data-i18n="me.setup"></span></div>
         <div class="group">
@@ -2448,9 +2638,55 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
             <label class="row-title" for="oname" data-i18n="me.calledBy"></label>
             <input class="row-input" id="oname" type="text" maxlength="18" data-i18n-label="me.calledBy">
           </div>
+          <div class="row no-icon stackrow">
+            <div class="rowline"><div class="row-title" id="olmaGenderLabel" data-i18n="me.olmaForm"></div></div>
+            <div class="seg" id="olmaGenderSeg" role="group" aria-labelledby="olmaGenderLabel">
+              <button aria-pressed="true" data-og="female" data-i18n="me.olmaFem"></button>
+              <button aria-pressed="false" data-og="male" data-i18n="me.olmaMasc"></button>
+            </div>
+          </div>
+          <div class="row no-icon stackrow">
+            <div class="rowline"><div class="row-title" data-i18n="me.language"></div></div>
+            <div class="chips" id="langChips" role="group" data-i18n-label="me.language"></div>
+          </div>
+          <div class="row no-icon">
+            <div class="row-txt">
+              <div class="row-title" data-i18n="me.taskCal"></div>
+              <div class="row-sub" data-i18n="me.taskCalSub"></div>
+            </div>
+            <button class="switch" role="switch" aria-checked="false" id="taskCalSwitch" data-i18n-label="me.taskCal"></button>
+          </div>
         </div>
         <p class="note" style="padding:0 14px" id="setupNote"></p>
       </div>
+
+      <!-- What she knows. Closed by default: it is a list that grows, and the
+           page should not get longer every time she learns something. Open,
+           it leads with three questions — each saved one leaves, lands in the
+           list below, and the next question takes its place. -->
+      <div>
+        <div class="glabel"><span data-i18n="me.knows"></span></div>
+        <div class="group">
+          <button class="row no-icon" id="factsRow" aria-expanded="false" aria-controls="factsFold">
+            <div class="row-txt">
+              <div class="row-title" data-i18n="me.knowsRow"></div>
+              <div class="row-sub" id="factsSub"></div>
+            </div>
+            <svg class="chev"><use href="#i-chev"/></svg>
+          </button>
+          <div class="fold" id="factsFold"><div><div class="foldpad tight">
+            <div class="fqhead" id="fqHead">
+              <b data-i18n="me.fqTitle"></b>
+              <span data-i18n="me.fqHint"></span>
+            </div>
+            <div class="fqlist" id="factQs"></div>
+            <div class="flabel factshead" id="factsHead" data-i18n="me.factsList"></div>
+            <div class="factlist" id="factList"></div>
+            <p class="note" id="factsEmpty" hidden data-i18n="me.factsEmpty"></p>
+          </div></div></div>
+        </div>
+      </div>
+
       <div class="pausewrap">
         <button class="pausebtn" id="pauseBtn" aria-pressed="false">
           <svg id="pauseIcon"><use href="#i-pause"/></svg><span id="pauseLabel"></span>
@@ -2946,7 +3182,17 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     leaveMeeting:        "leave_meeting",              /* NO TOOL YET — meeting_participants.left_at */
     rejoinMeeting:       "rejoin_meeting",             /* NO TOOL YET — dashboard only */
     pause:               "pause_olma",
-    resume:              "resume_olma"
+    resume:              "resume_olma",
+    setName:             "set_my_name",
+    setPersonal:         null,                        /* dashboard only — users.gender / birth_date */
+    setAssistant:        "set_assistant_persona",
+    setLocale:           "set_my_language",
+    setAvailability:     "remember_preference",       /* key "availability" */
+    setQuietDays:        "remember_preference",       /* keys "quiet_days" + "holiday_calendar" */
+    setDigest:           "set_digest_preferences",
+    setCalendarSync:     "set_calendar_task_sync",
+    forgetFact:          "forget_fact",
+    answerFactPrompt:    "remember_fact"               /* composed server-side from a question */
   };
   /* The server's own action names (domain/user-dashboard-write.js). Where a
      seam has no entry there is genuinely nothing to call yet, and it is left
@@ -2968,7 +3214,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     settleMeeting:"settleMeeting",
     removeOption:"removeOption", swapOption:"swapOption",
     startGoogle:"startGoogle", stopGoogle:"stopGoogle",
-    stopGoogleService:"stopGoogleService"
+    stopGoogleService:"stopGoogleService",
+    setName:"setName", setPersonal:"setPersonal", setAssistant:"setAssistant", setLocale:"setLocale",
+    setAvailability:"setAvailability", setQuietDays:"setQuietDays", setDigest:"setDigest",
+    setCalendarSync:"setCalendarSync", forgetFact:"forgetFact", answerFactPrompt:"answerFactPrompt"
   };
   /* Ids the server has actually seen. It is what decides whether saving a task
      creates one or edits one — the page numbers its own new rows from a local
@@ -3077,6 +3326,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       if(error && error.reason === "paused")      toast(t("toast.pausedRefusal"));
       else if(error && error.reason === "not_enabled") toast(t("toast.notOpenYet"));
       else if(error && error.reason === "duplicate") toast(t("toast.duplicate"));
+      else if(error && error.reason === "all_days") toast(t("toast.allDays"));
+      else if(error && (error.reason === "no_calendar" || error.reason === "read_only")) toast(t("toast.calNeeded"));
+      else if(error && error.reason === "first_person") toast(t("toast.factFirstPerson"));
+      else if(error && error.reason === "needs_expiry") toast(t("toast.factDated"));
+      else if(error && error.reason === "phone") toast(t("toast.factPhone"));
       else if(error && error.reason === "no_writeback")
         toast(t("toast.importedRefusal", {name:(SOURCES[error.source] || {}).name || error.source}));
       API.reload();
@@ -3201,7 +3455,34 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         {meetingId:m.id, accept:accept, acceptedStartAt:accept ? m.startsAt : null});
     },
     setTimezone:     function(tz){     API.call("setTimezone", {timezone:tz}); return API.send("setTimezone", {timezone:tz}); },
-    setPaused:       function(on){     API.call(on ? "pause" : "resume", {}); return API.send(on ? "pause" : "resume", {}); }
+    setPaused:       function(on){     API.call(on ? "pause" : "resume", {}); return API.send(on ? "pause" : "resume", {}); },
+
+    /* The profile tab. `done` runs only on a real success — or at once in
+       design mode, where there is nothing to wait for — so a "saved" mark is
+       never drawn over a refusal. */
+    profile: function(action, payload, done){
+      API.call(action, payload);
+      return API.send(action, payload, function(data){
+        if(done && (data !== null || !LIVE)) done(data || true);
+      });
+    },
+    setName:         function(f, l){      return API.profile("setName", {firstName:f, lastName:l}); },
+    setPersonal:     function(p){         return API.profile("setPersonal", p); },
+    setAssistant:    function(p){         return API.profile("setAssistant", p); },
+    setLocale:       function(v){         return API.profile("setLocale", {locale:v}); },
+    setAvailability: function(a, b, done){ return API.profile("setAvailability", {start:a, end:b}, done); },
+    setQuietDays:    function(p, done){   return API.profile("setQuietDays", p, done); },
+    setDigest:       function(p, done){   return API.profile("setDigest", p, done); },
+    setCalendarSync: function(on, done){
+      API.call("setCalendarSync", {on:on});
+      return API.send("setCalendarSync", {on:on}, function(data){ if(done) done(data !== null || !LIVE); });
+    },
+    forgetFact:      function(id, done){  return API.profile("forgetFact", {factId:id}, done); },
+    answerFactPrompt: function(key, answer, done){
+      return API.profile("answerFactPrompt", {key:key, answer:answer}, function(data){
+        if(done) done(data === true ? null : data);
+      });
+    }
   };
   /* Exposed on purpose, and it is the only global this file creates. The seam
      is the thing the next person has to replace, so it has to be reachable
@@ -3439,7 +3720,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "p.meet":"תיאום פגישות","p.meetSub":"יכול להציע לך מועדים",
       "p.msg":"העברת הודעות","p.msgSub":"יכול לשלוח לך דרך עולמה",
 
-      "me.since":"חבר בעולמה מאז מאי 2026","me.avatar":"החלפת דמות",
+      "me.avatar":"החלפת דמות",
       "me.personal":"פרטים אישיים","me.first":"שם פרטי","me.last":"שם משפחה","me.bday":"תאריך לידה",
       "me.where":"מיקום",
       "me.guessed":"נוחש לפי קידומת הטלפון","me.confirmed":"אישרת בעצמך",
@@ -3453,6 +3734,43 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "me.pausedNote":"עולמה לא תיזום כלום — לא תזכורות, לא סיכומים. היא עדיין תענה כשתכתוב לה.",
       "live.paused":"{name} מושהית",
       "me.noName":"ללא שם",
+      "me.since":"בעולמה מאז {when}","me.saved":"נשמר",
+      "me.when":"מתי אפשר לכתוב לך","me.hours":"שעות זמינות",
+      "me.hoursDefault":"ברירת מחדל","me.hoursStated":"בחירה שלך","me.hoursReset":"איפוס",
+      "me.quietDays":"ימים שקטים","me.quietNone":"בלי ימים שקטים","me.quietDefault":"ברירת מחדל",
+      "me.quietShabbat":"שבת: מהדלקת נרות ועד צאת השבת",
+      "me.holidays":"חגים כימים שקטים",
+      "me.holidaySub.jewish":"ימים טובים בלבד, בלי חול המועד, חנוכה ופורים",
+      "me.holidaySub.christian":"חג המולד, יום שישי הטוב ופסחא",
+      "me.holidaySub.muslim":"היום הראשון של עיד אל־פיטר ושל עיד אל־אדחא",
+      "me.calendar":"לוח החגים","me.cal.jewish":"יהודי","me.cal.christian":"נוצרי","me.cal.muslim":"מוסלמי",
+      "me.whenNote":"מחוץ לשעות האלה ובימים השקטים עולמה לא פותחת בשיחה, ומה שחיכה יוצא כשהם נגמרים. תזכורת שביקשת לשעה מסוימת מגיעה בזמן גם אז.",
+      "me.digest":"סיכום יומי","me.digestOn":"לקבל סיכום יומי","me.digestOff":"כבוי","me.digestAt":"ב־{times}",
+      "me.digestTimes":"באילו שעות (עד ארבע)","me.digestAdd":"שעה","me.digestScope":"כמה פירוט",
+      "me.scope.summary":"תקציר","me.scope.today":"רק היום","me.scope.full":"הכול",
+      "me.olmaForm":"איך היא מדברת על עצמה","me.olmaFem":"בלשון נקבה","me.olmaMasc":"בלשון זכר",
+      "me.language":"השפה שלכם בשיחה",
+      "me.taskCal":"משימות עם תאריך ביומן","me.taskCalSub":"Google Calendar · מה שכבר ביומן נשאר גם כשמכבים",
+      "me.knows":"מה עולמה יודעת","me.knowsRow":"דברים שעולמה זוכרת",
+      "me.facts.n0":"עוד לא נשמר כלום","me.facts.n1":"דבר אחד","me.facts.nN":"{n} דברים",
+      "me.fqTitle":"לספר לה עוד","me.fqHint":"שאלות קצרות, ואפשר לדלג על כל אחת",
+      "me.fqSave":"שמירה","me.fqSkip":"דילוג","me.fqTo":"עד",
+      "me.fqAllDone":"אין עוד שאלות כרגע. כל השאר מגיע מהשיחה.",
+      "me.factsList":"מה כבר ידוע","me.factDel":"מחיקה",
+      "me.factsEmpty":"עוד אין כאן כלום. אפשר להתחיל מהשאלות למעלה, או פשוט לספר לה בשיחה.",
+      "fcat.work":"עבודה","fcat.family":"משפחה","fcat.people":"אנשים","fcat.health":"בריאות",
+      "fcat.plans":"תוכניות","fcat.habits":"הרגלים","fcat.context":"כללי",
+      "toast.hoursEmpty":"שעת ההתחלה והסיום לא יכולות להיות אותה שעה",
+      "toast.allDays":"שבעה ימים שקטים זו כבר השהיה, ויש לה כפתור משלה למטה",
+      "toast.digestMax":"אפשר עד ארבעה סיכומים ביום",
+      "toast.calNeeded":"צריך קודם לחבר יומן Google עם הרשאת עריכה",
+      "toast.factSaved":"עולמה תזכור","toast.factForgot":"נמחק מהזיכרון",
+      "toast.factFirstPerson":"כדאי לנסח בלי ״שלי״, למשל ״כלב בשם רקסי״",
+      "toast.factDated":"זה נשמע כמו משהו עם תאריך, ועדיף לשמור אותו כמשימה",
+      "toast.factPhone":"מספרי טלפון נשמרים באנשי הקשר, לא כאן",
+      "toast.personal":"הפרטים נשמרו","toast.bday":"יום ההולדת נשמר",
+      "toast.olmaFem":"היא תדבר על עצמה בלשון נקבה","toast.olmaMasc":"הוא ידבר על עצמו בלשון זכר",
+      "toast.lang":"השפה בשיחה עודכנה",
 
       "city.title":"איפה אתה נמצא?","city.search":"חיפוש עיר","city.none":"לא נמצאה עיר בשם הזה.",
 
@@ -3683,7 +4001,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "p.meet":"Meeting scheduling","p.meetSub":"Can propose times to you",
       "p.msg":"Message relay","p.msgSub":"Can write to you through Allma",
 
-      "me.since":"On Allma since May 2026","me.avatar":"Change character",
+      "me.avatar":"Change character",
       "me.personal":"Personal details","me.first":"First name","me.last":"Last name","me.bday":"Date of birth",
       "me.where":"Location",
       "me.guessed":"Guessed from your phone number","me.confirmed":"Confirmed by you",
@@ -3697,6 +4015,43 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "me.pausedNote":"Allma starts nothing — no reminders, no summaries. She still answers when you write to her.",
       "live.paused":"{name} is paused",
       "me.noName":"No name",
+      "me.since":"On Allma since {when}","me.saved":"Saved",
+      "me.when":"When she may write to you","me.hours":"Available hours",
+      "me.hoursDefault":"Default","me.hoursStated":"Your choice","me.hoursReset":"Reset",
+      "me.quietDays":"Quiet days","me.quietNone":"No quiet days","me.quietDefault":"Default",
+      "me.quietShabbat":"Saturday: candle-lighting to havdalah",
+      "me.holidays":"Holidays as quiet days",
+      "me.holidaySub.jewish":"Yom tov only, not Chol HaMoed, Chanukah or Purim",
+      "me.holidaySub.christian":"Christmas, Good Friday and Easter",
+      "me.holidaySub.muslim":"The first day of Eid al-Fitr and of Eid al-Adha",
+      "me.calendar":"Holiday calendar","me.cal.jewish":"Jewish","me.cal.christian":"Christian","me.cal.muslim":"Muslim",
+      "me.whenNote":"Outside these hours and on quiet days Allma doesn't start a conversation, and anything waiting goes out once they end. A reminder you asked for at a set time still arrives on time.",
+      "me.digest":"Daily summary","me.digestOn":"Get a daily summary","me.digestOff":"Off","me.digestAt":"At {times}",
+      "me.digestTimes":"At what times (up to four)","me.digestAdd":"Time","me.digestScope":"How much detail",
+      "me.scope.summary":"Short","me.scope.today":"Today only","me.scope.full":"Everything",
+      "me.olmaForm":"How she speaks of herself","me.olmaFem":"As she","me.olmaMasc":"As he",
+      "me.language":"Your language together",
+      "me.taskCal":"Dated tasks on your calendar","me.taskCalSub":"Google Calendar · entries already there stay when you turn it off",
+      "me.knows":"What Allma knows","me.knowsRow":"Things Allma remembers",
+      "me.facts.n0":"Nothing saved yet","me.facts.n1":"One thing","me.facts.nN":"{n} things",
+      "me.fqTitle":"Tell her more","me.fqHint":"Short questions, and any can be skipped",
+      "me.fqSave":"Save","me.fqSkip":"Skip","me.fqTo":"to",
+      "me.fqAllDone":"No more questions for now. Everything else comes from your chats.",
+      "me.factsList":"Already known","me.factDel":"Delete",
+      "me.factsEmpty":"Nothing here yet. Start with the questions above, or just tell her in a chat.",
+      "fcat.work":"Work","fcat.family":"Family","fcat.people":"People","fcat.health":"Health",
+      "fcat.plans":"Plans","fcat.habits":"Habits","fcat.context":"General",
+      "toast.hoursEmpty":"Start and end can't be the same time",
+      "toast.allDays":"Seven quiet days is a pause, and that has its own button below",
+      "toast.digestMax":"Up to four summaries a day",
+      "toast.calNeeded":"Connect Google Calendar with edit access first",
+      "toast.factSaved":"Allma will remember","toast.factForgot":"Forgotten",
+      "toast.factFirstPerson":"Try it without “my”, e.g. “a dog called Rex”",
+      "toast.factDated":"That sounds like it has a date, so it's better saved as a task",
+      "toast.factPhone":"Phone numbers belong in contacts, not here",
+      "toast.personal":"Details saved","toast.bday":"Birthday saved",
+      "toast.olmaFem":"She'll speak of herself as she","toast.olmaMasc":"He'll speak of himself as he",
+      "toast.lang":"Chat language updated",
 
       "city.title":"Where are you?","city.search":"Search for a city","city.none":"No city by that name.",
 
@@ -4782,6 +5137,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         var pact = PERMACT[sw.dataset.p];
         if(pact) refreshPermAction(pact.attr, f.id, on);
       }
+      if(sw.id === "holidaySwitch" || sw.id === "digestSwitch" || sw.id === "taskCalSwitch"){ meSwitch(sw, on); return; }
       if(sw.id === "sRemind"){ $("#sRemindFold").classList.toggle("open", on); commit(); }
       if(sw.id === "sAllDay" || sw.id === "sCal") commit();
       return;
@@ -5964,7 +6320,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   function renderCal(){ $("#calPop").innerHTML = calHTML(); placeCal(); }
   function openCal(el){
     calAnchor = el; calPane = "days";
-    var v = el.dataset.val, d = v ? new Date(v + "T00:00:00") : new Date();
+    /* An empty field may name where to start: a birthday picker that opens on
+       this month would be thirty taps from anybody's actual birthday. */
+    var v = el.dataset.val || el.dataset.calstart, d = v ? new Date(v + "T00:00:00") : new Date();
     calY = d.getFullYear(); calM = d.getMonth();
     $("#calScrim").hidden = false; $("#calPop").hidden = false;
     renderCal();
@@ -6007,6 +6365,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          one — writing it here too was a second author for one label */
       if(!v){ $("#sCal").setAttribute("aria-checked", "false"); }
       commit();
+    } else if(el.id === "bday"){
+      el.textContent = v ? longDate(v) : t("sheet.noDate");
+      paintAvatars();
+      API.setPersonal({birthDate:v || null});
+      toast(t("toast.bday"));
     } else {
       el.textContent = v ? longDate(v) : t("sheet.noDate");
       toast(t("toast.updated"));
@@ -7903,7 +8266,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     return on && on.dataset.g === "f" ? "f" : "m";
   }
   function myBirthday(){
-    var v = $("#bday").value;
+    var v = $("#bday").dataset.val;
     if(!v) return false;
     return isBirthday(+v.slice(5,7) + "-" + (+v.slice(8,10)));
   }
@@ -7931,7 +8294,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var a = e.target.closest(".avatar, .fav");
     if(a) hop(a);
   });
-  $("#bday").addEventListener("change", paintAvatars);
   $("#fname").addEventListener("input", syncName);
   $("#lname").addEventListener("input", syncName);
   $("#oname").addEventListener("input", syncName);
@@ -7968,12 +8330,571 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     var b = e.target.closest("button");
     if(!b) return;
     $$("button", this).forEach(function(x){ x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
+    ME.gender = b.dataset.g === "f" ? "female" : "male";
     paintAvatars();
     /* the greeting on the connections page is gendered, so it moves with this */
     $("#toolsH").textContent = brandTag(myGender());
     $("#bigAvatar").classList.remove("pop"); void $("#bigAvatar").offsetWidth; $("#bigAvatar").classList.add("pop");
+    API.setPersonal({gender:ME.gender});
     toast(t(b.dataset.g === "f" ? "toast.fem" : "toast.masc"));
   });
+
+  /* ═════════════════ profile settings ═════════════════
+     Everything below saves as it changes, through the same domain calls the
+     chat tools make (domain/user-dashboard-write.js). The page keeps its own
+     copy of each value so a tap moves the control at once; a refusal reloads
+     the page's data, so the next paint is what is really stored.
+
+     In design mode (nothing served) these are seeds, chosen to show every
+     state a real person can be in: a default window, a stated quiet day,
+     chagim off, a summary on, and a few questions already answered. */
+  var ME = {gender:null, joined:"2026-05-12", olmaGender:"female", locale:"he", taskCal:false};
+  var SCHED = {start:"09:00", end:"21:00", source:"default", def:{start:"09:00", end:"21:00"},
+               days:[6], daysSource:"default", holidays:false, calendar:"jewish", shabbat:true};
+  var DIGEST = {times:["08:00"], scope:"summary"}, lastDigestTimes = ["08:00"];
+  var FACTS = [
+    {id:"sf1", category:"work", fact:{he:"מבנה העבודה: משמרות", en:"Work pattern: Shifts"}},
+    {id:"sf2", category:"family", fact:{he:"יש כלבה בשם לולה", en:"Has a dog called Lola"}},
+    {id:"sf3", category:"habits", fact:{he:"שותה קפה רק עד הצהריים", en:"Only drinks coffee until noon"}}
+  ];
+  var FQ = [
+    {key:"work_hours", type:"range", category:"work",
+     q:{he:"מה שעות העבודה שלך?", en:"What are your working hours?"}, label:{he:"שעות עבודה", en:"Working hours"}},
+    {key:"work_days", type:"days", category:"work",
+     q:{he:"באילו ימים בשבוע יש עבודה?", en:"Which days of the week do you work?"}, label:{he:"ימי עבודה", en:"Work days"}},
+    {key:"work_place", type:"choice", category:"work",
+     q:{he:"מאיפה עובדים?", en:"Where do you work from?"}, label:{he:"מקום העבודה", en:"Works from"},
+     options:[{id:"office", label:{he:"מהמשרד", en:"The office"}}, {id:"home", label:{he:"מהבית", en:"Home"}},
+              {id:"hybrid", label:{he:"היברידי", en:"Hybrid"}}, {id:"field", label:{he:"בשטח", en:"On the road"}}]},
+    {key:"wake_time", type:"time", category:"habits",
+     q:{he:"באיזו שעה בדרך כלל קמים?", en:"What time do you usually get up?"}, label:{he:"שעת קימה רגילה", en:"Usually up at"}},
+    {key:"sport", type:"text", category:"habits",
+     q:{he:"איזה ספורט עושים?", en:"What kind of exercise do you do?"}, label:{he:"ספורט", en:"Exercise"},
+     placeholder:{he:"למשל: ריצה, יוגה, חדר כושר", en:"e.g. running, yoga, the gym"}},
+    {key:"kids", type:"choice", category:"family",
+     q:{he:"יש ילדים?", en:"Do you have children?"}, label:{he:"ילדים", en:"Children"},
+     options:[{id:"0", label:{he:"אין", en:"None"}}, {id:"1", label:{he:"ילד אחד", en:"One"}},
+              {id:"2", label:{he:"שניים", en:"Two"}}, {id:"3", label:{he:"שלושה", en:"Three"}}]}
+  ];
+  /* The order a question was first offered in, so a deleted answer puts its
+     question back where it belongs rather than at the end of the queue. */
+  var FQ_ORDER = {};
+  FQ.forEach(function(p, i){ FQ_ORDER[p.key] = i; });
+  var FQ_SHOWN = 3;
+  /* Answers being typed into a card, by question key. Kept outside the DOM so a
+     redraw (a language switch, a reload after some other tap) does not throw
+     away half an answer. */
+  var fqDraft = {};
+  var LANGS = [{v:"he", n:"עברית"}, {v:"en", n:"English"}, {v:"ar", n:"العربية"}, {v:"ru", n:"Русский"}];
+
+  function flashSaved(id){
+    var el = $(id);
+    if(!el) return;
+    el.classList.add("show");
+    clearTimeout(el._t);
+    el._t = setTimeout(function(){ el.classList.remove("show"); }, 1400);
+  }
+  function monthYear(v){
+    if(!v) return "";
+    return new Date(v + "T12:00:00").toLocaleDateString(loc(), {month:"long", year:"numeric"});
+  }
+
+  /* ── who I am ── */
+  function renderPersonal(){
+    $("#whoSince").textContent = ME.joined ? t("me.since", {when:monthYear(ME.joined)}) : "";
+    $$("#genderSeg button").forEach(function(b){
+      var want = ME.gender === "female" ? "f" : ME.gender === "male" ? "m" : "";
+      b.setAttribute("aria-pressed", b.dataset.g === want ? "true" : "false");
+    });
+  }
+  function saveName(){
+    var f = $("#fname").value.trim(), l = $("#lname").value.trim();
+    if(!f){ $("#fname").value = L(PROFILE.first); syncName(); return; }
+    if(f === L(PROFILE.first) && l === L(PROFILE.last)) return;
+    PROFILE.first = f; PROFILE.last = l;
+    API.setName(f, l);
+    toast(t("toast.personal"));
+  }
+  $("#fname").addEventListener("change", saveName);
+  $("#lname").addEventListener("change", saveName);
+  /* Her default name is not a name they chose: leaving the box on "עולמה"
+     (or clearing it) is the default, and is sent as "" so the card never
+     learns to insist on the name she already has. */
+  var OLMA_DEFAULT = PROFILE.olma;
+  $("#oname").addEventListener("change", function(){
+    var v = this.value.trim();
+    if(v === OLMA_DEFAULT.he || v === OLMA_DEFAULT.en) v = "";
+    if(v === (PROFILE.olmaCustom || "")) return;
+    PROFILE.olmaCustom = v;
+    PROFILE.olma = v || OLMA_DEFAULT;
+    this.value = L(PROFILE.olma);
+    API.setAssistant({name:v});
+    syncName();
+    toast(t("toast.personal"));
+  });
+
+  /* ── when she may write ── */
+  function renderSchedule(){
+    $("#hoursFrom").textContent = SCHED.start;
+    $("#hoursTo").textContent = SCHED.end;
+    var hs = $("#hoursSub");
+    hs.classList.toggle("auto", SCHED.source === "default");
+    hs.innerHTML = SCHED.source === "default"
+      ? esc(t("me.hoursDefault"))
+      : esc(t("me.hoursStated")) + ' · <button class="linkbtn" id="hoursReset" style="font-size:13px">' + esc(t("me.hoursReset")) + "</button>";
+
+    $("#quietDays").innerHTML = D.days.map(function(letter, i){
+      var on = SCHED.days.indexOf(i) > -1;
+      return '<button data-qday="' + i + '" aria-pressed="' + on + '" aria-label="' + esc(D.full[i]) + '">' + esc(letter) + "</button>";
+    }).join("");
+    var qs = [];
+    if(!SCHED.days.length) qs.push(t("me.quietNone"));
+    else {
+      /* Saturday in an Israeli zone is named for what the gate really keeps:
+         candle-lighting to havdalah, beside any other day they chose. */
+      var shab = SCHED.shabbat && SCHED.days.indexOf(6) > -1;
+      var plain = SCHED.days.filter(function(i){ return !(shab && i === 6); })
+        .map(function(i){ return D.full[i]; }).join(", ");
+      if(plain) qs.push(plain);
+      if(shab) qs.push(t("me.quietShabbat"));
+      if(SCHED.daysSource === "default") qs.push(t("me.quietDefault"));
+    }
+    $("#quietSub").textContent = qs.join(" · ");
+    $("#quietSub").classList.toggle("auto", SCHED.daysSource === "default");
+
+    $("#holidaySwitch").setAttribute("aria-checked", SCHED.holidays ? "true" : "false");
+    var known = {jewish:1, christian:1, muslim:1};
+    $("#holidaySub").textContent = known[SCHED.calendar] ? t("me.holidaySub." + SCHED.calendar) : "";
+    $$("#calendarSeg button").forEach(function(b){
+      b.setAttribute("aria-pressed", b.dataset.calkind === SCHED.calendar ? "true" : "false");
+    });
+    $("#whenNote").textContent = t("me.whenNote");
+  }
+  function openTime(input, value){
+    input.value = value || "";
+    try{ input.showPicker(); }catch(err){ input.focus(); input.click(); }
+  }
+  $("#hoursFrom").addEventListener("click", function(){ openTime($("#hoursFromIn"), SCHED.start); });
+  $("#hoursTo").addEventListener("click", function(){ openTime($("#hoursToIn"), SCHED.end); });
+  function hoursChanged(which, v){
+    if(!v) return;
+    var start = which === "start" ? v : SCHED.start, end = which === "end" ? v : SCHED.end;
+    if(start === end){ toast(t("toast.hoursEmpty")); return; }
+    SCHED.start = start; SCHED.end = end; SCHED.source = "stated";
+    renderSchedule();
+    var chip = $(which === "start" ? "#hoursFrom" : "#hoursTo");
+    chip.classList.remove("pop"); void chip.offsetWidth; chip.classList.add("pop");
+    API.setAvailability(start, end, function(){ flashSaved("#whenSaved"); });
+  }
+  $("#hoursFromIn").addEventListener("change", function(){ hoursChanged("start", this.value); });
+  $("#hoursToIn").addEventListener("change", function(){ hoursChanged("end", this.value); });
+  $("#hoursSub").addEventListener("click", function(e){
+    if(!e.target.closest("#hoursReset")) return;
+    SCHED.start = SCHED.def.start; SCHED.end = SCHED.def.end; SCHED.source = "default";
+    renderSchedule();
+    API.setAvailability(null, null, function(){ flashSaved("#whenSaved"); });
+  });
+  $("#quietDays").addEventListener("click", function(e){
+    var b = e.target.closest("[data-qday]");
+    if(!b) return;
+    var d = +b.dataset.qday, i = SCHED.days.indexOf(d);
+    var next = i > -1 ? SCHED.days.filter(function(x){ return x !== d; }) : SCHED.days.concat([d]).sort();
+    if(next.length >= 7){ toast(t("toast.allDays")); return; }
+    SCHED.days = next; SCHED.daysSource = "stated";
+    renderSchedule();
+    var nb = $('#quietDays [data-qday="' + d + '"]');
+    if(nb){ nb.classList.add("pop"); }
+    API.setQuietDays({days:SCHED.days}, function(){ flashSaved("#whenSaved"); });
+  });
+  $("#calendarSeg").addEventListener("click", function(e){
+    var b = e.target.closest("[data-calkind]");
+    if(!b || b.dataset.calkind === SCHED.calendar) return;
+    SCHED.calendar = b.dataset.calkind;
+    renderSchedule();
+    API.setQuietDays({days:SCHED.days, calendar:SCHED.calendar}, function(){ flashSaved("#whenSaved"); });
+  });
+
+  /* ── the daily summary ── */
+  function renderDigest(){
+    var on = DIGEST.times.length > 0;
+    $("#digestSwitch").setAttribute("aria-checked", on ? "true" : "false");
+    $("#digestFold").classList.toggle("open", on);
+    $("#digestSub").textContent = on
+      ? t("me.digestAt", {times:DIGEST.times.join(", ")}) + " · " + t("me.scope." + DIGEST.scope)
+      : t("me.digestOff");
+    $("#digestTimes").innerHTML = DIGEST.times.map(function(tm){
+      return '<button class="chip tchip" data-dtime="' + esc(tm) + '" aria-label="' + esc(tm) + '">' + esc(tm) + "<i>&#10005;</i></button>";
+    }).join("") + (DIGEST.times.length < 4
+      ? '<button class="chip tchip add" id="digestAdd"><svg><use href="#i-plus"/></svg>' + esc(t("me.digestAdd")) + "</button>"
+      : "");
+    $$("#digestScope button").forEach(function(b){
+      b.setAttribute("aria-pressed", b.dataset.scope === DIGEST.scope ? "true" : "false");
+    });
+  }
+  function saveDigest(patch){
+    renderDigest();
+    API.setDigest(patch, function(){ flashSaved("#digestSaved"); });
+  }
+  $("#digestTimes").addEventListener("click", function(e){
+    if(e.target.closest("#digestAdd")){ openTime($("#digestTimeIn"), ""); return; }
+    var c = e.target.closest("[data-dtime]");
+    if(!c) return;
+    DIGEST.times = DIGEST.times.filter(function(x){ return x !== c.dataset.dtime; });
+    if(DIGEST.times.length) lastDigestTimes = DIGEST.times.slice();
+    saveDigest({times:DIGEST.times});
+  });
+  $("#digestTimeIn").addEventListener("change", function(){
+    var v = this.value;
+    if(!v || DIGEST.times.indexOf(v) > -1) return;
+    if(DIGEST.times.length >= 4){ toast(t("toast.digestMax")); return; }
+    DIGEST.times = DIGEST.times.concat([v]).sort();
+    lastDigestTimes = DIGEST.times.slice();
+    saveDigest({times:DIGEST.times});
+    var nc = $('#digestTimes [data-dtime="' + v + '"]');
+    if(nc) nc.classList.add("enter");
+  });
+  $("#digestScope").addEventListener("click", function(e){
+    var b = e.target.closest("[data-scope]");
+    if(!b || b.dataset.scope === DIGEST.scope) return;
+    DIGEST.scope = b.dataset.scope;
+    saveDigest({scope:DIGEST.scope});
+  });
+
+  /* ── who she is to me ── */
+  function renderOlmaRows(){
+    $$("#olmaGenderSeg button").forEach(function(b){
+      b.setAttribute("aria-pressed", b.dataset.og === ME.olmaGender ? "true" : "false");
+    });
+    var cur = String(ME.locale || "he").slice(0, 2);
+    $("#langChips").innerHTML = LANGS.map(function(l){
+      return '<button class="chip" data-lang="' + l.v + '" aria-pressed="' + (l.v === cur) + '" lang="' + l.v + '">' + esc(l.n) + "</button>";
+    }).join("");
+    $("#taskCalSwitch").setAttribute("aria-checked", ME.taskCal ? "true" : "false");
+  }
+  $("#olmaGenderSeg").addEventListener("click", function(e){
+    var b = e.target.closest("[data-og]");
+    if(!b || b.dataset.og === ME.olmaGender) return;
+    ME.olmaGender = b.dataset.og;
+    renderOlmaRows();
+    API.setAssistant({gender:ME.olmaGender});
+    toast(t(ME.olmaGender === "male" ? "toast.olmaMasc" : "toast.olmaFem"));
+  });
+  $("#langChips").addEventListener("click", function(e){
+    var b = e.target.closest("[data-lang]");
+    if(!b || b.dataset.lang === String(ME.locale || "").slice(0, 2)) return;
+    ME.locale = b.dataset.lang;
+    renderOlmaRows();
+    API.setLocale(ME.locale);
+    /* The page itself speaks the two languages it has strings for; any other
+       choice changes the conversation and leaves the page in Hebrew. */
+    var pageLang = ME.locale === "en" ? "en" : "he";
+    if(pageLang !== LOCALE) setLocale(pageLang);
+    toast(t("toast.lang"));
+  });
+
+  /* The three switches on this tab, handed over by the page's one switch
+     listener after it has already flipped and animated the control. */
+  function meSwitch(sw, on){
+    if(sw.id === "holidaySwitch"){
+      SCHED.holidays = on;
+      renderSchedule();
+      API.setQuietDays({days:SCHED.days, holidays:on,
+        calendar:{jewish:1, christian:1, muslim:1}[SCHED.calendar] ? SCHED.calendar : null},
+        function(){ flashSaved("#whenSaved"); });
+      return;
+    }
+    if(sw.id === "digestSwitch"){
+      DIGEST.times = on ? (lastDigestTimes.length ? lastDigestTimes.slice() : ["08:00"]) : [];
+      saveDigest(on ? {times:DIGEST.times, scope:DIGEST.scope} : {times:[]});
+      return;
+    }
+    if(sw.id === "taskCalSwitch"){
+      ME.taskCal = on;
+      API.setCalendarSync(on, function(ok2){
+        if(!ok2){ ME.taskCal = !on; renderOlmaRows(); return; }
+        toast(t(on ? "toast.on" : "toast.off"));
+      });
+    }
+  }
+
+  /* ── what she knows ── */
+  function renderFactsCount(){
+    $("#factsSub").textContent = pl("me.facts", FACTS.length);
+  }
+  function factHTML(f){
+    return '<div class="factwrap" data-factw="' + esc(f.id) + '"><div class="fact">' +
+      '<span class="ftxt">' + esc(L(f.fact)) + "</span>" +
+      '<span class="fcat">' + esc(t("fcat." + (f.category || "context"))) + "</span>" +
+      '<button class="fdel" data-fdel="' + esc(f.id) + '" aria-label="' + esc(t("me.factDel")) + '">&#10005;</button>' +
+    "</div></div>";
+  }
+  function renderFactList(){
+    $("#factList").innerHTML = FACTS.map(factHTML).join("");
+    $("#factsEmpty").hidden = FACTS.length > 0;
+    $("#factsHead").hidden = FACTS.length === 0;
+    renderFactsCount();
+  }
+  function fqValid(p, a){
+    if(!a) return false;
+    if(p.type === "range") return !!(a.from && a.to && a.from !== a.to);
+    if(p.type === "time") return !!a.time;
+    if(p.type === "choice") return !!a.value;
+    if(p.type === "days") return !!(a.days && a.days.length);
+    if(p.type === "text") return !!(a.text && a.text.trim());
+    return false;
+  }
+  /* What the fact will say — drawn here so the answer can fly into the list
+     the moment it is saved. The server composes the stored line itself, in
+     the same shape, and its version replaces this one when it answers. */
+  function fqCompose(p, a){
+    var v = "";
+    if(p.type === "range") v = a.from + "–" + a.to;
+    else if(p.type === "time") v = a.time;
+    else if(p.type === "choice") v = L((p.options.filter(function(o){ return o.id === a.value; })[0] || {}).label) || "";
+    else if(p.type === "days") v = a.days.slice().sort().map(function(i){ return D.full[i]; }).join(", ");
+    else v = a.text.trim();
+    return (p.label ? L(p.label) + ": " : "") + v;
+  }
+  function fqInputHTML(p){
+    var a = fqDraft[p.key] || {};
+    if(p.type === "range"){
+      return '<input class="tinput fqtime" type="time" data-fqf="from" value="' + esc(a.from || "") + '" aria-label="' + esc(L(p.q)) + '">' +
+        '<span class="fqto">' + esc(t("me.fqTo")) + "</span>" +
+        '<input class="tinput fqtime" type="time" data-fqf="to" value="' + esc(a.to || "") + '" aria-label="' + esc(t("me.fqTo")) + '">';
+    }
+    if(p.type === "time"){
+      return '<input class="tinput fqtime" type="time" data-fqf="time" value="' + esc(a.time || "") + '" aria-label="' + esc(L(p.q)) + '">';
+    }
+    if(p.type === "choice"){
+      return p.options.map(function(o){
+        return '<button class="chip mini" data-fqopt="' + esc(o.id) + '" aria-pressed="' + (a.value === o.id) + '">' + esc(L(o.label)) + "</button>";
+      }).join("");
+    }
+    if(p.type === "days"){
+      var on = a.days || [];
+      return '<div class="daypick">' + D.days.map(function(letter, i){
+        return '<button data-fqday="' + i + '" aria-pressed="' + (on.indexOf(i) > -1) + '" aria-label="' + esc(D.full[i]) + '">' + esc(letter) + "</button>";
+      }).join("") + "</div>";
+    }
+    return '<input class="fqtext" type="text" maxlength="60" data-fqf="text" value="' + esc(a.text || "") +
+      '" placeholder="' + esc(L(p.placeholder) || "") + '" aria-label="' + esc(L(p.q)) + '">';
+  }
+  function fqCardHTML(p, cls){
+    return '<div class="fqwrap' + (cls ? " " + cls : "") + '" data-fqw="' + esc(p.key) + '"><div class="fq">' +
+      '<div class="fqtop"><div class="fqq">' + esc(L(p.q)) + "</div>" +
+        '<button class="fqskip" data-fqskip="' + esc(p.key) + '" aria-label="' + esc(t("me.fqSkip")) + '" title="' + esc(t("me.fqSkip")) + '">&#10005;</button></div>' +
+      '<div class="fqbody"><div class="fqin">' + fqInputHTML(p) + "</div>" +
+        '<button class="fqok" data-fqok="' + esc(p.key) + '"' + (fqValid(p, fqDraft[p.key]) ? "" : " disabled") +
+        ' aria-label="' + esc(t("me.fqSave")) + '"><svg><use href="#i-check"/></svg></button></div>' +
+    "</div></div>";
+  }
+  function renderFactQs(){
+    var shown = FQ.slice(0, FQ_SHOWN);
+    $("#factQs").innerHTML = shown.length
+      ? shown.map(function(p){ return fqCardHTML(p); }).join("")
+      : '<p class="fqdone">' + esc(t("me.fqAllDone")) + "</p>";
+  }
+  function renderFacts(){
+    renderFactQs();
+    renderFactList();
+  }
+  function fqByKey(k){ return FQ.filter(function(p){ return p.key === k; })[0]; }
+  function refreshOk(key){
+    var p = fqByKey(key), btn = $('#factQs [data-fqok="' + key + '"]');
+    if(p && btn) btn.disabled = !fqValid(p, fqDraft[key]);
+  }
+  $("#factsRow").addEventListener("click", function(){
+    var on = this.getAttribute("aria-expanded") !== "true";
+    this.setAttribute("aria-expanded", on ? "true" : "false");
+    $("#factsFold").classList.toggle("open", on);
+  });
+  $("#factQs").addEventListener("input", function(e){
+    var f = e.target.closest("[data-fqf]");
+    if(!f) return;
+    var key = f.closest("[data-fqw]").dataset.fqw;
+    fqDraft[key] = fqDraft[key] || {};
+    fqDraft[key][f.dataset.fqf] = f.value;
+    refreshOk(key);
+  });
+  $("#factQs").addEventListener("keydown", function(e){
+    if(e.key !== "Enter" || !e.target.closest(".fqtext")) return;
+    var key = e.target.closest("[data-fqw]").dataset.fqw, btn = $('#factQs [data-fqok="' + key + '"]');
+    if(btn && !btn.disabled){ e.preventDefault(); btn.click(); }
+  });
+  $("#factQs").addEventListener("click", function(e){
+    var w = e.target.closest("[data-fqw]");
+    if(!w) return;
+    var key = w.dataset.fqw, p = fqByKey(key);
+    if(!p) return;
+    var opt = e.target.closest("[data-fqopt]");
+    if(opt){
+      fqDraft[key] = {value:opt.dataset.fqopt};
+      $$("[data-fqopt]", w).forEach(function(b){ b.setAttribute("aria-pressed", b === opt ? "true" : "false"); });
+      refreshOk(key); return;
+    }
+    var dayb = e.target.closest("[data-fqday]");
+    if(dayb){
+      var d = +dayb.dataset.fqday, cur = (fqDraft[key] && fqDraft[key].days) || [];
+      cur = cur.indexOf(d) > -1 ? cur.filter(function(x){ return x !== d; }) : cur.concat([d]);
+      fqDraft[key] = {days:cur};
+      dayb.setAttribute("aria-pressed", cur.indexOf(d) > -1 ? "true" : "false");
+      dayb.classList.remove("pop"); void dayb.offsetWidth; dayb.classList.add("pop");
+      refreshOk(key); return;
+    }
+    if(e.target.closest("[data-fqskip]")){ skipQuestion(w, p); return; }
+    var okb = e.target.closest("[data-fqok]");
+    if(okb && !okb.disabled) saveQuestion(w, p, okb);
+  });
+
+  var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  /* The next question in line, drawn into the slot a card just left. */
+  function bringNext(){
+    var list = $("#factQs"), showing = $$("[data-fqw]", list).map(function(el){ return el.dataset.fqw; });
+    var next = FQ.filter(function(p){ return showing.indexOf(p.key) < 0; })[0];
+    if(showing.length >= FQ_SHOWN) return;
+    if(!next){
+      if(!showing.length) list.innerHTML = '<p class="fqdone">' + esc(t("me.fqAllDone")) + "</p>";
+      return;
+    }
+    list.insertAdjacentHTML("beforeend", fqCardHTML(next, "entering"));
+    var el = list.lastElementChild;
+    void el.offsetWidth;
+    requestAnimationFrame(function(){ el.classList.remove("entering"); });
+  }
+  function removeCard(w, cls, after){
+    w.classList.add(cls);
+    setTimeout(function(){ w.remove(); if(after) after(); }, REDUCED ? 0 : 420);
+  }
+  /* A question they would rather not answer goes to the back of the line —
+     for this visit only. Nothing is stored: skipping is not an answer, and a
+     question skipped today is a fair question next month. */
+  function skipQuestion(w, p){
+    FQ = FQ.filter(function(x){ return x.key !== p.key; }).concat([p]);
+    removeCard(w, "skipping", function(){
+      var list = $("#factQs");
+      var showing = $$("[data-fqw]", list).map(function(el){ return el.dataset.fqw; });
+      /* with three or fewer left, the skipped one is the only "next" there is */
+      var next = FQ.filter(function(x){ return showing.indexOf(x.key) < 0 && x.key !== p.key; })[0] ||
+                 (FQ.length > showing.length ? p : null);
+      if(!next) return;
+      list.insertAdjacentHTML("beforeend", fqCardHTML(next, "entering"));
+      var el = list.lastElementChild; void el.offsetWidth;
+      requestAnimationFrame(function(){ el.classList.remove("entering"); });
+    });
+  }
+  /* Saved: the tick turns green, the answer lifts off the card as a pill and
+     flies to the top of the list, the card folds away and the next question
+     rises into its place. Three movements, one gesture. */
+  function saveQuestion(w, p, okb){
+    var answer = fqDraft[p.key];
+    if(!fqValid(p, answer)) return;
+    var text = fqCompose(p, answer);
+    var local = {id:"new-" + p.key + "-" + Date.now(), category:p.category, fact:text, promptKey:p.key, promptQ:p};
+    w.querySelector(".fq").classList.add("done");
+    okb.disabled = true;
+    FQ = FQ.filter(function(x){ return x.key !== p.key; });
+    delete fqDraft[p.key];
+
+    /* Where the answer will LAND, measured before anything moves: the card
+       leaving and the next one arriving cancel each other out, so the top of
+       the list now is the top of the list once both have finished. With no
+       next question the list rises by one card, and the target with it. */
+    var from = okb.getBoundingClientRect();
+    var list = $("#factList").getBoundingClientRect();
+    var showing = $$("#factQs [data-fqw]").length;
+    var willRefill = FQ.length >= showing;
+    var lift = willRefill ? 0 : w.getBoundingClientRect().height + 9;
+
+    FACTS = [local].concat(FACTS);
+    renderFactsCount();
+
+    var fly = null;
+    if(!REDUCED && document.body.animate){
+      fly = document.createElement("div");
+      fly.className = "factfly";
+      fly.textContent = text;
+      document.body.appendChild(fly);
+      var fw = fly.offsetWidth, fh = fly.offsetHeight;
+      var x0 = from.left + from.width / 2 - fw / 2, y0 = from.top + from.height / 2 - fh / 2;
+      var x1 = LOCALE === "en" ? list.left : list.right - fw;
+      var y1 = list.top + 20 - fh / 2 - lift;
+      fly.style.left = "0px"; fly.style.top = "0px";
+      fly.animate([
+        {transform:"translate(" + x0 + "px," + y0 + "px) scale(.4)", opacity:0},
+        {transform:"translate(" + x0 + "px," + (y0 - 22) + "px) scale(1)", opacity:1, offset:.22},
+        {transform:"translate(" + x1 + "px," + y1 + "px) scale(.96)", opacity:1, offset:.82},
+        {transform:"translate(" + x1 + "px," + y1 + "px) scale(.9)", opacity:0}
+      ], {duration:980, easing:"cubic-bezier(.45,.05,.25,1)"}).onfinish = function(){ fly.remove(); };
+    }
+
+    setTimeout(function(){ removeCard(w, "leaving", bringNext); }, REDUCED ? 0 : 180);
+    setTimeout(function(){
+      $("#factsEmpty").hidden = true;
+      $("#factsHead").hidden = false;
+      $("#factList").insertAdjacentHTML("afterbegin", factHTML(local));
+      var row = $("#factList").firstElementChild;
+      row.classList.add("arriving");
+      row.querySelector(".fact").classList.add("fresh");
+      void row.offsetWidth;
+      row.classList.remove("arriving");
+      setTimeout(function(){ row.querySelector(".fact").classList.remove("fresh"); }, 1400);
+    }, REDUCED ? 0 : 640);
+
+    toast(t("toast.factSaved"));
+    API.answerFactPrompt(p.key, answer, function(data){
+      if(!data || !data.fact) return;
+      /* The server's line and id replace the page's guess, in place — and
+         wherever the row is by then, including not yet drawn. */
+      var was = local.id;
+      local.id = data.fact.id; local.fact = data.fact.fact;
+      var wrap = $('[data-factw="' + was + '"]');
+      if(wrap){
+        wrap.dataset.factw = String(data.fact.id);
+        wrap.querySelector(".ftxt").textContent = data.fact.fact;
+        wrap.querySelector("[data-fdel]").dataset.fdel = String(data.fact.id);
+      }
+      if(data.replacedId){
+        FACTS = FACTS.filter(function(f){ return String(f.id) !== String(data.replacedId); });
+        var old = $('[data-factw="' + data.replacedId + '"]');
+        if(old) old.remove();
+        renderFactsCount();
+      }
+    });
+  }
+  $("#factList").addEventListener("click", function(e){
+    var b = e.target.closest("[data-fdel]");
+    if(!b) return;
+    var id = b.dataset.fdel, f = FACTS.filter(function(x){ return String(x.id) === id; })[0];
+    if(!f) return;
+    var wrap = b.closest("[data-factw]");
+    wrap.classList.add("gone");
+    FACTS = FACTS.filter(function(x){ return x !== f; });
+    renderFactsCount();
+    setTimeout(function(){
+      wrap.remove();
+      $("#factsEmpty").hidden = FACTS.length > 0;
+      $("#factsHead").hidden = FACTS.length === 0;
+    }, REDUCED ? 0 : 400);
+    toast(t("toast.factForgot"));
+    /* A deleted answer is a question again, in its old place in the line.
+       The page holds the question for an answer saved in this visit; for an
+       older one only the server does, so it is asked for the list again. */
+    var serverRow = !/^new-|^sf/.test(id);
+    if(f.promptKey && f.promptQ && !fqByKey(f.promptKey)){
+      FQ.push(f.promptQ);
+      FQ.sort(function(a, c){ return (FQ_ORDER[a.key] || 0) - (FQ_ORDER[c.key] || 0); });
+      bringNext();
+    }
+    if(serverRow) API.forgetFact(+id, function(){ if(f.promptKey && !f.promptQ) API.reload(); });
+  });
+
+  function renderMe(){
+    renderPersonal();
+    renderSchedule();
+    renderDigest();
+    renderOlmaRows();
+    renderFacts();
+  }
 
   /* ───────── tabs ───────── */
   var pill = $("#tabpill"), tabs = $$(".tab");
@@ -8105,6 +9026,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(mtOpen) renderMeet();
     renderCityRow();
     renderPause();
+    renderMe();
     $$("[data-cal]:not(#sDateRow)").forEach(function(el){
       el.textContent = el.dataset.val ? longDate(el.dataset.val) : t("sheet.noDate");
     });
@@ -8448,8 +9370,31 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          greeted everybody else as מירון דדוש. */
       PROFILE.first = d.user.firstName || "";
       PROFILE.last = d.user.lastName || "";
-      if(d.user.assistantName) PROFILE.olma = d.user.assistantName;
+      PROFILE.olmaCustom = d.user.assistantName || "";
+      PROFILE.olma = d.user.assistantName || OLMA_DEFAULT;
+      ME.gender = d.user.gender || null;
+      ME.joined = d.user.joinedOn || null;
+      ME.olmaGender = d.user.assistantGender === "male" ? "male" : "female";
+      ME.locale = d.user.locale || "he";
+      ME.taskCal = !!d.user.calendarSyncTasks;
+      $("#bday").dataset.val = d.user.birthDate || "";
+      DIGEST = {times:d.user.digestTimes || [], scope:d.user.digestScope || "summary"};
+      if(DIGEST.times.length) lastDigestTimes = DIGEST.times.slice();
     }
+    if(d.schedule){
+      var sc = d.schedule;
+      SCHED = {
+        start:sc.availability.start, end:sc.availability.end, source:sc.availability.source,
+        def:sc.defaultWindow || {start:"09:00", end:"21:00"},
+        days:sc.quietDays || [], daysSource:sc.quietDaysSource, holidays:!!sc.holidaysQuiet,
+        calendar:sc.calendar, shabbat:!!sc.shabbatWindow
+      };
+    }
+    FACTS = (d.facts || []).map(function(f){
+      return {id:f.id, category:f.category, fact:f.fact, promptKey:f.promptKey || null};
+    });
+    FQ = (d.factPrompts || []).slice();
+    FQ.forEach(function(p, i){ FQ_ORDER[p.key] = p.order != null ? p.order : i; });
     open = (d.tasks || []).map(liveTask);
     /* Rebuilt from scratch each time: an id that has left the server's answer
        has left the server, and treating it as known would turn the next save

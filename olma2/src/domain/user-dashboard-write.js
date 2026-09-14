@@ -575,7 +575,13 @@ const ACTIONS = {
   // The chat tool asks whether to remove those too; this page states that it
   // does not, rather than deleting a fortnight of entries on one tap.
   async setCalendarSync(client, userId, p) {
-    return taskCalendar.setSync(client, userId, p.on === true, { removeExisting: false });
+    const res = await taskCalendar.setSync(client, userId, p.on === true, { removeExisting: false });
+    // setSync's refusal is worded for the model ("offer start_calendar_connection");
+    // the page needs a reason it can turn into its own sentence.
+    if (!res.ok && !res.error.reason) {
+      return err(res.error.code, res.error.message, { reason: 'no_calendar' });
+    }
+    return res;
   },
 
   async forgetFact(client, userId, p) {

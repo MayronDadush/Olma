@@ -83,6 +83,16 @@ test('no day at all is saved as "none", never as a deleted row that brings Satur
   assert.deepEqual(q.data.days, []);
 });
 
+test('a days-only save keeps chagim as they were and does not spend the chat offer', async () => {
+  const u = await makeUser(db.pool, '+972531940008', { quietDays: 'sat,holidays', holidayAsked: null });
+  assert.equal((await act('setQuietDays', { days: [5, 6] }, u)).ok, true);
+  const { rows } = await db.pool.query(
+    `SELECT value FROM user_preferences WHERE user_id = $1 AND key = 'quiet_days'`, [u.id]);
+  assert.equal(rows[0].value, 'fri,sat,holidays');
+  const stamp = await db.pool.query(`SELECT holiday_quiet_asked_at FROM users WHERE id = $1`, [u.id]);
+  assert.equal(stamp.rows[0].holiday_quiet_asked_at, null);
+});
+
 test('seven quiet days is refused as a pause, and a bad day or calendar by name', async () => {
   const all = await act('setQuietDays', { days: [0, 1, 2, 3, 4, 5, 6] });
   assert.equal(all.error.reason, 'all_days');

@@ -254,9 +254,18 @@ async function setQuietDays(client, userId, { days, holidays: onHolidays, calend
       return err('invalid', `calendar must be one of: ${[...holidays.CALENDARS].join(', ')}`, { reason: 'calendar' });
     }
   }
+  // `holidays` left out means "not part of this change": a tap on a weekday
+  // must not quietly take chagim off, and must not count as answering the
+  // chagim question either (below).
+  let keepHolidays = onHolidays === true;
+  if (typeof onHolidays !== 'boolean') {
+    const { rows } = await client.query(
+      `SELECT value FROM user_preferences WHERE user_id = $1 AND key = 'quiet_days'`, [userId]);
+    keepHolidays = rows[0] ? parseHolidayQuiet(rows[0].value) : false;
+  }
   const names = [...set].sort((a, b) => a - b).map((n) => DAY_NAMES[n]);
   const parts = names.length ? names : ['none'];
-  if (onHolidays === true) parts.push('holidays');
+  if (keepHolidays) parts.push('holidays');
   const res = await remember(client, userId, 'quiet_days', parts.join(','));
   if (!res.ok) return res;
   if (cal) {
@@ -272,7 +281,7 @@ async function setQuietDays(client, userId, { days, holidays: onHolidays, calend
       `UPDATE users SET holiday_quiet_asked_at = COALESCE(holiday_quiet_asked_at, now()) WHERE id = $1`,
       [userId]);
   }
-  return ok({ days: [...set].sort((a, b) => a - b), holidays: onHolidays === true, calendar: cal });
+  return ok({ days: [...set].sort((a, b) => a - b), holidays: keepHolidays, calendar: cal });
 }
 
 module.exports = {

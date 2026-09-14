@@ -216,11 +216,17 @@ function lang(locale) {
   return String(locale || '').trim().toLowerCase().startsWith('en') ? 'en' : 'he';
 }
 
-// What the page draws: the question in their language, never the fact label
-// or the options' ids in any other language.
+// What the page draws: the question in their language, and nothing in any
+// other language.
 function forPage(prompt, locale) {
   const l = lang(locale);
-  const out = { key: prompt.key, type: prompt.type, category: prompt.category, q: prompt.q[l] };
+  // `label` lets the page draw the saved line the moment it is saved; the
+  // server's own composition replaces it when the write answers. `order` puts
+  // a question whose answer was deleted back in its place in the line.
+  const out = {
+    key: prompt.key, type: prompt.type, category: prompt.category,
+    q: prompt.q[l], label: prompt.label[l], order: PROMPTS.indexOf(prompt),
+  };
   if (prompt.options) out.options = prompt.options.map((o) => ({ id: o.id, label: o[l] }));
   if (prompt.ph) out.placeholder = prompt.ph[l];
   return out;
