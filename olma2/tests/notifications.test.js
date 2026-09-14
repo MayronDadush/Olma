@@ -236,7 +236,7 @@ test('connection approval notifies the requester and enables everything at once'
   assert.match(text, /without waiting to be asked again/);
   // ...and it must not send the agent chasing feature toggles any more
   assert.match(text, /enabled automatically/);
-  assert.ok(!text.includes('call grant_connection_feature'), 'no toggle step in the approval flow');
+  assert.ok(!text.includes('call set_connection_feature'), 'no toggle step in the approval flow');
 });
 
 test('a relayed message reaches the other side fenced, attributed, deduped', async () => {
@@ -267,7 +267,7 @@ test('the recipient can close the message lane; the sender hears why, actionably
     `SELECT id FROM connections WHERE status = 'active'
        AND ((requester_id = $1 AND target_id = $2) OR (requester_id = $2 AND target_id = $1))`,
     [miron.id, kapish.id]);
-  await call(kapish, 'revoke_connection_feature', { connection_id: Number(conn.id), feature: 'messages' });
+  await call(kapish, 'set_connection_feature', { connection_id: Number(conn.id), feature: 'messages', on: false });
 
   const refused = await call(miron, 'send_message_to_connection', { phone: kapish.phone, message: 'עוד משהו קטן' });
   assert.match(refused, /not_granted_by_them/);
@@ -278,7 +278,7 @@ test('the recipient can close the message lane; the sender hears why, actionably
   assert.match(still, /"id"/);
 
   // and kapish can reopen it himself
-  await call(kapish, 'grant_connection_feature', { connection_id: Number(conn.id), feature: 'messages' });
+  await call(kapish, 'set_connection_feature', { connection_id: Number(conn.id), feature: 'messages', on: true });
   const again = await call(miron, 'send_message_to_connection', { phone: kapish.phone, message: 'עכשיו זה עובר?' });
   assert.match(again, /"queued":true/);
 });
