@@ -1789,7 +1789,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 }
 .seg button{
   flex:1;padding:7px 4px;border-radius:8.5px;font-size:14.5px;font-weight:600;
-  color:var(--text-2);
+  color:var(--text-2);box-shadow:inset 0 0 0 1px var(--sep-2);
   transition:background var(--sw-t) var(--ease-io),color var(--sw-t) var(--ease-io),
              box-shadow var(--sw-t) var(--ease-io);
 }
@@ -2651,8 +2651,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
             <div class="digestvals"><button class="vchip set" id="digestTime"></button></div>
             <div class="flabel" data-i18n="me.digestScope"></div>
             <div class="seg" id="digestScope" role="group" data-i18n-label="me.digestScope">
-              <button aria-pressed="false" data-scope="summary" data-i18n="me.scope.summary"></button>
               <button aria-pressed="false" data-scope="today" data-i18n="me.scope.today"></button>
+              <button aria-pressed="false" data-scope="summary" data-i18n="me.scope.summary"></button>
               <button aria-pressed="false" data-scope="full" data-i18n="me.scope.full"></button>
             </div>
           </div></div></div>
@@ -8379,7 +8379,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   var ME = {gender:null, joined:"2026-05-12", locale:"he", taskCal:false};
   var SCHED = {start:"09:00", end:"21:00", source:"default", def:{start:"09:00", end:"21:00"},
                days:[6], daysSource:"default", holidays:false, calendar:"jewish", shabbat:true};
-  var DIGEST = {times:["08:00"], scope:"summary"}, lastDigestTimes = ["08:00"];
+  var DIGEST = {times:["08:00"], scope:"summary"}, lastDigestTimes = [];
   var FACTS = [
     {id:"sf1", category:"work", fact:{he:"מבנה העבודה: משמרות", en:"Work pattern: Shifts"}},
     {id:"sf2", category:"family", fact:{he:"יש כלבה בשם לולה", en:"Has a dog called Lola"}},
@@ -8627,7 +8627,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
   /* ── the daily summary ── */
   function renderDigest(){
-    var on = DIGEST.times.length > 0, time = DIGEST.times[0] || "08:00";
+    var on = DIGEST.times.length > 0, time = DIGEST.times[0] || SCHED.start;
     $("#digestSwitch").setAttribute("aria-checked", on ? "true" : "false");
     $("#digestFold").classList.toggle("open", on);
     $("#digestSub").textContent = on
@@ -8646,7 +8646,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   }
   $("#digestTime").addEventListener("click", function(){
     var btn = this;
-    openTimePop(btn, DIGEST.times[0] || "08:00", function(v){
+    openTimePop(btn, DIGEST.times[0] || SCHED.start, function(v){
       DIGEST.times = [v];
       lastDigestTimes = DIGEST.times.slice();
       btn.classList.remove("pop"); void btn.offsetWidth; btn.classList.add("pop");
@@ -8693,7 +8693,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       return;
     }
     if(sw.id === "digestSwitch"){
-      DIGEST.times = on ? (lastDigestTimes.length ? lastDigestTimes.slice() : ["08:00"]) : [];
+      DIGEST.times = on ? (lastDigestTimes.length ? lastDigestTimes.slice() : [SCHED.start]) : [];
       saveDigest(on ? {times:DIGEST.times, scope:DIGEST.scope} : {times:[]});
       return;
     }
