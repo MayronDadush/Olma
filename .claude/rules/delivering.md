@@ -156,7 +156,17 @@ title means this file. Grep the title, not the filename.
   (`HINTS.struckOut`, unchanged).
 
 - **The delivery gate is the chokepoint and a paused user has no exceptions** —
-  not reminders, not urgent, not another user's fan-out.
+  not reminders, not urgent, not another user's fan-out. **Save ONE, the
+  owner's (2026-09-13):** a `meeting_invite` to a coordination a ROOM started,
+  once per pause. The worker computes `pausedRoomInvite` (a `meeting_invite`
+  whose meeting has a `group_id` and is still negotiating, for somebody where
+  `pause.roomInviteSpent` is false) and never passes it to a sibling. The gate
+  lets it past the paused drop and the quiet drop, and nothing else: the night,
+  a quiet day and the budget still apply. `users.room_invite_sent_at` is
+  stamped only on a confirmed or timed-out send. Loosening any of those three
+  conditions makes the exception general, and a general exception means the
+  pause stops meaning anything (`incidents.md`, "A room counted in somebody
+  who had paused").
 
 - **An unstated quiet day is not "none" — it is Saturday or Sunday, and which
   one is a fact about the PERSON.** `domain/holidays.calendarFor` reads a

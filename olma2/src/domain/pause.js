@@ -20,6 +20,15 @@
 // them — is off. Replying when they write is not initiating, and stays on: a
 // person who writes wants something, and answering them is not the thing they
 // asked us to stop.
+//
+// ONE exception, and it is the owner's (2026-09-13): a paused person standing
+// in a WhatsApp room where a coordination starts hears about it once per
+// pause (`users.room_invite_sent_at`, migration 067). Being in the room is
+// not something the pause can see, and silently counting them in — as the
+// room did to Kapish — is worse than one message. Their first message after
+// it, whenever it comes, ends the pause (resumeAfterRoomInvite); a day of
+// silence takes them out of that coordination and every later one until then
+// (group-meetings.sweepSilentPausedMembers).
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const reminders = require('./reminders');
@@ -31,6 +40,18 @@ const reminders = require('./reminders');
 // person happened to press resume.
 // users.paused_reason for a pause the check-in ladder made (migration 049).
 const QUIET_LADDER = 'quiet_ladder';
+
+// How long a paused person's one coordination message keeps them in that
+// coordination with no answer, and how long after answering a "leave me
+// paused" still counts as the answer to it.
+const ROOM_INVITE_ANSWER_MS = 24 * 3600_000;
+
+// Has this pause already spent its one coordination message? Read off any row
+// carrying both columns (users, or groups.listMembers).
+function roomInviteSpent(row) {
+  if (!row || !row.paused_at || !row.room_invite_sent_at) return false;
+  return new Date(row.room_invite_sent_at).getTime() >= new Date(row.paused_at).getTime();
+}
 
 const MAX_CATCHUP_STEPS = 800; // ~2 years of daily; a guard, never a limit in practice
 
@@ -65,9 +86,21 @@ async function isPaused(client, userId) {
 async function pauseUser(client, userId, { note = null } = {}) {
   // paused_reason = NULL: this pause is THEIRS (or the admin's), so a ladder
   // pause already in place is taken over and stops ending on its own.
+  //
+  // Both room-invite stamps are carried forward when they answered their one
+  // coordination message in the last 24 hours. Writing ended the pause
+  // (resumeAfterRoomInvite) and "leave me paused" brings them here. Without
+  // this the fresh paused_at is a fresh allowance, so the next coordination
+  // reaches them again; and answered_at at the same moment is what keeps
+  // their NEXT message from ending this pause too.
   const { rows } = await client.query(
-    `UPDATE users SET paused_at = COALESCE(paused_at, now()), paused_reason = NULL WHERE id = $1
-      RETURNING id, paused_at`, [userId]);
+    `UPDATE users SET paused_at = COALESCE(paused_at, now()), paused_reason = NULL,
+            room_invite_sent_at = CASE WHEN room_invite_answered_at > now() - ($2::bigint * interval '1 millisecond')
+              THEN now() ELSE room_invite_sent_at END,
+            room_invite_answered_at = CASE WHEN room_invite_answered_at > now() - ($2::bigint * interval '1 millisecond')
+              THEN now() ELSE room_invite_answered_at END
+      WHERE id = $1
+      RETURNING id, paused_at`, [userId, ROOM_INVITE_ANSWER_MS]);
   if (!rows[0]) return err('not_found', 'no such user');
 
   // Everything already armed against them. Cancelling rather than leaving them
@@ -103,7 +136,7 @@ async function pauseUser(client, userId, { note = null } = {}) {
 // their own next real occurrence; a one-off whose moment passed while they were
 // away is NOT resurrected, because firing it now would be a notification about
 // a time that is already gone.
-async function resumeUser(client, userId, { now = new Date() } = {}) {
+async function resumeUser(client, userId, { now = new Date(), reason = null } = {}) {
   const { rows } = await client.query(
     `SELECT id, paused_at FROM users WHERE id = $1`, [userId]);
   if (!rows[0]) return err('not_found', 'no such user');
@@ -133,6 +166,7 @@ async function resumeUser(client, userId, { now = new Date() } = {}) {
   await client.query(`UPDATE users SET paused_at = NULL, paused_reason = NULL WHERE id = $1`, [userId]);
   await audit.record(client, userId, 'user.resumed', {
     pausedAt, remindersRearmed: rearmed.map((r) => r.taskId),
+    ...(reason ? { reason } : {}),
   });
   return ok({ rearmed });
 }
@@ -168,4 +202,41 @@ async function quietResume(client, userId) {
   return ok({ resumed: true });
 }
 
-module.exports = { pauseUser, resumeUser, quietPause, quietResume, isPaused, nextOccurrenceAfter, QUIET_LADDER };
+// They wrote, for the first time since the one coordination message their
+// pause allows — whenever that is (owner, 2026-09-14: "until he writes
+// again"). The owner's rule is that anything they say then — other than asking
+// to stay paused — means they are interested, so the pause ends in full,
+// whichever kind it was: a ladder pause the way quietResume ends one, their
+// own the way resume_olma does (their repeating reminders come back). "Leave
+// me paused" is the model's to hear, and pause_olma puts it back with the
+// allowance still spent (pauseUser above).
+//
+// Called from openRecord({ wake: true }) only: a turn that merely happened on
+// their agent is not them answering.
+async function resumeAfterRoomInvite(client, userId, { now = new Date() } = {}) {
+  const { rows } = await client.query(
+    `SELECT paused_at, paused_reason, room_invite_sent_at, room_invite_answered_at FROM users WHERE id = $1`,
+    [userId]);
+  const u = rows[0];
+  if (!u || !roomInviteSpent(u)) return ok({ resumed: false });
+  // Already answered: this pause is the one they asked to keep after it.
+  if (u.room_invite_answered_at
+      && new Date(u.room_invite_answered_at).getTime() >= new Date(u.room_invite_sent_at).getTime()) {
+    return ok({ resumed: false });
+  }
+  await client.query(`UPDATE users SET room_invite_answered_at = now() WHERE id = $1`, [userId]);
+  if (u.paused_reason === QUIET_LADDER) {
+    await client.query(`UPDATE users SET paused_at = NULL, paused_reason = NULL WHERE id = $1`, [userId]);
+    await audit.record(client, userId, 'user.resumed', {
+      reason: 'room_invite_answered', remindersRearmed: [],
+    });
+    return ok({ resumed: true });
+  }
+  const res = await resumeUser(client, userId, { now, reason: 'room_invite_answered' });
+  return res.ok ? ok({ resumed: true, rearmed: res.data.rearmed }) : res;
+}
+
+module.exports = {
+  pauseUser, resumeUser, quietPause, quietResume, resumeAfterRoomInvite, roomInviteSpent,
+  isPaused, nextOccurrenceAfter, QUIET_LADDER, ROOM_INVITE_ANSWER_MS,
+};

@@ -166,7 +166,8 @@ async function getByExternalId(client, channel, externalId) {
 
 async function listMembers(client, groupId, { includeLeft = false } = {}) {
   const { rows } = await client.query(
-    `SELECT m.*, u.last_inbound_at, u.opening_sent_at, u.timezone, u.paused_at, u.first_name
+    `SELECT m.*, u.last_inbound_at, u.opening_sent_at, u.timezone, u.paused_at,
+            u.room_invite_sent_at, u.first_name
        FROM chat_group_members m
        LEFT JOIN users u ON u.id = m.user_id
       WHERE m.group_id = $1 ${includeLeft ? '' : 'AND m.left_at IS NULL'}

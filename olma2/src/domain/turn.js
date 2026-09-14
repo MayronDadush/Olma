@@ -101,6 +101,11 @@ async function openRecord(client, user, { wake = false } = {}) {
   // gated on `wake` for the same reason the re-hearing is: a turn that merely
   // happened on their agent is not them writing. A pause THEY asked for is
   // untouched here (pause.quietResume matches on the reason).
+  //
+  // Ahead of it: a paused person answering their one coordination message
+  // (pause.resumeAfterRoomInvite) comes out of ANY pause, theirs included —
+  // the owner's rule is that writing back then means they are interested.
+  if (wake) await pause.resumeAfterRoomInvite(client, user.id);
   if (wake) await pause.quietResume(client, user.id);
 
   const counted = await quota.countMessage(client, user.id);

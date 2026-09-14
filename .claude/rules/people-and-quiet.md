@@ -68,7 +68,12 @@ title means this file. Grep the title, not the filename.
   sets `paused_at` with `paused_reason = 'quiet_ladder'` (migration 049) and
   takes nothing down, and `openRecord({ wake: true })` ends it on the first
   message they send; a pause THEY asked for (`paused_reason` NULL) is ended
-  only by them or by the admin. **A "like" never reaches us** — on OpenClaw
+  only by them or by the admin. **Except by their first message after their
+  one room coordination invite, whenever it comes**
+  (`pause.resumeAfterRoomInvite`, 2026-09-13/14). That ends ANY pause, theirs
+  included. `pauseUser` carries `room_invite_sent_at` and
+  `room_invite_answered_at` forward, so "leave me paused" does not buy them a
+  second invite, and the message after it does not end the pause again. **A "like" never reaches us** — on OpenClaw
   2026.8.1 there is no reaction event, so the only sign of interest we have
   is a message; a person who only likes looks silent. Vered got eighteen
   messages on her second day and answered none (`incidents.md`, "Eighteen

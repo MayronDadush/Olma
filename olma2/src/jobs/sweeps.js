@@ -6,6 +6,7 @@ const { enqueue, collectHeld } = require('../outbox/enqueue');
 const reminders = require('../domain/reminders');
 const meetings = require('../domain/meetings');
 const meetingFanout = require('../domain/meeting-fanout');
+const groupMeetings = require('../domain/group-meetings');
 const tasks = require('../domain/tasks');
 const quota = require('../domain/quota');
 const flags = require('../domain/flags');
@@ -231,6 +232,13 @@ async function sweepStaleMeetings(client, nowMs) {
 // inside the minute costs a row in this sweep and no message at all. There is
 // no actor — this is the system agreeing with itself — so every participant
 // gets an outbox row, including the person whose yes started the clock.
+// ---- paused room members who never answered -------------------------------
+// The day-later half of a paused person's one coordination message; the rule
+// and the reasons live in domain/group-meetings.js, where the exit is.
+async function sweepSilentPausedMembers(client, nowMs) {
+  return groupMeetings.sweepSilentPausedMembers(client, nowMs || Date.now());
+}
+
 async function sweepSettlingMeetings(client) {
   const settled = await meetings.options.settleDue(client);
   const out = [];
@@ -426,5 +434,6 @@ async function sweepFinishedTasks(client, nowIso) {
 
 module.exports = {
   sweepReminders, sweepDigests, sweepUnblocks, sweepStaleMeetings, sweepSettlingMeetings,
+  sweepSilentPausedMembers,
   sweepMediaJobs, sweepNameConfirm, sweepFinishedTasks,
 };

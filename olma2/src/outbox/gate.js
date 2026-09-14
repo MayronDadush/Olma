@@ -7,7 +7,9 @@
 // Policy (each rule traces to an explicit design decision):
 //   paused user      → drop. They asked Olma to stop initiating; there is no
 //                      kind and no urgency that earns an exception, including
-//                      another user's fan-out landing on them
+//                      another user's fan-out landing on them — save ONE
+//                      invite per pause to a coordination in a room they are
+//                      in (owner, 2026-09-13; `pausedRoomInvite` below)
 //   blocked user     → hold, except paid-plan reminders and the unblock summary
 //   outside personal availability window → hold until window opens, UNLESS
 //                      they wrote to us in the last 15 minutes (see below)
@@ -184,7 +186,7 @@ function decide(facts) {
   const { row, plan, blocked, paused, window, tz, sentToday, budget } = facts;
   const now = facts.now || new Date();
 
-  // First, and with no exceptions. This is the whole guarantee behind the pause
+  // First, and with one exception (below). This is the whole guarantee behind the pause
   // feature: sweeps skip paused users so these rows are mostly never created,
   // but a message can also be enqueued for them by somebody ELSE's action — a
   // connection request, a meeting slot, a calendar callback — and none of those
@@ -193,7 +195,15 @@ function decide(facts) {
   // 'drop', not 'hold': holding means delivering later, and there is no later.
   // Not 'expire' either — that means the moment passed and folds the row into a
   // digest as "עבר זמנה", which would then be delivered.
-  if (paused) {
+  //
+  // One exception since 2026-09-13, and it is the owner's: a paused person in a
+  // WhatsApp room where a coordination starts hears about it ONCE per pause.
+  // `pausedRoomInvite` is the worker's fact and it is narrow by construction —
+  // true only for a `meeting_invite` about a group meeting, for a person whose
+  // pause has not yet spent that one message (pause.roomInviteSpent) — so the
+  // gate still does not have to know what a meeting is. Everything below this
+  // line applies to it as to anything else: the night, a quiet day, the budget.
+  if (paused && !facts.pausedRoomInvite) {
     return { action: 'drop', holdReason: 'paused' };
   }
 
@@ -248,7 +258,11 @@ function decide(facts) {
   // lost his to this rule on the morning it was queued for (2026-09-08).
   if ((Number(facts.checkinMisses) || 0) >= 1
     && row.kind !== 'checkin' && row.kind !== 'introduction') {
-    if (!askedForInWords(row) && !inRoomGrace) return { action: 'drop', holdReason: 'quiet' };
+    // A ladder pause is three misses, so its one room invite would die here
+    // without the same exemption the pause branch above gives it.
+    if (!askedForInWords(row) && !inRoomGrace && !facts.pausedRoomInvite) {
+      return { action: 'drop', holdReason: 'quiet' };
+    }
   }
 
   // ── A day they said they want nothing on ─────────────────────────────────

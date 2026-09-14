@@ -47,6 +47,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
 - [The fifth draft was the rude one (fixed 2026-09-11)](#the-fifth-draft-was-the-rude-one-fixed-2026-09-11)
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
@@ -1537,6 +1538,48 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
 
+
+### A room counted in somebody who had paused (fixed 2026-09-13)
+
+קפיש (u-9) said he was getting system messages he should not have. They were
+two coordination invites from a test room. User 3 had started coordinations
+there (meetings 29 and 32), and `group-meetings.startCoordination` counts in
+every room member who has ever written to Olma. Nothing in that path asks
+about a pause. The gate was the only guard, and he was not paused that day:
+the check-in ladder had paused him earlier (`quiet_ladder`), and he ended it
+himself by chatting with her privately, which is what that pause is for. So
+both invites reached him in full.
+
+The same path was also wrong for somebody who *was* paused. The gate dropped
+their invite, as its rule says, but the room had still counted them in. They
+sat in the meeting as `awaiting`, and the digest told everyone else the
+coordination was waiting on a person who had never heard of it.
+
+Neither half could be closed with a flag. "Never count in a paused person"
+would coordinate around somebody standing in the room. "Always count them in"
+is the bug. The owner's rule (2026-09-13, clarified on the 14th, applied to
+every kind of pause):
+
+- A paused member hears about a room coordination **once per pause**. The gate
+  exempts exactly that row (`pausedRoomInvite`, computed in the worker, false
+  for batch siblings). The allowance is `users.room_invite_sent_at >=
+  paused_at` (migration 067), and it is stamped only after the send confirms.
+- Their first message after it, whenever it comes, ends the pause, even one
+  they asked for (`pause.resumeAfterRoomInvite`, called from `openRecord({
+  wake: true })`, which also stamps `room_invite_answered_at`). If the answer
+  is "leave me paused", `pause_olma` puts the pause back, and `pauseUser`
+  carries both stamps forward. Carrying them forward does two things: the
+  new `paused_at` is not a new allowance, and their next message does not end
+  the pause again.
+- If they stay silent for a day, they are taken out of that coordination
+  (`group-meetings.sweepSilentPausedMembers`, on `minute_sweeps`), and
+  `startCoordination` stops counting them in to later ones. Nobody is told
+  they left, because they said nothing. The initiator hears only when the exit
+  closes the meeting.
+
+The first version ended the pause only on an answer within 24 hours. The
+owner's correction was "עד שיכתוב שוב": a silent person is left out only
+until they write again, whenever that is.
 
 ### The fifth draft was the rude one (fixed 2026-09-11)
 

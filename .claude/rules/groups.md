@@ -158,3 +158,19 @@ have already had to be argued for.
   to anything that did not name her** (a registered room is
   `requireMention: true`), so its silence is never evidence that somebody said
   nothing.
+
+- **A paused member is counted into a room's coordination only until their
+  one invite is spent; a day of silence takes them out** (owner, 2026-09-13).
+  They are left out only until they write again: that ends the pause
+  (people-and-quiet.md).
+  `startCoordination` filters out members where `pause.roomInviteSpent` is
+  true, but only for who gets COUNTED IN. The membership check, and `settle`,
+  still use the full `coordinatingMembers` list, because a pause does not
+  decide who belongs to a room. `sweepSilentPausedMembers` moves a paused
+  participant to `opted_out` (cause `paused_no_answer`) once the meeting is a
+  day old and their invite is either a day old or never went out. It never
+  does this while a row about that meeting is still queued for them, so an
+  invite held for their night or quiet day cannot be overtaken by the exit.
+  It sends no "X left" message, because they said nothing. `meeting_no_match`
+  goes to the initiator only when the exit closes the meeting (`incidents.md`,
+  "A room counted in somebody who had paused").
