@@ -2690,6 +2690,22 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
         <p class="note" style="padding:0 14px" id="setupNote"></p>
       </div>
 
+      <!-- The page's own look, not Allma's — stored on this device only
+           (localStorage), never sent anywhere. "Auto" is the absence of an
+           override: the stylesheet already follows the system on its own. -->
+      <div>
+        <div class="glabel"><span data-i18n="me.appearance"></span></div>
+        <div class="group">
+          <div class="row no-icon stackrow">
+            <div class="seg" id="themeSeg" role="group" data-i18n-label="me.appearance">
+              <button aria-pressed="false" data-theme-opt="light" data-i18n="me.themeLight"></button>
+              <button aria-pressed="false" data-theme-opt="dark" data-i18n="me.themeDark"></button>
+              <button aria-pressed="true" data-theme-opt="auto" data-i18n="me.themeAuto"></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- What she knows. Closed by default: it is a list that grows, and the
            page should not get longer every time she learns something. Open,
            it leads with three questions — each saved one leaves, lands in the
@@ -3110,6 +3126,26 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   "use strict";
   var $  = function(s,r){ return (r||document).querySelector(s); };
   var $$ = function(s,r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); };
+
+  /* Appearance: which of the two palettes the stylesheet already defines is
+     showing. Stored on THIS DEVICE only (localStorage) — it is how the page
+     looks, never something Allma reads or a fact about the person, so it
+     never touches /me/act. "Auto" is not a third value to apply — it is the
+     ABSENCE of data-theme, which is what the CSS already follows on its own
+     via prefers-color-scheme, live, with no JS. Read first thing, before
+     anything paints, so a stored choice never flashes the wrong palette. */
+  var THEME_KEY = "olma.theme";
+  function applyTheme(v){
+    if(v === "light" || v === "dark") document.documentElement.setAttribute("data-theme", v);
+    else document.documentElement.removeAttribute("data-theme");
+  }
+  var THEME = (function(){
+    try{
+      var v = localStorage.getItem(THEME_KEY);
+      return (v === "light" || v === "dark") ? v : "auto";
+    }catch(err){ return "auto"; }
+  })();
+  applyTheme(THEME);
 
   /* ══════════════════════════════════════════════════════════════
      THE SEAM — where this becomes the real dashboard
@@ -3760,6 +3796,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "me.masc":"לשון זכר","me.fem":"לשון נקבה",
       "me.formNote":"״שמרתי לך״ מול ״שמרתי לך״ — עולמה תתאים את כל הניסוחים שלה.",
       "me.setup":"עולמה אצלך","me.calledBy":"השם של עולמה",
+      "me.appearance":"מראה","me.themeLight":"בהיר","me.themeDark":"כהה","me.themeAuto":"אוטומטי",
       "me.setupNote":"המיקום קובע כל תזכורת, כל שעת שקט וכל סיכום — קידומת טלפון היא מדינה, לא עיר. את השם אפשר להחליף; הוא יופיע בכל הודעה שהיא שולחת.",
       "me.pause":"להשהות את עולמה","me.resume":"עולמה מושהית · להפעלה",
       "me.pauseNote":"היא תפסיק לכתוב מיוזמתה. שום דבר לא נמחק, והודעה אחת ממך מחזירה הכול.",
@@ -4040,6 +4077,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "me.masc":"Male","me.fem":"Female",
       "me.formNote":"Hebrew inflects almost every verb for gender, so Allma needs to know. English has no gendered address and nothing here changes it.",
       "me.setup":"Your Allma","me.calledBy":"Allma's name",
+      "me.appearance":"Appearance","me.themeLight":"Light","me.themeDark":"Dark","me.themeAuto":"Auto",
       "me.setupNote":"Your location decides every reminder, quiet hour and summary — a dialling code is a country, not a city. The name is yours to change; it appears in every message she sends.",
       "me.pause":"Pause Allma","me.resume":"Allma is paused · Resume",
       "me.pauseNote":"She stops writing on her own. Nothing is deleted, and one message from you brings it all back.",
@@ -8998,12 +9036,30 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(serverRow) API.forgetFact(+id, function(){ if(f.promptKey && !f.promptQ) API.reload(); });
   });
 
+  function renderTheme(){
+    $$("#themeSeg button").forEach(function(b){
+      b.setAttribute("aria-pressed", b.dataset.themeOpt === THEME ? "true" : "false");
+    });
+  }
+  $("#themeSeg").addEventListener("click", function(e){
+    var b = e.target.closest("[data-theme-opt]");
+    if(!b || b.dataset.themeOpt === THEME) return;
+    THEME = b.dataset.themeOpt;
+    try{
+      if(THEME === "auto") localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, THEME);
+    }catch(err){ /* private mode or storage blocked — still applies for this visit */ }
+    applyTheme(THEME);
+    renderTheme();
+  });
+
   function renderMe(){
     renderPersonal();
     renderSchedule();
     renderDigest();
     renderOlmaRows();
     renderFacts();
+    renderTheme();
   }
 
   /* ───────── tabs ───────── */
