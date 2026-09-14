@@ -1892,7 +1892,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .row.stackrow{flex-direction:column;align-items:stretch;gap:10px;padding-top:12px;padding-bottom:13px}
 .row.stackrow .rowline{display:flex;align-items:center;gap:12px}
 .row.stackrow .seg{flex:none}
-.ghostinput{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;inset-inline-start:0;bottom:0}
 .hoursvals{gap:4px;flex-wrap:nowrap}
 .hoursvals .vchip{font-variant-numeric:tabular-nums;min-width:62px;text-align:center}
 .hoursdash{color:var(--text-3);font-weight:600}
@@ -1913,7 +1912,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
 .flabel{font-size:12.5px;font-weight:600;color:var(--text-3);margin:4px 0 8px}
 .foldpad .seg{margin-bottom:2px}
-.flabel + .seg,.chips + .ghostinput + .flabel{margin-top:14px}
+.flabel + .seg,.chips + .flabel{margin-top:14px}
 .tchip{display:inline-flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
 .tchip i{font-style:normal;opacity:.55;font-size:12px;line-height:1}
 .tchip.add{background:transparent;box-shadow:inset 0 0 0 1.4px var(--sep-2);color:var(--accent)}
@@ -1954,7 +1953,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   box-shadow:inset 0 0 0 1px var(--sep);
 }
 .fq .fqtext:focus{box-shadow:inset 0 0 0 1.6px var(--accent)}
-.fq .fqtime{margin-top:0;background:var(--surface);box-shadow:inset 0 0 0 1px var(--sep);font-variant-numeric:tabular-nums}
+.fq .fqtime{
+  min-width:74px;height:38px;padding:0 12px;border-radius:11px;background:var(--surface);
+  box-shadow:inset 0 0 0 1px var(--sep);font-size:15px;font-weight:600;color:var(--text-3);
+  font-variant-numeric:tabular-nums;direction:ltr;
+  transition:box-shadow .26s var(--ease-io),transform .38s var(--squash);
+}
+.fq .fqtime.set{color:var(--text)}
+.fq .fqtime.open{box-shadow:inset 0 0 0 1.6px var(--accent)}
+.fq .fqtime:active{transform:scale(.95)}
 .fq .fqto{color:var(--text-3);font-weight:600}
 .fqok{
   flex:none;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
@@ -2231,6 +2238,35 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
    unfolding the time picker does, at the same speed */
 @keyframes calCell{from{opacity:0;transform:translateY(5px) scale(.9)}to{opacity:1;transform:none}}
 .calpop.show .calgrid button,.calpop.show .calmg button{
+  animation:calCell .21s var(--squash) backwards;animation-delay:calc(var(--i,0) * 4.5ms)
+}
+/* the time picker: the calendar's glass card, holding a clock instead of a
+   month — hours as a grid, minutes in quarters, one button to take it */
+.tpop{width:256px}
+.tphead{
+  display:flex;justify-content:center;align-items:baseline;gap:2px;direction:ltr;
+  font-family:'Rubik',sans-serif;font-size:32px;font-weight:600;color:var(--text);
+  font-variant-numeric:tabular-nums;padding:2px 0 8px
+}
+.tphead i{font-style:normal;color:var(--text-3)}
+.tphead b{font-weight:600;padding:0 4px;border-radius:9px;transition:color .2s var(--ease-io)}
+.tphead b.pick{color:var(--accent)}
+.tplabel{font-size:10.5px;font-weight:700;color:var(--text-3);margin:4px 3px 5px}
+.tpgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;direction:ltr}
+.tpgrid.min{grid-template-columns:repeat(4,1fr)}
+.tpgrid button{
+  height:32px;border-radius:10px;font-size:13.5px;font-weight:500;color:var(--text);
+  font-variant-numeric:tabular-nums;transition:background .3s var(--ease-io),color .3s var(--ease-io)
+}
+.tpgrid button.dim{color:var(--text-3)}
+.tpgrid button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.tpfoot{margin-top:11px}
+.tpfoot button{
+  width:100%;padding:10px;border-radius:12px;background:var(--accent);color:#fff;
+  font-size:14px;font-weight:600;transition:transform .38s var(--squash)
+}
+.tpfoot button:active{transform:scale(.97)}
+.calpop.show .tpgrid button{
   animation:calCell .21s var(--squash) backwards;animation-delay:calc(var(--i,0) * 4.5ms)
 }
 .btn{
@@ -2568,8 +2604,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
               <span class="hoursdash" aria-hidden="true">–</span>
               <button class="vchip set" id="hoursTo"></button>
             </div>
-            <input id="hoursFromIn" type="time" tabindex="-1" aria-hidden="true" class="ghostinput">
-            <input id="hoursToIn" type="time" tabindex="-1" aria-hidden="true" class="ghostinput">
           </div>
           <div class="row no-icon stackrow">
             <div class="rowline">
@@ -2614,7 +2648,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
           <div class="fold" id="digestFold"><div><div class="foldpad tight">
             <div class="flabel" data-i18n="me.digestTimes"></div>
             <div class="chips" id="digestTimes"></div>
-            <input id="digestTimeIn" type="time" tabindex="-1" aria-hidden="true" class="ghostinput">
             <div class="flabel" data-i18n="me.digestScope"></div>
             <div class="seg" id="digestScope" role="group" data-i18n-label="me.digestScope">
               <button aria-pressed="false" data-scope="summary" data-i18n="me.scope.summary"></button>
@@ -2732,6 +2765,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      both languages and both text directions without reloading. -->
 <div class="calscrim" id="calScrim" hidden></div>
 <div class="calpop" id="calPop" role="dialog" aria-modal="true" hidden></div>
+<div class="calscrim" id="tpScrim" hidden></div>
+<div class="calpop tpop" id="tpPop" role="dialog" aria-modal="true" hidden></div>
 
 <button class="langtog" id="langTog" title="preview only"><span>HE</span><span>EN</span></button>
 <!-- preview only: replay the first-visit intro, which otherwise happens once
@@ -3755,6 +3790,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "me.facts.n0":"עוד לא נשמר כלום","me.facts.n1":"דבר אחד","me.facts.nN":"{n} דברים",
       "me.fqTitle":"לספר לה עוד","me.fqHint":"שאלות קצרות, ואפשר לדלג על כל אחת",
       "me.fqSave":"שמירה","me.fqSkip":"דילוג","me.fqTo":"עד",
+      "tp.hour":"שעה","tp.min":"דקות","tp.ok":"אישור",
       "me.fqAllDone":"אין עוד שאלות כרגע. כל השאר מגיע מהשיחה.",
       "me.factsList":"מה כבר ידוע","me.factDel":"מחיקה",
       "me.factsEmpty":"עוד אין כאן כלום. אפשר להתחיל מהשאלות למעלה, או פשוט לספר לה בשיחה.",
@@ -4036,6 +4072,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "me.facts.n0":"Nothing saved yet","me.facts.n1":"One thing","me.facts.nN":"{n} things",
       "me.fqTitle":"Tell her more","me.fqHint":"Short questions, and any can be skipped",
       "me.fqSave":"Save","me.fqSkip":"Skip","me.fqTo":"to",
+      "tp.hour":"Hour","tp.min":"Minutes","tp.ok":"Done",
       "me.fqAllDone":"No more questions for now. Everything else comes from your chats.",
       "me.factsList":"Already known","me.factDel":"Delete",
       "me.factsEmpty":"Nothing here yet. Start with the questions above, or just tell her in a chat.",
@@ -5692,6 +5729,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   document.addEventListener("keydown", function(e){
     if(e.key !== "Escape") return;
     if(!$("#calPop").hidden){ closeCal(); return; }
+    if(!$("#tpPop").hidden){ closeTimePop(); return; }
     closeSheets();
   });
 
@@ -8470,12 +8508,75 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     });
     $("#whenNote").textContent = t("me.whenNote");
   }
-  function openTime(input, value){
-    input.value = value || "";
-    try{ input.showPicker(); }catch(err){ input.focus(); input.click(); }
+  /* One time picker for every clock on this tab. The browser's own looked
+     like a different app in each one, and inside a question card it did not
+     open at all — so the page draws its own, on the calendar's glass. */
+  var tpAnchor = null, tpDone = null, tpH = 9, tpM = 0;
+  function pad2(n){ return (n < 10 ? "0" : "") + n; }
+  function tpHTML(){
+    var hours = "", mins = "";
+    for(var h = 0; h < 24; h++){
+      hours += '<button data-tph="' + h + '" style="--i:' + h + '" aria-pressed="' + (h === tpH) + '"' +
+        (h < 6 ? ' class="dim"' : "") + ">" + pad2(h) + "</button>";
+    }
+    [0, 15, 30, 45].forEach(function(m, i){
+      mins += '<button data-tpm="' + m + '" style="--i:' + (24 + i) + '" aria-pressed="' + (m === tpM) + '">' + pad2(m) + "</button>";
+    });
+    return '<div class="tphead"><b id="tpHH">' + pad2(tpH) + '</b><i>:</i><b id="tpMM">' + pad2(tpM) + "</b></div>" +
+      '<div class="tplabel">' + esc(t("tp.hour")) + '</div><div class="tpgrid">' + hours + "</div>" +
+      '<div class="tplabel">' + esc(t("tp.min")) + '</div><div class="tpgrid min">' + mins + "</div>" +
+      '<div class="tpfoot"><button data-tpok>' + esc(t("tp.ok")) + "</button></div>";
   }
-  $("#hoursFrom").addEventListener("click", function(){ openTime($("#hoursFromIn"), SCHED.start); });
-  $("#hoursTo").addEventListener("click", function(){ openTime($("#hoursToIn"), SCHED.end); });
+  function placeTimePop(){
+    var pop = $("#tpPop"), r = tpAnchor.getBoundingClientRect();
+    var w = pop.offsetWidth, h = pop.offsetHeight;
+    var left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+    var below = r.bottom + 10 + h <= window.innerHeight - 8;
+    var top = below ? r.bottom + 10 : Math.max(8, r.top - 10 - h);
+    pop.style.left = left + "px"; pop.style.top = top + "px";
+    pop.style.setProperty("--calo", (r.left + r.width / 2 - left) + "px " + (below ? "0%" : "100%"));
+  }
+  function openTimePop(anchor, value, done){
+    var m = /^(\d{1,2}):(\d{2})$/.exec(value || "");
+    tpH = m ? +m[1] : 9; tpM = m ? +m[2] : 0;
+    tpAnchor = anchor; tpDone = done;
+    anchor.classList.add("open");
+    var pop = $("#tpPop");
+    pop.innerHTML = tpHTML();
+    $("#tpScrim").hidden = false; pop.hidden = false;
+    placeTimePop();
+    requestAnimationFrame(function(){ pop.classList.add("show"); });
+  }
+  function closeTimePop(){
+    var pop = $("#tpPop");
+    if(pop.hidden) return;
+    pop.classList.remove("show");
+    $("#tpScrim").hidden = true;
+    if(tpAnchor) tpAnchor.classList.remove("open");
+    setTimeout(function(){ if(!pop.classList.contains("show")) pop.hidden = true; }, 110);
+    tpAnchor = null; tpDone = null;
+  }
+  $("#tpScrim").addEventListener("click", closeTimePop);
+  $("#tpPop").addEventListener("click", function(e){
+    var hb = e.target.closest("[data-tph]"), mb = e.target.closest("[data-tpm]");
+    if(hb || mb){
+      if(hb) tpH = +hb.dataset.tph; else tpM = +mb.dataset.tpm;
+      $$(hb ? "[data-tph]" : "[data-tpm]", this).forEach(function(b){ b.setAttribute("aria-pressed", b === (hb || mb) ? "true" : "false"); });
+      var part = $(hb ? "#tpHH" : "#tpMM");
+      part.textContent = pad2(hb ? tpH : tpM);
+      part.classList.remove("pick"); void part.offsetWidth; part.classList.add("pick");
+      return;
+    }
+    if(e.target.closest("[data-tpok]")){
+      var done = tpDone, v = pad2(tpH) + ":" + pad2(tpM);
+      closeTimePop();
+      if(done) done(v);
+    }
+  });
+  window.addEventListener("resize", function(){ if(tpAnchor) placeTimePop(); });
+
+  $("#hoursFrom").addEventListener("click", function(){ openTimePop(this, SCHED.start, function(v){ hoursChanged("start", v); }); });
+  $("#hoursTo").addEventListener("click", function(){ openTimePop(this, SCHED.end, function(v){ hoursChanged("end", v); }); });
   function hoursChanged(which, v){
     if(!v) return;
     var start = which === "start" ? v : SCHED.start, end = which === "end" ? v : SCHED.end;
@@ -8486,8 +8587,6 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     chip.classList.remove("pop"); void chip.offsetWidth; chip.classList.add("pop");
     API.setAvailability(start, end, function(){ flashSaved("#whenSaved"); });
   }
-  $("#hoursFromIn").addEventListener("change", function(){ hoursChanged("start", this.value); });
-  $("#hoursToIn").addEventListener("change", function(){ hoursChanged("end", this.value); });
   $("#hoursSub").addEventListener("click", function(e){
     if(!e.target.closest("#hoursReset")) return;
     SCHED.start = SCHED.def.start; SCHED.end = SCHED.def.end; SCHED.source = "default";
@@ -8536,15 +8635,15 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     API.setDigest(patch, function(){ flashSaved("#digestSaved"); });
   }
   $("#digestTimes").addEventListener("click", function(e){
-    if(e.target.closest("#digestAdd")){ openTime($("#digestTimeIn"), ""); return; }
+    var add = e.target.closest("#digestAdd");
+    if(add){ openTimePop(add, "", addDigestTime); return; }
     var c = e.target.closest("[data-dtime]");
     if(!c) return;
     DIGEST.times = DIGEST.times.filter(function(x){ return x !== c.dataset.dtime; });
     if(DIGEST.times.length) lastDigestTimes = DIGEST.times.slice();
     saveDigest({times:DIGEST.times});
   });
-  $("#digestTimeIn").addEventListener("change", function(){
-    var v = this.value;
+  function addDigestTime(v){
     if(!v || DIGEST.times.indexOf(v) > -1) return;
     if(DIGEST.times.length >= 4){ toast(t("toast.digestMax")); return; }
     DIGEST.times = DIGEST.times.concat([v]).sort();
@@ -8552,7 +8651,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     saveDigest({times:DIGEST.times});
     var nc = $('#digestTimes [data-dtime="' + v + '"]');
     if(nc) nc.classList.add("enter");
-  });
+  }
   $("#digestScope").addEventListener("click", function(e){
     var b = e.target.closest("[data-scope]");
     if(!b || b.dataset.scope === DIGEST.scope) return;
@@ -8655,15 +8754,19 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     else v = a.text.trim();
     return (p.label ? L(p.label) + ": " : "") + v;
   }
+  function fqTimeHTML(field, v, label){
+    return '<button class="fqtime' + (v ? " set" : "") + '" data-fqtime="' + field + '" aria-label="' + esc(label) + '">' +
+      esc(v || "--:--") + "</button>";
+  }
   function fqInputHTML(p){
     var a = fqDraft[p.key] || {};
     if(p.type === "range"){
-      return '<input class="tinput fqtime" type="time" data-fqf="from" value="' + esc(a.from || "") + '" aria-label="' + esc(L(p.q)) + '">' +
+      return fqTimeHTML("from", a.from, L(p.q)) +
         '<span class="fqto">' + esc(t("me.fqTo")) + "</span>" +
-        '<input class="tinput fqtime" type="time" data-fqf="to" value="' + esc(a.to || "") + '" aria-label="' + esc(t("me.fqTo")) + '">';
+        fqTimeHTML("to", a.to, t("me.fqTo"));
     }
     if(p.type === "time"){
-      return '<input class="tinput fqtime" type="time" data-fqf="time" value="' + esc(a.time || "") + '" aria-label="' + esc(L(p.q)) + '">';
+      return fqTimeHTML("time", a.time, L(p.q));
     }
     if(p.type === "choice"){
       return p.options.map(function(o){
@@ -8731,6 +8834,20 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       fqDraft[key] = {value:opt.dataset.fqopt};
       $$("[data-fqopt]", w).forEach(function(b){ b.setAttribute("aria-pressed", b === opt ? "true" : "false"); });
       refreshOk(key); return;
+    }
+    var tb = e.target.closest("[data-fqtime]");
+    if(tb){
+      var field = tb.dataset.fqtime, cur0 = fqDraft[key] || {};
+      /* an end time opens near the start they already gave, not at nine */
+      var seed = cur0[field] || (field === "to" && cur0.from ? pad2((+cur0.from.slice(0, 2) + 8) % 24) + cur0.from.slice(2) : "");
+      openTimePop(tb, seed, function(v){
+        fqDraft[key] = fqDraft[key] || {};
+        fqDraft[key][field] = v;
+        tb.textContent = v; tb.classList.add("set");
+        tb.classList.remove("pop"); void tb.offsetWidth; tb.classList.add("pop");
+        refreshOk(key);
+      });
+      return;
     }
     var dayb = e.target.closest("[data-fqday]");
     if(dayb){
