@@ -264,7 +264,7 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 - **One in-flight reaction per message.**
 - **The shim's connection outlives the turn, so nothing per-turn may be latched to it.**
 - **A model with nothing to relay passes something, not nothing.**
-- **The 👀 on a person's message is the GATEWAY's**
+- **The acknowledgement mark is OURS ALONE, and the gateway's own ack stays off**
 - **`placeMark` claims nothing and therefore must SAY something.**
 - **Olma never offers a capability without asking the thing that owns it.**
 - **A carryover leak is repaired on a schedule, because nothing can name the writer.**
