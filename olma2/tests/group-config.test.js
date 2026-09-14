@@ -216,6 +216,24 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+// A stamp is a MILLISECOND, so "it stamped" cannot be read off a changed value
+// until the clock has left the old one behind: two writes inside one
+// millisecond carry the same number and `notEqual` reads that as "it did not
+// stamp". Measured 2026-09-14 — back-to-back writes collide 1404 times in 2000
+// — and it is what took `main` red on the merge of #371, on bytes the PR had
+// already passed: both sides of the assertion were 1789407308443, `test`
+// failed, `deploy` was skipped and nothing shipped.
+//
+// Same shape as the second-hand race in `.claude/rules/testing.md` ("A moment a
+// test will later assert on is computed ONCE"), one resolution finer, so it is
+// fixed the same way: pin the moment, then make sure the thing you compare it
+// against cannot BE that moment. The production stamp is fine as it is — its
+// one reader, `group_outbox`, adds a 45s grace and cannot care about a
+// millisecond.
+function afterTheMillisecondOf(stamp) {
+  while (Date.now() <= (stamp || 0)) { /* spin to a millisecond `stamp` cannot be */ }
+}
+
 function tempConfig(cfg) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'olma-cfg-stamp-'));
   const file = path.join(dir, 'openclaw.json');
@@ -235,6 +253,7 @@ test('a write that changes channels.whatsapp is stamped; one that does not is no
   assert.equal(occ.channelWrittenAt(), before, 'an agents-only write restarts no channel');
 
   // Admitting a group writes under the account, which does restart it.
+  afterTheMillisecondOf(before);
   occ.admitGroup(cfg, JID);
   occ.saveConfig(cfg, file);
   const stamped = occ.channelWrittenAt();
@@ -259,6 +278,7 @@ test('a first write stamps nothing, an unreadable one stamps', () => {
   occ.saveConfig(baseConfig(), file);
   assert.equal(occ.channelWrittenAt(), before, 'nothing was running against a file that did not exist');
 
+  afterTheMillisecondOf(before);
   fs.writeFileSync(file, 'not json at all');
   occ.saveConfig(baseConfig(), file);
   assert.notEqual(occ.channelWrittenAt(), before, 'could not read is not the same as matched');

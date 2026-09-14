@@ -38,6 +38,14 @@ Two things the suite learned the hard way:
   `starts_at` that was proposed. Three deploys died on this, on bytes the PR
   had passed twice: 65ms of gap in CI, 603ms in `deploy.sh`'s niced on-box run
   (`incidents.md`, "Three deploys died on a test that raced the second hand").
+  **And the mirror image of it: never read "something happened" off a
+  timestamp CHANGING.** Two writes inside one millisecond carry the same
+  `Date.now()`, so `notEqual(stamp, before)` says "it did not stamp" — 1404
+  collisions in 2000 on a back-to-back pair, which took `main` red on the
+  merge of #371 with both sides reading 1789407308443. Leave the production
+  stamp alone (`group_outbox`, its one reader, adds a 45s grace) and move the
+  clock past `before` in the test (`incidents.md`, "The same race, one
+  resolution finer, and main shipped nothing").
 
 - **A test file must never reach the LIVE gateway — not its home, not its
   roster.** `deploy.sh --restart` runs this suite on the box, where the
