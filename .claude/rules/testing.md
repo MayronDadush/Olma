@@ -60,6 +60,16 @@ Two things the suite learned the hard way:
   **Anything resolving one of those paths reads it per call, never captures it
   at module load** — as a constant, whether the isolation took depended on
   require order. (`incidents.md`, "The test suite provisioned into production".)
+  **And not its registration stamp either.** `/opt/olma2/run/` is production
+  too: the gateway plugin writes `turn-context-plugin.registered` there on
+  register, and `config_guard.checkReplyGateLive` reads it to tell a
+  restarted gateway from one still on the old build. A test that registered
+  the plugin overwrote it on every deploy for five days with a record saying
+  the gate was live (`incidents.md`, "The test suite stamped the gateway as
+  live"). `tests/helpers.js` defaults `OLMA_PLUGIN_REGISTER_STAMP` and
+  `OLMA_PLUGIN_TRACE` into the temp home, the plugin reads every run-dir path
+  per call, and under `NODE_TEST_CONTEXT` its `refuseProductionWrite` throws
+  on the real path — a file that loses the environment goes red, never quiet.
 
 - **`OLMA_HEARTBEAT: 'off'` does NOT turn the sweeps off** — that is
   `OLMA_WORKER`. Two separate gates in `bin/olma-brokerd.js`, and the first
