@@ -8,7 +8,7 @@
         "olma2/scripts/serve-design.js"
       ],
       "port": 8919,
-      "url": "http://localhost:8919"
+      "autoPort": true
     },
     {
       "name": "dashboard-demo",
