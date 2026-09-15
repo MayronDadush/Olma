@@ -133,7 +133,7 @@ Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intak
 ### Delivering a message
 
 **`.claude/rules/delivering.md`** — the delivery gate, quiet hours and quiet days, batching, merging, styles and what a verbatim sentence may say.
-Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format.js`, `src/domain/message-merge.js` and 10 more.
+Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format.js`, `src/domain/message-merge.js` and 11 more.
 
 - **`openclaw agent … --deliver` needs BOTH `--agent <id>` AND an explicit `--session-key`.**
 - **Any outbound send via `child_process` must be `spawn(cmd, args, {detached:true, stdio:'ignore'}).unref()`**
@@ -144,6 +144,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **On the MODEL path a style is granted by a RESULT, never by a description**
 - **What is the same every time is DRAWN, and only the sentence about it is a model's**
 - **…and since 2026-09-10 the lists and choices a person ASKS for are drawn the same way**
+- **The same thing does not go out twice inside a few minutes unless the person ASKED**
 - **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause
 - **An unstated quiet day is not "none" — it is Saturday or Sunday, and which one is a fact about the PERSON.**
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where they differ.**
@@ -466,6 +467,25 @@ costs a session. What is live:
 | OpenClaw config | `/root/.openclaw/openclaw.json` |
 | Per-user workspaces | `/root/.openclaw/workspaces/u-<id>/` |
 | Legacy/fallback workspace (agent `main`, not DB-tracked) | `/root/.openclaw/workspace/` |
+
+**A Claude Code session has no shell on the box — it has
+`.github/workflows/olma2-ops.yml`.** The sandbox has no `ssh` binary, no key
+and no route to 157.230.210.233 (measured 2026-09-15: `curl allma.world`
+answers `000`), so "restart the gateway and paste the output" went through a
+person at a laptop three times in one evening. The `olma2 ops` workflow runs
+`olma2/scripts/ops.sh` on a GitHub runner with the same `DEPLOY_SSH_KEY`
+the deploy job uses; a session dispatches it on `main` with
+`mcp__github__actions_run_trigger` (`workflow_id: olma2-ops.yml`, input
+`op`) and reads the result with `mcp__github__get_job_logs`. The menu is
+CLOSED — `status` (release marker, unit states, gateway pid, whether the
+plugin stamp's pid matches it, `/ready` and `/health`) and `restart-gateway`
+(restart, wait for the plugin to register under the new pid, then status) —
+with no free-text input, so it can never print a person's message or number.
+It shares the deploy job's concurrency group, so it cannot land inside a
+deploy. Adding an op means adding a `case` arm in `ops.sh` AND an option in
+the workflow; a change to either file merges through the normal PR flow and
+only then becomes dispatchable, because `workflow_dispatch` reads the file
+on `main`.
 
 **Standing gotchas** (only the ones that are not already rules above):
 - `openclaw sessions list` with no flags shows only the DEFAULT agent — pass

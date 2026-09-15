@@ -1,8 +1,9 @@
 'use strict';
 // cards — one slice of the tool registry (see ../registry.js).
 const {
-  scheduleCard, cardStore, S, ok, scrubTokens, ICON_NAMES, tool,
+  scheduleCard, cardStore, selfInitiated, S, ok, err, scrubTokens, ICON_NAMES, tool,
 } = require('./_shared');
+const repeatGuard = require('../../../domain/repeat-guard');
 
 module.exports = [
   // Draws a schedule the person can take in at a glance instead of reading.
@@ -28,10 +29,41 @@ module.exports = [
         title: a.title, subtitle: a.subtitle, stats: a.stats,
         sections: a.sections, big_tasks: a.big_tasks, footer_note: a.footer_note,
       })));
+
+      // ── The same picture does not go out twice in two minutes ─────────────
+      // The owner's rule (2026-09-10). On a `--deliver` turn every text block
+      // the model emits is a WhatsApp message of its own, so a turn that draws
+      // the same card twice puts it on the phone twice, and no outbox row is
+      // involved in either — the delivery gate cannot see this and the model's
+      // own instruction not to is a request. Identical content is what makes
+      // it decidable: a redraw the doctrine actually asks for (the tool refused
+      // on too many items, so narrow the range and draw again) is a DIFFERENT
+      // card and passes untouched.
+      //
+      // Only on a turn Olma started. A person who asks to see their week twice
+      // has asked twice, and the second answer is an answer — refusing it would
+      // be the assistant arguing with them about what they already read. The
+      // rule is about Olma repeating herself, and `selfInitiated` is the one
+      // bit that knows which of the two this is.
+      const sig = repeatGuard.signature(clean);
+      const ours = selfInitiated.isActive(user.id);
+      const age = ours ? repeatGuard.repeatAge(user.id, sig) : null;
+      if (age !== null) {
+        return err('conflict', 'this exact card was drawn for them moments ago and has already gone out', {
+          secondsAgo: Math.round(age / 1000),
+          next_step: 'It is on their phone. Do not draw it again and do not describe it in words — '
+            + 'reply with exactly NO_REPLY unless you have something to say that the card does not carry.',
+        });
+      }
+
       const rendered = scheduleCard.renderPng(clean);
       if (!rendered.ok) return rendered;
       const saved = cardStore.saveCard(user, rendered.data.png);
       if (!saved.ok) return saved;
+      // Remembered only once a card really exists on disk: a refusal or a
+      // failed write is not something that went out, and marking it as one
+      // would block the retry that fixes it.
+      repeatGuard.remember(user.id, sig);
       return ok({
         path: saved.data.path,
         width: rendered.data.width,

@@ -1,0 +1,54 @@
+name: olma2 ops
+
+# A closed menu of things to do on the box, for a session that has no shell
+# there. The Claude Code session that opens PRs in this repo runs in a sandbox
+# with no ssh binary, no key and no route to 157.230.210.233, so on 2026-09-15
+# every "restart the gateway and paste the output" went through a person at a
+# laptop three times in one evening. This runs olma2/scripts/ops.sh on a
+# runner with the same deploy key deploy.sh uses; the session dispatches it
+# (GitHub API) and reads the job log. Every run is audited here and the key
+# never leaves the runner.
+#
+# `op` is a choice, matched literally in ops.sh; there is no free-text command
+# input, and nothing printed is a person's message, name or number.
+on:
+  workflow_dispatch:
+    inputs:
+      op:
+        description: what to do on the box
+        type: choice
+        required: true
+        default: status
+        options:
+          - status
+          - restart-gateway
+
+# Same group as the deploy job of "olma2 tests" on main, so a gateway restart
+# can never land in the middle of a deploy, or a deploy in the middle of a
+# restart. Never cancelled: a restart that is already running is not a thing
+# to interrupt.
+concurrency:
+  group: olma2 tests-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ops:
+    # Only main can reach the box, same rule as the deploy job.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up deploy SSH key
+        run: |
+          install -m 600 /dev/null /tmp/deploy_key
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > /tmp/deploy_key
+          mkdir -p ~/.ssh
+          ssh-keyscan -H 157.230.210.233 >> ~/.ssh/known_hosts
+      - name: Run
+        env:
+          OP: ${{ inputs.op }}
+        run: SSH_KEY=/tmp/deploy_key bash olma2/scripts/ops.sh "$OP"
+      - name: Clean up deploy key
+        if: always()
+        run: rm -f /tmp/deploy_key

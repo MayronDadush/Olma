@@ -213,7 +213,7 @@ test('the payload carries every field the page reads out of it', async () => {
   const cookie = await signIn();
   const { data } = await (await get('/me/data', { headers: { cookie } })).json();
 
-  for (const k of ['id', 'firstName', 'timezone', 'timezoneConfirmed', 'paused']) {
+  for (const k of ['id', 'firstName', 'timezone', 'timezoneConfirmed', 'paused', 'nestTipSeen']) {
     assert.ok(k in data.user, `user.${k} is gone — the page reads it`);
   }
   const shared = data.tasks.find((t) => t.who.length);
@@ -230,6 +230,23 @@ test('the payload carries every field the page reads out of it', async () => {
   for (const k of ['provider', 'connected', 'needsReauth', 'access', 'account']) {
     assert.ok(k in (data.integrations[0] || { [k]: null }), `integration.${k} is gone`);
   }
+});
+
+// Every action the page can send is one the server answers. A name in the
+// page's ACT map that the write layer does not have is refused as 'unknown
+// action' — a gesture that repaints on screen and lands nowhere — and until
+// 2026-09-14 nothing compared the two lists.
+test('every action the page sends is an action the server has', async () => {
+  const write = require('../src/domain/user-dashboard-write');
+  const cookie = await signIn();
+  const html = await (await get('/me', { headers: { cookie } })).text();
+  const m = html.match(/var ACT = \{([\s\S]*?)\};/);
+  assert.ok(m, 'the ACT map has moved — this test is reading the wrong thing');
+  const sent = [...m[1].matchAll(/(\w+):"(\w+)"/g)].map((x) => x[2]);
+  assert.ok(sent.length > 20, `only ${sent.length} actions parsed`);
+  const missing = sent.filter((a) => !write.ACTIONS.includes(a));
+  assert.deepEqual(missing, [], 'the page sends actions the server does not have');
+  for (const a of ['setTaskOrder', 'nestTask', 'unnestTask']) assert.ok(sent.includes(a), `${a} is not wired`);
 });
 
 test('the served page really is the one that knows how to hydrate', async () => {

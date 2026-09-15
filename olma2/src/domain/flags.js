@@ -12,11 +12,12 @@ const DEFAULTS = {
   // Media generation (domain/media.js): who may, and on which models.
   media_gen_phones: '+972505404255',
   // Who may ring Olma from the personal page (domain/voice.js,
-  // pageCallAllowed). Comma-separated E.164, and EMPTY on purpose: the wire
-  // is complete and the tile stays "בקרוב" for everybody until a number is
-  // put here. The chat tool (call_me_on_the_phone) is not gated by this — the
-  // voice bridge is still the judge of who it will dial for either door.
-  dashboard_call_phones: '',
+  // pageCallAllowed). Comma-separated E.164, or 'all'. Open for everybody as
+  // of 2026-09-15 — the two-lifetime-attempts cap (CALL_ATTEMPTS_LIMIT) and
+  // the 120s duration cap are the agreed guardrails for that rollout. The
+  // chat tool (call_me_on_the_phone) is not gated by this — the voice bridge
+  // is still the judge of who it will dial for either door.
+  dashboard_call_phones: 'all',
   media_image_model: 'meta/muse-image',
   media_video_model: 'bytedance/seedance-2.0-mini',
   // Reminder escalation (domain/reminders.js): how many times one reminder may
