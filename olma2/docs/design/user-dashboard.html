@@ -2640,9 +2640,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         <div class="group" id="agenda"></div>
       </div>
       <div style="--i:4;margin-top:20px">
-        <button class="bigbtn" data-toast="toast.calOpen">
+        <!-- This was a button that showed "opening your default calendar" and
+             opened nothing (reported 2026-09-15). A web page cannot reliably
+             reach the phone's own calendar app — the schemes are blocked in
+             WhatsApp's browser and a failure is invisible — so it opens the
+             calendar Olma actually reads, on the day on screen, and is not
+             offered at all to someone with no Google calendar connected. -->
+        <a class="bigbtn" id="calOpen" target="_blank" rel="noopener" hidden>
           <svg><use href="#i-out"/></svg><span data-i18n="cal.open"></span>
-        </button>
+        </a>
       </div>
     </div>
 
@@ -3906,7 +3912,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
       "cal.h":"הצצה ליומן",
       "cal.p":"תצוגה בלבד. לעריכה — פתח את היומן של הטלפון בלחיצה אחת.",
-      "cal.open":"פתיחה ביומן של הטלפון","cal.empty":"אין אירועים ביום הזה.",
+      "cal.open":"פתיחה ביומן Google","cal.empty":"אין אירועים ביום הזה.",
       "cal.todayPre":"היום · ","cal.dayPrefix":"יום ",
 
       "fr.h":"חברים בעולמה",
@@ -4094,7 +4100,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.done":"המשימה הושלמה","toast.saved":"המשימה נשמרה",
       "toast.updated":"המשימה עודכנה","toast.deleted":"המשימה נמחקה",
       "toast.needTitle":"צריך שם למשימה",
-      "toast.calOpen":"נפתח ביומן ברירת המחדל של הטלפון",
       "toast.removed":"החיבור הוסר",
       "toast.avatar":"דמות חדשה","toast.paused":"עולמה מושהית","toast.resumed":"עולמה חזרה",
       "toast.pausedRefusal":"עולמה מושהית — תזכורת לא תישלח עד שתחזיר אותה",
@@ -4199,7 +4204,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
       "cal.h":"A look at your calendar",
       "cal.p":"Read-only here. To change anything, open your phone's calendar in one tap.",
-      "cal.open":"Open in your phone's calendar","cal.empty":"Nothing on this day.",
+      "cal.open":"Open in Google Calendar","cal.empty":"Nothing on this day.",
       "cal.todayPre":"Today · ","cal.dayPrefix":"",
 
       "fr.h":"Friends on Allma",
@@ -4384,7 +4389,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.done":"Task completed","toast.saved":"Task saved",
       "toast.updated":"Task updated","toast.deleted":"Task deleted",
       "toast.needTitle":"Give the task a name",
-      "toast.calOpen":"Opening your default calendar",
       "toast.removed":"Connection removed",
       "toast.avatar":"New character","toast.paused":"Allma is paused","toast.resumed":"Allma is back",
       "toast.pausedRefusal":"Allma is paused — a reminder will not go out until you bring her back",
@@ -8602,8 +8606,23 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       return (a.allDay ? "" : (a.time || "99:99")).localeCompare(b.allDay ? "" : (b.time || "99:99"));
     });
   }
+  /* Google's own day view, in the account that is connected — `authuser`
+     takes the address, so somebody signed into two Google accounts lands in
+     the one Olma reads rather than whichever is first in the browser. */
+  function syncCalOpen(){
+    var p = prov("google");
+    var sv = p && p.connected && p.svc.filter(function(x){ return x.k === "cal"; })[0];
+    var el = $("#calOpen");
+    el.hidden = !(sv && sv.on);
+    if(el.hidden) return;
+    var d = dayAt(selDay);
+    el.href = "https://calendar.google.com/calendar/r/day/" +
+      d.getFullYear() + "/" + (d.getMonth() + 1) + "/" + d.getDate() +
+      (p.account ? "?authuser=" + encodeURIComponent(p.account) : "");
+  }
   function renderStrip(sel){
     selDay = sel;
+    syncCalOpen();
     var wk0 = weekOff * 7;
     $("#daystrip").innerHTML = [0,1,2,3,4,5,6].map(function(k){
       var i = wk0 + k;
