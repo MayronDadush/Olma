@@ -555,6 +555,30 @@ test('quota override and issue transitions work through forms', async () => {
   assert.equal(i.rows[0].status, 'fixed');
 });
 
+test('a user can be marked as a test account, and unmarked, from the users page', async () => {
+  const page = await fetch(base + '/', { headers: { Authorization: AUTH } });
+  const csrf = /csrf=([0-9a-f]+)/.exec(page.headers.get('set-cookie'))[1];
+  const common = { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' };
+  const before = sectionOf(await adminHtml(), 'users');
+  assert.ok(before.includes('סמן כבדיקה'), 'not yet marked');
+
+  const res = await fetch(base + '/users/test', {
+    method: 'POST', redirect: 'manual', headers: common, body: `id=${user.id}&csrf=${csrf}`,
+  });
+  assert.equal(res.status, 303);
+  let u = await db.pool.query(`SELECT is_test FROM users WHERE id = $1`, [user.id]);
+  assert.equal(u.rows[0].is_test, true);
+  const marked = sectionOf(await adminHtml(), 'users');
+  assert.match(marked, /<span class="pill">בדיקה<\/span>/);
+  assert.ok(marked.includes('בטל סימון'));
+
+  await fetch(base + '/users/test', {
+    method: 'POST', redirect: 'manual', headers: common, body: `id=${user.id}&csrf=${csrf}`,
+  });
+  u = await db.pool.query(`SELECT is_test FROM users WHERE id = $1`, [user.id]);
+  assert.equal(u.rows[0].is_test, false);
+});
+
 test('user deletion: two steps, shows the blast radius, then removes everything', async () => {
   const fs = require('node:fs');
   const path = require('node:path');

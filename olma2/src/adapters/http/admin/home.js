@@ -5,8 +5,11 @@
 //
 // Periods are CALENDAR periods in Israel time, the week starting Sunday — not
 // the rolling UTC windows of the "שימוש במוצר" section, which answer a
-// different question. The eval user is excluded from every count of people
-// and activity, and included in money, because its model calls cost money.
+// different question. The eval user (is_eval, set by the system) and any
+// manually-flagged test account (is_test, set from the Users page — a real
+// account opened by hand during development) are both excluded from every
+// count of people and activity, and both included in money, because their
+// model calls and phone calls still cost real money.
 //
 // `homeMetrics` returns plain numbers and `renderHome` turns them into HTML,
 // so the tests assert on the counts rather than on markup.
@@ -162,21 +165,21 @@ async function homeMetrics(client, { now = new Date(), infra = null } = {}) {
   const q = async (sql) => (await client.query(sql, p)).rows[0];
 
   const users = pick(await q(
-    `SELECT ${periodCounts('created_at')} FROM users WHERE NOT is_eval`));
+    `SELECT ${periodCounts('created_at')} FROM users WHERE NOT is_eval AND NOT is_test`));
 
   const active = await client.query(
     `SELECT count(DISTINCT a.actor_id) FILTER (WHERE a.created_at > $1::timestamptz - interval '1 day')::int AS d1,
             count(DISTINCT a.actor_id) FILTER (WHERE a.created_at > $1::timestamptz - interval '7 days')::int AS d7,
             count(DISTINCT a.actor_id)::int AS d30
        FROM audit_log a JOIN users u ON u.id = a.actor_id
-      WHERE a.event = 'message.received' AND NOT u.is_eval
+      WHERE a.event = 'message.received' AND NOT u.is_eval AND NOT u.is_test
         AND a.created_at > $1::timestamptz - interval '30 days' AND a.created_at <= $1`, [b.now]);
 
   const callsRow = await q(
     `SELECT ${periodCounts('v.started_at')},
             ${periodSums('v.started_at', 'v.duration_sec').replace(/AS (total|month|week|day)/g, 'AS sec_$1')}
        FROM voice_usage_ledger v LEFT JOIN users u ON u.id = v.user_id
-      WHERE v.duration_sec > 0 AND NOT COALESCE(u.is_eval, false)`);
+      WHERE v.duration_sec > 0 AND NOT COALESCE(u.is_eval, false) AND NOT COALESCE(u.is_test, false)`);
   const seconds = {
     total: Number(callsRow.sec_total), month: Number(callsRow.sec_month),
     week: Number(callsRow.sec_week), day: Number(callsRow.sec_day),
@@ -188,7 +191,7 @@ async function homeMetrics(client, { now = new Date(), infra = null } = {}) {
     `WITH first AS (
        SELECT i.user_id, min(COALESCE(i.connected_at, i.created_at)) AS at
          FROM integrations i JOIN users u ON u.id = i.user_id
-        WHERE i.provider = ANY($5) AND i.status = 'connected' AND NOT u.is_eval
+        WHERE i.provider = ANY($5) AND i.status = 'connected' AND NOT u.is_eval AND NOT u.is_test
         GROUP BY i.user_id)
      SELECT ${periodCounts('at')} FROM first`, [...p, GOOGLE_FAMILY_PROVIDERS]);
   const google = pick(googleRow.rows[0]);
@@ -196,7 +199,7 @@ async function homeMetrics(client, { now = new Date(), infra = null } = {}) {
   const meetingsRow = await q(
     `SELECT ${periodCounts('m.created_at')},
             ${periodCounts('m.created_at', 'm.group_id IS NOT NULL').replace(/AS (total|month|week|day)/g, 'AS g_$1')}
-       FROM meetings m JOIN users u ON u.id = m.initiator_id WHERE NOT u.is_eval`);
+       FROM meetings m JOIN users u ON u.id = m.initiator_id WHERE NOT u.is_eval AND NOT u.is_test`);
   const meetings = pick(meetingsRow);
   const groupMeetings = {
     total: meetingsRow.g_total, month: meetingsRow.g_month, week: meetingsRow.g_week, day: meetingsRow.g_day,
@@ -242,7 +245,7 @@ async function meetingFocus(client, b) {
   const status = await client.query(
     `SELECT (m.group_id IS NOT NULL) AS in_group, m.status, count(*)::int AS n
        FROM meetings m JOIN users u ON u.id = m.initiator_id
-      WHERE NOT u.is_eval AND m.created_at <= $1
+      WHERE NOT u.is_eval AND NOT u.is_test AND m.created_at <= $1
       GROUP BY 1, 2`, [b.now]);
   const byStatus = { all: {}, group: {}, direct: {} };
   for (const r of status.rows) {
@@ -253,7 +256,7 @@ async function meetingFocus(client, b) {
   const median = await client.query(
     `SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM m.closed_at - m.created_at))::float AS sec
        FROM meetings m JOIN users u ON u.id = m.initiator_id
-      WHERE NOT u.is_eval AND m.status = 'confirmed' AND m.closed_at IS NOT NULL AND m.created_at <= $1`, [b.now]);
+      WHERE NOT u.is_eval AND NOT u.is_test AND m.status = 'confirmed' AND m.closed_at IS NOT NULL AND m.created_at <= $1`, [b.now]);
   const weeks = weekList(b);
   const weekly = await client.query(
     `SELECT ${weekKey('m.created_at')} AS wk,
@@ -261,7 +264,7 @@ async function meetingFocus(client, b) {
             count(*) FILTER (WHERE m.status = 'confirmed')::int AS confirmed,
             count(*) FILTER (WHERE m.group_id IS NOT NULL)::int AS in_group
        FROM meetings m JOIN users u ON u.id = m.initiator_id
-      WHERE NOT u.is_eval AND m.created_at >= ($2::date::timestamp AT TIME ZONE '${TZ}') AND m.created_at <= $1
+      WHERE NOT u.is_eval AND NOT u.is_test AND m.created_at >= ($2::date::timestamp AT TIME ZONE '${TZ}') AND m.created_at <= $1
       GROUP BY 1`, [b.now, weeks[0]]);
   const map = new Map(weekly.rows.map((r) => [r.wk, r]));
   return {
