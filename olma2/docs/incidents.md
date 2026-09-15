@@ -198,6 +198,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two branches, one migration number (fixed 2026-08-22)](#two-branches-one-migration-number-fixed-2026-08-22)
 - [The suite was green thirteen hours a day and red eleven (fixed 2026-08-30)](#the-suite-was-green-thirteen-hours-a-day-and-red-eleven-fixed-2026-08-30)
 - [Three deploys died on a test that raced the second hand (fixed 2026-09-06)](#three-deploys-died-on-a-test-that-raced-the-second-hand-fixed-2026-09-06)
+- [The same race, one resolution finer, and main shipped nothing (fixed 2026-09-14)](#the-same-race-one-resolution-finer-and-main-shipped-nothing-fixed-2026-09-14)
 - [Deploying doctrine no longer needs a second command (2026-08-21)](#deploying-doctrine-no-longer-needs-a-second-command-2026-08-21)
 - [A rollback cannot reach the filesystem (fixed 2026-08-27)](#a-rollback-cannot-reach-the-filesystem-fixed-2026-08-27)
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
@@ -8095,6 +8096,57 @@ The box was resized from one core to two the same evening, which widens the
 odds without changing the rule: **a moment a test will later assert on is
 computed once.** `SUITE_CONCURRENCY` was left at 2 — it was chosen for the
 old shape and has not been re-measured on the new one.
+
+### The same race, one resolution finer, and main shipped nothing (fixed 2026-09-14)
+
+The merge of #371 took `main` red on
+`tests/group-config.test.js:254` — "a first write stamps nothing, an
+unreadable one stamps" — on bytes the PR had passed twenty minutes earlier.
+`git diff` between the merge commit and the PR head was **empty**: the same
+tree, green at 17:13 and red at 17:35.
+
+The assertion and its failure say the whole thing:
+
+```
+operator: 'notStrictEqual'
+actual:   1789407308443
+expected: 1789407308443
+```
+
+`saveConfig` stamps `channelWriteAt` with `Date.now()` when a write touches
+`channels.whatsapp`, and the test asked "did it stamp?" by checking that the
+value had **changed**. Two writes inside one millisecond carry the same
+number, and `notEqual` reads that as "it did not stamp". Measured on a
+back-to-back pair: **1404 collisions in 2000**. It is not a rare interleaving,
+it is the ordinary case; the test passed until now only because the write it
+compared against happened to be a millisecond or more earlier.
+
+This is `Three deploys died on a test that raced the second hand` again, at
+milliseconds instead of seconds, and it wants the same answer: pin the moment,
+then make sure the thing you compare it against cannot BE that moment. The
+test now spins to the next millisecond before the write whose stamp it is
+about to assert on. Same loop afterwards: 0 collisions in 2000.
+
+Three things worth keeping:
+
+- **The production stamp was right and stayed untouched.** Its one reader,
+  `group_outbox`, adds a 45-second grace and cannot care about a millisecond.
+  Widening the stamp to satisfy a test would have been the tail wagging the
+  dog — the same conclusion the second-hand race reached about
+  `respond_to_meeting_slot`.
+- **Reproducing the FAILURE and reproducing the MECHANISM are different, and
+  the second is enough.** The test file itself passed 60 of 60 runs in the dev
+  sandbox both before and after the fix — the collision needs a faster
+  machine than this one, and CI has it. What was reproducible on demand was
+  the mechanism, directly, at 70%. A fix defended only by "it passes now"
+  would have been indistinguishable from having changed nothing.
+- **The failure shape cost a deploy that nobody would have seen.** `test` is
+  red, `deploy` is **skipped**, the run completes, and `main` ships nothing —
+  it looks exactly like a finished run (`A wedged test on main skips deploy
+  silently`). Nothing reached the box, which is the one mercy of this shape:
+  no mixed box, because the suite failed in CI before the rsync. The visible
+  cost was that the fix in #371 sat un-shipped while the config on the box
+  still carried `ackReaction` and Miron kept getting two 👀.
 
 ### Deploying doctrine no longer needs a second command (2026-08-21)
 
