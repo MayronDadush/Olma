@@ -198,7 +198,7 @@ async function renderCost(client) {
     const p = pricing.priceUsage({
       input: r.input_tokens, output: r.output_tokens,
       cacheRead: r.cache_read_tokens, cacheWrite: r.cache_write_tokens,
-    }, r.model, blended);
+    }, r.model, blended, r.date);
     // No rate today means the fallback is still the best available answer,
     // and the stored number already IS that fallback — keep it, and keep
     // saying so with the ≈.
