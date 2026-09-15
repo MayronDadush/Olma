@@ -101,7 +101,51 @@ const INTERNAL_RE = new RegExp(`(?:^|[^A-Za-z0-9_])(${INTERNAL_NAMES.join('|')})
 // A block only the model is ever shown. `Conversation info` and `Turn context`
 // are the gateway's and ours; `DELIVERY:` opens the instruction on a turn Olma
 // started; the last two are strings from the doctrine itself.
-const BLOCK_RE = /\b(?:Turn context|Conversation info|Reply target of current user message|OpenClaw heartbeat poll|unknown identity token)\b|^\s*DELIVERY:/im;
+// `hints` is ours too — the object `domain/turn.turnHints` builds and hands the
+// model. A reply that cites what it says is quoting our machinery exactly as
+// `Turn context` does. It was already in Yahav's third paragraph ("The hints
+// say a 👍 was placed…"), which dropped only because a LATER line did, and it
+// came back on 2026-09-15 as the whole reason a message was written at all
+// ("Since the hint says a bare 'תודה' is probably about the newest reminder").
+const BLOCK_RE = /\b(?:Turn context|Conversation info|Reply target of current user message|OpenClaw heartbeat poll|unknown identity token|the hints? says?)\b|^\s*DELIVERY:/im;
+
+// The reaction vocabulary, named as something to SEND. Marks travel through
+// `domain/reactions.placeMark` on a path the reply text never touches, so words
+// that hand one of these emoji to an act of replying are describing the
+// machinery rather than talking to anybody. This is what caught the 2026-09-15
+// Hebrew leak, whose every other word was ordinary Hebrew: "תודה פשוטה — 👍
+// בחזרה". It DROPS, so the bar was the module's own — a marker that cannot
+// appear in a sentence a person is meant to read — and it is met by the OBJECT
+// position, not by the emoji: a sign-off ("סגור 👍", "אענה לך אחרי הפגישה 🙏")
+// puts no mark in anyone's hands and stays untouched. Measured against every
+// ordinary shape in the test plus eight sign-offs and near-misses written to
+// break it: 3 leaks caught, 0 moved.
+const VOCAB_RE = '👀|👂|👍|⏰|🙏|❓|⚠️';
+const MARK_RE = new RegExp(
+  `(?:${VOCAB_RE})\\s*(?:בחזרה|חזרה בתגובה|בתגובה)`
+  + `|(?:אשיב|אענה|אגיב|אשלח)\\s+(?:לו|לה|להם|)\\s*(?:${VOCAB_RE})`
+  + `|(?:reply|respond|answer|react|send)(?:ing|s|ed)?\\s+(?:back\\s+)?(?:with|using)\\s+(?:a\\s+)?(?:${VOCAB_RE})`,
+  'i');
+
+// Olma writes TO the person. A reply that opens by attributing speech to a bare
+// third-person pronoun is describing the conversation instead of continuing it,
+// and it is the one shape all three recorded leaks share, across two languages
+// and three incidents: "הם אמרו 13:00" (2026-09-10), "הוא אמר \"תודה\""
+// (2026-09-15 14:37), "He said \"תודה\" again" (2026-09-15 15:03).
+//
+// Anchored on the QUOTATION, because the bare opening alone is a real sentence:
+// "They asked me to remind you tomorrow" and "הם אמרו שיגיעו מחר" are things
+// Olma says, and both went quiet once the verb had to be followed by a quote or
+// a number — the model handing the person their own message back. `\b` is no
+// help on the Hebrew half: Hebrew letters are not `\w`, so there is no boundary
+// between a letter and a space and every `\b` after a Hebrew word silently
+// fails. The negative lookahead is what replaces it.
+//
+// REPORTED, never dropped. It reads 3/3 and 0/16 on the corpus above, but that
+// corpus is sixteen strings somebody wrote by hand — the 383 real messages this
+// module's header already names as the measurement it is missing are still on
+// the box. Same reasoning as the identifier tier: unmeasured means report.
+const NARRATION_RE = /^[\s"״'׳]*(?:הוא|היא|הם|הן)\s+(?:אמרו|אמרה|אמר|כתבו|כתבה|כתב)(?![֐-׿])\s*["״'׳\d]|^\s*(?:he|she|they)\s+(?:said|wrote|replied)\s+["״'\d]/i;
 
 // 2026-09-10T10:00:00Z. A time crossing a tool boundary carries an explicit
 // offset (CLAUDE.md, "Data you must not get wrong") and a time reaching a
@@ -159,6 +203,14 @@ function leaksIn(line) {
   if (internal) out.push({ kind: 'internal', at: internal[1] });
   const block = BLOCK_RE.exec(text);
   if (block) out.push({ kind: 'block', at: block[0].trim().slice(0, 40) });
+  const mark = MARK_RE.exec(text);
+  if (mark) out.push({ kind: 'mark', at: mark[0].trim().slice(0, 40) });
+  // Against the RAW line, not `text`: this one is anchored on the quotation,
+  // and `scannable` strips quotations by design (somebody else's words are not
+  // ours to judge). Here the quotation IS the tell — it is the person's own
+  // message being handed back to them — so the stripper would erase the signal.
+  const narration = NARRATION_RE.exec(raw);
+  if (narration) out.push({ kind: 'narration', at: narration[0].trim().slice(0, 40) });
   const instant = INSTANT_RE.exec(text);
   if (instant) out.push({ kind: 'instant', at: instant[0] });
   const sentinel = SENTINEL_RE.exec(text);
@@ -173,10 +225,17 @@ function leaksIn(line) {
 }
 
 // The kinds that leave their line standing: `identifier` because it is the
-// unmeasured tier and only reports, `sentinel` because it is stripped in place.
+// unmeasured tier and only reports, `sentinel` because it is stripped in place,
+// `narration` because a bare third-person opening is a real sentence when the
+// quotation after it is somebody else's and not the reader's own words back.
 // Everything else condemns the paragraph it sits in, which is the destructive
 // half — so only the closed, unmistakable markers are allowed in here.
-const KEEPS_LINE = new Set(['identifier', 'sentinel']);
+const KEEPS_LINE = new Set(['identifier', 'sentinel', 'narration']);
+
+// The subset of those that also change NOTHING about the text. `sentinel` is
+// not in here: it leaves its line standing but is stripped out of it, so it is
+// a real change and belongs in `leaks`.
+const REPORT_ONLY = new Set(['identifier', 'narration']);
 function drops(leaks) { return leaks.some((l) => !KEEPS_LINE.has(l.kind)); }
 
 const SENTINEL = 'NO_REPLY';
@@ -222,9 +281,11 @@ function gateReply(text) {
     for (const l of found[i]) reported.push({ ...l, line: i });
     if (drops(found[i])) last = Math.max(last, paragraphEnd(lines, i));
   }
-  // What changed the message. `identifier` never does — it is the tier that
-  // exists to be read on the dashboard, not to act.
-  const leaks = reported.filter((l) => l.kind !== 'identifier');
+  // What changed the message. The report-only kinds never do — they exist to be
+  // read on the dashboard, not to act. Keeping them out of `leaks` is what makes
+  // "found something, changed nothing" a `pass` that delivers byte for byte,
+  // rather than a `trim` whose own `.trim()` would quietly eat the whitespace.
+  const leaks = reported.filter((l) => !REPORT_ONLY.has(l.kind));
   if (!leaks.length) return { action: 'pass', text: raw, leaks, reported };
   // Whatever survives the cut still goes out without the stray sentinel in it.
   const kept = lines.slice(last + 1).join('\n').replace(SENTINEL_STRIP_RE, ' ').trim();
@@ -235,5 +296,6 @@ function gateReply(text) {
 module.exports = {
   leaksIn, gateReply, drops, scannable, redact, paragraphEnd,
   FRAME_RE, INTERNAL_RE, BLOCK_RE, INSTANT_RE, SENTINEL_RE, IDENTIFIER_RE,
-  INTERNAL_NAMES, SENTINEL, KEEPS_LINE,
+  MARK_RE, NARRATION_RE,
+  INTERNAL_NAMES, SENTINEL, KEEPS_LINE, REPORT_ONLY,
 };

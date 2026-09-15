@@ -65,7 +65,37 @@ const ORDINARY = [
   'ביטלתי את התזכורת. משהו נוסף?',
   'כתבת "due_at" — לא בטוחה שהבנתי, תוכל לנסח מחדש?',
   'אשמח לעזור. מתי נוח לך?',
+  // Written on 2026-09-15 to break the two tiers added that day, and kept
+  // because a drop tier is only as good as the sentences it leaves alone.
+  // An emoji as a sign-off hands nobody a mark; a reply verb with no mark after
+  // it is Olma saying when she will answer; and a bare third-person opening is
+  // a real relay whenever what follows is somebody else's news rather than the
+  // reader's own words quoted back.
+  'תודה! 🙏',
+  'סגור 👍',
+  'אשיב לך ברגע שאדע יותר.',
+  'אענה לך אחרי הפגישה 🙏',
+  'אחזור אליך בהקדם 👍',
+  'I will answer you later today.',
+  'They asked me to remind you tomorrow.',
+  'הם אמרו שיגיעו מחר בבוקר.',
+  'היא אמרה שזה בסדר מבחינתה.',
+  'מיכאל אמר שהוא מגיע ב-7.',
+  'הוא אמור להגיע ב-8.',
+  'ביקשתי ממנו להגיב לך.',
 ];
+
+// 2026-09-15, twice in ninety minutes, to a bare "תודה". The gate passed both
+// byte for byte — every word of them is ordinary Hebrew or ordinary English and
+// neither carries a column name, an instant or a frame. What they carry is the
+// SHAPE: Olma opening by quoting the person's own message back at them in the
+// third person, and then naming the mark she was about to place.
+const THANKS_HE = 'הוא אמר "תודה" על כך שעדכנתי את התזכורת ל-18:00. תודה פשוטה — 👍 בחזרה.';
+const THANKS_EN = [
+  'He said "תודה" again, this time replying to the recent reminder about "לדבר עם מיכאל" that is still chasing.',
+  '',
+  'Since the hint says a bare "תודה" is probably about the newest reminder, and there is no instruction to act on — just a thanks — I will reply with 👍.',
+].join('\n');
 
 test('Yahav\'s message: every paragraph of the working-out is found, and nothing was left to deliver', () => {
   const v = leak.gateReply(YAHAV);
@@ -76,12 +106,69 @@ test('Yahav\'s message: every paragraph of the working-out is found, and nothing
   // line does, which is the rule this case exists to hold open.
   assert.deepEqual(v.reported.map((l) => `${l.line}:${l.kind}:${l.at}`), [
     '0:internal:due_at',
+    '0:narration:הם אמרו 1',
     '2:internal:remind_at',
     '2:instant:2026-09-10T10:00:00Z',
+    '4:block:The hints say',
     '6:block:turn context',
     '8:sentinel:NO_REPLY',
   ]);
   assert.ok(v.leaks.length >= 4, 'all of them changed the message');
+  // The two tiers added on 2026-09-15 read the founding case too, and that is
+  // the argument for them: `narration` on its opening and `block` on its third
+  // paragraph both fire on shape alone. Yahav's leak named our columns and was
+  // caught for it; the two that followed named nothing and were not. Strip
+  // every column name out of this message and it still does not go out.
+  const shapeOnly = v.reported.filter((l) => l.kind === 'narration' || l.at === 'The hints say');
+  assert.equal(shapeOnly.length, 2, 'the shape tiers see it without help from the closed list');
+});
+
+// The pair that reopened this on 2026-09-15. Neither is caught by anything the
+// gate knew on 2026-09-10: the whole point of them is that the working-out was
+// written in the person's own language with none of our names in it.
+test('a thanks answered with the working-out: both languages, nothing delivered', () => {
+  const he = leak.gateReply(THANKS_HE);
+  assert.equal(he.action, 'cancel');
+  assert.equal(he.text, '');
+  assert.deepEqual(he.reported.map((l) => `${l.kind}:${l.at}`), [
+    'mark:👍 בחזרה',
+    'narration:הוא אמר "',
+  ]);
+
+  const en = leak.gateReply(THANKS_EN);
+  assert.equal(en.action, 'cancel');
+  assert.equal(en.text, '');
+  // Three separate tells, on two paragraphs: the opening quotation, the name of
+  // our own hints object, and the mark handed to the act of replying.
+  assert.deepEqual(en.reported.map((l) => `${l.line}:${l.kind}`), [
+    '0:narration',
+    '2:block',
+    '2:mark',
+  ]);
+});
+
+// Report-only, and that has to be visible: a finding that changes nothing must
+// still leave the message byte for byte, or `trim`'s own `.trim()` eats the
+// whitespace of a reply nobody had a complaint about.
+test('narration alone is reported and delivered unchanged', () => {
+  const text = 'הוא אמר "בסדר" ונסגר.';
+  const v = leak.gateReply(text);
+  assert.equal(v.action, 'pass');
+  assert.equal(v.text, text, 'delivered byte for byte');
+  assert.deepEqual(v.leaks, [], 'nothing about the message changed');
+  assert.equal(v.reported.length, 1);
+  assert.equal(v.reported[0].kind, 'narration');
+});
+
+// `\b` after a Hebrew word never matches — Hebrew letters are not `\w`, so
+// there is no boundary between one and the space after it. The first draft of
+// the narration pattern used `\b` and read 0/3 on the real leaks while looking
+// entirely correct. The lookahead is what replaces it, and this is the case
+// that would have caught the dead regex.
+test('the Hebrew narration pattern is not boundary-dead', () => {
+  assert.match('הם אמרו 13:00 — הכל סגור.', leak.NARRATION_RE);
+  assert.match('הוא אמר "תודה".', leak.NARRATION_RE);
+  assert.doesNotMatch('הוא אמור להגיע ב-8.', leak.NARRATION_RE, 'אמור is not אמר');
 });
 
 test('notes above an answer lose the notes and keep the answer', () => {
@@ -186,7 +273,12 @@ test('the hook cancels a reply that is only the working-out, and files it withou
   assert.equal(sent[0].params.action, 'cancel');
   assert.equal(sent[0].params.agentId, 'u-3');
   assert.ok(!JSON.stringify(sent).includes('Asia/Jerusalem'), 'the message never leaves the gateway');
-  assert.deepEqual(sent[0].params.leaks.map((l) => l.kind), ['internal', 'internal', 'instant', 'block', 'sentinel']);
+  // The field is called `leaks` on the wire and is filled from `reported`:
+  // brokerd is told everything that was FOUND, not only what moved the text,
+  // because the report-only tiers exist precisely to be read later. So the
+  // shape tiers appear here — `narration` on the opening, and the second
+  // `block` on "The hints say" — beside the closed-list names.
+  assert.deepEqual(sent[0].params.leaks.map((l) => l.kind), ['internal', 'narration', 'internal', 'instant', 'block', 'block', 'sentinel']);
   assert.equal(log.at(-1).action, 'cancel');
 });
 

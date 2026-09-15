@@ -171,6 +171,7 @@ never trust a dated narrative for something you are about to act on.
 - [The hour in the title nobody compared (fixed 2026-09-11)](#the-hour-in-the-title-nobody-compared-fixed-2026-09-11)
 - [A lost reply is re-sent, not re-answered (fixed 2026-09-09)](#a-lost-reply-is-re-sent-not-re-answered-fixed-2026-09-09)
 - [The working-out arrived instead of the message (fixed 2026-09-10)](#the-working-out-arrived-instead-of-the-message-fixed-2026-09-10)
+- [The gate knew the leak's vocabulary, not its shape (fixed 2026-09-15)](#the-gate-knew-the-leaks-vocabulary-not-its-shape-fixed-2026-09-15)
 - ["הנה, רשמתי", about a meeting (2026-09-07)](#הנה-רשמתי-about-a-meeting-2026-09-07)
 - [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
 - [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
@@ -6666,6 +6667,76 @@ openclaw-gateway` — green suite, shipped code, inert gate, which is the exact
 plugin now overwrites `/opt/olma2/run/turn-context-plugin.registered` with the
 hooks the RUNNING gateway registered, and `config_guard.checkReplyGateLive`
 reads that file and files a dashboard row for as long as the two disagree.
+
+### The gate knew the leak's vocabulary, not its shape (fixed 2026-09-15)
+
+Twice in ninety minutes, to a bare "תודה", Olma answered with her own
+deliberation instead of a message. 14:37, in Hebrew:
+
+> הוא אמר "תודה" על כך שעדכנתי את התזכורת ל-18:00. תודה פשוטה — 👍 בחזרה.
+
+15:03, in English, two paragraphs, ending "…and there's no instruction to act
+on — just a thanks — I'll reply with 👍."
+
+The gate built five days earlier for exactly this class **passed both, byte for
+byte.** That is measured, not inferred — running the real text through
+`domain/reply-leak.gateReply` returns `action: "pass"` with zero findings and
+zero reports, while Yahav's founding leak from 2026-09-10 still returns
+`cancel`.
+
+**Why.** All four dropping triggers are lexical: a frame marker, a name off the
+closed `INTERNAL_NAMES` list, a full ISO instant, a model-only block name. Both
+new leaks are ordinary Hebrew and ordinary English with none of those in them —
+"18:00" and "08:02" are not ISO instants, and no column is named anywhere. The
+gate had generalised on the TOKENS of the one leak it was built from, and the
+behaviour it exists to stop does not need them.
+
+**What all three actually share**, across two languages and three incidents:
+
+| | 2026-09-10 | 2026-09-15 14:37 | 2026-09-15 15:03 |
+|---|---|---|---|
+| opens third-person, person's own words quoted back | `הם אמרו 13:00` | `הוא אמר "תודה"` | `He said "תודה"` |
+| names the mark it is about to place | — | `👍 בחזרה` | `I'll reply with 👍` |
+| cites our `hints` object | `The hints say` | — | `the hint says` |
+
+So two tiers were added from the shape. `MARK_RE` **drops**: marks travel
+through `reactions.placeMark` on a path the reply text never touches, so words
+handing one of the vocabulary emoji to an act of replying are describing the
+machinery. The bar for a drop is the module's own — "cannot appear in a sentence
+a person is meant to read" — and it is met by the OBJECT position, not the
+emoji: "סגור 👍" and "אענה לך אחרי הפגישה 🙏" hand nobody a mark and do not move.
+`NARRATION_RE` **reports**: a bare pronoun and a speech verb is a real Olma
+sentence, and requiring the person's own words quoted after it is what separates
+the two — "They asked me to remind you tomorrow" and "הם אמרו שיגיעו מחר" both
+fired on the first draft and both went quiet on the second. `the hints? says?`
+joined `BLOCK_RE`, where `Turn context` already sits.
+
+Four things worth keeping:
+
+- **`\b` is dead against Hebrew.** Hebrew letters are not `\w`, so there is no
+  word boundary between one and the space after it and every `\b` after a
+  Hebrew word silently fails. The first narration pattern used it, read **0 of
+  3** on the real leaks, and looked entirely correct. `INTERNAL_RE` had already
+  solved this with explicit character classes; the fix is a
+  `[֐-׿]` lookahead. A regex that cannot fire is indistinguishable
+  from one nothing matched, which is the detector shape this repo keeps
+  rediscovering.
+- **Measuring changed the design twice, not once.** The first narration draft
+  was going to DROP. Run against thirteen negatives it ate "They asked me to
+  remind you tomorrow" — a sentence Olma really sends. Anchoring on the
+  quotation took it to 3/3 and 0/16, and it is still report-only, because
+  sixteen hand-written strings are not the 383 real messages
+  `domain/reply-leak.js`'s own header already names as the measurement it is
+  missing. That corpus is still on the box.
+- **The founding case is now caught twice over.** Yahav's leak trips
+  `narration` on its opening and `block` on its third paragraph, both on shape
+  alone. Strip every column name out of it and it still does not go out — which
+  is the argument for the tiers, and is asserted in the test rather than
+  claimed here.
+- **The plugin carries a PORT, and the port is what runs.** Updating
+  `domain/reply-leak.js` alone left the gateway's own copy unchanged and the fix
+  inert in production. The parity test — one corpus, both implementations — went
+  red immediately and is the only reason that was not shipped.
 
 ### A time in the title and no reminder (fixed 2026-09-09)
 
