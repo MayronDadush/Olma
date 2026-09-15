@@ -168,6 +168,26 @@ title means this file. Grep the title, not the filename.
   on, and saying one left the table stays a model's sentence
   (`HINTS.struckOut`, unchanged).
 
+- **Since 2026-09-15 the scheduled digest is SENT by code too, and the model
+  writes it only when something in it needs composing**
+  (`domain/digest-message.js`; `incidents.md`, "A fifth of the bill, to send a
+  list that was already written"). `digest-message.forDelivery` answers null —
+  and the old `--deliver` turn runs, unchanged — for folded queued updates, a
+  merge or batch at delivery, a row with its own instruction, a phone off
+  `digest_without_model_phones`, a card-sized morning while
+  `digest_card_without_model_phones` is shut, and anything that throws. **Keep
+  that list a list of COMPOSITION**: a new kind of content in a digest that a
+  template cannot say goes on it, never into a template that half says it.
+  The words around the list are `digest_*` templates — no gender, no question
+  mark, a name only when `name_confirmed`. **It goes out as the person's own
+  agent** (`sendRawMessage`'s `agentId`), because the gateway mirrors that send
+  into their session and reads media from their workspace; read off the
+  2026.8.1 source, not yet seen on a phone. `drawn.text` is always the whole
+  message, so a card refused is followed by the words — but a card that TIMED
+  OUT is not, for the reason a timeout is booked as sent. The deliverer never
+  writes the outbox row: the worker holds it `FOR UPDATE`, and the audit
+  (`digest.sent_without_model`) is written on the worker's own client.
+
 - **The same thing does not go out twice inside a few minutes unless the person
   ASKED** (owner, 2026-09-10; `domain/repeat-guard.js` holds the window and the
   sentence, and exactly two places read it). The gate drops a second row of the

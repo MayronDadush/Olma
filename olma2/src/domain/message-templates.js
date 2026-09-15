@@ -64,6 +64,68 @@ const TEMPLATES = [
       + 'Text me, send a voice message, or just throw everything at me — '
       + 'I’ll keep you organized ☺️',
   },
+  // ---- the scheduled digest, when no model writes it ----------------------
+  // domain/digest-message.js (owner, 2026-09-15). The list under the first line
+  // is drawn in code (digest-block.js) and is not a template; these are the
+  // sentences around it. No gender and no question mark, for the reason every
+  // verbatim sentence here has neither: nothing reads who is receiving it.
+  // `name` is empty unless they confirmed it, and the space before it goes too.
+  {
+    key: 'digest_intro', audience: 'private', label: 'סיכום יומי — פתיחה',
+    help: 'השורה מעל הרשימה (או מתחת לתמונה) בסיכום היומי. יוצאת בלי מודל כשאין עדכונים שחיכו בתור.',
+    vars: { greeting: 'בוקר טוב / צהריים טובים / ערב טוב, לפי השעה אצלם', name: 'השם הפרטי, רק אם אישרו אותו' },
+    required: [],
+    sample: { greeting: 'בוקר טוב', name: 'מירון' },
+    text: '{{greeting}} {{name}} ☀️\nזה מה שעל הפרק:',
+  },
+  {
+    key: 'digest_intro_en', audience: 'private', label: 'סיכום יומי — פתיחה', help: '',
+    vars: { greeting: 'Good morning / afternoon / evening', name: 'first name, only if confirmed' },
+    required: [],
+    sample: { greeting: 'Good morning', name: 'Sarah' },
+    text: "{{greeting}} {{name}} ☀️\nHere's what's on:",
+  },
+  {
+    key: 'digest_empty', audience: 'private', label: 'סיכום יומי — אין כלום',
+    help: 'במקום הרשימה, כשאין שום דבר ביומן או ברשימה.',
+    vars: { greeting: 'בוקר טוב / צהריים טובים / ערב טוב', name: 'השם הפרטי, רק אם אישרו אותו' },
+    required: [],
+    sample: { greeting: 'בוקר טוב', name: 'מירון' },
+    text: '{{greeting}} {{name}} ☀️\nאין כרגע כלום ביומן או ברשימה — יום פנוי 🌿',
+  },
+  {
+    key: 'digest_empty_en', audience: 'private', label: 'סיכום יומי — אין כלום', help: '',
+    vars: { greeting: 'Good morning / afternoon / evening', name: 'first name, only if confirmed' },
+    required: [],
+    sample: { greeting: 'Good morning', name: 'Sarah' },
+    text: '{{greeting}} {{name}} ☀️\nNothing on your calendar or your list right now — a free day 🌿',
+  },
+  {
+    key: 'digest_waiting', audience: 'private', label: 'סיכום יומי — מחכים לאחרים',
+    help: 'שורה מתחת לרשימה, כשיש תיאום שהם כבר ענו עליו ומחכים לאחרים.',
+    vars: { items: 'התיאומים, ולמי מחכים' }, required: ['items'],
+    sample: { items: 'ארוחת צהריים (דנה)' },
+    text: '⏳ עוד מחכים לתשובה: {{items}}',
+  },
+  {
+    key: 'digest_waiting_en', audience: 'private', label: 'סיכום יומי — מחכים לאחרים', help: '',
+    vars: { items: 'the coordinations, and who they are waiting on' }, required: ['items'],
+    sample: { items: 'Lunch (Dana)' },
+    text: '⏳ Still waiting to hear back: {{items}}',
+  },
+  {
+    key: 'digest_owed', audience: 'private', label: 'סיכום יומי — מחכים להם',
+    help: 'שורה מתחת לרשימה, כשמישהו הציע תיאום ועוד לא ענו עליו.',
+    vars: { items: 'התיאומים, ומי הציע' }, required: ['items'],
+    sample: { items: 'קפה (יהב)' },
+    text: '📩 מחכה לתשובה ממך: {{items}}',
+  },
+  {
+    key: 'digest_owed_en', audience: 'private', label: 'סיכום יומי — מחכים להם', help: '',
+    vars: { items: 'the coordinations, and who proposed them' }, required: ['items'],
+    sample: { items: 'Coffee (Yahav)' },
+    text: '📩 Waiting on your answer: {{items}}',
+  },
   {
     key: 'reminder', audience: 'private', label: 'תזכורת',
     help: 'התזכורת עצמה, בשעה שהאדם ביקש. יוצאת בלי מודל, ולכן גם כשאין קרדיט.',

@@ -187,22 +187,27 @@ function dateOnlyParts(s) {
 // built from that would need its own off-by-one guard. Named here rather
 // than solved speculatively: nothing today asks for a multi-day span in this
 // block, and the single start day is not wrong, only less than it could say.
-function calendarEventLine(ev, ctx) {
-  const title = format.stripUserMarkup(String(ev.title || '').replace(/\s+/g, ' ').trim());
-  if (!title) return null;
-  const where = ev.location ? format.stripUserMarkup(String(ev.location).replace(/\s+/g, ' ').trim()) : '';
-  let when;
+// The moment half on its own, for the morning card (domain/digest-message.js),
+// which puts the moment and the title in two different places on the image.
+// `null` is "could not read the date" and drops the event, exactly as below.
+function calendarEventWhen(ev, ctx) {
   if (ev.allDay) {
     // Unlike a task's due_at, every real calendar event carries a date —
     // Google requires one. One that does not parse is a data anomaly, not a
     // dateless event, so the line is dropped rather than shown bare: a thing
     // that could not be READ is never shown as though it had no date at all.
     const parts = dateOnlyParts(ev.start);
-    if (!parts) return null;
-    when = dayLabel(parts, ctx);
-  } else {
-    when = rangeLabel({ due_at: ev.start, ends_at: ev.end }, ctx);
+    return parts ? dayLabel(parts, ctx) : null;
   }
+  return rangeLabel({ due_at: ev.start, ends_at: ev.end }, ctx);
+}
+
+function calendarEventLine(ev, ctx) {
+  const title = format.stripUserMarkup(String(ev.title || '').replace(/\s+/g, ' ').trim());
+  if (!title) return null;
+  const where = ev.location ? format.stripUserMarkup(String(ev.location).replace(/\s+/g, ' ').trim()) : '';
+  const when = calendarEventWhen(ev, ctx);
+  if (when === null) return null;
   const head = [when, title].filter(Boolean).join(' — ');
   return where ? `${head}, ${where}` : head;
 }
@@ -257,5 +262,5 @@ function renderMeetingOptionsBlock(options, opts = {}) {
 
 module.exports = {
   renderTaskListBlock, renderReminderListBlock, renderCalendarListBlock, renderMeetingOptionsBlock,
-  repeatLabel, MIN_LINES,
+  repeatLabel, MIN_LINES, calendarEventLine, calendarEventWhen, dateOnlyParts,
 };
