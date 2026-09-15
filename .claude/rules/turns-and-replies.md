@@ -205,3 +205,25 @@ title means this file. Grep the title, not the filename.
   wording. **And it is inert until the gateway is restarted** (`systemctl --user
   restart openclaw-gateway`; `deploy.sh` does not), which is what
   `config_guard.checkReplyGateLive` reads off the plugin's registration stamp.
+  **A gate built from one leak knows that leak's VOCABULARY, not its SHAPE.**
+  Twice on 2026-09-15, to a bare "תודה", the working-out went out again and the
+  gate passed both byte for byte — measured, not assumed: `action: "pass"`,
+  zero findings. Every word of them was ordinary Hebrew or ordinary English,
+  and the four dropping triggers are all lexical, so there was nothing to
+  catch. Two tiers were added from what all three recorded leaks actually share:
+  `MARK_RE` drops a reaction emoji handed to an act of replying ("תודה פשוטה —
+  👍 בחזרה", "I'll reply with 👍") — marks travel through `placeMark` and the
+  text never names them, while a sign-off ("סגור 👍") hands nobody anything;
+  `NARRATION_RE` REPORTS a reply opening with a bare third-person pronoun, a
+  speech verb and then the person's own words quoted back ("הם אמרו 13:00",
+  'הוא אמר "תודה"', 'He said "תודה"'). The quotation is what makes it safe: the
+  bare opening alone is a real sentence ("They asked me to remind you
+  tomorrow", "הם אמרו שיגיעו מחר") and both went quiet once it was required.
+  Report-only anyway, because sixteen strings written by hand are not the 383
+  real messages this still wants. **`\b` is dead against Hebrew** — Hebrew
+  letters are not `\w`, so there is no boundary between one and the space after
+  it and every `\b` silently fails; the first draft read 0/3 while looking
+  correct. Use a `[֐-׿]` lookahead, as `INTERNAL_RE` already does.
+  **The plugin carries a PORT of `domain/reply-leak.js`** and it is the copy
+  that actually runs; `tests/reply-leak.test.js` holds one corpus against both
+  implementations, and that parity check is what caught the port being missed.

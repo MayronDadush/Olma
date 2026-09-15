@@ -275,7 +275,14 @@ export const INTERNAL_NAMES = [
   "first_name", "last_name", "repeat_rule",
 ];
 const INTERNAL_RE = new RegExp(`(?:^|[^A-Za-z0-9_])(${INTERNAL_NAMES.join("|")})(?![A-Za-z0-9_])`, "i");
-const BLOCK_RE = /\b(?:Turn context|Conversation info|Reply target of current user message|OpenClaw heartbeat poll|unknown identity token)\b|^\s*DELIVERY:/im;
+const BLOCK_RE = /\b(?:Turn context|Conversation info|Reply target of current user message|OpenClaw heartbeat poll|unknown identity token|the hints? says?)\b|^\s*DELIVERY:/im;
+const VOCAB_RE = "👀|👂|👍|⏰|🙏|❓|⚠️";
+const MARK_RE = new RegExp(
+  `(?:${VOCAB_RE})\\s*(?:בחזרה|חזרה בתגובה|בתגובה)`
+  + `|(?:אשיב|אענה|אגיב|אשלח)\\s+(?:לו|לה|להם|)\\s*(?:${VOCAB_RE})`
+  + `|(?:reply|respond|answer|react|send)(?:ing|s|ed)?\\s+(?:back\\s+)?(?:with|using)\\s+(?:a\\s+)?(?:${VOCAB_RE})`,
+  "i");
+const NARRATION_RE = /^[\s"״'׳]*(?:הוא|היא|הם|הן)\s+(?:אמרו|אמרה|אמר|כתבו|כתבה|כתב)(?![֐-׿])\s*["״'׳\d]|^\s*(?:he|she|they)\s+(?:said|wrote|replied)\s+["״'\d]/i;
 const INSTANT_RE = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})\b/;
 const SENTINEL_RE = /\bNO_REPLY\b/;
 const SENTINEL_STRIP_RE = /\s*\bNO_REPLY\b\s*/g;
@@ -284,7 +291,8 @@ const URL_RE = /\b(?:https?:\/\/|www\.)\S+/gi;
 const ADDRESS_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
 const QUOTED_RE = /["״'][^"״'\n]{1,80}["״']/g;
 const TOKEN_RE = /\bolma_(?:tok|grp)_[0-9a-f]{8,}/g;
-const KEEPS_LINE = new Set(["identifier", "sentinel"]);
+const KEEPS_LINE = new Set(["identifier", "sentinel", "narration"]);
+const REPORT_ONLY = new Set(["identifier", "narration"]);
 const SENTINEL = "NO_REPLY";
 
 export function scannable(line) {
@@ -301,6 +309,10 @@ export function leaksIn(line) {
   if (internal) out.push({ kind: "internal", at: internal[1] });
   const block = BLOCK_RE.exec(text);
   if (block) out.push({ kind: "block", at: block[0].trim().slice(0, 40) });
+  const mark = MARK_RE.exec(text);
+  if (mark) out.push({ kind: "mark", at: mark[0].trim().slice(0, 40) });
+  const narration = NARRATION_RE.exec(raw);
+  if (narration) out.push({ kind: "narration", at: narration[0].trim().slice(0, 40) });
   const instant = INSTANT_RE.exec(text);
   if (instant) out.push({ kind: "instant", at: instant[0] });
   const sentinel = SENTINEL_RE.exec(text);
@@ -328,7 +340,7 @@ export function gateReply(text) {
     for (const l of found[i]) reported.push({ ...l, line: i });
     if (drops(found[i])) last = Math.max(last, paragraphEnd(lines, i));
   }
-  const leaks = reported.filter((l) => l.kind !== "identifier");
+  const leaks = reported.filter((l) => !REPORT_ONLY.has(l.kind));
   if (!leaks.length) return { action: "pass", text: raw, leaks, reported };
   const kept = lines.slice(last + 1).join("\n").replace(SENTINEL_STRIP_RE, " ").trim();
   if (!kept) return { action: "cancel", text: "", leaks, reported };
