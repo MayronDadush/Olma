@@ -234,16 +234,19 @@ h1,h2,h3,p{margin:0}
 /* The clock IS the timezone: it is the only place in the app that shows one,
    so it is where you would go to correct it — and going there should not mean
    a trip through the profile page for a control you can already see. */
+/* It is a flex item, not an absolute overlay pinned to the middle: on a phone
+   the name, the theme icons and the status pill already fill the bar, and an
+   overlay has no way to know that — it sat on top of the theme icons. In the
+   flow it can only ever take the room that is left. */
 .topclock{
-  position:absolute;inset-inline:0;top:50%;transform:translateY(-50%);
-  width:max-content;margin-inline:auto;text-align:center;
+  flex:none;text-align:center;
   padding:5px 11px;border-radius:999px;
   font-size:14.5px;font-weight:600;letter-spacing:.04em;color:var(--text-3);
   font-variant-numeric:tabular-nums;
   transition:background var(--sw-t) var(--ease-io),color var(--sw-t) var(--ease-io),
              transform .3s var(--squash);
 }
-.topclock:active{background:var(--bg-tint);color:var(--text-2);transform:translateY(-50%) scale(.94)}
+.topclock:active{background:var(--bg-tint);color:var(--text-2);transform:scale(.94)}
 .topclock:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .brand{
   display:flex;align-items:center;gap:11px;min-width:0;
@@ -296,7 +299,7 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
 /* The name leads and the line under it is the welcome. It is one line and it
    stays one line: a header that reflows to two pushes the clock and the
    status pill around, and those two are the reason anybody looks up here. */
-.brand-hi{font-size:13px;color:var(--text-2);line-height:1.2}
+.brand-hi{font-size:13px;color:var(--text-2);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .brand-name{font-family:'Rubik',sans-serif;font-weight:600;font-size:17px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hdrend{display:flex;align-items:center;gap:9px;flex:none}
 /* Three icons, one pressed at a time — the same picture language as the seg
@@ -421,6 +424,10 @@ html.intro-4 .tabbar{opacity:1;transform:none;pointer-events:auto}
 .row{
   display:flex;align-items:center;gap:12px;
   padding:10px 14px;position:relative;min-height:54px;width:100%;
+  /* a row that is a <button> inherits the reset's `text-align:center`, which
+     floated its title to the middle while the <div> rows beside it read from
+     the start edge */
+  text-align:start;
 }
 .row + .row::before,
 .rowset + .rowset .row:first-child::before,
@@ -1494,6 +1501,45 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .vchip:active{transform:scale(.94)}
 .vchip.toggle{box-shadow:inset 0 0 0 1.4px var(--sep-2);background:transparent;color:var(--text-3)}
 .vchip.toggle[aria-checked="true"]{background:var(--accent);color:#fff;box-shadow:none}
+/* The task sheet's when-row only. `.vchip` is shared with the hours and
+   digest rows, so everything below is scoped to the sheet's own classes and
+   never restyles a bare `.vchip` (one CSS namespace — a reused name wins by
+   source order). */
+.whenvals .vchip.quick{color:var(--accent);background:var(--accent-soft)}
+.whenvals .vchip.toggle{display:inline-flex;align-items:center;gap:6px;
+  background:var(--bg-tint);box-shadow:none;color:var(--text-2)}
+.whenvals .vchip.toggle .tdot{width:12px;height:12px;border-radius:50%;flex:none;
+  box-shadow:inset 0 0 0 1.5px currentColor;opacity:.55;
+  transition:box-shadow .2s var(--ease-io),opacity .2s var(--ease-io)}
+.whenvals .vchip.toggle[aria-checked="true"]{background:var(--accent);color:#fff}
+.whenvals .vchip.toggle[aria-checked="true"] .tdot{box-shadow:inset 0 0 0 3.5px #fff;opacity:1}
+.vseg{display:inline-flex;align-items:center;border-radius:999px;background:var(--bg-tint);
+  font-size:14px;font-weight:600;white-space:nowrap}
+.vseg[hidden]{display:none}
+/* Nothing chosen looks like nothing chosen: a dashed outline and no fill, the
+   convention for an empty slot — a filled pill reads as a value. */
+.vseg{border:1.3px solid transparent}
+.vseg.vunset{background:transparent;border-color:var(--sep-2);border-style:dashed}
+.vseg.vunset .vseg-b{color:var(--text-3)}
+.vseg-b.open{color:var(--accent)}
+.vseg-b{display:inline-flex;align-items:center;gap:6px;padding:5.5px 11px;border-radius:999px;
+  color:var(--text-2);font:inherit;transition:color .34s var(--ease-io),transform .38s var(--squash)}
+.vseg-b.set{color:var(--text)}
+.vseg-b:active{transform:scale(.94)}
+.vseg-b .vic{width:14px;height:14px;flex:none;color:var(--text-3)}
+.vseg-b.set .vic{color:var(--accent)}
+/* the end reads as the second half of one range, not as a chip of its own */
+.vseg-b.end{position:relative;padding-inline-start:10px}
+.vseg-b.end::before{content:"";position:absolute;inset-inline-start:0;top:28%;bottom:28%;
+  width:1px;background:var(--sep-2)}
+.vseg-b.end:not(.set){color:var(--text-3)}
+.vclear{width:22px;height:22px;margin-inline-end:4px;margin-inline-start:-5px;border-radius:50%;
+  display:grid;place-items:center;flex:none;color:var(--text-3);
+  transition:background .2s var(--ease-io),color .2s var(--ease-io),transform .38s var(--squash)}
+.vclear svg{width:9px;height:9px}
+.vclear:hover{background:var(--sep-2);color:var(--text)}
+.vclear:active{transform:scale(.88)}
+.vseg-b.locked{opacity:.42;cursor:default}
 @keyframes chipPop{0%{transform:scale(1)}38%{transform:scale(.93)}100%{transform:scale(1)}}
 .vchip.pop{animation:chipPop .19s var(--ease-io)}
 .autotag{
@@ -2342,12 +2388,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .tpcol button.on{color:var(--text);font-weight:600;font-size:22px}
 .tpcolon{position:relative;font-family:'Rubik',sans-serif;font-size:20px;font-weight:600;color:var(--text-2);padding-bottom:3px}
-.tpfoot{margin-top:8px}
+.tpfoot{margin-top:8px;display:flex;gap:6px}
 .tpfoot button{
   width:100%;padding:10px;border-radius:12px;background:var(--accent);color:#fff;
   font-size:14px;font-weight:600;transition:transform .38s var(--squash)
 }
 .tpfoot button:active{transform:scale(.97)}
+.tpfoot button.ghost{background:var(--bg-tint);color:var(--text-2)}
 .btn{
   padding:14px;border-radius:15px;font-size:16.5px;font-weight:600;text-align:center;
   transition:transform .38s var(--squash),filter .3s var(--ease-io);
@@ -2384,6 +2431,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
 @media (max-width:430px){
   .title h1{font-size:29px}
+  /* The status pill's words are what a phone header cannot fit beside the
+     clock. The dot carries the state on its own — green and pulsing when she
+     is on, amber and still when paused — and the words stay as its label.
+     Keeping them for a pause was measured at 375px: the name vanished. */
+  .live #olmaLive{display:none}
+  .live{padding:10px}
+  .topbar{gap:8px}
   .tab{min-width:0;padding:9px 11px 8px}
   .field label{width:86px;font-size:15px}
 }
@@ -2548,19 +2602,22 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     </div>
     <!-- Two modes, not two pages. Reading the week and arranging something in
          it are the same subject, and the same segment control the task list
-         already uses says so. -->
+         already uses says so. Coordination comes FIRST and is where the tab
+         opens (owner, 2026-09-15): the week is on the phone's own calendar
+         already, and arranging something with other people is the part only
+         this page does. -->
     <div class="viewrow" style="--i:1">
       <div class="seg mini" id="calMode">
-        <button aria-pressed="true"  data-calmode="cal"  data-i18n="cal.modeRead"></button>
-        <button aria-pressed="false" data-calmode="meet" data-i18n="cal.modeMeet"></button>
+        <button aria-pressed="true"  data-calmode="meet" data-i18n="cal.modeMeet"></button>
+        <button aria-pressed="false" data-calmode="cal"  data-i18n="cal.modeRead"></button>
       </div>
       <!-- Starting one is the first thing you might want here, so it sits at
            the top with the control that got you to this mode — not at the far
            end of however many coordinations you already have. -->
-      <button class="addmini" id="mtNew" hidden><svg><use href="#i-plus"/></svg><span data-i18n="mt.new"></span></button>
+      <button class="addmini" id="mtNew"><svg><use href="#i-plus"/></svg><span data-i18n="mt.new"></span></button>
     </div>
 
-    <div id="calRead">
+    <div id="calRead" hidden>
       <div style="--i:2">
         <div class="group">
           <!-- A week strip that could only ever show the next seven days was
@@ -2589,7 +2646,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       </div>
     </div>
 
-    <div id="calMeet" hidden>
+    <div id="calMeet">
       <div style="--i:2">
         <div class="glabel"><span data-i18n="mt.open"></span><span class="hint" id="mtCount"></span></div>
         <div class="stack" id="mtList"></div>
@@ -2913,16 +2970,32 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     <div class="row no-icon whenrow">
       <div class="row-title" data-i18n="sheet.when"></div>
       <div class="whenvals">
-        <button class="vchip" id="sDateRow" data-cal="task" data-quick="1"><span id="sDateVal"></span></button>
-        <button class="vchip" id="sTimeChip"><span id="sTimeVal"></span></button>
-        <!-- Where it STOPS. A shift used to be a title with its hours typed
+        <!-- An undated task is one tap from today or tomorrow, without opening
+             the calendar for the two days almost everybody picks. -->
+        <button class="vchip quick" data-taskday="0" data-i18n="cal.today"></button>
+        <button class="vchip quick" data-taskday="1" data-i18n="cal.tomorrow"></button>
+        <!-- The date and the way back to "no date" are one pill. Clearing a
+             date used to be the third button inside the calendar, so taking a
+             date off a task meant opening a calendar to not pick one. -->
+        <span class="vseg" id="sDateSeg">
+          <button class="vseg-b" id="sDateRow" data-cal="task" data-quick="1">
+            <svg class="vic"><use href="#i-cal"/></svg><span id="sDateVal"></span></button>
+          <button class="vclear" id="sDateClear" data-i18n-label="cal.clear">
+            <svg><use href="#i-x"/></svg></button>
+        </span>
+        <!-- Start and end are one range, so they are one pill.
+             Where it STOPS: a shift used to be a title with its hours typed
              into it — `משמרת - ראשון 12:00-19:00` — because there was nowhere
              else to put them, and nothing could read them there. It only
              appears once there is a start, because an end with nothing to end
              is not a time. -->
-        <button class="vchip" id="sEndChip"><span id="sEndVal"></span></button>
+        <span class="vseg" id="sTimeSeg">
+          <button class="vseg-b" id="sTimeChip">
+            <svg class="vic" id="sTimeIcon"><use href="#i-clock"/></svg><span id="sTimeVal"></span></button>
+          <button class="vseg-b end" id="sEndChip"><span id="sEndVal"></span></button>
+        </span>
         <button class="vchip toggle" id="sAllDay" role="switch" aria-checked="false"
-                data-i18n="sheet.allDay" data-i18n-label="sheet.allDay"></button>
+                data-i18n-label="sheet.allDay"><span class="tdot"></span><span data-i18n="sheet.allDay"></span></button>
       </div>
       <input id="sTime" type="time" tabindex="-1" aria-hidden="true"
              style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
@@ -3986,14 +4059,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.lang":"השפה בשיחה עודכנה",
 
       "city.title":"איפה אתה נמצא?","city.search":"חיפוש עיר","city.none":"לא נמצאה עיר בשם הזה.",
-      "time.search":"חיפוש שעה","time.none":"לא נמצאה שעה כזו.","time.clear":"ללא שעה",
+      "time.search":"חיפוש שעה","time.none":"לא נמצאה שעה כזו.","time.clear":"ללא שעה","toast.endAfterStart":"שעת הסיום צריכה להיות אחרי שעת ההתחלה","sheet.addTime":"שעה",
 
       "sheet.new":"משימה חדשה","sheet.edit":"עריכת משימה",
       "sheet.task":"משימה","sheet.taskPh":"מה צריך לעשות?",
       "sheet.date":"מועד","sheet.time":"שעה",
       "sheet.remind":"תזכורת","sheet.remindSub":"עולמה תזכיר ב־{name}",
       "sheet.save":"שמירה","sheet.delete":"מחיקת המשימה","sheet.cancel":"ביטול",
-      "sheet.autosave":"נשמר אוטומטית","sheet.saved":"נשמר ✓","sheet.noDate":"ללא תאריך",
+      "sheet.autosave":"נשמר אוטומטית","sheet.saved":"נשמר ✓","sheet.noDate":"ללא תאריך","sheet.pickDate":"תאריך",
       "cal.today":"היום","cal.tomorrow":"מחר","cal.clear":"ללא תאריך","cal.yesterday":"אתמול",
       "sheet.untitled":"משימה ללא שם",
       "sheet.allDay":"כל היום","sheet.repeat":"חזרה",
@@ -4276,14 +4349,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.lang":"Chat language updated",
 
       "city.title":"Where are you?","city.search":"Search for a city","city.none":"No city by that name.",
-      "time.search":"Search for a time","time.none":"No time by that name.","time.clear":"No time",
+      "time.search":"Search for a time","time.none":"No time by that name.","time.clear":"No time","toast.endAfterStart":"The end has to be after the start","sheet.addTime":"Time",
 
       "sheet.new":"New task","sheet.edit":"Edit task",
       "sheet.task":"Task","sheet.taskPh":"What needs doing?",
       "sheet.date":"Date","sheet.time":"Time",
       "sheet.remind":"Reminder","sheet.remindSub":"Allma will remind you on {name}",
       "sheet.save":"Save","sheet.delete":"Delete task","sheet.cancel":"Cancel",
-      "sheet.autosave":"Saves as you type","sheet.saved":"Saved ✓","sheet.noDate":"No date",
+      "sheet.autosave":"Saves as you type","sheet.saved":"Saved ✓","sheet.noDate":"No date","sheet.pickDate":"Date",
       "cal.today":"Today","cal.tomorrow":"Tomorrow","cal.clear":"No date","cal.yesterday":"Yesterday",
       "sheet.untitled":"Untitled task",
       "sheet.allDay":"All day","sheet.repeat":"Repeat",
@@ -6233,7 +6306,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var sep = LOCALE === "en" ? "/" : ".";
     return +d.slice(8) + sep + +d.slice(5,7) + (tm ? " " + tm : "");
   }
-  function dateLabel(d){ return d ? longDate(d) : t("sheet.noDate"); }
   function both(v){ return {he:v, en:v}; }
 
   function flashSaved(){
@@ -6335,22 +6407,29 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   function syncSheetRows(){
     var dated = !!editing.d;
-    $("#sDateVal").textContent = dateLabel(editing.d);
+    /* Undated, the pill asks for a date beside the two one-tap days; dated,
+       it shows the date with its own way back to none. */
+    $("#sDateVal").textContent = dated ? longDate(editing.d) : t("sheet.pickDate");
     $("#sDateRow").classList.toggle("set", dated);
+    $("#sDateSeg").classList.toggle("vunset", !dated);
+    $$(".whenvals [data-taskday]").forEach(function(b){ b.hidden = dated; });
+    $("#sDateClear").hidden = !dated;
+    $("#sDateClear").title = t("cal.clear");
     /* a clock and an all-day switch are both answers to a question that has
        not been asked yet when there is no date, so neither is offered */
     $("#sAllDay").hidden = !dated;
     $("#sAllDay").setAttribute("aria-checked", editing.all ? "true" : "false");
     $("#sAllDay").classList.toggle("on", !!editing.all);
-    $("#sTimeChip").hidden = !dated || !!editing.all;
-    $("#sTimeVal").textContent = editing.tm || t("sheet.pickTime");
+    $("#sTimeSeg").hidden = !dated || !!editing.all;
+    $("#sTimeVal").textContent = editing.tm || t("sheet.addTime");
+    $("#sTimeSeg").classList.toggle("vunset", !editing.tm);
+    $("#sTimeIcon").innerHTML = '<use href="#' + (editing.tm ? "i-clock" : "i-plus") + '"/>';
     $("#sTimeChip").classList.toggle("set", !!editing.tm);
     /* No start, nothing to end. The chip is not merely disabled — it is a
        question that has not been asked yet, exactly like the clock itself
        before a date is picked. */
-    $("#sEndChip").hidden = !dated || !!editing.all || !editing.tm;
-    $("#sEndVal").textContent = editing.tmEnd
-      ? "– " + editing.tmEnd : t("sheet.pickEnd");
+    $("#sEndChip").hidden = !editing.tm;
+    $("#sEndVal").textContent = editing.tmEnd || t("sheet.pickEnd");
     $("#sEndChip").classList.toggle("set", !!editing.tmEnd);
     $("#sCalRow").hidden = !dated;
     $("#sCalSub").textContent = calTargetName();
@@ -6729,9 +6808,27 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      what RAISES it changed, from the platform's own popup to this page's
      own sheet, the one the clock setting on the profile page already uses */
   $("#sTime").addEventListener("change", commit);
-  $("#sTimeChip").addEventListener("click", function(){ openTimeSheet($("#sTime")); });
+  /* The task's two clocks use the same wheel as every other clock on the
+     page. Both land in the hidden inputs, so commit() stays the one writer. */
+  function setTaskClock(input, v){ input.value = v; commit(); }
+  $("#sTimeChip").addEventListener("click", function(){
+    openTimePop(this, editing.tm, function(v){ setTaskClock($("#sTime"), v); },
+      {clear:function(){ setTaskClock($("#sTime"), ""); }});
+  });
   $("#sEnd").addEventListener("change", commit);
-  $("#sEndChip").addEventListener("click", function(){ openTimeSheet($("#sEnd")); });
+  /* An end opens an hour after the start, on a wheel that begins at the
+     start's own hour — nothing before it is offered, because nothing before
+     it is an end. The same hour with fewer minutes still turns up, and is
+     refused out loud rather than dropped by commit(). */
+  $("#sEndChip").addEventListener("click", function(){
+    var st = editing.tm, sm = st ? +st.slice(0,2) * 60 + +st.slice(3) : 0;
+    var em = Math.min(sm + 60, 23 * 60 + 55);
+    var guess = editing.tmEnd || pad2(Math.floor(em / 60)) + ":" + pad2(em % 60);
+    openTimePop(this, guess, function(v){
+      if(v <= st){ toast(t("toast.endAfterStart")); return; }
+      setTaskClock($("#sEnd"), v);
+    }, {minHour:Math.floor(sm / 60), clear:function(){ setTaskClock($("#sEnd"), ""); }});
+  });
   /* Five-minute rows, generated once — the same list every chip on the page
      opens, whichever hidden input a pick lands in. One picker, everywhere a
      time is asked for, instead of the platform's own popup on some fields
@@ -6805,6 +6902,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   $("#mtOptTimeChip").addEventListener("click", function(){ openTimeSheet($("#mtOptTime")); });
   $("#mtNewTimeChip").addEventListener("click", function(){ openTimeSheet($("#mtNewTime")); });
+  /* the one-tap days and the clear button write the date exactly the way a
+     pick in the calendar does, so there is one path for a task's date */
+  $$(".whenvals [data-taskday]").forEach(function(b){
+    b.addEventListener("click", function(){ setTaskDate(isoAt(+b.dataset.taskday)); });
+  });
+  $("#sDateClear").addEventListener("click", function(){ setTaskDate(""); });
   $("#sAllDay").addEventListener("click", function(){
     editing.all = this.getAttribute("aria-checked") !== "true";
     this.setAttribute("aria-checked", editing.all ? "true" : "false");
@@ -6947,16 +7050,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   });
   /* the popover only knows it produced a date; what that date means is the
      caller's business, which is what keeps it usable on any field */
+  function setTaskDate(v){
+    $("#sDateRow").dataset.val = v;
+    editing.d = v;
+    /* syncSheetRows owns every value on the when-row now, including this
+       one — writing it here too was a second author for one label */
+    if(!v){ $("#sCal").setAttribute("aria-checked", "false"); }
+    commit();
+  }
   function pickDate(v){
     var el = calAnchor;
     if(!el) return;
     el.dataset.val = v;
     if(el.dataset.cal === "task"){
-      editing.d = v;
-      /* syncSheetRows owns every value on the when-row now, including this
-         one — writing it here too was a second author for one label */
-      if(!v){ $("#sCal").setAttribute("aria-checked", "false"); }
-      commit();
+      setTaskDate(v);
     } else if(el.id === "bday"){
       el.textContent = v ? longDate(v) : t("sheet.noDate");
       paintAvatars();
@@ -8906,6 +9013,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#whoName").textContent = full;
     $("#brandName").textContent = full;
     $("#olmaLive").textContent = t(paused ? "live.paused" : "live", {name:olmaName()});
+    $("#olmaLive").parentNode.setAttribute("aria-label", $("#olmaLive").textContent);
   }
   function hop(el){
     if(!el) return;
@@ -9094,18 +9202,23 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* One time picker for every clock on this tab. The browser's own looked
      like a different app in each one, and inside a question card it did not
      open at all — so the page draws its own, on the calendar's glass. */
-  var tpAnchor = null, tpDone = null, tpH = 9, tpM = 0, TP_ROW = 40, TP_MIN = 5;
+  /* `tpH0` is the first hour the wheel offers. An END never starts at 00:
+     the task sheet opens it at its start hour, so the hour somebody wants is
+     a flick away instead of a scroll through the whole night. */
+  var tpAnchor = null, tpDone = null, tpClear = null, tpH = 9, tpM = 0, tpH0 = 0, TP_ROW = 40, TP_MIN = 5;
   function pad2(n){ return (n < 10 ? "0" : "") + n; }
   function tpHTML(){
     var hours = "", mins = "";
-    for(var h = 0; h < 24; h++) hours += '<button tabindex="-1" data-tpi="' + h + '">' + pad2(h) + "</button>";
+    for(var h = tpH0; h < 24; h++) hours += '<button tabindex="-1" data-tpi="' + (h - tpH0) + '">' + pad2(h) + "</button>";
     for(var m = 0; m < 60; m += TP_MIN) mins += '<button tabindex="-1" data-tpi="' + (m / TP_MIN) + '">' + pad2(m) + "</button>";
     return '<div class="tpwheel">' +
         '<div class="tpcol" data-tpcol="h" tabindex="0" role="listbox" aria-label="' + esc(t("tp.hour")) + '">' + hours + "</div>" +
         '<span class="tpcolon">:</span>' +
         '<div class="tpcol" data-tpcol="m" tabindex="0" role="listbox" aria-label="' + esc(t("tp.min")) + '">' + mins + "</div>" +
       "</div>" +
-      '<div class="tpfoot"><button data-tpok>' + esc(t("tp.ok")) + "</button></div>";
+      '<div class="tpfoot">' +
+        (tpClear ? '<button class="ghost" data-tpclear>' + esc(t("time.clear")) + "</button>" : "") +
+        '<button data-tpok>' + esc(t("tp.ok")) + "</button></div>";
   }
   function placeTimePop(){
     var pop = $("#tpPop"), r = tpAnchor.getBoundingClientRect();
@@ -9121,24 +9234,26 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   function tpRead(col){
     var n = col.children.length, i = Math.max(0, Math.min(n - 1, Math.round(col.scrollTop / TP_ROW)));
     $$("button", col).forEach(function(b, j){ b.classList.toggle("on", j === i); });
-    if(col.dataset.tpcol === "h") tpH = i; else tpM = i * TP_MIN;
+    if(col.dataset.tpcol === "h") tpH = tpH0 + i; else tpM = i * TP_MIN;
   }
   function tpTurn(col, i, smooth){
     col.scrollTo({top:i * TP_ROW, behavior:smooth && !REDUCED ? "smooth" : "auto"});
     if(!smooth) tpRead(col);
   }
-  function openTimePop(anchor, value, done){
+  function openTimePop(anchor, value, done, opts){
+    opts = opts || {};
     var m = /^(\d{1,2}):(\d{2})$/.exec(value || "");
-    tpH = m ? +m[1] : 9;
+    tpH0 = opts.minHour || 0;
+    tpH = Math.max(tpH0, m ? +m[1] : 9);
     tpM = m ? Math.round(+m[2] / TP_MIN) * TP_MIN : 0;
     if(tpM === 60) tpM = 55;
-    tpAnchor = anchor; tpDone = done;
+    tpAnchor = anchor; tpDone = done; tpClear = opts.clear || null;
     anchor.classList.add("open");
     var pop = $("#tpPop");
     pop.innerHTML = tpHTML();
     $("#tpScrim").hidden = false; pop.hidden = false;
     placeTimePop();
-    tpTurn($('[data-tpcol="h"]', pop), tpH, false);
+    tpTurn($('[data-tpcol="h"]', pop), tpH - tpH0, false);
     tpTurn($('[data-tpcol="m"]', pop), tpM / TP_MIN, false);
     $$(".tpcol", pop).forEach(function(col){
       var raf = 0;
@@ -9156,12 +9271,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#tpScrim").hidden = true;
     if(tpAnchor) tpAnchor.classList.remove("open");
     setTimeout(function(){ if(!pop.classList.contains("show")) pop.hidden = true; }, 110);
-    tpAnchor = null; tpDone = null;
+    tpAnchor = null; tpDone = null; tpClear = null;
   }
   $("#tpScrim").addEventListener("click", closeTimePop);
   $("#tpPop").addEventListener("click", function(e){
     var row = e.target.closest("[data-tpi]");
     if(row){ tpTurn(row.parentNode, +row.dataset.tpi, true); return; }
+    if(e.target.closest("[data-tpclear]")){
+      var clear = tpClear;
+      closeTimePop();
+      if(clear) clear();
+      return;
+    }
     if(e.target.closest("[data-tpok]")){
       var done = tpDone, v = pad2(tpH) + ":" + pad2(tpM);
       closeTimePop();
@@ -10180,6 +10301,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   var hashOpened = false;
   function openFromHash(){
     if(hashOpened) return;
+    /* #tasks is the same door onto the task list: a link Olma sent after a
+       long dump or under a long morning list, for arranging what is on it */
+    if(location.hash === "#tasks"){
+      hashOpened = true;
+      try{ history.replaceState(null, "", location.pathname + location.search); }catch(e){}
+      markIntroSeen(); introFinish();
+      go("tasks");
+      return;
+    }
     var m = /^#meeting=([1-9][0-9]{0,11})$/.exec(location.hash || "");
     if(!m) return;
     hashOpened = true;
@@ -10349,7 +10479,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* One or the other, never both: the three-stage intro stages the APP, and
      a stranger is not being shown the app. */
   /* a deep link skips the intro entirely — see openFromHash */
-  if(/^#meeting=/.test(location.hash || "")) markIntroSeen();
+  if(/^#(meeting=|tasks$)/.test(location.hash || "")) markIntroSeen();
   if(NEWUSER) startWelcome(); else startIntro();
   /* the seed page only: on a served page the seed MEETS are placeholders and
      the real ones arrive with hydrate(), which calls this itself */

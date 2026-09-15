@@ -1273,7 +1273,7 @@ test('every active user has a button that opens their own dashboard', async () =
   // Straight to a live one-time link on the PUBLIC host — the redirect that
   // makes the thirty-minute TTL a non-issue, because none of it is spent
   // getting there.
-  assert.match(res.headers.get('location'), /^https:\/\/allma\.world\/d\/[a-f0-9]{64}$/);
+  assert.match(res.headers.get('location'), /^https:\/\/allma\.world\/d\/[A-Za-z0-9]{22}$/);
 
   // It is a real sign-in as that person, so it leaves the same trail every
   // other admin edit on this page leaves.

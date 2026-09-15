@@ -12,8 +12,11 @@
 //
 // Five routes, and the split between them is the security model:
 //
-//   GET  /d/<token>   show a button. Spends nothing.
-//   POST /d/<token>   spend the key, open the session, redirect.
+//   GET  /d/<token>   show a button. Spends nothing. Already signed in as the
+//                     same person: straight to where the link points, and the
+//                     link is left unspent.
+//   POST /d/<token>   spend the key, open the session, redirect to where the
+//                     link points (its row says — domain/dashboard-auth.js).
 //   GET  /me          the page itself. Session required.
 //   GET  /me/data     everything on it, as JSON. Session required.
 //   GET  /me/events   their calendar, fetched from Google. Session required.
@@ -32,7 +35,11 @@ const events = require('../../domain/user-dashboard-events');
 const write = require('../../domain/user-dashboard-write');
 const { refreshUserCard } = require('../../intake/user-card');
 
-const LINK_RE = /^\/d\/([a-f0-9]{64})$/;
+// The short shape every link has had since 2026-09-15, or the 64-hex shape of
+// the links sent before it. Exact either way, never a prefix: a truncated link
+// must fall through to the not-ours path, which is why Caddy matches the same
+// two shapes (.claude/rules/dashboard-and-domains.md).
+const LINK_RE = /^\/d\/([A-Za-z0-9]{22}|[a-f0-9]{64})$/;
 const PAGE_PATH = path.join(__dirname, '..', '..', '..', 'docs', 'design', 'user-dashboard.html');
 
 // The page is one file and this serves that exact file — the design and what
@@ -152,11 +159,13 @@ button:active{opacity:.75}
 
 // The sign-in page. One button, and the button is the whole point: pressing it
 // is a POST, and only a POST spends the key.
-// The meeting a link was minted for, if any — see dashboard-auth.createLinkUrl.
-// Read off the sign-in URL's query, echoed into the form's action so the POST
-// still knows it, and handed to the page as a fragment. Anything but a plain
-// positive integer is treated as absent: the page decides whether the number
-// names a meeting of theirs, and a number that does not simply opens the page.
+// The meeting a LEGACY link was minted for, if any. Until 2026-09-15 the
+// meeting rode the sign-in URL as `?meeting=<id>`; a link's row says where it
+// lands now, and this is read only for a row that says nothing more than the
+// front page — which is exactly what a pre-migration row says. Echoed into the
+// form's action so the POST still knows it. Anything but a plain positive
+// integer is treated as absent: the page decides whether the number names a
+// meeting of theirs, and a number that does not simply opens the page.
 function meetingParam(reqUrl) {
   const q = new URL(String(reqUrl || ''), 'http://x').searchParams.get('meeting');
   return q && /^[1-9][0-9]{0,11}$/.test(q) ? q : null;
@@ -165,6 +174,15 @@ function meetingParam(reqUrl) {
 // The front door is drawn in the person's language too: the link was minted
 // for a known user, so `peekLink` knows what they have on file, and a page that
 // greets Sarah in Hebrew before an English dashboard is the same bug twice.
+// Where to open the page: the link's own row first, and only for a row that
+// names nothing but the front page, a legacy `?meeting=`.
+function landingFragment(link, reqUrl) {
+  const own = auth.destinationFragment(link);
+  if (own) return own;
+  const legacy = meetingParam(reqUrl);
+  return legacy ? `#meeting=${legacy}` : '';
+}
+
 const SIGN_IN_COPY = {
   he: {
     dir: 'rtl',
@@ -269,6 +287,20 @@ async function handle(req, res, pool, pathname) {
         return messagePage(res, 410, 'הקישור כבר לא פעיל',
           'קישורי כניסה תקפים לזמן קצר ולשימוש אחד. אפשר לבקש מעולמה קישור חדש בוואטסאפ.');
       }
+      // Somebody already signed in on this device, as the person the link is
+      // for, does not need a key: they are taken where it points and the link
+      // stays unspent. Now that links go out on their own — an invite, a long
+      // list — most of them arrive on a phone that is already signed in, and a
+      // button that spends a key to open a session they already have is a tap
+      // for nothing. Still nothing changes on a GET: no link is spent and no
+      // session is opened. A crawler carries no cookie and gets the button; a
+      // DIFFERENT person's cookie gets the button too, because pressing it is
+      // what switches whose page this is.
+      const who = await currentUser(pool, req);
+      if (who && who.userId === peek.data.userId) {
+        res.writeHead(303, headers(HTML, { Location: '/me' + landingFragment(peek.data, req.url) }));
+        return res.end();
+      }
       return signInPage(res, token, peek.data.firstName, meetingParam(req.url), peek.data.locale);
     }
     if (req.method === 'POST') {
@@ -277,9 +309,8 @@ async function handle(req, res, pool, pathname) {
         return messagePage(res, 410, 'הקישור כבר לא פעיל',
           'ייתכן שכבר נכנסת איתו. אפשר לבקש מעולמה קישור חדש בוואטסאפ.');
       }
-      const meeting = meetingParam(req.url);
       res.writeHead(303, headers(HTML, {
-        Location: meeting ? `/me#meeting=${meeting}` : '/me',
+        Location: '/me' + landingFragment(opened.data, req.url),
         'Set-Cookie': auth.cookieHeader(opened.data.sessionId),
       }));
       return res.end();
