@@ -107,7 +107,12 @@ const INTERNAL_RE = new RegExp(`(?:^|[^A-Za-z0-9_])(${INTERNAL_NAMES.join('|')})
 // say a 👍 was placed…"), which dropped only because a LATER line did, and it
 // came back on 2026-09-15 as the whole reason a message was written at all
 // ("Since the hint says a bare 'תודה' is probably about the newest reminder").
-const BLOCK_RE = /\b(?:Turn context|Conversation info|Reply target of current user message|OpenClaw heartbeat poll|unknown identity token|the hints? says?)\b|^\s*DELIVERY:/im;
+// `AGENTS.md`, `USER.md` and `MEMORY.md` are the doctrine and the memory files
+// — the model reads them and nobody else ever sees their names. "Per
+// AGENTS.md, 'cancel the reminder' and 'cancel the thing' are the same
+// sentence" reached Miron three times on 2026-09-14 (the 14-day measurement
+// below found them and nothing here had a name for them).
+const BLOCK_RE = /\b(?:Turn context|Conversation info|Reply target of current user message|OpenClaw heartbeat poll|unknown identity token|the hints? says?|(?:AGENTS|USER|MEMORY)\.md)\b|^\s*DELIVERY:/im;
 
 // The reaction vocabulary, named as something to SEND. Marks travel through
 // `domain/reactions.placeMark` on a path the reply text never touches, so words
@@ -146,6 +151,82 @@ const MARK_RE = new RegExp(
 // module's header already names as the measurement it is missing are still on
 // the box. Same reasoning as the identifier tier: unmeasured means report.
 const NARRATION_RE = /^[\s"״'׳]*(?:הוא|היא|הם|הן)\s+(?:אמרו|אמרה|אמר|כתבו|כתבה|כתב)(?![֐-׿])\s*["״'׳\d]|^\s*(?:he|she|they)\s+(?:said|wrote|replied)\s+["״'\d]/i;
+
+// The model talking about what it is about to do, or about the reader in the
+// third person, in English. This is the tier the header above named as
+// missing, and it was chosen from traffic rather than guessed: on 2026-09-15
+// `scripts/measure-reply-gate.js` read every assistant message on the box for
+// 14 days — 33 agents, 1,156 messages, 2,247 paragraphs — and 151 paragraph
+// hits were read one by one (`incidents.md`, "The working-out, measured"). 107
+// of the 113 distinct paragraphs were working-out, and the gate as it stood
+// delivered 94 of them (`pass`). The other six were the reason a drop tier had
+// to be measured first: two real English replies to English-speaking users
+// ("Hey Yuval — the group is arranging…", "its all good 👍") that a bare "no
+// Hebrew in it" rule would have deleted, and four preambles to an English
+// speaker ("I'll check what's most urgent for you this week.") that a drop
+// costs nothing on, because the answer follows in the next block.
+//
+// So it DROPS, on four shapes, each with the guard the corpus asked for:
+//
+//   opener   a line that STARTS with the model's own next step ("Let me check",
+//            "I'll save", "Now I", "But first", "Looking at the turn
+//            context") — 40 of the 107. `Let me` needs a verb off a
+//            closed list, because "Let me know if that works" is a sentence
+//            to a person; "know" is not on it.
+//   mid      "Let me <verb>" or "I'll save/set/add/create" ANYWHERE in the line
+//            — 29 more, the working-out that begins with the fact it was
+//            reasoning from ("The number doesn't match anyone obvious in his
+//            contacts. Let me check."). To an English speaker "Sure, let me
+//            check and get back to you" is a preamble, and losing it loses
+//            nothing: the answer is the next block.
+//   third    a line that STARTS by describing the reader in the third person
+//            ("He said", "They asked", "The user is") — 16 of the 107, every
+//            one about the reader — AND carries a tell that it is working-out:
+//            the reader's own words quoted back in Hebrew, one of our nouns
+//            (task, reminder, the hint, dashboard…), or a first-person step.
+//            Without the tell it stays: "They asked me to remind you
+//            tomorrow" and "He asked me to pass on that he is running late"
+//            are relays, and the same shape.
+//   soft     "Actually," / "Wait," / "OK," / "So" openings — 6 of the 107 —
+//            only when the line also carries a first-person step or the
+//            reader in the third person. "Actually, the meeting moved to 6pm"
+//            is a sentence to a person and stays.
+//
+// 99 of 107 caught by these (six of the eight missed only ever appear between
+// paragraphs the cut already takes), 0 of the two real English replies touched, and the
+// hand-written ordinary corpus in `tests/reply-leak.test.js` — which now has
+// fifteen English sentences written to break exactly this — unmoved. Every
+// list here is closed and was read off real messages, same as INTERNAL_NAMES;
+// the measurement script is in the repo so the next addition is read off the
+// box too, not off a hunch.
+const DELIB_VERBS = 'check|see|look|verify|re-?check|figure|find|get|read|re-?read|try|compose|deliver|save|cancel|write|remove|update|confirm|start|first|also|just|search|call|fetch|proceed|think|handle|do|make|give|send|reply|respond|answer|draft|set|ask|follow|merge|create|add|mark|use|note|pull|run|open|archive';
+const DELIB_LET_ME = `Let me(?: not| just| also| first)? (?:${DELIB_VERBS})`;
+const DELIB_OPENER_RE = new RegExp('^\\s*(?:'
+  + `${DELIB_LET_ME}|I'll (?:check|look|just|go|start|first|proceed|save|set|search|add|create|mention)`
+  + '|Now I |But first|First, I\'ll|Now (?:create|save|check)|Also need to|Also,? I |No user message'
+  + '|This (?:turn|is a delivery turn)|So they |Looking at the (?:turn context|today block|meeting status|context|hints?)'
+  + '|The (?:intake note|reply target|reply was to|reminders? (?:were|was))'
+  + ')\\b', 'i');
+const DELIB_MID_RE = new RegExp(`\\b(?:${DELIB_LET_ME}|I'll (?:save|set|add|create|proceed))\\b`, 'i');
+const DELIB_THIRD_RE = /^\s*(?:He|She|They|The user|The person)(?:'s)? (?:sent|asked|wants?|said|replied|wrote|has|hasn't|is|was|stated|message)\b/i;
+// The tell, for `third`: against the RAW line, because the Hebrew quotation
+// is the signal and `scannable` strips quotations by design (same reason
+// NARRATION_RE reads raw).
+const DELIB_TELL_RE = /["״'][^"״'\n]*[֐-׿][^"״'\n]*["״']|`|\b(?:tasks?|reminders?|the hints?|turn|digest|dashboard|contacts?|onboarding|meeting|opted|delete|archive|Let me|I'll|I should|I need|I replied|I answered)\b/i;
+const DELIB_SOFT_RE = /^\s*(?:Actually|Wait|Hmm|OK|Okay|So)\b[,—\s-]*/i;
+const DELIB_CUE_RE = /\b(?:let me|I need|I should|I can|I see|I don't|I answered|I asked|I never|he |she |they |him |his |their |the hints?|the turn|the intake)\b/i;
+
+function deliberationIn(raw, text) {
+  const opener = DELIB_OPENER_RE.exec(text);
+  if (opener) return opener[0];
+  const mid = DELIB_MID_RE.exec(text);
+  if (mid) return mid[0];
+  const third = DELIB_THIRD_RE.exec(text);
+  if (third && DELIB_TELL_RE.test(raw)) return third[0];
+  const soft = DELIB_SOFT_RE.exec(text);
+  if (soft && DELIB_CUE_RE.test(text)) return soft[0];
+  return null;
+}
 
 // 2026-09-10T10:00:00Z. A time crossing a tool boundary carries an explicit
 // offset (CLAUDE.md, "Data you must not get wrong") and a time reaching a
@@ -211,6 +292,8 @@ function leaksIn(line) {
   // message being handed back to them — so the stripper would erase the signal.
   const narration = NARRATION_RE.exec(raw);
   if (narration) out.push({ kind: 'narration', at: narration[0].trim().slice(0, 40) });
+  const deliberation = deliberationIn(raw, text);
+  if (deliberation) out.push({ kind: 'deliberation', at: deliberation.trim().slice(0, 40) });
   const instant = INSTANT_RE.exec(text);
   if (instant) out.push({ kind: 'instant', at: instant[0] });
   const sentinel = SENTINEL_RE.exec(text);
@@ -329,6 +412,6 @@ function gateReply(text) {
 module.exports = {
   leaksIn, gateReply, drops, scannable, redact, paragraphEnd, hasEarlierContent,
   FRAME_RE, INTERNAL_RE, BLOCK_RE, INSTANT_RE, SENTINEL_RE, IDENTIFIER_RE,
-  MARK_RE, NARRATION_RE,
+  MARK_RE, NARRATION_RE, deliberationIn,
   INTERNAL_NAMES, SENTINEL, KEEPS_LINE, REPORT_ONLY,
 };

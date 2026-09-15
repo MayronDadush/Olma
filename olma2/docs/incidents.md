@@ -171,6 +171,7 @@ never trust a dated narrative for something you are about to act on.
 - [The hour in the title nobody compared (fixed 2026-09-11)](#the-hour-in-the-title-nobody-compared-fixed-2026-09-11)
 - [A lost reply is re-sent, not re-answered (fixed 2026-09-09)](#a-lost-reply-is-re-sent-not-re-answered-fixed-2026-09-09)
 - [The sentinel that only stripped itself (fixed 2026-09-15)](#the-sentinel-that-only-stripped-itself-fixed-2026-09-15)
+- [The working-out, measured (fixed 2026-09-15)](#the-working-out-measured-fixed-2026-09-15)
 - [The working-out arrived instead of the message (fixed 2026-09-10)](#the-working-out-arrived-instead-of-the-message-fixed-2026-09-10)
 - [The gate knew the leak's vocabulary, not its shape (fixed 2026-09-15)](#the-gate-knew-the-leaks-vocabulary-not-its-shape-fixed-2026-09-15)
 - ["הנה, רשמתי", about a meeting (2026-09-07)](#הנה-רשמתי-about-a-meeting-2026-09-07)
@@ -6640,6 +6641,80 @@ held to: a pattern for "the model talking about what it is about to do" is
 measured against the real transcripts on the box before it may drop a word,
 because "Let me know if…" and "I'll remind you at 13:00" are sentences Olma
 sends to a person who writes in English.
+
+### The working-out, measured (fixed 2026-09-15)
+
+The measurement the entry above asked for, done the same evening, and the tier
+it produced. Every drop tier in `domain/reply-leak.js` before this one was
+lexical — a frame marker, a column name, an instant, a block name, a mark
+handed to a verb — and each was read off ONE leak. Three leaks in nine days
+had shown the shape they all share and none of them names: the model talking
+about what it is about to do, in plain English, with none of our vocabulary
+in it. A pattern for that could not be read off three messages, because the
+thing it must not catch is every real English sentence Olma sends, and nobody
+had counted those either.
+
+**What was run.** `scripts/measure-reply-gate.js`, read-only, on the box:
+the gate over every assistant text in every `u-N` transcript store for the
+last fourteen days, printing per paragraph what the gate does today, whether
+the paragraph survives, and whether it is English inside a reply that is
+otherwise Hebrew. 33 agents, 1,156 assistant messages, 2,247 paragraphs, 151
+hits. The hits were read one by one, by hand, into a corpus of 113 distinct
+paragraphs, each marked keep or drop.
+
+**What the reading found.** 107 of the 113 were working-out, and the gate as
+it stood delivered 94 of them (`pass`, no finding at all) — the 2026-09-10
+and 09-15 fixes had caught the ones that named something, and nearly every
+leak on the box named nothing. The other six were why a drop tier had to be
+measured first. Two were real English replies to English-speaking users, one
+of them a whole group-arrangement message to Yuval, one a bare "its all good
+👍" — a naive "no Hebrew in it" rule, the obvious first draft, would have
+deleted both. Four were preambles to an English speaker ("I'll check what's
+most urgent for you this week.") that a drop costs nothing on, because the
+answer follows in the next block. So the population to protect was not
+"English" — it was English SENT TO A PERSON, and the 107 differed from it in
+shape, not vocabulary.
+
+**The tier: four shapes, each with the guard the corpus asked for.**
+`opener` — a line that starts with the model's own next step ("Let me
+check", "I'll save", "Now I", "But first", "Looking at the turn context"),
+40 of the 107; "Let me" needs a verb off a closed list, because "Let me know
+if that works" is a sentence to a person and "know" is not on it. `mid` —
+"Let me <verb>" or "I'll save/set/add/create" anywhere in the line, 29
+more, the working-out that begins with the fact it was reasoning from. `third`
+— a line that starts by describing the reader in the third person ("He said",
+"They asked", "The user is"), 16, AND carries a tell that it is working-out:
+the reader's own words quoted back in Hebrew, one of our nouns, or a
+first-person step; without the tell it stays, because "They asked me to
+remind you tomorrow" is a relay with the same opening. `soft` — "Actually,"
+/ "Wait," / "OK," / "So", 6, only when the line also carries a first-person
+step or the reader in the third person, because "Actually, the meeting moved
+to 6pm" is a sentence to a person. 99 of 107 caught, six of the eight missed
+only ever appearing between paragraphs the cut already takes; 0 of the two
+real English replies touched; 15 hand-written ordinary English sentences
+(Let me know…, Actually the meeting moved…, He asked me to pass on…, I should
+have this ready by noon…) all delivered. One draft did catch "I should have
+this ready by noon" — `I need to|I should` had been on the opener list —
+and was cut back to a tell rather than a trigger, at the cost of nothing on
+the corpus: the guard, not the shape, is what the reading paid for.
+
+**Two things this changed beside the tier.** `BLOCK_RE` now also reads the
+bootstrap file names (`AGENTS.md`, `USER.md`, `MEMORY.md`) — a message
+that names one is talking about the workspace, and the corpus had several.
+And the 09:48 case, pinned the same morning as a KNOWN GAP, flips: "Let me deliver
+the model update naturally." is the opener shape and the Hebrew update behind
+it is now his first line. The one-line-sentinel gap is narrower, not closed:
+"He replied and archived the task, so I should say NO_REPLY." is caught by
+`third`, but a one-liner with none of the four shapes still only strips the
+token, and there is still no real example to measure a rule against.
+
+**The rule this entry adds.** A drop tier is chosen from traffic, never from
+the leak that prompted it. The script is in the repo so the next tier is read
+off the box the same way, and the numbers above are in the module's own
+header so the next reader knows what each pattern was measured against.
+Same as every plugin change: inert until the gateway restarts, and the port
+in `gateway-plugin/olma-turn/index.js` carries it, held to the domain module
+by the parity corpus.
 
 ### The working-out arrived instead of the message (fixed 2026-09-10)
 

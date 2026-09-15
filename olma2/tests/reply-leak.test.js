@@ -83,6 +83,22 @@ const ORDINARY = [
   'מיכאל אמר שהוא מגיע ב-7.',
   'הוא אמור להגיע ב-8.',
   'ביקשתי ממנו להגיב לך.',
+  // Written on 2026-09-15 for the deliberation tier, which is the first one
+  // that drops plain English with no marker in it. Each is a shape the tier
+  // fires on — "Let me", "Actually,", a third-person opening, "I should",
+  // "So", "OK" — used the way a person uses it, and each must reach the phone.
+  'Let me know if that works for you.',
+  'Let me know when you land 🙏',
+  'Actually, the meeting moved to 6pm.',
+  'He asked me to pass on that he is running late.',
+  'She said she will be there at 8.',
+  'They want to meet on Thursday instead.',
+  'I should have this ready by noon.',
+  'I need your address for the delivery.',
+  'Sure, I will look into it and get back to you.',
+  'So, tomorrow at 10 works?',
+  'OK, see you at the office.',
+  'The reminder is set for 13:00 👍',
 ];
 
 // 2026-09-15, twice in ninety minutes, to a bare "תודה". The gate passed both
@@ -113,8 +129,9 @@ const MIRON_SENTINEL = [
 // Miron, 2026-09-15 09:48:32, a --deliver turn carrying a scheduled update.
 // The gate cut every paragraph that named the sentinel or `turn_start`
 // (audit: chars 800, kept 364, kinds sentinel+internal) — and the paragraph
-// right after the cut, "Let me deliver the model update naturally.", carries
+// right after the cut, "Let me deliver the model update naturally.", carried
 // no marker at all, so it reached his phone as the first line of the update.
+// That paragraph is what the deliberation tier was measured for.
 // Reconstructed from the transcript on the box; the English is verbatim, the
 // Hebrew reply is paraphrased, and only the English is what the test is about.
 const MIRON_DELIVERY = [
@@ -143,9 +160,11 @@ test('Yahav\'s message: every paragraph of the working-out is found, and nothing
     '0:internal:due_at',
     '0:narration:הם אמרו 1',
     '2:internal:remind_at',
+    '2:deliberation:let me re-check',
     '2:instant:2026-09-10T10:00:00Z',
     '4:block:The hints say',
     '6:block:turn context',
+    '6:deliberation:Looking at the turn context',
     '8:sentinel:NO_REPLY',
   ]);
   assert.ok(v.leaks.length >= 4, 'all of them changed the message');
@@ -156,6 +175,9 @@ test('Yahav\'s message: every paragraph of the working-out is found, and nothing
   // every column name out of this message and it still does not go out.
   const shapeOnly = v.reported.filter((l) => l.kind === 'narration' || l.at === 'The hints say');
   assert.equal(shapeOnly.length, 2, 'the shape tiers see it without help from the closed list');
+  // And the measured tier, which came last, reads two of its paragraphs on
+  // shape alone as well ("let me re-check", "Looking at the turn context").
+  assert.equal(v.reported.filter((l) => l.kind === 'deliberation').length, 2);
 });
 
 // The pair that reopened this on 2026-09-15. Neither is caught by anything the
@@ -177,6 +199,7 @@ test('a thanks answered with the working-out: both languages, nothing delivered'
   // our own hints object, and the mark handed to the act of replying.
   assert.deepEqual(en.reported.map((l) => `${l.line}:${l.kind}`), [
     '0:narration',
+    '0:deliberation',
     '2:block',
     '2:mark',
   ]);
@@ -256,9 +279,10 @@ test('Mirons message: narration ending in the sentinel is a leak, not a stray to
   assert.equal(v.action, 'cancel');
   assert.equal(v.text, '');
   // `block` is the same day's other fix seeing "The hint says"; `sentinel` is
-  // this one. Either alone cancels the draft now, and the next case proves the
-  // sentinel half stands on its own.
-  assert.deepEqual(v.leaks.map((l) => l.kind).sort(), ['block', 'sentinel']);
+  // this one; `deliberation` is the measured tier that came that evening,
+  // reading the third-person opening about the reader. Any one alone cancels
+  // the draft now, and the next case proves the sentinel half stands on its own.
+  assert.deepEqual(v.leaks.map((l) => l.kind).sort(), ['block', 'deliberation', 'sentinel']);
 
   // The same shape with nothing else for the gate to hold on to — no hint
   // cited, no mark handed to a verb, no quotation after a pronoun. Only the
@@ -266,7 +290,7 @@ test('Mirons message: narration ending in the sentinel is a leak, not a stray to
   const bare = MIRON_SENTINEL.replace('The hint says a 👍 was already placed', 'A 👍 was already placed');
   const b = leak.gateReply(bare);
   assert.equal(b.action, 'cancel');
-  assert.deepEqual(b.leaks.map((l) => l.kind), ['sentinel']);
+  assert.deepEqual(b.leaks.filter((l) => l.kind !== 'deliberation').map((l) => l.kind), ['sentinel']);
 });
 
 test('a real short reply plus a trailing sentinel on the SAME line still just strips the token', () => {
@@ -289,28 +313,87 @@ test('KNOWN GAP: narration and the sentinel crammed onto ONE line, no break at a
   // nobody has seen). Documented as a gap, not silently accepted: if this
   // shape shows up for real, it belongs in the incident story above it and a
   // new test right here, exactly like the last two additions to this file.
-  const v = leak.gateReply('He replied and archived the task, so I should say NO_REPLY.');
+  // Since the deliberation tier the gap is NARROWER than it was: a one-liner
+  // that opens on the reader in the third person with a tell ("He replied and
+  // archived the task, so I should say NO_REPLY.") is caught by that tier,
+  // not by the sentinel rule. What is still open is a one-liner with none of
+  // the measured shapes in it.
+  const caught = leak.gateReply('He replied and archived the task, so I should say NO_REPLY.');
+  assert.equal(caught.action, 'cancel');
+  assert.deepEqual(caught.leaks.map((l) => l.kind), ['deliberation', 'sentinel']);
+  const v = leak.gateReply('The task is archived and the mark is on, so this is NO_REPLY.');
   assert.equal(v.action, 'trim', 'not caught — see the comment above');
 });
 
-test('KNOWN GAP: a clean narration paragraph AFTER the last leaking one is delivered (Miron 09:48)', () => {
-  // Everything that named the sentinel or `turn_start` goes, exactly as the
-  // audit row says it did (kinds sentinel+internal, three findings). What the
-  // gate cannot see is the paragraph that follows the cut: first-person
-  // English deliberation with no marker in it. It went out as the first line
-  // of the update, and it still does — pinned here, not fixed here, because a
-  // pattern for "English deliberation" has to be measured against real
-  // traffic before it may drop anything (`incidents.md`, "The sentinel that
-  // only stripped itself", the last paragraph).
+test('the clean narration paragraph AFTER the last marker is dropped too (Miron 09:48)', () => {
+  // Until 2026-09-15 this was a KNOWN GAP: everything that named the sentinel
+  // or `turn_start` went, exactly as the audit row says it did, and the
+  // paragraph after the cut — first-person English deliberation with no
+  // marker in it — went out as the first line of the update. The
+  // `deliberation` tier was measured against fourteen days of real traffic
+  // before it was allowed to drop anything (`incidents.md`, "The working-out,
+  // measured"), and "Let me deliver" is its opener shape. The first paragraph
+  // is now found twice — its third-person opening about the reader is the
+  // tier's `third` shape — and the update behind it all is what he gets.
   const v = leak.gateReply(MIRON_DELIVERY);
   assert.equal(v.action, 'trim');
   assert.deepEqual(v.leaks.map((l) => `${l.line}:${l.kind}:${l.at}`), [
+    '0:deliberation:He sent',
     '0:sentinel:NO_REPLY',
     '2:sentinel:NO_REPLY',
     '5:internal:turn_start',
+    '5:deliberation:But first',
+    '7:deliberation:Let me deliver',
   ]);
-  assert.ok(v.text.startsWith('Let me deliver the model update naturally.'), 'the gap — see the comment above');
-  assert.ok(v.text.includes('עדכון מודלים'), 'and the real update behind it is kept');
+  assert.ok(v.text.startsWith('היי 👋 עדכון מודלים'), 'the update is the first line now');
+  assert.ok(!v.text.includes('Let me deliver'), 'and the deliberation in front of it is gone');
+});
+
+// The deliberation tier, in the shapes the measurement found. Paraphrased —
+// the real paragraphs stay on the box — but each is the shape of one that
+// was read there, with the guard that shape needs.
+const DELIBERATION = [
+  // opener: a closed verb list after "Let me" (so "Let me know" is not one)
+  ['Let me check the calendar first.', 'Let me check'],
+  ['Let me deliver the model update naturally.', 'Let me deliver'],
+  ['Now I have two things to handle.', 'Now I'],
+  ['Looking at the today block, nothing is due.', 'Looking at the today block'],
+  // mid: the working-out that begins with what it was reasoning from
+  ['The number does not match anyone obvious in his contacts. Let me check.', 'Let me check'],
+  // third: the reader in the third person, plus a tell (Hebrew quoted back, one of our nouns)
+  ['He said "תמחק את המשימה" so I archived it.', 'He said'],
+  ['They asked to move the meeting, so I should update the task.', 'They asked'],
+  // soft: a hedge opening, plus a first-person step or the reader in the third person
+  ['Actually, I need to save the reminder before replying.', 'Actually,'],
+  ['Wait, he already answered the intake question.', 'Wait,'],
+];
+
+test('deliberation: every measured shape drops, and names what it fired on', () => {
+  for (const [text, at] of DELIBERATION) {
+    const v = leak.gateReply(text);
+    assert.equal(v.action, 'cancel', `should drop: ${text}`);
+    assert.ok(v.leaks.some((l) => l.kind === 'deliberation' && l.at === at), `${text} → ${JSON.stringify(v.leaks)}`);
+  }
+});
+
+test('deliberation: the working-out above a Hebrew answer loses only the working-out', () => {
+  const text = 'Actually, I need to save the reminder first.\n\nרשמתי לך: להתקשר לבנק, מחר ב-10:00 👍';
+  const v = leak.gateReply(text);
+  assert.equal(v.action, 'trim');
+  assert.equal(v.text, 'רשמתי לך: להתקשר לבנק, מחר ב-10:00 👍');
+});
+
+test('deliberation: a bare third-person opening or a hedge with no tell is a sentence to a person', () => {
+  for (const text of [
+    'He asked me to pass on that he is running late.',
+    'They want to meet on Thursday instead.',
+    'Actually, the meeting moved to 6pm.',
+    'So, tomorrow at 10 works?',
+    'Let me know if that works for you.',
+  ]) {
+    assert.equal(leak.deliberationIn(text, text), null, text);
+    assert.equal(leak.gateReply(text).action, 'pass', text);
+  }
 });
 
 // The wide tier. Every internal name nobody has thought of is this shape — and
@@ -350,7 +433,8 @@ test('a leaked identity token cancels the message and is never written down in t
 // two from drifting: one corpus, both implementations, first disagreement wins.
 test('the gateway plugin\'s copy and the domain module answer identically', () => {
   const corpus = [YAHAV, NOTES_ABOVE, THANKS_HE, THANKS_EN, MIRON_SENTINEL, MIRON_DELIVERY,
-    ...ORDINARY, 'NO_REPLY', 'בוצע NO_REPLY', 'בוצע, סגרתי את המשימה NO_REPLY', '', '   ',
+    ...ORDINARY, ...DELIBERATION.map(([text]) => text),
+    'Actually, I need to save the reminder first.\n\nרשמתי לך: להתקשר לבנק, מחר ב-10:00 👍', 'NO_REPLY', 'בוצע NO_REPLY', 'בוצע, סגרתי את המשימה NO_REPLY', '', '   ',
     'סיימתי את user_service', 'DELIVERY: say good morning', 'הפגישה ב-2026-09-10T10:00:00Z',
     'Conversation info (untrusted metadata)', 'turn_start returned proceed'];
   assert.deepEqual(plugin.INTERNAL_NAMES, leak.INTERNAL_NAMES, 'the closed lists are the same list');
@@ -393,7 +477,7 @@ test('the hook cancels a reply that is only the working-out, and files it withou
   // because the report-only tiers exist precisely to be read later. So the
   // shape tiers appear here — `narration` on the opening, and the second
   // `block` on "The hints say" — beside the closed-list names.
-  assert.deepEqual(sent[0].params.leaks.map((l) => l.kind), ['internal', 'narration', 'internal', 'instant', 'block', 'block', 'sentinel']);
+  assert.deepEqual(sent[0].params.leaks.map((l) => l.kind), ['internal', 'narration', 'internal', 'deliberation', 'instant', 'block', 'block', 'deliberation', 'sentinel']);
   assert.equal(log.at(-1).action, 'cancel');
 });
 
