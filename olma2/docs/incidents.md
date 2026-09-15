@@ -170,6 +170,7 @@ never trust a dated narrative for something you are about to act on.
 - [A silence read as a delivery fault (fixed 2026-09-09)](#a-silence-read-as-a-delivery-fault-fixed-2026-09-09)
 - [The hour in the title nobody compared (fixed 2026-09-11)](#the-hour-in-the-title-nobody-compared-fixed-2026-09-11)
 - [A lost reply is re-sent, not re-answered (fixed 2026-09-09)](#a-lost-reply-is-re-sent-not-re-answered-fixed-2026-09-09)
+- [The sentinel that only stripped itself (fixed 2026-09-15)](#the-sentinel-that-only-stripped-itself-fixed-2026-09-15)
 - [The working-out arrived instead of the message (fixed 2026-09-10)](#the-working-out-arrived-instead-of-the-message-fixed-2026-09-10)
 - [The gate knew the leak's vocabulary, not its shape (fixed 2026-09-15)](#the-gate-knew-the-leaks-vocabulary-not-its-shape-fixed-2026-09-15)
 - ["הנה, רשמתי", about a meeting (2026-09-07)](#הנה-רשמתי-about-a-meeting-2026-09-07)
@@ -6545,6 +6546,75 @@ subject and never a preview, because the payload holds an instruction the agent
 will reword and promising wording we cannot keep is the v1 stale-digest rule.
 This row is the second exception to that after an operator's hand-typed message,
 and for the identical reason: nothing will reword it.
+
+### The sentinel that only stripped itself (fixed 2026-09-15)
+
+Miron, on a turn answering a reply to a reminder ("תמחק את המשימה"):
+
+> He replied to the reminder about talking to Ester and said "תמחק את המשימה"
+> — the task was archived, the 👍 was placed.
+>
+> The hint says a 👍 was already placed and if all I have is a plain
+> instruction with nothing to add, I should reply .
+
+The task WAS archived correctly. The 👍 WAS placed. The model reasoned its way
+to the exactly correct decision — say nothing, `markPlaced` already carries the
+fact — and then wrote the reasoning itself into the reply, in English, about
+him in the third person. Five days after the gate below this entry shipped,
+which exists for precisely this failure shape.
+
+The gate ran. It found exactly one leak: `kind: 'sentinel'`, on the last line
+— `NO_REPLY` was really there, the model really did reach the right answer.
+And under the rule immediately below ("The sentinel is the one marker that
+never drops its line… the gate strips the stray token and delivers the word"),
+that is what it did: stripped the five characters `NO_REPLY` out of the draft
+and delivered everything else, verbatim. Nothing in the rest of Miron's draft
+matched anything on the closed list — no column name, no frame marker, no ISO
+instant, no block name — so `drops()` never fired for any paragraph and the
+strip-in-place rule reached all the way back to the first line. The result was
+the whole draft with one word missing: "...I should reply ." — a sentence
+dangling exactly where the token used to sit.
+
+**The rule the gate was following is right for the case it was built for, and
+wrong for this one, and the difference is one fact the doctrine already
+states.** "בוצע NO_REPLY" is a real, short answer ("done") with the sentinel
+trailing on the SAME, only, line — nothing said before it — and stripping the
+token there is exactly right: `jobs/unanswered.js` reads that shape as a real
+reply on purpose, and cancelling it would delete the one word the person was
+owed. Miron's draft is two PARAGRAPHS of narration, and only the last one
+happens to carry the token. The doctrine's own words are "the entire reply is
+the five characters `NO_REPLY`, with nothing before them and nothing after" —
+`gateReply` already enforced "nothing after" (a leaking paragraph condemns
+everything that follows it too). It had no equivalent check for "nothing
+before", so a sentinel could always find itself in a draft that violated that
+half and still be treated as the harmless case.
+
+**The fix is one function, `hasEarlierContent`, and one new condition on the
+existing per-line loop**: a `sentinel` leak now also condemns its own
+paragraph — same as a frame marker, an internal name, an instant — whenever
+there is real (non-blank) content on any EARLIER line. "בוצע NO_REPLY" has
+none, and is untouched: verified against the file's own existing test plus a
+new one that states the guarantee explicitly, with narration on the other side
+of the token this time to prove the fix is about POSITION and not about
+banning the combination outright. Miron's shape now condemns through its own
+(last) paragraph, nothing survives the cut, and the reply becomes `cancel` —
+the honest empty answer that "nothing to add" always meant.
+
+**One gap is left open rather than guessed at, and said so in both the code
+and the test.** `hasEarlierContent` reads LINES: a single unbroken line of
+narration ending in the sentinel, with no line break anywhere, is not "earlier
+content" and still only strips the token. Both real incidents on file — this
+one and the one below it — are multi-line, because a model working through
+several considerations writes them as separate sentences or paragraphs, so
+there is nothing to measure a tighter rule against yet. `tests/
+reply-leak.test.js` pins the gap as a named, passing test rather than letting
+it pass silently — the same rule that says not to ship an unmeasured detector
+also says not to invent one for a shape nobody has actually produced.
+
+Fixed in `domain/reply-leak.js` alone; nothing about `gateway-plugin/olma-turn`
+`reply_payload_sending` registration changed, so this needs no gateway restart
+beyond the ordinary deploy that ships the function — the gate was live the
+whole time, and was working exactly as written.
 
 ### The working-out arrived instead of the message (fixed 2026-09-10)
 

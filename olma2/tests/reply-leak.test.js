@@ -199,6 +199,61 @@ test('the silence sentinel: alone it is a decision, with words it is a stray tok
   assert.equal(leak.gateReply('NO_REPLY\n\nNO_REPLY').action, 'cancel');
 });
 
+// Miron, 2026-09-15: the gate found exactly one leak — `sentinel`, on the LAST
+// line — and, under the rule above ("with words it is stripped"), delivered
+// every word in front of it anyway. Nothing else in the draft matched
+// anything (plain English narration, no column name, no frame, no instant),
+// so `drops()` never fired for any paragraph and the sentinel-strips-in-place
+// rule reached all the way back to the first line. What arrived on his phone
+// was the whole draft with the literal string "NO_REPLY" removed:
+//   "...I should reply ."
+// — a dangling sentence exactly where the token used to be
+// (`incidents.md`, "The sentinel that only stripped itself").
+//
+// `hasEarlierContent` distinguishes this from "בוצע NO_REPLY" above by the one
+// fact the doctrine itself names: is there real content BEFORE the sentinel's
+// line. "בוצע NO_REPLY" has none — one line, nothing before it. Miron's draft
+// has two paragraphs of narration before the line carrying the token, so the
+// sentinel now condemns through its own paragraph like any other leak, and
+// with nothing else in the draft to keep, the whole thing cancels.
+test('Mirons message: narration ending in the sentinel is a leak, not a stray token', () => {
+  const draft = [
+    'He replied to the reminder about talking to Ester and said "תמחק את המשימה" '
+      + '— the task was archived, the 👍 was placed.',
+    '',
+    'The hint says a 👍 was already placed and if all I have is a plain instruction '
+      + 'with nothing to add, I should reply NO_REPLY.',
+  ].join('\n');
+  const v = leak.gateReply(draft);
+  assert.equal(v.action, 'cancel');
+  assert.equal(v.text, '');
+  assert.deepEqual(v.leaks.map((l) => l.kind), ['sentinel']);
+});
+
+test('a real short reply plus a trailing sentinel on the SAME line still just strips the token', () => {
+  // The exact case the rule exists to protect, restated with narration on
+  // EITHER side to prove the fix is about POSITION, not about banning the
+  // combination outright: a sentinel with nothing before it never condemns,
+  // whatever comes on its own line.
+  const v = leak.gateReply('בוצע, סגרתי את המשימה NO_REPLY');
+  assert.equal(v.action, 'trim');
+  assert.equal(v.text, 'בוצע, סגרתי את המשימה');
+});
+
+test('KNOWN GAP: narration and the sentinel crammed onto ONE line, no break at all, still only strips the token', () => {
+  // `hasEarlierContent` reads LINES, and both real incidents on file (Yahav's,
+  // Miron's) are multi-line — models write reasoning as separate sentences or
+  // paragraphs. A single unbroken line of prose ending in NO_REPLY has no
+  // known real example to measure a fix against, so none is guessed here
+  // (CLAUDE.md, "A hint that fires on ordinary input is worse than no hint" —
+  // the same rule cuts the other way too: don't ship a detector for a shape
+  // nobody has seen). Documented as a gap, not silently accepted: if this
+  // shape shows up for real, it belongs in the incident story above it and a
+  // new test right here, exactly like the last two additions to this file.
+  const v = leak.gateReply('He replied and archived the task, so I should say NO_REPLY.');
+  assert.equal(v.action, 'trim', 'not caught — see the comment above');
+});
+
 // The wide tier. Every internal name nobody has thought of is this shape — and
 // so is a word a developer might have put in a task title, which is why it is
 // reported and delivered rather than dropped. The audit row is where the next

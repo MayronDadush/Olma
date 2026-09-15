@@ -225,11 +225,13 @@ function leaksIn(line) {
 }
 
 // The kinds that leave their line standing: `identifier` because it is the
-// unmeasured tier and only reports, `sentinel` because it is stripped in place,
-// `narration` because a bare third-person opening is a real sentence when the
-// quotation after it is somebody else's and not the reader's own words back.
-// Everything else condemns the paragraph it sits in, which is the destructive
-// half — so only the closed, unmistakable markers are allowed in here.
+// unmeasured tier and only reports, `sentinel` because — ON ITS OWN, with
+// nothing said before it — it is stripped in place rather than condemning its
+// paragraph (the extra condition is `hasEarlierContent` below), `narration`
+// because a bare third-person opening is a real sentence when the quotation
+// after it is somebody else's and not the reader's own words back. Everything
+// else condemns the paragraph it sits in, which is the destructive half — so
+// only the closed, unmistakable markers are allowed in here.
 const KEEPS_LINE = new Set(['identifier', 'sentinel', 'narration']);
 
 // The subset of those that also change NOTHING about the text. `sentinel` is
@@ -237,6 +239,26 @@ const KEEPS_LINE = new Set(['identifier', 'sentinel', 'narration']);
 // a real change and belongs in `leaks`.
 const REPORT_ONLY = new Set(['identifier', 'narration']);
 function drops(leaks) { return leaks.some((l) => !KEEPS_LINE.has(l.kind)); }
+
+// Is there real content BEFORE line `i` — any earlier line that is not blank?
+// This is the one fact that tells "בוצע NO_REPLY" (a real short answer with
+// the sentinel trailing the SAME, only, line — nothing said before it) apart
+// from Miron's shape (paragraphs of narration, and only the LAST one happens
+// to carry the token). The doctrine's own words are "nothing before them and
+// nothing after" — `SENTINEL_RE` already enforces "nothing after" by never
+// keeping what follows a leaking paragraph; this is "nothing before".
+function hasEarlierContent(lines, i) {
+  for (let j = 0; j < i; j++) if (lines[j].trim()) return true;
+  return false;
+}
+// KNOWN GAP, left open rather than guessed at: this reads LINES, so a single
+// unbroken line of narration ending in the sentinel with no line break at all
+// is not "earlier content" and only strips the token in place, same as
+// "בוצע NO_REPLY". Both real incidents on file are multi-line (models write
+// reasoning as separate sentences or paragraphs), so there is nothing to
+// measure a fix against yet (tests/reply-leak.test.js pins this as a KNOWN
+// GAP rather than silently passing) — the project's own rule against shipping
+// an unmeasured detector cuts both ways.
 
 const SENTINEL = 'NO_REPLY';
 
@@ -270,6 +292,16 @@ function paragraphEnd(lines, i) {
 // leaks on file are both narration-first, the doctrine tells the model to
 // write in that order, and of the two mistakes only one puts our columns on
 // somebody's phone.
+//
+// Miron, 2026-09-15: this gate ran, found exactly one leak — `sentinel`, on
+// the last line — and delivered every word in front of it anyway, because
+// `sentinel` never condemned a paragraph and nothing else in his draft
+// (plain English narration, no column name, no frame, no instant) matched
+// anything else here. The result was the whole draft with the literal string
+// "NO_REPLY" removed: "...I should reply ." — exactly what reached his phone
+// (`incidents.md`, "The sentinel that only stripped itself"). `hasEarlierContent`
+// closes it without touching the case this was built to protect: a sentinel
+// on the FIRST line, nothing before it, still only strips in place.
 function gateReply(text) {
   const raw = String(text == null ? '' : text);
   if (raw.trim() === SENTINEL) return { action: 'pass', text: raw, leaks: [], reported: [] };
@@ -279,7 +311,8 @@ function gateReply(text) {
   let last = -1;
   for (let i = 0; i < lines.length; i++) {
     for (const l of found[i]) reported.push({ ...l, line: i });
-    if (drops(found[i])) last = Math.max(last, paragraphEnd(lines, i));
+    const sentinelAfterNarration = found[i].some((l) => l.kind === 'sentinel') && hasEarlierContent(lines, i);
+    if (drops(found[i]) || sentinelAfterNarration) last = Math.max(last, paragraphEnd(lines, i));
   }
   // What changed the message. The report-only kinds never do — they exist to be
   // read on the dashboard, not to act. Keeping them out of `leaks` is what makes
@@ -294,7 +327,7 @@ function gateReply(text) {
 }
 
 module.exports = {
-  leaksIn, gateReply, drops, scannable, redact, paragraphEnd,
+  leaksIn, gateReply, drops, scannable, redact, paragraphEnd, hasEarlierContent,
   FRAME_RE, INTERNAL_RE, BLOCK_RE, INSTANT_RE, SENTINEL_RE, IDENTIFIER_RE,
   MARK_RE, NARRATION_RE,
   INTERNAL_NAMES, SENTINEL, KEEPS_LINE, REPORT_ONLY,
