@@ -468,6 +468,25 @@ costs a session. What is live:
 | Per-user workspaces | `/root/.openclaw/workspaces/u-<id>/` |
 | Legacy/fallback workspace (agent `main`, not DB-tracked) | `/root/.openclaw/workspace/` |
 
+**A Claude Code session has no shell on the box — it has
+`.github/workflows/olma2-ops.yml`.** The sandbox has no `ssh` binary, no key
+and no route to 157.230.210.233 (measured 2026-09-15: `curl allma.world`
+answers `000`), so "restart the gateway and paste the output" went through a
+person at a laptop three times in one evening. The `olma2 ops` workflow runs
+`olma2/scripts/ops.sh` on a GitHub runner with the same `DEPLOY_SSH_KEY`
+the deploy job uses; a session dispatches it on `main` with
+`mcp__github__actions_run_trigger` (`workflow_id: olma2-ops.yml`, input
+`op`) and reads the result with `mcp__github__get_job_logs`. The menu is
+CLOSED — `status` (release marker, unit states, gateway pid, whether the
+plugin stamp's pid matches it, `/ready` and `/health`) and `restart-gateway`
+(restart, wait for the plugin to register under the new pid, then status) —
+with no free-text input, so it can never print a person's message or number.
+It shares the deploy job's concurrency group, so it cannot land inside a
+deploy. Adding an op means adding a `case` arm in `ops.sh` AND an option in
+the workflow; a change to either file merges through the normal PR flow and
+only then becomes dispatchable, because `workflow_dispatch` reads the file
+on `main`.
+
 **Standing gotchas** (only the ones that are not already rules above):
 - `openclaw sessions list` with no flags shows only the DEFAULT agent — pass
   `--all-agents --json` to see per-user agents. (And never on a timer.)
