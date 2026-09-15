@@ -1414,6 +1414,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .whenecho.miss{background:var(--bg-tint);color:var(--text-3);font-weight:500}
 .whenecho .mobtn{margin-inline-start:auto}
+#mtNewTime,#mtOptTime{margin-top:9px}
+/* A little more air than the chips above it, and a chevron that flips
+   open — the same disclosure language as every fold trigger elsewhere
+   (.row[aria-expanded] .chev), just on a text link instead of a full row. */
+.pdtoggle{display:inline-flex;align-items:center;gap:4px;margin-top:14px}
+#mtPerDay[aria-expanded="true"] .chev{transform:rotate(-90deg)}
 .pdlist{margin-top:10px;display:grid;gap:9px}
 .pdrow{display:grid;gap:6px}
 .pdrow b{font-size:12.5px;font-weight:650;color:var(--text-3)}
@@ -3174,8 +3180,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       <button class="vchip set" id="mtNewTimeChip" hidden data-i18n-label="mt.exact" style="margin-top:9px"><span id="mtNewTimeVal"></span></button>
       <input id="mtNewTime" type="time" tabindex="-1" aria-hidden="true"
              style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
-      <button class="linkbtn" id="mtPerDay" aria-pressed="false" data-i18n="mt.perDay"></button>
-      <div class="pdlist" id="mtPerDayList" hidden></div>
+      <button class="linkbtn pdtoggle" id="mtPerDay" aria-expanded="false" aria-controls="mtPerDayList">
+        <span data-i18n="mt.perDay"></span>
+        <svg class="chev"><use href="#i-chev"/></svg>
+      </button>
+      <div class="fold" id="mtPerDayFold"><div>
+        <div class="pdlist" id="mtPerDayList"></div>
+      </div></div>
     </div></div>
   </div>
   <div class="sheetbtns">
@@ -5401,6 +5412,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
     var chip = e.target.closest(".chip");
     if(chip){
+      /* A listener closer to the target (mtWhenChips, mtPerDayList, …) may
+         already have handled this click and redrawn its container via
+         innerHTML — which detaches `chip` before the event reaches here.
+         `chip.parentNode` is then null, and `(r||document)` in $$ would
+         silently fall back to the WHOLE document, wiping aria-pressed off
+         every chip on the page instead of the handful in this group. */
+      if(!chip.isConnected) return;
       $$(".chip", chip.parentNode).forEach(function(c){ c.setAttribute("aria-pressed", c === chip ? "true" : "false"); });
       if(chip.closest("#sheet")) commit();
       return;
@@ -7856,6 +7874,17 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       '<button class="chip mini" aria-pressed="' + !!exact + '" data-' + prefix + '="exact">' +
       esc(t("mt.exact")) + "</button>";
   }
+  /* Same shape as partChipsHTML, but the day rides IN the data attribute
+     ("data-pd" = "<off>:<key>") since one row's chips share a listener with
+     every other day's. */
+  function pdChipsHTML(off, part, exact){
+    return PARTS.map(function(k){
+      return '<button class="chip mini" aria-pressed="' + (!exact && part === k) +
+        '" data-pd="' + off + ":" + k + '">' + esc(t("mt.part." + k)) + "</button>";
+    }).join("") +
+      '<button class="chip mini" aria-pressed="' + !!exact + '" data-pd="' + off + ':exact">' +
+      esc(t("mt.exact")) + "</button>";
+  }
   dgRedraw["#mtOptDays"] = function(){ renderOptSheet(); };
   dgRedraw["#mtDays"]    = function(){ renderMtDays(); };
   function renderOptSheet(){
@@ -7892,7 +7921,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(!m) return;
     var o = {id:++mtOptSeq, day:optDay};
     if(m.allDay){ /* nothing more to say about a whole day */ }
-    else if(optExact) o.time = $("#mtOptTime").value;
+    else if(optExact) o.time = optExact;
     else o.part = optPart;
     /* At the cap the question is asked on the way OUT, once there is something
        to swap in — the owner's rule for the sixth time (2026-09-09): let them
@@ -7957,7 +7986,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* ── starting one ── */
   var mtPickWho = [], mtPickDays = [], mtPickQ = "";
   var mtNewPart = "evening", mtNewExact = "", mtNewAllDay = false;
-  var mtPerDay = false, mtDayPart = {};
+  var mtPerDay = false, mtDayPart = {}, mtDayExact = {};
   var MT_SEARCH_AT = 6;
 
   /* How often you actually talk to somebody. On the server this is messages
@@ -8074,18 +8103,21 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#mtWhenWrap").hidden = mtNewAllDay;
     $("#mtWhenChips").innerHTML = partChipsHTML(mtNewPart, mtNewExact, "newpart");
     syncTimeChip($("#mtNewTime"), $("#mtNewTimeChip"), $("#mtNewTimeVal"), mtNewExact);
-    $("#mtPerDay").setAttribute("aria-pressed", mtPerDay);
-    $("#mtPerDayList").hidden = !mtPerDay || !mtPickDays.length;
-    if(mtPerDay){
-      $("#mtPerDayList").innerHTML = mtPickDays.map(function(off){
-        var p = mtDayPart[off] || mtNewPart;
-        return '<div class="pdrow"><b>' + esc(mtDayLabel(off)) + "</b><div class=\"chips\">" +
-          PARTS.map(function(k){
-            return '<button class="chip mini" aria-pressed="' + (p === k) +
-              '" data-pd="' + off + ":" + k + '">' + esc(t("mt.part." + k)) + "</button>";
-          }).join("") + "</div></div>";
-      }).join("");
-    }
+    $("#mtPerDay").setAttribute("aria-expanded", mtPerDay);
+    /* The fold stays populated even while closed — collapsing it is a CSS
+       grid-rows transition (.fold/.fold.open, same as every other disclosure
+       in this page), which needs real content underneath to animate against,
+       not a `hidden` toggle that would just snap the panel away. */
+    $("#mtPerDayFold").classList.toggle("open", mtPerDay && !!mtPickDays.length);
+    $("#mtPerDayList").innerHTML = mtPickDays.map(function(off){
+      var ex = mtDayExact[off] || "", p = mtDayPart[off] || mtNewPart;
+      return '<div class="pdrow"><b>' + esc(mtDayLabel(off)) + "</b><div class=\"chips\">" +
+        pdChipsHTML(off, p, ex) + "</div>" +
+        (ex ? '<button class="vchip set" data-pdtimechip="' + off + '"><span>' + esc(ex) + "</span></button>" +
+          '<input data-pdtime="' + off + '" type="time" tabindex="-1" aria-hidden="true" value="' + esc(ex) +
+          '" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">' : "") +
+        "</div>";
+    }).join("");
   }
   function renderMtNew(){
     renderMtPick();
@@ -8103,7 +8135,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   function openMtNew(who){
     mtPickWho = (who || []).slice(); mtPickDays = [1, 2, 3]; mtPickQ = ""; dgPage["#mtDays"] = 0;
     mtNewPart = "evening"; mtNewExact = ""; mtNewAllDay = false;
-    mtPerDay = false; mtDayPart = {};
+    mtPerDay = false; mtDayPart = {}; mtDayExact = {};
     $("#mtName").value = "";
     $("#mtPickQ").value = "";
     $("#mtWhenTxt").value = "";
@@ -8180,10 +8212,24 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   $("#mtPerDay").addEventListener("click", function(){ mtPerDay = !mtPerDay; renderMtWhen(); });
   $("#mtPerDayList").addEventListener("click", function(e){
     var b = e.target.closest("[data-pd]");
-    if(!b) return;
-    var bits = b.dataset.pd.split(":");
-    mtDayPart[+bits[0]] = bits[1];
-    renderMtWhen();
+    if(b){
+      var bits = b.dataset.pd.split(":"), off = +bits[0], key = bits[1];
+      if(key === "exact") mtDayExact[off] = mtDayExact[off] || "20:00";
+      else { mtDayExact[off] = ""; mtDayPart[off] = key; }
+      renderMtWhen();
+      return;
+    }
+    var tc = e.target.closest("[data-pdtimechip]");
+    if(!tc) return;
+    openTimeSheet($('[data-pdtime="' + tc.dataset.pdtimechip + '"]', $("#mtPerDayList")));
+  });
+  $("#mtPerDayList").addEventListener("input", function(e){
+    var inp = e.target.closest("[data-pdtime]");
+    if(!inp) return;
+    var off = +inp.dataset.pdtime;
+    mtDayExact[off] = inp.value;
+    var span = $('[data-pdtimechip="' + off + '"] span', $("#mtPerDayList"));
+    if(span) span.textContent = inp.value;
   });
   $("#mtNewCancel").addEventListener("click", closeSheets);
   $("#mtNewSheet").addEventListener("scroll", function(){ paintCue($("#mtNewSheet"), $("#mtNewCue")); });
@@ -8196,8 +8242,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     m.opts = days.map(function(off){
       var o = {id:++mtOptSeq, day:off};
       if(mtNewAllDay) return o;
-      if(mtNewExact) o.time = $("#mtNewTime").value;
-      else o.part = mtPerDay ? (mtDayPart[off] || mtNewPart) : mtNewPart;
+      if(mtPerDay){
+        if(mtDayExact[off]) o.time = mtDayExact[off];
+        else o.part = mtDayPart[off] || mtNewPart;
+      } else if(mtNewExact) o.time = mtNewExact;
+      else o.part = mtNewPart;
       return o;
     });
     var picks = m.opts.map(function(o){ return {day:o.day, part:o.part || null, time:o.time || null}; });
