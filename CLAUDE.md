@@ -133,7 +133,7 @@ Loads when you **Read** a file under `src/intake/openclaw-config.js`, `src/intak
 ### Delivering a message
 
 **`.claude/rules/delivering.md`** — the delivery gate, quiet hours and quiet days, batching, merging, styles and what a verbatim sentence may say.
-Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format.js`, `src/domain/message-merge.js` and 10 more.
+Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format.js`, `src/domain/message-merge.js` and 11 more.
 
 - **`openclaw agent … --deliver` needs BOTH `--agent <id>` AND an explicit `--session-key`.**
 - **Any outbound send via `child_process` must be `spawn(cmd, args, {detached:true, stdio:'ignore'}).unref()`**
@@ -144,6 +144,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **On the MODEL path a style is granted by a RESULT, never by a description**
 - **What is the same every time is DRAWN, and only the sentence about it is a model's**
 - **…and since 2026-09-10 the lists and choices a person ASKS for are drawn the same way**
+- **The same thing does not go out twice inside a few minutes unless the person ASKED**
 - **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause
 - **An unstated quiet day is not "none" — it is Saturday or Sunday, and which one is a fact about the PERSON.**
 - **Quiet HOURS and a quiet DAY draw different lines, and the digest is where they differ.**
