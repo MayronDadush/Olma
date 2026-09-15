@@ -205,3 +205,65 @@ title means this file. Grep the title, not the filename.
   wording. **And it is inert until the gateway is restarted** (`systemctl --user
   restart openclaw-gateway`; `deploy.sh` does not), which is what
   `config_guard.checkReplyGateLive` reads off the plugin's registration stamp.
+  **A gate built from one leak knows that leak's VOCABULARY, not its SHAPE.**
+  Twice on 2026-09-15, to a bare "תודה", the working-out went out again and the
+  gate passed both byte for byte — measured, not assumed: `action: "pass"`,
+  zero findings. Every word of them was ordinary Hebrew or ordinary English,
+  and the four dropping triggers are all lexical, so there was nothing to
+  catch. Two tiers were added from what all three recorded leaks actually share:
+  `MARK_RE` drops a reaction emoji handed to an act of replying ("תודה פשוטה —
+  👍 בחזרה", "I'll reply with 👍") — marks travel through `placeMark` and the
+  text never names them, while a sign-off ("סגור 👍") hands nobody anything;
+  `NARRATION_RE` REPORTS a reply opening with a bare third-person pronoun, a
+  speech verb and then the person's own words quoted back ("הם אמרו 13:00",
+  'הוא אמר "תודה"', 'He said "תודה"'). The quotation is what makes it safe: the
+  bare opening alone is a real sentence ("They asked me to remind you
+  tomorrow", "הם אמרו שיגיעו מחר") and both went quiet once it was required.
+  Report-only anyway, because sixteen strings written by hand are not the 383
+  real messages this still wants. **`\b` is dead against Hebrew** — Hebrew
+  letters are not `\w`, so there is no boundary between one and the space after
+  it and every `\b` silently fails; the first draft read 0/3 while looking
+  correct. Use a `[֐-׿]` lookahead, as `INTERNAL_RE` already does.
+  **The plugin carries a PORT of `domain/reply-leak.js`** and it is the copy
+  that actually runs; `tests/reply-leak.test.js` holds one corpus against both
+  implementations, and that parity check is what caught the port being missed.
+  **"The sentinel never drops its line" was right for one shape and wrong for
+  another it did not distinguish** (Miron, 2026-09-15; `incidents.md`, "The
+  sentinel that only stripped itself"). "בוצע NO_REPLY" is a real short answer
+  with the token trailing the SAME, only, line — nothing said before it — and
+  stripping just the token is correct. Miron's draft was two paragraphs of
+  plain English narration with no column name, no frame, no instant — nothing
+  else the gate could catch — and only the LAST paragraph carried the token, so
+  `drops()` never fired anywhere and the strip-in-place rule reached back to
+  the first line: the whole draft went out with one word missing. The doctrine
+  says "nothing before them and nothing after" — the gate already enforced the
+  second half; `domain/reply-leak.hasEarlierContent` is the first half, and a
+  sentinel with real content on an EARLIER line now condemns its own paragraph
+  like any other leak. **A gap is left open rather than guessed at**: it reads
+  LINES, so one unbroken line of narration with no break at all, ending in the
+  sentinel, still only strips the token — both real incidents on file are
+  multi-line, so there is nothing to measure a tighter rule against, and
+  `tests/reply-leak.test.js` pins that as a named, passing "KNOWN GAP" test
+  rather than a silent one. **This half was first committed to the domain
+  module alone**, with the parity corpus not carrying the case — green suite,
+  production unchanged, exactly the miss the paragraph above describes. The
+  port carries it now, the corpus holds Miron's draft, and it is inert until
+  the gateway restarts like every other change to the plugin.
+  **A drop tier is chosen from traffic, never from the leak that prompted it**
+  (2026-09-15; `incidents.md`, "The working-out, measured"). Every lexical
+  tier above was read off one leak, and the measurement showed why that could
+  not be done for the shape they all share: 94 of 107 working-out paragraphs
+  on the box in fourteen days passed the gate with no finding, and the obvious
+  rule for them — no Hebrew in it — would have deleted two real English replies
+  to English-speaking users. `domain/reply-leak.deliberationIn` is the tier
+  that came out of reading all 151 hits by hand: four shapes (a line opening
+  on the model's own next step, "Let me <verb>" mid-line, the reader in the
+  third person WITH a tell, a hedge opening WITH a first-person step), each
+  guarded by the sentence it must leave alone ("Let me know if that works",
+  "They asked me to remind you tomorrow", "Actually, the meeting moved to
+  6pm"). 99 of 107 caught, 0 real replies touched. `scripts/measure-reply-gate.js`
+  is how it was read and how the next one is: run it on the box, read the
+  residue by hand, and only then write a pattern. A list here is closed the
+  same way `INTERNAL_NAMES` is — a verb or a noun goes on it because a real
+  message carried it, and every count in the module header names what the
+  pattern was measured against.

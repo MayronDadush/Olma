@@ -38,6 +38,14 @@ Two things the suite learned the hard way:
   `starts_at` that was proposed. Three deploys died on this, on bytes the PR
   had passed twice: 65ms of gap in CI, 603ms in `deploy.sh`'s niced on-box run
   (`incidents.md`, "Three deploys died on a test that raced the second hand").
+  **And the mirror image of it: never read "something happened" off a
+  timestamp CHANGING.** Two writes inside one millisecond carry the same
+  `Date.now()`, so `notEqual(stamp, before)` says "it did not stamp" — 1404
+  collisions in 2000 on a back-to-back pair, which took `main` red on the
+  merge of #371 with both sides reading 1789407308443. Leave the production
+  stamp alone (`group_outbox`, its one reader, adds a 45s grace) and move the
+  clock past `before` in the test (`incidents.md`, "The same race, one
+  resolution finer, and main shipped nothing").
 
 - **A test file must never reach the LIVE gateway — not its home, not its
   roster.** `deploy.sh --restart` runs this suite on the box, where the
@@ -52,6 +60,16 @@ Two things the suite learned the hard way:
   **Anything resolving one of those paths reads it per call, never captures it
   at module load** — as a constant, whether the isolation took depended on
   require order. (`incidents.md`, "The test suite provisioned into production".)
+  **And not its registration stamp either.** `/opt/olma2/run/` is production
+  too: the gateway plugin writes `turn-context-plugin.registered` there on
+  register, and `config_guard.checkReplyGateLive` reads it to tell a
+  restarted gateway from one still on the old build. A test that registered
+  the plugin overwrote it on every deploy for five days with a record saying
+  the gate was live (`incidents.md`, "The test suite stamped the gateway as
+  live"). `tests/helpers.js` defaults `OLMA_PLUGIN_REGISTER_STAMP` and
+  `OLMA_PLUGIN_TRACE` into the temp home, the plugin reads every run-dir path
+  per call, and under `NODE_TEST_CONTEXT` its `refuseProductionWrite` throws
+  on the real path — a file that loses the environment goes red, never quiet.
 
 - **`OLMA_HEARTBEAT: 'off'` does NOT turn the sweeps off** — that is
   `OLMA_WORKER`. Two separate gates in `bin/olma-brokerd.js`, and the first

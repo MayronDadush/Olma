@@ -46,6 +46,7 @@
   --warn-soft:#F8EFDC;
   --ok:#1B9B6B;
   --ok-soft:#E4F4EE;
+  --drop-line:#2B6EF2;
   /* The meeting ring's own three colours. A "no" needs a red that is NOT the
      danger red — deleting and being unable to come are different weights of
      bad, and the arcs sit millimetres apart. Gold is reserved for the one
@@ -126,6 +127,7 @@
     --warn-soft:#332616;
     --ok:#41CB94;
     --ok-soft:#12352A;
+    --drop-line:#7FA8FF;
     --no-arc:#C9584F;
     --gold:#E3B45C;
     --gold-arc:#D9A21C;
@@ -170,6 +172,7 @@
   --warn-soft:#332616;
   --ok:#41CB94;
   --ok-soft:#12352A;
+  --drop-line:#7FA8FF;
   --no-arc:#C9584F;
   --gold:#E3B45C;
   --gold-arc:#D9A21C;
@@ -295,6 +298,18 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
    status pill around, and those two are the reason anybody looks up here. */
 .brand-hi{font-size:13px;color:var(--text-2);line-height:1.2}
 .brand-name{font-family:'Rubik',sans-serif;font-weight:600;font-size:17px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hdrend{display:flex;align-items:center;gap:9px;flex:none}
+/* Three icons, one pressed at a time — the same picture language as the seg
+   controls elsewhere, just small enough to live beside the clock on every
+   tab, not only on the profile page. */
+.themeicons{display:flex;gap:2px;padding:3px;border-radius:999px;background:var(--bg-tint);flex:none}
+.themeicons button{
+  width:27px;height:27px;border-radius:50%;display:grid;place-items:center;color:var(--text-3);
+  transition:background var(--sw-t) var(--ease-io),color var(--sw-t) var(--ease-io),transform .38s var(--squash);
+}
+.themeicons button svg{width:15px;height:15px}
+.themeicons button[aria-pressed="true"]{background:var(--surface);color:var(--accent);box-shadow:var(--shadow-s)}
+.themeicons button:active{transform:scale(.88)}
 .live{
   display:inline-flex;align-items:center;gap:7px;flex:none;
   padding:6px 12px 6px 10px;border-radius:999px;
@@ -846,6 +861,63 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .task.done .ttitle::after{transform:scaleX(1)}
 .task{cursor:pointer}
 .task:active{background:var(--surface-2)}
+/* ── dragging a task ──
+   A row is lifted by a long press on a phone and by press-and-move with a
+   mouse. Nothing in a row is text anybody selects, and iOS's own long-press
+   menu would otherwise open on exactly the gesture that lifts it. The clone
+   lives on <body>, not in its group: a .group clips (overflow:hidden) and the
+   lifted row has to be able to sit over the edge of it. */
+.taskwrap{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.dragclone{position:fixed;z-index:85;pointer-events:none;margin:0;will-change:transform}
+/* The lifted card is frosted glass, tilted a little, so "in your hand" reads
+   at a glance. The sheets' panel glass, not the tab bar's: the bar's thin,
+   light lens is made to float over open space, and over a list of rows it
+   shows their text (and this row's own dimmed placeholder) as a smeared
+   double image. On an inner element: the outer one follows the finger every
+   frame and must not carry a transition that would lag it. */
+.draglift{
+  border-radius:14px;
+  /* closer to solid than the panel's plain alpha, so the row's own dimmed
+     placeholder underneath does not ghost through its text — but not all
+     the way, so it still reads as glass rather than a fresh opaque card */
+  background:var(--glass-panel);
+  background:color-mix(in srgb, var(--glass-panel), var(--surface) 38%);
+  background-image:var(--sheen);
+  border:.5px solid var(--glass-line);
+  -webkit-backdrop-filter:var(--lens);backdrop-filter:var(--lens);
+  box-shadow:var(--shadow-l),var(--rim);
+  transform:rotate(-2deg) scale(1.03);
+  animation:dragLift .38s var(--squash);
+}
+@keyframes dragLift{from{transform:none}}
+@media (prefers-reduced-motion:reduce){ .draglift{transform:none} }
+.dragclone .task{cursor:grabbing}
+/* The dimmed row IS the placeholder: live DOM reordering puts it exactly
+   where a drop will land, and the blue line marks that landing spot —
+   deliberately a different hue from .nesttarget's purple ring so "moves
+   beside" never reads as "moves inside". On the WRAP, not the row inside
+   it, so the opacity that dims the row does not wash the line out too.
+   Hidden while a nest target is live (dragsrc-nesting): the dimmed row is
+   not where this drop would land any more. */
+.taskwrap.dragsrc .task{opacity:.32}
+.taskwrap.dragsrc{box-shadow:inset 0 2px 0 0 var(--drop-line)}
+.taskwrap.dragsrc.dragsrc-nesting{box-shadow:none}
+html.dragging-task, html.dragging-task *{cursor:grabbing !important}
+/* The row it will go INTO: a ring, not a gap — dropping here does not put it
+   beside this task, it puts it inside. */
+.taskwrap.nesttarget .task{background:var(--accent-soft);box-shadow:inset 0 0 0 2px var(--accent)}
+.taskwrap.nesttarget .task::before{display:none}
+.taskwrap + .taskwrap.nesttarget .task::before,.taskwrap.nesttarget + .taskwrap .task::before{display:none}
+/* A row that would refuse this drop, while it is still being hovered — the
+   same ring shape as .nesttarget, in red instead of purple, and softened
+   with transparency so it never reads as a hard stop the way a full-strength
+   error colour would. */
+.taskwrap.nestrefused .task{
+  background:color-mix(in srgb, var(--danger-soft) 65%, transparent);
+  box-shadow:inset 0 0 0 2px color-mix(in srgb, var(--danger) 65%, transparent);
+}
+.taskwrap.nestrefused .task::before{display:none}
+.taskwrap + .taskwrap.nestrefused .task::before,.taskwrap.nestrefused + .taskwrap .task::before{display:none}
 .tend{display:flex;align-items:center;gap:8px;flex:none;margin-inline-start:auto;padding-top:1px}
 .tglyph{width:14px;height:14px;color:var(--text-3)}
 .tglyph.bell{color:var(--warn)}
@@ -1342,12 +1414,12 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 }
 .whenecho.miss{background:var(--bg-tint);color:var(--text-3);font-weight:500}
 .whenecho .mobtn{margin-inline-start:auto}
-.tinput{
-  margin-top:9px;border:0;background:var(--bg-tint);border-radius:12px;
-  font:inherit;font-size:15px;font-weight:600;color:var(--text);
-  padding:8px 12px;outline:none;
-}
-.tinput::-webkit-calendar-picker-indicator{opacity:.45;cursor:pointer}
+#mtNewTime,#mtOptTime{margin-top:9px}
+/* A little more air than the chips above it, and a chevron that flips
+   open — the same disclosure language as every fold trigger elsewhere
+   (.row[aria-expanded] .chev), just on a text link instead of a full row. */
+.pdtoggle{display:inline-flex;align-items:center;gap:4px;margin-top:14px}
+#mtPerDay[aria-expanded="true"] .chev{transform:rotate(-90deg)}
 .pdlist{margin-top:10px;display:grid;gap:9px}
 .pdrow{display:grid;gap:6px}
 .pdrow b{font-size:12.5px;font-weight:650;color:var(--text-3)}
@@ -1782,6 +1854,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .ffield > input[type="date"]::-webkit-calendar-picker-indicator,
 .ffield > input[type="time"]::-webkit-calendar-picker-indicator{opacity:.45;cursor:pointer}
 .ffield > .dateval{text-align:start;display:block}
+.ffield > .dateval.cityval{display:flex;align-items:center;gap:8px}
 .ffield .seg{width:100%}
 .seg{
   display:flex;gap:3px;padding:3px;border-radius:11px;background:var(--bg-tint);
@@ -2101,6 +2174,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   box-shadow:var(--shadow-l),var(--rim);max-height:92vh;overflow-y:auto;
 }
 .sheet.show{transform:none}
+/* #timeSheet stacks on top of an already-open sheet (task editor, meeting
+   sheets); same z-index as every other .sheet would leave paint order to
+   DOM position, and #timeSheet loses that tie against sheets defined later
+   in the markup. Bump it above the whole .sheet layer explicitly. */
+#timeSheet{z-index:82}
 /* ── the top edge is a handle ──
    Five pixels of ribbon cannot be caught with a thumb, so the whole strip
    above the title is the grab area. `touch-action:none` or the browser
@@ -2296,6 +2374,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   transition:opacity var(--sw-t) var(--ease-io),transform var(--sw-t) var(--ease-io);
 }
 .toast.show{opacity:1;transform:none}
+/* A toast that can be answered — only the one after a task went into a list.
+   Every other toast stays an announcement nobody can tap. */
+.toast.act{pointer-events:auto}
+/* Only a refused drop wears this — a mistake, not a confirmation, so it
+   reads differently at a glance and not only by its words. */
+.toast.err{color:var(--danger);background:var(--danger-soft)}
+.toastundo{margin-inline-start:12px;color:var(--accent);font-weight:700;font-size:13px}
 
 @media (max-width:430px){
   .title h1{font-size:29px}
@@ -2369,6 +2454,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <symbol id="i-note" viewBox="0 0 20 20"><path d="M4.4 2.6h11.2v10.2l-4 4.6H4.4Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M15.6 12.6h-4v4.8M7.2 6.4h5.6M7.2 9.4h4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-folder" viewBox="0 0 20 20"><path d="M2.6 5.6a2 2 0 0 1 2-2h2.9l2 2.4h6a2 2 0 0 1 2 2v6.4a2 2 0 0 1-2 2h-10.9a2 2 0 0 1-2-2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></symbol>
   <symbol id="i-arrdown" viewBox="0 0 16 16"><path d="M2.9 5.3h10.2L8 12.4Z" fill="currentColor" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3.1" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.2v1.6M8 13.2v1.6M1.2 8h1.6M13.2 8h1.6M3.3 3.3l1.13 1.13M11.57 11.57l1.13 1.13M3.3 12.7l1.13-1.13M11.57 4.43l1.13-1.13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.2 9.4A5.6 5.6 0 1 1 6.6 2.8a4.4 4.4 0 0 0 6.6 6.6Z" fill="currentColor"/></symbol>
+  <symbol id="i-auto" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.8a6.2 6.2 0 0 0 0 12.4Z" fill="currentColor"/></symbol>
   <!-- The mark. A globe that talks: the meridian and the horizon say עולם,
        the tail makes it something you speak to. Its gradient lives here in
        the sheet's own <defs> rather than inside the symbol — a <use> clone
@@ -2402,7 +2490,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       </div>
     </button>
     <button class="topclock" id="topClock" data-i18n-label="city.title"></button>
-    <div class="live"><span class="dot"></span><span id="olmaLive"></span></div>
+    <div class="hdrend">
+      <div class="themeicons" id="themeIcons" role="group" data-i18n-label="me.appearance">
+        <button data-theme-opt="light" aria-pressed="false" data-i18n-label="me.themeLight"><svg><use href="#i-sun"/></svg></button>
+        <button data-theme-opt="dark" aria-pressed="false" data-i18n-label="me.themeDark"><svg><use href="#i-moon"/></svg></button>
+        <button data-theme-opt="auto" aria-pressed="true" data-i18n-label="me.themeAuto"><svg><use href="#i-auto"/></svg></button>
+      </div>
+      <div class="live"><span class="dot"></span><span id="olmaLive"></span></div>
+    </div>
   </header>
 
   <main>
@@ -2661,17 +2756,19 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
       <div>
         <div class="glabel"><span data-i18n="me.setup"></span></div>
-        <div class="group">
-          <button class="row no-icon" id="cityRow">
-            <div class="row-txt"><div class="row-title" data-i18n="me.where"></div></div>
-            <span class="row-val" id="cityName"></span>
-            <span class="row-end" id="cityClock"></span>
-            <svg class="chev"><use href="#i-chev"/></svg>
-          </button>
-          <div class="row no-icon">
-            <label class="row-title" for="oname" data-i18n="me.calledBy"></label>
-            <input class="row-input" id="oname" type="text" maxlength="18" data-i18n-label="me.calledBy">
+        <div class="group fpad">
+          <div class="fgrid">
+            <div class="ffield">
+              <label data-i18n="me.where"></label>
+              <button class="dateval cityval" id="cityRow"><span id="cityName"></span><span class="row-end" id="cityClock"></span></button>
+            </div>
+            <div class="ffield">
+              <label for="oname" data-i18n="me.calledBy"></label>
+              <input id="oname" type="text" maxlength="18" autocomplete="off" data-i18n-label="me.calledBy">
+            </div>
           </div>
+        </div>
+        <div class="group" style="margin-top:10px">
           <div class="row no-icon stackrow">
             <div class="rowline"><div class="row-title" data-i18n="me.language"></div></div>
             <div class="chips" id="langChips" role="group" data-i18n-label="me.language"></div>
@@ -2933,6 +3030,24 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   </div>
 </div>
 
+<!-- The task sheet's own time chips used to raise the platform's native
+     <input type=time> — a different look on every OS and browser, and the one
+     control on this page that did not look like the rest of it. This is the
+     same sheet the clock setting on the profile page already uses: a search
+     field and a scrollable list, not a wheel or a platform popup. -->
+<div class="sheet" id="timeSheet" role="dialog" aria-modal="true" aria-labelledby="timeTitle">
+  <div class="sgrab"><i class="grabber"></i></div>
+  <h2 id="timeTitle" data-i18n="sheet.pickTime"></h2>
+  <div class="group">
+    <div class="field"><input id="timeSearch" type="search" inputmode="numeric" data-i18n-ph="time.search" autocomplete="off"></div>
+  </div>
+  <div class="group citylist" id="timeList" style="margin-top:12px"></div>
+  <div class="sheetbtns">
+    <button class="btn ghost" id="timeClear" data-i18n="time.clear"></button>
+    <button class="btn ghost" id="timeCancel" data-i18n="sheet.cancel"></button>
+  </div>
+</div>
+
 <!-- ══════════════  meeting coordination  ══════════════
      The grid is the whole idea: rows are the candidate days, columns are the
      four parts of a day, and one tap says "this suits me". Everyone else's
@@ -2991,7 +3106,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     <div class="glabel" style="margin-top:16px"><span data-i18n="mt.whenLbl"></span></div>
     <div class="group"><div class="foldpad tight">
       <div class="chips" id="mtOptParts"></div>
-      <input class="tinput" id="mtOptTime" type="time" hidden data-i18n-label="mt.exact">
+      <button class="vchip set" id="mtOptTimeChip" hidden data-i18n-label="mt.exact" style="margin-top:9px"><span id="mtOptTimeVal"></span></button>
+      <input id="mtOptTime" type="time" tabindex="-1" aria-hidden="true"
+             style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
     </div></div>
   </div>
   <div class="sheetbtns">
@@ -3060,9 +3177,16 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     </div>
     <div id="mtWhenWrap"><div class="foldpad tight">
       <div class="chips" id="mtWhenChips"></div>
-      <input class="tinput" id="mtNewTime" type="time" hidden data-i18n-label="mt.exact">
-      <button class="linkbtn" id="mtPerDay" aria-pressed="false" data-i18n="mt.perDay"></button>
-      <div class="pdlist" id="mtPerDayList" hidden></div>
+      <button class="vchip set" id="mtNewTimeChip" hidden data-i18n-label="mt.exact" style="margin-top:9px"><span id="mtNewTimeVal"></span></button>
+      <input id="mtNewTime" type="time" tabindex="-1" aria-hidden="true"
+             style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
+      <button class="linkbtn pdtoggle" id="mtPerDay" aria-expanded="false" aria-controls="mtPerDayList">
+        <span data-i18n="mt.perDay"></span>
+        <svg class="chev"><use href="#i-chev"/></svg>
+      </button>
+      <div class="fold" id="mtPerDayFold"><div>
+        <div class="pdlist" id="mtPerDayList"></div>
+      </div></div>
     </div></div>
   </div>
   <div class="sheetbtns">
@@ -3100,6 +3224,20 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   <div class="scuehold deep"><div class="scue" id="cnCue"><i></i></div></div>
 </div>
 
+<!-- The first time a task is dropped into another. Shown once, ever — the
+     stamp is on the person (users.nest_tip_seen_at) — so it explains the
+     gesture and offers the way back in the same breath. -->
+<div class="sheet" id="nestSheet" role="dialog" aria-modal="true" aria-labelledby="nestTitle">
+  <div class="sgrab"><i class="grabber"></i></div>
+  <h2 id="nestTitle" data-i18n="nest.title"></h2>
+  <p class="note" id="nestWhat" style="padding:0 14px;text-align:center;font-weight:600;color:var(--text)"></p>
+  <p class="note" data-i18n="nest.body" style="padding:0 14px;text-align:center"></p>
+  <div class="sheetbtns">
+    <button class="btn primary" id="nestOk" data-i18n="nest.ok"></button>
+    <button class="btn ghost" id="nestUndo" data-i18n="nest.undo"></button>
+  </div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -3107,6 +3245,43 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   "use strict";
   var $  = function(s,r){ return (r||document).querySelector(s); };
   var $$ = function(s,r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); };
+
+  /* Appearance: which of the two palettes the stylesheet already defines is
+     showing. Stored on THIS DEVICE only (localStorage) — it is how the page
+     looks, never something Allma reads or a fact about the person, so it
+     never touches /me/act. "Auto" is not a third value to apply — it is the
+     ABSENCE of data-theme, which is what the CSS already follows on its own
+     via prefers-color-scheme, live, with no JS. Read first thing, before
+     anything paints, so a stored choice never flashes the wrong palette. */
+  var THEME_KEY = "olma.theme";
+  function applyTheme(v){
+    if(v === "light" || v === "dark") document.documentElement.setAttribute("data-theme", v);
+    else document.documentElement.removeAttribute("data-theme");
+  }
+  var THEME = (function(){
+    try{
+      var v = localStorage.getItem(THEME_KEY);
+      return (v === "light" || v === "dark") ? v : "auto";
+    }catch(err){ return "auto"; }
+  })();
+  applyTheme(THEME);
+  function renderTheme(){
+    $$("#themeIcons button").forEach(function(b){
+      b.setAttribute("aria-pressed", b.dataset.themeOpt === THEME ? "true" : "false");
+    });
+  }
+  $("#themeIcons").addEventListener("click", function(e){
+    var b = e.target.closest("[data-theme-opt]");
+    if(!b || b.dataset.themeOpt === THEME) return;
+    THEME = b.dataset.themeOpt;
+    try{
+      if(THEME === "auto") localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, THEME);
+    }catch(err){ /* private mode or storage blocked — still applies for this visit */ }
+    applyTheme(THEME);
+    renderTheme();
+  });
+  renderTheme();
 
   /* ══════════════════════════════════════════════════════════════
      THE SEAM — where this becomes the real dashboard
@@ -3233,6 +3408,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     setReminder:"setReminder", cancelReminder:"cancelReminder",
     setTaskReminder:"setTaskReminder", setTaskCalendar:"setTaskCalendar",
     shareTask:"shareTask", revokeShare:"revokeShare", setTaskPin:"setTaskPin",
+    setTaskOrder:"setTaskOrder", nestTask:"nestTask", unnestTask:"unnestTask",
     grantFeature:"grantFeature", revokeFeature:"revokeFeature",
     setTimezone:"setTimezone", pause:"pause", resume:"resume", callMe:"callMe",
     requestMoreCalls:"requestMoreCalls",
@@ -3627,6 +3803,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.restored":"„{name}” חזרה לרשימה",
       "tasks.pinned":"משותפות","tasks.unpin":"ביטול נעיצה","tasks.pin":"נעיצה למעלה",
       "toast.unpinned":"„{name}” חזרה למקום שלה","toast.pinned":"„{name}” נעוצה למעלה",
+      "nest.title":"המשימה נכנסה לרשימה","nest.ok":"הבנתי","nest.undo":"ביטול",
+      "nest.body":"כשגוררים משימה אל תוך משימה אחרת, היא הופכת לפריט ברשימה שלה. אפשר לסמן אותה שם כשהיא נעשית — או לבטל ולהחזיר אותה למקום.",
+      "toast.nested":"„{name}” נוספה לרשימה „{parent}”","toast.unnested":"„{name}” חזרה להיות משימה","toast.undo":"בטל",
+      "nestRefuse.hasDate":"משימה עם תאריך או שעה לא יכולה להיכנס לרשימה",
+      "nestRefuse.isList":"רשימה לא יכולה להיכנס לרשימה אחרת",
+      "nestRefuse.shared":"משימה משותפת לא יכולה להיכנס לרשימה",
+      "nestRefuse.imported":"משימה מיובאת לא יכולה להיכנס לרשימה",
+      "nestRefuse.notMine":"אפשר להכניס לרשימה רק משימות שלך",
 
       "sheet.when":"מתי","sheet.pickTime":"בחירת שעה","sheet.pickEnd":"עד","share.andMore":" ועוד {n}",
       "cat.h":"קטגוריה","cat.auto":"עולמה בחרה","cat.byTime":"לפי זמן","cat.byCat":"לפי קטגוריה",
@@ -3757,6 +3941,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "me.masc":"לשון זכר","me.fem":"לשון נקבה",
       "me.formNote":"״שמרתי לך״ מול ״שמרתי לך״ — עולמה תתאים את כל הניסוחים שלה.",
       "me.setup":"עולמה אצלך","me.calledBy":"השם של עולמה",
+      "me.appearance":"מראה","me.themeLight":"בהיר","me.themeDark":"כהה","me.themeAuto":"אוטומטי",
       "me.setupNote":"המיקום קובע כל תזכורת, כל שעת שקט וכל סיכום — קידומת טלפון היא מדינה, לא עיר. את השם אפשר להחליף; הוא יופיע בכל הודעה שהיא שולחת.",
       "me.pause":"להשהות את עולמה","me.resume":"עולמה מושהית · להפעלה",
       "me.pauseNote":"היא תפסיק לכתוב מיוזמתה. שום דבר לא נמחק, והודעה אחת ממך מחזירה הכול.",
@@ -3801,6 +3986,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.lang":"השפה בשיחה עודכנה",
 
       "city.title":"איפה אתה נמצא?","city.search":"חיפוש עיר","city.none":"לא נמצאה עיר בשם הזה.",
+      "time.search":"חיפוש שעה","time.none":"לא נמצאה שעה כזו.","time.clear":"ללא שעה",
 
       "sheet.new":"משימה חדשה","sheet.edit":"עריכת משימה",
       "sheet.task":"משימה","sheet.taskPh":"מה צריך לעשות?",
@@ -3910,6 +4096,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.restored":"\u201c{name}\u201d is back on your list",
       "tasks.pinned":"Shared","tasks.unpin":"Unpin","tasks.pin":"Pin to top",
       "toast.unpinned":"\u201c{name}\u201d is back in its place","toast.pinned":"\u201c{name}\u201d is pinned to the top",
+      "nest.title":"Added to a list","nest.ok":"Got it","nest.undo":"Undo",
+      "nest.body":"Dropping a task onto another turns it into an item on that task\u2019s list. Tick it off there when it\u2019s done \u2014 or undo to put it back.",
+      "toast.nested":"\u201c{name}\u201d added to \u201c{parent}\u201d","toast.unnested":"\u201c{name}\u201d is a task again","toast.undo":"Undo",
+      "nestRefuse.hasDate":"A task with a date or time can't go into a list",
+      "nestRefuse.isList":"A list can't go inside another list",
+      "nestRefuse.shared":"A shared task can't go into a list",
+      "nestRefuse.imported":"An imported task can't go into a list",
+      "nestRefuse.notMine":"Only your own tasks can go into a list",
 
       "sheet.when":"When","sheet.pickTime":"Pick a time","sheet.pickEnd":"until","share.andMore":" and {n} more",
       "cat.h":"Category","cat.auto":"Allma picked this","cat.byTime":"By time","cat.byCat":"By category",
@@ -4037,6 +4231,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "me.masc":"Male","me.fem":"Female",
       "me.formNote":"Hebrew inflects almost every verb for gender, so Allma needs to know. English has no gendered address and nothing here changes it.",
       "me.setup":"Your Allma","me.calledBy":"Allma's name",
+      "me.appearance":"Appearance","me.themeLight":"Light","me.themeDark":"Dark","me.themeAuto":"Auto",
       "me.setupNote":"Your location decides every reminder, quiet hour and summary — a dialling code is a country, not a city. The name is yours to change; it appears in every message she sends.",
       "me.pause":"Pause Allma","me.resume":"Allma is paused · Resume",
       "me.pauseNote":"She stops writing on her own. Nothing is deleted, and one message from you brings it all back.",
@@ -4081,6 +4276,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       "toast.lang":"Chat language updated",
 
       "city.title":"Where are you?","city.search":"Search for a city","city.none":"No city by that name.",
+      "time.search":"Search for a time","time.none":"No time by that name.","time.clear":"No time",
 
       "sheet.new":"New task","sheet.edit":"Edit task",
       "sheet.task":"Task","sheet.taskPh":"What needs doing?",
@@ -4746,11 +4942,25 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
   /* ───────── toast ───────── */
   var toastEl = $("#toast"), toastT;
-  function toast(msg){
+  function toast(msg, undo, isErr){
     toastEl.textContent = msg;
+    toastEl.classList.toggle("act", !!undo);
+    toastEl.classList.toggle("err", !!isErr);
+    if(undo){
+      var b = document.createElement("button");
+      b.className = "toastundo";
+      b.textContent = t("toast.undo");
+      b.addEventListener("click", function(){
+        clearTimeout(toastT);
+        toastEl.classList.remove("show", "act");
+        undo();
+      });
+      toastEl.appendChild(b);
+    }
     toastEl.classList.add("show");
     clearTimeout(toastT);
-    toastT = setTimeout(function(){ toastEl.classList.remove("show"); }, 1050);
+    /* long enough to reach the button, only when there is one */
+    toastT = setTimeout(function(){ toastEl.classList.remove("show", "act"); }, undo ? 4200 : 1050);
   }
 
   /* ───────── connections view ───────── */
@@ -5202,6 +5412,13 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 
     var chip = e.target.closest(".chip");
     if(chip){
+      /* A listener closer to the target (mtWhenChips, mtPerDayList, …) may
+         already have handled this click and redrawn its container via
+         innerHTML — which detaches `chip` before the event reaches here.
+         `chip.parentNode` is then null, and `(r||document)` in $$ would
+         silently fall back to the WHOLE document, wiping aria-pressed off
+         every chip on the page instead of the handful in this group. */
+      if(!chip.isConnected) return;
       $$(".chip", chip.parentNode).forEach(function(c){ c.setAttribute("aria-pressed", c === chip ? "true" : "false"); });
       if(chip.closest("#sheet")) commit();
       return;
@@ -5573,6 +5790,254 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(pn){ setPin(+pn.dataset.pin, pn.getAttribute("aria-pressed") !== "true"); return; }
     if(wrap) openSheet(+wrap.dataset.id);
   });
+  /* ── dragging tasks ──
+     Two gestures on one lift. Let go BESIDE another row of the same group and
+     the task moves there; let go ONTO another row and it becomes an item on
+     that task's list. Anywhere else, nothing happened.
+
+     The server keeps the order (task_order, one rank per person) and this page
+     never sorts — it files the server's order into groups — so a drop is
+     written as the whole order as it now stands on screen, and the next load
+     draws exactly what was left here. */
+  var nestTipSeen = false;
+  function taskById(id){ return open.filter(function(o){ return String(o.id) === String(id); })[0] || null; }
+  /* Mine means owner 0 — or no owner at all, which is what a row typed on
+     this page carries before the server has answered for it. */
+  function isMine(x){ return !x.owner; }
+  function canLift(x){ return !!x && !x.src && (!LIVE || serverKnows(x)); }
+  /* The owner's four rules, asked before the drop so a row that cannot take
+     this task never lights up — and named, so a refused drop can say why.
+     The server refuses the same cases by name (self/imported/has_date/is_list/shared);
+     "self" never reaches a toast, since hitTest excludes a row's own wrap
+     before this is ever called. */
+  function nestRefusal(child, parent){
+    if(!child || !parent || child === parent) return "self";
+    if(child.src || parent.src) return "imported";
+    if(!isMine(child) || !isMine(parent)) return "notMine";
+    if(child.d) return "hasDate";                          /* a date, or a date and an hour */
+    if(child.items && child.items.length) return "isList"; /* a list does not go into a list */
+    if(facesOf(child).length) return "shared";              /* it is on somebody else's list too */
+    return null;
+  }
+  function canNestInto(child, parent){ return !nestRefusal(child, parent); }
+  function domOrder(){
+    return $$("#taskStack .taskwrap[data-id]").map(function(w){ return w.dataset.id; });
+  }
+  function saveOrder(){
+    var ids = domOrder(), rank = {};
+    ids.forEach(function(id, i){ rank[id] = i; });
+    open.sort(function(a, b){
+      var ra = rank[String(a.id)], rb = rank[String(b.id)];
+      return (ra === undefined ? 1e9 : ra) - (rb === undefined ? 1e9 : rb);
+    });
+    var send = open.filter(function(x){ return !x.src && serverKnows(x); }).map(function(x){ return x.id; });
+    renderTasks();
+    if(send.length) API.send("setTaskOrder", {taskIds:send});
+  }
+  var lastNest = null;
+  function nestInto(childId, parentId){
+    var child = taskById(childId), parent = taskById(parentId);
+    if(!canNestInto(child, parent)) return;
+    var at = open.indexOf(child);
+    open.splice(at, 1);
+    /* Where the server will put it on the next load — items come back in id
+       order (user-dashboard.js) — so the list does not rearrange itself under
+       them on a reload. An item still waiting for its id goes last. */
+    parent.items = (parent.items || []).concat([{id:child.id, t:child.t, done:false}])
+      .sort(function(a, b){ return (a.id || Infinity) - (b.id || Infinity); });
+    renderTasks(); renderStrip(selDay);
+    if(serverKnows(child)) API.send("nestTask", {taskId:child.id, parentId:parent.id});
+    lastNest = {child:child, parent:parent, at:at};
+    var what = t("toast.nested", {name:L(child.t) || t("sheet.untitled"), parent:L(parent.t) || t("sheet.untitled")});
+    if(!nestTipSeen){
+      nestTipSeen = true;
+      $("#nestWhat").textContent = what;
+      showSheet($("#nestSheet"));
+    } else toast(what, undoNest);
+  }
+  function undoNest(){
+    var n = lastNest;
+    lastNest = null;
+    if(!n || !n.parent.items) return;
+    n.parent.items = n.parent.items.filter(function(it){ return String(it.id) !== String(n.child.id); });
+    if(open.indexOf(n.child) < 0) open.splice(Math.min(n.at, open.length), 0, n.child);
+    renderTasks(); renderStrip(selDay);
+    /* Its task_order row was never removed, so the server puts it back at the
+       rank it had without being told. */
+    if(serverKnows(n.child)) API.send("unnestTask", {taskId:n.child.id});
+    toast(t("toast.unnested", {name:L(n.child.t) || t("sheet.untitled")}));
+  }
+  $("#nestOk").addEventListener("click", function(){ lastNest = null; closeSheets(); });
+  $("#nestUndo").addEventListener("click", function(){ closeSheets(); undoNest(); });
+
+  (function(){
+    var HOLD_MS = 350, TOUCH_SLOP = 8, MOUSE_SLOP = 6, EDGE = 76, EDGE_BOTTOM = 120;
+    var stack = $("#taskStack");
+    var press = null, drag = null, swallowUntil = 0;
+
+    function clearPress(){
+      if(press && press.timer) clearTimeout(press.timer);
+      press = null;
+    }
+    function begin(){
+      var p = press;
+      clearPress();
+      if(!p || !document.body.contains(p.wrap)) return;
+      var r = p.wrap.getBoundingClientRect();
+      var clone = document.createElement("div");
+      clone.className = "dragclone";
+      var lift = document.createElement("div");
+      lift.className = "draglift";
+      lift.appendChild($(".task", p.wrap).cloneNode(true));
+      clone.appendChild(lift);
+      clone.style.width = r.width + "px";
+      clone.style.left = r.left + "px";
+      clone.style.top = r.top + "px";
+      document.body.appendChild(clone);
+      p.wrap.classList.add("dragsrc");
+      document.documentElement.classList.add("dragging-task");
+      drag = {
+        wrap:p.wrap, task:taskById(p.wrap.dataset.id), clone:clone, group:p.wrap.parentNode,
+        home:p.wrap.nextSibling, x:p.x, y:p.y, y0:p.y, scroll0:window.scrollY, target:null,
+        refusal:null, raf:0
+      };
+      if(navigator.vibrate) try{ navigator.vibrate(12); }catch(err){}
+      paint();
+      loop();
+    }
+    function paint(){
+      if(!drag) return;
+      drag.clone.style.transform = "translateY(" + (drag.y - drag.y0) + "px)";
+    }
+    function setTarget(w, refused){
+      if(drag.target === w && drag.targetRefused === refused) return;
+      if(drag.target) drag.target.classList.remove("nesttarget", "nestrefused");
+      drag.target = w;
+      drag.targetRefused = refused;
+      if(w) w.classList.add(refused ? "nestrefused" : "nesttarget");
+      drag.wrap.classList.toggle("dragsrc-nesting", !!w && !refused);
+    }
+    function hitTest(){
+      var el = document.elementFromPoint(drag.x, drag.y);
+      var w = el && el.closest ? el.closest("#taskStack .taskwrap[data-id]") : null;
+      if(!w || w === drag.wrap){ setTarget(null); drag.refusal = null; return; }
+      var r = w.getBoundingClientRect(), rel = (drag.y - r.top) / r.height;
+      var inMiddle = rel > .26 && rel < .74;
+      var reason = inMiddle ? nestRefusal(drag.task, taskById(w.dataset.id)) : null;
+      /* the middle of a row is "into it", its edges are "beside it" — a row
+         that CAN take this task has no "beside" and stops right here. One
+         that cannot still gets a red ring while hovered (instead of only a
+         toast after the drop), but its placeholder has to land somewhere,
+         so that case falls through to the same reorder logic an edge-hover
+         uses. */
+      if(inMiddle && !reason){ setTarget(w, false); drag.refusal = null; return; }
+      setTarget(inMiddle ? w : null, true);
+      drag.refusal = inMiddle ? reason : null;
+      if(w.parentNode !== drag.group) return;               /* another group: nothing moves */
+      if(rel < .5){ if(w.previousSibling !== drag.wrap) drag.group.insertBefore(drag.wrap, w); }
+      else if(w.nextSibling !== drag.wrap) drag.group.insertBefore(drag.wrap, w.nextSibling);
+    }
+    /* The window is the scroller. Near an edge the list moves under a finger
+       that is holding still, which is why this is a frame loop and not only
+       a move handler. */
+    function loop(){
+      if(!drag) return;
+      var v = 0;
+      if(drag.y < EDGE) v = -Math.ceil((EDGE - drag.y) / 6);
+      else if(drag.y > innerHeight - EDGE_BOTTOM) v = Math.ceil((drag.y - (innerHeight - EDGE_BOTTOM)) / 6);
+      if(v){ window.scrollBy(0, v); hitTest(); }
+      drag.raf = requestAnimationFrame(loop);
+    }
+    function finish(commit){
+      var d = drag;
+      drag = null;
+      if(!d) return;
+      cancelAnimationFrame(d.raf);
+      document.documentElement.classList.remove("dragging-task");
+      d.clone.remove();
+      d.wrap.classList.remove("dragsrc", "dragsrc-nesting");
+      if(d.target) d.target.classList.remove("nesttarget", "nestrefused");
+      swallowUntil = Date.now() + 400;
+      if(!commit || !document.body.contains(d.wrap)){ putBack(d); return; }
+      if(d.target && !d.targetRefused){ putBack(d); nestInto(d.wrap.dataset.id, d.target.dataset.id); return; }
+      if(d.refusal){ putBack(d); toast(t("nestRefuse." + d.refusal), null, true); return; }
+      var gr = d.group.getBoundingClientRect();
+      var inside = d.x >= gr.left && d.x <= gr.right && d.y >= gr.top - 24 && d.y <= gr.bottom + 24;
+      var moved = d.wrap.nextSibling !== d.home;
+      if(!inside){ putBack(d); return; }
+      if(moved) saveOrder();
+    }
+    function putBack(d){
+      if(document.body.contains(d.wrap) && d.home !== d.wrap.nextSibling &&
+         (d.home === null || d.home.parentNode === d.group)) d.group.insertBefore(d.wrap, d.home);
+    }
+    function start(target, x, y, touch){
+      if(drag || activeSheet) return;
+      /* A press whose release was never seen — a native drag or a release
+         outside the window eats the mouseup — must not block every press
+         after it. The new press is the truth. */
+      clearPress();
+      var wrap = target.closest && target.closest(".taskwrap[data-id]");
+      if(!wrap || !stack.contains(wrap) || target.closest("button")) return;
+      if(!canLift(taskById(wrap.dataset.id))) return;
+      press = {wrap:wrap, x:x, y:y, sx:x, sy:y, touch:touch, scroll:window.scrollY, timer:null};
+      if(touch) press.timer = setTimeout(begin, HOLD_MS);
+    }
+    function move(x, y){
+      if(drag){ drag.x = x; drag.y = y; paint(); hitTest(); return true; }
+      if(!press) return false;
+      var dist = Math.max(Math.abs(x - press.sx), Math.abs(y - press.sy));
+      press.x = x; press.y = y;
+      if(press.touch){ if(dist > TOUCH_SLOP) clearPress(); }   /* that was a scroll */
+      else if(dist > MOUSE_SLOP) begin();
+      return !!drag;
+    }
+
+    /* Touch through touch events rather than pointer events: once a browser
+       decides a touch is a pan it cancels the pointer and there is no getting
+       it back, while a touchmove we cancel simply never scrolls. */
+    stack.addEventListener("touchstart", function(e){
+      if(e.touches.length !== 1){ clearPress(); return; }
+      var p = e.touches[0];
+      start(e.target, p.clientX, p.clientY, true);
+    }, {passive:true});
+    stack.addEventListener("touchmove", function(e){
+      var p = e.touches[0];
+      if(move(p.clientX, p.clientY) && e.cancelable) e.preventDefault();
+    }, {passive:false});
+    stack.addEventListener("touchend", function(e){
+      if(drag){ if(e.cancelable) e.preventDefault(); finish(true); }
+      else clearPress();
+    });
+    stack.addEventListener("touchcancel", function(){ clearPress(); finish(false); });
+    /* the long press is the lift, not a menu */
+    stack.addEventListener("contextmenu", function(e){ if(press || drag) e.preventDefault(); });
+    /* and the browser's own drag — of a selected word, an image, a link — is
+       never what a press on a row means; once it starts, the mouseup that
+       would have ended ours goes to it instead */
+    stack.addEventListener("dragstart", function(e){ e.preventDefault(); });
+
+    stack.addEventListener("mousedown", function(e){
+      if(e.button !== 0) return;
+      start(e.target, e.clientX, e.clientY, false);
+    });
+    document.addEventListener("mousemove", function(e){
+      if(move(e.clientX, e.clientY)) e.preventDefault();
+    });
+    document.addEventListener("mouseup", function(){
+      if(drag) finish(true); else clearPress();
+    });
+    document.addEventListener("keydown", function(e){ if(e.key === "Escape" && drag) finish(false); });
+    window.addEventListener("scroll", function(){
+      if(press && !drag && Math.abs(window.scrollY - press.scroll) > 4) clearPress();
+    }, {passive:true});
+    /* Letting go ends in a click on whatever is under the finger, and a click
+       on a row opens its sheet. One drop, no sheet. */
+    stack.addEventListener("click", function(e){
+      if(Date.now() < swallowUntil){ e.stopPropagation(); e.preventDefault(); swallowUntil = 0; }
+    }, true);
+  })();
+
   /* It lives on the toolbar row now, outside the list it used to end, so it
      gets its own listener rather than the stack's delegation. */
   $("#addTask").addEventListener("click", function(){ openSheet(null); });
@@ -5622,7 +6087,14 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $$(".sheet").forEach(function(el){ el.classList.remove("show"); });
     activeSheet = null;
   }
-  $("#scrim").addEventListener("click", closeSheets);
+  /* The time sheet sits ON the scrim without owning it (see openTimeSheet),
+     so a tap on the scrim while it is open has to take down only the top
+     layer — closeSheets() underneath would also drop the task sheet it is
+     stacked on. */
+  $("#scrim").addEventListener("click", function(){
+    if($("#timeSheet").classList.contains("show")){ closeTimeSheet(); return; }
+    closeSheets();
+  });
   $("#cityCancel").addEventListener("click", closeSheets);
 
   /* ── a sheet is a thing you can put down ──
@@ -5633,9 +6105,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
      movement instead of undoing it. Upward gives a little and no more: there
      is nothing above it to reveal. */
   var DRAG_FRACTION = .3, FLICK_V = .55;
-  function makeDismissable(sheet){
+  function makeDismissable(sheet, onClose){
     var grab = sheet.querySelector(".sgrab");
     if(!grab) return;
+    var close = onClose || closeSheets;
     var dragging = false, y0 = 0, dy = 0, lastY = 0, lastT = 0, v = 0;
     function move(e){
       if(!dragging) return;
@@ -5666,7 +6139,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          snaps back into place — the flash of a thing returning right as it
          leaves. */
       setTimeout(function(){
-        closeSheets();
+        close();
         requestAnimationFrame(function(){
           sheet.classList.remove("flick");
           sheet.style.transform = "";
@@ -5691,6 +6164,8 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   makeDismissable($("#cnSheet"));
   makeDismissable($("#mtSheet"));
   makeDismissable($("#mtNewSheet"));
+  makeDismissable($("#nestSheet"));
+  makeDismissable($("#timeSheet"), closeTimeSheet);
 
   /* ── the scroll line ──
      Two scrollers ask the same question — is there more, and where am I in it
@@ -5720,6 +6195,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(e.key !== "Escape") return;
     if(!$("#calPop").hidden){ closeCal(); return; }
     if(!$("#tpPop").hidden){ closeTimePop(); return; }
+    if($("#timeSheet").classList.contains("show")){ closeTimeSheet(); return; }
     closeSheets();
   });
 
@@ -5951,14 +6427,25 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       pill.classList.toggle("full", dn === n);
     }
   }
+  /* Items are rows of their own (tasks.parent_id), written through the same
+     actions a task is: add with a parentId, tick is completeTask, un-tick is
+     restoreTask, remove is archiveTask. Only on a task of mine — on one
+     somebody shared with me every one of those would be refused. */
+  function itemWritable(){ return !!editing && isMine(editing); }
   function addItem(){
     var el = $("#sAddItem"), v = el.value.trim();
     if(!v || !editing) return;
     if(!editing.items) editing.items = [];
-    editing.items.push({t:both(v), done:false});
+    var item = {t:both(v), done:false};
+    editing.items.push(item);
     el.value = "";
     renderSheetList(editing.items.length - 1);
     renderTasks(); flashSaved();
+    if(itemWritable()) whenSaved(editing, function(pid){
+      API.send("addTask", {title:v, parentId:pid}, function(data){
+        if(data && data.task){ item.id = data.task.id; SERVER_IDS[String(data.task.id)] = true; }
+      });
+    });
   }
   $("#sAddItem").addEventListener("keydown", function(e){ if(e.key === "Enter"){ e.preventDefault(); addItem(); } });
   /* typed and then tapped away is still typed — the same promise the title
@@ -5972,11 +6459,19 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       tg.closest(".litem").classList.toggle("on", it.done);
       renderSheetList();
       renderTasks(); flashSaved();
+      if(it.id && itemWritable()){
+        API.send(it.done ? "completeTask" : "restoreTask", {taskId:it.id}, function(data){
+          /* the last item ticked finishes the list itself (completeParentIfDrained):
+             the list is in the archive now, and a re-read is what says so */
+          if(data && data.parentCompleted){ closeSheets(); API.reload(); }
+        });
+      }
       return;
     }
     var rm = e.target.closest("[data-ritem]");
     if(rm){
-      editing.items.splice(+rm.dataset.ritem, 1);
+      var gone = editing.items.splice(+rm.dataset.ritem, 1)[0];
+      if(gone && gone.id && itemWritable()) API.send("archiveTask", {taskId:gone.id});
       if(!editing.items.length) delete editing.items;
       renderSheetList();
       renderTasks(); flashSaved();
@@ -6229,18 +6724,87 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     updateSheetCue();
   });
   $("#sTitle").addEventListener("input", commit);
+  /* the visible chip is the target; the real <input type=time> holds the
+     value and fires "change" into commit() same as it always did — only
+     what RAISES it changed, from the platform's own popup to this page's
+     own sheet, the one the clock setting on the profile page already uses */
   $("#sTime").addEventListener("change", commit);
-  /* the visible chip is the target; the real <input type=time> is offscreen
-     and exists only to raise the platform's own picker */
-  $("#sTimeChip").addEventListener("click", function(){
-    $("#sTime").focus();
-    try{ $("#sTime").showPicker(); }catch(err){}
-  });
+  $("#sTimeChip").addEventListener("click", function(){ openTimeSheet($("#sTime")); });
   $("#sEnd").addEventListener("change", commit);
-  $("#sEndChip").addEventListener("click", function(){
-    $("#sEnd").focus();
-    try{ $("#sEnd").showPicker(); }catch(err){}
+  $("#sEndChip").addEventListener("click", function(){ openTimeSheet($("#sEnd")); });
+  /* Five-minute rows, generated once — the same list every chip on the page
+     opens, whichever hidden input a pick lands in. One picker, everywhere a
+     time is asked for, instead of the platform's own popup on some fields
+     and nothing at all consistent on others. */
+  var TIME_SLOTS = (function(){
+    var out = [];
+    for(var m = 0; m < 1440; m += 5){
+      var h = Math.floor(m / 60), mi = m % 60;
+      out.push((h < 10 ? "0" : "") + h + ":" + (mi < 10 ? "0" : "") + mi);
+    }
+    return out;
+  })();
+  var timeTarget = null;
+  function renderTimeList(q, selected){
+    q = (q || "").trim();
+    var rows = TIME_SLOTS.filter(function(v){ return !q || v.indexOf(q) > -1; });
+    $("#timeList").innerHTML = rows.length ? rows.map(function(v){
+      return '<button class="row no-icon" data-time="' + v + '">' +
+        '<div class="row-txt"><div class="row-title">' + v + '</div></div>' +
+        (v === selected ? '<svg style="width:15px;height:15px;color:var(--accent);flex:none"><use href="#i-check"/></svg>' : "") +
+        "</button>";
+    }).join("") : '<div class="empty">' + esc(t("time.none")) + "</div>";
+  }
+  /* This sheet opens ON TOP of whatever sheet holds its chip, not instead of
+     it — the same stacking calPop already does for a date. showSheet()/
+     closeSheets() are built for ONE sheet at a time and clear the whole
+     stack, which is right when the sheet underneath itself closes but wrong
+     here: it used to take the task editor (or the meeting sheet) down with
+     it the instant a time was picked. So this sheet manages its own .show,
+     leaves #scrim and activeSheet exactly as the sheet under it left them,
+     and only that sheet's own close touches those. */
+  function openTimeSheet(input){
+    timeTarget = input;
+    $("#timeSearch").value = "";
+    renderTimeList("", input.value);
+    $("#scrim").classList.add("show");
+    $("#timeSheet").classList.add("show");
+    var sel = input.value && $('#timeList [data-time="' + input.value + '"]');
+    requestAnimationFrame(function(){ if(sel) sel.scrollIntoView({block:"center"}); });
+  }
+  function closeTimeSheet(){
+    $("#timeSheet").classList.remove("show");
+  }
+  function pickTime(v){
+    var input = timeTarget;
+    if(!input) return;
+    input.value = v;
+    /* every field this sheet feeds listens for one of the two — the task
+       sheet's chips for "change", the meeting flow's for "input" — so both
+       fire and each field hears the one it was already listening for */
+    input.dispatchEvent(new Event("input", {bubbles:true}));
+    input.dispatchEvent(new Event("change", {bubbles:true}));
+    closeTimeSheet();
+  }
+  $("#timeSearch").addEventListener("input", function(){
+    renderTimeList(this.value, timeTarget ? timeTarget.value : "");
   });
+  $("#timeList").addEventListener("click", function(e){
+    var b = e.target.closest("[data-time]");
+    if(b) pickTime(b.dataset.time);
+  });
+  $("#timeClear").addEventListener("click", function(){ pickTime(""); });
+  $("#timeCancel").addEventListener("click", closeTimeSheet);
+  /* One chip renderer for every field this sheet feeds: hide it when the
+     field has no time to show, otherwise show what it holds (or the 20:00
+     default the meeting flow's "exact" chip has always started from). */
+  function syncTimeChip(input, chip, valEl, exact){
+    chip.hidden = !exact;
+    input.value = exact || "20:00";
+    valEl.textContent = input.value;
+  }
+  $("#mtOptTimeChip").addEventListener("click", function(){ openTimeSheet($("#mtOptTime")); });
+  $("#mtNewTimeChip").addEventListener("click", function(){ openTimeSheet($("#mtNewTime")); });
   $("#sAllDay").addEventListener("click", function(){
     editing.all = this.getAttribute("aria-checked") !== "true";
     this.setAttribute("aria-checked", editing.all ? "true" : "false");
@@ -7310,14 +7874,24 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       '<button class="chip mini" aria-pressed="' + !!exact + '" data-' + prefix + '="exact">' +
       esc(t("mt.exact")) + "</button>";
   }
+  /* Same shape as partChipsHTML, but the day rides IN the data attribute
+     ("data-pd" = "<off>:<key>") since one row's chips share a listener with
+     every other day's. */
+  function pdChipsHTML(off, part, exact){
+    return PARTS.map(function(k){
+      return '<button class="chip mini" aria-pressed="' + (!exact && part === k) +
+        '" data-pd="' + off + ":" + k + '">' + esc(t("mt.part." + k)) + "</button>";
+    }).join("") +
+      '<button class="chip mini" aria-pressed="' + !!exact + '" data-pd="' + off + ':exact">' +
+      esc(t("mt.exact")) + "</button>";
+  }
   dgRedraw["#mtOptDays"] = function(){ renderOptSheet(); };
   dgRedraw["#mtDays"]    = function(){ renderMtDays(); };
   function renderOptSheet(){
     dayGridHTML("#mtOptDays", "#mtOptMon", optDay, false);
     $("#mtOptWhen").hidden = !!(mtOpen && mtOpen.allDay);
     $("#mtOptParts").innerHTML = partChipsHTML(optPart, optExact, "optpart");
-    $("#mtOptTime").hidden = !optExact;
-    $("#mtOptTime").value = optExact || "20:00";
+    syncTimeChip($("#mtOptTime"), $("#mtOptTimeChip"), $("#mtOptTimeVal"), optExact);
     $("#mtOptGo").disabled = optDay < 0 || (optExact && !$("#mtOptTime").value);
     paintCue($("#mtOptSheet"), $("#mtOptCue"));
   }
@@ -7339,7 +7913,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     else { optExact = ""; optPart = b.dataset.optpart; }
     renderOptSheet();
   });
-  $("#mtOptTime").addEventListener("input", function(){ optExact = this.value; });
+  $("#mtOptTime").addEventListener("input", function(){ optExact = this.value; $("#mtOptTimeVal").textContent = this.value; });
   $("#mtOptCancel").addEventListener("click", closeSheets);
   $("#mtOptSheet").addEventListener("scroll", function(){ paintCue($("#mtOptSheet"), $("#mtOptCue")); });
   $("#mtOptGo").addEventListener("click", function(){
@@ -7347,7 +7921,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     if(!m) return;
     var o = {id:++mtOptSeq, day:optDay};
     if(m.allDay){ /* nothing more to say about a whole day */ }
-    else if(optExact) o.time = $("#mtOptTime").value;
+    else if(optExact) o.time = optExact;
     else o.part = optPart;
     /* At the cap the question is asked on the way OUT, once there is something
        to swap in — the owner's rule for the sixth time (2026-09-09): let them
@@ -7412,7 +7986,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   /* ── starting one ── */
   var mtPickWho = [], mtPickDays = [], mtPickQ = "";
   var mtNewPart = "evening", mtNewExact = "", mtNewAllDay = false;
-  var mtPerDay = false, mtDayPart = {};
+  var mtPerDay = false, mtDayPart = {}, mtDayExact = {};
   var MT_SEARCH_AT = 6;
 
   /* How often you actually talk to somebody. On the server this is messages
@@ -7528,20 +8102,22 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     $("#mtAllDay").setAttribute("aria-checked", mtNewAllDay);
     $("#mtWhenWrap").hidden = mtNewAllDay;
     $("#mtWhenChips").innerHTML = partChipsHTML(mtNewPart, mtNewExact, "newpart");
-    $("#mtNewTime").hidden = !mtNewExact;
-    $("#mtNewTime").value = mtNewExact || "20:00";
-    $("#mtPerDay").setAttribute("aria-pressed", mtPerDay);
-    $("#mtPerDayList").hidden = !mtPerDay || !mtPickDays.length;
-    if(mtPerDay){
-      $("#mtPerDayList").innerHTML = mtPickDays.map(function(off){
-        var p = mtDayPart[off] || mtNewPart;
-        return '<div class="pdrow"><b>' + esc(mtDayLabel(off)) + "</b><div class=\"chips\">" +
-          PARTS.map(function(k){
-            return '<button class="chip mini" aria-pressed="' + (p === k) +
-              '" data-pd="' + off + ":" + k + '">' + esc(t("mt.part." + k)) + "</button>";
-          }).join("") + "</div></div>";
-      }).join("");
-    }
+    syncTimeChip($("#mtNewTime"), $("#mtNewTimeChip"), $("#mtNewTimeVal"), mtNewExact);
+    $("#mtPerDay").setAttribute("aria-expanded", mtPerDay);
+    /* The fold stays populated even while closed — collapsing it is a CSS
+       grid-rows transition (.fold/.fold.open, same as every other disclosure
+       in this page), which needs real content underneath to animate against,
+       not a `hidden` toggle that would just snap the panel away. */
+    $("#mtPerDayFold").classList.toggle("open", mtPerDay && !!mtPickDays.length);
+    $("#mtPerDayList").innerHTML = mtPickDays.map(function(off){
+      var ex = mtDayExact[off] || "", p = mtDayPart[off] || mtNewPart;
+      return '<div class="pdrow"><b>' + esc(mtDayLabel(off)) + "</b><div class=\"chips\">" +
+        pdChipsHTML(off, p, ex) + "</div>" +
+        (ex ? '<button class="vchip set" data-pdtimechip="' + off + '"><span>' + esc(ex) + "</span></button>" +
+          '<input data-pdtime="' + off + '" type="time" tabindex="-1" aria-hidden="true" value="' + esc(ex) +
+          '" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">' : "") +
+        "</div>";
+    }).join("");
   }
   function renderMtNew(){
     renderMtPick();
@@ -7559,7 +8135,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
   function openMtNew(who){
     mtPickWho = (who || []).slice(); mtPickDays = [1, 2, 3]; mtPickQ = ""; dgPage["#mtDays"] = 0;
     mtNewPart = "evening"; mtNewExact = ""; mtNewAllDay = false;
-    mtPerDay = false; mtDayPart = {};
+    mtPerDay = false; mtDayPart = {}; mtDayExact = {};
     $("#mtName").value = "";
     $("#mtPickQ").value = "";
     $("#mtWhenTxt").value = "";
@@ -7632,14 +8208,28 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     else { mtNewExact = ""; mtNewPart = b.dataset.newpart; }
     renderMtWhen();
   });
-  $("#mtNewTime").addEventListener("input", function(){ mtNewExact = this.value; });
+  $("#mtNewTime").addEventListener("input", function(){ mtNewExact = this.value; $("#mtNewTimeVal").textContent = this.value; });
   $("#mtPerDay").addEventListener("click", function(){ mtPerDay = !mtPerDay; renderMtWhen(); });
   $("#mtPerDayList").addEventListener("click", function(e){
     var b = e.target.closest("[data-pd]");
-    if(!b) return;
-    var bits = b.dataset.pd.split(":");
-    mtDayPart[+bits[0]] = bits[1];
-    renderMtWhen();
+    if(b){
+      var bits = b.dataset.pd.split(":"), off = +bits[0], key = bits[1];
+      if(key === "exact") mtDayExact[off] = mtDayExact[off] || "20:00";
+      else { mtDayExact[off] = ""; mtDayPart[off] = key; }
+      renderMtWhen();
+      return;
+    }
+    var tc = e.target.closest("[data-pdtimechip]");
+    if(!tc) return;
+    openTimeSheet($('[data-pdtime="' + tc.dataset.pdtimechip + '"]', $("#mtPerDayList")));
+  });
+  $("#mtPerDayList").addEventListener("input", function(e){
+    var inp = e.target.closest("[data-pdtime]");
+    if(!inp) return;
+    var off = +inp.dataset.pdtime;
+    mtDayExact[off] = inp.value;
+    var span = $('[data-pdtimechip="' + off + '"] span', $("#mtPerDayList"));
+    if(span) span.textContent = inp.value;
   });
   $("#mtNewCancel").addEventListener("click", closeSheets);
   $("#mtNewSheet").addEventListener("scroll", function(){ paintCue($("#mtNewSheet"), $("#mtNewCue")); });
@@ -7652,8 +8242,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
     m.opts = days.map(function(off){
       var o = {id:++mtOptSeq, day:off};
       if(mtNewAllDay) return o;
-      if(mtNewExact) o.time = $("#mtNewTime").value;
-      else o.part = mtPerDay ? (mtDayPart[off] || mtNewPart) : mtNewPart;
+      if(mtPerDay){
+        if(mtDayExact[off]) o.time = mtDayExact[off];
+        else o.part = mtDayPart[off] || mtNewPart;
+      } else if(mtNewExact) o.time = mtNewExact;
+      else o.part = mtNewPart;
       return o;
     });
     var picks = m.opts.map(function(o){ return {day:o.day, part:o.part || null, time:o.time || null}; });
@@ -9251,7 +9844,9 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
          it shared" is re-asked on every paint (isPinned), because sharing can
          change on this page without a reload. */
       unpinned:!!x.unpinned,
-      items:(x.items || []).map(function(i){ return {t:i.title, done:!!i.done}; }),
+      /* The id travels now: ticking, removing and adding an item are real
+         writes on the child row, and nothing else names which row it is. */
+      items:(x.items || []).map(function(i){ return {id:i.id, t:i.title, done:!!i.done}; }),
       src:x.source || undefined
     };
   }
@@ -9464,6 +10059,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
       MY_ID = d.user.id;
       myAvatar = seedIndex("u" + d.user.id);
       paused = !!d.user.paused;
+      nestTipSeen = !!d.user.nestTipSeen;
       cityConfirmed = !!d.user.timezoneConfirmed;
       var i = CITIES.map(function(c){ return c.tz; }).indexOf(d.user.timezone);
       /* An unlisted zone leaves the city alone rather than snapping to the

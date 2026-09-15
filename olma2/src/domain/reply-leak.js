@@ -101,7 +101,132 @@ const INTERNAL_RE = new RegExp(`(?:^|[^A-Za-z0-9_])(${INTERNAL_NAMES.join('|')})
 // A block only the model is ever shown. `Conversation info` and `Turn context`
 // are the gateway's and ours; `DELIVERY:` opens the instruction on a turn Olma
 // started; the last two are strings from the doctrine itself.
-const BLOCK_RE = /\b(?:Turn context|Conversation info|Reply target of current user message|OpenClaw heartbeat poll|unknown identity token)\b|^\s*DELIVERY:/im;
+// `hints` is ours too — the object `domain/turn.turnHints` builds and hands the
+// model. A reply that cites what it says is quoting our machinery exactly as
+// `Turn context` does. It was already in Yahav's third paragraph ("The hints
+// say a 👍 was placed…"), which dropped only because a LATER line did, and it
+// came back on 2026-09-15 as the whole reason a message was written at all
+// ("Since the hint says a bare 'תודה' is probably about the newest reminder").
+// `AGENTS.md`, `USER.md` and `MEMORY.md` are the doctrine and the memory files
+// — the model reads them and nobody else ever sees their names. "Per
+// AGENTS.md, 'cancel the reminder' and 'cancel the thing' are the same
+// sentence" reached Miron three times on 2026-09-14 (the 14-day measurement
+// below found them and nothing here had a name for them).
+const BLOCK_RE = /\b(?:Turn context|Conversation info|Reply target of current user message|OpenClaw heartbeat poll|unknown identity token|the hints? says?|(?:AGENTS|USER|MEMORY)\.md)\b|^\s*DELIVERY:/im;
+
+// The reaction vocabulary, named as something to SEND. Marks travel through
+// `domain/reactions.placeMark` on a path the reply text never touches, so words
+// that hand one of these emoji to an act of replying are describing the
+// machinery rather than talking to anybody. This is what caught the 2026-09-15
+// Hebrew leak, whose every other word was ordinary Hebrew: "תודה פשוטה — 👍
+// בחזרה". It DROPS, so the bar was the module's own — a marker that cannot
+// appear in a sentence a person is meant to read — and it is met by the OBJECT
+// position, not by the emoji: a sign-off ("סגור 👍", "אענה לך אחרי הפגישה 🙏")
+// puts no mark in anyone's hands and stays untouched. Measured against every
+// ordinary shape in the test plus eight sign-offs and near-misses written to
+// break it: 3 leaks caught, 0 moved.
+const VOCAB_RE = '👀|👂|👍|⏰|🙏|❓|⚠️';
+const MARK_RE = new RegExp(
+  `(?:${VOCAB_RE})\\s*(?:בחזרה|חזרה בתגובה|בתגובה)`
+  + `|(?:אשיב|אענה|אגיב|אשלח)\\s+(?:לו|לה|להם|)\\s*(?:${VOCAB_RE})`
+  + `|(?:reply|respond|answer|react|send)(?:ing|s|ed)?\\s+(?:back\\s+)?(?:with|using)\\s+(?:a\\s+)?(?:${VOCAB_RE})`,
+  'i');
+
+// Olma writes TO the person. A reply that opens by attributing speech to a bare
+// third-person pronoun is describing the conversation instead of continuing it,
+// and it is the one shape all three recorded leaks share, across two languages
+// and three incidents: "הם אמרו 13:00" (2026-09-10), "הוא אמר \"תודה\""
+// (2026-09-15 14:37), "He said \"תודה\" again" (2026-09-15 15:03).
+//
+// Anchored on the QUOTATION, because the bare opening alone is a real sentence:
+// "They asked me to remind you tomorrow" and "הם אמרו שיגיעו מחר" are things
+// Olma says, and both went quiet once the verb had to be followed by a quote or
+// a number — the model handing the person their own message back. `\b` is no
+// help on the Hebrew half: Hebrew letters are not `\w`, so there is no boundary
+// between a letter and a space and every `\b` after a Hebrew word silently
+// fails. The negative lookahead is what replaces it.
+//
+// REPORTED, never dropped. It reads 3/3 and 0/16 on the corpus above, but that
+// corpus is sixteen strings somebody wrote by hand — the 383 real messages this
+// module's header already names as the measurement it is missing are still on
+// the box. Same reasoning as the identifier tier: unmeasured means report.
+const NARRATION_RE = /^[\s"״'׳]*(?:הוא|היא|הם|הן)\s+(?:אמרו|אמרה|אמר|כתבו|כתבה|כתב)(?![֐-׿])\s*["״'׳\d]|^\s*(?:he|she|they)\s+(?:said|wrote|replied)\s+["״'\d]/i;
+
+// The model talking about what it is about to do, or about the reader in the
+// third person, in English. This is the tier the header above named as
+// missing, and it was chosen from traffic rather than guessed: on 2026-09-15
+// `scripts/measure-reply-gate.js` read every assistant message on the box for
+// 14 days — 33 agents, 1,156 messages, 2,247 paragraphs — and 151 paragraph
+// hits were read one by one (`incidents.md`, "The working-out, measured"). 107
+// of the 113 distinct paragraphs were working-out, and the gate as it stood
+// delivered 94 of them (`pass`). The other six were the reason a drop tier had
+// to be measured first: two real English replies to English-speaking users
+// ("Hey Yuval — the group is arranging…", "its all good 👍") that a bare "no
+// Hebrew in it" rule would have deleted, and four preambles to an English
+// speaker ("I'll check what's most urgent for you this week.") that a drop
+// costs nothing on, because the answer follows in the next block.
+//
+// So it DROPS, on four shapes, each with the guard the corpus asked for:
+//
+//   opener   a line that STARTS with the model's own next step ("Let me check",
+//            "I'll save", "Now I", "But first", "Looking at the turn
+//            context") — 40 of the 107. `Let me` needs a verb off a
+//            closed list, because "Let me know if that works" is a sentence
+//            to a person; "know" is not on it.
+//   mid      "Let me <verb>" or "I'll save/set/add/create" ANYWHERE in the line
+//            — 29 more, the working-out that begins with the fact it was
+//            reasoning from ("The number doesn't match anyone obvious in his
+//            contacts. Let me check."). To an English speaker "Sure, let me
+//            check and get back to you" is a preamble, and losing it loses
+//            nothing: the answer is the next block.
+//   third    a line that STARTS by describing the reader in the third person
+//            ("He said", "They asked", "The user is") — 16 of the 107, every
+//            one about the reader — AND carries a tell that it is working-out:
+//            the reader's own words quoted back in Hebrew, one of our nouns
+//            (task, reminder, the hint, dashboard…), or a first-person step.
+//            Without the tell it stays: "They asked me to remind you
+//            tomorrow" and "He asked me to pass on that he is running late"
+//            are relays, and the same shape.
+//   soft     "Actually," / "Wait," / "OK," / "So" openings — 6 of the 107 —
+//            only when the line also carries a first-person step or the
+//            reader in the third person. "Actually, the meeting moved to 6pm"
+//            is a sentence to a person and stays.
+//
+// 99 of 107 caught by these (six of the eight missed only ever appear between
+// paragraphs the cut already takes), 0 of the two real English replies touched, and the
+// hand-written ordinary corpus in `tests/reply-leak.test.js` — which now has
+// fifteen English sentences written to break exactly this — unmoved. Every
+// list here is closed and was read off real messages, same as INTERNAL_NAMES;
+// the measurement script is in the repo so the next addition is read off the
+// box too, not off a hunch.
+const DELIB_VERBS = 'check|see|look|verify|re-?check|figure|find|get|read|re-?read|try|compose|deliver|save|cancel|write|remove|update|confirm|start|first|also|just|search|call|fetch|proceed|think|handle|do|make|give|send|reply|respond|answer|draft|set|ask|follow|merge|create|add|mark|use|note|pull|run|open|archive';
+const DELIB_LET_ME = `Let me(?: not| just| also| first)? (?:${DELIB_VERBS})`;
+const DELIB_OPENER_RE = new RegExp('^\\s*(?:'
+  + `${DELIB_LET_ME}|I'll (?:check|look|just|go|start|first|proceed|save|set|search|add|create|mention)`
+  + '|Now I |But first|First, I\'ll|Now (?:create|save|check)|Also need to|Also,? I |No user message'
+  + '|This (?:turn|is a delivery turn)|So they |Looking at the (?:turn context|today block|meeting status|context|hints?)'
+  + '|The (?:intake note|reply target|reply was to|reminders? (?:were|was))'
+  + ')\\b', 'i');
+const DELIB_MID_RE = new RegExp(`\\b(?:${DELIB_LET_ME}|I'll (?:save|set|add|create|proceed))\\b`, 'i');
+const DELIB_THIRD_RE = /^\s*(?:He|She|They|The user|The person)(?:'s)? (?:sent|asked|wants?|said|replied|wrote|has|hasn't|is|was|stated|message)\b/i;
+// The tell, for `third`: against the RAW line, because the Hebrew quotation
+// is the signal and `scannable` strips quotations by design (same reason
+// NARRATION_RE reads raw).
+const DELIB_TELL_RE = /["״'][^"״'\n]*[֐-׿][^"״'\n]*["״']|`|\b(?:tasks?|reminders?|the hints?|turn|digest|dashboard|contacts?|onboarding|meeting|opted|delete|archive|Let me|I'll|I should|I need|I replied|I answered)\b/i;
+const DELIB_SOFT_RE = /^\s*(?:Actually|Wait|Hmm|OK|Okay|So)\b[,—\s-]*/i;
+const DELIB_CUE_RE = /\b(?:let me|I need|I should|I can|I see|I don't|I answered|I asked|I never|he |she |they |him |his |their |the hints?|the turn|the intake)\b/i;
+
+function deliberationIn(raw, text) {
+  const opener = DELIB_OPENER_RE.exec(text);
+  if (opener) return opener[0];
+  const mid = DELIB_MID_RE.exec(text);
+  if (mid) return mid[0];
+  const third = DELIB_THIRD_RE.exec(text);
+  if (third && DELIB_TELL_RE.test(raw)) return third[0];
+  const soft = DELIB_SOFT_RE.exec(text);
+  if (soft && DELIB_CUE_RE.test(text)) return soft[0];
+  return null;
+}
 
 // 2026-09-10T10:00:00Z. A time crossing a tool boundary carries an explicit
 // offset (CLAUDE.md, "Data you must not get wrong") and a time reaching a
@@ -159,6 +284,16 @@ function leaksIn(line) {
   if (internal) out.push({ kind: 'internal', at: internal[1] });
   const block = BLOCK_RE.exec(text);
   if (block) out.push({ kind: 'block', at: block[0].trim().slice(0, 40) });
+  const mark = MARK_RE.exec(text);
+  if (mark) out.push({ kind: 'mark', at: mark[0].trim().slice(0, 40) });
+  // Against the RAW line, not `text`: this one is anchored on the quotation,
+  // and `scannable` strips quotations by design (somebody else's words are not
+  // ours to judge). Here the quotation IS the tell — it is the person's own
+  // message being handed back to them — so the stripper would erase the signal.
+  const narration = NARRATION_RE.exec(raw);
+  if (narration) out.push({ kind: 'narration', at: narration[0].trim().slice(0, 40) });
+  const deliberation = deliberationIn(raw, text);
+  if (deliberation) out.push({ kind: 'deliberation', at: deliberation.trim().slice(0, 40) });
   const instant = INSTANT_RE.exec(text);
   if (instant) out.push({ kind: 'instant', at: instant[0] });
   const sentinel = SENTINEL_RE.exec(text);
@@ -173,11 +308,40 @@ function leaksIn(line) {
 }
 
 // The kinds that leave their line standing: `identifier` because it is the
-// unmeasured tier and only reports, `sentinel` because it is stripped in place.
-// Everything else condemns the paragraph it sits in, which is the destructive
-// half — so only the closed, unmistakable markers are allowed in here.
-const KEEPS_LINE = new Set(['identifier', 'sentinel']);
+// unmeasured tier and only reports, `sentinel` because — ON ITS OWN, with
+// nothing said before it — it is stripped in place rather than condemning its
+// paragraph (the extra condition is `hasEarlierContent` below), `narration`
+// because a bare third-person opening is a real sentence when the quotation
+// after it is somebody else's and not the reader's own words back. Everything
+// else condemns the paragraph it sits in, which is the destructive half — so
+// only the closed, unmistakable markers are allowed in here.
+const KEEPS_LINE = new Set(['identifier', 'sentinel', 'narration']);
+
+// The subset of those that also change NOTHING about the text. `sentinel` is
+// not in here: it leaves its line standing but is stripped out of it, so it is
+// a real change and belongs in `leaks`.
+const REPORT_ONLY = new Set(['identifier', 'narration']);
 function drops(leaks) { return leaks.some((l) => !KEEPS_LINE.has(l.kind)); }
+
+// Is there real content BEFORE line `i` — any earlier line that is not blank?
+// This is the one fact that tells "בוצע NO_REPLY" (a real short answer with
+// the sentinel trailing the SAME, only, line — nothing said before it) apart
+// from Miron's shape (paragraphs of narration, and only the LAST one happens
+// to carry the token). The doctrine's own words are "nothing before them and
+// nothing after" — `SENTINEL_RE` already enforces "nothing after" by never
+// keeping what follows a leaking paragraph; this is "nothing before".
+function hasEarlierContent(lines, i) {
+  for (let j = 0; j < i; j++) if (lines[j].trim()) return true;
+  return false;
+}
+// KNOWN GAP, left open rather than guessed at: this reads LINES, so a single
+// unbroken line of narration ending in the sentinel with no line break at all
+// is not "earlier content" and only strips the token in place, same as
+// "בוצע NO_REPLY". Both real incidents on file are multi-line (models write
+// reasoning as separate sentences or paragraphs), so there is nothing to
+// measure a fix against yet (tests/reply-leak.test.js pins this as a KNOWN
+// GAP rather than silently passing) — the project's own rule against shipping
+// an unmeasured detector cuts both ways.
 
 const SENTINEL = 'NO_REPLY';
 
@@ -211,6 +375,16 @@ function paragraphEnd(lines, i) {
 // leaks on file are both narration-first, the doctrine tells the model to
 // write in that order, and of the two mistakes only one puts our columns on
 // somebody's phone.
+//
+// Miron, 2026-09-15: this gate ran, found exactly one leak — `sentinel`, on
+// the last line — and delivered every word in front of it anyway, because
+// `sentinel` never condemned a paragraph and nothing else in his draft
+// (plain English narration, no column name, no frame, no instant) matched
+// anything else here. The result was the whole draft with the literal string
+// "NO_REPLY" removed: "...I should reply ." — exactly what reached his phone
+// (`incidents.md`, "The sentinel that only stripped itself"). `hasEarlierContent`
+// closes it without touching the case this was built to protect: a sentinel
+// on the FIRST line, nothing before it, still only strips in place.
 function gateReply(text) {
   const raw = String(text == null ? '' : text);
   if (raw.trim() === SENTINEL) return { action: 'pass', text: raw, leaks: [], reported: [] };
@@ -220,11 +394,14 @@ function gateReply(text) {
   let last = -1;
   for (let i = 0; i < lines.length; i++) {
     for (const l of found[i]) reported.push({ ...l, line: i });
-    if (drops(found[i])) last = Math.max(last, paragraphEnd(lines, i));
+    const sentinelAfterNarration = found[i].some((l) => l.kind === 'sentinel') && hasEarlierContent(lines, i);
+    if (drops(found[i]) || sentinelAfterNarration) last = Math.max(last, paragraphEnd(lines, i));
   }
-  // What changed the message. `identifier` never does — it is the tier that
-  // exists to be read on the dashboard, not to act.
-  const leaks = reported.filter((l) => l.kind !== 'identifier');
+  // What changed the message. The report-only kinds never do — they exist to be
+  // read on the dashboard, not to act. Keeping them out of `leaks` is what makes
+  // "found something, changed nothing" a `pass` that delivers byte for byte,
+  // rather than a `trim` whose own `.trim()` would quietly eat the whitespace.
+  const leaks = reported.filter((l) => !REPORT_ONLY.has(l.kind));
   if (!leaks.length) return { action: 'pass', text: raw, leaks, reported };
   // Whatever survives the cut still goes out without the stray sentinel in it.
   const kept = lines.slice(last + 1).join('\n').replace(SENTINEL_STRIP_RE, ' ').trim();
@@ -233,7 +410,8 @@ function gateReply(text) {
 }
 
 module.exports = {
-  leaksIn, gateReply, drops, scannable, redact, paragraphEnd,
+  leaksIn, gateReply, drops, scannable, redact, paragraphEnd, hasEarlierContent,
   FRAME_RE, INTERNAL_RE, BLOCK_RE, INSTANT_RE, SENTINEL_RE, IDENTIFIER_RE,
-  INTERNAL_NAMES, SENTINEL, KEEPS_LINE,
+  MARK_RE, NARRATION_RE, deliberationIn,
+  INTERNAL_NAMES, SENTINEL, KEEPS_LINE, REPORT_ONLY,
 };

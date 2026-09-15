@@ -40,6 +40,7 @@ never trust a dated narrative for something you are about to act on.
 
 - [The lock that worked perfectly, on three files out of sixteen (2026-09-01)](#the-lock-that-worked-perfectly-on-three-files-out-of-sixteen-2026-09-01)
 - [The test suite provisioned into production, three times (fixed 2026-09-06)](#the-test-suite-provisioned-into-production-three-times-fixed-2026-09-06)
+- [The test suite stamped the gateway as live (fixed 2026-09-15)](#the-test-suite-stamped-the-gateway-as-live-fixed-2026-09-15)
 - [The user who would not stay deleted (fixed 2026-09-07)](#the-user-who-would-not-stay-deleted-fixed-2026-09-07)
 - [A new user moved into the previous occupant's workspace (fixed 2026-09-06)](#a-new-user-moved-into-the-previous-occupants-workspace-fixed-2026-09-06)
 - [A leaked token has a rotation now, and the file order is the design (2026-09-03)](#a-leaked-token-has-a-rotation-now-and-the-file-order-is-the-design-2026-09-03)
@@ -158,6 +159,7 @@ never trust a dated narrative for something you are about to act on.
 - [The hint that outvoted the mark (2026-09-06)](#the-hint-that-outvoted-the-mark-2026-09-06)
 - [The mark that never moved (2026-09-07)](#the-mark-that-never-moved-2026-09-07)
 - ["בשמחה יהב, שיהיה ערב טוב" (2026-09-07)](#בשמחה-יהב-שיהיה-ערב-טוב-2026-09-07)
+- [The same evening, twice (fixed 2026-09-10)](#the-same-evening-twice-fixed-2026-09-10)
 - [A sentence about Shabbat, because the table had never heard of preferences (fixed 2026-09-10)](#a-sentence-about-shabbat-because-the-table-had-never-heard-of-preferences-fixed-2026-09-10)
 - [The quiet day nobody was ever going to ask for (2026-09-11)](#the-quiet-day-nobody-was-ever-going-to-ask-for-2026-09-11)
 - [Sixty-four holidays, eight of them quiet (2026-09-11)](#sixty-four-holidays-eight-of-them-quiet-2026-09-11)
@@ -171,7 +173,10 @@ never trust a dated narrative for something you are about to act on.
 - [A silence read as a delivery fault (fixed 2026-09-09)](#a-silence-read-as-a-delivery-fault-fixed-2026-09-09)
 - [The hour in the title nobody compared (fixed 2026-09-11)](#the-hour-in-the-title-nobody-compared-fixed-2026-09-11)
 - [A lost reply is re-sent, not re-answered (fixed 2026-09-09)](#a-lost-reply-is-re-sent-not-re-answered-fixed-2026-09-09)
+- [The sentinel that only stripped itself (fixed 2026-09-15)](#the-sentinel-that-only-stripped-itself-fixed-2026-09-15)
+- [The working-out, measured (fixed 2026-09-15)](#the-working-out-measured-fixed-2026-09-15)
 - [The working-out arrived instead of the message (fixed 2026-09-10)](#the-working-out-arrived-instead-of-the-message-fixed-2026-09-10)
+- [The gate knew the leak's vocabulary, not its shape (fixed 2026-09-15)](#the-gate-knew-the-leaks-vocabulary-not-its-shape-fixed-2026-09-15)
 - ["הנה, רשמתי", about a meeting (2026-09-07)](#הנה-רשמתי-about-a-meeting-2026-09-07)
 - [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
 - [The four checks that could never have fired (2026-09-06)](#the-four-checks-that-could-never-have-fired-2026-09-06)
@@ -199,6 +204,7 @@ never trust a dated narrative for something you are about to act on.
 - [Two branches, one migration number (fixed 2026-08-22)](#two-branches-one-migration-number-fixed-2026-08-22)
 - [The suite was green thirteen hours a day and red eleven (fixed 2026-08-30)](#the-suite-was-green-thirteen-hours-a-day-and-red-eleven-fixed-2026-08-30)
 - [Three deploys died on a test that raced the second hand (fixed 2026-09-06)](#three-deploys-died-on-a-test-that-raced-the-second-hand-fixed-2026-09-06)
+- [The same race, one resolution finer, and main shipped nothing (fixed 2026-09-14)](#the-same-race-one-resolution-finer-and-main-shipped-nothing-fixed-2026-09-14)
 - [Deploying doctrine no longer needs a second command (2026-08-21)](#deploying-doctrine-no-longer-needs-a-second-command-2026-08-21)
 - [A rollback cannot reach the filesystem (fixed 2026-08-27)](#a-rollback-cannot-reach-the-filesystem-fixed-2026-08-27)
 - [Merged is not deployed — the drift row (2026-09-04)](#merged-is-not-deployed-the-drift-row-2026-09-04)
@@ -1277,6 +1283,56 @@ environments get lost:
 refactor that quietly stops checking turns red rather than green — and it
 asserts `NODE_TEST_CONTEXT` is actually set, because a guard keyed on a
 variable nobody sets would pass everything for ever.
+
+### The test suite stamped the gateway as live (fixed 2026-09-15)
+
+The same chain as the entry above, one file further along, and found only
+because the owner pasted a verification one-liner rather than reading a
+dashboard. After the #378 deploy he restarted the gateway at 19:14:35 UTC and
+ran the check the session had asked for. `RELEASE` said e0ffd7e, the unit
+said a fresh `MainPID`, and the registration stamp said:
+
+    {"at":"2026-09-15T19:05:34.459Z","pid":1129376,"agents":["u-3"],"hooks":[…,"reply_payload_sending"]}
+
+Nine minutes BEFORE the restart, a pid that was neither the old gateway nor
+the new one, and an agent list of exactly one person — which no gateway on
+this box has been configured with since 2026-09-09, when `config.agents` was
+emptied to mean everybody. 19:05:34 sits inside the deploy's on-box suite
+(18:58:53 to 19:06:38), `tests/turn-context.test.js` has a test that calls
+the plugin's `register()` with `pluginConfig: { agents: ['u-3'] }`, and
+`register()` calls `stampRegistration()` on its default file, which was
+`process.env.OLMA_PLUGIN_REGISTER_STAMP || "/opt/olma2/run/turn-context-plugin.registered"`
+— and nothing in the suite set that variable. Every test file set
+`OLMA_PLUGIN_TRACE` for itself; nobody had noticed the second file, added
+five days later for `config_guard.checkReplyGateLive`.
+
+So on every deploy since 2026-09-10 the suite has overwritten the one file
+that exists to tell "the gateway was restarted since the gate shipped" from
+"it was not". And the record it wrote carried `reply_payload_sending` in its
+hooks — the test registers today's plugin — so the guard read a gateway that
+had NOT been restarted as one that had. That is the shape the guard was built
+against, inverted: a detector fed by the wrong writer, green for the exact
+case it exists to catch. It never bit only because every plugin change so
+far was followed by a hand restart within the hour, and the real
+registration overwrote the test's.
+
+What was caught in the same reading: `SOCK`, `TRACE` and the stamp path were
+all captured at module load in the plugin — the rule the entry above wrote
+down ("reads it per call, never captures it at module load") applied to a
+file that entry did not cover. Fixed three ways, because one lock has already
+proved insufficient once for this chain: `tests/helpers.js` defaults both
+files into the temp home beside `OLMA_OPENCLAW_HOME`; the plugin reads all
+three paths per call; and under `NODE_TEST_CONTEXT` a write to anything
+under `/opt/olma2/run/` THROWS before the best-effort catch, so a test file
+that loses the environment is red rather than a silent writer. The register
+test asserts where its stamp landed, and a second test proves the refusal
+fires.
+
+The last line of the pasted output was also read too early: a restarted
+gateway registers the plugin about a minute after the unit reports active
+(64 s on the 18:09 restart), so a tail taken in the same second still shows
+the previous record. The verification is the stamp's `pid` matching the
+unit's `MainPID`, and it is worth the minute.
 
 ### The user who would not stay deleted (fixed 2026-09-07)
 
@@ -6085,6 +6141,76 @@ syncs the file and cannot make the gateway re-read it. Until that restart the
 code is live and inert: no `thanks` param arrives, every message opens with
 👀, and nothing behaves differently.
 
+### The same evening, twice (fixed 2026-09-10)
+
+Miron, 18:01 and 18:02: a picture of his evening, and then the same picture of
+his evening. One outbox row, one delivery, one `--deliver` turn — and every
+text block a model emits on such a turn is a WhatsApp message of its own, so
+one turn said it twice.
+
+Nothing about it was the model disobeying. It was told, in the digest
+instruction, that a card REPLACES the block and never to send both. That
+instruction also ordered the call that made obeying impossible:
+
+- `cardClause` (channels/openclaw.js) said "if the counts show N or more open
+  items … get_my_digest with scope=\"full\" … then render_schedule_card".
+- `scope="full"` is the ONLY scope that returns a `block` — and it came back
+  with `hints.block`: *"Put it in your reply EXACTLY as it is."*
+
+An unconditional instruction to write, arriving mid-turn on a tool result,
+against a conditional one from the top of the prompt. **That is the third time
+this exact shape has cost a message** — "The hint that outvoted the mark" and
+"A sentence about Shabbat" are the other two — and the position that wins is
+always the same one: the result, not the prompt. Six hours earlier the drawn
+block had shipped (#329, 11:49); 18:00 was the first evening digest after it.
+
+Two readers of one threshold made it worse and are gone with it. The flag
+`digest_card_min_items` was read by `sweepDigests`, stamped onto every row and
+quoted as a number in the instruction, while the tool applied its own reading —
+so an operator moving the flag could put the two into open disagreement. The
+flag has one reader now, `get_my_digest`, and the instruction names no number.
+
+**The fix is that a turn is never handed both.** `get_my_digest` returns EITHER
+a `block` to send as it stands OR `hints.card`, an order to draw — decided in
+code, off the same count `renderDigestBlock` would lay out, and never both. The
+instruction only relays whichever came back. A sentence in a prompt asking a
+model not to send two things is a request; not giving it two things is a
+guarantee.
+
+The general rule underneath it is the owner's, said the same evening: **the
+same thing does not go out twice inside a few minutes unless the person asked
+for it.** It lives in `domain/repeat-guard.js` with one window (10 minutes) and
+two readers, because there are exactly two places a repeat can be produced:
+
+- **the gate** — a second row of the same kind, for the kinds where that is
+  always Olma repeating herself (`SAYS_IT_ONCE`). Dropped as `duplicate`, with
+  an `delivery.duplicate_suppressed` audit row, because a guard nobody can
+  count is a guard nobody will trust. Reminders are excluded on purpose: the
+  ladder is *supposed* to come back, and rung 2 is not rung 1 again.
+- **the card tool** — the same card drawn twice on a turn OLMA started, which
+  is the shape above and the one the gate cannot see (no second row exists).
+  Content-identical only, so the redraw the doctrine actually asks for — the
+  render refused, narrow the range and draw again — passes untouched. And only
+  when the turn is ours: a person who asks to see their week twice has asked
+  twice, and the second answer is an answer.
+
+What it does NOT cover, said out loud so nobody trusts it further than it
+goes: nothing here can see the words a model chose. Two DIFFERENT renderings of
+the same facts share no signature, and are prevented only by the line above —
+never hand one turn both of them.
+
+Two clock traps, both paid for during the fix. The sibling's `sent_at` is
+Postgres' clock while the tick carries a JavaScript one, so a row delivered
+moments ago reads as a few milliseconds in the FUTURE and a `since >= 0` guard
+let both copies through — the same trap `SENT_SLACK_MS` exists for in
+`jobs/unanswered.js`. Bounding the read on both sides against the tick's own
+clock fixes it, and is also what keeps a drain run at a moment of its own
+choosing from reading the whole queue as duplicates.
+
+And three suite failures that were the guard working: fixtures clearing the
+decks with `sent_at = now()` were claiming this person had heard five things in
+the last second. They say two hours ago now, which is what they always meant.
+
 ### A sentence about Shabbat, because the table had never heard of preferences (fixed 2026-09-10)
 
 Miron, 09:05:
@@ -6600,6 +6726,174 @@ will reword and promising wording we cannot keep is the v1 stale-digest rule.
 This row is the second exception to that after an operator's hand-typed message,
 and for the identical reason: nothing will reword it.
 
+### The sentinel that only stripped itself (fixed 2026-09-15)
+
+Miron, on a turn answering a reply to a reminder ("תמחק את המשימה"):
+
+> He replied to the reminder about talking to Ester and said "תמחק את המשימה"
+> — the task was archived, the 👍 was placed.
+>
+> The hint says a 👍 was already placed and if all I have is a plain
+> instruction with nothing to add, I should reply .
+
+The task WAS archived correctly. The 👍 WAS placed. The model reasoned its way
+to the exactly correct decision — say nothing, `markPlaced` already carries the
+fact — and then wrote the reasoning itself into the reply, in English, about
+him in the third person. Five days after the gate below this entry shipped,
+which exists for precisely this failure shape.
+
+The gate ran. It found exactly one leak: `kind: 'sentinel'`, on the last line
+— `NO_REPLY` was really there, the model really did reach the right answer.
+And under the rule immediately below ("The sentinel is the one marker that
+never drops its line… the gate strips the stray token and delivers the word"),
+that is what it did: stripped the five characters `NO_REPLY` out of the draft
+and delivered everything else, verbatim. Nothing in the rest of Miron's draft
+matched anything on the closed list — no column name, no frame marker, no ISO
+instant, no block name — so `drops()` never fired for any paragraph and the
+strip-in-place rule reached all the way back to the first line. The result was
+the whole draft with one word missing: "...I should reply ." — a sentence
+dangling exactly where the token used to sit.
+
+**The rule the gate was following is right for the case it was built for, and
+wrong for this one, and the difference is one fact the doctrine already
+states.** "בוצע NO_REPLY" is a real, short answer ("done") with the sentinel
+trailing on the SAME, only, line — nothing said before it — and stripping the
+token there is exactly right: `jobs/unanswered.js` reads that shape as a real
+reply on purpose, and cancelling it would delete the one word the person was
+owed. Miron's draft is two PARAGRAPHS of narration, and only the last one
+happens to carry the token. The doctrine's own words are "the entire reply is
+the five characters `NO_REPLY`, with nothing before them and nothing after" —
+`gateReply` already enforced "nothing after" (a leaking paragraph condemns
+everything that follows it too). It had no equivalent check for "nothing
+before", so a sentinel could always find itself in a draft that violated that
+half and still be treated as the harmless case.
+
+**The fix is one function, `hasEarlierContent`, and one new condition on the
+existing per-line loop**: a `sentinel` leak now also condemns its own
+paragraph — same as a frame marker, an internal name, an instant — whenever
+there is real (non-blank) content on any EARLIER line. "בוצע NO_REPLY" has
+none, and is untouched: verified against the file's own existing test plus a
+new one that states the guarantee explicitly, with narration on the other side
+of the token this time to prove the fix is about POSITION and not about
+banning the combination outright. Miron's shape now condemns through its own
+(last) paragraph, nothing survives the cut, and the reply becomes `cancel` —
+the honest empty answer that "nothing to add" always meant.
+
+**One gap is left open rather than guessed at, and said so in both the code
+and the test.** `hasEarlierContent` reads LINES: a single unbroken line of
+narration ending in the sentinel, with no line break anywhere, is not "earlier
+content" and still only strips the token. Both real incidents on file — this
+one and the one below it — are multi-line, because a model working through
+several considerations writes them as separate sentences or paragraphs, so
+there is nothing to measure a tighter rule against yet. `tests/
+reply-leak.test.js` pins the gap as a named, passing test rather than letting
+it pass silently — the same rule that says not to ship an unmeasured detector
+also says not to invent one for a shape nobody has actually produced.
+
+**The first commit of this fix would have changed nothing in production.** It
+touched `domain/reply-leak.js` alone and said so as a virtue ("no gateway
+restart needed — the function changed, not the plugin's registration"). The
+function that runs is not that one: `gateway-plugin/olma-turn/index.js`
+carries a PORT of the module, because it loads in the gateway's own loader
+with nothing of ours beside it, and the parity test that exists to catch
+exactly this stayed green because its corpus did not carry Miron's draft. The
+same session's sibling hit the same miss the same afternoon and wrote it down
+first ("The gate knew the leak's vocabulary, not its shape", below). Now: the
+port carries `hasEarlierContent`, the corpus holds both of Miron's drafts, and
+this change is inert until the gateway restarts, like every other change to
+the plugin.
+
+**Two more of his messages the same morning, read back off the box, and
+neither fix reaches them.** 09:48:32 — a `--deliver` turn carrying the
+OpenRouter-models update. The gate cut every paragraph that named the sentinel
+or `turn_start` (audit: chars 800, kept 364, three findings), and the paragraph
+right after the cut — "Let me deliver the model update naturally." — carries
+no marker and went out as the first line of the update. 09:31:54 — 2,944
+characters of English reasoning about his open-item count ("51 open items —
+way past the 36 limit…"), `pass`, no audit row: not one marker in it. Both are
+the hole the 2026-09-10 entry named on its last line, first-person
+deliberation with none of our vocabulary in it, now observed live twice in
+one morning. The 09:48 shape is pinned in `tests/reply-leak.test.js` as a
+named gap, and the rule for closing it is the same one every tier here was
+held to: a pattern for "the model talking about what it is about to do" is
+measured against the real transcripts on the box before it may drop a word,
+because "Let me know if…" and "I'll remind you at 13:00" are sentences Olma
+sends to a person who writes in English.
+
+### The working-out, measured (fixed 2026-09-15)
+
+The measurement the entry above asked for, done the same evening, and the tier
+it produced. Every drop tier in `domain/reply-leak.js` before this one was
+lexical — a frame marker, a column name, an instant, a block name, a mark
+handed to a verb — and each was read off ONE leak. Three leaks in nine days
+had shown the shape they all share and none of them names: the model talking
+about what it is about to do, in plain English, with none of our vocabulary
+in it. A pattern for that could not be read off three messages, because the
+thing it must not catch is every real English sentence Olma sends, and nobody
+had counted those either.
+
+**What was run.** `scripts/measure-reply-gate.js`, read-only, on the box:
+the gate over every assistant text in every `u-N` transcript store for the
+last fourteen days, printing per paragraph what the gate does today, whether
+the paragraph survives, and whether it is English inside a reply that is
+otherwise Hebrew. 33 agents, 1,156 assistant messages, 2,247 paragraphs, 151
+hits. The hits were read one by one, by hand, into a corpus of 113 distinct
+paragraphs, each marked keep or drop.
+
+**What the reading found.** 107 of the 113 were working-out, and the gate as
+it stood delivered 94 of them (`pass`, no finding at all) — the 2026-09-10
+and 09-15 fixes had caught the ones that named something, and nearly every
+leak on the box named nothing. The other six were why a drop tier had to be
+measured first. Two were real English replies to English-speaking users, one
+of them a whole group-arrangement message to Yuval, one a bare "its all good
+👍" — a naive "no Hebrew in it" rule, the obvious first draft, would have
+deleted both. Four were preambles to an English speaker ("I'll check what's
+most urgent for you this week.") that a drop costs nothing on, because the
+answer follows in the next block. So the population to protect was not
+"English" — it was English SENT TO A PERSON, and the 107 differed from it in
+shape, not vocabulary.
+
+**The tier: four shapes, each with the guard the corpus asked for.**
+`opener` — a line that starts with the model's own next step ("Let me
+check", "I'll save", "Now I", "But first", "Looking at the turn context"),
+40 of the 107; "Let me" needs a verb off a closed list, because "Let me know
+if that works" is a sentence to a person and "know" is not on it. `mid` —
+"Let me <verb>" or "I'll save/set/add/create" anywhere in the line, 29
+more, the working-out that begins with the fact it was reasoning from. `third`
+— a line that starts by describing the reader in the third person ("He said",
+"They asked", "The user is"), 16, AND carries a tell that it is working-out:
+the reader's own words quoted back in Hebrew, one of our nouns, or a
+first-person step; without the tell it stays, because "They asked me to
+remind you tomorrow" is a relay with the same opening. `soft` — "Actually,"
+/ "Wait," / "OK," / "So", 6, only when the line also carries a first-person
+step or the reader in the third person, because "Actually, the meeting moved
+to 6pm" is a sentence to a person. 99 of 107 caught, six of the eight missed
+only ever appearing between paragraphs the cut already takes; 0 of the two
+real English replies touched; 15 hand-written ordinary English sentences
+(Let me know…, Actually the meeting moved…, He asked me to pass on…, I should
+have this ready by noon…) all delivered. One draft did catch "I should have
+this ready by noon" — `I need to|I should` had been on the opener list —
+and was cut back to a tell rather than a trigger, at the cost of nothing on
+the corpus: the guard, not the shape, is what the reading paid for.
+
+**Two things this changed beside the tier.** `BLOCK_RE` now also reads the
+bootstrap file names (`AGENTS.md`, `USER.md`, `MEMORY.md`) — a message
+that names one is talking about the workspace, and the corpus had several.
+And the 09:48 case, pinned the same morning as a KNOWN GAP, flips: "Let me deliver
+the model update naturally." is the opener shape and the Hebrew update behind
+it is now his first line. The one-line-sentinel gap is narrower, not closed:
+"He replied and archived the task, so I should say NO_REPLY." is caught by
+`third`, but a one-liner with none of the four shapes still only strips the
+token, and there is still no real example to measure a rule against.
+
+**The rule this entry adds.** A drop tier is chosen from traffic, never from
+the leak that prompted it. The script is in the repo so the next tier is read
+off the box the same way, and the numbers above are in the module's own
+header so the next reader knows what each pattern was measured against.
+Same as every plugin change: inert until the gateway restarts, and the port
+in `gateway-plugin/olma-turn/index.js` carries it, held to the domain module
+by the parity corpus.
+
 ### The working-out arrived instead of the message (fixed 2026-09-10)
 
 Yahav, 08:28: "תוכלי להזכיר לי היום בשעה 13:00 לבטל את האשראי". The 👍 went on
@@ -6721,6 +7015,76 @@ openclaw-gateway` — green suite, shipped code, inert gate, which is the exact
 plugin now overwrites `/opt/olma2/run/turn-context-plugin.registered` with the
 hooks the RUNNING gateway registered, and `config_guard.checkReplyGateLive`
 reads that file and files a dashboard row for as long as the two disagree.
+
+### The gate knew the leak's vocabulary, not its shape (fixed 2026-09-15)
+
+Twice in ninety minutes, to a bare "תודה", Olma answered with her own
+deliberation instead of a message. 14:37, in Hebrew:
+
+> הוא אמר "תודה" על כך שעדכנתי את התזכורת ל-18:00. תודה פשוטה — 👍 בחזרה.
+
+15:03, in English, two paragraphs, ending "…and there's no instruction to act
+on — just a thanks — I'll reply with 👍."
+
+The gate built five days earlier for exactly this class **passed both, byte for
+byte.** That is measured, not inferred — running the real text through
+`domain/reply-leak.gateReply` returns `action: "pass"` with zero findings and
+zero reports, while Yahav's founding leak from 2026-09-10 still returns
+`cancel`.
+
+**Why.** All four dropping triggers are lexical: a frame marker, a name off the
+closed `INTERNAL_NAMES` list, a full ISO instant, a model-only block name. Both
+new leaks are ordinary Hebrew and ordinary English with none of those in them —
+"18:00" and "08:02" are not ISO instants, and no column is named anywhere. The
+gate had generalised on the TOKENS of the one leak it was built from, and the
+behaviour it exists to stop does not need them.
+
+**What all three actually share**, across two languages and three incidents:
+
+| | 2026-09-10 | 2026-09-15 14:37 | 2026-09-15 15:03 |
+|---|---|---|---|
+| opens third-person, person's own words quoted back | `הם אמרו 13:00` | `הוא אמר "תודה"` | `He said "תודה"` |
+| names the mark it is about to place | — | `👍 בחזרה` | `I'll reply with 👍` |
+| cites our `hints` object | `The hints say` | — | `the hint says` |
+
+So two tiers were added from the shape. `MARK_RE` **drops**: marks travel
+through `reactions.placeMark` on a path the reply text never touches, so words
+handing one of the vocabulary emoji to an act of replying are describing the
+machinery. The bar for a drop is the module's own — "cannot appear in a sentence
+a person is meant to read" — and it is met by the OBJECT position, not the
+emoji: "סגור 👍" and "אענה לך אחרי הפגישה 🙏" hand nobody a mark and do not move.
+`NARRATION_RE` **reports**: a bare pronoun and a speech verb is a real Olma
+sentence, and requiring the person's own words quoted after it is what separates
+the two — "They asked me to remind you tomorrow" and "הם אמרו שיגיעו מחר" both
+fired on the first draft and both went quiet on the second. `the hints? says?`
+joined `BLOCK_RE`, where `Turn context` already sits.
+
+Four things worth keeping:
+
+- **`\b` is dead against Hebrew.** Hebrew letters are not `\w`, so there is no
+  word boundary between one and the space after it and every `\b` after a
+  Hebrew word silently fails. The first narration pattern used it, read **0 of
+  3** on the real leaks, and looked entirely correct. `INTERNAL_RE` had already
+  solved this with explicit character classes; the fix is a
+  `[֐-׿]` lookahead. A regex that cannot fire is indistinguishable
+  from one nothing matched, which is the detector shape this repo keeps
+  rediscovering.
+- **Measuring changed the design twice, not once.** The first narration draft
+  was going to DROP. Run against thirteen negatives it ate "They asked me to
+  remind you tomorrow" — a sentence Olma really sends. Anchoring on the
+  quotation took it to 3/3 and 0/16, and it is still report-only, because
+  sixteen hand-written strings are not the 383 real messages
+  `domain/reply-leak.js`'s own header already names as the measurement it is
+  missing. That corpus is still on the box.
+- **The founding case is now caught twice over.** Yahav's leak trips
+  `narration` on its opening and `block` on its third paragraph, both on shape
+  alone. Strip every column name out of it and it still does not go out — which
+  is the argument for the tiers, and is asserted in the test rather than
+  claimed here.
+- **The plugin carries a PORT, and the port is what runs.** Updating
+  `domain/reply-leak.js` alone left the gateway's own copy unchanged and the fix
+  inert in production. The parity test — one corpus, both implementations — went
+  red immediately and is the only reason that was not shipped.
 
 ### A time in the title and no reminder (fixed 2026-09-09)
 
@@ -8152,6 +8516,57 @@ odds without changing the rule: **a moment a test will later assert on is
 computed once.** `SUITE_CONCURRENCY` was left at 2 — it was chosen for the
 old shape and has not been re-measured on the new one.
 
+### The same race, one resolution finer, and main shipped nothing (fixed 2026-09-14)
+
+The merge of #371 took `main` red on
+`tests/group-config.test.js:254` — "a first write stamps nothing, an
+unreadable one stamps" — on bytes the PR had passed twenty minutes earlier.
+`git diff` between the merge commit and the PR head was **empty**: the same
+tree, green at 17:13 and red at 17:35.
+
+The assertion and its failure say the whole thing:
+
+```
+operator: 'notStrictEqual'
+actual:   1789407308443
+expected: 1789407308443
+```
+
+`saveConfig` stamps `channelWriteAt` with `Date.now()` when a write touches
+`channels.whatsapp`, and the test asked "did it stamp?" by checking that the
+value had **changed**. Two writes inside one millisecond carry the same
+number, and `notEqual` reads that as "it did not stamp". Measured on a
+back-to-back pair: **1404 collisions in 2000**. It is not a rare interleaving,
+it is the ordinary case; the test passed until now only because the write it
+compared against happened to be a millisecond or more earlier.
+
+This is `Three deploys died on a test that raced the second hand` again, at
+milliseconds instead of seconds, and it wants the same answer: pin the moment,
+then make sure the thing you compare it against cannot BE that moment. The
+test now spins to the next millisecond before the write whose stamp it is
+about to assert on. Same loop afterwards: 0 collisions in 2000.
+
+Three things worth keeping:
+
+- **The production stamp was right and stayed untouched.** Its one reader,
+  `group_outbox`, adds a 45-second grace and cannot care about a millisecond.
+  Widening the stamp to satisfy a test would have been the tail wagging the
+  dog — the same conclusion the second-hand race reached about
+  `respond_to_meeting_slot`.
+- **Reproducing the FAILURE and reproducing the MECHANISM are different, and
+  the second is enough.** The test file itself passed 60 of 60 runs in the dev
+  sandbox both before and after the fix — the collision needs a faster
+  machine than this one, and CI has it. What was reproducible on demand was
+  the mechanism, directly, at 70%. A fix defended only by "it passes now"
+  would have been indistinguishable from having changed nothing.
+- **The failure shape cost a deploy that nobody would have seen.** `test` is
+  red, `deploy` is **skipped**, the run completes, and `main` ships nothing —
+  it looks exactly like a finished run (`A wedged test on main skips deploy
+  silently`). Nothing reached the box, which is the one mercy of this shape:
+  no mixed box, because the suite failed in CI before the rsync. The visible
+  cost was that the fix in #371 sat un-shipped while the config on the box
+  still carried `ackReaction` and Miron kept getting two 👀.
+
 ### Deploying doctrine no longer needs a second command (2026-08-21)
 
 `agents-template.md` is written into a workspace once, at provisioning, so every
@@ -8296,6 +8711,17 @@ settle it; neither was checkable from a code-only session with no server
 access. The fix stands on what the code already proves — the ceiling exists,
 nothing announced it, and a long undated list read as one wall of text.
 
+**Where the ceiling lives now (rebase over "The same evening, twice",
+2026-09-15).** That branch took the threshold out of `cardClause` altogether —
+one reader, `get_my_digest`, which returns EITHER a block OR an order to draw
+— so the sentence this entry added to the instruction had nowhere to go. The
+ceiling moved with the threshold: `digest-block.drawInsteadOfBlock` answers
+"draw" only between `digest_card_min_items` and `schedule-card.LIMITS
+.totalItems`, and past the top the tool hands over the block with a
+`hints.card` saying not to call `render_schedule_card` and to say nothing
+about the count. The instruction names neither number. Same outcome as
+above — no refusal to recover from — with nothing left that could disagree.
+
 ### The eyes that came back after Olma had already answered (2026-09-13)
 
 Miron reported a second, unrelated thing about the same conversation: after
@@ -8341,6 +8767,18 @@ full. That much needed no server access to establish — it is a fact about
 the code, confirmed by reading `openFromGateway` and `openTurnFromGateway`
 end to end, not an inference from the symptom.
 
+> **CORRECTION, 2026-09-14 — this was not the cause of Miron's second 👀.**
+> Checked against the box the next day: across fourteen days, including the
+> day he reported it, NO message had `turn.opened_by_gateway` fire more than
+> once (0 rows), and the new guard has caught nothing since. The real cause is
+> the entry below, "Two systems were marking the same message". The guard
+> above stays — the gap it closes is real and was confirmed by reading the
+> code — but it closed a door nothing had walked through, and this entry said
+> so only as an unverified caveat. **A fix shipped on an unverified
+> hypothesis reads, afterwards, exactly like a fix that worked.** Nothing here
+> would have told the next reader otherwise if the question had not been
+> asked again.
+
 ### The suite crept up on its own timeout, and the deploy read it as a wedge (2026-09-14)
 
 PR #366 merged green and its deploy went red. The banner said WEDGE, on both
@@ -8382,3 +8820,64 @@ time a test is added. Nothing measures it: the 234s in the rule was a number
 somebody wrote down once. Re-measure when you touch the cap, and treat a run
 creeping toward it as the alarm it is, because the first thing it will do is
 look like a bug that is not there.
+
+### Two systems were marking the same message (2026-09-14)
+
+Miron: "עיניים, עיניים, ואז לייק" — 👀, 👀, 👍 on one message he had just
+sent. Olma appeared to acknowledge him twice.
+
+Neither mark was a bug. Two systems place one, and neither can see the other:
+
+| | what | when |
+|---|---|---|
+| the gateway | `messages.ackReaction` — one fixed emoji, from its own config | instant, on receipt |
+| us | `openTurnFromGateway` → `reactions.placeMark` | ~15s later (an `openclaw` CLI start-up) |
+
+Both were set to 👀. So every message had been acknowledged twice, by design,
+for as long as `ackReaction` had been configured — Miron was simply the first
+person to say so out loud.
+
+**It took three hypotheses, and the first two were wrong.** Both were shipped
+or half-shipped before being checked, and both were disconfirmed only because
+somebody asked for the data afterwards:
+
+| # | hypothesis | the check | result |
+|---|---|---|---|
+| 1 | `turn_open` fired twice for one message | 14 days of `turn.opened_by_gateway` grouped by `messageId` | **0 rows** |
+| 2 | our 👀 landed after the closing 👍 | every multi-mark message in the reaction log | **all `working done`** — correct order, every time |
+| 3 | two systems, one message | `grep ackReaction openclaw.json` | **`"👀"`**, under `messages` |
+
+The first shipped as a real fix for a real gap (`turn_open` genuinely had no
+idempotency check) that nothing had ever walked through. It is still in the
+tree, correctly, with a correction written above its own entry — because a fix
+shipped on an unverified hypothesis is indistinguishable, afterwards, from one
+that worked.
+
+**Ours is the one that stays** (owner, 2026-09-14). They are not
+interchangeable: the gateway's ack can only ever be ONE emoji, while ours
+picks off the message itself — 🙏 for thanks-only, 👂 for a voice note, 👀 for
+anything typed — and is the same vocabulary, and the same operator-editable
+flag, as every later mark. So the gateway's was not merely redundant but wrong
+twice over: on a voice note the person saw 👀 and we corrected it to 👂 fifteen
+seconds later, in front of them.
+
+Two things the trade costs, both worth saying plainly:
+
+- **The ack now lands ~15s in rather than instantly**, because ours is a whole
+  CLI start-up. A cold turn is ~77s so it still arrives well ahead of the
+  reply, but it is slower. The real close is moving `placeMark` off the CLI
+  onto `channels/gateway-rpc.js` — the socket is already open and its `send()`
+  already takes any method name; the same move took a raw send from 8.8–12.7s
+  to 5–35ms.
+- **A safety net goes, and that is the point.** The gateway's ack is exactly
+  what made the reaction feature look alive through the six hours our own mark
+  path was dead ("The mark that never moved"). With it gone, a 👀 is ours and
+  proves the path — and a failure in it is visible instead of masked.
+
+`scripts/disable-ack-reaction.js` removes it, finding the key wherever it
+lives rather than assuming a path (the gateway owns that file and has moved
+keys between versions), and stating up front whether the write restarts the
+WhatsApp channel — it does not, because the key sits under `messages` and not
+under `channels.whatsapp`. `config_guard` goes red if a gateway upgrade
+restores it. The companion `ackReactionScope` is left in place: inert without
+the emoji, and `--set` needs it to put the original setting back exactly.
