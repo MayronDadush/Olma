@@ -34,6 +34,8 @@ before(async () => {
   await mk('future', '+972500900006', '2026-09-16T08:00:00Z');
   await mk('eval', '+972599999001', '2026-09-15T08:00:00Z');
   await q(`UPDATE users SET is_eval = true WHERE id = $1`, [u.eval.id]);
+  await mk('dev', '+972500900007', '2026-09-15T08:00:00Z');
+  await q(`UPDATE users SET is_test = true WHERE id = $1`, [u.dev.id]);
 
   const said = (who, at) => q(
     `INSERT INTO audit_log (actor_id, event, detail, created_at) VALUES ($1, 'message.received', '{}', $2)`,
@@ -44,6 +46,7 @@ before(async () => {
   await said('old', '2026-08-26T09:00:00Z');
   await said('month', '2026-08-01T09:00:00Z');
   await said('eval', '2026-09-15T08:30:00Z');
+  await said('dev', '2026-09-15T08:15:00Z');
 
   const call = (sid, who, at, sec, usd = null) => q(
     `INSERT INTO voice_usage_ledger (call_sid, user_id, phone, started_at, duration_sec, twilio_usd)
@@ -54,6 +57,7 @@ before(async () => {
   await call('c4', 'eval', '2026-09-15T07:30:00Z', 500);
   await call('c5', 'today', '2026-09-15T07:40:00Z', 0);
   await call('c6', 'old', '2026-08-01T10:00:00Z', 10);
+  await call('c7', 'dev', '2026-09-15T07:35:00Z', 900);
 
   const group = async (ext, at, state) => (await q(
     `INSERT INTO chat_groups (external_id, state, created_at) VALUES ($1, $2, $3) RETURNING id`,
@@ -91,18 +95,18 @@ before(async () => {
 });
 after(async () => { await db.teardown(); });
 
-test('users: the eval user is never counted, and periods are Israeli calendar days with a Sunday week', () => {
+test('users: the eval user and a manually-flagged test account are never counted', () => {
   assert.equal(m.bounds.today, '2026-09-15');
   assert.equal(m.bounds.weekDay, '2026-09-13');
   assert.equal(m.bounds.monthDay, '2026-09-01');
   assert.deepEqual(m.users, { total: 5, month: 4, week: 3, day: 1 });
 });
 
-test('active users are distinct people who wrote, over the last day, week and month', () => {
+test('active users are distinct people who wrote, over the last day, week and month — a test account does not count', () => {
   assert.deepEqual(m.activeUsers, { d1: 1, d7: 2, d30: 3 });
 });
 
-test('phone calls and their seconds: answered calls only, eval calls out', () => {
+test('phone calls and their seconds: answered calls only, eval and test calls out', () => {
   assert.deepEqual(m.calls, { total: 4, month: 3, week: 2, day: 1 });
   assert.deepEqual(m.seconds, { total: 220, month: 210, week: 90, day: 60 });
 });

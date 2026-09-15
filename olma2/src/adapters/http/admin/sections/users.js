@@ -10,20 +10,23 @@ const PLAN_LABEL = { free: 'חינם', paid: 'מנוי' };
 
 async function renderUsers(client, csrf) {
   const { rows } = await client.query(
-    `SELECT u.id, u.phone, u.first_name, u.last_name, u.status, u.agent_id,
+    `SELECT u.id, u.phone, u.first_name, u.last_name, u.status, u.agent_id, u.is_test,
             u.quota_blocked_until, u.quota_override_daily, u.onboarded_at, u.paused_at, u.paused_reason, e.plan,
             (SELECT count(*) FROM tasks t WHERE t.owner_id = u.id AND t.status = 'open' AND t.archived_at IS NULL) AS open_tasks
      FROM users u LEFT JOIN entitlements e ON e.user_id = u.id
      ORDER BY u.id LIMIT 200`);
   if (!rows.length) return '<p class="dim">אין עדיין משתמשים. מי שישלח הודעה לוואטסאפ ייקלט אוטומטית.</p>';
 
+  const testCount = rows.filter((u) => u.is_test).length;
   const blocked = (u) => u.quota_blocked_until && new Date(u.quota_blocked_until) > new Date();
-  return `<table>
+  return `${testCount ? `<p class="dim small">${testCount} מסומנים כבדיקה — לא נספרים בעמוד הבית.</p>` : ''}
+    <table>
     <tr><th>שם</th><th>טלפון</th><th>מצב</th><th>מנוי</th><th>משימות פתוחות</th>
         <th>מכסת הודעות ליום <span class="help" title="כמה הודעות מותר לו לשלוח ביום. השאר ריק כדי להשתמש בברירת המחדל של המנוי שלו.">?</span></th>
-        <th>העמוד שלו <span class="help" title="פותח את הדאשבורד האישי של המשתמש, בדיוק כמו שהוא רואה אותו. הכניסה נשארת פתוחה 30 יום.">?</span></th></tr>
-    ${rows.map((u) => `<tr>
-      <td><a href="/user?id=${u.id}">${esc([u.first_name, u.last_name].filter(Boolean).join(' ') || u.phone)}</a></td>
+        <th>העמוד שלו <span class="help" title="פותח את הדאשבורד האישי של המשתמש, בדיוק כמו שהוא רואה אותו. הכניסה נשארת פתוחה 30 יום.">?</span></th>
+        <th>בדיקה <span class="help" title="חשבון שנפתח לבדיקות ולא משתמש אמיתי — מסומן, לא נמחק, ולא נספר בשום מספר בעמוד הבית.">?</span></th></tr>
+    ${rows.map((u) => `<tr${u.is_test ? ' class="dim"' : ''}>
+      <td><a href="/user?id=${u.id}">${esc([u.first_name, u.last_name].filter(Boolean).join(' ') || u.phone)}</a>${u.is_test ? ' <span class="pill">בדיקה</span>' : ''}</td>
       <td class="mono dim">${esc(u.phone)}</td>
       <td>${u.paused_at ? (u.paused_reason === 'quiet_ladder'
           ? '<span class="pill warn">מושהה — לא עונה</span>' : '<span class="pill warn">ביקש להפסיק</span>')
@@ -39,7 +42,16 @@ async function renderUsers(client, csrf) {
         <button>שמור</button>
       </form></td>
       <td>${u.status === 'active' ? dashboardButton(u.id, csrf, '/#users') : '<span class="dim">—</span>'}</td>
+      <td>${testToggleButton(u.id, csrf, u.is_test)}</td>
       </tr>`).join('')}</table>`;
+}
+
+function testToggleButton(userId, csrf, isTest) {
+  return `<form method="post" action="/users/test" class="inline">
+    <input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="id" value="${userId}">
+    <input type="hidden" name="back" value="/#users">
+    <button class="${isTest ? '' : 'btn-quiet'}">${isTest ? 'בטל סימון' : 'סמן כבדיקה'}</button>
+  </form>`;
 }
 
 // Open a person's own dashboard, as they see it.

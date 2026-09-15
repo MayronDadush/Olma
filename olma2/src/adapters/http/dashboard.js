@@ -442,6 +442,17 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
             if (override === null || Number.isFinite(override)) {
               await client.query(`UPDATE users SET quota_override_daily = $2 WHERE id = $1`, [Number(body.id), override]);
             }
+          } else if (url.pathname === '/users/test') {
+            // A manually-set flag, never inferred — the eval bot is the only
+            // account the system marks on its own (is_eval). This one is for
+            // a real account opened by hand during development (the owner's
+            // own number, a colleague's), so it stops inflating the "real
+            // users" counts on the home page without being deleted.
+            const uid = Number(body.id);
+            if (uid) {
+              await client.query(`UPDATE users SET is_test = NOT is_test WHERE id = $1`, [uid]);
+              await auditDomain.record(client, uid, 'admin.user_test_toggled', {});
+            }
           } else if (url.pathname === '/users/delete') {
             // Keyed by phone, not row id: the confirmation page the operator
             // read was about a specific person, and the phone is what the
