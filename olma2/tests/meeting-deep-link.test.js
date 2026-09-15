@@ -56,23 +56,26 @@ test('a link may name a meeting the person is in, and only such a meeting', asyn
   const m = await meetingOf('פוקר');
   const mine = await tx((c) => auth.createLinkUrl(c, ann.id, { meetingId: m }));
   assert.equal(mine.ok, true);
-  assert.match(mine.data.url, new RegExp(`/d/[a-f0-9]{64}\\?meeting=${m}$`));
+  // The URL no longer carries the meeting — the link's row does.
+  assert.match(mine.data.url, /\/d\/[A-Za-z0-9]{22}$/);
   assert.equal(mine.data.meetingId, m);
+  const landed = await tx((c) => auth.peekLink(c, tokenOf(mine.data.url)));
+  assert.deepEqual([landed.data.target, landed.data.meetingId], ['meeting', m]);
 
   // a stranger to the meeting gets their ordinary page, silently
   const cal = await makeUser(db.pool, '+972532100003', { firstName: 'Cal' });
   const theirs = await tx((c) => auth.createLinkUrl(c, cal.id, { meetingId: m }));
   assert.equal(theirs.ok, true);
-  assert.match(theirs.data.url, /\/d\/[a-f0-9]{64}$/);
+  assert.match(theirs.data.url, /\/d\/[A-Za-z0-9]{22}$/);
   assert.equal(theirs.data.meetingId, undefined);
 
   // and so does someone who left it, or names nothing at all
   await tx((c) => meetings.optOut(c, ben.id, m));
   const left = await tx((c) => auth.createLinkUrl(c, ben.id, { meetingId: m }));
-  assert.match(left.data.url, /\/d\/[a-f0-9]{64}$/);
+  assert.match(left.data.url, /\/d\/[A-Za-z0-9]{22}$/);
   for (const bad of [undefined, null, 0, -3, 'seven', 1.5, 99999999]) {
     const r = await tx((c) => auth.createLinkUrl(c, ann.id, { meetingId: bad }));
-    assert.match(r.data.url, /\/d\/[a-f0-9]{64}$/, `meetingId=${bad} leaked into the URL`);
+    assert.match(r.data.url, /\/d\/[A-Za-z0-9]{22}$/, `meetingId=${bad} leaked into the URL`);
   }
 });
 
