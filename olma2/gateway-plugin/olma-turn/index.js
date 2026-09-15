@@ -275,7 +275,7 @@ export const INTERNAL_NAMES = [
   "first_name", "last_name", "repeat_rule",
 ];
 const INTERNAL_RE = new RegExp(`(?:^|[^A-Za-z0-9_])(${INTERNAL_NAMES.join("|")})(?![A-Za-z0-9_])`, "i");
-const BLOCK_RE = /\b(?:Turn context|Conversation info|Reply target of current user message|OpenClaw heartbeat poll|unknown identity token|the hints? says?)\b|^\s*DELIVERY:/im;
+const BLOCK_RE = /\b(?:Turn context|Conversation info|Reply target of current user message|OpenClaw heartbeat poll|unknown identity token|the hints? says?|(?:AGENTS|USER|MEMORY)\.md)\b|^\s*DELIVERY:/im;
 const VOCAB_RE = "👀|👂|👍|⏰|🙏|❓|⚠️";
 const MARK_RE = new RegExp(
   `(?:${VOCAB_RE})\\s*(?:בחזרה|חזרה בתגובה|בתגובה)`
@@ -283,6 +283,30 @@ const MARK_RE = new RegExp(
   + `|(?:reply|respond|answer|react|send)(?:ing|s|ed)?\\s+(?:back\\s+)?(?:with|using)\\s+(?:a\\s+)?(?:${VOCAB_RE})`,
   "i");
 const NARRATION_RE = /^[\s"״'׳]*(?:הוא|היא|הם|הן)\s+(?:אמרו|אמרה|אמר|כתבו|כתבה|כתב)(?![֐-׿])\s*["״'׳\d]|^\s*(?:he|she|they)\s+(?:said|wrote|replied)\s+["״'\d]/i;
+const DELIB_VERBS = "check|see|look|verify|re-?check|figure|find|get|read|re-?read|try|compose|deliver|save|cancel|write|remove|update|confirm|start|first|also|just|search|call|fetch|proceed|think|handle|do|make|give|send|reply|respond|answer|draft|set|ask|follow|merge|create|add|mark|use|note|pull|run|open|archive";
+const DELIB_LET_ME = `Let me(?: not| just| also| first)? (?:${DELIB_VERBS})`;
+const DELIB_OPENER_RE = new RegExp("^\\s*(?:"
+  + `${DELIB_LET_ME}|I'll (?:check|look|just|go|start|first|proceed|save|set|search|add|create|mention)`
+  + "|Now I |But first|First, I'll|Now (?:create|save|check)|Also need to|Also,? I |No user message"
+  + "|This (?:turn|is a delivery turn)|So they |Looking at the (?:turn context|today block|meeting status|context|hints?)"
+  + "|The (?:intake note|reply target|reply was to|reminders? (?:were|was))"
+  + ")\\b", "i");
+const DELIB_MID_RE = new RegExp(`\\b(?:${DELIB_LET_ME}|I'll (?:save|set|add|create|proceed))\\b`, "i");
+const DELIB_THIRD_RE = /^\s*(?:He|She|They|The user|The person)(?:'s)? (?:sent|asked|wants?|said|replied|wrote|has|hasn't|is|was|stated|message)\b/i;
+const DELIB_TELL_RE = /["״'][^"״'\n]*[֐-׿][^"״'\n]*["״']|`|\b(?:tasks?|reminders?|the hints?|turn|digest|dashboard|contacts?|onboarding|meeting|opted|delete|archive|Let me|I'll|I should|I need|I replied|I answered)\b/i;
+const DELIB_SOFT_RE = /^\s*(?:Actually|Wait|Hmm|OK|Okay|So)\b[,—\s-]*/i;
+const DELIB_CUE_RE = /\b(?:let me|I need|I should|I can|I see|I don't|I answered|I asked|I never|he |she |they |him |his |their |the hints?|the turn|the intake)\b/i;
+export function deliberationIn(raw, text) {
+  const opener = DELIB_OPENER_RE.exec(text);
+  if (opener) return opener[0];
+  const mid = DELIB_MID_RE.exec(text);
+  if (mid) return mid[0];
+  const third = DELIB_THIRD_RE.exec(text);
+  if (third && DELIB_TELL_RE.test(raw)) return third[0];
+  const soft = DELIB_SOFT_RE.exec(text);
+  if (soft && DELIB_CUE_RE.test(text)) return soft[0];
+  return null;
+}
 const INSTANT_RE = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})\b/;
 const SENTINEL_RE = /\bNO_REPLY\b/;
 const SENTINEL_STRIP_RE = /\s*\bNO_REPLY\b\s*/g;
@@ -313,6 +337,8 @@ export function leaksIn(line) {
   if (mark) out.push({ kind: "mark", at: mark[0].trim().slice(0, 40) });
   const narration = NARRATION_RE.exec(raw);
   if (narration) out.push({ kind: "narration", at: narration[0].trim().slice(0, 40) });
+  const deliberation = deliberationIn(raw, text);
+  if (deliberation) out.push({ kind: "deliberation", at: deliberation.trim().slice(0, 40) });
   const instant = INSTANT_RE.exec(text);
   if (instant) out.push({ kind: "instant", at: instant[0] });
   const sentinel = SENTINEL_RE.exec(text);

@@ -205,7 +205,6 @@ title means this file. Grep the title, not the filename.
   wording. **And it is inert until the gateway is restarted** (`systemctl --user
   restart openclaw-gateway`; `deploy.sh` does not), which is what
   `config_guard.checkReplyGateLive` reads off the plugin's registration stamp.
-<<<<<<< HEAD
   **A gate built from one leak knows that leak's VOCABULARY, not its SHAPE.**
   Twice on 2026-09-15, to a bare "תודה", the working-out went out again and the
   gate passed both byte for byte — measured, not assumed: `action: "pass"`,
@@ -250,3 +249,21 @@ title means this file. Grep the title, not the filename.
   production unchanged, exactly the miss the paragraph above describes. The
   port carries it now, the corpus holds Miron's draft, and it is inert until
   the gateway restarts like every other change to the plugin.
+  **A drop tier is chosen from traffic, never from the leak that prompted it**
+  (2026-09-15; `incidents.md`, "The working-out, measured"). Every lexical
+  tier above was read off one leak, and the measurement showed why that could
+  not be done for the shape they all share: 94 of 107 working-out paragraphs
+  on the box in fourteen days passed the gate with no finding, and the obvious
+  rule for them — no Hebrew in it — would have deleted two real English replies
+  to English-speaking users. `domain/reply-leak.deliberationIn` is the tier
+  that came out of reading all 151 hits by hand: four shapes (a line opening
+  on the model's own next step, "Let me <verb>" mid-line, the reader in the
+  third person WITH a tell, a hedge opening WITH a first-person step), each
+  guarded by the sentence it must leave alone ("Let me know if that works",
+  "They asked me to remind you tomorrow", "Actually, the meeting moved to
+  6pm"). 99 of 107 caught, 0 real replies touched. `scripts/measure-reply-gate.js`
+  is how it was read and how the next one is: run it on the box, read the
+  residue by hand, and only then write a pattern. A list here is closed the
+  same way `INTERNAL_NAMES` is — a verb or a noun goes on it because a real
+  message carried it, and every count in the module header names what the
+  pattern was measured against.
