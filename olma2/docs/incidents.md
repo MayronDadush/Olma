@@ -40,6 +40,7 @@ never trust a dated narrative for something you are about to act on.
 
 - [The lock that worked perfectly, on three files out of sixteen (2026-09-01)](#the-lock-that-worked-perfectly-on-three-files-out-of-sixteen-2026-09-01)
 - [The test suite provisioned into production, three times (fixed 2026-09-06)](#the-test-suite-provisioned-into-production-three-times-fixed-2026-09-06)
+- [The test suite stamped the gateway as live (fixed 2026-09-15)](#the-test-suite-stamped-the-gateway-as-live-fixed-2026-09-15)
 - [The user who would not stay deleted (fixed 2026-09-07)](#the-user-who-would-not-stay-deleted-fixed-2026-09-07)
 - [A new user moved into the previous occupant's workspace (fixed 2026-09-06)](#a-new-user-moved-into-the-previous-occupants-workspace-fixed-2026-09-06)
 - [A leaked token has a rotation now, and the file order is the design (2026-09-03)](#a-leaked-token-has-a-rotation-now-and-the-file-order-is-the-design-2026-09-03)
@@ -1281,6 +1282,56 @@ environments get lost:
 refactor that quietly stops checking turns red rather than green — and it
 asserts `NODE_TEST_CONTEXT` is actually set, because a guard keyed on a
 variable nobody sets would pass everything for ever.
+
+### The test suite stamped the gateway as live (fixed 2026-09-15)
+
+The same chain as the entry above, one file further along, and found only
+because the owner pasted a verification one-liner rather than reading a
+dashboard. After the #378 deploy he restarted the gateway at 19:14:35 UTC and
+ran the check the session had asked for. `RELEASE` said e0ffd7e, the unit
+said a fresh `MainPID`, and the registration stamp said:
+
+    {"at":"2026-09-15T19:05:34.459Z","pid":1129376,"agents":["u-3"],"hooks":[…,"reply_payload_sending"]}
+
+Nine minutes BEFORE the restart, a pid that was neither the old gateway nor
+the new one, and an agent list of exactly one person — which no gateway on
+this box has been configured with since 2026-09-09, when `config.agents` was
+emptied to mean everybody. 19:05:34 sits inside the deploy's on-box suite
+(18:58:53 to 19:06:38), `tests/turn-context.test.js` has a test that calls
+the plugin's `register()` with `pluginConfig: { agents: ['u-3'] }`, and
+`register()` calls `stampRegistration()` on its default file, which was
+`process.env.OLMA_PLUGIN_REGISTER_STAMP || "/opt/olma2/run/turn-context-plugin.registered"`
+— and nothing in the suite set that variable. Every test file set
+`OLMA_PLUGIN_TRACE` for itself; nobody had noticed the second file, added
+five days later for `config_guard.checkReplyGateLive`.
+
+So on every deploy since 2026-09-10 the suite has overwritten the one file
+that exists to tell "the gateway was restarted since the gate shipped" from
+"it was not". And the record it wrote carried `reply_payload_sending` in its
+hooks — the test registers today's plugin — so the guard read a gateway that
+had NOT been restarted as one that had. That is the shape the guard was built
+against, inverted: a detector fed by the wrong writer, green for the exact
+case it exists to catch. It never bit only because every plugin change so
+far was followed by a hand restart within the hour, and the real
+registration overwrote the test's.
+
+What was caught in the same reading: `SOCK`, `TRACE` and the stamp path were
+all captured at module load in the plugin — the rule the entry above wrote
+down ("reads it per call, never captures it at module load") applied to a
+file that entry did not cover. Fixed three ways, because one lock has already
+proved insufficient once for this chain: `tests/helpers.js` defaults both
+files into the temp home beside `OLMA_OPENCLAW_HOME`; the plugin reads all
+three paths per call; and under `NODE_TEST_CONTEXT` a write to anything
+under `/opt/olma2/run/` THROWS before the best-effort catch, so a test file
+that loses the environment is red rather than a silent writer. The register
+test asserts where its stamp landed, and a second test proves the refusal
+fires.
+
+The last line of the pasted output was also read too early: a restarted
+gateway registers the plugin about a minute after the unit reports active
+(64 s on the 18:09 restart), so a tail taken in the same second still shows
+the previous record. The verification is the stamp's `pid` matching the
+unit's `MainPID`, and it is worth the minute.
 
 ### The user who would not stay deleted (fixed 2026-09-07)
 

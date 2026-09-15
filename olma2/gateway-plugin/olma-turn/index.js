@@ -26,10 +26,25 @@
 import net from "node:net";
 import { appendFileSync, writeFileSync } from "node:fs";
 
-const SOCK = process.env.OLMA_SOCK || "/opt/olma2/run/brokerd.sock";
+// Every path under /opt/olma2/run is read PER CALL, never captured at load:
+// the suite runs on the box inside deploy.sh, tests/helpers.js points these
+// at a temp dir, and a constant captured at import decided whether that took
+// by require order. And under the test runner a write to the real one is
+// refused outright rather than best-effort: on 2026-09-15 a test registered
+// this plugin and overwrote the stamp config_guard reads to tell a restarted
+// gateway from one still running the old build, with a record that said the
+// gate was live (incidents.md, "The test suite stamped the gateway as live").
+const RUN_DIR = "/opt/olma2/run/";
+function sockPath() { return process.env.OLMA_SOCK || RUN_DIR + "brokerd.sock"; }
+function tracePath() { return process.env.OLMA_PLUGIN_TRACE || RUN_DIR + "turn-context-plugin.log"; }
+function stampPath() { return process.env.OLMA_PLUGIN_REGISTER_STAMP || RUN_DIR + "turn-context-plugin.registered"; }
+export function refuseProductionWrite(file) {
+  if (process.env.NODE_TEST_CONTEXT && String(file).startsWith(RUN_DIR)) {
+    throw new Error(`olma-turn: a test may not write ${file} — set OLMA_PLUGIN_REGISTER_STAMP / OLMA_PLUGIN_TRACE (tests/helpers.js does)`);
+  }
+}
 // One bounded line per prompt build, next to the socket — the hook's trace
 // found the hook that never ran; this is the same tell for the plugin.
-const TRACE = process.env.OLMA_PLUGIN_TRACE || "/opt/olma2/run/turn-context-plugin.log";
 // What the RUNNING gateway registered, in a file of its own and OVERWRITTEN
 // each time. Plugin code loads at gateway startup and `deploy.sh` deliberately
 // does not restart it, so a new handler sits on disk, live and inert, until
@@ -39,16 +54,18 @@ const TRACE = process.env.OLMA_PLUGIN_TRACE || "/opt/olma2/run/turn-context-plug
 // `jobs/config-guard.checkReplyGateLive` reads this file and says which.
 // A tail of the trace above cannot answer it — one busy day buries the last
 // registration under thousands of per-prompt lines.
-const REGISTER_STAMP = process.env.OLMA_PLUGIN_REGISTER_STAMP || "/opt/olma2/run/turn-context-plugin.registered";
 // Well under the gateway's 15s handler timeout, and under the ~4s the model
 // used to spend on the turn_start round trip this replaces.
 const TIMEOUT_MS = 4000;
 
 export function trace(fields) {
-  try { appendFileSync(TRACE, JSON.stringify({ at: new Date().toISOString(), pid: process.pid, ...fields }) + "\n"); } catch { /* best effort */ }
+  const file = tracePath();
+  refuseProductionWrite(file);
+  try { appendFileSync(file, JSON.stringify({ at: new Date().toISOString(), pid: process.pid, ...fields }) + "\n"); } catch { /* best effort */ }
 }
 
-export function stampRegistration(fields, file = REGISTER_STAMP) {
+export function stampRegistration(fields, file = stampPath()) {
+  refuseProductionWrite(file);
   try { writeFileSync(file, JSON.stringify({ at: new Date().toISOString(), pid: process.pid, ...fields }) + "\n"); } catch { /* best effort */ }
 }
 
@@ -59,7 +76,7 @@ export function agentIdOf(sessionKey) {
 
 // One request, one line, one reply — the same protocol as the hook. Resolves
 // the parsed reply, or null on any failure or timeout; never rejects.
-export function askBroker(method, params, { connect = net.connect, sock = SOCK, timeoutMs = TIMEOUT_MS } = {}) {
+export function askBroker(method, params, { connect = net.connect, sock = sockPath(), timeoutMs = TIMEOUT_MS } = {}) {
   return new Promise((resolve) => {
     let done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };
