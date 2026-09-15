@@ -90,6 +90,23 @@ function checkOpenclawConfig(cfg) {
   if (queueMode !== 'followup') {
     violations.push(`messages.queue.mode is ${queueMode === undefined ? 'unset (gateway default "steer")' : JSON.stringify(queueMode)} — a second message mid-turn cancels the first one's tool calls instead of waiting for its own turn (fix: scripts/set-queue-mode.js --apply)`);
   }
+  // Two systems marking one message, neither able to see the other. The
+  // gateway places `messages.ackReaction` from its own config the instant a
+  // message is accepted; brokerd places its own ~15s later
+  // (openTurnFromGateway → domain/reactions.placeMark). Both were 👀, so
+  // Miron got 👀, 👀, 👍 on one message (2026-09-14) and it read as Olma
+  // marking the same message twice. Ours is the one that stays: it picks
+  // between 👀/👂/🙏 off the message itself, carries the operator's emoji
+  // flag, and is the same vocabulary as every later mark. Dashboard row, not
+  // BREAKS_USERS — a doubled acknowledgement is noise, never a failed tool
+  // call. The path is where the gateway kept it on 2026-09-14; if a version
+  // moves it this check goes quiet, which is what scripts/disable-ack-
+  // reaction.js searching the whole tree is for.
+  // (fix: scripts/disable-ack-reaction.js --apply)
+  const ackReaction = (cfg.messages || {}).ackReaction;
+  if (ackReaction !== undefined) {
+    violations.push(`messages.ackReaction is ${JSON.stringify(ackReaction)} — the gateway acknowledges every message itself and brokerd marks it again, so the person sees the acknowledgement twice (fix: scripts/disable-ack-reaction.js --apply)`);
+  }
   // Who serves the live default model. Unpinned, OpenRouter spreads
   // deepseek-v4-flash across providers per request (three in six hours on
   // 2026-09-09) and a prompt cache is per provider, so the first call of

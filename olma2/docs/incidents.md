@@ -8285,6 +8285,18 @@ full. That much needed no server access to establish — it is a fact about
 the code, confirmed by reading `openFromGateway` and `openTurnFromGateway`
 end to end, not an inference from the symptom.
 
+> **CORRECTION, 2026-09-14 — this was not the cause of Miron's second 👀.**
+> Checked against the box the next day: across fourteen days, including the
+> day he reported it, NO message had `turn.opened_by_gateway` fire more than
+> once (0 rows), and the new guard has caught nothing since. The real cause is
+> the entry below, "Two systems were marking the same message". The guard
+> above stays — the gap it closes is real and was confirmed by reading the
+> code — but it closed a door nothing had walked through, and this entry said
+> so only as an unverified caveat. **A fix shipped on an unverified
+> hypothesis reads, afterwards, exactly like a fix that worked.** Nothing here
+> would have told the next reader otherwise if the question had not been
+> asked again.
+
 ### The suite crept up on its own timeout, and the deploy read it as a wedge (2026-09-14)
 
 PR #366 merged green and its deploy went red. The banner said WEDGE, on both
@@ -8326,3 +8338,64 @@ time a test is added. Nothing measures it: the 234s in the rule was a number
 somebody wrote down once. Re-measure when you touch the cap, and treat a run
 creeping toward it as the alarm it is, because the first thing it will do is
 look like a bug that is not there.
+
+### Two systems were marking the same message (2026-09-14)
+
+Miron: "עיניים, עיניים, ואז לייק" — 👀, 👀, 👍 on one message he had just
+sent. Olma appeared to acknowledge him twice.
+
+Neither mark was a bug. Two systems place one, and neither can see the other:
+
+| | what | when |
+|---|---|---|
+| the gateway | `messages.ackReaction` — one fixed emoji, from its own config | instant, on receipt |
+| us | `openTurnFromGateway` → `reactions.placeMark` | ~15s later (an `openclaw` CLI start-up) |
+
+Both were set to 👀. So every message had been acknowledged twice, by design,
+for as long as `ackReaction` had been configured — Miron was simply the first
+person to say so out loud.
+
+**It took three hypotheses, and the first two were wrong.** Both were shipped
+or half-shipped before being checked, and both were disconfirmed only because
+somebody asked for the data afterwards:
+
+| # | hypothesis | the check | result |
+|---|---|---|---|
+| 1 | `turn_open` fired twice for one message | 14 days of `turn.opened_by_gateway` grouped by `messageId` | **0 rows** |
+| 2 | our 👀 landed after the closing 👍 | every multi-mark message in the reaction log | **all `working done`** — correct order, every time |
+| 3 | two systems, one message | `grep ackReaction openclaw.json` | **`"👀"`**, under `messages` |
+
+The first shipped as a real fix for a real gap (`turn_open` genuinely had no
+idempotency check) that nothing had ever walked through. It is still in the
+tree, correctly, with a correction written above its own entry — because a fix
+shipped on an unverified hypothesis is indistinguishable, afterwards, from one
+that worked.
+
+**Ours is the one that stays** (owner, 2026-09-14). They are not
+interchangeable: the gateway's ack can only ever be ONE emoji, while ours
+picks off the message itself — 🙏 for thanks-only, 👂 for a voice note, 👀 for
+anything typed — and is the same vocabulary, and the same operator-editable
+flag, as every later mark. So the gateway's was not merely redundant but wrong
+twice over: on a voice note the person saw 👀 and we corrected it to 👂 fifteen
+seconds later, in front of them.
+
+Two things the trade costs, both worth saying plainly:
+
+- **The ack now lands ~15s in rather than instantly**, because ours is a whole
+  CLI start-up. A cold turn is ~77s so it still arrives well ahead of the
+  reply, but it is slower. The real close is moving `placeMark` off the CLI
+  onto `channels/gateway-rpc.js` — the socket is already open and its `send()`
+  already takes any method name; the same move took a raw send from 8.8–12.7s
+  to 5–35ms.
+- **A safety net goes, and that is the point.** The gateway's ack is exactly
+  what made the reaction feature look alive through the six hours our own mark
+  path was dead ("The mark that never moved"). With it gone, a 👀 is ours and
+  proves the path — and a failure in it is visible instead of masked.
+
+`scripts/disable-ack-reaction.js` removes it, finding the key wherever it
+lives rather than assuming a path (the gateway owns that file and has moved
+keys between versions), and stating up front whether the write restarts the
+WhatsApp channel — it does not, because the key sits under `messages` and not
+under `channels.whatsapp`. `config_guard` goes red if a gateway upgrade
+restores it. The companion `ackReactionScope` is left in place: inert without
+the emoji, and `--set` needs it to put the original setting back exactly.

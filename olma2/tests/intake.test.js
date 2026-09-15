@@ -800,6 +800,35 @@ test('config guard: a message that arrives mid-turn must wait for its own turn (
   assert.equal(guard.checkOpenclawConfig(cfg).length, 1, 'collect merges the two into one prompt: one count, one reply target — not what we want either');
 });
 
+// Miron, 2026-09-14: 👀, 👀, then 👍 on one message. Two systems were marking
+// it — the gateway from `messages.ackReaction` the instant it arrived, and
+// brokerd ~15s later — and neither could see the other. Ours is the one that
+// stays (it picks 👀/👂/🙏 off the message, and is the same vocabulary as
+// every later mark), so the gateway's own ack must be absent.
+test('config guard: the gateway must not acknowledge a message that brokerd already marks', () => {
+  const cfg = baseConfig();
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), [], 'a config without it is clean');
+
+  cfg.messages = { ...cfg.messages, ackReaction: '👀' };
+  const v = guard.checkOpenclawConfig(cfg);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /messages\.ackReaction is "👀"/);
+  assert.match(v[0], /twice/, 'says what the person actually experiences');
+  assert.match(v[0], /disable-ack-reaction/, 'says how to fix it');
+
+  // Any value at all, not just the emoji we happen to place: the gateway
+  // acknowledging with a DIFFERENT emoji is still a second mark on a message
+  // brokerd is already marking, and reads as two assistants answering.
+  cfg.messages = { ...cfg.messages, ackReaction: '✅' };
+  assert.equal(guard.checkOpenclawConfig(cfg).length, 1, 'a different emoji is the same duplicate');
+
+  // The companion key alone is inert — it modifies an ack that is not placed —
+  // so it must NOT trip the guard, or removing the emoji would leave the board
+  // permanently red with nothing left to fix.
+  cfg.messages = { queue: { mode: 'followup' }, ackReactionScope: 'direct' };
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), [], 'scope without the emoji does nothing and is not a violation');
+});
+
 // Phase B's three halves — flag, plugin list, doctrine — each fall back to
 // the old `turn_start` call when they disagree, so nothing goes red on its
 // own; the guard is what does (scripts/enable-turn-context.js, 2026-09-09).
