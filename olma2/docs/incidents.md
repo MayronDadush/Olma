@@ -4056,18 +4056,29 @@ that had also moved by 9/14 — it was dearer than StreamLake that day.
 OpenRouter's `supports_implicit_caching` field reads `false` for all five, so
 **the published flag is no evidence either way**; only a repeat call is.
 
-**The change:** `ORDER = ['streamlake', 'novita']`, fallbacks still on, and
-`model-pricing.js` at StreamLake's rates for new ledger rows. StreamLake is the
-cheapest provider that caches and was already second in the order. **The
-judgment call is data residency** — StreamLake is CN-headquartered and has
-been serving part of the traffic since 9/09 without anyone deciding that on
-purpose; Novita is the US alternative at a higher list price, and caches
-just as well.
+**The change:** `ORDER = ['novita', 'streamlake']`, fallbacks still on, and
+`data_collection: "deny"`. **`model-pricing.js` was deliberately left
+alone**: the first draft moved the flash rate with the order and
+`tests/cost-repricing.test.js` went red, because the admin cost page re-prices
+every ledger row at the table's current rate — a rate change would have
+restated the whole history, not priced new rows. Until rates carry an
+effective date the page under-reads Novita calls by about half. **The judgment call was data residency, and the owner made it
+(2026-09-15).** StreamLake is the cheapest provider that caches, but it is
+CN-headquartered and had been serving part of the traffic since 9/09 without
+anyone deciding that on purpose; Novita is US-headquartered, caches just as
+well, and lists at $0.14/M against $0.084. For personal data from Israeli
+users with a Google verification in flight, the owner took Novita. Modelled
+at 300 users and 20 messages a day it is still about a fifth under the
+uncached DigitalOcean bill it replaces; StreamLake would be about half.
+
+`data_collection: "deny"` was probed before it shipped: all five providers
+tried served under it. So it breaks nothing — and, by the same result,
+nothing here proves it excludes anyone.
 
 **Still true from the entry above:** the money is small (the whole gap is a
 few dollars a month) and the case is the seconds on the first token. A
 `params` change needs a gateway restart, and the proof is a fresh responseId
-answered by OpenRouter with `provider_name` "StreamLake" — then
+answered by OpenRouter with `provider_name` "Novita" — then
 `scripts/cache-probe.js` again after a few days of traffic.
 
 ### The pilot that read as an expensive day (fixed 2026-09-09)
