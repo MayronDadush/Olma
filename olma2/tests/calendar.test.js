@@ -375,6 +375,40 @@ test('the user can change access level later without disconnecting first', async
   assert.equal(audits.length, 1);
 });
 
+// The combined consent link puts ONE grant on calendar and contacts. Revoking
+// it on a calendar level change killed contacts behind a "connected" row.
+test('a level change keeps the old token alive when contacts still holds it', async () => {
+  const u = await makeUser(db.pool, '+972631000019', { firstName: 'Noa' });
+  await connect(u.id, { access: 'read_only' });
+  const before = await integrationRow(u.id);
+  await db.pool.query(
+    `INSERT INTO integrations (user_id, provider, status, scopes, access_level, credential_enc, refresh_enc, expires_at, connected_at)
+     VALUES ($1, 'google_contacts', 'connected', 'contacts.readonly', 'read_only', $2, $3, now() + interval '1 hour', now())`,
+    [u.id, before.credential_enc, before.refresh_enc]);
+
+  const revokeCalls = [];
+  const { done } = await connect(u.id, {
+    access: 'read_write',
+    routes: {
+      'oauth2.googleapis.com/token': tokenOk({ access_token: 'ya29.upgraded', refresh_token: '1//new-refresh' }),
+      'calendars/primary': primaryCal,
+      'oauth2/v2/userinfo': userInfo,
+      'oauth2.googleapis.com/revoke': (url, init) => {
+        revokeCalls.push(new URLSearchParams(init.body).get('token'));
+        return { body: {} };
+      },
+    },
+  });
+  assert.ok(done.ok);
+  assert.equal(revokeCalls.length, 0, 'the grant contacts is still using must not be revoked');
+  const { rows: [contacts] } = await db.pool.query(
+    `SELECT refresh_enc FROM integrations WHERE user_id = $1 AND provider = 'google_contacts'`, [u.id]);
+  assert.equal(cryptoStore.decrypt(contacts.refresh_enc), cryptoStore.decrypt(before.refresh_enc));
+  const { rows: audits } = await db.pool.query(
+    `SELECT 1 FROM audit_log WHERE actor_id = $1 AND event = 'calendar.old_token_kept_for_sibling'`, [u.id]);
+  assert.equal(audits.length, 1, 'keeping a live token is said, not silent');
+});
+
 test('downgrading access also revokes the old (more capable) token at Google', async () => {
   const u = await makeUser(db.pool, '+972631000011', { firstName: 'Ori' });
   await connect(u.id, { access: 'read_write' });
