@@ -97,6 +97,41 @@ const THANKS_EN = [
   'Since the hint says a bare "תודה" is probably about the newest reminder, and there is no instruction to act on — just a thanks — I will reply with 👍.',
 ].join('\n');
 
+// Miron, 2026-09-15 09:03:06. Two paragraphs of plain English narration, and
+// only the LAST line carries the sentinel. The gate found exactly that one
+// leak, `sentinel` never condemned a paragraph, and the whole draft went out
+// with the token stripped: "...I should reply ." (audit_log `reply.gated`,
+// kept: 305 — reproduced byte for byte against this text).
+const MIRON_SENTINEL = [
+  'He replied to the reminder about talking to Ester and said "תמחק את המשימה" '
+    + '— the task was archived, the 👍 was placed.',
+  '',
+  'The hint says a 👍 was already placed and if all I have is a plain instruction '
+    + 'with nothing to add, I should reply NO_REPLY.',
+].join('\n');
+
+// Miron, 2026-09-15 09:48:32, a --deliver turn carrying a scheduled update.
+// The gate cut every paragraph that named the sentinel or `turn_start`
+// (audit: chars 800, kept 364, kinds sentinel+internal) — and the paragraph
+// right after the cut, "Let me deliver the model update naturally.", carries
+// no marker at all, so it reached his phone as the first line of the update.
+// Reconstructed from the transcript on the box; the English is verbatim, the
+// Hebrew reply is paraphrased, and only the English is what the test is about.
+const MIRON_DELIVERY = [
+  'He sent "תמחק את המשימה" earlier and I replied with NO_REPLY because the 👍 was placed. Now I have two things:',
+  '',
+  '1. The reminder about "לדבר עם אסתר" was done (NO_REPLY already handled).',
+  '2. The subscription update about new OpenRouter models.',
+  '',
+  'But first — the user\'s message hasn\'t appeared yet. The turn_start says `directive: proceed` with no actual message from the person yet. This is a delivery turn for the scheduled update only.',
+  '',
+  'Let me deliver the model update naturally.',
+  '',
+  'היי 👋 עדכון מודלים מ-OpenRouter:',
+  '> מודלים חדשים: DeepSeek Pro Latest – $0.96 לקלט, $2.88 לפלט; DeepSeek Flash Latest – $0.15 לקלט, $0.60 לפלט. שניהם מודלי טקסט בלבד.',
+  'Flash Latest פחות או יותר אותו מחיר כמו הנוכחי, Pro יקר משמעותית. שום דבר מרעיש בתחום התמונות והוידאו כרגע.',
+].join('\n');
+
 test('Yahav\'s message: every paragraph of the working-out is found, and nothing was left to deliver', () => {
   const v = leak.gateReply(YAHAV);
   assert.equal(v.action, 'cancel');
@@ -199,6 +234,85 @@ test('the silence sentinel: alone it is a decision, with words it is a stray tok
   assert.equal(leak.gateReply('NO_REPLY\n\nNO_REPLY').action, 'cancel');
 });
 
+// Miron, 2026-09-15: the gate found exactly one leak — `sentinel`, on the LAST
+// line — and, under the rule above ("with words it is stripped"), delivered
+// every word in front of it anyway. Nothing else in the draft matched
+// anything (plain English narration, no column name, no frame, no instant),
+// so `drops()` never fired for any paragraph and the sentinel-strips-in-place
+// rule reached all the way back to the first line. What arrived on his phone
+// was the whole draft with the literal string "NO_REPLY" removed:
+//   "...I should reply ."
+// — a dangling sentence exactly where the token used to be
+// (`incidents.md`, "The sentinel that only stripped itself").
+//
+// `hasEarlierContent` distinguishes this from "בוצע NO_REPLY" above by the one
+// fact the doctrine itself names: is there real content BEFORE the sentinel's
+// line. "בוצע NO_REPLY" has none — one line, nothing before it. Miron's draft
+// has two paragraphs of narration before the line carrying the token, so the
+// sentinel now condemns through its own paragraph like any other leak, and
+// with nothing else in the draft to keep, the whole thing cancels.
+test('Mirons message: narration ending in the sentinel is a leak, not a stray token', () => {
+  const v = leak.gateReply(MIRON_SENTINEL);
+  assert.equal(v.action, 'cancel');
+  assert.equal(v.text, '');
+  // `block` is the same day's other fix seeing "The hint says"; `sentinel` is
+  // this one. Either alone cancels the draft now, and the next case proves the
+  // sentinel half stands on its own.
+  assert.deepEqual(v.leaks.map((l) => l.kind).sort(), ['block', 'sentinel']);
+
+  // The same shape with nothing else for the gate to hold on to — no hint
+  // cited, no mark handed to a verb, no quotation after a pronoun. Only the
+  // sentinel, only on the last line, with narration in front of it.
+  const bare = MIRON_SENTINEL.replace('The hint says a 👍 was already placed', 'A 👍 was already placed');
+  const b = leak.gateReply(bare);
+  assert.equal(b.action, 'cancel');
+  assert.deepEqual(b.leaks.map((l) => l.kind), ['sentinel']);
+});
+
+test('a real short reply plus a trailing sentinel on the SAME line still just strips the token', () => {
+  // The exact case the rule exists to protect, restated with narration on
+  // EITHER side to prove the fix is about POSITION, not about banning the
+  // combination outright: a sentinel with nothing before it never condemns,
+  // whatever comes on its own line.
+  const v = leak.gateReply('בוצע, סגרתי את המשימה NO_REPLY');
+  assert.equal(v.action, 'trim');
+  assert.equal(v.text, 'בוצע, סגרתי את המשימה');
+});
+
+test('KNOWN GAP: narration and the sentinel crammed onto ONE line, no break at all, still only strips the token', () => {
+  // `hasEarlierContent` reads LINES, and both real incidents on file (Yahav's,
+  // Miron's) are multi-line — models write reasoning as separate sentences or
+  // paragraphs. A single unbroken line of prose ending in NO_REPLY has no
+  // known real example to measure a fix against, so none is guessed here
+  // (CLAUDE.md, "A hint that fires on ordinary input is worse than no hint" —
+  // the same rule cuts the other way too: don't ship a detector for a shape
+  // nobody has seen). Documented as a gap, not silently accepted: if this
+  // shape shows up for real, it belongs in the incident story above it and a
+  // new test right here, exactly like the last two additions to this file.
+  const v = leak.gateReply('He replied and archived the task, so I should say NO_REPLY.');
+  assert.equal(v.action, 'trim', 'not caught — see the comment above');
+});
+
+test('KNOWN GAP: a clean narration paragraph AFTER the last leaking one is delivered (Miron 09:48)', () => {
+  // Everything that named the sentinel or `turn_start` goes, exactly as the
+  // audit row says it did (kinds sentinel+internal, three findings). What the
+  // gate cannot see is the paragraph that follows the cut: first-person
+  // English deliberation with no marker in it. It went out as the first line
+  // of the update, and it still does — pinned here, not fixed here, because a
+  // pattern for "English deliberation" has to be measured against real
+  // traffic before it may drop anything (`incidents.md`, "The sentinel that
+  // only stripped itself", the last paragraph).
+  const v = leak.gateReply(MIRON_DELIVERY);
+  assert.equal(v.action, 'trim');
+  assert.deepEqual(v.leaks.map((l) => `${l.line}:${l.kind}:${l.at}`), [
+    '0:sentinel:NO_REPLY',
+    '2:sentinel:NO_REPLY',
+    '5:internal:turn_start',
+  ]);
+  assert.ok(v.text.startsWith('Let me deliver the model update naturally.'), 'the gap — see the comment above');
+  assert.ok(v.text.includes('עדכון מודלים'), 'and the real update behind it is kept');
+});
+
 // The wide tier. Every internal name nobody has thought of is this shape — and
 // so is a word a developer might have put in a task title, which is why it is
 // reported and delivered rather than dropped. The audit row is where the next
@@ -235,7 +349,8 @@ test('a leaked identity token cancels the message and is never written down in t
 // gateway's own loader with nothing of ours beside it. This is what keeps the
 // two from drifting: one corpus, both implementations, first disagreement wins.
 test('the gateway plugin\'s copy and the domain module answer identically', () => {
-  const corpus = [YAHAV, NOTES_ABOVE, ...ORDINARY, 'NO_REPLY', 'בוצע NO_REPLY', '', '   ',
+  const corpus = [YAHAV, NOTES_ABOVE, THANKS_HE, THANKS_EN, MIRON_SENTINEL, MIRON_DELIVERY,
+    ...ORDINARY, 'NO_REPLY', 'בוצע NO_REPLY', 'בוצע, סגרתי את המשימה NO_REPLY', '', '   ',
     'סיימתי את user_service', 'DELIVERY: say good morning', 'הפגישה ב-2026-09-10T10:00:00Z',
     'Conversation info (untrusted metadata)', 'turn_start returned proceed'];
   assert.deepEqual(plugin.INTERNAL_NAMES, leak.INTERNAL_NAMES, 'the closed lists are the same list');

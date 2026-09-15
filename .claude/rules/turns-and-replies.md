@@ -205,6 +205,7 @@ title means this file. Grep the title, not the filename.
   wording. **And it is inert until the gateway is restarted** (`systemctl --user
   restart openclaw-gateway`; `deploy.sh` does not), which is what
   `config_guard.checkReplyGateLive` reads off the plugin's registration stamp.
+<<<<<<< HEAD
   **A gate built from one leak knows that leak's VOCABULARY, not its SHAPE.**
   Twice on 2026-09-15, to a bare "תודה", the working-out went out again and the
   gate passed both byte for byte — measured, not assumed: `action: "pass"`,
@@ -227,3 +228,25 @@ title means this file. Grep the title, not the filename.
   **The plugin carries a PORT of `domain/reply-leak.js`** and it is the copy
   that actually runs; `tests/reply-leak.test.js` holds one corpus against both
   implementations, and that parity check is what caught the port being missed.
+  **"The sentinel never drops its line" was right for one shape and wrong for
+  another it did not distinguish** (Miron, 2026-09-15; `incidents.md`, "The
+  sentinel that only stripped itself"). "בוצע NO_REPLY" is a real short answer
+  with the token trailing the SAME, only, line — nothing said before it — and
+  stripping just the token is correct. Miron's draft was two paragraphs of
+  plain English narration with no column name, no frame, no instant — nothing
+  else the gate could catch — and only the LAST paragraph carried the token, so
+  `drops()` never fired anywhere and the strip-in-place rule reached back to
+  the first line: the whole draft went out with one word missing. The doctrine
+  says "nothing before them and nothing after" — the gate already enforced the
+  second half; `domain/reply-leak.hasEarlierContent` is the first half, and a
+  sentinel with real content on an EARLIER line now condemns its own paragraph
+  like any other leak. **A gap is left open rather than guessed at**: it reads
+  LINES, so one unbroken line of narration with no break at all, ending in the
+  sentinel, still only strips the token — both real incidents on file are
+  multi-line, so there is nothing to measure a tighter rule against, and
+  `tests/reply-leak.test.js` pins that as a named, passing "KNOWN GAP" test
+  rather than a silent one. **This half was first committed to the domain
+  module alone**, with the parity corpus not carrying the case — green suite,
+  production unchanged, exactly the miss the paragraph above describes. The
+  port carries it now, the corpus holds Miron's draft, and it is inert until
+  the gateway restarts like every other change to the plugin.
