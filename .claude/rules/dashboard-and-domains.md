@@ -104,11 +104,18 @@ no JS — but structured differently:
   `admin/user-page.js` and `admin/contacts.js` are the two separate pages,
   `admin/posts.js` the per-user POST handlers and `safeBack`, `admin/html.js`
   the shell, `STYLE` and the formatting helpers. Exports are unchanged.
-- **Since 2026-09-05 the page is six collapsible groups** (`GROUPS`, CSS-only
-  `<details>`), only the first open on load, with an alerts strip inside it
-  built from signals the sections already compute (`collectAlerts`, one
-  extra query). Every `SECTIONS` entry names its `group`; a section with an
-  unknown group falls off the page, and the suite checks the two agree. The
+- **Since 2026-09-15 `/` is a home page and each group is its own menu page
+  at `/g/<id>`** (it was six `<details>` folds on one page from 2026-09-05).
+  The home page (`admin/home.js`) is KPI tiles over calendar periods in
+  Asia/Jerusalem with a Sunday week, the eval user out of every count of
+  people and in the money, plus two focus panels (meeting coordinations,
+  group coordination); `homeMetrics` returns numbers and `renderHome` renders
+  them, so its tests assert on counts. The alerts strip (`collectAlerts`) is
+  on the home page and at the top of `/g/now`; its `#section` links go through
+  `sectionHref` so they cross to the right page. Forms still send
+  `back=/#<section>` and `safeBack` maps it to `/g/<group>#<section>`. Every
+  `SECTIONS` entry names its `group`; a section with an unknown group falls
+  off every page, and the suite checks each page holds exactly its own. The
   old outbox and boost sections are blocks inside "מה מתוכנן להישלח" and
   "הגדרות מערכת"; the reaction vocabulary (`reaction_emoji`) is edited there
   too, one box per state via `POST /reactions` — never as a JSON flag row.
