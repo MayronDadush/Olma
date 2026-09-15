@@ -144,6 +144,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **On the MODEL path a style is granted by a RESULT, never by a description**
 - **What is the same every time is DRAWN, and only the sentence about it is a model's**
 - **…and since 2026-09-10 the lists and choices a person ASKS for are drawn the same way**
+- **Since 2026-09-15 the scheduled digest is SENT by code too, and the model writes it only when something in it needs composing**
 - **The same thing does not go out twice inside a few minutes unless the person ASKED**
 - **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause
 - **An unstated quiet day is not "none" — it is Saturday or Sunday, and which one is a fact about the PERSON.**

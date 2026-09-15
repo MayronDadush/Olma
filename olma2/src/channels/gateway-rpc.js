@@ -260,17 +260,22 @@ function send(state, method, params, timeoutMs) {
 // behaves exactly as it does today. Deriving it from the outbox row would
 // hand the gateway a veto over our own redelivery, which is a different
 // feature and not this one.
-async function sendMessage({ channel, to, message, replyToId }) {
+// `mediaUrl` attaches one file (the send schema's own field). `agentId`
+// overrides the system agent, for the morning digest only
+// (channels/openclaw.sendRawMessage says what that changes).
+async function sendMessage({ channel, to, message, replyToId, mediaUrl, agentId }) {
   if (!available()) throw failed('gateway rpc is switched off', { dispatched: false });
   const state = await connect();
   armIdleClose();
+  const sender = agentId || state.systemAgentId;
   const params = {
     channel,
     to,
     message,
     idempotencyKey: randomUUID(),
-    ...(state.systemAgentId ? { agentId: state.systemAgentId } : {}),
+    ...(sender ? { agentId: sender } : {}),
     ...(replyToId ? { replyToId: String(replyToId) } : {}),
+    ...(mediaUrl ? { mediaUrl: String(mediaUrl) } : {}),
   };
   const payload = await send(state, 'send', params, REQUEST_TIMEOUT_MS);
   armIdleClose();

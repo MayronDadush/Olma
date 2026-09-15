@@ -159,6 +159,7 @@ never trust a dated narrative for something you are about to act on.
 - [The mark that never moved (2026-09-07)](#the-mark-that-never-moved-2026-09-07)
 - ["בשמחה יהב, שיהיה ערב טוב" (2026-09-07)](#בשמחה-יהב-שיהיה-ערב-טוב-2026-09-07)
 - [The same evening, twice (fixed 2026-09-10)](#the-same-evening-twice-fixed-2026-09-10)
+- [A fifth of the bill, to send a list that was already written (2026-09-15)](#a-fifth-of-the-bill-to-send-a-list-that-was-already-written-2026-09-15)
 - [A sentence about Shabbat, because the table had never heard of preferences (fixed 2026-09-10)](#a-sentence-about-shabbat-because-the-table-had-never-heard-of-preferences-fixed-2026-09-10)
 - [The quiet day nobody was ever going to ask for (2026-09-11)](#the-quiet-day-nobody-was-ever-going-to-ask-for-2026-09-11)
 - [Sixty-four holidays, eight of them quiet (2026-09-11)](#sixty-four-holidays-eight-of-them-quiet-2026-09-11)
@@ -6154,6 +6155,46 @@ choosing from reading the whole queue as duplicates.
 And three suite failures that were the guard working: fixtures clearing the
 decks with `sent_at = now()` were claiming this person had heard five things in
 the last second. They say two hours ago now, which is what they always meant.
+
+### A fifth of the bill, to send a list that was already written (2026-09-15)
+
+Measured over the seven days to 2026-09-15: 60 scheduled digests cost 167
+model calls (2.78 a turn — `get_my_digest`, often `my_calendar_events`, often
+`render_schedule_card`, then the reply), each carrying ~51k prompt tokens with
+47% of them cached. That was **22% of every prompt token the bot spent**, and
+the block the turn relayed had been drawn in code since 2026-09-09
+("The same evening, twice"). What the model still added was a greeting, a
+line about who had not answered, and — on four of the six people — a choice
+between the list and a card that `get_my_digest` had already made for it.
+
+The one part of a digest that needs composition is `payload.folded`: queued
+updates the budget held, woven in. In the life of the feature **0 of 121
+digests carried one**, and there had been no budget hold in thirty days.
+
+So the digest is composed in code (`domain/digest-message.js`) and goes out
+on the raw pipe, and the model path is kept, unchanged, for the mornings that
+need it: folded updates, a merge or batch at delivery, a row with its own
+instruction, a phone not on `digest_without_model_phones`, a card-sized
+morning while `digest_card_without_model_phones` is shut, and anything that
+throws. Owner's words on the trade (2026-09-15): coordinations are still
+something people are learning, so a morning whose rare queued update needs a
+model is fine going through one.
+
+**Sent as the person's own agent, not as `main`**, and that is read off the
+gateway's source rather than seen: the 2026.8.1 `send` handler resolves the
+outbound session for `agentId`, mirrors the text into it as an assistant
+message (`appendAssistantMessageToSessionTranscript`), and reads outbound
+media from THAT agent's workspace (`getAgentScopedMediaLocalRoots`). A reminder
+sent as `main` never enters the person's session, which is why `turn_start`
+carries `recentReminders`; a digest sent this way should need no such hint,
+and the card in their workspace should be readable where `main`'s would be
+`path-not-allowed`. Both halves need a live look before the card list opens
+beyond one phone. `openclaw message send` has no `--agent`, so the CLI
+fallback carries words only, as `main`, and a card never falls back to it.
+
+What it gives up: the sentence a model wrote about the day ("יום עמוס מחר"),
+and gender — a drawn line addresses nobody. `summary` scope now draws the full
+list, which is what the model had been upgrading those mornings to anyway.
 
 ### A sentence about Shabbat, because the table had never heard of preferences (fixed 2026-09-10)
 
