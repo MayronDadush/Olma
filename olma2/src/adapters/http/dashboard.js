@@ -457,7 +457,7 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
               // `public_base_url` FLAG rather than from anything in the
               // request — but a flag is admin-editable text, and an open
               // redirect gadget one typo away is not worth the saved line.
-              if (/^https?:\/\/[^\s/]+\/d\/[a-f0-9]{64}$/.test(made.data.url)) {
+              if (/^https?:\/\/[^\s/]+\/d\/[A-Za-z0-9]{22}$/.test(made.data.url)) {
                 openUrl = made.data.url;
               }
             }

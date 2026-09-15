@@ -1,7 +1,7 @@
 'use strict';
 // meetings — one slice of the tool registry (see ../registry.js).
 const {
-  meetings, calendar, meetingFanout, audit, S, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, cancelCalendarCleanup, meetingBrief, CANCEL_CLEANUP_HINTS, tool, connectedUserByPhone, users, ok,
+  dashboardAuth, meetings, calendar, meetingFanout, audit, S, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, cancelCalendarCleanup, meetingBrief, CANCEL_CLEANUP_HINTS, tool, connectedUserByPhone, users, ok,
 } = require('./_shared');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
@@ -34,6 +34,24 @@ async function offerDashboardOnce(client, user, meetingId, res) {
   return res;
 }
 
+// The person who just opened a coordination from chat gets its page at once
+// (owner, 2026-09-15: "כשמישהו רוצה לתאם פגישה ... יהיה לו לינק ישירות"). The
+// link is minted here, on the result, rather than by telling the model to call
+// open_my_dashboard — one call fewer, and nothing to forget. Minting it writes
+// the same `meeting.dashboard_offered` row offerDashboardOnce reads, so the
+// two-options offer later in the same coordination does not come round again.
+const START_LINK_HINT = 'Their coordination has its own page: at the end of your reply, give '
+  + '`dashboard.url` on a line of its own — it opens straight on this meeting, where the options, '
+  + 'everyone\'s answers and the settle button sit together. Say in a few words that it is optional '
+  + 'and that carrying on here in chat works exactly the same.';
+
+async function withStartLink(client, user, res) {
+  if (!res || !res.ok || !res.data || !res.data.meeting) return res;
+  const link = await dashboardAuth.createLinkUrl(client, user.id, { meetingId: Number(res.data.meeting.id) });
+  if (!link.ok || !link.data.meetingId) return res;
+  return ok({ ...res.data, dashboard: link.data, hints: { ...(res.data.hints || {}), dashboard: START_LINK_HINT } });
+}
+
 module.exports = [
   tool('start_meeting_coordination', 'Start coordinating a meeting with connected people (phones). The ONLY path for cross-user scheduling. A meeting is confirmed ONLY when the system says so — never announce agreement yourself. Give it a real title (the topic, in the user\'s words) — it is what everyone\'s invites and calendar event show; left empty it defaults to the participants\' names, and set_meeting_title can rename later.',
     { title: S('string', 'What the meeting is about'),
@@ -51,7 +69,7 @@ module.exports = [
           meetingId: Number(res.data.meeting.id), title: a.title || 'meeting', byName: actorName(user),
         }, { key: `minvite:${res.data.meeting.id}` });
       }
-      return res;
+      return withStartLink(client, user, res);
     }),
   tool('record_meeting_constraint', 'Save a constraint the user stated ("not Fridays") so nobody re-asks about it. Record the REASON too when they give one ("בצילומים ומסיים מאוחר, אז לא לפני 21:00") — a bare "not Monday" makes the other side guess, and guessing is what drags a negotiation out. The reason is shared with the other participants unless private=true; set that only when the user asks you to keep it to yourself, and never ask them to justify a day they did not explain.',
     { meeting_id: S('number', 'Meeting id'), constraint: S('string', 'The constraint, verbatim, including the reason if they gave one'),

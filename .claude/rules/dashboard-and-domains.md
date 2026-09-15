@@ -15,7 +15,7 @@ Was `CLAUDE.md`, "Two hostnames: allma.world is public, duckdns is admin" — a 
 title means this file. Grep the title, not the filename.
 
 - **`allma.world` serves an ALLOWLIST, not the admin dashboard.** Caddy passes
-  a named set of routes to `:8788` — `/pick/<48 hex>`, `/d/<64 hex>`, `/me`,
+  a named set of routes to `:8788` — `/pick/<48 hex>`, `/d/<22 base62 | 64 hex>`, `/me`,
   `/me/data`, `/me/events`, `/me/act`, `/me/out`, `/oauth/google/callback`,
   `/health`, `/ready`, and the three stranger-readable pages `/`, `/privacy`
   and `/terms` — plus `/voice-bridge*` to `:8791`. Everything else 404s
@@ -38,8 +38,17 @@ title means this file. Grep the title, not the filename.
   check, so a truncated WhatsApp link answers a user with the ADMIN password
   prompt on the public domain (`incidents.md`, "A truncated link asked a user
   for the admin password"). The dashboard link follows the same rule —
-  `^/d/[a-f0-9]{64}$`, and the five `/me` routes named one by one rather than
-  `/me*` — for exactly that reason.
+  `^/d/([A-Za-z0-9]{22}|[a-f0-9]{64})$`, and the five `/me` routes named one by
+  one rather than `/me*` — for exactly that reason. **Since 2026-09-15 a link
+  is 22 base62 characters and its ROW says where it lands** (`magic_links.
+  target`/`meeting_id`, migration 070; `dashboard-auth.createLinkUrl`), so a
+  URL never carries `?meeting=` again; the 64-hex shape stays accepted for
+  links sent before that. **Caddy must accept the new shape BEFORE the code
+  that mints it deploys** — the other order sends every person a link that
+  404s. A person may hold `MAX_LIVE_LINKS` (5) at once, because links now go
+  out unasked (an invite, a long list) and a new one killing the last would
+  kill the invite's; a GET from a phone already signed in as that person
+  goes straight in without spending the key.
 
 - **Three places hold the domain and none of them are in the repo**:
   `/etc/caddy/Caddyfile`, `/opt/olma/google-oauth.json` (`public_base_url`,

@@ -2602,19 +2602,22 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     </div>
     <!-- Two modes, not two pages. Reading the week and arranging something in
          it are the same subject, and the same segment control the task list
-         already uses says so. -->
+         already uses says so. Coordination comes FIRST and is where the tab
+         opens (owner, 2026-09-15): the week is on the phone's own calendar
+         already, and arranging something with other people is the part only
+         this page does. -->
     <div class="viewrow" style="--i:1">
       <div class="seg mini" id="calMode">
-        <button aria-pressed="true"  data-calmode="cal"  data-i18n="cal.modeRead"></button>
-        <button aria-pressed="false" data-calmode="meet" data-i18n="cal.modeMeet"></button>
+        <button aria-pressed="true"  data-calmode="meet" data-i18n="cal.modeMeet"></button>
+        <button aria-pressed="false" data-calmode="cal"  data-i18n="cal.modeRead"></button>
       </div>
       <!-- Starting one is the first thing you might want here, so it sits at
            the top with the control that got you to this mode — not at the far
            end of however many coordinations you already have. -->
-      <button class="addmini" id="mtNew" hidden><svg><use href="#i-plus"/></svg><span data-i18n="mt.new"></span></button>
+      <button class="addmini" id="mtNew"><svg><use href="#i-plus"/></svg><span data-i18n="mt.new"></span></button>
     </div>
 
-    <div id="calRead">
+    <div id="calRead" hidden>
       <div style="--i:2">
         <div class="group">
           <!-- A week strip that could only ever show the next seven days was
@@ -2643,7 +2646,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       </div>
     </div>
 
-    <div id="calMeet" hidden>
+    <div id="calMeet">
       <div style="--i:2">
         <div class="glabel"><span data-i18n="mt.open"></span><span class="hint" id="mtCount"></span></div>
         <div class="stack" id="mtList"></div>
@@ -10298,6 +10301,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   var hashOpened = false;
   function openFromHash(){
     if(hashOpened) return;
+    /* #tasks is the same door onto the task list: a link Olma sent after a
+       long dump or under a long morning list, for arranging what is on it */
+    if(location.hash === "#tasks"){
+      hashOpened = true;
+      try{ history.replaceState(null, "", location.pathname + location.search); }catch(e){}
+      markIntroSeen(); introFinish();
+      go("tasks");
+      return;
+    }
     var m = /^#meeting=([1-9][0-9]{0,11})$/.exec(location.hash || "");
     if(!m) return;
     hashOpened = true;
@@ -10467,7 +10479,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* One or the other, never both: the three-stage intro stages the APP, and
      a stranger is not being shown the app. */
   /* a deep link skips the intro entirely — see openFromHash */
-  if(/^#meeting=/.test(location.hash || "")) markIntroSeen();
+  if(/^#(meeting=|tasks$)/.test(location.hash || "")) markIntroSeen();
   if(NEWUSER) startWelcome(); else startIntro();
   /* the seed page only: on a served page the seed MEETS are placeholders and
      the real ones arrive with hydrate(), which calls this itself */

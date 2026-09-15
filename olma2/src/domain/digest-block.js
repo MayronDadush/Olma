@@ -39,6 +39,10 @@ const WORDS = {
     day: (name) => `יום ${name}`,
     weekdays: ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'],
     date: ({ d, m }) => `${d}.${m}`,
+    // The closing line under a long list. No verb addressed to anybody: a
+    // drawn sentence has no grammatical gender to get right (rules,
+    // "What is the same every time is DRAWN").
+    pageLink: 'כל הרשימה במסך אחד, לעריכה ולסידור:',
   },
   en: {
     calendar: 'On your calendar',
@@ -48,6 +52,7 @@ const WORDS = {
     day: (name) => name,
     weekdays: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
     date: ({ d, m }) => `${d}/${m}`,
+    pageLink: 'The whole list on one screen, to edit and arrange:',
   },
 };
 
@@ -222,7 +227,11 @@ function todoBlock(rows, ctx, f, w, locale) {
 //
 // `now` is injectable so a test can pin the morning it is describing; every
 // other caller passes nothing and gets the clock.
-function renderDigestBlock(data, { locale, timezone, channelType, now } = {}) {
+// `link`, when given, is a dashboard URL drawn as the block's last line — the
+// digest's own way to hand over the page under a long list. It is part of the
+// block rather than a sentence for the model to write, so it is relayed with
+// the list and cannot be described instead of sent.
+function renderDigestBlock(data, { locale, timezone, channelType, now, link } = {}) {
   const f = format.formatterFor(channelType);
   const ctx = contextFor({ locale, timezone, now });
   const w = ctx.w;
@@ -238,6 +247,7 @@ function renderDigestBlock(data, { locale, timezone, channelType, now } = {}) {
   // the fault `tasks.kind` exists to prevent, and a shared list would undo it.
   if (events.length) sections.push(`${f.bold(w.calendar)}\n${f.bullets(events)}`);
   if (todo) sections.push(todo);
+  if (link) sections.push(`${w.pageLink}\n${link}`);
   return sections.join('\n\n');
 }
 

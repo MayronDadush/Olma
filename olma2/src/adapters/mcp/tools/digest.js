@@ -1,7 +1,7 @@
 'use strict';
 // digest — one slice of the tool registry (see ../registry.js).
 const {
-  digest, users, flags, scheduleCard, S, tool, ok,
+  digest, users, flags, scheduleCard, dashboardAuth, S, tool, ok,
 } = require('./_shared');
 const digestBlock = require('../../../domain/digest-block');
 const format = require('../../../domain/message-format');
@@ -30,6 +30,20 @@ function cardOrder(itemCount) {
     + 'the card is the list, and a list beside it is the same picture twice.';
 }
 
+// A morning list long enough that the person would rather arrange it on a
+// screen (owner, 2026-09-15): six open to-dos, or three already past their
+// time. At most once a week, shared with the dump link in tools/tasks.js —
+// the same page offered twice in a week is noise whichever door offered it.
+// Only a list that carries items (full/today); a summary is counts, and a
+// count is not a list anybody is going to go and sort.
+const DIGEST_LINK_OPEN = 6;
+const DIGEST_LINK_OVERDUE = 3;
+function listWorthAPage(data, now = Date.now()) {
+  const todos = (Array.isArray(data.tasks) ? data.tasks : []).filter((r) => !r.parent_id);
+  const overdue = todos.filter((r) => r.due_at && new Date(r.due_at).getTime() < now).length;
+  return todos.length >= DIGEST_LINK_OPEN || overdue >= DIGEST_LINK_OVERDUE;
+}
+
 module.exports = [
   tool('get_my_digest', 'Assemble the current picture. scope: summary (counts) | full (every open task) | today (due/overdue today).',
     { scope: S('string', 'summary | full | today') }, [],
@@ -44,10 +58,18 @@ module.exports = [
       // words, both read here rather than assumed.
       const items = digestBlock.blockItemCount(res.data);
       const min = await flags.getFlag(client, 'digest_card_min_items');
+      const link = listWorthAPage(res.data) ? await dashboardAuth.tasksLinkUnlessRecent(client, user.id) : null;
       if (digestBlock.drawInsteadOfBlock(items, min)) {
         return ok({
           ...res.data,
-          hints: { ...(res.data.hints || {}), card: cardOrder(items) },
+          // On the card path there is no block to draw the link into, so it
+          // rides the result the way every other minted link does.
+          ...(link ? { dashboard: link } : {}),
+          hints: {
+            ...(res.data.hints || {}),
+            card: cardOrder(items),
+            ...(link ? { dashboard: 'After the MEDIA line, give `dashboard.url` on a line of its own: the same list on their own page, to edit and arrange. No more than a few words before it.' } : {}),
+          },
         });
       }
       const ch = await users.primaryChannel(client, user.id);
@@ -55,6 +77,7 @@ module.exports = [
         locale: user.locale,
         timezone: user.timezone,
         channelType: ch.ok ? ch.data.channel.channel_type : null,
+        link: link ? link.url : null,
       });
       if (!block) return res;
       return ok({
