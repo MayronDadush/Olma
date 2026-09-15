@@ -2,7 +2,7 @@
 // The per-user POST handlers and the redirect validator.
 // Moved verbatim out of adapters/http/dashboard.js on 2026-09-05; the router
 // there is what is left of that file.
-const { GROUPS, SECTIONS } = require('./sections/index');
+const { GROUPS, SECTIONS, groupPath } = require('./sections/index');
 const { CANCELLED_BY_ADMIN } = require('./sections/planned');
 const prefsDomain = require('../../../domain/preferences');
 const factsDomain = require('../../../domain/facts');
@@ -16,11 +16,17 @@ const pauseDomain = require('../../../domain/pause');
 function safeBack(value) {
   const v = value || '';
   if (/^\/user\?id=\d+$/.test(v)) return v;
-  // A save from a section lands back on that section (the page reloads with
-  // only the first group open; a #fragment opens the enclosing group). Only
-  // ids this page actually renders — never an arbitrary fragment.
+  // A save from a section lands back on that section, on the menu page it
+  // lives on. Only ids the admin actually renders — never an arbitrary fragment.
   const m = /^\/#([a-z-]+)$/.exec(v);
-  if (m && (SECTIONS.some((x) => x.id === m[1]) || GROUPS.some((g) => 'g-' + g.id === m[1]))) return v;
+  if (m) {
+    const s = SECTIONS.find((x) => x.id === m[1]);
+    if (s) return `${groupPath(s.group)}#${s.id}`;
+    const g = GROUPS.find((x) => 'g-' + x.id === m[1]);
+    if (g) return groupPath(g.id);
+  }
+  const page = /^\/g\/([a-z]+)$/.exec(v);
+  if (page && GROUPS.some((x) => x.id === page[1])) return v;
   return '/';
 }
 

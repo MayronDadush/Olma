@@ -1,7 +1,7 @@
 'use strict';
 // tasks — one slice of the tool registry (see ../registry.js).
 const {
-  tasks, users, reminders, S, tool, ok, pastMoment,
+  tasks, users, reminders, dashboardAuth, S, tool, ok, pastMoment,
 } = require('./_shared');
 const dt = require('../../../domain/datetime');
 const format = require('../../../domain/message-format');
@@ -12,6 +12,34 @@ const listBlock = require('../../../domain/list-block');
 // in a description every turn pays for (the same budget rule as turn_start's
 // hints). The fields themselves come from domain/tasks.js and
 // domain/shopping-list.js; this only explains them.
+// A dump long enough that a screen beats a sentence (owner, 2026-09-15: "למצוא
+// זמנים מתאימים שבהם נשלח למשתמש לינקים ישירות לדאשבורד שלו למשימות"). Four is
+// where a reply stops being able to say what was saved and still be short. The
+// link is minted HERE rather than by telling the model to call open_my_dashboard:
+// one call fewer on a turn that already made one, and nothing to forget.
+//
+// add_tasks_bulk earns a 👍 (reactions.TOOL_MARKS), and `markPlaced` asks for
+// NO_REPLY unless the words carry something the mark cannot. A link is exactly
+// such a thing — a 👍 cannot deliver a URL — so this hint says so in the mark's
+// own terms rather than competing with it: the link is the reason to write,
+// and the save is still not to be restated.
+const DUMP_LINK_MIN = 4;
+const DUMP_LINK_HINT = 'This was a long list, so their own page is worth offering: at the end of '
+  + 'your reply, give `dashboard.url` on a line of its own — every task on one screen, to edit, '
+  + 'reorder and tick off. One short phrase around it; say it is optional and that everything '
+  + 'still works here in chat. A 👍 cannot carry a link, so this is a reason to write — but do '
+  + 'not restate what was saved to make room for it.';
+
+async function withDumpLink(client, user, res, { parentId } = {}) {
+  // A breakdown of one goal into parts, or a dictated shopping run, is not a
+  // list to go and arrange.
+  if (!res || !res.ok || !res.data || parentId || res.data.shoppingList) return res;
+  if (!Array.isArray(res.data.tasks) || res.data.tasks.length < DUMP_LINK_MIN) return res;
+  const link = await dashboardAuth.tasksLinkUnlessRecent(client, user.id);
+  if (!link) return res;
+  return ok({ ...res.data, dashboard: link, hints: { ...(res.data.hints || {}), dashboard: DUMP_LINK_HINT } });
+}
+
 function taskHints(res, user = {}) {
   if (!res || !res.ok || !res.data) return res;
   const d = res.data;
@@ -203,9 +231,9 @@ module.exports = [
   tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task. Also the way to SPLIT a goal into its parts: pass parent_task_id and the parts become subtasks in the same call. Timed items get their reminders automatically; when the reply carries hints, follow them. Any due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), converted from their own local time (USER.md); never bare digits with a Z.',
     { items: S('array', 'Array of {title, kind?, location?, category?, due_at?, ends_at?}; kind event|todo, location, category and times as in add_task.', { items: { type: 'object' } }),
       parent_task_id: S('number', 'Optional: save every item as a subtask of this project (one level)') }, ['items'],
-    async (client, user, a) => taskHints(await tasks.addTasksBulk(client, user.id, (a.items || []).map((i) => ({
+    async (client, user, a) => withDumpLink(client, user, taskHints(await tasks.addTasksBulk(client, user.id, (a.items || []).map((i) => ({
       title: i.title, kind: i.kind, location: i.location, category: i.category, dueAt: i.due_at, endsAt: i.ends_at,
-    })), { parentId: a.parent_task_id }), user)),
+    })), { parentId: a.parent_task_id }), user), { parentId: a.parent_task_id })),
   tool('complete_task', 'Mark a task done. Pending reminders on it are cancelled automatically. If the task carries a REPEATING reminder it is a standing one — the reply comes back with recurring:true and nextRemindAt, the task stays open and the cadence stays armed, because doing it once does not finish it. Say when it next comes round. To end a standing task for good: cancel_reminder first, then complete_task.',
     { task_id: S('number', 'Task id') }, ['task_id'],
     (client, user, a) => tasks.completeTask(client, user.id, a.task_id)),

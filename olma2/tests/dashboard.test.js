@@ -7,6 +7,7 @@ const { createDashboard } = require('../src/adapters/http/dashboard');
 const metrics = require('../src/jobs/metrics');
 const retention = require('../src/jobs/retention');
 const flags = require('../src/domain/flags');
+const { GROUPS } = require('../src/adapters/http/admin/sections/index');
 
 let db, server, base, user;
 const AUTH = 'Basic ' + Buffer.from('admin:test-password-123').toString('base64');
@@ -30,6 +31,16 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async () => { server.close(); await db.teardown(); });
+
+// Every menu page, concatenated — what "the admin page" meant before each
+// group moved to its own /g/<id>.
+async function adminHtml() {
+  let html = '';
+  for (const g of GROUPS) {
+    html += await (await fetch(`${base}/g/${g.id}`, { headers: { Authorization: AUTH } })).text();
+  }
+  return html;
+}
 
 // ---- pipeline jobs ----------------------------------------------------------
 
@@ -128,7 +139,7 @@ test('the health board shows the doctrine against the gateway ceiling, from the 
   const fmt = (n) => n.toLocaleString('en-US');
 
   // The row is on the page, whatever this machine's gateway config says.
-  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const html = await adminHtml();
   assert.ok(html.includes('הדוקטרינה (AGENTS.md)'), 'the row is there');
 
   // A config that cannot be read: the ceiling is UNKNOWN, the size still
@@ -179,7 +190,7 @@ test('the off-box backup heartbeat reads in plain Hebrew on the health board', a
   await db.pool.query(
     `INSERT INTO job_heartbeats (job_name, last_run_at, last_ok_at, note)
      VALUES ('backup_offbox', now(), now(), 'uploaded olma2-2026-09-05.sql.gz 4096B; pruned 0 older than 30d')`);
-  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const html = await adminHtml();
   assert.ok(html.includes('גיבוי יומי של מסד הנתונים מחוץ לשרת'), 'labelled, not the raw job name');
   assert.ok(!html.includes('>backup_offbox<'), 'raw job name never shown');
   await db.pool.query(`DELETE FROM job_heartbeats WHERE job_name = 'backup_offbox'`);
@@ -435,7 +446,7 @@ test('dashboard requires auth; renders all sections with it', async () => {
 
   const res = await fetch(base + '/', { headers: { Authorization: AUTH } });
   assert.equal(res.status, 200);
-  const html = await res.text();
+  const html = (await res.text()) + await adminHtml();
   for (const t of ['מצב המערכת', 'עלות', 'שימוש במוצר', 'הגדרות מערכת', 'משתמשים', 'הודעות יוצאות']) {
     assert.ok(html.includes(t), `section "${t}" rendered`);
   }
@@ -514,8 +525,7 @@ test('per-user page shows their tasks, reminders and learned facts', async () =>
     assert.ok(html.includes(t), `user page contains "${t}"`);
   }
   // main page links to it
-  const main = await fetch(base + '/', { headers: { Authorization: AUTH } });
-  assert.match(await main.text(), new RegExp(`/user\\?id=${user.id}`));
+  assert.match(await adminHtml(), new RegExp(`/user\\?id=${user.id}`));
   // unknown user → graceful
   const missing = await fetch(base + '/user?id=99999', { headers: { Authorization: AUTH } });
   assert.match(await missing.text(), /לא נמצא/);
@@ -688,7 +698,7 @@ test('planned messages: queued rows, future reminders and standing digests, in l
     await reminders.setReminder(c, p.id, t.id, new Date(Date.now() + 36 * 3600_000).toISOString(), 'weekly');
   });
 
-  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const html = await adminHtml();
   assert.match(html, /מה מתוכנן להישלח/);
   assert.match(html, /דדליין מתקרב/, 'a checkin shows WHY it was chosen, not its internal rung id');
   assert.match(html, /לקחת את הרכב לטסט/, 'a scheduled reminder appears before it is ever queued');
@@ -915,7 +925,7 @@ test('the brain shows who is waiting on a human, and what Olma has learned', asy
     });
   });
 
-  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const html = await adminHtml();
   assert.match(html, /מה עולמה יודעת ועל מה היא מחכה/);
   assert.match(html, /ממתין לתשובה של אדם/);
   assert.match(html, /בקשת חברות/);
@@ -944,7 +954,7 @@ test('the brain covers more than one kind of waiting, and marks unread conversat
     `UPDATE users SET agent_id = 'u-' || id, last_inbound_at = now() - interval '40 minutes',
             last_fact_extraction_at = NULL WHERE id = $1`, [u.id]);
 
-  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const html = await adminHtml();
   assert.match(html, /תשובה על מועד פגישה/);
   assert.match(html, /קפה בעיר/);
   assert.match(html, /שיחה ממתינה לקריאה/, 'an unread finished conversation is visible');
@@ -1012,7 +1022,7 @@ test('response rate counts a reply within a day, and ignores what predates measu
   await heard('2026-08-18T15:00:00Z');
   await send('2026-08-19T09:00:00Z');
 
-  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const html = await adminHtml();
   const row = rowFor(html, 'Ophir', { under: '<h4>א · ענו להודעות' });
   assert.match(row, />2<\/td>/, 'two sends counted — the pre-measurement one is excluded');
   assert.match(row, />1<\/td>/, 'one of them was answered');
@@ -1025,7 +1035,7 @@ test('task closure reports "too early" rather than a hollow zero', async () => {
   const u = await makeUser(db.pool, '+972611002002', { firstName: 'Noam' });
   await withTx(db.pool, (c) => tasks.addTask(c, u.id, { title: 'משימה טרייה' }));
 
-  let html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  let html = await adminHtml();
   assert.match(html, /זה לא אפס — זה מוקדם מדי/,
     'a task created today cannot have failed a two-week window');
 
@@ -1034,7 +1044,7 @@ test('task closure reports "too early" rather than a hollow zero', async () => {
     `INSERT INTO tasks (owner_id, title, status, created_at, completed_at)
      VALUES ($1,'נסגרה בזמן','done', now() - interval '30 days', now() - interval '25 days'),
             ($1,'נשארה פתוחה','open', now() - interval '30 days', NULL)`, [u.id]);
-  html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  html = await adminHtml();
   assert.match(html, /נסגרו תוך 14 יום/);
   assert.match(html, /50%/);
   assert.doesNotMatch(html, /זה מוקדם מדי/, 'once a cohort exists the real number is shown');
@@ -1052,7 +1062,7 @@ test('habit shows volume, active days, and flags a week of silence', async () =>
   await db.pool.query(
     `UPDATE users SET last_inbound_at = now() - interval '9 days' WHERE id = $1`, [quiet.id]);
 
-  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const html = await adminHtml();
   const active = rowFor(html, 'Rivka', { under: '<h4>ד · הרגל</h4>' });
   assert.match(active, />7<\/td>/, 'four plus three messages this week');
   assert.match(active, />2 \/ 7<\/td>/, 'across two days');
@@ -1139,7 +1149,7 @@ test('the corrections row states each number with its denominator, per person', 
     `INSERT INTO audit_log (actor_id, event, retention_class)
      VALUES ($1, 'admin.outbox.cancelled', 'routine')`, [u.id]);
 
-  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const html = await adminHtml();
   const row = rowFor(html, 'Tamar', { under: '<h4>ג · תיקונים</h4>' });
   assert.equal((row.match(/1 מתוך 2/g) || []).length, 2,
     'one of two facts AND one of two preference writes were corrected — both with denominators');
@@ -1178,7 +1188,7 @@ test('the address book groups a number under every name given to it, and flags o
   assert.match(html, /מוסך/);
 
   // The summary section on the main page counts the same data.
-  const home = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const home = await adminHtml();
   assert.match(home, /ספר הכתובות/);
   assert.match(home, /מוכרים ליותר ממשתמש אחד/);
 });
@@ -1249,7 +1259,7 @@ test('the dashboard offers no way to pause someone on their behalf', async () =>
 
 test('every active user has a button that opens their own dashboard', async () => {
   const csrf = 'c-dash-open';
-  const page = await fetch(base + '/', { headers: { Authorization: AUTH, Cookie: `csrf=${csrf}` } })
+  const page = await fetch(base + '/g/people', { headers: { Authorization: AUTH, Cookie: `csrf=${csrf}` } })
     .then((r) => r.text());
   assert.match(page, /action="\/users\/dashboard"/);
 
@@ -1263,7 +1273,7 @@ test('every active user has a button that opens their own dashboard', async () =
   // Straight to a live one-time link on the PUBLIC host — the redirect that
   // makes the thirty-minute TTL a non-issue, because none of it is spent
   // getting there.
-  assert.match(res.headers.get('location'), /^https:\/\/allma\.world\/d\/[a-f0-9]{64}$/);
+  assert.match(res.headers.get('location'), /^https:\/\/allma\.world\/d\/[A-Za-z0-9]{22}$/);
 
   // It is a real sign-in as that person, so it leaves the same trail every
   // other admin edit on this page leaves.
@@ -1286,41 +1296,43 @@ test('a bad public_base_url cannot turn the button into an open redirect', async
   await withTx(db.pool, (c) => flags.setFlag(c, 'public_base_url', 'https://allma.world'));
 });
 
-// ---- the grouped page ---------------------------------------------------------
-// Fifteen sections top to bottom became six folds with only the first open,
-// an alerts strip inside it, and two merges (outbox into planned, boost into
-// settings). What these pin: nothing fell off the page, only one group opens,
-// the strip is honest on a clean board and names an issue when there is one,
-// a save lands back on its section and only on a real one, and the header
-// dot no longer says "all fine" over a dead gateway.
-test('every section sits inside a group, and exactly one group opens by default — the one with health', async () => {
+// ---- the menu pages ------------------------------------------------------------
+// Fifteen sections top to bottom became six folds (2026-09-05), and the folds
+// became six menu pages behind a home page (2026-09-15). What these pin:
+// every section is on exactly its own group's page, the home page carries no
+// section, the strip is honest on a clean board and links across pages, a
+// save lands back on the page its section lives on, and the header dot no
+// longer says "all fine" over a dead gateway.
+test('every section is on its own group page and nowhere else; the home page holds none', async () => {
   const { SECTIONS } = require('../src/adapters/http/dashboard');
-  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
-  const groups = [...html.matchAll(/<details class="group" id="g-([a-z]+)"( open)?>/g)];
-  assert.equal(groups.length, 6, 'six groups');
-  const open = groups.filter((g) => g[2]);
-  assert.equal(open.length, 1, 'exactly one starts open');
-  assert.equal(open[0][1], 'now');
-  const nowBlock = html.slice(html.indexOf('id="g-now"'), html.indexOf('id="g-sending"'));
-  assert.ok(nowBlock.includes('<section id="health"'), 'health is in the open group');
-  for (const s of SECTIONS) {
-    assert.ok(html.includes(`<section id="${s.id}"`), `${s.id} is still on the page`);
+  const home = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  assert.ok(!home.includes('<section id="health"'), 'home is not the old long page');
+  assert.ok(home.includes('id="kpi-users"') && home.includes('id="focus-meetings"') && home.includes('id="focus-groups"'));
+  assert.ok(home.includes('<a href="/" class="active" aria-current="page">בית</a>'));
+  for (const g of GROUPS) {
+    const res = await fetch(`${base}/g/${g.id}`, { headers: { Authorization: AUTH } });
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    assert.ok(html.includes(`<h2 class="page-title">${g.title}</h2>`), `page titled ${g.title}`);
+    assert.ok(html.includes(`<a href="/g/${g.id}" class="active"`), `${g.id} marked in the menu`);
+    const onPage = [...html.matchAll(/<section id="([a-z-]+)"/g)].map((m) => m[1]);
+    assert.deepEqual(onPage, SECTIONS.filter((s) => s.group === g.id).map((s) => s.id));
   }
-  for (const t of ['עכשיו: מצב המערכת ותקלות', 'הודעות: מה בתור ומה יצא', 'אנשים: משתמשים, המתנות וזיכרון',
-    'מדידה: תוצאות, שימוש ובדיקות', 'עלויות ותשתית', 'הגדרות ויומן פעילות']) {
-    assert.ok(html.includes(`<summary>${t}</summary>`), `group titled ${t}`);
-  }
+  assert.equal((await fetch(`${base}/g/nope`, { headers: { Authorization: AUTH } })).status, 404);
 });
 
 test('the alerts strip says so on a clean board, and names an open issue when there is one', async () => {
-  const clean = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const clean = await adminHtml();
   assert.ok(clean.includes('אין התראות'), 'clean fixture, no pills');
   await db.pool.query(
     `INSERT INTO issues (category, source, title, status) VALUES ('bug', 'user_reported', 'הכפתור לא עובד', 'new')`);
   try {
-    const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+    const html = await adminHtml();
     assert.ok(!html.includes('אין התראות'));
     assert.match(html, /<a class="alert alert-warn" href="#issues">• 1 תקלות פתוחות<\/a>/);
+    // The home page's strip links across to the page the section lives on.
+    const home = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+    assert.match(home, /<a class="alert alert-warn" href="\/g\/now#issues">• 1 תקלות פתוחות<\/a>/);
     // The strip's own markup never carries the bare classes the section
     // slicers key on.
     const strip = html.slice(html.indexOf('<div class="alerts">'), html.indexOf('</div>', html.indexOf('<div class="alerts">')));
@@ -1331,7 +1343,7 @@ test('the alerts strip says so on a clean board, and names an open issue when th
 });
 
 test('the two merged sections are blocks inside the ones that absorbed them', async () => {
-  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const html = await adminHtml();
   assert.ok(!html.includes('<section id="outbox"'), 'outbox is no longer a section');
   assert.ok(!html.includes('<section id="boost"'), 'boost is no longer a section');
   assert.ok(sectionOf(html, 'planned').includes('<h4>הודעות יוצאות — 7 ימים אחרונים</h4>'));
@@ -1348,16 +1360,19 @@ test('a save lands back on its own section — and only on a section this page r
     headers: { Authorization: AUTH, Cookie: `csrf=${csrf}`, 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ csrf, key: 'registration_open', value: 'true', back }).toString(),
   });
-  assert.equal((await post('/#flags')).headers.get('location'), '/#flags');
-  assert.equal((await post('/#g-controls')).headers.get('location'), '/#g-controls');
+  assert.equal((await post('/#flags')).headers.get('location'), '/g/controls#flags');
+  assert.equal((await post('/#users')).headers.get('location'), '/g/people#users');
+  assert.equal((await post('/#g-controls')).headers.get('location'), '/g/controls');
+  assert.equal((await post('/g/money')).headers.get('location'), '/g/money');
+  assert.equal((await post('/g/evil')).headers.get('location'), '/', 'only a page that exists');
   assert.equal((await post('/#evil')).headers.get('location'), '/', 'an unknown fragment is not followed');
   assert.equal((await post('https://example.com/')).headers.get('location'), '/', 'never an open redirect');
-  const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const html = await adminHtml();
   assert.ok(sectionOf(html, 'flags').includes('name="back" value="/#flags"'), 'the flags forms carry it');
 });
 
 test('the reaction emoji are edited one box per state, not as JSON, and a typo never lands', async () => {
-  const page = await fetch(base + '/', { headers: { Authorization: AUTH } });
+  const page = await fetch(base + '/g/controls', { headers: { Authorization: AUTH } });
   const csrf = /csrf=([a-f0-9]+)/.exec(page.headers.get('set-cookie'))[1];
   const html0 = sectionOf(await page.text(), 'flags');
   assert.ok(html0.includes('action="/reactions"'), 'the editor is inside the settings section');
@@ -1373,11 +1388,11 @@ test('the reaction emoji are edited one box per state, not as JSON, and a typo n
   // A real change, the default typed back in, garbage, and an unknown state.
   const r = await post({ done: '✅', working: '👀', failed: 'abc', needs_input: ' 🙋 ', evil: '💣' });
   assert.equal(r.status, 303);
-  assert.equal(r.headers.get('location'), '/#flags');
+  assert.equal(r.headers.get('location'), '/g/controls#flags');
   const stored = await withTx(db.pool, (c) => flags.getFlag(c, 'reaction_emoji'));
   assert.deepEqual(stored, { done: '✅', needs_input: '🙋' },
     'the default is not an override, text is dropped, and no state is invented');
-  const html1 = sectionOf(await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text(), 'flags');
+  const html1 = sectionOf(await adminHtml(), 'flags');
   assert.ok(html1.includes('name="done" value="✅"'), 'the box shows the override');
   assert.ok(html1.includes('name="failed" value=""'), 'a state left alone shows an empty box');
   const audit = await db.pool.query(`SELECT detail FROM audit_log WHERE event = 'admin.reaction_emoji' ORDER BY id DESC LIMIT 1`);
@@ -1402,7 +1417,7 @@ test('the reaction emoji are edited one box per state, not as JSON, and a typo n
 test('the templates section rewords a fixed sentence, refuses a broken one by name, and resets', async () => {
   const templates = require('../src/domain/message-templates');
   const text = require('../src/domain/proactive-text');
-  const page = await fetch(base + '/', { headers: { Authorization: AUTH } });
+  const page = await fetch(base + '/g/controls', { headers: { Authorization: AUTH } });
   const csrf = /csrf=([a-f0-9]+)/.exec(page.headers.get('set-cookie'))[1];
   const html0 = sectionOf(await page.text(), 'templates');
   assert.ok(html0.includes('action="/templates"'), 'the editor has its own section');
@@ -1432,12 +1447,12 @@ test('the templates section rewords a fixed sentence, refuses a broken one by na
     group_intro: 'היי, אני עולמה',                // lost {{me}}
   });
   assert.equal(r.status, 303);
-  assert.equal(r.headers.get('location'), '/#templates');
+  assert.equal(r.headers.get('location'), '/g/controls#templates');
   const stored = await withTx(db.pool, (c) => flags.getFlag(c, templates.FLAG));
   assert.deepEqual(stored, { group_gate_nudge: 'נו, {{missing}}?' });
   // ...and that is what a group now hears, through the same call the sweep makes.
   assert.equal(text.renderGroupGateNotice({ kind: 'nudge', missing: ['+972501111111'] }, stored), 'נו, @+972501111111?');
-  const html1 = sectionOf(await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text(), 'templates');
+  const html1 = sectionOf(await adminHtml(), 'templates');
   assert.ok(html1.includes('>נו, {{missing}}?</textarea>'), 'the box shows the override');
   assert.ok(html1.includes('מנוסח מחדש'), 'and says it is live');
   assert.ok(html1.includes('לא נשמר: חסר {{me}}'), 'the refused box is named, with the reason');
@@ -1450,7 +1465,7 @@ test('the templates section rewords a fixed sentence, refuses a broken one by na
   // The reset button returns everything to the defaults.
   await post({ group_opened: 'פתוח!', reset: '1' });
   assert.deepEqual(await withTx(db.pool, (c) => flags.getFlag(c, templates.FLAG)), {});
-  const html2 = sectionOf(await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text(), 'templates');
+  const html2 = sectionOf(await adminHtml(), 'templates');
   assert.ok(!html2.includes('לא נשמר:'), 'a reset clears the refusal note too');
   // A forged CSRF cannot touch it.
   const forged = await fetch(base + '/templates', {
@@ -1463,7 +1478,7 @@ test('the templates section rewords a fixed sentence, refuses a broken one by na
 test('the header dot goes red for a dead gateway, like /health already did', async () => {
   gatewayState = { status: 'down', detail: 'ECONNREFUSED', port: 18789 };
   try {
-    const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+    const html = await adminHtml();
     assert.ok(html.includes('class="dot bad"'), 'the dot');
     assert.ok(html.includes('יש תקלה'), 'and the words next to it');
     assert.match(html, /alert alert-bad" href="#health">⚠ שער התקשורת לא מגיב/);
@@ -1473,12 +1488,12 @@ test('the header dot goes red for a dead gateway, like /health already did', asy
 });
 
 test('with nothing wrong the green job rows are a fold; a problem row is never behind a click', async () => {
-  const clean = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+  const clean = await adminHtml();
   assert.ok(sectionOf(clean, 'health').includes('<details class="sub">'), 'folded when all is well');
   await db.pool.query(
     `INSERT INTO job_heartbeats (job_name, last_run_at, note) VALUES ('minute_sweeps', now(), 'ERR boom')`);
   try {
-    const html = await (await fetch(base + '/', { headers: { Authorization: AUTH } })).text();
+    const html = await adminHtml();
     const health = sectionOf(html, 'health');
     assert.ok(!health.includes('<details class="sub">'), 'open table when something is wrong');
     assert.ok(health.includes('ERR boom'));

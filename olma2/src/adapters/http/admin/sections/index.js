@@ -19,21 +19,26 @@ const { renderTemplates } = require('./templates');
 const { renderOnboardingReviews } = require('./onboarding');
 
 
-// The page is six collapsible groups, in this order, and only the first is
-// open when it loads: the board opens as a status page, and everything else
-// is a fold away. Titles deliberately do not repeat a section's own h3.
-// CSS-only (<details>/<summary>): no JS on this page, so the fold is not
-// remembered across a reload — accepted; a POST redirects back to the section
-// it came from (safeBack), and modern browsers open the enclosing group for a
-// #fragment link.
+// Since 2026-09-15 each group is its own menu page at /g/<id>, and `/` is the
+// home page (admin/home.js). `nav` is the short menu label; `title` heads the
+// page. A POST still sends back=/#<section>, and safeBack turns that into the
+// page the section lives on.
 const GROUPS = [
-  { id: 'now', title: 'עכשיו: מצב המערכת ותקלות', open: true },
-  { id: 'sending', title: 'הודעות: מה בתור ומה יצא' },
-  { id: 'people', title: 'אנשים: משתמשים, המתנות וזיכרון' },
-  { id: 'measure', title: 'מדידה: תוצאות, שימוש ובדיקות' },
-  { id: 'money', title: 'עלויות ותשתית' },
-  { id: 'controls', title: 'הגדרות ויומן פעילות' },
+  { id: 'now', nav: 'מצב המערכת', title: 'עכשיו: מצב המערכת ותקלות' },
+  { id: 'sending', nav: 'הודעות', title: 'הודעות: מה בתור ומה יצא' },
+  { id: 'people', nav: 'אנשים', title: 'אנשים: משתמשים, המתנות וזיכרון' },
+  { id: 'measure', nav: 'מדידה', title: 'מדידה: תוצאות, שימוש ובדיקות' },
+  { id: 'money', nav: 'עלויות', title: 'עלויות ותשתית' },
+  { id: 'controls', nav: 'הגדרות', title: 'הגדרות ויומן פעילות' },
 ];
+
+const groupPath = (groupId) => `/g/${groupId}`;
+
+// '#issues' → '/g/now#issues'; anything that is not a known section is left alone.
+function sectionHref(fragment) {
+  const s = SECTIONS.find((x) => `#${x.id}` === fragment);
+  return s ? `${groupPath(s.group)}${fragment}` : fragment;
+}
 
 // Every section names its group; a section with an unknown group would
 // silently fall off the page, so the suite checks the two lists agree.
@@ -56,4 +61,4 @@ const SECTIONS = [
   { id: 'audit', group: 'controls', title: 'יומן פעילות', hint: 'הפעולות האחרונות במערכת, לפי סדר.', render: renderAudit },
 ];
 
-module.exports = { GROUPS, SECTIONS };
+module.exports = { GROUPS, SECTIONS, groupPath, sectionHref };

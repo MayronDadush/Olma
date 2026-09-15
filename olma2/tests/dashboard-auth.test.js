@@ -58,11 +58,38 @@ test('peeking at a link does not spend it — the WhatsApp preview rule', async 
   assert.equal(used.ok, true, 'a link the crawler merely looked at was burned');
 });
 
-test('minting a new link kills the person\'s previous one', async () => {
-  const old = await newLink();
-  await newLink();
-  const r = await tx((c) => auth.redeemLink(c, old));
-  assert.equal(r.ok, false);
+// Links now go out on their own (an invite, a long list), so a new one may not
+// kill the one sent an hour earlier — but the number alive at once is still
+// bounded, and it is the OLDEST that goes.
+test('a person holds at most five live links, and a sixth retires only the oldest', async () => {
+  await db.pool.query(`DELETE FROM magic_links WHERE user_id = $1`, [me.id]);
+  const tokens = [];
+  for (let i = 0; i < auth.MAX_LIVE_LINKS + 1; i++) {
+    tokens.push(await newLink());
+    // created_at is now(), identical inside one fast loop without this
+    await db.pool.query(
+      `UPDATE magic_links SET created_at = created_at - ($2 || ' seconds')::interval
+        WHERE user_id = $1 AND used_at IS NULL`, [me.id, '1']);
+  }
+  const { rows } = await db.pool.query(
+    `SELECT count(*)::int AS n FROM magic_links WHERE user_id = $1 AND used_at IS NULL`, [me.id]);
+  assert.equal(rows[0].n, auth.MAX_LIVE_LINKS);
+  assert.equal((await tx((c) => auth.peekLink(c, tokens[0]))).ok, false, 'the oldest link survived a sixth');
+  for (const t of tokens.slice(1)) {
+    assert.equal((await tx((c) => auth.peekLink(c, t))).ok, true, 'a newer link was retired');
+  }
+});
+
+test('a link token is 22 base62 characters, and a link from before the change still opens', async () => {
+  const token = await newLink();
+  assert.match(token, /^[A-Za-z0-9]{22}$/);
+  const legacy = crypto.randomBytes(32).toString('hex');
+  await db.pool.query(
+    `INSERT INTO magic_links (token_hash, user_id, expires_at) VALUES ($1, $2, now() + interval '1 hour')`,
+    [crypto.createHash('sha256').update(legacy).digest('hex'), me.id]);
+  const r = await tx((c) => auth.redeemLink(c, legacy));
+  assert.equal(r.ok, true, 'a 64-hex link sent before the deploy stopped opening');
+  assert.equal(r.data.target, 'home');
 });
 
 test('an expired link is not_found, not an error the page can retry past', async () => {
@@ -173,7 +200,7 @@ test('purge removes what nobody can use, and leaves live rows alone', async () =
 test('the tool hands back a real URL on the configured public host', async () => {
   const r = await tx((c) => auth.createLinkUrl(c, me.id));
   assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
-  assert.match(r.data.url, /^https:\/\/[^/]+\/d\/[a-f0-9]{64}$/);
+  assert.match(r.data.url, /^https:\/\/[^/]+\/d\/[A-Za-z0-9]{22}$/);
   // The URL is the only place the raw token ever appears, and it still opens.
   const token = r.data.url.split('/').pop();
   assert.equal((await tx((c) => auth.redeemLink(c, token))).ok, true);

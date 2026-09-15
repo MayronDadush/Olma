@@ -7,7 +7,9 @@
 // mutating POST is CSRF-protected via double-submit (SameSite=Strict cookie +
 // matching form field) — Basic Auth alone is CSRF-able from any browser tab.
 const { OPENCLAW_CONFIG_PATH } = require('./admin/env');
-const { GROUPS, SECTIONS } = require('./admin/sections/index');
+const { GROUPS, SECTIONS, groupPath, sectionHref } = require('./admin/sections/index');
+const { homeMetrics, renderHome } = require('./admin/home');
+const infraCost = require('../infra-cost');
 const { publicGateway, collectAlerts, renderAlerts } = require('./admin/sections/health');
 const { FLAG_SPECS, EDITABLE_FLAGS, parseReactionForm } = require('./admin/sections/controls');
 const { renderContactsPage } = require('./admin/contacts');
@@ -457,7 +459,7 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
               // `public_base_url` FLAG rather than from anything in the
               // request — but a flag is admin-editable text, and an open
               // redirect gadget one typo away is not worth the saved line.
-              if (/^https?:\/\/[^\s/]+\/d\/[a-f0-9]{64}$/.test(made.data.url)) {
+              if (/^https?:\/\/[^\s/]+\/d\/[A-Za-z0-9]{22}$/.test(made.data.url)) {
                 openUrl = made.data.url;
               }
             }
@@ -480,6 +482,7 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
       const client = await pool.connect();
       let sectionsHtml = '';
       let healthy = true;
+      let activeNav = url.pathname === '/' ? 'home' : null;
       try {
         const hb = await client.query(`SELECT job_name, last_run_at, note FROM job_heartbeats`);
         // The header dot used to ignore the gateway, so it said "all systems
@@ -500,16 +503,32 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
             onlyOlma: url.searchParams.get('only') === 'olma',
             page: Math.max(0, parseInt(url.searchParams.get('page'), 10) || 0),
           });
+        } else if (url.pathname === '/') {
+          const alerts = (await collectAlerts(client, { hbRows: hb.rows, gateway }))
+            .map((a) => ({ ...a, href: sectionHref(a.href) }));
+          const fx = await infraCost.usdIlsRate().catch(() => null);
+          const metrics = await homeMetrics(client);
+          sectionsHtml = renderHome(metrics, {
+            alertsHtml: renderAlerts(alerts),
+            fx: fx && fx.configured && !fx.error ? fx.rate : null,
+          });
         } else {
-          const alerts = renderAlerts(await collectAlerts(client, { hbRows: hb.rows, gateway }));
-          for (const g of GROUPS) {
-            let inner = g.id === 'now' ? alerts : '';
-            for (const s of SECTIONS.filter((x) => x.group === g.id)) {
-              inner += `<section id="${s.id}"><h3>${s.title}</h3>` +
-                `<p class="hint">${s.hint}</p>${await s.render(client, csrf, cachedGateway, { configPath })}</section>`;
-            }
-            sectionsHtml += `<details class="group" id="g-${g.id}"${g.open ? ' open' : ''}><summary>${g.title}</summary>${inner}</details>`;
+          const page = /^\/g\/([a-z]+)$/.exec(url.pathname);
+          const group = page && GROUPS.find((g) => g.id === page[1]);
+          if (!group) {
+            res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+            return res.end('<p>לא נמצא. <a href="/">חזרה לבית</a></p>');
           }
+          activeNav = group.id;
+          let inner = '';
+          if (group.id === 'now') {
+            inner = renderAlerts(await collectAlerts(client, { hbRows: hb.rows, gateway }));
+          }
+          for (const s of SECTIONS.filter((x) => x.group === group.id)) {
+            inner += `<section id="${s.id}"><h3>${s.title}</h3>` +
+              `<p class="hint">${s.hint}</p>${await s.render(client, csrf, cachedGateway, { configPath })}</section>`;
+          }
+          sectionsHtml = `<div class="group-page" id="g-${group.id}"><h2 class="page-title">${group.title}</h2>${inner}</div>`;
         }
       } finally { client.release(); }
       res.writeHead(200, {
@@ -519,16 +538,18 @@ function createDashboard({ pool, adminUser, adminPass, configPath, calendarDomai
         'Cache-Control': 'no-store, must-revalidate',
         'Set-Cookie': `csrf=${csrf}; SameSite=Strict; Path=/; HttpOnly`,
       });
-      res.end(`<!doctype html><html lang="he"><head><meta charset="utf-8">
+      const navLink = (id, href, label) =>
+        `<a href="${href}"${activeNav === id ? ' class="active" aria-current="page"' : ''}>${label}</a>`;
+      res.end(`<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
-        <meta name="color-scheme" content="dark light">
+        <meta name="color-scheme" content="light dark">
         <title>עולמה — לוח בקרה</title>${STYLE}</head>
         <body><header>
           <div class="brand"><span class="dot ${healthy ? '' : 'bad'}"></span>
             <h1>עולמה — לוח בקרה</h1>
-            <span class="dim small">${healthy ? 'כל המערכות תקינות' : 'יש תקלה — ראה מצב המערכת'}</span>
+            <a class="dim small" href="${groupPath('now')}">${healthy ? 'כל המערכות תקינות' : 'יש תקלה — ראה מצב המערכת'}</a>
           </div>
-          <nav>${GROUPS.map((g) => `<a href="${url.pathname === '/' ? '' : '/'}#g-${g.id}">${g.title}</a>`).join('')}</nav>
+          <nav>${navLink('home', '/', 'בית')}${GROUPS.map((g) => navLink(g.id, groupPath(g.id), g.nav)).join('')}</nav>
         </header>
         <main>${sectionsHtml}</main></body></html>`);
     } catch (e) {

@@ -333,32 +333,27 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
 @keyframes rise{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
 
 /* ══════════════ the first visit ══════════════
-   This page is the front door, and on the very first visit it introduces
-   itself instead of arriving all at once: the one question that matters — how
-   do we talk — sits alone in the middle of the screen, and everything else
-   comes up underneath it once that has landed.
+   This page is the front door, and on the very first visit it arrives as one
+   short cascade instead of all at once: the heading, then the three doors in
+   reading order, then the cards under them, then the bar. About a second.
 
-   Three rules keep it from being the kind of intro people resent:
+   It used to be four staged beats a second apart, with the doors centred on
+   the screen and the whole page sliding home afterwards — 4.5s measured from
+   load, most of it a dark screen, and the slide read as a jump. The owner
+   called it slow and not pretty (2026-09-15), so there are no holds now and
+   nothing moves further than 16px.
 
-   · It is never a gate. Everything on screen is live from the first frame —
-     tapping a channel both answers the question AND skips ahead, because
-     someone who has already acted does not need to be introduced to what they
-     just used. Nothing waits for an animation to be allowed to work.
-   · It never runs before the page is actually there. The timers start after
-     fonts have settled and one frame has painted, so on a slow connection the
-     wait is spent loading rather than being counted down against a blank
-     screen — otherwise the first stage would finish before anything appeared
-     and the person would see the END of an animation they never watched.
-   · It happens once, and reduced-motion skips it entirely.
+   The rules that stay:
+   · It is never a gate. Nothing is inert while it plays; a tap works on the
+     first frame.
+   · It never runs before the page is there. Everything is held invisible until
+     fonts settle (or half a second, whichever comes first) and one frame has
+     painted, so a slow connection never shows the END of an animation.
+   · It happens once per session, and reduced-motion skips it entirely.
 
    The classes go on the root element, not on .app: the floating tab bar is a
-   SIBLING of .app, and stage 3 is precisely the moment it arrives.
-
-   The mechanics: the whole view is offset so the channels group lands in the
-   middle of the viewport (--introY, measured, because a hard-coded offset is
-   only correct on one screen height), and everything below stage 1 is held
-   invisible rather than removed — laying out is what makes the measurement
-   possible in the first place. */
+   SIBLING of .app. `intro` holds everything invisible; `intro-go` plays. Each
+   keyframe fills `both`, so a delayed element waits in its first frame. */
 /* `intro-settled` outlives the intro itself. Dropping `intro` hands the rise
    stagger back to a view that is already fully on screen, and it plays from the
    top — the page revealing itself a second time, immediately. So the animation
@@ -366,42 +361,23 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
    marker so every later view change animates normally. */
 html.intro .view.active > *,
 html.intro-settled .view.active > *{animation:none}
-html.intro [data-stage]{transition:opacity .4s var(--ease-easy),transform .4s var(--ease-easy)}
-html.intro .tabbar{
-  opacity:0;transform:translateY(26px);
-  transition:opacity .35s var(--ease-easy),transform .35s var(--ease-easy);
-  pointer-events:none;
-}
-/* Stage 1 — the three doors, one after another, in reading order. DOM order
-   IS reading order in both directions (the first tile is the rightmost under
-   rtl and the leftmost under ltr), so one index serves both and there is no
-   direction to special-case. A keyframe rather than a transition, because
-   this state is painted on the first frame: there is no earlier state for a
-   transition to run FROM. */
-@keyframes chanIn{from{opacity:0;transform:translateY(18px) scale(.965)}to{opacity:1;transform:none}}
-html.intro-1 .chanrow > .chan{animation:chanIn .36s var(--ease-easy) both;animation-delay:calc(var(--ci,0) * .085s)}
-/* the whole composition sits in the middle of the screen for the first two
-   beats, and moves as one thing when it finally goes home */
-html.intro-1 main,
-html.intro-2 main{transform:translateY(var(--introY,0px));transition:transform .425s var(--ease-easy)}
-html.intro-3 main,
-html.intro-4 main{transform:none;transition:transform .425s var(--ease-easy)}
-/* Stage 2 — the reminders card comes DOWN into the space under the doors. */
-html.intro-1 [data-stage="1b"]{opacity:0;transform:translateY(-18px)}
-/* Stage 3 — the block goes home and the heading arrives from above it. */
-html.intro-1 .title,
-html.intro-2 .title{opacity:0;transform:translateY(-16px)}
-html.intro .title{transition:opacity .4s var(--ease-easy),transform .4s var(--ease-easy)}
-/* Stage 4 — everything else, and the bar. */
-html.intro-1 [data-stage="2"],html.intro-1 [data-stage="3"],
-html.intro-2 [data-stage="2"],html.intro-2 [data-stage="3"],
-html.intro-3 [data-stage="2"],html.intro-3 [data-stage="3"]{opacity:0;transform:translateY(22px)}
-html.intro-4 .tabbar{opacity:1;transform:none;pointer-events:auto}
+@keyframes introUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@keyframes introBar{from{opacity:0;transform:translateY(22px) scale(.97)}to{opacity:1;transform:none}}
+html.intro:not(.intro-go) .title,
+html.intro:not(.intro-go) [data-stage],
+html.intro:not(.intro-go) .tabbar{opacity:0}
+html.intro-go .title{animation:introUp .5s var(--ease) both}
+html.intro-go [data-stage="1"] .glabel{animation:introUp .5s var(--ease) .06s both}
+/* DOM order IS reading order in both directions, so one index serves rtl and
+   ltr alike */
+html.intro-go .chanrow > .chan{animation:introUp .5s var(--ease) both;animation-delay:calc(.1s + var(--ci,0) * .055s)}
+html.intro-go [data-stage="1b"]{animation:introUp .5s var(--ease) .26s both}
+html.intro-go [data-stage="2"]{animation:introUp .5s var(--ease) .32s both}
+html.intro-go [data-stage="3"]{animation:introUp .5s var(--ease) .38s both}
+html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
 @media (prefers-reduced-motion:reduce){
-  html.intro main{transform:none;transition:none}
-  html.intro [data-stage],html.intro .title{opacity:1;transform:none;transition:none}
-  html.intro .chanrow > .chan{animation:none}
-  html.intro .tabbar{opacity:1;transform:none;pointer-events:auto}
+  html.intro .title,html.intro [data-stage],html.intro .tabbar,
+  html.intro .chanrow > .chan,html.intro .glabel{animation:none;opacity:1}
 }
 
 .title{padding:8px 2px 18px}
@@ -2602,19 +2578,22 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     </div>
     <!-- Two modes, not two pages. Reading the week and arranging something in
          it are the same subject, and the same segment control the task list
-         already uses says so. -->
+         already uses says so. Coordination comes FIRST and is where the tab
+         opens (owner, 2026-09-15): the week is on the phone's own calendar
+         already, and arranging something with other people is the part only
+         this page does. -->
     <div class="viewrow" style="--i:1">
       <div class="seg mini" id="calMode">
-        <button aria-pressed="true"  data-calmode="cal"  data-i18n="cal.modeRead"></button>
-        <button aria-pressed="false" data-calmode="meet" data-i18n="cal.modeMeet"></button>
+        <button aria-pressed="true"  data-calmode="meet" data-i18n="cal.modeMeet"></button>
+        <button aria-pressed="false" data-calmode="cal"  data-i18n="cal.modeRead"></button>
       </div>
       <!-- Starting one is the first thing you might want here, so it sits at
            the top with the control that got you to this mode — not at the far
            end of however many coordinations you already have. -->
-      <button class="addmini" id="mtNew" hidden><svg><use href="#i-plus"/></svg><span data-i18n="mt.new"></span></button>
+      <button class="addmini" id="mtNew"><svg><use href="#i-plus"/></svg><span data-i18n="mt.new"></span></button>
     </div>
 
-    <div id="calRead">
+    <div id="calRead" hidden>
       <div style="--i:2">
         <div class="group">
           <!-- A week strip that could only ever show the next seven days was
@@ -2637,13 +2616,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         <div class="group" id="agenda"></div>
       </div>
       <div style="--i:4;margin-top:20px">
-        <button class="bigbtn" data-toast="toast.calOpen">
+        <!-- This was a button that showed "opening your default calendar" and
+             opened nothing (reported 2026-09-15). A web page cannot reliably
+             reach the phone's own calendar app — the schemes are blocked in
+             WhatsApp's browser and a failure is invisible — so it opens the
+             calendar Olma actually reads, on the day on screen, and is not
+             offered at all to someone with no Google calendar connected. -->
+        <a class="bigbtn" id="calOpen" target="_blank" rel="noopener" hidden>
           <svg><use href="#i-out"/></svg><span data-i18n="cal.open"></span>
-        </button>
+        </a>
       </div>
     </div>
 
-    <div id="calMeet" hidden>
+    <div id="calMeet">
       <div style="--i:2">
         <div class="glabel"><span data-i18n="mt.open"></span><span class="hint" id="mtCount"></span></div>
         <div class="stack" id="mtList"></div>
@@ -3903,7 +3888,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
       "cal.h":"הצצה ליומן",
       "cal.p":"תצוגה בלבד. לעריכה — פתח את היומן של הטלפון בלחיצה אחת.",
-      "cal.open":"פתיחה ביומן של הטלפון","cal.empty":"אין אירועים ביום הזה.",
+      "cal.open":"פתיחה ביומן Google","cal.empty":"אין אירועים ביום הזה.",
       "cal.todayPre":"היום · ","cal.dayPrefix":"יום ",
 
       "fr.h":"חברים בעולמה",
@@ -4091,7 +4076,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.done":"המשימה הושלמה","toast.saved":"המשימה נשמרה",
       "toast.updated":"המשימה עודכנה","toast.deleted":"המשימה נמחקה",
       "toast.needTitle":"צריך שם למשימה",
-      "toast.calOpen":"נפתח ביומן ברירת המחדל של הטלפון",
       "toast.removed":"החיבור הוסר",
       "toast.avatar":"דמות חדשה","toast.paused":"עולמה מושהית","toast.resumed":"עולמה חזרה",
       "toast.pausedRefusal":"עולמה מושהית — תזכורת לא תישלח עד שתחזיר אותה",
@@ -4196,7 +4180,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
       "cal.h":"A look at your calendar",
       "cal.p":"Read-only here. To change anything, open your phone's calendar in one tap.",
-      "cal.open":"Open in your phone's calendar","cal.empty":"Nothing on this day.",
+      "cal.open":"Open in Google Calendar","cal.empty":"Nothing on this day.",
       "cal.todayPre":"Today · ","cal.dayPrefix":"",
 
       "fr.h":"Friends on Allma",
@@ -4381,7 +4365,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.done":"Task completed","toast.saved":"Task saved",
       "toast.updated":"Task updated","toast.deleted":"Task deleted",
       "toast.needTitle":"Give the task a name",
-      "toast.calOpen":"Opening your default calendar",
       "toast.removed":"Connection removed",
       "toast.avatar":"New character","toast.paused":"Allma is paused","toast.resumed":"Allma is back",
       "toast.pausedRefusal":"Allma is paused — a reminder will not go out until you bring her back",
@@ -8599,8 +8582,23 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       return (a.allDay ? "" : (a.time || "99:99")).localeCompare(b.allDay ? "" : (b.time || "99:99"));
     });
   }
+  /* Google's own day view, in the account that is connected — `authuser`
+     takes the address, so somebody signed into two Google accounts lands in
+     the one Olma reads rather than whichever is first in the browser. */
+  function syncCalOpen(){
+    var p = prov("google");
+    var sv = p && p.connected && p.svc.filter(function(x){ return x.k === "cal"; })[0];
+    var el = $("#calOpen");
+    el.hidden = !(sv && sv.on);
+    if(el.hidden) return;
+    var d = dayAt(selDay);
+    el.href = "https://calendar.google.com/calendar/r/day/" +
+      d.getFullYear() + "/" + (d.getMonth() + 1) + "/" + d.getDate() +
+      (p.account ? "?authuser=" + encodeURIComponent(p.account) : "");
+  }
   function renderStrip(sel){
     selDay = sel;
+    syncCalOpen();
     var wk0 = weekOff * 7;
     $("#daystrip").innerHTML = [0,1,2,3,4,5,6].map(function(k){
       var i = wk0 + k;
@@ -10298,6 +10296,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   var hashOpened = false;
   function openFromHash(){
     if(hashOpened) return;
+    /* #tasks is the same door onto the task list: a link Olma sent after a
+       long dump or under a long morning list, for arranging what is on it */
+    if(location.hash === "#tasks"){
+      hashOpened = true;
+      try{ history.replaceState(null, "", location.pathname + location.search); }catch(e){}
+      markIntroSeen(); introFinish();
+      go("tasks");
+      return;
+    }
     var m = /^#meeting=([1-9][0-9]{0,11})$/.exec(location.hash || "");
     if(!m) return;
     hashOpened = true;
@@ -10340,17 +10347,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   if(document.fonts && document.fonts.ready) document.fonts.ready.then(repositionPill);
 
   /* ══════════════════════════════════════════════════════════════
-     THE FIRST VISIT
-     Three stages, each ending on whichever comes first: the person doing
-     something, or three seconds. Acting always wins — the timer is the floor
-     for somebody who is just watching, never a wait imposed on somebody who
-     already knows what they want.
+     THE FIRST VISIT — one cascade, about a second (see the CSS note)
      ══════════════════════════════════════════════════════════════ */
-  /* Two seconds, not three: three was long enough that a person who had
-     already read the screen was waiting on it. Four beats now instead of
-     three, so the whole thing is a second shorter than it was AND says more. */
-  var INTRO_HOLD = 1000, INTRO_STAGES = 4;
-  var introStage = 0, introT = null, introDone = false;
+  /* the last element's delay plus its duration, with a frame to spare */
+  var INTRO_MS = 950;
+  var introT = null, introDone = false;
 
   function introSeen(){
     /* sessionStorage throws outright in some sandboxes (a data: document has
@@ -10362,79 +10363,17 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   function markIntroSeen(){
     try{ sessionStorage.setItem("olma-intro", "1"); }catch(e){}
   }
-  /* Where the channels group has to move so it sits in the middle of the
-     screen. Measured, not assumed: the same offset is wrong on every phone
-     but one, and this has to look deliberate on all of them. */
-  function introOffset(){
-    var g = $('#toolsStack [data-stage="1"]');
-    if(!g) return 0;
-    var vh = window.innerHeight || document.documentElement.clientHeight || 0;
-    /* No trustworthy viewport height means no centring — the group stays where
-       it is and the later stages still do their work. A guessed offset would
-       put the one element this stage is about somewhere arbitrary. */
-    if(vh < 320) return 0;
-    var r = g.getBoundingClientRect();
-    var want = vh / 2 - (r.top + r.height / 2);
-    /* only ever DOWNWARD: pulling the group up would slide the header off the
-       top of the screen, which reads as broken rather than as staged */
-    return Math.max(0, Math.round(want));
-  }
-  /* `arm` false paints the stage without starting its clock. Stage 1 is armed
-     that way at load: the very first frame the person sees is already the
-     staged composition, and the three seconds only begin once the page is
-     genuinely up. Without that split the page appears complete, sits there for
-     however long the fonts take, and THEN collapses into stage 1 — which on a
-     slow connection is the one thing this must never look like. */
-  function introGo(stage, arm){
-    if(introDone) return;
-    clearTimeout(introT);
-    introStage = stage;
-    var root = document.documentElement;
-    if(stage > INTRO_STAGES){ introFinish(); return; }
-    root.classList.remove("intro-1", "intro-2", "intro-3", "intro-4");
-    root.classList.add("intro", "intro-" + stage);
-    if(stage === 1) root.style.setProperty("--introY", introOffset() + "px");
-    if(arm === false) return;
-    introT = setTimeout(function(){ introGo(stage + 1); }, INTRO_HOLD);
-  }
+  /* Every animation has finished in its last frame by now, which is the
+     element's own resting style — so lifting the classes changes nothing on
+     screen. */
   function introFinish(){
     if(introDone) return;
     introDone = true;
     clearTimeout(introT);
     var root = document.documentElement;
-    /* Stay on intro-4, not off it: html.intro .tabbar hides the bar and
-       html.intro-4 .tabbar is the only rule that shows it again, so dropping
-       intro-4 here — before `intro` itself lifts below — hid the bar and then
-       popped it back a beat later. */
-    root.classList.remove("intro-1", "intro-2", "intro-3");
-    root.classList.add("intro-4");
-    /* `intro` (with it, intro-4) comes off one frame later so the last
-       transition can finish against the same rules it started under —
-       dropping it in the same tick restores the stagger animation mid-move
-       and the page jumps. */
-    requestAnimationFrame(function(){
-      setTimeout(function(){
-        root.classList.remove("intro", "intro-4");
-        root.classList.add("intro-settled");
-        root.style.removeProperty("--introY");
-      }, 350);
-    });
+    root.classList.remove("intro", "intro-go");
+    root.classList.add("intro-settled");
     markIntroSeen();
-    introUnbind();
-  }
-  /* Any real intent skips ahead. A tap that also DOES something (choosing a
-     channel, opening an account) is both an answer and a skip — it is not
-     swallowed, because the listener is on the capture phase of a separate
-     handler and never calls preventDefault. */
-  var INTRO_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart"];
-  function introNudge(){
-    if(introDone) return;
-    introGo(introStage + 1);
-  }
-  function introUnbind(){
-    INTRO_EVENTS.forEach(function(ev){
-      document.removeEventListener(ev, introNudge, {capture:true});
-    });
   }
   function startIntro(){
     if(introSeen()) return;
@@ -10442,32 +10381,40 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       markIntroSeen();
       return;
     }
-    /* stage 1 is painted NOW, unarmed — see introGo */
-    introGo(1, false);
-    INTRO_EVENTS.forEach(function(ev){
-      document.addEventListener(ev, introNudge, {capture:true, passive:true});
-    });
-    /* The clock starts when the PAGE is ready, not when the script parses.
-       document.fonts.ready is the honest signal — the layout this animation
-       measures is not final until the real face is in — and it is raced
-       against a ceiling so a font that never arrives cannot hold the intro
-       open forever. Then one frame, so the first stage is painted before its
-       three seconds begin counting. */
+    var root = document.documentElement;
+    introDone = false;
+    clearTimeout(introT);
+    root.classList.remove("intro-settled", "intro-go");
+    root.classList.add("intro");
+    /* Held until the PAGE is ready, not the script: document.fonts.ready is
+       the honest signal, raced against a short ceiling so a font that never
+       arrives cannot hold a blank page. Then one frame, so the held state has
+       painted and the cascade plays from it rather than from nothing. */
     var started = false;
     function begin(){
       if(started || introDone) return;
       started = true;
-      /* re-measure before arming: the offset taken at load was measured against
-         a layout the real font had not landed in yet */
-      requestAnimationFrame(function(){ if(introStage === 1) introGo(1); });
+      /* Two frames is the wish; a timer is the floor. A tab that paints no
+         frames (opened in the background, a hidden preview pane) never fires
+         requestAnimationFrame, and a page held invisible on that would stay
+         blank — the one outcome this must never have. */
+      var played = false;
+      function play(){
+        if(played || introDone) return;
+        played = true;
+        root.classList.add("intro-go");
+        introT = setTimeout(introFinish, INTRO_MS);
+      }
+      requestAnimationFrame(function(){ requestAnimationFrame(play); });
+      setTimeout(play, 120);
     }
     if(document.fonts && document.fonts.ready) document.fonts.ready.then(begin);
-    setTimeout(begin, 1250);
+    setTimeout(begin, 500);
   }
-  /* One or the other, never both: the three-stage intro stages the APP, and
+  /* One or the other, never both: the intro stages the APP, and
      a stranger is not being shown the app. */
   /* a deep link skips the intro entirely — see openFromHash */
-  if(/^#meeting=/.test(location.hash || "")) markIntroSeen();
+  if(/^#(meeting=|tasks$)/.test(location.hash || "")) markIntroSeen();
   if(NEWUSER) startWelcome(); else startIntro();
   /* the seed page only: on a served page the seed MEETS are placeholders and
      the real ones arrive with hydrate(), which calls this itself */
@@ -10480,11 +10427,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   });
   $("#introTog").addEventListener("click", function(){
     try{ sessionStorage.removeItem("olma-intro"); }catch(e){}
-    document.documentElement.classList.remove("intro-settled");
-    introDone = false; introStage = 0;
     go("tools");
     startIntro();
-    introGo(1);
   });
 
   /* preview only: L flips the language, standing in for the person
