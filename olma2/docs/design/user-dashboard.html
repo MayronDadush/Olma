@@ -857,14 +857,22 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
    lifted row has to be able to sit over the edge of it. */
 .taskwrap{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .dragclone{position:fixed;z-index:85;pointer-events:none;margin:0;will-change:transform}
-/* The lifted card wears the tab bar's glass, tilted a little, so "in your
-   hand" reads at a glance. On an inner element: the outer one follows the
-   finger every frame and must not carry a transition that would lag it. */
+/* The lifted card is frosted glass, tilted a little, so "in your hand" reads
+   at a glance. The sheets' panel glass, not the tab bar's: the bar's thin,
+   light lens is made to float over open space, and over a list of rows it
+   shows their text (and this row's own dimmed placeholder) as a smeared
+   double image. On an inner element: the outer one follows the finger every
+   frame and must not carry a transition that would lag it. */
 .draglift{
   border-radius:14px;
-  background:var(--bar);border:.5px solid var(--glass-line);
-  -webkit-backdrop-filter:var(--lens-bar);backdrop-filter:var(--lens-bar);
-  box-shadow:var(--shadow-l),var(--rim-soft);
+  /* halfway to solid: the row's own dimmed placeholder is always right under
+     it, and at the panel's plain alpha its text still ghosts through */
+  background:var(--glass-panel);
+  background:color-mix(in srgb, var(--glass-panel), var(--surface) 55%);
+  background-image:var(--sheen);
+  border:.5px solid var(--glass-line);
+  -webkit-backdrop-filter:var(--lens);backdrop-filter:var(--lens);
+  box-shadow:var(--shadow-l),var(--rim);
   transform:rotate(-2deg) scale(1.03);
   animation:dragLift .38s var(--squash);
 }
