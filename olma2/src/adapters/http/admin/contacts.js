@@ -13,10 +13,12 @@ const { esc } = require('../html');
 // them, and are they already with us".
 //
 // OPERATOR-ONLY, deliberately. A user's address book is private to them: no
-// agent can read another user's contacts, and domain/contacts.js#namesForPhone
-// (the same cross-user lookup) is kept out of the MCP registry for exactly
-// that reason. This page exists because the person running Olma needs to see
-// their own data, and it sits behind the dashboard's Basic Auth like the rest.
+// agent can read another user's contacts, and the cross-user lookup that used
+// to live in domain/contacts.js was deleted rather than merely kept out of the
+// MCP registry — provisioning had been naming newcomers out of it
+// (src/intake/provision.js). This page asks the same question in its own SQL
+// because the person running Olma needs to see their own data, and it sits
+// behind the dashboard's Basic Auth like the rest.
 const CONTACTS_PAGE_SIZE = 100;
 
 // One row per distinct phone, with every name given to it and whether that

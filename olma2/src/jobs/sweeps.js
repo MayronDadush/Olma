@@ -6,6 +6,7 @@ const { enqueue, collectHeld } = require('../outbox/enqueue');
 const reminders = require('../domain/reminders');
 const meetings = require('../domain/meetings');
 const meetingFanout = require('../domain/meeting-fanout');
+const groupMeetings = require('../domain/group-meetings');
 const tasks = require('../domain/tasks');
 const quota = require('../domain/quota');
 const flags = require('../domain/flags');
@@ -69,6 +70,12 @@ async function sweepReminders(client, nowIso) {
     });
     if (res.data.enqueued) {
       await reminders.recordAttempt(client, r.reminder_id, { retire: finalAttempt });
+      // The moment THEY chose has now been said. A task chases through ONE
+      // ladder — the one behind the latest reminder they asked for — so any
+      // sibling already climbing retires here (reminders.retireSiblingLadders).
+      if (attempt === 1 && !repeats) {
+        await reminders.retireSiblingLadders(client, r.owner_id, r.task_id, r.reminder_id, new Date(now));
+      }
       // Spawn the next occurrence. The rule vocabulary lives in one place —
       // this used to compare against the literals 'daily'/'weekly' while the
       // model was storing 'FREQ=DAILY', so every repeating reminder silently
@@ -120,10 +127,16 @@ async function sweepDigests(client, now = new Date()) {
       WHERE u.status = 'active' AND u.onboarded_at IS NOT NULL AND u.digest_times IS NOT NULL
         AND u.paused_at IS NULL AND NOT u.is_eval`
   );
-  // Read once for the whole sweep, not per user: it is one operator setting,
-  // and a flag that changed mid-loop would give two users different mornings
-  // for no reason anyone could later explain.
-  const cardMinItems = Number(await flags.getFlag(client, 'digest_card_min_items'));
+  // `digest_card_min_items` used to be read here and stamped onto every row,
+  // so that an in-flight digest could not change threshold underneath itself.
+  // It is read by get_my_digest instead now, and by nothing else. One reader:
+  // stamping it here left the delivery instruction quoting one number while the
+  // tool applied another, which is how a turn was told a card replaces the
+  // block and then handed the block to send as well (2026-09-10, Miron's
+  // evening at 18:01 and again at 18:02). An operator moving the flag while a
+  // digest sits in the queue now reaches that digest — a smaller price than two
+  // readers of one threshold, and the reason is written down rather than
+  // rediscovered.
   const out = [];
   for (const u of rows) {
     const localMin = minutesInTz(u.timezone, now);
@@ -154,7 +167,7 @@ async function sweepDigests(client, now = new Date()) {
       || (u.last_inbound_at && new Date(u.last_inbound_at) > new Date(u.last_digest_at));
     const res = await enqueue(client, {
       userId: u.id, kind: 'digest',
-      payload: { scope: u.digest_scope || 'summary', cardMinItems, folded: [], mayAsk: Boolean(mayAsk) },
+      payload: { scope: u.digest_scope || 'summary', folded: [], mayAsk: Boolean(mayAsk) },
       idempotencyKey: `digest:${u.id}:${day}:${slot}`,
     });
     if (!res.data.enqueued) continue;
@@ -225,6 +238,13 @@ async function sweepStaleMeetings(client, nowMs) {
 // inside the minute costs a row in this sweep and no message at all. There is
 // no actor — this is the system agreeing with itself — so every participant
 // gets an outbox row, including the person whose yes started the clock.
+// ---- paused room members who never answered -------------------------------
+// The day-later half of a paused person's one coordination message; the rule
+// and the reasons live in domain/group-meetings.js, where the exit is.
+async function sweepSilentPausedMembers(client, nowMs) {
+  return groupMeetings.sweepSilentPausedMembers(client, nowMs || Date.now());
+}
+
 async function sweepSettlingMeetings(client) {
   const settled = await meetings.options.settleDue(client);
   const out = [];
@@ -420,5 +440,6 @@ async function sweepFinishedTasks(client, nowIso) {
 
 module.exports = {
   sweepReminders, sweepDigests, sweepUnblocks, sweepStaleMeetings, sweepSettlingMeetings,
+  sweepSilentPausedMembers,
   sweepMediaJobs, sweepNameConfirm, sweepFinishedTasks,
 };

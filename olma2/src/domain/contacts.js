@@ -296,16 +296,8 @@ async function importContacts(client, userId, entries, source) {
 // name a DIFFERENT user gave them would leak who has whom in their address
 // book, which is exactly the cross-user privacy line contacts.js exists to
 // hold.
-async function namesForPhone(client, phone) {
-  const { rows } = await client.query(
-    `SELECT user_id, display_name, source FROM user_contacts WHERE phone = $1 ORDER BY user_id`,
-    [phone]
-  );
-  return rows.map((r) => ({ userId: Number(r.user_id), displayName: r.display_name, source: r.source }));
-}
-
 module.exports = {
   saveContact, listContacts, resolveContact, forgetContact, countContacts,
-  importContacts, namesForPhone,
+  importContacts,
   normalisePhone, KNOWN_SOURCES, IMPORT_SOURCES,
 };

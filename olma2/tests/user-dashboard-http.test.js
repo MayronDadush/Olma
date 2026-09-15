@@ -213,7 +213,7 @@ test('the payload carries every field the page reads out of it', async () => {
   const cookie = await signIn();
   const { data } = await (await get('/me/data', { headers: { cookie } })).json();
 
-  for (const k of ['id', 'firstName', 'timezone', 'timezoneConfirmed', 'paused']) {
+  for (const k of ['id', 'firstName', 'timezone', 'timezoneConfirmed', 'paused', 'nestTipSeen']) {
     assert.ok(k in data.user, `user.${k} is gone — the page reads it`);
   }
   const shared = data.tasks.find((t) => t.who.length);
@@ -230,6 +230,23 @@ test('the payload carries every field the page reads out of it', async () => {
   for (const k of ['provider', 'connected', 'needsReauth', 'access', 'account']) {
     assert.ok(k in (data.integrations[0] || { [k]: null }), `integration.${k} is gone`);
   }
+});
+
+// Every action the page can send is one the server answers. A name in the
+// page's ACT map that the write layer does not have is refused as 'unknown
+// action' — a gesture that repaints on screen and lands nowhere — and until
+// 2026-09-14 nothing compared the two lists.
+test('every action the page sends is an action the server has', async () => {
+  const write = require('../src/domain/user-dashboard-write');
+  const cookie = await signIn();
+  const html = await (await get('/me', { headers: { cookie } })).text();
+  const m = html.match(/var ACT = \{([\s\S]*?)\};/);
+  assert.ok(m, 'the ACT map has moved — this test is reading the wrong thing');
+  const sent = [...m[1].matchAll(/(\w+):"(\w+)"/g)].map((x) => x[2]);
+  assert.ok(sent.length > 20, `only ${sent.length} actions parsed`);
+  const missing = sent.filter((a) => !write.ACTIONS.includes(a));
+  assert.deepEqual(missing, [], 'the page sends actions the server does not have');
+  for (const a of ['setTaskOrder', 'nestTask', 'unnestTask']) assert.ok(sent.includes(a), `${a} is not wired`);
 });
 
 test('the served page really is the one that knows how to hydrate', async () => {
@@ -265,27 +282,71 @@ test('a served page is stamped, so the preview scaffolding never reaches anybody
     'the language shortcut is not gated, so a stray L retranslates a real list');
 });
 
-// Groups were designed and never built: the /me payload carries no groups,
-// user-dashboard-write.js has no group action, and the ACT map has no entry.
-// So on a served page the three seeded lists are somebody else's example and
-// a group made there is forgotten on reload. They ride the SAME stamp as the
-// preview buttons rather than a hidden=true after hydrate(), because hiding
-// from script shows them for as long as the server takes to answer.
-test('a served page shows no groups, because nothing on the server keeps one', async () => {
+// The groups section was designed and hidden whole, because nothing on the
+// server kept a group and one made on this page was forgotten on reload. Since
+// 2026-09-09 half of that is no longer true: the WhatsApp rooms Olma sits in
+// arrive in the /me payload as groups that are already made. So the two halves
+// part company — the LIST can show, the BUTTON still cannot, because a
+// WhatsApp room is not something this page can create.
+//
+// The list stays hidden in CSS until `hydrate` puts `.live` on it. That is the
+// half a `hidden = true` set after the fetch would get wrong: the three seeded
+// design groups are in the markup, so hiding them from script shows a real
+// person somebody else's example lists for as long as the server takes to
+// answer.
+test('a served page hides the groups it cannot keep, and shows the rooms it can', async () => {
   const cookie = await signIn();
   const html = await (await get('/me', { headers: { cookie } })).text();
-  assert.ok(html.includes('html[data-served] .groupsblock'),
-    'nothing hides the groups section on a served page');
-  // The rule is worthless if it names a class the markup stopped carrying, so
-  // check both ends: the list and the button that makes one.
-  assert.match(html, /<div style="--i:2" class="groupsblock">/,
-    'the groups section no longer carries the class the rule hides');
-  assert.match(html, /id="addGroup"/, 'the add-group button vanished from the page entirely');
+  // The button that makes one is still gone on a served page, both ends checked
+  // — the rule is worthless if it names a class the markup stopped carrying.
+  assert.ok(html.includes('html[data-served] button.groupsblock'),
+    'a served page still offers to make a group it cannot keep');
   assert.match(html, /class="addmini ghost groupsblock" id="addGroup"/,
-    'the add-group button is not covered by the rule, so a served page still offers to make one');
+    'the add-group button is not covered by the rule that hides it');
+  // The list is hidden by the same stamp and re-shown only by hydrate, so the
+  // seeded examples never reach a real person's screen.
+  assert.ok(html.includes('html[data-served] .groupsblock:not(button){display:none}'),
+    'the seeded design groups are visible on a served page before the fetch answers');
+  assert.ok(html.includes('html[data-served] .groupsblock.live{display:block}'),
+    'nothing can ever show the list again, so real rooms would never appear');
+  assert.match(html, /<div style="--i:2" class="groupsblock">/,
+    'the groups section no longer carries the class both rules name');
+  assert.match(html, /classList\.toggle\("live", GROUPS\.length > 0\)/,
+    'hydrate no longer turns the list on, so the rooms arrive and stay hidden');
   // And the seed is still there for the design copy — this hides it, it does
   // not delete the work.
   assert.ok(html.includes('\u05e4\u05d5\u05e7\u05e8'), 'the seeded groups were deleted rather than hidden');
+});
+
+// Two of the three permission rows on a connected person carry a "+", and each
+// one opens the thing its own switch is for with that person already on it.
+// The rule the pair has to keep is that the button never outlives the grant
+// beside it: both end at a domain call that asks `requireFeatureBetween` for
+// exactly the feature the switch holds (`sharing`, `meetings`), so a "+" on a
+// row that is switched off would be an offer the server refuses. Checked on
+// the SERVED page rather than the file on disk, because this is the copy a
+// person actually presses.
+test('a permission that has a screen behind it offers to open it, and only while granted', async () => {
+  const cookie = await signIn();
+  const html = await (await get('/me', { headers: { cookie } })).text();
+  // Both rows, and only these two — `msg` is something you ask her for in
+  // words, and there is no screen to send anyone to.
+  assert.match(html, /tasks:\{attr:"newshared", label:"fr\.newTask"\}/,
+    'the shared-task "+" is no longer declared on the tasks row');
+  assert.match(html, /meet: \{attr:"newmeet",\s+label:"fr\.newMeet"\}/,
+    'the coordination "+" is no longer declared on the meet row');
+  assert.ok(!/msg:\s*\{attr:/.test(html), 'the message row grew a "+" with nothing behind it');
+  // Rendered hidden unless the grant is on, and revealed by the same switch.
+  assert.ok(html.includes('(f.p[k] ? "" : " hidden")'),
+    'the "+" no longer follows the grant on its own row');
+  assert.ok(html.includes('if(pact) refreshPermAction(pact.attr, f.id, on);'),
+    'flipping a permission no longer opens or shuts the button beside it');
+  // And what the coordination one does: the other screen, in the mode that
+  // owns coordinations, with the person already picked and nothing started.
+  assert.ok(html.includes('startMeetingWith(+nm.dataset.newmeet)'),
+    'nothing handles a press on the coordination "+"');
+  assert.match(html, /go\("cal"\);\s*\n\s*setCalMode\("meet"\);\s*\n\s*openMtNew\(\[fid\]\);/,
+    'the coordination "+" no longer lands on the meetings screen with that person on it');
 });
 
 // The page draws in whatever `data-locale` the root element carries and falls

@@ -54,6 +54,84 @@ async function checkParent(client, ownerId, parentId) {
   return ok({ parent: rows[0] });
 }
 
+// ── One task dropped onto another ────────────────────────────────────────────
+// The dashboard's drag: dropping a task onto another makes it an item on that
+// task's checklist, which is the same `parent_id` nesting the agent's split
+// path writes — so an item made this way is ticked, counted and drained by
+// exactly the code that already handles one.
+//
+// Refused by NAME, because the page has something different to say for each,
+// and the page greys the same cases out before the drop so a refusal here is
+// the rule rather than the usual path:
+//
+//  - `self`     — a task cannot hold itself;
+//  - `is_item`  — it is already an item somewhere (one level of nesting);
+//  - `has_date` — a task with a date is a moment, and an item has none: the
+//                 row would keep a due_at the list never shows and its
+//                 reminder would still fire for a line inside a checklist;
+//  - `is_list`  — it has items of its own, and one level means one level;
+//  - `shared`   — somebody else has it on THEIR list, and making it an item
+//                 would take it off theirs without them doing anything.
+//
+// The parent goes through checkParent, so "not yours" and "is itself an item"
+// mean the same thing here as on add_task.
+async function nestTask(client, ownerId, taskId, parentId) {
+  const id = Number(taskId), pid = Number(parentId);
+  if (!Number.isSafeInteger(id) || id <= 0 || !Number.isSafeInteger(pid) || pid <= 0) {
+    return err('invalid', 'taskId and parentId required');
+  }
+  if (id === pid) return err('invalid', 'a task cannot be an item of itself', { reason: 'self' });
+  const parent = await checkParent(client, ownerId, pid);
+  if (!parent.ok) return parent;
+  const { rows } = await client.query(
+    `SELECT t.id, t.parent_id, t.due_at, t.status,
+            EXISTS (SELECT 1 FROM tasks c WHERE c.parent_id = t.id AND c.archived_at IS NULL) AS has_items,
+            EXISTS (SELECT 1 FROM shares s WHERE s.task_id = t.id
+                     AND s.status IN ('pending_viewer','pending_owner','active')) AS shared
+     FROM tasks t WHERE t.id = $1 AND t.owner_id = $2 AND t.archived_at IS NULL`,
+    [id, ownerId]
+  );
+  const child = rows[0];
+  if (!child || child.status !== 'open') return err('not_found', 'task not found');
+  if (child.parent_id) return err('invalid', 'only one level of nesting', { reason: 'is_item' });
+  if (child.due_at) return err('invalid', 'a task with a date cannot become an item', { reason: 'has_date' });
+  if (child.has_items) return err('invalid', 'a list cannot become an item', { reason: 'is_list' });
+  if (child.shared) return err('invalid', 'a shared task cannot become an item', { reason: 'shared' });
+  // Its own category stands; only a task that had none takes the list's —
+  // the same precedence pickCategory gives a subtask at creation, and marked
+  // as a guess for the same reason.
+  const cat = parent.data.parent.category || null;
+  const { rows: upd } = await client.query(
+    `UPDATE tasks
+        SET parent_id = $3,
+            category_auto = CASE WHEN category IS NULL AND $4::text IS NOT NULL THEN true ELSE category_auto END,
+            category = COALESCE(category, $4::text)
+      WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL AND parent_id IS NULL
+      RETURNING *`,
+    [id, ownerId, pid, cat]
+  );
+  if (!upd[0]) return err('not_found', 'task not found');
+  await audit.record(client, ownerId, 'task.nested', { taskId: id, parentId: pid });
+  return ok({ task: upd[0], parentId: pid });
+}
+
+// The way back: the item is a task on its own again. Its category is left as
+// it is — it may have been inherited, but it is a sensible category either way
+// and silently clearing it would be a second change nobody asked for.
+async function unnestTask(client, ownerId, taskId) {
+  const id = Number(taskId);
+  if (!Number.isSafeInteger(id) || id <= 0) return err('invalid', 'taskId required');
+  const { rows } = await client.query(
+    `UPDATE tasks SET parent_id = NULL
+      WHERE id = $1 AND owner_id = $2 AND parent_id IS NOT NULL AND archived_at IS NULL
+      RETURNING *`,
+    [id, ownerId]
+  );
+  if (!rows[0]) return err('not_found', 'item not found');
+  await audit.record(client, ownerId, 'task.unnested', { taskId: id });
+  return ok({ task: rows[0] });
+}
+
 // An end without a start is not a range, and an end before its start is not a
 // time. Both are refused rather than stored: a half-written range would draw
 // on the day view as a block with no top edge, and the calendar event built
@@ -93,6 +171,76 @@ const cleanLocation = (v) => {
   return s ? s.slice(0, 200) : null;
 };
 
+// ── The same thing, saved twice ──────────────────────────────────────────────
+// Nothing checked whether a task was already on the list. Four writers — the
+// live `add_task`, a brain dump, a breakdown's subtasks, and the nightly
+// extraction pass — each relied on the model not repeating itself, and the
+// model repeats itself. Measured on production 2026-09-08: 21 pairs sharing a
+// title, across three people. Sixteen of them were written by fact-extraction,
+// 7 to 83 minutes after the live tool had already captured the same sentence
+// from the same conversation — including Maya's "להתקשר למכבי פיזיותרפיה",
+// saved at 10:20 with its date and again at 11:08 without one.
+//
+// The prompt already asks for this ("Their open list — do not save anything
+// already on it, in any wording") and hands over the list to check against.
+// Maya had 13 open tasks against a cap of 40, so the row WAS in front of the
+// model; an instruction is not an enforcement, and this is the layer that can
+// actually refuse.
+//
+// OPEN, not a time window, and the window was the first thing tried. In all 21
+// pairs the first task was still open and unarchived when the second was
+// written, so "already open" catches every one — and it lets through the case
+// a window would have to guess at: ביטוח נסיעות, ticked off on the 8th and set
+// again the same evening for a new trip, which is a person doing a thing twice.
+//
+// Same due date is NOT part of the test, and that was measured too: eleven of
+// the twenty-one duplicates carry a DIFFERENT date from the row they copy, and
+// almost always none at all, because the extraction pass is told never to
+// invent a date it was not given. Requiring the dates to match would have
+// missed half of them, Maya's two included.
+//
+// What it also refuses, and this is the real cost: four re-mentions of a task
+// still sitting open — 19, 20, 39 and 265 hours later. Two of those read as
+// duplicates that were merely slow; the other two ("ללכת לשתות מים", "לסדר את
+// הבית") are somebody saying a standing chore out loud again. They now hear
+// that it is already on the list instead of getting a second identical row,
+// which is the better of the two answers: nothing is lost, because the refusal
+// carries the id of the row they already have and says what to do with it.
+//
+// Exact title after case and whitespace, and deliberately no fuzzy matching.
+// Every one of the 21 was character-identical; "לדבר עם תום" against "לדבר עם
+// תום על רכש ציוד" is a judgement about two sentences, and the file that makes
+// those (shopping-list.js) is a hundred lines of narrowing for one of them.
+const normaliseTitle = (t) => String(t == null ? '' : t).trim().toLowerCase().replace(/\s+/g, ' ');
+
+// The open list as a title → row map, for the bulk path which has to check
+// many titles and to notice a dump that repeats itself inside one call (Yahav,
+// 2026-09-07: the same line twice in one `add_tasks_bulk`, no gap at all).
+async function openTitles(client, ownerId) {
+  const { rows } = await client.query(
+    `SELECT id, title FROM tasks
+      WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL`,
+    [ownerId]
+  );
+  return new Map(rows.map((r) => [normaliseTitle(r.title), r]));
+}
+
+// `reason` is what the personal dashboard branches on — it shows a toast per
+// reason and otherwise reloads in silence, so without one a person typing a
+// task they already have would watch the row simply not appear.
+//
+// A refusal, not a quiet skip, and it has to be an ERROR rather than an ok
+// carrying the row they already had. `reactions.TOOL_MARKS` puts 👍 on the
+// person's message whenever `add_task` returns ok, and a 👍 for something that
+// was never saved is the exact fault this project keeps writing down: an
+// action asserted that nothing performed. A failed call earns no mark, so the
+// model has to say what happened — and the message here tells it what to say.
+const duplicateError = (existing) => err('conflict',
+  `"${existing.title}" is already open on their list (task #${existing.id}) — nothing was saved. `
+  + 'Do not add it again and do not say you did; tell them it is already there, and if they meant '
+  + 'to change something about it use edit_task or set_task_reminder on that id.',
+  { reason: 'duplicate', existingTaskId: Number(existing.id) });
+
 async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, location, parentId, source, remindAt, now }) {
   if (!title || !title.trim()) return err('invalid', 'title required');
   if (dueAt && !hasOffset(dueAt)) return badTime('due_at', dueAt);
@@ -115,6 +263,12 @@ async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, 
     const list = await shopping.absorb(client, ownerId, { title, dueAt, source });
     if (list) return list;
   }
+  // After the shopping branch, which does its own dedupe against the items
+  // already on the run, and before anything is written or armed: a duplicate
+  // must not reach autoAttach either, or the second copy quietly arms a second
+  // reminder for the same thing.
+  const already = (await openTitles(client, ownerId)).get(normaliseTitle(title));
+  if (already) return duplicateError(already);
   const cat = pickCategory({ category, title, parent });
   const { rows } = await client.query(
     `INSERT INTO tasks (owner_id, title, category, category_auto, due_at, ends_at, kind, location, parent_id, source)
@@ -280,6 +434,23 @@ async function editTask(client, ownerId, taskId, patch = {}) {
   );
   if (!rows[0]) return err('not_found', 'task not found');
   await audit.record(client, ownerId, 'task.edited', { taskId: rows[0].id, changed });
+  // Miron, 2026-09-12: a bare task given its FIRST due_at through edit_task
+  // (rather than add_task, which has always auto-attached) armed nothing at
+  // all, silently — the tool description promises "arms a reminder
+  // automatically an hour before" and only add_task and snooze_task ever
+  // kept that promise. attachAutoReminder is already idempotent (it refuses
+  // to stack on a task that already has a live one, whoever set it), so this
+  // is safe to call unconditionally whenever due_at was part of the patch —
+  // clearing it (`patch.dueAt` falsy) or moving it earlier than `now` both
+  // resolve to autoReminderAt's own null, same as it always has for add_task.
+  if (has('dueAt') && patch.dueAt) {
+    const { rows: uz } = await client.query(`SELECT timezone FROM users WHERE id = $1`, [ownerId]);
+    const tz = (uz[0] && uz[0].timezone) || 'UTC';
+    const armed = await reminders.attachAutoReminder(client, ownerId, rows[0], tz);
+    if (armed) {
+      return ok({ task: rows[0], reminders: [armed], remindersAt: await localLabels(client, ownerId, [armed]) });
+    }
+  }
   return ok({ task: rows[0] });
 }
 
@@ -302,12 +473,21 @@ async function addTasksBulk(client, ownerId, items, { parentId, source, now } = 
     parent = check.data.parent;
   }
   const rowSource = source || (parentId ? 'breakdown' : 'brain_dump');
+  // Checked once for the whole call and grown as we go, so a dump repeating
+  // itself is caught alongside one repeating what is already on the list. The
+  // parent is in this map too when it is open, which is what stops a breakdown
+  // filing a subtask under its own title — Maya's "סדר בבית", saved as a
+  // project and then again as one of its own parts fourteen seconds later.
+  const open = await openTitles(client, ownerId);
+  const skipped = [];
   const created = [];
   for (const item of items) {
     if (!item || !item.title || !item.title.trim()) return err('invalid', 'every item needs a title');
     if (item.dueAt && !hasOffset(item.dueAt)) return badTime(`due_at for "${item.title.trim().slice(0, 40)}"`, item.dueAt);
     const bad = checkRange(item.dueAt, item.endsAt, `"${item.title.trim().slice(0, 40)}"`);
     if (bad) return bad;
+    const key = normaliseTitle(item.title);
+    if (open.has(key)) { skipped.push(item.title.trim()); continue; }
     const cat = pickCategory({ category: item.category, title: item.title, parent });
     const { rows } = await client.query(
       `INSERT INTO tasks (owner_id, title, category, category_auto, due_at, ends_at, kind, location, parent_id, source)
@@ -317,12 +497,19 @@ async function addTasksBulk(client, ownerId, items, { parentId, source, now } = 
         cleanLocation(item.location), parentId || null, rowSource]
     );
     created.push(rows[0]);
+    open.set(key, rows[0]);
   }
+  // A dump in which EVERY line was already on the list saved nothing, so it is
+  // the same refusal `add_task` makes — for the same reason, which is the 👍
+  // that an ok would earn. A dump that saved something is an ok, and the part
+  // it declined rides the result rather than vanishing (CLAUDE.md: no silent
+  // caps — a cap nobody is told about reads as "everything was covered").
+  if (!created.length) return duplicateError(open.get(normaliseTitle(skipped[0])));
   await audit.record(client, ownerId, 'task.bulk_created', {
-    count: created.length, parentId: parentId || null,
+    count: created.length, parentId: parentId || null, duplicates: skipped.length,
   });
   const auto = await autoAttach(client, ownerId, created, now);
-  return ok({ tasks: created, ...auto });
+  return ok({ tasks: created, ...auto, ...(skipped.length ? { duplicatesSkipped: skipped } : {}) });
 }
 
 // The list carries each task's PENDING reminders, in the person's own clock.
@@ -625,5 +812,5 @@ async function projectOverview(client, ownerId, projectId) {
 module.exports = {
   MAX_BULK, addTask, addTasksBulk, editTask, listTasks, completeTask,
   snoozeTask, archiveTask, unarchiveTask, projectOverview,
-  completeParentIfDrained, joinsTwoAsks,
+  completeParentIfDrained, joinsTwoAsks, normaliseTitle, nestTask, unnestTask,
 };

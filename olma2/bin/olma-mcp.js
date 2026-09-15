@@ -56,15 +56,25 @@ let sockConn = null;
 let nextId = 1;
 const pending = new Map();
 
+// Drops the socket so the NEXT call dials a fresh one, and fails everything
+// still waiting on this one. Guarded by identity: a dying socket must never
+// clear a replacement that a later call has already opened.
+function dropSocket(sock, err) {
+  if (sockConn === sock) sockConn = null;
+  for (const [, p] of pending) p.reject(err);
+  pending.clear();
+}
+
 function connectBroker() {
   if (sockConn) return sockConn;
   sockConn = net.connect(SOCK);
+  const sock = sockConn;
   let buf = '';
   sockConn.on('data', (chunk) => {
     buf += chunk.toString('utf8');
     if (buf.length > 8 * 1024 * 1024) { // a broker that never sends \n must not eat memory
       buf = '';
-      sockConn.destroy(new Error('oversized broker response'));
+      sock.destroy(new Error('oversized broker response'));
       return;
     }
     let idx;
@@ -78,11 +88,26 @@ function connectBroker() {
       } catch { /* ignore unparseable broker line */ }
     }
   });
-  sockConn.on('error', (e) => {
-    for (const [, p] of pending) p.reject(e);
-    pending.clear();
-    sockConn = null;
-  });
+  sockConn.on('error', (e) => dropSocket(sock, e));
+  // A brokerd that goes away CLEANLY — systemd stopping it for a deploy, the
+  // process exiting — never produces an 'error'. The peer sends FIN, node
+  // ends this side too, 'end' and 'close' fire, and that was the whole of
+  // what the shim used to hear: nothing. `sockConn` stayed set and pointed at
+  // a destroyed socket, and `write()` on one of those neither throws nor
+  // emits — it returns true and the bytes go nowhere. So every later call sat
+  // out the full CALL_TIMEOUT_MS and answered "assistant backend not
+  // reachable (brokerd timeout)", for the life of the shim process rather
+  // than once. On 2026-09-11 a deploy restarted brokerd mid-conversation and
+  // Yehav's eleven snooze_task calls failed 30 seconds apart, five and a half
+  // minutes, while brokerd had been answering again one second after it
+  // stopped (`incidents.md`, "The socket that was never closed").
+  //
+  // Both events, because half-open is reachable: 'end' is the peer's FIN, and
+  // with allowHalfOpen false (the default) 'close' follows — but a socket
+  // destroyed from this side emits only 'close'. Dropping twice is harmless;
+  // the second call finds `pending` empty and `sockConn` already replaced.
+  sockConn.on('end', () => dropSocket(sock, new Error('brokerd closed the connection')));
+  sockConn.on('close', () => dropSocket(sock, new Error('brokerd connection closed')));
   return sockConn;
 }
 

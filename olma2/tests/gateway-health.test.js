@@ -10,7 +10,8 @@ const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { checkGateway, DEFAULT_PORT } = require('../src/adapters/gateway-health');
+const gatewayHealth = require('../src/adapters/gateway-health');
+const { checkGateway, DEFAULT_PORT } = gatewayHealth;
 
 function tmpConfig(cfg) {
   const p = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'olma-gwh-')), 'openclaw.json');
@@ -109,4 +110,85 @@ test('a config with no gateway port falls back to the default and still observes
   const out = await checkGateway({ configPath: tmpConfig({}), timeoutMs: 500 });
   assert.equal(out.port, DEFAULT_PORT);
   assert.notEqual(out.status, 'unknown', 'we knew where to look, so whatever we saw is an observation');
+});
+
+// ---- checkChannels ---------------------------------------------------------
+// The detector that did not exist on 2026-09-11, when the WhatsApp channel was
+// dead from 06:07 to 12:05 and every check in the system read green.
+//
+// The payload shapes below are the LIVE gateway's, copied from
+// `openclaw gateway call channels.status` on the box — a reader tested against
+// a hand-invented shape proves only that it can read what its author imagined.
+const live = {
+  ts: 1789124249744,
+  channels: {
+    whatsapp: {
+      configured: true, statusState: 'linked', linked: true, running: true,
+      connected: true, reconnectAttempts: 0, lastDisconnect: null,
+      self: { e164: '+972559347282' },
+    },
+  },
+};
+const dead = {
+  channels: {
+    whatsapp: { configured: true, linked: true, running: true, connected: false, reconnectAttempts: 6 },
+  },
+};
+
+test('a connected channel is live', async () => {
+  const r = await gatewayHealth.checkChannels({ rpc: async () => live });
+  assert.equal(r.status, 'live');
+  assert.equal(r.channels.length, 1);
+  assert.equal(r.channels[0].down, false);
+});
+
+test('a disconnected channel is down, and the detail names it and how hard it has tried', async () => {
+  const r = await gatewayHealth.checkChannels({ rpc: async () => dead });
+  assert.equal(r.status, 'down');
+  assert.match(r.detail, /whatsapp/);
+  assert.match(r.detail, /connected = false/);
+  assert.match(r.detail, /6 reconnect attempts/);
+});
+
+test('any one of linked/running/connected false is enough', async () => {
+  for (const key of ['linked', 'running', 'connected']) {
+    const payload = { channels: { whatsapp: { configured: true, linked: true, running: true, connected: true, [key]: false } } };
+    const r = await gatewayHealth.checkChannels({ rpc: async () => payload });
+    assert.equal(r.status, 'down', `${key} = false must count`);
+    assert.match(r.detail, new RegExp(key));
+  }
+});
+
+// Everything here feeds a gateway RESTART, so every reading that is not an
+// explicit "the gateway says this channel is broken" has to be `unknown`.
+// "Could not tell" triggering a restart is the detector becoming the hazard.
+test('anything short of the gateway saying so is unknown, never down', async () => {
+  const cases = [
+    ['rpc throws', async () => { throw new Error('gateway rpc is switched off'); }, /switched off/],
+    ['no channels key', async () => ({ ts: 1 }), /without a channel list/],
+    ['channels not an object', async () => ({ channels: 'whatsapp' }), /without a channel list/],
+    ['nothing configured', async () => ({ channels: { whatsapp: { configured: false, connected: false } } }), /no channel is configured/],
+    ['empty', async () => ({ channels: {} }), /no channel is configured/],
+  ];
+  for (const [label, rpc, detail] of cases) {
+    const r = await gatewayHealth.checkChannels({ rpc });
+    assert.equal(r.status, 'unknown', label);
+    assert.match(r.detail, detail, label);
+  }
+});
+
+// A field the gateway stopped sending must not read as a fault. Only an
+// explicit `false` does — `undefined` is a version skew, not an outage.
+test('missing fields are not a fault', async () => {
+  const r = await gatewayHealth.checkChannels({ rpc: async () => ({ channels: { whatsapp: { configured: true } } }) });
+  assert.equal(r.status, 'live');
+});
+
+test('one dead channel among healthy ones is still down', async () => {
+  const r = await gatewayHealth.checkChannels({
+    rpc: async () => ({ channels: { whatsapp: { configured: true, connected: true }, telegram: { configured: true, connected: false } } }),
+  });
+  assert.equal(r.status, 'down');
+  assert.match(r.detail, /telegram/);
+  assert.ok(!/whatsapp/.test(r.detail));
 });

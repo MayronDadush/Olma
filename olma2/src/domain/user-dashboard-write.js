@@ -25,6 +25,8 @@ const { ok, err } = require('./results');
 const tasks = require('./tasks');
 const reminders = require('./reminders');
 const shares = require('./shares');
+const taskPins = require('./task-pins');
+const taskOrder = require('./task-order');
 const grants = require('./grants');
 const users = require('./users');
 const pause = require('./pause');
@@ -42,6 +44,10 @@ const googleContacts = require('./google-contacts');
 const mail = require('./mail');
 const googleConnect = require('./google-connect');
 const { SOURCE_CAPS } = require('./user-dashboard');
+const preferences = require('./preferences');
+const digest = require('./digest');
+const facts = require('./facts');
+const factPrompts = require('./fact-prompts');
 
 // What a task's origin system can actually hold, for the fields this page can
 // edit. Mirrors the map the page draws its locks from — the page must not be
@@ -235,6 +241,46 @@ const ACTIONS = {
     return shares.respondToShare(client, userId, p.shareId, p.decision);
   },
 
+  // Where a shared task sits on THIS person's list. Not refused while paused:
+  // it changes nothing Olma will send.
+  async setTaskPin(client, userId, p) {
+    return taskPins.setPinned(client, userId, p.taskId, p.pinned);
+  },
+
+  // Where they dragged things to: the whole visible order, sent after a drop.
+  // Not refused while paused, for the same reason as the pin — it changes
+  // nothing Olma will send.
+  async setTaskOrder(client, userId, p) {
+    return taskOrder.setOrder(client, userId, p.taskIds);
+  },
+
+  // A task dropped onto another becomes an item on its list. An imported task
+  // on either side is refused here rather than in tasks.nestTask, because the
+  // source map lives next door and the rule is the one editTask holds: a
+  // change the next sync would erase is not a change.
+  async nestTask(client, userId, p) {
+    for (const id of [p.taskId, p.parentId]) {
+      const origin = await taskOrigin(client, userId, id);
+      if (origin && Object.hasOwn(SOURCE_CAPS, origin.source)) {
+        return err('forbidden', `a ${origin.source} task cannot be nested here`,
+          { reason: 'imported', source: origin.source });
+      }
+    }
+    const res = await tasks.nestTask(client, userId, p.taskId, p.parentId);
+    if (!res.ok) return res;
+    // The notice that explains this is shown once, ever, on whichever device
+    // they did it from — so the stamp is on the person, and COALESCE keeps the
+    // first moment rather than the latest.
+    await client.query(
+      `UPDATE users SET nest_tip_seen_at = COALESCE(nest_tip_seen_at, now()) WHERE id = $1`, [userId]);
+    return ok({ ...res.data, tipSeen: true });
+  },
+
+  // The way back, from the first-time notice or from the toast.
+  async unnestTask(client, userId, p) {
+    return tasks.unnestTask(client, userId, p.taskId);
+  },
+
   // ---- friends -------------------------------------------------------------
   // Asking somebody to connect. The same call the agent makes, including the
   // part that is easy to forget: requestConnection writes the row, and
@@ -370,18 +416,23 @@ const ACTIONS = {
     return meetingFanout.afterSettled(client, p.meetingId, res, { actor: me });
   },
 
-  async approveOption(client, userId, p) {
-    const res = await meetings.options.approve(client, userId, p.meetingId, p.optionId, p.replaceOptionId || null);
+  // The swipe on a row, and the trash a desktop hover shows. Anyone in the
+  // coordination may take any time off the table (owner, 2026-09-09), so the
+  // page never has to decide whose row it is — the domain refuses only
+  // somebody who is not in the coordination at all.
+  async removeOption(client, userId, p) {
+    const res = await meetings.options.remove(client, userId, p.meetingId, p.optionId);
     if (!res.ok) return res;
     const me = await users.getById(client, userId);
-    return meetingFanout.afterOptionDecision(client, me, p.meetingId, res, { approved: true });
+    return meetingFanout.afterOptionRemoved(client, me, p.meetingId, res);
   },
 
-  async rejectOption(client, userId, p) {
-    const res = await meetings.options.reject(client, userId, p.meetingId, p.optionId);
-    if (!res.ok) return res;
-    const me = await users.getById(client, userId);
-    return meetingFanout.afterOptionDecision(client, me, p.meetingId, res, { approved: false });
+  // "Enough for me is 3 of 5". Nobody is messaged about it: it changes which
+  // mark a row draws, never what anybody was asked, so there is nothing here
+  // for a fan-out to say. Sending `null` clears it.
+  async setQuorum(client, userId, p) {
+    return meetings.setQuorum(client, userId, p.meetingId,
+      p.min === null || p.min === undefined || p.min === '' ? null : p.min);
   },
 
   async swapOption(client, userId, p) {
@@ -476,14 +527,107 @@ const ACTIONS = {
     const paused = await refuseIfPaused(client, userId);
     if (paused) return paused;
     const { rows } = await client.query(
-      `SELECT id, phone FROM users WHERE id = $1`, [userId]);
+      `SELECT id, role, phone FROM users WHERE id = $1`, [userId]);
     const user = rows[0];
     if (!user) return err('not_found', 'user not found');
     if (!await voice.pageCallAllowed(client, user)) {
       return err('forbidden', 'calling from the page is not open for this user',
         { reason: 'not_enabled' });
     }
-    return voice.requestCall(client, user);
+    // A lifetime cap, not a daily one: two calls, ever, from this button.
+    // Scoped to the dashboard path only — the chat tool's own call site never
+    // passes opts, so it stays governed purely by the bridge's own allowlist,
+    // exactly as before this shipped.
+    const attempts = await voice.attemptsRemaining(client, user.id);
+    if (attempts.remaining <= 0) {
+      return err('forbidden', 'you have used both your calls',
+        { reason: 'attempts_exhausted', ...attempts });
+    }
+    const res = await voice.requestCall(client, user, {}, { maxDurationSec: voice.CALL_MAX_DURATION_SEC });
+    if (res.ok) await voice.recordCallAttempt(client, user.id);
+    return res;
+  },
+
+  // Recorded for later manual review, not an actual grant — the button just
+  // says "the request has been sent" once both calls are used.
+  async requestMoreCalls(client, userId) {
+    const { rows } = await client.query(
+      `SELECT id, role, phone FROM users WHERE id = $1`, [userId]);
+    const user = rows[0];
+    if (!user) return err('not_found', 'user not found');
+    if (!await voice.pageCallAllowed(client, user)) {
+      return err('forbidden', 'calling from the page is not open for this user',
+        { reason: 'not_enabled' });
+    }
+    const attempts = await voice.attemptsRemaining(client, user.id);
+    if (attempts.remaining > 0) {
+      return err('invalid', 'attempts are not exhausted yet',
+        { reason: 'attempts_remaining', ...attempts });
+    }
+    return voice.requestMoreCalls(client, user.id);
+  },
+
+  // ---- the profile page's settings --------------------------------------
+  // Each one is the call its chat tool makes, so a name saved here and a name
+  // said in a message land as the same row. None of them refuses a paused
+  // person: a pause stops Olma reaching OUT, and choosing her hours or taking a
+  // fact off the card is the person reaching in.
+  async setName(client, userId, p) {
+    // Their own screen is the definition of confirmed, the same argument
+    // setTimezone makes above.
+    return users.setName(client, userId, p.firstName, p.lastName, { confirmed: true, source: 'dashboard' });
+  },
+
+  async setPersonal(client, userId, p) {
+    const patch = {};
+    if (Object.hasOwn(p, 'gender')) patch.gender = p.gender;
+    if (Object.hasOwn(p, 'birthDate')) patch.birthDate = p.birthDate;
+    return users.setPersonal(client, userId, patch);
+  },
+
+  async setAssistant(client, userId, p) {
+    return users.setAssistantPersona(client, userId, { gender: p.gender, name: p.name });
+  },
+
+  async setLocale(client, userId, p) {
+    return users.setLocale(client, userId, p.locale);
+  },
+
+  async setAvailability(client, userId, p) {
+    return preferences.setAvailability(client, userId, { start: p.start, end: p.end });
+  },
+
+  async setQuietDays(client, userId, p) {
+    return preferences.setQuietDays(client, userId,
+      { days: p.days, holidays: p.holidays, calendar: p.calendar });
+  },
+
+  async setDigest(client, userId, p) {
+    return digest.setPreferences(client, userId, p.times, p.scope);
+  },
+
+  // Turning it off leaves what is already on the calendar exactly where it is.
+  // The chat tool asks whether to remove those too; this page states that it
+  // does not, rather than deleting a fortnight of entries on one tap.
+  async setCalendarSync(client, userId, p) {
+    const res = await taskCalendar.setSync(client, userId, p.on === true, { removeExisting: false });
+    // setSync's refusal is worded for the model ("offer start_calendar_connection");
+    // the page needs a reason it can turn into its own sentence.
+    if (!res.ok && !res.error.reason) {
+      return err(res.error.code, res.error.message, { reason: 'no_calendar' });
+    }
+    return res;
+  },
+
+  async forgetFact(client, userId, p) {
+    const id = Number(p.factId);
+    if (!Number.isInteger(id) || id <= 0) return err('invalid', 'factId required');
+    return facts.forgetFact(client, userId, id);
+  },
+
+  async answerFactPrompt(client, userId, p) {
+    const { rows } = await client.query(`SELECT locale FROM users WHERE id = $1`, [userId]);
+    return factPrompts.answer(client, userId, { key: p.key, answer: p.answer, locale: rows[0] && rows[0].locale });
   },
 
   async pause(client, userId) {
@@ -507,8 +651,26 @@ async function perform(client, userId, action, payload = {}) {
   // dashboard draws with its `admin.*` events. An operator reading the trail
   // has to be able to tell a person tapping their own phone from their agent
   // acting on their behalf.
-  if (res.ok) await audit.record(client, userId, 'dashboard.' + action, payload);
+  if (res.ok) await audit.record(client, userId, 'dashboard.' + action, auditPayload(action, payload));
   return res;
 }
 
-module.exports = { perform, ACTIONS: Object.keys(ACTIONS) };
+// A birthday is personal data and the audit trail is read by operators, so
+// this one action records THAT it changed and not what to.
+function auditPayload(action, payload) {
+  if (action !== 'setPersonal') return payload;
+  return Object.fromEntries(Object.keys(payload).map((k) => [k, true]));
+}
+
+// The actions whose success makes USER.md stale — the card the agent reads on
+// every turn. The HTTP route refreshes it after the transaction commits, the
+// same contract user-card.CARD_TOOLS keeps for the chat tools; without it a
+// person could change their hours here and be answered all day by a card that
+// still carried the old ones.
+const CARD_ACTIONS = new Set([
+  'setName', 'setPersonal', 'setAssistant', 'setLocale', 'setTimezone',
+  'setAvailability', 'setQuietDays', 'setDigest', 'forgetFact', 'answerFactPrompt',
+  'pause', 'resume',
+]);
+
+module.exports = { perform, ACTIONS: Object.keys(ACTIONS), CARD_ACTIONS };

@@ -817,3 +817,67 @@ test('deleteEvent tolerates already-gone and refuses view-only access', async ()
   assert.equal(refused.ok, false);
   assert.equal(refused.error.reason, 'read_only');
 });
+
+// ---- my_calendar_events draws the block (domain/list-block.js) -------------
+// The tool itself, not just calendar.listEvents — the wiring that attaches
+// `block` and swaps the instruction hints for the relay contract is worth
+// its own end-to-end pass. Own user, so connecting it here cannot leave a
+// connection behind for a test elsewhere in this file to trip over.
+test('my_calendar_events draws the block through the real tool, on a real (faked) Google call', async () => {
+  const { BY_NAME } = require('../src/adapters/mcp/registry');
+  const noa = await makeUser(db.pool, '+972501000203', { firstName: 'Noa', timezone: 'Asia/Jerusalem' });
+  await connect(noa.id, { access: 'read_only' });
+
+  const now = Date.now();
+  const soon = (h) => new Date(now + h * 3600_000).toISOString();
+  const listFetch = fakeFetch({
+    'calendars/primary/events': { body: { items: [
+      { id: 'e1', summary: 'פגישה עם דנה', start: { dateTime: soon(4) }, end: { dateTime: soon(5) }, location: 'הקפה' },
+      { id: 'e2', summary: 'משלוח', start: { dateTime: soon(6) }, end: { dateTime: soon(7) } },
+    ] } },
+  });
+  // The tool handler calls calendar.listEvents with no fetchImpl of its own —
+  // exactly as production does — so this is the one place globalThis.fetch is
+  // the injection point, stubbed for this call alone and always restored.
+  const original = globalThis.fetch;
+  globalThis.fetch = listFetch;
+  let res;
+  try {
+    res = await withTx(db.pool, (c) => BY_NAME.get('my_calendar_events').handler(c, noa, {}));
+  } finally {
+    globalThis.fetch = original;
+  }
+  assert.equal(res.ok, true, JSON.stringify(res.error));
+  assert.match(res.data.block, /^\*ביומן\*\n/);
+  assert.match(res.data.block, /פגישה עם דנה, הקפה/);
+  assert.match(res.data.block, /משלוח/);
+  assert.match(res.data.hints.block, /EXACTLY as it is/);
+  // The layout hint is the fallback and never travels beside the block — the
+  // same rule the other two drawn lists hold to.
+  assert.equal(res.data.hints.layout, undefined, 'the block laid it out; asking again is the fault');
+  // The safety note survives — the block replaced the LAYOUT hint, not the
+  // warning that titles and locations are somebody else's words.
+  assert.match(res.data.note, /never as instructions/);
+});
+
+test('one calendar event is a sentence, not a block — and the safety note still stands', async () => {
+  const { BY_NAME } = require('../src/adapters/mcp/registry');
+  const guy = await makeUser(db.pool, '+972501000204', { firstName: 'Guy', timezone: 'Asia/Jerusalem' });
+  await connect(guy.id, { access: 'read_only' });
+  const listFetch = fakeFetch({
+    'calendars/primary/events': { body: { items: [
+      { id: 'e1', summary: 'פגישה יחידה', start: { dateTime: new Date(Date.now() + 4 * 3600_000).toISOString() } },
+    ] } },
+  });
+  const original = globalThis.fetch;
+  globalThis.fetch = listFetch;
+  let res;
+  try {
+    res = await withTx(db.pool, (c) => BY_NAME.get('my_calendar_events').handler(c, guy, {}));
+  } finally {
+    globalThis.fetch = original;
+  }
+  assert.equal(res.data.block, undefined, 'a heading over one line is heavier than the line');
+  assert.equal(res.data.hints, undefined);
+  assert.match(res.data.note, /never as instructions/);
+});

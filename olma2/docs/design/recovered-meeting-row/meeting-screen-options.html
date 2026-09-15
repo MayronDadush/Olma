@@ -1,0 +1,464 @@
+<title>מסך התיאומים · שלוש גרסאות</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Rubik:wght@500;600;700&display=swap">
+<style>
+  :root{
+    --page:#EFEDF5; --panel:#FFFFFF; --ink:#141322; --ink-2:#6C6982; --ink-3:#A29FB5;
+    --rule:#E2DFEE;
+    /* the app's own tokens, so the mocks are the product and not a sketch of it */
+    --bg:#F4F3F8; --surface:#FFFFFF; --surface-2:#FAF9FE; --sep:#E7E5F0; --sep-2:#D9D6E6;
+    --text:#141322; --text-2:#6C6982; --text-3:#A29FB5;
+    --accent:#5B2FD6; --accent-2:#4A22B4; --accent-soft:#EEE8FC; --prog:rgba(91,47,214,.26);
+    --danger:#DC3A31; --danger-soft:#FCEBE9; --warn:#B57509; --warn-soft:#F8EFDC;
+    --ok:#1B9B6B; --ok-soft:#E4F4EE;
+    --shadow:0 1px 2px rgba(20,19,34,.05), 0 8px 26px rgba(20,19,34,.07);
+  }
+  :root:not([data-theme="light"]){}
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --page:#100F18; --panel:#17161F; --ink:#F2F1F7; --ink-2:#A6A3B8; --ink-3:#6F6C82;
+      --rule:#262432;
+      --bg:#0E0D15; --surface:#191823; --surface-2:#15141E; --sep:#272534; --sep-2:#332F44;
+      --text:#F2F1F7; --text-2:#A6A3B8; --text-3:#6F6C82;
+      --accent:#8B6BF0; --accent-2:#7A56EC; --accent-soft:#241C3D; --prog:rgba(139,107,240,.3);
+      --danger:#F2665C; --danger-soft:#33191A; --warn:#D9992E; --warn-soft:#2E2415;
+      --ok:#3FBF8D; --ok-soft:#12291F;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 26px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --page:#100F18; --panel:#17161F; --ink:#F2F1F7; --ink-2:#A6A3B8; --ink-3:#6F6C82;
+    --rule:#262432;
+    --bg:#0E0D15; --surface:#191823; --surface-2:#15141E; --sep:#272534; --sep-2:#332F44;
+    --text:#F2F1F7; --text-2:#A6A3B8; --text-3:#6F6C82;
+    --accent:#8B6BF0; --accent-2:#7A56EC; --accent-soft:#241C3D; --prog:rgba(139,107,240,.3);
+    --danger:#F2665C; --danger-soft:#33191A; --warn:#D9992E; --warn-soft:#2E2415;
+    --ok:#3FBF8D; --ok-soft:#12291F;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 26px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--page); color:var(--ink);
+    font-family:'Assistant','Heebo',system-ui,-apple-system,'Segoe UI',sans-serif;
+    direction:rtl; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1240px; margin:0 auto; padding:40px 22px 72px}
+
+  header.top{max-width:64ch; margin:0 0 34px}
+  .eyebrow{
+    font-size:12px; font-weight:600; letter-spacing:.09em; color:var(--accent);
+    text-transform:uppercase; margin:0 0 10px;
+  }
+  h1{
+    font-family:'Rubik',sans-serif; font-weight:700; font-size:clamp(28px,4vw,40px);
+    line-height:1.1; letter-spacing:-.02em; margin:0 0 14px; text-wrap:balance;
+  }
+  header.top p{margin:0 0 10px; font-size:16px; line-height:1.6; color:var(--ink-2)}
+  header.top b{color:var(--ink); font-weight:600}
+
+  /* the diagnosis, as a small count rather than an adjective */
+  .tally{
+    display:flex; flex-wrap:wrap; gap:8px; margin:20px 0 0; padding:0; list-style:none;
+  }
+  .tally li{
+    background:var(--panel); border:1px solid var(--rule); border-radius:999px;
+    padding:7px 14px; font-size:13.5px; color:var(--ink-2);
+  }
+  .tally b{font-family:'Rubik',sans-serif; color:var(--ink); font-weight:600}
+
+  .cols{
+    display:grid; gap:26px; margin-top:38px;
+    grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+    align-items:start;
+  }
+  .col{min-width:0}
+  .colhead{margin:0 0 14px}
+  .tag{
+    display:inline-block; font-size:11.5px; font-weight:700; letter-spacing:.07em;
+    text-transform:uppercase; padding:4px 9px; border-radius:6px; margin-bottom:9px;
+  }
+  .tag.now{background:var(--sep); color:var(--ink-2)}
+  .tag.a{background:var(--accent-soft); color:var(--accent)}
+  .tag.b{background:var(--ok-soft); color:var(--ok)}
+  .col h2{
+    font-family:'Rubik',sans-serif; font-weight:600; font-size:21px; margin:0 0 7px;
+    letter-spacing:-.01em;
+  }
+  .col > .colhead p{margin:0; font-size:14.5px; line-height:1.55; color:var(--ink-2)}
+
+  /* ── the phone ───────────────────────────────────────────── */
+  .phone{
+    background:var(--bg); border:1px solid var(--rule); border-radius:22px;
+    padding:16px 13px 18px; box-shadow:var(--shadow); overflow:hidden;
+  }
+  .mtop{font-size:12.5px; color:var(--text-2); margin:0 0 4px}
+  .mttl{font-family:'Rubik',sans-serif; font-weight:600; font-size:19px; margin:0 0 3px; color:var(--text)}
+  .msub{font-size:12.5px; color:var(--text-3); margin:0 0 13px}
+  .glabel{font-size:11.5px; color:var(--text-3); margin:16px 2px 7px; font-weight:600}
+
+  .card{
+    background:var(--surface); border-radius:15px; padding:12px 13px;
+    margin-bottom:9px; border:1px solid transparent;
+  }
+  .card.flat{box-shadow:0 1px 1px rgba(20,19,34,.04)}
+  .cardttl{font-weight:700; font-size:14.5px; color:var(--text); margin:0}
+  .row-between{display:flex; align-items:center; justify-content:space-between; gap:8px}
+
+  .bar{height:4px; border-radius:99px; background:var(--sep); overflow:hidden; display:flex; margin:9px 0 7px}
+  .bar i{display:block; height:100%}
+  .bar i.y{background:var(--accent)}
+  .bar i.n{background:#E8A39D}
+
+  .count{font-size:12.5px; color:var(--text-2); margin:0 0 8px}
+  .count .ok{color:var(--accent); font-weight:600}
+  .count .no{color:var(--danger)}
+
+  .faces{display:flex; gap:-4px; margin:0 0 10px}
+  .face{
+    width:22px; height:22px; border-radius:50%; background:var(--sep-2);
+    border:2px solid var(--surface); margin-inline-start:-6px;
+    display:grid; place-items:center; font-size:10px; color:var(--text-2); font-weight:700;
+  }
+  .face:first-child{margin-inline-start:0}
+  .face.y{background:var(--accent); color:#fff}
+  .face.n{background:#E8A39D; color:#5a1b16}
+  .face.w{background:var(--sep-2); color:var(--text-3)}
+
+  .acts{display:flex; gap:7px}
+  .btn{
+    border:0; border-radius:11px; padding:9px 13px; font:inherit; font-size:13.5px;
+    font-weight:600; cursor:default; display:inline-flex; align-items:center; gap:5px;
+  }
+  .btn.pri{background:var(--accent); color:#fff; flex:1; justify-content:center}
+  .btn.sec{background:var(--sep); color:var(--text-2); flex:1; justify-content:center}
+  .btn.ghost{background:transparent; color:var(--accent); border:1px solid var(--sep-2)}
+  .chip{
+    font-size:11.5px; font-weight:600; padding:3px 8px; border-radius:7px; white-space:nowrap;
+  }
+  .chip.done{background:var(--ok-soft); color:var(--ok)}
+  .chip.best{background:var(--accent-soft); color:var(--accent)}
+  .warn{
+    background:var(--warn-soft); color:var(--warn); font-size:12.5px; font-weight:600;
+    border-radius:10px; padding:8px 10px; margin:8px 0 0;
+  }
+
+  /* ── A: the list ─────────────────────────────────────────── */
+  .listcard{background:var(--surface); border-radius:15px; overflow:hidden}
+  .lrow{display:flex; align-items:center; gap:11px; padding:12px 13px; border-bottom:1px solid var(--sep)}
+  .lrow:last-child{border-bottom:0}
+  .lrow.win{background:var(--accent-soft)}
+  .lmain{min-width:0; flex:1}
+  .lttl{font-weight:600; font-size:14.5px; color:var(--text); margin:0 0 3px}
+  .lmeta{font-size:12px; color:var(--text-3); margin:0; display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+  .score{
+    font-family:'Rubik',sans-serif; font-weight:600; font-size:13px; color:var(--text-2);
+    background:var(--surface-2); border:1px solid var(--sep); border-radius:8px;
+    padding:3px 7px; white-space:nowrap;
+  }
+  .score.full{background:var(--accent-soft); border-color:transparent; color:var(--accent)}
+  .seg{display:flex; background:var(--sep); border-radius:10px; padding:2px; flex:0 0 auto}
+  .seg button{
+    border:0; background:transparent; font:inherit; font-size:12.5px; font-weight:600;
+    color:var(--text-3); padding:6px 10px; border-radius:8px; cursor:default;
+  }
+  .seg button.on{background:var(--surface); color:var(--accent); box-shadow:0 1px 2px rgba(20,19,34,.08)}
+  .seg button.on.neg{color:var(--danger)}
+  .settlebar{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--surface); border-radius:15px; padding:11px 13px; margin-top:9px;
+  }
+  .settlebar p{margin:0; font-size:13px; color:var(--text-2)}
+  .settlebar b{color:var(--text)}
+
+  /* ── B: the grid ─────────────────────────────────────────── */
+  .gridwrap{background:var(--surface); border-radius:15px; padding:12px 11px; overflow-x:auto}
+  table.g{border-collapse:collapse; width:100%; font-size:13px}
+  table.g th, table.g td{padding:8px 5px; text-align:center}
+  table.g th.when{text-align:start; font-weight:600; color:var(--text); font-size:13.5px; white-space:nowrap}
+  table.g thead th{font-size:11.5px; color:var(--text-3); font-weight:600; padding-bottom:9px}
+  table.g thead th.me{color:var(--accent)}
+  table.g tbody tr{border-top:1px solid var(--sep)}
+  table.g tbody tr.win td, table.g tbody tr.win th{background:var(--accent-soft)}
+  table.g tbody tr.win th.when{border-start-start-radius:9px; border-end-start-radius:9px}
+  table.g tbody tr.win td:last-child{border-start-end-radius:9px; border-end-end-radius:9px}
+  .dot{width:19px; height:19px; border-radius:50%; display:inline-grid; place-items:center; font-size:11px; font-weight:700}
+  .dot.y{background:var(--accent); color:#fff}
+  .dot.n{background:var(--danger-soft); color:var(--danger)}
+  .dot.w{background:var(--sep); color:var(--text-3)}
+  .dot.tap{outline:2px solid var(--accent); outline-offset:1.5px}
+  .whenmeta{display:block; font-weight:400; font-size:11.5px; color:var(--text-3); margin-top:1px}
+  .gfoot{display:flex; align-items:center; gap:8px; margin-top:11px; padding-top:11px; border-top:1px solid var(--sep)}
+  .gfoot p{margin:0; flex:1; font-size:12.5px; color:var(--text-2)}
+  .legend{display:flex; gap:12px; margin:10px 2px 0; font-size:11.5px; color:var(--text-3); flex-wrap:wrap}
+  .legend span{display:inline-flex; align-items:center; gap:5px}
+
+  /* ── notes under each column ─────────────────────────────── */
+  .notes{margin:16px 2px 0}
+  .notes h3{
+    font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--ink-3); margin:0 0 8px;
+  }
+  .notes ul{margin:0; padding-inline-start:17px}
+  .notes li{font-size:14px; line-height:1.6; color:var(--ink-2); margin-bottom:6px}
+  .notes li b{color:var(--ink); font-weight:600}
+  .cost{
+    margin-top:12px; padding:10px 12px; border-radius:11px;
+    background:var(--panel); border:1px solid var(--rule);
+    font-size:13.5px; line-height:1.55; color:var(--ink-2);
+  }
+  .cost b{color:var(--ink); font-weight:600}
+
+  footer.end{
+    margin-top:44px; padding-top:22px; border-top:1px solid var(--rule);
+    max-width:66ch; font-size:14.5px; line-height:1.65; color:var(--ink-2);
+  }
+  footer.end b{color:var(--ink); font-weight:600}
+  footer.end p{margin:0 0 10px}
+</style>
+
+<div class="wrap">
+
+  <header class="top">
+    <p class="eyebrow">מסך התיאום · שלוש גרסאות</p>
+    <h1>אותן פונקציות, שלוש צפיפויות</h1>
+    <p>אמרת שמשהו פה עמוס לעין ושאתה לא יודע להסביר. הנה מה שספרתי במסך שצילמת: <b>אותה עובדה נאמרת שלוש פעמים בכל כרטיס</b> — פס התקדמות, שורת ספירה במילים, ושורת פרצופים — <b>ואותם שלושה אנשים מצוירים חמש פעמים</b> במסך אחד: פעם בכותרת, ואז שוב בכל אחת מארבע האופציות.</p>
+    <p>ועל כל שורה יושב כפתור סגול מלא. ארבע אופציות זה ארבעה גושים סגולים שכולם צועקים באותה עוצמה, כך שאין שום דבר שהעין יכולה לנחות עליו קודם.</p>
+    <ul class="tally">
+      <li>הרוסטר מצויר <b>×5</b></li>
+      <li>״מי יכול״ נאמר <b>×3</b> בכל כרטיס</li>
+      <li>כפתור ראשי מלא <b>×4</b></li>
+      <li>גובה לארבע אופציות <b>≈1500px</b></li>
+    </ul>
+  </header>
+
+  <div class="cols">
+
+    <!-- ════════ CURRENT ════════ -->
+    <section class="col">
+      <div class="colhead">
+        <span class="tag now">היום</span>
+        <h2>כרטיס לכל אופציה</h2>
+        <p>כל אופציה היא כרטיס עצמאי מלא, עם כל המידע וכל הפעולות חוזרים בתוכו.</p>
+      </div>
+
+      <div class="phone">
+        <p class="mtop">עם עמית לוי, תמר אלון ואיתי כספי</p>
+        <p class="mttl">פוקר</p>
+        <p class="msub">מתי מתאים לכולם?</p>
+
+        <div class="card flat">
+          <p class="cardttl">מחר · ערב</p>
+          <div class="bar"><i class="y" style="width:100%"></i></div>
+          <p class="count"><span class="ok">מתאים לכולם</span></p>
+          <div class="faces"><i class="face y">ע</i><i class="face y">ת</i><i class="face y">א</i></div>
+          <div class="acts">
+            <button class="btn pri">✓ אני יכול</button>
+            <button class="btn sec">✕ לא יכול</button>
+            <button class="btn ghost">קביעה</button>
+          </div>
+        </div>
+
+        <div class="card flat">
+          <p class="cardttl">יום שישי, 11 בספטמבר · ערב</p>
+          <div class="bar"><i class="y" style="width:66%"></i></div>
+          <p class="count"><span class="ok">2 יכולים</span> · אחד טרם ענה</p>
+          <div class="faces"><i class="face y">ע</i><i class="face y">ת</i><i class="face w">א</i></div>
+          <div class="acts">
+            <button class="btn pri">✓ אני יכול</button>
+            <button class="btn sec">✕ לא יכול</button>
+            <button class="btn ghost">קביעה</button>
+          </div>
+        </div>
+
+        <div class="card flat">
+          <div class="row-between"><p class="cardttl">יום ראשון, 13 · 21:00</p><span class="chip done">✓ נקבע</span></div>
+          <div class="bar"><i class="y" style="width:34%"></i><i class="n" style="width:33%"></i></div>
+          <p class="count">אחד יכול · <span class="no">אחד לא יכול</span> · אחד טרם ענה</p>
+          <div class="faces"><i class="face y">ע</i><i class="face n">ת</i><i class="face w">א</i></div>
+        </div>
+
+        <div class="card flat">
+          <p class="cardttl">יום חמישי, 10 · צהריים</p>
+          <div class="bar"><i class="y" style="width:34%"></i></div>
+          <p class="count">אחד יכול · 2 טרם ענו</p>
+          <div class="faces"><i class="face y">ע</i><i class="face w">ת</i><i class="face w">א</i></div>
+          <div class="warn">🕐 מתנגש עם משמרת · 12:00</div>
+          <div class="acts" style="margin-top:8px">
+            <button class="btn pri">✓ אני יכול</button>
+            <button class="btn sec">✕ לא יכול</button>
+            <button class="btn ghost">קביעה</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes">
+        <h3>למה זה עמוס</h3>
+        <ul>
+          <li>הפס, המילים והפרצופים אומרים <b>את אותו דבר</b> — שלוש שורות לעובדה אחת.</li>
+          <li>הפרצופים חוזרים בכל כרטיס, אז אי אפשר להשוות בין אופציות בלי לקרוא כל אחת בנפרד.</li>
+          <li>״קביעה״ קיים על כל שורה, גם על שורות שאף אחד לא היה קובע.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ════════ OPTION A ════════ -->
+    <section class="col">
+      <div class="colhead">
+        <span class="tag a">אפשרות א׳</span>
+        <h2>שורה לכל מועד</h2>
+        <p>המועדים הופכים לרשימה אחת שנקראת מלמעלה למטה. התשובה שלך היא מתג דו־מצבי, לא שני כפתורים.</p>
+      </div>
+
+      <div class="phone">
+        <p class="mtop">עם עמית לוי, תמר אלון ואיתי כספי</p>
+        <p class="mttl">פוקר</p>
+        <p class="msub">מתי מתאים לכולם?</p>
+
+        <p class="glabel">המועדים על השולחן</p>
+        <div class="listcard">
+          <div class="lrow win">
+            <div class="lmain">
+              <p class="lttl">מחר · ערב</p>
+              <p class="lmeta"><span class="chip best">מתאים לכולם</span></p>
+            </div>
+            <span class="score full">3 / 3</span>
+            <div class="seg"><button class="on">יכול</button><button>לא</button></div>
+          </div>
+
+          <div class="lrow">
+            <div class="lmain">
+              <p class="lttl">שישי, 11 בספט׳ · ערב</p>
+              <p class="lmeta">איתי טרם ענה</p>
+            </div>
+            <span class="score">2 / 3</span>
+            <div class="seg"><button class="on">יכול</button><button>לא</button></div>
+          </div>
+
+          <div class="lrow">
+            <div class="lmain">
+              <p class="lttl">ראשון, 13 · 21:00</p>
+              <p class="lmeta"><span class="chip done">✓ נקבע</span></p>
+            </div>
+            <span class="score">1 / 3</span>
+            <div class="seg" style="opacity:.4"><button class="on">יכול</button><button>לא</button></div>
+          </div>
+
+          <div class="lrow">
+            <div class="lmain">
+              <p class="lttl">חמישי, 10 · צהריים</p>
+              <p class="lmeta">🕐 מתנגש עם משמרת · 12:00</p>
+            </div>
+            <span class="score">1 / 3</span>
+            <div class="seg"><button>יכול</button><button class="on neg">לא</button></div>
+          </div>
+        </div>
+
+        <div class="settlebar">
+          <p>הכי מתאים: <b>מחר · ערב</b></p>
+          <button class="btn ghost">קביעה</button>
+        </div>
+
+        <p class="glabel">להציע מועד נוסף</p>
+        <div class="card flat" style="text-align:center; color:var(--accent); font-weight:600; font-size:14px">+ הצעת מועד</div>
+      </div>
+
+      <div class="notes">
+        <h3>מה השתנה</h3>
+        <ul>
+          <li><b>עובדה אחת, מקום אחד:</b> ״3 / 3״ מחליף את הפס, את המילים ואת הפרצופים.</li>
+          <li>הפרצופים מצוירים <b>פעם אחת בלבד</b>, בכותרת. בשורה מופיע רק מי שחסר — ״איתי טרם ענה״.</li>
+          <li>שני כפתורים מלאים הופכים ל<b>מתג אחד</b>. אי אפשר לא לענות בטעות, ואי אפשר לענות פעמיים.</li>
+          <li>״קביעה״ יורד מכל שורה ל<b>שורה אחת בתחתית</b>, על המועד שבאמת מוביל.</li>
+        </ul>
+        <div class="cost"><b>מה מוותרים:</b> אי אפשר לראות במבט מי בדיוק אמר לא על מועד מסוים — צריך להיכנס לשורה. הכי קרוב למסך הקיים, ולכן גם השינוי הזול ביותר.</div>
+      </div>
+    </section>
+
+    <!-- ════════ OPTION B ════════ -->
+    <section class="col">
+      <div class="colhead">
+        <span class="tag b">אפשרות ב׳</span>
+        <h2>טבלה: מועדים מול אנשים</h2>
+        <p>השאלה האמיתית היא ״איזו שורה כולה ירוקה״. טבלה עונה עליה במבט אחד, בלי פסים ובלי חזרות.</p>
+      </div>
+
+      <div class="phone">
+        <p class="mtop">עם עמית לוי, תמר אלון ואיתי כספי</p>
+        <p class="mttl">פוקר</p>
+        <p class="msub">מתי מתאים לכולם?</p>
+
+        <p class="glabel">מי יכול, מתי</p>
+        <div class="gridwrap">
+          <table class="g">
+            <thead>
+              <tr><th></th><th class="me">אתה</th><th>עמית</th><th>תמר</th><th>איתי</th></tr>
+            </thead>
+            <tbody>
+              <tr class="win">
+                <th class="when">מחר<span class="whenmeta">ערב</span></th>
+                <td><span class="dot y tap">✓</span></td>
+                <td><span class="dot y">✓</span></td>
+                <td><span class="dot y">✓</span></td>
+                <td><span class="dot y">✓</span></td>
+              </tr>
+              <tr>
+                <th class="when">שישי, 11<span class="whenmeta">ערב</span></th>
+                <td><span class="dot y tap">✓</span></td>
+                <td><span class="dot y">✓</span></td>
+                <td><span class="dot y">✓</span></td>
+                <td><span class="dot w">–</span></td>
+              </tr>
+              <tr>
+                <th class="when">ראשון, 13<span class="whenmeta">21:00 · נקבע</span></th>
+                <td><span class="dot y">✓</span></td>
+                <td><span class="dot y">✓</span></td>
+                <td><span class="dot n">✕</span></td>
+                <td><span class="dot w">–</span></td>
+              </tr>
+              <tr>
+                <th class="when">חמישי, 10<span class="whenmeta">צהריים · מתנגש</span></th>
+                <td><span class="dot n tap">✕</span></td>
+                <td><span class="dot y">✓</span></td>
+                <td><span class="dot w">–</span></td>
+                <td><span class="dot w">–</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="gfoot">
+            <p>שורה אחת ירוקה לגמרי: <b style="color:var(--text)">מחר · ערב</b></p>
+            <button class="btn ghost">קביעה</button>
+          </div>
+        </div>
+        <div class="legend">
+          <span><i class="dot y" style="width:13px;height:13px"></i> יכול</span>
+          <span><i class="dot n" style="width:13px;height:13px"></i> לא יכול</span>
+          <span><i class="dot w" style="width:13px;height:13px"></i> טרם ענה</span>
+          <span>העמודה שלך — לחיצה משנה תשובה</span>
+        </div>
+
+        <p class="glabel">להציע מועד נוסף</p>
+        <div class="card flat" style="text-align:center; color:var(--accent); font-weight:600; font-size:14px">+ הצעת מועד</div>
+      </div>
+
+      <div class="notes">
+        <h3>מה השתנה</h3>
+        <ul>
+          <li>אין פסים, אין ספירות במילים, אין פרצופים חוזרים — <b>תא אחד לכל עובדה</b>.</li>
+          <li>אתה רואה <b>מי בדיוק</b> אמר מה, וזה בדיוק מה שאפשרות א׳ מוותרת עליו.</li>
+          <li>לענות זו לחיצה על תא בעמודה שלך. אותה פעולה, בלי כפתור נפרד לכל שורה.</li>
+          <li>המסך יורד מ־<b>≈1500px לכ־320px</b>. כל התיאום נכנס למסך אחד בלי גלילה.</li>
+        </ul>
+        <div class="cost"><b>מה מוותרים:</b> מעל ארבעה־חמישה משתתפים הטבלה תצטרך גלילה אופקית, והיא רחוקה יותר מהשפה של שאר האפליקציה — היא הדבר היחיד שנראה ככה. השינוי הגדול מהשניים.</div>
+      </div>
+    </section>
+
+  </div>
+
+  <footer class="end">
+    <p><b>לא מיזגתי בין השתיים</b>, כמו שביקשת — כל אחת עומדת בפני עצמה, ושתיהן שומרות על כל הפונקציות שיש היום: לענות יכול/לא יכול, לראות מי ענה ומי לא, לראות מי יצא, אזהרת התנגשות, המועד שנקבע, ״מתאים לכולם״, קביעה ידנית, והצעת מועד נוסף.</p>
+    <p>ההבדל האמיתי ביניהן הוא מה מוותרים: <b>א׳ מוותרת על ״מי בדיוק אמר לא״</b> ומרוויחה שקט; <b>ב׳ שומרת את זה ומוותרת על הדמיון לשאר האפליקציה.</b> אם תבחר אחת — או חלקים משתיהן — אני בונה אותה כ־PR נפרד.</p>
+  </footer>
+
+</div>

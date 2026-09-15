@@ -46,7 +46,19 @@ function seedDb(rows) {
       created_at INTEGER NOT NULL,
       PRIMARY KEY (session_id, seq)
     );
+    -- the window chain a daily reset leaves behind (2026.8.1 schema, the
+    -- columns readTranscriptTail reads)
+    CREATE TABLE IF NOT EXISTS session_windows (
+      session_id TEXT NOT NULL PRIMARY KEY,
+      session_key TEXT NOT NULL,
+      previous_session_id TEXT,
+      reason TEXT,
+      created_at INTEGER NOT NULL
+    );
   `);
+  const win = db.prepare(
+    'INSERT OR REPLACE INTO session_windows (session_id, session_key, previous_session_id, reason, created_at) VALUES (?,?,?,?,?)');
+  for (const w of rows.windows || []) win.run(w.sessionId, w.key, w.previousSessionId || null, w.reason || 'initial', w.at || 0);
   const node = db.prepare(
     'INSERT OR REPLACE INTO session_nodes (session_key, current_session_id, entry_json, updated_at, archived_at) VALUES (?,?,?,?,?)');
   for (const n of rows.nodes || []) {
@@ -157,6 +169,47 @@ test('readRecentMessages returns the visible turns from transcript_events', () =
     ['user', 'תודה רבה'],
   ]);
   assert.equal(msgs[2].at, '2026-08-31T10:01:00.000Z');
+});
+
+// After a daily reset (session.reset.mode "daily", scripts/set-session-reset.js)
+// the live session id names today's window only; yesterday sits behind
+// session_windows.previous_session_id. A reader asking on the morning after
+// must still see yesterday — promise_watch reads the ask a person made the
+// evening before, the onboarding review reads a first evening that spans
+// 02:00 UTC — or the reset would blind every watcher once a day.
+test('readRecentMessages follows the reset chain into the previous window', () => {
+  const ROT = 'u-rot';
+  const rotDir = path.join(HOME_DIR, 'agents', ROT, 'agent');
+  fs.mkdirSync(rotDir, { recursive: true });
+  const db = new DatabaseSync(path.join(rotDir, 'openclaw-agent.sqlite'));
+  db.exec(`
+    CREATE TABLE session_nodes (session_key TEXT PRIMARY KEY, current_session_id TEXT NOT NULL, entry_json TEXT NOT NULL, updated_at INTEGER NOT NULL, archived_at INTEGER);
+    CREATE TABLE transcript_events (session_id TEXT NOT NULL, seq INTEGER NOT NULL, event_json TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (session_id, seq));
+    CREATE TABLE session_windows (session_id TEXT PRIMARY KEY, session_key TEXT NOT NULL, previous_session_id TEXT, reason TEXT, created_at INTEGER NOT NULL);
+  `);
+  const key = `agent:${ROT}:whatsapp:direct:${PEER}`;
+  const day1 = 'day1-session', day2 = 'day2-session', day3 = 'day3-session';
+  db.prepare('INSERT INTO session_nodes VALUES (?,?,?,?,NULL)').run(key, day3, JSON.stringify({ sessionId: day3, updatedAt: 3 }), 3);
+  const win = db.prepare('INSERT INTO session_windows VALUES (?,?,?,?,?)');
+  win.run(day1, key, null, 'initial', 1);
+  win.run(day2, key, day1, 'rollover', 2);
+  win.run(day3, key, day2, 'rollover', 3);
+  const ev = db.prepare('INSERT INTO transcript_events VALUES (?,?,?,?)');
+  ev.run(day1, 0, JSON.stringify(msg('user', 'שלשום: תזכיר לי לקנות חלב', { at: '2026-09-07T18:00:00.000Z' })), 1);
+  ev.run(day1, 1, JSON.stringify(msg('assistant', 'רשמתי', { at: '2026-09-07T18:00:05.000Z' })), 1);
+  ev.run(day2, 0, JSON.stringify(msg('user', 'אתמול: תזכיר לי ב-19:00 להתקשר לאמא', { at: '2026-09-08T18:00:00.000Z' })), 2);
+  ev.run(day2, 1, JSON.stringify(msg('assistant', 'אזכיר ב-19:00', { at: '2026-09-08T18:00:05.000Z' })), 2);
+  ev.run(day3, 0, JSON.stringify(msg('user', 'בוקר טוב', { at: '2026-09-09T05:30:00.000Z' })), 3);
+  db.close();
+
+  // the whole chain, oldest first, exactly as one long session would read
+  assert.deepEqual(sessions.readRecentMessages(ROT, 10, undefined, PEER).map((m) => m.text), [
+    'שלשום: תזכיר לי לקנות חלב', 'רשמתי', 'אתמול: תזכיר לי ב-19:00 להתקשר לאמא', 'אזכיר ב-19:00', 'בוקר טוב',
+  ]);
+  // the limit still means the NEWEST n, across the boundary
+  assert.deepEqual(sessions.readRecentMessages(ROT, 2, undefined, PEER).map((m) => m.text), ['אזכיר ב-19:00', 'בוקר טוב']);
+  // and the user-side join the watchers use sees yesterday's ask
+  assert.match(sessions.readPeerUserText(ROT, PEER), /תזכיר לי ב-19:00/);
 });
 
 test('readPeerUserText joins only the user side, sqlite mode', () => {

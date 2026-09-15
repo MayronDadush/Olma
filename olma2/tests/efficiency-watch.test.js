@@ -5,12 +5,15 @@ const { freshDb, makeUser } = require('./helpers');
 const eff = require('../src/jobs/efficiency-watch');
 const flags = require('../src/domain/flags');
 
-let pool; let teardown; let userId;
+let pool; let teardown; let userId; let evalUserId;
 
 test.before(async () => {
   ({ pool, teardown } = await freshDb());
   const u = await makeUser(pool, '+972500000900', { firstName: 'Eff' });
   userId = u.id;
+  const ev = await makeUser(pool, '+972599999001', { firstName: 'בדיקה' });
+  evalUserId = ev.id;
+  await pool.query(`UPDATE users SET is_eval = true WHERE id = $1`, [evalUserId]);
   // The alert phone needs a user row parked at a daytime hour, or the shared
   // `alertHourOpen` falls back to Asia/Jerusalem and the send tests pass or
   // fail depending on what time the suite runs. That exact hour-dependence
@@ -21,18 +24,19 @@ test.before(async () => {
 test.after(async () => { if (teardown) await teardown(); });
 
 // day 0 = today, 1 = yesterday, ...
-async function seedDay(back, { messages, inTokens, cacheTokens, cost, systemCost = 0 }) {
+async function seedDay(back, { messages, inTokens, cacheTokens, cost, systemCost = 0, as = 'user' }) {
+  const who = as === 'eval' ? evalUserId : userId;
   for (let i = 0; i < messages; i++) {
     await pool.query(
       `INSERT INTO audit_log (actor_id, event, detail, created_at)
        VALUES ($1, 'message.received', '{}'::jsonb, (current_date - $2::int) + interval '12 hours')`,
-      [userId, back]);
+      [who, back]);
   }
   if (inTokens) {
     await pool.query(
       `INSERT INTO usage_ledger (user_id, date, model, input_tokens, cache_read_tokens, cost_usd)
-       VALUES ($1, current_date - $2::int, 'test/model', $3, $4, $5)`,
-      [userId, back, inTokens - cacheTokens, cacheTokens, cost]);
+       VALUES ($1, current_date - $2::int, $6, $3, $4, $5)`,
+      [who, back, inTokens - cacheTokens, cacheTokens, cost, as === 'eval' ? 'pilot/model' : 'test/model']);
   }
   if (systemCost) {
     await pool.query(
@@ -277,6 +281,101 @@ test('the partial day is kept out of the baseline, not only out of the verdict',
     'the day in progress dragged the median down and turned 1.8x into a crossing');
 });
 
+// ── the eval user ────────────────────────────────────────────────────────────
+// 2026-09-08, replayed at its real magnitudes. The alert that went out that
+// morning read "$0.0411 להודעה, רגיל $0.0155" over "120 הודעות נכנסות", listed
+// gpt-5-mini and gpt-5-nano above deepseek-v4-flash, and blamed deepseek — the
+// cheapest of the three and the only one a real user was ever on. The day was
+// 52 real messages at $0.9136 and 68 benchmark messages at $4.0050, added
+// together on one side and on the other.
+test('a model pilot is not an expensive day — the eval user leaves both sides of the ratio', async () => {
+  await pool.query(`DELETE FROM usage_ledger`);
+  await pool.query(`DELETE FROM audit_log WHERE event = 'message.received'`);
+  await pool.query(`DELETE FROM issues WHERE title LIKE 'efficiency:%'`);
+  await flags.setFlag(pool, eff.ALERTED_FLAG, []);
+
+  // Seven ordinary days: 40 messages, $0.62, $0.0155 each — the real measured
+  // baseline the alert itself quoted. A little pilot traffic on each, because
+  // a baseline of zero pilots would let the subject day cross on novelty alone.
+  for (let d = 8; d >= 2; d--) {
+    await seedDay(d, { messages: 40, inTokens: 2_000_000, cacheTokens: 1_400_000, cost: 0.62 });
+    await seedDay(d, { messages: 10, inTokens: 400_000, cacheTokens: 20_000, cost: 0.15, as: 'eval' });
+  }
+  await seedDay(1, { messages: 52, inTokens: 2_600_000, cacheTokens: 1_820_000, cost: 0.9136 });
+  await seedDay(1, { messages: 68, inTokens: 8_000_000, cacheTokens: 400_000, cost: 4.0050, as: 'eval' });
+  await seedDay(0, { messages: 5, inTokens: 250_000, cacheTokens: 175_000, cost: 0.08 });
+
+  const sent = [];
+  const out = await eff.run(pool, {
+    llm: null,
+    send: async (phone, text) => { sent.push(text); return { ok: true }; },
+    alertHourOpen: async () => true,
+  });
+
+  // $0.9136 / 52. Reading $0.0411 here — 120 messages, $4.9186 — is the bug.
+  assert.equal(Math.round(out.ratios.cost_per_message * 10_000) / 10_000, 0.0176);
+  assert.equal(out.messages, 52, 'the denominator counts people, not benchmark turns');
+  assert.equal(out.crossed, 0,
+    '1.13x its own baseline; the pilot is what made this look like 2.6x');
+  assert.equal(sent.length, 0, 'and nobody was interrupted about it');
+
+  // Not silently dropped. $4 of spend that no number can see any more is the
+  // mirror-image failure, and the one this repo has recorded most often.
+  assert.equal(out.evalUsd, 4.005, 'the excluded spend is still named in the heartbeat');
+
+  // The cache hit rate is the second half of that morning's report: naively it
+  // reads 21% against a 70% baseline — a 3.3x collapse — purely because the
+  // pilot model was not caching. Real users' cache never moved.
+  assert.equal(Math.round(out.ratios.cache_hit_rate * 100), 70);
+});
+
+test('the watch still fires with a pilot running — the filter is not an off switch', async () => {
+  await pool.query(`DELETE FROM usage_ledger`);
+  await pool.query(`DELETE FROM audit_log WHERE event = 'message.received'`);
+  await pool.query(`DELETE FROM issues WHERE title LIKE 'efficiency:%'`);
+  await flags.setFlag(pool, eff.ALERTED_FLAG, []);
+
+  for (let d = 8; d >= 2; d--) {
+    await seedDay(d, { messages: 40, inTokens: 2_000_000, cacheTokens: 1_400_000, cost: 0.62 });
+  }
+  // A genuine 3x regression on real users, on a day a big pilot is also
+  // running. Excluding the pilot from the ratio must not exclude this.
+  await seedDay(1, { messages: 40, inTokens: 6_000_000, cacheTokens: 1_500_000, cost: 1.86 });
+  await seedDay(1, { messages: 68, inTokens: 8_000_000, cacheTokens: 400_000, cost: 4.0050, as: 'eval' });
+  await seedDay(0, { messages: 5, inTokens: 250_000, cacheTokens: 175_000, cost: 0.08 });
+
+  const sent = [];
+  const out = await eff.run(pool, {
+    llm: null,
+    send: async (phone, text) => { sent.push(text); return { ok: true }; },
+    alertHourOpen: async () => true,
+  });
+  assert.ok(out.crossed >= 2, JSON.stringify(out.ratios));
+  assert.equal(out.notified, true);
+  assert.equal(sent.length, 1);
+  // And the report says what it left out, in the one place an operator who
+  // knows the day cost $5.87 would otherwise conclude the watch is broken.
+  assert.match(sent[0], /ניסויי מודלים/);
+  assert.match(sent[0], /\$4\.0050/);
+  assert.match(sent[0], /לא נכללים/);
+  // The model list is the same population as the ratios. Naming the pilot's
+  // model here is how the reader was pointed at the wrong culprit.
+  assert.doesNotMatch(sent[0], /pilot\/model/);
+});
+
+test('the brief tells the model what was excluded, so it cannot blame it', () => {
+  const today = { date: '2026-09-08', messages: 52, evalCost: 4.005, cost_per_message: 0.0176, input_tokens_per_message: 50_000, cache_hit_rate: 0.7, system_cost_share: 0.1 };
+  const crossed = [{ key: 'cost_per_message', label: 'x', now: 0.0176, baseline: 0.008, times: 2.2, worse: 'higher', kind: 'spike' }];
+  const ev = { models: [{ model: 'deepseek/deepseek-v4-flash', inTokens: 2.6e6, cacheRate: 0.7, cost: 0.9136 }], users: [] };
+  const brief = eff.briefFor(crossed, today, ev, 39_146);
+  assert.match(brief, /EXCLUDED from every/);
+  assert.match(brief, /Do not explain these figures with it/,
+    'the advice on 2026-09-08 was to trim real users\' context to pay for a pilot');
+  // Nothing on a day with no pilot: a caveat that fires on ordinary input
+  // teaches the reader to skim past the ones that matter.
+  assert.doesNotMatch(eff.briefFor(crossed, { ...today, evalCost: 0 }, ev, 39_146), /EXCLUDED/);
+});
+
 test('the brief carries numbers and never a word anybody wrote', async () => {
   const today = { date: '2026-09-04', messages: 40, cost_per_message: 0.02, input_tokens_per_message: 175_000, cache_hit_rate: 0.25, system_cost_share: 0.1 };
   const crossed = [{ key: 'cache_hit_rate', label: 'x', now: 0.25, baseline: 0.7, times: 2.8, worse: 'lower' }];
@@ -388,4 +487,52 @@ test('the report and the brief both say a slide is a slide', () => {
   // The other half of that day's bad advice.
   assert.match(brief, /shortening a stable, cacheable system prompt/);
   assert.ok(brief.includes('→'), 'the day-by-day series is what stops a same-day guess');
+});
+
+// The only background consumer whose failure a PERSON reads. Advice cut at the
+// ceiling is half a recommendation printed as a whole one, so here the ceiling
+// has to be a DISCARD and not merely a note — the four other consumers can
+// afford to log it and skip, this one cannot afford to print it.
+test('advice the token ceiling cut is thrown away, and the numbers still go out', async () => {
+  const sent = [];
+  const deps = {
+    llm: {
+      backgroundModel: async () => ({ model: 'nex-agi/nex-n2.5-mini' }),
+      complete: async () => ({
+        // A reasoning model that thought until the budget ran out. `ok` is
+        // true and there IS text — which is exactly why nothing caught this:
+        // the old line asked only whether text came back.
+        ok: true, finishReason: 'length',
+        text: 'הסיבה העיקרית לעלייה היא ככל הנראה שהפרומפט גדל, ולכן כדאי לקצר את',
+        model: 'nex-agi/nex-n2.5-mini',
+        usage: { input: 4000, output: 2000, cacheRead: 0, cacheWrite: 0 },
+      }),
+    },
+    send: async (phone, text) => { sent.push({ phone, text }); return { ok: true }; },
+    alertHourOpen: async () => true,
+    promptChars: 39_146,
+  };
+  // A first alert needs a clean slate on both memories the watch keeps: the
+  // flag it stamps and the issues it has already filed.
+  await pool.query(`DELETE FROM usage_ledger`);
+  await pool.query(`DELETE FROM audit_log WHERE event = 'message.received'`);
+  await pool.query(`DELETE FROM issues WHERE title LIKE 'efficiency:%'`);
+  await flags.setFlag(pool, eff.ALERTED_FLAG, []);
+  for (let d = 8; d >= 2; d--) {
+    await seedDay(d, { messages: 40, inTokens: 2_000_000, cacheTokens: 1_400_000, cost: 0.62 });
+  }
+  await seedDay(1, { messages: 40, inTokens: 7_000_000, cacheTokens: 1_750_000, cost: 2.8 });
+  await seedDay(0, { messages: 5, inTokens: 250_000, cacheTokens: 175_000, cost: 0.08 });
+
+  const out = await eff.run(pool, deps);
+  assert.ok(out.crossed >= 2, 'the regression is still detected — the advice is not the alarm');
+  assert.equal(out.notified, true, 'and it is still reported');
+  assert.equal(sent.length, 1);
+  // The truncated sentence must appear nowhere: not in the message, and not
+  // in the issue row an operator opens next week.
+  assert.doesNotMatch(sent[0].text, /ולכן כדאי לקצר את/,
+    'half a recommendation reads as a whole one, and this one was cut mid-word');
+  const { rows } = await pool.query(
+    `SELECT detail FROM issues WHERE source = 'agent_detected' ORDER BY id DESC LIMIT 1`);
+  assert.equal(JSON.parse(rows[0].detail).advice, null);
 });

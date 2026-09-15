@@ -791,3 +791,66 @@ test('a stranger cannot rejoin a coordination they were never in', async () => {
     assert.equal(r.error.code, 'not_found');
   });
 });
+
+// ---- get_meeting_status draws the numbered choice (domain/list-block.js) ---
+// The tool itself, not just meetings.getStatus — the wiring that swaps the
+// old instruction hints for the drawn block, and never lets both stand.
+test('get_meeting_status draws the numbered choice through the real tool', async () => {
+  const { BY_NAME } = require('../src/adapters/mcp/registry');
+  const m = (await withClient((c) => meetings.startMeeting(c, alice.id, 'טיול', [bob.id]))).data.meeting;
+  await withClient((c) => meetings.proposeSlot(c, alice.id, m.id, 'יום שלישי 20:00 בקפה', slotStart('יום שלישי 20:00 בקפה')));
+  await withClient((c) => meetings.proposeSlot(c, alice.id, m.id, 'יום רביעי 19:00', slotStart('יום רביעי 19:00', { hours: 48 })));
+
+  const res = await withClient((c) => BY_NAME.get('get_meeting_status').handler(c, alice, { meeting_id: m.id }));
+  assert.equal(res.ok, true, JSON.stringify(res.error));
+  // meeting-options.list orders newest-added first (`id DESC`); the numbering
+  // follows THAT order, because it is the same order the model is handed —
+  // renumbering it here would be a second, disagreeing order for "2".
+  assert.equal(res.data.block, '1. יום רביעי 19:00\n2. יום שלישי 20:00 בקפה');
+  assert.match(res.data.hints.block, /EXACTLY as it is/);
+  assert.match(res.data.hints.block, /"answer with the number"/);
+  // The old fallback never travels beside the block — an unconditional "lay
+  // this out and number it" on a result that arrives numbered is the
+  // markPlaced fault, asking for work already done.
+  assert.equal(res.data.hints.layout, undefined);
+  // gone: struck-through stands, because a removed option is not IN this
+  // result at all — there is no line here for the block to have drawn.
+  assert.match(res.data.hints.gone, /struck through/);
+});
+
+test('one active option is a sentence, not a numbered block', async () => {
+  const { BY_NAME } = require('../src/adapters/mcp/registry');
+  const m = (await withClient((c) => meetings.startMeeting(c, alice.id, 'קפה', [bob.id]))).data.meeting;
+  await withClient((c) => meetings.proposeSlot(c, alice.id, m.id, 'יום חמישי 10:00', slotStart('יום חמישי 10:00')));
+
+  const res = await withClient((c) => BY_NAME.get('get_meeting_status').handler(c, alice, { meeting_id: m.id }));
+  assert.equal(res.data.block, undefined, 'one option is nothing to number');
+  assert.equal(res.data.hints, undefined, 'one option, nothing to say about layout either');
+});
+
+test('all five active options are numbered, whoever put them there', async () => {
+  const { BY_NAME } = require('../src/adapters/mcp/registry');
+  // Alice and bob are already connected with `meetings` granted (top-level
+  // before()); only Eve needs a fresh connection.
+  const eve = await makeUser(db.pool, '+972531000010', { firstName: 'Eve' });
+  await withClient(async (c) => {
+    const req = await connections.requestConnection(c, alice.id, eve.phone, {});
+    const conn = (await connections.respondToConnection(c, eve.id, req.data.connection.id, 'approve')).data.connection;
+    await grants.grantFeature(c, alice.id, conn.id, 'meetings');
+    await grants.grantFeature(c, eve.id, conn.id, 'meetings');
+  });
+  const m = (await withClient((c) => meetings.startMeeting(c, alice.id, 'שולחן עגול', [bob.id, eve.id]))).data.meeting;
+  for (let i = 0; i < 4; i++) {
+    await withClient((c) => meetings.proposeSlot(c, alice.id, m.id, `אופציה ${i}`, slotStart(`אופציה ${i}`, { hours: (i + 1) * 24 })));
+  }
+  // The fifth comes from somebody who did not open the coordination, and it
+  // lands on the table exactly like the other four — there is no state in
+  // which an option exists for one reader and not another.
+  const fifth = await withClient((c) => meetings.proposeSlot(c, eve.id, m.id, 'הצעה חמישית', slotStart('הצעה חמישית', { hours: 200 })));
+  assert.ok(fifth.ok, JSON.stringify(fifth.error));
+
+  const res = await withClient((c) => BY_NAME.get('get_meeting_status').handler(c, alice, { meeting_id: m.id }));
+  assert.equal(res.data.options.length, 5);
+  assert.ok(res.data.block.includes('הצעה חמישית'), 'anybody may vote on it, so it earns a number');
+  assert.equal((res.data.block.match(/^\d+\. /gm) || []).length, 5);
+});

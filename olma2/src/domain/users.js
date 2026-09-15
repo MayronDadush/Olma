@@ -306,7 +306,59 @@ async function setTimezone(client, userId, timezone, confirmed) {
   });
 }
 
+// How Olma addresses THEM, and when they were born — the two profile fields
+// that had no column until migration 068. Written only from their own screen:
+// nothing observes its way into either, for the same reason the assistant's
+// persona is only ever changed on an explicit ask.
+//
+// `undefined` leaves a field alone; `null` or '' clears it, which is how
+// "I would rather not say" is answered.
+const GENDERS = new Set(['male', 'female']);
+const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function validBirthDate(value, now = new Date()) {
+  const m = DATE_RE.exec(String(value));
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const probe = new Date(Date.UTC(y, mo - 1, d));
+  // Rejects 2026-02-30 rolling into March, and a year nobody alive was born in
+  // or that has not happened yet.
+  return probe.getUTCFullYear() === y && probe.getUTCMonth() === mo - 1 && probe.getUTCDate() === d
+    && y >= 1900 && probe.getTime() <= now.getTime();
+}
+
+async function setPersonal(client, userId, { gender, birthDate } = {}, now = new Date()) {
+  const sets = [];
+  const params = [userId];
+  if (gender !== undefined) {
+    const g = gender === null || gender === '' ? null : String(gender).trim().toLowerCase();
+    if (g !== null && !GENDERS.has(g)) return err('invalid', 'gender must be "male" or "female"', { reason: 'gender' });
+    params.push(g);
+    sets.push(`gender = $${params.length}`);
+  }
+  if (birthDate !== undefined) {
+    const b = birthDate === null || birthDate === '' ? null : String(birthDate).trim();
+    if (b !== null && !validBirthDate(b, now)) {
+      return err('invalid', 'birth date must be a real past date, YYYY-MM-DD', { reason: 'birth_date' });
+    }
+    params.push(b);
+    sets.push(`birth_date = $${params.length}::date`);
+  }
+  if (!sets.length) return err('invalid', 'nothing to change — pass gender and/or birthDate');
+  const { rows } = await client.query(
+    `UPDATE users SET ${sets.join(', ')} WHERE id = $1
+      RETURNING gender, to_char(birth_date, 'YYYY-MM-DD') AS birth_date`, params);
+  if (!rows[0]) return err('not_found', 'no such user');
+  // The fields that changed, never the values: a birthday is personal data and
+  // the audit trail is read by operators.
+  await audit.record(client, userId, 'user.personal_set', {
+    gender: gender !== undefined, birthDate: birthDate !== undefined,
+  });
+  return ok({ gender: rows[0].gender, birthDate: rows[0].birth_date });
+}
+
 module.exports = {
+  setPersonal,
   newIdentityToken, resolveByToken, getByPhone, getById,
   createUser, primaryChannel, sessionKeyFor, setName, setTimezone, setLocale,
   noteObservedLanguage,

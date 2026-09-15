@@ -220,6 +220,49 @@ async function setReminder(client, ownerId, taskId, remindAt, repeatRule) {
   return ok({ reminder: ins.rows[0], supersededAuto: superseded.rowCount });
 }
 
+// One ladder per task. Maya asked for a reminder at 16:00 AND one at 16:15
+// for the same call (2026-09-03); each was a reminder of its own, so each
+// climbed — "בוצע?" twice, fifteen minutes apart, that evening, and "זו
+// התזכורת האחרונה" twice the next afternoon, about a call she had had the day
+// before (incidents.md, "Two ladders for one phone call"). Both first rungs
+// are hers and both go out. But once the LATER one has said its piece, the
+// earlier one's chase is answered: whatever the second reminder was for, it
+// was not "chase me twice more about the first". So when rung 1 of a one-off
+// reminder goes out, every other one-off reminder on the task that is already
+// climbing is retired (`sent_at`, never cancelled — nothing they asked for is
+// withdrawn) and every queued FOLLOW-UP rung of a sibling is withdrawn as
+// 'superseded'. A sibling's rung 1 is never touched: that is a moment they
+// chose, and it may still be sitting in the outbox held for the night.
+async function retireSiblingLadders(client, ownerId, taskId, reminderId, now = new Date()) {
+  const { rows: retired } = await client.query(
+    `UPDATE task_reminders SET sent_at = $3
+      WHERE task_id = $1 AND id <> $2 AND sent_at IS NULL AND cancelled_at IS NULL
+        AND repeat_rule IS NULL AND attempts >= 1
+      RETURNING id`, [taskId, reminderId, now]);
+  // Every sibling's queued follow-ups, not only those retired just now — a
+  // ladder that already reached its last rung is retired on the row while its
+  // final message may still be held in the outbox (retireForMovedTask has the
+  // same sentence, from Vered's r164).
+  const { rows: siblings } = await client.query(
+    `SELECT id FROM task_reminders WHERE task_id = $1 AND id <> $2 AND repeat_rule IS NULL`,
+    [taskId, reminderId]);
+  let withdrawn = [];
+  if (siblings.length) {
+    ({ rows: withdrawn } = await client.query(
+      `UPDATE outbox SET sent_at = now(), hold_reason = 'superseded'
+        WHERE user_id = $1 AND kind = 'reminder' AND sent_at IS NULL
+          AND idempotency_key LIKE ANY($2::text[])
+        RETURNING id`, [ownerId, siblings.map((r) => `reminder:${r.id}:%`)]));
+  }
+  const out = { retired: retired.map((r) => Number(r.id)), withdrawn: withdrawn.map((r) => Number(r.id)) };
+  if (out.retired.length || out.withdrawn.length) {
+    await audit.record(client, ownerId, 'reminder.ladder_superseded', {
+      taskId: Number(taskId), by: Number(reminderId), ...out,
+    });
+  }
+  return out;
+}
+
 // The reminder Olma attaches by itself when a task arrives carrying a moment.
 // Separate from setReminder on purpose: this one is allowed to decline (it
 // returns null for "no reminder was warranted"), it never overrides an
@@ -274,8 +317,26 @@ async function cancelReminder(client, ownerId, reminderId) {
     [reminderId, ownerId]
   );
   if (!rows[0]) return err('not_found', 'pending reminder not found');
-  await audit.record(client, ownerId, 'reminder.cancelled', { reminderId });
   const t = rows[0];
+  // Cancelling stops the LADDER — dueForSending filters on cancelled_at, so no
+  // further rung is ever scheduled — but a rung already sitting in the outbox
+  // is a message the worker will still deliver, and "I cancelled it" followed
+  // by the reminder is the same broken promise as never cancelling at all. The
+  // gate holds a follow-up rung all night (it is Olma's moment, not theirs),
+  // so the window where one is queued and unsent is hours wide, not seconds.
+  // Same sentence as retireForMovedTask and retireSiblingLadders, for the same
+  // reason: the reminder row and its queued rungs have to go down together.
+  const { rows: withdrawn } = await client.query(
+    `UPDATE outbox SET sent_at = now(), hold_reason = 'cancelled'
+      WHERE user_id = $1 AND kind = 'reminder' AND sent_at IS NULL
+        AND (idempotency_key = $2 OR idempotency_key LIKE $3)
+      RETURNING id`,
+    [ownerId, `reminder:${reminderId}`, `reminder:${reminderId}:%`]
+  );
+  await audit.record(client, ownerId, 'reminder.cancelled', {
+    reminderId,
+    ...(withdrawn.length ? { outboxWithdrawn: withdrawn.map((r) => Number(r.id)) } : {}),
+  });
   // Another pending reminder on the same task means nothing was orphaned —
   // they trimmed one of several and the task is still going to be raised.
   const { rows: left } = await client.query(
@@ -301,15 +362,74 @@ async function cancelReminder(client, ownerId, reminderId) {
 // database the day this was fixed: 105 rows returned for real users, 13 of
 // them actually pending. The tool's own description says "pending reminders",
 // so every one of the other 92 was an hour Olma could promise somebody twice.
+//
+// `attempts = 0` stays exactly where it is — but it answers "an hour Olma may
+// promise", and there is a SECOND question with a different answer: what is
+// still going to reach this person. A one-off mid-ladder has delivered rung 1
+// and will send two more messages on its own, and it was in neither list. So
+// somebody who replied "stop reminding me about this" was asking about the one
+// row the model could not name, in this tool or in any other: it cancelled
+// what it could see, on other tasks, and the ladder it was asked to stop
+// climbed on (incidents.md, "The reminder that would not stop").
+//
+// They are returned APART and never merged: `reminders` is what may be said
+// out loud as a coming hour, `chasing` is what may be stopped. Merging them is
+// how a wall-clock hour already in the past gets read back as the next time
+// Olma will raise something — the "hundred and five pending reminders" bug,
+// which this must not reopen.
+// The wall clock in their zone, added to each row. One users read for the
+// whole list rather than one per row, and skipped entirely when there is
+// nothing to stamp.
+async function withLocalHour(client, ownerId, rows) {
+  const { rows: u } = await client.query(`SELECT timezone FROM users WHERE id = $1`, [ownerId]);
+  const tz = (u[0] && u[0].timezone) || 'UTC';
+  const pad = (n) => String(n).padStart(2, '0');
+  return rows.map((r) => {
+    const p = dt.partsInZone(tz, new Date(r.remind_at));
+    return { ...r, at: `${p.y}-${pad(p.m)}-${pad(p.d)} ${pad(p.hh)}:${pad(p.mi)}` };
+  });
+}
+
 async function listReminders(client, ownerId, taskId) {
+  // `t.title` is joined on and it is not decoration: without it this answered
+  // "reminder 41 at 2026-09-11T16:00:00Z" and nothing else, so anything that
+  // wanted to SAY what a reminder was about had to go and fetch the tasks and
+  // match them up by id — or say the hour with no thing attached to it. The
+  // hour goes out in their own zone beside the instant, for the same reason
+  // `listTasks` does it: a UTC instant sitting next to a local one is how the
+  // wrong one gets picked.
   const { rows } = await client.query(
-    `SELECT r.* FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+    `SELECT r.*, t.title FROM task_reminders r JOIN tasks t ON t.id = r.task_id
      WHERE t.owner_id = $1 AND ($2::bigint IS NULL OR r.task_id = $2)
        AND r.cancelled_at IS NULL AND r.sent_at IS NULL AND r.attempts = 0
      ORDER BY r.remind_at`,
     [ownerId, taskId || null]
   );
-  return ok({ reminders: rows });
+  const { rows: chasing } = await client.query(
+    `SELECT r.id, r.task_id, r.remind_at, r.attempts, t.title
+       FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+      WHERE t.owner_id = $1 AND ($2::bigint IS NULL OR r.task_id = $2)
+        AND r.cancelled_at IS NULL AND r.sent_at IS NULL AND r.attempts > 0
+        AND r.repeat_rule IS NULL
+        AND t.status = 'open' AND t.archived_at IS NULL
+      ORDER BY r.remind_at`,
+    [ownerId, taskId || null]
+  );
+  return ok({
+    reminders: rows.length ? await withLocalHour(client, ownerId, rows) : rows,
+    ...(chasing.length ? {
+      chasing: chasing.map((r) => ({
+        id: Number(r.id),
+        taskId: Number(r.task_id),
+        title: r.title,
+        // The moment they originally chose. NOT when the next rung lands —
+        // that depends on when the last one was delivered, and a guessed hour
+        // said out loud is the fault this whole area keeps producing.
+        askedFor: new Date(r.remind_at).toISOString(),
+        rungsSent: Number(r.attempts),
+      })),
+    } : {}),
+  });
 }
 
 // The sweep query the whole design leans on: everything due for sending now,
@@ -400,7 +520,9 @@ async function dueForSending(client, now, opts = {}) {
           )
          )
        )
-     ORDER BY r.remind_at`,
+     -- Then by id: two reminders at the SAME moment are rung 1 in the same tick,
+     -- and the later one must be the one that retires the other's ladder.
+     ORDER BY r.remind_at, r.id`,
     [now, maxAttempts, gapHours]
   );
   return ok({ due: rows });
@@ -494,7 +616,7 @@ async function markSent(client, reminderId) {
 }
 
 module.exports = {
-  setReminder, attachAutoReminder, cancelReminder, listReminders, dueForSending, markSent,
+  setReminder, attachAutoReminder, retireSiblingLadders, cancelReminder, listReminders, dueForSending, markSent,
   retireForMovedTask, momentIsPast, PAST_GRACE_MS,
   normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor,
   recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS,

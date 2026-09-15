@@ -27,6 +27,9 @@ const meetingsDomain = require('./meetings');
 const optionMoment = require('./meeting-option-moment');
 const mail = require('./mail');
 const voice = require('./voice');
+const preferences = require('./preferences');
+const holidays = require('./holidays');
+const factPrompts = require('./fact-prompts');
 
 // A task's own category vocabulary is closed server-side (tasks.category is
 // validated as a closed set, not free text), so the page can rely on it —
@@ -61,7 +64,7 @@ const importSource = (src) => (Object.hasOwn(SOURCE_CAPS, src) ? src : null);
 // the allowlist exists for.
 async function gateIdentity(client, userId) {
   const { rows } = await client.query(
-    `SELECT id, role, phone FROM users WHERE id = $1`, [userId]);
+    `SELECT id, role, phone, voice_more_requested_at FROM users WHERE id = $1`, [userId]);
   return rows[0] || { id: userId };
 }
 
@@ -70,8 +73,11 @@ async function gateIdentity(client, userId) {
 // for it could only ever be a way to look at the test fixtures.
 async function loadUser(client, userId) {
   const { rows } = await client.query(
-    `SELECT id, first_name, last_name, assistant_name, timezone, timezone_confirmed,
-            locale, paused_at IS NOT NULL AS paused, digest_scope, calendar_sync_tasks
+    `SELECT id, first_name, last_name, assistant_name, assistant_gender, timezone, timezone_confirmed,
+            locale, paused_at IS NOT NULL AS paused, digest_scope, digest_times, calendar_sync_tasks,
+            gender, to_char(birth_date, 'YYYY-MM-DD') AS birth_date,
+            to_char(created_at AT TIME ZONE COALESCE(timezone, 'UTC'), 'YYYY-MM-DD') AS joined_on,
+            nest_tip_seen_at IS NOT NULL AS nest_tip_seen
      FROM users WHERE id = $1 AND status != 'blocked' AND is_eval = false`,
     [userId]
   );
@@ -108,18 +114,36 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
             -- minutes, so wanting it and having it are two different facts and
             -- the page has to be able to tell them apart
             t.calendar_event_id IS NOT NULL AS in_calendar,
-            sh.role AS shared_role
+            sh.role AS shared_role,
+            -- who started it, by first name only: on a task somebody shared
+            -- WITH this person the owner is on no share row, so without this
+            -- the list could draw every face on it except the one who shared
+            ow.first_name AS owner_name,
+            -- they took the pin off this one (migration 066); pinned is the
+            -- default, and it only means anything while the task is shared
+            up.task_id IS NOT NULL AS unpinned
      FROM tasks t
+     JOIN users ow ON ow.id = t.owner_id
      LEFT JOIN shares sh
             ON sh.task_id = t.id AND sh.viewer_id = $1 AND sh.status = 'active'
+     LEFT JOIN task_unpins up
+            ON up.task_id = t.id AND up.user_id = $1
+     -- where THIS person dragged it (migration 069), per viewer like the pin
+     LEFT JOIN task_order tord
+            ON tord.task_id = t.id AND tord.user_id = $1
      WHERE t.parent_id IS NULL
        AND (t.owner_id = $1 OR sh.id IS NOT NULL)
      -- Open first, then the finished ones newest-first: the archive shows the
      -- last eight and says how many it is hiding, so "last" has to mean when
      -- it was finished, not when it had been due. Open rows are all NULL on
-     -- the second key and fall through to their own order, unchanged.
+     -- the second key and fall through to their own order: where the person
+     -- dragged them, and only then by date. The page never sorts — it files
+     -- this order into its groups — so one rank serves the category view and
+     -- the time view alike, and a row nobody dragged sits after the dragged
+     -- ones in date order, as it always did.
      ORDER BY (t.archived_at IS NOT NULL OR t.status = 'done'),
               COALESCE(t.completed_at, t.archived_at) DESC NULLS LAST,
+              tord.position NULLS LAST,
               t.due_at NULLS LAST, t.id`,
     [userId, zone]
   );
@@ -128,7 +152,7 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
   const ids = tasks.map((t) => t.id);
   const { rows: items } = await client.query(
     `SELECT id, parent_id, title, status FROM tasks
-     WHERE parent_id = ANY($1::bigint[]) ORDER BY id`,
+     WHERE parent_id = ANY($1::bigint[]) AND archived_at IS NULL ORDER BY id`,
     [ids]
   );
   // Only a reminder that has not finished its escalation ladder counts as
@@ -215,7 +239,13 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
       // somebody else shared can be attributed to them by name.
       mine: String(t.owner_id) === String(userId),
       owner: who.length || String(t.owner_id) !== String(userId) ? t.owner_id : null,
+      ownerName: String(t.owner_id) !== String(userId) ? (t.owner_name || '') : null,
       who,
+      // Sits at the top of their list: shared with somebody right now, and
+      // they have not taken the pin off. A task that stops being shared drops
+      // back to its place without anyone touching it.
+      pinned: (who.length > 0 || String(t.owner_id) !== String(userId)) && !t.unpinned,
+      unpinned: Boolean(t.unpinned),
       // Only set on a task somebody shared WITH this person: 'viewer' or
       // 'editor'. Their own rows carry null, not 'editor' — owning something
       // is not a role granted to you.
@@ -273,6 +303,55 @@ async function loadFriends(client, userId) {
     since: r.responded_at,
     features: r.features,
   }));
+}
+
+// The WhatsApp rooms this person shares with Olma, each already carrying the
+// people in it — the room arrives here as a group they can coordinate with,
+// with the name it has in WhatsApp, rather than as a list they have to
+// assemble out of their friends one by one (owner's ask, 2026-09-09).
+//
+// Two things are deliberately absent. No phone numbers: everyone in the room
+// can see them in WhatsApp, and this payload is bound for a browser, so it
+// keeps the same line every other person on this page is behind — first name
+// and nothing else. And no `identity_token`, which lives on `chat_groups` and
+// is the room's door: a group tool may not return that row, and neither may
+// this one.
+//
+// Members who are not on Olma are listed by the display name the room already
+// shows, flagged `onOlma: false`, because a room drawn with half its people
+// missing reads as the wrong room. They cannot be put in a coordination — the
+// page shows them and cannot select them.
+async function loadGroups(client, userId) {
+  const { rows } = await client.query(
+    `SELECT g.id, g.subject, g.state, g.kind, g.timezone,
+            m2.user_id, m2.display_name, u.first_name
+       FROM chat_group_members me
+       JOIN chat_groups g ON g.id = me.group_id
+       JOIN chat_group_members m2 ON m2.group_id = g.id AND m2.left_at IS NULL
+       LEFT JOIN users u ON u.id = m2.user_id
+      WHERE me.user_id = $1 AND me.left_at IS NULL
+      ORDER BY g.id, u.first_name NULLS LAST, m2.phone`,
+    [userId]
+  );
+  const byGroup = new Map();
+  for (const r of rows) {
+    const id = Number(r.id);
+    let g = byGroup.get(id);
+    if (!g) {
+      g = { id, name: r.subject, state: r.state, kind: r.kind, timezone: r.timezone, members: [] };
+      byGroup.set(id, g);
+    }
+    const onOlma = Boolean(r.user_id);
+    g.members.push({
+      id: onOlma ? Number(r.user_id) : null,
+      name: onOlma ? r.first_name : (r.display_name || null),
+      onOlma,
+      // The page draws the viewer differently ("you"), and working that out in
+      // the browser means shipping the viewer's id twice.
+      self: onOlma && Number(r.user_id) === Number(userId),
+    });
+  }
+  return [...byGroup.values()];
 }
 
 // Integrations, one row per provider, with the scope the person granted. The
@@ -352,7 +431,7 @@ async function loadChannels(client, userId) {
 // participant is `answered: false` rather than an empty option list.
 async function loadMeetings(client, userId, zone) {
   const { rows: meetings } = await client.query(
-    `SELECT m.id, m.title, m.initiator_id, m.status,
+    `SELECT m.id, m.title, m.initiator_id, m.status, m.quorum_min,
             m.proposed_slot, m.proposed_start_at, m.confirmed_start_at,
             m.confirmed_slot, m.settling_option_id, m.settled_by,
             -- Seconds left of the settle grace, not the instant it ends: the
@@ -400,14 +479,15 @@ async function loadMeetings(client, userId, zone) {
     [ids]
   );
   // Every candidate time, in the page's own terms: a day offset from THIS
-  // person's today and a clock time or daypart, with everyone's answers. A
-  // pending one (a fifth from a non-initiator) travels flagged; the page shows
-  // it to the initiator as a decision and to its proposer as a receipt.
+  // person's today and a clock time or daypart, with everyone's answers. What
+  // is on the table is the whole story since 2026-09-09 — a time somebody
+  // removed is gone for everybody, and there is no longer any option that
+  // exists for one reader and not another.
   const { rows: optRows } = await client.query(
     `SELECT o.id, o.meeting_id, o.slot_text, o.starts_at, o.all_day, o.daypart, o.added_by, o.status,
             coalesce(json_object_agg(a.user_id, a.answer) FILTER (WHERE a.user_id IS NOT NULL), '{}'::json) AS answers
        FROM meeting_options o LEFT JOIN meeting_option_answers a ON a.option_id = o.id
-      WHERE o.meeting_id = ANY($1::bigint[]) AND o.status IN ('active', 'pending')
+      WHERE o.meeting_id = ANY($1::bigint[]) AND o.status = 'active'
       GROUP BY o.id ORDER BY o.id`, [ids]);
   const optionsBy = new Map();
   for (const o of optRows) {
@@ -415,7 +495,7 @@ async function loadMeetings(client, userId, zone) {
     const pick = optionMoment.pickFor(zone, o.starts_at);
     optionsBy.get(o.meeting_id).push({
       id: Number(o.id), day: pick.day, time: o.all_day || o.daypart ? null : pick.time,
-      part: o.daypart || null, allDay: Boolean(o.all_day), pending: o.status === 'pending',
+      part: o.daypart || null, allDay: Boolean(o.all_day),
       by: o.added_by === null ? null : Number(o.added_by), slot: o.slot_text, startsAt: o.starts_at,
       answers: o.answers || {},
     });
@@ -479,6 +559,11 @@ async function loadMeetings(client, userId, zone) {
     // asks, asked here only so the page knows whether to draw the control —
     // `settleNow` re-asks it whatever the page drew.
     canSettle: String(m.initiator_id) === String(userId) && m.status === 'negotiating',
+    // How many yeses this coordination calls enough, copied off the group when
+    // it opened (migration 064) and its own ever since. `null` is no minimum,
+    // which is every coordination in production today — the page draws no mark
+    // for it rather than inventing one from the head count.
+    quorumMin: m.quorum_min === null ? null : Number(m.quorum_min),
     participants: byMeeting.get(m.id) || [],
     options: optionsBy.get(m.id) || [],
     maxOptions: meetingsDomain.options.MAX_ACTIVE,
@@ -527,6 +612,41 @@ async function loadLeftMeetings(client, userId) {
   return left.concat(done.map((m) => ({ id: Number(m.id), title: m.title, youLeft: false, settled: true, slot: m.confirmed_slot || '' })));
 }
 
+// When Olma may write, as the gate will actually read it — the same two domain
+// calls the outbox worker makes, so the page cannot show a window or a quiet
+// day the gate does not keep. `source` tells the page whether it is looking at
+// something they chose or a default they were handed.
+async function loadSchedule(client, user) {
+  const win = await preferences.availabilityWindow(client, user.id);
+  const quiet = await preferences.quietDays(client, user.id, { locale: user.locale, timezone: user.timezone });
+  return {
+    availability: { ...win.data.window, source: win.data.source },
+    defaultWindow: preferences.DEFAULT_WINDOW,
+    quietDays: quiet.data.days,
+    quietDaysSource: quiet.data.source,
+    holidaysQuiet: quiet.data.holidays,
+    calendar: quiet.data.calendar,
+    // Saturday in an Israeli zone is candle-lighting to havdalah, not a
+    // calendar day (outbox/worker.js) — worth saying beside the chip.
+    shabbatWindow: holidays.isIsrael(user.timezone),
+  };
+}
+
+// What Olma knows about them: every active fact, newest first. The card holds
+// the top ten; this page holds all of them, because it is where they come to
+// see what is on file and take something off it.
+async function loadFacts(client, userId) {
+  const { rows } = await client.query(
+    `SELECT id, category, fact, source, learned_at, prompt_key
+       FROM user_facts
+      WHERE user_id = $1 AND active = true AND (expires_at IS NULL OR expires_at > now())
+      ORDER BY learned_at DESC, id DESC`, [userId]);
+  return rows.map((r) => ({
+    id: Number(r.id), category: r.category, fact: r.fact, source: r.source,
+    learnedAt: r.learned_at, promptKey: r.prompt_key,
+  }));
+}
+
 // The whole page, in one object. A missing or blocked user is `not_found` and
 // not an empty dashboard: an empty one reads as "you have nothing", which is a
 // statement about them rather than about the link.
@@ -551,10 +671,15 @@ async function load(client, userId) {
   const gateUser = await gateIdentity(client, userId);
   const mailGate = await mail.requireMailAccess(client, gateUser);
   const callAllowed = await voice.pageCallAllowed(client, gateUser);
+  const callAttempts = callAllowed ? await voice.attemptsRemaining(client, gateUser.id) : null;
   const channels = await loadChannels(client, userId);
   const contacts = await loadContacts(client, userId);
+  const groups = await loadGroups(client, userId);
   const meetings = await loadMeetings(client, userId, zone);
   const meetingsLeft = await loadLeftMeetings(client, userId);
+  const schedule = await loadSchedule(client, user);
+  const knownFacts = await loadFacts(client, userId);
+  const prompts = await factPrompts.pending(client, userId, user.locale);
   return ok({
     user: {
       id: user.id,
@@ -575,14 +700,35 @@ async function load(client, userId) {
       // The standing switch behind every task's own calendar row. A task that
       // says nothing follows this one.
       calendarSyncTasks: user.calendar_sync_tasks,
+      // Migration 068. NULL is "not said", and the page shows it as unset
+      // rather than guessing a form of address for them.
+      gender: user.gender,
+      birthDate: user.birth_date,
+      assistantGender: user.assistant_gender,
+      joinedOn: user.joined_on,
+      digestTimes: user.digest_times ? user.digest_times.split(',') : [],
+      // Told once what dropping a task onto another does (migration 069).
+      nestTipSeen: Boolean(user.nest_tip_seen),
     },
+    schedule,
+    facts: knownFacts,
+    factPrompts: prompts,
     channels,
     contacts,
+    groups,
     tasks: tasks.open,
     archived: tasks.archived,
     friends,
     integrations,
-    available: { mail: mailGate.ok, call: callAllowed },
+    available: {
+      mail: mailGate.ok,
+      call: {
+        allowed: callAllowed,
+        attemptsUsed: callAttempts ? callAttempts.used : 0,
+        attemptsLimit: voice.CALL_ATTEMPTS_LIMIT,
+        requested: callAllowed ? Boolean(gateUser.voice_more_requested_at) : false,
+      },
+    },
     meetings,
     meetingsLeft,
   });

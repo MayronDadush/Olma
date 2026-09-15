@@ -1,9 +1,11 @@
 'use strict';
 // tasks — one slice of the tool registry (see ../registry.js).
 const {
-  tasks, S, tool, ok,
+  tasks, users, reminders, S, tool, ok, pastMoment,
 } = require('./_shared');
 const dt = require('../../../domain/datetime');
+const format = require('../../../domain/message-format');
+const listBlock = require('../../../domain/list-block');
 
 // What to tell the person about what add_task/add_tasks_bulk just did — on
 // the RESULT, only on the calls where it applies, rather than four sentences
@@ -19,6 +21,16 @@ function taskHints(res, user = {}) {
       + 'not that you created a task. merged:true means it joined the run already open; alreadyOnList '
       + 'names what was there; dueAtIgnored means a date they gave was NOT applied to the existing '
       + 'list — offer it rather than assume it.';
+  }
+  // Part of a dump was already open on their list and was not saved again
+  // (domain/tasks.js, "The same thing, saved twice"). The whole-dump case is an
+  // ERROR and never reaches here, so this only ever fires where something else
+  // WAS saved — which is why it says to name what went in rather than to lead
+  // with what did not.
+  if (Array.isArray(d.duplicatesSkipped) && d.duplicatesSkipped.length) {
+    hints.duplicatesSkipped = `${d.duplicatesSkipped.map((t) => `"${t}"`).join(', ')} — already open `
+      + 'on their list, so nothing was saved for those and they are NOT in tasks. Say what you did '
+      + 'save; mention the rest only as already being there, and never as newly added.';
   }
   // A date lifted off the noun instead of off the work. `datesTheObject` fires
   // only where the two readings diverge — ל+weekday in the title AND the task
@@ -101,15 +113,49 @@ function taskHints(res, user = {}) {
   return Object.keys(hints).length ? ok({ ...d, hints }) : res;
 }
 
-// The list is ONE array so nothing that reads it by shape breaks, and the
-// hint is what separates it into the two lists the person hears: what is on
-// the calendar, then what is on the plate. Only when there is a calendar.
-function listHints(res) {
+// The list is ONE array so nothing that reads it by shape breaks. What
+// separates it into the two lists the person hears — what is on the calendar,
+// then what is on the plate — used to be a paragraph asking the model to do
+// it. It is DRAWN now (domain/list-block.js): the layout cannot drift between
+// two readings, a row cannot go missing on the way through, and a meeting
+// cannot come back called a task, because nothing here builds a mixed list.
+//
+// The instruction hints are the FALLBACK and never travel beside the block.
+// A block handed over with "lay these out as a list" next to it is the
+// markPlaced fault exactly — a conditional result outvoted by an unconditional
+// sentence sitting on the same result — and here it would be worse than
+// outvoted, because it would be asking for the work again after it was done.
+async function listHints(client, user, res, status) {
   if (!res || !res.ok || !res.data || !Array.isArray(res.data.tasks)) return res;
-  if (!res.data.tasks.some((t) => t.kind === 'event')) return res;
+  const ch = await users.primaryChannel(client, user.id);
+  const block = listBlock.renderTaskListBlock(res.data, {
+    locale: user.locale,
+    timezone: user.timezone,
+    channelType: ch.ok ? ch.data.channel.channel_type : null,
+    status,
+  });
+  if (block) {
+    return ok({
+      ...res.data,
+      block,
+      hints: {
+        ...(res.data.hints || {}),
+        block: `${format.HINTS.relayBlock} Everything you add is at most ONE short sentence around `
+          + 'it — the answer to what they actually asked, or the one thing worth doing first. '
+          + 'If the list IS the answer, send the block alone.',
+      },
+    });
+  }
+  // Two conditions, not one: "there are several of these" and "two of these
+  // are different things" are different facts about the same result, and the
+  // layout hint has no work to do on a single line.
+  if (res.data.tasks.length < 2) return res;
+  const layout = { layout: format.HINTS.list };
+  if (!res.data.tasks.some((t) => t.kind === 'event')) return ok({ ...res.data, hints: layout });
   return ok({
     ...res.data,
     hints: {
+      ...layout,
       kinds: 'kind:"event" rows are CALENDAR entries (a moment they will be at — meeting, appointment, '
         + 'shift; it leaves the list by itself once it passes); kind:"todo" rows are jobs until done. '
         + 'When you tell them what they have, give the calendar first as "ביומן" and the to-dos after '
@@ -121,7 +167,10 @@ function listHints(res) {
 module.exports = [
   tool('list_my_tasks', 'List your open tasks (status=done for completed). Each carries its kind (event = calendar, todo = job) and its pending reminders with the hour to SAY, in their clock — a due date is when the thing is, never when you will remind them.',
     { status: S('string', 'open | done (default open)') }, [],
-    async (client, user, a) => listHints(await tasks.listTasks(client, user.id, { status: a.status || 'open' }))),
+    async (client, user, a) => {
+      const status = a.status || 'open';
+      return listHints(client, user, await tasks.listTasks(client, user.id, { status }), status);
+    }),
   tool('add_task', 'Add one todo (a job until done) or event (a moment they will be AT; closes when it passes) — say which in kind. due_at is when the THING is, and arms a reminder automatically an hour before (08:00 for a whole-day one). remind_at is for "תזכיר לי ב-19:00": that hour IS the reminder and replaces the automatic one. A dictated shopping run is filed as a list. Follow any hints on the reply. Times MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their own local time (USER.md); never bare digits with a Z.',
     { title: S('string', 'What it is — never the hours or the place, those have fields'),
       kind: S('string', 'event | todo ("פגישה מחר ב-10" = event, "לקבוע פגישה" = todo); omitted = guessed from the title'),
@@ -131,10 +180,26 @@ module.exports = [
       ends_at: S('string', 'Optional end of a range, same format: a shift is title \'משמרת\', due_at 12:00, ends_at 19:00 — never hours in the title.'),
       remind_at: S('string', 'The hour THEY named to be reminded, same format. Replaces the automatic one.'),
       parent_task_id: S('number', 'Optional parent (project) id') }, ['title'],
-    async (client, user, a) => taskHints(await tasks.addTask(client, user.id, {
-      title: a.title, kind: a.kind, location: a.location, category: a.category, dueAt: a.due_at, endsAt: a.ends_at,
-      remindAt: a.remind_at, parentId: a.parent_task_id,
-    }), user)),
+    async (client, user, a) => {
+      // Same guard set_task_reminder already has for remind_at — a model
+      // computing "in 5 minutes" can get the arithmetic wrong (Miron, an
+      // instant built off the UTC hour with the local offset tacked on
+      // unconverted, 2026-09-12), and add_task's due_at/remind_at reached
+      // the domain with no such check at all: a past due_at saved silently
+      // with autoReminderAt declining to arm anything (it returns null for
+      // a moment already gone), and Olma told him a reminder was coming
+      // that nothing behind it could ever send.
+      if (a.due_at && reminders.momentIsPast(a.due_at)) {
+        return pastMoment('due_at', a.due_at, user.timezone, 'no task was saved');
+      }
+      if (a.remind_at && reminders.momentIsPast(a.remind_at)) {
+        return pastMoment('remind_at', a.remind_at, user.timezone, 'no task was saved');
+      }
+      return taskHints(await tasks.addTask(client, user.id, {
+        title: a.title, kind: a.kind, location: a.location, category: a.category, dueAt: a.due_at, endsAt: a.ends_at,
+        remindAt: a.remind_at, parentId: a.parent_task_id,
+      }), user);
+    }),
   tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task. Also the way to SPLIT a goal into its parts: pass parent_task_id and the parts become subtasks in the same call. Timed items get their reminders automatically; when the reply carries hints, follow them. Any due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), converted from their own local time (USER.md); never bare digits with a Z.',
     { items: S('array', 'Array of {title, kind?, location?, category?, due_at?, ends_at?}; kind event|todo, location, category and times as in add_task.', { items: { type: 'object' } }),
       parent_task_id: S('number', 'Optional: save every item as a subtask of this project (one level)') }, ['items'],
@@ -146,7 +211,19 @@ module.exports = [
     (client, user, a) => tasks.completeTask(client, user.id, a.task_id)),
   tool('snooze_task', 'Move a task\'s due date; its reminders follow (a rung chasing the old date is closed, the automatic one re-arms an hour before the new one). new_due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00); a bare local time is rejected.',
     { task_id: S('number', 'Task id'), new_due_at: S('string', 'New ISO-8601 datetime WITH UTC offset') }, ['task_id', 'new_due_at'],
-    async (client, user, a) => taskHints(await tasks.snoozeTask(client, user.id, a.task_id, a.new_due_at), user)),
+    async (client, user, a) => {
+      if (reminders.momentIsPast(a.new_due_at)) {
+        return pastMoment('new_due_at', a.new_due_at, user.timezone, 'the task was not moved');
+      }
+      const res = taskHints(await tasks.snoozeTask(client, user.id, a.task_id, a.new_due_at), user);
+      // Deliberately NOT inside `taskHints`: add_task and edit_task go through
+      // it too and both earn a 👍, and an unconditional "say this" beside a
+      // conditional markPlaced is the fault that put a sentence under a live
+      // thumbs-up for two days (CLAUDE.md, "markPlaced is CONDITIONAL").
+      // snooze_task earns no mark, so a sentence is expected of it anyway.
+      if (!res || !res.ok || !res.data) return res;
+      return ok({ ...res.data, hints: { ...(res.data.hints || {}), moved: format.HINTS.struckOut } });
+    }),
   tool('edit_task', 'Change an existing task\'s title, kind, location, category or time — WITHOUT losing its reminders or place under a project. Send only the fields you are changing; null clears one. Gives a task an end time: a shift saved as "משמרת - ראשון 12:00-19:00" becomes title "משמרת", due_at 12:00, ends_at 19:00.',
     { task_id: S('number', 'Task id'), title: S('string', 'Optional new title'),
       kind: S('string', 'event | todo'),
@@ -154,14 +231,25 @@ module.exports = [
       category: S('string', 'One of home|work|family|health|money|errands — only when the person named it; marks it as their choice.'),
       due_at: S('string', 'Optional new start, ISO-8601 WITH UTC offset'),
       ends_at: S('string', 'Optional new end, ISO-8601 WITH UTC offset, after due_at.') }, ['task_id'],
-    (client, user, a) => tasks.editTask(client, user.id, a.task_id, {
-      ...(a.title === undefined ? {} : { title: a.title }),
-      ...(a.kind === undefined ? {} : { kind: a.kind }),
-      ...(a.location === undefined ? {} : { location: a.location }),
-      ...(a.category === undefined ? {} : { category: a.category }),
-      ...(a.due_at === undefined ? {} : { dueAt: a.due_at }),
-      ...(a.ends_at === undefined ? {} : { endsAt: a.ends_at }),
-    })),
+    (client, user, a) => {
+      // Miron, 2026-09-12: edit_task's due_at had no past-moment guard at
+      // all, unlike set_task_reminder's remind_at — a wrong instant (UTC
+      // hour with the local offset tacked on, unconverted) saved silently,
+      // and the auto-reminder attach then declined it with no error either
+      // (autoReminderAt returns null for a due_at already gone). Olma told
+      // him "ב-16:41 אשלח לך תזכורת" over a row that could never fire.
+      if (a.due_at && reminders.momentIsPast(a.due_at)) {
+        return pastMoment('due_at', a.due_at, user.timezone, 'the task was not changed');
+      }
+      return tasks.editTask(client, user.id, a.task_id, {
+        ...(a.title === undefined ? {} : { title: a.title }),
+        ...(a.kind === undefined ? {} : { kind: a.kind }),
+        ...(a.location === undefined ? {} : { location: a.location }),
+        ...(a.category === undefined ? {} : { category: a.category }),
+        ...(a.due_at === undefined ? {} : { dueAt: a.due_at }),
+        ...(a.ends_at === undefined ? {} : { endsAt: a.ends_at }),
+      });
+    }),
   tool('restore_task', 'Put an archived task back on the open list, OPEN with its subtasks intact — the way back from anything Olma closed on its own (a passed appointment, a fully-ticked project).',
     { task_id: S('number', 'Task id') }, ['task_id'],
     (client, user, a) => tasks.unarchiveTask(client, user.id, a.task_id)),

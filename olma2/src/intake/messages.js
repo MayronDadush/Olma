@@ -7,6 +7,7 @@
 // them from the admin page; `overrides` is that stored object, loaded by the
 // caller (both callers hold a client).
 const templates = require('../domain/message-templates');
+const format = require('../domain/message-format');
 
 function isHebrewPhone(phone) {
   return String(phone || '').replace(/[^\d]/g, '').startsWith('972');
@@ -16,9 +17,15 @@ function isHebrewPhone(phone) {
 // phone that isn't on Olma yet. Reflects exactly why we're reaching out:
 // who (name + phone, so they recognise them) and what for.
 function introMessage({ inviterName, inviterPhone, reason, phone }, overrides) {
+  // Both of these are another user's typing, on its way to somebody who has
+  // never heard of us — the reason especially, which is free text. Emphasis
+  // they happened to type would land as bold inside the first sentence Olma
+  // ever says to this person, chosen by a stranger. Cleaned, never rewritten
+  // (message-format.stripUserMarkup).
+  const clean = format.stripUserMarkup;
   const vars = {
-    inviter_name: inviterName, inviter_phone: inviterPhone,
-    reason: reason ? ` — ${reason}` : '',
+    inviter_name: clean(inviterName), inviter_phone: inviterPhone,
+    reason: reason ? ` — ${clean(reason)}` : '',
   };
   return templates.render(isHebrewPhone(phone) ? 'stranger_intro_he' : 'stranger_intro_en', vars, overrides);
 }

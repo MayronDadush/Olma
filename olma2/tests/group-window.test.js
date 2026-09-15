@@ -16,7 +16,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { freshDb, makeUser } = require('./helpers');
 const { withTx } = require('../src/db/pool');
-const { decide, CONVERSATION_GRACE_MS } = require('../src/outbox/gate');
+const { decide, CONVERSATION_GRACE_MS, weekdayInTz } = require('../src/outbox/gate');
 const { enqueue } = require('../src/outbox/enqueue');
 const { drainOnce } = require('../src/outbox/worker');
 const groups = require('../src/domain/groups');
@@ -73,6 +73,28 @@ test('gate: a pause is still a pause, and is read before any of this', () => {
   assert.equal(decide({
     ...base, evalUser: true, groupWroteAt: justWrote, row: invite,
   }).holdReason, 'eval_user');
+});
+
+// Owner, 2026-09-12: somebody who wrote in the room since the coordination
+// started is available and probably interested, so a meeting row is the one
+// kind that should not wait for their quiet day to end — the opposite of the
+// rule one test up ("gate: a quiet day holds everything Olma decided to
+// say"), which still stands for a digest, an automatic reminder, or anything
+// else that never carries a meetingId and so can never earn groupWroteAt.
+test('gate: a quiet day still holds a meeting row, unless the room heard from them', () => {
+  const saturdayNoon = new Date('2026-08-15T09:00:00Z'); // noon in Jerusalem
+  const sat = weekdayInTz(base.tz, saturdayNoon);
+  const shabbat = { ...base, now: saturdayNoon, quietDays: [sat], row: invite };
+
+  assert.equal(decide(shabbat).holdReason, 'quiet_day', 'the day off still applies by default');
+  assert.equal(
+    decide({ ...shabbat, groupWroteAt: new Date(saturdayNoon.getTime() - 60_000) }).action,
+    'deliver', 'but not to somebody the room just heard from');
+
+  // Sixteen minutes ago is not mid-conversation for the day rule either —
+  // same window as the night rule, same reason.
+  const late = new Date(saturdayNoon.getTime() - CONVERSATION_GRACE_MS - 1000);
+  assert.equal(decide({ ...shabbat, groupWroteAt: late }).holdReason, 'quiet_day');
 });
 
 // ---------------- the stamp -------------------------------------------------

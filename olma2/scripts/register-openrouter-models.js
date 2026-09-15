@@ -71,6 +71,16 @@ const occ = require('../src/intake/openclaw-config');
 // `supported_parameters` off /api/v1/models and confirm it contains `tools`
 // BEFORE registering anything. It is one curl, it needs no key, and here it
 // would have replaced a registration, a config write and two failed probes.
+//
+// The cheap OpenAI pair, 2026-09-08, on the owner's ask for "two cheap OpenAI
+// models" beside v4-pro and haiku in the same night's pilot. Prices read live
+// off /api/v1/models that evening, `tools: true` confirmed for both first:
+//   gpt-5-nano   $0.050 / $0.400 per Mtok — the only OpenAI model in v4-flash's
+//                price band ($0.081 / $0.162)
+//   gpt-5-mini   $0.250 / $2.000 — the cheapest mini tier
+// gpt-5.4-nano and gpt-5.4-mini were already registered (2026-09-02, by the
+// boost-mode pilot); 5.4-nano has a run on record (docs/model-experiments.md,
+// #29) and was disqualified on essay-length replies.
 const MODELS = [
   'openrouter/deepseek/deepseek-v4-flash',
   'openrouter/deepseek/deepseek-v4-pro',
@@ -78,6 +88,14 @@ const MODELS = [
   'openrouter/deepseek/deepseek-v3.2',
   'openrouter/qwen/qwen3.7-flash',
   'openrouter/openai/gpt-oss-120b',
+  'openrouter/openai/gpt-5-nano',
+  'openrouter/openai/gpt-5-mini',
+  // Haiku 4.5 THROUGH OpenRouter ($1.00 / $5.00), 2026-09-08: the gateway's
+  // own anthropic profile is unavailable (no credit, owner's choice), so
+  // `anthropic/claude-haiku-4-5` fails at CLI start — "Prepared direct auth
+  // fallback cannot bypass unavailable profiles" — and a pilot on it is
+  // twelve errors in three minutes. Same weights, funded provider.
+  'openrouter/anthropic/claude-haiku-4.5',
 ];
 
 const APPLY = process.argv.includes('--apply');

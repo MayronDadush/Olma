@@ -391,3 +391,103 @@ test('nothing tells anybody about a reminder that already went out', async (t) =
   await withTx(pool, (c) => sweeps.sweepReminders(c, PLUS_3H));
   assert.equal((await outboxKeys(pool)).length, 2, 'the ladder is untouched');
 });
+
+// ---- one ladder per task ----------------------------------------------------
+// Maya asked for a reminder at 16:00 AND one at 16:15 for the same call
+// (2026-09-03). Each was a reminder of its own, so each climbed: "בוצע?" twice
+// fifteen minutes apart that evening, and "זו התזכורת האחרונה" twice the next
+// afternoon, about a call she had had the day before (incidents.md, "Two
+// ladders for one phone call"). Both first rungs are hers; the chase is one.
+const AT_15 = '2026-08-17T16:15:00Z';
+async function twoReminders(phone, secondAt) {
+  const { pool, teardown } = await freshDb();
+  const user = await makeUser(pool, phone);
+  const ids = await withTx(pool, async (c) => {
+    const t = await tasks.addTask(c, user.id, { title: 'שיחת טלפון עם רופא' });
+    const a = await reminders.setReminder(c, user.id, t.data.task.id, AT);
+    const b = await reminders.setReminder(c, user.id, t.data.task.id, secondAt);
+    return { taskId: t.data.task.id, a: Number(a.data.reminder.id), b: Number(b.data.reminder.id) };
+  });
+  return { pool, teardown, user, ...ids };
+}
+async function row(pool, id) {
+  const { rows } = await pool.query(`SELECT * FROM task_reminders WHERE id = $1`, [id]);
+  return rows[0];
+}
+
+test('two reminders on one task: both first rungs go out, then one ladder climbs', async (t) => {
+  const { pool, teardown, a, b, user } = await twoReminders('+972505500021', AT_15);
+  t.after(teardown);
+
+  assert.deepEqual(await withTx(pool, (c) => sweeps.sweepReminders(c, TICK1)), [a]);
+  await deliver(pool, a, 1, AT);
+  // 16:15 — the second moment she named. Hers, and it goes out.
+  assert.deepEqual(await withTx(pool, (c) => sweeps.sweepReminders(c, '2026-08-17T16:16:00Z')), [b]);
+  let keys = (await outboxKeys(pool)).map((k) => k.idempotency_key);
+  assert.deepEqual(keys, [`reminder:${a}`, `reminder:${b}`]);
+  // The first reminder's chase is answered by the second: retired, not cancelled.
+  const first = await row(pool, a);
+  assert.ok(first.sent_at, 'the earlier ladder retires the moment the later rung 1 goes out');
+  assert.equal(first.cancelled_at, null);
+  assert.equal(first.attempts, 1);
+  assert.equal((await row(pool, b)).sent_at, null, 'the later one is still walking');
+  await deliver(pool, b, 1, AT_15);
+
+  // Three hours on: ONE "בוצע?", the later reminder's.
+  await withTx(pool, (c) => sweeps.sweepReminders(c, '2026-08-17T19:20:00Z'));
+  keys = (await outboxKeys(pool)).map((k) => k.idempotency_key);
+  assert.deepEqual(keys, [`reminder:${a}`, `reminder:${b}`, `reminder:${b}:2`],
+    'the retired ladder does not climb');
+  await deliver(pool, b, 2, '2026-08-17T19:20:00Z');
+
+  // Next day: ONE last rung, at the later hour.
+  await withTx(pool, (c) => sweeps.sweepReminders(c, '2026-08-18T16:20:00Z'));
+  keys = (await outboxKeys(pool)).map((k) => k.idempotency_key);
+  assert.equal(keys.length, 4, 'four messages, not six');
+  assert.equal(keys[3], `reminder:${b}:3`);
+  await deliver(pool, b, 3, '2026-08-18T16:20:00Z');
+  await withTx(pool, (c) => sweeps.sweepReminders(c, DAY_AFTER));
+  assert.equal((await outboxKeys(pool)).length, 4);
+
+  const { rows: audit } = await pool.query(
+    `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'reminder.ladder_superseded'`, [user.id]);
+  assert.equal(audit.length, 1);
+  assert.deepEqual(audit[0].detail.retired, [a]);
+  assert.equal(audit[0].detail.by, b);
+});
+
+test('a sibling\'s queued follow-up is withdrawn; its first rung never is', async (t) => {
+  // The second reminder four hours after the first, so the first has a rung 2
+  // queued (say, held for the night) by the time the second says its piece.
+  const { pool, teardown, a, b } = await twoReminders('+972505500022', '2026-08-17T20:00:00Z');
+  t.after(teardown);
+  await withTx(pool, (c) => sweeps.sweepReminders(c, TICK1));
+  await deliver(pool, a, 1, AT);
+  await withTx(pool, (c) => sweeps.sweepReminders(c, PLUS_3H));
+  await pool.query(`UPDATE outbox SET hold_reason = 'night' WHERE idempotency_key = $1`,
+    [reminders.attemptKey(a, 2)]);
+
+  await withTx(pool, (c) => sweeps.sweepReminders(c, '2026-08-17T20:01:00Z'));
+  const { rows } = await pool.query(
+    `SELECT idempotency_key AS key, sent_at, hold_reason FROM outbox ORDER BY id`);
+  assert.deepEqual(rows.map((r) => r.key), [`reminder:${a}`, `reminder:${a}:2`, `reminder:${b}`]);
+  assert.equal(rows[0].hold_reason, null, 'the moment she chose stays delivered as it was');
+  assert.equal(rows[1].hold_reason, 'superseded', 'the queued chase is withdrawn');
+  assert.ok(rows[1].sent_at, 'withdrawn is an UPDATE, never a DELETE');
+  assert.equal(rows[2].sent_at, null, 'the second first rung is untouched');
+  assert.ok((await row(pool, a)).sent_at);
+});
+
+test('two reminders at the SAME moment: one message, one ladder', async (t) => {
+  const { pool, teardown, a, b } = await twoReminders('+972505500023', AT);
+  t.after(teardown);
+  // Both are rung 1 in one tick; the worker coalesces them into one message.
+  assert.deepEqual(await withTx(pool, (c) => sweeps.sweepReminders(c, TICK1)), [a, b]);
+  assert.ok((await row(pool, a)).sent_at, 'the earlier id retires');
+  assert.equal((await row(pool, b)).sent_at, null, 'the later id walks');
+  await deliver(pool, a, 1, AT);
+  await deliver(pool, b, 1, AT);
+  await withTx(pool, (c) => sweeps.sweepReminders(c, PLUS_3H));
+  const keys = (await outboxKeys(pool)).map((k) => k.idempotency_key);
+  assert.deepEqual(keys, [`reminder:${a}`, `reminder:${b}`, `reminder:${b}:2`]);
+});

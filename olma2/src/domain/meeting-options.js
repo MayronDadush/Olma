@@ -1,11 +1,17 @@
 'use strict';
 // Several candidate times per meeting, each answered on its own.
 //
-// The rules, from the owner (2026-09-05):
-//   - anyone still in the meeting may add an option, up to MAX_ACTIVE (4);
-//   - a fifth from someone other than the initiator is `pending` until the
-//     initiator approves it (naming which active one it replaces) or rejects;
-//   - the initiator may swap an active option for a new one at any time;
+// The rules, from the owner (2026-09-05, revised 2026-09-09):
+//   - anyone still in the meeting may add an option, up to MAX_ACTIVE (5);
+//   - and anyone still in the meeting may take one off the table, whoever put
+//     it there. The five are the group's table, not five private proposals;
+//   - a sixth is refused to EVERYBODY, initiator included, and the refusal
+//     carries the table — because the answer to "there is no room" is a
+//     question ("which of these five goes?"), not a wall. The person types
+//     their time, is asked what it replaces, and `swap` is that answer in one
+//     transaction. What this replaced: a fifth from a non-initiator used to
+//     wait as `pending` for the initiator to approve or reject. That never
+//     ran for a real person — see migration 063 for the measurement;
 //   - adding is agreeing: the adder's own answer to it is yes;
 //   - one active option with a yes from every active participant ARMS the
 //     meeting; it settles a minute later, and a mind changed inside that
@@ -23,7 +29,7 @@ const { ok, err } = require('./results');
 const audit = require('./audit');
 const { hasOffset, badTime, weekdayClash } = require('./datetime');
 
-const MAX_ACTIVE = 4;
+const MAX_ACTIVE = 5;
 
 async function participant(client, meetingId, userId) {
   const { rows } = await client.query(
@@ -33,17 +39,18 @@ async function participant(client, meetingId, userId) {
   return rows[0] || null;
 }
 
-// Options on the table (active, newest first) and the ones waiting on the
-// initiator, each with its answers as { userId: 'y' | 'n' }.
+// The options on the table, newest first, each with its answers as
+// { userId: 'y' | 'n' }. A removed, replaced or (historically) pending one is
+// not on the table and is not listed.
 async function list(client, meetingId) {
   const { rows } = await client.query(
     `SELECT o.id, o.slot_text, o.starts_at, o.all_day, o.daypart, o.added_by, o.status, o.created_at,
             coalesce(json_object_agg(a.user_id, a.answer) FILTER (WHERE a.user_id IS NOT NULL), '{}'::json) AS answers
        FROM meeting_options o
        LEFT JOIN meeting_option_answers a ON a.option_id = o.id
-      WHERE o.meeting_id = $1 AND o.status IN ('active', 'pending')
+      WHERE o.meeting_id = $1 AND o.status = 'active'
       GROUP BY o.id
-      ORDER BY o.status = 'active' DESC, o.id DESC`, [meetingId]);
+      ORDER BY o.id DESC`, [meetingId]);
   return rows.map((o) => ({
     id: Number(o.id), slotText: o.slot_text, startsAt: o.starts_at, allDay: o.all_day, daypart: o.daypart || null,
     addedBy: o.added_by === null ? null : Number(o.added_by), status: o.status,
@@ -101,8 +108,7 @@ async function validSlot(client, userId, label, slotText, startsAt) {
   return null;
 }
 
-// Add a candidate. Returns { option, pending } — `pending` true when it went
-// to the initiator for approval instead of onto the table.
+// Add a candidate time to the table.
 async function add(client, userId, meetingId, slotText, startsAt, { allDay = false, daypart = null, label = 'slot_description' } = {}) {
   const p = await participant(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
@@ -117,34 +123,33 @@ async function add(client, userId, meetingId, slotText, startsAt, { allDay = fal
     [meetingId, startsAt]);
   if (same[0]) {
     await answer(client, userId, meetingId, Number(same[0].id), 'y');
-    return ok({ option: (await list(client, meetingId)).find((o) => o.id === Number(same[0].id)), pending: false, duplicate: true });
+    return ok({ option: (await list(client, meetingId)).find((o) => o.id === Number(same[0].id)), duplicate: true });
   }
-  const isInitiator = Number(p.initiator_id) === Number(userId);
   const n = await activeCount(client, meetingId);
-  let status = 'active';
   if (n >= MAX_ACTIVE) {
-    if (isInitiator) {
-      return err('invalid', `${MAX_ACTIVE} options are the maximum — swap one out (swapOption) to add another`, { reason: 'options_full' });
-    }
-    status = 'pending';
+    // Full for everyone, the initiator included. The caller's next move is to
+    // ask which one goes, so the table travels with the refusal rather than
+    // making them go and fetch it.
+    return err('invalid',
+      `${MAX_ACTIVE} options are the maximum — take one off the table first, or name the one this replaces`,
+      { reason: 'options_full', options: await list(client, meetingId) });
   }
   const { rows } = await client.query(
     `INSERT INTO meeting_options (meeting_id, slot_text, starts_at, all_day, daypart, added_by, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-    [meetingId, slotText.trim(), startsAt, Boolean(allDay), daypart || null, userId, status]);
+     VALUES ($1, $2, $3, $4, $5, $6, 'active') RETURNING id`,
+    [meetingId, slotText.trim(), startsAt, Boolean(allDay), daypart || null, userId]);
   const optionId = Number(rows[0].id);
-  // Adding is agreeing — recorded even on a pending one, so that approval
-  // does not have to ask the proposer again.
+  // Adding is agreeing.
   await client.query(
     // clock_timestamp(), not now(): now() is TRANSACTION time, and two answers
     // inside one transaction would tie — the confirmation ORDER (who becomes
     // the successor) is read off these stamps and must be a total order.
     `INSERT INTO meeting_option_answers (option_id, user_id, answer, answered_at) VALUES ($1, $2, 'y', clock_timestamp())`, [optionId, userId]);
-  await audit.record(client, userId, status === 'pending' ? 'meeting.option_pending' : 'meeting.slot_proposed',
+  await audit.record(client, userId, 'meeting.slot_proposed',
     { meetingId: Number(meetingId), optionId, slot: slotText.trim(), startsAt });
-  if (status === 'active') await mirrorCurrent(client, meetingId);
+  await mirrorCurrent(client, meetingId);
   const option = (await list(client, meetingId)).find((o) => o.id === optionId);
-  return ok({ option, pending: status === 'pending', initiatorId: Number(p.initiator_id) });
+  return ok({ option, initiatorId: Number(p.initiator_id) });
 }
 
 // One person's answer to one option. Confirms the meeting when this makes an
@@ -345,57 +350,104 @@ async function settleNow(client, userId, meetingId, optionId) {
   });
 }
 
-// Initiator only: a pending option comes onto the table. When the table is
-// full it must name which active option makes room.
-async function approve(client, userId, meetingId, optionId, replaceOptionId = null) {
+// Anyone still in the coordination takes a time off the table — not only the
+// person who put it there, and not only whoever opened the meeting (owner,
+// 2026-09-09). It is one table with five places on it, and the people looking
+// at it are the people who have to live with what is on it.
+//
+// A real deletion, not a swap: 'replaced' already means "and here is the time
+// that took its place", which is a different sentence to everybody who reads
+// the history. The answers already given to it stay in the table as a record
+// and stop counting for anything, because every reader of an answer starts
+// from an ACTIVE option.
+//
+// It sends nobody a message (owner, 2026-09-09). The fact that a time came off
+// the table, and who took it off, rides the next thing each person hears about
+// this coordination — `unheardRemovals` below is that reader, and getStatus is
+// the same fact for somebody who asks.
+async function remove(client, userId, meetingId, optionId) {
   const p = await participant(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
-  if (Number(p.initiator_id) !== Number(userId)) return err('forbidden', 'only the initiator decides on pending options');
-  if (p.meeting_status !== 'negotiating') return err('invalid', 'meeting is not negotiating');
-  const { rows } = await client.query(
-    `SELECT id, slot_text, added_by FROM meeting_options WHERE id = $1 AND meeting_id = $2 AND status = 'pending'`,
-    [optionId, meetingId]);
-  if (!rows[0]) return err('not_found', 'no such pending option');
-  const n = await activeCount(client, meetingId);
-  if (n >= MAX_ACTIVE) {
-    if (!replaceOptionId) return err('invalid', `${MAX_ACTIVE} options are already on the table — name the one this replaces`, { reason: 'replace_required' });
-    const rep = await client.query(
-      `UPDATE meeting_options SET status = 'replaced', decided_at = now()
-        WHERE id = $1 AND meeting_id = $2 AND status = 'active' RETURNING id`, [replaceOptionId, meetingId]);
-    if (rep.rowCount === 0) return err('not_found', 'the option to replace is not on the table');
+  if (p.meeting_status !== 'negotiating') {
+    return err('invalid', 'meeting is not negotiating', { reason: 'not_negotiating' });
   }
-  await client.query(
-    `UPDATE meeting_options SET status = 'active', decided_at = now() WHERE id = $1`, [optionId]);
-  await audit.record(client, userId, 'meeting.option_approved',
-    { meetingId: Number(meetingId), optionId: Number(optionId), replaced: replaceOptionId ? Number(replaceOptionId) : null });
+  if (p.state === 'opted_out') return err('invalid', 'you opted out of this meeting');
+  const { rows } = await client.query(
+    `UPDATE meeting_options SET status = 'deleted', decided_at = now(), removed_by = $3
+      WHERE id = $1 AND meeting_id = $2 AND status = 'active'
+      RETURNING slot_text, starts_at, added_by`, [optionId, meetingId, userId]);
+  if (!rows[0]) return err('not_found', 'no such option on the table', { reason: 'option_not_active' });
+  await audit.record(client, userId, 'meeting.option_removed', {
+    meetingId: Number(meetingId), optionId: Number(optionId), slot: rows[0].slot_text,
+    addedBy: rows[0].added_by === null ? null : Number(rows[0].added_by),
+  });
   await mirrorCurrent(client, meetingId);
+  // Two things this can do to a countdown, and tryConfirm answers both: taking
+  // away the option a grace was running on disarms it, and taking away the
+  // option that was merely FIRST among two unanimous ones arms the other.
   const c = await tryConfirm(client, meetingId);
   return ok({
-    meetingId: Number(meetingId), optionId: Number(optionId), proposerId: Number(rows[0].added_by),
-    slot: rows[0].slot_text, replaced: replaceOptionId ? Number(replaceOptionId) : null,
+    meetingId: Number(meetingId), optionId: Number(optionId), slot: rows[0].slot_text,
+    startsAt: rows[0].starts_at,
+    addedBy: rows[0].added_by === null ? null : Number(rows[0].added_by),
+    optionsLeft: await activeCount(client, meetingId),
     meetingStatus: c.settling ? 'settling' : 'negotiating',
     ...(c.settling ? { settlingSlot: c.slot, settleDueAt: c.settleDueAt } : {}),
   });
 }
 
-async function reject(client, userId, meetingId, optionId) {
-  const p = await participant(client, meetingId, userId);
-  if (!p) return err('not_found', 'not a participant of this meeting');
-  if (Number(p.initiator_id) !== Number(userId)) return err('forbidden', 'only the initiator decides on pending options');
+// Every time taken off this table, newest first, with the person who took it.
+// For somebody who ASKS what is going on (getStatus): the state of the table
+// includes what is no longer on it, and "Ben took Tuesday off" is the sentence
+// that stops a person hunting for a row they remember.
+async function removed(client, meetingId, limit = 10) {
   const { rows } = await client.query(
-    `UPDATE meeting_options SET status = 'rejected', decided_at = now()
-      WHERE id = $1 AND meeting_id = $2 AND status = 'pending' RETURNING slot_text, added_by`, [optionId, meetingId]);
-  if (!rows[0]) return err('not_found', 'no such pending option');
-  await audit.record(client, userId, 'meeting.option_rejected', { meetingId: Number(meetingId), optionId: Number(optionId) });
-  return ok({ meetingId: Number(meetingId), optionId: Number(optionId), proposerId: Number(rows[0].added_by), slot: rows[0].slot_text });
+    `SELECT o.slot_text, o.starts_at, o.decided_at, o.removed_by, u.first_name
+       FROM meeting_options o LEFT JOIN users u ON u.id = o.removed_by
+      WHERE o.meeting_id = $1 AND o.status = 'deleted'
+      ORDER BY o.decided_at DESC LIMIT $2`, [meetingId, limit]);
+  return rows.map((r) => ({
+    slot: r.slot_text, startsAt: r.starts_at, at: r.decided_at,
+    byId: r.removed_by === null ? null : Number(r.removed_by),
+    byName: r.first_name || null,
+  }));
 }
 
-// Initiator only: take one option off the table and put a new one on.
+// The same fact for somebody who is about to hear from us anyway: what came off
+// the table since the last message about this coordination that actually
+// REACHED them. A removal is never its own message (owner, 2026-09-09), so this
+// is the only way it is ever said, and the baseline has to be delivery rather
+// than the row being written — a row the gate held reached nobody, and the next
+// one that lands has to carry the news again.
+//
+// Their own removal is not news to them. The kind filter is not decoration:
+// `meetingId` is on meeting payloads only, and the cast would throw on the
+// first row that put something else under that name.
+async function unheardRemovals(client, meetingId, userId, limit = 4) {
+  const { rows } = await client.query(
+    `WITH heard AS (
+       SELECT max(sent_at) AS at FROM outbox
+        WHERE user_id = $2 AND kind LIKE 'meeting\_%' ESCAPE '\'
+          AND sent_at IS NOT NULL AND hold_reason IS NULL
+          AND (payload->>'meetingId')::bigint = $1)
+     SELECT o.slot_text, o.decided_at, u.first_name
+       FROM meeting_options o LEFT JOIN users u ON u.id = o.removed_by
+      WHERE o.meeting_id = $1 AND o.status = 'deleted'
+        AND o.removed_by IS DISTINCT FROM $2::bigint
+        AND o.decided_at > coalesce((SELECT at FROM heard), '-infinity'::timestamptz)
+      ORDER BY o.decided_at DESC LIMIT $3`, [meetingId, userId, limit]);
+  return rows.map((r) => ({ slot: r.slot_text, byName: r.first_name || null }));
+}
+
+// Take one option off the table and put a new one on, in one transaction.
+// This is what the sixth time becomes: the person types it, is told the table
+// is full and asked which one goes, and answers with both halves at once. Open
+// to anyone in the coordination, on the same rule as `remove`.
 async function swap(client, userId, meetingId, replaceOptionId, slotText, startsAt, { allDay = false, daypart = null } = {}) {
   const p = await participant(client, meetingId, userId);
   if (!p) return err('not_found', 'not a participant of this meeting');
-  if (Number(p.initiator_id) !== Number(userId)) return err('forbidden', 'only the initiator swaps options');
   if (p.meeting_status !== 'negotiating') return err('invalid', 'meeting is not negotiating');
+  if (p.state === 'opted_out') return err('invalid', 'you opted out of this meeting');
   const bad = await validSlot(client, userId, 'slot_description', slotText, startsAt);
   if (bad) return bad;
   const rep = await client.query(
@@ -410,6 +462,6 @@ async function swap(client, userId, meetingId, replaceOptionId, slotText, starts
 }
 
 module.exports = {
-  MAX_ACTIVE, SETTLE_GRACE_MS, list, add, answer, approve, reject, swap,
+  MAX_ACTIVE, SETTLE_GRACE_MS, list, add, answer, remove, removed, unheardRemovals, swap,
   tryConfirm, unanimousOption, confirmOn, settleDue, settleNow, mirrorCurrent, activeCount,
 };

@@ -22,9 +22,15 @@ after(async () => { await db.teardown(); });
 
 const soon = (h = 30) => new Date(Date.now() + h * 3600_000).toISOString().replace('Z', '+00:00');
 
+// The first one keeps the plain title, because one test asserts on it; the
+// rest are numbered, since one person cannot hold the same task open twice
+// (domain/tasks.js, "The same thing, saved twice").
+let pickupN = 0;
 async function taskWithReminder() {
   return withTx(db.pool, async (c) => {
-    const t = await tasks.addTask(c, user.id, { title: 'לאסוף את הילדים' });
+    const title = pickupN ? `לאסוף את הילדים ${pickupN}` : 'לאסוף את הילדים';
+    pickupN++;
+    const t = await tasks.addTask(c, user.id, { title });
     const r = await reminders.setReminder(c, user.id, t.data.task.id, soon());
     return { taskId: t.data.task.id, reminderId: r.data.reminder.id };
   });

@@ -12,11 +12,12 @@ const DEFAULTS = {
   // Media generation (domain/media.js): who may, and on which models.
   media_gen_phones: '+972505404255',
   // Who may ring Olma from the personal page (domain/voice.js,
-  // pageCallAllowed). Comma-separated E.164, and EMPTY on purpose: the wire
-  // is complete and the tile stays "בקרוב" for everybody until a number is
-  // put here. The chat tool (call_me_on_the_phone) is not gated by this — the
-  // voice bridge is still the judge of who it will dial for either door.
-  dashboard_call_phones: '',
+  // pageCallAllowed). Comma-separated E.164, or 'all'. Open for everybody as
+  // of 2026-09-15 — the two-lifetime-attempts cap (CALL_ATTEMPTS_LIMIT) and
+  // the 120s duration cap are the agreed guardrails for that rollout. The
+  // chat tool (call_me_on_the_phone) is not gated by this — the voice bridge
+  // is still the judge of who it will dial for either door.
+  dashboard_call_phones: 'all',
   media_image_model: 'meta/muse-image',
   media_video_model: 'bytedance/seedance-2.0-mini',
   // Reminder escalation (domain/reminders.js): how many times one reminder may
@@ -24,6 +25,14 @@ const DEFAULTS = {
   reminder_escalation_max: 3,
   reminder_escalation_gap_hours: 3,
   live_subscriptions_per_user: 5,   // cap on active live-update subscriptions
+  // outbox/worker.js: how many times a day Olma may interrupt somebody with
+  // something she DECIDED to say. Urgent rows and the three kinds a person
+  // chose for themselves (reminder, digest, introduction) are exempt in
+  // gate.decide and uncounted by the worker. It lived only as an inline
+  // fallback until 2026-09-11, which meant the admin flag editor showed it
+  // with no default beside it — a number nobody can see the default of is one
+  // nobody can safely change.
+  proactive_daily_budget: 4,
   // Group mode (domain/groups.js): the largest group she will work in. Above
   // it she says so once and stops — a 50-person group never realistically gets
   // every member to write to her privately, and each tag costs a model turn.

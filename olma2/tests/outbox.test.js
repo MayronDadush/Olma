@@ -76,6 +76,38 @@ test('gate: an unsent introduction holds everything Olma decided to say, in fron
   assert.equal(decide({ ...baseFacts, row: row() }).action, 'deliver');
 });
 
+test('gate: an introduction that has just landed keeps the floor for ten minutes', () => {
+  // Ordering alone was not enough. ג.ב read who Olma was at 08:00:27 and was
+  // asked which city he lives in at 08:01:19: the hold released the instant the
+  // introduction was stamped sent, so the next row went out on its heels and
+  // was read as part of it.
+  const justSent = (msAgo) => ({
+    ...baseFacts, introductionPending: false,
+    introductionSentAt: new Date(noonUTC.getTime() - msAgo),
+  });
+
+  const heldAt2min = decide({ ...justSent(2 * 60_000), row: row() });
+  assert.equal(heldAt2min.action, 'hold');
+  assert.equal(heldAt2min.holdReason, 'awaiting_introduction');
+  assert.equal(new Date(heldAt2min.releaseAfter).getTime(),
+    noonUTC.getTime() + 8 * 60_000,
+    'the release is ten minutes after the introduction LANDED, not ten from now — '
+    + 'counted from now, a row looked at late would wait twice as long as one looked at early');
+
+  // Past the ten minutes it simply goes.
+  assert.equal(decide({ ...justSent(11 * 60_000), row: row() }).action, 'deliver');
+
+  // A moment THEY chose still passes, exactly as it does while one is pending.
+  assert.equal(decide({ ...justSent(60_000), row: row({ kind: 'digest' }) }).action, 'deliver');
+  assert.equal(decide({ ...justSent(60_000), row: row({ kind: 'reminder', payload: { rung: 1 } }) }).action,
+    'deliver');
+  assert.equal(decide({ ...justSent(60_000), row: row({ kind: 'reminder', payload: { rung: 2 } }) }).holdReason,
+    'awaiting_introduction');
+
+  // Nothing on record, nothing changes.
+  assert.equal(decide({ ...baseFacts, introductionSentAt: null, row: row() }).action, 'deliver');
+});
+
 test('gate: night holds until the personal window opens; user-chosen times bypass', () => {
   const night = { ...baseFacts, now: threeAmUTC };
   const held = decide({ ...night, row: row() });
@@ -141,15 +173,19 @@ test('gate: someone who just wrote is awake — quiet hours do not silence a liv
   assert.equal(decide({ ...busy, row: row() }).holdReason, 'budget');
 });
 
-test('gate: default quiet hours run 21:00 to 08:00', () => {
+test('gate: default quiet hours run 21:00 to 09:00', () => {
   const { DEFAULT_WINDOW } = require('../src/domain/preferences');
   const tz = 'UTC';
   const at = (h) => new Date(`2026-08-16T${String(h).padStart(2, '0')}:30:00Z`);
-  assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(9)), true);
+  assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(9)), true, 'awake from 09:00');
   assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(20)), true, '20:30 is still awake time');
   assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(21)), false, 'quiet from 21:00');
   assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(7)), false, 'still quiet at 07:30');
-  assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(8)), true, 'awake from 08:00');
+  // 08:30 was awake time until 2026-09-08 and is not any more. The hours are
+  // now SAID to people (jobs/checkin.js, the timezone rung), so this line is
+  // not a taste question — it is the sentence we send, asserted from the side
+  // that has to honour it.
+  assert.equal(withinWindow(DEFAULT_WINDOW, tz, at(8)), false, 'quiet until 09:00');
 });
 
 test('gate: personal window beats the default one', () => {
@@ -157,6 +193,218 @@ test('gate: personal window beats the default one', () => {
   assert.equal(decide({ ...lateOwl, row: row() }).action, 'deliver'); // 03:00 inside their overnight window
   const sameNowDefault = { ...baseFacts, now: threeAmUTC };
   assert.equal(decide({ ...sameNowDefault, row: row() }).action, 'hold');
+});
+
+// ---------------- gate: whole days they asked to keep ------------------------
+//
+// Hours are one preference and days are another, and until 2026-09-08 only the
+// first existed — so somebody who keeps Shabbat had nowhere to say so and was
+// never asked. The owner's line on what survives a quiet day is the narrowest
+// one available: a reminder they asked for IN WORDS, first rung. Not a digest
+// (quiet hours exempt it because they picked the hour; a day off is a day off),
+// and not an automatic reminder the model inferred from a due date.
+//
+// Saturday 2026-08-15 and Friday 2026-08-14 are literals, so the weekday is
+// fixed regardless of when the suite runs — but the INDEX is derived rather
+// than written down, because "Saturday is 6" is exactly the kind of constant
+// that is right until somebody changes the base of the array.
+const saturdayNoonUTC = new Date('2026-08-15T12:00:00Z');
+const SAT = saturdayNoonUTC.getUTCDay();
+const FRI = new Date('2026-08-14T12:00:00Z').getUTCDay();
+
+test('gate: a quiet day holds everything Olma decided to say', () => {
+  const shabbat = { ...baseFacts, now: saturdayNoonUTC, quietDays: [SAT] };
+  // Midday, inside their window, nothing wrong with the row — and still held.
+  const held = decide({ ...shabbat, row: row() });
+  assert.equal(held.action, 'hold');
+  assert.equal(held.holdReason, 'quiet_day');
+
+  // The digest is the one that separates a quiet DAY from quiet HOURS: the
+  // night rule lets it through because they chose the hour, and this one does
+  // not, because a morning picture of a day they asked not to hear about is
+  // the message they were opting out of.
+  assert.equal(decide({ ...shabbat, row: row({ kind: 'digest' }) }).holdReason, 'quiet_day');
+
+  // An automatic reminder is the model's inference from a due date, not a
+  // moment anybody named.
+  assert.equal(
+    decide({ ...shabbat, row: row({ kind: 'reminder', payload: { rung: 1, auto: true } }) }).holdReason,
+    'quiet_day');
+
+  // Urgency buys nothing. Neither does another user's fan-out landing here.
+  assert.equal(decide({ ...shabbat, row: row({ urgency: 'urgent' }) }).holdReason, 'quiet_day');
+});
+
+test('gate: the reminder they asked for in words still arrives on a quiet day', () => {
+  const shabbat = { ...baseFacts, now: saturdayNoonUTC, quietDays: [SAT] };
+  const asked = row({ kind: 'reminder', payload: { rung: 1, auto: false } });
+  assert.equal(decide({ ...shabbat, row: asked }).action, 'deliver');
+
+  // Rung 2 of that same reminder is Olma's moment, not theirs — the same line
+  // the night window and the stopped-answering rule both draw.
+  assert.equal(
+    decide({ ...shabbat, row: row({ kind: 'reminder', payload: { rung: 2, auto: false } }) }).holdReason,
+    'quiet_day');
+});
+
+test('gate: a quiet day releases into the next day they kept, not the next morning', () => {
+  // Friday AND Saturday quiet: a row held on Friday must not wake up on
+  // Saturday, or the second day they asked for is one we never honoured.
+  const friday = new Date('2026-08-14T12:00:00Z');
+  const both = { ...baseFacts, now: friday, quietDays: [FRI, SAT] };
+  const held = decide({ ...both, row: row() });
+  assert.equal(held.holdReason, 'quiet_day');
+  const releaseDay = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jerusalem', weekday: 'short',
+  }).format(held.releaseAfter);
+  assert.equal(releaseDay, 'Sun', 'Friday + Saturday quiet releases on Sunday');
+
+  // And it lands inside their window rather than at whatever hour it was held.
+  assert.equal(withinWindow(DAY, 'Asia/Jerusalem', held.releaseAfter), true);
+});
+
+test('gate: a quiet day releases at the next day\'s window open, not 24h after whenever it was checked', () => {
+  // Checked at 19:00 Saturday (Jerusalem), well after their window had opened
+  // that morning — the day-stepping fallback used to step by the wall-clock
+  // hour `now` happened to land on, so it answered "24 hours from now" and
+  // this row would have waited until 19:00 SUNDAY, ten hours after the day
+  // it was released into had already opened at 09:00. This is the plain
+  // non-Israeli-zone case; the `shabbatWindow` tests below cover the same bug
+  // shape's precise candle-lighting/havdalah version.
+  const saturdayEveningUTC = new Date('2026-08-15T16:00:00Z'); // 19:00 in Asia/Jerusalem
+  const shabbat2 = { ...baseFacts, now: saturdayEveningUTC, quietDays: [SAT] };
+  const held = decide({ ...shabbat2, row: row() });
+  assert.equal(held.holdReason, 'quiet_day');
+  const releaseLocal = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jerusalem', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(held.releaseAfter);
+  assert.equal(releaseLocal, 'Sun 09:00', 'released at Sunday\'s window open, not 24h later at 19:00');
+});
+
+// facts.shabbatWindow is what an Israeli zone's Saturday becomes instead of
+// the plain weekday check (worker.js resolves it via holidays.shabbatWindow
+// and strips 6 out of quietDays when it does) — candle-lighting to havdalah,
+// both edges precise, replacing a calendar-day boundary that either missed
+// Friday evening or ran the hold into Sunday.
+const shabbat = { start: new Date('2026-08-14T16:06:00Z'), end: new Date('2026-08-15T17:04:00Z') };
+
+test('gate: the Shabbat window holds from candle-lighting, not from midnight', () => {
+  // Friday afternoon, before candle-lighting: an ordinary message, delivered.
+  const beforeCandles = { ...baseFacts, now: new Date('2026-08-14T12:00:00Z'), quietDays: [], shabbatWindow: shabbat };
+  assert.equal(decide({ ...beforeCandles, row: row() }).action, 'deliver');
+
+  // The instant candle-lighting starts, held — urgency buys nothing, same as
+  // the weekday version of this rule.
+  const atCandles = { ...baseFacts, now: shabbat.start, quietDays: [], shabbatWindow: shabbat };
+  assert.equal(decide({ ...atCandles, row: row({ urgency: 'urgent' }) }).holdReason, 'quiet_day');
+});
+
+test('gate: the Shabbat window releases at havdalah, not at the next calendar day', () => {
+  // A round-the-clock window, so the release is purely about havdalah and not
+  // entangled with a separate "did their window happen to be open" question —
+  // that combination already has its own test above (msUntilWindowOpen).
+  const allDay = { start: '00:00', end: '23:59' };
+
+  // Held mid-afternoon Saturday: the release is havdalah itself (20:04 local
+  // that day), never "24 hours from now" or "tomorrow morning" — the fault
+  // that left a real meeting confirmation sitting until Sunday evening
+  // (owner, 2026-09-12).
+  const midSaturday = {
+    ...baseFacts, window: allDay, now: new Date('2026-08-15T12:00:00Z'), quietDays: [], shabbatWindow: shabbat,
+  };
+  const held = decide({ ...midSaturday, row: row({ kind: 'meeting_confirmed', urgency: 'urgent' }) });
+  assert.equal(held.holdReason, 'quiet_day');
+  assert.equal(held.releaseAfter.toISOString(), shabbat.end.toISOString());
+
+  // A moment after havdalah: not quiet any more, delivers straight away.
+  const afterHavdalah = {
+    ...baseFacts, window: allDay, now: new Date('2026-08-15T17:05:00Z'), quietDays: [], shabbatWindow: shabbat,
+  };
+  assert.equal(decide({ ...afterHavdalah, row: row() }).action, 'deliver');
+});
+
+// A holiday reaches the gate as DATES, not as a weekday, and is otherwise the
+// same rule with the same exemption — the hold_reason is the only difference,
+// so the dashboard can tell "Saturday" from "Yom Kippur" without a second rule
+// to keep in step. Opt-in: `quietDates` is empty for everybody who has not
+// asked, which is the `no quiet days is the same gate as before` test below,
+// one dimension over.
+const yomKippur = new Date('2026-09-21T12:00:00Z'); // a Monday, deliberately
+test('gate: a quiet holiday holds the same things a quiet day holds', () => {
+  const kippur = {
+    ...baseFacts, now: yomKippur, quietDays: [], quietDates: ['2026-09-21'],
+  };
+  const held = decide({ ...kippur, row: row() });
+  assert.equal(held.action, 'hold');
+  assert.equal(held.holdReason, 'quiet_holiday', 'named apart from a weekday they chose');
+  assert.equal(decide({ ...kippur, row: row({ kind: 'digest' }) }).holdReason, 'quiet_holiday');
+  assert.equal(decide({ ...kippur, row: row({ urgency: 'urgent' }) }).holdReason, 'quiet_holiday');
+
+  // The one exemption is the same one, word for word: a reminder they put
+  // there themselves, first rung.
+  assert.equal(
+    decide({ ...kippur, row: row({ kind: 'reminder', payload: { rung: 1, auto: false } }) }).action,
+    'deliver');
+  assert.equal(
+    decide({ ...kippur, row: row({ kind: 'reminder', payload: { rung: 1, auto: true } }) }).holdReason,
+    'quiet_holiday');
+
+  // A Monday that is not on the list is an ordinary Monday.
+  assert.equal(decide({ ...kippur, quietDates: ['2026-09-26'], row: row() }).action, 'deliver');
+});
+
+test('gate: a holiday that runs into Shabbat releases after the whole run', () => {
+  // Rosh Hashana 5787 is Saturday 12 and Sunday 13 September 2026, so a
+  // Hebrew speaker with the default Saturday is quiet for three days running.
+  // A release computed from weekdays alone would wake this row on the Sunday,
+  // inside the chag — which is why one predicate answers for both.
+  const erev = new Date('2026-09-11T12:00:00Z'); // Friday
+  const chag = {
+    ...baseFacts, now: erev, quietDays: [SAT], quietDates: ['2026-09-12', '2026-09-13'],
+  };
+  assert.equal(decide({ ...chag, row: row() }).action, 'deliver', 'the erev itself is not quiet');
+
+  const onChag = { ...chag, now: new Date('2026-09-12T12:00:00Z') };
+  const held = decide({ ...onChag, row: row() });
+  assert.equal(held.holdReason, 'quiet_day', 'Saturday is named first — it is the day THEY chose');
+  const releaseDay = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jerusalem', weekday: 'short', day: '2-digit',
+  }).format(held.releaseAfter);
+  assert.equal(releaseDay, '14 Mon', 'not Sunday, which is still Rosh Hashana');
+  assert.equal(withinWindow(DAY, 'Asia/Jerusalem', held.releaseAfter), true);
+});
+
+test('gate: the holiday is judged in THEIR zone too', () => {
+  // 22:00 UTC on the 20th is already Yom Kippur in Jerusalem and still the
+  // 20th in New York.
+  const lateUTC = new Date('2026-09-20T22:00:00Z');
+  const nightOwl = {
+    ...baseFacts, now: lateUTC, quietDays: [], quietDates: ['2026-09-21'],
+    window: { start: '00:00', end: '23:59' },
+  };
+  assert.equal(decide({ ...nightOwl, row: row() }).holdReason, 'quiet_holiday');
+  assert.equal(
+    decide({ ...nightOwl, tz: 'America/New_York', row: row() }).action, 'deliver');
+});
+
+test('gate: no quiet days is the same gate as before', () => {
+  // The feature has to be invisible to everyone who never answered the
+  // question — `[]` and "not asked" are the same delivery, and an empty array
+  // must never read as "every day".
+  assert.equal(decide({ ...baseFacts, now: saturdayNoonUTC, quietDays: [], row: row() }).action, 'deliver');
+  assert.equal(decide({ ...baseFacts, now: saturdayNoonUTC, row: row() }).action, 'deliver');
+});
+
+test('gate: the quiet day is theirs, in their zone, not the server\'s', () => {
+  // 23:00 UTC Friday is already Saturday in Jerusalem. A gate that asked UTC
+  // would deliver; one that asks the person's own calendar holds.
+  const lateFridayUTC = new Date('2026-08-14T23:00:00Z');
+  const nightOwl = {
+    ...baseFacts, now: lateFridayUTC, quietDays: [SAT],
+    window: { start: '00:00', end: '23:59' }, // take the night rule out of it
+  };
+  assert.equal(new Date(lateFridayUTC).getUTCDay(), FRI, 'still Friday in UTC');
+  assert.equal(decide({ ...nightOwl, row: row() }).holdReason, 'quiet_day');
 });
 
 test('gate: over budget folds normal, urgent passes', () => {
@@ -208,8 +456,14 @@ function recorder() {
 
 // Each worker test starts from an empty pending set — a failed assertion in
 // one test must not leak rows into the next one's drain.
+// Clears the decks between tests: everything still queued counts as already
+// delivered. Stamped two HOURS back rather than at `now()`, because that is
+// what the fixture actually means — these went out earlier, they are not five
+// things this person heard in the last second. At now() the gate's repeat guard
+// reads them exactly as it should and drops the next row of the same kind as a
+// duplicate, which is the guard working and the fixture lying.
 async function flushOutbox() {
-  await db.pool.query(`UPDATE outbox SET sent_at = now() WHERE sent_at IS NULL`);
+  await db.pool.query(`UPDATE outbox SET sent_at = now() - interval '2 hours' WHERE sent_at IS NULL`);
 }
 
 test('worker delivers pending rows and records sent_at', async () => {
@@ -247,6 +501,121 @@ test('delivery failure → attempts + backoff, then success on retry', async () 
   fail = false;
   out = await drainOnce(db.pool, deliver, new Date(new Date(rows[0].release_after).getTime() + 1000));
   assert.equal(out.delivered, 1);
+});
+
+test('a timed-out delivery is booked as sent, never retried — Dana got the same check-in six times', async () => {
+  await flushOutbox();
+  // kind=reminder for the same reason as the retry test above: the second
+  // drain's clock must not be night-held by the wall clock of the test run.
+  await withTx(db.pool, (c) => enqueue(c, { userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { title: 'x' }, idempotencyKey: 'slow' }));
+  let calls = 0;
+  // What channels/openclaw.js returns when the CLI is killed at the deadline:
+  // the turn kept running on the gateway and the message very likely landed.
+  const deliver = async () => { calls++; return { ok: false, timedOut: true, error: 'openclaw timeout' }; };
+  let out = await drainOnce(db.pool, deliver, new Date('2026-08-16T12:00:00Z'));
+  assert.equal(out.delivered, 1);
+  assert.equal(out.unconfirmed, 1);
+  assert.equal(out.failed, 0, 'a timeout is not a failure');
+  const { rows } = await db.pool.query(`SELECT sent_at, hold_reason, attempts, last_error FROM outbox WHERE idempotency_key = 'slow'`);
+  assert.ok(rows[0].sent_at, 'the row is sent');
+  assert.equal(rows[0].hold_reason, null, 'sent, not held or dropped — every "was it delivered" reader agrees');
+  assert.equal(rows[0].attempts, 1);
+  assert.match(rows[0].last_error, /timeout/);
+  // A later tick finds nothing to do with it — no second turn, no second message.
+  out = await drainOnce(db.pool, deliver, new Date('2026-08-16T12:30:00Z'));
+  assert.equal(out.delivered, 0);
+  assert.equal(calls, 1);
+  const { rows: audit } = await db.pool.query(
+    `SELECT detail FROM audit_log WHERE event = 'delivery.unconfirmed' AND actor_id = $1`, [user.id]);
+  assert.equal(audit.length, 1);
+  assert.equal(audit[0].detail.kind, 'reminder');
+});
+
+// ── The fifth draft was the rude one ────────────────────────────────────────
+// A model-path delivery runs a whole turn before the channel is asked to carry
+// anything, so a channel that cannot carry it makes every retry a NEW message
+// composed against a world the failed sends themselves created. Yehav's digest
+// was written five times while WhatsApp was disconnected, and the one that
+// landed was the one that had watched him say nothing for forty minutes.
+const downChannel = () => ({
+  status: 'down', channels: [{ id: 'whatsapp', down: true }],
+  detail: 'whatsapp: linked/running/connected = false, 6 reconnect attempts',
+});
+
+test('a channel the gateway says is down: no turn is spent, and the row books the same failure', async () => {
+  await flushOutbox();
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { title: 'x' }, idempotencyKey: 'deadchannel',
+  }));
+  const rec = recorder();
+  const out = await drainOnce(db.pool, rec.deliver, new Date('2026-08-16T12:00:00Z'),
+    { checkChannels: async () => downChannel() });
+  assert.equal(rec.sent.length, 0, 'the whole point: deliver() is never called, so no model turn runs');
+  assert.equal(out.failed, 1);
+  assert.equal(out.channelDown, 1, 'counted apart, so the heartbeat can tell "not attempted" from "attempted and lost"');
+  // Everything downstream must read exactly what a real failed send leaves:
+  // the stuck-row alarm counts attempts, and the reminder redo needs
+  // `attempts > 0` with an error beside it to know OUR pipe lost the rung.
+  const { rows } = await db.pool.query(
+    `SELECT attempts, last_error, release_after, sent_at FROM outbox WHERE idempotency_key = 'deadchannel'`);
+  assert.equal(rows[0].attempts, 1);
+  assert.equal(rows[0].sent_at, null);
+  assert.match(rows[0].last_error, /no turn spent/);
+  assert.match(rows[0].last_error, /linked\/running\/connected = false/, 'the reason names the channel, not just "failed"');
+  assert.ok(rows[0].release_after, 'the same backoff a failed send would have set');
+});
+
+test('a channel that could not be READ still sends — "could not tell" never silences the queue', async () => {
+  await flushOutbox();
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { title: 'x' }, idempotencyKey: 'unknownchannel',
+  }));
+  const rec = recorder();
+  // Every reading that is not the gateway saying so in as many words: the RPC
+  // switched off (which is what the suite itself gets), a refused socket, a
+  // payload a later gateway version changed the shape of.
+  for (const verdict of [
+    { status: 'unknown', detail: 'cannot ask the gateway: gateway rpc is switched off', channels: [] },
+    { status: 'live', detail: null, channels: [{ id: 'whatsapp', down: false }] },
+  ]) {
+    await db.pool.query(`UPDATE outbox SET sent_at = NULL, attempts = 0, release_after = NULL WHERE idempotency_key = 'unknownchannel'`);
+    const out = await drainOnce(db.pool, rec.deliver, new Date('2026-08-16T12:00:00Z'),
+      { checkChannels: async () => verdict });
+    assert.equal(out.delivered, 1, `${verdict.status} must deliver`);
+    assert.equal(out.channelDown, undefined);
+  }
+  assert.equal(rec.sent.length, 2);
+});
+
+test('a probe that throws is unknown, not down', async () => {
+  await flushOutbox();
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { title: 'x' }, idempotencyKey: 'probethrows',
+  }));
+  const rec = recorder();
+  const out = await drainOnce(db.pool, rec.deliver, new Date('2026-08-16T12:00:00Z'),
+    { checkChannels: async () => { throw new Error('socket hung up'); } });
+  assert.equal(out.delivered, 1);
+  assert.equal(rec.sent.length, 1);
+});
+
+test('the channel is asked ONCE a tick, and not at all when nothing is deliverable', async () => {
+  await flushOutbox();
+  let asked = 0;
+  const ask = async () => { asked++; return downChannel(); };
+  // Nothing due: the probe sits behind the gate, so a quiet tick costs nothing.
+  let out = await drainOnce(db.pool, recorder().deliver, new Date('2026-08-16T12:00:00Z'), { checkChannels: ask });
+  assert.equal(out.failed, 0);
+  assert.equal(asked, 0, 'a tick with nothing to send never asks');
+  // Three rows, one tick, one question.
+  for (const k of ['many1', 'many2', 'many3']) {
+    await withTx(db.pool, (c) => enqueue(c, {
+      userId: user.id, kind: 'reminder', urgency: 'urgent', payload: { title: k }, idempotencyKey: k,
+    }));
+  }
+  out = await drainOnce(db.pool, recorder().deliver, new Date('2026-08-16T12:00:00Z'), { checkChannels: ask });
+  assert.ok(out.failed >= 1);
+  assert.equal(asked, 1, 'one probe for the whole tick, never one per row');
 });
 
 test('night hold: row waits, then releases when the window opens', async () => {
@@ -555,7 +924,13 @@ test('worker: the row that reaches the deliverer carries the recipient\'s locale
   const proactiveText = require('../src/domain/proactive-text');
   await flushOutbox();
   const sarah = await makeUser(db.pool, '+972581000009', { firstName: 'Sarah', timezone: 'UTC', locale: 'en' });
-  const now = new Date('2026-08-16T12:00:00Z');
+  // A MONDAY, and pinned rather than relative. Everywhere else in this file
+  // 2026-08-16 is fine because it is a Sunday and the users are Hebrew, but
+  // Sarah's locale is the whole point of this test and an English speaker's
+  // default quiet day IS Sunday (domain/holidays.js) — so on the date the
+  // rest of the file uses, the only thing this would prove is that the gate
+  // held her.
+  const now = new Date('2026-08-17T12:00:00Z');
   for (const [i, title] of ['call mom', 'pay rent'].entries()) {
     await withTx(db.pool, (c) => enqueue(c, {
       userId: sarah.id, kind: 'reminder', urgency: 'urgent', payload: { title },
@@ -574,8 +949,63 @@ test('worker: the row that reaches the deliverer carries the recipient\'s locale
   const his = sent.find((r) => r.user_id === user.id);
   assert.equal(hers.locale, 'en', 'the worker did not join the locale onto the row');
   const herText = proactiveText.rawPipeTextFor(hers);
-  assert.match(herText, /^⏰ Reminders:\n• call mom\n• pay rent$/);
-  assert.equal(proactiveText.rawPipeTextFor(his), '⏰ תזכורת: תרופה');
+  assert.match(herText, /^⏰ \*Reminders\*\n• call mom\n• pay rent$/);
+  assert.equal(proactiveText.rawPipeTextFor(his), '⏰ תזכורת: *תרופה*');
+});
+
+// The gate has been able to hold a quiet day since 2026-09-08; until
+// 2026-09-11 nobody had one unless they asked. The default is now a fact
+// about the PERSON — Saturday on a Jewish calendar, Sunday on a Christian one
+// — and the only thing that can prove it is the worker's own query, because
+// the default is computed from the joined users row. A facts object built by
+// hand here would pass whatever the worker does.
+test('worker: a quiet day nobody asked for still reaches the gate, off the users row', async () => {
+  await flushOutbox();
+  const saturday = new Date('2026-08-15T12:00:00Z');
+  // Hebrew (makeUser's default locale) and a real zone, so "which Saturday"
+  // is their Saturday and not the server's.
+  const yossi = await makeUser(db.pool, '+972581000021',
+    { firstName: 'יוסי', timezone: 'Asia/Jerusalem', quietDays: null });
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: yossi.id, kind: 'checkin', payload: { checkinInstruction: 'מה איתך' },
+    idempotencyKey: 'quiet:default:checkin',
+  }));
+  // What the owner's sentence promises still arrives: a reminder they asked
+  // for in words, first rung. `auto: false` is the whole discriminator.
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: yossi.id, kind: 'reminder', urgency: 'urgent',
+    payload: { title: 'תרופה', rung: 1, auto: false },
+    idempotencyKey: 'quiet:default:reminder',
+  }));
+
+  const sent = [];
+  const out = await drainOnce(db.pool, async (r) => { sent.push(r); return { ok: true }; }, saturday);
+  assert.equal(out.delivered, 1, 'only the reminder they asked for in words');
+  assert.equal(sent[0].kind, 'reminder');
+
+  const { rows } = await db.pool.query(
+    `SELECT idempotency_key k, hold_reason, release_after FROM outbox
+      WHERE user_id = $1 ORDER BY id`, [yossi.id]);
+  const checkin = rows.find((r) => r.k === 'quiet:default:checkin');
+  assert.equal(checkin.hold_reason, 'quiet_day',
+    'nobody wrote a preference row, and Saturday held it anyway');
+  // Held, never dropped — and for an Israeli zone the wake is havdalah itself
+  // (2026-08-15 is 20:04 local), not a calendar-day boundary into Sunday
+  // (owner, 2026-09-12: the quiet window is candle-lighting to havdalah).
+  const releaseDay = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jerusalem', weekday: 'short',
+  }).format(checkin.release_after);
+  assert.equal(releaseDay, 'Sat');
+  assert.equal(new Date(checkin.release_after).toISOString(), '2026-08-15T17:03:32.000Z');
+
+  // And saying so is the one way out: "none" is an answer, an empty row is not.
+  const prefs = require('../src/domain/preferences');
+  await withTx(db.pool, (c) => prefs.remember(c, yossi.id, 'quiet_days', 'none'));
+  await db.pool.query(
+    `UPDATE outbox SET hold_reason = NULL, release_after = NULL WHERE user_id = $1 AND sent_at IS NULL`,
+    [yossi.id]);
+  const after = await drainOnce(db.pool, async () => ({ ok: true }), saturday);
+  assert.equal(after.delivered, 1, 'the check-in goes out on the Saturday they said they keep nothing on');
 });
 
 test('worker: a batch that fails to send fails for every row it carried', async () => {
@@ -600,7 +1030,33 @@ test('worker: a batch that fails to send fails for every row it carried', async 
   }
 });
 
-test('the introduction goes out first, and the queue moves the moment it has', async () => {
+test('an introduction nobody ever received holds nothing back', async () => {
+  await flushOutbox();
+  const rec = recorder();
+  const at = new Date('2026-08-16T12:00:00Z');
+  const fresh = await makeUser(db.pool, '+972581000078', { firstName: 'Noa', timezone: 'UTC' });
+  // Cancelled from the admin page, and superseded by a reworded replacement:
+  // both carry `sent_at`, which is how cancelling stops the producer making the
+  // row again, and neither reached the person. Counted as a landing, they would
+  // silence this user for ten minutes on the strength of a message that was
+  // never sent.
+  await db.pool.query(
+    `INSERT INTO outbox (user_id, kind, payload, urgency, sent_at, hold_reason) VALUES
+       ($1,'introduction','{}','normal', $2::timestamptz, 'cancelled_by_admin'),
+       ($1,'introduction','{}','normal', $2::timestamptz, 'superseded')`,
+    [fresh.id, at]
+  );
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: fresh.id, kind: 'checkin', payload: { checkinInstruction: 'hello' },
+    idempotencyKey: 'intro-never-landed',
+  }));
+
+  const out = await drainOnce(db.pool, rec.deliver, new Date(at.getTime() + 60_000));
+  assert.equal(out.delivered, 1);
+  assert.deepEqual(rec.sent, ['checkin']);
+});
+
+test('the introduction goes out first, and the queue waits for it to be read', async () => {
   await flushOutbox();
   const rec = recorder();
   const at = new Date('2026-08-16T12:00:00Z');
@@ -627,8 +1083,22 @@ test('the introduction goes out first, and the queue moves the moment it has', a
   assert.equal(held[0].hold_reason, 'awaiting_introduction');
   assert.equal(held[0].sent_at, null, 'held, not dropped');
 
-  // The introduction has landed; nothing is waiting for it any more.
-  out = await drainOnce(db.pool, rec.deliver, at);
+  // The drain stamps with the real clock and this test lives at a fixed
+  // moment, so the landing is dated into that moment's frame — the gap below
+  // is a real ten minutes either way.
+  await db.pool.query(
+    `UPDATE outbox SET sent_at = $1 WHERE idempotency_key = 'intro-first'`, [at]);
+
+  // A minute later it is still waiting. The introduction has the floor: a
+  // second message on its heels is read as part of the first, and whatever it
+  // asked is answered by nobody (ג.ב, 2026-09-08, 08:00:27 and 08:01:19).
+  out = await drainOnce(db.pool, rec.deliver, new Date(at.getTime() + 60_000));
+  assert.equal(out.delivered, 0);
+  assert.equal(out.held, 1);
+  assert.deepEqual(rec.sent, ['introduction']);
+
+  // Eleven minutes later the queue moves.
+  out = await drainOnce(db.pool, rec.deliver, new Date(at.getTime() + 11 * 60_000));
   assert.equal(out.delivered, 1);
   assert.deepEqual(rec.sent, ['introduction', 'checkin']);
 });

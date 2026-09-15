@@ -129,6 +129,39 @@ test('an unparseable or empty plan is a failed run: nothing stored, still due ne
   });
 });
 
+// Three failures that all end as "no plan for this person today" and all used
+// to be written down as one string. Which one it was decides what to do: raise
+// the budget, change the model, or fix the validator's input.
+test('a failed plan says WHICH failure it was — cut, unparseable, or rejected', async () => {
+  const u = await seedPlannable('+972593000009');
+  await withClient(async (c) => {
+    await c.query(`UPDATE users SET timezone = 'UTC' WHERE id <> $1`, [u.id]);
+    const usage = { input: 900, output: 2048, cacheRead: 0, cacheWrite: 0 };
+
+    const cut = await planning.sweepPlanning(c, { now: SIX_AM_IL, complete: async () => ({
+      ok: true, text: '{"headline":"יום עמ', finishReason: 'length', model: 'm', usage,
+    }) });
+    assert.equal(cut.planned.length, 0);
+    assert.match(cut.failed[0].error, /max_tokens/,
+      'an answer the ceiling cut is a budget finding, not a model finding');
+
+    const prose = await planning.sweepPlanning(c, { now: SIX_AM_IL, complete: async () => ({
+      ok: true, text: 'בטח, הנה התוכנית שלך להיום', finishReason: 'stop', model: 'm', usage,
+    }) });
+    assert.equal(prose.failed[0].error, 'unparseable model output');
+
+    // Valid JSON the validator threw out is a third thing entirely, and it
+    // must not borrow either of the other two sentences.
+    const rejected = await planning.sweepPlanning(c, { now: SIX_AM_IL, complete: async () => ({
+      ok: true, text: '{"headline":"","bullets":[]}', finishReason: 'stop', model: 'm', usage,
+    }) });
+    assert.equal(rejected.failed[0].error, 'plan failed validation');
+
+    const { rows } = await c.query(`SELECT count(*)::int AS n FROM user_plans WHERE user_id = $1`, [u.id]);
+    assert.equal(rows[0].n, 0, 'none of the three stored anything');
+  });
+});
+
 test('validatePlan clamps everything a model could inflate', () => {
   const plan = planning.validatePlan({
     headline: '  א   רוך  '.repeat(40),

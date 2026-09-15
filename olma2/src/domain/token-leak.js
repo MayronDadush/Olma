@@ -16,6 +16,22 @@
 // must live in the model's context, and a garbled generation can spill it.
 // What is left, and what this file does, is NOTICE.
 //
+// **The outbound half of that paragraph is WRONG, corrected 2026-09-10.**
+// OpenClaw 2026.8.1 does publish an outbound gate — `reply_payload_sending`,
+// Modify/gate, "Mutate or cancel normalized reply payloads before delivery",
+// with `message_sending` beside it, neither needing `allowConversationAccess`.
+// It is `domain/reply-leak.js` now, registered by `gateway-plugin/olma-turn`,
+// and a reply carrying one of these tokens is CANCELLED rather than only
+// counted. Two incidents were designed around the sentence above before
+// anybody re-read the catalog for the version the box actually runs
+// (`incidents.md`, "The working-out arrived instead of the message").
+//
+// This file stays, and its job is unchanged: the gate stands at DELIVERY and
+// sees one reply at a time, while this reads fourteen days of every agent's
+// transcript. A token that leaked before the gate existed, or through a path
+// the gate does not stand in, is still exposed and still needs rotating —
+// which is what a detector is for and what a gate can never answer.
+//
 // The signal is narrow on purpose, and the narrowing is measured, not guessed.
 // Over 14 days on the live box an identity token appears:
 //

@@ -32,8 +32,28 @@ const OPENING = {
   en: templates.spec('opening_en').text,
 };
 
+// Hebrew and English are the two languages the product ships (owner,
+// 2026-09-09), and this decides which one a person's first sentence is in.
+//
+// It was an EXACT match on 'he', which is the one shape a locale column cannot
+// be relied on to have: `set_my_language` stores any ISO code it is given
+// after lowercasing — its own description offers "he, en, ar, ru" — so
+// `he-il` is a perfectly ordinary value, and it used to buy an ENGLISH
+// opening followed by Hebrew reminders for ever after, because
+// `proactive-text.localizedKey` reads the same column with a prefix test. An
+// empty or missing locale did the same. Two opposite fallbacks for one
+// two-language decision.
+//
+// The DIRECTION here is deliberately not localizedKey's, and the two are not
+// a contradiction: a reminder has only two sets of sentences and Hebrew is
+// the house default (`createUser` COALESCEs the column to 'he'), while an
+// opening has the intake greeter beside it, told in so many words "if they
+// wrote in Hebrew … in any other language" (intake/intake-workspace.js). So
+// anything Hebrew is Hebrew, nothing on file is Hebrew, and every other
+// language meets the same English opening the greeter would have sent.
 function openingKey(locale) {
-  return locale === 'he' ? 'opening_he' : 'opening_en';
+  const code = String(locale == null ? '' : locale).trim().toLowerCase();
+  return !code || code.startsWith('he') ? 'opening_he' : 'opening_en';
 }
 
 function openingMessage(locale, overrides) {

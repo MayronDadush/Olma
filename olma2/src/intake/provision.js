@@ -253,29 +253,28 @@ async function provisionUser(client, {
     return err('conflict', 'already provisioned', { userId: user.id });
   }
 
-  // Someone's address book may already know this person's name — a bulk
-  // import (domain/google-contacts.js, vcard.js) or a shared contact card can
-  // easily reach a phone number before that person ever writes to Olma
-  // themselves. When every existing row for this number agrees on a name
-  // (a stray "— עבודה"/"— בית" suffix on a secondary number doesn't count —
-  // stripped before comparing), that name opens the conversation as a
-  // confirmable GUESS, never a stated fact: name_confirmed stays FALSE (its
-  // ordinary default), so the agent still asks rather than assuming, and it
-  // never says WHOSE address book the name came from — that stays in the
-  // audit trail only, never in anything the agent says out loud.
-  let prefillAudit = null;
-  if (!firstName && !(user && user.first_name)) {
-    const contacts = require('../domain/contacts');
-    const hits = await contacts.namesForPhone(client, phone);
-    if (hits.length) {
-      const bases = hits.map((h) => h.displayName.split(' — ')[0].trim());
-      const agreed = new Set(bases.map((b) => b.toLowerCase())).size === 1 ? bases[0] : null;
-      if (agreed) {
-        firstName = agreed;
-        prefillAudit = { savedByCount: hits.length };
-      }
-    }
-  }
+  // A person's name is THEIRS to give. It comes from the name they chose on
+  // the channel they wrote in — the WhatsApp display name, relayed by the
+  // turn-open hook and by `turn_start(sender_name)`, captured as an
+  // unconfirmed guess — or from what they tell Olma. It never comes from
+  // somebody else's address book.
+  //
+  // It used to. Provisioning looked the number up across every `user_contacts`
+  // row and, when they agreed, opened the conversation under that name. The
+  // safeguard was "when every existing row agrees", and on the box it never
+  // once meant anything: all SEVEN people it named had exactly ONE row saved
+  // for them (`savedByCount: 1`), so one person's private label decided a
+  // stranger's name. Five of the seven had to correct it themselves. u-30 read
+  // his own dashboard and found himself called "דב נתיב צלם עורך" — someone's
+  // contact card, description and all.
+  //
+  // Worse, it was self-sealing: both display-name captures are guarded by
+  // `!user.first_name`, so the label did not merely arrive first, it locked
+  // the honest source out for good.
+  //
+  // A label in `user_contacts` belongs to the person who saved it, and its
+  // whole job is to let THEM reach that person through Olma. It is not a fact
+  // about its subject, and it never names them here.
   // Their language is whatever they actually wrote in, falling back to the
   // dialling code only when the text carries no signal at all (see
   // domain/language.js). Resolved here because this is the first and only
@@ -326,15 +325,6 @@ async function provisionUser(client, {
       greetedByIntake === true]
   );
   user = rows[0];
-
-  // Compare against the CLEANED name, not the raw prefill guess — createUser
-  // truncates first_name to 60 chars on insert, so a 61-80 char agreed name
-  // (contacts.js allows up to 80) would otherwise never equal-match here and
-  // the audit record would be silently dropped for exactly the names this
-  // check exists to catch.
-  if (prefillAudit && user.first_name === usersDomain.cleanName(firstName)) {
-    await audit.record(client, user.id, 'user.name_prefilled_from_contacts', prefillAudit);
-  }
 
   // Everything below this line happens OUTSIDE the database's reach: files on
   // disk and a gateway config the transaction cannot roll back. Whether each

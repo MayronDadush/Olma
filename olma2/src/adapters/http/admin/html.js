@@ -63,6 +63,10 @@ const STYLE = `<style>
   p.warn{color:var(--warn)}
   td.warn{color:var(--warn);font-weight:600}
   .nowrap{white-space:nowrap}
+  /* A message shown as the text that will actually be sent keeps its own line
+     breaks — a reminder batch is a list, and collapsed to one line it stops
+     being the thing the reader is checking. */
+  .verbatim{white-space:pre-wrap}
   tr.bad td{background:var(--bad-dim)}
   .banner{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px}
   .banner.ok{background:var(--accent-dim);color:var(--accent)}

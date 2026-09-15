@@ -83,6 +83,11 @@ async function main() {
     for (const t of timers) clearInterval(t);
     for (const t of kicks) clearTimeout(t);
     broker.server.close();
+    // The gateway socket (channels/gateway-rpc.js) closes itself after two
+    // idle minutes, so this is politeness rather than a leak — but a send in
+    // flight should be told the socket went away rather than hanging on a
+    // process that is exiting.
+    require('../src/channels/gateway-rpc').shutdown();
     await pool.end();
     process.exit(0);
   };

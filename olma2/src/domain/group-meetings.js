@@ -34,6 +34,7 @@ const meetings = require('./meetings');
 const options = require('./meeting-options');
 const fanout = require('./meeting-fanout');
 const groups = require('./groups');
+const pause = require('./pause');
 
 // What the room calls a member. The display name the group itself shows comes
 // first, because that is the name the other people in the room use; their
@@ -75,10 +76,19 @@ async function startCoordination(client, group, actingUser, title) {
   if (!actingUser) {
     return err('invalid', 'I cannot tell who asked for this — ask them to say it again in the group');
   }
-  const members = await coordinatingMembers(client, group.id);
-  if (!members.some((m) => Number(m.user_id) === Number(actingUser.id))) {
+  const everyone = await coordinatingMembers(client, group.id);
+  if (!everyone.some((m) => Number(m.user_id) === Number(actingUser.id))) {
     return err('forbidden', 'that person is not a member of this group');
   }
+  // A paused member whose pause already spent its one coordination message is
+  // not counted in (owner, 2026-09-13; domain/pause.js). They either did not
+  // answer it for a day or asked to stay paused, and either way a coordination
+  // they never hear of must not sit in everybody's digest as waiting on them —
+  // which is what the room did to Kapish. Scoped to who is SWEPT IN: whether
+  // somebody is a member at all (settle, the check above) is not a question
+  // their pause gets a say in.
+  const members = everyone.filter((m) =>
+    Number(m.user_id) === Number(actingUser.id) || !pause.roomInviteSpent(m));
   const others = members.map((m) => Number(m.user_id)).filter((id) => id !== Number(actingUser.id));
   if (!others.length) {
     return err('invalid', 'there is nobody else in this group to coordinate with');
@@ -233,7 +243,59 @@ async function settle(client, group, actingUser, optionId) {
   return res;
 }
 
+// ---- a paused member who did not answer -------------------------------------
+// The other half of the one message a paused person gets (domain/pause.js).
+// A day after it went out with no word back they are taken out of the
+// coordination, so nobody's digest keeps saying it is waiting on them.
+//
+// Also catches the member who was already counted in before this existed and
+// whose invite the gate dropped: paused, nothing about this meeting still on
+// its way to them, a coordination a day old, and no invite of theirs inside
+// the last 24 hours. The `NOT EXISTS` is what keeps a row held for their night
+// or their quiet day from being overtaken by its own exit.
+//
+// Nobody is TOLD they left — "X left the meeting" would be false, they never
+// said a word. Only when their leaving closes it (no_match) does the initiator
+// hear, in the same words any exit that closes a meeting uses.
+async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
+  const { rows } = await client.query(
+    `SELECT p.meeting_id, p.user_id
+       FROM meeting_participants p
+       JOIN meetings mt ON mt.id = p.meeting_id
+       JOIN users u ON u.id = p.user_id
+      WHERE mt.group_id IS NOT NULL AND mt.status = 'negotiating'
+        AND p.state <> 'opted_out' AND p.user_id <> mt.initiator_id
+        AND u.paused_at IS NOT NULL
+        AND mt.created_at <= $1::timestamptz - ($2::bigint * interval '1 millisecond')
+        AND (u.room_invite_sent_at IS NULL
+             OR u.room_invite_sent_at < u.paused_at
+             OR u.room_invite_sent_at <= $1::timestamptz - ($2::bigint * interval '1 millisecond'))
+        AND NOT EXISTS (
+          SELECT 1 FROM outbox o
+           WHERE o.user_id = p.user_id AND o.sent_at IS NULL
+             AND (o.payload->>'meetingId')::bigint = p.meeting_id)
+      ORDER BY p.meeting_id, p.user_id
+      LIMIT 50`,
+    [new Date(nowMs), pause.ROOM_INVITE_ANSWER_MS]);
+  const out = [];
+  for (const r of rows) {
+    const meetingId = Number(r.meeting_id);
+    const res = await meetings.applyExit(client, Number(r.user_id), meetingId, 'paused_no_answer');
+    if (!res.ok) continue;
+    if (res.data.meetingStatus === 'no_match') {
+      await fanout.supersedeQueuedMeetingRows(client, meetingId, ['meeting_slot_proposed', 'meeting_invite']);
+      const { rows: [m] } = await client.query(
+        `SELECT initiator_id, title FROM meetings WHERE id = $1`, [meetingId]);
+      await fanout.fanout(client, [Number(m.initiator_id)], 'meeting_no_match', {
+        meetingId, title: m.title || 'meeting',
+      }, { key: `mexit:${meetingId}:${r.user_id}` });
+    }
+    out.push({ meetingId, userId: Number(r.user_id), meetingStatus: res.data.meetingStatus });
+  }
+  return out;
+}
+
 module.exports = {
-  startCoordination, coordinationStatus, statusOf, settle,
+  startCoordination, coordinationStatus, statusOf, settle, sweepSilentPausedMembers,
   currentMeeting, coordinatingMembers, memberLabel,
 };

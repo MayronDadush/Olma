@@ -22,6 +22,31 @@
 // queue's whole job is to say it exactly once.
 const templates = require('./message-templates');
 const text = require('./proactive-text');
+const occ = require('../intake/openclaw-config');
+
+// How long after a `channels.whatsapp` write this queue stays quiet.
+//
+// The window is real and it is ours: registering a room writes that subtree,
+// which restarts the WhatsApp channel for about sixteen seconds, and the
+// room's first sentence is decided in the same pass and drained ten seconds
+// later — inside it, every time (`intake/openclaw-config.saveConfig`). Both
+// rooms registered on 2026-09-11 were greeted twice for that reason.
+//
+// Holding is the whole fix and it is deliberately blunt: the queue does not
+// try to guess whether the channel has come back, it waits out a window long
+// enough that it has. 45s against a measured 16s, because what waiting costs
+// is a greeting a few seconds late and what not waiting costs is a room
+// hearing the same sentence twice — the trade this table was created to make
+// (migration 055). A held row is untouched: not claimed, not counted as an
+// attempt, still `pending()` for the gate sweep that asks whether the room is
+// owed a greeting.
+//
+// What it does NOT fix is the reason a refusal turns into a duplicate at all —
+// the gateway answers "not dispatched", keeps the message, and delivers it
+// anyway, while `channels/openclaw.js` reads that answer as a definite
+// non-delivery. This only keeps the queue out of the one window where we know
+// that happens.
+const CHANNEL_RESTART_GRACE_MS = 45 * 1000;
 
 // Rendered at DELIVERY, from the owner's current wording — never at enqueue.
 // The same rule the reminder rungs follow: a sentence he rewords while a row
@@ -143,8 +168,30 @@ function said(result) {
 // The sender. `send(jid, body, opts) -> 'sent' | 'unknown' | 'failed' | bool`.
 async function drainOnce(pool, deps = {}) {
   const now = deps.now || new Date();
-  const out = { sent: 0, unconfirmed: 0, failed: 0, abandoned: 0, stale: 0 };
+  // `channelHeld`, never `held`: the voice sweep's own result already carries a
+  // `held` (lines waiting for the room's morning) and brokerd spreads the two
+  // together, so a second one silently overwrote it.
+  const out = { sent: 0, unconfirmed: 0, failed: 0, abandoned: 0, stale: 0, channelHeld: 0 };
+  // Reaped first and unconditionally: a claim left behind by a sender that
+  // died is nobody's to release, and a hold must not keep it in flight.
   out.stale = await closeStaleClaims(pool, now);
+
+  // Nothing goes out while the channel we just restarted is coming back.
+  //
+  // The stamp is a wall clock and `now` can be injected, so a caller that
+  // hands in a `now` unrelated to real time is asking a question this cannot
+  // answer — and it holds, which is the fail-safe direction. That is not a
+  // theoretical worry: it is how a test that drains at a fixed 01:00 behaves,
+  // and such a fixture has to say which of the two situations it is in
+  // (`tests/group-sweep.test.js`, `pass`).
+  const writtenAt = (deps.channelWrittenAt || occ.channelWrittenAt)();
+  if (writtenAt !== null && writtenAt !== undefined
+      && now.getTime() - writtenAt < CHANNEL_RESTART_GRACE_MS) {
+    const { rows: waiting } = await pool.query(
+      `SELECT count(*)::int AS n FROM group_outbox WHERE sent_at IS NULL AND claimed_at IS NULL`);
+    out.channelHeld = waiting[0].n;
+    return out;
+  }
 
   const wording = await templates.load(pool);
   const { rows } = await pool.query(
@@ -181,5 +228,5 @@ async function drainOnce(pool, deps = {}) {
 
 module.exports = {
   enqueue, pending, claim, markSent, markFailed, closeStaleClaims, drainOnce, renderRow, said,
-  STALE_CLAIM_MS,
+  STALE_CLAIM_MS, CHANNEL_RESTART_GRACE_MS,
 };

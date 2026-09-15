@@ -178,10 +178,11 @@ async function renderUserPage(client, userId, { confirmDelete = false, csrf = ''
   // sees: active only, expired filtered out, same ordering.
   const factRows = (await factsDomain.listFacts(client, userId)).data.facts;
   // Operator-only, never shown to any agent or user: whose address books
-  // already carry this phone number, and under what name. The reverse of
-  // domain/contacts.js#namesForPhone's provisioning use — there it prefills a
-  // brand-new user's own name; here it just tells the person reading the
-  // dashboard "this number is known to others as X" for context.
+  // already carry this phone number, and under what name. Provisioning used to
+  // read the same rows to NAME a newcomer and no longer does (intake/
+  // provision.js says why) — this is the one honest use of the reverse
+  // lookup, telling the person reading the dashboard "this number is known to
+  // others as X" for context, and it is deliberately the only one left.
   const { rows: knownAs } = await client.query(
     `SELECT uc.display_name, uc.user_id AS owner_id, o.first_name, o.last_name
      FROM user_contacts uc JOIN users o ON o.id = uc.user_id

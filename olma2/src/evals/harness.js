@@ -56,8 +56,23 @@ async function resetEvalUser(client, userId) {
   await client.query(`DELETE FROM user_preferences WHERE user_id = $1`, [userId]);
   await client.query(`DELETE FROM user_contacts WHERE user_id = $1`, [userId]);
   await client.query(`DELETE FROM user_plans WHERE user_id = $1`, [userId]);
+  // Every meeting the eval user is IN, not only the ones they started. The
+  // `meeting-second-option` scenario is seeded with the PARTNER as initiator,
+  // so `initiator_id = $1` never matched it: the meeting, its options and its
+  // answers survived every reset and piled up run on run. scenarios.js already
+  // works around the symptom in a comment — "Two runs inside an hour once left
+  // two meetings behind, and a count across both read four options where the
+  // model had correctly added exactly one" — and the box was holding four
+  // orphan `meeting_option_answers` rows when `assertCleanSlate` was first
+  // pointed at it. Deleting the meeting cascades to options, answers,
+  // participants, availability and picker links (migrations 001, 020, 039).
+  await client.query(
+    `DELETE FROM meetings m
+      WHERE m.initiator_id = $1
+         OR EXISTS (SELECT 1 FROM meeting_participants p
+                     WHERE p.meeting_id = m.id AND p.user_id = $1)`, [userId]
+  );
   await client.query(`DELETE FROM meeting_participants WHERE user_id = $1`, [userId]);
-  await client.query(`DELETE FROM meetings WHERE initiator_id = $1`, [userId]);
   await client.query(`DELETE FROM outbox WHERE user_id = $1`, [userId]);
   await client.query(`DELETE FROM connections WHERE requester_id = $1 OR target_id = $1`, [userId]);
   // The quota counter is state too, and leaving it made the suite lie. The
@@ -77,6 +92,91 @@ async function resetEvalUser(client, userId) {
       WHERE id = $1`, [userId]
   );
 }
+
+// ── Is the slate actually blank? ────────────────────────────────────────────
+// `resetEvalUser` is a hand-written list of DELETEs, and the failure mode of a
+// hand-written list is that the schema grows and the list does not. That is
+// not hypothetical: `quota_counters` was missed for months, six eval days ran
+// against a blocked user, and every scenario after the cap measured the block
+// notice instead of the model — reds that read as model failures and were not.
+// The `meetings` rows the partner initiated were missed the same way.
+//
+// So this does not check a second hand-written list, which would just be the
+// same bug written twice (CLAUDE.md, "A test that asserts on a replica of a
+// query cannot fail when the original drifts"). It asks the SCHEMA which
+// tables are keyed to a user, and requires every one of them to be empty
+// unless it is named below with a reason. A table added next month is a loud
+// failure on the first eval run, and the person who added it decides which
+// list it belongs on. That is the property that makes it a detector: it can
+// still fail.
+//
+// Keyed on `user_id` or `owner_id` only — `audit_log.actor_id` and
+// `issues.reporter_id` are deliberately outside the scan, both being
+// append-only records that scenarios scope by `startedAt` instead.
+const KEPT_ACROSS_RESET = {
+  entitlements: 'provisioning: what this account may use, not conversation state',
+  user_channels: 'provisioning: the WhatsApp lane the agent answers on',
+  integrations: 'connection state — and `email-not-connected` asserts gmail is absent, so silently wiping it would delete the thing under test',
+  usage_ledger: 'append-only cost record; the ledgers are never rewritten',
+  media_usage_ledger: 'append-only cost record',
+  voice_usage_ledger: 'append-only cost record',
+  onboarding_reviews: 'append-only record of what the review job saw',
+  dashboard_sessions: 'auth artefact, no bearing on a turn',
+  magic_links: 'auth artefact, no bearing on a turn',
+  oauth_states: 'auth artefact, no bearing on a turn',
+};
+
+// Rows a person's own state hangs off, by the column that names them.
+const USER_KEYS = ['user_id', 'owner_id'];
+const SAFE_IDENT = /^[a-z_][a-z0-9_]*$/;
+
+// Returns the tables that still hold rows for this user after a reset.
+// Empty array = a blank slate. Call it AFTER resetEvalUser and BEFORE the
+// scenario's own seed, which is allowed to write whatever it likes.
+async function cleanSlateViolations(client, userId) {
+  const { rows: cols } = await client.query(
+    `SELECT c.table_name AS t, c.column_name AS col
+       FROM information_schema.columns c
+       JOIN information_schema.tables tb
+         ON tb.table_name = c.table_name AND tb.table_schema = c.table_schema
+      WHERE c.table_schema = current_schema()
+        AND tb.table_type = 'BASE TABLE'
+        AND c.column_name = ANY($1)
+      ORDER BY c.table_name, c.column_name`,
+    [USER_KEYS]
+  );
+  const out = [];
+  for (const { t, col } of cols) {
+    if (KEPT_ACROSS_RESET[t]) continue;
+    // Identifiers come from information_schema, so they cannot be hostile —
+    // the check is here so that stays true if this ever reads a list from
+    // anywhere else.
+    if (!SAFE_IDENT.test(t) || !SAFE_IDENT.test(col)) continue;
+    const { rows } = await client.query(
+      `SELECT count(*)::int AS n FROM "${t}" WHERE "${col}" = $1`, [userId]
+    );
+    if (rows[0].n > 0) out.push({ table: t, column: col, rows: rows[0].n });
+  }
+  return out;
+}
+
+// The same check, as the thing a trial is allowed to start on.
+//
+// It THROWS rather than warning, and that is the point: correlated trials are
+// invisible from the outside — the suite still prints a board, the scenarios
+// still pass or fail, and nothing anywhere says the second trial began inside
+// the first one's leftovers. `runScenario` turns this into a scenario-level
+// `error`, so one dirty table is loud and does not silence the run.
+async function assertCleanSlate(client, userId) {
+  const dirty = await cleanSlateViolations(client, userId);
+  if (!dirty.length) return;
+  const detail = dirty.map((d) => `${d.table}.${d.column} (${d.rows})`).join(', ');
+  throw new Error(
+    `eval user ${userId} is not on a blank slate: ${detail}. `
+    + 'Either resetEvalUser should clear it, or it belongs in KEPT_ACROSS_RESET with a reason.'
+  );
+}
+
 
 // A real person's turn is opened by the gateway's own hook before the model
 // reads anything (gateway-hooks/olma-turn-open). The harness sends its turns
@@ -440,6 +540,10 @@ async function runScenario(pool, user, scenario, deps = {}) {
     let startedAt = new Date(started).toISOString();
     await withTx(pool, async (c) => {
       await resetEvalUser(c, user.id);
+      // Between the reset and the seed: after this line the scenario is
+      // allowed to write whatever it likes, so it is the only moment a blank
+      // slate is a meaningful claim.
+      await assertCleanSlate(c, user.id);
       if (scenario.seed) await scenario.seed(c, user.id);
       turnContext = await turnDomain.contextEnabledFor(c, user);
       // The scoping mark comes from the DATABASE clock, not this process's.
@@ -489,9 +593,10 @@ async function runScenario(pool, user, scenario, deps = {}) {
     let checks;
     try {
       // Every scenario, whatever it is about: the reply must be a reply, in
-      // their language (scenarios.replyLanguage). Appended here rather than
-      // spread into each `hard` so a new scenario cannot forget it.
-      checks = [...await scenario.hard(client, ctx), scenarios.replyLanguage(ctx)];
+      // their language (scenarios.replyLanguage), in her own voice with no
+      // model markup in it (scenarios.herOwnVoice). Appended here rather than
+      // spread into each `hard` so a new scenario cannot forget them.
+      checks = [...await scenario.hard(client, ctx), scenarios.replyLanguage(ctx), scenarios.herOwnVoice(ctx)];
       result.hardFailures = checks.filter((c) => !c.pass).map((c) => ({ name: c.name, detail: c.detail }));
       // Only on failure: a green scenario needs no autopsy, and the snapshot
       // is read on the SAME connection, before the next scenario's reset.
@@ -534,6 +639,7 @@ async function runScenario(pool, user, scenario, deps = {}) {
 module.exports = {
   EVAL_PHONE, JUDGE_MODEL, TURN_TIMEOUT_MS,
   getEvalUser, resetEvalUser, runScenario, judgeScenario,
+  assertCleanSlate, cleanSlateViolations, KEPT_ACROSS_RESET,
   makeTurnRunner, toolCallsInSlice, openTurnForEval, JUDGE_SYSTEM,
   verifyProblems, stateSnapshot, JUDGE_MAX_TOKENS, JUDGE_TRUNCATION_MAX_TOKENS,
   JUDGE_ATTEMPTS, JUDGE_TIMEOUT_MS,

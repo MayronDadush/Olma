@@ -98,7 +98,41 @@ function alertText(summary) {
 // Run the whole suite and persist. Shared by the nightly sweep and the manual
 // script — the ONLY difference between them is the trigger label and the
 // window/watermark gate.
-async function runEvalSuite(pool, { trigger = 'nightly', deps = {}, scenarios = SCENARIOS } = {}) {
+// green < yellow < red < error. `error` ranks worst on purpose: a trial the
+// harness could not complete is the one outcome that says nothing about the
+// model, and a run must never round that down to a pass.
+const SEVERITY = { green: 0, yellow: 1, red: 2, error: 3 };
+
+function worstOf(results) {
+  return results.reduce((a, b) => (SEVERITY[b.status] > SEVERITY[a.status] ? b : a));
+}
+
+// Run one scenario `trials` times and fold it back into ONE result.
+//
+// pass^k, not pass@k: the question a customer-facing assistant has to answer
+// is "is it right every time", so the row keeps the WORST trial — its
+// failures, its snapshot, its reply — and `trials` records what each run did.
+// With trials === 1 this returns exactly what runScenario returned, with no
+// `trials` field at all, so every caller and every stored row is unchanged.
+async function runScenarioTrials(pool, user, scenario, deps, trials) {
+  if (trials <= 1) return harness.runScenario(pool, user, scenario, deps);
+  const runs = [];
+  for (let i = 1; i <= trials; i += 1) {
+    const r = await harness.runScenario(pool, user, scenario, deps);
+    runs.push({ ...r, trial: i });
+  }
+  const worst = worstOf(runs);
+  return {
+    ...worst,
+    trials: runs.map((r) => ({ trial: r.trial, status: r.status, durationMs: r.durationMs })),
+    // Wall time of the whole scenario, not of the trial that happened to be
+    // worst — otherwise a k-trial run reports a fraction of what it cost.
+    durationMs: runs.reduce((sum, r) => sum + (r.durationMs || 0), 0),
+    passedAll: runs.every((r) => r.status === 'green'),
+  };
+}
+
+async function runEvalSuite(pool, { trigger = 'nightly', deps = {}, scenarios = SCENARIOS, trials = 1 } = {}) {
   const user = await withTx(pool, (c) => harness.getEvalUser(c));
   if (!user) return { skipped: 'no eval user — run scripts/setup-eval-user.js on the server' };
 
@@ -110,16 +144,17 @@ async function runEvalSuite(pool, { trigger = 'nightly', deps = {}, scenarios = 
 
   const results = [];
   for (const scenario of scenarios) {
-    const r = await harness.runScenario(pool, user, scenario, deps);
+    const r = await runScenarioTrials(pool, user, scenario, deps, trials);
     results.push(r);
     // Persisted per scenario, not at the end — a crash mid-run leaves what DID
     // run visible instead of a night that looks like it never happened.
     await pool.query(
-      `INSERT INTO eval_results (run_id, scenario, status, hard_failures, judge, reply, duration_ms, snapshot)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      `INSERT INTO eval_results (run_id, scenario, status, hard_failures, judge, reply, duration_ms, snapshot, trials)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [runId, r.scenario, r.status, JSON.stringify(r.hardFailures || []),
         r.judge ? JSON.stringify(r.judge) : null, r.reply, r.durationMs,
-        r.snapshot ? JSON.stringify(r.snapshot) : null]
+        r.snapshot ? JSON.stringify(r.snapshot) : null,
+        r.trials ? JSON.stringify(r.trials) : null]
     );
   }
 
@@ -142,7 +177,7 @@ async function runEvalSuite(pool, { trigger = 'nightly', deps = {}, scenarios = 
       if (prev === 'yellow' || prev === 'red') alerts.push(r);
     }
   }
-  return { runId, trigger, tally, alerts, results };
+  return { runId, trigger, tally, alerts, results, trials };
 }
 
 // The brokerd job. deps.send(phone, text) is the raw pipe (same as the credit
@@ -230,6 +265,7 @@ async function sweepEvals(pool, deps = {}) {
 
 module.exports = {
   sweepEvals, runEvalSuite, alertText, previousStatus, inWindow,
+  runScenarioTrials, worstOf, SEVERITY,
   flushPendingAlert, alertHoursOpen,
   LAST_RUN_FLAG, WINDOW_UTC_HOURS, PILOT_TRIGGER, PENDING_ALERT_FLAG, ALERT_TZ,
 };

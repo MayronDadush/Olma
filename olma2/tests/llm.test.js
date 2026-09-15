@@ -263,3 +263,43 @@ test('complete maps the wire shape and never throws on API errors', async () => 
     globalThis.fetch = realFetch;
   }
 });
+
+// Two failures that arrive identically — a null out of parseJsonObject — and
+// take opposite actions. Before whyUnparseable every background consumer wrote
+// the same sentence for both, so "the background model is broken" and "the
+// background model needs 200 more tokens" were the same line in the log.
+test('whyUnparseable separates a cut answer from a bad one, and both from a dead call', () => {
+  const cut = llm.whyUnparseable({ ok: true, text: '{"facts":[{"fa', finishReason: 'length' });
+  assert.match(cut, /max_tokens/, 'names the ceiling');
+  assert.match(cut, /raise the budget/, 'and says which way to act on it');
+
+  const prose = llm.whyUnparseable({ ok: true, text: 'בטח, הנה מה שמצאתי', finishReason: 'stop' });
+  assert.equal(prose, 'unparseable model output');
+  assert.doesNotMatch(prose, /max_tokens/, 'a model answering in prose is not a budget problem');
+
+  // A provider that states no finish_reason at all must not be read as a
+  // ceiling — an absent signal is not a negative one.
+  assert.equal(llm.whyUnparseable({ ok: true, text: 'nope', finishReason: null }), 'unparseable model output');
+
+  // A call that never returned keeps its own error; the helper adds nothing.
+  assert.equal(llm.whyUnparseable({ ok: false, error: 'llm timeout' }), 'llm timeout');
+  assert.equal(llm.whyUnparseable(null), 'unknown');
+});
+
+test('BACKGROUND_MAX_TOKENS is the adapter default, so naming it changed no budget', async () => {
+  // The point of the constant is that it is the number those three jobs were
+  // already running at. If it ever stops matching the adapter's own fallback,
+  // this test is where somebody finds out that naming it moved production.
+  let sent = null;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (_u, opts) => {
+    sent = JSON.parse(opts.body);
+    return { ok: true, status: 200, json: async () => ({ content: [{ text: '{}' }], usage: {} }) };
+  };
+  try {
+    await llm.complete({ user: 'hi', apiKey: 'k' });
+    assert.equal(sent.max_tokens, llm.BACKGROUND_MAX_TOKENS);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

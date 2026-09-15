@@ -8,6 +8,7 @@ const { freshDb, makeUser } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const occ = require('../src/intake/openclaw-config');
 const provision = require('../src/intake/provision');
+const users = require('../src/domain/users');
 const { provisionUser } = provision;
 const intake = require('../src/jobs/intake');
 const sessionIndex = require('../src/channels/sessions');
@@ -23,10 +24,16 @@ function baseConfig() {
   return {
     agents: {
       list: [{ id: 'intake', workspace: '/x/intake', agentDir: '/x/intake-agent' }],
-      defaults: { heartbeat: { every: '0m', target: 'none' } },
+      defaults: {
+        heartbeat: { every: '0m', target: 'none' },
+        model: { primary: 'openrouter/deepseek/deepseek-v4-flash' },
+        models: { 'openrouter/deepseek/deepseek-v4-flash': { params: { provider: { order: ['digitalocean', 'streamlake'], allow_fallbacks: true } } } },
+      },
     },
     hooks: { internal: { enabled: true, entries: { 'olma-turn-open': { enabled: true } } } },
+    plugins: { entries: { 'olma-turn': { enabled: true, hooks: { allowConversationAccess: true }, config: { agents: [] } } } },
     messages: { queue: { mode: 'followup' } },
+    session: { reset: { mode: 'daily', atHour: 2 } },
     bindings: [],
     tools: { fs: { workspaceOnly: true }, alsoAllow: ['read', 'write'] },
     mcp: { servers: { olma: { command: 'node', args: ['shim.js'] } } },
@@ -148,40 +155,52 @@ test('provisionUser: firstMessage and invitedInfo both land in USER.md, wrapped 
   assert.match(userMd, /connection_id=42/);
 });
 
-test('provisionUser: a name every existing owner agrees on prefills first_name, unconfirmed', async () => {
+// These three used to assert the opposite — that a name every address book
+// agreed on became the newcomer's own. It shipped, and on the box the
+// agreement clause never once did any work: all seven people it named had a
+// single saved row, so one person's private label was the whole "consensus".
+// Kept as the record of a rule that now runs the other way.
+test('provisionUser: a name in somebody else\'s address book does not name the newcomer', async () => {
   const contacts = require('../src/domain/contacts');
   const a = await makeUser(db.pool, '+972601000200', { firstName: 'Owner A' });
   const b = await makeUser(db.pool, '+972601000201', { firstName: 'Owner B' });
   const newcomerPhone = '+972601000202';
+  // Two owners, agreeing, one of them the strongest source a contact has —
+  // the shape that used to prefill hardest.
   await withTx(db.pool, (c) => contacts.saveContact(c, a.id, { name: 'דנה כהן', phone: newcomerPhone, source: 'user_stated' }));
   await withTx(db.pool, (c) => contacts.saveContact(c, b.id, { name: 'דנה כהן', phone: newcomerPhone, source: 'contact_card' }));
 
   const res = await withTx(db.pool, (c) => provisionUser(c, { phone: newcomerPhone, configPath }));
   assert.ok(res.ok);
-  assert.equal(res.data.user.first_name, 'דנה כהן');
-  assert.equal(res.data.user.name_confirmed, false, 'a prefilled name is a guess, not a stated fact');
-
+  assert.equal(res.data.user.first_name, null,
+    'a newcomer was named out of somebody else\'s address book');
+  // Nothing left to audit, because nothing was taken.
   const { rows } = await db.pool.query(
-    `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'user.name_prefilled_from_contacts'`,
+    `SELECT 1 FROM audit_log WHERE actor_id = $1 AND event = 'user.name_prefilled_from_contacts'`,
     [res.data.user.id]);
-  assert.equal(rows.length, 1, 'the source stays in the audit trail, never in anything user-facing');
-  assert.equal(rows[0].detail.savedByCount, 2);
+  assert.equal(rows.length, 0, 'the prefill is gone but still recording itself');
 });
 
-test('provisionUser: disagreeing names across address books prefill nothing', async () => {
+// The single-row case is the one that actually happened, seven times out of
+// seven — and it is the one an "everybody agrees" guard can never catch.
+test('provisionUser: one person\'s label for a number names nobody', async () => {
   const contacts = require('../src/domain/contacts');
   const a = await makeUser(db.pool, '+972601000210', { firstName: 'Owner C' });
-  const b = await makeUser(db.pool, '+972601000211', { firstName: 'Owner D' });
   const phone = '+972601000212';
-  await withTx(db.pool, (c) => contacts.saveContact(c, a.id, { name: 'דנה', phone, source: 'user_stated' }));
-  await withTx(db.pool, (c) => contacts.saveContact(c, b.id, { name: 'עודד', phone, source: 'user_stated' }));
+  await withTx(db.pool, (c) => contacts.saveContact(c, a.id, { name: 'דב נתיב צלם עורך', phone, source: 'user_stated' }));
 
   const res = await withTx(db.pool, (c) => provisionUser(c, { phone, configPath }));
   assert.ok(res.ok);
-  assert.equal(res.data.user.first_name, null, 'two different names is not "the same answer" — leave it unset');
+  assert.equal(res.data.user.first_name, null, 'a contact card became a person\'s name');
+  // And the honest source is now reachable: the capture on the first turn is
+  // guarded by `!user.first_name`, which the label used to make false for ever.
+  const named = await withTx(db.pool, (c) => users.setName(c, res.data.user.id, 'דב', null,
+    { confirmed: false, source: 'whatsapp_display_name' }));
+  assert.equal(named.ok, true, 'the display name could not land on a nameless row');
+  assert.equal(named.data.user.first_name, 'דב');
 });
 
-test('provisionUser: an explicit firstName always wins over any prefill', async () => {
+test('provisionUser: a name handed in explicitly is still the name', async () => {
   const contacts = require('../src/domain/contacts');
   const a = await makeUser(db.pool, '+972601000220', { firstName: 'Owner E' });
   const phone = '+972601000221';
@@ -779,6 +798,107 @@ test('config guard: a message that arrives mid-turn must wait for its own turn (
   assert.match(guard.checkOpenclawConfig(cfg)[0], /messages\.queue\.mode is "steer"/);
   cfg.messages = { queue: { mode: 'collect' } };
   assert.equal(guard.checkOpenclawConfig(cfg).length, 1, 'collect merges the two into one prompt: one count, one reply target — not what we want either');
+});
+
+// Miron, 2026-09-14: 👀, 👀, then 👍 on one message. Two systems were marking
+// it — the gateway from `messages.ackReaction` the instant it arrived, and
+// brokerd ~15s later — and neither could see the other. Ours is the one that
+// stays (it picks 👀/👂/🙏 off the message, and is the same vocabulary as
+// every later mark), so the gateway's own ack must be absent.
+test('config guard: the gateway must not acknowledge a message that brokerd already marks', () => {
+  const cfg = baseConfig();
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), [], 'a config without it is clean');
+
+  cfg.messages = { ...cfg.messages, ackReaction: '👀' };
+  const v = guard.checkOpenclawConfig(cfg);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /messages\.ackReaction is "👀"/);
+  assert.match(v[0], /twice/, 'says what the person actually experiences');
+  assert.match(v[0], /disable-ack-reaction/, 'says how to fix it');
+
+  // Any value at all, not just the emoji we happen to place: the gateway
+  // acknowledging with a DIFFERENT emoji is still a second mark on a message
+  // brokerd is already marking, and reads as two assistants answering.
+  cfg.messages = { ...cfg.messages, ackReaction: '✅' };
+  assert.equal(guard.checkOpenclawConfig(cfg).length, 1, 'a different emoji is the same duplicate');
+
+  // The companion key alone is inert — it modifies an ack that is not placed —
+  // so it must NOT trip the guard, or removing the emoji would leave the board
+  // permanently red with nothing left to fix.
+  cfg.messages = { queue: { mode: 'followup' }, ackReactionScope: 'direct' };
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), [], 'scope without the emoji does nothing and is not a violation');
+});
+
+// Phase B's three halves — flag, plugin list, doctrine — each fall back to
+// the old `turn_start` call when they disagree, so nothing goes red on its
+// own; the guard is what does (scripts/enable-turn-context.js, 2026-09-09).
+test('config guard: the turn-context flag and the plugin list must agree', async () => {
+  const flags = require('../src/domain/flags');
+  const turn = require('../src/domain/turn');
+  const cfg = baseConfig();
+  const check = (c) => withTx(db.pool, (client) => guard.checkTurnContextCoverage(client, c));
+  try {
+    // off everywhere: the pre-Phase-B world, by choice — nothing to say
+    await withTx(db.pool, (c) => flags.setFlag(c, turn.CONTEXT_FLAG, ''));
+    assert.deepEqual(await check(cfg), []);
+    // everybody, plugin list empty: the shipped state
+    await withTx(db.pool, (c) => flags.setFlag(c, turn.CONTEXT_FLAG, 'all'));
+    assert.deepEqual(await check(cfg), []);
+    // everybody on the flag, two people on the plugin: everyone else falls back silently
+    cfg.plugins.entries['olma-turn'].config.agents = ['u-3', 'u-12'];
+    let v = await check(cfg);
+    assert.equal(v.length, 1);
+    assert.match(v[0], /still lists 2 agent/);
+    assert.match(v[0], /enable-turn-context/, 'says how to fix it');
+    // a per-person flag with a per-person list is a legitimate pilot
+    await withTx(db.pool, (c) => flags.setFlag(c, turn.CONTEXT_FLAG, '+972501111111'));
+    assert.deepEqual(await check(cfg), []);
+    // but a flag with no plugin behind it is a tool call per message for everyone it names
+    delete cfg.plugins;
+    v = await check(cfg);
+    assert.equal(v.length, 1);
+    assert.match(v[0], /olma-turn is missing/);
+  } finally {
+    await withTx(db.pool, (c) => flags.setFlag(c, turn.CONTEXT_FLAG, ''));
+  }
+});
+
+// Unpinned, OpenRouter served deepseek-v4-flash from three providers in six
+// hours (2026-09-09) and the prompt cache died with every switch — 0–9% on
+// the first call of a turn (docs/incidents.md, "The conversation that never
+// ended"). The guard asks only that an ORDER exists: which providers is a
+// price decision the script owns.
+test('config guard: the live OpenRouter model must name its provider order', () => {
+  const cfg = baseConfig();
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
+  cfg.agents.defaults.models['openrouter/deepseek/deepseek-v4-flash'] = {}; // what register-openrouter-models.js writes
+  let v = guard.checkOpenclawConfig(cfg);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /params\.provider\.order is unset/);
+  assert.match(v[0], /pin-openrouter-provider/, 'says how to fix it');
+  cfg.agents.defaults.models['openrouter/deepseek/deepseek-v4-flash'] = { params: { provider: { order: [] } } };
+  assert.equal(guard.checkOpenclawConfig(cfg).length, 1, 'an empty order pins nothing');
+  // a direct-provider primary has no router to pin
+  cfg.agents.defaults.model.primary = 'anthropic/claude-haiku-4-5';
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
+});
+
+// A session that never resets carries the whole conversation into every
+// call. Measured 2026-09-09: u-3's one session, open since 2026-08-27, was
+// 205k tokens per call — $0.018 of history per message and 8–23s to the
+// first token (docs/incidents.md, "The conversation that never ended").
+test('config guard: every session must reset daily', () => {
+  const cfg = baseConfig();
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
+  delete cfg.session;
+  let v = guard.checkOpenclawConfig(cfg);
+  assert.equal(v.length, 1);
+  assert.match(v[0], /session\.reset\.mode is unset \(gateway default "none"\)/);
+  assert.match(v[0], /set-session-reset/, 'says how to fix it');
+  cfg.session = { reset: { mode: 'idle', idleMinutes: 120 } };
+  assert.match(guard.checkOpenclawConfig(cfg)[0], /session\.reset\.mode is "idle"/, 'idle is not the rule: a person who writes every hour would never reset');
+  cfg.session = { reset: { mode: 'daily', atHour: 2 } };
+  assert.deepEqual(guard.checkOpenclawConfig(cfg), []);
 });
 
 test('config guard: the gateway heartbeat must be explicitly off', () => {

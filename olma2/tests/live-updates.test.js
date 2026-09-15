@@ -350,6 +350,9 @@ test('a malformed RSS response is a transient failure, not a crash — the sweep
       complete: okComplete('n/a'),
     });
     assert.equal(s.errored.length, 1);
+    // A fetch that never returned is not a model failure and must not borrow
+    // one of the model's sentences — that is the whole point of naming them.
+    assert.match(s.errored[0], /fetch failed/);
     const after_ = await c.query(`SELECT last_state, next_run_at FROM live_subscriptions WHERE id = $1`, [sub.data.subscription_id]);
     assert.deepEqual(before_.rows[0].last_state, after_.rows[0].last_state);
     assert.deepEqual(before_.rows[0].next_run_at, after_.rows[0].next_run_at);
@@ -372,7 +375,7 @@ test('a reasoning model that hits its token budget before writing an answer is a
                    next_run_at = now() WHERE id = $1`, [sub.data.subscription_id]);
     const before_ = await c.query(`SELECT last_state, next_run_at FROM live_subscriptions WHERE id = $1`, [sub.data.subscription_id]);
     const truncated = async () => ({
-      ok: true, text: '', model: 'deepseek/deepseek-v4-flash',
+      ok: true, text: '', model: 'deepseek/deepseek-v4-flash', finishReason: 'length',
       usage: { input: 800, output: 700, cacheRead: 0, cacheWrite: 0 },
     });
     const s = await liveUpdates.sweepLiveUpdates(c, {
@@ -380,6 +383,11 @@ test('a reasoning model that hits its token budget before writing an answer is a
       complete: truncated,
     });
     assert.equal(s.errored.length, 1);
+    // It wrote "summarize failed" — the same sentence a model answering in
+    // prose earns, on the one job that had already lost a real run to this
+    // exact cause. An empty reply with finishReason 'length' is the budget,
+    // and raising the budget is the fix; the note now says which it was.
+    assert.match(s.errored[0], /max_tokens/);
     const after_ = await c.query(`SELECT last_state, next_run_at FROM live_subscriptions WHERE id = $1`, [sub.data.subscription_id]);
     assert.deepEqual(before_.rows[0].last_state, after_.rows[0].last_state);
     assert.deepEqual(before_.rows[0].next_run_at, after_.rows[0].next_run_at);

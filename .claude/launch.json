@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "design-pages",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "olma2/scripts/serve-design.js"
+      ],
+      "port": 8919,
+      "url": "http://localhost:8919"
+    },
+    {
+      "name": "dashboard-demo",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "olma2/scripts/demo-dashboard.js"
+      ],
+      "port": 8790,
+      "url": "http://localhost:8790"
+    }
+  ]
+}

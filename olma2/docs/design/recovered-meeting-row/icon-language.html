@@ -1,0 +1,623 @@
+<title>שפת האייקונים של עולמה</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&family=Assistant:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --ground:#EFEDF6;
+  --panel:#FFFFFF;
+  --panel-2:#F8F7FC;
+  --sep:#E2DFEE;
+  --ink:#141322;
+  --ink-2:#63607A;
+  --ink-3:#9B98AE;
+  --accent:#5B2FD6;
+  --accent-soft:#EDE7FC;
+  --grid:rgba(91,47,214,.16);
+  --grid-live:rgba(91,47,214,.30);
+
+  /* מפתח הצבע של הסימנים. הצל של כל גוון הוא אותו גוון מסובב 8° לכיוון
+     הסגול ומוכהה 18% — לא שחור מעורבב פנימה. זה מה שנותן למשפחה שלמה
+     תחושה אחת גם כשהגוונים רחוקים זה מזה. */
+  --mk-line:#141322;    --mk-hi:#FFFFFF;
+  --mk-paper:#FFFFFF;   --mk-paper-s:#DDD9EC;
+  --mk-gold:#F2B32C;    --mk-gold-s:#C4841A;
+  --mk-violet:#7C4DEE;  --mk-violet-s:#5426B4;
+  --mk-lime:#C6D62B;    --mk-lime-s:#95A017;
+  --mk-orange:#EC8A3B;  --mk-orange-s:#BC5D22;
+  --mk-blue:#3E7BE8;    --mk-blue-s:#2A4FB2;
+  --mk-red:#E4544A;     --mk-red-s:#B32E38;
+  --mk-green:#25B285;   --mk-green-s:#127360;
+  --mk-navy:#252449;
+  --mk-brown:#8A5A2B;
+
+  --shadow:0 1px 2px rgba(20,19,34,.05), 0 12px 30px -18px rgba(20,19,34,.30);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0F0E17;
+    --panel:#191826;
+    --panel-2:#1F1E2E;
+    --sep:#2C2A3D;
+    --ink:#F1EFF8;
+    --ink-2:#A5A2B8;
+    --ink-3:#6E6B84;
+    --accent:#9B78FF;
+    --accent-soft:#241A47;
+    --grid:rgba(155,120,255,.18);
+    --grid-live:rgba(155,120,255,.34);
+    /* שני הנייטרלים של הסימן מחליפים תפקידים. שום גוון צבעוני לא זז. */
+    --mk-line:#ECEAF6;    --mk-paper:#3A3750;   --mk-paper-s:#2A2840;
+    --mk-navy:#C9C6DE;    --mk-brown:#B0763A;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -18px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0F0E17; --panel:#191826; --panel-2:#1F1E2E; --sep:#2C2A3D;
+  --ink:#F1EFF8; --ink-2:#A5A2B8; --ink-3:#6E6B84;
+  --accent:#9B78FF; --accent-soft:#241A47;
+  --grid:rgba(155,120,255,.18); --grid-live:rgba(155,120,255,.34);
+  --mk-line:#ECEAF6; --mk-paper:#3A3750; --mk-paper-s:#2A2840;
+  --mk-navy:#C9C6DE; --mk-brown:#B0763A;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -18px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; direction:rtl;
+  background:var(--ground); color:var(--ink);
+  font-family:"Assistant","Heebo",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:15px; line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px 96px}
+h1,h2,h3,.disp{font-family:"Rubik","Assistant",sans-serif;font-weight:500;text-wrap:balance}
+code,.mono,.num{font-family:"JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+
+/* ---- כותרת ---- */
+header{padding:64px 0 40px;border-bottom:1px solid var(--sep);margin-bottom:56px}
+.eyebrow{
+  font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:600;
+  letter-spacing:.14em;color:var(--accent);margin:0 0 18px;
+}
+h1{font-size:clamp(34px,6vw,54px);line-height:1.05;margin:0 0 18px;letter-spacing:-.02em}
+.lede{font-size:17px;color:var(--ink-2);max-width:60ch;margin:0}
+.headgrid{display:grid;grid-template-columns:1fr auto;gap:48px;align-items:end}
+@media (max-width:760px){.headgrid{grid-template-columns:1fr}}
+
+/* ---- מבנה ---- */
+section{margin:0 0 72px}
+.shead{display:flex;align-items:baseline;gap:14px;margin:0 0 8px;flex-wrap:wrap}
+h2{font-size:26px;margin:0;letter-spacing:-.01em}
+.stag{
+  font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:600;
+  color:var(--ink-3);letter-spacing:.08em;
+}
+.sub{color:var(--ink-2);margin:0 0 28px;max-width:64ch}
+
+/* ---- לוח החוקים ---- */
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:1px;
+  background:var(--sep);border:1px solid var(--sep);border-radius:16px;overflow:hidden}
+.rule{background:var(--panel);padding:20px 20px 22px}
+.rule .k{font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:600;
+  color:var(--accent);letter-spacing:.08em;display:block;margin-bottom:8px}
+.rule .v{font-family:"Rubik",sans-serif;font-size:18px;font-weight:500;display:block;margin-bottom:6px}
+.rule p{margin:0;font-size:13.5px;color:var(--ink-2);line-height:1.55}
+
+/* ---- דיאגרמת הרשת ---- */
+.constr{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px}
+.cbox{background:var(--panel);border:1px solid var(--sep);border-radius:16px;padding:18px;text-align:center}
+.cbox svg{width:100%;height:auto;display:block}
+.cbox .cap{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--ink-3);margin-top:12px;letter-spacing:.05em}
+
+/* ---- לוח האייקונים ---- */
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 22px}
+.tog{
+  appearance:none;border:1px solid var(--sep);background:var(--panel);color:var(--ink-2);
+  font-family:"JetBrains Mono",monospace;font-size:11.5px;font-weight:600;letter-spacing:.06em;
+  padding:7px 14px;border-radius:999px;cursor:pointer;transition:.18s;
+}
+.tog:hover{border-color:var(--accent);color:var(--accent)}
+.tog[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.tog:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.sheet{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));
+  gap:1px;background:var(--sep);border:1px solid var(--sep);border-radius:16px;overflow:hidden;
+}
+.cell{
+  background:var(--panel);padding:18px 8px 12px;
+  display:flex;flex-direction:column;align-items:center;gap:11px;
+  transition:background .16s;
+}
+.cell:hover{background:var(--panel-2)}
+.cell .stage{position:relative;width:48px;height:48px;display:grid;place-items:center}
+.cell .stage .guide{position:absolute;inset:0;width:48px;height:48px;opacity:0;transition:opacity .18s}
+body.showgrid .cell .stage .guide{opacity:1}
+.cell .ico{width:32px;height:32px;position:relative}
+.cell .nm{
+  font-family:"JetBrains Mono",monospace;font-size:10.5px;color:var(--ink-3);
+  letter-spacing:.02em;text-align:center;direction:ltr;
+}
+
+/* ---- הסימנים ---- */
+.marks{grid-template-columns:repeat(auto-fill,minmax(128px,1fr))}
+.marks .ico{width:40px;height:40px}
+.marks .stage{width:56px;height:56px}
+.marks .stage .guide{width:56px;height:56px}
+
+/* ---- שימוש אמיתי ---- */
+.demo{background:var(--panel);border:1px solid var(--sep);border-radius:20px;padding:8px;box-shadow:var(--shadow)}
+.opt{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:14px}
+.opt + .opt{border-top:1px solid var(--sep);border-radius:0}
+.opt:last-child{border-radius:0 0 14px 14px}
+.ring{width:38px;height:38px;flex:none}
+.owhen{flex:1;min-width:0;display:flex;align-items:baseline;gap:0}
+.owhen b{font-family:"Rubik",sans-serif;font-weight:500;font-size:15.5px;width:5.2em;flex:none}
+.owhen .dt{font-family:"JetBrains Mono",monospace;font-size:13px;color:var(--ink-2);width:5.4em;flex:none}
+.owhen .tm{font-family:"JetBrains Mono",monospace;font-size:13px;color:var(--ink-2)}
+.osum{font-size:13px;color:var(--ink-3);display:block;margin-top:1px}
+.omark{width:26px;height:26px;flex:none}
+.opt .col{flex:1;min-width:0}
+
+/* ---- הוספת אייקון ---- */
+.steps{counter-reset:s;list-style:none;padding:0;margin:0;display:grid;gap:14px}
+.steps li{
+  background:var(--panel);border:1px solid var(--sep);border-radius:14px;padding:16px 18px 16px 18px;
+  position:relative;padding-inline-start:58px;
+}
+.steps li::before{
+  counter-increment:s;content:counter(s);
+  position:absolute;inset-inline-start:18px;top:15px;
+  width:26px;height:26px;border-radius:8px;background:var(--accent-soft);color:var(--accent);
+  font-family:"JetBrains Mono",monospace;font-size:13px;font-weight:600;
+  display:grid;place-items:center;
+}
+.steps b{font-family:"Rubik",sans-serif;font-weight:500}
+.steps p{margin:2px 0 0;font-size:14px;color:var(--ink-2)}
+
+.note{
+  border-inline-start:3px solid var(--accent);background:var(--panel);
+  padding:14px 18px;border-radius:12px 0 0 12px;margin:24px 0 0;font-size:14px;color:var(--ink-2);
+}
+.note b{color:var(--ink);font-family:"Rubik",sans-serif;font-weight:500}
+
+.pal{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.sw{border:1px solid var(--sep);border-radius:12px;overflow:hidden;background:var(--panel);width:104px}
+.sw .band{height:34px;display:flex}
+.sw .band i{flex:1}
+.sw .lbl{padding:7px 9px;font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--ink-3);letter-spacing:.03em}
+</style>
+
+<!-- ============ הספרייט ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<defs>
+  <!-- ===== רגיסטר א׳ · קו · 24×24 · עובי 1.8 ===== -->
+  <symbol id="l-plus"    viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="l-check"   viewBox="0 0 24 24"><path d="m4.6 12.4 5 5 9.8-10.8"/></symbol>
+  <symbol id="l-x"       viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="l-chev"    viewBox="0 0 24 24"><path d="M14.6 4.8 8 12l6.6 7.2"/></symbol>
+  <symbol id="l-clock"   viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.2V12l3.4 2.2"/></symbol>
+  <symbol id="l-bell"    viewBox="0 0 24 24"><path d="M12 3.2a5.4 5.4 0 0 0-5.4 5.4v3.6L5 16h14l-1.6-3.8V8.6A5.4 5.4 0 0 0 12 3.2Z"/><path d="M9.6 18.4a2.6 2.6 0 0 0 4.8 0"/></symbol>
+  <symbol id="l-cal"     viewBox="0 0 24 24"><rect x="3.4" y="5" width="17.2" height="15.6" rx="4"/><path d="M3.4 10h17.2M8.4 2.8v3.4M15.6 2.8v3.4"/></symbol>
+  <symbol id="l-people"  viewBox="0 0 24 24"><circle cx="9.4" cy="8.6" r="3.6"/><path d="M2.8 19.6c.7-3.5 3.4-5.4 6.6-5.4s5.9 1.9 6.6 5.4"/><path d="M16.2 5.6a3.4 3.4 0 0 1 0 6.4M17.9 14.8c2.2.5 3.6 2.3 4 4.6"/></symbol>
+  <symbol id="l-user"    viewBox="0 0 24 24"><circle cx="12" cy="8.4" r="4.2"/><path d="M4.4 20.4c.8-4 4-6.2 7.6-6.2s6.8 2.2 7.6 6.2"/></symbol>
+  <symbol id="l-list"    viewBox="0 0 24 24"><path d="m4 6.6 1.8 2 3.6-3.8M4 16.6l1.8 2 3.6-3.8M12.6 7H20M12.6 17H20"/></symbol>
+  <symbol id="l-search"  viewBox="0 0 24 24"><circle cx="10.4" cy="10.4" r="6.6"/><path d="m15.4 15.4 5 5"/></symbol>
+  <symbol id="l-pencil"  viewBox="0 0 24 24"><path d="M15.4 3.6 20.4 8.6 8.6 20.4H3.6v-5Z"/><path d="m13.4 5.6 5 5"/></symbol>
+  <symbol id="l-trash"   viewBox="0 0 24 24"><path d="M4.8 6.6h14.4M9.6 6.6V4.4h4.8v2.2"/><path d="m6.8 6.6 1 13.4h8.4l1-13.4"/></symbol>
+  <symbol id="l-repeat"  viewBox="0 0 24 24"><path d="M4 11a8 8 0 0 1 13.4-5.8M20 13a8 8 0 0 1-13.4 5.8"/><path d="M17.6 2.4v3.8h-3.8M6.4 21.6v-3.8h3.8"/></symbol>
+  <symbol id="l-undo"    viewBox="0 0 24 24"><path d="M4.6 9.4H14a5.4 5.4 0 0 1 0 10.8H8.6"/><path d="M8.6 4.6 3.6 9.4l5 4.8"/></symbol>
+  <symbol id="l-play"    viewBox="0 0 24 24"><path d="M8 4.8 19.4 12 8 19.2Z" style="fill:currentColor"/></symbol>
+  <symbol id="l-pause"   viewBox="0 0 24 24"><path d="M8.6 4.6v14.8M15.4 4.6v14.8"/></symbol>
+  <symbol id="l-bubble"  viewBox="0 0 24 24"><path d="M12 4c4.7 0 8.5 3.1 8.5 7.2 0 4-3.8 7.2-8.5 7.2-.9 0-1.7-.1-2.5-.3-1.2 1.1-2.8 1.8-4.4 2-.4.1-.7-.4-.4-.8.6-.8 1.1-1.9 1.3-3C4.5 15 3.5 13.2 3.5 11.2 3.5 7.1 7.3 4 12 4Z"/></symbol>
+  <symbol id="l-out"     viewBox="0 0 24 24"><path d="M9 4.2H4.2v15.6h15.6V15"/><path d="M13.4 3.8h6.4v6.4M19.8 3.8 11.4 12.2"/></symbol>
+  <symbol id="l-note"    viewBox="0 0 24 24"><path d="M5.2 3.2h13.6v12.4l-4.8 5.6H5.2Z"/><path d="M18.8 15.6H14v5.6M8.6 7.8h6.8M8.6 11.4h4.6"/></symbol>
+  <symbol id="l-folder"  viewBox="0 0 24 24"><path d="M3.2 6.8a2.4 2.4 0 0 1 2.4-2.4h3.5l2.4 2.9h6.9a2.4 2.4 0 0 1 2.4 2.4v7.5a2.4 2.4 0 0 1-2.4 2.4H5.6a2.4 2.4 0 0 1-2.4-2.4Z"/></symbol>
+  <symbol id="l-tools"   viewBox="0 0 24 24"><path d="M4 8h8.8M17.9 8H20M4 16h2.8M11.9 16H20"/><circle cx="15.3" cy="8" r="2.6"/><circle cx="9.3" cy="16" r="2.6"/></symbol>
+  <symbol id="l-mail"    viewBox="0 0 24 24"><rect x="3" y="5.4" width="18" height="13.2" rx="3.6"/><path d="m4.4 7.8 6.3 4.8a2.4 2.4 0 0 0 2.6 0l6.3-4.8"/></symbol>
+  <symbol id="l-lock"    viewBox="0 0 24 24"><rect x="4.4" y="10.2" width="15.2" height="10.4" rx="3.4"/><path d="M7.8 10.2V7.6a4.2 4.2 0 0 1 8.4 0v2.6"/></symbol>
+  <symbol id="l-eye"     viewBox="0 0 24 24"><path d="M2.4 12c2.2-4.2 5.5-6.4 9.6-6.4s7.4 2.2 9.6 6.4c-2.2 4.2-5.5 6.4-9.6 6.4S4.6 16.2 2.4 12Z"/><circle cx="12" cy="12" r="2.9"/></symbol>
+  <symbol id="l-pin"     viewBox="0 0 24 24"><path d="M12 21.2s6.6-6 6.6-11.2a6.6 6.6 0 1 0-13.2 0c0 5.2 6.6 11.2 6.6 11.2Z"/><circle cx="12" cy="9.8" r="2.5"/></symbol>
+
+  <!-- ===== רגיסטר ב׳ · סימן · 24×24 · קו מתאר 1.5 ===== -->
+
+  <!-- כתר · כולם יכולים -->
+  <symbol id="m-crown" viewBox="0 0 24 24">
+    <path d="M3.6 17.4V7.2l4.9 4.5L12 5.6l3.5 6.1 4.9-4.5v10.2Z" fill="var(--mk-gold)"/>
+    <path d="M12 5.6l3.5 6.1 4.9-4.5v10.2H12Z" fill="var(--mk-gold-s)"/>
+    <path d="M3.6 17.4V7.2l4.9 4.5L12 5.6l3.5 6.1 4.9-4.5v10.2Z" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M3.4 17.2h17.2v2.4a1.4 1.4 0 0 1-1.4 1.4H4.8a1.4 1.4 0 0 1-1.4-1.4Z" fill="var(--mk-gold)"/>
+    <path d="M12 17.2h8.6v2.4a1.4 1.4 0 0 1-1.4 1.4H12Z" fill="var(--mk-gold-s)"/>
+    <path d="M3.4 17.2h17.2v2.4a1.4 1.4 0 0 1-1.4 1.4H4.8a1.4 1.4 0 0 1-1.4-1.4Z" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <circle cx="3.6" cy="6" r="1.7" fill="var(--mk-gold)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <circle cx="12" cy="4.4" r="1.8" fill="var(--mk-gold)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <circle cx="20.4" cy="6" r="1.7" fill="var(--mk-gold-s)" stroke="var(--mk-line)" stroke-width="1.5"/>
+  </symbol>
+
+  <!-- קלפים · יש מינימום -->
+  <symbol id="m-cards" viewBox="0 0 24 24">
+    <g transform="rotate(14 14 12)">
+      <rect x="10" y="4.2" width="9.6" height="13.6" rx="2.2" fill="var(--mk-paper-s)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    </g>
+    <rect x="4.4" y="6.2" width="10.4" height="14.6" rx="2.4" fill="var(--mk-paper)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="M9.6 9.4c1.7 1.9 3.1 2.8 3.1 4.2 0 1.3-1.1 1.9-1.9 1.5-.3-.16-.5-.4-.62-.7l.5 2.1H8.5l.5-2.1c-.11.3-.32.54-.62.7-.8.4-1.9-.2-1.9-1.5 0-1.4 1.4-2.3 3.12-4.2Z" fill="var(--mk-line)"/>
+  </symbol>
+
+  <!-- חותם · נקבע -->
+  <symbol id="m-sealed" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.6" fill="var(--mk-violet)"/>
+    <path d="M12 3.4a8.6 8.6 0 0 1 0 17.2Z" fill="var(--mk-violet-s)"/>
+    <circle cx="12" cy="12" r="8.6" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="m7.8 12.3 2.9 2.9 5.6-6.2" fill="none" stroke="var(--mk-hi)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+
+  <!-- חול · פג בקרוב -->
+  <symbol id="m-expiring" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.6" fill="var(--mk-gold)"/>
+    <path d="M12 3.4a8.6 8.6 0 0 1 0 17.2Z" fill="var(--mk-gold-s)"/>
+    <circle cx="12" cy="12" r="8.6" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="M12 7.4V12l3 2" fill="none" stroke="var(--mk-line)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+
+  <!-- טניס -->
+  <symbol id="m-tennis" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.4" fill="var(--mk-lime)"/>
+    <path d="M12 3.6a8.4 8.4 0 0 1 0 16.8Z" fill="var(--mk-lime-s)"/>
+    <circle cx="12" cy="12" r="8.4" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="M4.1 9.2C8.6 10.4 11 13.6 11.2 20.2M19.9 14.8C15.4 13.6 13 10.4 12.8 3.8" fill="none" stroke="var(--mk-hi)" stroke-width="1.8" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- כדורגל -->
+  <symbol id="m-football" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.4" fill="var(--mk-paper)"/>
+    <path d="M12 3.6a8.4 8.4 0 0 1 0 16.8Z" fill="var(--mk-paper-s)"/>
+    <circle cx="12" cy="12" r="7.6" fill="none" stroke="var(--mk-navy)" stroke-width="2.6" stroke-dasharray="4.78 4.78"/>
+    <path d="M12 8.7 15.14 10.98 13.94 14.67H10.06L8.86 10.98Z" fill="var(--mk-navy)"/>
+    <circle cx="12" cy="12" r="8.4" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+  </symbol>
+
+  <!-- כדורסל -->
+  <symbol id="m-basket" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.4" fill="var(--mk-orange)"/>
+    <path d="M12 3.6a8.4 8.4 0 0 1 0 16.8Z" fill="var(--mk-orange-s)"/>
+    <circle cx="12" cy="12" r="8.4" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="M12 3.6v16.8M3.6 12h16.8M6.6 6.2c2.6 2.4 2.6 9.2 0 11.6M17.4 6.2c-2.6 2.4-2.6 9.2 0 11.6" fill="none" stroke="var(--mk-line)" stroke-width="1.4" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- קפה -->
+  <symbol id="m-coffee" viewBox="0 0 24 24">
+    <path d="M16.2 10.4h1.9a2.9 2.9 0 0 1 0 5.8h-1.9" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M4.4 8.6h11.8v6.6a4.4 4.4 0 0 1-4.4 4.4H8.8a4.4 4.4 0 0 1-4.4-4.4Z" fill="var(--mk-paper)"/>
+    <path d="M10.3 8.6h5.9v6.6a4.4 4.4 0 0 1-4.4 4.4h-1.5Z" fill="var(--mk-paper-s)"/>
+    <path d="M4.4 8.6h11.8v6.6a4.4 4.4 0 0 1-4.4 4.4H8.8a4.4 4.4 0 0 1-4.4-4.4Z" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M5.6 9.8h9.4v1.9H5.6Z" fill="var(--mk-brown)"/>
+    <path d="M8.4 6.2c0-1 1.2-1.2 1.2-2.2M12.4 6.2c0-1 1.2-1.2 1.2-2.2" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- ארוחה -->
+  <symbol id="m-meal" viewBox="0 0 24 24">
+    <path d="M5.6 3.4v4.4M8.4 3.4v4.4M11.2 3.4v4.4" fill="none" stroke="var(--mk-line)" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M5 7.6h6.8a3.4 3.4 0 0 1-6.8 0Z" fill="var(--mk-paper)" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M8.4 11v9.4" fill="none" stroke="var(--mk-line)" stroke-width="1.9" stroke-linecap="round"/>
+    <path d="M15.6 3.6c2.8 1.6 3.4 7.2 1.6 9.4h-1.6Z" fill="var(--mk-violet)"/><path d="M16.4 4.2c2.2 1.8 2.6 6.6 1.2 8.6l-1.2.2Z" fill="var(--mk-violet-s)"/><path d="M15.6 3.6c2.8 1.6 3.4 7.2 1.6 9.4h-1.6Z" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M16.4 13v7.4" fill="none" stroke="var(--mk-line)" stroke-width="1.9" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- בירה -->
+  <symbol id="m-beer" viewBox="0 0 24 24">
+    <path d="M15.6 10.2h1.9a2.8 2.8 0 0 1 0 5.6h-1.9" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M5 8.2h10.6v10.6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2Z" fill="var(--mk-gold)"/>
+    <path d="M10.3 8.2h5.3v10.6a2 2 0 0 1-2 2h-3.3Z" fill="var(--mk-gold-s)"/>
+    <path d="M5 8.2h10.6v3.2H5Z" fill="var(--mk-paper)"/>
+    <path d="M5 8.2h10.6v10.6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2ZM5 11.4h10.6" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M5.4 8.2a2.2 2.2 0 0 1 4-1.3 2.4 2.4 0 0 1 4 .4 2 2 0 0 1 1.8.9" fill="var(--mk-paper)" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+  </symbol>
+
+  <!-- קובייה · משחק -->
+  <symbol id="m-dice" viewBox="0 0 24 24">
+    <rect x="4" y="4" width="16" height="16" rx="3.6" fill="var(--mk-violet)"/>
+    <path d="M12 4h4.4A3.6 3.6 0 0 1 20 7.6V20h-8Z" fill="var(--mk-violet-s)"/>
+    <rect x="4" y="4" width="16" height="16" rx="3.6" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <circle cx="8.4" cy="8.4" r="1.5" fill="var(--mk-hi)"/>
+    <circle cx="15.6" cy="8.4" r="1.5" fill="var(--mk-hi)"/>
+    <circle cx="12" cy="12" r="1.5" fill="var(--mk-hi)"/>
+    <circle cx="8.4" cy="15.6" r="1.5" fill="var(--mk-hi)"/>
+    <circle cx="15.6" cy="15.6" r="1.5" fill="var(--mk-hi)"/>
+  </symbol>
+
+  <!-- כושר -->
+  <symbol id="m-gym" viewBox="0 0 24 24">
+    <rect x="2.6" y="7.6" width="3.6" height="8.8" rx="1.4" fill="var(--mk-violet)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <rect x="17.8" y="7.6" width="3.6" height="8.8" rx="1.4" fill="var(--mk-violet-s)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <rect x="6.2" y="9.4" width="2.6" height="5.2" rx="1.1" fill="var(--mk-violet)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <rect x="15.2" y="9.4" width="2.6" height="5.2" rx="1.1" fill="var(--mk-violet-s)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="M8.8 12h6.4" fill="none" stroke="var(--mk-line)" stroke-width="2.6" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- אופניים -->
+  <symbol id="m-bike" viewBox="0 0 24 24">
+    <circle cx="6" cy="15.6" r="4.6" fill="none" stroke="var(--mk-line)" stroke-width="1.6"/>
+    <circle cx="18" cy="15.6" r="4.6" fill="none" stroke="var(--mk-line)" stroke-width="1.6"/>
+    <path d="M6 15.6 10 8.4h5.2M10.6 15.6 14.6 8.4M15.2 8.4 18 15.6" fill="none" stroke="var(--mk-violet)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M8.8 7.8h2.6M14 8.4l1.6-2.2h1.8" fill="none" stroke="var(--mk-line)" stroke-width="1.6" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- טבע -->
+  <symbol id="m-outdoors" viewBox="0 0 24 24">
+    <path d="M2.6 19.6 9.2 7.4l4 7.2 2.2-3.6 6 8.6Z" fill="var(--mk-green)"/>
+    <path d="M12 14.2h.1l1.1-2 2.2-3.6 6 8.6H12Z" fill="var(--mk-green-s)"/>
+    <path d="M9.2 7.4 6.4 12.6h5.6Z" fill="var(--mk-paper)"/>
+    <path d="M2.6 19.6 9.2 7.4l4 7.2 2.2-3.6 6 8.6Z" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+  </symbol>
+
+  <!-- מסך -->
+  <symbol id="m-screen" viewBox="0 0 24 24">
+    <rect x="2.6" y="4.4" width="18.8" height="13" rx="2.8" fill="var(--mk-blue)"/>
+    <path d="M12 4.4h6.6a2.8 2.8 0 0 1 2.8 2.8v10.2H12Z" fill="var(--mk-blue-s)"/>
+    <rect x="2.6" y="4.4" width="18.8" height="13" rx="2.8" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="m10.2 8 5 3-5 3Z" fill="var(--mk-hi)"/>
+    <path d="M8 20.6h8" fill="none" stroke="var(--mk-line)" stroke-width="1.7" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- מוזיקה -->
+  <symbol id="m-music" viewBox="0 0 24 24">
+    <path d="M9.6 17V4.8l9-1.6v12" fill="none" stroke="var(--mk-line)" stroke-width="1.6" stroke-linejoin="round"/>
+    <ellipse cx="6.8" cy="17.4" rx="3.2" ry="2.6" fill="var(--mk-red)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <ellipse cx="15.8" cy="15.4" rx="3.2" ry="2.6" fill="var(--mk-red-s)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="M9.6 8.2l9-1.6" fill="none" stroke="var(--mk-line)" stroke-width="1.6"/>
+  </symbol>
+</defs>
+</svg>
+
+<div class="wrap">
+<header>
+  <div class="headgrid">
+    <div>
+      <p class="eyebrow">OLMA · ICON SYSTEM v1</p>
+      <h1>שפת האייקונים<br>של עולמה</h1>
+      <p class="lede">שתי משפחות שנשענות על אותה גיאומטריה. אחת עובדת בשקט ומצביעה על פעולות, השנייה נושאת צבע ואומרת מה קרה. הן לא מתערבבות — וזה בדיוק מה שמאפשר לשתיהן לשבת באותה שורה בלי להילחם.</p>
+    </div>
+    <svg viewBox="0 0 24 24" style="width:132px;height:132px;flex:none"><use href="#m-crown"/></svg>
+  </div>
+</header>
+
+<!-- ========== החוקים ========== -->
+<section>
+  <div class="shead"><h2>שמונת החוקים</h2><span class="stag">THE INVARIANTS</span></div>
+  <p class="sub">כל אייקון חדש שיצויר מהיום ואילך חייב לעמוד בכולם. זה מה שהופך אוסף לשפה.</p>
+  <div class="rules">
+    <div class="rule"><span class="k">01 · GRID</span><span class="v">24 × 24, תמיד</span>
+      <p>לא 16, לא 20, לא 18. גודל התצוגה משתנה ב־CSS; קופסת הציור לעולם לא.</p></div>
+    <div class="rule"><span class="k">02 · SAFE AREA</span><span class="v">שוליים של 2</span>
+      <p>הציור חי בין 2 ל־22. השוליים הם מה שגורם לאייקונים שונים להיראות באותו גודל.</p></div>
+    <div class="rule"><span class="k">03 · KEYLINES</span><span class="v">⌀16.8 · ▢17 · ▯15×20</span>
+      <p>עיגול רחב יותר מריבוע, ריבוע רחב מצורה אנכית. תיקון אופטי, לא מתמטיקה.</p></div>
+    <div class="rule"><span class="k">04 · STROKE</span><span class="v">1.8 בקו · 1.5 בסימן</span>
+      <p>קו המתאר של סימן צבעוני דק יותר בכוונה, כדי שלא יצעק על אייקון קו לידו.</p></div>
+    <div class="rule"><span class="k">05 · TERMINALS</span><span class="v">round · round</span>
+      <p>אין קצה חד באף מקום. אחד מהם מספיק כדי לשבור את המשפחה.</p></div>
+    <div class="rule"><span class="k">06 · LIGHT</span><span class="v">נופל משמאל‑למעלה</span>
+      <p>הצל תופס בערך את 40% הימניים של הצורה. תמיד. גם על כדור, גם על ספל.</p></div>
+    <div class="rule"><span class="k">07 · SHADE</span><span class="v">אותו גוון, לא שחור</span>
+      <p>הצל הוא הגוון עצמו מסובב 8° לכיוון הסגול ומוכהה 18% — לכן כל המשפחה מרגישה אחת.</p></div>
+    <div class="rule"><span class="k">08 · THEME</span><span class="v">הקו והנייר מתחלפים</span>
+      <p>במצב כהה שני הנייטרלים מחליפים תפקידים, ואף גוון צבעוני לא זז. סימן צבעוני חדש לא דורש עבודת לילה בכלל.</p></div>
+  </div>
+
+  <div class="note"><b>מה שהחוקים האלה מתקנים.</b> בדף היום יש 40 אייקונים בשישה גדלי <code>viewBox</code> שונים (8, 12, 16, 18, 20, 24) ובשמונה עוביי קו שונים (1.3 עד 2.6). הם נראים בסדר כי אף פעם לא ראית שניים מהם באותו גודל אחד ליד השני. ברגע שיש רשימת מועדים עם סימן ליד כל שורה — זה כבר לא נכון.</div>
+</section>
+
+<!-- ========== הבנייה ========== -->
+<section>
+  <div class="shead"><h2>איך זה נבנה</h2><span class="stag">CONSTRUCTION</span></div>
+  <p class="sub">קו המפתח קובע כמה מקום צורה מקבלת לפי הסוג שלה, לא לפי הגודל האמיתי שלה.</p>
+  <div class="constr">
+    <div class="cbox">
+      <svg viewBox="0 0 24 24">
+        <rect x="2" y="2" width="20" height="20" fill="none" stroke="var(--grid)" stroke-width=".3"/>
+        <path d="M2 6h20M2 10h20M2 14h20M2 18h20M6 2v20M10 2v20M14 2v20M18 2v20" stroke="var(--grid)" stroke-width=".3"/>
+        <circle cx="12" cy="12" r="8.4" fill="none" stroke="var(--grid-live)" stroke-width=".5"/>
+        <rect x="3.5" y="3.5" width="17" height="17" rx="4" fill="none" stroke="var(--grid-live)" stroke-width=".5"/>
+        <rect x="4.5" y="2" width="15" height="20" rx="3.4" fill="none" stroke="var(--grid-live)" stroke-width=".5"/>
+      </svg>
+      <div class="cap">KEYLINES · ⌀16.8 / 17 / 15×20</div>
+    </div>
+    <div class="cbox">
+      <svg viewBox="0 0 24 24">
+        <rect x="2" y="2" width="20" height="20" fill="none" stroke="var(--grid)" stroke-width=".3"/>
+        <path d="M2 6h20M2 10h20M2 14h20M2 18h20M6 2v20M10 2v20M14 2v20M18 2v20" stroke="var(--grid)" stroke-width=".3"/>
+        <g style="fill:none;stroke:var(--ink);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><use href="#l-cal"/></g>
+      </svg>
+      <div class="cap">רגיסטר א׳ · STROKE 1.8</div>
+    </div>
+    <div class="cbox">
+      <svg viewBox="0 0 24 24">
+        <rect x="2" y="2" width="20" height="20" fill="none" stroke="var(--grid)" stroke-width=".3"/>
+        <path d="M2 6h20M2 10h20M2 14h20M2 18h20M6 2v20M10 2v20M14 2v20M18 2v20" stroke="var(--grid)" stroke-width=".3"/>
+        <use href="#m-crown"/>
+      </svg>
+      <div class="cap">רגיסטר ב׳ · KEYLINE 1.5</div>
+    </div>
+    <div class="cbox">
+      <svg viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.4" fill="var(--mk-orange)"/>
+        <path d="M12 3.6a8.4 8.4 0 0 1 0 16.8Z" fill="var(--mk-orange-s)"/>
+        <circle cx="12" cy="12" r="8.4" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+        <path d="M12 3.6v16.8" stroke="var(--grid-live)" stroke-width=".6" stroke-dasharray="1 1"/>
+        <path d="M4.6 4.6 8.4 8.4" stroke="var(--grid-live)" stroke-width=".6"/>
+        <circle cx="4.6" cy="4.6" r="1.1" fill="var(--grid-live)"/>
+      </svg>
+      <div class="cap">אור מ‑10:30 · צל ימני</div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== רגיסטר א׳ ========== -->
+<section>
+  <div class="shead"><h2>רגיסטר א׳ · קו</h2><span class="stag">LINE · 26 GLYPHS</span></div>
+  <p class="sub">אלה האייקונים של הממשק: ניווט, פעולות, כפתורים. הם <b>חד־צבעיים ויורשים <code>currentColor</code></b> — אף פעם לא נושאים צבע משלהם, כי הצבע הוא מה שמבדיל בין מצבים, ואייקון שכבר צבוע לא יכול להיות מושבת, נבחר או אדום.</p>
+  <div class="bar">
+    <button class="tog" id="gridtog" aria-pressed="false">הצג רשת בנייה</button>
+    <button class="tog" id="sizetog" aria-pressed="false">גודל אמיתי · 20px</button>
+  </div>
+  <div class="sheet" id="lineSheet"></div>
+</section>
+
+<!-- ========== רגיסטר ב׳ ========== -->
+<section>
+  <div class="shead"><h2>רגיסטר ב׳ · סימן</h2><span class="stag">MARK · 16 GLYPHS</span></div>
+  <p class="sub">אלה לא כפתורים — אלה <b>עובדות</b>. סימן אומר מה קרה או על מה מדובר, והוא נושא צבע כי הצבע הוא חלק מהמידע. הכתר והקלפים שביקשת הם שניים מהם; השאר הם אותה שפה מיושמת על סוגי המפגשים.</p>
+  <div class="bar">
+    <button class="tog" id="darktog" aria-pressed="false">הצג מצב כהה</button>
+  </div>
+  <div class="sheet marks" id="markSheet"></div>
+
+  <div class="pal">
+    <div class="sw"><div class="band"><i style="background:var(--mk-gold)"></i><i style="background:var(--mk-gold-s)"></i></div><div class="lbl">GOLD · כתר</div></div>
+    <div class="sw"><div class="band"><i style="background:var(--mk-violet)"></i><i style="background:var(--mk-violet-s)"></i></div><div class="lbl">VIOLET · מותג</div></div>
+    <div class="sw"><div class="band"><i style="background:var(--mk-lime)"></i><i style="background:var(--mk-lime-s)"></i></div><div class="lbl">LIME</div></div>
+    <div class="sw"><div class="band"><i style="background:var(--mk-orange)"></i><i style="background:var(--mk-orange-s)"></i></div><div class="lbl">ORANGE</div></div>
+    <div class="sw"><div class="band"><i style="background:var(--mk-blue)"></i><i style="background:var(--mk-blue-s)"></i></div><div class="lbl">BLUE</div></div>
+    <div class="sw"><div class="band"><i style="background:var(--mk-red)"></i><i style="background:var(--mk-red-s)"></i></div><div class="lbl">RED</div></div>
+    <div class="sw"><div class="band"><i style="background:var(--mk-green)"></i><i style="background:var(--mk-green-s)"></i></div><div class="lbl">GREEN</div></div>
+    <div class="sw"><div class="band"><i style="background:var(--mk-paper)"></i><i style="background:var(--mk-paper-s)"></i></div><div class="lbl">PAPER · מתחלף</div></div>
+    <div class="sw" style="outline:2px solid var(--accent);outline-offset:2px"><div class="band"><i style="background:var(--mk-line)"></i></div><div class="lbl">LINE · מתחלף</div></div>
+    <div class="sw" style="outline:2px solid var(--accent);outline-offset:2px"><div class="band"><i style="background:var(--mk-hi)"></i></div><div class="lbl">HI · קבוע</div></div>
+  </div>
+
+  <div class="note"><b>מצב כהה: שני נייטרלים מתחלפים, ואפס גוונים זזים.</b> הנחתי בהתחלה שקו מתאר כהה יחזיק גם בלילה — שהניגוד שלו הוא מול המילוי ולא מול הרקע. רינדרתי ובדקתי, וזה פשוט לא נכון: <code>#141322</code> על פאנל <code>#191826</code> נעלם, והכתר, הכדורגל והקובייה מאבדים את הצללית שלהם לגמרי. הבהרת המילויים לא מתקנת את זה — מתאר חסר הוא מתאר חסר.<br><br>
+  מה שכן עובד: <code>--mk-line</code> ← בהיר, <code>--mk-paper</code> ← כהה. הם מחליפים תפקידים, כי ״נייר״ הוא משטח נייטרלי שהוא <b>האובייקט עצמו</b> (קלף, ספל, כדור), והוא חייב להישאר בניגוד לקו. <code>--mk-hi</code> הוא תפקיד שלישי ונפרד — פרט בהיר שיושב <b>על</b> מילוי צבעוני (הוי בחותם, הנקודות בקובייה, התפר בטניס) — והוא לא זז בין המצבים. שמונה גוונים צבעוניים, אפס שינויים.</div>
+</section>
+
+<!-- ========== בשימוש ========== -->
+<section>
+  <div class="shead"><h2>איך זה נראה בשורה אמיתית</h2><span class="stag">IN CONTEXT</span></div>
+  <p class="sub">רשימת המועדים מאופציה א׳ — הטבעת משמאל, הסימן מימין, והנוסחה <span class="mono" dir="ltr">יום · תאריך · שעה</span> מיושרת בעמודות.</p>
+  <div class="demo">
+    <div class="opt">
+      <svg class="ring" viewBox="0 0 40 40">
+        <circle cx="20" cy="20" r="16" fill="none" stroke="var(--sep)" stroke-width="4"/>
+        <circle cx="20" cy="20" r="16" fill="none" stroke="var(--mk-gold)" stroke-width="4" stroke-linecap="round"
+          stroke-dasharray="100.5" stroke-dashoffset="0" transform="rotate(-90 20 20)"/>
+        <text x="20" y="24.4" text-anchor="middle" style="font:600 12px 'JetBrains Mono',monospace;fill:var(--ink)">5/5</text>
+      </svg>
+      <div class="col">
+        <div class="owhen"><b>שלישי</b><span class="dt">14.09</span><span class="tm">20:30 · ערב</span></div>
+        <span class="osum">כולם יכולים</span>
+      </div>
+      <svg class="omark" viewBox="0 0 24 24"><use href="#m-crown"/></svg>
+    </div>
+    <div class="opt">
+      <svg class="ring" viewBox="0 0 40 40">
+        <circle cx="20" cy="20" r="16" fill="none" stroke="var(--sep)" stroke-width="4"/>
+        <circle cx="20" cy="20" r="16" fill="none" stroke="var(--mk-green)" stroke-width="4" stroke-linecap="round"
+          stroke-dasharray="100.5" stroke-dashoffset="20.1" transform="rotate(-90 20 20)"/>
+        <text x="20" y="24.4" text-anchor="middle" style="font:600 12px 'JetBrains Mono',monospace;fill:var(--ink)">4/5</text>
+      </svg>
+      <div class="col">
+        <div class="owhen"><b>חמישי</b><span class="dt">16.09</span><span class="tm">21:00 · ערב</span></div>
+        <span class="osum">יש מינימום · דנה לא יכולה</span>
+      </div>
+      <svg class="omark" viewBox="0 0 24 24"><use href="#m-cards"/></svg>
+    </div>
+    <div class="opt">
+      <svg class="ring" viewBox="0 0 40 40">
+        <circle cx="20" cy="20" r="16" fill="none" stroke="var(--sep)" stroke-width="4"/>
+        <circle cx="20" cy="20" r="16" fill="none" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"
+          stroke-dasharray="100.5" stroke-dashoffset="60.3" transform="rotate(-90 20 20)"/>
+        <text x="20" y="24.4" text-anchor="middle" style="font:600 12px 'JetBrains Mono',monospace;fill:var(--ink)">2/5</text>
+      </svg>
+      <div class="col">
+        <div class="owhen"><b>ראשון</b><span class="dt">19.09</span><span class="tm">18:00 · אחה״צ</span></div>
+        <span class="osum">שניים ענו · שלושה עוד לא</span>
+      </div>
+      <svg class="omark" viewBox="0 0 24 24" style="opacity:.24"><use href="#m-expiring"/></svg>
+    </div>
+  </div>
+  <div class="note"><b>הכלל שמחזיק את השורה.</b> בכל שורה יש בדיוק סימן אחד. הטבעת היא כמות, הסימן הוא איכות, והשורה מתחת היא המילים. שלושה ערוצים, כל אחד אומר דבר אחר — ברגע שסימן שני נכנס לשורה, אף אחד מהם כבר לא נקרא.</div>
+</section>
+
+<!-- ========== איך מוסיפים ========== -->
+<section>
+  <div class="shead"><h2>לצייר את הבא</h2><span class="stag">EXTENDING</span></div>
+  <p class="sub">שפה שאי אפשר להרחיב בלי הסבר מתה תוך חודש. זה ההסבר.</p>
+  <ol class="steps">
+    <li><b>תחליט לאיזה רגיסטר זה שייך.</b><p>אם המשתמש לוחץ עליו — רגיסטר א׳, קו, בלי צבע. אם זה אומר לו משהו — רגיסטר ב׳, סימן, עם צבע. אין אמצע, ואייקון שלא ברור לאיזה מהם הוא שייך הוא בדרך כלל שני אייקונים.</p></li>
+    <li><b>תתחיל מקו המפתח, לא מהצורה.</b><p>עגול, מרובע או אנכי — תבחר אחד משלושת קווי המפתח ותצייר בתוכו. זה מה שגורם לכדור ולקובייה להיראות באותו גודל למרות ששטח הפנים שלהם שונה ב‑21%.</p></li>
+    <li><b>צבע אחד, הצל שלו, ולכל היותר אחד נוסף.</b><p>בכתר יש זהב וצל‑זהב. בכדורגל יש נייר, צל‑נייר, ונייבי. שלוש שכבות זה התקרה — כל מה שמעליה מפסיק להיקרא ב‑24 פיקסלים.</p></li>
+    <li><b>תבדוק אותו ב‑16 פיקסלים לפני שאתה מאשר אותו.</b><p>ברוב המקומות בדף הוא יופיע קטן. אם הוא מתפרק שם, הוא לא מוכן — לא משנה כמה טוב הוא נראה ב‑132.</p></li>
+    <li><b>תבדוק שהוא לא מתנגש עם מה שכבר קיים.</b><p>שלושה כדורים בעמוד הזה נבדלים רק בצבע ובתפרים. זה עובד כי הם אף פעם לא מופיעים באותה רשימה — סימן פעילות אחד לקבוצה. אם שני אייקונים כן יופיעו יחד, הם חייבים להיבדל בצללית.</p></li>
+  </ol>
+</section>
+
+</div>
+
+<script>
+(function(){
+  var LINE = [
+    ["l-plus","plus"],["l-check","check"],["l-x","close"],["l-chev","chevron"],
+    ["l-clock","clock"],["l-bell","bell"],["l-cal","calendar"],["l-people","people"],
+    ["l-user","user"],["l-list","tasks"],["l-search","search"],["l-pencil","edit"],
+    ["l-trash","delete"],["l-repeat","repeat"],["l-undo","undo"],["l-play","play"],
+    ["l-pause","pause"],["l-bubble","chat"],["l-out","open"],["l-note","note"],
+    ["l-folder","folder"],["l-tools","settings"],["l-mail","mail"],["l-lock","lock"],
+    ["l-eye","visible"],["l-pin","place"]
+  ];
+  var MARKS = [
+    ["m-crown","crown"],["m-cards","cards"],["m-sealed","sealed"],["m-expiring","expiring"],
+    ["m-tennis","tennis"],["m-football","football"],["m-basket","basketball"],["m-dice","game"],
+    ["m-coffee","coffee"],["m-meal","meal"],["m-beer","drinks"],["m-gym","gym"],
+    ["m-bike","cycling"],["m-outdoors","outdoors"],["m-screen","screen"],["m-music","music"]
+  ];
+
+  var GUIDE =
+    '<svg class="guide" viewBox="0 0 24 24" aria-hidden="true">' +
+      '<rect x="2" y="2" width="20" height="20" fill="none" stroke="var(--grid)" stroke-width=".35"/>' +
+      '<path d="M2 6h20M2 10h20M2 14h20M2 18h20M6 2v20M10 2v20M14 2v20M18 2v20" stroke="var(--grid)" stroke-width=".35"/>' +
+      '<circle cx="12" cy="12" r="8.4" fill="none" stroke="var(--grid-live)" stroke-width=".45"/>' +
+    '</svg>';
+
+  function paint(el, list, isLine){
+    el.innerHTML = list.map(function(it){
+      var style = isLine
+        ? ' style="fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"'
+        : '';
+      return '<div class="cell">' +
+        '<div class="stage">' + GUIDE +
+          '<svg class="ico" viewBox="0 0 24 24"' + style + '><use href="#' + it[0] + '"/></svg>' +
+        '</div>' +
+        '<span class="nm">' + it[1] + '</span>' +
+      '</div>';
+    }).join("");
+  }
+
+  paint(document.getElementById("lineSheet"), LINE, true);
+  paint(document.getElementById("markSheet"), MARKS, false);
+
+  var gt = document.getElementById("gridtog");
+  gt.addEventListener("click", function(){
+    var on = gt.getAttribute("aria-pressed") !== "true";
+    gt.setAttribute("aria-pressed", on ? "true" : "false");
+    document.body.classList.toggle("showgrid", on);
+  });
+
+  var dt = document.getElementById("darktog");
+  dt.addEventListener("click", function(){
+    var on = dt.getAttribute("aria-pressed") !== "true";
+    dt.setAttribute("aria-pressed", on ? "true" : "false");
+    dt.textContent = on ? "חזור למצב בהיר" : "הצג מצב כהה";
+    document.documentElement.setAttribute("data-theme", on ? "dark" : "light");
+  });
+
+  var st = document.getElementById("sizetog");
+  st.addEventListener("click", function(){
+    var on = st.getAttribute("aria-pressed") !== "true";
+    st.setAttribute("aria-pressed", on ? "true" : "false");
+    document.querySelectorAll("#lineSheet .ico").forEach(function(s){
+      s.style.width = on ? "20px" : "";
+      s.style.height = on ? "20px" : "";
+    });
+  });
+})();
+</script>

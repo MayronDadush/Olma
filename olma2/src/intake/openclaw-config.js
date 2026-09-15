@@ -43,11 +43,61 @@ function loadConfig(path = defaultPath()) {
   return JSON.parse(fs.readFileSync(path, 'utf8'));
 }
 
+// A write under `channels.whatsapp` RESTARTS the WhatsApp channel. That is
+// documented at `provision-group.admitRegisteredGroup` as a cost worth paying
+// once per group, and it was measured again on 2026-09-11: the config was
+// written at 09:36:58, the reload applied at 09:37:12, the channel was
+// listening again at 09:37:14. Sixteen seconds in which every send is refused.
+//
+// Nothing recorded that window, so the group sweep registered a room, wrote
+// this file, and `group_outbox` said "נעים מאוד" into the restart the sweep
+// had just caused. The gateway refused the send, kept the message in its own
+// outbound retry queue, and delivered it a second later anyway; our sender
+// read the refusal as a definite non-delivery and sent it again. Both groups
+// registered that day were greeted twice (`incidents.md`, "The room was
+// greeted twice, by its own registration").
+//
+// The stamp lives HERE because this is the one function every such write goes
+// through, and it is taken against what is ON DISK rather than from what the
+// caller believes it changed — a caller that thinks it changed nothing is
+// exactly the caller that would forget to say so. It is in-process, which is
+// honest for its one reader: brokerd makes these writes and brokerd is the
+// only sender of the group queue.
+let channelWriteAt = null;
+
+// The subtree whose change restarts the channel. `undefined` and `{}` must not
+// read as the same thing, so a missing key is its own string.
+function whatsappFingerprint(cfg) {
+  const ch = cfg && cfg.channels && cfg.channels.whatsapp;
+  return ch === undefined ? 'absent' : JSON.stringify(ch);
+}
+
+// When the WhatsApp channel was last restarted BY US — null if never this
+// process. A reader wanting "is it restarting right now" adds its own grace;
+// this says only when the write happened.
+function channelWrittenAt() {
+  return channelWriteAt;
+}
+
 function saveConfig(cfg, path = defaultPath()) {
   assertNotProduction('openclaw config', path);
+  // Three answers, not two. A file that is not there yet is a config nothing
+  // can be running against, so writing it restarts nothing; a file that is
+  // there and cannot be read is NOT evidence that its channels block matched
+  // the one we are about to write, and a needless 45-second hold is a far
+  // cheaper mistake than a room told the same sentence twice.
+  let before;
+  try {
+    before = whatsappFingerprint(JSON.parse(fs.readFileSync(path, 'utf8')));
+  } catch (e) {
+    before = e && e.code === 'ENOENT' ? null : undefined;
+  }
   const tmp = path + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2), { mode: 0o600 });
   fs.renameSync(tmp, path);
+  if (before === undefined || (before !== null && before !== whatsappFingerprint(cfg))) {
+    channelWriteAt = Date.now();
+  }
 }
 
 // OpenClaw 2026.8.x moved the agent roster from the `agents.list` array to a
@@ -437,7 +487,7 @@ function removeGroupBinding(cfg, jid) {
 }
 
 module.exports = {
-  defaultPath, loadConfig, saveConfig,
+  defaultPath, loadConfig, saveConfig, channelWrittenAt,
   addAgent, removeAgent, addBinding, addCatchAllBinding, addAllowFrom,
   groupSessionPrefix, muteGroup, unmuteGroup, isGroupMuted,
   addGroupWildcardBinding, muteAgent, isAgentMuted, admitAllGroups,

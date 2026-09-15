@@ -43,7 +43,15 @@ const RATES = {
   // v4 generation. flash is a reasoning model: thinking is billed as output
   // tokens, and the output rate here prices exactly what OpenRouter reports
   // in completion_tokens.
-  'deepseek/deepseek-v4-flash': { input: 0.08092, output: 0.16184, cacheWrite: 0.08092, cacheRead: 0.016184 },
+  // flash is pinned to DigitalOcean first (scripts/pin-openrouter-provider.js,
+  // 2026-09-09), so these are THAT provider's rates from OpenRouter's
+  // /models/deepseek/deepseek-v4-flash/endpoints; the blended figure they
+  // replace (0.08092 / 0.16184 / 0.016184) was what the unpinned mix cost.
+  // Rows already in the ledger keep the rate they were written with; a
+  // fallback to the next provider in the order (streamlake 0.089, deepinfra
+  // 0.090) is priced ~24% under truth here — OpenRouter's own usage.cost on
+  // the completion wins over this table whenever it is reported.
+  'deepseek/deepseek-v4-flash': { input: 0.068, output: 0.168, cacheWrite: 0.068, cacheRead: 0.0168 },
   'deepseek/deepseek-v4-pro':   { input: 1.0308,  output: 2.0616,  cacheWrite: 1.0308,  cacheRead: 0.0859 },
 
   // Every model a pilot or the evals judge has actually run on. Absent from

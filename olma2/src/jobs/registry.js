@@ -49,13 +49,19 @@ function jobs({ pool }) {
   // jobs/credit-watch.js for why both choices are the point.
   const creditWatch = require('./credit-watch');
   const efficiencyWatch = require('./efficiency-watch');
-  const { runOpenclaw } = require('../channels/openclaw');
+  const { sendRawMessage } = require('../channels/openclaw');
   // `replyTo` quotes a message (the group sweep answers a tag under the tag);
-  // the CLI's `--reply-to`, verified 2026-09-06 with `--dry-run --json`.
-  const rawSend = (phone, text, opts) => runOpenclaw([
-    'message', 'send', '--channel', 'whatsapp', '--target', phone, '--message', text,
-    ...(opts && opts.replyTo ? ['--reply-to', String(opts.replyTo)] : []),
-  ]);
+  // the CLI's `--reply-to`, verified 2026-09-06 with `--dry-run --json`, and
+  // the gateway `send` RPC's `replyToId` behind it.
+  // Every sentence a room hears unasked comes through here, which is why this
+  // is the path that got the gateway socket: a fresh `openclaw` process cost
+  // 8.8s idle and 49-95s while the room was busy (measured 2026-09-08).
+  const rawSend = (phone, text, opts) => sendRawMessage({
+    channel: 'whatsapp',
+    target: phone,
+    message: text,
+    replyTo: opts && opts.replyTo ? opts.replyTo : undefined,
+  });
   // Free lanes the gateway has classified stuck and then declined to free.
   // 30s, because this is the difference between a person waiting ~90s and a
   // person waiting until unanswered_sweep notices minutes later.
@@ -78,7 +84,6 @@ function jobs({ pool }) {
   // Weekly per user, but ticked hourly: "the small hours" is only meaningful
   // in each person's own timezone, so the job decides who is due rather than
   // the interval deciding for it.
-  const { runSilentAgentTurn } = require('../channels/openclaw');
   // Deep memory: read a finished conversation and write down what it taught
   // us. Ticked every 10 minutes rather than on the chapter boundary itself —
   // there is no event for "they stopped replying", so the job asks who has
@@ -188,6 +193,10 @@ const deployDrift = require('./deploy-drift');
       // feature: anything slower and "about a minute" becomes "a few". It is
       // one indexed query against a partial index that is empty almost always.
       settlingMeetings: await sweeps.sweepSettlingMeetings(c),
+      // A paused room member a day past their one coordination message with
+      // no answer (domain/group-meetings.js). An hour-scale rule on a minute
+      // tick because the query is one join that is empty almost always.
+      silentPausedMembers: await sweeps.sweepSilentPausedMembers(c),
       mediaJobs: await sweeps.sweepMediaJobs(c),
       // 60s cadence is what makes a 60-second nudge possible at all — the
       // checkin ladder's own tick (below) is 5 minutes, chosen for its
@@ -285,7 +294,7 @@ const deployDrift = require('./deploy-drift');
     { name: 'boost_reconcile', run: () => withTx(pool, (c) =>
       boostJob.run(c, { configPath: OPENCLAW_CONFIG() })) },
     { name: 'memory_consolidation', run: () => withTx(pool, (c) =>
-      memoryConsolidation.sweepMemoryConsolidation(c, { runAgent: runSilentAgentTurn })) },
+      memoryConsolidation.sweepMemoryConsolidation(c, {})) },
     // Thinks over a direct model call (adapters/llm.js), not an agent turn —
     // no runAgent dep; the job's default is the real adapter.
     { name: 'fact_extraction', run: async () => {
@@ -308,7 +317,7 @@ const deployDrift = require('./deploy-drift');
     { name: 'live_updates', run: () => withTx(pool, (c) => liveUpdates.sweepLiveUpdates(c, {})) },
     { name: 'usage_sweep', run: () => withTx(pool, (c) => usage.sweepUsage(c)) },
     { name: 'voice_usage_sweep', run: () => withTx(pool, (c) => voiceUsage.sweepVoiceUsage(c)) },
-    { name: 'metrics_sweep', run: () => withTx(pool, (c) => metrics.sweepMetrics(c)) },
+    { name: 'metrics_sweep', run: () => withTx(pool, (c) => metrics.sweepMetrics(c, new Date(), { sessions: sessionsAsync })) },
     { name: 'retention_sweep', run: () => withTx(pool, (c) => retention.sweepRetention(c)) },
     // Is everything working, and will the owner hear if not: gateway probe +
     // delivery queue, two bad ticks before a word, a dead gateway restarted

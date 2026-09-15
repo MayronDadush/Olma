@@ -7,7 +7,9 @@
 // Policy (each rule traces to an explicit design decision):
 //   paused user      → drop. They asked Olma to stop initiating; there is no
 //                      kind and no urgency that earns an exception, including
-//                      another user's fan-out landing on them
+//                      another user's fan-out landing on them — save ONE
+//                      invite per pause to a coordination in a room they are
+//                      in (owner, 2026-09-13; `pausedRoomInvite` below)
 //   blocked user     → hold, except paid-plan reminders and the unblock summary
 //   outside personal availability window → hold until window opens, UNLESS
 //                      they wrote to us in the last 15 minutes (see below)
@@ -53,6 +55,98 @@ function msUntilWindowOpen(window, tz, date = new Date()) {
   return deltaMin * 60_000;
 }
 
+// Which day of the week it is where THEY are — 0 = Sunday, matching
+// preferences.DAY_NAMES. Same fail-open shape as minutesInTz: a broken zone
+// falls back to UTC rather than throwing inside the gate.
+const WEEKDAYS = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+function weekdayInTz(tz, date = new Date()) {
+  try {
+    const s = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz || 'UTC', weekday: 'short',
+    }).format(date);
+    const d = WEEKDAYS[s];
+    return d === undefined ? date.getUTCDay() : d;
+  } catch {
+    return date.getUTCDay();
+  }
+}
+
+// The local calendar date where THEY are. Same fail-open shape as the two
+// above, and the same reason the weekday is asked in their zone rather than
+// the server's: 23:00 UTC on the 20th is already the 21st in Jerusalem, and
+// Yom Kippur is a DATE, not an instant.
+function localDateInTz(tz, date = new Date()) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(date);
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+// Is this a day they keep? A weekday they named, or — only for somebody who
+// asked for it — a date the calendar says is a yom tov. One predicate for both
+// so the hold and the RELEASE can never disagree about which days exist:
+// Rosh Hashana runs into Shabbat often enough that a release computed from
+// weekdays alone would wake a row in the middle of a three-day run.
+//
+// `facts.shabbatWindow` is the one exception to "a day": for an Israeli zone
+// whose Saturday is quiet, the caller already resolved candle-lighting →
+// havdalah and dropped 6 out of `quietDays` (holidays.shabbatWindow), so the
+// weekday check below never also fires for Saturday and extend the hold past
+// nightfall into a plain calendar-day boundary.
+function quietDayReason(facts, tz, date) {
+  const sw = facts.shabbatWindow;
+  if (sw && date >= sw.start && date < sw.end) return 'quiet_day';
+  const days = facts.quietDays || [];
+  if (days.includes(weekdayInTz(tz, date))) return 'quiet_day';
+  const dates = facts.quietDates || [];
+  if (dates.length && dates.includes(localDateInTz(tz, date))) return 'quiet_holiday';
+  return null;
+}
+
+// Milliseconds until the first moment past a run of quiet days that is also
+// inside their window. Approximate across DST for the same reason
+// msUntilWindowOpen is, and safe for a second reason: `releaseAfter` only says
+// when to LOOK at the row again — decide() then runs in full, so an answer
+// that lands an hour early simply holds again.
+//
+// The probe runs to 21 days rather than 7 now that a holiday can be quiet: a
+// weekly pattern cannot outlast a week, but Pesach in the diaspora plus the
+// Shabbat either side is eight days, and returning "a week" for that would
+// wake the row inside the run it is waiting out.
+const QUIET_RUN_MAX_DAYS = 21;
+
+function msUntilQuietDaysEnd(facts, window, tz, date = new Date()) {
+  // Inside the Shabbat window itself, the exact end is already known — down
+  // to the minute — which the day-stepping scan below cannot match: it only
+  // knows the CALENDAR DAY a quiet run ends on, not the moment within it.
+  const sw = facts.shabbatWindow;
+  if (sw && date >= sw.start && date < sw.end) {
+    return (sw.end.getTime() - date.getTime()) + msUntilWindowOpen(window, tz, sw.end);
+  }
+  const DAY_MS = 86_400_000;
+  // Each probe is anchored at THAT day's local midnight, not at `date` plus
+  // d whole days — stepping by the wall-clock hour `date` happens to fall on
+  // answers "24 hours from whenever this row was checked", so a meeting
+  // confirmed at 20:00 on a quiet day waited until 20:00 the next kept day,
+  // even though the day itself, and the world's own morning window, had
+  // already opened hours earlier. Approximate across DST for the same reason
+  // msUntilWindowOpen is.
+  const minutesNow = minutesInTz(tz, date);
+  for (let d = 1; d <= QUIET_RUN_MAX_DAYS; d++) {
+    const probe = new Date(date.getTime() + d * DAY_MS - minutesNow * 60_000);
+    if (quietDayReason(facts, tz, probe)) continue;
+    return (probe.getTime() - date.getTime()) + msUntilWindowOpen(window, tz, probe);
+  }
+  // Unreachable in practice: parseQuietDays refuses all seven weekdays and no
+  // run of yom tov comes close to three weeks. Answering with the cap rather
+  // than never is the fail-open half — a row that looks again too early holds
+  // again, a row that never looks again is lost.
+  return QUIET_RUN_MAX_DAYS * DAY_MS;
+}
+
 // Start of the next UTC day — the moment the daily send budget resets, since
 // the count is taken over sent_at::date.
 function nextUtcMidnight(date) {
@@ -68,13 +162,59 @@ function nextUtcMidnight(date) {
 // are demonstrably awake and mid-conversation, so the window does not apply.
 const CONVERSATION_GRACE_MS = 15 * 60_000;
 
-// facts: { row, plan, blocked, paused, window, tz, sentToday, budget, now, lastInboundAt }
+// How long an introduction has the floor to itself. Somebody meeting Olma for
+// the first time is reading one thing; a second message a minute behind it is
+// read as part of the first, and whatever it asked for is answered by nobody.
+// Ten minutes is the owner's call (2026-09-08) — long enough to be a separate
+// message, short enough that the day-one ladder still happens that morning.
+const INTRODUCTION_ROOM_MS = 10 * 60_000;
+
+// The narrowest thing in the system that still counts as "they asked for
+// this": rung 1 of a reminder whose payload says a person put it there in
+// words, not a due date the model inferred. Two separate rules need exactly
+// this line — somebody who stopped answering, and a day they marked quiet —
+// and writing it twice is how the two would drift apart.
+function askedForInWords(row) {
+  const rung = Number(row.payload && row.payload.rung) || 1;
+  return row.kind === 'reminder' && rung <= 1
+    && Boolean(row.payload) && row.payload.auto === false;
+}
+
+// ── Nothing Olma decided to say goes out twice inside a few minutes ─────────
+// The owner's rule, 2026-09-10. The kinds below are the ones where a second
+// copy inside the window is always the system repeating itself and never a
+// person asking again: each is something Olma decided to say, at a moment she
+// picked or at one they picked ONCE. Everything absent from this set is
+// unguarded, which is the safe direction, and the exclusions are deliberate:
+//
+//   reminder     — the escalation ladder is SUPPOSED to come back. Rung 2 is
+//                  not rung 1 said again, and same-moment rungs already
+//                  coalesce into one message in the worker.
+//   introduction — said once by construction, and everything else is already
+//                  held behind it; a guard here could only ever misfire.
+//   cross-user   — a relay, a meeting answer, a connection request. Another
+//                  person writing twice is them, not us, and it is not ours
+//                  to swallow.
+//
+// The one case this is knowingly strict about: somebody whose digest_times
+// name two hours inside the same ten minutes gets one digest. That is not a
+// schedule anyone means, and the alternative — carrying the slot on the row so
+// the gate can tell two chosen moments apart — is a column and a migration for
+// a preference nobody has ever set.
+const { REPEAT_WINDOW_MS } = require('../domain/repeat-guard');
+
+const SAYS_IT_ONCE = new Set([
+  'digest', 'checkin', 'travel',
+  'tasks_auto_archived', 'calendar_connected', 'contacts_connected', 'email_connected',
+]);
+
+// facts: { row, plan, blocked, paused, window, quietDays, tz, sentToday, budget, now, lastInboundAt }
 // returns { action: 'deliver' | 'hold' | 'expire' | 'drop', holdReason?, releaseAfter? }
 function decide(facts) {
   const { row, plan, blocked, paused, window, tz, sentToday, budget } = facts;
   const now = facts.now || new Date();
 
-  // First, and with no exceptions. This is the whole guarantee behind the pause
+  // First, and with one exception (below). This is the whole guarantee behind the pause
   // feature: sweeps skip paused users so these rows are mostly never created,
   // but a message can also be enqueued for them by somebody ELSE's action — a
   // connection request, a meeting slot, a calendar callback — and none of those
@@ -83,7 +223,15 @@ function decide(facts) {
   // 'drop', not 'hold': holding means delivering later, and there is no later.
   // Not 'expire' either — that means the moment passed and folds the row into a
   // digest as "עבר זמנה", which would then be delivered.
-  if (paused) {
+  //
+  // One exception since 2026-09-13, and it is the owner's: a paused person in a
+  // WhatsApp room where a coordination starts hears about it ONCE per pause.
+  // `pausedRoomInvite` is the worker's fact and it is narrow by construction —
+  // true only for a `meeting_invite` about a group meeting, for a person whose
+  // pause has not yet spent that one message (pause.roomInviteSpent) — so the
+  // gate still does not have to know what a meeting is. Everything below this
+  // line applies to it as to anything else: the night, a quiet day, the budget.
+  if (paused && !facts.pausedRoomInvite) {
     return { action: 'drop', holdReason: 'paused' };
   }
 
@@ -97,6 +245,26 @@ function decide(facts) {
 
   if (row.expires_at && new Date(row.expires_at) <= now) {
     return { action: 'expire' };
+  }
+
+  // A repeat, per the set above. 'drop', not 'hold': the thing was said, and
+  // saying it ten minutes later is the same message arriving late rather than
+  // a message that has not arrived. Stamped with its own reason so the
+  // dashboard can count them — a guard that silently swallows rows is
+  // indistinguishable from one that never fires.
+  //
+  // No floor on `since`, and that is the worker's doing rather than an
+  // oversight: a sibling stamped by Postgres inside this same drain is
+  // routinely a few milliseconds AHEAD of the JavaScript `now` this function
+  // was handed, so a `since >= 0` guard here let both copies straight through
+  // — the clock-order trap SENT_SLACK_MS exists for in jobs/unanswered.js. The
+  // worker bounds `lastSentByKind` on both sides against its own clock before
+  // this ever sees it, so anything in the map is genuinely behind us.
+  const lastSame = facts.lastSentByKind && facts.lastSentByKind[row.kind];
+  if (lastSame && SAYS_IT_ONCE.has(row.kind)) {
+    if (now.getTime() - new Date(lastSame).getTime() < REPEAT_WINDOW_MS) {
+      return { action: 'drop', holdReason: 'duplicate' };
+    }
   }
 
   // ── Somebody who has stopped answering ────────────────────────────────────
@@ -138,10 +306,57 @@ function decide(facts) {
   // lost his to this rule on the morning it was queued for (2026-09-08).
   if ((Number(facts.checkinMisses) || 0) >= 1
     && row.kind !== 'checkin' && row.kind !== 'introduction') {
-    const rung = Number(row.payload && row.payload.rung) || 1;
-    const askedInWords = row.kind === 'reminder' && rung <= 1
-      && row.payload && row.payload.auto === false;
-    if (!askedInWords && !inRoomGrace) return { action: 'drop', holdReason: 'quiet' };
+    // A ladder pause is three misses, so its one room invite would die here
+    // without the same exemption the pause branch above gives it.
+    if (!askedForInWords(row) && !inRoomGrace && !facts.pausedRoomInvite) {
+      return { action: 'drop', holdReason: 'quiet' };
+    }
+  }
+
+  // ── A day they said they want nothing on ─────────────────────────────────
+  // The same sentence as above about WHAT survives, and the opposite answer
+  // about what happens to the rest. Somebody who stopped answering has no
+  // bounded "later", so their rows are dropped; a quiet day ends on a known
+  // morning, so these are held for it — the shape of the night window, one
+  // rung up.
+  //
+  // What does NOT pass is the whole difference between a quiet day and quiet
+  // hours. A DIGEST does not: quiet hours exempt it because they picked the
+  // hour, but a day off is a day off, and a morning picture of a day they
+  // asked not to hear about is the message they were opting out of. Nor does
+  // an AUTOMATIC reminder, which is the model's inference from a due date
+  // rather than a moment anybody named (owner, 2026-09-08: "רק 1").
+  //
+  // Nor an INTRODUCTION, and the exemption it has one branch up does not
+  // transfer, because that branch DROPS and this one HOLDS: the reason an
+  // introduction survives somebody who stopped answering is that it would
+  // otherwise be lost for good, and here it simply lands on the next day they
+  // kept.
+  //
+  // `inRoomGrace` DOES transfer here, since 2026-09-12 — the one exception to
+  // the paragraph above. It can only be true for a row carrying a
+  // `payload.meetingId` (see worker.js), so this reaches meeting rows only:
+  // the invite, a proposed slot, somebody rejoining or withdrawing. The owner's
+  // reasoning inverts the general rule on purpose — writing in the room after
+  // a coordination started is not "asking Olma for the things this day was set
+  // aside from" in general, but it IS the specific thing a meeting row is
+  // about: the room already knows they are around and probably interested, so
+  // waiting for the quiet day to end is the wrong default for this one kind of
+  // message, even though it is the right one for everything else that reaches
+  // this line.
+  //
+  // A HOLIDAY reaches this line by exactly the same route and is held for
+  // exactly the same reasons — only the hold_reason differs, so the dashboard
+  // can tell "Saturday" from "Yom Kippur" without a second rule to keep in
+  // step. It is opt-in and nothing else about it is special (owner,
+  // 2026-09-11): asked once, and the calendar is yom tov only. `inRoomGrace`
+  // exempts a meeting row from this one too, same reasoning as above.
+  const quietReason = !askedForInWords(row) && !inRoomGrace && quietDayReason(facts, tz, now);
+  if (quietReason) {
+    return {
+      action: 'hold', holdReason: quietReason,
+      releaseAfter: new Date(now.getTime() + msUntilQuietDaysEnd(facts, window, tz, now)),
+    };
   }
 
   // ── Nothing before the introduction ──────────────────────────────────────
@@ -160,10 +375,30 @@ function decide(facts) {
   // THEY chose still passes, the same line the gate draws everywhere else: a
   // person who asked for a 10:45 reminder in words knows perfectly well who is
   // sending it, and making them wait for an introduction would be absurd.
-  if (facts.introductionPending && row.kind !== 'introduction') {
+  //
+  // And it does not merely go FIRST — it gets the room to be read. The hold
+  // used to release the instant the introduction was stamped sent, so the very
+  // next row in the same drain went out on its heels: ג.ב read who Olma was at
+  // 08:00:27 and was asked which city he lives in at 08:01:19. The gap is
+  // measured from the moment the introduction actually LANDED, never from the
+  // last time the waiting row happened to be looked at — held on a plain
+  // "while one is pending" clock, a row evaluated just after the introduction
+  // went out is released seconds later all the same, which is the bug wearing
+  // a longer number.
+  if (row.kind !== 'introduction') {
     const r = Number(row.payload && row.payload.rung) || 1;
     const theirs = row.kind === 'digest' || (row.kind === 'reminder' && r <= 1);
-    if (!theirs) return { action: 'hold', holdReason: 'awaiting_introduction', releaseAfter: null };
+    if (!theirs) {
+      if (facts.introductionPending) {
+        return { action: 'hold', holdReason: 'awaiting_introduction', releaseAfter: null };
+      }
+      if (facts.introductionSentAt) {
+        const readyAt = new Date(new Date(facts.introductionSentAt).getTime() + INTRODUCTION_ROOM_MS);
+        if (readyAt > now) {
+          return { action: 'hold', holdReason: 'awaiting_introduction', releaseAfter: readyAt };
+        }
+      }
+    }
   }
 
   if (blocked) {
@@ -226,5 +461,6 @@ function decide(facts) {
 
 module.exports = {
   decide, withinWindow, msUntilWindowOpen, minutesInTz, parseHHMM, nextUtcMidnight,
-  CONVERSATION_GRACE_MS,
+  weekdayInTz, localDateInTz, msUntilQuietDaysEnd, quietDayReason, askedForInWords,
+  CONVERSATION_GRACE_MS, SAYS_IT_ONCE, REPEAT_WINDOW_MS,
 };

@@ -128,21 +128,16 @@ test('an unknown import source is rejected', async () => {
   assert.equal(res.ok, false);
 });
 
-// ---------------------------------------------------------------- namesForPhone
+// -------------------------------------------------- no reverse lookup by name
 
-test('namesForPhone: reverse lookup crosses users, is empty when nobody saved the number', async () => {
-  const a = await makeUser(db.pool, '+972631100010', { firstName: 'A' });
-  const b = await makeUser(db.pool, '+972631100011', { firstName: 'B' });
-  await withClient((c) => contacts.saveContact(c, a.id, { name: 'אמא', phone: '054-5000000', source: 'user_stated' }));
-  await withClient((c) => contacts.saveContact(c, b.id, { name: 'רותי', phone: '054-5000000', source: 'user_stated' }));
-
-  const hits = await withClient((c) => contacts.namesForPhone(c, '+972545000000'));
-  assert.equal(hits.length, 2);
-  // node-postgres returns BIGINT id columns as strings; namesForPhone
-  // Number()s its own userId, so compare numerically on both sides.
-  assert.deepEqual(hits.map((h) => h.userId).sort((x, y) => x - y),
-    [Number(a.id), Number(b.id)].sort((x, y) => x - y));
-
-  const none = await withClient((c) => contacts.namesForPhone(c, '+972630000000'));
-  assert.deepEqual(none, []);
+// `namesForPhone` was a reverse lookup — who has this number saved, and as
+// what — and provisioning was its only caller: it named brand-new users out of
+// it. That is gone (src/intake/provision.js), and the function went with it
+// rather than sitting exported and unused, which is how somebody wires it back
+// up in six weeks. The admin page still asks the same question in SQL of its
+// own, deliberately, because "known to others as X" is operator context and
+// never a name.
+test('the contacts module offers no way to ask who a phone number belongs to', () => {
+  assert.equal(typeof contacts.namesForPhone, 'undefined',
+    'the reverse lookup is back, and provisioning is one require away from naming people out of it');
 });

@@ -26,10 +26,22 @@ function actorName(user) {
   return [user.first_name, user.last_name].filter(Boolean).join(' ') || user.phone;
 }
 
+// Anything anybody hears about a coordination also carries what came OFF its
+// table since they last heard from us (owner, 2026-09-09: a removal never gets
+// a message of its own — "פשוט פעם הבאה שהם שואלים על הנושא או מקבלים עדכון על
+// הנושא"). It is computed per recipient, at enqueue, because "since they last
+// heard" is a different moment for each of them; `meetingId` on the payload is
+// what says this row is about a coordination at all.
+async function withRemovals(client, payload, userId) {
+  if (!payload || payload.meetingId === undefined || payload.meetingId === null) return payload;
+  const removedOptions = await meetings.options.unheardRemovals(client, payload.meetingId, userId);
+  return removedOptions.length ? { ...payload, removedOptions } : payload;
+}
+
 async function fanout(client, userIds, kind, payload, { urgency = 'urgent', key } = {}) {
   for (const uid of userIds) {
     await enqueue(client, {
-      userId: uid, kind, payload, urgency,
+      userId: uid, kind, payload: await withRemovals(client, payload, uid), urgency,
       idempotencyKey: key ? `${key}:${uid}` : undefined,
     });
   }
@@ -82,10 +94,10 @@ async function meetingCalendarFanout(client, meetingId, recipients, basePayload,
   for (const uid of recipients) {
     await enqueue(client, {
       userId: uid, kind: 'meeting_confirmed', urgency: 'urgent',
-      payload: {
+      payload: await withRemovals(client, {
         ...basePayload, calendarRole: calendarRoleFor(roles, uid),
         ...(extraFor ? extraFor(uid) : {}),
-      },
+      }, uid),
       idempotencyKey: `${key}:${uid}`,
     });
   }
@@ -165,7 +177,7 @@ async function afterSettled(client, meetingId, res, { actor = null, byName = nul
   const brief = await meetingBrief(client, meetingId);
   // Every queued question about this meeting is now a wrong question.
   await supersedeQueuedMeetingRows(client, meetingId,
-    ['meeting_slot_proposed', 'meeting_option_pending', 'meeting_invite']);
+    ['meeting_slot_proposed', 'meeting_invite']);
   const everyone = await activeParticipants(client, meetingId);
   const recipients = actor ? everyone.filter((id) => id !== Number(actor.id)) : everyone;
   const withoutYes = new Set((res.data.withoutYes || []).map(Number));
@@ -204,16 +216,9 @@ async function afterSlotResponse(client, actor, meetingId, res, { accept } = {})
   } else if (res.data.proposedSlot) {
     // decline carried a counter → everyone else hears the NEW option. The asks
     // about the others are not cancelled: since options, those are still on
-    // the table (the pending case never reaches here — a counter from a
-    // non-initiator at a full table is a question for the initiator alone).
-    if (res.data.pending) {
-      await fanout(client, [Number(res.data.initiatorId || brief.initiator_id)].filter((id) => id !== Number(actor.id)),
-        'meeting_option_pending', {
-          meetingId: Number(meetingId), title: brief.title || 'meeting', slot: res.data.proposedSlot,
-          startsAt: res.data.startsAt, optionId: res.data.optionId, byName: actorName(actor),
-        }, { key: `mopt-pend:${meetingId}:${res.data.optionId}` });
-      return res;
-    }
+    // the table. A counter at a FULL table never reaches here — the domain
+    // refuses it and the refusal names the five, because the question then is
+    // which one it replaces and only a person can answer that.
     await fanout(client, others, 'meeting_slot_proposed', {
       meetingId: Number(meetingId), title: brief.title || 'meeting',
       slot: res.data.proposedSlot, startsAt: res.data.startsAt, byName: actorName(actor),
@@ -304,8 +309,7 @@ async function afterOptOut(client, actor, meetingId, res) {
 }
 
 // After meetings.options.add (or proposeSlot) succeeded. An option on the
-// table is a question for everyone else; a pending one is a question for the
-// initiator alone, and the others hear nothing until it is approved.
+// table is a question for everyone else.
 async function afterOptionAdded(client, actor, meetingId, res) {
   if (!res.ok) return res;
   const brief = await meetingBrief(client, meetingId);
@@ -315,13 +319,6 @@ async function afterOptionAdded(client, actor, meetingId, res) {
     res.data.hint = 'That moment was already on the table — their yes to it was recorded instead of a second copy.';
     return res;
   }
-  if (res.data.pending) {
-    const initiator = Number(res.data.initiatorId || brief.initiator_id);
-    await fanout(client, [initiator].filter((id) => id !== Number(actor.id)), 'meeting_option_pending', base,
-      { key: `mopt-pend:${meetingId}:${o.id}` });
-    res.data.hint = `The table already holds ${meetings.options.MAX_ACTIVE} options, so this one went to the initiator to approve or turn down — tell the user that, and that nothing else changes until then.`;
-    return res;
-  }
   const others = await activeParticipantsExcept(client, meetingId, actor.id);
   await fanout(client, others, 'meeting_slot_proposed', {
     ...base, reasons: await meetings.shareableConstraints(client, meetingId, actor.id),
@@ -329,25 +326,25 @@ async function afterOptionAdded(client, actor, meetingId, res) {
   return res;
 }
 
-// After meetings.options.approve / reject. Approved: everyone else hears the
-// new option exactly as they would any other. Rejected: only its proposer.
-async function afterOptionDecision(client, actor, meetingId, res, { approved } = {}) {
+// After meetings.options.remove. It tells nobody — that is the owner's rule
+// (2026-09-09), and the reason is that the commonest removal is somebody taking
+// back a time they typed a minute ago. What a removal DOES produce is a fact
+// that travels: `withRemovals` puts it on the next thing each person hears
+// about this coordination, and `getStatus` has it for anyone who asks.
+//
+// What is not optional is the queued "does this work for you?" about that exact
+// option, which is now a question about a time nobody can answer — superseded
+// on the same rule as any dead proposal.
+async function afterOptionRemoved(client, actor, meetingId, res) {
   if (!res.ok) return res;
-  const brief = await meetingBrief(client, meetingId);
-  if (approved) {
-    const others = await activeParticipantsExcept(client, meetingId, actor.id);
-    await fanout(client, others, 'meeting_slot_proposed', {
-      meetingId: Number(meetingId), title: brief.title || 'meeting', slot: res.data.slot,
-      optionId: res.data.optionId, byName: actorName(actor), approvedFromPending: true,
-    }, { key: `mopt:${meetingId}:${res.data.optionId}` });
-    if (res.data.meetingStatus === 'settling') {
-      res.data.hint = settlingHint(res.data.settlingSlot);
-    }
-    return res;
-  }
-  await fanout(client, [Number(res.data.proposerId)].filter((id) => id !== Number(actor.id)), 'meeting_option_rejected', {
-    meetingId: Number(meetingId), title: brief.title || 'meeting', slot: res.data.slot, byName: actorName(actor),
-  }, { key: `mopt-rej:${meetingId}:${res.data.optionId}` });
+  await client.query(
+    `UPDATE outbox SET sent_at = now(), hold_reason = 'superseded'
+      WHERE sent_at IS NULL AND kind = 'meeting_slot_proposed'
+        AND (payload->>'meetingId')::bigint = $1 AND (payload->>'optionId')::bigint = $2`,
+    [meetingId, res.data.optionId]);
+  // Removing the first of two unanimous options leaves the second one holding
+  // everyone's yes, so this path can arm the grace like any answer can.
+  if (res.data.meetingStatus === 'settling') res.data.hint = settlingHint(res.data.settlingSlot);
   return res;
 }
 
@@ -362,7 +359,7 @@ async function afterStart(client, actor, res, participantIds, title) {
 
 module.exports = {
   afterSettled,
-  afterStart, afterOptionAdded, afterOptionDecision,
+  afterStart, afterOptionAdded, afterOptionRemoved,
   afterSlotResponse, afterOptOut, afterRejoin,
   actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept,
   meetingCalendarFanout, calendarRoleFor, cancelCalendarCleanup, calendarHintFor,

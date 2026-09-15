@@ -22,8 +22,12 @@ before(async () => {
 });
 after(async () => { if (db) await db.teardown(); });
 
+// A title per call: one person cannot hold the same task open twice
+// (domain/tasks.js, "The same thing, saved twice"), and every test below wants
+// its own row rather than a shared one.
+let mkTaskN = 0;
 const mkTask = async (extra = {}) => {
-  const r = await tx((c) => tasks.addTask(c, me.id, { title: 'לקנות חלב', ...extra }));
+  const r = await tx((c) => tasks.addTask(c, me.id, { title: `לקנות חלב ${++mkTaskN}`, ...extra }));
   assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
   return r.data.task;
 };
@@ -345,4 +349,14 @@ test('a phone number in the payload is ignored', async () => {
   const r = await act('inviteContact', { contactId: 9_000_003, phone: '+972500000000', targetPhone: '+972500000000' });
   assert.equal(r.ok, false);
   assert.equal(r.error.code, 'not_found');
+});
+
+// The page branches on `error.reason` and reloads in silence for anything it
+// does not recognise, so a duplicate without one would look to the person like
+// the row simply failing to appear. `toast.duplicate` is the sentence it shows.
+test('a task they already have is refused with a reason the page can say out loud', async () => {
+  const r = await act('addTask', { title: 'להזמין צמיגים' });
+  assert.equal(r.ok, false, 'the same title was added by an earlier test and is still open');
+  assert.equal(r.error.code, 'conflict');
+  assert.equal(r.error.reason, 'duplicate');
 });

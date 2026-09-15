@@ -676,7 +676,8 @@ test('planned messages: queued rows, future reminders and standing digests, in l
 
   const p = await makeUser(db.pool, '+972618000055', { firstName: 'Noam', timezone: 'Asia/Jerusalem' });
   await db.pool.query(
-    `UPDATE users SET agent_id = 'u-' || id, digest_times = '08:00' WHERE id = $1`, [p.id]);
+    `UPDATE users SET agent_id = 'u-' || id, digest_times = '08:00', onboarded_at = now()
+      WHERE id = $1`, [p.id]);
 
   await withTx(db.pool, async (c) => {
     // queued now, plus a held one — both must appear, with their reason
@@ -693,9 +694,14 @@ test('planned messages: queued rows, future reminders and standing digests, in l
   assert.match(html, /לקחת את הרכב לטסט/, 'a scheduled reminder appears before it is ever queued');
   assert.match(html, /weekly/);
   assert.match(html, /08:00/, 'the standing daily digest is listed too');
-  // The payload holds an instruction, never the finished text — the page must
-  // not imply it is showing a draft.
-  assert.match(html, /התוכן עצמו נכתב ברגע השליחה/);
+  // A checkin's payload holds an instruction the agent will word at send time,
+  // so the page must not imply it is showing a draft of one...
+  assert.match(html, /מופיע הנושא בלבד/);
+  // ...while a reminder has no model in its path at all, so the exact sentence
+  // that will arrive is knowable now and is what a review of the product needs
+  // to read. Both halves have to stay true on the same page.
+  assert.match(html, /⏰ תזכורת: \*לקחת את הרכב לטסט\*/,
+    'a reminder shows the text that will actually be sent, not a subject line');
 
   // ...and the same, narrowed to one person, on their own page
   const userHtml = await (await fetch(base + `/user?id=${p.id}`, { headers: { Authorization: AUTH } })).text();
@@ -1510,6 +1516,15 @@ test('the groups section names who is still missing, and says whether the sender
     assert.ok(html.includes('נעולה'));
     assert.ok(html.includes('גלי'), 'the missing member is named');
     assert.ok(!html.includes('+972619000032'), 'and never numbered');
+
+    // No "תיוג אחרון": it rendered `chat_groups.last_mention_at`, which the
+    // sweep rewrote on every pass whatever anybody did, so it read "seconds
+    // ago" for every room for ever (migration 059).
+    assert.ok(!html.includes('תיוג אחרון'), 'a column that always said the same thing is off the page');
+    // And the header and the row still agree. Dropping one of the two is how a
+    // table silently shifts every value one column to the left.
+    assert.equal((html.match(/<th>/g) || []).length, (html.match(/<td/g) || []).length,
+      'one cell per column');
     assert.ok(html.includes('שער השולחים פתוח'), 'an absent groupAllowFrom is the open door, and the board says so');
 
     account.groupAllowFrom = [a.phone];
@@ -1521,4 +1536,53 @@ test('the groups section names who is still missing, and says whether the sender
     html = await withTx(db.pool, (c) => section.render(c, 'csrf', null, { configPath: path.join(tmp, 'missing.json') }));
     assert.ok(html.includes('לא נקראו'));
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
+// A room hearing the same fixed line twice (the group_intro dupe reported
+// 2026-09-10) has to be diagnosable from here — nowhere else on the box shows
+// a group_outbox retry without SSH and a hand-typed query.
+test('the groups section shows whether the intro went out once, and flags a retry by name', async () => {
+  const groups = require('../src/domain/groups');
+  const { SECTIONS } = require('../src/adapters/http/dashboard');
+  const section = SECTIONS.find((s) => s.id === 'groups');
+
+  const a = await makeUser(db.pool, '+972619000041', { firstName: 'נועה' });
+  await db.pool.query(`UPDATE users SET last_inbound_at = now() WHERE id = $1`, [a.id]);
+  const reg = await withTx(db.pool, (c) => groups.registerGroup(c, {
+    externalId: '120363000000000041@g.us', subject: 'קבוצת בדיקה',
+    members: [{ phone: a.phone }],
+  }));
+  const groupId = reg.data.group.id;
+
+  // Not introduced yet at all: no send-status word appears for this group.
+  let html = await withTx(db.pool, (c) => section.render(c, 'csrf', null, {}));
+  for (const word of ['נשלחה', 'ממתינה בתור', 'בתהליך שליחה', 'ניסיון']) {
+    assert.ok(!html.includes(word), `"${word}" should not appear before any intro is decided`);
+  }
+
+  await db.pool.query(`UPDATE chat_groups SET introduced_at = now() WHERE id = $1`, [groupId]);
+  const outbox = require('../src/domain/group-outbox');
+  await withTx(db.pool, (c) => outbox.enqueue(c, {
+    groupId, kind: 'intro', idempotencyKey: `g${groupId}:intro`,
+  }));
+
+  // Decided but not yet claimed by a sender: queued, plainly.
+  html = await withTx(db.pool, (c) => section.render(c, 'csrf', null, {}));
+  assert.ok(html.includes('ממתינה בתור'), 'a decided-but-unsent intro reads as queued');
+
+  // Sent cleanly, first try: no attempt count clutters the line.
+  await db.pool.query(
+    `UPDATE group_outbox SET attempts = 1, sent_at = now() WHERE group_id = $1 AND kind = 'intro'`,
+    [groupId]);
+  html = await withTx(db.pool, (c) => section.render(c, 'csrf', null, {}));
+  assert.ok(html.includes('נשלחה') && !html.includes('ניסיון'), 'a clean single send names no attempt');
+
+  // A retry (attempts > 1) is exactly the shape a duplicate send leaves
+  // behind, and it must be visible by name, with whatever the first try said.
+  await db.pool.query(
+    `UPDATE group_outbox SET attempts = 2, last_error = 'boom: gateway said no' WHERE group_id = $1 AND kind = 'intro'`,
+    [groupId]);
+  html = await withTx(db.pool, (c) => section.render(c, 'csrf', null, {}));
+  assert.ok(html.includes('ניסיון 2'), 'the retry count is named');
+  assert.ok(html.includes('boom: gateway said no'), 'and what the earlier attempt said');
 });

@@ -30,6 +30,7 @@ const auth = require('../../domain/dashboard-auth');
 const dash = require('../../domain/user-dashboard');
 const events = require('../../domain/user-dashboard-events');
 const write = require('../../domain/user-dashboard-write');
+const { refreshUserCard } = require('../../intake/user-card');
 
 const LINK_RE = /^\/d\/([a-f0-9]{64})$/;
 const PAGE_PATH = path.join(__dirname, '..', '..', '..', 'docs', 'design', 'user-dashboard.html');
@@ -170,14 +171,14 @@ const SIGN_IN_COPY = {
     hi: (name) => (name ? `שלום ${esc(name)}` : 'שלום'),
     body: 'הקישור הזה נפתח פעם אחת. אחרי שתיכנס הוא כבר לא יעבוד — הדף עצמו יישאר פתוח.',
     button: 'כניסה',
-    ttl: (m) => `הקישור תקף ל־${m} דקות`,
+    ttl: (h) => `הקישור תקף ל־${h} שעות`,
   },
   en: {
     dir: 'ltr',
     hi: (name) => (name ? `Hi ${esc(name)}` : 'Hi'),
     body: 'This link opens once. After you sign in it stops working — the page itself stays open.',
     button: 'Sign in',
-    ttl: (m) => `The link is valid for ${m} minutes`,
+    ttl: (h) => `The link is valid for ${h} hours`,
   },
 };
 
@@ -206,7 +207,7 @@ small{display:block;margin-top:14px;font-size:12.5px;opacity:.45}
 <h1>${hi}</h1>
 <p>${t.body}</p>
 <form method="POST" action="/d/${esc(token)}${meeting ? `?meeting=${meeting}` : ''}"><button type="submit">${t.button}</button></form>
-<small>${t.ttl(auth.LINK_TTL_MINUTES)}</small>
+<small>${t.ttl(auth.LINK_TTL_MINUTES / 60)}</small>
 </div></body></html>`);
 }
 
@@ -355,6 +356,10 @@ async function handle(req, res, pool, pathname) {
   const payload = body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload)
     ? body.payload : {};
   const done = await withTx(pool, (c) => write.perform(c, userId, body.action, payload));
+  // After the commit, never inside it (refreshUserCard is best-effort and
+  // never throws), so the card the agent reads next turn says what this page
+  // just saved.
+  if (done.ok && write.CARD_ACTIONS.has(body.action)) await refreshUserCard(pool, userId);
   // A refusal is a 200-shaped envelope at the HTTP layer only when it succeeded;
   // otherwise the status carries the same meaning the code does, so a network
   // panel and the page agree about what happened.

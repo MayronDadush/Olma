@@ -30,6 +30,19 @@ const base = (over = {}) => ({
 // part), and this file leaves several reviewable people behind it in one
 // database — so a test that wants ITS person reviewed runs the sweep until it
 // has nothing left to do, which is what a few minutes of real ticks are.
+//
+// Every DB-backed test here goes through this, and every assertion about what
+// came back is filtered to its OWN person. Both halves are load-bearing and
+// both were learned the same way, twice. A bare `sweepOnboardingReview` reviews
+// whoever the sweep decides is next across the whole table, and an unfiltered
+// assertion is a claim about who ELSE was due at that instant — which is not a
+// fact any one test owns, because the tests above place their people relative
+// to the REAL clock while the ones below pin `now` to a literal. The gap
+// between those two clocks walks with the calendar, so a test that reads its
+// neighbours' rows is green for a while and then red, on bytes nobody touched:
+// it cost a production deploy on 2026-09-06 at 19:04 UTC, and it took the whole
+// suite down again overnight on 2026-09-10. CLAUDE.md, "never let a test depend
+// on the hour it runs".
 async function drain(now, deps) {
   const out = [];
   for (let i = 0; i < 25; i++) {
@@ -331,9 +344,19 @@ test('too new to review, and too old to bother', async () => {
   await db.pool.query(
     `UPDATE users SET agent_id = 'u-' || id, first_turn_at = $2 WHERE id = $1`,
     [fresh.id, new Date(now - 60 * 60_000)]);
+  // FIXED, not `now - 6 days`, and the difference is a red suite for 45 hours
+  // at a time. freshDb() is per FILE, so this row outlives its own test, and
+  // MAX_PER_TICK is 1 with ORDER BY first_turn_at — so the moment a real-clock
+  // "six days ago" drifts inside a LATER test's pinned 48-hour window, the
+  // sweep reviews this user instead of that test's, `reviewed.length` is still
+  // 1, and the assertion that fails is three tests further down. Measured:
+  // Yahav's test (now pinned to 2026-09-05T21:00Z) goes red for every run
+  // between 2026-09-09T21:00Z and 2026-09-11T18:00Z. Anything older than 48h
+  // proves "too old to bother" equally well, and a date this far back can
+  // never wander into anybody's window.
   await db.pool.query(
     `UPDATE users SET agent_id = 'u-' || id, first_turn_at = $2 WHERE id = $1`,
-    [stale.id, new Date(now - 6 * 24 * 3600_000)]);
+    [stale.id, new Date('2020-01-01T00:00:00Z')]);
 
   const res = await withTx(db.pool, (c) => job.sweepOnboardingReview(c, {
     now, readMessages: () => [], readSessionEvents: () => ({ text: '' }),
@@ -466,8 +489,14 @@ test('Yahav\'s first evening, end to end, comes back with what the hand-review f
   await r(father, '2026-09-06T08:30:00Z', false, null);                    // what he asked for
   await r(mali, '2026-09-06T15:00:00Z', true, null);                       // 18:00 — the fault
 
-  const res = await withTx(db.pool, (c) => job.sweepOnboardingReview(c, {
-    now,
+  // `drain`, and the assertion filtered to HIM — see the note on `drain`. This
+  // test was the one place left calling the sweep once and reading the whole
+  // table back. `stale`, two tests up, is `now() - 6 days`; once the real date
+  // had walked far enough for that to land inside this test's own 48-hour
+  // window it sorted ahead of Yahav on `first_turn_at`, took the single slot,
+  // and he was never reviewed at all. Green on 2026-09-09, red on 2026-09-10,
+  // same commit, and it stays red until the drift carries `stale` back out.
+  const reviewed = await drain(now, {
     readMessages: () => [
       { role: 'user', text: 'תזכיר לי בבקשה מחר ב11:30 לדבר עם אבא', at: '2026-09-05T19:55:53Z' },
       { role: 'assistant', text: 'רשמתי ✅\n\nמחר (ראשון) ב-11:30 אזכיר לך לדבר עם אבא', at: '2026-09-05T19:56:20Z' },
@@ -487,9 +516,9 @@ test('Yahav\'s first evening, end to end, comes back with what the hand-review f
       }),
     }],
     readRelease: () => ({ at: Date.parse('2026-09-05T20:09:55Z'), sha: '766b7b4' }),
-  }));
+  });
 
-  assert.equal(res.reviewed.length, 1);
+  assert.deepEqual(reviewed.filter((r) => r.userId === u.id).map((r) => r.stage), ['3h']);
   const { rows } = await db.pool.query(
     `SELECT worst, findings FROM onboarding_reviews WHERE user_id = $1`, [u.id]);
   assert.equal(rows[0].worst, 'bad');

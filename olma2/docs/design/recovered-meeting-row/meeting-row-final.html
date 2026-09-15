@@ -1,0 +1,328 @@
+<title>שורת המועד</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600;700&family=JetBrains+Mono:wght@600&display=swap">
+<style>
+:root{
+  --page:#EFEDF5; --panel:#FFFFFF; --ink:#141322; --ink-2:#6C6982; --ink-3:#A29FB5; --rule:#E2DFEE;
+  --bg:#F4F3F8; --surface:#FFFFFF; --surface-2:#FAF9FE; --sep:#E7E5F0; --sep-2:#D9D6E6;
+  --text:#141322; --text-2:#6C6982; --text-3:#A29FB5;
+  --accent:#5B2FD6; --accent-2:#4A22B4; --accent-soft:#EEE8FC;
+  --danger:#DC3A31; --danger-soft:#FCEBE9; --no-arc:#E0736A;
+  --warn:#B57509; --warn-soft:#F8EFDC;
+  --ok:#1B9B6B; --ok-soft:#E4F4EE; --gold:#B07A0B; --gold-arc:#D9A21C; --gold-soft:#FBF1DA;
+  --shadow:0 1px 2px rgba(20,19,34,.05), 0 8px 26px rgba(20,19,34,.07);
+  --mk-line:#141322; --mk-hi:#FFFFFF; --mk-paper:#FFFFFF; --mk-paper-s:#DDD9EC;
+  --mk-gold:#F2B32C; --mk-gold-s:#C4841A; --mk-violet:#7C4DEE; --mk-violet-s:#5426B4; --mk-navy:#252449;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --page:#100F18; --panel:#17161F; --ink:#F2F1F7; --ink-2:#A6A3B8; --ink-3:#6F6C82; --rule:#262432;
+  --bg:#0E0D15; --surface:#191823; --surface-2:#15141E; --sep:#272534; --sep-2:#332F44;
+  --text:#F2F1F7; --text-2:#A6A3B8; --text-3:#6F6C82;
+  --accent:#8B6BF0; --accent-2:#7A56EC; --accent-soft:#241C3D;
+  --danger:#F2665C; --danger-soft:#33191A; --no-arc:#C9584F;
+  --warn:#D9992E; --warn-soft:#2E2415;
+  --ok:#3FBF8D; --ok-soft:#12291F; --gold:#E3B45C; --gold-arc:#D9A21C; --gold-soft:#2C2412;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 26px rgba(0,0,0,.35);
+  --mk-line:#ECEAF6; --mk-paper:#3A3750; --mk-paper-s:#2A2840; --mk-navy:#C9C6DE;
+}}
+:root[data-theme="dark"]{
+  --page:#100F18; --panel:#17161F; --ink:#F2F1F7; --ink-2:#A6A3B8; --ink-3:#6F6C82; --rule:#262432;
+  --bg:#0E0D15; --surface:#191823; --surface-2:#15141E; --sep:#272534; --sep-2:#332F44;
+  --text:#F2F1F7; --text-2:#A6A3B8; --text-3:#6F6C82;
+  --accent:#8B6BF0; --accent-2:#7A56EC; --accent-soft:#241C3D;
+  --danger:#F2665C; --danger-soft:#33191A; --no-arc:#C9584F;
+  --warn:#D9992E; --warn-soft:#2E2415;
+  --ok:#3FBF8D; --ok-soft:#12291F; --gold:#E3B45C; --gold-arc:#D9A21C; --gold-soft:#2C2412;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 26px rgba(0,0,0,.35);
+  --mk-line:#ECEAF6; --mk-paper:#3A3750; --mk-paper-s:#2A2840; --mk-navy:#C9C6DE;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);direction:rtl;
+  font-family:'Assistant','Heebo',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:40px 22px 80px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--accent);margin:0 0 10px;font-family:'JetBrains Mono',monospace}
+h1{font-family:'Rubik',sans-serif;font-weight:700;font-size:clamp(28px,4.2vw,42px);line-height:1.08;letter-spacing:-.02em;margin:0 0 14px;text-wrap:balance}
+header.top{max-width:64ch}
+header.top p{margin:0 0 10px;font-size:16px;line-height:1.65;color:var(--ink-2)}
+header.top b{color:var(--ink);font-weight:700}
+h2.sec{font-family:'Rubik',sans-serif;font-weight:600;font-size:22px;margin:48px 0 6px;letter-spacing:-.01em}
+.lede{margin:0 0 18px;font-size:15px;line-height:1.65;color:var(--ink-2);max-width:64ch}
+.lede b{color:var(--ink);font-weight:600}
+.tog{appearance:none;border:1px solid var(--rule);background:var(--panel);color:var(--ink-2);
+  font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;letter-spacing:.05em;
+  padding:7px 14px;border-radius:99px;cursor:pointer;transition:.18s}
+.tog:hover{border-color:var(--accent);color:var(--accent)}
+.tog[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+
+.split{display:grid;gap:28px;grid-template-columns:minmax(320px,392px) minmax(300px,1fr);align-items:start}
+@media (max-width:860px){.split{grid-template-columns:1fr}}
+
+.phone{background:var(--bg);border:1px solid var(--rule);border-radius:22px;padding:15px 12px 17px;box-shadow:var(--shadow);overflow:hidden}
+.mtop{font-size:12px;color:var(--text-2);margin:0 0 4px}
+.mttl{font-family:'Rubik',sans-serif;font-weight:600;font-size:18px;margin:0 0 3px;color:var(--text)}
+.msub{font-size:12px;color:var(--text-3);margin:0 0 10px}
+.glabel{font-size:11px;color:var(--text-3);margin:14px 2px 7px;font-weight:600}
+.minchip{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--sep-2);
+  border-radius:99px;padding:4px 10px;font-size:12px;font-weight:600;color:var(--text-2);margin:0 0 11px}
+.minchip b{color:var(--accent);font-family:'JetBrains Mono',monospace}
+.minchip svg{width:12px;height:12px;fill:none;stroke:var(--text-3);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+.listcard{background:var(--surface);border-radius:15px;overflow:hidden}
+
+/* ── the swipe shell ── */
+.swipe{position:relative;overflow:hidden;border-bottom:1px solid var(--sep)}
+.swipe:last-child{border-bottom:0}
+.swipe .back{position:absolute;inset:0;background:var(--danger);display:flex;align-items:center;
+  justify-content:flex-start;padding-inline-start:20px;gap:9px;color:#fff;font-weight:700;font-size:13.5px}
+.swipe .back svg{width:19px;height:19px;fill:none;stroke:#fff;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.swipe .front{position:relative;background:var(--surface);transition:transform .22s cubic-bezier(.32,.72,0,1)}
+.swipe.open .front{transform:translateX(96px)}
+
+.lrow{padding:10px 11px}
+.lrow.crown{background:linear-gradient(90deg,var(--gold-soft),transparent 80%)}
+.ltop{display:flex;align-items:center;gap:9px}
+
+/* ── the ring: yes arc, no arc, silence ── */
+.ring{position:relative;width:38px;height:38px;flex:0 0 auto}
+.ring svg{transform:rotate(-90deg)}
+.ring .track{stroke:var(--sep)}
+.ring .yes{stroke:var(--accent);stroke-linecap:round}
+.ring .no{stroke:var(--no-arc);stroke-linecap:round}
+.ring b{position:absolute;inset:0;display:grid;place-items:center;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:11px;color:var(--accent)}
+.ring.full .yes{stroke:var(--gold-arc)} .ring.full b{color:var(--gold)}
+.ring.min .yes{stroke:var(--ok)}        .ring.min b{color:var(--ok)}
+
+/* ── the formula: day · time · date ── */
+.lmain{flex:1;min-width:0}
+.formula{display:flex;align-items:center;gap:0;font-size:14px;margin:0 0 2px;white-space:nowrap}
+.f-day{font-weight:700;color:var(--text);min-width:3.9em}
+.f-when{font-weight:700;color:var(--accent);font-size:13px;min-width:3.9em}
+.f-date{font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--text-3);font-size:12px}
+.f-sep{color:var(--text-3);margin:0 6px;font-weight:400}
+.mk{width:17px;height:17px;margin-inline-start:6px;flex:none}
+.lsum{font-size:11.5px;color:var(--text-3);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lsum .gold{color:var(--gold);font-weight:700}
+.lsum .grn{color:var(--ok);font-weight:700}
+.lsum .no{color:var(--danger)}
+
+.seg{display:flex;background:var(--sep);border-radius:9px;padding:2px;flex:none}
+.seg button{border:0;background:transparent;font:inherit;font-size:12px;font-weight:700;color:var(--text-3);
+  padding:6px 9px;border-radius:7px;cursor:default}
+.seg button.on{background:var(--surface);color:var(--accent);box-shadow:0 1px 2px rgba(20,19,34,.1)}
+.seg button.on.neg{color:var(--danger)}
+
+.rbtn{border:1px solid var(--sep-2);background:transparent;border-radius:9px;padding:0;
+  width:32px;height:32px;flex:none;display:grid;place-items:center;cursor:default;color:var(--accent)}
+.rbtn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round}
+.rbtn.arm{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* ── סל המחיקה של המחשב ──
+   שמור מקום קבוע ואל תגלה אותו. אם הוא היה מופיע בלי מקום שמור, כל שורה
+   הייתה קופצת ברגע שהעכבר נוגע בה — וזו תזוזה שקוראים אותה כתקלה. */
+.desk .lrow{padding-inline-end:44px;position:relative}
+.desk .del{position:absolute;inset-inline-end:9px;top:50%;transform:translateY(-50%) scale(.9);
+  width:30px;height:30px;border-radius:9px;border:1px solid transparent;background:transparent;
+  display:grid;place-items:center;color:var(--text-3);opacity:0;transition:.16s;cursor:default}
+.desk .del svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.desk .swipe:hover .del{opacity:1;transform:translateY(-50%) scale(1)}
+.desk .del:hover{color:var(--danger);border-color:var(--danger);background:var(--danger-soft)}
+.desk .del.arm{opacity:1;color:#fff;background:var(--danger);border-color:var(--danger);transform:translateY(-50%) scale(1)}
+
+/* ── הפאנל נפתח בלחיצה, כמו במציאות ── */
+.panel{display:none}
+.swipe.showvotes .panel{display:block}
+
+/* ── מסגרת החלון של המחשב ── */
+.win{background:var(--bg);border:1px solid var(--rule);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.winbar{display:flex;align-items:center;gap:6px;padding:9px 12px;border-bottom:1px solid var(--rule);background:var(--panel)}
+.winbar i{width:9px;height:9px;border-radius:50%;background:var(--sep-2)}
+.winbar span{margin-inline-start:8px;font-size:11px;color:var(--ink-3);font-family:'JetBrains Mono',monospace}
+.winbody{padding:15px 14px 17px}
+
+/* ── פריימים של ההחלקה ── */
+.frames{display:grid;gap:13px;grid-template-columns:repeat(3,1fr)}
+@media (max-width:760px){.frames{grid-template-columns:1fr}}
+.frame{background:var(--bg);border:1px solid var(--rule);border-radius:14px;padding:11px;overflow:hidden}
+.frame .listcard{border-radius:11px}
+.frame .cap{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--ink-3);margin:10px 2px 0;letter-spacing:.03em}
+.frame .cap b{display:block;color:var(--ink);font-size:12px;font-weight:700;font-family:'Assistant',sans-serif;letter-spacing:0;margin-bottom:2px}
+.swipe.half .front{transform:translateX(38px)}
+
+table.g{width:100%;border-collapse:collapse;margin-top:16px;font-size:14.5px}
+table.g th,table.g td{text-align:start;padding:10px 12px;border-bottom:1px solid var(--rule);vertical-align:top}
+table.g thead th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:700;font-family:'JetBrains Mono',monospace}
+table.g td{color:var(--ink-2)} table.g td b{color:var(--ink);font-weight:700}
+.scroll{overflow-x:auto}
+
+/* ── the expanded vote panel ── */
+.panel{margin-top:10px;padding-top:10px;border-top:1px dashed var(--sep-2)}
+.vgrp{display:flex;align-items:flex-start;gap:7px;margin-bottom:8px;font-size:12px;flex-wrap:wrap}
+.vgrp:last-of-type{margin-bottom:0}
+.vlab{font-weight:700;font-size:10.5px;min-width:3.4em;padding-top:3px;
+  font-family:'JetBrains Mono',monospace;letter-spacing:.02em}
+.vlab.y{color:var(--accent)} .vlab.n{color:var(--danger)}
+.pill{background:var(--surface-2);border:1px solid var(--sep);border-radius:99px;padding:2px 9px 2px 3px;
+  display:inline-flex;align-items:center;gap:5px;color:var(--text-2);font-weight:600}
+.av{width:17px;height:17px;border-radius:50%;display:grid;place-items:center;font-size:8.5px;font-weight:700;color:#fff}
+.av.y{background:var(--accent)} .av.n{background:var(--no-arc)}
+.vnote{font-size:11px;color:var(--text-3);margin:9px 0 0;padding-top:8px;border-top:1px dashed var(--sep)}
+
+.note{background:var(--accent-soft);color:var(--accent-2);border-radius:9px;padding:7px 9px;font-size:11.5px;font-weight:600;margin-top:8px}
+.note.gold{background:var(--gold-soft);color:var(--gold)}
+.warnline{background:var(--warn-soft);color:var(--warn);font-size:11px;font-weight:600;border-radius:8px;padding:5px 8px;margin-top:7px}
+
+.legend{background:var(--panel);border:1px solid var(--rule);border-radius:14px;padding:16px 17px;margin-bottom:16px}
+.legend h3{font-size:11px;font-weight:700;letter-spacing:.07em;color:var(--ink-3);margin:0 0 13px;font-family:'JetBrains Mono',monospace}
+.rings{display:flex;gap:16px;flex-wrap:wrap}
+.rspec{text-align:center;width:74px}
+.rspec .cap{font-size:11px;color:var(--ink-2);margin-top:7px;line-height:1.4}
+.rspec .cap b{display:block;color:var(--ink);font-weight:700;font-size:11.5px}
+.legend dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:10px 13px;align-items:start}
+.legend dt{text-align:center;width:26px}
+.legend dd{margin:0;font-size:13.5px;line-height:1.5;color:var(--ink-2)}
+.legend dd b{color:var(--ink);font-weight:700;display:block}
+
+ol.steps{margin:0;padding-inline-start:19px}
+ol.steps li{font-size:15px;line-height:1.62;color:var(--ink-2);margin-bottom:11px}
+ol.steps li b{color:var(--ink);font-weight:700}
+ol.steps code{font-family:'JetBrains Mono',monospace;font-size:12.5px;background:var(--panel);
+  border:1px solid var(--rule);border-radius:5px;padding:1px 5px;color:var(--ink)}
+.flag{border-inline-start:3px solid var(--warn);background:var(--warn-soft);border-radius:0 11px 11px 0;
+  padding:13px 15px;margin:22px 0 0;max-width:66ch}
+.flag p{margin:0;font-size:14.5px;line-height:1.6;color:var(--ink)}
+.flag b{font-weight:700}
+</style>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="m-crown" viewBox="0 0 24 24">
+    <path d="M3.6 17.4V7.2l4.9 4.5L12 5.6l3.5 6.1 4.9-4.5v10.2Z" fill="var(--mk-gold)"/>
+    <path d="M12 5.6l3.5 6.1 4.9-4.5v10.2H12Z" fill="var(--mk-gold-s)"/>
+    <path d="M3.6 17.4V7.2l4.9 4.5L12 5.6l3.5 6.1 4.9-4.5v10.2Z" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M3.4 17.2h17.2v2.4a1.4 1.4 0 0 1-1.4 1.4H4.8a1.4 1.4 0 0 1-1.4-1.4Z" fill="var(--mk-gold)"/>
+    <path d="M12 17.2h8.6v2.4a1.4 1.4 0 0 1-1.4 1.4H12Z" fill="var(--mk-gold-s)"/>
+    <path d="M3.4 17.2h17.2v2.4a1.4 1.4 0 0 1-1.4 1.4H4.8a1.4 1.4 0 0 1-1.4-1.4Z" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <circle cx="3.6" cy="6" r="1.7" fill="var(--mk-gold)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <circle cx="12" cy="4.4" r="1.8" fill="var(--mk-gold)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <circle cx="20.4" cy="6" r="1.7" fill="var(--mk-gold-s)" stroke="var(--mk-line)" stroke-width="1.5"/>
+  </symbol>
+<symbol id="m-cards" viewBox="0 0 24 24">
+    <g transform="rotate(14 14 12)">
+      <rect x="10" y="4.2" width="9.6" height="13.6" rx="2.2" fill="var(--mk-paper-s)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    </g>
+    <rect x="4.4" y="6.2" width="10.4" height="14.6" rx="2.4" fill="var(--mk-paper)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="M9.6 9.4c1.7 1.9 3.1 2.8 3.1 4.2 0 1.3-1.1 1.9-1.9 1.5-.3-.16-.5-.4-.62-.7l.5 2.1H8.5l.5-2.1c-.11.3-.32.54-.62.7-.8.4-1.9-.2-1.9-1.5 0-1.4 1.4-2.3 3.12-4.2Z" fill="var(--mk-line)"/>
+  </symbol>
+<symbol id="m-sealed" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.6" fill="var(--mk-violet)"/>
+    <path d="M12 3.4a8.6 8.6 0 0 1 0 17.2Z" fill="var(--mk-violet-s)"/>
+    <circle cx="12" cy="12" r="8.6" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="m7.8 12.3 2.9 2.9 5.6-6.2" fill="none" stroke="var(--mk-hi)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+<symbol id="l-check" viewBox="0 0 24 24"><path d="m4.6 12.4 5 5 9.8-10.8"/></symbol>
+<symbol id="l-trash" viewBox="0 0 24 24"><path d="M4.8 6.6h14.4M9.6 6.6V4.4h4.8v2.2"/><path d="m6.8 6.6 1 13.4h8.4l1-13.4"/></symbol>
+<symbol id="l-chev" viewBox="0 0 24 24"><path d="M14.6 4.8 8 12l6.6 7.2"/></symbol>
+<symbol id="l-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="l-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+<symbol id="l-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.2V12l3.4 2.2"/></symbol>
+<symbol id="l-tools" viewBox="0 0 24 24"><path d="M4 8h8.8M17.9 8H20M4 16h2.8M11.9 16H20"/><circle cx="15.3" cy="8" r="2.6"/><circle cx="9.3" cy="16" r="2.6"/></symbol></defs></svg>
+<div class="wrap">
+<header class="top">
+  <p class="eyebrow">אפשרות ב׳ · לחיצה מול החלקה</p>
+  <h1>לחיצה פותחת שמות,<br>החלקה מוחקת</h1>
+  <p>שאלת אם בנייד זה בטוח החלקה, כי לחיצה כבר תפוסה. <b>אין התנגשות — אלה שתי מחוות שונות לגמרי</b>, וזה בדיוק מה שאפליקציית המייל באייפון עושה כבר עשור: לחיצה פותחת, החלקה מוחקת. אצבע שנעה הצידה אף פעם לא נקראת כלחיצה.</p>
+  <p><b>אבל הדמו הקודם באמת נראה כמו התנגשות, וזו אשמתי:</b> הפכתי שם את הלחיצה למחליקה כי לעכבר אין החלקה, אז ראית לחיצה שמוחקת. כאן הלחיצה עושה את מה שהיא באמת תעשה — פותחת וסוגרת את השמות. תנסה.</p>
+  <p style="margin-top:16px"><button class="tog" id="darktog" aria-pressed="false">הצג מצב כהה</button></p>
+</header>
+
+<h2 class="sec">בנייד</h2>
+<p class="lede">לחץ על שורה — השמות נפתחים ונסגרים. אין כאן סל מחיקה בכלל, וזה מה שמחזיק את השורה על ארבעה אלמנטים.</p>
+
+<div class="split">
+  <div class="phone">
+    <p class="mtop">עם עמית לוי, תמר אלון, דנה שגב ואיתי כספי</p>
+    <p class="mttl">פוקר</p>
+    <p class="msub">מתי מתאים לכולם?</p>
+    <div class="minchip"><svg viewBox="0 0 24 24"><use href="#l-tools"/></svg>מספיק לי <b>3</b> מתוך 5</div>
+    <p class="glabel">המועדים על השולחן</p>
+    <div class="listcard" id="mob"><div class="swipe "><div class="back"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg>מחיקה</div><div class="front"><div class="lrow crown"><div class="ltop"><div class="ring full" style="width:38px;height:38px"><svg width="38" height="38"><circle class="track" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5"/><circle class="yes" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="106.8 0.0" stroke-dashoffset="0"/></svg><b style="font-size:11.0px">5/5</b></div><div class="lmain"><p class="formula"><span class="f-day">מחר</span><span class="f-sep">·</span><span class="f-when">ערב</span><span class="f-sep">·</span><span class="f-date">9.9</span><svg class="mk" viewBox="0 0 24 24"><use href="#m-crown"/></svg></p><p class="lsum"><span class="gold">כולם יכולים</span> · נסגר בעוד 47 שנ׳</p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div><button class="rbtn"><svg viewBox="0 0 24 24"><use href="#l-check"/></svg></button></div><div class="note gold">⏱ אפשר עוד לשנות תשובה</div></div></div></div><div class="swipe showvotes"><div class="back"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg>מחיקה</div><div class="front"><div class="lrow"><div class="ltop"><div class="ring min" style="width:38px;height:38px"><svg width="38" height="38"><circle class="track" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5"/><circle class="yes" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="61.1 45.7" stroke-dashoffset="0"/><circle class="no" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="18.4 88.5" stroke-dashoffset="-64.1"/></svg><b style="font-size:11.0px">3/5</b></div><div class="lmain"><p class="formula"><span class="f-day">שישי</span><span class="f-sep">·</span><span class="f-when">ערב</span><span class="f-sep">·</span><span class="f-date">11.9</span><svg class="mk" viewBox="0 0 24 24"><use href="#m-cards"/></svg></p><p class="lsum"><span class="grn">יש מניין</span> · <span class="no">דנה לא</span> · איתי טרם ענה</p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div><button class="rbtn"><svg viewBox="0 0 24 24"><use href="#l-check"/></svg></button></div><div class="panel"><div class="vgrp"><span class="vlab y">יכולים</span><span class="pill"><i class="av y">א</i>אתה</span><span class="pill"><i class="av y">ע</i>עמית</span><span class="pill"><i class="av y">ת</i>תמר</span></div><div class="vgrp"><span class="vlab n">לא</span><span class="pill"><i class="av n">ד</i>דנה</span></div><p class="vnote">איתי טרם ענה. מי שלא הצביע לא מופיע כאן — רק בטבעת, כחלק האפור.</p></div></div></div></div><div class="swipe "><div class="back"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg>מחיקה</div><div class="front"><div class="lrow"><div class="ltop"><div class="ring " style="width:38px;height:38px"><svg width="38" height="38"><circle class="track" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5"/><circle class="yes" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="39.7 67.1" stroke-dashoffset="0"/><circle class="no" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="39.7 67.1" stroke-dashoffset="-42.7"/></svg><b style="font-size:11.0px">2/5</b></div><div class="lmain"><p class="formula"><span class="f-day">ראשון</span><span class="f-sep">·</span><span class="f-when">21:00</span><span class="f-sep">·</span><span class="f-date">13.9</span></p><p class="lsum">2 יכולים · <span class="no">2 לא</span> · אחד טרם ענה</p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div><button class="rbtn arm"><svg viewBox="0 0 24 24"><use href="#l-check"/></svg></button></div><div class="note">לחיצה שנייה קובעת ושולחת לכולם — גם למי שאמר שלא.</div></div></div></div><div class="swipe "><div class="back"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg>מחיקה</div><div class="front"><div class="lrow"><div class="ltop"><div class="ring " style="width:38px;height:38px"><svg width="38" height="38"><circle class="track" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5"/><circle class="no" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="61.1 45.7" stroke-dashoffset="-0.0"/></svg><b style="font-size:11.0px">0/5</b></div><div class="lmain"><p class="formula"><span class="f-day">חמישי</span><span class="f-sep">·</span><span class="f-when">צהריים</span><span class="f-sep">·</span><span class="f-date">10.9</span></p><p class="lsum"><span class="no">3 לא יכולים</span> · 2 טרם ענו</p></div><div class="seg"><button>יכול</button><button class="on neg">לא</button></div><button class="rbtn"><svg viewBox="0 0 24 24"><use href="#l-check"/></svg></button></div><div class="warnline">🕐 מתנגש עם משמרת · 12:00</div></div></div></div></div>
+    <p class="glabel">להציע מועד נוסף</p>
+    <div class="listcard" style="padding:10px;text-align:center;color:var(--accent);font-weight:700;font-size:13.5px">+ הצעת מועד</div>
+  </div>
+
+  <div>
+    <div class="legend">
+      <h3>הטבעת · שלוש קשתות</h3>
+      <div class="rings"><div class="rspec"><div class="ring full" style="width:54px;height:54px"><svg width="54" height="54"><circle class="track" cx="27.0" cy="27.0" r="24.2" fill="none" stroke-width="5.0"/><circle class="yes" cx="27.0" cy="27.0" r="24.2" fill="none" stroke-width="5.0" stroke-dasharray="151.8 0.0" stroke-dashoffset="0"/></svg><b style="font-size:15.6px">5/5</b></div><p class="cap"><b>כולם</b>טבעת זהב מלאה</p></div><div class="rspec"><div class="ring min" style="width:54px;height:54px"><svg width="54" height="54"><circle class="track" cx="27.0" cy="27.0" r="24.2" fill="none" stroke-width="5.0"/><circle class="yes" cx="27.0" cy="27.0" r="24.2" fill="none" stroke-width="5.0" stroke-dasharray="86.8 65.0" stroke-dashoffset="0"/><circle class="no" cx="27.0" cy="27.0" r="24.2" fill="none" stroke-width="5.0" stroke-dasharray="26.1 125.7" stroke-dashoffset="-91.1"/></svg><b style="font-size:15.6px">3/5</b></div><p class="cap"><b>מניין</b>ירוק + אדום + שקט</p></div><div class="rspec"><div class="ring " style="width:54px;height:54px"><svg width="54" height="54"><circle class="track" cx="27.0" cy="27.0" r="24.2" fill="none" stroke-width="5.0"/><circle class="yes" cx="27.0" cy="27.0" r="24.2" fill="none" stroke-width="5.0" stroke-dasharray="56.5 95.3" stroke-dashoffset="0"/><circle class="no" cx="27.0" cy="27.0" r="24.2" fill="none" stroke-width="5.0" stroke-dasharray="56.5 95.3" stroke-dashoffset="-60.7"/></svg><b style="font-size:15.6px">2/5</b></div><p class="cap"><b>באמצע</b>סגול, אדום, אפור</p></div><div class="rspec"><div class="ring " style="width:54px;height:54px"><svg width="54" height="54"><circle class="track" cx="27.0" cy="27.0" r="24.2" fill="none" stroke-width="5.0"/><circle class="no" cx="27.0" cy="27.0" r="24.2" fill="none" stroke-width="5.0" stroke-dasharray="86.8 65.0" stroke-dashoffset="-0.0"/></svg><b style="font-size:15.6px">0/5</b></div><p class="cap"><b>נופל</b>אדום בלבד</p></div></div>
+      <p style="font-size:13px;color:var(--ink-2);margin:15px 0 0;line-height:1.55">
+        קשת ראשונה מי שאמר כן, שנייה מי שאמר לא, והאפור הוא מי שעוד לא ענה.
+        <b style="color:var(--ink)">האפור הוא המידע החדש</b> — קודם לא היה הבדל בין ״ארבעה סירבו״ ל״ארבעה לא פתחו את ההודעה״.
+        המספר במרכז נשאר מספר ה‑כן, כי מולו נמדדים הכתר והמינימום.
+      </p>
+    </div>
+    <div class="legend">
+      <h3>מה כל סימן אומר</h3>
+      <dl>
+        <dt><svg style="width:22px;height:22px" viewBox="0 0 24 24"><use href="#m-crown"/></svg></dt>
+        <dd><b>כולם, כולל כולם</b>אין אף אחד שלא אמר כן. רק המועד הזה נקבע מעצמו אחרי דקה.</dd>
+        <dt><svg style="width:22px;height:22px" viewBox="0 0 24 24"><use href="#m-cards"/></svg></dt>
+        <dd><b>יש מניין</b>הגיע למינימום של התיאום. לא נקבע מעצמו — רק בווי.</dd>
+        <dt><svg style="width:20px;height:20px;fill:none;stroke:var(--accent);stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round" viewBox="0 0 24 24"><use href="#l-check"/></svg></dt>
+        <dd><b>קביעה</b>תמיד גלוי, אחרי יכול/לא. שתי לחיצות.</dd>
+      </dl>
+    </div>
+  </div>
+</div>
+
+<h2 class="sec">ההחלקה, פריים אחר פריים</h2>
+<p class="lede">אי אפשר להחליק בעכבר, אז הנה שלושת המצבים כתמונות. <b>ההחלקה עצמה היא כבר האישור הראשון</b> — ביקשת שתי לחיצות למחיקה, וזה בדיוק מה שקורה, רק שהראשונה היא מחווה. היא גם מכוונת יותר מלחיצה: אי אפשר להחליק בטעות.</p>
+<div class="frames"><div class="frame"><div class="listcard"><div class="swipe "><div class="back"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg>מחיקה</div><div class="front"><div class="lrow"><div class="ltop"><div class="ring min" style="width:38px;height:38px"><svg width="38" height="38"><circle class="track" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5"/><circle class="yes" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="61.1 45.7" stroke-dashoffset="0"/><circle class="no" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="18.4 88.5" stroke-dashoffset="-64.1"/></svg><b style="font-size:11.0px">3/5</b></div><div class="lmain"><p class="formula"><span class="f-day">שישי</span><span class="f-sep">·</span><span class="f-when">ערב</span><span class="f-sep">·</span><span class="f-date">11.9</span><svg class="mk" viewBox="0 0 24 24"><use href="#m-cards"/></svg></p><p class="lsum"><span class="grn">יש מניין</span> · איתי טרם ענה</p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div><button class="rbtn"><svg viewBox="0 0 24 24"><use href="#l-check"/></svg></button></div></div></div></div></div><p class="cap"><b>מנוחה</b>לחיצה כאן פותחת את השמות</p></div><div class="frame"><div class="listcard"><div class="swipe half"><div class="back"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg>מחיקה</div><div class="front"><div class="lrow"><div class="ltop"><div class="ring min" style="width:38px;height:38px"><svg width="38" height="38"><circle class="track" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5"/><circle class="yes" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="61.1 45.7" stroke-dashoffset="0"/><circle class="no" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="18.4 88.5" stroke-dashoffset="-64.1"/></svg><b style="font-size:11.0px">3/5</b></div><div class="lmain"><p class="formula"><span class="f-day">שישי</span><span class="f-sep">·</span><span class="f-when">ערב</span><span class="f-sep">·</span><span class="f-date">11.9</span><svg class="mk" viewBox="0 0 24 24"><use href="#m-cards"/></svg></p><p class="lsum"><span class="grn">יש מניין</span> · איתי טרם ענה</p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div><button class="rbtn"><svg viewBox="0 0 24 24"><use href="#l-check"/></svg></button></div></div></div></div></div><p class="cap"><b>באמצע ההחלקה</b>האדום מציץ, עוד לא נעול</p></div><div class="frame"><div class="listcard"><div class="swipe open"><div class="back"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg>מחיקה</div><div class="front"><div class="lrow"><div class="ltop"><div class="ring min" style="width:38px;height:38px"><svg width="38" height="38"><circle class="track" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5"/><circle class="yes" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="61.1 45.7" stroke-dashoffset="0"/><circle class="no" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="18.4 88.5" stroke-dashoffset="-64.1"/></svg><b style="font-size:11.0px">3/5</b></div><div class="lmain"><p class="formula"><span class="f-day">שישי</span><span class="f-sep">·</span><span class="f-when">ערב</span><span class="f-sep">·</span><span class="f-date">11.9</span><svg class="mk" viewBox="0 0 24 24"><use href="#m-cards"/></svg></p><p class="lsum"><span class="grn">יש מניין</span> · איתי טרם ענה</p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div><button class="rbtn"><svg viewBox="0 0 24 24"><use href="#l-check"/></svg></button></div></div></div></div></div><p class="cap"><b>נעול</b>לחיצה על האדום מוחקת</p></div></div>
+
+<h2 class="sec">במחשב</h2>
+<p class="lede">הדף נפתח גם מ‑WhatsApp על הדסקטופ, ושם אין החלקה. <b>העבר את העכבר על שורה</b> — הסל מופיע בקצה. השורה האחרונה מציגה איך הוא נראה אחרי הלחיצה הראשונה, כשהוא מחכה לאישור.</p>
+<div class="win desk">
+  <div class="winbar"><i></i><i></i><i></i><span>allma.world/me</span></div>
+  <div class="winbody">
+    <div class="listcard" id="dsk"><div class="swipe "><div class="back"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg>מחיקה</div><div class="front"><div class="lrow crown"><div class="ltop"><div class="ring full" style="width:38px;height:38px"><svg width="38" height="38"><circle class="track" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5"/><circle class="yes" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="106.8 0.0" stroke-dashoffset="0"/></svg><b style="font-size:11.0px">5/5</b></div><div class="lmain"><p class="formula"><span class="f-day">מחר</span><span class="f-sep">·</span><span class="f-when">ערב</span><span class="f-sep">·</span><span class="f-date">9.9</span><svg class="mk" viewBox="0 0 24 24"><use href="#m-crown"/></svg></p><p class="lsum"><span class="gold">כולם יכולים</span> · נסגר בעוד 47 שנ׳</p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div><button class="rbtn"><svg viewBox="0 0 24 24"><use href="#l-check"/></svg></button></div><div class="note gold">⏱ אפשר עוד לשנות תשובה</div></div><button class="del"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg></button></div></div><div class="swipe showvotes"><div class="back"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg>מחיקה</div><div class="front"><div class="lrow"><div class="ltop"><div class="ring min" style="width:38px;height:38px"><svg width="38" height="38"><circle class="track" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5"/><circle class="yes" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="61.1 45.7" stroke-dashoffset="0"/><circle class="no" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="18.4 88.5" stroke-dashoffset="-64.1"/></svg><b style="font-size:11.0px">3/5</b></div><div class="lmain"><p class="formula"><span class="f-day">שישי</span><span class="f-sep">·</span><span class="f-when">ערב</span><span class="f-sep">·</span><span class="f-date">11.9</span><svg class="mk" viewBox="0 0 24 24"><use href="#m-cards"/></svg></p><p class="lsum"><span class="grn">יש מניין</span> · <span class="no">דנה לא</span> · איתי טרם ענה</p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div><button class="rbtn"><svg viewBox="0 0 24 24"><use href="#l-check"/></svg></button></div><div class="panel"><div class="vgrp"><span class="vlab y">יכולים</span><span class="pill"><i class="av y">א</i>אתה</span><span class="pill"><i class="av y">ע</i>עמית</span><span class="pill"><i class="av y">ת</i>תמר</span></div><div class="vgrp"><span class="vlab n">לא</span><span class="pill"><i class="av n">ד</i>דנה</span></div><p class="vnote">איתי טרם ענה. מי שלא הצביע לא מופיע כאן — רק בטבעת, כחלק האפור.</p></div></div><button class="del"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg></button></div></div><div class="swipe "><div class="back"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg>מחיקה</div><div class="front"><div class="lrow"><div class="ltop"><div class="ring " style="width:38px;height:38px"><svg width="38" height="38"><circle class="track" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5"/><circle class="yes" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="39.7 67.1" stroke-dashoffset="0"/><circle class="no" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="39.7 67.1" stroke-dashoffset="-42.7"/></svg><b style="font-size:11.0px">2/5</b></div><div class="lmain"><p class="formula"><span class="f-day">ראשון</span><span class="f-sep">·</span><span class="f-when">21:00</span><span class="f-sep">·</span><span class="f-date">13.9</span></p><p class="lsum">2 יכולים · <span class="no">2 לא</span> · אחד טרם ענה</p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div><button class="rbtn arm"><svg viewBox="0 0 24 24"><use href="#l-check"/></svg></button></div><div class="note">לחיצה שנייה קובעת ושולחת לכולם — גם למי שאמר שלא.</div></div><button class="del"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg></button></div></div><div class="swipe "><div class="back"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg>מחיקה</div><div class="front"><div class="lrow"><div class="ltop"><div class="ring " style="width:38px;height:38px"><svg width="38" height="38"><circle class="track" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5"/><circle class="no" cx="19.0" cy="19.0" r="17.0" fill="none" stroke-width="3.5" stroke-dasharray="61.1 45.7" stroke-dashoffset="-0.0"/></svg><b style="font-size:11.0px">0/5</b></div><div class="lmain"><p class="formula"><span class="f-day">חמישי</span><span class="f-sep">·</span><span class="f-when">צהריים</span><span class="f-sep">·</span><span class="f-date">10.9</span></p><p class="lsum"><span class="no">3 לא יכולים</span> · 2 טרם ענו</p></div><div class="seg"><button>יכול</button><button class="on neg">לא</button></div><button class="rbtn"><svg viewBox="0 0 24 24"><use href="#l-check"/></svg></button></div><div class="warnline">🕐 מתנגש עם משמרת · 12:00</div></div><button class="del arm"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg></button></div></div></div>
+  </div>
+</div>
+
+<div class="flag" style="border-color:var(--accent);background:var(--accent-soft)">
+  <p><b>למה יש רווח קבוע בקצה השורה במחשב.</b> הסל שמור מקום גם כשהוא שקוף. אם הוא היה נדחף פנימה רק ב‑hover, כל שורה הייתה קופצת ברגע שהעכבר נוגע בה — וקפיצה כזו נקראת כתקלה, לא כאפקט. בנייד אין את הרווח הזה בכלל, כי אין שם hover.</p>
+</div>
+
+<h2 class="sec">מי עושה מה</h2>
+<div class="scroll">
+<table class="g">
+  <thead><tr><th>מחווה</th><th>בנייד</th><th>במחשב</th></tr></thead>
+  <tbody>
+    <tr><td><b>לחיצה על השורה</b></td><td>פותחת וסוגרת את השמות</td><td>אותו דבר</td></tr>
+    <tr><td><b>יכול / לא</b></td><td>התשובה שלך, מיידית</td><td>אותו דבר</td></tr>
+    <tr><td><b>הווי</b></td><td>קביעה · שתי לחיצות</td><td>אותו דבר</td></tr>
+    <tr><td><b>מחיקה</b></td><td>החלקה לכל כיוון, ואז לחיצה על האדום</td><td>סל ב‑hover, ואז לחיצה שנייה לאישור</td></tr>
+    <tr><td><b>מועד שכבר נקבע</b></td><td colspan="2">לא נמחק בכלל — ביטול תיאום סגור הוא פעולה אחרת, עם הודעה לכולם</td></tr>
+  </tbody>
+</table>
+</div>
+
+</div>
+
+<script>
+(function(){
+  var dt=document.getElementById("darktog");
+  dt.addEventListener("click",function(){
+    var on=dt.getAttribute("aria-pressed")!=="true";
+    dt.setAttribute("aria-pressed",on?"true":"false");
+    dt.textContent=on?"חזור למצב בהיר":"הצג מצב כהה";
+    document.documentElement.setAttribute("data-theme",on?"dark":"light");
+  });
+  // הלחיצה עושה מה שהיא באמת תעשה: פותחת וסוגרת את השמות. ההחלקה לא מדומה כאן.
+  ["mob","dsk"].forEach(function(id){
+    var box=document.getElementById(id); if(!box) return;
+    box.querySelectorAll(".swipe").forEach(function(s){
+      s.addEventListener("click",function(e){
+        if(e.target.closest(".seg,.rbtn,.del")) return;
+        s.classList.toggle("showvotes");
+      });
+    });
+  });
+})();
+</script>

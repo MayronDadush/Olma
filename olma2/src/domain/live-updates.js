@@ -503,8 +503,9 @@ async function sweepLiveUpdates(client, deps = {}) {
         await reschedule(fetched.newState); out.quiet.push(Number(sub.id)); continue;
       }
 
-      const summary = await summarize(client, sub, src, fetched.items, deps);
-      if (!summary) { out.errored.push(`${sub.id}: summarize failed`); continue; } // retry next tick
+      const summarized = await summarize(client, sub, src, fetched.items, deps);
+      if (!summarized.ok) { out.errored.push(`${sub.id}: ${summarized.why}`); continue; } // retry next tick
+      const summary = summarized.summary;
       await enqueue(client, {
         userId: sub.user_id, kind: 'live_update', urgency: 'normal',
         payload: { source: sub.source, label: src.label, summary },
@@ -545,11 +546,18 @@ async function summarize(client, sub, src, items, deps) {
   const { system, user } = src.prompt(items, { locale: sub.locale }, sub.params);
   const cfg = await llm.backgroundModel(client);
   const res = await complete({ system, user, maxTokens: 2000, ...cfg });
-  if (!res.ok) return null;
+  if (!res.ok) return { ok: false, why: llm.whyUnparseable(res) };
   await llm.recordUsage(client, sub.user_id, res.model, res.usage);
   const parsed = llm.parseJsonObject(res.text);
-  if (!parsed || typeof parsed.summary !== 'string' || !parsed.summary.trim()) return null;
-  return parsed.summary.trim().slice(0, 2000);
+  // Returns a reason rather than a bare null: this is the job that ALREADY
+  // lost a real run to a reasoning model eating its budget (the comment above
+  // this function), and it wrote "summarize failed" both times — the same
+  // sentence a model answering in prose earns. The three states are named.
+  if (!parsed) return { ok: false, why: llm.whyUnparseable(res) };
+  if (typeof parsed.summary !== 'string' || !parsed.summary.trim()) {
+    return { ok: false, why: 'JSON parsed, no summary in it' };
+  }
+  return { ok: true, summary: parsed.summary.trim().slice(0, 2000) };
 }
 
 module.exports = {

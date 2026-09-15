@@ -1,0 +1,253 @@
+<title>איפה יושבות הפעולות</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Rubik:wght@500;600;700&family=JetBrains+Mono:wght@600&display=swap">
+<style>
+:root{
+  --page:#EFEDF5; --panel:#FFFFFF; --ink:#141322; --ink-2:#6C6982; --ink-3:#A29FB5; --rule:#E2DFEE;
+  --bg:#F4F3F8; --surface:#FFFFFF; --surface-2:#FAF9FE; --sep:#E7E5F0; --sep-2:#D9D6E6;
+  --text:#141322; --text-2:#6C6982; --text-3:#A29FB5;
+  --accent:#5B2FD6; --accent-2:#4A22B4; --accent-soft:#EEE8FC;
+  --danger:#DC3A31; --danger-soft:#FCEBE9; --warn:#B57509; --warn-soft:#F8EFDC;
+  --ok:#1B9B6B; --ok-soft:#E4F4EE; --gold:#B07A0B; --gold-soft:#FBF1DA;
+  --shadow:0 1px 2px rgba(20,19,34,.05), 0 8px 26px rgba(20,19,34,.07);
+  --mk-line:#141322;    --mk-hi:#FFFFFF;
+  --mk-paper:#FFFFFF;   --mk-paper-s:#DDD9EC;
+  --mk-gold:#F2B32C;    --mk-gold-s:#C4841A;
+  --mk-violet:#7C4DEE;  --mk-violet-s:#5426B4;
+  --mk-navy:#252449;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --page:#100F18; --panel:#17161F; --ink:#F2F1F7; --ink-2:#A6A3B8; --ink-3:#6F6C82; --rule:#262432;
+  --bg:#0E0D15; --surface:#191823; --surface-2:#15141E; --sep:#272534; --sep-2:#332F44;
+  --text:#F2F1F7; --text-2:#A6A3B8; --text-3:#6F6C82;
+  --accent:#8B6BF0; --accent-2:#7A56EC; --accent-soft:#241C3D;
+  --danger:#F2665C; --danger-soft:#33191A; --warn:#D9992E; --warn-soft:#2E2415;
+  --ok:#3FBF8D; --ok-soft:#12291F; --gold:#E3B45C; --gold-soft:#2C2412;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 26px rgba(0,0,0,.35);
+  --mk-line:#ECEAF6; --mk-paper:#3A3750; --mk-paper-s:#2A2840; --mk-navy:#C9C6DE;
+}}
+:root[data-theme="dark"]{
+  --page:#100F18; --panel:#17161F; --ink:#F2F1F7; --ink-2:#A6A3B8; --ink-3:#6F6C82; --rule:#262432;
+  --bg:#0E0D15; --surface:#191823; --surface-2:#15141E; --sep:#272534; --sep-2:#332F44;
+  --text:#F2F1F7; --text-2:#A6A3B8; --text-3:#6F6C82;
+  --accent:#8B6BF0; --accent-2:#7A56EC; --accent-soft:#241C3D;
+  --danger:#F2665C; --danger-soft:#33191A; --warn:#D9992E; --warn-soft:#2E2415;
+  --ok:#3FBF8D; --ok-soft:#12291F; --gold:#E3B45C; --gold-soft:#2C2412;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 26px rgba(0,0,0,.35);
+  --mk-line:#ECEAF6; --mk-paper:#3A3750; --mk-paper-s:#2A2840; --mk-navy:#C9C6DE;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);direction:rtl;
+  font-family:'Assistant','Heebo',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1240px;margin:0 auto;padding:40px 22px 80px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--accent);margin:0 0 10px;font-family:'JetBrains Mono',monospace}
+h1{font-family:'Rubik',sans-serif;font-weight:700;font-size:clamp(28px,4vw,40px);line-height:1.1;letter-spacing:-.02em;margin:0 0 14px;text-wrap:balance}
+header.top{max-width:66ch}
+header.top p{margin:0 0 10px;font-size:16px;line-height:1.65;color:var(--ink-2)}
+header.top b{color:var(--ink);font-weight:700}
+h2.sec{font-family:'Rubik',sans-serif;font-weight:600;font-size:22px;margin:46px 0 6px;letter-spacing:-.01em}
+.lede{margin:0 0 18px;font-size:15px;line-height:1.65;color:var(--ink-2);max-width:64ch}
+.lede b{color:var(--ink);font-weight:600}
+.tog{appearance:none;border:1px solid var(--rule);background:var(--panel);color:var(--ink-2);
+  font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;letter-spacing:.05em;
+  padding:7px 14px;border-radius:99px;cursor:pointer;transition:.18s}
+.tog:hover{border-color:var(--accent);color:var(--accent)}
+.tog[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* ── anatomy strip ── */
+.anat{background:var(--panel);border:1px solid var(--rule);border-radius:16px;padding:20px 18px;margin:18px 0 0}
+.anatrow{display:flex;align-items:center;gap:11px;padding:11px 12px;background:var(--surface);border-radius:13px;border:1px solid var(--sep)}
+.anatlabels{display:flex;gap:11px;margin-top:9px;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--ink-3);letter-spacing:.03em}
+.anatlabels span{text-align:center}
+
+/* ── phones ── */
+.cols{display:grid;gap:22px;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start}
+@media (max-width:1000px){.cols{grid-template-columns:1fr;max-width:420px}}
+.col{min-width:0}
+.colhead{margin-bottom:12px}
+.tag{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.07em;
+  padding:4px 9px;border-radius:99px;background:var(--accent-soft);color:var(--accent);margin-bottom:8px}
+.colhead h3{font-family:'Rubik',sans-serif;font-weight:600;font-size:18px;margin:0 0 5px}
+.colhead p{margin:0;font-size:13.5px;line-height:1.55;color:var(--ink-2)}
+.phone{background:var(--bg);border:1px solid var(--rule);border-radius:22px;padding:15px 12px 17px;box-shadow:var(--shadow);overflow:hidden}
+.mtop{font-size:12px;color:var(--text-2);margin:0 0 4px}
+.mttl{font-family:'Rubik',sans-serif;font-weight:600;font-size:18px;margin:0 0 3px;color:var(--text)}
+.msub{font-size:12px;color:var(--text-3);margin:0 0 10px}
+.glabel{font-size:11px;color:var(--text-3);margin:14px 2px 7px;font-weight:600}
+
+/* ── the minimum chip ── */
+.minchip{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--sep-2);
+  border-radius:99px;padding:4px 10px;font-size:12px;font-weight:600;color:var(--text-2);margin:0 0 11px}
+.minchip b{color:var(--accent);font-family:'JetBrains Mono',monospace}
+.minchip svg{width:12px;height:12px;fill:none;stroke:var(--text-3);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+.listcard{background:var(--surface);border-radius:15px;overflow:hidden}
+.lrow{padding:10px 11px;border-bottom:1px solid var(--sep)}
+.lrow:last-child{border-bottom:0}
+.lrow.crown{background:linear-gradient(90deg,var(--gold-soft),transparent 80%)}
+.ltop{display:flex;align-items:center;gap:9px}
+
+.ring{position:relative;width:38px;height:38px;flex:0 0 auto}
+.ring svg{transform:rotate(-90deg)}
+.ring .track{stroke:var(--sep)}
+.ring .fill{stroke:var(--accent);stroke-linecap:round}
+.ring .fill.no{stroke:#E8A39D}
+.ring b{position:absolute;inset:0;display:grid;place-items:center;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:11px;color:var(--accent)}
+.ring.full .fill{stroke:var(--gold)} .ring.full b{color:var(--gold)}
+.ring.min .fill{stroke:var(--ok)}   .ring.min b{color:var(--ok)}
+
+.lmain{flex:1;min-width:0}
+.formula{display:flex;align-items:center;gap:0;font-size:14px;margin:0 0 2px;white-space:nowrap}
+.f-day{font-weight:700;color:var(--text);min-width:3.9em}
+.f-date{font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--text-2);min-width:3.4em;font-size:12.5px}
+.f-when{font-weight:700;color:var(--accent);font-size:12.5px}
+.f-sep{color:var(--text-3);margin:0 6px;font-weight:400}
+.mk{width:17px;height:17px;margin-inline-start:6px;flex:none}
+.lsum{font-size:11.5px;color:var(--text-3);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lsum .gold{color:var(--gold);font-weight:700}
+.lsum .grn{color:var(--ok);font-weight:700}
+.lsum .no{color:var(--danger)}
+
+/* ── the answer switch ── */
+.seg{display:flex;background:var(--sep);border-radius:9px;padding:2px;flex:none}
+.seg button{border:0;background:transparent;font:inherit;font-size:12px;font-weight:700;color:var(--text-3);
+  padding:6px 9px;border-radius:7px;cursor:default}
+.seg button.on{background:var(--surface);color:var(--accent);box-shadow:0 1px 2px rgba(20,19,34,.1)}
+.seg button.on.neg{color:var(--danger)}
+.seg.off{opacity:.38}
+
+/* ── end-of-row action buttons ── */
+.rbtn{border:1px solid var(--sep-2);background:transparent;border-radius:9px;padding:0;
+  width:32px;height:32px;flex:none;display:grid;place-items:center;cursor:default;color:var(--text-3)}
+.rbtn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.rbtn.go{color:var(--accent);border-color:var(--accent)}
+.rbtn.arm{background:var(--accent);border-color:var(--accent);color:#fff}
+.rbtn.armdel{background:var(--danger);border-color:var(--danger);color:#fff}
+.rbtn.dots{font-family:'Rubik';font-size:17px;font-weight:700;letter-spacing:1px;line-height:1}
+
+/* ── expanded panel ── */
+.panel{margin-top:9px;padding-top:9px;border-top:1px dashed var(--sep-2)}
+.vgrp{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:12px;flex-wrap:wrap}
+.vlab{font-weight:700;font-size:11px;min-width:3.2em}
+.vlab.y{color:var(--accent)} .vlab.n{color:var(--danger)}
+.pill{background:var(--surface-2);border:1px solid var(--sep);border-radius:99px;padding:2px 8px 2px 3px;
+  display:inline-flex;align-items:center;gap:5px;color:var(--text-2)}
+.av{width:16px;height:16px;border-radius:50%;display:grid;place-items:center;font-size:8.5px;font-weight:700;color:#fff}
+.av.y{background:var(--accent)} .av.n{background:#D9756C}
+.vnote{font-size:11px;color:var(--text-3);margin:7px 0 0}
+.pacts{display:flex;gap:7px;margin-top:10px}
+.pbtn{flex:1;border:1px solid var(--sep-2);background:transparent;border-radius:9px;padding:8px 0;
+  font:inherit;font-size:12.5px;font-weight:700;color:var(--accent);cursor:default}
+.pbtn.del{color:var(--text-3);flex:0 0 42px}
+.pbtn.arm{background:var(--accent);border-color:var(--accent);color:#fff}
+
+.note{background:var(--accent-soft);color:var(--accent-2);border-radius:9px;padding:7px 9px;font-size:11.5px;font-weight:600;margin-top:8px}
+.note.gold{background:var(--gold-soft);color:var(--gold)}
+.note.dngr{background:var(--danger-soft);color:var(--danger)}
+.warnline{background:var(--warn-soft);color:var(--warn);font-size:11px;font-weight:600;border-radius:8px;padding:5px 8px;margin-top:7px}
+
+.verdict{background:var(--panel);border:1px solid var(--rule);border-radius:13px;padding:13px 15px;margin-top:13px}
+.verdict p{margin:0;font-size:13.5px;line-height:1.55;color:var(--ink-2)}
+.verdict b{color:var(--ink);font-weight:700}
+.verdict .cost{display:block;margin-top:7px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)}
+
+.flag{border-inline-start:3px solid var(--warn);background:var(--warn-soft);border-radius:0 11px 11px 0;
+  padding:13px 15px;margin:22px 0 0;max-width:66ch}
+.flag p{margin:0;font-size:14.5px;line-height:1.6;color:var(--ink)}
+.flag b{font-weight:700}
+</style>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="m-crown" viewBox="0 0 24 24">
+    <path d="M3.6 17.4V7.2l4.9 4.5L12 5.6l3.5 6.1 4.9-4.5v10.2Z" fill="var(--mk-gold)"/>
+    <path d="M12 5.6l3.5 6.1 4.9-4.5v10.2H12Z" fill="var(--mk-gold-s)"/>
+    <path d="M3.6 17.4V7.2l4.9 4.5L12 5.6l3.5 6.1 4.9-4.5v10.2Z" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M3.4 17.2h17.2v2.4a1.4 1.4 0 0 1-1.4 1.4H4.8a1.4 1.4 0 0 1-1.4-1.4Z" fill="var(--mk-gold)"/>
+    <path d="M12 17.2h8.6v2.4a1.4 1.4 0 0 1-1.4 1.4H12Z" fill="var(--mk-gold-s)"/>
+    <path d="M3.4 17.2h17.2v2.4a1.4 1.4 0 0 1-1.4 1.4H4.8a1.4 1.4 0 0 1-1.4-1.4Z" fill="none" stroke="var(--mk-line)" stroke-width="1.5" stroke-linejoin="round"/>
+    <circle cx="3.6" cy="6" r="1.7" fill="var(--mk-gold)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <circle cx="12" cy="4.4" r="1.8" fill="var(--mk-gold)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <circle cx="20.4" cy="6" r="1.7" fill="var(--mk-gold-s)" stroke="var(--mk-line)" stroke-width="1.5"/>
+  </symbol>
+<symbol id="m-cards" viewBox="0 0 24 24">
+    <g transform="rotate(14 14 12)">
+      <rect x="10" y="4.2" width="9.6" height="13.6" rx="2.2" fill="var(--mk-paper-s)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    </g>
+    <rect x="4.4" y="6.2" width="10.4" height="14.6" rx="2.4" fill="var(--mk-paper)" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="M9.6 9.4c1.7 1.9 3.1 2.8 3.1 4.2 0 1.3-1.1 1.9-1.9 1.5-.3-.16-.5-.4-.62-.7l.5 2.1H8.5l.5-2.1c-.11.3-.32.54-.62.7-.8.4-1.9-.2-1.9-1.5 0-1.4 1.4-2.3 3.12-4.2Z" fill="var(--mk-line)"/>
+  </symbol>
+<symbol id="m-sealed" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.6" fill="var(--mk-violet)"/>
+    <path d="M12 3.4a8.6 8.6 0 0 1 0 17.2Z" fill="var(--mk-violet-s)"/>
+    <circle cx="12" cy="12" r="8.6" fill="none" stroke="var(--mk-line)" stroke-width="1.5"/>
+    <path d="m7.8 12.3 2.9 2.9 5.6-6.2" fill="none" stroke="var(--mk-hi)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+<symbol id="l-check" viewBox="0 0 24 24"><path d="m4.6 12.4 5 5 9.8-10.8"/></symbol>
+<symbol id="l-trash" viewBox="0 0 24 24"><path d="M4.8 6.6h14.4M9.6 6.6V4.4h4.8v2.2"/><path d="m6.8 6.6 1 13.4h8.4l1-13.4"/></symbol>
+<symbol id="l-chev" viewBox="0 0 24 24"><path d="M14.6 4.8 8 12l6.6 7.2"/></symbol>
+<symbol id="l-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="l-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+<symbol id="l-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.2V12l3.4 2.2"/></symbol>
+<symbol id="l-tools" viewBox="0 0 24 24"><path d="M4 8h8.8M17.9 8H20M4 16h2.8M11.9 16H20"/><circle cx="15.3" cy="8" r="2.6"/><circle cx="9.3" cy="16" r="2.6"/></symbol></defs></svg>
+<div class="wrap">
+<header class="top">
+  <p class="eyebrow">מסך התיאום · מיקום הפעולות</p>
+  <h1>הכפתורים בשורה,<br>ושתי פעולות שצריכות בית</h1>
+  <p>אמרת שאתה מעדיף את הכפתורים בתוך השורה, ולא בשורה שנייה מתחתיה. צדקת — <b>זו בדיוק הסיבה שהגרסה ההיא נראתה נקייה</b>: השורה מחזיקה שלושה דברים בלבד — כמה, מתי, והתשובה שלך.</p>
+  <p>אבל המפרט החדש הוסיף <b>שתי פעולות</b> שלא היו שם: קביעה ומחיקה. אם שתיהן נכנסות לאותה שורה יש בה חמישה אלמנטים, וזה חוזר להיות בדיוק העומס שהתלוננת עליו. הנה שלוש דרכים לפתור את זה — <b>לא מיזוג, שלוש נפרדות</b>.</p>
+  <p style="margin-top:16px"><button class="tog" id="darktog" aria-pressed="false">הצג מצב כהה</button></p>
+</header>
+
+<h2 class="sec">האנטומיה של השורה</h2>
+<p class="lede">שלוש עמודות קבועות. <b>הטבעת בהתחלה</b> כדי שאפשר יהיה לסרוק טור אחד של מספרים מלמעלה למטה, <b>הנוסחה באמצע</b> ביום·תאריך·שעה קבועים, <b>התשובה שלך בסוף</b>. השורה השנייה מתחת לנוסחה היא מילים, לא פקד — היא לא לוקחת רוחב.</p>
+<div class="anat"><div class="anatrow"><div class="ring min"><svg width="38" height="38"><circle class="track" cx="19" cy="19" r="17" fill="none" stroke-width="3.5"/><circle class="fill" cx="19" cy="19" r="17" fill="none" stroke-width="3.5" stroke-dasharray="106.8" stroke-dashoffset="26.7"/></svg><b>3/4</b></div><div class="lmain"><p class="formula"><span class="f-day">שישי</span><span class="f-sep">·</span><span class="f-date">11.9</span><span class="f-sep">·</span><span class="f-when">ערב</span><svg class="mk" viewBox="0 0 24 24"><use href="#m-cards"/></svg></p><p class="lsum"><span class="grn">יש מניין</span> · איתי טרם ענה</p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div></div><div class="anatlabels"><span style="width:38px">כמה</span><span style="flex:1;text-align:start">מתי · ומה קרה</span><span style="width:96px">התשובה שלך</span></div></div>
+
+<h2 class="sec">שלוש דרכים למקם את הקביעה והמחיקה</h2>
+<p class="lede">בכל שלושתן השורה נשארת בדיוק כמו למעלה. ההבדל היחיד הוא איפה יושבות שתי הפעולות החדשות.</p>
+
+<div class="cols">
+  <section class="col">
+    <div class="colhead"><span class="tag">א׳</span>
+      <h3>בלחיצה על השורה</h3>
+      <p>השורה נשארת נקייה לגמרי. לחיצה עליה פותחת את ההצבעות — וביחד איתן גם קביעה ומחיקה.</p></div>
+    <div class="phone"><p class="mtop">עם עמית לוי, תמר אלון ואיתי כספי</p><p class="mttl">פוקר</p><p class="msub">מתי מתאים לכולם?</p><div class="minchip"><svg viewBox="0 0 24 24"><use href="#l-tools"/></svg>מספיק לי <b>3</b> מתוך 4</div><p class="glabel">המועדים על השולחן</p><div class="listcard"><div class="lrow crown"><div class="ltop"><div class="ring full"><svg width="38" height="38"><circle class="track" cx="19" cy="19" r="17" fill="none" stroke-width="3.5"/><circle class="fill" cx="19" cy="19" r="17" fill="none" stroke-width="3.5" stroke-dasharray="106.8" stroke-dashoffset="0.0"/></svg><b>4/4</b></div><div class="lmain"><p class="formula"><span class="f-day">מחר</span><span class="f-sep">·</span><span class="f-date">9.9</span><span class="f-sep">·</span><span class="f-when">ערב</span><svg class="mk" viewBox="0 0 24 24"><use href="#m-crown"/></svg></p><p class="lsum"><span class="gold">כולם יכולים</span> · נסגר בעוד 47 שנ׳</p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div></div><div class="note gold">⏱ אפשר עוד לשנות</div></div><div class="lrow"><div class="ltop"><div class="ring min"><svg width="38" height="38"><circle class="track" cx="19" cy="19" r="17" fill="none" stroke-width="3.5"/><circle class="fill" cx="19" cy="19" r="17" fill="none" stroke-width="3.5" stroke-dasharray="106.8" stroke-dashoffset="26.7"/></svg><b>3/4</b></div><div class="lmain"><p class="formula"><span class="f-day">שישי</span><span class="f-sep">·</span><span class="f-date">11.9</span><span class="f-sep">·</span><span class="f-when">ערב</span><svg class="mk" viewBox="0 0 24 24"><use href="#m-cards"/></svg></p><p class="lsum"><span class="grn">יש מניין</span> · איתי טרם ענה</p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div></div><div class="panel"><div class="vgrp"><span class="vlab y">יכולים</span><span class="pill"><i class="av y">א</i>אתה</span><span class="pill"><i class="av y">ע</i>עמית</span><span class="pill"><i class="av y">ת</i>תמר</span></div><p class="vnote">מי שטרם ענה לא מופיע — רק בשורת הסיכום.</p><div class="pacts"><button class="pbtn">קביעה</button><button class="pbtn del"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg></button></div></div></div><div class="lrow"><div class="ltop"><div class="ring "><svg width="38" height="38"><circle class="track" cx="19" cy="19" r="17" fill="none" stroke-width="3.5"/><circle class="fill" cx="19" cy="19" r="17" fill="none" stroke-width="3.5" stroke-dasharray="106.8" stroke-dashoffset="80.1"/></svg><b>1/4</b></div><div class="lmain"><p class="formula"><span class="f-day">ראשון</span><span class="f-sep">·</span><span class="f-date">13.9</span><span class="f-sep">·</span><span class="f-when">21:00</span></p><p class="lsum">אחד יכול · <span class="no">תמר לא</span></p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div></div></div><div class="lrow"><div class="ltop"><div class="ring "><svg width="38" height="38"><circle class="track" cx="19" cy="19" r="17" fill="none" stroke-width="3.5"/><circle class="fill no" cx="19" cy="19" r="17" fill="none" stroke-width="3.5" stroke-dasharray="106.8" stroke-dashoffset="106.8"/></svg><b>0/4</b></div><div class="lmain"><p class="formula"><span class="f-day">חמישי</span><span class="f-sep">·</span><span class="f-date">10.9</span><span class="f-sep">·</span><span class="f-when">צהריים</span></p><p class="lsum">אתה לא יכול · 2 טרם ענו</p></div><div class="seg"><button>יכול</button><button class="on neg">לא</button></div></div><div class="warnline">🕐 מתנגש עם משמרת · 12:00</div></div></div><p class="glabel">להציע מועד נוסף</p><div class="listcard" style="padding:10px;text-align:center;color:var(--accent);font-weight:700;font-size:13.5px">+ הצעת מועד</div></div>
+    <div class="verdict"><p><b>הכי נקי, והכי מסתיר.</b> אתה כבר רצית שלחיצה תפתח את ההצבעות, אז הפעולות לא דורשות מחווה חדשה. המחיר: קביעה של יום שלא כולם יכולים בו דורשת לחיצה אחת נוספת — וזה היה בדיוק המקרה שרצית להנגיש.<span class="cost">3 אלמנטים בשורה · פעולה = 2 מגעים</span></p></div>
+  </section>
+
+  <section class="col">
+    <div class="colhead"><span class="tag">ב׳</span>
+      <h3>וי קבוע בסוף</h3>
+      <p>הקביעה תמיד גלויה, אחרי מתג יכול/לא, כמו שביקשת. המחיקה נשארת בפתיחה.</p></div>
+    <div class="phone"><p class="mtop">עם עמית לוי, תמר אלון ואיתי כספי</p><p class="mttl">פוקר</p><p class="msub">מתי מתאים לכולם?</p><div class="minchip"><svg viewBox="0 0 24 24"><use href="#l-tools"/></svg>מספיק לי <b>3</b> מתוך 4</div><p class="glabel">המועדים על השולחן</p><div class="listcard"><div class="lrow crown"><div class="ltop"><div class="ring full"><svg width="38" height="38"><circle class="track" cx="19" cy="19" r="17" fill="none" stroke-width="3.5"/><circle class="fill" cx="19" cy="19" r="17" fill="none" stroke-width="3.5" stroke-dasharray="106.8" stroke-dashoffset="0.0"/></svg><b>4/4</b></div><div class="lmain"><p class="formula"><span class="f-day">מחר</span><span class="f-sep">·</span><span class="f-date">9.9</span><span class="f-sep">·</span><span class="f-when">ערב</span><svg class="mk" viewBox="0 0 24 24"><use href="#m-crown"/></svg></p><p class="lsum"><span class="gold">כולם יכולים</span> · נסגר בעוד 47 שנ׳</p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div><button class="rbtn go"><svg viewBox="0 0 24 24"><use href="#l-check"/></svg></button></div></div><div class="lrow"><div class="ltop"><div class="ring min"><svg width="38" height="38"><circle class="track" cx="19" cy="19" r="17" fill="none" stroke-width="3.5"/><circle class="fill" cx="19" cy="19" r="17" fill="none" stroke-width="3.5" stroke-dasharray="106.8" stroke-dashoffset="26.7"/></svg><b>3/4</b></div><div class="lmain"><p class="formula"><span class="f-day">שישי</span><span class="f-sep">·</span><span class="f-date">11.9</span><span class="f-sep">·</span><span class="f-when">ערב</span><svg class="mk" viewBox="0 0 24 24"><use href="#m-cards"/></svg></p><p class="lsum"><span class="grn">יש מניין</span> · איתי טרם ענה</p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div><button class="rbtn go"><svg viewBox="0 0 24 24"><use href="#l-check"/></svg></button></div></div><div class="lrow"><div class="ltop"><div class="ring "><svg width="38" height="38"><circle class="track" cx="19" cy="19" r="17" fill="none" stroke-width="3.5"/><circle class="fill" cx="19" cy="19" r="17" fill="none" stroke-width="3.5" stroke-dasharray="106.8" stroke-dashoffset="80.1"/></svg><b>1/4</b></div><div class="lmain"><p class="formula"><span class="f-day">ראשון</span><span class="f-sep">·</span><span class="f-date">13.9</span><span class="f-sep">·</span><span class="f-when">21:00</span></p><p class="lsum">אחד יכול · <span class="no">תמר לא</span></p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div><button class="rbtn arm"><svg viewBox="0 0 24 24"><use href="#l-check"/></svg></button></div><div class="note">לחיצה שנייה שולחת לכולם, גם למי שאמר שלא.</div></div><div class="lrow"><div class="ltop"><div class="ring "><svg width="38" height="38"><circle class="track" cx="19" cy="19" r="17" fill="none" stroke-width="3.5"/><circle class="fill no" cx="19" cy="19" r="17" fill="none" stroke-width="3.5" stroke-dasharray="106.8" stroke-dashoffset="106.8"/></svg><b>0/4</b></div><div class="lmain"><p class="formula"><span class="f-day">חמישי</span><span class="f-sep">·</span><span class="f-date">10.9</span><span class="f-sep">·</span><span class="f-when">צהריים</span></p><p class="lsum">אתה לא יכול · 2 טרם ענו</p></div><div class="seg"><button>יכול</button><button class="on neg">לא</button></div><button class="rbtn go"><svg viewBox="0 0 24 24"><use href="#l-check"/></svg></button></div><div class="warnline">🕐 מתנגש עם משמרת · 12:00</div></div></div><p class="glabel">להציע מועד נוסף</p><div class="listcard" style="padding:10px;text-align:center;color:var(--accent);font-weight:700;font-size:13.5px">+ הצעת מועד</div></div>
+    <div class="verdict"><p><b>הכי קרוב למה שכתבת.</b> ״את כפתור הקביעה הייתי מזיז מצד שמאל של יכול/לא״ — זה זה, בדיוק. הווי לא מתחרה במתג כי הוא מתאר ולא מלא. המחיר: אלמנט רביעי בכל שורה, גם בשורות שלעולם לא ייקבעו.<span class="cost">4 אלמנטים בשורה · פעולה = 2 מגעים</span></p></div>
+  </section>
+
+  <section class="col">
+    <div class="colhead"><span class="tag">ג׳</span>
+      <h3>תפריט אחד לשתיהן</h3>
+      <p>שלוש נקודות בסוף. פותחות קביעה ומחיקה יחד, בלי לגעת במקום של ההצבעות.</p></div>
+    <div class="phone"><p class="mtop">עם עמית לוי, תמר אלון ואיתי כספי</p><p class="mttl">פוקר</p><p class="msub">מתי מתאים לכולם?</p><div class="minchip"><svg viewBox="0 0 24 24"><use href="#l-tools"/></svg>מספיק לי <b>3</b> מתוך 4</div><p class="glabel">המועדים על השולחן</p><div class="listcard"><div class="lrow crown"><div class="ltop"><div class="ring full"><svg width="38" height="38"><circle class="track" cx="19" cy="19" r="17" fill="none" stroke-width="3.5"/><circle class="fill" cx="19" cy="19" r="17" fill="none" stroke-width="3.5" stroke-dasharray="106.8" stroke-dashoffset="0.0"/></svg><b>4/4</b></div><div class="lmain"><p class="formula"><span class="f-day">מחר</span><span class="f-sep">·</span><span class="f-date">9.9</span><span class="f-sep">·</span><span class="f-when">ערב</span><svg class="mk" viewBox="0 0 24 24"><use href="#m-crown"/></svg></p><p class="lsum"><span class="gold">כולם יכולים</span> · נסגר בעוד 47 שנ׳</p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div><button class="rbtn dots">···</button></div></div><div class="lrow"><div class="ltop"><div class="ring min"><svg width="38" height="38"><circle class="track" cx="19" cy="19" r="17" fill="none" stroke-width="3.5"/><circle class="fill" cx="19" cy="19" r="17" fill="none" stroke-width="3.5" stroke-dasharray="106.8" stroke-dashoffset="26.7"/></svg><b>3/4</b></div><div class="lmain"><p class="formula"><span class="f-day">שישי</span><span class="f-sep">·</span><span class="f-date">11.9</span><span class="f-sep">·</span><span class="f-when">ערב</span><svg class="mk" viewBox="0 0 24 24"><use href="#m-cards"/></svg></p><p class="lsum"><span class="grn">יש מניין</span> · איתי טרם ענה</p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div><button class="rbtn dots" style="color:var(--accent);border-color:var(--accent)">···</button></div><div class="pacts"><button class="pbtn">קביעה</button><button class="pbtn del"><svg viewBox="0 0 24 24"><use href="#l-trash"/></svg></button></div></div><div class="lrow"><div class="ltop"><div class="ring "><svg width="38" height="38"><circle class="track" cx="19" cy="19" r="17" fill="none" stroke-width="3.5"/><circle class="fill" cx="19" cy="19" r="17" fill="none" stroke-width="3.5" stroke-dasharray="106.8" stroke-dashoffset="80.1"/></svg><b>1/4</b></div><div class="lmain"><p class="formula"><span class="f-day">ראשון</span><span class="f-sep">·</span><span class="f-date">13.9</span><span class="f-sep">·</span><span class="f-when">21:00</span></p><p class="lsum">אחד יכול · <span class="no">תמר לא</span></p></div><div class="seg"><button class="on">יכול</button><button>לא</button></div><button class="rbtn dots">···</button></div></div><div class="lrow"><div class="ltop"><div class="ring "><svg width="38" height="38"><circle class="track" cx="19" cy="19" r="17" fill="none" stroke-width="3.5"/><circle class="fill no" cx="19" cy="19" r="17" fill="none" stroke-width="3.5" stroke-dasharray="106.8" stroke-dashoffset="106.8"/></svg><b>0/4</b></div><div class="lmain"><p class="formula"><span class="f-day">חמישי</span><span class="f-sep">·</span><span class="f-date">10.9</span><span class="f-sep">·</span><span class="f-when">צהריים</span></p><p class="lsum">אתה לא יכול · 2 טרם ענו</p></div><div class="seg"><button>יכול</button><button class="on neg">לא</button></div><button class="rbtn dots">···</button></div><div class="warnline">🕐 מתנגש עם משמרת · 12:00</div></div></div><p class="glabel">להציע מועד נוסף</p><div class="listcard" style="padding:10px;text-align:center;color:var(--accent);font-weight:700;font-size:13.5px">+ הצעת מועד</div></div>
+    <div class="verdict"><p><b>הכי מתרחב.</b> פעולה שלישית בעתיד — ״הצע מועד דומה״, ״שכפל לשבוע הבא״ — נכנסת בלי לשנות כלום. המחיר: ״···״ לא אומר מה יש מאחוריו, וזה הדפוס היחיד כאן שדורש ניחוש.<span class="cost">4 אלמנטים בשורה · פעולה = 2 מגעים</span></p></div>
+  </section>
+</div>
+
+<div class="flag">
+  <p><b>מה שהוספתי כאן בלי שביקשת, כדי שתראה אותו:</b> ה־chip של המינימום מתחת לכותרת (״מספיק לי 3 מתוך 4״). זה הפקד החסר שסימנתי — הוא יושב על התיאום, לא על הקבוצה, והוא מה שגורם ל‑🃏 להופיע. שמתי אותו בכותרת ולא בתוך תפריט כי הוא משנה את המשמעות של <b>כל</b> השורות בבת אחת, ולא של אחת מהן. תגיד אם אתה רוצה אותו במקום אחר.</p>
+</div>
+
+<div class="flag" style="border-color:var(--accent);background:var(--accent-soft)">
+  <p><b>גם זה השתנה:</b> הכתר והקלפים הם עכשיו הסימנים הווקטוריים מהשפה שאישרת, לא אימוג׳י. זו הפעם הראשונה שהם יושבים בשורה אמיתית — וזו גם הבדיקה האמיתית שלהם, ב‑17 פיקסלים.</p>
+</div>
+
+</div>
+
+<script>
+(function(){
+  var dt=document.getElementById("darktog");
+  dt.addEventListener("click",function(){
+    var on=dt.getAttribute("aria-pressed")!=="true";
+    dt.setAttribute("aria-pressed",on?"true":"false");
+    dt.textContent=on?"חזור למצב בהיר":"הצג מצב כהה";
+    document.documentElement.setAttribute("data-theme",on?"dark":"light");
+  });
+})();
+</script>
