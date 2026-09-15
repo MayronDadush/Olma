@@ -45,6 +45,19 @@ if (!process.env.OLMA_OPENCLAW_CONFIG) {
   }, null, 2));
   process.env.OLMA_OPENCLAW_CONFIG = cfgPath;
 }
+// The gateway plugin writes two files under /opt/olma2/run: a trace log and
+// the registration stamp config_guard.checkReplyGateLive reads to tell a
+// restarted gateway from one still on the old build. A test that registers
+// the plugin on the box overwrote that stamp with a record saying the gate was
+// live (incidents.md, "The test suite stamped the gateway as live"). Both
+// default into the temp home here, and the plugin refuses the real paths under
+// the test runner, so a file that forgets is red rather than silent.
+if (!process.env.OLMA_PLUGIN_REGISTER_STAMP) {
+  process.env.OLMA_PLUGIN_REGISTER_STAMP = path.join(process.env.OLMA_OPENCLAW_HOME, "turn-context-plugin.registered");
+}
+if (!process.env.OLMA_PLUGIN_TRACE) {
+  process.env.OLMA_PLUGIN_TRACE = path.join(process.env.OLMA_OPENCLAW_HOME, "turn-context-plugin.log");
+}
 
 const { Client, Pool } = require('pg');
 const crypto = require('node:crypto');

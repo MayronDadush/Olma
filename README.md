@@ -79,6 +79,12 @@ After a gateway restart the WhatsApp channel briefly shows
 to `connected / health:healthy` within ~30s. Confirm with
 `openclaw channels status`.
 
+Without a shell on the box, the same restart runs from GitHub: Actions tab →
+"olma2 ops" → Run workflow on `main` with `op: restart-gateway` (or `status`
+to only look). It runs `olma2/scripts/ops.sh` with the deploy key, waits for
+the gateway plugin to register under the new pid, and prints the release
+marker, unit states and `/ready` in the job log.
+
 ## Updating OpenClaw
 
 OpenClaw is a global npm package, so updates are an npm install plus a gateway

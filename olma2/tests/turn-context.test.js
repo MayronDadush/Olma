@@ -257,6 +257,32 @@ test('the plugin module registers its three hooks under its own id and reads the
   // reply_payload_sending is the delivery gate (tests/reply-leak.test.js).
   assert.deepEqual(on.map(([name]) => name), ['before_prompt_build', 'llm_input', 'reply_payload_sending']);
   for (const [, fn] of on) assert.equal(typeof fn, 'function');
+  // Registering STAMPS, and on the box this suite runs inside deploy.sh: the
+  // stamp must land in the temp home tests/helpers.js chose, never in
+  // /opt/olma2/run, where config_guard would read this test's record as the
+  // running gateway's (incidents.md, "The test suite stamped the gateway as
+  // live").
+  const stampFile = process.env.OLMA_PLUGIN_REGISTER_STAMP;
+  assert.ok(stampFile && !stampFile.startsWith('/opt/olma2/run/'), `stamp path is isolated: ${stampFile}`);
+  const rec = JSON.parse(require('node:fs').readFileSync(stampFile, 'utf8').trim().split('\n').pop());
+  assert.equal(rec.pid, process.pid);
+  assert.deepEqual(rec.agents, ['u-3']);
+  assert.ok(rec.hooks.includes('reply_payload_sending'));
+});
+
+test('under the test runner the plugin refuses to write the production stamp or trace', () => {
+  // The guard is what makes a file that forgets the env variable red instead
+  // of silently overwriting production. Nothing is written: it throws first.
+  assert.throws(() => plugin.stampRegistration({ agents: 'all', hooks: [] }, '/opt/olma2/run/turn-context-plugin.registered'), /a test may not write/);
+  assert.throws(() => plugin.refuseProductionWrite('/opt/olma2/run/turn-context-plugin.log'), /a test may not write/);
+  const saved = process.env.OLMA_PLUGIN_REGISTER_STAMP;
+  delete process.env.OLMA_PLUGIN_REGISTER_STAMP;
+  try {
+    assert.throws(() => plugin.stampRegistration({ agents: 'all', hooks: [] }), /a test may not write/);
+  } finally {
+    process.env.OLMA_PLUGIN_REGISTER_STAMP = saved;
+  }
+  plugin.refuseProductionWrite(saved); // the isolated path is fine
 });
 
 // Miron, 2026-09-06, "בוצע" quoting the lunch reminder: the context came back

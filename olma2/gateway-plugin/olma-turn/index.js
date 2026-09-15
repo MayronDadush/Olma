@@ -26,10 +26,25 @@
 import net from "node:net";
 import { appendFileSync, writeFileSync } from "node:fs";
 
-const SOCK = process.env.OLMA_SOCK || "/opt/olma2/run/brokerd.sock";
+// Every path under /opt/olma2/run is read PER CALL, never captured at load:
+// the suite runs on the box inside deploy.sh, tests/helpers.js points these
+// at a temp dir, and a constant captured at import decided whether that took
+// by require order. And under the test runner a write to the real one is
+// refused outright rather than best-effort: on 2026-09-15 a test registered
+// this plugin and overwrote the stamp config_guard reads to tell a restarted
+// gateway from one still running the old build, with a record that said the
+// gate was live (incidents.md, "The test suite stamped the gateway as live").
+const RUN_DIR = "/opt/olma2/run/";
+function sockPath() { return process.env.OLMA_SOCK || RUN_DIR + "brokerd.sock"; }
+function tracePath() { return process.env.OLMA_PLUGIN_TRACE || RUN_DIR + "turn-context-plugin.log"; }
+function stampPath() { return process.env.OLMA_PLUGIN_REGISTER_STAMP || RUN_DIR + "turn-context-plugin.registered"; }
+export function refuseProductionWrite(file) {
+  if (process.env.NODE_TEST_CONTEXT && String(file).startsWith(RUN_DIR)) {
+    throw new Error(`olma-turn: a test may not write ${file} — set OLMA_PLUGIN_REGISTER_STAMP / OLMA_PLUGIN_TRACE (tests/helpers.js does)`);
+  }
+}
 // One bounded line per prompt build, next to the socket — the hook's trace
 // found the hook that never ran; this is the same tell for the plugin.
-const TRACE = process.env.OLMA_PLUGIN_TRACE || "/opt/olma2/run/turn-context-plugin.log";
 // What the RUNNING gateway registered, in a file of its own and OVERWRITTEN
 // each time. Plugin code loads at gateway startup and `deploy.sh` deliberately
 // does not restart it, so a new handler sits on disk, live and inert, until
@@ -39,16 +54,18 @@ const TRACE = process.env.OLMA_PLUGIN_TRACE || "/opt/olma2/run/turn-context-plug
 // `jobs/config-guard.checkReplyGateLive` reads this file and says which.
 // A tail of the trace above cannot answer it — one busy day buries the last
 // registration under thousands of per-prompt lines.
-const REGISTER_STAMP = process.env.OLMA_PLUGIN_REGISTER_STAMP || "/opt/olma2/run/turn-context-plugin.registered";
 // Well under the gateway's 15s handler timeout, and under the ~4s the model
 // used to spend on the turn_start round trip this replaces.
 const TIMEOUT_MS = 4000;
 
 export function trace(fields) {
-  try { appendFileSync(TRACE, JSON.stringify({ at: new Date().toISOString(), pid: process.pid, ...fields }) + "\n"); } catch { /* best effort */ }
+  const file = tracePath();
+  refuseProductionWrite(file);
+  try { appendFileSync(file, JSON.stringify({ at: new Date().toISOString(), pid: process.pid, ...fields }) + "\n"); } catch { /* best effort */ }
 }
 
-export function stampRegistration(fields, file = REGISTER_STAMP) {
+export function stampRegistration(fields, file = stampPath()) {
+  refuseProductionWrite(file);
   try { writeFileSync(file, JSON.stringify({ at: new Date().toISOString(), pid: process.pid, ...fields }) + "\n"); } catch { /* best effort */ }
 }
 
@@ -59,7 +76,7 @@ export function agentIdOf(sessionKey) {
 
 // One request, one line, one reply — the same protocol as the hook. Resolves
 // the parsed reply, or null on any failure or timeout; never rejects.
-export function askBroker(method, params, { connect = net.connect, sock = SOCK, timeoutMs = TIMEOUT_MS } = {}) {
+export function askBroker(method, params, { connect = net.connect, sock = sockPath(), timeoutMs = TIMEOUT_MS } = {}) {
   return new Promise((resolve) => {
     let done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };
@@ -275,7 +292,38 @@ export const INTERNAL_NAMES = [
   "first_name", "last_name", "repeat_rule",
 ];
 const INTERNAL_RE = new RegExp(`(?:^|[^A-Za-z0-9_])(${INTERNAL_NAMES.join("|")})(?![A-Za-z0-9_])`, "i");
-const BLOCK_RE = /\b(?:Turn context|Conversation info|Reply target of current user message|OpenClaw heartbeat poll|unknown identity token)\b|^\s*DELIVERY:/im;
+const BLOCK_RE = /\b(?:Turn context|Conversation info|Reply target of current user message|OpenClaw heartbeat poll|unknown identity token|the hints? says?|(?:AGENTS|USER|MEMORY)\.md)\b|^\s*DELIVERY:/im;
+const VOCAB_RE = "👀|👂|👍|⏰|🙏|❓|⚠️";
+const MARK_RE = new RegExp(
+  `(?:${VOCAB_RE})\\s*(?:בחזרה|חזרה בתגובה|בתגובה)`
+  + `|(?:אשיב|אענה|אגיב|אשלח)\\s+(?:לו|לה|להם|)\\s*(?:${VOCAB_RE})`
+  + `|(?:reply|respond|answer|react|send)(?:ing|s|ed)?\\s+(?:back\\s+)?(?:with|using)\\s+(?:a\\s+)?(?:${VOCAB_RE})`,
+  "i");
+const NARRATION_RE = /^[\s"״'׳]*(?:הוא|היא|הם|הן)\s+(?:אמרו|אמרה|אמר|כתבו|כתבה|כתב)(?![֐-׿])\s*["״'׳\d]|^\s*(?:he|she|they)\s+(?:said|wrote|replied)\s+["״'\d]/i;
+const DELIB_VERBS = "check|see|look|verify|re-?check|figure|find|get|read|re-?read|try|compose|deliver|save|cancel|write|remove|update|confirm|start|first|also|just|search|call|fetch|proceed|think|handle|do|make|give|send|reply|respond|answer|draft|set|ask|follow|merge|create|add|mark|use|note|pull|run|open|archive";
+const DELIB_LET_ME = `Let me(?: not| just| also| first)? (?:${DELIB_VERBS})`;
+const DELIB_OPENER_RE = new RegExp("^\\s*(?:"
+  + `${DELIB_LET_ME}|I'll (?:check|look|just|go|start|first|proceed|save|set|search|add|create|mention)`
+  + "|Now I |But first|First, I'll|Now (?:create|save|check)|Also need to|Also,? I |No user message"
+  + "|This (?:turn|is a delivery turn)|So they |Looking at the (?:turn context|today block|meeting status|context|hints?)"
+  + "|The (?:intake note|reply target|reply was to|reminders? (?:were|was))"
+  + ")\\b", "i");
+const DELIB_MID_RE = new RegExp(`\\b(?:${DELIB_LET_ME}|I'll (?:save|set|add|create|proceed))\\b`, "i");
+const DELIB_THIRD_RE = /^\s*(?:He|She|They|The user|The person)(?:'s)? (?:sent|asked|wants?|said|replied|wrote|has|hasn't|is|was|stated|message)\b/i;
+const DELIB_TELL_RE = /["״'][^"״'\n]*[֐-׿][^"״'\n]*["״']|`|\b(?:tasks?|reminders?|the hints?|turn|digest|dashboard|contacts?|onboarding|meeting|opted|delete|archive|Let me|I'll|I should|I need|I replied|I answered)\b/i;
+const DELIB_SOFT_RE = /^\s*(?:Actually|Wait|Hmm|OK|Okay|So)\b[,—\s-]*/i;
+const DELIB_CUE_RE = /\b(?:let me|I need|I should|I can|I see|I don't|I answered|I asked|I never|he |she |they |him |his |their |the hints?|the turn|the intake)\b/i;
+export function deliberationIn(raw, text) {
+  const opener = DELIB_OPENER_RE.exec(text);
+  if (opener) return opener[0];
+  const mid = DELIB_MID_RE.exec(text);
+  if (mid) return mid[0];
+  const third = DELIB_THIRD_RE.exec(text);
+  if (third && DELIB_TELL_RE.test(raw)) return third[0];
+  const soft = DELIB_SOFT_RE.exec(text);
+  if (soft && DELIB_CUE_RE.test(text)) return soft[0];
+  return null;
+}
 const INSTANT_RE = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})\b/;
 const SENTINEL_RE = /\bNO_REPLY\b/;
 const SENTINEL_STRIP_RE = /\s*\bNO_REPLY\b\s*/g;
@@ -284,7 +332,8 @@ const URL_RE = /\b(?:https?:\/\/|www\.)\S+/gi;
 const ADDRESS_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
 const QUOTED_RE = /["״'][^"״'\n]{1,80}["״']/g;
 const TOKEN_RE = /\bolma_(?:tok|grp)_[0-9a-f]{8,}/g;
-const KEEPS_LINE = new Set(["identifier", "sentinel"]);
+const KEEPS_LINE = new Set(["identifier", "sentinel", "narration"]);
+const REPORT_ONLY = new Set(["identifier", "narration"]);
 const SENTINEL = "NO_REPLY";
 
 export function scannable(line) {
@@ -301,6 +350,12 @@ export function leaksIn(line) {
   if (internal) out.push({ kind: "internal", at: internal[1] });
   const block = BLOCK_RE.exec(text);
   if (block) out.push({ kind: "block", at: block[0].trim().slice(0, 40) });
+  const mark = MARK_RE.exec(text);
+  if (mark) out.push({ kind: "mark", at: mark[0].trim().slice(0, 40) });
+  const narration = NARRATION_RE.exec(raw);
+  if (narration) out.push({ kind: "narration", at: narration[0].trim().slice(0, 40) });
+  const deliberation = deliberationIn(raw, text);
+  if (deliberation) out.push({ kind: "deliberation", at: deliberation.trim().slice(0, 40) });
   const instant = INSTANT_RE.exec(text);
   if (instant) out.push({ kind: "instant", at: instant[0] });
   const sentinel = SENTINEL_RE.exec(text);
@@ -312,6 +367,10 @@ export function leaksIn(line) {
   return out;
 }
 export function drops(leaks) { return leaks.some((l) => !KEEPS_LINE.has(l.kind)); }
+export function hasEarlierContent(lines, i) {
+  for (let j = 0; j < i; j++) if (lines[j].trim()) return true;
+  return false;
+}
 export function paragraphEnd(lines, i) {
   let end = i;
   while (end + 1 < lines.length && lines[end + 1].trim()) end += 1;
@@ -326,9 +385,10 @@ export function gateReply(text) {
   let last = -1;
   for (let i = 0; i < lines.length; i++) {
     for (const l of found[i]) reported.push({ ...l, line: i });
-    if (drops(found[i])) last = Math.max(last, paragraphEnd(lines, i));
+    const sentinelAfterNarration = found[i].some((l) => l.kind === "sentinel") && hasEarlierContent(lines, i);
+    if (drops(found[i]) || sentinelAfterNarration) last = Math.max(last, paragraphEnd(lines, i));
   }
-  const leaks = reported.filter((l) => l.kind !== "identifier");
+  const leaks = reported.filter((l) => !REPORT_ONLY.has(l.kind));
   if (!leaks.length) return { action: "pass", text: raw, leaks, reported };
   const kept = lines.slice(last + 1).join("\n").replace(SENTINEL_STRIP_RE, " ").trim();
   if (!kept) return { action: "cancel", text: "", leaks, reported };
