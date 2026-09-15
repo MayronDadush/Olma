@@ -324,6 +324,10 @@ export function leaksIn(line) {
   return out;
 }
 export function drops(leaks) { return leaks.some((l) => !KEEPS_LINE.has(l.kind)); }
+export function hasEarlierContent(lines, i) {
+  for (let j = 0; j < i; j++) if (lines[j].trim()) return true;
+  return false;
+}
 export function paragraphEnd(lines, i) {
   let end = i;
   while (end + 1 < lines.length && lines[end + 1].trim()) end += 1;
@@ -338,7 +342,8 @@ export function gateReply(text) {
   let last = -1;
   for (let i = 0; i < lines.length; i++) {
     for (const l of found[i]) reported.push({ ...l, line: i });
-    if (drops(found[i])) last = Math.max(last, paragraphEnd(lines, i));
+    const sentinelAfterNarration = found[i].some((l) => l.kind === "sentinel") && hasEarlierContent(lines, i);
+    if (drops(found[i]) || sentinelAfterNarration) last = Math.max(last, paragraphEnd(lines, i));
   }
   const leaks = reported.filter((l) => !REPORT_ONLY.has(l.kind));
   if (!leaks.length) return { action: "pass", text: raw, leaks, reported };

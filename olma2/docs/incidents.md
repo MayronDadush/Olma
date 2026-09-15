@@ -6611,10 +6611,35 @@ reply-leak.test.js` pins the gap as a named, passing test rather than letting
 it pass silently — the same rule that says not to ship an unmeasured detector
 also says not to invent one for a shape nobody has actually produced.
 
-Fixed in `domain/reply-leak.js` alone; nothing about `gateway-plugin/olma-turn`
-`reply_payload_sending` registration changed, so this needs no gateway restart
-beyond the ordinary deploy that ships the function — the gate was live the
-whole time, and was working exactly as written.
+**The first commit of this fix would have changed nothing in production.** It
+touched `domain/reply-leak.js` alone and said so as a virtue ("no gateway
+restart needed — the function changed, not the plugin's registration"). The
+function that runs is not that one: `gateway-plugin/olma-turn/index.js`
+carries a PORT of the module, because it loads in the gateway's own loader
+with nothing of ours beside it, and the parity test that exists to catch
+exactly this stayed green because its corpus did not carry Miron's draft. The
+same session's sibling hit the same miss the same afternoon and wrote it down
+first ("The gate knew the leak's vocabulary, not its shape", below). Now: the
+port carries `hasEarlierContent`, the corpus holds both of Miron's drafts, and
+this change is inert until the gateway restarts, like every other change to
+the plugin.
+
+**Two more of his messages the same morning, read back off the box, and
+neither fix reaches them.** 09:48:32 — a `--deliver` turn carrying the
+OpenRouter-models update. The gate cut every paragraph that named the sentinel
+or `turn_start` (audit: chars 800, kept 364, three findings), and the paragraph
+right after the cut — "Let me deliver the model update naturally." — carries
+no marker and went out as the first line of the update. 09:31:54 — 2,944
+characters of English reasoning about his open-item count ("51 open items —
+way past the 36 limit…"), `pass`, no audit row: not one marker in it. Both are
+the hole the 2026-09-10 entry named on its last line, first-person
+deliberation with none of our vocabulary in it, now observed live twice in
+one morning. The 09:48 shape is pinned in `tests/reply-leak.test.js` as a
+named gap, and the rule for closing it is the same one every tier here was
+held to: a pattern for "the model talking about what it is about to do" is
+measured against the real transcripts on the box before it may drop a word,
+because "Let me know if…" and "I'll remind you at 13:00" are sentences Olma
+sends to a person who writes in English.
 
 ### The working-out arrived instead of the message (fixed 2026-09-10)
 
