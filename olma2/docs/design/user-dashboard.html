@@ -856,11 +856,20 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
    lives on <body>, not in its group: a .group clips (overflow:hidden) and the
    lifted row has to be able to sit over the edge of it. */
 .taskwrap{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
-.dragclone{
-  position:fixed;z-index:85;pointer-events:none;margin:0;
-  background:var(--surface);border-radius:14px;box-shadow:var(--shadow-l);
-  transform-origin:50% 50%;will-change:transform;
+.dragclone{position:fixed;z-index:85;pointer-events:none;margin:0;will-change:transform}
+/* The lifted card wears the tab bar's glass, tilted a little, so "in your
+   hand" reads at a glance. On an inner element: the outer one follows the
+   finger every frame and must not carry a transition that would lag it. */
+.draglift{
+  border-radius:14px;
+  background:var(--bar);border:.5px solid var(--glass-line);
+  -webkit-backdrop-filter:var(--lens-bar);backdrop-filter:var(--lens-bar);
+  box-shadow:var(--shadow-l),var(--rim-soft);
+  transform:rotate(-2deg) scale(1.03);
+  animation:dragLift .38s var(--squash);
 }
+@keyframes dragLift{from{transform:none}}
+@media (prefers-reduced-motion:reduce){ .draglift{transform:none} }
 .dragclone .task{cursor:grabbing}
 /* The dimmed row IS the placeholder: live DOM reordering puts it exactly
    where a drop will land, and the blue line marks that landing spot —
@@ -5776,7 +5785,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       var r = p.wrap.getBoundingClientRect();
       var clone = document.createElement("div");
       clone.className = "dragclone";
-      clone.appendChild($(".task", p.wrap).cloneNode(true));
+      var lift = document.createElement("div");
+      lift.className = "draglift";
+      lift.appendChild($(".task", p.wrap).cloneNode(true));
+      clone.appendChild(lift);
       clone.style.width = r.width + "px";
       clone.style.left = r.left + "px";
       clone.style.top = r.top + "px";
@@ -5794,8 +5806,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }
     function paint(){
       if(!drag) return;
-      var lift = matchMedia("(prefers-reduced-motion: reduce)").matches ? "" : " scale(1.025)";
-      drag.clone.style.transform = "translateY(" + (drag.y - drag.y0) + "px)" + lift;
+      drag.clone.style.transform = "translateY(" + (drag.y - drag.y0) + "px)";
     }
     function setTarget(w){
       if(drag.target === w) return;
