@@ -865,10 +865,11 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
    frame and must not carry a transition that would lag it. */
 .draglift{
   border-radius:14px;
-  /* halfway to solid: the row's own dimmed placeholder is always right under
-     it, and at the panel's plain alpha its text still ghosts through */
+  /* closer to solid than the panel's plain alpha, so the row's own dimmed
+     placeholder underneath does not ghost through its text — but not all
+     the way, so it still reads as glass rather than a fresh opaque card */
   background:var(--glass-panel);
-  background:color-mix(in srgb, var(--glass-panel), var(--surface) 55%);
+  background:color-mix(in srgb, var(--glass-panel), var(--surface) 38%);
   background-image:var(--sheen);
   border:.5px solid var(--glass-line);
   -webkit-backdrop-filter:var(--lens);backdrop-filter:var(--lens);
@@ -895,6 +896,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .taskwrap.nesttarget .task{background:var(--accent-soft);box-shadow:inset 0 0 0 2px var(--accent)}
 .taskwrap.nesttarget .task::before{display:none}
 .taskwrap + .taskwrap.nesttarget .task::before,.taskwrap.nesttarget + .taskwrap .task::before{display:none}
+/* A row that would refuse this drop, while it is still being hovered — the
+   same ring shape as .nesttarget, in red instead of purple, and softened
+   with transparency so it never reads as a hard stop the way a full-strength
+   error colour would. */
+.taskwrap.nestrefused .task{
+  background:color-mix(in srgb, var(--danger-soft) 65%, transparent);
+  box-shadow:inset 0 0 0 2px color-mix(in srgb, var(--danger) 65%, transparent);
+}
+.taskwrap.nestrefused .task::before{display:none}
+.taskwrap + .taskwrap.nestrefused .task::before,.taskwrap.nestrefused + .taskwrap .task::before{display:none}
 .tend{display:flex;align-items:center;gap:8px;flex:none;margin-inline-start:auto;padding-top:1px}
 .tglyph{width:14px;height:14px;color:var(--text-3)}
 .tglyph.bell{color:var(--warn)}
@@ -5816,12 +5827,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       if(!drag) return;
       drag.clone.style.transform = "translateY(" + (drag.y - drag.y0) + "px)";
     }
-    function setTarget(w){
-      if(drag.target === w) return;
-      if(drag.target) drag.target.classList.remove("nesttarget");
+    function setTarget(w, refused){
+      if(drag.target === w && drag.targetRefused === refused) return;
+      if(drag.target) drag.target.classList.remove("nesttarget", "nestrefused");
       drag.target = w;
-      if(w) w.classList.add("nesttarget");
-      drag.wrap.classList.toggle("dragsrc-nesting", !!w);
+      drag.targetRefused = refused;
+      if(w) w.classList.add(refused ? "nestrefused" : "nesttarget");
+      drag.wrap.classList.toggle("dragsrc-nesting", !!w && !refused);
     }
     function hitTest(){
       var el = document.elementFromPoint(drag.x, drag.y);
@@ -5830,13 +5842,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       var r = w.getBoundingClientRect(), rel = (drag.y - r.top) / r.height;
       var inMiddle = rel > .26 && rel < .74;
       var reason = inMiddle ? nestRefusal(drag.task, taskById(w.dataset.id)) : null;
-      /* the middle of a row is "into it", its edges are "beside it" — and a
-         row that cannot take this task has no middle */
-      if(inMiddle && !reason){ setTarget(w); drag.refusal = null; return; }
-      setTarget(null);
-      /* remembered for the drop, not shown while still hovering — a reason
-         that flashes on every pass over a row it can never enter is worse
-         than none */
+      /* the middle of a row is "into it", its edges are "beside it" — a row
+         that CAN take this task has no "beside" and stops right here. One
+         that cannot still gets a red ring while hovered (instead of only a
+         toast after the drop), but its placeholder has to land somewhere,
+         so that case falls through to the same reorder logic an edge-hover
+         uses. */
+      if(inMiddle && !reason){ setTarget(w, false); drag.refusal = null; return; }
+      setTarget(inMiddle ? w : null, true);
       drag.refusal = inMiddle ? reason : null;
       if(w.parentNode !== drag.group) return;               /* another group: nothing moves */
       if(rel < .5){ if(w.previousSibling !== drag.wrap) drag.group.insertBefore(drag.wrap, w); }
@@ -5861,10 +5874,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       document.documentElement.classList.remove("dragging-task");
       d.clone.remove();
       d.wrap.classList.remove("dragsrc", "dragsrc-nesting");
-      if(d.target) d.target.classList.remove("nesttarget");
+      if(d.target) d.target.classList.remove("nesttarget", "nestrefused");
       swallowUntil = Date.now() + 400;
       if(!commit || !document.body.contains(d.wrap)){ putBack(d); return; }
-      if(d.target){ putBack(d); nestInto(d.wrap.dataset.id, d.target.dataset.id); return; }
+      if(d.target && !d.targetRefused){ putBack(d); nestInto(d.wrap.dataset.id, d.target.dataset.id); return; }
       if(d.refusal){ putBack(d); toast(t("nestRefuse." + d.refusal), null, true); return; }
       var gr = d.group.getBoundingClientRect();
       var inside = d.x >= gr.left && d.x <= gr.right && d.y >= gr.top - 24 && d.y <= gr.bottom + 24;
