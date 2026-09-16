@@ -9,6 +9,9 @@ const ROOT = path.join(__dirname, '..', 'docs', 'design');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
 
+// PORT lets a second worktree serve its own copy beside another session's.
+const PORT = Number(process.env.PORT) || 8919;
+
 http.createServer((req, res) => {
   const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '') || 'user-dashboard.html';
   const file = path.join(ROOT, rel);
@@ -19,4 +22,4 @@ http.createServer((req, res) => {
       'cache-control': 'no-store' });
     res.end(buf);
   });
-}).listen(8919, '127.0.0.1', () => console.log('design pages on http://127.0.0.1:8919'));
+}).listen(PORT, '127.0.0.1', () => console.log(`design pages on http://127.0.0.1:${PORT}`));

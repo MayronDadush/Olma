@@ -315,6 +315,19 @@ const ACTIONS = {
     return grants.revokeFeatureGrant(client, userId, p.connectionId, p.feature);
   },
 
+  // Removing a friend is the chat tool's revoke_connection, cascade and all:
+  // live shares revoked, every grant on both sides gone, a coordination only
+  // the two of them were still in closed. The connection is re-checked as
+  // THEIRS inside revokeConnection, so a guessed id is `not_found`. A pair that
+  // met in a WhatsApp room is removed the same way and stays removed — the room
+  // sweep never re-creates a revoked pair (domain/group-connections.js). Not
+  // refused while paused: it only ever reduces what Olma will send.
+  async revokeConnection(client, userId, p) {
+    const id = Number(p.connectionId);
+    if (!Number.isInteger(id) || id <= 0) return err('invalid', 'connectionId required');
+    return connections.revokeConnection(client, userId, id);
+  },
+
   // ---- meetings ------------------------------------------------------------
   // Answering a coordination with a tap. The domain call and everything that
   // follows from it are the SAME ones the chat tool uses (domain/meetings.js +
@@ -681,7 +694,7 @@ function auditPayload(action, payload) {
 const CARD_ACTIONS = new Set([
   'setName', 'setPersonal', 'setAssistant', 'setLocale', 'setTimezone',
   'setAvailability', 'setQuietDays', 'setDigest', 'forgetFact', 'answerFactPrompt',
-  'pause', 'resume',
+  'pause', 'resume', 'revokeConnection',
 ]);
 
 module.exports = { perform, ACTIONS: Object.keys(ACTIONS), CARD_ACTIONS };
