@@ -5615,9 +5615,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
     var nav = e.target.closest("[data-go]");
     if(nav){ go(nav.dataset.go); return; }
-
-    var tb = e.target.closest("[data-toast]");
-    if(tb) toast(t(tb.dataset.toast));
+    /* `data-toast` used to be here: one attribute that answered a click with a
+       sentence and nothing else. Its last user was the remove-connection
+       button, which said the connection was gone while it was still there — so
+       the attribute goes with it rather than waiting to be reached for again. A
+       control that reports a change makes the change first. */
   });
 
   /* ───────── tasks ───────── */

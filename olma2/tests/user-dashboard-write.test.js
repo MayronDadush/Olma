@@ -421,7 +421,9 @@ test('a connection between two other people cannot be removed from this page', a
 test('the page no longer claims a removal it never sends', () => {
   const page = require('node:fs').readFileSync(
     require('node:path').join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
-  assert.equal(page.includes('data-toast="toast.removed"'), false,
-    'a toast-only remove button tells the person the friend is gone while nothing changed');
+  // The attribute, not the word: the comment where it used to live says why it
+  // is gone, and that sentence is the thing keeping it gone.
+  assert.equal(/data-toast\s*[="\]]/.test(page), false,
+    'the attribute that answers a click with a sentence and no write is back');
   assert.match(page, /API\.send\("revokeConnection", \{connectionId:f\.cid\}/);
 });
