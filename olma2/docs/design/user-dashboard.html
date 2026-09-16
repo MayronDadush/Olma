@@ -2201,6 +2201,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    DOM position, and #timeSheet loses that tie against sheets defined later
    in the markup. Bump it above the whole .sheet layer explicitly. */
 #timeSheet{z-index:82}
+/* #mtOptSheet stacks on the coordination sheet for the same reason: adding a
+   time used to CLOSE the coordination and open a second sheet 130ms later,
+   then close that to bring the first one back — three animations for one tap.
+   It opens on top and lifts off, and what is under it never moves. */
+#mtOptSheet{z-index:82}
 /* ── the top edge is a handle ──
    Five pixels of ribbon cannot be caught with a thumb, so the whole strip
    above the title is the grab area. `touch-action:none` or the browser
@@ -3169,10 +3174,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 <div class="sheet" id="mtOptSheet" role="dialog" aria-modal="true" aria-labelledby="mtOptTitle">
   <div class="sgrab"><i class="grabber"></i></div>
   <h2 id="mtOptTitle"></h2>
+  <div id="mtOptPick">
   <div class="group"><div class="foldpad tight">
     <div class="dgmon" id="mtOptMon"></div>
     <div class="daygrid" id="mtOptDays"></div>
   </div></div>
+  <p class="note" id="mtOptCap" style="padding:0 14px 10px" hidden></p>
   <div id="mtOptWhen">
     <div class="glabel" style="margin-top:16px"><span data-i18n="mt.whenLbl"></span></div>
     <div class="group"><div class="foldpad tight">
@@ -3182,25 +3189,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
              style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
     </div></div>
   </div>
+  </div>
+  <!-- At the cap, what it replaces is asked HERE rather than in a third sheet
+       of its own: the moment is already chosen, and a sheet on top of a sheet
+       on top of the coordination is what made this hard to follow (the owner,
+       2026-09-16). -->
+  <div id="mtOptSwap" hidden>
+    <p class="note" id="mtSwapNew" style="padding:0 14px 6px"></p>
+    <div class="group" id="mtSwapList"></div>
+  </div>
   <div class="sheetbtns">
-    <button class="btn primary" id="mtOptGo" data-i18n="mt.addGo"></button>
+    <button class="btn primary" id="mtOptGo"></button>
     <button class="btn ghost" id="mtOptCancel" data-i18n="sheet.cancel"></button>
   </div>
   <div class="scuehold deep"><div class="scue" id="mtOptCue"><i></i></div></div>
-</div>
-
-<!-- At the cap. The new moment is already chosen and waiting — this asks
-     what it replaces, so nothing is deleted for a replacement that never
-     arrived. -->
-<div class="sheet" id="mtSwapSheet" role="dialog" aria-modal="true" aria-labelledby="mtSwapTitle">
-  <div class="sgrab"><i class="grabber"></i></div>
-  <h2 id="mtSwapTitle" data-i18n="mt.swapTitle"></h2>
-  <p class="note" id="mtSwapNew" style="padding:0 14px 6px"></p>
-  <div class="group" id="mtSwapList"></div>
-  <div class="sheetbtns">
-    <button class="btn ghost" id="mtSwapCancel" data-i18n="sheet.cancel"></button>
-  </div>
-  <div class="scuehold deep"><div class="scue" id="mtSwapCue"><i></i></div></div>
 </div>
 
 <!-- Starting one: who, then which days, then when in the day — one question
@@ -3970,6 +3972,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.overCap":"יוצעו {n} הראשונים",
       "mt.swapTitle":"מה להחליף?","mt.swapNew":"במקומו ייכנס: {when}",
       "mt.drop":"החלפה","mt.noneYet":"אף אחד עדיין",
+      "mt.missDay":"בחרו יום","mt.missTime":"בחרו שעה",
       "mt.remove":"מחיקה","mt.removeConfirm":"עוד לחיצה כדי למחוק",
       "mt.quorumMet":"יש מניין",
       "mt.minNone":"בלי מינימום","mt.minSet":"מספיק לי {n} מתוך {of}",
@@ -4005,7 +4008,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mtwho.n0":"אף אחד","mtwho.n1":"נבחר אחד","mtwho.nN":"נבחרו {n}","mtday.n0":"עוד לא נבחרו ימים","mtday.n1":"נבחר יום אחד","mtday.nN":"נבחרו {n} ימים",
       "mt.pickSearch":"חיפוש חבר או קבוצה","mt.noMatch":"אין התאמה.",
       "toast.mtGroup":"{name} — {n} חברים נוספו",
-      "toast.mtOptAdded":"נוסף — {when}",
+      "toast.mtOptAdded":"נוסף — {when}","toast.mtOptDupe":"{when} כבר מוצע בתיאום",
       "toast.mtSwapped":"{out} הוחלף ב{in}",
       "toast.mtLeft":"יצאת מ{name}","toast.mtLeaveFailed":"לא הצלחתי להוציא אותך מ{name}",
       "toast.mtWhen":"סומנו {n} ימים",
@@ -4261,6 +4264,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.overCap":"the first {n} will be offered",
       "mt.swapTitle":"What should it replace?","mt.swapNew":"In its place: {when}",
       "mt.drop":"Replace","mt.noneYet":"nobody yet",
+      "mt.missDay":"Pick a day","mt.missTime":"Pick a time",
       "mt.remove":"Delete","mt.removeConfirm":"Press again to delete",
       "mt.quorumMet":"Enough people",
       "mt.minNone":"No minimum","mt.minSet":"{n} of {of} is enough",
@@ -4296,7 +4300,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mtwho.n0":"nobody","mtwho.n1":"1 chosen","mtwho.nN":"{n} chosen","mtday.n0":"No days chosen yet","mtday.n1":"1 day chosen","mtday.nN":"{n} days chosen",
       "mt.pickSearch":"Search a friend or a group","mt.noMatch":"Nothing matches.",
       "toast.mtGroup":"{name} \u2014 {n} people added",
-      "toast.mtOptAdded":"Added \u2014 {when}",
+      "toast.mtOptAdded":"Added \u2014 {when}","toast.mtOptDupe":"{when} is already offered here",
       "toast.mtSwapped":"{out} replaced by {in}",
       "toast.mtLeft":"You left {name}","toast.mtLeaveFailed":"Could not take you off {name}",
       "toast.mtWhen":"{n} days marked",
@@ -6186,6 +6190,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      stacked on. */
   $("#scrim").addEventListener("click", function(){
     if($("#timeSheet").classList.contains("show")){ closeTimeSheet(); return; }
+    if($("#mtOptSheet").classList.contains("show")){ closeOptSheet(); return; }
     closeSheets();
   });
   $("#cityCancel").addEventListener("click", closeSheets);
@@ -6289,6 +6294,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(!$("#calPop").hidden){ closeCal(); return; }
     if(!$("#tpPop").hidden){ closeTimePop(); return; }
     if($("#timeSheet").classList.contains("show")){ closeTimeSheet(); return; }
+    if($("#mtOptSheet").classList.contains("show")){ closeOptSheet(); return; }
     closeSheets();
   });
 
@@ -8019,16 +8025,37 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#mtOptWhen").hidden = !!(mtOpen && mtOpen.allDay);
     $("#mtOptParts").innerHTML = partChipsHTML(optPart, optExact, "optpart");
     syncTimeChip($("#mtOptTime"), $("#mtOptTimeChip"), $("#mtOptTimeVal"), optExact);
-    $("#mtOptGo").disabled = optDay < 0 || (optExact && !$("#mtOptTime").value);
+    /* Never a dead button: it says what is still missing, and once there is an
+       answer it says what pressing it will add. */
+    var m = mtOpen, full = !!m && !m.settled && m.opts.length >= MEET_CAP;
+    $("#mtOptCap").textContent = full ? t("mt.capFull", {n:MEET_CAP}) : "";
+    $("#mtOptCap").hidden = !full;
+    $("#mtOptPick").hidden = !!swapNew;
+    $("#mtOptSwap").hidden = !swapNew;
+    $("#mtOptTitle").textContent = t(swapNew ? "mt.swapTitle" : "mt.addOpt");
+    $("#mtOptCancel").textContent = t(swapNew ? "mt.back" : "sheet.cancel");
+    var go = $("#mtOptGo");
+    go.hidden = !!swapNew;
+    var miss = optDay < 0 ? t("mt.missDay")
+      : (optExact && !$("#mtOptTime").value) ? t("mt.missTime") : "";
+    go.classList.toggle("miss", !!miss);
+    go.textContent = miss || (m ? t("mt.addGo") + " · " + mtOptLabel(m, optDraft()) : t("mt.addGo"));
     paintCue($("#mtOptSheet"), $("#mtOptCue"));
   }
   $("#mtAddOpt").addEventListener("click", function(){
     if(!mtOpen) return;
     optDay = 1; optPart = "evening"; optExact = ""; dgPage["#mtOptDays"] = 0;
-    $("#mtOptTitle").textContent = t("mt.addOpt");
+    swapNew = null;
     renderOptSheet();
-    showSheet($("#mtOptSheet"));
+    /* on top of the coordination, not instead of it */
+    $("#mtOptSheet").classList.add("show");
+    $("#mtOptSheet").scrollTop = 0;
   });
+  /* the sheet under it keeps the scrim and stays open, so only this one lifts */
+  function closeOptSheet(){
+    swapNew = null;
+    $("#mtOptSheet").classList.remove("show");
+  }
   $("#mtOptDays").addEventListener("click", function(e){
     var b = e.target.closest("[data-day]");
     if(b){ optDay = +b.dataset.day; renderOptSheet(); }
@@ -8041,23 +8068,50 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     renderOptSheet();
   });
   $("#mtOptTime").addEventListener("input", function(){ optExact = this.value; $("#mtOptTimeVal").textContent = this.value; });
-  $("#mtOptCancel").addEventListener("click", closeSheets);
+  $("#mtOptCancel").addEventListener("click", function(){
+    /* on the swap pane this goes back to the moment, it does not leave */
+    if(swapNew){ swapNew = null; renderOptSheet(); return; }
+    closeOptSheet();
+  });
   $("#mtOptSheet").addEventListener("scroll", function(){ paintCue($("#mtOptSheet"), $("#mtOptCue")); });
+  /* what the chips describe right now, before it has an id */
+  function optDraft(){
+    var m = mtOpen, o = {day:optDay};
+    if(m && !m.allDay){ if(optExact) o.time = optExact; else o.part = optPart; }
+    return o;
+  }
   $("#mtOptGo").addEventListener("click", function(){
     var m = mtOpen;
     if(!m) return;
+    if(optDay < 0 || (optExact && !$("#mtOptTime").value)){
+      var g = $("#mtOptDays");
+      g.classList.remove("nudge"); void g.offsetWidth; g.classList.add("nudge");
+      return;
+    }
     var o = {id:++mtOptSeq, day:optDay};
     if(m.allDay){ /* nothing more to say about a whole day */ }
     else if(optExact) o.time = optExact;
     else o.part = optPart;
+    /* The same moment twice is one option, not two — the server says so and
+       answers the existing row with a yes instead (domain/meeting-options.js,
+       `add`). The page used to push the duplicate anyway and show it until a
+       reload took it away. */
+    var dupe = m.opts.filter(function(x){
+      return x.day === o.day && (x.time || "") === (o.time || "") && (x.part || "") === (o.part || "");
+    })[0];
+    if(dupe){
+      toast(t("toast.mtOptDupe", {when:mtOptLabel(m, dupe)}));
+      return;
+    }
     /* At the cap the question is asked on the way OUT, once there is something
        to swap in — the owner's rule for the sixth time (2026-09-09): let them
        type it, then ask what goes. Asking first would mean giving up an option
        in exchange for a replacement that never arrived. */
     if(m.opts.length >= MEET_CAP){
       swapNew = o;
-      closeSheets();
-      setTimeout(function(){ renderSwap(); showSheet($("#mtSwapSheet")); }, 130);
+      renderSwap();
+      renderOptSheet();
+      $("#mtOptSheet").scrollTop = 0;
       return;
     }
     mtAddOption(o);
@@ -8068,8 +8122,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     API.call("startMeeting", {meeting_id:m.id, add_option:{day:o.day, part:o.part || null, time:o.time || null}});
     API.send("addOption", {meetingId:m.id, day:o.day, part:o.part || null, time:o.time || null, allDay:!!m.allDay},
       function(){ API.reload(); });
-    closeSheets();
-    setTimeout(function(){ showSheet($("#mtSheet")); renderMeet(); renderMeets(); }, 130);
+    /* the coordination never went away: lift this sheet and it is already there */
+    closeOptSheet();
+    renderMeet(); renderMeets();
     /* the swap path says the whole sentence itself — one action, one toast */
     if(!quiet) toast(t("toast.mtOptAdded", {when:mtOptLabel(m, o)}));
   }
@@ -8086,7 +8141,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         '<div class="row-sub">' + esc(mtN(m, o, "y") ? pl("mtY", mtN(m, o, "y")) : t("mt.noneYet")) + "</div></div>" +
         '<span class="row-val drop">' + esc(t("mt.drop")) + "</span></button>";
     }).join("");
-    paintCue($("#mtSwapSheet"), $("#mtSwapCue"));
   }
   $("#mtSwapList").addEventListener("click", function(e){
     var b = e.target.closest("[data-drop]");
@@ -8100,15 +8154,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       API.send("swapOption", {meetingId:m.id, replaceOptionId:id, day:added.day, part:added.part || null,
         time:added.time || null, allDay:!!m.allDay}, function(){ API.reload(); });
       m.opts.push(added);
-      closeSheets();
-      setTimeout(function(){ showSheet($("#mtSheet")); renderMeet(); renderMeets(); }, 130);
+      closeOptSheet();
+      renderMeet(); renderMeets();
       toast(t("toast.mtSwapped", {out:mtOptLabel(m, gone), in:mtOptLabel(m, added)}));
       return;
     }
     mtAddOption(added, true);
     toast(t("toast.mtSwapped", {out:mtOptLabel(m, gone), in:mtOptLabel(m, added)}));
   });
-  $("#mtSwapCancel").addEventListener("click", closeSheets);
 
   /* ── starting one ── */
   var mtPickWho = [], mtPickDays = [], mtPickQ = "";
