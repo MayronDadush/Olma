@@ -3432,7 +3432,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setCategory:         "set_task_category",         /* NO TOOL YET — tasks.category */
     setServiceMode:      "start_calendar_connection", /* integrations.scope, per service */
     setFriendPermission: "grant_connection_feature",  /* revoke_connection_feature when off */
-    setDefaultChannel:   "set_digest_preferences",
+    setDefaultChannel:   "set_primary_channel",       /* NO TOOL YET — dashboard only, users.setPrimaryChannel */
     setTimezone:         "set_my_timezone",
     inviteContact:       "request_connection",
     removeFriend:        "revoke_connection",
@@ -3466,7 +3466,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     shareTask:"shareTask", revokeShare:"revokeShare", setTaskPin:"setTaskPin",
     setTaskOrder:"setTaskOrder", nestTask:"nestTask", unnestTask:"unnestTask",
     grantFeature:"grantFeature", revokeFeature:"revokeFeature", revokeConnection:"revokeConnection",
-    setTimezone:"setTimezone", pause:"pause", resume:"resume", callMe:"callMe",
+    setTimezone:"setTimezone", setDefaultChannel:"setDefaultChannel",
+    pause:"pause", resume:"resume", callMe:"callMe",
     requestMoreCalls:"requestMoreCalls",
     inviteContact:"inviteContact",
     respondToMeeting:"respondToMeeting", leaveMeeting:"leaveMeeting",
@@ -3696,7 +3697,17 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       return API.send(on ? "grantFeature" : "revokeFeature",
         {connectionId:f.cid, feature:FEATURE_OF[k] || k});
     },
-    setDefaultChannel:   function(ch){ return API.call("setDefaultChannel", {channel:ch}); },
+    /* By the server's own channel_type, not the page's short id — CHANNELS
+       carries both. The click handler has already moved the pressed state and
+       the sentence; a refusal is not special-cased here, it just falls
+       through to API.refused's plain reload, which re-hydrates the real
+       primary and puts the pressed state back where it actually is. */
+    setDefaultChannel:   function(ch){
+      API.call("setDefaultChannel", {channel:ch});
+      var c = CHANNELS.filter(function(x){ return x.id === ch; })[0];
+      if(!c || !c.type) return true;
+      return API.send("setDefaultChannel", {channelType:c.type});
+    },
     /* By contact id, never by number. The server looks the phone up in THEIR
        address book — a page that could post a number straight into
        requestConnection would be a way to invite anybody at all from a stolen
@@ -4766,8 +4777,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        which opens that app on this exact thread with Olma rather than on its
        inbox. The number is Olma's own, so the deep link is the same for
        everyone and nothing user-specific is put in a URL. */
-    {id:"wa",   name:"WhatsApp", tile:"wa",  icon:"i-wa",     on:true,  link:"https://wa.me/972559347282"},
-    {id:"imsg", name:"iMessage", tile:"msg", icon:"i-bubble", on:false, link:"sms:+972559347282"},
+    /* `type` is the server's own column value (user_channels.channel_type) —
+       the id CHAN_OF already reads rows back by. A call tile is not a channel
+       row at all and carries none. */
+    {id:"wa",   name:"WhatsApp", tile:"wa",  icon:"i-wa",     on:true,  link:"https://wa.me/972559347282", type:"whatsapp"},
+    {id:"imsg", name:"iMessage", tile:"msg", icon:"i-bubble", on:false, link:"sms:+972559347282",          type:"imessage"},
     {id:"call", name:null,       tile:"call",icon:"i-phone",  call:true}
   ];
   var expanded = {}, defaultChannel = "wa";

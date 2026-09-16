@@ -528,6 +528,17 @@ const ACTIONS = {
     return users.setTimezone(client, userId, p.timezone, true);
   },
 
+  // Which of the person's own channel rows proactive sends go to. Today that
+  // picker on the page never renders — it needs two LIVE channels and nobody
+  // has a second row (users.setPrimaryChannel never inserts one; only
+  // createUser's whatsapp row does that, and nothing else in the codebase
+  // gives a person a second channel yet) — so this refuses `not_found` for
+  // everything but the channel they already have. That refusal is the honest
+  // answer, not a bug: the picker's own toast used to fire either way.
+  async setDefaultChannel(client, userId, p) {
+    return users.setPrimaryChannel(client, userId, p.channelType);
+  },
+
   // ---- the phone ----------------------------------------------------------
   // The same domain call the agent makes for `call_me_on_the_phone`, reached
   // from the tile instead of from a sentence. Two gates stand in front of it
