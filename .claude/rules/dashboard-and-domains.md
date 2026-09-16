@@ -116,10 +116,15 @@ no JS — but structured differently:
 - **Since 2026-09-15 `/` is a home page and each group is its own menu page
   at `/g/<id>`** (it was six `<details>` folds on one page from 2026-09-05).
   The home page (`admin/home.js`) is KPI tiles over calendar periods in
-  Asia/Jerusalem with a Sunday week, the eval user out of every count of
-  people and in the money, plus two focus panels (meeting coordinations,
-  group coordination); `homeMetrics` returns numbers and `renderHome` renders
-  them, so its tests assert on counts. The alerts strip (`collectAlerts`) is
+  Asia/Jerusalem with a Sunday week, plus two focus panels (meeting
+  coordinations, group coordination); `homeMetrics` returns numbers and
+  `renderHome` renders them, so its tests assert on counts. **Two flags keep a
+  user out of every count of people and activity, and both stay IN the money
+  because their calls and model use still cost real money**: `is_eval` (set
+  by the system — the one nightly eval bot) and, since 2026-09-16, `is_test`
+  (migration 071 — set by hand, from the toggle in the Users page, for a real
+  account opened during development that `is_eval` was never meant to catch).
+  The alerts strip (`collectAlerts`) is
   on the home page and at the top of `/g/now`; its `#section` links go through
   `sectionHref` so they cross to the right page. Forms still send
   `back=/#<section>` and `safeBack` maps it to `/g/<group>#<section>`. Every
