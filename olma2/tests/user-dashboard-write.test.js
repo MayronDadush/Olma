@@ -360,3 +360,43 @@ test('a task they already have is refused with a reason the page can say out lou
   assert.equal(r.error.code, 'conflict');
   assert.equal(r.error.reason, 'duplicate');
 });
+
+// ---- default channel -------------------------------------------------------
+// The picker used to call API.call only: it toasted "ברירת המחדל היא X" and
+// wrote nothing, so the choice was forgotten on the next reload. It cannot
+// reach a real user today (the picker only renders with two live channels,
+// and nothing in the codebase ever gives anyone a second one), but the switch
+// underneath it is now real, so it is not still lying on the day it can.
+test('setDefaultChannel moves is_primary, and refuses a channel this user does not have', async () => {
+  await db.pool.query(
+    `INSERT INTO user_channels (user_id, channel_type, channel_identifier, is_primary)
+     VALUES ($1, 'imessage', 'imsg:test', FALSE)`, [me.id]);
+
+  const refused = await act('setDefaultChannel', { channelType: 'sms' });
+  assert.equal(refused.ok, false);
+  assert.equal(refused.error.code, 'not_found');
+  const stillWa = await db.pool.query(
+    `SELECT channel_type FROM user_channels WHERE user_id = $1 AND is_primary`, [me.id]);
+  assert.equal(stillWa.rows[0].channel_type, 'whatsapp', 'a refused switch moved the primary anyway');
+
+  const r = await act('setDefaultChannel', { channelType: 'imessage' });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  const { rows } = await db.pool.query(
+    `SELECT channel_type, is_primary FROM user_channels WHERE user_id = $1 ORDER BY channel_type`, [me.id]);
+  assert.deepEqual(rows, [
+    { channel_type: 'imessage', is_primary: true },
+    { channel_type: 'whatsapp', is_primary: false },
+  ]);
+  assert.equal(write.CARD_ACTIONS.has('setDefaultChannel'), false,
+    'USER.md never mentions the channel — nothing needs refreshing');
+
+  // Switch back so later tests in this file keep seeing whatsapp as primary.
+  await act('setDefaultChannel', { channelType: 'whatsapp' });
+});
+
+test('the page sends the real channel_type, not its own short id', () => {
+  const page = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
+  assert.match(page, /API\.send\("setDefaultChannel", \{channelType:c\.type\}/);
+  assert.match(page, /\{id:"wa",[^}]*type:"whatsapp"/);
+});

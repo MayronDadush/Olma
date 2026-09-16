@@ -215,3 +215,57 @@ test('setTimezone validates IANA names', async () => {
     assert.equal(bad.error.code, 'invalid');
   } finally { client.release(); }
 });
+
+test('setPrimaryChannel switches which row is_primary carries, and only among rows the user actually has', async () => {
+  const u = await makeUser(db.pool, '+972508888888');
+  const client = await db.pool.connect();
+  try {
+    // Nothing in the codebase ever inserts a second row — this proves the
+    // switch works the moment one exists, without this test inventing its own
+    // provisioning path.
+    await client.query(
+      `INSERT INTO user_channels (user_id, channel_type, channel_identifier, is_primary)
+       VALUES ($1, 'imessage', 'imsg:+972508888888', FALSE)`, [u.id]);
+
+    const missing = await users.setPrimaryChannel(client, u.id, 'sms');
+    assert.equal(missing.ok, false, 'switched to a channel this user does not have');
+    assert.equal(missing.error.code, 'not_found');
+    const untouched = await client.query(
+      `SELECT channel_type FROM user_channels WHERE user_id = $1 AND is_primary`, [u.id]);
+    assert.equal(untouched.rows[0].channel_type, 'whatsapp', 'a refused switch moved the primary anyway');
+
+    const res = await users.setPrimaryChannel(client, u.id, 'imessage');
+    assert.equal(res.ok, true, res.ok ? '' : JSON.stringify(res.error));
+    assert.equal(res.data.channelType, 'imessage');
+    const rows = (await client.query(
+      `SELECT channel_type, is_primary FROM user_channels WHERE user_id = $1 ORDER BY channel_type`,
+      [u.id])).rows;
+    assert.deepEqual(rows, [
+      { channel_type: 'imessage', is_primary: true },
+      { channel_type: 'whatsapp', is_primary: false },
+    ]);
+    const primary = await users.primaryChannel(client, u.id);
+    assert.equal(primary.data.channel.channel_type, 'imessage',
+      'proactive sends would still resolve to the old channel');
+
+    const { rows: audits } = await client.query(
+      `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'user.primary_channel_set'`, [u.id]);
+    assert.equal(audits.length, 1);
+    assert.equal(audits[0].detail.channelType, 'imessage');
+  } finally { client.release(); }
+});
+
+test('setPrimaryChannel refuses an empty channelType and never touches the row', async () => {
+  const u = await makeUser(db.pool, '+972509999999');
+  const client = await db.pool.connect();
+  try {
+    for (const bad of ['', null, undefined, '   ']) {
+      const res = await users.setPrimaryChannel(client, u.id, bad);
+      assert.equal(res.ok, false);
+      assert.equal(res.error.code, 'invalid');
+    }
+    const row = await client.query(
+      `SELECT channel_type FROM user_channels WHERE user_id = $1 AND is_primary`, [u.id]);
+    assert.equal(row.rows[0].channel_type, 'whatsapp');
+  } finally { client.release(); }
+});

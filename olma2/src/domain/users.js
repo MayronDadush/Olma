@@ -80,6 +80,42 @@ async function primaryChannel(client, userId) {
   return ok({ channel: rows[0] });
 }
 
+// Which of the person's OWN channel rows proactive sends go to. Never inserts
+// one — that is a provisioning question this function has no opinion on, and
+// today nothing in the codebase ever gives a user a second row (createUser's
+// whatsapp insert is the only INSERT INTO user_channels there is), so this
+// refuses `not_found` for every channelType but the one they already have.
+// It is still real, not a stub: `loadChannels` has drawn a picker for
+// whichever rows exist since before this function did anything with a
+// click, and the schema (UNIQUE (channel_type, channel_identifier), no count
+// cap) was built for more than one row per person from the start.
+async function setPrimaryChannel(client, userId, channelType) {
+  const type = String(channelType || '').trim();
+  if (!type) return err('invalid', 'channelType required');
+  // Checked before touching anything: an UPDATE that both refuses a bogus
+  // type AND flips is_primary in one statement would unset the real primary
+  // on the very call it refuses, leaving the person with no primary channel
+  // at all — the refusal has to cost nothing.
+  const exists = await client.query(
+    `SELECT 1 FROM user_channels WHERE user_id = $1 AND channel_type = $2`, [userId, type]
+  );
+  if (!exists.rows[0]) {
+    return err('not_found', 'no such channel for this user', { channelType: type });
+  }
+  // Two statements, not one `CASE` — a single UPDATE that sets one row's
+  // is_primary true before it gets around to setting the OLD primary's false
+  // trips `user_channels_one_primary` (a partial unique index, checked
+  // per-row, not deferred) the moment both are still true at once. Turning
+  // everyone off first can never collide with it.
+  await client.query(`UPDATE user_channels SET is_primary = FALSE WHERE user_id = $1`, [userId]);
+  await client.query(
+    `UPDATE user_channels SET is_primary = TRUE WHERE user_id = $1 AND channel_type = $2`,
+    [userId, type]
+  );
+  await audit.record(client, userId, 'user.primary_channel_set', { channelType: type });
+  return ok({ channelType: type });
+}
+
 function sessionKeyFor(agentId, channel) {
   return `agent:${agentId}:${channel.channel_type}:direct:${channel.channel_identifier}`;
 }
@@ -360,7 +396,7 @@ async function setPersonal(client, userId, { gender, birthDate } = {}, now = new
 module.exports = {
   setPersonal,
   newIdentityToken, resolveByToken, getByPhone, getById,
-  createUser, primaryChannel, sessionKeyFor, setName, setTimezone, setLocale,
+  createUser, primaryChannel, setPrimaryChannel, sessionKeyFor, setName, setTimezone, setLocale,
   noteObservedLanguage,
   setAssistantPersona,
   cleanName,
