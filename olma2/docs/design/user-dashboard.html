@@ -3435,6 +3435,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setDefaultChannel:   "set_digest_preferences",
     setTimezone:         "set_my_timezone",
     inviteContact:       "request_connection",
+    removeFriend:        "revoke_connection",
     startMeeting:        "start_meeting_coordination",
     setAvailability:     null,                        /* the /pick/ page is retired; this page IS the picker now */
     confirmSlot:         "respond_to_meeting_slot",   /* propose_meeting_slot proposes it */
@@ -3464,7 +3465,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setTaskReminder:"setTaskReminder", setTaskCalendar:"setTaskCalendar",
     shareTask:"shareTask", revokeShare:"revokeShare", setTaskPin:"setTaskPin",
     setTaskOrder:"setTaskOrder", nestTask:"nestTask", unnestTask:"unnestTask",
-    grantFeature:"grantFeature", revokeFeature:"revokeFeature",
+    grantFeature:"grantFeature", revokeFeature:"revokeFeature", revokeConnection:"revokeConnection",
     setTimezone:"setTimezone", pause:"pause", resume:"resume", callMe:"callMe",
     requestMoreCalls:"requestMoreCalls",
     inviteContact:"inviteContact",
@@ -3896,7 +3897,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "fr.connected":"מחוברים","fr.count":"{n} חברים",
       "fr.search":"חיפוש חבר","fr.clear":"ניקוי","fr.noMatch":"אין חבר בשם „{q}”.",
       "fr.p.n0":"אין הרשאות פעילות","fr.p.n1":"הרשאה אחת פעילה","fr.p.nN":"{n} הרשאות פעילות",
-      "fr.bday":"יום הולדת היום","fr.remove":"הסרת החיבור","fr.invite":"הזמנת חבר",
+      "fr.bday":"יום הולדת היום","fr.remove":"הסרת החיבור","fr.removeConfirm":"עוד לחיצה כדי להסיר","fr.invite":"הזמנת חבר",
       /* A group is one person's own shortcut, not a shared object — nobody is
          asked to join one and nobody is told they are in one. The hint says
          so, because a list of names usually implies the opposite. */
@@ -4188,7 +4189,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "fr.connected":"Connected","fr.count":"{n} friends",
       "fr.search":"Search friends","fr.clear":"Clear","fr.noMatch":"No friend matches \u201c{q}\u201d.",
       "fr.p.n0":"No permissions on","fr.p.n1":"1 permission on","fr.p.nN":"{n} permissions on",
-      "fr.bday":"Birthday today","fr.remove":"Remove connection","fr.invite":"Invite a friend",
+      "fr.bday":"Birthday today","fr.remove":"Remove connection","fr.removeConfirm":"Press again to remove","fr.invite":"Invite a friend",
       "gr.h":"Groups","gr.hint":"Nobody is asked to approve · a WhatsApp room arrives ready","gr.new":"New group",
       "gr.room":"From WhatsApp","gr.off":"{n} not on Allma yet",
       "gr.roomNote":"This group comes from WhatsApp \u2014 its name and who is in it are set there.",
@@ -5614,9 +5615,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
     var nav = e.target.closest("[data-go]");
     if(nav){ go(nav.dataset.go); return; }
-
-    var tb = e.target.closest("[data-toast]");
-    if(tb) toast(t(tb.dataset.toast));
+    /* `data-toast` used to be here: one attribute that answered a click with a
+       sentence and nothing else. Its last user was the remove-connection
+       button, which said the connection was gone while it was still there — so
+       the attribute goes with it rather than waiting to be reached for again. A
+       control that reports a change makes the change first. */
   });
 
   /* ───────── tasks ───────── */
@@ -8893,7 +8896,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         '<span class="row-end tiny' + (night ? " asleep" : "") + '" data-ftz="' + f.tz + '">' + clockIn(f.tz) + "</span>" +
         '<svg class="chev"><use href="#i-chev"/></svg></button>' +
         '<div class="fold" data-ffold="' + f.id + '"><div><div class="foldpad">' + perms +
-        '<button class="linkbtn danger" data-toast="toast.removed" style="margin-top:14px;display:block">' + esc(t("fr.remove")) + "</button>" +
+        '<button class="linkbtn danger" data-frdel="' + f.id + '" style="margin-top:14px;display:block">' + esc(t("fr.remove")) + "</button>" +
         "</div></div></div></div>";
     }).join("");
   }
@@ -8949,7 +8952,50 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     openMtNew([fid]);
     toast(t("toast.newMeet", {name:L(f.n)}));
   }
+  /* Removing a friend is the chat's revoke_connection, and it takes more with
+     it than the row: shares stop, every switch on both sides goes, and a
+     coordination only the two of you were in is closed. So it is two taps —
+     the first only re-words the button — and the row stays until the server
+     says it is gone. This used to be a toast and nothing else: it told you the
+     connection was removed while it was still there. */
+  var FR_ARM_MS = 4000;
+  function disarmFriendRemove(btn){
+    clearTimeout(+btn.dataset.armT || 0);
+    delete btn.dataset.arm; delete btn.dataset.armT;
+    btn.disabled = false;
+    btn.textContent = t("fr.remove");
+  }
+  function dropFriend(fid){
+    FRIENDS = FRIENDS.filter(function(x){ return x.id !== fid; });
+    GROUPS.forEach(function(g){ g.m = g.m.filter(function(m){ return m !== fid; }); });
+    renderFriends();
+    renderGroups();
+    $("#friendCount").textContent = t("fr.count", {n:FRIENDS.length});
+  }
+  function removeFriend(btn){
+    var fid = +btn.dataset.frdel, f = friendById(fid);
+    if(!f || btn.disabled) return;
+    if(!btn.dataset.arm){
+      btn.dataset.arm = "1";
+      btn.textContent = t("fr.removeConfirm");
+      btn.dataset.armT = setTimeout(function(){ disarmFriendRemove(btn); }, FR_ARM_MS);
+      return;
+    }
+    clearTimeout(+btn.dataset.armT || 0);
+    API.call("removeFriend", {connection_id:f.cid});
+    if(!LIVE){ dropFriend(fid); toast(t("toast.removed", {name:L(f.n)})); return; }
+    if(!f.cid){ disarmFriendRemove(btn); API.reload(); return; }
+    btn.disabled = true;
+    API.send("revokeConnection", {connectionId:f.cid}, function(data){
+      if(!data){ disarmFriendRemove(btn); return; } /* refused, and already reloading */
+      dropFriend(fid);
+      toast(t("toast.removed", {name:L(f.n)}));
+      API.reload();
+    });
+  }
   $("#friendGroup").addEventListener("click", function(e){
+    var rm = e.target.closest("[data-frdel]");
+    if(rm){ removeFriend(rm); return; }
     var ns = e.target.closest("[data-newshared]");
     if(ns){ startSharedTask(+ns.dataset.newshared); return; }
     var nm = e.target.closest("[data-newmeet]");

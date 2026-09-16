@@ -360,3 +360,70 @@ test('a task they already have is refused with a reason the page can say out lou
   assert.equal(r.error.code, 'conflict');
   assert.equal(r.error.reason, 'duplicate');
 });
+
+// ---- removing a friend -----------------------------------------------------
+// The page's "remove connection" was a toast and nothing else: it told the
+// person the connection was gone while every share and switch stayed live. It
+// now goes through revoke_connection's own domain function, cascade included.
+test('removing a friend revokes the connection and everything hanging off it', async () => {
+  const connections = require('../src/domain/connections');
+  const shares = require('../src/domain/shares');
+  const friend = await makeUser(db.pool, '+972531920031', { firstName: 'רוני' });
+  const conn = await tx(async (c) => {
+    const req = await connections.requestConnection(c, me.id, friend.phone, {});
+    assert.equal(req.ok, true, req.ok ? '' : JSON.stringify(req.error));
+    return (await connections.respondToConnection(c, friend.id, req.data.connection.id, 'approve')).data.connection;
+  });
+  const task = await mkTask();
+  const share = await tx(async (c) => {
+    const s = (await shares.offerShare(c, me.id, task.id, friend.id, 'viewer')).data.share;
+    await shares.respondToShare(c, friend.id, s.id, 'accept');
+    return s;
+  });
+
+  const r = await act('revokeConnection', { connectionId: conn.id });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  const { rows: [row] } = await db.pool.query(`SELECT status FROM connections WHERE id = $1`, [conn.id]);
+  assert.equal(row.status, 'revoked');
+  const { rows: [sh] } = await db.pool.query(`SELECT status FROM shares WHERE id = $1`, [share.id]);
+  assert.equal(sh.status, 'revoked', 'the friend is gone and can still see the task');
+  const { rows: [g] } = await db.pool.query(
+    `SELECT count(*)::int AS n FROM connection_feature_grants WHERE connection_id = $1`, [conn.id]);
+  assert.equal(g.n, 0);
+  const { rows: ev } = await db.pool.query(
+    `SELECT event FROM audit_log WHERE actor_id = $1 AND event IN ('connection.revoked','dashboard.revokeConnection')`, [me.id]);
+  assert.deepEqual(ev.map((e) => e.event).sort(), ['connection.revoked', 'dashboard.revokeConnection']);
+  assert.ok(write.CARD_ACTIONS.has('revokeConnection'), 'USER.md lists connections and would keep this one');
+
+  const again = await act('revokeConnection', { connectionId: conn.id });
+  assert.equal(again.ok, false);
+  assert.equal(again.error.code, 'not_found');
+});
+
+test('a connection between two other people cannot be removed from this page', async () => {
+  const connections = require('../src/domain/connections');
+  const a = await makeUser(db.pool, '+972531920032');
+  const b = await makeUser(db.pool, '+972531920033');
+  const conn = await tx(async (c) => {
+    const req = await connections.requestConnection(c, a.id, b.phone, {});
+    return (await connections.respondToConnection(c, b.id, req.data.connection.id, 'approve')).data.connection;
+  });
+  const r = await act('revokeConnection', { connectionId: conn.id });
+  assert.equal(r.ok, false, 'a session could cut anybody off by guessing an id');
+  assert.equal(r.error.code, 'not_found');
+  const { rows: [row] } = await db.pool.query(`SELECT status FROM connections WHERE id = $1`, [conn.id]);
+  assert.equal(row.status, 'active');
+  for (const bad of [undefined, null, 'x', -1, 0]) {
+    assert.equal((await act('revokeConnection', { connectionId: bad })).error.code, 'invalid');
+  }
+});
+
+test('the page no longer claims a removal it never sends', () => {
+  const page = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
+  // The attribute, not the word: the comment where it used to live says why it
+  // is gone, and that sentence is the thing keeping it gone.
+  assert.equal(/data-toast\s*[="\]]/.test(page), false,
+    'the attribute that answers a click with a sentence and no write is back');
+  assert.match(page, /API\.send\("revokeConnection", \{connectionId:f\.cid\}/);
+});
