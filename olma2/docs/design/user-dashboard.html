@@ -4009,6 +4009,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.pickSearch":"חיפוש חבר או קבוצה","mt.noMatch":"אין התאמה.",
       "toast.mtGroup":"{name} — {n} חברים נוספו",
       "toast.mtOptAdded":"נוסף — {when}","toast.mtOptDupe":"{when} כבר מוצע בתיאום",
+      "toast.mtCapReached":"הגעתם למקסימום {n} מועדים — בחרו מה למחוק כדי להוסיף",
       "toast.mtSwapped":"{out} הוחלף ב{in}",
       "toast.mtLeft":"יצאת מ{name}","toast.mtLeaveFailed":"לא הצלחתי להוציא אותך מ{name}",
       "toast.mtWhen":"סומנו {n} ימים",
@@ -4301,6 +4302,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.pickSearch":"Search a friend or a group","mt.noMatch":"Nothing matches.",
       "toast.mtGroup":"{name} \u2014 {n} people added",
       "toast.mtOptAdded":"Added \u2014 {when}","toast.mtOptDupe":"{when} is already offered here",
+      "toast.mtCapReached":"You're at the max of {n} \u2014 pick one to delete to add it",
       "toast.mtSwapped":"{out} replaced by {in}",
       "toast.mtLeft":"You left {name}","toast.mtLeaveFailed":"Could not take you off {name}",
       "toast.mtWhen":"{n} days marked",
@@ -8106,9 +8108,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     /* At the cap the question is asked on the way OUT, once there is something
        to swap in — the owner's rule for the sixth time (2026-09-09): let them
        type it, then ask what goes. Asking first would mean giving up an option
-       in exchange for a replacement that never arrived. */
+       in exchange for a replacement that never arrived. The swap PANE says
+       this too, but only once you are looking at it — the owner asked for a
+       notification the moment it happens (2026-09-16), not only a screen that
+       arrived already changed. */
     if(m.opts.length >= MEET_CAP){
       swapNew = o;
+      toast(t("toast.mtCapReached", {n:MEET_CAP}));
       renderSwap();
       renderOptSheet();
       $("#mtOptSheet").scrollTop = 0;
