@@ -367,8 +367,7 @@ const TOOL_MARKS = Object.freeze({
   // returns a LINK and is excluded below; closing one is just closed.
   disconnect_calendar: 'done',
   disconnect_google_contacts: 'done',
-  grant_connection_feature: 'done',
-  revoke_connection_feature: 'done',
+  set_connection_feature: 'done',
   revoke_connection: 'done',
 
   // The ACTOR's own exit from something shared, in hand the moment the tool
