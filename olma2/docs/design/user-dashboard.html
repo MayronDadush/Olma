@@ -2266,8 +2266,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    a dead grey block */
 #mtNewGo.miss{background:transparent;color:var(--text-2);box-shadow:inset 0 0 0 1.4px var(--sep-2)}
 @keyframes mtNudge{0%,100%{transform:none}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
-.mtstep .nudge{animation:mtNudge .3s var(--ease-io)}
-@media (prefers-reduced-motion:reduce){.mtstep,.mtstep .nudge{animation:none}}
+.nudge{animation:mtNudge .3s var(--ease-io)}
+@media (prefers-reduced-motion:reduce){.mtstep,.nudge{animation:none}}
 
 /* ── the task editor ──
    It saves as you type, so it carries no Save and no Cancel: the two
@@ -3969,6 +3969,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.settleAnyway":"לסגור בלי {list}","mt.settleMe":"לסגור בכל זאת",
       "mt.addOpt":"הוספת מועד","mt.addGo":"הוספה",
       "mt.capFull":"{n} מועדים זה המקסימום — הוספה תשאל מה להחליף.",
+      "mt.capNote":"{n} מועדים זה המקסימום — מחקו אחד מהרשימה כדי להוסיף.",
       "mt.overCap":"יוצעו {n} הראשונים",
       "mt.swapTitle":"מה להחליף?","mt.swapNew":"במקומו ייכנס: {when}",
       "mt.drop":"החלפה","mt.noneYet":"אף אחד עדיין",
@@ -4262,6 +4263,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "mt.settleAnyway":"Settle without {list}","mt.settleMe":"Settle anyway",
       "mt.addOpt":"Add a time","mt.addGo":"Add",
       "mt.capFull":"{n} times is the most \u2014 adding one asks what it replaces.",
+      "mt.capNote":"{n} times is the most \u2014 delete one from the list to add another.",
       "mt.overCap":"the first {n} will be offered",
       "mt.swapTitle":"What should it replace?","mt.swapNew":"In its place: {when}",
       "mt.drop":"Replace","mt.noneYet":"nobody yet",
@@ -7682,7 +7684,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#mtAddWrap").hidden = !!m.settled;
     $("#mtAddOptLbl").textContent = t("mt.addOpt");
     $("#mtAddNote").textContent = m.settled || m.opts.length < MEET_CAP ? ""
-      : t("mt.capFull", {n:MEET_CAP});
+      : t("mt.capNote", {n:MEET_CAP});
     $("#mtAddNote").hidden = !$("#mtAddNote").textContent;
 
     /* Two different exits, and they must never read alike: one clears your
@@ -8046,6 +8048,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   $("#mtAddOpt").addEventListener("click", function(){
     if(!mtOpen) return;
+    /* At the cap the owner used to let them pick the new moment first and ask
+       what it replaces only on the way out (below, in `#mtOptGo` — still the
+       right shape for a fifth option that lands *while this sheet is open*,
+       a real race in a shared coordination). But for the button itself the
+       owner reversed that on 2026-09-16: no picker opens at all until
+       something is gone from the list, so nobody spends a minute choosing a
+       moment that was never going to fit. */
+    if(!mtOpen.settled && mtOpen.opts.length >= MEET_CAP){
+      toast(t("toast.mtCapReached", {n:MEET_CAP}));
+      var note = $("#mtAddNote");
+      note.classList.remove("nudge"); void note.offsetWidth; note.classList.add("nudge");
+      return;
+    }
     optDay = 1; optPart = "evening"; optExact = ""; dgPage["#mtOptDays"] = 0;
     swapNew = null;
     renderOptSheet();
