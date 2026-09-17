@@ -31,11 +31,18 @@ const AT = '2026-08-17T16:00:00Z';         // the moment they asked for
 const TICK1 = '2026-08-17T16:01:00Z';      // rung 1 goes out
 const PLUS_3H = '2026-08-17T19:05:00Z';    // rung 2 is due
 
+// Every reminder here is one that CHASES — that is the subject of the file.
+// Since 2026-09-17 an hour somebody named is said once and nothing follows it
+// (reminders.RUNGS), so the chase these tests are about is now the one a person
+// asked for: `nudge`. The incident itself is unchanged — what is findable and
+// stoppable is a ladder mid-climb, however it earned its rungs.
 async function addReminder(pool, userId, title, at = AT) {
   return withTx(pool, async (c) => {
     const t = await tasks.addTask(c, userId, { title });
     const r = await reminders.setReminder(c, userId, t.data.task.id, at);
-    return { taskId: t.data.task.id, reminderId: Number(r.data.reminder.id) };
+    const id = Number(r.data.reminder.id);
+    await c.query(`UPDATE task_reminders SET nudge = true WHERE id = $1`, [id]);
+    return { taskId: t.data.task.id, reminderId: id };
   });
 }
 

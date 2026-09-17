@@ -458,17 +458,60 @@ async function listReminders(client, ownerId, taskId) {
 // 4. Only the FIRST rung is urgent. That moment is the user's; a follow-up is
 //    Olma's own idea and queues behind the daily proactive budget like every
 //    other thing Olma decided to say (that split lives in the sweep).
+// 5. HOW MANY rungs is a property of the reminder, not of the system, and the
+//    default is quiet. Measured over 45 days on the box (2026-09-17) — what
+//    happened in the three hours after each rung actually delivered:
+//
+//      rung 1  103 sent  11 done (11%)   9 cancelled
+//      rung 2   69 sent  15 done (22%)  24 cancelled (35%)
+//      rung 3   25 sent   6 done (24%)   0 cancelled
+//
+//    So a follow-up the SAME day earns its place, and the next-day rung earns
+//    it for exactly one person (5 of מירון's 10; 1 of the other 15). Against
+//    that, a third of every follow-up ends with somebody cancelling the
+//    reminder — and מאיה's evening is what a fourth message about a hospital
+//    bag she had already packed reads like (incidents.md, "התיק לבית חולים").
+//    The split that survives the reading is who chose the HOUR:
+//
+//      - They named it (`auto = false`): ONE message, at their moment, and
+//        nothing after it. They asked for a reminder, not for a chase.
+//      - Olma inferred it from a due date (`auto = true`): one follow-up the
+//        same day. Nobody promised them anything at 08:00, so a second try is
+//        Olma doing her job rather than nagging about a time they picked.
+//      - Either, once they ASK to be nudged: the full three rungs.
+//
+//    Never a rung after the local day of `due_at` has ended (RUNGS.nudging
+//    included): "did you pack the bag?" the morning after the hospital is a
+//    message about nothing. An overdue task is already in the digest.
 const ESCALATION_MAX_ATTEMPTS = 3;
 const ESCALATION_GAP_HOURS = 3;
+
+// The per-reminder cap, by who chose the hour. `nudging` is the ceiling a
+// person opts into; the flag `reminder_escalation_max` still bounds all three
+// from above, so one number can still turn every ladder off in an incident.
+const RUNGS = { explicit: 1, auto: 2, nudging: 3 };
 
 async function dueForSending(client, now, opts = {}) {
   const maxAttempts = Number.isFinite(Number(opts.maxAttempts)) && Number(opts.maxAttempts) > 0
     ? Math.floor(Number(opts.maxAttempts)) : ESCALATION_MAX_ATTEMPTS;
   const gapHours = Number.isFinite(Number(opts.gapHours)) && Number(opts.gapHours) > 0
     ? Number(opts.gapHours) : ESCALATION_GAP_HOURS;
+  // The two caps of rule 5. Overridable per call for the same reason
+  // `maxAttempts` is: a test that wants a three-rung ladder should say so in
+  // the call rather than by moving a production default.
+  const cap = (v, fallback) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.floor(Number(v)) : fallback);
+  const autoRungs = cap(opts.autoRungs, RUNGS.auto);
+  const explicitRungs = cap(opts.explicitRungs, RUNGS.explicit);
+  const nudgingRungs = cap(opts.nudgingRungs, RUNGS.nudging);
   const { rows } = await client.query(
     `SELECT r.id AS reminder_id, r.task_id, r.remind_at, r.repeat_rule, r.attempts, r.auto,
             t.owner_id, t.title, t.due_at, u.timezone,
+            -- How many rungs THIS reminder gets (rule 5 above), never more than
+            -- the flag allows. Returned so the sweep can say "last one" off the
+            -- same number the WHERE clause stopped on: a cap the caller derives
+            -- for itself is the second copy that drifts.
+            least($2::int, CASE WHEN r.nudge OR u.reminder_nudge THEN $6::int
+                                WHEN r.auto THEN $4::int ELSE $5::int END) AS rung_cap,
             -- true when the previous rung was OURS to lose: the pipe failed on
             -- every try and the row expired with nothing delivered.
             (prev.hold_reason = 'expired' AND prev.attempts > 0 AND prev.last_error IS NOT NULL) AS prev_failed
@@ -495,8 +538,16 @@ async function dueForSending(client, now, opts = {}) {
          -- Rung 1: the moment they picked. Unchanged.
          (r.attempts = 0 AND r.remind_at <= $1::timestamptz)
          OR
-         (r.attempts BETWEEN 1 AND $2::int - 1
+         (r.attempts BETWEEN 1 AND least($2::int, CASE WHEN r.nudge OR u.reminder_nudge THEN $6::int
+                                                       WHEN r.auto THEN $4::int ELSE $5::int END) - 1
           AND r.repeat_rule IS NULL
+          -- Never a follow-up once the day the THING is on has ended. A rung
+          -- chases an action whose moment is still ahead; the morning after
+          -- the hospital, "did you pack the bag?" is a message about nothing,
+          -- and the task is in the digest either way.
+          AND (t.due_at IS NULL
+               OR ($1::timestamptz AT TIME ZONE COALESCE(u.timezone, 'UTC'))::date
+                  <= (t.due_at AT TIME ZONE COALESCE(u.timezone, 'UTC'))::date)
           AND (
             -- The previous rung died on OUR side: the worker tried, every try
             -- failed (attempts > 0, an error recorded) and the row expired.
@@ -523,7 +574,7 @@ async function dueForSending(client, now, opts = {}) {
      -- Then by id: two reminders at the SAME moment are rung 1 in the same tick,
      -- and the later one must be the one that retires the other's ladder.
      ORDER BY r.remind_at, r.id`,
-    [now, maxAttempts, gapHours]
+    [now, maxAttempts, gapHours, autoRungs, explicitRungs, nudgingRungs]
   );
   return ok({ due: rows });
 }
@@ -619,5 +670,5 @@ module.exports = {
   setReminder, attachAutoReminder, retireSiblingLadders, cancelReminder, listReminders, dueForSending, markSent,
   retireForMovedTask, momentIsPast, PAST_GRACE_MS,
   normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor,
-  recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS,
+  recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS, RUNGS,
 };
