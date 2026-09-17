@@ -56,6 +56,28 @@ test('an edit changes only what it names', async () => {
   assert.notEqual(r.data.task.due_at, null, 'the due date was wiped by a rename');
 });
 
+// The sheet has asked for a range since the end chip shipped, and both writes
+// dropped `endsAt` on the floor: a shift said as 16:00-19:00 was stored with no
+// end at all, every time, and the page drew the end back from its own memory
+// until the next reload took it away.
+test('a range survives the trip — both ends, on add and on edit', async () => {
+  const add = await act('addTask', {
+    title: 'משמרת בערב', dueAt: iso(86400e3), endsAt: iso(86400e3 + 3 * 3600e3),
+  });
+  assert.equal(add.ok, true, add.ok ? '' : JSON.stringify(add.error));
+  assert.notEqual(add.data.task.ends_at, null, 'the end time was dropped by addTask');
+
+  const t = await mkTask({ dueAt: iso(2 * 86400e3) });
+  const edit = await act('editTask', { taskId: t.id, endsAt: iso(2 * 86400e3 + 3600e3) });
+  assert.equal(edit.ok, true, edit.ok ? '' : JSON.stringify(edit.error));
+  assert.notEqual(edit.data.task.ends_at, null, 'the end time was dropped by editTask');
+
+  // And it is still validated against the start it belongs to, rather than
+  // being waved through because it arrived alone.
+  const bad = await act('editTask', { taskId: t.id, endsAt: iso(2 * 86400e3 - 3600e3) });
+  assert.equal(bad.ok, false, 'an end before its start was accepted');
+});
+
 test('null clears a field and undefined leaves it — the difference is the point', async () => {
   const t = await mkTask({ category: 'home', dueAt: iso(86400e3) });
   const r = await act('editTask', { taskId: t.id, dueAt: null });
