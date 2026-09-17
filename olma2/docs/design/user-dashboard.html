@@ -3545,11 +3545,22 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       return m[1] + String(m[2]).padStart(2,"0") + ":" + (m[3] || "00");
     }catch(err){ return "+00:00"; }
   }
+  /* A wall clock in the person's zone, stamped with the offset in force AT
+     THAT MOMENT — which takes two passes. The first reads the offset at the
+     wall clock treated as UTC, which is the wrong instant by up to a day's
+     worth of hours; the second asks again at the instant that offset produces.
+     Everywhere but the hours around a clock change the two agree; inside them
+     the single pass was an hour out, which is exactly when a reminder is worth
+     the most. */
+  function localStamp(tz, day, time){
+    var guess = new Date(day + "T" + time + ":00Z");
+    var off = zoneOffset(tz, new Date(day + "T" + time + ":00" + zoneOffset(tz, guess)));
+    return day + "T" + time + ":00" + off;
+  }
   function dueIso(x){
     if(!x || !x.d) return null;
-    var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
     var time = (x.all || !x.tm) ? "00:00" : x.tm;
-    return x.d + "T" + time + ":00" + zoneOffset(tz, new Date(x.d + "T" + time + ":00Z"));
+    return localStamp(myTz(), x.d, time);
   }
 
   /* The far end of the range, in the same shape and the same zone as the
@@ -3557,8 +3568,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      is REMOVED: editTask reads null as "clear it". */
   function endIso(x){
     if(!x || !x.d || x.all || !x.tm || !x.tmEnd) return null;
-    var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
-    return x.d + "T" + x.tmEnd + ":00" + zoneOffset(tz, new Date(x.d + "T" + x.tmEnd + ":00Z"));
+    return localStamp(myTz(), x.d, x.tmEnd);
   }
 
   /* A row the server has answered for. Anything that needs a real id — an
@@ -3603,12 +3613,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      that arrives while somebody is asleep is one they will never see. */
   function remindIso(x){
     if(!x || !x.d) return null;
-    var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
     var time = (x.all || !x.tm) ? "09:00" : x.tm;
-    var at = new Date(x.d + "T" + time + ":00Z").getTime() - (x.remOff || 0) * 60000;
-    var d = new Date(at);
-    var stamp = d.toISOString().slice(0, 16);
-    return stamp + ":00" + zoneOffset(tz, d);
+    /* From the task's real instant, not from its wall clock read as UTC: an
+       offset of "two hours before" is two hours of actual time, and on the
+       night the clocks move those are not the same thing. Sent as UTC, which
+       names the instant and nothing else — the server stores an instant. */
+    var at = new Date(localStamp(myTz(), x.d, time)).getTime() - (x.remOff || 0) * 60000;
+    return new Date(at).toISOString().replace(/\.\d+Z$/, "+00:00");
   }
 
   var API = {
@@ -3828,7 +3839,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       return API.send("respondToMeeting",
         {meetingId:m.id, accept:accept, acceptedStartAt:accept ? m.startsAt : null});
     },
-    setTimezone:     function(tz){     API.call("setTimezone", {timezone:tz}); return API.send("setTimezone", {timezone:tz}); },
+    setTimezone:     function(tz, done){ API.call("setTimezone", {timezone:tz});
+      return API.send("setTimezone", {timezone:tz}, function(data){ if(done && (data !== null || !LIVE)) done(data); }); },
     setPaused:       function(on){     API.call(on ? "pause" : "resume", {}); return API.send(on ? "pause" : "resume", {}); },
 
     /* The profile tab. `done` runs only on a real success — or at once in
@@ -4830,7 +4842,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   function paintGreeting(){
     var el = $("#brandHi");
     if(!el) return;
-    var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
+    var tz = myTz();
     el.textContent = t(greetKey(hourIn(tz)));
   }
   function isBirthday(md){
@@ -4945,6 +4957,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     {tz:"Africa/Johannesburg", n:{he:"יוהנסבורג",en:"Johannesburg"}, c:{he:"דרום אפריקה",en:"South Africa"}}
   ];
   var cityIdx = 0, cityConfirmed = false;
+  /* The zone this person actually lives in, which is NOT always a city on the
+     list above. `cityIdx` picks the row the profile draws, and it stays at 0
+     for a zone the list has never heard of — showing Tel Aviv to somebody in
+     Nairobi being worse than showing nothing. Reading the OFFSET off that same
+     index is a different question with the same answer, and it was wrong for
+     everybody outside the list: a reminder for 08:00 in Denver went out on
+     Jerusalem's offset, nine hours early. So the zone is held on its own, off
+     the users row, and every moment this page builds is stamped with it. */
+  var myZone = "";
+  function myTz(){
+    return myZone || (CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC");
+  }
   function clockIn(tz){
     try{
       return new Intl.DateTimeFormat("en-GB", {timeZone:tz, hour:"2-digit", minute:"2-digit", hour12:false}).format(new Date());
@@ -5129,7 +5153,21 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* The strip starts on the real today, because the task list is dated
      against the real today too — a week hard-coded to a fixed date would
      put the same task in two different days on two pages. */
-  var base = new Date(); base.setHours(12,0,0,0);
+  /* Today, in the person's OWN zone — every day number on this page counts
+     from here, and the server counts from the same place. Noon so that a day's
+     arithmetic never straddles a clock change.
+
+     Read from the browser's clock until the server says which zone that is,
+     and re-asked on a tick: a dashboard left open on a bedside table through
+     midnight otherwise shows yesterday, labels it "today", and sends that day
+     number when a coordination time is picked. */
+  function todayInZone(){
+    try{
+      var p = new Intl.DateTimeFormat("en-CA", {timeZone:myTz(), year:"numeric", month:"2-digit", day:"2-digit"}).format(new Date());
+      return new Date(p + "T12:00:00");
+    }catch(err){ var d = new Date(); d.setHours(12,0,0,0); return d; }
+  }
+  var base = todayInZone();
   var selDay = 0;
 
   /* ───────── toast ───────── */
@@ -7298,8 +7336,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* ───────── city / time zone ───────── */
   function renderCityRow(){
     var c = CITIES[cityIdx];
-    $("#cityName").textContent = L(c.n);
-    $("#cityClock").textContent = clockIn(c.tz);
+    /* The row names the city we have a name for; the clock is the person's own
+       zone, which for an unlisted one is not that city's. */
+    $("#cityName").textContent = myZone && c.tz !== myZone ? myZone : L(c.n);
+    $("#cityClock").textContent = clockIn(myTz());
     $("#setupNote").textContent = t(cityConfirmed ? "me.confirmed" : "me.guessed") + " · " + t("me.setupNote");
   }
   function renderCityList(q){
@@ -8813,16 +8853,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(!b) return;
     cityIdx = +b.dataset.city;
     cityConfirmed = true;
+    myZone = CITIES[cityIdx].tz;
     renderCityRow();
     closeSheets();
-    API.setTimezone(CITIES[cityIdx].tz);
+    /* The server re-reads every stored moment into the new zone, so the page
+       has to ask again — until it did, the tasks and the days on screen stayed
+       in the zone they were drawn in and only the clock in the corner moved. */
+    API.setTimezone(CITIES[cityIdx].tz, function(){ API.reload(); });
     toast(t("toast.city", {tz:L(CITIES[cityIdx].n)}));
   });
   function tickClocks(){
-    if(CITIES[cityIdx]){
-      $("#cityClock").textContent = clockIn(CITIES[cityIdx].tz);
-      $("#topClock").textContent = clockIn(CITIES[cityIdx].tz);
-    }
+    $("#cityClock").textContent = clockIn(myTz());
+    $("#topClock").textContent = clockIn(myTz());
     $$("[data-ftz]").forEach(function(el){
       el.textContent = clockIn(el.dataset.ftz);
       el.classList.toggle("asleep", isNight(el.dataset.ftz));
@@ -8830,7 +8872,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     /* the greeting rides the same tick: a page left open through 17:00 should
        not still be saying good afternoon */
     paintGreeting();
+    rollDay();
   }
+  /* Midnight, wherever this person is. Only ever moves the page FORWARD onto
+     the day it is now, and only when the date it is drawing is no longer that
+     day — a redraw on every tick would fight whatever is on screen. */
+  function rollDay(){
+    var now = todayInZone();
+    if(ymd(now) === ymd(base)) return;
+    base = now;
+    weekOff = 0;
+    renderTasks(); renderStrip(0); renderMeets();
+  }
+  /* A phone whose screen has been off for a night arrives here first. */
+  document.addEventListener("visibilitychange", function(){ if(!document.hidden) rollDay(); });
   setInterval(tickClocks, 30000);
 
   /* ── the settle grace, ticking ──
@@ -9032,7 +9087,17 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(!x || !x.d) return;
     var target = new Date(x.d + "T12:00:00");
     var i = Math.round((target - base) / 86400000);
-    if(i < 0 || i > 6){ base = target; i = 0; }
+    /* The week is PAGED to, never re-based. Moving `base` made the task's own
+       day "today" for the whole page: every day number after it — the strip,
+       the today/tomorrow labels, the days asked of /me/events, and the `day`
+       sent when a coordination time is added — counts from `base`, while the
+       server counts from the real today. Nothing ever put it back.
+
+       Past the strip's own reach (WEEK_MIN..WEEK_MAX) there is no day to show,
+       so the sheet opens where the person already is rather than the calendar
+       landing on the wrong one. */
+    if(i < WEEK_MIN * 7 || i > WEEK_MAX * 7 + 6){ openSheet(id); return; }
+    weekOff = Math.floor(i / 7);
     go("cal");
     renderStrip(i);
     setTimeout(function(){
@@ -9376,7 +9441,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     return isBirthday(+v.slice(5,7) + "-" + (+v.slice(8,10)));
   }
   function paintAvatars(){
-    var opt = {g:myGender(), night:isNight(CITIES[cityIdx].tz), bday:myBirthday()};
+    var opt = {g:myGender(), night:isNight(myTz()), bday:myBirthday()};
     $("#bigAvatar").innerHTML = avatarSVG(myAvatar, opt);
     trackPupils();
   }
@@ -10286,7 +10351,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(!x.reminder || !x.reminder.at || !x.date) return 0;
     var at = Date.parse(x.reminder.at);
     if(!isFinite(at)) return 0;
-    var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
+    var tz = myTz();
     /* The stored instant, re-expressed as the wall clock they would read it
        at; the due moment is already a wall clock. Subtracting an instant from
        a wall clock is the "15:00 stored as 15:00Z" mistake in miniature. */
@@ -10559,6 +10624,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       paused = !!d.user.paused;
       nestTipSeen = !!d.user.nestTipSeen;
       cityConfirmed = !!d.user.timezoneConfirmed;
+      /* The zone as the server holds it, whether or not the city list has a
+         row for it: every moment this page sends is stamped with THIS. */
+      if(d.user.timezone) myZone = d.user.timezone;
       var i = CITIES.map(function(c){ return c.tz; }).indexOf(d.user.timezone);
       /* An unlisted zone leaves the city alone rather than snapping to the
          first one in the list — showing Tel Aviv to somebody in Nairobi is
