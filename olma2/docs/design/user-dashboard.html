@@ -418,6 +418,8 @@ button.row:active{background:var(--bg-tint)}
 .row-title{font-size:16.5px;font-weight:500;letter-spacing:-.005em}
 .row-sub{font-size:13px;color:var(--text-2);margin-top:1px}
 .row-sub.on{color:var(--ok)}
+/* connected, but the grant is gone — not green, not an error either */
+.row-sub.warn{color:var(--warn)}
 .chev{width:9px;height:15px;flex:none;color:var(--text-3);transition:transform .32s var(--spring)}
 [dir="ltr"] .chev{transform:scaleX(-1)}
 .row[aria-expanded="true"] .chev{transform:rotate(-90deg)}
@@ -2421,6 +2423,23 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:opacity var(--sw-t) var(--ease-io),transform var(--sw-t) var(--ease-io);
 }
 .toast.show{opacity:1;transform:none}
+/* The boot veil. Opaque on purpose — the seed underneath is somebody else's
+   list, and a blur is still a readable one. */
+.boot{
+  position:fixed;inset:0;z-index:120;display:grid;place-items:center;
+  background:var(--bg);padding:28px;
+}
+.bootcard{display:grid;justify-items:center;gap:14px;text-align:center;max-width:300px}
+.bootmsg{font-size:14px;color:var(--text-2);line-height:1.5;margin:0}
+.bootdots{display:flex;gap:7px}
+.bootdots i{
+  width:7px;height:7px;border-radius:999px;background:var(--accent);opacity:.3;
+  animation:bootPulse 1.05s var(--ease-io) infinite;
+}
+.bootdots i:nth-child(2){animation-delay:.14s}
+.bootdots i:nth-child(3){animation-delay:.28s}
+.boot.failed .bootdots{display:none}
+@keyframes bootPulse{0%,100%{opacity:.25;transform:scale(.82)}45%{opacity:1;transform:scale(1)}}
 /* A toast that can be answered — only the one after a task went into a list.
    Every other toast stays an announcement nobody can tap. */
 .toast.act{pointer-events:auto}
@@ -3336,11 +3355,27 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<!-- Until the server's answer lands, the served page is showing the SEED: a
+     made-up list, made-up friends, and a fact about somebody's dog. It is the
+     design's own furniture, and it must never be mistaken for a person's own
+     page. So the app waits behind this, and if the answer never comes it says
+     so instead of leaving the furniture on screen. -->
+<div class="boot" id="boot" hidden>
+  <div class="bootcard">
+    <div class="bootdots" aria-hidden="true"><i></i><i></i><i></i></div>
+    <p class="bootmsg" id="bootMsg"></p>
+    <button class="btn primary" id="bootRetry" data-i18n="boot.retry" hidden></button>
+  </div>
+</div>
+
 <script>
 (function(){
   "use strict";
   var $  = function(s,r){ return (r||document).querySelector(s); };
   var $$ = function(s,r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); };
+  /* A value written into an input only when the person is not standing in
+     it — every repaint on this page can land while somebody is typing. */
+  function setField(el, v){ if(el && el !== document.activeElement) el.value = v; }
 
   /* Appearance: which of the two palettes the stylesheet already defines is
      showing. Stored on THIS DEVICE only (localStorage) — it is how the page
@@ -3526,6 +3561,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      creates one or edits one — the page numbers its own new rows from a local
      counter, and asking "is this id one of ours" is the only honest test. */
   var SERVER_IDS = {};
+  /* Which /me/data read is the current one — see API.reload. */
+  var dataSeq = 0;
   /* This person's own user id, once the server has said what it is. Needed for
      exactly one thing: leaving a shared task means revoking MY share row, and
      the row is keyed by the real id even though the page calls me 0. */
@@ -3651,25 +3688,37 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     },
     refused: function(error){
       /* Two of these the person can act on, so they are said out loud; the
-         rest are ours to fix and saying "invalid" to somebody helps nobody. */
-      if(error && error.reason === "paused")      toast(t("toast.pausedRefusal"));
-      else if(error && error.reason === "not_enabled") toast(t("toast.notOpenYet"));
-      else if(error && error.reason === "duplicate") toast(t("toast.duplicate"));
-      else if(error && error.reason === "all_days") toast(t("toast.allDays"));
-      else if(error && (error.reason === "no_calendar" || error.reason === "read_only")) toast(t("toast.calNeeded"));
-      else if(error && error.reason === "first_person") toast(t("toast.factFirstPerson"));
-      else if(error && error.reason === "needs_expiry") toast(t("toast.factDated"));
-      else if(error && error.reason === "phone") toast(t("toast.factPhone"));
+         rest are ours to fix and saying "invalid" to somebody helps nobody.
+         Said as errors, which is what keeps them on screen long enough to be
+         read — the reload starts underneath at the same moment. */
+      var say = function(msg){ toast(msg, null, true); };
+      if(error && error.reason === "paused")      say(t("toast.pausedRefusal"));
+      else if(error && error.reason === "not_enabled") say(t("toast.notOpenYet"));
+      else if(error && error.reason === "duplicate") say(t("toast.duplicate"));
+      else if(error && error.reason === "all_days") say(t("toast.allDays"));
+      else if(error && (error.reason === "no_calendar" || error.reason === "read_only")) say(t("toast.calNeeded"));
+      else if(error && error.reason === "first_person") say(t("toast.factFirstPerson"));
+      else if(error && error.reason === "needs_expiry") say(t("toast.factDated"));
+      else if(error && error.reason === "phone") say(t("toast.factPhone"));
       else if(error && error.reason === "no_writeback")
-        toast(t("toast.importedRefusal", {name:(SOURCES[error.source] || {}).name || error.source}));
+        say(t("toast.importedRefusal", {name:(SOURCES[error.source] || {}).name || error.source}));
       API.reload();
     },
     /* One re-read, so what is on screen goes back to being what is stored. */
-    reload: function(){
-      if(!LIVE) return;
+    reload: function(done){
+      if(!LIVE){ if(done) done(); return; }
+      /* The newest read wins. Answers on this page fire their own reload, so
+         two taps a second apart leave two of these in flight — and the slower
+         one, which is the OLDER picture, used to land last and put the answer
+         the person had just given back the way it was. */
+      var mine = ++dataSeq;
       fetch("/me/data", {credentials:"same-origin", headers:{Accept:"application/json"}})
         .then(function(r){ return r.ok ? r.json() : null; })
-        .then(function(body){ if(body && body.ok && body.data) hydrate(body.data); })
+        .then(function(body){
+          if(mine !== dataSeq) return;
+          if(body && body.ok && body.data) hydrate(body.data);
+          if(done) done();
+        })
         .catch(function(){});
     },
 
@@ -4021,6 +4070,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "fr.p":"לכל חבר מוגדר בנפרד מה מותר לו. שינוי כאן חל מיד, בלי לשאול אותו.",
       "fr.connected":"מחוברים","fr.count":"{n} חברים",
       "fr.search":"חיפוש חבר","fr.clear":"ניקוי","fr.noMatch":"אין חבר בשם „{q}”.",
+      "fr.none":"עוד אין כאן אף אחד. אפשר להזמין מישהו מאנשי הקשר למטה.",
       "fr.p.n0":"אין הרשאות פעילות","fr.p.n1":"הרשאה אחת פעילה","fr.p.nN":"{n} הרשאות פעילות",
       "fr.bday":"יום הולדת היום","fr.remove":"הסרת החיבור","fr.removeConfirm":"עוד לחיצה כדי להסיר","fr.invite":"הזמנת חבר",
       /* A group is one person's own shortcut, not a shared object — nobody is
@@ -4106,6 +4156,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.mtStarted":"נשלחה בקשה ל{list} — כשיענו זה יופיע כאן",
       "toast.mtConfirmed":"נקבע — {when}. כולם קיבלו הודעה.",
       "toast.mtSettleFailed":"לא הצלחתי לקבוע — נסה שוב בעוד רגע",
+      "toast.mtStartFailed":"לא הצלחתי לפתוח את התיאום — נסה שוב בעוד רגע",
       "tcat.imported":"מפלטפורמות מחוברות",
       "sheet.fromApp":"הגיעה מ־{name}","sheet.noField":"ל־{name} אין את השדה הזה",
       "cn.title":"מי מאנשי הקשר שלך?","cn.from":"מתוך אנשי הקשר של {name}",
@@ -4182,6 +4233,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.autosave":"נשמר אוטומטית","sheet.saved":"נשמר ✓","sheet.noDate":"ללא תאריך","sheet.pickDate":"תאריך",
       "cal.today":"היום","cal.tomorrow":"מחר","cal.clear":"ללא תאריך","cal.yesterday":"אתמול",
       "sheet.untitled":"משימה ללא שם","sheet.someone":"מישהו",
+      "boot.loading":"רק רגע, טוענים את הדף שלך…",
+      "boot.failed":"לא הצלחנו לטעון את הדף כרגע. אפשר לנסות שוב, או לכתוב לעולמה בוואטסאפ ולבקש קישור חדש.",
+      "boot.retry":"לנסות שוב",
+      "prov.reauth":"צריך להתחבר מחדש — ההרשאה פגה",
+      "cal.notConnected":"אין יומן מחובר. אפשר לחבר אחד במסך החיבורים.",
       "sheet.allDay":"כל היום","sheet.repeat":"חזרה",
       "sheet.inCal":"להוסיף ליומן","sheet.inCalTo":"נוסף ל־{name} · {account}","sheet.inCalNone":"אין יומן מחובר לכתיבה",
       "cal.allDay":"כל היום",
@@ -4318,6 +4374,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "fr.p":"Every friend gets their own permissions. A change here takes effect at once, without asking them.",
       "fr.connected":"Connected","fr.count":"{n} friends",
       "fr.search":"Search friends","fr.clear":"Clear","fr.noMatch":"No friend matches \u201c{q}\u201d.",
+      "fr.none":"Nobody here yet. Invite someone from your contacts below.",
       "fr.p.n0":"No permissions on","fr.p.n1":"1 permission on","fr.p.nN":"{n} permissions on",
       "fr.bday":"Birthday today","fr.remove":"Remove connection","fr.removeConfirm":"Press again to remove","fr.invite":"Invite a friend",
       "gr.h":"Groups","gr.hint":"Nobody is asked to approve · a WhatsApp room arrives ready","gr.new":"New group",
@@ -4400,6 +4457,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.mtStarted":"Request sent to {list} — answers show up here",
       "toast.mtConfirmed":"Settled \u2014 {when}. Everyone has been told.",
       "toast.mtSettleFailed":"That would not settle \u2014 try again in a moment",
+      "toast.mtStartFailed":"That would not open \u2014 try again in a moment",
       "tcat.imported":"From connected platforms",
       "sheet.fromApp":"Came from {name}","sheet.noField":"{name} has no such field",
       "cn.title":"Who from your contacts?","cn.from":"From your {name} contacts",
@@ -4476,6 +4534,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.autosave":"Saves as you type","sheet.saved":"Saved ✓","sheet.noDate":"No date","sheet.pickDate":"Date",
       "cal.today":"Today","cal.tomorrow":"Tomorrow","cal.clear":"No date","cal.yesterday":"Yesterday",
       "sheet.untitled":"Untitled task","sheet.someone":"someone",
+      "boot.loading":"One moment — loading your page…",
+      "boot.failed":"We could not load your page just now. Try again, or write to Allma on WhatsApp for a fresh link.",
+      "boot.retry":"Try again",
+      "prov.reauth":"Needs reconnecting — the permission expired",
+      "cal.notConnected":"No calendar connected. You can connect one on the Connections screen.",
       "sheet.allDay":"All day","sheet.repeat":"Repeat",
       "sheet.inCal":"Add to calendar","sheet.inCalTo":"Goes to {name} · {account}","sheet.inCalNone":"No calendar connected for writing",
       "cal.allDay":"All day",
@@ -5189,8 +5252,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }
     toastEl.classList.add("show");
     clearTimeout(toastT);
-    /* long enough to reach the button, only when there is one */
-    toastT = setTimeout(function(){ toastEl.classList.remove("show", "act"); }, undo ? 4200 : 1050);
+    /* Long enough to reach the button when there is one — and long enough to
+       READ when it is a refusal. "Olma is paused, a reminder will not go out
+       until you bring her back" is a sentence, and it was on screen for one
+       second while the page reloaded under it. */
+    toastT = setTimeout(function(){ toastEl.classList.remove("show", "act"); },
+      undo ? 4200 : isErr ? 3400 : 1050);
   }
 
   /* ───────── connections view ───────── */
@@ -5438,10 +5505,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         "</div></div>";
     }
     var isOpen = !!expanded[p.id];
+    /* Connected but broken — Google has withdrawn the grant, usually because
+       the password changed. The server has said so since the integrations
+       route was written (`needs_reauth`) and the page drew it as an ordinary
+       healthy account, so the calendar simply stopped filling in and nothing
+       on screen explained why. */
+    var sub = p.needsReauth ? t("prov.reauth") : p.account + " · " + pl("svcOn", onCount(p));
     return '<div class="rowset" data-rowset="' + p.id + '">' +
       '<button class="row" data-prov="' + p.id + '" aria-expanded="' + isOpen + '">' + tileFor(p.tile, p.icon) +
       '<div class="row-txt"><div class="row-title">' + esc(p.name) + "</div>" +
-      '<div class="row-sub on">' + esc(p.account + " · " + pl("svcOn", onCount(p))) + "</div>" +
+      '<div class="row-sub' + (p.needsReauth ? " warn" : " on") + '">' + esc(sub) + "</div>" +
       glyphs(p) + "</div>" +
       '<svg class="chev"><use href="#i-chev"/></svg></button>' +
       '<div class="fold' + (isOpen ? " open" : "") + '" data-pfold="' + p.id + '"><div><div class="foldpad">' +
@@ -5515,7 +5588,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* the parts of the card that describe the account as a whole */
   function afterFold(p){
     var sub2 = $('[data-prov="' + p.id + '"] .row-sub');
-    if(sub2) sub2.textContent = p.account + " · " + pl("svcOn", onCount(p));
+    if(sub2) sub2.textContent = p.needsReauth ? t("prov.reauth")
+      : p.account + " · " + pl("svcOn", onCount(p));
     $$('[data-prov="' + p.id + '"] .glyphs span').forEach(function(el){
       var g = p.svc.some(function(x){ return x.k === el.dataset.cat && x.on; });
       el.classList.toggle("off", !g);
@@ -7439,7 +7513,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      swipe has latched open. They live out here rather than on the DOM because
      every answer re-renders the list, and state in the markup would not
      survive it. */
-  var mtOpenVotes = null, mtArmedDel = null, mtSwiped = null;
+  var mtOpenVotes = null, mtArmedDel = null, mtSwiped = null, mtSwallow = false;
 
   /* "א, ב ו־ג", never "א ו־ב ו־ג". D.and is the conjunction before the LAST
      name only; everything before it is separated by a comma. Same shape in
@@ -7470,10 +7544,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     return mtActive(m).filter(function(p){ return mtAns(m, p, o.id) === v; }).length;
   }
   function mtAnswered(m, pid){
+    /* The server's answer first — it knows about a reply that named no option
+       at all — and the per-option table second, which is all the seed has. */
+    if(m.spoke && m.spoke[pid]) return true;
     var row = m.ans[pid];
     if(!row) return false;
     for(var k in row) if(row[k]) return true;
     return false;
+  }
+  /* What somebody wrote that was neither yes nor no, if anything. */
+  function mtSaid(m, pid){
+    var said = m.saidBy && m.saidBy[pid];
+    return said && said.length ? said.join(" · ") : "";
   }
   /* Everybody sees the same options, and there is no longer any state in
      which one exists for one reader and not another (owner, 2026-09-09): the
@@ -7872,11 +7954,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       : m.opts.length === 1 ? "mt.askOne" : "mt.ask");
 
     $("#mtFaces").innerHTML = mtPeople(m).map(function(pid){
-      var gone = mtGone(m, pid), said = mtAnswered(m, pid);
+      var gone = mtGone(m, pid), said = mtAnswered(m, pid), words = mtSaid(m, pid);
       var f = pid === 0 ? null : friendById(pid);
-      return '<span class="mtface' + (gone ? " gone" : said ? " said" : "") + '">' +
+      return '<span class="mtface' + (gone ? " gone" : said ? " said" : "") + '"' +
+        (words ? ' title="' + esc(words) + '"' : "") + ">" +
         '<span class="face">' + avatarSVG(pid === 0 ? myAvatar : f.av, {g:pid === 0 ? myGender() : f.g}) + "</span>" +
-        esc(mtName(pid)) + (gone ? " · " + t("mt.gone") : said ? "" : " · " + t("mt.waiting")) + "</span>";
+        esc(mtName(pid)) +
+        (gone ? " · " + t("mt.gone") : words ? " · " + esc(words) : said ? "" : " · " + t("mt.waiting")) +
+        "</span>";
     }).join("");
 
     /* The coordination's own minimum, above the table it applies to. It is a
@@ -7943,6 +8028,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   $("#mtSheet").addEventListener("scroll", function(){ paintCue($("#mtSheet"), $("#mtCue")); });
 
   $("#mtOpts").addEventListener("click", function(e){
+    /* The click a finished swipe leaves behind — see the gesture below. */
+    if(mtSwallow){ mtSwallow = false; return; }
     var m = mtOpen;
     if(!m) return;
     var row = e.target.closest("[data-opt]");
@@ -8061,6 +8148,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var SWIPE_OPEN = 96, LATCH = .34;
     var box = $("#mtOpts"), sw = null, x0 = 0, y0 = 0, dx = 0, axis = "";
     box.addEventListener("pointerdown", function(e){
+      /* A drag that ended without the browser sending a click leaves the
+         swallow armed; the next press is the moment it is certainly stale. */
+      mtSwallow = false;
       if(e.pointerType === "mouse") return;
       var el = e.target.closest(".mtswipe");
       if(!el || el.classList.contains("locked")) return;
@@ -8084,17 +8174,30 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     });
     var end = function(){
       if(!sw) return;
-      var el = sw, moved = Math.abs(dx), front = el.querySelector(".mtfront");
+      var el = sw, moved = Math.abs(dx), front = el.querySelector(".mtfront"), dragged = axis === "x";
       sw = null; axis = "";
       el.classList.remove("dragging");
       if(front) front.style.transform = "";
+      dx = 0;
+      /* A press that never became a drag is a press, and this function must
+         not touch it. The red sits INSIDE the row it belongs to, so releasing
+         a tap on it used to run the line below, rebuild the whole list, and
+         take the button out from under the finger before its click could
+         land — which is why a time could not be removed on a phone at all. */
+      if(!dragged) return;
       /* The latch is state, not a class left on the node: the next answer
          anybody gives re-renders this whole list, and a class would go with
-         it while the row still looked open for one frame. */
-      mtSwiped = moved > SWIPE_OPEN * LATCH ? +el.dataset.opt : null;
+         it while the row still looked open for one frame. The RELEASE,
+         though, only patches the class — see above, and it lets the row
+         settle back under its own transition instead of snapping. */
+      var open = moved > SWIPE_OPEN * LATCH ? +el.dataset.opt : null;
+      mtSwiped = open;
       mtArmedDel = null;
-      dx = 0;
-      renderMeet();
+      $$(".mtswipe", box).forEach(function(r){ r.classList.toggle("open", +r.dataset.opt === open); });
+      /* …and now that the list is not rebuilt, the click the browser sends
+         after a drag really does arrive. A drag is not a tap: swallow it, or
+         opening a row by swiping it would close it again in the same breath. */
+      mtSwallow = true;
     };
     box.addEventListener("pointerup", end);
     box.addEventListener("pointercancel", end);
@@ -8106,10 +8209,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       /* Everyone is told by the server, this person included — so the page
          says only that it went, and the reload brings back the meeting as it
          really is. Drawing it settled first would be a guess about a call the
-         server is still entitled to refuse. */
-      toast(t("toast.mtConfirmed", {when:mtOptLabel(m, o)}));
+         server is still entitled to refuse.
+
+         …and the sentence waits for the answer. It used to be said first and
+         then contradicted by a failure toast a moment later, and a second tap
+         in between sent the whole thing twice. */
+      if(mtSettlingSend) return;
+      mtSettlingSend = true;
       API.send("settleMeeting", {meetingId:m.id, optionId:o.id}, function(data){
-        if(!data) toast(t("toast.mtSettleFailed"));
+        mtSettlingSend = false;
+        toast(data ? t("toast.mtConfirmed", {when:mtOptLabel(m, o)}) : t("toast.mtSettleFailed"));
         API.reload();
       });
       renderMeet();
@@ -8420,7 +8529,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      measured is the one thing this file must not do. Somebody with no history
      is not missing from the list — they fall to the alphabetical tail. */
   var FREQ = {7:52, 1:44, 10:38, 3:31, 5:27, 2:22, 12:19, 8:15, 6:11, 9:8, 4:6, 11:4, 13:2};
-  function mtFreq(id){ return FREQ[id] || 0; }
+  /* …and on a real account it orders NOBODY: ids 1-13 are real people there,
+     so the seeded numbers would rank a stranger above somebody's closest
+     friend on made-up history. Alphabetical until the server sends a real
+     one. */
+  function mtFreq(id){ return LIVE ? 0 : (FREQ[id] || 0); }
   function mtPeopleOrder(){
     return FRIENDS.slice().sort(function(a, b){
       return mtFreq(b.id) - mtFreq(a.id) || L(a.n).localeCompare(L(b.n));
@@ -8711,14 +8824,25 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     });
     var picks = m.opts.map(function(o){ return {day:o.day, part:o.part || null, time:o.time || null}; });
     if(LIVE){
+      /* One start per press. The sheet takes half a second to slide away and
+         the button stayed live for all of it, so a second tap made a second
+         coordination and invited everybody to both. */
+      if(mtStarting) return;
+      mtStarting = true;
+      this.disabled = true;
       /* The server numbers the meeting and its options; the page waits for the
          real rows rather than showing a card it would then have to rename. */
       API.send("startMeeting", {title:nm, participantIds:m.who, allDay:m.allDay, options:picks}, function(data){
-        API.reload();
-        if(data && data.meeting) setTimeout(function(){ openMeet(Number(data.meeting.id)); }, 350);
+        mtStarting = false;
+        $("#mtNewGo").disabled = false;
+        if(!data){ toast(t("toast.mtStartFailed")); return; }
+        /* Opened when the data is actually back, not on a timer that was
+           racing it: `openMeet` looks the meeting up in MEETS, and on a slow
+           answer it found nothing and the sheet silently never opened. */
+        API.reload(function(){ if(data.meeting) openMeet(Number(data.meeting.id)); });
+        toast(t("toast.mtStarted", {list:nameList(m.who.map(mtName))}));
       });
       closeSheets();
-      toast(t("toast.mtStarted", {list:nameList(m.who.map(mtName))}));
       return;
     }
     MEETS.unshift(m);
@@ -8898,7 +9022,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      The sweep runs on its own minute, so the first re-read can still find the
      meeting negotiating; `settleAsked` is per meeting-and-moment, which lets
      the next tick ask again without turning the page into a poller. */
-  var settleAsked = {};
+  var settleAsked = {}, SETTLE_RETRY_MS = 20000;
+  /* One coordination per press of "start" — see the handler. */
+  var mtStarting = false;
+  /* …and one settle per press, for the same reason. */
+  var mtSettlingSend = false;
   function tickSettle(){
     if(!LIVE) return;
     var live = MEETS.filter(function(m){
@@ -8909,8 +9037,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     live.forEach(function(m){
       if(m.settleIn > 0){ m.settleIn -= 1; redraw = true; return; }
       var key = m.id + ":" + (m.settlingOpt || "");
-      if(settleAsked[key]) return;
-      settleAsked[key] = true;
+      /* Asked at most once every SETTLE_RETRY seconds, rather than once ever.
+         The sweep that actually settles a meeting runs on its own minute, so
+         the read at zero can perfectly well come back still negotiating — and
+         with a permanent latch the countdown then sat on "settling now" for
+         as long as the page stayed open, which the comment above already
+         claimed it did not. */
+      var now = Date.now();
+      if(settleAsked[key] && now - settleAsked[key] < SETTLE_RETRY_MS) return;
+      settleAsked[key] = now;
       /* One read, and the reload brings the meeting back as it really is —
          confirmed, or still negotiating because somebody said no in time. */
       API.reload();
@@ -8964,12 +9099,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        "remove from my calendar" — which is a private act, and deliberately
        not the same control, or the same word, as leaving the meeting. */
     MEETS.forEach(function(m){
-      if(!m.settled || !m.inCal) return;
+      /* A settled coordination stands in the day because it IS the day's —
+         `inCal` is the separate, private question of whether a copy of it also
+         sits on their Google calendar, which the server does not record per
+         participant and therefore answers "no" for everybody. Read here, it
+         hid every settled meeting on a real account from the one screen that
+         exists to show what a day holds. */
+      if(!m.settled) return;
       var o = mtOptById(m, m.settled);
       if(!o || o.day !== i) return;
       evs.push({time:m.allDay ? "" : (o.time || ""), allDay:m.allDay, end:"",
                 part:m.allDay ? "" : (o.time ? "" : t("mt.part." + (o.part || "evening"))),
-                title:L(m.t), sub:t("cal.fromMeet"), c:"var(--accent)", meet:m.id});
+                title:L(m.t), sub:t("cal.fromMeet"), c:"var(--accent)", meet:m.id, uncal:!!m.inCal});
     });
     /* an all-day entry heads the day, the way every calendar shows it */
     return evs.sort(function(a, b){
@@ -9038,10 +9179,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         (v.task ? '<span class="evtag">' + esc(t(v.kind === "event" ? "cal.eventTag" : "cal.taskTag")) + "</span>" : "") +
         (v.meet ? '<span class="evtag">' + esc(t("cal.meetTag")) + "</span>" : "") +
         '</div><div class="evsub">' + esc(v.sub) + "</div></div>" +
-        (v.meet ? '<button class="evdrop" data-uncal="' + v.meet + '" title="' +
+        (v.uncal ? '<button class="evdrop" data-uncal="' + v.meet + '" title="' +
           esc(t("mt.calRemove")) + '" aria-label="' + esc(t("mt.calRemove")) +
           '"><svg><use href="#i-x"/></svg></button>' : "") + "</div>";
-    }).join("") : '<div class="empty">' + esc(t("cal.empty")) + "</div>";
+    }).join("")
+      /* "Nothing today" and "we cannot see your calendar" look identical on an
+         empty day, and the server has always told us which (`connected`). */
+      : '<div class="empty">' + esc(t(LIVE && !calConnected ? "cal.notConnected" : "cal.empty")) + "</div>";
   }
   $("#daystrip").addEventListener("click", function(e){
     var b = e.target.closest(".day");
@@ -9117,6 +9261,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* Search appears only past SEARCH_AT. Below it the whole list is on one
      screen, so a permanent field would be a control that never saves a tap. */
   var SEARCH_AT = 8, friendQ = "";
+  /* Which friend rows are open, kept across a re-render — see the click
+     handler below. Groups have had this since they were built; friends did
+     not, and every reload closed them. */
+  var frOpen = {};
   /* ── groups ─────────────────────────────────────────────────────────── */
   var GROUP_SEARCH_AT = 4, groupQ = "", grOpen = {};
   function grName(g){ return L(g.n).trim() || t("gr.untitled"); }
@@ -9265,8 +9413,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var list = !q ? FRIENDS : FRIENDS.filter(function(f){
       return searchText(f.n).toLowerCase().indexOf(q) > -1;
     });
+    /* Nobody connected yet and nobody MATCHING are two different sentences,
+       and the second one read `No friend matches ""` for every person opening
+       this page for the first time. renderGroups has always got this right. */
     $("#friendEmpty").hidden = !!list.length;
-    $("#friendEmpty").textContent = list.length ? "" : t("fr.noMatch", {q:friendQ.trim()});
+    $("#friendEmpty").textContent = list.length ? ""
+      : (q ? t("fr.noMatch", {q:friendQ.trim()}) : t("fr.none"));
     $("#friendGroup").innerHTML = list.map(function(f){
       var live = PKEYS.filter(function(k){ return f.p[k]; }).length;
       var perms = PKEYS.map(function(k){
@@ -9288,7 +9440,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
           '<button class="switch" role="switch" aria-checked="' + f.p[k] + '" data-f="' + f.id + '" data-p="' + k + '" aria-label="' + esc(t("p." + k)) + '"></button></div>';
       }).join("");
       var night = isNight(f.tz), bday = isBirthday(f.bd);
-      return '<div class="rowset"><button class="row" data-friend="' + f.id + '" aria-expanded="false">' +
+      var fopen = !!frOpen[f.id];
+      return '<div class="rowset"><button class="row" data-friend="' + f.id + '" aria-expanded="' + fopen + '">' +
         '<span class="fav">' + avatarSVG(f.av, {g:f.g, night:night, bday:bday}) + "</span>" +
         '<div class="row-txt"><div class="row-title">' + esc(L(f.n)) +
         (bday ? ' <span class="bdaydot" title="' + esc(t("fr.bday")) + '">🎂</span>' : "") +
@@ -9296,7 +9449,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         esc(permsLine(live, L(f.since))) + "</div></div>" +
         '<span class="row-end tiny' + (night ? " asleep" : "") + '" data-ftz="' + f.tz + '">' + clockIn(f.tz) + "</span>" +
         '<svg class="chev"><use href="#i-chev"/></svg></button>' +
-        '<div class="fold" data-ffold="' + f.id + '"><div><div class="foldpad">' + perms +
+        '<div class="fold' + (fopen ? " open" : "") + '" data-ffold="' + f.id + '"><div><div class="foldpad">' + perms +
         '<button class="linkbtn danger" data-frdel="' + f.id + '" style="margin-top:14px;display:block">' + esc(t("fr.remove")) + "</button>" +
         "</div></div></div></div>";
     }).join("");
@@ -9407,6 +9560,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var on = !fold.classList.contains("open");
     fold.classList.toggle("open", on);
     head.setAttribute("aria-expanded", on ? "true" : "false");
+    /* Remembered, the way a group's fold is. Every write on this page ends in
+       a reload, which rebuilds this list — so a permission switched on inside
+       an open row shut the row underneath the finger that had just used it. */
+    if(on) frOpen[id] = true; else delete frOpen[id];
   });
 
   /* ───────── profile ───────── */
@@ -9558,7 +9715,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   var fqDraft = {};
   var LANGS = [{v:"he", n:"עברית"}, {v:"en", n:"English"}, {v:"ar", n:"العربية"}, {v:"ru", n:"Русский"}];
 
-  function flashSaved(id){
+  /* The profile page's own saved mark, which takes the element to flash.
+     Deliberately not called `flashSaved`: it used to be, and both declarations
+     live in the same scope — this one won, so every `flashSaved()` in the task
+     sheet ran `$(undefined)`, returned, and the sheet's "נשמר ✓" never once
+     appeared. An editor whose whole design is "no save button" had no
+     confirmation at all. */
+  function flashMark(id){
     var el = $(id);
     if(!el) return;
     el.classList.add("show");
@@ -9753,13 +9916,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     renderSchedule();
     var chip = $(which === "start" ? "#hoursFrom" : "#hoursTo");
     chip.classList.remove("pop"); void chip.offsetWidth; chip.classList.add("pop");
-    API.setAvailability(start, end, function(){ flashSaved("#whenSaved"); });
+    API.setAvailability(start, end, function(){ flashMark("#whenSaved"); });
   }
   $("#hoursSub").addEventListener("click", function(e){
     if(!e.target.closest("#hoursReset")) return;
     SCHED.start = SCHED.def.start; SCHED.end = SCHED.def.end; SCHED.source = "default";
     renderSchedule();
-    API.setAvailability(null, null, function(){ flashSaved("#whenSaved"); });
+    API.setAvailability(null, null, function(){ flashMark("#whenSaved"); });
   });
   $("#quietDays").addEventListener("click", function(e){
     var b = e.target.closest("[data-qday]");
@@ -9771,14 +9934,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     renderSchedule();
     var nb = $('#quietDays [data-qday="' + d + '"]');
     if(nb){ nb.classList.add("pop"); }
-    API.setQuietDays({days:SCHED.days}, function(){ flashSaved("#whenSaved"); });
+    API.setQuietDays({days:SCHED.days}, function(){ flashMark("#whenSaved"); });
   });
   $("#calendarSeg").addEventListener("click", function(e){
     var b = e.target.closest("[data-calkind]");
     if(!b || b.dataset.calkind === SCHED.calendar) return;
     SCHED.calendar = b.dataset.calkind;
     renderSchedule();
-    API.setQuietDays({days:SCHED.days, calendar:SCHED.calendar}, function(){ flashSaved("#whenSaved"); });
+    API.setQuietDays({days:SCHED.days, calendar:SCHED.calendar}, function(){ flashMark("#whenSaved"); });
   });
 
   /* ── the daily summary ── */
@@ -9798,7 +9961,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   function saveDigest(patch){
     renderDigest();
-    API.setDigest(patch, function(){ flashSaved("#digestSaved"); });
+    API.setDigest(patch, function(){ flashMark("#digestSaved"); });
   }
   $("#digestTime").addEventListener("click", function(){
     var btn = this;
@@ -9845,7 +10008,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       renderSchedule();
       API.setQuietDays({days:SCHED.days, holidays:on,
         calendar:{jewish:1, christian:1, muslim:1}[SCHED.calendar] ? SCHED.calendar : null},
-        function(){ flashSaved("#whenSaved"); });
+        function(){ flashMark("#whenSaved"); });
       return;
     }
     if(sw.id === "digestSwitch"){
@@ -9938,6 +10101,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     "</div></div>";
   }
   function renderFactQs(){
+    /* Same reason as the name boxes in paintStatic: this rebuilds the cards
+       from scratch, so a background reload landing mid-sentence threw away an
+       answer being typed AND the focus with it. The list only ever changes
+       when a card is answered or skipped, and both of those redraw it
+       themselves — so standing still while the person is inside it is safe. */
+    if($("#factQs").contains(document.activeElement)) return;
     var shown = FQ.slice(0, FQ_SHOWN);
     $("#factQs").innerHTML = shown.length
       ? shown.map(function(p){ return fqCardHTML(p); }).join("")
@@ -10229,9 +10398,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     paintGreeting();
     $$("[data-i18n-ph]").forEach(function(el){ el.placeholder = t(el.dataset.i18nPh); });
     $$("[data-i18n-label]").forEach(function(el){ el.setAttribute("aria-label", t(el.dataset.i18nLabel)); });
-    $("#fname").value = L(PROFILE.first);
-    $("#lname").value = L(PROFILE.last);
-    $("#oname").value = L(PROFILE.olma);
+    /* Not while somebody is in the box. Every write on this page ends in a
+       reload, and a reload repaints all three of these — so typing a surname
+       while a task saved in the background swallowed the half-typed word and
+       put the caret back at the end. A field that HAS the focus is the one
+       place the person's copy is newer than the server's. */
+    setField($("#fname"), L(PROFILE.first));
+    setField($("#lname"), L(PROFILE.last));
+    setField($("#oname"), L(PROFILE.olma));
     $("#friendCount").textContent = t("fr.count", {n:FRIENDS.length});
     /* Hard-coded WhatsApp here said something the delivery gate does not
        promise: a reminder goes out on whichever channel is the default, and
@@ -10474,6 +10648,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     PROV.forEach(function(p){
       p.connected = false;
       p.account = "";
+      /* Cleared with everything else. Left standing, an account that had been
+         repaired kept telling the person to reconnect it for ever. */
+      p.needsReauth = false;
       p.svc.forEach(function(sv){ sv.on = false; });
     });
     (list || []).forEach(function(row){
@@ -10558,6 +10735,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       t:m.title || "",
       by:m.mine ? 0 : m.initiatorId,
       who:who, allDay:allDay, opts:opts, ans:ans, left:left,
+      /* Answered, in the server's own words: a yes, a no, OR a sentence that
+         is neither ("not free until 22:00 — after that I can"). The page only
+         ever looked at per-option answers, so somebody who had written a
+         condition was drawn as waiting — the exact mistake `said`/`answered`
+         were added to the route to stop (domain/user-dashboard.js). */
+      spoke:(m.participants || []).reduce(function(acc, p){
+        if(p.answered) acc[String(p.id) === String(MY_ID) ? 0 : p.id] = true;
+        return acc;
+      }, {}),
+      saidBy:(m.participants || []).reduce(function(acc, p){
+        if((p.said || []).length) acc[String(p.id) === String(MY_ID) ? 0 : p.id] = p.said.slice();
+        return acc;
+      }, {}),
       settled:settled,
       slotText:(settledOpt ? m.confirmedSlot : m.slot) || "",
       /* Whether the settled slot sits on THIS person's own calendar is not
@@ -10590,11 +10780,17 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      data, and never retried: a screen that silently re-fetches is a screen
      that can change under somebody's finger, and a day view that redraws
      itself while being read is worse than one that is a minute old. */
+  var daysSeq = 0;
   function loadDays(){
     if(!LIVE) return;
+    /* The newest request wins. Two of these in flight — the week paged twice,
+       or a boot and a page — could land in either order, and the older answer
+       would overwrite the newer days with itself. */
+    var mine = ++daysSeq;
     fetch("/me/events", {credentials:"same-origin", headers:{Accept:"application/json"}})
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(body){
+        if(mine !== daysSeq) return;
         if(!body || !body.ok || !body.data) return;
         calConnected = !!body.data.connected;
         EVENTS = {};
@@ -10718,7 +10914,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        them in after the page is already on screen. Until it answers, an empty
        day is the only honest thing: a real person must never be shown a poker
        game that does not exist. */
-    EVENTS = {};
+    /* Kept across a re-hydrate, and blanked only on the FIRST one. `hydrate`
+       runs after every write now — an answer, a removal, a settle tick — and
+       emptying the days each time meant the calendar went blank for as long as
+       Google took to answer, several times a minute, and stayed blank whenever
+       Google did not answer at all. */
+    if(!LIVE) EVENTS = {};
     PEOPLE = {};
     /* Everybody on a task who is not a connection of mine gets a face too —
        above all the person who shared it WITH me, who is on no share row and
@@ -10736,10 +10937,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     MEETS = (d.meetings || []).map(liveMeet);
     MTLEFT = (d.meetingsLeft || []).map(function(m){ return {id:m.id, t:m.title || "", settled:!!m.settled, slot:m.slot || ""}; });
     mtOpen = openId ? (mtById(openId) || null) : null;
+    var first = !LIVE;
     LIVE = true;
     renderAll();
     if(mtOpen) renderMeet();
-    loadDays();
+    /* Their calendar is a separate round trip to Google, and nothing a write
+       on this page does can change it — so it is fetched once, at boot, and
+       again only when the week on screen moves past what has been fetched. */
+    if(first) loadDays();
     openFromHash();
   }
   /* A link minted for ONE meeting arrives as #meeting=<id> (the sign-in POST
@@ -10779,8 +10984,40 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      to see what a given payload actually renders as. */
   API.hydrate = hydrate;
 
-  /* One request, at boot, and nothing retries it. A dashboard that silently
-     reloads itself is a dashboard that can change under somebody's finger. */
+  /* One request, at boot. Nothing retries it on its own — a dashboard that
+     silently reloads itself is a dashboard that can change under somebody's
+     finger — but the person can, and until it lands the app is behind the boot
+     veil.
+
+     What that veil replaced: on a failure the page simply kept the seed, so an
+     expired session or a 500 left a real person reading a made-up list, made-up
+     friends and a fact about a dog they do not own, with every control taking
+     the design path — toasting "saved" and writing nothing. */
+  var bootTries = 0;
+  function bootFail(){
+    var v = $("#boot");
+    v.hidden = false;
+    v.classList.add("failed");
+    $("#bootMsg").textContent = t("boot.failed");
+    $("#bootRetry").hidden = false;
+  }
+  function bootDone(){
+    $("#boot").hidden = true;
+    $("#boot").classList.remove("failed");
+  }
+  function bootFetch(){
+    bootTries++;
+    $("#boot").classList.remove("failed");
+    $("#bootRetry").hidden = true;
+    $("#bootMsg").textContent = t("boot.loading");
+    fetch("/me/data", {credentials:"same-origin", headers:{Accept:"application/json"}})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(body){
+        if(body && body.ok && body.data){ hydrate(body.data); bootDone(); return; }
+        bootFail();
+      })
+      .catch(bootFail);
+  }
   (function(){
     /* Only from the one path the live page is served at. A protocol check was
        not enough: published as a design, this file sits on somebody else's
@@ -10791,10 +11028,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     /* A stranger has nothing to fetch and no session to fetch it with — the
        call could only ever come back 401. */
     if(NEWUSER) return;
-    fetch("/me/data", {credentials:"same-origin", headers:{Accept:"application/json"}})
-      .then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(body){ if(body && body.ok && body.data) hydrate(body.data); })
-      .catch(function(){ /* keep the seed; see the note above */ });
+    $("#boot").hidden = false;
+    $("#bootMsg").textContent = t("boot.loading");
+    $("#bootRetry").addEventListener("click", bootFetch);
+    bootFetch();
   })();
 
   /* silent, so the very first placement is not read as a move from x=0 — an
