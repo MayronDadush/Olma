@@ -279,10 +279,10 @@ async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, 
   // as often as it is one.
   //
   // The asymmetry is the whole argument, and it runs the opposite way to
-  // jobs/fact-extraction.js, which refuses at the same score. THERE nobody is
-  // in the room and a wrong refusal costs nothing, because the live tool has
-  // already captured the sentence. HERE somebody has just said a thing out
-  // loud, and a wrong refusal loses it. So this path takes the third tier the
+  // jobs/fact-extraction.js, which refuses at the same score. THERE the job
+  // has no channel to ask on, and a wrong refusal costs nothing because the
+  // live tool has already captured the sentence. HERE somebody has just said
+  // a thing out loud, and a wrong refusal loses it. So this path takes the third tier the
   // owner asked for from the start (2026-09-18: "שומרת את המשימה ושואלת האם
   // לאחד אותה") — the row exists either way, which is also what keeps the 👍
   // honest, and one sentence settles what no threshold can.

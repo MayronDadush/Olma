@@ -361,14 +361,14 @@ function titleWithoutStatedTime(title, dueAtIso, tz) {
 // this same batch, and never one invented — the same anchoring pattern the
 // meeting-constraints reference uses.
 // A day. Long enough to cover "completed two minutes in, written back
-// forty-two minutes later" and every overnight run that reads the same
+// forty-two minutes later" and every later tick that reads the same
 // conversation twice; short enough that a genuinely repeated chore — the
 // water, the house — is a new row tomorrow like it always was.
 const DONE_WINDOW_HOURS = 24;
 
 async function applyExtraction(client, user, parsed, knownFactIds = new Set()) {
   // `refused` exists because the guards in domain/facts swallow a proposal
-  // silently, and a nightly job that quietly drops facts looks exactly like a
+  // silently, and a background job that quietly drops facts looks exactly like a
   // quiet week. If a guard ever starts over-firing — refusing real facts every
   // night — this counter is the only place that would say so.
   const out = { recorded: 0, tasksCaptured: 0, refused: {}, replaced: 0, datesDropped: 0, titlesTrimmed: 0 };
