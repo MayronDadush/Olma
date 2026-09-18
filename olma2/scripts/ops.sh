@@ -14,8 +14,17 @@
 # free-text command input anywhere, and nothing here prints a person's
 # message, name or number — release marker, pids, unit states, http codes.
 #
-#   bash olma2/scripts/ops.sh status            # read-only
-#   bash olma2/scripts/ops.sh restart-gateway   # restart, wait for the plugin to register, then status
+#   bash olma2/scripts/ops.sh status                 # read-only
+#   bash olma2/scripts/ops.sh restart-gateway        # restart, wait for the plugin to register, then status
+#   bash olma2/scripts/ops.sh measure-ask-re         # read-only, counts only
+#   bash olma2/scripts/ops.sh count-early-reminders  # read-only, counts only
+#   bash olma2/scripts/ops.sh eval-reminder-hour     # runs one behavioural scenario (writes, costs model calls)
+#
+# The three added on 2026-09-18 keep the no-personal-data rule the hard way:
+# the two measurements classify on the BOX and print integers, and the eval
+# talks only to the synthetic `is_eval` user, whose messages we wrote
+# ourselves. A measurement that has to show somebody's actual words is not an
+# op and never becomes one — that is a person at their own ssh.
 #
 # SSH_KEY overrides the key path (defaults to ~/.ssh/id_ed25519), same as
 # deploy.sh. Written without an exclamation mark anywhere, same reason as
@@ -89,8 +98,21 @@ case "$op" in
     echo
     $SSH "$SERVER" bash -c "$remote_status"
     ;;
+  measure-ask-re)
+    $SSH "$SERVER" bash -c 'cd /opt/olma2 && node scripts/measure-ask-re.js'
+    ;;
+  count-early-reminders)
+    $SSH "$SERVER" bash -c 'cd /opt/olma2 && node scripts/count-early-reminders.js'
+    ;;
+  eval-reminder-hour)
+    # The scenario id is fixed in this arm, not passed in: the menu stays
+    # closed, so no dispatch can choose what runs. It talks to the synthetic
+    # eval user only, and it does WRITE — rows for that user, an eval result,
+    # and real model calls that cost money.
+    $SSH "$SERVER" bash -c 'cd /opt/olma2 && node scripts/run-evals.js --only named-reminder-hour'
+    ;;
   *)
-    echo "usage: $0 status | restart-gateway" >&2
+    echo "usage: $0 status | restart-gateway | measure-ask-re | count-early-reminders | eval-reminder-hour" >&2
     exit 2
     ;;
 esac
