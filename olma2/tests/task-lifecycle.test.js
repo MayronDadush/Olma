@@ -409,3 +409,31 @@ test('the digest hands over the calendar and the plate as two lists, and counts 
     assert.equal(summary.events, undefined, 'summary stays counts-only');
   });
 });
+
+test('a checklist item is not a task anybody has to do, and the counts say so', async () => {
+  const digest = require('../src/domain/digest');
+  const u = await makeUser(db.pool, '+972501000086', { firstName: 'Maya' });
+  // מאיה's own shape: one thing to do, with the packing list inside it. Her
+  // digest counted the list as six separate jobs she had not done, over a
+  // block that listed one — every renderer drops `parent_id` rows and the
+  // counts did not (incidents.md, "התיק לבית חולים").
+  const yesterday = at(-30);
+  await withClient(async (c) => {
+    const bag = (await tasks.addTask(c, u.id, { title: 'לארוז תיק לבית חולים', dueAt: yesterday })).data.task;
+    for (const item of ['תעודת זהות', 'מטען', 'בגדים', 'מסמכים']) {
+      await tasks.addTask(c, u.id, { title: item, parentId: bag.id, dueAt: yesterday });
+    }
+    await tasks.addTask(c, u.id, { title: 'להתקשר למכבי' });
+
+    const full = (await digest.assemble(c, u.id, 'full')).data;
+    assert.equal(full.counts.openTasks, 2, 'the bag and the phone call — not the four things in the bag');
+    assert.equal(full.counts.dueOrOverdue, 1, 'one overdue thing, not five');
+    // The ROWS still carry the items: the count is filtered at the source,
+    // the list keeps them so a renderer can nest them under their parent.
+    assert.equal(full.tasks.length, 6);
+    assert.equal(full.tasks.filter((t) => t.parent_id).length, 4);
+
+    const summary = (await digest.assemble(c, u.id, 'summary')).data;
+    assert.equal(summary.counts.openTasks, 2, 'the counts-only scope reads the same number');
+  });
+});
