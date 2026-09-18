@@ -169,7 +169,7 @@ function localDayKey(value, tz) {
   return `${p.y}-${pad(p.m)}-${pad(p.d)}`;
 }
 
-async function setReminder(client, ownerId, taskId, remindAt, repeatRule) {
+async function setReminder(client, ownerId, taskId, remindAt, repeatRule, { nudge = false } = {}) {
   if (!remindAt) return err('invalid', 'remind_at required');
   if (!hasOffset(remindAt)) return badTime('remind_at', remindAt);
   const { rows } = await client.query(
@@ -208,13 +208,18 @@ async function setReminder(client, ownerId, taskId, remindAt, repeatRule) {
       RETURNING id`,
     [taskId, tz, newDay]
   );
+  // `nudge` is the one thing on this row nobody can infer later: "תזכירי לי עד
+  // שאעשה את זה" and "תזכירי לי ב-9" produce the same row otherwise, and the
+  // ladder default (RUNGS) says one message for both. It is stamped only when
+  // they ASKED — a model that passes it by reflex is the drum this replaced.
   const ins = await client.query(
-    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, auto)
-     VALUES ($1, $2, $3, false) RETURNING *`,
-    [taskId, remindAt, rule]
+    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, auto, nudge)
+     VALUES ($1, $2, $3, false, $4) RETURNING *`,
+    [taskId, remindAt, rule, nudge === true]
   );
   await audit.record(client, ownerId, 'reminder.created', {
     taskId, reminderId: ins.rows[0].id,
+    ...(nudge === true ? { nudge: true } : {}),
     ...(superseded.rowCount ? { supersededAuto: superseded.rows.map((r) => Number(r.id)) } : {}),
   });
   return ok({ reminder: ins.rows[0], supersededAuto: superseded.rowCount });

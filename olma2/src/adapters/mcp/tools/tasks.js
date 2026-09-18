@@ -128,7 +128,11 @@ function taskHints(res, user = {}) {
     const at = Array.isArray(d.remindersAt) && d.remindersAt.length ? ` (${d.remindersAt.join(', ')}, their time)` : '';
     hints.reminders = d.remindersAsked
       ? `Armed for the hour they themselves named${at}: they already know it, so this is not a reason `
-        + 'to write. Say nothing about the reminder unless something here differs from what they asked.'
+        + 'to write. Say nothing about the reminder unless something here differs from what they asked. '
+        // Said here rather than in a description: it matters while the model is
+        // composing the sentence, and only on the turns that arm something.
+        + 'It goes out ONCE, at that hour — never promise a follow-up. If they ask to be chased until '
+        + 'it is done, set_task_reminder(nudge:true) is what does that.'
       : `Reminders were armed automatically${at} — that hour is the one thing worth saying, in one short `
         + 'line, and never the due time. Do not also say the task was saved, and do not ask permission. '
         + 'Only call set_task_reminder if they wanted a different moment or a repeat; if they said '

@@ -293,3 +293,74 @@ test('the questions are drawn in the person’s own language', async () => {
   const r = await act('answerFactPrompt', { key: 'work_days', answer: { days: [1, 2] } }, u);
   assert.equal(r.data.fact.fact, 'Work days: Monday, Tuesday');
 });
+
+// ---- being chased ----------------------------------------------------------
+// The switch מאיה would have wanted on 2026-09-16: a reminder is said once at
+// the hour she named, and following up is something to ask for. Both halves of
+// the ask are here — the standing one on this page, and the per-reminder one
+// set_task_reminder takes — because the ladder query reads whichever is true.
+test('the nudge switch is off until it is turned on, and the ladder reads it', async () => {
+  const reminders = require('../src/domain/reminders');
+  const tasks = require('../src/domain/tasks');
+  const sweeps = require('../src/jobs/sweeps');
+
+  const page = await load();
+  assert.equal(page.data.user.reminderNudge, false, 'nobody is opted in by default');
+
+  // One reminder at an hour she named, and the follow-up window three hours on.
+  // A fresh one per reading, because a ladder that has already ended is over:
+  // flipping the switch afterwards cannot reopen it, and should not.
+  const at = new Date(Date.now() - 4 * 3600_000);
+  const arm = (title) => tx(async (c) => {
+    const t = await tasks.addTask(c, me.id, { title });
+    const r = await reminders.setReminder(c, me.id, t.data.task.id, at.toISOString());
+    return Number(r.data.reminder.id);
+  });
+  const climb = async (armed) => {
+    await tx((c) => sweeps.sweepReminders(c, new Date(at.getTime() + 60_000).toISOString()));
+    await db.pool.query(
+      `UPDATE outbox SET sent_at = $2::timestamptz, hold_reason = NULL
+        WHERE idempotency_key = $1 AND sent_at IS NULL`,
+      [reminders.attemptKey(armed, 1), new Date(at.getTime() + 120_000).toISOString()]);
+    await tx((c) => sweeps.sweepReminders(c, new Date(at.getTime() + 3.5 * 3600_000).toISOString()));
+    const { rows } = await db.pool.query(
+      `SELECT count(*)::int AS n FROM outbox WHERE idempotency_key = $1`,
+      [reminders.attemptKey(armed, 2)]);
+    return rows[0].n;
+  };
+  assert.equal(await climb(await arm('לארוז תיק לבית חולים')), 0, 'off: the hour she named is said once');
+
+  const r = await act('setReminderNudge', { on: true });
+  assert.equal(r.ok, true, JSON.stringify(r.error));
+  assert.equal((await load()).data.user.reminderNudge, true);
+  assert.equal(await climb(await arm('לארוז תיק לבית חולים 2')), 1, 'on: the follow-up she asked for goes out');
+
+  // And off again, which changes nothing about a ladder already walking — that
+  // is what "stop reminding me" is for, said in her own words.
+  assert.equal((await act('setReminderNudge', { on: false })).ok, true);
+  assert.equal((await load()).data.user.reminderNudge, false);
+  const { rows: audit } = await db.pool.query(
+    `SELECT count(*)::int AS n FROM audit_log WHERE actor_id = $1 AND event = 'user.reminder_nudge_set'`, [me.id]);
+  assert.equal(audit[0].n, 2);
+});
+
+test('a reminder they asked to be chased about climbs even with the switch off', async () => {
+  const reminders = require('../src/domain/reminders');
+  const tasks = require('../src/domain/tasks');
+  const sweeps = require('../src/jobs/sweeps');
+  const at = new Date(Date.now() - 4 * 3600_000);
+  const id = await tx(async (c) => {
+    const t = await tasks.addTask(c, me.id, { title: 'לשלוח את הדוח' });
+    // "תזכירי לי עד שאעשה את זה" — the per-reminder half of the same switch.
+    const r = await reminders.setReminder(c, me.id, t.data.task.id, at.toISOString(), null, { nudge: true });
+    return Number(r.data.reminder.id);
+  });
+  await tx((c) => sweeps.sweepReminders(c, new Date(at.getTime() + 60_000).toISOString()));
+  await db.pool.query(
+    `UPDATE outbox SET sent_at = $2::timestamptz, hold_reason = NULL WHERE idempotency_key = $1 AND sent_at IS NULL`,
+    [reminders.attemptKey(id, 1), new Date(at.getTime() + 120_000).toISOString()]);
+  await tx((c) => sweeps.sweepReminders(c, new Date(at.getTime() + 3.5 * 3600_000).toISOString()));
+  const { rows } = await db.pool.query(
+    `SELECT count(*)::int AS n FROM outbox WHERE idempotency_key = $1`, [reminders.attemptKey(id, 2)]);
+  assert.equal(rows[0].n, 1);
+});

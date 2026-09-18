@@ -75,6 +75,7 @@ async function loadUser(client, userId) {
   const { rows } = await client.query(
     `SELECT id, first_name, last_name, assistant_name, assistant_gender, timezone, timezone_confirmed,
             locale, paused_at IS NOT NULL AS paused, digest_scope, digest_times, calendar_sync_tasks,
+            reminder_nudge,
             gender, to_char(birth_date, 'YYYY-MM-DD') AS birth_date,
             to_char(created_at AT TIME ZONE COALESCE(timezone, 'UTC'), 'YYYY-MM-DD') AS joined_on,
             nest_tip_seen_at IS NOT NULL AS nest_tip_seen
@@ -700,6 +701,9 @@ async function load(client, userId) {
       // The standing switch behind every task's own calendar row. A task that
       // says nothing follows this one.
       calendarSyncTasks: user.calendar_sync_tasks,
+      // Whether Olma chases a reminder they did not answer. Off for everybody
+      // until they say otherwise (migration 072).
+      reminderNudge: user.reminder_nudge === true,
       // Migration 068. NULL is "not said", and the page shows it as unset
       // rather than guessing a form of address for them.
       gender: user.gender,
