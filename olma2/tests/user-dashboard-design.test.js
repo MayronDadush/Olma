@@ -125,3 +125,25 @@ test('an empty list points at the way out of being empty', () => {
   // rather than inventing a second route to the same place.
   assert.match(page, /var b = e\.target\.closest\("\[data-emptygo\]"\);/);
 });
+
+test('a class that says what something IS may not also say how it looks', () => {
+  // `live` meant two unrelated things in one namespace: the header's activity
+  // pill, and "this section has real rooms behind it". The groups section wore
+  // the pill — a 999px radius, a white ground, a shadow and white-space:nowrap
+  // on a 339px-wide block — so a real person in a room got a screen-wide
+  // lozenge with the first group's name running off the side of it. Only on a
+  // SERVED page, and only past the first room, which is why every design pass
+  // on the seeded page saw nothing. The page had already paid for this once:
+  // .wordslot's classes are `wnow`/`wout` and its comment says why.
+  assert.doesNotMatch(page, /classList\.(toggle|add)\("live"/,
+    '`live` is a look on this page, so nothing may wear it to mean a state');
+  assert.match(page, /block\.classList\.toggle\("hasrooms", GROUPS\.length > 0\);/);
+  // The state class earns its keep only by being invisible: one rule, and that
+  // rule decides whether the section is there at all, nothing about its look.
+  const rules = page.match(/[^\n{}]*\.hasrooms[^\n{}]*\{[^}]*\}/g) || [];
+  assert.equal(rules.length, 1, 'exactly one rule may mention it');
+  assert.match(rules[0], /^html\[data-served\] \.groupsblock\.hasrooms\{display:block\}$/);
+  // And the pill's own name now describes the pill.
+  assert.match(page, /<div class="livepill">/);
+  assert.match(page, /\.livepill\{/);
+});
