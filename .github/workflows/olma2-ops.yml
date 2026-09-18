@@ -11,6 +11,13 @@ name: olma2 ops
 #
 # `op` is a choice, matched literally in ops.sh; there is no free-text command
 # input, and nothing printed is a person's message, name or number.
+#
+# That last clause is load-bearing and the 2026-09-18 additions are built
+# around it rather than against it: the two measurements classify real messages
+# ON THE BOX and print integers, and the eval talks only to the synthetic
+# `is_eval` user. A measurement whose answer IS somebody's words does not
+# belong here at any timeout or any convenience — it goes over a person's own
+# ssh. Adding an op means checking this first.
 on:
   workflow_dispatch:
     inputs:
@@ -22,6 +29,9 @@ on:
         options:
           - status
           - restart-gateway
+          - measure-ask-re
+          - count-early-reminders
+          - eval-reminder-hour
 
 # Same group as the deploy job of "olma2 tests" on main, so a gateway restart
 # can never land in the middle of a deploy, or a deploy in the middle of a
@@ -36,7 +46,10 @@ jobs:
     # Only main can reach the box, same rule as the deploy job.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 10 covered status and restart-gateway (180s of waiting at worst).
+    # `eval-reminder-hour` is a real conversation plus the judge, so the
+    # ceiling moved rather than letting the slowest op decide the others.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Set up deploy SSH key
