@@ -114,6 +114,38 @@ function thanksOnly(text) {
   return sawThanks;
 }
 
+// ── A message that is only "stop reminding me" ───────────────────────────────
+// מאיה, 2026-09-16: four messages about a hospital bag, then "להפסיק להזכיר",
+// then a question back about WHICH one — and two more messages the next day
+// (domain/reminders.stopRecentLadders holds the argument for why the answer is
+// a write and not a question).
+//
+// Classified here for the same reason `thanksOnly` is: the words never leave
+// the gateway, only the verdict. Strict in the same way and for the same
+// asymmetry, but the asymmetry points the other way, so the shape differs. A
+// miss costs what today already costs — the model handles it. A false positive
+// stops ladders that were already chasing them, which is an hour they can ask
+// for again in four words. So this matches a bit more freely than thanksOnly:
+// a stop verb plus a reminding word anywhere in a short message.
+//
+// Deliberately NOT matched: anything with a question mark, anything naming a
+// day or an hour ("תזכיר לי רק ביום שני", "תפסיקי עד מחר") — those are a
+// RESCHEDULE and the model has to do them — and anything long enough to be
+// carrying a second request.
+const STOP_VERB_RE = /(להפסיק|תפסיק[יו]?|מפסיק|(?:^|\s)די(?=\s|$)|תעזב[יו]?|עזב[יו]? אותי|בלי|מספיק|stop|quit|enough|no more)/u;
+const REMIND_WORD_RE = /(תזכורת|תזכורות|תזכורתי|להזכיר|תזכיר[יו]?|מזכיר[הי]?|נדנוד|לנדנד|remind|reminder|reminders|nagging|nag)/u;
+const RESCHEDULE_RE = /(\d{1,2}[:.]\d{2}|\d{1,2}\s*(?:בבוקר|בערב|בלילה|בצהריים)|מחר|מחרתיים|היום|יום (?:א|ב|ג|ד|ה|ו|ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)|בעוד|שעה|שעות|דקות|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|later|instead)/u;
+const MAX_STOP_WORDS = 8;
+
+function stopRemindersOnly(text) {
+  const raw = String(text || '').replace(REPLY_BLOCK_RE, ' ');
+  if (/[?？]/.test(raw)) return false;
+  if (RESCHEDULE_RE.test(raw)) return false;      // a new time is not a stop
+  const words = raw.replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > MAX_STOP_WORDS) return false;
+  return STOP_VERB_RE.test(raw) && REMIND_WORD_RE.test(raw);
+}
+
 // Which inbound events open a turn. Measured on OpenClaw 2026.8.1 (2026-09-06,
 // olma-hook-probe): a WhatsApp DM fires `message:preprocessed` ~300ms after
 // the inbound log line and `agent:bootstrap` a second later — and NEVER
@@ -151,6 +183,10 @@ function handle(event, { connect = net.connect, sock = SOCK } = {}) {
     // The transcript when there is one — a voice note that says only "תודה"
     // is the same exchange — and the envelope body otherwise.
     thanks: thanksOnly(ctx.transcript || ctx.body),
+    // "stop reminding me" — brokerd stops every ladder that has spoken to them
+    // in the last day and puts a 👍 on this message (domain/reminders
+    // .stopRecentLadders). The verdict travels; the words do not.
+    stopReminders: stopRemindersOnly(ctx.transcript || ctx.body),
     at: new Date(event.timestamp || Date.now()).toISOString(),
   };
   return new Promise((resolve) => {
@@ -189,4 +225,5 @@ module.exports.agentIdOf = agentIdOf;
 module.exports.isVoice = isVoice;
 module.exports.replyToIdOf = replyToIdOf;
 module.exports.thanksOnly = thanksOnly;
+module.exports.stopRemindersOnly = stopRemindersOnly;
 module.exports._resetSeen = () => seen.clear();

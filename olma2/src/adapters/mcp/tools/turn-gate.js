@@ -205,6 +205,9 @@ module.exports = [
         // Set by the gateway opener and adopted with the rest of the pending
         // open; a turn nothing opened has no verdict and gets no hint.
         thanksOnly: Boolean(ctx && ctx.turn && ctx.turn.thanksOnly),
+        // Same provenance as thanksOnly: brokerd classified the message, acted
+        // on it, and the count rides the pending open this call adopted.
+        stoppedReminders: (ctx && ctx.turn && ctx.turn.stoppedReminders) || 0,
       });
       return stale(ok(data), namedNow);
     }),

@@ -650,6 +650,82 @@ async function retireForMovedTask(client, ownerId, task, { timezone, now = new D
   return { retired: retiredIds, withdrawn: withdrawn.length, autoCancelled: stale.map((r) => Number(r.id)), reminder: rearmed };
 }
 
+// ---- "להפסיק להזכיר" --------------------------------------------------------
+//
+// מאיה, 2026-09-16 11:02, after four messages about a hospital bag: "להפסיק
+// להזכיר". What she got back was a question — "מה להפסיק? 1. התזכורת על
+// לארוז 2. שתיהן 3. לדחות" — and nothing was cancelled, so an hour later
+// another rung landed and the morning after that, two more.
+//
+// Two ladders were chasing her and the model could name both, which is exactly
+// why it asked. That question is the bug: "stop" is not ambiguous to the person
+// saying it, and the cost of getting it wrong in either direction is not
+// symmetric — stopping one reminder too many costs a reminder they can set
+// again in a sentence, while asking costs the thing they asked for.
+//
+// So the answer is a WRITE, made here, before the model sees the turn: every
+// ladder that has actually spoken to them recently stops, and brokerd puts a 👍
+// on the message instead of the 👀 that promises a reply. Same argument as
+// markPlaced — an instruction in a prompt is a request, one at the boundary is
+// a rule (.claude/rules/doctrine.md).
+//
+// What it does NOT touch, and each for its own reason:
+//   - a reminder that has not fired yet (attempts = 0): they have never heard
+//     it, so "stop reminding" cannot be about it. It is also the hour they may
+//     still be promised, and cancelling it silently would be the opposite
+//     failure — a reminder they asked for, gone without a word.
+//   - a repeating reminder: that cadence IS theirs, and ending it is a decision
+//     about a standing arrangement, not about the last few messages. The model
+//     still has cancel_reminder for it, with words.
+//   - the TASK: stopping the reminders is not doing the thing or dropping it
+//     (cancel_reminder's own taskStillOpen hint, and the pause doctrine).
+const STOP_WINDOW_HOURS = 24;
+
+async function stopRecentLadders(client, ownerId, { now = new Date(), windowHours = STOP_WINDOW_HOURS } = {}) {
+  // Reminders of theirs that have actually REACHED them inside the window:
+  // a delivered outbox row (`sent_at` set, no hold_reason) whose key names the
+  // reminder. A rung the gate held reached nobody and is not what "stop" is
+  // answering — and it is withdrawn below anyway, where withdrawing is free.
+  const { rows: reached } = await client.query(
+    `SELECT DISTINCT r.id, r.sent_at IS NULL AS climbing
+       FROM task_reminders r
+       JOIN tasks t ON t.id = r.task_id
+       JOIN outbox o ON o.user_id = t.owner_id AND o.kind = 'reminder'
+        AND substring(o.idempotency_key from '^reminder:([0-9]+)')::bigint = r.id
+      WHERE t.owner_id = $1 AND r.repeat_rule IS NULL AND r.cancelled_at IS NULL
+        AND r.attempts >= 1
+        AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL
+        AND o.sent_at > $2::timestamptz - ($3::double precision * interval '1 hour')`,
+    [ownerId, now, windowHours]
+  );
+  if (!reached.length) return { stopped: [], withdrawn: 0 };
+  const ids = reached.map((r) => Number(r.id));
+  // Retired, never cancelled — they answered it. `sent_at` is what takes the
+  // row out of the pending set for good, and it is the same verb
+  // retireSiblingLadders and retireForMovedTask use for the same reason.
+  const { rows: stopped } = await client.query(
+    `UPDATE task_reminders SET sent_at = $2
+      WHERE id = ANY($1::bigint[]) AND sent_at IS NULL AND cancelled_at IS NULL
+      RETURNING id`, [ids, now]);
+  // And the rung already sitting in the queue — the one held for the night is
+  // the whole reason cancelling used to be a lie for hours (incidents.md, "The
+  // reminder that would not stop"). Withdrawn for every id in the window,
+  // including a ladder that had already ended and still has a message waiting.
+  const keys = ids.flatMap((id) => [`reminder:${id}`, `reminder:${id}:%`]);
+  const { rows: withdrawn } = await client.query(
+    `UPDATE outbox SET sent_at = now(), hold_reason = 'stopped'
+      WHERE user_id = $1 AND kind = 'reminder' AND sent_at IS NULL
+        AND idempotency_key LIKE ANY($2::text[])
+      RETURNING id`, [ownerId, keys]);
+  const stoppedIds = stopped.map((r) => Number(r.id));
+  if (stoppedIds.length || withdrawn.length) {
+    await audit.record(client, ownerId, 'reminder.ladder_stopped', {
+      stopped: stoppedIds, outboxWithdrawn: withdrawn.map((r) => Number(r.id)),
+    });
+  }
+  return { stopped: stoppedIds, withdrawn: withdrawn.length };
+}
+
 async function recordAttempt(client, reminderId, { retire } = {}) {
   await client.query(
     `UPDATE task_reminders
@@ -668,7 +744,7 @@ async function markSent(client, reminderId) {
 
 module.exports = {
   setReminder, attachAutoReminder, retireSiblingLadders, cancelReminder, listReminders, dueForSending, markSent,
-  retireForMovedTask, momentIsPast, PAST_GRACE_MS,
+  retireForMovedTask, stopRecentLadders, STOP_WINDOW_HOURS, momentIsPast, PAST_GRACE_MS,
   normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor,
   recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS, RUNGS,
 };
