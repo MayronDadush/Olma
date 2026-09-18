@@ -28,8 +28,15 @@
   --sep:#E7E5F0;
   --sep-2:#D9D6E6;
   --text:#141322;
-  --text-2:#6C6982;
-  --text-3:#A29FB5;
+  /* The tertiary grey measured 2.3:1 on either ground — quiet past the point
+     of being text at all — and it carries every section label, every form
+     label, the times down the side of each row and every empty state. 4.6:1
+     is the least that passes AA at these sizes, so it moved; and --text-2
+     moved with it, because a secondary tone that is no darker than the
+     tertiary one is not a hierarchy, it is two greys. Measured against
+     --bg-tint, the darkest ground either of them ever sits on. */
+  --text-2:#5C5973;
+  --text-3:#6A6684;
   /* Hue 241 is the blurple every product ships with — Discord's, Stripe's,
      half of Material's. It was the one thing on this page that could have
      been anybody's. Moved to 256: further into violet, deeper, with more
@@ -40,11 +47,15 @@
   --accent-2:#4A22B4;
   --accent-soft:#EEE8FC;
   --prog:rgba(91,47,214,.26);
-  --danger:#DC3A31;
+  /* The three semantic colours are TEXT as often as they are fill — "overdue",
+     "saved", "remove the connection" — and as text they measured 3.2-4.1.
+     Darkened until they pass, which also takes white-on-fill from 3.5-4.5 up
+     over 5 in the same move. */
+  --danger:#C92B22;
   --danger-soft:#FCEBE9;
-  --warn:#B57509;
+  --warn:#925E07;
   --warn-soft:#F8EFDC;
-  --ok:#1B9B6B;
+  --ok:#157853;
   --ok-soft:#E4F4EE;
   --drop-line:#2B6EF2;
   /* The meeting ring's own three colours. A "no" needs a red that is NOT the
@@ -65,6 +76,15 @@
   --mk-paper-s:#DDD9EC;
   --knob:#FFFFFF;
   --seg-on:#FFFFFF;
+  /* The ink that sits ON a filled control — accent, ok, warn, danger. White
+     is right on the light theme's deep violet (7.4:1) and wrong on the dark
+     theme's pale one, where the same pairing measures 2.7:1: a button label
+     nobody with ordinary eyes can read at 13px. Every fill on this page reads
+     its text colour from here, so the two themes can disagree about it.
+     --on-accent-soft is the same idea for a small badge sitting INSIDE such a
+     control, which used to be a white wash and now follows the ink. */
+  --on-accent:#FFFFFF;
+  --on-accent-soft:rgba(255,255,255,.25);
   --glass:rgba(255,255,255,.74);
   --glass-line:rgba(20,19,34,.08);
   /* Liquid glass, used sparingly: a lens only reads as a lens on something
@@ -116,7 +136,7 @@
     --sep-2:#3A3749;
     --text:#F4F3FA;
     --text-2:#9D9AB2;
-    --text-3:#6E6B83;
+    --text-3:#8D8BA0;
     --accent:#A38CFF;
     --accent-2:#BBA9FF;
     --accent-soft:#291D4C;
@@ -137,6 +157,9 @@
     --mk-paper-s:#2A2840;
     --knob:#FFFFFF;
     --seg-on:#383345;
+    /* 6.7:1 on the accent, 7-10:1 on ok/warn/danger — see the light block. */
+    --on-accent:#17112E;
+    --on-accent-soft:rgba(0,0,0,.2);
     --glass:rgba(24,23,32,.72);
     --glass-line:rgba(255,255,255,.09);
     --glass-panel:rgba(30,28,41,.84);
@@ -161,7 +184,7 @@
   --sep-2:#3A3749;
   --text:#F4F3FA;
   --text-2:#9D9AB2;
-  --text-3:#6E6B83;
+  --text-3:#8D8BA0;
   --accent:#A38CFF;
   --accent-2:#BBA9FF;
   --accent-soft:#291D4C;
@@ -182,6 +205,8 @@
   --mk-paper-s:#2A2840;
   --knob:#FFFFFF;
   --seg-on:#383345;
+  --on-accent:#17112E;
+  --on-accent-soft:rgba(0,0,0,.2);
   --glass:rgba(24,23,32,.72);
   --glass-line:rgba(255,255,255,.09);
   --glass-panel:rgba(30,28,41,.84);
@@ -315,7 +340,11 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
 .themeicons button:active{transform:scale(.88)}
 .live{
   display:inline-flex;align-items:center;gap:7px;flex:none;
-  padding:6px 12px 6px 10px;border-radius:999px;
+  /* Logical, not physical. These were written as `6px 12px 6px 10px` — right
+     and left — in a page whose primary language reads right to left, so the
+     tighter side sat against the dot in English and against the words in
+     Hebrew. The icon is what wants the tighter side, in both. */
+  padding-block:6px;padding-inline-start:10px;padding-inline-end:12px;border-radius:999px;
   background:var(--surface);box-shadow:var(--shadow-s);
   font-size:12.5px;font-weight:600;color:var(--text-2);white-space:nowrap;
 }
@@ -446,7 +475,7 @@ button.row:active{background:var(--bg-tint)}
 .tile.files{background:linear-gradient(160deg,#5AD08A,#1FA35F)}
 .citylist{max-height:46vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .citylist .row-end{font-variant-numeric:tabular-nums;color:var(--text-3);font-size:13px;margin-inline-start:auto}
-.tile.call{background:var(--accent);color:#fff}
+.tile.call{background:var(--accent);color:var(--on-accent)}
 .tile.ghost{background:var(--bg-tint);color:var(--text-2);box-shadow:none}
 
 /* ─────────────────────────  switch  ───────────────────────── */
@@ -484,7 +513,7 @@ button.row:active{background:var(--bg-tint)}
 
 .connect{
   flex:none;padding:7px 16px;border-radius:999px;
-  font-size:13.5px;font-weight:600;background:var(--accent);color:#fff;
+  font-size:13.5px;font-weight:600;background:var(--accent);color:var(--on-accent);
   transition:transform .38s var(--squash),background .34s var(--ease-io),color .34s var(--ease-io);
 }
 .connect:active{transform:scale(.93)}
@@ -507,7 +536,7 @@ button.row:active{background:var(--bg-tint)}
    hands over to the opened account. */
 .connect.ok{
   width:34px;height:34px;padding:0;min-width:0;display:grid;place-items:center;
-  background:var(--ok);color:#fff;animation:okPop .26s var(--spring);
+  background:var(--ok);color:var(--on-accent);animation:okPop .26s var(--spring);
   transition:width .17s var(--spring),padding .17s var(--spring),
              background .17s var(--ease),opacity .15s var(--ease),transform .15s var(--spring);
 }
@@ -572,7 +601,7 @@ button.row:active{background:var(--bg-tint)}
   background:var(--bg-tint);color:var(--text-2);
   transition:background .2s var(--ease),color .2s var(--ease),transform .2s var(--spring);
 }
-.chip[aria-pressed="true"]{background:var(--accent);color:#fff}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
 .chip:active{transform:scale(.95)}
 .chip.mini{font-size:12.5px;padding:5px 11px}
 
@@ -620,7 +649,7 @@ button.row:active{background:var(--bg-tint)}
   transition:background var(--sw-t) var(--ease-io),color var(--sw-t) var(--ease-io),
              transform var(--sw-t) var(--ease-io),opacity var(--sw-t) var(--ease-io);
   width:19px;height:19px;border-radius:6px;display:grid;place-items:center;flex:none;
-  background:var(--accent);color:#fff;
+  background:var(--accent);color:var(--on-accent);
 }
 .glyphs span svg{width:11.5px;height:11.5px}
 .glyphs span.off{background:var(--bg-tint);color:var(--text-3);transform:scale(.84);opacity:.55}
@@ -637,7 +666,11 @@ button.row:active{background:var(--bg-tint)}
 }
 .searchwrap .sicon{width:16px;height:16px;flex:none;color:var(--text-3)}
 .searchwrap input{
-  flex:1;min-width:0;border:0;background:none;font:inherit;font-size:15.5px;
+  /* 16px exactly, and not a fraction under: Safari on iOS zooms the whole
+     page in when a field smaller than that takes focus, and it does not zoom
+     back out. Searching for a friend left the layout magnified and the tab
+     bar off the bottom of the screen. */
+  flex:1;min-width:0;border:0;background:none;font:inherit;font-size:16px;
   color:var(--text);padding:11px 0;outline:none;
 }
 .searchwrap input::placeholder{color:var(--text-3)}
@@ -688,7 +721,7 @@ html[data-served] .groupsblock.live{display:block}
   box-shadow:var(--shadow-m);font-size:10.5px;font-weight:700;letter-spacing:.06em;
 }
 .langtog span{padding:4px 8px;border-radius:999px;color:var(--text-3);transition:background .22s var(--ease),color .22s var(--ease)}
-.langtog span.on{background:var(--accent);color:#fff}
+.langtog span.on{background:var(--accent);color:var(--on-accent)}
 .introtog{
   position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:64px;z-index:40;
   width:26px;height:26px;border-radius:999px;background:var(--surface);
@@ -803,7 +836,7 @@ html.is-new .themetog{z-index:80}
 }
 .pausebtn svg{width:15px;height:15px;flex:none}
 .pausebtn:active{transform:scale(.955)}
-.pausebtn[aria-pressed="true"]{background:var(--warn);color:#fff;box-shadow:var(--shadow-m)}
+.pausebtn[aria-pressed="true"]{background:var(--warn);color:var(--on-accent);box-shadow:var(--shadow-m)}
 .pausewrap .note{max-width:40ch;margin-top:12px}
 
 /* while paused the whole app says so, not just the button that did it */
@@ -814,6 +847,25 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .note{font-size:13px;color:var(--text-2);margin-top:10px;line-height:1.5}
 .linkbtn{color:var(--accent);font-weight:600;font-size:14.5px}
 .linkbtn.danger{color:var(--danger)}
+
+/* ── small controls, full-sized targets ──
+   Nine controls on this page are drawn between 19 and 31 pixels across, which
+   is right: a 44px trash beside a 15px line of text is not a design. What a
+   finger needs is not the same as what the eye needs, so the target grows and
+   the drawing does not — an ::after with a negative inset, which costs a
+   pixel of nothing and is what every one of these was missing.
+
+   Where such controls sit in a ROW of their own kind, the inline growth is
+   small and the block growth does the work: two overlapping targets hand the
+   tap to whichever is later in the source, which is worse than a small one. */
+.tick,.tpin,.tjump,.tundo,.vclear,.sclear,.lrm,.evdrop,.calnav,.fq .fqskip,.permact{position:relative}
+.tick::after,.vclear::after,.sclear::after,.lrm::after,.evdrop::after,.fq .fqskip::after{
+  content:"";position:absolute;inset:-9px;border-radius:inherit;
+}
+/* these three live beside each other at the end of a task row */
+.tpin::after,.tjump::after,.tundo::after,.calnav::after,.permact::after{
+  content:"";position:absolute;inset-block:-9px;inset-inline:-4px;border-radius:inherit;
+}
 
 /* ─────────────────────────  tasks  ───────────────────────── */
 .taskwrap{display:grid;grid-template-rows:1fr;transition:grid-template-rows .44s var(--ease),opacity .3s ease}
@@ -834,7 +886,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .tick{
   width:25px;height:25px;border-radius:50%;flex:none;
   box-shadow:inset 0 0 0 1.8px var(--sep-2);
-  display:grid;place-items:center;color:#fff;
+  display:grid;place-items:center;color:var(--on-accent);
   transition:box-shadow .28s var(--spring),background .28s var(--spring),transform .28s var(--spring);
 }
 .tick svg{width:14px;height:14px;opacity:0;transform:scale(.4);transition:opacity .2s ease,transform .34s var(--spring)}
@@ -969,7 +1021,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .lbox{
   width:21px;height:21px;flex:none;border-radius:7px;display:grid;place-items:center;
-  box-shadow:inset 0 0 0 1.7px var(--sep-2);color:#fff;
+  box-shadow:inset 0 0 0 1.7px var(--sep-2);color:var(--on-accent);
   transition:background var(--sw-t) var(--ease-io),box-shadow var(--sw-t) var(--ease-io),
              transform .38s var(--squash);
 }
@@ -995,6 +1047,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   color:var(--text-3);opacity:0;transition:opacity .3s var(--ease-io),background .3s var(--ease-io);
 }
 .litem:hover .lrm,.litem:focus-within .lrm{opacity:1}
+/* On a phone there is no hover, so this button was drawn at opacity 0 and
+   never came back: removing an item off a list was possible on a laptop and
+   impossible on the device the page is designed for. Quiet, not invisible. */
+@media (hover:none){ .lrm{opacity:.55} }
 .lrm:active{background:var(--bg-tint)}
 .lrm svg{width:11px;height:11px}
 @keyframes itemIn{
@@ -1036,7 +1092,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .tundo svg{width:15px;height:15px}
 .tundo:active{background:var(--accent-soft);color:var(--accent);transform:scale(.88)}
 [dir="ltr"] .tundo svg{transform:scaleX(-1)}
-.arcnote{font-size:12.5px;color:var(--text-3);padding:10px 4px 0;text-align:center}
+/* Not a note any more: it said "showing the last 8 of 23" and left the other
+   fifteen with no way to be reached from this page at all. The sentence that
+   names them is the thing you would press, so it is the button. */
+.arcnote{
+  font-size:12.5px;color:var(--text-2);font-weight:600;padding:11px 4px;width:100%;
+  text-align:center;font-family:inherit;background:none;border:0;cursor:pointer;
+  border-radius:10px;transition:background .2s var(--ease-io),color .2s var(--ease-io);
+}
+.arcnote:hover{color:var(--accent)}
+.arcnote:active{background:var(--bg-tint)}
 
 .tick.done-static{background:var(--sep-2);box-shadow:none;color:var(--surface)}
 .tick.done-static svg{opacity:1;transform:none}
@@ -1066,7 +1131,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .addrow:active{background:var(--bg-tint)}
 .addrow .plus{
-  width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;
+  width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--on-accent);
   display:grid;place-items:center;flex:none;
 }
 .addrow .plus svg{width:14px;height:14px}
@@ -1175,9 +1240,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .mtswipe{position:relative;overflow:hidden;border-bottom:1px solid var(--sep)}
 .mtswipe:last-child{border-bottom:0}
 .mtswipe .mtback{position:absolute;inset:0;background:var(--danger);display:flex;align-items:center;
-  justify-content:flex-start;padding-inline-start:20px;gap:9px;color:#fff;font-weight:700;font-size:13.5px;
+  justify-content:flex-start;padding-inline-start:20px;gap:9px;color:var(--on-accent);font-weight:700;font-size:13.5px;
   border:0;width:100%;font-family:inherit;cursor:pointer}
-.mtswipe .mtback svg{width:19px;height:19px;color:#fff}
+.mtswipe .mtback svg{width:19px;height:19px;color:var(--on-accent)}
 .mtswipe .mtfront{position:relative;background:var(--surface);
   transition:transform .22s cubic-bezier(.32,.72,0,1);touch-action:pan-y}
 .mtswipe.dragging .mtfront{transition:none}
@@ -1204,7 +1269,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .mtdel svg{width:16px;height:16px}
 .mtswipe:hover .mtdel,.mtdel:focus-visible{opacity:1}
 .mtdel:hover{background:var(--danger-soft);color:var(--danger)}
-.mtdel.arm{opacity:1;background:var(--danger);color:#fff}
+.mtdel.arm{opacity:1;background:var(--danger);color:var(--on-accent)}
 @media (hover:none){.mtdel{display:none}}
 
 /* The names, opened by a tap on the row itself. Nobody who has not answered is
@@ -1230,7 +1295,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .mtcheck{border:1px solid var(--sep-2);background:transparent;border-radius:9px;padding:0;
   width:32px;height:32px;flex:none;display:grid;place-items:center;cursor:pointer;color:var(--accent)}
 .mtcheck svg{width:16px;height:16px}
-.mtcheck.arm{background:var(--accent);border-color:var(--accent);color:#fff}
+.mtcheck.arm{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 
 /* "Enough for me is 3 of 5" — the coordination's own minimum, set from here. */
 .minchip{display:inline-flex;align-items:center;gap:6px;background:var(--surface);
@@ -1255,15 +1320,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .mobtn svg{width:12px;height:12px}
 .mobtn:active{transform:scale(.95)}
-.mobtn.yes[aria-pressed="true"]{background:var(--accent);color:#fff}
-.mobtn.no[aria-pressed="true"]{background:var(--danger);color:#fff}
+.mobtn.yes[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.mobtn.no[aria-pressed="true"]{background:var(--danger);color:var(--on-accent)}
 /* Settling is the occasional act, not the one being asked for — pushed to the
    far end, unfilled, so it cannot be hit while answering. The ring is what
    keeps it reading as a control rather than a caption. */
 .mobtn.settle{margin-inline-start:auto;background:transparent;color:var(--accent);
   box-shadow:inset 0 0 0 1px var(--accent-soft)}
-.mobtn.ok{background:var(--accent);color:#fff}
-.mobtn.warn{background:var(--warn);color:#fff}
+.mobtn.ok{background:var(--accent);color:var(--on-accent)}
+.mobtn.warn{background:var(--warn);color:var(--on-accent)}
 /* Settling on something not everybody can make asks once, by name. The second
    button is worded differently from the first on purpose, so a fast double
    press cannot carry straight through it. */
@@ -1377,7 +1442,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .dgc:active{transform:scale(.9)}
 .dgc.past{opacity:.26;pointer-events:none;background:transparent}
-.dgc.on{background:var(--accent);color:#fff;font-weight:700}
+.dgc.on{background:var(--accent);color:var(--on-accent);font-weight:700}
 .dgc.now::after{
   content:"";position:absolute;bottom:4px;width:4px;height:4px;border-radius:50%;
   background:var(--accent);
@@ -1448,9 +1513,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   background:var(--accent-soft);color:var(--accent);font-size:10px;font-weight:700;
   font-variant-numeric:tabular-nums;
 }
-.pchip.grp[aria-pressed="true"] .gdot{background:rgba(255,255,255,.25);color:#fff}
+.pchip.grp[aria-pressed="true"] .gdot{background:var(--on-accent-soft);color:var(--on-accent)}
 .pchip.grp.part{box-shadow:inset 0 0 0 1.5px var(--accent);color:var(--accent)}
-.pchip.grp.part .gdot{background:var(--accent);color:#fff}
+.pchip.grp.part .gdot{background:var(--accent);color:var(--on-accent)}
 .picknone{padding:10px 4px;font-size:13.5px;color:var(--text-3)}
 
 /* ── imported tasks ──
@@ -1476,13 +1541,28 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .row.locked .chev{opacity:.4}
 
 .empty{padding:30px 18px;text-align:center;color:var(--text-3);font-size:14.5px}
+/* An empty list that only says it is empty leaves the person to find the way
+   out of it. The way out is always one control that already exists further up
+   the page, so the empty state borrows it rather than inventing a second one:
+   `emptyGo` presses the real button, which is also why there is nothing here
+   to keep in sync with it. */
+.emptybig{display:grid;justify-items:center;gap:12px;padding:34px 18px}
+.emptybig p{margin:0;max-width:34ch;line-height:1.5}
+.emptygo{
+  display:inline-flex;align-items:center;gap:7px;font-family:inherit;
+  padding:9px 16px;border-radius:999px;background:var(--accent);color:var(--on-accent);
+  font-size:13.5px;font-weight:600;box-shadow:var(--shadow-s);
+  transition:transform .22s var(--spring);
+}
+.emptygo svg{width:13px;height:13px;flex:none}
+.emptygo:active{transform:scale(.94)}
 /* The last task of the day closing the list. An empty list and a FINISHED one
    are not the same fact, and until now they said the same sentence. The mark
    is the one the connect button draws, at rest. */
 .alldone{display:grid;justify-items:center;gap:12px;padding:32px 18px}
 .alldone .okmark{
   width:42px;height:42px;border-radius:999px;display:grid;place-items:center;
-  background:var(--ok);color:#fff;animation:okPop .3s var(--spring);
+  background:var(--ok);color:var(--on-accent);animation:okPop .3s var(--spring);
 }
 .alldone .okmark svg{
   width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2.6;
@@ -1508,7 +1588,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .vchip.set{color:var(--text)}
 .vchip:active{transform:scale(.94)}
 .vchip.toggle{box-shadow:inset 0 0 0 1.4px var(--sep-2);background:transparent;color:var(--text-3)}
-.vchip.toggle[aria-checked="true"]{background:var(--accent);color:#fff;box-shadow:none}
+.vchip.toggle[aria-checked="true"]{background:var(--accent);color:var(--on-accent);box-shadow:none}
 /* The task sheet's when-row only. `.vchip` is shared with the hours and
    digest rows, so everything below is scoped to the sheet's own classes and
    never restyles a bare `.vchip` (one CSS namespace — a reused name wins by
@@ -1522,7 +1602,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .whenvals .vchip.toggle .tdot{width:12px;height:12px;border-radius:50%;flex:none;
   box-shadow:inset 0 0 0 1.5px currentColor;opacity:.55;
   transition:box-shadow .2s var(--ease-io),opacity .2s var(--ease-io)}
-.whenvals .vchip.toggle[aria-checked="true"]{background:var(--accent);color:#fff}
+.whenvals .vchip.toggle[aria-checked="true"]{background:var(--accent);color:var(--on-accent)}
 .whenvals .vchip.toggle[aria-checked="true"] .tdot{box-shadow:inset 0 0 0 3.5px #fff;opacity:1}
 .vseg{display:inline-flex;align-items:center;border-radius:999px;background:var(--bg-tint);
   font-size:14px;font-weight:600;white-space:nowrap}
@@ -1578,7 +1658,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 [dir="rtl"] .pchip{padding:4px 4px 4px 12px}
 .pchip .face{width:24px;height:24px;box-shadow:none}
 .pchip:active{transform:scale(.95)}
-.pchip[aria-pressed="true"]{background:var(--accent);color:#fff}
+.pchip[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
 .pchip[aria-pressed="true"] .face{box-shadow:0 0 0 1.6px rgba(255,255,255,.6)}
 
 /* the category's colour, small enough to be a mark rather than a badge */
@@ -1596,8 +1676,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .viewrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:-6px 4px 12px}
 .addmini{
   display:flex;align-items:center;gap:6px;flex:none;
-  padding:6px 12px 6px 8px;border-radius:999px;
-  background:var(--accent);color:#fff;font-weight:600;font-size:13px;
+  padding-block:6px;padding-inline-start:8px;padding-inline-end:12px;border-radius:999px;
+  background:var(--accent);color:var(--on-accent);font-weight:600;font-size:13px;
   box-shadow:var(--shadow-s);
   transition:transform .22s var(--spring),background .2s ease;
 }
@@ -1626,14 +1706,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .grname:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .chipcloud{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0 4px}
 .frchip{
-  display:flex;align-items:center;gap:6px;padding:4px 11px 4px 4px;
+  display:flex;align-items:center;gap:6px;
+  padding-block:4px;padding-inline-start:4px;padding-inline-end:11px;
   border-radius:999px;background:var(--bg-tint);color:var(--text-2);
   font-size:13.5px;font-weight:600;
   transition:background .22s var(--ease-io),color .22s var(--ease-io),transform .2s var(--spring);
 }
 .frchip .fav{width:22px;height:22px;border-radius:50%;overflow:hidden;flex:none}
 .frchip:active{transform:scale(.94)}
-.frchip[aria-pressed="true"]{background:var(--accent);color:#fff}
+.frchip[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
 /* Past four the list stops being something you take in at a glance, so it
    becomes something you scroll and search instead. */
 .grscroll{max-height:none;overflow:visible}
@@ -1698,11 +1779,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    dots that count what is IN the day — same shape, two meanings, and the
    reader has to be told which is which. A word never needs explaining. */
 .day .dn.isnow{color:var(--accent);font-weight:700;font-size:10.5px}
-.day.today[aria-selected="true"] .dd{color:#fff}
-.day[aria-selected="true"] .dn.isnow{color:#fff}
+.day.today[aria-selected="true"] .dd{color:var(--on-accent)}
+.day[aria-selected="true"] .dn.isnow{color:var(--on-accent)}
 .day .dots{display:flex;justify-content:center;gap:3px;margin-top:5px;height:4px}
 .day .dots i{width:4px;height:4px;border-radius:50%;background:var(--text-3);display:block}
-.day[aria-selected="true"]{background:var(--accent);color:#fff}
+.day[aria-selected="true"]{background:var(--accent);color:var(--on-accent)}
 .day[aria-selected="true"] .dn{color:rgba(255,255,255,.8)}
 .day[aria-selected="true"] .dots i{background:rgba(255,255,255,.85)}
 .day:not([aria-selected="true"]):active{background:var(--bg-tint);transform:scale(.94)}
@@ -1985,7 +2066,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .defseg button svg{width:15px;height:15px;flex:none}
 .defseg button[aria-pressed="true"]{
-  background:transparent;color:#fff;box-shadow:none;
+  background:transparent;color:var(--on-accent);box-shadow:none;
   transition:color .3s var(--ease-io) .1s;
 }
 /* The fill arrives from the middle of the chip and opens outward — the same
@@ -2018,7 +2099,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .defbadge{
   position:absolute;top:8px;inset-inline-end:8px;
   width:19px;height:19px;border-radius:999px;
-  background:var(--accent);color:#fff;
+  background:var(--accent);color:var(--on-accent);
   display:grid;place-items:center;text-decoration:none;
   animation:badgeIn .26s var(--squash) backwards;
 }
@@ -2055,7 +2136,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   display:grid;place-items:center;
   transition:background .26s var(--ease-io),color .26s var(--ease-io),transform .38s var(--squash),box-shadow .26s var(--ease-io);
 }
-.daypick button[aria-pressed="true"]{background:var(--accent);color:#fff;box-shadow:var(--shadow-s)}
+.daypick button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow-s)}
 .daypick button:active{transform:scale(.9)}
 .daypick button.pop{animation:chipPop .22s var(--ease-io)}
 
@@ -2097,8 +2178,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .fq .fqin .daypick{flex:1;gap:4px}
 .fq .fqin .daypick button{max-width:36px;font-size:13px}
 .fq .fqtext{
+  /* 16px for the same reason as .searchwrap input — see there. */
   flex:1;min-width:0;border:0;background:var(--surface);border-radius:11px;
-  font:inherit;font-size:15px;color:var(--text);padding:9px 12px;outline:none;
+  font:inherit;font-size:16px;color:var(--text);padding:9px 12px;outline:none;
   box-shadow:inset 0 0 0 1px var(--sep);
 }
 .fq .fqtext:focus{box-shadow:inset 0 0 0 1.6px var(--accent)}
@@ -2118,11 +2200,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:background .26s var(--ease-io),color .26s var(--ease-io),transform .38s var(--squash);
 }
 .fqok svg{width:17px;height:17px}
-.fqok:not([disabled]){background:var(--accent);color:#fff;box-shadow:var(--shadow-s)}
+.fqok:not([disabled]){background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow-s)}
 .fqok:not([disabled]):active{transform:scale(.9)}
 .fqok[disabled]{cursor:default}
 /* saved: the tick turns green and pops, the card lifts and folds away */
-.fq.done .fqok{background:var(--ok);color:#fff;animation:okPop .3s var(--spring)}
+.fq.done .fqok{background:var(--ok);color:var(--on-accent);animation:okPop .3s var(--spring)}
 .fq.done{box-shadow:inset 0 0 0 1.5px var(--ok);background:var(--surface)}
 .fqwrap.leaving{grid-template-rows:0fr;margin-top:-9px}
 .fqwrap.leaving > .fq{opacity:0;transform:translateY(-6px) scale(.97)}
@@ -2148,7 +2230,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 /* the answer on its way from the card into the list */
 .factfly{
   position:fixed;z-index:90;pointer-events:none;margin:0;
-  padding:7px 13px;border-radius:999px;background:var(--accent);color:#fff;
+  padding:7px 13px;border-radius:999px;background:var(--accent);color:var(--on-accent);
   font-size:13.5px;font-weight:600;white-space:nowrap;max-width:80vw;overflow:hidden;text-overflow:ellipsis;
   box-shadow:var(--shadow-m);
 }
@@ -2347,7 +2429,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    is worth filling in for a task that has no name yet. */
 .stgo{
   width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;
-  background:var(--accent);color:#fff;
+  background:var(--accent);color:var(--on-accent);
   transition:opacity .24s var(--ease-io),transform .3s var(--spring);
 }
 .stgo svg{width:14px;height:14px}
@@ -2396,13 +2478,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .calgrid button.out{color:var(--text-3);opacity:.5}
 .calgrid button.now{color:var(--accent);font-weight:700}
-.calgrid button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.calgrid button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
 .calmg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .calmg button{
   height:40px;border-radius:12px;font-size:13px;font-weight:600;color:var(--text-2);
   transition:background .3s var(--ease-io)
 }
-.calmg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.calmg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
 .calfoot{display:flex;gap:6px;margin-top:9px}
 .calfoot button{
   flex:1;padding:8px 4px;border-radius:11px;background:var(--bg-tint);
@@ -2443,7 +2525,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .tpcolon{position:relative;font-family:'Rubik',sans-serif;font-size:20px;font-weight:600;color:var(--text-2);padding-bottom:3px}
 .tpfoot{margin-top:8px;display:flex;gap:6px}
 .tpfoot button{
-  width:100%;padding:10px;border-radius:12px;background:var(--accent);color:#fff;
+  width:100%;padding:10px;border-radius:12px;background:var(--accent);color:var(--on-accent);
   font-size:14px;font-weight:600;transition:transform .38s var(--squash)
 }
 .tpfoot button:active{transform:scale(.97)}
@@ -2453,7 +2535,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:transform .38s var(--squash),filter .3s var(--ease-io);
 }
 .btn:active{transform:scale(.98)}
-.btn.primary{background:var(--accent);color:#fff}
+.btn.primary{background:var(--accent);color:var(--on-accent)}
 .btn.ghost{background:var(--bg-tint);color:var(--text-2)}
 .btn.danger{background:var(--danger-soft);color:var(--danger)}
 
@@ -2669,7 +2751,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       </button>
       <div class="fold" id="arcFold"><div>
         <div class="group" id="arcGroup" style="box-shadow:none;background:var(--surface-2)"></div>
-        <p class="arcnote" id="arcNote" hidden></p>
+        <button class="arcnote" id="arcNote" hidden></button>
       </div></div>
     </div>
   </section>
@@ -4091,7 +4173,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "bucket.late":"באיחור","bucket.today":"היום","bucket.tomorrow":"מחר","bucket.later":"בהמשך","kind.event":"ביומן","kind.todo":"לעשות","cal.eventTag":"אירוע","tasks.new":"משימה חדשה","tasks.empty":"אין משימות פתוחות. יום נקי.",
       "tasks.allDone":"סיימת הכול","tasks.allDoneSub.n1":"משימה אחת נסגרה היום","tasks.allDoneSub.nN":"{n} משימות נסגרו היום",
       "tasks.doneAt":"הושלמה {when}","tasks.justNow":"הרגע",
-      "tasks.arcShown":"מוצגות {n} האחרונות מתוך {all}","tasks.restore":"החזרה לרשימה",
+      "tasks.arcShown":"מוצגות {n} האחרונות מתוך {all}","tasks.arcShowAll":"הצגת כל {all}","tasks.arcShowLess":"מוצגות כל {all} · הצגת {n} האחרונות","tasks.restore":"החזרה לרשימה",
       "toast.restored":"„{name}” חזרה לרשימה",
       "tasks.pinned":"משותפות","tasks.unpin":"ביטול נעיצה","tasks.pin":"נעיצה למעלה",
       "toast.unpinned":"„{name}” חזרה למקום שלה","toast.pinned":"„{name}” נעוצה למעלה",
@@ -4125,7 +4207,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
       "cal.h":"הצצה ליומן",
       "cal.p":"תצוגה בלבד. לעריכה — פתח את היומן של הטלפון בלחיצה אחת.",
-      "cal.open":"פתיחה ביומן Google","cal.empty":"אין אירועים ביום הזה.",
+      "cal.open":"פתיחה ביומן Google","cal.empty":"אין אירועים ביום הזה.","cal.connectGo":"חיבור יומן",
       "cal.todayPre":"היום · ","cal.dayPrefix":"יום ",
 
       "fr.h":"חברים בעולמה",
@@ -4396,7 +4478,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "bucket.late":"Overdue","bucket.today":"Today","bucket.tomorrow":"Tomorrow","bucket.later":"Later","kind.event":"On the calendar","kind.todo":"To do","cal.eventTag":"Event","tasks.new":"New task","tasks.empty":"Nothing open. Clear day.",
       "tasks.allDone":"All done","tasks.allDoneSub.n1":"one task closed today","tasks.allDoneSub.nN":"{n} tasks closed today",
       "tasks.doneAt":"Done {when}","tasks.justNow":"just now",
-      "tasks.arcShown":"Showing the last {n} of {all}","tasks.restore":"Put back on the list",
+      "tasks.arcShown":"Showing the last {n} of {all}","tasks.arcShowAll":"Show all {all}","tasks.arcShowLess":"Showing all {all} · show the last {n}","tasks.restore":"Put back on the list",
       "toast.restored":"\u201c{name}\u201d is back on your list",
       "tasks.pinned":"Shared","tasks.unpin":"Unpin","tasks.pin":"Pin to top",
       "toast.unpinned":"\u201c{name}\u201d is back in its place","toast.pinned":"\u201c{name}\u201d is pinned to the top",
@@ -4430,7 +4512,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
       "cal.h":"A look at your calendar",
       "cal.p":"Read-only here. To change anything, open your phone's calendar in one tap.",
-      "cal.open":"Open in Google Calendar","cal.empty":"Nothing on this day.",
+      "cal.open":"Open in Google Calendar","cal.empty":"Nothing on this day.","cal.connectGo":"Connect a calendar",
       "cal.todayPre":"Today · ","cal.dayPrefix":"",
 
       "fr.h":"Friends on Allma",
@@ -5208,6 +5290,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     return TASKCATS.filter(function(c){ return c.k === k; })[0] || TASKCATS[TASKCATS.length - 1];
   }
   var ARCHIVE_MAX = 8;
+  /* …and whether the person has asked for the rest of them. */
+  var arcAll = false;
   var archived = [
     {id:91, t:{he:"להזמין מתנה ליום ההולדת של אמא",en:"Order Mum a birthday gift"}, done:{he:"אתמול",en:"yesterday"}},
     {id:92, t:{he:"לחדש ביטוח רכב",en:"Renew the car insurance"}, done:{he:"יום ראשון",en:"on Sunday"}},
@@ -5439,6 +5523,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      The slot is built the first time a counter is written, so the page's own
      markup stays a plain <p>/<span> and nothing has to be kept in sync — and
      the first paint, which has nothing to roll from, simply sets the text. */
+  /* An empty state with a way out of it. `go` names a control that is already
+     on the page — pressing this presses that one, so there is no second code
+     path to keep in step with the first. */
+  function emptyBig(text, go, label, icon){
+    return '<div class="empty emptybig"><p>' + esc(text) + "</p>" +
+      '<button class="emptygo" data-emptygo="' + go + '">' +
+      '<svg><use href="#' + (icon || "i-plus") + '"/></svg>' + esc(label) + "</button></div>";
+  }
   function rollText(el, text){
     if(!el) return;
     var slot = el.firstElementChild;
@@ -6145,7 +6237,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         ? '<div class="empty alldone"><span class="okmark"><svg><use href="#i-check"/></svg></span>' +
           '<span class="txt"><b>' + esc(t("tasks.allDone")) + "</b>" +
           '<span class="sub">' + esc(pl("tasks.allDoneSub", archived.length)) + "</span></span></div>"
-        : '<div class="empty">' + esc(t("tasks.empty")) + "</div>") + "</div>";
+        : emptyBig(t("tasks.empty"), "addTask", t("tasks.new"))) + "</div>";
     }
     $("#taskStack").innerHTML = html;
     var rems = open.filter(function(x){ return x.rem; }).length;
@@ -6154,7 +6246,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     /* The archive is a safety net, not a second list. Past eight rows it
        stops being scannable and starts being a wall, so it shows the eight
        most recent and SAYS that rather than quietly truncating. */
-    var shown = archived.slice(0, ARCHIVE_MAX);
+    var shown = arcAll ? archived : archived.slice(0, ARCHIVE_MAX);
     $("#arcGroup").innerHTML = shown.map(function(x){
       return '<div class="taskwrap" data-arc="' + x.id + '"><div class="taskin"><div class="task">' +
         '<span class="tick done-static"><svg><use href="#i-check"/></svg></span>' +
@@ -6170,7 +6262,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         "</span></div></div></div>";
     }).join("");
     $("#arcNote").hidden = archived.length <= ARCHIVE_MAX;
-    $("#arcNote").textContent = t("tasks.arcShown", {n:ARCHIVE_MAX, all:archived.length});
+    $("#arcNote").textContent = t(arcAll ? "tasks.arcShowLess" : "tasks.arcShowAll",
+      {n:ARCHIVE_MAX, all:archived.length});
   }
   /* The count a ticked task lands in, told to notice. */
   function catchInArchive(){
@@ -6499,6 +6592,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#taskStack").classList.add("swap");
     renderTasks();
   });
+  /* Every empty state's button, wherever it is drawn. */
+  document.addEventListener("click", function(e){
+    var b = e.target.closest("[data-emptygo]");
+    if(!b) return;
+    var go_ = b.dataset.emptygo;
+    if(go_.indexOf("go:") === 0){ go(go_.slice(3)); return; }
+    var real = $("#" + go_);
+    if(real) real.click();
+  });
+  $("#arcNote").addEventListener("click", function(){
+    arcAll = !arcAll;
+    renderTasks();
+  });
   $("#arcGroup").addEventListener("click", function(e){
     var u = e.target.closest("[data-undo]");
     if(u) restoreTask(+u.dataset.undo);
@@ -6540,6 +6646,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $$(".sheet").forEach(function(el){ el.classList.remove("show"); });
     activeSheet = null;
   }
+  /* A closed sheet is translated off the bottom of the screen and is otherwise
+     entirely present: its buttons kept their place in the tab order and a
+     screen reader read straight through six dialogs nobody had opened — the
+     task editor's fields turn up between the calendar and the friends list.
+     `inert` is the one attribute that says "this is not here", and it is kept
+     in step with the class from ONE place, per sheet, rather than at every
+     call site that shows or hides one. The class is still what MOVES the
+     sheet; this only follows it. */
+  $$(".sheet").forEach(function(el){
+    var sync = function(){ el.inert = !el.classList.contains("show"); };
+    sync();
+    new MutationObserver(sync).observe(el, {attributes:true, attributeFilter:["class"]});
+  });
   /* The time sheet sits ON the scrim without owning it (see openTimeSheet),
      so a tap on the scrim while it is open has to take down only the top
      layer — closeSheets() underneath would also drop the task sheet it is
@@ -7839,8 +7958,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var done = MEETS.filter(function(m){ return m.settled; });
     $("#mtList").innerHTML = live.length
       ? live.map(mtCardHTML).join("")
-      : '<div class="group"><div class="empty">' +
-        esc(t("mt.empty")) + "</div></div>";
+      : '<div class="group">' + emptyBig(t("mt.empty"), "mtNew", t("mt.new")) + "</div>";
     rollText($("#mtCount"), live.length ? pl("mt", live.length) : "");
     /* Settled first, then the ones you left — the same ordering rule the task
        archive uses (most recently out of the list, first). Capped at the same
@@ -8456,7 +8574,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(!mtOpen) return;
     var m = mtOpen;
     closeSheets();
-    mtLeave(m);
+    /* The same question the row in the list asks, rather than going straight
+       out. Leaving takes your answers off the tally for everybody else and
+       the only way back is the "you left" row — so the row asking and the
+       sheet not asking made the sheet the dangerous one, for the identical
+       action, two taps deeper in. */
+    mtLeaving = m.id;
+    setCalMode("meet");
+    renderMeets();
   });
 
   /* ── proposing one more moment ──
@@ -9402,7 +9527,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }).join("")
       /* "Nothing today" and "we cannot see your calendar" look identical on an
          empty day, and the server has always told us which (`connected`). */
-      : '<div class="empty">' + esc(t(LIVE && !calConnected ? "cal.notConnected" : "cal.empty")) + "</div>";
+      : (LIVE && !calConnected
+        ? emptyBig(t("cal.notConnected"), "go:tools", t("cal.connectGo"), "i-tools")
+        : '<div class="empty">' + esc(t("cal.empty")) + "</div>");
     /* …and the list rises, but only when the DAY changed. A reload landing on
        the day you are already reading must not make the page flinch. */
     if(stripSel !== sel){
@@ -9644,8 +9771,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        and the second one read `No friend matches ""` for every person opening
        this page for the first time. renderGroups has always got this right. */
     $("#friendEmpty").hidden = !!list.length;
-    $("#friendEmpty").textContent = list.length ? ""
-      : (q ? t("fr.noMatch", {q:friendQ.trim()}) : t("fr.none"));
+    /* A search that found nobody is a note; a page with nobody on it at all is
+       an empty state, and it says what to do about it. */
+    if(list.length) $("#friendEmpty").textContent = "";
+    else if(q){ $("#friendEmpty").textContent = t("fr.noMatch", {q:friendQ.trim()}); }
+    else $("#friendEmpty").innerHTML = emptyBig(t("fr.none"), "addFriend", t("fr.invite"));
     $("#friendGroup").innerHTML = list.map(function(f){
       var live = PKEYS.filter(function(k){ return f.p[k]; }).length;
       var perms = PKEYS.map(function(k){
