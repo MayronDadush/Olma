@@ -209,9 +209,10 @@ test('normalising keeps the word that carries the task', () => {
 
 // ── The live path ───────────────────────────────────────────────────────────
 // Same module, opposite answer to the one fact-extraction gives, and the
-// asymmetry is deliberate: a nightly job refusing costs nothing because the
-// live tool already captured the sentence, and a refusal in front of somebody
-// who has just said a thing out loud loses it. An attempt to refuse here broke
+// asymmetry is deliberate: a background job refusing costs nothing — it has
+// no channel to ask on, and the live tool has already captured the sentence —
+// while a refusal in front of somebody who has just said a thing out loud
+// loses it. An attempt to refuse here broke
 // 57 tests on fixtures like "סופר" beside "סופר השבוע".
 const { test: dbTest } = require('node:test');
 const { freshDb, makeUser } = require('./helpers');

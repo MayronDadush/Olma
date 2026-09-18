@@ -1059,7 +1059,7 @@ test('the extraction pass refuses a task it has only reworded', async () => {
 // The other hole: a task ticked off and written back from the same
 // conversation. "להעיר את מאיה" was completed two minutes after it was created
 // and re-added forty-two minutes later.
-test('a task completed hours ago is not written back by the nightly pass', async () => {
+test('a task completed hours ago is not written back by the extraction pass', async () => {
   const u = await seedChatter('+972590009012', 40);
   await withClient(async (c) => {
     const tasksDomain = require('../src/domain/tasks');

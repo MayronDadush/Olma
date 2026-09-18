@@ -114,10 +114,10 @@ test('her voice is counted per day from the transcripts: flawed of written, and 
 });
 
 // The owner asked for this number and for nothing else to happen (2026-09-18):
-// when the nightly pass declines to write a task the person already has, it is
-// a dashboard row and never a message. Printed beside what the same job DID
+// when the extraction pass declines to write a task the person already has,
+// it is a dashboard row and never a message. Printed beside what the same job DID
 // capture, because "stopped 2" means different things over 2 captures and 200.
-test('the duplicates the nightly pass stopped are counted on the page, beside what it did capture', async () => {
+test('the duplicates the extraction pass stopped are counted on the page, beside what it did capture', async () => {
   const mine = await makeUser(db.pool, '+972505600007', { firstName: 'דנה' });
   const bot = await makeUser(db.pool, '+972505600008', { firstName: 'Eval' });
   await db.pool.query(`UPDATE users SET is_eval = true WHERE id = $1`, [bot.id]);
@@ -126,7 +126,7 @@ test('the duplicates the nightly pass stopped are counted on the page, beside wh
       tasksCaptured: 3, factsRefused: { similar_open: 2, similar_done: 1 },
     });
     // A run that refused nothing still counts into the denominator: a clean
-    // night is evidence, and dropping it would make the ratio read high.
+    // pass is evidence, and dropping it would make the ratio read high.
     await audit.record(c, mine.id, 'facts.extracted', { tasksCaptured: 4 });
     // The eval bot is in neither half, like every other count of activity here.
     await audit.record(c, bot.id, 'facts.extracted', {
@@ -136,7 +136,7 @@ test('the duplicates the nightly pass stopped are counted on the page, beside wh
 
   // Through the function the dashboard calls, never a replica of its query.
   const html = await section.renderMetrics(db.pool);
-  assert.match(html, /כפילויות שנעצרו בלילה/);
+  assert.match(html, /כפילויות שנעצרו/);
   assert.match(html, /היום 3 מתוך 10/, '3 stopped, 7 captured — and none of the eval bot');
 
   // A day nobody read is not a clean day: with no rows at all the line is

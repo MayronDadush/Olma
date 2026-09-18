@@ -174,7 +174,7 @@ const cleanLocation = (v) => {
 
 // ── The same thing, saved twice ──────────────────────────────────────────────
 // Nothing checked whether a task was already on the list. Four writers — the
-// live `add_task`, a brain dump, a breakdown's subtasks, and the nightly
+// live `add_task`, a brain dump, a breakdown's subtasks, and the fact
 // extraction pass — each relied on the model not repeating itself, and the
 // model repeats itself. Measured on production 2026-09-08: 21 pairs sharing a
 // title, across three people. Sixteen of them were written by fact-extraction,

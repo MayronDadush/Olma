@@ -111,7 +111,7 @@ function voiceLine(rows, today = new Date().toISOString().slice(0, 10)) {
     היום ${cell(t)} · 7 ימים ${cell(w)} · 7 שלפניהם ${cell(pw)}</p>`;
 }
 
-// ── The duplicates the nightly pass stopped ─────────────────────────────────
+// ── The duplicates the extraction pass stopped ──────────────────────────────
 // The owner's ask (2026-09-18): when jobs/fact-extraction.js declines to write
 // a task because the person already has it, he wants to see the number and
 // nothing else — no message, no row anywhere a user could read.
@@ -146,7 +146,7 @@ function duplicatesLine(rows, today = new Date().toISOString().slice(0, 10)) {
   };
   const t = sum(0, 0), w = sum(0, 6), pw = sum(7, 13);
   const cell = (x) => (x.days ? `${x.stopped} מתוך ${x.stopped + x.captured}` : '—');
-  return `<p class="small"><b>כפילויות שנעצרו בלילה</b> (משימות שהמעבר הלילי הציע ולא נכתבו, כי כבר היו — מתוך כל מה שהציע):
+  return `<p class="small"><b>כפילויות שנעצרו</b> (משימות שמעבר החילוץ הציע ולא נכתבו, כי כבר היו — מתוך כל מה שהציע):
     היום ${cell(t)} · 7 ימים ${cell(w)} · 7 שלפניהם ${cell(pw)}</p>`;
 }
 

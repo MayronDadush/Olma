@@ -64,8 +64,8 @@ function taskHints(res, user = {}) {
   // and then asked about (domain/task-similarity; the thresholds came off 86
   // labelled pairs on 2026-09-18). The row exists either way — which is what
   // keeps the 👍 honest — so this is a question and never an apology, and it
-  // is the one tier `jobs/fact-extraction.js` refuses outright because nobody
-  // is in the room at 03:00. A QUESTION is also exactly what `markPlaced`
+  // is the one tier `jobs/fact-extraction.js` refuses outright, because that
+  // job has no channel to ask on. A QUESTION is also exactly what `markPlaced`
   // leaves room for: the mark says the thing was captured, and this asks
   // something the mark cannot carry.
   if (d.similarTo) {

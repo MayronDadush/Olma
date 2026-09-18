@@ -421,8 +421,12 @@ async function applyExtraction(client, user, parsed, knownFactIds = new Set()) {
     // already captured the same sentence out of it, so a reworded second copy
     // is its characteristic output rather than a rare one. Every tier of
     // task-similarity collapses to "do not create" here: a merge notice and a
-    // question are both things said to somebody, and there is nobody in the
-    // room at 03:00.
+    // question are both things SAID to somebody, and this job has no voice —
+    // it writes through the domain functions and sends nothing, ever (the
+    // header of this file). Not a matter of the hour: it ticks every ten
+    // minutes, thirty minutes after a conversation goes quiet, so the person
+    // is often still awake. There is simply no channel for a question here,
+    // and inventing one would make a housekeeping sweep interrupt people.
     //
     // DONE_WINDOW_HOURS is the other half, and it is the one place the
     // open-only rule in domain/tasks.js is deliberately not followed. That

@@ -136,8 +136,8 @@ title means this file. Grep the title, not the filename.
 
 - **A task already OPEN on somebody's list is never saved a second time.**
   Four writers — the live `add_task`, a brain dump, a breakdown's subtasks and
-  the nightly extraction pass — each relied on the model not repeating itself,
-  and the box held 21 pairs of open tasks sharing a title across three of
+  the fact-extraction pass — each relied on the model not repeating itself, and
+  the box held 21 pairs of open tasks sharing a title across three of
   twenty users. Sixteen came from `jobs/fact-extraction.js`, which reads a
   conversation 7–83 minutes after the live tool already captured the same
   sentence out of it; 37% of every task that job has written is a duplicate.
@@ -174,8 +174,10 @@ title means this file. Grep the title, not the filename.
   reach a rewording ("לסחוב לברכה" against "לכתוב ברכה"), and the eight it
   misses are named in the test so that fixing one is deliberate.
   **The two writers then take OPPOSITE answers from it, and that asymmetry is
-  the rule.** `jobs/fact-extraction.js` refuses — nobody is in the room at
-  03:00, the live tool has already captured the sentence, so every tier
+  the rule.** `jobs/fact-extraction.js` refuses — that job has no channel to
+  ask on (it writes through the domain functions and sends nothing, ever; it is
+  also not nightly, `expectations.fact_extraction` is 600 seconds) and the
+  live tool has already captured the sentence, so every tier
   collapses to `refused.similar_open`, and it alone also refuses a twin
   COMPLETED inside 24h (this job cannot mean "again": "להעיר את מאיה" was
   ticked off two minutes after it was created and written back forty-two

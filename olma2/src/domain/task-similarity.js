@@ -170,7 +170,7 @@ function compare(a, b) {
 // exists for one caller. `tasks.openTitles` is open-only on purpose and the
 // reasoning holds for a person typing: ביטוח נסיעות, ticked off in the morning
 // and set again that evening for a new trip, is somebody doing a thing twice.
-// It does not hold for the nightly extraction pass, which reads a conversation
+// It does not hold for the extraction pass, which reads a conversation
 // hours after the fact and has no way to mean "again" — "להעיר את מאיה" was
 // completed two minutes after it was created and written back forty-two
 // minutes later off the same conversation. So the window is the CALLER's
