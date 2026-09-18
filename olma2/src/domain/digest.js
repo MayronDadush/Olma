@@ -18,6 +18,16 @@ const SCOPES = ['summary', 'full', 'today', 'block_view'];
 async function assemble(client, userId, scope) {
   if (!SCOPES.includes(scope)) return err('invalid', `scope must be one of ${SCOPES.join('|')}`);
 
+  // `parent_id IS NULL` — a checklist item is not a thing on anybody's list.
+  // Every RENDERER already knew that and filtered it out on the way to the
+  // screen (digest-block.todoBlock and blockItemCount, tools/digest's
+  // listWorthAPage, list-block); the counts are the one place that never
+  // learned, so the number over a list of 20 read 36. Measured on the box
+  // 2026-09-18: 16 of מאיה's 36 open tasks were items inside other tasks —
+  // a packing list, counted as sixteen separate jobs she had not done — and
+  // u-3 read 78 for 63. The count and the list it heads have to come out of
+  // the same population, and the source is here, not in a fifth copy of the
+  // filter downstream.
   const counts = (await client.query(
     `SELECT
        count(*) FILTER (WHERE status = 'open' AND kind IS DISTINCT FROM 'event') ::int AS open_tasks,
@@ -26,7 +36,7 @@ async function assemble(client, userId, scope) {
        count(*) FILTER (WHERE status = 'open' AND kind = 'event') ::int AS open_events,
        count(*) FILTER (WHERE status = 'open' AND kind = 'event'
                           AND due_at::date = CURRENT_DATE) ::int AS events_today
-     FROM tasks WHERE owner_id = $1 AND archived_at IS NULL`,
+     FROM tasks WHERE owner_id = $1 AND archived_at IS NULL AND parent_id IS NULL`,
     [userId]
   )).rows[0];
   const reminderCount = (await client.query(
