@@ -338,7 +338,16 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
 .themeicons button svg{width:15px;height:15px}
 .themeicons button[aria-pressed="true"]{background:var(--surface);color:var(--accent);box-shadow:var(--shadow-s)}
 .themeicons button:active{transform:scale(.88)}
-.live{
+/* The pill under the clock, and the name says what it LOOKS like rather than
+   what it means. It was `.live`, and something else on this page then used
+   `live` to mean "this section has real rooms behind it" — one word, two
+   meanings, one namespace. The groups section picked up a 999px radius, a
+   white ground and `white-space:nowrap`, and drew itself as a lozenge the
+   width of the screen with its first title running off the side. Only on a
+   SERVED page, and only for somebody who is in at least one room, which is
+   why no design review ever saw it. A name that describes a look can be worn
+   by anything; a name that describes a state cannot be worn by a look. */
+.livepill{
   display:inline-flex;align-items:center;gap:7px;flex:none;
   /* Logical, not physical. These were written as `6px 12px 6px 10px` — right
      and left — in a page whose primary language reads right to left, so the
@@ -348,8 +357,8 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
   background:var(--surface);box-shadow:var(--shadow-s);
   font-size:12.5px;font-weight:600;color:var(--text-2);white-space:nowrap;
 }
-.live .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);position:relative}
-.live .dot::after{
+.livepill .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);position:relative}
+.livepill .dot::after{
   content:"";position:absolute;inset:-4px;border-radius:50%;
   border:1.5px solid var(--ok);opacity:.5;animation:pulse 1.3s var(--ease) infinite;
 }
@@ -714,7 +723,10 @@ html[data-served] button.groupsblock{display:none}
    somebody else's example lists for as long as the server takes to answer —
    which is the whole reason the rule this replaced covered the list as well. */
 html[data-served] .groupsblock:not(button){display:none}
-html[data-served] .groupsblock.live{display:block}
+/* `hasrooms` and not `live`: this is the only rule in the file allowed to
+   mention it, because it says nothing about how anything looks. The name it
+   replaced was also a pill's — see .livepill. */
+html[data-served] .groupsblock.hasrooms{display:block}
 .langtog{
   position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:14px;z-index:40;
   display:flex;padding:3px;border-radius:999px;background:var(--surface);
@@ -840,9 +852,9 @@ html.is-new .themetog{z-index:80}
 .pausewrap .note{max-width:40ch;margin-top:12px}
 
 /* while paused the whole app says so, not just the button that did it */
-html[data-paused] .live{color:var(--warn)}
-html[data-paused] .live .dot{background:var(--warn)}
-html[data-paused] .live .dot::after{animation:none;opacity:0}
+html[data-paused] .livepill{color:var(--warn)}
+html[data-paused] .livepill .dot{background:var(--warn)}
+html[data-paused] .livepill .dot::after{animation:none;opacity:0}
 
 .note{font-size:13px;color:var(--text-2);margin-top:10px;line-height:1.5}
 .linkbtn{color:var(--accent);font-weight:600;font-size:14.5px}
@@ -2047,9 +2059,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   position:relative;display:inline-block;vertical-align:bottom;
   overflow:hidden;padding-block:2px;margin-block:-2px;
 }
-/* `wnow`/`wout`, not `live`/`out`: `.live` is already the header's activity
-   pill, and its padding and font-size landed on this the moment the names
-   collided — no specificity fight, just two rules setting different things. */
+/* `wnow`/`wout`, not `live`/`out`: the header's activity pill answered to
+   `.live` back then, and its padding and font-size landed on this the moment
+   the names collided — no specificity fight, just two rules setting different
+   things. The pill is `.livepill` now, precisely because this was the SECOND
+   thing that word collected; the first was the groups section, which drew
+   itself as a screen-wide lozenge for every real person in a room. */
 .wordslot i{font-style:normal;display:inline-block;white-space:nowrap;padding:0;font-size:inherit}
 .wordslot i.wghost{visibility:hidden}
 .wordslot i.wnow,.wordslot i.wout{position:absolute;inset-inline-start:0;top:2px}
@@ -2592,8 +2607,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      clock. The dot carries the state on its own — green and pulsing when she
      is on, amber and still when paused — and the words stay as its label.
      Keeping them for a pause was measured at 375px: the name vanished. */
-  .live #olmaLive{display:none}
-  .live{padding:10px}
+  .livepill #olmaLive{display:none}
+  .livepill{padding:10px}
   .topbar{gap:8px}
   .tab{min-width:0;padding:9px 11px 8px}
   .field label{width:86px;font-size:15px}
@@ -2712,7 +2727,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         <button data-theme-opt="dark" aria-pressed="false" data-i18n-label="me.themeDark"><svg><use href="#i-moon"/></svg></button>
         <button data-theme-opt="auto" aria-pressed="true" data-i18n-label="me.themeAuto"><svg><use href="#i-auto"/></svg></button>
       </div>
-      <div class="live"><span class="dot"></span><span id="olmaLive"></span></div>
+      <div class="livepill"><span class="dot"></span><span id="olmaLive"></span></div>
     </div>
   </header>
 
@@ -11256,7 +11271,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        can create. */
     GROUPS = (d.groups || []).map(liveGroup);
     var block = document.querySelector(".groupsblock:not(button)");
-    if(block) block.classList.toggle("live", GROUPS.length > 0);
+    if(block) block.classList.toggle("hasrooms", GROUPS.length > 0);
     /* Google is the only provider with a connection behind it, and Gmail
        inside it is allowlisted per person, so the server is the only thing
        that can answer that half. Everything not named here is greyed. */

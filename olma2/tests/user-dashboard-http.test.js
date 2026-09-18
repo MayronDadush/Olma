@@ -319,11 +319,16 @@ test('a served page hides the groups it cannot keep, and shows the rooms it can'
   // seeded examples never reach a real person's screen.
   assert.ok(html.includes('html[data-served] .groupsblock:not(button){display:none}'),
     'the seeded design groups are visible on a served page before the fetch answers');
-  assert.ok(html.includes('html[data-served] .groupsblock.live{display:block}'),
+  // `hasrooms`, and it was `live` until 2026-09-18: `.live` was also the
+  // header's activity pill, so this section wore a 999px radius and a white
+  // ground and drew itself as a screen-wide lozenge for anybody actually in a
+  // room. A state class may not be spelled like a look — see the guard in
+  // tests/user-dashboard-design.test.js.
+  assert.ok(html.includes('html[data-served] .groupsblock.hasrooms{display:block}'),
     'nothing can ever show the list again, so real rooms would never appear');
   assert.match(html, /<div style="--i:2" class="groupsblock">/,
     'the groups section no longer carries the class both rules name');
-  assert.match(html, /classList\.toggle\("live", GROUPS\.length > 0\)/,
+  assert.match(html, /classList\.toggle\("hasrooms", GROUPS\.length > 0\)/,
     'hydrate no longer turns the list on, so the rooms arrive and stay hidden');
   // And the seed is still there for the design copy — this hides it, it does
   // not delete the work.
