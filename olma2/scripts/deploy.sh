@@ -150,32 +150,47 @@ $SSH "$SERVER" "
   # timeouts that look like real failures. SUITE_CONCURRENCY=2 was chosen when
   # the droplet had ONE core; it has had TWO since 2026-09-06 and the number
   # has NOT been re-measured on the wider box, so raising it is an experiment,
-  # not a free win — read `nproc`, never this comment, for what is there now.
+  # not a free win — read nproc on the box, never this comment, for what is
+  # there now. (No backticks in this string: everything from here to the
+  # closing quote is inside a double-quoted argument to ssh, so a backtick is
+  # command substitution that runs LOCALLY at deploy time. Both of the pairs
+  # that used to be here did exactly that — one ran nproc on the laptop, the
+  # other tried to run "timeout-minutes: 30" — printing "command not found"
+  # and deleting the words from the comment the box actually received.)
   # nice: those cores are serving live agent turns; the suite yields to them.
   # (Observed 2026-08-27: an unniced run during a busy drain starved live
   # turns until the gateway texted users raw error strings.)
   # Via run-suite.sh so a wedged runner retries instead of hanging the deploy
   # until the job timeout. Two attempts, not three: a retry here costs the live
-  # box another SUITE_TIMEOUT of contended CPU, so the third roll of the dice
-  # is not worth what it takes from users.
+  # box another window of contended CPU, so the third roll of the dice is not
+  # worth what it takes from users.
   #
-  # SUITE_TIMEOUT was 420 from when a solo on-box run took ~234s (2026-09-06).
-  # The suite grew and the cap did not: on 2026-09-14 a clean run measured
-  # 397s — 23 seconds under it — so ordinary contention from one live agent
-  # turn pushed BOTH attempts past the cap, and a suite that was merely slow
-  # was killed twice and reported as a wedge. What that costs is not a red
-  # run: the deploy stops before the restart, which leaves the MIXED box
-  # (new code and applied migrations on disk, old code in memory) until
-  # somebody re-runs it.
+  # SILENCE, not a total cap, is what decides a wedge since 2026-09-18, and
+  # this line is a large part of why it had to change. SUITE_TIMEOUT was 420
+  # from when a solo on-box run took ~234s (2026-09-06). The suite grew and
+  # the cap did not: on 2026-09-14 a clean run measured 397s — 23 seconds
+  # under it — so ordinary contention from one live agent turn pushed BOTH
+  # attempts past the cap, and a suite that was merely slow was killed twice
+  # and reported as a wedge. Raising the cap to 600 only bought time on the
+  # same racetrack: four days later the identical failure took PR #407 in CI.
+  # What it costs here is not a red run — the deploy stops before the restart,
+  # leaving the MIXED box (new code and applied migrations on disk, old code
+  # in memory) until somebody re-runs it.
   #
-  # 600 is ~1.5x the measured run. The ceiling on this number is the deploy
-  # job's own `timeout-minutes: 30` (.github/workflows/olma2-tests.yml): two
-  # attempts plus the ~40s of rsync/install/migrate/restart around them have
-  # to fit inside it, so this cannot go past ~730 without raising that too —
-  # and a deploy killed by the JOB timeout is the one failure that can land
-  # between the rsync and the rollback safeguard. Re-measure the suite when
-  # you touch this; the gap between the two numbers is the whole warning.
-  SUITE_NICE=19 SUITE_CONCURRENCY=2 SUITE_ATTEMPTS=2 SUITE_TIMEOUT=600 bash scripts/run-suite.sh
+  # So contention no longer kills this. A slow run keeps printing and is left
+  # alone; 300s of SILENCE with the process still alive is the wedge, which is
+  # several times the worst gap between writes a niced, 2-core, concurrency-2
+  # run should ever show. SUITE_TIMEOUT stays only as the far backstop, and is
+  # no longer a number the suite can quietly grow into: 900 against a ~397s
+  # run, where 600 was 1.5x and closing.
+  #
+  # The ceiling on both is the deploy job's own timeout-minutes: 30, in
+  # .github/workflows/olma2-tests.yml. Worst case is one wedge plus one capped
+  # attempt, 300 + 900, plus the ~40s of rsync/install/migrate/restart around
+  # them — about 20 minutes inside 30. A deploy killed by the JOB timeout is
+  # the one failure that can land between the rsync and the rollback
+  # safeguard, so keep that arithmetic true if you touch these.
+  SUITE_NICE=19 SUITE_CONCURRENCY=2 SUITE_ATTEMPTS=2 SUITE_SILENCE=300 SUITE_TIMEOUT=900 bash scripts/run-suite.sh
 "
 
 # Passes iff both services are actually running (catches an instant crash —
