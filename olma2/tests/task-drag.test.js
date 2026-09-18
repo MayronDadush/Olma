@@ -42,10 +42,11 @@ before(async () => {
 });
 after(async () => { if (db) await db.teardown(); });
 
-async function shareWithFriend(taskId) {
-  const offer = await tx((c) => shares.offerShare(c, me.id, taskId, friend.id, 'viewer'));
+async function shareWithFriend(taskId, from = me, to = friend) {
+  const offer = await tx((c) => shares.offerShare(c, from.id, taskId, to.id));
   okRes(offer);
-  okRes(await tx((c) => shares.respondToShare(c, friend.id, offer.data.share.id, 'accept')));
+  okRes(await tx((c) => shares.respondToShare(c, to.id, offer.data.share.id, 'accept')));
+  return offer.data.share;
 }
 
 // ── order ───────────────────────────────────────────────────────────────────
@@ -212,4 +213,117 @@ test('an item is added, ticked, un-ticked and removed through the existing actio
 
   okRes(await act('archiveTask', { taskId: itemId }));
   assert.deepEqual(await items(), [], 'an archived item came back on reload');
+});
+
+// ── a task somebody shared with me ──────────────────────────────────────────
+// Everyone on it is equal (2026-09-19): the same actions, through the same
+// door, written as the person who opened it. Until then every one of these
+// was refused for the friend, and the sheet was locked to say so.
+
+test('the friend renames, dates, ticks and lists on a task I shared, as if it were theirs', async () => {
+  const list = await mk();
+  await shareWithFriend(list.id);
+  const asFriend = (action, payload) => actAs(friend.id, action, payload);
+  const row = async (uid = friend.id) => (await load(uid)).tasks.find((x) => String(x.id) === String(list.id));
+
+  okRes(await asFriend('editTask', { taskId: list.id, title: 'סידורים לשבת', category: 'home' }));
+  assert.equal((await row()).title, 'סידורים לשבת');
+  assert.equal((await row(me.id)).title, 'סידורים לשבת', 'one row, two lists — the rename reached mine');
+  assert.equal((await row()).mine, false, 'writing on it did not make it theirs');
+
+  const add = await asFriend('addTask', { title: 'חלה', parentId: list.id });
+  okRes(add);
+  assert.equal(String(add.data.task.owner_id), String(me.id), 'an item on my list that I could not tick');
+  okRes(await asFriend('completeTask', { taskId: add.data.task.id }));
+  // the last open item done completes the list itself (existing behaviour),
+  // and re-opening the list is the friend's to do as well
+  okRes(await asFriend('restoreTask', { taskId: list.id }));
+  okRes(await asFriend('restoreTask', { taskId: add.data.task.id }));
+  okRes(await asFriend('archiveTask', { taskId: add.data.task.id }));
+  assert.deepEqual((await row()).items, [], 'an item the friend removed is still on the list');
+
+  const when = iso(2 * 86400e3);
+  okRes(await asFriend('editTask', { taskId: list.id, dueAt: when }));
+  okRes(await asFriend('snoozeTask', { taskId: list.id, dueAt: iso(3 * 86400e3) }));
+  okRes(await asFriend('completeTask', { taskId: list.id }));
+  const { rows: [after] } = await db.pool.query(`SELECT status FROM tasks WHERE id = $1`, [list.id]);
+  assert.equal(after.status, 'done', 'the friend ticked it and the row is still open');
+  okRes(await asFriend('restoreTask', { taskId: list.id }));
+  assert.equal((await row(me.id)).done, false, 'and re-opened it, and my list still shows it done');
+
+  // What stays the owner's: the reminder (until each participant has their
+  // own) and the guest list.
+  const stranger = await makeUser(db.pool, '+972531940066', { firstName: 'Zed' });
+  const r = await asFriend('setTaskReminder', { taskId: list.id, on: true, remindAt: iso(86400e3) });
+  assert.equal(r.ok, false, 'the friend set a reminder that would have reached ME');
+  assert.equal((await asFriend('shareTask', { taskId: list.id, viewerId: stranger.id })).ok, false);
+  // And a stranger to the task is still shown nothing, not "forbidden".
+  assert.equal((await actAs(stranger.id, 'editTask', { taskId: list.id, title: 'x' })).error.code, 'not_found');
+  assert.equal((await actAs(stranger.id, 'completeTask', { taskId: list.id })).error.code, 'not_found');
+});
+
+test('"delete" on a task others are on is leaving; only the last one left can delete', async () => {
+  const list = await mk();
+  const item = await act('addTask', { title: 'אוהל', parentId: list.id });
+  okRes(item);
+  const share = await shareWithFriend(list.id);
+  const on = async (uid) => (await load(uid)).tasks.some((x) => String(x.id) === String(list.id));
+
+  const mine = await act('archiveTask', { taskId: list.id });
+  assert.equal(mine.ok, false, 'the opener put away a task the friend was still on');
+  assert.equal(mine.error.reason, 'shared');
+  const theirs = await actAs(friend.id, 'archiveTask', { taskId: list.id });
+  assert.equal(theirs.ok, false);
+  assert.equal(theirs.error.reason, 'shared');
+
+  // The opener leaves first: the friend inherits the list and the item.
+  const left = await act('leaveTask', { taskId: list.id });
+  okRes(left);
+  assert.equal(String(left.data.handedTo), String(friend.id));
+  assert.equal(await on(me.id), false, 'left, and still on my list');
+  const inherited = (await load(friend.id)).tasks.find((x) => String(x.id) === String(list.id));
+  assert.equal(inherited.mine, true, 'the heir still sees it as somebody else\'s');
+  assert.deepEqual(inherited.who, [], 'a face left on it for somebody who is gone');
+  assert.equal(inherited.items.length, 1, 'the item did not follow the list');
+  assert.equal((await db.pool.query(`SELECT status FROM shares WHERE id = $1`, [share.id])).rows[0].status, 'revoked');
+
+  // Now alone on it, the friend cannot leave — only delete.
+  assert.equal((await actAs(friend.id, 'leaveTask', { taskId: list.id })).error.reason, 'alone');
+  okRes(await actAs(friend.id, 'archiveTask', { taskId: list.id }));
+  assert.equal(await on(friend.id), false);
+
+  // The other direction: a participant leaves and the task stays put.
+  const second = await mk();
+  await shareWithFriend(second.id);
+  okRes(await actAs(friend.id, 'leaveTask', { taskId: second.id }));
+  assert.equal(await on(friend.id), false);
+  const still = (await load(me.id)).tasks.find((x) => String(x.id) === String(second.id));
+  assert.equal(still.mine, true);
+  assert.deepEqual(still.who, []);
+  okRes(await act('archiveTask', { taskId: second.id }));
+});
+
+test('a task of mine dropped onto a list the friend shared with me becomes their item', async () => {
+  const theirList = await mk(friend.id);
+  await shareWithFriend(theirList.id, friend, me);
+  const loose = await mk();
+  const r = await act('nestTask', { taskId: loose.id, parentId: theirList.id });
+  okRes(r);
+  const { rows: [row] } = await db.pool.query(`SELECT owner_id, parent_id FROM tasks WHERE id = $1`, [loose.id]);
+  assert.equal(String(row.owner_id), String(friend.id));
+  assert.equal(String(row.parent_id), String(theirList.id));
+  const onPage = (await load(me.id)).tasks.find((x) => String(x.id) === String(theirList.id));
+  assert.equal(onPage.items.length, 1, 'the item is not on the list as I see it');
+  okRes(await actAs(friend.id, 'completeTask', { taskId: loose.id }));
+  // and the way back is theirs too — the item is on their list now
+  okRes(await actAs(friend.id, 'restoreTask', { taskId: loose.id }));
+  okRes(await act('unnestTask', { taskId: loose.id }));
+  assert.equal(String((await db.pool.query(`SELECT owner_id FROM tasks WHERE id = $1`, [loose.id])).rows[0].owner_id),
+    String(friend.id), 'un-nesting does not hand it back');
+
+  const nudged = await mk();
+  okRes(await act('setTaskReminder', { taskId: nudged.id, on: true, remindAt: iso(86400e3) }));
+  const kept = await act('nestTask', { taskId: nudged.id, parentId: theirList.id });
+  assert.equal(kept.ok, false, 'a task with a reminder pending changed hands');
+  assert.equal(kept.error.reason, 'has_reminder');
 });

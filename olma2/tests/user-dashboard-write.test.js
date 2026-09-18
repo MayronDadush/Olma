@@ -438,7 +438,7 @@ test('removing a friend revokes the connection and everything hanging off it', a
   });
   const task = await mkTask();
   const share = await tx(async (c) => {
-    const s = (await shares.offerShare(c, me.id, task.id, friend.id, 'viewer')).data.share;
+    const s = (await shares.offerShare(c, me.id, task.id, friend.id)).data.share;
     await shares.respondToShare(c, friend.id, s.id, 'accept');
     return s;
   });

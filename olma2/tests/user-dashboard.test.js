@@ -285,7 +285,7 @@ test('a task somebody shared with me is on my list too, and marked as theirs', a
     tasks.addTask(c, friend.id, { title: 'לסיים את המצגת' }));
   assert.equal(t.ok, true, t.ok ? '' : JSON.stringify(t.error));
   const offer = await withTx(db.pool, (c) =>
-    shares.offerShare(c, friend.id, t.data.task.id, me.id, 'editor'));
+    shares.offerShare(c, friend.id, t.data.task.id, me.id));
   assert.equal(offer.ok, true, offer.ok ? '' : JSON.stringify(offer.error));
   await withTx(db.pool, (c) => shares.respondToShare(c, me.id, offer.data.share.id, 'accept'));
 
@@ -294,13 +294,12 @@ test('a task somebody shared with me is on my list too, and marked as theirs', a
   assert.ok(row, 'a task shared with me was missing from my own list entirely');
   assert.equal(row.mine, false, "somebody else's task was presented as mine");
   assert.equal(String(row.owner), String(friend.id));
-  assert.equal(row.sharedRole, 'editor');
+  assert.equal('sharedRole' in row, false, 'a role the page would read as a lock on the sheet');
 
   // And it is still on THEIR list, as theirs — one row, two lists.
   const theirs = (await load(friend.id)).data.tasks
     .find((x) => String(x.id) === String(t.data.task.id));
   assert.equal(theirs.mine, true);
-  assert.equal(theirs.sharedRole, null, 'owning something is not a role granted to you');
 });
 
 // The owner is on no share row, so a task somebody shared WITH me used to reach
@@ -311,7 +310,7 @@ test('a shared task names its owner, is pinned on both lists, and un-pinning is 
   const pins = require('../src/domain/task-pins');
   const t = await withTx(db.pool, (c) => tasks.addTask(c, friend.id, { title: 'לתכנן את הטיול' }));
   const id = t.data.task.id;
-  const offer = await withTx(db.pool, (c) => shares.offerShare(c, friend.id, id, me.id, 'viewer'));
+  const offer = await withTx(db.pool, (c) => shares.offerShare(c, friend.id, id, me.id));
   await withTx(db.pool, (c) => shares.respondToShare(c, me.id, offer.data.share.id, 'accept'));
   const solo = await withTx(db.pool, (c) => tasks.addTask(c, me.id, { title: 'רק שלי' }));
 

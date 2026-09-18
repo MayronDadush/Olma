@@ -199,6 +199,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A title need not restate the hour the row now carries, but only the SERVER may take it out.**
 - **A day named with ל־ in a title dates the THING, not the task.**
 - **`due_at` is when the THING is; `remind_at` is the hour THEY named.**
+- **Everyone on a shared task is equal, and a write on it is made AS its owner** — "delete" with others on it is leaving, and only the last one left can archive.
 
 ### People, silence, and data you must not get wrong
 

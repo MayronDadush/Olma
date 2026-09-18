@@ -115,7 +115,6 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
             -- minutes, so wanting it and having it are two different facts and
             -- the page has to be able to tell them apart
             t.calendar_event_id IS NOT NULL AS in_calendar,
-            sh.role AS shared_role,
             -- who started it, by first name only: on a task somebody shared
             -- WITH this person the owner is on no share row, so without this
             -- the list could draw every face on it except the one who shared
@@ -247,10 +246,6 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
       // back to its place without anyone touching it.
       pinned: (who.length > 0 || String(t.owner_id) !== String(userId)) && !t.unpinned,
       unpinned: Boolean(t.unpinned),
-      // Only set on a task somebody shared WITH this person: 'viewer' or
-      // 'editor'. Their own rows carry null, not 'editor' — owning something
-      // is not a role granted to you.
-      sharedRole: t.shared_role || null,
       source: src,
       // Shipped alongside the task rather than looked up by the page, so a
       // capability change on the server takes effect without a redeploy of
