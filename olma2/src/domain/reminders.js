@@ -169,7 +169,7 @@ function localDayKey(value, tz) {
   return `${p.y}-${pad(p.m)}-${pad(p.d)}`;
 }
 
-async function setReminder(client, ownerId, taskId, remindAt, repeatRule) {
+async function setReminder(client, ownerId, taskId, remindAt, repeatRule, { nudge = false } = {}) {
   if (!remindAt) return err('invalid', 'remind_at required');
   if (!hasOffset(remindAt)) return badTime('remind_at', remindAt);
   const { rows } = await client.query(
@@ -208,13 +208,18 @@ async function setReminder(client, ownerId, taskId, remindAt, repeatRule) {
       RETURNING id`,
     [taskId, tz, newDay]
   );
+  // `nudge` is the one thing on this row nobody can infer later: "תזכירי לי עד
+  // שאעשה את זה" and "תזכירי לי ב-9" produce the same row otherwise, and the
+  // ladder default (RUNGS) says one message for both. It is stamped only when
+  // they ASKED — a model that passes it by reflex is the drum this replaced.
   const ins = await client.query(
-    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, auto)
-     VALUES ($1, $2, $3, false) RETURNING *`,
-    [taskId, remindAt, rule]
+    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, auto, nudge)
+     VALUES ($1, $2, $3, false, $4) RETURNING *`,
+    [taskId, remindAt, rule, nudge === true]
   );
   await audit.record(client, ownerId, 'reminder.created', {
     taskId, reminderId: ins.rows[0].id,
+    ...(nudge === true ? { nudge: true } : {}),
     ...(superseded.rowCount ? { supersededAuto: superseded.rows.map((r) => Number(r.id)) } : {}),
   });
   return ok({ reminder: ins.rows[0], supersededAuto: superseded.rowCount });
@@ -458,17 +463,60 @@ async function listReminders(client, ownerId, taskId) {
 // 4. Only the FIRST rung is urgent. That moment is the user's; a follow-up is
 //    Olma's own idea and queues behind the daily proactive budget like every
 //    other thing Olma decided to say (that split lives in the sweep).
+// 5. HOW MANY rungs is a property of the reminder, not of the system, and the
+//    default is quiet. Measured over 45 days on the box (2026-09-17) — what
+//    happened in the three hours after each rung actually delivered:
+//
+//      rung 1  103 sent  11 done (11%)   9 cancelled
+//      rung 2   69 sent  15 done (22%)  24 cancelled (35%)
+//      rung 3   25 sent   6 done (24%)   0 cancelled
+//
+//    So a follow-up the SAME day earns its place, and the next-day rung earns
+//    it for exactly one person (5 of מירון's 10; 1 of the other 15). Against
+//    that, a third of every follow-up ends with somebody cancelling the
+//    reminder — and מאיה's evening is what a fourth message about a hospital
+//    bag she had already packed reads like (incidents.md, "התיק לבית חולים").
+//    The split that survives the reading is who chose the HOUR:
+//
+//      - They named it (`auto = false`): ONE message, at their moment, and
+//        nothing after it. They asked for a reminder, not for a chase.
+//      - Olma inferred it from a due date (`auto = true`): one follow-up the
+//        same day. Nobody promised them anything at 08:00, so a second try is
+//        Olma doing her job rather than nagging about a time they picked.
+//      - Either, once they ASK to be nudged: the full three rungs.
+//
+//    Never a rung after the local day of `due_at` has ended (RUNGS.nudging
+//    included): "did you pack the bag?" the morning after the hospital is a
+//    message about nothing. An overdue task is already in the digest.
 const ESCALATION_MAX_ATTEMPTS = 3;
 const ESCALATION_GAP_HOURS = 3;
+
+// The per-reminder cap, by who chose the hour. `nudging` is the ceiling a
+// person opts into; the flag `reminder_escalation_max` still bounds all three
+// from above, so one number can still turn every ladder off in an incident.
+const RUNGS = { explicit: 1, auto: 2, nudging: 3 };
 
 async function dueForSending(client, now, opts = {}) {
   const maxAttempts = Number.isFinite(Number(opts.maxAttempts)) && Number(opts.maxAttempts) > 0
     ? Math.floor(Number(opts.maxAttempts)) : ESCALATION_MAX_ATTEMPTS;
   const gapHours = Number.isFinite(Number(opts.gapHours)) && Number(opts.gapHours) > 0
     ? Number(opts.gapHours) : ESCALATION_GAP_HOURS;
+  // The two caps of rule 5. Overridable per call for the same reason
+  // `maxAttempts` is: a test that wants a three-rung ladder should say so in
+  // the call rather than by moving a production default.
+  const cap = (v, fallback) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.floor(Number(v)) : fallback);
+  const autoRungs = cap(opts.autoRungs, RUNGS.auto);
+  const explicitRungs = cap(opts.explicitRungs, RUNGS.explicit);
+  const nudgingRungs = cap(opts.nudgingRungs, RUNGS.nudging);
   const { rows } = await client.query(
     `SELECT r.id AS reminder_id, r.task_id, r.remind_at, r.repeat_rule, r.attempts, r.auto,
             t.owner_id, t.title, t.due_at, u.timezone,
+            -- How many rungs THIS reminder gets (rule 5 above), never more than
+            -- the flag allows. Returned so the sweep can say "last one" off the
+            -- same number the WHERE clause stopped on: a cap the caller derives
+            -- for itself is the second copy that drifts.
+            least($2::int, CASE WHEN r.nudge OR u.reminder_nudge THEN $6::int
+                                WHEN r.auto THEN $4::int ELSE $5::int END) AS rung_cap,
             -- true when the previous rung was OURS to lose: the pipe failed on
             -- every try and the row expired with nothing delivered.
             (prev.hold_reason = 'expired' AND prev.attempts > 0 AND prev.last_error IS NOT NULL) AS prev_failed
@@ -495,8 +543,16 @@ async function dueForSending(client, now, opts = {}) {
          -- Rung 1: the moment they picked. Unchanged.
          (r.attempts = 0 AND r.remind_at <= $1::timestamptz)
          OR
-         (r.attempts BETWEEN 1 AND $2::int - 1
+         (r.attempts BETWEEN 1 AND least($2::int, CASE WHEN r.nudge OR u.reminder_nudge THEN $6::int
+                                                       WHEN r.auto THEN $4::int ELSE $5::int END) - 1
           AND r.repeat_rule IS NULL
+          -- Never a follow-up once the day the THING is on has ended. A rung
+          -- chases an action whose moment is still ahead; the morning after
+          -- the hospital, "did you pack the bag?" is a message about nothing,
+          -- and the task is in the digest either way.
+          AND (t.due_at IS NULL
+               OR ($1::timestamptz AT TIME ZONE COALESCE(u.timezone, 'UTC'))::date
+                  <= (t.due_at AT TIME ZONE COALESCE(u.timezone, 'UTC'))::date)
           AND (
             -- The previous rung died on OUR side: the worker tried, every try
             -- failed (attempts > 0, an error recorded) and the row expired.
@@ -523,7 +579,7 @@ async function dueForSending(client, now, opts = {}) {
      -- Then by id: two reminders at the SAME moment are rung 1 in the same tick,
      -- and the later one must be the one that retires the other's ladder.
      ORDER BY r.remind_at, r.id`,
-    [now, maxAttempts, gapHours]
+    [now, maxAttempts, gapHours, autoRungs, explicitRungs, nudgingRungs]
   );
   return ok({ due: rows });
 }
@@ -599,6 +655,82 @@ async function retireForMovedTask(client, ownerId, task, { timezone, now = new D
   return { retired: retiredIds, withdrawn: withdrawn.length, autoCancelled: stale.map((r) => Number(r.id)), reminder: rearmed };
 }
 
+// ---- "להפסיק להזכיר" --------------------------------------------------------
+//
+// מאיה, 2026-09-16 11:02, after four messages about a hospital bag: "להפסיק
+// להזכיר". What she got back was a question — "מה להפסיק? 1. התזכורת על
+// לארוז 2. שתיהן 3. לדחות" — and nothing was cancelled, so an hour later
+// another rung landed and the morning after that, two more.
+//
+// Two ladders were chasing her and the model could name both, which is exactly
+// why it asked. That question is the bug: "stop" is not ambiguous to the person
+// saying it, and the cost of getting it wrong in either direction is not
+// symmetric — stopping one reminder too many costs a reminder they can set
+// again in a sentence, while asking costs the thing they asked for.
+//
+// So the answer is a WRITE, made here, before the model sees the turn: every
+// ladder that has actually spoken to them recently stops, and brokerd puts a 👍
+// on the message instead of the 👀 that promises a reply. Same argument as
+// markPlaced — an instruction in a prompt is a request, one at the boundary is
+// a rule (.claude/rules/doctrine.md).
+//
+// What it does NOT touch, and each for its own reason:
+//   - a reminder that has not fired yet (attempts = 0): they have never heard
+//     it, so "stop reminding" cannot be about it. It is also the hour they may
+//     still be promised, and cancelling it silently would be the opposite
+//     failure — a reminder they asked for, gone without a word.
+//   - a repeating reminder: that cadence IS theirs, and ending it is a decision
+//     about a standing arrangement, not about the last few messages. The model
+//     still has cancel_reminder for it, with words.
+//   - the TASK: stopping the reminders is not doing the thing or dropping it
+//     (cancel_reminder's own taskStillOpen hint, and the pause doctrine).
+const STOP_WINDOW_HOURS = 24;
+
+async function stopRecentLadders(client, ownerId, { now = new Date(), windowHours = STOP_WINDOW_HOURS } = {}) {
+  // Reminders of theirs that have actually REACHED them inside the window:
+  // a delivered outbox row (`sent_at` set, no hold_reason) whose key names the
+  // reminder. A rung the gate held reached nobody and is not what "stop" is
+  // answering — and it is withdrawn below anyway, where withdrawing is free.
+  const { rows: reached } = await client.query(
+    `SELECT DISTINCT r.id, r.sent_at IS NULL AS climbing
+       FROM task_reminders r
+       JOIN tasks t ON t.id = r.task_id
+       JOIN outbox o ON o.user_id = t.owner_id AND o.kind = 'reminder'
+        AND substring(o.idempotency_key from '^reminder:([0-9]+)')::bigint = r.id
+      WHERE t.owner_id = $1 AND r.repeat_rule IS NULL AND r.cancelled_at IS NULL
+        AND r.attempts >= 1
+        AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL
+        AND o.sent_at > $2::timestamptz - ($3::double precision * interval '1 hour')`,
+    [ownerId, now, windowHours]
+  );
+  if (!reached.length) return { stopped: [], withdrawn: 0 };
+  const ids = reached.map((r) => Number(r.id));
+  // Retired, never cancelled — they answered it. `sent_at` is what takes the
+  // row out of the pending set for good, and it is the same verb
+  // retireSiblingLadders and retireForMovedTask use for the same reason.
+  const { rows: stopped } = await client.query(
+    `UPDATE task_reminders SET sent_at = $2
+      WHERE id = ANY($1::bigint[]) AND sent_at IS NULL AND cancelled_at IS NULL
+      RETURNING id`, [ids, now]);
+  // And the rung already sitting in the queue — the one held for the night is
+  // the whole reason cancelling used to be a lie for hours (incidents.md, "The
+  // reminder that would not stop"). Withdrawn for every id in the window,
+  // including a ladder that had already ended and still has a message waiting.
+  const keys = ids.flatMap((id) => [`reminder:${id}`, `reminder:${id}:%`]);
+  const { rows: withdrawn } = await client.query(
+    `UPDATE outbox SET sent_at = now(), hold_reason = 'stopped'
+      WHERE user_id = $1 AND kind = 'reminder' AND sent_at IS NULL
+        AND idempotency_key LIKE ANY($2::text[])
+      RETURNING id`, [ownerId, keys]);
+  const stoppedIds = stopped.map((r) => Number(r.id));
+  if (stoppedIds.length || withdrawn.length) {
+    await audit.record(client, ownerId, 'reminder.ladder_stopped', {
+      stopped: stoppedIds, outboxWithdrawn: withdrawn.map((r) => Number(r.id)),
+    });
+  }
+  return { stopped: stoppedIds, withdrawn: withdrawn.length };
+}
+
 async function recordAttempt(client, reminderId, { retire } = {}) {
   await client.query(
     `UPDATE task_reminders
@@ -617,7 +749,7 @@ async function markSent(client, reminderId) {
 
 module.exports = {
   setReminder, attachAutoReminder, retireSiblingLadders, cancelReminder, listReminders, dueForSending, markSent,
-  retireForMovedTask, momentIsPast, PAST_GRACE_MS,
+  retireForMovedTask, stopRecentLadders, STOP_WINDOW_HOURS, momentIsPast, PAST_GRACE_MS,
   normalizeRepeatRule, nextOccurrence, resolveMonthlyAnchor,
-  recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS,
+  recordAttempt, attemptKey, ESCALATION_MAX_ATTEMPTS, ESCALATION_GAP_HOURS, RUNGS,
 };

@@ -207,6 +207,19 @@ async function setName(client, userId, firstName, lastName, { confirmed = true, 
 // silently revised afterwards, because a single English word in a Hebrew
 // sentence must not flip the whole relationship. `noteObservedLanguage` below
 // is how we NOTICE we got it wrong; it still never writes this column.
+// Chasing is opt-in (domain/reminders.RUNGS, migration 072). This is the
+// STANDING answer — every reminder of theirs climbs the full ladder — beside
+// the per-reminder one set_task_reminder takes. Off by default, and turning it
+// off again leaves the ladders already walking exactly where they are: a rung
+// that is about to go out is the thing they just asked to stop, and stopping
+// it is stopRecentLadders' job, said in their own words.
+async function setReminderNudge(client, userId, on) {
+  const value = on === true;
+  await client.query(`UPDATE users SET reminder_nudge = $2 WHERE id = $1`, [userId, value]);
+  await audit.record(client, userId, 'user.reminder_nudge_set', { on: value });
+  return ok({ reminderNudge: value });
+}
+
 async function setLocale(client, userId, locale) {
   const code = String(locale || '').trim().toLowerCase().slice(0, 8);
   if (!/^[a-z]{2}(-[a-z]{2,8})?$/.test(code)) {
@@ -397,6 +410,7 @@ module.exports = {
   setPersonal,
   newIdentityToken, resolveByToken, getByPhone, getById,
   createUser, primaryChannel, setPrimaryChannel, sessionKeyFor, setName, setTimezone, setLocale,
+  setReminderNudge,
   noteObservedLanguage,
   setAssistantPersona,
   cleanName,

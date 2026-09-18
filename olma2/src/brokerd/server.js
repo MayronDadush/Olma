@@ -17,6 +17,7 @@ const { FloodCounter } = require('./flood');
 const { refreshUserCard, CARD_TOOLS } = require('../intake/user-card');
 const turnDomain = require('../domain/turn');
 const reactions = require('../domain/reactions');
+const reminders = require('../domain/reminders');
 const selfInitiated = require('../domain/self-initiated');
 const { captureDisplayName } = require('../adapters/mcp/tools/_shared');
 const groupContext = require('../domain/group-context');
@@ -171,7 +172,19 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
       // (gateway-hooks/olma-turn-open). A message that is only thanks gets 🙏
       // instead of 👀: 👀 promises a reply and this one is not getting one.
       const thanksOnly = params.thanks === true;
-      const state = thanksOnly ? 'thanks' : (kind === 'voice' ? 'listening' : 'working');
+      // "להפסיק להזכיר" is answered by a WRITE, here, before the model reads
+      // the turn — every ladder that has actually spoken to them in the last
+      // day stops (domain/reminders.stopRecentLadders), and the mark on the
+      // message becomes 👍: 👀 promises a reply, and the fact is already
+      // carried. Nothing is stopped when nothing was chasing, and then this is
+      // an ordinary turn about the word "תזכורות".
+      const stopped = !rec.skipped && params.stopReminders === true
+        ? await reminders.stopRecentLadders(client, user.id, { now: new Date(clock()) })
+        : null;
+      const stoppedReminders = stopped ? stopped.stopped.length : 0;
+      if (stopped) lap('stop');
+      const state = stoppedReminders ? 'done'
+        : thanksOnly ? 'thanks' : (kind === 'voice' ? 'listening' : 'working');
       const entry = {
         messageId, kind, lastInboundAt: clock(), openedAt: clock(),
         // The WhatsApp display name, kept for `turn_context` below: on the
@@ -185,7 +198,7 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
         // relays `reply_to_id` itself, as before.
         replyToId: reactions.cleanMessageId(params.replyToId) || null,
         counted: rec.counted, quota: rec.quota, firstTurn: Boolean(rec.firstTurn),
-        thanksOnly,
+        thanksOnly, stoppedReminders,
         marked: new Set(), contextSent: false,
       };
       if (!rec.skipped && messageId) {
@@ -319,6 +332,7 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
         firstTurn: Boolean(pre && pre.firstTurn && !pre.contextSent),
         ourTurn, replyTarget, languageNudge: null,
         thanksOnly: Boolean(pre && pre.thanksOnly),
+        stoppedReminders: (pre && pre.stoppedReminders) || 0,
       });
       if (pre) pre.contextSent = true;
       out = { ok: true, enabled: true, context: turnDomain.renderContext(data), directive: data.directive };
@@ -436,6 +450,7 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
           turn.messageId = pre.messageId; turn.lastInboundAt = pre.lastInboundAt;
           turn.messageKind = pre.kind; turn.marked = pre.marked; turn.reactionVocab = pre.reactionVocab;
           turn.thanksOnly = pre.thanksOnly;
+          turn.stoppedReminders = pre.stoppedReminders || 0;
           turn.openedByGateway = true;
         } else if (!turn.opened) {
           // No gateway open on file and this connection has not served a turn

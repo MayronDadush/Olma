@@ -281,7 +281,7 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
   assert.equal(written.length, 1);
   const msg = JSON.parse(written[0]);
   assert.equal(msg.method, 'turn_open');
-  assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, at: '2026-09-05T10:00:00.000Z' });
+  assert.deepEqual(msg.params, { agentId: 'u-3', messageId: '3EB0HOOK0001', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, at: '2026-09-05T10:00:00.000Z' });
   assert.ok(!written[0].includes('סודי'), 'the text never leaves the gateway');
   // The shape the gateway ACTUALLY sends (OpenClaw 2026.8.1, measured
   // 2026-09-06): `message:preprocessed`, sender name and media type flat on
@@ -291,7 +291,7 @@ test('the hook handler sends exactly one turn_open line for an inbound message, 
     context: { from: '+972500000000', body: 'סודי', bodyForAgent: 'סודי', messageId: '3EB0HOOK0002', senderName: 'Miron', mediaType: 'audio/ogg', transcript: 'שלום', provider: 'whatsapp', cfg: {} },
   }, { connect: fakeSocket }), true);
   assert.equal(written.length, 2);
-  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, at: '2026-09-05T10:00:05.000Z' });
+  assert.deepEqual(JSON.parse(written[1]).params, { agentId: 'u-3', messageId: '3EB0HOOK0002', kind: 'voice', senderName: 'Miron', replyToId: null, thanks: false, stopReminders: false, at: '2026-09-05T10:00:05.000Z' });
   assert.ok(!written[1].includes('סודי') && !written[1].includes('שלום'), 'neither text nor transcript leaves the gateway');
   // A gateway that fires BOTH for one message opens it once.
   assert.equal(await hook({
@@ -490,4 +490,127 @@ test('a connect the gateway delivered late is not a brokerd timeout; a socket th
     assert.equal(l3.connected, false);
     assert.equal(l3.ms, 10_000);
   });
+});
+
+// ── "להפסיק להזכיר" is answered by stopping, not by asking which ─────────────
+// מאיה, 2026-09-16 11:02. Four messages about a hospital bag she had already
+// packed, then "להפסיק להזכיר" — and what came back was "מה להפסיק? 1. התזכורת
+// על לארוז 2. שתיהן 3. לדחות", with nothing cancelled. An hour later another
+// rung landed, and the morning after the hospital, two more.
+
+test('the hook reads a stop request and sends the verdict, never the words', () => {
+  const yes = [
+    'להפסיק להזכיר', 'תפסיקי עם התזכורות', 'די עם התזכורות', 'בלי תזכורות',
+    'מספיק תזכורות', 'תפסיק להזכיר לי', 'stop reminding me', 'תפסיקי לנדנד',
+  ];
+  const no = [
+    // A new time is a RESCHEDULE and only the model can do it — this is the
+    // exact message from the 2026-09-09 incident, and it must keep taking the
+    // ordinary path (tests/reminder-stop.test.js holds that half).
+    'תפסיק עם התזכורות לזמן הקרוב, התזכורת הבאה רק ביום שני',
+    'תפסיקי להזכיר לי על זה עד מחר בבוקר',
+    'להפסיק?',                      // a question is never a decision
+    'תזכיר לי מחר ב9',              // asking FOR one
+    'להזכיר לי לקנות חלב',
+    'תודה',
+    'דירה חדשה עם תזכורת',          // די inside a word — \b is dead against Hebrew
+    '',
+  ];
+  for (const t of yes) assert.equal(hook.stopRemindersOnly(t), true, `stop: ${JSON.stringify(t)}`);
+  for (const t of no) assert.equal(hook.stopRemindersOnly(t), false, `not stop: ${JSON.stringify(t)}`);
+  // The quoted half of a WhatsApp reply is not what they just wrote.
+  assert.equal(hook.stopRemindersOnly('[Replying to Olma id:3EB0X]\nתזכורת: לארוז תיק\n[/Replying]\nלהפסיק להזכיר'), true);
+});
+
+// Two ladders chasing her, one message, and both stop — with no question about
+// which, because "stop" was never ambiguous to the person who wrote it.
+test('"להפסיק להזכיר" stops every ladder that has spoken to them, and earns a 👍', async () => {
+  const tasks = require('../src/domain/tasks');
+  const reminders = require('../src/domain/reminders');
+  const sweeps = require('../src/jobs/sweeps');
+  const { withTx } = require('../src/db/pool');
+  const u = await agentUser('+972641100041', 'u-941');
+
+  // Her evening, in the shape production reaches it: a task she asked to be
+  // reminded about, plus the duplicate the extraction job wrote, both chasing.
+  //
+  // Every moment here is computed ONCE off the suite's own clock and is hours
+  // rather than a date: the stop looks back a day (reminders.STOP_WINDOW_HOURS),
+  // so a hard-coded evening would pass today and stop passing tomorrow
+  // (.claude/rules/testing.md).
+  const hoursAgo = (h) => new Date(now - h * 3600_000).toISOString();
+  const ids = await withTx(db.pool, async (c) => {
+    const bag = await tasks.addTask(c, u.id, { title: 'לארוז תיק לבית חולים' });
+    const dup = await tasks.addTask(c, u.id, { title: 'להזכיר לי מחר בבוקר ב-9 עם רשימת האריזה' });
+    const a = await reminders.setReminder(c, u.id, bag.data.task.id, hoursAgo(5));
+    const b = await reminders.setReminder(c, u.id, dup.data.task.id, hoursAgo(6));
+    return { a: Number(a.data.reminder.id), b: Number(b.data.reminder.id) };
+  });
+  // Both were asked to chase, which is the only way they chase at all now.
+  await db.pool.query(`UPDATE task_reminders SET nudge = true`);
+  await withTx(db.pool, (c) => sweeps.sweepReminders(c, hoursAgo(4.9)));
+  await db.pool.query(
+    `UPDATE outbox SET sent_at = $1::timestamptz, hold_reason = NULL WHERE kind = 'reminder'`,
+    [hoursAgo(4.8)]);
+  // And one rung is already queued, the way a night-held follow-up would be:
+  // the row that made "ביטלתי" a lie for hours.
+  await withTx(db.pool, (c) => sweeps.sweepReminders(c, hoursAgo(1)));
+  const queued = await db.pool.query(
+    `SELECT count(*)::int AS n FROM outbox WHERE kind = 'reminder' AND sent_at IS NULL`);
+  assert.ok(queued.rows[0].n >= 1, 'a follow-up is in the queue when she writes');
+
+  const r = await open({ agentId: 'u-941', messageId: '3EB0STOP01', kind: 'text', stopReminders: true });
+  assert.equal(r.opened, true);
+  assert.equal(marks[0].state, 'done', '👀 promises a reply; this message is already answered');
+  assert.equal(marks[0].emoji, '👍');
+
+  const { rows: left } = await db.pool.query(
+    `SELECT r.id, r.sent_at, r.cancelled_at FROM task_reminders r
+       JOIN tasks t ON t.id = r.task_id WHERE t.owner_id = $1 ORDER BY r.id`, [u.id]);
+  assert.equal(left.filter((x) => !x.sent_at && !x.cancelled_at).length, 0, 'no ladder is left walking');
+  for (const row of left) assert.equal(row.cancelled_at, null, 'retired, not cancelled — she answered them');
+  const { rows: ob } = await db.pool.query(
+    `SELECT hold_reason FROM outbox WHERE user_id = $1 AND kind = 'reminder' AND hold_reason IS NOT NULL`, [u.id]);
+  assert.ok(ob.length >= 1 && ob.every((x) => x.hold_reason === 'stopped'),
+    'the rung already in the queue is withdrawn, not left to land at dawn');
+  // The tasks are hers and stay exactly as they were.
+  const { rows: open2 } = await db.pool.query(
+    `SELECT count(*)::int AS n FROM tasks WHERE owner_id = $1 AND status = 'open'`, [u.id]);
+  assert.equal(open2[0].n, 2);
+  assert.equal(ids.a > 0 && ids.b > 0, true);
+
+  const res = await call(u, 'turn_start', { message_id: '3EB0STOP01' }, newTurn());
+  assert.match(res.text, /stoppedReminders/, 'the model is told it is already done');
+  assert.match(res.text, /NO_REPLY/);
+  assert.match(res.text, /Never ask WHICH/, 'the question מאיה actually got is the one this forbids');
+
+  const { rows: audit } = await db.pool.query(
+    `SELECT detail FROM audit_log WHERE actor_id = $1 AND event = 'reminder.ladder_stopped'`, [u.id]);
+  assert.equal(audit.length, 1, 'a stop nobody can see is a stop nobody can count');
+  assert.equal(audit[0].detail.stopped.length, 2);
+});
+
+// The other direction, and the one that keeps this from becoming a way to lose
+// a reminder: nothing was chasing, so nothing is stopped, the mark is the
+// ordinary 👀 and the turn owes a real answer.
+test('a stop request with nothing chasing changes nothing and asks for no silence', async () => {
+  const tasks = require('../src/domain/tasks');
+  const reminders = require('../src/domain/reminders');
+  const { withTx } = require('../src/db/pool');
+  const u = await agentUser('+972641100042', 'u-942');
+  await withTx(db.pool, async (c) => {
+    const t = await tasks.addTask(c, u.id, { title: 'לקחת תרופה' });
+    await reminders.setReminder(c, u.id, t.data.task.id, '2026-12-01T06:00:00Z');
+  });
+
+  await open({ agentId: 'u-942', messageId: '3EB0STOP02', kind: 'text', stopReminders: true });
+  assert.equal(marks[0].state, 'working');
+  const { rows: [pending] } = await db.pool.query(
+    `SELECT r.sent_at, r.cancelled_at FROM task_reminders r
+       JOIN tasks t ON t.id = r.task_id WHERE t.owner_id = $1`, [u.id]);
+  assert.equal(pending.sent_at, null, 'an hour they have never heard is not what "stop" is about');
+  assert.equal(pending.cancelled_at, null);
+  const res = await call(u, 'turn_start', { message_id: '3EB0STOP02' }, newTurn());
+  assert.doesNotMatch(res.text, /stoppedReminders/,
+    'a hint that asks for silence must never reach a turn that owes an answer');
 });

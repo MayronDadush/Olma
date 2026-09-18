@@ -117,6 +117,12 @@ test('an automatic reminder is dropped as quiet, stays on her record, and its la
   assert.equal(new Date(autoRow.remind_at).getTime(), armedAt.getTime(),
     'the dated task is moment-shaped, so its reminder is an hour before — not the 08:00 a day-shaped one earns');
 
+  // She also asked to be chased about the one she named — otherwise an hour
+  // SHE chose is said once and nothing follows it (reminders.RUNGS, 2026-09-17),
+  // and the rung 2 this test needs in order to watch the GATE drop it would
+  // never exist. The subject here is the quiet rule, not the ladder length.
+  await db.pool.query(`UPDATE task_reminders SET nudge = true WHERE id = $1`, [wordsRow.id]);
+
   // She let a check-in pass.
   await db.pool.query(`UPDATE users SET checkin_misses = 1 WHERE id = $1`, [u.id]);
 

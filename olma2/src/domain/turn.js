@@ -210,7 +210,7 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
 // turn by every user, for fields that appear on a handful of turns in a
 // person's life. The budget rule (CLAUDE.md, "Doctrine"): guidance about a
 // RESULT rides the result.
-function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms, thanksOnly, today }) {
+function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, today }) {
   const hints = {};
   if (today) {
     // Rides beside the block on every turn it is on, because a block the
@@ -280,6 +280,24 @@ function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, 
       + 'reopens it. Write only if the message actually asks something, or something here needs '
       + 'saying that the mark cannot carry.';
   }
+  if (stoppedReminders) {
+    // Their message asked for the reminders to stop and brokerd already did it
+    // — the rows are retired and the queued rung is withdrawn — so the 👍 on
+    // their message is the true and complete answer. Conditional in the same
+    // way `markPlaced` is, and for the same reason: the model can still see
+    // something the mark cannot carry and say that instead.
+    //
+    // The line it exists to prevent is the one מאיה actually got: "מה להפסיק?
+    // 1. התזכורת על לארוז 2. שתיהן 3. לדחות" — a question about which of the
+    // two, on a turn where nothing had been stopped at all (2026-09-16).
+    hints.stoppedReminders = `Their message asked for reminders to stop, and ${stoppedReminders === 1
+      ? 'the one that was chasing them has'
+      : `all ${stoppedReminders} that were chasing them have`} already been stopped — the 👍 on `
+      + 'their message says so. Reply with exactly NO_REPLY. Never ask WHICH reminder they meant: '
+      + 'they meant the ones they have been hearing from, and those are the ones that stopped. '
+      + 'Their tasks are untouched, so say something only if they asked for something else too, '
+      + 'or if they named a NEW time to be reminded — that one is a reminder to set.';
+  }
   if (offerResume) {
     hints.offerResume = 'First message since they paused: answer what they actually asked, then add '
       + 'ONE line asking if they would like Olma to start reaching out again.';
@@ -302,7 +320,9 @@ function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, 
       hints.stillChasing = 'A reminder marked stillChasing will send follow-up rungs on its own — a few '
         + 'hours from now and again tomorrow. If they ask to stop, pause or postpone reminders about '
         + 'that thing, cancel_reminder(reminderId) is what ends it; the task and everything else stay '
-        + 'exactly as they are. For "the next one only on Monday", cancel it and then set_task_reminder '
+        + 'exactly as they are. A stop that names NOTHING means every one of these, so call it once '
+        + 'per id and never ask which they meant — they meant the ones they have been hearing from. '
+        + 'For "the next one only on Monday", cancel it and then set_task_reminder '
         + 'on its taskId for the moment they named. Cancelling a DIFFERENT reminder does not stop this one.';
     }
   }
@@ -334,7 +354,7 @@ function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, 
 //               person did anything.
 //   replyTarget, languageNudge — what only the model (or the gateway) could
 //               see about this message; null when nobody reported them.
-async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, now }) {
+async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, languageNudge, thanksOnly, stoppedReminders, now }) {
   // A paused person who writes gets answered — pausing stops Olma
   // INITIATING, not answering (see domain/pause.js) — but before this, that
   // answer was the whole reply. They were then back to relying on their OWN
@@ -515,7 +535,7 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(replyTarget ? { replyTarget: true } : {}),
       ...(genderForms ? { genderForms } : {}),
       ...(today ? { today } : {}),
-      ...turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms, thanksOnly, today }),
+      ...turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, today }),
     };
   }
   const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);

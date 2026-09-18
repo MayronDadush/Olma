@@ -7,12 +7,20 @@ const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
 
 module.exports = [
-  tool('set_task_reminder', 'Attach a reminder to a task, for a moment they ASKED for. A task saved with a due_at already has one, so this is for a different time or a repeat — it cancels the automatic one, never two. Several per task allowed. remind_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their own local time (USER.md); never bare digits with a Z.',
+  // `nudge` is paid for by the trim in the same sentence — the surface had 35
+  // chars of headroom (tests/tool-schema-budget.test.js) and a parameter costs
+  // more than that. What went: "Several per task allowed", which the sibling-
+  // ladder rule governs anyway, and four words of padding. That a reminder is
+  // said ONCE rides the RESULT (tools/tasks.js, hints.reminders), where it
+  // costs tokens only on the turns that arm one.
+  tool('set_task_reminder', 'Attach a reminder to a task, for a moment they ASKED for. A task with a due_at already has one; this is a different time or a repeat, and it cancels the automatic one, never two. remind_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), their local time (USER.md); never bare digits with a Z.',
     { task_id: S('number', 'Task id'), remind_at: S('string', 'ISO-8601 datetime WITH UTC offset'),
+      nudge: S('boolean', 'Chase until done, if they ask'),
       repeat_rule: S('string', 'Optional repeat: "daily"; "weekly"; "weekly:MO,TH" (SU MO TU WE TH FR SA); "monthly:16"; "monthly:last" (the last day, whatever it is; a day past a short month lands on its last day). Anything else is stored as a ONE-OFF, so use these exact forms.') }, ['task_id', 'remind_at'],
     (client, user, a) => (reminders.momentIsPast(a.remind_at)
       ? pastMoment('remind_at', a.remind_at, user.timezone, 'no reminder was set and none was cancelled')
-      : reminders.setReminder(client, user.id, a.task_id, a.remind_at, a.repeat_rule))),
+      : reminders.setReminder(client, user.id, a.task_id, a.remind_at, a.repeat_rule,
+        { nudge: a.nudge === true }))),
   tool('cancel_reminder', 'Cancel a pending reminder. If the result carries taskStillOpen, follow its hint — "cancel the reminder" and "cancel the thing" are the same sentence to most people.',
     { reminder_id: S('number', 'Reminder id') }, ['reminder_id'],
     async (client, user, a) => {

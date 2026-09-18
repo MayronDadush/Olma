@@ -20,14 +20,20 @@ const PLUS_3H = '2026-08-17T19:05:00Z';    // rung 2 window
 const NEXT_DAY = '2026-08-18T16:05:00Z';   // rung 3 window
 const DAY_AFTER = '2026-08-19T16:05:00Z';
 
-async function setup(phone, { repeatRule = null, timezone = 'UTC' } = {}) {
+// The ladder itself is opt-in since 2026-09-17 (reminders.RUNGS): an hour the
+// person NAMED is said once. So every test below that exercises the CLIMB asks
+// for the nudging they would have asked for out loud — the mechanics are
+// unchanged, what changed is who gets them. The default is pinned in its own
+// tests at the bottom of this file.
+async function setup(phone, { repeatRule = null, timezone = 'UTC', nudge = true, dueAt = null } = {}) {
   const { pool, teardown } = await freshDb();
   const user = await makeUser(pool, phone, { timezone });
   const taskId = await withTx(pool, async (c) => {
-    const t = await tasks.addTask(c, user.id, { title: 'לקחת תרופה' });
+    const t = await tasks.addTask(c, user.id, { title: 'לקחת תרופה', ...(dueAt ? { dueAt } : {}) });
     await reminders.setReminder(c, user.id, t.data.task.id, AT, repeatRule);
     return t.data.task.id;
   });
+  if (nudge) await pool.query(`UPDATE task_reminders SET nudge = true`);
   return { pool, teardown, user, taskId };
 }
 
@@ -247,6 +253,7 @@ test('the last rung is next-day-same-hour in the user\'s own timezone', async (t
     const tk = await tasks.addTask(c, user.id, { title: 'שעון חורף' });
     await reminders.setReminder(c, user.id, tk.data.task.id, '2026-10-24T05:00:00Z', null);
   });
+  await pool.query(`UPDATE task_reminders SET nudge = true`);
   const r = await reminderRow(pool);
 
   await withTx(pool, (c) => sweeps.sweepReminders(c, '2026-10-24T05:01:00Z'));
@@ -408,6 +415,9 @@ async function twoReminders(phone, secondAt) {
     const b = await reminders.setReminder(c, user.id, t.data.task.id, secondAt);
     return { taskId: t.data.task.id, a: Number(a.data.reminder.id), b: Number(b.data.reminder.id) };
   });
+  // Both are hours SHE named, so neither would climb by default (RUNGS) — and
+  // what this section is about is what happens when they DO climb.
+  await pool.query(`UPDATE task_reminders SET nudge = true`);
   return { pool, teardown, user, ...ids };
 }
 async function row(pool, id) {
@@ -490,4 +500,100 @@ test('two reminders at the SAME moment: one message, one ladder', async (t) => {
   await withTx(pool, (c) => sweeps.sweepReminders(c, PLUS_3H));
   const keys = (await outboxKeys(pool)).map((k) => k.idempotency_key);
   assert.deepEqual(keys, [`reminder:${a}`, `reminder:${b}`, `reminder:${b}:2`]);
+});
+
+// ---- who gets a ladder at all ----------------------------------------------
+// 2026-09-17. מאיה asked, at 22:59, for one reminder at 09:00 with her packing
+// list for the hospital. She got 08:00, 09:00, 11:01, 12:01 and — the morning
+// after the hospital — 09:01 twice more. Half of that was a duplicate task; the
+// other half was this: an hour SHE named, chased for two days.
+//
+// Measured over 45 days on the box before changing it (reminders.js, rule 5):
+// a follow-up ends in "done" 22% of the time and in the person cancelling the
+// reminder 35% of the time, and the next-day rung converts for one user in
+// sixteen. So the ladder is kept and stops being the default.
+test('an hour they NAMED is said once, and nothing follows it', async (t) => {
+  const { pool, teardown } = await setup('+972505500031', { nudge: false });
+  t.after(teardown);
+  const r = await reminderRow(pool);
+
+  assert.deepEqual(await withTx(pool, (c) => sweeps.sweepReminders(c, TICK1)), [r.id]);
+  const after = await reminderRow(pool);
+  assert.equal(Number(after.attempts), 1);
+  assert.ok(after.sent_at, 'one rung is the whole ladder, so the row retires at once');
+
+  await deliver(pool, r.id, 1, AT);
+  await withTx(pool, (c) => sweeps.sweepReminders(c, PLUS_3H));
+  await withTx(pool, (c) => sweeps.sweepReminders(c, NEXT_DAY));
+  assert.equal((await outboxKeys(pool)).length, 1, 'no 11:01, no 12:01, no tomorrow');
+
+  const { rows: [row1] } = await pool.query(
+    'SELECT payload FROM outbox WHERE idempotency_key = $1', [`reminder:${r.id}`]);
+  assert.equal(row1.payload.finalAttempt, undefined,
+    'and rung 1 never announces itself as the last of anything');
+});
+
+// The other side of that split: nobody promised them 08:00, so trying twice is
+// Olma doing the job she inferred rather than nagging about a time they chose.
+test('an hour OLMA inferred gets one follow-up, the same day and no further', async (t) => {
+  const { pool, teardown, user, taskId } = await setup('+972505500032', { nudge: false });
+  t.after(teardown);
+  await pool.query(`UPDATE task_reminders SET auto = true`);
+  const r = await reminderRow(pool);
+  assert.equal(user.id > 0 && taskId > 0, true);
+
+  await withTx(pool, (c) => sweeps.sweepReminders(c, TICK1));
+  await deliver(pool, r.id, 1, AT);
+  await withTx(pool, (c) => sweeps.sweepReminders(c, PLUS_3H));
+  const keys = await outboxKeys(pool);
+  assert.equal(keys.length, 2, 'the follow-up that earns its place still goes');
+  assert.equal(keys[1].idempotency_key, `reminder:${r.id}:2`);
+  const { rows: [row2] } = await pool.query(
+    'SELECT payload FROM outbox WHERE idempotency_key = $1', [`reminder:${r.id}:2`]);
+  assert.equal(row2.payload.finalAttempt, true, 'and it says so, because it is the last');
+  assert.ok((await reminderRow(pool)).sent_at, 'two rungs, then the row retires');
+
+  await deliver(pool, r.id, 2, PLUS_3H);
+  await withTx(pool, (c) => sweeps.sweepReminders(c, NEXT_DAY));
+  assert.equal((await outboxKeys(pool)).length, 2, 'never the morning after');
+});
+
+// "תזכיר לי עד שאעשה את זה" — and then the full three rungs, exactly as before.
+test('somebody who asks to be nudged gets the whole ladder back', async (t) => {
+  const { pool, teardown, user } = await setup('+972505500033', { nudge: false });
+  t.after(teardown);
+  // The standing preference, the other half of the same switch.
+  await pool.query(`UPDATE users SET reminder_nudge = true WHERE id = $1`, [user.id]);
+  const r = await reminderRow(pool);
+
+  await withTx(pool, (c) => sweeps.sweepReminders(c, TICK1));
+  await deliver(pool, r.id, 1, AT);
+  await withTx(pool, (c) => sweeps.sweepReminders(c, PLUS_3H));
+  await deliver(pool, r.id, 2, PLUS_3H);
+  await withTx(pool, (c) => sweeps.sweepReminders(c, NEXT_DAY));
+  assert.equal((await outboxKeys(pool)).length, 3, 'three, because they asked for three');
+});
+
+// The bag was for the hospital on Wednesday morning. "הספקת לארוז?" on Thursday
+// is a message about nothing, and the task is in the digest either way.
+test('no follow-up once the day the THING is on has ended', async (t) => {
+  const { pool, teardown } = await setup('+972505500034', {
+    timezone: 'Asia/Jerusalem',
+    // Rung 1 at 16:00Z = 19:00 local on the 17th; the task itself is due that
+    // same evening, so by the next morning there is nothing left to chase.
+    dueAt: '2026-08-17T17:00:00Z',
+  });
+  t.after(teardown);
+  const r = await reminderRow(pool);
+
+  await withTx(pool, (c) => sweeps.sweepReminders(c, TICK1));
+  await deliver(pool, r.id, 1, AT);
+  // Same local day: the follow-up is still about something ahead of them.
+  await withTx(pool, (c) => sweeps.sweepReminders(c, PLUS_3H));
+  assert.equal((await outboxKeys(pool)).length, 2, 'while the day is still on, chasing means something');
+  await deliver(pool, r.id, 2, PLUS_3H);
+
+  await withTx(pool, (c) => sweeps.sweepReminders(c, NEXT_DAY));
+  assert.equal((await outboxKeys(pool)).length, 2,
+    'the morning after the hospital, a nudge about packing the bag is noise');
 });

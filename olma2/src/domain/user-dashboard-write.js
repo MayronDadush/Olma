@@ -633,6 +633,14 @@ const ACTIONS = {
     return digest.setPreferences(client, userId, p.times, p.scope);
   },
 
+  // Chasing is off by default since 2026-09-17; this is where somebody turns it
+  // on for everything (domain/reminders.RUNGS). Turning it off does not reach
+  // into a ladder already walking — "stop the one I am hearing from now" is a
+  // sentence, and it has its own path.
+  async setReminderNudge(client, userId, p) {
+    return users.setReminderNudge(client, userId, p.on === true);
+  },
+
   // Turning it off leaves what is already on the calendar exactly where it is.
   // The chat tool asks whether to remove those too; this page states that it
   // does not, rather than deleting a fortnight of entries on one tap.

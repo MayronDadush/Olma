@@ -29,7 +29,12 @@ async function sweepReminders(client, nowIso) {
     // A repeating reminder never climbs — its own rule already brings it back,
     // so it retires on the first send exactly as before.
     const repeats = Boolean(reminders.normalizeRepeatRule(r.repeat_rule));
-    const finalAttempt = repeats || attempt >= maxAttempts;
+    // How many rungs THIS reminder gets is a property of the reminder now
+    // (reminders.RUNGS, rule 5) and the query already applied it — so it comes
+    // back on the row rather than being re-derived here, where a second copy
+    // would drift and say "זו התזכורת האחרונה" a rung early or late.
+    const rungCap = Number(r.rung_cap) || maxAttempts;
+    const finalAttempt = repeats || attempt >= rungCap;
     // The previous rung never left our side (dueForSending: expired after failed
     // delivery attempts). This rung REPLACES it rather than following it up:
     // the plain reminder text, since nothing was delivered to follow up on,

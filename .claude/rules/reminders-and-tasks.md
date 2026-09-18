@@ -54,6 +54,43 @@ title means this file. Grep the title, not the filename.
   reminder row while a rung the gate is holding for the night stays
   deliverable, which makes "ביטלתי" a lie for hours.
 
+- **A ladder is something they ASK for, and the question is who chose the
+  HOUR.** Measured on the box across 45 days before it changed
+  (`incidents.md`, "התיק לבית חולים"): a follow-up rung ends in "done" 22% of
+  the time and in the person CANCELLING the reminder 35% of the time, and the
+  next-day rung converted for one user in sixteen. So `reminders.RUNGS` is
+  `{explicit: 1, auto: 2, nudging: 3}` — an hour they NAMED is said once, an
+  hour Olma INFERRED from a due date gets one follow-up the same day (nobody
+  was promised 08:00), and the full three rungs belong to whoever asks for
+  them: `users.reminder_nudge` (the switch on their own page) or
+  `task_reminders.nudge` (`set_task_reminder(nudge:true)`, migration 072).
+  **The cap is computed in `dueForSending` and returned on the row as
+  `rung_cap`** — the sweep says "זו התזכורת האחרונה" off the same number the
+  WHERE clause stopped on, because a cap the caller re-derives is the second
+  copy that drifts. `reminder_escalation_max` still bounds all three from
+  above. **And never a rung once the local day of `due_at` has ended**:
+  "הספקת לארוז?" the morning after the hospital is a message about nothing,
+  and an overdue task is in the digest either way.
+
+- **"להפסיק להזכיר" is a WRITE, not a question.** מאיה asked twice over — once
+  for one reminder at 09:00, and once for it to stop — and got six messages and
+  a multiple-choice question ("מה להפסיק? 1. … 2. … 3. …") with nothing
+  cancelled. Two ladders were chasing her, which is why the model asked; the
+  asymmetry it could not see is that stopping one reminder too many costs a
+  sentence to set again, while asking costs the thing they asked for. The
+  gateway hook classifies the message (`stopRemindersOnly`, the verdict
+  travels and the words do not, exactly like `thanksOnly`), brokerd calls
+  `reminders.stopRecentLadders` before the model reads the turn, and the mark
+  becomes 👍 instead of the 👀 that promises a reply. **What it touches is
+  what has REACHED them** — a one-off ladder with a delivered rung inside 24h,
+  retired with `sent_at` because they answered it, plus the rung already queued,
+  withdrawn as `hold_reason = 'stopped'`. Never a reminder that has not fired
+  (they have never heard it, and it is an hour they may still be promised),
+  never a repeating one, never the task. **A stop carrying a NEW time is a
+  reschedule and stays the model's** — "תפסיק עם התזכורות … הבאה רק ביום שני"
+  must keep taking the ordinary path. `\b` is dead against Hebrew, so די is
+  anchored on spaces.
+
 - **Moving a task's date answers every rung that was chasing the old one.**
   `snoozeTask` → `reminders.retireForMovedTask`: a one-off reminder already
   climbing (`attempts >= 1`) is RETIRED (`sent_at`, never cancelled — they
