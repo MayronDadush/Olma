@@ -212,3 +212,15 @@ title means this file. Grep the title, not the filename.
   added): the half that was right — a calendar ask is one thing, not a task and
   a reminder as well — moved to `create_calendar_event`'s own description,
   where the model reads it at the moment it would make that mistake.
+  **Every statement of this rule used to teach it with the IMPERATIVE example,
+  and the noun form went through all three** — the doctrine, `add_task`'s
+  description, and `reminder-promise.js`'s `ASK_RE`. "תוסיף תזכורת ליום שלישי
+  ב-9 וחצי" filed 9:30 as `due_at`, armed the hour-before at 08:30, and then
+  SPOKE, because `taskHints.reminders` reads an hour Olma chose as news
+  (2026-09-17; `incidents.md`, "The same rule, in the noun form nobody had
+  written down"). The first two now name both forms and the eval
+  `named-reminder-hour` holds the armed hour. `ASK_RE` still wants a digit
+  straight after the ל, so `promise_watch` cannot see this phrasing at all —
+  **open, and to be widened only against real messages off the box**, because
+  a pattern that fires on ordinary input is worse than none
+  (`rules/detectors.md`).

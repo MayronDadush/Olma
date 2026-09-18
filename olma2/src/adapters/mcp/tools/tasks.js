@@ -199,7 +199,7 @@ module.exports = [
       const status = a.status || 'open';
       return listHints(client, user, await tasks.listTasks(client, user.id, { status }), status);
     }),
-  tool('add_task', 'Add one todo (a job until done) or event (a moment they will be AT; closes when it passes) — say which in kind. due_at is when the THING is, and arms a reminder automatically an hour before (08:00 for a whole-day one). remind_at is for "תזכיר לי ב-19:00": that hour IS the reminder and replaces the automatic one. A dictated shopping run is filed as a list. Follow any hints on the reply. Times MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their own local time (USER.md); never bare digits with a Z.',
+  tool('add_task', 'Add one todo (a job until done) or event (a moment they will be AT; closes when it passes) — say which in kind. due_at is when the THING is, and arms a reminder an hour before (08:00 for a whole-day one). remind_at is any hour they name FOR THE REMINDER ("תזכיר לי ב-19:00", "תזכורת ל-19:00"), never due_at. A dictated shopping run is filed as a list. Follow any hints on the reply. Times MUST carry a UTC offset (2026-08-20T09:00:00+03:00), from their own local time (USER.md); never bare digits with a Z.',
     { title: S('string', 'What it is — never the hours or the place, those have fields'),
       kind: S('string', 'event | todo ("פגישה מחר ב-10" = event, "לקבוע פגישה" = todo); omitted = guessed from the title'),
       location: S('string', 'Where an event is — never in the title'),

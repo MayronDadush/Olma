@@ -149,6 +149,7 @@ never trust a dated narrative for something you are about to act on.
 - [Availability is tapped on a page, not typed (2026-08-28)](#availability-is-tapped-on-a-page-not-typed-2026-08-28)
 
 - [Yahav's first evening: the hour she promised and the message that got nothing (2026-09-05)](#yahavs-first-evening-the-hour-she-promised-and-the-message-that-got-nothing-2026-09-05)
+- [The same rule, in the noun form nobody had written down (fixed 2026-09-18)](#the-same-rule-in-the-noun-form-nobody-had-written-down-fixed-2026-09-18)
 
 **Features as they shipped**
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
@@ -5526,6 +5527,65 @@ immediately before the merge, not once at the start.
   the host. New outbox kinds inherit the DELIVERY_PREAMBLE automatically via
   `instructionFor` — pinned by tests like every other proactive kind.
 
+
+### The same rule, in the noun form nobody had written down (fixed 2026-09-18)
+
+Miron, 2026-09-17, 22:36: "תוסיף תזכורת ליום שלישי ב 9 וחצי לשלוח לאורלי
+שהמשימה של גלם חן בוצעה ואלון באמבט קרח בוצע". He got a 👍 on the message and,
+under it, "שמרתי 👆 תזכורת ביום שלישי ב-08:30."
+
+He reported the sentence: the like was enough, and it should not also have
+written that it had done the job. The sentence was the visible half. The other
+half is in the sentence itself — he asked for **9:30** and the row was armed
+for **08:30**.
+
+That is not a garbled hour, it is `LEAD_MINUTES`. The 9:30 went into `due_at`
+— when the THING is — rather than `remind_at`, so `autoAttach` armed the
+automatic reminder its hour before. 09:30 − 60 = 08:30 exactly, and a
+day-shaped task would have produced 08:00, so there is no other path it could
+have taken.
+
+**And that is also why it spoke.** `taskHints.reminders` has two branches, and
+they differ on whether there is anything to SAY rather than on whether a
+reminder exists. An hour THEY named is not news — "this is not a reason to
+write", and `markPlaced` then carries the turn to `NO_REPLY`. An hour OLMA
+chose is news: "that hour is the one thing worth saying, in one short line",
+unconditionally. The system believed it had chosen 08:30, so it took the
+second branch, and an unconditional instruction beside a conditional
+`markPlaced` wins every time — the fault already recorded as "markPlaced is
+CONDITIONAL". The model was not overruling the mark. It was told to write, by
+a hint that was right about everything except which branch it was in.
+
+So the sentence was a symptom with a correct local cause, and the defect is one
+step upstream: the hour was never Olma's to choose.
+
+**What actually failed was an example, not a rule.** The rule was already
+written down three times, and all three teach it with the IMPERATIVE form:
+
+- the doctrine — "`set_task_reminder` is for a moment they asked for";
+- `add_task`'s description — `remind_at is for "תזכיר לי ב-19:00"`;
+- `reminder-promise.ASK_RE`, the detector — `תזכיר(י)?\s+ל[יינו]|תזכורת\s+ל?ב?-?\s*\d`.
+
+He wrote the NOUN form, "תוסיף תזכורת ל…", with the action after the hour. It
+went through all three. The detector's second alternative looks like it covers
+the noun form and does not: it wants a digit straight after the ל, and "תזכורת
+**ליום** שלישי" puts a word there — so `promise_watch`, the job whose whole
+purpose is to ask whether the moment they named is the moment that got armed,
+never judged this message at all. The one check that existed for exactly this
+was blind to the phrasing, which is why a person had to notice it in WhatsApp.
+
+Fixed by widening the example where the model reads it at the moment it picks
+the field (`add_task`'s description, paid for by dropping "automatically" from
+the sentence beside it) and in the doctrine bullet (paid for the same way — it
+had 38 chars of headroom). The behavioural eval `named-reminder-hour` asserts
+the armed hour is 09:30 and that nothing sits at 08:30, so the doctrine change
+is not a bet. **`ASK_RE` is deliberately NOT widened here**: a detector pattern
+has to be measured against real titles before it ships (`rules/detectors.md`),
+and that measurement needs the box.
+
+Two shapes this is a fresh instance of, both already in `CLAUDE.md`: a rule
+whose statement covers the case its EXAMPLE does not, and a detector that could
+not fail for the input it was written for.
 
 ### Yahav's first evening: the hour she promised and the message that got nothing (2026-09-05)
 
