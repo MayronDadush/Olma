@@ -99,6 +99,15 @@ async function main() {
   const handle = app.listeners('request')[0];
   const server = http.createServer((req, res) => {
     if (req.headers.origin === 'http://' + req.headers.host) req.headers.origin = 'https://' + req.headers.host;
+    // OLMA_DEMO_FAIL_DATA=1 breaks /me/data on purpose. The page's boot veil is
+    // the one screen that cannot be reached by using the app correctly, and a
+    // state nobody can see is a state nobody maintains — this is how it gets
+    // looked at. Nothing else is touched, so the rest of the page still serves.
+    if (process.env.OLMA_DEMO_FAIL_DATA === '1' && req.url === '/me/data') {
+      res.writeHead(500, { 'content-type': 'application/json' });
+      res.end('{"ok":false,"error":{"code":"demo","message":"failing on purpose"}}');
+      return;
+    }
     // Every write, and how it was answered — the page is fire-and-forget, so
     // this line is the only place a refused drop is visible from outside a
     // browser's devtools. Reading req's OWN body here (to log the payload) is

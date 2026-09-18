@@ -28,8 +28,15 @@
   --sep:#E7E5F0;
   --sep-2:#D9D6E6;
   --text:#141322;
-  --text-2:#6C6982;
-  --text-3:#A29FB5;
+  /* The tertiary grey measured 2.3:1 on either ground — quiet past the point
+     of being text at all — and it carries every section label, every form
+     label, the times down the side of each row and every empty state. 4.6:1
+     is the least that passes AA at these sizes, so it moved; and --text-2
+     moved with it, because a secondary tone that is no darker than the
+     tertiary one is not a hierarchy, it is two greys. Measured against
+     --bg-tint, the darkest ground either of them ever sits on. */
+  --text-2:#5C5973;
+  --text-3:#6A6684;
   /* Hue 241 is the blurple every product ships with — Discord's, Stripe's,
      half of Material's. It was the one thing on this page that could have
      been anybody's. Moved to 256: further into violet, deeper, with more
@@ -40,11 +47,15 @@
   --accent-2:#4A22B4;
   --accent-soft:#EEE8FC;
   --prog:rgba(91,47,214,.26);
-  --danger:#DC3A31;
+  /* The three semantic colours are TEXT as often as they are fill — "overdue",
+     "saved", "remove the connection" — and as text they measured 3.2-4.1.
+     Darkened until they pass, which also takes white-on-fill from 3.5-4.5 up
+     over 5 in the same move. */
+  --danger:#C92B22;
   --danger-soft:#FCEBE9;
-  --warn:#B57509;
+  --warn:#925E07;
   --warn-soft:#F8EFDC;
-  --ok:#1B9B6B;
+  --ok:#157853;
   --ok-soft:#E4F4EE;
   --drop-line:#2B6EF2;
   /* The meeting ring's own three colours. A "no" needs a red that is NOT the
@@ -65,6 +76,15 @@
   --mk-paper-s:#DDD9EC;
   --knob:#FFFFFF;
   --seg-on:#FFFFFF;
+  /* The ink that sits ON a filled control — accent, ok, warn, danger. White
+     is right on the light theme's deep violet (7.4:1) and wrong on the dark
+     theme's pale one, where the same pairing measures 2.7:1: a button label
+     nobody with ordinary eyes can read at 13px. Every fill on this page reads
+     its text colour from here, so the two themes can disagree about it.
+     --on-accent-soft is the same idea for a small badge sitting INSIDE such a
+     control, which used to be a white wash and now follows the ink. */
+  --on-accent:#FFFFFF;
+  --on-accent-soft:rgba(255,255,255,.25);
   --glass:rgba(255,255,255,.74);
   --glass-line:rgba(20,19,34,.08);
   /* Liquid glass, used sparingly: a lens only reads as a lens on something
@@ -116,7 +136,7 @@
     --sep-2:#3A3749;
     --text:#F4F3FA;
     --text-2:#9D9AB2;
-    --text-3:#6E6B83;
+    --text-3:#8D8BA0;
     --accent:#A38CFF;
     --accent-2:#BBA9FF;
     --accent-soft:#291D4C;
@@ -137,6 +157,9 @@
     --mk-paper-s:#2A2840;
     --knob:#FFFFFF;
     --seg-on:#383345;
+    /* 6.7:1 on the accent, 7-10:1 on ok/warn/danger — see the light block. */
+    --on-accent:#17112E;
+    --on-accent-soft:rgba(0,0,0,.2);
     --glass:rgba(24,23,32,.72);
     --glass-line:rgba(255,255,255,.09);
     --glass-panel:rgba(30,28,41,.84);
@@ -161,7 +184,7 @@
   --sep-2:#3A3749;
   --text:#F4F3FA;
   --text-2:#9D9AB2;
-  --text-3:#6E6B83;
+  --text-3:#8D8BA0;
   --accent:#A38CFF;
   --accent-2:#BBA9FF;
   --accent-soft:#291D4C;
@@ -182,6 +205,8 @@
   --mk-paper-s:#2A2840;
   --knob:#FFFFFF;
   --seg-on:#383345;
+  --on-accent:#17112E;
+  --on-accent-soft:rgba(0,0,0,.2);
   --glass:rgba(24,23,32,.72);
   --glass-line:rgba(255,255,255,.09);
   --glass-panel:rgba(30,28,41,.84);
@@ -315,7 +340,11 @@ html[data-v="me"] .brand{opacity:0;transform:translateY(-8px) scale(.94);pointer
 .themeicons button:active{transform:scale(.88)}
 .live{
   display:inline-flex;align-items:center;gap:7px;flex:none;
-  padding:6px 12px 6px 10px;border-radius:999px;
+  /* Logical, not physical. These were written as `6px 12px 6px 10px` — right
+     and left — in a page whose primary language reads right to left, so the
+     tighter side sat against the dot in English and against the words in
+     Hebrew. The icon is what wants the tighter side, in both. */
+  padding-block:6px;padding-inline-start:10px;padding-inline-end:12px;border-radius:999px;
   background:var(--surface);box-shadow:var(--shadow-s);
   font-size:12.5px;font-weight:600;color:var(--text-2);white-space:nowrap;
 }
@@ -418,6 +447,8 @@ button.row:active{background:var(--bg-tint)}
 .row-title{font-size:16.5px;font-weight:500;letter-spacing:-.005em}
 .row-sub{font-size:13px;color:var(--text-2);margin-top:1px}
 .row-sub.on{color:var(--ok)}
+/* connected, but the grant is gone — not green, not an error either */
+.row-sub.warn{color:var(--warn)}
 .chev{width:9px;height:15px;flex:none;color:var(--text-3);transition:transform .32s var(--spring)}
 [dir="ltr"] .chev{transform:scaleX(-1)}
 .row[aria-expanded="true"] .chev{transform:rotate(-90deg)}
@@ -444,7 +475,7 @@ button.row:active{background:var(--bg-tint)}
 .tile.files{background:linear-gradient(160deg,#5AD08A,#1FA35F)}
 .citylist{max-height:46vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .citylist .row-end{font-variant-numeric:tabular-nums;color:var(--text-3);font-size:13px;margin-inline-start:auto}
-.tile.call{background:var(--accent);color:#fff}
+.tile.call{background:var(--accent);color:var(--on-accent)}
 .tile.ghost{background:var(--bg-tint);color:var(--text-2);box-shadow:none}
 
 /* ─────────────────────────  switch  ───────────────────────── */
@@ -482,7 +513,7 @@ button.row:active{background:var(--bg-tint)}
 
 .connect{
   flex:none;padding:7px 16px;border-radius:999px;
-  font-size:13.5px;font-weight:600;background:var(--accent);color:#fff;
+  font-size:13.5px;font-weight:600;background:var(--accent);color:var(--on-accent);
   transition:transform .38s var(--squash),background .34s var(--ease-io),color .34s var(--ease-io);
 }
 .connect:active{transform:scale(.93)}
@@ -505,7 +536,7 @@ button.row:active{background:var(--bg-tint)}
    hands over to the opened account. */
 .connect.ok{
   width:34px;height:34px;padding:0;min-width:0;display:grid;place-items:center;
-  background:var(--ok);color:#fff;animation:okPop .26s var(--spring);
+  background:var(--ok);color:var(--on-accent);animation:okPop .26s var(--spring);
   transition:width .17s var(--spring),padding .17s var(--spring),
              background .17s var(--ease),opacity .15s var(--ease),transform .15s var(--spring);
 }
@@ -570,7 +601,7 @@ button.row:active{background:var(--bg-tint)}
   background:var(--bg-tint);color:var(--text-2);
   transition:background .2s var(--ease),color .2s var(--ease),transform .2s var(--spring);
 }
-.chip[aria-pressed="true"]{background:var(--accent);color:#fff}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
 .chip:active{transform:scale(.95)}
 .chip.mini{font-size:12.5px;padding:5px 11px}
 
@@ -618,11 +649,13 @@ button.row:active{background:var(--bg-tint)}
   transition:background var(--sw-t) var(--ease-io),color var(--sw-t) var(--ease-io),
              transform var(--sw-t) var(--ease-io),opacity var(--sw-t) var(--ease-io);
   width:19px;height:19px;border-radius:6px;display:grid;place-items:center;flex:none;
-  background:var(--accent);color:#fff;
+  background:var(--accent);color:var(--on-accent);
 }
 .glyphs span svg{width:11.5px;height:11.5px}
 .glyphs span.off{background:var(--bg-tint);color:var(--text-3);transform:scale(.84);opacity:.55}
 @keyframes glyphIn{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:none}}
+/* one glyph replacing another, rather than a list of them arriving */
+#pauseIcon.morph{animation:glyphIn .22s var(--spring)}
 .glyphs.fresh span{animation:glyphIn .21s var(--spring) backwards;animation-delay:calc(var(--i,0) * 27.5ms)}
 
 /* the friend list only earns a search field once scanning it stops being
@@ -633,7 +666,11 @@ button.row:active{background:var(--bg-tint)}
 }
 .searchwrap .sicon{width:16px;height:16px;flex:none;color:var(--text-3)}
 .searchwrap input{
-  flex:1;min-width:0;border:0;background:none;font:inherit;font-size:15.5px;
+  /* 16px exactly, and not a fraction under: Safari on iOS zooms the whole
+     page in when a field smaller than that takes focus, and it does not zoom
+     back out. Searching for a friend left the layout magnified and the tab
+     bar off the bottom of the screen. */
+  flex:1;min-width:0;border:0;background:none;font:inherit;font-size:16px;
   color:var(--text);padding:11px 0;outline:none;
 }
 .searchwrap input::placeholder{color:var(--text-3)}
@@ -684,7 +721,7 @@ html[data-served] .groupsblock.live{display:block}
   box-shadow:var(--shadow-m);font-size:10.5px;font-weight:700;letter-spacing:.06em;
 }
 .langtog span{padding:4px 8px;border-radius:999px;color:var(--text-3);transition:background .22s var(--ease),color .22s var(--ease)}
-.langtog span.on{background:var(--accent);color:#fff}
+.langtog span.on{background:var(--accent);color:var(--on-accent)}
 .introtog{
   position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);inset-inline-start:64px;z-index:40;
   width:26px;height:26px;border-radius:999px;background:var(--surface);
@@ -799,7 +836,7 @@ html.is-new .themetog{z-index:80}
 }
 .pausebtn svg{width:15px;height:15px;flex:none}
 .pausebtn:active{transform:scale(.955)}
-.pausebtn[aria-pressed="true"]{background:var(--warn);color:#fff;box-shadow:var(--shadow-m)}
+.pausebtn[aria-pressed="true"]{background:var(--warn);color:var(--on-accent);box-shadow:var(--shadow-m)}
 .pausewrap .note{max-width:40ch;margin-top:12px}
 
 /* while paused the whole app says so, not just the button that did it */
@@ -811,6 +848,25 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .linkbtn{color:var(--accent);font-weight:600;font-size:14.5px}
 .linkbtn.danger{color:var(--danger)}
 
+/* ── small controls, full-sized targets ──
+   Nine controls on this page are drawn between 19 and 31 pixels across, which
+   is right: a 44px trash beside a 15px line of text is not a design. What a
+   finger needs is not the same as what the eye needs, so the target grows and
+   the drawing does not — an ::after with a negative inset, which costs a
+   pixel of nothing and is what every one of these was missing.
+
+   Where such controls sit in a ROW of their own kind, the inline growth is
+   small and the block growth does the work: two overlapping targets hand the
+   tap to whichever is later in the source, which is worse than a small one. */
+.tick,.tpin,.tjump,.tundo,.vclear,.sclear,.lrm,.evdrop,.calnav,.fq .fqskip,.permact{position:relative}
+.tick::after,.vclear::after,.sclear::after,.lrm::after,.evdrop::after,.fq .fqskip::after{
+  content:"";position:absolute;inset:-9px;border-radius:inherit;
+}
+/* these three live beside each other at the end of a task row */
+.tpin::after,.tjump::after,.tundo::after,.calnav::after,.permact::after{
+  content:"";position:absolute;inset-block:-9px;inset-inline:-4px;border-radius:inherit;
+}
+
 /* ─────────────────────────  tasks  ───────────────────────── */
 .taskwrap{display:grid;grid-template-rows:1fr;transition:grid-template-rows .44s var(--ease),opacity .3s ease}
 .taskwrap > .taskin{overflow:hidden;min-height:0}
@@ -818,6 +874,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
    animate, and a second tap inside that window would land on whichever row
    slid up into its place — putting back a task nobody asked for */
 .taskwrap.gone{grid-template-rows:0fr;opacity:0;pointer-events:none}
+/* …and the same idea for every OTHER list on the page, where the row is not a
+   `.taskwrap` and has no wrapper to collapse: see foldAway(). */
+.folding{transition:max-height .24s var(--ease-io),opacity .18s ease,
+                    margin .24s var(--ease-io),padding .24s var(--ease-io)}
 .task{display:flex;align-items:center;gap:12px;padding:13px 14px;position:relative}
 .taskwrap + .taskwrap .task::before{
   content:"";position:absolute;top:0;height:1px;background:var(--sep);
@@ -826,7 +886,7 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
 .tick{
   width:25px;height:25px;border-radius:50%;flex:none;
   box-shadow:inset 0 0 0 1.8px var(--sep-2);
-  display:grid;place-items:center;color:#fff;
+  display:grid;place-items:center;color:var(--on-accent);
   transition:box-shadow .28s var(--spring),background .28s var(--spring),transform .28s var(--spring);
 }
 .tick svg{width:14px;height:14px;opacity:0;transform:scale(.4);transition:opacity .2s ease,transform .34s var(--spring)}
@@ -947,6 +1007,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 [dir="rtl"] .tcount{background:linear-gradient(to left,var(--prog) var(--p,0%),transparent var(--p,0%))}
 .tcount.full{background:var(--prog)}
+/* the last item closing the list — the same beat the chips take */
+.tcount.pop{animation:chipPop .26s var(--squash)}
 
 /* the checklist inside the editor. It scrolls on its own so a long list can
    never make the sheet itself scroll — the one rule this editor has. Five
@@ -959,7 +1021,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .lbox{
   width:21px;height:21px;flex:none;border-radius:7px;display:grid;place-items:center;
-  box-shadow:inset 0 0 0 1.7px var(--sep-2);color:#fff;
+  box-shadow:inset 0 0 0 1.7px var(--sep-2);color:var(--on-accent);
   transition:background var(--sw-t) var(--ease-io),box-shadow var(--sw-t) var(--ease-io),
              transform .38s var(--squash);
 }
@@ -985,6 +1047,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   color:var(--text-3);opacity:0;transition:opacity .3s var(--ease-io),background .3s var(--ease-io);
 }
 .litem:hover .lrm,.litem:focus-within .lrm{opacity:1}
+/* On a phone there is no hover, so this button was drawn at opacity 0 and
+   never came back: removing an item off a list was possible on a laptop and
+   impossible on the device the page is designed for. Quiet, not invisible. */
+@media (hover:none){ .lrm{opacity:.55} }
 .lrm:active{background:var(--bg-tint)}
 .lrm svg{width:11px;height:11px}
 @keyframes itemIn{
@@ -1026,7 +1092,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .tundo svg{width:15px;height:15px}
 .tundo:active{background:var(--accent-soft);color:var(--accent);transform:scale(.88)}
 [dir="ltr"] .tundo svg{transform:scaleX(-1)}
-.arcnote{font-size:12.5px;color:var(--text-3);padding:10px 4px 0;text-align:center}
+/* Not a note any more: it said "showing the last 8 of 23" and left the other
+   fifteen with no way to be reached from this page at all. The sentence that
+   names them is the thing you would press, so it is the button. */
+.arcnote{
+  font-size:12.5px;color:var(--text-2);font-weight:600;padding:11px 4px;width:100%;
+  text-align:center;font-family:inherit;background:none;border:0;cursor:pointer;
+  border-radius:10px;transition:background .2s var(--ease-io),color .2s var(--ease-io);
+}
+.arcnote:hover{color:var(--accent)}
+.arcnote:active{background:var(--bg-tint)}
 
 .tick.done-static{background:var(--sep-2);box-shadow:none;color:var(--surface)}
 .tick.done-static svg{opacity:1;transform:none}
@@ -1056,7 +1131,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .addrow:active{background:var(--bg-tint)}
 .addrow .plus{
-  width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;
+  width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--on-accent);
   display:grid;place-items:center;flex:none;
 }
 .addrow .plus svg{width:14px;height:14px}
@@ -1165,9 +1240,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .mtswipe{position:relative;overflow:hidden;border-bottom:1px solid var(--sep)}
 .mtswipe:last-child{border-bottom:0}
 .mtswipe .mtback{position:absolute;inset:0;background:var(--danger);display:flex;align-items:center;
-  justify-content:flex-start;padding-inline-start:20px;gap:9px;color:#fff;font-weight:700;font-size:13.5px;
+  justify-content:flex-start;padding-inline-start:20px;gap:9px;color:var(--on-accent);font-weight:700;font-size:13.5px;
   border:0;width:100%;font-family:inherit;cursor:pointer}
-.mtswipe .mtback svg{width:19px;height:19px;color:#fff}
+.mtswipe .mtback svg{width:19px;height:19px;color:var(--on-accent)}
 .mtswipe .mtfront{position:relative;background:var(--surface);
   transition:transform .22s cubic-bezier(.32,.72,0,1);touch-action:pan-y}
 .mtswipe.dragging .mtfront{transition:none}
@@ -1194,7 +1269,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .mtdel svg{width:16px;height:16px}
 .mtswipe:hover .mtdel,.mtdel:focus-visible{opacity:1}
 .mtdel:hover{background:var(--danger-soft);color:var(--danger)}
-.mtdel.arm{opacity:1;background:var(--danger);color:#fff}
+.mtdel.arm{opacity:1;background:var(--danger);color:var(--on-accent)}
 @media (hover:none){.mtdel{display:none}}
 
 /* The names, opened by a tap on the row itself. Nobody who has not answered is
@@ -1208,13 +1283,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
 .mtseg{display:flex;background:var(--sep);border-radius:9px;padding:2px;flex:none}
 .mtseg button{border:0;background:transparent;font:inherit;font-size:12px;font-weight:700;
-  color:var(--text-3);padding:6px 9px;border-radius:7px;cursor:pointer}
+  color:var(--text-3);padding:6px 9px;border-radius:7px;cursor:pointer;
+  transition:background var(--sw-t) var(--ease-io),color var(--sw-t) var(--ease-io),
+             box-shadow var(--sw-t) var(--ease-io),transform .18s var(--squash)}
+.mtseg button:active{transform:scale(.93)}
+/* Saying "I can" is the one press in a coordination that decides something,
+   and it was the only control on the page that answered with nothing at all. */
+.mtseg button.pop{animation:chipPop .24s var(--squash)}
 .mtseg button[aria-pressed="true"]{background:var(--seg-on);color:var(--accent);box-shadow:var(--shadow-s)}
 .mtseg button[data-a="n"][aria-pressed="true"]{color:var(--danger)}
 .mtcheck{border:1px solid var(--sep-2);background:transparent;border-radius:9px;padding:0;
   width:32px;height:32px;flex:none;display:grid;place-items:center;cursor:pointer;color:var(--accent)}
 .mtcheck svg{width:16px;height:16px}
-.mtcheck.arm{background:var(--accent);border-color:var(--accent);color:#fff}
+.mtcheck.arm{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 
 /* "Enough for me is 3 of 5" — the coordination's own minimum, set from here. */
 .minchip{display:inline-flex;align-items:center;gap:6px;background:var(--surface);
@@ -1239,15 +1320,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .mobtn svg{width:12px;height:12px}
 .mobtn:active{transform:scale(.95)}
-.mobtn.yes[aria-pressed="true"]{background:var(--accent);color:#fff}
-.mobtn.no[aria-pressed="true"]{background:var(--danger);color:#fff}
+.mobtn.yes[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
+.mobtn.no[aria-pressed="true"]{background:var(--danger);color:var(--on-accent)}
 /* Settling is the occasional act, not the one being asked for — pushed to the
    far end, unfilled, so it cannot be hit while answering. The ring is what
    keeps it reading as a control rather than a caption. */
 .mobtn.settle{margin-inline-start:auto;background:transparent;color:var(--accent);
   box-shadow:inset 0 0 0 1px var(--accent-soft)}
-.mobtn.ok{background:var(--accent);color:#fff}
-.mobtn.warn{background:var(--warn);color:#fff}
+.mobtn.ok{background:var(--accent);color:var(--on-accent)}
+.mobtn.warn{background:var(--warn);color:var(--on-accent)}
 /* Settling on something not everybody can make asks once, by name. The second
    button is worded differently from the first on purpose, so a fast double
    press cannot carry straight through it. */
@@ -1361,7 +1442,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .dgc:active{transform:scale(.9)}
 .dgc.past{opacity:.26;pointer-events:none;background:transparent}
-.dgc.on{background:var(--accent);color:#fff;font-weight:700}
+.dgc.on{background:var(--accent);color:var(--on-accent);font-weight:700}
 .dgc.now::after{
   content:"";position:absolute;bottom:4px;width:4px;height:4px;border-radius:50%;
   background:var(--accent);
@@ -1432,9 +1513,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   background:var(--accent-soft);color:var(--accent);font-size:10px;font-weight:700;
   font-variant-numeric:tabular-nums;
 }
-.pchip.grp[aria-pressed="true"] .gdot{background:rgba(255,255,255,.25);color:#fff}
+.pchip.grp[aria-pressed="true"] .gdot{background:var(--on-accent-soft);color:var(--on-accent)}
 .pchip.grp.part{box-shadow:inset 0 0 0 1.5px var(--accent);color:var(--accent)}
-.pchip.grp.part .gdot{background:var(--accent);color:#fff}
+.pchip.grp.part .gdot{background:var(--accent);color:var(--on-accent)}
 .picknone{padding:10px 4px;font-size:13.5px;color:var(--text-3)}
 
 /* ── imported tasks ──
@@ -1460,6 +1541,37 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .row.locked .chev{opacity:.4}
 
 .empty{padding:30px 18px;text-align:center;color:var(--text-3);font-size:14.5px}
+/* An empty list that only says it is empty leaves the person to find the way
+   out of it. The way out is always one control that already exists further up
+   the page, so the empty state borrows it rather than inventing a second one:
+   `emptyGo` presses the real button, which is also why there is nothing here
+   to keep in sync with it. */
+.emptybig{display:grid;justify-items:center;gap:12px;padding:34px 18px}
+.emptybig p{margin:0;max-width:34ch;line-height:1.5}
+.emptygo{
+  display:inline-flex;align-items:center;gap:7px;font-family:inherit;
+  padding:9px 16px;border-radius:999px;background:var(--accent);color:var(--on-accent);
+  font-size:13.5px;font-weight:600;box-shadow:var(--shadow-s);
+  transition:transform .22s var(--spring);
+}
+.emptygo svg{width:13px;height:13px;flex:none}
+.emptygo:active{transform:scale(.94)}
+/* The last task of the day closing the list. An empty list and a FINISHED one
+   are not the same fact, and until now they said the same sentence. The mark
+   is the one the connect button draws, at rest. */
+.alldone{display:grid;justify-items:center;gap:12px;padding:32px 18px}
+.alldone .okmark{
+  width:42px;height:42px;border-radius:999px;display:grid;place-items:center;
+  background:var(--ok);color:var(--on-accent);animation:okPop .3s var(--spring);
+}
+.alldone .okmark svg{
+  width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2.6;
+  stroke-linecap:round;stroke-linejoin:round;
+  stroke-dasharray:24;stroke-dashoffset:24;animation:okDraw .19s .06s var(--ease) forwards;
+}
+.alldone b{display:block;color:var(--text);font-size:16px;font-weight:700}
+.alldone span.sub{display:block;color:var(--text-3);font-size:13.5px;margin-top:3px}
+.alldone .txt{animation:stackSwap .26s .06s var(--ease-io) backwards}
 
 /* ── one row, three answers ──
    Date, clock and all-day sit as values on the "when" row. Each is its own
@@ -1476,18 +1588,21 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .vchip.set{color:var(--text)}
 .vchip:active{transform:scale(.94)}
 .vchip.toggle{box-shadow:inset 0 0 0 1.4px var(--sep-2);background:transparent;color:var(--text-3)}
-.vchip.toggle[aria-checked="true"]{background:var(--accent);color:#fff;box-shadow:none}
+.vchip.toggle[aria-checked="true"]{background:var(--accent);color:var(--on-accent);box-shadow:none}
 /* The task sheet's when-row only. `.vchip` is shared with the hours and
    digest rows, so everything below is scoped to the sheet's own classes and
    never restyles a bare `.vchip` (one CSS namespace — a reused name wins by
    source order). */
 .whenvals .vchip.quick{color:var(--accent);background:var(--accent-soft)}
+/* On somebody else's task the day is theirs to move. Dimmed to say so — a
+   disabled control that still looks lit is a button that lies. */
+.whenvals .vchip.quick[disabled]{opacity:.3;pointer-events:none}
 .whenvals .vchip.toggle{display:inline-flex;align-items:center;gap:6px;
   background:var(--bg-tint);box-shadow:none;color:var(--text-2)}
 .whenvals .vchip.toggle .tdot{width:12px;height:12px;border-radius:50%;flex:none;
   box-shadow:inset 0 0 0 1.5px currentColor;opacity:.55;
   transition:box-shadow .2s var(--ease-io),opacity .2s var(--ease-io)}
-.whenvals .vchip.toggle[aria-checked="true"]{background:var(--accent);color:#fff}
+.whenvals .vchip.toggle[aria-checked="true"]{background:var(--accent);color:var(--on-accent)}
 .whenvals .vchip.toggle[aria-checked="true"] .tdot{box-shadow:inset 0 0 0 3.5px #fff;opacity:1}
 .vseg{display:inline-flex;align-items:center;border-radius:999px;background:var(--bg-tint);
   font-size:14px;font-weight:600;white-space:nowrap}
@@ -1517,6 +1632,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .vclear:active{transform:scale(.88)}
 .vseg-b.locked{opacity:.42;cursor:default}
 @keyframes chipPop{0%{transform:scale(1)}38%{transform:scale(.93)}100%{transform:scale(1)}}
+/* The archive CATCHES a task that has just been ticked: the count it lands in
+   takes the same beat the chips do, so the row does not merely vanish — it
+   goes somewhere, and the somewhere says so. */
+#arcCount{display:inline-block}
+#arcCount.caught{animation:chipPop .3s var(--squash)}
 .vchip.pop{animation:chipPop .19s var(--ease-io)}
 .autotag{
   font-size:11px;font-weight:600;color:var(--accent);background:var(--accent-soft);
@@ -1538,7 +1658,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 [dir="rtl"] .pchip{padding:4px 4px 4px 12px}
 .pchip .face{width:24px;height:24px;box-shadow:none}
 .pchip:active{transform:scale(.95)}
-.pchip[aria-pressed="true"]{background:var(--accent);color:#fff}
+.pchip[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
 .pchip[aria-pressed="true"] .face{box-shadow:0 0 0 1.6px rgba(255,255,255,.6)}
 
 /* the category's colour, small enough to be a mark rather than a badge */
@@ -1556,8 +1676,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .viewrow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:-6px 4px 12px}
 .addmini{
   display:flex;align-items:center;gap:6px;flex:none;
-  padding:6px 12px 6px 8px;border-radius:999px;
-  background:var(--accent);color:#fff;font-weight:600;font-size:13px;
+  padding-block:6px;padding-inline-start:8px;padding-inline-end:12px;border-radius:999px;
+  background:var(--accent);color:var(--on-accent);font-weight:600;font-size:13px;
   box-shadow:var(--shadow-s);
   transition:transform .22s var(--spring),background .2s ease;
 }
@@ -1586,14 +1706,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .grname:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .chipcloud{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0 4px}
 .frchip{
-  display:flex;align-items:center;gap:6px;padding:4px 11px 4px 4px;
+  display:flex;align-items:center;gap:6px;
+  padding-block:4px;padding-inline-start:4px;padding-inline-end:11px;
   border-radius:999px;background:var(--bg-tint);color:var(--text-2);
   font-size:13.5px;font-weight:600;
   transition:background .22s var(--ease-io),color .22s var(--ease-io),transform .2s var(--spring);
 }
 .frchip .fav{width:22px;height:22px;border-radius:50%;overflow:hidden;flex:none}
 .frchip:active{transform:scale(.94)}
-.frchip[aria-pressed="true"]{background:var(--accent);color:#fff}
+.frchip[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
 /* Past four the list stops being something you take in at a glance, so it
    becomes something you scroll and search instead. */
 .grscroll{max-height:none;overflow:visible}
@@ -1606,6 +1727,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   100%{opacity:1;transform:none}
 }
 .stack.swap{animation:stackSwap .21s var(--ease-io)}
+/* The two calendar modes swap into each other the way the two task views
+   already do — the same rise, on whichever half has just been shown. */
+#calRead.swap,#calMeet.swap{animation:stackSwap .21s var(--ease-io)}
 
 /* archive – deliberately quiet */
 .archive{margin-top:34px;opacity:.72;transition:opacity .3s ease}
@@ -1655,14 +1779,23 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    dots that count what is IN the day — same shape, two meanings, and the
    reader has to be told which is which. A word never needs explaining. */
 .day .dn.isnow{color:var(--accent);font-weight:700;font-size:10.5px}
-.day.today[aria-selected="true"] .dd{color:#fff}
-.day[aria-selected="true"] .dn.isnow{color:#fff}
+.day.today[aria-selected="true"] .dd{color:var(--on-accent)}
+.day[aria-selected="true"] .dn.isnow{color:var(--on-accent)}
 .day .dots{display:flex;justify-content:center;gap:3px;margin-top:5px;height:4px}
 .day .dots i{width:4px;height:4px;border-radius:50%;background:var(--text-3);display:block}
-.day[aria-selected="true"]{background:var(--accent);color:#fff}
+.day[aria-selected="true"]{background:var(--accent);color:var(--on-accent)}
 .day[aria-selected="true"] .dn{color:rgba(255,255,255,.8)}
 .day[aria-selected="true"] .dots i{background:rgba(255,255,255,.85)}
 .day:not([aria-selected="true"]):active{background:var(--bg-tint);transform:scale(.94)}
+/* Paging a week is a move in a direction, and the strip says which: the new
+   week arrives from the side you paged towards. `--dirf` makes the same two
+   rules right in Hebrew and in English. */
+@keyframes wkNext{from{opacity:0;transform:translateX(calc(-26px * var(--dirf)))}to{opacity:1;transform:none}}
+@keyframes wkPrev{from{opacity:0;transform:translateX(calc(26px * var(--dirf)))}to{opacity:1;transform:none}}
+.daystrip.wknext{animation:wkNext .26s var(--ease)}
+.daystrip.wkprev{animation:wkPrev .26s var(--ease)}
+/* The day's list rises the way the task views already swap into each other. */
+#agenda.swap{animation:stackSwap .21s var(--ease-io)}
 
 .ev{display:flex;gap:12px;padding:12px 14px;position:relative;align-items:flex-start}
 .ev + .ev::before{content:"";position:absolute;top:0;height:1px;background:var(--sep);inset-inline-start:76px;inset-inline-end:0}
@@ -1933,7 +2066,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .defseg button svg{width:15px;height:15px;flex:none}
 .defseg button[aria-pressed="true"]{
-  background:transparent;color:#fff;box-shadow:none;
+  background:transparent;color:var(--on-accent);box-shadow:none;
   transition:color .3s var(--ease-io) .1s;
 }
 /* The fill arrives from the middle of the chip and opens outward — the same
@@ -1966,7 +2099,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .defbadge{
   position:absolute;top:8px;inset-inline-end:8px;
   width:19px;height:19px;border-radius:999px;
-  background:var(--accent);color:#fff;
+  background:var(--accent);color:var(--on-accent);
   display:grid;place-items:center;text-decoration:none;
   animation:badgeIn .26s var(--squash) backwards;
 }
@@ -2003,7 +2136,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   display:grid;place-items:center;
   transition:background .26s var(--ease-io),color .26s var(--ease-io),transform .38s var(--squash),box-shadow .26s var(--ease-io);
 }
-.daypick button[aria-pressed="true"]{background:var(--accent);color:#fff;box-shadow:var(--shadow-s)}
+.daypick button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow-s)}
 .daypick button:active{transform:scale(.9)}
 .daypick button.pop{animation:chipPop .22s var(--ease-io)}
 
@@ -2045,8 +2178,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .fq .fqin .daypick{flex:1;gap:4px}
 .fq .fqin .daypick button{max-width:36px;font-size:13px}
 .fq .fqtext{
+  /* 16px for the same reason as .searchwrap input — see there. */
   flex:1;min-width:0;border:0;background:var(--surface);border-radius:11px;
-  font:inherit;font-size:15px;color:var(--text);padding:9px 12px;outline:none;
+  font:inherit;font-size:16px;color:var(--text);padding:9px 12px;outline:none;
   box-shadow:inset 0 0 0 1px var(--sep);
 }
 .fq .fqtext:focus{box-shadow:inset 0 0 0 1.6px var(--accent)}
@@ -2066,11 +2200,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:background .26s var(--ease-io),color .26s var(--ease-io),transform .38s var(--squash);
 }
 .fqok svg{width:17px;height:17px}
-.fqok:not([disabled]){background:var(--accent);color:#fff;box-shadow:var(--shadow-s)}
+.fqok:not([disabled]){background:var(--accent);color:var(--on-accent);box-shadow:var(--shadow-s)}
 .fqok:not([disabled]):active{transform:scale(.9)}
 .fqok[disabled]{cursor:default}
 /* saved: the tick turns green and pops, the card lifts and folds away */
-.fq.done .fqok{background:var(--ok);color:#fff;animation:okPop .3s var(--spring)}
+.fq.done .fqok{background:var(--ok);color:var(--on-accent);animation:okPop .3s var(--spring)}
 .fq.done{box-shadow:inset 0 0 0 1.5px var(--ok);background:var(--surface)}
 .fqwrap.leaving{grid-template-rows:0fr;margin-top:-9px}
 .fqwrap.leaving > .fq{opacity:0;transform:translateY(-6px) scale(.97)}
@@ -2096,7 +2230,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 /* the answer on its way from the card into the list */
 .factfly{
   position:fixed;z-index:90;pointer-events:none;margin:0;
-  padding:7px 13px;border-radius:999px;background:var(--accent);color:#fff;
+  padding:7px 13px;border-radius:999px;background:var(--accent);color:var(--on-accent);
   font-size:13.5px;font-weight:600;white-space:nowrap;max-width:80vw;overflow:hidden;text-overflow:ellipsis;
   box-shadow:var(--shadow-m);
 }
@@ -2295,7 +2429,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
    is worth filling in for a task that has no name yet. */
 .stgo{
   width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;
-  background:var(--accent);color:#fff;
+  background:var(--accent);color:var(--on-accent);
   transition:opacity .24s var(--ease-io),transform .3s var(--spring);
 }
 .stgo svg{width:14px;height:14px}
@@ -2344,13 +2478,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 .calgrid button.out{color:var(--text-3);opacity:.5}
 .calgrid button.now{color:var(--accent);font-weight:700}
-.calgrid button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.calgrid button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
 .calmg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .calmg button{
   height:40px;border-radius:12px;font-size:13px;font-weight:600;color:var(--text-2);
   transition:background .3s var(--ease-io)
 }
-.calmg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.calmg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent)}
 .calfoot{display:flex;gap:6px;margin-top:9px}
 .calfoot button{
   flex:1;padding:8px 4px;border-radius:11px;background:var(--bg-tint);
@@ -2381,13 +2515,17 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .tpcol button{
   display:block;width:100%;height:40px;scroll-snap-align:center;
   font-family:'Rubik',sans-serif;font-size:19px;font-weight:500;color:var(--text-3);
-  font-variant-numeric:tabular-nums;direction:ltr;transition:color .18s var(--ease-io),font-size .18s var(--ease-io)
+  font-variant-numeric:tabular-nums;direction:ltr;
+  /* `transform`, not `font-size`: a font-size transition re-lays the text out
+     on every frame, which is the one property in this picker that is animated
+     sixty times a second while a finger is dragging the column. */
+  transition:color .18s var(--ease-io),transform .18s var(--ease-io)
 }
-.tpcol button.on{color:var(--text);font-weight:600;font-size:22px}
+.tpcol button.on{color:var(--text);font-weight:600;transform:scale(1.158)}
 .tpcolon{position:relative;font-family:'Rubik',sans-serif;font-size:20px;font-weight:600;color:var(--text-2);padding-bottom:3px}
 .tpfoot{margin-top:8px;display:flex;gap:6px}
 .tpfoot button{
-  width:100%;padding:10px;border-radius:12px;background:var(--accent);color:#fff;
+  width:100%;padding:10px;border-radius:12px;background:var(--accent);color:var(--on-accent);
   font-size:14px;font-weight:600;transition:transform .38s var(--squash)
 }
 .tpfoot button:active{transform:scale(.97)}
@@ -2397,7 +2535,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:transform .38s var(--squash),filter .3s var(--ease-io);
 }
 .btn:active{transform:scale(.98)}
-.btn.primary{background:var(--accent);color:#fff}
+.btn.primary{background:var(--accent);color:var(--on-accent)}
 .btn.ghost{background:var(--bg-tint);color:var(--text-2)}
 .btn.danger{background:var(--danger-soft);color:var(--danger)}
 
@@ -2418,6 +2556,28 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:opacity var(--sw-t) var(--ease-io),transform var(--sw-t) var(--ease-io);
 }
 .toast.show{opacity:1;transform:none}
+/* A second sentence arriving into a toast that is already up used to swap its
+   text in silence, which reads as the first one never having been answered.
+   It takes the beat again instead — same distance, no fade out and back. */
+@keyframes toastBump{0%{transform:none}34%{transform:translateY(4px) scale(.985)}100%{transform:none}}
+.toast.show.bump{animation:toastBump .22s var(--ease-io)}
+/* The boot veil. Opaque on purpose — the seed underneath is somebody else's
+   list, and a blur is still a readable one. */
+.boot{
+  position:fixed;inset:0;z-index:120;display:grid;place-items:center;
+  background:var(--bg);padding:28px;
+}
+.bootcard{display:grid;justify-items:center;gap:14px;text-align:center;max-width:300px}
+.bootmsg{font-size:14px;color:var(--text-2);line-height:1.5;margin:0}
+.bootdots{display:flex;gap:7px}
+.bootdots i{
+  width:7px;height:7px;border-radius:999px;background:var(--accent);opacity:.3;
+  animation:bootPulse 1.05s var(--ease-io) infinite;
+}
+.bootdots i:nth-child(2){animation-delay:.14s}
+.bootdots i:nth-child(3){animation-delay:.28s}
+.boot.failed .bootdots{display:none}
+@keyframes bootPulse{0%,100%{opacity:.25;transform:scale(.82)}45%{opacity:1;transform:scale(1)}}
 /* A toast that can be answered — only the one after a task went into a list.
    Every other toast stays an announcement nobody can tap. */
 .toast.act{pointer-events:auto}
@@ -2439,7 +2599,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   .field label{width:86px;font-size:15px}
 }
 @media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation-duration:.001ms !important;animation-delay:0ms !important;transition-duration:.001ms !important}
+  /* `animation-iteration-count` is the half this rule was missing: the
+     breathing avatar, the boot dots and the armed-delete pulse are INFINITE,
+     and a one-millisecond frame repeated for ever is a flicker, not a
+     stillness. */
+  *,*::before,*::after{animation-duration:.001ms !important;animation-delay:0ms !important;
+    animation-iteration-count:1 !important;transition-duration:.001ms !important}
 }
 </style>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
@@ -2586,7 +2751,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       </button>
       <div class="fold" id="arcFold"><div>
         <div class="group" id="arcGroup" style="box-shadow:none;background:var(--surface-2)"></div>
-        <p class="arcnote" id="arcNote" hidden></p>
+        <button class="arcnote" id="arcNote" hidden></button>
       </div></div>
     </div>
   </section>
@@ -3333,11 +3498,27 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<!-- Until the server's answer lands, the served page is showing the SEED: a
+     made-up list, made-up friends, and a fact about somebody's dog. It is the
+     design's own furniture, and it must never be mistaken for a person's own
+     page. So the app waits behind this, and if the answer never comes it says
+     so instead of leaving the furniture on screen. -->
+<div class="boot" id="boot" hidden>
+  <div class="bootcard">
+    <div class="bootdots" aria-hidden="true"><i></i><i></i><i></i></div>
+    <p class="bootmsg" id="bootMsg"></p>
+    <button class="btn primary" id="bootRetry" data-i18n="boot.retry" hidden></button>
+  </div>
+</div>
+
 <script>
 (function(){
   "use strict";
   var $  = function(s,r){ return (r||document).querySelector(s); };
   var $$ = function(s,r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); };
+  /* A value written into an input only when the person is not standing in
+     it — every repaint on this page can land while somebody is typing. */
+  function setField(el, v){ if(el && el !== document.activeElement) el.value = v; }
 
   /* Appearance: which of the two palettes the stylesheet already defines is
      showing. Stored on THIS DEVICE only (localStorage) — it is how the page
@@ -3512,7 +3693,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     rejoinMeeting:"rejoinMeeting",
     startMeeting:"startMeeting", addOption:"addOption", answerOption:"answerOption",
     settleMeeting:"settleMeeting",
-    removeOption:"removeOption", swapOption:"swapOption",
+    removeOption:"removeOption", swapOption:"swapOption", setQuorum:"setQuorum",
     startGoogle:"startGoogle", stopGoogle:"stopGoogle",
     stopGoogleService:"stopGoogleService",
     setName:"setName", setPersonal:"setPersonal", setAssistant:"setAssistant", setLocale:"setLocale",
@@ -3523,6 +3704,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      creates one or edits one — the page numbers its own new rows from a local
      counter, and asking "is this id one of ours" is the only honest test. */
   var SERVER_IDS = {};
+  /* Which /me/data read is the current one — see API.reload. */
+  var dataSeq = 0;
   /* This person's own user id, once the server has said what it is. Needed for
      exactly one thing: leaving a shared task means revoking MY share row, and
      the row is keyed by the real id even though the page calls me 0. */
@@ -3542,11 +3725,22 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       return m[1] + String(m[2]).padStart(2,"0") + ":" + (m[3] || "00");
     }catch(err){ return "+00:00"; }
   }
+  /* A wall clock in the person's zone, stamped with the offset in force AT
+     THAT MOMENT — which takes two passes. The first reads the offset at the
+     wall clock treated as UTC, which is the wrong instant by up to a day's
+     worth of hours; the second asks again at the instant that offset produces.
+     Everywhere but the hours around a clock change the two agree; inside them
+     the single pass was an hour out, which is exactly when a reminder is worth
+     the most. */
+  function localStamp(tz, day, time){
+    var guess = new Date(day + "T" + time + ":00Z");
+    var off = zoneOffset(tz, new Date(day + "T" + time + ":00" + zoneOffset(tz, guess)));
+    return day + "T" + time + ":00" + off;
+  }
   function dueIso(x){
     if(!x || !x.d) return null;
-    var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
     var time = (x.all || !x.tm) ? "00:00" : x.tm;
-    return x.d + "T" + time + ":00" + zoneOffset(tz, new Date(x.d + "T" + time + ":00Z"));
+    return localStamp(myTz(), x.d, time);
   }
 
   /* The far end of the range, in the same shape and the same zone as the
@@ -3554,8 +3748,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      is REMOVED: editTask reads null as "clear it". */
   function endIso(x){
     if(!x || !x.d || x.all || !x.tm || !x.tmEnd) return null;
-    var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
-    return x.d + "T" + x.tmEnd + ":00" + zoneOffset(tz, new Date(x.d + "T" + x.tmEnd + ":00Z"));
+    return localStamp(myTz(), x.d, x.tmEnd);
   }
 
   /* A row the server has answered for. Anything that needs a real id — an
@@ -3565,6 +3758,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     return Object.prototype.hasOwnProperty.call(SERVER_IDS, String(x.id));
   }
   var adding = {}, dirtyWhileAdding = {}, afterAdd = {};
+  /* The last title/category/dates this page sent for a task, so the next edit
+     can say what CHANGED rather than restating the row. Keyed by server id and
+     seeded from the server's own answer, so the first edit after a reload
+     compares against what is stored, not against nothing. */
+  var lastSent = {};
   /* Run fn with the task's real id — now if it has one, and otherwise when the
      add that is already in flight comes back with it. A task that was never
      sent at all (no name yet, or an offline page) simply never runs it, which
@@ -3574,6 +3772,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var k = String(x.id);
     if(!adding[k]) return;
     (afterAdd[k] = afterAdd[k] || []).push(fn);
+  }
+  /* The same wait, for callers that hold only an id: the task is looked up so
+     a bare number still queues behind its own add. A row nothing knows about
+     (the archive keeps its own copies) falls through to sending at once, which
+     is what every one of these did before. */
+  function idOf(x){ return x && x.id !== undefined ? x.id : x; }
+  function onRealId(x, fn){
+    var row = (x && x.id !== undefined) ? x : taskById(x);
+    if(row) whenSaved(row, fn); else fn(idOf(x));
+    return true;
   }
   /* The rules the server stores (domain/reminders.js normalises both
      vocabularies, and refuses yearly outright — "better null than a lie" — so
@@ -3585,12 +3793,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      that arrives while somebody is asleep is one they will never see. */
   function remindIso(x){
     if(!x || !x.d) return null;
-    var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
     var time = (x.all || !x.tm) ? "09:00" : x.tm;
-    var at = new Date(x.d + "T" + time + ":00Z").getTime() - (x.remOff || 0) * 60000;
-    var d = new Date(at);
-    var stamp = d.toISOString().slice(0, 16);
-    return stamp + ":00" + zoneOffset(tz, d);
+    /* From the task's real instant, not from its wall clock read as UTC: an
+       offset of "two hours before" is two hours of actual time, and on the
+       night the clocks move those are not the same thing. Sent as UTC, which
+       names the instant and nothing else — the server stores an instant. */
+    var at = new Date(localStamp(myTz(), x.d, time)).getTime() - (x.remOff || 0) * 60000;
+    return new Date(at).toISOString().replace(/\.\d+Z$/, "+00:00");
   }
 
   var API = {
@@ -3622,25 +3831,37 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     },
     refused: function(error){
       /* Two of these the person can act on, so they are said out loud; the
-         rest are ours to fix and saying "invalid" to somebody helps nobody. */
-      if(error && error.reason === "paused")      toast(t("toast.pausedRefusal"));
-      else if(error && error.reason === "not_enabled") toast(t("toast.notOpenYet"));
-      else if(error && error.reason === "duplicate") toast(t("toast.duplicate"));
-      else if(error && error.reason === "all_days") toast(t("toast.allDays"));
-      else if(error && (error.reason === "no_calendar" || error.reason === "read_only")) toast(t("toast.calNeeded"));
-      else if(error && error.reason === "first_person") toast(t("toast.factFirstPerson"));
-      else if(error && error.reason === "needs_expiry") toast(t("toast.factDated"));
-      else if(error && error.reason === "phone") toast(t("toast.factPhone"));
+         rest are ours to fix and saying "invalid" to somebody helps nobody.
+         Said as errors, which is what keeps them on screen long enough to be
+         read — the reload starts underneath at the same moment. */
+      var say = function(msg){ toast(msg, null, true); };
+      if(error && error.reason === "paused")      say(t("toast.pausedRefusal"));
+      else if(error && error.reason === "not_enabled") say(t("toast.notOpenYet"));
+      else if(error && error.reason === "duplicate") say(t("toast.duplicate"));
+      else if(error && error.reason === "all_days") say(t("toast.allDays"));
+      else if(error && (error.reason === "no_calendar" || error.reason === "read_only")) say(t("toast.calNeeded"));
+      else if(error && error.reason === "first_person") say(t("toast.factFirstPerson"));
+      else if(error && error.reason === "needs_expiry") say(t("toast.factDated"));
+      else if(error && error.reason === "phone") say(t("toast.factPhone"));
       else if(error && error.reason === "no_writeback")
-        toast(t("toast.importedRefusal", {name:(SOURCES[error.source] || {}).name || error.source}));
+        say(t("toast.importedRefusal", {name:(SOURCES[error.source] || {}).name || error.source}));
       API.reload();
     },
     /* One re-read, so what is on screen goes back to being what is stored. */
-    reload: function(){
-      if(!LIVE) return;
+    reload: function(done){
+      if(!LIVE){ if(done) done(); return; }
+      /* The newest read wins. Answers on this page fire their own reload, so
+         two taps a second apart leave two of these in flight — and the slower
+         one, which is the OLDER picture, used to land last and put the answer
+         the person had just given back the way it was. */
+      var mine = ++dataSeq;
       fetch("/me/data", {credentials:"same-origin", headers:{Accept:"application/json"}})
         .then(function(r){ return r.ok ? r.json() : null; })
-        .then(function(body){ if(body && body.ok && body.data) hydrate(body.data); })
+        .then(function(body){
+          if(mine !== dataSeq) return;
+          if(body && body.ok && body.data) hydrate(body.data);
+          if(done) done();
+        })
         .catch(function(){});
     },
 
@@ -3650,8 +3871,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       var payload = {title:L(x.t), category:x.cat || null,
                      dueAt:dueIso(x), endsAt:endIso(x)};
       if(serverKnows(x)){
-        payload.taskId = x.id;
-        return API.send("editTask", payload);
+        /* Only what actually moved. An edit that names a field is an edit of
+           it as far as the server is concerned: naming `category` every time
+           turned Olma's own guess into a hand-picked one on any keystroke, and
+           naming all three made every edit of an IMPORTED task a refusal —
+           including flipping a reminder, which the sheet says is allowed. */
+        var was = lastSent[String(x.id)] || {};
+        var patch = {taskId:x.id}, moved = false;
+        Object.keys(payload).forEach(function(k){
+          if(payload[k] === was[k]) return;
+          patch[k] = payload[k]; moved = true;
+        });
+        if(!moved) return true;
+        lastSent[String(x.id)] = payload;
+        return API.send("editTask", patch);
       }
       if(adding[String(x.id)]){
         /* An add is already on the wire for this row. Sending a second one
@@ -3671,6 +3904,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
            sheet are holding, so nothing else has to be told. */
         x.id = id;
         SERVER_IDS[String(id)] = true;
+        lastSent[String(id)] = payload;
         if(dirtyWhileAdding[local]){ delete dirtyWhileAdding[local]; API.saveTask(x); }
         var queued = afterAdd[local] || [];
         delete afterAdd[local];
@@ -3698,31 +3932,64 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     /* The page calls it deleting; the system archives. Nothing here has ever
        deleted a task and this is not the place to start — the archive is the
        feature, and it is reachable from the same screen. */
-    deleteTask:      function(id){     API.call("deleteTask", {task_id:id}); return API.send("archiveTask", {taskId:id}); },
-    completeTask:    function(id){     API.call("completeTask", {task_id:id}); return API.send("completeTask", {taskId:id}); },
-    restoreTask:     function(id){     API.call("restoreTask", {task_id:id}); return API.send("restoreTask", {taskId:id}); },
-    shareTask:       function(id, who){
+    /* All three take the task itself where the caller has it, because a row
+       ticked or deleted while its own add is still on the wire carries an id
+       only this browser has seen. Sent straight away it was refused as
+       not-found, the add then landed, and the task everybody had watched
+       disappear came back on the next reload. */
+    deleteTask:      function(x){      var id = idOf(x); API.call("deleteTask", {task_id:id});
+      return onRealId(x, function(real){ API.send("archiveTask", {taskId:real}); }); },
+    completeTask:    function(x){      var id = idOf(x); API.call("completeTask", {task_id:id});
+      return onRealId(x, function(real){ API.send("completeTask", {taskId:real}); }); },
+    restoreTask:     function(x){      var id = idOf(x); API.call("restoreTask", {task_id:id});
+      return onRealId(x, function(real){ API.send("restoreTask", {taskId:real}); }); },
+    shareTask:       function(x, who){
+      var id = x && x.id !== undefined ? x.id : x;
       API.call("shareTask", {task_id:id, viewer_ids:who});
       /* The server shares with one person per call; the page thinks in the
          whole list. Sending the list one at a time is right rather than
          convenient — each is its own consented row, and one refusal must not
-         take the others down with it. */
-      (who || []).forEach(function(u){ if(u) API.send("shareTask", {taskId:id, viewerId:u}); });
+         take the others down with it.
+
+         The share id comes back and is kept, because it is the ONLY thing that
+         can revoke that row again. Without it, taking somebody off seconds
+         after putting them on found no id, sent nothing, and still said they
+         were removed — the share survived the toast. */
+      (who || []).forEach(function(u){
+        if(!u) return;
+        /* Through the add queue, because a task shared the moment it is
+           created has only a page-local id until the server answers — and a
+           share sent against that id is refused, silently, while the sheet
+           shows the person's face. */
+        var send = function(real){
+          API.send("shareTask", {taskId:real, viewerId:u}, function(data){
+            var t2 = taskById(real);
+            if(t2 && data && data.share) (t2.shareIds || (t2.shareIds = {}))[u] = data.share.id;
+          });
+        };
+        if(x && x.id !== undefined) whenSaved(x, send); else send(id);
+      });
       return true;
     },
     unshareTask:     function(id, u){
       API.call("unshareTask", {task_id:id, viewer_id:u});
-      var t2 = open.filter(function(x){ return x.id === id; })[0];
+      var t2 = taskById(id);
       var sid = t2 && t2.shareIds ? t2.shareIds[u] : null;
-      return sid ? API.send("revokeShare", {shareId:sid}) : true;
+      /* No id means the share is still in flight, not that there is nothing to
+         revoke. Re-reading is the honest answer: the next paint shows whichever
+         of the two actually happened. */
+      if(!sid) return LIVE ? API.reload() : true;
+      return API.send("revokeShare", {shareId:sid});
     },
     /* Leaving IS revoking your own view — the same row, revoked by the other
-       side of it. */
-    leaveTask:       function(id){
+       side of it. The share id is resolved by the CALLER, before the row is
+       taken off the list: this used to look the task up in `open` after the
+       handler had already spliced it out, find nothing, and send nothing at
+       all, so the task came back on the next load. */
+    leaveTask:       function(id, sid){
       API.call("leaveTask", {task_id:id, viewer_id:0});
-      var t2 = open.filter(function(x){ return x.id === id; })[0];
-      var sid = t2 && t2.shareIds && MY_ID ? t2.shareIds[MY_ID] : null;
-      return sid ? API.send("revokeShare", {shareId:sid}) : true;
+      if(!sid) return LIVE ? API.reload() : true;
+      return API.send("revokeShare", {shareId:sid});
     },
     setCategory:     function(id, c){  API.call("setCategory", {task_id:id, category:c}); return API.send("editTask", {taskId:id, category:c || null}); },
     /* Connecting an account is an OAuth round trip, not a JSON write — it
@@ -3764,7 +4031,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       return API.send("respondToMeeting",
         {meetingId:m.id, accept:accept, acceptedStartAt:accept ? m.startsAt : null});
     },
-    setTimezone:     function(tz){     API.call("setTimezone", {timezone:tz}); return API.send("setTimezone", {timezone:tz}); },
+    setTimezone:     function(tz, done){ API.call("setTimezone", {timezone:tz});
+      return API.send("setTimezone", {timezone:tz}, function(data){ if(done && (data !== null || !LIVE)) done(data); }); },
     setPaused:       function(on){     API.call(on ? "pause" : "resume", {}); return API.send(on ? "pause" : "resume", {}); },
 
     /* The profile tab. `done` runs only on a real success — or at once in
@@ -3903,8 +4171,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "tasks.n0":"אין משימות פתוחות","tasks.n1":"משימה פתוחה אחת","tasks.nN":"{n} משימות פתוחות",
       "remc.n0":"אין תזכורות","remc.n1":"תזכורת אחת מוגדרת","remc.nN":"{n} תזכורות מוגדרות",
       "bucket.late":"באיחור","bucket.today":"היום","bucket.tomorrow":"מחר","bucket.later":"בהמשך","kind.event":"ביומן","kind.todo":"לעשות","cal.eventTag":"אירוע","tasks.new":"משימה חדשה","tasks.empty":"אין משימות פתוחות. יום נקי.",
+      "tasks.allDone":"סיימת הכול","tasks.allDoneSub.n1":"משימה אחת נסגרה היום","tasks.allDoneSub.nN":"{n} משימות נסגרו היום",
       "tasks.doneAt":"הושלמה {when}","tasks.justNow":"הרגע",
-      "tasks.arcShown":"מוצגות {n} האחרונות מתוך {all}","tasks.restore":"החזרה לרשימה",
+      "tasks.arcShown":"מוצגות {n} האחרונות מתוך {all}","tasks.arcShowAll":"הצגת כל {all}","tasks.arcShowLess":"מוצגות כל {all} · הצגת {n} האחרונות","tasks.restore":"החזרה לרשימה",
       "toast.restored":"„{name}” חזרה לרשימה",
       "tasks.pinned":"משותפות","tasks.unpin":"ביטול נעיצה","tasks.pin":"נעיצה למעלה",
       "toast.unpinned":"„{name}” חזרה למקום שלה","toast.pinned":"„{name}” נעוצה למעלה",
@@ -3933,18 +4202,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.addItem":"הוספת פריט","sheet.itemRm":"מחיקת הפריט",
       "sheet.shared":"משותפת","share.with1":"משותפת עם {name}","share.withN":"משותפת עם {name} ועוד {n}",
       "share.ownerM":"פתח את המשימה","share.ownerF":"פתחה את המשימה","share.ownerMe":"פתחתי את המשימה","share.you":"אני",
-      "sheet.leave":"יציאה מהמשימה המשותפת","sheet.leaveSub":"המשימה תיעלם מהרשימה שלך ותישאר אצל השאר. שום דבר לא נמחק.",
+      "sheet.leave":"יציאה מהמשימה המשותפת","sheet.theirs":"המשימה של {name} — רק מי שפתח אותה יכול לשנות","sheet.leaveSub":"המשימה תיעלם מהרשימה שלך ותישאר אצל השאר. שום דבר לא נמחק.",
       "toast.left":"יצאת מ„{name}” — היא נשארה אצל השאר",
 
       "cal.h":"הצצה ליומן",
       "cal.p":"תצוגה בלבד. לעריכה — פתח את היומן של הטלפון בלחיצה אחת.",
-      "cal.open":"פתיחה ביומן Google","cal.empty":"אין אירועים ביום הזה.",
+      "cal.open":"פתיחה ביומן Google","cal.empty":"אין אירועים ביום הזה.","cal.connectGo":"חיבור יומן",
       "cal.todayPre":"היום · ","cal.dayPrefix":"יום ",
 
       "fr.h":"חברים בעולמה",
       "fr.p":"לכל חבר מוגדר בנפרד מה מותר לו. שינוי כאן חל מיד, בלי לשאול אותו.",
       "fr.connected":"מחוברים","fr.count":"{n} חברים",
       "fr.search":"חיפוש חבר","fr.clear":"ניקוי","fr.noMatch":"אין חבר בשם „{q}”.",
+      "fr.none":"עוד אין כאן אף אחד. אפשר להזמין מישהו מאנשי הקשר למטה.",
       "fr.p.n0":"אין הרשאות פעילות","fr.p.n1":"הרשאה אחת פעילה","fr.p.nN":"{n} הרשאות פעילות",
       "fr.bday":"יום הולדת היום","fr.remove":"הסרת החיבור","fr.removeConfirm":"עוד לחיצה כדי להסיר","fr.invite":"הזמנת חבר",
       /* A group is one person's own shortcut, not a shared object — nobody is
@@ -4030,6 +4300,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.mtStarted":"נשלחה בקשה ל{list} — כשיענו זה יופיע כאן",
       "toast.mtConfirmed":"נקבע — {when}. כולם קיבלו הודעה.",
       "toast.mtSettleFailed":"לא הצלחתי לקבוע — נסה שוב בעוד רגע",
+      "toast.mtStartFailed":"לא הצלחתי לפתוח את התיאום — נסה שוב בעוד רגע",
       "tcat.imported":"מפלטפורמות מחוברות",
       "sheet.fromApp":"הגיעה מ־{name}","sheet.noField":"ל־{name} אין את השדה הזה",
       "cn.title":"מי מאנשי הקשר שלך?","cn.from":"מתוך אנשי הקשר של {name}",
@@ -4105,7 +4376,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.save":"שמירה","sheet.delete":"מחיקת המשימה","sheet.cancel":"ביטול",
       "sheet.autosave":"נשמר אוטומטית","sheet.saved":"נשמר ✓","sheet.noDate":"ללא תאריך","sheet.pickDate":"תאריך",
       "cal.today":"היום","cal.tomorrow":"מחר","cal.clear":"ללא תאריך","cal.yesterday":"אתמול",
-      "sheet.untitled":"משימה ללא שם",
+      "sheet.untitled":"משימה ללא שם","sheet.someone":"מישהו",
+      "boot.loading":"רק רגע, טוענים את הדף שלך…",
+      "boot.failed":"לא הצלחנו לטעון את הדף כרגע. אפשר לנסות שוב, או לכתוב לעולמה בוואטסאפ ולבקש קישור חדש.",
+      "boot.retry":"לנסות שוב",
+      "prov.reauth":"צריך להתחבר מחדש — ההרשאה פגה",
+      "cal.notConnected":"אין יומן מחובר. אפשר לחבר אחד במסך החיבורים.",
       "sheet.allDay":"כל היום","sheet.repeat":"חזרה",
       "sheet.inCal":"להוסיף ליומן","sheet.inCalTo":"נוסף ל־{name} · {account}","sheet.inCalNone":"אין יומן מחובר לכתיבה",
       "cal.allDay":"כל היום",
@@ -4200,8 +4476,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "tasks.n0":"No open tasks","tasks.n1":"1 open task","tasks.nN":"{n} open tasks",
       "remc.n0":"no reminders set","remc.n1":"1 reminder set","remc.nN":"{n} reminders set",
       "bucket.late":"Overdue","bucket.today":"Today","bucket.tomorrow":"Tomorrow","bucket.later":"Later","kind.event":"On the calendar","kind.todo":"To do","cal.eventTag":"Event","tasks.new":"New task","tasks.empty":"Nothing open. Clear day.",
+      "tasks.allDone":"All done","tasks.allDoneSub.n1":"one task closed today","tasks.allDoneSub.nN":"{n} tasks closed today",
       "tasks.doneAt":"Done {when}","tasks.justNow":"just now",
-      "tasks.arcShown":"Showing the last {n} of {all}","tasks.restore":"Put back on the list",
+      "tasks.arcShown":"Showing the last {n} of {all}","tasks.arcShowAll":"Show all {all}","tasks.arcShowLess":"Showing all {all} · show the last {n}","tasks.restore":"Put back on the list",
       "toast.restored":"\u201c{name}\u201d is back on your list",
       "tasks.pinned":"Shared","tasks.unpin":"Unpin","tasks.pin":"Pin to top",
       "toast.unpinned":"\u201c{name}\u201d is back in its place","toast.pinned":"\u201c{name}\u201d is pinned to the top",
@@ -4230,18 +4507,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.addItem":"Add an item","sheet.itemRm":"Remove item",
       "sheet.shared":"Shared","share.with1":"Shared with {name}","share.withN":"Shared with {name} and {n} more",
       "share.ownerM":"started it","share.ownerF":"started it","share.ownerMe":"You started it","share.you":"You",
-      "sheet.leave":"Leave this shared task","sheet.leaveSub":"It leaves your list and stays on theirs. Nothing is deleted.",
+      "sheet.leave":"Leave this shared task","sheet.theirs":"{name}'s task — only they can change it","sheet.leaveSub":"It leaves your list and stays on theirs. Nothing is deleted.",
       "toast.left":"You left \u201c{name}\u201d \u2014 it stays with the others",
 
       "cal.h":"A look at your calendar",
       "cal.p":"Read-only here. To change anything, open your phone's calendar in one tap.",
-      "cal.open":"Open in Google Calendar","cal.empty":"Nothing on this day.",
+      "cal.open":"Open in Google Calendar","cal.empty":"Nothing on this day.","cal.connectGo":"Connect a calendar",
       "cal.todayPre":"Today · ","cal.dayPrefix":"",
 
       "fr.h":"Friends on Allma",
       "fr.p":"Every friend gets their own permissions. A change here takes effect at once, without asking them.",
       "fr.connected":"Connected","fr.count":"{n} friends",
       "fr.search":"Search friends","fr.clear":"Clear","fr.noMatch":"No friend matches \u201c{q}\u201d.",
+      "fr.none":"Nobody here yet. Invite someone from your contacts below.",
       "fr.p.n0":"No permissions on","fr.p.n1":"1 permission on","fr.p.nN":"{n} permissions on",
       "fr.bday":"Birthday today","fr.remove":"Remove connection","fr.removeConfirm":"Press again to remove","fr.invite":"Invite a friend",
       "gr.h":"Groups","gr.hint":"Nobody is asked to approve · a WhatsApp room arrives ready","gr.new":"New group",
@@ -4324,6 +4602,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.mtStarted":"Request sent to {list} — answers show up here",
       "toast.mtConfirmed":"Settled \u2014 {when}. Everyone has been told.",
       "toast.mtSettleFailed":"That would not settle \u2014 try again in a moment",
+      "toast.mtStartFailed":"That would not open \u2014 try again in a moment",
       "tcat.imported":"From connected platforms",
       "sheet.fromApp":"Came from {name}","sheet.noField":"{name} has no such field",
       "cn.title":"Who from your contacts?","cn.from":"From your {name} contacts",
@@ -4399,7 +4678,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.save":"Save","sheet.delete":"Delete task","sheet.cancel":"Cancel",
       "sheet.autosave":"Saves as you type","sheet.saved":"Saved ✓","sheet.noDate":"No date","sheet.pickDate":"Date",
       "cal.today":"Today","cal.tomorrow":"Tomorrow","cal.clear":"No date","cal.yesterday":"Yesterday",
-      "sheet.untitled":"Untitled task",
+      "sheet.untitled":"Untitled task","sheet.someone":"someone",
+      "boot.loading":"One moment — loading your page…",
+      "boot.failed":"We could not load your page just now. Try again, or write to Allma on WhatsApp for a fresh link.",
+      "boot.retry":"Try again",
+      "prov.reauth":"Needs reconnecting — the permission expired",
+      "cal.notConnected":"No calendar connected. You can connect one on the Connections screen.",
       "sheet.allDay":"All day","sheet.repeat":"Repeat",
       "sheet.inCal":"Add to calendar","sheet.inCalTo":"Goes to {name} · {account}","sheet.inCalNone":"No calendar connected for writing",
       "cal.allDay":"All day",
@@ -4448,6 +4732,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   function pl(prefix, n){ return t(prefix + (n === 0 ? ".n0" : n === 1 ? ".n1" : ".nN"), {n:n}); }
   function L(o){ return o && typeof o === "object" ? o[LOCALE] : o; }
+  /* A person's name in the shape this page happens to hold it. Seeded people
+     carry {he,en}; everybody the server sends carries one string, because a
+     name is not a word to be translated. Reaching for `.n.en` on the second
+     shape is how the contacts list came to hide every row it had. */
+  function nameOf(p){ return p && p.n !== undefined ? String(L(p.n) || "") : ""; }
+  /* Every spelling of a name, for a search box: both locales when there are
+     two, the one string when there is one, and never the word "undefined". */
+  function searchText(n){
+    if(!n) return "";
+    if(typeof n !== "object") return String(n);
+    return [n.he, n.en].filter(Boolean).join(" ");
+  }
   function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
 
   /* ══════════════════════════════════════════════════════════════
@@ -4754,7 +5050,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   function paintGreeting(){
     var el = $("#brandHi");
     if(!el) return;
-    var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
+    var tz = myTz();
     el.textContent = t(greetKey(hourIn(tz)));
   }
   function isBirthday(md){
@@ -4869,6 +5165,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     {tz:"Africa/Johannesburg", n:{he:"יוהנסבורג",en:"Johannesburg"}, c:{he:"דרום אפריקה",en:"South Africa"}}
   ];
   var cityIdx = 0, cityConfirmed = false;
+  /* The zone this person actually lives in, which is NOT always a city on the
+     list above. `cityIdx` picks the row the profile draws, and it stays at 0
+     for a zone the list has never heard of — showing Tel Aviv to somebody in
+     Nairobi being worse than showing nothing. Reading the OFFSET off that same
+     index is a different question with the same answer, and it was wrong for
+     everybody outside the list: a reminder for 08:00 in Denver went out on
+     Jerusalem's offset, nine hours early. So the zone is held on its own, off
+     the users row, and every moment this page builds is stamped with it. */
+  var myZone = "";
+  function myTz(){
+    return myZone || (CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC");
+  }
   function clockIn(tz){
     try{
       return new Intl.DateTimeFormat("en-GB", {timeZone:tz, hour:"2-digit", minute:"2-digit", hour12:false}).format(new Date());
@@ -4982,6 +5290,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     return TASKCATS.filter(function(c){ return c.k === k; })[0] || TASKCATS[TASKCATS.length - 1];
   }
   var ARCHIVE_MAX = 8;
+  /* …and whether the person has asked for the rest of them. */
+  var arcAll = false;
   var archived = [
     {id:91, t:{he:"להזמין מתנה ליום ההולדת של אמא",en:"Order Mum a birthday gift"}, done:{he:"אתמול",en:"yesterday"}},
     {id:92, t:{he:"לחדש ביטוח רכב",en:"Renew the car insurance"}, done:{he:"יום ראשון",en:"on Sunday"}},
@@ -5053,12 +5363,33 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* The strip starts on the real today, because the task list is dated
      against the real today too — a week hard-coded to a fixed date would
      put the same task in two different days on two pages. */
-  var base = new Date(); base.setHours(12,0,0,0);
+  /* Today, in the person's OWN zone — every day number on this page counts
+     from here, and the server counts from the same place. Noon so that a day's
+     arithmetic never straddles a clock change.
+
+     Read from the browser's clock until the server says which zone that is,
+     and re-asked on a tick: a dashboard left open on a bedside table through
+     midnight otherwise shows yesterday, labels it "today", and sends that day
+     number when a coordination time is picked. */
+  function todayInZone(){
+    try{
+      var p = new Intl.DateTimeFormat("en-CA", {timeZone:myTz(), year:"numeric", month:"2-digit", day:"2-digit"}).format(new Date());
+      return new Date(p + "T12:00:00");
+    }catch(err){ var d = new Date(); d.setHours(12,0,0,0); return d; }
+  }
+  var base = todayInZone();
   var selDay = 0;
 
   /* ───────── toast ───────── */
   var toastEl = $("#toast"), toastT;
   function toast(msg, undo, isErr){
+    /* Replacing a toast that is still on screen: it re-bumps rather than
+       changing its words where it stands — see .toast.bump. */
+    if(toastEl.classList.contains("show")){
+      toastEl.classList.remove("bump");
+      void toastEl.offsetWidth;
+      toastEl.classList.add("bump");
+    } else toastEl.classList.remove("bump");
     toastEl.textContent = msg;
     toastEl.classList.toggle("act", !!undo);
     toastEl.classList.toggle("err", !!isErr);
@@ -5075,8 +5406,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }
     toastEl.classList.add("show");
     clearTimeout(toastT);
-    /* long enough to reach the button, only when there is one */
-    toastT = setTimeout(function(){ toastEl.classList.remove("show", "act"); }, undo ? 4200 : 1050);
+    /* Long enough to reach the button when there is one — and long enough to
+       READ when it is a refusal. "Olma is paused, a reminder will not go out
+       until you bring her back" is a sentence, and it was on screen for one
+       second while the page reloaded under it. */
+    toastT = setTimeout(function(){ toastEl.classList.remove("show", "act", "bump"); },
+      undo ? 4200 : isErr ? 3400 : 1050);
   }
 
   /* ───────── connections view ───────── */
@@ -5184,6 +5519,51 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       nw.classList.remove("win");
     }, SW_MS);
   }
+  /* A count that changes ROLLS to its new value instead of blinking into it.
+     The slot is built the first time a counter is written, so the page's own
+     markup stays a plain <p>/<span> and nothing has to be kept in sync — and
+     the first paint, which has nothing to roll from, simply sets the text. */
+  /* An empty state with a way out of it. `go` names a control that is already
+     on the page — pressing this presses that one, so there is no second code
+     path to keep in step with the first. */
+  function emptyBig(text, go, label, icon){
+    return '<div class="empty emptybig"><p>' + esc(text) + "</p>" +
+      '<button class="emptygo" data-emptygo="' + go + '">' +
+      '<svg><use href="#' + (icon || "i-plus") + '"/></svg>' + esc(label) + "</button></div>";
+  }
+  function rollText(el, text){
+    if(!el) return;
+    var slot = el.firstElementChild;
+    if(slot && slot.className === "wordslot"){ swapWord(slot, text); return; }
+    el.textContent = "";
+    slot = document.createElement("span");
+    slot.className = "wordslot";
+    slot.innerHTML = '<i class="wghost"></i><i class="wnow"></i>';
+    slot.firstChild.textContent = text;
+    slot.lastChild.textContent = text;
+    el.appendChild(slot);
+  }
+  /* A row leaving a list folds instead of blinking out — measured, because
+     max-height only animates between two real numbers and none of these rows
+     has a height anybody wrote down. `done` runs when the fold is over, so a
+     caller can splice and redraw behind it. Under reduced motion the whole
+     transition is a millisecond and the callback still lands, in order. */
+  var FOLD_MS = 240;
+  function foldAway(el, done){
+    if(!el){ if(done) done(); return; }
+    el.style.maxHeight = el.scrollHeight + "px";
+    el.style.overflow = "hidden";
+    void el.offsetWidth;
+    el.classList.add("folding");
+    el.style.maxHeight = "0px";
+    el.style.opacity = "0";
+    el.style.pointerEvents = "none";
+    if(done) setTimeout(done, FOLD_MS);
+  }
+  /* Somebody who has asked their system for less movement. The stylesheet
+     honours it on its own; these are the two places JS decides to move
+     something and CSS never sees the decision. */
+  var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   function defaultPicker(){
     /* A call is not a place a reminder can wait — this choice is about where
        WRITING arrives, so it offers the written channels and nothing else,
@@ -5324,10 +5704,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         "</div></div>";
     }
     var isOpen = !!expanded[p.id];
+    /* Connected but broken — Google has withdrawn the grant, usually because
+       the password changed. The server has said so since the integrations
+       route was written (`needs_reauth`) and the page drew it as an ordinary
+       healthy account, so the calendar simply stopped filling in and nothing
+       on screen explained why. */
+    var sub = p.needsReauth ? t("prov.reauth") : p.account + " · " + pl("svcOn", onCount(p));
     return '<div class="rowset" data-rowset="' + p.id + '">' +
       '<button class="row" data-prov="' + p.id + '" aria-expanded="' + isOpen + '">' + tileFor(p.tile, p.icon) +
       '<div class="row-txt"><div class="row-title">' + esc(p.name) + "</div>" +
-      '<div class="row-sub on">' + esc(p.account + " · " + pl("svcOn", onCount(p))) + "</div>" +
+      '<div class="row-sub' + (p.needsReauth ? " warn" : " on") + '">' + esc(sub) + "</div>" +
       glyphs(p) + "</div>" +
       '<svg class="chev"><use href="#i-chev"/></svg></button>' +
       '<div class="fold' + (isOpen ? " open" : "") + '" data-pfold="' + p.id + '"><div><div class="foldpad">' +
@@ -5401,7 +5787,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* the parts of the card that describe the account as a whole */
   function afterFold(p){
     var sub2 = $('[data-prov="' + p.id + '"] .row-sub');
-    if(sub2) sub2.textContent = p.account + " · " + pl("svcOn", onCount(p));
+    if(sub2) sub2.textContent = p.needsReauth ? t("prov.reauth")
+      : p.account + " · " + pl("svcOn", onCount(p));
     $$('[data-prov="' + p.id + '"] .glyphs span').forEach(function(el){
       var g = p.svc.some(function(x){ return x.k === el.dataset.cat && x.on; });
       el.classList.toggle("off", !g);
@@ -5842,27 +6229,49 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         esc(t("bucket." + b)) + "</span></div>" + kindGroups(items) + "</div>";
     });
     html += importedSection();
-    if(!open.length) html = '<div class="group"><div class="empty">' + esc(t("tasks.empty")) + "</div></div>";
+    if(!open.length){
+      /* Finished is not the same as empty: somebody who has just closed the
+         last thing on their list should be told they finished it, and only a
+         list that never had anything in it today is a clear day. */
+      html = '<div class="group">' + (archived.length
+        ? '<div class="empty alldone"><span class="okmark"><svg><use href="#i-check"/></svg></span>' +
+          '<span class="txt"><b>' + esc(t("tasks.allDone")) + "</b>" +
+          '<span class="sub">' + esc(pl("tasks.allDoneSub", archived.length)) + "</span></span></div>"
+        : emptyBig(t("tasks.empty"), "addTask", t("tasks.new"))) + "</div>";
+    }
     $("#taskStack").innerHTML = html;
     var rems = open.filter(function(x){ return x.rem; }).length;
-    $("#taskCount").textContent = pl("tasks", open.length) + " · " + pl("remc", rems);
-    $("#arcCount").textContent = archived.length;
+    rollText($("#taskCount"), pl("tasks", open.length) + " · " + pl("remc", rems));
+    rollText($("#arcCount"), String(archived.length));
     /* The archive is a safety net, not a second list. Past eight rows it
        stops being scannable and starts being a wall, so it shows the eight
        most recent and SAYS that rather than quietly truncating. */
-    var shown = archived.slice(0, ARCHIVE_MAX);
+    var shown = arcAll ? archived : archived.slice(0, ARCHIVE_MAX);
     $("#arcGroup").innerHTML = shown.map(function(x){
       return '<div class="taskwrap" data-arc="' + x.id + '"><div class="taskin"><div class="task">' +
         '<span class="tick done-static"><svg><use href="#i-check"/></svg></span>' +
         '<div class="tbody"><span class="ttitle">' + esc(L(x.t)) + "</span>" +
         (x.task && facesOf(x.task).length ? faceStack(facesOf(x.task)) : "") + "</div>" +
         '<span class="tend"><span class="ttime">' + esc(L(x.done)) + "</span>" +
-        '<button class="tundo" data-undo="' + x.id + '" aria-label="' + esc(t("tasks.restore")) +
-        '" title="' + esc(t("tasks.restore")) + '"><svg><use href="#i-undo"/></svg></button>' +
+        /* No undo on a task somebody LEFT: the share that let them see it is
+           the row they just revoked, and only its owner can offer it again.
+           A button that could not work is worse than no button. */
+        (x.left ? "" :
+          '<button class="tundo" data-undo="' + x.id + '" aria-label="' + esc(t("tasks.restore")) +
+          '" title="' + esc(t("tasks.restore")) + '"><svg><use href="#i-undo"/></svg></button>') +
         "</span></div></div></div>";
     }).join("");
     $("#arcNote").hidden = archived.length <= ARCHIVE_MAX;
-    $("#arcNote").textContent = t("tasks.arcShown", {n:ARCHIVE_MAX, all:archived.length});
+    $("#arcNote").textContent = t(arcAll ? "tasks.arcShowLess" : "tasks.arcShowAll",
+      {n:ARCHIVE_MAX, all:archived.length});
+  }
+  /* The count a ticked task lands in, told to notice. */
+  function catchInArchive(){
+    var el = $("#arcCount");
+    if(!el) return;
+    el.classList.remove("caught");
+    void el.offsetWidth;
+    el.classList.add("caught");
   }
   /* Putting one back restores the task that was archived, not a copy of its
      title — a shopping list that came back empty would be a worse outcome
@@ -5872,12 +6281,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(i < 0) return;
     var entry = archived[i], wrap = $('[data-arc="' + id + '"]');
     if(wrap && wrap.classList.contains("gone")) return;
+    if(entry.left) return;
     var task = entry.task || {id:entry.id, d:"", tm:"", all:false, t:entry.t, rem:false, rep:"none", cal:false};
     if(wrap) wrap.classList.add("gone");
     setTimeout(function(){
+      /* Found again, not remembered: two restores inside this quarter second
+         both captured a position, and the second one removed whatever had
+         moved into it — one task ending up open and archived at once. */
+      i = archived.findIndex(function(x){ return x.id === id; });
+      if(i < 0) return;
       archived.splice(i, 1);
       open.unshift(task);
-      API.restoreTask(task.id);
+      API.restoreTask(task);
       renderTasks(); renderStrip(selDay);
       toast(t("toast.restored", {name:L(task.t) || t("sheet.untitled")}));
     }, 220);
@@ -5892,13 +6307,22 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       setTimeout(function(){ wrap.classList.add("gone"); }, 310);
       setTimeout(function(){
         var i = open.findIndex(function(x){ return x.id === id; });
+        var row = i > -1 ? open[i] : null;
         if(i > -1){
-          archived.unshift({id:id, t:open[i].t, task:open[i],
+          archived.unshift({id:id, t:row.t, task:row,
                             done:{he:T.he["tasks.justNow"], en:T.en["tasks.justNow"]}});
           open.splice(i,1);
         }
-        API.completeTask(id);
-        renderTasks(); toast(t("toast.done"));
+        /* The row itself, not its number: it has just left `open`, and if its
+           own add is still in flight only the object can wait for the real id. */
+        API.completeTask(row || id);
+        renderTasks();
+        catchInArchive();
+        /* A tick is one small target away from a tap meant for the row, and
+           the way back has always existed — the undo button in the archive,
+           which is a fold most people never open. Here it is, for the four
+           seconds anybody would want it. */
+        toast(t("toast.done"), i > -1 ? function(){ restoreTask(id); } : null);
       }, 540);
       return;
     }
@@ -6168,6 +6592,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#taskStack").classList.add("swap");
     renderTasks();
   });
+  /* Every empty state's button, wherever it is drawn. */
+  document.addEventListener("click", function(e){
+    var b = e.target.closest("[data-emptygo]");
+    if(!b) return;
+    var go_ = b.dataset.emptygo;
+    if(go_.indexOf("go:") === 0){ go(go_.slice(3)); return; }
+    var real = $("#" + go_);
+    if(real) real.click();
+  });
+  $("#arcNote").addEventListener("click", function(){
+    arcAll = !arcAll;
+    renderTasks();
+  });
   $("#arcGroup").addEventListener("click", function(e){
     var u = e.target.closest("[data-undo]");
     if(u) restoreTask(+u.dataset.undo);
@@ -6188,6 +6625,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(el.id === "sheet") updateSheetCue();
   }
   function closeSheets(){
+    /* Anything still on the title timer goes now. A sheet closed a quarter of
+       a second after the last letter must not be the one edit that never
+       reached the server. */
+    flushTitle();
     /* A task started from a contact ends up in the list, so that is where the
        person is left — but only if it actually became a task. Navigating away
        from an editor they abandoned would be moving them for nothing. */
@@ -6205,6 +6646,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $$(".sheet").forEach(function(el){ el.classList.remove("show"); });
     activeSheet = null;
   }
+  /* A closed sheet is translated off the bottom of the screen and is otherwise
+     entirely present: its buttons kept their place in the tab order and a
+     screen reader read straight through six dialogs nobody had opened — the
+     task editor's fields turn up between the calendar and the friends list.
+     `inert` is the one attribute that says "this is not here", and it is kept
+     in step with the class from ONE place, per sheet, rather than at every
+     call site that shows or hides one. The class is still what MOVES the
+     sheet; this only follows it. */
+  $$(".sheet").forEach(function(el){
+    var sync = function(){ el.inert = !el.classList.contains("show"); };
+    sync();
+    new MutationObserver(sync).observe(el, {attributes:true, attributeFilter:["class"]});
+  });
   /* The time sheet sits ON the scrim without owning it (see openTimeSheet),
      so a tap on the scrim while it is open has to take down only the top
      layer — closeSheets() underneath would also drop the task sheet it is
@@ -6366,8 +6820,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* One writer for every control in the sheet. A new task only joins the
      list once it has a name — an empty row appearing the moment somebody
      opened the editor would be a task nobody asked for. */
-  function commit(){
+  /* commit(SKIP_SAVE) moves the page and writes nothing — for the keystroke
+     path, where the write is on a short timer of its own. */
+  var SKIP_SAVE = {save:false};
+  function commit(how){
     if(!editing) return;
+    var save = !(how && how.save === false);
     var title = $("#sTitle").value.trim();
     editing.t = both(title);
     editing.tm = $("#sTime").value;
@@ -6390,12 +6848,25 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var chosen = $$("#sRepeat .chip").filter(function(c){ return c.getAttribute("aria-pressed") === "true"; })[0];
     editing.rep = chosen ? chosen.dataset.rep : "none";
     syncSheetRows();
+    var firstSave = false;
     if(isNew){
       if(!title) return;
       open.push(editing); isNew = false;
       $("#sDelete").hidden = false;
+      firstSave = true;
     }
-    API.saveTask(editing);
+    /* A brand-new task is SAVED at once even on a keystroke: until the server
+       has answered there is no id, and everything queued behind it — the list
+       items, a share, a reminder — is waiting on that one call. */
+    if(save || firstSave) API.saveTask(editing);
+    /* A task that arrived with somebody already on it — the shared-task button
+       in Contacts is the only way in — is shared the moment it exists. Only
+       togglePerson used to send a share, so that button made a PRIVATE task
+       with a face drawn on it, and the face was gone after a reload. */
+    if(firstSave && (editing.who || []).length) API.shareTask(editing, editing.who.slice());
+    /* And any list item typed before the task had a name — held on screen
+       until now, because there was no parent to attach it to. */
+    if(firstSave && isMine(editing)) (editing.items || []).forEach(sendItem);
     /* The reminder and the calendar entry are separate rows in separate
        systems, so they are separate calls — and only when they actually
        changed. Re-sending an unchanged reminder would cancel the row and write
@@ -6405,10 +6876,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        The date and the time are part of a reminder's identity too: moving a
        task moves what it reminds you about. */
     var whenKey = String(editing.d) + "|" + String(editing.tm) + "|" + String(editing.all);
-    if(editing.rem !== wasRem || editing.remOff !== wasOff || editing.rep !== wasRep
-       || (editing.rem && whenKey !== lastWhenKey)) API.setTaskReminder(editing);
-    if(editing.cal !== wasCal || (editing.cal && whenKey !== lastWhenKey)) API.setTaskCalendar(editing);
-    lastWhenKey = whenKey;
+    if(save && (editing.rem !== wasRem || editing.remOff !== wasOff || editing.rep !== wasRep
+       || (editing.rem && whenKey !== lastWhenKey))) API.setTaskReminder(editing);
+    if(save && (editing.cal !== wasCal || (editing.cal && whenKey !== lastWhenKey))) API.setTaskCalendar(editing);
+    if(save) lastWhenKey = whenKey;
     renderTasks(); renderStrip(selDay); flashSaved();
   }
   /* Three controls only make sense once a day has been chosen — an all-day
@@ -6435,7 +6906,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var why = sc ? t("sheet.noField", {name:sc.name}) : "";
     /* Every field WE have is checked against what the source can hold. A task
        written here has no source, so nothing is ever locked on it. */
-    lockRow($("#sCatRow"),    !canEdit(editing, "cat"),  why);
+    /* A task somebody SHARED with me is theirs to change. The server refuses
+       every one of these from a viewer — it looks the task up by owner — so
+       the sheet used to accept a new title, flash "saved", and show the old
+       one back after a reload. Locked, it says whose task it is instead. */
+    var theirs = !isMine(editing);
+    /* The two one-tap days sit OUTSIDE the date row, so locking that row left
+       them live: one tap dated a task that is not mine, and the server threw
+       the date away. */
+    $$(".whenvals [data-taskday]").forEach(function(b){ b.disabled = theirs; });
+    var owner = theirs ? friendById(editing.owner) : null;
+    var whyTheirs = t("sheet.theirs", {name:owner ? nameOf(owner) : t("sheet.someone")});
+    $("#sTitle").readOnly = theirs;
+    lockRow($("#sDateRow"), theirs, whyTheirs);
+    lockRow($("#sCatRow"),    theirs || !canEdit(editing, "cat"),  theirs ? whyTheirs : why);
     /* Two separate reasons can close the repeat row, and both have to be
        decided HERE, in the last function that touches it — the earlier of two
        lockRow calls on one row is simply erased by the later one, which is
@@ -6443,12 +6927,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        limitation wins the tooltip when both apply: adding a reminder would not
        open a row an imported task can never carry a repeat in. */
     var repNeedsRem = !editing.rem, repNoField = !canEdit(editing, "rep");
-    lockRow($("#sRepeatRow"), repNeedsRem || repNoField,
-            repNoField ? why : t("sheet.repeatNeedsRemind"));
-    lockRow($("#sListRow"),   !canEdit(editing, "items"),why);
-    lockRow($("#sShareRow"),  !canEdit(editing, "who"),  why);
-    lockRow($("#sTimeChip"),  !canEdit(editing, "time"), why);
-    lockRow($("#sEndChip"),   !canEdit(editing, "time"), why);
+    lockRow($("#sRepeatRow"), theirs || repNeedsRem || repNoField,
+            theirs ? whyTheirs : repNoField ? why : t("sheet.repeatNeedsRemind"));
+    lockRow($("#sListRow"),   theirs || !canEdit(editing, "items"), theirs ? whyTheirs : why);
+    lockRow($("#sShareRow"),  theirs || !canEdit(editing, "who"),  theirs ? whyTheirs : why);
+    lockRow($("#sTimeChip"),  theirs || !canEdit(editing, "time"), theirs ? whyTheirs : why);
+    lockRow($("#sEndChip"),   theirs || !canEdit(editing, "time"), theirs ? whyTheirs : why);
     /* the reminder and the calendar copy are OURS, not theirs — an imported
        task can still be reminded about, so these are never locked */
   }
@@ -6544,13 +7028,29 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }).join("") +
       '<div class="scuehold"><div class="scue" id="listCue"><i></i></div></div>';
     paintCue($("#sList"), $("#listCue"));
+    paintListMeta();
+  }
+  /* The subtitle and the little progress pill, separately from the rows —
+     because ticking an item must NOT rebuild the rows. `.litem.on` carries a
+     check that scales in and a strike that draws across the words, and every
+     tick threw the row away and drew a new one already ticked, so the one
+     animation on this list has never been seen. */
+  function paintListMeta(){
+    if(!editing) return;
+    var n = (editing.items || []).length, dn = itemsDone(editing);
     $("#sListSub").textContent = n ? t("sheet.listSub.nN", {done:dn, n:n}) : t("sheet.listSub.n0");
     var pill = $("#sListCount");
     pill.hidden = !n;
-    if(n){
-      pill.textContent = dn + "/" + n;
-      pill.style.setProperty("--p", Math.round(dn / n * 100) + "%");
-      pill.classList.toggle("full", dn === n);
+    if(!n) return;
+    pill.textContent = dn + "/" + n;
+    pill.style.setProperty("--p", Math.round(dn / n * 100) + "%");
+    var was = pill.classList.contains("full"), full = dn === n;
+    pill.classList.toggle("full", full);
+    /* …and the last one closing the list is worth a beat of its own. */
+    if(full && !was){
+      pill.classList.remove("pop");
+      void pill.offsetWidth;
+      pill.classList.add("pop");
     }
   }
   /* Items are rows of their own (tasks.parent_id), written through the same
@@ -6566,9 +7066,28 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     editing.items.push(item);
     el.value = "";
     renderSheetList(editing.items.length - 1);
-    renderTasks(); flashSaved();
-    if(itemWritable()) whenSaved(editing, function(pid){
+    renderTasks();
+    /* An item on a task that has no name yet has nothing to hang off: the
+       parent does not exist on the server, so this item cannot either. It is
+       kept on screen and sent by commit() the moment the task is saved — and
+       until then the sheet says what is missing instead of flashing "saved" at
+       somebody whose list is about to be thrown away. */
+    if(itemWritable() && !serverKnows(editing) && !adding[String(editing.id)]){
+      toast(t("toast.needTitle"));
+      $("#sTitle").focus();
+      return;
+    }
+    flashSaved();
+    if(itemWritable()) sendItem(item);
+  }
+  /* One item, once it has a parent with a real id. */
+  function sendItem(item){
+    if(!editing || item.id || item.sending) return;
+    var v = L(item.t);
+    item.sending = true;
+    whenSaved(editing, function(pid){
       API.send("addTask", {title:v, parentId:pid}, function(data){
+        item.sending = false;
         if(data && data.task){ item.id = data.task.id; SERVER_IDS[String(data.task.id)] = true; }
       });
     });
@@ -6583,7 +7102,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       var it = editing.items[+tg.dataset.titem];
       it.done = !it.done;
       tg.closest(".litem").classList.toggle("on", it.done);
-      renderSheetList();
+      tg.setAttribute("aria-pressed", it.done ? "true" : "false");
+      paintListMeta();
       renderTasks(); flashSaved();
       if(it.id && itemWritable()){
         API.send(it.done ? "completeTask" : "restoreTask", {taskId:it.id}, function(data){
@@ -6596,11 +7116,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }
     var rm = e.target.closest("[data-ritem]");
     if(rm){
-      var gone = editing.items.splice(+rm.dataset.ritem, 1)[0];
-      if(gone && gone.id && itemWritable()) API.send("archiveTask", {taskId:gone.id});
-      if(!editing.items.length) delete editing.items;
-      renderSheetList();
-      renderTasks(); flashSaved();
+      var idx = +rm.dataset.ritem, gone = editing.items[idx];
+      if(!gone || gone.leaving) return;
+      gone.leaving = true;
+      /* Spliced only once the row has finished folding: the indexes every
+         other row is addressed by shift the moment the array does. */
+      foldAway(rm.closest(".litem"), function(){
+        if(!editing || !editing.items) return;
+        var at = editing.items.indexOf(gone);
+        if(at > -1) editing.items.splice(at, 1);
+        if(gone.id && itemWritable()) API.send("archiveTask", {taskId:gone.id});
+        if(!editing.items.length) delete editing.items;
+        renderSheetList();
+        renderTasks(); flashSaved();
+      });
     }
   });
 
@@ -6661,7 +7190,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#pickSearch").hidden = !show;
     var q = show ? pickQ.trim().toLowerCase() : "";
     var list = !q ? FRIENDS : FRIENDS.filter(function(f){
-      return (L(f.n) + " " + f.n.he + " " + f.n.en).toLowerCase().indexOf(q) > -1;
+      return searchText(f.n).toLowerCase().indexOf(q) > -1;
     });
     $("#pickEmpty").hidden = !!list.length;
     $("#pickEmpty").textContent = list.length ? "" : t("sheet.pickNone", {q:pickQ.trim()});
@@ -6689,7 +7218,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       /* the first person turns a private task into a shared one, and from then
          on it is clear who started it */
       if(editing.owner === undefined) editing.owner = 0;
-      API.shareTask(editing.id, editing.who.slice());
+      /* Only the person just added. Sending the whole list re-offered every
+         share that already exists, and each of those came back a duplicate —
+         one refusal toast and one full reload per face already on the task. */
+      API.shareTask(editing, [id]);
     }
     renderSheetShare();
     renderTasks(); flashSaved();
@@ -6745,6 +7277,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      carries on with everyone else, which is what the toast says out loud */
   $("#sLeave").addEventListener("click", function(){
     var id = editing.id, name = L(editing.t) || t("sheet.untitled");
+    /* Read BEFORE anything moves. The row is about to leave `open`, and the
+       share id lives on it — looking it up afterwards found nothing, sent
+       nothing, and left the person on a task they had just been told they
+       were off. */
+    var mySid = editing.shareIds && MY_ID ? editing.shareIds[MY_ID] : null;
     var wrap = $('.taskwrap[data-id="' + id + '"]');
     closeSheets();
     if(wrap) wrap.classList.add("gone");
@@ -6755,11 +7292,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          to want back — so it is recoverable by exactly the same button as
          everything else that left the list. */
       if(i > -1){
-        archived.unshift({id:id, t:open[i].t, task:open[i],
+        archived.unshift({id:id, t:open[i].t, task:open[i], left:true,
                           done:{he:T.he["tasks.leftAt"], en:T.en["tasks.leftAt"]}});
         open.splice(i, 1);
       }
-      API.leaveTask(id);
+      API.leaveTask(id, mySid);
       renderTasks(); renderStrip(selDay); toast(t("toast.left", {name:name}));
     }, 230);
   });
@@ -6785,7 +7322,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#sTime").value = editing.tm || "";
     $("#sEnd").value = editing.tmEnd || "";
     $("#sDateRow").dataset.val = editing.d || "";
-    $("#sDelete").hidden = isNew;
+    /* Deleting somebody else's task is not mine to do — the server refuses it
+       (archiveTask is owner-scoped) and the sheet offers "leave" instead, two
+       rows further down. */
+    $("#sDelete").hidden = isNew || !isMine(editing);
     $("#sCal").setAttribute("aria-checked", editing.cal ? "true" : "false");
     $("#sRemind").setAttribute("aria-checked", editing.rem ? "true" : "false");
     $$("#sOffset .chip").forEach(function(c){
@@ -6849,7 +7389,21 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     this.setAttribute("aria-expanded", on ? "true" : "false");
     updateSheetCue();
   });
-  $("#sTitle").addEventListener("input", commit);
+  /* Typing commits, but not once per letter. The screen is updated on every
+     keystroke as before — `commit` also redraws the row behind the sheet — and
+     only the write is held back, because a ten-letter name was ten `editTask`
+     calls that could land out of order and leave the shorter one stored. The
+     sheet closing or the field losing focus flushes it, so nothing waits on a
+     timer that the person has already walked away from. */
+  var titleTimer = null;
+  function commitTitleSoon(){
+    clearTimeout(titleTimer);
+    titleTimer = setTimeout(function(){ titleTimer = null; commit(); }, 400);
+    commit(SKIP_SAVE);
+  }
+  function flushTitle(){ if(titleTimer){ clearTimeout(titleTimer); titleTimer = null; commit(); } }
+  $("#sTitle").addEventListener("input", commitTitleSoon);
+  $("#sTitle").addEventListener("blur", flushTitle);
   /* the visible chip is the target; the real <input type=time> holds the
      value and fires "change" into commit() same as it always did — only
      what RAISES it changed, from the platform's own popup to this page's
@@ -6977,14 +7531,26 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     API.setCategory(editing.id, editing.cat);
     commit();
   });
+  function undoDelete(row){
+    if(!row || open.some(function(o){ return o.id === row.id; })) return;
+    open.unshift(row);
+    API.restoreTask(row);
+    renderTasks(); renderStrip(selDay);
+    toast(t("toast.restored", {name:L(row.t) || t("sheet.untitled")}));
+  }
   $("#sDelete").addEventListener("click", function(){
-    var id = editing.id, wrap = $('.taskwrap[data-id="' + id + '"]');
+    var id = editing.id, row = taskById(id), wrap = $('.taskwrap[data-id="' + id + '"]');
     closeSheets();
     if(wrap) wrap.classList.add("gone");
     setTimeout(function(){
       open = open.filter(function(o){ return o.id !== id; });
-      API.deleteTask(id);
-      renderTasks(); renderStrip(selDay); toast(t("toast.deleted"));
+      API.deleteTask(row || id);
+      renderTasks(); renderStrip(selDay);
+      /* Delete on this page is `archiveTask` on the server — the row is not
+         gone, it is put away — so the way back is a real call and not a
+         promise the page cannot keep. Offered only when we still hold the
+         task itself; a bare id could restore the row but not redraw it. */
+      toast(t("toast.deleted"), row ? function(){ undoDelete(row); } : null);
     }, 230);
   });
 
@@ -7131,8 +7697,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* ───────── city / time zone ───────── */
   function renderCityRow(){
     var c = CITIES[cityIdx];
-    $("#cityName").textContent = L(c.n);
-    $("#cityClock").textContent = clockIn(c.tz);
+    /* The row names the city we have a name for; the clock is the person's own
+       zone, which for an unlisted one is not that city's. */
+    $("#cityName").textContent = myZone && c.tz !== myZone ? myZone : L(c.n);
+    $("#cityClock").textContent = clockIn(myTz());
     $("#setupNote").textContent = t(cityConfirmed ? "me.confirmed" : "me.guessed") + " · " + t("me.setupNote");
   }
   function renderCityList(q){
@@ -7232,7 +7800,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      swipe has latched open. They live out here rather than on the DOM because
      every answer re-renders the list, and state in the markup would not
      survive it. */
-  var mtOpenVotes = null, mtArmedDel = null, mtSwiped = null;
+  var mtOpenVotes = null, mtArmedDel = null, mtSwiped = null, mtSwallow = false;
 
   /* "א, ב ו־ג", never "א ו־ב ו־ג". D.and is the conjunction before the LAST
      name only; everything before it is separated by a comma. Same shape in
@@ -7263,10 +7831,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     return mtActive(m).filter(function(p){ return mtAns(m, p, o.id) === v; }).length;
   }
   function mtAnswered(m, pid){
+    /* The server's answer first — it knows about a reply that named no option
+       at all — and the per-option table second, which is all the seed has. */
+    if(m.spoke && m.spoke[pid]) return true;
     var row = m.ans[pid];
     if(!row) return false;
     for(var k in row) if(row[k]) return true;
     return false;
+  }
+  /* What somebody wrote that was neither yes nor no, if anything. */
+  function mtSaid(m, pid){
+    var said = m.saidBy && m.saidBy[pid];
+    return said && said.length ? said.join(" · ") : "";
   }
   /* Everybody sees the same options, and there is no longer any state in
      which one exists for one reader and not another (owner, 2026-09-09): the
@@ -7382,9 +7958,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var done = MEETS.filter(function(m){ return m.settled; });
     $("#mtList").innerHTML = live.length
       ? live.map(mtCardHTML).join("")
-      : '<div class="group"><div class="empty">' +
-        esc(t("mt.empty")) + "</div></div>";
-    $("#mtCount").textContent = live.length ? pl("mt", live.length) : "";
+      : '<div class="group">' + emptyBig(t("mt.empty"), "mtNew", t("mt.new")) + "</div>";
+    rollText($("#mtCount"), live.length ? pl("mt", live.length) : "");
     /* Settled first, then the ones you left — the same ordering rule the task
        archive uses (most recently out of the list, first). Capped at the same
        eight, and it SAYS it is capped rather than quietly truncating, because
@@ -7665,11 +8240,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       : m.opts.length === 1 ? "mt.askOne" : "mt.ask");
 
     $("#mtFaces").innerHTML = mtPeople(m).map(function(pid){
-      var gone = mtGone(m, pid), said = mtAnswered(m, pid);
+      var gone = mtGone(m, pid), said = mtAnswered(m, pid), words = mtSaid(m, pid);
       var f = pid === 0 ? null : friendById(pid);
-      return '<span class="mtface' + (gone ? " gone" : said ? " said" : "") + '">' +
+      return '<span class="mtface' + (gone ? " gone" : said ? " said" : "") + '"' +
+        (words ? ' title="' + esc(words) + '"' : "") + ">" +
         '<span class="face">' + avatarSVG(pid === 0 ? myAvatar : f.av, {g:pid === 0 ? myGender() : f.g}) + "</span>" +
-        esc(mtName(pid)) + (gone ? " · " + t("mt.gone") : said ? "" : " · " + t("mt.waiting")) + "</span>";
+        esc(mtName(pid)) +
+        (gone ? " · " + t("mt.gone") : words ? " · " + esc(words) : said ? "" : " · " + t("mt.waiting")) +
+        "</span>";
     }).join("");
 
     /* The coordination's own minimum, above the table it applies to. It is a
@@ -7736,6 +8314,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   $("#mtSheet").addEventListener("scroll", function(){ paintCue($("#mtSheet"), $("#mtCue")); });
 
   $("#mtOpts").addEventListener("click", function(e){
+    /* The click a finished swipe leaves behind — see the gesture below. */
+    if(mtSwallow){ mtSwallow = false; return; }
     var m = mtOpen;
     if(!m) return;
     var row = e.target.closest("[data-opt]");
@@ -7761,11 +8341,22 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       }
       mtSetAns(m, 0, o.id, want);
       API.call("setAvailability", {meeting_id:m.id, option_id:o.id, answer:want});
+      /* The press is answered after the redraw, not before it: the list is
+         rebuilt from the answer, so a class put on the button here would be
+         thrown away in the same breath. */
+      var popAfter = function(){
+        var b = $('#mtOpts [data-opt="' + o.id + '"] [data-a="' + want + '"]');
+        if(!b) return;
+        b.classList.remove("pop");
+        void b.offsetWidth;
+        b.classList.add("pop");
+      };
       /* One answer to ONE option — the server confirms the meeting itself the
          moment an option is unanimous, and the reload shows it. */
       API.send("answerOption", {meetingId:m.id, optionId:o.id, answer:want}, function(){ API.reload(); });
       mtSettling = null;
       renderMeet(); renderMeets();
+      popAfter();
       return;
     }
     if(e.target.closest("[data-settle]")){
@@ -7829,20 +8420,25 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var m = mtOpen;
     mtArmedDel = null; mtSwiped = null;
     if(mtOpenVotes === o.id) mtOpenVotes = null;
+    /* The row folds away, and the fold is also the wait: nothing is redrawn
+       underneath it until it has finished leaving. */
+    var row = $('#mtOpts [data-opt="' + o.id + '"]');
+    toast(t("toast.mtRemoved", {when:mtOptLabel(m, o)}));
     if(LIVE){
+      foldAway(row);
       API.send("removeOption", {meetingId:m.id, optionId:o.id}, function(data){
         if(!data) toast(t("toast.mtRemoveFailed"));
+        /* the reload draws the list as the server has it, folded row and all */
         API.reload();
       });
-      toast(t("toast.mtRemoved", {when:mtOptLabel(m, o)}));
-      renderMeet();
       return;
     }
-    m.opts = m.opts.filter(function(x){ return x.id !== o.id; });
-    mtActive(m).forEach(function(pid){ if(m.ans[pid]) delete m.ans[pid][o.id]; });
-    if(mtSettling === o.id) mtSettling = null;
-    renderMeet(); renderMeets();
-    toast(t("toast.mtRemoved", {when:mtOptLabel(m, o)}));
+    foldAway(row, function(){
+      m.opts = m.opts.filter(function(x){ return x.id !== o.id; });
+      mtActive(m).forEach(function(pid){ if(m.ans[pid]) delete m.ans[pid][o.id]; });
+      if(mtSettling === o.id) mtSettling = null;
+      renderMeet(); renderMeets();
+    });
   }
   /* ── the swipe ──
      Pointer events rather than touch, so a trackpad drag behaves the same, and
@@ -7854,6 +8450,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var SWIPE_OPEN = 96, LATCH = .34;
     var box = $("#mtOpts"), sw = null, x0 = 0, y0 = 0, dx = 0, axis = "";
     box.addEventListener("pointerdown", function(e){
+      /* A drag that ended without the browser sending a click leaves the
+         swallow armed; the next press is the moment it is certainly stale. */
+      mtSwallow = false;
       if(e.pointerType === "mouse") return;
       var el = e.target.closest(".mtswipe");
       if(!el || el.classList.contains("locked")) return;
@@ -7877,17 +8476,30 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     });
     var end = function(){
       if(!sw) return;
-      var el = sw, moved = Math.abs(dx), front = el.querySelector(".mtfront");
+      var el = sw, moved = Math.abs(dx), front = el.querySelector(".mtfront"), dragged = axis === "x";
       sw = null; axis = "";
       el.classList.remove("dragging");
       if(front) front.style.transform = "";
+      dx = 0;
+      /* A press that never became a drag is a press, and this function must
+         not touch it. The red sits INSIDE the row it belongs to, so releasing
+         a tap on it used to run the line below, rebuild the whole list, and
+         take the button out from under the finger before its click could
+         land — which is why a time could not be removed on a phone at all. */
+      if(!dragged) return;
       /* The latch is state, not a class left on the node: the next answer
          anybody gives re-renders this whole list, and a class would go with
-         it while the row still looked open for one frame. */
-      mtSwiped = moved > SWIPE_OPEN * LATCH ? +el.dataset.opt : null;
+         it while the row still looked open for one frame. The RELEASE,
+         though, only patches the class — see above, and it lets the row
+         settle back under its own transition instead of snapping. */
+      var open = moved > SWIPE_OPEN * LATCH ? +el.dataset.opt : null;
+      mtSwiped = open;
       mtArmedDel = null;
-      dx = 0;
-      renderMeet();
+      $$(".mtswipe", box).forEach(function(r){ r.classList.toggle("open", +r.dataset.opt === open); });
+      /* …and now that the list is not rebuilt, the click the browser sends
+         after a drag really does arrive. A drag is not a tap: swallow it, or
+         opening a row by swiping it would close it again in the same breath. */
+      mtSwallow = true;
     };
     box.addEventListener("pointerup", end);
     box.addEventListener("pointercancel", end);
@@ -7899,10 +8511,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       /* Everyone is told by the server, this person included — so the page
          says only that it went, and the reload brings back the meeting as it
          really is. Drawing it settled first would be a guess about a call the
-         server is still entitled to refuse. */
-      toast(t("toast.mtConfirmed", {when:mtOptLabel(m, o)}));
+         server is still entitled to refuse.
+
+         …and the sentence waits for the answer. It used to be said first and
+         then contradicted by a failure toast a moment later, and a second tap
+         in between sent the whole thing twice. */
+      if(mtSettlingSend) return;
+      mtSettlingSend = true;
       API.send("settleMeeting", {meetingId:m.id, optionId:o.id}, function(data){
-        if(!data) toast(t("toast.mtSettleFailed"));
+        mtSettlingSend = false;
+        toast(data ? t("toast.mtConfirmed", {when:mtOptLabel(m, o)}) : t("toast.mtSettleFailed"));
         API.reload();
       });
       renderMeet();
@@ -7956,7 +8574,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(!mtOpen) return;
     var m = mtOpen;
     closeSheets();
-    mtLeave(m);
+    /* The same question the row in the list asks, rather than going straight
+       out. Leaving takes your answers off the tally for everybody else and
+       the only way back is the "you left" row — so the row asking and the
+       sheet not asking made the sheet the dangerous one, for the identical
+       action, two taps deeper in. */
+    mtLeaving = m.id;
+    setCalMode("meet");
+    renderMeets();
   });
 
   /* ── proposing one more moment ──
@@ -8213,7 +8838,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      measured is the one thing this file must not do. Somebody with no history
      is not missing from the list — they fall to the alphabetical tail. */
   var FREQ = {7:52, 1:44, 10:38, 3:31, 5:27, 2:22, 12:19, 8:15, 6:11, 9:8, 4:6, 11:4, 13:2};
-  function mtFreq(id){ return FREQ[id] || 0; }
+  /* …and on a real account it orders NOBODY: ids 1-13 are real people there,
+     so the seeded numbers would rank a stranger above somebody's closest
+     friend on made-up history. Alphabetical until the server sends a real
+     one. */
+  function mtFreq(id){ return LIVE ? 0 : (FREQ[id] || 0); }
   function mtPeopleOrder(){
     return FRIENDS.slice().sort(function(a, b){
       return mtFreq(b.id) - mtFreq(a.id) || L(a.n).localeCompare(L(b.n));
@@ -8504,14 +9133,25 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     });
     var picks = m.opts.map(function(o){ return {day:o.day, part:o.part || null, time:o.time || null}; });
     if(LIVE){
+      /* One start per press. The sheet takes half a second to slide away and
+         the button stayed live for all of it, so a second tap made a second
+         coordination and invited everybody to both. */
+      if(mtStarting) return;
+      mtStarting = true;
+      this.disabled = true;
       /* The server numbers the meeting and its options; the page waits for the
          real rows rather than showing a card it would then have to rename. */
       API.send("startMeeting", {title:nm, participantIds:m.who, allDay:m.allDay, options:picks}, function(data){
-        API.reload();
-        if(data && data.meeting) setTimeout(function(){ openMeet(Number(data.meeting.id)); }, 350);
+        mtStarting = false;
+        $("#mtNewGo").disabled = false;
+        if(!data){ toast(t("toast.mtStartFailed")); return; }
+        /* Opened when the data is actually back, not on a timer that was
+           racing it: `openMeet` looks the meeting up in MEETS, and on a slow
+           answer it found nothing and the sheet silently never opened. */
+        API.reload(function(){ if(data.meeting) openMeet(Number(data.meeting.id)); });
+        toast(t("toast.mtStarted", {list:nameList(m.who.map(mtName))}));
       });
       closeSheets();
-      toast(t("toast.mtStarted", {list:nameList(m.who.map(mtName))}));
       return;
     }
     MEETS.unshift(m);
@@ -8526,12 +9166,21 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   });
 
   /* ── the two calendar modes ── */
-  function setCalMode(mode){
+  function setCalMode(mode, animate){
     $$("#calMode button").forEach(function(b){
       b.setAttribute("aria-pressed", b.dataset.calmode === mode ? "true" : "false");
     });
     $("#calRead").hidden = mode !== "cal";
     $("#calMeet").hidden = mode === "cal";
+    /* Only when somebody PRESSED the segment. renderAll re-applies the mode on
+       every language switch and every reload, and a page that rises each time
+       it is redrawn reads as a page that keeps losing its place. */
+    if(animate){
+      var half = $(mode === "cal" ? "#calRead" : "#calMeet");
+      half.classList.remove("swap");
+      void half.offsetWidth;
+      half.classList.add("swap");
+    }
     /* This used to be hidden, and the comment here still said so long after
        the sheet behind it started calling `startMeeting` for real. The button
        belongs to the coordination mode and to nothing else, which is the whole
@@ -8543,7 +9192,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   $("#calMode").addEventListener("click", function(e){
     var b = e.target.closest("[data-calmode]");
-    if(b) setCalMode(b.dataset.calmode);
+    if(b && b.getAttribute("aria-pressed") !== "true") setCalMode(b.dataset.calmode, true);
   });
 
   /* ── adding a friend ──
@@ -8574,12 +9223,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     /* people already on Olma are not offered again — they are in the list
        above, and inviting an existing friend is the one action here that
        could not possibly be what somebody meant */
-    var known = FRIENDS.map(function(f){ return f.n.en; });
+    /* Through `nameOf`, because a live name is one string and a seeded one is
+       a {he,en} pair. Reading `.en` off the live shape gave undefined on BOTH
+       sides, every contact matched a friend, and the list came back empty for
+       anybody who had made a single connection — the one screen where that
+       looks exactly like "you have no contacts". */
+    var known = FRIENDS.map(nameOf).filter(Boolean);
     var q = cnQ.trim().toLowerCase();
     var list = CONTACTS.filter(function(c){
-      if(known.indexOf(c.n.en) > -1) return false;
+      var name = nameOf(c);
+      if(name && known.indexOf(name) > -1) return false;
       if(!q) return true;
-      return (L(c.n) + " " + c.n.he + " " + c.n.en + " " + c.num).toLowerCase().indexOf(q) > -1;
+      return (searchText(c.n) + " " + c.num).toLowerCase().indexOf(q) > -1;
     });
     $("#cnList").innerHTML = list.length ? list.map(function(c){
       var sent = !!invited[c.id];
@@ -8640,16 +9295,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(!b) return;
     cityIdx = +b.dataset.city;
     cityConfirmed = true;
+    myZone = CITIES[cityIdx].tz;
     renderCityRow();
     closeSheets();
-    API.setTimezone(CITIES[cityIdx].tz);
+    /* The server re-reads every stored moment into the new zone, so the page
+       has to ask again — until it did, the tasks and the days on screen stayed
+       in the zone they were drawn in and only the clock in the corner moved. */
+    API.setTimezone(CITIES[cityIdx].tz, function(){ API.reload(); });
     toast(t("toast.city", {tz:L(CITIES[cityIdx].n)}));
   });
   function tickClocks(){
-    if(CITIES[cityIdx]){
-      $("#cityClock").textContent = clockIn(CITIES[cityIdx].tz);
-      $("#topClock").textContent = clockIn(CITIES[cityIdx].tz);
-    }
+    $("#cityClock").textContent = clockIn(myTz());
+    $("#topClock").textContent = clockIn(myTz());
     $$("[data-ftz]").forEach(function(el){
       el.textContent = clockIn(el.dataset.ftz);
       el.classList.toggle("asleep", isNight(el.dataset.ftz));
@@ -8657,7 +9314,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     /* the greeting rides the same tick: a page left open through 17:00 should
        not still be saying good afternoon */
     paintGreeting();
+    rollDay();
   }
+  /* Midnight, wherever this person is. Only ever moves the page FORWARD onto
+     the day it is now, and only when the date it is drawing is no longer that
+     day — a redraw on every tick would fight whatever is on screen. */
+  function rollDay(){
+    var now = todayInZone();
+    if(ymd(now) === ymd(base)) return;
+    base = now;
+    weekOff = 0;
+    renderTasks(); renderStrip(0); renderMeets();
+  }
+  /* A phone whose screen has been off for a night arrives here first. */
+  document.addEventListener("visibilitychange", function(){ if(!document.hidden) rollDay(); });
   setInterval(tickClocks, 30000);
 
   /* ── the settle grace, ticking ──
@@ -8670,7 +9340,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      The sweep runs on its own minute, so the first re-read can still find the
      meeting negotiating; `settleAsked` is per meeting-and-moment, which lets
      the next tick ask again without turning the page into a poller. */
-  var settleAsked = {};
+  var settleAsked = {}, SETTLE_RETRY_MS = 20000;
+  /* One coordination per press of "start" — see the handler. */
+  var mtStarting = false;
+  /* …and one settle per press, for the same reason. */
+  var mtSettlingSend = false;
   function tickSettle(){
     if(!LIVE) return;
     var live = MEETS.filter(function(m){
@@ -8681,8 +9355,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     live.forEach(function(m){
       if(m.settleIn > 0){ m.settleIn -= 1; redraw = true; return; }
       var key = m.id + ":" + (m.settlingOpt || "");
-      if(settleAsked[key]) return;
-      settleAsked[key] = true;
+      /* Asked at most once every SETTLE_RETRY seconds, rather than once ever.
+         The sweep that actually settles a meeting runs on its own minute, so
+         the read at zero can perfectly well come back still negotiating — and
+         with a permanent latch the countdown then sat on "settling now" for
+         as long as the page stayed open, which the comment above already
+         claimed it did not. */
+      var now = Date.now();
+      if(settleAsked[key] && now - settleAsked[key] < SETTLE_RETRY_MS) return;
+      settleAsked[key] = now;
       /* One read, and the reload brings the meeting back as it really is —
          confirmed, or still negotiating because somebody said no in time. */
       API.reload();
@@ -8736,12 +9417,18 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        "remove from my calendar" — which is a private act, and deliberately
        not the same control, or the same word, as leaving the meeting. */
     MEETS.forEach(function(m){
-      if(!m.settled || !m.inCal) return;
+      /* A settled coordination stands in the day because it IS the day's —
+         `inCal` is the separate, private question of whether a copy of it also
+         sits on their Google calendar, which the server does not record per
+         participant and therefore answers "no" for everybody. Read here, it
+         hid every settled meeting on a real account from the one screen that
+         exists to show what a day holds. */
+      if(!m.settled) return;
       var o = mtOptById(m, m.settled);
       if(!o || o.day !== i) return;
       evs.push({time:m.allDay ? "" : (o.time || ""), allDay:m.allDay, end:"",
                 part:m.allDay ? "" : (o.time ? "" : t("mt.part." + (o.part || "evening"))),
-                title:L(m.t), sub:t("cal.fromMeet"), c:"var(--accent)", meet:m.id});
+                title:L(m.t), sub:t("cal.fromMeet"), c:"var(--accent)", meet:m.id, uncal:!!m.inCal});
     });
     /* an all-day entry heads the day, the way every calendar shows it */
     return evs.sort(function(a, b){
@@ -8762,23 +9449,47 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       d.getFullYear() + "/" + (d.getMonth() + 1) + "/" + d.getDate() +
       (p.account ? "?authuser=" + encodeURIComponent(p.account) : "");
   }
-  function renderStrip(sel){
+  /* Which week the seven buttons on screen were built for, and which day was
+     lit last — so a tap on another day can CHANGE the strip instead of
+     replacing it. `.day` has carried a background transition since the day it
+     was written and nobody had ever seen it play: every tap threw the button
+     away and drew a new one already selected. */
+  var stripWeek = null, stripSel = null;
+  function renderStrip(sel, slide){
     selDay = sel;
     syncCalOpen();
     var wk0 = weekOff * 7;
-    $("#daystrip").innerHTML = [0,1,2,3,4,5,6].map(function(k){
-      var i = wk0 + k;
-      var d = dayAt(i), n = agendaFor(i).length, dots = "";
-      for(var k = 0; k < Math.min(n,3); k++) dots += "<i></i>";
-      /* The strip always starts on today, but "the first one" is a rule you
-         have to know. A mark beside the number is one you can see. */
-      return '<button class="day' + (i === 0 ? " today" : "") + '" data-d="' + i +
-        '" aria-selected="' + (i === sel) + '">' +
-        '<div class="dn' + (i === 0 ? " isnow" : "") + '">' +
-        (i === 0 ? esc(t("cal.today")) : D.days[d.getDay()]) + "</div>" +
-        '<div class="dd">' + d.getDate() + "</div>" +
-        '<div class="dots">' + dots + "</div></button>";
-    }).join("");
+    var cells = $$("#daystrip .day");
+    if(stripWeek !== weekOff || cells.length !== 7){
+      $("#daystrip").innerHTML = [0,1,2,3,4,5,6].map(function(k){
+        var i = wk0 + k, d = dayAt(i);
+        /* The strip always starts on today, but "the first one" is a rule you
+           have to know. A mark beside the number is one you can see. */
+        return '<button class="day' + (i === 0 ? " today" : "") + '" data-d="' + i +
+          '" aria-selected="false">' +
+          '<div class="dn' + (i === 0 ? " isnow" : "") + '">' +
+          (i === 0 ? esc(t("cal.today")) : D.days[d.getDay()]) + "</div>" +
+          '<div class="dd">' + d.getDate() + "</div>" +
+          '<div class="dots"></div></button>';
+      }).join("");
+      stripWeek = weekOff;
+      cells = $$("#daystrip .day");
+      if(slide){
+        var strip = $("#daystrip"), dir = slide > 0 ? "wknext" : "wkprev";
+        strip.classList.remove("wknext", "wkprev");
+        void strip.offsetWidth;
+        strip.classList.add(dir);
+      }
+    }
+    /* Both of these are true of a strip that already exists, and both can
+       change under a reload: which day is lit, and how full each day is. */
+    cells.forEach(function(b, k){
+      var i = wk0 + k, n = agendaFor(i).length, dots = "";
+      for(var j = 0; j < Math.min(n, 3); j++) dots += "<i></i>";
+      b.setAttribute("aria-selected", i === sel ? "true" : "false");
+      var dd = b.querySelector(".dots");
+      if(dd.innerHTML !== dots) dd.innerHTML = dots;
+    });
     /* the strip can straddle two months, and then it has to say both */
     var a = dayAt(wk0), z = dayAt(wk0 + 6);
     $("#stripMonth").textContent = a.getMonth() === z.getMonth()
@@ -8810,10 +9521,24 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         (v.task ? '<span class="evtag">' + esc(t(v.kind === "event" ? "cal.eventTag" : "cal.taskTag")) + "</span>" : "") +
         (v.meet ? '<span class="evtag">' + esc(t("cal.meetTag")) + "</span>" : "") +
         '</div><div class="evsub">' + esc(v.sub) + "</div></div>" +
-        (v.meet ? '<button class="evdrop" data-uncal="' + v.meet + '" title="' +
+        (v.uncal ? '<button class="evdrop" data-uncal="' + v.meet + '" title="' +
           esc(t("mt.calRemove")) + '" aria-label="' + esc(t("mt.calRemove")) +
           '"><svg><use href="#i-x"/></svg></button>' : "") + "</div>";
-    }).join("") : '<div class="empty">' + esc(t("cal.empty")) + "</div>";
+    }).join("")
+      /* "Nothing today" and "we cannot see your calendar" look identical on an
+         empty day, and the server has always told us which (`connected`). */
+      : (LIVE && !calConnected
+        ? emptyBig(t("cal.notConnected"), "go:tools", t("cal.connectGo"), "i-tools")
+        : '<div class="empty">' + esc(t("cal.empty")) + "</div>");
+    /* …and the list rises, but only when the DAY changed. A reload landing on
+       the day you are already reading must not make the page flinch. */
+    if(stripSel !== sel){
+      stripSel = sel;
+      var ag = $("#agenda");
+      ag.classList.remove("swap");
+      void ag.offsetWidth;
+      ag.classList.add("swap");
+    }
   }
   $("#daystrip").addEventListener("click", function(e){
     var b = e.target.closest(".day");
@@ -8823,8 +9548,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      first day otherwise — so stepping forward and back returns you to the day
      you started on rather than to a Monday you never chose. */
   function goWeek(w){
+    var was = weekOff;
     weekOff = Math.max(WEEK_MIN, Math.min(WEEK_MAX, w));
-    renderStrip(weekOff === 0 ? 0 : weekOff * 7);
+    renderStrip(weekOff === 0 ? 0 : weekOff * 7, weekOff === was ? 0 : weekOff > was ? 1 : -1);
   }
   $(".stripmonth").addEventListener("click", function(e){
     if(e.target.closest("#wkToday")) return goWeek(0);
@@ -8859,13 +9585,23 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(!x || !x.d) return;
     var target = new Date(x.d + "T12:00:00");
     var i = Math.round((target - base) / 86400000);
-    if(i < 0 || i > 6){ base = target; i = 0; }
+    /* The week is PAGED to, never re-based. Moving `base` made the task's own
+       day "today" for the whole page: every day number after it — the strip,
+       the today/tomorrow labels, the days asked of /me/events, and the `day`
+       sent when a coordination time is added — counts from `base`, while the
+       server counts from the real today. Nothing ever put it back.
+
+       Past the strip's own reach (WEEK_MIN..WEEK_MAX) there is no day to show,
+       so the sheet opens where the person already is rather than the calendar
+       landing on the wrong one. */
+    if(i < WEEK_MIN * 7 || i > WEEK_MAX * 7 + 6){ openSheet(id); return; }
+    weekOff = Math.floor(i / 7);
     go("cal");
     renderStrip(i);
     setTimeout(function(){
       var row = $('.ev[data-task="' + id + '"]');
       if(!row){ return; }
-      row.scrollIntoView({block:"center", behavior:"smooth"});
+      row.scrollIntoView({block:"center", behavior:REDUCED ? "auto" : "smooth"});
       row.classList.add("landing");
       setTimeout(function(){ row.classList.add("pressed"); }, 310);
       setTimeout(function(){
@@ -8879,6 +9615,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* Search appears only past SEARCH_AT. Below it the whole list is on one
      screen, so a permanent field would be a control that never saves a tap. */
   var SEARCH_AT = 8, friendQ = "";
+  /* Which friend rows are open, kept across a re-render — see the click
+     handler below. Groups have had this since they were built; friends did
+     not, and every reload closed them. */
+  var frOpen = {};
   /* ── groups ─────────────────────────────────────────────────────────── */
   var GROUP_SEARCH_AT = 4, groupQ = "", grOpen = {};
   function grName(g){ return L(g.n).trim() || t("gr.untitled"); }
@@ -9025,10 +9765,17 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#friendSearch").hidden = !show;
     var q = show ? friendQ.trim().toLowerCase() : "";
     var list = !q ? FRIENDS : FRIENDS.filter(function(f){
-      return (L(f.n) + " " + f.n.he + " " + f.n.en).toLowerCase().indexOf(q) > -1;
+      return searchText(f.n).toLowerCase().indexOf(q) > -1;
     });
+    /* Nobody connected yet and nobody MATCHING are two different sentences,
+       and the second one read `No friend matches ""` for every person opening
+       this page for the first time. renderGroups has always got this right. */
     $("#friendEmpty").hidden = !!list.length;
-    $("#friendEmpty").textContent = list.length ? "" : t("fr.noMatch", {q:friendQ.trim()});
+    /* A search that found nobody is a note; a page with nobody on it at all is
+       an empty state, and it says what to do about it. */
+    if(list.length) $("#friendEmpty").textContent = "";
+    else if(q){ $("#friendEmpty").textContent = t("fr.noMatch", {q:friendQ.trim()}); }
+    else $("#friendEmpty").innerHTML = emptyBig(t("fr.none"), "addFriend", t("fr.invite"));
     $("#friendGroup").innerHTML = list.map(function(f){
       var live = PKEYS.filter(function(k){ return f.p[k]; }).length;
       var perms = PKEYS.map(function(k){
@@ -9050,7 +9797,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
           '<button class="switch" role="switch" aria-checked="' + f.p[k] + '" data-f="' + f.id + '" data-p="' + k + '" aria-label="' + esc(t("p." + k)) + '"></button></div>';
       }).join("");
       var night = isNight(f.tz), bday = isBirthday(f.bd);
-      return '<div class="rowset"><button class="row" data-friend="' + f.id + '" aria-expanded="false">' +
+      var fopen = !!frOpen[f.id];
+      return '<div class="rowset"><button class="row" data-friend="' + f.id + '" aria-expanded="' + fopen + '">' +
         '<span class="fav">' + avatarSVG(f.av, {g:f.g, night:night, bday:bday}) + "</span>" +
         '<div class="row-txt"><div class="row-title">' + esc(L(f.n)) +
         (bday ? ' <span class="bdaydot" title="' + esc(t("fr.bday")) + '">🎂</span>' : "") +
@@ -9058,7 +9806,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         esc(permsLine(live, L(f.since))) + "</div></div>" +
         '<span class="row-end tiny' + (night ? " asleep" : "") + '" data-ftz="' + f.tz + '">' + clockIn(f.tz) + "</span>" +
         '<svg class="chev"><use href="#i-chev"/></svg></button>' +
-        '<div class="fold" data-ffold="' + f.id + '"><div><div class="foldpad">' + perms +
+        '<div class="fold' + (fopen ? " open" : "") + '" data-ffold="' + f.id + '"><div><div class="foldpad">' + perms +
         '<button class="linkbtn danger" data-frdel="' + f.id + '" style="margin-top:14px;display:block">' + esc(t("fr.remove")) + "</button>" +
         "</div></div></div></div>";
     }).join("");
@@ -9133,7 +9881,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     GROUPS.forEach(function(g){ g.m = g.m.filter(function(m){ return m !== fid; }); });
     renderFriends();
     renderGroups();
-    $("#friendCount").textContent = t("fr.count", {n:FRIENDS.length});
+    rollText($("#friendCount"), t("fr.count", {n:FRIENDS.length}));
   }
   function removeFriend(btn){
     var fid = +btn.dataset.frdel, f = friendById(fid);
@@ -9146,14 +9894,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }
     clearTimeout(+btn.dataset.armT || 0);
     API.call("removeFriend", {connection_id:f.cid});
-    if(!LIVE){ dropFriend(fid); toast(t("toast.removed", {name:L(f.n)})); return; }
+    var rowset = btn.closest(".rowset");
+    if(!LIVE){
+      foldAway(rowset, function(){ dropFriend(fid); toast(t("toast.removed", {name:L(f.n)})); });
+      return;
+    }
     if(!f.cid){ disarmFriendRemove(btn); API.reload(); return; }
     btn.disabled = true;
     API.send("revokeConnection", {connectionId:f.cid}, function(data){
       if(!data){ disarmFriendRemove(btn); return; } /* refused, and already reloading */
-      dropFriend(fid);
-      toast(t("toast.removed", {name:L(f.n)}));
-      API.reload();
+      foldAway(rowset, function(){
+        dropFriend(fid);
+        toast(t("toast.removed", {name:L(f.n)}));
+        API.reload();
+      });
     });
   }
   $("#friendGroup").addEventListener("click", function(e){
@@ -9169,6 +9923,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var on = !fold.classList.contains("open");
     fold.classList.toggle("open", on);
     head.setAttribute("aria-expanded", on ? "true" : "false");
+    /* Remembered, the way a group's fold is. Every write on this page ends in
+       a reload, which rebuilds this list — so a permission switched on inside
+       an open row shut the row underneath the finger that had just used it. */
+    if(on) frOpen[id] = true; else delete frOpen[id];
   });
 
   /* ───────── profile ───────── */
@@ -9203,7 +9961,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     return isBirthday(+v.slice(5,7) + "-" + (+v.slice(8,10)));
   }
   function paintAvatars(){
-    var opt = {g:myGender(), night:isNight(CITIES[cityIdx].tz), bday:myBirthday()};
+    var opt = {g:myGender(), night:isNight(myTz()), bday:myBirthday()};
     $("#bigAvatar").innerHTML = avatarSVG(myAvatar, opt);
     trackPupils();
   }
@@ -9246,7 +10004,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   function renderPause(){
     var b = $("#pauseBtn");
     b.setAttribute("aria-pressed", paused ? "true" : "false");
-    $("#pauseIcon").innerHTML = '<use href="#' + (paused ? "i-play" : "i-pause") + '"/>';
+    /* The glyph changes meaning, so it arrives rather than being swapped
+       underneath the finger — the same entrance the tool glyphs make. */
+    var ic = $("#pauseIcon"), want = paused ? "i-play" : "i-pause";
+    if(ic.dataset.g !== want){
+      ic.dataset.g = want;
+      ic.innerHTML = '<use href="#' + want + '"/>';
+      ic.classList.remove("morph");
+      void ic.offsetWidth;
+      ic.classList.add("morph");
+    }
     $("#pauseLabel").textContent = t(paused ? "me.resume" : "me.pause");
     $("#pauseNote").textContent = t(paused ? "me.pausedNote" : "me.pauseNote");
     document.documentElement.toggleAttribute("data-paused", paused);
@@ -9320,7 +10087,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   var fqDraft = {};
   var LANGS = [{v:"he", n:"עברית"}, {v:"en", n:"English"}, {v:"ar", n:"العربية"}, {v:"ru", n:"Русский"}];
 
-  function flashSaved(id){
+  /* The profile page's own saved mark, which takes the element to flash.
+     Deliberately not called `flashSaved`: it used to be, and both declarations
+     live in the same scope — this one won, so every `flashSaved()` in the task
+     sheet ran `$(undefined)`, returned, and the sheet's "נשמר ✓" never once
+     appeared. An editor whose whole design is "no save button" had no
+     confirmation at all. */
+  function flashMark(id){
     var el = $(id);
     if(!el) return;
     el.classList.add("show");
@@ -9515,13 +10288,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     renderSchedule();
     var chip = $(which === "start" ? "#hoursFrom" : "#hoursTo");
     chip.classList.remove("pop"); void chip.offsetWidth; chip.classList.add("pop");
-    API.setAvailability(start, end, function(){ flashSaved("#whenSaved"); });
+    API.setAvailability(start, end, function(){ flashMark("#whenSaved"); });
   }
   $("#hoursSub").addEventListener("click", function(e){
     if(!e.target.closest("#hoursReset")) return;
     SCHED.start = SCHED.def.start; SCHED.end = SCHED.def.end; SCHED.source = "default";
     renderSchedule();
-    API.setAvailability(null, null, function(){ flashSaved("#whenSaved"); });
+    API.setAvailability(null, null, function(){ flashMark("#whenSaved"); });
   });
   $("#quietDays").addEventListener("click", function(e){
     var b = e.target.closest("[data-qday]");
@@ -9533,14 +10306,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     renderSchedule();
     var nb = $('#quietDays [data-qday="' + d + '"]');
     if(nb){ nb.classList.add("pop"); }
-    API.setQuietDays({days:SCHED.days}, function(){ flashSaved("#whenSaved"); });
+    API.setQuietDays({days:SCHED.days}, function(){ flashMark("#whenSaved"); });
   });
   $("#calendarSeg").addEventListener("click", function(e){
     var b = e.target.closest("[data-calkind]");
     if(!b || b.dataset.calkind === SCHED.calendar) return;
     SCHED.calendar = b.dataset.calkind;
     renderSchedule();
-    API.setQuietDays({days:SCHED.days, calendar:SCHED.calendar}, function(){ flashSaved("#whenSaved"); });
+    API.setQuietDays({days:SCHED.days, calendar:SCHED.calendar}, function(){ flashMark("#whenSaved"); });
   });
 
   /* ── the daily summary ── */
@@ -9560,7 +10333,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   function saveDigest(patch){
     renderDigest();
-    API.setDigest(patch, function(){ flashSaved("#digestSaved"); });
+    API.setDigest(patch, function(){ flashMark("#digestSaved"); });
   }
   $("#digestTime").addEventListener("click", function(){
     var btn = this;
@@ -9607,7 +10380,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       renderSchedule();
       API.setQuietDays({days:SCHED.days, holidays:on,
         calendar:{jewish:1, christian:1, muslim:1}[SCHED.calendar] ? SCHED.calendar : null},
-        function(){ flashSaved("#whenSaved"); });
+        function(){ flashMark("#whenSaved"); });
       return;
     }
     if(sw.id === "digestSwitch"){
@@ -9700,6 +10473,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     "</div></div>";
   }
   function renderFactQs(){
+    /* Same reason as the name boxes in paintStatic: this rebuilds the cards
+       from scratch, so a background reload landing mid-sentence threw away an
+       answer being typed AND the focus with it. The list only ever changes
+       when a card is answered or skipped, and both of those redraw it
+       themselves — so standing still while the person is inside it is safe. */
+    if($("#factQs").contains(document.activeElement)) return;
     var shown = FQ.slice(0, FQ_SHOWN);
     $("#factQs").innerHTML = shown.length
       ? shown.map(function(p){ return fqCardHTML(p); }).join("")
@@ -9771,7 +10550,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(okb && !okb.disabled) saveQuestion(w, p, okb);
   });
 
-  var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   /* The next question in line, drawn into the slot a card just left. */
   function bringNext(){
     var list = $("#factQs"), showing = $$("[data-fqw]", list).map(function(el){ return el.dataset.fqw; });
@@ -9979,7 +10757,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $$(".view").forEach(function(v){ v.classList.toggle("active", v.dataset.view === view); });
     tabs.forEach(function(x){ x.setAttribute("aria-selected", x.dataset.go === tab ? "true" : "false"); });
     placePill(selectedTab());
-    window.scrollTo({top:0, behavior:"smooth"});
+    window.scrollTo({top:0, behavior:REDUCED ? "auto" : "smooth"});
   }
   window.addEventListener("resize", repositionPill);
 
@@ -9991,10 +10769,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     paintGreeting();
     $$("[data-i18n-ph]").forEach(function(el){ el.placeholder = t(el.dataset.i18nPh); });
     $$("[data-i18n-label]").forEach(function(el){ el.setAttribute("aria-label", t(el.dataset.i18nLabel)); });
-    $("#fname").value = L(PROFILE.first);
-    $("#lname").value = L(PROFILE.last);
-    $("#oname").value = L(PROFILE.olma);
-    $("#friendCount").textContent = t("fr.count", {n:FRIENDS.length});
+    /* Not while somebody is in the box. Every write on this page ends in a
+       reload, and a reload repaints all three of these — so typing a surname
+       while a task saved in the background swallowed the half-typed word and
+       put the caret back at the end. A field that HAS the focus is the one
+       place the person's copy is newer than the server's. */
+    setField($("#fname"), L(PROFILE.first));
+    setField($("#lname"), L(PROFILE.last));
+    setField($("#oname"), L(PROFILE.olma));
+    rollText($("#friendCount"), t("fr.count", {n:FRIENDS.length}));
     /* Hard-coded WhatsApp here said something the delivery gate does not
        promise: a reminder goes out on whichever channel is the default, and
        that is a setting one page away. */
@@ -10113,7 +10896,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(!x.reminder || !x.reminder.at || !x.date) return 0;
     var at = Date.parse(x.reminder.at);
     if(!isFinite(at)) return 0;
-    var tz = CITIES[cityIdx] ? CITIES[cityIdx].tz : "UTC";
+    var tz = myTz();
     /* The stored instant, re-expressed as the wall clock they would read it
        at; the due moment is already a wall clock. Subtracting an instant from
        a wall clock is the "15:00 stored as 15:00Z" mistake in miniature. */
@@ -10236,6 +11019,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     PROV.forEach(function(p){
       p.connected = false;
       p.account = "";
+      /* Cleared with everything else. Left standing, an account that had been
+         repaired kept telling the person to reconnect it for ever. */
+      p.needsReauth = false;
       p.svc.forEach(function(sv){ sv.on = false; });
     });
     (list || []).forEach(function(row){
@@ -10320,6 +11106,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       t:m.title || "",
       by:m.mine ? 0 : m.initiatorId,
       who:who, allDay:allDay, opts:opts, ans:ans, left:left,
+      /* Answered, in the server's own words: a yes, a no, OR a sentence that
+         is neither ("not free until 22:00 — after that I can"). The page only
+         ever looked at per-option answers, so somebody who had written a
+         condition was drawn as waiting — the exact mistake `said`/`answered`
+         were added to the route to stop (domain/user-dashboard.js). */
+      spoke:(m.participants || []).reduce(function(acc, p){
+        if(p.answered) acc[String(p.id) === String(MY_ID) ? 0 : p.id] = true;
+        return acc;
+      }, {}),
+      saidBy:(m.participants || []).reduce(function(acc, p){
+        if((p.said || []).length) acc[String(p.id) === String(MY_ID) ? 0 : p.id] = p.said.slice();
+        return acc;
+      }, {}),
       settled:settled,
       slotText:(settledOpt ? m.confirmedSlot : m.slot) || "",
       /* Whether the settled slot sits on THIS person's own calendar is not
@@ -10352,11 +11151,17 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      data, and never retried: a screen that silently re-fetches is a screen
      that can change under somebody's finger, and a day view that redraws
      itself while being read is worse than one that is a minute old. */
+  var daysSeq = 0;
   function loadDays(){
     if(!LIVE) return;
+    /* The newest request wins. Two of these in flight — the week paged twice,
+       or a boot and a page — could land in either order, and the older answer
+       would overwrite the newer days with itself. */
+    var mine = ++daysSeq;
     fetch("/me/events", {credentials:"same-origin", headers:{Accept:"application/json"}})
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(body){
+        if(mine !== daysSeq) return;
         if(!body || !body.ok || !body.data) return;
         calConnected = !!body.data.connected;
         EVENTS = {};
@@ -10386,6 +11191,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       paused = !!d.user.paused;
       nestTipSeen = !!d.user.nestTipSeen;
       cityConfirmed = !!d.user.timezoneConfirmed;
+      /* The zone as the server holds it, whether or not the city list has a
+         row for it: every moment this page sends is stamped with THIS. */
+      if(d.user.timezone) myZone = d.user.timezone;
       var i = CITIES.map(function(c){ return c.tz; }).indexOf(d.user.timezone);
       /* An unlisted zone leaves the city alone rather than snapping to the
          first one in the list — showing Tel Aviv to somebody in Nairobi is
@@ -10428,6 +11236,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        into an edit of a row that is no longer there. */
     SERVER_IDS = {};
     (d.tasks || []).concat(d.archived || []).forEach(function(x){ SERVER_IDS[String(x.id)] = true; });
+    /* And what those rows currently hold, so the next edit of one can name
+       only the field that moved (API.saveTask). Rebuilt with them, for the
+       same reason they are. */
+    lastSent = {};
+    open.forEach(function(x){
+      lastSent[String(x.id)] = {title:L(x.t), category:x.cat || null, dueAt:dueIso(x), endsAt:endIso(x)};
+    });
     archived = (d.archived || []).map(function(x){
       return {id:x.id, t:x.title, done:whenLabel(x.completedAt)};
     });
@@ -10470,7 +11285,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        them in after the page is already on screen. Until it answers, an empty
        day is the only honest thing: a real person must never be shown a poker
        game that does not exist. */
-    EVENTS = {};
+    /* Kept across a re-hydrate, and blanked only on the FIRST one. `hydrate`
+       runs after every write now — an answer, a removal, a settle tick — and
+       emptying the days each time meant the calendar went blank for as long as
+       Google took to answer, several times a minute, and stayed blank whenever
+       Google did not answer at all. */
+    if(!LIVE) EVENTS = {};
     PEOPLE = {};
     /* Everybody on a task who is not a connection of mine gets a face too —
        above all the person who shared it WITH me, who is on no share row and
@@ -10488,10 +11308,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     MEETS = (d.meetings || []).map(liveMeet);
     MTLEFT = (d.meetingsLeft || []).map(function(m){ return {id:m.id, t:m.title || "", settled:!!m.settled, slot:m.slot || ""}; });
     mtOpen = openId ? (mtById(openId) || null) : null;
+    var first = !LIVE;
     LIVE = true;
     renderAll();
     if(mtOpen) renderMeet();
-    loadDays();
+    /* Their calendar is a separate round trip to Google, and nothing a write
+       on this page does can change it — so it is fetched once, at boot, and
+       again only when the week on screen moves past what has been fetched. */
+    if(first) loadDays();
     openFromHash();
   }
   /* A link minted for ONE meeting arrives as #meeting=<id> (the sign-in POST
@@ -10531,8 +11355,40 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      to see what a given payload actually renders as. */
   API.hydrate = hydrate;
 
-  /* One request, at boot, and nothing retries it. A dashboard that silently
-     reloads itself is a dashboard that can change under somebody's finger. */
+  /* One request, at boot. Nothing retries it on its own — a dashboard that
+     silently reloads itself is a dashboard that can change under somebody's
+     finger — but the person can, and until it lands the app is behind the boot
+     veil.
+
+     What that veil replaced: on a failure the page simply kept the seed, so an
+     expired session or a 500 left a real person reading a made-up list, made-up
+     friends and a fact about a dog they do not own, with every control taking
+     the design path — toasting "saved" and writing nothing. */
+  var bootTries = 0;
+  function bootFail(){
+    var v = $("#boot");
+    v.hidden = false;
+    v.classList.add("failed");
+    $("#bootMsg").textContent = t("boot.failed");
+    $("#bootRetry").hidden = false;
+  }
+  function bootDone(){
+    $("#boot").hidden = true;
+    $("#boot").classList.remove("failed");
+  }
+  function bootFetch(){
+    bootTries++;
+    $("#boot").classList.remove("failed");
+    $("#bootRetry").hidden = true;
+    $("#bootMsg").textContent = t("boot.loading");
+    fetch("/me/data", {credentials:"same-origin", headers:{Accept:"application/json"}})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(body){
+        if(body && body.ok && body.data){ hydrate(body.data); bootDone(); return; }
+        bootFail();
+      })
+      .catch(bootFail);
+  }
   (function(){
     /* Only from the one path the live page is served at. A protocol check was
        not enough: published as a design, this file sits on somebody else's
@@ -10543,10 +11399,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     /* A stranger has nothing to fetch and no session to fetch it with — the
        call could only ever come back 401. */
     if(NEWUSER) return;
-    fetch("/me/data", {credentials:"same-origin", headers:{Accept:"application/json"}})
-      .then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(body){ if(body && body.ok && body.data) hydrate(body.data); })
-      .catch(function(){ /* keep the seed; see the note above */ });
+    $("#boot").hidden = false;
+    $("#bootMsg").textContent = t("boot.loading");
+    $("#bootRetry").addEventListener("click", bootFetch);
+    bootFetch();
   })();
 
   /* silent, so the very first placement is not read as a move from x=0 — an

@@ -249,6 +249,12 @@ test('the page draws the button on the server\'s answer and sends the action', (
   // than deciding, because it cannot know whether the last second changed
   // somebody's mind.
   assert.match(page, /setInterval\(tickSettle, 1000\);/);
-  assert.match(page, /settleAsked\[key\] = true;\n\s*\/\*[\s\S]{0,200}?\*\/\n\s*API\.reload\(\);/,
+  assert.match(page, /settleAsked\[key\] = now;\n\s*\/\*[\s\S]{0,200}?\*\/\n\s*API\.reload\(\);/,
     'the end of the countdown is a re-read, never a local settle');
+  // …and a re-read that comes back still negotiating has to be asked again.
+  // The latch used to be permanent (`= true`), so a page whose first read at
+  // zero landed before the settle sweep's own minute sat on "settling now"
+  // for as long as it stayed open.
+  assert.match(page, /if\(settleAsked\[key\] && now - settleAsked\[key\] < SETTLE_RETRY_MS\) return;/,
+    'the countdown asks again after a while rather than latching for ever');
 });

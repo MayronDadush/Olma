@@ -53,7 +53,7 @@ const factPrompts = require('./fact-prompts');
 // edit. Mirrors the map the page draws its locks from — the page must not be
 // the only thing that knows. A title has no entry because every source has one:
 // it IS the row.
-const CAP_FOR_FIELD = { dueAt: 'date', category: 'category' };
+const CAP_FOR_FIELD = { dueAt: 'date', endsAt: 'date', category: 'category' };
 
 async function taskOrigin(client, ownerId, taskId) {
   const { rows } = await client.query(
@@ -119,7 +119,7 @@ const ACTIONS = {
   // ---- tasks ---------------------------------------------------------------
   async addTask(client, userId, p) {
     return tasks.addTask(client, userId, {
-      title: p.title, category: p.category, dueAt: p.dueAt, parentId: p.parentId,
+      title: p.title, category: p.category, dueAt: p.dueAt, endsAt: p.endsAt, parentId: p.parentId,
       // Written here, from a browser, by the person themselves — as distinct
       // from 'chat' (they said it) and from an import. The distinction is what
       // lets the fact/commitment sweeps know this line already exists.
@@ -130,7 +130,10 @@ const ACTIONS = {
   async editTask(client, userId, p) {
     const origin = await taskOrigin(client, userId, p.taskId);
     if (!origin) return err('not_found', 'task not found');
-    const fields = ['title', 'category', 'dueAt'].filter((f) => Object.hasOwn(p, f));
+    // endsAt travels with dueAt — the sheet sets an end time on the same row as
+    // the start, and dropping it here meant a shift said as 15:00-19:00 was
+    // stored as a moment with no end at all, on every save.
+    const fields = ['title', 'category', 'dueAt', 'endsAt'].filter((f) => Object.hasOwn(p, f));
     const refused = importedRefusal(origin.source, fields);
     if (refused) return refused;
     const patch = {};
