@@ -204,8 +204,15 @@ test('the row draws the rules the design decided', () => {
   // them on a phone.
   assert.match(page, /if\(mtArmedDel === o\.id\)\{ mtRemove\(o\); return; \}/,
     'the desktop trash arms before it deletes');
-  assert.match(page, /mtSwiped = moved > SWIPE_OPEN \* LATCH/,
+  assert.match(page, /var open = moved > SWIPE_OPEN \* LATCH/,
     'and the swipe has to travel before it latches');
+  // The release PATCHES the open class instead of re-rendering the list. A
+  // rebuild there took the red out from under the finger before the press on
+  // it could become a click, so a time could not be removed on a phone at all.
+  assert.match(page, /if\(!dragged\) return;/,
+    'a press that never became a drag is left alone by the gesture');
+  assert.match(page, /r\.classList\.toggle\("open", \+r\.dataset\.opt === open\)/,
+    'and releasing a real swipe patches the class rather than rebuilding');
 
   // Nothing is drawn as gone before the server agrees.
   assert.match(page, /API\.send\("removeOption", \{meetingId:m\.id, optionId:o\.id\}/,
