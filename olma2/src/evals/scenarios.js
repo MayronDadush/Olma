@@ -248,6 +248,39 @@ const SCENARIOS = [
     rubric: 'המשתמשת ביקשה לרשום משמרת מחר 15:00-22:00. בדוק: (1) האישור מקריא חזרה את השעה כמו שהיא אמרה. (2) לכל היותר שאלה אחת (למשל על תזכורת). (3) לא נשאלו שאלות על מה שכבר נאמר.',
   },
   {
+    id: 'named-reminder-hour',
+    title: 'שעה שנאמרה לתזכורת נדרכת בשעה עצמה, לא שעה לפניה',
+    // Miron, 2026-09-17: "תוסיף תזכורת ליום שלישי ב-9 וחצי לשלוח לאורלי…". The
+    // 9:30 went into `due_at` instead of `remind_at`, so auto-reminder armed
+    // its hour-before and the row fired at 08:30 — and because the system then
+    // believed it had CHOSEN that hour, `taskHints.reminders` took its "say the
+    // hour you picked" branch and wrote a sentence under a live 👍. The visible
+    // complaint was the sentence; the defect is the hour, and only the hour is
+    // asserted here.
+    //
+    // "מחר" rather than the incident's "יום שלישי" on purpose: the assertion is
+    // on the HOUR, and a weekday in the prompt would make the scenario mean
+    // something different on a Tuesday (rules/testing.md). "9 וחצי" stays — a
+    // half-past said in words is the half of the phrasing that matters.
+    turns: ['תוסיף תזכורת למחר ב-9 וחצי לשלוח לאורלי שהמשימה של גלם חן בוצעה'],
+    hard: async (client, ctx) => [
+      ...await turnOpening(client, ctx),
+      { name: 'a reminder is armed for 09:30, the hour he named',
+        pass: (await count(client,
+          `SELECT count(*)::int AS n FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+            WHERE t.owner_id = $1
+              AND to_char(r.remind_at AT TIME ZONE 'Asia/Jerusalem', 'HH24:MI') = '09:30'`,
+          [ctx.userId])) >= 1 },
+      { name: 'nothing armed an hour early, at 08:30',
+        pass: (await count(client,
+          `SELECT count(*)::int AS n FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+            WHERE t.owner_id = $1
+              AND to_char(r.remind_at AT TIME ZONE 'Asia/Jerusalem', 'HH24:MI') = '08:30'`,
+          [ctx.userId])) === 0 },
+    ],
+    rubric: 'המשתמש ביקש תזכורת למחר ב-9:30. בדוק: (1) אם נאמרה שעה בכלל, היא 9:30 — לא 8:30 ולא שום שעה אחרת. (2) אין משפט שמודיע שהמשימה נשמרה: זו שעה שהוא עצמו נקב בה, והלייק על ההודעה שלו כבר אמר את זה. תשובה ריקה לגמרי היא תשובה טובה כאן. (3) לא נשאלה רשות ולא נשאלה שאלה על מה שכבר נאמר.',
+  },
+  {
     id: 'goal-capture',
     title: 'מטרה שנאמרה בשיחה נשמרת באותו טרן, בלי לבקש רשות',
     turns: ['אני חייב להתחיל למכור שלושה רכבים שלי'],

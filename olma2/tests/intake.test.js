@@ -1237,9 +1237,18 @@ test('agent doctrine: a completion is an answer, not an opening for a question',
 test('agent doctrine: a due date arms its own reminder, and asking first is the error', () => {
   const fs = require('node:fs');
   const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
-  assert.match(tpl, /a due_at gets its own automatically/);
-  assert.match(tpl, /an hour\s+before a timed task, 08:00 that morning for a whole-day one/);
-  assert.match(tpl, /Never ask\s+permission\./);
+  assert.match(tpl, /A due_at gets its own/);
+  assert.match(tpl, /an hour before\s+a timed task, 08:00 that morning for a whole-day one/);
+  assert.match(tpl, /Never ask permission\./);
+  // Miron, 2026-09-17: "תוסיף תזכורת ליום שלישי ב-9 וחצי לשלוח לאורלי…" put
+  // the 9:30 in `due_at`, so the automatic hour-before armed 08:30 — and the
+  // system, believing it had CHOSEN that hour, took the "say the hour you
+  // picked" branch of `taskHints.reminders` and wrote a sentence under a live
+  // 👍. Every statement of this rule — here, `add_task`'s description, and
+  // `reminder-promise.ASK_RE` — used the IMPERATIVE example ("תזכיר לי ב-…")
+  // and the noun form went through all three. The example is the assertion:
+  // the rule was already written, and only the phrasing it recognised failed.
+  assert.match(tpl, /An hour they name FOR THE REMINDER \("תזכורת\s+ל-9:30"\) is remind_at, never due_at/);
   // Yahav and Miron, 2026-09-05/06: the old wording here was "say when you
   // will remind them", an unconditional instruction to write a sentence. It
   // beat `hints.markPlaced` — which asks for NO_REPLY when the mark says it
@@ -1247,13 +1256,17 @@ test('agent doctrine: a due date arms its own reminder, and asking first is the 
   // other conditional. The hour Olma CHOSE is news; the hour they NAMED is
   // not, and the 👍 already reported the save.
   assert.match(tpl, /The hour YOU chose is worth one short line; the hour THEY named\s+is not/);
-  assert.match(tpl, /the 👍 on their message already said\s+it was saved/);
-  // set_task_reminder still exists, and still means something different.
-  assert.match(tpl, /`set_task_reminder` is for a moment they asked for, and\s+replaces it/);
+  assert.match(tpl, /the 👍 said it was saved/);
+  // set_task_reminder still exists, and still means something different: it is
+  // the LATER correction, not where a named hour goes in the first place —
+  // which is the distinction the line above now carries. "and replaces it" is
+  // kept because the supersede is the non-obvious half; what it replaces is
+  // the automatic row, and `add_task`'s own remind_at description says so too.
+  assert.match(tpl, /`set_task_reminder`\s+replaces it later/);
   // Same placement requirement as before: the operative section, not the
   // curiosity ladder four hundred lines away.
-  assert.ok(tpl.indexOf('gets its own automatically') > tpl.indexOf('## Tasks and reminders'));
-  assert.ok(tpl.indexOf('gets its own automatically') < tpl.indexOf('A standing task is not finished'));
+  assert.ok(tpl.indexOf('A due_at gets its own') > tpl.indexOf('## Tasks and reminders'));
+  assert.ok(tpl.indexOf('A due_at gets its own') < tpl.indexOf('A standing task is not finished'));
 });
 
 // The surviving half of that incident, now pinned where it actually lives.
