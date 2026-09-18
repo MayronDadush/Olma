@@ -61,6 +61,7 @@ never trust a dated narrative for something you are about to act on.
 - [Her reminders arrived in Hebrew (fixed 2026-09-07)](#her-reminders-arrived-in-hebrew-fixed-2026-09-07)
 - [A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)](#a-hundred-and-five-pending-reminders-thirteen-of-them-pending-fixed-2026-09-07)
 - [The reminder that would not stop (fixed 2026-09-09)](#the-reminder-that-would-not-stop-fixed-2026-09-09)
+- [התיק לבית חולים: one reminder asked for, six messages delivered (fixed 2026-09-18)](#התיק-לבית-חולים-one-reminder-asked-for-six-messages-delivered-fixed-2026-09-18)
 - [The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)](#the-hooks-timer-fired-late-and-brokerd-took-the-blame-fixed-2026-09-07)
 - [Good morning at half past one (fixed 2026-09-06)](#good-morning-at-half-past-one-fixed-2026-09-06)
 - [The morning digest asked the same question four mornings running (fixed 2026-09-06)](#the-morning-digest-asked-the-same-question-four-mornings-running-fixed-2026-09-06)
@@ -2249,6 +2250,68 @@ still fire", and the two only look alike.
 
 Nothing about what is ARMED changed. Rung 2 and rung 3 still go out. This is
 only about what a person is told.
+
+### התיק לבית חולים: one reminder asked for, six messages delivered (fixed 2026-09-18)
+
+22:59, 2026-09-15. מאיה dictates a packing list for a hospital admission and
+asks for one thing: **"מה לארוז בתיק להזכיר לי מחר בבוקר ב9"**, then the items.
+The live turn does it exactly right — task 703 "לארוז תיק לבית חולים" due 09:00,
+the automatic 08:00 reminder correctly superseded by the 09:00 she named, the
+twelve items saved as its checklist, and one sentence back naming the hour.
+
+What she then received:
+
+| | |
+|---|---|
+| 16.9 08:00 | a reminder she never asked for |
+| 16.9 09:00 | the one she did, plus the morning digest listing both |
+| 16.9 11:01 | a follow-up |
+| 16.9 11:02 | **"להפסיק להזכיר"** — answered with "מה להפסיק? 1. … 2. … 3. …", and nothing cancelled |
+| 16.9 12:01 | a second follow-up |
+| 17.9 09:01 | two more, the morning after the hospital |
+
+Three faults, none of them a bad prompt.
+
+**The 08:00 was a second task.** `jobs/fact-extraction.js` read the same
+conversation 35 minutes after the live tool had already captured it and wrote
+task 716, whose title is her REQUEST — "להזכיר לי מחר בבוקר ב-9 עם רשימת
+האריזה לתיק לבית חולים" — with `due_at` 09:00, which armed an automatic
+reminder an hour before. The duplicate guard (`domain/tasks.js`, "The same
+thing, saved twice") compares normalised titles, and these two titles are not
+the same string. That half is the similarity work, still open at the time of
+writing.
+
+**The ladder chased an hour she had named.** Measured across the box before
+changing anything, 45 days, real users only, counting what happened in the
+three hours after each rung actually delivered: rung 1, 103 sent, 11 done;
+rung 2, 69 sent, 15 done and **24 cancellations**; rung 3, 25 sent, 6 done —
+five of those six מירון's. ורד is the other end: 28 rungs, zero completions,
+one message back. So the follow-up earns its place and the next-day rung earns
+it for one person in sixteen, while a third of every follow-up ends with
+somebody cancelling. Chasing became opt-in (`domain/reminders.RUNGS`): an hour
+they NAMED is said once, an hour Olma INFERRED from a due date gets one
+follow-up the same day, and the full three rungs are there for anybody who asks
+— a switch on their own page, or `set_task_reminder(nudge:true)` in the
+conversation. And never a rung after the local day of `due_at` has ended:
+"הספקת לארוז?" the morning after the hospital is a message about nothing.
+
+**"Stop" was answered with a question.** Two ladders were chasing her and the
+model could name both, which is exactly why it asked — and while it asked,
+nothing was cancelled. The asymmetry it missed is that stopping one reminder
+too many costs a sentence to set again, while asking costs the thing she asked
+for. It is a write now, made before the model reads the turn: the gateway hook
+classifies the message (the verdict travels, never the words, like
+`thanksOnly`), brokerd calls `reminders.stopRecentLadders`, every one-off
+ladder that has REACHED her in the last 24 hours retires, the rung already
+queued is withdrawn as `stopped`, and the mark on her message becomes 👍
+instead of the 👀 that promises a reply. The hint that rides the opening
+forbids the question by name. A stop request carrying a new time — "התזכורת
+הבאה רק ביום שני", the 2026-09-09 message — is a reschedule and still the
+model's job.
+
+Third time this file records the same shape: a safety property written as a
+sentence in a prompt is a request, and one written at the tool boundary is a
+rule (`markPlaced`, the reply-leak gate, and now this).
 
 ### The reminder that would not stop (fixed 2026-09-09)
 
