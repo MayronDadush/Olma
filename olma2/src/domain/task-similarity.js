@@ -42,6 +42,18 @@
 // are NOT a pairwise judgement and nothing here claims them: four of the six
 // share one word out of eight. That belongs to a grouping pass over somebody's
 // whole open list, offered once — never to a check at the moment of writing.
+//
+// Evaluated and PARKED, 2026-09-18: two of the six are already caught by the
+// "reworded" tier below (ריבון/ריבה — the same pill said two ways), two more
+// were already `done` by the time they were read, so grouping had nothing
+// left to do. Of what remains, real-world rate is 2-3 clusters in 45 days
+// across ~20 people, and the shared word in the ones a keyword rule COULD
+// try to use is a person's name ("מאיה") or a word too common to mean
+// anything ("כדורים", "טופס") — scored at 0.33, 0.14, 0.13, 0.33, all well
+// under MERGE_AT. Catching them needs a model reading a whole open list for
+// topic, not a deterministic score, which is a materially bigger and
+// costlier thing than this file. Not worth it yet at this rate; revisit if
+// the frequency climbs.
 const TASK_SIMILARITY_MERGE_AT = 0.5;
 
 // Filler that says nothing about WHAT the task is. Kept short on purpose: a
