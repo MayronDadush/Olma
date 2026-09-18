@@ -89,6 +89,14 @@ done
 if [ "$registered" = "0" ]; then echo "plugin did NOT register under pid $pid within 180s"; exit 1; fi
 '
 
+# Anything that talks to the DB needs the credentials, and they are in
+# /opt/olma2/.env — which systemd hands to the services through
+# EnvironmentFile and which an ssh shell therefore does not have. Same line
+# deploy.sh and rollback.sh use, for the same reason: `count-early-reminders`
+# failed its second dispatch with "OLMA_DB_URL is required (no credentials are
+# baked into the source)", which is that guard doing exactly its job.
+in_olma2='cd /opt/olma2 && set -a && . ./.env && set +a &&'
+
 # ── Why there is no `bash -c` here ──────────────────────────────────────────
 # There was, at every call site, and it never ran. ssh JOINS its command
 # arguments with spaces into ONE string and hands that to the remote login
@@ -118,17 +126,17 @@ case "$op" in
     $SSH "$SERVER" "$remote_status"
     ;;
   measure-ask-re)
-    $SSH "$SERVER" 'cd /opt/olma2 && node scripts/measure-ask-re.js'
+    $SSH "$SERVER" "$in_olma2 node scripts/measure-ask-re.js"
     ;;
   count-early-reminders)
-    $SSH "$SERVER" 'cd /opt/olma2 && node scripts/count-early-reminders.js'
+    $SSH "$SERVER" "$in_olma2 node scripts/count-early-reminders.js"
     ;;
   eval-reminder-hour)
     # The scenario id is fixed in this arm, not passed in: the menu stays
     # closed, so no dispatch can choose what runs. It talks to the synthetic
     # eval user only, and it does WRITE — rows for that user, an eval result,
     # and real model calls that cost money.
-    $SSH "$SERVER" 'cd /opt/olma2 && node scripts/run-evals.js --only named-reminder-hour'
+    $SSH "$SERVER" "$in_olma2 node scripts/run-evals.js --only named-reminder-hour"
     ;;
   *)
     echo "usage: $0 status | restart-gateway | measure-ask-re | count-early-reminders | eval-reminder-hour" >&2
