@@ -214,6 +214,24 @@ test('turning the reminder off cancels it', async () => {
   assert.equal(rows.length, 0);
 });
 
+// The switch read a missing `on` as OFF: three reminders were "set" through
+// this action on 2026-09-19 with `remindAt` and `repeatRule` and no `on`, each
+// answered ok, and each had in fact cancelled what was pending and written
+// nothing. A flag the caller forgot is not a no.
+test('the reminder switch refuses a call that does not say which way', async () => {
+  const t = await mkTask({ dueAt: iso(3 * 86400e3) });
+  assert.equal((await act('setTaskReminder', { taskId: t.id, on: true, remindAt: iso(86400e3) })).ok, true);
+  for (const on of [undefined, null, 'true', 1]) {
+    const r = await act('setTaskReminder', { taskId: t.id, on, remindAt: iso(2 * 86400e3) });
+    assert.equal(r.ok, false, `on=${JSON.stringify(on)} was accepted`);
+    assert.equal(r.error.code, 'invalid');
+  }
+  const { rows } = await db.pool.query(
+    `SELECT id FROM task_reminders WHERE task_id = $1 AND cancelled_at IS NULL AND sent_at IS NULL`,
+    [t.id]);
+  assert.equal(rows.length, 1, 'a refused call still cancelled the reminder that was there');
+});
+
 // Pausing already cancels every pending reminder (domain/pause.js), so there
 // is normally nothing left for this to cancel. What is being pinned is that it
 // is not REFUSED: the switch has to be able to come back down, and the only
