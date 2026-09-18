@@ -111,11 +111,62 @@ function voiceLine(rows, today = new Date().toISOString().slice(0, 10)) {
     היום ${cell(t)} · 7 ימים ${cell(w)} · 7 שלפניהם ${cell(pw)}</p>`;
 }
 
+// ── The duplicates the extraction pass stopped ──────────────────────────────
+// The owner's ask (2026-09-18): when jobs/fact-extraction.js declines to write
+// a task because the person already has it, he wants to see the number and
+// nothing else — no message, no row anywhere a user could read.
+//
+// It is a detector as much as a statistic, and it reads in BOTH directions:
+// climbing says the guard has started refusing real tasks, falling to nothing
+// says the model stopped repeating itself. So it is printed beside what the
+// same job DID capture, because "18 stopped" means different things over 20
+// captures and over 200 (detectors.md, a ratio and its denominator).
+//
+// Eval and test accounts are out of both halves, like everywhere else on this
+// page that counts activity rather than money.
+function duplicatesLine(rows, today = new Date().toISOString().slice(0, 10)) {
+  if (!rows.length) return '';
+  const by = new Map();
+  for (const r of rows) {
+    const d = dateKey(r.d);
+    if (!by.has(d)) by.set(d, { stopped: 0, captured: 0 });
+    const v = by.get(d);
+    v.stopped += Number(r.stopped) || 0;
+    v.captured += Number(r.captured) || 0;
+  }
+  const day0 = Date.parse(`${today}T00:00:00Z`);
+  const sum = (from, to) => {
+    let stopped = 0, captured = 0, days = 0;
+    for (const [d, v] of by) {
+      const age = Math.round((day0 - Date.parse(`${d}T00:00:00Z`)) / 86400_000);
+      if (age < from || age > to) continue;
+      stopped += v.stopped; captured += v.captured; days += 1;
+    }
+    return { stopped, captured, days };
+  };
+  const t = sum(0, 0), w = sum(0, 6), pw = sum(7, 13);
+  const cell = (x) => (x.days ? `${x.stopped} מתוך ${x.stopped + x.captured}` : '—');
+  return `<p class="small"><b>כפילויות שנעצרו</b> (משימות שמעבר החילוץ הציע ולא נכתבו, כי כבר היו — מתוך כל מה שהציע):
+    היום ${cell(t)} · 7 ימים ${cell(w)} · 7 שלפניהם ${cell(pw)}</p>`;
+}
+
 async function renderMetrics(client) {
   const { rows } = await client.query(
     `SELECT date, metric, value FROM product_metrics_daily
      WHERE date >= CURRENT_DATE - 60 ORDER BY date DESC, metric`);
   if (!rows.length) return '<p class="dim">עדיין אין נתונים — הסטטיסטיקות מתחשבות כל שעה.</p>';
+  // `AT TIME ZONE 'UTC'` and not a bare `::date`: Postgres builds a DATE off
+  // the session zone, and every other date on this page is a UTC day string.
+  const { rows: dupRows } = await client.query(
+    `SELECT (a.created_at AT TIME ZONE 'UTC')::date AS d,
+            coalesce((a.detail->'factsRefused'->>'similar_open')::int, 0)
+              + coalesce((a.detail->'factsRefused'->>'similar_done')::int, 0) AS stopped,
+            coalesce((a.detail->>'tasksCaptured')::int, 0) AS captured
+       FROM audit_log a
+       JOIN users u ON u.id = a.actor_id
+      WHERE a.event = 'facts.extracted'
+        AND a.created_at >= CURRENT_DATE - 14
+        AND NOT u.is_eval AND NOT u.is_test`);
   const growth = growthTable(rows);
   const growthHtml = `<table><tr><th></th>${WINDOWS.map((w) => `<th>${w.label}</th>`).join('')}</tr>
     ${GROWTH_METRICS.map((m) => `<tr><td class="nowrap">${METRIC_LABELS[m]}${m === 'active_users' ? ' <span class="dim small">(ממוצע ליום)</span>' : ''}</td>${growth[m].map((v) => `<td>${v}</td>`).join('')}</tr>`).join('')}
@@ -135,10 +186,11 @@ async function renderMetrics(client) {
     <h3>צמיחה — יום מול יום, שבוע מול שבוע</h3>
     ${growthHtml}
     ${voiceLine(rows)}
+    ${duplicatesLine(dupRows)}
     <h3>יום־יום, השבוע האחרון</h3>
     <table><tr><th>תאריך</th>${cols.map((m) => `<th>${METRIC_LABELS[m] || esc(m)}</th>`).join('')}</tr>
     ${[...byDate.entries()].map(([d, vals]) =>
       `<tr><td class="nowrap">${d}</td>${cols.map((m) => `<td>${vals[m] ?? 0}</td>`).join('')}</tr>`).join('')}</table>`;
 }
 
-module.exports = { METRIC_LABELS, METRIC_ORDER, GROWTH_METRICS, WINDOWS, dateKey, growthTable, voiceLine, renderMetrics };
+module.exports = { METRIC_LABELS, METRIC_ORDER, GROWTH_METRICS, WINDOWS, dateKey, growthTable, voiceLine, duplicatesLine, renderMetrics };

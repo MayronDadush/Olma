@@ -206,3 +206,63 @@ test('normalising keeps the word that carries the task', () => {
   assert.deepEqual(sim.normalise('לתרופות'), ['תרופות']);
   assert.equal(sim.textScore('', 'לשתות מים'), 0);
 });
+
+// ── The live path ───────────────────────────────────────────────────────────
+// Same module, opposite answer to the one fact-extraction gives, and the
+// asymmetry is deliberate: a background job refusing costs nothing — it has
+// no channel to ask on, and the live tool has already captured the sentence —
+// while a refusal in front of somebody who has just said a thing out loud
+// loses it. An attempt to refuse here broke
+// 57 tests on fixtures like "סופר" beside "סופר השבוע".
+const { test: dbTest } = require('node:test');
+const { freshDb, makeUser } = require('./helpers');
+const tasks = require('../src/domain/tasks');
+
+let db;
+require('node:test').before(async () => { db = await freshDb(); });
+require('node:test').after(async () => { await db.teardown(); });
+
+dbTest('a reworded task is SAVED, and the question travels with it', async () => {
+  const u = await makeUser(db.pool, '+972501000091', { firstName: 'Gali' });
+  const c = await db.pool.connect();
+  try {
+    await tasks.addTask(c, u.id, { title: 'לדבר עם מור חן — לבקש חומרי גלם' });
+    const again = await tasks.addTask(c, u.id, { title: 'לדבר עם מור חן ולבקש חומרי גלם' });
+    assert.equal(again.ok, true, 'never a refusal on the path with a person on it');
+    assert.equal(again.data.similarTo.title, 'לדבר עם מור חן — לבקש חומרי גלם');
+    assert.equal(again.data.similarTo.silent, false);
+
+    const open = await tasks.listTasks(c, u.id, { status: 'open' });
+    assert.equal(open.data.tasks.length, 2, 'both rows are there — nothing was merged behind them');
+
+    // An identical title is still the old refusal, unchanged.
+    const exact = await tasks.addTask(c, u.id, { title: 'לדבר עם מור חן ולבקש חומרי גלם' });
+    assert.equal(exact.ok, false);
+    assert.equal(exact.error.reason, 'duplicate');
+  } finally { c.release(); }
+});
+
+dbTest('nothing close enough carries no question at all', async () => {
+  const u = await makeUser(db.pool, '+972501000092', { firstName: 'Ron' });
+  const c = await db.pool.connect();
+  try {
+    await tasks.addTask(c, u.id, { title: 'לקחת כדור ריבון' });
+    const other = await tasks.addTask(c, u.id, { title: 'לקחת כדור לבלוטה' });
+    assert.equal(other.ok, true);
+    assert.equal(other.data.similarTo, undefined, 'two medicines are never asked about as one');
+  } finally { c.release(); }
+});
+
+dbTest('a checklist item is never measured against a standalone task', async () => {
+  const u = await makeUser(db.pool, '+972501000093', { firstName: 'Noa' });
+  const c = await db.pool.connect();
+  try {
+    await tasks.addTask(c, u.id, { title: 'מטען לטלפון' });
+    const bag = await tasks.addTask(c, u.id, { title: 'לארוז תיק' });
+    // Close enough to be asked about at the top level, and asked about here
+    // would cost a whole packing list its items.
+    const item = await tasks.addTask(c, u.id, { title: 'מטען לטלפון שלי', parentId: bag.data.task.id });
+    assert.equal(item.ok, true);
+    assert.equal(item.data.similarTo, undefined);
+  } finally { c.release(); }
+});

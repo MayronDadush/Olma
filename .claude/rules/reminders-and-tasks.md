@@ -173,8 +173,8 @@ title means this file. Grep the title, not the filename.
 
 - **A task already OPEN on somebody's list is never saved a second time.**
   Four writers — the live `add_task`, a brain dump, a breakdown's subtasks and
-  the nightly extraction pass — each relied on the model not repeating itself,
-  and the box held 21 pairs of open tasks sharing a title across three of
+  the fact-extraction pass — each relied on the model not repeating itself, and
+  the box held 21 pairs of open tasks sharing a title across three of
   twenty users. Sixteen came from `jobs/fact-extraction.js`, which reads a
   conversation 7–83 minutes after the live tool already captured the same
   sentence out of it; 37% of every task that job has written is a duplicate.
@@ -193,6 +193,40 @@ title means this file. Grep the title, not the filename.
   `duplicatesSkipped`, and refuses outright when nothing was left to save.
   A test that gives one person two open tasks with the same title now fails;
   twenty-three did (`incidents.md`, "The same thing, saved twice").
+
+- **…and the same thing in OTHER words is a judgement, so it was measured
+  before it was written.** `domain/task-similarity.js` holds it, and every
+  number in it came off 86 real pairs the owner labelled one at a time
+  (2026-09-18). Three things the labelling overturned, all of them things a
+  reasonable person would have shipped: **a shared due moment is not
+  evidence** — 17 pairs were lifted by a same-hour bonus and 15 of those were
+  rejected, because two tasks set for one moment are two things said in one
+  breath; **both titles naming a weekday or a clock is a refusal**, since six
+  משמרת pairs overlap on 0.56 of their words and the unshared part is the
+  whole content; and **two titles each carrying a word the other lacks are
+  disagreeing** (`disagrees`), which is what stops "לקחת כדור ריבון" merging
+  into "לקחת כדור לבלוטה" while "ריבון"/"ריבה" still matches as one word
+  misspelt. What is left is word overlap at `MERGE_AT` = 0.50: 69 of the 80
+  pairwise labels, and not one merge of a pair marked "don't touch". It cannot
+  reach a rewording ("לסחוב לברכה" against "לכתוב ברכה"), and the eight it
+  misses are named in the test so that fixing one is deliberate.
+  **The two writers then take OPPOSITE answers from it, and that asymmetry is
+  the rule.** `jobs/fact-extraction.js` refuses — that job has no channel to
+  ask on (it writes through the domain functions and sends nothing, ever; it is
+  also not nightly, `expectations.fact_extraction` is 600 seconds) and the
+  live tool has already captured the sentence, so every tier
+  collapses to `refused.similar_open`, and it alone also refuses a twin
+  COMPLETED inside 24h (this job cannot mean "again": "להעיר את מאיה" was
+  ticked off two minutes after it was created and written back forty-two
+  minutes later). `tasks.addTask` **saves and asks**: refusing there was tried
+  and broke 57 tests on "סופר" beside "סופר השבוע", because one title
+  extending another lands on 0.50–0.67 and is a real second task about as
+  often as it is one. The row is written, `similarTo` rides the result into
+  `hints.similar`, and one sentence settles what no threshold can — which is
+  also what keeps the 👍 honest. Neither path ever compares a checklist item.
+  The "list inside one task" tier is NOT here: four of the six pairs marked
+  that way share one word out of eight, so it belongs to a grouping pass over
+  a whole open list, never to a check at the moment of writing.
 
 - **A model asked to date something must first be told what time it is.** Every
   one of the 27 `extracted` tasks on the box had a NULL `due_at` and three
