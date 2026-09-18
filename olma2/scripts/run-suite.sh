@@ -44,8 +44,60 @@
 # cannot be what is holding the process open. That named this bug on the first
 # reproduction, after 70 runs of guessing found nothing.
 #
-# Env knobs: SUITE_ATTEMPTS (3), SUITE_TIMEOUT seconds (300), SUITE_CONCURRENCY,
-# SUITE_NICE, and SUITE_CMD to override the command entirely (the tests use it).
+# WHAT IT MEASURES, AND WHY THAT CHANGED (2026-09-18)
+#
+# It used to kill an attempt that had not EXITED inside a fixed window. That
+# conflates two different things — a suite that is STUCK and a suite that is
+# merely SLOW — and on 2026-09-18 it killed a perfectly healthy run: PR #407,
+# run 35355870730, job 105635021975. All three attempts were killed and the
+# banner said the suite "never produced a result", which was false. Each
+# attempt was still printing passing test lines ~5s before it was killed
+# (attempt 3's last at 14:32:57, the kill at 14:33:02); individual tests were
+# at 3x their usual cost on that runner ("lane watchdog: aborts the wedged
+# lane" at 5749/3584/4675ms against a normal <2s); and the same commit passed
+# on its push-event run (35355831218) in 1m42s and twice locally, 2081/2081.
+#
+# The tell was already written in the banner it printed: a wedged child prints
+# NOTHING. The runner buffers a file's output into its report until that file
+# completes, so a child that never finishes is silent for ever — that is the
+# whole reason the 2026-09-04 wedge was invisible. A run still printing test
+# lines five seconds before it dies is, by that definition, not wedged. The
+# ceiling was tight; the suite had simply grown into it.
+#
+# So the watchdog measures PROGRESS, not elapsed time. Every byte the child
+# writes resets the deadline, and SILENCE is the wedge. A slow-but-talking
+# suite now runs to completion, and a genuinely wedged one is still caught —
+# caught sooner, in fact, since the silence clock starts at the last write
+# rather than at the start of the attempt.
+#
+# Measured 2026-09-18 on a green 2085/2085 run, and that is where the default
+# comes from: 118s of wall clock, p50 gap between writes 2ms, p95 5.8s, p99
+# 10.9s, worst gap 11.3s (the slowest single test in the suite is ~12.6s).
+# SUITE_SILENCE defaults to 180s — about 16x that worst gap, and still ~5x it
+# on a runner as slow as the one that lost #407. Note what the same
+# measurement says about the old knob: 118s of healthy run against CI's 180s
+# ceiling is 1.5x of headroom, not the "2-4x the observed 45-90s" its comment
+# claimed. The suite outgrew the ceiling and nothing announced it.
+#
+# This assumes the suite talks as it works, which `node --test` does — it
+# reports each file as that file completes, across ~105 files. Pointed at a
+# single test file slower than SUITE_SILENCE it would call that silence a
+# wedge, correctly by its own definition and uselessly by yours.
+#
+# SUITE_TIMEOUT survives as a second and much looser backstop, with a
+# DIFFERENT verdict on purpose: an attempt still talking when it reaches the
+# overall cap is reported as a cap, NOT as a wedge, and is not retried. Two
+# reasons. Re-rolling a suite that just spent its entire cap buys the same
+# wall a second time and eats the job's own timeout-minutes, which kills the
+# run as `cancelled` with no banner at all — the exact silent-skip this
+# wrapper exists to prevent. And "wedged on all N attempts" has to keep
+# meaning what it says, or the next person reads a banner that is as wrong as
+# #407's was.
+#
+# Env knobs: SUITE_ATTEMPTS (3), SUITE_SILENCE seconds (180, 0 disables),
+# SUITE_TIMEOUT seconds — the overall per-attempt cap (900, 0 disables),
+# SUITE_CONCURRENCY, SUITE_NICE, and SUITE_CMD to override the command
+# entirely (the tests use it).
 set -uo pipefail
 
 # Job control, so every attempt runs in its own process group and can be killed
@@ -56,7 +108,8 @@ set -uo pipefail
 set -m
 
 ATTEMPTS="${SUITE_ATTEMPTS:-3}"
-TIMEOUT="${SUITE_TIMEOUT:-300}"
+SILENCE="${SUITE_SILENCE:-180}"
+TIMEOUT="${SUITE_TIMEOUT:-900}"
 CONCURRENCY="${SUITE_CONCURRENCY:-}"
 NICE="${SUITE_NICE:-}"
 
@@ -75,21 +128,59 @@ else
   [ -n "$NICE" ] && CMD="nice -n $NICE $CMD"
 fi
 
+# The transcript exists only to be measured — its SIZE is the progress signal.
+# Output still goes to the real stdout/stderr as it always did, so nothing
+# about the CI log changes.
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/run-suite.XXXXXX")"
+PROGRESS="$WORK/transcript"
+: > "$PROGRESS"
+trap 'rm -rf "$WORK"' EXIT
+
+# Bytes written so far. `wc -c <file` rather than `stat`, whose flags differ
+# between macOS and Linux and which this has to run on both of.
+written() { wc -c < "$PROGRESS" 2>/dev/null | tr -d ' ' || echo 0; }
+
 wedges=0
 attempt=1
 while [ "$attempt" -le "$ATTEMPTS" ]; do
-  eval "$CMD" &
+  # Process substitution, not a pipeline: `$!` stays the suite itself, so
+  # `wait` still returns the suite's own exit code and `kill -0` still tracks
+  # the suite rather than a tee that outlives it by however long some leaked
+  # grandchild holds the pipe open.
+  eval "$CMD" > >(tee -a "$PROGRESS") 2> >(tee -a "$PROGRESS" >&2) &
   pid=$!
 
   # Poll instead of `timeout`, for two reasons: `timeout` is not present on
   # every box this runs on, and killing the process group would take the
-  # orphaned test children with it before we can count them.
+  # orphaned test children with it before we can count them. The one-second
+  # tick doubles as the drain window for the tees above — by the time we
+  # notice the child is gone, its last bytes are long written.
   waited=0
-  while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$TIMEOUT" ]; do
+  silent=0
+  seen="$(written)"
+  verdict=exited
+  while kill -0 "$pid" 2>/dev/null; do
     sleep 1
     waited=$((waited + 1))
+    now="$(written)"
+    if [ "$now" != "$seen" ]; then
+      seen="$now"
+      silent=0
+    else
+      silent=$((silent + 1))
+    fi
+    if [ "$SILENCE" -gt 0 ] && [ "$silent" -ge "$SILENCE" ]; then
+      verdict=wedged
+      break
+    fi
+    if [ "$TIMEOUT" -gt 0 ] && [ "$waited" -ge "$TIMEOUT" ]; then
+      verdict=capped
+      break
+    fi
   done
 
+  # It may have exited during the tick that tripped a deadline; an exit is the
+  # real answer and outranks either.
   if ! kill -0 "$pid" 2>/dev/null; then
     wait "$pid"; rc=$?
     if [ "$rc" = "0" ] && [ "$wedges" -gt 0 ]; then
@@ -97,18 +188,36 @@ while [ "$attempt" -le "$ATTEMPTS" ]; do
       echo "NOTE: the suite passed, but only on attempt $attempt — node's test runner" >&2
       echo "wedged $wedges time(s) first. See the comment at the top of" >&2
       echo "scripts/run-suite.sh. This is not a test failure, and it is not free:" >&2
-      echo "each wedge costs ${TIMEOUT}s of CI." >&2
+      echo "each wedge costs ${SILENCE}s of CI." >&2
     fi
     # Any exit code, including a real failure, is final. Only a hang retries.
     exit "$rc"
   fi
 
+  if [ "$verdict" = "capped" ]; then
+    echo "" >&2
+    echo "########################################################################" >&2
+    echo "# THE OVERALL CAP: still running after ${TIMEOUT}s, and still TALKING —" >&2
+    echo "# it wrote output ${silent}s ago, so this is NOT the wedge and is not" >&2
+    echo "# retried. The suite is either genuinely slower than the cap allows or" >&2
+    echo "# the host is. Compare against a healthy run before raising anything:" >&2
+    echo "# SUITE_TIMEOUT is meant to sit well clear of the suite, and a suite" >&2
+    echo "# creeping up on it announces itself here rather than as a wedge." >&2
+    echo "########################################################################" >&2
+    kill -9 -- -"$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null
+    wait "$pid" 2>/dev/null
+    exit 1
+  fi
+
   wedges=$((wedges + 1))
   echo "" >&2
   echo "########################################################################" >&2
-  echo "# THE WEDGE: no exit after ${TIMEOUT}s (a healthy run is 30-45s)." >&2
+  echo "# THE WEDGE: no output for ${SILENCE}s (it had been running ${waited}s)." >&2
   echo "# A test child could not exit — something is still holding its event" >&2
   echo "# loop open, and node --test waits on it for ever, printing nothing." >&2
+  echo "# SILENCE is the signal, not slowness: a suite that is merely slow" >&2
+  echo "# keeps printing and is left alone (it was not, before 2026-09-18, and" >&2
+  echo "# this banner lied about a healthy run on PR #407)." >&2
   echo "# Look at OUR code first: the known instance of this was a test of" >&2
   echo "# ours, not a runner bug. docs/incidents.md, \"A test file poisoned" >&2
   echo "# every other one\", has the diagnosis and how to catch the next one." >&2
@@ -124,6 +233,7 @@ done
 
 echo "" >&2
 echo "The suite wedged on all $ATTEMPTS attempts and never produced a result." >&2
+echo "Every one of them went silent for ${SILENCE}s with the process still alive." >&2
 echo "That is worse than the usual rate — check whether the wedge has changed" >&2
 echo "shape before assuming it is the known one." >&2
 exit 1

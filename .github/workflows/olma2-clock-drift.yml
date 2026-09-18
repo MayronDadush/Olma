@@ -11,19 +11,19 @@ name: olma2 tests (clock drift)
 # because somebody happened to run the suite that evening.
 #
 # Two mechanisms were tried and thrown away before this one, both for the same
-# reason — they flagged working code, which is how a detector dies (CLAUDE.md,
+# reason â they flagged working code, which is how a detector dies (CLAUDE.md,
 # "Recurring failure shapes"):
 #
 #   * Shifting the process clock with a Date proxy. 29 failures, nearly all
 #     false: the suite legitimately compares JS time against Postgres `now()`,
 #     and moving only one of them invents a skew that production never has.
 #   * Flagging near-today date literals in test files. 180 of them across 17
-#     files, and most are CORRECT — a pinned instant handed to a pure function
+#     files, and most are CORRECT â a pinned instant handed to a pure function
 #     as `now` is the very pattern the rule recommends.
 #
 # So: no cleverness. Run the real suite on the real clock at spread hours and
 # let a genuine hour-dependence fail honestly. 02/08/14/20 UTC is 05:00,
-# 11:00, 17:00 and 23:00 in Israel — across the workday boundary, the evening
+# 11:00, 17:00 and 23:00 in Israel â across the workday boundary, the evening
 # where this last broke, and the quiet hours the delivery gate cares about.
 #
 # There is deliberately NO deploy job here and this file never calls
@@ -43,7 +43,10 @@ concurrency:
 jobs:
   suite:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 20, not 15, since 2026-09-18: the wrapper's worst case is two wedges at
+    # SUITE_SILENCE plus one attempt that runs to SUITE_TIMEOUT. Kept in step
+    # with the `test` job in olma2-tests.yml.
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16
@@ -68,10 +71,15 @@ jobs:
       - run: bash scripts/run-suite.sh
         working-directory: olma2
         env:
-          SUITE_TIMEOUT: '180'
+          # The wedge is SILENCE, not elapsed time — see scripts/run-suite.sh.
+          # Held identical to the `test` job in olma2-tests.yml on purpose: a
+          # drift run that killed a merely-slow suite would read as the clock
+          # meaning something, which is the one thing this job must never say.
+          SUITE_SILENCE: '180'
+          SUITE_TIMEOUT: '600'
           SUITE_ATTEMPTS: '3'
       # A red here means the suite means something different at this hour than
-      # it did at the last one. That is a broken test, never a flaky one — do
+      # it did at the last one. That is a broken test, never a flaky one â do
       # not add continue-on-error, and do not re-run it until it passes.
       - name: What a failure here means
         if: failure()

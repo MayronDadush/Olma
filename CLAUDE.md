@@ -310,6 +310,7 @@ Loads when you **Read** a file under `tests/**`, `scripts/run-suite.sh`.
 - **A test file must never write into a directory the other test files read.**
 - **A test child that cannot exit is invisible**
 - **A green from CI may be a retry.**
+- **The wedge is SILENCE, not slowness** — a banner that says a healthy suite never produced a result is how this cost two PRs in four days
 
 ---
 

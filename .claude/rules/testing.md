@@ -106,6 +106,26 @@ Two things the suite learned the hard way:
   itself: `NODE_OPTIONS=--require` a preload with an **unref'd** interval that
   dumps `process.getActiveResourcesInfo()` to a file.
 
+- **The wedge is SILENCE, not slowness, and the difference is the whole
+  point.** Until 2026-09-18 the watchdog killed an attempt that had not
+  EXITED inside a fixed window, which cannot tell a stuck suite from a slow
+  one. It got that wrong twice in four days, in both places that run it: PR
+  #366's on-box deploy (contention from one live agent turn put a 397s suite
+  past a 420s cap, twice) and PR #407's CI run, where all three attempts were
+  killed while still printing passing tests and the log said the suite "never
+  produced a result". Now every byte the child writes resets the deadline, so
+  `SUITE_SILENCE` seconds of silence with the process still alive is the
+  wedge, and a slow-but-talking suite runs to completion. **The banner has two
+  verdicts and they are not interchangeable** — a WEDGE is retried, an
+  OVERALL CAP (`SUITE_TIMEOUT`, still talking when it ran out of wall clock)
+  is not, because re-rolling a suite that just spent its whole cap only hands
+  the kill to the job's own `timeout-minutes`, which reports `cancelled` with
+  no banner at all. **Do not pin a wall-clock number in a banner a test
+  asserts on** — "a healthy run is 30-45s" was pinned in
+  `tests/run-suite.test.js` until the suite had grown to 118s and nobody could
+  correct it without going red. Pin the shape.
+  (`incidents.md`, "The watchdog could not tell slow from stuck".)
+
 CI (`.github/workflows/olma2-tests.yml`) runs the same suite plus a
 `migrations` collision check, serialized on `main` so two merges cannot race
 the same rollback snapshot.

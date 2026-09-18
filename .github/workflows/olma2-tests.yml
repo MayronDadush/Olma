@@ -70,8 +70,12 @@ jobs:
   test:
     needs: migrations
     runs-on: ubuntu-latest
-    # Observed 45-90s across recent successful runs, so 10 minutes is ~7-13x
-    # headroom and nothing legitimate will reach it.
+    # This job's own ceiling, not the suite's — the suite is bounded by
+    # run-suite.sh, and the numbers for THAT live next to it below. (The line
+    # here used to read "observed 45-90s ... so 10 minutes is ~7-13x
+    # headroom", which was two stale numbers by 2026-09-18: the value had
+    # moved and the suite had grown to 118s. Same drift, same week, same fix
+    # — keep a number where it can be checked against the thing it describes.)
     #
     # It exists because of what happened on 2026-09-03: `node --test` wedged
     # mid-suite three times in one evening — a few test files reported, then
@@ -87,9 +91,14 @@ jobs:
     #
     # Since 2026-09-04 `scripts/run-suite.sh` detects the wedge itself and
     # retries it, so this is no longer the thing that catches it — it is the
-    # backstop for the WRAPPER failing. 15 = the wrapper's own worst case
-    # (3 x SUITE_TIMEOUT below) plus the install, with room to spare.
-    timeout-minutes: 15
+    # backstop for the WRAPPER failing.
+    #
+    # 20 = the wrapper's own worst case plus the install, with room to spare.
+    # That worst case changed on 2026-09-18: two wedges at SUITE_SILENCE (180
+    # each) followed by one attempt that runs all the way to SUITE_TIMEOUT
+    # (600, and not retried) is 16 minutes, and checkout/install/lint is
+    # another ~2. It was 15 while the wrapper's worst case was 3 x 180.
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16
@@ -122,11 +131,24 @@ jobs:
       # — see scripts/run-suite.sh). The known instance of that, a decoy
       # migration written into the shared migrations/ directory, was fixed on
       # 2026-09-04; the wrapper stays as the backstop for the next one.
-      # 180s is 2-4x the observed 45-90s healthy run.
+      #
+      # SUITE_SILENCE is the wedge: 180s with the process alive and writing
+      # nothing. SUITE_TIMEOUT is only the far backstop now, and the two are
+      # deliberately different verdicts — see scripts/run-suite.sh.
+      #
+      # This env block used to be SUITE_TIMEOUT 180 alone, described here as
+      # "2-4x the observed 45-90s healthy run". That number went stale without
+      # anything announcing it: measured 2026-09-18, a healthy run is 118s,
+      # which left 1.5x of headroom, and on a runner having a slow day PR #407
+      # lost all three attempts to it and was reported in the log as a suite
+      # that "never produced a result". It had been printing passing tests
+      # five seconds before each kill. Elapsed time cannot tell slow from
+      # stuck; silence can.
       - run: bash scripts/run-suite.sh
         working-directory: olma2
         env:
-          SUITE_TIMEOUT: '180'
+          SUITE_SILENCE: '180'
+          SUITE_TIMEOUT: '600'
           SUITE_ATTEMPTS: '3'
 
   deploy:

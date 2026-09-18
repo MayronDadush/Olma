@@ -198,6 +198,7 @@ never trust a dated narrative for something you are about to act on.
 
 - [The merge that never ran (2026-09-08)](#the-merge-that-never-ran-2026-09-08)
 - [A test file poisoned every other one (root-caused and fixed 2026-09-04)](#a-test-file-poisoned-every-other-one-root-caused-and-fixed-2026-09-04)
+- [The watchdog could not tell slow from stuck (2026-09-18)](#the-watchdog-could-not-tell-slow-from-stuck-2026-09-18)
 - [The deploy marker leads the restart, so the timestamps lie both ways (2026-09-04)](#the-deploy-marker-leads-the-restart-so-the-timestamps-lie-both-ways-2026-09-04)
 - [The rollback was one release deep, on a five-merge day (2026-09-03)](#the-rollback-was-one-release-deep-on-a-five-merge-day-2026-09-03)
 - [Two branches, one migration number — a third time, in one afternoon (fixed 2026-08-29)](#two-branches-one-migration-number--a-third-time-in-one-afternoon-fixed-2026-08-29)
@@ -8243,6 +8244,100 @@ it costs nothing and closes the first case; the second needed the watchdog.
 `tests/helpers-guards.test.js` drives all three as real child processes,
 including the case that must stay clean, because a guard that only ever runs
 when something has already gone wrong is the kind most likely to rot.
+
+### The watchdog could not tell slow from stuck (2026-09-18)
+
+`run-suite.sh` exists because a test child that cannot exit hangs the suite in
+total silence (the entry above). Its watchdog killed an attempt that had not
+EXITED inside a fixed window and retried it, up to `SUITE_ATTEMPTS` times. That
+window cannot distinguish a suite that is stuck from a suite that is merely
+slow, and it got the difference wrong twice in four days — in both places that
+run it.
+
+**On the box, 2026-09-14 (PR #366).** A clean on-box run measured 397s against
+a `SUITE_TIMEOUT` of 420, set back when the suite took ~234s. One live agent
+turn's worth of contention was enough: both attempts were killed at the same
+test and reported as a wedge. That was read at the time as a cap that needed
+raising, and it was raised to 600. Treating the symptom left the mechanism
+alone.
+
+**In CI, 2026-09-18 (PR #407, run 35355870730, job 105635021975).** All three
+attempts were killed at `SUITE_TIMEOUT=180` and the summary said the suite
+"wedged on all 3 attempts and never produced a result." Every word of that was
+false, and the log said so:
+
+- each attempt was still printing **passing test lines within ~5 seconds of
+  being killed** — attempt 3's last at 14:32:57, the kill banner at 14:33:02;
+- individual tests were running at ~3x their usual cost on that runner ("lane
+  watchdog: aborts the wedged lane" at 5749ms, 3584ms and 4675ms across the
+  three attempts, against a normal well under 2s);
+- the **same commit** passed on its push-event run (35355831218) in 1m42s, and
+  the full suite ran green twice locally, 2081 pass / 0 fail.
+
+**The tell was printed inside the banner that was lying.** A wedged child
+prints NOTHING — the runner buffers a file's output into its report until that
+file completes, which is the entire reason the 2026-09-04 wedge was invisible.
+A run still printing test lines five seconds before it dies is, by the
+watchdog's own definition, not the thing the watchdog is for. Nobody was
+reading the log against the definition; a red is a red.
+
+Underneath both was an unannounced drift: the suite grew and the ceilings did
+not. Measured 2026-09-18, a healthy local run is **118s** for 2085 tests —
+CI's 180s cap was 1.5x of headroom, not the "2-4x the observed 45-90s healthy
+run" its own comment claimed. **A number nobody reconciles drifts in silence**, and this is
+that shape wearing test infrastructure.
+
+**The fix measures PROGRESS instead of elapsed time.** The child's output is
+tee'd to a transcript whose byte count is sampled once a second; any growth
+resets the deadline. `SUITE_SILENCE` seconds of silence with the process still
+alive is the wedge — which is the failure's actual signature, and is caught
+sooner than before, since the clock now starts at the last write rather than
+at the start of the attempt. A slow-but-talking suite runs to completion.
+
+`SUITE_TIMEOUT` survives as a far looser backstop with a **different verdict**,
+deliberately: an attempt still talking when it reaches the cap prints THE
+OVERALL CAP, is not called a wedge, and is **not retried**. Re-rolling a suite
+that just spent its whole cap buys the same wall a second time and hands the
+kill to the job's own `timeout-minutes`, which reports `cancelled` with no
+banner at all — the silent skip this wrapper was built to prevent. And
+"wedged on all N attempts" has to keep meaning what it says, or the next
+person reads a banner as wrong as this one was.
+
+Defaults come from measurement, not taste. On a green 2085/2085 run: p50 gap
+between writes 2ms, p95 5.8s, p99 10.9s, worst 11.3s, against a slowest single
+test of ~12.6s. `SUITE_SILENCE` is 180 in CI — about 16x that worst gap, still
+~5x it on a runner as slow as the one that lost #407 — and 300 on the box,
+which is niced to 19 at concurrency 2.
+
+A footnote on how those numbers were got, since this entry is partly about
+numbers nobody reconciles: the first profiling run of the day was taken in a
+fresh worktree with no `node_modules`, and its output was piped to a profiler
+that did not forward stdout — so it was never checked for a pass count and
+reported a 23.2s worst gap that was an artefact. Every figure above is from
+the re-measured green run. A measurement you did not verify the exit code of
+is not a measurement.
+
+**Two things were pinned in `tests/run-suite.test.js` so neither half can rot.**
+A slow-but-talking suite must finish on the first attempt (this test goes red
+if progress stops resetting the deadline). And a **real** never-exiting child
+must still be caught: a fixture whose test passes and which then holds a ref'd
+`setInterval`, run as an actual `node --test`, not a `sleep` standing in for
+one. Both directions were verified by mutation — disabling the silence check
+turns five tests red, and restoring the old elapsed-time behaviour turns the
+new one red — because a detector that can no longer fail is not a detector.
+
+That fixture carries a measured footnote worth keeping: it only hangs when
+`NODE_TEST_CONTEXT` is absent. A `node --test` that inherits the variable from
+a runner above it behaves as a test child, runs the file in-process and
+force-exits, so the fixture exits 0 in a second and proves nothing. The test
+copies the environment and removes exactly that one variable.
+
+**And one thing was un-pinned.** The banner had claimed "a healthy run is
+30-45s" since 2026-09-04, asserted by a test. The suite was at 121s. That is
+the trap the same file already warns about in its own comments — a banner
+enforced by a test is doctrine, and anyone correcting the number got a red they
+could "fix" by reverting the correction. The assertion now pins the shape (the
+banner must name silence as what it measured), not the number.
 
 ### The rollback was one release deep, on a five-merge day (2026-09-03)
 
