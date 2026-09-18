@@ -625,6 +625,8 @@ button.row:active{background:var(--bg-tint)}
 .glyphs span svg{width:11.5px;height:11.5px}
 .glyphs span.off{background:var(--bg-tint);color:var(--text-3);transform:scale(.84);opacity:.55}
 @keyframes glyphIn{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:none}}
+/* one glyph replacing another, rather than a list of them arriving */
+#pauseIcon.morph{animation:glyphIn .22s var(--spring)}
 .glyphs.fresh span{animation:glyphIn .21s var(--spring) backwards;animation-delay:calc(var(--i,0) * 27.5ms)}
 
 /* the friend list only earns a search field once scanning it stops being
@@ -820,6 +822,10 @@ html[data-paused] .live .dot::after{animation:none;opacity:0}
    animate, and a second tap inside that window would land on whichever row
    slid up into its place — putting back a task nobody asked for */
 .taskwrap.gone{grid-template-rows:0fr;opacity:0;pointer-events:none}
+/* …and the same idea for every OTHER list on the page, where the row is not a
+   `.taskwrap` and has no wrapper to collapse: see foldAway(). */
+.folding{transition:max-height .24s var(--ease-io),opacity .18s ease,
+                    margin .24s var(--ease-io),padding .24s var(--ease-io)}
 .task{display:flex;align-items:center;gap:12px;padding:13px 14px;position:relative}
 .taskwrap + .taskwrap .task::before{
   content:"";position:absolute;top:0;height:1px;background:var(--sep);
@@ -949,6 +955,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 }
 [dir="rtl"] .tcount{background:linear-gradient(to left,var(--prog) var(--p,0%),transparent var(--p,0%))}
 .tcount.full{background:var(--prog)}
+/* the last item closing the list — the same beat the chips take */
+.tcount.pop{animation:chipPop .26s var(--squash)}
 
 /* the checklist inside the editor. It scrolls on its own so a long list can
    never make the sheet itself scroll — the one rule this editor has. Five
@@ -1210,7 +1218,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 
 .mtseg{display:flex;background:var(--sep);border-radius:9px;padding:2px;flex:none}
 .mtseg button{border:0;background:transparent;font:inherit;font-size:12px;font-weight:700;
-  color:var(--text-3);padding:6px 9px;border-radius:7px;cursor:pointer}
+  color:var(--text-3);padding:6px 9px;border-radius:7px;cursor:pointer;
+  transition:background var(--sw-t) var(--ease-io),color var(--sw-t) var(--ease-io),
+             box-shadow var(--sw-t) var(--ease-io),transform .18s var(--squash)}
+.mtseg button:active{transform:scale(.93)}
+/* Saying "I can" is the one press in a coordination that decides something,
+   and it was the only control on the page that answered with nothing at all. */
+.mtseg button.pop{animation:chipPop .24s var(--squash)}
 .mtseg button[aria-pressed="true"]{background:var(--seg-on);color:var(--accent);box-shadow:var(--shadow-s)}
 .mtseg button[data-a="n"][aria-pressed="true"]{color:var(--danger)}
 .mtcheck{border:1px solid var(--sep-2);background:transparent;border-radius:9px;padding:0;
@@ -1462,6 +1476,22 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .row.locked .chev{opacity:.4}
 
 .empty{padding:30px 18px;text-align:center;color:var(--text-3);font-size:14.5px}
+/* The last task of the day closing the list. An empty list and a FINISHED one
+   are not the same fact, and until now they said the same sentence. The mark
+   is the one the connect button draws, at rest. */
+.alldone{display:grid;justify-items:center;gap:12px;padding:32px 18px}
+.alldone .okmark{
+  width:42px;height:42px;border-radius:999px;display:grid;place-items:center;
+  background:var(--ok);color:#fff;animation:okPop .3s var(--spring);
+}
+.alldone .okmark svg{
+  width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2.6;
+  stroke-linecap:round;stroke-linejoin:round;
+  stroke-dasharray:24;stroke-dashoffset:24;animation:okDraw .19s .06s var(--ease) forwards;
+}
+.alldone b{display:block;color:var(--text);font-size:16px;font-weight:700}
+.alldone span.sub{display:block;color:var(--text-3);font-size:13.5px;margin-top:3px}
+.alldone .txt{animation:stackSwap .26s .06s var(--ease-io) backwards}
 
 /* ── one row, three answers ──
    Date, clock and all-day sit as values on the "when" row. Each is its own
@@ -1522,6 +1552,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .vclear:active{transform:scale(.88)}
 .vseg-b.locked{opacity:.42;cursor:default}
 @keyframes chipPop{0%{transform:scale(1)}38%{transform:scale(.93)}100%{transform:scale(1)}}
+/* The archive CATCHES a task that has just been ticked: the count it lands in
+   takes the same beat the chips do, so the row does not merely vanish — it
+   goes somewhere, and the somewhere says so. */
+#arcCount{display:inline-block}
+#arcCount.caught{animation:chipPop .3s var(--squash)}
 .vchip.pop{animation:chipPop .19s var(--ease-io)}
 .autotag{
   font-size:11px;font-weight:600;color:var(--accent);background:var(--accent-soft);
@@ -1611,6 +1646,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   100%{opacity:1;transform:none}
 }
 .stack.swap{animation:stackSwap .21s var(--ease-io)}
+/* The two calendar modes swap into each other the way the two task views
+   already do — the same rise, on whichever half has just been shown. */
+#calRead.swap,#calMeet.swap{animation:stackSwap .21s var(--ease-io)}
 
 /* archive – deliberately quiet */
 .archive{margin-top:34px;opacity:.72;transition:opacity .3s ease}
@@ -1668,6 +1706,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .day[aria-selected="true"] .dn{color:rgba(255,255,255,.8)}
 .day[aria-selected="true"] .dots i{background:rgba(255,255,255,.85)}
 .day:not([aria-selected="true"]):active{background:var(--bg-tint);transform:scale(.94)}
+/* Paging a week is a move in a direction, and the strip says which: the new
+   week arrives from the side you paged towards. `--dirf` makes the same two
+   rules right in Hebrew and in English. */
+@keyframes wkNext{from{opacity:0;transform:translateX(calc(-26px * var(--dirf)))}to{opacity:1;transform:none}}
+@keyframes wkPrev{from{opacity:0;transform:translateX(calc(26px * var(--dirf)))}to{opacity:1;transform:none}}
+.daystrip.wknext{animation:wkNext .26s var(--ease)}
+.daystrip.wkprev{animation:wkPrev .26s var(--ease)}
+/* The day's list rises the way the task views already swap into each other. */
+#agenda.swap{animation:stackSwap .21s var(--ease-io)}
 
 .ev{display:flex;gap:12px;padding:12px 14px;position:relative;align-items:flex-start}
 .ev + .ev::before{content:"";position:absolute;top:0;height:1px;background:var(--sep);inset-inline-start:76px;inset-inline-end:0}
@@ -2386,9 +2433,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 .tpcol button{
   display:block;width:100%;height:40px;scroll-snap-align:center;
   font-family:'Rubik',sans-serif;font-size:19px;font-weight:500;color:var(--text-3);
-  font-variant-numeric:tabular-nums;direction:ltr;transition:color .18s var(--ease-io),font-size .18s var(--ease-io)
+  font-variant-numeric:tabular-nums;direction:ltr;
+  /* `transform`, not `font-size`: a font-size transition re-lays the text out
+     on every frame, which is the one property in this picker that is animated
+     sixty times a second while a finger is dragging the column. */
+  transition:color .18s var(--ease-io),transform .18s var(--ease-io)
 }
-.tpcol button.on{color:var(--text);font-weight:600;font-size:22px}
+.tpcol button.on{color:var(--text);font-weight:600;transform:scale(1.158)}
 .tpcolon{position:relative;font-family:'Rubik',sans-serif;font-size:20px;font-weight:600;color:var(--text-2);padding-bottom:3px}
 .tpfoot{margin-top:8px;display:flex;gap:6px}
 .tpfoot button{
@@ -2423,6 +2474,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   transition:opacity var(--sw-t) var(--ease-io),transform var(--sw-t) var(--ease-io);
 }
 .toast.show{opacity:1;transform:none}
+/* A second sentence arriving into a toast that is already up used to swap its
+   text in silence, which reads as the first one never having been answered.
+   It takes the beat again instead — same distance, no fade out and back. */
+@keyframes toastBump{0%{transform:none}34%{transform:translateY(4px) scale(.985)}100%{transform:none}}
+.toast.show.bump{animation:toastBump .22s var(--ease-io)}
 /* The boot veil. Opaque on purpose — the seed underneath is somebody else's
    list, and a blur is still a readable one. */
 .boot{
@@ -2461,7 +2517,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   .field label{width:86px;font-size:15px}
 }
 @media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation-duration:.001ms !important;animation-delay:0ms !important;transition-duration:.001ms !important}
+  /* `animation-iteration-count` is the half this rule was missing: the
+     breathing avatar, the boot dots and the armed-delete pulse are INFINITE,
+     and a one-millisecond frame repeated for ever is a flicker, not a
+     stillness. */
+  *,*::before,*::after{animation-duration:.001ms !important;animation-delay:0ms !important;
+    animation-iteration-count:1 !important;transition-duration:.001ms !important}
 }
 </style>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
@@ -4028,6 +4089,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "tasks.n0":"אין משימות פתוחות","tasks.n1":"משימה פתוחה אחת","tasks.nN":"{n} משימות פתוחות",
       "remc.n0":"אין תזכורות","remc.n1":"תזכורת אחת מוגדרת","remc.nN":"{n} תזכורות מוגדרות",
       "bucket.late":"באיחור","bucket.today":"היום","bucket.tomorrow":"מחר","bucket.later":"בהמשך","kind.event":"ביומן","kind.todo":"לעשות","cal.eventTag":"אירוע","tasks.new":"משימה חדשה","tasks.empty":"אין משימות פתוחות. יום נקי.",
+      "tasks.allDone":"סיימת הכול","tasks.allDoneSub.n1":"משימה אחת נסגרה היום","tasks.allDoneSub.nN":"{n} משימות נסגרו היום",
       "tasks.doneAt":"הושלמה {when}","tasks.justNow":"הרגע",
       "tasks.arcShown":"מוצגות {n} האחרונות מתוך {all}","tasks.restore":"החזרה לרשימה",
       "toast.restored":"„{name}” חזרה לרשימה",
@@ -4332,6 +4394,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "tasks.n0":"No open tasks","tasks.n1":"1 open task","tasks.nN":"{n} open tasks",
       "remc.n0":"no reminders set","remc.n1":"1 reminder set","remc.nN":"{n} reminders set",
       "bucket.late":"Overdue","bucket.today":"Today","bucket.tomorrow":"Tomorrow","bucket.later":"Later","kind.event":"On the calendar","kind.todo":"To do","cal.eventTag":"Event","tasks.new":"New task","tasks.empty":"Nothing open. Clear day.",
+      "tasks.allDone":"All done","tasks.allDoneSub.n1":"one task closed today","tasks.allDoneSub.nN":"{n} tasks closed today",
       "tasks.doneAt":"Done {when}","tasks.justNow":"just now",
       "tasks.arcShown":"Showing the last {n} of {all}","tasks.restore":"Put back on the list",
       "toast.restored":"\u201c{name}\u201d is back on your list",
@@ -5236,6 +5299,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   /* ───────── toast ───────── */
   var toastEl = $("#toast"), toastT;
   function toast(msg, undo, isErr){
+    /* Replacing a toast that is still on screen: it re-bumps rather than
+       changing its words where it stands — see .toast.bump. */
+    if(toastEl.classList.contains("show")){
+      toastEl.classList.remove("bump");
+      void toastEl.offsetWidth;
+      toastEl.classList.add("bump");
+    } else toastEl.classList.remove("bump");
     toastEl.textContent = msg;
     toastEl.classList.toggle("act", !!undo);
     toastEl.classList.toggle("err", !!isErr);
@@ -5256,7 +5326,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        READ when it is a refusal. "Olma is paused, a reminder will not go out
        until you bring her back" is a sentence, and it was on screen for one
        second while the page reloaded under it. */
-    toastT = setTimeout(function(){ toastEl.classList.remove("show", "act"); },
+    toastT = setTimeout(function(){ toastEl.classList.remove("show", "act", "bump"); },
       undo ? 4200 : isErr ? 3400 : 1050);
   }
 
@@ -5365,6 +5435,43 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       nw.classList.remove("win");
     }, SW_MS);
   }
+  /* A count that changes ROLLS to its new value instead of blinking into it.
+     The slot is built the first time a counter is written, so the page's own
+     markup stays a plain <p>/<span> and nothing has to be kept in sync — and
+     the first paint, which has nothing to roll from, simply sets the text. */
+  function rollText(el, text){
+    if(!el) return;
+    var slot = el.firstElementChild;
+    if(slot && slot.className === "wordslot"){ swapWord(slot, text); return; }
+    el.textContent = "";
+    slot = document.createElement("span");
+    slot.className = "wordslot";
+    slot.innerHTML = '<i class="wghost"></i><i class="wnow"></i>';
+    slot.firstChild.textContent = text;
+    slot.lastChild.textContent = text;
+    el.appendChild(slot);
+  }
+  /* A row leaving a list folds instead of blinking out — measured, because
+     max-height only animates between two real numbers and none of these rows
+     has a height anybody wrote down. `done` runs when the fold is over, so a
+     caller can splice and redraw behind it. Under reduced motion the whole
+     transition is a millisecond and the callback still lands, in order. */
+  var FOLD_MS = 240;
+  function foldAway(el, done){
+    if(!el){ if(done) done(); return; }
+    el.style.maxHeight = el.scrollHeight + "px";
+    el.style.overflow = "hidden";
+    void el.offsetWidth;
+    el.classList.add("folding");
+    el.style.maxHeight = "0px";
+    el.style.opacity = "0";
+    el.style.pointerEvents = "none";
+    if(done) setTimeout(done, FOLD_MS);
+  }
+  /* Somebody who has asked their system for less movement. The stylesheet
+     honours it on its own; these are the two places JS decides to move
+     something and CSS never sees the decision. */
+  var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   function defaultPicker(){
     /* A call is not a place a reminder can wait — this choice is about where
        WRITING arrives, so it offers the written channels and nothing else,
@@ -6030,11 +6137,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         esc(t("bucket." + b)) + "</span></div>" + kindGroups(items) + "</div>";
     });
     html += importedSection();
-    if(!open.length) html = '<div class="group"><div class="empty">' + esc(t("tasks.empty")) + "</div></div>";
+    if(!open.length){
+      /* Finished is not the same as empty: somebody who has just closed the
+         last thing on their list should be told they finished it, and only a
+         list that never had anything in it today is a clear day. */
+      html = '<div class="group">' + (archived.length
+        ? '<div class="empty alldone"><span class="okmark"><svg><use href="#i-check"/></svg></span>' +
+          '<span class="txt"><b>' + esc(t("tasks.allDone")) + "</b>" +
+          '<span class="sub">' + esc(pl("tasks.allDoneSub", archived.length)) + "</span></span></div>"
+        : '<div class="empty">' + esc(t("tasks.empty")) + "</div>") + "</div>";
+    }
     $("#taskStack").innerHTML = html;
     var rems = open.filter(function(x){ return x.rem; }).length;
-    $("#taskCount").textContent = pl("tasks", open.length) + " · " + pl("remc", rems);
-    $("#arcCount").textContent = archived.length;
+    rollText($("#taskCount"), pl("tasks", open.length) + " · " + pl("remc", rems));
+    rollText($("#arcCount"), String(archived.length));
     /* The archive is a safety net, not a second list. Past eight rows it
        stops being scannable and starts being a wall, so it shows the eight
        most recent and SAYS that rather than quietly truncating. */
@@ -6055,6 +6171,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }).join("");
     $("#arcNote").hidden = archived.length <= ARCHIVE_MAX;
     $("#arcNote").textContent = t("tasks.arcShown", {n:ARCHIVE_MAX, all:archived.length});
+  }
+  /* The count a ticked task lands in, told to notice. */
+  function catchInArchive(){
+    var el = $("#arcCount");
+    if(!el) return;
+    el.classList.remove("caught");
+    void el.offsetWidth;
+    el.classList.add("caught");
   }
   /* Putting one back restores the task that was archived, not a copy of its
      title — a shopping list that came back empty would be a worse outcome
@@ -6099,7 +6223,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         /* The row itself, not its number: it has just left `open`, and if its
            own add is still in flight only the object can wait for the real id. */
         API.completeTask(row || id);
-        renderTasks(); toast(t("toast.done"));
+        renderTasks();
+        catchInArchive();
+        /* A tick is one small target away from a tap meant for the row, and
+           the way back has always existed — the undo button in the archive,
+           which is a fold most people never open. Here it is, for the four
+           seconds anybody would want it. */
+        toast(t("toast.done"), i > -1 ? function(){ restoreTask(id); } : null);
       }, 540);
       return;
     }
@@ -6779,13 +6909,29 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }).join("") +
       '<div class="scuehold"><div class="scue" id="listCue"><i></i></div></div>';
     paintCue($("#sList"), $("#listCue"));
+    paintListMeta();
+  }
+  /* The subtitle and the little progress pill, separately from the rows —
+     because ticking an item must NOT rebuild the rows. `.litem.on` carries a
+     check that scales in and a strike that draws across the words, and every
+     tick threw the row away and drew a new one already ticked, so the one
+     animation on this list has never been seen. */
+  function paintListMeta(){
+    if(!editing) return;
+    var n = (editing.items || []).length, dn = itemsDone(editing);
     $("#sListSub").textContent = n ? t("sheet.listSub.nN", {done:dn, n:n}) : t("sheet.listSub.n0");
     var pill = $("#sListCount");
     pill.hidden = !n;
-    if(n){
-      pill.textContent = dn + "/" + n;
-      pill.style.setProperty("--p", Math.round(dn / n * 100) + "%");
-      pill.classList.toggle("full", dn === n);
+    if(!n) return;
+    pill.textContent = dn + "/" + n;
+    pill.style.setProperty("--p", Math.round(dn / n * 100) + "%");
+    var was = pill.classList.contains("full"), full = dn === n;
+    pill.classList.toggle("full", full);
+    /* …and the last one closing the list is worth a beat of its own. */
+    if(full && !was){
+      pill.classList.remove("pop");
+      void pill.offsetWidth;
+      pill.classList.add("pop");
     }
   }
   /* Items are rows of their own (tasks.parent_id), written through the same
@@ -6837,7 +6983,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       var it = editing.items[+tg.dataset.titem];
       it.done = !it.done;
       tg.closest(".litem").classList.toggle("on", it.done);
-      renderSheetList();
+      tg.setAttribute("aria-pressed", it.done ? "true" : "false");
+      paintListMeta();
       renderTasks(); flashSaved();
       if(it.id && itemWritable()){
         API.send(it.done ? "completeTask" : "restoreTask", {taskId:it.id}, function(data){
@@ -6850,11 +6997,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }
     var rm = e.target.closest("[data-ritem]");
     if(rm){
-      var gone = editing.items.splice(+rm.dataset.ritem, 1)[0];
-      if(gone && gone.id && itemWritable()) API.send("archiveTask", {taskId:gone.id});
-      if(!editing.items.length) delete editing.items;
-      renderSheetList();
-      renderTasks(); flashSaved();
+      var idx = +rm.dataset.ritem, gone = editing.items[idx];
+      if(!gone || gone.leaving) return;
+      gone.leaving = true;
+      /* Spliced only once the row has finished folding: the indexes every
+         other row is addressed by shift the moment the array does. */
+      foldAway(rm.closest(".litem"), function(){
+        if(!editing || !editing.items) return;
+        var at = editing.items.indexOf(gone);
+        if(at > -1) editing.items.splice(at, 1);
+        if(gone.id && itemWritable()) API.send("archiveTask", {taskId:gone.id});
+        if(!editing.items.length) delete editing.items;
+        renderSheetList();
+        renderTasks(); flashSaved();
+      });
     }
   });
 
@@ -7256,6 +7412,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     API.setCategory(editing.id, editing.cat);
     commit();
   });
+  function undoDelete(row){
+    if(!row || open.some(function(o){ return o.id === row.id; })) return;
+    open.unshift(row);
+    API.restoreTask(row);
+    renderTasks(); renderStrip(selDay);
+    toast(t("toast.restored", {name:L(row.t) || t("sheet.untitled")}));
+  }
   $("#sDelete").addEventListener("click", function(){
     var id = editing.id, row = taskById(id), wrap = $('.taskwrap[data-id="' + id + '"]');
     closeSheets();
@@ -7263,7 +7426,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setTimeout(function(){
       open = open.filter(function(o){ return o.id !== id; });
       API.deleteTask(row || id);
-      renderTasks(); renderStrip(selDay); toast(t("toast.deleted"));
+      renderTasks(); renderStrip(selDay);
+      /* Delete on this page is `archiveTask` on the server — the row is not
+         gone, it is put away — so the way back is a real call and not a
+         promise the page cannot keep. Offered only when we still hold the
+         task itself; a bare id could restore the row but not redraw it. */
+      toast(t("toast.deleted"), row ? function(){ undoDelete(row); } : null);
     }, 230);
   });
 
@@ -7673,7 +7841,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       ? live.map(mtCardHTML).join("")
       : '<div class="group"><div class="empty">' +
         esc(t("mt.empty")) + "</div></div>";
-    $("#mtCount").textContent = live.length ? pl("mt", live.length) : "";
+    rollText($("#mtCount"), live.length ? pl("mt", live.length) : "");
     /* Settled first, then the ones you left — the same ordering rule the task
        archive uses (most recently out of the list, first). Capped at the same
        eight, and it SAYS it is capped rather than quietly truncating, because
@@ -8055,11 +8223,22 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       }
       mtSetAns(m, 0, o.id, want);
       API.call("setAvailability", {meeting_id:m.id, option_id:o.id, answer:want});
+      /* The press is answered after the redraw, not before it: the list is
+         rebuilt from the answer, so a class put on the button here would be
+         thrown away in the same breath. */
+      var popAfter = function(){
+        var b = $('#mtOpts [data-opt="' + o.id + '"] [data-a="' + want + '"]');
+        if(!b) return;
+        b.classList.remove("pop");
+        void b.offsetWidth;
+        b.classList.add("pop");
+      };
       /* One answer to ONE option — the server confirms the meeting itself the
          moment an option is unanimous, and the reload shows it. */
       API.send("answerOption", {meetingId:m.id, optionId:o.id, answer:want}, function(){ API.reload(); });
       mtSettling = null;
       renderMeet(); renderMeets();
+      popAfter();
       return;
     }
     if(e.target.closest("[data-settle]")){
@@ -8123,20 +8302,25 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var m = mtOpen;
     mtArmedDel = null; mtSwiped = null;
     if(mtOpenVotes === o.id) mtOpenVotes = null;
+    /* The row folds away, and the fold is also the wait: nothing is redrawn
+       underneath it until it has finished leaving. */
+    var row = $('#mtOpts [data-opt="' + o.id + '"]');
+    toast(t("toast.mtRemoved", {when:mtOptLabel(m, o)}));
     if(LIVE){
+      foldAway(row);
       API.send("removeOption", {meetingId:m.id, optionId:o.id}, function(data){
         if(!data) toast(t("toast.mtRemoveFailed"));
+        /* the reload draws the list as the server has it, folded row and all */
         API.reload();
       });
-      toast(t("toast.mtRemoved", {when:mtOptLabel(m, o)}));
-      renderMeet();
       return;
     }
-    m.opts = m.opts.filter(function(x){ return x.id !== o.id; });
-    mtActive(m).forEach(function(pid){ if(m.ans[pid]) delete m.ans[pid][o.id]; });
-    if(mtSettling === o.id) mtSettling = null;
-    renderMeet(); renderMeets();
-    toast(t("toast.mtRemoved", {when:mtOptLabel(m, o)}));
+    foldAway(row, function(){
+      m.opts = m.opts.filter(function(x){ return x.id !== o.id; });
+      mtActive(m).forEach(function(pid){ if(m.ans[pid]) delete m.ans[pid][o.id]; });
+      if(mtSettling === o.id) mtSettling = null;
+      renderMeet(); renderMeets();
+    });
   }
   /* ── the swipe ──
      Pointer events rather than touch, so a trackpad drag behaves the same, and
@@ -8857,12 +9041,21 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   });
 
   /* ── the two calendar modes ── */
-  function setCalMode(mode){
+  function setCalMode(mode, animate){
     $$("#calMode button").forEach(function(b){
       b.setAttribute("aria-pressed", b.dataset.calmode === mode ? "true" : "false");
     });
     $("#calRead").hidden = mode !== "cal";
     $("#calMeet").hidden = mode === "cal";
+    /* Only when somebody PRESSED the segment. renderAll re-applies the mode on
+       every language switch and every reload, and a page that rises each time
+       it is redrawn reads as a page that keeps losing its place. */
+    if(animate){
+      var half = $(mode === "cal" ? "#calRead" : "#calMeet");
+      half.classList.remove("swap");
+      void half.offsetWidth;
+      half.classList.add("swap");
+    }
     /* This used to be hidden, and the comment here still said so long after
        the sheet behind it started calling `startMeeting` for real. The button
        belongs to the coordination mode and to nothing else, which is the whole
@@ -8874,7 +9067,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   $("#calMode").addEventListener("click", function(e){
     var b = e.target.closest("[data-calmode]");
-    if(b) setCalMode(b.dataset.calmode);
+    if(b && b.getAttribute("aria-pressed") !== "true") setCalMode(b.dataset.calmode, true);
   });
 
   /* ── adding a friend ──
@@ -9131,23 +9324,47 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       d.getFullYear() + "/" + (d.getMonth() + 1) + "/" + d.getDate() +
       (p.account ? "?authuser=" + encodeURIComponent(p.account) : "");
   }
-  function renderStrip(sel){
+  /* Which week the seven buttons on screen were built for, and which day was
+     lit last — so a tap on another day can CHANGE the strip instead of
+     replacing it. `.day` has carried a background transition since the day it
+     was written and nobody had ever seen it play: every tap threw the button
+     away and drew a new one already selected. */
+  var stripWeek = null, stripSel = null;
+  function renderStrip(sel, slide){
     selDay = sel;
     syncCalOpen();
     var wk0 = weekOff * 7;
-    $("#daystrip").innerHTML = [0,1,2,3,4,5,6].map(function(k){
-      var i = wk0 + k;
-      var d = dayAt(i), n = agendaFor(i).length, dots = "";
-      for(var k = 0; k < Math.min(n,3); k++) dots += "<i></i>";
-      /* The strip always starts on today, but "the first one" is a rule you
-         have to know. A mark beside the number is one you can see. */
-      return '<button class="day' + (i === 0 ? " today" : "") + '" data-d="' + i +
-        '" aria-selected="' + (i === sel) + '">' +
-        '<div class="dn' + (i === 0 ? " isnow" : "") + '">' +
-        (i === 0 ? esc(t("cal.today")) : D.days[d.getDay()]) + "</div>" +
-        '<div class="dd">' + d.getDate() + "</div>" +
-        '<div class="dots">' + dots + "</div></button>";
-    }).join("");
+    var cells = $$("#daystrip .day");
+    if(stripWeek !== weekOff || cells.length !== 7){
+      $("#daystrip").innerHTML = [0,1,2,3,4,5,6].map(function(k){
+        var i = wk0 + k, d = dayAt(i);
+        /* The strip always starts on today, but "the first one" is a rule you
+           have to know. A mark beside the number is one you can see. */
+        return '<button class="day' + (i === 0 ? " today" : "") + '" data-d="' + i +
+          '" aria-selected="false">' +
+          '<div class="dn' + (i === 0 ? " isnow" : "") + '">' +
+          (i === 0 ? esc(t("cal.today")) : D.days[d.getDay()]) + "</div>" +
+          '<div class="dd">' + d.getDate() + "</div>" +
+          '<div class="dots"></div></button>';
+      }).join("");
+      stripWeek = weekOff;
+      cells = $$("#daystrip .day");
+      if(slide){
+        var strip = $("#daystrip"), dir = slide > 0 ? "wknext" : "wkprev";
+        strip.classList.remove("wknext", "wkprev");
+        void strip.offsetWidth;
+        strip.classList.add(dir);
+      }
+    }
+    /* Both of these are true of a strip that already exists, and both can
+       change under a reload: which day is lit, and how full each day is. */
+    cells.forEach(function(b, k){
+      var i = wk0 + k, n = agendaFor(i).length, dots = "";
+      for(var j = 0; j < Math.min(n, 3); j++) dots += "<i></i>";
+      b.setAttribute("aria-selected", i === sel ? "true" : "false");
+      var dd = b.querySelector(".dots");
+      if(dd.innerHTML !== dots) dd.innerHTML = dots;
+    });
     /* the strip can straddle two months, and then it has to say both */
     var a = dayAt(wk0), z = dayAt(wk0 + 6);
     $("#stripMonth").textContent = a.getMonth() === z.getMonth()
@@ -9186,6 +9403,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       /* "Nothing today" and "we cannot see your calendar" look identical on an
          empty day, and the server has always told us which (`connected`). */
       : '<div class="empty">' + esc(t(LIVE && !calConnected ? "cal.notConnected" : "cal.empty")) + "</div>";
+    /* …and the list rises, but only when the DAY changed. A reload landing on
+       the day you are already reading must not make the page flinch. */
+    if(stripSel !== sel){
+      stripSel = sel;
+      var ag = $("#agenda");
+      ag.classList.remove("swap");
+      void ag.offsetWidth;
+      ag.classList.add("swap");
+    }
   }
   $("#daystrip").addEventListener("click", function(e){
     var b = e.target.closest(".day");
@@ -9195,8 +9421,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      first day otherwise — so stepping forward and back returns you to the day
      you started on rather than to a Monday you never chose. */
   function goWeek(w){
+    var was = weekOff;
     weekOff = Math.max(WEEK_MIN, Math.min(WEEK_MAX, w));
-    renderStrip(weekOff === 0 ? 0 : weekOff * 7);
+    renderStrip(weekOff === 0 ? 0 : weekOff * 7, weekOff === was ? 0 : weekOff > was ? 1 : -1);
   }
   $(".stripmonth").addEventListener("click", function(e){
     if(e.target.closest("#wkToday")) return goWeek(0);
@@ -9247,7 +9474,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setTimeout(function(){
       var row = $('.ev[data-task="' + id + '"]');
       if(!row){ return; }
-      row.scrollIntoView({block:"center", behavior:"smooth"});
+      row.scrollIntoView({block:"center", behavior:REDUCED ? "auto" : "smooth"});
       row.classList.add("landing");
       setTimeout(function(){ row.classList.add("pressed"); }, 310);
       setTimeout(function(){
@@ -9524,7 +9751,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     GROUPS.forEach(function(g){ g.m = g.m.filter(function(m){ return m !== fid; }); });
     renderFriends();
     renderGroups();
-    $("#friendCount").textContent = t("fr.count", {n:FRIENDS.length});
+    rollText($("#friendCount"), t("fr.count", {n:FRIENDS.length}));
   }
   function removeFriend(btn){
     var fid = +btn.dataset.frdel, f = friendById(fid);
@@ -9537,14 +9764,20 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }
     clearTimeout(+btn.dataset.armT || 0);
     API.call("removeFriend", {connection_id:f.cid});
-    if(!LIVE){ dropFriend(fid); toast(t("toast.removed", {name:L(f.n)})); return; }
+    var rowset = btn.closest(".rowset");
+    if(!LIVE){
+      foldAway(rowset, function(){ dropFriend(fid); toast(t("toast.removed", {name:L(f.n)})); });
+      return;
+    }
     if(!f.cid){ disarmFriendRemove(btn); API.reload(); return; }
     btn.disabled = true;
     API.send("revokeConnection", {connectionId:f.cid}, function(data){
       if(!data){ disarmFriendRemove(btn); return; } /* refused, and already reloading */
-      dropFriend(fid);
-      toast(t("toast.removed", {name:L(f.n)}));
-      API.reload();
+      foldAway(rowset, function(){
+        dropFriend(fid);
+        toast(t("toast.removed", {name:L(f.n)}));
+        API.reload();
+      });
     });
   }
   $("#friendGroup").addEventListener("click", function(e){
@@ -9641,7 +9874,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   function renderPause(){
     var b = $("#pauseBtn");
     b.setAttribute("aria-pressed", paused ? "true" : "false");
-    $("#pauseIcon").innerHTML = '<use href="#' + (paused ? "i-play" : "i-pause") + '"/>';
+    /* The glyph changes meaning, so it arrives rather than being swapped
+       underneath the finger — the same entrance the tool glyphs make. */
+    var ic = $("#pauseIcon"), want = paused ? "i-play" : "i-pause";
+    if(ic.dataset.g !== want){
+      ic.dataset.g = want;
+      ic.innerHTML = '<use href="#' + want + '"/>';
+      ic.classList.remove("morph");
+      void ic.offsetWidth;
+      ic.classList.add("morph");
+    }
     $("#pauseLabel").textContent = t(paused ? "me.resume" : "me.pause");
     $("#pauseNote").textContent = t(paused ? "me.pausedNote" : "me.pauseNote");
     document.documentElement.toggleAttribute("data-paused", paused);
@@ -10178,7 +10420,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(okb && !okb.disabled) saveQuestion(w, p, okb);
   });
 
-  var REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   /* The next question in line, drawn into the slot a card just left. */
   function bringNext(){
     var list = $("#factQs"), showing = $$("[data-fqw]", list).map(function(el){ return el.dataset.fqw; });
@@ -10386,7 +10627,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $$(".view").forEach(function(v){ v.classList.toggle("active", v.dataset.view === view); });
     tabs.forEach(function(x){ x.setAttribute("aria-selected", x.dataset.go === tab ? "true" : "false"); });
     placePill(selectedTab());
-    window.scrollTo({top:0, behavior:"smooth"});
+    window.scrollTo({top:0, behavior:REDUCED ? "auto" : "smooth"});
   }
   window.addEventListener("resize", repositionPill);
 
@@ -10406,7 +10647,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setField($("#fname"), L(PROFILE.first));
     setField($("#lname"), L(PROFILE.last));
     setField($("#oname"), L(PROFILE.olma));
-    $("#friendCount").textContent = t("fr.count", {n:FRIENDS.length});
+    rollText($("#friendCount"), t("fr.count", {n:FRIENDS.length}));
     /* Hard-coded WhatsApp here said something the delivery gate does not
        promise: a reminder goes out on whichever channel is the default, and
        that is a setting one page away. */
