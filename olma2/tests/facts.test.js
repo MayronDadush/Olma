@@ -1023,11 +1023,64 @@ test('a task the extraction re-proposes is refused and counted, never captured',
     }, new Set());
 
     assert.equal(applied.tasksCaptured, 1, 'only the one that was genuinely new');
-    assert.equal(applied.refused.conflict, 1, 'and the one it tried to repeat is on the record');
+    // `similar_open` and not `conflict`: the similarity guard sits in front of
+    // addTask on this path and an identical title scores 1.0, so it answers
+    // first. addTask's own `conflict` is still what a PERSON gets.
+    assert.equal(applied.refused.similar_open, 1, 'and the one it tried to repeat is on the record');
 
     const open = await tasksDomain.listTasks(c, u.id, { status: 'open' });
     assert.deepEqual(open.data.tasks.map((t) => t.title).sort(),
       ['להתקשר למכבי פיזיותרפיה', 'לחדש דרכון'].sort());
+  });
+});
+
+// The reworded half, which the exact guard could never see, and the shape that
+// produced 26 of the 32 closest duplicate pairs on the box.
+test('the extraction pass refuses a task it has only reworded', async () => {
+  const u = await seedChatter('+972590009011', 40);
+  await withClient(async (c) => {
+    const tasksDomain = require('../src/domain/tasks');
+    await tasksDomain.addTask(c, u.id, { title: 'לארוז תיק לבית חולים', source: 'chat' });
+
+    const applied = await extraction.applyExtraction(c, u, {
+      facts: [],
+      // מאיה's own evening: the live tool captured the packing, and the
+      // extraction pass then read her REQUEST as a second task.
+      tasks: [{ title: 'להזכיר לי מחר בבוקר ב-9 עם רשימת האריזה לתיק לבית חולים' }],
+    }, new Set());
+
+    assert.equal(applied.tasksCaptured, 0);
+    assert.equal(applied.refused.similar_open, 1);
+    const open = await tasksDomain.listTasks(c, u.id, { status: 'open' });
+    assert.deepEqual(open.data.tasks.map((t) => t.title), ['לארוז תיק לבית חולים']);
+  });
+});
+
+// The other hole: a task ticked off and written back from the same
+// conversation. "להעיר את מאיה" was completed two minutes after it was created
+// and re-added forty-two minutes later.
+test('a task completed hours ago is not written back by the nightly pass', async () => {
+  const u = await seedChatter('+972590009012', 40);
+  await withClient(async (c) => {
+    const tasksDomain = require('../src/domain/tasks');
+    const made = await tasksDomain.addTask(c, u.id, { title: 'להעיר את מאיה', source: 'chat' });
+    await tasksDomain.completeTask(c, u.id, made.data.task.id);
+
+    const applied = await extraction.applyExtraction(c, u, {
+      facts: [], tasks: [{ title: 'להעיר את מאיה' }],
+    }, new Set());
+    assert.equal(applied.tasksCaptured, 0);
+    assert.equal(applied.refused.similar_done, 1);
+
+    // …and the window really is a window: the same title a week later is a
+    // new job, and this is the case domain/tasks.js refuses to guess at for a
+    // person (ביטוח נסיעות, done in the morning and set again that evening).
+    await c.query(`UPDATE tasks SET completed_at = now() - interval '8 days' WHERE id = $1`,
+      [made.data.task.id]);
+    const later = await extraction.applyExtraction(c, u, {
+      facts: [], tasks: [{ title: 'להעיר את מאיה' }],
+    }, new Set());
+    assert.equal(later.tasksCaptured, 1);
   });
 });
 

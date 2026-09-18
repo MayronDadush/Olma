@@ -161,28 +161,45 @@ function compare(a, b) {
   return { text, same: true, silent, reason: silent ? 'identical' : 'reworded' };
 }
 
-// The open list to compare against: their own, top level only (a checklist
-// item is not a thing anybody is saving twice) and never the row being
-// checked. Returns the BEST match, because a title can be close to two of
-// them and only one answer is useful.
-async function findOpenTwin(client, ownerId, title, { excludeId = null } = {}) {
+// The list to compare against: their own, top level only (a checklist item is
+// not a thing anybody is saving twice) and never the row being checked.
+// Returns the BEST match, because a title can be close to two rows and only
+// one answer is useful.
+//
+// `doneWithinHours` widens it to things they have already TICKED OFF, and it
+// exists for one caller. `tasks.openTitles` is open-only on purpose and the
+// reasoning holds for a person typing: ביטוח נסיעות, ticked off in the morning
+// and set again that evening for a new trip, is somebody doing a thing twice.
+// It does not hold for the nightly extraction pass, which reads a conversation
+// hours after the fact and has no way to mean "again" — "להעיר את מאיה" was
+// completed two minutes after it was created and written back forty-two
+// minutes later off the same conversation. So the window is the CALLER's
+// judgement, not this file's, and it is open by default.
+async function findTwin(client, ownerId, title, { excludeId = null, doneWithinHours = 0 } = {}) {
   const { rows } = await client.query(
-    `SELECT id, title, due_at FROM tasks
-      WHERE owner_id = $1 AND status = 'open' AND archived_at IS NULL
-        AND parent_id IS NULL AND ($2::bigint IS NULL OR id <> $2::bigint)`,
-    [ownerId, excludeId]
+    `SELECT id, title, due_at, status, completed_at FROM tasks
+      WHERE owner_id = $1 AND archived_at IS NULL AND parent_id IS NULL
+        AND ($2::bigint IS NULL OR id <> $2::bigint)
+        AND (status = 'open'
+             OR ($3::int > 0 AND status = 'done'
+                 AND completed_at > now() - ($3::int * interval '1 hour')))`,
+    [ownerId, excludeId, doneWithinHours]
   );
   let best = null;
   for (const row of rows) {
     const verdict = compare(title, row.title);
     if (!verdict.same) continue;
-    if (!best || verdict.text > best.text) best = { ...verdict, task: row };
+    // An open row always beats a completed one at equal closeness: it is the
+    // row they would have to look at.
+    const better = !best || verdict.text > best.text
+      || (verdict.text === best.text && row.status === 'open' && best.task.status !== 'open');
+    if (better) best = { ...verdict, task: row };
   }
   return best;
 }
 
 module.exports = {
   disagrees,
-  normalise, textScore, namesRecurringSlot, compare, findOpenTwin,
+  normalise, textScore, namesRecurringSlot, compare, findTwin,
   MERGE_AT: TASK_SIMILARITY_MERGE_AT,
 };

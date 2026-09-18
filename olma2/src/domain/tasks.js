@@ -11,6 +11,7 @@ const autoReminder = require('./auto-reminder');
 const shopping = require('./shopping-list');
 const taskCategory = require('./task-category');
 const taskKind = require('./task-kind');
+const similarity = require('./task-similarity');
 
 const MAX_BULK = 60;
 
@@ -269,6 +270,30 @@ async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, 
   // reminder for the same thing.
   const already = (await openTitles(client, ownerId)).get(normaliseTitle(title));
   if (already) return duplicateError(already);
+  // …and for a title that is the same thing in DIFFERENT words, the task is
+  // saved and the question is handed to the model. Never a refusal here, and
+  // the attempt to make it one is the measurement that settled it: refusing a
+  // fuzzy match on this path broke 57 tests, on fixtures like "סופר" beside
+  // "סופר השבוע" and "לקנות חלב" beside "לקנות חלב וגבינה" — one title
+  // extending another lands on 0.50-0.67, which is a real pair of tasks about
+  // as often as it is one.
+  //
+  // The asymmetry is the whole argument, and it runs the opposite way to
+  // jobs/fact-extraction.js, which refuses at the same score. THERE nobody is
+  // in the room and a wrong refusal costs nothing, because the live tool has
+  // already captured the sentence. HERE somebody has just said a thing out
+  // loud, and a wrong refusal loses it. So this path takes the third tier the
+  // owner asked for from the start (2026-09-18: "שומרת את המשימה ושואלת האם
+  // לאחד אותה") — the row exists either way, which is also what keeps the 👍
+  // honest, and one sentence settles what no threshold can.
+  //
+  // The live path barely needs more than that: of the 12 duplicate pairs it
+  // produced in 45 days, 6 are character-identical and already refused above.
+  //
+  // Top level only. `findTwin` reads top-level rows, and a checklist item
+  // called "מטען" inside a packing list has no business being measured against
+  // somebody's standalone task of the same name.
+  const twin = parentId ? null : await similarity.findTwin(client, ownerId, title);
   const cat = pickCategory({ category, title, parent });
   const { rows } = await client.query(
     `INSERT INTO tasks (owner_id, title, category, category_auto, due_at, ends_at, kind, location, parent_id, source)
@@ -284,6 +309,13 @@ async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, 
   // came out right only because the model happened to correct it by hand.
   // Passed here it is not a matter of what the model remembers: this is the
   // reminder that gets set, and the automatic one never runs.
+  // The row they may have meant instead, carried to whoever asks the question.
+  // `silent` is not read here — the live path always says something, because
+  // it is asking rather than deciding — but it travels so the caller can tell
+  // "these are the same words" from "these are two sentences".
+  const similarTo = twin
+    ? { id: Number(twin.task.id), title: twin.task.title, silent: twin.silent }
+    : null;
   if (remindAt) {
     const set = await reminders.setReminder(client, ownerId, rows[0].id, remindAt, null);
     if (!set.ok) return set;
@@ -292,10 +324,11 @@ async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, 
       reminders: [set.data.reminder],
       remindersAt: await localLabels(client, ownerId, [set.data.reminder]),
       remindersAsked: true,
+      ...(similarTo ? { similarTo } : {}),
     });
   }
   const auto = await autoAttach(client, ownerId, [rows[0]], now);
-  return ok({ task: rows[0], ...auto });
+  return ok({ task: rows[0], ...auto, ...(similarTo ? { similarTo } : {}) });
 }
 
 // The armed moments written the way the PERSON would say them, in their own

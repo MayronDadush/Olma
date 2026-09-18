@@ -60,6 +60,19 @@ function taskHints(res, user = {}) {
       + 'on their list, so nothing was saved for those and they are NOT in tasks. Say what you did '
       + 'save; mention the rest only as already being there, and never as newly added.';
   }
+  // Something close enough that it may be the same job in other words, SAVED
+  // and then asked about (domain/task-similarity; the thresholds came off 86
+  // labelled pairs on 2026-09-18). The row exists either way — which is what
+  // keeps the 👍 honest — so this is a question and never an apology, and it
+  // is the one tier `jobs/fact-extraction.js` refuses outright because nobody
+  // is in the room at 03:00. A QUESTION is also exactly what `markPlaced`
+  // leaves room for: the mark says the thing was captured, and this asks
+  // something the mark cannot carry.
+  if (d.similarTo) {
+    hints.similar = `Saved. They already have #${d.similarTo.id} "${d.similarTo.title}", which may be `
+      + 'the same job worded differently. Ask in ONE short sentence whether to fold the new one into '
+      + 'it — never merge them yourself, and never imply the new task was not saved.';
+  }
   // A date lifted off the noun instead of off the work. `datesTheObject` fires
   // only where the two readings diverge — ל+weekday in the title AND the task
   // filed on that very weekday — and it reports rather than decides, because

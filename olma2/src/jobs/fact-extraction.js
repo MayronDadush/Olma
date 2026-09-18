@@ -17,6 +17,7 @@
 const audit = require('../domain/audit');
 const facts = require('../domain/facts');
 const tasks = require('../domain/tasks');
+const similarity = require('../domain/task-similarity');
 const users = require('../domain/users');
 const meetings = require('../domain/meetings');
 const llm = require('../adapters/llm');
@@ -359,6 +360,12 @@ function titleWithoutStatedTime(title, dueAtIso, tz) {
 // is only ever honoured against that snapshot — never an id from earlier in
 // this same batch, and never one invented — the same anchoring pattern the
 // meeting-constraints reference uses.
+// A day. Long enough to cover "completed two minutes in, written back
+// forty-two minutes later" and every overnight run that reads the same
+// conversation twice; short enough that a genuinely repeated chore — the
+// water, the house — is a new row tomorrow like it always was.
+const DONE_WINDOW_HOURS = 24;
+
 async function applyExtraction(client, user, parsed, knownFactIds = new Set()) {
   // `refused` exists because the guards in domain/facts swallow a proposal
   // silently, and a nightly job that quietly drops facts looks exactly like a
@@ -406,6 +413,31 @@ async function applyExtraction(client, user, parsed, knownFactIds = new Set()) {
     // Only ever when the date was actually stored — see titleWithoutStatedTime.
     const title = dueAt ? titleWithoutStatedTime(t.title, dueAt, user.timezone) : t.title;
     if (title !== t.title) out.titlesTrimmed++;
+    // ── This job never asks, so at or above the line it does not write ──────
+    //
+    // `tasks.addTask`'s own guard catches a character-identical title, and 26
+    // of the 32 closest duplicate pairs on the box involve a row this job
+    // wrote — it reads a conversation 7 to 83 minutes after the live tool
+    // already captured the same sentence out of it, so a reworded second copy
+    // is its characteristic output rather than a rare one. Every tier of
+    // task-similarity collapses to "do not create" here: a merge notice and a
+    // question are both things said to somebody, and there is nobody in the
+    // room at 03:00.
+    //
+    // DONE_WINDOW_HOURS is the other half, and it is the one place the
+    // open-only rule in domain/tasks.js is deliberately not followed. That
+    // rule protects ביטוח נסיעות — ticked off in the morning, set again that
+    // evening for a new trip — which is a PERSON meaning "again". This job
+    // cannot mean again: "להעיר את מאיה" was completed two minutes after it
+    // was created and written back forty-two minutes later off the same
+    // conversation, and no window shorter than a day catches that without
+    // also being a window a person could cross on purpose.
+    const twin = await similarity.findTwin(client, user.id, title, { doneWithinHours: DONE_WINDOW_HOURS });
+    if (twin) {
+      const why = twin.task.status === 'open' ? 'similar_open' : 'similar_done';
+      out.refused[why] = (out.refused[why] || 0) + 1;
+      continue;
+    }
     const created = await tasks.addTask(client, user.id, {
       title, dueAt, source: 'extracted',
     });
