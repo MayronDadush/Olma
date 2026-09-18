@@ -247,6 +247,18 @@ test('every action the page sends is an action the server has', async () => {
   const missing = sent.filter((a) => !write.ACTIONS.includes(a));
   assert.deepEqual(missing, [], 'the page sends actions the server does not have');
   for (const a of ['setTaskOrder', 'nestTask', 'unnestTask']) assert.ok(sent.includes(a), `${a} is not wired`);
+
+  // And the other direction, which is the one that actually broke: API.send
+  // consults ACT and SILENTLY does nothing for a name it does not hold. The
+  // minimum-people button spent a week sending `setQuorum`, which the server
+  // has and the map did not, so the number moved on screen and the reload put
+  // it straight back. A name only the page knows is invisible from the server
+  // side, so it has to be read off the page itself.
+  const literals = [...html.matchAll(/API\.send\("(\w+)"/g)].map((x) => x[1]);
+  assert.ok(literals.length > 20, `only ${literals.length} send sites parsed`);
+  const unmapped = [...new Set(literals)].filter((a) => !Object.hasOwn(
+    Object.fromEntries([...m[1].matchAll(/(\w+):"(\w+)"/g)].map((x) => [x[1], x[2]])), a));
+  assert.deepEqual(unmapped, [], 'the page sends names its ACT map does not hold — they land nowhere');
 });
 
 test('the served page really is the one that knows how to hydrate', async () => {
