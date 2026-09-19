@@ -501,20 +501,61 @@ test('an ordinary reply never touches brokerd and is returned untouched', async 
 // model in the path (channels/openclaw.sendRawMessage) — a gate there could
 // only ever do harm. Everything that puts MODEL output in front of somebody is
 // covered, group agents and the intake greeter included.
+//
+// That last clause was a lie for as long as this test existed, and the test
+// itself is what pinned it: `agent:intake:` sat in the UNGATED list beside
+// `main`, because `ggreet` above it reads like "the greeter" and is not — it
+// is the GROUP greeter, muted at the gateway, which has never spoken to
+// anybody. `intake` is the one that meets every new person (2026-09-19).
 test('the gate covers every agent that speaks with a model, and nothing that does not', async () => {
   const { handler, sent } = gateHandler();
   const gated = ['agent:u-3:whatsapp:direct:+1', 'agent:u-41:whatsapp:direct:+1',
-    'agent:g-2:whatsapp:group:1@g.us', 'agent:ggreet:whatsapp:direct:+1'];
+    'agent:g-2:whatsapp:group:1@g.us', 'agent:ggreet:whatsapp:direct:+1',
+    'agent:intake:whatsapp:direct:+1'];
   for (const key of gated) {
     assert.deepEqual(await handler({ payload: { text: YAHAV }, sessionKey: key }, {}), { cancel: true, reason: 'olma_reply_leak' }, key);
   }
   const n = sent.length;
-  for (const key of ['agent:main:whatsapp:direct:+1', 'agent:intake:whatsapp:direct:+1', '', 'nonsense']) {
+  for (const key of ['agent:main:whatsapp:direct:+1', '', 'nonsense']) {
     assert.equal(await handler({ payload: { text: YAHAV }, sessionKey: key }, {}), undefined, key);
   }
   assert.equal(sent.length, n, 'and nothing was filed for them');
   // the session key off the context when the event has none
   assert.ok(await handler({ payload: { text: YAHAV } }, { sessionKey: KEY }));
+});
+
+// The founding case for `intake` being in that list: the first message a
+// person ever read from Olma, 2026-09-19 07:46, replayed exactly as it reached
+// their phone. The owner's opening copy is quoted in the greeter's prompt and
+// came out intact; the model put its own frame above it, carrying the WhatsApp
+// message id of the very message it was answering. `message_id` is already in
+// INTERNAL_NAMES, so nothing about the detection had to change — the text was
+// simply never shown to the gate. It must TRIM and not cancel: the copy below
+// the leak is the whole point of that turn, and a person who gets nothing at
+// all is worse off than one who gets the greeting.
+const GREETER = [
+  'הם לא משתתףתתייג:message_id:2A72C7B35E53CC579607',
+  '',
+  'היי, אני עולמה 👋',
+  '',
+  'אני כאן כדי לעזור לכם עם משימות, תזכורות ותיאומים מול האנשים שחשובים לכם.',
+  'אפשר לכתוב, להקליט או פשוט לשלוח הכל בבלגן — אני אעשה לכם סדר ☺️',
+].join('\n');
+
+test("the greeter's own message id is trimmed and the owner's opening survives", async () => {
+  const verdict = leak.gateReply(GREETER);
+  assert.equal(verdict.action, 'trim');
+  assert.deepEqual(verdict.leaks.map((l) => l.kind), ['internal']);
+  assert.equal(verdict.leaks[0].at, 'message_id');
+  assert.ok(verdict.text.startsWith('היי, אני עולמה'), verdict.text);
+  assert.ok(verdict.text.includes('אני אעשה לכם סדר'), 'the opening copy is delivered whole');
+  assert.ok(!verdict.text.includes('message_id'));
+  assert.ok(!verdict.text.includes('משתתף'));
+
+  // and end to end, through the hook, on the session key it actually arrived on
+  const { handler } = gateHandler();
+  const res = await handler({ payload: { text: GREETER }, sessionKey: 'agent:intake:whatsapp:direct:+972500000000' }, {});
+  assert.equal(res.payload.text, verdict.text);
 });
 
 // A schedule card is not the thing that leaked. Cancelling would take it with

@@ -205,6 +205,14 @@ title means this file. Grep the title, not the filename.
   wording. **And it is inert until the gateway is restarted** (`systemctl --user
   restart openclaw-gateway`; `deploy.sh` does not), which is what
   `config_guard.checkReplyGateLive` reads off the plugin's registration stamp.
+  **`intake` is on that list and `ggreet` is not the same thing** — the group
+  greeter is muted at the gateway and has never spoken to anybody, while the
+  DM greeter is the only model output a person who has never heard of Olma
+  ever reads. It was missing for nine days, and the test's own comment claimed
+  it was covered while the assertion below pinned it as excluded, so a new
+  user's first line was `message_id` and their own WhatsApp id above the
+  owner's opening copy (`incidents.md`, "The greeter's own message id").
+  Whenever an agent id is added anywhere, ask which list it belongs on here.
   **A gate built from one leak knows that leak's VOCABULARY, not its SHAPE.**
   Twice on 2026-09-15, to a bare "תודה", the working-out went out again and the
   gate passed both byte for byte — measured, not assumed: `action: "pass"`,

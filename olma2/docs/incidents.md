@@ -181,6 +181,7 @@ never trust a dated narrative for something you are about to act on.
 - [The sentinel that only stripped itself (fixed 2026-09-15)](#the-sentinel-that-only-stripped-itself-fixed-2026-09-15)
 - [The working-out, measured (fixed 2026-09-15)](#the-working-out-measured-fixed-2026-09-15)
 - [The working-out arrived instead of the message (fixed 2026-09-10)](#the-working-out-arrived-instead-of-the-message-fixed-2026-09-10)
+- [The greeter's own message id (fixed 2026-09-19)](#the-greeters-own-message-id-fixed-2026-09-19)
 - [The gate knew the leak's vocabulary, not its shape (fixed 2026-09-15)](#the-gate-knew-the-leaks-vocabulary-not-its-shape-fixed-2026-09-15)
 - ["הנה, רשמתי", about a meeting (2026-09-07)](#הנה-רשמתי-about-a-meeting-2026-09-07)
 - [The dedupe list that could not contain the answer (2026-09-06)](#the-dedupe-list-that-could-not-contain-the-answer-2026-09-06)
@@ -7361,6 +7362,56 @@ openclaw-gateway` — green suite, shipped code, inert gate, which is the exact
 plugin now overwrites `/opt/olma2/run/turn-context-plugin.registered` with the
 hooks the RUNNING gateway registered, and `config_guard.checkReplyGateLive`
 reads that file and files a dashboard row for as long as the two disagree.
+
+### The greeter's own message id (fixed 2026-09-19)
+
+A new person wrote "הי" to Olma for the first time. This is the whole of what
+came back, and the first line is the first thing they ever read from her:
+
+> הם לא משתתףתתייג:message_id:2A72C7B35E53CC579607
+>
+> היי, אני עולמה 👋
+>
+> אני כאן כדי לעזור לכם עם משימות, תזכורות ותיאומים מול האנשים שחשובים לכם.
+> אפשר לכתוב, להקליט או פשוט לשלוח הכל בבלגן — אני אעשה לכם סדר ☺️
+
+The owner's opening copy underneath it is perfect — it is quoted in the
+greeter's prompt and the model reproduced it exactly. What sits above it is the
+model's own frame, carrying the WhatsApp id of the very message it was
+answering.
+
+**Nothing about the detection was missing.** `message_id` has been in
+`INTERNAL_NAMES` since the gate was built; replaying this text through
+`reply-leak.gateReply` returns `trim`, one leak, `kind: "internal"`, and hands
+back the opening copy whole. The text was never shown to the gate:
+
+```js
+const GATED_AGENT_RE = /^agent:(u-\d+|g-\d+|ggreet):/;
+```
+
+`ggreet` is the GROUP greeter, and it is muted at the gateway for the entire
+time it exists — it has never put a word in front of a human being. `intake` is
+the DM greeter, the one agent in the system that speaks to somebody who has
+never heard of Olma, and it was not on the list. The name that reads like "the
+greeter" was the wrong greeter.
+
+**The test said so out loud and nobody read it that way.** The comment above
+`tests/reply-leak.test.js` said "group agents and the intake greeter included"
+while the assertion three lines below it pinned `agent:intake:` in the UNGATED
+list, beside `main`. A test that names the thing it is failing to cover is the
+same shape as a rule whose headline contradicts its body.
+
+Fixed by adding `intake` to the regex in both copies of the gate. Two tests
+fail without it: the agent-coverage test, now with `intake` moved across, and
+this message replayed whole through the hook on the session key it really
+arrived on — asserting `trim` and not `cancel`, because the copy below the leak
+is the entire point of that turn.
+
+**Found by testing something else.** The owner was walking the group-mode
+flow — a room reset to nothing, a member reset to a cold start — and the
+member's reset is what produced a first-contact turn to look at. Three earlier
+sessions had read this file's gate and its tests without noticing; it took a
+real first message on a real phone.
 
 ### The gate knew the leak's vocabulary, not its shape (fixed 2026-09-15)
 
