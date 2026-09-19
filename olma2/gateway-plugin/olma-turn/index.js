@@ -297,6 +297,78 @@ export function buildGroupContextHandler({ connect, sock, timeoutMs, log = trace
   };
 }
 
+// ---- a message in the room that never named her ----------------------------
+// The fourth thing this plugin does, since 2026-09-19. `before_dispatch` is a
+// CLAIMING hook: a handler answering `{handled: true}` ends the message there
+// and no model turn is ever started. That is what makes "she reads the room
+// without answering it" a fact about the runtime rather than a sentence in a
+// prompt asking her not to speak — and the stamp that opens her fifteen-minute
+// window for that room's coordination is taken on the way past
+// (brokerd `group_room_write` → `domain/group-context.noteMemberWrote`).
+//
+// **The room's words never leave the gateway.** The decision is made HERE, from
+// the body, and brokerd is told the sender, the room and one boolean. Which
+// means this is a port of `group-context.addressedToHer`, like `gateReply` below
+// is a port of `domain/reply-leak.js` — and `tests/group-untagged.test.js`
+// holds one corpus against both and fails on the first disagreement.
+//
+// It errs in ONE direction. Anything that might be addressed to her is let
+// through: a false "addressed" is the behaviour we already have, and a false
+// "not addressed" is her going silent on somebody who really did ask her
+// something. brokerd refuses the claim for any room not named in
+// `group_untagged_rooms` (empty by default), so until somebody flips that flag
+// this handler only writes a line to the trace — which is what the verdict is
+// measured against, beside the gateway's own `was_mentioned` on the line after.
+const SELF_DIGITS = () => String(process.env.OLMA_WA_NUMBER || "972559347282").replace(/\D/g, "");
+
+export function addressedToHer({ body, replyToSender } = {}, selfDigits = SELF_DIGITS()) {
+  const self = String(selfDigits || "").replace(/\D/g, "");
+  if (self.length < 7) return true;
+  const digits = (v) => String(v == null ? "" : v).replace(/\D/g, "");
+  return digits(replyToSender).includes(self) || digits(body).includes(self);
+}
+
+export function buildRoomWriteHandler({ connect, sock, timeoutMs = 1500, log = trace } = {}) {
+  return async (event, ctx) => {
+    try {
+      const key = String((event && event.sessionKey) || (ctx && ctx.sessionKey) || "");
+      const m = GROUP_KEY_RE.exec(key);
+      if (!m || !/^g-\d+$/.test(m[1])) return undefined;
+      const body = typeof (event && event.body) === "string" ? event.body
+        : (typeof (event && event.content) === "string" ? event.content : "");
+      const addressed = addressedToHer({ body, replyToSender: event && event.replyToSender });
+      const t0 = Date.now();
+      const reply = await askBroker("group_room_write", {
+        agentId: m[1], externalId: m[2],
+        senderId: String((event && event.senderId) || "").slice(0, 120),
+        addressed, at: Date.now(),
+      }, { connect, sock, timeoutMs });
+      // `senderShape` and `addressed` are the measurement: the llm_input line
+      // for the same message carries the gateway's own `mentioned`, so the two
+      // verdicts sit next to each other in the trace on real traffic. Never the
+      // body, and never the number — only whether it ended in one.
+      log({
+        room: m[1], addressed, senderShape: /@lid\b/i.test(String((event && event.senderId) || "")) ? "lid" : "phone",
+        ...(reply && reply.ok === true
+          ? { stamped: reply.stamped === true, sender: reply.sender === true, claim: reply.claim === true }
+          : { outcome: reply ? "refused" : "unreachable", ...(reply && reply.error ? { error: String(reply.error) } : {}) }),
+        ms: Date.now() - t0,
+      });
+      // Fails open in the only direction that is safe: anything but an explicit
+      // claim lets the message through to the turn it would have had. And a
+      // message THIS side read as addressed is never claimed whatever brokerd
+      // answers — two independent refusals, because the failure they guard
+      // against is her going silent on somebody who asked her something.
+      if (addressed) return undefined;
+      if (reply && reply.ok === true && reply.claim === true) return { handled: true };
+      return undefined;
+    } catch (e) {
+      log({ room: "error", error: String((e && e.message) || e).slice(0, 200) });
+      return undefined;
+    }
+  };
+}
+
 // ---- the reply gate --------------------------------------------------------
 // The third thing this plugin does, since 2026-09-10: the last thing between
 // the model's text and somebody's phone.
@@ -507,11 +579,14 @@ export default {
   register(api) {
     const cfg = (api && api.pluginConfig) || {};
     const agents = Array.isArray(cfg.agents) ? cfg.agents : "all";
-    const hooks = ["before_prompt_build", "llm_input", "reply_payload_sending"];
+    const hooks = ["before_prompt_build", "llm_input", "before_dispatch", "reply_payload_sending"];
     trace({ registered: true, agents, hooks });
     stampRegistration({ agents, hooks });
     api.on("before_prompt_build", buildHandler({ agents: cfg.agents }));
     api.on("llm_input", buildGroupContextHandler());
+    // Same argument as the reply gate for not narrowing by `cfg.agents`: this
+    // is about what a ROOM may do to her, not about rolling a person out.
+    api.on("before_dispatch", buildRoomWriteHandler());
     // Deliberately NOT narrowed by `cfg.agents`: that list is which people get
     // their turn context in the prompt, and a reply reaching the wrong person
     // is not a thing to roll out per person.
