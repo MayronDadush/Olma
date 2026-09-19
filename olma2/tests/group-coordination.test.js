@@ -89,6 +89,84 @@ test('the private question names the room, and never asks anybody to answer in i
   assert.match(body, /never in the group/, 'and the answer comes back here, not there');
 });
 
+// ---- the organic joiner, who is the one the room was waiting for ----------
+//
+// Every fixture above stamps `last_inbound_at` by hand, which is the state a
+// person reaches by writing to their OWN agent. The people who actually arrive
+// through a room do not reach it: they meet the intake GREETER, which stamps
+// `opening_sent_at` instead, and for them the gate below is the only thing
+// that reads both. A fixture that writes the state by hand cannot notice the
+// state is only ever reached the other way, so these three build it the real
+// way round (`incidents.md`, "The room coordinated without the person who
+// opened it").
+async function roomWithAGreeterJoiner(n, { size = 3 } = {}) {
+  const people = [];
+  for (let i = 0; i < size; i++) {
+    const u = await makeUser(db.pool, `+9726077${n}000${i}`, { firstName: ['דני', 'דנה', 'יובל'][i] });
+    // The LAST of them is the joiner: the greeter answered their first
+    // message, so their own agent has never heard them and the column every
+    // other test leans on is NULL.
+    await db.pool.query(
+      i === size - 1
+        ? `UPDATE users SET last_inbound_at = NULL, opening_sent_at = now() WHERE id = $1`
+        : `UPDATE users SET last_inbound_at = now() WHERE id = $1`, [u.id]);
+    people.push(u);
+  }
+  const group = await withTx(db.pool, (c) => openGroup(c, {
+    jid: JID(n), subject: 'בדיקה לעולמה', token: TOKEN(n),
+    members: people.map((u) => ({ phone: u.phone })),
+  }));
+  return { group, people, joiner: people[size - 1] };
+}
+
+test('the person the greeter met is counted into the room they opened', async () => {
+  const { group, people, joiner } = await roomWithAGreeterJoiner(20);
+  // The gate opened this room for all three — that is the fix this one never
+  // got, and asserting it here is what keeps the two answers tied together.
+  const roster = await withTx(db.pool, (c) => groups.listMembers(c, group.id));
+  assert.deepEqual(roster.map(groups.isConnected), [true, true, true], 'the gate says open for everybody');
+
+  const res = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, people[0], 'פגישה שבוע הקרוב'));
+  assert.equal(res.ok, true, res.ok ? '' : JSON.stringify(res.error));
+  assert.equal(res.data.participants, 3, 'and so does the coordination');
+
+  const { rows } = await db.pool.query(
+    `SELECT user_id FROM meeting_participants WHERE meeting_id = $1 ORDER BY user_id`, [res.data.meeting.id]);
+  assert.ok(rows.some((r) => Number(r.user_id) === Number(joiner.id)),
+    'the joiner is in the coordination, not silently left out of it');
+
+  const { rows: invites } = await db.pool.query(
+    `SELECT user_id FROM outbox WHERE kind = 'meeting_invite' AND (payload->>'meetingId')::bigint = $1`,
+    [res.data.meeting.id]);
+  assert.ok(invites.some((r) => Number(r.user_id) === Number(joiner.id)),
+    'and is actually asked when they are free');
+});
+
+test('a room of two coordinates when the other person met the greeter', async () => {
+  // The sharp version: with the joiner filtered out there is nobody else left,
+  // and she answered a room with two people in it that it had nobody to
+  // coordinate with.
+  const { group, people, joiner } = await roomWithAGreeterJoiner(21, { size: 2 });
+  const res = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, people[0], 'קפה'));
+  assert.equal(res.ok, true, res.ok ? '' : JSON.stringify(res.error));
+  assert.equal(res.data.created, true);
+  assert.equal(res.data.participants, 2, 'both of them — the tool turns this into willAsk: 1');
+  const { rows } = await db.pool.query(
+    `SELECT user_id FROM meeting_participants WHERE meeting_id = $1`, [res.data.meeting.id]);
+  assert.deepEqual(rows.map((r) => Number(r.user_id)).sort(),
+    [people[0].id, joiner.id].map(Number).sort());
+});
+
+test('group_status never says somebody has not written when the greeter heard them', async () => {
+  const { group, joiner } = await roomWithAGreeterJoiner(22);
+  const status = await withTx(db.pool, (c) => groups.roomStatus(c, group));
+  const row = status.members.find((m) => m.phone === joiner.phone);
+  assert.ok(row, 'the joiner is on the roster the model is shown');
+  assert.equal(row.wroteToHer, true,
+    'or the model tells the room this person never wrote, about a person, out loud');
+  assert.deepEqual(status.members.map((m) => m.wroteToHer), [true, true, true]);
+});
+
 test('a second ask while one is running gets the same coordination back', async () => {
   const { group, people } = await room(3);
   const first = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, people[0], 'ארוחה'));
