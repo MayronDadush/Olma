@@ -43,6 +43,7 @@ const KIND_LABELS = {
   connection_response: 'תשובה לבקשת חברות',
   share_offer: 'הצעת שיתוף משימה',
   share_response: 'תשובה להצעת שיתוף',
+  share_reminder_dropped: 'תזכורת שירדה עם משימה משותפת',
   meeting_invite: 'תיאום פגישה',
   meeting_slot_proposed: 'הצעת מועד לפגישה',
   meeting_confirmed: 'פגישה אושרה',
@@ -133,7 +134,7 @@ async function renderPlannedQueue(client, now = new Date()) {
        FROM users u
       WHERE EXISTS (SELECT 1 FROM outbox o WHERE o.user_id = u.id AND o.sent_at IS NULL)
          OR EXISTS (SELECT 1 FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-                     WHERE t.owner_id = u.id AND r.sent_at IS NULL AND r.cancelled_at IS NULL)
+                     WHERE COALESCE(r.user_id, t.owner_id) = u.id AND r.sent_at IS NULL AND r.cancelled_at IS NULL)
          OR (u.digest_times IS NOT NULL AND u.digest_times <> '' AND u.status = 'active')`);
 
   const blocks = [];

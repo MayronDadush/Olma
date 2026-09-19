@@ -4212,7 +4212,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "nestRefuse.shared":"משימה משותפת לא יכולה להיכנס לרשימה",
       "nestRefuse.imported":"משימה מיובאת לא יכולה להיכנס לרשימה",
       "nestRefuse.notMine":"אפשר להכניס לרשימה רק משימות שלך",
-      "nestRefuse.hasReminder":"משימה עם תזכורת נשארת אצלך — התזכורת הייתה עוברת עם המשימה",
+      
 
       "sheet.when":"מתי","sheet.pickTime":"בחירת שעה","sheet.pickEnd":"עד","share.andMore":" ועוד {n}",
       "cat.h":"קטגוריה","cat.auto":"עולמה בחרה","cat.byTime":"לפי זמן","cat.byCat":"לפי קטגוריה",
@@ -4230,7 +4230,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.addItem":"הוספת פריט","sheet.itemRm":"מחיקת הפריט",
       "sheet.shared":"משותפת","share.with1":"משותפת עם {name}","share.withN":"משותפת עם {name} ועוד {n}",
       "share.ownerM":"פתח את המשימה","share.ownerF":"פתחה את המשימה","share.ownerMe":"פתחתי את המשימה","share.you":"אני",
-      "sheet.leave":"יציאה מהמשימה המשותפת","sheet.theirs":"התזכורת כאן עדיין של {name}. תזכורת אישית לכל שותף — בקרוב","sheet.leaveSub":"המשימה תיעלם מהרשימה שלך ותישאר אצל השאר. שום דבר לא נמחק.",
+      "sheet.leave":"יציאה מהמשימה המשותפת","sheet.leaveSub":"המשימה תיעלם מהרשימה שלך ותישאר אצל השאר. שום דבר לא נמחק.",
       "toast.left":"יצאת מ„{name}” — היא נשארה אצל השאר",
 
       "cal.h":"הצצה ליומן",
@@ -4408,7 +4408,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.save":"שמירה","sheet.delete":"מחיקת המשימה","sheet.cancel":"ביטול",
       "sheet.autosave":"נשמר אוטומטית","sheet.saved":"נשמר ✓","sheet.noDate":"ללא תאריך","sheet.pickDate":"תאריך",
       "cal.today":"היום","cal.tomorrow":"מחר","cal.clear":"ללא תאריך","cal.yesterday":"אתמול",
-      "sheet.untitled":"משימה ללא שם","sheet.someone":"מישהו",
+      "sheet.untitled":"משימה ללא שם",
       "boot.loading":"רק רגע, טוענים את הדף שלך…",
       "boot.failed":"לא הצלחנו לטעון את הדף כרגע. אפשר לנסות שוב, או לכתוב לעולמה בוואטסאפ ולבקש קישור חדש.",
       "boot.retry":"לנסות שוב",
@@ -4522,7 +4522,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "nestRefuse.shared":"A shared task can't go into a list",
       "nestRefuse.imported":"An imported task can't go into a list",
       "nestRefuse.notMine":"Only your own tasks can go into a list",
-      "nestRefuse.hasReminder":"A task with a reminder stays with you — the reminder would move with it",
+      
 
       "sheet.when":"When","sheet.pickTime":"Pick a time","sheet.pickEnd":"until","share.andMore":" and {n} more",
       "cat.h":"Category","cat.auto":"Allma picked this","cat.byTime":"By time","cat.byCat":"By category",
@@ -4540,7 +4540,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.addItem":"Add an item","sheet.itemRm":"Remove item",
       "sheet.shared":"Shared","share.with1":"Shared with {name}","share.withN":"Shared with {name} and {n} more",
       "share.ownerM":"started it","share.ownerF":"started it","share.ownerMe":"You started it","share.you":"You",
-      "sheet.leave":"Leave this shared task","sheet.theirs":"The reminder here is still {name}'s. A reminder of your own on a shared task is coming","sheet.leaveSub":"It leaves your list and stays on theirs. Nothing is deleted.",
+      "sheet.leave":"Leave this shared task","sheet.leaveSub":"It leaves your list and stays on theirs. Nothing is deleted.",
       "toast.left":"You left \u201c{name}\u201d \u2014 it stays with the others",
 
       "cal.h":"A look at your calendar",
@@ -4715,7 +4715,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.save":"Save","sheet.delete":"Delete task","sheet.cancel":"Cancel",
       "sheet.autosave":"Saves as you type","sheet.saved":"Saved ✓","sheet.noDate":"No date","sheet.pickDate":"Date",
       "cal.today":"Today","cal.tomorrow":"Tomorrow","cal.clear":"No date","cal.yesterday":"Yesterday",
-      "sheet.untitled":"Untitled task","sheet.someone":"someone",
+      "sheet.untitled":"Untitled task",
       "boot.loading":"One moment — loading your page…",
       "boot.failed":"We could not load your page just now. Try again, or write to Allma on WhatsApp for a fresh link.",
       "boot.retry":"Try again",
@@ -6393,14 +6393,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(!child || !parent || child === parent) return "self";
     if(child.src || parent.src) return "imported";
     /* The task has to be MINE outright; the list may be anybody's I am on —
-       the item then goes to the list's owner (server: shares.adoptIntoList),
-       which is also why a task with a reminder pending stays put: the nudge
-       would move with it. */
+       the item then goes to the list's owner (server: shares.adoptIntoList).
+       A reminder pending on it is no longer a reason to keep it: the reminder
+       is MINE, not the task's, so it stays with me when the task changes
+       hands (server: migration 073). */
     if(!isMine(child)) return "notMine";
     if(child.d) return "hasDate";                          /* a date, or a date and an hour */
     if(child.items && child.items.length) return "isList"; /* a list does not go into a list */
     if(facesOf(child).length) return "shared";              /* it is on somebody else's list too */
-    if(!isMine(parent) && child.rem) return "hasReminder";
     return null;
   }
   function canNestInto(child, parent){ return !nestRefusal(child, parent); }
@@ -6952,15 +6952,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        every write on it goes through as the person who opened it (the server's
        shares.actingOwner), so the title, the date, the items — all live. Until
        2026-09-19 the whole sheet was locked here, because the server refused
-       every one of these from anybody but the owner. The one row still theirs
-       alone is the REMINDER: it rides the task's owner until each participant
-       has their own, so on a task I did not open it stays closed and says why.
+       every one of these from anybody but the owner. The REMINDER row was the
+       last one still closed, and it opened the same day: a reminder belongs to
+       the PERSON, so each of us sets our own hour on the same task and the
+       switch here is only ever about mine (server: migration 073).
        Adding and removing people is decided inside the share fold, by
        renderSheetShare — the row itself opens for everyone. */
-    var theirs = !isMine(editing);
     $$(".whenvals [data-taskday]").forEach(function(b){ b.disabled = false; });
-    var owner = theirs ? friendById(editing.owner) : null;
-    var whyTheirs = t("sheet.theirs", {name:owner ? nameOf(owner) : t("sheet.someone")});
     $("#sTitle").readOnly = false;
     lockRow($("#sDateRow"), false);
     lockRow($("#sCatRow"),    !canEdit(editing, "cat"),  why);
@@ -6971,16 +6969,16 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        limitation wins the tooltip when both apply: adding a reminder would not
        open a row an imported task can never carry a repeat in. */
     var repNeedsRem = !editing.rem, repNoField = !canEdit(editing, "rep");
-    lockRow($("#sRepeatRow"), theirs || repNeedsRem || repNoField,
-            theirs ? whyTheirs : repNoField ? why : t("sheet.repeatNeedsRemind"));
+    lockRow($("#sRepeatRow"), repNeedsRem || repNoField,
+            repNoField ? why : t("sheet.repeatNeedsRemind"));
     lockRow($("#sListRow"),   !canEdit(editing, "items"), why);
     lockRow($("#sShareRow"),  !canEdit(editing, "who"),  why);
     lockRow($("#sTimeChip"),  !canEdit(editing, "time"), why);
     lockRow($("#sEndChip"),   !canEdit(editing, "time"), why);
     /* the reminder and the calendar copy are OURS, not the source's — an
-       imported task can still be reminded about. The reminder row closes for
-       one reason only, the one above. */
-    lockRow($("#sRemindRow"), theirs, whyTheirs);
+       imported task can still be reminded about, and so can one somebody
+       shared with me. Nothing closes this row. */
+    lockRow($("#sRemindRow"), false);
   }
   function syncSheetRows(){
     var dated = !!editing.d;

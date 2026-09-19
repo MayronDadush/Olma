@@ -578,7 +578,7 @@ async function listTasks(client, ownerId, { status, includeArchived } = {}) {
   const { rows: pending } = await client.query(
     `SELECT r.id, r.task_id, r.remind_at, r.repeat_rule
        FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-      WHERE t.owner_id = $1 AND r.sent_at IS NULL AND r.attempts = 0
+      WHERE COALESCE(r.user_id, t.owner_id) = $1 AND r.sent_at IS NULL AND r.attempts = 0
         AND r.cancelled_at IS NULL
       ORDER BY r.remind_at`,
     [ownerId]

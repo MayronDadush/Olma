@@ -51,7 +51,7 @@ async function repairAfterZoneChange(client, userId, fromTz, toTz, { now = new D
   const { rows: reminders } = await client.query(
     `SELECT r.id, r.remind_at, t.title FROM task_reminders r
        JOIN tasks t ON t.id = r.task_id
-      WHERE t.owner_id = $1 AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+      WHERE COALESCE(r.user_id, t.owner_id) = $1 AND r.sent_at IS NULL AND r.cancelled_at IS NULL
         AND r.attempts = 0 AND r.remind_at > $2
       ORDER BY r.remind_at`,
     [userId, now]

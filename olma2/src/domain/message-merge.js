@@ -65,6 +65,7 @@ const MERGEABLE = {
   travel: 'asks',
   // Statements. Nothing is expected back from any of them.
   tasks_auto_archived: 'tells',
+  share_reminder_dropped: 'tells',
   calendar_connected: 'tells',
   contacts_connected: 'tells',
   email_connected: 'tells',

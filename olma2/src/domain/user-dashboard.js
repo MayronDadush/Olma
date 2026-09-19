@@ -159,13 +159,15 @@ async function loadTasks(client, userId, zone, calendarSyncTasks) {
   // pending — `sent_at IS NULL` stopped meaning "has not gone out" when the
   // ladder shipped, and three readers told somebody the wrong thing before
   // that was noticed. `attempts = 0` is the question to ask.
+  // THIS person's reminders only: on a shared task each participant has their
+  // own (migration 073), and the switch on the sheet is about theirs.
   const { rows: rems } = await client.query(
     `SELECT r.id, r.task_id, r.remind_at, r.repeat_rule
-     FROM task_reminders r
-     WHERE r.task_id = ANY($1::bigint[])
+     FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+     WHERE r.task_id = ANY($1::bigint[]) AND COALESCE(r.user_id, t.owner_id) = $2
        AND r.cancelled_at IS NULL AND r.attempts = 0
      ORDER BY r.task_id, r.remind_at`,
-    [ids]
+    [ids, userId]
   );
   // Everyone actively on a shared task, the owner included — the page needs
   // the whole set to know when removing the last person makes it private

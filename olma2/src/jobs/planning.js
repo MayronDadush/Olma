@@ -213,7 +213,7 @@ async function sweepPlanning(client, deps = {}) {
       // here would tell the plan a reminder is coming at a time that is
       // already behind us.
       `SELECT r.remind_at, t.title FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-        WHERE t.owner_id = $1 AND r.cancelled_at IS NULL AND r.sent_at IS NULL
+        WHERE COALESCE(r.user_id, t.owner_id) = $1 AND r.cancelled_at IS NULL AND r.sent_at IS NULL
           AND r.attempts = 0
           AND r.remind_at < now() + interval '7 days'
         ORDER BY r.remind_at LIMIT 10`,
