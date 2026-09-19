@@ -399,7 +399,19 @@ export function gateReply(text) {
 // a person or a room. Not `main` — that is the session the raw pipe sends as
 // (`channels/openclaw.sendRawMessage`), carrying the owner's own wording with
 // no model in the path, and a gate can only ever damage those.
-const GATED_AGENT_RE = /^agent:(u-\d+|g-\d+|ggreet):/;
+//
+// `intake` is the DM greeter and it was missing here until 2026-09-19, while
+// the comment above the test claimed it was covered — the name that was in the
+// list is `ggreet`, the GROUP greeter, which is muted at the gateway for the
+// whole time it exists and has never put a word in front of anybody. So the
+// one agent here that speaks to a person who has never heard of Olma was the
+// one agent the gate did not watch, and the first message a new user read was
+// `הם לא משתתףתתייג:message_id:2A72C7B35E53CC579607` above the owner's opening
+// copy (`docs/incidents.md`, "The greeter's own message id"). Every other
+// reader of that person's first minutes is server-composed; this is the only
+// model output in it, which is exactly why it needs the gate and not a line of
+// prompt asking the model not to.
+const GATED_AGENT_RE = /^agent:(u-\d+|g-\d+|ggreet|intake):/;
 
 export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = trace } = {}) {
   return async (event, ctx) => {
