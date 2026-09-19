@@ -296,6 +296,14 @@ function decide(facts) {
   // NOT is a general reopening: nothing else Olma decided to say gets through
   // on it, the reminder and the ladder keep standing where they stood, and a
   // paused user is refused above this line without reading any of it.
+  //
+  // **This exemption is only ever REACHED because something clears the hold's
+  // `release_after`.** Every branch below that uses it holds with a release
+  // time, and `worker.drainOnce` does not select a row before its own release
+  // time — so for fifteen days the exemption ran on nothing at all, and a
+  // Saturday invite was next read at havdalah (`incidents.md`, "The room
+  // window opened on a row nobody would look at"). `group-context
+  // .noteMemberWrote` is what re-hears them, on the same stamp this reads.
   const wroteInRoom = facts.groupWroteAt ? new Date(facts.groupWroteAt).getTime() : 0;
   const inRoomGrace = wroteInRoom > 0 && (now.getTime() - wroteInRoom) < CONVERSATION_GRACE_MS;
 

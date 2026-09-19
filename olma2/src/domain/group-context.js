@@ -134,13 +134,65 @@ async function noteMemberWrote(client, row) {
   const jid = String(row.chatId || '').split(':').pop();
   const digits = String(row.senderE164 || '').replace(/\D/g, '');
   if (!jid || digits.length < 7 || digits.length > 15) return false;
-  const { rowCount } = await client.query(
+  const { rows } = await client.query(
     `UPDATE chat_group_members m
         SET last_wrote_at = greatest(coalesce(m.last_wrote_at, to_timestamp(0)), $3)
        FROM chat_groups g
-      WHERE g.id = m.group_id AND g.external_id = $1 AND m.phone = $2 AND m.left_at IS NULL`,
+      WHERE g.id = m.group_id AND g.external_id = $1 AND m.phone = $2 AND m.left_at IS NULL
+    RETURNING m.group_id, m.user_id`,
     [jid, `+${digits}`, row.at]);
-  return rowCount > 0;
+  if (!rows.length) return false;
+  if (rows[0].user_id) await rehearHeldCoordinationRows(client, rows[0], row.at);
+  return true;
+}
+
+// ── The stamp is worthless until somebody LOOKS at the row again ─────────────
+// The gate has exempted a coordination row from the night and the quiet day
+// for a member who just wrote in the room since 2026-09-08 (`inRoomGrace`,
+// outbox/gate.js) — and on 2026-09-19 that exemption had never once run,
+// because a held row is not a CANDIDATE. `outbox/worker.drainOnce` selects
+// `release_after IS NULL OR release_after <= now()`, and all three of those
+// holds set one: 'night' to the window's next open, 'quiet_day' and
+// 'quiet_holiday' to the end of the run of days. So a row held at 08:38 on a
+// Saturday was next read at havdalah, and every judgement the gate was ready
+// to make in between happened to nothing. The comment above the quiet-day
+// branch said `inRoomGrace` exempts a meeting row "from this one too"; it was
+// the third comment this week asserting coverage the code did not have.
+//
+// `turn.openRecord({ wake: true })` is the same move for a DM and is the
+// shape copied here, with its two differences stated: it re-hears 'night'
+// alone, because a DM at 03:00 is not evidence that somebody's Shabbat is
+// over, while a message in the room that is running the coordination is the
+// owner's own rule for Saturday (2026-09-19: "אם אותו משתמש מתכתב בקבוצה בזמן
+// שיש תיאום פתוח עולמה יכולה לשלוח לו הודעות רק בנוגע לתיאום"); and it is
+// whole-person, while this is scoped to rows naming a meeting THIS room is
+// running, which is what keeps it from being a general reopening.
+//
+// It only makes the worker re-read them. The gate stays the only judge — it
+// re-runs in full, `groupWroteAt` is still what opens the window and is still
+// null for anything else, a pause is still refused above that line, and a row
+// whose fifteen minutes have passed by the time the tick comes simply holds
+// again with a fresh release time.
+//
+// Dated by WHEN THEY WROTE rather than by `now()`, which is the one place this
+// differs from `turn.js`: it is the same moment the stamp above carries and the
+// same moment the gate measures its fifteen minutes from, so the three cannot
+// drift apart, and a test may pin a Saturday without the statement reaching for
+// the real clock underneath it.
+async function rehearHeldCoordinationRows(client, { group_id: groupId, user_id: userId }, at) {
+  // `mt.id::text = ...` rather than a cast of the payload: `meetingId` is the
+  // model's to write, a row without one must not fail the whole stamp, and
+  // Postgres gives no ordering promise that would let a `~ '^[0-9]+$'` guard
+  // run before the cast it is guarding.
+  await client.query(
+    `UPDATE outbox o SET release_after = $3
+       FROM meetings mt
+      WHERE o.user_id = $1 AND o.sent_at IS NULL
+        AND o.hold_reason IN ('night', 'quiet_day', 'quiet_holiday')
+        AND o.release_after > $3
+        AND mt.id::text = o.payload->>'meetingId'
+        AND mt.group_id = $2`,
+    [userId, groupId, at]);
 }
 
 module.exports = { SESSION_KEY_RE, parseConversationInfo, fromConversationInfo, store, read, noteMemberWrote };

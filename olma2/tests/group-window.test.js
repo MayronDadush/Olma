@@ -219,3 +219,128 @@ test('a word said before the coordination started does not open a window on it',
   await drainOnce(db.pool, async (row) => { sent.push(row); return { ok: true }; });
   assert.deepEqual(sent, []);
 });
+
+// ---------------- the row nobody would look at ------------------------------
+// 2026-09-19, מאיה. מירון asked her in the room, on a Saturday, to arrange
+// something for the three of them; her private invite was queued at 08:38 and
+// held `quiet_day`; she wrote in the room at 09:22 and the stamp landed a
+// second later; and at 09:28 the worker's own heartbeat said `held: 0`,
+// because the row was never a candidate. The gate had been ready to let that
+// invite through for forty-four minutes and was never asked.
+//
+// The three tests below are the ones the fixtures above could not be: every
+// end-to-end case in this file used the ladder's `quiet` drop, which is the
+// one hold in the gate that sets no release time.
+const SHABBAT = new Date('2026-09-19T09:00:00Z'); // 12:00 Saturday in Jerusalem
+
+async function roomWithAHeldInvite(n, { kind = 'meeting_invite' } = {}) {
+  // `quietDays: 'sat'` is the opt-in: the helper's default is a STATED "none"
+  // so that no other test in the suite depends on the weekday it runs on, and
+  // this case is about the one day that hold exists for. With an Israeli zone
+  // the worker then resolves the real candle-lighting → havdalah window.
+  const miron = await makeUser(db.pool, `+9726061000${n}0`, { quietDays: 'sat' });
+  const maya = await makeUser(db.pool, `+9726061000${n}1`, { quietDays: 'sat' });
+  for (const u of [miron, maya]) {
+    await db.pool.query(`UPDATE users SET timezone = 'Asia/Jerusalem' WHERE id = $1`, [u.id]);
+  }
+  const g = await withTx(db.pool, (c) => room(c, {
+    jid: `12036300000${n}00@g.us`, members: [{ phone: miron.phone }, { phone: maya.phone }],
+  }));
+  const started = await withTx(db.pool, (c) => meetings.startMeeting(
+    c, miron.id, 'פגישה', [maya.id], { groupId: g.id }));
+  assert.ok(started.ok, 'the coordination started');
+  const meetingId = Number(started.data.meeting.id);
+  // מירון asked at 08:38 and she wrote at 09:22. The order matters and is a
+  // rule of its own ("a word said before the coordination started does not
+  // open a window on it"), so the row is dated rather than left on the clock
+  // the suite happens to run at.
+  await db.pool.query(`UPDATE meetings SET created_at = $2 WHERE id = $1`,
+    [meetingId, new Date(SHABBAT.getTime() - HOUR)]);
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: maya.id, kind, payload: { meetingId, title: 'פגישה' },
+    idempotencyKey: `${kind}:${meetingId}:${maya.id}`,
+  }));
+  return { miron, maya, g, meetingId };
+}
+
+const rowFor = async (userId, kind) => (await db.pool.query(
+  `SELECT hold_reason, sent_at, release_after FROM outbox WHERE user_id = $1 AND kind = $2`,
+  [userId, kind])).rows[0];
+
+test('the Saturday invite goes out when she writes in the room, not at havdalah', async () => {
+  const { maya, g } = await roomWithAHeldInvite(1);
+
+  const sent = [];
+  const send = async (row) => { sent.push(row); return { ok: true }; };
+
+  await drainOnce(db.pool, send, SHABBAT);
+  assert.deepEqual(sent, [], 'her Shabbat is hers');
+  const held = await rowFor(maya.id, 'meeting_invite');
+  assert.equal(held.hold_reason, 'quiet_day');
+  assert.ok(new Date(held.release_after) > SHABBAT,
+    'the hold scheduled its own re-hearing for after Shabbat — which is what made the exemption unreachable');
+
+  // She writes in the room. This is the whole fix: the stamp the gate reads is
+  // useless unless the same write also makes the worker pick the row up.
+  await withTx(db.pool, (c) => groupContext.noteMemberWrote(c, {
+    chatId: g.external_id, senderE164: maya.phone, at: SHABBAT,
+  }));
+  const reheard = await rowFor(maya.id, 'meeting_invite');
+  assert.ok(new Date(reheard.release_after) <= SHABBAT, 'the row is a candidate again');
+
+  await drainOnce(db.pool, send, SHABBAT);
+  assert.equal(sent.length, 1, 'the coordination reaches her in the minute she spoke');
+  assert.equal(sent[0].kind, 'meeting_invite');
+});
+
+test('writing in the room re-hears the coordination and nothing else she is owed', async () => {
+  const { maya, g } = await roomWithAHeldInvite(2);
+  // A digest and a check-in, both hers, both held for the same Saturday, and
+  // neither one anything she answered by speaking in that room.
+  for (const kind of ['digest', 'checkin']) {
+    await withTx(db.pool, (c) => enqueue(c, {
+      userId: maya.id, kind, payload: { note: 'x' }, idempotencyKey: `${kind}:${maya.id}`,
+    }));
+  }
+  const sent = [];
+  const send = async (row) => { sent.push(row); return { ok: true }; };
+  await drainOnce(db.pool, send, SHABBAT);
+  assert.deepEqual(sent, []);
+
+  await withTx(db.pool, (c) => groupContext.noteMemberWrote(c, {
+    chatId: g.external_id, senderE164: maya.phone, at: SHABBAT,
+  }));
+  for (const kind of ['digest', 'checkin']) {
+    const row = await rowFor(maya.id, kind);
+    assert.ok(new Date(row.release_after) > SHABBAT, `${kind} still waits out her Shabbat`);
+  }
+
+  await drainOnce(db.pool, send, SHABBAT);
+  assert.deepEqual(sent.map((r) => r.kind), ['meeting_invite'],
+    'only what the room is coordinating');
+});
+
+test('a word in one room does not re-hear a coordination another room is running', async () => {
+  const a = await roomWithAHeldInvite(3);
+  const b = await roomWithAHeldInvite(4);
+  // The same person in both rooms: she is a member of b's room too, and it is
+  // b's coordination she has been invited to there.
+  await db.pool.query(
+    `INSERT INTO chat_group_members (group_id, phone, user_id) VALUES ($1, $2, $3)`,
+    [a.g.id, b.maya.phone, b.maya.id]);
+
+  const sent = [];
+  const send = async (row) => { sent.push(row); return { ok: true }; };
+  await drainOnce(db.pool, send, SHABBAT);
+  assert.deepEqual(sent, [], 'both rooms\' invites are held for Shabbat');
+
+  await withTx(db.pool, (c) => groupContext.noteMemberWrote(c, {
+    chatId: a.g.external_id, senderE164: b.maya.phone, at: SHABBAT,
+  }));
+  const other = await rowFor(b.maya.id, 'meeting_invite');
+  assert.ok(new Date(other.release_after) > SHABBAT,
+    'she spoke in one room; the other room heard nothing');
+
+  await drainOnce(db.pool, send, SHABBAT);
+  assert.deepEqual(sent, [], 'and so nothing reaches her about it');
+});
