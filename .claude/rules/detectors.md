@@ -183,6 +183,13 @@ title means this file. Grep the title, not the filename.
   built and thrown away on 2026-09-06, because the first invents a JS/Postgres
   skew production never has (29 false failures) and the second flags the very
   pattern the rule recommends (180 literals, most of them correct).
+  **This job is the one detector nothing else watches, and it dies from its own
+  file.** A C1 control character anywhere in that YAML — comments included, and
+  a mangled em-dash is how it got there — leaves GitHub unable to parse the
+  triggers, which stops the schedule outright and reports it only as a red,
+  job-less run on `push`, a trigger the file does not have. Seventeen hours of
+  no scheduled run looked exactly like seventeen hours of passing ones
+  (`incidents.md`, "Four em-dashes stopped the clock-drift suite").
 
 - **`/health` sees the DB, every `job_heartbeats` row, and the gateway — and
   nothing else.** A component that writes no heartbeat is invisible to it, and
