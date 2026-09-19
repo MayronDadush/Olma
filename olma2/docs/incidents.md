@@ -202,6 +202,7 @@ never trust a dated narrative for something you are about to act on.
 - [The merge that never ran (2026-09-08)](#the-merge-that-never-ran-2026-09-08)
 - [A test file poisoned every other one (root-caused and fixed 2026-09-04)](#a-test-file-poisoned-every-other-one-root-caused-and-fixed-2026-09-04)
 - [The watchdog could not tell slow from stuck (2026-09-18)](#the-watchdog-could-not-tell-slow-from-stuck-2026-09-18)
+- [Four em-dashes stopped the clock-drift suite (fixed 2026-09-19)](#four-em-dashes-stopped-the-clock-drift-suite-fixed-2026-09-19)
 - [The deploy marker leads the restart, so the timestamps lie both ways (2026-09-04)](#the-deploy-marker-leads-the-restart-so-the-timestamps-lie-both-ways-2026-09-04)
 - [The rollback was one release deep, on a five-merge day (2026-09-03)](#the-rollback-was-one-release-deep-on-a-five-merge-day-2026-09-03)
 - [Two branches, one migration number — a third time, in one afternoon (fixed 2026-08-29)](#two-branches-one-migration-number--a-third-time-in-one-afternoon-fixed-2026-08-29)
@@ -8564,6 +8565,38 @@ the trap the same file already warns about in its own comments — a banner
 enforced by a test is doctrine, and anyone correcting the number got a red they
 could "fix" by reverting the correction. The assertion now pins the shape (the
 banner must name silence as what it measured), not the number.
+
+### Four em-dashes stopped the clock-drift suite (fixed 2026-09-19)
+
+The commit above, which raised this job's `timeout-minutes` from 15 to 20, also
+re-encoded four em-dashes in its comments: `—` read back as latin-1 and written
+out again, so `E2 80 94` became `â` plus U+0080 and U+0094. YAML forbids C1
+control characters anywhere in a document, **comments included**, so from
+2026-09-18 15:21Z GitHub could no longer parse this file — and a file it cannot
+parse is one whose `on:` it cannot read either.
+
+That produced two symptoms pointing in opposite directions:
+
+- **The loud one, on a trigger this file does not have.** Every push to `main`
+  created a run for it that failed with ZERO jobs — 30 of them inside a day,
+  one per merge. An unparseable workflow is attributed to the push that carried
+  it, because nothing else is known about it.
+- **The silent one, which is the actual loss.** The schedule stopped. The last
+  scheduled run was 2026-09-18T17:30Z and the four-a-day cadence produced
+  nothing for the following seventeen hours. The job whose whole purpose is to
+  fail at an hour nobody was watching could no longer fail at all.
+
+The red X was read as noise for a day — reasonably, since the runs carried no
+job, no log and no annotation, and named a workflow nobody merges through.
+Which is the same shape as everything else here: **a check that goes quiet is
+indistinguishable from one that passes**, and this one announced itself in the
+place least likely to be read.
+
+Two things worth keeping. A repo-wide scan for C1 characters found exactly one
+affected file, so this was a single mangled edit and not an editor setting.
+And nothing in CI would catch a recurrence: the other four workflow files are
+parsed by the runs they trigger, but a file that has stopped triggering runs is
+checked by nobody. The fix here is the four characters and nothing else.
 
 ### The rollback was one release deep, on a five-merge day (2026-09-03)
 
