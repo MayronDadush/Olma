@@ -30,6 +30,7 @@ const livenessWatch = require('./liveness-watch');
 const unanswered = require('./unanswered');
 const laneWatchdog = require('./lane-watchdog');
 const onboardingReview = require('./onboarding-review');
+const taskSuggestions = require('../domain/task-suggestions');
 const memoryConsolidation = require('./memory-consolidation');
 const groupsJob = require('./groups');
 const groupOutbox = require('../domain/group-outbox');
@@ -335,6 +336,11 @@ const deployDrift = require('./deploy-drift');
     // got armed. Miron hit that fault weeks into his life here and nothing
     // saw it (docs/incidents.md, "The check that only watched the front door").
     { name: 'promise_watch', run: () => withTx(pool, (c) => promiseWatch.sweepPromiseWatch(c, {})) },
+    // One concrete proposal about somebody's own list, at most once a week
+    // each, and nothing at all when there is nothing honest to propose. The
+    // gap is per PERSON (users.suggested_at), so this ticking often costs
+    // nothing — it walks only the people whose week is up.
+    { name: 'task_suggestions', run: () => withTx(pool, (c) => taskSuggestions.sweepSuggestions(c, {})) },
     { name: 'deploy_drift', run: () => withTx(pool, (c) => deployDrift.sweepDeployDrift(c)) },
   ];
 }

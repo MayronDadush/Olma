@@ -147,3 +147,27 @@ test('a class that says what something IS may not also say how it looks', () => 
   assert.match(page, /<div class="livepill">/);
   assert.match(page, /\.livepill\{/);
 });
+
+// A `var(--x)` naming a token nobody defines is the quietest failure this file
+// has: the whole declaration is dropped at computed-value time, so the border
+// is simply not there and the page still looks like a page. Three of them were
+// written into the suggestion strip on 2026-09-19 and two survived a careful
+// read (`--text-1` for `--text`, `--line` for `--sep`) — they were caught by
+// looking at the rendered page, which is not a thing that happens on every
+// change. A `var(--x, fallback)` is exempt: the fallback IS the definition,
+// and that is how every runtime-set custom property on this page is written.
+test('every var(--token) without a fallback names a token this file defines', () => {
+  // A known-bad one, found by this very check and left alone on purpose: it
+  // is somebody else's line to fix, in its own change, not a drive-by edit
+  // inside an unrelated PR. `.mopt.best` draws no ring today because of it.
+  const KNOWN_BAD = ['--accent-line'];
+  const defined = new Set([...page.matchAll(/(--[A-Za-z0-9_-]+)\s*:/g)].map((m) => m[1]));
+  const used = new Set([...page.matchAll(/var\(\s*(--[A-Za-z0-9_-]+)\s*\)/g)].map((m) => m[1]));
+  const missing = [...used].filter((t) => !defined.has(t) && !KNOWN_BAD.includes(t));
+  assert.deepEqual(missing, [], 'these tokens are used but never defined, so the rule is dropped');
+  // and the exception list stays honest: an entry that has been fixed is one
+  // nobody will remember to remove.
+  for (const t of KNOWN_BAD) {
+    assert.equal(defined.has(t), false, `${t} is defined now — take it off KNOWN_BAD`);
+  }
+});

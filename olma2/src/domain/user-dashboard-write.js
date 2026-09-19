@@ -25,6 +25,7 @@ const { ok, err } = require('./results');
 const tasks = require('./tasks');
 const reminders = require('./reminders');
 const shares = require('./shares');
+const suggestions = require('./task-suggestions');
 const taskPins = require('./task-pins');
 const taskOrder = require('./task-order');
 const grants = require('./grants');
@@ -255,6 +256,15 @@ const ACTIONS = {
       if (!res.ok) return res;
     }
     return reminders.setReminder(client, userId, p.taskId, p.remindAt, p.repeatRule ?? null);
+  },
+
+  // ---- suggestions ---------------------------------------------------------
+  // אשר archives what the suggestion named, דלג records the decision so it is
+  // never put to them again. The archive goes through tasks.archiveTask like
+  // their own button, so this adds no second way to remove a task — and
+  // `restoreTask` is still the way back.
+  async decideSuggestion(client, userId, p) {
+    return suggestions.decide(client, userId, p.suggestionId, p.decision);
   },
 
   // ---- sharing -------------------------------------------------------------

@@ -153,6 +153,7 @@ never trust a dated narrative for something you are about to act on.
 - [The same rule, in the noun form nobody had written down (fixed 2026-09-18)](#the-same-rule-in-the-noun-form-nobody-had-written-down-fixed-2026-09-18)
 
 **Features as they shipped**
+- [The triage he did by hand, and the fourth detector the box refused (2026-09-19)](#the-triage-he-did-by-hand-and-the-fourth-detector-the-box-refused-2026-09-19)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
@@ -5735,6 +5736,73 @@ rule working exactly as written.
 
 ## Features as they shipped
 
+
+### The triage he did by hand, and the fourth detector the box refused (2026-09-19)
+
+Sorting Miron's 38 open tasks with him on the live page took his list down to
+20. What made that work was not the sorting — it was that every row arrived as
+one concrete proposal carrying its reason, and he answered it in a word. He
+asked for that as a feature the same afternoon.
+
+Three decisions of his set its shape, and the third is the feature:
+
+- **A suggestion never sets a date and never arms a reminder.** The only thing
+  it proposes is taking something off the list, which is reversible. One verb
+  for every kind, so there is nothing to learn twice, and it is the same
+  `tasks.archiveTask` his own delete button calls — not a second way to remove
+  a task.
+- **Once a week per person, up to three ready, one shown.** "שיהיה לו 3 הצעות,
+  אבל כל פעם תהיה מוצגת רק אחת." The gap is stamped on `users.suggested_at`
+  whether or not anything was found, so a quiet week still costs its week. An
+  on-demand "run over my tasks now" button was his idea too, and he parked it:
+  future, not now.
+- **Nothing to say draws nothing at all** — no empty box where a suggestion
+  would have been.
+
+He picked four kinds: משימה שתקועה, תאריך שעבר, כפילות, רשימה שמתבקשת. Three
+shipped. The fourth was measured against the live box before it was written,
+and the numbers killed it: grouping open tasks by a shared word produced three
+groups across three people, and all three were wrong — "לעשות" and "לבדוק" are
+verbs half of every task list starts with, and the third group shares the word
+בית across two different buildings ("סדר בבית" and a hospital bag). Grouping by
+`category` is no better: six closed values, so "family ×5" says only that five
+tasks are about family. The nine real titles are in
+`tests/task-suggestions.test.js` with the assertion that nothing proposes
+anything about them.
+
+One pair inside those nine IS the same thing — the packing list, saved once as
+itself and once as the sentence asking to be reminded about it — and that is
+the argument in one place. `task-similarity.compare`, calibrated on 86
+hand-labelled pairs, finds it; the shared-word reading buries it under a
+different house. Pairwise is a judgement the repo has already earned; grouping
+is not.
+
+The three that shipped carry their readings as constants. `STUCK_DAYS` = 14
+(10 tasks across 3 people; 21 days gives 8 across 3, 30 days gives 3 across 1).
+`OVERDUE_DAYS` = 7 (9 tasks; one day gives 13, thirty gives none). Exact
+duplicate titles: zero, because `tasks.addTask` already refuses them at the
+write — which is why the duplicate detector looks for the reworded kind and
+found exactly one live pair. One hit for one person is the right size for a
+thing that is put in front of somebody.
+
+Four exemptions are in every detector on purpose. A task carrying a live
+reminder is being chased already. A repeating reminder means its date is a
+rhythm, not a deadline. A task somebody else is on is never proposed at all:
+archiving it would be a decision about their list too, and this feature does
+not get to make one. And a row with open items under it is a LIST, not a
+stalled task.
+
+That fourth one was not designed — it was found, by running the finished
+queries against the live box before the branch was merged. The stuck query
+returned seven of Miron's rows and two of them were lists: "רעיונות לשיפור
+אולמה" with eleven open items and "קניות לבית" with two. Both are old,
+dateless and unreminded, because that is what a list somebody keeps looks
+like, and אשר on one would have archived it with everything in it. Five is the
+honest answer, and the thresholds above are the re-measurement with the guard
+in place. **Running a detector against production before shipping it is not
+the same as measuring the thresholds** — the thresholds were measured first
+and were right; what the second pass caught was a whole category the queries
+had no opinion about.
 
 ### The list he could not put his own task into (2026-09-19)
 

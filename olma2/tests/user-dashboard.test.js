@@ -381,3 +381,39 @@ test('an event reaches the page as one, with where it is, and a plain task as a 
   assert.equal(t.kind, 'todo');
   assert.equal(t.location, null);
 });
+
+test('the suggestion field is null when there is nothing to suggest, and the loader still only reads', async () => {
+  // Their own person: the assertions here are about WHICH suggestion comes
+  // back, and the tasks the tests above left on Miron's list would decide that
+  // instead.
+  const me = await makeUser(db.pool, '+972531900081', { firstName: 'Tidy' });
+  await db.pool.query(`UPDATE users SET timezone = 'Asia/Jerusalem' WHERE id = $1`, [me.id]);
+  const quiet = await load(me.id);
+  assert.equal(quiet.ok, true);
+  assert.equal('suggestion' in quiet.data, true, 'the field is always present so the page can trust it');
+  assert.equal(quiet.data.suggestion, null);
+
+  // A real one, made by the sweep — never by this page. The loader reads and
+  // nothing else, so opening the page cannot be what creates a suggestion.
+  const suggestions = require('../src/domain/task-suggestions');
+  const made = await withTx(db.pool, async (c) => {
+    const t = await tasks.addTask(c, me.id, { title: 'לפנות את המרפסת' });
+    await c.query(`UPDATE tasks SET created_at = now() - interval '40 days' WHERE id = $1`, [t.data.task.id]);
+    await suggestions.refresh(c, me.id, {});
+    return t.data.task.id;
+  });
+  const res = await load(me.id);
+  assert.equal(res.data.suggestion.kind, 'stuck');
+  assert.deepEqual(res.data.suggestion.taskIds, [made]);
+  assert.equal(res.data.suggestion.title, 'לפנות את המרפסת');
+
+  // and the page is handed ONE, whatever else is waiting
+  await withTx(db.pool, async (c) => {
+    const t2 = await tasks.addTask(c, me.id, { title: 'להחזיר את הסולם לשכן' });
+    await c.query(`UPDATE tasks SET created_at = now() - interval '40 days' WHERE id = $1`, [t2.data.task.id]);
+    await suggestions.refresh(c, me.id, { force: true });
+  });
+  const two = await load(me.id);
+  assert.equal(Array.isArray(two.data.suggestion), false);
+  assert.equal(two.data.suggestion.taskIds[0], made, 'the oldest is the one shown');
+});
