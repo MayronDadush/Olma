@@ -73,6 +73,10 @@ const JOB_INTERVAL_SECONDS = {
   // the conversation is still live, far enough that this never competes with
   // the minute-rhythm sweeps for the one CPU.
   onboarding_review: 600,
+  // Hourly, though a person meets it once a week: the cadence somebody
+  // experiences is on their own row, so the sweep only has to come round
+  // often enough that nobody waits a day past their week.
+  task_suggestions: 3600,
   // Five minutes: two bad ticks before a word means an outage is reported
   // within ten. Faster would alarm on a single probe timeout.
   liveness_watch: 300,

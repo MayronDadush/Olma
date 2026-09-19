@@ -5,6 +5,7 @@ paths:
   - "olma2/src/domain/hebrew-quality.js"
   - "olma2/src/domain/onboarding-review.js"
   - "olma2/src/domain/reminder-promise.js"
+  - "olma2/src/domain/task-suggestions.js"
   - "olma2/src/adapters/gateway-health.js"
   - "olma2/src/evals/**"
   - "olma2/scripts/run-evals.js"
@@ -30,6 +31,28 @@ title means this file. Grep the title, not the filename.
   data before shipping it, and keep the readings you REJECTED in the test with
   the real rows that killed them (`tasks.joinsTwoAsks`, checked against all
   202 production titles; `incidents.md`, "Two asks, one task").
+
+- **A detector pointed at a PERSON pays for its false positives out of their
+  patience, so it proposes ONE thing, and having nothing to say is its normal
+  answer.** `domain/task-suggestions.js` is the first of these — the hand
+  triage of Miron's 38 tasks, made a feature on his ask (2026-09-19). Four
+  rules, and the last two are the ones that are easy to lose: it never writes a
+  date and never arms a reminder, the only verb is archiving and it is the same
+  reversible `tasks.archiveTask` their own delete button calls; one kind of
+  proposal is shown at a time, up to `MAX_LIVE` = 3 are kept ready and the gap
+  per PERSON is `EVERY_MS` = a week off `users.suggested_at`, which is stamped
+  whether or not anything was found; and when there is nothing, the page draws
+  no element at all rather than an empty box. **Three of the four detectors the
+  owner asked for shipped and the fourth was rejected on the box's own
+  numbers** — grouping open tasks by a shared word found three groups across
+  three people and all three were wrong (the verb לעשות, two different בתים,
+  the verb לבדוק). Those nine titles are in `tests/task-suggestions.test.js`
+  with the assertion that nothing proposes anything about them, so rebuilding
+  that detector means beating the rows that killed it. The thresholds are
+  readings too: `STUCK_DAYS` = 14 (10 tasks across 3 people, against 8/3 at 21
+  days and 3/1 at 30) and `OVERDUE_DAYS` = 7 (9 tasks, against 13 at one day
+  and 0 at thirty). Duplicates go through `task-similarity.compare`, the scorer
+  this repo already calibrated, and not a second opinion written here.
 
 - **Her voice is checked by code, not by the judge.** `domain/hebrew-quality.
   flawsIn` is the one list of what a slip is — a masculine self-reference

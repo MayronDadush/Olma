@@ -430,6 +430,43 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
 .stack{display:flex;flex-direction:column;gap:26px}
 .stack + .stack{margin-top:26px}
 
+/* ─────────────────────────  one suggestion  ─────────────────────────
+   The hand triage, made a control. It sits ABOVE the list because it is about
+   the list, and it is drawn as one card rather than a row so that it cannot be
+   mistaken for a task — pressing אשר here removes something, and a proposal
+   that looked like its own to-do would be the worst possible place to learn
+   that. There is no empty state and no placeholder: when the server sends
+   nothing, this element is not in the page at all. */
+.sugg{
+  background:var(--surface);border-radius:16px;padding:15px 16px 13px;
+  display:grid;gap:11px;margin-bottom:22px;
+  /* the same material and elevation as a task group, because it sits in the
+     same column — what says it is not a list is the icon and the two buttons */
+  box-shadow:var(--shadow-m);
+}
+.sugg .sline{display:flex;gap:10px;align-items:flex-start}
+.sugg .sicon{flex:none;width:19px;height:19px;color:var(--text-3);margin-top:1px}
+.sugg .sicon svg{width:19px;height:19px;display:block}
+.sugg .stext{display:grid;gap:3px;min-width:0}
+/* Their own words, and they may be long — this wraps rather than truncating,
+   because a proposal to remove a task the person cannot fully read is one
+   they cannot judge. */
+.sugg .stitle{font-size:14.5px;font-weight:600;overflow-wrap:anywhere}
+.sugg .swhy{font-size:12.5px;color:var(--text-3);line-height:1.45}
+.sugg .sbtns{display:flex;gap:8px;justify-content:flex-end}
+/* The page's own two button tones (.btn.primary / .btn.ghost) at card scale:
+   a strip inside the list cannot carry a 16.5px sheet button, and inventing a
+   third palette for two buttons is how this page grew a second vocabulary
+   once already. */
+.sugg .sbtn{
+  background:var(--bg-tint);color:var(--text-2);
+  border-radius:11px;padding:8px 16px;font-size:13.5px;font-weight:600;cursor:pointer;
+  transition:transform .38s var(--squash),filter .3s var(--ease-io);
+}
+.sugg .sbtn.yes{background:var(--accent);color:var(--on-accent)}
+.sugg .sbtn:active{transform:scale(.98)}
+.sugg .sbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
 /* ─────────────────────────  grouped list  ───────────────────────── */
 .group{
   background:var(--surface);border-radius:16px;
@@ -2756,6 +2793,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       <button class="addmini" id="addTask"><svg><use href="#i-plus"/></svg><span data-i18n="tasks.new"></span></button>
     </div>
     <div style="--i:2">
+      <div id="suggWrap"></div>
       <div class="stack" id="taskStack"></div>
     </div>
     <div class="archive" id="archive" style="--i:3">
@@ -3722,7 +3760,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setName:"setName", setPersonal:"setPersonal", setAssistant:"setAssistant", setLocale:"setLocale",
     setAvailability:"setAvailability", setQuietDays:"setQuietDays", setDigest:"setDigest",
     setCalendarSync:"setCalendarSync", setReminderNudge:"setReminderNudge",
-    forgetFact:"forgetFact", answerFactPrompt:"answerFactPrompt"
+    forgetFact:"forgetFact", answerFactPrompt:"answerFactPrompt",
+    decideSuggestion:"decideSuggestion"
   };
   /* Ids the server has actually seen. It is what decides whether saving a task
      creates one or edits one — the page numbers its own new rows from a local
@@ -4204,6 +4243,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.restored":"„{name}” חזרה לרשימה",
       "tasks.pinned":"משותפות","tasks.unpin":"ביטול נעיצה","tasks.pin":"נעיצה למעלה",
       "toast.unpinned":"„{name}” חזרה למקום שלה","toast.pinned":"„{name}” נעוצה למעלה",
+      "sugg.stuck":"פתוחה כבר {days} ימים, בלי תאריך ובלי תזכורת. להוריד מהרשימה?",
+      "sugg.overdue":"התאריך שלה עבר לפני {days} ימים והיא עדיין פתוחה. להוריד מהרשימה?",
+      "sugg.duplicate":"אומרת כמעט אותו דבר כמו „{keep}”. להוריד את זו ולהשאיר את הראשונה?",
+      "sugg.undo":"אפשר להחזיר מהארכיון בכל רגע.",
+      "sugg.yes":"אשר","sugg.no":"דלג",
+      "toast.suggArchived":"„{name}” עברה לארכיון","toast.suggSkipped":"לא נשאל על „{name}” שוב",
       "nest.title":"המשימה נכנסה לרשימה","nest.ok":"הבנתי","nest.undo":"ביטול",
       "nest.body":"כשגוררים משימה אל תוך משימה אחרת, היא הופכת לפריט ברשימה שלה. אפשר לסמן אותה שם כשהיא נעשית — או לבטל ולהחזיר אותה למקום.",
       "toast.nested":"„{name}” נוספה לרשימה „{parent}”","toast.unnested":"„{name}” חזרה להיות משימה","toast.undo":"בטל",
@@ -4514,6 +4559,12 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "toast.restored":"\u201c{name}\u201d is back on your list",
       "tasks.pinned":"Shared","tasks.unpin":"Unpin","tasks.pin":"Pin to top",
       "toast.unpinned":"\u201c{name}\u201d is back in its place","toast.pinned":"\u201c{name}\u201d is pinned to the top",
+      "sugg.stuck":"Open for {days} days, with no date and no reminder. Take it off the list?",
+      "sugg.overdue":"Its date passed {days} days ago and it is still open. Take it off the list?",
+      "sugg.duplicate":"Says almost the same as \u201c{keep}\u201d. Take this one off and keep the first?",
+      "sugg.undo":"You can restore it from the archive at any time.",
+      "sugg.yes":"Confirm","sugg.no":"Skip",
+      "toast.suggArchived":"\u201c{name}\u201d moved to the archive","toast.suggSkipped":"You will not be asked about \u201c{name}\u201d again",
       "nest.title":"Added to a list","nest.ok":"Got it","nest.undo":"Undo",
       "nest.body":"Dropping a task onto another turns it into an item on that task\u2019s list. Tick it off there when it\u2019s done \u2014 or undo to put it back.",
       "toast.nested":"\u201c{name}\u201d added to \u201c{parent}\u201d","toast.unnested":"\u201c{name}\u201d is a task again","toast.undo":"Undo",
@@ -6246,6 +6297,72 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     if(serverKnows(x)) API.send("setTaskPin", {taskId:x.id, pinned:on});
     toast(t(on ? "toast.pinned" : "toast.unpinned", {name:L(x.t) || t("sheet.untitled")}));
   }
+  /* ───────── a suggestion, when there is one ─────────
+     ONE at a time, and nothing at all when there is none — the owner's two
+     rules for this strip. The server keeps up to three ready and hands over
+     the oldest (`domain/task-suggestions.nextFor`); answering one does not
+     pull the next one up in its place, because a second question arriving
+     the instant the first is answered is an interrogation, not an offer.
+
+     A suggestion never writes a date and never arms a reminder (owner,
+     2026-09-19). The only verb is "put it away", and it is the same archive
+     the delete button calls, so the way back is the one the person already
+     knows. */
+  /* A design fixture, like `open` and `archived` above: the strip cannot be
+     looked at at all when the only way to see it is a live suggestion. The
+     hydration below overwrites it with `d.suggestion`, which is null for
+     almost everybody almost every week — a real page shows nothing here. */
+  var SUGGESTION = {id:1, kind:"stuck", taskIds:[4], title:"לקבוע תור לרופא שיניים", days:23, keepTitle:null};
+  var SUGG_ICON = {stuck:"i-clock", overdue:"i-cal", duplicate:"i-list"};
+  function suggestionHTML(s){
+    var why = s.kind === "duplicate"
+      ? t("sugg.duplicate", {keep:s.keepTitle || t("sheet.untitled")})
+      : t("sugg." + s.kind, {days:s.days});
+    return '<div class="sugg">' +
+      '<div class="sline">' +
+        '<span class="sicon"><svg aria-hidden="true"><use href="#' +
+          (SUGG_ICON[s.kind] || "i-list") + '"/></svg></span>' +
+        '<span class="stext">' +
+          '<span class="stitle">' + esc(s.title || t("sheet.untitled")) + "</span>" +
+          '<span class="swhy">' + esc(why) + " " + esc(t("sugg.undo")) + "</span>" +
+        "</span>" +
+      "</div>" +
+      '<div class="sbtns">' +
+        '<button class="sbtn yes" data-sugg="accept">' + esc(t("sugg.yes")) + "</button>" +
+        '<button class="sbtn" data-sugg="skip">' + esc(t("sugg.no")) + "</button>" +
+      "</div></div>";
+  }
+  function renderSuggestion(){
+    var w = $("#suggWrap");
+    if(!w) return;
+    /* The page's own copy of the server's "is any named task still open".
+       Somebody who ticked the task off a moment ago has answered the
+       suggestion without being asked, and the card must not outlive that. */
+    var s = SUGGESTION, alive = !!s && s.taskIds.some(function(id){
+      return open.some(function(x){ return x.id === id; });
+    });
+    w.innerHTML = alive ? suggestionHTML(s) : "";
+  }
+  function decideSuggestion(decision){
+    var s = SUGGESTION;
+    if(!s) return;
+    SUGGESTION = null;                       /* one at a time, answered once */
+    var row = taskById(s.taskIds[0]);
+    if(decision === "accept") open = open.filter(function(o){ return s.taskIds.indexOf(o.id) < 0; });
+    renderTasks(); renderStrip(selDay);   /* renderTasks repaints the strip */
+    API.send("decideSuggestion", {suggestionId:s.id, decision:decision});
+    var name = s.title || (row ? L(row.t) : "") || t("sheet.untitled");
+    /* Accepting archives the task, so the undo is the same restore the
+       delete toast offers. The suggestion itself stays answered either way:
+       taking the task back is not a request to be asked about it again. */
+    toast(decision === "accept" ? t("toast.suggArchived", {name:name}) : t("toast.suggSkipped", {name:name}),
+      decision === "accept" && row ? function(){ undoDelete(row); } : null);
+  }
+  $("#suggWrap").addEventListener("click", function(e){
+    var b = e.target.closest("[data-sugg]");
+    if(b) decideSuggestion(b.dataset.sugg);
+  });
+
   function renderTasks(){
     var html = pinnedSection();
     if(viewBy === "cat"){
@@ -6266,6 +6383,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         esc(t("bucket." + b)) + "</span></div>" + kindGroups(items) + "</div>";
     });
     html += importedSection();
+    renderSuggestion();
     if(!open.length){
       /* Finished is not the same as empty: somebody who has just closed the
          last thing on their list should be told they finished it, and only a
@@ -11317,6 +11435,8 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     FQ = (d.factPrompts || []).slice();
     FQ.forEach(function(p, i){ FQ_ORDER[p.key] = p.order != null ? p.order : i; });
     open = (d.tasks || []).map(liveTask);
+    /* Null is the normal answer and draws nothing — see renderSuggestion. */
+    SUGGESTION = d.suggestion || null;
     /* Rebuilt from scratch each time: an id that has left the server's answer
        has left the server, and treating it as known would turn the next save
        into an edit of a row that is no longer there. */

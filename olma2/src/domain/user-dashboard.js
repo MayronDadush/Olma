@@ -30,6 +30,7 @@ const voice = require('./voice');
 const preferences = require('./preferences');
 const holidays = require('./holidays');
 const factPrompts = require('./fact-prompts');
+const suggestions = require('./task-suggestions');
 
 // A task's own category vocabulary is closed server-side (tasks.category is
 // validated as a closed set, not free text), so the page can rely on it —
@@ -674,6 +675,7 @@ async function load(client, userId) {
   const contacts = await loadContacts(client, userId);
   const groups = await loadGroups(client, userId);
   const meetings = await loadMeetings(client, userId, zone);
+  const suggestion = await suggestions.nextFor(client, userId);
   const meetingsLeft = await loadLeftMeetings(client, userId);
   const schedule = await loadSchedule(client, user);
   const knownFacts = await loadFacts(client, userId);
@@ -719,6 +721,12 @@ async function load(client, userId) {
     groups,
     tasks: tasks.open,
     archived: tasks.archived,
+    // One concrete proposal about their own list, or null — and null is the
+    // usual answer. The page renders nothing at all for null, which is the
+    // owner's rule for this feature: no filler, no forced suggestion. Read
+    // only; the pass that WRITES these is a job (domain/task-suggestions.js),
+    // because this function reads and nothing else.
+    suggestion,
     friends,
     integrations,
     available: {

@@ -221,10 +221,12 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 ### Writing detectors and alarms
 
 **`.claude/rules/detectors.md`** — what BREAKS_USERS means, ratios that describe one population, unreadable is not broken, and the two review jobs.
-Loads when you **Read** a file under `src/jobs/**`, `src/domain/issues.js`, `src/domain/hebrew-quality.js` and 5 more.
+Loads when you **Read** a file under `src/jobs/**`, `src/domain/issues.js`, `src/domain/hebrew-quality.js` and 6 more.
 
 - **`BREAKS_USERS` means exactly "their tool calls fail right now."**
 - **A hint that fires on ordinary input is worse than no hint**
+- **A detector pointed at a PERSON pays for its false positives out of their patience** — one proposal at a time, nothing to say draws nothing at all, and one of the four kinds the owner asked for was rejected on the box's numbers.
+
 - **Her voice is checked by code, not by the judge.**
 - **An issue title must be deterministic**
 - **A ratio's numerator and its denominator must describe the SAME people, and the eval user is in neither.**
