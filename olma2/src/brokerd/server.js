@@ -22,6 +22,7 @@ const selfInitiated = require('../domain/self-initiated');
 const { captureDisplayName } = require('../adapters/mcp/tools/_shared');
 const groupContext = require('../domain/group-context');
 const groupsDomain = require('../domain/groups');
+const groupTurn = require('../domain/group-turn');
 const replyLeak = require('../domain/reply-leak');
 
 // One of these per turn. The gateway spawns a fresh MCP shim for every agent
@@ -255,6 +256,35 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
       ok: true, stored: true, members: built.row.members ? true : false,
       wasMentioned: built.row.wasMentioned, memberWrote: wrote,
     };
+  }
+
+  // The other direction, for a group turn: what the room's own rows say about
+  // its coordination, drawn for the prompt (domain/group-turn.js — why this
+  // exists is written there). `turn_context` is the same move for a person and
+  // this is deliberately NOT that handler: there is no user row behind a group
+  // agent, no turn to open, no quota to count and no flag to read. Nothing is
+  // written here at all.
+  //
+  // The room is named TWICE and both must agree — the agent id and the room's
+  // own jid off the session key — for the same reason `group_context` checks
+  // it: a group agent may only ever be told about its own room, and one of the
+  // two alone is a lookup that trusts the caller.
+  async function handleGroupTurnContext(params = {}) {
+    const agentId = String(params.agentId || '').trim();
+    if (!/^g-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
+    const externalId = String(params.externalId || '').trim();
+    if (!/^[^:\s]+@g\.us$/.test(externalId)) return { ok: false, error: 'bad externalId' };
+    let out = { ok: false, error: 'no group' };
+    await withTx(pool, async (client) => {
+      const group = await groupsDomain.getByExternalId(client, 'whatsapp', externalId);
+      if (!group || group.agent_id !== agentId) return;
+      // A locked room has no coordination and hears nothing but the gate
+      // notice, which is fixed text on the raw pipe — a block for it would be
+      // a state nobody can act on.
+      if (group.state !== 'open') { out = { ok: true, context: null, state: group.state }; return; }
+      out = { ok: true, context: await groupTurn.renderContext(client, group) };
+    });
+    return out;
   }
 
   // The reply gate's report. The plugin has already decided and already acted
@@ -585,6 +615,8 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
         return handleTurnContext(msg.params || {});
       case 'group_context':
         return handleGroupContext(msg.params || {});
+      case 'group_turn_context':
+        return handleGroupTurnContext(msg.params || {});
       case 'reply_gate':
         return handleReplyGate(msg.params || {});
       default:

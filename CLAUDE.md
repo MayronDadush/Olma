@@ -302,7 +302,7 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 ### In a group
 
 **`.claude/rules/groups.md`** — the two identity doors, what a room may never be told, NULL as the honest third state, and the group outbox.
-Loads when you **Read** a file under `src/domain/group-connections.js`, `src/domain/group-context.js`, `src/domain/group-outbox.js` and 5 more.
+Loads when you **Read** a file under `src/domain/group-connections.js`, `src/domain/group-context.js`, `src/domain/group-outbox.js` and 6 more.
 
 - **Two identity doors, routed by the token PREFIX**
 - **Nothing a group tool returns may carry the room's own row or anybody's reasons.**
@@ -314,6 +314,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **Being in the room IS the introduction, and it is not the inferred closeness the old rule forbids.**
 - **The room reaches each member's OWN page as a group already made**
 - **The person who asked the ROOM for a coordination is asked privately too** — a tag carries no times, and the test asserted the bug
+- **A group turn is told the room's coordination state before the model's first word, and that block is the only thing it may speak from.**
 - **A paused member is counted into a room's coordination only until their one invite is spent; a day of silence takes them out**
 - **A member's message in the room opens the gate's fifteen-minute window for that room's coordination — and, since 2026-09-09, the room's own announcement window; nothing else**
 

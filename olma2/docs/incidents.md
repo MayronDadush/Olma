@@ -58,6 +58,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
 - [The room window opened on a row nobody would look at (fixed 2026-09-19)](#the-room-window-opened-on-a-row-nobody-would-look-at-fixed-2026-09-19)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
+- [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
@@ -1886,6 +1887,90 @@ share one numbering space and mint the same `JID(n)` and `TOKEN(n)` from it.
 Reusing a number registers a second room on the same jid, and every later call
 answers "that person is not a member of this group" — which reads as a broken
 membership check rather than a collided fixture. Said so above the helpers now.
+
+### The room heard its own state from memory (fixed 2026-09-19)
+
+The same test room, the same evening, twice. Both times she was tagged, both
+times she answered a question about the coordination, and both times the answer
+came out of her own conversation history — the one place the room's state is
+not.
+
+At **19:53** she reached for `get_meeting_status`, which is a person's tool and
+not hers, and the server refused it by name:
+
+```
+group.tool_refused  {"tool": "get_meeting_status", "reason": "not a group tool", "groupId": 7}
+```
+
+She then said it anyway: *"2 מתוך 4 חברי קבוצה ענו."* Every number in that
+sentence is invented. The room has **three** members, the coordination had
+**two** participants, and there was nothing to answer — zero times on the table,
+zero answers:
+
+```
+opts | answers | parts | members | status
+   0 |       0 |     2 |       3 | cancelled
+```
+
+At **20:07:58** מירון cancelled it (`meeting.cancelled`, meeting 33). At
+**20:08:47** and again at **20:09:05** she took two more tagged turns — the
+plugin's trace has both, `mentioned: true` — and told the room *"יש כבר תיאום
+פתוח."* `audit_log` holds no `group.tool` row after 18:08 for either turn: she
+called nothing, and answered from what the conversation remembered instead.
+
+**This is not a prompt problem and the doctrine already says the right thing**
+("כשמישהו שואל איך זה מתקדם — `group_coordination_status`, ומדברים רק על מה
+שחזר משם"). It is the same shape as the reply gate and `markPlaced`: a safety
+property written as a sentence in a prompt is a request. The group agent has
+three tools that would have told it the truth and no reason on any particular
+turn to reach for one — and a model with a plausible answer already in its
+context does not experience itself as guessing.
+
+What the DM path does instead has been live since 2026-09-06: brokerd draws
+what `turn_start` would return and the gateway plugin prepends it, so the
+opening is in front of the model before its first word (723–815 chars for a
+real user). A group turn got **none** of it, for one line:
+
+```js
+const agentId = (ctx && ctx.agentId) || agentIdOf(ctx && ctx.sessionKey);
+if (!agentId || !/^u-\d+$/.test(agentId)) return undefined;
+```
+
+So the room now gets its own block, on the same hook and by the same route
+(`domain/group-turn.js` → brokerd `group_turn_context`): how many people are in
+the room, how many a coordination can ask, and either the running coordination —
+title, asked, answered, who has not answered, the times on the table — or
+`coordination: null`, which is a fact and not a gap. A settled or cancelled one
+is reported under `lastCoordination` with its status, because "there is already
+one open" and "the last one was cancelled" are one row apart and she had no way
+to tell them apart.
+
+Three decisions worth keeping:
+
+- **`llm_input` could not have carried this.** It is where the group's
+  `Conversation info` block is read, it is the hook we already know fires for a
+  group turn, and on OpenClaw 2026.8.1 it is a **void** hook — fire-and-forget,
+  its return value dropped (`runLlmInput: bindVoidHook("llm_input")`).
+  `before_prompt_build` is the only place a group turn can be told anything.
+- **The room is named twice and both must agree** — the agent id and the room's
+  own jid, off the session key — exactly as `group_context` does it. One of them
+  alone is a lookup that trusts the caller.
+- **`statusOf` is asked for all of it** rather than a second copy of its
+  queries. The drift between a copy and the original is this subsystem's own
+  recurring bug (`coordinatingMembers` against `isConnected`, twice in a week).
+  The phones it carries per person are dropped on the way out; the labels are
+  not, because a `waitingFor` short of `asked - answered` would be a new false
+  sentence to fix the old one.
+
+**And one more count we were handing over ourselves.** `start_group_coordination`
+returned `willAsk: participants - 1`, which was right while the fan-out skipped
+the initiator and wrong the moment it stopped (the entry above). The fan-out
+changed and the number the model reads did not — so the tool told it one fewer
+person than the rows it had just written. It is `participants` now.
+
+**It is inert until the gateway is restarted.** Plugin code loads at startup and
+`deploy.sh` does not restart it; the trace line to look for is
+`{"group":"g-7","turn":"prepended"}`.
 
 ### The room window opened on a row nobody would look at (fixed 2026-09-19)
 
