@@ -156,6 +156,7 @@ never trust a dated narrative for something you are about to act on.
 - [The same rule, in the noun form nobody had written down (fixed 2026-09-18)](#the-same-rule-in-the-noun-form-nobody-had-written-down-fixed-2026-09-18)
 
 **Features as they shipped**
+- [The switch that did nothing on a task with no date (2026-09-19)](#the-switch-that-did-nothing-on-a-task-with-no-date-2026-09-19)
 - [The triage he did by hand, and the fourth detector the box refused (2026-09-19)](#the-triage-he-did-by-hand-and-the-fourth-detector-the-box-refused-2026-09-19)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
@@ -5903,6 +5904,41 @@ rule working exactly as written.
 
 ## Features as they shipped
 
+
+### The switch that did nothing on a task with no date (2026-09-19)
+
+The triage below ended with four of Miron's own tasks reduced to one shape he
+had no words for in the product: *something with no date that should keep
+coming back until it is done.* "לקבוע עם מיכאל", "ריצות בים", "להזכיר לאבא",
+"פתיח ספק בכפר סבא". The system offered two answers and both were wrong — give
+it a `due_at` and a standing job becomes a deadline that is wrong by tomorrow,
+or leave it dateless and it rots in a list nobody rereads.
+
+The stopgap was a dateless task carrying a repeating reminder, and it works:
+`reminders.setReminder` takes a `remind_at` and a `repeat_rule` and writes no
+`due_at`. It had always worked. But every one of those reminders was set
+either from CHAT or, on the afternoon of the 19th, by a session on the box
+running a script — because **the page could not ask for one**. `remindIso`
+derived the reminder's moment from the task's due date, returned null when
+there was none, and `setTaskReminder` dropped the call before making it. No
+error, no toast: the switch stayed on under the person's finger and no
+reminder existed. The same silent shape as the switch that read a missing `on`
+as OFF, one row above it in the same sheet, found the same day.
+
+So the dateless kind now carries an hour of its OWN — the next time that hour
+comes round in their zone, tomorrow if today's has gone — and the sheet asks
+for it in the place the "how long before" chips occupy on a dated task, since
+an offset has nothing to be offset from. The task stays dateless, which is the
+entire point and the one thing the tests pin hardest.
+
+Two things were learned again here rather than for the first time. **The bug
+was invisible in every text assertion and obvious in a browser** — the page
+was opened, a dateless task's sheet was opened, and the answer was there.
+And the design fixture contradicted itself the moment it was edited: giving
+the dentist task a weekly nudge left the suggestion strip above it still
+saying "no date and no reminder, shall I archive it?" — so the nudging task is
+now one of its own. A fixture that argues with the sentence beside it teaches
+the next reader the wrong thing about both.
 
 ### The triage he did by hand, and the fourth detector the box refused (2026-09-19)
 
