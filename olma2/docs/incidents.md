@@ -8712,6 +8712,20 @@ And nothing in CI would catch a recurrence: the other four workflow files are
 parsed by the runs they trigger, but a file that has stopped triggering runs is
 checked by nobody. The fix here is the four characters and nothing else.
 
+**The guard came the same day, separately** (`.claude/scripts/check-workflows.
+js`, run from `claude-rules.yml`). Two things about it are the point. It reads
+only what a person cannot: control characters, a tab in the indentation,
+invalid UTF-8, a missing `on:` or `jobs:` — **not** a YAML linter and
+deliberately not actionlint, because a structural mistake in a workflow that
+still triggers announces itself the next time it runs, and this class does the
+opposite. And the reason it could not have helped on the day was not the check
+but the FILTER: `claude-rules.yml` watched `.claude/**` and `CLAUDE.md` and its
+own filename, so an edit to a sibling workflow ran nothing at all — the
+corrupting commit passed through CI untouched by any job. It now watches
+`.github/workflows/**`. Measured before shipping, the way every detector here
+has to be: one rejection across all 33 workflow-file versions this repo has
+ever committed, and that one is the file this entry is about.
+
 ### The rollback was one release deep, on a five-merge day (2026-09-03)
 
 Owner question, asked plainly after five PRs went to `main` in an evening:

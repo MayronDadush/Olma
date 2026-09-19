@@ -31,18 +31,28 @@ name: claude-rules
 #                            work. A gate that fires on ordinary work is a gate
 #                            somebody turns off.
 #
+#   check-workflows.js       can GitHub still READ the workflow files. A file
+#                            it cannot parse is one whose `on:` it cannot read,
+#                            so a scheduled job stops and reports it only as a
+#                            job-less red run on a trigger the file does not
+#                            have. `olma2-clock-drift.yml` spent a day that way
+#                            on four re-encoded em-dashes in its COMMENTS
+#                            (2026-09-19), and it merged unchecked because the
+#                            filter below did not watch `.github/workflows/**`
+#                            — so the filter now does, and that is half the fix.
+#
 #   deploy-triage.js         the /deploy-triage skill's table against the code.
 #                            The script can end on seventeen named verdicts and
 #                            the skill documents what to do for each; a table
 #                            that quietly stops naming one is worse than no
 #                            table, so the two are asserted to agree.
 #
-# No database, no install, four node scripts, a couple of seconds.
+# No database, no install, five node scripts, a couple of seconds.
 on:
   push:
-    paths: ['.claude/**', 'CLAUDE.md', '.github/workflows/claude-rules.yml']
+    paths: ['.claude/**', 'CLAUDE.md', '.github/workflows/**']
   pull_request:
-    paths: ['.claude/**', 'CLAUDE.md', '.github/workflows/claude-rules.yml']
+    paths: ['.claude/**', 'CLAUDE.md', '.github/workflows/**']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -57,6 +67,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - run: node .claude/scripts/check-workflows.js --self-test
+      - run: node .claude/scripts/check-workflows.js
       - run: node .claude/scripts/check-rules.js
       - run: node .claude/scripts/check-rule-citations.js --self-test
       - run: node .claude/scripts/check-rule-citations.js
