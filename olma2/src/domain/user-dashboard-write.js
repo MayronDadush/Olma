@@ -223,6 +223,10 @@ const ACTIONS = {
   // participant has their own switch (migration 073), and flipping mine must
   // never take down yours.
   async setTaskReminder(client, userId, p) {
+    // A switch has two positions and an absent flag is neither. Read as OFF,
+    // a call that forgot `on` cancelled every pending reminder and answered
+    // ok — three reminders were "set" that way on 2026-09-19 and none existed.
+    if (typeof p.on !== 'boolean') return err('invalid', 'on must be true or false');
     const { rows: pending } = await client.query(
       `SELECT r.id FROM task_reminders r JOIN tasks t ON t.id = r.task_id
         WHERE r.task_id = $1 AND COALESCE(r.user_id, t.owner_id) = $2
