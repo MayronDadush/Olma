@@ -251,15 +251,34 @@ test('the friend renames, dates, ticks and lists on a task I shared, as if it we
   okRes(await asFriend('restoreTask', { taskId: list.id }));
   assert.equal((await row(me.id)).done, false, 'and re-opened it, and my list still shows it done');
 
-  // What stays the owner's: the reminder (until each participant has their
-  // own) and the guest list.
+  // The guest list is everybody's too: the friend brings somebody of THEIRS
+  // onto my task, and the connection that is checked is the friend's, not
+  // mine — I have never met Zed.
   const stranger = await makeUser(db.pool, '+972531940066', { firstName: 'Zed' });
+  const req = await tx((c) => connections.requestConnection(c, friend.id, stranger.phone));
+  okRes(await tx((c) => connections.respondToConnection(c, stranger.id, req.data.connection.id, 'approve')));
+  const invite = await asFriend('shareTask', { taskId: list.id, viewerId: stranger.id });
+  okRes(invite);
+  const { rows: [srow] } = await db.pool.query(
+    `SELECT owner_id, requested_by FROM shares WHERE id = $1`, [invite.data.share.id]);
+  assert.equal(String(srow.owner_id), String(me.id), 'the share stopped being owned by the task owner');
+  assert.equal(String(srow.requested_by), String(friend.id), 'the trail lost who actually invited');
+  // ...and somebody the inviter has no connection with is still refused.
+  const nobody = await makeUser(db.pool, '+972531940055', { firstName: 'Nia' });
+  assert.equal((await asFriend('shareTask', { taskId: list.id, viewerId: nobody.id })).ok, false);
+
+  // What stays the owner's: the reminder, until each participant has their own.
   const r = await asFriend('setTaskReminder', { taskId: list.id, on: true, remindAt: iso(86400e3) });
   assert.equal(r.ok, false, 'the friend set a reminder that would have reached ME');
-  assert.equal((await asFriend('shareTask', { taskId: list.id, viewerId: stranger.id })).ok, false);
   // And a stranger to the task is still shown nothing, not "forbidden".
-  assert.equal((await actAs(stranger.id, 'editTask', { taskId: list.id, title: 'x' })).error.code, 'not_found');
-  assert.equal((await actAs(stranger.id, 'completeTask', { taskId: list.id })).error.code, 'not_found');
+  assert.equal((await actAs(nobody.id, 'editTask', { taskId: list.id, title: 'x' })).error.code, 'not_found');
+  assert.equal((await actAs(nobody.id, 'completeTask', { taskId: list.id })).error.code, 'not_found');
+
+  // A participant may also take somebody else off — the other half of the
+  // same equality. Zed has not accepted, so the pending row is what goes.
+  okRes(await asFriend('revokeShare', { shareId: invite.data.share.id }));
+  const { rows: [gone] } = await db.pool.query(`SELECT status FROM shares WHERE id = $1`, [invite.data.share.id]);
+  assert.equal(gone.status, 'revoked', 'a participant could not take somebody off');
 });
 
 test('"delete" on a task others are on is leaving; only the last one left can delete', async () => {

@@ -5775,6 +5775,20 @@ and every dashboard task action asks it and then calls the same
 owner-scoped `tasks.*` function it always called. No second write path, no
 change to `tasks.js` at all.
 
+One of those three did not survive the day. The guest list was left as the
+opener's alone on the argument that a share grant is between two particular
+people — and the owner read it back as the one place the rule had been
+bent: "כולם שווים גם כאן". It is now anybody on the task who invites and
+anybody who removes. The argument that looked like a reason to keep it was
+real but pointed elsewhere: the connection that has to exist is between the
+INVITER and the person being invited, never between the task's owner and
+somebody they have never met, so `offerShare` takes an `inviterId` and gates
+on that pair. The row still names the task's owner, because that is whom
+every write is made as; `requested_by` remembers who actually did it. The
+test that covered this passed unchanged after the rule was reversed — the
+friend's invitation had been refused for lack of a CONNECTION, not for lack
+of permission — which is exactly the shape of a test that proves nothing.
+
 Two edges chosen rather than stumbled into. **The reminder decides two
 refusals.** A task with a reminder pending may not change hands
 (`adoptIntoList`, `has_reminder`), and when the opener leaves, their pending

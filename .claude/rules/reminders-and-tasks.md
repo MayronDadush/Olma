@@ -314,6 +314,12 @@ title means this file. Grep the title, not the filename.
   could not tick. It refuses `has_reminder` for the same reason the leaver's
   reminders are cancelled — a reminder rides the task's owner (until each
   participant has their own, the next change), so moving the task would move
-  who Olma nudges. **What stays one person's**: adding and removing OTHER
-  people (the grant is between them), and the reminder — the page locks that
-  one row on a task you did not open, and nothing else.
+  who Olma nudges. **The GUEST LIST is everybody's too**: any participant
+  offers a share or ends one (`offerShare` takes an `inviterId` and checks
+  `grants.requireFeatureBetween` between THAT person and the invitee —
+  asking the task's owner for a connection they may not have is the wrong
+  question). The row still carries the task owner as `owner_id`, because that
+  is whom writes are made as; `requested_by` is who actually invited, and
+  `connection_id` names the inviter's connection. **What stays one person's**:
+  the reminder — the page locks that one row on a task you did not open, and
+  nothing else.

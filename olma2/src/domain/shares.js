@@ -12,9 +12,16 @@
 // own tasks into a list a friend had shared with him as editor. The column
 // stays for the rows already written and is read by nothing.
 //
-// What is still one person's alone: adding and removing OTHER people (the
-// owner's, because the grant is between them), and the reminder (the owner's
-// until each participant has their own — the next change).
+// That includes the guest list: ANY participant adds and removes people
+// (owner, 2026-09-19 — "כולם שווים גם כאן"). The share row still names the
+// TASK's owner as `owner_id`, because that is whom writes are made as; what
+// changes is who may create and end one. `requested_by` records who actually
+// invited, and `connection_id` is the connection between the INVITER and the
+// person they invited — the grant is between those two, and asking the task's
+// owner for a connection they may not have would be the wrong question.
+//
+// What is still one person's alone: the reminder (the owner's until each
+// participant has their own — the next change).
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const grants = require('./grants');
@@ -22,13 +29,23 @@ const tasksDomain = require('./tasks');
 
 const LIVE = `('pending_viewer','pending_owner','active')`;
 
-async function offerShare(client, ownerId, taskId, viewerUserId) {
-  const gate = await grants.requireFeatureBetween(client, ownerId, viewerUserId, 'sharing');
+// `inviterId` is whoever is asking — the person who opened the task or
+// anybody already on it. The sharing grant is checked between THEM and the
+// person they are inviting; the row is owned by the task's owner.
+async function offerShare(client, inviterId, taskId, viewerUserId) {
+  const gate = await grants.requireFeatureBetween(client, inviterId, viewerUserId, 'sharing');
   if (!gate.ok) return gate;
 
+  const acting = await actingOwner(client, inviterId, taskId);
+  if (!acting) return err('not_found', 'task not found');
+  // Inviting the person who opened it, or somebody already on it, is not a
+  // share — it is a no-op that would read as one.
+  if (String(acting.ownerId) === String(viewerUserId)) {
+    return err('conflict', 'that is the person whose task this is');
+  }
   const { rows } = await client.query(
     `SELECT id, parent_id FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
-    [taskId, ownerId]
+    [taskId, acting.ownerId]
   );
   if (!rows[0]) return err('not_found', 'task not found');
 
@@ -36,15 +53,15 @@ async function offerShare(client, ownerId, taskId, viewerUserId) {
   try {
     const ins = await client.query(
       `INSERT INTO shares (connection_id, owner_id, viewer_id, task_id, role, status, requested_by)
-       VALUES ($1, $2, $3, $4, 'editor', 'pending_viewer', $2) RETURNING *`,
-      [gate.data.connection.id, ownerId, viewerUserId, taskId]
+       VALUES ($1, $2, $3, $4, 'editor', 'pending_viewer', $5) RETURNING *`,
+      [gate.data.connection.id, acting.ownerId, viewerUserId, taskId, inviterId]
     );
     share = ins.rows[0];
   } catch (e) {
     if (e.code === '23505') return err('conflict', 'a live share for this task and person already exists');
     throw e;
   }
-  await audit.record(client, ownerId, 'share.offered', { shareId: share.id, taskId, viewerId: viewerUserId });
+  await audit.record(client, inviterId, 'share.offered', { shareId: share.id, taskId, viewerId: viewerUserId });
   return ok({ share });
 }
 
@@ -62,11 +79,16 @@ async function respondToShare(client, viewerId, shareId, decision) {
   return ok({ share: rows[0] });
 }
 
+// Ended by the person it is FOR, by the task's owner, or by anybody else
+// already on the task — the same equality as everything else here. A stranger
+// to the task gets `not_found`, never `forbidden`.
 async function revokeShare(client, userId, shareId) {
   const { rows } = await client.query(
     `UPDATE shares SET status = 'revoked', responded_at = now()
-     WHERE id = $1 AND (owner_id = $2 OR viewer_id = $2)
-       AND status IN ('pending_viewer','pending_owner','active')
+     WHERE id = $1 AND status IN ('pending_viewer','pending_owner','active')
+       AND (owner_id = $2 OR viewer_id = $2
+            OR EXISTS (SELECT 1 FROM shares o WHERE o.task_id = shares.task_id
+                        AND o.viewer_id = $2 AND o.status = 'active'))
      RETURNING *`,
     [shareId, userId]
   );

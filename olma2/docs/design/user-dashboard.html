@@ -7180,8 +7180,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      opened, the only thing available is leaving it — which is exactly what the
      task_shares rows would allow, so the UI refuses what the server would
      refuse rather than drawing a button that comes back with an error. */
+  /* Everybody on a task manages its guest list — adding and removing people
+     is the last thing that was the opener's alone, and it stopped being that
+     on 2026-09-19 ("כולם שווים גם כאן"). Kept as a named function rather than
+     inlined `true`: this is a rule, and a rule that can change wants one
+     place to change it. */
   function canManageShare(){
-    return !editing || editing.owner === undefined || editing.owner === 0;
+    return true;
   }
   function renderSheetShare(){
     if(!editing) return;
