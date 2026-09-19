@@ -213,6 +213,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **`due_at` is when the THING is; `remind_at` is the hour THEY named.**
 - **Everyone on a shared task is equal, and a write on it is made AS its owner** — "delete" with others on it is leaving, and only the last one left can archive.
 - **A reminder belongs to the PERSON, not to the task** — every reader asks `COALESCE(r.user_id, t.owner_id)`.
+- **A task with no date can still nudge, and a nudge must NEVER date it** — the dateless kind carries an hour of its own.
 
 ### People, silence, and data you must not get wrong
 

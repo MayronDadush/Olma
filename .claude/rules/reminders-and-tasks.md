@@ -296,6 +296,24 @@ title means this file. Grep the title, not the filename.
   a pattern that fires on ordinary input is worse than none
   (`rules/detectors.md`).
 
+- **A task with no date can still nudge, and a nudge must NEVER date it**
+  (owner, 2026-09-19). Four of his own tasks were this shape — "לקבוע עם
+  מיכאל", "ריצות בים" — something with no moment that should come back every
+  week until it is done. `reminders.setReminder` always allowed it: it takes a
+  `remind_at` and a `repeat_rule` and writes no `due_at`. What refused was the
+  PAGE, where a reminder was derived from the task's due date, so the switch on
+  a dateless task built nothing and dropped the call — no error, no toast, a
+  switch left on and a reminder that never existed. The dateless kind now
+  carries an hour of its own (`remAt`, the next time that hour comes round in
+  their zone) and the sheet asks for it where the "how long before" chips sit,
+  because an offset has nothing to be offset from. **Giving such a task a
+  `due_at` to make the machinery work is the one thing that must not happen** —
+  it turns a standing job into a deadline that is wrong by tomorrow, and it is
+  the whole reason the shape exists. `tests/user-dashboard-write.test.js` pins
+  both halves: the row is written with `repeat_rule` and the task's `due_at`
+  stays NULL, and the page's own `nextIsoAt` is RUN, in four zones, and has to
+  land on the hour asked for and always ahead of now.
+
 - **Everyone on a shared task is equal, and a write on it is made AS its
   owner** (owner, 2026-09-19). There is one kind of share: `shares.role` is
   still a column and is read by nothing. `shares.actingOwner` answers whom a
