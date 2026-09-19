@@ -4255,7 +4255,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "gr.members":"מי בקבוצה","gr.namePh":"שם הקבוצה","gr.untitled":"קבוצה ללא שם",
       "gr.search":"חיפוש קבוצה","gr.noMatch":"אין קבוצה בשם „{q}”.",
       "gr.remove":"מחיקת הקבוצה","gr.empty":"אין עדיין קבוצות. אפשר לפתוח אחת לכל חבורה שאתה מתאם איתה לעיתים קרובות.",
+      "gr.newMeet":"תיאום פגישה עם הקבוצה",
       "toast.grNew":"קבוצה חדשה · תן לה שם","toast.grGone":"הקבוצה נמחקה",
+      "toast.newMeetGroup":"תיאום פגישה חדש עם קבוצת {name}",
+      "toast.newMeetGroupNone":"אף אחד בקבוצה הזאת עדיין לא אישר תיאום פגישות איתך",
       "cal.modeRead":"היומן","cal.modeMeet":"תיאום פגישה",
       "cal.fromMeet":"נקבע בתיאום","cal.meetTag":"פגישה",
       "cal.pMeet":"מסמנים מתי מתאים, עולמה מוצאת את החלון הטוב ביותר לכולם.",
@@ -4558,7 +4561,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "gr.members":"Who is in it","gr.namePh":"Group name","gr.untitled":"Untitled group",
       "gr.search":"Search groups","gr.noMatch":"No group matches \u201c{q}\u201d.",
       "gr.remove":"Delete group","gr.empty":"No groups yet. Open one for any crowd you arrange things with often.",
+      "gr.newMeet":"Coordinate a meeting with the group",
       "toast.grNew":"New group · give it a name","toast.grGone":"Group deleted",
+      "toast.newMeetGroup":"New coordination with {name}",
+      "toast.newMeetGroupNone":"No one in this group has approved meeting coordination with you yet",
       "cal.modeRead":"Calendar","cal.modeMeet":"Coordinate",
       "cal.fromMeet":"Settled in a coordination","cal.meetTag":"Meeting",
       "cal.pMeet":"Everyone marks when they can. Allma finds the window that fits.",
@@ -9685,6 +9691,10 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          control. What it shows instead is who is in the room, including the
          people who are not on Olma: they are why the count and the faces
          differ, and without them the row looks like it lost somebody. */
+      // Starting a coordination is not an edit — it touches nobody's
+      // membership in the room, so it sits outside the rule above.
+      var meetBtn = '<button class="linkbtn" data-grmeet="' + g.id + '" style="margin-top:10px;display:block">' +
+        esc(t("gr.newMeet")) + "</button>";
       var body = g.room
         ? '<div class="glabel"><span>' + esc(t("gr.members")) + "</span></div>" +
           '<div class="chipcloud">' +
@@ -9696,7 +9706,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
           (g.offNames || []).map(function(nm){
             return '<button class="frchip" aria-pressed="false" disabled>' + esc(nm) + "</button>";
           }).join("") +
-          '</div><p class="note" style="margin-top:10px">' + esc(t("gr.roomNote")) + "</p>"
+          '</div><p class="note" style="margin-top:10px">' + esc(t("gr.roomNote")) + "</p>" + meetBtn
         : '<input class="grname" data-grname="' + g.id + '" value="' + esc(L(g.n)) +
           '" data-i18n-ph="gr.namePh" placeholder="' + esc(t("gr.namePh")) + '" autocomplete="off">' +
           '<div class="glabel"><span>' + esc(t("gr.members")) + "</span></div>" +
@@ -9704,7 +9714,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
             var inIt = g.m.indexOf(f.id) > -1;
             return '<button class="frchip" aria-pressed="' + inIt + '" data-grtog="' + g.id + ":" + f.id + '">' +
               '<span class="fav">' + avatarSVG(f.av, {g:f.g}) + "</span>" + esc(L(f.n)) + "</button>";
-          }).join("") + "</div>" +
+          }).join("") + "</div>" + meetBtn +
           '<button class="linkbtn danger" data-grdel="' + g.id + '" style="margin-top:10px;display:block">' +
           esc(t("gr.remove")) + "</button>";
       return '<div class="rowset"><button class="row" data-group="' + g.id +
@@ -9763,6 +9773,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
          already connected to you, and being on somebody's list grants nothing
          that the one-to-one switches have not granted already. */
       API.call(inIt ? "addToGroup" : "removeFromGroup", {group_id:gid, friend_id:fid});
+      return;
+    }
+    var meet = e.target.closest("[data-grmeet]");
+    if(meet){
+      startMeetingWithGroup(+meet.dataset.grmeet);
       return;
     }
     var del = e.target.closest("[data-grdel]");
@@ -9892,6 +9907,28 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setCalMode("meet");
     openMtNew([fid]);
     toast(t("toast.newMeet", {name:L(f.n)}));
+  }
+  /* Same shortcut, seeded from a whole group instead of one friend. `g.m` is
+     already every ON-Olma member (liveGroup filters both self and off-Olma
+     out before this array exists), but a member who has not granted the meet
+     permission to THIS person is still in it — that switch is per pair, not
+     per room. `startMeeting` gates on it one participant at a time and fails
+     the whole call on the first one missing it, the same check the friend
+     row's own "+" hides behind, so this filters before the wizard ever
+     opens rather than letting the sheet promise something the server will
+     refuse. */
+  function startMeetingWithGroup(gid){
+    var g = GROUPS.filter(function(x){ return x.id === gid; })[0];
+    if(!g) return;
+    var ids = g.m.filter(function(id){
+      var f = friendById(id);
+      return f && f.p && f.p.meet;
+    });
+    if(!ids.length){ toast(t("toast.newMeetGroupNone")); return; }
+    go("cal");
+    setCalMode("meet");
+    openMtNew(ids);
+    toast(t("toast.newMeetGroup", {name:grName(g)}));
   }
   /* Removing a friend is the chat's revoke_connection, and it takes more with
      it than the row: shares stop, every switch on both sides goes, and a
