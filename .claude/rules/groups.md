@@ -277,6 +277,33 @@ have already had to be argued for.
   of the old one. Inert until the gateway is restarted, like everything else in
   that plugin.
 
+- **A message in the room with no tag on it is ENDED, never answered — and the
+  window it opens is the point.** The owner asked twice (2026-09-19) for writing
+  in the room to open the fifteen minutes; a registered room is
+  `requireMention: true`, so the gateway drops an un-mentioning message before
+  any hook of ours runs, and turning that off made her ANSWER it, which he said
+  must never happen. `before_dispatch` is the missing piece: a CLAIMING hook, so
+  `{handled: true}` ends the message and no model turn is ever started — silence
+  as a fact about the runtime rather than a sentence in a prompt, the reply
+  gate's argument one step earlier. Its event carries `sessionKey` (the room's
+  jid) and `senderId`, which is both halves `group-context.noteMemberWrote`
+  needs without the `Conversation info` block only a turn produces. **The
+  mention decision becomes OURS** — `was_mentioned` is born later — so
+  `group-context.addressedToHer` reads it off the body and `replyToSender`, and
+  errs in ONE direction: anything that might be addressed to her is let through,
+  because a false "addressed" is today's behaviour and a false "not addressed" is
+  her going silent on somebody who did ask her something. It is a PORT, like
+  `reply-leak`'s, and one corpus holds both copies. **Three refusals**: the
+  plugin never claims what it read as addressed whatever brokerd answers,
+  brokerd claims nothing for a room outside the `group_untagged_rooms` flag
+  (empty), and the room still requires a mention. So it is inert, and inert
+  while MEASURING — one trace line per group message carries our verdict and
+  whether the sender came as a phone or a LID, and the `llm_input` line after it
+  carries the gateway's own `mentioned`. The flag is earned per room from those
+  two agreeing on real traffic. `senderPhone` returns null for a LID rather than
+  stamping the wrong member (2026-09-19, `incidents.md`, "A message in the room,
+  with no tag on it").
+
 - **A paused member is counted into a room's coordination only until their
   one invite is spent; a day of silence takes them out** (owner, 2026-09-13).
   They are left out only until they write again: that ends the pause

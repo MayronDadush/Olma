@@ -258,6 +258,46 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
     };
   }
 
+  // A message in the room that never named her (domain/group-context.js, "A
+  // message in the room that never named her" — the argument is there). The
+  // plugin has already decided whether it was addressed to her, INSIDE the
+  // gateway, so the room's words never come here: what arrives is the sender,
+  // the room, and one boolean.
+  //
+  // Two answers, and they are separate on purpose. The STAMP is taken whenever
+  // a member of this room wrote in it — that is the window the owner asked for
+  // and it is correct with or without a flag. The CLAIM, which ends the message
+  // before any model turn exists, is only ever given for a room somebody has
+  // named in `group_untagged_rooms`; with the flag empty every half-state is
+  // exactly today's behaviour.
+  async function handleGroupRoomWrite(params = {}) {
+    const agentId = String(params.agentId || '').trim();
+    if (!/^g-\d+$/.test(agentId)) return { ok: false, error: 'bad agentId' };
+    const externalId = String(params.externalId || '').trim();
+    if (!/^[^:\s]+@g\.us$/.test(externalId)) return { ok: false, error: 'bad externalId' };
+    const addressed = params.addressed !== false;
+    const at = Number.isFinite(params.at) ? new Date(params.at) : new Date();
+    let out = { ok: false, error: 'no group' };
+    await withTx(pool, async (client) => {
+      const group = await groupsDomain.getByExternalId(client, 'whatsapp', externalId);
+      if (!group || group.agent_id !== agentId) return;
+      const phone = groupContext.senderPhone(params.senderId);
+      // An addressed message keeps the path it has always had: the turn runs,
+      // and `group_context` off the Conversation info block takes the stamp
+      // with the sender the GATEWAY named. Nothing to do here.
+      const stamped = !addressed && phone
+        ? await groupContext.noteMemberWrote(client, { chatId: externalId, senderE164: phone, at })
+        : false;
+      const flag = await require('../domain/flags').getFlag(client, groupContext.UNTAGGED_FLAG);
+      out = {
+        ok: true, addressed, stamped, sender: Boolean(phone),
+        claim: Boolean(!addressed && group.state === 'open'
+          && groupContext.roomClaimEnabled(flag, externalId)),
+      };
+    });
+    return out;
+  }
+
   // The other direction, for a group turn: what the room's own rows say about
   // its coordination, drawn for the prompt (domain/group-turn.js — why this
   // exists is written there). `turn_context` is the same move for a person and
@@ -617,6 +657,8 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
         return handleGroupContext(msg.params || {});
       case 'group_turn_context':
         return handleGroupTurnContext(msg.params || {});
+      case 'group_room_write':
+        return handleGroupRoomWrite(msg.params || {});
       case 'reply_gate':
         return handleReplyGate(msg.params || {});
       default:
