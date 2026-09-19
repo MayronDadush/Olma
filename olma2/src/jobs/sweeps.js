@@ -41,7 +41,9 @@ async function sweepReminders(client, nowIso) {
     // and the urgency of the rung it stands in for.
     const redo = Boolean(r.prev_failed);
     const res = await enqueue(client, {
-      userId: r.owner_id,
+      // the person the reminder is FOR — on a shared task not necessarily the
+      // task's owner (reminders.dueForSending resolves it)
+      userId: r.user_id,
       kind: 'reminder',
       // Only the moment THEY chose is urgent enough to skip the daily budget.
       // A follow-up is Olma's own idea and queues like everything else Olma
@@ -79,7 +81,7 @@ async function sweepReminders(client, nowIso) {
       // ladder — the one behind the latest reminder they asked for — so any
       // sibling already climbing retires here (reminders.retireSiblingLadders).
       if (attempt === 1 && !repeats) {
-        await reminders.retireSiblingLadders(client, r.owner_id, r.task_id, r.reminder_id, new Date(now));
+        await reminders.retireSiblingLadders(client, r.user_id, r.task_id, r.reminder_id, new Date(now));
       }
       // Spawn the next occurrence. The rule vocabulary lives in one place —
       // this used to compare against the literals 'daily'/'weekly' while the
@@ -90,8 +92,8 @@ async function sweepReminders(client, nowIso) {
       const next = reminders.nextOccurrence(r.remind_at, r.repeat_rule, r.timezone);
       if (next) {
         await client.query(
-          `INSERT INTO task_reminders (task_id, remind_at, repeat_rule) VALUES ($1, $2, $3)`,
-          [r.task_id, next, reminders.normalizeRepeatRule(r.repeat_rule)]
+          `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, user_id) VALUES ($1, $2, $3, $4)`,
+          [r.task_id, next, reminders.normalizeRepeatRule(r.repeat_rule), r.user_id]
         );
       }
       out.push(r.reminder_id);

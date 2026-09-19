@@ -217,10 +217,14 @@ const ACTIONS = {
   //
   // So this is a replace. Everything still pending on the task is cancelled
   // first, and only then is the new one written.
+  //
+  // THEIR reminders on the task, not everybody's: on a shared task each
+  // participant has their own switch (migration 073), and flipping mine must
+  // never take down yours.
   async setTaskReminder(client, userId, p) {
     const { rows: pending } = await client.query(
       `SELECT r.id FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-        WHERE r.task_id = $1 AND t.owner_id = $2
+        WHERE r.task_id = $1 AND COALESCE(r.user_id, t.owner_id) = $2
           AND r.sent_at IS NULL AND r.cancelled_at IS NULL`,
       [p.taskId, userId]
     );
@@ -240,7 +244,7 @@ const ACTIONS = {
     // other way round can leave a task with no reminder at all after a refusal.
     const probe = await client.query(
       `SELECT status FROM tasks WHERE id = $1 AND owner_id = $2 AND archived_at IS NULL`,
-      [p.taskId, userId]
+      [p.taskId, await asOwner(client, userId, p.taskId)]
     );
     if (!probe.rows[0]) return err('not_found', 'task not found');
     if (probe.rows[0].status !== 'open') {

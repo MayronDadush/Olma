@@ -267,9 +267,16 @@ test('the friend renames, dates, ticks and lists on a task I shared, as if it we
   const nobody = await makeUser(db.pool, '+972531940055', { firstName: 'Nia' });
   assert.equal((await asFriend('shareTask', { taskId: list.id, viewerId: nobody.id })).ok, false);
 
-  // What stays the owner's: the reminder, until each participant has their own.
+  // The reminder is each participant's OWN — the friend sets one on the same
+  // task and it reaches the friend, not me, and my switch still reads off.
   const r = await asFriend('setTaskReminder', { taskId: list.id, on: true, remindAt: iso(86400e3) });
-  assert.equal(r.ok, false, 'the friend set a reminder that would have reached ME');
+  okRes(r);
+  const { rows: rem } = await db.pool.query(
+    `SELECT user_id FROM task_reminders WHERE task_id = $1 AND cancelled_at IS NULL`, [list.id]);
+  assert.equal(rem.length, 1);
+  assert.equal(String(rem[0].user_id), String(friend.id), 'the friend\'s reminder was stamped to ME');
+  assert.equal((await row(me.id)).reminder, null, 'their reminder showed up on my sheet');
+  assert.ok((await row(friend.id)).reminder, 'the friend cannot see the reminder they just set');
   // And a stranger to the task is still shown nothing, not "forbidden".
   assert.equal((await actAs(nobody.id, 'editTask', { taskId: list.id, title: 'x' })).error.code, 'not_found');
   assert.equal((await actAs(nobody.id, 'completeTask', { taskId: list.id })).error.code, 'not_found');
@@ -340,9 +347,92 @@ test('a task of mine dropped onto a list the friend shared with me becomes their
   assert.equal(String((await db.pool.query(`SELECT owner_id FROM tasks WHERE id = $1`, [loose.id])).rows[0].owner_id),
     String(friend.id), 'un-nesting does not hand it back');
 
+  // A task carrying MY reminder still goes onto their list: the task changes
+  // hands, the reminder does not — it is stamped with me on the way over.
   const nudged = await mk();
   okRes(await act('setTaskReminder', { taskId: nudged.id, on: true, remindAt: iso(86400e3) }));
-  const kept = await act('nestTask', { taskId: nudged.id, parentId: theirList.id });
-  assert.equal(kept.ok, false, 'a task with a reminder pending changed hands');
-  assert.equal(kept.error.reason, 'has_reminder');
+  okRes(await act('nestTask', { taskId: nudged.id, parentId: theirList.id }));
+  const { rows: moved } = await db.pool.query(
+    `SELECT t.owner_id, r.user_id FROM tasks t JOIN task_reminders r ON r.task_id = t.id
+      WHERE t.id = $1 AND r.cancelled_at IS NULL`, [nudged.id]);
+  assert.equal(String(moved[0].owner_id), String(friend.id), 'the item did not go to the list owner');
+  assert.equal(String(moved[0].user_id), String(me.id), 'my reminder started reaching them');
+});
+
+// A reminder belongs to the PERSON, not to the task — the half of "everyone
+// is equal" that could not be done by routing writes through the owner
+// (migration 073). Two people on one task, two different hours, and the
+// delivery sweep has to hand each rung to the one who asked for it.
+test('each participant has their own reminder on the same shared task', async () => {
+  const reminders = require('../src/domain/reminders');
+  const list = await mk();
+  await shareWithFriend(list.id);
+  const mineAt = iso(3600e3);
+  const theirsAt = iso(2 * 3600e3);
+  okRes(await act('setTaskReminder', { taskId: list.id, on: true, remindAt: mineAt }));
+  okRes(await actAs(friend.id, 'setTaskReminder', { taskId: list.id, on: true, remindAt: theirsAt }));
+
+  // Neither switch took the other one down.
+  const { rows: live } = await db.pool.query(
+    `SELECT user_id, remind_at FROM task_reminders
+      WHERE task_id = $1 AND cancelled_at IS NULL ORDER BY remind_at`, [list.id]);
+  assert.equal(live.length, 2, 'setting mine cancelled theirs');
+  assert.deepEqual(live.map((r) => String(r.user_id)), [String(me.id), String(friend.id)]);
+
+  // And the sweep sends each rung to the person who asked for it, not to the
+  // task's owner twice. dueForSending is what production reads.
+  const due = await tx((c) => reminders.dueForSending(c, new Date(Date.now() + 3 * 3600e3)));
+  const forTask = due.data.due.filter((r) => String(r.task_id) === String(list.id));
+  assert.equal(forTask.length, 2);
+  assert.deepEqual(forTask.map((r) => String(r.user_id)).sort(), [me.id, friend.id].map(String).sort(),
+    'a reminder went to the wrong person');
+
+  // My switch reads off when I turn it off, and theirs is untouched.
+  okRes(await act('setTaskReminder', { taskId: list.id, on: false }));
+  const { rows: left } = await db.pool.query(
+    `SELECT user_id FROM task_reminders WHERE task_id = $1 AND cancelled_at IS NULL`, [list.id]);
+  assert.equal(left.length, 1, 'turning mine off took theirs with it');
+  assert.equal(String(left[0].user_id), String(friend.id));
+});
+
+// Taking somebody off a shared task takes THEIR reminder with them and
+// nobody else's — and, because a reminder that vanishes without a word is the
+// same broken promise as one that never fires, they are told (the owner's
+// decision, 2026-09-19).
+test('a share revoked by the other side drops only that person\'s reminder, and says so', async () => {
+  const list = await mk();
+  const share = await shareWithFriend(list.id);
+  okRes(await act('setTaskReminder', { taskId: list.id, on: true, remindAt: iso(3600e3) }));
+  okRes(await actAs(friend.id, 'setTaskReminder', { taskId: list.id, on: true, remindAt: iso(7200e3) }));
+
+  okRes(await tx((c) => shares.revokeShare(c, me.id, share.id)));
+
+  const { rows: live } = await db.pool.query(
+    `SELECT user_id FROM task_reminders WHERE task_id = $1 AND cancelled_at IS NULL`, [list.id]);
+  assert.equal(live.length, 1, 'revoking took down more than the leaver\'s reminder');
+  assert.equal(String(live[0].user_id), String(me.id), 'it took down MINE');
+
+  const { rows: said } = await db.pool.query(
+    `SELECT user_id, payload FROM outbox WHERE kind = 'share_reminder_dropped'`);
+  assert.equal(said.length, 1, 'nobody was told their reminder is gone');
+  assert.equal(String(said[0].user_id), String(friend.id));
+  assert.equal(said[0].payload.byName, 'Miron');
+  assert.equal(said[0].payload.taskTitle, list.title);
+});
+
+// ...and leaving of your own accord sends nothing: the page that did it is
+// the thing in front of them.
+test('leaving a shared task yourself takes your reminder and sends no message', async () => {
+  await db.pool.query(`DELETE FROM outbox WHERE kind = 'share_reminder_dropped'`);
+  const list = await mk();
+  await shareWithFriend(list.id);
+  okRes(await actAs(friend.id, 'setTaskReminder', { taskId: list.id, on: true, remindAt: iso(3600e3) }));
+  okRes(await actAs(friend.id, 'leaveTask', { taskId: list.id }));
+
+  const { rows: live } = await db.pool.query(
+    `SELECT id FROM task_reminders WHERE task_id = $1 AND cancelled_at IS NULL`, [list.id]);
+  assert.equal(live.length, 0, 'the reminder outlived the person it was for');
+  const { rows: said } = await db.pool.query(
+    `SELECT id FROM outbox WHERE kind = 'share_reminder_dropped'`);
+  assert.equal(said.length, 0, 'they were told about a thing they just did themselves');
 });

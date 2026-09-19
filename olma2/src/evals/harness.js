@@ -50,7 +50,7 @@ async function resetEvalUser(client, userId) {
   if (!rows[0] || rows[0].is_eval !== true) {
     throw new Error(`refusing to reset user ${userId}: not an eval user`);
   }
-  await client.query(`DELETE FROM task_reminders r USING tasks t WHERE r.task_id = t.id AND t.owner_id = $1`, [userId]);
+  await client.query(`DELETE FROM task_reminders r USING tasks t WHERE r.task_id = t.id AND COALESCE(r.user_id, t.owner_id) = $1`, [userId]);
   await client.query(`DELETE FROM tasks WHERE owner_id = $1`, [userId]);
   await client.query(`DELETE FROM user_facts WHERE user_id = $1`, [userId]);
   await client.query(`DELETE FROM user_preferences WHERE user_id = $1`, [userId]);
@@ -501,13 +501,12 @@ const SNAPSHOT_SECTIONS = [
               WHERE user_id = $1 AND active = true LIMIT 10`],
   ['contacts', `SELECT display_name, phone FROM user_contacts
                  WHERE user_id = $1 LIMIT 10`],
-  // task_reminders has no user_id — it hangs off the task. Writing one here
-  // was the first thing this rewrite got wrong, which is the same mistake
-  // the section above exists because of.
+  // task_reminders.user_id is nullable (migration 073) — for a row without
+  // it the recipient is the task's owner, so the join is still needed.
   ['reminders', `SELECT r.id, r.task_id, r.remind_at, r.repeat_rule, r.sent_at,
                         to_char(r.remind_at AT TIME ZONE 'Asia/Jerusalem', 'YYYY-MM-DD HH24:MI') AS local
                    FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-                  WHERE t.owner_id = $1 AND r.cancelled_at IS NULL
+                  WHERE COALESCE(r.user_id, t.owner_id) = $1 AND r.cancelled_at IS NULL
                   ORDER BY r.id LIMIT 10`],
   ['paused', `SELECT paused_at IS NOT NULL AS paused FROM users WHERE id = $1`],
 ];

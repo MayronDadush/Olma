@@ -20,12 +20,59 @@
 // person they invited — the grant is between those two, and asking the task's
 // owner for a connection they may not have would be the wrong question.
 //
-// What is still one person's alone: the reminder (the owner's until each
-// participant has their own — the next change).
+// Nothing on a shared task is one person's alone any more. The REMINDER is
+// not shared either — since 2026-09-19 each participant has their own on the
+// same task (migration 073, `task_reminders.user_id`), so setting mine never
+// touches yours, and leaving takes mine with me and leaves yours where it is.
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const grants = require('./grants');
 const tasksDomain = require('./tasks');
+const reminders = require('./reminders');
+const { enqueue } = require('../outbox/enqueue');
+
+// The reminders one PERSON has pending on a task and its items, cancelled
+// the way they cancel one themselves — through reminders.cancelReminder, so
+// a rung already sitting in the outbox is withdrawn with the row. Called
+// when somebody comes OFF a task: what they asked to be nudged about is no
+// longer on their list, and nobody else's reminder on it is touched.
+//
+// A reminder that disappears without a word is the same broken promise as one
+// that never fires, so when SOMEBODY ELSE took them off the task they are
+// told (the owner's decision, 2026-09-19: "מתבטלת ואומרים לו"). Only then,
+// and only when a reminder actually went down: a person who leaves of their
+// own accord is looking at the page that did it, and a task they were never
+// waiting on is not news. It is the one message this path sends, so nothing
+// here announces the removal itself.
+async function cancelTheirReminders(client, recipientId, taskId, actorId) {
+  const { rows } = await client.query(
+    `SELECT r.id, t.title FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+      WHERE (t.id = $1 OR t.parent_id = $1) AND COALESCE(r.user_id, t.owner_id) = $2
+        AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+      ORDER BY r.id`, [taskId, recipientId]);
+  const cancelled = [];
+  for (const r of rows) {
+    const res = await reminders.cancelReminder(client, recipientId, r.id);
+    if (res.ok) cancelled.push(Number(r.id));
+  }
+  if (cancelled.length && String(actorId) !== String(recipientId)) {
+    const { rows: [who] } = await client.query(
+      `SELECT first_name, phone FROM users WHERE id = $1`, [actorId]);
+    await enqueue(client, {
+      userId: recipientId,
+      kind: 'share_reminder_dropped',
+      // Olma's own housekeeping, not a moment they chose.
+      urgency: 'normal',
+      payload: {
+        taskTitle: rows[0].title,
+        byName: (who && (who.first_name || who.phone)) || null,
+        count: cancelled.length,
+      },
+      idempotencyKey: `sremdrop:${recipientId}:${cancelled[0]}`,
+    });
+  }
+  return cancelled;
+}
 
 const LIVE = `('pending_viewer','pending_owner','active')`;
 
@@ -93,7 +140,12 @@ async function revokeShare(client, userId, shareId) {
     [shareId, userId]
   );
   if (!rows[0]) return err('not_found', 'live share not found');
-  await audit.record(client, userId, 'share.revoked', { shareId });
+  // The viewer is off the task now, whoever ended it — their reminders on
+  // it go with them (a reminder is theirs, not the task's; migration 073).
+  const cancelled = await cancelTheirReminders(client, rows[0].viewer_id, rows[0].task_id, userId);
+  await audit.record(client, userId, 'share.revoked', {
+    shareId, ...(cancelled.length ? { remindersCancelled: cancelled } : {}),
+  });
   return ok({ share: rows[0] });
 }
 
@@ -201,11 +253,12 @@ async function addSubtaskToShared(client, userId, parentTaskId, title) {
 // then nested by exactly the write the owner's own drag makes. Dropped onto
 // my own list it is the plain nest.
 //
-// Refused by name, like tasks.nestTask, for the two things the transfer adds:
-// the task has to be mine outright (`shared` — somebody else is on it), and it
-// may not carry a pending reminder (`has_reminder`): a reminder rides the
-// task's owner, so moving the task would move who Olma nudges about it, and
-// a nudge they asked for would start reaching somebody who did not.
+// Refused by name, like tasks.nestTask, for the one thing the transfer adds:
+// the task has to be mine outright (`shared` — somebody else is on it). A
+// reminder pending on it stays MINE: it is stamped with me before the row
+// changes hands (migration 073, `task_reminders.user_id`), so the nudge I
+// asked for keeps reaching me and never the list's owner. Until 2026-09-19
+// this refused `has_reminder`, because a reminder then rode the task's owner.
 async function adoptIntoList(client, userId, taskId, parentId) {
   const acting = await actingOwner(client, userId, parentId);
   if (!acting || !acting.share) return tasksDomain.nestTask(client, userId, taskId, parentId);
@@ -214,9 +267,7 @@ async function adoptIntoList(client, userId, taskId, parentId) {
   const { rows } = await client.query(
     `SELECT t.id, t.parent_id, t.due_at, t.status,
             EXISTS (SELECT 1 FROM tasks c WHERE c.parent_id = t.id AND c.archived_at IS NULL) AS has_items,
-            EXISTS (SELECT 1 FROM shares s WHERE s.task_id = t.id AND s.status IN ${LIVE}) AS shared,
-            EXISTS (SELECT 1 FROM task_reminders r WHERE r.task_id = t.id
-                     AND r.sent_at IS NULL AND r.cancelled_at IS NULL) AS has_reminder
+            EXISTS (SELECT 1 FROM shares s WHERE s.task_id = t.id AND s.status IN ${LIVE}) AS shared
        FROM tasks t WHERE t.id = $1 AND t.owner_id = $2 AND t.archived_at IS NULL`,
     [id, userId]
   );
@@ -226,10 +277,10 @@ async function adoptIntoList(client, userId, taskId, parentId) {
   if (child.due_at) return err('invalid', 'a task with a date cannot become an item', { reason: 'has_date' });
   if (child.has_items) return err('invalid', 'a list cannot become an item', { reason: 'is_list' });
   if (child.shared) return err('invalid', 'a shared task cannot become an item', { reason: 'shared' });
-  if (child.has_reminder) {
-    return err('invalid', 'a task with a reminder pending cannot move to somebody else\'s list',
-      { reason: 'has_reminder' });
-  }
+  // Before the owner changes: a row without a recipient of its own means
+  // "the task's owner", and that answer is about to become somebody else.
+  await client.query(
+    `UPDATE task_reminders SET user_id = $2 WHERE task_id = $1 AND user_id IS NULL`, [id, userId]);
   await client.query(`UPDATE tasks SET owner_id = $2 WHERE id = $1 AND owner_id = $3`,
     [id, acting.ownerId, userId]);
   const res = await tasksDomain.nestTask(client, acting.ownerId, id, parentId);
@@ -244,10 +295,12 @@ async function adoptIntoList(client, userId, taskId, parentId) {
 // revoked; the task stays where it was. For the OWNER the task has to stay
 // with the others, so it is handed to whoever accepted first — every row of
 // it (the items too), and the remaining shares now point at the new owner.
-// Reminders pending on it were the leaver's and go with them: they were
-// routed by owner, and cancelling is the only way they do not start reaching
-// the person who inherited the list. A task nobody else is on cannot be
-// left, only deleted — the page offers the other button.
+// The LEAVER's reminders on it go with them, and only theirs — the heir's
+// and everybody else's stay exactly as they set them (each participant has
+// their own; migration 073). The cancel runs before the row changes hands,
+// because a reminder without a recipient of its own means "the task's
+// owner", and that is the leaver right up to the transfer. A task nobody
+// else is on cannot be left, only deleted — the page offers the other button.
 async function leaveTask(client, userId, taskId) {
   const id = Number(taskId);
   if (!Number.isSafeInteger(id) || id <= 0) return err('invalid', 'taskId required');
@@ -268,20 +321,19 @@ async function leaveTask(client, userId, taskId) {
   }
   if (!active.length) return err('invalid', 'nobody else is on this task', { reason: 'alone' });
   const heir = active[0];
+  // BEFORE the task changes hands, and only the leaver's: a reminder row
+  // without a recipient of its own means "the task's owner", and one moment
+  // later that is the heir. The heir's own reminders, and everybody else's,
+  // are theirs and survive the handover untouched.
+  const cancelled = await cancelTheirReminders(client, userId, id, userId);
   await client.query(`UPDATE tasks SET owner_id = $2 WHERE id = $1 OR parent_id = $1`, [id, heir.viewer_id]);
   await client.query(
     `UPDATE shares SET status = 'revoked', responded_at = now() WHERE id = $1`, [heir.id]);
   await client.query(
     `UPDATE shares SET owner_id = $2 WHERE task_id = $1 AND status IN ${LIVE}`, [id, heir.viewer_id]);
-  const { rows: cancelled } = await client.query(
-    `UPDATE task_reminders r SET cancelled_at = now()
-       FROM tasks t
-      WHERE r.task_id = t.id AND (t.id = $1 OR t.parent_id = $1)
-        AND r.sent_at IS NULL AND r.cancelled_at IS NULL
-      RETURNING r.id`, [id]);
   await audit.record(client, userId, 'share.left', {
     taskId: id, handedTo: Number(heir.viewer_id),
-    ...(cancelled.length ? { remindersCancelled: cancelled.map((r) => Number(r.id)) } : {}),
+    ...(cancelled.length ? { remindersCancelled: cancelled } : {}),
   });
   await audit.record(client, heir.viewer_id, 'task.inherited', { taskId: id, fromUserId: Number(userId) });
   return ok({ taskId: id, left: true, handedTo: Number(heir.viewer_id) });
