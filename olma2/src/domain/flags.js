@@ -44,6 +44,15 @@ const DEFAULTS = {
   // flag because it is a taste call about a message people read every day,
   // and taste should not need a deploy. 0 disables the card entirely.
   digest_card_min_items: 3,
+  // domain/digest-message.js: whose scheduled digest is drawn and sent with no
+  // model (owner, 2026-09-15). Same shape as the other phone lists: '' =
+  // nobody, 'all' = everybody, or E.164s. The TEXT morning is on for everybody
+  // — it is the block get_my_digest already hands over, word for word. The
+  // CARD morning starts closed: a card over the raw pipe is read off the
+  // gateway's source and has not yet been seen on a phone, and until it has,
+  // a card-sized morning keeps going through the model exactly as before.
+  digest_without_model_phones: 'all',
+  digest_card_without_model_phones: '',
   // Boost mode (domain/boost.js + jobs/boost.js): the demo switch. The STATE
   // is written by the dashboard and reconciled onto the gateway config by the
   // job; `{on:false}` is off. The MODEL is separate on purpose — re-pointing

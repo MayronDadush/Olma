@@ -15,6 +15,7 @@ const proactiveText = require('../domain/proactive-text');
 const templates = require('../domain/message-templates');
 const format = require('../domain/message-format');
 const gatewayRpc = require('./gateway-rpc');
+const digestMessage = require('../domain/digest-message');
 
 const SEND_TIMEOUT_MS = 120_000;
 
@@ -104,13 +105,25 @@ const DELIVERY_PREAMBLE = [
 // the wire and then timed out or lost its socket is `timedOut`, and is retried
 // NOWHERE: the gateway hands the message to WhatsApp before it answers, so
 // retrying it on the other pipe is how a room gets told the same thing twice.
-async function sendRawMessage({ channel, target, message, replyTo }, deps = {}) {
+//
+// `agentId` and `media` are the morning digest's (domain/digest-message.js),
+// and both are GATEWAY-only. Read off the 2026.8.1 send handler, not yet
+// watched on a phone: a send made AS the person's agent is mirrored into that
+// agent's session as an assistant message — so their next turn knows what the
+// morning said, which a send as `main` never did — and its outbound media is
+// read from THAT agent's workspace, where card-store.js puts the card.
+// `openclaw message send` has no `--agent`, so the CLI can do neither: it
+// still carries plain text as `main`, and a media send it cannot make fails
+// here, cleanly, for the caller to send the words instead.
+async function sendRawMessage({ channel, target, message, replyTo, media, agentId }, deps = {}) {
   const gatewaySend = deps.gatewaySend || gatewayRpc.sendMessage;
   const cli = deps.runOpenclaw || runOpenclaw;
   try {
     await gatewaySend({
       channel, to: target, message,
       ...(replyTo ? { replyToId: String(replyTo) } : {}),
+      ...(media ? { mediaUrl: String(media) } : {}),
+      ...(agentId ? { agentId: String(agentId) } : {}),
     });
     return { ok: true, via: 'gateway' };
   } catch (err) {
@@ -118,6 +131,7 @@ async function sendRawMessage({ channel, target, message, replyTo }, deps = {}) 
     if (err && err.dispatched) {
       return { ok: false, timedOut: true, error: `gateway: ${err.message}`, via: 'gateway' };
     }
+    if (media) return { ok: false, error: `gateway unreachable, and media is gateway-only: ${err && err.message}`, via: 'gateway' };
   }
   return cli([
     'message', 'send',
@@ -543,9 +557,32 @@ function abortSessionLane({ agentId, key }) {
   ]);
 }
 
+// A drawn digest onto the raw pipe, as the person's OWN agent so the words
+// land in their session (sendRawMessage says why). The card first when there
+// is one; a card the gateway refused, or could not be reached for, is followed
+// by the words — `drawn.text` is always the whole message. Only an answer that
+// is a definite non-delivery falls back: a timed-out send has very likely gone
+// out, and sending the words after it is the morning twice. A refusal of the
+// words as their agent retries once as `main` — refused is refused, so nothing
+// reached them, and a digest outside their history beats no digest.
+async function sendDrawnDigest(drawn, channel, deps = {}) {
+  const send = deps.sendRawMessage || sendRawMessage;
+  const base = { channel: channel.channel_type, target: channel.channel_identifier };
+  const agentId = drawn.user.agent_id;
+  if (drawn.card) {
+    const r = await send({ ...base, message: drawn.caption, media: drawn.card.path, agentId });
+    if (r.ok || r.timedOut) return { ...r, drawn: 'card' };
+    console.error(`[digest-message] card send failed for user ${drawn.user.id}, sending the words: ${r.error}`);
+  }
+  const r = await send({ ...base, message: drawn.text, agentId });
+  if (r.ok || r.timedOut || r.via !== 'gateway') return { ...r, drawn: 'text' };
+  const again = await send({ ...base, message: drawn.text });
+  return { ...again, drawn: 'text', asMain: true };
+}
+
 // deliver(row) for the outbox worker. Needs a fresh client only for the
-// channel lookup, so it takes the pool.
-function makeDeliverer(pool) {
+// channel lookup, so it takes the pool. `deps` is for tests.
+function makeDeliverer(pool, deps = {}) {
   return async function deliver(row) {
     const client = await pool.connect();
     let channel;
@@ -583,6 +620,15 @@ function makeDeliverer(pool) {
       });
     }
 
+    // The scheduled digest, drawn whole with no model (domain/digest-message.js,
+    // which also says when it declines and the turn below writes it instead).
+    if (row.kind === 'digest') {
+      const drawn = await (deps.digestMessage || digestMessage).forDelivery(pool, row, {
+        wording, channelType: channel.channel_type,
+      });
+      if (drawn) return sendDrawnDigest(drawn, channel, deps);
+    }
+
     // Users without an agent yet (pending: invited strangers, waitlist) are
     // reached through the intake agent's session for their phone.
     const agentId = row.agent_id || 'intake';
@@ -618,5 +664,5 @@ function makeDeliverer(pool) {
 
 module.exports = {
   makeDeliverer, instructionFor, runOpenclaw, runOpenclawJson, sendRawMessage,
-  abortSessionLane,
+  abortSessionLane, sendDrawnDigest,
 };

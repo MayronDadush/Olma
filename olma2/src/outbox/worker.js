@@ -450,11 +450,24 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             outboxId: Number(row.id), meetingId,
           });
         };
+        // A digest that went out with no model turn (domain/digest-message.js)
+        // says so, once per row, so "how many mornings still cost a turn" is a
+        // count and not a transcript hunt. In THIS transaction, on this client:
+        // the row is locked here, and a write from the deliverer's own
+        // connection would wait on that lock for ever.
+        const bookDrawnDigest = async () => {
+          if (!result.drawn) return;
+          await audit.record(client, row.user_id, 'digest.sent_without_model', {
+            outboxId: Number(row.id), as: result.drawn, ...(result.asMain ? { asMain: true } : {}),
+          });
+          outcomes.drawnDigests = (outcomes.drawnDigests || 0) + 1;
+        };
         if (result.ok) {
           await client.query(
             `UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE id = ANY($1::bigint[])`, [ids]
           );
           await spendRoomInvite();
+          await bookDrawnDigest();
           outcomes.delivered++;
           if (ids.length > 1) outcomes.batched = (outcomes.batched || 0) + ids.length - 1;
         } else if (result.timedOut) {
@@ -481,6 +494,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
             outboxIds: ids.map(Number), kind: row.kind, error: String(result.error || 'openclaw timeout').slice(0, 200),
           });
           await spendRoomInvite();
+          await bookDrawnDigest();
           outcomes.delivered++;
           outcomes.unconfirmed = (outcomes.unconfirmed || 0) + 1;
           if (ids.length > 1) outcomes.batched = (outcomes.batched || 0) + ids.length - 1;
