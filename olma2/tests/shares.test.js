@@ -147,18 +147,26 @@ test('a task of mine dropped onto a list shared with me goes to the list\'s owne
     assert.equal(trail.length, 1);
     assert.equal(Number(trail[0].detail.toUserId), Number(owner.id));
 
-    // What may not change hands: a task with a reminder pending, or one that
-    // is not theirs outright — and a plain nest into their OWN list is untouched.
+    // A pending reminder does NOT stop the move — it is the viewer's own, and
+    // it is stamped with them before the task changes hands, so the nudge
+    // keeps reaching the person who asked for it.
     const reminders = require('../src/domain/reminders');
     const nudged = (await tasks.addTask(c, viewer.id, { title: 'call the plumber' })).data.task;
     okOrThrow(await reminders.setReminder(c, viewer.id, nudged.id, new Date(Date.now() + 7200e3).toISOString().replace(/\.\d+Z$/, '+00:00')));
-    assert.equal((await shares.adoptIntoList(c, viewer.id, nudged.id, list.id)).error.reason, 'has_reminder');
+    okOrThrow(await shares.adoptIntoList(c, viewer.id, nudged.id, list.id));
+    const { rows: [carried] } = await c.query(
+      `SELECT t.owner_id, r.user_id FROM tasks t JOIN task_reminders r ON r.task_id = t.id
+        WHERE t.id = $1 AND r.cancelled_at IS NULL`, [nudged.id]);
+    assert.equal(String(carried.owner_id), String(owner.id), 'the item did not go to the list owner');
+    assert.equal(String(carried.user_id), String(viewer.id), 'the reminder followed the task, not its person');
+    // and what may NOT change hands: the shared list itself.
     assert.equal((await shares.adoptIntoList(c, viewer.id, list.id, list.id)).error.code, 'not_found',
       'the shared list itself went into itself');
     const own = (await tasks.addTask(c, viewer.id, { title: 'my own list' })).data.task;
-    const plain = await shares.adoptIntoList(c, viewer.id, nudged.id, own.id);
+    const mineAgain = (await tasks.addTask(c, viewer.id, { title: 'still mine' })).data.task;
+    const plain = await shares.adoptIntoList(c, viewer.id, mineAgain.id, own.id);
     assert.equal(plain.ok, true, plain.ok ? '' : JSON.stringify(plain.error));
-    assert.equal(String((await c.query(`SELECT owner_id FROM tasks WHERE id = $1`, [nudged.id])).rows[0].owner_id), String(viewer.id));
+    assert.equal(String((await c.query(`SELECT owner_id FROM tasks WHERE id = $1`, [mineAgain.id])).rows[0].owner_id), String(viewer.id));
   });
 });
 

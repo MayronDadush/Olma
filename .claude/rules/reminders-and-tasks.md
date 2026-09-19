@@ -305,21 +305,37 @@ title means this file. Grep the title, not the filename.
   single. Somebody on neither side gets `not_found`, never `forbidden`. Three
   things follow. **"Delete" on a task others are on is LEAVING**
   (`shares.leaveTask`): a participant's own share is revoked; the one who
-  opened it hands the task — items included — to whoever accepted first,
-  their pending reminders cancelled rather than re-aimed at the heir; only the
+  opened it hands the task — items included — to whoever accepted first, taking
+  only THEIR OWN pending reminders with them; only the
   last person left can archive it (`archiveTask` refuses with
   `reason: 'shared'`). **A task of mine dropped onto a list somebody shared
   with me changes hands** (`shares.adoptIntoList`): an item is a line on the
   list-owner's list, and one owned by somebody else would be the one line they
-  could not tick. It refuses `has_reminder` for the same reason the leaver's
-  reminders are cancelled — a reminder rides the task's owner (until each
-  participant has their own, the next change), so moving the task would move
-  who Olma nudges. **The GUEST LIST is everybody's too**: any participant
-  offers a share or ends one (`offerShare` takes an `inviterId` and checks
+  could not tick. A pending reminder no longer refuses the move — it is
+  stamped with its person before the row changes hands. **The GUEST LIST is
+  everybody's too**: any participant offers a share or ends one
+  (`offerShare` takes an `inviterId` and checks
   `grants.requireFeatureBetween` between THAT person and the invitee —
   asking the task's owner for a connection they may not have is the wrong
   question). The row still carries the task owner as `owner_id`, because that
   is whom writes are made as; `requested_by` is who actually invited, and
-  `connection_id` names the inviter's connection. **What stays one person's**:
-  the reminder — the page locks that one row on a task you did not open, and
-  nothing else.
+  `connection_id` names the inviter's connection. Nothing on a shared task is
+  one person's alone any more.
+
+- **A reminder belongs to the PERSON, not to the task** (migration 073,
+  `task_reminders.user_id`, 2026-09-19). On a shared task each participant
+  sets their own hour and neither switch touches the other. The column is
+  NULLABLE on purpose — rows written before it mean "the task's owner", which
+  is the answer every reader assumed until then — so **every query that asks
+  whose a reminder is asks `COALESCE(r.user_id, t.owner_id)`**, never
+  `t.owner_id`, and that is the one-line review for any new reader
+  (`reminders.RECIPIENT`). `reminders.setReminder` accepts a task its caller
+  OWNS or is SHARED on, takes the hour in the SETTER's zone, and supersedes
+  only that person's auto row; `dueForSending` returns the recipient as
+  `user_id` and `sweeps` enqueues and re-arms against it.
+  **Coming off a shared task takes your reminders with you and nobody
+  else's** (`shares.cancelTheirReminders`, through `reminders.cancelReminder`
+  so queued rungs are withdrawn too), and when SOMEBODY ELSE took you off you
+  are told — one `share_reminder_dropped` row, sent only when a reminder
+  actually went down, never when you left of your own accord (owner's
+  decision: "מתבטלת ואומרים לו").

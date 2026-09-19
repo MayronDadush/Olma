@@ -169,13 +169,31 @@ function localDayKey(value, tz) {
   return `${p.y}-${pad(p.m)}-${pad(p.d)}`;
 }
 
-async function setReminder(client, ownerId, taskId, remindAt, repeatRule, { nudge = false } = {}) {
+// Who a reminder reaches. A reminder is one PERSON's — on a shared task each
+// participant has their own (migration 073, `task_reminders.user_id`). Rows
+// written before that column carry NULL, and for them the recipient is the
+// task's owner, which is what every reader assumed until then. Every query
+// here that asks "whose" asks it this way, with `r` the reminder and `t` the
+// task, so a row the old code inserts during a deploy still routes right.
+const RECIPIENT = 'COALESCE(r.user_id, t.owner_id)';
+
+// A task the person may set a reminder on: their own, or one shared with them
+// (the task itself or the list it is an item of). Same shape as
+// shares.shareCovering, inlined because shares.js requires tasks.js which
+// requires this file.
+const TASK_THEY_ARE_ON = `(t.owner_id = $2 OR EXISTS (
+  SELECT 1 FROM shares s WHERE s.viewer_id = $2 AND s.status = 'active'
+    AND (s.task_id = t.id OR s.task_id = t.parent_id)))`;
+
+async function setReminder(client, userId, taskId, remindAt, repeatRule, { nudge = false } = {}) {
   if (!remindAt) return err('invalid', 'remind_at required');
   if (!hasOffset(remindAt)) return badTime('remind_at', remindAt);
+  // The zone is the PERSON's, not the task owner's: "every month on the 16th"
+  // is a promise in the clock of whoever asked for it.
   const { rows } = await client.query(
-    `SELECT t.id, t.status, u.timezone FROM tasks t JOIN users u ON u.id = t.owner_id
-      WHERE t.id = $1 AND t.owner_id = $2 AND t.archived_at IS NULL`,
-    [taskId, ownerId]
+    `SELECT t.id, t.status, u.timezone FROM tasks t JOIN users u ON u.id = $2
+      WHERE t.id = $1 AND t.archived_at IS NULL AND ${TASK_THEY_ARE_ON}`,
+    [taskId, userId]
   );
   if (!rows[0]) return err('not_found', 'task not found');
   if (rows[0].status !== 'open') return err('invalid', 'cannot set a reminder on a completed task');
@@ -201,23 +219,27 @@ async function setReminder(client, ownerId, taskId, remindAt, repeatRule, { nudg
   // escalation ladder a delivered row keeps a null `sent_at` for up to a day,
   // and a reminder that already reached her is not a plan to revise.
   const newDay = localDayKey(remindAt, tz);
+  // Only THEIR auto row: the one Olma inferred is the owner's, and a
+  // participant asking for their own hour withdraws nothing of the owner's.
   const superseded = await client.query(
-    `UPDATE task_reminders SET cancelled_at = now()
-      WHERE task_id = $1 AND auto AND attempts = 0 AND cancelled_at IS NULL
-        AND to_char(remind_at AT TIME ZONE $2, 'YYYY-MM-DD') = $3
-      RETURNING id`,
-    [taskId, tz, newDay]
+    `UPDATE task_reminders r SET cancelled_at = now()
+       FROM tasks t
+      WHERE r.task_id = $1 AND t.id = r.task_id AND ${RECIPIENT} = $4
+        AND r.auto AND r.attempts = 0 AND r.cancelled_at IS NULL
+        AND to_char(r.remind_at AT TIME ZONE $2, 'YYYY-MM-DD') = $3
+      RETURNING r.id`,
+    [taskId, tz, newDay, userId]
   );
   // `nudge` is the one thing on this row nobody can infer later: "תזכירי לי עד
   // שאעשה את זה" and "תזכירי לי ב-9" produce the same row otherwise, and the
   // ladder default (RUNGS) says one message for both. It is stamped only when
   // they ASKED — a model that passes it by reflex is the drum this replaced.
   const ins = await client.query(
-    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, auto, nudge)
-     VALUES ($1, $2, $3, false, $4) RETURNING *`,
-    [taskId, remindAt, rule, nudge === true]
+    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, auto, nudge, user_id)
+     VALUES ($1, $2, $3, false, $4, $5) RETURNING *`,
+    [taskId, remindAt, rule, nudge === true, userId]
   );
-  await audit.record(client, ownerId, 'reminder.created', {
+  await audit.record(client, userId, 'reminder.created', {
     taskId, reminderId: ins.rows[0].id,
     ...(nudge === true ? { nudge: true } : {}),
     ...(superseded.rowCount ? { supersededAuto: superseded.rows.map((r) => Number(r.id)) } : {}),
@@ -238,30 +260,36 @@ async function setReminder(client, ownerId, taskId, remindAt, repeatRule, { nudg
 // withdrawn) and every queued FOLLOW-UP rung of a sibling is withdrawn as
 // 'superseded'. A sibling's rung 1 is never touched: that is a moment they
 // chose, and it may still be sitting in the outbox held for the night.
-async function retireSiblingLadders(client, ownerId, taskId, reminderId, now = new Date()) {
+// Siblings are THIS person's other reminders on the task: on a shared task
+// somebody else's ladder is their own arrangement and is not answered by
+// what this one said.
+async function retireSiblingLadders(client, userId, taskId, reminderId, now = new Date()) {
   const { rows: retired } = await client.query(
-    `UPDATE task_reminders SET sent_at = $3
-      WHERE task_id = $1 AND id <> $2 AND sent_at IS NULL AND cancelled_at IS NULL
-        AND repeat_rule IS NULL AND attempts >= 1
-      RETURNING id`, [taskId, reminderId, now]);
+    `UPDATE task_reminders r SET sent_at = $3
+       FROM tasks t
+      WHERE r.task_id = $1 AND t.id = r.task_id AND ${RECIPIENT} = $4
+        AND r.id <> $2 AND r.sent_at IS NULL AND r.cancelled_at IS NULL
+        AND r.repeat_rule IS NULL AND r.attempts >= 1
+      RETURNING r.id`, [taskId, reminderId, now, userId]);
   // Every sibling's queued follow-ups, not only those retired just now — a
   // ladder that already reached its last rung is retired on the row while its
   // final message may still be held in the outbox (retireForMovedTask has the
   // same sentence, from Vered's r164).
   const { rows: siblings } = await client.query(
-    `SELECT id FROM task_reminders WHERE task_id = $1 AND id <> $2 AND repeat_rule IS NULL`,
-    [taskId, reminderId]);
+    `SELECT r.id FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+      WHERE r.task_id = $1 AND r.id <> $2 AND r.repeat_rule IS NULL AND ${RECIPIENT} = $3`,
+    [taskId, reminderId, userId]);
   let withdrawn = [];
   if (siblings.length) {
     ({ rows: withdrawn } = await client.query(
       `UPDATE outbox SET sent_at = now(), hold_reason = 'superseded'
         WHERE user_id = $1 AND kind = 'reminder' AND sent_at IS NULL
           AND idempotency_key LIKE ANY($2::text[])
-        RETURNING id`, [ownerId, siblings.map((r) => `reminder:${r.id}:%`)]));
+        RETURNING id`, [userId, siblings.map((r) => `reminder:${r.id}:%`)]));
   }
   const out = { retired: retired.map((r) => Number(r.id)), withdrawn: withdrawn.map((r) => Number(r.id)) };
   if (out.retired.length || out.withdrawn.length) {
-    await audit.record(client, ownerId, 'reminder.ladder_superseded', {
+    await audit.record(client, userId, 'reminder.ladder_superseded', {
       taskId: Number(taskId), by: Number(reminderId), ...out,
     });
   }
@@ -280,19 +308,22 @@ async function retireSiblingLadders(client, ownerId, taskId, reminderId, now = n
 async function attachAutoReminder(client, ownerId, task, timezone, now = new Date()) {
   const at = autoReminderAt(task.due_at, timezone, now);
   if (!at) return null;
-  // Never a second reminder on a task that already has a live one, whoever set
-  // it: a person who asked for their own has said what they want, and a repeat
-  // of this call (a retried tool, a re-run sweep) must not stack.
+  // Never a second reminder on a task that already has a live one OF THEIRS:
+  // a person who asked for their own has said what they want, and a repeat
+  // of this call (a retried tool, a re-run sweep) must not stack. Somebody
+  // else's reminder on a shared task says nothing about what this person
+  // wants to hear.
   const { rows: existing } = await client.query(
-    `SELECT 1 FROM task_reminders
-      WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL LIMIT 1`,
-    [task.id]
+    `SELECT 1 FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+      WHERE r.task_id = $1 AND ${RECIPIENT} = $2
+        AND r.sent_at IS NULL AND r.cancelled_at IS NULL LIMIT 1`,
+    [task.id, ownerId]
   );
   if (existing.length) return null;
   const { rows } = await client.query(
-    `INSERT INTO task_reminders (task_id, remind_at, auto)
-     VALUES ($1, $2, true) RETURNING *`,
-    [task.id, at]
+    `INSERT INTO task_reminders (task_id, remind_at, auto, user_id)
+     VALUES ($1, $2, true, $3) RETURNING *`,
+    [task.id, at, ownerId]
   );
   await audit.record(client, ownerId, 'reminder.auto_created', {
     taskId: Number(task.id), reminderId: Number(rows[0].id), remindAt: at,
@@ -311,15 +342,15 @@ async function attachAutoReminder(client, ownerId, task, timezone, now = new Dat
 // So the result carries the other half. `taskStillOpen` is not a suggestion to
 // delete anything — it is the fact that this person now has a live task with
 // nothing left to raise it, which is the one moment worth one short question.
-async function cancelReminder(client, ownerId, reminderId) {
+async function cancelReminder(client, userId, reminderId) {
   const { rows } = await client.query(
     `UPDATE task_reminders r SET cancelled_at = now()
      FROM tasks t
-     WHERE r.id = $1 AND r.task_id = t.id AND t.owner_id = $2
+     WHERE r.id = $1 AND r.task_id = t.id AND ${RECIPIENT} = $2
        AND r.sent_at IS NULL AND r.cancelled_at IS NULL
      RETURNING r.id AS reminder_id, t.id AS task_id, t.title,
                t.status, t.archived_at`,
-    [reminderId, ownerId]
+    [reminderId, userId]
   );
   if (!rows[0]) return err('not_found', 'pending reminder not found');
   const t = rows[0];
@@ -336,18 +367,20 @@ async function cancelReminder(client, ownerId, reminderId) {
       WHERE user_id = $1 AND kind = 'reminder' AND sent_at IS NULL
         AND (idempotency_key = $2 OR idempotency_key LIKE $3)
       RETURNING id`,
-    [ownerId, `reminder:${reminderId}`, `reminder:${reminderId}:%`]
+    [userId, `reminder:${reminderId}`, `reminder:${reminderId}:%`]
   );
-  await audit.record(client, ownerId, 'reminder.cancelled', {
+  await audit.record(client, userId, 'reminder.cancelled', {
     reminderId,
     ...(withdrawn.length ? { outboxWithdrawn: withdrawn.map((r) => Number(r.id)) } : {}),
   });
-  // Another pending reminder on the same task means nothing was orphaned —
-  // they trimmed one of several and the task is still going to be raised.
+  // Another pending reminder OF THEIRS on the same task means nothing was
+  // orphaned — they trimmed one of several and the task is still going to be
+  // raised with them.
   const { rows: left } = await client.query(
-    `SELECT count(*)::int AS n FROM task_reminders
-      WHERE task_id = $1 AND sent_at IS NULL AND cancelled_at IS NULL`,
-    [t.task_id]
+    `SELECT count(*)::int AS n FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+      WHERE r.task_id = $1 AND ${RECIPIENT} = $2
+        AND r.sent_at IS NULL AND r.cancelled_at IS NULL`,
+    [t.task_id, userId]
   );
   const remaining = left[0].n;
   const orphaned = t.status === 'open' && !t.archived_at && remaining === 0;
@@ -395,7 +428,7 @@ async function withLocalHour(client, ownerId, rows) {
   });
 }
 
-async function listReminders(client, ownerId, taskId) {
+async function listReminders(client, userId, taskId) {
   // `t.title` is joined on and it is not decoration: without it this answered
   // "reminder 41 at 2026-09-11T16:00:00Z" and nothing else, so anything that
   // wanted to SAY what a reminder was about had to go and fetch the tasks and
@@ -405,23 +438,23 @@ async function listReminders(client, ownerId, taskId) {
   // wrong one gets picked.
   const { rows } = await client.query(
     `SELECT r.*, t.title FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-     WHERE t.owner_id = $1 AND ($2::bigint IS NULL OR r.task_id = $2)
+     WHERE ${RECIPIENT} = $1 AND ($2::bigint IS NULL OR r.task_id = $2)
        AND r.cancelled_at IS NULL AND r.sent_at IS NULL AND r.attempts = 0
      ORDER BY r.remind_at`,
-    [ownerId, taskId || null]
+    [userId, taskId || null]
   );
   const { rows: chasing } = await client.query(
     `SELECT r.id, r.task_id, r.remind_at, r.attempts, t.title
        FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-      WHERE t.owner_id = $1 AND ($2::bigint IS NULL OR r.task_id = $2)
+      WHERE ${RECIPIENT} = $1 AND ($2::bigint IS NULL OR r.task_id = $2)
         AND r.cancelled_at IS NULL AND r.sent_at IS NULL AND r.attempts > 0
         AND r.repeat_rule IS NULL
         AND t.status = 'open' AND t.archived_at IS NULL
       ORDER BY r.remind_at`,
-    [ownerId, taskId || null]
+    [userId, taskId || null]
   );
   return ok({
-    reminders: rows.length ? await withLocalHour(client, ownerId, rows) : rows,
+    reminders: rows.length ? await withLocalHour(client, userId, rows) : rows,
     ...(chasing.length ? {
       chasing: chasing.map((r) => ({
         id: Number(r.id),
@@ -510,7 +543,9 @@ async function dueForSending(client, now, opts = {}) {
   const nudgingRungs = cap(opts.nudgingRungs, RUNGS.nudging);
   const { rows } = await client.query(
     `SELECT r.id AS reminder_id, r.task_id, r.remind_at, r.repeat_rule, r.attempts, r.auto,
-            t.owner_id, t.title, t.due_at, u.timezone,
+            -- who it reaches — the person who set it, and only for rows older
+            -- than migration 073 the task's owner
+            ${RECIPIENT} AS user_id, t.title, t.due_at, u.timezone,
             -- How many rungs THIS reminder gets (rule 5 above), never more than
             -- the flag allows. Returned so the sweep can say "last one" off the
             -- same number the WHERE clause stopped on: a cap the caller derives
@@ -522,11 +557,11 @@ async function dueForSending(client, now, opts = {}) {
             (prev.hold_reason = 'expired' AND prev.attempts > 0 AND prev.last_error IS NOT NULL) AS prev_failed
      FROM task_reminders r
      JOIN tasks t ON t.id = r.task_id
-     JOIN users u ON u.id = t.owner_id
+     JOIN users u ON u.id = ${RECIPIENT}
      -- The outbox row of the rung before this one (none for rung 1).
      LEFT JOIN LATERAL (
        SELECT o.sent_at, o.hold_reason, o.attempts, o.last_error FROM outbox o
-        WHERE r.attempts >= 1 AND o.user_id = t.owner_id
+        WHERE r.attempts >= 1 AND o.user_id = ${RECIPIENT}
           AND o.idempotency_key = CASE WHEN r.attempts = 1
                 THEN 'reminder:' || r.id
                 ELSE 'reminder:' || r.id || ':' || r.attempts END
@@ -626,6 +661,9 @@ async function retireForMovedTask(client, ownerId, task, { timezone, now = new D
   // its final message still sits in the outbox, held for the night — Vered's
   // r164 (2026-09-07): the rung nobody could retire because the reminder was
   // already over, due at 08:00 about a task she had moved to 09:00.
+  // Everybody's: a moved date answers every rung chasing the old one, whoever
+  // it was reaching. A reminder id names one row, so the keys alone are the
+  // whole address and no recipient filter is needed.
   const { rows: all } = await client.query(
     `SELECT id FROM task_reminders WHERE task_id = $1 AND repeat_rule IS NULL`, [task.id]);
   let withdrawn = [];
@@ -633,9 +671,9 @@ async function retireForMovedTask(client, ownerId, task, { timezone, now = new D
     const keys = all.flatMap((r) => [`reminder:${r.id}`, `reminder:${r.id}:%`]);
     ({ rows: withdrawn } = await client.query(
       `UPDATE outbox SET sent_at = now(), hold_reason = 'moved'
-        WHERE user_id = $1 AND kind = 'reminder' AND sent_at IS NULL
-          AND idempotency_key LIKE ANY($2::text[])
-        RETURNING id`, [ownerId, keys]));
+        WHERE kind = 'reminder' AND sent_at IS NULL
+          AND idempotency_key LIKE ANY($1::text[])
+        RETURNING id`, [keys]));
   }
   const { rows: stale } = await client.query(
     `UPDATE task_reminders SET cancelled_at = $2
@@ -686,7 +724,7 @@ async function retireForMovedTask(client, ownerId, task, { timezone, now = new D
 //     (cancel_reminder's own taskStillOpen hint, and the pause doctrine).
 const STOP_WINDOW_HOURS = 24;
 
-async function stopRecentLadders(client, ownerId, { now = new Date(), windowHours = STOP_WINDOW_HOURS } = {}) {
+async function stopRecentLadders(client, userId, { now = new Date(), windowHours = STOP_WINDOW_HOURS } = {}) {
   // Reminders of theirs that have actually REACHED them inside the window:
   // a delivered outbox row (`sent_at` set, no hold_reason) whose key names the
   // reminder. A rung the gate held reached nobody and is not what "stop" is
@@ -695,13 +733,13 @@ async function stopRecentLadders(client, ownerId, { now = new Date(), windowHour
     `SELECT DISTINCT r.id, r.sent_at IS NULL AS climbing
        FROM task_reminders r
        JOIN tasks t ON t.id = r.task_id
-       JOIN outbox o ON o.user_id = t.owner_id AND o.kind = 'reminder'
+       JOIN outbox o ON o.user_id = $1 AND o.kind = 'reminder'
         AND substring(o.idempotency_key from '^reminder:([0-9]+)')::bigint = r.id
-      WHERE t.owner_id = $1 AND r.repeat_rule IS NULL AND r.cancelled_at IS NULL
+      WHERE ${RECIPIENT} = $1 AND r.repeat_rule IS NULL AND r.cancelled_at IS NULL
         AND r.attempts >= 1
         AND o.sent_at IS NOT NULL AND o.hold_reason IS NULL
         AND o.sent_at > $2::timestamptz - ($3::double precision * interval '1 hour')`,
-    [ownerId, now, windowHours]
+    [userId, now, windowHours]
   );
   if (!reached.length) return { stopped: [], withdrawn: 0 };
   const ids = reached.map((r) => Number(r.id));
@@ -721,10 +759,10 @@ async function stopRecentLadders(client, ownerId, { now = new Date(), windowHour
     `UPDATE outbox SET sent_at = now(), hold_reason = 'stopped'
       WHERE user_id = $1 AND kind = 'reminder' AND sent_at IS NULL
         AND idempotency_key LIKE ANY($2::text[])
-      RETURNING id`, [ownerId, keys]);
+      RETURNING id`, [userId, keys]);
   const stoppedIds = stopped.map((r) => Number(r.id));
   if (stoppedIds.length || withdrawn.length) {
-    await audit.record(client, ownerId, 'reminder.ladder_stopped', {
+    await audit.record(client, userId, 'reminder.ladder_stopped', {
       stopped: stoppedIds, outboxWithdrawn: withdrawn.map((r) => Number(r.id)),
     });
   }

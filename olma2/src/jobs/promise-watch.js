@@ -72,7 +72,7 @@ async function sweepPromiseWatch(client, deps = {}) {
     const { rows: reminders } = await client.query(
       `SELECT r.id, r.remind_at, r.created_at, r.cancelled_at
          FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-        WHERE t.owner_id = $1 AND r.created_at >= $2
+        WHERE COALESCE(r.user_id, t.owner_id) = $1 AND r.created_at >= $2
         ORDER BY r.created_at`,
       [u.id, since]
     );

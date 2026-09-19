@@ -109,7 +109,8 @@ async function pauseUser(client, userId, { note = null } = {}) {
   // keep their repeat_rule, which is what resume reads to put them back.
   const pending = (await client.query(
     `SELECT r.id FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-      WHERE t.owner_id = $1 AND r.sent_at IS NULL AND r.cancelled_at IS NULL`, [userId])).rows;
+      WHERE COALESCE(r.user_id, t.owner_id) = $1
+        AND r.sent_at IS NULL AND r.cancelled_at IS NULL`, [userId])).rows;
   for (const r of pending) await reminders.cancelReminder(client, userId, r.id);
 
   // Queued messages are cancelled the way the dashboard cancels one: an UPDATE
@@ -149,8 +150,8 @@ async function resumeUser(client, userId, { now = new Date(), reason = null } = 
   const frozen = (await client.query(
     `SELECT DISTINCT ON (r.task_id) r.task_id, r.remind_at, r.repeat_rule, u.timezone
        FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-       JOIN users u ON u.id = t.owner_id
-      WHERE t.owner_id = $1 AND r.cancelled_at >= $2
+       JOIN users u ON u.id = $1
+      WHERE COALESCE(r.user_id, t.owner_id) = $1 AND r.cancelled_at >= $2
         AND r.repeat_rule IS NOT NULL
         AND t.status = 'open' AND t.archived_at IS NULL
       ORDER BY r.task_id, r.cancelled_at DESC`, [userId, pausedAt])).rows;

@@ -103,7 +103,7 @@ async function evidenceFor(client, u, deps, now, stage = STAGES[0]) {
   const { rows: reminders } = await client.query(
     `SELECT r.id, r.task_id, r.remind_at, r.auto, r.cancelled_at, r.attempts
        FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-      WHERE t.owner_id = $1 AND r.created_at BETWEEN $2 AND $3 ORDER BY r.id`,
+      WHERE COALESCE(r.user_id, t.owner_id) = $1 AND r.created_at BETWEEN $2 AND $3 ORDER BY r.id`,
     [u.id, new Date(startMs), new Date(endMs)]
   );
   // What Olma DECIDED to say, and when it actually landed. Not the window:

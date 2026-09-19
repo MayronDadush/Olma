@@ -5807,6 +5807,28 @@ a refused drop of a task with a reminder says "משימה עם תזכורת נש
 התזכורת הייתה עוברת עם המשימה"; the "יציאה מהמשימה המשותפת" button now shows
 for the opener as well, in place of delete, whenever anybody else is on it.
 
+**Addendum, the same day: the reminder stopped riding the owner, and both
+of those sentences were deleted.** Migration 073 gives `task_reminders` a
+`user_id`, and with it the two refusals above had no argument left — a task
+carrying a reminder now changes hands with the reminder stamped to the
+person who asked for it, and a leaver takes their own rungs and leaves
+everybody else's standing. The column is nullable and backfilled rather than
+`NOT NULL`, which is the whole reason the deploy is safe in either order:
+code from before the migration keeps inserting rows without it, and for such
+a row "whose" resolves to `tasks.owner_id` — precisely the answer it always
+had. That made the change a sweep of about fifteen readers replacing one
+expression, which is a worse-looking diff and a far better migration than
+teaching each of them a new column it might not find.
+
+The one thing the owner added on top: a reminder that disappears without a
+word is the same broken promise as one that never fires. So when somebody
+ELSE takes you off a shared task and a reminder of yours goes down with it,
+you hear about it once (`share_reminder_dropped`) — and only then, never
+when you left the task yourself, and never when there was no reminder to
+lose. The removal itself is still announced by nothing, which is deliberate:
+the news is the promise that was withdrawn, not the list you can see for
+yourself.
+
 
 ### The quiet day nobody was ever going to ask for (2026-09-11)
 

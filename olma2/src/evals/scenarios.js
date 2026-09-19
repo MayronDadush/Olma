@@ -268,13 +268,13 @@ const SCENARIOS = [
       { name: 'a reminder is armed for 09:30, the hour he named',
         pass: (await count(client,
           `SELECT count(*)::int AS n FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-            WHERE t.owner_id = $1
+            WHERE COALESCE(r.user_id, t.owner_id) = $1
               AND to_char(r.remind_at AT TIME ZONE 'Asia/Jerusalem', 'HH24:MI') = '09:30'`,
           [ctx.userId])) >= 1 },
       { name: 'nothing armed an hour early, at 08:30',
         pass: (await count(client,
           `SELECT count(*)::int AS n FROM task_reminders r JOIN tasks t ON t.id = r.task_id
-            WHERE t.owner_id = $1
+            WHERE COALESCE(r.user_id, t.owner_id) = $1
               AND to_char(r.remind_at AT TIME ZONE 'Asia/Jerusalem', 'HH24:MI') = '08:30'`,
           [ctx.userId])) === 0 },
     ],
