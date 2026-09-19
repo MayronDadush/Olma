@@ -160,6 +160,25 @@ test('rotating replaces the token in all three places, and proves it', async () 
   assert.equal((await usersDomain.resolveByToken(db.pool, now)).data.user.id, u.id);
 });
 
+// Rendered bare, a rotation handed four real people the turn_start doctrine
+// while the flag had them on turn context (2026-09-14).
+test('a rotation keeps the doctrine variant the person is on', async () => {
+  const flagsDomain = require('../src/domain/flags');
+  const phone = '+972700000109';
+  const { u, w } = await rotatable('u-rot-ctx', phone, 'olma_tok_' + 'c'.repeat(32));
+  await flagsDomain.setFlag(db.pool, 'turn_context_phones', phone);
+  try {
+    const r = await rotateIdentityToken(db.pool, { userId: u.id, apply: true, run: recorder().run });
+    assert.equal(r.ok, true, r.ok ? '' : r.error && r.error.message);
+    const { rows } = await db.pool.query('SELECT identity_token FROM users WHERE id = $1', [u.id]);
+    const onDisk = fs.readFileSync(path.join(w, 'AGENTS.md'), 'utf8');
+    assert.equal(onDisk, renderAgentsMd(rows[0].identity_token, { turnContext: true }));
+    assert.notEqual(onDisk, renderAgentsMd(rows[0].identity_token, { turnContext: false }));
+  } finally {
+    await flagsDomain.setFlag(db.pool, 'turn_context_phones', '');
+  }
+});
+
 test('the audit row carries fingerprints and never the token itself', async () => {
   const old = 'olma_tok_' + 'b'.repeat(32);
   const { u } = await rotatable('u-rot-audit', '+972700000102', old);
