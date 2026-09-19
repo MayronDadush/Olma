@@ -115,10 +115,21 @@ const GOOGLE_STOP = {
   mail: (client, userId) => mail.disconnect(client, userId),
 };
 
+// Who a task write is made AS. A task somebody shared with this person is
+// written under ITS OWNER's id — tasks.js is owner-scoped and stays so; the
+// sharing layer is what answers whether this person may stand in for them.
+// Falls back to the person themselves, so a task that is neither theirs nor
+// shared with them is refused by the domain function exactly as before.
+async function asOwner(client, userId, taskId) {
+  const acting = await shares.actingOwner(client, userId, taskId);
+  return acting ? acting.ownerId : userId;
+}
+
 const ACTIONS = {
   // ---- tasks ---------------------------------------------------------------
   async addTask(client, userId, p) {
-    return tasks.addTask(client, userId, {
+    const ownerId = p.parentId ? await asOwner(client, userId, p.parentId) : userId;
+    return tasks.addTask(client, ownerId, {
       title: p.title, category: p.category, dueAt: p.dueAt, endsAt: p.endsAt, parentId: p.parentId,
       // Written here, from a browser, by the person themselves — as distinct
       // from 'chat' (they said it) and from an import. The distinction is what
@@ -128,7 +139,8 @@ const ACTIONS = {
   },
 
   async editTask(client, userId, p) {
-    const origin = await taskOrigin(client, userId, p.taskId);
+    const ownerId = await asOwner(client, userId, p.taskId);
+    const origin = await taskOrigin(client, ownerId, p.taskId);
     if (!origin) return err('not_found', 'task not found');
     // endsAt travels with dueAt — the sheet sets an end time on the same row as
     // the start, and dropping it here meant a shift said as 15:00-19:00 was
@@ -138,19 +150,33 @@ const ACTIONS = {
     if (refused) return refused;
     const patch = {};
     for (const f of fields) patch[f] = p[f];
-    return tasks.editTask(client, userId, p.taskId, patch);
+    return tasks.editTask(client, ownerId, p.taskId, patch);
   },
 
   async completeTask(client, userId, p) {
-    return tasks.completeTask(client, userId, p.taskId);
+    return tasks.completeTask(client, await asOwner(client, userId, p.taskId), p.taskId);
   },
 
   async snoozeTask(client, userId, p) {
-    return tasks.snoozeTask(client, userId, p.taskId, p.dueAt);
+    return tasks.snoozeTask(client, await asOwner(client, userId, p.taskId), p.taskId, p.dueAt);
   },
 
+  // "Delete" on the page. A task other people are on is not one person's to
+  // put away — for them the same button is `leaveTask`, and only the last one
+  // left can archive it. An ITEM on a shared list is removed by anybody on
+  // the list, which is what othersOn returns zero for.
   async archiveTask(client, userId, p) {
-    return tasks.archiveTask(client, userId, p.taskId);
+    const ownerId = await asOwner(client, userId, p.taskId);
+    if (await shares.othersOn(client, p.taskId) > 0) {
+      return err('forbidden', 'other people are on this task — leave it instead', { reason: 'shared' });
+    }
+    return tasks.archiveTask(client, ownerId, p.taskId);
+  },
+
+  // Taking myself off a task others are on. The task stays with them; when
+  // the one who opened it leaves, it is handed to whoever accepted first.
+  async leaveTask(client, userId, p) {
+    return shares.leaveTask(client, userId, p.taskId);
   },
 
   // The other half of the archive. The page calls the archiving "delete", so
@@ -158,7 +184,7 @@ const ACTIONS = {
   // archive screen offers it, which made its absence from here a button that
   // moved a row on screen and nowhere else.
   async restoreTask(client, userId, p) {
-    return tasks.unarchiveTask(client, userId, p.taskId);
+    return tasks.unarchiveTask(client, await asOwner(client, userId, p.taskId), p.taskId);
   },
 
   // ---- this task, on their calendar ---------------------------------------
@@ -229,7 +255,7 @@ const ACTIONS = {
 
   // ---- sharing -------------------------------------------------------------
   async shareTask(client, userId, p) {
-    return shares.offerShare(client, userId, p.taskId, p.viewerId, p.role || 'viewer');
+    return shares.offerShare(client, userId, p.taskId, p.viewerId);
   },
 
   // Both "stop sharing this with them" and "take me off this" are the same
@@ -260,16 +286,17 @@ const ACTIONS = {
   // A task dropped onto another becomes an item on its list. An imported task
   // on either side is refused here rather than in tasks.nestTask, because the
   // source map lives next door and the rule is the one editTask holds: a
-  // change the next sync would erase is not a change.
+  // change the next sync would erase is not a change. Dropped onto a list
+  // somebody shared with them, the task changes hands (shares.adoptIntoList).
   async nestTask(client, userId, p) {
     for (const id of [p.taskId, p.parentId]) {
-      const origin = await taskOrigin(client, userId, id);
+      const origin = await taskOrigin(client, await asOwner(client, userId, id), id);
       if (origin && Object.hasOwn(SOURCE_CAPS, origin.source)) {
         return err('forbidden', `a ${origin.source} task cannot be nested here`,
           { reason: 'imported', source: origin.source });
       }
     }
-    const res = await tasks.nestTask(client, userId, p.taskId, p.parentId);
+    const res = await shares.adoptIntoList(client, userId, p.taskId, p.parentId);
     if (!res.ok) return res;
     // The notice that explains this is shown once, ever, on whichever device
     // they did it from — so the stamp is on the person, and COALESCE keeps the
@@ -281,7 +308,7 @@ const ACTIONS = {
 
   // The way back, from the first-time notice or from the toast.
   async unnestTask(client, userId, p) {
-    return tasks.unnestTask(client, userId, p.taskId);
+    return tasks.unnestTask(client, await asOwner(client, userId, p.taskId), p.taskId);
   },
 
   // ---- friends -------------------------------------------------------------

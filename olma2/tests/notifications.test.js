@@ -168,12 +168,12 @@ test('two proposals are two options; a yes names one; confirming supersedes the 
 test('share offer and response fan out to the right sides', async () => {
   const added = await call(miron, 'add_task', { title: 'groceries run' });
   const taskId = Number(/"id":"?(\d+)/.exec(added)[1]);
-  await call(miron, 'share_task_with', { task_id: taskId, phone: kapish.phone, role: 'editor' });
+  await call(miron, 'share_task_with', { task_id: taskId, phone: kapish.phone });
 
   const offers = await outboxFor(kapish.id, 'share_offer');
   assert.equal(offers.length, 1);
   assert.equal(offers[0].payload.taskTitle, 'groceries run');
-  assert.equal(offers[0].payload.role, 'editor');
+  assert.equal('role' in offers[0].payload, false, 'a role reached the model on an offer that has none');
   assert.equal(offers[0].urgency, 'normal'); // not worth waking anyone over
 
   await call(kapish, 'respond_to_share', { share_id: offers[0].payload.shareId, decision: 'accept' });

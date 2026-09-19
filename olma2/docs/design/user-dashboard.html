@@ -3214,7 +3214,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
         <button class="chip mini" aria-pressed="false" data-rep="month" data-i18n="rep.month"></button>
       </div>
     </div></div></div>
-    <div class="row no-icon">
+    <div class="row no-icon" id="sRemindRow">
       <div class="row-txt"><div class="row-title" data-i18n="sheet.remind"></div><div class="row-sub" id="remindSub"></div></div>
       <button class="switch" role="switch" aria-checked="false" id="sRemind" data-i18n-label="sheet.remind"></button>
     </div>
@@ -3669,7 +3669,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     setReminder:         "set_task_reminder",
     shareTask:           "share_task_with",
     unshareTask:         "revoke_share",
-    leaveTask:           "revoke_share",              /* leaving IS revoking your own view */
+    leaveTask:           "leave_task",                /* NO TOOL YET — dashboard only */
     setCategory:         "set_task_category",         /* NO TOOL YET — tasks.category */
     setServiceMode:      "start_calendar_connection", /* integrations.scope, per service */
     setFriendPermission: "grant_connection_feature",  /* revoke_connection_feature when off */
@@ -3705,7 +3705,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     archiveTask:"archiveTask", restoreTask:"restoreTask",
     setReminder:"setReminder", cancelReminder:"cancelReminder",
     setTaskReminder:"setTaskReminder", setTaskCalendar:"setTaskCalendar",
-    shareTask:"shareTask", revokeShare:"revokeShare", setTaskPin:"setTaskPin",
+    shareTask:"shareTask", revokeShare:"revokeShare", leaveTask:"leaveTask", setTaskPin:"setTaskPin",
     setTaskOrder:"setTaskOrder", nestTask:"nestTask", unnestTask:"unnestTask",
     grantFeature:"grantFeature", revokeFeature:"revokeFeature", revokeConnection:"revokeConnection",
     setTimezone:"setTimezone", setDefaultChannel:"setDefaultChannel",
@@ -4005,15 +4005,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       if(!sid) return LIVE ? API.reload() : true;
       return API.send("revokeShare", {shareId:sid});
     },
-    /* Leaving IS revoking your own view — the same row, revoked by the other
-       side of it. The share id is resolved by the CALLER, before the row is
-       taken off the list: this used to look the task up in `open` after the
-       handler had already spliced it out, find nothing, and send nothing at
-       all, so the task came back on the next load. */
-    leaveTask:       function(id, sid){
-      API.call("leaveTask", {task_id:id, viewer_id:0});
-      if(!sid) return LIVE ? API.reload() : true;
-      return API.send("revokeShare", {shareId:sid});
+    /* Taking myself off a task others are on. The SERVER decides what that
+       means for me — a participant's own share revoked, or the task handed
+       to whoever accepted first when the one who opened it leaves — so the
+       page sends the task and nothing else. (It used to send my share id,
+       which the one who opened the task never had.) */
+    leaveTask:       function(id){
+      API.call("leaveTask", {task_id:id});
+      return API.send("leaveTask", {taskId:id});
     },
     setCategory:     function(id, c){  API.call("setCategory", {task_id:id, category:c}); return API.send("editTask", {taskId:id, category:c || null}); },
     /* Connecting an account is an OAuth round trip, not a JSON write — it
@@ -4213,6 +4212,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "nestRefuse.shared":"משימה משותפת לא יכולה להיכנס לרשימה",
       "nestRefuse.imported":"משימה מיובאת לא יכולה להיכנס לרשימה",
       "nestRefuse.notMine":"אפשר להכניס לרשימה רק משימות שלך",
+      "nestRefuse.hasReminder":"משימה עם תזכורת נשארת אצלך — התזכורת הייתה עוברת עם המשימה",
 
       "sheet.when":"מתי","sheet.pickTime":"בחירת שעה","sheet.pickEnd":"עד","share.andMore":" ועוד {n}",
       "cat.h":"קטגוריה","cat.auto":"עולמה בחרה","cat.byTime":"לפי זמן","cat.byCat":"לפי קטגוריה",
@@ -4230,7 +4230,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.addItem":"הוספת פריט","sheet.itemRm":"מחיקת הפריט",
       "sheet.shared":"משותפת","share.with1":"משותפת עם {name}","share.withN":"משותפת עם {name} ועוד {n}",
       "share.ownerM":"פתח את המשימה","share.ownerF":"פתחה את המשימה","share.ownerMe":"פתחתי את המשימה","share.you":"אני",
-      "sheet.leave":"יציאה מהמשימה המשותפת","sheet.theirs":"המשימה של {name} — רק מי שפתח אותה יכול לשנות","sheet.leaveSub":"המשימה תיעלם מהרשימה שלך ותישאר אצל השאר. שום דבר לא נמחק.",
+      "sheet.leave":"יציאה מהמשימה המשותפת","sheet.theirs":"התזכורת כאן עדיין של {name}. תזכורת אישית לכל שותף — בקרוב","sheet.leaveSub":"המשימה תיעלם מהרשימה שלך ותישאר אצל השאר. שום דבר לא נמחק.",
       "toast.left":"יצאת מ„{name}” — היא נשארה אצל השאר",
 
       "cal.h":"הצצה ליומן",
@@ -4522,6 +4522,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "nestRefuse.shared":"A shared task can't go into a list",
       "nestRefuse.imported":"An imported task can't go into a list",
       "nestRefuse.notMine":"Only your own tasks can go into a list",
+      "nestRefuse.hasReminder":"A task with a reminder stays with you — the reminder would move with it",
 
       "sheet.when":"When","sheet.pickTime":"Pick a time","sheet.pickEnd":"until","share.andMore":" and {n} more",
       "cat.h":"Category","cat.auto":"Allma picked this","cat.byTime":"By time","cat.byCat":"By category",
@@ -4539,7 +4540,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sheet.addItem":"Add an item","sheet.itemRm":"Remove item",
       "sheet.shared":"Shared","share.with1":"Shared with {name}","share.withN":"Shared with {name} and {n} more",
       "share.ownerM":"started it","share.ownerF":"started it","share.ownerMe":"You started it","share.you":"You",
-      "sheet.leave":"Leave this shared task","sheet.theirs":"{name}'s task — only they can change it","sheet.leaveSub":"It leaves your list and stays on theirs. Nothing is deleted.",
+      "sheet.leave":"Leave this shared task","sheet.theirs":"The reminder here is still {name}'s. A reminder of your own on a shared task is coming","sheet.leaveSub":"It leaves your list and stays on theirs. Nothing is deleted.",
       "toast.left":"You left \u201c{name}\u201d \u2014 it stays with the others",
 
       "cal.h":"A look at your calendar",
@@ -6391,10 +6392,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   function nestRefusal(child, parent){
     if(!child || !parent || child === parent) return "self";
     if(child.src || parent.src) return "imported";
-    if(!isMine(child) || !isMine(parent)) return "notMine";
+    /* The task has to be MINE outright; the list may be anybody's I am on —
+       the item then goes to the list's owner (server: shares.adoptIntoList),
+       which is also why a task with a reminder pending stays put: the nudge
+       would move with it. */
+    if(!isMine(child)) return "notMine";
     if(child.d) return "hasDate";                          /* a date, or a date and an hour */
     if(child.items && child.items.length) return "isList"; /* a list does not go into a list */
     if(facesOf(child).length) return "shared";              /* it is on somebody else's list too */
+    if(!isMine(parent) && child.rem) return "hasReminder";
     return null;
   }
   function canNestInto(child, parent){ return !nestRefusal(child, parent); }
@@ -6942,20 +6948,22 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var why = sc ? t("sheet.noField", {name:sc.name}) : "";
     /* Every field WE have is checked against what the source can hold. A task
        written here has no source, so nothing is ever locked on it. */
-    /* A task somebody SHARED with me is theirs to change. The server refuses
-       every one of these from a viewer — it looks the task up by owner — so
-       the sheet used to accept a new title, flash "saved", and show the old
-       one back after a reload. Locked, it says whose task it is instead. */
+    /* A task somebody SHARED with me is as much mine to change as theirs:
+       every write on it goes through as the person who opened it (the server's
+       shares.actingOwner), so the title, the date, the items — all live. Until
+       2026-09-19 the whole sheet was locked here, because the server refused
+       every one of these from anybody but the owner. The one row still theirs
+       alone is the REMINDER: it rides the task's owner until each participant
+       has their own, so on a task I did not open it stays closed and says why.
+       Adding and removing people is decided inside the share fold, by
+       renderSheetShare — the row itself opens for everyone. */
     var theirs = !isMine(editing);
-    /* The two one-tap days sit OUTSIDE the date row, so locking that row left
-       them live: one tap dated a task that is not mine, and the server threw
-       the date away. */
-    $$(".whenvals [data-taskday]").forEach(function(b){ b.disabled = theirs; });
+    $$(".whenvals [data-taskday]").forEach(function(b){ b.disabled = false; });
     var owner = theirs ? friendById(editing.owner) : null;
     var whyTheirs = t("sheet.theirs", {name:owner ? nameOf(owner) : t("sheet.someone")});
-    $("#sTitle").readOnly = theirs;
-    lockRow($("#sDateRow"), theirs, whyTheirs);
-    lockRow($("#sCatRow"),    theirs || !canEdit(editing, "cat"),  theirs ? whyTheirs : why);
+    $("#sTitle").readOnly = false;
+    lockRow($("#sDateRow"), false);
+    lockRow($("#sCatRow"),    !canEdit(editing, "cat"),  why);
     /* Two separate reasons can close the repeat row, and both have to be
        decided HERE, in the last function that touches it — the earlier of two
        lockRow calls on one row is simply erased by the later one, which is
@@ -6965,12 +6973,14 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     var repNeedsRem = !editing.rem, repNoField = !canEdit(editing, "rep");
     lockRow($("#sRepeatRow"), theirs || repNeedsRem || repNoField,
             theirs ? whyTheirs : repNoField ? why : t("sheet.repeatNeedsRemind"));
-    lockRow($("#sListRow"),   theirs || !canEdit(editing, "items"), theirs ? whyTheirs : why);
-    lockRow($("#sShareRow"),  theirs || !canEdit(editing, "who"),  theirs ? whyTheirs : why);
-    lockRow($("#sTimeChip"),  theirs || !canEdit(editing, "time"), theirs ? whyTheirs : why);
-    lockRow($("#sEndChip"),   theirs || !canEdit(editing, "time"), theirs ? whyTheirs : why);
-    /* the reminder and the calendar copy are OURS, not theirs — an imported
-       task can still be reminded about, so these are never locked */
+    lockRow($("#sListRow"),   !canEdit(editing, "items"), why);
+    lockRow($("#sShareRow"),  !canEdit(editing, "who"),  why);
+    lockRow($("#sTimeChip"),  !canEdit(editing, "time"), why);
+    lockRow($("#sEndChip"),   !canEdit(editing, "time"), why);
+    /* the reminder and the calendar copy are OURS, not the source's — an
+       imported task can still be reminded about. The reminder row closes for
+       one reason only, the one above. */
+    lockRow($("#sRemindRow"), theirs, whyTheirs);
   }
   function syncSheetRows(){
     var dated = !!editing.d;
@@ -7091,9 +7101,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   }
   /* Items are rows of their own (tasks.parent_id), written through the same
      actions a task is: add with a parentId, tick is completeTask, un-tick is
-     restoreTask, remove is archiveTask. Only on a task of mine — on one
-     somebody shared with me every one of those would be refused. */
-  function itemWritable(){ return !!editing && isMine(editing); }
+     restoreTask, remove is archiveTask. On a task somebody shared with me
+     too: the server writes them as the person who opened the list. */
+  function itemWritable(){ return !!editing; }
   function addItem(){
     var el = $("#sAddItem"), v = el.value.trim();
     if(!v || !editing) return;
@@ -7176,8 +7186,13 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      opened, the only thing available is leaving it — which is exactly what the
      task_shares rows would allow, so the UI refuses what the server would
      refuse rather than drawing a button that comes back with an error. */
+  /* Everybody on a task manages its guest list — adding and removing people
+     is the last thing that was the opener's alone, and it stopped being that
+     on 2026-09-19 ("כולם שווים גם כאן"). Kept as a named function rather than
+     inlined `true`: this is a rule, and a rule that can change wants one
+     place to change it. */
   function canManageShare(){
-    return !editing || editing.owner === undefined || editing.owner === 0;
+    return true;
   }
   function renderSheetShare(){
     if(!editing) return;
@@ -7313,11 +7328,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      carries on with everyone else, which is what the toast says out loud */
   $("#sLeave").addEventListener("click", function(){
     var id = editing.id, name = L(editing.t) || t("sheet.untitled");
-    /* Read BEFORE anything moves. The row is about to leave `open`, and the
-       share id lives on it — looking it up afterwards found nothing, sent
-       nothing, and left the person on a task they had just been told they
-       were off. */
-    var mySid = editing.shareIds && MY_ID ? editing.shareIds[MY_ID] : null;
     var wrap = $('.taskwrap[data-id="' + id + '"]');
     closeSheets();
     if(wrap) wrap.classList.add("gone");
@@ -7332,7 +7342,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
                           done:{he:T.he["tasks.leftAt"], en:T.en["tasks.leftAt"]}});
         open.splice(i, 1);
       }
-      API.leaveTask(id, mySid);
+      API.leaveTask(id);
       renderTasks(); renderStrip(selDay); toast(t("toast.left", {name:name}));
     }, 230);
   });
@@ -7358,10 +7368,11 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     $("#sTime").value = editing.tm || "";
     $("#sEnd").value = editing.tmEnd || "";
     $("#sDateRow").dataset.val = editing.d || "";
-    /* Deleting somebody else's task is not mine to do — the server refuses it
-       (archiveTask is owner-scoped) and the sheet offers "leave" instead, two
-       rows further down. */
-    $("#sDelete").hidden = isNew || !isMine(editing);
+    /* A task other people are on is not one person's to delete — the server
+       refuses it (archiveTask, reason `shared`) and the sheet offers "leave"
+       instead, two rows further up, to the one who opened it as much as to
+       everybody else. Only the last person left on a task sees delete. */
+    $("#sDelete").hidden = isNew || (editing.who || []).length > 0;
     $("#sCal").setAttribute("aria-checked", editing.cal ? "true" : "false");
     $("#sRemind").setAttribute("aria-checked", editing.rem ? "true" : "false");
     $$("#sOffset .chip").forEach(function(c){

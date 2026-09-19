@@ -153,6 +153,7 @@ never trust a dated narrative for something you are about to act on.
 - [The same rule, in the noun form nobody had written down (fixed 2026-09-18)](#the-same-rule-in-the-noun-form-nobody-had-written-down-fixed-2026-09-18)
 
 **Features as they shipped**
+- [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
 - [Two messages three seconds apart, and the first one's work was cancelled (2026-09-06)](#two-messages-three-seconds-apart-and-the-first-ones-work-was-cancelled-2026-09-06)
@@ -5733,6 +5734,78 @@ rule working exactly as written.
 
 
 ## Features as they shipped
+
+
+### The list he could not put his own task into (2026-09-19)
+
+Sorting Miron's 38 open tasks with him on the live page, one drop was
+refused: one of his own tasks (49) onto "סדר בבית" (83), a list Maya had
+shared with him as `editor`. `tasks.checkParent` looks a parent up by owner, and he was not
+the owner. The same afternoon the sheet on that task was locked end to end —
+title, date, items — with "המשימה של מאיה — רק מי שפתח אותה יכול לשנות", while
+the MCP tools on the same task let him tick and add items, because
+`editorShareCovering` existed for the agent and nothing like it for the page.
+Two faces of one task, two answers to who may write.
+
+His rule was one sentence: everyone on a shared task is equal, no difference
+between the one who opened it and the ones it was shared with. Four decisions
+underneath it, all his:
+
+- **One kind of share.** The `viewer`/`editor` role goes; the column stays
+  and nothing reads it, so the rows already written as `viewer` are equal
+  too. `share_task_with` lost its `role` argument and the offer no longer
+  tells the other side what they may do.
+- **"Delete" is leaving.** A task others are on is nobody's to put away. A
+  participant leaves and the task stays with the rest; when the one who
+  OPENED it leaves, it is handed to whoever accepted first — every row, items
+  included, and the remaining shares re-pointed. Only the last person left
+  sees the delete button, and `archiveTask` refuses everybody else by name
+  (`reason: 'shared'`).
+- **A reminder of their own for each participant** — built next, as its own
+  change, because it is a migration (`task_reminders.user_id`). Until it
+  lands the reminder row is the one thing the sheet still locks on a task
+  you did not open, and the copy says so.
+- **A task dropped onto someone's list goes to the list's owner.** An item is
+  a line on their list; a line owned by somebody else would be the one they
+  could not tick.
+
+The shape of the fix is the one `shares.js` already had for the agent, made
+the rule for everything: `shares.actingOwner` says whom a write is made as,
+and every dashboard task action asks it and then calls the same
+owner-scoped `tasks.*` function it always called. No second write path, no
+change to `tasks.js` at all.
+
+One of those three did not survive the day. The guest list was left as the
+opener's alone on the argument that a share grant is between two particular
+people — and the owner read it back as the one place the rule had been
+bent: "כולם שווים גם כאן". It is now anybody on the task who invites and
+anybody who removes. The argument that looked like a reason to keep it was
+real but pointed elsewhere: the connection that has to exist is between the
+INVITER and the person being invited, never between the task's owner and
+somebody they have never met, so `offerShare` takes an `inviterId` and gates
+on that pair. The row still names the task's owner, because that is whom
+every write is made as; `requested_by` remembers who actually did it. The
+test that covered this passed unchanged after the rule was reversed — the
+friend's invitation had been refused for lack of a CONNECTION, not for lack
+of permission — which is exactly the shape of a test that proves nothing.
+
+Two edges chosen rather than stumbled into. **The reminder decides two
+refusals.** A task with a reminder pending may not change hands
+(`adoptIntoList`, `has_reminder`), and when the opener leaves, their pending
+reminders on the task are cancelled — in both cases because a reminder is
+routed by `tasks.owner_id`, and letting the row move would have Olma nudging
+the heir about something they never asked for. That is the argument for the
+per-participant reminder, and it is why that change comes right behind this
+one. **The heir inherits the shares, not the connections.** A remaining
+share's `connection_id` still names the connection between the person who
+left and each participant, so a third participant's row can be cascaded away
+by a connection the new owner was never part of. Rare, recorded, not closed.
+
+What the page shows now, verbatim: on a task you did not open the reminder
+row is locked with "התזכורת כאן עדיין של {name}. תזכורת אישית לכל שותף — בקרוב";
+a refused drop of a task with a reminder says "משימה עם תזכורת נשארת אצלך —
+התזכורת הייתה עוברת עם המשימה"; the "יציאה מהמשימה המשותפת" button now shows
+for the opener as well, in place of delete, whenever anybody else is on it.
 
 
 ### The quiet day nobody was ever going to ask for (2026-09-11)

@@ -204,7 +204,7 @@ test('the payload carries every field the page reads out of it', async () => {
   await withTx(db.pool, (c) =>
     connections.respondToConnection(c, friend.id, req.data.connection.id, 'approve'));
   const offer = await withTx(db.pool, (c) =>
-    shares.offerShare(c, me.id, mine.data.task.id, friend.id, 'viewer'));
+    shares.offerShare(c, me.id, mine.data.task.id, friend.id));
   await withTx(db.pool, (c) => shares.respondToShare(c, friend.id, offer.data.share.id, 'accept'));
   const done = await withTx(db.pool, (c) => tasks.addTask(c, me.id, { title: 'לחדש ביטוח' }));
   await withTx(db.pool, (c) => tasks.completeTask(c, me.id, done.data.task.id));

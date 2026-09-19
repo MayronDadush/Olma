@@ -130,7 +130,7 @@ test('revoke cascade: shares revoked, grants deleted, pair meeting closed', asyn
   const { shareId, meetingId } = await withTx(db.pool, async (c) => {
     // No manual grants: approval already enabled everything for both sides.
     const t = (await tasksD.addTask(c, a.id, { title: 'shared thing' })).data.task;
-    const s = (await sharesD.offerShare(c, a.id, t.id, b.id, 'viewer')).data.share;
+    const s = (await sharesD.offerShare(c, a.id, t.id, b.id)).data.share;
     await sharesD.respondToShare(c, b.id, s.id, 'accept');
 
     const m = (await meetingsD.startMeeting(c, a.id, 'coffee', [b.id])).data.meeting;

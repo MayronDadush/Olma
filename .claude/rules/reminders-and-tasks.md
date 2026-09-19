@@ -295,3 +295,31 @@ title means this file. Grep the title, not the filename.
   **open, and to be widened only against real messages off the box**, because
   a pattern that fires on ordinary input is worse than none
   (`rules/detectors.md`).
+
+- **Everyone on a shared task is equal, and a write on it is made AS its
+  owner** (owner, 2026-09-19). There is one kind of share: `shares.role` is
+  still a column and is read by nothing. `shares.actingOwner` answers whom a
+  write is performed as — the person themselves on their own task, the OWNER
+  on one shared with them — and every dashboard task action goes through it
+  (`user-dashboard-write.js`, `asOwner`), so `tasks.js` stays owner-scoped and
+  single. Somebody on neither side gets `not_found`, never `forbidden`. Three
+  things follow. **"Delete" on a task others are on is LEAVING**
+  (`shares.leaveTask`): a participant's own share is revoked; the one who
+  opened it hands the task — items included — to whoever accepted first,
+  their pending reminders cancelled rather than re-aimed at the heir; only the
+  last person left can archive it (`archiveTask` refuses with
+  `reason: 'shared'`). **A task of mine dropped onto a list somebody shared
+  with me changes hands** (`shares.adoptIntoList`): an item is a line on the
+  list-owner's list, and one owned by somebody else would be the one line they
+  could not tick. It refuses `has_reminder` for the same reason the leaver's
+  reminders are cancelled — a reminder rides the task's owner (until each
+  participant has their own, the next change), so moving the task would move
+  who Olma nudges. **The GUEST LIST is everybody's too**: any participant
+  offers a share or ends one (`offerShare` takes an `inviterId` and checks
+  `grants.requireFeatureBetween` between THAT person and the invitee —
+  asking the task's owner for a connection they may not have is the wrong
+  question). The row still carries the task owner as `owner_id`, because that
+  is whom writes are made as; `requested_by` is who actually invited, and
+  `connection_id` names the inviter's connection. **What stays one person's**:
+  the reminder — the page locks that one row on a task you did not open, and
+  nothing else.
