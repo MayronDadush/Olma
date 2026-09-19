@@ -19,6 +19,11 @@ after(async () => { await db.teardown(); });
 
 const JID = (n) => `12036311111111${n}@g.us`;
 // Padded, so room(1) and room(11) cannot mint the same token.
+// And `room(n)` and `roomWithAGreeterJoiner(n)` SHARE this space — both mint
+// JID(n) and TOKEN(n) — so a number is spoken for whichever helper took it.
+// Reusing one registers a second room on the same jid and every later call
+// answers "that person is not a member of this group", which reads as a
+// broken membership check rather than a collided fixture.
 const TOKEN = (n) => 'olma_grp_' + String(n).padStart(2, '0').repeat(16);
 
 async function openGroup(client, { jid, members, token, subject }) {
@@ -78,15 +83,71 @@ test('the private question names the room, and never asks anybody to answer in i
     `SELECT user_id, payload FROM outbox
       WHERE kind = 'meeting_invite' AND (payload->>'meetingId')::bigint = $1
       ORDER BY user_id`, [res.data.meeting.id]);
-  assert.equal(rows.length, 2, 'everybody but the person who asked');
+  // Everybody in the room, the person who asked included — this line used to
+  // read `2, 'everybody but the person who asked'`, and that was the bug
+  // written down as an assertion (`incidents.md`, "The coordination waited on
+  // the man who started it").
+  assert.equal(rows.length, 3, 'everybody in the room, the asker included');
   assert.deepEqual(rows.map((r) => Number(r.user_id)).sort(),
-    [people[1].id, people[2].id].map(Number).sort());
+    people.map((u) => Number(u.id)).sort());
 
-  const p = rows[0].payload;
+  const p = rows.find((r) => Number(r.user_id) === Number(people[1].id)).payload;
   assert.equal(p.groupSubject, 'פוקר של רביעי');
+  assert.equal(p.askedItYourself, undefined, 'they did not ask for it');
   const body = instructionFor({ kind: 'meeting_invite', payload: p });
   assert.match(body, /פוקר של רביעי/, 'the room is the subject of the sentence');
   assert.match(body, /never in the group/, 'and the answer comes back here, not there');
+});
+
+test('the person who asked in the room is asked when suits THEM', async () => {
+  const { group, people } = await room(30, { subject: 'בדיקה לעולמה' });
+  const asked = people[0];
+  const res = await withTx(db.pool, (c) => groupMeetings.startCoordination(
+    c, group, asked, 'פגישה שבוע הקרוב'));
+  assert.equal(res.ok, true);
+
+  // `startMeeting` puts the initiator in at `awaiting` like everyone else, so a
+  // coordination that never asks them cannot settle at all.
+  const { rows: parts } = await db.pool.query(
+    `SELECT user_id, state FROM meeting_participants WHERE meeting_id = $1 ORDER BY user_id`,
+    [res.data.meeting.id]);
+  assert.equal(parts.length, 3);
+  assert.ok(parts.every((r) => r.state === 'awaiting'));
+
+  const { rows } = await db.pool.query(
+    `SELECT payload FROM outbox
+      WHERE kind = 'meeting_invite' AND user_id = $1
+        AND (payload->>'meetingId')::bigint = $2`, [asked.id, res.data.meeting.id]);
+  assert.equal(rows.length, 1, 'the man who asked gets his own row');
+  assert.equal(rows[0].payload.askedItYourself, true);
+
+  const body = instructionFor({ kind: 'meeting_invite', payload: rows[0].payload });
+  assert.match(body, /has not said when suits THEM/, 'which is the only thing missing');
+  assert.match(body, /בדיקה לעולמה/, 'the room he asked in');
+  assert.doesNotMatch(body, /in front of everyone/,
+    'he was there; being told he asked in front of everyone reads as a tool losing track of him');
+  assert.doesNotMatch(body, /asked for it there/, 'and nobody tells him who asked');
+});
+
+test('one row each, so asking twice cannot ask the same man twice', async () => {
+  const { group, people } = await room(31);
+  const first = await withTx(db.pool, (c) => groupMeetings.startCoordination(
+    c, group, people[0], 'ראשון'));
+  assert.equal(first.ok, true);
+  // The room asks again while the same coordination is running: `startCoordination`
+  // answers with the one already going, and the idempotency key is what stops a
+  // second question reaching anybody — the asker's row included.
+  const again = await withTx(db.pool, (c) => groupMeetings.startCoordination(
+    c, group, people[0], 'שני'));
+  assert.equal(again.ok, true);
+  assert.equal(again.data.created, false);
+
+  const { rows } = await db.pool.query(
+    `SELECT user_id, count(*)::int AS n FROM outbox
+      WHERE kind = 'meeting_invite' AND (payload->>'meetingId')::bigint = $1
+      GROUP BY user_id`, [first.data.meeting.id]);
+  assert.equal(rows.length, 3);
+  assert.ok(rows.every((r) => r.n === 1), 'one invite per person, ever');
 });
 
 // ---- the organic joiner, who is the one the room was waiting for ----------

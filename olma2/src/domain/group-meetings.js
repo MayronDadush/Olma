@@ -123,11 +123,34 @@ async function startCoordination(client, group, actingUser, title) {
   // Same kind, same idempotency shape and the same reader as a person-to-
   // person invite (channels/openclaw.js) — `groupSubject` is what makes that
   // reader say the room's name instead of a person's.
-  await fanout.fanout(client, others, 'meeting_invite', {
+  const invitePayload = {
     meetingId: Number(meeting.id), title: finalTitle,
     byName: memberLabel(members.find((m) => Number(m.user_id) === Number(actingUser.id)) || {}),
     groupSubject: group.subject || null,
-  }, { key: `minvite:${meeting.id}` });
+  };
+  await fanout.fanout(client, others, 'meeting_invite', invitePayload,
+    { key: `minvite:${meeting.id}` });
+
+  // ── And the person who ASKED is asked too ──────────────────────────────────
+  // `startMeeting` puts every participant in at `awaiting`, the initiator
+  // included, and in a person-to-person coordination that is right: they are
+  // in the conversation where they just said it, so their own times come back
+  // in the same breath. A ROOM is the other case. מירון tagged her with
+  // "תתאמי לנו פגישה שבוע הקרוב" and said nothing about when suits HIM —
+  // there was no private turn in which he could have — so meeting 33 sat
+  // `awaiting` on a man nobody was ever going to ask, and could not have
+  // settled at any point (2026-09-19, `incidents.md`, "The coordination waited
+  // on the man who started it"). Worse than stuck: מאיה's next digest told her
+  // "מירון עדיין לא קבע איתך מועד — תיאום הפגישה תלוי בו", naming him as the
+  // holdup for a question that was never put to him.
+  //
+  // Its own row and its own sentence, not a fourth name on the fan-out: what
+  // reaches everybody else is "<name> asked for it there, in front of
+  // everyone", and reading that about yourself is how a tool tells you it has
+  // lost track of who you are. `askedItYourself` is the whole difference and
+  // `channels/openclaw.js` is where it is spent.
+  await fanout.fanout(client, [Number(actingUser.id)], 'meeting_invite',
+    { ...invitePayload, askedItYourself: true }, { key: `minvite:${meeting.id}` });
 
   await audit.record(client, actingUser.id, 'group.coordination_started', {
     groupId: group.id, meetingId: Number(meeting.id), participants: members.length,

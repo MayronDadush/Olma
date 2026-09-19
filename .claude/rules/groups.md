@@ -182,6 +182,20 @@ have already had to be argued for.
   for a DM and re-hears `night` alone — a DM at 03:00 is not evidence that
   somebody's Shabbat is over.
 
+- **The person who asked the ROOM for a coordination is asked privately too.**
+  `startMeeting` inserts every participant at `awaiting`, the initiator
+  included, and for a person-to-person coordination the fan-out rightly skips
+  them — they are in the conversation where they just said it. A tag in a room
+  is the whole request and carries no times, so `startCoordination` sends them
+  their own row with `askedItYourself: true`; `channels/openclaw.js` spends the
+  flag on a branch that asks the one thing they have not said and tells them
+  neither who asked nor anything about in front of everyone. Without it a
+  coordination could never settle, and the other members' digests named the
+  initiator as the holdup for a question nobody had put to him (2026-09-19,
+  `incidents.md`, "The coordination waited on the man who started it"). **The
+  test asserted the bug** — `2, 'everybody but the person who asked'` — which is
+  one layer out from a wrong comment: a test can be wrong about the world.
+
 - **A paused member is counted into a room's coordination only until their
   one invite is spent; a day of silence takes them out** (owner, 2026-09-13).
   They are left out only until they write again: that ends the pause

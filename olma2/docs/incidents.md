@@ -57,6 +57,7 @@ never trust a dated narrative for something you are about to act on.
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
 - [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
 - [The room window opened on a row nobody would look at (fixed 2026-09-19)](#the-room-window-opened-on-a-row-nobody-would-look-at-fixed-2026-09-19)
+- [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
@@ -1836,6 +1837,56 @@ NULL is the **once-per-life first-turn signal** (`openRecord` computes
 is the **silence test** behind the name-confirm rung. Stamping it early would
 have spent the first-turn signal and broken the silence test to fix a gate.
 The narrow column was the right lever.
+### The coordination waited on the man who started it (fixed 2026-09-19)
+
+מירון tagged her in the test room: *"תתאמי לנו פגישה שבוע הקרוב."* She said in
+the room that she would ask everybody privately, and she did — once, to מאיה.
+The coordination's own table:
+
+```
+meeting_id | user_id |  state
+        33 |       3 | awaiting     ← מירון, never asked
+        33 |      10 | awaiting     ← מאיה, asked
+```
+
+`meetings.startMeeting` inserts every participant at `awaiting`, the initiator
+included, and `group-meetings.startCoordination` fans the invite out to
+`others` — everybody **but** the person who asked. In a person-to-person
+coordination that is right: they are standing in the conversation where they
+just said it, so their own times come back in the same breath. **A room is the
+other case.** A tag is the whole request; there was no private turn in which
+מירון could have said when suits him, and nothing was ever going to ask. The
+coordination could not have settled at any point in its life.
+
+The second half is worse than stuck. מאיה's 16:18 digest told her:
+
+> מירון עדיין לא קבע איתך מועד — תיאום הפגישה **תלוי בו** שיענה על הזמנים.
+
+Correct about the data and unfair about the person: he was named as the holdup
+for a question nobody put to him.
+
+The fix is a second `fanout` call, to the initiator alone, carrying
+`askedItYourself: true`. It is a separate row and a separate sentence rather
+than a fourth name on the same fan-out, because what everybody else reads is
+*"<name> asked for it there, in front of everyone"* — and reading that about
+yourself is how a tool tells you it has lost track of who you are.
+`channels/openclaw.js` spends the flag on one branch that asks the one thing he
+has not said, names the room he asked in, and says neither who asked nor
+anything about in front of everyone.
+
+**The bug was written down as an assertion.** `tests/group-coordination.test.js`
+said `assert.equal(rows.length, 2, 'everybody but the person who asked')` — the
+test agreed with the code about a thing they were both wrong about, which is
+the same shape as the three fixes before it this week, one layer further out: a
+comment can be wrong about the code, and a test can be wrong about the world.
+That line is now `3, 'everybody in the room, the asker included'`.
+
+Two fixture helpers in that file, `room(n)` and `roomWithAGreeterJoiner(n)`,
+share one numbering space and mint the same `JID(n)` and `TOKEN(n)` from it.
+Reusing a number registers a second room on the same jid, and every later call
+answers "that person is not a member of this group" — which reads as a broken
+membership check rather than a collided fixture. Said so above the helpers now.
+
 ### The room window opened on a row nobody would look at (fixed 2026-09-19)
 
 The owner asked, on a Saturday: *"אם אותו משתמש מתכתב בקבוצה בזמן שיש תיאום
