@@ -47,11 +47,21 @@ function memberLabel(row) {
 
 // Members who can actually be in a coordination: a live roster row that
 // resolves to a user who has written to her. In an OPEN group that is
-// everybody — the gate is exactly this condition — so the filter is not
-// redundant, it is what keeps this correct on the day the gate changes.
+// everybody — so this must be the GATE's question, asked by calling the gate,
+// and for nine days it was a second copy of it that had drifted.
+//
+// The copy asked `last_inbound_at` alone. `groups.isConnected` asks
+// `last_inbound_at OR opening_sent_at`, because two voices can hear somebody's
+// first message and only their own agent stamps the first column — the fix
+// that closed "היא שבורה" in the gate, and never reached here. A member who
+// met the intake GREETER (every organic joiner does) opened the room and was
+// then left out of the room's own coordination: never asked when they are
+// free, never counted, and in a room of two the caller below answers "there is
+// nobody else in this group to coordinate with" to a room with people in it
+// (`incidents.md`, "The room coordinated without the person who opened it").
 async function coordinatingMembers(client, groupId) {
   const rows = await groups.listMembers(client, groupId);
-  return rows.filter((m) => m.user_id && m.last_inbound_at);
+  return rows.filter((m) => groups.isConnected(m));
 }
 
 // The room's live coordination, if it has one. Only ever the newest: a room

@@ -53,6 +53,7 @@ never trust a dated narrative for something you are about to act on.
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
 - [The room was told twice (fixed 2026-09-08)](#the-room-was-told-twice-fixed-2026-09-08)
 - [The room was greeted twice, by its own registration (fixed 2026-09-11)](#the-room-was-greeted-twice-by-its-own-registration-fixed-2026-09-11)
+- [The room coordinated without the person who opened it (fixed 2026-09-19)](#the-room-coordinated-without-the-person-who-opened-it-fixed-2026-09-19)
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
 - [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
 - [The room window opened on a row nobody would look at (fixed 2026-09-19)](#the-room-window-opened-on-a-row-nobody-would-look-at-fixed-2026-09-19)
@@ -1722,6 +1723,65 @@ the text lives in the transcript with a `MEDIA:` line attached to a card path �
 the same wall `undeliveredReply` hit when it chose "verbatim or nothing". The
 channel outage was the case that actually happened, five times, in one morning.
 
+
+### The room coordinated without the person who opened it (fixed 2026-09-19)
+
+Same two columns as "היא שבורה" below, ten days later, in the two readers that
+never got that fix.
+
+A test room of three: מירון, מאיה, and a member who had just been reset to a
+cold start. He wrote "הי", the intake greeter answered him, and the room
+opened — because `groups.isConnected` asks `last_inbound_at OR
+opening_sent_at`, and the greeter stamps the second. מירון then asked the room
+to arrange something, and the coordination started **with two participants**:
+
+```
+u-3   last_inbound_at=18/09  opening_sent_at=null   isConnected(gate)=true
+u-10  last_inbound_at=16/09  opening_sent_at=null   isConnected(gate)=true
+u-35  last_inbound_at=null   opening_sent_at=19/09  isConnected(gate)=true
+
+the gate opened the room for:  u-3, u-10, u-35
+coordinatingMembers counted:   u-3, u-10
+left out:                      u-35
+```
+
+The person whose arrival opened the room was the one person the room then did
+not ask when he was free. `group-meetings.coordinatingMembers` filtered
+`m.user_id && m.last_inbound_at` — a second copy of the gate's question, made
+before the gate's question changed.
+
+**The comment above it asserted the equality that had stopped being true:**
+
+> In an OPEN group that is everybody — the gate is exactly this condition — so
+> the filter is not redundant, it is what keeps this correct on the day the
+> gate changes.
+
+It is not that condition, and the day the gate changed was 2026-09-09. Second
+time in one morning that a comment claiming coverage sat above code without it
+(see "The greeter's own message id").
+
+**A second reader had the same copy, and it is the louder one.**
+`groups.roomStatus` — what the `group_status` TOOL hands the model — built
+`wroteToHer` the same way, so the model is told that somebody who has written
+to Olma has not. That is a false sentence about a named person, available to
+be said out loud in front of the whole room, and it is the exact sentence
+"היא שבורה" was about.
+
+**The sharp case is a room of two.** With the joiner filtered out, `others` is
+empty and `startCoordination` returns *"there is nobody else in this group to
+coordinate with"* — to a room with two people in it. Reproduced in
+`tests/group-coordination.test.js`.
+
+Both readers now call `groups.isConnected`. Three tests fail without it, and
+all three build the state the way production reaches it — `opening_sent_at`
+stamped, `last_inbound_at` NULL — because every fixture in that file stamps
+`last_inbound_at` by hand, which is why nothing there could ever have caught
+this.
+
+**How it was found:** walking the group flow on a test room with a member who
+had been reset to a genuine cold start. A user who has been on the system for
+weeks cannot reproduce it; only somebody meeting Olma for the first time can,
+and every real one of those is a person we would rather not learn from.
 
 ### היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)
 

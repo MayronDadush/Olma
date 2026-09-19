@@ -491,7 +491,11 @@ async function roomStatus(client, group) {
     members: members.map((m) => ({
       phone: m.phone,
       displayName: m.display_name || null,
-      wroteToHer: Boolean(m.user_id && m.last_inbound_at),
+      // The gate's own question, never a second copy of it: `isConnected`
+      // reads both columns, and asking `last_inbound_at` alone here told the
+      // MODEL that somebody who had written to the greeter had not written at
+      // all — about a person, out loud, in front of the room.
+      wroteToHer: isConnected(m),
     })),
   };
 }

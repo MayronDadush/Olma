@@ -110,6 +110,16 @@ have already had to be argued for.
   by stamping `last_inbound_at` at provisioning**: that column being NULL is the
   once-per-life first-turn signal in `openRecord`, and `last_inbound_at =
   first_turn_at` is the silence test behind the name rung.
+  **Ask `isConnected`, never a second copy of it.** Two other readers had
+  written the pair out by hand as `last_inbound_at` alone and were never
+  revisited when the gate changed: `group-meetings.coordinatingMembers` left
+  the organic joiner out of the coordination their own arrival had opened (and,
+  in a room of two, answered "there is nobody else in this group to coordinate
+  with" to a room with people in it), and `groups.roomStatus` handed the MODEL
+  `wroteToHer: false` about somebody who had written — a false sentence about a
+  named person, ready to be said in front of the room (2026-09-19,
+  `incidents.md`, "The room coordinated without the person who opened it"). The
+  comment above the first one asserted it was "exactly" the gate's condition.
 
 - **Being in the room IS the introduction, and it is not the inferred closeness
   the old rule forbids.** Everybody in a group with Olma who is ALREADY a user
