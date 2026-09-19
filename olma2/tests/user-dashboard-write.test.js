@@ -254,6 +254,105 @@ test('a repeat rule reaches the row in the vocabulary the sweep reads', async ()
     'the sweep compares against canonical rules and would never fire this again');
 });
 
+// The shape four of the owner's own tasks turned out to be, and the one the
+// page could not express until 2026-09-19: something with no date at all that
+// should come back every week until it is done — "לקבוע עם מיכאל", "ריצות
+// בים". The action already allowed it; only the page refused to ask. What this
+// pins is the half that must never drift: a standing nudge does NOT give the
+// task a deadline. Giving it one turns a job into a date that is wrong by
+// tomorrow, and it is the reason the dateless kind exists.
+test('a task with no date carries a repeating nudge, and stays dateless', async () => {
+  const t = await mkTask();
+  assert.equal(t.due_at, null, 'the fixture itself has to be dateless or this proves nothing');
+  const r = await act('setTaskReminder',
+    { taskId: t.id, on: true, remindAt: iso(4 * 3600e3), repeatRule: 'weekly' });
+  assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  const { rows } = await db.pool.query(
+    `SELECT r.repeat_rule, r.remind_at, r.user_id, t.due_at
+       FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+      WHERE r.task_id = $1 AND r.sent_at IS NULL AND r.cancelled_at IS NULL`,
+    [t.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].repeat_rule, 'weekly');
+  assert.equal(rows[0].due_at, null, 'a nudge must not date the task');
+  assert.equal(String(rows[0].user_id), String(me.id));
+  // And turning it off leaves the task exactly as dateless as it was.
+  assert.equal((await act('setTaskReminder', { taskId: t.id, on: false })).ok, true);
+  const after = await db.pool.query('SELECT due_at FROM tasks WHERE id = $1', [t.id]);
+  assert.equal(after.rows[0].due_at, null);
+});
+
+// The other half, on the page. The action above has always accepted this; the
+// switch sat there and did NOTHING — `remindIso` returned null with no date
+// and the call was dropped before it was made. No error, no toast, a switch
+// that stayed on and a reminder that never existed.
+test('the page builds a moment for a dateless nudge instead of dropping the call', () => {
+  const page = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
+  // The reminder carries an hour of its own; the task is not given a date.
+  assert.match(page, /if\(!x\.d\) return x\.rem \? nextIsoAt\(x\.remAt \|\| REM_DEFAULT_AT\) : null;/);
+  // And never a moment already gone: the server fires those within the minute,
+  // which spends the one nudge and reads as a bug.
+  assert.match(page, /if\(at <= Date\.now\(\)\)\{/);
+  // The fold asks one question or the other. An offset answers "how long
+  // before the task" and a dateless task has no before, so the chips that ask
+  // it are not offered — the hour takes their place.
+  assert.match(page, /\$\("#sOffset"\)\.hidden = !dated;/);
+  assert.match(page, /\$\("#sRemindAtSeg"\)\.hidden = dated;/);
+  // A changed hour has to reach the server, or the picker is a decoration.
+  assert.match(page, /editing\.remAt !== wasRemAt/);
+});
+
+// …and the arithmetic behind it, run rather than read. A text assertion on
+// `nextIsoAt` proves the line is present; it cannot notice that the instant it
+// builds is an hour out, or yesterday, or the machine's own midnight instead
+// of the person's. So the page's own helpers are lifted out of the served file
+// and called — the real ones, not a copy of them here, which is the mistake
+// this repo has already written down ("a test that asserts on a replica").
+//
+// Nothing below depends on the hour the suite runs at: every answer has to be
+// AHEAD of now and has to carry the hour that was asked for, which is true at
+// 03:00 and at 23:00 alike.
+test('the hour a dateless nudge lands on is that hour, in their zone, and still to come', () => {
+  const page = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
+  const grab = (name) => {
+    const start = page.indexOf(`function ${name}(`);
+    assert.ok(start > 0, `${name} is gone from the page — this test names it on purpose`);
+    let depth = 0;
+    for (let j = page.indexOf('{', start); j < page.length; j++) {
+      if (page[j] === '{') depth++;
+      else if (page[j] === '}' && !--depth) return page.slice(start, j + 1);
+    }
+    throw new Error(`unbalanced braces in ${name}`);
+  };
+  // Four zones, including one whose "today" is already the machine's tomorrow
+  // (Sydney) — the case a naive `new Date()` gets wrong by a whole day.
+  for (const tz of ['Asia/Jerusalem', 'America/New_York', 'Australia/Sydney', 'UTC']) {
+    const nextIsoAt = new Function([
+      grab('zoneOffset'), grab('localStamp'), grab('nextIsoAt'),
+      'function pad2(n){ return String(n).padStart(2,"0"); }',
+      `function myTz(){ return ${JSON.stringify(tz)}; }`,
+      'function todayInZone(){ var p = new Intl.DateTimeFormat("en-CA",{timeZone:myTz(),' +
+        'year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());' +
+        ' return new Date(p + "T12:00:00"); }',
+      'return nextIsoAt;',
+    ].join('\n'))();
+    for (const hour of ['00:05', '06:00', '09:00', '12:30', '18:00', '23:55']) {
+      const iso = nextIsoAt(hour);
+      const at = Date.parse(iso);
+      assert.ok(isFinite(at), `${tz} ${hour}: built nothing`);
+      assert.ok(at > Date.now(),
+        `${tz} ${hour}: ${iso} is already past — the server fires that within the minute`);
+      const shown = new Intl.DateTimeFormat('en-GB',
+        { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(at));
+      assert.equal(shown, hour, `${tz}: asked for ${hour}, lands at ${shown}`);
+      // And never further off than the next time that hour comes round.
+      assert.ok(at - Date.now() <= 25 * 3600e3, `${tz} ${hour}: more than a day away`);
+    }
+  }
+});
+
 test('a reminder cannot be set on a paused account, and says why', async () => {
   const t = await mkTask({ dueAt: iso(3 * 86400e3) });
   assert.equal((await act('pause', {})).ok, true);
