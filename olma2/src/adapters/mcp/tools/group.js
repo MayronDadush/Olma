@@ -53,7 +53,16 @@ module.exports = [
         meetingId: Number(res.data.meeting.id), title: res.data.meeting.title,
         // Not `asked`. The number is how many people a message is now owed
         // to, and every one of them still has to pass the delivery gate.
-        created: res.data.created, willAsk: res.data.participants - 1, hints,
+        //
+        // `- 1` until 2026-09-19, for the person who asked: a tag in a room
+        // carries no times, so they are owed the question like everybody else
+        // and `startCoordination` now sends them their own row
+        // (.claude/rules/groups.md, "The person who asked the ROOM for a
+        // coordination is asked privately too"). The fan-out changed and the
+        // number the MODEL reads did not: a count we hand over ourselves,
+        // one short of the rows just written, ready to be said out loud in
+        // front of the room.
+        created: res.data.created, willAsk: res.data.participants, hints,
       });
     }),
 

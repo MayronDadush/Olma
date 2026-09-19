@@ -211,7 +211,7 @@ test('a room of two coordinates when the other person met the greeter', async ()
   const res = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, people[0], 'קפה'));
   assert.equal(res.ok, true, res.ok ? '' : JSON.stringify(res.error));
   assert.equal(res.data.created, true);
-  assert.equal(res.data.participants, 2, 'both of them — the tool turns this into willAsk: 1');
+  assert.equal(res.data.participants, 2, 'both of them — and the tool turns this into willAsk: 2');
   const { rows } = await db.pool.query(
     `SELECT user_id FROM meeting_participants WHERE meeting_id = $1`, [res.data.meeting.id]);
   assert.deepEqual(rows.map((r) => Number(r.user_id)).sort(),
@@ -428,7 +428,12 @@ test('the room is told she will ask, never that she has', async () => {
     tool.handler(c, { group, actingUser: people[0] }, { what: 'פאדל' }, {}));
 
   assert.equal(res.ok, true);
-  assert.equal(res.data.willAsk, people.length - 1, 'how many are OWED a message');
+  // `people.length - 1` until 2026-09-19: the person who asked is owed the
+  // question too, because a tag in a room carries no times (`incidents.md`,
+  // "The coordination waited on the man who started it"). The fan-out was
+  // fixed and this number was not, so the tool told the model one fewer
+  // person than it had just written rows for.
+  assert.equal(res.data.willAsk, people.length, 'how many are OWED a message');
   assert.equal('asked' in res.data, false, 'the word that made the claim is gone');
   assert.match(res.data.hints.room, /WHEN THEY ARE AVAILABLE/);
   assert.match(res.data.hints.room, /Never say they have already been asked/);

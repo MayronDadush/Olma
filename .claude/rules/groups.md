@@ -3,6 +3,7 @@ paths:
   - "olma2/src/domain/group-connections.js"
   - "olma2/src/domain/group-context.js"
   - "olma2/src/domain/group-outbox.js"
+  - "olma2/src/domain/group-turn.js"
   - "olma2/src/domain/groups.js"
   - "olma2/src/jobs/groups.js"
   - "olma2/src/adapters/mcp/tools/group.js"
@@ -195,6 +196,31 @@ have already had to be argued for.
   `incidents.md`, "The coordination waited on the man who started it"). **The
   test asserted the bug** — `2, 'everybody but the person who asked'` — which is
   one layer out from a wrong comment: a test can be wrong about the world.
+
+- **A group turn is told the room's coordination state before the model's first
+  word, and that block is the only thing it may speak from.** The DM half of
+  this has been live since 2026-09-06 (turns-and-replies.md, "The turn opens
+  itself"); a group turn got none of it, because the plugin's
+  `before_prompt_build` handler bailed on anything that was not `u-N`. So the
+  room's agent answered questions about its own coordination out of its
+  conversation history — "2 מתוך 4 חברי קבוצה ענו" to a room of three with
+  nothing on the table, and "יש כבר תיאום פתוח" a minute after the only one was
+  cancelled, both in front of everybody (2026-09-19, `incidents.md`, "The room
+  heard its own state from memory"). `domain/group-turn.js` draws it from the
+  room's own rows and brokerd `group_turn_context` hands it over: the counts,
+  the times on the table, who has not answered, and `coordination: null` — which
+  is a fact and not a gap — with a settled or cancelled one under
+  `lastCoordination` beside it, because "one is open" and "the last was
+  cancelled" are one column apart. **The doctrine already said the right thing**
+  and a safety property written as a prompt line is a request, the same argument
+  as the reply gate and `markPlaced`. **`llm_input` cannot carry it** — on
+  OpenClaw 2026.8.1 it is a void hook, fire-and-forget with its return value
+  dropped, so `before_prompt_build` is the only place a group turn can be told
+  anything. It asks `group-meetings.statusOf` rather than a second copy of its
+  queries, drops the phones it carries per person and keeps the labels, because a
+  `waitingFor` short of `asked - answered` would be a new false sentence in place
+  of the old one. Inert until the gateway is restarted, like everything else in
+  that plugin.
 
 - **A paused member is counted into a room's coordination only until their
   one invite is spent; a day of silence takes them out** (owner, 2026-09-13).

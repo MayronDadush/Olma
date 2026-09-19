@@ -108,6 +108,17 @@ export function askBroker(method, params, { connect = net.connect, sock = sockPa
 export function buildHandler({ agents, connect, sock, timeoutMs, log = trace } = {}) {
   const only = Array.isArray(agents) && agents.length ? new Set(agents.map(String)) : null;
   return async (event, ctx) => {
+    // A ROOM's turn, first, and on its own route: brokerd draws the room's
+    // coordination state and it is prepended exactly like a person's opening
+    // (brokerd `group_turn_context` → domain/group-turn.js, which carries why).
+    // Deliberately NOT narrowed by `agents`: that list is which PEOPLE get
+    // their turn context, and a room inventing its own state is not a thing to
+    // roll out person by person. `llm_input` below cannot do this — on
+    // OpenClaw 2026.8.1 it is a void hook (fire-and-forget, its return value
+    // dropped), so `before_prompt_build` is the only place a group turn can be
+    // told anything.
+    const group = GROUP_KEY_RE.exec(String((ctx && ctx.sessionKey) || ''));
+    if (group) return groupTurnContext(group, { connect, sock, timeoutMs, log });
     const agentId = (ctx && ctx.agentId) || agentIdOf(ctx && ctx.sessionKey);
     if (!agentId || !/^u-\d+$/.test(agentId)) return undefined;
     if (only && !only.has(agentId)) return undefined;
@@ -139,6 +150,35 @@ export function buildHandler({ agents, connect, sock, timeoutMs, log = trace } =
   };
 }
 
+// ---- a room's own turn context ---------------------------------------------
+// The room's coordination state, into the prompt of every turn its agent
+// takes. The group agent has three tools that would tell it the truth and no
+// reason on any given turn to reach for one, so it answered the room from its
+// own conversation history: "2 of 4 group members answered" where three people
+// were in the room and nobody had answered, and "there is already a
+// coordination open" 74 seconds after the only one was cancelled (2026-09-19,
+// `docs/incidents.md`, "The room heard its own state from memory").
+//
+// The greeter (`ggreet`) gets nothing: it speaks for a room that is still
+// locked, and everything a locked room hears is fixed text on the raw pipe.
+// Fails open exactly like the person's path — brokerd down, slow or refusing
+// means the prompt goes out untouched, and the room is back to the state this
+// fixes rather than a turn that does not happen.
+async function groupTurnContext(match, { connect, sock, timeoutMs, log = trace } = {}) {
+  const agentId = match[1];
+  if (!/^g-\d+$/.test(agentId)) return undefined;
+  const t0 = Date.now();
+  const reply = await askBroker("group_turn_context", { agentId, externalId: match[2] }, { connect, sock, timeoutMs });
+  const ms = Date.now() - t0;
+  if (!reply || reply.ok !== true) { log({ group: agentId, turn: reply ? "refused" : "unreachable", ...(reply && reply.error ? { error: String(reply.error) } : {}), ms }); return undefined; }
+  // A locked room answers `context: null` and says why — the same distinction
+  // the rest of this repo keeps: nothing to say is not the same observation as
+  // could not be read.
+  if (typeof reply.context !== "string" || !reply.context) { log({ group: agentId, turn: "no-context", state: reply.state || null, ms }); return undefined; }
+  log({ group: agentId, turn: "prepended", chars: reply.context.length, ms });
+  return { prependContext: reply.context };
+}
+
 // ---- group context ---------------------------------------------------------
 // The second thing this plugin does, since 2026-09-06: for a GROUP turn (the
 // greeter's or a group agent's) it reads the `Conversation info` block out
@@ -149,7 +189,11 @@ export function buildHandler({ agents, connect, sock, timeoutMs, log = trace } =
 // `GroupMembers`, and the directory command does not do WhatsApp. The sweep
 // (jobs/groups.js) reads brokerd's row where it used to read the store.
 // Nothing is returned to the gateway; the prompt goes out untouched.
-const GROUP_KEY_RE = /^agent:(ggreet|g-\d+):whatsapp:group:[^:\s]+@g\.us$/;
+// The jid is captured since 2026-09-19: the group's own turn context is drawn
+// per ROOM, and brokerd is told which room by the two names in this key — the
+// agent and the jid — because one of them alone is a lookup that trusts the
+// caller.
+const GROUP_KEY_RE = /^agent:(ggreet|g-\d+):whatsapp:group:([^:\s]+@g\.us)$/;
 const CONVERSATION_INFO_RE = /Conversation info[^\n]*\n```json\n([\s\S]*?)\n```/;
 const CONVERSATION_INFO_RE_G = new RegExp(CONVERSATION_INFO_RE.source, "g");
 
@@ -459,7 +503,7 @@ export function buildReplyGateHandler({ connect, sock, timeoutMs = 1500, log = t
 export default {
   id: "olma-turn",
   name: "Olma turn context",
-  description: "Prepends the turn's opening (what turn_start would return) to the prompt, from brokerd; files what the gateway says about a group turn; keeps the model's working-out off a person's phone.",
+  description: "Prepends the turn's opening (what turn_start would return) to the prompt, from brokerd — for a group turn, the room's own coordination state; files what the gateway says about a group turn; keeps the model's working-out off a person's phone.",
   register(api) {
     const cfg = (api && api.pluginConfig) || {};
     const agents = Array.isArray(cfg.agents) ? cfg.agents : "all";
