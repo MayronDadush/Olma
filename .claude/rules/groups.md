@@ -158,6 +158,19 @@ have already had to be argued for.
   to anything that did not name her** (a registered room is
   `requireMention: true`), so its silence is never evidence that somebody said
   nothing.
+  **And a window is only worth what the worker will re-read.** Every
+  time-based hold sets `outbox.release_after`, and `worker.drainOnce` does not
+  select a row before its own release time — so an exemption living inside
+  `decide()` is unreachable for a held row until something clears it. That is
+  why `group-context.noteMemberWrote` does BOTH halves on the one stamp: the
+  column the gate reads, and a re-hearing of that member's `night` /
+  `quiet_day` / `quiet_holiday` rows about a coordination THIS room is running,
+  dated by when they wrote so the stamp, the re-hearing and the fifteen minutes
+  cannot drift apart. For fifteen days the rule was in the gate, had a test
+  file, and had never run once (2026-09-19, `incidents.md`, "The room window
+  opened on a row nobody would look at"). `turn.openRecord` is the same move
+  for a DM and re-hears `night` alone — a DM at 03:00 is not evidence that
+  somebody's Shabbat is over.
 
 - **A paused member is counted into a room's coordination only until their
   one invite is spent; a day of silence takes them out** (owner, 2026-09-13).

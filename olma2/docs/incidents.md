@@ -55,6 +55,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room was greeted twice, by its own registration (fixed 2026-09-11)](#the-room-was-greeted-twice-by-its-own-registration-fixed-2026-09-11)
 - [היא שבורה: the room waited for somebody who had already written (fixed 2026-09-09)](#היא-שבורה-the-room-waited-for-somebody-who-had-already-written-fixed-2026-09-09)
 - [The room was told about a meeting at 01:12 (fixed 2026-09-09)](#the-room-was-told-about-a-meeting-at-0112-fixed-2026-09-09)
+- [The room window opened on a row nobody would look at (fixed 2026-09-19)](#the-room-window-opened-on-a-row-nobody-would-look-at-fixed-2026-09-19)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
@@ -1773,6 +1774,59 @@ NULL is the **once-per-life first-turn signal** (`openRecord` computes
 is the **silence test** behind the name-confirm rung. Stamping it early would
 have spent the first-turn signal and broken the silence test to fix a gate.
 The narrow column was the right lever.
+### The room window opened on a row nobody would look at (fixed 2026-09-19)
+
+The owner asked, on a Saturday: *"אם אותו משתמש מתכתב בקבוצה בזמן שיש תיאום
+פתוח עולמה יכולה לשלוח לו הודעות רק בנוגע לתיאום."* The rule had been in the
+gate since 2026-09-08, with a test file of its own, and on the morning he asked
+for it we found out it had never once run.
+
+מירון asked her in the room at **08:37** to arrange something for the three of
+them. מאיה's private invite was queued at **08:38:01** and held `quiet_day` —
+correct, it was Shabbat. She wrote in the room at **09:22:55** and
+`chat_group_members.last_wrote_at` was stamped at **09:22:56.486**, also
+correct. And at **09:28:42** `job_heartbeats.outbox_worker` said
+`{"delivered":0,"held":0,...}` — not "held and refused", **held nothing**: the
+row was never a candidate.
+
+`outbox/worker.drainOnce` selects `release_after IS NULL OR release_after <= $1`,
+and every time-based hold in the gate sets one: `night` to the window's next
+open, `quiet_day` and `quiet_holiday` to the end of the run of quiet days. So
+the row queued at 08:38 was scheduled to be re-read at havdalah, and
+`inRoomGrace` — which sits inside `decide()`, downstream of that selection —
+was never asked a question for the forty-four minutes it had an answer to. The
+same is true of `night`: what rescued a night-held row was never the gate, it
+was `turn.openRecord({ wake: true })` clearing `release_after` when the person
+wrote a **DM**. Nothing did that for a message in a **room**.
+
+Two comments asserted the coverage. `gate.js`, above the quiet-day branch:
+*"`inRoomGrace` exempts a meeting row from this one too, same reasoning as
+above."* True of the branch, false of the system. And the test file's own
+header claimed the founding case end to end — but every end-to-end fixture in
+it used the check-in ladder's `quiet` **drop**, which is the one refusal in the
+gate that schedules nothing, so all of them were candidates on the next tick
+without anybody re-hearing them. **Third time in one week that a comment
+claimed a coverage the code did not have** (the greeter's message id, the stale
+copy of the gate's question, this).
+
+The fix is four lines in `group-context.noteMemberWrote` — the only place a
+group sender is ever learned, and now the place the consequence is complete:
+the stamp the gate reads, and a re-hearing of that person's held rows about a
+coordination **this room** is running. It is dated by when they wrote, not by
+`now()`, so the stamp, the re-hearing and the gate's fifteen minutes all
+measure from one moment. The gate stays the only judge — it re-runs in full,
+`groupWroteAt` is still null for everything else, a pause is still refused
+above that line, and a row whose fifteen minutes have passed by the time the
+tick comes simply holds again with a fresh release time.
+
+`tests/group-window.test.js` gains מאיה's actual Saturday, and the fixture
+opts into `quietDays: 'sat'` on purpose: the helper's default is a **stated**
+"none" so no other test depends on the weekday it runs on, and that default is
+exactly why this hold had no coverage. Two of the three new tests fail without
+the fix; the third is the scope — a word in one room must not re-hear what
+another room is coordinating — and it is a guard against the next version of
+this being written too broadly.
+
 ### The room was told about a meeting at 01:12 (fixed 2026-09-09)
 
 The owner read it on his phone the next morning: the group "5 Percent
