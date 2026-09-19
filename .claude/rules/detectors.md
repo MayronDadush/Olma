@@ -190,6 +190,13 @@ title means this file. Grep the title, not the filename.
   job-less run on `push`, a trigger the file does not have. Seventeen hours of
   no scheduled run looked exactly like seventeen hours of passing ones
   (`incidents.md`, "Four em-dashes stopped the clock-drift suite").
+  `check-workflows.js` now refuses that class of edit in `claude-rules.yml`,
+  which had to start watching `.github/workflows/**` for it to see one at all —
+  it is **not** a YAML linter and deliberately not actionlint, only the
+  characters no editor shows you, measured at one rejection across all 33
+  workflow-file versions this repo has ever held. **The authority is still
+  GitHub's parser**: after repairing such a file, `gh workflow run <file>
+  --ref main` and watch it produce real jobs.
 
 - **`/health` sees the DB, every `job_heartbeats` row, and the gateway — and
   nothing else.** A component that writes no heartbeat is invisible to it, and

@@ -48,6 +48,18 @@ working. **A function cited by its bare name is NOT checked** — that reading
 misfired on 58% of the corpus — so cite one as `module.fn` if you want the
 checker to watch it.
 
+**A third asks whether CI itself can still be READ.** `check-workflows.js`
+walks `.github/workflows/` for the faults no review and no run can report:
+control characters (a re-encoded em-dash leaves U+0080 and U+0094 in a
+COMMENT, and YAML forbids those anywhere), a tab in the indentation, invalid
+UTF-8, a missing `on:` or `jobs:`. GitHub cannot read the triggers of a file
+it cannot parse, so a scheduled workflow just stops — for a day, in
+2026-09-19's case, visible only as a job-less red run on a trigger the file
+does not have. It is **not** a YAML linter: one rejection across all 33
+workflow-file versions this repo has ever held, and that one was the broken
+one. `claude-rules.yml` watches `.github/workflows/**` so a change to any of
+them runs it.
+
 Two companion files are **not** auto-loaded — open them when relevant:
 
 - **`olma2/docs/incidents.md`** — the full narrative of every incident,
