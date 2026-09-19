@@ -47,6 +47,11 @@
   --accent-2:#4A22B4;
   --accent-soft:#EEE8FC;
   --prog:rgba(91,47,214,.26);
+  /* The accent as a LINE rather than a fill: a 1.5px ring around the option
+     with the most answers, which has to read on a card without becoming a
+     second button. Heavier than --prog, which is an arc behind text and can
+     afford to be faint. */
+  --accent-line:rgba(91,47,214,.42);
   /* The three semantic colours are TEXT as often as they are fill — "overdue",
      "saved", "remove the connection" — and as text they measured 3.2-4.1.
      Darkened until they pass, which also takes white-on-fill from 3.5-4.5 up
@@ -141,6 +146,7 @@
     --accent-2:#BBA9FF;
     --accent-soft:#291D4C;
     --prog:rgba(163,140,255,.34);
+    --accent-line:rgba(163,140,255,.52);
     --danger:#FF6B60;
     --danger-soft:#33191A;
     --warn:#F0AE3E;
@@ -189,6 +195,7 @@
   --accent-2:#BBA9FF;
   --accent-soft:#291D4C;
   --prog:rgba(163,140,255,.34);
+  --accent-line:rgba(163,140,255,.52);
   --danger:#FF6B60;
   --danger-soft:#33191A;
   --warn:#F0AE3E;
@@ -1302,6 +1309,15 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
 /* A settled time is not deletable at all — ending a coordination everybody has
    already been told about is `cancel_meeting`, which messages them. */
 .mtswipe.locked .mtfront{transform:none}
+/* The time most people have said yes to. `mtBest` has marked it since the row
+   was a grid, and the mark has drawn nothing since the row stopped being one —
+   the rule that drew it named `.mopt`, a class no markup on this page carries
+   any more, and it is gone.
+   `:not(.crown)` is the whole point of putting it back this way: a time
+   EVERYBODY can make already says so, in gold, with a crown and a full ring.
+   Two markers on one row is not twice as clear. This is for the leading time
+   that is only leading — 2 of 3 — which today carries nothing at all. */
+.mtswipe.best .mtopt:not(.crown){box-shadow:inset 0 0 0 1.5px var(--accent-line)}
 /* `.mtopt`, not `.mtrow`: the meetings LIST has owned `.mtrow` since long
    before this row existed, and it is `display:flex` — which laid the clash
    badge and the settle question out BESIDE the row instead of under it, and
@@ -1352,10 +1368,6 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   font-weight:600;color:var(--text-2);margin:0 0 11px;cursor:pointer;font-family:inherit}
 .minchip b{color:var(--accent);font-variant-numeric:tabular-nums}
 .minchip svg{width:12px;height:12px}
-
-.mopt{padding:13px 14px 12px;margin-bottom:10px}
-.mopt.best{box-shadow:var(--shadow-s),inset 0 0 0 1.5px var(--accent-line)}
-.mopt.settled{opacity:.72}
 
 /* The two answers, side by side and both labelled. Pressing the one you are
    already on clears it — the third state, without a third gesture. */

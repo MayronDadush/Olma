@@ -157,10 +157,10 @@ test('a class that says what something IS may not also say how it looks', () => 
 // change. A `var(--x, fallback)` is exempt: the fallback IS the definition,
 // and that is how every runtime-set custom property on this page is written.
 test('every var(--token) without a fallback names a token this file defines', () => {
-  // A known-bad one, found by this very check and left alone on purpose: it
-  // is somebody else's line to fix, in its own change, not a drive-by edit
-  // inside an unrelated PR. `.mopt.best` draws no ring today because of it.
-  const KNOWN_BAD = ['--accent-line'];
+  // Empty, and meant to stay that way. It held `--accent-line` for one PR,
+  // because the check found it in a change about something else and a
+  // drive-by fix is not a fix anybody can review; it was closed on its own.
+  const KNOWN_BAD = [];
   const defined = new Set([...page.matchAll(/(--[A-Za-z0-9_-]+)\s*:/g)].map((m) => m[1]));
   const used = new Set([...page.matchAll(/var\(\s*(--[A-Za-z0-9_-]+)\s*\)/g)].map((m) => m[1]));
   const missing = [...used].filter((t) => !defined.has(t) && !KNOWN_BAD.includes(t));
