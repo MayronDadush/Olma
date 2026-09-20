@@ -118,7 +118,7 @@ module.exports = [
       out.data.hints = { ...(out.data.hints || {}), table: `${ids.length} option(s) declined with the constraint; ${table.length - ids.length} still stand for them to answer.` };
       return offerDashboardOnce(client, user, a.meeting_id, out);
     }),
-  tool('propose_meeting_slot', 'Add ONE candidate time to the meeting\'s table (up to 5). At five it is refused with the five listed: ask which to drop, remove_meeting_option, propose again. Proposing means your user agrees to it — every part from what they said; a time without a day: say the full slot back and get their yes first. starts_at is the same moment as slot_description, ISO-8601 with offset; past times, or a weekday other than the text names, are refused. Calendar connected? Check my_calendar_events for that day first.',
+  tool('propose_meeting_slot', 'Add ONE candidate time to the table (up to 5; at five it is refused with the five listed — ask which to drop, remove_meeting_option, propose again). Proposing means your user agrees to it, every part from what they said; a time without a day: say the full slot back and get their yes first. starts_at is the same moment as slot_description, ISO-8601 with offset; past times, or a weekday the text does not name, are refused. Calendar connected? Check my_calendar_events for that day first.',
     { meeting_id: S('number', 'Meeting id'), slot_description: S('string', 'e.g. "Tuesday 17:00 at the office"'),
       starts_at: S('string', 'The same moment — same DAY — as slot_description, ISO-8601 with offset, e.g. 2026-08-25T17:00:00+03:00') },
     ['meeting_id', 'slot_description', 'starts_at'],
@@ -134,7 +134,7 @@ module.exports = [
       }
       return offerDashboardOnce(client, user, a.meeting_id, out);
     }),
-  tool('respond_to_meeting_slot', 'Answer ONE option on the table. accept=true only after the user saw that exact option (day included) and agreed — with accepted_starts_at, the startsAt that came with it, so the yes lands on THAT option; a yes naming no option is refused and the reply lists the table. accept=false declines that option; other options stay. A decline may carry counter_proposal + counter_starts_at (same rules as propose), which becomes one more option.',
+  tool('respond_to_meeting_slot', 'Answer ONE option on the table. accept=true only after the user saw that exact option (day included) and agreed — with accepted_starts_at, its startsAt, so the yes lands on THAT option; a yes naming none is refused with the table. accept=false declines it; the others stay. A decline may carry counter_proposal + counter_starts_at (same rules as propose), one more option.',
     { meeting_id: S('number', 'Meeting id'), accept: S('boolean', 'true = user agrees to that exact option'),
       accepted_starts_at: S('string', 'The startsAt of the option they answered, as received. Required with accept=true; with accept=false names the declined option.'),
       counter_proposal: S('string', 'Optional new option when declining'),
@@ -146,7 +146,7 @@ module.exports = [
       const out = await meetingFanout.afterSlotResponse(client, user, a.meeting_id, res, { accept: a.accept });
       return offerDashboardOnce(client, user, a.meeting_id, out);
     }),
-  tool('remove_meeting_option', 'Take ONE candidate time off the meeting\'s table. Anyone in the coordination may remove any time, whoever added it — so say the exact time back and get their yes first; option_id from get_meeting_status. Also how a sixth gets in: remove one, then propose. Nobody is messaged; the fact rides their next update. It does NOT end the coordination — that is cancel_meeting or opt_out_of_meeting.',
+  tool('remove_meeting_option', 'Take ONE candidate time off the table. Anyone in the coordination may remove any time, whoever added it — say the exact time back and get their yes first; option_id from get_meeting_status. Also how a sixth gets in. Nobody is messaged; the fact rides their next update. It does NOT end the coordination — that is cancel_meeting or opt_out_of_meeting.',
     { meeting_id: S('number', 'Meeting id'), option_id: S('number', 'The option to take off the table') },
     ['meeting_id', 'option_id'],
     async (client, user, a) => {
@@ -158,7 +158,7 @@ module.exports = [
   // about what is on the table: that one asks "does this time belong here",
   // this one ends the negotiation. Conflating them would put one word between
   // "put it up for discussion" and "it is decided".
-  tool('settle_meeting', 'Initiator only: set the meeting on one option NOW, without waiting for everyone ("בוא נקבע על שלישי, דנה לא יכולה"). Unanimity settles itself. Whoever never said yes is told and may bow out. Confirm the option with them first; option_id from get_meeting_status.',
+  tool('settle_meeting', 'Initiator only: set the meeting on one option NOW, without waiting ("בוא נקבע על שלישי, דנה לא יכולה"). Unanimity settles itself. Whoever never said yes is told and may bow out. Confirm the option first; option_id from get_meeting_status.',
     { meeting_id: S('number', 'Meeting id'), option_id: S('number', 'The option to set it on') },
     ['meeting_id', 'option_id'],
     async (client, user, a) => {
@@ -166,7 +166,7 @@ module.exports = [
       if (!res.ok) return res;
       return meetingFanout.afterSettled(client, a.meeting_id, res, { actor: user });
     }),
-  tool('opt_out_of_meeting', 'Leave a meeting — while it is being negotiated, OR "I can\'t come" after it was confirmed (the meeting stays on for the others; the initiator must cancel_meeting instead). This is one person bowing out, NOT a cancellation for everyone — when the user is the initiator, or means "call the whole thing off", that is cancel_meeting. Confirm with the user first.',
+  tool('opt_out_of_meeting', 'Leave a meeting — while negotiating, OR "I can\'t come" after it was confirmed (it stays on for the others). One person bowing out, NOT a cancellation: when the user is the initiator, or means "call the whole thing off", that is cancel_meeting. Confirm with the user first.',
     { meeting_id: S('number', 'Meeting id') }, ['meeting_id'],
     async (client, user, a) => {
       const res = await meetings.optOut(client, user.id, a.meeting_id);
@@ -247,7 +247,7 @@ module.exports = [
   // picker.js, and restore the doctrine paragraph in intake/agents-template.md.
   tool('list_my_meetings', 'Your recent meetings.', {}, [],
     (client, user) => meetings.listMine(client, user.id)),
-  tool('cancel_meeting', 'Cancel a meeting you initiated, for EVERYONE — negotiating or already confirmed (until it starts). Every participant is told, and a confirmed meeting\'s shared calendar event is removed. This calls the whole thing off: when the user only means THEY cannot come, that is opt_out_of_meeting (the meeting continues without them) — ask which they mean if it is not obvious. Confirm with the user first.',
+  tool('cancel_meeting', 'Cancel a meeting you initiated, for EVERYONE — negotiating or confirmed (until it starts). Every participant is told and the shared calendar event is removed. When the user only means THEY cannot come, that is opt_out_of_meeting — ask which they mean if unclear. Confirm with the user first.',
     { meeting_id: S('number', 'Meeting id') }, ['meeting_id'],
     async (client, user, a) => {
       const brief = await meetingBrief(client, a.meeting_id);
@@ -279,7 +279,7 @@ module.exports = [
       if (hint) res.data.hint = hint;
       return res;
     }),
-  tool('set_meeting_title', 'Rename a meeting you initiated — when the user names what it is about ("שיחה על הפרויקט") or wants a different name. The name is what everyone\'s invites and calendars show, so keep it in the user\'s words. Works while negotiating or after confirmation.',
+  tool('set_meeting_title', 'Rename a meeting you initiated ("שיחה על הפרויקט"). The name is what everyone\'s invites and calendars show, so keep it in the user\'s words. Works while negotiating or after confirmation.',
     { meeting_id: S('number', 'Meeting id'), title: S('string', 'The new name, in the user\'s language') },
     ['meeting_id', 'title'],
     async (client, user, a) => {

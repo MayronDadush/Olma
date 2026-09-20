@@ -12,7 +12,7 @@ module.exports = [
   // distinction is what keeps it clear of the double-send rule in
   // channels/openclaw.js: the reply is still the one and only delivery.
   tool('render_schedule_card',
-    'Draw a long list (5+ items or several weeks) as an image. Returns a path, sends nothing — attach with "MEDIA: <path>" on its own line plus one short sentence, and never also repeat the list as text. Compose sections from data fetched THIS turn, grouped as a person would think ("this week", "September"), in their language.',
+    'Draw a long list (5+ items or several weeks) as an image. Returns a path, sends nothing — attach with "MEDIA: <path>" on its own line plus one short sentence, and never also repeat the list as text. Sections from data fetched THIS turn, grouped as a person would think ("this week"), in their language.',
     {
       title: S('string', 'Card heading, e.g. "תמונת מצב". Keep it short.'),
       subtitle: S('string', 'Optional line under the title, e.g. the date range.'),

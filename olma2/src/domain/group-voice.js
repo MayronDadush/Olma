@@ -75,7 +75,9 @@ function decideGroupLine(co, {
 } = {}) {
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
   if (co.status === 'confirmed') {
-    if (!saidDone) return { kind: 'done', slot: co.confirmedSlot, who: whoIsIn(co) };
+    // `placeAsk`: nobody has said where, so the done line asks — only then
+    // (owner, 2026-09-20: "פוקר אצל יוסי" already says it).
+    if (!saidDone) return { kind: 'done', slot: co.confirmedSlot, who: whoIsIn(co), placeAsk: !co.location };
     // Once, after the done line, and only when a SHARED calendar event exists
     // for this coordination — `calendar_event_id` is written by nothing but
     // calendar.createSharedMeetingEvent. "הוספתי ליומן של כולם" would have

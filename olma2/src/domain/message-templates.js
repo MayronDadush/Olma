@@ -253,9 +253,9 @@ const TEMPLATES = [
   {
     key: 'group_coord_done', audience: 'group', label: 'תיאום — נסגר',
     help: 'פעם אחת, כשהתיאום נסגר על זמן. כל אחד מקבל את זה גם בפרטי; זאת השורה בקבוצה.',
-    vars: { slot: 'הזמן שנסגר', who: '"כולם בפנים", או "בפנים:" ותיוגים של מי שאמר כן' }, required: ['slot'],
-    sample: { slot: 'יום שלישי 20:00', who: 'כולם בפנים' },
-    text: 'סגור: *{{slot}}* 🎉 {{who}}',
+    vars: { slot: 'הזמן שנסגר', who: '"כולם בפנים", או "בפנים:" ותיוגים של מי שאמר כן', place_ask: 'שאלה איפה נפגשים — רק כשאף אחד לא אמר מקום' }, required: ['slot'],
+    sample: { slot: 'יום שלישי 20:00', who: 'כולם בפנים', place_ask: 'איפה נפגשים? תכתבו לי ואני אוסיף ליומן 📍' },
+    text: 'סגור: *{{slot}}* 🎉 {{who}}\n{{place_ask}}',
   },
   {
     key: 'group_coord_calendar', audience: 'group', label: 'תיאום — ביומן',

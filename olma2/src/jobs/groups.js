@@ -448,7 +448,7 @@ async function sweepGroupVoice(client, deps) {
     if (spoken.has(String(row.id))) continue;
     const { rows: full } = await client.query(
       `SELECT id, title, status, confirmed_slot, confirmed_start_at, initiator_id,
-              settle_due_at, calendar_event_id
+              settle_due_at, calendar_event_id, location
          FROM meetings WHERE id = $1`, [row.meeting_id]);
     const st = await groupMeetings.statusOf(client, row, full[0] || null);
     const line = groupVoice.decideGroupLine(st.coordination, {

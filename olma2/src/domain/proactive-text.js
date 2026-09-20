@@ -210,8 +210,11 @@ function renderGroupCoordination(line, overrides) {
   // `who` is a whole phrase, so an owner's rewording can move or drop it:
   // "כולם בפנים", or the tags of those who said yes. Null draws nothing.
   const who = !line.who ? '' : line.who.all ? WHO_ALL : (line.who.phones || []).length ? `${WHO_IN} ${mentionTokens(line.who.phones)}` : '';
-  return templates.render('group_coord_done', { slot: slotText(line.slot), who }, overrides).trim();
+  return templates.render('group_coord_done', {
+    slot: slotText(line.slot), who, place_ask: line.placeAsk ? PLACE_ASK : '',
+  }, overrides).trim();
 }
+const PLACE_ASK = 'איפה נפגשים? תכתבו לי ואני אוסיף ליומן 📍';
 const WHO_ALL = 'כולם בפנים';
 const WHO_IN = 'בפנים:';
 

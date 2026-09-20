@@ -155,6 +155,8 @@ test('a settled coordination is announced, and nothing else about it is', async 
   // answered — so the two are tagged, and "כולם" is not said.
   assert.match(sent[0].body, new RegExp(`בפנים: @${a.phone.replace('+', '\\+')} @${b.phone.replace('+', '\\+')}`));
   assert.doesNotMatch(sent[0].body, /כולם/);
+  // Nobody said where: the done line asks, once, in the same message.
+  assert.match(sent[0].body, /איפה נפגשים\? תכתבו לי ואני אוסיף ליומן/);
 
   const after2 = [];
   await pass(after2);
@@ -176,7 +178,8 @@ test('a settled coordination is announced, and nothing else about it is', async 
 test('when everybody said yes the done line says so, and no calendar line without a shared event', async () => {
   const { group, people } = await room(11);
   const [a, b, c] = people;
-  const started = await withTx(db.pool, (c2) => groupMeetings.startCoordination(c2, group, a, 'ערב משחקים'));
+  const started = await withTx(db.pool, (c2) => groupMeetings.startCoordination(c2, group, a, 'ערב משחקים', { where: 'אצל דני' }));
+  assert.equal(started.data.meeting.location, 'אצל דני', 'the place the room said, on the meeting');
   const meetingId = Number(started.data.meeting.id);
   const when = slotStart('בערב', { hours: 96 });
   const optionId = await withTx(db.pool, async (c2) =>
@@ -191,6 +194,7 @@ test('when everybody said yes the done line says so, and no calendar line withou
   await pass(sent, null, group.external_id);
   assert.equal(sent.length, 1, JSON.stringify(sent));
   assert.match(sent[0].body, /סגור: \*בערב אצל דני\* 🎉 כולם בפנים/);
+  assert.doesNotMatch(sent[0].body, /איפה נפגשים/, 'the room already said where');
   const nothing = [];
   await pass(nothing, null, group.external_id);
   assert.deepEqual(nothing, [], 'no calendar event, no calendar line');
@@ -405,3 +409,35 @@ test('the reminders ride the same pass, once each, and only for this coordinatio
   await pass(sent, new Date(at.getTime() + 60_000), mine);
   assert.equal(sent.length, 3, 'and nothing at all once it has started');
 });
+
+// "אצל יוסי" arrives in any message, before or after the time is set. Saved
+// in the room's words; a shared calendar event, when one exists, gets it too.
+test('the place can be said later, and a closed room has nothing to put it on', async () => {
+  const { group, people } = await room(12);
+  const [a, b] = people;
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'פוקר'));
+  const meetingId = Number(started.data.meeting.id);
+  assert.equal(started.data.meeting.location, null);
+
+  const empty = await withTx(db.pool, (c) => groupMeetings.setPlace(c, group, b, '   '));
+  assert.equal(empty.ok, false);
+  const set = await withTx(db.pool, (c) => groupMeetings.setPlace(c, group, b, '  אצל  יוסי '));
+  assert.equal(set.ok, true, JSON.stringify(set.error));
+  assert.deepEqual([set.data.location, set.data.calendarUpdated, set.data.status], ['אצל יוסי', false, 'negotiating']);
+  const row = (await db.pool.query(`SELECT location FROM meetings WHERE id = $1`, [meetingId])).rows[0];
+  assert.equal(row.location, 'אצל יוסי');
+  const audit = await db.pool.query(
+    `SELECT count(*)::int AS n FROM audit_log WHERE actor_id = $1 AND event = 'meeting.place_set'`, [b.id]);
+  assert.equal(audit.rows[0].n, 1);
+
+  // A stranger to the room cannot set it.
+  const outsider = await makeUser(db.pool, '+972607120099', { firstName: 'זר' });
+  const no = await withTx(db.pool, (c) => groupMeetings.setPlace(c, group, outsider, 'אצלי'));
+  assert.equal(no.ok, false);
+
+  await db.pool.query(`UPDATE meetings SET status = 'cancelled' WHERE id = $1`, [meetingId]);
+  const gone = await withTx(db.pool, (c) => groupMeetings.setPlace(c, group, a, 'בבית קפה'));
+  assert.equal(gone.ok, false);
+  assert.equal(gone.error.code, 'not_found');
+});
+

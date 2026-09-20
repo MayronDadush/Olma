@@ -38,7 +38,15 @@ const LEGACY_STALE_DAYS = 3;
 // else. Passing a groupId with a list of arbitrary user ids would bypass the
 // grants for people who never shared a room, which is why this argument is
 // not reachable from any tool a person can call.
-async function startMeeting(client, initiatorId, title, participantUserIds, { groupId = null } = {}) {
+// A place is the room's own words and stays that way: trimmed, bounded, and
+// never parsed — "אצל יוסי" is a location to a person and not to a geocoder.
+const LOCATION_MAX_CHARS = 120;
+function cleanLocation(where) {
+  const s = String(where == null ? '' : where).replace(/\s+/g, ' ').trim();
+  return s ? s.slice(0, LOCATION_MAX_CHARS) : null;
+}
+
+async function startMeeting(client, initiatorId, title, participantUserIds, { groupId = null, location = null } = {}) {
   if (!Array.isArray(participantUserIds) || participantUserIds.length === 0) {
     return err('invalid', 'at least one participant required');
   }
@@ -73,10 +81,10 @@ async function startMeeting(client, initiatorId, title, participantUserIds, { gr
   // every group in production today, leaves this NULL exactly as a meeting
   // with no group does.
   const { rows } = await client.query(
-    `INSERT INTO meetings (initiator_id, title, group_id, quorum_min)
-     VALUES ($1, $2, $3, (SELECT quorum_min FROM chat_groups WHERE id = $3))
+    `INSERT INTO meetings (initiator_id, title, group_id, quorum_min, location)
+     VALUES ($1, $2, $3, (SELECT quorum_min FROM chat_groups WHERE id = $3), $4)
      RETURNING *`,
-    [initiatorId, finalTitle, groupId]
+    [initiatorId, finalTitle, groupId, cleanLocation(location)]
   );
   const meeting = rows[0];
   for (const uid of [initiatorId, ...unique]) {
@@ -669,6 +677,7 @@ async function listNegotiating(client, userId = null) {
 }
 
 module.exports = {
+  cleanLocation,
   startMeeting, recordConstraint, proposeSlot, respondToSlot,
   optOut, rejoin, applyExit, withdrawConfirmed, cancelMeeting, setTitle, setQuorum,
   getStatus, listMine, pendingMeetingFor, tryConfirm, settleNow,

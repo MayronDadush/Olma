@@ -65,6 +65,7 @@ never trust a dated narrative for something you are about to act on.
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
+- [The place nobody asked for (fixed 2026-09-20)](#the-place-nobody-asked-for-fixed-2026-09-20)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [The man who only ever answered from the page (fixed 2026-09-20)](#the-man-who-only-ever-answered-from-the-page-fixed-2026-09-20)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
@@ -2238,6 +2239,27 @@ now says the `@<digits>` inside the message she received is the sender
 tagging her, never anybody's tag. The rest of that turn — names instead of
 tags, "שניכם (אתה ויובל)" — is the cheap model ignoring the rule it was
 given, and stays in the narration-faults column.
+
+### The place nobody asked for (fixed 2026-09-20)
+
+The owner's ask, after coordination 35 closed: the room should be told the
+plan is in the calendar and asked where it happens, so the place can go on
+the event — unless the place was in the request already ("פוקר אצל יוסי"
+means Yossi's). `meetings` had no place column; the title carried it in 35
+and nothing could read it back out, and `create_shared_meeting_event`
+accepted a `location` that nothing ever passed.
+
+**Fix.** `meetings.location` (migration 077), the room's own words through
+`meetings.cleanLocation`. `start_group_coordination` takes `where` — only
+when the room said one — and a new room tool `set_group_coordination_place`
+saves it later, updating an existing shared event through
+`calendar.updateEvent` as its organiser. The done line ends with "איפה
+נפגשים? תכתבו לי ואני אוסיף ליומן 📍" only while `location` is NULL, and
+`meetingCalendarStep` hands the place to the organiser's and the solo
+calendar step fenced as data. Paid for at the schema ceiling by trimming
+seven descriptions (55,833 → 55,478 chars), which is what adding a tool
+costs here. What it still waits on: an answer typed in the room reaches her
+only with a tag until PR #429 lands.
 ### The room window opened on a row nobody would look at (fixed 2026-09-19)
 
 The owner asked, on a Saturday: *"אם אותו משתמש מתכתב בקבוצה בזמן שיש תיאום
