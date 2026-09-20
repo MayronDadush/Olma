@@ -426,7 +426,7 @@ async function sweepGroupVoice(client, deps) {
     // would date every coordination from the day the ROOM was registered.
     `SELECT m.id AS meeting_id, m.status, m.created_at AS meeting_created_at,
             m.group_base_at, m.group_chase_at, m.group_done_at,
-            m.group_dayof_at, m.group_hour_at, g.*,
+            m.group_dayof_at, m.group_hour_at, m.group_calendar_at, g.*,
             (SELECT max(last_wrote_at) FROM chat_group_members
               WHERE group_id = g.id) AS last_member_write_at
        FROM meetings m JOIN chat_groups g ON g.id = m.group_id
@@ -434,6 +434,8 @@ async function sweepGroupVoice(client, deps) {
         AND (m.status = 'negotiating'
              OR (m.status = 'confirmed'
                  AND (m.group_done_at IS NULL
+                      -- a shared calendar event the room has not heard about
+                      OR (m.calendar_event_id IS NOT NULL AND m.group_calendar_at IS NULL)
                       -- still ahead of us, and one of the two reminders unsaid
                       OR (m.confirmed_start_at IS NOT NULL AND m.confirmed_start_at > now()
                           AND (m.group_dayof_at IS NULL OR m.group_hour_at IS NULL)))))
@@ -445,13 +447,15 @@ async function sweepGroupVoice(client, deps) {
   for (const row of rows) {
     if (spoken.has(String(row.id))) continue;
     const { rows: full } = await client.query(
-      `SELECT id, title, status, confirmed_slot, confirmed_start_at, initiator_id
+      `SELECT id, title, status, confirmed_slot, confirmed_start_at, initiator_id,
+              settle_due_at, calendar_event_id
          FROM meetings WHERE id = $1`, [row.meeting_id]);
     const st = await groupMeetings.statusOf(client, row, full[0] || null);
     const line = groupVoice.decideGroupLine(st.coordination, {
       saidBase: Boolean(row.group_base_at),
       saidChase: Boolean(row.group_chase_at),
       saidDone: Boolean(row.group_done_at),
+      saidCalendar: Boolean(row.group_calendar_at),
       saidDayOf: Boolean(row.group_dayof_at),
       saidHour: Boolean(row.group_hour_at),
       startedAtMs: new Date(row.meeting_created_at).getTime(),
@@ -472,7 +476,7 @@ async function sweepGroupVoice(client, deps) {
     });
     const column = {
       base: 'group_base_at', chase: 'group_chase_at', done: 'group_done_at',
-      dayof: 'group_dayof_at', soon: 'group_hour_at',
+      calendar: 'group_calendar_at', dayof: 'group_dayof_at', soon: 'group_hour_at',
     }[line.kind];
     await client.query(`UPDATE meetings SET ${column} = now() WHERE id = $1`, [row.meeting_id]);
     await audit.record(client, row.registered_by_user_id, 'group.coordination_said', {

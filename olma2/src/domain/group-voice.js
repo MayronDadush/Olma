@@ -71,11 +71,18 @@ function leadingOption(options) {
 // saying the base of a plan that is already settled is worse than saying
 // nothing.
 function decideGroupLine(co, {
-  saidBase, saidChase, saidDone, saidDayOf, saidHour, startedAtMs, nowMs, timezone,
+  saidBase, saidChase, saidDone, saidCalendar, saidDayOf, saidHour, startedAtMs, nowMs, timezone,
 } = {}) {
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
   if (co.status === 'confirmed') {
-    if (!saidDone) return { kind: 'done', slot: co.confirmedSlot };
+    if (!saidDone) return { kind: 'done', slot: co.confirmedSlot, who: whoIsIn(co) };
+    // Once, after the done line, and only when a SHARED calendar event exists
+    // for this coordination — `calendar_event_id` is written by nothing but
+    // calendar.createSharedMeetingEvent. "הוספתי ליומן של כולם" would have
+    // been a lie in coordination 35, where one person had a calendar
+    // (owner, 2026-09-20). The line still says who got an invitation:
+    // whoever connected one, not everybody.
+    if (!saidCalendar && co.calendarEventId) return { kind: 'calendar' };
     // Then the two reminders, and the NEARER one wins when both are due in
     // the same pass: "in an hour" is true and "today" is merely also true.
     const at = co.confirmedStartAt ? new Date(co.confirmedStartAt).getTime() : 0;
@@ -98,11 +105,14 @@ function decideGroupLine(co, {
     const enough = lead.quorum && lead.quorum.known && lead.quorum.min !== null
       ? lead.quorum.met
       : lead.yes.length >= 2;
-    if (enough) {
-      return {
-        kind: 'base', slot: lead.slot, yes: lead.yes.length,
-        missing: [...lead.missing, ...lead.no].map((p) => p.phone).filter(Boolean).slice(0, MAX_TAGS),
-      };
+    const missing = [...lead.missing, ...lead.no].map((p) => p.phone).filter(Boolean);
+    // "מחכה ל 🤞" went out to nobody: Yuval's yes made it unanimous, the
+    // settle minute was running, and twelve seconds later the base line
+    // named an empty list (coordination 37, 2026-09-20). A base is a thing
+    // to say while somebody is still owed; with nobody missing, or the
+    // grace already armed, the next thing this room hears is "סגור".
+    if (enough && missing.length && !co.settleDueAt) {
+      return { kind: 'base', slot: lead.slot, yes: lead.yes.length, missing: missing.slice(0, MAX_TAGS) };
     }
   }
 
@@ -116,6 +126,19 @@ function decideGroupLine(co, {
   return { kind: 'none', reason: 'nothing new to say' };
 }
 
+// Who can make the time the coordination closed on: everybody still in, or
+// the tags of those who said yes (owner, 2026-09-20). `all` is the whole
+// sentence's difference — "כולם" is said, a list is tagged — and null means
+// the confirmed option could not be found, which draws nothing rather than a
+// guess.
+function whoIsIn(co) {
+  const o = co.confirmedOption;
+  if (!o || !Array.isArray(o.yes)) return null;
+  const phones = o.yes.map((p) => p.phone).filter(Boolean);
+  const all = Number(co.participants) > 0 && o.yes.length >= Number(co.participants);
+  return { all, phones: all ? [] : phones };
+}
+
 function earliestStart(co) {
   const times = (co.options || []).map((o) => (o.startsAt ? new Date(o.startsAt).getTime() : 0))
     .filter((t) => t > 0);
@@ -123,6 +146,6 @@ function earliestStart(co) {
 }
 
 module.exports = {
-  decideGroupLine, leadingOption, chaseDueAt, localDay,
+  decideGroupLine, leadingOption, chaseDueAt, localDay, whoIsIn,
   CHASE_FALLBACK_MS, CHASE_MIN_MS, CHASE_MAX_MS, HOUR_BEFORE_MS, DAY_OF_MIN_LEAD_MS,
 };

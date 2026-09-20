@@ -216,11 +216,24 @@ async function statusOf(client, group, meeting) {
     };
   });
 
+  // The option the coordination closed on, with who said yes to it — the
+  // "סגור" line names them (owner, 2026-09-20: "מי שיכולים, או כולם").
+  // confirmOn keeps `confirmed_slot` and clears `settling_option_id`, and
+  // `options.add` refuses a duplicate slot text, so the text is the key.
+  const confirmedOption = meeting.confirmed_slot
+    ? table.find((o) => o.slot === meeting.confirmed_slot) || null
+    : null;
   return {
     coordination: {
       meetingId: Number(meeting.id), title: meeting.title, status: meeting.status,
       confirmedSlot: meeting.confirmed_slot || null,
       confirmedStartAt: meeting.confirmed_start_at || null,
+      confirmedOption,
+      // The minute between the last yes and the announcement, and whether a
+      // shared calendar event exists for it — both undefined when the caller
+      // did not select them, which the room line treats as "no".
+      settleDueAt: meeting.settle_due_at || null,
+      calendarEventId: meeting.calendar_event_id || null,
       startedBy: who(meeting.initiator_id).name,
       participants: active.length,
       options: table,

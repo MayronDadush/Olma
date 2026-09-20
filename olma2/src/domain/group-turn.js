@@ -45,7 +45,7 @@ const CONTEXT_RULE = 'Every sentence you say about this room\'s coordination com
 // (`incidents.md`, "Four messages in sixty-two seconds"). The tags are drawn
 // into the block itself so there is nothing to build: copy one character for
 // character or leave the person out of the sentence.
-const TAG_RULE = 'In this room you address a person ONLY with their `tag` exactly as written above (it notifies them; a name does not, and the names people see for each other are not ours to choose). Never write somebody\'s name here, and never invent a tag for somebody the block does not list. In a PRIVATE chat the opposite holds: there you use their name.';
+const TAG_RULE = 'In this room you address a person ONLY with their `tag` exactly as written above (it notifies them; a name does not, and the names people see for each other are not ours to choose). Never write somebody\'s name here, and never invent a tag for somebody the block does not list. In a PRIVATE chat the opposite holds: there you use their name. The `@<digits>` token inside the message you were sent is the SENDER tagging YOU — it is nobody\'s tag, never echo it, and never take it for the sender\'s.';
 
 // The room, and its coordination if one is negotiating. A settled or cancelled
 // one is reported as what it is, under a different key: the model asking "is

@@ -63,6 +63,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room window opened on a row nobody would look at (fixed 2026-09-19)](#the-room-window-opened-on-a-row-nobody-would-look-at-fixed-2026-09-19)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
+- [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [The man who only ever answered from the page (fixed 2026-09-20)](#the-man-who-only-ever-answered-from-the-page-fixed-2026-09-20)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
@@ -2169,6 +2170,46 @@ person than the rows it had just written. It is `participants` now.
 `deploy.sh` does not restart it; the trace line to look for is
 `{"group":"g-7","turn":"prepended"}`.
 
+
+### The room waited for nobody (fixed 2026-09-20)
+
+Three things the test rooms said on 2026-09-20, read back from the group
+transcripts and `group_outbox`.
+
+**"מחכה ל 🤞" — to an empty list.** Coordination 37: Yuval's yes at
+11:40:04 made the one option unanimous and armed the settle minute. At
+11:40:16 the sweep's base line went out with `missing: []`, because
+`decideGroupLine` asked only "is there a lead with enough yeses and has
+the base been said", and both were still true during the grace. Twelve
+seconds later the next line was "סגור". A base is a thing to say while
+somebody is still owed; `decideGroupLine` now returns nothing when the
+lead's `missing` is empty or `settle_due_at` is armed, and the room's next
+sentence is the close.
+
+**"סגור: *יום חמישי 1.10 בצהריים* 🎉" — and nobody said who.** Coordination
+35 closed by unanimity and the room was not told that everybody was in;
+the owner wanted the names, or "כולם" when it is everybody. `statusOf`
+exposes the confirmed option (found by its text, which `options.add` keeps
+unique per table) and `whoIsIn` turns its yeses into "כולם בפנים" or the
+tags of those who said yes — tags, never names, by the morning's rule.
+`{{who}}` is a whole phrase on the template so a rewording can move it.
+
+**"הוספתי ליומן של כולם" — not said, and it could not have been true.** The
+owner asked for a calendar line in the room. The private turn adds the
+event for whoever has a calendar connected; in 35 that was one person, in
+37 the shared event had one attendee. So the line exists only for a shared
+event — `meetings.calendar_event_id`, which nothing but
+`createSharedMeetingEvent` writes — is said once after the close
+(`group_calendar_at`, migration 076), and says who got an invitation:
+whoever connected a calendar, with the page named for the rest.
+
+**And she tagged herself.** At 11:32:56 the room agent opened with
+`@232040725262501` — her own LID, the token Yuval had used to tag her —
+as if it were his. The block had handed her `@+972544686188`. `TAG_RULE`
+now says the `@<digits>` inside the message she received is the sender
+tagging her, never anybody's tag. The rest of that turn — names instead of
+tags, "שניכם (אתה ויובל)" — is the cheap model ignoring the rule it was
+given, and stays in the narration-faults column.
 ### The room window opened on a row nobody would look at (fixed 2026-09-19)
 
 The owner asked, on a Saturday: *"אם אותו משתמש מתכתב בקבוצה בזמן שיש תיאום

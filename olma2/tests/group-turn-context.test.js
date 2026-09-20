@@ -103,6 +103,9 @@ test('a running coordination: the title, how many were asked, how many answered,
   // which is how "M&M" left the room as "מאיה ומירון".
   assert.deepEqual(data.coordination.waitingFor, [`@${yuval.phone}`]);
   assert.match(groupTurn.TAG_RULE, /ONLY with their `tag`/);
+  // She opened with her OWN LID — the token Yuval used to tag her — as if it
+  // were his (coordination 37, 2026-09-20).
+  assert.match(groupTurn.TAG_RULE, /the SENDER tagging YOU/);
   assert.equal(data.coordination.waitingFor.length, data.coordination.asked - data.coordination.answered,
     'the two numbers and the list are one fact and must agree');
   assert.deepEqual(data.coordination.onTable, [{ optionId, slot: 'רביעי 21:00', yes: 1, no: 1 }]);
