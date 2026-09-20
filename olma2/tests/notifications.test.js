@@ -46,6 +46,19 @@ async function outboxFor(userId, kind) {
   return rows;
 }
 
+// The worker having drained what is already queued for this person. Every test
+// below that watches a LATER message needs it, because since 2026-09-20 a new
+// question about a coordination folds into one that has not gone out yet
+// (`meeting-fanout.js`, "Four messages in sixty-two seconds") — which in
+// production happens to somebody asleep, and here would happen to everybody,
+// since nothing in this file delivers. The fold has its own tests in
+// tests/meeting-options.test.js; these describe what a person who is awake
+// hears, one message per thing that happened.
+async function drain(userId) {
+  await db.pool.query(
+    `UPDATE outbox SET sent_at = now() WHERE user_id = $1 AND sent_at IS NULL`, [userId]);
+}
+
 before(async () => {
   db = await freshDb();
   broker = createBrokerServer({ pool: db.pool });
@@ -68,6 +81,7 @@ test('meeting lifecycle fans out at every turn', async () => {
   assert.equal(rows.length, 1);
   assert.equal(rows[0].payload.byName, 'Miron');
   assert.equal(rows[0].urgency, 'urgent');
+  await drain(kapish.id);
 
   // miron proposes → kapish hears the slot, miron does not self-notify
   await call(miron, 'propose_meeting_slot', { meeting_id: meetingId, slot_description: 'Tuesday 17:00, cafe',
@@ -125,6 +139,7 @@ test('plain decline notifies the initiator; cancel notifies participants', async
 test('two proposals are two options; a yes names one; confirming supersedes the asks', async () => {
   const started = await call(miron, 'start_meeting_coordination', { title: 'race', phones: [kapish.phone] });
   const meetingId = Number(/"id":"?(\d+)/.exec(started)[1]);
+  await drain(kapish.id);
   const sun = slotStart('Sunday 09:00, phone');
   await call(miron, 'propose_meeting_slot', {
     meeting_id: meetingId, slot_description: 'Sunday 09:00, phone', starts_at: sun });
@@ -132,13 +147,21 @@ test('two proposals are two options; a yes names one; confirming supersedes the 
   await call(miron, 'propose_meeting_slot', {
     meeting_id: meetingId, slot_description: 'Tuesday 10:00, cafe', starts_at: tue });
 
+  // Both times are on the table and both asks stand — but the FIRST ask has
+  // not gone out yet, so the second folds into it rather than queueing behind
+  // it: one message about the table, which is what the eight-second parade
+  // above actually needed (`incidents.md`, "Four messages in sixty-two
+  // seconds").
   const rows = (await outboxFor(kapish.id, 'meeting_slot_proposed'))
     .filter((r) => Number(r.payload.meetingId) === meetingId);
-  assert.equal(rows.length, 2);
-  const bySlot = Object.fromEntries(rows.map((r) => [r.payload.slot, r]));
-  assert.equal(bySlot['Sunday 09:00, phone'].hold_reason, null, 'the first option is still on the table');
-  assert.equal(bySlot['Tuesday 10:00, cafe'].hold_reason, null);
-  assert.equal(bySlot['Tuesday 10:00, cafe'].payload.startsAt, tue);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].hold_reason, null);
+  assert.equal(rows[0].payload.slot, 'Sunday 09:00, phone', 'the row that was already waiting');
+  assert.equal(rows[0].payload.tableChanged, true, 'and it now asks about the table, not about Sunday');
+  const table = await db.pool.query(
+    `SELECT slot_text, starts_at FROM meeting_options WHERE meeting_id = $1 ORDER BY id`, [meetingId]);
+  assert.deepEqual(table.rows.map((r) => r.slot_text), ['Sunday 09:00, phone', 'Tuesday 10:00, cafe']);
+  assert.equal(table.rows[1].starts_at.toISOString(), new Date(tue).toISOString());
 
   // a yes to a moment nobody proposed is refused and shown the table; a bare
   // yes is refused too; neither records anything
@@ -362,6 +385,7 @@ test('unanswered repair: only for messages provably never answered', async () =>
 test('the reason a slot suits someone rides along to the other side', async () => {
   const started = await call(miron, 'start_meeting_coordination', { title: 'poker', phones: [kapish.phone] });
   const meetingId = Number(/"id":"?(\d+)/.exec(started)[1]);
+  await drain(kapish.id);
   await call(miron, 'record_meeting_constraint', {
     meeting_id: meetingId, constraint: 'בצילומים ומסיים מאוחר' });
   await call(miron, 'propose_meeting_slot', {
@@ -385,6 +409,7 @@ test('the reason a slot suits someone rides along to the other side', async () =
 test('a private reason never leaves its own agent', async () => {
   const started = await call(miron, 'start_meeting_coordination', { title: 'poker private', phones: [kapish.phone] });
   const meetingId = Number(/"id":"?(\d+)/.exec(started)[1]);
+  await drain(kapish.id);
   await call(miron, 'record_meeting_constraint', {
     meeting_id: meetingId, constraint: 'לא ביום שני' });
   await call(miron, 'record_meeting_constraint', {

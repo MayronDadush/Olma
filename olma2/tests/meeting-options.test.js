@@ -378,3 +378,117 @@ test('the migration carries a negotiation in flight over as one option with its 
     assert.deepEqual(table[0].answers, { [String(ann.id)]: 'y', [String(ben.id)]: 'n' });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Four messages in sixty-two seconds (2026-09-20, `incidents.md`). Kapish's
+// invite to a room coordination and three times added to it while the night
+// held them were all released the moment he wrote in the room: four private
+// messages in a minute, each re-asking the same question. A question that has
+// NOT gone out yet is the question that is going to be asked, so a new one
+// folds into it — the owner's rule for a removal, applied to an addition.
+
+test('times added while a question is still queued fold into ONE message', async () => {
+  await withClient(async (c) => {
+    const m = await trio(c, 'לילה');
+    // The invite is the first thing Ben ever hears about this coordination,
+    // and it is still sitting in the queue — the night, in production.
+    await fanout.afterStart(c, ann, { ok: true, data: { meeting: { id: m, title: 'לילה' } } }, [ben.id], 'לילה');
+    const a = await opts.add(c, ann.id, m, 'A', at(40));
+    await fanout.afterOptionAdded(c, ann, m, a);
+    const b = await opts.add(c, cal.id, m, 'B', at(64));
+    await fanout.afterOptionAdded(c, cal, m, b);
+
+    const { rows } = await c.query(
+      `SELECT kind, sent_at, payload FROM outbox
+        WHERE user_id = $1 AND (payload->>'meetingId')::bigint = $2 ORDER BY id`, [ben.id, m]);
+    assert.equal(rows.length, 1, 'one row, not four');
+    assert.equal(rows[0].sent_at, null);
+    // The OLDEST survives, which is what keeps the framing: an invite says
+    // what is being arranged and by whom, a bare slot row does not.
+    assert.equal(rows[0].kind, 'meeting_invite');
+    assert.equal(rows[0].payload.tableChanged, true);
+    // The times themselves are not copied onto it: the table can move again
+    // before this goes out.
+    assert.equal(rows[0].payload.slot, undefined);
+  });
+});
+
+test('a question that already went out does not swallow the next one', async () => {
+  await withClient(async (c) => {
+    const m = await trio(c, 'ער');
+    const a = await opts.add(c, ann.id, m, 'A', at(42));
+    await fanout.afterOptionAdded(c, ann, m, a);
+    // Ben was awake: his row went out.
+    await c.query(
+      `UPDATE outbox SET sent_at = now() WHERE user_id = $1 AND (payload->>'meetingId')::bigint = $2`,
+      [ben.id, m]);
+    const b = await opts.add(c, ann.id, m, 'B', at(66));
+    await fanout.afterOptionAdded(c, ann, m, b);
+    const { rows } = await c.query(
+      `SELECT payload FROM outbox WHERE user_id = $1 AND sent_at IS NULL
+        AND (payload->>'meetingId')::bigint = $2`, [ben.id, m]);
+    assert.equal(rows.length, 1);
+    assert.equal(Number(rows[0].payload.optionId), Number(b.data.option.id));
+    assert.equal(rows[0].payload.tableChanged, undefined, 'a live question is about its own slot');
+  });
+});
+
+test('what came off the table is recomputed onto the row a fold lands on', async () => {
+  await withClient(async (c) => {
+    const m = await trio(c, 'ירד מהשולחן');
+    const a = await opts.add(c, ann.id, m, 'A', at(44));
+    await fanout.afterOptionAdded(c, ann, m, a);
+    // Ben's question about A is still queued. A comes off, which supersedes
+    // that row, and the next addition finds his INVITE-less queue empty…
+    const gone = await opts.remove(c, cal.id, m, a.data.option.id);
+    await fanout.afterOptionRemoved(c, cal, m, gone);
+    const b = await opts.add(c, ann.id, m, 'B', at(68));
+    await fanout.afterOptionAdded(c, ann, m, b);
+    // …so B is its own row and carries the removal, exactly as before.
+    const first = (await c.query(
+      `SELECT payload FROM outbox WHERE user_id = $1 AND sent_at IS NULL
+        AND (payload->>'meetingId')::bigint = $2`, [ben.id, m])).rows;
+    assert.equal(first.length, 1);
+    assert.deepEqual(first[0].payload.removedOptions, [{ slot: 'A', byName: 'Cal' }]);
+
+    // Now a SECOND removal, with B's question still waiting: the fold has to
+    // refresh the news on the row it lands on, or the removal rides nothing.
+    const goneB = await opts.remove(c, cal.id, m, b.data.option.id);
+    await fanout.afterOptionRemoved(c, cal, m, goneB);
+    const d = await opts.add(c, ann.id, m, 'D', at(92));
+    await fanout.afterOptionAdded(c, ann, m, d);
+    const e = await opts.add(c, ann.id, m, 'E', at(116));
+    await fanout.afterOptionAdded(c, ann, m, e);
+    const live = (await c.query(
+      `SELECT payload FROM outbox WHERE user_id = $1 AND sent_at IS NULL
+        AND (payload->>'meetingId')::bigint = $2`, [ben.id, m])).rows;
+    assert.equal(live.length, 1, 'D and E are one message');
+    assert.equal(live[0].payload.tableChanged, true);
+    assert.deepEqual(live[0].payload.removedOptions.map((r) => r.slot).sort(), ['A', 'B']);
+  });
+});
+
+test('a folded row is delivered as one question about the table', () => {
+  const { instructionFor } = require('../src/channels/openclaw');
+  const folded = instructionFor({
+    kind: 'meeting_slot_proposed',
+    payload: { meetingId: 77, title: 'פאדל', byName: 'Ann', slot: 'A', tableChanged: true },
+  });
+  assert.match(folded, /get_meeting_status/);
+  assert.match(folded, /ALL of them in THIS one message/);
+  assert.equal(folded.includes('<<<A>>>'), false, 'no single slot is the subject any more');
+  // and the invite keeps its own framing, with the same instruction added
+  const invite = instructionFor({
+    kind: 'meeting_invite',
+    payload: { meetingId: 77, title: 'פאדל', byName: 'Ann', groupSubject: 'החדר', tableChanged: true },
+  });
+  assert.match(invite, /coordinating <<<פאדל>>>/);
+  assert.match(invite, /ALL of them in THIS one message/);
+  // Nothing changes for a row nothing was folded into.
+  const plain = instructionFor({
+    kind: 'meeting_slot_proposed',
+    payload: { meetingId: 77, title: 'פאדל', byName: 'Ann', slot: 'A' },
+  });
+  assert.match(plain, /<<<A>>>/);
+  assert.equal(plain.includes('ALL of them in THIS one message'), false);
+});

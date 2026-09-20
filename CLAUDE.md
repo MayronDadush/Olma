@@ -192,7 +192,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 ### Reminders, tasks and dates
 
 **`.claude/rules/reminders-and-tasks.md`** — the three different questions about a pending reminder, ladders, duplicate titles, dating a task, and due_at against remind_at.
-Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/tasks.js`, `src/domain/auto-reminder.js` and 10 more.
+Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/tasks.js`, `src/domain/auto-reminder.js` and 11 more.
 
 - **"What is still pending" must ask `attempts = 0`**
 - **…and "what is still going to REACH them" is a THIRD question, which `attempts = 0` answers wrongly.**
@@ -203,6 +203,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A meeting negotiates several options (`domain/meeting-options.js`, up to five, and everybody in the coordination may add one or take one off). The single-slot columns `meetings.proposed_slot/proposed_start_at` and `meeting_participants.state` are MIRRORS of the newest active option**
 - **A sixth option is refused to EVERYBODY, the initiator included, and the refusal carries the five.**
 - **A time taken OFF that table is never a message of its own — it rides the next thing each person hears about that coordination.**
+- **A time ADDED to it rides the same thing, as long as that thing has not gone out yet** — four messages in sixty-two seconds is what queueing beside it looks like
 - **An explicit reminder replaces the automatic one only on the SAME local day; on another day it stands beside it.**
 - **An event is SAID, never only guessed, and it is never told back as a task.**
 - **A task already OPEN on somebody's list is never saved a second time.**

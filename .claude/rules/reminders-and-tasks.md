@@ -7,6 +7,7 @@ paths:
   - "olma2/src/domain/datetime.js"
   - "olma2/src/domain/meeting-options.js"
   - "olma2/src/domain/meeting-option-moment.js"
+  - "olma2/src/domain/meeting-fanout.js"
   - "olma2/src/domain/meetings.js"
   - "olma2/src/adapters/mcp/tools/reminders.js"
   - "olma2/src/adapters/mcp/tools/tasks.js"
@@ -143,6 +144,26 @@ title means this file. Grep the title, not the filename.
   gate held reached nobody, so the next one that lands says it again — and
   nobody is told about their own removal. `meeting_options.removed_by`
   (migration 063) exists so the name is in the same query as the slot.
+
+- **A time ADDED to it rides the same thing, as long as that thing has not gone
+  out yet** (2026-09-20). `meeting-fanout.js`'s `fanout` folds a new
+  `meeting_slot_proposed` into whichever `meeting_invite` /
+  `meeting_slot_proposed` row for that person and that coordination is still
+  unsent, stamping `tableChanged` on it instead of writing a second row —
+  never at delivery, where the reminder batch and `message-merge` do their
+  coalescing, because the point is precisely the row that has not been sent.
+  **The OLDEST row survives**, so an invite's framing ("the group is arranging
+  X, Y asked for it there") is never replaced by a bare slot question. **No
+  time is copied onto it**: the table can move again before it goes out, so
+  `get_meeting_status` at delivery is the only honest source, and
+  `channels/openclaw.js`'s `TABLE_CLAUSE` is what turns the stamp into ONE
+  question about the whole table instead of one message per option. Removals
+  are recomputed onto the surviving row, or the news above would ride a row
+  nothing will ever send. A question that already REACHED somebody folds
+  nothing — the next time is its own message, as it was. קאפיש read four
+  messages in sixty-two seconds when his invite and three additions, all held
+  for the night, released together on his first word in the room
+  (`incidents.md`, "Four messages in sixty-two seconds").
 
 - **An explicit reminder replaces the automatic one only on the SAME local
   day; on another day it stands beside it.** Both are otherwise about catching
