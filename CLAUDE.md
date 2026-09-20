@@ -187,6 +187,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **`messages.queue.mode` stays `followup`.**
 - **A turn Olma started is not a message from the person.**
 - **A WhatsApp reply names ONE message, and only the MODEL is ever told which.**
+- **A turn is told where every coordination it heard about in the last day stands NOW** — the session remembers the question, not the answer
 - **A DECISION to stay quiet is not a reply that got lost.**
 - **A repair job fires precisely when the system's belief about itself is already wrong, so it must be the most sceptical thing in the codebase.**
 - **A reply that got lost is RE-SENT, never re-answered.**
