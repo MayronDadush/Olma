@@ -117,11 +117,21 @@ test('the base of a game is its own minimum, not two people', async () => {
   await pass(sent, null, group.external_id);
   assert.deepEqual(sent, [], 'two of the three this game needs is not a base');
 
+  // The third yes reaches the game's minimum — and, in a room of three, is
+  // also everybody. That is not a base to announce (there is nobody left to
+  // wait for, and the settle minute is running): the room's next line is
+  // "סגור", once the minute is out (owner, 2026-09-20; "מחכה ל 🤞" to an
+  // empty list is what this replaced).
   await withTx(db.pool, (c) => options.answer(c, c3.id, meetingId, optionId, 'y'));
   sent = [];
   await pass(sent, null, group.external_id);
+  assert.deepEqual(sent, [], 'unanimous: no base line for nobody');
+  await db.pool.query(`UPDATE meetings SET settle_due_at = clock_timestamp() - interval '1 second' WHERE id = $1`, [meetingId]);
+  await withTx(db.pool, (c) => options.settleDue(c));
+  sent = [];
+  await pass(sent, null, group.external_id);
   assert.equal(sent.length, 1);
-  assert.match(sent[0].body, /יש כיוון/);
+  assert.match(sent[0].body, /סגור: \*רביעי 20:00\* 🎉 כולם בפנים/);
 });
 
 test('a settled coordination is announced, and nothing else about it is', async () => {
@@ -141,10 +151,71 @@ test('a settled coordination is announced, and nothing else about it is', async 
   assert.equal(sent.length, 1, 'one line, not "there is a direction" and "it is set"');
   assert.match(sent[0].body, /סגור/);
   assert.match(sent[0].body, /חמישי 19:00/);
+  // Who can make it (owner, 2026-09-20): a and b said yes, the third never
+  // answered — so the two are tagged, and "כולם" is not said.
+  assert.match(sent[0].body, new RegExp(`בפנים: @${a.phone.replace('+', '\\+')} @${b.phone.replace('+', '\\+')}`));
+  assert.doesNotMatch(sent[0].body, /כולם/);
 
   const after2 = [];
   await pass(after2);
   assert.deepEqual(after2, []);
+
+  // A shared calendar event appears (only createSharedMeetingEvent writes
+  // this column): the room hears it once, and never a second time.
+  await db.pool.query(`UPDATE meetings SET calendar_event_id = 'evt_1' WHERE id = $1`, [meetingId]);
+  const cal = [];
+  await pass(cal, null, group.external_id);
+  assert.equal(cal.length, 1);
+  assert.match(cal[0].body, /📅 ביומן/);
+  assert.match(cal[0].body, /מי שחיבר יומן קיבל הזמנה/);
+  const again = [];
+  await pass(again, null, group.external_id);
+  assert.deepEqual(again, []);
+});
+
+test('when everybody said yes the done line says so, and no calendar line without a shared event', async () => {
+  const { group, people } = await room(11);
+  const [a, b, c] = people;
+  const started = await withTx(db.pool, (c2) => groupMeetings.startCoordination(c2, group, a, 'ערב משחקים'));
+  const meetingId = Number(started.data.meeting.id);
+  const when = slotStart('בערב', { hours: 96 });
+  const optionId = await withTx(db.pool, async (c2) =>
+    (await options.add(c2, a.id, meetingId, 'בערב אצל דני', when)).data.option.id);
+  await withTx(db.pool, (c2) => options.answer(c2, b.id, meetingId, optionId, 'y'));
+  await withTx(db.pool, (c2) => options.answer(c2, c.id, meetingId, optionId, 'y'));
+  // Unanimity arms the minute; run it out so the sweep sees `confirmed`.
+  await db.pool.query(`UPDATE meetings SET settle_due_at = clock_timestamp() - interval '1 second' WHERE id = $1`, [meetingId]);
+  await withTx(db.pool, (c2) => options.settleDue(c2));
+
+  const sent = [];
+  await pass(sent, null, group.external_id);
+  assert.equal(sent.length, 1, JSON.stringify(sent));
+  assert.match(sent[0].body, /סגור: \*בערב אצל דני\* 🎉 כולם בפנים/);
+  const nothing = [];
+  await pass(nothing, null, group.external_id);
+  assert.deepEqual(nothing, [], 'no calendar event, no calendar line');
+});
+
+// "מחכה ל 🤞" went out to nobody: Yuval's yes made it unanimous, the settle
+// minute was running, and the base line named an empty list twelve seconds
+// later (coordination 37, 2026-09-20). Pure: the decision, not the sweep.
+test('no base line for nobody — everybody agreed, or the settle minute is already running', () => {
+  const p = (n) => ({ name: `p${n}`, phone: `+97250000000${n}`, tag: `@+97250000000${n}` });
+  const co = (over) => ({
+    status: 'negotiating', participants: 2, silent: [], settleDueAt: null,
+    options: [{ optionId: 1, slot: 'שישי בבוקר', startsAt: new Date(Date.now() + 86400e3).toISOString(),
+      yes: [p(1), p(2)], no: [], missing: [], quorum: { known: false } }],
+    ...over,
+  });
+  assert.equal(groupVoice.decideGroupLine(co(), { nowMs: Date.now() }).kind, 'none', 'nobody to wait for');
+  const three = co({ participants: 3, options: [{ ...co().options[0], missing: [p(3)] }] });
+  assert.equal(groupVoice.decideGroupLine(three, { nowMs: Date.now() }).kind, 'base', 'somebody still owed');
+  assert.equal(groupVoice.decideGroupLine({ ...three, settleDueAt: new Date().toISOString() }, { nowMs: Date.now() }).kind, 'none',
+    'the minute is running — the next thing the room hears is סגור');
+  // whoIsIn: all, some, unknown.
+  assert.deepEqual(groupVoice.whoIsIn({ participants: 2, confirmedOption: { yes: [p(1), p(2)] } }), { all: true, phones: [] });
+  assert.deepEqual(groupVoice.whoIsIn({ participants: 3, confirmedOption: { yes: [p(1)] } }), { all: false, phones: ['+972500000001'] });
+  assert.equal(groupVoice.whoIsIn({ participants: 3, confirmedOption: null }), null);
 });
 
 test('nothing proactive goes out in the middle of the night', async () => {

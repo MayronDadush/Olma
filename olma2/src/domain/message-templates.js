@@ -253,9 +253,16 @@ const TEMPLATES = [
   {
     key: 'group_coord_done', audience: 'group', label: 'תיאום — נסגר',
     help: 'פעם אחת, כשהתיאום נסגר על זמן. כל אחד מקבל את זה גם בפרטי; זאת השורה בקבוצה.',
-    vars: { slot: 'הזמן שנסגר' }, required: ['slot'],
-    sample: { slot: 'יום שלישי 20:00' },
-    text: 'סגור: *{{slot}}* 🎉',
+    vars: { slot: 'הזמן שנסגר', who: '"כולם בפנים", או "בפנים:" ותיוגים של מי שאמר כן' }, required: ['slot'],
+    sample: { slot: 'יום שלישי 20:00', who: 'כולם בפנים' },
+    text: 'סגור: *{{slot}}* 🎉 {{who}}',
+  },
+  {
+    key: 'group_coord_calendar', audience: 'group', label: 'תיאום — ביומן',
+    help: 'פעם אחת אחרי "סגור", ורק אם נוצר אירוע יומן משותף לתיאום הזה. מי שחיבר יומן קיבל הזמנה; לאחרים אין מה להבטיח.',
+    vars: {}, required: [],
+    sample: {},
+    text: '📅 ביומן. מי שחיבר יומן קיבל הזמנה — מי שלא, אפשר לחבר בדף שלכם.',
   },
   {
     key: 'group_coord_dayof', audience: 'group', label: 'תיאום — תזכורת ביום עצמו',

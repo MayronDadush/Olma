@@ -206,8 +206,14 @@ function renderGroupCoordination(line, overrides) {
   }
   if (line.kind === 'dayof') return templates.render('group_coord_dayof', { slot: slotText(line.slot) }, overrides);
   if (line.kind === 'soon') return templates.render('group_coord_soon', { slot: slotText(line.slot) }, overrides);
-  return templates.render('group_coord_done', { slot: slotText(line.slot) }, overrides);
+  if (line.kind === 'calendar') return templates.render('group_coord_calendar', {}, overrides);
+  // `who` is a whole phrase, so an owner's rewording can move or drop it:
+  // "כולם בפנים", or the tags of those who said yes. Null draws nothing.
+  const who = !line.who ? '' : line.who.all ? WHO_ALL : (line.who.phones || []).length ? `${WHO_IN} ${mentionTokens(line.who.phones)}` : '';
+  return templates.render('group_coord_done', { slot: slotText(line.slot), who }, overrides).trim();
 }
+const WHO_ALL = 'כולם בפנים';
+const WHO_IN = 'בפנים:';
 
 // The single decision point the deliverer consults: a non-null return means
 // "send this text on the raw pipe, no agent turn". Deliberately narrow —

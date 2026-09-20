@@ -213,6 +213,29 @@ have already had to be argued for.
   since the start (`proactive-text.mentionTokens`, capped at `MAX_TAGS`), and
   the model's half was the last place a name could still get out.
 
+- **The "סגור" line names who can make it, a calendar line is said only for
+  a SHARED event, and a base line is never said to nobody** (owner,
+  2026-09-20, off coordinations 35–37). `group-meetings.statusOf` exposes
+  `confirmedOption` (the active option whose text is `confirmed_slot` —
+  `options.add` refuses a duplicate text, so it is a key) plus
+  `settleDueAt` and `calendarEventId`; `group-voice.whoIsIn` turns its
+  `yes` into "כולם בפנים" when everybody still in said yes, or the tags of
+  those who did, and the `group_coord_done` template carries it as `{{who}}`
+  — a whole phrase, so a rewording can move or drop it, and null draws
+  nothing rather than a guess. **`group_coord_calendar` fires once, after
+  the done line, and only when `meetings.calendar_event_id` is set** —
+  nothing but `calendar.createSharedMeetingEvent` writes that column, and a
+  solo event on one person's calendar is not a thing the room may be told
+  about; the line says who got an invitation (whoever connected a calendar),
+  never "everybody", because in 35 that was one person. Stamp
+  `group_calendar_at` (migration 076). **And no base line when nobody is
+  missing or `settle_due_at` is armed** — "מחכה ל 🤞" went out with an
+  empty list twelve seconds after Yuval's yes made it unanimous; the next
+  thing that room should hear is "סגור". `TAG_RULE` also says now that the
+  `@<digits>` in the message she received is the sender tagging HER — she
+  echoed her own LID as if it were Yuval's (`incidents.md`, "The room waited
+  for nobody").
+
 - **A group turn is told the room's coordination state before the model's first
   word, and that block is the only thing it may speak from.** The DM half of
   this has been live since 2026-09-06 (turns-and-replies.md, "The turn opens
