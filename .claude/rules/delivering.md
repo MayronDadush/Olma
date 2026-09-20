@@ -156,7 +156,8 @@ title means this file. Grep the title, not the filename.
   tell a participant they can "answer with the number" on a choice that is not
   actually theirs — in the proposer's own words (`slotText`), never a time
   re-derived from `startsAt` that could disagree with what they said. Below
-  each one's own floor (`MIN_LINES` = 2 active items/options) there is no
+  each one's own floor (`MIN_LINES` = 2 active items; meeting options are 3,
+  `MEETING_MIN_LINES`, since 2026-09-20 — two are a sentence) there is no
   block and the old instruction hints stand, and a block NEVER travels beside
   `HINTS.list`/`numberedChoice` or the `kinds` paragraph: an unconditional
   "lay these out" on a result that arrives laid out is the `markPlaced`
@@ -188,18 +189,46 @@ title means this file. Grep the title, not the filename.
   a line the block carries is carried, and a sentence about it is a second
   notification for the same fact.
 
-- **Every private message about a coordination still being negotiated offers
-  that coordination's own page** (owner, 2026-09-20; `inviteLinkClause` in
-  `channels/openclaw.js`). It rode the invite alone from 2026-09-15, and the
-  invite is the one message in a negotiation guaranteed to be first: by the
-  time a time is added to the table or declined, that link is above whatever
-  the person is actually reading. The folded table question, a plain
-  `meeting_slot_proposed` and a `meeting_slot_declined` carry it now; a
-  confirmation and a no-match do not, because there is nothing left to mark.
-  It stays an instruction the MODEL spends rather than a url in a template —
-  the page is minted by `open_my_dashboard` and a prompt cannot carry one
-  (`rules/doctrine.md`, "A `url` in a tool result is delivered by the MODEL or
-  not at all").
+- **The invite and the table question offer the coordination's own page, on
+  a bare line; nothing else in the negotiation does** (owner, 2026-09-20,
+  twice in one day; `inviteLinkClause` in `channels/openclaw.js`). The morning
+  put it on every negotiation message, because by the time a time is added
+  or declined the invite's link is above whatever the person is reading. The
+  afternoon took it back off the plain proposal and the decline: Yuval read
+  two paragraphs where two sentences would do, and the link with its sentence
+  about it was a third of each. What stays is the invite — the one message
+  guaranteed to be first — and the folded table question, which is the
+  invite asked late; a confirmation and a no-match never had it. The line
+  carries no words about itself. It stays an instruction the MODEL spends
+  rather than a url in a template — the page is minted by
+  `open_my_dashboard` and a prompt cannot carry one (`rules/doctrine.md`, "A
+  `url` in a tool result is delivered by the MODEL or not at all").
+
+- **A private message about a coordination is one sentence of context and
+  one question** (owner and Yuval, 2026-09-20; `BRIEF` in
+  `channels/openclaw.js`, appended to every negotiation instruction —
+  invite, proposal, table question, decline). The length came from the
+  instructions, not the model: they asked it to explain what is being
+  arranged, ask when, ask for constraints, check the calendar and mention
+  it, offer the link and say answering here works, and it did all of that in
+  order. The checks are still things the model DOES; they stopped being
+  things it SAYS — no calendar remark unless there is a clash, no reason
+  unless one was given. Three things ride with it. **Two options are a
+  sentence, not a table**: `list-block.MEETING_MIN_LINES` is 3, and below it
+  `get_meeting_status` hands the reader's position over as `marks` (their
+  own y/n per option, and `needsYou` as a boolean about the others) with a
+  `pair` hint asking for one sentence — the arithmetic behind "only your yes
+  is missing" is still nobody's to redo. **A game room counts heads**
+  (`ROOM_COUNT`): the status carries `room` (kind, min, max) and each
+  option's `yes`, so "כרגע אנחנו 4" is read, never estimated; the room's
+  name rides a proposal's payload (`meetingBrief.group_subject`) so a
+  proposal knows it is one. **And the budget is measured, not trusted**:
+  `metrics.rollupVoiceDay` matches each `meeting_*` row that reached
+  somebody to the latest assistant text written inside `MEETING_SEND_MS`
+  before its stamp — a `--deliver` turn returns no text, so the join is by
+  time and says so — and the metrics page shows the average length per
+  window (`meetingLengthLine`). A number on a page, never a gate
+  (`incidents.md`, "Two paragraphs where two sentences would do").
 
 - **The same thing does not go out twice inside a few minutes unless the person
   ASKED** (owner, 2026-09-10; `domain/repeat-guard.js` holds the window and the

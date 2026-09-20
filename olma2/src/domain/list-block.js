@@ -266,32 +266,50 @@ const OPTION_WORDS = {
   en: { needsYou: 'only your yes is missing' },
 };
 
-function renderMeetingOptionsBlock(options, opts = {}) {
-  const f = format.formatterFor(opts.channelType);
-  const words = OPTION_WORDS[localeKey(opts.locale)] || OPTION_WORDS.he;
+// Where THIS reader stands on each active option — their own yes or no, and
+// whether everybody else has already agreed so that only their yes is missing.
+// Drawn onto the block below, and handed over as data when there is no block:
+// two options are a sentence (owner, 2026-09-20 — "מירון יכול בשישי בבוקר
+// ושבת בערב, מה איתך?"), but the arithmetic behind "only your yes is missing"
+// is still nobody's to redo. `mine` is 'y', 'n' or null; `needsYou` is a fact
+// about the others as a boolean, never their answers (`rules/groups.md`).
+function meetingOptionMarks(options, opts = {}) {
   const me = opts.userId === undefined || opts.userId === null ? null : String(opts.userId);
   const others = (Array.isArray(opts.activeIds) ? opts.activeIds : [])
     .map(String).filter((id) => id !== me);
-  const lines = (Array.isArray(options) ? options : [])
+  return (Array.isArray(options) ? options : [])
     .filter((o) => o.status === 'active')
     .map((o) => {
-      const slot = format.stripUserMarkup(String(o.slotText || '').replace(/\s+/g, ' ').trim());
-      if (!slot) return null;
       const answers = o.answers || {};
-      const mine = me ? answers[me] : undefined;
-      if (mine === 'y') return `${slot} ${MY_YES}`;
-      if (mine === 'n') return `${slot} ${MY_NO}`;
-      if (me && others.length && others.every((id) => answers[id] === 'y')) {
-        return `${slot} — ${words.needsYou}`;
-      }
+      const mine = me && (answers[me] === 'y' || answers[me] === 'n') ? answers[me] : null;
+      const needsYou = Boolean(me && !mine && others.length && others.every((id) => answers[id] === 'y'));
+      return { id: o.id, slotText: o.slotText, mine, needsYou };
+    });
+}
+
+// Two options are one sentence, not a table: the floor for the numbered
+// block is three (owner, 2026-09-20). Below it the marks above travel as
+// data and the words are the model's.
+const MEETING_MIN_LINES = 3;
+
+function renderMeetingOptionsBlock(options, opts = {}) {
+  const f = format.formatterFor(opts.channelType);
+  const words = OPTION_WORDS[localeKey(opts.locale)] || OPTION_WORDS.he;
+  const lines = meetingOptionMarks(options, opts)
+    .map((m) => {
+      const slot = format.stripUserMarkup(String(m.slotText || '').replace(/\s+/g, ' ').trim());
+      if (!slot) return null;
+      if (m.mine === 'y') return `${slot} ${MY_YES}`;
+      if (m.mine === 'n') return `${slot} ${MY_NO}`;
+      if (m.needsYou) return `${slot} — ${words.needsYou}`;
       return slot;
     })
     .filter(Boolean);
-  if (lines.length < MIN_LINES) return null;
+  if (lines.length < MEETING_MIN_LINES) return null;
   return f.numbered(lines);
 }
 
 module.exports = {
   renderTaskListBlock, renderReminderListBlock, renderCalendarListBlock, renderMeetingOptionsBlock,
-  repeatLabel, MIN_LINES,
+  meetingOptionMarks, repeatLabel, MIN_LINES, MEETING_MIN_LINES,
 };

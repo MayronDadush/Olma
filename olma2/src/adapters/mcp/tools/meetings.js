@@ -217,12 +217,21 @@ module.exports = [
           },
         });
       }
-      // Fewer than two active options: no choice to number, so the old
-      // fallback stands — the layout hint is worth nothing on its own here.
-      if (options.length < 2) return res;
+      // Below the block's floor. Two options are one sentence, never a list
+      // (owner, 2026-09-20): "מירון יכול בשישי בבוקר ושבת בערב, מה איתך?".
+      // The reader's own position still travels — as data, because the
+      // arithmetic behind "only your yes is missing" is not the model's to
+      // redo. One option, or none: nothing to lay out at all.
+      const active = options.filter((o) => o.status === 'active');
+      if (active.length < 2) return res;
       return ok({
         ...res.data,
-        hints: { ...(res.data.hints || {}), layout: format.HINTS.numberedChoice, gone: format.HINTS.struckOut },
+        marks: listBlock.meetingOptionMarks(options, { userId: user.id, activeIds }),
+        hints: {
+          ...(res.data.hints || {}),
+          pair: 'Two options are ONE sentence in their words ("X or Y?"), never a numbered list. `marks` says where this user stands on each (mine: their own y/n; needsYou: everybody else already agreed) — say it only where it is set, and never anybody else\'s answer.',
+          gone: format.HINTS.struckOut,
+        },
       });
     }),
   // `send_availability_picker` was here, and it is deliberately gone (2026-09-06).

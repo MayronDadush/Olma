@@ -801,6 +801,18 @@ test('get_meeting_status draws the numbered choice through the real tool', async
   await withClient((c) => meetings.proposeSlot(c, alice.id, m.id, 'יום שלישי 20:00 בקפה', slotStart('יום שלישי 20:00 בקפה')));
   await withClient((c) => meetings.proposeSlot(c, alice.id, m.id, 'יום רביעי 19:00', slotStart('יום רביעי 19:00', { hours: 48 })));
 
+  // Two options are a sentence (owner, 2026-09-20): no block, the reader's
+  // marks as data, and a hint that says one sentence — never the old
+  // numbered-choice layout, which would ask for the list the floor refuses.
+  const pair = await withClient((c) => BY_NAME.get('get_meeting_status').handler(c, alice, { meeting_id: m.id }));
+  assert.equal(pair.data.block, undefined);
+  assert.equal(pair.data.hints.layout, undefined);
+  assert.match(pair.data.hints.pair, /ONE sentence/);
+  assert.deepEqual(pair.data.marks.map((x) => [x.slotText, x.mine, x.needsYou]),
+    [['יום רביעי 19:00', 'y', false], ['יום שלישי 20:00 בקפה', 'y', false]]);
+  assert.deepEqual(pair.data.options.map((o) => o.yes), [1, 1], 'each option counts its yeses');
+
+  await withClient((c) => meetings.proposeSlot(c, alice.id, m.id, 'יום חמישי 10:00', slotStart('יום חמישי 10:00', { hours: 72 })));
   const res = await withClient((c) => BY_NAME.get('get_meeting_status').handler(c, alice, { meeting_id: m.id }));
   assert.equal(res.ok, true, JSON.stringify(res.error));
   // meeting-options.list orders newest-added first (`id DESC`); the numbering
@@ -810,7 +822,7 @@ test('get_meeting_status draws the numbered choice through the real tool', async
   // own yes. Where the reader stands is drawn for the same reason the numbers
   // are: it is in the result either way, and a model had to do arithmetic to
   // put it on the page (owner, 2026-09-20).
-  assert.equal(res.data.block, '1. יום רביעי 19:00 ✓\n2. יום שלישי 20:00 בקפה ✓');
+  assert.equal(res.data.block, '1. יום חמישי 10:00 ✓\n2. יום רביעי 19:00 ✓\n3. יום שלישי 20:00 בקפה ✓');
   assert.match(res.data.hints.block, /EXACTLY as it is/);
   assert.match(res.data.hints.block, /"answer with the number"/);
   // The old fallback never travels beside the block — an unconditional "lay

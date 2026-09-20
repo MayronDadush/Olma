@@ -136,6 +136,20 @@ test('the invite asks for the coordination\'s page, in a private invite and a ro
   assert.match(room, /open_my_dashboard with meeting_id=42/);
   const none = instructionFor({ kind: 'meeting_invite', payload: { title: 'x', byName: 'Ann' } });
   assert.doesNotMatch(none, /open_my_dashboard/);
+  // …and the folded table question, which is the invite asked late. Not a
+  // plain proposal or a decline (owner, 2026-09-20: shorter; the link is
+  // above whatever they are reading by then), and the link line carries no
+  // sentence about it.
+  const table = instructionFor({ kind: 'meeting_slot_proposed', payload: { meetingId: 43, title: 'x', byName: 'Ann', tableChanged: true } });
+  assert.match(table, /open_my_dashboard with meeting_id=43/);
+  const one = instructionFor({ kind: 'meeting_slot_proposed', payload: { meetingId: 43, title: 'x', byName: 'Ann', slot: 'a' } });
+  assert.doesNotMatch(one, /open_my_dashboard/);
+  const no = instructionFor({ kind: 'meeting_slot_declined', payload: { meetingId: 43, title: 'x', byName: 'Ann' } });
+  assert.doesNotMatch(no, /open_my_dashboard/);
+  for (const body of [plain, room, table]) {
+    assert.doesNotMatch(body, /answering here/);
+    assert.match(body, /on a line of its own, with no sentence about it/);
+  }
 });
 
 // ---- tasks -------------------------------------------------------------------

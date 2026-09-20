@@ -145,30 +145,60 @@ const METRIC_QUERIES = {
 // rather than as clean, and says so in the return value.
 const FAILED_TURN_MARKER = '[assistant turn failed before producing content]';
 
+// How long a private message about a coordination is (owner, 2026-09-20:
+// the ask was shorter ones, and a budget nobody measures is a wish). The
+// text is in the transcript and the KIND is on the outbox row, and nothing
+// joins them — a `--deliver` turn returns no text — so the join is by time:
+// the model writes its text during the turn and the worker stamps `sent_at`
+// when the turn returns, so a meeting_* row stamped inside MEETING_SEND_MS
+// after an assistant text is the row that text answered. A heuristic, named
+// as one; a reading, not a gate.
+const MEETING_SEND_MS = 3 * 60_000;
+
 async function rollupVoiceDay(client, sessions, dateIso) {
   const { rows: agents } = await client.query(
-    `SELECT agent_id FROM users WHERE agent_id IS NOT NULL AND NOT is_eval`);
+    `SELECT id, agent_id FROM users WHERE agent_id IS NOT NULL AND NOT is_eval`);
   const start = Date.parse(`${dateIso}T00:00:00Z`);
   const end = start + 86400_000;
-  let messages = 0, flawed = 0, unreadable = 0;
-  for (const { agent_id: agentId } of agents) {
+  let messages = 0, flawed = 0, unreadable = 0, meetingMessages = 0, meetingChars = 0;
+  for (const { id: userId, agent_id: agentId } of agents) {
     const texts = await sessions.scanAssistantTextSince(agentId, start - 1);
     if (!Array.isArray(texts)) { unreadable++; continue; }
+    const { rows: sent } = await client.query(
+      `SELECT sent_at FROM outbox
+        WHERE user_id = $1 AND kind LIKE 'meeting\_%' AND hold_reason IS NULL
+          AND sent_at >= $2::timestamptz AND sent_at < $3::timestamptz + interval '3 minutes'`,
+      [userId, new Date(start).toISOString(), new Date(end).toISOString()]);
+    const said = [];
     for (const t of texts) {
       if (!(t.at >= start && t.at < end)) continue;
       const text = String(t.text || '').trim();
       if (!text || text === 'NO_REPLY' || text === FAILED_TURN_MARKER) continue;
       messages++;
       if (hebrewQuality.flawsIn(text).length) flawed++;
+      said.push({ at: t.at, text });
     }
+    // One row claims ONE message — the latest text written before its stamp
+    // and inside the window — so a stamp near two texts does not count both.
+    const claimed = new Set();
+    for (const r of sent) {
+      const s = new Date(r.sent_at).getTime();
+      let best = -1;
+      for (let i = 0; i < said.length; i++) {
+        if (said[i].at <= s && s - said[i].at <= MEETING_SEND_MS && (best < 0 || said[i].at > said[best].at)) best = i;
+      }
+      if (best >= 0) claimed.add(best);
+    }
+    for (const i of claimed) { meetingMessages++; meetingChars += said[i].text.length; }
   }
-  for (const [metric, value] of [['assistant_messages', messages], ['hebrew_flaws', flawed]]) {
+  for (const [metric, value] of [['assistant_messages', messages], ['hebrew_flaws', flawed],
+    ['meeting_messages', meetingMessages], ['meeting_message_chars', meetingChars]]) {
     await client.query(
       `INSERT INTO product_metrics_daily (date, metric, value) VALUES ($1, $2, $3)
        ON CONFLICT (date, metric) DO UPDATE SET value = $3`,
       [dateIso, metric, value]);
   }
-  return { messages, flawed, unreadable };
+  return { messages, flawed, unreadable, meetingMessages, meetingChars };
 }
 
 async function rollupDay(client, dateIso) {
@@ -197,7 +227,8 @@ async function sweepMetrics(client, now = new Date(), deps = {}) {
   if (deps.sessions) {
     const y = await rollupVoiceDay(client, deps.sessions, yesterday);
     const t = await rollupVoiceDay(client, deps.sessions, today);
-    out.voice = { messages: y.messages + t.messages, flawed: y.flawed + t.flawed, unreadable: y.unreadable + t.unreadable };
+    out.voice = { messages: y.messages + t.messages, flawed: y.flawed + t.flawed, unreadable: y.unreadable + t.unreadable,
+      meetingMessages: y.meetingMessages + t.meetingMessages, meetingChars: y.meetingChars + t.meetingChars };
   } else {
     out.voice = 'skipped — no transcript reader';
   }

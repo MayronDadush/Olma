@@ -288,8 +288,12 @@ async function afterSettled(client, meetingId, res, { actor = null, byName = nul
 }
 
 async function meetingBrief(client, meetingId) {
+  // The room's name rides along for a coordination a room started, so a
+  // proposal about it can be counted like a game invite is
+  // (`channels/openclaw.js`, ROOM_COUNT).
   const { rows } = await client.query(
-    `SELECT title, initiator_id, proposed_slot, confirmed_slot FROM meetings WHERE id = $1`, [meetingId]
+    `SELECT m.title, m.initiator_id, m.proposed_slot, m.confirmed_slot, g.subject AS group_subject
+       FROM meetings m LEFT JOIN chat_groups g ON g.id = m.group_id WHERE m.id = $1`, [meetingId]
   );
   return rows[0] || {};
 }
@@ -409,7 +413,8 @@ async function afterOptionAdded(client, actor, meetingId, res) {
   if (!res.ok) return res;
   const brief = await meetingBrief(client, meetingId);
   const o = res.data.option || { slotText: res.data.proposedSlot, startsAt: res.data.startsAt, id: res.data.optionId };
-  const base = { meetingId: Number(meetingId), title: brief.title || 'meeting', slot: o.slotText, startsAt: res.data.startsAt || o.startsAt, optionId: o.id, byName: actorName(actor) };
+  const base = { meetingId: Number(meetingId), title: brief.title || 'meeting', slot: o.slotText, startsAt: res.data.startsAt || o.startsAt, optionId: o.id, byName: actorName(actor),
+    ...(brief.group_subject ? { groupSubject: brief.group_subject } : {}) };
   if (res.data.duplicate) {
     res.data.hint = 'That moment was already on the table — their yes to it was recorded instead of a second copy.';
     return res;
