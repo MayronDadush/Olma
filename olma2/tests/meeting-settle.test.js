@@ -258,3 +258,20 @@ test('the page draws the button on the server\'s answer and sends the action', (
   assert.match(page, /if\(settleAsked\[key\] && now - settleAsked\[key\] < SETTLE_RETRY_MS\) return;/,
     'the countdown asks again after a while rather than latching for ever');
 });
+
+// Two phones with the same sheet open: nothing pushes, so the page re-reads
+// on a timer — and only while a sheet is open and the tab is on screen, so a
+// page left open on a desk costs nothing (owner, 2026-09-20).
+test('an open coordination sheet re-reads on a timer, and a closed one or a hidden tab does not', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const page = fs.readFileSync(path.join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
+  assert.match(page, /var MT_POLL_MS = 8000;/);
+  assert.match(page, /function tickMeetPoll\(\)\{\n\s*if\(!LIVE \|\| !mtOpen \|\| document\.hidden\) return;\n\s*API\.reload\(\);/,
+    'the poll is gated on an open sheet and a visible tab, and it is a re-read, never a local change');
+  assert.match(page, /setInterval\(tickMeetPoll, MT_POLL_MS\);/);
+  // hydrate is what makes a re-read safe under an open sheet: it carries the
+  // open id across and redraws.
+  assert.match(page, /var openId = mtOpen \? mtOpen\.id : null;[\s\S]{0,400}?mtOpen = openId \? \(mtById\(openId\) \|\| null\) : null;[\s\S]{0,200}?if\(mtOpen\) renderMeet\(\);/);
+});
+
