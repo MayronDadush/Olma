@@ -62,6 +62,7 @@ never trust a dated narrative for something you are about to act on.
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
+- [The man who only ever answered from the page (fixed 2026-09-20)](#the-man-who-only-ever-answered-from-the-page-fixed-2026-09-20)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
 - [Fifty-two seconds behind the introduction (fixed 2026-09-08)](#fifty-two-seconds-behind-the-introduction-fixed-2026-09-08)
 - [Her reminders arrived in Hebrew (fixed 2026-09-07)](#her-reminders-arrived-in-hebrew-fixed-2026-09-07)
@@ -2531,6 +2532,45 @@ still-unsent day-one row of the same person when it enqueues the next step
 (`hold_reason = 'superseded'`, an UPDATE like every cancellation); a step that
 was delivered is left alone. The morning is the latest step still live, which
 is what the comment promised.
+
+### The man who only ever answered from the page (fixed 2026-09-20)
+
+Kapish (u-35) took part in two coordinations in the test room on 2026-09-20
+and answered every question about them — a yes, a no, a constraint — from the
+dashboard. He never wrote a word in the private chat. To every reader of
+`users.last_inbound_at` and `checkin_misses` he was therefore somebody who
+had stopped answering: the check-in ladder had asked once and heard nothing
+back, so his `meeting_invite` to coordination 35 was dropped `quiet`, and the
+one to 36 was dropped `quiet` again (which is the second half of "Four
+messages in sixty-two seconds": a dropped invite is invisible to the fold).
+When he finally typed "הי מה חדש" at 10:50 UTC, `openRecord` reset the
+counter — the hand reset done a minute later was a no-op — and the model
+opened with the day-one greeting although `turn_start` had said
+`alreadyOpened`, because to the transcript this was a man who had never
+spoken.
+
+The rule that stops somebody being chased ("Eighteen messages, no answer") was
+right; what it read was wrong. A tap on the page is an answer.
+
+**Fix.** Migration 075 adds `users.last_dashboard_at`.
+`user-dashboard-write.perform` stamps it and resets `checkin_misses` on every
+successful write — the exact line `turn.openRecord` writes on a real inbound —
+and leaves `last_inbound_at` alone, because that column is the first-turn
+signal and the name ladder's silence test and a tap is not a message with
+words. The worker hands the stamp to the gate as `dashboardWroteAt`; inside
+`CONVERSATION_GRACE_MS` it passes the quiet drop (beside `inRoomGrace` and
+`pausedRoomInvite`) and counts as mid-conversation for the night window,
+which is what a DM earns and nothing more — the quiet day is not reached,
+since a DM does not reach it either. `checkin.eligibleUsers` needed no change:
+`perform` already records an `audit_log` row per write and that row is the
+ladder's idle clock, so the only thing the ladder had wrong was the counter.
+
+**Not fixed, and named.** The third miss is a pause (`quiet_ladder`), and a
+pause ends only on `openRecord({ wake: true })` — a person marking their
+availability on the page while the ladder has them paused still hears nothing.
+Nobody has been there yet. And the greeting itself was the cheap model ignoring
+an instruction already in the prompt; item C of the same day's plan
+(`recentMeetings` on `turn_start`) is the closest code gets to it.
 
 ### The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)
 

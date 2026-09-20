@@ -227,6 +227,7 @@ Loads when you **Read** a file under `src/jobs/checkin.js`, `src/jobs/onboarding
 - **Nobody is asked a question they have already not answered once.**
 - **A day-one step that has not gone out is REPLACED by the NEXT CHECK-IN of any kind, never joined by it.**
 - **Somebody who has stopped answering hears nothing Olma decided to say, and nothing on their record is cancelled.**
+- **A write from their own page IS the person answering** — `last_dashboard_at`, never `last_inbound_at`
 - **A "once ever" question is stamped on the PERSON, never deduped on the route that asks it.**
 - **The chag offer is that shape's second column (`holiday_quiet_asked_at`, migration 062), with two routes from the start.**
 - **Deleting a user is not deleting a person until the GATEWAY's intake session goes too.**

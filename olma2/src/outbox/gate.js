@@ -208,7 +208,7 @@ const SAYS_IT_ONCE = new Set([
   'tasks_auto_archived', 'calendar_connected', 'contacts_connected', 'email_connected',
 ]);
 
-// facts: { row, plan, blocked, paused, window, quietDays, tz, sentToday, budget, now, lastInboundAt }
+// facts: { row, plan, blocked, paused, window, quietDays, tz, sentToday, budget, now, lastInboundAt, dashboardWroteAt }
 // returns { action: 'deliver' | 'hold' | 'expire' | 'drop', holdReason?, releaseAfter? }
 function decide(facts) {
   const { row, plan, blocked, paused, window, tz, sentToday, budget } = facts;
@@ -306,6 +306,18 @@ function decide(facts) {
   // .noteMemberWrote` is what re-hears them, on the same stamp this reads.
   const wroteInRoom = facts.groupWroteAt ? new Date(facts.groupWroteAt).getTime() : 0;
   const inRoomGrace = wroteInRoom > 0 && (now.getTime() - wroteInRoom) < CONVERSATION_GRACE_MS;
+  // And a person who marked something on their own page a minute ago has not
+  // stopped answering either. `user-dashboard-write.perform` stamps
+  // `users.last_dashboard_at` on every successful write and resets the miss
+  // counter with it, so this is normally already 0 here; the grace covers the
+  // row decided in the same quarter hour, and below it counts as being
+  // mid-conversation for the night window exactly as a message would. Kapish
+  // answered coordination 35 entirely from the page and was dropped `quiet`
+  // twice for it (`incidents.md`, "The man who only ever answered from the
+  // page", 2026-09-20). Unlike `inRoomGrace` it does NOT reach the quiet day:
+  // a DM does not either, and the page is the DM's equal, not the room's.
+  const wroteOnPage = facts.dashboardWroteAt ? new Date(facts.dashboardWroteAt).getTime() : 0;
+  const onPageGrace = wroteOnPage > 0 && (now.getTime() - wroteOnPage) < CONVERSATION_GRACE_MS;
 
   // An `introduction` is exempt for the same reason the ladder's own check-in
   // is: it is the one thing Olma OWES rather than something she decided to
@@ -316,7 +328,7 @@ function decide(facts) {
     && row.kind !== 'checkin' && row.kind !== 'introduction') {
     // A ladder pause is three misses, so its one room invite would die here
     // without the same exemption the pause branch above gives it.
-    if (!askedForInWords(row) && !inRoomGrace && !facts.pausedRoomInvite) {
+    if (!askedForInWords(row) && !inRoomGrace && !onPageGrace && !facts.pausedRoomInvite) {
       return { action: 'drop', holdReason: 'quiet' };
     }
   }
@@ -434,7 +446,7 @@ function decide(facts) {
   const userChoseThisTime = row.kind === 'digest' || (row.kind === 'reminder' && rung <= 1);
   const lastInbound = facts.lastInboundAt ? new Date(facts.lastInboundAt).getTime() : 0;
   const midConversation = (lastInbound > 0 && (now.getTime() - lastInbound) < CONVERSATION_GRACE_MS)
-    || inRoomGrace;
+    || inRoomGrace || onPageGrace;
   if (!userChoseThisTime && !midConversation && !withinWindow(window, tz, now)) {
     return {
       action: 'hold', holdReason: 'night',

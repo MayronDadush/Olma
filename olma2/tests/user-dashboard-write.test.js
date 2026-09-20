@@ -507,3 +507,22 @@ test('the page no longer claims a removal it never sends', () => {
     'the attribute that answers a click with a sentence and no write is back');
   assert.match(page, /API\.send\("revokeConnection", \{connectionId:f\.cid\}/);
 });
+
+test('a successful write is the person answering: it stamps the page and resets the miss counter', async () => {
+  // Kapish answered coordination 35 from here and never wrote in the chat;
+  // every reader of `checkin_misses` had him as somebody who stopped answering
+  // (2026-09-20). A refused write is not an answer and changes nothing.
+  await db.pool.query(`UPDATE users SET checkin_misses = 2, last_dashboard_at = NULL WHERE id = $1`, [me.id]);
+  const refused = await act('nosuchaction', {});
+  assert.equal(refused.ok, false);
+  let u = (await db.pool.query(`SELECT checkin_misses, last_dashboard_at FROM users WHERE id = $1`, [me.id])).rows[0];
+  assert.equal(u.checkin_misses, 2);
+  assert.equal(u.last_dashboard_at, null);
+
+  const task = await mkTask();
+  const done = await act('completeTask', { taskId: task.id });
+  assert.equal(done.ok, true, JSON.stringify(done));
+  u = (await db.pool.query(`SELECT checkin_misses, last_dashboard_at FROM users WHERE id = $1`, [me.id])).rows[0];
+  assert.equal(u.checkin_misses, 0);
+  assert.ok(u.last_dashboard_at, 'stamped');
+});
