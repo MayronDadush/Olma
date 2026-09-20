@@ -34,6 +34,11 @@ const WORDS = {
   he: {
     calendar: 'ביומן',
     todo: 'על הרשימה',
+    // The standing kind: no date, comes back until it is done. Its own heading
+    // rather than a line inside the list, because the list answers "what is
+    // today" and this answers "what keeps waiting" — and because on `summary`
+    // there is no list for it to sit in at all.
+    nudges: 'ממשיך לחכות',
     today: 'היום',
     tomorrow: 'מחר',
     day: (name) => `יום ${name}`,
@@ -47,6 +52,7 @@ const WORDS = {
   en: {
     calendar: 'On your calendar',
     todo: 'On your list',
+    nudges: 'Still waiting',
     today: 'Today',
     tomorrow: 'Tomorrow',
     day: (name) => name,
@@ -239,14 +245,27 @@ function renderDigestBlock(data, { locale, timezone, channelType, now, link } = 
   const events = (Array.isArray(data && data.events) ? data.events : [])
     .map((r) => line(r, ctx, true)).filter(Boolean);
   const todo = todoBlock(data && data.tasks, ctx, f, w, locale);
+  // A nudge the reminder sweep handed over instead of sending on its own. It
+  // is DRAWN here for the reason a reminder is never merged into a composed
+  // turn: this is the sentence they asked to hear at this hour, and a model
+  // weaving it in may reword it or drop it while the row reads delivered.
+  // Their own words, unwrapped — `stripUserMarkup` for the same reason every
+  // other verbatim path uses it, since a title is a person's own typing.
+  const nudges = (Array.isArray(data && data.nudges) ? data.nudges : [])
+    .map((n) => format.stripUserMarkup(String(n && n.title ? n.title : '')).trim())
+    .filter(Boolean);
 
-  if (!events.length && !todo) return null;
+  if (!events.length && !todo && !nudges.length) return null;
 
   const sections = [];
   // The calendar first and never mixed in: a meeting read out as a task is
   // the fault `tasks.kind` exists to prevent, and a shared list would undo it.
   if (events.length) sections.push(`${f.bold(w.calendar)}\n${f.bullets(events)}`);
   if (todo) sections.push(todo);
+  // After the day and before the page link: what is standing is not what is
+  // today, and reading it first would put a job with no date above a meeting
+  // in an hour.
+  if (nudges.length) sections.push(`${f.bold(w.nudges)}\n${f.bullets(nudges)}`);
   if (link) sections.push(`${w.pageLink}\n${link}`);
   return sections.join('\n\n');
 }
@@ -280,7 +299,14 @@ function blockItemCount(data) {
 // handed a block to send in the same breath (incidents.md, "The same evening,
 // twice").
 const DEFAULT_CARD_MIN_ITEMS = 3;
-function drawInsteadOfBlock(itemCount, minItems) {
+function drawInsteadOfBlock(itemCount, minItems, { hasNudges = false } = {}) {
+  // A card REPLACES the block, and the card draws a DAY — it has no row for a
+  // job with no date. So a morning carrying a standing nudge keeps the block,
+  // whatever the threshold says: the alternative is the nudge disappearing
+  // into a picture that was never asked to hold it, on a row already stamped
+  // as the message that carried it. Same argument as the ceiling beside it —
+  // decide here, once, and never in the delivery instruction.
+  if (hasNudges) return false;
   const n = Number(minItems);
   const min = Number.isFinite(n) ? n : DEFAULT_CARD_MIN_ITEMS;
   const { LIMITS } = require('./schedule-card');

@@ -3870,10 +3870,24 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      vocabularies, and refuses yearly outright — "better null than a lie" — so
      the sheet does not offer one). */
   var REPEAT_RULE = {none:null, day:"daily", week:"weekly", month:"monthly"};
-  /* The hour a standing nudge goes out when nobody has said otherwise. Not
-     midnight, for the same reason an all-day task is not reminded about at
-     midnight: a notification nobody is awake for is one nobody reads. */
-  var REM_DEFAULT_AT = "09:00";
+  /* The hour a standing nudge goes out when nobody has said otherwise, and
+     the owner's rule for it (2026-09-20): the hour they already hear from
+     Olma in the morning, so the nudge rides the morning picture instead of
+     being a second interruption — the server draws it INTO the digest when
+     the two coincide (domain/digest-block.js). Failing that, the hour their
+     own day opens. Never midnight, and never an hour nobody chose: a
+     notification that arrives while somebody is asleep is one they will never
+     see.
+     The morning one specifically. Somebody whose only digest is at 18:00 is
+     not being asked "when do you read your updates in the morning", so they
+     fall through to their window — the owner's call, same conversation. */
+  var REM_MORNING_BEFORE = "12:00";
+  var REM_FALLBACK_AT = "09:00";
+  function remDefaultAt(){
+    var morning = (DIGEST.times || []).filter(function(t){ return t < REM_MORNING_BEFORE; }).sort();
+    if(morning.length) return morning[0];
+    return (SCHED && SCHED.start) || REM_FALLBACK_AT;
+  }
   /* The next time that hour comes round in their zone — later today if it is
      still ahead, otherwise tomorrow. Never a moment already past: the server
      would fire it within the minute, which reads as a bug and spends the one
@@ -3902,7 +3916,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        stays dateless, and `repeatRule` is what makes it come back. An offset
        has nothing to be offset FROM here, which is why the sheet puts the hour
        where the offset chips are. */
-    if(!x.d) return x.rem ? nextIsoAt(x.remAt || REM_DEFAULT_AT) : null;
+    if(!x.d) return x.rem ? nextIsoAt(x.remAt || remDefaultAt()) : null;
     var time = (x.all || !x.tm) ? "09:00" : x.tm;
     /* From the task's real instant, not from its wall clock read as UTC: an
        offset of "two hours before" is two hours of actual time, and on the
@@ -7205,7 +7219,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
        before a moment there is, or what hour when there is none. */
     $("#sOffset").hidden = !dated;
     $("#sRemindAtSeg").hidden = dated;
-    $("#sRemindAtVal").textContent = t("sheet.remindAtVal", {time:editing.remAt || REM_DEFAULT_AT});
+    $("#sRemindAtVal").textContent = t("sheet.remindAtVal", {time:editing.remAt || remDefaultAt()});
     var ck = editing.cat || "none";
     $("#sCatVal").textContent = t("tcat." + ck);
     /* Olma's guess says so until the person overrules it — an automatic
@@ -7653,7 +7667,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
      and an hour cleared to nothing would leave a switch that is on with
      nowhere to fire. */
   $("#sRemindAtChip").addEventListener("click", function(){
-    openTimePop(this, editing.remAt || REM_DEFAULT_AT, function(v){
+    openTimePop(this, editing.remAt || remDefaultAt(), function(v){
       editing.remAt = v; commit();
     });
   });

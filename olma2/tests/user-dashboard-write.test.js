@@ -290,7 +290,13 @@ test('the page builds a moment for a dateless nudge instead of dropping the call
   const page = require('node:fs').readFileSync(
     require('node:path').join(__dirname, '..', 'docs', 'design', 'user-dashboard.html'), 'utf8');
   // The reminder carries an hour of its own; the task is not given a date.
-  assert.match(page, /if\(!x\.d\) return x\.rem \? nextIsoAt\(x\.remAt \|\| REM_DEFAULT_AT\) : null;/);
+  assert.match(page, /if\(!x\.d\) return x\.rem \? nextIsoAt\(x\.remAt \|\| remDefaultAt\(\)\) : null;/);
+  // And the hour it defaults to is the one they already hear from Olma in the
+  // morning, so the nudge rides the morning picture rather than interrupting
+  // twice (owner, 2026-09-20). Failing that, the hour their own day opens —
+  // never a bare constant, which is what it was for one day.
+  assert.match(page, /var morning = \(DIGEST\.times \|\| \[\]\)\.filter/);
+  assert.match(page, /return \(SCHED && SCHED\.start\) \|\| REM_FALLBACK_AT;/);
   // And never a moment already gone: the server fires those within the minute,
   // which spends the one nudge and reads as a bug.
   assert.match(page, /if\(at <= Date\.now\(\)\)\{/);

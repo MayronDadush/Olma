@@ -366,6 +366,34 @@ title means this file. Grep the title, not the filename.
   stays NULL, and the page's own `nextIsoAt` is RUN, in four zones, and has to
   land on the hour asked for and always ahead of now.
 
+- **…and the hour it defaults to is the hour they ALREADY hear from Olma, so
+  the nudge rides the morning picture instead of interrupting twice** (owner,
+  2026-09-20). The page takes their earliest morning `digest_times` entry,
+  failing that the start of their availability window, and never a bare
+  constant; somebody whose only digest is in the evening falls through to the
+  window, because the question being answered is "when do you read your
+  updates in the morning". At that hour the reminder sweep does not enqueue a
+  message at all — `reminders.ridesDigest` (dateless AND repeating AND exactly
+  one of their digest hours, read in THEIR zone) hands the occurrence to the
+  waiting digest row, and `digest-block` DRAWS it under its own heading.
+  **Drawn, never woven**: `message-merge.js` refuses to fold a reminder into a
+  composed turn because a model may reword or drop the one sentence somebody
+  asked for while the row still reads delivered, and that reason does not stop
+  applying just because the owner wants one message instead of two.
+  Three things hold it together and each closes a way it could go silent.
+  **The sweeps run digests-FIRST** (`jobs/registry.js`), so `sweepReminders`
+  can require a digest row that is really there and really still unsent before
+  handing anything over — the other order leaves only a hope, and a nudge given
+  to a digest already delivered reaches nobody. **The link is the ROW**
+  (`task_reminders.carried_outbox_id`, migration 075), not a time window: the
+  nudge is drawn for exactly as long as that digest is waiting and stops the
+  moment it lands, which is a clock fewer to get wrong. And **a card never
+  replaces a block that is carrying one** — a card draws a DAY and has no row
+  for a job with no date, so `drawInsteadOfBlock` refuses outright rather than
+  letting the nudge vanish into a picture on a row already stamped as the
+  message that carried it. It survives `summary` scope for the same reason a
+  nudge is not a count: four of the six people with a digest are on it.
+
 - **Everyone on a shared task is equal, and a write on it is made AS its
   owner** (owner, 2026-09-19). There is one kind of share: `shares.role` is
   still a column and is read by nothing. `shares.actingOwner` answers whom a

@@ -4,6 +4,7 @@
 // brokerd's loop — no crontab sprawl, one heartbeat each.
 const { enqueue, collectHeld } = require('../outbox/enqueue');
 const reminders = require('../domain/reminders');
+const audit = require('../domain/audit');
 const meetings = require('../domain/meetings');
 const meetingFanout = require('../domain/meeting-fanout');
 const groupMeetings = require('../domain/group-meetings');
@@ -23,6 +24,11 @@ async function sweepReminders(client, nowIso) {
   const gapHours = Number(await flags.getFlag(client, 'reminder_escalation_gap_hours'))
     || reminders.ESCALATION_GAP_HOURS;
   const due = await reminders.dueForSending(client, now, { maxAttempts, gapHours });
+  // `out` is the ids that became a MESSAGE, and it stays exactly that — a
+  // nudge the digest carried interrupted nobody and does not belong in a count
+  // of sends. That it happened at all is not left to a log line either: every
+  // carry writes `reminder.carried_by_digest`, which is the durable record and
+  // the thing to query when somebody asks why no reminder went out.
   const out = [];
   for (const r of due.data.due) {
     const attempt = Number(r.attempts) + 1;
@@ -40,6 +46,43 @@ async function sweepReminders(client, nowIso) {
     // the plain reminder text, since nothing was delivered to follow up on,
     // and the urgency of the rung it stands in for.
     const redo = Boolean(r.prev_failed);
+    // The owner's rule, 2026-09-20: a standing nudge whose hour is the hour
+    // they already hear from Olma in the morning arrives WITH the morning
+    // picture, not as a second message a minute behind it. The digest draws it
+    // (domain/digest-block.js) rather than a model weaving it in, so the one
+    // sentence they asked for still reaches them as written — which is the
+    // whole reason a reminder may not be merged into a composed turn.
+    //
+    // Only when the digest row is really there and really still waiting. The
+    // sweeps run digests-first for exactly this check (jobs/registry.js): a
+    // nudge handed to a digest that has already gone out reaches nobody, and
+    // it would do so silently, which is the worst shape this repo has.
+    if (attempt === 1 && reminders.ridesDigest({
+      dueAt: r.due_at, repeatRule: r.repeat_rule, remindAt: r.remind_at,
+      timezone: r.timezone, digestTimes: r.digest_times,
+    })) {
+      const { rows: waiting } = await client.query(
+        `SELECT id FROM outbox
+          WHERE user_id = $1 AND kind = 'digest' AND sent_at IS NULL
+          ORDER BY id DESC LIMIT 1`,
+        [r.user_id]
+      );
+      if (waiting[0]) {
+        await reminders.markCarried(client, r.reminder_id, waiting[0].id, new Date(now));
+        await audit.record(client, r.user_id, 'reminder.carried_by_digest', {
+          taskId: Number(r.task_id), reminderId: Number(r.reminder_id),
+          outboxId: Number(waiting[0].id),
+        });
+        const carriedNext = reminders.nextOccurrence(r.remind_at, r.repeat_rule, r.timezone);
+        if (carriedNext) {
+          await client.query(
+            `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, user_id) VALUES ($1, $2, $3, $4)`,
+            [r.task_id, carriedNext, reminders.normalizeRepeatRule(r.repeat_rule), r.user_id]
+          );
+        }
+        continue;
+      }
+    }
     const res = await enqueue(client, {
       // the person the reminder is FOR — on a shared task not necessarily the
       // task's owner (reminders.dueForSending resolves it)
