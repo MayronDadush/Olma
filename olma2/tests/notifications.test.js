@@ -872,3 +872,55 @@ test('resendableVerbatim: what may be re-sent as itself', () => {
   // The convention is a line of its own; the word inside a sentence is not it.
   assert.equal(resendableVerbatim('דיברנו על MEDIA: זה נושא אחר').ok, true);
 });
+
+// Maya wrote "לא יכולה ביום שני" with Monday on the table. The model recorded
+// the constraint and declined nothing, so the drawn table showed her as not
+// having answered and the initiator's ✓ said "עוד לא ענתה" (coordination 36,
+// 2026-09-20). A constraint that rules out a time on the table is that time
+// declined, on the same road respond_to_meeting_slot takes.
+test('a constraint that rules out a time on the table is that time declined', async () => {
+  const started = await call(miron, 'start_meeting_coordination', { title: 'poker constraint', phones: [kapish.phone] });
+  const meetingId = Number(/"id":"?(\d+)/.exec(started)[1]);
+  await drain(kapish.id);
+
+  // An empty table: bookkeeping, and nothing to hint about.
+  const bare = await call(kapish, 'record_meeting_constraint', { meeting_id: meetingId, constraint: 'לא בבוקר' });
+  assert.ok(!/On the table now/.test(bare), 'nothing on the table, nothing to answer');
+
+  await call(miron, 'propose_meeting_slot', {
+    meeting_id: meetingId, slot_description: 'בערב אצל יוסי', starts_at: slotStart('בערב אצל יוסי') });
+  await call(miron, 'propose_meeting_slot', {
+    meeting_id: meetingId, slot_description: 'אחרי הצהריים', starts_at: slotStart('אחרי הצהריים', { hours: 72 }) });
+  const table = (await meetings.options.list(db.pool, meetingId)).filter((o) => o.status === 'active');
+  assert.equal(table.length, 2);
+  const evening = table.find((o) => o.slotText === 'בערב אצל יוסי');
+
+  // Recorded without an answer: the table rides the result, by id.
+  const noted = await call(kapish, 'record_meeting_constraint', { meeting_id: meetingId, constraint: 'לא בערב' });
+  assert.match(noted, /On the table now/);
+  assert.ok(noted.includes(`#${evening.id}`), 'the option id the model needs is in the hint');
+  // (the proposer's own yes is already on the option — proposing means agreeing)
+  const answers = (await db.pool.query(`SELECT count(*)::int AS n FROM meeting_option_answers WHERE option_id = $1 AND user_id = $2`, [evening.id, kapish.id])).rows[0].n;
+  assert.equal(answers, 0, 'a constraint alone answers nothing');
+
+  // A wrong id is refused BEFORE the constraint is written.
+  const before = (await db.pool.query(`SELECT constraints FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [meetingId, kapish.id])).rows[0].constraints;
+  const wrong = await call(kapish, 'record_meeting_constraint', { meeting_id: meetingId, constraint: 'גם לא בשישי', declines_option_ids: [999999] });
+  assert.match(wrong, /not on the table/);
+  const after = (await db.pool.query(`SELECT constraints FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [meetingId, kapish.id])).rows[0].constraints;
+  assert.deepEqual(after, before, 'nothing half done');
+
+  // With the id: the constraint AND the decline, and the initiator hears it
+  // with the reasons, exactly as respond_to_meeting_slot accept=false.
+  const declined = await call(kapish, 'record_meeting_constraint', {
+    meeting_id: meetingId, constraint: 'לא יכול בערב', declines_option_ids: [evening.id] });
+  assert.match(declined, /"constraintRecorded":true/);
+  assert.match(declined, /1 option\(s\) declined with the constraint; 1 still stand/);
+  const row = (await db.pool.query(`SELECT answer FROM meeting_option_answers WHERE option_id = $1 AND user_id = $2`, [evening.id, kapish.id])).rows[0];
+  assert.equal(row && row.answer, 'n');
+  const heard = (await outboxFor(miron.id, 'meeting_slot_declined')).filter((r) => Number(r.payload.meetingId) === meetingId);
+  assert.equal(heard.length, 1);
+  assert.ok(heard[0].payload.reasons.includes('לא יכול בערב'));
+  assert.ok(heard[0].payload.reasons.includes('לא בערב'));
+});
+
