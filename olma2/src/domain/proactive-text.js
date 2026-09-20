@@ -122,9 +122,18 @@ function renderReminderText(payload, overrides, locale, channelType) {
 // dead text nobody is notified by.
 const MAX_TAGS = 8;
 
+// One tag, for the places that hand a person to the MODEL rather than render a
+// sentence (the group turn's own context block, the group tools' results).
+// Same spelling in one place: a second one that dropped the `+` would look
+// identical in a log and ping nobody.
+function mentionToken(phone) {
+  const digits = String(phone == null ? '' : phone).trim();
+  return digits ? `@${digits.replace(/^\+?/, '+')}` : null;
+}
+
 function mentionTokens(phones) {
   const list = (phones || []).map((p) => String(p || '').trim()).filter(Boolean);
-  const shown = list.slice(0, MAX_TAGS).map((phone) => `@${phone.replace(/^\+?/, '+')}`);
+  const shown = list.slice(0, MAX_TAGS).map((phone) => mentionToken(phone));
   const rest = list.length - shown.length;
   // A 25-person group with twenty missing would otherwise produce a wall of
   // tags. Judgement call, not an owner decision — say the rest as a number.
@@ -233,5 +242,5 @@ function rawPipeTextFor(row, overrides, channelType) {
 module.exports = {
   renderReminderText, rawPipeTextFor, reminderTemplateKey, localizedKey,
   renderGroupIntro, renderGroupGateNotice, renderGroupTooLarge, renderGroupOpened,
-  renderGroupCoordination, mentionTokens, MAX_TAGS, SELF_NUMBER,
+  renderGroupCoordination, mentionTokens, mentionToken, MAX_TAGS, SELF_NUMBER,
 };

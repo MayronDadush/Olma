@@ -127,7 +127,11 @@ test('the room status carries only what she may say out loud in the room', async
   // Everything here is already visible to the room: WhatsApp shows it the
   // participants, and she tags the missing ones out loud in the gate notice.
   const fields = new Set(status.members.flatMap((m) => Object.keys(m)));
-  assert.deepEqual([...fields].sort(), ['displayName', 'phone', 'wroteToHer']);
+  assert.deepEqual([...fields].sort(), ['displayName', 'phone', 'tag', 'wroteToHer']);
+  // `tag` is the phone in the one spelling that pings, drawn here so the model
+  // never assembles one (owner, 2026-09-20: in the room people are tagged, not
+  // named). It adds nothing the room cannot already see.
+  assert.deepEqual(status.members.map((m) => m.tag), [a.phone, '+972605000031'].map((p) => `@${p}`));
 });
 
 test('every tool in the group file is a group tool, and no other file has one', () => {

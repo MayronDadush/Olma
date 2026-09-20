@@ -806,7 +806,11 @@ test('get_meeting_status draws the numbered choice through the real tool', async
   // meeting-options.list orders newest-added first (`id DESC`); the numbering
   // follows THAT order, because it is the same order the model is handed —
   // renumbering it here would be a second, disagreeing order for "2".
-  assert.equal(res.data.block, '1. יום רביעי 19:00\n2. יום שלישי 20:00 בקפה');
+  // Alice proposed both, and proposing is agreeing, so both lines carry HER
+  // own yes. Where the reader stands is drawn for the same reason the numbers
+  // are: it is in the result either way, and a model had to do arithmetic to
+  // put it on the page (owner, 2026-09-20).
+  assert.equal(res.data.block, '1. יום רביעי 19:00 ✓\n2. יום שלישי 20:00 בקפה ✓');
   assert.match(res.data.hints.block, /EXACTLY as it is/);
   assert.match(res.data.hints.block, /"answer with the number"/);
   // The old fallback never travels beside the block — an unconditional "lay
@@ -853,4 +857,51 @@ test('all five active options are numbered, whoever put them there', async () =>
   assert.equal(res.data.options.length, 5);
   assert.ok(res.data.block.includes('הצעה חמישית'), 'anybody may vote on it, so it earns a number');
   assert.equal((res.data.block.match(/^\d+\. /gm) || []).length, 5);
+});
+
+// The reader's own position on the table, drawn (owner, 2026-09-20). Maya had
+// answered four options across two days and the next message asked her about
+// the table as though she had said nothing — while the one fact worth saying
+// was that everybody else had already agreed to one of them, so her yes alone
+// would end it.
+test('the table says where the READER stands, and which option only their yes is missing from', async () => {
+  const { BY_NAME } = require('../src/adapters/mcp/registry');
+  const cid = await makeUser(db.pool, '+972531000011', { firstName: 'Carl' });
+  await withClient(async (c) => {
+    const req = await connections.requestConnection(c, alice.id, cid.phone, {});
+    const conn = (await connections.respondToConnection(c, cid.id, req.data.connection.id, 'approve')).data.connection;
+    await grants.grantFeature(c, alice.id, conn.id, 'meetings');
+    await grants.grantFeature(c, cid.id, conn.id, 'meetings');
+  });
+  const m = (await withClient((c) => meetings.startMeeting(c, alice.id, 'מצגת', [bob.id, cid.id]))).data.meeting;
+  const first = await withClient((c) => meetings.options.add(c, alice.id, m.id, 'ראשון 10:00', slotStart('ראשון 10:00')));
+  const second = await withClient((c) => meetings.options.add(c, alice.id, m.id, 'שני 11:00', slotStart('שני 11:00', { hours: 48 })));
+  const third = await withClient((c) => meetings.options.add(c, alice.id, m.id, 'שלישי 12:00', slotStart('שלישי 12:00', { hours: 72 })));
+
+  await withClient(async (c) => {
+    // Bob: yes to the first, no to the second, nothing on the third.
+    await meetings.options.answer(c, bob.id, m.id, first.data.option.id, 'y');
+    await meetings.options.answer(c, bob.id, m.id, second.data.option.id, 'n');
+    // Carl says yes to the first too — so with Alice's own (adding is
+    // agreeing) the first is now waiting on nobody but Bob… who already said
+    // yes. Answer as Carl instead and read it as BOB.
+    await meetings.options.answer(c, cid.id, m.id, third.data.option.id, 'y');
+  });
+
+  const res = await withClient((c) => BY_NAME.get('get_meeting_status').handler(c, bob, { meeting_id: m.id }));
+  assert.equal(res.ok, true, JSON.stringify(res.error));
+  const lines = res.data.block.split('\n');
+  const line = (slot) => lines.find((l) => l.includes(slot));
+  assert.match(line('ראשון 10:00'), /✓$/, 'a time he said yes to');
+  assert.match(line('שני 11:00'), /✗$/, 'and one he said he cannot make');
+  // The third: Alice (who added it) and Carl have both said yes, Bob has not
+  // answered — so his yes settles it, and the line says exactly that.
+  assert.match(line('שלישי 12:00'), /חסר רק אישור שלך$/);
+  assert.match(res.data.hints.block, /their yes alone would settle it/);
+
+  // Alice reads the same table and sees her own three yeses, and no line about
+  // a yes only she is missing — she is not missing any.
+  const hers = await withClient((c) => BY_NAME.get('get_meeting_status').handler(c, alice, { meeting_id: m.id }));
+  assert.equal((hers.data.block.match(/✓/g) || []).length, 3);
+  assert.equal(/חסר רק/.test(hers.data.block), false);
 });

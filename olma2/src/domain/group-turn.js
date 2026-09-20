@@ -37,6 +37,15 @@ const groupMeetings = require('./group-meetings');
 // available without it was the one that got said.
 const CONTEXT_HEADER = 'Room coordination (from the system, not the room — Olma\'s own rows, read this second):';
 const CONTEXT_RULE = 'Every sentence you say about this room\'s coordination comes from the block above. `coordination: null` means this room has nothing running right now, whatever was said earlier in this conversation; a number that is not there is a number you do not have.';
+// The owner's rule (2026-09-20). In the room a person is TAGGED, never named:
+// the tag notifies them, and WhatsApp renders it as whatever each reader has
+// that number saved as — so it is also the only spelling that is right for
+// everybody at once. A name we hold is one we guessed from somewhere, and
+// "M&M" became "מאיה ומירון" in front of a room the day before this
+// (`incidents.md`, "Four messages in sixty-two seconds"). The tags are drawn
+// into the block itself so there is nothing to build: copy one character for
+// character or leave the person out of the sentence.
+const TAG_RULE = 'In this room you address a person ONLY with their `tag` exactly as written above (it notifies them; a name does not, and the names people see for each other are not ours to choose). Never write somebody\'s name here, and never invent a tag for somebody the block does not list. In a PRIVATE chat the opposite holds: there you use their name.';
 
 // The room, and its coordination if one is negotiating. A settled or cancelled
 // one is reported as what it is, under a different key: the model asking "is
@@ -80,10 +89,13 @@ async function draw(client, group) {
       // asked, and somebody paused out has left it.
       asked: c.participants,
       answered: c.participants - c.silent.length,
-      // Answers only. The label is the one the room's own chase line uses
-      // (`group-meetings.memberLabel`); why anybody said no is not here and
-      // has no count.
-      waitingFor: c.silent.map((p) => p.name).filter(Boolean),
+      // Answers only, and as TAGS — the same thing the room's own chase line
+      // says out loud (`proactive-text.mentionTokens`), which is what the model
+      // is now told to address people with. The label is the fallback for
+      // somebody we have no phone for, because leaving them out of the block
+      // would make `answered` and this list disagree. Why anybody said no is
+      // not here and has no count.
+      waitingFor: c.silent.map((p) => p.tag || p.name).filter(Boolean),
       onTable: c.options.map((o) => ({
         optionId: o.optionId, slot: o.slot, yes: o.yes.length, no: o.no.length,
       })),
@@ -96,7 +108,7 @@ async function draw(client, group) {
 // every group tool.
 async function renderContext(client, group) {
   const { renderResult } = require('../adapters/mcp/render');
-  return `${CONTEXT_HEADER}\n${renderResult({ ok: true, data: await draw(client, group) })}\n${CONTEXT_RULE}`;
+  return `${CONTEXT_HEADER}\n${renderResult({ ok: true, data: await draw(client, group) })}\n${CONTEXT_RULE} ${TAG_RULE}`;
 }
 
-module.exports = { draw, renderContext, CONTEXT_HEADER, CONTEXT_RULE };
+module.exports = { draw, renderContext, CONTEXT_HEADER, CONTEXT_RULE, TAG_RULE };

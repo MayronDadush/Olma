@@ -168,6 +168,39 @@ title means this file. Grep the title, not the filename.
   on, and saying one left the table stays a model's sentence
   (`HINTS.struckOut`, unchanged).
 
+- **…and a drawn table says where the READER stands, plus the one line that
+  needs only their yes** (owner, 2026-09-20;
+  `list-block.renderMeetingOptionsBlock`). `✓` marks a time this reader said
+  yes to, `✗` one they said they cannot make, and a line every OTHER
+  participant has already agreed to says so in the words that are the same
+  every time ("חסר רק אישור שלך"). מאיה had answered three of the five times
+  on a table and was then asked about it as though she had said nothing —
+  **not a narration fault**, and that is why it needed code: her answers were
+  in the result, and a model handed a complete block has no reason to go
+  behind it. The second half was not available to it at all, because "only
+  your yes is missing" is a claim about the other three people. So
+  `get_meeting_status` passes the reader (`userId`) and who is still in
+  (`activeIds`, participants not `opted_out`), and the count happens where
+  both halves are already in one query. **Nobody else's answer is ever
+  drawn** — "everybody else agreed" is a number, and whether Dana said no is
+  Dana's to say (`rules/groups.md`, one room out, on the same data). The hint
+  then FORBIDS restating any of it in words: the `markPlaced` argument again,
+  a line the block carries is carried, and a sentence about it is a second
+  notification for the same fact.
+
+- **Every private message about a coordination still being negotiated offers
+  that coordination's own page** (owner, 2026-09-20; `inviteLinkClause` in
+  `channels/openclaw.js`). It rode the invite alone from 2026-09-15, and the
+  invite is the one message in a negotiation guaranteed to be first: by the
+  time a time is added to the table or declined, that link is above whatever
+  the person is actually reading. The folded table question, a plain
+  `meeting_slot_proposed` and a `meeting_slot_declined` carry it now; a
+  confirmation and a no-match do not, because there is nothing left to mark.
+  It stays an instruction the MODEL spends rather than a url in a template —
+  the page is minted by `open_my_dashboard` and a prompt cannot carry one
+  (`rules/doctrine.md`, "A `url` in a tool result is delivered by the MODEL or
+  not at all").
+
 - **The same thing does not go out twice inside a few minutes unless the person
   ASKED** (owner, 2026-09-10; `domain/repeat-guard.js` holds the window and the
   sentence, and exactly two places read it). The gate drops a second row of the
