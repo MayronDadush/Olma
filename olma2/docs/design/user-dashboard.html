@@ -9549,6 +9549,19 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
     }
   }
   setInterval(tickSettle, 1000);
+  /* Nothing on this page pushes: two people with the same sheet open saw each
+     other's taps only after one of them tapped something of their own, because
+     /me/data was re-read only behind this page's own writes. So while a
+     coordination sheet is open and the tab is on screen, the page re-reads
+     every MT_POLL_MS — one small GET, and hydrate already keeps the open sheet
+     and redraws it. An armed ✓ (mtSettling) survives the re-read; an option
+     somebody removed is simply not drawn. Sheet closed or tab hidden: nothing. */
+  var MT_POLL_MS = 8000;
+  function tickMeetPoll(){
+    if(!LIVE || !mtOpen || document.hidden) return;
+    API.reload();
+  }
+  setInterval(tickMeetPoll, MT_POLL_MS);
 
   /* ───────── calendar ───────── */
   /* Which seven days the strip is showing, counted in weeks from the one that
