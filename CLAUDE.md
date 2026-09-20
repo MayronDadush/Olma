@@ -157,7 +157,8 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **What is the same every time is DRAWN, and only the sentence about it is a model's**
 - **…and since 2026-09-10 the lists and choices a person ASKS for are drawn the same way**
 - **…and a drawn table says where the READER stands, plus the one line that needs only their yes**
-- **Every private message about a coordination still being negotiated offers that coordination’s own page**
+- **The invite and the table question offer the coordination's own page, on a bare line; nothing else in the negotiation does**
+- **A private message about a coordination is one sentence of context and one question** — two options are a sentence, a game room counts heads, and the length is measured
 - **The same thing does not go out twice inside a few minutes unless the person ASKED**
 - **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause
 - **An unstated quiet day is not "none" — it is Saturday or Sunday, and which one is a fact about the PERSON.**

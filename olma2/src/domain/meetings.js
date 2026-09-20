@@ -528,9 +528,18 @@ async function getStatus(client, userId, meetingId) {
   // nobody a message (owner, 2026-09-09), so somebody asking what is going on
   // is one of the two places the fact is ever said — and without it a person
   // hunting for a time they remember is told nothing at all.
+  // A game room counts heads ("כרגע אנחנו 4", owner 2026-09-20): the room's
+  // kind and quorum, and each option's yes count, are read here so the
+  // number in the message is never the model's arithmetic.
+  const room = m.rows[0] && m.rows[0].group_id
+    ? (await client.query(`SELECT kind, quorum_min, quorum_max FROM chat_groups WHERE id = $1`, [m.rows[0].group_id])).rows[0]
+    : null;
   return ok({
     meeting: m.rows[0], participants,
-    options: await options.list(client, meetingId),
+    ...(room ? { room: { kind: room.kind || null, min: room.quorum_min === null ? null : Number(room.quorum_min), max: room.quorum_max === null ? null : Number(room.quorum_max) } } : {}),
+    options: (await options.list(client, meetingId)).map((o) => ({
+      ...o, yes: Object.values(o.answers || {}).filter((v) => v === 'y').length,
+    })),
     removedOptions: await options.removed(client, meetingId),
   });
 }

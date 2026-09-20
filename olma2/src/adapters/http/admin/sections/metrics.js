@@ -8,6 +8,7 @@ const METRIC_LABELS = {
   active_users: 'משתמשים פעילים', messages_received: 'הודעות שהתקבלו', messages_counted: 'תורות',
   proactive_sent: 'הודעות יזומות', groups_created: 'קבוצות חדשות',
   assistant_messages: 'משפטים של עולמה', hebrew_flaws: 'משפטים עם שגיאת מגדר/סימון',
+  meeting_messages: 'הודעות תיאום בפרטי', meeting_message_chars: 'תווים בהודעות תיאום',
   tasks_created: 'משימות שנוצרו', reminders_created: 'תזכורות',
   meetings_started: 'פגישות שהתחילו', meetings_confirmed: 'פגישות שסוכמו',
   meetings_no_match: 'פגישות שלא הסתדרו', shares_offered: 'שיתופים שהוצעו',
@@ -108,7 +109,35 @@ function voiceLine(rows, today = new Date().toISOString().slice(0, 10)) {
   const t = sum(0, 0), w = sum(0, 6), pw = sum(7, 13);
   const cell = (x) => x.days ? `${x.f} מתוך ${x.m}` : '—';
   return `<p class="small"><b>העברית של עולמה</b> (משפטים עם התייחסות עצמית בזכר או סימון של המודל, מתוך כל מה שכתבה):
-    היום ${cell(t)} · 7 ימים ${cell(w)} · 7 שלפניהם ${cell(pw)}</p>`;
+    היום ${cell(t)} · 7 ימים ${cell(w)} · 7 שלפניהם ${cell(pw)}</p>${meetingLengthLine(rows, today)}`;
+}
+
+// The length of a private message about a coordination, as an average per
+// window — the owner asked for shorter ones on 2026-09-20 and this is how
+// the budget in channels/openclaw.js (BRIEF) is read back without opening a
+// transcript. Matched by time in jobs/metrics.rollupVoiceDay, so it is a
+// reading and says so; a window with no such message shows a dash.
+function meetingLengthLine(rows, today = new Date().toISOString().slice(0, 10)) {
+  const by = new Map();
+  for (const r of rows) {
+    if (r.metric !== 'meeting_messages' && r.metric !== 'meeting_message_chars') continue;
+    const d = dateKey(r.date);
+    if (!by.has(d)) by.set(d, { meeting_messages: 0, meeting_message_chars: 0 });
+    by.get(d)[r.metric] = Number(r.value);
+  }
+  if (!by.size) return '';
+  const day0 = Date.parse(`${today}T00:00:00Z`);
+  const sum = (from, to) => {
+    let n = 0, c = 0;
+    for (const [d, v] of by) {
+      const age = Math.round((day0 - Date.parse(`${d}T00:00:00Z`)) / 86400_000);
+      if (age < from || age > to) continue;
+      n += v.meeting_messages; c += v.meeting_message_chars;
+    }
+    return n ? `${Math.round(c / n)} תווים (${n})` : '—';
+  };
+  return `<p class="small"><b>אורך הודעת תיאום בפרטי</b> (ממוצע, לפי הזמן שבו יצאה):
+    היום ${sum(0, 0)} · 7 ימים ${sum(0, 6)} · 7 שלפניהם ${sum(7, 13)}</p>`;
 }
 
 // ── The duplicates the extraction pass stopped ──────────────────────────────
@@ -193,4 +222,4 @@ async function renderMetrics(client) {
       `<tr><td class="nowrap">${d}</td>${cols.map((m) => `<td>${vals[m] ?? 0}</td>`).join('')}</tr>`).join('')}</table>`;
 }
 
-module.exports = { METRIC_LABELS, METRIC_ORDER, GROWTH_METRICS, WINDOWS, dateKey, growthTable, voiceLine, duplicatesLine, renderMetrics };
+module.exports = { METRIC_LABELS, METRIC_ORDER, GROWTH_METRICS, WINDOWS, dateKey, growthTable, voiceLine, meetingLengthLine, duplicatesLine, renderMetrics };

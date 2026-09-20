@@ -279,19 +279,43 @@ test('one calendar event is not a list, and nothing at all is null', () => {
 
 test('active options are numbered in the order they arrive, in their own words', () => {
   const block = lb.renderMeetingOptionsBlock([
+    { id: 3, slotText: 'יום חמישי בבוקר', status: 'active' },
     { id: 2, slotText: 'יום שלישי 20:00 בקפה', status: 'active' },
     { id: 1, slotText: 'יום רביעי 19:00', status: 'active' },
   ], { channelType: 'whatsapp' });
-  assert.equal(block, '1. יום שלישי 20:00 בקפה\n2. יום רביעי 19:00');
+  assert.equal(block, '1. יום חמישי בבוקר\n2. יום שלישי 20:00 בקפה\n3. יום רביעי 19:00');
 });
 
 test('a pending option is never numbered — it is not open for anyone to vote on yet', () => {
   const block = lb.renderMeetingOptionsBlock([
     { id: 1, slotText: 'אופציה א', status: 'active' },
     { id: 2, slotText: 'אופציה ב', status: 'active' },
-    { id: 3, slotText: 'הצעה חמישית', status: 'pending' },
+    { id: 3, slotText: 'אופציה ג', status: 'active' },
+    { id: 4, slotText: 'הצעה חמישית', status: 'pending' },
   ], { channelType: 'whatsapp' });
-  assert.equal(block, '1. אופציה א\n2. אופציה ב');
+  assert.equal(block, '1. אופציה א\n2. אופציה ב\n3. אופציה ג');
+});
+
+// Two options are one sentence, not a table (owner, 2026-09-20: "מירון יכול
+// בשישי בבוקר ושבת בערב, מה איתך?"). The floor is three; below it the
+// reader's own position still travels, as marks the model may say in words.
+test('two active options are a sentence, not a block — and the marks still say where the reader stands', () => {
+  const two = [
+    { id: 1, slotText: 'בשישי בבוקר', status: 'active', answers: { 7: 'y', 9: 'y' } },
+    { id: 2, slotText: 'שבת בערב', status: 'active', answers: { 7: 'y', 9: 'n' } },
+  ];
+  assert.equal(lb.MEETING_MIN_LINES, 3);
+  assert.equal(lb.renderMeetingOptionsBlock(two, { channelType: 'whatsapp', userId: 9, activeIds: [7, 9] }), null);
+  assert.deepEqual(lb.meetingOptionMarks(two, { userId: 9, activeIds: [7, 9] }), [
+    { id: 1, slotText: 'בשישי בבוקר', mine: 'y', needsYou: false },
+    { id: 2, slotText: 'שבת בערב', mine: 'n', needsYou: false },
+  ]);
+  // Unanswered by the reader while everybody else agreed: only their yes is
+  // missing — a boolean about the others, never their answers.
+  assert.deepEqual(lb.meetingOptionMarks(two, { userId: 11, activeIds: [7, 9, 11] }), [
+    { id: 1, slotText: 'בשישי בבוקר', mine: null, needsYou: true },
+    { id: 2, slotText: 'שבת בערב', mine: null, needsYou: false },
+  ]);
 });
 
 test('one active option is not a choice to number, and nothing at all is null', () => {
@@ -304,10 +328,11 @@ test('emphasis in a proposer\'s own slot text is cleaned, and a channel with no 
   const opts = [
     { id: 1, slotText: 'יום שני *בערב*', status: 'active' },
     { id: 2, slotText: 'יום שלישי', status: 'active' },
+    { id: 3, slotText: 'יום _רביעי_', status: 'active' },
   ];
   assert.equal(lb.renderMeetingOptionsBlock(opts, { channelType: 'whatsapp' }),
-    '1. יום שני בערב\n2. יום שלישי');
+    '1. יום שני בערב\n2. יום שלישי\n3. יום רביעי');
   // Numbering reads the same on every channel — only bold/italic/etc. degrade.
   assert.equal(lb.renderMeetingOptionsBlock(opts, { channelType: 'sms' }),
-    '1. יום שני בערב\n2. יום שלישי');
+    '1. יום שני בערב\n2. יום שלישי\n3. יום רביעי');
 });

@@ -51,6 +51,7 @@ never trust a dated narrative for something you are about to act on.
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
 - [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
+- [Two paragraphs where two sentences would do (fixed 2026-09-20)](#two-paragraphs-where-two-sentences-would-do-fixed-2026-09-20)
 - [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
 - [The fifth draft was the rude one (fixed 2026-09-11)](#the-fifth-draft-was-the-rude-one-fixed-2026-09-11)
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
@@ -1762,6 +1763,46 @@ on 2026-09-15 — by the time a time is added or declined, that first link is
 far above whatever the person is reading. A confirmation and a no-match still
 carry none, because there is nothing left on the page to mark.
 
+
+### Two paragraphs where two sentences would do (fixed 2026-09-20)
+
+Coordination 37, the "בדיקה יובל" room, the same afternoon. Yuval's first
+message from Olma about the beach was a paragraph: what the group wants,
+when works for him, any days that don't, the page link, and that answering
+here works too. His second was longer — two options each with "only your
+yes is missing", a calendar remark about having nothing those days, a guess
+about Erev Yom Kippur, the link again, and "answering here works just as
+well" again. He said, and the owner agreed, that the first could have been
+"אנחנו מנסים לארגן ישיבה בים, מתי אתה פנוי?" and the second "מירון אומר
+שהוא יכול להגיע לחוף בשישי בוקר ושבת בערב, מה איתך?".
+
+The model had not been verbose. `instructionFor` had asked it, in order, to
+explain what is being arranged, ask when, ask for constraints, check the
+calendar and mention conflicts, offer the link and say answering here works
+— and every one of those became a sentence. The length was ours.
+
+**Fix.** `BRIEF` in `channels/openclaw.js` — one sentence of context and one
+question, in their register; no preamble, no how-to-answer, no calendar
+remark unless there is a clash, no reason unless one was given — is appended
+to every negotiation instruction. The checks stay things the model does and
+stop being things it says. The link comes off the plain proposal and the
+decline (back to the invite and the folded table question, the morning's
+"everywhere" reversed by the afternoon's reading) and its line carries no
+sentence about itself. Two options are a sentence: `MEETING_MIN_LINES` = 3,
+and below it `get_meeting_status` hands over `marks` — the reader's own y/n
+per option and `needsYou` as a boolean — with a `pair` hint, so "only your
+yes is missing" survives as data the model may say in five words. A game
+room counts heads (`ROOM_COUNT`): `room` and each option's `yes` on the
+status, and the room's name on a proposal's payload so a proposal knows it
+is one. And because a budget nobody measures is a wish, `rollupVoiceDay`
+matches each delivered `meeting_*` row to the latest assistant text written
+inside three minutes before its stamp — a `--deliver` turn returns no text,
+so the join is by time and is labelled as a reading — and the metrics page
+shows the average length per window.
+
+**Not done, and named.** The poker example wants a place ("אצל מירון") —
+that is item F of the same plan, a `meetings.location` column, and lands
+separately.
 ### A room counted in somebody who had paused (fixed 2026-09-13)
 
 קפיש (u-9) said he was getting system messages he should not have. They were

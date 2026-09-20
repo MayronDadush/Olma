@@ -95,8 +95,22 @@ test('her voice is counted per day from the transcripts: flawed of written, and 
     [`u-${other.id}`]: null, // a store that could not be opened
   };
   const sessions = { scanAssistantTextSince: async (agentId) => stores[agentId] };
+  // The second text answered a meeting row: the worker stamped `sent_at` 40s
+  // after the model wrote it. The first text has no meeting row near it.
+  // A DROPPED meeting row a minute later (hold_reason set) is nothing.
+  const { enqueue } = require('../src/outbox/enqueue');
+  await withTx(db.pool, async (c) => {
+    await enqueue(c, { userId: user.id, kind: 'meeting_invite', payload: { meetingId: 1 }, urgency: 'urgent' });
+    await enqueue(c, { userId: user.id, kind: 'meeting_slot_proposed', payload: { meetingId: 1 }, urgency: 'urgent' });
+  });
+  await db.pool.query(`UPDATE outbox SET sent_at = $2::timestamptz WHERE user_id = $1 AND kind = 'meeting_invite'`,
+    [user.id, new Date(at + 1000 + 40_000).toISOString()]);
+  await db.pool.query(`UPDATE outbox SET sent_at = $2::timestamptz, hold_reason = 'quiet' WHERE user_id = $1 AND kind = 'meeting_slot_proposed'`,
+    [user.id, new Date(at + 60_000).toISOString()]);
   const out = await withTx(db.pool, (c) => metrics.rollupVoiceDay(c, sessions, day));
-  assert.deepEqual(out, { messages: 2, flawed: 1, unreadable: 1 });
+  const meetingText = 'אני מבין. כבר אמרתי לשרה 🤝';
+  assert.deepEqual(out, { messages: 2, flawed: 1, unreadable: 1, meetingMessages: 1, meetingChars: meetingText.length });
+  assert.match(await section.renderMetrics(db.pool), new RegExp(`אורך הודעת תיאום בפרטי[^]*היום ${meetingText.length} תווים \\(1\\)`));
   const { rows } = await db.pool.query(
     `SELECT metric, value FROM product_metrics_daily WHERE date = $1::date AND metric IN ('assistant_messages', 'hebrew_flaws') ORDER BY metric`, [day]);
   assert.deepEqual(rows.map((r) => [r.metric, Number(r.value)]), [['assistant_messages', 2], ['hebrew_flaws', 1]]);
@@ -108,7 +122,7 @@ test('her voice is counted per day from the transcripts: flawed of written, and 
   // and the hourly sweep carries the reader through when it is given one —
   // yesterday and today together, so yesterday's slip is in this total
   const swept = await withTx(db.pool, (c) => metrics.sweepMetrics(c, new Date(), { sessions }));
-  assert.deepEqual(swept.voice, { messages: 3, flawed: 2, unreadable: 2 });
+  assert.deepEqual(swept.voice, { messages: 3, flawed: 2, unreadable: 2, meetingMessages: 1, meetingChars: meetingText.length });
   const bare = await withTx(db.pool, (c) => metrics.sweepMetrics(c));
   assert.match(String(bare.voice), /skipped/);
 });
