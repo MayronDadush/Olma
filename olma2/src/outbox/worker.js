@@ -114,7 +114,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
   // LOCKED below (a lock taken here would be released at this tx's commit
   // anyway, and only mislead readers into thinking it protects something).
   const { rows: candidates } = await pool.query(
-    `SELECT o.*, u.timezone, u.agent_id, u.quota_blocked_until, u.first_name, u.last_inbound_at,
+    `SELECT o.*, u.timezone, u.agent_id, u.quota_blocked_until, u.first_name, u.last_inbound_at, u.last_dashboard_at,
             u.digest_times, u.paused_at, u.paused_reason, u.room_invite_sent_at, u.is_eval, u.checkin_misses, u.locale
      FROM outbox o JOIN users u ON u.id = o.user_id
      WHERE o.sent_at IS NULL AND (o.release_after IS NULL OR o.release_after <= $1)
@@ -307,7 +307,7 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
           checkinMisses: Number(row.checkin_misses) || 0,
           blockedUntil: row.quota_blocked_until,
           window: win.data.window, quietDays, quietDates, shabbatWindow, tz: row.timezone,
-          lastInboundAt: row.last_inbound_at, groupWroteAt, pausedRoomInvite,
+          lastInboundAt: row.last_inbound_at, dashboardWroteAt: row.last_dashboard_at, groupWroteAt, pausedRoomInvite,
           hasDigest: Boolean(row.digest_times),
           introductionPending: introRows.length > 0,
           introductionSentAt: introSent[0] ? introSent[0].sent_at : null,

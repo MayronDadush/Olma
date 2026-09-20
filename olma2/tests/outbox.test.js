@@ -43,6 +43,21 @@ test('gate: an introduction survives the quiet drop, like the ladder\'s own chec
   // not answered is the likeliest person never to have been told who was
   // writing to them. ג.ב would have lost his to this rule (2026-09-08).
   assert.equal(decide({ ...quiet, row: row({ kind: 'introduction' }) }).action, 'deliver');
+});
+
+test('gate: a write from their own page a minute ago is the person answering', () => {
+  // Kapish answered coordination 35 entirely from the dashboard and was
+  // `quiet` to the gate twice (2026-09-20). A fresh stamp passes the quiet
+  // drop and counts as mid-conversation for the night; a stale one is nothing.
+  const quiet = { ...baseFacts, checkinMisses: 1 };
+  const fresh = new Date(noonUTC.getTime() - 60_000).toISOString();
+  const stale = new Date(noonUTC.getTime() - 60 * 60_000).toISOString();
+  assert.equal(decide({ ...quiet, dashboardWroteAt: fresh, row: row({ kind: 'meeting_invite' }) }).action, 'deliver');
+  assert.equal(decide({ ...quiet, dashboardWroteAt: stale, row: row({ kind: 'meeting_invite' }) }).holdReason, 'quiet');
+  const night = { ...baseFacts, now: threeAmUTC };
+  const justNow = new Date(threeAmUTC.getTime() - 60_000).toISOString();
+  assert.equal(decide({ ...night, row: row({ kind: 'meeting_invite' }) }).holdReason, 'night');
+  assert.equal(decide({ ...night, dashboardWroteAt: justNow, row: row({ kind: 'meeting_invite' }) }).action, 'deliver');
   assert.equal(decide({ ...quiet, row: row({ kind: 'checkin' }) }).action, 'deliver');
 });
 

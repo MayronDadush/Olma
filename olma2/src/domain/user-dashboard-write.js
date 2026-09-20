@@ -731,7 +731,23 @@ async function perform(client, userId, action, payload = {}) {
   // dashboard draws with its `admin.*` events. An operator reading the trail
   // has to be able to tell a person tapping their own phone from their agent
   // acting on their behalf.
-  if (res.ok) await audit.record(client, userId, 'dashboard.' + action, auditPayload(action, payload));
+  if (res.ok) {
+    await audit.record(client, userId, 'dashboard.' + action, auditPayload(action, payload));
+    // A write from their own page is the person answering. The same line
+    // `turn.openRecord` writes on a real inbound message — the counter the
+    // check-in ladder counts and the delivery gate drops on — plus a stamp of
+    // its own. Never `last_inbound_at`: that is the first-turn signal and the
+    // name ladder's silence test, and a tap is not a message with words in it.
+    // Kapish answered everything about coordination 35 from here, never wrote
+    // in the chat, and was `quiet` to every reader (`incidents.md`, "The man
+    // who only ever answered from the page", 2026-09-20). The audit row above
+    // already counts as activity for `checkin.eligibleUsers`; this is what
+    // makes the ladder and the gate agree with it.
+    await client.query(
+      `UPDATE users SET last_dashboard_at = now(),
+              checkin_misses = CASE WHEN checkin_misses > 0 THEN 0 ELSE checkin_misses END
+        WHERE id = $1`, [userId]);
+  }
   return res;
 }
 

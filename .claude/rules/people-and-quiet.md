@@ -78,6 +78,19 @@ title means this file. Grep the title, not the filename.
   is a message; a person who only likes looks silent. Vered got eighteen
   messages on her second day and answered none (`incidents.md`, "Eighteen
   messages, no answer").
+  **A write from their own page IS the person answering** (2026-09-20).
+  `user-dashboard-write.perform` stamps `users.last_dashboard_at` (migration
+  075) and resets `checkin_misses` on every successful write — the same line
+  `turn.openRecord` writes on a real inbound — and the gate reads the stamp
+  as `dashboardWroteAt`: inside `CONVERSATION_GRACE_MS` it passes the quiet
+  drop and counts as mid-conversation for the night window, exactly as a
+  message would, and not one step further (the quiet DAY stays; a DM does not
+  reach it either). `checkin.eligibleUsers` needed nothing: the audit row the
+  write already records is its idle clock. **Never `last_inbound_at`** — that
+  is the first-turn signal and the name ladder's silence test, and a tap is
+  not a message with words in it. Kapish answered a whole coordination from
+  the page, never wrote in the chat, and was `quiet` to everything
+  (`incidents.md`, "The man who only ever answered from the page").
 
 - **A "once ever" question is stamped on the PERSON, never deduped on the
   route that asks it.** Two routes each honouring "at most once" is twice.
