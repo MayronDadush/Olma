@@ -52,6 +52,7 @@ never trust a dated narrative for something you are about to act on.
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
 - [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
 - [Two paragraphs where two sentences would do (fixed 2026-09-20)](#two-paragraphs-where-two-sentences-would-do-fixed-2026-09-20)
+- [The slot that was already closed (fixed 2026-09-20)](#the-slot-that-was-already-closed-fixed-2026-09-20)
 - [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
 - [The fifth draft was the rude one (fixed 2026-09-11)](#the-fifth-draft-was-the-rude-one-fixed-2026-09-11)
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
@@ -1764,6 +1765,33 @@ on 2026-09-15 — by the time a time is added or declined, that first link is
 far above whatever the person is reading. A confirmation and a no-match still
 carry none, because there is nothing left on the page to mark.
 
+
+
+### The slot that was already closed (fixed 2026-09-20)
+
+Kapish (u-35), coordination 35. At 11:11 the check-in ladder's
+`stuck_meeting` rung wrote to him about the Saturday 26.9 20:00 option. At
+12:31 he answered from the dashboard. At 13:30 the coordination closed on
+Thursday 1.10. At 13:51 he sent "?" — and the model, reading its own
+session, offered him Saturday 26.9 again. Nothing on that turn said the
+meeting had closed or that he had answered; `turn_start` told it about
+reminders delivered in the last day and about nothing else it had been part
+of. Two coordinations later Miron told Olma "סימנתי" — he had marked his
+availability on the page a minute earlier — and was asked "מה נוח לך?" for
+the same reason.
+
+The session remembers the question it asked. Nothing tells it the answer
+arrived somewhere else, and nothing tells it the question is moot.
+
+**Fix.** `turn.advise` adds `recentMeetings`, the same every-turn channel
+`recentReminders` uses and for the same reason: every coordination with a
+`meeting_*` row that REACHED this person in the last 24 hours (`sent_at`
+set, `hold_reason` null — a dropped row is not something they heard, the
+`unheardRemovals` argument), with its `status` now, `confirmedSlot` when it
+closed, `onTable` and `answered` with `answeredAt` for this person, and the
+title fenced as other people's text. The hint says a confirmed one is
+closed and never re-offered, and that "סימנתי" means the answers it can see.
+Three at most, newest first.
 
 ### Two paragraphs where two sentences would do (fixed 2026-09-20)
 

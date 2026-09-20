@@ -10,7 +10,7 @@
 //   ADVICE — never recovered: `offerResume` (stamping it would burn a
 //            once-per-pause offer the model never made), name capture (needs
 //            `sender_name`, which only the model sees), `recentReminders`,
-//            `planHeadline`. A correct database and a less-informed reply is
+//            `recentMeetings`, `planHeadline`. A correct database and a less-informed reply is
 //            the honest trade.
 //
 // Story: docs/incidents.md, "turn_start skipped on the stop turn, under two
@@ -210,7 +210,7 @@ async function openTurnImplicitly(client, user, { firstTool } = {}) {
 // turn by every user, for fields that appear on a handful of turns in a
 // person's life. The budget rule (CLAUDE.md, "Doctrine"): guidance about a
 // RESULT rides the result.
-function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, today }) {
+function turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, today }) {
   const hints = {};
   if (today) {
     // Rides beside the block on every turn it is on, because a block the
@@ -326,6 +326,13 @@ function turnHints({ offerResume, languageNudge, recentReminders, planHeadline, 
         + 'on its taskId for the moment they named. Cancelling a DIFFERENT reminder does not stop this one.';
     }
   }
+  if (recentMeetings && recentMeetings.length) {
+    hints.recentMeetings = 'Coordinations they heard about in the last day, with where each stands NOW — '
+      + 'this session may still hold an older question about one of them. A `confirmed` one is closed: '
+      + 'never re-offer a time from it. `answered` of `onTable` is how many of the current options they '
+      + 'have already answered (answeredAt is when); "סימנתי"/"עניתי" means that, so say you saw it and '
+      + 'ask nothing they already answered. get_meeting_status is the truth for the rest.';
+  }
   if (planHeadline) {
     hints.planHeadline = 'The headline of today\'s overnight plan; the full plan is in your USER.md '
       + '— read it and lead with it when they ask about their day or plans.';
@@ -421,6 +428,44 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       };
     })
     .filter(Boolean);
+
+  // Coordinations this person heard about in the last day, with where each
+  // stands NOW. The session remembers the question it asked; nothing told it
+  // the answer had arrived. Kapish was asked about a Saturday slot by the
+  // check-in ladder at 11:11, answered from the page at 12:31, the meeting
+  // closed on Thursday at 13:30 — and at 13:51 his "?" was answered with
+  // the Saturday slot again, from memory. Miron said "סימנתי" and was asked
+  // "מה נוח לך?" (2026-09-20, `incidents.md`, "The slot that was already
+  // closed"). Same channel and same reason as recentReminders: it is true
+  // on the turns that follow a coordination message and on no other. Titles
+  // are other people's text and travel fenced.
+  const { rows: recentMt } = await client.query(
+    `SELECT m.id, m.title, m.status, m.confirmed_slot,
+            (SELECT max(oa.answered_at) FROM meeting_option_answers oa
+              JOIN meeting_options mo ON mo.id = oa.option_id
+             WHERE mo.meeting_id = m.id AND mo.status = 'active' AND oa.user_id = $1) AS answered_at,
+            (SELECT count(*)::int FROM meeting_options mo WHERE mo.meeting_id = m.id AND mo.status = 'active') AS on_table,
+            (SELECT count(*)::int FROM meeting_option_answers oa
+              JOIN meeting_options mo ON mo.id = oa.option_id
+             WHERE mo.meeting_id = m.id AND mo.status = 'active' AND oa.user_id = $1) AS answered,
+            max(o.sent_at) AS heard_at
+       FROM outbox o
+       JOIN meetings m ON m.id = (o.payload->>'meetingId')::bigint
+      WHERE o.user_id = $1 AND o.kind LIKE 'meeting\_%' AND o.hold_reason IS NULL
+        AND o.sent_at > now() - interval '24 hours'
+      GROUP BY m.id
+      ORDER BY max(o.sent_at) DESC
+      LIMIT 3`, [user.id]);
+  const recentMeetings = recentMt.map((m) => ({
+    meetingId: Number(m.id),
+    title: `<<<${String(m.title || '').slice(0, 120)}>>>`,
+    status: m.status,
+    ...(m.confirmed_slot ? { confirmedSlot: `<<<${String(m.confirmed_slot).slice(0, 120)}>>>` } : {}),
+    heardAt: m.heard_at,
+    onTable: Number(m.on_table) || 0,
+    answered: Number(m.answered) || 0,
+    ...(m.answered_at ? { answeredAt: m.answered_at } : {}),
+  }));
 
   // The overnight plan's headline, through the same every-turn channel as
   // recentReminders — and for the same reason: USER.md is injected on
@@ -531,11 +576,12 @@ async function advise(client, user, { counted, firstTurn, ourTurn, replyTarget, 
       ...(offerResume ? { offerResume: true } : {}),
       ...(languageNudge ? { languageNudge } : {}),
       ...(recentReminders.length ? { recentReminders } : {}),
+      ...(recentMeetings.length ? { recentMeetings } : {}),
       ...(planHeadline ? { planHeadline } : {}),
       ...(replyTarget ? { replyTarget: true } : {}),
       ...(genderForms ? { genderForms } : {}),
       ...(today ? { today } : {}),
-      ...turnHints({ offerResume, languageNudge, recentReminders, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, today }),
+      ...turnHints({ offerResume, languageNudge, recentReminders, recentMeetings, planHeadline, replyTarget, genderForms, thanksOnly, stoppedReminders, today }),
     };
   }
   const shouldNotice = await quota.shouldSendBlockNotice(client, user.id);

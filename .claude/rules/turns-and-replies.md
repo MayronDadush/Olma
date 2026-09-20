@@ -138,6 +138,20 @@ title means this file. Grep the title, not the filename.
   message) is what makes it land; `tests/reply-target.test.js` and eval
   `reply-to-older-message` hold both halves open.
 
+- **A turn is told where every coordination it heard about in the last day
+  stands NOW, because the session remembers the question and nothing tells it
+  the answer arrived** (`turn.advise` → `recentMeetings`, 2026-09-20; same
+  channel and same reason as `recentReminders`). Kapish was asked about a
+  Saturday slot by the check-in ladder, answered from the page, the meeting
+  closed on Thursday — and his next "?" got the Saturday slot again, from
+  memory; Miron said "סימנתי" and was asked "מה נוח לך?". Each entry carries
+  `status`, `confirmedSlot` when closed, `onTable`/`answered`/`answeredAt`
+  for this person, and the title fenced as another person's text; the hint
+  says a confirmed one is closed and an answered one is answered. Rows the
+  gate dropped do not count as heard (`hold_reason IS NULL`), on the same
+  argument as `unheardRemovals` (`incidents.md`, "The slot that was already
+  closed").
+
 - **A DECISION to stay quiet is not a reply that got lost.** `NO_REPLY` is the
   silence sentinel and, since the reaction doctrine, it is the CORRECT answer to
   a growing class of messages — brokerd puts a 👍 on, `markPlaced` says the mark
