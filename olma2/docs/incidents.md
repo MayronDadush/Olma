@@ -50,6 +50,7 @@ never trust a dated narrative for something you are about to act on.
 **Delivery, outbox and proactive messages**
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
+- [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
 - [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
 - [The fifth draft was the rude one (fixed 2026-09-11)](#the-fifth-draft-was-the-rude-one-fixed-2026-09-11)
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
@@ -1685,6 +1686,39 @@ correctly (what counts is what REACHED them); the fold now does too, through
 `unheardInvite`: when every invite row for that person and coordination is a
 dropped one, the next time goes out as the invite it should have been, with
 `tableChanged` on it.
+
+### The constraint that was an answer (fixed 2026-09-20)
+
+Coordination 36, the test room, 2026-09-20. Maya (u-10) answered the table
+question in the private chat with "לא יכולה ביום שני". The model's own
+working-out was right — "record that constraint and ask about Wednesday" —
+and it called `record_meeting_constraint`, which wrote
+`meeting.constraint_recorded` and nothing else: zero rows in
+`meeting_option_answers`. From then on three readers disagreed with the one
+person who knew. The drawn table (`list-block.renderMeetingOptionsBlock`)
+showed her as having said nothing about Monday; the initiator's first ✓
+dialog said "מי שעוד לא ענה: מאיה ו-capish", true to the database and false
+to Maya; and Maya herself read a 👍 under her message, because
+`record_meeting_constraint` sat in `reactions.TOOL_MARKS` as `done` — the
+mark said "noted" about an answer nobody had recorded.
+
+"The agent understood, and the outcome had nowhere to go" — the recurring
+shape. The tool the model reached for had no way to carry the answer, and the
+tool that could carry it was a second call the description of the first never
+mentioned.
+
+**Fix.** `record_meeting_constraint` takes `declines_option_ids`. Every id is
+checked against the live table before anything is written — a wrong id leaves
+nothing half done — then the constraint is recorded and each option gets an
+`n` through `meeting-options.answer` and `meeting-fanout.afterSlotResponse`,
+the road `respond_to_meeting_slot accept=false` takes, so the initiator hears
+the decline with the reasons on it. Called without ids while the table is not
+empty, the result carries the table by id and says in one sentence that the
+constraint answered nothing; on an empty table it is bookkeeping and says
+nothing. And the tool is out of `TOOL_MARKS`, into the negotiation family that
+`tests/reactions.test.js` guards: it can only be called while a meeting is
+negotiating, so every call is a negotiation step, and the negotiation family
+has no 👍 by rule.
 
 ### The table that did not say where she stood (2026-09-20)
 

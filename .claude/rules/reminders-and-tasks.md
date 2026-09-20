@@ -133,6 +133,23 @@ title means this file. Grep the title, not the filename.
   whole history of the feature, every one `active`, and no `meeting.option_
   approved` or `option_rejected` row in the audit log (measured on the box).
 
+- **A constraint that rules out a time ON the table is an ANSWER, and the tool
+  that records it is the one that declines it** (2026-09-20). Maya wrote "לא
+  יכולה ביום שני" with Monday on the table; the model called
+  `record_meeting_constraint`, never `respond_to_meeting_slot accept=false`,
+  and to the drawn table and the initiator's ✓ she had not answered — while
+  the 👍 told her it had registered (`incidents.md`, "The constraint that was
+  an answer"). So `record_meeting_constraint` takes `declines_option_ids`,
+  checks every id against the live table BEFORE writing anything, then records
+  the constraint and puts an `n` on each option through
+  `meeting-options.answer` and `meeting-fanout.afterSlotResponse` — the same
+  road a decline takes, so the initiator hears it with the reasons. Omitted
+  with a non-empty table, the result carries the table by id and says the
+  constraint answered nothing. **And it is out of `reactions.TOOL_MARKS`**: it
+  can only ever be called while a meeting is negotiating, which makes it a
+  negotiation step, and the negotiation family has no 👍 by rule
+  (`rules/doctrine.md`) — a 👍 there says "done" about something that is not.
+
 - **A time taken OFF that table is never a message of its own** (owner,
   2026-09-09) — the commonest removal is somebody taking back a time they typed
   a minute ago. It rides the next thing each person hears about that
