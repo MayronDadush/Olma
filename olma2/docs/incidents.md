@@ -1665,6 +1665,26 @@ Two more faults from that hour are still open: the model's narration above,
 and that an untagged message in the room is indistinguishable from one that
 never arrived (see "A message in the room, with no tag on it").
 
+**What the fold's first live day corrected (same day, two coordinations
+later).** Miron added Friday from the dashboard at 11:33:52 while Yuval's
+invite was inside its model turn (11:33:41–11:34:06). The worker holds a row
+`FOR UPDATE` for the whole of its delivery and stamps `sent_at` only once the
+send confirms, so the fold's SELECT saw `sent_at IS NULL`, its UPDATE waited
+on the worker's lock, and then wrote `tableChanged` onto a message that had
+already gone out — and `fanout` skipped the enqueue. Yuval was never sent a
+word about Friday; he saw it only because the Saturday proposal 42 seconds
+later happened to call `get_meeting_status`. The SELECT is `FOR UPDATE SKIP
+LOCKED` now and the UPDATE re-asks `sent_at IS NULL`: a row somebody else
+holds has already been read, and the addition gets its own row. The second
+half was Kapish's, again: his invite to the next coordination was dropped
+`quiet`, the fold cannot see a dropped row, and the first thing he read about
+it was "נתקלתי בהצעה… יש שני זמנים על השולחן" — no room, no title's context,
+no "Miron asked for it". The removals rule already draws that baseline
+correctly (what counts is what REACHED them); the fold now does too, through
+`unheardInvite`: when every invite row for that person and coordination is a
+dropped one, the next time goes out as the invite it should have been, with
+`tableChanged` on it.
+
 ### The table that did not say where she stood (2026-09-20)
 
 Same room and the same hour as "Four messages in sixty-two seconds", read

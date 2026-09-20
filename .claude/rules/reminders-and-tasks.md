@@ -164,6 +164,20 @@ title means this file. Grep the title, not the filename.
   messages in sixty-two seconds when his invite and three additions, all held
   for the night, released together on his first word in the room
   (`incidents.md`, "Four messages in sixty-two seconds").
+  **Two things its first live day corrected.** "Not gone out yet" is what the
+  WORKER holds, not what `sent_at` says: the worker locks a row for the whole
+  of its delivery and stamps only after the send confirms, so a fold that
+  found `sent_at IS NULL` waited on that lock and then wrote `tableChanged`
+  onto a message already out — Yuval's invite — and the time it carried
+  reached nobody. The fold's SELECT is `FOR UPDATE SKIP LOCKED` and its UPDATE
+  re-asks `sent_at IS NULL`; a row in flight is skipped and the addition gets
+  its own row. And a question for somebody whose invite never REACHED them is
+  the invite, asked late: the gate dropped Kapish's (`quiet`) and the first
+  thing he read about the coordination was a bare "two times on the table".
+  `meeting-fanout.unheardInvite` sees a DROPPED invite — `sent_at` stamped with
+  a `hold_reason`, every one of them — and the next addition goes out as a
+  `meeting_invite` carrying that framing plus `tableChanged`. Only dropped:
+  a pending one is the fold's, and one in flight is about to reach them.
 
 - **An explicit reminder replaces the automatic one only on the SAME local
   day; on another day it stands beside it.** Both are otherwise about catching

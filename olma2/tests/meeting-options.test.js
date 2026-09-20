@@ -492,3 +492,88 @@ test('a folded row is delivered as one question about the table', () => {
   assert.match(plain, /<<<A>>>/);
   assert.equal(plain.includes('ALL of them in THIS one message'), false);
 });
+
+// ---------------------------------------------------------------------------
+// Two things the fold got wrong on its first live day (2026-09-20, the beach
+// coordination and Kapish's). "Not gone out yet" is what the WORKER holds, not
+// what `sent_at` says; and a question for somebody whose invite never reached
+// them is the invite, asked late.
+
+test('a row the worker is holding is not folded into — the addition gets its own row', async () => {
+  const m = await withClient((c) => trio(c, 'בחוף'));
+  await withClient((c) => fanout.afterStart(c, ann, { ok: true, data: { meeting: { id: m, title: 'בחוף' } } }, [ben.id], 'בחוף'));
+  const { rows: [invite] } = await db.pool.query(
+    `SELECT id FROM outbox WHERE user_id = $1 AND kind = 'meeting_invite'
+       AND (payload->>'meetingId')::bigint = $2`, [ben.id, m]);
+
+  // The worker, mid-delivery: the row is locked for the whole turn and
+  // `sent_at` is still NULL. Yuval's invite was exactly here when Miron added
+  // Friday from the dashboard.
+  const worker = await db.pool.connect();
+  try {
+    await worker.query('BEGIN');
+    await worker.query(`SELECT id FROM outbox WHERE id = $1 FOR UPDATE`, [invite.id]);
+
+    await withClient(async (c) => {
+      const a = await opts.add(c, ann.id, m, 'בבוקר, בחוף', at(120));
+      await fanout.afterOptionAdded(c, ann, m, a);
+    });
+
+    const { rows } = await db.pool.query(
+      `SELECT id, kind, payload FROM outbox
+        WHERE user_id = $1 AND (payload->>'meetingId')::bigint = $2 ORDER BY id`, [ben.id, m]);
+    assert.equal(rows.length, 2, 'the addition did not fold into a message already being written');
+    assert.equal(rows[0].id, invite.id);
+    assert.equal(rows[0].payload.tableChanged, undefined, 'the row in flight is untouched');
+    assert.equal(rows[1].kind, 'meeting_slot_proposed');
+    assert.equal(rows[1].payload.slot, 'בבוקר, בחוף');
+  } finally {
+    await worker.query('ROLLBACK');
+    worker.release();
+  }
+});
+
+test('an invite the gate DROPPED comes back as the invite when the next time is added', async () => {
+  await withClient(async (c) => {
+    const m = await trio(c, 'פוקר');
+    await fanout.afterStart(c, ann, { ok: true, data: { meeting: { id: m, title: 'פוקר' } } }, [ben.id], 'פוקר');
+    // The gate's `quiet` drop: `sent_at` stamped, a hold_reason, and nothing
+    // delivered. Kapish's row 10769.
+    await c.query(
+      `UPDATE outbox SET sent_at = now(), hold_reason = 'quiet'
+        WHERE user_id = $1 AND kind = 'meeting_invite' AND (payload->>'meetingId')::bigint = $2`,
+      [ben.id, m]);
+
+    const a = await opts.add(c, cal.id, m, 'בערב אצל יוסי', at(144));
+    await fanout.afterOptionAdded(c, cal, m, a);
+    const pending = async () => (await c.query(
+      `SELECT kind, payload FROM outbox WHERE user_id = $1 AND sent_at IS NULL
+        AND (payload->>'meetingId')::bigint = $2 ORDER BY id`, [ben.id, m])).rows;
+    let live = await pending();
+    assert.equal(live.length, 1);
+    // The framing he never got, and the table it is now about — not the slot.
+    assert.equal(live[0].kind, 'meeting_invite');
+    assert.equal(live[0].payload.tableChanged, true);
+    assert.equal(live[0].payload.title, 'פוקר');
+    assert.equal(live[0].payload.byName, 'Ann', 'who asked, not who added a time');
+    assert.equal(live[0].payload.slot, undefined);
+
+    // A second addition folds into THAT, as into any pending question.
+    const b = await opts.add(c, cal.id, m, 'אחרי הצהריים', at(168));
+    await fanout.afterOptionAdded(c, cal, m, b);
+    live = await pending();
+    assert.equal(live.length, 1, 'still one message');
+
+    // Once an invite has actually reached them, the next time is its own
+    // message again — the case that has not changed.
+    await c.query(
+      `UPDATE outbox SET sent_at = now() WHERE user_id = $1 AND sent_at IS NULL
+        AND (payload->>'meetingId')::bigint = $2`, [ben.id, m]);
+    const d = await opts.add(c, cal.id, m, 'בצהריים', at(192));
+    await fanout.afterOptionAdded(c, cal, m, d);
+    live = await pending();
+    assert.equal(live.length, 1);
+    assert.equal(live[0].kind, 'meeting_slot_proposed');
+    assert.equal(live[0].payload.tableChanged, undefined);
+  });
+});
