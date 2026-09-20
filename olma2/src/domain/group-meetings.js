@@ -31,6 +31,7 @@
 const { ok, err } = require('./results');
 const audit = require('./audit');
 const meetings = require('./meetings');
+const calendar = require('./calendar');
 const options = require('./meeting-options');
 const fanout = require('./meeting-fanout');
 const groups = require('./groups');
@@ -78,7 +79,7 @@ async function currentMeeting(client, groupId, { includeClosed = false } = {}) {
 
 // Start one. `actingUser` is the member whose tag started this turn, chosen by
 // the server (groups.actingMember) — never by the model.
-async function startCoordination(client, group, actingUser, title) {
+async function startCoordination(client, group, actingUser, title, { where = null } = {}) {
   if (!group || group.state !== 'open') return err('forbidden', 'this group is not open');
   // Null acting member is a real state, not an error to paper over: the
   // gateway filed no sender for this turn, or the sender is not a user. Olma
@@ -114,7 +115,7 @@ async function startCoordination(client, group, actingUser, title) {
   }
 
   const finalTitle = (title || '').trim() || group.subject || 'תיאום';
-  const started = await meetings.startMeeting(client, actingUser.id, finalTitle, others, { groupId: group.id });
+  const started = await meetings.startMeeting(client, actingUser.id, finalTitle, others, { groupId: group.id, location: where });
   if (!started.ok) return started;
   const meeting = started.data.meeting;
 
@@ -234,6 +235,9 @@ async function statusOf(client, group, meeting) {
       // did not select them, which the room line treats as "no".
       settleDueAt: meeting.settle_due_at || null,
       calendarEventId: meeting.calendar_event_id || null,
+      // Where, in the room's own words, or null — which the done line asks
+      // about (owner, 2026-09-20: only when nobody said one).
+      location: meeting.location === undefined ? null : (meeting.location || null),
       startedBy: who(meeting.initiator_id).name,
       participants: active.length,
       options: table,
@@ -350,7 +354,38 @@ async function sweepSilentPausedMembers(client, nowMs = Date.now()) {
   return out;
 }
 
+// The room says where ("אצל יוסי"), before or after the time is set. Written
+// onto the meeting in the room's own words; when a shared calendar event
+// already exists, its organiser's event gets the place too — through the
+// same `calendar.updateEvent` a person's own edit goes through, as that
+// person, because the event is on THEIR calendar (owner, 2026-09-20).
+async function setPlace(client, group, actingUser, where, opts = {}) {
+  if (!group || group.state !== 'open') return err('forbidden', 'this group is not open');
+  if (!actingUser) {
+    return err('invalid', 'I cannot tell who said this — ask them to say it again in the group');
+  }
+  const members = await coordinatingMembers(client, group.id);
+  if (!members.some((m) => Number(m.user_id) === Number(actingUser.id))) {
+    return err('forbidden', 'that person is not a member of this group');
+  }
+  const location = meetings.cleanLocation(where);
+  if (!location) return err('invalid', 'where is required');
+  const meeting = await currentMeeting(client, group.id, { includeClosed: true });
+  if (!meeting || !['negotiating', 'confirmed'].includes(meeting.status)) {
+    return err('not_found', 'nothing is being coordinated in this group right now');
+  }
+  await client.query(`UPDATE meetings SET location = $2, updated_at = now() WHERE id = $1`, [meeting.id, location]);
+  await audit.record(client, actingUser.id, 'meeting.place_set', { meetingId: Number(meeting.id), groupId: group.id });
+  let calendarUpdated = false;
+  if (meeting.calendar_event_id && meeting.calendar_organiser_id) {
+    const upd = await calendar.updateEvent(client, Number(meeting.calendar_organiser_id),
+      { eventId: meeting.calendar_event_id, location }, opts);
+    calendarUpdated = Boolean(upd.ok);
+  }
+  return ok({ meetingId: Number(meeting.id), location, calendarUpdated, status: meeting.status });
+}
+
 module.exports = {
-  startCoordination, coordinationStatus, statusOf, settle, sweepSilentPausedMembers,
+  startCoordination, coordinationStatus, statusOf, settle, setPlace, sweepSilentPausedMembers,
   currentMeeting, coordinatingMembers, memberLabel,
 };

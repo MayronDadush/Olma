@@ -323,6 +323,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **The person who asked the ROOM for a coordination is asked privately too** — a tag carries no times, and the test asserted the bug
 - **In the room a person is addressed by their TAG and never by their name; in a private chat, by their name**
 - **The "סגור" line names who can make it, a calendar line is said only for a SHARED event, and a base line is never said to nobody**
+- **The place is the room's own words, asked for only when nobody said one, and it rides the confirmation onto the calendar event**
 - **A group turn is told the room's coordination state before the model's first word, and that block is the only thing it may speak from.**
 - **A paused member is counted into a room's coordination only until their one invite is spent; a day of silence takes them out**
 - **A member's message in the room opens the gate's fifteen-minute window for that room's coordination — and, since 2026-09-09, the room's own announcement window; nothing else**

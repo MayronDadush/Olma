@@ -26,10 +26,12 @@ module.exports = [
   // It never proposes a time: a time proposed from the room would be one
   // person's suggestion wearing the room's voice.
   groupTool('start_group_coordination',
-    'GROUP AGENTS ONLY. Call this the moment the room asks to arrange something — never say you are on it before calling it; nothing happens until you do. Everyone is then asked PRIVATELY when suits them; you never collect times here. One per room: asked again mid-run returns the same one (created=false) — say where it stands, do not start a second.',
-    { what: S('string', 'What is being arranged, in the room\'s own words ("פאדל השבוע")') }, ['what'],
+    'GROUP AGENTS ONLY. Call this the moment the room asks to arrange something — never say you are on it before calling it. Everyone is then asked PRIVATELY when suits them; never collect times here. One per room: asked again returns the same one (created=false) — say where it stands.',
+    { what: S('string', 'What is being arranged, in the room\'s own words ("פאדל השבוע")'),
+      where: S('string', 'The place, ONLY if the room said one ("אצל יוסי"); never guessed') },
+    ['what'],
     async (client, ctx, a) => {
-      const res = await groupMeetings.startCoordination(client, ctx.group, ctx.actingUser, a.what);
+      const res = await groupMeetings.startCoordination(client, ctx.group, ctx.actingUser, a.what, { where: a.where });
       if (!res.ok) return res;
       const hints = {
         room: res.data.created
@@ -90,6 +92,25 @@ module.exports = [
     'GROUP AGENTS ONLY. Close this room\'s coordination on ONE time (option_id from group_coordination_status), when the room says so out loud. Everyone is told privately, including anyone who never said yes. Refused below a game\'s minimum — say how many are short.',
     { option_id: S('number', 'The time to close it on') }, ['option_id'],
     async (client, ctx, a) => groupMeetings.settle(client, ctx.group, ctx.actingUser, a.option_id)),
+
+  // The place, said in the room before or after the time is set. Its own
+  // tool rather than a field on settle: "אצל יוסי" arrives in any message
+  // and at any point, and the calendar event may already exist.
+  groupTool('set_group_coordination_place',
+    'GROUP AGENTS ONLY. The room said WHERE it happens ("אצל יוסי") — save it in their words; an existing calendar event is updated too.',
+    { where: S('string', 'The place, in their words') }, ['where'],
+    async (client, ctx, a) => {
+      const res = await groupMeetings.setPlace(client, ctx.group, ctx.actingUser, a.where);
+      if (!res.ok) return res;
+      return ok({
+        ...res.data,
+        hints: {
+          room: res.data.calendarUpdated
+            ? 'Say ONE short line: noted, and the calendar event now carries the place.'
+            : 'Say ONE short line: noted. It goes on the calendar with the event — do not claim it is there yet.',
+        },
+      });
+    }),
 
   groupTool('group_coordination_status',
     'GROUP AGENTS ONLY. Where this room\'s coordination stands: the times on the table, who said yes or no to each, who has not answered. Answers only — a REASON somebody gave lives in their private chat and is never read out here. Check it before saying anything about progress.',

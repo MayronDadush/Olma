@@ -236,6 +236,22 @@ have already had to be argued for.
   echoed her own LID as if it were Yuval's (`incidents.md`, "The room waited
   for nobody").
 
+- **The place is the room's own words, asked for only when nobody said one,
+  and it rides the confirmation onto the calendar event** (owner,
+  2026-09-20; `meetings.location`, migration 077). "פוקר אצל יוסי" carries
+  its place and nothing could read it back out. `start_group_coordination`
+  takes `where` — ONLY when the room said one, never guessed — and
+  `set_group_coordination_place` saves it later in any message; both go
+  through `meetings.cleanLocation` (trimmed, 120 chars, never parsed). The
+  done line carries `{{place_ask}}` when `location` is NULL and nothing
+  otherwise. `meetingBrief` puts `location` on the `meeting_confirmed`
+  payload and `meetingCalendarStep` passes it to
+  `create_shared_meeting_event`/`create_calendar_event` fenced as data; a
+  place said AFTER the event exists reaches it through `calendar.updateEvent`
+  as the organiser, since the event is on their calendar. Until untagged room
+  messages reach her (PR #429), the answer to "איפה נפגשים?" still needs a
+  tag (`incidents.md`, "The place nobody asked for").
+
 - **A group turn is told the room's coordination state before the model's first
   word, and that block is the only thing it may speak from.** The DM half of
   this has been live since 2026-09-06 (turns-and-replies.md, "The turn opens

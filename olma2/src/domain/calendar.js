@@ -459,7 +459,7 @@ async function createEvent(client, userId, { title, start, end, description, loc
   });
 }
 
-async function updateEvent(client, userId, { eventId, title, start, end }, opts = {}) {
+async function updateEvent(client, userId, { eventId, title, start, end, location }, opts = {}) {
   if (!eventId) return err('invalid', 'event_id is required');
   if (start !== undefined && !OFFSET_RE.test(String(start))) return badTime('start', start);
   if (end !== undefined && !OFFSET_RE.test(String(end))) return badTime('end', end);
@@ -468,6 +468,7 @@ async function updateEvent(client, userId, { eventId, title, start, end }, opts 
   if (title) patch.summary = title;
   if (start) patch.start = { dateTime: start };
   if (end) patch.end = { dateTime: end };
+  if (location) patch.location = String(location);
   if (!Object.keys(patch).length) return err('invalid', 'nothing to change');
 
   return withAccessToken(client, userId, opts, async (token, accessLevel, o) => {

@@ -280,6 +280,7 @@ async function afterSettled(client, meetingId, res, { actor = null, byName = nul
   const roles = await meetingCalendarFanout(client, meetingId, recipients, {
     meetingId: Number(meetingId), title: brief.title || 'meeting',
     slot: res.data.slot || brief.confirmed_slot,
+    ...(brief.location ? { location: brief.location } : {}),
     ...(settledBy ? { byName: settledBy, forced: true } : {}),
     ...(groupSubject ? { groupSubject } : {}),
   }, `mconf:${meetingId}`, (uid) => (withoutYes.has(Number(uid)) ? { settledWithoutYou: true } : {}));
@@ -292,7 +293,7 @@ async function meetingBrief(client, meetingId) {
   // proposal about it can be counted like a game invite is
   // (`channels/openclaw.js`, ROOM_COUNT).
   const { rows } = await client.query(
-    `SELECT m.title, m.initiator_id, m.proposed_slot, m.confirmed_slot, g.subject AS group_subject
+    `SELECT m.title, m.initiator_id, m.proposed_slot, m.confirmed_slot, m.location, g.subject AS group_subject
        FROM meetings m LEFT JOIN chat_groups g ON g.id = m.group_id WHERE m.id = $1`, [meetingId]
   );
   return rows[0] || {};
