@@ -245,11 +245,47 @@ function renderCalendarListBlock(data, opts = {}) {
 // the room what changed is a model turn (format.HINTS.struckOut, wired on the
 // tool result exactly as before), because that is a sentence about an EVENT,
 // not a static fact this call can draw.
+// Where the READER stands on each line, drawn for the same reason the numbers
+// are (owner, 2026-09-20): Maya had answered four options across two days and
+// the next message asked her about the table as though she had said nothing,
+// because her own answers were in the result and only a model's arithmetic
+// could get them onto the page. A tick is not a sentence — no gender, no
+// language — and the one phrase here is a noun phrase for the same reason
+// nothing else in a drawn block is a verb addressed to anybody.
+//
+// `needsYou` is the sharpest fact this call holds: everybody else in the
+// coordination has said yes to this one, so this person's yes ends it. It is
+// computed off the answers as they are THIS second, which is the only way it
+// can be said at all — at enqueue it would be a claim that goes stale, and a
+// model asked to derive it said the opposite out loud the day before
+// (`incidents.md`, "Four messages in sixty-two seconds").
+const MY_YES = '✓';
+const MY_NO = '✗';
+const OPTION_WORDS = {
+  he: { needsYou: 'חסר רק אישור שלך' },
+  en: { needsYou: 'only your yes is missing' },
+};
+
 function renderMeetingOptionsBlock(options, opts = {}) {
   const f = format.formatterFor(opts.channelType);
+  const words = OPTION_WORDS[localeKey(opts.locale)] || OPTION_WORDS.he;
+  const me = opts.userId === undefined || opts.userId === null ? null : String(opts.userId);
+  const others = (Array.isArray(opts.activeIds) ? opts.activeIds : [])
+    .map(String).filter((id) => id !== me);
   const lines = (Array.isArray(options) ? options : [])
     .filter((o) => o.status === 'active')
-    .map((o) => format.stripUserMarkup(String(o.slotText || '').replace(/\s+/g, ' ').trim()))
+    .map((o) => {
+      const slot = format.stripUserMarkup(String(o.slotText || '').replace(/\s+/g, ' ').trim());
+      if (!slot) return null;
+      const answers = o.answers || {};
+      const mine = me ? answers[me] : undefined;
+      if (mine === 'y') return `${slot} ${MY_YES}`;
+      if (mine === 'n') return `${slot} ${MY_NO}`;
+      if (me && others.length && others.every((id) => answers[id] === 'y')) {
+        return `${slot} — ${words.needsYou}`;
+      }
+      return slot;
+    })
     .filter(Boolean);
   if (lines.length < MIN_LINES) return null;
   return f.numbered(lines);

@@ -35,6 +35,7 @@ const options = require('./meeting-options');
 const fanout = require('./meeting-fanout');
 const groups = require('./groups');
 const pause = require('./pause');
+const { mentionToken } = require('./proactive-text');
 
 // What the room calls a member. The display name the group itself shows comes
 // first, because that is the name the other people in the room use; their
@@ -181,7 +182,15 @@ async function statusOf(client, group, meeting) {
   const members = await groups.listMembers(client, group.id);
   const labelByUser = new Map(members.filter((m) => m.user_id).map((m) => [Number(m.user_id), memberLabel(m)]));
   const phoneByUser = new Map(members.filter((m) => m.user_id).map((m) => [Number(m.user_id), m.phone]));
-  const who = (id) => ({ name: labelByUser.get(Number(id)) || null, phone: phoneByUser.get(Number(id)) || null });
+  // `tag` is how a person is ADDRESSED in the room, and it is here so the model
+  // never has to build one: the owner's rule (2026-09-20) is that in the room
+  // people are tagged and not named — a tag pings, a name does not, and it is
+  // also the name each viewer has saved for that number rather than the one we
+  // hold. The label stays for the rooms and the people we have no phone for.
+  const who = (id) => {
+    const phone = phoneByUser.get(Number(id)) || null;
+    return { name: labelByUser.get(Number(id)) || null, phone, tag: mentionToken(phone) };
+  };
 
   const { rows: parts } = await client.query(
     `SELECT user_id, state FROM meeting_participants WHERE meeting_id = $1`, [meeting.id]);

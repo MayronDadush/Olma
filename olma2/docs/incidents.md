@@ -48,6 +48,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
 - [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
 - [The fifth draft was the rude one (fixed 2026-09-11)](#the-fifth-draft-was-the-rude-one-fixed-2026-09-11)
@@ -1663,6 +1664,48 @@ the group's own announcements are a different queue entirely.
 Two more faults from that hour are still open: the model's narration above,
 and that an untagged message in the room is indistinguishable from one that
 never arrived (see "A message in the room, with no tag on it").
+
+### The table that did not say where she stood (2026-09-20)
+
+Same room and the same hour as "Four messages in sixty-two seconds", read
+straight after it. Meeting 35 in the test group had five times on the table,
+one of them added from the dashboard rather than from chat; all four people
+had answered something and no option was unanimous. One option was a single
+yes away: everybody except מאיה had agreed to it, and she had already answered
+three of the five herself — two she could make, one she could not. The move
+was obvious and nothing in the system could make it. When Olma wrote to her
+she was handed the table drawn the way anybody who ASKS for it is handed it:
+five numbered lines, the same five for everyone, with her own answers nowhere
+on them.
+
+**That is not a narration fault, and that is exactly why it needed code.** Her
+answers were in the tool result, and a model handed a block that is complete
+has no reason to go behind it — that is what the block is for. The other half
+was not available to it at all: "only your yes is missing" is a claim about
+the other three people, and telling one person what the others said is the
+thing the group rules spend most of their words refusing. So the marks are
+drawn (`list-block.renderMeetingOptionsBlock`): `✓` on a time this reader said
+yes to, `✗` on one they said they cannot make, and on a line every other
+participant has already agreed to, "חסר רק אישור שלך" — a count, never a name.
+`get_meeting_status` passes the reader and who is still in (participants not
+`opted_out`) so the counting happens where both halves are already in one
+query, and the block's hint forbids saying any of it again in words, on the
+`markPlaced` argument.
+
+Two more things the owner decided from the same reading, shipped in the same
+change. **In the room people are tagged, not named** — a tag notifies and a
+name does not, and the names people hold for each other in a WhatsApp group
+are not ours to choose. The fixed lines a room hears have tagged since the
+start, so the model's half was the last place a name could still get out:
+`groups.roomStatus` and `group-meetings.statusOf` now draw the tag beside
+every member and every id they name, and `group-turn.TAG_RULE` permits only a
+tag the block lists, while stating the opposite for a private chat, where a
+phone number standing where a name belongs is the same fault the other way up.
+**And the coordination's own page is offered on every private message about it
+while it is still being negotiated**, not only on the invite it shipped with
+on 2026-09-15 — by the time a time is added or declined, that first link is
+far above whatever the person is reading. A confirmation and a no-match still
+carry none, because there is nothing left on the page to mark.
 
 ### A room counted in somebody who had paused (fixed 2026-09-13)
 

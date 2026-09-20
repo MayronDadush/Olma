@@ -25,6 +25,7 @@
 const { ok, err } = require('./results');
 const flags = require('./flags');
 const audit = require('./audit');
+const { mentionToken } = require('./proactive-text');
 
 const DEFAULT_TIMEZONE = 'Asia/Jerusalem';
 
@@ -491,6 +492,11 @@ async function roomStatus(client, group) {
     members: members.map((m) => ({
       phone: m.phone,
       displayName: m.display_name || null,
+      // How this person is ADDRESSED in the room, drawn rather than left to the
+      // model to assemble out of the phone (owner, 2026-09-20: in the room
+      // people are tagged, not named). Same single spelling as the room's own
+      // fixed lines — `proactive-text.mentionToken`.
+      tag: mentionToken(m.phone),
       // The gate's own question, never a second copy of it: `isConnected`
       // reads both columns, and asking `last_inbound_at` alone here told the
       // MODEL that somebody who had written to the greeter had not written at

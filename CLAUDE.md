@@ -156,6 +156,8 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 - **On the MODEL path a style is granted by a RESULT, never by a description**
 - **What is the same every time is DRAWN, and only the sentence about it is a model's**
 - **…and since 2026-09-10 the lists and choices a person ASKS for are drawn the same way**
+- **…and a drawn table says where the READER stands, plus the one line that needs only their yes**
+- **Every private message about a coordination still being negotiated offers that coordination’s own page**
 - **The same thing does not go out twice inside a few minutes unless the person ASKED**
 - **The delivery gate is the chokepoint and a paused user has no exceptions** — save one room-coordination invite per pause
 - **An unstated quiet day is not "none" — it is Saturday or Sunday, and which one is a fact about the PERSON.**
@@ -303,7 +305,7 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 ### In a group
 
 **`.claude/rules/groups.md`** — the two identity doors, what a room may never be told, NULL as the honest third state, and the group outbox.
-Loads when you **Read** a file under `src/domain/group-connections.js`, `src/domain/group-context.js`, `src/domain/group-outbox.js` and 6 more.
+Loads when you **Read** a file under `src/domain/group-connections.js`, `src/domain/group-context.js`, `src/domain/group-meetings.js` and 7 more.
 
 - **Two identity doors, routed by the token PREFIX**
 - **Nothing a group tool returns may carry the room's own row or anybody's reasons.**
@@ -315,6 +317,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **Being in the room IS the introduction, and it is not the inferred closeness the old rule forbids.**
 - **The room reaches each member's OWN page as a group already made**
 - **The person who asked the ROOM for a coordination is asked privately too** — a tag carries no times, and the test asserted the bug
+- **In the room a person is addressed by their TAG and never by their name; in a private chat, by their name**
 - **A group turn is told the room's coordination state before the model's first word, and that block is the only thing it may speak from.**
 - **A paused member is counted into a room's coordination only until their one invite is spent; a day of silence takes them out**
 - **A member's message in the room opens the gate's fifteen-minute window for that room's coordination — and, since 2026-09-09, the room's own announcement window; nothing else**

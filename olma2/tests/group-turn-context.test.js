@@ -17,6 +17,7 @@ const { createBrokerServer } = require('../src/brokerd/server');
 const groups = require('../src/domain/groups');
 const groupMeetings = require('../src/domain/group-meetings');
 const options = require('../src/domain/meeting-options');
+const groupTurn = require('../src/domain/group-turn');
 process.env.OLMA_PLUGIN_TRACE = path.join(os.tmpdir(), `group-turn-plugin-test-${process.pid}.log`);
 
 let db, broker, plugin;
@@ -95,7 +96,13 @@ test('a running coordination: the title, how many were asked, how many answered,
   // Putting a time on the table IS answering it — `options.add` writes the
   // proposer's own yes — so two of the three have answered and one has not.
   assert.equal(data.coordination.answered, 2);
-  assert.deepEqual(data.coordination.waitingFor, ['יובל']);
+  // A TAG, not a name (owner, 2026-09-20): in the room she addresses people
+  // with the token that actually notifies them, and the name each person sees
+  // for somebody else is theirs, not ours. The block draws it so there is
+  // nothing for the model to assemble — and nothing it could assemble wrong,
+  // which is how "M&M" left the room as "מאיה ומירון".
+  assert.deepEqual(data.coordination.waitingFor, [`@${yuval.phone}`]);
+  assert.match(groupTurn.TAG_RULE, /ONLY with their `tag`/);
   assert.equal(data.coordination.waitingFor.length, data.coordination.asked - data.coordination.answered,
     'the two numbers and the list are one fact and must agree');
   assert.deepEqual(data.coordination.onTable, [{ optionId, slot: 'רביעי 21:00', yes: 1, no: 1 }]);

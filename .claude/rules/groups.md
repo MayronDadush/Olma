@@ -2,6 +2,7 @@
 paths:
   - "olma2/src/domain/group-connections.js"
   - "olma2/src/domain/group-context.js"
+  - "olma2/src/domain/group-meetings.js"
   - "olma2/src/domain/group-outbox.js"
   - "olma2/src/domain/group-turn.js"
   - "olma2/src/domain/groups.js"
@@ -196,6 +197,21 @@ have already had to be argued for.
   `incidents.md`, "The coordination waited on the man who started it"). **The
   test asserted the bug** — `2, 'everybody but the person who asked'` — which is
   one layer out from a wrong comment: a test can be wrong about the world.
+
+- **In the room a person is addressed by their TAG and never by their name; in
+  a private chat, by their name** (owner, 2026-09-20). A tag notifies them and
+  a name does not, and the name Olma holds is not the one that room shows them
+  to each other by. So `groups.roomStatus` and `group-meetings.statusOf` draw
+  the tag themselves — `proactive-text.mentionToken`, the one spelling that
+  pings — beside every member and every id they name, and
+  `group-turn.TAG_RULE` tells a group turn it may address somebody ONLY with a
+  tag the block lists: never a name, never a tag it assembled for a person the
+  block does not carry. The same rule states the opposite for a DM, because
+  `@972…` in somebody's own chat is a phone number where a name belongs. It is
+  DRAWN rather than asked for, on the rule one file over
+  (`rules/delivering.md`): the fixed lines a room hears have tagged people
+  since the start (`proactive-text.mentionTokens`, capped at `MAX_TAGS`), and
+  the model's half was the last place a name could still get out.
 
 - **A group turn is told the room's coordination state before the model's first
   word, and that block is the only thing it may speak from.** The DM half of

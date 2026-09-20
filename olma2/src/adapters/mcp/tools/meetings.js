@@ -143,8 +143,17 @@ module.exports = [
       // promise. Only 'active' options are numbered — a 'pending' fifth is not
       // yet open for a vote, so it earns no number to answer with.
       const ch = await users.primaryChannel(client, user.id);
-      const block = listBlock.renderMeetingOptionsBlock(options,
-        { channelType: ch.ok ? ch.data.channel.channel_type : null });
+      // Their own answers, and the option only their yes is missing from, are
+      // drawn onto the lines — the reader's own position on the table is a fact
+      // this result holds and a model has to do arithmetic to find (owner,
+      // 2026-09-20). `activeIds` excludes anybody who opted out: their yes is
+      // not owed and would make "everybody else said yes" false for ever.
+      const activeIds = (Array.isArray(res.data.participants) ? res.data.participants : [])
+        .filter((p) => p.state !== 'opted_out').map((p) => p.user_id);
+      const block = listBlock.renderMeetingOptionsBlock(options, {
+        channelType: ch.ok ? ch.data.channel.channel_type : null,
+        locale: user.locale, userId: user.id, activeIds,
+      });
       if (block) {
         return ok({
           ...res.data,
@@ -153,7 +162,11 @@ module.exports = [
             ...(res.data.hints || {}),
             block: `${format.HINTS.relayBlock} This numbering is what "answer with the number" refers to — `
               + 'never renumber it and never invent one of your own. Everything you add is at most one '
-              + 'short sentence: who is still owed an answer, or what moved.',
+              + 'short sentence: who is still owed an answer, or what moved. '
+              + 'The lines already carry where THIS user stands — ✓ a time they said yes to, ✗ one they '
+              + 'said they cannot make, and a line marked as missing only their yes is one where everybody '
+              + 'else has already agreed, so their yes alone would settle it. Never restate any of that in '
+              + 'words and never contradict it.',
             // Still true and still a model's job — an option that left the
             // table is not IN this block at all (meeting-options.list never
             // returns one), so there is no line here for a strike-through to
