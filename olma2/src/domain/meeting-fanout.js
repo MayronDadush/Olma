@@ -38,8 +38,56 @@ async function withRemovals(client, payload, userId) {
   return removedOptions.length ? { ...payload, removedOptions } : payload;
 }
 
+// A question about a coordination that has NOT GONE OUT YET is the question
+// that is going to be asked, so a new one folds into it instead of queueing
+// behind it. Kapish's four rows — the room's invite plus three times added
+// while the night held them — all released the moment he wrote in the room,
+// and he read four messages in sixty-two seconds, each re-asking the same
+// thing (`incidents.md`, "Four messages in sixty-two seconds"). Same rule
+// the owner already gave for a time taken OFF the table: it never gets a
+// message of its own, it rides the next thing that person hears.
+//
+// The OLDEST row survives, which is what keeps the framing right: an invite
+// is the first thing somebody hears about a coordination ("the group is
+// arranging X") and a bare slot row is not. `tableChanged` is what tells its
+// delivery that the row is now about the TABLE rather than about the one slot
+// its payload names — the times themselves are never copied in here, because
+// the table can move again before this goes out and `get_meeting_status` is
+// the only thing that knows what it holds at the moment of sending.
+const FOLDABLE_KINDS = ['meeting_invite', 'meeting_slot_proposed'];
+
+async function foldIntoPendingQuestion(client, userId, meetingId) {
+  const { rows } = await client.query(
+    `SELECT id, payload FROM outbox
+      WHERE sent_at IS NULL AND user_id = $1 AND kind = ANY($3)
+        AND (payload->>'meetingId')::bigint = $2
+      ORDER BY id`,
+    [userId, meetingId, FOLDABLE_KINDS]
+  );
+  if (!rows.length) return false;
+  const keep = rows[0];
+  // Recomputed rather than carried over: a removal that happened since this
+  // row was written rides the next thing they hear, and this row IS it now.
+  const payload = await withRemovals(client, { ...keep.payload, tableChanged: true }, userId);
+  await client.query(`UPDATE outbox SET payload = $2 WHERE id = $1`,
+    [keep.id, JSON.stringify(payload)]);
+  // Anything that already piled up behind it (rows written before this fold
+  // existed) is one message too many by the same argument.
+  const extras = rows.slice(1).map((r) => r.id);
+  if (extras.length) {
+    await client.query(
+      `UPDATE outbox SET sent_at = now(), hold_reason = 'superseded' WHERE id = ANY($1)`,
+      [extras]
+    );
+  }
+  return true;
+}
+
 async function fanout(client, userIds, kind, payload, { urgency = 'urgent', key } = {}) {
   for (const uid of userIds) {
+    if (kind === 'meeting_slot_proposed' && payload && payload.meetingId !== undefined
+      && payload.meetingId !== null
+      && await foldIntoPendingQuestion(client, uid, payload.meetingId)) continue;
     await enqueue(client, {
       userId: uid, kind, payload: await withRemovals(client, payload, uid), urgency,
       idempotencyKey: key ? `${key}:${uid}` : undefined,

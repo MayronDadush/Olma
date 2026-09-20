@@ -48,6 +48,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
 - [A room counted in somebody who had paused (fixed 2026-09-13)](#a-room-counted-in-somebody-who-had-paused-fixed-2026-09-13)
 - [The fifth draft was the rude one (fixed 2026-09-11)](#the-fifth-draft-was-the-rude-one-fixed-2026-09-11)
 - [Six good mornings for one timeout (fixed 2026-09-09)](#six-good-mornings-for-one-timeout-fixed-2026-09-09)
@@ -1605,6 +1606,63 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 
 ## Delivery, outbox and proactive messages
 
+
+### Four messages in sixty-two seconds (fixed 2026-09-20)
+
+קאפיש (u-35) joined the test room on 2026-09-19 and had never written to Olma
+privately — `users.last_inbound_at` was NULL all evening. Four rows were
+waiting for him, all about meeting 35, all held for the night:
+
+| row | kind | created |
+|---|---|---|
+| 10728 | `meeting_invite` | 21:03:07 |
+| 10731 | `meeting_slot_proposed` (שלישי) | 21:39:31 |
+| 10733 | `meeting_slot_proposed` (חמישי) | 21:39:35 |
+| 10735 | `meeting_slot_proposed` (שבת) | 21:41:50 |
+
+At 00:25:12 he wrote in the room. `group-context.noteMemberWrote` stamped
+`last_wrote_at` and `rehearHeldCoordinationRows` rewrote `release_after` on
+**all four** — which is right, and is what the fifteen-minute window is for.
+The worker then drained them one at a time, each on the model path, each a
+whole turn of its own: sends at 00:26:00, 00:26:15, 00:26:38 and 00:27:02.
+Sixty-two seconds, four messages, the same question four times.
+
+The content was worse than the count. The first message read `byName: "M&M"` —
+Miron's WhatsApp display name in that room — and said "מאיה ומירון מנסים
+לתאם", inventing two people out of a name it was told to relay ("A display
+name is not a word to be translated"). It also said "מירון עדיין צריך לענות"
+while Miron held a `y` on two options; the model had the whole table in front
+of it from `get_meeting_status` and narrated the opposite. The second told him
+"יש כבר הצעה זהה שלך" about an option whose payload named מירון, to a person
+who had not typed a word. The first spoke to him in the feminine, the second
+in the masculine — `users.gender` is NULL and `first_name` empty.
+
+`supersedeQueuedMeetingRows` already existed for exactly this parade, from the
+day three proposals crossed in eight seconds — but `afterOptionAdded` cannot
+use it, and the comment saying so is correct: since options, every time on the
+table is a live question and cancelling one is cancelling a real ask. The fix
+is the other half of the owner's own rule for a removal (2026-09-09: a time
+taken off the table never gets a message of its own, it rides the next thing
+each person hears). An ADDITION rides it too, as long as that next thing has
+not gone out yet: `meeting-fanout.js`'s `fanout` folds a new
+`meeting_slot_proposed` into whichever `meeting_invite`/`meeting_slot_proposed`
+row for that person and that coordination is still unsent — the OLDEST one, so
+an invite's framing survives — and stamps `tableChanged` on it instead of
+writing a second row. Nothing about the times is copied in: the table can move
+again before the row goes out, so `get_meeting_status` at delivery is the only
+honest source, and it already renders the options numbered. `TABLE_CLAUSE` in
+`channels/openclaw.js` turns that stamp into one question about the whole
+table, and the row's own slot stops being the subject of the sentence.
+
+Three things this deliberately does NOT change: a question that already
+reached somebody still gets its own message for the next time (nothing was
+folded, nothing was swallowed); removals are recomputed onto the row the fold
+lands on, so the news still rides something that will actually be sent; and
+the group's own announcements are a different queue entirely.
+
+Two more faults from that hour are still open: the model's narration above,
+and that an untagged message in the room is indistinguishable from one that
+never arrived (see "A message in the room, with no tag on it").
 
 ### A room counted in somebody who had paused (fixed 2026-09-13)
 
