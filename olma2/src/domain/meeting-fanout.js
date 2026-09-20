@@ -56,12 +56,22 @@ async function withRemovals(client, payload, userId) {
 // the only thing that knows what it holds at the moment of sending.
 const FOLDABLE_KINDS = ['meeting_invite', 'meeting_slot_proposed'];
 
+// `FOR UPDATE SKIP LOCKED`, because "not gone out yet" is not what `sent_at`
+// says — it is what the worker holds. The worker locks a row for the whole of
+// its delivery (payload read, model turn, send, stamp), and a row it holds has
+// already been READ. On 2026-09-20 a fold landed on Yuval's invite mid-turn:
+// this SELECT saw `sent_at IS NULL`, the UPDATE waited on the worker's lock,
+// then wrote `tableChanged` onto a message that had already gone out — and the
+// time it was carrying reached nobody. A row somebody else holds is skipped
+// here and the addition gets its own row, as it would have had the fold not
+// existed. The UPDATE re-asks `sent_at IS NULL` for the same reason.
 async function foldIntoPendingQuestion(client, userId, meetingId) {
   const { rows } = await client.query(
     `SELECT id, payload FROM outbox
       WHERE sent_at IS NULL AND user_id = $1 AND kind = ANY($3)
         AND (payload->>'meetingId')::bigint = $2
-      ORDER BY id`,
+      ORDER BY id
+      FOR UPDATE SKIP LOCKED`,
     [userId, meetingId, FOLDABLE_KINDS]
   );
   if (!rows.length) return false;
@@ -69,8 +79,10 @@ async function foldIntoPendingQuestion(client, userId, meetingId) {
   // Recomputed rather than carried over: a removal that happened since this
   // row was written rides the next thing they hear, and this row IS it now.
   const payload = await withRemovals(client, { ...keep.payload, tableChanged: true }, userId);
-  await client.query(`UPDATE outbox SET payload = $2 WHERE id = $1`,
+  const upd = await client.query(
+    `UPDATE outbox SET payload = $2 WHERE id = $1 AND sent_at IS NULL`,
     [keep.id, JSON.stringify(payload)]);
+  if (upd.rowCount === 0) return false;
   // Anything that already piled up behind it (rows written before this fold
   // existed) is one message too many by the same argument.
   const extras = rows.slice(1).map((r) => r.id);
@@ -83,11 +95,46 @@ async function foldIntoPendingQuestion(client, userId, meetingId) {
   return true;
 }
 
+// A slot question for somebody whose invite never REACHED them is the invite,
+// asked late. The gate dropped Kapish's (`quiet`, 2026-09-20), and the first
+// thing he then read about the coordination was a bare "two times on the
+// table" — not which room was arranging what, nor who asked. Same baseline the
+// removals use (`options.unheardRemovals`): what counts is what was DELIVERED,
+// and a row the gate dropped delivered nothing. Only a DROPPED invite qualifies
+// — `sent_at` stamped with a `hold_reason` — because one still pending is the
+// fold's (above), and one in flight is about to reach them on its own.
+async function unheardInvite(client, userId, meetingId) {
+  const { rows } = await client.query(
+    `SELECT payload, sent_at, hold_reason FROM outbox
+      WHERE user_id = $1 AND kind = 'meeting_invite'
+        AND (payload->>'meetingId')::bigint = $2
+      ORDER BY id DESC`,
+    [userId, meetingId]
+  );
+  if (!rows.length || !rows.every((r) => r.sent_at && r.hold_reason)) return null;
+  // The framing and nothing else: removals are recomputed at enqueue, and the
+  // stamp is the caller's to put on.
+  const p = rows[0].payload || {};
+  const framing = { meetingId: p.meetingId, title: p.title, byName: p.byName };
+  if (p.groupSubject) framing.groupSubject = p.groupSubject;
+  if (p.askedItYourself) framing.askedItYourself = true;
+  return framing;
+}
+
 async function fanout(client, userIds, kind, payload, { urgency = 'urgent', key } = {}) {
+  const aboutMeeting = kind === 'meeting_slot_proposed' && payload
+    && payload.meetingId !== undefined && payload.meetingId !== null;
   for (const uid of userIds) {
-    if (kind === 'meeting_slot_proposed' && payload && payload.meetingId !== undefined
-      && payload.meetingId !== null
-      && await foldIntoPendingQuestion(client, uid, payload.meetingId)) continue;
+    if (aboutMeeting && await foldIntoPendingQuestion(client, uid, payload.meetingId)) continue;
+    const framing = aboutMeeting ? await unheardInvite(client, uid, payload.meetingId) : null;
+    if (framing) {
+      await enqueue(client, {
+        userId: uid, kind: 'meeting_invite', urgency,
+        payload: await withRemovals(client, { ...framing, tableChanged: true }, uid),
+        idempotencyKey: key ? `${key}:${uid}:asinvite` : undefined,
+      });
+      continue;
+    }
     await enqueue(client, {
       userId: uid, kind, payload: await withRemovals(client, payload, uid), urgency,
       idempotencyKey: key ? `${key}:${uid}` : undefined,
