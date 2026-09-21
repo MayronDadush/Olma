@@ -675,7 +675,7 @@ async function load(client, userId) {
   const contacts = await loadContacts(client, userId);
   const groups = await loadGroups(client, userId);
   const meetings = await loadMeetings(client, userId, zone);
-  const suggestion = await suggestions.nextFor(client, userId);
+  const liveSuggestions = await suggestions.liveFor(client, userId);
   const meetingsLeft = await loadLeftMeetings(client, userId);
   const schedule = await loadSchedule(client, user);
   const knownFacts = await loadFacts(client, userId);
@@ -726,7 +726,12 @@ async function load(client, userId) {
     // owner's rule for this feature: no filler, no forced suggestion. Read
     // only; the pass that WRITES these is a job (domain/task-suggestions.js),
     // because this function reads and nothing else.
-    suggestion,
+    suggestion: liveSuggestions[0] || null,
+    // …and the rest of what is ready, at most MAX_LIVE (3). ONE is still
+    // shown; this is what the "הצעת Ai" button moves through, and it is here
+    // rather than behind an action because three rows are cheaper to send
+    // than a round trip is to build.
+    suggestions: liveSuggestions,
     friends,
     integrations,
     available: {
