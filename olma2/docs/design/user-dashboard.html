@@ -461,7 +461,15 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
 .sugg{
   --sugg-a:var(--accent);
   --sugg-b:#3FB6C8;
-  --sugg-c:#D96FB0;
+  /* The drift is a TINT on a white card and a GLOW on a dark one, and those
+     are not the same number. At the dark value it was a grey-lilac smudge on
+     white — the light theme has no depth behind the card for the colour to
+     sit in, so the same paint reads as dirt (owner, 2026-09-22: "במצב הכהה
+     יפה, במצב הבהיר לא"). Light gets a third of the opacity and half the
+     mix; dark keeps what it had. */
+  --sugg-aura:.2;
+  --sugg-mix-a:14%;
+  --sugg-mix-b:11%;
   position:relative;isolation:isolate;overflow:hidden;
   background:transparent;border-radius:16px;padding:15px 16px 13px;
   display:grid;gap:11px;margin-bottom:22px;
@@ -473,11 +481,17 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
    and a border that stops moving is exactly the thing being asked for. */
 .sugg::before{
   content:"";position:absolute;z-index:-3;
-  top:50%;left:50%;width:150%;aspect-ratio:1;
+  top:50%;left:50%;width:190%;aspect-ratio:1;
+  /* ONE arc with a long soft falloff, not a three-colour sweep. The first
+     version had three stops crossing a card three times wider than it is
+     tall, and at 7.5s that does not read as a light going round — it reads
+     as a blob changing shape, which is what "מוזרה" was (owner, 2026-09-22).
+     One arc, one colour into the accent, and slow enough that the corners
+     stop being a speed change you can see: a single lap, 22 seconds. */
   background:conic-gradient(from 0deg,
-    transparent 0 46%, var(--sugg-b) 58%, var(--sugg-a) 68%,
-    var(--sugg-c) 76%, transparent 86% 100%);
-  animation:suggSweep 7.5s linear infinite;
+    transparent 0 62%, color-mix(in oklab, var(--sugg-b) 70%, var(--sugg-a)) 78%,
+    var(--sugg-a) 84%, transparent 94% 100%);
+  animation:suggSweep 22s linear infinite;
 }
 /* The face, inset by the ring's own width. The card's background lives here
    rather than on `.sugg` itself: a parent's background paints BELOW its
@@ -492,12 +506,16 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
    a beat you could count. */
 .sugg .saura{
   position:absolute;z-index:-1;inset:1.5px;border-radius:14.5px;
-  pointer-events:none;opacity:.5;
+  pointer-events:none;opacity:var(--sugg-aura);
   background:
-    radial-gradient(42% 74% at 18% 26%, color-mix(in oklab, var(--sugg-a) 26%, transparent), transparent 70%),
-    radial-gradient(38% 66% at 82% 78%, color-mix(in oklab, var(--sugg-b) 22%, transparent), transparent 72%);
+    radial-gradient(42% 74% at 18% 26%, color-mix(in oklab, var(--sugg-a) var(--sugg-mix-a), transparent), transparent 70%),
+    radial-gradient(38% 66% at 82% 78%, color-mix(in oklab, var(--sugg-b) var(--sugg-mix-b), transparent), transparent 72%);
   animation:suggDrift 17s var(--ease-io) infinite alternate;
 }
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .sugg{--sugg-aura:.5;--sugg-mix-a:26%;--sugg-mix-b:22%}
+}
+:root[data-theme="dark"] .sugg{--sugg-aura:.5;--sugg-mix-a:26%;--sugg-mix-b:22%}
 @keyframes suggSweep{to{transform:translate(-50%,-50%) rotate(1turn)}}
 @keyframes suggDrift{
   0%{transform:translate(0,0) scale(1)}
