@@ -167,6 +167,7 @@ never trust a dated narrative for something you are about to act on.
 
 **Features as they shipped**
 - [The triage he did by hand, and the fourth detector the box refused (2026-09-19)](#the-triage-he-did-by-hand-and-the-fourth-detector-the-box-refused-2026-09-19)
+- [The light that would not go round (2026-09-22)](#the-light-that-would-not-go-round-2026-09-22)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
@@ -6450,6 +6451,62 @@ in place. **Running a detector against production before shipping it is not
 the same as measuring the thresholds** — the thresholds were measured first
 and were right; what the second pass caught was a whole category the queries
 had no opinion about.
+
+### The light that would not go round (2026-09-22)
+
+The owner asked for the suggestion card to look like the one thing on the page
+Olma thought of herself — "סטייל ai עם אנימציה שתמיד זזה" — and then rejected
+the motion twice, in the same words both times: it does not loop properly
+around.
+
+Both rejections were the same bug, and the second attempt was the first one
+slowed down. A conic gradient rotated behind the card moves at a constant
+number of **degrees** per second; an edge is walked in **pixels**. The card is
+roughly 343×110, so the light crosses a long edge and a short one in the same
+slice of time — it races the sides and stalls at the ends. Slowing the
+rotation from 7.5s to 22s did not fix it, it made the unevenness last longer,
+which is why variants "א" and "ג" read as the same thing at two speeds.
+
+What works is not a gradient at all: a round glow walking the perimeter
+itself, one edge at a time, with each edge given the share of the cycle its
+LENGTH earns (38/12/38/12). Round, so a corner needs no case of its own and
+nothing rotates. The card's own background became the rim and the face sits
+1.5px inside it, so only the stretch the glow is passing brightens — the
+1.5px is the whole effect.
+
+Two colour calls came out of the same round, and both were about what a
+treatment sits ON. The drift under the text was right on the dark card and
+read as dirt on the white one: on a light theme there is no depth behind a
+card for colour to sit in, so the same paint is a glow in one theme and a
+smudge in the other, and light dropped to a third of dark's values. And the
+whole thing moved off the product violet onto turquoise and sky, because the
+ring was the same hue as the אשר button underneath it and the eye read a
+button glowing rather than a card.
+
+**Then the verb.** The card's accept button said "אשר" for all three kinds,
+and the owner's question was whether that is clear: אשר *what*. It now says
+what the action is, per kind — "להוריד", "להוריד את זו" — and the rule that
+came with it is the part worth keeping: **the word on that button may only
+name what `decide` actually does.** He floated "מזג" for the duplicate kind,
+and "מזג" would have been a lie: accepting a duplicate archives the copy and
+leaves the other row exactly as it was, carrying nothing across. A verb naming
+something the code does not do is a promise, and a label is not a feature. The
+fallback is the neutral "אשר" and NOT `t()`'s own — `t` returns the KEY for a
+string it does not know, so a kind added without a verb would have shipped a
+button reading "sugg.yes.merge".
+
+**And the button he asked for.** "הצעת Ai" steps to the next suggestion, and
+it is a step through what is already READY rather than a scan. The detectors
+run once a week per person and the stuck threshold is fourteen days, so a
+second scan on the same day cannot find anything the first one did not: a
+button whose honest answer is almost always "nothing found" teaches you the
+feature is empty on the very week it has something to say. So `liveFor`
+returns the whole live set (at most three), the page holds it, and the button
+moves between them in the browser — no round trip, no new action on the write
+surface, nothing decided, and no button at all unless a second one exists.
+This is the same shape as the rule it sits under: having nothing to say draws
+nothing.
+
 
 ### The list he could not put his own task into (2026-09-19)
 

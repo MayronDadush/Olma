@@ -4359,6 +4359,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sugg.duplicate":"אומרת כמעט אותו דבר כמו „{keep}”. להוריד את זו ולהשאיר את הראשונה?",
       "sugg.undo":"אפשר להחזיר מהארכיון בכל רגע.",
       "sugg.yes":"אשר","sugg.no":"דלג","sugg.more":"הצעת Ai",
+      "sugg.yes.stuck":"להוריד","sugg.yes.overdue":"להוריד","sugg.yes.duplicate":"להוריד את זו",
       "toast.suggArchived":"„{name}” עברה לארכיון","toast.suggSkipped":"לא נשאל על „{name}” שוב",
       "nest.title":"המשימה נכנסה לרשימה","nest.ok":"הבנתי","nest.undo":"ביטול",
       "nest.body":"כשגוררים משימה אל תוך משימה אחרת, היא הופכת לפריט ברשימה שלה. אפשר לסמן אותה שם כשהיא נעשית — או לבטל ולהחזיר אותה למקום.",
@@ -4675,6 +4676,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       "sugg.duplicate":"Says almost the same as \u201c{keep}\u201d. Take this one off and keep the first?",
       "sugg.undo":"You can restore it from the archive at any time.",
       "sugg.yes":"Confirm","sugg.no":"Skip","sugg.more":"AI suggestion",
+      "sugg.yes.stuck":"Take it off","sugg.yes.overdue":"Take it off","sugg.yes.duplicate":"Take this one off",
       "toast.suggArchived":"\u201c{name}\u201d moved to the archive","toast.suggSkipped":"You will not be asked about \u201c{name}\u201d again",
       "nest.title":"Added to a list","nest.ok":"Got it","nest.undo":"Undo",
       "nest.body":"Dropping a task onto another turns it into an item on that task\u2019s list. Tick it off there when it\u2019s done \u2014 or undo to put it back.",
@@ -6436,6 +6438,21 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
   ];
   var SUGG_AT = 0;   /* which of them is on screen — the page's business alone */
   var SUGG_ICON = {stuck:"i-clock", overdue:"i-cal", duplicate:"i-list"};
+  /* The verb says what the button DOES, per kind (owner, 2026-09-22). Today
+     all three say a version of "take it off the list", because taking it off
+     the list is all `decide` does — it archives what the suggestion named and
+     writes nothing else. A kind whose verb would be something ELSE needs
+     `task-suggestions.decide` to do that something else FIRST; a word on a
+     button is not a feature, and "מזג" over an archive-and-forget is the
+     kind of promise `rules/doctrine.md` is about.
+
+     The fallback is the neutral verb and not `t()`'s own — `t` returns the
+     KEY when it does not know it, so a kind added without a verb would ship
+     a button reading "sugg.yes.merge". */
+  function suggVerb(kind){
+    var k = "sugg.yes." + kind;
+    return D[k] === undefined ? t("sugg.yes") : t(k);
+  }
   function suggestionHTML(s, more){
     var why = s.kind === "duplicate"
       ? t("sugg.duplicate", {keep:s.keepTitle || t("sheet.untitled")})
@@ -6459,7 +6476,7 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
            sits at the far end from אשר/דלג because it does not ANSWER the
            suggestion — it changes which one you are looking at. */
         (more ? '<button class="sbtn more" data-sugg="more">' + esc(t("sugg.more")) + "</button>" : "") +
-        '<button class="sbtn yes" data-sugg="accept">' + esc(t("sugg.yes")) + "</button>" +
+        '<button class="sbtn yes" data-sugg="accept">' + esc(suggVerb(s.kind)) + "</button>" +
         '<button class="sbtn" data-sugg="skip">' + esc(t("sugg.no")) + "</button>" +
       "</div></div>";
   }

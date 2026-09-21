@@ -12,9 +12,14 @@
 //     decision the same day). The only thing it proposes is taking something
 //     off the list, which is reversible — `restore_task` brings it back — and
 //     which is what the triage actually consisted of.
-//   * One verb for every kind. Whatever the reason, אשר archives and דלג
-//     leaves it alone, so there is one thing to learn and no kind where the
-//     buttons mean something else.
+//   * One ACTION for every kind. Whatever the reason, accepting archives what
+//     the suggestion named and skipping leaves it alone, so there is one thing
+//     to learn and no kind where the buttons mean something else. Since
+//     2026-09-22 the WORD on the button is per kind ("להוריד", "להוריד את
+//     זו") — which is the same action said in that kind's own terms, and is
+//     the only thing a label may ever do here. A verb naming something the
+//     code does not do ("מזג", over an archive that copies nothing across) is
+//     a promise, and this module does not make those.
 //   * Nothing to say means NO row, and the page renders nothing at all. This
 //     is `rules/detectors.md` applied to a person instead of an operator: a
 //     hint that fires on ordinary input is worse than no hint, and here the
