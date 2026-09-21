@@ -459,51 +459,64 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
    violet-to-cyan wash that every generated page reaches for: it has to look
    like this product thinking, not like an AI sticker pasted onto it. */
 .sugg{
-  --sugg-a:var(--accent);
-  --sugg-b:#3FB6C8;
-  /* The drift is a TINT on a white card and a GLOW on a dark one, and those
-     are not the same number. At the dark value it was a grey-lilac smudge on
-     white — the light theme has no depth behind the card for the colour to
-     sit in, so the same paint reads as dirt (owner, 2026-09-22: "במצב הכהה
-     יפה, במצב הבהיר לא"). Light gets a third of the opacity and half the
-     mix; dark keeps what it had. */
-  --sugg-aura:.2;
-  --sugg-mix-a:14%;
+  /* Turquoise and sky rather than the product violet (owner, 2026-09-22):
+     the buttons on this card are already the accent, and a light that is the
+     same hue as the primary button reads as the button glowing. */
+  --sugg-a:#12A3B8;
+  --sugg-b:#5FC7EC;
+  /* The face is light grey in this theme, not the white every other card
+     uses — on white there is nothing for the rim to be seen against. */
+  --sugg-face:#EDF1F3;
+  --sugg-rim:16%;
+  --sugg-aura:.28;
+  --sugg-mix-a:13%;
   --sugg-mix-b:11%;
   position:relative;isolation:isolate;overflow:hidden;
-  background:transparent;border-radius:16px;padding:15px 16px 13px;
+  /* The parent's own background paints BELOW its negative-z children, which
+     makes it the constant part of the rim: the travelling light brightens the
+     stretch it is passing and this is what the rest of the edge looks like. */
+  background:color-mix(in oklab, var(--sugg-a) var(--sugg-rim), transparent);
+  border-radius:16px;padding:15px 16px 13px;
   display:grid;gap:11px;margin-bottom:22px;
   box-shadow:var(--shadow-m);
 }
-/* The travelling light. A conic sweep on an oversized square, turned by a
-   plain `rotate` rather than an animated gradient angle, because `@property`
-   is the one piece of this that silently does nothing on an older phone —
-   and a border that stops moving is exactly the thing being asked for. */
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .sugg{
+    --sugg-a:#35CEE2;--sugg-b:#8AD6FF;--sugg-face:var(--surface);
+    --sugg-rim:22%;--sugg-aura:.5;--sugg-mix-a:24%;--sugg-mix-b:20%;
+  }
+}
+:root[data-theme="dark"] .sugg{
+  --sugg-a:#35CEE2;--sugg-b:#8AD6FF;--sugg-face:var(--surface);
+  --sugg-rim:22%;--sugg-aura:.5;--sugg-mix-a:24%;--sugg-mix-b:20%;
+}
+/* The travelling light, third attempt and the first one that actually goes
+   ROUND. The two before it rotated a conic gradient, and a conic's speed is
+   constant in DEGREES while an edge is walked in PIXELS — on a card three
+   times wider than it is tall that means the light races the long edges and
+   stalls at the ends, which is what "לא עושה לופ כמו שצריך" was, twice.
+   This is a round glow that walks the perimeter itself, one edge at a time,
+   at a pace set by how long each edge actually is (38/12/38/12 ≈ 343×110,
+   the card at phone width). It is round, so a corner needs no special case
+   and nothing has to rotate. Only the 1.5px the face does not cover shows it,
+   so what the eye gets is a bright stretch of rim moving along the edge. */
 .sugg::before{
   content:"";position:absolute;z-index:-3;
-  top:50%;left:50%;width:190%;aspect-ratio:1;
-  /* ONE arc with a long soft falloff, not a three-colour sweep. The first
-     version had three stops crossing a card three times wider than it is
-     tall, and at 7.5s that does not read as a light going round — it reads
-     as a blob changing shape, which is what "מוזרה" was (owner, 2026-09-22).
-     One arc, one colour into the accent, and slow enough that the corners
-     stop being a speed change you can see: a single lap, 22 seconds. */
-  background:conic-gradient(from 0deg,
-    transparent 0 62%, color-mix(in oklab, var(--sugg-b) 70%, var(--sugg-a)) 78%,
-    var(--sugg-a) 84%, transparent 94% 100%);
-  animation:suggSweep 22s linear infinite;
+  width:132px;height:132px;margin:-66px;border-radius:50%;
+  background:radial-gradient(circle closest-side,
+    var(--sugg-b) 0%, var(--sugg-a) 42%, transparent 100%);
+  animation:suggOrbit 13s linear infinite;
 }
-/* The face, inset by the ring's own width. The card's background lives here
-   rather than on `.sugg` itself: a parent's background paints BELOW its
-   negative-z descendants, so leaving it there would have hidden the light. */
+/* The face, inset by the rim's own width. The card's background cannot live
+   here: it is the rim (see above). */
 .sugg::after{
   content:"";position:absolute;z-index:-2;inset:1.5px;border-radius:14.5px;
-  background:var(--surface);
+  background:var(--sugg-face);
 }
-/* Two soft blobs drifting under the text, at an opacity low enough that the
-   12.5px reason line keeps its contrast. This is the half that reads as
-   "thinking" rather than "loading" — it never completes and never repeats on
-   a beat you could count. */
+/* Two soft blobs drifting under the text. A GLOW on a dark card and a TINT on
+   a light one, which are not the same number — at the dark value it was a
+   smudge on the light theme, because there is no depth behind the card there
+   for the colour to sit in. */
 .sugg .saura{
   position:absolute;z-index:-1;inset:1.5px;border-radius:14.5px;
   pointer-events:none;opacity:var(--sugg-aura);
@@ -512,18 +525,20 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
     radial-gradient(38% 66% at 82% 78%, color-mix(in oklab, var(--sugg-b) var(--sugg-mix-b), transparent), transparent 72%);
   animation:suggDrift 17s var(--ease-io) infinite alternate;
 }
-@media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]) .sugg{--sugg-aura:.5;--sugg-mix-a:26%;--sugg-mix-b:22%}
+@keyframes suggOrbit{
+  0%{top:0;left:0}
+  38%{top:0;left:100%}
+  50%{top:100%;left:100%}
+  88%{top:100%;left:0}
+  100%{top:0;left:0}
 }
-:root[data-theme="dark"] .sugg{--sugg-aura:.5;--sugg-mix-a:26%;--sugg-mix-b:22%}
-@keyframes suggSweep{to{transform:translate(-50%,-50%) rotate(1turn)}}
 @keyframes suggDrift{
   0%{transform:translate(0,0) scale(1)}
   50%{transform:translate(4%,-3%) scale(1.09)}
   100%{transform:translate(-3%,3%) scale(1.04)}
 }
-/* Reduced motion keeps the LOOK and drops the movement: the light stays where
-   it is rather than the card falling back to a plain white box, which would
+/* Reduced motion keeps the LOOK and drops the movement: the rim stays lit
+   where it is rather than the card falling back to a plain box, which would
    make the one thing Olma proposed the plainest thing on the page. */
 @media (prefers-reduced-motion:reduce){
   .sugg::before,.sugg .saura{animation:none}
