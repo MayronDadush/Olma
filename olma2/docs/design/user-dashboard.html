@@ -444,15 +444,74 @@ html.intro-go .tabbar{animation:introBar .55s var(--ease) .3s both}
    that looked like its own to-do would be the worst possible place to learn
    that. There is no empty state and no placeholder: when the server sends
    nothing, this element is not in the page at all. */
+/* It used to be drawn in the same material as a task group, on the argument
+   that the icon and the two buttons were enough to say it is not a list. The
+   owner asked for the opposite (2026-09-22): a suggestion is the one thing on
+   this page Olma THOUGHT of rather than recorded, and he wanted it to look it
+   — "סטייל ai עם אנימציה שתמיד זזה".
+   So the card keeps the page's own geometry, spacing and type, and everything
+   that changed is BEHIND the words: a light that travels around the edge, and
+   a slow drift of colour under them. Nothing here moves the text, changes its
+   size, or sits where a finger lands — the whole treatment is in three
+   painted layers under `z-index:0`, and the card is still a card with two
+   buttons on it.
+   The palette is the product's own accent plus two neighbours, not the
+   violet-to-cyan wash that every generated page reaches for: it has to look
+   like this product thinking, not like an AI sticker pasted onto it. */
 .sugg{
-  background:var(--surface);border-radius:16px;padding:15px 16px 13px;
+  --sugg-a:var(--accent);
+  --sugg-b:#3FB6C8;
+  --sugg-c:#D96FB0;
+  position:relative;isolation:isolate;overflow:hidden;
+  background:transparent;border-radius:16px;padding:15px 16px 13px;
   display:grid;gap:11px;margin-bottom:22px;
-  /* the same material and elevation as a task group, because it sits in the
-     same column — what says it is not a list is the icon and the two buttons */
   box-shadow:var(--shadow-m);
 }
+/* The travelling light. A conic sweep on an oversized square, turned by a
+   plain `rotate` rather than an animated gradient angle, because `@property`
+   is the one piece of this that silently does nothing on an older phone —
+   and a border that stops moving is exactly the thing being asked for. */
+.sugg::before{
+  content:"";position:absolute;z-index:-3;
+  top:50%;left:50%;width:150%;aspect-ratio:1;
+  background:conic-gradient(from 0deg,
+    transparent 0 46%, var(--sugg-b) 58%, var(--sugg-a) 68%,
+    var(--sugg-c) 76%, transparent 86% 100%);
+  animation:suggSweep 7.5s linear infinite;
+}
+/* The face, inset by the ring's own width. The card's background lives here
+   rather than on `.sugg` itself: a parent's background paints BELOW its
+   negative-z descendants, so leaving it there would have hidden the light. */
+.sugg::after{
+  content:"";position:absolute;z-index:-2;inset:1.5px;border-radius:14.5px;
+  background:var(--surface);
+}
+/* Two soft blobs drifting under the text, at an opacity low enough that the
+   12.5px reason line keeps its contrast. This is the half that reads as
+   "thinking" rather than "loading" — it never completes and never repeats on
+   a beat you could count. */
+.sugg .saura{
+  position:absolute;z-index:-1;inset:1.5px;border-radius:14.5px;
+  pointer-events:none;opacity:.5;
+  background:
+    radial-gradient(42% 74% at 18% 26%, color-mix(in oklab, var(--sugg-a) 26%, transparent), transparent 70%),
+    radial-gradient(38% 66% at 82% 78%, color-mix(in oklab, var(--sugg-b) 22%, transparent), transparent 72%);
+  animation:suggDrift 17s var(--ease-io) infinite alternate;
+}
+@keyframes suggSweep{to{transform:translate(-50%,-50%) rotate(1turn)}}
+@keyframes suggDrift{
+  0%{transform:translate(0,0) scale(1)}
+  50%{transform:translate(4%,-3%) scale(1.09)}
+  100%{transform:translate(-3%,3%) scale(1.04)}
+}
+/* Reduced motion keeps the LOOK and drops the movement: the light stays where
+   it is rather than the card falling back to a plain white box, which would
+   make the one thing Olma proposed the plainest thing on the page. */
+@media (prefers-reduced-motion:reduce){
+  .sugg::before,.sugg .saura{animation:none}
+}
 .sugg .sline{display:flex;gap:10px;align-items:flex-start}
-.sugg .sicon{flex:none;width:19px;height:19px;color:var(--text-3);margin-top:1px}
+.sugg .sicon{flex:none;width:19px;height:19px;color:var(--sugg-a);margin-top:1px}
 .sugg .sicon svg{width:19px;height:19px;display:block}
 .sugg .stext{display:grid;gap:3px;min-width:0}
 /* Their own words, and they may be long — this wraps rather than truncating,
@@ -6331,6 +6390,9 @@ html.dragging-task, html.dragging-task *{cursor:grabbing !important}
       ? t("sugg.duplicate", {keep:s.keepTitle || t("sheet.untitled")})
       : t("sugg." + s.kind, {days:s.days});
     return '<div class="sugg">' +
+      /* Painted layers only — aria-hidden and pointer-events:none, so the
+         card still reads as a title, a reason and two buttons. */
+      '<span class="saura" aria-hidden="true"></span>' +
       '<div class="sline">' +
         '<span class="sicon"><svg aria-hidden="true"><use href="#' +
           (SUGG_ICON[s.kind] || "i-list") + '"/></svg></span>' +
