@@ -6372,7 +6372,7 @@ gone silent instead of wrong:
   old order that row does not exist yet, so the check could only ever have
   been a hope — and a nudge handed to a digest that has already been delivered
   reaches nobody, in silence.
-- **The link is the row, not a clock.** `carried_outbox_id` (migration 075)
+- **The link is the row, not a clock.** `carried_outbox_id` (migration 078)
   points at the digest itself, so the nudge is drawn for exactly as long as
   that message is still waiting and stops the instant it lands. The first
   attempt was "carried in the last two hours", which needed a clock the model

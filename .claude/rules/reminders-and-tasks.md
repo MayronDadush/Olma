@@ -385,7 +385,7 @@ title means this file. Grep the title, not the filename.
   can require a digest row that is really there and really still unsent before
   handing anything over — the other order leaves only a hope, and a nudge given
   to a digest already delivered reaches nobody. **The link is the ROW**
-  (`task_reminders.carried_outbox_id`, migration 075), not a time window: the
+  (`task_reminders.carried_outbox_id`, migration 078), not a time window: the
   nudge is drawn for exactly as long as that digest is waiting and stops the
   moment it lands, which is a clock fewer to get wrong. And **a card never
   replaces a block that is carrying one** — a card draws a DAY and has no row
