@@ -195,4 +195,75 @@ async function rehearHeldCoordinationRows(client, { group_id: groupId, user_id: 
     [userId, groupId, at]);
 }
 
-module.exports = { SESSION_KEY_RE, parseConversationInfo, fromConversationInfo, store, read, noteMemberWrote };
+
+// ── A message in the room that never named her ───────────────────────────────
+// The owner's ask, twice (2026-09-19): *"אני רציתי שאם היא כותבת הודעה בקבוצה
+// החלון של 15 הדקות נפתח."* Writing in the room is evidence the person is
+// awake, and that is the whole argument the fifteen-minute window rests on —
+// a tag is not part of it.
+//
+// It has not been possible until now for one reason. A registered room is
+// `requireMention: true`, so the gateway drops an un-mentioning group message
+// before anything of ours runs: no hook, no plugin, no stamp. Turning that off
+// was measured the same day and produced the thing the owner then said must
+// never happen — she ANSWERED an untagged message — because
+// `messages.groupChat.unmentionedInbound: "room_event"` does not keep her
+// quiet (measured, not assumed).
+//
+// What makes it possible is `before_dispatch`, a CLAIMING hook: a handler
+// answering `{handled: true}` ends the message there, and no model turn is ever
+// started. So silence is not a sentence in a prompt asking her not to speak —
+// there is nothing running that could speak. Same argument as the reply gate.
+//
+// The cost is that the decision becomes OURS: at `before_dispatch` the gateway
+// has not yet said whether she was mentioned (`was_mentioned` is born later, in
+// the `Conversation info` block). This is that decision, and it errs in ONE
+// direction — anything that might be addressed to her is let through, because
+// the failure of a false "addressed" is the behaviour we already have, and the
+// failure of a false "not addressed" is her going silent on somebody who really
+// did ask her something.
+const SELF_DIGITS = () => String(process.env.OLMA_WA_NUMBER || '972559347282').replace(/\D/g, '');
+
+// A WhatsApp tag puts her own number in the body text, and a REPLY to one of
+// her messages is a second way of addressing her the owner tested and asked to
+// keep (`memory`, "Group reply addresses her"). Digits only on both sides: the
+// body may carry the tag as `@972559347282`, with or without punctuation, and a
+// number written out in words of the message is a false "addressed", which is
+// the safe side.
+function addressedToHer({ body, replyToSender } = {}, selfDigits = SELF_DIGITS()) {
+  const self = String(selfDigits || '').replace(/\D/g, '');
+  if (self.length < 7) return true;  // we do not know who we are → never claim
+  const digits = (v) => String(v == null ? '' : v).replace(/\D/g, '');
+  return digits(replyToSender).includes(self) || digits(body).includes(self);
+}
+
+// The sender of a group message, as a phone, or null. A WhatsApp `senderId` is
+// `<digits>@s.whatsapp.net` — and it can also be a LID (`<digits>@lid`), which
+// is NOT a phone number and must never be treated as one: the mapping lives in
+// the channel's own store and reading it was rejected as a source. A null here
+// costs a window that does not open; a wrong one would stamp the wrong member.
+function senderPhone(senderId) {
+  const raw = String(senderId || '');
+  if (/@lid\b/i.test(raw)) return null;
+  const digits = raw.split('@')[0].replace(/\D/g, '');
+  return digits.length >= 7 && digits.length <= 15 ? `+${digits}` : null;
+}
+
+// Which rooms may have a message of theirs CLAIMED. Empty (the default) means
+// none, so every half-state is today's behaviour: the stamp is always correct
+// and always taken, and only the silencing waits for somebody to name the room.
+// It is flipped together with that room's `requireMention` and never before the
+// trace has shown this module's verdict agreeing with the gateway's own
+// `was_mentioned` on real traffic.
+const UNTAGGED_FLAG = 'group_untagged_rooms';
+function roomClaimEnabled(flagValue, jid) {
+  const raw = String(flagValue == null ? '' : flagValue).trim();
+  if (!raw) return false;
+  if (raw === 'all') return true;
+  return raw.split(',').map((s) => s.trim()).filter(Boolean).includes(String(jid || '').trim());
+}
+
+module.exports = {
+  SESSION_KEY_RE, parseConversationInfo, fromConversationInfo, store, read, noteMemberWrote,
+  addressedToHer, senderPhone, roomClaimEnabled, UNTAGGED_FLAG, SELF_DIGITS,
+};

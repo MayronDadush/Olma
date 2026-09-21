@@ -39,6 +39,15 @@ const DEFAULTS = {
   // A flag rather than a constant because it is a taste call about a product
   // that has not met a real group yet.
   group_max_members: 25,
+  // domain/group-context.js: which rooms may have an UNTAGGED message of theirs
+  // claimed — ended before any model turn starts, so the stamp that opens the
+  // fifteen-minute window is taken and she says nothing. Room jids,
+  // comma-separated, or 'all'. Empty on purpose: it is flipped together with
+  // that room's `requireMention: false`, and only after the plugin trace has
+  // shown `addressedToHer` agreeing with the gateway's own `was_mentioned` on
+  // that room's real traffic. A false "not addressed" is her going silent on
+  // somebody who did ask her something, so this one is earned per room.
+  group_untagged_rooms: '',
   // channels/openclaw.js digest branch: how many items make the morning
   // picture a wall of text worth drawing instead of listing. The number is a
   // flag because it is a taste call about a message people read every day,

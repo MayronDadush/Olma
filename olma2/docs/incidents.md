@@ -66,6 +66,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
 - [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
 - [The place nobody asked for (fixed 2026-09-20)](#the-place-nobody-asked-for-fixed-2026-09-20)
+- [A message in the room, with no tag on it (2026-09-19, half shipped)](#a-message-in-the-room-with-no-tag-on-it-2026-09-19-half-shipped)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [The man who only ever answered from the page (fixed 2026-09-20)](#the-man-who-only-ever-answered-from-the-page-fixed-2026-09-20)
 - [Nine reminders, nine messages (fixed 2026-09-07)](#nine-reminders-nine-messages-fixed-2026-09-07)
@@ -2199,7 +2200,6 @@ person than the rows it had just written. It is `participants` now.
 `deploy.sh` does not restart it; the trace line to look for is
 `{"group":"g-7","turn":"prepended"}`.
 
-
 ### The room waited for nobody (fixed 2026-09-20)
 
 Three things the test rooms said on 2026-09-20, read back from the group
@@ -2260,6 +2260,74 @@ calendar step fenced as data. Paid for at the schema ceiling by trimming
 seven descriptions (55,833 → 55,478 chars), which is what adding a tool
 costs here. What it still waits on: an answer typed in the room reaches her
 only with a tag until PR #429 lands.
+
+### A message in the room, with no tag on it (2026-09-19, half shipped)
+
+The owner asked for this twice in one day: *"אני רציתי שאם היא כותבת הודעה
+בקבוצה החלון של 15 הדקות נפתח — ועולמה יכולה לכתוב לה על התיאום באותה הרגע."*
+Writing in the room is evidence the person is awake, which is the entire
+argument the fifteen-minute window rests on. A tag was never part of that
+argument; it was a limitation nobody had named.
+
+**Why it could not be built.** A registered room is `requireMention: true`, and
+the gateway drops an un-mentioning group message before anything of ours runs —
+no internal hook, no plugin, no stamp. Turning the flag off was measured the
+same afternoon and produced the one thing the owner then said must never
+happen: *"עולמה ענתה למאיה למרות שמאיה לא תייגה אותה (זה לא היה אמור לקרות)."*
+`messages.groupChat.unmentionedInbound: "room_event"` is documented as quiet
+context "where visible output requires the message tool" and does **not** keep
+her quiet — measured, not read. The flag went back.
+
+**What was missing was a way to end a message, not a way to ask her to be
+quiet.** `before_dispatch` is a CLAIMING hook: a handler answering
+`{handled: true}` ends the message there and no model turn is ever started.
+Same argument as the reply gate, one step earlier — a safety property written as
+a sentence in a prompt is a request, and one at the runtime boundary is a fact.
+Its event carries everything needed:
+
+```
+{ messageId, content, body, channel, sessionKey, senderId, isGroup,
+  replyToId, replyToSender, replyToIsQuote, timestamp }
+```
+
+`sessionKey` holds the room's jid and `senderId` holds the sender, so the stamp
+(`group-context.noteMemberWrote`, which also re-hears that member's held
+coordination rows) has both halves without the `Conversation info` block that
+only a running turn produces.
+
+**The cost is that the mention decision becomes ours.** At `before_dispatch` the
+gateway has not yet said whether she was mentioned — `was_mentioned` is born
+later, in the block a turn builds. So `group-context.addressedToHer` decides it
+from the body and from `replyToSender`, and it errs in ONE direction on purpose:
+anything that might be addressed to her is let through, because a false
+"addressed" is the behaviour we already have and a false "not addressed" is her
+going silent on somebody who really did ask her something. A tag of another
+member is not addressed to her; a reply to one of her own messages is, which is
+a rule the owner tested and asked to keep.
+
+**Three refusals stand between this and a silenced question.** The plugin
+refuses to claim anything it read as addressed, whatever brokerd answers (two
+independent verdicts, because the fake in the test answers `claim: true` to
+everything and the guard is what refuses it). brokerd refuses the claim for any
+room not named in the `group_untagged_rooms` flag, which is empty. And the room
+still has `requireMention: true`, so nothing untagged reaches us at all yet.
+
+**So what shipped is inert, and it is inert while MEASURING.** The handler writes
+one line per group message — the verdict, and whether the sender arrived as a
+phone or as a LID, never the body and never the number — and the `llm_input` line
+for the same message carries the gateway's own `mentioned` right after it. Two
+verdicts, adjacent, on real traffic, for as long as it takes. The flag gets
+flipped for one room when they have agreed for that room's traffic, and not
+before: `addressedToHer` reading a real tag as untagged would be the worst
+outcome available here, and it is the one thing the trace can rule out in advance.
+
+The LID is the second thing the trace is for. A WhatsApp `senderId` can be
+`<digits>@lid`, which is not a phone number; the mapping lives in the channel's
+own sqlite store and reading it was rejected as a source. `senderPhone` returns
+null for one rather than stamping the wrong member — a window that does not open,
+against a window that opens for somebody else. If the trace says `lid`, the
+stamp half of this needs a different key before it is worth anything.
+
 ### The room window opened on a row nobody would look at (fixed 2026-09-19)
 
 The owner asked, on a Saturday: *"אם אותו משתמש מתכתב בקבוצה בזמן שיש תיאום
