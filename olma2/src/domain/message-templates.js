@@ -236,6 +236,21 @@ const TEMPLATES = [
   // them, which is also why they are three short lines and not three
   // paragraphs.
   {
+    key: 'group_coord_started', audience: 'group', label: 'תיאום — התחלתי לשאול',
+    help: 'פעם אחת, ברגע שנפתח תיאום בקבוצה: אומרת שהיא התחילה לשאול בפרטי, ועם כמה. מי שעוד לא כתב לה בפרטי לא נספר — ההערה על זה נאמרת רק כשיש כאלה.',
+    vars: {
+      title: 'מה מתארגן, במילים של הקבוצה',
+      asked: 'עם כמה אנשים היא התחילה לתאם',
+      outside_note: 'הערה על מי שעוד לא כתב לה — רק כשיש כאלה בקבוצה',
+    },
+    required: ['title', 'asked'],
+    sample: {
+      title: 'פאדל השבוע', asked: '4',
+      outside_note: 'מי שעוד לא כתב לי בפרטי לא נספר פה — ״היי״ בפרטי וזה מסתדר ☺️',
+    },
+    text: 'מתחילה לתאם *{{title}}* 🎯\nשאלתי בפרטי {{asked}} מכם שכתבו לי, ואחזור לכאן עם מה שמסתדר.\n{{outside_note}}',
+  },
+  {
     key: 'group_coord_base', audience: 'group', label: 'תיאום — יש כיוון',
     help: 'פעם אחת בכל תיאום, ברגע שיש זמן שכמה אנשים אמרו לו כן (או שהגיע למינימום, בקבוצת משחק).',
     vars: { slot: 'הזמן שמוביל', yes: 'כמה אמרו לו כן', missing: 'תיוגים של מי שעוד לא אמר כן לזמן הזה' },
