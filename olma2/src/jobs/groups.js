@@ -482,7 +482,15 @@ async function sweepGroupVoice(client, deps) {
               settle_due_at, calendar_event_id, location
          FROM meetings WHERE id = $1`, [row.meeting_id]);
     const st = await groupMeetings.statusOf(client, row, full[0] || null);
+    // Read HERE and not on `statusOf`, on purpose: `statusOf` is also the block
+    // a group TURN speaks from, and a model that could see a sentence waiting
+    // would say it itself — in its own words, before this pass, with none of
+    // the quiet hours below. The sweep says it or nobody does.
+    const relay = row.status === 'negotiating'
+      ? await groupMeetings.pendingRelay(client, Number(row.meeting_id))
+      : null;
     const line = groupVoice.decideGroupLine(st.coordination, {
+      pendingRelay: relay,
       saidStarted: Boolean(row.group_started_at),
       saidBase: Boolean(row.group_base_at),
       saidChase: Boolean(row.group_chase_at),
@@ -500,18 +508,27 @@ async function sweepGroupVoice(client, deps) {
     // columns and not one counter.
     if (!mayAnnounce(row, now)) { out.held++; continue; }
 
+    // A relay is the one line that is not once per COORDINATION — it is once
+    // per PERSON, so the key carries whose it is and the stamp lands on their
+    // participant row rather than on a `meetings.group_*_at` column.
     await groupOutbox.enqueue(client, {
       groupId: row.id,
       kind: 'coordination',
       payload: { line },
-      idempotencyKey: `g${row.id}:m${row.meeting_id}:${line.kind}`,
+      idempotencyKey: line.kind === 'relay'
+        ? `g${row.id}:m${row.meeting_id}:relay:${line.userId}`
+        : `g${row.id}:m${row.meeting_id}:${line.kind}`,
     });
-    const column = {
-      started: 'group_started_at',
-      base: 'group_base_at', chase: 'group_chase_at', done: 'group_done_at',
-      calendar: 'group_calendar_at', dayof: 'group_dayof_at', soon: 'group_hour_at',
-    }[line.kind];
-    await client.query(`UPDATE meetings SET ${column} = now() WHERE id = $1`, [row.meeting_id]);
+    if (line.kind === 'relay') {
+      await groupMeetings.markRelaySaid(client, Number(row.meeting_id), line.userId);
+    } else {
+      const column = {
+        started: 'group_started_at',
+        base: 'group_base_at', chase: 'group_chase_at', done: 'group_done_at',
+        calendar: 'group_calendar_at', dayof: 'group_dayof_at', soon: 'group_hour_at',
+      }[line.kind];
+      await client.query(`UPDATE meetings SET ${column} = now() WHERE id = $1`, [row.meeting_id]);
+    }
     await audit.record(client, row.registered_by_user_id, 'group.coordination_said', {
       groupId: row.id, meetingId: Number(row.meeting_id), kind: line.kind,
     });

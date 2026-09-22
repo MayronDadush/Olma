@@ -212,6 +212,15 @@ function renderGroupCoordination(line, overrides) {
       slot: slotText(line.slot), yes: String(line.yes), missing: mentionTokens(line.missing || []),
     }, overrides);
   }
+  // Somebody else's words, in quotes, over their TAG — never their name, the
+  // same rule every room line obeys. The text was bounded and stripped where it
+  // was saved (group-meetings.cleanRelay); `slotText` here is the same last
+  // pass every verbatim room string gets.
+  if (line.kind === 'relay') {
+    return templates.render('group_coord_relay', {
+      from: mentionToken(line.from) || '', what: slotText(line.what),
+    }, overrides).trim();
+  }
   if (line.kind === 'chase') {
     return templates.render('group_coord_chase', { missing: mentionTokens(line.missing || []) }, overrides);
   }

@@ -1,7 +1,7 @@
 'use strict';
 // meetings — one slice of the tool registry (see ../registry.js).
 const {
-  dashboardAuth, meetings, calendar, meetingFanout, audit, S, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, cancelCalendarCleanup, meetingBrief, CANCEL_CLEANUP_HINTS, tool, connectedUserByPhone, users, ok, err,
+  dashboardAuth, meetings, calendar, meetingFanout, audit, S, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, cancelCalendarCleanup, meetingBrief, CANCEL_CLEANUP_HINTS, tool, connectedUserByPhone, users, groupMeetings, ok, err,
 } = require('./_shared');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
@@ -117,6 +117,36 @@ module.exports = [
       out.data.declined = ids;
       out.data.hints = { ...(out.data.hints || {}), table: `${ids.length} option(s) declined with the constraint; ${table.length - ids.length} still stand for them to answer.` };
       return offerDashboardOnce(client, user, a.meeting_id, out);
+    }),
+  // Somebody in a room asked, in a private chat, that the ROOM hear something
+  // about the coordination it is running — Sharon, 2026-09-22: "להזכיר לכולם
+  // שב-4 קצת חם". Olma could not: every line a room hears unasked is fixed
+  // text she decides on, and there was no shape for a sentence a member
+  // decided on. So this writes the sentence and the SWEEP says it, in the
+  // room's own daytime, over their tag (`group-voice`, kind `relay`).
+  //
+  // The whole guard against her becoming "חופרת" is arithmetic, not judgement
+  // (owner's choice of the two on offer): ONE per person per coordination, the
+  // text itself is the budget (`meeting_participants.relay_text`), and the
+  // room has to be listed in the `group_relay_rooms` flag at all. Nothing here
+  // asks a model whether a sentence was worth saying.
+  //
+  // Deliberately NOT in `reactions.TOOL_MARKS`: a 👍 would say "done" about a
+  // thing the room may not hear until morning, so this one is answered in
+  // words.
+  tool('relay_to_group', 'They ASK that the group itself hear one thing about a coordination it is running ("תגידי להם ש…", "תזכירי לכולם ש…"). Their own short sentence, said in the room over their tag. ONLY on a clear request to tell the ROOM — a constraint, an answer about a time, or anything they are merely telling YOU is not this (record_meeting_constraint, respond_to_meeting_slot). ONE per person per coordination: refused after that, and then say you will keep it for whatever you send there anyway. Pass their words, not a summary of yours; tags are stripped and it is cut at 160 chars.',
+    { meeting_id: S('number', 'Meeting id'), what: S('string', 'The sentence, in their own words') },
+    ['meeting_id', 'what'],
+    async (client, user, a) => {
+      const res = await groupMeetings.relayToRoom(client, user.id, a.meeting_id, a.what);
+      if (!res.ok) return res;
+      res.data.hints = {
+        ...(res.data.hints || {}),
+        relay: 'Saved to go out in the group as their own sentence, in the room\'s daytime. '
+          + 'Tell them in ONE short sentence that the group will hear it; do not quote it back, '
+          + 'and do not say when.',
+      };
+      return res;
     }),
   tool('propose_meeting_slot', 'Add ONE candidate time to the table (up to 5; at five it is refused with the five listed — ask which to drop, remove_meeting_option, propose again). Proposing means your user agrees to it, every part from what they said; a time without a day: say the full slot back and get their yes first. starts_at is the same moment as slot_description, ISO-8601 with offset; past times, or a weekday the text does not name, are refused. Calendar connected? Check my_calendar_events for that day first.',
     { meeting_id: S('number', 'Meeting id'), slot_description: S('string', 'e.g. "Tuesday 17:00 at the office"'),

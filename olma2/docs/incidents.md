@@ -69,6 +69,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room chased three people, two of whom had never been asked (fixed 2026-09-22)](#the-room-chased-three-people-two-of-whom-had-never-been-asked-fixed-2026-09-22)
 - [The room that could never open (2026-09-22)](#the-room-that-could-never-open-2026-09-22)
 - [The room asked, and heard nothing back for hours (2026-09-22)](#the-room-asked-and-heard-nothing-back-for-hours-2026-09-22)
+- [The room was the last to know the time had moved (fixed 2026-09-22)](#the-room-was-the-last-to-know-the-time-had-moved-fixed-2026-09-22)
 - [A message in the room, with no tag on it (2026-09-19, half shipped)](#a-message-in-the-room-with-no-tag-on-it-2026-09-19-half-shipped)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [The man who only ever answered from the page (fixed 2026-09-20)](#the-man-who-only-ever-answered-from-the-page-fixed-2026-09-20)
@@ -2414,6 +2415,65 @@ same list in two voices; and a tag is a number the roster may not even hold (the
 LID rule in `rules/groups.md`). A line with no tags in it cannot get that wrong.
 The test asserts the absence directly — no `@`, no first name — because that is
 the kind of thing a later rewording quietly reintroduces.
+
+### The room was the last to know the time had moved (fixed 2026-09-22)
+
+שרון wrote to Olma privately, after coordination 40 in the test room had been
+running for two hours: *"להזכיר לכולם שב-4 קצת חם"*, and then the sentence that
+named the fault — *"עולמה הייתה צריכה לרשום את זה בקבוצה - שהיא שינתה את השעה
+מ-16 ל-17"*. She had taken 16:00 off the table and put 17:00 on it. Three
+people had already marked 16:00. The room heard nothing about either.
+
+Two separate holes, and only one of them is this entry. The first is that no
+room line exists for a table that changed at all, and `meetings.group_base_at`
+cannot even say WHICH time the line it stamped had named — that is
+`group_base_slot` and the `moved` line, its own change. The second is the one
+שרון actually asked for: she told Olma something she wanted the GROUP to hear,
+and there was nowhere for it to go. Every line a room hears unasked is fixed
+text Olma decided on — the whole design, and the reason a room costs nothing
+when its members are slow — so a sentence a MEMBER decided on had no shape in
+the system at all. The model did the only thing it could: it answered her in
+private. This is the repo's oldest failure shape, the one the root file calls
+"the agent understood, and the outcome had nowhere to go" — look for the
+missing tool, not the bad prompt.
+
+`relay_to_group` is the tool, `group-voice`'s `relay` kind is the line, and the
+interesting part is everything that was refused on the way.
+
+**The tool does not send.** It writes `meeting_participants.relay_text` and the
+SWEEP says it. A tool enqueueing straight into `group_outbox` from a private
+turn would have been the single voice in the system able to wake a room at
+three in the morning: `groups.mayAnnounce` holds a line to the room's own
+daytime and it lives in the sweep, not in the drain, so anything that skips the
+sweep skips the hours too.
+
+**The bound is arithmetic.** The owner's worry was the right one — *"צריך רק
+לוודא שלא על כל שטות אנשים ירשמו ובקבוצה עולמה תצא ״חופרת״"* — and he chose
+one relay per person per coordination out of the two options put to him. So the
+text itself is the budget: `relay_text` is written only `WHERE relay_text IS
+NULL`, a second attempt comes back `relay_spent` carrying what it already
+holds, and nothing anywhere asks a model whether a sentence was worth saying.
+A room also has to be named in `group_relay_rooms` before any of it happens,
+empty by default, which is what keeps a change of this shape inside the two
+test rooms while it is watched.
+
+**The sweep reads the pending relay; `group-meetings.statusOf` does not.** That
+status is also the block a group TURN speaks from, and the model can say
+anything it can see. A sentence sitting in it would have been said by the model
+first — in its own words, a pass early, in whatever hour the room happened to
+be tagged in — and the fixed line would then have been the second telling. Same
+argument as `markPlaced`, one layer down: what the model can see, it will use.
+
+**And the words are stripped of tags before they are stored**
+(`group-meetings.cleanRelay`). In a room an `@<digits>` token pings whoever it
+names. A relay is a sentence; it is not a way to notify people, and the only
+tag the line carries is the one Olma draws for the person who asked.
+
+The schema ceiling went up for it, the second deliberate raise ever: 55,500 ->
+56,500 (`tests/tool-schema-budget.test.js`), with the owner's word on it, and
+most of the description is the boundary against the two tools this is NOT — a
+constraint and an answer about a time both belong somewhere else, and a model
+that gets that boundary wrong relays somebody's answer into a room.
 
 ### A message in the room, with no tag on it (2026-09-19, half shipped)
 

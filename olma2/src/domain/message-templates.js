@@ -259,6 +259,14 @@ const TEMPLATES = [
     text: 'יש כיוון: *{{slot}}* — {{yes}} כבר בפנים.\nמחכה ל{{missing}} 🤞',
   },
   {
+    key: 'group_coord_relay', audience: 'group', label: 'תיאום — מישהו ביקש להגיד משהו כאן',
+    help: 'כשחבר מבקש ממנה בפרטי שהקבוצה תשמע משפט. פעם אחת לכל אדם בכל תיאום, במילים שלו.',
+    vars: { from: 'התיוג של מי שביקש', what: 'המשפט שלו, כמו שנאמר' },
+    required: ['from', 'what'],
+    sample: { from: '@+972501234567', what: 'ב-4 קצת חם' },
+    text: '📣 מ{{from}}: ״{{what}}״',
+  },
+  {
     key: 'group_coord_chase', audience: 'group', label: 'תיאום — מזרזת באמצע',
     help: 'פעם אחת בכל תיאום, כשעבר חצי מהדרך לזמן שמדובר עליו ויש מי שעוד לא ענה כלום בפרטי.',
     vars: { missing: 'תיוגים של מי שעוד לא ענה כלום' }, required: ['missing'],

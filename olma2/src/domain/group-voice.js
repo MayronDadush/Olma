@@ -80,7 +80,7 @@ function leadingOption(options) {
 // nothing.
 function decideGroupLine(co, {
   saidStarted, saidBase, saidChase, saidDone, saidCalendar, saidDayOf, saidHour,
-  startedAtMs, nowMs, timezone,
+  pendingRelay, startedAtMs, nowMs, timezone,
 } = {}) {
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
   if (co.status === 'confirmed') {
@@ -114,6 +114,18 @@ function decideGroupLine(co, {
   // that asked her for something heard nothing at all.
   if (!saidStarted) {
     return { kind: 'started', title: co.title, asked: co.participants, outside: co.outside || 0 };
+  }
+
+  // Then anything a MEMBER asked her to say here (owner, 2026-09-22). It comes
+  // before her own three lines because it is the only one somebody actually
+  // requested, and it is bounded where it is written — one per person per
+  // coordination, `group-meetings.relayToRoom` — not here: this function can see
+  // that there is one to say and could never judge whether it was worth saying.
+  if (pendingRelay && pendingRelay.phone && pendingRelay.what) {
+    return {
+      kind: 'relay', userId: pendingRelay.userId,
+      from: pendingRelay.phone, what: pendingRelay.what,
+    };
   }
 
   const lead = leadingOption(co.options);

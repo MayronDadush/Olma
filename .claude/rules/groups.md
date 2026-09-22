@@ -405,3 +405,26 @@ have already had to be argued for.
   It sends no "X left" message, because they said nothing. `meeting_no_match`
   goes to the initiator only when the exit closes the meeting (`incidents.md`,
   "A room counted in somebody who had paused").
+
+- **Every line a room hears unasked is Olma's own text, save exactly one: a
+  sentence a MEMBER asked her to say there** (owner, 2026-09-22). Sharon told
+  her in private that the group should know the time had moved from 16:00 to
+  17:00; there was no shape in the system for a sentence somebody else decided
+  on, so the room was never told and people kept the old hour they had marked.
+  `relay_to_group` writes it and the SWEEP says it — deliberately not the tool,
+  because enqueueing into `group_outbox` from a private turn would make it the
+  one voice able to wake a room at 03:00 (`groups.mayAnnounce` is in the sweep,
+  never in the drain) — as `group-voice`'s `relay` kind, between `started` and
+  her own three lines: the room learns what is being arranged before it is
+  handed somebody's sentence about it. **The guard against her becoming
+  "חופרת" is arithmetic, not judgement**: ONE per person per coordination, with
+  `meeting_participants.relay_text` (migration 083) as the budget itself, and
+  the room has to be named in the `group_relay_rooms` flag at all — empty by
+  default, flipped per room from the admin page. Nothing asks a model whether a
+  sentence was worth saying. Two more things follow from it being somebody
+  else's words: `group-meetings.cleanRelay` strips every `@<digits>` token
+  before it is stored, because a relay is a sentence and never a way to notify
+  people, and `pendingRelay` is read by the sweep and **never** by
+  `group-meetings.statusOf` — that status is also the block a group turn speaks
+  from, and a model that could see a sentence waiting would say it itself, in
+  its own words, a pass early and outside the room's hours.
