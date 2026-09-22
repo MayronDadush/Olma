@@ -144,6 +144,27 @@ have already had to be argued for.
   twenty-five is three hundred pairs inside the sweep's transaction, which is
   the lock shape of "The room was told twice".
 
+- **A room's coordination reaches a member who never wrote only behind
+  `group_invite_unconnected`, and it can never reach one with no user row at
+  all.** The flag (owner's ask 2026-09-22, built and left CLOSED on his
+  instruction) is read inside `group-meetings.coordinatingMembers` and nowhere
+  else — one predicate, because the last time this one existed twice it drifted
+  for nine days. Closed, a member is swept in only if `groups.isConnected`; open,
+  any roster row with a `user_id` is. **The limit is structural and is asserted
+  in both directions in the tests**: participants and the whole fan-out are keyed
+  on `users.id`, so a roster row with no user behind it has no id to invite and
+  no DM lane to invite it on. That is not a corner — on the day it was built it
+  was every member it had been asked for: all three unwritten members of Padel
+  Gang were `user_id IS NULL` (one of them a real user whose row holds a LID),
+  and no live group had a member with a user row who had never written. So open,
+  that day, it reached nobody. Reaching those people means minting a user from a
+  phone number that appeared in a room roster, which is what
+  `group-connections.js` refuses in its first numbered line. **And the thing to
+  decide before it is ever opened**: somebody who never wrote and was never
+  greeted has no `introduction` row, so the gate's "nothing before the
+  introduction" hold has nothing to hold for and the invite becomes the first
+  sentence Olma ever says to them, about somebody else's plan.
+
 - **The room reaches each member's OWN page as a group already made** — its
   WhatsApp name, its people, read-only (`user-dashboard.loadGroups`). The
   groups design was hidden whole on a served page because nothing kept a

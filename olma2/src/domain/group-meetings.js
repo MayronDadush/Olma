@@ -35,6 +35,7 @@ const calendar = require('./calendar');
 const options = require('./meeting-options');
 const fanout = require('./meeting-fanout');
 const groups = require('./groups');
+const flags = require('./flags');
 const pause = require('./pause');
 const { mentionToken } = require('./proactive-text');
 
@@ -61,9 +62,37 @@ function memberLabel(row) {
 // free, never counted, and in a room of two the caller below answers "there is
 // nobody else in this group to coordinate with" to a room with people in it
 // (`incidents.md`, "The room coordinated without the person who opened it").
-async function coordinatingMembers(client, groupId) {
+// `group_invite_unconnected` (owner's ask 2026-09-22, built and CLOSED) widens
+// that to every roster row with a `user_id`, written to her or not. The flag is
+// read HERE and not at the three call sites, for the reason the paragraph above
+// is about: a question asked in one place cannot drift, and the last time this
+// predicate existed twice it took nine days to notice.
+//
+// **What it can never do, and the reason is structural, not a gap to be
+// closed.** A coordination's participants and its whole fan-out are keyed on
+// `users.id` (`meeting_participants.user_id`, `meetingFanout`), so a member with
+// NO user row is unreachable by this flag however it is set — there is no id to
+// invite and no DM lane to invite it on. That is not a corner case: on
+// 2026-09-22 it was every single member in the live data this was asked for.
+// Padel Gang's three unwritten members are all `user_id IS NULL`, one of them
+// (Gal, u-37) because his roster row holds a LID and not his phone, and across
+// every live group there was not one member with a user row who had never
+// written. So with this flag OPEN, today, nobody new is reached. Widening it
+// further means creating a user for a phone number that appeared in a room
+// roster — which is the thing `group-connections.js` refuses in its first
+// numbered line, and a decision nobody has made.
+//
+// And one consequence to have decided BEFORE turning it on: a member who has
+// never written and was never greeted has no `introduction` outbox row, so the
+// gate's "nothing before the introduction" hold has nothing to hold for
+// (`outbox/gate.js`) — the invite becomes the first sentence Olma ever says to
+// them, and it is about somebody else's plan.
+async function coordinatingMembers(client, groupId, opts = {}) {
   const rows = await groups.listMembers(client, groupId);
-  return rows.filter((m) => groups.isConnected(m));
+  const wide = opts.includeUnconnected !== undefined
+    ? opts.includeUnconnected
+    : await flags.getFlag(client, 'group_invite_unconnected') === true;
+  return rows.filter((m) => (wide ? Boolean(m.user_id) : groups.isConnected(m)));
 }
 
 // The room's live coordination, if it has one. Only ever the newest: a room

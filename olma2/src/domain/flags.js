@@ -39,6 +39,21 @@ const DEFAULTS = {
   // A flag rather than a constant because it is a taste call about a product
   // that has not met a real group yet.
   group_max_members: 25,
+  // domain/group-meetings.coordinatingMembers: may a room's coordination sweep in
+  // a member who has never written to Olma privately? CLOSED, and built closed
+  // on the owner's instruction (2026-09-22: "רק לבנות את האפשרות הזו - אנחנו
+  // עדיין לא נפעיל אותה"). Two things to know before it is ever opened.
+  //
+  // It cannot reach a member with no `users` row at all — participants and the
+  // fan-out are keyed on `users.id` — and on the day it was built that was every
+  // member it was asked for: all three unwritten members of Padel Gang are
+  // `user_id IS NULL`, and no live group had a member with a user row who had
+  // never written. Open, today, it reaches nobody.
+  //
+  // And the person it WOULD reach has never heard from Olma, so there is no
+  // `introduction` row for the gate to hold behind: the invite would be her
+  // first sentence to them, about somebody else's plan.
+  group_invite_unconnected: false,
   // domain/group-context.js: which rooms may have an UNTAGGED message of theirs
   // claimed — ended before any model turn starts, so the stamp that opens the
   // fifteen-minute window is taken and she says nothing. Room jids,

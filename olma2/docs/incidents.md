@@ -67,6 +67,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
 - [The place nobody asked for (fixed 2026-09-20)](#the-place-nobody-asked-for-fixed-2026-09-20)
 - [The room chased three people, two of whom had never been asked (fixed 2026-09-22)](#the-room-chased-three-people-two-of-whom-had-never-been-asked-fixed-2026-09-22)
+- [The switch that reached nobody, measured before it shipped (2026-09-22)](#the-switch-that-reached-nobody-measured-before-it-shipped-2026-09-22)
 - [A message in the room, with no tag on it (2026-09-19, half shipped)](#a-message-in-the-room-with-no-tag-on-it-2026-09-19-half-shipped)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [The man who only ever answered from the page (fixed 2026-09-20)](#the-man-who-only-ever-answered-from-the-page-fixed-2026-09-20)
@@ -2301,6 +2302,48 @@ answered options by hand and never delivered an invite, so under the new rule
 the room correctly had nothing to say. They now mark the invites delivered,
 which is the state production is actually in when a line is due — the
 fixture-writes-the-state trap, caught by the fix rather than by review.
+### The switch that reached nobody, measured before it shipped (2026-09-22)
+
+Not a failure — a measurement, kept because the next person to want this feature
+will want it for the same reason and needs the number.
+
+The owner asked for a switch letting Olma write privately to people in a room
+when a coordination opens, even if they have never written to her, and asked for
+it built and left off. Built as `group_invite_unconnected`, read in
+`group-meetings.coordinatingMembers`: closed it sweeps in a member only if
+`groups.isConnected`, open it sweeps in any roster row with a `user_id`.
+
+Then the box was asked who that would actually reach. Across every live group,
+every member with `left_at IS NULL` who had neither written nor been greeted:
+
+| room | member | user row |
+|---|---|---|
+| Padel Gang🏓 | `+69320805752936` | none |
+| Padel Gang🏓 | `+259201444126724` | none |
+| Padel Gang🏓 | `+6266525098172` | none |
+
+Three rows, all in one room, none of them a user. **Open, that day, the switch
+reached nobody** — because participants and the fan-out are keyed on `users.id`,
+so a roster row with no user behind it has no id to invite and no lane to invite
+it on. And there was not one member anywhere with a user row who had never
+written: the case the flag is written for did not exist.
+
+The three people it was wanted for are reachable only by minting a user from a
+phone number that appeared in a room roster — which `group-connections.js`
+refuses in its first numbered line, on the grounds that an invitation has to be
+a decision somebody made — and for one of the three it is not even possible,
+because the row holds a LID and there is no phone in it to write to ("The room
+that could never open").
+
+So the flag ships closed, with its own limit asserted in both directions in
+`tests/group-coordination.test.js`, and the real question is left named rather
+than answered: this feature is about people who are not users yet, and nothing
+here decides whether Olma may introduce herself to one of them uninvited.
+There is a second thing to settle first, too — somebody who never wrote and was
+never greeted has no `introduction` outbox row, so the gate's "nothing before the
+introduction" hold has nothing to hold for, and the invite would be the first
+sentence she ever says to them, about somebody else's plan.
+
 ### A message in the room, with no tag on it (2026-09-19, half shipped)
 
 The owner asked for this twice in one day: *"אני רציתי שאם היא כותבת הודעה

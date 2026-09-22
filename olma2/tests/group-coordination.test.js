@@ -9,6 +9,7 @@ const { freshDb, makeUser, slotStart } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const groups = require('../src/domain/groups');
 const groupMeetings = require('../src/domain/group-meetings');
+const flags = require('../src/domain/flags');
 const meetings = require('../src/domain/meetings');
 const options = require('../src/domain/meeting-options');
 const { instructionFor } = require('../src/channels/openclaw');
@@ -489,3 +490,83 @@ test('somebody the gate never let her reach is silent but not ASKED', async () =
   assert.equal(after.coordination.silent.find((p2) => p2.phone === held.phone).asked, true);
 });
 
+
+// ── group_invite_unconnected ────────────────────────────────────────────────
+// The owner's second switch of 2026-09-22, built CLOSED on his instruction. The
+// state it is about is the one no fixture above builds: a member with a user row
+// and NEITHER column — never wrote, never greeted — plus, in the same room, a
+// member with no user row at all, which is what the live data actually held.
+async function roomWithASilentMember(n) {
+  const people = [];
+  for (let i = 0; i < 3; i++) {
+    const u = await makeUser(db.pool, `+9726088${n}000${i}`, { firstName: ['דני', 'דנה', 'שקט'][i] });
+    await db.pool.query(
+      i === 2
+        ? `UPDATE users SET last_inbound_at = NULL, opening_sent_at = NULL WHERE id = $1`
+        : `UPDATE users SET last_inbound_at = now() WHERE id = $1`, [u.id]);
+    people.push(u);
+  }
+  // A roster row for somebody who is not a user at all — a LID, as the gateway
+  // really hands them over.
+  const stranger = `+2592014441${n}67`;
+  const group = await withTx(db.pool, (c) => openGroup(c, {
+    jid: JID(n), subject: 'פאדל', token: TOKEN(n),
+    members: [...people.map((u) => ({ phone: u.phone })), { phone: stranger }],
+  }));
+  return { group, people, silent: people[2], stranger };
+}
+
+test('closed, a member who never wrote is not in the coordination and hears nothing', async () => {
+  const { group, people, silent } = await roomWithASilentMember(40);
+  const res = await withTx(db.pool, (c) => groupMeetings.startCoordination(
+    c, group, people[0], 'פאדל השבוע'));
+  assert.equal(res.ok, true);
+  assert.equal(res.data.participants, 2, 'the two who have written, and nobody else');
+
+  const { rows } = await db.pool.query(
+    `SELECT user_id FROM outbox
+      WHERE kind = 'meeting_invite' AND (payload->>'meetingId')::bigint = $1`, [res.data.meeting.id]);
+  assert.equal(rows.some((r) => Number(r.user_id) === Number(silent.id)), false,
+    'not one row addressed to somebody who has never heard from her');
+});
+
+test('open, the same member IS swept in and is written to privately', async () => {
+  const { group, people, silent } = await roomWithASilentMember(41);
+  await withTx(db.pool, (c) => flags.setFlag(c, 'group_invite_unconnected', true));
+  try {
+    const res = await withTx(db.pool, (c) => groupMeetings.startCoordination(
+      c, group, people[0], 'פאדל השבוע'));
+    assert.equal(res.ok, true);
+    assert.equal(res.data.participants, 3);
+
+    const { rows } = await db.pool.query(
+      `SELECT user_id FROM outbox
+        WHERE kind = 'meeting_invite' AND (payload->>'meetingId')::bigint = $1`, [res.data.meeting.id]);
+    assert.equal(rows.some((r) => Number(r.user_id) === Number(silent.id)), true,
+      'the switch is what puts the invite on their lane');
+  } finally {
+    await withTx(db.pool, (c) => flags.setFlag(c, 'group_invite_unconnected', false));
+  }
+});
+
+// The limit that is structural, and the reason this flag reached nobody in the
+// live data it was asked for: participants and the fan-out are keyed on
+// `users.id`, so a roster row with no user behind it cannot be invited however
+// the switch is set. Asserted in BOTH directions, because a limit nobody can
+// see is the one somebody spends a day trying to configure around.
+test('no switch reaches a member who is not a user at all', async () => {
+  const { group, people, stranger } = await roomWithASilentMember(42);
+  for (const wide of [false, true]) {
+    await withTx(db.pool, (c) => flags.setFlag(c, 'group_invite_unconnected', wide));
+    const members = await withTx(db.pool, (c) => groupMeetings.coordinatingMembers(c, group.id));
+    assert.equal(members.some((m) => m.phone === stranger), false,
+      `switch=${wide}: there is no id to invite and no lane to invite it on`);
+    assert.ok(members.every((m) => m.user_id), `switch=${wide}: every member carries a user id`);
+  }
+  await withTx(db.pool, (c) => flags.setFlag(c, 'group_invite_unconnected', false));
+  // And the room still knows they are there — being unreachable is not being
+  // forgotten.
+  const roster = await withTx(db.pool, (c) => groups.listMembers(c, group.id));
+  assert.equal(roster.some((m) => m.phone === stranger), true);
+  assert.equal(people.length, 3);
+});
