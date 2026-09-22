@@ -80,27 +80,57 @@ const RATES = {
   'google/gemini-3.8-flash': { input: 0.75,  output: 3.75,  cacheWrite: 0.04167, cacheRead: 0.075 },
 };
 
+// What a model cost BEFORE its current rate, per day. The admin cost page
+// re-prices every ledger row it shows, so a rate is a fact about a DATE: with
+// only RATES, moving flash's price restated the whole month on the page — the
+// blended August rows read at DigitalOcean's 0.068 from the day that pin
+// landed, and tests/cost-repricing went red on the next re-cut (2026-09-15).
+// Each entry holds for days strictly before `until` (YYYY-MM-DD, the ledger's
+// own day); the earliest matching entry wins. When a rate in RATES changes,
+// move the old one here with the first day it stopped being true.
+const PAST_RATES = {
+  // The unpinned OpenRouter mix, until the DigitalOcean pin took effect
+  // (gateway restarted 2026-09-09 20:18 UTC, so the 10th is the first whole day).
+  'deepseek/deepseek-v4-flash': [
+    { until: '2026-09-10', input: 0.08092, output: 0.16184, cacheWrite: 0.08092, cacheRead: 0.016184 },
+  ],
+};
+
+// A ledger day as YYYY-MM-DD. pg builds a DATE as LOCAL midnight, so it is read
+// back with local getters (same reasoning as admin/sections/metrics.js dateKey).
+function dayKey(d) {
+  if (d == null) return null;
+  if (!(d instanceof Date)) return String(d).slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // Transcripts carry dated ids ("claude-haiku-4-5-20251001") and provider
 // prefixes ("openrouter/deepseek/deepseek-v3.2"). Longest match wins so a
 // future "claude-haiku-4-5-mini" cannot be silently priced as "claude-haiku-4-5".
 const KEYS_BY_LENGTH = Object.keys(RATES).sort((a, b) => b.length - a.length);
 
-function rateFor(modelId) {
+function rateFor(modelId, day) {
   const id = String(modelId || '').trim().toLowerCase();
   if (!id) return null;
   const key = KEYS_BY_LENGTH.find((k) => id.includes(k));
-  return key ? { key, rate: RATES[key] } : null;
+  if (!key) return null;
+  const d = dayKey(day);
+  const past = d && (PAST_RATES[key] || [])
+    .slice().sort((a, b) => (a.until < b.until ? -1 : 1))
+    .find((p) => d < p.until);
+  return { key, rate: past || RATES[key] };
 }
 
 // usage → dollars. Returns { cost, estimated, model }: `estimated` true means
 // no published rate was found and the blended fallback was used, which the
-// ledger records so the dashboard can mark the number as a guess.
-function priceUsage(usage, modelId, blendedPerMtok) {
+// ledger records so the dashboard can mark the number as a guess. `day` is the
+// ledger day being priced; omitted means today's rate.
+function priceUsage(usage, modelId, blendedPerMtok, day) {
   const input = Number(usage.input) || 0;
   const output = Number(usage.output) || 0;
   const cacheRead = Number(usage.cacheRead) || 0;
   const cacheWrite = Number(usage.cacheWrite) || 0;
-  const hit = rateFor(modelId);
+  const hit = rateFor(modelId, day);
   if (!hit) {
     const total = input + output + cacheRead + cacheWrite;
     return { cost: (total / 1e6) * Number(blendedPerMtok || 0), estimated: true, model: modelId || '' };
@@ -115,4 +145,4 @@ async function blendedRate(client) {
   return Number(await flags.getFlag(client, 'cost_per_mtok_usd') ?? 1.5);
 }
 
-module.exports = { RATES, rateFor, priceUsage, blendedRate };
+module.exports = { RATES, PAST_RATES, rateFor, priceUsage, blendedRate };
