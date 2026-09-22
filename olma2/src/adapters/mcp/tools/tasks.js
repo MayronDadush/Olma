@@ -40,6 +40,20 @@ async function withDumpLink(client, user, res, { parentId } = {}) {
   return ok({ ...res.data, dashboard: link, hints: { ...(res.data.hints || {}), dashboard: DUMP_LINK_HINT } });
 }
 
+// Is this the shape that has to be asked about: a deadline far enough away
+// that one message near it is a different arrangement from being helped until
+// it is done. Two days is the floor because a chase across one day is the
+// escalation ladder, which `nudge` already buys (reminders.startChase returns
+// null there for the same reason).
+const CHASE_WORTH_ASKING_MS = 2 * 86400_000;
+
+function chaseWorthAsking(dueAt, reminder) {
+  const due = new Date(dueAt).getTime();
+  const at = new Date(reminder && reminder.remind_at).getTime();
+  if (!Number.isFinite(due) || !Number.isFinite(at)) return false;
+  return due - Date.now() >= CHASE_WORTH_ASKING_MS && at - Date.now() >= CHASE_WORTH_ASKING_MS;
+}
+
 function taskHints(res, user = {}) {
   if (!res || !res.ok || !res.data) return res;
   const d = res.data;
@@ -139,7 +153,17 @@ function taskHints(res, user = {}) {
     // every time; that, not a missing hint, is why the mark kept getting
     // talked over.
     const at = Array.isArray(d.remindersAt) && d.remindersAt.length ? ` (${d.remindersAt.join(', ')}, their time)` : '';
-    hints.reminders = d.remindersAsked
+    // A CHASE is the one arming where the SHAPE is news, whoever picked the
+    // hour: "every day until Sunday" is something they asked for and have not
+    // yet been told is in place, and a 👍 cannot carry a cadence. It says the
+    // first hour and the last DAY and nothing in between, because the days
+    // between are what the messages themselves will say.
+    hints.reminders = d.chase
+      ? `A daily chase is armed: first${at}, then every day until ${String(d.chase.until).slice(0, 10)}, `
+        + 'and it stops the moment they say it is done. Say that shape back in ONE short line — it is '
+        + 'what they asked for and the 👍 cannot carry it — and never list the days. Each message after '
+        + 'the first says how to stop it, so do not add that here.'
+      : d.remindersAsked
       ? `Armed for the hour they themselves named${at}: they already know it, so this is not a reason `
         + 'to write. Say nothing about the reminder unless something here differs from what they asked. '
         // Said here rather than in a description: it matters while the model is
@@ -150,6 +174,23 @@ function taskHints(res, user = {}) {
         + 'line, and never the due time. Do not also say the task was saved, and do not ask permission. '
         + 'Only call set_task_reminder if they wanted a different moment or a repeat; if they said '
         + '"remind me at X", X was the reminder and belongs in add_task\'s remind_at.';
+  }
+  // The turn חיים's ask actually happened on: a deadline days away, one
+  // reminder armed for the day before it, and nothing anywhere asking whether
+  // that was the shape he wanted (2026-09-22). It is a QUESTION about their
+  // words and never an instruction to write — the whole answer may be a second
+  // tool call and then silence, which is what markPlaced already asked for.
+  //
+  // Narrow because a hint that fires on ordinary input is worse than none
+  // (rules/detectors.md): measured on the box the same day, 24 of 227 tasks
+  // carry a deadline more than two days past their own creation, and the ones
+  // that do not — "לאסוף את הילדים מחר" — never see this.
+  if (!d.chase && Array.isArray(d.reminders) && d.reminders.length === 1
+      && d.task && d.task.due_at && chaseWorthAsking(d.task.due_at, d.reminders[0])) {
+    hints.chaseAvailable = 'Their deadline is days away and this reminder goes out ONCE, close to it. '
+      + 'If their words asked for help until it is done — "עד ש...", "תעזור לי", "תמשיך להזכיר" — that '
+      + 'is a chase, not a reminder: call set_task_reminder(task_id, remind_at, nudge:true) and it '
+      + 'becomes one a day until the deadline. If they simply named a moment, do nothing and say nothing.';
   }
   if (d.autoRemindersSkipped) {
     hints.autoRemindersSkipped = `${d.autoRemindersSkipped} timed item(s) went past the per-call reminder cap and `
@@ -224,6 +265,7 @@ module.exports = [
       due_at: S('string', 'Optional ISO-8601 datetime WITH UTC offset, e.g. 2026-08-20T09:00:00+03:00'),
       ends_at: S('string', 'Optional end of a range, same format: a shift is title \'משמרת\', due_at 12:00, ends_at 19:00 — never hours in the title.'),
       remind_at: S('string', 'The hour THEY named to be reminded, same format. Replaces the automatic one.'),
+      nudge: S('boolean', 'They asked to be chased until it is done ("עד שאעשה"): one a day up to due_at'),
       parent_task_id: S('number', 'Optional parent (project) id') }, ['title'],
     async (client, user, a) => {
       // Same guard set_task_reminder already has for remind_at — a model
@@ -242,7 +284,7 @@ module.exports = [
       }
       return taskHints(await tasks.addTask(client, user.id, {
         title: a.title, kind: a.kind, location: a.location, category: a.category, dueAt: a.due_at, endsAt: a.ends_at,
-        remindAt: a.remind_at, parentId: a.parent_task_id,
+        remindAt: a.remind_at, nudge: a.nudge === true, parentId: a.parent_task_id,
       }), user);
     }),
   tool('add_tasks_bulk', 'Save a whole dump in ONE call (max 60 items). Never loop add_task. Also the way to SPLIT a goal into its parts: pass parent_task_id and the parts become subtasks in the same call. Timed items get their reminders automatically; when the reply carries hints, follow them. Any due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00), converted from their own local time (USER.md); never bare digits with a Z.',
@@ -251,7 +293,7 @@ module.exports = [
     async (client, user, a) => withDumpLink(client, user, taskHints(await tasks.addTasksBulk(client, user.id, (a.items || []).map((i) => ({
       title: i.title, kind: i.kind, location: i.location, category: i.category, dueAt: i.due_at, endsAt: i.ends_at,
     })), { parentId: a.parent_task_id }), user), { parentId: a.parent_task_id })),
-  tool('complete_task', 'Mark a task done. Pending reminders on it are cancelled automatically. If the task carries a REPEATING reminder it is a standing one — the reply comes back with recurring:true and nextRemindAt, the task stays open and the cadence stays armed, because doing it once does not finish it. Say when it next comes round. To end a standing task for good: cancel_reminder first, then complete_task.',
+  tool('complete_task', 'Mark a task done. Pending reminders on it are cancelled automatically. If the task carries a repeating CADENCE it is a standing one — the reply comes back with recurring:true and nextRemindAt, the task stays open and the cadence stays armed, because doing it once does not finish it. Say when it next comes round. To end a standing task for good: cancel_reminder first, then complete_task.',
     { task_id: S('number', 'Task id') }, ['task_id'],
     (client, user, a) => tasks.completeTask(client, user.id, a.task_id)),
   tool('snooze_task', 'Move a task\'s due date; its reminders follow (a rung chasing the old date is closed, the automatic one re-arms an hour before the new one). new_due_at MUST carry a UTC offset (2026-08-20T09:00:00+03:00); a bare local time is rejected.',
