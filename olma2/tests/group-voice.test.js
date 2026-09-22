@@ -562,3 +562,69 @@ test('a room with members who never wrote is told they are not counted, without 
   assert.equal(sent[0].body.includes('חדש'), false, 'never by name');
   assert.equal(sent[0].body.includes('972609990041'), false, 'and never by number');
 });
+
+// ── מירון's padel room, 2026-09-22 ───────────────────────────────────────────
+// The room was told she had started (16:11) and that there was a direction
+// (16:15). Then שבת 16:00 came off the table, three other times went on, two
+// people turned Wednesday down — and it heard nothing for the rest of the
+// afternoon. Two reasons, and the owner asked for both to change: the mid-way
+// chase was scheduled half way to the earliest option, twenty-six hours out,
+// so 05:11 the next morning; and the base line is said ONCE, so nothing was
+// left that could say the table had changed shape.
+const padel = (opts) => ({
+  status: 'negotiating',
+  options: [
+    { optionId: 1, slot: 'רביעי 18:00', startsAt: new Date(Date.now() + 26 * 3600_000).toISOString(),
+      yes: [{ phone: '+972500000001' }], no: [], missing: [{ phone: '+972500000004' }], quorum: { known: false } },
+    { optionId: 2, slot: 'שבת 17:00', startsAt: new Date(Date.now() + 96 * 3600_000).toISOString(),
+      yes: [{ phone: '+972500000001' }, { phone: '+972500000002' }], no: [],
+      missing: [{ phone: '+972500000004' }], quorum: { known: false } },
+  ],
+  silent: [{ phone: '+972500000004' }],
+  ...opts,
+});
+
+test('the room is chased an hour in, not half way to a game a day away', () => {
+  const co = padel();
+  const now = Date.now();
+  const said = { saidStarted: true, saidBase: true, saidChase: false, saidDone: false, nowMs: now };
+
+  // 16:11 + an hour is 17:11, and the old rule put it at 05:11 the next day.
+  assert.equal(groupVoice.decideGroupLine(co, { ...said, startedAtMs: now - 61 * 60_000 }).kind, 'chase');
+  assert.equal(groupVoice.decideGroupLine(co, { ...said, startedAtMs: now - 59 * 60_000 }).kind, 'none',
+    'silence in the first hour is people being at work');
+
+  // …and the half-way instinct is kept for the case it was written for: a game
+  // in ninety minutes is chased in forty-five, never in sixty.
+  const soon = padel({ options: [{ ...padel().options[0], startsAt: new Date(now + 15 * 60_000).toISOString() }] });
+  assert.equal(groupVoice.decideGroupLine(soon, { ...said, startedAtMs: now - 46 * 60_000 }).kind, 'chase');
+});
+
+test('the table moving is news every time it moves, and never says who said what', () => {
+  const now = Date.now();
+  const base = {
+    saidStarted: true, saidBase: true, saidChase: true, saidDone: false,
+    startedAtMs: now - 3 * 3600_000, nowMs: now,
+  };
+  const co = padel({ tableChangedAt: new Date(now - 60_000).toISOString() });
+
+  const line = groupVoice.decideGroupLine(co, { ...base, tableSaidAtMs: now - 30 * 60_000 });
+  assert.equal(line.kind, 'table');
+  assert.equal(line.count, 2);
+  assert.equal(line.lead, 'שבת 17:00', 'the one furthest along — a count, never a person');
+  assert.equal(JSON.stringify(line).includes('+9725'), false, 'nobody is named on this line');
+
+  // Nothing has moved since the room last heard the table.
+  assert.equal(groupVoice.decideGroupLine(co, { ...base, tableSaidAtMs: now }).kind, 'none');
+
+  // And a room that has never been told a table has none to have moved: the
+  // first time somebody puts a time up is the table being LAID, which is the
+  // base line's to speak about when it becomes a direction. Here that line is
+  // still owed, so it is what comes back — never "השולחן זז" about a table the
+  // room has not been shown.
+  assert.equal(groupVoice.decideGroupLine(co, { ...base, saidBase: false, tableSaidAtMs: 0 }).kind, 'base');
+  const noLead = padel({ tableChangedAt: new Date(now - 60_000).toISOString(),
+    options: [{ ...padel().options[0], yes: [] }] });
+  assert.equal(groupVoice.decideGroupLine(noLead, { ...base, saidBase: false, tableSaidAtMs: 0 }).kind, 'none',
+    'no direction yet and no table ever said: there is nothing to report');
+});

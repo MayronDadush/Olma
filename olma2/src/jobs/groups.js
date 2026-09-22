@@ -456,7 +456,7 @@ async function sweepGroupVoice(client, deps) {
     // duplicate column name in one row silently keeps the LAST one — which
     // would date every coordination from the day the ROOM was registered.
     `SELECT m.id AS meeting_id, m.status, m.created_at AS meeting_created_at,
-            m.group_started_at, m.group_base_at, m.group_chase_at, m.group_done_at,
+            m.group_started_at, m.group_base_at, m.group_chase_at, m.group_done_at, m.group_table_at,
             m.group_dayof_at, m.group_hour_at, m.group_calendar_at, g.*,
             (SELECT max(last_wrote_at) FROM chat_group_members
               WHERE group_id = g.id) AS last_member_write_at
@@ -490,6 +490,12 @@ async function sweepGroupVoice(client, deps) {
       saidCalendar: Boolean(row.group_calendar_at),
       saidDayOf: Boolean(row.group_dayof_at),
       saidHour: Boolean(row.group_hour_at),
+      // The table line is the one that REPEATS, so what it reads is a moment
+      // and not a flag: the newer of "she told the room what is on the table"
+      // and the base line. Zero — no base line yet — means the room has never
+      // been told a table, and a table it has not heard cannot have moved.
+      tableSaidAtMs: Math.max(...[row.group_table_at, row.group_base_at]
+        .filter(Boolean).map((t) => new Date(t).getTime()), 0),
       startedAtMs: new Date(row.meeting_created_at).getTime(),
       nowMs: now.getTime(),
       timezone: row.timezone,
@@ -504,11 +510,16 @@ async function sweepGroupVoice(client, deps) {
       groupId: row.id,
       kind: 'coordination',
       payload: { line },
-      idempotencyKey: `g${row.id}:m${row.meeting_id}:${line.kind}`,
+      // The table line may be said again, so its key carries WHICH change it
+      // is about — one row per movement of the table, and a re-run of the same
+      // pass still collapses onto the same key.
+      idempotencyKey: line.kind === 'table'
+        ? `g${row.id}:m${row.meeting_id}:table:${new Date(st.coordination.tableChangedAt).getTime()}`
+        : `g${row.id}:m${row.meeting_id}:${line.kind}`,
     });
     const column = {
       started: 'group_started_at',
-      base: 'group_base_at', chase: 'group_chase_at', done: 'group_done_at',
+      base: 'group_base_at', chase: 'group_chase_at', done: 'group_done_at', table: 'group_table_at',
       calendar: 'group_calendar_at', dayof: 'group_dayof_at', soon: 'group_hour_at',
     }[line.kind];
     await client.query(`UPDATE meetings SET ${column} = now() WHERE id = $1`, [row.meeting_id]);

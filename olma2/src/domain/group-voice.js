@@ -6,8 +6,12 @@
 // succeeds, and reminders on the day. The first is said in her own turn — she
 // was tagged, the model answers — and the day-of reminders are a separate
 // thing with a clock of their own. What is left is these three, and they are
-// proactive: nobody asked, so each is said ONCE per coordination and each is
-// held to the group's own hours by the caller.
+// proactive: nobody asked, so each is held to the group's own hours by the
+// caller, and each is said ONCE per coordination — with one exception, added
+// 2026-09-22. The TABLE moving is the only thing here that can happen again
+// and again and be news every time, so that line is watermarked rather than
+// flagged; everything else stays a stamp that is set once and read as a
+// boolean.
 //
 // The decision is pure and the sending is not, for the usual reason: every
 // judgement here ("is there a base yet", "has this gone quiet") has to be
@@ -23,12 +27,21 @@ const { MAX_TAGS } = require('./proactive-text');
 // Deliberately long: silence in the first hours is not silence, it is people
 // being at work.
 const CHASE_FALLBACK_MS = 6 * 3600_000;
-// And the bounds when there IS a dated option. Half the distance to the thing
-// itself, so a game tomorrow evening is chased in hours and a dinner next
-// month is not chased today — never sooner than an hour after she started
-// (people are still answering) and never later than a day.
-const CHASE_MIN_MS = 3600_000;
-const CHASE_MAX_MS = 24 * 3600_000;
+// And when there IS a dated option: an hour after she started, or half the
+// distance to the thing itself when the thing is sooner than two hours away.
+//
+// It used to be half the distance FULL STOP, clamped to [1h, 24h], and that
+// reads well and was wrong in the only direction that costs anything. מירון's
+// padel game had its earliest option twenty-six hours out, so half was
+// thirteen: the room was told she had started at 16:11, told there was a
+// direction at 16:15, and then — through שבת 16:00 coming off the table, three
+// times going on and two people turning Wednesday down — heard nothing at all,
+// with the chase scheduled for 05:11 the next morning and the night in front
+// of it (owner, 2026-09-22: they should have had an update by then). An hour
+// is long enough that silence is still people being at work, and the `min`
+// keeps the old instinct for the case it was actually written for: a game in
+// ninety minutes is chased in forty-five, not in sixty.
+const CHASE_AFTER_MS = 3600_000;
 // The two reminders about a coordination that is already set. "An hour
 // before" is exactly that; the day-of line is skipped when the thing is
 // already close, because two messages three hours apart about the same
@@ -50,7 +63,7 @@ function localDay(ms, timezone) {
 function chaseDueAt(startedAtMs, earliestStartMs) {
   if (!earliestStartMs || earliestStartMs <= startedAtMs) return startedAtMs + CHASE_FALLBACK_MS;
   const half = (earliestStartMs - startedAtMs) / 2;
-  return startedAtMs + Math.min(CHASE_MAX_MS, Math.max(CHASE_MIN_MS, half));
+  return startedAtMs + Math.min(CHASE_AFTER_MS, half);
 }
 
 // A person the room may name. On 2026-09-22 coordination 38 chased three
@@ -74,13 +87,13 @@ function leadingOption(options) {
 // `co` is domain/group-meetings.coordinationStatus's `coordination`, plus the
 // three stamps off the meeting row. Returns the one line to say, or none.
 //
-// Priority is done > base > chase, and it is not a tie-break: a coordination
+// Priority is done > base > chase > table, and it is not a tie-break: a coordination
 // that just confirmed makes "who has not answered" a wrong question, and
 // saying the base of a plan that is already settled is worse than saying
 // nothing.
 function decideGroupLine(co, {
   saidStarted, saidBase, saidChase, saidDone, saidCalendar, saidDayOf, saidHour,
-  startedAtMs, nowMs, timezone,
+  startedAtMs, nowMs, timezone, tableSaidAtMs,
 } = {}) {
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
   if (co.status === 'confirmed') {
@@ -143,6 +156,34 @@ function decideGroupLine(co, {
   if (!saidChase && silent.length && nowMs >= chaseDueAt(startedAtMs, earliestStart(co))) {
     return { kind: 'chase', missing: silent.slice(0, MAX_TAGS) };
   }
+
+  // …and the table itself moving is news, however many times it moves. Every
+  // other line here is said ONCE, which is right for each of them — she has
+  // started, there is a direction, who has not answered — and left מירון's room
+  // with nothing to read for the hour in which שבת 16:00 came off, three times
+  // went on, and the coordination it had asked for changed shape completely
+  // (owner, 2026-09-22).
+  //
+  // `tableSaidAtMs` is a WATERMARK and not a boolean, because this is the one
+  // line that repeats: it is the moment the room was last told what is on the
+  // table, which the caller resolves as the newer of `group_table_at` and the
+  // base line — so the very option the base line was about never reads as a
+  // change, and a table that stops moving goes quiet on its own. Nobody's
+  // ANSWER is in it, only the shape: how many times are on the table and which
+  // one is furthest along (`rules/groups.md` — whether Dana said no is Dana's
+  // to say).
+  //
+  // It needs a table to have been SAID first, which is why the watermark is
+  // the base line and never the started line: the first time somebody puts a
+  // time up, one person agreeing with themselves, the table has not moved —
+  // it has been laid, and the base line is what speaks when that becomes a
+  // direction (`tests/group-voice.test.js` asserted exactly this and caught
+  // the first cut of this branch saying "השולחן זז — עכשיו מועד אחד").
+  const onTable = (co.options || []).length;
+  const changedAt = co.tableChangedAt ? new Date(co.tableChangedAt).getTime() : 0;
+  if (onTable && tableSaidAtMs && changedAt > tableSaidAtMs) {
+    return { kind: 'table', count: onTable, lead: lead ? lead.slot : null };
+  }
   return { kind: 'none', reason: 'nothing new to say' };
 }
 
@@ -167,5 +208,5 @@ function earliestStart(co) {
 
 module.exports = {
   decideGroupLine, leadingOption, chaseDueAt, localDay, whoIsIn,
-  CHASE_FALLBACK_MS, CHASE_MIN_MS, CHASE_MAX_MS, HOUR_BEFORE_MS, DAY_OF_MIN_LEAD_MS,
+  CHASE_FALLBACK_MS, CHASE_AFTER_MS, HOUR_BEFORE_MS, DAY_OF_MIN_LEAD_MS,
 };

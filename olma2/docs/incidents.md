@@ -1693,6 +1693,55 @@ tell him later.
 `accept` is still in `afterSlotResponse`'s signature and is deliberately
 unread: a yes and a no now produce the same fan-out, and a parameter left in
 place says that reading it again is a decision rather than an oversight.
+**The same afternoon had the mirror-image fault in the ROOM, and the owner
+named it before anybody looked**: the room should have had an update by then,
+and whoever had not answered should have been tagged. What it had actually
+heard was two lines — "מתחילה לתאם" at 16:11 and "יש כיוון" at 16:15 — and
+then nothing, through שבת 16:00 coming off the table, three other times going
+on and two people turning Wednesday down. Two separate reasons, one for each
+half of what he asked for.
+
+**The mid-way chase was scheduled for half past five the next morning.**
+`group-voice.chaseDueAt` waited half the distance to the earliest option,
+clamped to [1h, 24h]; the earliest option was twenty-six hours out, so half
+was thirteen, and the night was in front of it. That reads well and is wrong
+in the only direction that costs anything, so it is an hour after she starts
+now — with the old instinct kept as a ceiling rather than a formula
+(`Math.min`), because a game in ninety minutes should still be chased in
+forty-five.
+
+**And nothing could say the table had changed.** Every line a room hears is
+said ONCE per coordination, which is right for each of them — she has started,
+there is a direction, who has not answered, it is closed — and leaves a
+negotiation that moves all afternoon with nothing to report. `group_table_at`
+(migration 082) is the first watermark in that family rather than a flag: the
+moment the room was last told what is on the table, against the newest change
+to any option (`created_at` for one added, `decided_at` for one taken off,
+both of which `meeting_options` already had — no second column was needed).
+The line says the SHAPE and never an answer: how many times are on the table
+and which one is furthest along. Whether Dana said no is still Dana's to say.
+
+Two things the first cut got wrong and the existing tests caught. It fired on
+the very first option somebody put up — "השולחן זז — עכשיו מועד אחד" about a
+table that had just been laid — so the watermark is the BASE line and never
+the started line: a room that has not been shown a table cannot have seen one
+move. And the count went into the template as a number, which in Hebrew reads
+"1 מועדים"; agreement is the renderer's job, so `count` is handed over as a
+whole phrase. The idempotency key carries the change's own timestamp
+(`g<room>:m<meeting>:table:<epoch>`), so each movement gets one line and a
+re-run of the pass still collapses onto it.
+
+**Who may be named was already right, and this is the measurement that says
+so.** Of the two people who had answered nothing, גל had been written to four
+times and had not replied — nameable. גיא had every one of his five messages
+DROPPED at the gate as `quiet` (he had stopped answering Olma), so she had
+never actually asked him, and the room must not say his name. That is this
+same morning's rule holding on the next day's data (`incidents.md`, "The room
+chased three people, two of whom had never been asked"). It also leaves a real
+gap open: a member of a room can be invited to its coordination, receive
+nothing, and nobody — not him, not the room, not the person who opened it —
+can tell.
+
 ### Four messages in sixty-two seconds (fixed 2026-09-20)
 
 קאפיש (u-35) joined the test room on 2026-09-19 and had never written to Olma

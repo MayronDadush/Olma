@@ -217,6 +217,12 @@ async function statusOf(client, group, meeting) {
   const active = parts.filter((p) => p.state !== 'opted_out').map((p) => Number(p.user_id));
   const optedOut = parts.filter((p) => p.state === 'opted_out').map((p) => who(p.user_id));
 
+  // When the table last MOVED, for the room's own "השולחן זז" line: a time
+  // added carries `created_at`, a time taken off carries `decided_at`, and
+  // GREATEST ignores the null on the half that does not apply.
+  const { rows: [changed] } = await client.query(
+    `SELECT max(GREATEST(created_at, decided_at)) AS at FROM meeting_options WHERE meeting_id = $1`,
+    [meeting.id]);
   const all = await options.list(client, Number(meeting.id));
   const onTable = all.filter((o) => o.status === 'active');
   const answeredSomething = new Set();
@@ -258,6 +264,7 @@ async function statusOf(client, group, meeting) {
       // about (owner, 2026-09-20: only when nobody said one).
       location: meeting.location === undefined ? null : (meeting.location || null),
       startedBy: who(meeting.initiator_id).name,
+      tableChangedAt: (changed && changed.at) || null,
       participants: active.length,
       // Members of the ROOM this coordination could not sweep in at all: they
       // have never written to her, so there is nobody to ask. A COUNT and never

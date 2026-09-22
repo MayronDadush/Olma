@@ -340,6 +340,8 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **The person who asked the ROOM for a coordination is asked privately too** — a tag carries no times, and the test asserted the bug
 - **In the room a person is addressed by their TAG and never by their name; in a private chat, by their name**
 - **The first thing a room hears about its own coordination is that she has STARTED, and it counts people rather than naming them**
+- **Every line a room hears is said once, except the TABLE moving, which is news every time** — a watermark rather than a flag, anchored on the base line, and it says the shape and never an answer.
+- **The room is chased an HOUR after she starts, not half way to the thing** — half the distance put one room at 05:11 the next morning; who may be NAMED is unchanged.
 - **The "סגור" line names who can make it, a calendar line is said only for a SHARED event, and a base line is never said to nobody**
 - **The place is the room's own words, asked for only when nobody said one, and it rides the confirmation onto the calendar event**
 - **The room says that people have not answered only about people she has actually written to** — `silent` is still the exact count; `asked` is what may be SAID

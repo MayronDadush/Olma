@@ -281,6 +281,32 @@ have already had to be argued for.
   avoids — which is also why nobody is named, in a line that would otherwise be
   the easiest place to break the tag-not-name rule below.
 
+- **Every line a room hears is said once, except the TABLE moving, which is
+  news every time** (migration 082, `meetings.group_table_at`; owner,
+  2026-09-22). מירון's padel room was told she had started and that there was
+  a direction, and then heard nothing all afternoon while שבת 16:00 came off,
+  three times went on and two people turned Wednesday down. So that one line
+  is a WATERMARK rather than a flag — the moment the room was last told what
+  is on the table, against the newest change to any option (`created_at` for
+  one added, `decided_at` for one removed). **The watermark is the BASE line
+  and never the started line**: the first time somebody puts a time up, the
+  table is being LAID, not moving, and the first cut of this said "השולחן זז —
+  עכשיו מועד אחד" about it until `tests/group-voice.test.js` refused. It says
+  the SHAPE only — how many times are on the table, which is furthest along —
+  because whose answer is whose is still nobody else's to hear. Its
+  idempotency key carries the change's own timestamp, so one line per
+  movement and a re-run of the pass collapses onto it.
+
+- **The room is chased an HOUR after she starts, not half way to the thing**
+  (`group-voice.CHASE_AFTER_MS`). Half the distance, clamped to [1h, 24h],
+  put מירון's room at 05:11 the next morning with the night in front of it,
+  because the earliest option was twenty-six hours out. `Math.min` keeps the
+  old instinct as a ceiling rather than a formula: a game in ninety minutes is
+  still chased in forty-five. Who may be NAMED is unchanged and was re-checked
+  on this room — גל had been written to four times and not answered, so he is
+  nameable; גיא had every message dropped at the gate as `quiet`, was never
+  actually asked, and must not be.
+
 - **The "סגור" line names who can make it, a calendar line is said only for
   a SHARED event, and a base line is never said to nobody** (owner,
   2026-09-20, off coordinations 35–37). `group-meetings.statusOf` exposes
