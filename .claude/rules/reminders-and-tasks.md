@@ -332,9 +332,17 @@ title means this file. Grep the title, not the filename.
   `reminders.attachAutoReminder` is the only writer of `auto = true`, and an
   explicit `set_task_reminder` cancels the pending auto row rather than joining
   it. This REVERSED "never set one unasked" (2026-09-04, same day it was
-  added): the half that was right — a calendar ask is one thing, not a task and
-  a reminder as well — moved to `create_calendar_event`'s own description,
-  where the model reads it at the moment it would make that mistake.
+  added): the half thought to be right — a calendar ask is one thing, not a
+  task and a reminder as well — moved to `create_calendar_event`'s own
+  description, where the model reads it at the moment it would make that
+  mistake. **That half was REVERSED in its turn on 2026-09-22, and the
+  mechanism is why it cost eighteen days**: the sentence justified itself with
+  "an event that already alerts", which was a guess nobody checked.
+  `calendar.createEvent` sends Google no reminders override, so the event
+  alerts on that person's own Google default and Olma sends nothing for it at
+  all — and the description, being what the model reads at the moment of the
+  call, outranked the doctrine's "Their calendar", which says the opposite.
+  See the next rule.
   **Every statement of this rule used to teach it with the IMPERATIVE example,
   and the noun form went through all three** — the doctrine, `add_task`'s
   description, and `reminder-promise.js`'s `ASK_RE`. "תוסיף תזכורת ליום שלישי
@@ -393,6 +401,29 @@ title means this file. Grep the title, not the filename.
   letting the nudge vanish into a picture on a row already stamped as the
   message that carried it. It survives `summary` scope for the same reason a
   nudge is not a count: four of the six people with a digest are on it.
+
+- **A calendar event reminds NOBODY, and `create_calendar_event`'s result says
+  so rather than leaving it to be guessed.** `calendar.createEvent` sends
+  Google no reminders override, and nothing on our side speaks for a calendar
+  event: a reminder hangs on a TASK (`task_reminders.task_id` is NOT NULL), so
+  an event that exists only on Google has nowhere to hang one. עמית asked for a
+  Friday 12:00 viewing, then asked "תזכיר לי מראש?", and was told an automatic
+  reminder was set for 11:00 — the hour `auto-reminder.autoReminderAt` would
+  in fact have picked, which is why it read as true. No row existed and Friday
+  passed in silence (`incidents.md`, "The reminder that was only a sentence").
+  The result now carries `hints.reminders`, which **forbids a sentence rather
+  than asking for one** — an unconditional instruction to write beside
+  `markPlaced` is the thing that outvotes it (`rules/doctrine.md`) — and names
+  `add_task kind:'event'` as the only thing that arms one. **The same moment
+  can therefore now be saved twice, and `calendar.eventIdFor` is what stops it
+  becoming two entries**: it hashes the INSTANT, not the spelling, because
+  `createEvent` is handed the model's offset string while
+  `task-calendar.windowFor` produces UTC ISO. The second write becomes a 409,
+  which `createEvent` already treats as success, so the task binds to the event
+  already there. Every id the sweep has written came from a UTC ISO string,
+  which normalises to itself — nothing live moves. **Open**: nothing reconciles
+  the event against the task shadowing it, so an event deleted by hand still
+  reminds.
 
 - **Everyone on a shared task is equal, and a write on it is made AS its
   owner** (owner, 2026-09-19). There is one kind of share: `shares.role` is

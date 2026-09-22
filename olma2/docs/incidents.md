@@ -75,6 +75,7 @@ never trust a dated narrative for something you are about to act on.
 - [Her reminders arrived in Hebrew (fixed 2026-09-07)](#her-reminders-arrived-in-hebrew-fixed-2026-09-07)
 - [A hundred and five pending reminders, thirteen of them pending (fixed 2026-09-07)](#a-hundred-and-five-pending-reminders-thirteen-of-them-pending-fixed-2026-09-07)
 - [The reminder that would not stop (fixed 2026-09-09)](#the-reminder-that-would-not-stop-fixed-2026-09-09)
+- [The reminder that was only a sentence (fixed 2026-09-22)](#the-reminder-that-was-only-a-sentence-fixed-2026-09-22)
 - [התיק לבית חולים: one reminder asked for, six messages delivered (fixed 2026-09-18)](#התיק-לבית-חולים-one-reminder-asked-for-six-messages-delivered-fixed-2026-09-18)
 - [The hook's timer fired late, and brokerd took the blame (fixed 2026-09-07)](#the-hooks-timer-fired-late-and-brokerd-took-the-blame-fixed-2026-09-07)
 - [Good morning at half past one (fixed 2026-09-06)](#good-morning-at-half-past-one-fixed-2026-09-06)
@@ -2939,6 +2940,81 @@ still fire", and the two only look alike.
 
 Nothing about what is ARMED changed. Rung 2 and rung 3 still go out. This is
 only about what a person is told.
+
+### The reminder that was only a sentence (fixed 2026-09-22)
+
+עמית, 2026-09-15, 16:44 Israel:
+
+> **THEM:** תוסיפי ליומן שיש לי ולמישל פגישה בבוסתן ביום שישי הקרוב בשעה 12 הולכים לראות אולם לחתונה
+> **YOU:** נרשם 👍 פגישה ביומן ליום שישי 12:00 בבוסתן.
+> **THEM:** תזכיר לי מראש?
+> **YOU:** היא כבר נכנסה עם תזכורת אוטומטית שעה לפני — מחר ב-11:00 תקבל תזכורת על הפגישה. בא לך דווקא בזמן אחר?
+
+Friday came and went. Nothing was sent, because nothing existed to send: `task_reminders`
+has one row for this person, from August, cancelled. The event itself was real — it is on
+his Google Calendar, id `olma7c984d2f885e46c2e5d0b1fdd26bd731` — and it is the only thing
+that was.
+
+Three separate faults, and they are worth separating because only one of them is about the
+model.
+
+**The tool result said nothing about reminding, so the model said something.** The whole of
+what `create_calendar_event` returned was `{created, eventId, title, start, hints:{markPlaced}}`.
+Asked a question about reminders, the model had no column to read and answered from the
+doctrine's general shape instead. CLAUDE.md already names this: *an instruction handed to
+the model may assert what its own columns hold, and not one word more* — stated there about
+what a result may CLAIM, and this is the same rule from the other side. A result that is
+silent about the one thing it will be asked about is not neutral; the silence gets filled.
+
+**The description it read at the moment of the call was false, and it had been for
+eighteen days.** `create_calendar_event` said: *"The event is the WHOLE answer to a calendar
+request: do not also add a task for the same thing, which would arm a reminder beside an
+event that already alerts."* Added defensively in `abda19a` (2026-09-04) when a due date
+started arming its own reminder — reasonable-sounding, never checked. `calendar.createEvent`
+sends Google no `reminders` override at all, so the event alerts on whatever default that
+person's own Google account happens to carry, which nothing here can see; and Olma sends
+nothing for it in any case. "An event that already alerts" was a guess written as a fact,
+and every later reader took it as one.
+
+**It also contradicted the doctrine, and won.** `agents-template.md` ("Their calendar") says
+the opposite and says it first: *save it THAT TURN as an event, with the time … Then, only
+if the calendar is connected, you may also add it there* — and that path arms a reminder,
+which is the whole point of the paragraph beneath it ("No reminder fires for a shift that
+was never saved"). The description won because the model reads it at the moment it chooses
+the tool, which is exactly the argument for moving rules into descriptions in the first
+place (`.claude/rules/reminders-and-tasks.md`, "the half that was right … moved to
+`create_calendar_event`'s own description, where the model reads it at the moment it would
+make that mistake"). That mechanism works. It works for a wrong rule too.
+
+The fix is in three parts, and the third is the one that was not obvious:
+
+- The description no longer claims an alert it does not set, and it names what DOES arm one
+  (`add_task kind:'event'`) — an ask with nowhere to go is the shape this repo keeps
+  rediscovering, and here the place to put it already existed.
+- The RESULT carries `hints.reminders`, which says plainly that nothing here reminds them
+  and that their own Google alert is a setting the model cannot see. It forbids a sentence
+  rather than asking for one, so it cannot outvote `markPlaced` the way an unconditional
+  instruction to write would (CLAUDE.md, "`markPlaced` is CONDITIONAL").
+- **`calendar.eventIdFor` now fingerprints the INSTANT, not the spelling of it.** Routing
+  the reminder to `add_task` means one thing can now be saved both ways — the Google event
+  directly, and the event task that carries the reminder — and for anyone with
+  `calendar_sync_tasks` on (one person today) the sweep would then have written it to the
+  calendar a second time. The two paths always disagreed about the string: `createEvent`
+  gets the offset form the model typed, `task-calendar.windowFor` produces UTC ISO. Hashing
+  the raw string made those two ids for one moment. Normalising makes the second write a
+  409, which `createEvent` already treats as success — so the task binds to the event that
+  is already there. Every id the sweep has ever written was derived from a UTC ISO string,
+  which normalises to itself, so nothing live moves.
+
+Four tests, in `tests/calendar.test.js`, and all four were run against the unfixed tree
+first: the description test, the result-hint test, an id test that also pins the
+no-churn property, and an end-to-end one that creates the event directly and then syncs the
+task onto it, asserting the sweep aims at the id already on the calendar and reports
+`unchanged` on the tick after.
+
+What is NOT fixed: nothing reconciles a calendar event against the event task shadowing it.
+Delete the event by hand and the task still reminds. That needs a real decision about which
+of the two is the record, and it is not this.
 
 ### התיק לבית חולים: one reminder asked for, six messages delivered (fixed 2026-09-18)
 
