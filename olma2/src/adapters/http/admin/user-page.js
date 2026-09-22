@@ -144,9 +144,15 @@ function renderPauseBanner(u, csrf) {
   // they asked for ends only here or by their own word; the one the check-in
   // ladder made ends by itself the moment they write.
   const ladder = u.paused_reason === 'quiet_ladder';
-  return `<section><h3>${ladder ? 'מושהה — לא עונה' : 'ביקש להפסיק'}</h3>
+  // A stop heard but not yet confirmed is its own state: it stops everything a
+  // confirmed one stops, and their next message ends it (pause.stopResume).
+  // Shown apart so an operator never reads it as a settled goodbye.
+  const heard = u.paused_reason === 'said_stop';
+  return `<section><h3>${ladder ? 'מושהה — לא עונה' : heard ? 'ביקש להפסיק — טרם אישר' : 'ביקש להפסיק'}</h3>
     <p class="hint">${ladder
       ? `שלושה צ'ק-אינים בלי תשובה, אז עולמה הפסיקה לפנות ב-${esc(String(u.paused_at).slice(0, 16))}. שום דבר לא בוטל — התזכורות והמשימות במקום. ההודעה הראשונה שלו מחזירה אותו לבד.`
+      : heard
+      ? `אמר שרוצה להפסיק ב-${esc(String(u.paused_at).slice(0, 16))}, ועולמה הפסיקה מיד — לפני שנשאל אם הוא בטוח. שום דבר לא נמחק. ההודעה הבאה שלו, על כל נושא אחר, מחזירה אותו לבד.`
       : `הפסיק לקבל פניות יזומות ב-${esc(String(u.paused_at).slice(0, 16))}.
       שום דבר לא נמחק — המשימות, העובדות וההיסטוריה שלו במקום. עולמה עדיין עונה לו אם הוא כותב.`}</p>
     <form method="post" action="/users/resume" class="inline">

@@ -108,6 +108,110 @@ test('pausing disarms what was already aimed at them, and deletes nothing', asyn
   assert.equal(a[0].detail.dataDeleted, false);
 });
 
+// ---- the stop that was heard but never confirmed --------------------------
+//
+// Gal, 2026-09-22: "dont send me messages bye" at 15:04. Olma asked "בטוח?"
+// exactly as the doctrine said, he never answered, and because the pause
+// waited on a yes his record said nothing at all. Four urgent coordination
+// messages were dispatched over the next hour; three reached him. The owner's
+// fix is to comply first and ask second (incidents.md, "The stop that waited
+// for a yes").
+test('an unconfirmed stop stops everything a confirmed one does', async () => {
+  const { user, taskId } = await userWithDailyReminder('+972557049101');
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'meeting_slot_proposed', urgency: 'urgent',
+    payload: { title: 'פאדל השבוע' },
+  }));
+
+  const res = await withTx(db.pool, (c) =>
+    pause.pauseUser(c, user.id, { note: 'dont send me messages bye', confirmed: false }));
+  assert.equal(res.ok, true);
+  // The whole point: the queue is emptied at the moment of hearing, so no turn
+  // is ever spawned and no later judgement has to save him.
+  assert.equal(res.data.outboxCancelled, 1, 'the urgent coordination row is cancelled, not filtered later');
+  assert.equal(res.data.remindersCancelled, 1);
+
+  const { rows } = await db.pool.query(
+    `SELECT paused_at, paused_reason FROM users WHERE id = $1`, [user.id]);
+  assert.ok(rows[0].paused_at, 'paused the moment it was heard');
+  assert.equal(rows[0].paused_reason, pause.SAID_STOP);
+  // and nothing of theirs went anywhere
+  const { rows: t } = await db.pool.query(`SELECT status FROM tasks WHERE id = $1`, [taskId]);
+  assert.equal(t[0].status, 'open');
+});
+
+test('their next message ends an unconfirmed stop and puts the reminders back', async () => {
+  // A daily 12:00 frozen two days ago, so coming back has to WALK the rule
+  // forward rather than just un-cancel a row whose moment is still ahead.
+  const frozenAt = daytime(new Date(Date.now() - 2 * 24 * HOUR));
+  const { user } = await userWithDailyReminder('+972557049102', { remindAt: frozenAt });
+  await withTx(db.pool, (c) => pause.pauseUser(c, user.id, { confirmed: false }));
+
+  // openRecord's `wake` is the door a real inbound comes through; going
+  // through turn.openRecord rather than calling stopResume directly is what
+  // proves the wiring, not just the function.
+  const turn = require('../src/domain/turn');
+  const fresh = (await db.pool.query(`SELECT * FROM users WHERE id = $1`, [user.id])).rows[0];
+  await withTx(db.pool, (c) => turn.openRecord(c, fresh, { wake: true }));
+
+  const { rows } = await db.pool.query(
+    `SELECT paused_at, paused_reason FROM users WHERE id = $1`, [user.id]);
+  assert.equal(rows[0].paused_at, null, 'writing again is them coming back');
+  assert.equal(rows[0].paused_reason, null);
+
+  const { rows: armed } = await db.pool.query(
+    `SELECT r.remind_at, r.repeat_rule FROM task_reminders r JOIN tasks t ON t.id = r.task_id
+      WHERE t.owner_id = $1 AND r.sent_at IS NULL AND r.cancelled_at IS NULL`, [user.id]);
+  assert.equal(armed.length, 1, 'the repeating reminder is re-armed, not lost');
+  assert.ok(armed[0].remind_at > new Date(), 'at its own next real time, never one already gone');
+  assert.equal(armed[0].remind_at.getUTCHours(), 12, 'and still at the hour they chose');
+  assert.equal(armed[0].repeat_rule, 'daily');
+});
+
+test('a CONFIRMED stop is not ended by them writing again', async () => {
+  // The difference that makes asking worth anything: "בטוח?" → "כן" has to
+  // outlast the next message, or the question was theatre.
+  const { user } = await userWithDailyReminder('+972557049103');
+  await withTx(db.pool, (c) => pause.pauseUser(c, user.id, { confirmed: false }));
+  await withTx(db.pool, (c) => pause.pauseUser(c, user.id, { confirmed: true }));
+  const mid = (await db.pool.query(`SELECT paused_reason FROM users WHERE id = $1`, [user.id])).rows[0];
+  assert.equal(mid.paused_reason, null, 'the yes cleared the provisional reason');
+
+  const turn = require('../src/domain/turn');
+  const fresh = (await db.pool.query(`SELECT * FROM users WHERE id = $1`, [user.id])).rows[0];
+  await withTx(db.pool, (c) => turn.openRecord(c, fresh, { wake: true }));
+
+  const { rows } = await db.pool.query(`SELECT paused_at FROM users WHERE id = $1`, [user.id]);
+  assert.ok(rows[0].paused_at, 'they confirmed; only they or an admin end this');
+});
+
+test('a turn that merely happened on their agent does not end an unconfirmed stop', async () => {
+  // Same line openRecord already draws for the night window and the ladder
+  // pause: a turn Olma started is not the person writing.
+  const { user } = await userWithDailyReminder('+972557049104');
+  await withTx(db.pool, (c) => pause.pauseUser(c, user.id, { confirmed: false }));
+  const turn = require('../src/domain/turn');
+  const fresh = (await db.pool.query(`SELECT * FROM users WHERE id = $1`, [user.id])).rows[0];
+  await withTx(db.pool, (c) => turn.openRecord(c, fresh, { wake: false }));
+  const { rows } = await db.pool.query(`SELECT paused_at FROM users WHERE id = $1`, [user.id]);
+  assert.ok(rows[0].paused_at, 'still paused');
+});
+
+test('nothing the worker drains reaches somebody whose stop is only heard', async () => {
+  // The end-to-end shape of Gal's hour: an urgent cross-user row, enqueued
+  // AFTER the stop, must not reach him either.
+  const { user } = await userWithDailyReminder('+972557049105');
+  await withTx(db.pool, (c) => pause.pauseUser(c, user.id, { confirmed: false }));
+  await withTx(db.pool, (c) => enqueue(c, {
+    userId: user.id, kind: 'meeting_slot_proposed', urgency: 'urgent',
+    payload: { title: 'פאדל השבוע', slot: 'שבת 16:00' },
+  }));
+  await drainOnce(db.pool, { now: daytime(0) });
+  const { rows } = await db.pool.query(
+    `SELECT hold_reason, sent_at FROM outbox WHERE user_id = $1 ORDER BY id DESC LIMIT 1`, [user.id]);
+  assert.equal(rows[0].hold_reason, 'paused', 'the gate is the chokepoint, not the model');
+});
+
 test('pausing twice is not a second pause', async () => {
   const { user } = await userWithDailyReminder('+972557049002');
   const first = await withTx(db.pool, (c) => pause.pauseUser(c, user.id));
