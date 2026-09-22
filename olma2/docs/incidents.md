@@ -48,6 +48,7 @@ never trust a dated narrative for something you are about to act on.
 - [Rotating a token that leaked: the file first, then the DB, then the doctrine (2026-09-03)](#rotating-a-token-that-leaked-the-file-first-then-the-db-then-the-doctrine-2026-09-03)
 
 **Delivery, outbox and proactive messages**
+- [The stop that waited for a yes (fixed 2026-09-22)](#the-stop-that-waited-for-a-yes-fixed-2026-09-22)
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
 - [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
@@ -1735,6 +1736,63 @@ nothing. And the tool is out of `TOOL_MARKS`, into the negotiation family that
 `tests/reactions.test.js` guards: it can only be called while a meeting is
 negotiating, so every call is a negotiation step, and the negotiation family
 has no 👍 by rule.
+
+### The stop that waited for a yes (fixed 2026-09-22)
+
+גל (u-37) wrote "dont send me messages bye" at 13:08 on 2026-09-22. Olma
+answered exactly as the doctrine asked her to — one short question, once, no
+argument and no pitch — and he never answered it. Nothing else happened in
+that conversation, and so nothing on his record ever said he had asked to be
+left alone: `paused_at` was still NULL when the owner reported it that
+evening, because the doctrine paused only on a yes.
+
+Over the next eighteen minutes four urgent coordination rows were dispatched
+to his agent. The model read the conversation and decided correctly on every
+one of the four turns; it did not want to write to him. Three of those
+decisions reached him as English text anyway. The first pass at this read
+`sent_at` and the model's own `NO_REPLY` and concluded that nothing had gone
+out — the owner corrected it with a screenshot of three deleted messages, and
+`sent_at` is stamped when `deliver()` returns ok, which was never proof that
+a message was emitted. **One thing here is still unexplained and this fix is
+not about it**: the reply gate cancels those exact texts in the build that
+was running then and in the build running now, and its trace carries no
+`gate` line at all for those three turns while firing for two other users in
+the same minutes.
+
+What the fix is about is that none of it should have been reachable. The
+owner: "אפשר פשוט לבנות שהודעות לא נכנסות אליו יותר ברגע שהוא משהה את עולמה -
+אין צורך שהמודל יצטרך לקרוא את השיחה ולסרב לפי השיקול דעת שלו." A pause is a
+column the delivery gate reads before a turn is ever spawned. A model
+refusing per turn is the same judgement exercised four times where one write
+would have settled it — and a gate that has to hold is a gate that can be
+missed, which is exactly what happened.
+
+So the order is inverted: comply first, ask second. `pause_olma` takes
+`confirmed`, the doctrine's steps were swapped (pause THAT turn, before a
+word goes back; the one question second; the yes is a SECOND call with
+`confirmed=true`), and an unconfirmed stop is a full pause under
+`paused_reason = 'said_stop'` — the gate drops everything, the queued rows
+are cancelled, the reminders come down. It differs from a confirmed one in
+exactly one way, which is the other half of the owner's instruction
+("ברגע שגל שולח לו שוב הודעה (שהיא לא קשורה לרצון שלו להפסיק) עולמה יוצאת
+מהשהייה"): their next message about anything else ends it, from
+`openRecord`'s `wake`, ahead of the model. `pause.stopResume` is the third
+resume beside `quietResume` and `resumeAfterRoomInvite` and the only one that
+goes through `resumeUser`, because unlike the ladder's pause this one took
+reminders down, and coming back has to put each of them up at its own next
+real occurrence.
+
+Two small decisions inside it. `confirmed` defaults to the LASTING pause
+(`a.confirmed !== false`, not `=== true`): an omitted flag leaving somebody
+paused who meant to be is one sentence from undone, and the other way round
+lifts a stop that was confirmed, which is the whole fault this exists to
+close. And the answer to "בטוח?" is a second `pause_olma` rather than a
+no-op, because that call is what clears the provisional reason and stops the
+next message ending it.
+
+The trade is one extra "stop" from somebody who says it twice, against a
+person who asked to be left alone being written to anyway. Both are
+recoverable; only one is a betrayal.
 
 ### The table that did not say where she stood (2026-09-20)
 
