@@ -456,7 +456,7 @@ async function sweepGroupVoice(client, deps) {
     // duplicate column name in one row silently keeps the LAST one — which
     // would date every coordination from the day the ROOM was registered.
     `SELECT m.id AS meeting_id, m.status, m.created_at AS meeting_created_at,
-            m.group_started_at, m.group_base_at, m.group_chase_at, m.group_done_at,
+            m.group_started_at, m.group_base_at, m.group_base_slot, m.group_chase_at, m.group_done_at,
             m.group_dayof_at, m.group_hour_at, m.group_calendar_at, g.*,
             (SELECT max(last_wrote_at) FROM chat_group_members
               WHERE group_id = g.id) AS last_member_write_at
@@ -485,6 +485,7 @@ async function sweepGroupVoice(client, deps) {
     const line = groupVoice.decideGroupLine(st.coordination, {
       saidStarted: Boolean(row.group_started_at),
       saidBase: Boolean(row.group_base_at),
+      saidBaseSlot: row.group_base_slot,
       saidChase: Boolean(row.group_chase_at),
       saidDone: Boolean(row.group_done_at),
       saidCalendar: Boolean(row.group_calendar_at),
@@ -504,14 +505,30 @@ async function sweepGroupVoice(client, deps) {
       groupId: row.id,
       kind: 'coordination',
       payload: { line },
-      idempotencyKey: `g${row.id}:m${row.meeting_id}:${line.kind}`,
+      // `moved` can happen more than once in one coordination — a second named
+      // time can leave the table too — so its key carries the time that went,
+      // which is also the bound on the line: once per gone slot. Every other
+      // kind is once per coordination and keys on the kind alone.
+      idempotencyKey: line.kind === 'moved'
+        ? `g${row.id}:m${row.meeting_id}:moved:${line.was}`
+        : `g${row.id}:m${row.meeting_id}:${line.kind}`,
     });
     const column = {
       started: 'group_started_at',
-      base: 'group_base_at', chase: 'group_chase_at', done: 'group_done_at',
+      base: 'group_base_at', moved: 'group_base_at', chase: 'group_chase_at', done: 'group_done_at',
       calendar: 'group_calendar_at', dayof: 'group_dayof_at', soon: 'group_hour_at',
     }[line.kind];
-    await client.query(`UPDATE meetings SET ${column} = now() WHERE id = $1`, [row.meeting_id]);
+    // `base` and `moved` share the stamp and also record WHICH time the room was
+    // told, because that is what makes the next one decidable: a slot the room
+    // heard and that has since left the table is the whole trigger (group-voice,
+    // `namedGone`). Every other line writes the stamp alone, as before.
+    if (line.kind === 'base' || line.kind === 'moved') {
+      await client.query(
+        `UPDATE meetings SET group_base_at = now(), group_base_slot = $2 WHERE id = $1`,
+        [row.meeting_id, line.slot]);
+    } else {
+      await client.query(`UPDATE meetings SET ${column} = now() WHERE id = $1`, [row.meeting_id]);
+    }
     await audit.record(client, row.registered_by_user_id, 'group.coordination_said', {
       groupId: row.id, meetingId: Number(row.meeting_id), kind: line.kind,
     });

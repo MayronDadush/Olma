@@ -207,10 +207,15 @@ function renderGroupCoordination(line, overrides) {
       outside_note: line.outside ? OUTSIDE_NOTE : '',
     }, overrides).trim();
   }
-  if (line.kind === 'base') {
-    return templates.render('group_coord_base', {
+  if (line.kind === 'base' || line.kind === 'moved') {
+    const lead = templates.render('group_coord_base', {
       slot: slotText(line.slot), yes: String(line.yes), missing: mentionTokens(line.missing || []),
     }, overrides);
+    if (line.kind === 'base') return lead;
+    // The new direction is the base line itself, carried whole as one var — so
+    // a rewording of "יש כיוון" is said the same way in both places, and the
+    // owner has one sentence to edit rather than two that can drift.
+    return templates.render('group_coord_moved', { was: slotText(line.was), lead }, overrides).trim();
   }
   if (line.kind === 'chase') {
     return templates.render('group_coord_chase', { missing: mentionTokens(line.missing || []) }, overrides);

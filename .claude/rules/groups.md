@@ -304,6 +304,28 @@ have already had to be argued for.
   echoed her own LID as if it were Yuval's (`incidents.md`, "The room waited
   for nobody").
 
+- **A time the room was TOLD about and that has since left the table is said
+  again; a time merely overtaken is not** (owner, 2026-09-22: "יש אנשים
+  שסימנו אותו ועכשיו הוא לא רלוונטי"). `group_base_at` says the line was said
+  and cannot say WHICH time it said, so Padel Gang held שבת 16:00 for the rest
+  of its coordination — eleven minutes after Sharon deleted it and put 17:00 on
+  the table, with two people's yes on the time she removed. `meetings.
+  group_base_slot` (migration 082) is the slot text the room actually heard,
+  and `group-voice.decideGroupLine`'s `namedGone` is the whole trigger: that
+  slot is no longer among the active options AND another one leads. **Three
+  things it deliberately is not.** A new leading time with the old one still on
+  the table says NOTHING — the room's picture is still true, and a line per
+  change of lead is how this family of lines becomes the thing the owner asked
+  it never to be. Nothing is said until a replacement has `enough` — the stamp
+  goes on naming the gone slot, so the line simply waits and goes out with a
+  direction rather than announcing a hole. And it is not once per
+  coordination: the `group_outbox` key carries the time that WENT
+  (`g<gid>:m<mid>:moved:<was>`), so a second named time leaving the table is a
+  second line and the same one is never said twice. `group_coord_moved` carries
+  the new direction as `{{lead}}`, rendered from `group_coord_base` itself, so
+  the owner rewords "יש כיוון" in one place (`incidents.md`, "The room held a
+  time that no longer existed").
+
 - **The place is the room's own words, asked for only when nobody said one,
   and it rides the confirmation onto the calendar event** (owner,
   2026-09-20; `meetings.location`, migration 077). "פוקר אצל יוסי" carries

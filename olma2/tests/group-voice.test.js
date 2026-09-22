@@ -12,6 +12,7 @@ const groupVoice = require('../src/domain/group-voice');
 const options = require('../src/domain/meeting-options');
 const groupsJob = require('../src/jobs/groups');
 const groupOutbox = require('../src/domain/group-outbox');
+const proactiveText = require('../src/domain/proactive-text');
 
 let db;
 before(async () => { db = await freshDb(); });
@@ -244,6 +245,108 @@ test('no base line for nobody — everybody agreed, or the settle minute is alre
   assert.deepEqual(groupVoice.whoIsIn({ participants: 2, confirmedOption: { yes: [p(1), p(2)] } }), { all: true, phones: [] });
   assert.deepEqual(groupVoice.whoIsIn({ participants: 3, confirmedOption: { yes: [p(1)] } }), { all: false, phones: ['+972500000001'] });
   assert.equal(groupVoice.whoIsIn({ participants: 3, confirmedOption: null }), null);
+});
+
+// The room was told שבת 16:00, Sharon deleted it and put 17:00 on the table,
+// and the room went on holding a time that no longer existed (Padel Gang,
+// meeting 40, 2026-09-22). Pure: the decision, not the sweep.
+test('the room hears again when the time it was told about left the table', () => {
+  const p = (n) => ({ name: `p${n}`, phone: `+97250000000${n}`, tag: `@+97250000000${n}` });
+  const opt = (id, slot, yes, missing) => ({
+    optionId: id, slot, startsAt: new Date(Date.now() + 86400e3).toISOString(),
+    yes, no: [], missing, quorum: { known: false },
+  });
+  const co = (opts) => ({
+    status: 'negotiating', participants: 3, silent: [], settleDueAt: null, options: opts,
+  });
+  const said = { saidStarted: true, saidBase: true, nowMs: Date.now() };
+
+  // The time the room heard is gone, and another one leads.
+  const gone = co([opt(2, 'שבת 17:00', [p(1), p(2)], [p(3)])]);
+  const moved = groupVoice.decideGroupLine(gone, { ...said, saidBaseSlot: 'שבת 16:00' });
+  assert.equal(moved.kind, 'moved');
+  assert.equal(moved.was, 'שבת 16:00');
+  assert.equal(moved.slot, 'שבת 17:00');
+  assert.deepEqual(moved.missing, ['+972500000003'], 'and it still says who is owed');
+
+  // Merely OVERTAKEN is not news: the room's picture is still true, and a line
+  // for every change of lead is how this becomes chatter.
+  const stillThere = co([
+    opt(1, 'שבת 16:00', [p(1)], [p(2), p(3)]),
+    opt(2, 'שבת 17:00', [p(1), p(2)], [p(3)]),
+  ]);
+  assert.equal(groupVoice.decideGroupLine(stillThere, { ...said, saidBaseSlot: 'שבת 16:00' }).kind, 'none');
+
+  // Said once per gone slot: after the moved line the stamp names 17:00, so the
+  // same table says nothing more.
+  assert.equal(groupVoice.decideGroupLine(gone, { ...said, saidBaseSlot: 'שבת 17:00' }).kind, 'none');
+
+  // Nothing to say yet: the replacement has one yes, so the room waits rather
+  // than hearing "יש כיוון" about a time nobody else has agreed to. The stamp
+  // still names the gone slot, so the line goes out when a direction appears.
+  const thin = co([opt(2, 'שבת 17:00', [p(1)], [p(2), p(3)])]);
+  assert.equal(groupVoice.decideGroupLine(thin, { ...said, saidBaseSlot: 'שבת 16:00' }).kind, 'none');
+
+  // A coordination from before the column existed has no slot to compare, and
+  // says nothing new rather than guessing.
+  assert.equal(groupVoice.decideGroupLine(gone, { ...said, saidBaseSlot: null }).kind, 'none');
+  // And the first base line is unchanged.
+  assert.equal(groupVoice.decideGroupLine(gone, { saidStarted: true, nowMs: Date.now() }).kind, 'base');
+});
+
+// End to end, the real sequence: the room is told 16:00, that option is
+// deleted, 17:00 takes its place and two people agree to it.
+test('the sweep says the time moved, once, and then has nothing more to say', async () => {
+  // Room 13: 9 belongs to the night test below, and two tests sharing a room
+  // share its queue (see the note at the top of this file).
+  const { group, people } = await room(13, { subject: 'פאדל השבוע' });
+  const [a, b] = people;
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'פאדל השבוע'));
+  const meetingId = Number(started.data.meeting.id);
+  const mine = JID(13);
+  // The room may only name somebody an invite actually reached (`asked`), so
+  // the private half has to happen before any line here names anyone.
+  await deliverInvites(meetingId);
+  const sent = [];
+  // The opening line first — `started` comes before anything else this room
+  // hears, and spending it here is what lets the base line be next.
+  await pass(sent, null, mine);
+  assert.match(sent[0].body, /מתחילה לתאם/);
+
+  const at = slotStart('שבת 16:00', { hourUtc: 13 });
+  const first = await withTx(db.pool, async (c) =>
+    (await options.add(c, a.id, meetingId, 'שבת 16:00', at)).data.option.id);
+  await withTx(db.pool, (c) => options.answer(c, b.id, meetingId, first, 'y'));
+  await pass(sent, null, mine);
+  assert.match(sent[1].body, /יש כיוון: \*שבת 16:00\*/, 'the room is told a time');
+  const slotAfterBase = await db.pool.query(
+    `SELECT group_base_slot FROM meetings WHERE id = $1`, [meetingId]);
+  assert.equal(slotAfterBase.rows[0].group_base_slot, 'שבת 16:00', 'and which time it was told');
+
+  // She takes it off and puts another one on — the live sequence exactly.
+  const later = slotStart('שבת 17:00', { hourUtc: 14 });
+  const second = await withTx(db.pool, async (c) =>
+    (await options.add(c, a.id, meetingId, 'שבת 17:00', later)).data.option.id);
+  await withTx(db.pool, (c) => options.remove(c, b.id, meetingId, first));
+  await withTx(db.pool, (c) => options.answer(c, b.id, meetingId, second, 'y'));
+
+  await pass(sent, null, mine);
+  assert.equal(sent.length, 3, JSON.stringify(sent));
+  assert.match(sent[2].body, /\*שבת 16:00\* כבר לא על השולחן/);
+  assert.match(sent[2].body, /יש כיוון: \*שבת 17:00\*/);
+  const after = await db.pool.query(`SELECT group_base_slot FROM meetings WHERE id = $1`, [meetingId]);
+  assert.equal(after.rows[0].group_base_slot, 'שבת 17:00');
+
+  await pass(sent, null, mine);
+  assert.equal(sent.length, 3, 'and not again for the same change');
+});
+
+test('the moved line reads as one sentence about the change and one about the new time', () => {
+  const body = proactiveText.renderGroupCoordination({
+    kind: 'moved', was: 'שבת 16:00', slot: 'שבת 17:00', yes: 2, missing: ['+972500000003'],
+  }, null);
+  assert.equal(body, '*שבת 16:00* כבר לא על השולחן 🔄\nיש כיוון: *שבת 17:00* — 2 כבר בפנים.\nמחכה ל@+972500000003 🤞');
+  assert.doesNotMatch(body, /שרון|Sharon/, 'tags, never names — the room addresses people only by tag');
 });
 
 test('nothing proactive goes out in the middle of the night', async () => {

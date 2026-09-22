@@ -64,6 +64,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room window opened on a row nobody would look at (fixed 2026-09-19)](#the-room-window-opened-on-a-row-nobody-would-look-at-fixed-2026-09-19)
 - [The coordination waited on the man who started it (fixed 2026-09-19)](#the-coordination-waited-on-the-man-who-started-it-fixed-2026-09-19)
 - [The room heard its own state from memory (fixed 2026-09-19)](#the-room-heard-its-own-state-from-memory-fixed-2026-09-19)
+- [The room held a time that no longer existed (fixed 2026-09-22)](#the-room-held-a-time-that-no-longer-existed-fixed-2026-09-22)
 - [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
 - [The place nobody asked for (fixed 2026-09-20)](#the-place-nobody-asked-for-fixed-2026-09-20)
 - [The room chased three people, two of whom had never been asked (fixed 2026-09-22)](#the-room-chased-three-people-two-of-whom-had-never-been-asked-fixed-2026-09-22)
@@ -2209,6 +2210,57 @@ person than the rows it had just written. It is `participants` now.
 **It is inert until the gateway is restarted.** Plugin code loads at startup and
 `deploy.sh` does not restart it; the trace line to look for is
 `{"group":"g-7","turn":"prepended"}`.
+
+### The room held a time that no longer existed (fixed 2026-09-22)
+
+Padel Gang's first coordination (meeting 40). At 13:13 Sharon put שבת 16:00 on
+the table and said yes to it. At 13:15:42 the room heard the line it is supposed
+to hear: `יש כיוון: *שבת 16:00* — 2 כבר בפנים. מחכה ל@… 🤞`. Yuval and Miron
+then said yes to it too, so three of the five people being asked had agreed to
+that time.
+
+At 13:25:05 Sharon removed it — she had written privately that four o'clock was
+a bit hot — and ten seconds later added שבת 17:00. Yuval agreed to the new one,
+Miron agreed eleven minutes later, and the coordination carried on perfectly
+well in private. The room was never told any of it. For the rest of that
+afternoon the only thing it had ever heard about a time was a time that had been
+deleted, and the owner's reason for minding is the exact one: people had marked
+it, and it was no longer relevant.
+
+`group_base_at` is why. Every room line is stamped on its own column so it is
+said once per coordination, and a boolean stamp can say that the line was said
+but not WHICH time it said. There was also no room line of any kind for the
+table changing: the private side has had one since 2026-09-09 (a removal rides
+the next thing each person hears, `options.unheardRemovals` — which worked here;
+both men were told), and the room side had no equivalent at all.
+
+`meetings.group_base_slot` (migration 082) is the slot text the room heard, and
+the trigger is deliberately the narrowest one that answers the owner's reason:
+that slot is no longer among the active options AND another time leads. A
+leading time merely OVERTAKEN by another leaves the room's picture true, and a
+line for every change of lead is how this family of lines turns into the
+chattering the whole design avoids. If the replacement has nobody else's yes
+yet, nothing is said and the stamp goes on naming the gone slot, so the line
+waits and goes out with a direction rather than announcing a hole. And the
+`group_outbox` key carries the time that WENT, so a second named time leaving
+the table is a second line while the same one is never said twice.
+
+`group_coord_moved` carries the new direction as `{{lead}}`, rendered from
+`group_coord_base` itself rather than re-worded beside it, so "יש כיוון" has one
+spelling wherever it is said:
+
+```
+*שבת 16:00* כבר לא על השולחן 🔄
+יש כיוון: *שבת 17:00* — 2 כבר בפנים.
+מחכה ל@+972… 🤞
+```
+
+**Still open, and a separate question the owner asked to examine**: whether
+17:00 should have been ADDED beside 16:00 rather than replacing it.
+`meeting-options.remove` is open to any participant and asks nothing about who
+else has agreed to the option — here one person deleted a time three of five had
+said yes to, and rebuilding the same agreement took three more messages. The
+table holds five, so there was room for both.
 
 ### The room waited for nobody (fixed 2026-09-20)
 

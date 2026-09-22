@@ -79,7 +79,7 @@ function leadingOption(options) {
 // saying the base of a plan that is already settled is worse than saying
 // nothing.
 function decideGroupLine(co, {
-  saidStarted, saidBase, saidChase, saidDone, saidCalendar, saidDayOf, saidHour,
+  saidStarted, saidBase, saidBaseSlot, saidChase, saidDone, saidCalendar, saidDayOf, saidHour,
   startedAtMs, nowMs, timezone,
 } = {}) {
   if (!co) return { kind: 'none', reason: 'nothing being coordinated' };
@@ -117,7 +117,21 @@ function decideGroupLine(co, {
   }
 
   const lead = leadingOption(co.options);
-  if (!saidBase && lead) {
+  // The room was told a time, and that time is no longer on the table (owner,
+  // 2026-09-22: "יש אנשים שסימנו אותו ועכשיו הוא לא רלוונטי"). `group_base_at`
+  // alone could not see this — it says the line was SAID and not which time it
+  // said — so Padel Gang went on holding שבת 16:00 for as long as the
+  // coordination ran, eleven minutes after Sharon deleted it and replaced it
+  // with 17:00. `saidBaseSlot` is that slot text, and this is deliberately the
+  // narrowest trigger that answers the owner's reason: a leading time merely
+  // OVERTAKEN by another leaves the room's picture true, and only a time that
+  // stopped existing makes it false. It is also what bounds the line — one per
+  // named slot that disappeared, not one per change of lead — and why nothing
+  // is said until there is a new direction to say: the stamp keeps naming the
+  // gone slot, so the line simply waits for `enough` and goes out then.
+  const namedGone = Boolean(saidBase && saidBaseSlot && lead && saidBaseSlot !== lead.slot
+    && !(co.options || []).some((o) => o.slot === saidBaseSlot));
+  if ((!saidBase || namedGone) && lead) {
     // What "a base" is depends on what the room said it needs. A game has a
     // number and it is that number; anywhere else two people who can both make
     // the same time IS the direction, and one person agreeing with themselves
@@ -132,7 +146,8 @@ function decideGroupLine(co, {
     // to say while somebody is still owed; with nobody missing, or the
     // grace already armed, the next thing this room hears is "סגור".
     if (enough && missing.length && !co.settleDueAt) {
-      return { kind: 'base', slot: lead.slot, yes: lead.yes.length, missing: missing.slice(0, MAX_TAGS) };
+      const line = { slot: lead.slot, yes: lead.yes.length, missing: missing.slice(0, MAX_TAGS) };
+      return namedGone ? { kind: 'moved', was: saidBaseSlot, ...line } : { kind: 'base', ...line };
     }
   }
 
