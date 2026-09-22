@@ -20,6 +20,7 @@ const { freshDb, makeUser } = require('./helpers');
 const { withTx } = require('../src/db/pool');
 const { sweepReminders, sweepDigests } = require('../src/jobs/sweeps');
 const reminders = require('../src/domain/reminders');
+const preferences = require('../src/domain/preferences');
 const digest = require('../src/domain/digest');
 const digestBlock = require('../src/domain/digest-block');
 
@@ -199,4 +200,35 @@ test('a nudge at another hour is still its own message', async () => {
   const { rows } = await db.pool.query(
     `SELECT kind FROM outbox WHERE user_id = $1 AND kind = 'reminder'`, [user.id]);
   assert.equal(rows.length, 1);
+});
+
+// The two branches of this sweep each arm the next occurrence, and for one
+// rebase they did it with two copies of the same INSERT — the carry path
+// keeping the plain `nextOccurrence` while the ordinary path had learned the
+// quiet-day rule. A nudge is dateless and repeating, which is exactly the
+// shape that rule can move, so the copy that forgot it was the one that runs
+// for the feature this file is about. Both go through
+// `sweeps.armNextOccurrence` now, and this is what would notice if they
+// stopped.
+test('a nudge the digest carried arms its next occurrence off a quiet day too', async () => {
+  await withTx(db.pool, (c) => preferences.remember(c, user.id, 'quiet_days', 'mon'));
+  try {
+    // MORNING is a Monday, and a bare weekly returns to Monday for ever.
+    const taskId = await nudgedTask('לחדש את הדרכון', { repeat: 'weekly' });
+    await tick();
+
+    const { rows: next } = await db.pool.query(
+      `SELECT remind_at FROM task_reminders
+        WHERE task_id = $1 AND carried_at IS NULL AND sent_at IS NULL`, [taskId]);
+    assert.equal(next.length, 1, 'the next occurrence is spawned');
+    const day = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
+      .format(new Date(next[0].remind_at));
+    assert.equal(day, 'Tue 09:35', 'moved off their Monday, at the hour they asked for');
+
+    const { rows: a } = await db.pool.query(
+      `SELECT 1 FROM audit_log WHERE actor_id = $1 AND event = 'reminder.moved_off_quiet_day'`, [user.id]);
+    assert.equal(a.length, 1);
+  } finally {
+    await withTx(db.pool, (c) => preferences.remember(c, user.id, 'quiet_days', 'none'));
+  }
 });
