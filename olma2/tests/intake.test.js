@@ -1141,6 +1141,28 @@ test('agent doctrine: a heartbeat poll is answered with NO_REPLY and nothing els
   assert.match(tpl, /a DIFFERENT user's chat/, 'names the cross-user leak, not just noise');
 });
 
+// 2026-09-22: Sharon asked Olma what she runs on and she told him — by name,
+// in English, in the same breath as a real answer. The owner's line is that
+// how the thing works behind the scenes is not the user's to be handed, and
+// this is the half of it a person reads. The other half is the reply gate's
+// `english` tier, which is what catches the paragraph when the doctrine does
+// not (incidents.md, "The introduction that came back").
+test('agent doctrine: what she runs on is not a topic, asked or volunteered', () => {
+  const fs = require('node:fs');
+  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
+
+  assert.match(tpl, /What you run on is not a topic/);
+  // Every word for it, because naming only "the model" leaves the platform.
+  assert.match(tpl, /Never name the platform, the model, the\s+company or the vendor behind you/);
+  // What is being BUILT, not only what is running — Sharon was told about
+  // work in progress, which no column of his has any claim on.
+  assert.match(tpl, /what is being built on it/);
+  // An interrogation is the easy case; the aside is the one that happened.
+  assert.match(tpl, /not asked outright, and not\s+as a friendly aside/);
+  // And it must not read as a refusal: there is an answer, it is just hers.
+  assert.match(tpl, /You are Allma, this person's assistant/);
+});
+
 test('agent doctrine: act-first outranks curiosity, and one question is a hard cap', () => {
   const fs = require('node:fs');
   const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');

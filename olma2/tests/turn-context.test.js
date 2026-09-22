@@ -154,6 +154,29 @@ test('a projection reaches advise as undefined, not as NULL, so advise refuses o
     'the exact projection that shipped, named by the column it dropped');
 });
 
+test('the context answer carries the reader\'s language, because the reply gate has no other way to learn it', async () => {
+  // The gate runs in the GATEWAY, which has no database. The only thing that
+  // crosses to it per person is this answer, so the `english` tier's whole
+  // input is this one field — and the third value has to survive the wire as
+  // the absence of an answer, never as `false`.
+  const he = await agentUser({ locale: 'he' });
+  const en = await agentUser({ locale: 'en' });
+  const both = await agentUser({ locale: 'he' });
+  await db.pool.query(`UPDATE users SET locale_observed = 'en' WHERE id = $1`, [both.id]);
+  await enable(he.phone, en.phone, both.phone);
+  for (const [u, expected] of [[he, true], [en, false], [both, null]]) {
+    await open({ agentId: u.agentId, messageId: `3EB0LANG${u.id}`, kind: 'text' });
+    const r = await context({ agentId: u.agentId });
+    assert.equal(r.readerWritesHebrew, expected, `${u.agentId}: ${JSON.stringify(r)}`);
+  }
+  // And the plugin holds exactly what it was handed, including the forgetting.
+  plugin._resetReaders();
+  plugin.rememberReader(he.agentId, true);
+  plugin.rememberReader(he.agentId, null);
+  assert.equal(plugin.readerOf(he.agentId), null, 'a null answer clears, it does not leave the old one');
+  plugin._resetReaders();
+});
+
 test('what they told the greeter is unanswered, and their first turn is told so — greeted or not', async () => {
   // Sharon Mishayev, 2026-09-22, his first ever words to Olma — sent to the
   // greeter, from a padel room she sits in, answering the question that room

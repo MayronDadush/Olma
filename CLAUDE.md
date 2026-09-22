@@ -193,6 +193,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **A repair job fires precisely when the system's belief about itself is already wrong, so it must be the most sceptical thing in the codebase.**
 - **A reply that got lost is RE-SENT, never re-answered.**
 - **The model's own working-out is stopped in the GATEWAY, not by the doctrine.**
+- **The last tier's missing input was not a pattern, it was the READER** — `writesHebrew` is a tri-state, `null` acts like `false`, and the value rides `turn_context` to a gate with no database
 
 ### Reminders, tasks and dates
 
@@ -287,6 +288,7 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 
 - **`agents-template.md` reaches existing users only via `scripts/resync-agent-templates.js`.**
 - **The doctrine is FULL: 39,229 of the 39,250 chars the gateway will inject (2026-09-05; it was 39,249 the day before).**
+- **What Olma runs on is not the user's to be handed — asked outright or as an aside.**
 - **The tool schemas have a ceiling too: 55k chars of JSON, 700 per description, the identity line under 40**
 - **When brokerd has put a 👍 on their message, the result says so (`hints.markPlaced`) and the model answers `NO_REPLY` unless words add something**
 - **The owner's rule is that anything which CAN end in a like should**

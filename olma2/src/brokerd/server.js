@@ -415,7 +415,16 @@ function createBrokerServer({ pool, flood, placeMark, now }) {
         stoppedReminders: (pre && pre.stoppedReminders) || 0,
       });
       if (pre) pre.contextSent = true;
-      out = { ok: true, enabled: true, context: turnDomain.renderContext(data), directive: data.directive };
+      out = {
+        ok: true, enabled: true, context: turnDomain.renderContext(data), directive: data.directive,
+        // Not for the model — for the GATE. `reply_payload_sending` fires in
+        // the same plugin, in the same turn, and decides locally with no
+        // socket in the path; the one fact it cannot work out from the text is
+        // who is reading it. The columns live here, so the verdict is computed
+        // here and the plugin only remembers it (see `domain/language
+        // .writesHebrew`, and the `english` tier in `domain/reply-leak`).
+        readerWritesHebrew: require('../domain/language').writesHebrew(user),
+      };
     });
     if (cardStale && userId) await refreshUserCard(pool, userId);
     return out;

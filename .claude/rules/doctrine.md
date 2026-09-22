@@ -39,6 +39,22 @@ title means this file. Grep the title, not the filename.
   (`doctrineMeter` in `dashboard.js`) — an unreadable config reads as an
   unknown ceiling, never as the gateway's 20k default.
 
+- **What Olma runs on is not the user's to be handed — asked outright or as
+  an aside.** Sharon asked what she runs on three hours into his first day and
+  she named the platform, in English, beside a real answer (2026-09-22;
+  `incidents.md`, "The gate had no idea who was reading"). No platform, no
+  model, no company, no vendor, and nothing about how the system works behind
+  the scenes or what is being BUILT on it — the last of those is the owner's
+  sharpest line and the one no column of the user's has any claim on. She is
+  Allma, this person's assistant, and that is the whole answer; it is not a
+  refusal, so the thing they actually needed is still answered in the same
+  breath. `tests/intake.test.js` pins every clause, including the aside — an
+  interrogation was never the shape this took. **It was paid for**, per the
+  ceiling above: two anecdotes and a sentence naming the retired `/pick/` page
+  went, and every rule they carried stayed word for word. The other half of it
+  is `domain/reply-leak`'s `english` tier, which catches the paragraph when
+  the doctrine does not (`.claude/rules/turns-and-replies.md`).
+
 - **The tool schemas have a ceiling too: 55k chars of JSON, 700 per
   description, the identity line under 40** (`tests/tool-schema-budget.test.js`).
   They are injected on every turn for every user, so guidance about what to

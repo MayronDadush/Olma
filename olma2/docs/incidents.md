@@ -197,6 +197,7 @@ never trust a dated narrative for something you are about to act on.
 - [A lost reply is re-sent, not re-answered (fixed 2026-09-09)](#a-lost-reply-is-re-sent-not-re-answered-fixed-2026-09-09)
 - [The sentinel that only stripped itself (fixed 2026-09-15)](#the-sentinel-that-only-stripped-itself-fixed-2026-09-15)
 - [The working-out, measured (fixed 2026-09-15)](#the-working-out-measured-fixed-2026-09-15)
+- [The gate had no idea who was reading (fixed 2026-09-22)](#the-gate-had-no-idea-who-was-reading-fixed-2026-09-22)
 - [The working-out arrived instead of the message (fixed 2026-09-10)](#the-working-out-arrived-instead-of-the-message-fixed-2026-09-10)
 - [The greeter's own message id (fixed 2026-09-19)](#the-greeters-own-message-id-fixed-2026-09-19)
 - [The gate knew the leak's vocabulary, not its shape (fixed 2026-09-15)](#the-gate-knew-the-leaks-vocabulary-not-its-shape-fixed-2026-09-15)
@@ -8189,6 +8190,59 @@ header so the next reader knows what each pattern was measured against.
 Same as every plugin change: inert until the gateway restarts, and the port
 in `gateway-plugin/olma-turn/index.js` carries it, held to the domain module
 by the parity corpus.
+
+### The gate had no idea who was reading (fixed 2026-09-22)
+
+Sharon Mishayev, three hours into his first day, asked Olma what she runs on.
+She told him: **"כן, בדיוק — אני רצה על OpenClaw."** Above that line, and
+above four others he was sent the same afternoon, sat the model's own
+working-out in English — "Now write the reply — one short message, one offer,
+the zone statement, then the name question." Two complaints in one message
+from the owner, and they turn out to be one bug and one gap.
+
+**The gap is doctrine and it is answered in doctrine.** Nothing in
+`agents-template.md` had ever said that the platform underneath is not the
+user's to be handed; the template says at length what Olma is FOR, and a
+direct friendly question about what she runs on met no rule at all. The new
+paragraph is four sentences and it had to be paid for, because the doctrine
+sits within twenty characters of the gateway's injection ceiling: a heartbeat
+anecdote, a refusal anecdote and a sentence naming a retired page went, and
+the rules they carried stayed word for word. `tests/intake.test.js` asserts
+every clause of it, including "not asked outright, and not as a friendly
+aside" — an interrogation was never the shape this took.
+
+**The bug is that the reply gate could not see any of it.** Every tier in
+`domain/reply-leak.js` was lexical or structural — a frame marker, a column
+name, a third-person opening with a tell — and English working-out that
+happens to be plain prose has no tell. Measured over eight days of real
+traffic (639 paragraphs, 37 agents): **twelve English paragraphs were
+delivered with no finding of any kind.** Nine of them went to people who write
+Hebrew and were leaks; three were real replies to the two people who write
+English. So the missing input was never a pattern — it was the reader. An
+English paragraph is a leak or a reply depending entirely on who opens it, and
+the gate runs in the gateway, which has no database.
+
+`domain/language.writesHebrew` is therefore a TRI-STATE and the third value is
+the whole point. u-13 עמית's row says `locale: he` and his `locale_observed`
+says `en`, because he writes English; the one English paragraph he was sent in
+those eight days was a real reply. Filed one way, writing the other is not
+somebody a destructive tier may be run against, and `null` behaves exactly
+like `false` — a guess never acts. brokerd's `turn_context` answers with the
+value, the plugin holds it per agent in a module-level map, and the gate reads
+it back a whole turn later when the model has finished writing.
+
+Two guards came out of measuring rather than reasoning. `MEDIA:` is the
+gateway's own attachment convention and is not a sentence. And the FIRST
+measurement deleted a subscribed OpenRouter update the owner had asked for,
+because a `>`-quoted block of model names and prices is English with no Hebrew
+letter in it — a relayed quote is somebody else writing, not Olma. With both
+guards the final pass changes 10 of 203 messages: seven trims that keep the
+Hebrew answer underneath, three cancels where the entire message was
+working-out and the real work was a tool call, and not one real reply touched.
+
+The parity corpus now runs every case through both implementations under all
+three values of the flag, because an option is the newest way for the port and
+the module to drift and the default is only one of its three answers.
 
 ### The working-out arrived instead of the message (fixed 2026-09-10)
 

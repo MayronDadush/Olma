@@ -306,3 +306,29 @@ title means this file. Grep the title, not the filename.
   same way `INTERNAL_NAMES` is — a verb or a noun goes on it because a real
   message carried it, and every count in the module header names what the
   pattern was measured against.
+
+- **The last tier's missing input was not a pattern, it was the READER**
+  (2026-09-22; `incidents.md`, "The gate had no idea who was reading"). The
+  residue the measurement above left behind was English prose with no tell of
+  any kind, and there is no pattern that separates it from a real reply,
+  because the same paragraph IS a leak or a reply depending on who opens it:
+  in eight days, twelve English paragraphs went out with no finding, nine to
+  people who write Hebrew and three as real replies to the two who write
+  English. So `english` drops on a fact about the person and not about the
+  text. **`domain/language.writesHebrew` is a TRI-STATE and `null` acts
+  exactly like `false`** — u-13's `locale` says `he` and his `locale_observed`
+  says `en`, and the one English paragraph he got was real; two columns that
+  disagree are not a person a destructive tier may run against. The gate is in
+  the gateway and has no database, so the value rides brokerd's `turn_context`
+  answer (`readerWritesHebrew`), the plugin holds it per agent
+  (`rememberReader`/`readerOf`), and the gate reads it back a whole turn later
+  — an agent nobody has answered for is unknown, which arms nothing, and that
+  is the honest state for `intake` and `ggreet`. **Two guards came out of
+  measuring and neither would have been reasoned to**: a `MEDIA:` line is the
+  gateway's attachment convention and not a sentence, and a `>`-quoted block
+  is somebody ELSE writing — the first measurement deleted the owner's own
+  subscribed OpenRouter update, which is English with no Hebrew letter in it.
+  Final pass: 10 of 203 messages change, 0 real replies touched. **And the
+  parity corpus runs every case under all three values of the flag**, because
+  an option is the newest way for the port and the module to drift and the
+  default is only one of its three answers.
