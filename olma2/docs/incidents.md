@@ -214,6 +214,7 @@ never trust a dated narrative for something you are about to act on.
 - [The mailbox, Phase 1: read-only Gmail, and nobody's mail is browsed (2026-09-02)](#the-mailbox-phase-1-read-only-gmail-and-nobodys-mail-is-browsed-2026-09-02)
 - [Voice-note transcription moved to ElevenLabs Scribe v2 (2026-08-18)](#voice-note-transcription-moved-to-elevenlabs-scribe-v2-2026-08-18)
 - [Onboarding has no "welcome" step any more (redesigned 2026-08-17)](#onboarding-has-no-welcome-step-any-more-redesigned-2026-08-17)
+- [Three people, three invented domains, one minute (2026-09-22)](#three-people-three-invented-domains-one-minute-2026-09-22)
 - [The link she said she sent (fixed 2026-09-07)](#the-link-she-said-she-sent-fixed-2026-09-07)
 - [A Google consent with no calendar scope was stored as "connected" (fixed 2026-08-20)](#a-google-consent-with-no-calendar-scope-was-stored-as-connected-fixed-2026-08-20)
 - [The move to allma.world, and the truncated link that asked for the admin password (2026-09-04)](#the-move-to-allmaworld-and-the-truncated-link-that-asked-for-the-admin-password-2026-09-04)
@@ -9155,6 +9156,61 @@ person is already having simply continues, silently more capable.
 - Stdio MCP servers get NO identity env vars from the gateway (probed) —
   the workspace `.olma-identity` file remains the only auth root; brokerd's
   `config_guard` job watches the config invariants that protect it.
+
+### Three people, three invented domains, one minute (2026-09-22)
+
+The owner forwarded a screenshot of his own invite to a padel coordination:
+one sentence, one question, and under it
+`https://dashboard.openclaw.ai/meetings/40`, which is nobody's page. The first
+answer — "the model invented a link" — was right and far too small.
+
+What the outbox says: row 10990, a `meeting_invite` for meeting 40, delivered
+16:13:14. What the instruction said: *"Also call open_my_dashboard with
+meeting_id=40 and put its url in this same message on a line of its own."*
+What the transcript says: one tool call in that turn, `get_meeting_status`,
+and then the message. What `magic_links` says: **no link was minted for
+meeting 40 at all** — not for him, not for anyone, not once in that whole
+fan-out. Three people were sent three different fabrications inside one
+minute, each ending in the number the instruction had handed over:
+
+```
+16:12  u-36   https://dashboard.olma.ai/meetings/40
+16:12  u-12   https://dash.olma.app/meetings/40
+16:13  u-3    https://dashboard.openclaw.ai/meetings/40
+16:20  u-12   https://dash.olma.app/meetings/40   (again, off the two-options hint)
+```
+
+A scan of every agent's transcript store found **eight** of these across five
+people, going back to 2026-09-05 — including `my.olma.app/dashboard?meeting=30`,
+a retired `/pick/` link, and one to a stranger's `base44.app` sandbox. The
+first estimate in this session was "twice, ever", and it was wrong because the
+grep named one domain; a scan has to enumerate every URL Olma has ever written
+and then ask which of them are ours, not search for the fake you happen to
+have seen.
+
+**The discriminator was already in the codebase.** Three places offer this
+page. Two of them told the model to CALL `open_my_dashboard` and paste the
+result; both produced fabrications. The third, `withStartLink`, mints the link
+server-side and hands the characters over on the result — and has never
+produced one, which the comment above it had already predicted in 2026-09-15's
+words: "one call fewer, and nothing to forget".
+
+So the two remaining paths now hand the characters over too.
+`openclaw.makeDeliverer` mints at DELIVERY — never at enqueue, because a link
+lives 24 hours and a row the gate holds overnight would arrive dead — and
+`inviteLinkClause` prints the url it was given or prints nothing at all: a
+message with no link still asks its question, and that is strictly better than
+one with a link that goes nowhere. `offerDashboardOnce` mints on the result,
+where `createLinkUrl` writes the same `meeting.dashboard_offered` row that
+makes "once" true. **Which rows get a link is asked of the instruction
+builder** (`offersDashboardLink` puts a probe through `instructionFor` and
+looks for it on the way out) rather than answered by a second list of kinds —
+two lists is how the mint and the clause come to disagree about who gets one.
+
+What this does not close: nothing in Postgres can see a fabricated link. There
+is no row for a link that was never minted, so no detector could have found
+this and none did — the owner's screenshot did. That half is the delivery
+gate, and it is its own change.
 
 ### The link she said she sent (fixed 2026-09-07)
 

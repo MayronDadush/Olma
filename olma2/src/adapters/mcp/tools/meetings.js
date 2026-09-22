@@ -1,7 +1,7 @@
 'use strict';
 // meetings — one slice of the tool registry (see ../registry.js).
 const {
-  dashboardAuth, meetings, calendar, meetingFanout, audit, S, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, cancelCalendarCleanup, meetingBrief, CANCEL_CLEANUP_HINTS, tool, connectedUserByPhone, users, ok, err,
+  dashboardAuth, meetings, calendar, meetingFanout, S, enqueue, actorName, fanout, supersedeQueuedMeetingRows, activeParticipantsExcept, cancelCalendarCleanup, meetingBrief, CANCEL_CLEANUP_HINTS, tool, connectedUserByPhone, users, ok, err,
 } = require('./_shared');
 const format = require('../../../domain/message-format');
 const listBlock = require('../../../domain/list-block');
@@ -26,10 +26,20 @@ async function offerDashboardOnce(client, user, meetingId, res) {
     `SELECT 1 FROM audit_log WHERE actor_id = $1 AND event = 'meeting.dashboard_offered'
        AND (detail->>'meetingId')::bigint = $2 LIMIT 1`, [user.id, mid]);
   if (rows[0]) return res;
-  await audit.record(client, user.id, 'meeting.dashboard_offered', { meetingId: mid });
+  // Minted HERE, not asked for. This used to say "call open_my_dashboard with
+  // meeting_id=N and put the URL in your reply", and a model that skipped the
+  // call still wrote a URL — u-12 got `dash.olma.app/meetings/40` off this
+  // very hint on 2026-09-22, twenty minutes after the same coordination's
+  // invite had handed him another invented one. `createLinkUrl` writes the
+  // `meeting.dashboard_offered` row the SELECT above reads, so "once" is still
+  // once, and a link that could not be minted offers nothing rather than
+  // leaving the model a meeting id to build a plausible URL out of.
+  const link = await dashboardAuth.createLinkUrl(client, user.id, { meetingId: mid });
+  if (!link.ok || !link.data.meetingId) return res;
+  res.data.dashboard = link.data;
   res.data.hints = {
     ...(res.data.hints || {}),
-    dashboard: `${active.length} options are now on the table. ONCE, at the end of this reply, offer their page: call open_my_dashboard with meeting_id=${mid} and put the URL in your reply — it opens straight on this coordination, where they tap the days and see everyone's answers together. Say it is optional and that continuing here in chat works exactly the same. If they pass, never bring it up again for this meeting.`,
+    dashboard: `${active.length} options are now on the table. ONCE, at the end of this reply, offer their page: give \`dashboard.url\` on a line of its own — it opens straight on this coordination, where they tap the days and see everyone's answers together. Say it is optional and that continuing here in chat works exactly the same. If they pass, never bring it up again for this meeting.`,
   };
   return res;
 }
