@@ -13,6 +13,7 @@ const options = require('../src/domain/meeting-options');
 const groupsJob = require('../src/jobs/groups');
 const groupOutbox = require('../src/domain/group-outbox');
 const flags = require('../src/domain/flags');
+const proactiveText = require('../src/domain/proactive-text');
 
 let db;
 before(async () => { db = await freshDb(); });
@@ -599,7 +600,9 @@ test('the room hears it in their words, over their tag, once', async () => {
   const sent = [];
   await pass(sent, null, group.external_id);
   assert.equal(sent.length, 1);
-  assert.equal(sent[0].body, `📣 מ@${b.phone}: ״ב-4 קצת חם״`);
+  // Nothing was added or taken off by them, so the line is their sentence and
+  // nothing else — the clause is a claim about the table and there is none.
+  assert.equal(sent[0].body, `@${b.phone}: ב-4 קצת חם 📣`);
   // Their TAG, never their name — the rule every room line obeys.
   assert.equal(sent[0].body.includes(b.first_name), false);
 
@@ -610,6 +613,55 @@ test('the room hears it in their words, over their tag, once', async () => {
     `SELECT relay_said_at FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`,
     [meetingId, b.id]);
   assert.ok(rows[0].relay_said_at);
+});
+
+// שרון's own case, end to end: she took 16:00 off, put 17:00 on, and told Olma
+// privately why. Three people had already marked the old time and the room was
+// told none of it. The owner chose this wording on 2026-09-22.
+test('when they also changed the table, the room hears the reason and the change together', async () => {
+  const { group, people } = await room(16);
+  const [a, b] = people;
+  await withTx(db.pool, (c) => flags.setFlag(c, groupMeetings.RELAY_FLAG, group.external_id));
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, a, 'פאדל'));
+  const meetingId = Number(started.data.meeting.id);
+  // Two distinct moments on the same Saturday: `slotStart` snaps to the weekday
+  // the text names, so the same `hourUtc` for both would be ONE option — the
+  // "same moment twice is one option" rule — and the second add would become a
+  // yes on the first.
+  const four = slotStart('שבת 16:00', { hours: 72, hourUtc: 13 });
+  const five = slotStart('שבת 17:00', { hours: 72, hourUtc: 14 });
+
+  const opening = [];
+  await pass(opening, null, group.external_id);
+  assert.equal(opening.length, 1);
+
+  // She adds one, then replaces it with another — both writes are hers.
+  const old = await withTx(db.pool, async (c) =>
+    (await options.add(c, b.id, meetingId, 'שבת 16:00', four)).data.option.id);
+  await withTx(db.pool, (c) => options.add(c, b.id, meetingId, 'שבת 17:00', five));
+  await withTx(db.pool, (c) => options.remove(c, b.id, meetingId, old));
+  assert.equal((await withTx(db.pool, (c) => groupMeetings.relayToRoom(c, b.id, meetingId, 'ב-4 קצת חם'))).ok, true);
+
+  const sent = [];
+  await pass(sent, null, group.external_id);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].body, `@${b.phone}: ב-4 קצת חם — החלפתי את *שבת 16:00* באופציה של *שבת 17:00* 📣`);
+});
+
+// Every shape, drawn, so the copy the owner approved is pinned somewhere a
+// reword has to walk past.
+test('the three shapes of that line, exactly', () => {
+  const base = { kind: 'relay', userId: 7, from: '+972542636760', what: 'ב-4 קצת חם' };
+  assert.equal(proactiveText.renderGroupCoordination(base),
+    '@+972542636760: ב-4 קצת חם 📣');
+  assert.equal(proactiveText.renderGroupCoordination({ ...base, added: 'שבת 17:00' }),
+    '@+972542636760: ב-4 קצת חם — הוספתי את האופציה *שבת 17:00* 📣');
+  assert.equal(proactiveText.renderGroupCoordination({ ...base, added: 'שבת 17:00', was: 'שבת 16:00' }),
+    '@+972542636760: ב-4 קצת חם — החלפתי את *שבת 16:00* באופציה של *שבת 17:00* 📣');
+  // A removal with nothing in its place is not a replacement, and the decision
+  // layer never sends one: `was` without `added` draws the plain line.
+  assert.equal(proactiveText.renderGroupCoordination({ ...base, was: 'שבת 16:00' }),
+    '@+972542636760: ב-4 קצת חם 📣');
 });
 
 test('a room with members who never wrote is told they are not counted, without a name or a tag', async () => {

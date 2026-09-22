@@ -341,6 +341,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **A group turn is told the room's coordination state before the model's first word, and that block is the only thing it may speak from.**
 - **A message in the room with no tag on it is ENDED, never answered — and the window it opens is the point.** Inert behind a flag, and measuring while it is.
 - **Every line a room hears unasked is Olma's own text, save exactly one: a sentence a MEMBER asked her to say there** — one per person per coordination, and only in a room the flag names
+- **…and that line carries what the same person did to the TABLE, because the reason and the change are one piece of news** — three shapes, chosen by what is true
 - **A paused member is counted into a room's coordination only until their one invite is spent; a day of silence takes them out**
 - **A member's message in the room opens the gate's fifteen-minute window for that room's coordination — and, since 2026-09-09, the room's own announcement window; nothing else**
 

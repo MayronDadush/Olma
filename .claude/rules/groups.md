@@ -428,3 +428,17 @@ have already had to be argued for.
   `group-meetings.statusOf` — that status is also the block a group turn speaks
   from, and a model that could see a sentence waiting would say it itself, in
   its own words, a pass early and outside the room's hours.
+
+
+- **…and that line carries what the same person did to the TABLE, because the
+  reason and the change are one piece of news** (owner's wording, 2026-09-22:
+  *"ב-4 קצת חם הוספתי / החלפתי לאופציה של השעה 17 📣"*). Three shapes, chosen by
+  what is true and never by a model: `group_coord_relay_swapped` when they took
+  a time off and put one on, `group_coord_relay_added` when they only added, and
+  `group_coord_relay` — their sentence alone — when they touched nothing.
+  `pendingRelay` reads only THEIR writes, and only an addition that is still
+  `active`, so a time somebody else has since removed is not reported as news
+  about this table; a removal with nothing in its place draws the plain line,
+  because "החלפתי" would be false and a time leaving the table has a line of its
+  own. The joiner is a dash, not a comma: their sentence keeps its own
+  punctuation and a comma after a full stop is what that looks like.

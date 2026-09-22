@@ -258,13 +258,36 @@ const TEMPLATES = [
     sample: { slot: 'יום שלישי 20:00', yes: '3', missing: '@+972501234567' },
     text: 'יש כיוון: *{{slot}}* — {{yes}} כבר בפנים.\nמחכה ל{{missing}} 🤞',
   },
+  // Three shapes, one per thing that is true. The owner picked the wording on
+  // 2026-09-22 ("ב-4 קצת חם הוספתי / החלפתי לאופציה של השעה 17 📣") — the
+  // sentence reads as the member's own line in the room, with what they did to
+  // the table on the end of it, because the reason and the change are one piece
+  // of news and שרון's room got neither. The joiner is a dash and not a comma
+  // on purpose: their sentence keeps its own punctuation, and "חם., החלפתי"
+  // is what a comma looks like after a full stop.
   {
     key: 'group_coord_relay', audience: 'group', label: 'תיאום — מישהו ביקש להגיד משהו כאן',
-    help: 'כשחבר מבקש ממנה בפרטי שהקבוצה תשמע משפט. פעם אחת לכל אדם בכל תיאום, במילים שלו.',
+    help: 'כשחבר מבקש ממנה בפרטי שהקבוצה תשמע משפט, והוא לא שינה כלום בשולחן. פעם אחת לכל אדם בכל תיאום, במילים שלו.',
     vars: { from: 'התיוג של מי שביקש', what: 'המשפט שלו, כמו שנאמר' },
     required: ['from', 'what'],
     sample: { from: '@+972501234567', what: 'ב-4 קצת חם' },
-    text: '📣 מ{{from}}: ״{{what}}״',
+    text: '{{from}}: {{what}} 📣',
+  },
+  {
+    key: 'group_coord_relay_added', audience: 'group', label: 'תיאום — ביקש להגיד משהו, והוסיף מועד',
+    help: 'אותו משפט, כשאותו אדם גם הוסיף מועד שעדיין על השולחן. ככה החדר שומע גם את הסיבה וגם מה השתנה.',
+    vars: { from: 'התיוג של מי שביקש', what: 'המשפט שלו, כמו שנאמר', added: 'המועד שהוא הוסיף' },
+    required: ['from', 'what', 'added'],
+    sample: { from: '@+972501234567', what: 'ב-4 קצת חם', added: 'שבת 17:00' },
+    text: '{{from}}: {{what}} — הוספתי את האופציה *{{added}}* 📣',
+  },
+  {
+    key: 'group_coord_relay_swapped', audience: 'group', label: 'תיאום — ביקש להגיד משהו, והחליף מועד',
+    help: 'כשאותו אדם גם הוריד מועד וגם הוסיף אחד. זה המקרה של שרון: אנשים סימנו את 16:00 והחדר לא ידע שהיא כבר לא על השולחן.',
+    vars: { from: 'התיוג של מי שביקש', what: 'המשפט שלו, כמו שנאמר', was: 'המועד שהוא הוריד', added: 'המועד שהוא הוסיף' },
+    required: ['from', 'what', 'was', 'added'],
+    sample: { from: '@+972501234567', what: 'ב-4 קצת חם', was: 'שבת 16:00', added: 'שבת 17:00' },
+    text: '{{from}}: {{what}} — החלפתי את *{{was}}* באופציה של *{{added}}* 📣',
   },
   {
     key: 'group_coord_chase', audience: 'group', label: 'תיאום — מזרזת באמצע',

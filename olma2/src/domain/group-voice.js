@@ -122,9 +122,12 @@ function decideGroupLine(co, {
   // coordination, `group-meetings.relayToRoom` — not here: this function can see
   // that there is one to say and could never judge whether it was worth saying.
   if (pendingRelay && pendingRelay.phone && pendingRelay.what) {
+    // `added`/`was` ride along when that same person changed the table — the
+    // reason and the change are one piece of news, and שרון's room got neither.
     return {
       kind: 'relay', userId: pendingRelay.userId,
       from: pendingRelay.phone, what: pendingRelay.what,
+      added: pendingRelay.added || null, was: pendingRelay.was || null,
     };
   }
 

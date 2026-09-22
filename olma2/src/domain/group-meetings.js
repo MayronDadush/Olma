@@ -500,13 +500,30 @@ async function relayToRoom(client, userId, meetingId, what) {
 // the model to say the sentence itself, a pass before the fixed line does.
 async function pendingRelay(client, meetingId) {
   const { rows } = await client.query(
-    `SELECT mp.user_id, u.phone, mp.relay_text
+    `SELECT mp.user_id, u.phone, mp.relay_text,
+            -- What THEY did to this table, so the reason and the change reach
+            -- the room as one piece of news (owner, 2026-09-22). Only their own
+            -- writes, and only an addition that is still answerable: a time they
+            -- added and somebody else then removed is not news about this table.
+            (SELECT o.slot_text FROM meeting_options o
+              WHERE o.meeting_id = mp.meeting_id AND o.added_by = mp.user_id
+                AND o.status = 'active' ORDER BY o.id DESC LIMIT 1) AS added,
+            (SELECT o.slot_text FROM meeting_options o
+              WHERE o.meeting_id = mp.meeting_id AND o.removed_by = mp.user_id
+                AND o.status = 'deleted' ORDER BY o.decided_at DESC LIMIT 1) AS was
        FROM meeting_participants mp JOIN users u ON u.id = mp.user_id
       WHERE mp.meeting_id = $1 AND mp.relay_text IS NOT NULL AND mp.relay_said_at IS NULL
         AND mp.state <> 'opted_out'
       ORDER BY mp.user_id LIMIT 1`, [meetingId]);
   const r = rows[0];
-  return r ? { userId: Number(r.user_id), phone: r.phone, what: r.relay_text } : null;
+  if (!r) return null;
+  // A removal with nothing put in its place says nothing here: "החלפתי" would
+  // be false and the room hears that a time left the table on its own line.
+  const added = r.added || null;
+  return {
+    userId: Number(r.user_id), phone: r.phone, what: r.relay_text,
+    added, was: added ? (r.was || null) : null,
+  };
 }
 
 async function markRelaySaid(client, meetingId, userId) {

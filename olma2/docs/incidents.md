@@ -2469,6 +2469,23 @@ argument as `markPlaced`, one layer down: what the model can see, it will use.
 names. A relay is a sentence; it is not a way to notify people, and the only
 tag the line carries is the one Olma draws for the person who asked.
 
+**And the line says what that person did to the table.** The owner read the
+first draft — her sentence in quotes, and nothing else — and gave the wording
+himself: *"אפשר לעשות שההודעה תהיה משהו בסגנון של: ב-4 קצת חם הוספתי / החלפתי
+לאופציה של השעה 17 📣"*. He is right that they are one piece of news: the reason
+without the change leaves the room holding an hour that is gone, and the change
+without the reason is the `moved` line, which nobody asked for. So there are
+three shapes and which one is used is a FACT, never a choice — `pendingRelay`
+reads only that person's own writes, and only an addition still `active`, so a
+time somebody else has since removed is not reported as news about this table,
+and a removal with nothing in its place draws the plain sentence because
+"החלפתי" would be false. The joiner is a dash rather than his comma for one
+reason: their sentence keeps its own punctuation, and "חם., החלפתי" is what a
+comma looks like after a full stop. What the room gets, for שרון's own rows
+(option 43 off, option 46 on, both hers):
+
+    @+972542636760: ב-4 קצת חם — החלפתי את *שבת 16:00* באופציה של *שבת 17:00* 📣
+
 The schema ceiling went up for it, the second deliberate raise ever: 55,500 ->
 56,500 (`tests/tool-schema-budget.test.js`), with the owner's word on it, and
 most of the description is the boundary against the two tools this is NOT — a
