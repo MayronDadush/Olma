@@ -32,6 +32,7 @@ const groupMeetings = require('../domain/group-meetings');
 const groupVoice = require('../domain/group-voice');
 const groupOutbox = require('../domain/group-outbox');
 const groupConnections = require('../domain/group-connections');
+const { isTaggableNumber } = require('../domain/proactive-text');
 const gate = require('../outbox/gate');
 // Through the worker facade, never channels/sessions.js: every read there is
 // synchronous, and this runs inside brokerd on the loop that answers live
@@ -371,13 +372,28 @@ async function sweepGroups(client, deps) {
       // until somebody actually asks her for something, which is what the
       // paragraph above says the nudge is for.
       const notice = groups.decideNotice(group);
-      if (notice.kind !== 'none') {
+      // The whole sentence is the tags: "עוד מחכה ל: {{missing}}". A room whose
+      // missing members are all LIDs has nobody this line can name, and
+      // `templates.render` fills an empty var with an empty string — so saying
+      // it anyway means "עוד מחכה ל:  🧐", which is the shape of
+      // `rules/groups.md`'s base line said to nobody. Silence is the lesser of
+      // the two, and it is NOT the owner's "every tag gets an answer" being
+      // quietly dropped: there is no true sentence here to say, and the
+      // sentence itself is his to change (a count instead of tags is a
+      // `message_templates` decision, not code's).
+      const nameable = notice.kind === 'too_large'
+        || missing.some((m) => isTaggableNumber(m.phone));
+      if (notice.kind !== 'none' && nameable) {
         // The key counts the notice, so a second tag earns a second (shorter)
         // one while the first can never be written twice.
         const nth = Number(group.notices_sent || 0) + 1;
         const payload = notice.kind === 'too_large'
           ? { maxMembers: Number(await flags.getFlag(client, 'group_max_members')) || 25 }
-          : { kind: notice.kind, missing: missing.map((m) => m.phone) };
+          // Only the ones the line can actually name. `mentionTokens` filters
+          // again at render — it is the last gate and covers every other
+          // caller — but the row is the record of what she SAID, and a payload
+          // listing a LID she never tagged is a row that lies about itself.
+          : { kind: notice.kind, missing: missing.map((m) => m.phone).filter(isTaggableNumber) };
         await groupOutbox.enqueue(client, {
           groupId: group.id,
           kind: notice.kind === 'too_large' ? 'too_large' : 'gate_notice',

@@ -213,6 +213,25 @@ have already had to be argued for.
   since the start (`proactive-text.mentionTokens`, capped at `MAX_TAGS`), and
   the model's half was the last place a name could still get out.
 
+- **A tag is a NUMBER, and the roster hands us LIDs in the same column** (owner,
+  2026-09-22). `chat_group_members.phone` holds a WhatsApp LID for members the
+  gateway only ever named that way: the roster is the envelope's
+  `group_members`, a list of digits with no JID on it, so nothing downstream can
+  see which is which. `proactive-text.isTaggableNumber` cuts at 13 digits — the
+  box's own numbers: 2,673 LID keys run 12-15 digits, 5,346 real numbers stop at
+  13, so nothing 14 or longer has ever been a number here and no real member is
+  silenced. `mentionToken` answers `null` and `mentionTokens` filters before
+  `MAX_TAGS`, so the overflow count counts people. **It is a filter, not a
+  guarantee** — 95 of those LIDs are 12-13 digits and indistinguishable, one of
+  Padel Gang's three among them — so never read a rendered tag list as
+  "everybody who is missing"; the airtight answer is upstream. **And a line whose
+  whole content is tags is not said when it can name nobody**: the gate notice
+  is skipped, uncounted and unstamped rather than going out as
+  `עוד מחכה ל:  🧐`, which costs the owner's "every tag gets an answer" and is
+  left as a cost, because the sentence for a room waiting on somebody we cannot
+  name is his to write (`incidents.md`, "The room asked three numbers that were
+  nobody").
+
 - **The "סגור" line names who can make it, a calendar line is said only for
   a SHARED event, and a base line is never said to nobody** (owner,
   2026-09-20, off coordinations 35–37). `group-meetings.statusOf` exposes
