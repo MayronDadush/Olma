@@ -68,6 +68,7 @@ never trust a dated narrative for something you are about to act on.
 - [The place nobody asked for (fixed 2026-09-20)](#the-place-nobody-asked-for-fixed-2026-09-20)
 - [The room chased three people, two of whom had never been asked (fixed 2026-09-22)](#the-room-chased-three-people-two-of-whom-had-never-been-asked-fixed-2026-09-22)
 - [The room that could never open (2026-09-22)](#the-room-that-could-never-open-2026-09-22)
+- [The room asked, and heard nothing back for hours (2026-09-22)](#the-room-asked-and-heard-nothing-back-for-hours-2026-09-22)
 - [A message in the room, with no tag on it (2026-09-19, half shipped)](#a-message-in-the-room-with-no-tag-on-it-2026-09-19-half-shipped)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [The man who only ever answered from the page (fixed 2026-09-20)](#the-man-who-only-ever-answered-from-the-page-fixed-2026-09-20)
@@ -2373,6 +2374,37 @@ stranger joins. They can read everything said in the room regardless, and no
 group tool returns anybody's private row, so that was judged acceptable — but it
 is a real change and the test that used to prove re-locking now pins the flag
 closed to keep proving it.
+
+### The room asked, and heard nothing back for hours (2026-09-22)
+
+A room tags her, asks for a game to be arranged, and the coordination opens: four
+private conversations start, four people are asked when they are free. In the
+room itself, nothing. The first line a room could hear about its own
+coordination was `base` — "יש כיוון" — and `base` waits for two people to have
+agreed on the same time, which in every coordination measured so far took hours.
+Between the asking and that sentence the room had no evidence anything had
+happened at all.
+
+Nothing was broken. The five moments the room hears were chosen on 2026-09-07 and
+"I have started" was not one of them; it reads as an omission only once you watch
+a real room ask for something.
+
+**Added on the owner's ask** ("תכתוב בקבוצה שאתה מתחיל בתיאום בפרטי עם מי שכתב
+לה"): `group_coord_started`, decided first in the negotiating branch of
+`group-voice.decideGroupLine`, stamped on `meetings.group_started_at`
+(migration 080) like every other line in that family — so a room asleep at 01:00
+hears it in the morning, once, and never twice.
+
+**It counts people instead of naming them, and that is the part worth keeping.**
+The line carries `co.participants` — who she is actually asking — and
+`co.outside`, how many members of the room she could not sweep in because they
+have never written to her, said only as "somebody here is not counted" and only
+when somebody is. Naming them was available and is wrong twice over: who is
+missing is already the gate notice's own sentence, so the room would hear the
+same list in two voices; and a tag is a number the roster may not even hold (the
+LID rule in `rules/groups.md`). A line with no tags in it cannot get that wrong.
+The test asserts the absence directly — no `@`, no first name — because that is
+the kind of thing a later rewording quietly reintroduces.
 
 ### A message in the room, with no tag on it (2026-09-19, half shipped)
 
