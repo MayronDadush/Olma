@@ -403,3 +403,43 @@ test('notices are stamped where the sweep and the opening line can read them', a
   assert.equal(other.notices_sent, 1);
   assert.equal(other.gate_notice_at, null);
 });
+
+// ── resolveLidMembers, the pure half ───────────────────────────────────────
+test('a LID in the roster becomes the number the gateway mapped it to', () => {
+  const out = groups.resolveLidMembers(
+    [{ phone: '+972501111111', displayName: 'דני' }, { phone: '+69320805752936', displayName: null }],
+    { '69320805752936': '+972509412015' });
+  assert.equal(out.resolved, 1);
+  assert.deepEqual(out.members, [
+    { phone: '+972501111111', displayName: 'דני' },
+    { phone: '+972509412015', displayName: null },
+  ]);
+});
+
+// `null` is "nobody asked, or nothing could be read", and it must be a no-op —
+// the other direction reads as every LID member leaving the room.
+test('no map changes nothing, and an unmapped LID is left in place', () => {
+  const roster = [{ phone: '+972501111111', displayName: null }, { phone: '+6266525098172', displayName: null }];
+  assert.deepEqual(groups.resolveLidMembers(roster, null), { members: roster, resolved: 0 });
+  const empty = groups.resolveLidMembers(roster, {});
+  assert.equal(empty.resolved, 0);
+  assert.deepEqual(empty.members.map((m) => m.phone), ['+972501111111', '+6266525098172']);
+});
+
+// The same human listed twice, once by each address — one member, and the NAME
+// survives whichever row carried it.
+test('a LID that resolves onto a number already in the roster collapses into one member', () => {
+  const out = groups.resolveLidMembers(
+    [{ phone: '+972509412015', displayName: null }, { phone: '+69320805752936', displayName: 'גל' }],
+    { '69320805752936': '+972509412015' });
+  assert.equal(out.resolved, 1);
+  assert.deepEqual(out.members, [{ phone: '+972509412015', displayName: 'גל' }]);
+});
+
+// A mapping onto the member's own number is not a mapping.
+test('a map entry pointing at the same number is not counted as resolved', () => {
+  const out = groups.resolveLidMembers(
+    [{ phone: '+972509412015', displayName: null }], { '972509412015': '+972509412015' });
+  assert.equal(out.resolved, 0);
+  assert.deepEqual(out.members, [{ phone: '+972509412015', displayName: null }]);
+});

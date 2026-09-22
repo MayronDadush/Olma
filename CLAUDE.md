@@ -323,6 +323,7 @@ Loads when you **Read** a file under `src/domain/group-connections.js`, `src/dom
 - **A room's first sentence waits out the channel restart its own registration caused.**
 - **TWO columns say somebody has written to Olma, because two voices can hear their first message.**
 - **Being in the room IS the introduction, and it is not the inferred closeness the old rule forbids.**
+- **The roster's digits may be a LID, and the gateway's own reverse map is the only way back to a number**
 - **A room opens on TWO connected members, not on everybody — and it still says who is not here**
 - **The room reaches each member's OWN page as a group already made**
 - **The person who asked the ROOM for a coordination is asked privately too** — a tag carries no times, and the test asserted the bug

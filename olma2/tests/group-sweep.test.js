@@ -30,8 +30,13 @@ const groupOutbox = require('../src/domain/group-outbox');
 // assertion below about what the room heard a test of the hold instead. The
 // hold has its own test in group-outbox.test.js; these are about the sentences.
 async function pass(deps) {
-  const decided = await withTx(db.pool, (c) => job.sweepGroups(c, deps));
-  const drained = await groupOutbox.drainOnce(db.pool, { channelWrittenAt: () => null, ...deps });
+  // `lidPhoneNumbers` defaults to an empty map so these tests do not each spin
+  // up the sessions worker thread to read a temp directory that holds no
+  // mappings — same reason `channelWrittenAt` is pinned below. A test about the
+  // resolution passes its own map in `deps`.
+  const withDeps = { lidPhoneNumbers: async () => ({}), ...deps };
+  const decided = await withTx(db.pool, (c) => job.sweepGroups(c, withDeps));
+  const drained = await groupOutbox.drainOnce(db.pool, { channelWrittenAt: () => null, ...withDeps });
   return { ...decided, ...drained };
 }
 
@@ -859,4 +864,53 @@ test('a room that opens without everyone gets its agent and does not claim every
   // c is still missing, and the room still knows it.
   const evald = await withTx(db.pool, (c2) => groupsDomain.evaluate(c2, row.id));
   assert.deepEqual(evald.data.missing.map((m) => m.phone), [c.phone]);
+});
+
+// ── the roster resolves a LID to its number ─────────────────────────────────
+// Padel Gang, in miniature. Gal is in the room under his LID, he HAS written to
+// Olma, and until the reverse map was consulted his roster row resolved to no
+// user at all — so the gate counted him missing for ever and the room tagged a
+// number nobody dials (`incidents.md`, "The room that could never open").
+test('a member the gateway names by LID is resolved to their number, and counted', async () => {
+  const a = await connectedUser('+972605000040');
+  const gal = await connectedUser('+972605000041', { firstName: 'גל' });
+  const lid = '69320805752936';
+  const jid = JID(33);
+  // The roster as the gateway really hands it over: digits, no JID on them.
+  const roster = `${a.phone}, +${lid}`;
+
+  const g = gatewayWith({ jid, roster });
+  const out = await pass({ ...g.deps, lidPhoneNumbers: async () => ({ [lid]: gal.phone }) });
+  assert.equal(out.lidsResolved, 1);
+
+  const group = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  const live = await withTx(db.pool, (c) => groupsDomain.listMembers(c, group.id));
+  assert.deepEqual(live.map((m) => m.phone).sort(), [a.phone, gal.phone].sort(),
+    'the room holds his NUMBER, not the LID the gateway addressed him by');
+  assert.equal(live.every((m) => m.user_id), true, 'and both rows resolve to a user');
+
+  // Which is the whole point: nobody is missing, so the room is open on its own
+  // terms rather than on the flag's floor.
+  const evald = await withTx(db.pool, (c) => groupsDomain.evaluate(c, group.id));
+  assert.deepEqual(evald.data.missing, []);
+  assert.equal(evald.data.state, 'open');
+});
+
+// An empty map is what an unreadable credentials directory answers, and it must
+// change nothing. The direction matters: a roster emptied of its LID rows would
+// read as every one of those members walking out of the room.
+test('no mapping resolves nothing, and takes nobody out of the room', async () => {
+  const a = await connectedUser('+972605000050');
+  const lid = '259201444126724';
+  const jid = JID(34);
+  const g = gatewayWith({ jid, roster: `${a.phone}, +${lid}` });
+  const out = await pass({ ...g.deps, lidPhoneNumbers: async () => ({}) });
+  assert.equal(out.lidsResolved, 0);
+
+  const group = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  const live = await withTx(db.pool, (c) => groupsDomain.listMembers(c, group.id));
+  assert.deepEqual(live.map((m) => m.phone).sort(), [a.phone, `+${lid}`].sort(),
+    'still two members: unresolvable is not gone');
+  const evald = await withTx(db.pool, (c) => groupsDomain.evaluate(c, group.id));
+  assert.deepEqual(evald.data.missing.map((m) => m.phone), [`+${lid}`]);
 });

@@ -761,6 +761,19 @@ function lidToPhone(base) {
   return map;
 }
 
+// The same map, as the roster sweep needs it: keyed on the LID's digits, values
+// in E.164, and the caller is another process's worker thread — so a plain
+// object, cloneable, rather than a Map. `null` is NOT possible here and that is
+// deliberate: `lidToPhone` answers with an empty map both when the directory is
+// unreadable and when it holds no mappings, and for this reader the two are the
+// same instruction — resolve nothing, change no roster row. Anything else would
+// make an unreadable credentials directory look like every member leaving.
+function lidPhoneNumbers() {
+  const out = {};
+  for (const [lid, phone] of lidToPhone(HOME())) out[lid] = `+${phone}`;
+  return out;
+}
+
 // Olma's own number and LID, so the self-chat lane is never reported as a
 // stranger. Read from creds.json, which is the account's credential file:
 // ONLY `me.id` and `me.lid` are touched and only their digits leave this
@@ -852,5 +865,5 @@ module.exports = {
   findConversationInfo, indexPath, parseKey,
   readRecentMessages, readPeerUserText, readPeerDisplayName, displayNameFromPrompt,
   listTranscripts, readTranscriptUsage, readSessionEventsSlice, hasInboundUserTurn,
-  scanAssistantTextSince, listInboundPeers,
+  scanAssistantTextSince, listInboundPeers, lidPhoneNumbers,
 };

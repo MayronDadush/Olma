@@ -123,6 +123,27 @@ have already had to be argued for.
   `incidents.md`, "The room coordinated without the person who opened it"). The
   comment above the first one asserted it was "exactly" the gate's condition.
 
+- **The roster's digits may be a LID, and the gateway's own reverse map is the
+  only way back to a number.** `chat_group_members.phone` holds whatever the
+  inbound envelope's `group_members` said, with no JID on it, so a member
+  addressed by LID is indistinguishable from one addressed by phone and resolves
+  to no user — which is why a room could count somebody missing for ever who had
+  written to Olma that morning. `channels/sessions.lidPhoneNumbers` reads
+  `credentials/whatsapp/<account>/lid-mapping-<digits>_reverse.json` (the
+  gateway writes one the moment it first resolves a LID), the sweep reads it ONCE
+  per pass through the worker facade, and the pure
+  `groups.resolveLidMembers(members, map)` rewrites the roster before
+  `registerGroup`/`syncRoster` see it, returning `{ members, resolved }` so the
+  caller never re-derives the predicate. **Three directions are load-bearing.**
+  A map of `{}` — which is also what an unreadable credentials directory
+  answers — changes nothing, because a roster quietly emptied of its LID rows
+  reads as every one of those members leaving the room. An unresolvable LID is
+  never DROPPED: they are still somebody in the room and the gate is entitled to
+  keep counting them missing. And a LID resolving onto a number already in the
+  roster collapses into ONE member through `dedupe`, never a second row for one
+  person. `syncRoster` then does the rest on its own: the LID row gets `left_at`,
+  the phone row joins and resolves to the user, and who was here stays history.
+
 - **A room opens on TWO connected members, not on everybody — and it still
   says who is not here.** `group_open_without_everyone` (flag, open by the
   owner's choice 2026-09-22, a bool row on the admin main page) is read by

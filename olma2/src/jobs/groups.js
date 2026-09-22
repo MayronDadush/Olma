@@ -143,6 +143,13 @@ async function sweepGroups(client, deps) {
   // store keeps the bare text and the block was never there to read.
   const readContext = deps.readGroupContext || ((agentId, key) => groupContext.read(client, agentId, key));
   const now = deps.now || new Date();
+  // The gateway's LID → phone reverse map, read once for the whole pass. An
+  // unreadable credentials directory answers `{}`, which resolves nothing and
+  // leaves every roster exactly as it arrived — the one direction that is safe,
+  // because the other would read as every LID member leaving their room.
+  const lidPhones = deps.lidPhoneNumbers
+    ? await deps.lidPhoneNumbers()
+    : await sessions.lidPhoneNumbers();
 
   // Before anything else, and every pass: a stale sender gate is the one
   // failure here that is invisible from the outside — she keeps working, she
@@ -172,6 +179,8 @@ async function sweepGroups(client, deps) {
     // twice (migration 055).
     registered: [], intros: 0, notices: 0, opened: [], relocked: [], announced: 0,
     unreadable: 0, strangers: 0, skipped: 0,
+    // Roster rows the reverse map turned from a LID into a phone this pass.
+    lidsResolved: 0,
     // Connections made because two people share a room. Counts the pairs
     // this pass changed, so a steady state reads 0 and a new member reads
     // however many people were already in there with her.
@@ -189,7 +198,18 @@ async function sweepGroups(client, deps) {
     // Null is "no evidence", not "an empty group" — a store we could not read
     // must never look like a group with nobody in it.
     if (!ctx || !ctx.members) { out.unreadable++; continue; }
-    const { members, unparsed } = groups.parseRoster(ctx.members);
+    // A member the gateway names by LID resolves to no user, so the room's gate
+    // counts them missing for ever. The reverse map is read ONCE per pass and
+    // shared by every room: it is a directory listing plus a small file per LID
+    // (2,673 of them on the box), and doing that per room would put it on the
+    // daemon's loop several times a tick for no new information.
+    const parsed = groups.parseRoster(ctx.members);
+    const unparsed = parsed.unparsed;
+    const resolvedRoster = groups.resolveLidMembers(parsed.members, lidPhones);
+    const members = resolvedRoster.members;
+    // Counted per PASS, so a steady state reads 0 and the number answers "did
+    // anything get resolved" without a log line naming anybody's number.
+    out.lidsResolved += resolvedRoster.resolved;
     if (!members.length) { out.unreadable++; continue; }
 
     let group = await groups.getByExternalId(client, 'whatsapp', jid);
