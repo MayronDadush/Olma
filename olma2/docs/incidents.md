@@ -175,6 +175,7 @@ never trust a dated narrative for something you are about to act on.
 - [The switch that did nothing on a task with no date (2026-09-19)](#the-switch-that-did-nothing-on-a-task-with-no-date-2026-09-19)
 - [The triage he did by hand, and the fourth detector the box refused (2026-09-19)](#the-triage-he-did-by-hand-and-the-fourth-detector-the-box-refused-2026-09-19)
 - [The light that would not go round (2026-09-22)](#the-light-that-would-not-go-round-2026-09-22)
+- [The picker that opened underneath (fixed 2026-09-22)](#the-picker-that-opened-underneath-fixed-2026-09-22)
 - [The list he could not put his own task into (2026-09-19)](#the-list-he-could-not-put-his-own-task-into-2026-09-19)
 - [An offer to call a number the bridge has never served (fixed 2026-09-06)](#an-offer-to-call-a-number-the-bridge-has-never-served-fixed-2026-09-06)
 - [The reply's first six seconds were bookkeeping (2026-09-05)](#the-replys-first-six-seconds-were-bookkeeping-2026-09-05)
@@ -6995,6 +6996,53 @@ surface, nothing decided, and no button at all unless a second one exists.
 This is the same shape as the rule it sits under: having nothing to say draws
 nothing.
 
+
+### The picker that opened underneath (fixed 2026-09-22)
+
+The owner sent one screenshot of the coordination sheet — "ברגע שבוחרים שעה
+מדויקת זה לא נראה טוב" — and it held three separate faults, none of which is
+visible in a diff.
+
+**The picker opened under the sheet that called it.** `#timeSheet` had been
+bumped to `z-index:82` precisely so it would beat the sheets defined after it
+in the markup; then `#mtOptSheet` was bumped to 82 for its own good reason, and
+the two tied. A tie goes to DOM order, `#mtOptSheet` is the later element, and
+the sheet that summoned the picker painted over it. What a person saw when
+they tapped the hour was nothing at all — or, when the picker was the taller of
+the two, a strip of it sticking out above a sheet that had not moved. Both
+rules are correct on their own; the fault only exists between them. `#timeSheet`
+is now 83, with the reason written as a rule rather than a number: it is the
+only sheet always opened from INSIDE another one, so it is not one of the
+layer, it is the top of it.
+
+**The hour sat outside the row it belonged to.** Choosing "שעה מדויקת" drew a
+second pill under the chips — an unlabelled `20:00` alone on its own line at
+the start edge, which reads as a caption, not as the button that opens the
+picker. The chip and its value are one answer, so they are now one chip: once
+there is an hour the chip says the hour, with a clock on it, and tapping it
+again opens the picker — which is what a tap on an already-pressed chip used
+to do, precisely nothing. The same renderer draws it in all three places that
+ask for a time (the sheet, the new coordination, the per-day rows), so they
+cannot drift apart.
+
+**And the button under it named the wrong hour.** The CTA says the moment it
+will add ("הוספה · מחר · 20:00"). The picker's handler patched the chip's own
+text by hand and re-rendered nothing, so picking 19:40 left the button saying
+20:00 while the option it added was 19:40 — the button lying about what it was
+about to do. It re-renders the sheet now, which is what every other control in
+it already did.
+
+The first attempt at the second fault was to keep the pill and move it into
+the chips row on each render. It worked once: the next render's `innerHTML`
+destroyed the element it had just been given, and from then on `$("#…Chip")`
+was null and the sheet's render threw halfway through. **An element appended
+into a container somebody else rewrites is borrowed, not owned** — draw it
+with the row, or keep it out of the row entirely.
+
+`tests/user-dashboard-design.test.js` holds all three: the picker's layer
+strictly above every bumped sheet (measured against whatever is bumped, not
+against the number 82), one renderer for the hour with no chip of its own
+outside the row, and the input handler that redraws the button.
 
 ### The list he could not put his own task into (2026-09-19)
 
