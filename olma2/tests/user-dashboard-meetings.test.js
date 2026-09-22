@@ -115,17 +115,25 @@ test('a yes from the page arms the meeting, and the minute tells everybody', asy
     'when the system settles it there is no actor mid-turn, so everyone gets the row');
 });
 
-test('a no from the page is a decline, and the initiator hears it', async () => {
+// This used to assert that the initiator heard the decline as a message of its
+// own. He does not any more (owner, 2026-09-22; `domain/meeting-fanout.js`):
+// opening a coordination is not a subscription to every answer in it. The
+// ANSWER still has to be recorded and still has to reach the table — that half
+// is what the page's no was ever for — so it is what is asserted now.
+test('a no from the page is a real decline, and it tells nobody on its own', async () => {
   const id = await coordination(gali, [me, ron], 'ישיבה');
   const when = tomorrowAt('11');
   await tx((c) => meetings.proposeSlot(c, gali.id, id, 'מחר ב־11:00', when));
 
   const r = await actAs(me, 'respondToMeeting', { meetingId: id, accept: false });
   assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
+  const st = await tx((c) => meetings.getStatus(c, gali.id, id));
+  const opt = st.data.options.find((o) => new Date(o.startsAt).getTime() === new Date(when).getTime());
+  assert.equal(opt.answers[String(me.id)], 'n', 'the no is on the table where the initiator reads it');
   const { rows } = await db.pool.query(
     `SELECT user_id FROM outbox WHERE kind = 'meeting_slot_declined'
        AND (payload->>'meetingId')::bigint = $1`, [id]);
-  assert.deepEqual(rows.map((x) => Number(x.user_id)), [Number(gali.id)]);
+  assert.deepEqual(rows, [], 'and not as a notification nobody else in the coordination gets');
 });
 
 // Since options (2026-09-05) a newer proposal does not replace the one the
@@ -151,17 +159,28 @@ test('a yes from a page that sat open lands on the option it saw, never on the n
   assert.equal(nowhere.ok, false, 'a moment that is not on the table is refused');
 });
 
-test('leaving from the page removes them and tells the initiator', async () => {
+// Stepping out of a coordination that carries on is an update like any other
+// and is no longer its own message either. The RESULT still is: when the last
+// of them goes and nobody matched, the person who opened it is told, because
+// that is the one thing the table cannot say to him later.
+test('leaving from the page removes them; only the coordination DYING is told', async () => {
   const id = await coordination(gali, [me, ron], 'יציאה');
   const r = await actAs(me, 'leaveMeeting', { meetingId: id });
   assert.equal(r.ok, true, r.ok ? '' : JSON.stringify(r.error));
   const { rows } = await db.pool.query(
     `SELECT state FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2`, [id, me.id]);
   assert.equal(rows[0].state, 'opted_out');
-  const told = await db.pool.query(
+  const quiet = await db.pool.query(
     `SELECT user_id FROM outbox WHERE kind IN ('meeting_opt_out','meeting_no_match')
        AND (payload->>'meetingId')::bigint = $1`, [id]);
-  assert.equal(told.rows.length >= 1, true, 'somebody left and nobody was told');
+  assert.deepEqual(quiet.rows, [], 'ron is still in it, so there is nothing to announce');
+
+  await actAs(ron, 'leaveMeeting', { meetingId: id });
+  const told = await db.pool.query(
+    `SELECT user_id, kind, release_after FROM outbox
+      WHERE (payload->>'meetingId')::bigint = $1 AND kind = 'meeting_no_match'`, [id]);
+  assert.deepEqual(told.rows.map((x) => Number(x.user_id)), [Number(gali.id)]);
+  assert.equal(told.rows[0].release_after, null, 'a result is never paced');
 });
 
 test('a meeting somebody left still shows the person, counted in nothing', async () => {

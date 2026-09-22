@@ -163,6 +163,41 @@ title means this file. Grep the title, not the filename.
   nobody is told about their own removal. `meeting_options.removed_by`
   (migration 063) exists so the name is in the same query as the slot.
 
+- **A negotiation message WAITS a quarter of an hour behind the last one that
+  reached that person, and everything that happens meanwhile folds into it**
+  (`meeting-fanout.PACE_MS`, owner 2026-09-22). מירון opened a padel
+  coordination and read five messages in twelve minutes — the invite, a time
+  added, two people declining the same Wednesday sixty-three seconds apart,
+  another time added (`incidents.md`, "Five messages in twelve minutes, about
+  one coordination"). The fold that says several things once already existed
+  and never got to run: every negotiation row is `urgent`, so it left inside a
+  minute and there was nothing unsent left to fold into — Kapish's four rows
+  only ever folded because the NIGHT was holding them. Measured before the
+  number was picked: 46 of the 68 consecutive coordination messages ever
+  delivered landed inside fifteen minutes of the one before, 31 inside five,
+  and half an hour would have caught two more. It is `release_after`, not a
+  gate hold — the row is SCHEDULED, never looked at, and the worker's picker
+  already honours the column — and the baseline is what was DELIVERED, so a
+  row the gate dropped buys no quiet. **The paced set and the foldable set are
+  ONE list** (`FOLDABLE_KINDS`): a kind that waits but cannot be folded into
+  is a second message sitting beside the one the pacing just created.
+  **A RESULT never waits** — confirmed, cancelled, nobody matched, expired is
+  the message they are actually waiting for.
+
+- **Opening a coordination is not a subscription to every answer in it**
+  (owner, 2026-09-22: "אין צורך שמי שפתח את התיאום יקבל הודעות מיוחדות"). A
+  plain decline and somebody stepping OUT of a coordination that carries on
+  went to the initiator and to nobody else, and two of מירון's five messages
+  were exactly that. Neither is a message now. Nothing he could act on is
+  lost: the drawn table says how many people are on each time, and
+  `meetings.getStatus` still carries every participant's shareable constraints
+  by name — the REASON moved from a push to a pull, readable the moment he or
+  the next thing this coordination asks him goes out. **`meeting_no_match`
+  stays**, because a coordination that DIED is the one thing a table can never
+  tell him later. `afterSlotResponse` keeps an unread `accept` on purpose: a
+  yes and a no produce the same fan-out now, and the parameter says that
+  reading it again is a decision.
+
 - **A time ADDED to it rides the same thing, as long as that thing has not gone
   out yet** (2026-09-20). `meeting-fanout.js`'s `fanout` folds a new
   `meeting_slot_proposed` into whichever `meeting_invite` /

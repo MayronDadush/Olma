@@ -50,6 +50,7 @@ never trust a dated narrative for something you are about to act on.
 **Delivery, outbox and proactive messages**
 - [The stop that waited for a yes (fixed 2026-09-22)](#the-stop-that-waited-for-a-yes-fixed-2026-09-22)
 - [The table that did not say where she stood (2026-09-20)](#the-table-that-did-not-say-where-she-stood-2026-09-20)
+- [Five messages in twelve minutes, about one coordination (fixed 2026-09-22)](#five-messages-in-twelve-minutes-about-one-coordination-fixed-2026-09-22)
 - [Four messages in sixty-two seconds (fixed 2026-09-20)](#four-messages-in-sixty-two-seconds-fixed-2026-09-20)
 - [The constraint that was an answer (fixed 2026-09-20)](#the-constraint-that-was-an-answer-fixed-2026-09-20)
 - [Two paragraphs where two sentences would do (fixed 2026-09-20)](#two-paragraphs-where-two-sentences-would-do-fixed-2026-09-20)
@@ -1627,6 +1628,71 @@ compares on anyway. (`domain/identity-repair.js`, `rotateIdentityToken`.)
 ## Delivery, outbox and proactive messages
 
 
+### Five messages in twelve minutes, about one coordination (fixed 2026-09-22)
+
+מירון opened a padel coordination in a room at 16:11 and read five messages
+from Olma by 16:25:
+
+| | |
+|---|---|
+| 16:13 | the invite — he opened it, and he is asked privately too |
+| 16:14 | שחרון put שבת 16:00 on the table |
+| 16:22 | יובל cannot do Wednesday |
+| 16:23 | שחרון cannot do Wednesday either |
+| 16:25 | שחרון put שבת 17:00 on the table |
+
+Every one of them was correct. The owner's reading was that there were simply
+too many of them, and that whoever opens a coordination does not need an
+update on everything that happens inside it.
+
+**The machinery that says several things once already existed, and never got
+to run.** `meeting-fanout.foldIntoPendingQuestion` was built after "Four
+messages in sixty-two seconds" precisely for this: a row about a coordination
+that has NOT gone out yet swallows the next one instead of being queued behind
+it. But every negotiation row is `urgent`, so it leaves inside a minute, and
+by the time the next event arrives there is nothing unsent to fold into.
+Kapish's four rows only ever folded because the NIGHT was holding them —
+nothing does that during the day, which is when a coordination actually moves.
+
+**Measured before choosing a number**: 47 (person × coordination) pairs in the
+whole history of the feature, 31 of them 2 messages or more, 11 of them 4 or
+more, worst 7. Of the 68 consecutive messages one person received about one
+coordination, **46 landed within fifteen minutes of the one before**, 31
+within five, 20 within two. Half an hour would have caught two more than
+fifteen and is that much longer for a live question to sit unasked.
+
+So a negotiation row now carries `release_after` = a quarter of an hour after
+anything about that coordination last REACHED that person, and the fold does
+the rest: everything that happens while it waits lands in the one waiting row,
+which goes out carrying the table as it stands at the moment of sending.
+`release_after` rather than a gate hold, because the row is not held — it is
+SCHEDULED, and it has never been looked at; the worker's picker already
+honours the column, so nothing else anywhere needed to change. The baseline is
+what was DELIVERED (`sent_at` with no `hold_reason`), the same one the
+removals and the late invite already use: a row the gate dropped told them
+nothing and buys no quiet.
+
+**Only what is still being negotiated waits.** An invite, a time added, a
+person rejoining. A RESULT — confirmed, cancelled, nobody matched, expired —
+is the message the person is actually waiting for, and holding one of those to
+save them a notification spends their patience on exactly the wrong thing.
+
+**And the second half: two of the five were messages only the initiator ever
+gets.** A plain decline (`meeting_slot_declined`) and somebody stepping out of
+a coordination that carries on (`meeting_opt_out`) both went to the person who
+opened it and to nobody else. Opening a coordination is not a subscription to
+every answer in it (owner: "אין צורך שמי שפתח את התיאום יקבל הודעות
+מיוחדות"), so neither is a message any more. Nothing is lost that he could act
+on: the table he is shown says how many people are on each time, and
+`getStatus` still carries each person's shareable constraints by name, so the
+REASON is his to read the moment he or his next message about that
+coordination asks for it — it moved from a push to a pull. `meeting_no_match`
+stays, because a coordination that died is the one thing a table can never
+tell him later.
+
+`accept` is still in `afterSlotResponse`'s signature and is deliberately
+unread: a yes and a no now produce the same fan-out, and a parameter left in
+place says that reading it again is a decision rather than an oversight.
 ### Four messages in sixty-two seconds (fixed 2026-09-20)
 
 קאפיש (u-35) joined the test room on 2026-09-19 and had never written to Olma
