@@ -117,9 +117,13 @@ async function overdueTasks(client, userId, now) {
         AND t.parent_id IS NULL AND t.due_at IS NOT NULL
         AND t.kind IS DISTINCT FROM 'event'
         AND t.due_at < $2::timestamptz - ($3 || ' days')::interval
-        -- a repeating reminder means the date is a rhythm, not a deadline
+        -- a repeating reminder with NO END means the date is a rhythm, not a
+        -- deadline. One with an end is a chase toward exactly this deadline
+        -- (migration 081), and a task still open a week past it is precisely
+        -- what this detector is for.
         AND NOT EXISTS (SELECT 1 FROM task_reminders r
                          WHERE r.task_id = t.id AND r.repeat_rule IS NOT NULL
+                           AND r.repeat_until IS NULL
                            AND r.cancelled_at IS NULL)
         AND NOT EXISTS (SELECT 1 FROM shares s
                          WHERE s.task_id = t.id AND s.status = 'active')

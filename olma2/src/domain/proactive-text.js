@@ -196,6 +196,17 @@ function slotText(slot) {
 }
 
 function renderGroupCoordination(line, overrides) {
+  if (line.kind === 'started') {
+    // A COUNT, never people. Who has not written is already the gate notice's
+    // sentence, and saying it twice in two voices is the one thing this family
+    // of lines is careful not to do — so this line only says that such people
+    // exist, and only when they do (the same rule as a base line never said to
+    // nobody).
+    return templates.render('group_coord_started', {
+      title: slotText(line.title), asked: String(line.asked),
+      outside_note: line.outside ? OUTSIDE_NOTE : '',
+    }, overrides).trim();
+  }
   if (line.kind === 'base') {
     return templates.render('group_coord_base', {
       slot: slotText(line.slot), yes: String(line.yes), missing: mentionTokens(line.missing || []),
@@ -215,6 +226,7 @@ function renderGroupCoordination(line, overrides) {
   }, overrides).trim();
 }
 const PLACE_ASK = 'איפה נפגשים? תכתבו לי ואני אוסיף ליומן 📍';
+const OUTSIDE_NOTE = 'מי שעוד לא כתב לי בפרטי לא נספר פה — ״היי״ בפרטי וזה מסתדר ☺️';
 const WHO_ALL = 'כולם בפנים';
 const WHO_IN = 'בפנים:';
 

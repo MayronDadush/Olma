@@ -30,8 +30,13 @@ const groupOutbox = require('../src/domain/group-outbox');
 // assertion below about what the room heard a test of the hold instead. The
 // hold has its own test in group-outbox.test.js; these are about the sentences.
 async function pass(deps) {
-  const decided = await withTx(db.pool, (c) => job.sweepGroups(c, deps));
-  const drained = await groupOutbox.drainOnce(db.pool, { channelWrittenAt: () => null, ...deps });
+  // `lidPhoneNumbers` defaults to an empty map so these tests do not each spin
+  // up the sessions worker thread to read a temp directory that holds no
+  // mappings — same reason `channelWrittenAt` is pinned below. A test about the
+  // resolution passes its own map in `deps`.
+  const withDeps = { lidPhoneNumbers: async () => ({}), ...deps };
+  const decided = await withTx(db.pool, (c) => job.sweepGroups(c, withDeps));
+  const drained = await groupOutbox.drainOnce(db.pool, { channelWrittenAt: () => null, ...withDeps });
   return { ...decided, ...drained };
 }
 
@@ -779,6 +784,12 @@ test('two sessions and nothing new: the room is answered once, not on every pass
 // hears the explanation the next time somebody actually asks her for
 // something, which is what the notice is for.
 test('a room that re-locks mid-pass does not answer a tag nobody sent', async () => {
+  // The watermark is the subject here and re-locking is only its vehicle, so
+  // `group_open_without_everyone` is pinned closed: with it open a room with an
+  // agent never re-locks on a newcomer, and there is no mid-pass transition
+  // left to reproduce.
+  const flags = require('../src/domain/flags');
+  await withTx(db.pool, (c) => flags.setFlag(c, 'group_open_without_everyone', false));
   const a = await connectedUser('+972605000020');
   const b = await connectedUser('+972605000021');
   const jid = JID(31);
@@ -808,4 +819,98 @@ test('a room that re-locks mid-pass does not answer a tag nobody sent', async ()
   assert.deepEqual(out.relocked, [jid]);
   assert.equal(out.notices, 0, 'nobody tagged her — the roster changed under her');
   assert.deepEqual(grown.sent, []);
+  await withTx(db.pool, (c) => flags.setFlag(c, 'group_open_without_everyone', true));
+});
+
+// The other half of `group_open_without_everyone` (owner, 2026-09-22), and the
+// half that is a SENTENCE rather than a state: the room WAS told somebody was
+// missing, and then it opens while somebody still is. "יש! כולם כאן" names a
+// fact, so it must not be said — and there is no replacement line, because the
+// sentence that would be true there is the owner's to write. The room opens in
+// silence, with an agent, which is the part that was worth four days.
+test('a room that opens without everyone gets its agent and does not claim everybody is here', async () => {
+  const a = await connectedUser('+972605000030');
+  const b = await makeUser(db.pool, '+972605000031');   // a user, still silent
+  const c = await makeUser(db.pool, '+972605000032');   // and stays silent
+  const jid = JID(32);
+  const roster = `${a.phone}, ${b.phone}, ${c.phone}`;
+  const at = Date.now();
+
+  await pass(gatewayWith({ jid, roster, at }).deps);    // registers + intro; one connected
+
+  // Somebody tags her while the room is still locked on the floor of two, so
+  // the room has now been told there is a wait.
+  const tagged = gatewayWith({ jid, roster, at: at + 60_000, messageId: 'MSG-31' });
+  assert.equal((await pass(tagged.deps)).notices, 1);
+  const told = await withTx(db.pool, (c2) => groupsDomain.getByExternalId(c2, 'whatsapp', jid));
+  assert.equal(told.state, 'locked', 'one connected member is not a room');
+  assert.ok(told.gate_notice_at);
+
+  // b writes. Two are connected, c never has — under the old rule this room
+  // would still be locked.
+  await db.pool.query(`UPDATE users SET last_inbound_at = now() WHERE id = $1`, [b.id]);
+  const third = gatewayWith({ jid, roster, at: at + 120_000 });
+  const out = await pass({ ...third.deps, now: helpers.daytime() });
+
+  assert.deepEqual(out.opened, [jid]);
+  assert.equal(out.announced, 0, 'c is not here, so nobody may say everybody is');
+  assert.deepEqual(third.sent, []);
+
+  const row = await withTx(db.pool, (c2) => groupsDomain.getByExternalId(c2, 'whatsapp', jid));
+  assert.equal(row.state, 'open');
+  assert.ok(row.agent_id, 'and it has a voice of its own from here on');
+  assert.equal(row.opened_announced_at, null, 'nothing was announced, so nothing is stamped');
+
+  // c is still missing, and the room still knows it.
+  const evald = await withTx(db.pool, (c2) => groupsDomain.evaluate(c2, row.id));
+  assert.deepEqual(evald.data.missing.map((m) => m.phone), [c.phone]);
+});
+
+// ── the roster resolves a LID to its number ─────────────────────────────────
+// Padel Gang, in miniature. Gal is in the room under his LID, he HAS written to
+// Olma, and until the reverse map was consulted his roster row resolved to no
+// user at all — so the gate counted him missing for ever and the room tagged a
+// number nobody dials (`incidents.md`, "The room that could never open").
+test('a member the gateway names by LID is resolved to their number, and counted', async () => {
+  const a = await connectedUser('+972605000040');
+  const gal = await connectedUser('+972605000041', { firstName: 'גל' });
+  const lid = '69320805752936';
+  const jid = JID(33);
+  // The roster as the gateway really hands it over: digits, no JID on them.
+  const roster = `${a.phone}, +${lid}`;
+
+  const g = gatewayWith({ jid, roster });
+  const out = await pass({ ...g.deps, lidPhoneNumbers: async () => ({ [lid]: gal.phone }) });
+  assert.equal(out.lidsResolved, 1);
+
+  const group = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  const live = await withTx(db.pool, (c) => groupsDomain.listMembers(c, group.id));
+  assert.deepEqual(live.map((m) => m.phone).sort(), [a.phone, gal.phone].sort(),
+    'the room holds his NUMBER, not the LID the gateway addressed him by');
+  assert.equal(live.every((m) => m.user_id), true, 'and both rows resolve to a user');
+
+  // Which is the whole point: nobody is missing, so the room is open on its own
+  // terms rather than on the flag's floor.
+  const evald = await withTx(db.pool, (c) => groupsDomain.evaluate(c, group.id));
+  assert.deepEqual(evald.data.missing, []);
+  assert.equal(evald.data.state, 'open');
+});
+
+// An empty map is what an unreadable credentials directory answers, and it must
+// change nothing. The direction matters: a roster emptied of its LID rows would
+// read as every one of those members walking out of the room.
+test('no mapping resolves nothing, and takes nobody out of the room', async () => {
+  const a = await connectedUser('+972605000050');
+  const lid = '259201444126724';
+  const jid = JID(34);
+  const g = gatewayWith({ jid, roster: `${a.phone}, +${lid}` });
+  const out = await pass({ ...g.deps, lidPhoneNumbers: async () => ({}) });
+  assert.equal(out.lidsResolved, 0);
+
+  const group = await withTx(db.pool, (c) => groupsDomain.getByExternalId(c, 'whatsapp', jid));
+  const live = await withTx(db.pool, (c) => groupsDomain.listMembers(c, group.id));
+  assert.deepEqual(live.map((m) => m.phone).sort(), [a.phone, `+${lid}`].sort(),
+    'still two members: unresolvable is not gone');
+  const evald = await withTx(db.pool, (c) => groupsDomain.evaluate(c, group.id));
+  assert.deepEqual(evald.data.missing.map((m) => m.phone), [`+${lid}`]);
 });

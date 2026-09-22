@@ -259,6 +259,11 @@ async function statusOf(client, group, meeting) {
       location: meeting.location === undefined ? null : (meeting.location || null),
       startedBy: who(meeting.initiator_id).name,
       participants: active.length,
+      // Members of the ROOM this coordination could not sweep in at all: they
+      // have never written to her, so there is nobody to ask. A COUNT and never
+      // people — who is missing is the gate notice's own sentence, and the room
+      // hearing the same list in two voices is what this family of lines avoids.
+      outside: members.filter((m) => !m.left_at && !groups.isConnected(m)).length,
       options: table,
       // The two the room actually asks about: nobody has heard from these
       // people at all, and these ones are out. `silent` stays the exact answer
