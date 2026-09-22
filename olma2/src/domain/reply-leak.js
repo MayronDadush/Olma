@@ -244,6 +244,60 @@ const INSTANT_RE = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-
 const SENTINEL_RE = /\bNO_REPLY\b/;
 const SENTINEL_STRIP_RE = /\s*\bNO_REPLY\b\s*/g;
 
+// ---- a link that goes nowhere ----------------------------------------------
+//
+// 2026-09-22: three people in one minute were each sent a different invented
+// domain for the same coordination — `dashboard.olma.ai/meetings/40`,
+// `dash.olma.app/meetings/40`, `dashboard.openclaw.ai/meetings/40` — none of
+// which is anybody's page, and no link had been minted for that meeting at
+// all. Eight of these are in the transcripts, across five people and four
+// weeks. The instruction that asked for them is fixed elsewhere (the url is
+// handed over now, not requested); this is the half that does not depend on
+// anyone getting an instruction right, and it is the only one that would have
+// NOTICED. Nothing in Postgres can: there is no row for a link that was never
+// minted, so every detector we have reads clean while the message is wrong.
+//
+// Two shapes, and both are checkable rather than judged:
+//
+//   a host that claims to be US and is not one of the two hostnames we serve
+//   — `olma`, `allma` or `openclaw` as a whole label, so `olmafarm.com` is
+//   somebody's farm and stays;
+//
+//   our OWN hostname carrying a path nothing serves. The Caddyfile passes a
+//   named allowlist and everything else 404s before it reaches the app
+//   (`rules/dashboard-and-domains.md`), so "a path that is not on the list" is
+//   a dead link by definition, not an opinion. It is what caught the retired
+//   `/pick/` link Olma sent on 2026-09-05, ten days after that page went 410.
+//
+// Deliberately NOT "any URL the tools did not mint this turn": a news
+// headline, a Google consent screen and a search result are all real links
+// this gate never sees the provenance of, and a rule that cannot tell them
+// from an invention would delete the ones that work. The cost is named: an
+// invented link on a domain that does not sound like ours — a `base44.app`
+// sandbox went out on 2026-09-06 — reads exactly like a real external link
+// and passes here.
+//
+// It STRIPS rather than condemning its paragraph. The sentence around the link
+// is the message: an invite that loses its dead line still asks when suits
+// them, and cutting the paragraph would take the question with it.
+const OUR_HOSTS = new Set(['allma.world', 'www.allma.world', 'olmachat.duckdns.org']);
+const OUR_PATHS = /^\/(?:d\/(?:[A-Za-z0-9]{22}|[a-f0-9]{64})|me|privacy|terms|health|ready)?\/?$/;
+const CLAIMS_US_RE = /(?:^|[.-])(?:olma|allma|openclaw)(?:[.-]|$)/i;
+const ANY_URL_RE = /\bhttps?:\/\/[^\s<>"'׳״)\]]+/gi;
+
+function deadLink(u) {
+  let x;
+  try { x = new URL(String(u)); } catch { return false; }
+  const host = x.hostname.toLowerCase();
+  if (OUR_HOSTS.has(host)) return !OUR_PATHS.test(x.pathname);
+  return CLAIMS_US_RE.test(host);
+}
+
+function firstDeadLink(raw) {
+  for (const u of String(raw || '').match(ANY_URL_RE) || []) if (deadLink(u)) return u;
+  return null;
+}
+
 // The wide tier. Anything shaped like one of our names that the closed list
 // has not heard of — reported, delivered. Leading `/` and `@` are excluded so
 // a path segment and an address local-part stay out even if the strippers
@@ -280,6 +334,10 @@ function leaksIn(line) {
   const out = [];
   const frame = FRAME_RE.exec(raw); // a frame marker is ours wherever it sits
   if (frame) out.push({ kind: 'frame', at: redact(frame[0].slice(0, 40)) });
+  // Against the RAW line: `scannable` replaces every URL with a space, which
+  // is right for every other tier here and would erase this one entirely.
+  const dead = firstDeadLink(raw);
+  if (dead) out.push({ kind: 'link', at: dead.slice(0, 60) });
   const internal = INTERNAL_RE.exec(text);
   if (internal) out.push({ kind: 'internal', at: internal[1] });
   const block = BLOCK_RE.exec(text);
@@ -315,7 +373,9 @@ function leaksIn(line) {
 // after it is somebody else's and not the reader's own words back. Everything
 // else condemns the paragraph it sits in, which is the destructive half — so
 // only the closed, unmistakable markers are allowed in here.
-const KEEPS_LINE = new Set(['identifier', 'sentinel', 'narration']);
+// `link` is here for the same reason `sentinel` is: it is taken OUT of its
+// line and the line stays. The words around a dead link are the message.
+const KEEPS_LINE = new Set(['identifier', 'sentinel', 'narration', 'link']);
 
 // The subset of those that also change NOTHING about the text. `sentinel` is
 // not in here: it leaves its line standing but is stripped out of it, so it is
@@ -404,13 +464,22 @@ function gateReply(text) {
   const leaks = reported.filter((l) => !REPORT_ONLY.has(l.kind));
   if (!leaks.length) return { action: 'pass', text: raw, leaks, reported };
   // Whatever survives the cut still goes out without the stray sentinel in it.
-  const kept = lines.slice(last + 1).join('\n').replace(SENTINEL_STRIP_RE, ' ').trim();
+  const kept = lines.slice(last + 1).join('\n')
+    .replace(SENTINEL_STRIP_RE, ' ')
+    // A link that goes nowhere is lifted out where it stands; what it sat in
+    // is delivered. Blank lines it leaves behind are folded so the message
+    // does not arrive with a hole in it.
+    .replace(ANY_URL_RE, (u) => (deadLink(u) ? '' : u))
+    .split('\n').map((l) => l.replace(/[ \t]+$/, '')).join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
   if (!kept) return { action: 'cancel', text: '', leaks, reported };
   return { action: 'trim', text: kept, leaks, reported };
 }
 
 module.exports = {
   leaksIn, gateReply, drops, scannable, redact, paragraphEnd, hasEarlierContent,
+  deadLink, firstDeadLink, OUR_HOSTS,
   FRAME_RE, INTERNAL_RE, BLOCK_RE, INSTANT_RE, SENTINEL_RE, IDENTIFIER_RE,
   MARK_RE, NARRATION_RE, deliberationIn,
   INTERNAL_NAMES, SENTINEL, KEEPS_LINE, REPORT_ONLY,

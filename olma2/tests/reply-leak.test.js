@@ -682,3 +682,67 @@ test('a cancelled reply is never re-sent verbatim by the repair sweep', () => {
   assert.deepEqual(resendableVerbatim('  '), { ok: false, why: 'empty' });
   assert.deepEqual(resendableVerbatim('הנה\nMEDIA: /tmp/x.png'), { ok: false, why: 'media' });
 });
+
+// ---- a link that goes nowhere -----------------------------------------------
+//
+// The eight real ones are in the transcripts on the box; these are the seven
+// that reached a person as a URL, plus every real link Olma has actually sent,
+// so the rule is read off traffic and not off a hunch. 6 of 7 caught, 0 of 11
+// real links touched.
+test('a link that claims to be us, or lands on a path we do not serve, is caught', () => {
+  const invented = [
+    // our own hostname, a page retired ten days earlier (410)
+    'https://allma.world/pick/d1bd2f3228fe065203bf07be921c9efdf7301d653361733a',
+    'https://my.olma.app/dashboard?meeting=30',
+    'https://my.openclaw.ai/dashboard?meeting=31',
+    // three people, one minute, one coordination (2026-09-22)
+    'https://dashboard.olma.ai/meetings/40',
+    'https://dash.olma.app/meetings/40',
+    'https://dashboard.openclaw.ai/meetings/40',
+  ];
+  for (const u of invented) assert.equal(leak.deadLink(u), true, u);
+
+  // NAMED, not fixed: an invention on a domain that does not sound like ours
+  // reads exactly like a real external link. This one went out on 2026-09-06
+  // and this rule cannot see it — closing that needs the turn's own tool
+  // results, which this gate does not get.
+  assert.equal(
+    leak.deadLink('https://preview-sandbox--6a9c6568cff3f4a92b4ecc77.base44.app/rsvp/6a9cf4ba'),
+    false, 'KNOWN GAP — see the comment above deadLink');
+
+  const real = [
+    `https://allma.world/d/${'AbCdEfGhIjKlMnOpQrStUv'}`,
+    `https://allma.world/d/${'a'.repeat(64)}`,
+    'https://allma.world/privacy', 'https://allma.world/terms', 'https://allma.world/',
+    'https://olmachat.duckdns.org/',
+    'https://www.google.com/search?q=x',
+    'https://accounts.google.com/o/oauth2/v2/auth?client_id=x',
+    'https://letmegooglethat.com/?q=x',
+    // a whole label, so somebody else's business is not ours to cut
+    'https://olmafarm.com/shop', 'https://www.openclawresearch.org/paper',
+  ];
+  for (const u of real) assert.equal(leak.deadLink(u), false, u);
+});
+
+// It is lifted OUT; the sentence it sat in is the message and is delivered.
+// Cutting the paragraph would take the question with it, which is the thing
+// the invite exists to ask.
+test('the dead link goes and the message stays', () => {
+  const v = leak.gateReply('כרגע 5 בקבוצה על הפרק ושחרון אישר. מתי נוח לך להצטרף?\n\nhttps://dashboard.openclaw.ai/meetings/40');
+  assert.equal(v.action, 'trim');
+  assert.equal(v.text, 'כרגע 5 בקבוצה על הפרק ושחרון אישר. מתי נוח לך להצטרף?');
+  assert.deepEqual(v.leaks.map((l) => l.kind), ['link']);
+  assert.match(v.leaks[0].at, /dashboard\.openclaw\.ai/, 'the audit row has to name what was cut');
+
+  // A real link is not touched, and nothing else about the message moves.
+  const good = 'מתי נוח לך?\n\nhttps://allma.world/d/AbCdEfGhIjKlMnOpQrStUv';
+  assert.deepEqual(leak.gateReply(good), { action: 'pass', text: good, leaks: [], reported: [] });
+
+  // Mid-sentence, and twice in one message.
+  const two = leak.gateReply('הנה https://dash.olma.app/meetings/40 וגם https://my.olma.app/x — מתי?');
+  assert.equal(two.action, 'trim');
+  assert.match(two.text, /^הנה +וגם +— מתי\?$/);
+
+  // Nothing left but the link: better nothing than a link to nowhere.
+  assert.equal(leak.gateReply('https://dashboard.olma.ai/meetings/40').action, 'cancel');
+});

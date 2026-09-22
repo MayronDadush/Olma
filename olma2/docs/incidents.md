@@ -214,6 +214,7 @@ never trust a dated narrative for something you are about to act on.
 - [The mailbox, Phase 1: read-only Gmail, and nobody's mail is browsed (2026-09-02)](#the-mailbox-phase-1-read-only-gmail-and-nobodys-mail-is-browsed-2026-09-02)
 - [Voice-note transcription moved to ElevenLabs Scribe v2 (2026-08-18)](#voice-note-transcription-moved-to-elevenlabs-scribe-v2-2026-08-18)
 - [Onboarding has no "welcome" step any more (redesigned 2026-08-17)](#onboarding-has-no-welcome-step-any-more-redesigned-2026-08-17)
+- [A link that goes nowhere now stops at the gate (2026-09-22)](#a-link-that-goes-nowhere-now-stops-at-the-gate-2026-09-22)
 - [The link she said she sent (fixed 2026-09-07)](#the-link-she-said-she-sent-fixed-2026-09-07)
 - [A Google consent with no calendar scope was stored as "connected" (fixed 2026-08-20)](#a-google-consent-with-no-calendar-scope-was-stored-as-connected-fixed-2026-08-20)
 - [The move to allma.world, and the truncated link that asked for the admin password (2026-09-04)](#the-move-to-allmaworld-and-the-truncated-link-that-asked-for-the-admin-password-2026-09-04)
@@ -9155,6 +9156,50 @@ person is already having simply continues, silently more capable.
 - Stdio MCP servers get NO identity env vars from the gateway (probed) —
   the workspace `.olma-identity` file remains the only auth root; brokerd's
   `config_guard` job watches the config invariants that protect it.
+
+### A link that goes nowhere now stops at the gate (2026-09-22)
+
+Olma sent eight invented URLs to five people over four weeks. Three of them
+went to three different people inside one minute, for one coordination, each
+on a different made-up domain — `dashboard.olma.ai`, `dash.olma.app`,
+`dashboard.openclaw.ai` — and every one ended in `/meetings/40`, the meeting
+id the instruction had handed the model when it asked for a link to be
+fetched. No link was minted for that coordination at all. The cause is fixed
+where the instruction is (the characters are handed over now, not requested).
+
+This is the other half, and it is the half that could not be skipped by
+anybody getting an instruction wrong — **and the only half that can NOTICE**.
+There is no row in Postgres for a link that was never minted: the outbox, the
+audit trail and the health board all read perfectly clean through all eight,
+and what found them was a screenshot from the owner.
+
+So `reply-leak.js` gained a third thing it stops, on the gate that already
+stands at delivery. Two shapes, both checkable rather than judged:
+
+- a host claiming to be US — `olma`, `allma` or `openclaw` as a WHOLE label —
+  that is not one of the two hostnames we actually serve;
+- our own hostname on a path the Caddy allowlist does not pass, which is a
+  dead link by definition rather than an opinion (`rules/dashboard-and-domains
+  .md`). That is the tier that catches the retired `/pick/` link Olma sent on
+  2026-09-05, ten days after that page started answering 410.
+
+It STRIPS, where every other dropping tier condemns its paragraph: the
+sentence around the link is the message. An invite that loses its dead line
+still asks when suits them, and cutting the paragraph would take the question
+with it. Measured against every URL Olma has ever written on the box — 6 of
+the 7 real inventions caught, 0 of 11 real links touched (a `/d/` link in both
+token shapes, `/privacy`, `/terms`, the admin host, Google search, a Google
+consent URL, and two outside domains carrying our names inside a longer label:
+`olmafarm.com`, `openclawresearch.org`).
+
+**The gap is named rather than guessed at.** An invention on a domain that
+does not sound like ours passes — `preview-sandbox--….base44.app/rsvp/…`,
+sent on 2026-09-06, is indistinguishable here from a real external link. The
+rule that would catch it is "a URL that was not in this turn's tool results",
+and this gate is handed the reply and nothing else. Writing it as a guess
+would delete a news headline, a search result or a consent screen the first
+time one went out, which is the failure this repo has already paid for twice:
+a detector that fires on ordinary input is worse than no detector.
 
 ### The link she said she sent (fixed 2026-09-07)
 
