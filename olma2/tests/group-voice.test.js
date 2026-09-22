@@ -74,6 +74,18 @@ async function pass(sent, at = null, onlyJid = null) {
   return { ...decided, ...drained };
 }
 
+// The room may say that people have not answered only once she has actually
+// written to them (`group-meetings.statusOf`'s `asked`, 2026-09-22), and the
+// outbox worker is what makes that true. No worker runs in this file, so a test
+// about what the room SAYS marks this coordination's invites delivered by hand
+// — which is also the state production is in by the time a base or a chase line
+// is due.
+async function deliverInvites(meetingId) {
+  await db.pool.query(
+    `UPDATE outbox SET sent_at = coalesce(sent_at, now()), hold_reason = NULL, release_after = NULL
+      WHERE kind = 'meeting_invite' AND (payload->>'meetingId')::bigint = $1`, [meetingId]);
+}
+
 test('a room hears "there is a direction" once, when two people can make the same time', async () => {
   const { group, people } = await room(1);
   const [a, b] = people;
@@ -81,6 +93,7 @@ test('a room hears "there is a direction" once, when two people can make the sam
   const meetingId = Number(started.data.meeting.id);
   const when = slotStart('שלישי', { hours: 72 });
 
+  await deliverInvites(meetingId);
   // One yes — the proposer's own — is not a direction.
   const optionId = await withTx(db.pool, async (c) =>
     (await options.add(c, a.id, meetingId, 'שלישי 20:00', when)).data.option.id);
@@ -231,6 +244,7 @@ test('nothing proactive goes out in the middle of the night', async () => {
   const optionId = await withTx(db.pool, async (c) =>
     (await options.add(c, a.id, meetingId, 'שלישי 20:00', when)).data.option.id);
   await withTx(db.pool, (c) => options.answer(c, b.id, meetingId, optionId, 'y'));
+  await deliverInvites(meetingId);
 
   const night = new Date();
   night.setUTCHours(1, 0, 0, 0);
@@ -260,6 +274,7 @@ test('a stamp Olma herself moved does not open the room at night', async () => {
   const optionId = await withTx(db.pool, async (c) =>
     (await options.add(c, a.id, meetingId, 'שלישי 20:00', when)).data.option.id);
   await withTx(db.pool, (c) => options.answer(c, b.id, meetingId, optionId, 'y'));
+  await deliverInvites(meetingId);
 
   const night = new Date();
   night.setUTCHours(1, 0, 0, 0);
@@ -292,6 +307,7 @@ test('a member who wrote a minute ago opens the room, at any hour', async () => 
   const optionId = await withTx(db.pool, async (c) =>
     (await options.add(c, a.id, meetingId, 'שלישי 20:00', when)).data.option.id);
   await withTx(db.pool, (c) => options.answer(c, b.id, meetingId, optionId, 'y'));
+  await deliverInvites(meetingId);
 
   const night = new Date();
   night.setUTCHours(1, 0, 0, 0);
@@ -439,5 +455,36 @@ test('the place can be said later, and a closed room has nothing to put it on', 
   const gone = await withTx(db.pool, (c) => groupMeetings.setPlace(c, group, a, 'בבית קפה'));
   assert.equal(gone.ok, false);
   assert.equal(gone.error.code, 'not_found');
+});
+
+// The owner, 2026-09-22, after the room chased two people nobody had written
+// to: she may say that people are not answering only once she has tried.
+test('neither room line names somebody the coordination never reached', () => {
+  const soon = new Date(Date.now() + 86400_000).toISOString();
+  const asked = { phone: '+972500000021', asked: true };
+  const never = { phone: '+972500000022', asked: false };
+  const co = {
+    status: 'negotiating',
+    options: [{ optionId: 1, slot: 'שלישי', startsAt: soon,
+      yes: [{ phone: '+972500000023', asked: true }, { phone: '+972500000024', asked: true }],
+      no: [], missing: [asked, never], quorum: { known: false } }],
+    silent: [asked, never],
+    settleDueAt: null,
+  };
+  const at = { startedAtMs: Date.now() - 30 * 3600_000, nowMs: Date.now() };
+
+  const base = groupVoice.decideGroupLine(co, { saidBase: false, saidChase: true, saidDone: false, ...at });
+  assert.equal(base.kind, 'base');
+  assert.deepEqual(base.missing, [asked.phone], 'the base waits out loud only for somebody who was asked');
+
+  const chase = groupVoice.decideGroupLine(co, { saidBase: true, saidChase: false, saidDone: false, ...at });
+  assert.equal(chase.kind, 'chase');
+  assert.deepEqual(chase.missing, [asked.phone]);
+
+  // Nobody reached yet: there is no true sentence about people not answering,
+  // so the room hears nothing at all rather than a line with no tags in it.
+  const noneReached = { ...co, options: [{ ...co.options[0], missing: [never], yes: [{ phone: '+972500000023', asked: true }] }], silent: [never] };
+  const quiet = groupVoice.decideGroupLine(noneReached, { saidBase: false, saidChase: false, saidDone: false, ...at });
+  assert.equal(quiet.kind, 'none');
 });
 

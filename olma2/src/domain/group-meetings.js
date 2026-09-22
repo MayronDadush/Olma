@@ -188,9 +188,28 @@ async function statusOf(client, group, meeting) {
   // people are tagged and not named — a tag pings, a name does not, and it is
   // also the name each viewer has saved for that number rather than the one we
   // hold. The label stays for the rooms and the people we have no phone for.
+  // Who this coordination has actually REACHED. A row the gate dropped or is
+  // still holding reached nobody, and the same shape answers this question for
+  // a removal (`meeting-options.unheardRemovals`): sent, and not held. The kind
+  // filter is not decoration — `meetingId` is on meeting payloads only, and the
+  // cast would throw on the first row that put something else under that name.
+  const { rows: heardRows } = await client.query(
+    `SELECT DISTINCT user_id FROM outbox
+      WHERE kind LIKE 'meeting\\_%' ESCAPE '\\'
+        AND sent_at IS NOT NULL AND hold_reason IS NULL
+        AND (payload->>'meetingId')::bigint = $1`, [meeting.id]);
+  const heard = new Set(heardRows.map((r) => Number(r.user_id)));
+
+  // `asked` is the difference between somebody ignoring her and somebody she
+  // never got a word to: it is what the room may say out loud about a person
+  // (owner, 2026-09-22), and it is false for anybody whose invite the gate
+  // held for the night or dropped as quiet.
   const who = (id) => {
     const phone = phoneByUser.get(Number(id)) || null;
-    return { name: labelByUser.get(Number(id)) || null, phone, tag: mentionToken(phone) };
+    return {
+      name: labelByUser.get(Number(id)) || null, phone, tag: mentionToken(phone),
+      asked: heard.has(Number(id)),
+    };
   };
 
   const { rows: parts } = await client.query(
@@ -242,7 +261,10 @@ async function statusOf(client, group, meeting) {
       participants: active.length,
       options: table,
       // The two the room actually asks about: nobody has heard from these
-      // people at all, and these ones are out.
+      // people at all, and these ones are out. `silent` stays the exact answer
+      // to "who has answered nothing" — the model's `answered` count is
+      // `participants - silent.length` — and each person carries `asked`, which
+      // is what decides whether they may be NAMED.
       silent: active.filter((uid) => !answeredSomething.has(uid)).map(who),
       optedOut,
       // The room's own settings, so she never has to infer them from the

@@ -53,6 +53,14 @@ function chaseDueAt(startedAtMs, earliestStartMs) {
   return startedAtMs + Math.min(CHASE_MAX_MS, Math.max(CHASE_MIN_MS, half));
 }
 
+// A person the room may name. On 2026-09-22 coordination 38 chased three
+// people by tag one minute before the second of them was asked and nine hours
+// after the third was dropped as quiet: "עוד לא שמעתי מ@X" about somebody
+// nobody had written to. `asked` comes off `group-meetings.statusOf`; a caller
+// that does not carry it (a fixture, an older payload) is taken at its word,
+// because the failure of being over-careful here is a line that is not said.
+const said = (p) => p && p.asked !== false;
+
 // The option the room is closest to agreeing on: most yeses, and the earliest
 // of those when two are level. Null when nothing has a yes on it yet — the
 // adder's own yes counts, so that is a table nobody has answered at all.
@@ -107,7 +115,7 @@ function decideGroupLine(co, {
     const enough = lead.quorum && lead.quorum.known && lead.quorum.min !== null
       ? lead.quorum.met
       : lead.yes.length >= 2;
-    const missing = [...lead.missing, ...lead.no].map((p) => p.phone).filter(Boolean);
+    const missing = [...lead.missing, ...lead.no].filter(said).map((p) => p.phone).filter(Boolean);
     // "מחכה ל 🤞" went out to nobody: Yuval's yes made it unanimous, the
     // settle minute was running, and twelve seconds later the base line
     // named an empty list (coordination 37, 2026-09-20). A base is a thing
@@ -121,7 +129,7 @@ function decideGroupLine(co, {
   // Mid-way, to speed it up: only ever about people who have answered NOTHING.
   // Somebody who said no to every option has answered — chasing them would be
   // asking them to change their mind in front of the room.
-  const silent = (co.silent || []).map((p) => p.phone).filter(Boolean);
+  const silent = (co.silent || []).filter(said).map((p) => p.phone).filter(Boolean);
   if (!saidChase && silent.length && nowMs >= chaseDueAt(startedAtMs, earliestStart(co))) {
     return { kind: 'chase', missing: silent.slice(0, MAX_TAGS) };
   }

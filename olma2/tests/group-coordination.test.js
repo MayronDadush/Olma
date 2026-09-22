@@ -452,3 +452,40 @@ test('the description tells her to call this before saying anything, not after',
   assert.match(tool.description, /Call this the moment the room asks/);
   assert.match(tool.description, /never say you are on it before calling it/);
 });
+
+// Coordination 38, 2026-09-22: the room was chased about three people one
+// minute before the second of them was asked and nine hours after the third's
+// invite was dropped as quiet. An invite that never arrived is not silence.
+test('somebody the gate never let her reach is silent but not ASKED', async () => {
+  const { group, people } = await room(15);
+  const [host, held, dropped] = people;
+  const started = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, host, 'פאדל'));
+  const meetingId = Number(started.data.meeting.id);
+
+  const rowOf = async (userId) => (await db.pool.query(
+    `SELECT id FROM outbox WHERE user_id = $1 AND kind = 'meeting_invite'
+       AND (payload->>'meetingId')::bigint = $2`, [userId, meetingId])).rows[0];
+  // The host's own invite arrives; one is still held for the night, one was
+  // dropped as quiet — which marks the row sent, and is why sent_at alone
+  // cannot answer this.
+  await db.pool.query(`UPDATE outbox SET sent_at = now(), hold_reason = NULL WHERE id = $1`,
+    [(await rowOf(host.id)).id]);
+  await db.pool.query(`UPDATE outbox SET sent_at = NULL, hold_reason = 'night', release_after = now() + interval '8 hours' WHERE id = $1`,
+    [(await rowOf(held.id)).id]);
+  await db.pool.query(`UPDATE outbox SET sent_at = now(), hold_reason = 'quiet' WHERE id = $1`,
+    [(await rowOf(dropped.id)).id]);
+
+  const st = await withTx(db.pool, (c) => groupMeetings.coordinationStatus(c, group));
+  const by = (u) => st.coordination.silent.find((p2) => p2.phone === u.phone);
+  assert.equal(st.coordination.silent.length, 3, 'all three have answered nothing — that count is unchanged');
+  assert.equal(by(host).asked, true);
+  assert.equal(by(held).asked, false, 'held for the night: she has not got a word to them yet');
+  assert.equal(by(dropped).asked, false, 'dropped as quiet: the row says sent, and nobody read it');
+
+  // And it turns true the moment the held row actually goes out.
+  await db.pool.query(`UPDATE outbox SET sent_at = now(), hold_reason = NULL, release_after = NULL WHERE id = $1`,
+    [(await rowOf(held.id)).id]);
+  const after = await withTx(db.pool, (c) => groupMeetings.coordinationStatus(c, group));
+  assert.equal(after.coordination.silent.find((p2) => p2.phone === held.phone).asked, true);
+});
+

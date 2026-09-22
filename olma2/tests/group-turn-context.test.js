@@ -72,6 +72,16 @@ test('a room with nothing running is told so, with the two numbers it got wrong'
   assert.ok(r.context.includes('`coordination: null` means'), 'and the block says what null means');
 });
 
+// The model speaks in the room, so the block names only the people this
+// coordination has actually reached (`group-meetings.statusOf`'s `asked`,
+// 2026-09-22). No worker runs here, so a test about the LIST marks the invites
+// delivered by hand; a test about the gap holds one back.
+async function deliverInvites(meetingId) {
+  await db.pool.query(
+    `UPDATE outbox SET sent_at = coalesce(sent_at, now()), hold_reason = NULL, release_after = NULL
+      WHERE kind = 'meeting_invite' AND (payload->>'meetingId')::bigint = $1`, [meetingId]);
+}
+
 test('a running coordination: the title, how many were asked, how many answered, and the times on the table', async () => {
   const { group, people } = await room(2, { subject: 'פוקר של רביעי' });
   const [danny, dana, yuval] = people;
@@ -87,6 +97,7 @@ test('a running coordination: the title, how many were asked, how many answered,
   await withTx(db.pool, async (c) => {
     await options.answer(c, dana.id, meetingId, optionId, 'n');
   });
+  await deliverInvites(meetingId);
 
   const data = parse((await ask({ agentId: group.agent_id, externalId: group.external_id })).context);
   assert.equal(data.room.members, 3);
@@ -106,10 +117,26 @@ test('a running coordination: the title, how many were asked, how many answered,
   // She opened with her OWN LID — the token Yuval used to tag her — as if it
   // were his (coordination 37, 2026-09-20).
   assert.match(groupTurn.TAG_RULE, /the SENDER tagging YOU/);
-  assert.equal(data.coordination.waitingFor.length, data.coordination.asked - data.coordination.answered,
+  assert.equal(data.coordination.waitingFor.length + (data.coordination.notYetAsked || 0),
+    data.coordination.asked - data.coordination.answered,
     'the two numbers and the list are one fact and must agree');
+  assert.equal(data.coordination.notYetAsked, undefined, 'everybody here has been written to');
   assert.deepEqual(data.coordination.onTable, [{ optionId, slot: 'רביעי 21:00', yes: 1, no: 1 }]);
   assert.equal(Number(yuval.id) > 0, true);
+
+  // And the other half of the rule the owner asked for on 2026-09-22: while
+  // Yuval's invite is still held for the night, he is not somebody who has not
+  // answered — he is somebody nobody has asked. He is a COUNT with no tag, so
+  // the model has nobody to name and the numbers still add up.
+  await db.pool.query(
+    `UPDATE outbox SET sent_at = NULL, hold_reason = 'night' WHERE kind = 'meeting_invite'
+       AND user_id = $1 AND (payload->>'meetingId')::bigint = $2`, [yuval.id, meetingId]);
+  const held = parse((await ask({ agentId: group.agent_id, externalId: group.external_id })).context);
+  assert.deepEqual(held.coordination.waitingFor, []);
+  assert.equal(held.coordination.notYetAsked, 1);
+  assert.equal(held.coordination.answered, 2, 'the count of who answered does not move');
+  assert.equal(held.coordination.waitingFor.length + held.coordination.notYetAsked,
+    held.coordination.asked - held.coordination.answered);
 });
 
 test('a cancelled coordination is not an open one, and the block can say which', async () => {
@@ -135,7 +162,8 @@ test('the block never carries the room\'s own row, and a nameless member is stil
   // number for the same reason).
   await db.pool.query(`UPDATE users SET first_name = NULL WHERE id = ANY($1)`, [people.map((u) => u.id)]);
   await db.pool.query(`UPDATE chat_group_members SET display_name = NULL WHERE group_id = $1`, [group.id]);
-  await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, people[0], 'משחק'));
+  const nameless = await withTx(db.pool, (c) => groupMeetings.startCoordination(c, group, people[0], 'משחק'));
+  await deliverInvites(Number(nameless.data.meeting.id));
 
   const { context } = await ask({ agentId: group.agent_id, externalId: group.external_id });
   assert.ok(!context.includes(TOKEN(4)), 'the room\'s identity token is its door and never travels');

@@ -95,7 +95,13 @@ async function draw(client, group) {
       // somebody we have no phone for, because leaving them out of the block
       // would make `answered` and this list disagree. Why anybody said no is
       // not here and has no count.
-      waitingFor: c.silent.map((p) => p.tag || p.name).filter(Boolean),
+      // …and the ones she has actually written to, because this block is the
+      // only thing the model may speak from and the room's own lines obey the
+      // same rule. Somebody still waiting on an invite is a COUNT with no tags:
+      // dropping them silently would make `answered` and this list disagree.
+      waitingFor: c.silent.filter((p) => p.asked !== false).map((p) => p.tag || p.name).filter(Boolean),
+      ...(c.silent.some((p) => p.asked === false)
+        ? { notYetAsked: c.silent.filter((p) => p.asked === false).length } : {}),
       onTable: c.options.map((o) => ({
         optionId: o.optionId, slot: o.slot, yes: o.yes.length, no: o.no.length,
       })),
