@@ -183,6 +183,7 @@ never trust a dated narrative for something you are about to act on.
 - [A sentence about Shabbat, because the table had never heard of preferences (fixed 2026-09-10)](#a-sentence-about-shabbat-because-the-table-had-never-heard-of-preferences-fixed-2026-09-10)
 - [The quiet day nobody was ever going to ask for (2026-09-11)](#the-quiet-day-nobody-was-ever-going-to-ask-for-2026-09-11)
 - [Sixty-four holidays, eight of them quiet (2026-09-11)](#sixty-four-holidays-eight-of-them-quiet-2026-09-11)
+- [The reminder that kept arriving on Shabbat (2026-09-22)](#the-reminder-that-kept-arriving-on-shabbat-2026-09-22)
 - [The hint the dedup swallowed (fixed 2026-09-10)](#the-hint-the-dedup-swallowed-fixed-2026-09-10)
 - [The rung nobody asked for, at half past one (2026-09-07)](#the-rung-nobody-asked-for-at-half-past-one-2026-09-07)
 - [Two ladders for one phone call (fixed 2026-09-08)](#two-ladders-for-one-phone-call-fixed-2026-09-08)
@@ -6923,6 +6924,84 @@ that wants the real behaviour opts in with `quietDays: null` /
 `holidayAsked: null` and pins its own clock. The default in a fixture should be
 the state that makes every OTHER file's arithmetic its own.
 
+
+### The reminder that kept arriving on Shabbat (2026-09-22)
+
+The gate has always let one thing through a quiet day: rung 1 of a reminder
+somebody asked for IN WORDS (`gate.askedForInWords`). A repeating reminder is
+always rung 1 — it never climbs a ladder, its own rule brings it back — and
+every repeating reminder on the box is `auto = false`, because `setReminder`
+writes that and the successor the sweep spawns inherits the column's own
+default, which is also false. So the exemption covered all of them, uniformly:
+**every repeating reminder that landed on a Shabbat arrived on Shabbat.**
+
+The owner's first pass narrowed it hard: "אם זה לא תזכורת ספציפית ליום שבת -
+אז היא לא צריכה להגיע כמו שהמשימות של הדיגסט בוקר לא מגיעות." A repeat that
+merely lands on a day they keep waits; a repeat whose rule NAMES that day still
+goes out. That is what got built.
+
+**Then he read the rule against his own list, and it was wrong.**
+
+> "כל יום ב7 צריך להיות כולל שבת (כי זה יכול להיות תרופה או משהו חשוב)"
+> "כנ״ל כל ה16 בחודש שאם זה נופל על שבת שיהיה על שבת"
+
+The box agrees with him in the plainest possible way. His two `daily` rows are
+**"לקחת כדור לבלוטה"** and "לשלוח החזרים לקופה", and his `monthly:16` is
+**"לקחת כדור ריבה"**. The rule as first built would have moved a thyroid pill
+off Saturday and pushed a monthly pill to the 17th. A routine somebody set for
+every day, or for a date, is a commitment they made — and a quiet day is not a
+reason to break it.
+
+**What survives is one shape**, and the line is whether the rule PINS anything:
+`daily` pins every day, `weekly:SA` pins the weekday, `monthly:16` and
+`monthly:last` pin a date — all of them arrive where they land. A bare `weekly`
+pins nothing: "כל שבוע" said on a Saturday is a coincidence of when it was
+said, and it is the only rule whose quiet day nobody chose.
+
+**There is no column that would have done better.** `nudge` is false on every
+live repeating row and `due_at` is null on six of the seven, so neither
+separates a pill from a nag. The shape of the rule is the only honest signal
+available, and the rule stops there rather than guessing. It also put a
+sentence in the tool schema telling the model to put a weekday they NAMED into
+the rule and not only into `remind_at` — naming Saturday is now the only way to
+keep it — which had to be paid for by trimming the same description: the whole
+tool surface had 22 characters of headroom under its 55,500 ceiling.
+
+**Why it is not a change to the gate.** The gate's order is paused → eval →
+EXPIRY → duplicate → … → quiet day, and rung 1's row expires at
+`remind_at + 2h`. A hold over Shabbat would come back on Sunday morning, meet
+the expiry check before the quiet one, and fold the row away as "עבר זמנה" —
+deleting the message rather than delaying it. Moving the quiet check above
+expiry does not save it either: "held until Sunday" on a daily reminder means
+Saturday's copy lands in the same hour as Sunday's own. So the MOMENT moves, at
+spawn, a day or a week before any row of it exists — walking forward a day at a
+time at the same LOCAL hour until `quietDayReason` says the day is kept. A day
+at a time because a run can be two days or eight; the same local hour because
+an 08:00 promise is a wall-clock promise and a DST boundary inside the run
+would otherwise move it to 07:00.
+
+`quietDayReason` itself moved out of `outbox/gate.js` into
+`domain/quiet-facts.js` for this, with the gate re-exporting it. Two copies
+would be two answers to one question, which is the exact shape that predicate
+already refuses between the hold and the release, in a comment one line above
+itself. It buys the Israeli case for free: the edge is candle-lighting to
+havdalah, so a Friday 19:30 that a calendar-day rule would have missed does
+move, and a Saturday 20:30 that a calendar-day rule would have held does not.
+
+**A bare `weekly` MIGRATES when it moves**, because a weekly successor is seven
+days after the stored moment. The owner was given that against the two
+alternatives and chose it: pinning `weekly` to the day it was set on would hand
+somebody an exemption they never asked for, and skipping would mean a reminder
+that never arrives at all. The same fact makes the SWEEP's branch reachable
+only when the world changed under a standing reminder — they added a quiet day,
+or a yom tov landed on their weekday — since a weekly otherwise returns to the
+same kept weekday for ever. That is what its test pins, because it is the only
+version of the case a test can hold still without a calendar.
+
+**Blast radius after the carve-outs: nothing on the box changes.** Eight live
+repeating reminders — two `daily`, four `monthly:*`, two `weekly`, and both of
+the weeklies are on a Sunday. The first version of this rule would have moved
+six of the eight, two of them pills.
 
 ### An offer to call a number the bridge has never served (fixed 2026-09-06)
 

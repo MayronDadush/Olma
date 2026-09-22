@@ -5,7 +5,7 @@
 // rests on.
 const { withTx } = require('../db/pool');
 const preferences = require('../domain/preferences');
-const holidays = require('../domain/holidays');
+const quietFacts = require('../domain/quiet-facts');
 const pauseDomain = require('../domain/pause');
 const quota = require('../domain/quota');
 const flagsDomain = require('../domain/flags');
@@ -149,33 +149,16 @@ async function drainOnce(pool, deliver, now = new Date(), deps = {}) {
         const blocked = await quota.isBlocked(client, row.user_id, now.toISOString());
         const win = await preferences.availabilityWindow(client, row.user_id);
         // The row already carries both fields the default is computed from,
-        // so an unstated quiet day costs no extra query: Saturday for
-        // somebody on a Jewish calendar, Sunday for a Christian one
-        // (domain/holidays.js). A person who STATED days — "none" included —
-        // is never overlaid with a guess.
-        const quiet = await preferences.quietDays(client, row.user_id,
-          { locale: row.locale, timezone: row.timezone });
-        // Only for somebody who asked for it, and only then is the calendar
-        // read at all: `holidays` is false for everybody until they say so,
-        // so the common row costs one `if` and no import work (the hebcal
-        // tables load lazily, on first use).
-        const quietDates = quiet.data.holidays
-          ? await holidays.quietDates(quiet.data.calendar, {
-            tz: row.timezone, from: now, il: holidays.isIsrael(row.timezone),
-          })
-          : [];
-        // An Israeli zone with Saturday among its quiet days gets the real
-        // Shabbat window (candle-lighting → havdalah) instead of the plain
-        // calendar day — `null` only when hebcal itself could not load, in
-        // which case 6 stays in `quietDays` below and the old whole-day check
-        // covers that week (domain/holidays.js has the detail on why even a
-        // chag touching Shabbat still resolves here).
-        const shabbatWindow = holidays.isIsrael(row.timezone) && quiet.data.days.includes(6)
-          ? await holidays.shabbatWindow(row.timezone, now)
-          : null;
-        const quietDays = shabbatWindow
-          ? quiet.data.days.filter((d) => d !== 6)
-          : quiet.data.days;
+        // so an unstated quiet day costs no extra query, the holiday list is
+        // read only for somebody who asked for it, and an Israeli Saturday
+        // resolves to the real candle-lighting → havdalah window. All three
+        // are assembled in domain/quiet-facts.js, because since 2026-09-22 the
+        // gate is no longer the only thing that asks: a repeating reminder is
+        // SCHEDULED off these days too, a week before any row gets here.
+        const { quietDays, quietDates, shabbatWindow } =
+          await quietFacts.quietFactsFor(client, {
+            id: row.user_id, timezone: row.timezone, locale: row.locale,
+          }, now);
         const budget = Number(await flagsDomain.getFlag(client, 'proactive_daily_budget') ?? 4);
         // Count only what the budget actually governs. Urgent rows and the two
         // user-chosen kinds are exempt in decide() — counting them here let a day

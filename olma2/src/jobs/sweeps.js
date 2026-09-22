@@ -11,12 +11,53 @@ const groupMeetings = require('../domain/group-meetings');
 const tasks = require('../domain/tasks');
 const quota = require('../domain/quota');
 const flags = require('../domain/flags');
+const quietFacts = require('../domain/quiet-facts');
 const { minutesInTz, parseHHMM } = require('../outbox/gate');
 
 // ---- reminders --------------------------------------------------------------
 // A reminder gets up to three rungs (domain/reminders.dueForSending owns which
 // are due). A rung expires 2h past ITS OWN moment: past that it is "עבר זמנה",
 // never a live nag.
+// Arming the next occurrence of a repeating reminder. ONE function, because
+// there are two paths to it — the ordinary send and the nudge a digest
+// carried (reminders.ridesDigest) — and a second copy of this is a second
+// place for the quiet-day rule to be forgotten. It was, for exactly as long
+// as it took to rebase the two branches onto each other.
+async function armNextOccurrence(client, r) {
+  const next = reminders.nextOccurrence(r.remind_at, r.repeat_rule, r.timezone);
+  if (!next) return;
+  // A BARE 'weekly' that lands on a day they keep quiet is armed for the next
+  // day they do not, at the same local hour (owner, 2026-09-22). Every other
+  // shape arrives on the day it lands on — a pill at seven is a pill on
+  // Saturday too; reminders.movesOffQuietDay carries his two carve-outs and
+  // the reasoning behind them.
+  //
+  // Here rather than in the gate, and the reason is not style: the gate's
+  // order is paused → eval → EXPIRY → … → quiet day, and a repeating reminder
+  // is always rung 1, whose row expires at `remind_at + 2h`. A hold over
+  // Shabbat would come back on Sunday morning, meet the expiry check first and
+  // DELETE the message. Moving the moment a week early is the only place this
+  // decision is safe.
+  const kept = reminders.movesOffQuietDay(r.repeat_rule)
+    ? await quietFacts.keptMomentFor(
+      client, { id: r.user_id, timezone: r.timezone, locale: r.locale }, next)
+    : { at: next, movedFrom: null, reason: null };
+  const ins = await client.query(
+    `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, user_id)
+     VALUES ($1, $2, $3, $4) RETURNING id`,
+    [r.task_id, kept.at, reminders.normalizeRepeatRule(r.repeat_rule), r.user_id]
+  );
+  // The move is the only thing about a repeating reminder somebody could
+  // notice and not be able to explain, so it is on the record — and the row
+  // itself only ever shows where it landed.
+  if (kept.movedFrom) {
+    await audit.record(client, r.user_id, 'reminder.moved_off_quiet_day', {
+      taskId: Number(r.task_id), reminderId: Number(ins.rows[0].id),
+      from: kept.movedFrom.toISOString(), to: kept.at.toISOString(), reason: kept.reason,
+    });
+  }
+}
+
 async function sweepReminders(client, nowIso) {
   const now = nowIso || new Date().toISOString();
   const maxAttempts = Number(await flags.getFlag(client, 'reminder_escalation_max'))
@@ -73,13 +114,7 @@ async function sweepReminders(client, nowIso) {
           taskId: Number(r.task_id), reminderId: Number(r.reminder_id),
           outboxId: Number(waiting[0].id),
         });
-        const carriedNext = reminders.nextOccurrence(r.remind_at, r.repeat_rule, r.timezone);
-        if (carriedNext) {
-          await client.query(
-            `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, user_id) VALUES ($1, $2, $3, $4)`,
-            [r.task_id, carriedNext, reminders.normalizeRepeatRule(r.repeat_rule), r.user_id]
-          );
-        }
+        await armNextOccurrence(client, r);
         continue;
       }
     }
@@ -130,15 +165,7 @@ async function sweepReminders(client, nowIso) {
       // this used to compare against the literals 'daily'/'weekly' while the
       // model was storing 'FREQ=DAILY', so every repeating reminder silently
       // fired exactly once. See reminders.normalizeRepeatRule.
-      // In THEIR zone: "the 16th" and "08:00" are both local promises, and a
-      // flat interval breaks each of them (see reminders.nextOccurrence).
-      const next = reminders.nextOccurrence(r.remind_at, r.repeat_rule, r.timezone);
-      if (next) {
-        await client.query(
-          `INSERT INTO task_reminders (task_id, remind_at, repeat_rule, user_id) VALUES ($1, $2, $3, $4)`,
-          [r.task_id, next, reminders.normalizeRepeatRule(r.repeat_rule), r.user_id]
-        );
-      }
+      await armNextOccurrence(client, r);
       out.push(r.reminder_id);
     }
   }

@@ -196,7 +196,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 ### Reminders, tasks and dates
 
 **`.claude/rules/reminders-and-tasks.md`** — the three different questions about a pending reminder, ladders, duplicate titles, dating a task, and due_at against remind_at.
-Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/tasks.js`, `src/domain/auto-reminder.js` and 11 more.
+Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/tasks.js`, `src/domain/auto-reminder.js` and 12 more.
 
 - **"What is still pending" must ask `attempts = 0`**
 - **…and "what is still going to REACH them" is a THIRD question, which `attempts = 0` answers wrongly.**
@@ -222,6 +222,7 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A reminder belongs to the PERSON, not to the task** — every reader asks `COALESCE(r.user_id, t.owner_id)`.
 - **A task with no date can still nudge, and a nudge must NEVER date it** — the dateless kind carries an hour of its own.
 - **…and the hour it defaults to is the hour they ALREADY hear from Olma, so the nudge rides the morning picture instead of interrupting twice** — drawn into the digest, never woven into it.
+- **A repeating reminder arrives on a quiet day unless its rule pins NOTHING** — a pill at seven is a pill on Saturday; only a bare "weekly" moves, and it moves at SPAWN, because a hold would meet the expiry check first and delete it.
 
 ### People, silence, and data you must not get wrong
 
