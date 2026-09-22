@@ -192,7 +192,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **A DECISION to stay quiet is not a reply that got lost.**
 - **A repair job fires precisely when the system's belief about itself is already wrong, so it must be the most sceptical thing in the codebase.**
 - **A reply that got lost is RE-SENT, never re-answered.**
-- **The model's own working-out is stopped in the GATEWAY, not by the doctrine.**
+- **The model's own working-out is stopped in the GATEWAY, not by the doctrine.** — and so is a link that goes nowhere: a host claiming to be us, or our own on a path nothing serves
 - **The last tier's missing input was not a pattern, it was the READER** — `writesHebrew` is a tri-state, `null` acts like `false`, and the value rides `turn_context` to a gate with no database
 
 ### Reminders, tasks and dates

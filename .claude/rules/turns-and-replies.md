@@ -244,6 +244,26 @@ title means this file. Grep the title, not the filename.
   user's first line was `message_id` and their own WhatsApp id above the
   owner's opening copy (`incidents.md`, "The greeter's own message id").
   Whenever an agent id is added anywhere, ask which list it belongs on here.
+  **A third thing it stops, since 2026-09-22: a link that goes nowhere**
+  (`reply-leak.deadLink`). Olma sent eight invented URLs to five people over
+  four weeks — three of them to three different people inside one minute, for
+  one coordination, each on a different made-up domain and each ending in the
+  meeting id the instruction had handed the model. The cause is fixed where
+  the instruction is (`rules/delivering.md`: the characters are handed over
+  now), and this is the half that does not depend on an instruction being
+  obeyed — and the only half that can NOTICE, because there is no row anywhere
+  for a link that was never minted and every detector we have reads clean.
+  Two checkable shapes, never a judgement: a host claiming to be us
+  (`olma`/`allma`/`openclaw` as a whole label) that is not one of the two
+  hostnames we serve, and our OWN hostname on a path the Caddy allowlist does
+  not pass, which is a dead link by definition (`rules/dashboard-and-domains.md`)
+  and is what would have caught the retired `/pick/` link. It **strips** rather
+  than condemning its paragraph, because the sentence around the link is the
+  message and cutting it would take the question with it. Measured: 6 of the 7
+  real inventions caught, 0 of 11 real links touched. **The gap is named, not
+  guessed at** — an invention on a domain that does not sound like ours
+  (a `base44.app` sandbox, 2026-09-06) reads like any external link and passes;
+  closing it needs the turn's own tool results, which this gate never sees.
   **A gate built from one leak knows that leak's VOCABULARY, not its SHAPE.**
   Twice on 2026-09-15, to a bare "תודה", the working-out went out again and the
   gate passed both byte for byte — measured, not assumed: `action: "pass"`,
