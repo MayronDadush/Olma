@@ -67,6 +67,7 @@ never trust a dated narrative for something you are about to act on.
 - [The room waited for nobody (fixed 2026-09-20)](#the-room-waited-for-nobody-fixed-2026-09-20)
 - [The place nobody asked for (fixed 2026-09-20)](#the-place-nobody-asked-for-fixed-2026-09-20)
 - [The room chased three people, two of whom had never been asked (fixed 2026-09-22)](#the-room-chased-three-people-two-of-whom-had-never-been-asked-fixed-2026-09-22)
+- [The room that could never open (2026-09-22)](#the-room-that-could-never-open-2026-09-22)
 - [A message in the room, with no tag on it (2026-09-19, half shipped)](#a-message-in-the-room-with-no-tag-on-it-2026-09-19-half-shipped)
 - [Eighteen messages, no answer (fixed 2026-09-07)](#eighteen-messages-no-answer-fixed-2026-09-07)
 - [The man who only ever answered from the page (fixed 2026-09-20)](#the-man-who-only-ever-answered-from-the-page-fixed-2026-09-20)
@@ -2301,6 +2302,78 @@ answered options by hand and never delivered an invite, so under the new rule
 the room correctly had nothing to say. They now mark the invites delivered,
 which is the state production is actually in when a line is due — the
 fixture-writes-the-state trap, caught by the fix rather than by review.
+### The room that could never open (2026-09-22)
+
+Padel Gang🏓 registered at 09:45:57 with seven live members. Four of them
+resolved to users who had written to Olma — מירון, Guy, Sharon, Yuval. The other
+three sat in `chat_group_members.phone` as `+259201444126724`,
+`+69320805752936` and `+6266525098172`: fifteen, fourteen and thirteen digits,
+none of them a number anybody dials, all of them LIDs the gateway handed us in
+the roster string with no JID to tell them apart by (the same column, the same
+day, cost the room three tags addressed to nobody — "The room chased three
+people, two of whom had never been asked").
+
+**One of those three was not nobody, and that is the sharper half of this.**
+`69320805752936` is Gal. He wrote to Olma at 10:03:01 — the gateway stamped
+`lid-mapping-69320805752936_reverse.json` with `"972509412015"` at that exact
+second — was greeted at 10:03:23, and is user 37, `active`, with
+`last_inbound_at`. He is a member of that room who HAS written to her privately,
+and the room's gate cannot see it, because `syncRoster` resolves a member by
+phone and his row holds a LID. The other two have no reverse-mapping file at
+all: nothing on the box has ever seen a phone behind them.
+
+So the room was locked, and would have stayed locked for ever whatever anybody
+did: `isConnected` needs a `user_id`, a LID resolves to none, and two of those
+three numbers have no person behind them that we know of. What the room got
+instead was the only sentence a locked room can say. By 09:57:17 it had been
+said twice — and at that point five of its seven members were people Olma was
+already talking to.
+
+**This makes the LID resolution a real second fix, not an alternative to this
+one.** `channels/sessions.lidToPhone` already reads those reverse files (it is
+not exported; `sessions.js:744`), so a roster sync that asked it would put Gal
+in his own row, and the room would count five connected rather than four. That
+is its own change and its own PR; it does not unlock this room, because the
+other two stay unresolvable, and a gate that can be defeated by a roster we
+cannot fully read is the thing being fixed here.
+
+Nothing about this was a bug. Everybody-or-nobody is what the gate was asked to
+enforce, and the failure is that it has no answer for a roster it cannot fully
+read — which is every large WhatsApp group, eventually.
+
+**The fix is the owner's call, not an inference** (2026-09-22): a room opens
+once at least two members are connected, behind `group_open_without_everyone`,
+open by default, a bool row on the admin main page. Three things were held
+fixed while doing it.
+
+`missing` does not change. Who has not written is a fact about those people, and
+an open room is not a claim that everybody is in it. That is what lets
+`jobs/groups.js` keep `group_opened` honest: "יש! כולם כאן" names a fact, so the
+announcement is now gated on `!missing.length` and a room the flag opens opens
+in silence. There is a cost in that and it is stated rather than paid quietly —
+a room that was told it was waiting hears nothing when the wait ends. The
+sentence that would be true there ("אפשר להתחיל, וגיא עדיין לא כאן") is copy the
+owner writes, and a line nobody chose is how a room gets a voice nobody
+recognises.
+
+Two is a floor with a reason: `startCoordination` already refuses a room where
+the only member it can reach is the one asking, so opening on one connected
+member buys an agent that can do nothing.
+
+And two things this does NOT touch, both checked rather than assumed.
+`group-meetings.coordinatingMembers` filters on `isConnected` already, so a
+member who never wrote is not swept into a coordination and is never messaged —
+the flag widens who the ROOM is for, never who Olma writes to.
+`group-connections.connectRoom` never read the room's state at all: all six
+pairs among Padel Gang's four users were already `active` while it was locked,
+so opening the room creates no connection that did not exist this morning.
+
+What does change beyond opening: a room with an agent no longer re-locks when a
+stranger joins. They can read everything said in the room regardless, and no
+group tool returns anybody's private row, so that was judged acceptable — but it
+is a real change and the test that used to prove re-locking now pins the flag
+closed to keep proving it.
+
 ### A message in the room, with no tag on it (2026-09-19, half shipped)
 
 The owner asked for this twice in one day: *"אני רציתי שאם היא כותבת הודעה

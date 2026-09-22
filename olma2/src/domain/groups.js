@@ -263,16 +263,42 @@ function isConnected(member) {
   return Boolean(member.user_id && (member.last_inbound_at || member.opening_sent_at));
 }
 
+// Two is the floor, and it is not a taste call: `startCoordination` already
+// refuses a room where the person asking is the only member it can reach
+// ("there is nobody else in this group to coordinate with"), so opening a room
+// with one connected member would buy an agent that can do nothing.
+const MIN_CONNECTED_TO_OPEN = 2;
+
 // Pure, so the whole policy is testable without a database.
 // Returns { state, missing, memberCount } — never writes.
-function decideState(members, { maxMembers }) {
+//
+// `openWithoutEveryone` is the owner's switch (2026-09-22,
+// `group_open_without_everyone`, open by default). The original rule was
+// everybody or nobody, and Padel Gang is what that costs: four of its seven
+// members resolved to users who have written to her and the other three reached
+// us only as LIDs, which no message of theirs can turn into a matching phone.
+// One of those three is Gal, who had in fact written — his row is a LID, so the
+// gate cannot see him — and the other two have no phone behind them at all, so
+// that room can never open under the old rule. What it got instead was the wait
+// line, twice, in the twelve minutes after it registered. With the switch open a room opens
+// once at least two members are connected.
+//
+// **`missing` is unchanged either way.** Who has not written to her is a fact
+// about those people, and an open room is not a claim that everybody is in it —
+// the two answers are separate on purpose, because the caller has to know both:
+// it is what stops the "יש! כולם כאן" line going out about a room where they
+// are not.
+function decideState(members, { maxMembers, openWithoutEveryone = false }) {
   const live = members.filter((m) => !m.left_at);
   if (live.length > maxMembers) {
     return { state: 'too_large', missing: [], memberCount: live.length };
   }
   const missing = live.filter((m) => !isConnected(m));
+  const connected = live.length - missing.length;
+  const open = !missing.length
+    || (openWithoutEveryone && connected >= MIN_CONNECTED_TO_OPEN);
   return {
-    state: missing.length ? 'locked' : 'open',
+    state: open ? 'open' : 'locked',
     missing: missing.map((m) => ({ phone: m.phone, displayName: m.display_name || null })),
     memberCount: live.length,
   };
@@ -282,8 +308,9 @@ async function evaluate(client, groupId) {
   const group = await getById(client, groupId);
   if (!group) return err('not_found', 'no such group');
   const maxMembers = Number(await flags.getFlag(client, 'group_max_members')) || 25;
+  const openWithoutEveryone = await flags.getFlag(client, 'group_open_without_everyone') === true;
   const members = await listMembers(client, groupId);
-  return ok({ group, ...decideState(members, { maxMembers }) });
+  return ok({ group, ...decideState(members, { maxMembers, openWithoutEveryone }) });
 }
 
 // Applies whatever `evaluate` decided. Returns the transition so the caller
@@ -596,7 +623,7 @@ module.exports = {
   DEFAULT_TIMEZONE,
   parseRoster, normalizePhone, majorityTimezone, SELF_PHONE,
   registerGroup, getById, getByExternalId, listMembers, syncRoster,
-  decideState, evaluate, applyState, isConnected,
+  decideState, evaluate, applyState, isConnected, MIN_CONNECTED_TO_OPEN,
   decideNotice, noteNoticeSent, seenAt, noteSeen, lastMemberWriteAt,
   GROUP_KINDS, validKind, setKind, noteKindAsked, quorumFor,
   GROUP_TOKEN_RE, looksLikeGroupToken, resolveByToken, actingMember, roomStatus,

@@ -336,8 +336,19 @@ async function sweepGroups(client, deps) {
       // The row in hand came from provisioning, from a state change or from
       // the sweep's own list, and none of those carry the roster — so the one
       // column `mayAnnounce` judges on is fetched here rather than assumed.
+      //
+      // `!missing.length` is the whole of what `group_open_without_everyone`
+      // changes here. The template is "יש! כולם כאן ואפשר להתחיל" — it names a
+      // fact, not a state — so a room the flag opened while three members have
+      // still never written to her must not say it. Such a room opens in
+      // silence: the sentence that would be true there ("אפשר להתחיל, וגיא
+      // ודנה עדיין לא כאן") is the owner's to write, and inventing it is how
+      // a room gets a line nobody chose. Nothing is lost in the meantime — the
+      // room has an agent from this pass on, and the next person who tags her
+      // gets an answer instead of the wait line.
       const presentGroup = { ...group, last_member_write_at: await groups.lastMemberWriteAt(client, group.id) };
-      if (!group.opened_announced_at && group.gate_notice_at && mayAnnounce(presentGroup, now)) {
+      if (!group.opened_announced_at && group.gate_notice_at && !missing.length
+        && mayAnnounce(presentGroup, now)) {
         await groupOutbox.enqueue(client, {
           groupId: group.id, kind: 'opened', idempotencyKey: `g${group.id}:opened`,
         });
