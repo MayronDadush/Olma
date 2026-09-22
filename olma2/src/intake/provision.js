@@ -316,13 +316,20 @@ async function provisionUser(client, {
   const { rows } = await client.query(
     // COALESCE on opening_sent_at for the same reason as onboarded_at: a
     // re-provision must not move the moment somebody was greeted.
+    // `intake_note_at` records the OTHER half of what the greeter left behind:
+    // seedWorkspace writes their words into USER.md a few lines below, and
+    // until migration 079 nothing but that file knew it had happened — so the
+    // first-turn instruction could only ever say "stop there" (see
+    // domain/turn.js). Same condition as the section itself, deliberately, so
+    // the column and the file can never disagree.
     `UPDATE users SET status = 'active', agent_id = $2, workspace_path = $3,
             first_name = COALESCE(first_name, $4), onboarded_at = COALESCE(onboarded_at, now()),
             locale = $5,
-            opening_sent_at = CASE WHEN $6 THEN COALESCE(opening_sent_at, now()) ELSE opening_sent_at END
+            opening_sent_at = CASE WHEN $6 THEN COALESCE(opening_sent_at, now()) ELSE opening_sent_at END,
+            intake_note_at = CASE WHEN $7 THEN COALESCE(intake_note_at, now()) ELSE intake_note_at END
      WHERE id = $1 RETURNING *`,
     [user.id, agentId, paths.workspace, firstName || null, resolvedLocale.locale,
-      greetedByIntake === true]
+      greetedByIntake === true, Boolean(firstMessage)]
   );
   user = rows[0];
 

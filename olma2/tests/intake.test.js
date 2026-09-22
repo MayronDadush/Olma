@@ -240,7 +240,7 @@ test('intake sweep: open registration provisions immediately — no separate wel
   assert.equal(outboxRows.length, 0, 'nothing enqueued at provisioning time');
 
   const { rows: userRows } = await db.pool.query(
-    `SELECT workspace_path, onboarded_at, opening_sent_at FROM users WHERE phone = '+972601000002'`);
+    `SELECT workspace_path, onboarded_at, opening_sent_at, intake_note_at FROM users WHERE phone = '+972601000002'`);
   assert.ok(userRows[0].onboarded_at, 'onboarded_at is set at provisioning, not on a later delivery');
   // The greeter really did open with the owner's copy here — the fixture says
   // so, and the sweep read it rather than assuming it. The stamp is what stops
@@ -248,6 +248,12 @@ test('intake sweep: open registration provisions immediately — no separate wel
   // person reads two introductions, which is the duplicate the line above
   // says was retired.
   assert.ok(userRows[0].opening_sent_at, 'the greeter said hello, and the record says so');
+  // The other half of what the greeter left behind. Their words go into
+  // USER.md below, and until migration 079 nothing but that file knew it had
+  // happened — so the one instruction their first turn reads could not assert
+  // it and said "stop there" instead (domain/turn.js, PENDING_INTAKE_NOTE).
+  assert.ok(userRows[0].intake_note_at,
+    'a carryover was written, and the column that lets the first turn say so is stamped');
   const userMd = fs.readFileSync(path.join(userRows[0].workspace_path, 'USER.md'), 'utf8');
   assert.match(userMd, /מה שכבר שיתפו לפני שהמערכת האישית הייתה מוכנה/);
   assert.match(userMd, /היי מה זה הדבר הזה\?/, 'their own words reach their personal workspace');
@@ -322,9 +328,14 @@ test('a greeter that never answers cannot strand somebody outside the system', a
   }));
   assert.deepEqual(out.provisioned, ['+972601000242'], 'the wait is bounded');
   const { rows } = await db.pool.query(
-    `SELECT opening_sent_at FROM users WHERE phone = '+972601000242'`);
+    `SELECT opening_sent_at, intake_note_at FROM users WHERE phone = '+972601000242'`);
   assert.equal(rows[0].opening_sent_at, null,
     'nobody greeted them, so their own agent must');
+  // The carryover column is the FILE's own condition, never "we provisioned
+  // somebody": no section was written here, so nothing may tell their first
+  // turn to go and read one.
+  assert.equal(rows[0].intake_note_at, null,
+    'no words were carried, so there is no note to point the first turn at');
 });
 
 // The greeter QUOTES the opening, so its file has to be rendered with the
@@ -1128,6 +1139,28 @@ test('agent doctrine: a heartbeat poll is answered with NO_REPLY and nothing els
   // reason is invisible is the one a model talks itself out of
   assert.match(tpl, /DELIVERED as a WhatsApp message/);
   assert.match(tpl, /a DIFFERENT user's chat/, 'names the cross-user leak, not just noise');
+});
+
+// 2026-09-22: Sharon asked Olma what she runs on and she told him — by name,
+// in English, in the same breath as a real answer. The owner's line is that
+// how the thing works behind the scenes is not the user's to be handed, and
+// this is the half of it a person reads. The other half is the reply gate's
+// `english` tier, which is what catches the paragraph when the doctrine does
+// not (incidents.md, "The introduction that came back").
+test('agent doctrine: what she runs on is not a topic, asked or volunteered', () => {
+  const fs = require('node:fs');
+  const tpl = fs.readFileSync(require('../src/intake/provision').TEMPLATE_PATH, 'utf8');
+
+  assert.match(tpl, /What you run on is not a topic/);
+  // Every word for it, because naming only "the model" leaves the platform.
+  assert.match(tpl, /Never name the platform, the model, the\s+company or the vendor behind you/);
+  // What is being BUILT, not only what is running — Sharon was told about
+  // work in progress, which no column of his has any claim on.
+  assert.match(tpl, /what is being built on it/);
+  // An interrogation is the easy case; the aside is the one that happened.
+  assert.match(tpl, /not asked outright, and not\s+as a friendly aside/);
+  // And it must not read as a refusal: there is an answer, it is just hers.
+  assert.match(tpl, /You are Allma, this person's assistant/);
 });
 
 test('agent doctrine: act-first outranks curiosity, and one question is a hard cap', () => {

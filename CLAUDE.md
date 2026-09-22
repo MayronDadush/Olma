@@ -183,6 +183,7 @@ Loads when you **Read** a file under `src/outbox/**`, `src/domain/message-format
 Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `src/domain/self-initiated.js` and 6 more.
 
 - **The turn opens itself, from the gateway's own hook, before the model's first call.**
+- **A function shared by two openers is handed the WHOLE user row, never a projection** — `undefined` is falsy too, and a test through one door proves nothing about the other
 - **A repeat of the same message must never be read as a new one.**
 - **`messages.queue.mode` stays `followup`.**
 - **A turn Olma started is not a message from the person.**
@@ -192,6 +193,7 @@ Loads when you **Read** a file under `src/brokerd/**`, `src/domain/turn.js`, `sr
 - **A repair job fires precisely when the system's belief about itself is already wrong, so it must be the most sceptical thing in the codebase.**
 - **A reply that got lost is RE-SENT, never re-answered.**
 - **The model's own working-out is stopped in the GATEWAY, not by the doctrine.**
+- **The last tier's missing input was not a pattern, it was the READER** — `writesHebrew` is a tri-state, `null` acts like `false`, and the value rides `turn_context` to a gate with no database
 
 ### Reminders, tasks and dates
 
@@ -286,6 +288,7 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 
 - **`agents-template.md` reaches existing users only via `scripts/resync-agent-templates.js`.**
 - **The doctrine is FULL: 39,229 of the 39,250 chars the gateway will inject (2026-09-05; it was 39,249 the day before).**
+- **What Olma runs on is not the user's to be handed — asked outright or as an aside.**
 - **The tool schemas have a ceiling too: 55k chars of JSON, 700 per description, the identity line under 40**
 - **When brokerd has put a 👍 on their message, the result says so (`hints.markPlaced`) and the model answers `NO_REPLY` unless words add something**
 - **The owner's rule is that anything which CAN end in a like should**
@@ -303,7 +306,7 @@ Loads when you **Read** a file under `src/intake/agents-template.md`, `src/intak
 - **Telling the model to call a tool is not telling it what the reader of that tool's write actually checks.**
 - **A fixture that writes the state by hand cannot notice the state is only ever reached the other way.**
 - **The owner's opening copy is said ONCE, by whichever voice reaches the person first.**
-- **A first message is not a hello, and the newest arrivals prove it.**
+- **A first message is not a hello, and the newest arrivals prove it.** …and carrying their words into USER.md is only half of it: the first-turn instruction has to SAY they are unanswered (`users.intake_note_at`)
 - **`gmail.readonly` is a RESTRICTED scope and everything else Olma asks for is merely SENSITIVE — the two words are different verification tracks, and one restricted scope prices the whole app onto the paid one**
 - **Every NEW Google consent link goes through one door, and it is CLOSED**
 - **A display name is not a word to be translated.**
