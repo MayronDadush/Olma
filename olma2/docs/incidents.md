@@ -2330,12 +2330,18 @@ said twice — and at that point five of its seven members were people Olma was
 already talking to.
 
 **This makes the LID resolution a real second fix, not an alternative to this
-one.** `channels/sessions.lidToPhone` already reads those reverse files (it is
-not exported; `sessions.js:744`), so a roster sync that asked it would put Gal
-in his own row, and the room would count five connected rather than four. That
-is its own change and its own PR; it does not unlock this room, because the
-other two stay unresolvable, and a gate that can be defeated by a roster we
-cannot fully read is the thing being fixed here.
+one — and it shipped the same day** (owner's ask, 2026-09-22).
+`channels/sessions.lidPhoneNumbers` exposes what `lidToPhone` had always read,
+the sweep asks for the map once per pass through the worker facade, and the pure
+`groups.resolveLidMembers` rewrites the roster before `registerGroup`/`syncRoster`
+see it. Gal lands in his own row, resolves to user 37, and Padel Gang counts five
+connected members rather than four; `syncRoster` retires the LID row and keeps it
+as history. It does not unlock that room on its own, because the other two stay
+unresolvable — a gate that can be defeated by a roster we cannot fully read is
+what the flag above is for — and it does not DROP an unresolved LID either: they
+are still somebody in the room, and an empty map (also what an unreadable
+credentials directory answers) has to change nothing at all, or a roster emptied
+of its LID rows reads as every one of those members walking out.
 
 Nothing about this was a bug. Everybody-or-nobody is what the gate was asked to
 enforce, and the failure is that it has no answer for a roster it cannot fully

@@ -95,6 +95,49 @@ function dedupe(members) {
   return [...byPhone.values()];
 }
 
+// The roster reaches us as digits with no JID on them, so a member addressed by
+// LID is indistinguishable in `chat_group_members.phone` from one addressed by
+// phone — and a LID resolves to no user, which is the whole of why Padel Gang
+// could not open (`incidents.md`, "The room that could never open"). The gateway
+// writes `lid-mapping-<digits>_reverse.json` the moment it first resolves a LID,
+// so for anybody who has ever written to Olma there IS a way back to a number:
+// Gal's file was stamped at the exact second of his first message.
+//
+// Pure, and it takes the map rather than reading it, because the files belong to
+// the gateway and this module must not touch the filesystem
+// (`channels/sessions.lidPhoneNumbers` reads them, through the worker facade).
+//
+// `null`/`undefined` — nobody asked, or nothing could be read — changes NOTHING.
+// That direction is not a convenience: a roster silently emptied of its LID rows
+// would read as every one of those members leaving the room.
+//
+// Two things it deliberately does not do. It never DROPS a member it cannot
+// resolve: an unresolvable LID is still somebody in the room, and the room's
+// gate is entitled to keep counting them as missing. And a resolved phone that
+// is already in the roster collapses into one member through `dedupe` rather
+// than becoming a second row for one person — which is the case where the same
+// human is listed twice, once by each address.
+// Returns `{ members, resolved }` rather than a bare list, because the caller
+// has to be able to say whether anything changed without re-deriving the
+// predicate — and `dedupe` below can shorten the list, so a length difference
+// is not that answer.
+function resolveLidMembers(members, lidPhones) {
+  const list = members || [];
+  if (!lidPhones) return { members: list, resolved: 0 };
+  let resolved = 0;
+  const mapped = list.map((m) => {
+    const digits = String(m.phone || '').replace(/\D/g, '');
+    const phone = normalizePhone(lidPhones[digits] || '');
+    // A mapping onto the member's own number is not a mapping; and a key that
+    // is really a phone number could only get here from a gateway that wrote a
+    // reverse file for one, so this no-op is the whole guard against it.
+    if (!phone || phone === m.phone) return m;
+    resolved++;
+    return { ...m, phone };
+  });
+  return { members: dedupe(mapped), resolved };
+}
+
 // ---- timezone ---------------------------------------------------------------
 
 // A group's quiet hours run in whichever timezone most of its members are in.
@@ -621,7 +664,7 @@ function quorumFor(group, yesCount) {
 
 module.exports = {
   DEFAULT_TIMEZONE,
-  parseRoster, normalizePhone, majorityTimezone, SELF_PHONE,
+  parseRoster, normalizePhone, majorityTimezone, SELF_PHONE, resolveLidMembers,
   registerGroup, getById, getByExternalId, listMembers, syncRoster,
   decideState, evaluate, applyState, isConnected, MIN_CONNECTED_TO_OPEN,
   decideNotice, noteNoticeSent, seenAt, noteSeen, lastMemberWriteAt,
