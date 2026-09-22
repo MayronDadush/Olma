@@ -21,6 +21,17 @@ const connectGate = require('./google-connect-gate');
 const { enqueue } = require('../outbox/enqueue');
 const googleFamily = require('./google-family');
 
+// Does another Google row of this user carry this exact refresh token?
+async function tokenHeldBySibling(client, userId, secret) {
+  const { rows } = await client.query(
+    `SELECT refresh_enc FROM integrations
+      WHERE user_id = $1 AND provider = ANY($2) AND refresh_enc IS NOT NULL`,
+    [userId, googleFamily.GOOGLE_FAMILY_PROVIDERS.filter((p) => p !== PROVIDER)]);
+  return rows.some((r) => {
+    try { return cryptoStore.decrypt(r.refresh_enc) === secret; } catch { return false; }
+  });
+}
+
 const PROVIDER = 'google_calendar';
 const MAX_EVENTS = 20;
 
@@ -175,7 +186,14 @@ async function completeOAuth(client, { state, code, error }, opts = {}) {
   if (isChange && tokens.refresh_token) {
     const oldSecret = (prior.refresh_enc && cryptoStore.decrypt(prior.refresh_enc))
       || (prior.credential_enc && cryptoStore.decrypt(prior.credential_enc));
-    if (oldSecret) await google.revoke(oldSecret, opts);
+    // …unless a sibling row still holds that SAME token. The combined consent
+    // link (google-connect.js) stores one grant on calendar AND contacts, so
+    // revoking it here killed the contacts connection while its row went on
+    // saying "connected" — disconnect() already refuses this for the same
+    // reason. Compared by value, so separate grants are still revoked.
+    const shared = oldSecret && await tokenHeldBySibling(client, userId, oldSecret);
+    if (oldSecret && !shared) await google.revoke(oldSecret, opts);
+    if (shared) await audit.record(client, userId, 'calendar.old_token_kept_for_sibling', { accessLevel });
   }
 
   // The callback lands in a phone browser; the conversation is in WhatsApp.
