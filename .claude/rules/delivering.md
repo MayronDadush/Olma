@@ -199,10 +199,28 @@ title means this file. Grep the title, not the filename.
   about it was a third of each. What stays is the invite — the one message
   guaranteed to be first — and the folded table question, which is the
   invite asked late; a confirmation and a no-match never had it. The line
-  carries no words about itself. It stays an instruction the MODEL spends
-  rather than a url in a template — the page is minted by
-  `open_my_dashboard` and a prompt cannot carry one (`rules/doctrine.md`, "A
-  `url` in a tool result is delivered by the MODEL or not at all").
+  carries no words about itself. **And the characters of that link are HANDED
+  OVER, never asked for** (2026-09-22). This rule used to end "a prompt cannot
+  carry a url — the page is minted by `open_my_dashboard`", so the instruction
+  said "call it with meeting_id=N and put its url here". What a prompt would
+  not carry, the model supplied: on the first room fan-out after that shipped,
+  three people were sent three different invented domains inside one minute —
+  `dashboard.olma.ai`, `dash.olma.app`, `dashboard.openclaw.ai`, every one of
+  them `/meetings/40`, the number the instruction itself had handed over — and
+  **not one link was minted for that coordination**. Eight fabrications across
+  five people are in the transcripts, against zero from the one path that
+  mints server-side (`withStartLink`). So `openclaw.makeDeliverer` mints the
+  link at DELIVERY (not at enqueue — a link is good for 24 hours and a row the
+  gate holds overnight would arrive with a dead one), `inviteLinkClause` prints
+  it or prints NOTHING, and `offersDashboardLink` decides which rows get one by
+  asking `instructionFor` itself with a probe rather than keeping a second list
+  of kinds. `tools/meetings.offerDashboardOnce` mints on the result the same
+  way. The doctrine rule it used to cite is unchanged and is the reason this
+  works: the url still reaches the person only if the MODEL writes it
+  (`rules/doctrine.md`, "A `url` in a tool result is delivered by the MODEL or
+  not at all") — what changed is that there is no longer a tool call to skip,
+  and no meeting id lying around to build a plausible URL out of
+  (`incidents.md`, "Three people, three invented domains, one minute").
 
 - **A private message about a coordination is one sentence of context and
   one question** (owner and Yuval, 2026-09-20; `BRIEF` in
