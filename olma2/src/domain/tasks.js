@@ -242,7 +242,7 @@ const duplicateError = (existing) => err('conflict',
   + 'to change something about it use edit_task or set_task_reminder on that id.',
   { reason: 'duplicate', existingTaskId: Number(existing.id) });
 
-async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, location, parentId, source, remindAt, now }) {
+async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, location, parentId, source, remindAt, nudge, now }) {
   if (!title || !title.trim()) return err('invalid', 'title required');
   if (dueAt && !hasOffset(dueAt)) return badTime('due_at', dueAt);
   if (remindAt && !hasOffset(remindAt)) return badTime('remind_at', remindAt);
@@ -316,8 +316,31 @@ async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, 
   const similarTo = twin
     ? { id: Number(twin.task.id), title: twin.task.title, silent: twin.silent }
     : null;
+  // They asked to be CHASED, and the task carries a deadline to chase toward:
+  // one a day from today until that day, decided in reminders.startChase
+  // (חיים, 2026-09-22). A null answer means there was nothing to chase across —
+  // no deadline, or only one day of it — and the ordinary arming below is then
+  // exactly right, `nudge` buying its three rungs on the day.
+  if (nudge === true) {
+    const chase = await reminders.startChase(client, ownerId, rows[0].id,
+      { now, at: remindAt || null });
+    if (chase && !chase.ok) return chase;
+    if (chase) {
+      return ok({
+        task: rows[0],
+        reminders: [chase.data.reminder],
+        remindersAt: await localLabels(client, ownerId, [chase.data.reminder]),
+        // The hour is Olma's unless they named one, and either way the SHAPE —
+        // every day until the deadline — is news they have not heard yet.
+        remindersAsked: Boolean(remindAt),
+        chase: { until: chase.data.reminder.repeat_until, every: 'daily' },
+        ...(similarTo ? { similarTo } : {}),
+      });
+    }
+  }
   if (remindAt) {
-    const set = await reminders.setReminder(client, ownerId, rows[0].id, remindAt, null);
+    const set = await reminders.setReminder(client, ownerId, rows[0].id, remindAt, null,
+      { nudge: nudge === true });
     if (!set.ok) return set;
     return ok({
       task: rows[0],
@@ -327,7 +350,7 @@ async function addTask(client, ownerId, { title, category, dueAt, endsAt, kind, 
       ...(similarTo ? { similarTo } : {}),
     });
   }
-  const auto = await autoAttach(client, ownerId, [rows[0]], now);
+  const auto = await autoAttach(client, ownerId, [rows[0]], now, { nudge: nudge === true });
   return ok({ task: rows[0], ...auto, ...(similarTo ? { similarTo } : {}) });
 }
 
@@ -358,7 +381,7 @@ async function localLabels(client, ownerId, rows) {
 // refused. Reporting the second is not decoration: a cap nobody is told about
 // reads as "everything was covered" (CLAUDE.md, no silent caps), and the model
 // needs it to offer the rest rather than leave them silently unarmed.
-async function autoAttach(client, ownerId, tasks, now) {
+async function autoAttach(client, ownerId, tasks, now, { nudge = false } = {}) {
   const timed = tasks.filter((t) => t.due_at);
   if (!timed.length) return {};
   const { rows: u } = await client.query(`SELECT timezone FROM users WHERE id = $1`, [ownerId]);
@@ -367,7 +390,7 @@ async function autoAttach(client, ownerId, tasks, now) {
   let skipped = 0;
   for (const t of timed) {
     if (made.length >= autoReminder.BULK_CAP) { skipped++; continue; }
-    const r = await reminders.attachAutoReminder(client, ownerId, t, tz, now);
+    const r = await reminders.attachAutoReminder(client, ownerId, t, tz, now, { nudge });
     if (r) made.push(r);
   }
   if (!made.length && !skipped) return {};
@@ -622,13 +645,20 @@ async function listTasks(client, ownerId, { status, includeArchived } = {}) {
 // So an occurrence is acknowledged and the recurrence is left armed. Finishing
 // with a standing task for real is two steps and says so: cancel_reminder to
 // stop the cadence, then complete_task.
+//
+// A CHASE is the exact opposite and reads identically in `repeat_rule`: "one a
+// day until the deadline, unless he says it is done" is a series whose whole
+// purpose is to END on that word (owner, 2026-09-22; migration 081). Left
+// under this branch it would have been the worse half of חיים's bug — "עשיתי"
+// acknowledged, the task still open, and the same message again the next
+// morning — so `repeat_until IS NULL` is what "standing" actually means here.
 async function completeTask(client, ownerId, taskId) {
   const { rows: standing } = await client.query(
     `SELECT r.id, r.remind_at, r.repeat_rule
        FROM task_reminders r JOIN tasks t ON t.id = r.task_id
       WHERE r.task_id = $1 AND t.owner_id = $2
         AND t.status = 'open' AND t.archived_at IS NULL
-        AND r.repeat_rule IS NOT NULL
+        AND r.repeat_rule IS NOT NULL AND r.repeat_until IS NULL
         AND r.sent_at IS NULL AND r.cancelled_at IS NULL
       ORDER BY r.remind_at LIMIT 1`,
     [taskId, ownerId]

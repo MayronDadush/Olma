@@ -223,6 +223,9 @@ Loads when you **Read** a file under `src/domain/reminders.js`, `src/domain/task
 - **A task with no date can still nudge, and a nudge must NEVER date it** — the dateless kind carries an hour of its own.
 - **…and the hour it defaults to is the hour they ALREADY hear from Olma, so the nudge rides the morning picture instead of interrupting twice** — drawn into the digest, never woven into it.
 - **A repeating reminder arrives on a quiet day unless its rule pins NOTHING** — a pill at seven is a pill on Saturday; only a bare "weekly" moves, and it moves at SPAWN, because a hold would meet the expiry check first and delete it.
+- **A repeating reminder with an END is a CHASE, and every reader that took "repeating" to mean "a rhythm" had to be told the difference** — `repeat_until` is the discriminator, and it is EXPLICIT because a live monthly pill carries a vestigial `due_at`.
+- **The owner decided the four things about a chase that no reading of the code could settle** — the day they ask counts, the hour is one they already hear from Olma, a quiet day is skipped, and "עד ש…" plus a request for help is what arms one.
+- **A chase is the one arming whose SHAPE is news, whoever picked the hour** — a 👍 cannot carry a cadence, and a line that says only "every day" about something with an end is a promise to keep going for ever.
 
 ### People, silence, and data you must not get wrong
 

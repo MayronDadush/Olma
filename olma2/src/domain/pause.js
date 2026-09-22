@@ -148,7 +148,8 @@ async function resumeUser(client, userId, { now = new Date(), reason = null } = 
   // reminder was cancelled and re-cancelled across two pauses must not come
   // back twice.
   const frozen = (await client.query(
-    `SELECT DISTINCT ON (r.task_id) r.task_id, r.remind_at, r.repeat_rule, u.timezone
+    `SELECT DISTINCT ON (r.task_id) r.task_id, r.remind_at, r.repeat_rule, r.repeat_until,
+            r.repeat_seq, u.timezone
        FROM task_reminders r JOIN tasks t ON t.id = r.task_id
        JOIN users u ON u.id = $1
       WHERE COALESCE(r.user_id, t.owner_id) = $1 AND r.cancelled_at >= $2
@@ -158,9 +159,29 @@ async function resumeUser(client, userId, { now = new Date(), reason = null } = 
 
   const rearmed = [];
   for (const f of frozen) {
+    // A chase the pause caught before its first message ever went out has
+    // nothing worth preserving about its moment: that moment was "the evening
+    // of the day they asked", and that day is over. Starting it again is the
+    // one path that re-derives the hour, the first moment and the end together
+    // — and it declines outright if the deadline went by while they were away.
+    if (Number(f.repeat_seq) === 0 && f.repeat_until) {
+      const again = await reminders.startChase(client, userId, f.task_id, { now });
+      if (again && again.ok) {
+        rearmed.push({ taskId: Number(f.task_id), remindAt: new Date(again.data.reminder.remind_at).toISOString() });
+      }
+      continue;
+    }
     const next = nextOccurrenceAfter(f.remind_at, f.repeat_rule, now, f.timezone);
     if (!next) continue;
-    const res = await reminders.setReminder(client, userId, f.task_id, next, f.repeat_rule);
+    // A chase comes back as the chase it was, end included. Re-arming it
+    // without `until` would leave a daily nag with nothing to stop it, which is
+    // the one shape the end date exists to prevent; and a chase whose deadline
+    // passed during the pause is not resurrected at all, for the same reason
+    // the one-off above is not — the day it was about is gone.
+    const until = f.repeat_until ? new Date(f.repeat_until) : null;
+    if (until && next.getTime() > until.getTime()) continue;
+    const res = await reminders.setReminder(client, userId, f.task_id, next, f.repeat_rule,
+      { until, seq: Number(f.repeat_seq) || 1 });
     if (res.ok) rearmed.push({ taskId: Number(f.task_id), remindAt: next.toISOString() });
   }
 

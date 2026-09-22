@@ -507,3 +507,56 @@ title means this file. Grep the title, not the filename.
   to `domain/quiet-facts.js` so the schedule and the gate cannot hold two
   opinions; for an Israeli zone that means the edge is candle-lighting to
   havdalah, so a Saturday evening past havdalah is an ordinary evening to both.
+
+- **A repeating reminder with an END is a CHASE, and every reader that took
+  "repeating" to mean "a rhythm" had to be told the difference** (migration
+  081, `reminders.isChase`). חיים asked to be helped until a camera was at the
+  repair shop "עד שבוע הבא"; he got one reminder the evening before the
+  deadline and, because the hour on it was one the model had invented, a 👍 and
+  no words (`incidents.md`, "A week of help, delivered as one reminder the
+  night before"). No correct expression of his ask existed: `repeat_rule:
+  'daily'` never ends, `tasks.completeTask` refuses to close a task carrying a
+  repeating reminder so "עשיתי" would have left it running, and `nudge:true`
+  is three rungs in one evening. `task_reminders.repeat_until` is the
+  discriminator and `repeat_seq` says which occurrence a row is — NULL is the
+  cadence every existing rule describes (a pill at seven, the 16th of the
+  month), set is a chase that ends at the deadline and ends on "done".
+  **The end is EXPLICIT and never inferred from `due_at`**: user 16's monthly
+  pill carries a vestigial one, and inferring would have silently ended a
+  medication reminder. Four readers now ask for `repeat_until IS NULL` before
+  treating a repeat as standing — `completeTask`, the overdue detector in
+  `task-suggestions.js`, the expired-events sweep, and `reminders.ridesDigest`,
+  which hands a dateless nudge to the morning digest and must not hand over a
+  chase that has a deadline of its own.
+
+- **The owner decided the four things about a chase that no reading of the code
+  could settle** (2026-09-22), and each is one line in
+  `reminders.startChase`. **The day they ASK counts**: if the morning hour has
+  gone, the first one goes that evening (`reminders.CHASE_EVENING_AT`, inside
+  their window), as `repeat_seq = 0` — "day zero" — and the series re-anchors
+  to the morning hour the next day, because a chase that inherited 19:00 from
+  the exception would be a different promise from the one it made; day zero's
+  successor is numbered 2, since day zero and occurrence 1 are both "the first
+  message". **The hour is the one they ALREADY hear from Olma**
+  (`reminders.chaseHour`): the earliest morning digest, failing that the start
+  of their availability window, failing both 09:00 — the same question the
+  dateless nudge on their own page answers the same way, and never a constant
+  we picked. **A quiet day is SKIPPED**, which is what `movesOffQuietDay`
+  returning true means for a daily rule — nobody takes a camera to a repair
+  shop on Saturday, and the series comes back on Sunday without making the day
+  up. **And "עד ש…" plus a request for help is what arms one**, not an explicit
+  "כל יום": his sentence has no "כל יום" in it anywhere.
+
+- **A chase is the one arming whose SHAPE is news, whoever picked the hour.**
+  A 👍 cannot carry a cadence, so `hints.reminders` takes a third branch asking
+  for one short line — the first hour, the last day, and nothing in between,
+  because the days between are what the messages themselves will say — and
+  `list-block` renders "כל יום עד 28.9" rather than a bare "כל יום", since a
+  line saying only "every day" about something with an end is a promise to
+  keep going for ever. **`hints.chaseAvailable` is the question nobody asked
+  him**: on a turn that arms exactly one reminder for a deadline more than two
+  days out, the result asks whether their words wanted help until it is done.
+  Measured on the box before it was written — 24 of 227 live tasks carry a
+  deadline that far ahead, so "לאסוף את הילדים מחר" never sees it. It is a
+  QUESTION about their words and never an instruction to write, because the
+  whole answer may be a second tool call and then silence.
